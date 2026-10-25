@@ -170,7 +170,7 @@ def iter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if it.view(1)[0].it_index == i64.MAX {
-        PyErr_SetString(PyExc_OverflowError, "iter index too large");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("iter index too large"));
         return NULL;
     }
     result = PySequence_GetItem(seq, it.view(1)[0].it_index);
@@ -353,7 +353,9 @@ def anextawaitable_getiter(op: ptr[PyObject]) -> ptr[PyObject] {
         }
         awaitable = new_awaitable;
         if PyIter_Check(awaitable) == 0 {
-            PyErr_SetString(PyExc_TypeError, "__await__ returned a non-iterable");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("__await__ returned a non-iterable")
+            );
             jacpy_release(awaitable);
             return NULL;
         }

@@ -315,7 +315,7 @@ impl dec_type_from_long(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_long(v) == 0 {
-        PyErr_SetString(PyExc_TypeError, "argument must be an integer");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("argument must be an integer"));
         return NULL;
     }
     converted = dec_from_long(module_of_context(context), type, v, ctx_of(context));
@@ -335,7 +335,7 @@ impl dec_type_from_long_exact(
     type: ptr[PyObject], v: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_long(v) == 0 {
-        PyErr_SetString(PyExc_TypeError, "argument must be an integer");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("argument must be an integer"));
         return NULL;
     }
     converted = dec_from_long(
@@ -365,7 +365,7 @@ impl dec_type_from_float_exact(
         return dec_type_from_long_exact(type, v, context);
     }
     if jacpy_is_float(v) == 0 {
-        PyErr_SetString(PyExc_TypeError, "argument must be int or float");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("argument must be int or float"));
         return NULL;
     }
     x = PyFloat_AsDouble(v);
@@ -497,20 +497,22 @@ impl sequence_as_tuple(
     if jacpy_is_list(v) != 0 {
         return PyList_AsTuple(v);
     }
-    PyErr_SetString(ex, mesg);
+    object_error(ex, mesg);
     return NULL;
 }
 
 impl dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
     if PyTuple_Size(dectuple) != 3 {
-        PyErr_SetString(PyExc_ValueError, "argument must be a sequence of length 3");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("argument must be a sequence of length 3")
+        );
         return ptr[u8]();
     }
 
     tmp = PyTuple_GetItem(dectuple, 0);
     if jacpy_is_long(tmp) == 0 {
         PyErr_SetString(
-            PyExc_ValueError, "sign must be an integer with the value 0 or 1"
+            PyExc_ValueError, ptr[u8]("sign must be an integer with the value 0 or 1")
         );
         return ptr[u8]();
     }
@@ -520,7 +522,7 @@ impl dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
     }
     if sign != 0 and sign != 1 {
         PyErr_SetString(
-            PyExc_ValueError, "sign must be an integer with the value 0 or 1"
+            PyExc_ValueError, ptr[u8]("sign must be an integer with the value 0 or 1")
         );
         return ptr[u8]();
     }
@@ -543,13 +545,13 @@ impl dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
         } else {
             PyErr_SetString(
                 PyExc_ValueError,
-                "string argument in the third position must be 'F', 'n' or 'N'"
+                ptr[u8]("string argument in the third position must be 'F', 'n' or 'N'")
             );
             return ptr[u8]();
         }
     } else {
         if jacpy_is_long(tmp) == 0 {
-            PyErr_SetString(PyExc_ValueError, "exponent must be an integer");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("exponent must be an integer"));
             return ptr[u8]();
         }
         exp = PyLong_AsSsize_t(tmp);
@@ -587,7 +589,9 @@ impl dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
     for i in range(tsize) {
         item = PyTuple_GetItem(digits, i64(i));
         if jacpy_is_long(item) == 0 {
-            PyErr_SetString(PyExc_ValueError, "coefficient must be a tuple of digits");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("coefficient must be a tuple of digits")
+            );
             jacpy_release(digits);
             PyMem_Free(ptr(decstring));
             return ptr[u8]();
@@ -599,7 +603,9 @@ impl dectuple_as_str(dectuple: ptr[PyObject]) -> ptr[u8] {
             return ptr[u8]();
         }
         if l < 0 or l > 9 {
-            PyErr_SetString(PyExc_ValueError, "coefficient must be a tuple of digits");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("coefficient must be a tuple of digits")
+            );
             jacpy_release(digits);
             PyMem_Free(ptr(decstring));
             return ptr[u8]();
@@ -671,7 +677,7 @@ impl dec_type_from_sequence_exact(
 impl unsupported_conversion(v: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_Format(
         PyExc_TypeError,
-        "conversion from %s to Decimal is not supported",
+        ptr[u8]("conversion from %s to Decimal is not supported"),
         object_type(v).view(1)[0].tp_name
     );
     return NULL;
@@ -826,7 +832,9 @@ impl multiply_by_denominator(
     mpd_del(vv);
 
     if status != u32(0) {
-        PyErr_SetString(PyExc_ValueError, "exact conversion for comparison failed");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("exact conversion for comparison failed")
+        );
         jacpy_release(result);
         return NULL;
     }

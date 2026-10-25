@@ -561,13 +561,13 @@ impl getstring(string: ptr[PyObject], view: ptr[Py_buffer]) -> ptr {
     if PyObject_GetBuffer(string, view, PyBUF_SIMPLE) != 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "expected string or bytes-like object, got '%.200s'",
+            ptr[u8]("expected string or bytes-like object, got '%.200s'"),
             tp_name(string)
         );
         return ptr();
     }
     if not view.view(1)[0].buf {
-        PyErr_SetString(PyExc_ValueError, "Buffer is NULL");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Buffer is NULL"));
         PyBuffer_Release(view);
         view.view(1)[0].buf = ptr();
         return ptr();
@@ -646,14 +646,16 @@ impl state_init(
     isbytes = not view.view(1)[0].buf.is_null();
     if isbytes and p[0].isbytes == 0 {
         PyErr_SetString(
-            PyExc_TypeError, "cannot use a string pattern on a bytes-like object"
+            PyExc_TypeError,
+            ptr[u8]("cannot use a string pattern on a bytes-like object")
         );
         state_init_failed(state, inline_marks);
         return NULL;
     }
     if not isbytes and p[0].isbytes > 0 {
         PyErr_SetString(
-            PyExc_TypeError, "cannot use a bytes pattern on a string-like object"
+            PyExc_TypeError,
+            ptr[u8]("cannot use a bytes pattern on a string-like object")
         );
         state_init_failed(state, inline_marks);
         return NULL;
@@ -751,7 +753,9 @@ impl state_getslice(
         if i > j {
             PyErr_SetString(
                 PyExc_SystemError,
-                "The span of capturing group is wrong, please report a bug for the re module."
+                ptr[u8](
+                    "The span of capturing group is wrong, please report a bug for the re module."
+                )
             );
             return NULL;
         }
@@ -761,14 +765,16 @@ impl state_getslice(
 
 impl pattern_error(status: i64) {
     if status == SRE_ERROR_RECURSION_LIMIT {
-        PyErr_SetString(PyExc_RecursionError, "maximum recursion limit exceeded");
+        PyErr_SetString(
+            PyExc_RecursionError, ptr[u8]("maximum recursion limit exceeded")
+        );
     } elif status == SRE_ERROR_MEMORY {
         PyErr_NoMemory();
     } elif status == SRE_ERROR_INTERRUPTED {
         return;
     } else {
         PyErr_SetString(
-            PyExc_RuntimeError, "internal error in regular expression engine"
+            PyExc_RuntimeError, ptr[u8]("internal error in regular expression engine")
         );
     }
 }
@@ -1138,7 +1144,7 @@ impl compile_template(
     if result and type_object(result) != template_type {
         PyErr_Format(
             PyExc_RuntimeError,
-            "the result of compiling a replacement string is %.200s",
+            ptr[u8]("the result of compiling a replacement string is %.200s"),
             tp_name(result)
         );
         jacpy_release(result);
@@ -1546,7 +1552,8 @@ impl _sre_compile_impl(
         if value > u64(0xFFFFFFFF) {
             (codes + i).view(1)[0] = u32(value & u64(0xFFFFFFFF));
             PyErr_SetString(
-                PyExc_OverflowError, "regular expression code size limit exceeded"
+                PyExc_OverflowError,
+                ptr[u8]("regular expression code size limit exceeded")
             );
             break;
         }
@@ -1595,7 +1602,7 @@ impl _sre_template_impl(
     template_type = jacpy_binding_state_get(module, i64(STATE_TEMPLATE_TYPE));
     n = PyList_Size(template);
     if (n & 1) == 0 or n < 1 {
-        PyErr_SetString(PyExc_TypeError, "invalid template");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("invalid template"));
         return NULL;
     }
     n = n // 2;
@@ -1616,7 +1623,7 @@ impl _sre_template_impl(
         }
         if index < 0 {
             template_record(self).view(1)[0].ob_base.ob_size = i;
-            PyErr_SetString(PyExc_TypeError, "invalid template");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("invalid template"));
             jacpy_release(self);
             return NULL;
         }
@@ -2028,7 +2035,7 @@ impl validate(self: ptr[PyObject]) -> bool {
     p = pattern_record(self).view(1);
     code = pattern_code(self);
     if validate_outer(code, code + p[0].codesize, p[0].groups) != 0 {
-        PyErr_SetString(PyExc_RuntimeError, "invalid SRE code");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("invalid SRE code"));
         return False;
     }
     return True;
@@ -2123,7 +2130,7 @@ impl match_getindex(self: ptr[PyObject], index: ptr[PyObject]) -> i64 {
     }
     if i < 0 or i >= m[0].groups {
         if not PyErr_Occurred() {
-            PyErr_SetString(PyExc_IndexError, "no such group");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("no such group"));
         }
         return -1;
     }
@@ -2393,7 +2400,9 @@ impl pattern_new_match(
                 if first > last {
                     PyErr_SetString(
                         PyExc_SystemError,
-                        "The span of capturing group is wrong, please report a bug for the re module."
+                        ptr[u8](
+                            "The span of capturing group is wrong, please report a bug for the re module."
+                        )
                     );
                     jacpy_release(match_object);
                     return NULL;
@@ -2445,7 +2454,7 @@ impl scanner_begin(self: ptr[PyObject]) -> bool {
     s[0].executing = 1;
     if was_executing != 0 {
         PyErr_SetString(
-            PyExc_ValueError, "regular expression scanner already executing"
+            PyExc_ValueError, ptr[u8]("regular expression scanner already executing")
         );
         return False;
     }
@@ -2596,7 +2605,7 @@ impl expand_template(
         item = (items + i).view(1);
         index = item[0].index;
         if index >= groups {
-            PyErr_SetString(PyExc_IndexError, "no such group");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("no such group"));
             failed = True;
             break;
         }

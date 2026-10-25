@@ -979,7 +979,7 @@ impl EXIT_INIT_CHECK(should_be_none: u64) -> i32 {
     if not sr_is_none(should_be_none) {
         PyErr_Format(
             PyExc_TypeError,
-            "__init__() should return None, not '%.200s'",
+            ptr[u8]("__init__() should return None, not '%.200s'"),
             sr_type(should_be_none).view(1)[0].tp_name
         );
         sr_close(should_be_none);

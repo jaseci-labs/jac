@@ -1115,7 +1115,9 @@ impl set_unhashable_type(key: ptr[PyObject]) {
         PyErr_SetRaisedException(exc);
         return;
     }
-    PyErr_Format(PyExc_TypeError, "cannot use '%T' as a set element (%S)", key, exc);
+    PyErr_Format(
+        PyExc_TypeError, ptr[u8]("cannot use '%T' as a set element (%S)"), key, exc
+    );
     object_decref(exc);
 }
 
@@ -1466,7 +1468,7 @@ impl set_merge(so: ptr[PyObject], other: ptr[PyObject]) -> i32 {
 impl set_pop(so: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     s = set_of(so);
     if set_used(so) == 0 {
-        PyErr_SetString(PyExc_KeyError, "pop from an empty set");
+        PyErr_SetString(PyExc_KeyError, ptr[u8]("pop from an empty set"));
         return NULL;
     }
     table = set_table(so);
@@ -1597,7 +1599,9 @@ impl setiter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if si.view(1)[0].si_used != set_used(so) {
-        PyErr_SetString(PyExc_RuntimeError, "Set changed size during iteration");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("Set changed size during iteration")
+        );
 
         si.view(1)[0].si_used = -1;
         return NULL;
@@ -1767,7 +1771,10 @@ impl at_most_one_argument(args: ptr[PyObject], name: ptr[u8]) -> bool {
     nargs = object_size(args);
     if nargs > 1 {
         PyErr_Format(
-            PyExc_TypeError, "%.200s expected at most 1 argument, got %zd", name, nargs
+            PyExc_TypeError,
+            ptr[u8]("%.200s expected at most 1 argument, got %zd"),
+            name,
+            nargs
         );
         return False;
     }

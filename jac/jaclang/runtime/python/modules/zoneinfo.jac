@@ -625,7 +625,7 @@ impl zoneinfo_ZoneInfo_impl(type: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyOb
     if jacpy_type_check(instance, type) == 0 {
         PyErr_Format(
             PyExc_RuntimeError,
-            "Unexpected instance of %T in %s weak cache for key %R",
+            ptr[u8]("Unexpected instance of %T in %s weak cache for key %R"),
             instance,
             _PyType_Name(type),
             key
@@ -1009,7 +1009,9 @@ impl fill_zone(
     state: ZoneInfoModuleState, zone: ZoneInfoState, data_tuple: ptr[PyObject]
 ) -> bool {
     if Py_TYPE(data_tuple) != addressof(PyTuple_Type) {
-        PyErr_Format(PyExc_TypeError, "Invalid data result type: %R", data_tuple);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("Invalid data result type: %R"), data_tuple
+        );
         return False;
     }
 
@@ -1248,7 +1250,9 @@ impl parse_tz_str(
     std_abbr = parse_abbr(cursor);
     if not std_abbr {
         if not PyErr_Occurred() {
-            PyErr_Format(PyExc_ValueError, "Invalid STD format in %R", tz_str_obj);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("Invalid STD format in %R"), tz_str_obj
+            );
         }
         return None;
     }
@@ -1256,7 +1260,9 @@ impl parse_tz_str(
     try {
         parsed = parse_tz_delta(cursor);
         if parsed is None {
-            PyErr_Format(PyExc_ValueError, "Invalid STD offset in %R", tz_str_obj);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("Invalid STD offset in %R"), tz_str_obj
+            );
             return None;
         }
         std_offset = parsed;
@@ -1266,7 +1272,9 @@ impl parse_tz_str(
             if not dst_abbr {
                 if not PyErr_Occurred() {
                     PyErr_Format(
-                        PyExc_ValueError, "Invalid DST format in %R", tz_str_obj
+                        PyExc_ValueError,
+                        ptr[u8]("Invalid DST format in %R"),
+                        tz_str_obj
                     );
                 }
                 return None;
@@ -1277,7 +1285,9 @@ impl parse_tz_str(
                 parsed = parse_tz_delta(cursor);
                 if parsed is None {
                     PyErr_Format(
-                        PyExc_ValueError, "Invalid DST offset in %R", tz_str_obj
+                        PyExc_ValueError,
+                        ptr[u8]("Invalid DST offset in %R"),
+                        tz_str_obj
                     );
                     return None;
                 }
@@ -1288,7 +1298,7 @@ impl parse_tz_str(
                 if cursor.at() != 44 {
                     PyErr_Format(
                         PyExc_ValueError,
-                        "Missing transition rules in TZ string: %R",
+                        ptr[u8]("Missing transition rules in TZ string: %R"),
                         tz_str_obj
                     );
                     return None;
@@ -1299,7 +1309,7 @@ impl parse_tz_str(
                     if PyErr_ExceptionMatches(PyExc_MemoryError) == 0 {
                         PyErr_Format(
                             PyExc_ValueError,
-                            "Malformed transition rule in TZ string: %R",
+                            ptr[u8]("Malformed transition rule in TZ string: %R"),
                             tz_str_obj
                         );
                     }
@@ -1312,7 +1322,7 @@ impl parse_tz_str(
             if cursor.at() != 0 {
                 PyErr_Format(
                     PyExc_ValueError,
-                    "Extraneous characters at end of TZ string: %R",
+                    ptr[u8]("Extraneous characters at end of TZ string: %R"),
                     tz_str_obj
                 );
                 return None;

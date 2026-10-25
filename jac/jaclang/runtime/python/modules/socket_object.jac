@@ -696,12 +696,12 @@ impl sock_getsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     }
     if HAS_VSOCK and sock_family(s) == AF_VSOCK {
         PyMem_Free(ptr(scratch));
-        PyErr_SetString(PyExc_OSError, "getsockopt string buffer not allowed");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("getsockopt string buffer not allowed"));
         return NULL;
     }
     if buflen <= 0 or buflen > 1024 {
         PyMem_Free(ptr(scratch));
-        PyErr_SetString(PyExc_OSError, "getsockopt buflen out of range");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("getsockopt buflen out of range"));
         return NULL;
     }
     buf = jacpy_bytes_from_memory(ptr(), i64(buflen));
@@ -937,7 +937,7 @@ impl sock_recv(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if recvlen < 0 {
-        PyErr_SetString(PyExc_ValueError, "negative buffersize in recv");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("negative buffersize in recv"));
         return NULL;
     }
     buf = jacpy_bytes_from_memory(ptr(), recvlen);
@@ -981,7 +981,7 @@ impl sock_recv_into(
     buflen = pbuf.view(1)[0].length;
     if recvlen < 0 {
         jacpy_buffer_release(pbuf);
-        PyErr_SetString(PyExc_ValueError, "negative buffersize in recv_into");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("negative buffersize in recv_into"));
         return NULL;
     }
     if recvlen == 0 {
@@ -989,7 +989,9 @@ impl sock_recv_into(
     }
     if buflen < recvlen {
         jacpy_buffer_release(pbuf);
-        PyErr_SetString(PyExc_ValueError, "buffer too small for requested bytes");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("buffer too small for requested bytes")
+        );
         return NULL;
     }
     readlen = sock_recv_guts(s, pbuf.view(1)[0].buf, int(recvlen), int(flags));
@@ -1036,7 +1038,7 @@ impl sock_recvfrom(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if recvlen < 0 {
-        PyErr_SetString(PyExc_ValueError, "negative buffersize in recvfrom");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("negative buffersize in recvfrom"));
         return NULL;
     }
     buf = jacpy_bytes_from_memory(ptr(), recvlen);
@@ -1083,7 +1085,9 @@ impl sock_recvfrom_into(
     buflen = pbuf.view(1)[0].length;
     if recvlen < 0 {
         jacpy_buffer_release(pbuf);
-        PyErr_SetString(PyExc_ValueError, "negative buffersize in recvfrom_into");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("negative buffersize in recvfrom_into")
+        );
         return NULL;
     }
     if recvlen == 0 {
@@ -1091,7 +1095,7 @@ impl sock_recvfrom_into(
     } elif recvlen > buflen {
         jacpy_buffer_release(pbuf);
         PyErr_SetString(
-            PyExc_ValueError, "nbytes is greater than the length of the buffer"
+            PyExc_ValueError, ptr[u8]("nbytes is greater than the length of the buffer")
         );
         return NULL;
     }
@@ -1154,7 +1158,9 @@ impl sock_recvmsg_guts(
         return NULL;
     }
     if controllen < 0 or controllen > SOCKLEN_T_LIMIT {
-        PyErr_SetString(PyExc_ValueError, "invalid ancillary data buffer length");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("invalid ancillary data buffer length")
+        );
         return NULL;
     }
     addrbuf = new_addrbuf();
@@ -1214,7 +1220,7 @@ impl received_message(
         if data.status != 0
             and PyErr_WarnEx(
                 PyExc_RuntimeWarning,
-                "received malformed or improperly-truncated ancillary data",
+                ptr[u8]("received malformed or improperly-truncated ancillary data"),
                 1
             )
                 == -1 {
@@ -1225,7 +1231,7 @@ impl received_message(
             break;
         }
         if data.length > SSIZE_MAX {
-            PyErr_SetString(PyExc_OSError, "control message too long");
+            PyErr_SetString(PyExc_OSError, ptr[u8]("control message too long"));
             jacpy_release(cmsg_list);
             return NULL;
         }
@@ -1282,7 +1288,7 @@ impl sock_recvmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if bufsize < 0 {
-        PyErr_SetString(PyExc_ValueError, "negative buffer size in recvmsg()");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("negative buffer size in recvmsg()"));
         return NULL;
     }
     buf = jacpy_bytes_from_memory(ptr(), bufsize);
@@ -1344,7 +1350,9 @@ impl sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     nbufs = 0;
     ok = True;
     if nitems > INT_MAX {
-        PyErr_SetString(PyExc_OSError, "recvmsg_into() argument 1 is too long");
+        PyErr_SetString(
+            PyExc_OSError, ptr[u8]("recvmsg_into() argument 1 is too long")
+        );
         ok = False;
     }
 
@@ -1434,7 +1442,7 @@ impl sock_sendall(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
                 deadline = int(_PyDeadline_Init(i64(timeout)));
             }
             if timeout <= 0 {
-                PyErr_SetString(PyExc_TimeoutError, "timed out");
+                PyErr_SetString(PyExc_TimeoutError, ptr[u8]("timed out"));
                 break;
             }
         }
@@ -1533,7 +1541,7 @@ impl sock_sendmsg_iovec(
     ndataparts = int(jacpy_fast_size(data_fast));
     result = True;
     if ndataparts > INT_MAX {
-        PyErr_SetString(PyExc_OSError, "sendmsg() argument 1 is too long");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("sendmsg() argument 1 is too long"));
         result = False;
     }
     if result and ndataparts > 0 {
@@ -1638,7 +1646,7 @@ impl sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         cmsg_fast = PySequence_Tuple(cmsg_arg);
         if not cmsg_fast {
             PyErr_SetString(
-                PyExc_TypeError, "sendmsg() argument 2 must be an iterable"
+                PyExc_TypeError, ptr[u8]("sendmsg() argument 2 must be an iterable")
             );
             return sendmsg_finally(
                 message, addrbuf, buffers, cmsg_fast, cmsgs, 0, controlbuf, NULL
@@ -1676,14 +1684,14 @@ impl sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         bufsize = int(ptr[Py_buffer](info + 8).view(1)[0].length);
         space = get_CMSG_SPACE(bufsize);
         if space < 0 {
-            PyErr_SetString(PyExc_OSError, "ancillary data item too large");
+            PyErr_SetString(PyExc_OSError, ptr[u8]("ancillary data item too large"));
             return sendmsg_finally(
                 message, addrbuf, buffers, cmsg_fast, cmsgs, ncmsgbufs, controlbuf, NULL
             );
         }
         controllen += space;
         if controllen > SOCKLEN_T_LIMIT or controllen < controllen_last {
-            PyErr_SetString(PyExc_OSError, "too much ancillary data");
+            PyErr_SetString(PyExc_OSError, ptr[u8]("too much ancillary data"));
             return sendmsg_finally(
                 message, addrbuf, buffers, cmsg_fast, cmsgs, ncmsgbufs, controlbuf, NULL
             );
@@ -1727,7 +1735,7 @@ impl sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
             msg_len = get_CMSG_LEN(data_len);
             if msg_len < 0 {
                 PyErr_SetString(
-                    PyExc_RuntimeError, "item size out of range for CMSG_LEN()"
+                    PyExc_RuntimeError, ptr[u8]("item size out of range for CMSG_LEN()")
                 );
                 return sendmsg_finally(
                     message,
@@ -1751,7 +1759,7 @@ impl sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
             if not enough_space {
                 PyErr_SetString(
                     PyExc_RuntimeError,
-                    "ancillary data does not fit in calculated space"
+                    ptr[u8]("ancillary data does not fit in calculated space")
                 );
                 return sendmsg_finally(
                     message,
@@ -1806,7 +1814,7 @@ impl sock_sendmsg_afalg(
 ) -> ptr[PyObject] {
     s = sock_of(self);
     if not HAS_ALG or sock_family(s) != AF_ALG {
-        PyErr_SetString(PyExc_OSError, "algset is only supported for AF_ALG");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("algset is only supported for AF_ALG"));
         return NULL;
     }
     data_arg = NULL;
@@ -1848,7 +1856,7 @@ impl sock_sendmsg_afalg(
         op = int(PyLong_AsInt(opobj));
     }
     if op < 0 {
-        PyErr_SetString(PyExc_TypeError, "Invalid or missing argument 'op'");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("Invalid or missing argument 'op'"));
         return afalg_finally(message, buffers, controlbuf, iv, retval);
     }
 
@@ -1859,7 +1867,7 @@ impl sock_sendmsg_afalg(
             return afalg_finally(message, buffers, controlbuf, iv, retval);
         }
         if assoclen < 0 {
-            PyErr_SetString(PyExc_TypeError, "assoclen must be positive");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("assoclen must be positive"));
             return afalg_finally(message, buffers, controlbuf, iv, retval);
         }
     }
@@ -1886,7 +1894,7 @@ impl sock_sendmsg_afalg(
     header = cmsg_firsthdr(message);
     if not header {
         PyErr_SetString(
-            PyExc_RuntimeError, "unexpected NULL result from CMSG_FIRSTHDR"
+            PyExc_RuntimeError, ptr[u8]("unexpected NULL result from CMSG_FIRSTHDR")
         );
         return afalg_finally(message, buffers, controlbuf, iv, retval);
     }
@@ -1899,7 +1907,8 @@ impl sock_sendmsg_afalg(
         header = cmsg_nxthdr(message, header);
         if not header {
             PyErr_SetString(
-                PyExc_RuntimeError, "unexpected NULL result from CMSG_NXTHDR(iv)"
+                PyExc_RuntimeError,
+                ptr[u8]("unexpected NULL result from CMSG_NXTHDR(iv)")
             );
             return afalg_finally(message, buffers, controlbuf, iv, retval);
         }
@@ -1915,7 +1924,8 @@ impl sock_sendmsg_afalg(
         header = cmsg_nxthdr(message, header);
         if not header {
             PyErr_SetString(
-                PyExc_RuntimeError, "unexpected NULL result from CMSG_NXTHDR(assoc)"
+                PyExc_RuntimeError,
+                ptr[u8]("unexpected NULL result from CMSG_NXTHDR(assoc)")
             );
             return afalg_finally(message, buffers, controlbuf, iv, retval);
         }
@@ -1966,10 +1976,10 @@ impl sock_finalize(self: ptr[PyObject]) {
 
     exc = PyErr_GetRaisedException();
     if get_sock_fd(s) != INVALID_SOCKET {
-        if PyErr_ResourceWarning(self, 1, "unclosed %R", self) != 0 {
+        if PyErr_ResourceWarning(self, 1, ptr[u8]("unclosed %R"), self) != 0 {
             if PyErr_ExceptionMatches(PyExc_Warning) != 0 {
                 PyErr_FormatUnraisable(
-                    "Exception ignored while finalizing socket %R", self
+                    ptr[u8]("Exception ignored while finalizing socket %R"), self
                 );
             }
         }
@@ -2046,7 +2056,7 @@ impl sock_init(
 
         fd = c_int(int(value));
         if fd < 0 {
-            PyErr_SetString(PyExc_ValueError, "negative file descriptor");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("negative file descriptor"));
             return i32(-1);
         }
 

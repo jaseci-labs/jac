@@ -217,7 +217,9 @@ def validate_step(step: ptr[PyObject]) -> ptr[PyObject] {
         sign = i32(0);
         PyLong_GetSign(step, &mut sign);
         if sign == 0 {
-            PyErr_SetString(PyExc_ValueError, "range() arg 3 must not be zero");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("range() arg 3 must not be zero")
+            );
             jacpy_release(step);
             return NULL;
         }
@@ -286,11 +288,15 @@ def range_from_array(
         start = long_zero();
         step = long_one();
     } elif num_args == 0 {
-        PyErr_SetString(PyExc_TypeError, "range expected at least 1 argument, got 0");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("range expected at least 1 argument, got 0")
+        );
         return NULL;
     } else {
         PyErr_Format(
-            PyExc_TypeError, "range expected at most 3 arguments, got %zd", num_args
+            PyExc_TypeError,
+            ptr[u8]("range expected at most 3 arguments, got %zd"),
+            num_args
         );
         return NULL;
     }
@@ -493,7 +499,7 @@ def compute_range_item(r: ptr[rangeobject], arg: ptr[PyObject]) -> ptr[PyObject]
     }
     if cmp_result == 1 {
         jacpy_release(i);
-        PyErr_SetString(PyExc_IndexError, "range object index out of range");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("range object index out of range"));
         return NULL;
     }
     result = compute_item(r, i);
@@ -722,7 +728,7 @@ def range_index(op: ptr[PyObject], ob: ptr[PyObject]) -> ptr[PyObject] {
         return sidx;
     }
     # object is not in the range
-    PyErr_SetString(PyExc_ValueError, "range.index(x): x not in range");
+    PyErr_SetString(PyExc_ValueError, ptr[u8]("range.index(x): x not in range"));
     return NULL;
 }
 
@@ -771,7 +777,7 @@ def range_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     }
     PyErr_Format(
         PyExc_TypeError,
-        "range indices must be integers or slices, not %.200s",
+        ptr[u8]("range indices must be integers or slices, not %.200s"),
         object_type(item).view(1)[0].tp_name
     );
     return NULL;
@@ -905,7 +911,7 @@ def longrangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObj
 
 def longrangeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
     if not object_is_type(state, addressof(PyLong_Type)) {
-        PyErr_Format(PyExc_TypeError, "state must be an int, not %T", state);
+        PyErr_Format(PyExc_TypeError, ptr[u8]("state must be an int, not %T"), state);
         return NULL;
     }
     r = longrangeiter_of(op);

@@ -146,14 +146,14 @@ def:priv zlib_error(module: ptr[PyObject], message: ptr[u8], err: i32, context: 
         detail = "invalid input data";
     }
     error = jacpy_binding_state_get(module, ZLIB_ERROR);
-    PyErr_SetString(
+    object_error(
         error,
         f"Error {err} {context}: {detail}" if detail else f"Error {err} {context}"
     );
 }
 
 def:priv zlib_error_message(module: ptr[PyObject], message: str) {
-    PyErr_SetString(jacpy_binding_state_get(module, ZLIB_ERROR), message);
+    object_error(jacpy_binding_state_get(module, ZLIB_ERROR), message);
 }
 
 # Feed at most UINT_MAX bytes per call, keeping the rest for later rounds.

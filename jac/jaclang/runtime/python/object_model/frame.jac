@@ -531,7 +531,7 @@ def mark_stacks(code_obj: ptr[PyObject], n_units: i64) -> ptr[i64];
 
 def compatible_stack(from_in: i64, to_in: i64) -> bool;
 
-def explain_incompatible_stack(to_stack: i64) -> str;
+def explain_incompatible_stack(to_stack: i64) -> ptr[u8];
 
 def marklines(code: ptr[PyObject], n_units: i64) -> ptr[i32];
 
@@ -691,7 +691,7 @@ import from c {
         if not unicode_check(name) {
             PyErr_Format(
                 PyExc_TypeError,
-                "name must be str, not %s",
+                ptr[u8]("name must be str, not %s"),
                 object_type(name).view(1)[0].tp_name
             );
             return NULL;
@@ -712,7 +712,7 @@ import from c {
             }
             i += 1;
         }
-        PyErr_Format(PyExc_NameError, "variable %R does not exist", name);
+        PyErr_Format(PyExc_NameError, ptr[u8]("variable %R does not exist"), name);
         return NULL;
     }  def PyFrame_GetVarString(frame: ptr[PyObject], name: ptr[u8]) -> ptr[PyObject] {
         name_obj = PyUnicode_FromString(name);
@@ -1174,7 +1174,7 @@ impl framelocalsproxy_getitem(
             return extra_value;
         }
     }
-    PyErr_Format(PyExc_KeyError, "local variable '%R' is not defined", key);
+    PyErr_Format(PyExc_KeyError, ptr[u8]("local variable '%R' is not defined"), key);
     return NULL;
 }
 
@@ -1216,7 +1216,8 @@ impl framelocalsproxy_setitem(
     if i >= 0 {
         if not value {
             PyErr_SetString(
-                PyExc_ValueError, "cannot remove local variables from FrameLocalsProxy"
+                PyExc_ValueError,
+                ptr[u8]("cannot remove local variables from FrameLocalsProxy")
             );
             return i32(-1);
         }
@@ -1351,18 +1352,20 @@ impl framelocalsproxy_new(
     if object_size(args) != 1 {
         PyErr_Format(
             PyExc_TypeError,
-            "FrameLocalsProxy expected 1 argument, got %zd",
+            ptr[u8]("FrameLocalsProxy expected 1 argument, got %zd"),
             object_size(args)
         );
         return NULL;
     }
     item = tuple_get_item(args, 0);
     if not frame_check(item) {
-        PyErr_Format(PyExc_TypeError, "expect frame, not %T", item);
+        PyErr_Format(PyExc_TypeError, ptr[u8]("expect frame, not %T"), item);
         return NULL;
     }
     if kwds and PyDict_Size(kwds) != 0 {
-        PyErr_SetString(PyExc_TypeError, "FrameLocalsProxy takes no keyword arguments");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("FrameLocalsProxy takes no keyword arguments")
+        );
         return NULL;
     }
     proxy = type.view(1)[0].tp_alloc(type, 0);
@@ -1619,7 +1622,7 @@ impl framelocalsproxy_update(
     if framelocalsproxy_merge(self, other) < 0 {
         PyErr_SetString(
             PyExc_TypeError,
-            "update() argument must be dict or another FrameLocalsProxy"
+            ptr[u8]("update() argument must be dict or another FrameLocalsProxy")
         );
         return NULL;
     }
@@ -1630,7 +1633,7 @@ impl framelocalsproxy_get(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if nargs < 1 or nargs > 2 {
-        PyErr_SetString(PyExc_TypeError, "get expected 1 or 2 arguments");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("get expected 1 or 2 arguments"));
         return NULL;
     }
     key = args.view(1)[0];
@@ -1653,7 +1656,9 @@ impl framelocalsproxy_setdefault(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if nargs < 1 or nargs > 2 {
-        PyErr_SetString(PyExc_TypeError, "setdefault expected 1 or 2 arguments");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("setdefault expected 1 or 2 arguments")
+        );
         return NULL;
     }
     key = args.view(1)[0];
@@ -1693,7 +1698,8 @@ impl framelocalsproxy_pop(
     }
     if i >= 0 {
         PyErr_SetString(
-            PyExc_ValueError, "cannot remove local variables from FrameLocalsProxy"
+            PyExc_ValueError,
+            ptr[u8]("cannot remove local variables from FrameLocalsProxy")
         );
         return NULL;
     }
@@ -1821,7 +1827,7 @@ impl frame_trace_opcodes_set(
     self: ptr[PyObject], value: ptr[PyObject], closure: ptr
 ) -> i32 {
     if not object_is_type(value, addressof(PyBool_Type)) {
-        PyErr_SetString(PyExc_TypeError, "attribute value type must be bool");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("attribute value type must be bool"));
         return i32(-1);
     }
     if value == addressof(_Py_TrueStruct) {
@@ -2084,24 +2090,26 @@ impl compatible_stack(from_in: i64, to_in: i64) -> bool {
     return to_stack == 0;
 }
 
-impl explain_incompatible_stack(to_stack: i64) -> str {
+impl explain_incompatible_stack(to_stack: i64) -> ptr[u8] {
     if to_stack == OVERFLOWED {
-        return "stack is too deep to analyze";
+        return ptr[u8]("stack is too deep to analyze");
     }
     if to_stack == UNINITIALIZED {
-        return "can't jump into an exception handler, or code may be unreachable";
+        return ptr[u8](
+            "can't jump into an exception handler, or code may be unreachable"
+        );
     }
     target_kind = top_of_stack(to_stack);
     if target_kind == KIND_EXCEPT {
-        return "can't jump into an 'except' block as there's no exception";
+        return ptr[u8]("can't jump into an 'except' block as there's no exception");
     }
     if target_kind == KIND_LASTI {
-        return "can't jump into a re-raising block as there's no location";
+        return ptr[u8]("can't jump into a re-raising block as there's no location");
     }
     if target_kind == KIND_OBJECT or target_kind == KIND_NULL {
-        return "incompatible stacks";
+        return ptr[u8]("incompatible stacks");
     }
-    return "can't jump into the body of a for loop";
+    return ptr[u8]("can't jump into the body of a for loop");
 }
 
 impl marklines(code: ptr[PyObject], n_units: i64) -> ptr[i32] {
@@ -2163,18 +2171,20 @@ impl frame_lineno_set(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -
     iframe = frame_iframe(self);
     code = iframe_code(iframe);
     if not value {
-        PyErr_SetString(PyExc_AttributeError, "cannot delete attribute");
+        PyErr_SetString(PyExc_AttributeError, ptr[u8]("cannot delete attribute"));
         return i32(-1);
     }
     if not object_is_type(value, addressof(PyLong_Type)) {
-        PyErr_SetString(PyExc_ValueError, "lineno must be an integer");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("lineno must be an integer"));
         return i32(-1);
     }
     is_suspended = frame_is_suspended(self);
     tstate = ptr[u8](PyThreadState_Get());
     what_event = ptr[i32](tstate + PyThreadState_WHAT_EVENT).view(1)[0];
     if what_event < 0 {
-        PyErr_Format(PyExc_ValueError, "f_lineno can only be set in a trace function");
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("f_lineno can only be set in a trace function")
+        );
         return i32(-1);
     }
     jump_allowed = what_event == EVENT_PY_RESUME
@@ -2188,10 +2198,10 @@ impl frame_lineno_set(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -
         if what_event == EVENT_PY_START {
             PyErr_Format(
                 PyExc_ValueError,
-                "can't jump from the 'call' trace event of a new frame"
+                ptr[u8]("can't jump from the 'call' trace event of a new frame")
             );
         } elif what_event == EVENT_CALL or what_event == EVENT_C_RETURN {
-            PyErr_SetString(PyExc_ValueError, "can't jump during a call");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("can't jump during a call"));
         } elif what_event == EVENT_PY_RETURN
             or what_event == EVENT_PY_UNWIND
             or what_event == EVENT_PY_THROW
@@ -2199,22 +2209,26 @@ impl frame_lineno_set(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -
             or what_event == EVENT_C_RAISE
             or what_event == EVENT_INSTRUCTION
             or what_event == EVENT_EXCEPTION_HANDLED {
-            PyErr_Format(PyExc_ValueError, "can only jump from a 'line' trace event");
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("can only jump from a 'line' trace event")
+            );
         } else {
-            PyErr_SetString(PyExc_SystemError, "unexpected event type");
+            PyErr_SetString(PyExc_SystemError, ptr[u8]("unexpected event type"));
         }
         return i32(-1);
     }
     overflow = i32(0);
     l_new_lineno = PyLong_AsLongAndOverflow(value, &mut overflow);
     if overflow != 0 or l_new_lineno > INT_MAX or l_new_lineno < INT_MIN {
-        PyErr_SetString(PyExc_ValueError, "lineno out of range");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("lineno out of range"));
         return i32(-1);
     }
     new_lineno = i32(l_new_lineno);
     if new_lineno < code_i32(code, PyCodeObject_FIRSTLINENO) {
         PyErr_Format(
-            PyExc_ValueError, "line %d comes before the current code block", new_lineno
+            PyExc_ValueError,
+            ptr[u8]("line %d comes before the current code block"),
+            new_lineno
         );
         return i32(-1);
     }
@@ -2227,7 +2241,7 @@ impl frame_lineno_set(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -
     if new_lineno < 0 {
         PyErr_Format(
             PyExc_ValueError,
-            "line %d comes after the current code block",
+            ptr[u8]("line %d comes after the current code block"),
             i32(l_new_lineno)
         );
         PyMem_Free(ptr(lines));
@@ -2242,7 +2256,7 @@ impl frame_lineno_set(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -
     best_addr: i64 = -1;
     start_stack = stack_at(stacks, i64(iframe_lasti(iframe)));
     err = -1;
-    msg = "cannot find bytecode for specified line";
+    msg = ptr[u8]("cannot find bytecode for specified line");
     i: i64 = 0;
     while i < n_units {
         if (lines + i).view(1)[0] == new_lineno {
@@ -2255,9 +2269,9 @@ impl frame_lineno_set(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -
                 }
             } elif err < 0 {
                 if start_stack == OVERFLOWED {
-                    msg = "stack to deep to analyze";
+                    msg = ptr[u8]("stack to deep to analyze");
                 } elif start_stack == UNINITIALIZED {
-                    msg = "can't jump from unreachable code";
+                    msg = ptr[u8]("can't jump from unreachable code");
                 } else {
                     msg = explain_incompatible_stack(target_stack);
                     err = 1;
@@ -2287,7 +2301,7 @@ impl frame_lineno_set(self: ptr[PyObject], value: ptr[PyObject], closure: ptr) -
         if PyErr_WarnFormat(
             PyExc_RuntimeWarning,
             0,
-            "assigning None to %d unbound local%s",
+            ptr[u8]("assigning None to %d unbound local%s"),
             unbound,
             plural
         )
@@ -2443,16 +2457,20 @@ impl frame_clear(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
         gen = iframe_generator(iframe);
         state = gen_frame_state(gen);
         if state == FRAME_EXECUTING {
-            PyErr_SetString(PyExc_RuntimeError, "cannot clear an executing frame");
+            PyErr_SetString(
+                PyExc_RuntimeError, ptr[u8]("cannot clear an executing frame")
+            );
             return NULL;
         }
         if frame_state_suspended(state) {
-            PyErr_SetString(PyExc_RuntimeError, "cannot clear a suspended frame");
+            PyErr_SetString(
+                PyExc_RuntimeError, ptr[u8]("cannot clear a suspended frame")
+            );
             return NULL;
         }
         _PyGen_Finalize(gen);
     } elif owner == FRAME_OWNED_BY_THREAD {
-        PyErr_SetString(PyExc_RuntimeError, "cannot clear an executing frame");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("cannot clear an executing frame"));
         return NULL;
     } else {
         frame_tp_clear(self);

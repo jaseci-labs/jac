@@ -10,7 +10,10 @@ import from c {
     );  def _PyErr_SetString(
         tstate: ptr[PyThreadState], exception: ptr[PyObject], message: ptr[u8]
     );  def _PyErr_Format(
-        tstate: ptr[PyThreadState], exception: ptr[PyObject], format_: str, *args: any
+        tstate: ptr[PyThreadState],
+        exception: ptr[PyObject],
+        format_: ptr[u8],
+        *args: any
     ) -> ptr[PyObject];  def _PyErr_SetObject(
         tstate: ptr[PyThreadState], exception: ptr[PyObject], value: ptr[PyObject]
     );  def _PyErr_SetRaisedException(tstate: ptr[PyThreadState], exc: ptr[PyObject]);  def _PyErr_GetRaisedException(
@@ -303,7 +306,7 @@ import from c {
         _PyErr_Format(
             ptr[PyThreadState](tstate),
             PyExc_SystemError,
-            "%U:%d: unknown opcode %d",
+            ptr[u8]("%U:%d: unknown opcode %d"),
             filename,
             line,
             opcode
@@ -629,7 +632,9 @@ impl do_raise(tstate: ptr, exc_in: ptr[PyObject], cause: ptr[PyObject]) -> i32 {
             _PyErr_Format(
                 ts,
                 PyExc_TypeError,
-                "calling %R should have returned an instance of BaseException, not %R",
+                ptr[u8](
+                    "calling %R should have returned an instance of BaseException, not %R"
+                ),
                 type,
                 ptr[PyObject](object_type(value))
             );
@@ -657,7 +662,9 @@ impl do_raise(tstate: ptr, exc_in: ptr[PyObject], cause: ptr[PyObject]) -> i32 {
                 _PyErr_Format(
                     ts,
                     PyExc_TypeError,
-                    "calling %R should have returned an instance of BaseException, not %R",
+                    ptr[u8](
+                        "calling %R should have returned an instance of BaseException, not %R"
+                    ),
                     cause,
                     ptr[PyObject](object_type(fixed_cause))
                 );

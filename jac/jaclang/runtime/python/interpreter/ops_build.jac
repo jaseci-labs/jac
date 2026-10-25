@@ -320,7 +320,7 @@ impl LIST_EXTEND(lst: u64, iterable: u64) -> i32 {
                 PyErr_Clear();
                 PyErr_Format(
                     PyExc_TypeError,
-                    "Value after * must be an iterable, not %.200s",
+                    ptr[u8]("Value after * must be an iterable, not %.200s"),
                     tp.view(1)[0].tp_name
                 );
             }
@@ -350,7 +350,7 @@ impl DICT_UPDATE(dct: u64, update: u64) -> i32 {
         if PyErr_ExceptionMatches(PyExc_AttributeError) != 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%.200s' object is not a mapping",
+                ptr[u8]("'%.200s' object is not a mapping"),
                 object_type(update_o).view(1)[0].tp_name
             );
         }

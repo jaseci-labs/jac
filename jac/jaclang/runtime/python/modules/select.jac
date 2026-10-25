@@ -1335,15 +1335,17 @@ impl kqueue_tracking_init(module: ptr[PyObject], module_state: SelectState) {
         type_text = PyObject_Str(Py_TYPE(error));
         error_text = PyObject_Str(error);
         if type_text and error_text {
-            PyErr_WarnEx(
-                PyExc_RuntimeWarning,
+            message = jacpy_unicode_from_text(
                 f"An exception of type {text_value(
                     type_text
                 )} was raised while registering an after-fork handler for select.kqueue objects: {text_value(
                     error_text
-                )}",
-                1
+                )}"
             );
+            if message {
+                PyErr_WarnEx(PyExc_RuntimeWarning, PyUnicode_AsUTF8(message), 1);
+                jacpy_release(message);
+            }
         }
         jacpy_release(type_text);
         jacpy_release(error_text);

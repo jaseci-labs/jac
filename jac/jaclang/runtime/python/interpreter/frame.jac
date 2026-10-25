@@ -626,7 +626,7 @@ impl take_ownership(f: ptr[PyObject], frame: ptr[u8]) {
 }
 
 impl no_intrinsic1(tstate: ptr, unused: ptr[PyObject]) -> ptr[PyObject] {
-    PyErr_SetString(PyExc_SystemError, "invalid intrinsic function");
+    PyErr_SetString(PyExc_SystemError, ptr[u8]("invalid intrinsic function"));
     return NULL;
 }
 
@@ -653,7 +653,8 @@ impl import_all_from(tstate: ptr, locals: ptr[PyObject], v: ptr[PyObject]) -> i3
         }
         if not dct {
             PyErr_SetString(
-                PyExc_ImportError, "from-import-* object has no __dict__ and no __all__"
+                PyExc_ImportError,
+                ptr[u8]("from-import-* object has no __dict__ and no __all__")
             );
             return -1;
         }
@@ -686,13 +687,13 @@ impl import_all_from(tstate: ptr, locals: ptr[PyObject], v: ptr[PyObject]) -> i3
             if not unicode_check(modname) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "module __name__ must be a string, not %.100s",
+                    ptr[u8]("module __name__ must be a string, not %.100s"),
                     object_type(modname).view(1)[0].tp_name
                 );
             } elif skip_leading_underscores {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "%s in %U.%s must be str, not %.100s",
+                    ptr[u8]("%s in %U.%s must be str, not %.100s"),
                     ptr[u8]("Key"),
                     modname,
                     ptr[u8]("__dict__"),
@@ -701,7 +702,7 @@ impl import_all_from(tstate: ptr, locals: ptr[PyObject], v: ptr[PyObject]) -> i3
             } else {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "%s in %U.%s must be str, not %.100s",
+                    ptr[u8]("%s in %U.%s must be str, not %.100s"),
                     ptr[u8]("Item"),
                     modname,
                     ptr[u8]("__all__"),
@@ -744,7 +745,9 @@ impl import_star(tstate: ptr, from_: ptr[PyObject]) -> ptr[PyObject] {
     frame = tstate_current_frame(tstate);
     locals = _PyFrame_GetLocals(frame);
     if not locals {
-        PyErr_SetString(PyExc_SystemError, "no locals found during 'import *'");
+        PyErr_SetString(
+            PyExc_SystemError, ptr[u8]("no locals found during 'import *'")
+        );
         return NULL;
     }
     err = import_all_from(tstate, locals, from_);
@@ -803,7 +806,7 @@ impl make_typevar(ignored: ptr, v: ptr[PyObject]) -> ptr[PyObject] {
 impl no_intrinsic2(
     tstate: ptr, unused1: ptr[PyObject], unused2: ptr[PyObject]
 ) -> ptr[PyObject] {
-    PyErr_SetString(PyExc_SystemError, "invalid intrinsic function");
+    PyErr_SetString(PyExc_SystemError, ptr[u8]("invalid intrinsic function"));
     return NULL;
 }
 

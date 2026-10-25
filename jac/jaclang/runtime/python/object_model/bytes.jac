@@ -842,7 +842,8 @@ import from c {
     def PyBytes_FromStringAndSize(data: ptr[u8], size: i64) -> ptr[PyObject] {
         if size < 0 {
             PyErr_SetString(
-                PyExc_SystemError, "Negative size passed to PyBytes_FromStringAndSize"
+                PyExc_SystemError,
+                ptr[u8]("Negative size passed to PyBytes_FromStringAndSize")
             );
             return NULL;
         }
@@ -861,7 +862,7 @@ import from c {
     }  def PyBytes_FromString(data: ptr[u8]) -> ptr[PyObject] {
         size = i64(strlen(data));
         if size > PY_SSIZE_T_MAX - bytes_header_size() {
-            PyErr_SetString(PyExc_OverflowError, "byte string is too long");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("byte string is too long"));
             return NULL;
         }
         if size == 0 {
@@ -1108,7 +1109,9 @@ import from c {
                 if ch < i32(0) or ch > i32(255) {
                     PyErr_SetString(
                         PyExc_OverflowError,
-                        "PyBytes_FromFormatV(): %c format expects an integer in range [0; 255]"
+                        ptr[u8](
+                            "PyBytes_FromFormatV(): %c format expects an integer in range [0; 255]"
+                        )
                     );
                     return writer_fail(writer);
                 }
@@ -1319,7 +1322,9 @@ import from c {
             }
             if i64(peek(fmt)) == CH_LPAREN {
                 if not dict {
-                    PyErr_SetString(PyExc_TypeError, "format requires a mapping");
+                    PyErr_SetString(
+                        PyExc_TypeError, ptr[u8]("format requires a mapping")
+                    );
                     failed = True;
                     break;
                 }
@@ -1342,7 +1347,7 @@ import from c {
                 }
                 keylen = span(keystart, fmt) - 1;
                 if fmtcnt < 0 or pcount > 0 {
-                    PyErr_SetString(PyExc_ValueError, "incomplete format key");
+                    PyErr_SetString(PyExc_ValueError, ptr[u8]("incomplete format key"));
                     failed = True;
                     break;
                 }
@@ -1395,7 +1400,7 @@ import from c {
                     break;
                 }
                 if not long_check(v) {
-                    PyErr_SetString(PyExc_TypeError, "* wants int");
+                    PyErr_SetString(PyExc_TypeError, ptr[u8]("* wants int"));
                     failed = True;
                     break;
                 }
@@ -1426,7 +1431,7 @@ import from c {
                         break;
                     }
                     if width > (PY_SSIZE_T_MAX - (c - CH_ZERO)) // 10 {
-                        PyErr_SetString(PyExc_ValueError, "width too big");
+                        PyErr_SetString(PyExc_ValueError, ptr[u8]("width too big"));
                         failed = True;
                         break;
                     }
@@ -1451,7 +1456,7 @@ import from c {
                         break;
                     }
                     if not long_check(v) {
-                        PyErr_SetString(PyExc_TypeError, "* wants int");
+                        PyErr_SetString(PyExc_TypeError, ptr[u8]("* wants int"));
                         failed = True;
                         break;
                     }
@@ -1481,7 +1486,7 @@ import from c {
                             break;
                         }
                         if prec > (INT_MAX - (c - CH_ZERO)) // 10 {
-                            PyErr_SetString(PyExc_ValueError, "prec too big");
+                            PyErr_SetString(PyExc_ValueError, ptr[u8]("prec too big"));
                             failed = True;
                             break;
                         }
@@ -1502,7 +1507,7 @@ import from c {
                 }
             }
             if fmtcnt < 0 {
-                PyErr_SetString(PyExc_ValueError, "incomplete format");
+                PyErr_SetString(PyExc_ValueError, ptr[u8]("incomplete format"));
                 failed = True;
                 break;
             }
@@ -1608,7 +1613,7 @@ import from c {
             } else {
                 PyErr_Format(
                     PyExc_ValueError,
-                    "unsupported format character '%c' (0x%x) at index %zd",
+                    ptr[u8]("unsupported format character '%c' (0x%x) at index %zd"),
                     i32(c),
                     i32(c),
                     span(format, fmt) - 1
@@ -1700,7 +1705,7 @@ import from c {
             if dict and argidx < arglen {
                 PyErr_SetString(
                     PyExc_TypeError,
-                    "not all arguments converted during bytes formatting"
+                    ptr[u8]("not all arguments converted during bytes formatting")
                 );
                 object_xdecref(temp);
                 failed = True;
@@ -1710,7 +1715,8 @@ import from c {
         }
         if not failed and argidx < arglen and not dict {
             PyErr_SetString(
-                PyExc_TypeError, "not all arguments converted during bytes formatting"
+                PyExc_TypeError,
+                ptr[u8]("not all arguments converted during bytes formatting")
             );
             failed = True;
         }
@@ -1753,14 +1759,18 @@ import from c {
                 warned = PyErr_WarnFormat(
                     PyExc_DeprecationWarning,
                     1,
-                    "b\"\\%o\" is an invalid octal escape sequence. Such sequences will not work in the future. ",
+                    ptr[u8](
+                        "b\"\\%o\" is an invalid octal escape sequence. Such sequences will not work in the future. "
+                    ),
                     first_char
                 );
             } else {
                 warned = PyErr_WarnFormat(
                     PyExc_DeprecationWarning,
                     1,
-                    "b\"\\%c\" is an invalid escape sequence. Such sequences will not work in the future. ",
+                    ptr[u8](
+                        "b\"\\%c\" is an invalid escape sequence. Such sequences will not work in the future. "
+                    ),
                     first_char
                 );
             }
@@ -1803,7 +1813,7 @@ import from c {
         if length {
             length.view(1)[0] = object_size(op);
         } elif i64(strlen(bytes_sval(op))) != object_size(op) {
-            PyErr_SetString(PyExc_ValueError, "embedded null byte");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null byte"));
             return i32(-1);
         }
         return i32(0);
@@ -1862,7 +1872,8 @@ import from c {
             }
             if newsize > PY_SSIZE_T_MAX - incr {
                 PyErr_SetString(
-                    PyExc_OverflowError, "bytes object is too large to make repr"
+                    PyExc_OverflowError,
+                    ptr[u8]("bytes object is too large to make repr")
                 );
                 return NULL;
             }
@@ -1875,7 +1886,8 @@ import from c {
         if squotes != 0 and quote == CH_QUOTE {
             if newsize > PY_SSIZE_T_MAX - squotes {
                 PyErr_SetString(
-                    PyExc_OverflowError, "bytes object is too large to make repr"
+                    PyExc_OverflowError,
+                    ptr[u8]("bytes object is too large to make repr")
                 );
                 return NULL;
             }
@@ -1926,7 +1938,7 @@ import from c {
             return NULL;
         }
         if not bytes_check(sep) {
-            PyErr_Format(PyExc_TypeError, "sep: expected bytes, got %T", sep);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("sep: expected bytes, got %T"), sep);
             return NULL;
         }
         return bl_bytes_join(sep, iterable);
@@ -1955,7 +1967,7 @@ import from c {
         if PyObject_GetBuffer(w, wb, PyBUF_SIMPLE) != i32(0) {
             PyErr_Format(
                 PyExc_TypeError,
-                "can't concat %.100s to %.100s",
+                ptr[u8]("can't concat %.100s to %.100s"),
                 object_type(w).view(1)[0].tp_name,
                 object_type(v).view(1)[0].tp_name
             );
@@ -2031,7 +2043,7 @@ import from c {
         }
         PyErr_Format(
             PyExc_TypeError,
-            "cannot convert '%.200s' object to bytes",
+            ptr[u8]("cannot convert '%.200s' object to bytes"),
             object_type(x).view(1)[0].tp_name
         );
         return NULL;
@@ -2063,7 +2075,7 @@ import from c {
         } else {
             PyErr_Format(
                 PyExc_TypeError,
-                "fromhex() argument must be str or bytes-like, not %T",
+                ptr[u8]("fromhex() argument must be str or bytes-like, not %T"),
                 string
             );
             return NULL;
@@ -2551,7 +2563,7 @@ impl bytes_from_size(size: i64, use_calloc: bool) -> ptr[PyObject] {
         return bytes_get_empty();
     }
     if size > PY_SSIZE_T_MAX - bytes_header_size() {
-        PyErr_SetString(PyExc_OverflowError, "byte string is too large");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("byte string is too large"));
         return NULL;
     }
 
@@ -2682,7 +2694,7 @@ impl next_arg(
         }
         return (PyTuple_GetItem(args, argidx), argidx + 1);
     }
-    PyErr_SetString(PyExc_TypeError, "not enough arguments for format string");
+    PyErr_SetString(PyExc_TypeError, ptr[u8]("not enough arguments for format string"));
     return (NULL, argidx);
 }
 
@@ -2691,7 +2703,7 @@ impl format_float_text(v: ptr[PyObject], flags: i64, prec: i64, type: i64) -> pt
     if x == -1.0 and PyErr_Occurred() {
         PyErr_Format(
             PyExc_TypeError,
-            "float argument required, not %.200s",
+            ptr[u8]("float argument required, not %.200s"),
             object_type(v).view(1)[0].tp_name
         );
         return ptr[u8]();
@@ -2770,7 +2782,7 @@ impl format_long(v: ptr[PyObject], flags: i64, prec: i64, type: i64) -> ptr[PyOb
     }
     PyErr_Format(
         PyExc_TypeError,
-        "%%%c format: %s is required, not %.200s",
+        ptr[u8]("%%%c format: %s is required, not %.200s"),
         i32(type),
         required,
         object_type(v).view(1)[0].tp_name
@@ -2783,7 +2795,9 @@ impl byte_converter(arg: ptr[PyObject]) -> tuple[bool, u8] {
         if object_size(arg) != 1 {
             PyErr_Format(
                 PyExc_TypeError,
-                "%%c requires an integer in range(256) or a single byte, not a bytes object of length %zd",
+                ptr[u8](
+                    "%%c requires an integer in range(256) or a single byte, not a bytes object of length %zd"
+                ),
                 object_size(arg)
             );
             return (False, u8(0));
@@ -2794,7 +2808,9 @@ impl byte_converter(arg: ptr[PyObject]) -> tuple[bool, u8] {
         if object_size(arg) != 1 {
             PyErr_Format(
                 PyExc_TypeError,
-                "%%c requires an integer in range(256) or a single byte, not a bytearray object of length %zd",
+                ptr[u8](
+                    "%%c requires an integer in range(256) or a single byte, not a bytearray object of length %zd"
+                ),
                 object_size(arg)
             );
             return (False, u8(0));
@@ -2808,14 +2824,14 @@ impl byte_converter(arg: ptr[PyObject]) -> tuple[bool, u8] {
             return (False, u8(0));
         }
         if not (0 <= ival and ival <= 255) {
-            PyErr_SetString(PyExc_OverflowError, "%c arg not in range(256)");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("%c arg not in range(256)"));
             return (False, u8(0));
         }
         return (True, u8(ival));
     }
     PyErr_Format(
         PyExc_TypeError,
-        "%%c requires an integer in range(256) or a single byte, not %T",
+        ptr[u8]("%%c requires an integer in range(256) or a single byte, not %T"),
         arg
     );
     return (False, u8(0));
@@ -2839,7 +2855,7 @@ impl format_obj(v: ptr[PyObject]) -> tuple[ptr[PyObject], ptr[u8], i64] {
         if not bytes_check(result) {
             PyErr_Format(
                 PyExc_TypeError,
-                "__bytes__ returned non-bytes (type %.200s)",
+                ptr[u8]("__bytes__ returned non-bytes (type %.200s)"),
                 object_type(result).view(1)[0].tp_name
             );
             object_decref(result);
@@ -2857,7 +2873,9 @@ impl format_obj(v: ptr[PyObject]) -> tuple[ptr[PyObject], ptr[u8], i64] {
     }
     PyErr_Format(
         PyExc_TypeError,
-        "%%b requires a bytes-like object, or an object that implements __bytes__, not '%.100s'",
+        ptr[u8](
+            "%%b requires a bytes-like object, or an object that implements __bytes__, not '%.100s'"
+        ),
         object_type(v).view(1)[0].tp_name
     );
     return (NULL, ptr[u8](), 0);
@@ -2912,7 +2930,7 @@ impl decode_escape(
         }
         s = s + 1;
         if s == end {
-            PyErr_SetString(PyExc_ValueError, "Trailing \\ in string");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("Trailing \\ in string"));
             return (writer_fail(writer), first_char, first_ptr);
         }
         ch = i64(peek(s));
@@ -2976,7 +2994,7 @@ impl decode_escape(
             if not errors or strcmp(errors, ptr[u8]("strict")) == i32(0) {
                 PyErr_Format(
                     PyExc_ValueError,
-                    "invalid \\x escape at position %zd",
+                    ptr[u8]("invalid \\x escape at position %zd"),
                     span(s_in, s) - 2
                 );
                 return (writer_fail(writer), first_char, first_ptr);
@@ -2987,7 +3005,7 @@ impl decode_escape(
             } elif strcmp(errors, ptr[u8]("ignore")) != i32(0) {
                 PyErr_Format(
                     PyExc_ValueError,
-                    "decoding error; unknown error handling code: %.400s",
+                    ptr[u8]("decoding error; unknown error handling code: %.400s"),
                     errors
                 );
                 return (writer_fail(writer), first_char, first_ptr);
@@ -3012,7 +3030,7 @@ impl decode_escape(
 impl expected_bytes(op: ptr[PyObject]) {
     PyErr_Format(
         PyExc_TypeError,
-        "expected bytes, %.200s found",
+        ptr[u8]("expected bytes, %.200s found"),
         object_type(op).view(1)[0].tp_name
     );
 }
@@ -3041,7 +3059,7 @@ impl bytes_from_buffer(x: ptr[PyObject]) -> ptr[PyObject] {
 
 impl byte_in_range(value: i64) -> bool {
     if value < 0 or value >= 256 {
-        PyErr_SetString(PyExc_ValueError, "bytes must be in range(0, 256)");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("bytes must be in range(0, 256)"));
         return False;
     }
     return True;
@@ -3185,12 +3203,12 @@ impl fromhex_error(invalid_char: i64) {
     if invalid_char == -1 {
         PyErr_SetString(
             PyExc_ValueError,
-            "fromhex() arg must contain an even number of hexadecimal digits"
+            ptr[u8]("fromhex() arg must contain an even number of hexadecimal digits")
         );
     } else {
         PyErr_Format(
             PyExc_ValueError,
-            "non-hexadecimal number found in fromhex() arg at position %zd",
+            ptr[u8]("non-hexadecimal number found in fromhex() arg at position %zd"),
             invalid_char
         );
     }
@@ -3202,7 +3220,7 @@ impl bytes_repr(op: ptr[PyObject]) -> ptr[PyObject] {
 
 impl bytes_str(op: ptr[PyObject]) -> ptr[PyObject] {
     if config_bytes_warning() != i32(0)
-        and PyErr_WarnEx(PyExc_BytesWarning, "str() on a bytes instance", 1)
+        and PyErr_WarnEx(PyExc_BytesWarning, ptr[u8]("str() on a bytes instance"), 1)
             != i32(0) {
         return NULL;
     }
@@ -3228,7 +3246,7 @@ impl bytes_concat(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
         or PyObject_GetBuffer(b, vb, PyBUF_SIMPLE) != i32(0) {
         PyErr_Format(
             PyExc_TypeError,
-            "can't concat %.100s to %.100s",
+            ptr[u8]("can't concat %.100s to %.100s"),
             object_type(b).view(1)[0].tp_name,
             object_type(a).view(1)[0].tp_name
         );
@@ -3265,7 +3283,7 @@ impl bytes_repeat(op: ptr[PyObject], count: i64) -> ptr[PyObject] {
     }
 
     if n > 0 and object_size(op) > PY_SSIZE_T_MAX // n {
-        PyErr_SetString(PyExc_OverflowError, "repeated bytes are too long");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("repeated bytes are too long"));
         return NULL;
     }
     size = object_size(op) * n;
@@ -3274,7 +3292,7 @@ impl bytes_repeat(op: ptr[PyObject], count: i64) -> ptr[PyObject] {
     }
     nbytes = u64(size);
     if nbytes + u64(bytes_header_size()) <= nbytes {
-        PyErr_SetString(PyExc_OverflowError, "repeated bytes are too long");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("repeated bytes are too long"));
         return NULL;
     }
     raw = PyObject_Malloc(u64(bytes_header_size()) + nbytes);
@@ -3295,7 +3313,7 @@ impl bytes_contains(op: ptr[PyObject], arg: ptr[PyObject]) -> i32 {
 
 impl bytes_item(op: ptr[PyObject], i: i64) -> ptr[PyObject] {
     if i < 0 or i >= object_size(op) {
-        PyErr_SetString(PyExc_IndexError, "index out of range");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("index out of range"));
         return NULL;
     }
     return get_small_int(i64(peek(bytes_sval(op) + i)));
@@ -3317,14 +3335,16 @@ impl bytes_richcompare(aa: ptr[PyObject], bb: ptr[PyObject], op: i32) -> ptr[PyO
         if config_bytes_warning() != i32(0) and (op == Py_EQ or op == Py_NE) {
             if (unicode_check(aa) or unicode_check(bb))
                 and PyErr_WarnEx(
-                    PyExc_BytesWarning, "Comparison between bytes and string", 1
+                    PyExc_BytesWarning,
+                    ptr[u8]("Comparison between bytes and string"),
+                    1
                 )
                     != i32(0) {
                 return NULL;
             }
             if (long_check(aa) or long_check(bb))
                 and PyErr_WarnEx(
-                    PyExc_BytesWarning, "Comparison between bytes and int", 1
+                    PyExc_BytesWarning, ptr[u8]("Comparison between bytes and int"), 1
                 )
                     != i32(0) {
                 return NULL;
@@ -3384,7 +3404,7 @@ impl bytes_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
             i += object_size(op);
         }
         if i < 0 or i >= object_size(op) {
-            PyErr_SetString(PyExc_IndexError, "index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("index out of range"));
             return NULL;
         }
         return get_small_int(i64(peek(bytes_sval(op) + i)));
@@ -3392,7 +3412,7 @@ impl bytes_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     if not slice_check(item) {
         PyErr_Format(
             PyExc_TypeError,
-            "byte indices must be integers or slices, not %.200s",
+            ptr[u8]("byte indices must be integers or slices, not %.200s"),
             object_type(item).view(1)[0].tp_name
         );
         return NULL;
@@ -3926,7 +3946,7 @@ impl translate_with(
     }
     if tablen != 256 {
         PyErr_SetString(
-            PyExc_ValueError, "translation table must be 256 characters long"
+            PyExc_ValueError, ptr[u8]("translation table must be 256 characters long")
         );
         PyBuffer_Release(table_view);
         return NULL;
@@ -4188,7 +4208,7 @@ impl text_arg(value: ptr[PyObject], which: i64) -> tuple[bool, ptr[u8]] {
         return (False, text);
     }
     if i64(strlen(text)) != length {
-        PyErr_SetString(PyExc_ValueError, "embedded null character");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
         return (False, ptr[u8]());
     }
     return (True, text);
@@ -4307,25 +4327,35 @@ impl bytes_new_impl(
     result = NULL;
     if not x {
         if encoding {
-            PyErr_SetString(PyExc_TypeError, "encoding without a string argument");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("encoding without a string argument")
+            );
             return NULL;
         }
         if errors {
-            PyErr_SetString(PyExc_TypeError, "errors without a string argument");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("errors without a string argument")
+            );
             return NULL;
         }
         result = bytes_get_empty();
     } elif encoding {
         if not unicode_check(x) {
-            PyErr_SetString(PyExc_TypeError, "encoding without a string argument");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("encoding without a string argument")
+            );
             return NULL;
         }
         result = PyUnicode_AsEncodedString(x, encoding, errors);
     } elif errors {
         if unicode_check(x) {
-            PyErr_SetString(PyExc_TypeError, "string argument without an encoding");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("string argument without an encoding")
+            );
         } else {
-            PyErr_SetString(PyExc_TypeError, "errors without a string argument");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("errors without a string argument")
+            );
         }
         return NULL;
     } else {
@@ -4339,7 +4369,7 @@ impl bytes_new_impl(
             if not bytes_check(result) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "__bytes__ returned non-bytes (type %.200s)",
+                    ptr[u8]("__bytes__ returned non-bytes (type %.200s)"),
                     object_type(result).view(1)[0].tp_name
                 );
                 object_decref(result);
@@ -4348,7 +4378,9 @@ impl bytes_new_impl(
         } elif PyErr_Occurred() {
             return NULL;
         } elif unicode_check(x) {
-            PyErr_SetString(PyExc_TypeError, "string argument without an encoding");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("string argument without an encoding")
+            );
             return NULL;
         } elif PyIndex_Check(x) != i32(0) {
             size = PyNumber_AsSsize_t(x, PyExc_OverflowError);
@@ -4361,7 +4393,7 @@ impl bytes_new_impl(
                 result = PyBytes_FromObject(x);
             } else {
                 if size < 0 {
-                    PyErr_SetString(PyExc_ValueError, "negative count");
+                    PyErr_SetString(PyExc_ValueError, ptr[u8]("negative count"));
                     return NULL;
                 }
                 result = bytes_from_size(size, True);

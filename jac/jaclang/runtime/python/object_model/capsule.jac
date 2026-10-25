@@ -53,7 +53,7 @@ def capsule_check_exact(op: ptr[PyObject]) -> bool {
 
 """is_legal_capsule: whether `op` is a capsule holding a pointer; otherwise
 ValueError "<caller> called with invalid PyCapsule object"."""
-def is_legal_capsule(op: ptr[PyObject], invalid_capsule: str) -> bool {
+def is_legal_capsule(op: ptr[PyObject], invalid_capsule: ptr[u8]) -> bool {
     if op and capsule_check_exact(op) and capsule_of(op).view(1)[0].pointer {
         return True;
     }
@@ -73,7 +73,9 @@ def name_matches(name1: ptr[u8], name2: ptr[u8]) -> bool {
 import from c {
     def PyCapsule_New(pointer: ptr, name: ptr[u8], destructor: ptr) -> ptr[PyObject] {
         if not pointer {
-            PyErr_SetString(PyExc_ValueError, "PyCapsule_New called with null pointer");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("PyCapsule_New called with null pointer")
+            );
             return NULL;
         }
         op = _PyObject_GC_New(ptr[PyObject](addressof(PyCapsule_Type)));
@@ -98,48 +100,50 @@ import from c {
         );
     }  def PyCapsule_GetPointer(op: ptr[PyObject], name: ptr[u8]) -> ptr {
         if not is_legal_capsule(
-            op, "PyCapsule_GetPointer called with invalid PyCapsule object"
+            op, ptr[u8]("PyCapsule_GetPointer called with invalid PyCapsule object")
         ) {
             return ptr();
         }
         capsule = capsule_of(op);
         if not name_matches(name, capsule.view(1)[0].name) {
             PyErr_SetString(
-                PyExc_ValueError, "PyCapsule_GetPointer called with incorrect name"
+                PyExc_ValueError,
+                ptr[u8]("PyCapsule_GetPointer called with incorrect name")
             );
             return ptr();
         }
         return capsule.view(1)[0].pointer;
     }  def PyCapsule_GetName(op: ptr[PyObject]) -> ptr[u8] {
         if not is_legal_capsule(
-            op, "PyCapsule_GetName called with invalid PyCapsule object"
+            op, ptr[u8]("PyCapsule_GetName called with invalid PyCapsule object")
         ) {
             return ptr[u8]();
         }
         return capsule_of(op).view(1)[0].name;
     }  def PyCapsule_GetDestructor(op: ptr[PyObject]) -> ptr {
         if not is_legal_capsule(
-            op, "PyCapsule_GetDestructor called with invalid PyCapsule object"
+            op, ptr[u8]("PyCapsule_GetDestructor called with invalid PyCapsule object")
         ) {
             return ptr();
         }
         return ptr(int(capsule_of(op).view(1)[0].destructor));
     }  def PyCapsule_GetContext(op: ptr[PyObject]) -> ptr {
         if not is_legal_capsule(
-            op, "PyCapsule_GetContext called with invalid PyCapsule object"
+            op, ptr[u8]("PyCapsule_GetContext called with invalid PyCapsule object")
         ) {
             return ptr();
         }
         return capsule_of(op).view(1)[0].context;
     }  def PyCapsule_SetPointer(op: ptr[PyObject], pointer: ptr) -> i32 {
         if not is_legal_capsule(
-            op, "PyCapsule_SetPointer called with invalid PyCapsule object"
+            op, ptr[u8]("PyCapsule_SetPointer called with invalid PyCapsule object")
         ) {
             return i32(-1);
         }
         if not pointer {
             PyErr_SetString(
-                PyExc_ValueError, "PyCapsule_SetPointer called with null pointer"
+                PyExc_ValueError,
+                ptr[u8]("PyCapsule_SetPointer called with null pointer")
             );
             return i32(-1);
         }
@@ -147,7 +151,7 @@ import from c {
         return i32(0);
     }  def PyCapsule_SetName(op: ptr[PyObject], name: ptr[u8]) -> i32 {
         if not is_legal_capsule(
-            op, "PyCapsule_SetName called with invalid PyCapsule object"
+            op, ptr[u8]("PyCapsule_SetName called with invalid PyCapsule object")
         ) {
             return i32(-1);
         }
@@ -155,7 +159,7 @@ import from c {
         return i32(0);
     }  def PyCapsule_SetDestructor(op: ptr[PyObject], destructor: ptr) -> i32 {
         if not is_legal_capsule(
-            op, "PyCapsule_SetDestructor called with invalid PyCapsule object"
+            op, ptr[u8]("PyCapsule_SetDestructor called with invalid PyCapsule object")
         ) {
             return i32(-1);
         }
@@ -163,7 +167,7 @@ import from c {
         return i32(0);
     }  def PyCapsule_SetContext(op: ptr[PyObject], context: ptr) -> i32 {
         if not is_legal_capsule(
-            op, "PyCapsule_SetContext called with invalid PyCapsule object"
+            op, ptr[u8]("PyCapsule_SetContext called with invalid PyCapsule object")
         ) {
             return i32(-1);
         }
@@ -173,13 +177,14 @@ import from c {
         op: ptr[PyObject], traverse_func: ptr, clear_func: ptr
     ) -> i32 {
         if not is_legal_capsule(
-            op, "_PyCapsule_SetTraverse called with invalid PyCapsule object"
+            op, ptr[u8]("_PyCapsule_SetTraverse called with invalid PyCapsule object")
         ) {
             return i32(-1);
         }
         if not traverse_func or not clear_func {
             PyErr_SetString(
-                PyExc_ValueError, "_PyCapsule_SetTraverse() called with NULL callback"
+                PyExc_ValueError,
+                ptr[u8]("_PyCapsule_SetTraverse() called with NULL callback")
             );
             return i32(-1);
         }
@@ -212,7 +217,7 @@ import from c {
                 if not module {
                     PyErr_Format(
                         PyExc_ImportError,
-                        "PyCapsule_Import could not import module \"%s\"",
+                        ptr[u8]("PyCapsule_Import could not import module \"%s\""),
                         trace
                     );
                 }
@@ -232,7 +237,9 @@ import from c {
                 return_value = capsule_of(module).view(1)[0].pointer;
             } else {
                 PyErr_Format(
-                    PyExc_AttributeError, "PyCapsule_Import \"%s\" is not valid", name
+                    PyExc_AttributeError,
+                    ptr[u8]("PyCapsule_Import \"%s\" is not valid"),
+                    name
                 );
             }
         }

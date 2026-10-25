@@ -25,7 +25,9 @@ def:priv atexit_cleanup(callbacks: ptr[PyObject]) {
 def:priv atexit_callfuncs(callbacks: ptr[PyObject]) {
     copy = PyList_GetSlice(callbacks, 0, PyList_Size(callbacks));
     if not copy {
-        PyErr_FormatUnraisable("Exception ignored while copying atexit callbacks");
+        PyErr_FormatUnraisable(
+            ptr[u8]("Exception ignored while copying atexit callbacks")
+        );
         return;
     }
     for index in range(int(PyList_Size(copy))) {
@@ -35,7 +37,9 @@ def:priv atexit_callfuncs(callbacks: ptr[PyObject]) {
         kwargs = PyTuple_GetItem(item, 2);
         result = PyObject_Call(func, args, NULL if kwargs == Py_None else kwargs);
         if not result {
-            PyErr_FormatUnraisable("Exception ignored in atexit callback %R", func);
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored in atexit callback %R"), func
+            );
         } else {
             jacpy_release(result);
         }

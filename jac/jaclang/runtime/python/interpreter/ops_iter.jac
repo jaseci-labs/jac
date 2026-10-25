@@ -213,7 +213,9 @@ impl GET_YIELD_FROM_ITER(frame: ptr[u8], iterable: u64) -> u64 {
         if (flags & (CO_COROUTINE | CO_ITERABLE_COROUTINE)) == 0 {
             PyErr_SetString(
                 PyExc_TypeError,
-                "cannot 'yield from' a coroutine object in a non-coroutine generator"
+                ptr[u8](
+                    "cannot 'yield from' a coroutine object in a non-coroutine generator"
+                )
             );
             return u64(0);
         }
@@ -242,7 +244,7 @@ impl GET_AITER(obj_: u64) -> u64 {
     if getter_missing {
         PyErr_Format(
             PyExc_TypeError,
-            "'async for' requires an object with __aiter__ method, got %.100s",
+            ptr[u8]("'async for' requires an object with __aiter__ method, got %.100s"),
             type.view(1)[0].tp_name
         );
         return u64(0);
@@ -262,7 +264,9 @@ impl GET_AITER(obj_: u64) -> u64 {
     if anext_missing {
         PyErr_Format(
             PyExc_TypeError,
-            "'async for' received an object from __aiter__ that does not implement __anext__: %.100s",
+            ptr[u8](
+                "'async for' received an object from __aiter__ that does not implement __anext__: %.100s"
+            ),
             iter_type.view(1)[0].tp_name
         );
         object_decref(iter_o);
@@ -343,7 +347,7 @@ impl _FOR_ITER(
     if int(type.view(1)[0].tp_iternext) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%.100s' object is not an iterator",
+            ptr[u8]("'%.100s' object is not an iterator"),
             type.view(1)[0].tp_name
         );
         return ST_ERROR;

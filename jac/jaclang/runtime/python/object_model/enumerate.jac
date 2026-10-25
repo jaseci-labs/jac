@@ -228,7 +228,9 @@ impl check_keyword(kwnames: ptr[PyObject], index: i64, name: str) -> bool {
     kw = tuple_get_item(kwnames, index);
     if jacpy_unicode_equal_text(kw, name) == 0 {
         PyErr_Format(
-            PyExc_TypeError, "'%S' is an invalid keyword argument for enumerate()", kw
+            PyExc_TypeError,
+            ptr[u8]("'%S' is an invalid keyword argument for enumerate()"),
+            kw
         );
         return False;
     }
@@ -273,13 +275,13 @@ impl enumerate_vectorcall(
     }
     if nargs == 0 {
         PyErr_SetString(
-            PyExc_TypeError, "enumerate() missing required argument 'iterable'"
+            PyExc_TypeError, ptr[u8]("enumerate() missing required argument 'iterable'")
         );
         return NULL;
     }
     PyErr_Format(
         PyExc_TypeError,
-        "enumerate() takes at most 2 arguments (%zd given)",
+        ptr[u8]("enumerate() takes at most 2 arguments (%zd given)"),
         nargs + nkwargs
     );
     return NULL;
@@ -407,7 +409,7 @@ impl reversed_new_impl(_type: ptr[PyTypeObject], seq: ptr[PyObject]) -> ptr[PyOb
         jacpy_release(reversed_meth);
         PyErr_Format(
             PyExc_TypeError,
-            "'%.200s' object is not reversible",
+            ptr[u8]("'%.200s' object is not reversible"),
             object_type(seq).view(1)[0].tp_name
         );
         return NULL;
@@ -422,7 +424,7 @@ impl reversed_new_impl(_type: ptr[PyTypeObject], seq: ptr[PyObject]) -> ptr[PyOb
     if PySequence_Check(seq) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%.200s' object is not reversible",
+            ptr[u8]("'%.200s' object is not reversible"),
             object_type(seq).view(1)[0].tp_name
         );
         return NULL;

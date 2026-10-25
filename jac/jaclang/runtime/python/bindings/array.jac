@@ -167,7 +167,9 @@ impl create_bound(args: BoundArguments) -> ptr[PyObject] {
     if code == 117
         and PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "The 'u' type code is deprecated and will be removed in Python 3.16",
+            ptr[u8](
+                "The 'u' type code is deprecated and will be removed in Python 3.16"
+            ),
             1
         )
             < 0 {

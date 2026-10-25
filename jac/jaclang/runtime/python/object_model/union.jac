@@ -338,7 +338,9 @@ impl union_hash(op: ptr[PyObject]) -> i64 {
             }
         }
 
-        PyErr_Format(PyExc_TypeError, "union contains %zd unhashable elements", n);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("union contains %zd unhashable elements"), n
+        );
         return -1;
     }
     return PyObject_Hash(alias.view(1)[0].hashable_args);
@@ -545,7 +547,7 @@ impl union_class_getitem(_cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObje
 }
 
 impl union_mro_entries(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
-    PyErr_Format(PyExc_TypeError, "Cannot subclass %R", op);
+    PyErr_Format(PyExc_TypeError, ptr[u8]("Cannot subclass %R"), op);
     return NULL;
 }
 
@@ -556,7 +558,7 @@ impl make_union(
 ) -> ptr[PyObject] {
     n = object_size(builder_args);
     if n == 0 {
-        PyErr_SetString(PyExc_TypeError, "Cannot take a Union of no types.");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("Cannot take a Union of no types."));
         unionbuilder_finalize(builder_args, builder_hashable, builder_unhashable);
         return NULL;
     }

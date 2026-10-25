@@ -10,7 +10,7 @@ import from c {
     ) -> i32;  def _PyImport_ImportlibModuleRepr(
         interp: ptr, module: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyErr_FormatFromCause(
-        exception: ptr[PyObject], format: str, *args: any
+        exception: ptr[PyObject], format: ptr[u8], *args: any
     ) -> ptr[PyObject];  def _PyType_AllocNoTrack(
         type: ptr[PyTypeObject], nitems: i64
     ) -> ptr[PyObject];  def _Py_GetConfig -> ptr[u8];  def _PySys_GetOptionalAttrString(
@@ -23,7 +23,7 @@ import from c {
         text: ptr[i32], c: i32
     ) -> ptr[i32];  def wcscmp(left: ptr[i32], right: ptr[i32]) -> i32;  def strcpy(
         target: ptr[u8], source: ptr[u8]
-    ) -> ptr[u8];  def PyErr_FormatUnraisable(format: str, *args: any);  obj ModuleCall {
+    ) -> ptr[u8];  def PyErr_FormatUnraisable(format: ptr[u8], *args: any);  obj ModuleCall {
         has create: Callable[[ptr[PyObject], ptr[PyModuleDef]], ptr[PyObject]] = 0,
             exec: Callable[[ptr[PyObject]], i32] = 0,
             traverse: Callable[[ptr[PyObject], ptr, ptr], i32] = 0,
@@ -195,7 +195,7 @@ import from c {
     ) -> ptr[PyObject] {
         if _PyImport_IsInitialized(ptr(current_interp())) == 0 {
             PyErr_SetString(
-                PyExc_SystemError, "Python import machinery not initialized"
+                PyExc_SystemError, ptr[u8]("Python import machinery not initialized")
             );
             return NULL;
         }
@@ -213,7 +213,7 @@ import from c {
         if def_fields(module).view(1)[0].m_slots {
             PyErr_Format(
                 PyExc_SystemError,
-                "module %s: PyModule_Create is incompatible with m_slots",
+                ptr[u8]("module %s: PyModule_Create is incompatible with m_slots"),
                 name
             );
             return NULL;
@@ -281,7 +281,9 @@ import from c {
                     if not PyErr_Occurred() {
                         PyErr_Format(
                             PyExc_SystemError,
-                            "execution of module %s failed without setting an exception",
+                            ptr[u8](
+                                "execution of module %s failed without setting an exception"
+                            ),
                             name
                         );
                     }
@@ -290,7 +292,7 @@ import from c {
                 if PyErr_Occurred() {
                     _PyErr_FormatFromCause(
                         PyExc_SystemError,
-                        "execution of module %s raised unreported exception",
+                        ptr[u8]("execution of module %s raised unreported exception"),
                         name
                     );
                     return i32(-1);
@@ -300,7 +302,7 @@ import from c {
                 and slot != SLOT_GIL {
                 PyErr_Format(
                     PyExc_SystemError,
-                    "module %s initialized with unknown slot %i",
+                    ptr[u8]("module %s initialized with unknown slot %i"),
                     name,
                     slot
                 );
@@ -347,7 +349,7 @@ import from c {
             }
         }
         if not PyErr_Occurred() {
-            PyErr_SetString(PyExc_SystemError, "nameless module");
+            PyErr_SetString(PyExc_SystemError, ptr[u8]("nameless module"));
         }
         return NULL;
     }  def PyModule_GetName(m: ptr[PyObject]) -> ptr[u8] {
@@ -385,7 +387,7 @@ import from c {
         }
         if fileobj == Py_None {
             object_decref(fileobj);
-            PyErr_SetString(PyExc_SystemError, "module filename missing");
+            PyErr_SetString(PyExc_SystemError, ptr[u8]("module filename missing"));
             return NULL;
         }
         return fileobj;
@@ -412,7 +414,7 @@ import from c {
             filename = PyUnicode_AsUTF8AndSize(filenameobj, &mut size);
             if size > maxlen {
                 size = -1;
-                PyErr_SetString(PyExc_ValueError, "__file__ too long");
+                PyErr_SetString(PyExc_ValueError, ptr[u8]("__file__ too long"));
             } else {
                 strcpy(buffer, filename);
             }
@@ -702,7 +704,9 @@ impl check_api_version(name: ptr[u8], module_api_version: i32) -> bool {
         if PyErr_WarnFormat(
             PyExc_RuntimeWarning,
             1,
-            "Python C API version mismatch for module %.100s: This Python has API version %d, module %.100s has version %d.",
+            ptr[u8](
+                "Python C API version mismatch for module %.100s: This Python has API version %d, module %.100s has version %d."
+            ),
             name,
             PYTHON_API_VERSION,
             name,
@@ -724,7 +728,7 @@ impl add_methods_to_object(
         if (flags & METH_CLASS) != i32(0) or (flags & METH_STATIC) != i32(0) {
             PyErr_SetString(
                 PyExc_ValueError,
-                "module functions cannot set METH_CLASS or METH_STATIC"
+                ptr[u8]("module functions cannot set METH_CLASS or METH_STATIC")
             );
             return i32(-1);
         }
@@ -781,7 +785,9 @@ impl from_def_and_spec(
     if def_fields(mdef).view(1)[0].m_size < 0 {
         PyErr_Format(
             PyExc_SystemError,
-            "module %s: m_size may not be negative for multi-phase initialization",
+            ptr[u8](
+                "module %s: m_size may not be negative for multi-phase initialization"
+            ),
             name
         );
         return NULL;
@@ -797,7 +803,9 @@ impl from_def_and_spec(
         if slot == SLOT_CREATE {
             if create {
                 PyErr_Format(
-                    PyExc_SystemError, "module %s has multiple create slots", name
+                    PyExc_SystemError,
+                    ptr[u8]("module %s has multiple create slots"),
+                    name
                 );
                 return NULL;
             }
@@ -808,7 +816,9 @@ impl from_def_and_spec(
             if has_multiple_interpreters_slot {
                 PyErr_Format(
                     PyExc_SystemError,
-                    "module %s has more than one 'multiple interpreters' slots",
+                    ptr[u8](
+                        "module %s has more than one 'multiple interpreters' slots"
+                    ),
                     name
                 );
                 return NULL;
@@ -818,14 +828,19 @@ impl from_def_and_spec(
         } elif slot == SLOT_GIL {
             if has_gil_slot {
                 PyErr_Format(
-                    PyExc_SystemError, "module %s has more than one 'gil' slot", name
+                    PyExc_SystemError,
+                    ptr[u8]("module %s has more than one 'gil' slot"),
+                    name
                 );
                 return NULL;
             }
             has_gil_slot = True;
         } else {
             PyErr_Format(
-                PyExc_SystemError, "module %s uses unknown slot ID %i", name, slot
+                PyExc_SystemError,
+                ptr[u8]("module %s uses unknown slot ID %i"),
+                name,
+                slot
             );
             return NULL;
         }
@@ -860,7 +875,9 @@ impl from_def_and_spec(
             if not PyErr_Occurred() {
                 PyErr_Format(
                     PyExc_SystemError,
-                    "creation of module %s failed without setting an exception",
+                    ptr[u8](
+                        "creation of module %s failed without setting an exception"
+                    ),
                     name
                 );
             }
@@ -869,7 +886,7 @@ impl from_def_and_spec(
         if PyErr_Occurred() {
             _PyErr_FormatFromCause(
                 PyExc_SystemError,
-                "creation of module %s raised unreported exception",
+                ptr[u8]("creation of module %s raised unreported exception"),
                 name
             );
             object_decref(m);
@@ -891,7 +908,7 @@ impl from_def_and_spec(
             or int(def_fields(mdef).view(1)[0].m_free) != 0 {
             PyErr_Format(
                 PyExc_SystemError,
-                "module %s is not a module object, but requests module state",
+                ptr[u8]("module %s is not a module object, but requests module state"),
                 name
             );
             object_decref(m);
@@ -900,7 +917,9 @@ impl from_def_and_spec(
         if has_execution_slots {
             PyErr_Format(
                 PyExc_SystemError,
-                "module %s specifies execution slots, but did not create a ModuleType instance",
+                ptr[u8](
+                    "module %s specifies execution slots, but did not create a ModuleType instance"
+                ),
                 name
             );
             object_decref(m);
@@ -952,7 +971,9 @@ impl clear_names(d: ptr[PyObject], verbose: i32, underscored: bool) {
             }
         }
         if PyDict_SetItem(d, key, Py_None) != 0 {
-            PyErr_FormatUnraisable("Exception ignored while clearing module dict");
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored while clearing module dict")
+            );
         }
     }
 }
@@ -1027,7 +1048,9 @@ impl missing_attribute_error(md_dict: ptr[PyObject], name: ptr[PyObject]) {
     }
     if not mod_name or not unicode_check(mod_name) {
         object_xdecref(mod_name);
-        PyErr_Format(PyExc_AttributeError, "module has no attribute '%U'", name);
+        PyErr_Format(
+            PyExc_AttributeError, ptr[u8]("module has no attribute '%U'"), name
+        );
         return;
     }
     (status2, spec) = dict_get(md_dict, "__spec__");
@@ -1037,7 +1060,10 @@ impl missing_attribute_error(md_dict: ptr[PyObject], name: ptr[PyObject]) {
     }
     if not spec {
         PyErr_Format(
-            PyExc_AttributeError, "module '%U' has no attribute '%U'", mod_name, name
+            PyExc_AttributeError,
+            ptr[u8]("module '%U' has no attribute '%U'"),
+            mod_name,
+            name
         );
         object_decref(mod_name);
         return;
@@ -1082,7 +1108,9 @@ impl explain_missing(
     if is_possibly_shadowing_stdlib != 0 {
         PyErr_Format(
             PyExc_AttributeError,
-            "module '%U' has no attribute '%U' (consider renaming '%U' since it has the same name as the standard library module named '%U' and prevents importing that standard library module)",
+            ptr[u8](
+                "module '%U' has no attribute '%U' (consider renaming '%U' since it has the same name as the standard library module named '%U' and prevents importing that standard library module)"
+            ),
             mod_name,
             name,
             origin,
@@ -1098,7 +1126,9 @@ impl explain_missing(
         if is_possibly_shadowing != 0 {
             PyErr_Format(
                 PyExc_AttributeError,
-                "module '%U' has no attribute '%U' (consider renaming '%U' if it has the same name as a library you intended to import)",
+                ptr[u8](
+                    "module '%U' has no attribute '%U' (consider renaming '%U' if it has the same name as a library you intended to import)"
+                ),
                 mod_name,
                 name,
                 origin
@@ -1106,7 +1136,9 @@ impl explain_missing(
         } elif origin {
             PyErr_Format(
                 PyExc_AttributeError,
-                "partially initialized module '%U' from '%U' has no attribute '%U' (most likely due to a circular import)",
+                ptr[u8](
+                    "partially initialized module '%U' from '%U' has no attribute '%U' (most likely due to a circular import)"
+                ),
                 mod_name,
                 origin,
                 name
@@ -1114,7 +1146,9 @@ impl explain_missing(
         } else {
             PyErr_Format(
                 PyExc_AttributeError,
-                "partially initialized module '%U' has no attribute '%U' (most likely due to a circular import)",
+                ptr[u8](
+                    "partially initialized module '%U' has no attribute '%U' (most likely due to a circular import)"
+                ),
                 mod_name,
                 name
             );
@@ -1125,13 +1159,18 @@ impl explain_missing(
     if rc > 0 {
         PyErr_Format(
             PyExc_AttributeError,
-            "cannot access submodule '%U' of module '%U' (most likely due to a circular import)",
+            ptr[u8](
+                "cannot access submodule '%U' of module '%U' (most likely due to a circular import)"
+            ),
             name,
             mod_name
         );
     } elif rc == 0 {
         PyErr_Format(
-            PyExc_AttributeError, "module '%U' has no attribute '%U'", mod_name, name
+            PyExc_AttributeError,
+            ptr[u8]("module '%U' has no attribute '%U'"),
+            mod_name,
+            name
         );
     }
 }
@@ -1231,10 +1270,12 @@ impl module_clear(op: ptr[PyObject]) -> i32 {
             md_name = md.view(1)[0].md_name;
             if md_name {
                 PyErr_FormatUnraisable(
-                    "Exception ignored in m_clear of module %U", md_name
+                    ptr[u8]("Exception ignored in m_clear of module %U"), md_name
                 );
             } else {
-                PyErr_FormatUnraisable("Exception ignored in m_clear of module");
+                PyErr_FormatUnraisable(
+                    ptr[u8]("Exception ignored in m_clear of module")
+                );
             }
         }
         if res != 0 {
@@ -1261,7 +1302,9 @@ impl module_dir(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
                 result = PyDict_Keys(dict);
             }
         } else {
-            PyErr_Format(PyExc_TypeError, "<module>.__dict__ is not a dictionary");
+            PyErr_Format(
+                PyExc_TypeError, ptr[u8]("<module>.__dict__ is not a dictionary")
+            );
         }
     }
     object_xdecref(dict);
@@ -1274,7 +1317,7 @@ impl module_get_dict(op: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if not dict_check(dict) {
-        PyErr_Format(PyExc_TypeError, "<module>.__dict__ is not a dictionary");
+        PyErr_Format(PyExc_TypeError, ptr[u8]("<module>.__dict__ is not a dictionary"));
         object_decref(dict);
         return NULL;
     }
@@ -1302,7 +1345,9 @@ impl module_set_annotate(
     op: ptr[PyObject], value: ptr[PyObject], _closure: ptr
 ) -> i32 {
     if not value {
-        PyErr_SetString(PyExc_TypeError, "cannot delete __annotate__ attribute");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("cannot delete __annotate__ attribute")
+        );
         return i32(-1);
     }
     dict = module_get_dict(op);
@@ -1310,7 +1355,9 @@ impl module_set_annotate(
         return i32(-1);
     }
     if value != Py_None and PyCallable_Check(value) == 0 {
-        PyErr_SetString(PyExc_TypeError, "__annotate__ must be callable or None");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__annotate__ must be callable or None")
+        );
         object_decref(dict);
         return i32(-1);
     }
@@ -1375,7 +1422,7 @@ impl module_get_annotations(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
             if not dict_check(annotations) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "__annotate__ returned non-dict of type '%.100s'",
+                    ptr[u8]("__annotate__ returned non-dict of type '%.100s'"),
                     object_type(annotations).view(1)[0].tp_name
                 );
                 object_decref(annotate);
@@ -1413,7 +1460,7 @@ impl module_set_annotations(
     } else {
         ret = dict_pop(dict, "__annotations__");
         if ret == 0 {
-            PyErr_SetString(PyExc_AttributeError, "__annotations__");
+            PyErr_SetString(PyExc_AttributeError, ptr[u8]("__annotations__"));
             ret = i32(-1);
         } elif ret > 0 {
             ret = i32(0);

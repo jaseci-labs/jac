@@ -3,7 +3,7 @@ import from c {
         set: ptr[PyObject], pos: &mut i64, key: &mut ptr[PyObject], hash: &mut i64
     ) -> i32;  def _PySet_Update(set: ptr[PyObject], iterable: ptr[PyObject]) -> i32;  def _PyDebugAllocatorStats(
         out: ptr, block_name: str, num_blocks: i32, sizeof_block: u64
-    );  def _PyErr_FormatNote(format: str, *args: any);  def _PyUnicode_FromId(
+    );  def _PyErr_FormatNote(format: ptr[u8], *args: any);  def _PyUnicode_FromId(
         id: ptr
     ) -> ptr[PyObject];  def _PyUnicode_InternImmortal(
         interp: ptr, p: &mut ptr[PyObject]
@@ -305,7 +305,9 @@ def setitem_lock_held(
 
 def delitem_common(mp: ptr[PyObject], hash: i64, ix: i64, old_value: ptr[PyObject]);
 
-def dict_getitem(op: ptr[PyObject], key: ptr[PyObject], warnmsg: str) -> ptr[PyObject];
+def dict_getitem(
+    op: ptr[PyObject], key: ptr[PyObject], warnmsg: ptr[u8]
+) -> ptr[PyObject];
 
 def get_item_ref_known_hash(
     op: ptr[PyObject], key: ptr[PyObject], hash: i64
@@ -448,7 +450,9 @@ import from c {
         return dict_getitem(
             op,
             key,
-            "Exception ignored in PyDict_GetItem(); consider using PyDict_GetItemRef() or PyDict_GetItemWithError()"
+            ptr[u8](
+                "Exception ignored in PyDict_GetItem(); consider using PyDict_GetItemRef() or PyDict_GetItemWithError()"
+            )
         );
     }  def _PyDict_LookupIndex(mp: ptr[PyObject], key: ptr[PyObject]) -> i64 {
         hash = hash_fast(key);
@@ -1031,7 +1035,9 @@ import from c {
         kv = PyUnicode_FromString(key);
         if not kv {
             PyErr_FormatUnraisable(
-                "Exception ignored in PyDict_GetItemString(); consider using PyDict_GetItemStringRef()"
+                ptr[u8](
+                    "Exception ignored in PyDict_GetItemString(); consider using PyDict_GetItemStringRef()"
+                )
             );
             return NULL;
         }
@@ -1039,7 +1045,9 @@ import from c {
         rv = dict_getitem(
             v,
             kv,
-            "Exception ignored in PyDict_GetItemString(); consider using PyDict_GetItemStringRef()"
+            ptr[u8](
+                "Exception ignored in PyDict_GetItemString(); consider using PyDict_GetItemStringRef()"
+            )
         );
         object_decref(kv);
         return rv;
@@ -1203,7 +1211,7 @@ import from c {
         if not dict_check(dict) {
             PyErr_Format(
                 PyExc_TypeError,
-                "%s() requires a dict argument, not '%s'",
+                ptr[u8]("%s() requires a dict argument, not '%s'"),
                 type.view(1)[0].tp_name,
                 object_type(dict).view(1)[0].tp_name
             );
@@ -1504,7 +1512,7 @@ import from c {
             if dict_values_of(dict) == inline_values(ob)
                 and detach_dict_from_object(dict, ob) != 0 {
                 PyErr_FormatUnraisable(
-                    "Exception ignored while clearing an object managed dict"
+                    ptr[u8]("Exception ignored while clearing an object managed dict")
                 );
                 oldkeys = dict_keys_of(dict);
                 set_dict_keys(dict, empty_keys());
@@ -1525,7 +1533,9 @@ import from c {
         }
         dictptr = computed_dict_pointer(ob);
         if not dictptr {
-            PyErr_SetString(PyExc_AttributeError, "This object has no __dict__");
+            PyErr_SetString(
+                PyExc_AttributeError, ptr[u8]("This object has no __dict__")
+            );
             return NULL;
         }
         return object_xnew_ref(ensure_nonmanaged_dict(ob, dictptr));
@@ -1562,7 +1572,7 @@ import from c {
         return _PyDictKeys_GetVersionForCurrentState(interp, dict_keys_of(dict));
     }  def PyDict_Watch(watcher_id: i32, dict: ptr[PyObject]) -> i32 {
         if not dict_check(dict) {
-            PyErr_SetString(PyExc_ValueError, "Cannot watch non-dictionary");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("Cannot watch non-dictionary"));
             return i32(-1);
         }
         if validate_watcher_id(watcher_id) != 0 {
@@ -1574,7 +1584,7 @@ import from c {
         return i32(0);
     }  def PyDict_Unwatch(watcher_id: i32, dict: ptr[PyObject]) -> i32 {
         if not dict_check(dict) {
-            PyErr_SetString(PyExc_ValueError, "Cannot watch non-dictionary");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("Cannot watch non-dictionary"));
             return i32(-1);
         }
         if validate_watcher_id(watcher_id) != 0 {
@@ -1592,7 +1602,9 @@ import from c {
                 return i32(i);
             }
         }
-        PyErr_SetString(PyExc_RuntimeError, "no more dict watcher IDs available");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("no more dict watcher IDs available")
+        );
         return i32(-1);
     }  def PyDict_ClearWatcher(watcher_id: i32) -> i32 {
         if validate_watcher_id(watcher_id) != 0 {
@@ -1618,7 +1630,9 @@ import from c {
                     calls.view(1)[0].watcher = cb;
                     if calls.view(1)[0].watcher(event, mp, key, value) < 0 {
                         PyErr_FormatUnraisable(
-                            "Exception ignored in %s watcher callback for <dict at %p>",
+                            ptr[u8](
+                                "Exception ignored in %s watcher callback for <dict at %p>"
+                            ),
                             dict_event_name(event),
                             ptr(mp)
                         );
@@ -3041,7 +3055,9 @@ impl dict_unhashable_type(key: ptr[PyObject]) {
         PyErr_SetRaisedException(exc);
         return;
     }
-    PyErr_Format(PyExc_TypeError, "cannot use '%T' as a dict key (%S)", key, exc);
+    PyErr_Format(
+        PyExc_TypeError, ptr[u8]("cannot use '%T' as a dict key (%S)"), key, exc
+    );
     object_decref(exc);
 }
 
@@ -3087,7 +3103,7 @@ impl delitem_common(mp: ptr[PyObject], hash: i64, ix: i64, old_value: ptr[PyObje
 }
 
 impl dict_getitem(
-    op: ptr[PyObject], key: ptr[PyObject], warnmsg: str
+    op: ptr[PyObject], key: ptr[PyObject], warnmsg: ptr[u8]
 ) -> ptr[PyObject] {
     if not dict_check(op) {
         return NULL;
@@ -3535,7 +3551,9 @@ impl merge_from_seq2(d: ptr[PyObject], seq2: ptr[PyObject], override_mode: i32) 
         if not fast {
             if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
                 _PyErr_FormatNote(
-                    "Cannot convert dictionary update sequence element #%zd to a sequence",
+                    ptr[u8](
+                        "Cannot convert dictionary update sequence element #%zd to a sequence"
+                    ),
                     i
                 );
             }
@@ -3547,7 +3565,9 @@ impl merge_from_seq2(d: ptr[PyObject], seq2: ptr[PyObject], override_mode: i32) 
         if n != 2 {
             PyErr_Format(
                 PyExc_ValueError,
-                "dictionary update sequence element #%zd has length %zd; 2 is required",
+                ptr[u8](
+                    "dictionary update sequence element #%zd has length %zd; 2 is required"
+                ),
                 i,
                 n
             );
@@ -3652,7 +3672,7 @@ impl dict_dict_merge(mp: ptr[PyObject], other: ptr[PyObject], override_in: i32) 
             return i32(-1);
         }
         if orig_size != dict_used(other) {
-            PyErr_SetString(PyExc_RuntimeError, "dict mutated during update");
+            PyErr_SetString(PyExc_RuntimeError, ptr[u8]("dict mutated during update"));
             return i32(-1);
         }
     }
@@ -3974,7 +3994,7 @@ impl dict_popitem(self: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
     }
     if dict_used(self) == 0 {
         object_decref(res);
-        PyErr_SetString(PyExc_KeyError, "popitem(): dictionary is empty");
+        PyErr_SetString(PyExc_KeyError, ptr[u8]("popitem(): dictionary is empty"));
         return NULL;
     }
 
@@ -4217,7 +4237,9 @@ impl iter_step(self: ptr[PyObject]) -> tuple[ptr[PyObject], ptr[PyObject]] {
         return (NULL, NULL);
     }
     if it.view(1)[0].di_used != dict_used(d) {
-        PyErr_SetString(PyExc_RuntimeError, "dictionary changed size during iteration");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("dictionary changed size during iteration")
+        );
 
         it.view(1)[0].di_used = -1;
         return (NULL, NULL);
@@ -4248,7 +4270,9 @@ impl iter_step(self: ptr[PyObject]) -> tuple[ptr[PyObject], ptr[PyObject]] {
     }
 
     if it.view(1)[0].len == 0 {
-        PyErr_SetString(PyExc_RuntimeError, "dictionary keys changed during iteration");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("dictionary keys changed during iteration")
+        );
         iter_exhaust(self, d);
         return (NULL, NULL);
     }
@@ -4309,7 +4333,9 @@ impl dictreviter_iternext(self: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if it.view(1)[0].di_used != dict_used(d) {
-        PyErr_SetString(PyExc_RuntimeError, "dictionary changed size during iteration");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("dictionary changed size during iteration")
+        );
         it.view(1)[0].di_used = -1;
         return NULL;
     }
@@ -4865,7 +4891,7 @@ impl store_instance_attr(
     if not old_value and not value {
         PyErr_Format(
             PyExc_AttributeError,
-            "'%.100s' object has no attribute '%U'",
+            ptr[u8]("'%.100s' object has no attribute '%U'"),
             object_type(ob).view(1)[0].tp_name,
             name
         );
@@ -4972,11 +4998,15 @@ impl watcher_slot(watcher_id: i64) -> ptr[int] {
 
 impl validate_watcher_id(watcher_id: i32) -> i32 {
     if watcher_id < 0 or i64(watcher_id) >= DICT_MAX_WATCHERS {
-        PyErr_Format(PyExc_ValueError, "Invalid dict watcher ID %d", watcher_id);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("Invalid dict watcher ID %d"), watcher_id
+        );
         return i32(-1);
     }
     if watcher_slot(i64(watcher_id)).view(1)[0] == 0 {
-        PyErr_Format(PyExc_ValueError, "No dict watcher set for ID %d", watcher_id);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("No dict watcher set for ID %d"), watcher_id
+        );
         return i32(-1);
     }
     return i32(0);

@@ -1942,7 +1942,9 @@ impl cfunc_noargs(type: ptr[PyTypeObject], name: str) -> int {
             index += 1;
         }
     }
-    PyErr_Format(PyExc_RuntimeError, "internal error: could not find method %s", name);
+    PyErr_Format(
+        PyExc_RuntimeError, ptr[u8]("internal error: could not find method %s"), name
+    );
     return 0;
 }
 
@@ -2052,7 +2054,9 @@ impl create_decimal_tuple(module: ptr[PyObject]) -> bool {
     }
     if jacpy_is_type(tuple_type) == 0 {
         jacpy_release(tuple_type);
-        PyErr_SetString(PyExc_TypeError, "type is expected from namedtuple call");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("type is expected from namedtuple call")
+        );
         return False;
     }
     return set_state(module, STATE_DECIMAL_TUPLE, tuple_type)
@@ -2111,7 +2115,9 @@ impl create_exceptions(module: ptr[PyObject]) -> bool {
     if not set_state(
         module,
         STATE_DECIMAL_EXCEPTION,
-        PyErr_NewException("decimal.DecimalException", PyExc_ArithmeticError, NULL)
+        PyErr_NewException(
+            ptr[u8]("decimal.DecimalException"), PyExc_ArithmeticError, NULL
+        )
     )
         or PyModule_AddType(module, state(module, STATE_DECIMAL_EXCEPTION)) < 0 {
         return False;
@@ -2127,7 +2133,11 @@ impl create_exceptions(module: ptr[PyObject]) -> bool {
         if not base {
             return False;
         }
-        ex = PyErr_NewException("decimal." + SIGNAL_NAMES[index], base, NULL);
+        qualname = jacpy_unicode_from_text("decimal." + SIGNAL_NAMES[index]);
+        ex = PyErr_NewException(PyUnicode_AsUTF8(qualname), base, NULL)
+            if qualname
+            else NULL;
+        jacpy_release(qualname);
         jacpy_release(base);
         if not set_state(module, STATE_SIGNAL_EXCEPTIONS + index, ex) {
             return False;
@@ -2151,7 +2161,11 @@ impl create_exceptions(module: ptr[PyObject]) -> bool {
         if not base {
             return False;
         }
-        ex = PyErr_NewException("decimal." + CONDITION_NAMES[index], base, NULL);
+        qualname = jacpy_unicode_from_text("decimal." + CONDITION_NAMES[index]);
+        ex = PyErr_NewException(PyUnicode_AsUTF8(qualname), base, NULL)
+            if qualname
+            else NULL;
+        jacpy_release(qualname);
         jacpy_release(base);
         if not set_state(module, STATE_CONDITION_EXCEPTIONS + index - 1, ex)
             or jacpy_module_add_object_ref_text(

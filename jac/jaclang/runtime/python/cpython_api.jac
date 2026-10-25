@@ -177,19 +177,19 @@ import from c {
     ) -> i32;  def PyErr_BadArgument -> i32;  def PyErr_BadInternalCall;  def PyErr_CheckSignals -> i32;  def PyErr_Clear;  def PyErr_ExceptionMatches(
         arg0: ptr[PyObject]
     ) -> i32;  def PyErr_Format(
-        exception: ptr[PyObject], format_: str, *args: any
-    ) -> ptr[PyObject];  def PyErr_FormatUnraisable(arg0: str, *args: any);  def PyErr_GetRaisedException -> ptr[
+        exception: ptr[PyObject], format_: ptr[u8], *args: any
+    ) -> ptr[PyObject];  def PyErr_FormatUnraisable(arg0: ptr[u8], *args: any);  def PyErr_GetRaisedException -> ptr[
         PyObject
     ];  def PyErr_GivenExceptionMatches(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     ) -> i32;  def PyErr_NewException(
-        name: str, base: ptr[PyObject], dict_: ptr[PyObject]
+        name: ptr[u8], base: ptr[PyObject], dict_: ptr[PyObject]
     ) -> ptr[PyObject];  def PyErr_NewExceptionWithDoc(
-        name: str, doc: str, base: ptr[PyObject], dict_: ptr[PyObject]
+        name: ptr[u8], doc: ptr[u8], base: ptr[PyObject], dict_: ptr[PyObject]
     ) -> ptr[PyObject];  def PyErr_NoMemory -> ptr[PyObject];  def PyErr_NormalizeException(
         arg0: &mut ptr[PyObject], arg1: &mut ptr[PyObject], arg2: &mut ptr[PyObject]
     );  def PyErr_Occurred -> ptr[PyObject];  def PyErr_Print;  def PyErr_ResourceWarning(
-        source: ptr[PyObject], stack_level: i64, format_: str, *args: any
+        source: ptr[PyObject], stack_level: i64, format_: ptr[u8], *args: any
     ) -> i32;  def PyErr_Restore(
         arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: ptr[PyObject]
     );  def PyErr_SetFromErrno(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyErr_SetFromErrnoWithFilenameObject(
@@ -199,18 +199,18 @@ import from c {
     ) -> ptr[PyObject];  def PyErr_SetNone(arg0: ptr[PyObject]);  def PyErr_SetObject(
         arg0: ptr[PyObject], arg1: ptr[PyObject]
     );  def PyErr_SetRaisedException(arg0: ptr[PyObject]);  def PyErr_SetString(
-        exception: ptr[PyObject], string: str
+        exception: ptr[PyObject], string: ptr[u8]
     );  def PyErr_WarnEx(
-        category: ptr[PyObject], message: str, stack_level: i64
+        category: ptr[PyObject], message: ptr[u8], stack_level: i64
     ) -> i32;  def PyErr_WarnExplicit(
         category: ptr[PyObject],
-        message: str,
-        filename: str,
+        message: ptr[u8],
+        filename: ptr[u8],
         lineno: i32,
         module: ptr[u8],
         registry: ptr[PyObject]
     ) -> i32;  def PyErr_WarnFormat(
-        category: ptr[PyObject], stack_level: i64, format_: str, *args: any
+        category: ptr[PyObject], stack_level: i64, format_: ptr[u8], *args: any
     ) -> i32;  def PyEval_RestoreThread(arg0: ptr[PyThreadState]);  def PyEval_SaveThread -> ptr[
         PyThreadState
     ];  def PyException_GetTraceback(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyException_SetCause(
@@ -697,7 +697,7 @@ import from c {
     ) -> i64;  def _PyDeadline_Init(timeout: i64) -> i64;  def _PyDict_SizeOf(
         arg0: ptr[PyObject]
     ) -> i64;  def _PyErr_ChainExceptions1(arg0: ptr[PyObject]);  def _PyErr_FormatFromCause(
-        exception: ptr[PyObject], format_: str, *args: any
+        exception: ptr[PyObject], format_: ptr[u8], *args: any
     ) -> ptr[PyObject];  def _PyEval_GetBuiltin(arg0: ptr[PyObject]) -> ptr[PyObject];  def _PyEval_SetProfile(
         tstate: ptr[PyThreadState], func: ptr, arg: ptr[PyObject]
     ) -> i32;  def _PyEval_SliceIndex(arg0: ptr[PyObject], arg1: &mut i64) -> i32;  def _PyEval_StartTheWorldAll(
@@ -811,7 +811,7 @@ import from c {
     ];  def _PyTraceMalloc_GetTraces -> ptr[PyObject];  def _PyTraceMalloc_IsTracing -> i32;  def _PyTraceMalloc_ResetPeak;  def _PyTraceMalloc_Start(
         max_nframe: i32
     ) -> i32;  def _PyTraceMalloc_Stop;  def _PyTraceback_Add(
-        arg0: str, arg1: str, arg2: i32
+        arg0: ptr[u8], arg1: ptr[u8], arg2: i32
     );  def _PyTuple_FromArray(arg0: ptr[ptr[PyObject]], arg1: i64) -> ptr[PyObject];  def _PyTuple_Resize(
         arg0: &mut ptr[PyObject], arg1: i64
     ) -> i32;  def _PyType_AddMethod(

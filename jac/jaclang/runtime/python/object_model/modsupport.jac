@@ -155,7 +155,7 @@ impl do_mkvalue(format: ptr[u8], va: VaList) -> (ptr[PyObject], ptr[u8], VaList)
                 m = strlen(text);
                 if m > PY_SSIZE_T_MAX {
                     PyErr_SetString(
-                        PyExc_OverflowError, "string too long for Python string"
+                        PyExc_OverflowError, ptr[u8]("string too long for Python string")
                     );
                     return (NULL, f, va);
                 }
@@ -176,7 +176,7 @@ impl do_mkvalue(format: ptr[u8], va: VaList) -> (ptr[PyObject], ptr[u8], VaList)
                 ym = strlen(data);
                 if ym > PY_SSIZE_T_MAX {
                     PyErr_SetString(
-                        PyExc_OverflowError, "string too long for Python bytes"
+                        PyExc_OverflowError, ptr[u8]("string too long for Python bytes")
                     );
                     return (NULL, f, va);
                 }
@@ -197,13 +197,13 @@ impl do_mkvalue(format: ptr[u8], va: VaList) -> (ptr[PyObject], ptr[u8], VaList)
                 }
             } elif not PyErr_Occurred() {
                 PyErr_SetString(
-                    PyExc_SystemError, "NULL object passed to Py_BuildValue"
+                    PyExc_SystemError, ptr[u8]("NULL object passed to Py_BuildValue")
                 );
             }
             return (v, f, va);
         } elif c != CH_COLON and c != CH_COMMA and c != CH_SPACE and c != CH_TAB {
             PyErr_SetString(
-                PyExc_SystemError, "bad format char passed to Py_BuildValue"
+                PyExc_SystemError, ptr[u8]("bad format char passed to Py_BuildValue")
             );
             return (NULL, f, va);
         }
@@ -227,7 +227,7 @@ import from c {
         } else {
             PyErr_Format(
                 PyExc_TypeError,
-                "argument should be integer or None, not '%.200s'",
+                ptr[u8]("argument should be integer or None, not '%.200s'"),
                 object_type(obj_).view(1)[0].tp_name
             );
             return 0;
@@ -333,7 +333,7 @@ impl countformat(format: ptr[u8], endchar: u8) -> i64 {
     while level > 0 or char_at(f) != endchar {
         c = char_at(f);
         if c == CH_NUL {
-            PyErr_SetString(PyExc_SystemError, "unmatched paren in format");
+            PyErr_SetString(PyExc_SystemError, ptr[u8]("unmatched paren in format"));
             return -1;
         } elif c == CH_LPAREN or c == CH_LBRACKET or c == CH_LBRACE {
             if level == 0 {
@@ -361,7 +361,7 @@ impl check_end(format: ptr[u8], endchar: u8) -> (bool, ptr[u8]) {
     while char_at(f) != endchar {
         c = char_at(f);
         if c != CH_SPACE and c != CH_TAB and c != CH_COMMA and c != CH_COLON {
-            PyErr_SetString(PyExc_SystemError, "Unmatched paren in format");
+            PyErr_SetString(PyExc_SystemError, ptr[u8]("Unmatched paren in format"));
             return (False, format);
         }
         f = f + 1;
@@ -400,7 +400,7 @@ impl do_mkdict(
         return (NULL, f, va);
     }
     if n % 2 != 0 {
-        PyErr_SetString(PyExc_SystemError, "Bad dict format");
+        PyErr_SetString(PyExc_SystemError, ptr[u8]("Bad dict format"));
         (f, va) = do_ignore(f, va, endchar, n);
         return (NULL, f, va);
     }
@@ -564,7 +564,7 @@ impl va_build_value(format: ptr[u8], va: VaList) -> ptr[PyObject] {
 impl module_dict_for_add(mod: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if not object_type_check(mod, ptr[PyTypeObject](addressof(PyModule_Type))) {
         PyErr_SetString(
-            PyExc_TypeError, "PyModule_AddObjectRef() first argument must be a module"
+            PyExc_TypeError, ptr[u8]("PyModule_AddObjectRef() first argument must be a module")
         );
         return NULL;
     }
@@ -572,7 +572,7 @@ impl module_dict_for_add(mod: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObje
         if not PyErr_Occurred() {
             PyErr_SetString(
                 PyExc_SystemError,
-                "PyModule_AddObjectRef() must be called with an exception raised if value is NULL"
+                ptr[u8]("PyModule_AddObjectRef() must be called with an exception raised if value is NULL")
             );
         }
         return NULL;
@@ -580,7 +580,7 @@ impl module_dict_for_add(mod: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObje
     dict = PyModule_GetDict(mod);
     if not dict {
         PyErr_Format(
-            PyExc_SystemError, "module '%s' has no __dict__", PyModule_GetName(mod)
+            PyExc_SystemError, ptr[u8]("module '%s' has no __dict__"), PyModule_GetName(mod)
         );
     }
     return dict;

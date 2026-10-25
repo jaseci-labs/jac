@@ -103,7 +103,7 @@ impl signal_module_exec(m: ptr[PyObject]) -> i32 {
     modstate[0].default_handler = default_handler();
     modstate[0].ignore_handler = ignore_handler();
 
-    itimer_error = PyErr_NewException("signal.ItimerError", PyExc_OSError, NULL);
+    itimer_error = PyErr_NewException(ptr[u8]("signal.ItimerError"), PyExc_OSError, NULL);
     modstate[0].itimer_error = itimer_error;
     if not itimer_error {
         return i32(-1);

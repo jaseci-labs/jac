@@ -8,7 +8,7 @@ import from c {
         interp: ptr, type: ptr[PyTypeObject]
     ) -> ptr[u8];  def _PyObject_LookupSpecial(
         self: ptr[PyObject], attr: ptr[PyObject]
-    ) -> ptr[PyObject];  def PyErr_FormatUnraisable(format: str, *args: any);  glob:
+    ) -> ptr[PyObject];  def PyErr_FormatUnraisable(format: ptr[u8], *args: any);  glob:
         priv weakref_members: list[PyMemberDef] = [
              PyMemberDef(
                  name=ptr[u8]("__callback__"),
@@ -241,7 +241,7 @@ import from c {
             return i32(-1);
         }
         if not weakref_check(r) {
-            PyErr_Format(PyExc_TypeError, "expected a weakref, got %T", r);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expected a weakref, got %T"), r);
             return i32(-1);
         }
         return i32(1) if weakref_is_dead(r) else i32(0);
@@ -253,7 +253,7 @@ import from c {
         }
         if not weakref_check(r) {
             pobj.view(1)[0] = NULL;
-            PyErr_SetString(PyExc_TypeError, "expected a weakref");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("expected a weakref"));
             return i32(-1);
         }
         ob = weakref_get_ref(r);
@@ -293,7 +293,9 @@ import from c {
         tuple = PyTuple_New(num_weakrefs * 2);
         if not tuple {
             _PyWeakref_ClearWeakRefsNoCallbacks(object);
-            PyErr_FormatUnraisable("Exception ignored while clearing object weakrefs");
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored while clearing object weakrefs")
+            );
             PyErr_SetRaisedException(exc);
             return;
         }
@@ -689,7 +691,7 @@ impl handle_callback(r: ptr[PyObject], callback: ptr[PyObject]) {
     cbresult = PyObject_CallOneArg(callback, r);
     if not cbresult {
         PyErr_FormatUnraisable(
-            "Exception ignored while calling weakref callback %R", callback
+            ptr[u8]("Exception ignored while calling weakref callback %R"), callback
         );
     } else {
         object_decref(cbresult);
@@ -735,7 +737,7 @@ impl weakref_hash(op: ptr[PyObject]) -> i64 {
     }
     ob = weakref_get_ref(op);
     if not ob {
-        PyErr_SetString(PyExc_TypeError, "weak object has gone away");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("weak object has gone away"));
         return -1;
     }
     r.view(1)[0].hash = PyObject_Hash(ob);
@@ -902,7 +904,7 @@ impl get_or_create_weakref(
     if not supports_weakrefs(object_type(ob)) {
         PyErr_Format(
             PyExc_TypeError,
-            "cannot create weak reference to '%s' object",
+            ptr[u8]("cannot create weak reference to '%s' object"),
             object_type(ob).view(1)[0].tp_name
         );
         return no_ref();
@@ -927,13 +929,19 @@ impl unpack_weakref_args(args: ptr[PyObject], funcname: str) -> bool {
     nargs = object_size(args);
     if nargs < 1 {
         PyErr_Format(
-            PyExc_TypeError, "%s expected at least 1 argument, got %zd", funcname, nargs
+            PyExc_TypeError,
+            ptr[u8]("%s expected at least 1 argument, got %zd"),
+            funcname,
+            nargs
         );
         return False;
     }
     if nargs > 2 {
         PyErr_Format(
-            PyExc_TypeError, "%s expected at most 2 arguments, got %zd", funcname, nargs
+            PyExc_TypeError,
+            ptr[u8]("%s expected at most 2 arguments, got %zd"),
+            funcname,
+            nargs
         );
         return False;
     }
@@ -964,7 +972,7 @@ impl weakref___init__(
 impl proxy_check_ref(ob: ptr[PyObject]) -> bool {
     if not ob {
         PyErr_SetString(
-            PyExc_ReferenceError, "weakly-referenced object no longer exists"
+            PyExc_ReferenceError, ptr[u8]("weakly-referenced object no longer exists")
         );
         return False;
     }
@@ -1427,7 +1435,7 @@ impl proxy_iternext(proxy: ptr[PyObject]) -> ptr[PyObject] {
     if PyIter_Check(ob) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "Weakref proxy referenced a non-iterator '%.200s' object",
+            ptr[u8]("Weakref proxy referenced a non-iterator '%.200s' object"),
             object_type(ob).view(1)[0].tp_name
         );
         object_decref(ob);

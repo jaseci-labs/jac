@@ -338,14 +338,14 @@ impl unknown_presentation_type(presentation_type: u32, type_name: ptr[u8]) {
     if presentation_type > u32(32) and presentation_type < u32(128) {
         PyErr_Format(
             PyExc_ValueError,
-            "Unknown format code '%c' for object of type '%.200s'",
+            ptr[u8]("Unknown format code '%c' for object of type '%.200s'"),
             i32(presentation_type),
             type_name
         );
     } else {
         PyErr_Format(
             PyExc_ValueError,
-            "Unknown format code '\\x%x' for object of type '%.200s'",
+            ptr[u8]("Unknown format code '\\x%x' for object of type '%.200s'"),
             i32(presentation_type),
             type_name
         );
@@ -356,14 +356,14 @@ impl invalid_thousands_separator_type(specifier: i32, presentation_type: u32) {
     if presentation_type > u32(32) and presentation_type < u32(128) {
         PyErr_Format(
             PyExc_ValueError,
-            "Cannot specify '%c' with '%c'.",
+            ptr[u8]("Cannot specify '%c' with '%c'."),
             specifier,
             i32(presentation_type)
         );
     } else {
         PyErr_Format(
             PyExc_ValueError,
-            "Cannot specify '%c' with '\\x%x'.",
+            ptr[u8]("Cannot specify '%c' with '\\x%x'."),
             specifier,
             i32(presentation_type)
         );
@@ -371,7 +371,7 @@ impl invalid_thousands_separator_type(specifier: i32, presentation_type: u32) {
 }
 
 impl invalid_comma_and_underscore {
-    PyErr_Format(PyExc_ValueError, "Cannot specify both ',' and '_'.");
+    PyErr_Format(PyExc_ValueError, ptr[u8]("Cannot specify both ',' and '_'."));
 }
 
 impl get_integer(
@@ -388,7 +388,7 @@ impl get_integer(
             break;
         }
         if accumulator > (PY_SSIZE_T_MAX - digitval) // 10 {
-            PyErr_Format(PyExc_ValueError, "Too many decimal digits in format string");
+            PyErr_Format(PyExc_ValueError, ptr[u8]("Too many decimal digits in format string"));
             return (i32(-1), pos, result_in);
         }
         accumulator = accumulator * 10 + digitval;
@@ -552,7 +552,7 @@ impl parse_internal_render_format_spec(
         }
 
         if consumed == 0 {
-            PyErr_Format(PyExc_ValueError, "Format specifier missing precision");
+            PyErr_Format(PyExc_ValueError, ptr[u8]("Format specifier missing precision"));
             return 0;
         }
     }
@@ -564,7 +564,7 @@ impl parse_internal_render_format_spec(
         if actual_format_spec {
             PyErr_Format(
                 PyExc_ValueError,
-                "Invalid format specifier '%U' for object of type '%.200s'",
+                ptr[u8]("Invalid format specifier '%U' for object of type '%.200s'"),
                 actual_format_spec,
                 object_type(obj_).view(1)[0].tp_name
             );
@@ -906,7 +906,7 @@ impl fill_number(
             c = ch_read(kind, data, writer.view(1)[0].pos + t);
             c = ascii_toupper(c);
             if c > u32(127) {
-                PyErr_SetString(PyExc_SystemError, "non-ascii grouped digit");
+                PyErr_SetString(PyExc_SystemError, ptr[u8]("non-ascii grouped digit"));
                 return -1;
             }
             ch_write(kind, data, writer.view(1)[0].pos + t, c);
@@ -1042,11 +1042,11 @@ impl format_string_internal(
     if fmt.sign != u32(0) {
         if fmt.sign == u32(32) {
             PyErr_SetString(
-                PyExc_ValueError, "Space not allowed in string format specifier"
+                PyExc_ValueError, ptr[u8]("Space not allowed in string format specifier")
             );
         } else {
             PyErr_SetString(
-                PyExc_ValueError, "Sign not allowed in string format specifier"
+                PyExc_ValueError, ptr[u8]("Sign not allowed in string format specifier")
             );
         }
         return -1;
@@ -1055,7 +1055,7 @@ impl format_string_internal(
     if fmt.no_neg_0 != 0 {
         PyErr_SetString(
             PyExc_ValueError,
-            "Negative zero coercion (z) not allowed in string format specifier"
+            ptr[u8]("Negative zero coercion (z) not allowed in string format specifier")
         );
         return -1;
     }
@@ -1063,14 +1063,14 @@ impl format_string_internal(
     if fmt.alternate != 0 {
         PyErr_SetString(
             PyExc_ValueError,
-            "Alternate form (#) not allowed in string format specifier"
+            ptr[u8]("Alternate form (#) not allowed in string format specifier")
         );
         return -1;
     }
 
     if fmt.align == u32(61) {
         PyErr_SetString(
-            PyExc_ValueError, "'=' alignment not allowed in string format specifier"
+            PyExc_ValueError, ptr[u8]("'=' alignment not allowed in string format specifier")
         );
         return -1;
     }
@@ -1139,14 +1139,14 @@ impl format_long_internal(
 
     if fmt.precision != -1 {
         PyErr_SetString(
-            PyExc_ValueError, "Precision not allowed in integer format specifier"
+            PyExc_ValueError, ptr[u8]("Precision not allowed in integer format specifier")
         );
         return number_done(tmp, locale, -1);
     }
     if fmt.no_neg_0 != 0 {
         PyErr_SetString(
             PyExc_ValueError,
-            "Negative zero coercion (z) not allowed in integer format specifier"
+            ptr[u8]("Negative zero coercion (z) not allowed in integer format specifier")
         );
         return number_done(tmp, locale, -1);
     }
@@ -1154,14 +1154,14 @@ impl format_long_internal(
     if fmt.type_ == u32(99) {
         if fmt.sign != u32(0) {
             PyErr_SetString(
-                PyExc_ValueError, "Sign not allowed with integer format specifier 'c'"
+                PyExc_ValueError, ptr[u8]("Sign not allowed with integer format specifier 'c'")
             );
             return number_done(tmp, locale, -1);
         }
         if fmt.alternate != 0 {
             PyErr_SetString(
                 PyExc_ValueError,
-                "Alternate form (#) not allowed with integer format specifier 'c'"
+                ptr[u8]("Alternate form (#) not allowed with integer format specifier 'c'")
             );
             return number_done(tmp, locale, -1);
         }
@@ -1171,7 +1171,7 @@ impl format_long_internal(
             return number_done(tmp, locale, -1);
         }
         if x < 0 or x > 0x10ffff {
-            PyErr_SetString(PyExc_OverflowError, "%c arg not in range(0x110000)");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("%c arg not in range(0x110000)"));
             return number_done(tmp, locale, -1);
         }
         tmp = PyUnicode_FromOrdinal(i32(x));
@@ -1283,7 +1283,7 @@ impl format_float_internal(
     locale = LocaleInfo();
 
     if fmt.precision > INT_MAX {
-        PyErr_SetString(PyExc_ValueError, "precision too big");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("precision too big"));
         return number_done(unicode_tmp, locale, -1);
     }
     precision = i32(fmt.precision);
@@ -1450,14 +1450,14 @@ impl format_complex_internal(
     locale = LocaleInfo();
 
     if fmt.precision > INT_MAX {
-        PyErr_SetString(PyExc_ValueError, "precision too big");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("precision too big"));
         return complex_done(re_buf, im_buf, re_unicode_tmp, im_unicode_tmp, locale, -1);
     }
     precision = i32(fmt.precision);
 
     if fmt.fill_char == u32(48) {
         PyErr_SetString(
-            PyExc_ValueError, "Zero padding is not allowed in complex format specifier"
+            PyExc_ValueError, ptr[u8]("Zero padding is not allowed in complex format specifier")
         );
         return complex_done(re_buf, im_buf, re_unicode_tmp, im_unicode_tmp, locale, -1);
     }
@@ -1465,7 +1465,7 @@ impl format_complex_internal(
     if fmt.align == u32(61) {
         PyErr_SetString(
             PyExc_ValueError,
-            "'=' alignment flag is not allowed in complex format specifier"
+            ptr[u8]("'=' alignment flag is not allowed in complex format specifier")
         );
         return complex_done(re_buf, im_buf, re_unicode_tmp, im_unicode_tmp, locale, -1);
     }

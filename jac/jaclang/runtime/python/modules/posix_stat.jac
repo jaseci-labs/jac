@@ -494,7 +494,7 @@ def:priv DirEntry_fetch_stat(
     if fields.view(1)[0].dir_fd != DEFAULT_DIR_FD {
         if not HAVE_FSTATAT {
             jacpy_release(encoded);
-            PyErr_Format(PyExc_NotImplementedError, "can't fetch stat");
+            PyErr_Format(PyExc_NotImplementedError, ptr[u8]("can't fetch stat"));
             return NULL;
         }
         dir_fd = fields.view(1)[0].dir_fd;
@@ -803,13 +803,15 @@ def ScandirIterator_finalize(instance: ptr[PyObject]) {
         if state.directory {
             scandir_closedir(state);
             if PyErr_ResourceWarning(
-                instance, 1, "unclosed scandir iterator %R", instance
+                instance, 1, ptr[u8]("unclosed scandir iterator %R"), instance
             )
                 != 0 {
                 # Spurious errors can appear at shutdown.
                 if PyErr_ExceptionMatches(PyExc_Warning) != 0 {
                     PyErr_FormatUnraisable(
-                        "Exception ignored while finalizing scandir iterator %R",
+                        ptr[u8](
+                            "Exception ignored while finalizing scandir iterator %R"
+                        ),
                         instance
                     );
                 }

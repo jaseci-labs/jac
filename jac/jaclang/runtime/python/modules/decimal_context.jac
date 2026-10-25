@@ -537,7 +537,9 @@ impl context_setattr(
     self: ptr[PyObject], name: ptr[PyObject], value: ptr[PyObject]
 ) -> i32 {
     if not value {
-        PyErr_SetString(PyExc_AttributeError, "context attributes cannot be deleted");
+        PyErr_SetString(
+            PyExc_AttributeError, ptr[u8]("context attributes cannot be deleted")
+        );
         return i32(-1);
     }
     if jacpy_is_unicode(name) != 0 {
@@ -803,7 +805,7 @@ impl ieee_context(module: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
         PyMem_Free(ptr(ctx));
         PyErr_Format(
             PyExc_ValueError,
-            "argument must be a multiple of 32, with a maximum of %d",
+            ptr[u8]("argument must be a multiple of 32, with a maximum of %d"),
             i32(MPD_IEEE_CONTEXT_MAX_BITS)
         );
         return NULL;
@@ -1016,7 +1018,7 @@ impl ctx_mpd_radix(context: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject
 
 impl ctx_iscanonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     if not dec_check(module_of_context(context), v) {
-        PyErr_SetString(PyExc_TypeError, "argument must be a Decimal");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("argument must be a Decimal"));
         return NULL;
     }
     return bool_object(mpd_iscanonical(mpd(v)) != 0);
@@ -1034,7 +1036,7 @@ impl ctx_apply(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
 
 impl ctx_canonical(context: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     if not dec_check(module_of_context(context), v) {
-        PyErr_SetString(PyExc_TypeError, "argument must be a Decimal");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("argument must be a Decimal"));
         return NULL;
     }
     return Py_NewRef(v);
@@ -1209,7 +1211,9 @@ impl ctxmanager_new(
     if inner == Py_None {
         inner = outer;
     } elif not context_check(module, inner) {
-        PyErr_SetString(PyExc_TypeError, "optional argument must be a context");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("optional argument must be a context")
+        );
         return NULL;
     }
     local_copy = context_copy(inner, NULL);

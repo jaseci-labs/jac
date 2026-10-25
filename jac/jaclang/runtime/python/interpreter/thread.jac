@@ -147,7 +147,7 @@ import from c {
         }
         if blocking == 0 {
             PyErr_SetString(
-                PyExc_ValueError, "can't specify a timeout for a non-blocking call"
+                PyExc_ValueError, ptr[u8]("can't specify a timeout for a non-blocking call")
             );
             return -1;
         }
@@ -160,13 +160,13 @@ import from c {
         timeout = slot.view(1)[0];
         if timeout < 0 {
             PyErr_SetString(
-                PyExc_ValueError, "timeout value must be a non-negative number"
+                PyExc_ValueError, ptr[u8]("timeout value must be a non-negative number")
             );
             return -1;
         }
 
         if pytime_as_microseconds(timeout, _PyTime_ROUND_TIMEOUT) > PY_TIMEOUT_MAX {
-            PyErr_SetString(PyExc_OverflowError, "timeout value is too large");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("timeout value is too large"));
             return -1;
         }
         timeout_p.view(1)[0] = timeout;

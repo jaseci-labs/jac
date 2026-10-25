@@ -1564,7 +1564,7 @@ import from c {
             global_version(interp), MONITORING_VERSION_INCREMENT
         );
         if new_version == u32(0) {
-            PyErr_Format(PyExc_OverflowError, "events set too many times");
+            PyErr_Format(PyExc_OverflowError, ptr[u8]("events set too many times"));
             return -1;
         }
         set_events(interp + PyInterpreterState_MONITORS, tool_id, events);
@@ -1577,7 +1577,7 @@ import from c {
         if i64(code_i32(code, PyCodeObject_FIRSTTRACEABLE)) >= object_size(code) {
             PyErr_Format(
                 PyExc_SystemError,
-                "cannot instrument shim code object '%U'",
+                ptr[u8]("cannot instrument shim code object '%U'"),
                 ptr[ptr[PyObject]](ptr[u8](code) + PyCodeObject_NAME).view(1)[0]
             );
             return -1;
@@ -1634,7 +1634,7 @@ import from c {
         }
         version = wrapping_add(global_version(interp), MONITORING_VERSION_INCREMENT);
         if version == u32(0) {
-            PyErr_Format(PyExc_OverflowError, "events set too many times");
+            PyErr_Format(PyExc_OverflowError, ptr[u8]("events set too many times"));
             _PyEval_StartTheWorld(interp);
             return -1;
         }
@@ -2622,7 +2622,7 @@ impl call_instrumentation_vector(
             if event >= _PY_MONITORING_LOCAL_EVENTS {
                 PyErr_Format(
                     PyExc_ValueError,
-                    "Cannot disable %s events. Callback removed.",
+                    ptr[u8]("Cannot disable %s events. Callback removed."),
                     event_name(event)
                 );
                 slot = callable_slot(interp, tool, event);
@@ -3252,7 +3252,7 @@ impl instrument_all_executing_code_objects(interp: ptr[u8]) -> i32 {
 impl check_tool(interp: ptr[u8], tool_id: i32) -> i32 {
     if tool_id < PY_MONITORING_SYS_PROFILE_ID
         and not tool_name_slot(interp, tool_id).view(1)[0] {
-        PyErr_Format(PyExc_ValueError, "tool %d is not in use", tool_id);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("tool %d is not in use"), tool_id);
         return -1;
     }
     return 0;
@@ -3261,7 +3261,9 @@ impl check_tool(interp: ptr[u8], tool_id: i32) -> i32 {
 impl check_valid_tool(tool_id: i32) -> i32 {
     if tool_id < 0 or tool_id >= PY_MONITORING_SYS_PROFILE_ID {
         PyErr_Format(
-            PyExc_ValueError, "invalid tool %d (must be between 0 and 5)", tool_id
+            PyExc_ValueError,
+            ptr[u8]("invalid tool %d (must be between 0 and 5)"),
+            tool_id
         );
         return -1;
     }
@@ -3279,13 +3281,13 @@ impl monitoring_use_tool_id_impl(
         return NULL;
     }
     if not unicode_check(name) {
-        PyErr_SetString(PyExc_ValueError, "tool name must be a str");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("tool name must be a str"));
         return NULL;
     }
     interp = current_interp();
     slot = tool_name_slot(interp, tool_id);
     if slot.view(1)[0] {
-        PyErr_Format(PyExc_ValueError, "tool %d is already in use", tool_id);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("tool %d is already in use"), tool_id);
         return NULL;
     }
     slot.view(1)[0] = object_new_ref(name);
@@ -3345,13 +3347,14 @@ impl monitoring_register_callback_impl(
     }
     if popcount32(u32.wrap(event)) != 1 {
         PyErr_SetString(
-            PyExc_ValueError, "The callback can only be set for one event at a time"
+            PyExc_ValueError,
+            ptr[u8]("The callback can only be set for one event at a time")
         );
         return NULL;
     }
     event_id = bit_length(u64.wrap(i64(event))) - 1;
     if event_id < 0 or event_id >= _PY_MONITORING_EVENTS {
-        PyErr_Format(PyExc_ValueError, "invalid event %d", event);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("invalid event %d"), event);
         return NULL;
     }
     if PySys_Audit("sys.monitoring.register_callback", "O", func_in) < 0 {
@@ -3394,13 +3397,14 @@ impl monitoring_set_events_impl(
         return NULL;
     }
     if event_set_in < 0 or event_set_in >= (1 << _PY_MONITORING_EVENTS) {
-        PyErr_Format(PyExc_ValueError, "invalid event set 0x%x", event_set_in);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("invalid event set 0x%x"), event_set_in);
         return NULL;
     }
     if (event_set_in & C_RETURN_EVENTS) != 0
         and (event_set_in & C_CALL_EVENTS) != C_CALL_EVENTS {
         PyErr_Format(
-            PyExc_ValueError, "cannot set C_RETURN or C_RAISE events independently"
+            PyExc_ValueError,
+            ptr[u8]("cannot set C_RETURN or C_RAISE events independently")
         );
         return NULL;
     }
@@ -3419,7 +3423,7 @@ impl monitoring_get_local_events_impl(
     module: ptr[PyObject], tool_id: i32, code: ptr[PyObject]
 ) -> i32 {
     if not code_check(code) {
-        PyErr_Format(PyExc_TypeError, "code must be a code object");
+        PyErr_Format(PyExc_TypeError, ptr[u8]("code must be a code object"));
         return -1;
     }
     if check_valid_tool(tool_id) != 0 {
@@ -3439,7 +3443,7 @@ impl monitoring_set_local_events_impl(
     module: ptr[PyObject], tool_id: i32, code: ptr[PyObject], event_set_in: i32
 ) -> ptr[PyObject] {
     if not code_check(code) {
-        PyErr_Format(PyExc_TypeError, "code must be a code object");
+        PyErr_Format(PyExc_TypeError, ptr[u8]("code must be a code object"));
         return NULL;
     }
     if check_valid_tool(tool_id) != 0 {
@@ -3448,13 +3452,16 @@ impl monitoring_set_local_events_impl(
     if (event_set_in & C_RETURN_EVENTS) != 0
         and (event_set_in & C_CALL_EVENTS) != C_CALL_EVENTS {
         PyErr_Format(
-            PyExc_ValueError, "cannot set C_RETURN or C_RAISE events independently"
+            PyExc_ValueError,
+            ptr[u8]("cannot set C_RETURN or C_RAISE events independently")
         );
         return NULL;
     }
     event_set = normalize_event_set(event_set_in);
     if event_set < 0 or event_set >= (1 << _PY_MONITORING_LOCAL_EVENTS) {
-        PyErr_Format(PyExc_ValueError, "invalid local event set 0x%x", event_set);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("invalid local event set 0x%x"), event_set
+        );
         return NULL;
     }
     interp = current_interp();
@@ -3477,7 +3484,7 @@ impl monitoring_restart_events_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     new_version = wrapping_add(restart_version, MONITORING_VERSION_INCREMENT);
     if new_version <= MONITORING_VERSION_INCREMENT {
         _PyEval_StartTheWorld(interp);
-        PyErr_Format(PyExc_OverflowError, "events set too many times");
+        PyErr_Format(PyExc_OverflowError, ptr[u8]("events set too many times"));
         return NULL;
     }
     ptr[u64](interp + PyInterpreterState_LAST_RESTART_VERSION).view(1)[0] = u64(
@@ -3701,7 +3708,7 @@ impl capi_call_instrumentation(
     tools = state.view(1)[0];
     (args + 1).view(1)[0] = codelike;
     if offset < 0 {
-        PyErr_SetString(PyExc_ValueError, "offset must be non-negative");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("offset must be non-negative"));
         return -1;
     }
     if event != PY_MONITORING_EVENT_LINE {
@@ -3726,7 +3733,7 @@ impl capi_call_instrumentation(
             if event >= _PY_MONITORING_LOCAL_EVENTS {
                 PyErr_Format(
                     PyExc_ValueError,
-                    "Cannot disable %s events. Callback removed.",
+                    ptr[u8]("Cannot disable %s events. Callback removed."),
                     event_name(event)
                 );
                 slot = callable_slot(interp, tool, event);
@@ -3761,7 +3768,9 @@ impl capi_fire(
 impl exception_event_setup(event: i32) -> tuple[i32, ptr[PyObject]] {
     exc = PyErr_GetRaisedException();
     if not exc {
-        PyErr_Format(PyExc_ValueError, "Firing event %d with no exception set", event);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("Firing event %d with no exception set"), event
+        );
         return (i32(-1), exc);
     }
     return (i32(0), exc);

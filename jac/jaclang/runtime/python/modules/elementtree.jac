@@ -1575,7 +1575,7 @@ impl element_setstate_from_Python(
             if text not in names {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "this function got an unexpected keyword argument '%S'",
+                    ptr[u8]("this function got an unexpected keyword argument '%S'"),
                     key
                 );
                 failed = True;
@@ -1601,7 +1601,7 @@ impl _elementtree_Element___setstate___impl(
     if jacpy_is_exact_dict(state) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "Don't know how to unpickle \"%.200R\" as an Element",
+            ptr[u8]("Don't know how to unpickle \"%.200R\" as an Element"),
             state
         );
         return NULL;
@@ -1860,7 +1860,9 @@ impl element_getitem(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
 impl element_bool(instance: ptr[PyObject]) -> i32 {
     if PyErr_WarnEx(
         PyExc_DeprecationWarning,
-        "Testing an element's truth value will always return True in future versions.  Use specific 'len(elem)' or 'elem is not None' test instead.",
+        ptr[u8](
+            "Testing an element's truth value will always return True in future versions.  Use specific 'len(elem)' or 'elem is not None' test instead."
+        ),
         1
     )
         < 0 {
@@ -3475,7 +3477,9 @@ impl expat_start_doctype_handler(
     } elif PyObject_HasAttrWithError(instance, state.str_doctype) > 0 {
         PyErr_WarnEx(
             PyExc_RuntimeWarning,
-            "The doctype() method of XMLParser is ignored.  Define doctype() method on the TreeBuilder target.",
+            ptr[u8](
+                "The doctype() method of XMLParser is ignored.  Define doctype() method on the TreeBuilder target."
+            ),
             1
         );
     }
@@ -3929,7 +3933,7 @@ impl _elementtree_XMLParser__setevents_impl(
         name = event_name_of(name_obj);
         if not name {
             jacpy_release(sequence);
-            PyErr_Format(PyExc_ValueError, "invalid events sequence");
+            PyErr_Format(PyExc_ValueError, ptr[u8]("invalid events sequence"));
             return NULL;
         }
         parser = xmlparser(receiver).view(1)[0].parser;
@@ -3956,7 +3960,7 @@ impl _elementtree_XMLParser__setevents_impl(
             replace_field(builder_field(target, TB_PI_EVENT), Py_NewRef(name_obj));
             capi[0].SetProcessingInstructionHandler(parser, expat_pi_handler);
         } else {
-            PyErr_Format(PyExc_ValueError, "unknown event '%s'", name);
+            PyErr_Format(PyExc_ValueError, ptr[u8]("unknown event '%s'"), name);
             jacpy_release(sequence);
             return NULL;
         }

@@ -145,7 +145,9 @@ import from c {
         kind = vectorcall_kind(flags);
         if kind == VECTORCALL_BAD {
             PyErr_Format(
-                PyExc_SystemError, "%s() method: bad call flags", ml.view(1)[0].ml_name
+                PyExc_SystemError,
+                ptr[u8]("%s() method: bad call flags"),
+                ml.view(1)[0].ml_name
             );
             return NULL;
         }
@@ -154,7 +156,9 @@ import from c {
             if not cls {
                 PyErr_SetString(
                     PyExc_SystemError,
-                    "attempting to create PyCMethod with a METH_METHOD flag but no class"
+                    ptr[u8](
+                        "attempting to create PyCMethod with a METH_METHOD flag but no class"
+                    )
                 );
                 return NULL;
             }
@@ -172,7 +176,9 @@ import from c {
             if cls {
                 PyErr_SetString(
                     PyExc_SystemError,
-                    "attempting to create PyCFunction with class but no METH_METHOD flag"
+                    ptr[u8](
+                        "attempting to create PyCFunction with class but no METH_METHOD flag"
+                    )
                 );
                 return NULL;
             }
@@ -432,7 +438,8 @@ impl meth_get__qualname__(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     }
     if not type_has_feature(object_type(type_qualname), Py_TPFLAGS_UNICODE_SUBCLASS) {
         PyErr_SetString(
-            PyExc_TypeError, "<method>.__class__.__qualname__ is not a unicode object"
+            PyExc_TypeError,
+            ptr[u8]("<method>.__class__.__qualname__ is not a unicode object")
         );
         object_decref(type_qualname);
         return NULL;
@@ -506,7 +513,9 @@ impl no_keywords(func: ptr[PyObject], kwnames: ptr[PyObject]) -> bool {
     if kwnames and object_size(kwnames) != 0 {
         funcstr = _PyObject_FunctionStr(func);
         if funcstr {
-            PyErr_Format(PyExc_TypeError, "%U takes no keyword arguments", funcstr);
+            PyErr_Format(
+                PyExc_TypeError, ptr[u8]("%U takes no keyword arguments"), funcstr
+            );
             object_decref(funcstr);
         }
         return False;
@@ -581,7 +590,10 @@ impl cfunction_vectorcall_NOARGS(
         funcstr = _PyObject_FunctionStr(func);
         if funcstr {
             PyErr_Format(
-                PyExc_TypeError, "%U takes no arguments (%zd given)", funcstr, nargs
+                PyExc_TypeError,
+                ptr[u8]("%U takes no arguments (%zd given)"),
+                funcstr,
+                nargs
             );
             object_decref(funcstr);
         }
@@ -610,7 +622,7 @@ impl cfunction_vectorcall_O(
         if funcstr {
             PyErr_Format(
                 PyExc_TypeError,
-                "%U takes exactly one argument (%zd given)",
+                ptr[u8]("%U takes exactly one argument (%zd given)"),
                 funcstr,
                 nargs
             );
@@ -649,7 +661,7 @@ impl cfunction_call(
         if kwargs and dict_used(kwargs) != 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "%.200s() takes no keyword arguments",
+                ptr[u8]("%.200s() takes no keyword arguments"),
                 method_def(func).view(1)[0].ml_name
             );
             return NULL;

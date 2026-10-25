@@ -158,7 +158,7 @@ def cell_clear(op: ptr[PyObject]) -> i32 {
 def cell_get_contents(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     result = cell_get_ref(cell_of(op));
     if not result {
-        PyErr_SetString(PyExc_ValueError, "Cell is empty");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Cell is empty"));
         return NULL;
     }
     return result;

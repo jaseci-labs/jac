@@ -187,14 +187,18 @@ impl get_float_as_integer_ratio(floatobj: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_tuple(ratio) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "unexpected return type from as_integer_ratio(): expected tuple, not '%.200s'",
+            ptr[u8](
+                "unexpected return type from as_integer_ratio(): expected tuple, not '%.200s'"
+            ),
             type_name_of(ratio)
         );
         jacpy_release(ratio);
         return NULL;
     }
     if PyTuple_Size(ratio) != 2 {
-        PyErr_SetString(PyExc_ValueError, "as_integer_ratio() must return a 2-tuple");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("as_integer_ratio() must return a 2-tuple")
+        );
         jacpy_release(ratio);
         return NULL;
     }
@@ -483,7 +487,7 @@ impl accum(
     }
     PyErr_Format(
         PyExc_TypeError,
-        "unsupported type for timedelta %s component: %s",
+        ptr[u8]("unsupported type for timedelta %s component: %s"),
         tag,
         type_name_of(num)
     );

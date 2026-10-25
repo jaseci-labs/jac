@@ -362,7 +362,9 @@ def os_getgroups_impl(module: ptr[PyObject]) -> ptr[PyObject] {
 
 def os_setgroups_impl(module: ptr[PyObject], groups: ptr[PyObject]) -> ptr[PyObject] {
     if PySequence_Check(groups) == 0 {
-        PyErr_SetString(PyExc_TypeError, "setgroups argument must be a sequence");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("setgroups argument must be a sequence")
+        );
         return NULL;
     }
     length = PySequence_Size(groups);
@@ -370,7 +372,7 @@ def os_setgroups_impl(module: ptr[PyObject], groups: ptr[PyObject]) -> ptr[PyObj
         return NULL;
     }
     if length > MAX_GROUPS {
-        PyErr_SetString(PyExc_ValueError, "too many groups");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("too many groups"));
         return NULL;
     }
     grouplist = ptr[u32](PyMem_Malloc(u64(length) * GID_SIZE));
@@ -386,7 +388,7 @@ def os_setgroups_impl(module: ptr[PyObject], groups: ptr[PyObject]) -> ptr[PyObj
             return NULL;
         }
         if PyIndex_Check(elem) == 0 {
-            PyErr_SetString(PyExc_TypeError, "groups must be integers");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("groups must be integers"));
             jacpy_release(elem);
             PyMem_Free(grouplist);
             return NULL;
@@ -485,7 +487,7 @@ def os_uname_impl(module: ptr[PyObject]) -> ptr[PyObject] {
 def os_strerror_impl(module: ptr[PyObject], code: i32) -> ptr[PyObject] {
     message = strerror(code);
     if not message {
-        PyErr_SetString(PyExc_ValueError, "strerror() argument out of range");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("strerror() argument out of range"));
         return NULL;
     }
     return PyUnicode_DecodeLocale(ptr(message), ptr[u8]("surrogateescape"));
@@ -495,7 +497,7 @@ def os_strerror_impl(module: ptr[PyObject], code: i32) -> ptr[PyObject] {
 
 def os_urandom_impl(module: ptr[PyObject], size: i64) -> ptr[PyObject] {
     if size < 0 {
-        PyErr_SetString(PyExc_ValueError, "negative argument not allowed");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("negative argument not allowed"));
         return NULL;
     }
     bytes = PyBytes_FromStringAndSize(ptr[u8](), size);
@@ -613,7 +615,7 @@ def os_putenv_impl(
     name_string = PyBytes_AsString(name);
     value_string = PyBytes_AsString(value);
     if strchr(name_string, i32(61)) {
-        PyErr_SetString(PyExc_ValueError, "illegal environment variable name");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("illegal environment variable name"));
         return NULL;
     }
     if PySys_Audit("os.putenv", "OO", name, value) < 0 {

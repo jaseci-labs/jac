@@ -321,7 +321,9 @@ impl socket_read_call(receiver: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
         jacpy_buffer_release(buffer);
         return result;
     }
-    PyErr_SetString(PyExc_TypeError, "_ssl._SSLSocket.read requires 1 to 2 arguments");
+    PyErr_SetString(
+        PyExc_TypeError, ptr[u8]("_ssl._SSLSocket.read requires 1 to 2 arguments")
+    );
     return NULL;
 }
 
@@ -365,7 +367,20 @@ impl init_types(module: ptr[PyObject]) -> bool {
 impl add_exception(
     module: ptr[PyObject], index: int, name: str, doc: str, base: ptr[PyObject]
 ) -> bool {
-    exc = PyErr_NewExceptionWithDoc("ssl." + name, doc, base, NULL);
+    qualname = jacpy_unicode_from_text("ssl." + name);
+    if not qualname {
+        return False;
+    }
+    doc_text = jacpy_unicode_from_text(doc);
+    if not doc_text {
+        jacpy_release(qualname);
+        return False;
+    }
+    exc = PyErr_NewExceptionWithDoc(
+        PyUnicode_AsUTF8(qualname), PyUnicode_AsUTF8(doc_text), base, NULL
+    );
+    jacpy_release(doc_text);
+    jacpy_release(qualname);
     if not exc {
         return False;
     }

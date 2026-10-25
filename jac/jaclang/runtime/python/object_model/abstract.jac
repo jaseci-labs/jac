@@ -142,7 +142,7 @@ def unicode_from_c(s: ptr[u8]) -> ptr[PyObject];
 
 def set_c_string(exception: ptr[PyObject], message: ptr[u8]);
 
-def type_error(msg: str, op: ptr[PyObject]) -> ptr[PyObject];
+def type_error(msg: ptr[u8], op: ptr[PyObject]) -> ptr[PyObject];
 
 def null_error -> ptr[PyObject];
 
@@ -227,7 +227,7 @@ def abstract_get_bases(cls: ptr[PyObject]) -> ptr[PyObject];
 
 def abstract_issubclass(derived_in: ptr[PyObject], cls: ptr[PyObject]) -> i32;
 
-def check_class(cls: ptr[PyObject], error: str) -> i32;
+def check_class(cls: ptr[PyObject], error: ptr[u8]) -> i32;
 
 def object_isinstance(inst: ptr[PyObject], cls: ptr[PyObject]) -> i32;
 
@@ -305,7 +305,7 @@ import from c {
         if not long_check(result) {
             PyErr_Format(
                 PyExc_TypeError,
-                "__length_hint__ must be an integer, not %.100s",
+                ptr[u8]("__length_hint__ must be an integer, not %.100s"),
                 tp_name(result)
             );
             object_decref(result);
@@ -317,7 +317,9 @@ import from c {
             return -1;
         }
         if hinted < 0 {
-            PyErr_Format(PyExc_ValueError, "__length_hint__() should return >= 0");
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("__length_hint__() should return >= 0")
+            );
             return -1;
         }
         return hinted;
@@ -339,7 +341,9 @@ import from c {
                 }
                 return PySequence_GetItem(o, key_value);
             }
-            return type_error("sequence index must be integer, not '%.200s'", key);
+            return type_error(
+                ptr[u8]("sequence index must be integer, not '%.200s'"), key
+            );
         }
         if type_check(o) {
             if o == ptr[PyObject](addressof(PyType_Type)) {
@@ -357,12 +361,12 @@ import from c {
             object_xdecref(meth);
             PyErr_Format(
                 PyExc_TypeError,
-                "type '%.200s' is not subscriptable",
+                ptr[u8]("type '%.200s' is not subscriptable"),
                 ptr[PyTypeObject](o).view(1)[0].tp_name
             );
             return NULL;
         }
-        return type_error("'%.200s' object is not subscriptable", o);
+        return type_error(ptr[u8]("'%.200s' object is not subscriptable"), o);
     }  def PyMapping_GetOptionalItem(
         obj_: ptr[PyObject], key: ptr[PyObject], result: ptr[ptr[PyObject]]
     ) -> i32 {
@@ -390,11 +394,13 @@ import from c {
                 }
                 return PySequence_SetItem(o, key_value, value);
             } elif int(sq.view(1)[0].sq_ass_item) != 0 {
-                type_error("sequence index must be integer, not '%.200s'", key);
+                type_error(
+                    ptr[u8]("sequence index must be integer, not '%.200s'"), key
+                );
                 return i32(-1);
             }
         }
-        type_error("'%.200s' object does not support item assignment", o);
+        type_error(ptr[u8]("'%.200s' object does not support item assignment"), o);
         return i32(-1);
     }  def PyObject_DelItem(o: ptr[PyObject], key: ptr[PyObject]) -> i32 {
         if not o or not key {
@@ -415,11 +421,13 @@ import from c {
                 }
                 return PySequence_DelItem(o, key_value);
             } elif int(sq.view(1)[0].sq_ass_item) != 0 {
-                type_error("sequence index must be integer, not '%.200s'", key);
+                type_error(
+                    ptr[u8]("sequence index must be integer, not '%.200s'"), key
+                );
                 return i32(-1);
             }
         }
-        type_error("'%.200s' object does not support item deletion", o);
+        type_error(ptr[u8]("'%.200s' object does not support item deletion"), o);
         return i32(-1);
     }  def PyObject_DelItemString(o: ptr[PyObject], key: ptr[u8]) -> i32 {
         if not o or not key {
@@ -473,7 +481,9 @@ import from c {
         if not pb
             or int(pb.view(1)[0].bf_getbuffer) == 0
             or pb.view(1)[0].bf_getbuffer(obj_, view, PyBUF_WRITABLE) != i32(0) {
-            PyErr_SetString(PyExc_TypeError, "expected a writable bytes-like object");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("expected a writable bytes-like object")
+            );
             return i32(-1);
         }
         buffer.view(1)[0] = view.view(1)[0].buf;
@@ -493,7 +503,7 @@ import from c {
         if not pb or int(pb.view(1)[0].bf_getbuffer) == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "a bytes-like object is required, not '%.100s'",
+                ptr[u8]("a bytes-like object is required, not '%.100s'"),
                 tp_name(obj_)
             );
             return i32(-1);
@@ -588,7 +598,7 @@ import from c {
             or PyObject_CheckBuffer(src) == i32(0) {
             PyErr_SetString(
                 PyExc_TypeError,
-                "both destination and source must be bytes-like objects"
+                ptr[u8]("both destination and source must be bytes-like objects")
             );
             return i32(-1);
         }
@@ -606,7 +616,7 @@ import from c {
         if view_dest.view(1)[0].length < view_src.view(1)[0].length {
             PyErr_SetString(
                 PyExc_BufferError,
-                "destination is too small to receive data from source"
+                ptr[u8]("destination is too small to receive data from source")
             );
             PyBuffer_Release(view_dest);
             PyBuffer_Release(view_src);
@@ -685,7 +695,8 @@ import from c {
     ) -> i32 {
         if not view {
             PyErr_SetString(
-                PyExc_BufferError, "PyBuffer_FillInfo: view==NULL argument is obsolete"
+                PyExc_BufferError,
+                ptr[u8]("PyBuffer_FillInfo: view==NULL argument is obsolete")
             );
             return i32(-1);
         }
@@ -696,7 +707,7 @@ import from c {
                 return i32(-1);
             }
             if (flags & PyBUF_WRITABLE) == PyBUF_WRITABLE and readonly == i32(1) {
-                PyErr_SetString(PyExc_BufferError, "Object is not writable.");
+                PyErr_SetString(PyExc_BufferError, ptr[u8]("Object is not writable."));
                 return i32(-1);
             }
         }
@@ -751,7 +762,7 @@ import from c {
         if format_spec and not unicode_check(format_spec) {
             PyErr_Format(
                 PyExc_SystemError,
-                "Format specifier must be a string, not %.200s",
+                ptr[u8]("Format specifier must be a string, not %.200s"),
                 tp_name(format_spec)
             );
             return NULL;
@@ -779,7 +790,7 @@ import from c {
             if not exception_raised(thread_state()) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "Type %.100s doesn't define __format__",
+                    ptr[u8]("Type %.100s doesn't define __format__"),
                     tp_name(obj_)
                 );
             }
@@ -789,7 +800,7 @@ import from c {
             if result and not unicode_check(result) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "__format__ must return a str, not %.200s",
+                    ptr[u8]("__format__ must return a str, not %.200s"),
                     tp_name(result)
                 );
                 object_decref(result);
@@ -1016,7 +1027,7 @@ import from c {
         if m and int(m.view(1)[0].nb_negative) != 0 {
             return m.view(1)[0].nb_negative(o);
         }
-        return type_error("bad operand type for unary -: '%.200s'", o);
+        return type_error(ptr[u8]("bad operand type for unary -: '%.200s'"), o);
     }  def PyNumber_Positive(o: ptr[PyObject]) -> ptr[PyObject] {
         if not o {
             return null_error();
@@ -1025,7 +1036,7 @@ import from c {
         if m and int(m.view(1)[0].nb_positive) != 0 {
             return m.view(1)[0].nb_positive(o);
         }
-        return type_error("bad operand type for unary +: '%.200s'", o);
+        return type_error(ptr[u8]("bad operand type for unary +: '%.200s'"), o);
     }  def PyNumber_Invert(o: ptr[PyObject]) -> ptr[PyObject] {
         if not o {
             return null_error();
@@ -1034,7 +1045,7 @@ import from c {
         if m and int(m.view(1)[0].nb_invert) != 0 {
             return m.view(1)[0].nb_invert(o);
         }
-        return type_error("bad operand type for unary ~: '%.200s'", o);
+        return type_error(ptr[u8]("bad operand type for unary ~: '%.200s'"), o);
     }  def PyNumber_Absolute(o: ptr[PyObject]) -> ptr[PyObject] {
         if not o {
             return null_error();
@@ -1043,7 +1054,7 @@ import from c {
         if m and int(m.view(1)[0].nb_absolute) != 0 {
             return m.view(1)[0].nb_absolute(o);
         }
-        return type_error("bad operand type for abs(): '%.200s'", o);
+        return type_error(ptr[u8]("bad operand type for abs(): '%.200s'"), o);
     }  def PyIndex_Check(obj_: ptr[PyObject]) -> i32 {
         return i32(1) if index_check(obj_) else i32(0);
     }  def _PyNumber_Index(item: ptr[PyObject]) -> ptr[PyObject] {
@@ -1056,7 +1067,7 @@ import from c {
         if not index_check(item) {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%.200s' object cannot be interpreted as an integer",
+                ptr[u8]("'%.200s' object cannot be interpreted as an integer"),
                 tp_name(item)
             );
             return NULL;
@@ -1068,7 +1079,7 @@ import from c {
         if not long_check(result) {
             PyErr_Format(
                 PyExc_TypeError,
-                "__index__ returned non-int (type %.200s)",
+                ptr[u8]("__index__ returned non-int (type %.200s)"),
                 tp_name(result)
             );
             object_decref(result);
@@ -1078,7 +1089,9 @@ import from c {
         if PyErr_WarnFormat(
             PyExc_DeprecationWarning,
             1,
-            "__index__ returned non-int (type %.200s).  The ability to return an instance of a strict subclass of int is deprecated, and may be removed in a future version of Python.",
+            ptr[u8](
+                "__index__ returned non-int (type %.200s).  The ability to return an instance of a strict subclass of int is deprecated, and may be removed in a future version of Python."
+            ),
             tp_name(result)
         )
             != 0 {
@@ -1114,7 +1127,7 @@ import from c {
                 } else {
                     PyErr_Format(
                         err,
-                        "cannot fit '%.200s' into an index-sized integer",
+                        ptr[u8]("cannot fit '%.200s' into an index-sized integer"),
                         tp_name(item)
                     );
                 }
@@ -1139,7 +1152,7 @@ import from c {
             if not long_check(result) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "__int__ returned non-int (type %.200s)",
+                    ptr[u8]("__int__ returned non-int (type %.200s)"),
                     tp_name(result)
                 );
                 object_decref(result);
@@ -1149,7 +1162,9 @@ import from c {
             if PyErr_WarnFormat(
                 PyExc_DeprecationWarning,
                 1,
-                "__int__ returned non-int (type %.200s).  The ability to return an instance of a strict subclass of int is deprecated, and may be removed in a future version of Python.",
+                ptr[u8](
+                    "__int__ returned non-int (type %.200s).  The ability to return an instance of a strict subclass of int is deprecated, and may be removed in a future version of Python."
+                ),
                 tp_name(result)
             )
                 != 0 {
@@ -1188,7 +1203,9 @@ import from c {
             return converted;
         }
         return type_error(
-            "int() argument must be a string, a bytes-like object or a real number, not '%.200s'",
+            ptr[u8](
+                "int() argument must be a string, a bytes-like object or a real number, not '%.200s'"
+            ),
             o
         );
     }  def PyNumber_Float(o: ptr[PyObject]) -> ptr[PyObject] {
@@ -1208,7 +1225,7 @@ import from c {
             if not float_check(res) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "%.50s.__float__ returned non-float (type %.50s)",
+                    ptr[u8]("%.50s.__float__ returned non-float (type %.50s)"),
                     tp_name(o),
                     tp_name(res)
                 );
@@ -1219,7 +1236,9 @@ import from c {
             if PyErr_WarnFormat(
                 PyExc_DeprecationWarning,
                 1,
-                "%.50s.__float__ returned non-float (type %.50s).  The ability to return an instance of a strict subclass of float is deprecated, and may be removed in a future version of Python.",
+                ptr[u8](
+                    "%.50s.__float__ returned non-float (type %.50s).  The ability to return an instance of a strict subclass of float is deprecated, and may be removed in a future version of Python."
+                ),
                 tp_name(o),
                 tp_name(res)
             )
@@ -1253,7 +1272,8 @@ import from c {
             base == i32(2) or base == i32(8) or base == i32(10) or base == i32(16)
         ) {
             PyErr_SetString(
-                PyExc_SystemError, "PyNumber_ToBase: base must be 2, 8, 10 or 16"
+                PyExc_SystemError,
+                ptr[u8]("PyNumber_ToBase: base must be 2, 8, 10 or 16")
             );
             return NULL;
         }
@@ -1285,10 +1305,10 @@ import from c {
         }
         mp = tp.view(1)[0].tp_as_mapping;
         if mp and int(mp.view(1)[0].mp_length) != 0 {
-            type_error("%.200s is not a sequence", s);
+            type_error(ptr[u8]("%.200s is not a sequence"), s);
             return -1;
         }
-        type_error("object of type '%.200s' has no len()", s);
+        type_error(ptr[u8]("object of type '%.200s' has no len()"), s);
         return -1;
     }  def PySequence_Length(s: ptr[PyObject]) -> i64 {
         return PySequence_Size(s);
@@ -1308,7 +1328,7 @@ import from c {
             }
             object_decref(result);
         }
-        return type_error("'%.200s' object can't be concatenated", s);
+        return type_error(ptr[u8]("'%.200s' object can't be concatenated"), s);
     }  def PySequence_Repeat(o: ptr[PyObject], count: i64) -> ptr[PyObject] {
         if not o {
             return null_error();
@@ -1330,7 +1350,7 @@ import from c {
             }
             object_decref(result);
         }
-        return type_error("'%.200s' object can't be repeated", o);
+        return type_error(ptr[u8]("'%.200s' object can't be repeated"), o);
     }  def PySequence_InPlaceConcat(
         s: ptr[PyObject], o: ptr[PyObject]
     ) -> ptr[PyObject] {
@@ -1353,7 +1373,7 @@ import from c {
             }
             object_decref(result);
         }
-        return type_error("'%.200s' object can't be concatenated", s);
+        return type_error(ptr[u8]("'%.200s' object can't be concatenated"), s);
     }  def PySequence_InPlaceRepeat(o: ptr[PyObject], count: i64) -> ptr[PyObject] {
         if not o {
             return null_error();
@@ -1379,7 +1399,7 @@ import from c {
             }
             object_decref(result);
         }
-        return type_error("'%.200s' object can't be repeated", o);
+        return type_error(ptr[u8]("'%.200s' object can't be repeated"), o);
     }  def PySequence_GetItem(s: ptr[PyObject], i_in: i64) -> ptr[PyObject] {
         if not s {
             return null_error();
@@ -1399,9 +1419,9 @@ import from c {
         }
         mp = tp.view(1)[0].tp_as_mapping;
         if mp and int(mp.view(1)[0].mp_subscript) != 0 {
-            return type_error("%.200s is not a sequence", s);
+            return type_error(ptr[u8]("%.200s is not a sequence"), s);
         }
-        return type_error("'%.200s' object does not support indexing", s);
+        return type_error(ptr[u8]("'%.200s' object does not support indexing"), s);
     }  def PySequence_GetSlice(s: ptr[PyObject], i1: i64, i2: i64) -> ptr[PyObject] {
         if not s {
             return null_error();
@@ -1416,7 +1436,7 @@ import from c {
             object_decref(slice);
             return res;
         }
-        return type_error("'%.200s' object is unsliceable", s);
+        return type_error(ptr[u8]("'%.200s' object is unsliceable"), s);
     }  def PySequence_SetItem(s: ptr[PyObject], i_in: i64, o: ptr[PyObject]) -> i32 {
         if not s {
             null_error();
@@ -1437,10 +1457,10 @@ import from c {
         }
         mp = tp.view(1)[0].tp_as_mapping;
         if mp and int(mp.view(1)[0].mp_ass_subscript) != 0 {
-            type_error("%.200s is not a sequence", s);
+            type_error(ptr[u8]("%.200s is not a sequence"), s);
             return i32(-1);
         }
-        type_error("'%.200s' object does not support item assignment", s);
+        type_error(ptr[u8]("'%.200s' object does not support item assignment"), s);
         return i32(-1);
     }  def PySequence_DelItem(s: ptr[PyObject], i_in: i64) -> i32 {
         if not s {
@@ -1462,10 +1482,10 @@ import from c {
         }
         mp = tp.view(1)[0].tp_as_mapping;
         if mp and int(mp.view(1)[0].mp_ass_subscript) != 0 {
-            type_error("%.200s is not a sequence", s);
+            type_error(ptr[u8]("%.200s is not a sequence"), s);
             return i32(-1);
         }
-        type_error("'%.200s' object doesn't support item deletion", s);
+        type_error(ptr[u8]("'%.200s' object doesn't support item deletion"), s);
         return i32(-1);
     }  def PySequence_SetSlice(
         s: ptr[PyObject], i1: i64, i2: i64, o: ptr[PyObject]
@@ -1484,7 +1504,7 @@ import from c {
             object_decref(slice);
             return res;
         }
-        type_error("'%.200s' object doesn't support slice assignment", s);
+        type_error(ptr[u8]("'%.200s' object doesn't support slice assignment"), s);
         return i32(-1);
     }  def PySequence_DelSlice(s: ptr[PyObject], i1: i64, i2: i64) -> i32 {
         if not s {
@@ -1501,7 +1521,7 @@ import from c {
             object_decref(slice);
             return res;
         }
-        type_error("'%.200s' object doesn't support slice deletion", s);
+        type_error(ptr[u8]("'%.200s' object doesn't support slice deletion"), s);
         return i32(-1);
     }  def PySequence_Tuple(v: ptr[PyObject]) -> ptr[PyObject] {
         if not v {
@@ -1612,10 +1632,15 @@ import from c {
             if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
                 if operation == PY_ITERSEARCH_CONTAINS {
                     type_error(
-                        "argument of type '%.200s' is not a container or iterable", seq
+                        ptr[u8](
+                            "argument of type '%.200s' is not a container or iterable"
+                        ),
+                        seq
                     );
                 } else {
-                    type_error("argument of type '%.200s' is not iterable", seq);
+                    type_error(
+                        ptr[u8]("argument of type '%.200s' is not iterable"), seq
+                    );
                 }
             }
             return -1;
@@ -1643,7 +1668,7 @@ import from c {
                 if operation == PY_ITERSEARCH_COUNT {
                     if n == PY_SSIZE_T_MAX {
                         PyErr_SetString(
-                            PyExc_OverflowError, "count exceeds C integer size"
+                            PyExc_OverflowError, ptr[u8]("count exceeds C integer size")
                         );
                         failed = True;
                         break;
@@ -1652,7 +1677,7 @@ import from c {
                 } elif operation == PY_ITERSEARCH_INDEX {
                     if wrapped {
                         PyErr_SetString(
-                            PyExc_OverflowError, "index exceeds C integer size"
+                            PyExc_OverflowError, ptr[u8]("index exceeds C integer size")
                         );
                         failed = True;
                     } else {
@@ -1673,7 +1698,9 @@ import from c {
             }
         }
         if not failed and not done and operation == PY_ITERSEARCH_INDEX {
-            PyErr_SetString(PyExc_ValueError, "sequence.index(x): x not in sequence");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("sequence.index(x): x not in sequence")
+            );
             failed = True;
         }
         if failed {
@@ -1714,11 +1741,11 @@ import from c {
         }
         sq = tp.view(1)[0].tp_as_sequence;
         if sq and int(sq.view(1)[0].sq_length) != 0 {
-            type_error("%.200s is not a mapping", o);
+            type_error(ptr[u8]("%.200s is not a mapping"), o);
             return -1;
         }
 
-        type_error("object of type '%.200s' has no len()", o);
+        type_error(ptr[u8]("object of type '%.200s' has no len()"), o);
         return -1;
     }  def PyMapping_Length(o: ptr[PyObject]) -> i64 {
         return PyMapping_Size(o);
@@ -1771,7 +1798,9 @@ import from c {
         }
         if rc < i32(0) {
             PyErr_FormatUnraisable(
-                "Exception ignored in PyMapping_HasKeyString(); consider using PyMapping_HasKeyStringWithError(), PyMapping_GetOptionalItemString() or PyMapping_GetItemString()"
+                ptr[u8](
+                    "Exception ignored in PyMapping_HasKeyString(); consider using PyMapping_HasKeyStringWithError(), PyMapping_GetOptionalItemString() or PyMapping_GetItemString()"
+                )
             );
             return i32(0);
         }
@@ -1787,7 +1816,9 @@ import from c {
         }
         if rc < i32(0) {
             PyErr_FormatUnraisable(
-                "Exception ignored in PyMapping_HasKey(); consider using PyMapping_HasKeyWithError(), PyMapping_GetOptionalItem() or PyObject_GetItem()"
+                ptr[u8](
+                    "Exception ignored in PyMapping_HasKey(); consider using PyMapping_HasKeyWithError(), PyMapping_GetOptionalItem() or PyObject_GetItem()"
+                )
             );
             return i32(0);
         }
@@ -1831,13 +1862,13 @@ import from c {
             if PySequence_Check(o) != i32(0) {
                 return PySeqIter_New(o);
             }
-            return type_error("'%.200s' object is not iterable", o);
+            return type_error(ptr[u8]("'%.200s' object is not iterable"), o);
         }
         res = t.view(1)[0].tp_iter(o);
         if res and not iter_check(res) {
             PyErr_Format(
                 PyExc_TypeError,
-                "iter() returned non-iterator of type '%.100s'",
+                ptr[u8]("iter() returned non-iterator of type '%.100s'"),
                 tp_name(res)
             );
             object_decref(res);
@@ -1847,13 +1878,13 @@ import from c {
     }  def PyObject_GetAIter(o: ptr[PyObject]) -> ptr[PyObject] {
         am = object_type(o).view(1)[0].tp_as_async;
         if not am or int(am.view(1)[0].am_aiter) == 0 {
-            return type_error("'%.200s' object is not an async iterable", o);
+            return type_error(ptr[u8]("'%.200s' object is not an async iterable"), o);
         }
         it = am.view(1)[0].am_aiter(o);
         if it and PyAIter_Check(it) == i32(0) {
             PyErr_Format(
                 PyExc_TypeError,
-                "aiter() returned not an async iterator of type '%.100s'",
+                ptr[u8]("aiter() returned not an async iterator of type '%.100s'"),
                 tp_name(it)
             );
             object_decref(it);
@@ -1875,7 +1906,9 @@ import from c {
     }  def PyIter_NextItem(iter: ptr[PyObject], item: ptr[ptr[PyObject]]) -> i32 {
         if int(object_type(iter).view(1)[0].tp_iternext) == 0 {
             item.view(1)[0] = NULL;
-            PyErr_Format(PyExc_TypeError, "expected an iterator, got '%T'", iter);
+            PyErr_Format(
+                PyExc_TypeError, ptr[u8]("expected an iterator, got '%T'"), iter
+            );
             return i32(-1);
         }
         (status, next) = iternext(iter);
@@ -2104,14 +2137,16 @@ impl set_c_string(exception: ptr[PyObject], message: ptr[u8]) {
     }
 }
 
-impl type_error(msg: str, op: ptr[PyObject]) -> ptr[PyObject] {
+impl type_error(msg: ptr[u8], op: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_Format(PyExc_TypeError, msg, tp_name(op));
     return NULL;
 }
 
 impl null_error -> ptr[PyObject] {
     if not exception_raised(thread_state()) {
-        PyErr_SetString(PyExc_SystemError, "null argument to internal routine");
+        PyErr_SetString(
+            PyExc_SystemError, ptr[u8]("null argument to internal routine")
+        );
     }
     return NULL;
 }
@@ -2218,7 +2253,7 @@ impl binop_type_error(
 ) -> ptr[PyObject] {
     PyErr_Format(
         PyExc_TypeError,
-        "unsupported operand type(s) for %.100s: '%.100s' and '%.100s'",
+        ptr[u8]("unsupported operand type(s) for %.100s: '%.100s' and '%.100s'"),
         op_name,
         tp_name(v),
         tp_name(w)
@@ -2295,7 +2330,7 @@ impl ternary_op(
     if z == Py_None {
         PyErr_Format(
             PyExc_TypeError,
-            "unsupported operand type(s) for %.100s: '%.100s' and '%.100s'",
+            ptr[u8]("unsupported operand type(s) for %.100s: '%.100s' and '%.100s'"),
             op_name,
             tp_name(v),
             tp_name(w)
@@ -2303,7 +2338,9 @@ impl ternary_op(
     } else {
         PyErr_Format(
             PyExc_TypeError,
-            "unsupported operand type(s) for %.100s: '%.100s', '%.100s', '%.100s'",
+            ptr[u8](
+                "unsupported operand type(s) for %.100s: '%.100s', '%.100s', '%.100s'"
+            ),
             op_name,
             tp_name(v),
             tp_name(w),
@@ -2317,7 +2354,9 @@ impl sequence_repeat(
     repeatfunc: int, seq: ptr[PyObject], n: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not index_check(n) {
-        return type_error("can't multiply sequence by non-int of type '%.200s'", n);
+        return type_error(
+            ptr[u8]("can't multiply sequence by non-int of type '%.200s'"), n
+        );
     }
     count = PyNumber_AsSsize_t(n, PyExc_OverflowError);
     if count == -1 and PyErr_Occurred() {
@@ -2502,7 +2541,7 @@ impl method_output_as_list(o: ptr[PyObject], meth: ptr[PyObject]) -> ptr[PyObjec
         if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "%.200s.%U() returned a non-iterable (type %.200s)",
+                ptr[u8]("%.200s.%U() returned a non-iterable (type %.200s)"),
                 tp_name(o),
                 meth,
                 tp_name(meth_output)
@@ -2608,7 +2647,7 @@ impl abstract_issubclass(derived_in: ptr[PyObject], cls: ptr[PyObject]) -> i32 {
     return r;
 }
 
-impl check_class(cls: ptr[PyObject], error: str) -> i32 {
+impl check_class(cls: ptr[PyObject], error: ptr[u8]) -> i32 {
     bases = abstract_get_bases(cls);
     if not bases {
         if not exception_raised(thread_state()) {
@@ -2638,7 +2677,8 @@ impl object_isinstance(inst: ptr[PyObject], cls: ptr[PyObject]) -> i32 {
         }
     } else {
         if check_class(
-            cls, "isinstance() arg 2 must be a type, a tuple of types, or a union"
+            cls,
+            ptr[u8]("isinstance() arg 2 must be a type, a tuple of types, or a union")
         )
             == i32(0) {
             return i32(-1);
@@ -2703,12 +2743,15 @@ impl recursive_issubclass(derived: ptr[PyObject], cls: ptr[PyObject]) -> i32 {
     if type_check(cls) and type_check(derived) {
         return PyType_IsSubtype(derived, cls);
     }
-    if check_class(derived, "issubclass() arg 1 must be a class") == i32(0) {
+    if check_class(derived, ptr[u8]("issubclass() arg 1 must be a class")) == i32(0) {
         return i32(-1);
     }
     if not union_check(cls)
         and check_class(
-            cls, "issubclass() arg 2 must be a class, a tuple of classes, or a union"
+            cls,
+            ptr[u8](
+                "issubclass() arg 2 must be a class, a tuple of classes, or a union"
+            )
         )
             == i32(0) {
         return i32(-1);

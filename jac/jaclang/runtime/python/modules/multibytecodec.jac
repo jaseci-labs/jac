@@ -568,7 +568,9 @@ impl multibytecodec_encerror(
     if newpos < 0 or newpos > buf.view(1)[0].inlen {
         PyErr_Clear();
         PyErr_Format(
-            PyExc_IndexError, "position %zd from error handler out of bounds", newpos
+            PyExc_IndexError,
+            ptr[u8]("position %zd from error handler out of bounds"),
+            newpos
         );
         jacpy_release(retobj);
         jacpy_release(retstr);
@@ -697,7 +699,9 @@ impl multibytecodec_decerror(
     if newpos < 0 or buf.view(1)[0].inbuf_top + newpos > buf.view(1)[0].inbuf_end {
         PyErr_Clear();
         PyErr_Format(
-            PyExc_IndexError, "position %zd from error handler out of bounds", newpos
+            PyExc_IndexError,
+            ptr[u8]("position %zd from error handler out of bounds"),
+            newpos
         );
         jacpy_release(retobj);
         return -1;

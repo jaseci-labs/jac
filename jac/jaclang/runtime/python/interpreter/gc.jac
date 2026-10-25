@@ -9,11 +9,11 @@ import from c {
         format: str, *args: any
     );  def PySys_FormatStderr(format: str, *args: any);  def PyErr_WarnExplicitFormat(
         category: ptr[PyObject],
-        filename: str,
+        filename: ptr[u8],
         lineno: i32,
-        module: str,
+        module: ptr[u8],
         registry: ptr[PyObject],
-        format: str,
+        format: ptr[u8],
         *args: any
     ) -> i32;  def _PyObject_AssertFailed(
         obj_: ptr[PyObject],
@@ -364,26 +364,28 @@ import from c {
             if (gc_debug(gcstate) & _PyGC_DEBUG_UNCOLLECTABLE) != 0 {
                 warned = PyErr_WarnExplicitFormat(
                     PyExc_ResourceWarning,
-                    "gc",
+                    ptr[u8]("gc"),
                     i32(0),
-                    "gc",
+                    ptr[u8]("gc"),
                     NULL,
-                    "gc: %zd uncollectable objects at shutdown",
+                    ptr[u8]("gc: %zd uncollectable objects at shutdown"),
                     object_size(garbage.view(1)[0])
                 );
             } else {
                 warned = PyErr_WarnExplicitFormat(
                     PyExc_ResourceWarning,
-                    "gc",
+                    ptr[u8]("gc"),
                     i32(0),
-                    "gc",
+                    ptr[u8]("gc"),
                     NULL,
-                    "gc: %zd uncollectable objects at shutdown; use gc.set_debug(gc.DEBUG_UNCOLLECTABLE) to list them",
+                    ptr[u8](
+                        "gc: %zd uncollectable objects at shutdown; use gc.set_debug(gc.DEBUG_UNCOLLECTABLE) to list them"
+                    ),
                     object_size(garbage.view(1)[0])
                 );
             }
             if warned != 0 {
-                PyErr_FormatUnraisable("Exception ignored in GC shutdown");
+                PyErr_FormatUnraisable(ptr[u8]("Exception ignored in GC shutdown"));
             }
             if (gc_debug(gcstate) & _PyGC_DEBUG_UNCOLLECTABLE) != 0 {
                 repr = PyObject_Repr(garbage.view(1)[0]);
@@ -393,7 +395,9 @@ import from c {
                 }
                 if not repr or not bytes_obj {
                     PyErr_FormatUnraisable(
-                        "Exception ignored in GC shutdown while formatting garbage"
+                        ptr[u8](
+                            "Exception ignored in GC shutdown while formatting garbage"
+                        )
                     );
                 } else {
                     PySys_WriteStderr(
@@ -1352,7 +1356,7 @@ impl handle_weakrefs(
         temp = PyObject_CallOneArg(callback, op);
         if not temp {
             PyErr_FormatUnraisable(
-                "Exception ignored on calling weakref callback %R", callback
+                ptr[u8]("Exception ignored on calling weakref callback %R"), callback
             );
         } else {
             object_decref(temp);
@@ -1434,7 +1438,7 @@ impl delete_garbage(
                 tp.view(1)[0].tp_clear(op);
                 if exception_raised(tstate) {
                     PyErr_FormatUnraisable(
-                        "Exception ignored in tp_clear of %s",
+                        ptr[u8]("Exception ignored in tp_clear of %s"),
                         object_type(op).view(1)[0].tp_name
                     );
                 }
@@ -1503,14 +1507,16 @@ impl invoke_gc_callback(
             uncollectable
         );
         if not info {
-            PyErr_FormatUnraisable("Exception ignored on invoking gc callbacks");
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored on invoking gc callbacks")
+            );
             return;
         }
     }
     phase_obj = PyUnicode_FromString(phase);
     if not phase_obj {
         object_xdecref(info);
-        PyErr_FormatUnraisable("Exception ignored on invoking gc callbacks");
+        PyErr_FormatUnraisable(ptr[u8]("Exception ignored on invoking gc callbacks"));
         return;
     }
     slots: own GcStack = GcStack();
@@ -1527,7 +1533,7 @@ impl invoke_gc_callback(
         r = PyObject_Vectorcall(cb, stack, u64(2), NULL);
         if not r {
             PyErr_FormatUnraisable(
-                "Exception ignored while calling GC callback %R", cb
+                ptr[u8]("Exception ignored while calling GC callback %R"), cb
             );
         } else {
             object_decref(r);
@@ -1682,7 +1688,7 @@ impl gc_collect_main(tstate: ptr[PyThreadState], generation: i32, reason: i32) -
         if reason == _Py_GC_REASON_SHUTDOWN {
             PyErr_Clear();
         } else {
-            PyErr_FormatUnraisable("Exception ignored in garbage collection");
+            PyErr_FormatUnraisable(ptr[u8]("Exception ignored in garbage collection"));
         }
     }
 
@@ -1820,7 +1826,7 @@ impl unpack_generation(
         if nargs == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "%.200s%s takes at most %d %sargument%s (%zd given)",
+                ptr[u8]("%.200s%s takes at most %d %sargument%s (%zd given)"),
                 fname,
                 ptr[u8]("()"),
                 i32(1),
@@ -1831,7 +1837,7 @@ impl unpack_generation(
         } else {
             PyErr_Format(
                 PyExc_TypeError,
-                "%.200s%s takes at most %d %sargument%s (%zd given)",
+                ptr[u8]("%.200s%s takes at most %d %sargument%s (%zd given)"),
                 fname,
                 ptr[u8]("()"),
                 i32(1),
@@ -1864,7 +1870,7 @@ impl unexpected_keyword_arg(kwnames: ptr[PyObject], fname: ptr[u8]) {
         keyword = tuple_get_item(kwnames, j);
         j += 1;
         if not type_has_feature(object_type(keyword), Py_TPFLAGS_UNICODE_SUBCLASS) {
-            PyErr_SetString(PyExc_TypeError, "keywords must be strings");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("keywords must be strings"));
             return;
         }
         if _PyUnicode_EqualToASCIIString(keyword, ptr[u8]("generation")) == 0 {
@@ -1877,7 +1883,9 @@ impl unexpected_keyword_arg(kwnames: ptr[PyObject], fname: ptr[u8]) {
             if suggestion_keyword {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "%.200s%s got an unexpected keyword argument '%S'. Did you mean '%S'?",
+                    ptr[u8](
+                        "%.200s%s got an unexpected keyword argument '%S'. Did you mean '%S'?"
+                    ),
                     fname,
                     ptr[u8]("()"),
                     keyword,
@@ -1887,7 +1895,7 @@ impl unexpected_keyword_arg(kwnames: ptr[PyObject], fname: ptr[u8]) {
             } else {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "%.200s%s got an unexpected keyword argument '%S'",
+                    ptr[u8]("%.200s%s got an unexpected keyword argument '%S'"),
                     fname,
                     ptr[u8]("()"),
                     keyword
@@ -1898,14 +1906,17 @@ impl unexpected_keyword_arg(kwnames: ptr[PyObject], fname: ptr[u8]) {
     }
 
     PyErr_Format(
-        PyExc_TypeError, "invalid keyword argument for %.200s%s", fname, ptr[u8]("()")
+        PyExc_TypeError,
+        ptr[u8]("invalid keyword argument for %.200s%s"),
+        fname,
+        ptr[u8]("()")
     );
 }
 
 impl gc_collect_impl(module: ptr[PyObject], generation: i32) -> i64 {
     tstate = current_tstate();
     if generation < 0 or generation >= NUM_GENERATIONS {
-        PyErr_SetString(PyExc_ValueError, "invalid generation");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("invalid generation"));
         return -1;
     }
     return _PyGC_Collect(tstate, generation, _Py_GC_REASON_MANUAL);
@@ -1982,11 +1993,15 @@ impl convert_int_arg(arg: ptr[PyObject]) -> tuple[i32, i32] {
         return (i32(-1), i32(0));
     }
     if ival > INT_MAX_LONG {
-        PyErr_SetString(PyExc_OverflowError, "signed integer is greater than maximum");
+        PyErr_SetString(
+            PyExc_OverflowError, ptr[u8]("signed integer is greater than maximum")
+        );
         return (i32(-1), i32(0));
     }
     if ival < INT_MIN_LONG {
-        PyErr_SetString(PyExc_OverflowError, "signed integer is less than minimum");
+        PyErr_SetString(
+            PyExc_OverflowError, ptr[u8]("signed integer is less than minimum")
+        );
         return (i32(-1), i32(0));
     }
     return (i32(0), i32(ival));
@@ -2022,7 +2037,9 @@ impl gc_set_threshold(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
             group_right_2 = 1;
         }
     } else {
-        PyErr_SetString(PyExc_TypeError, "gc.set_threshold requires 1 to 3 arguments");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("gc.set_threshold requires 1 to 3 arguments")
+        );
         return NULL;
     }
     return gc_set_threshold_impl(
@@ -2142,12 +2159,16 @@ impl gc_get_objects_impl(module: ptr[PyObject], generation: i64) -> ptr[PyObject
     if generation >= i64(NUM_GENERATIONS) {
         return PyErr_Format(
             PyExc_ValueError,
-            "generation parameter must be less than the number of available generations (%i)",
+            ptr[u8](
+                "generation parameter must be less than the number of available generations (%i)"
+            ),
             NUM_GENERATIONS
         );
     }
     if generation < -1 {
-        PyErr_SetString(PyExc_ValueError, "generation parameter cannot be negative");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("generation parameter cannot be negative")
+        );
         return NULL;
     }
     return _PyGC_GetObjects(current_interp(), i32(generation));
@@ -2172,7 +2193,7 @@ impl gc_get_objects(
             } else {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "argument should be integer or None, not '%.200s'",
+                    ptr[u8]("argument should be integer or None, not '%.200s'"),
                     object_type(arg).view(1)[0].tp_name
                 );
                 return NULL;

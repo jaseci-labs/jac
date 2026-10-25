@@ -209,7 +209,7 @@ import from c {
                 return i32(-1);
             }
             if value == 0 {
-                PyErr_SetString(PyExc_ValueError, "slice step cannot be zero");
+                PyErr_SetString(PyExc_ValueError, ptr[u8]("slice step cannot be zero"));
                 return i32(-1);
             }
             if value < -i64.MAX {
@@ -338,7 +338,7 @@ impl ellipsis_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     if object_size(args) != 0 or (kwargs and PyDict_Size(kwargs) != 0) {
-        PyErr_SetString(PyExc_TypeError, "EllipsisType takes no arguments");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("EllipsisType takes no arguments"));
         return NULL;
     }
     return py_ellipsis();
@@ -429,7 +429,7 @@ impl evaluate_slice_index(v: ptr[PyObject]) -> ptr[PyObject] {
     }
     PyErr_SetString(
         PyExc_TypeError,
-        "slice indices must be integers or None or have an __index__ method"
+        ptr[u8]("slice indices must be integers or None or have an __index__ method")
     );
     return NULL;
 }
@@ -497,7 +497,7 @@ impl slice_get_long_indices(
             step_sign = i32(0);
             PyLong_GetSign(step, &mut step_sign);
             if step_sign == 0 {
-                PyErr_SetString(PyExc_ValueError, "slice step cannot be zero");
+                PyErr_SetString(PyExc_ValueError, ptr[u8]("slice step cannot be zero"));
                 failed = True;
             }
             step_is_negative = step_sign < 0;
@@ -555,7 +555,7 @@ impl slice_indices(op: ptr[PyObject], length_arg: ptr[PyObject]) -> ptr[PyObject
         return NULL;
     }
     if long_is_negative(length) {
-        PyErr_SetString(PyExc_ValueError, "length should not be negative");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("length should not be negative"));
         jacpy_release(length);
         return NULL;
     }

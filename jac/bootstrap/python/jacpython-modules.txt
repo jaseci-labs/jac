@@ -45,6 +45,7 @@ grp             test.test_grp
 _types          test.test_types
 _typing
 _suggestions
+_warnings       test.test_warnings
 _sysconfig      test.test_sysconfig
 _weakref        test.test_weakref
 _tracemalloc    test.test_tracemalloc

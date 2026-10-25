@@ -352,14 +352,14 @@ impl faulthandler_get_fileno(file_in: ptr[PyObject]) -> tuple[i32, ptr[PyObject]
             return (i32(-1), NULL);
         }
         if file == Py_None {
-            PyErr_SetString(PyExc_RuntimeError, "sys.stderr is None");
+            PyErr_SetString(PyExc_RuntimeError, ptr[u8]("sys.stderr is None"));
             object_decref(file);
             return (i32(-1), NULL);
         }
     } elif long_check(file) {
         if object_type(file) == ptr[PyTypeObject](addressof(PyBool_Type)) {
             if PyErr_WarnEx(
-                PyExc_RuntimeWarning, "bool is used as a file descriptor", 1
+                PyExc_RuntimeWarning, ptr[u8]("bool is used as a file descriptor"), 1
             )
                 != 0 {
                 return (i32(-1), NULL);
@@ -370,7 +370,7 @@ impl faulthandler_get_fileno(file_in: ptr[PyObject]) -> tuple[i32, ptr[PyObject]
             return (i32(-1), NULL);
         }
         if fd < 0 {
-            PyErr_SetString(PyExc_ValueError, "file is not a valid file descriptor");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("file is not a valid file descriptor"));
             return (i32(-1), NULL);
         }
         return (fd, NULL);
@@ -395,7 +395,7 @@ impl faulthandler_get_fileno(file_in: ptr[PyObject]) -> tuple[i32, ptr[PyObject]
 
     if fd == -1 {
         PyErr_SetString(
-            PyExc_RuntimeError, "file.fileno() is not a valid file descriptor"
+            PyExc_RuntimeError, ptr[u8]("file.fileno() is not a valid file descriptor")
         );
         object_decref(file);
         return (i32(-1), NULL);
@@ -410,7 +410,7 @@ impl faulthandler_get_fileno(file_in: ptr[PyObject]) -> tuple[i32, ptr[PyObject]
 impl get_thread_state -> ptr[PyThreadState] {
     tstate = current_tstate();
     if not tstate {
-        PyErr_SetString(PyExc_RuntimeError, "unable to get the current thread state");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("unable to get the current thread state"));
         return ptr[PyThreadState]();
     }
     return tstate;
@@ -489,7 +489,7 @@ impl faulthandler_dump_traceback_py(
         errmsg = _Py_DumpTracebackThreads(fd, ptr[PyInterpreterState](), tstate);
         _PyEval_StartTheWorld(interp);
         if errmsg {
-            PyErr_Format(PyExc_RuntimeError, "%s", errmsg);
+            PyErr_Format(PyExc_RuntimeError, ptr[u8]("%s"), errmsg);
             object_xdecref(file);
             return NULL;
         }
@@ -848,12 +848,12 @@ impl faulthandler_dump_traceback_later(
     }
     timeout_us = _PyTime_AsMicroseconds(timeout, _PyTime_ROUND_TIMEOUT);
     if timeout_us <= 0 {
-        PyErr_SetString(PyExc_ValueError, "timeout must be greater than 0");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("timeout must be greater than 0"));
         return NULL;
     }
 
     if timeout_us > PY_TIMEOUT_MAX or timeout_us // SEC_TO_US > LONG_MAX {
-        PyErr_SetString(PyExc_OverflowError, "timeout value is too large");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("timeout value is too large"));
         return NULL;
     }
 
@@ -922,7 +922,7 @@ impl faulthandler_dump_traceback_later(
         runtime_xsetref(_PyRuntimeState_FAULTHANDLER_THREAD_FILE, NULL);
         PyMem_Free(ptr(header));
         set_thread_ptr(_PyRuntimeState_FAULTHANDLER_THREAD_HEADER, ptr());
-        PyErr_SetString(PyExc_RuntimeError, "unable to start watchdog thread");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("unable to start watchdog thread"));
         return NULL;
     }
     return object_new_ref(Py_None);
@@ -993,7 +993,7 @@ impl check_signum(signum: i32) -> bool {
         if handler_at(i).view(1)[0].signum == signum {
             PyErr_Format(
                 PyExc_RuntimeError,
-                "signal %i cannot be registered, use enable() instead",
+                ptr[u8]("signal %i cannot be registered, use enable() instead"),
                 signum
             );
             return False;
@@ -1001,7 +1001,7 @@ impl check_signum(signum: i32) -> bool {
         i += 1;
     }
     if signum < 1 or Py_NSIG <= i64(signum) {
-        PyErr_SetString(PyExc_ValueError, "signal number out of range");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("signal number out of range"));
         return False;
     }
     return True;
@@ -1190,7 +1190,7 @@ impl faulthandler_fatal_error_c_thread(
     tid = PyThread_start_new_thread(ptr(faulthandler_fatal_error_thread), lock);
     if tid == PYTHREAD_INVALID_THREAD_ID {
         PyThread_free_lock(lock);
-        PyErr_SetString(PyExc_RuntimeError, "unable to start the thread");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("unable to start the thread"));
         return NULL;
     }
 
@@ -1253,7 +1253,7 @@ impl faulthandler_stack_overflow(
     }
     PyErr_Format(
         PyExc_RuntimeError,
-        "unable to raise a stack overflow (allocated %zu bytes on the stack, %zu recursive calls)",
+        ptr[u8]("unable to raise a stack overflow (allocated %zu bytes on the stack, %zu recursive calls)"),
         i64.wrap(size),
         i64.wrap(depth)
     );

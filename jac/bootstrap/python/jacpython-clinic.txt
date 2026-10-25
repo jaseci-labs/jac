@@ -69,3 +69,4 @@ _asyncio
 posix
 _signal
 _thread
+_warnings

@@ -1584,11 +1584,15 @@ impl unicodedata_UCD_lookup_impl(
     }
     code = getcode(name, int(name_length));
     if code < 0 {
-        return PyErr_Format(PyExc_KeyError, "undefined character name '%s'", name);
+        return PyErr_Format(
+            PyExc_KeyError, ptr[u8]("undefined character name '%s'"), name
+        );
     }
     if ucd_check(self) {
         if is_alias(code) or is_named_seq(code) {
-            return PyErr_Format(PyExc_KeyError, "undefined character name '%s'", name);
+            return PyErr_Format(
+                PyExc_KeyError, ptr[u8]("undefined character name '%s'"), name
+            );
         }
     }
 

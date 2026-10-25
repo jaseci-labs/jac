@@ -386,7 +386,7 @@ impl profiler_finalize(instance: ptr[PyObject]) {
     if state.flags & POF_ENABLED {
         if _PyEval_SetProfile(PyThreadState_Get(), ptr(), NULL) < 0 {
             PyErr_FormatUnraisable(
-                "Exception ignored while destroying _lsprof profiler"
+                ptr[u8]("Exception ignored while destroying _lsprof profiler")
             );
         }
     }
@@ -400,7 +400,8 @@ impl call_external_timer(state: ProfilerState) -> int {
     state.flags &= ~POF_EXT_TIMER;
     if not value {
         PyErr_FormatUnraisable(
-            "Exception ignored while calling _lsprof timer %R", state.external_timer
+            ptr[u8]("Exception ignored while calling _lsprof timer %R"),
+            state.external_timer
         );
         return 0;
     }
@@ -414,7 +415,8 @@ impl call_external_timer(state: ProfilerState) -> int {
     jacpy_release(value);
     if status < 0 {
         PyErr_FormatUnraisable(
-            "Exception ignored while calling _lsprof timer %R", state.external_timer
+            ptr[u8]("Exception ignored while calling _lsprof timer %R"),
+            state.external_timer
         );
         return 0;
     }

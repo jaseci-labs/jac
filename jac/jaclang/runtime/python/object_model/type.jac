@@ -141,7 +141,7 @@ import from c {
         k: ptr[u8]
     ) -> u64;  def _PyDict_NewKeysForClass(cls: ptr[PyTypeObject]) -> ptr[u8];  def _PyDict_SetItem_LockHeld(
         dct: ptr[PyObject], name: ptr[PyObject], value: ptr[PyObject]
-    ) -> i32;  def _PyErr_FormatNote(format: str, *args: any);  def _PyFunction_GetVersionForCurrentState(
+    ) -> i32;  def _PyErr_FormatNote(format: ptr[u8], *args: any);  def _PyFunction_GetVersionForCurrentState(
         func: ptr[PyObject]
     ) -> u32;  def _PyMemoryView_FromBufferProc(
         v: ptr[PyObject], flags: i32, bufferproc: ptr
@@ -505,7 +505,9 @@ import from c {
             }
             i += 1;
         }
-        PyErr_SetString(PyExc_RuntimeError, "no more type watcher IDs available");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("no more type watcher IDs available")
+        );
         return -1;
     }
 }
@@ -523,7 +525,7 @@ import from c {
         return 0;
     }  def PyType_Watch(watcher_id: i32, obj_: ptr[PyObject]) -> i32 {
         if not type_check(obj_) {
-            PyErr_SetString(PyExc_ValueError, "Cannot watch non-type");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("Cannot watch non-type"));
             return -1;
         }
         type = ptr[PyTypeObject](obj_);
@@ -538,7 +540,7 @@ import from c {
         return 0;
     }  def PyType_Unwatch(watcher_id: i32, obj_: ptr[PyObject]) -> i32 {
         if not type_check(obj_) {
-            PyErr_SetString(PyExc_ValueError, "Cannot watch non-type");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("Cannot watch non-type"));
             return -1;
         }
         type = ptr[PyTypeObject](obj_);
@@ -768,7 +770,7 @@ import from c {
         if not unicode_check(name) {
             PyErr_Format(
                 PyExc_TypeError,
-                "attribute name must be string, not '%.200s'",
+                ptr[u8]("attribute name must be string, not '%.200s'"),
                 object_type(name).view(1)[0].tp_name
             );
             return NULL;
@@ -828,7 +830,7 @@ import from c {
         if not suppress_missing_attribute {
             PyErr_Format(
                 PyExc_AttributeError,
-                "type object '%.100s' has no attribute '%U'",
+                ptr[u8]("type object '%.100s' has no attribute '%U'"),
                 type.view(1)[0].tp_name,
                 name
             );
@@ -1265,7 +1267,7 @@ import from c {
         if value and not dict_check(value) {
             PyErr_Format(
                 PyExc_TypeError,
-                "__dict__ must be set to a dictionary, not a '%.200s'",
+                ptr[u8]("__dict__ must be set to a dictionary, not a '%.200s'"),
                 object_type(value).view(1)[0].tp_name
             );
             return i32(-1);
@@ -1275,7 +1277,9 @@ import from c {
         }
         dictptr = _PyObject_ComputedDictPointer(obj_);
         if not dictptr {
-            PyErr_SetString(PyExc_AttributeError, "This object has no __dict__");
+            PyErr_SetString(
+                PyExc_AttributeError, ptr[u8]("This object has no __dict__")
+            );
             return i32(-1);
         }
         olddict = dictptr.view(1)[0];
@@ -1352,7 +1356,9 @@ import from c {
             }
             PyErr_SetString(
                 PyExc_TypeError,
-                "metaclass conflict: the metaclass of a derived class must be a (non-strict) subclass of the metaclasses of all its bases"
+                ptr[u8](
+                    "metaclass conflict: the metaclass of a derived class must be a (non-strict) subclass of the metaclasses of all its bases"
+                )
             );
             return ptr[PyTypeObject]();
         }
@@ -1714,14 +1720,14 @@ import from c {
         while slot.view(1)[0].slot != 0 {
             slot_id = slot.view(1)[0].slot;
             if slot_id < 0 or i64(slot_id) >= PYSLOT_OFFSETS_LEN {
-                PyErr_SetString(PyExc_RuntimeError, "invalid slot offset");
+                PyErr_SetString(PyExc_RuntimeError, ptr[u8]("invalid slot offset"));
                 return type_from_spec_finally(res, bases, tp_doc, ht_name, ht_tpname);
             }
             if slot_id == Py_tp_members {
                 if nmembers != 0 {
                     PyErr_SetString(
                         PyExc_SystemError,
-                        "Multiple Py_tp_members slots are not supported."
+                        ptr[u8]("Multiple Py_tp_members slots are not supported.")
                     );
                     return type_from_spec_finally(
                         res, bases, tp_doc, ht_name, ht_tpname
@@ -1734,7 +1740,9 @@ import from c {
                         if spec.view(1)[0].basicsize > 0 {
                             PyErr_SetString(
                                 PyExc_SystemError,
-                                "With Py_RELATIVE_OFFSET, basicsize must be negative."
+                                ptr[u8](
+                                    "With Py_RELATIVE_OFFSET, basicsize must be negative."
+                                )
                             );
                             return type_from_spec_finally(
                                 res, bases, tp_doc, ht_name, ht_tpname
@@ -1745,7 +1753,7 @@ import from c {
                                 >= -i64(spec.view(1)[0].basicsize) {
                             PyErr_SetString(
                                 PyExc_SystemError,
-                                "Member offset out of range (0..-basicsize)"
+                                ptr[u8]("Member offset out of range (0..-basicsize)")
                             );
                             return type_from_spec_finally(
                                 res, bases, tp_doc, ht_name, ht_tpname
@@ -1767,7 +1775,8 @@ import from c {
             } elif slot_id == Py_tp_doc {
                 if tp_doc {
                     PyErr_SetString(
-                        PyExc_SystemError, "Multiple Py_tp_doc slots are not supported."
+                        PyExc_SystemError,
+                        ptr[u8]("Multiple Py_tp_doc slots are not supported.")
                     );
                     return type_from_spec_finally(
                         res, bases, tp_doc, ht_name, ht_tpname
@@ -1794,7 +1803,7 @@ import from c {
         spec_name = spec.view(1)[0].name;
         if not spec_name {
             PyErr_SetString(
-                PyExc_SystemError, "Type spec does not define the name field."
+                PyExc_SystemError, ptr[u8]("Type spec does not define the name field.")
             );
             return type_from_spec_finally(res, bases, tp_doc, ht_name, ht_tpname);
         }
@@ -1838,7 +1847,7 @@ import from c {
         if not type_check(ptr[PyObject](meta)) {
             PyErr_Format(
                 PyExc_TypeError,
-                "Metaclass '%R' is not a subclass of 'type'.",
+                ptr[u8]("Metaclass '%R' is not a subclass of 'type'."),
                 ptr[PyObject](meta)
             );
             return type_from_spec_finally(res, bases, tp_doc, ht_name, ht_tpname);
@@ -1847,7 +1856,8 @@ import from c {
         if meta_new != 0
             and meta_new != int(addressof(PyType_Type).view(1)[0].tp_new) {
             PyErr_SetString(
-                PyExc_TypeError, "Metaclasses with custom tp_new are not supported."
+                PyExc_TypeError,
+                ptr[u8]("Metaclasses with custom tp_new are not supported.")
             );
             return type_from_spec_finally(res, bases, tp_doc, ht_name, ht_tpname);
         }
@@ -1869,7 +1879,9 @@ import from c {
                     == u64(0) {
                 PyErr_SetString(
                     PyExc_SystemError,
-                    "Cannot extend variable-size class without Py_TPFLAGS_ITEMS_AT_END."
+                    ptr[u8](
+                        "Cannot extend variable-size class without Py_TPFLAGS_ITEMS_AT_END."
+                    )
                 );
                 return type_from_spec_finally(res, bases, tp_doc, ht_name, ht_tpname);
             }
@@ -2051,7 +2063,7 @@ import from c {
             } elif PyErr_WarnFormat(
                 PyExc_DeprecationWarning,
                 1,
-                "builtin type %.200s has no __module__ attribute",
+                ptr[u8]("builtin type %.200s has no __module__ attribute"),
                 spec_name
             )
                 != 0 {
@@ -2102,7 +2114,7 @@ import from c {
         if not type_has_feature(type, Py_TPFLAGS_HEAPTYPE) {
             PyErr_Format(
                 PyExc_TypeError,
-                "PyType_GetModule: Type '%s' is not a heap type",
+                ptr[u8]("PyType_GetModule: Type '%s' is not a heap type"),
                 type.view(1)[0].tp_name
             );
             return NULL;
@@ -2111,7 +2123,7 @@ import from c {
         if not module {
             PyErr_Format(
                 PyExc_TypeError,
-                "PyType_GetModule: Type '%s' has no associated module",
+                ptr[u8]("PyType_GetModule: Type '%s' has no associated module"),
                 type.view(1)[0].tp_name
             );
             return NULL;
@@ -2155,7 +2167,9 @@ import from c {
         }
         PyErr_Format(
             PyExc_TypeError,
-            "PyType_GetModuleByDef: No superclass of '%s' has the given module",
+            ptr[u8](
+                "PyType_GetModuleByDef: No superclass of '%s' has the given module"
+            ),
             type.view(1)[0].tp_name
         );
         return NULL;
@@ -2216,14 +2230,15 @@ import from c {
         }
         if not token {
             PyErr_Format(
-                PyExc_SystemError, "PyType_GetBaseByToken called with token=NULL"
+                PyExc_SystemError,
+                ptr[u8]("PyType_GetBaseByToken called with token=NULL")
             );
             return -1;
         }
         if not type_check(ptr[PyObject](type)) {
             PyErr_Format(
                 PyExc_TypeError,
-                "expected a type, got a '%T' object",
+                ptr[u8]("expected a type, got a '%T' object"),
                 ptr[PyObject](type)
             );
             return -1;
@@ -2249,7 +2264,7 @@ import from c {
         if not type_has_feature(tp, Py_TPFLAGS_ITEMS_AT_END) {
             PyErr_Format(
                 PyExc_TypeError,
-                "type '%s' does not have Py_TPFLAGS_ITEMS_AT_END",
+                ptr[u8]("type '%s' does not have Py_TPFLAGS_ITEMS_AT_END"),
                 tp.view(1)[0].tp_name
             );
             return ptr();
@@ -4131,7 +4146,7 @@ import from c {
         mro = type_get_mro(ptr[PyObject](type), ptr());
         if not tuple_check(mro) {
             object_decref(mro);
-            PyErr_SetString(PyExc_TypeError, "unable to get the type MRO");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("unable to get the type MRO"));
             return -1;
         }
         chk = check_immutable_bases(type.view(1)[0].tp_name, mro, 1);
@@ -4815,12 +4830,16 @@ impl _PyType_ClearCache(interp: ptr[u8]) -> u32 {
 
 impl validate_watcher_id(interp: ptr[u8], watcher_id: i32) -> i32 {
     if watcher_id < 0 or i64(watcher_id) >= TYPE_MAX_WATCHERS {
-        PyErr_Format(PyExc_ValueError, "Invalid type watcher ID %d", watcher_id);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("Invalid type watcher ID %d"), watcher_id
+        );
         return -1;
     }
     watchers = ptr[ptr](interp + PyInterpreterState_TYPE_WATCHERS);
     if not (watchers + i64(watcher_id)).view(1)[0] {
-        PyErr_Format(PyExc_ValueError, "No type watcher set for ID %d", watcher_id);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("No type watcher set for ID %d"), watcher_id
+        );
         return -1;
     }
     return 0;
@@ -4882,7 +4901,9 @@ impl type_modified_unlocked(type: ptr[PyTypeObject]) {
                     calls.view(1)[0].type_watcher = int(cb);
                     if calls.view(1)[0].type_watcher(type) < 0 {
                         PyErr_FormatUnraisable(
-                            "Exception ignored in type watcher callback #%d for %R",
+                            ptr[u8](
+                                "Exception ignored in type watcher callback #%d for %R"
+                            ),
                             watcher,
                             ptr[PyObject](type)
                         );
@@ -5005,7 +5026,7 @@ impl check_set_special_type_attr(
     if type_has_feature(type, Py_TPFLAGS_IMMUTABLETYPE) {
         PyErr_Format(
             PyExc_TypeError,
-            "cannot set '%s' attribute of immutable type '%s'",
+            ptr[u8]("cannot set '%s' attribute of immutable type '%s'"),
             name,
             type.view(1)[0].tp_name
         );
@@ -5014,7 +5035,7 @@ impl check_set_special_type_attr(
     if not value {
         PyErr_Format(
             PyExc_TypeError,
-            "cannot delete '%s' attribute of immutable type '%s'",
+            ptr[u8]("cannot delete '%s' attribute of immutable type '%s'"),
             name,
             type.view(1)[0].tp_name
         );
@@ -5200,7 +5221,7 @@ impl type_update_dict(
     if _PyDict_SetItem_LockHeld(dct, name, value) < 0 {
         PyErr_Format(
             PyExc_AttributeError,
-            "type object '%.50s' has no attribute '%U'",
+            ptr[u8]("type object '%.50s' has no attribute '%U'"),
             type.view(1)[0].tp_name,
             name
         );
@@ -5220,7 +5241,7 @@ impl type_setattro(
     if type_has_feature(type, Py_TPFLAGS_IMMUTABLETYPE) {
         PyErr_Format(
             PyExc_TypeError,
-            "cannot set %R attribute of immutable type '%s'",
+            ptr[u8]("cannot set %R attribute of immutable type '%s'"),
             name,
             type.view(1)[0].tp_name
         );
@@ -5229,7 +5250,7 @@ impl type_setattro(
     if not unicode_check(name) {
         PyErr_Format(
             PyExc_TypeError,
-            "attribute name must be string, not '%.200s'",
+            ptr[u8]("attribute name must be string, not '%.200s'"),
             object_type(name).view(1)[0].tp_name
         );
         return -1;
@@ -5251,7 +5272,7 @@ impl type_setattro(
         key = key_slot.view(1)[0];
         if not unicode_is_interned(key) {
             PyErr_SetString(
-                PyExc_MemoryError, "Out of memory interning an attribute name"
+                PyExc_MemoryError, ptr[u8]("Out of memory interning an attribute name")
             );
             object_decref(key);
             return -1;
@@ -5317,7 +5338,7 @@ impl type_set_name(tp: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32
     if not unicode_check(value) {
         PyErr_Format(
             PyExc_TypeError,
-            "can only assign string to %s.__name__, not '%s'",
+            ptr[u8]("can only assign string to %s.__name__, not '%s'"),
             type.view(1)[0].tp_name,
             object_type(value).view(1)[0].tp_name
         );
@@ -5329,7 +5350,9 @@ impl type_set_name(tp: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32
         return i32(-1);
     }
     if strlen(tp_name) != u64(name_size) {
-        PyErr_SetString(PyExc_ValueError, "type name must not contain null characters");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("type name must not contain null characters")
+        );
         return i32(-1);
     }
 
@@ -5349,7 +5372,7 @@ impl type_set_qualname(tp: ptr[PyObject], value: ptr[PyObject], context: ptr) ->
     if not unicode_check(value) {
         PyErr_Format(
             PyExc_TypeError,
-            "can only assign string to %s.__qualname__, not '%s'",
+            ptr[u8]("can only assign string to %s.__qualname__, not '%s'"),
             type.view(1)[0].tp_name,
             object_type(value).view(1)[0].tp_name
         );
@@ -5367,7 +5390,7 @@ impl type_module(type: ptr[PyTypeObject]) -> ptr[PyObject] {
     if type_has_feature(type, Py_TPFLAGS_HEAPTYPE) {
         dct = lookup_tp_dict(type);
         if PyDict_GetItemRef(dct, py_id(_Py_ID___module__), &mut mod) == 0 {
-            PyErr_Format(PyExc_AttributeError, "__module__");
+            PyErr_Format(PyExc_AttributeError, ptr[u8]("__module__"));
         }
     } else {
         tp_name = type.view(1)[0].tp_name;
@@ -5568,7 +5591,7 @@ impl type_set_bases_unlocked(type: ptr[PyTypeObject], new_bases: ptr[PyObject]) 
     if not tuple_check(new_bases) {
         PyErr_Format(
             PyExc_TypeError,
-            "can only assign tuple to %s.__bases__, not %s",
+            ptr[u8]("can only assign tuple to %s.__bases__, not %s"),
             type.view(1)[0].tp_name,
             object_type(new_bases).view(1)[0].tp_name
         );
@@ -5577,7 +5600,7 @@ impl type_set_bases_unlocked(type: ptr[PyTypeObject], new_bases: ptr[PyObject]) 
     if object_size(new_bases) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "can only assign non-empty tuple to %s.__bases__, not ()",
+            ptr[u8]("can only assign non-empty tuple to %s.__bases__, not ()"),
             type.view(1)[0].tp_name
         );
         return i32(-1);
@@ -5588,7 +5611,7 @@ impl type_set_bases_unlocked(type: ptr[PyTypeObject], new_bases: ptr[PyObject]) 
         if not type_check(ob) {
             PyErr_Format(
                 PyExc_TypeError,
-                "%s.__bases__ must be tuple of classes, not '%s'",
+                ptr[u8]("%s.__bases__ must be tuple of classes, not '%s'"),
                 type.view(1)[0].tp_name,
                 object_type(ob).view(1)[0].tp_name
             );
@@ -5599,7 +5622,7 @@ impl type_set_bases_unlocked(type: ptr[PyTypeObject], new_bases: ptr[PyObject]) 
         if is_subtype_with_mro(lookup_tp_mro(base), base, type) != 0
             or (lookup_tp_mro(base) and type_is_subtype_base_chain(base, type) != 0) {
             PyErr_SetString(
-                PyExc_TypeError, "a __bases__ item causes an inheritance cycle"
+                PyExc_TypeError, ptr[u8]("a __bases__ item causes an inheritance cycle")
             );
             return i32(-1);
         }
@@ -5706,7 +5729,7 @@ impl type_get_annotate(tp: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     if not type_has_feature(type, Py_TPFLAGS_HEAPTYPE) {
         PyErr_Format(
             PyExc_AttributeError,
-            "type object '%s' has no attribute '__annotate__'",
+            ptr[u8]("type object '%s' has no attribute '__annotate__'"),
             type.view(1)[0].tp_name
         );
         return NULL;
@@ -5745,19 +5768,23 @@ impl type_get_annotate(tp: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
 impl type_set_annotate(tp: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
     type = ptr[PyTypeObject](tp);
     if not value {
-        PyErr_SetString(PyExc_TypeError, "cannot delete __annotate__ attribute");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("cannot delete __annotate__ attribute")
+        );
         return i32(-1);
     }
     if type_has_feature(type, Py_TPFLAGS_IMMUTABLETYPE) {
         PyErr_Format(
             PyExc_TypeError,
-            "cannot set '__annotate__' attribute of immutable type '%s'",
+            ptr[u8]("cannot set '__annotate__' attribute of immutable type '%s'"),
             type.view(1)[0].tp_name
         );
         return i32(-1);
     }
     if value != Py_None and PyCallable_Check(value) == 0 {
-        PyErr_SetString(PyExc_TypeError, "__annotate__ must be callable or None");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__annotate__ must be callable or None")
+        );
         return i32(-1);
     }
     dct = PyType_GetDict(type);
@@ -5784,7 +5811,7 @@ impl type_get_annotations(tp: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     if not type_has_feature(type, Py_TPFLAGS_HEAPTYPE) {
         PyErr_Format(
             PyExc_AttributeError,
-            "type object '%s' has no attribute '__annotations__'",
+            ptr[u8]("type object '%s' has no attribute '__annotations__'"),
             type.view(1)[0].tp_name
         );
         return NULL;
@@ -5825,7 +5852,7 @@ impl type_get_annotations(tp: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
             if not dict_check(annotations) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "__annotate__ returned non-dict of type '%.100s'",
+                    ptr[u8]("__annotate__ returned non-dict of type '%.100s'"),
                     object_type(annotations).view(1)[0].tp_name
                 );
                 object_decref(annotations);
@@ -5861,7 +5888,7 @@ impl type_set_annotations(
     if type_has_feature(type, Py_TPFLAGS_IMMUTABLETYPE) {
         PyErr_Format(
             PyExc_TypeError,
-            "cannot set '__annotations__' attribute of immutable type '%s'",
+            ptr[u8]("cannot set '__annotations__' attribute of immutable type '%s'"),
             type.view(1)[0].tp_name
         );
         return i32(-1);
@@ -5878,7 +5905,7 @@ impl type_set_annotations(
         } else {
             result = PyDict_Pop(dct, py_id(_Py_ID___annotations__), None);
             if result == 0 {
-                PyErr_SetString(PyExc_AttributeError, "__annotations__");
+                PyErr_SetString(PyExc_AttributeError, ptr[u8]("__annotations__"));
                 object_decref(dct);
                 return i32(-1);
             }
@@ -5894,7 +5921,7 @@ impl type_set_annotations(
     } else {
         result = PyDict_Pop(dct, py_id(_Py_ID___annotations_cache__), None);
         if result == 0 {
-            PyErr_SetString(PyExc_AttributeError, "__annotations__");
+            PyErr_SetString(PyExc_AttributeError, ptr[u8]("__annotations__"));
             object_decref(dct);
             return i32(-1);
         }
@@ -6023,13 +6050,15 @@ impl type_call(
         }
 
         if nargs != 3 {
-            PyErr_SetString(PyExc_TypeError, "type() takes 1 or 3 arguments");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("type() takes 1 or 3 arguments"));
             return NULL;
         }
     }
     if int(type.view(1)[0].tp_new) == 0 {
         PyErr_Format(
-            PyExc_TypeError, "cannot create '%s' instances", type.view(1)[0].tp_name
+            PyExc_TypeError,
+            ptr[u8]("cannot create '%s' instances"),
+            type.view(1)[0].tp_name
         );
         return NULL;
     }
@@ -6521,9 +6550,13 @@ impl check_duplicates(tup: ptr[PyObject]) -> i32 {
                 name = class_name(o);
                 if name {
                     if unicode_check(name) {
-                        PyErr_Format(PyExc_TypeError, "duplicate base class %U", name);
+                        PyErr_Format(
+                            PyExc_TypeError, ptr[u8]("duplicate base class %U"), name
+                        );
                     } else {
-                        PyErr_SetString(PyExc_TypeError, "duplicate base class");
+                        PyErr_SetString(
+                            PyExc_TypeError, ptr[u8]("duplicate base class")
+                        );
                     }
                     object_decref(name);
                 }
@@ -6684,7 +6717,7 @@ impl mro_implementation_unlocked(type: ptr[PyTypeObject]) -> ptr[PyObject] {
         if not lookup_tp_mro(base) {
             PyErr_Format(
                 PyExc_TypeError,
-                "Cannot extend an incomplete type '%.100s'",
+                ptr[u8]("Cannot extend an incomplete type '%.100s'"),
                 base.view(1)[0].tp_name
             );
             return NULL;
@@ -6766,7 +6799,7 @@ impl mro_check(type: ptr[PyTypeObject], mro: ptr[PyObject]) -> i32 {
         if not type_check(obj_) {
             PyErr_Format(
                 PyExc_TypeError,
-                "mro() returned a non-class ('%.500s')",
+                ptr[u8]("mro() returned a non-class ('%.500s')"),
                 object_type(obj_).view(1)[0].tp_name
             );
             return i32(-1);
@@ -6775,7 +6808,7 @@ impl mro_check(type: ptr[PyTypeObject], mro: ptr[PyObject]) -> i32 {
         if is_subtype_with_mro(lookup_tp_mro(solid), solid, solid_base(base)) == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "mro() returned base with unsuitable layout ('%.500s')",
+                ptr[u8]("mro() returned base with unsuitable layout ('%.500s')"),
                 base.view(1)[0].tp_name
             );
             return i32(-1);
@@ -6802,7 +6835,7 @@ impl mro_invoke(type: ptr[PyTypeObject]) -> ptr[PyObject] {
     }
     if object_size(new_mro) == 0 {
         object_decref(new_mro);
-        PyErr_Format(PyExc_TypeError, "type MRO must not be empty");
+        PyErr_Format(PyExc_TypeError, ptr[u8]("type MRO must not be empty"));
         return NULL;
     }
     if custom and mro_check(type, new_mro) < 0 {
@@ -6850,7 +6883,7 @@ impl best_base(bases: ptr[PyObject]) -> ptr[PyTypeObject] {
     for i in range(n) {
         base_proto = tuple_get_item(bases, i);
         if not type_check(base_proto) {
-            PyErr_SetString(PyExc_TypeError, "bases must be types");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("bases must be types"));
             return ptr[PyTypeObject]();
         }
         base_i = ptr[PyTypeObject](base_proto);
@@ -6862,7 +6895,7 @@ impl best_base(bases: ptr[PyObject]) -> ptr[PyTypeObject] {
         if not type_has_feature(base_i, Py_TPFLAGS_BASETYPE) {
             PyErr_Format(
                 PyExc_TypeError,
-                "type '%.100s' is not an acceptable base type",
+                ptr[u8]("type '%.100s' is not an acceptable base type"),
                 base_i.view(1)[0].tp_name
             );
             return ptr[PyTypeObject]();
@@ -6877,7 +6910,8 @@ impl best_base(bases: ptr[PyObject]) -> ptr[PyTypeObject] {
                 base = base_i;
             } else {
                 PyErr_SetString(
-                    PyExc_TypeError, "multiple bases have instance lay-out conflict"
+                    PyExc_TypeError,
+                    ptr[u8]("multiple bases have instance lay-out conflict")
                 );
                 return ptr[PyTypeObject]();
             }
@@ -6930,7 +6964,7 @@ impl get_dict_descriptor(type: ptr[PyTypeObject]) -> ptr[PyObject] {
 impl raise_dict_descr_error(obj_: ptr[PyObject]) {
     PyErr_Format(
         PyExc_TypeError,
-        "this __dict__ descriptor does not support '%.200s' objects",
+        ptr[u8]("this __dict__ descriptor does not support '%.200s' objects"),
         object_type(obj_).view(1)[0].tp_name
     );
 }
@@ -6975,7 +7009,9 @@ impl subtype_getweakref(obj_: ptr[PyObject], context: ptr) -> ptr[PyObject] {
     type = object_type(obj_);
     offset = type.view(1)[0].tp_weaklistoffset;
     if offset == 0 {
-        PyErr_SetString(PyExc_AttributeError, "This object has no __weakref__");
+        PyErr_SetString(
+            PyExc_AttributeError, ptr[u8]("This object has no __weakref__")
+        );
         return NULL;
     }
 
@@ -6990,13 +7026,13 @@ impl valid_identifier(s: ptr[PyObject]) -> i32 {
     if not unicode_check(s) {
         PyErr_Format(
             PyExc_TypeError,
-            "__slots__ items must be strings, not '%.200s'",
+            ptr[u8]("__slots__ items must be strings, not '%.200s'"),
             object_type(s).view(1)[0].tp_name
         );
         return i32(0);
     }
     if PyUnicode_IsIdentifier(s) == 0 {
-        PyErr_SetString(PyExc_TypeError, "__slots__ must be identifiers");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("__slots__ must be identifiers"));
         return i32(0);
     }
     return i32(1);
@@ -7004,11 +7040,15 @@ impl valid_identifier(s: ptr[PyObject]) -> i32 {
 
 impl type_init(cls: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32 {
     if kwds and object_size(args) == 1 and dict_used(kwds) != 0 {
-        PyErr_SetString(PyExc_TypeError, "type.__init__() takes no keyword arguments");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("type.__init__() takes no keyword arguments")
+        );
         return i32(-1);
     }
     if object_size(args) != 1 and object_size(args) != 3 {
-        PyErr_SetString(PyExc_TypeError, "type.__init__() takes 1 or 3 arguments");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("type.__init__() takes 1 or 3 arguments")
+        );
         return i32(-1);
     }
     return i32(0);
@@ -7026,7 +7066,8 @@ impl type_new_visit_slots(ctx: ptr[TypeNewCtx]) -> i32 {
         if _PyUnicode_Equal(name, py_id(_Py_ID___dict__)) != 0 {
             if ctx.view(1)[0].may_add_dict == 0 or ctx.view(1)[0].add_dict != 0 {
                 PyErr_SetString(
-                    PyExc_TypeError, "__dict__ slot disallowed: we already got one"
+                    PyExc_TypeError,
+                    ptr[u8]("__dict__ slot disallowed: we already got one")
                 );
                 return -1;
             }
@@ -7035,7 +7076,8 @@ impl type_new_visit_slots(ctx: ptr[TypeNewCtx]) -> i32 {
         if _PyUnicode_Equal(name, py_id(_Py_ID___weakref__)) != 0 {
             if ctx.view(1)[0].may_add_weak == 0 or ctx.view(1)[0].add_weak != 0 {
                 PyErr_SetString(
-                    PyExc_TypeError, "__weakref__ slot disallowed: we already got one"
+                    PyExc_TypeError,
+                    ptr[u8]("__weakref__ slot disallowed: we already got one")
                 );
                 return -1;
             }
@@ -7083,7 +7125,7 @@ impl type_new_copy_slots(ctx: ptr[TypeNewCtx], dct: ptr[PyObject]) -> ptr[PyObje
                 and _PyUnicode_Equal(slot, py_id(_Py_ID___classdictcell__)) == 0 {
                 PyErr_Format(
                     PyExc_ValueError,
-                    "%R in __slots__ conflicts with class variable",
+                    ptr[u8]("%R in __slots__ conflicts with class variable"),
                     slot
                 );
                 object_decref(new_slots);
@@ -7147,7 +7189,7 @@ impl type_new_slots_impl(ctx: ptr[TypeNewCtx], dct: ptr[PyObject]) -> i32 {
     if ctx.view(1)[0].nslot > 0 and base.view(1)[0].tp_itemsize != 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "nonempty __slots__ not supported for subtype of '%s'",
+            ptr[u8]("nonempty __slots__ not supported for subtype of '%s'"),
             base.view(1)[0].tp_name
         );
         return -1;
@@ -7255,7 +7297,9 @@ impl type_new_set_name(ctx: ptr[TypeNewCtx], type: ptr[PyTypeObject]) -> i32 {
         return -1;
     }
     if strlen(type.view(1)[0].tp_name) != u64(name_size) {
-        PyErr_SetString(PyExc_ValueError, "type name must not contain null characters");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("type name must not contain null characters")
+        );
         return -1;
     }
     return 0;
@@ -7292,7 +7336,7 @@ impl type_new_set_ht_name(type: ptr[PyTypeObject], dct: ptr[PyObject]) -> i32 {
         if not unicode_check(qualname) {
             PyErr_Format(
                 PyExc_TypeError,
-                "type __qualname__ must be a str, not %s",
+                ptr[u8]("type __qualname__ must be a str, not %s"),
                 object_type(qualname).view(1)[0].tp_name
             );
             object_decref(qualname);
@@ -7457,7 +7501,7 @@ impl type_new_set_classcell(type: ptr[PyTypeObject], dct: ptr[PyObject]) -> i32 
     if not object_is_type(cell, addressof(PyCell_Type)) {
         PyErr_Format(
             PyExc_TypeError,
-            "__classcell__ must be a nonlocal cell, not %.200R",
+            ptr[u8]("__classcell__ must be a nonlocal cell, not %.200R"),
             ptr[PyObject](object_type(cell))
         );
         return -1;
@@ -7480,7 +7524,7 @@ impl type_new_set_classdictcell(dct: ptr[PyObject]) -> i32 {
     if not object_is_type(cell, addressof(PyCell_Type)) {
         PyErr_Format(
             PyExc_TypeError,
-            "__classdictcell__ must be a nonlocal cell, not %.200R",
+            ptr[u8]("__classdictcell__ must be a nonlocal cell, not %.200R"),
             ptr[PyObject](object_type(cell))
         );
         return -1;
@@ -7612,7 +7656,7 @@ impl type_new_impl(ctx: ptr[TypeNewCtx]) -> ptr[PyObject] {
         if PyErr_WarnFormat(
             PyExc_RuntimeWarning,
             1,
-            "non-string key in the __dict__ of class %.200s",
+            ptr[u8]("non-string key in the __dict__ of class %.200s"),
             type.view(1)[0].tp_name
         )
             == -1 {
@@ -7655,7 +7699,9 @@ impl type_new_get_bases(ctx: ptr[TypeNewCtx]) -> tuple[i32, ptr[PyObject]] {
         if rc != 0 {
             PyErr_SetString(
                 PyExc_TypeError,
-                "type() doesn't support MRO entry resolution; use types.new_class()"
+                ptr[u8](
+                    "type() doesn't support MRO entry resolution; use types.new_class()"
+                )
             );
             return (i32(-1), NULL);
         }
@@ -7691,7 +7737,7 @@ impl type_new_bad_argument(iarg: i64, expected: ptr[u8], arg: ptr[PyObject]) {
     got = ptr[u8]("None") if arg == Py_None else object_type(arg).view(1)[0].tp_name;
     PyErr_Format(
         PyExc_TypeError,
-        "type.__new__() argument %zd must be %.50s, not %.50s",
+        ptr[u8]("type.__new__() argument %zd must be %.50s, not %.50s"),
         iarg,
         expected,
         got
@@ -7705,7 +7751,7 @@ impl type_new(
     if nargs != 3 {
         PyErr_Format(
             PyExc_TypeError,
-            "type.__new__() takes exactly 3 arguments (%zd given)",
+            ptr[u8]("type.__new__() takes exactly 3 arguments (%zd given)"),
             nargs
         );
         return NULL;
@@ -7795,7 +7841,7 @@ impl get_bases_tuple(bases_in: ptr[PyObject], spec: ptr[PyType_Spec]) -> ptr[PyO
         if tuple_check(bases) {
             return object_new_ref(bases);
         }
-        PyErr_SetString(PyExc_SystemError, "Py_tp_bases is not a tuple");
+        PyErr_SetString(PyExc_SystemError, ptr[u8]("Py_tp_bases is not a tuple"));
         return NULL;
     }
     if tuple_check(bases_in) {
@@ -7814,7 +7860,9 @@ impl check_basicsize_includes_size_and_offsets(type: ptr[PyTypeObject]) -> i32 {
     if base and base.view(1)[0].tp_basicsize > type.view(1)[0].tp_basicsize {
         PyErr_Format(
             PyExc_TypeError,
-            "tp_basicsize for type '%s' (%zd) is too small for base '%s' (%zd)",
+            ptr[u8](
+                "tp_basicsize for type '%s' (%zd) is too small for base '%s' (%zd)"
+            ),
             type.view(1)[0].tp_name,
             type.view(1)[0].tp_basicsize,
             base.view(1)[0].tp_name,
@@ -7825,7 +7873,9 @@ impl check_basicsize_includes_size_and_offsets(type: ptr[PyTypeObject]) -> i32 {
     if type.view(1)[0].tp_weaklistoffset + 8 > max_size {
         PyErr_Format(
             PyExc_TypeError,
-            "weaklist offset %zd is out of bounds for type '%s' (tp_basicsize = %zd)",
+            ptr[u8](
+                "weaklist offset %zd is out of bounds for type '%s' (tp_basicsize = %zd)"
+            ),
             type.view(1)[0].tp_weaklistoffset,
             type.view(1)[0].tp_name,
             type.view(1)[0].tp_basicsize
@@ -7835,7 +7885,9 @@ impl check_basicsize_includes_size_and_offsets(type: ptr[PyTypeObject]) -> i32 {
     if type.view(1)[0].tp_dictoffset + 8 > max_size {
         PyErr_Format(
             PyExc_TypeError,
-            "dict offset %zd is out of bounds for type '%s' (tp_basicsize = %zd)",
+            ptr[u8](
+                "dict offset %zd is out of bounds for type '%s' (tp_basicsize = %zd)"
+            ),
             type.view(1)[0].tp_dictoffset,
             type.view(1)[0].tp_name,
             type.view(1)[0].tp_basicsize
@@ -7845,7 +7897,9 @@ impl check_basicsize_includes_size_and_offsets(type: ptr[PyTypeObject]) -> i32 {
     if type.view(1)[0].tp_vectorcall_offset + 8 > max_size {
         PyErr_Format(
             PyExc_TypeError,
-            "vectorcall offset %zd is out of bounds for type '%s' (tp_basicsize = %zd)",
+            ptr[u8](
+                "vectorcall offset %zd is out of bounds for type '%s' (tp_basicsize = %zd)"
+            ),
             type.view(1)[0].tp_vectorcall_offset,
             type.view(1)[0].tp_name,
             type.view(1)[0].tp_basicsize
@@ -7870,7 +7924,7 @@ impl check_immutable_bases(
         if not type_has_feature(b, Py_TPFLAGS_IMMUTABLETYPE) {
             PyErr_Format(
                 PyExc_TypeError,
-                "Creating immutable type %s from mutable base %N",
+                ptr[u8]("Creating immutable type %s from mutable base %N"),
                 type_name,
                 ptr[PyObject](b)
             );
@@ -7889,7 +7943,9 @@ impl special_offset_from_member(
     }
     if memb.view(1)[0].type_ != Py_T_PYSSIZET {
         PyErr_Format(
-            PyExc_SystemError, "type of %s must be Py_T_PYSSIZET", memb.view(1)[0].name
+            PyExc_SystemError,
+            ptr[u8]("type of %s must be Py_T_PYSSIZET"),
+            memb.view(1)[0].name
         );
         return (i32(-1), i64(0));
     }
@@ -7901,7 +7957,9 @@ impl special_offset_from_member(
     }
     PyErr_Format(
         PyExc_SystemError,
-        "flags for %s must be Py_READONLY or (Py_READONLY | Py_RELATIVE_OFFSET)",
+        ptr[u8](
+            "flags for %s must be Py_READONLY or (Py_READONLY | Py_RELATIVE_OFFSET)"
+        ),
         memb.view(1)[0].name
     );
     return (i32(-1), i64(0));
@@ -8201,14 +8259,18 @@ impl object_init(
         if int(type.view(1)[0].tp_init) != int(ptr(object_init)) {
             PyErr_SetString(
                 PyExc_TypeError,
-                "object.__init__() takes exactly one argument (the instance to initialize)"
+                ptr[u8](
+                    "object.__init__() takes exactly one argument (the instance to initialize)"
+                )
             );
             return -1;
         }
         if int(type.view(1)[0].tp_new) == int(ptr(object_new)) {
             PyErr_Format(
                 PyExc_TypeError,
-                "%.200s.__init__() takes exactly one argument (the instance to initialize)",
+                ptr[u8](
+                    "%.200s.__init__() takes exactly one argument (the instance to initialize)"
+                ),
                 type.view(1)[0].tp_name
             );
             return -1;
@@ -8224,13 +8286,17 @@ impl object_new(
         if int(type.view(1)[0].tp_new) != int(ptr(object_new)) {
             PyErr_SetString(
                 PyExc_TypeError,
-                "object.__new__() takes exactly one argument (the type to instantiate)"
+                ptr[u8](
+                    "object.__new__() takes exactly one argument (the type to instantiate)"
+                )
             );
             return NULL;
         }
         if int(type.view(1)[0].tp_init) == int(ptr(object_init)) {
             PyErr_Format(
-                PyExc_TypeError, "%.200s() takes no arguments", type.view(1)[0].tp_name
+                PyExc_TypeError,
+                ptr[u8]("%.200s() takes no arguments"),
+                type.view(1)[0].tp_name
             );
             return NULL;
         }
@@ -8278,7 +8344,9 @@ impl object_new_abstract_error(type: ptr[PyTypeObject]) -> ptr[PyObject] {
     }
     PyErr_Format(
         PyExc_TypeError,
-        "Can't instantiate abstract class %s without an implementation for abstract method%s '%U'",
+        ptr[u8](
+            "Can't instantiate abstract class %s without an implementation for abstract method%s '%U'"
+        ),
         type.view(1)[0].tp_name,
         plural,
         joined
@@ -8413,7 +8481,7 @@ impl compatible_for_assignment(
     if int(newto.view(1)[0].tp_free) != int(oldto.view(1)[0].tp_free) {
         PyErr_Format(
             PyExc_TypeError,
-            "%s assignment: '%s' deallocator differs from '%s'",
+            ptr[u8]("%s assignment: '%s' deallocator differs from '%s'"),
             attr,
             newto.view(1)[0].tp_name,
             oldto.view(1)[0].tp_name
@@ -8444,7 +8512,7 @@ impl compatible_for_assignment(
     }
     PyErr_Format(
         PyExc_TypeError,
-        "%s assignment: '%s' object layout differs from '%s'",
+        ptr[u8]("%s assignment: '%s' object layout differs from '%s'"),
         attr,
         newto.view(1)[0].tp_name,
         oldto.view(1)[0].tp_name
@@ -8466,7 +8534,9 @@ impl object_set_class_world_stopped(
         ) {
         PyErr_Format(
             PyExc_TypeError,
-            "__class__ assignment only supported for mutable types or ModuleType subclasses"
+            ptr[u8](
+                "__class__ assignment only supported for mutable types or ModuleType subclasses"
+            )
         );
         return -1;
     }
@@ -8496,13 +8566,13 @@ impl object_set_class_world_stopped(
 
 impl object_set_class(self_: ptr[PyObject], value: ptr[PyObject], closure: ptr) -> i32 {
     if not value {
-        PyErr_SetString(PyExc_TypeError, "can't delete __class__ attribute");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("can't delete __class__ attribute"));
         return -1;
     }
     if not type_check(value) {
         PyErr_Format(
             PyExc_TypeError,
-            "__class__ must be set to a class, not '%s' object",
+            ptr[u8]("__class__ must be set to a class, not '%s' object"),
             object_type(value).view(1)[0].tp_name
         );
         return -1;
@@ -8549,7 +8619,7 @@ impl _PyType_GetSlotNames(cls: ptr[PyTypeObject]) -> ptr[PyObject] {
         if slotnames != Py_None and not list_check(slotnames) {
             PyErr_Format(
                 PyExc_TypeError,
-                "%.200s.__slotnames__ should be a list or None, not %.200s",
+                ptr[u8]("%.200s.__slotnames__ should be a list or None, not %.200s"),
                 cls.view(1)[0].tp_name,
                 object_type(slotnames).view(1)[0].tp_name
             );
@@ -8577,7 +8647,7 @@ impl _PyType_GetSlotNames(cls: ptr[PyTypeObject]) -> ptr[PyObject] {
     }
     if result != Py_None and not list_check(result) {
         PyErr_SetString(
-            PyExc_TypeError, "copyreg._slotnames didn't return a list or None"
+            PyExc_TypeError, ptr[u8]("copyreg._slotnames didn't return a list or None")
         );
         object_decref(result);
         return NULL;
@@ -8589,7 +8659,7 @@ impl object_getstate_default(obj_: ptr[PyObject], required: i32) -> ptr[PyObject
     if required != 0 and object_type(obj_).view(1)[0].tp_itemsize != 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "cannot pickle %.200s objects",
+            ptr[u8]("cannot pickle %.200s objects"),
             object_type(obj_).view(1)[0].tp_name
         );
         return NULL;
@@ -8627,7 +8697,7 @@ impl object_getstate_default(obj_: ptr[PyObject], required: i32) -> ptr[PyObject
             object_decref(state);
             PyErr_Format(
                 PyExc_TypeError,
-                "cannot pickle '%.200s' object",
+                ptr[u8]("cannot pickle '%.200s' object"),
                 object_type(obj_).view(1)[0].tp_name
             );
             return NULL;
@@ -8669,7 +8739,8 @@ impl object_getstate_default(obj_: ptr[PyObject], required: i32) -> ptr[PyObject
 
             if slotnames_size != object_size(slotnames) {
                 PyErr_Format(
-                    PyExc_RuntimeError, "__slotnames__ changed size during iteration"
+                    PyExc_RuntimeError,
+                    ptr[u8]("__slotnames__ changed size during iteration")
                 );
                 object_decref(slotnames);
                 object_decref(slots);
@@ -8744,7 +8815,7 @@ impl _PyObject_GetNewArguments(
         if not tuple_check(newargs) {
             PyErr_Format(
                 PyExc_TypeError,
-                "__getnewargs_ex__ should return a tuple, not '%.200s'",
+                ptr[u8]("__getnewargs_ex__ should return a tuple, not '%.200s'"),
                 object_type(newargs).view(1)[0].tp_name
             );
             object_decref(newargs);
@@ -8754,7 +8825,7 @@ impl _PyObject_GetNewArguments(
             size: i64 = object_size(newargs);
             PyErr_Format(
                 PyExc_ValueError,
-                "__getnewargs_ex__ should return a tuple of length 2, not %zd",
+                ptr[u8]("__getnewargs_ex__ should return a tuple of length 2, not %zd"),
                 size
             );
             object_decref(newargs);
@@ -8767,7 +8838,9 @@ impl _PyObject_GetNewArguments(
         if not tuple_check(args) {
             PyErr_Format(
                 PyExc_TypeError,
-                "first item of the tuple returned by __getnewargs_ex__ must be a tuple, not '%.200s'",
+                ptr[u8](
+                    "first item of the tuple returned by __getnewargs_ex__ must be a tuple, not '%.200s'"
+                ),
                 object_type(args).view(1)[0].tp_name
             );
             object_decref(args);
@@ -8777,7 +8850,9 @@ impl _PyObject_GetNewArguments(
         if not dict_check(kwargs) {
             PyErr_Format(
                 PyExc_TypeError,
-                "second item of the tuple returned by __getnewargs_ex__ must be a dict, not '%.200s'",
+                ptr[u8](
+                    "second item of the tuple returned by __getnewargs_ex__ must be a dict, not '%.200s'"
+                ),
                 object_type(kwargs).view(1)[0].tp_name
             );
             object_decref(args);
@@ -8799,7 +8874,7 @@ impl _PyObject_GetNewArguments(
         if not tuple_check(newargs_only) {
             PyErr_Format(
                 PyExc_TypeError,
-                "__getnewargs__ should return a tuple, not '%.200s'",
+                ptr[u8]("__getnewargs__ should return a tuple, not '%.200s'"),
                 object_type(newargs_only).view(1)[0].tp_name
             );
             object_decref(newargs_only);
@@ -8852,7 +8927,7 @@ impl reduce_newobj(obj_: ptr[PyObject]) -> ptr[PyObject] {
     if int(object_type(obj_).view(1)[0].tp_new) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "cannot pickle '%.200s' object",
+            ptr[u8]("cannot pickle '%.200s' object"),
             object_type(obj_).view(1)[0].tp_name
         );
         return NULL;
@@ -9016,7 +9091,7 @@ impl object___format___impl(
     if unicode_length(format_spec) > 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "unsupported format string passed to %.200s.__format__",
+            ptr[u8]("unsupported format string passed to %.200s.__format__"),
             object_type(self_).view(1)[0].tp_name
         );
         return NULL;
@@ -9095,7 +9170,9 @@ impl type_add_method(type: ptr[PyTypeObject], meth: ptr[PyMethodDef]) -> i32 {
     isdescr = True;
     if (meth.view(1)[0].ml_flags & METH_CLASS) != 0 {
         if (meth.view(1)[0].ml_flags & METH_STATIC) != 0 {
-            PyErr_SetString(PyExc_ValueError, "method cannot be both class and static");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("method cannot be both class and static")
+            );
             return -1;
         }
         descr = PyDescr_NewClassMethod(type, meth);
@@ -9918,7 +9995,9 @@ impl inherit_slots(type: ptr[PyTypeObject], base: ptr[PyTypeObject]) -> i32 {
 
 impl type_ready_pre_checks(type: ptr[PyTypeObject]) -> i32 {
     if not type.view(1)[0].tp_name {
-        PyErr_Format(PyExc_SystemError, "Type does not define the tp_name field.");
+        PyErr_Format(
+            PyExc_SystemError, ptr[u8]("Type does not define the tp_name field.")
+        );
         return -1;
     }
     return 0;
@@ -10039,7 +10118,9 @@ impl type_ready_preheader(type: ptr[PyTypeObject]) -> i32 {
         if type.view(1)[0].tp_dictoffset > 0 or type.view(1)[0].tp_dictoffset < -1 {
             PyErr_Format(
                 PyExc_TypeError,
-                "type %s has the Py_TPFLAGS_MANAGED_DICT flag but tp_dictoffset is set",
+                ptr[u8](
+                    "type %s has the Py_TPFLAGS_MANAGED_DICT flag but tp_dictoffset is set"
+                ),
                 type.view(1)[0].tp_name
             );
             return -1;
@@ -10051,7 +10132,9 @@ impl type_ready_preheader(type: ptr[PyTypeObject]) -> i32 {
             and type.view(1)[0].tp_weaklistoffset != MANAGED_WEAKREF_OFFSET {
             PyErr_Format(
                 PyExc_TypeError,
-                "type %s has the Py_TPFLAGS_MANAGED_WEAKREF flag but tp_weaklistoffset is set",
+                ptr[u8](
+                    "type %s has the Py_TPFLAGS_MANAGED_WEAKREF flag but tp_weaklistoffset is set"
+                ),
                 type.view(1)[0].tp_name
             );
             return -1;
@@ -10081,7 +10164,9 @@ impl type_ready_mro(type: ptr[PyTypeObject], initial: i32) -> i32 {
             if type_has_feature(base, Py_TPFLAGS_HEAPTYPE) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "type '%.100s' is not dynamically allocated but its base type '%.100s' is dynamically allocated",
+                    ptr[u8](
+                        "type '%.100s' is not dynamically allocated but its base type '%.100s' is dynamically allocated"
+                    ),
                     type.view(1)[0].tp_name,
                     base.view(1)[0].tp_name
                 );
@@ -10147,7 +10232,9 @@ impl type_ready_inherit(type: ptr[PyTypeObject]) -> i32 {
         ) {
         PyErr_Format(
             PyExc_TypeError,
-            "type '%.100s' participates in gc and is a base type but has inappropriate tp_free slot",
+            ptr[u8](
+                "type '%.100s' participates in gc and is a base type but has inappropriate tp_free slot"
+            ),
             type.view(1)[0].tp_name
         );
         return -1;
@@ -10220,7 +10307,9 @@ impl type_ready_managed_dict(type: ptr[PyTypeObject]) -> i32 {
     if not type_has_feature(type, Py_TPFLAGS_HEAPTYPE) {
         PyErr_Format(
             PyExc_SystemError,
-            "type %s has the Py_TPFLAGS_MANAGED_DICT flag but not Py_TPFLAGS_HEAPTYPE flag",
+            ptr[u8](
+                "type %s has the Py_TPFLAGS_MANAGED_DICT flag but not Py_TPFLAGS_HEAPTYPE flag"
+            ),
             type.view(1)[0].tp_name
         );
         return -1;
@@ -10246,7 +10335,9 @@ impl type_ready_post_checks(type: ptr[PyTypeObject]) -> i32 {
         and int(type.view(1)[0].tp_traverse) == 0 {
         PyErr_Format(
             PyExc_SystemError,
-            "type %s has the Py_TPFLAGS_HAVE_GC flag but has no traverse function",
+            ptr[u8](
+                "type %s has the Py_TPFLAGS_HAVE_GC flag but has no traverse function"
+            ),
             type.view(1)[0].tp_name
         );
         return -1;
@@ -10255,7 +10346,9 @@ impl type_ready_post_checks(type: ptr[PyTypeObject]) -> i32 {
         if type.view(1)[0].tp_dictoffset != -1 {
             PyErr_Format(
                 PyExc_SystemError,
-                "type %s has the Py_TPFLAGS_MANAGED_DICT flag but tp_dictoffset is set to incompatible value",
+                ptr[u8](
+                    "type %s has the Py_TPFLAGS_MANAGED_DICT flag but tp_dictoffset is set to incompatible value"
+                ),
                 type.view(1)[0].tp_name
             );
             return -1;
@@ -10264,7 +10357,7 @@ impl type_ready_post_checks(type: ptr[PyTypeObject]) -> i32 {
         if type.view(1)[0].tp_dictoffset + type.view(1)[0].tp_basicsize <= 0 {
             PyErr_Format(
                 PyExc_SystemError,
-                "type %s has a tp_dictoffset that is too small",
+                ptr[u8]("type %s has a tp_dictoffset that is too small"),
                 type.view(1)[0].tp_name
             );
             return -1;
@@ -10465,7 +10558,8 @@ impl remove_all_subclasses(type: ptr[PyTypeObject], bases: ptr[PyObject]) {
 impl check_num_args(ob: ptr[PyObject], n: i32) -> i32 {
     if not tuple_check_exact(ob) {
         PyErr_SetString(
-            PyExc_SystemError, "PyArg_UnpackTuple() argument list is not a tuple"
+            PyExc_SystemError,
+            ptr[u8]("PyArg_UnpackTuple() argument list is not a tuple")
         );
         return 0;
     }
@@ -10477,7 +10571,9 @@ impl check_num_args(ob: ptr[PyObject], n: i32) -> i32 {
     if n == 1 {
         suffix = ptr[u8]("");
     }
-    PyErr_Format(PyExc_TypeError, "expected %d argument%s, got %zd", n, suffix, size);
+    PyErr_Format(
+        PyExc_TypeError, ptr[u8]("expected %d argument%s, got %zd"), n, suffix, size
+    );
     return 0;
 }
 
@@ -10486,7 +10582,8 @@ impl check_pow_args(ob: ptr[PyObject]) -> i64 {
     max_args: i32 = 2;
     if not tuple_check_exact(ob) {
         PyErr_SetString(
-            PyExc_SystemError, "PyArg_UnpackTuple() argument list is not a tuple"
+            PyExc_SystemError,
+            ptr[u8]("PyArg_UnpackTuple() argument list is not a tuple")
         );
         return -1;
     }
@@ -10496,7 +10593,7 @@ impl check_pow_args(ob: ptr[PyObject]) -> i64 {
     }
     PyErr_Format(
         PyExc_TypeError,
-        "expected %d or %d arguments, got %zd",
+        ptr[u8]("expected %d or %d arguments, got %zd"),
         min_args,
         max_args,
         size
@@ -10821,7 +10918,7 @@ impl hackcheck_unlocked(self_: ptr[PyObject], func: ptr, what: ptr[u8]) -> i32 {
         if int(base.view(1)[0].tp_setattro) != slot_setattro {
             PyErr_Format(
                 PyExc_TypeError,
-                "can't apply this %s to %s object",
+                ptr[u8]("can't apply this %s to %s object"),
                 what,
                 type.view(1)[0].tp_name
             );
@@ -11007,7 +11104,7 @@ impl wrap_descr_get(
         type = NULL;
     }
     if not type and not obj_ {
-        PyErr_SetString(PyExc_TypeError, "__get__(None, None) is invalid");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("__get__(None, None) is invalid"));
         return NULL;
     }
 
@@ -11069,7 +11166,7 @@ impl wrap_buffer(
     }
 
     if flags > 2147483647 or flags < -2147483648 {
-        PyErr_SetString(PyExc_OverflowError, "buffer flags out of range");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("buffer flags out of range"));
         return NULL;
     }
     return _PyMemoryView_FromBufferProc(self_, i32(flags), wrapped);
@@ -11084,7 +11181,7 @@ impl wrap_releasebuffer(
     }
 
     if not object_is_type(arg, addressof(PyMemoryView_Type)) {
-        PyErr_SetString(PyExc_TypeError, "expected a memoryview object");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("expected a memoryview object"));
         return NULL;
     }
     view_obj = ptr[Py_buffer](ptr[u8](arg) + PyMemoryViewObject_VIEW).view(1)[0].owner;
@@ -11092,12 +11189,14 @@ impl wrap_releasebuffer(
         return object_new_ref(Py_None);
     }
     if view_obj != self_ {
-        PyErr_SetString(PyExc_ValueError, "memoryview's buffer is not this object");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("memoryview's buffer is not this object")
+        );
         return NULL;
     }
     if (ptr[PyMemoryViewObject](arg).view(1)[0].flags & _Py_MEMORYVIEW_RELEASED) != 0 {
         PyErr_SetString(
-            PyExc_ValueError, "memoryview's buffer has already been released"
+            PyExc_ValueError, ptr[u8]("memoryview's buffer has already been released")
         );
         return NULL;
     }
@@ -11132,14 +11231,16 @@ impl tp_new_wrapper(
     self_: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not self_ or not type_check(self_) {
-        PyErr_Format(PyExc_SystemError, "__new__() called with non-type 'self'");
+        PyErr_Format(
+            PyExc_SystemError, ptr[u8]("__new__() called with non-type 'self'")
+        );
         return NULL;
     }
     type = ptr[PyTypeObject](self_);
     if not tuple_check(args) or object_size(args) < 1 {
         PyErr_Format(
             PyExc_TypeError,
-            "%s.__new__(): not enough arguments",
+            ptr[u8]("%s.__new__(): not enough arguments"),
             type.view(1)[0].tp_name
         );
         return NULL;
@@ -11148,7 +11249,7 @@ impl tp_new_wrapper(
     if not type_check(arg0) {
         PyErr_Format(
             PyExc_TypeError,
-            "%s.__new__(X): X is not a type object (%s)",
+            ptr[u8]("%s.__new__(X): X is not a type object (%s)"),
             type.view(1)[0].tp_name,
             object_type(arg0).view(1)[0].tp_name
         );
@@ -11158,7 +11259,7 @@ impl tp_new_wrapper(
     if PyType_IsSubtype(subtype, type) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "%s.__new__(%s): %s is not a subtype of %s",
+            ptr[u8]("%s.__new__(%s): %s is not a subtype of %s"),
             type.view(1)[0].tp_name,
             subtype.view(1)[0].tp_name,
             subtype.view(1)[0].tp_name,
@@ -11178,14 +11279,14 @@ impl tp_new_wrapper(
         if int(staticbase.view(1)[0].tp_new) == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "cannot create '%s' instances",
+                ptr[u8]("cannot create '%s' instances"),
                 subtype.view(1)[0].tp_name
             );
             return NULL;
         }
         PyErr_Format(
             PyExc_TypeError,
-            "%s.__new__(%s) is not safe, use %s.__new__()",
+            ptr[u8]("%s.__new__(%s) is not safe, use %s.__new__()"),
             type.view(1)[0].tp_name,
             subtype.view(1)[0].tp_name,
             staticbase.view(1)[0].tp_name
@@ -11266,7 +11367,7 @@ impl slot_sq_length(self_: ptr[PyObject]) -> i64 {
     if (ptr[u64](ptr[u8](res) + PyLongObject_TAG).view(1)[0] & _PyLong_SIGN_MASK)
         == u64(2) {
         object_decref(res);
-        PyErr_SetString(PyExc_ValueError, "__len__() should return >= 0");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("__len__() should return >= 0"));
         return -1;
     }
     length = PyNumber_AsSsize_t(res, PyExc_OverflowError);
@@ -11319,7 +11420,7 @@ impl slot_sq_contains(self_: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     if attr_is_none != 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%.200s' object is not a container",
+            ptr[u8]("'%.200s' object is not a container"),
             object_type(self_).view(1)[0].tp_name
         );
         return -1;
@@ -11788,7 +11889,7 @@ impl slot_nb_bool(self_: ptr[PyObject]) -> i32 {
     if attr_is_none != 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%.200s' cannot be interpreted as a boolean",
+            ptr[u8]("'%.200s' cannot be interpreted as a boolean"),
             object_type(self_).view(1)[0].tp_name
         );
         return -1;
@@ -11810,7 +11911,7 @@ impl slot_nb_bool(self_: ptr[PyObject]) -> i32 {
     } else {
         PyErr_Format(
             PyExc_TypeError,
-            "__bool__ should return bool, returned %s",
+            ptr[u8]("__bool__ should return bool, returned %s"),
             object_type(value).view(1)[0].tp_name
         );
         result = -1;
@@ -12335,7 +12436,9 @@ impl slot_tp_hash(self_: ptr[PyObject]) -> i64 {
     }
     if not long_check(res) {
         object_decref(res);
-        PyErr_SetString(PyExc_TypeError, "__hash__ method should return an integer");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__hash__ method should return an integer")
+        );
         return -1;
     }
 
@@ -12442,7 +12545,7 @@ impl slot_tp_iter(self_: ptr[PyObject]) -> ptr[PyObject] {
     } elif attr_is_none != 0 or has_dunder_getitem(self_) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%.200s' object is not iterable",
+            ptr[u8]("'%.200s' object is not iterable"),
             object_type(self_).view(1)[0].tp_name
         );
         return NULL;
@@ -12517,7 +12620,7 @@ impl slot_tp_init(
     if res != Py_None {
         PyErr_Format(
             PyExc_TypeError,
-            "__init__() should return None, not '%.200s'",
+            ptr[u8]("__init__() should return None, not '%.200s'"),
             object_type(res).view(1)[0].tp_name
         );
         object_decref(res);
@@ -12549,7 +12652,7 @@ impl slot_tp_finalize(self_: ptr[PyObject]) {
         res = call_unbound_noarg(unbound, del_fn, self_);
         if not res {
             PyErr_FormatUnraisable(
-                "Exception ignored while calling deallocator %R", del_fn
+                ptr[u8]("Exception ignored while calling deallocator %R"), del_fn
             );
         } else {
             object_decref(res);
@@ -12631,7 +12734,9 @@ impl slot_bf_getbuffer(
         return -1;
     }
     if not object_is_type(ret, addressof(PyMemoryView_Type)) {
-        PyErr_Format(PyExc_TypeError, "__buffer__ returned non-memoryview object");
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("__buffer__ returned non-memoryview object")
+        );
         object_decref(ret);
         object_decref(flags_obj);
         return -1;
@@ -12726,7 +12831,7 @@ impl releasebuffer_call_python(self_: ptr[PyObject], buffer: ptr[Py_buffer]) {
         mv = PyMemoryView_FromBuffer(buffer);
         if not mv {
             PyErr_FormatUnraisable(
-                "Exception ignored in bf_releasebuffer of %s",
+                ptr[u8]("Exception ignored in bf_releasebuffer of %s"),
                 object_type(self_).view(1)[0].tp_name
             );
             PyErr_SetRaisedException(exc);
@@ -12742,7 +12847,7 @@ impl releasebuffer_call_python(self_: ptr[PyObject], buffer: ptr[Py_buffer]) {
     ret = vectorcall_method(py_id(_Py_ID___release_buffer__), stack, 2);
     if not ret {
         PyErr_FormatUnraisable(
-            "Exception ignored in __release_buffer__ of %s",
+            ptr[u8]("Exception ignored in __release_buffer__ of %s"),
             object_type(self_).view(1)[0].tp_name
         );
     } else {
@@ -12755,7 +12860,7 @@ impl releasebuffer_call_python(self_: ptr[PyObject], buffer: ptr[Py_buffer]) {
         );
         if not res {
             PyErr_FormatUnraisable(
-                "Exception ignored in bf_releasebuffer of %s",
+                ptr[u8]("Exception ignored in bf_releasebuffer of %s"),
                 object_type(self_).view(1)[0].tp_name
             );
         } else {
@@ -12777,7 +12882,7 @@ impl slot_am_generic(self_: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject]
     if not res and not PyErr_Occurred() {
         PyErr_Format(
             PyExc_AttributeError,
-            "object %.50s does not have %U method",
+            ptr[u8]("object %.50s does not have %U method"),
             object_type(self_).view(1)[0].tp_name,
             name
         );
@@ -13045,7 +13150,9 @@ impl type_new_set_names(type: ptr[PyTypeObject]) -> i32 {
         object_decref(set_name);
         if not res {
             _PyErr_FormatNote(
-                "Error calling __set_name__ on '%.100s' instance %R in '%.100s'",
+                ptr[u8](
+                    "Error calling __set_name__ on '%.100s' instance %R in '%.100s'"
+                ),
                 object_type(value).view(1)[0].tp_name,
                 key,
                 type.view(1)[0].tp_name
@@ -13365,7 +13472,9 @@ impl supercheck(type: ptr[PyTypeObject], obj_: ptr[PyObject]) -> ptr[PyTypeObjec
     type_str = type.view(1)[0].tp_name;
     PyErr_Format(
         PyExc_TypeError,
-        "super(type, obj): obj (%s %.200s) is not an instance or subtype of type (%.200s).",
+        ptr[u8](
+            "super(type, obj): obj (%s %.200s) is not an instance or subtype of type (%.200s)."
+        ),
         type_or_instance,
         obj_str,
         type_str
@@ -13444,14 +13553,14 @@ impl super_init_without_args(
 ) -> tuple[i32, ptr[PyTypeObject], ptr[PyObject]] {
     co = frame_get_code(cframe);
     if ptr[i32](co + PyCodeObject_ARGCOUNT).view(1)[0] == 0 {
-        PyErr_SetString(PyExc_RuntimeError, "super(): no arguments");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("super(): no arguments"));
         return (i32(-1), ptr[PyTypeObject](), NULL);
     }
 
     localsplus = ptr[u64](cframe + _PyInterpreterFrame_LOCALSPLUS);
     firstarg = stackref_borrow(localsplus.view(1)[0]);
     if not firstarg {
-        PyErr_SetString(PyExc_RuntimeError, "super(): arg[0] deleted");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("super(): arg[0] deleted"));
         return (i32(-1), ptr[PyTypeObject](), NULL);
     }
 
@@ -13463,7 +13572,7 @@ impl super_init_without_args(
     if (kind0 & CO_FAST_CELL) != 0 and instr_ptr >= bytecode {
         firstarg = object_xnewref(ptr[PyCellObject](firstarg).view(1)[0].ob_ref);
         if not firstarg {
-            PyErr_SetString(PyExc_RuntimeError, "super(): arg[0] deleted");
+            PyErr_SetString(PyExc_RuntimeError, ptr[u8]("super(): arg[0] deleted"));
             return (i32(-1), ptr[PyTypeObject](), NULL);
         }
     } else {
@@ -13480,7 +13589,9 @@ impl super_init_without_args(
         if _PyUnicode_Equal(name, py_id(_Py_ID___class__)) != 0 {
             cell = stackref_borrow((localsplus + i64(i)).view(1)[0]);
             if not cell or not object_is_type(cell, addressof(PyCell_Type)) {
-                PyErr_SetString(PyExc_RuntimeError, "super(): bad __class__ cell");
+                PyErr_SetString(
+                    PyExc_RuntimeError, ptr[u8]("super(): bad __class__ cell")
+                );
                 object_decref(firstarg);
                 return (i32(-1), ptr[PyTypeObject](), NULL);
             }
@@ -13489,7 +13600,9 @@ impl super_init_without_args(
                 object_xnewref(ptr[PyCellObject](cell).view(1)[0].ob_ref)
             );
             if not cls {
-                PyErr_SetString(PyExc_RuntimeError, "super(): empty __class__ cell");
+                PyErr_SetString(
+                    PyExc_RuntimeError, ptr[u8]("super(): empty __class__ cell")
+                );
                 object_decref(firstarg);
                 return (i32(-1), ptr[PyTypeObject](), NULL);
             }
@@ -13497,7 +13610,7 @@ impl super_init_without_args(
                 cls_tp_name = object_type(ptr[PyObject](cls)).view(1)[0].tp_name;
                 PyErr_Format(
                     PyExc_RuntimeError,
-                    "super(): __class__ is not a type (%s)",
+                    ptr[u8]("super(): __class__ is not a type (%s)"),
                     cls_tp_name
                 );
                 object_decref(ptr[PyObject](cls));
@@ -13509,7 +13622,9 @@ impl super_init_without_args(
         i += 1;
     }
     if not cls {
-        PyErr_SetString(PyExc_RuntimeError, "super(): __class__ cell not found");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("super(): __class__ cell not found")
+        );
         object_decref(firstarg);
         return (i32(-1), ptr[PyTypeObject](), NULL);
     }
@@ -13522,14 +13637,17 @@ impl super_init(self_: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) 
     }
     if not tuple_check(args) {
         PyErr_SetString(
-            PyExc_SystemError, "new style getargs format but argument is not a tuple"
+            PyExc_SystemError,
+            ptr[u8]("new style getargs format but argument is not a tuple")
         );
         return -1;
     }
     nargs: i64 = object_size(args);
     if nargs > 2 {
         PyErr_Format(
-            PyExc_TypeError, "super() takes at most 2 arguments (%zd given)", nargs
+            PyExc_TypeError,
+            ptr[u8]("super() takes at most 2 arguments (%zd given)"),
+            nargs
         );
         return -1;
     }
@@ -13544,7 +13662,9 @@ impl super_init(self_: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) 
                 arg0_name = object_type(arg0).view(1)[0].tp_name;
             }
             PyErr_Format(
-                PyExc_TypeError, "super() argument 1 must be type, not %.50s", arg0_name
+                PyExc_TypeError,
+                ptr[u8]("super() argument 1 must be type, not %.50s"),
+                arg0_name
             );
             return -1;
         }
@@ -13570,7 +13690,7 @@ impl super_init_impl(
         tstate = thread_state();
         frame = thread_state_get_frame(tstate);
         if not frame {
-            PyErr_SetString(PyExc_RuntimeError, "super(): no current frame");
+            PyErr_SetString(PyExc_RuntimeError, ptr[u8]("super(): no current frame"));
             return -1;
         }
         (res, frame_cls, frame_obj) = super_init_without_args(frame);
@@ -13649,7 +13769,7 @@ impl super_vectorcall(
             arg0_name = object_type(arg0).view(1)[0].tp_name;
             PyErr_Format(
                 PyExc_TypeError,
-                "super() argument 1 must be a type, not %.200s",
+                ptr[u8]("super() argument 1 must be a type, not %.200s"),
                 arg0_name
             );
             object_decref(su);

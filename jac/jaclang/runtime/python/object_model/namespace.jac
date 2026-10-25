@@ -281,7 +281,7 @@ impl namespace_replace(
     if not namespace_check(result) {
         PyErr_Format(
             PyExc_TypeError,
-            "expect %N type, but %T() returned '%T' object",
+            ptr[u8]("expect %N type, but %T() returned '%T' object"),
             addressof(_PyNamespace_Type),
             op,
             result

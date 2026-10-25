@@ -787,7 +787,7 @@ import from c {
                 res = PyObject_CallOneArg(finalizer, self);
                 if not res {
                     PyErr_FormatUnraisable(
-                        "Exception ignored while finalizing generator %R", self
+                        ptr[u8]("Exception ignored while finalizing generator %R"), self
                     );
                 } else {
                     object_decref(res);
@@ -807,7 +807,7 @@ import from c {
             if not res {
                 if PyErr_Occurred() {
                     PyErr_FormatUnraisable(
-                        "Exception ignored while closing generator %R", self
+                        ptr[u8]("Exception ignored while closing generator %R"), self
                     );
                 }
             } else {
@@ -895,14 +895,14 @@ import from c {
             if res {
                 if coro_check_exact(res) or gen_is_coroutine(res) {
                     PyErr_SetString(
-                        PyExc_TypeError, "__await__() returned a coroutine"
+                        PyExc_TypeError, ptr[u8]("__await__() returned a coroutine")
                     );
                     object_decref(res);
                     res = NULL;
                 } elif PyIter_Check(res) == 0 {
                     PyErr_Format(
                         PyExc_TypeError,
-                        "__await__() returned non-iterator of type '%.100s'",
+                        ptr[u8]("__await__() returned non-iterator of type '%.100s'"),
                         object_type(res).view(1)[0].tp_name
                     );
                     object_decref(res);
@@ -913,7 +913,9 @@ import from c {
         }
 
         PyErr_Format(
-            PyExc_TypeError, "'%.100s' object can't be awaited", ot.view(1)[0].tp_name
+            PyExc_TypeError,
+            ptr[u8]("'%.100s' object can't be awaited"),
+            ot.view(1)[0].tp_name
         );
         return NULL;
     }  def PyCoro_New(
@@ -1328,34 +1330,38 @@ impl gen_send_ex2(
     if state == FRAME_CREATED and arg and arg != Py_None {
         if coro_check_exact(gen) {
             PyErr_SetString(
-                PyExc_TypeError, "can't send non-None value to a just-started coroutine"
+                PyExc_TypeError,
+                ptr[u8]("can't send non-None value to a just-started coroutine")
             );
         } elif async_gen_check_exact(gen) {
             PyErr_SetString(
                 PyExc_TypeError,
-                "can't send non-None value to a just-started async generator"
+                ptr[u8]("can't send non-None value to a just-started async generator")
             );
         } else {
             PyErr_SetString(
-                PyExc_TypeError, "can't send non-None value to a just-started generator"
+                PyExc_TypeError,
+                ptr[u8]("can't send non-None value to a just-started generator")
             );
         }
         return (PYGEN_ERROR, NULL);
     }
     if state == FRAME_EXECUTING {
         if coro_check_exact(gen) {
-            PyErr_SetString(PyExc_ValueError, "coroutine already executing");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("coroutine already executing"));
         } elif async_gen_check_exact(gen) {
-            PyErr_SetString(PyExc_ValueError, "async generator already executing");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("async generator already executing")
+            );
         } else {
-            PyErr_SetString(PyExc_ValueError, "generator already executing");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("generator already executing"));
         }
         return (PYGEN_ERROR, NULL);
     }
     if state >= FRAME_COMPLETED {
         if coro_check_exact(gen) and closing == i32(0) {
             PyErr_SetString(
-                PyExc_RuntimeError, "cannot reuse already awaited coroutine"
+                PyExc_RuntimeError, ptr[u8]("cannot reuse already awaited coroutine")
             );
         } elif arg and exc == i32(0) {
             return (PYGEN_RETURN, object_new_ref(Py_None));
@@ -1459,7 +1465,9 @@ impl gen_close_iter(yf: ptr[PyObject]) -> i32 {
         meth: ptr[PyObject] = NULL;
         name = gen_id(ID_CLOSE);
         if not name or PyObject_GetOptionalAttr(yf, name, &mut meth) < 0 {
-            PyErr_FormatUnraisable("Exception ignored while closing generator %R", yf);
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored while closing generator %R"), yf
+            );
         }
         if meth {
             retval = PyObject_CallNoArgs(meth);
@@ -1518,13 +1526,17 @@ impl gen_close(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if retval {
         object_decref(retval);
         if coro_check_exact(gen) {
-            PyErr_SetString(PyExc_RuntimeError, "coroutine ignored GeneratorExit");
+            PyErr_SetString(
+                PyExc_RuntimeError, ptr[u8]("coroutine ignored GeneratorExit")
+            );
         } elif async_gen_check_exact(gen) {
             PyErr_SetString(
-                PyExc_RuntimeError, "async generator ignored GeneratorExit"
+                PyExc_RuntimeError, ptr[u8]("async generator ignored GeneratorExit")
             );
         } else {
-            PyErr_SetString(PyExc_RuntimeError, "generator ignored GeneratorExit");
+            PyErr_SetString(
+                PyExc_RuntimeError, ptr[u8]("generator ignored GeneratorExit")
+            );
         }
         return NULL;
     }
@@ -1623,7 +1635,8 @@ impl gen_throw_here(
     } elif tb
         and not object_is_type(tb, ptr[PyTypeObject](addressof(PyTraceBack_Type))) {
         PyErr_SetString(
-            PyExc_TypeError, "throw() third argument must be a traceback object"
+            PyExc_TypeError,
+            ptr[u8]("throw() third argument must be a traceback object")
         );
         return NULL;
     }
@@ -1638,7 +1651,8 @@ impl gen_throw_here(
     } elif type_has_feature(object_type(typ), Py_TPFLAGS_BASE_EXC_SUBCLASS) {
         if val and val != Py_None {
             PyErr_SetString(
-                PyExc_TypeError, "instance exception may not have a separate value"
+                PyExc_TypeError,
+                ptr[u8]("instance exception may not have a separate value")
             );
             object_decref(typ);
             object_xdecref(val);
@@ -1655,7 +1669,9 @@ impl gen_throw_here(
     } else {
         PyErr_Format(
             PyExc_TypeError,
-            "exceptions must be classes or instances deriving from BaseException, not %s",
+            ptr[u8](
+                "exceptions must be classes or instances deriving from BaseException, not %s"
+            ),
             object_type(typ).view(1)[0].tp_name
         );
         object_decref(typ);
@@ -1678,7 +1694,9 @@ impl gen_throw(
     if nargs > 1 {
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "the (type, exc, tb) signature of throw() is deprecated, use the single-arg signature instead.",
+            ptr[u8](
+                "the (type, exc, tb) signature of throw() is deprecated, use the single-arg signature instead."
+            ),
             1
         )
             < 0 {
@@ -1750,7 +1768,9 @@ impl gen_get_name(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
 
 impl gen_set_name(self: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> i32 {
     if not value or not unicode_check(value) {
-        PyErr_SetString(PyExc_TypeError, "__name__ must be set to a string object");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__name__ must be set to a string object")
+        );
         return i32(-1);
     }
     old = slot_get(self, PyGenObject_NAME);
@@ -1765,7 +1785,9 @@ impl gen_get_qualname(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
 
 impl gen_set_qualname(self: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> i32 {
     if not value or not unicode_check(value) {
-        PyErr_SetString(PyExc_TypeError, "__qualname__ must be set to a string object");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__qualname__ must be set to a string object")
+        );
         return i32(-1);
     }
     old = slot_get(self, PyGenObject_QUALNAME);
@@ -2082,7 +2104,9 @@ impl async_gen_athrow(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if object_size(args) > 1 {
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "the (type, exc, tb) signature of athrow() is deprecated, use the single-arg signature instead.",
+            ptr[u8](
+                "the (type, exc, tb) signature of athrow() is deprecated, use the single-arg signature instead."
+            ),
             1
         )
             < 0 {
@@ -2165,7 +2189,8 @@ impl async_gen_asend_send(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObje
     o = self;
     if slot_i32(o, PyAsyncGenASend_AGS_STATE) == AWAITABLE_STATE_CLOSED {
         PyErr_SetString(
-            PyExc_RuntimeError, "cannot reuse already awaited __anext__()/asend()"
+            PyExc_RuntimeError,
+            ptr[u8]("cannot reuse already awaited __anext__()/asend()")
         );
         return NULL;
     }
@@ -2176,7 +2201,8 @@ impl async_gen_asend_send(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObje
         if slot_u8(gen, PyGenObject_RUNNING_ASYNC) != u8(0) {
             slot_set_i32(o, PyAsyncGenASend_AGS_STATE, AWAITABLE_STATE_CLOSED);
             PyErr_SetString(
-                PyExc_RuntimeError, "anext(): asynchronous generator is already running"
+                PyExc_RuntimeError,
+                ptr[u8]("anext(): asynchronous generator is already running")
             );
             return NULL;
         }
@@ -2208,7 +2234,8 @@ impl async_gen_asend_throw(
     o = self;
     if slot_i32(o, PyAsyncGenASend_AGS_STATE) == AWAITABLE_STATE_CLOSED {
         PyErr_SetString(
-            PyExc_RuntimeError, "cannot reuse already awaited __anext__()/asend()"
+            PyExc_RuntimeError,
+            ptr[u8]("cannot reuse already awaited __anext__()/asend()")
         );
         return NULL;
     }
@@ -2218,7 +2245,8 @@ impl async_gen_asend_throw(
         if slot_u8(gen, PyGenObject_RUNNING_ASYNC) != u8(0) {
             slot_set_i32(o, PyAsyncGenASend_AGS_STATE, AWAITABLE_STATE_CLOSED);
             PyErr_SetString(
-                PyExc_RuntimeError, "anext(): asynchronous generator is already running"
+                PyExc_RuntimeError,
+                ptr[u8]("anext(): asynchronous generator is already running")
             );
             return NULL;
         }
@@ -2255,7 +2283,7 @@ impl async_gen_asend_close(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyOb
     }
 
     object_decref(result);
-    PyErr_SetString(PyExc_RuntimeError, "coroutine ignored GeneratorExit");
+    PyErr_SetString(PyExc_RuntimeError, ptr[u8]("coroutine ignored GeneratorExit"));
     return NULL;
 }
 
@@ -2327,7 +2355,9 @@ impl athrow_yield_close(o: ptr[PyObject]) -> ptr[PyObject] {
         slot_get(o, PyAsyncGenAThrow_AGT_GEN), PyGenObject_RUNNING_ASYNC, u8(0)
     );
     slot_set_i32(o, PyAsyncGenAThrow_AGT_STATE, AWAITABLE_STATE_CLOSED);
-    PyErr_SetString(PyExc_RuntimeError, "async generator ignored GeneratorExit");
+    PyErr_SetString(
+        PyExc_RuntimeError, ptr[u8]("async generator ignored GeneratorExit")
+    );
     return NULL;
 }
 
@@ -2353,7 +2383,8 @@ impl async_gen_athrow_send(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObj
 
     if slot_i32(o, PyAsyncGenAThrow_AGT_STATE) == AWAITABLE_STATE_CLOSED {
         PyErr_SetString(
-            PyExc_RuntimeError, "cannot reuse already awaited aclose()/athrow()"
+            PyExc_RuntimeError,
+            ptr[u8]("cannot reuse already awaited aclose()/athrow()")
         );
         return NULL;
     }
@@ -2370,12 +2401,12 @@ impl async_gen_athrow_send(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObj
             if not slot_get(o, PyAsyncGenAThrow_AGT_ARGS) {
                 PyErr_SetString(
                     PyExc_RuntimeError,
-                    "aclose(): asynchronous generator is already running"
+                    ptr[u8]("aclose(): asynchronous generator is already running")
                 );
             } else {
                 PyErr_SetString(
                     PyExc_RuntimeError,
-                    "athrow(): asynchronous generator is already running"
+                    ptr[u8]("athrow(): asynchronous generator is already running")
                 );
             }
             return NULL;
@@ -2390,7 +2421,7 @@ impl async_gen_athrow_send(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObj
         if arg != Py_None {
             PyErr_SetString(
                 PyExc_RuntimeError,
-                "can't send non-None value to a just-started coroutine"
+                ptr[u8]("can't send non-None value to a just-started coroutine")
             );
             return NULL;
         }
@@ -2449,7 +2480,8 @@ impl async_gen_athrow_throw(
 
     if slot_i32(o, PyAsyncGenAThrow_AGT_STATE) == AWAITABLE_STATE_CLOSED {
         PyErr_SetString(
-            PyExc_RuntimeError, "cannot reuse already awaited aclose()/athrow()"
+            PyExc_RuntimeError,
+            ptr[u8]("cannot reuse already awaited aclose()/athrow()")
         );
         return NULL;
     }
@@ -2460,12 +2492,12 @@ impl async_gen_athrow_throw(
             if not slot_get(o, PyAsyncGenAThrow_AGT_ARGS) {
                 PyErr_SetString(
                     PyExc_RuntimeError,
-                    "aclose(): asynchronous generator is already running"
+                    ptr[u8]("aclose(): asynchronous generator is already running")
                 );
             } else {
                 PyErr_SetString(
                     PyExc_RuntimeError,
-                    "athrow(): asynchronous generator is already running"
+                    ptr[u8]("athrow(): asynchronous generator is already running")
                 );
             }
             return NULL;
@@ -2489,7 +2521,9 @@ impl async_gen_athrow_throw(
         slot_set_u8(gen, PyGenObject_RUNNING_ASYNC, u8(0));
         slot_set_i32(o, PyAsyncGenAThrow_AGT_STATE, AWAITABLE_STATE_CLOSED);
         object_decref(retval);
-        PyErr_SetString(PyExc_RuntimeError, "async generator ignored GeneratorExit");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("async generator ignored GeneratorExit")
+        );
         return NULL;
     }
     if not retval {
@@ -2523,7 +2557,7 @@ impl async_gen_athrow_close(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyO
         return result;
     }
     object_decref(result);
-    PyErr_SetString(PyExc_RuntimeError, "coroutine ignored GeneratorExit");
+    PyErr_SetString(PyExc_RuntimeError, ptr[u8]("coroutine ignored GeneratorExit"));
     return NULL;
 }
 

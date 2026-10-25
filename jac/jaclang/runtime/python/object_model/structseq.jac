@@ -146,7 +146,7 @@ import from c {
         if _PyStaticType_InitBuiltin(interp, ptr[PyObject](type)) < 0 {
             PyErr_Format(
                 PyExc_RuntimeError,
-                "Can't initialize builtin type %s",
+                ptr[u8]("Can't initialize builtin type %s"),
                 desc.view(1)[0].name
             );
             PyMem_Free(ptr(members));
@@ -284,7 +284,7 @@ impl type_attr_as_size(tp: ptr[PyTypeObject], which: int) -> i64 {
     if not v and not PyErr_Occurred() {
         PyErr_Format(
             PyExc_TypeError,
-            "Missed attribute '%U' of type %s",
+            ptr[u8]("Missed attribute '%U' of type %s"),
             name,
             tp.view(1)[0].tp_name
         );
@@ -377,7 +377,9 @@ impl structseq_new_impl(
     name = type.view(1)[0].tp_name;
     if dict and jacpy_is_dict(dict) == 0 {
         PyErr_Format(
-            PyExc_TypeError, "%.500s() takes a dict as second arg, if any", name
+            PyExc_TypeError,
+            ptr[u8]("%.500s() takes a dict as second arg, if any"),
+            name
         );
         jacpy_release(fast);
         return NULL;
@@ -387,7 +389,7 @@ impl structseq_new_impl(
         if length < min_len {
             PyErr_Format(
                 PyExc_TypeError,
-                "%.500s() takes an at least %zd-sequence (%zd-sequence given)",
+                ptr[u8]("%.500s() takes an at least %zd-sequence (%zd-sequence given)"),
                 name,
                 min_len,
                 length
@@ -398,7 +400,7 @@ impl structseq_new_impl(
         if length > max_len {
             PyErr_Format(
                 PyExc_TypeError,
-                "%.500s() takes an at most %zd-sequence (%zd-sequence given)",
+                ptr[u8]("%.500s() takes an at most %zd-sequence (%zd-sequence given)"),
                 name,
                 max_len,
                 length
@@ -409,7 +411,7 @@ impl structseq_new_impl(
     } elif length != min_len {
         PyErr_Format(
             PyExc_TypeError,
-            "%.500s() takes a %zd-sequence (%zd-sequence given)",
+            ptr[u8]("%.500s() takes a %zd-sequence (%zd-sequence given)"),
             name,
             min_len,
             length
@@ -450,7 +452,7 @@ impl structseq_new_impl(
         if PyDict_Size(dict) > n_found_keys {
             PyErr_Format(
                 PyExc_TypeError,
-                "%.500s() got duplicate or unexpected field name(s)",
+                ptr[u8]("%.500s() got duplicate or unexpected field name(s)"),
                 name
             );
             jacpy_release(res);
@@ -496,7 +498,7 @@ impl structseq_repr(op: ptr[PyObject]) -> ptr[PyObject] {
         if not (members + i).view(1)[0].name {
             PyErr_Format(
                 PyExc_SystemError,
-                "In structseq_repr(), member %zd name is NULL for type %.500s",
+                ptr[u8]("In structseq_repr(), member %zd name is NULL for type %.500s"),
                 i,
                 typ.view(1)[0].tp_name
             );
@@ -567,7 +569,9 @@ impl structseq_replace(
     if n_unnamed_fields > 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "__replace__() is not supported for %.500s because it has unnamed field(s)",
+            ptr[u8](
+                "__replace__() is not supported for %.500s because it has unnamed field(s)"
+            ),
             object_type(op).view(1)[0].tp_name
         );
         return NULL;
@@ -599,7 +603,7 @@ impl structseq_replace(
             names = PyDict_Keys(kwargs);
             if names {
                 PyErr_Format(
-                    PyExc_TypeError, "Got unexpected field name(s): %R", names
+                    PyExc_TypeError, ptr[u8]("Got unexpected field name(s): %R"), names
                 );
                 jacpy_release(names);
             }

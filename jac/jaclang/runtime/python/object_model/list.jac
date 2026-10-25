@@ -389,18 +389,18 @@ import from c {
             return NULL;
         }
         if not valid_index(i, object_size(op)) {
-            PyErr_SetString(PyExc_IndexError, "list index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("list index out of range"));
             return NULL;
         }
         return item_at(list_items(op), i);
     }  def PyList_GetItemRef(op: ptr[PyObject], i: i64) -> ptr[PyObject] {
         if not list_check(op) {
-            PyErr_SetString(PyExc_TypeError, "expected a list");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("expected a list"));
             return NULL;
         }
         item = list_get_item_ref(op, i);
         if not item {
-            PyErr_SetString(PyExc_IndexError, "list index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("list index out of range"));
             return NULL;
         }
         return item;
@@ -414,7 +414,9 @@ import from c {
         }
         if not valid_index(i, object_size(op)) {
             object_xdecref(newitem);
-            PyErr_SetString(PyExc_IndexError, "list assignment index out of range");
+            PyErr_SetString(
+                PyExc_IndexError, ptr[u8]("list assignment index out of range")
+            );
             return i32(-1);
         }
         slot = list_items(op) + i;
@@ -1129,7 +1131,7 @@ impl list_contains(op: ptr[PyObject], el: ptr[PyObject]) -> i32 {
 
 impl list_item(op: ptr[PyObject], i: i64) -> ptr[PyObject] {
     if not valid_index(i, object_size(op)) {
-        PyErr_SetString(PyExc_IndexError, "list index out of range");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("list index out of range"));
         return NULL;
     }
     return object_new_ref(item_at(list_items(op), i));
@@ -1157,7 +1159,7 @@ impl list_concat(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     if not list_check(b) {
         PyErr_Format(
             PyExc_TypeError,
-            "can only concatenate list (not \"%.200s\") to list",
+            ptr[u8]("can only concatenate list (not \"%.200s\") to list"),
             object_type(b).view(1)[0].tp_name
         );
         return NULL;
@@ -1371,7 +1373,9 @@ impl list_inplace_repeat(op: ptr[PyObject], n: i64) -> ptr[PyObject] {
 impl list_ass_item(op: ptr[PyObject], i: i64, v: ptr[PyObject]) -> i32 {
     size = object_size(op);
     if not valid_index(i, size) {
-        PyErr_SetString(PyExc_IndexError, "list assignment index out of range");
+        PyErr_SetString(
+            PyExc_IndexError, ptr[u8]("list assignment index out of range")
+        );
         return i32(-1);
     }
     items = list_items(op);
@@ -1642,14 +1646,14 @@ impl list_pop(
     }
     size = object_size(op);
     if size == 0 {
-        PyErr_SetString(PyExc_IndexError, "pop from empty list");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("pop from empty list"));
         return NULL;
     }
     if index < 0 {
         index += size;
     }
     if not valid_index(index, size) {
-        PyErr_SetString(PyExc_IndexError, "pop index out of range");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("pop index out of range"));
         return NULL;
     }
     items = list_items(op);
@@ -2801,7 +2805,7 @@ impl list_sort_impl(
             PyMem_Free(ptr(keys));
         }
         if list_allocated(op) != -1 and result {
-            PyErr_SetString(PyExc_ValueError, "list modified during sort");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("list modified during sort"));
             result = NULL;
         }
         if reverse != 0 and saved_ob_size > 1 {
@@ -2903,7 +2907,7 @@ impl list_index(
         }
         i += 1;
     }
-    PyErr_SetString(PyExc_ValueError, "list.index(x): x not in list");
+    PyErr_SetString(PyExc_ValueError, ptr[u8]("list.index(x): x not in list"));
     return NULL;
 }
 
@@ -2949,7 +2953,7 @@ impl list_remove(op: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
         }
         i += 1;
     }
-    PyErr_SetString(PyExc_ValueError, "list.remove(x): x not in list");
+    PyErr_SetString(PyExc_ValueError, ptr[u8]("list.remove(x): x not in list"));
     return NULL;
 }
 
@@ -3123,7 +3127,7 @@ impl list_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     }
     PyErr_Format(
         PyExc_TypeError,
-        "list indices must be integers or slices, not %.200s",
+        ptr[u8]("list indices must be integers or slices, not %.200s"),
         object_type(item).view(1)[0].tp_name
     );
     return NULL;
@@ -3227,7 +3231,9 @@ impl list_assign_extended(
     if object_size(seq) != slicelength {
         PyErr_Format(
             PyExc_ValueError,
-            "attempt to assign sequence of size %zd to extended slice of size %zd",
+            ptr[u8](
+                "attempt to assign sequence of size %zd to extended slice of size %zd"
+            ),
             object_size(seq),
             slicelength
         );
@@ -3278,7 +3284,7 @@ impl list_ass_subscript(
     }
     PyErr_Format(
         PyExc_TypeError,
-        "list indices must be integers or slices, not %.200s",
+        ptr[u8]("list indices must be integers or slices, not %.200s"),
         object_type(item).view(1)[0].tp_name
     );
     return i32(-1);

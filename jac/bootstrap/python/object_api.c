@@ -1621,6 +1621,38 @@ PyUnicodeWriter_Format(PyUnicodeWriter *writer, const char *format, ...)
     return res;
 }
 
+/* _PyErr_FormatV and PyErr_FormatV, as Python/errors.c defines them. The
+ * rest of errors.c is object_model/errors.jac; a Jac definition cannot
+ * receive a va_list, so these two stay C over the Jac _PyErr_Clear and
+ * _PyErr_SetObject. */
+#include "internal/pycore_pyerrors.h"
+#include "internal/pycore_pystate.h"
+
+PyObject *
+_PyErr_FormatV(PyThreadState *tstate, PyObject *exception,
+               const char *format, va_list vargs)
+{
+    PyObject* string;
+
+    /* Issue #23571: PyUnicode_FromFormatV() must not be called with an
+       exception set, it calls arbitrary Python code like PyObject_Repr() */
+    _PyErr_Clear(tstate);
+
+    string = PyUnicode_FromFormatV(format, vargs);
+    if (string != NULL) {
+        _PyErr_SetObject(tstate, exception, string);
+        Py_DECREF(string);
+    }
+    return NULL;
+}
+
+PyObject *
+PyErr_FormatV(PyObject *exception, const char *format, va_list vargs)
+{
+    PyThreadState *tstate = _PyThreadState_GET();
+    return _PyErr_FormatV(tstate, exception, format, vargs);
+}
+
 /* str's static strings: the generated _PyUnicode_InitStaticStrings is a
  * static inline over _PyRuntime's _Py_ID/_Py_STR objects, so
  * object_model/unicode.jac reaches it through this wrapper. */

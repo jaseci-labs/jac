@@ -14,9 +14,8 @@ import from c {
         PyObject
     ];  def PyInit__ast -> ptr[PyObject];  def PyInit__tokenize -> ptr[PyObject];  def PyInit__symtable -> ptr[
         PyObject
-    ];  def PyInit_gc -> ptr[PyObject];  def _PyWarnings_Init -> ptr[PyObject];  def PyInit__string -> ptr[
-        PyObject
-    ];  glob _PyImport_Inittab: list[_inittab] = [
+    ];  def PyInit_gc -> ptr[PyObject];  def PyInit__string -> ptr[PyObject];  glob _PyImport_Inittab:
+             list[_inittab] = [
              _inittab(name=ptr[u8]("_bisect"), initfunc=ptr(PyInit__bisect)),
              _inittab(name=ptr[u8]("_heapq"), initfunc=ptr(PyInit__heapq)),
              _inittab(name=ptr[u8]("_random"), initfunc=ptr(PyInit__random)),
@@ -45,6 +44,7 @@ import from c {
              _inittab(name=ptr[u8]("_types"), initfunc=ptr(PyInit__types)),
              _inittab(name=ptr[u8]("_typing"), initfunc=ptr(PyInit__typing)),
              _inittab(name=ptr[u8]("_suggestions"), initfunc=ptr(PyInit__suggestions)),
+             _inittab(name=ptr[u8]("_warnings"), initfunc=ptr(PyInit__warnings)),
              _inittab(name=ptr[u8]("_sysconfig"), initfunc=ptr(PyInit__sysconfig)),
              _inittab(name=ptr[u8]("_weakref"), initfunc=ptr(PyInit__weakref)),
              _inittab(name=ptr[u8]("_tracemalloc"), initfunc=ptr(PyInit__tracemalloc)),
@@ -116,7 +116,6 @@ import from c {
              _inittab(name=ptr[u8]("builtins"), initfunc=ptr()),
              _inittab(name=ptr[u8]("sys"), initfunc=ptr()),
              _inittab(name=ptr[u8]("gc"), initfunc=ptr(PyInit_gc)),
-             _inittab(name=ptr[u8]("_warnings"), initfunc=ptr(_PyWarnings_Init)),
              _inittab(name=ptr[u8]("_string"), initfunc=ptr(PyInit__string)),
              _inittab(name=ptr[u8](), initfunc=ptr())
          ];

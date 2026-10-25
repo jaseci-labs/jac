@@ -280,7 +280,7 @@ import from c {
                 if overflow != 0 or signum != -1 or not PyErr_Occurred() {
                     PyErr_Format(
                         PyExc_ValueError,
-                        "signal number %ld out of range [1; %i]",
+                        ptr[u8]("signal number %ld out of range [1; %i]"),
                         signum,
                         i32(NSIG - 1)
                     );
@@ -298,7 +298,7 @@ import from c {
                 if PyErr_WarnFormat(
                     PyExc_RuntimeWarning,
                     1,
-                    "invalid signal number %ld, please use valid_signals()",
+                    ptr[u8]("invalid signal number %ld, please use valid_signals()"),
                     signum
                 )
                     != 0 {
@@ -347,7 +347,7 @@ import from c {
             }
             return PyErr_Format(
                 PyExc_TypeError,
-                "expected str, bytes or os.PathLike object, not %.200s",
+                ptr[u8]("expected str, bytes or os.PathLike object, not %.200s"),
                 _PyType_Name(Py_TYPE(path))
             );
         }
@@ -359,7 +359,9 @@ import from c {
         if jacpy_is_unicode(result) == 0 and jacpy_is_bytes(result) == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "expected %.200s.__fspath__() to return str or bytes, not %.200s",
+                ptr[u8](
+                    "expected %.200s.__fspath__() to return str or bytes, not %.200s"
+                ),
                 _PyType_Name(Py_TYPE(path)),
                 _PyType_Name(Py_TYPE(result))
             );
@@ -484,7 +486,7 @@ impl id_converter(value: ptr[PyObject], kind: str) -> (u32 | None) {
     if not index {
         PyErr_Format(
             PyExc_TypeError,
-            "%s should be integer, not %.200s",
+            ptr[u8]("%s should be integer, not %.200s"),
             kind,
             _PyType_Name(Py_TYPE(value))
         );
@@ -524,7 +526,7 @@ impl id_converter(value: ptr[PyObject], kind: str) -> (u32 | None) {
     }
     jacpy_release(index);
     if failure {
-        PyErr_Format(PyExc_OverflowError, "%s is %s", kind, failure);
+        PyErr_Format(PyExc_OverflowError, ptr[u8]("%s is %s"), kind, failure);
         return None;
     }
     return identifier;
@@ -597,7 +599,9 @@ impl dev_converter(value: ptr[PyObject]) -> (u64 | None) {
     }
     fits = unsigned <= u64(0xFFFFFFFF) if DEV_T_SIGNED_32 else True;
     if not fits {
-        PyErr_Format(PyExc_OverflowError, "Python int too large to convert to C dev_t");
+        PyErr_Format(
+            PyExc_OverflowError, ptr[u8]("Python int too large to convert to C dev_t")
+        );
         return None;
     }
     return unsigned;
@@ -613,7 +617,9 @@ impl convert__Py_Dev_Converter(value: ptr[PyObject], fname: str, label: str) -> 
 
 impl fd_converter(value: ptr[PyObject]) -> (i32 | None) {
     if jacpy_is_bool(value) != 0 {
-        if PyErr_WarnEx(PyExc_RuntimeWarning, "bool is used as a file descriptor", 1)
+        if PyErr_WarnEx(
+            PyExc_RuntimeWarning, ptr[u8]("bool is used as a file descriptor"), 1
+        )
             != 0 {
             return None;
         }
@@ -626,11 +632,11 @@ impl fd_converter(value: ptr[PyObject]) -> (i32 | None) {
     number = PyLong_AsLongAndOverflow(index, &mut overflow);
     jacpy_release(index);
     if overflow > 0 or number > INT_MAX {
-        PyErr_Format(PyExc_OverflowError, "fd is greater than maximum");
+        PyErr_Format(PyExc_OverflowError, ptr[u8]("fd is greater than maximum"));
         return None;
     }
     if overflow < 0 or number < INT_MIN {
-        PyErr_Format(PyExc_OverflowError, "fd is less than minimum");
+        PyErr_Format(PyExc_OverflowError, ptr[u8]("fd is less than minimum"));
         return None;
     }
     return i32(number);
@@ -645,7 +651,7 @@ impl dir_fd_converter(value: ptr[PyObject]) -> (i32 | None) {
     }
     PyErr_Format(
         PyExc_TypeError,
-        "argument should be integer or None, not %.200s",
+        ptr[u8]("argument should be integer or None, not %.200s"),
         _PyType_Name(Py_TYPE(value))
     );
     return None;
@@ -654,7 +660,7 @@ impl dir_fd_converter(value: ptr[PyObject]) -> (i32 | None) {
 impl argument_unavailable_error(function_name: str, argument_name: str) {
     PyErr_Format(
         PyExc_NotImplementedError,
-        "%s%s%s unavailable on this platform",
+        ptr[u8]("%s%s%s unavailable on this platform"),
         function_name,
         ": " if function_name else "",
         argument_name
@@ -777,7 +783,7 @@ impl path_and_dir_fd_invalid(function_name: str, path: path_t, dir_fd: i32) -> b
     if not path.wide and dir_fd != DEFAULT_DIR_FD and not path.narrow {
         PyErr_Format(
             PyExc_ValueError,
-            "%s: can't specify dir_fd without matching path",
+            ptr[u8]("%s: can't specify dir_fd without matching path"),
             function_name
         );
         return True;
@@ -788,7 +794,9 @@ impl path_and_dir_fd_invalid(function_name: str, path: path_t, dir_fd: i32) -> b
 impl dir_fd_and_fd_invalid(function_name: str, dir_fd: i32, fd: i32) -> bool {
     if dir_fd != DEFAULT_DIR_FD and fd != -1 {
         PyErr_Format(
-            PyExc_ValueError, "%s: can't specify both dir_fd and fd", function_name
+            PyExc_ValueError,
+            ptr[u8]("%s: can't specify both dir_fd and fd"),
+            function_name
         );
         return True;
     }
@@ -801,7 +809,7 @@ impl fd_and_follow_symlinks_invalid(
     if fd >= 0 and not follow_symlinks {
         PyErr_Format(
             PyExc_ValueError,
-            "%s: cannot use fd and follow_symlinks together",
+            ptr[u8]("%s: cannot use fd and follow_symlinks together"),
             function_name
         );
         return True;
@@ -815,7 +823,7 @@ impl dir_fd_and_follow_symlinks_invalid(
     if dir_fd != DEFAULT_DIR_FD and not follow_symlinks {
         PyErr_Format(
             PyExc_ValueError,
-            "%s: cannot use dir_fd and follow_symlinks together",
+            ptr[u8]("%s: cannot use dir_fd and follow_symlinks together"),
             function_name
         );
         return True;
@@ -883,13 +891,18 @@ impl PATH_T_INITIALIZE_P(
 }
 
 impl path_format_error(path: path_t, template: str) {
+    format = jacpy_unicode_from_text("%s%s" + template);
+    if not format {
+        return;
+    }
     PyErr_Format(
         PyExc_ValueError,
-        "%s%s" + template,
+        PyUnicode_AsUTF8(format),
         path.function_name,
         ": " if path.function_name else "",
         path.label()
     );
+    jacpy_release(format);
 }
 
 impl path_kind_text(path: path_t) -> str {
@@ -941,7 +954,9 @@ impl path_converter(value: ptr[PyObject], path: path_t) -> bool {
         } else {
             PyErr_Format(
                 PyExc_TypeError,
-                "expected %.200s.__fspath__() to return str or bytes, not %.200s",
+                ptr[u8](
+                    "expected %.200s.__fspath__() to return str or bytes, not %.200s"
+                ),
                 _PyType_Name(Py_TYPE(current)),
                 _PyType_Name(Py_TYPE(result))
             );
@@ -1033,7 +1048,7 @@ impl path_success(path: path_t, current: ptr[PyObject], length: i64) -> bool {
 impl path_type_error(path: path_t, current: ptr[PyObject]) -> bool {
     PyErr_Format(
         PyExc_TypeError,
-        "%s%s%s should be %s, not %.200s",
+        ptr[u8]("%s%s%s should be %s, not %.200s"),
         path.function_name,
         ": " if path.function_name else "",
         path.label(),
@@ -1116,7 +1131,7 @@ impl conv_confname(
         current = PyObject_GetItem(table, value);
         jacpy_release(table);
         if not current {
-            PyErr_Format(PyExc_ValueError, "unrecognized configuration name");
+            PyErr_Format(PyExc_ValueError, ptr[u8]("unrecognized configuration name"));
             return None;
         }
     } else {
@@ -1125,7 +1140,7 @@ impl conv_confname(
     result: (i32 | None) = None;
     if PyIndex_Check(current) == 0 {
         PyErr_Format(
-            PyExc_TypeError, "configuration names must be strings or integers"
+            PyExc_TypeError, ptr[u8]("configuration names must be strings or integers")
         );
     } else {
         number = PyLong_AsInt(current);
@@ -1247,7 +1262,8 @@ impl run_at_forkers(interp: ptr[PyInterpreterState], which: i64, reverse: bool) 
     copy = PyList_GetSlice(callbacks, 0, PyList_Size(callbacks));
     if not copy {
         PyErr_FormatUnraisable(
-            "Exception ignored in atfork callback while copying list %R", callbacks
+            ptr[u8]("Exception ignored in atfork callback while copying list %R"),
+            callbacks
         );
         return;
     }
@@ -1259,7 +1275,9 @@ impl run_at_forkers(interp: ptr[PyInterpreterState], which: i64, reverse: bool) 
         function = PyList_GetItem(copy, index);
         result = PyObject_CallNoArgs(function);
         if not result {
-            PyErr_FormatUnraisable("Exception ignored in atfork callback %R", function);
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored in atfork callback %R"), function
+            );
         } else {
             jacpy_release(result);
         }

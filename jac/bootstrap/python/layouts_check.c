@@ -55,6 +55,7 @@
 #include "opcode.h"
 #include "internal/pycore_hamt.h"
 #include "internal/pycore_context.h"
+#include "osdefs.h"
 #include <stddef.h>
 #ifdef _Py_FORCE_UTF8_FS_ENCODING
 #define JAC_FORCE_UTF8_FS_ENCODING 1
@@ -3798,6 +3799,48 @@ CONSTANT(_Py_T_NONE, 20LL);
 CONSTANT(Py_RTFLAGS_THREADS, 1024LL);
 CONSTANT(Py_RTFLAGS_DAEMON_THREADS, 2048LL);
 CONSTANT(_PyThreadState_WHENCE_THREADING, 3LL);
+CONSTANT(offsetof(_PyErr_StackItem, previous_item), 8LL);
+CONSTANT(SEEK_SET, 0LL);
+CONSTANT(offsetof(PyTracebackObject, tb_next), 16LL);
+CONSTANT(offsetof(PyTracebackObject, tb_frame), 24LL);
+CONSTANT(offsetof(PyTracebackObject, tb_lasti), 32LL);
+CONSTANT(offsetof(PyTracebackObject, tb_lineno), 36LL);
+CONSTANT(sizeof(PyTracebackObject), 40LL);
+CONSTANT(offsetof(struct _warnings_runtime_state, filters), 0LL);
+CONSTANT(offsetof(struct _warnings_runtime_state, once_registry), 8LL);
+CONSTANT(offsetof(struct _warnings_runtime_state, default_action), 16LL);
+CONSTANT(offsetof(struct _warnings_runtime_state, lock), 24LL);
+CONSTANT(offsetof(struct _warnings_runtime_state, filters_version), 48LL);
+CONSTANT(offsetof(struct _warnings_runtime_state, context), 56LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_unraisablehook), 40320LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_lineno), 28632LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_offset), 31888LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_end_lineno), 21168LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_end_offset), 21224LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_filename), 22672LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_text), 39096LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_msg), 30384LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_print_file_and_line), 33840LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_path), 33192LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_open), 32376LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_TextIOWrapper), 1544LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_close), 17152LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_match), 29136LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_warnings), 40792LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_filters), 22936LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__filters), 11856LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_onceregistry), 32104LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_defaultaction), 19584LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__showwarnmsg), 12928LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_WarningMessage), 1648LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_version), 40576LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_importlib), 25248LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__bootstrap), 11512LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___warningregistry__), 10824LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_get_source), 24184LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__warn_unawaited_coroutine), 13472LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_default), 19536LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_ignore), 25152LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -4152,6 +4195,9 @@ CONSTANT(offsetof(_PyRuntimeState, main_thread), 832LL);
 CONSTANT(offsetof(PyThreadState, threading_local_key), 288LL);
 CONSTANT(offsetof(PyThreadState, threading_local_sentinel), 296LL);
 CONSTANT(offsetof(PyInterpreterState, threads.count), 7368LL);
+CONSTANT(offsetof(PyInterpreterState, warnings), 10720LL);
+CONSTANT(offsetof(PyInterpreterState, sysdict), 7672LL);
+CONSTANT(offsetof(PyThreadState, thread_id), 152LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4504,6 +4550,9 @@ CONSTANT(offsetof(_PyRuntimeState, main_thread), 832LL);
 CONSTANT(offsetof(PyThreadState, threading_local_key), 288LL);
 CONSTANT(offsetof(PyThreadState, threading_local_sentinel), 296LL);
 CONSTANT(offsetof(PyInterpreterState, threads.count), 7368LL);
+CONSTANT(offsetof(PyInterpreterState, warnings), 10736LL);
+CONSTANT(offsetof(PyInterpreterState, sysdict), 7672LL);
+CONSTANT(offsetof(PyThreadState, thread_id), 152LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4856,6 +4905,9 @@ CONSTANT(offsetof(_PyRuntimeState, main_thread), 832LL);
 CONSTANT(offsetof(PyThreadState, threading_local_key), 288LL);
 CONSTANT(offsetof(PyThreadState, threading_local_sentinel), 296LL);
 CONSTANT(offsetof(PyInterpreterState, threads.count), 7368LL);
+CONSTANT(offsetof(PyInterpreterState, warnings), 10768LL);
+CONSTANT(offsetof(PyInterpreterState, sysdict), 7672LL);
+CONSTANT(offsetof(PyThreadState, thread_id), 152LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -5208,6 +5260,9 @@ CONSTANT(offsetof(_PyRuntimeState, main_thread), 832LL);
 CONSTANT(offsetof(PyThreadState, threading_local_key), 288LL);
 CONSTANT(offsetof(PyThreadState, threading_local_sentinel), 296LL);
 CONSTANT(offsetof(PyInterpreterState, threads.count), 7368LL);
+CONSTANT(offsetof(PyInterpreterState, warnings), 10768LL);
+CONSTANT(offsetof(PyInterpreterState, sysdict), 7672LL);
+CONSTANT(offsetof(PyThreadState, thread_id), 152LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

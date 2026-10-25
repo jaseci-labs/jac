@@ -86,7 +86,7 @@ def _locale_bind_textdomain_codeset_impl(
 def _locale_getencoding_impl(module: ptr[PyObject]) -> ptr[PyObject];
 
 impl locale_error(module: ptr[PyObject], message: str) {
-    PyErr_SetString(jacpy_binding_state_get(module, i64(ERROR)), message);
+    object_error(jacpy_binding_state_get(module, i64(ERROR)), message);
 }
 
 impl byte_at(text: ptr[u8], index: int) -> int {
@@ -186,7 +186,9 @@ impl locale_decode_monetary(dict_: ptr[PyObject], lc: ptr[lconv]) -> i32 {
     if change_locale {
         oldloc = setlocale(i32(LC_CTYPE), ptr[u8]());
         if not oldloc {
-            PyErr_SetString(PyExc_RuntimeWarning, "failed to get LC_CTYPE locale");
+            PyErr_SetString(
+                PyExc_RuntimeWarning, ptr[u8]("failed to get LC_CTYPE locale")
+            );
             return i32(-1);
         }
         oldloc = _PyMem_Strdup(oldloc);

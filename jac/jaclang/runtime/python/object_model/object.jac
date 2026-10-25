@@ -941,7 +941,7 @@ import from c {
         if not unicode_check(res) {
             PyErr_Format(
                 PyExc_TypeError,
-                "__repr__ returned non-string (type %.200s)",
+                ptr[u8]("__repr__ returned non-string (type %.200s)"),
                 object_type(res).view(1)[0].tp_name
             );
             object_decref(res);
@@ -973,7 +973,7 @@ import from c {
         if not unicode_check(res) {
             PyErr_Format(
                 PyExc_TypeError,
-                "__str__ returned non-string (type %.200s)",
+                ptr[u8]("__str__ returned non-string (type %.200s)"),
                 object_type(res).view(1)[0].tp_name
             );
             object_decref(res);
@@ -1022,7 +1022,7 @@ import from c {
             if not bytes_check(result) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "__bytes__ returned non-bytes (type %.200s)",
+                    ptr[u8]("__bytes__ returned non-bytes (type %.200s)"),
                     object_type(result).view(1)[0].tp_name
                 );
                 object_decref(result);
@@ -1112,7 +1112,7 @@ import from c {
     }  def PyObject_HashNotImplemented(v: ptr[PyObject]) -> i64 {
         PyErr_Format(
             PyExc_TypeError,
-            "unhashable type: '%.200s'",
+            ptr[u8]("unhashable type: '%.200s'"),
             object_type(v).view(1)[0].tp_name
         );
         return -1;
@@ -1258,7 +1258,9 @@ import from c {
         rc = PyObject_HasAttrStringWithError(ob, name);
         if rc < 0 {
             PyErr_FormatUnraisable(
-                "Exception ignored in PyObject_HasAttrString(); consider using PyObject_HasAttrStringWithError(), PyObject_GetOptionalAttrString() or PyObject_GetAttrString()"
+                ptr[u8](
+                    "Exception ignored in PyObject_HasAttrString(); consider using PyObject_HasAttrStringWithError(), PyObject_GetOptionalAttrString() or PyObject_GetAttrString()"
+                )
             );
             return i32(0);
         }
@@ -1346,7 +1348,7 @@ import from c {
         } else {
             PyErr_Format(
                 PyExc_AttributeError,
-                "'%.100s' object has no attribute '%U'",
+                ptr[u8]("'%.100s' object has no attribute '%U'"),
                 tp.view(1)[0].tp_name,
                 name
             );
@@ -1375,7 +1377,9 @@ import from c {
         rc = PyObject_HasAttrWithError(ob, name);
         if rc < 0 {
             PyErr_FormatUnraisable(
-                "Exception ignored in PyObject_HasAttr(); consider using PyObject_HasAttrWithError(), PyObject_GetOptionalAttr() or PyObject_GetAttr()"
+                ptr[u8](
+                    "Exception ignored in PyObject_HasAttr(); consider using PyObject_HasAttrWithError(), PyObject_GetOptionalAttr() or PyObject_GetAttr()"
+                )
             );
             return i32(0);
         }
@@ -1410,7 +1414,7 @@ import from c {
         if int(tp.view(1)[0].tp_getattr) == 0 and int(tp.view(1)[0].tp_getattro) == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%.100s' object has no attributes (%s .%U)",
+                ptr[u8]("'%.100s' object has no attributes (%s .%U)"),
                 tp.view(1)[0].tp_name,
                 action,
                 key
@@ -1418,7 +1422,7 @@ import from c {
         } else {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%.100s' object has only read-only attributes (%s .%U)",
+                ptr[u8]("'%.100s' object has only read-only attributes (%s .%U)"),
                 tp.view(1)[0].tp_name,
                 action,
                 key
@@ -1458,7 +1462,7 @@ import from c {
     }  def _PyObject_NextNotImplemented(op_self: ptr[PyObject]) -> ptr[PyObject] {
         PyErr_Format(
             PyExc_TypeError,
-            "'%.200s' object is not iterable",
+            ptr[u8]("'%.200s' object is not iterable"),
             object_type(op_self).view(1)[0].tp_name
         );
         return NULL;
@@ -1791,14 +1795,16 @@ import from c {
                             == int(ptr(PyObject_GenericSetAttr)) {
                             PyErr_Format(
                                 PyExc_AttributeError,
-                                "'%.100s' object has no attribute '%U' and no __dict__ for setting new attributes",
+                                ptr[u8](
+                                    "'%.100s' object has no attribute '%U' and no __dict__ for setting new attributes"
+                                ),
                                 tp.view(1)[0].tp_name,
                                 name
                             );
                         } else {
                             PyErr_Format(
                                 PyExc_AttributeError,
-                                "'%.100s' object has no attribute '%U'",
+                                ptr[u8]("'%.100s' object has no attribute '%U'"),
                                 tp.view(1)[0].tp_name,
                                 name
                             );
@@ -1807,7 +1813,7 @@ import from c {
                     } else {
                         PyErr_Format(
                             PyExc_AttributeError,
-                            "'%.100s' object attribute '%U' is read-only",
+                            ptr[u8]("'%.100s' object attribute '%U' is read-only"),
                             tp.view(1)[0].tp_name,
                             name
                         );
@@ -1833,7 +1839,7 @@ import from c {
         ob: ptr[PyObject], value: ptr[PyObject], context: ptr
     ) -> i32 {
         if not value {
-            PyErr_SetString(PyExc_TypeError, "cannot delete __dict__");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("cannot delete __dict__"));
             return i32(-1);
         }
         return _PyObject_SetDict(ob, value);
@@ -2137,7 +2143,7 @@ impl status_err(func: ptr[u8], msg: ptr[u8]) -> PyStatus {
 impl bad_attribute_name(name: ptr[PyObject]) {
     PyErr_Format(
         PyExc_TypeError,
-        "attribute name must be string, not '%.200s'",
+        ptr[u8]("attribute name must be string, not '%.200s'"),
         object_type(name).view(1)[0].tp_name
     );
 }
@@ -2145,7 +2151,7 @@ impl bad_attribute_name(name: ptr[PyObject]) {
 impl no_attribute(ob: ptr[PyObject], tp: ptr[PyTypeObject], name: ptr[PyObject]) {
     PyErr_Format(
         PyExc_AttributeError,
-        "'%.100s' object has no attribute '%U'",
+        ptr[u8]("'%.100s' object has no attribute '%U'"),
         tp.view(1)[0].tp_name,
         name
     );
@@ -2289,7 +2295,7 @@ impl do_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject
     }
     PyErr_Format(
         PyExc_TypeError,
-        "'%s' not supported between instances of '%.100s' and '%.100s'",
+        ptr[u8]("'%s' not supported between instances of '%.100s' and '%.100s'"),
         op_string(op),
         vt.view(1)[0].tp_name,
         wt.view(1)[0].tp_name
@@ -2402,7 +2408,7 @@ impl dir_locals -> ptr[PyObject] {
     if not list_check(names) {
         PyErr_Format(
             PyExc_TypeError,
-            "dir(): expected keys() of scope to be a list, not '%.200s'",
+            ptr[u8]("dir(): expected keys() of scope to be a list, not '%.200s'"),
             object_type(names).view(1)[0].tp_name
         );
         object_decref(names);
@@ -2423,7 +2429,9 @@ impl dir_object(ob: ptr[PyObject]) -> ptr[PyObject] {
     dirfunc = _PyObject_LookupSpecial(ob, key);
     if not dirfunc {
         if not PyErr_Occurred() {
-            PyErr_SetString(PyExc_TypeError, "object does not provide __dir__");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("object does not provide __dir__")
+            );
         }
         return NULL;
     }
@@ -2460,7 +2468,7 @@ impl none_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     if has_arguments(args, kwargs) {
-        PyErr_SetString(PyExc_TypeError, "NoneType takes no arguments");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("NoneType takes no arguments"));
         return NULL;
     }
     return py_none();
@@ -2486,7 +2494,9 @@ impl notimplemented_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     if has_arguments(args, kwargs) {
-        PyErr_SetString(PyExc_TypeError, "NotImplementedType takes no arguments");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("NotImplementedType takes no arguments")
+        );
         return NULL;
     }
     return py_not_implemented();
@@ -2498,7 +2508,8 @@ impl notimplemented_dealloc(notimplemented: ptr[PyObject]) {
 
 impl notimplemented_bool(v: ptr[PyObject]) -> i32 {
     PyErr_SetString(
-        PyExc_TypeError, "NotImplemented should not be used in a boolean context"
+        PyExc_TypeError,
+        ptr[u8]("NotImplemented should not be used in a boolean context")
     );
     return i32(-1);
 }

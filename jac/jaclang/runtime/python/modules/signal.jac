@@ -91,10 +91,10 @@ import from c {
                 or compare_handler(func, ignore_handler())
                 or compare_handler(func, default_handler()) {
                 PyErr_Format(
-                    PyExc_OSError, "Signal %i ignored due to race condition", i
+                    PyExc_OSError, ptr[u8]("Signal %i ignored due to race condition"), i
                 );
                 PyErr_FormatUnraisable(
-                    "Exception ignored while calling signal handler"
+                    ptr[u8]("Exception ignored while calling signal handler")
                 );
                 i += 1;
                 continue;
@@ -440,7 +440,7 @@ impl report_wakeup_write_error(data: ptr) -> i32 {
     exc = PyErr_GetRaisedException();
     PyErr_SetFromErrno(PyExc_OSError);
     PyErr_FormatUnraisable(
-        "Exception ignored while trying to write to the signal wakeup fd"
+        ptr[u8]("Exception ignored while trying to write to the signal wakeup fd")
     );
     PyErr_SetRaisedException(exc);
     jacpy_set_errno(save_errno);
@@ -522,12 +522,12 @@ impl signal_signal_impl(
     tstate = current_tstate();
     if not thread_can_handle_signals(tstate_interp(tstate)) {
         PyErr_SetString(
-            PyExc_ValueError, "signal only works in main thread of the main interpreter"
+            PyExc_ValueError, ptr[u8]("signal only works in main thread of the main interpreter")
         );
         return NULL;
     }
     if signalnum < 1 or i64(signalnum) >= Py_NSIG {
-        PyErr_SetString(PyExc_ValueError, "signal number out of range");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("signal number out of range"));
         return NULL;
     }
     func = ptr();
@@ -540,7 +540,7 @@ impl signal_signal_impl(
     } else {
         PyErr_SetString(
             PyExc_TypeError,
-            "signal handler must be signal.SIG_IGN, signal.SIG_DFL, or a callable object"
+            ptr[u8]("signal handler must be signal.SIG_IGN, signal.SIG_DFL, or a callable object")
         );
         return NULL;
     }
@@ -563,7 +563,7 @@ impl signal_signal_impl(
 
 impl signal_getsignal_impl(module: ptr[PyObject], signalnum: i32) -> ptr[PyObject] {
     if signalnum < 1 or i64(signalnum) >= Py_NSIG {
-        PyErr_SetString(PyExc_ValueError, "signal number out of range");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("signal number out of range"));
         return NULL;
     }
     old_handler = get_handler(signalnum);
@@ -575,7 +575,7 @@ impl signal_getsignal_impl(module: ptr[PyObject], signalnum: i32) -> ptr[PyObjec
 
 impl signal_strsignal_impl(module: ptr[PyObject], signalnum: i32) -> ptr[PyObject] {
     if signalnum < 1 or i64(signalnum) >= Py_NSIG {
-        PyErr_SetString(PyExc_ValueError, "signal number out of range");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("signal number out of range"));
         return NULL;
     }
     jacpy_set_errno(0);
@@ -592,7 +592,7 @@ impl signal_siginterrupt_impl(
     module: ptr[PyObject], signalnum: i32, flag: i32
 ) -> ptr[PyObject] {
     if signalnum < 1 or i64(signalnum) >= Py_NSIG {
-        PyErr_SetString(PyExc_ValueError, "signal number out of range");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("signal number out of range"));
         return NULL;
     }
     act_slots: own SignalBuffer = SignalBuffer();
@@ -622,7 +622,7 @@ impl signal_set_wakeup_fd_impl(
     if not thread_can_handle_signals(current_interp()) {
         PyErr_SetString(
             PyExc_ValueError,
-            "set_wakeup_fd only works in main thread of the main interpreter"
+            ptr[u8]("set_wakeup_fd only works in main thread of the main interpreter")
         );
         return NULL;
     }
@@ -638,7 +638,7 @@ impl signal_set_wakeup_fd_impl(
         }
         if blocking != 0 {
             PyErr_Format(
-                PyExc_ValueError, "the fd %i must be in non-blocking mode", fd
+                PyExc_ValueError, ptr[u8]("the fd %i must be in non-blocking mode"), fd
             );
             return NULL;
         }
@@ -846,7 +846,7 @@ impl signal_sigtimedwait_impl(
 
     if timeout < 0 {
         PyMem_Free(sigset);
-        PyErr_SetString(PyExc_ValueError, "timeout must be non-negative");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("timeout must be non-negative"));
         return NULL;
     }
 
@@ -924,7 +924,7 @@ impl signal_pidfd_send_signal_impl(
     flags: i32
 ) -> ptr[PyObject] {
     if siginfo != Py_None {
-        PyErr_SetString(PyExc_TypeError, "siginfo must be None");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("siginfo must be None"));
         return NULL;
     }
     if pidfd_send_signal(pidfd, signalnum, flags) < 0 {

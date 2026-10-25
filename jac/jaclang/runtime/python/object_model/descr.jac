@@ -563,7 +563,7 @@ def member_set(self: ptr[PyObject], ob: ptr[PyObject], value: ptr[PyObject]) -> 
 
 def getset_set(self: ptr[PyObject], ob: ptr[PyObject], value: ptr[PyObject]) -> i32;
 
-def function_error(func: ptr[PyObject], format: str, n: i64);
+def function_error(func: ptr[PyObject], format: ptr[u8], n: i64);
 
 def method_check_args(
     func: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
@@ -647,7 +647,7 @@ import from c {
         if not vectorcall {
             PyErr_Format(
                 PyExc_SystemError,
-                "%s() method: bad call flags",
+                ptr[u8]("%s() method: bad call flags"),
                 method.view(1)[0].ml_name
             );
             return NULL;
@@ -675,7 +675,8 @@ import from c {
     ) -> ptr[PyObject] {
         if (member.view(1)[0].flags & Py_RELATIVE_OFFSET) != 0 {
             PyErr_SetString(
-                PyExc_SystemError, "PyDescr_NewMember used with Py_RELATIVE_OFFSET"
+                PyExc_SystemError,
+                ptr[u8]("PyDescr_NewMember used with Py_RELATIVE_OFFSET")
             );
             return NULL;
         }
@@ -1001,7 +1002,9 @@ impl descr_check(op: ptr[PyObject], ob: ptr[PyObject]) -> i32 {
     if not object_type_check(ob, descr_type(op)) {
         PyErr_Format(
             PyExc_TypeError,
-            "descriptor '%V' for '%.100s' objects doesn't apply to a '%.100s' object",
+            ptr[u8](
+                "descriptor '%V' for '%.100s' objects doesn't apply to a '%.100s' object"
+            ),
             descr_name(op),
             "?",
             type_name(descr_type(op)),
@@ -1021,7 +1024,9 @@ impl classmethod_get(
         if not ob {
             PyErr_Format(
                 PyExc_TypeError,
-                "descriptor '%V' for type '%.100s' needs either an object or a type",
+                ptr[u8](
+                    "descriptor '%V' for type '%.100s' needs either an object or a type"
+                ),
                 descr_name(self),
                 "?",
                 type_name(descr_type(self))
@@ -1033,7 +1038,9 @@ impl classmethod_get(
     if not type_check(type) {
         PyErr_Format(
             PyExc_TypeError,
-            "descriptor '%V' for type '%.100s' needs a type, not a '%.100s' as arg 2",
+            ptr[u8](
+                "descriptor '%V' for type '%.100s' needs a type, not a '%.100s' as arg 2"
+            ),
             descr_name(self),
             "?",
             type_name(descr_type(self)),
@@ -1044,7 +1051,9 @@ impl classmethod_get(
     if PyType_IsSubtype(type, ptr[PyObject](descr_type(self))) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "descriptor '%V' requires a subtype of '%.100s' but received '%.100s'",
+            ptr[u8](
+                "descriptor '%V' requires a subtype of '%.100s' but received '%.100s'"
+            ),
             descr_name(self),
             "?",
             type_name(descr_type(self)),
@@ -1074,7 +1083,7 @@ impl method_get(
         }
         PyErr_Format(
             PyExc_TypeError,
-            "descriptor '%V' needs a type, not '%s', as arg 2",
+            ptr[u8]("descriptor '%V' needs a type, not '%s', as arg 2"),
             descr_name(self),
             "?",
             type_name(object_type(type))
@@ -1121,7 +1130,7 @@ impl getset_get(
     }
     PyErr_Format(
         PyExc_AttributeError,
-        "attribute '%V' of '%.100s' objects is not readable",
+        ptr[u8]("attribute '%V' of '%.100s' objects is not readable"),
         descr_name(self),
         "?",
         type_name(descr_type(self))
@@ -1162,7 +1171,7 @@ impl getset_set(self: ptr[PyObject], ob: ptr[PyObject], value: ptr[PyObject]) ->
     }
     PyErr_Format(
         PyExc_AttributeError,
-        "attribute '%V' of '%.100s' objects is not writable",
+        ptr[u8]("attribute '%V' of '%.100s' objects is not writable"),
         descr_name(self),
         "?",
         type_name(descr_type(self))
@@ -1170,7 +1179,7 @@ impl getset_set(self: ptr[PyObject], ob: ptr[PyObject], value: ptr[PyObject]) ->
     return i32(-1);
 }
 
-impl function_error(func: ptr[PyObject], format: str, n: i64) {
+impl function_error(func: ptr[PyObject], format: ptr[u8], n: i64) {
     funcstr = _PyObject_FunctionStr(func);
     if funcstr {
         PyErr_Format(PyExc_TypeError, format, funcstr, n);
@@ -1182,14 +1191,14 @@ impl method_check_args(
     func: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
 ) -> i32 {
     if nargs < 1 {
-        function_error(func, "unbound method %U needs an argument", 0);
+        function_error(func, ptr[u8]("unbound method %U needs an argument"), 0);
         return i32(-1);
     }
     if descr_check(func, args.view(1)[0]) < 0 {
         return i32(-1);
     }
     if kwnames and object_size(kwnames) != 0 {
-        function_error(func, "%U takes no keyword arguments", 0);
+        function_error(func, ptr[u8]("%U takes no keyword arguments"), 0);
         return i32(-1);
     }
     return i32(0);
@@ -1335,7 +1344,7 @@ impl method_vectorcall_NOARGS(
         return NULL;
     }
     if nargs != 1 {
-        function_error(func, "%U takes no arguments (%zd given)", nargs - 1);
+        function_error(func, ptr[u8]("%U takes no arguments (%zd given)"), nargs - 1);
         return NULL;
     }
     meth = method_enter_call(func);
@@ -1359,7 +1368,9 @@ impl method_vectorcall_O(
         return NULL;
     }
     if nargs != 2 {
-        function_error(func, "%U takes exactly one argument (%zd given)", nargs - 1);
+        function_error(
+            func, ptr[u8]("%U takes exactly one argument (%zd given)"), nargs - 1
+        );
         return NULL;
     }
     meth = method_enter_call(func);
@@ -1382,7 +1393,7 @@ impl classmethoddescr_call(
     if argc < 1 {
         PyErr_Format(
             PyExc_TypeError,
-            "descriptor '%V' of '%.100s' object needs an argument",
+            ptr[u8]("descriptor '%V' of '%.100s' object needs an argument"),
             descr_name(descr),
             "?",
             type_name(descr_type(descr))
@@ -1417,7 +1428,7 @@ impl wrapperdescr_raw_call(
         ) {
         PyErr_Format(
             PyExc_TypeError,
-            "wrapper %s() takes no keyword arguments",
+            ptr[u8]("wrapper %s() takes no keyword arguments"),
             base.view(1)[0].name
         );
         return NULL;
@@ -1433,7 +1444,7 @@ impl wrapperdescr_call(
     if argc < 1 {
         PyErr_Format(
             PyExc_TypeError,
-            "descriptor '%V' of '%.100s' object needs an argument",
+            ptr[u8]("descriptor '%V' of '%.100s' object needs an argument"),
             descr_name(descr),
             "?",
             type_name(descr_type(descr))
@@ -1447,7 +1458,9 @@ impl wrapperdescr_call(
         == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "descriptor '%V' requires a '%.100s' object but received a '%.100s'",
+            ptr[u8](
+                "descriptor '%V' requires a '%.100s' object but received a '%.100s'"
+            ),
             descr_name(descr),
             "?",
             type_name(descr_type(descr)),
@@ -1482,7 +1495,7 @@ impl calculate_qualname(descr: ptr[PyObject]) -> ptr[PyObject] {
     name = descr_name_object(descr);
     if not name or not unicode_check(name) {
         PyErr_SetString(
-            PyExc_TypeError, "<descriptor>.__name__ is not a unicode object"
+            PyExc_TypeError, ptr[u8]("<descriptor>.__name__ is not a unicode object")
         );
         return NULL;
     }
@@ -1495,7 +1508,7 @@ impl calculate_qualname(descr: ptr[PyObject]) -> ptr[PyObject] {
     if not unicode_check(type_qualname) {
         PyErr_SetString(
             PyExc_TypeError,
-            "<descriptor>.__objclass__.__qualname__ is not a unicode object"
+            ptr[u8]("<descriptor>.__objclass__.__qualname__ is not a unicode object")
         );
         object_decref(type_qualname);
         return NULL;
@@ -1637,7 +1650,7 @@ impl mappingproxy_or(left_in: ptr[PyObject], right_in: ptr[PyObject]) -> ptr[PyO
 impl mappingproxy_ior(self: ptr[PyObject], _other: ptr[PyObject]) -> ptr[PyObject] {
     return PyErr_Format(
         PyExc_TypeError,
-        "'|=' is not supported by %s; use '|' instead",
+        ptr[u8]("'|=' is not supported by %s; use '|' instead"),
         type_name(object_type(self))
     );
 }
@@ -1738,7 +1751,7 @@ impl mappingproxy_check_mapping(mapping: ptr[PyObject]) -> i32 {
         or type_has_feature(object_type(mapping), Py_TPFLAGS_TUPLE_SUBCLASS) {
         PyErr_Format(
             PyExc_TypeError,
-            "mappingproxy() argument must be a mapping, not %s",
+            ptr[u8]("mappingproxy() argument must be a mapping, not %s"),
             type_name(object_type(mapping))
         );
         return i32(-1);
@@ -1917,7 +1930,7 @@ impl property_set_name(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     if object_size(args) != 2 {
         PyErr_Format(
             PyExc_TypeError,
-            "__set_name__() takes 2 positional arguments but %zd were given",
+            ptr[u8]("__set_name__() takes 2 positional arguments but %zd were given"),
             object_size(args)
         );
         return NULL;
@@ -1964,17 +1977,20 @@ impl missing_accessor(op: ptr[PyObject], ob: ptr[PyObject], what: str) {
     if propname and qualname {
         PyErr_Format(
             PyExc_AttributeError,
-            "property %R of %R object has no %s",
+            ptr[u8]("property %R of %R object has no %s"),
             propname,
             qualname,
             what
         );
     } elif qualname {
         PyErr_Format(
-            PyExc_AttributeError, "property of %R object has no %s", qualname, what
+            PyExc_AttributeError,
+            ptr[u8]("property of %R object has no %s"),
+            qualname,
+            what
         );
     } else {
-        PyErr_Format(PyExc_AttributeError, "property has no %s", what);
+        PyErr_Format(PyExc_AttributeError, ptr[u8]("property has no %s"), what);
     }
     object_xdecref(propname);
     object_xdecref(qualname);
@@ -2151,7 +2167,8 @@ impl property_get__name__(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     }
     if not name {
         PyErr_SetString(
-            PyExc_AttributeError, "'property' object has no attribute '__name__'"
+            PyExc_AttributeError,
+            ptr[u8]("'property' object has no attribute '__name__'")
         );
     }
     return name;

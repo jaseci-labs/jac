@@ -654,7 +654,9 @@ impl try_complex_special_method(op: ptr[PyObject]) -> ptr[PyObject] {
     type_name = object_type(res).view(1)[0].tp_name;
     if not complex_check(res) {
         PyErr_Format(
-            PyExc_TypeError, "__complex__ returned non-complex (type %.200s)", type_name
+            PyExc_TypeError,
+            ptr[u8]("__complex__ returned non-complex (type %.200s)"),
+            type_name
         );
         jacpy_release(res);
         return NULL;
@@ -663,7 +665,9 @@ impl try_complex_special_method(op: ptr[PyObject]) -> ptr[PyObject] {
     if PyErr_WarnFormat(
         PyExc_DeprecationWarning,
         1,
-        "__complex__ returned non-complex (type %.200s).  The ability to return an instance of a strict subclass of complex is deprecated, and may be removed in a future version of Python.",
+        ptr[u8](
+            "__complex__ returned non-complex (type %.200s).  The ability to return an instance of a strict subclass of complex is deprecated, and may be removed in a future version of Python."
+        ),
         type_name
     )
         != 0 {
@@ -791,7 +795,7 @@ impl complex_binop(
         }
     }
     if status == DOMAIN {
-        PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+        PyErr_SetString(PyExc_ZeroDivisionError, ptr[u8]("division by zero"));
         return NULL;
     }
     return new_complex(rr, ri);
@@ -829,7 +833,7 @@ impl complex_pow(
         return operand_failure(found);
     }
     if z != Py_None {
-        PyErr_SetString(PyExc_ValueError, "complex modulo");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("complex modulo"));
         return NULL;
     }
     rr = 0.0;
@@ -843,10 +847,12 @@ impl complex_pow(
         status = cplx_pow(ar, ai, br, bi, &mut rr, &mut ri);
     }
     if status == DOMAIN {
-        PyErr_SetString(PyExc_ZeroDivisionError, "zero to a negative or complex power");
+        PyErr_SetString(
+            PyExc_ZeroDivisionError, ptr[u8]("zero to a negative or complex power")
+        );
         return NULL;
     } elif status == RANGE {
-        PyErr_SetString(PyExc_OverflowError, "complex exponentiation");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("complex exponentiation"));
         return NULL;
     }
     return new_complex(rr, ri);
@@ -867,7 +873,7 @@ impl complex_abs(op: ptr[PyObject]) -> ptr[PyObject] {
     status = OK;
     result = cplx_abs(real_of(op), imag_of(op), &mut status);
     if status == RANGE {
-        PyErr_SetString(PyExc_OverflowError, "absolute value too large");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("absolute value too large"));
         return NULL;
     }
     return PyFloat_FromDouble(result);
@@ -1035,7 +1041,9 @@ impl complex_from_string_inner(s: ptr[u8], length: i64, type: ptr) -> ptr[PyObje
     }
 
     if malformed or s - start != length {
-        PyErr_SetString(PyExc_ValueError, "complex() arg is a malformed string");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("complex() arg is a malformed string")
+        );
         return NULL;
     }
     return complex_subtype_from_doubles(ptr[PyTypeObject](type), x, y);
@@ -1061,7 +1069,7 @@ impl complex_subtype_from_string(
     if jacpy_is_unicode(v) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "complex() argument must be a string or a number, not %T",
+            ptr[u8]("complex() argument must be a string or a number, not %T"),
             v
         );
         return NULL;
@@ -1118,7 +1126,9 @@ impl actual_complex_new(
         return NULL;
     }
     PyErr_Format(
-        PyExc_TypeError, "complex() argument must be a string or a number, not %T", arg
+        PyExc_TypeError,
+        ptr[u8]("complex() argument must be a string or a number, not %T"),
+        arg
     );
     return NULL;
 }
@@ -1170,7 +1180,7 @@ impl complex_new_impl(
     if not is_real_number(r) and not complex_check(r) {
         PyErr_Format(
             PyExc_TypeError,
-            "complex() argument 'real' must be a real number, not %T",
+            ptr[u8]("complex() argument 'real' must be a real number, not %T"),
             r
         );
         if own_r {
@@ -1181,7 +1191,7 @@ impl complex_new_impl(
     if i and not is_real_number(i) and not complex_check(i) {
         PyErr_Format(
             PyExc_TypeError,
-            "complex() argument 'imag' must be a real number, not %T",
+            ptr[u8]("complex() argument 'imag' must be a real number, not %T"),
             i
         );
         if own_r {
@@ -1204,7 +1214,7 @@ impl complex_new_impl(
             and PyErr_WarnFormat(
                 PyExc_DeprecationWarning,
                 1,
-                "complex() argument 'real' must be a real number, not %T",
+                ptr[u8]("complex() argument 'real' must be a real number, not %T"),
                 orig_r
             )
                 != 0 {
@@ -1227,7 +1237,7 @@ impl complex_new_impl(
         if PyErr_WarnFormat(
             PyExc_DeprecationWarning,
             1,
-            "complex() argument 'imag' must be a real number, not %T",
+            ptr[u8]("complex() argument 'imag' must be a real number, not %T"),
             i
         )
             != 0 {

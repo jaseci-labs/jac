@@ -124,14 +124,16 @@ import from c {
         if result and jacpy_is_bytes(result) == 0 and jacpy_is_unicode(result) == 0 {
             jacpy_release(result);
             result = NULL;
-            PyErr_SetString(PyExc_TypeError, "object.readline() returned non-string");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("object.readline() returned non-string")
+            );
         }
         if n < 0 and result and jacpy_is_bytes(result) != 0 {
             length = PyBytes_Size(result);
             if length == 0 {
                 jacpy_release(result);
                 result = NULL;
-                PyErr_SetString(PyExc_EOFError, "EOF when reading a line");
+                PyErr_SetString(PyExc_EOFError, ptr[u8]("EOF when reading a line"));
             } elif (ptr[u8](jacpy_bytes_address(result)) + (length - 1)).view(1)[0]
                 == u8(10) {
                 _PyBytes_Resize(&mut result, length - 1);
@@ -142,7 +144,7 @@ import from c {
             if length == 0 {
                 jacpy_release(result);
                 result = NULL;
-                PyErr_SetString(PyExc_EOFError, "EOF when reading a line");
+                PyErr_SetString(PyExc_EOFError, ptr[u8]("EOF when reading a line"));
             } elif PyUnicode_ReadChar(result, length - 1) == u32(10) {
                 stripped = PyUnicode_Substring(result, 0, length - 1);
                 jacpy_release(result);
@@ -152,7 +154,7 @@ import from c {
         return result;
     }  def PyFile_WriteObject(v: ptr[PyObject], f: ptr[PyObject], flags: i32) -> i32 {
         if not f {
-            PyErr_SetString(PyExc_TypeError, "writeobject with NULL file");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("writeobject with NULL file"));
             return i32(-1);
         }
         writer = PyObject_GetAttrString(f, ptr[u8]("write"));
@@ -175,7 +177,9 @@ import from c {
     }  def PyFile_WriteString(s: ptr[u8], f: ptr[PyObject]) -> i32 {
         if not f {
             if not PyErr_Occurred() {
-                PyErr_SetString(PyExc_SystemError, "null file for PyFile_WriteString");
+                PyErr_SetString(
+                    PyExc_SystemError, ptr[u8]("null file for PyFile_WriteString")
+                );
             }
             return i32(-1);
         }
@@ -194,7 +198,9 @@ import from c {
         if jacpy_is_long(o) != 0 {
             if bool_check(o)
                 and PyErr_WarnEx(
-                    PyExc_RuntimeWarning, "bool is used as a file descriptor", 1
+                    PyExc_RuntimeWarning,
+                    ptr[u8]("bool is used as a file descriptor"),
+                    1
                 )
                     != 0 {
                 return i32(-1);
@@ -208,7 +214,7 @@ import from c {
             if not meth {
                 PyErr_SetString(
                     PyExc_TypeError,
-                    "argument must be an int, or have a fileno() method."
+                    ptr[u8]("argument must be an int, or have a fileno() method.")
                 );
                 return i32(-1);
             }
@@ -218,7 +224,9 @@ import from c {
                 return i32(-1);
             }
             if jacpy_is_long(fno) == 0 {
-                PyErr_SetString(PyExc_TypeError, "fileno() returned a non-integer");
+                PyErr_SetString(
+                    PyExc_TypeError, ptr[u8]("fileno() returned a non-integer")
+                );
                 jacpy_release(fno);
                 return i32(-1);
             }
@@ -231,7 +239,7 @@ import from c {
         if fd < 0 {
             PyErr_Format(
                 PyExc_ValueError,
-                "file descriptor cannot be a negative integer (%i)",
+                ptr[u8]("file descriptor cannot be a negative integer (%i)"),
                 fd
             );
             return i32(-1);
@@ -268,7 +276,8 @@ import from c {
         if jacpy_open_code_hook().view(1)[0] {
             if Py_IsInitialized() != 0 {
                 PyErr_SetString(
-                    PyExc_SystemError, "failed to change existing open_code hook"
+                    PyExc_SystemError,
+                    ptr[u8]("failed to change existing open_code hook")
                 );
             }
             return i32(-1);
@@ -280,7 +289,7 @@ import from c {
         if jacpy_is_unicode(path) == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "'path' must be 'str', not '%.200s'",
+                ptr[u8]("'path' must be 'str', not '%.200s'"),
                 ptr[_object](path).view(1)[0].ob_type.view(1)[0].tp_name
             );
             return NULL;

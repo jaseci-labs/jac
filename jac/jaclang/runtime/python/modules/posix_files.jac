@@ -820,7 +820,7 @@ def:priv split_py_long_to_s_and_ns(
     if jacpy_is_tuple(divmod) == 0 or PyTuple_Size(divmod) != 2 {
         PyErr_Format(
             PyExc_TypeError,
-            "%.200s.__divmod__() must return a 2-tuple, not %.200s",
+            ptr[u8]("%.200s.__divmod__() must return a 2-tuple, not %.200s"),
             _PyType_Name(Py_TYPE(py_long)),
             _PyType_Name(Py_TYPE(divmod))
         );
@@ -853,7 +853,7 @@ def os_utime_impl(
     if times != Py_None and ns {
         PyErr_SetString(
             PyExc_ValueError,
-            "utime: you may specify either 'times' or 'ns' but not both"
+            ptr[u8]("utime: you may specify either 'times' or 'ns' but not both")
         );
         return NULL;
     }
@@ -861,7 +861,7 @@ def os_utime_impl(
         if jacpy_is_exact_tuple(times) == 0 or PyTuple_Size(times) != 2 {
             PyErr_SetString(
                 PyExc_TypeError,
-                "utime: 'times' must be either a tuple of two ints or None"
+                ptr[u8]("utime: 'times' must be either a tuple of two ints or None")
             );
             return NULL;
         }
@@ -886,7 +886,9 @@ def os_utime_impl(
         ut.mtime_ns = m_nsec;
     } elif ns {
         if jacpy_is_exact_tuple(ns) == 0 or PyTuple_Size(ns) != 2 {
-            PyErr_SetString(PyExc_TypeError, "utime: 'ns' must be a tuple of two ints");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("utime: 'ns' must be a tuple of two ints")
+            );
             return NULL;
         }
         ut.now = False;
@@ -924,7 +926,9 @@ def os_utime_impl(
     if not HAVE_UTIMENSAT and dir_fd != DEFAULT_DIR_FD and not follow_symlinks {
         PyErr_SetString(
             PyExc_ValueError,
-            "utime: cannot use dir_fd and follow_symlinks together on this platform"
+            ptr[u8](
+                "utime: cannot use dir_fd and follow_symlinks together on this platform"
+            )
         );
         return NULL;
     }
@@ -1078,7 +1082,8 @@ def os_minor_impl(module: ptr[PyObject], device: u64) -> ptr[PyObject] {
 def os_makedev_impl(module: ptr[PyObject], major: u64, minor: u64) -> u64 {
     if not major_minor_check(major) or not major_minor_check(minor) {
         PyErr_SetString(
-            PyExc_OverflowError, "Python int too large to convert to C unsigned int"
+            PyExc_OverflowError,
+            ptr[u8]("Python int too large to convert to C unsigned int")
         );
         return u64.wrap(-1);
     }

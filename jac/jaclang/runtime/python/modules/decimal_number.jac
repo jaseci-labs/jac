@@ -444,7 +444,9 @@ impl dotsep_as_utf8(s: ptr[u8]) -> ptr[PyObject] {
         PyMem_Free(ptr(buf));
         PyErr_SetString(
             PyExc_ValueError,
-            "invalid decimal point or unsupported combination of LC_CTYPE and LC_NUMERIC"
+            ptr[u8](
+                "invalid decimal point or unsupported combination of LC_CTYPE and LC_NUMERIC"
+            )
         );
         return NULL;
     }
@@ -504,7 +506,7 @@ impl pydec_format(
     jacpy_release(pydec);
     if not result and PyErr_ExceptionMatches(PyExc_ValueError) != 0 {
         PyErr_Clear();
-        PyErr_SetString(PyExc_ValueError, "invalid format string");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("invalid format string"));
     }
     return result;
 }
@@ -527,7 +529,7 @@ impl dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     fmtarg = values[0].object;
     overrides = values[1].object if values[1].given else NULL;
     if jacpy_is_unicode(fmtarg) == 0 {
-        PyErr_SetString(PyExc_TypeError, "format arg must be str");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("format arg must be str"));
         return NULL;
     }
     size: i64 = 0;
@@ -538,7 +540,9 @@ impl dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if size > 0 and (fmt + (size - 1)).view(1)[0] == u8(78) {
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "Format specifier 'N' is deprecated and slated for removal in Python 3.18",
+            ptr[u8](
+                "Format specifier 'N' is deprecated and slated for removal in Python 3.18"
+            ),
             1
         )
             < 0 {
@@ -585,7 +589,9 @@ impl format_with_spec(
     failed = False;
     if overrides {
         if jacpy_is_dict(overrides) == 0 {
-            PyErr_SetString(PyExc_TypeError, "optional argument must be a dict");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("optional argument must be a dict")
+            );
             return NULL;
         }
         found = dict_get_item_string(overrides, "decimal_point");
@@ -611,7 +617,7 @@ impl format_with_spec(
             }
         }
         if not failed and mpd_validate_lconv(&mut spec) < 0 {
-            PyErr_SetString(PyExc_ValueError, "invalid override dict");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("invalid override dict"));
             failed = True;
         }
     } else {
@@ -639,7 +645,7 @@ impl format_with_spec(
             } else {
                 PyErr_SetString(
                     PyExc_ValueError,
-                    "format specification exceeds internal limits of _decimal"
+                    ptr[u8]("format specification exceeds internal limits of _decimal")
                 );
             }
         } else {
@@ -666,9 +672,11 @@ impl dec_as_long(
 ) -> ptr[PyObject] {
     if mpd_isspecial(mpd(dec)) != 0 {
         if mpd_isnan(mpd(dec)) != 0 {
-            PyErr_SetString(PyExc_ValueError, "cannot convert NaN to integer");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("cannot convert NaN to integer"));
         } else {
-            PyErr_SetString(PyExc_OverflowError, "cannot convert Infinity to integer");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("cannot convert Infinity to integer")
+            );
         }
         return NULL;
     }
@@ -747,10 +755,12 @@ impl long_floor_divide(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
 impl dec_as_integer_ratio(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if mpd_isspecial(mpd(self)) != 0 {
         if mpd_isnan(mpd(self)) != 0 {
-            PyErr_SetString(PyExc_ValueError, "cannot convert NaN to integer ratio");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("cannot convert NaN to integer ratio")
+            );
         } else {
             PyErr_SetString(
-                PyExc_OverflowError, "cannot convert Infinity to integer ratio"
+                PyExc_OverflowError, ptr[u8]("cannot convert Infinity to integer ratio")
             );
         }
         return NULL;
@@ -902,7 +912,9 @@ impl dec_as_float(dec: ptr[PyObject]) -> ptr[PyObject] {
     s: ptr[PyObject] = NULL;
     if mpd_isnan(mpd(dec)) != 0 {
         if mpd_issnan(mpd(dec)) != 0 {
-            PyErr_SetString(PyExc_ValueError, "cannot convert signaling NaN to float");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("cannot convert signaling NaN to float")
+            );
             return NULL;
         }
         s = jacpy_unicode_from_text("-nan" if mpd_isnegative(mpd(dec)) != 0 else "nan");
@@ -932,7 +944,7 @@ impl dec_round(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     }
     x = values[0].object;
     if jacpy_is_long(x) == 0 {
-        PyErr_SetString(PyExc_TypeError, "optional arg must be an integer");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("optional arg must be an integer"));
         return NULL;
     }
     y = PyLong_AsSsize_t(x);
@@ -1670,7 +1682,9 @@ impl dec_floor(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
 impl dec_hash_value(v: ptr[PyObject]) -> i64 {
     if mpd_isspecial(mpd(v)) != 0 {
         if mpd_issnan(mpd(v)) != 0 {
-            PyErr_SetString(PyExc_TypeError, "Cannot hash a signaling NaN value");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("Cannot hash a signaling NaN value")
+            );
             return -1;
         } elif mpd_isnan(mpd(v)) != 0 {
             return PyObject_GenericHash(v);
@@ -1733,7 +1747,7 @@ impl dec_hash_value(v: ptr[PyObject]) -> i64 {
             PyErr_NoMemory();
         } else {
             PyErr_SetString(
-                PyExc_RuntimeError, "dec_hash: internal error: please report"
+                PyExc_RuntimeError, ptr[u8]("dec_hash: internal error: please report")
             );
         }
         return -1;

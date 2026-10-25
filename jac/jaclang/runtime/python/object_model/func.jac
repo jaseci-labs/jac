@@ -410,17 +410,23 @@ import from c {
                 return i32(i);
             }
         }
-        PyErr_SetString(PyExc_RuntimeError, "no more func watcher IDs available");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("no more func watcher IDs available")
+        );
         return i32(-1);
     }  def PyFunction_ClearWatcher(watcher_id: i32) -> i32 {
         interp = current_interp();
         if watcher_id < 0 or i64(watcher_id) >= FUNC_MAX_WATCHERS {
-            PyErr_Format(PyExc_ValueError, "invalid func watcher ID %d", watcher_id);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("invalid func watcher ID %d"), watcher_id
+            );
             return i32(-1);
         }
         slot = watcher_slot(interp, i64(watcher_id));
         if slot.view(1)[0] == 0 {
-            PyErr_Format(PyExc_ValueError, "no func watcher set for ID %d", watcher_id);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("no func watcher set for ID %d"), watcher_id
+            );
             return i32(-1);
         }
         slot.view(1)[0] = 0;
@@ -586,7 +592,7 @@ import from c {
         } elif defaults and tuple_check(defaults) {
             object_incref(defaults);
         } else {
-            PyErr_SetString(PyExc_SystemError, "non-tuple default args");
+            PyErr_SetString(PyExc_SystemError, ptr[u8]("non-tuple default args"));
             return i32(-1);
         }
         handle_func_event(EVENT_MODIFY_DEFAULTS, op, defaults);
@@ -615,7 +621,9 @@ import from c {
         } elif defaults and dict_check(defaults) {
             object_incref(defaults);
         } else {
-            PyErr_SetString(PyExc_SystemError, "non-dict keyword only default args");
+            PyErr_SetString(
+                PyExc_SystemError, ptr[u8]("non-dict keyword only default args")
+            );
             return i32(-1);
         }
         handle_func_event(EVENT_MODIFY_KWDEFAULTS, op, defaults);
@@ -641,7 +649,7 @@ import from c {
         } else {
             PyErr_Format(
                 PyExc_SystemError,
-                "expected tuple for closure, got '%.100s'",
+                ptr[u8]("expected tuple for closure, got '%.100s'"),
                 object_type(closure).view(1)[0].tp_name
             );
             return i32(-1);
@@ -668,7 +676,7 @@ import from c {
         } elif annotations and dict_check(annotations) {
             object_incref(annotations);
         } else {
-            PyErr_SetString(PyExc_SystemError, "non-dict annotations");
+            PyErr_SetString(PyExc_SystemError, ptr[u8]("non-dict annotations"));
             return i32(-1);
         }
         replace_field(op, PyFunctionObject_ANNOTATIONS, annotations);
@@ -682,28 +690,32 @@ import from c {
     }  def _PyFunction_VerifyStateless(tstate: ptr, func: ptr[PyObject]) -> i32 {
         globalsns = field(func, PyFunctionObject_GLOBALS);
         if globalsns and not dict_check(globalsns) {
-            PyErr_Format(PyExc_TypeError, "unsupported globals %R", globalsns);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("unsupported globals %R"), globalsns);
             return i32(-1);
         }
         builtinsns = field(func, PyFunctionObject_BUILTINS);
         if builtinsns and not dict_check(builtinsns) {
-            PyErr_Format(PyExc_TypeError, "unsupported builtins %R", builtinsns);
+            PyErr_Format(
+                PyExc_TypeError, ptr[u8]("unsupported builtins %R"), builtinsns
+            );
             return i32(-1);
         }
 
         defaults = field(func, PyFunctionObject_DEFAULTS);
         if defaults and object_size(defaults) > 0 {
-            PyErr_SetString(PyExc_ValueError, "defaults not supported");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("defaults not supported"));
             return i32(-1);
         }
         kwdefaults = field(func, PyFunctionObject_KWDEFAULTS);
         if kwdefaults and PyDict_Size(kwdefaults) > 0 {
-            PyErr_SetString(PyExc_ValueError, "keyword defaults not supported");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("keyword defaults not supported")
+            );
             return i32(-1);
         }
         closure = field(func, PyFunctionObject_CLOSURE);
         if closure and object_size(closure) > 0 {
-            PyErr_SetString(PyExc_ValueError, "closures not supported");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("closures not supported"));
             return i32(-1);
         }
         if _PyCode_VerifyStateless(
@@ -1019,7 +1031,9 @@ impl notify_func_watchers(
             calls.view(1)[0].watcher = watcher_slot(interp, i).view(1)[0];
             if calls.view(1)[0].watcher(event, func, new_value) < 0 {
                 PyErr_FormatUnraisable(
-                    "Exception ignored in %s watcher callback for function %U at %p",
+                    ptr[u8](
+                        "Exception ignored in %s watcher callback for function %U at %p"
+                    ),
                     func_event_name(event),
                     field(func, PyFunctionObject_QUALNAME),
                     ptr(func)
@@ -1116,7 +1130,7 @@ impl func_get_annotation_dict(op: ptr[PyObject]) -> ptr[PyObject] {
         if not dict_check(ann_dict) {
             PyErr_Format(
                 PyExc_TypeError,
-                "__annotate__ returned non-dict of type '%.100s'",
+                ptr[u8]("__annotate__ returned non-dict of type '%.100s'"),
                 object_type(ann_dict).view(1)[0].tp_name
             );
             object_decref(ann_dict);
@@ -1158,7 +1172,9 @@ impl func_get_code(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
 impl func_set_code(self: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> i32 {
     if not value
         or not object_type_check(value, ptr[PyTypeObject](addressof(PyCode_Type))) {
-        PyErr_SetString(PyExc_TypeError, "__code__ must be set to a code object");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__code__ must be set to a code object")
+        );
         return i32(-1);
     }
     if PySys_Audit("object.__setattr__", "OsO", self, "__code__", value) < 0 {
@@ -1173,7 +1189,7 @@ impl func_set_code(self: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> 
     if nclosure != i64(nfree) {
         PyErr_Format(
             PyExc_ValueError,
-            "%U() requires a code object with %zd free vars, not %d",
+            ptr[u8]("%U() requires a code object with %zd free vars, not %d"),
             field(self, PyFunctionObject_NAME),
             nclosure,
             nfree
@@ -1186,7 +1202,9 @@ impl func_set_code(self: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> 
     if (old_flags & mask) != (new_flags & mask) {
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "Assigning a code object of non-matching type is deprecated (e.g., from a generator to a plain function)",
+            ptr[u8](
+                "Assigning a code object of non-matching type is deprecated (e.g., from a generator to a plain function)"
+            ),
             1
         )
             < 0 {
@@ -1205,7 +1223,9 @@ impl func_get_name(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
 
 impl func_set_name(self: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> i32 {
     if not value or not unicode_check(value) {
-        PyErr_SetString(PyExc_TypeError, "__name__ must be set to a string object");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__name__ must be set to a string object")
+        );
         return i32(-1);
     }
     replace_field(self, PyFunctionObject_NAME, object_new_ref(value));
@@ -1220,7 +1240,9 @@ impl func_set_qualname(
     self: ptr[PyObject], value: ptr[PyObject], _closure: ptr
 ) -> i32 {
     if not value or not unicode_check(value) {
-        PyErr_SetString(PyExc_TypeError, "__qualname__ must be set to a string object");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__qualname__ must be set to a string object")
+        );
         return i32(-1);
     }
     replace_field(self, PyFunctionObject_QUALNAME, object_new_ref(value));
@@ -1243,9 +1265,9 @@ impl set_defaults_attr(
     if value and (dict_check(value) if keyword else tuple_check(value)) == False {
         PyErr_SetString(
             PyExc_TypeError,
-            "__kwdefaults__ must be set to a dict object"
+            ptr[u8]("__kwdefaults__ must be set to a dict object")
                 if keyword
-                else "__defaults__ must be set to a tuple object"
+                else ptr[u8]("__defaults__ must be set to a tuple object")
         );
         return i32(-1);
     }
@@ -1297,7 +1319,7 @@ impl func_set_annotate(
     self: ptr[PyObject], value: ptr[PyObject], _closure: ptr
 ) -> i32 {
     if not value {
-        PyErr_SetString(PyExc_TypeError, "__annotate__ cannot be deleted");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("__annotate__ cannot be deleted"));
         return i32(-1);
     }
     if value == Py_None {
@@ -1309,7 +1331,7 @@ impl func_set_annotate(
         replace_field(self, PyFunctionObject_ANNOTATIONS, NULL);
         return i32(0);
     }
-    PyErr_SetString(PyExc_TypeError, "__annotate__ must be callable or None");
+    PyErr_SetString(PyExc_TypeError, ptr[u8]("__annotate__ must be callable or None"));
     return i32(-1);
 }
 
@@ -1333,7 +1355,7 @@ impl func_set_annotations(
 
     if value and not dict_check(value) {
         PyErr_SetString(
-            PyExc_TypeError, "__annotations__ must be set to a dict object"
+            PyExc_TypeError, ptr[u8]("__annotations__ must be set to a dict object")
         );
         return i32(-1);
     }
@@ -1354,7 +1376,9 @@ impl func_set_type_params(
     self: ptr[PyObject], value: ptr[PyObject], _closure: ptr
 ) -> i32 {
     if not value or not tuple_check(value) {
-        PyErr_SetString(PyExc_TypeError, "__type_params__ must be set to a tuple");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__type_params__ must be set to a tuple")
+        );
         return i32(-1);
     }
     replace_field(self, PyFunctionObject_TYPEPARAMS, object_new_ref(value));
@@ -1386,26 +1410,34 @@ impl func_new_values(
         return NULL;
     }
     if name != Py_None and not unicode_check(name) {
-        PyErr_SetString(PyExc_TypeError, "arg 3 (name) must be None or string");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("arg 3 (name) must be None or string")
+        );
         return NULL;
     }
     if defaults != Py_None and not tuple_check(defaults) {
-        PyErr_SetString(PyExc_TypeError, "arg 4 (defaults) must be None or tuple");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("arg 4 (defaults) must be None or tuple")
+        );
         return NULL;
     }
     nfree = code_i32(code, PyCodeObject_NFREEVARS);
     if not tuple_check(closure) {
         if nfree != 0 and closure == Py_None {
-            PyErr_SetString(PyExc_TypeError, "arg 5 (closure) must be tuple");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("arg 5 (closure) must be tuple"));
             return NULL;
         }
         if closure != Py_None {
-            PyErr_SetString(PyExc_TypeError, "arg 5 (closure) must be None or tuple");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("arg 5 (closure) must be None or tuple")
+            );
             return NULL;
         }
     }
     if kwdefaults != Py_None and not dict_check(kwdefaults) {
-        PyErr_SetString(PyExc_TypeError, "arg 6 (kwdefaults) must be None or dict");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("arg 6 (kwdefaults) must be None or dict")
+        );
         return NULL;
     }
     nclosure: i64 = 0;
@@ -1415,7 +1447,7 @@ impl func_new_values(
     if i64(nfree) != nclosure {
         return PyErr_Format(
             PyExc_ValueError,
-            "%U requires closure of length %d, not %zd",
+            ptr[u8]("%U requires closure of length %d, not %zd"),
             field(code, PyCodeObject_NAME),
             nfree,
             nclosure
@@ -1426,7 +1458,7 @@ impl func_new_values(
         if not object_is_type(o, ptr[PyTypeObject](addressof(PyCell_Type))) {
             return PyErr_Format(
                 PyExc_TypeError,
-                "arg 5 (closure) expected cell, found %s",
+                ptr[u8]("arg 5 (closure) expected cell, found %s"),
                 object_type(o).view(1)[0].tp_name
             );
         }
@@ -1612,7 +1644,7 @@ impl descriptor_set_wrapped_attribute(
                 PyErr_Clear();
                 PyErr_Format(
                     PyExc_AttributeError,
-                    "'%.200s' object has no attribute '%U'",
+                    ptr[u8]("'%.200s' object has no attribute '%U'"),
                     type_name,
                     name
                 );
@@ -1700,7 +1732,9 @@ impl cm_descr_get(
 ) -> ptr[PyObject] {
     callable = field(self, classmethod_CALLABLE);
     if not callable {
-        PyErr_SetString(PyExc_RuntimeError, "uninitialized classmethod object");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("uninitialized classmethod object")
+        );
         return NULL;
     }
     return PyMethod_New(callable, type or ptr[PyObject](object_type(ob)));
@@ -1771,7 +1805,9 @@ impl sm_descr_get(
 ) -> ptr[PyObject] {
     callable = field(self, staticmethod_CALLABLE);
     if not callable {
-        PyErr_SetString(PyExc_RuntimeError, "uninitialized staticmethod object");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("uninitialized staticmethod object")
+        );
         return NULL;
     }
     return object_new_ref(callable);

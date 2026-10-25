@@ -472,12 +472,14 @@ import from c {
 
         if dval == dval and dval - dval != 0.0 {
             PyErr_SetString(
-                PyExc_OverflowError, "cannot convert float infinity to integer"
+                PyExc_OverflowError, ptr[u8]("cannot convert float infinity to integer")
             );
             return NULL;
         }
         if dval != dval {
-            PyErr_SetString(PyExc_ValueError, "cannot convert float NaN to integer");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("cannot convert float NaN to integer")
+            );
             return NULL;
         }
         if dval < 0.0 {
@@ -521,7 +523,8 @@ import from c {
         (result, overflow) = long_as_long_and_overflow(obj_);
         if overflow != i32(0) {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large to convert to C long"
+                PyExc_OverflowError,
+                ptr[u8]("Python int too large to convert to C long")
             );
         }
         return result;
@@ -529,7 +532,7 @@ import from c {
         (result, overflow) = long_as_long_and_overflow(obj_);
         if overflow != i32(0) or result > INT_MAX or result < INT_MIN {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large to convert to C int"
+                PyExc_OverflowError, ptr[u8]("Python int too large to convert to C int")
             );
             return i32(-1);
         }
@@ -540,7 +543,7 @@ import from c {
             return -1;
         }
         if not long_check(vv) {
-            PyErr_SetString(PyExc_TypeError, "an integer is required");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("an integer is required"));
             return -1;
         }
         v = long_of(vv);
@@ -571,7 +574,7 @@ import from c {
         }
 
         PyErr_SetString(
-            PyExc_OverflowError, "Python int too large to convert to C ssize_t"
+            PyExc_OverflowError, ptr[u8]("Python int too large to convert to C ssize_t")
         );
         return -1;
     }  def PyLong_AsUnsignedLong(vv: ptr[PyObject]) -> u64 {
@@ -580,7 +583,7 @@ import from c {
             return ~u64(0);
         }
         if not long_check(vv) {
-            PyErr_SetString(PyExc_TypeError, "an integer is required");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("an integer is required"));
             return ~u64(0);
         }
         v = long_of(vv);
@@ -589,7 +592,8 @@ import from c {
         }
         if long_is_negative(v) {
             PyErr_SetString(
-                PyExc_OverflowError, "can't convert negative value to unsigned int"
+                PyExc_OverflowError,
+                ptr[u8]("can't convert negative value to unsigned int")
             );
             return ~u64(0);
         }
@@ -602,7 +606,7 @@ import from c {
             if (x >> u64(PyLong_SHIFT)) != prev {
                 PyErr_SetString(
                     PyExc_OverflowError,
-                    "Python int too large to convert to C unsigned long"
+                    ptr[u8]("Python int too large to convert to C unsigned long")
                 );
                 return ~u64(0);
             }
@@ -614,7 +618,7 @@ import from c {
             return ~u64(0);
         }
         if not long_check(vv) {
-            PyErr_SetString(PyExc_TypeError, "an integer is required");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("an integer is required"));
             return ~u64(0);
         }
         v = long_of(vv);
@@ -623,7 +627,7 @@ import from c {
         }
         if long_is_negative(v) {
             PyErr_SetString(
-                PyExc_OverflowError, "can't convert negative value to size_t"
+                PyExc_OverflowError, ptr[u8]("can't convert negative value to size_t")
             );
             return ~u64(0);
         }
@@ -635,7 +639,8 @@ import from c {
             x = wrapping_shl(x, u64(PyLong_SHIFT)) | u64(digit_at(v, i));
             if (x >> u64(PyLong_SHIFT)) != prev {
                 PyErr_SetString(
-                    PyExc_OverflowError, "Python int too large to convert to C size_t"
+                    PyExc_OverflowError,
+                    ptr[u8]("Python int too large to convert to C size_t")
                 );
                 return ~u64(0);
             }
@@ -664,19 +669,19 @@ import from c {
         return val;
     }  def PyLong_IsPositive(obj_: ptr[PyObject]) -> i32 {
         if not long_check(obj_) {
-            PyErr_Format(PyExc_TypeError, "expected int, got %T", obj_);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expected int, got %T"), obj_);
             return i32(-1);
         }
         return i32(1) if long_is_positive(long_of(obj_)) else i32(0);
     }  def PyLong_IsNegative(obj_: ptr[PyObject]) -> i32 {
         if not long_check(obj_) {
-            PyErr_Format(PyExc_TypeError, "expected int, got %T", obj_);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expected int, got %T"), obj_);
             return i32(-1);
         }
         return i32(1) if long_is_negative(long_of(obj_)) else i32(0);
     }  def PyLong_IsZero(obj_: ptr[PyObject]) -> i32 {
         if not long_check(obj_) {
-            PyErr_Format(PyExc_TypeError, "expected int, got %T", obj_);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expected int, got %T"), obj_);
             return i32(-1);
         }
         return i32(1) if long_is_zero(long_of(obj_)) else i32(0);
@@ -690,7 +695,7 @@ import from c {
         return long_sign(vv);
     }  def PyLong_GetSign(vv: ptr[PyObject], sign: ptr[i32]) -> i32 {
         if not long_check(vv) {
-            PyErr_Format(PyExc_TypeError, "expect int, got %T", vv);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expect int, got %T"), vv);
             return i32(-1);
         }
         sign.view(1)[0] = long_sign(vv);
@@ -813,7 +818,8 @@ import from c {
             if is_signed == i32(0) {
                 if with_exceptions != i32(0) {
                     PyErr_SetString(
-                        PyExc_OverflowError, "can't convert negative int to unsigned"
+                        PyExc_OverflowError,
+                        ptr[u8]("can't convert negative int to unsigned")
                     );
                 }
                 return i32(-1);
@@ -941,13 +947,13 @@ import from c {
             }
             do_decref = True;
         } else {
-            PyErr_Format(PyExc_TypeError, "expect int, got %T", vv);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expect int, got %T"), vv);
             return -1;
         }
         if flags != -1
             and (flags & Py_ASNATIVEBYTES_REJECT_NEGATIVE) != 0
             and long_is_negative(v) {
-            PyErr_SetString(PyExc_ValueError, "Cannot convert negative int");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("Cannot convert negative int"));
             if do_decref {
                 object_decref(as_object(v));
             }
@@ -1145,7 +1151,7 @@ import from c {
             return ~u64(0);
         }
         if not long_check(vv) {
-            PyErr_SetString(PyExc_TypeError, "an integer is required");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("an integer is required"));
             return ~u64(0);
         }
         v = long_of(vv);
@@ -1202,7 +1208,8 @@ import from c {
         }
         if nbytes > 2 {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large for C unsigned short"
+                PyExc_OverflowError,
+                ptr[u8]("Python int too large for C unsigned short")
             );
             return i32(0);
         }
@@ -1214,7 +1221,7 @@ import from c {
         }
         if nbytes > 4 {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large for C unsigned int"
+                PyExc_OverflowError, ptr[u8]("Python int too large for C unsigned int")
             );
             return i32(0);
         }
@@ -1226,7 +1233,7 @@ import from c {
         }
         if nbytes > 8 {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large for C unsigned long"
+                PyExc_OverflowError, ptr[u8]("Python int too large for C unsigned long")
             );
             return i32(0);
         }
@@ -1238,7 +1245,8 @@ import from c {
         }
         if nbytes > 8 {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large for C unsigned long long"
+                PyExc_OverflowError,
+                ptr[u8]("Python int too large for C unsigned long long")
             );
             return i32(0);
         }
@@ -1249,7 +1257,9 @@ import from c {
             return i32(0);
         }
         if nbytes > 8 {
-            PyErr_SetString(PyExc_OverflowError, "Python int too large for C size_t");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("Python int too large for C size_t")
+            );
             return i32(0);
         }
         return i32(1);
@@ -1259,7 +1269,9 @@ import from c {
             return i32(0);
         }
         if nbytes > 1 {
-            PyErr_SetString(PyExc_OverflowError, "Python int too large for C uint8_t");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("Python int too large for C uint8_t")
+            );
             return i32(0);
         }
         return i32(1);
@@ -1269,7 +1281,9 @@ import from c {
             return i32(0);
         }
         if nbytes > 2 {
-            PyErr_SetString(PyExc_OverflowError, "Python int too large for C uint16_t");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("Python int too large for C uint16_t")
+            );
             return i32(0);
         }
         return i32(1);
@@ -1279,7 +1293,9 @@ import from c {
             return i32(0);
         }
         if nbytes > 4 {
-            PyErr_SetString(PyExc_OverflowError, "Python int too large for C uint32_t");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("Python int too large for C uint32_t")
+            );
             return i32(0);
         }
         return i32(1);
@@ -1289,7 +1305,9 @@ import from c {
             return i32(0);
         }
         if nbytes > 8 {
-            PyErr_SetString(PyExc_OverflowError, "Python int too large for C uint64_t");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("Python int too large for C uint64_t")
+            );
             return i32(0);
         }
         return i32(1);
@@ -1595,7 +1613,7 @@ import from c {
         if strobj {
             PyErr_Format(
                 PyExc_ValueError,
-                "invalid literal for int() with base %d: %.200R",
+                ptr[u8]("invalid literal for int() with base %d: %.200R"),
                 base,
                 strobj
             );
@@ -1618,7 +1636,10 @@ import from c {
         object_decref(asciidig);
         object_xdecref(result);
         PyErr_Format(
-            PyExc_ValueError, "invalid literal for int() with base %d: %.200R", base, u
+            PyExc_ValueError,
+            ptr[u8]("invalid literal for int() with base %d: %.200R"),
+            base,
+            u
         );
         return NULL;
     }
@@ -1658,7 +1679,7 @@ import from c {
             return -1.0;
         }
         if not long_check(v) {
-            PyErr_SetString(PyExc_TypeError, "an integer is required");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("an integer is required"));
             return -1.0;
         }
         if long_is_compact(long_of(v)) {
@@ -1666,7 +1687,9 @@ import from c {
         }
         (x, exponent) = long_frexp(long_of(v));
         if exponent > DBL_MAX_EXP {
-            PyErr_SetString(PyExc_OverflowError, "int too large to convert to float");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("int too large to convert to float")
+            );
             return -1.0;
         }
         return ldexp(x, i32(exponent));
@@ -2108,7 +2131,9 @@ def divmod_near_fail(quo: ptr[PyLongObject], rem: ptr[PyLongObject]) -> ptr[PyOb
 import from c {
     def _PyLong_DivmodNear(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
         if not long_check(a) or not long_check(b) {
-            PyErr_SetString(PyExc_TypeError, "non-integer arguments in division");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("non-integer arguments in division")
+            );
             return NULL;
         }
 
@@ -2583,7 +2608,8 @@ import from c {
 
         if nbytes > 4 {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large to convert to C int32_t"
+                PyExc_OverflowError,
+                ptr[u8]("Python int too large to convert to C int32_t")
             );
             return i32(-1);
         }
@@ -2596,7 +2622,8 @@ import from c {
         }
         if nbytes > 8 {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large to convert to C int64_t"
+                PyExc_OverflowError,
+                ptr[u8]("Python int too large to convert to C int64_t")
             );
             return i32(-1);
         }
@@ -2612,7 +2639,8 @@ import from c {
         }
         if nbytes > 4 {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large to convert to C uint32_t"
+                PyExc_OverflowError,
+                ptr[u8]("Python int too large to convert to C uint32_t")
             );
             return i32(-1);
         }
@@ -2628,7 +2656,8 @@ import from c {
         }
         if nbytes > 8 {
             PyErr_SetString(
-                PyExc_OverflowError, "Python int too large to convert to C uint64_t"
+                PyExc_OverflowError,
+                ptr[u8]("Python int too large to convert to C uint64_t")
             );
             return i32(-1);
         }
@@ -2638,7 +2667,7 @@ import from c {
     }  def PyLong_Export(obj_: ptr[PyObject], export_long: ptr[PyLongExport]) -> i32 {
         if not long_check(obj_) {
             memset(ptr(export_long), i32(0), u64(PyLongExport_SIZE));
-            PyErr_Format(PyExc_TypeError, "expect int, got %T", obj_);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expect int, got %T"), obj_);
             return i32(-1);
         }
 
@@ -2674,7 +2703,7 @@ import from c {
         negative: i32, ndigits: i64, digits: ptr[ptr]
     ) -> ptr[PyLongWriter] {
         if ndigits <= 0 {
-            PyErr_SetString(PyExc_ValueError, "ndigits must be positive");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("ndigits must be positive"));
             digits.view(1)[0] = ptr();
             return ptr[PyLongWriter]();
         }
@@ -2890,7 +2919,7 @@ impl long_normalize(v: ptr[PyLongObject]) -> ptr[PyLongObject] {
 
 impl long_alloc(size: i64) -> ptr[PyLongObject] {
     if size > MAX_LONG_DIGITS {
-        PyErr_SetString(PyExc_OverflowError, "too many digits in integer");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("too many digits in integer"));
         return ptr[PyLongObject]();
     }
 
@@ -3143,7 +3172,7 @@ impl bit_length_digit(x: u32) -> i64 {
 
 impl as_byte_array_overflow(with_exceptions: i32) -> i32 {
     if with_exceptions != i32(0) {
-        PyErr_SetString(PyExc_OverflowError, "int too big to convert");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("int too big to convert"));
     }
     return i32(-1);
 }
@@ -3425,7 +3454,8 @@ impl pylong_int_to_decimal_string(
     }
     if not type_has_feature(object_type(s), Py_TPFLAGS_UNICODE_SUBCLASS) {
         PyErr_SetString(
-            PyExc_TypeError, "_pylong.int_to_decimal_string did not return a str"
+            PyExc_TypeError,
+            ptr[u8]("_pylong.int_to_decimal_string did not return a str")
         );
         object_decref(mod);
         object_decref(s);
@@ -3516,7 +3546,9 @@ impl long_to_decimal_string_internal(
             limit = i32(max_digits);
             PyErr_Format(
                 PyExc_ValueError,
-                "Exceeds the limit (%d digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit",
+                ptr[u8](
+                    "Exceeds the limit (%d digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit"
+                ),
                 limit
             );
             return (i32(-1), NULL, bytes_str);
@@ -3577,7 +3609,9 @@ impl long_to_decimal_string_internal(
             limit = i32(max_digits);
             PyErr_Format(
                 PyExc_ValueError,
-                "Exceeds the limit (%d digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit",
+                ptr[u8](
+                    "Exceeds the limit (%d digits) for integer string conversion; use sys.set_int_max_str_digits() to increase the limit"
+                ),
                 limit
             );
             return (i32(-1), NULL, bytes_str);
@@ -3725,7 +3759,7 @@ impl long_format_binary(
         sz = 1;
     } else {
         if size_a > (0x7FFFFFFFFFFFFFFF - 3) // PyLong_SHIFT {
-            PyErr_SetString(PyExc_OverflowError, "int too large to format");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("int too large to format"));
             return (i32(-1), NULL, bytes_str);
         }
         size_a_in_bits = (size_a - 1) * PyLong_SHIFT
@@ -3791,7 +3825,7 @@ impl long_from_binary_base(
     }
 
     if digits > (PY_SSIZE_T_MAX - (PyLong_SHIFT - 1)) // bits_per_char {
-        PyErr_SetString(PyExc_ValueError, "int string too large to convert");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("int string too large to convert"));
         return (i32(0), ptr[PyLongObject]());
     }
     n = (digits * bits_per_char + PyLong_SHIFT - 1) // PyLong_SHIFT;
@@ -3853,7 +3887,7 @@ impl pylong_int_from_string(
     if not long_check(result) {
         object_decref(result);
         PyErr_SetString(
-            PyExc_TypeError, "_pylong.int_from_string did not return an int"
+            PyExc_TypeError, ptr[u8]("_pylong.int_from_string did not return an int")
         );
         return (i32(0), ptr[PyLongObject]());
     }
@@ -3865,7 +3899,7 @@ impl long_from_non_binary_base(
 ) -> tuple[i32, ptr[PyLongObject]] {
     fsize_z = f64(digits) * (addressof(log_base_BASE) + base).view(1)[0] + 1.0;
     if fsize_z > f64(MAX_LONG_DIGITS) {
-        PyErr_SetString(PyExc_OverflowError, "too many digits in integer");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("too many digits in integer"));
         return (i32(0), ptr[PyLongObject]());
     }
     size_z = i64(fsize_z);
@@ -3993,7 +4027,9 @@ impl long_from_string_base(
         if limit > i32(0) and digits > i64(limit) {
             PyErr_Format(
                 PyExc_ValueError,
-                "Exceeds the limit (%d digits) for integer string conversion: value has %zd digits; use sys.set_int_max_str_digits() to increase the limit",
+                ptr[u8](
+                    "Exceeds the limit (%d digits) for integer string conversion: value has %zd digits; use sys.set_int_max_str_digits() to increase the limit"
+                ),
                 limit,
                 digits
             );
@@ -4018,7 +4054,7 @@ impl invalid_int_literal(orig_str: ptr[u8], base: i64) -> ptr[PyObject] {
     base32 = i32(base);
     PyErr_Format(
         PyExc_ValueError,
-        "invalid literal for int() with base %d: %.200R",
+        ptr[u8]("invalid literal for int() with base %d: %.200R"),
         base32,
         strobj
     );
@@ -4034,7 +4070,9 @@ impl long_from_string(
     base = base_in;
     s = orig_str;
     if (base != 0 and base < 2) or base > 36 {
-        PyErr_SetString(PyExc_ValueError, "int() arg 2 must be >= 2 and <= 36");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("int() arg 2 must be >= 2 and <= 36")
+        );
         return (NULL, ptr[u8]());
     }
     while s.view(1)[0] != u8(0) and is_space(s.view(1)[0]) {
@@ -4105,7 +4143,7 @@ impl long_divrem(
     size_a = digit_count(a);
     size_b = digit_count(b);
     if size_b == 0 {
-        PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+        PyErr_SetString(PyExc_ZeroDivisionError, ptr[u8]("division by zero"));
         return (i32(-1), ptr[PyLongObject](), ptr[PyLongObject]());
     }
     if size_a < size_b
@@ -4161,7 +4199,7 @@ impl long_rem(
     size_a = digit_count(a);
     size_b = digit_count(b);
     if size_b == 0 {
-        PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+        PyErr_SetString(PyExc_ZeroDivisionError, ptr[u8]("division by zero"));
         return (i32(-1), ptr[PyLongObject]());
     }
     if size_a < size_b
@@ -4907,7 +4945,7 @@ impl pylong_int_divmod(
         or object_size(result) != 2 {
         object_decref(result);
         PyErr_SetString(
-            PyExc_ValueError, "tuple of length 2 is required from int_divmod()"
+            PyExc_ValueError, ptr[u8]("tuple of length 2 is required from int_divmod()")
         );
         return (i32(-1), nul, nul);
     }
@@ -4915,7 +4953,9 @@ impl pylong_int_divmod(
     r = tuple_get_item(result, 1);
     if not long_check(q) or not long_check(r) {
         object_decref(result);
-        PyErr_SetString(PyExc_ValueError, "tuple of int is required from int_divmod()");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("tuple of int is required from int_divmod()")
+        );
         return (i32(-1), nul, nul);
     }
     pdiv = nul;
@@ -5038,7 +5078,7 @@ impl true_divide_zero(negate: bool) -> ptr[PyObject] {
 
 impl true_divide_overflow -> ptr[PyObject] {
     PyErr_SetString(
-        PyExc_OverflowError, "integer division result too large for a float"
+        PyExc_OverflowError, ptr[u8]("integer division result too large for a float")
     );
     return NULL;
 }
@@ -5054,7 +5094,7 @@ impl long_true_divide(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
     b_size = digit_count(b);
     negate = long_is_negative(a) != long_is_negative(b);
     if b_size == 0 {
-        PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+        PyErr_SetString(PyExc_ZeroDivisionError, ptr[u8]("division by zero"));
         return NULL;
     }
     if a_size == 0 {
@@ -5113,7 +5153,7 @@ impl long_true_divide(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
 
         if a_size >= PY_SSIZE_T_MAX - 1 - shift_digits {
             PyErr_SetString(
-                PyExc_OverflowError, "intermediate overflow during division"
+                PyExc_OverflowError, ptr[u8]("intermediate overflow during division")
             );
             return NULL;
         }
@@ -5285,7 +5325,7 @@ impl long_invmod(
         object_decref(as_object(a));
         object_decref(as_object(b));
         PyErr_SetString(
-            PyExc_ValueError, "base is not invertible for the given modulus"
+            PyExc_ValueError, ptr[u8]("base is not invertible for the given modulus")
         );
         return ptr[PyLongObject]();
     }
@@ -5529,7 +5569,9 @@ impl long_pow(v: ptr[PyObject], w: ptr[PyObject], x: ptr[PyObject]) -> ptr[PyObj
     }
     if c {
         if long_is_zero(c) {
-            PyErr_SetString(PyExc_ValueError, "pow() 3rd argument cannot be 0");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("pow() 3rd argument cannot be 0")
+            );
             return pow_done(ptr[PyLongObject](), a, b, c);
         }
 
@@ -5718,7 +5760,7 @@ impl long_rshift(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
         return object_new_ref(Py_NotImplemented);
     }
     if long_is_negative(long_of(b)) {
-        PyErr_SetString(PyExc_ValueError, "negative shift count");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("negative shift count"));
         return NULL;
     }
     if long_is_zero(long_of(a)) {
@@ -5784,7 +5826,7 @@ impl long_lshift_method(aa: ptr[PyObject], bb: ptr[PyObject]) -> ptr[PyObject] {
     a = long_of(aa);
     b = long_of(bb);
     if long_is_negative(b) {
-        PyErr_SetString(PyExc_ValueError, "negative shift count");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("negative shift count"));
         return NULL;
     }
     if long_is_zero(a) {
@@ -5793,7 +5835,7 @@ impl long_lshift_method(aa: ptr[PyObject], bb: ptr[PyObject]) -> ptr[PyObject] {
 
     (shiftby, overflow) = long_as_long_long_and_overflow(bb);
     if overflow != i32(0) {
-        PyErr_SetString(PyExc_OverflowError, "too many digits in integer");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("too many digits in integer"));
         return NULL;
     }
     if shiftby == -1 and PyErr_Occurred() {
@@ -6018,7 +6060,7 @@ impl long_new_impl(
     }
     if not x {
         if obase {
-            PyErr_SetString(PyExc_TypeError, "int() missing string argument");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("int() missing string argument"));
             return NULL;
         }
         return PyLong_FromLong(0);
@@ -6032,7 +6074,9 @@ impl long_new_impl(
         return NULL;
     }
     if (base != 0 and base < 2) or base > 36 {
-        PyErr_SetString(PyExc_ValueError, "int() base must be >= 2 and <= 36, or 0");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("int() base must be >= 2 and <= 36, or 0")
+        );
         return NULL;
     }
     if type_has_feature(object_type(x), Py_TPFLAGS_UNICODE_SUBCLASS) {
@@ -6049,7 +6093,7 @@ impl long_new_impl(
         return _PyLong_FromBytes(s, object_size(x), i32(base));
     }
     PyErr_SetString(
-        PyExc_TypeError, "int() can't convert non-string with explicit base"
+        PyExc_TypeError, ptr[u8]("int() can't convert non-string with explicit base")
     );
     return NULL;
 }
@@ -6265,7 +6309,9 @@ impl byteorder_little_endian(byteorder: ptr[PyObject]) -> i32 {
     if _PyUnicode_EqualToASCIIString(byteorder, ptr[u8]("big")) != 0 {
         return i32(0);
     }
-    PyErr_SetString(PyExc_ValueError, "byteorder must be either 'little' or 'big'");
+    PyErr_SetString(
+        PyExc_ValueError, ptr[u8]("byteorder must be either 'little' or 'big'")
+    );
     return i32(-1);
 }
 
@@ -6277,7 +6323,9 @@ impl int_to_bytes_impl(
         return NULL;
     }
     if length < 0 {
-        PyErr_SetString(PyExc_ValueError, "length argument must be non-negative");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("length argument must be non-negative")
+        );
         return NULL;
     }
     as_bytes = PyBytes_FromStringAndSize(ptr[u8](), length);
@@ -6465,6 +6513,8 @@ impl long_vectorcall(
             ptr[PyTypeObject](type), args.view(1)[0], (args + 1).view(1)[0]
         );
     }
-    PyErr_Format(PyExc_TypeError, "int expected at most 2 arguments, got %zd", nargs);
+    PyErr_Format(
+        PyExc_TypeError, ptr[u8]("int expected at most 2 arguments, got %zd"), nargs
+    );
     return NULL;
 }

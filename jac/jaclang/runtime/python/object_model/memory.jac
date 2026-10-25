@@ -524,7 +524,7 @@ import from c {
         if not info.view(1)[0].buf {
             PyErr_SetString(
                 PyExc_ValueError,
-                "PyMemoryView_FromBuffer(): info->buf must not be NULL"
+                ptr[u8]("PyMemoryView_FromBuffer(): info->buf must not be NULL")
             );
             return NULL;
         }
@@ -570,7 +570,9 @@ import from c {
         }
         view = view_of(mv);
         if buffertype == PyBUF_WRITE and view.view(1)[0].readonly != i32(0) {
-            PyErr_SetString(PyExc_BufferError, "underlying buffer is not writable");
+            PyErr_SetString(
+                PyExc_BufferError, ptr[u8]("underlying buffer is not writable")
+            );
             object_decref(mv);
             return NULL;
         }
@@ -580,7 +582,9 @@ import from c {
         if buffertype == PyBUF_WRITE {
             PyErr_SetString(
                 PyExc_BufferError,
-                "writable contiguous buffer requested for a non-contiguous object."
+                ptr[u8](
+                    "writable contiguous buffer requested for a non-contiguous object."
+                )
             );
             object_decref(mv);
             return NULL;
@@ -593,7 +597,7 @@ import from c {
     ) -> i32 {
         if length != src.view(1)[0].length {
             PyErr_SetString(
-                PyExc_ValueError, "PyBuffer_ToContiguous: len != view->len"
+                PyExc_ValueError, ptr[u8]("PyBuffer_ToContiguous: len != view->len")
             );
             return i32(-1);
         }
@@ -962,7 +966,8 @@ impl base_inaccessible(op: ptr[PyObject]) -> bool {
 impl check_released(op: ptr[PyObject]) -> bool {
     if base_inaccessible(op) {
         PyErr_SetString(
-            PyExc_ValueError, "operation forbidden on released memoryview object"
+            PyExc_ValueError,
+            ptr[u8]("operation forbidden on released memoryview object")
         );
         return True;
     }
@@ -972,7 +977,7 @@ impl check_released(op: ptr[PyObject]) -> bool {
 impl check_restricted(op: ptr[PyObject]) -> bool {
     if (mv_flags(op) & _Py_MEMORYVIEW_RESTRICTED) != i32(0) {
         PyErr_SetString(
-            PyExc_ValueError, "cannot create new view on restricted memoryview"
+            PyExc_ValueError, ptr[u8]("cannot create new view on restricted memoryview")
         );
         return True;
     }
@@ -1137,7 +1142,9 @@ impl equiv_structure(dest: ptr[Py_buffer], src: ptr[Py_buffer]) -> bool {
     if not equiv_format(dest, src) or not equiv_shape(dest, src) {
         PyErr_SetString(
             PyExc_ValueError,
-            "memoryview assignment: lvalue and rvalue have different structures"
+            ptr[u8](
+                "memoryview assignment: lvalue and rvalue have different structures"
+            )
         );
         return False;
     }
@@ -1476,7 +1483,8 @@ impl mbuf_add_view(mbuf: ptr[PyObject], src_in: ptr[Py_buffer]) -> ptr[PyObject]
     }
     if i64(src.view(1)[0].ndim) > i64(PyBUF_MAX_NDIM) {
         PyErr_SetString(
-            PyExc_ValueError, "memoryview: number of dimensions must not exceed 64"
+            PyExc_ValueError,
+            ptr[u8]("memoryview: number of dimensions must not exceed 64")
         );
         return NULL;
     }
@@ -1527,7 +1535,7 @@ impl memory_from_object_and_flags(v: ptr[PyObject], flags: i32) -> ptr[PyObject]
     }
     PyErr_Format(
         PyExc_TypeError,
-        "memoryview: a bytes-like object is required, not '%.200s'",
+        ptr[u8]("memoryview: a bytes-like object is required, not '%.200s'"),
         object_type(v).view(1)[0].tp_name
     );
     return NULL;
@@ -1662,11 +1670,14 @@ impl memoryview_release(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObje
             suffix = ptr[u8]("");
         }
         PyErr_Format(
-            PyExc_BufferError, "memoryview has %zd exported buffer%s", exports, suffix
+            PyExc_BufferError,
+            ptr[u8]("memoryview has %zd exported buffer%s"),
+            exports,
+            suffix
         );
         return NULL;
     }
-    PyErr_SetString(PyExc_SystemError, "memoryview: negative export count");
+    PyErr_SetString(PyExc_SystemError, ptr[u8]("memoryview: negative export count"));
     return NULL;
 }
 
@@ -1814,27 +1825,30 @@ impl cast_format(op: ptr[PyObject], dest_fmt: ptr[u8]) -> i32 {
     if itemsize < 0 {
         PyErr_SetString(
             PyExc_ValueError,
-            "memoryview: destination format must be a native single character format prefixed with an optional '@'"
+            ptr[u8](
+                "memoryview: destination format must be a native single character format prefixed with an optional '@'"
+            )
         );
         return i32(-1);
     }
     (srcsize, srcchar) = get_native_fmtchar(view.view(1)[0].format_);
     if (srcsize < 0 or not is_byte_format(srcchar)) and not is_byte_format(destchar) {
         PyErr_SetString(
-            PyExc_TypeError, "memoryview: cannot cast between two non-byte formats"
+            PyExc_TypeError,
+            ptr[u8]("memoryview: cannot cast between two non-byte formats")
         );
         return i32(-1);
     }
     if view.view(1)[0].length % itemsize != 0 {
         PyErr_SetString(
-            PyExc_TypeError, "memoryview: length is not a multiple of itemsize"
+            PyExc_TypeError, ptr[u8]("memoryview: length is not a multiple of itemsize")
         );
         return i32(-1);
     }
     native = get_native_fmtstr(dest_fmt);
     view.view(1)[0].format_ = native;
     if not native {
-        PyErr_SetString(PyExc_RuntimeError, "memoryview: internal error");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("memoryview: internal error"));
         return i32(-1);
     }
     view.view(1)[0].itemsize = itemsize;
@@ -1863,7 +1877,8 @@ impl copy_shape(shape: ptr[i64], seq: ptr[PyObject], ndim: i64, itemsize: i64) -
         tmp = (items + i).view(1)[0];
         if not is_long(tmp) {
             PyErr_SetString(
-                PyExc_TypeError, "memoryview.cast(): elements of shape must be integers"
+                PyExc_TypeError,
+                ptr[u8]("memoryview.cast(): elements of shape must be integers")
             );
             return -1;
         }
@@ -1874,13 +1889,14 @@ impl copy_shape(shape: ptr[i64], seq: ptr[PyObject], ndim: i64, itemsize: i64) -
         if x <= 0 {
             PyErr_Format(
                 PyExc_ValueError,
-                "memoryview.cast(): elements of shape must be integers > 0"
+                ptr[u8]("memoryview.cast(): elements of shape must be integers > 0")
             );
             return -1;
         }
         if x > PY_SSIZE_T_MAX // length {
             PyErr_Format(
-                PyExc_ValueError, "memoryview.cast(): product(shape) > SSIZE_MAX"
+                PyExc_ValueError,
+                ptr[u8]("memoryview.cast(): product(shape) > SSIZE_MAX")
             );
             return -1;
         }
@@ -1909,7 +1925,8 @@ impl cast_to_ND(op: ptr[PyObject], shape: ptr[PyObject], ndim: i64) -> i32 {
     }
     if view.view(1)[0].length != length {
         PyErr_SetString(
-            PyExc_TypeError, "memoryview: product(shape) * itemsize != buffer size"
+            PyExc_TypeError,
+            ptr[u8]("memoryview: product(shape) * itemsize != buffer size")
         );
         return i32(-1);
     }
@@ -1936,7 +1953,8 @@ impl memoryview_cast_impl(
     }
     if not mv_c_contiguous(mv_flags(op)) {
         PyErr_SetString(
-            PyExc_TypeError, "memoryview: casts are restricted to C-contiguous views"
+            PyExc_TypeError,
+            ptr[u8]("memoryview: casts are restricted to C-contiguous views")
         );
         return NULL;
     }
@@ -1944,26 +1962,30 @@ impl memoryview_cast_impl(
     if (shape != NULL or view_ndim != 1) and zero_in_shape(op) {
         PyErr_SetString(
             PyExc_TypeError,
-            "memoryview: cannot cast view with zeros in shape or strides"
+            ptr[u8]("memoryview: cannot cast view with zeros in shape or strides")
         );
         return NULL;
     }
     ndim: i64 = 1;
     if shape {
         if not is_list(shape) and not is_tuple(shape) {
-            PyErr_SetString(PyExc_TypeError, "shape must be a list or a tuple");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("shape must be a list or a tuple")
+            );
             return NULL;
         }
         ndim = object_size(shape);
         if ndim > i64(PyBUF_MAX_NDIM) {
             PyErr_SetString(
-                PyExc_ValueError, "memoryview: number of dimensions must not exceed 64"
+                PyExc_ValueError,
+                ptr[u8]("memoryview: number of dimensions must not exceed 64")
             );
             return NULL;
         }
         if view_ndim != 1 and ndim != 1 {
             PyErr_SetString(
-                PyExc_TypeError, "memoryview: cast must be 1D -> ND or ND -> 1D"
+                PyExc_TypeError,
+                ptr[u8]("memoryview: cast must be 1D -> ND or ND -> 1D")
             );
             return NULL;
         }
@@ -2040,7 +2062,7 @@ impl memory_getbuf(op: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32 {
     view.view(1)[0].owner = NULL;
     if (flags & PyBUF_WRITABLE) != i32(0) and base.view(1)[0].readonly != i32(0) {
         PyErr_SetString(
-            PyExc_BufferError, "memoryview: underlying buffer is not writable"
+            PyExc_BufferError, ptr[u8]("memoryview: underlying buffer is not writable")
         );
         return i32(-1);
     }
@@ -2049,33 +2071,38 @@ impl memory_getbuf(op: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32 {
     }
     if requested(flags, PyBUF_C_CONTIGUOUS) and not mv_c_contiguous(baseflags) {
         PyErr_SetString(
-            PyExc_BufferError, "memoryview: underlying buffer is not C-contiguous"
+            PyExc_BufferError,
+            ptr[u8]("memoryview: underlying buffer is not C-contiguous")
         );
         return i32(-1);
     }
     if requested(flags, PyBUF_F_CONTIGUOUS) and not mv_f_contiguous(baseflags) {
         PyErr_SetString(
-            PyExc_BufferError, "memoryview: underlying buffer is not Fortran contiguous"
+            PyExc_BufferError,
+            ptr[u8]("memoryview: underlying buffer is not Fortran contiguous")
         );
         return i32(-1);
     }
     if requested(flags, PyBUF_ANY_CONTIGUOUS) and not mv_any_contiguous(baseflags) {
         PyErr_SetString(
-            PyExc_BufferError, "memoryview: underlying buffer is not contiguous"
+            PyExc_BufferError,
+            ptr[u8]("memoryview: underlying buffer is not contiguous")
         );
         return i32(-1);
     }
     if not requested(flags, PyBUF_INDIRECT)
         and (baseflags & _Py_MEMORYVIEW_PIL) != i32(0) {
         PyErr_SetString(
-            PyExc_BufferError, "memoryview: underlying buffer requires suboffsets"
+            PyExc_BufferError,
+            ptr[u8]("memoryview: underlying buffer requires suboffsets")
         );
         return i32(-1);
     }
     if not requested(flags, PyBUF_STRIDES) {
         if not mv_c_contiguous(baseflags) {
             PyErr_SetString(
-                PyExc_BufferError, "memoryview: underlying buffer is not C-contiguous"
+                PyExc_BufferError,
+                ptr[u8]("memoryview: underlying buffer is not C-contiguous")
             );
             return i32(-1);
         }
@@ -2085,7 +2112,9 @@ impl memory_getbuf(op: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32 {
         if view.view(1)[0].format_ {
             PyErr_Format(
                 PyExc_BufferError,
-                "memoryview: cannot cast to unsigned bytes if the format flag is present"
+                ptr[u8](
+                    "memoryview: cannot cast to unsigned bytes if the format flag is present"
+                )
             );
             return i32(-1);
         }
@@ -2102,12 +2131,16 @@ impl memory_releasebuf(op: ptr[PyObject], view: ptr[Py_buffer]) {
 }
 
 impl type_error_int(fmt: ptr[u8]) -> i32 {
-    PyErr_Format(PyExc_TypeError, "memoryview: invalid type for format '%s'", fmt);
+    PyErr_Format(
+        PyExc_TypeError, ptr[u8]("memoryview: invalid type for format '%s'"), fmt
+    );
     return i32(-1);
 }
 
 impl value_error_int(fmt: ptr[u8]) -> i32 {
-    PyErr_Format(PyExc_ValueError, "memoryview: invalid value for format '%s'", fmt);
+    PyErr_Format(
+        PyExc_ValueError, ptr[u8]("memoryview: invalid value for format '%s'"), fmt
+    );
     return i32(-1);
 }
 
@@ -2243,7 +2276,9 @@ impl unpack_single(op: ptr[PyObject], p: ptr[u8], fmt: ptr[u8]) -> ptr[PyObject]
     if c == FMT_POINTER {
         return PyLong_FromVoidPtr(ptr[ptr](p).view(1)[0]);
     }
-    PyErr_Format(PyExc_NotImplementedError, "memoryview: format %s not supported", fmt);
+    PyErr_Format(
+        PyExc_NotImplementedError, ptr[u8]("memoryview: format %s not supported"), fmt
+    );
     return NULL;
 }
 
@@ -2400,7 +2435,9 @@ impl pack_single(
         ptr[ptr](p).view(1)[0] = pv;
         return i32(0);
     }
-    PyErr_Format(PyExc_NotImplementedError, "memoryview: format %s not supported", fmt);
+    PyErr_Format(
+        PyExc_NotImplementedError, ptr[u8]("memoryview: format %s not supported"), fmt
+    );
     return i32(-1);
 }
 
@@ -2473,7 +2510,7 @@ impl adjust_fmt(view: ptr[Py_buffer]) -> ptr[u8] {
     }
     PyErr_Format(
         PyExc_NotImplementedError,
-        "memoryview: unsupported format %s",
+        ptr[u8]("memoryview: unsupported format %s"),
         view.view(1)[0].format_
     );
     return ptr[u8]();
@@ -2594,7 +2631,7 @@ impl memoryview_tobytes_impl(op: ptr[PyObject], order: ptr[u8]) -> ptr[PyObject]
         } elif strcmp(order, ptr[u8]("A")) == i32(0) {
             order_char = ORDER_A;
         } elif strcmp(order, ptr[u8]("C")) != i32(0) {
-            PyErr_SetString(PyExc_ValueError, "order must be 'C', 'F' or 'A'");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("order must be 'C', 'F' or 'A'"));
             return NULL;
         }
     }
@@ -2623,7 +2660,7 @@ impl tobytes_order(value: ptr[PyObject]) -> tuple[ptr[u8], bool] {
             return (ptr[u8](), False);
         }
         if i64(strlen(order)) != length {
-            PyErr_SetString(PyExc_ValueError, "embedded null character");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
             return (ptr[u8](), False);
         }
         return (order, True);
@@ -2730,7 +2767,9 @@ impl lookup_dimension(
     }
     if index < 0 or index >= nitems {
         PyErr_Format(
-            PyExc_IndexError, "index out of bounds on dimension %d", i32(dim + 1)
+            PyExc_IndexError,
+            ptr[u8]("index out of bounds on dimension %d"),
+            i32(dim + 1)
         );
         return ptr[u8]();
     }
@@ -2748,7 +2787,7 @@ impl ptr_from_tuple(view: ptr[Py_buffer], tup: ptr[PyObject]) -> ptr[u8] {
     if nindices > i64(view.view(1)[0].ndim) {
         PyErr_Format(
             PyExc_TypeError,
-            "cannot index %d-dimension view with %zd-element tuple",
+            ptr[u8]("cannot index %d-dimension view with %zd-element tuple"),
             view.view(1)[0].ndim,
             nindices
         );
@@ -2778,7 +2817,7 @@ impl memory_item(op: ptr[PyObject], index: i64) -> ptr[PyObject] {
     }
     ndim = i64(view.view(1)[0].ndim);
     if ndim == 0 {
-        PyErr_SetString(PyExc_TypeError, "invalid indexing of 0-dim memory");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("invalid indexing of 0-dim memory"));
         return NULL;
     }
     if ndim == 1 {
@@ -2789,7 +2828,8 @@ impl memory_item(op: ptr[PyObject], index: i64) -> ptr[PyObject] {
         return unpack_single(op, p, fmt);
     }
     PyErr_SetString(
-        PyExc_NotImplementedError, "multi-dimensional sub-views are not implemented"
+        PyExc_NotImplementedError,
+        ptr[u8]("multi-dimensional sub-views are not implemented")
     );
     return NULL;
 }
@@ -2805,7 +2845,9 @@ impl memory_item_multi(op: ptr[PyObject], tup: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if nindices < i64(view.view(1)[0].ndim) {
-        PyErr_SetString(PyExc_NotImplementedError, "sub-views are not implemented");
+        PyErr_SetString(
+            PyExc_NotImplementedError, ptr[u8]("sub-views are not implemented")
+        );
         return NULL;
     }
     p = ptr_from_tuple(view, tup);
@@ -2891,7 +2933,7 @@ impl memory_subscript(op: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
         if key == Py_Ellipsis {
             return object_new_ref(op);
         }
-        PyErr_SetString(PyExc_TypeError, "invalid indexing of 0-dim memory");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("invalid indexing of 0-dim memory"));
         return NULL;
     }
     if PyIndex_Check(key) != 0 {
@@ -2922,11 +2964,12 @@ impl memory_subscript(op: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
     }
     if is_multislice(key) {
         PyErr_SetString(
-            PyExc_NotImplementedError, "multi-dimensional slicing is not implemented"
+            PyExc_NotImplementedError,
+            ptr[u8]("multi-dimensional slicing is not implemented")
         );
         return NULL;
     }
-    PyErr_SetString(PyExc_TypeError, "memoryview: invalid slice key");
+    PyErr_SetString(PyExc_TypeError, ptr[u8]("memoryview: invalid slice key"));
     return NULL;
 }
 
@@ -2969,11 +3012,11 @@ impl memory_ass_sub(
         return i32(-1);
     }
     if view.view(1)[0].readonly != i32(0) {
-        PyErr_SetString(PyExc_TypeError, "cannot modify read-only memory");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("cannot modify read-only memory"));
         return i32(-1);
     }
     if not value {
-        PyErr_SetString(PyExc_TypeError, "cannot delete memory");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("cannot delete memory"));
         return i32(-1);
     }
     ndim = i64(view.view(1)[0].ndim);
@@ -2981,12 +3024,14 @@ impl memory_ass_sub(
         if key == Py_Ellipsis or (is_tuple(key) and object_size(key) == 0) {
             return pack_single(op, ptr[u8](view.view(1)[0].buf), value, fmt);
         }
-        PyErr_SetString(PyExc_TypeError, "invalid indexing of 0-dim memory");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("invalid indexing of 0-dim memory"));
         return i32(-1);
     }
     if PyIndex_Check(key) != 0 {
         if 1 < ndim {
-            PyErr_SetString(PyExc_NotImplementedError, "sub-views are not implemented");
+            PyErr_SetString(
+                PyExc_NotImplementedError, ptr[u8]("sub-views are not implemented")
+            );
             return i32(-1);
         }
         index = PyNumber_AsSsize_t(key, PyExc_IndexError);
@@ -3017,7 +3062,9 @@ impl memory_ass_sub(
     }
     if is_multiindex(key) {
         if object_size(key) < ndim {
-            PyErr_SetString(PyExc_NotImplementedError, "sub-views are not implemented");
+            PyErr_SetString(
+                PyExc_NotImplementedError, ptr[u8]("sub-views are not implemented")
+            );
             return i32(-1);
         }
         p = ptr_from_tuple(view, key);
@@ -3029,11 +3076,11 @@ impl memory_ass_sub(
     if is_slice(key) or is_multislice(key) {
         PyErr_SetString(
             PyExc_NotImplementedError,
-            "memoryview slice assignments are currently restricted to ndim = 1"
+            ptr[u8]("memoryview slice assignments are currently restricted to ndim = 1")
         );
         return i32(-1);
     }
-    PyErr_SetString(PyExc_TypeError, "memoryview: invalid slice key");
+    PyErr_SetString(PyExc_TypeError, ptr[u8]("memoryview: invalid slice key"));
     return i32(-1);
 }
 
@@ -3043,7 +3090,7 @@ impl memory_length(op: ptr[PyObject]) -> i64 {
     }
     view = view_of(op);
     if view.view(1)[0].ndim == i32(0) {
-        PyErr_SetString(PyExc_TypeError, "0-dim memory has no length");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("0-dim memory has no length"));
         return -1;
     }
     return view.view(1)[0].shape.view(1)[0];
@@ -3088,7 +3135,7 @@ impl memoryview_index_impl(
     }
     ndim = i64(view.view(1)[0].ndim);
     if ndim == 0 {
-        PyErr_SetString(PyExc_TypeError, "invalid lookup on 0-dim memory");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("invalid lookup on 0-dim memory"));
         return NULL;
     }
     if ndim == 1 {
@@ -3122,11 +3169,12 @@ impl memoryview_index_impl(
                 return NULL;
             }
         }
-        PyErr_SetString(PyExc_ValueError, "memoryview.index(x): x not found");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("memoryview.index(x): x not found"));
         return NULL;
     }
     PyErr_SetString(
-        PyExc_NotImplementedError, "multi-dimensional lookup is not implemented"
+        PyExc_NotImplementedError,
+        ptr[u8]("multi-dimensional lookup is not implemented")
     );
     return NULL;
 }
@@ -3227,7 +3275,9 @@ impl unpack_cmp(
         return struct_unpack_cmp(p, q, unpack_p, unpack_q);
     }
 
-    PyErr_SetString(PyExc_RuntimeError, "memoryview: internal error in richcompare");
+    PyErr_SetString(
+        PyExc_RuntimeError, ptr[u8]("memoryview: internal error in richcompare")
+    );
     return MV_COMPARE_EX;
 }
 
@@ -3432,14 +3482,16 @@ impl memory_hash(op: ptr[PyObject]) -> i64 {
             return -1;
         }
         if view.view(1)[0].readonly == i32(0) {
-            PyErr_SetString(PyExc_ValueError, "cannot hash writable memoryview object");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("cannot hash writable memoryview object")
+            );
             return -1;
         }
         (size, fmt) = get_native_fmtchar(view.view(1)[0].format_);
         if size < 0 or not is_byte_format(fmt) {
             PyErr_SetString(
                 PyExc_ValueError,
-                "memoryview: hashing is restricted to formats 'B', 'b' or 'c'"
+                ptr[u8]("memoryview: hashing is restricted to formats 'B', 'b' or 'c'")
             );
             return -1;
         }
@@ -3635,12 +3687,13 @@ impl memory_iter(seq: ptr[PyObject]) -> ptr[PyObject] {
     view = view_of(seq);
     ndims = i64(view.view(1)[0].ndim);
     if ndims == 0 {
-        PyErr_SetString(PyExc_TypeError, "invalid indexing of 0-dim memory");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("invalid indexing of 0-dim memory"));
         return NULL;
     }
     if ndims != 1 {
         PyErr_SetString(
-            PyExc_NotImplementedError, "multi-dimensional sub-views are not implemented"
+            PyExc_NotImplementedError,
+            ptr[u8]("multi-dimensional sub-views are not implemented")
         );
         return NULL;
     }

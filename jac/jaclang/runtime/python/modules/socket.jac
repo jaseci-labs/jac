@@ -315,7 +315,7 @@ impl gethost_common(
                 jacpy_memory_copy(ptr(addr), ptr(sin), i64(SOCKADDR_IN6_SIZE));
             }
         } else {
-            PyErr_SetString(PyExc_OSError, "unsupported address family");
+            PyErr_SetString(PyExc_OSError, ptr[u8]("unsupported address family"));
             ok = False;
             break;
         }
@@ -404,7 +404,7 @@ impl socket_gethostbyaddr(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
             ap = sa + 8;
             al = 16;
         } else {
-            PyErr_SetString(PyExc_OSError, "unsupported address family");
+            PyErr_SetString(PyExc_OSError, ptr[u8]("unsupported address family"));
         }
         if ap {
             thread = PyEval_SaveThread();
@@ -441,7 +441,7 @@ impl socket_getservbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
     sp = getservbyname(name, proto);
     PyEval_RestoreThread(thread);
     if not sp {
-        PyErr_SetString(PyExc_OSError, "service/proto not found");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("service/proto not found"));
         return NULL;
     }
     return PyLong_FromLong(i64(ntohs(int(sp.view(1)[0].s_port) & 0xFFFF)));
@@ -455,7 +455,9 @@ impl socket_getservbyport(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
         return NULL;
     }
     if port < 0 or port > 0xFFFF {
-        PyErr_SetString(PyExc_OverflowError, "getservbyport: port must be 0-65535.");
+        PyErr_SetString(
+            PyExc_OverflowError, ptr[u8]("getservbyport: port must be 0-65535.")
+        );
         return NULL;
     }
     if PySys_Audit("socket.getservbyport", "is", port, proto) < 0 {
@@ -465,7 +467,7 @@ impl socket_getservbyport(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
     sp = getservbyport(i32(htons(int(port))), proto);
     PyEval_RestoreThread(thread);
     if not sp {
-        PyErr_SetString(PyExc_OSError, "port/proto not found");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("port/proto not found"));
         return NULL;
     }
     return c_string_text(sp.view(1)[0].s_name);
@@ -480,7 +482,7 @@ impl socket_getprotobyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyOb
     sp = getprotobyname(name);
     PyEval_RestoreThread(thread);
     if not sp {
-        PyErr_SetString(PyExc_OSError, "protocol not found");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("protocol not found"));
         return NULL;
     }
     return PyLong_FromLong(i64(sp.view(1)[0].p_proto));
@@ -618,7 +620,9 @@ impl _socket_inet_aton_impl(module: ptr[PyObject], ip_addr: str) -> ptr[PyObject
     if inet_aton(ip_addr, buf) != 0 {
         result = jacpy_bytes_from_memory(buf, 4);
     } else {
-        PyErr_SetString(PyExc_OSError, "illegal IP address string passed to inet_aton");
+        PyErr_SetString(
+            PyExc_OSError, ptr[u8]("illegal IP address string passed to inet_aton")
+        );
     }
     PyMem_Free(buf);
     return result;
@@ -628,7 +632,7 @@ impl _socket_inet_ntoa_impl(
     module: ptr[PyObject], packed_ip: BufferArgument
 ) -> ptr[PyObject] {
     if packed_ip.size() != 4 {
-        PyErr_SetString(PyExc_OSError, "packed IP wrong length for inet_ntoa");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("packed IP wrong length for inet_ntoa"));
         packed_ip.close();
         return NULL;
     }
@@ -653,13 +657,15 @@ impl socket_inet_pton(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     if retval < 0 {
         socket_error(int(error));
     } elif retval == 0 {
-        PyErr_SetString(PyExc_OSError, "illegal IP address string passed to inet_pton");
+        PyErr_SetString(
+            PyExc_OSError, ptr[u8]("illegal IP address string passed to inet_pton")
+        );
     } elif af == AF_INET {
         result = jacpy_bytes_from_memory(packed, 4);
     } elif af == AF_INET6 {
         result = jacpy_bytes_from_memory(packed, 16);
     } else {
-        PyErr_SetString(PyExc_OSError, "unknown address family");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("unknown address family"));
     }
     PyMem_Free(packed);
     return result;
@@ -679,7 +685,7 @@ impl socket_inet_ntop(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     if af == AF_INET {
         if view[0].length != 4 {
             PyErr_SetString(
-                PyExc_ValueError, "invalid length of packed IP address string"
+                PyExc_ValueError, ptr[u8]("invalid length of packed IP address string")
             );
             jacpy_buffer_release(packed_ip);
             return NULL;
@@ -687,7 +693,7 @@ impl socket_inet_ntop(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     } elif af == AF_INET6 {
         if view[0].length != 16 {
             PyErr_SetString(
-                PyExc_ValueError, "invalid length of packed IP address string"
+                PyExc_ValueError, ptr[u8]("invalid length of packed IP address string")
             );
             jacpy_buffer_release(packed_ip);
             return NULL;
@@ -754,7 +760,7 @@ impl socket_getaddrinfo(
         hptr = ptr[u8](jacpy_bytes_address(hobj));
     } else {
         PyErr_SetString(
-            PyExc_TypeError, "getaddrinfo() argument 1 must be string or None"
+            PyExc_TypeError, ptr[u8]("getaddrinfo() argument 1 must be string or None")
         );
         return NULL;
     }
@@ -779,7 +785,7 @@ impl socket_getaddrinfo(
     } elif pobj == Py_None {
         pptr = ptr[u8]();
     } else {
-        PyErr_SetString(PyExc_OSError, "Int or String expected");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("Int or String expected"));
         failed = True;
     }
 
@@ -864,7 +870,9 @@ impl socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
         return NULL;
     }
     if jacpy_is_tuple(sa) == 0 {
-        PyErr_SetString(PyExc_TypeError, "getnameinfo() argument 1 must be a tuple");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("getnameinfo() argument 1 must be a tuple")
+        );
         return NULL;
     }
     hostp = ptr[u8]();
@@ -884,7 +892,7 @@ impl socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
     }
     if flowinfo > u32(0xFFFFF) {
         PyErr_SetString(
-            PyExc_OverflowError, "getnameinfo(): flowinfo must be 0-1048575."
+            PyExc_OverflowError, ptr[u8]("getnameinfo(): flowinfo must be 0-1048575.")
         );
         return NULL;
     }
@@ -937,12 +945,14 @@ impl name_of_address(
 ) -> ptr[PyObject] {
     record = ptr[addrinfo](res).view(1);
     if record[0].ai_next {
-        PyErr_SetString(PyExc_OSError, "sockaddr resolved to multiple addresses");
+        PyErr_SetString(
+            PyExc_OSError, ptr[u8]("sockaddr resolved to multiple addresses")
+        );
         return NULL;
     }
     if record[0].ai_family == AF_INET {
         if PyTuple_Size(sa) != 2 {
-            PyErr_SetString(PyExc_OSError, "IPv4 sockaddr must be 2 tuple");
+            PyErr_SetString(PyExc_OSError, ptr[u8]("IPv4 sockaddr must be 2 tuple"));
             return NULL;
         }
     } elif record[0].ai_family == AF_INET6 {
@@ -1059,7 +1069,9 @@ impl socket_CMSG_LEN(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     }
     result = get_CMSG_LEN(int(length)) if length >= 0 else -1;
     if result < 0 {
-        PyErr_SetString(PyExc_OverflowError, "CMSG_LEN() argument out of range");
+        PyErr_SetString(
+            PyExc_OverflowError, ptr[u8]("CMSG_LEN() argument out of range")
+        );
         return NULL;
     }
     return PyLong_FromSize_t(u64(result));
@@ -1072,7 +1084,9 @@ impl socket_CMSG_SPACE(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     }
     result = get_CMSG_SPACE(int(length)) if length >= 0 else -1;
     if result < 0 {
-        PyErr_SetString(PyExc_OverflowError, "CMSG_SPACE() argument out of range");
+        PyErr_SetString(
+            PyExc_OverflowError, ptr[u8]("CMSG_SPACE() argument out of range")
+        );
         return NULL;
     }
     return PyLong_FromSize_t(u64(result));

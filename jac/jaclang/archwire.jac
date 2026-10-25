@@ -15806,7 +15806,8 @@ graph import runtime.python {
         object_model.complex
             | object_model.interpolation
             | object_model.module
-            | object_model.structseq {
+            | object_model.structseq
+            | object_model.traceback {
             BoundArguments,
             CallSignature,
             PARSE_KEYWORDS,
@@ -15997,6 +15998,7 @@ graph import runtime.python {
             | object_model.slice
             | object_model.structseq
             | object_model.template
+            | object_model.traceback
             | object_model.tuple
             | object_model.type
             | object_model.typevar
@@ -16304,6 +16306,7 @@ graph import runtime.python {
     bindings.typing ++> inittab { PyInit__typing }
     bindings.unicodedata ++> inittab { PyInit_unicodedata }
     bindings.uuid ++> inittab { PyInit__uuid }
+    bindings.warnings ++> inittab { PyInit__warnings }
     bindings.weakref ++> inittab { PyInit__weakref }
     bindings.zlib ++> inittab { PyInit_zlib }
     bindings.zoneinfo ++> inittab { PyInit__zoneinfo }
@@ -16383,6 +16386,7 @@ graph import runtime.python {
             | bindings.clinic.tracemalloc
             | bindings.clinic.typing
             | bindings.clinic.unicodedata
+            | bindings.clinic.warnings
             | bindings.clinic.weakref
             | bindings.clinic.zlib
             | bindings.clinic.zoneinfo
@@ -16424,8 +16428,11 @@ graph import runtime.python {
             | modules.bz2
             | modules.cjkcodecs
             | modules.codecs
+            | modules.decimal_convert
+            | modules.decimal_objects
             | modules.heapq
             | modules.output_buffer
+            | modules.posix_fileio
             | modules.posixshmem
             | modules.queue
             | modules.random
@@ -16753,6 +16760,7 @@ graph import runtime.python {
             PyTuple_SetItem,
             PyTuple_Size,
             PyType_IsSubtype,
+            PyUnicode_AsUTF8,
             PyUnicode_AsUTF8AndSize,
             PyUnicode_Equal,
             PyUnicode_ReadChar,
@@ -16844,6 +16852,7 @@ graph import runtime.python {
             | bindings.suggestions
             | bindings.sysconfig
             | bindings.tracemalloc
+            | bindings.warnings
             | inittab
             | interpreter.dispatch
             | interpreter.eval
@@ -16992,6 +17001,7 @@ graph import runtime.python {
             jacpy_is_list,
             jacpy_is_tuple
         },
+        bindings.clinic.warnings { NULL, PyMem_Free, PyObject, jacpy_is_tuple },
         bindings.clinic.weakref { NULL, PyObject, jacpy_is_dict },
         bindings.clinic.zstd {
             NULL,
@@ -17163,12 +17173,14 @@ graph import runtime.python {
             PyType_GetDict,
             PyType_Slot,
             PyType_Spec,
+            PyUnicode_AsUTF8,
             PyUnicode_FromString,
             PyUnicode_InternFromString,
             Py_NewRef,
             jacpy_is_type,
             jacpy_module_add_object_ref_text,
-            jacpy_release
+            jacpy_release,
+            jacpy_unicode_from_text
         },
         bindings.elementtree {
             PyExc_SyntaxError,
@@ -17507,6 +17519,7 @@ graph import runtime.python {
             PyType_FromSpecWithBases,
             PyType_Slot,
             PyType_Spec,
+            PyUnicode_AsUTF8,
             Py_BuildValue,
             Py_NewRef,
             Py_TYPE,
@@ -20355,6 +20368,7 @@ graph import runtime.python {
             PyObject_GetIter,
             PyThreadState,
             PyThreadState_GetInterpreter,
+            PyUnicode_AsUTF8,
             PyUnicode_AsWideCharString,
             PyUnicode_DecodeFSDefaultAndSize,
             PyUnicode_EncodeFSDefault,
@@ -20388,6 +20402,7 @@ graph import runtime.python {
             jacpy_stdio_fileno,
             jacpy_thread_state_fork_reset,
             jacpy_thread_state_native_id,
+            jacpy_unicode_from_text,
             jacpy_unicode_intern_text
         },
         modules.posix_fileio {
@@ -20792,6 +20807,7 @@ graph import runtime.python {
             PyObject_IsTrue,
             PyTuple_New,
             PyType_GetModule,
+            PyUnicode_AsUTF8,
             PyUnicode_AsUTF8AndSize,
             PyUnicode_DecodeUTF8Stateful,
             PyUnicode_FromEncodedObject,
@@ -20820,7 +20836,8 @@ graph import runtime.python {
             jacpy_object_setattr_text,
             jacpy_recursion_enter,
             jacpy_release,
-            jacpy_tuple_set_owned
+            jacpy_tuple_set_owned,
+            jacpy_unicode_from_text
         },
         modules.queue {
             NULL,
@@ -20942,6 +20959,7 @@ graph import runtime.python {
             PyObject_Str,
             PySequence_Fast,
             PyTuple_New,
+            PyUnicode_AsUTF8,
             PyUnicode_FromString,
             Py_NewRef,
             Py_None,
@@ -21514,6 +21532,7 @@ graph import runtime.python {
             PyThread_release_lock,
             PyTuple_New,
             PyUnicode_AsASCIIString,
+            PyUnicode_AsUTF8,
             PyUnicode_AsUTF8String,
             PyUnicode_DecodeASCII,
             PyUnicode_DecodeFSDefault,
@@ -21544,7 +21563,8 @@ graph import runtime.python {
             jacpy_is_unicode,
             jacpy_release,
             jacpy_set_errno,
-            jacpy_tuple_set_owned
+            jacpy_tuple_set_owned,
+            jacpy_unicode_from_text
         },
         modules.ssl_cert {
             NULL,
@@ -21987,6 +22007,64 @@ graph import runtime.python {
             Py_NewRef,
             jacpy_buffer_new
         },
+        modules.warnings {
+            NULL,
+            PyCallable_Check,
+            PyContextVar_Get,
+            PyContextVar_New,
+            PyDict_Clear,
+            PyDict_GetItemRef,
+            PyDict_New,
+            PyDict_SetItem,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_GetRaisedException,
+            PyErr_Occurred,
+            PyErr_SetObject,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_DeprecationWarning,
+            PyExc_ImportError,
+            PyExc_RuntimeError,
+            PyExc_RuntimeWarning,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyExc_Warning,
+            PyImport_GetModule,
+            PyImport_Import,
+            PyInterpreterState,
+            PyList_GetItem,
+            PyList_New,
+            PyLong_AsLong,
+            PyLong_AsSsize_t,
+            PyLong_FromLong,
+            PyModule_AddObjectRef,
+            PyObject,
+            PyObject_CallFunctionObjArgs,
+            PyObject_CallOneArg,
+            PyObject_GetAttr,
+            PyObject_GetOptionalAttr,
+            PyObject_IsInstance,
+            PyObject_IsSubclass,
+            PyObject_IsTrue,
+            PyObject_Str,
+            PyObject_VectorcallMethod,
+            PyThreadState,
+            PyTuple_Pack,
+            PyUnicode_Compare,
+            PyUnicode_DecodeFSDefault,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            PyUnicode_GetLength,
+            PyUnicode_InternFromString,
+            PyUnicode_Splitlines,
+            PyUnicode_Substring,
+            Py_None,
+            _PyUnicode_EqualToASCIIString,
+            _Py_IsInterpreterFinalizing
+        },
         modules.weakref {
             NULL,
             PyObject,
@@ -22001,7 +22079,6 @@ graph import runtime.python {
             PyBytes_AsString,
             PyBytes_Size,
             PyErr_NoMemory,
-            PyErr_SetString,
             PyEval_RestoreThread,
             PyEval_SaveThread,
             PyExc_EOFError,
@@ -22120,6 +22197,7 @@ graph import runtime.python {
             PyTuple_Size,
             PyTuple_Type,
             PyType_GetModule,
+            PyUnicode_AsUTF8,
             PyUnicode_FromFormat,
             Py_BuildValue,
             Py_GetConstant,
@@ -22134,7 +22212,8 @@ graph import runtime.python {
             jacpy_memory_copy,
             jacpy_memory_move,
             jacpy_release,
-            jacpy_type_check
+            jacpy_type_check,
+            jacpy_unicode_from_text
         },
         native_services {
             NULL,
@@ -22146,13 +22225,15 @@ graph import runtime.python {
             PyImport_ImportModule,
             PyObject,
             PyObject_CallMethod,
+            PyUnicode_AsUTF8,
             jacpy_bytes_escape,
             jacpy_float_value,
             jacpy_parse_float,
             jacpy_parse_long,
             jacpy_release,
             jacpy_take_error_text,
-            jacpy_unicode_escape
+            jacpy_unicode_escape,
+            jacpy_unicode_from_text
         },
         object_model.abstract {
             NULL,
@@ -23035,6 +23116,58 @@ graph import runtime.python {
             _PyUnicode_EqualToASCIIString,
             jacpy_release,
             jacpy_unicode_equal_text
+        },
+        object_model.errors {
+            NULL,
+            PyDict_Contains,
+            PyDict_New,
+            PyDict_SetItem,
+            PyDict_SetItemString,
+            PyErr_CheckSignals,
+            PyExc_Exception,
+            PyExc_ImportError,
+            PyExc_KeyError,
+            PyExc_MemoryError,
+            PyExc_RecursionError,
+            PyExc_SyntaxError,
+            PyExc_SyntaxWarning,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyException_GetTraceback,
+            PyException_SetCause,
+            PyException_SetContext,
+            PyException_SetTraceback,
+            PyInterpreterState,
+            PyLong_FromLong,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyObject,
+            PyObject_Call,
+            PyObject_CallFunction,
+            PyObject_CallNoArgs,
+            PyObject_CallOneArg,
+            PyObject_GetAttr,
+            PyObject_HasAttrWithError,
+            PyObject_IsSubclass,
+            PyObject_Repr,
+            PyObject_SetAttr,
+            PyObject_Str,
+            PyThreadState,
+            PyTraceBack_Type,
+            PyTuple_New,
+            PyTuple_Pack,
+            PyTuple_Size,
+            PyType_IsSubtype,
+            PyUnicode_Decode,
+            PyUnicode_DecodeFSDefault,
+            PyUnicode_DecodeLocale,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            Py_BuildValue,
+            Py_None,
+            Py_fopen,
+            jacpy_errno,
+            jacpy_set_errno
         },
         object_model.exceptions {
             NULL,
@@ -24512,6 +24645,14 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_intern_text
         },
+        object_model.suggestions {
+            NULL,
+            PyErr_NoMemory,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyObject,
+            PyUnicode_AsUTF8AndSize
+        },
         object_model.template {
             NULL,
             PyErr_Format,
@@ -24539,6 +24680,53 @@ graph import runtime.python {
             jacpy_is_unicode,
             jacpy_release,
             jacpy_unicode_size
+        },
+        object_model.traceback {
+            NULL,
+            PyBytes_AsString,
+            PyCode_Type,
+            PyDict_New,
+            PyErr_BadInternalCall,
+            PyErr_CheckSignals,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetRaisedException,
+            PyExc_KeyboardInterrupt,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyException_GetTraceback,
+            PyException_SetTraceback,
+            PyFrame_Type,
+            PyImport_ImportModule,
+            PyList_GetItem,
+            PyList_Size,
+            PyLong_AsInt,
+            PyLong_AsLongAndOverflow,
+            PyLong_FromLong,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMemberDef,
+            PyMethodDef,
+            PyObject,
+            PyObject_GC_Del,
+            PyObject_GenericGetAttr,
+            PyObject_GetAttr,
+            PyObject_VectorcallMethod,
+            PyThreadState,
+            PyUnicode_EncodeFSDefault,
+            PyUnicode_FromFormat,
+            PyUnicode_Substring,
+            Py_BuildValue,
+            Py_None,
+            _PyArg_BadArgument,
+            _PyErr_ChainExceptions1,
+            _PyObject_GC_New,
+            _PySys_GetOptionalAttrString,
+            _Py_write_noraise
         },
         object_model.tracemalloc {
             NULL,
@@ -25155,11 +25343,14 @@ graph import runtime.python {
         modules.thread { head_lock, head_unlock, is_main_interpreter, tstate_interp },
         object_model.tracemalloc { pymutex_lock_flags, pymutex_unlock },
     ]
-    interpreter.lock ++> modules.thread {
-        PyThread_get_thread_ident_ex,
-        load_u8,
-        lot_llist_insert_tail
-    }
+    interpreter.lock ++> [
+        modules.thread { PyThread_get_thread_ident_ex, load_u8, lot_llist_insert_tail },
+        modules.warnings {
+            _PyRecursiveMutex_Lock,
+            _PyRecursiveMutex_TryUnlock,
+            load_u8
+        },
+    ]
     layouts ++> [
         bindings.arguments
             | modules.datetime
@@ -26279,6 +26470,40 @@ graph import runtime.python {
             _object,
             llist_node
         },
+        modules.warnings {
+            PY_VECTORCALL_ARGUMENTS_OFFSET,
+            PyCodeObject_FILENAME,
+            PyFrameObject_F_FRAME,
+            PyGenObject_QUALNAME,
+            PyListObject,
+            PyThreadState_INTERP,
+            Py_PRINT_RAW,
+            _Py_ID_WarningMessage,
+            _Py_ID___name__,
+            _Py_ID___warningregistry__,
+            _Py_ID__bootstrap,
+            _Py_ID__filters,
+            _Py_ID__showwarnmsg,
+            _Py_ID__warn_unawaited_coroutine,
+            _Py_ID_default,
+            _Py_ID_defaultaction,
+            _Py_ID_filters,
+            _Py_ID_get_source,
+            _Py_ID_ignore,
+            _Py_ID_importlib,
+            _Py_ID_match,
+            _Py_ID_onceregistry,
+            _Py_ID_stderr,
+            _Py_ID_version,
+            _Py_ID_warnings,
+            _Py_LOCKED,
+            _warnings_runtime_state_CONTEXT,
+            _warnings_runtime_state_DEFAULT_ACTION,
+            _warnings_runtime_state_FILTERS,
+            _warnings_runtime_state_FILTERS_VERSION,
+            _warnings_runtime_state_LOCK,
+            _warnings_runtime_state_ONCE_REGISTRY
+        },
         modules.zoneinfo { PyDateTime_CAPI, PyDateTime_DateTime },
         object_model.abstract {
             PYGEN_ERROR,
@@ -26944,6 +27169,31 @@ graph import runtime.python {
             enumobject_SIZE,
             reversedobject,
             reversedobject_SIZE
+        },
+        object_model.errors {
+            PyStatus,
+            PyStructSequence_Desc,
+            PyStructSequence_Field,
+            PyTypeObject,
+            Py_PRINT_RAW,
+            SEEK_SET,
+            _PyErr_StackItem_EXC_VALUE,
+            _PyErr_StackItem_PREVIOUS_ITEM,
+            _PyStatus_TYPE_ERROR,
+            _PyStatus_TYPE_OK,
+            _Py_ID___main__,
+            _Py_ID___module__,
+            _Py_ID_builtins,
+            _Py_ID_end_lineno,
+            _Py_ID_end_offset,
+            _Py_ID_filename,
+            _Py_ID_lineno,
+            _Py_ID_msg,
+            _Py_ID_offset,
+            _Py_ID_print_file_and_line,
+            _Py_ID_stderr,
+            _Py_ID_text,
+            _Py_ID_unraisablehook
         },
         object_model.exceptions {
             METH_CLASS,
@@ -28034,6 +28284,7 @@ graph import runtime.python {
             _Py_T_OBJECT,
             _object
         },
+        object_model.suggestions { PyListObject },
         object_model.template {
             METH_CLASS,
             METH_NOARGS,
@@ -28055,6 +28306,40 @@ graph import runtime.python {
             templateobject_INTERPOLATIONS,
             templateobject_SIZE,
             templateobject_STRINGS
+        },
+        object_model.traceback {
+            FRAME_OWNED_BY_INTERPRETER,
+            METH_NOARGS,
+            PY_VECTORCALL_ARGUMENTS_OFFSET,
+            PyCodeObject_CODE_ADAPTIVE,
+            PyCodeObject_FILENAME,
+            PyCodeObject_NAME,
+            PyFrameObject_F_FRAME,
+            PyFrameObject_LINENO,
+            PyGetSetDef,
+            PyThreadState_INTERP,
+            PyTracebackObject_SIZE,
+            PyTracebackObject_TB_FRAME,
+            PyTracebackObject_TB_LASTI,
+            PyTracebackObject_TB_LINENO,
+            PyTracebackObject_TB_NEXT,
+            PyTypeObject,
+            PyVarObject,
+            Py_AUDIT_READ,
+            Py_PRINT_RAW,
+            Py_READONLY,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_T_INT,
+            SEEK_SET,
+            _Py_ID_TextIOWrapper,
+            _Py_ID_close,
+            _Py_ID_open,
+            _Py_ID_path,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _Py_T_OBJECT,
+            _gc_runtime_state_COLLECTING,
+            _object
         },
         object_model.tracemalloc {
             PYMEM_DOMAIN_MEM,
@@ -29040,6 +29325,11 @@ graph import runtime.python {
             _PyRuntimeState_THREADS_HANDLES,
             _pythread_runtime_state_HANDLES
         },
+        modules.warnings {
+            PyInterpreterState_SYSDICT,
+            PyInterpreterState_WARNINGS,
+            _PyInterpreterFrame_F_GLOBALS
+        },
         object_model.bltinmodule { PyConfig_OPTIMIZATION_LEVEL },
         object_model.bootstrap_hash {
             EACCES,
@@ -29096,6 +29386,12 @@ graph import runtime.python {
             PyInterpreterState_DTOA_P5S,
             PyInterpreterState_DTOA_PREALLOCATED,
             PyInterpreterState_DTOA_PREALLOCATED_NEXT
+        },
+        object_model.errors {
+            EINTR,
+            PyThreadState_CURRENT_EXCEPTION,
+            PyThreadState_EXC_INFO,
+            PyThreadState_RECURSION_HEADROOM
         },
         object_model.exceptions {
             PyInterpreterState_EXC_ERRNOMAP,
@@ -29267,6 +29563,15 @@ graph import runtime.python {
             _PyRuntimeState_TIME
         },
         object_model.structmember { CHAR_MAX, CHAR_MIN },
+        object_model.traceback {
+            MAXPATHLEN,
+            PyInterpreterState_GC,
+            PyThreadState_CURRENT_FRAME,
+            PyThreadState_THREAD_ID,
+            _PyInterpreterFrame_F_BUILTINS,
+            _PyInterpreterFrame_F_EXECUTABLE,
+            _PyInterpreterFrame_F_GLOBALS
+        },
         object_model.tracemalloc {
             PyThreadState_CURRENT_FRAME,
             _PyInterpreterFrame_F_BUILTINS,
@@ -32236,6 +32541,7 @@ graph import runtime.python {
         cpython_api | object_model.pytime { timespec, timeval, tm },
         interpreter.thread { timespec },
     ]
+    modules.traceback_platform ++> object_model.traceback { symbol_info }
     modules.tracemalloc ++> bindings.clinic.tracemalloc {
         _tracemalloc__get_object_traceback_impl,
         _tracemalloc__get_traces_impl,
@@ -32284,6 +32590,16 @@ graph import runtime.python {
         HAVE_GENERATE_TIME_SAFE_STABLE_MAC,
         HAVE_UUID_HEADER
     }
+    modules.warnings ++> [
+        bindings.clinic.warnings {
+            warnings_acquire_lock_impl,
+            warnings_filters_mutated_lock_held_impl,
+            warnings_release_lock_impl,
+            warnings_warn_explicit_impl,
+            warnings_warn_impl
+        },
+        bindings.warnings { warnings_module_exec },
+    ]
     modules.weakref ++> bindings.clinic.weakref {
         _weakref__remove_dead_weakref_impl,
         _weakref_getweakrefcount_impl,
@@ -32464,6 +32780,12 @@ graph import runtime.python {
     object_model.abstract ++> [
         bindings.signal { PyMapping_GetItemString },
         modules.faulthandler { call_method_no_args, long_check },
+        modules.warnings {
+            long_check_exact,
+            tuple_check,
+            unicode_check,
+            unicode_length
+        },
     ]
     object_model.bool ++> [
         bindings.converters
@@ -32541,13 +32863,27 @@ graph import runtime.python {
             inline_values,
             managed_dict
         },
+        modules.warnings { dict_check, object_xincref, unicode_check_exact },
     ]
-    object_model.file ++> bindings.converters | modules.select {
-        PyObject_AsFileDescriptor
+    object_model.exceptions ++> modules.warnings {
+        PyExc_ImportWarning,
+        PyExc_PendingDeprecationWarning,
+        PyExc_ResourceWarning,
+        PyExc_UserWarning
     }
+    object_model.file ++> [
+        bindings.converters | modules.select { PyObject_AsFileDescriptor },
+        modules.warnings { PyFile_WriteObject, PyFile_WriteString },
+    ]
     object_model.frame ++> [
         interpreter.instrumentation { parse_varint },
         interpreter.ops_arith | interpreter.ops_attr { frame_initialize },
+        modules.warnings {
+            PyFrame_GetBack,
+            PyFrame_GetCode,
+            PyFrame_GetLineNumber,
+            iframe_code
+        },
     ]
     object_model.gen ++> modules.signal { frame_get_frame_object }
     object_model.genericalias ++> bindings.array
@@ -32745,8 +33081,21 @@ graph import runtime.python {
             tuple_set_item,
             type_has_feature
         },
+        modules.warnings {
+            _Py_TrueStruct,
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item
+        },
     ]
     object_model.iterator ++> modules.sre { PyCallIter_New }
+    object_model.list ++> modules.warnings { list_check }
     object_model.long ++> [
         interpreter.ops { get_small_int },
         interpreter.specialize {
@@ -32755,6 +33104,7 @@ graph import runtime.python {
             long_is_nonnegative_compact,
             long_is_zero
         },
+        modules.warnings { long_zero },
     ]
     object_model.method ++> bindings.functools { PyMethod_New }
     object_model.module ++> bindings.faulthandler | bindings.signal | bindings.thread {
@@ -32774,7 +33124,10 @@ graph import runtime.python {
         interpreter.ops_attr { managed_dict },
         interpreter.specialize { type_is_ready },
     ]
-    object_model.obmalloc ++> modules.thread { llist_init, llist_remove }
+    object_model.obmalloc ++> [
+        modules.thread { llist_init, llist_remove },
+        modules.warnings { PyOS_snprintf },
+    ]
     object_model.pytime ++> interpreter.thread {
         pytime_add,
         pytime_as_microseconds,
@@ -32814,14 +33167,26 @@ graph import runtime.python {
         PyStructSequence_NewType,
         PyStructSequence_UnnamedField
     }
+    object_model.traceback ++> modules.warnings { _Py_DisplaySourceLine }
     object_model.type ++> [
         interpreter.ceval { dict_check_exact, py_id, tuple_check, tuple_check_exact },
         interpreter.gc { inline_values_size, type_preheader_size },
-        interpreter.ops_iter | interpreter.specialize | modules.faulthandler { py_id },
+        interpreter.ops_iter
+            | interpreter.specialize
+            | modules.faulthandler
+            | modules.warnings { py_id },
         modules.signal { thread_state_get_frame },
         modules.thread { object_xnewref, py_id, weakref_get_ref },
     ]
-    object_model.unicode ++> interpreter.ops_build { unicode_get_empty }
+    object_model.unicode ++> [
+        interpreter.ops_build { unicode_get_empty },
+        modules.warnings {
+            PyUnicode_Contains,
+            PyUnicode_Tailmatch,
+            list_set_item,
+            uo_read_char
+        },
+    ]
     objects ++> [
         compiler_integer { PyInt, PyObj, PyStr },
         constant_input {
@@ -32985,7 +33350,8 @@ graph import runtime.python.bindings {
             | clinic.opcode
             | clinic.pyexpat
             | clinic.syslog
-            | clinic.thread {
+            | clinic.thread
+            | clinic.warnings {
             CallSignature,
             PARSE_KEYWORDS,
             invoke_stack,
@@ -33499,6 +33865,7 @@ graph import runtime.python.bindings {
     clinic.tracemalloc ++> tracemalloc { module_methods }
     clinic.typing ++> typing { module_methods }
     clinic.unicodedata ++> unicodedata { UCD_methods }
+    clinic.warnings ++> warnings { module_methods }
     clinic.weakref ++> weakref { module_methods }
     clinic.zlib ++> zlib {
         Compress_methods,
@@ -33841,6 +34208,14 @@ graph import runtime.python.bindings {
             convert_unicode_char,
             return_int
         },
+        clinic.warnings {
+            argument_label,
+            bad_argument,
+            borrowed_none,
+            convert_int,
+            convert_ssize,
+            convert_unicode
+        },
         clinic.weakref { argument_label, bad_argument, return_ssize },
         clinic.zlib {
             argument_label,
@@ -34007,6 +34382,7 @@ graph import runtime.python.bindings {
             | clinic.tracemalloc
             | clinic.typing
             | clinic.unicodedata
+            | clinic.warnings
             | clinic.weakref
             | clinic.zlib
             | clinic.zoneinfo
@@ -34085,6 +34461,7 @@ graph import runtime.python.bindings {
             | types
             | typing
             | unicodedata
+            | warnings
             | weakref { ModuleDefinition, ModuleHooks },
         functools {
             MethodCallbacks,
@@ -37802,6 +38179,7 @@ graph import runtime.python.object_model {
             tuple_check_exact,
             unicode_length
         },
+        errors { PyUnicode_FromStringAndSize, tuple_check, unicode_check },
         getargs {
             bytearray_check,
             bytes_check,
@@ -37816,6 +38194,7 @@ graph import runtime.python.object_model {
         },
         modsupport { index_check },
         structmember { long_is_negative },
+        traceback { long_check, strlen, unicode_check, unicode_length },
         type { type_check, unicode_check },
     ]
     bool ++> [
@@ -37933,6 +38312,8 @@ graph import runtime.python.object_model {
             vectorcall_tstate
         },
         context { thread_state, vectorcall_tstate },
+        errors { PyObject_VectorcallDict, error_occurred, thread_state },
+        traceback { stackref_borrow, thread_state },
         type {
             exception_raised,
             stackref_borrow,
@@ -37946,10 +38327,13 @@ graph import runtime.python.object_model {
         descr { PyCMethod_New },
         exceptions { Py_EnterRecursiveCall },
     ]
+    code ++> traceback { PyCode_Addr2Line, PyCode_NewEmpty, _PyCode_SafeAddr2Line }
     complex ++> bltinmodule { complex_check_exact }
+    descr ++> errors { PyType_GetQualName }
     dict ++> [
         context { object_xincref, object_xnew_ref },
         descr { PyObject_Size },
+        errors | traceback { object_xincref },
         hamt { object_xnew_ref },
         odict {
             PyDictItems_Type,
@@ -37980,8 +38364,52 @@ graph import runtime.python.object_model {
             unicode_check_exact
         },
     ]
-    exceptions ++> codecs { unicode_error_params }
-    float ++> pyhash { is_finite, is_inf }
+    exceptions ++> [
+        codecs { unicode_error_params },
+        errors {
+            PyExc_ModuleNotFoundError,
+            PyException_GetContext,
+            _PyErr_NoMemory,
+            _PyException_AddNote,
+            exception_class_check,
+            exception_instance_check
+        },
+    ]
+    file ++> [
+        errors {
+            FILE,
+            PyFile_WriteObject,
+            PyFile_WriteString,
+            _PyFile_Flush,
+            _Py_UniversalNewlineFgetsWithSize
+        },
+        traceback {
+            PyFile_GetLine,
+            PyFile_WriteObject,
+            PyFile_WriteString,
+            PyObject_AsFileDescriptor
+        },
+    ]
+    float ++> [
+        errors {
+            _PyStructSequence_FiniBuiltin,
+            _PyStructSequence_InitBuiltinWithFlags
+        },
+        pyhash { is_finite, is_inf },
+    ]
+    frame ++> [
+        errors | suggestions { _PyUnicode_Equal },
+        traceback {
+            PyFrame_GetCode,
+            PyFrame_New,
+            iframe_code,
+            iframe_instr_ptr,
+            iframe_lasti,
+            iframe_object,
+            iframe_owner,
+            iframe_previous
+        },
+    ]
     gen ++> tracemalloc { frame_code, frame_first_complete, frame_ptr }
     genericalias ++> context
         | descr
@@ -38233,6 +38661,17 @@ graph import runtime.python.object_model {
             object_type,
             tuple_get_item,
             tuple_recycle,
+            tuple_set_item
+        },
+        errors {
+            PyType_Type,
+            object_decref,
+            object_incref,
+            object_is_type,
+            object_new_ref,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
             tuple_set_item
         },
         exceptions {
@@ -38558,6 +38997,7 @@ graph import runtime.python.object_model {
             tuple_items,
             type_has_feature
         },
+        suggestions { object_size },
         template {
             object_gc_track,
             object_gc_untrack,
@@ -38565,6 +39005,18 @@ graph import runtime.python.object_model {
             object_type,
             tuple_get_item,
             tuple_set_item
+        },
+        traceback {
+            PyType_Type,
+            object_decref,
+            object_gc_track,
+            object_gc_untrack,
+            object_is_type,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_type_check,
+            object_xdecref
         },
         tracemalloc {
             current_tstate,
@@ -38690,7 +39142,7 @@ graph import runtime.python.object_model {
     }
     list ++> [
         dict { memcmp },
-        type { list_check },
+        traceback | type { list_check },
     ]
     long ++> [
         bltinmodule { compact_value, long_is_compact },
@@ -38711,8 +39163,10 @@ graph import runtime.python.object_model {
         },
         bootstrap_hash { status_err, status_ok },
         context { status_err, status_ok, unicode_check },
+        errors { Py_FatalError },
         modsupport { type_is_ready },
         structmember { py_true },
+        traceback { _PyObject_IsFreed, is_ptr_freed },
         tracemalloc {
             is_ptr_freed,
             stackref_borrow,
@@ -38722,7 +39176,10 @@ graph import runtime.python.object_model {
         },
         type { stackref_as_object_steal, type_is_ready, var_size },
     ]
-    obmalloc ++> fileutils { _PyMem_RawWcsdup }
+    obmalloc ++> [
+        errors { _Py_FatalErrorFunc },
+        fileutils { _PyMem_RawWcsdup },
+    ]
     set ++> exceptions { Py_FatalError }
     slice ++> [
         bytearray | bytes | list | memory | tuple | unicode {
@@ -38731,7 +39188,7 @@ graph import runtime.python.object_model {
         },
         range { slice_check, slice_get_long_indices },
     ]
-    structseq ++> float | long { PyStructSequence_New }
+    structseq ++> errors | float | long { PyStructSequence_New }
     tuple ++> [
         bytes | float | long | unicode { reftracer_track },
         context { gc_may_be_tracked },
@@ -38739,7 +39196,10 @@ graph import runtime.python.object_model {
     type ++> [
         bltinmodule | fileutils { py_id },
         codecs { py_id, tuple_check, tuple_check_exact },
+        errors { object_xnewref, py_id },
         hamt { py_clear, py_xsetref },
+        suggestions { object_xnewref },
+        traceback { object_xnewref, py_id, stackref_is_null },
         tracemalloc { type_preheader_size },
     ]
     unicode ++> [
@@ -38763,6 +39223,16 @@ graph import runtime.python.object_model {
             unicode_check,
             uo_data,
             uo_kind,
+            uo_read_char
+        },
+        traceback {
+            ch_read,
+            uo_compact_data,
+            uo_data_any,
+            uo_is_ascii,
+            uo_is_compact,
+            uo_kind,
+            uo_length,
             uo_read_char
         },
     ]

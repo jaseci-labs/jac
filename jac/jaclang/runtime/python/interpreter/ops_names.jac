@@ -222,7 +222,9 @@ impl STORE_NAME(frame: ptr[u8], oparg: i32, v: u64) -> i32 {
     name = names_code_name(frame, oparg);
     ns = names_frame_object(frame, _PyInterpreterFrame_F_LOCALS);
     if not ns {
-        PyErr_Format(PyExc_SystemError, "no locals found when storing %R", name);
+        PyErr_Format(
+            PyExc_SystemError, ptr[u8]("no locals found when storing %R"), name
+        );
         return ST_ERROR;
     }
     err: i32 = 0;
@@ -241,7 +243,7 @@ impl DELETE_NAME(frame: ptr[u8], tstate: ptr, oparg: i32) -> i32 {
     name = names_code_name(frame, oparg);
     ns = names_frame_object(frame, _PyInterpreterFrame_F_LOCALS);
     if not ns {
-        PyErr_Format(PyExc_SystemError, "no locals when deleting %R", name);
+        PyErr_Format(PyExc_SystemError, ptr[u8]("no locals when deleting %R"), name);
         return ST_ERROR;
     }
     err = PyObject_DelItem(ns, name);
@@ -281,7 +283,7 @@ impl DELETE_GLOBAL(frame: ptr[u8], tstate: ptr, oparg: i32) -> i32 {
 impl LOAD_LOCALS(frame: ptr[u8]) -> u64 {
     l = names_frame_object(frame, _PyInterpreterFrame_F_LOCALS);
     if not l {
-        PyErr_SetString(PyExc_SystemError, "no locals found");
+        PyErr_SetString(PyExc_SystemError, ptr[u8]("no locals found"));
         return u64(0);
     }
     return sr_new(l);
@@ -503,7 +505,9 @@ impl COPY_FREE_VARS(frame: ptr[u8], oparg: i32) {
 impl SETUP_ANNOTATIONS(frame: ptr[u8]) -> i32 {
     ns = names_frame_object(frame, _PyInterpreterFrame_F_LOCALS);
     if not ns {
-        PyErr_Format(PyExc_SystemError, "no locals found when setting up annotations");
+        PyErr_Format(
+            PyExc_SystemError, ptr[u8]("no locals found when setting up annotations")
+        );
         return ST_ERROR;
     }
     key = ptr[PyObject](

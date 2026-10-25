@@ -45,10 +45,22 @@ def decode_bytes(value: str) -> list[int] {
 }
 
 def warn(message: str, filename: str, line: int, column: int = 0) {
-    if PyErr_WarnExplicit(
-        PyExc_SyntaxWarning, message, filename, i32(line), ptr[u8](), NULL
-    )
-        < 0 {
+    message_text = jacpy_unicode_from_text(message);
+    filename_text = jacpy_unicode_from_text(filename);
+    status: i32 = -1;
+    if message_text and filename_text {
+        status = PyErr_WarnExplicit(
+            PyExc_SyntaxWarning,
+            PyUnicode_AsUTF8(message_text),
+            PyUnicode_AsUTF8(filename_text),
+            i32(line),
+            ptr[u8](),
+            NULL
+        );
+    }
+    jacpy_release(filename_text);
+    jacpy_release(message_text);
+    if status < 0 {
         if PyErr_ExceptionMatches(PyExc_SyntaxWarning) != 0 {
             take_error_text();
             raise syntax_failure(

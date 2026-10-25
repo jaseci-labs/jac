@@ -751,7 +751,17 @@ impl call_with_frame(
 ) -> ptr[PyObject] {
     result = PyObject_Call(func, args, NULL);
     if not result {
-        _PyTraceback_Add(FRAME_NAMES[index], FRAME_FILE, i32(FRAME_LINES[index]));
+        funcname = jacpy_unicode_from_text(FRAME_NAMES[index]);
+        filename = jacpy_unicode_from_text(FRAME_FILE);
+        if funcname and filename {
+            _PyTraceback_Add(
+                PyUnicode_AsUTF8(funcname),
+                PyUnicode_AsUTF8(filename),
+                i32(FRAME_LINES[index])
+            );
+        }
+        jacpy_release(filename);
+        jacpy_release(funcname);
         XML_StopParser(fields(instance).view(1)[0].itself, XML_FALSE);
     }
     return result;
@@ -2196,7 +2206,9 @@ impl pyexpat_ErrorString_impl(module: ptr[PyObject], code: i64) -> ptr[PyObject]
 impl capsule_destructor(capsule: ptr[PyObject]) {
     address = PyCapsule_GetPointer(capsule, capsule_name.get());
     if not address {
-        PyErr_FormatUnraisable("Exception ignored while destroying pyexact capsule");
+        PyErr_FormatUnraisable(
+            ptr[u8]("Exception ignored while destroying pyexact capsule")
+        );
         return;
     }
     PyMem_Free(address);

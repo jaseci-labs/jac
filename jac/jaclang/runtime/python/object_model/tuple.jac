@@ -194,7 +194,7 @@ import from c {
             return NULL;
         }
         if i < 0 or i >= object_size(op) {
-            PyErr_SetString(PyExc_IndexError, "tuple index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("tuple index out of range"));
             return NULL;
         }
         return tuple_get_item(op, i);
@@ -206,7 +206,9 @@ import from c {
         }
         if i < 0 or i >= object_size(op) {
             object_xdecref(newitem);
-            PyErr_SetString(PyExc_IndexError, "tuple assignment index out of range");
+            PyErr_SetString(
+                PyExc_IndexError, ptr[u8]("tuple assignment index out of range")
+            );
             return i32(-1);
         }
         slot = tuple_items(op) + i;
@@ -635,7 +637,7 @@ impl tuple_contains(op: ptr[PyObject], el: ptr[PyObject]) -> i32 {
 
 impl tuple_item(op: ptr[PyObject], i: i64) -> ptr[PyObject] {
     if i < 0 or i >= object_size(op) {
-        PyErr_SetString(PyExc_IndexError, "tuple index out of range");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("tuple index out of range"));
         return NULL;
     }
     return object_new_ref(tuple_get_item(op, i));
@@ -667,7 +669,7 @@ impl tuple_concat(aa: ptr[PyObject], bb: ptr[PyObject]) -> ptr[PyObject] {
     if not tuple_check(bb) {
         PyErr_Format(
             PyExc_TypeError,
-            "can only concatenate tuple (not \"%.200s\") to tuple",
+            ptr[u8]("can only concatenate tuple (not \"%.200s\") to tuple"),
             object_type(bb).view(1)[0].tp_name
         );
         return NULL;
@@ -783,7 +785,7 @@ impl tuple_index(
         }
         i += 1;
     }
-    PyErr_SetString(PyExc_ValueError, "tuple.index(x): x not in tuple");
+    PyErr_SetString(PyExc_ValueError, ptr[u8]("tuple.index(x): x not in tuple"));
     return NULL;
 }
 
@@ -931,7 +933,7 @@ impl tuple_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     if not object_is_type(item, ptr[PyTypeObject](addressof(PySlice_Type))) {
         PyErr_Format(
             PyExc_TypeError,
-            "tuple indices must be integers or slices, not %.200s",
+            ptr[u8]("tuple indices must be integers or slices, not %.200s"),
             object_type(item).view(1)[0].tp_name
         );
         return NULL;

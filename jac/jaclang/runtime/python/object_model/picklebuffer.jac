@@ -92,14 +92,15 @@ import from c {
         if not picklebuf_check(op) {
             PyErr_Format(
                 PyExc_TypeError,
-                "expected PickleBuffer, %.200s found",
+                ptr[u8]("expected PickleBuffer, %.200s found"),
                 object_type(op).view(1)[0].tp_name
             );
             return ptr[Py_buffer]();
         }
         if not view_of(op).view(1)[0].owner {
             PyErr_SetString(
-                PyExc_ValueError, "operation forbidden on released PickleBuffer object"
+                PyExc_ValueError,
+                ptr[u8]("operation forbidden on released PickleBuffer object")
             );
             return ptr[Py_buffer]();
         }
@@ -108,7 +109,7 @@ import from c {
         if not picklebuf_check(op) {
             PyErr_Format(
                 PyExc_TypeError,
-                "expected PickleBuffer, %.200s found",
+                ptr[u8]("expected PickleBuffer, %.200s found"),
                 object_type(op).view(1)[0].tp_name
             );
             return i32(-1);
@@ -159,7 +160,8 @@ def picklebuf_getbuf(op: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32
     exporter = view_of(op).view(1)[0].owner;
     if not exporter {
         PyErr_SetString(
-            PyExc_ValueError, "operation forbidden on released PickleBuffer object"
+            PyExc_ValueError,
+            ptr[u8]("operation forbidden on released PickleBuffer object")
         );
         return i32(-1);
     }
@@ -177,13 +179,15 @@ def picklebuf_raw(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     view = view_of(op);
     if not view.view(1)[0].owner {
         PyErr_SetString(
-            PyExc_ValueError, "operation forbidden on released PickleBuffer object"
+            PyExc_ValueError,
+            ptr[u8]("operation forbidden on released PickleBuffer object")
         );
         return NULL;
     }
     if view.view(1)[0].suboffsets or PyBuffer_IsContiguous(view, i8(65)) == 0 {
         PyErr_SetString(
-            PyExc_BufferError, "cannot extract raw buffer from non-contiguous buffer"
+            PyExc_BufferError,
+            ptr[u8]("cannot extract raw buffer from non-contiguous buffer")
         );
         return NULL;
     }

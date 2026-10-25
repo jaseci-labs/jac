@@ -507,7 +507,9 @@ impl future_is_alive(op: ptr[PyObject]) -> bool {
 
 impl future_ensure_alive(op: ptr[PyObject]) -> int {
     if not future_is_alive(op) {
-        PyErr_SetString(PyExc_RuntimeError, "Future object is not initialized.");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("Future object is not initialized.")
+        );
         return -1;
     }
     return 0;
@@ -542,14 +544,18 @@ impl unregister_task(op: ptr[PyObject]) {
 
 impl enter_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
     if running_loop() != loop {
-        PyErr_Format(PyExc_RuntimeError, "loop %R is not the running loop", loop);
+        PyErr_Format(
+            PyExc_RuntimeError, ptr[u8]("loop %R is not the running loop"), loop
+        );
         return -1;
     }
     slot = running_task_slot().view(1);
     if slot[0] {
         PyErr_Format(
             PyExc_RuntimeError,
-            "Cannot enter into task %R while another task %R is being executed.",
+            ptr[u8](
+                "Cannot enter into task %R while another task %R is being executed."
+            ),
             task,
             slot[0]
         );
@@ -561,14 +567,16 @@ impl enter_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
 
 impl leave_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
     if running_loop() != loop {
-        PyErr_Format(PyExc_RuntimeError, "loop %R is not the running loop", loop);
+        PyErr_Format(
+            PyExc_RuntimeError, ptr[u8]("loop %R is not the running loop"), loop
+        );
         return -1;
     }
     slot = running_task_slot().view(1);
     if slot[0] != task {
         PyErr_Format(
             PyExc_RuntimeError,
-            "Invalid attempt to leave task %R while task %R is entered.",
+            ptr[u8]("Invalid attempt to leave task %R while task %R is entered."),
             task,
             slot[0] if slot[0] else Py_None
         );
@@ -582,7 +590,9 @@ impl leave_task(loop: ptr[PyObject], task: ptr[PyObject]) -> int {
 
 impl swap_current_task(loop: ptr[PyObject], task: ptr[PyObject]) -> ptr[PyObject] {
     if running_loop() != loop {
-        PyErr_Format(PyExc_RuntimeError, "loop %R is not the running loop", loop);
+        PyErr_Format(
+            PyExc_RuntimeError, ptr[u8]("loop %R is not the running loop"), loop
+        );
         return NULL;
     }
     slot = running_task_slot().view(1);
@@ -737,7 +747,9 @@ impl future_set_result(
     }
     record = fut_of(op).view(1);
     if int(record[0].fut_state) != STATE_PENDING {
-        PyErr_SetString(state_ref(module, STATE_INVALID_STATE_ERROR), "invalid state");
+        PyErr_SetString(
+            state_ref(module, STATE_INVALID_STATE_ERROR), ptr[u8]("invalid state")
+        );
         return NULL;
     }
     record[0].fut_result = Py_NewRef(res);
@@ -754,7 +766,7 @@ impl future_set_exception(
     record = fut_of(op).view(1);
     invalid_state = state_ref(module, STATE_INVALID_STATE_ERROR);
     if int(record[0].fut_state) != STATE_PENDING {
-        PyErr_SetString(invalid_state, "invalid state");
+        PyErr_SetString(invalid_state, ptr[u8]("invalid state"));
         return NULL;
     }
     exc_val = NULL;
@@ -765,7 +777,7 @@ impl future_set_exception(
         }
         if int(record[0].fut_state) != STATE_PENDING {
             jacpy_release(exc_val);
-            PyErr_SetString(invalid_state, "invalid state");
+            PyErr_SetString(invalid_state, ptr[u8]("invalid state"));
             return NULL;
         }
     } else {
@@ -773,7 +785,7 @@ impl future_set_exception(
     }
     if not exception_instance_check(exc_val) {
         jacpy_release(exc_val);
-        PyErr_SetString(PyExc_TypeError, "invalid exception object");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("invalid exception object"));
         return NULL;
     }
     if PyErr_GivenExceptionMatches(exc_val, PyExc_StopIteration) != 0 {
@@ -840,7 +852,7 @@ impl future_get_result(module: ptr[PyObject], op: ptr[PyObject]) -> ptr[PyObject
     }
     if state != STATE_FINISHED {
         PyErr_SetString(
-            state_ref(module, STATE_INVALID_STATE_ERROR), "Result is not set."
+            state_ref(module, STATE_INVALID_STATE_ERROR), ptr[u8]("Result is not set.")
         );
         return NULL;
     }
@@ -866,7 +878,7 @@ impl future_add_done_callback(
     module: ptr[PyObject], op: ptr[PyObject], arg: ptr[PyObject], ctx: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not future_is_alive(op) {
-        PyErr_SetString(PyExc_RuntimeError, "uninitialized Future object");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("uninitialized Future object"));
         return NULL;
     }
     record = fut_of(op).view(1);

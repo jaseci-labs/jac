@@ -252,7 +252,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "opcode_ids.h",
          "opcode.h",
          "internal/pycore_hamt.h",
-         "internal/pycore_context.h"
+         "internal/pycore_context.h",
+         "osdefs.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -3734,7 +3735,197 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_Py_T_NONE", "_Py_T_NONE", "i32"),
          ("Py_RTFLAGS_THREADS", "Py_RTFLAGS_THREADS", "u64"),
          ("Py_RTFLAGS_DAEMON_THREADS", "Py_RTFLAGS_DAEMON_THREADS", "u64"),
-         ("_PyThreadState_WHENCE_THREADING", "_PyThreadState_WHENCE_THREADING", "i32")
+         ("_PyThreadState_WHENCE_THREADING", "_PyThreadState_WHENCE_THREADING", "i32"),
+         (
+             "_PyErr_StackItem_PREVIOUS_ITEM",
+             "offsetof(_PyErr_StackItem, previous_item)",
+             "i64"
+         ),
+         ("SEEK_SET", "SEEK_SET", "i32"),
+         ("PyTracebackObject_TB_NEXT", "offsetof(PyTracebackObject, tb_next)", "i64"),
+         ("PyTracebackObject_TB_FRAME", "offsetof(PyTracebackObject, tb_frame)", "i64"),
+         ("PyTracebackObject_TB_LASTI", "offsetof(PyTracebackObject, tb_lasti)", "i64"),
+         (
+             "PyTracebackObject_TB_LINENO",
+             "offsetof(PyTracebackObject, tb_lineno)",
+             "i64"
+         ),
+         ("PyTracebackObject_SIZE", "sizeof(PyTracebackObject)", "i64"),
+         (
+             "_warnings_runtime_state_FILTERS",
+             "offsetof(struct _warnings_runtime_state, filters)",
+             "i64"
+         ),
+         (
+             "_warnings_runtime_state_ONCE_REGISTRY",
+             "offsetof(struct _warnings_runtime_state, once_registry)",
+             "i64"
+         ),
+         (
+             "_warnings_runtime_state_DEFAULT_ACTION",
+             "offsetof(struct _warnings_runtime_state, default_action)",
+             "i64"
+         ),
+         (
+             "_warnings_runtime_state_LOCK",
+             "offsetof(struct _warnings_runtime_state, lock)",
+             "i64"
+         ),
+         (
+             "_warnings_runtime_state_FILTERS_VERSION",
+             "offsetof(struct _warnings_runtime_state, filters_version)",
+             "i64"
+         ),
+         (
+             "_warnings_runtime_state_CONTEXT",
+             "offsetof(struct _warnings_runtime_state, context)",
+             "i64"
+         ),
+         (
+             "_Py_ID_unraisablehook",
+             "offsetof(struct _Py_global_strings, identifiers._py_unraisablehook)",
+             "i64"
+         ),
+         (
+             "_Py_ID_lineno",
+             "offsetof(struct _Py_global_strings, identifiers._py_lineno)",
+             "i64"
+         ),
+         (
+             "_Py_ID_offset",
+             "offsetof(struct _Py_global_strings, identifiers._py_offset)",
+             "i64"
+         ),
+         (
+             "_Py_ID_end_lineno",
+             "offsetof(struct _Py_global_strings, identifiers._py_end_lineno)",
+             "i64"
+         ),
+         (
+             "_Py_ID_end_offset",
+             "offsetof(struct _Py_global_strings, identifiers._py_end_offset)",
+             "i64"
+         ),
+         (
+             "_Py_ID_filename",
+             "offsetof(struct _Py_global_strings, identifiers._py_filename)",
+             "i64"
+         ),
+         (
+             "_Py_ID_text",
+             "offsetof(struct _Py_global_strings, identifiers._py_text)",
+             "i64"
+         ),
+         (
+             "_Py_ID_msg",
+             "offsetof(struct _Py_global_strings, identifiers._py_msg)",
+             "i64"
+         ),
+         (
+             "_Py_ID_print_file_and_line",
+             "offsetof(struct _Py_global_strings, identifiers._py_print_file_and_line)",
+             "i64"
+         ),
+         (
+             "_Py_ID_path",
+             "offsetof(struct _Py_global_strings, identifiers._py_path)",
+             "i64"
+         ),
+         (
+             "_Py_ID_open",
+             "offsetof(struct _Py_global_strings, identifiers._py_open)",
+             "i64"
+         ),
+         (
+             "_Py_ID_TextIOWrapper",
+             "offsetof(struct _Py_global_strings, identifiers._py_TextIOWrapper)",
+             "i64"
+         ),
+         (
+             "_Py_ID_close",
+             "offsetof(struct _Py_global_strings, identifiers._py_close)",
+             "i64"
+         ),
+         (
+             "_Py_ID_match",
+             "offsetof(struct _Py_global_strings, identifiers._py_match)",
+             "i64"
+         ),
+         (
+             "_Py_ID_warnings",
+             "offsetof(struct _Py_global_strings, identifiers._py_warnings)",
+             "i64"
+         ),
+         (
+             "_Py_ID_filters",
+             "offsetof(struct _Py_global_strings, identifiers._py_filters)",
+             "i64"
+         ),
+         (
+             "_Py_ID__filters",
+             "offsetof(struct _Py_global_strings, identifiers._py__filters)",
+             "i64"
+         ),
+         (
+             "_Py_ID_onceregistry",
+             "offsetof(struct _Py_global_strings, identifiers._py_onceregistry)",
+             "i64"
+         ),
+         (
+             "_Py_ID_defaultaction",
+             "offsetof(struct _Py_global_strings, identifiers._py_defaultaction)",
+             "i64"
+         ),
+         (
+             "_Py_ID__showwarnmsg",
+             "offsetof(struct _Py_global_strings, identifiers._py__showwarnmsg)",
+             "i64"
+         ),
+         (
+             "_Py_ID_WarningMessage",
+             "offsetof(struct _Py_global_strings, identifiers._py_WarningMessage)",
+             "i64"
+         ),
+         (
+             "_Py_ID_version",
+             "offsetof(struct _Py_global_strings, identifiers._py_version)",
+             "i64"
+         ),
+         (
+             "_Py_ID_importlib",
+             "offsetof(struct _Py_global_strings, identifiers._py_importlib)",
+             "i64"
+         ),
+         (
+             "_Py_ID__bootstrap",
+             "offsetof(struct _Py_global_strings, identifiers._py__bootstrap)",
+             "i64"
+         ),
+         (
+             "_Py_ID___warningregistry__",
+             "offsetof(struct _Py_global_strings, identifiers._py___warningregistry__)",
+             "i64"
+         ),
+         (
+             "_Py_ID_get_source",
+             "offsetof(struct _Py_global_strings, identifiers._py_get_source)",
+             "i64"
+         ),
+         (
+             "_Py_ID__warn_unawaited_coroutine",
+             "offsetof(struct _Py_global_strings, identifiers._py__warn_unawaited_coroutine)",
+             "i64"
+         ),
+         (
+             "_Py_ID_default",
+             "offsetof(struct _Py_global_strings, identifiers._py_default)",
+             "i64"
+         ),
+         (
+             "_Py_ID_ignore",
+             "offsetof(struct _Py_global_strings, identifiers._py_ignore)",
+             "i64"
+         )
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -4983,7 +5174,14 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "PyInterpreterState_THREADS_COUNT",
              "offsetof(PyInterpreterState, threads.count)",
              "i64"
-         )
+         ),
+         (
+             "PyInterpreterState_WARNINGS",
+             "offsetof(PyInterpreterState, warnings)",
+             "i64"
+         ),
+         ("PyInterpreterState_SYSDICT", "offsetof(PyInterpreterState, sysdict)", "i64"),
+         ("PyThreadState_THREAD_ID", "offsetof(PyThreadState, thread_id)", "i64")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

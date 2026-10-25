@@ -397,7 +397,9 @@ impl parse_envlist(env: ptr[PyObject]) -> tuple[ptr[ptr[u8]], i64] {
             break;
         }
         if jacpy_is_list(keys) == 0 or jacpy_is_list(vals) == 0 {
-            PyErr_Format(PyExc_TypeError, "env.keys() or env.values() is not a list");
+            PyErr_Format(
+                PyExc_TypeError, ptr[u8]("env.keys() or env.values() is not a list")
+            );
             break;
         }
         pos = i64(0);
@@ -422,7 +424,9 @@ impl parse_envlist(env: ptr[PyObject]) -> tuple[ptr[ptr[u8]], i64] {
                 break;
             }
             if PyBytes_Size(key2) == 0 or strchr(PyBytes_AsString(key2) + 1, i32(61)) {
-                PyErr_SetString(PyExc_ValueError, "illegal environment variable name");
+                PyErr_SetString(
+                    PyExc_ValueError, ptr[u8]("illegal environment variable name")
+                );
                 entry_failed = True;
                 break;
             }
@@ -508,17 +512,20 @@ impl os_execv_impl(
     interp = PyInterpreterState_Get();
     if _PyInterpreterState_HasFeature(interp, Py_RTFLAGS_EXEC) == 0 {
         PyErr_SetString(
-            PyExc_RuntimeError, "exec not supported for isolated subinterpreters"
+            PyExc_RuntimeError,
+            ptr[u8]("exec not supported for isolated subinterpreters")
         );
         return NULL;
     }
     if jacpy_is_list(argv) == 0 and jacpy_is_tuple(argv) == 0 {
-        PyErr_SetString(PyExc_TypeError, "execv() arg 2 must be a tuple or list");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("execv() arg 2 must be a tuple or list")
+        );
         return NULL;
     }
     argc = PySequence_Size(argv);
     if argc < 1 {
-        PyErr_SetString(PyExc_ValueError, "execv() arg 2 must not be empty");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("execv() arg 2 must not be empty"));
         return NULL;
     }
     argvlist = parse_arglist(argv, argc);
@@ -527,7 +534,7 @@ impl os_execv_impl(
     }
     if first_argument_empty(argvlist) {
         PyErr_SetString(
-            PyExc_ValueError, "execv() arg 2 first element cannot be empty"
+            PyExc_ValueError, ptr[u8]("execv() arg 2 first element cannot be empty")
         );
         free_string_array(argvlist, argc);
         return NULL;
@@ -549,22 +556,25 @@ impl os_execve_impl(
     interp = PyInterpreterState_Get();
     if _PyInterpreterState_HasFeature(interp, Py_RTFLAGS_EXEC) == 0 {
         PyErr_SetString(
-            PyExc_RuntimeError, "exec not supported for isolated subinterpreters"
+            PyExc_RuntimeError,
+            ptr[u8]("exec not supported for isolated subinterpreters")
         );
         return NULL;
     }
     if jacpy_is_list(argv) == 0 and jacpy_is_tuple(argv) == 0 {
-        PyErr_SetString(PyExc_TypeError, "execve: argv must be a tuple or list");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("execve: argv must be a tuple or list")
+        );
         return NULL;
     }
     argc = PySequence_Size(argv);
     if argc < 1 {
-        PyErr_SetString(PyExc_ValueError, "execve: argv must not be empty");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("execve: argv must not be empty"));
         return NULL;
     }
     if PyMapping_Check(env) == 0 {
         PyErr_SetString(
-            PyExc_TypeError, "execve: environment must be a mapping object"
+            PyExc_TypeError, ptr[u8]("execve: environment must be a mapping object")
         );
         return NULL;
     }
@@ -573,7 +583,9 @@ impl os_execve_impl(
         return NULL;
     }
     if first_argument_empty(argvlist) {
-        PyErr_SetString(PyExc_ValueError, "execve: argv first element cannot be empty");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("execve: argv first element cannot be empty")
+        );
         free_string_array(argvlist, argc);
         return NULL;
     }
@@ -598,7 +610,7 @@ impl os_execve_impl(
 
 impl convert_sched_param(module: ptr[PyObject], param: ptr[PyObject]) -> (i32 | None) {
     if Py_TYPE(param) != state_object(module, STATE_SCHED_PARAM_TYPE) {
-        PyErr_SetString(PyExc_TypeError, "must have a sched_param object");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("must have a sched_param object"));
         return None;
     }
     priority = PyLong_AsLong(PyStructSequence_GetItem(param, 0));
@@ -606,7 +618,7 @@ impl convert_sched_param(module: ptr[PyObject], param: ptr[PyObject]) -> (i32 | 
         return None;
     }
     if priority > INT_MAX or priority < INT_MIN {
-        PyErr_SetString(PyExc_OverflowError, "sched_priority out of range");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("sched_priority out of range"));
         return None;
     }
     return i32(priority);
@@ -674,7 +686,7 @@ impl parse_posix_spawn_flags(
             if POSIX_SPAWN_SETSCHEDULER == 0 {
                 PyErr_SetString(
                     PyExc_NotImplementedError,
-                    "The scheduler option is not supported in this system."
+                    ptr[u8]("The scheduler option is not supported in this system.")
                 );
                 break;
             }
@@ -775,7 +787,8 @@ impl parse_file_actions(
         file_action = Py_NewRef(jacpy_fast_item(seq, i));
         if jacpy_is_tuple(file_action) == 0 or PyTuple_Size(file_action) == 0 {
             PyErr_SetString(
-                PyExc_TypeError, "Each file_actions element must be a non-empty tuple"
+                PyExc_TypeError,
+                ptr[u8]("Each file_actions element must be a non-empty tuple")
             );
             failed = True;
             break;
@@ -885,7 +898,9 @@ impl parse_file_actions(
                 break;
             }
         } else {
-            PyErr_SetString(PyExc_TypeError, "Unknown file_actions identifier");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("Unknown file_actions identifier")
+            );
             failed = True;
             break;
         }
@@ -930,26 +945,30 @@ impl py_posix_spawn(
     while True {
         if jacpy_is_list(argv) == 0 and jacpy_is_tuple(argv) == 0 {
             PyErr_Format(
-                PyExc_TypeError, "%s: argv must be a tuple or list", func_name
+                PyExc_TypeError, ptr[u8]("%s: argv must be a tuple or list"), func_name
             );
             break;
         }
         argc = PySequence_Size(argv);
         if argc < 1 {
-            PyErr_Format(PyExc_ValueError, "%s: argv must not be empty", func_name);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("%s: argv must not be empty"), func_name
+            );
             break;
         }
         if PyMapping_Check(env) == 0 and env != Py_None {
             PyErr_Format(
                 PyExc_TypeError,
-                "%s: environment must be a mapping object or None",
+                ptr[u8]("%s: environment must be a mapping object or None"),
                 func_name
             );
             break;
         }
         if scheduler and jacpy_is_tuple(scheduler) == 0 and scheduler != Py_None {
             PyErr_Format(
-                PyExc_TypeError, "%s: scheduler must be a tuple or None", func_name
+                PyExc_TypeError,
+                ptr[u8]("%s: scheduler must be a tuple or None"),
+                func_name
             );
             break;
         }
@@ -959,7 +978,9 @@ impl py_posix_spawn(
         }
         if first_argument_empty(argvlist) {
             PyErr_Format(
-                PyExc_ValueError, "%s: argv first element cannot be empty", func_name
+                PyExc_ValueError,
+                ptr[u8]("%s: argv first element cannot be empty"),
+                func_name
             );
             break;
         }
@@ -1109,7 +1130,7 @@ impl check_null_or_callable(value: ptr[PyObject], obj_name: str) -> i32 {
     if value and PyCallable_Check(value) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%s' must be callable, not %s",
+            ptr[u8]("'%s' must be callable, not %s"),
             obj_name,
             _PyType_Name(Py_TYPE(value))
         );
@@ -1125,7 +1146,7 @@ impl os_register_at_fork_impl(
     after_in_parent: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not before and not after_in_child and not after_in_parent {
-        PyErr_SetString(PyExc_TypeError, "At least one argument is required.");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("At least one argument is required."));
         return NULL;
     }
     if check_null_or_callable(before, "before") != 0
@@ -1193,7 +1214,9 @@ impl warn_about_fork_with_threads(name: str, num_os_threads: i64) {
         PyErr_WarnFormat(
             PyExc_DeprecationWarning,
             1,
-            "This process (pid=%d) is multi-threaded, use of %s() may lead to deadlocks in the child.",
+            ptr[u8](
+                "This process (pid=%d) is multi-threaded, use of %s() may lead to deadlocks in the child."
+            ),
             getpid(),
             name
         );
@@ -1205,20 +1228,21 @@ impl fork_forbidden(subinterpreters: bool) -> bool {
     interp = PyInterpreterState_Get();
     if jacpy_interpreter_finalizing() != 0 {
         PyErr_SetString(
-            PyExc_PythonFinalizationError, "can't fork at interpreter shutdown"
+            PyExc_PythonFinalizationError, ptr[u8]("can't fork at interpreter shutdown")
         );
         return True;
     }
     if subinterpreters {
         if interp != _PyInterpreterState_Main() {
             PyErr_SetString(
-                PyExc_RuntimeError, "fork not supported for subinterpreters"
+                PyExc_RuntimeError, ptr[u8]("fork not supported for subinterpreters")
             );
             return True;
         }
     } elif _PyInterpreterState_HasFeature(interp, Py_RTFLAGS_FORK) == 0 {
         PyErr_SetString(
-            PyExc_RuntimeError, "fork not supported for isolated subinterpreters"
+            PyExc_RuntimeError,
+            ptr[u8]("fork not supported for isolated subinterpreters")
         );
         return True;
     }
@@ -1430,7 +1454,7 @@ impl os_sched_setaffinity_impl(
             if PyIndex_Check(item) == 0 {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "expected an iterator of ints, but iterator yielded %R",
+                    ptr[u8]("expected an iterator of ints, but iterator yielded %R"),
                     Py_TYPE(item)
                 );
                 jacpy_release(item);
@@ -1441,13 +1465,13 @@ impl os_sched_setaffinity_impl(
             jacpy_release(item);
             if cpu < 0 {
                 if not PyErr_Occurred() {
-                    PyErr_SetString(PyExc_ValueError, "negative CPU number");
+                    PyErr_SetString(PyExc_ValueError, ptr[u8]("negative CPU number"));
                 }
                 item_failed = True;
                 break;
             }
             if cpu > INT_MAX - 1 {
-                PyErr_SetString(PyExc_OverflowError, "CPU number too large");
+                PyErr_SetString(PyExc_OverflowError, ptr[u8]("CPU number too large"));
                 item_failed = True;
                 break;
             }
@@ -1518,7 +1542,8 @@ impl os_sched_getaffinity_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject]
         }
         if i64(ncpus) > INT_MAX // 2 {
             PyErr_SetString(
-                PyExc_OverflowError, "could not allocate a large enough CPU set"
+                PyExc_OverflowError,
+                ptr[u8]("could not allocate a large enough CPU set")
             );
             return NULL;
         }
@@ -1853,24 +1878,28 @@ impl os_waitstatus_to_exitcode_impl(
         exitcode = WEXITSTATUS(status);
 
         if exitcode < 0 {
-            PyErr_Format(PyExc_ValueError, "invalid WEXITSTATUS: %i", exitcode);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("invalid WEXITSTATUS: %i"), exitcode
+            );
             return NULL;
         }
     } elif WIFSIGNALED(status) != 0 {
         signum = WTERMSIG(status);
         if signum <= 0 {
-            PyErr_Format(PyExc_ValueError, "invalid WTERMSIG: %i", signum);
+            PyErr_Format(PyExc_ValueError, ptr[u8]("invalid WTERMSIG: %i"), signum);
             return NULL;
         }
         exitcode = -signum;
     } elif WIFSTOPPED(status) != 0 {
         signum = WSTOPSIG(status);
         PyErr_Format(
-            PyExc_ValueError, "process stopped by delivery of signal %i", signum
+            PyExc_ValueError,
+            ptr[u8]("process stopped by delivery of signal %i"),
+            signum
         );
         return NULL;
     } else {
-        PyErr_Format(PyExc_ValueError, "invalid wait status: %i", status);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("invalid wait status: %i"), status);
         return NULL;
     }
     return PyLong_FromLong(i64(exitcode));
@@ -1920,7 +1949,7 @@ impl os_times_impl(module: ptr[PyObject]) -> ptr[PyObject] {
 impl os_getloadavg_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     loadavg = load_averages();
     if getloadavg(&mut loadavg, i32(3)) != 3 {
-        PyErr_SetString(PyExc_OSError, "Load averages are unobtainable");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("Load averages are unobtainable"));
         return NULL;
     }
     return Py_BuildValue(ptr[u8]("ddd"), loadavg.one, loadavg.five, loadavg.fifteen);
@@ -1989,7 +2018,7 @@ impl posix_process_exec(module: ptr[PyObject]) -> bool {
     }
     ticks_per_second = i64(0);
     if _Py_GetTicksPerSecond(&mut ticks_per_second) < 0 {
-        PyErr_SetString(PyExc_RuntimeError, "cannot read ticks_per_second");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("cannot read ticks_per_second"));
         return False;
     }
     posix_state(module).ticks_per_second = ticks_per_second;

@@ -729,7 +729,7 @@ impl LOAD_BUILD_CLASS(frame: ptr[u8]) -> u64 {
         return u64(0);
     }
     if not bc_o {
-        PyErr_SetString(PyExc_NameError, "__build_class__ not found");
+        PyErr_SetString(PyExc_NameError, ptr[u8]("__build_class__ not found"));
         return u64(0);
     }
     return sr_steal(bc_o);

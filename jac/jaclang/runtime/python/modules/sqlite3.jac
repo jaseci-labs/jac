@@ -1820,7 +1820,7 @@ impl print_or_clear_traceback(ctx: ptr[callback_context]) {
     state = context_state(ctx);
     if state is not None and state.enable_callback_tracebacks {
         PyErr_FormatUnraisable(
-            "Exception ignored on sqlite3 callback %R", ctx.view(1)[0].callable
+            ptr[u8]("Exception ignored on sqlite3 callback %R"), ctx.view(1)[0].callable
         );
     } else {
         PyErr_Clear();
@@ -1883,7 +1883,7 @@ impl set_result(context: ptr[sqlite3_context], py_val: ptr[PyObject]) -> i32 {
         state = context_state(ctx);
         PyErr_Format(
             state.ProgrammingError if state is not None else PyExc_SystemError,
-            "User-defined functions cannot return '%s' values to SQLite",
+            ptr[u8]("User-defined functions cannot return '%s' values to SQLite"),
             tp_name(py_val)
         );
         return i32(-1);
@@ -2478,11 +2478,15 @@ impl connection_finalize(instance: ptr[PyObject]) {
         remove_callbacks(con.db);
     }
     if not con.db.is_null() {
-        if PyErr_ResourceWarning(instance, 1, "unclosed database in %R", instance)
+        if PyErr_ResourceWarning(
+            instance, 1, ptr[u8]("unclosed database in %R"), instance
+        )
             != 0 {
             if PyErr_ExceptionMatches(PyExc_Warning) != 0 {
                 PyErr_FormatUnraisable(
-                    "Exception ignored while finalizing database connection %R",
+                    ptr[u8](
+                        "Exception ignored while finalizing database connection %R"
+                    ),
                     instance
                 );
             }
@@ -2493,7 +2497,7 @@ impl connection_finalize(instance: ptr[PyObject]) {
             PyErr_Clear();
         } else {
             PyErr_FormatUnraisable(
-                "Exception ignored while closing database %R", instance
+                ptr[u8]("Exception ignored while closing database %R"), instance
             );
         }
     }
@@ -2506,7 +2510,9 @@ impl check_thread(con: ConnectionState) -> bool {
         if current != con.thread_ident {
             PyErr_Format(
                 con.state.ProgrammingError,
-                "SQLite objects created in a thread can only be used in that same thread. The object was created in thread id %lu and this is thread id %lu.",
+                ptr[u8](
+                    "SQLite objects created in a thread can only be used in that same thread. The object was created in thread id %lu and this is thread id %lu."
+                ),
                 con.thread_ident,
                 current
             );
@@ -2690,7 +2696,9 @@ impl pysqlite_connect(
     if nargs > 1 and nargs <= 8 {
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "Passing more than 1 positional argument to sqlite3.connect() is deprecated. Parameters 'timeout', 'detect_types', 'isolation_level', 'check_same_thread', 'factory', 'cached_statements' and 'uri' will become keyword-only parameters in Python 3.15.",
+            ptr[u8](
+                "Passing more than 1 positional argument to sqlite3.connect() is deprecated. Parameters 'timeout', 'detect_types', 'isolation_level', 'check_same_thread', 'factory', 'cached_statements' and 'uri' will become keyword-only parameters in Python 3.15."
+            ),
             1
         )
             != 0 {
@@ -2729,7 +2737,9 @@ impl pysqlite_connection_cursor_impl(
     }
     if jacpy_type_check(cursor, con.state.CursorType) == 0 {
         PyErr_Format(
-            PyExc_TypeError, "factory must return a cursor, not %.100s", tp_name(cursor)
+            PyExc_TypeError,
+            ptr[u8]("factory must return a cursor, not %.100s"),
+            tp_name(cursor)
         );
         jacpy_release(cursor);
         return NULL;
@@ -4167,7 +4177,7 @@ impl bind_param(
     }
     PyErr_Format(
         state.ProgrammingError,
-        "Error binding parameter %d: type '%s' is not supported",
+        ptr[u8]("Error binding parameter %d: type '%s' is not supported"),
         pos,
         tp_name(parameter)
     );
@@ -4238,7 +4248,9 @@ impl bind_parameters(
         if num_params != i64(num_params_needed) {
             PyErr_Format(
                 state.ProgrammingError,
-                "Incorrect number of bindings supplied. The current statement uses %d, and there are %zd supplied.",
+                ptr[u8](
+                    "Incorrect number of bindings supplied. The current statement uses %d, and there are %zd supplied."
+                ),
                 num_params_needed,
                 num_params
             );
@@ -4249,7 +4261,9 @@ impl bind_parameters(
             if not name.is_null() and name.view(1)[0] != 63 {
                 PyErr_Format(
                     state.ProgrammingError,
-                    "Binding %d ('%s') is a named parameter, but you supplied a sequence which requires nameless (qmark) placeholders.",
+                    ptr[u8](
+                        "Binding %d ('%s') is a named parameter, but you supplied a sequence which requires nameless (qmark) placeholders."
+                    ),
                     i32(i + 1),
                     name
                 );
@@ -4279,7 +4293,9 @@ impl bind_parameters(
             if binding_name.is_null() {
                 PyErr_Format(
                     state.ProgrammingError,
-                    "Binding %d has no name, but you supplied a dictionary (which has only names).",
+                    ptr[u8](
+                        "Binding %d has no name, but you supplied a dictionary (which has only names)."
+                    ),
                     i32(i)
                 );
                 return;
@@ -4295,7 +4311,7 @@ impl bind_parameters(
             } elif found == 0 {
                 PyErr_Format(
                     state.ProgrammingError,
-                    "You did not supply a value for binding parameter :%s.",
+                    ptr[u8]("You did not supply a value for binding parameter :%s."),
                     binding_name
                 );
                 return;
@@ -4432,7 +4448,7 @@ impl query_execute(
         }
         if build_row_cast_map(cur, con) != 0 {
             _PyErr_FormatFromCause(
-                state.OperationalError, "Error while building row_cast_map"
+                state.OperationalError, ptr[u8]("Error while building row_cast_map")
             );
             return finish_execute(
                 instance, cur, parameters, parameters_iter, parameters_list
@@ -4874,7 +4890,7 @@ impl row_subscript(instance: ptr[PyObject], idx: ptr[PyObject]) -> ptr[PyObject]
         return Py_NewRef(item) if item else NULL;
     } elif jacpy_is_unicode(idx) != 0 {
         if row.description == Py_None {
-            PyErr_Format(PyExc_IndexError, "No item with key %R", idx);
+            PyErr_Format(PyExc_IndexError, ptr[u8]("No item with key %R"), idx);
             return NULL;
         }
         nitems = PyTuple_Size(row.description);
@@ -5327,7 +5343,7 @@ impl ass_subscript_index(
     if jacpy_is_long(value) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%s' object cannot be interpreted as an integer",
+            ptr[u8]("'%s' object cannot be interpreted as an integer"),
             tp_name(value)
         );
         return i32(-1);
@@ -5512,7 +5528,9 @@ impl threadsafety(state: SqliteState) -> i32 {
     }
     PyErr_Format(
         state.InterfaceError,
-        "Unable to interpret SQLite threadsafety mode. Got %d, expected 0, 1, or 2",
+        ptr[u8](
+            "Unable to interpret SQLite threadsafety mode. Got %d, expected 0, 1, or 2"
+        ),
         mode
     );
     return i32(-1);

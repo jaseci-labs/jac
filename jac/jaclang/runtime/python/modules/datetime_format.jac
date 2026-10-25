@@ -193,7 +193,9 @@ impl make_Zreplacement(
         return NULL;
     }
     if jacpy_is_unicode(replacement) == 0 {
-        PyErr_SetString(PyExc_TypeError, "tzname.replace() did not return a string");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("tzname.replace() did not return a string")
+        );
         jacpy_release(replacement);
         return NULL;
     }

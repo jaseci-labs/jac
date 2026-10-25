@@ -96,7 +96,7 @@ def time_from_pickle(
 ) -> ptr[PyObject] {
     aware = tzinfo != Py_None;
     if aware and check_tzinfo_subclass(tzinfo) < 0 {
-        PyErr_SetString(PyExc_TypeError, "bad tzinfo state arg");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("bad tzinfo state arg"));
         return NULL;
     }
     me = type_alloc(type, 1 if aware else 0);
@@ -144,7 +144,9 @@ def time_new(
                         # More informative error message.
                         PyErr_SetString(
                             PyExc_ValueError,
-                            "Failed to encode latin1 string when unpickling a time object. pickle.load(data, encoding='latin1') is assumed."
+                            ptr[u8](
+                                "Failed to encode latin1 string when unpickling a time object. pickle.load(data, encoding='latin1') is assumed."
+                            )
                         );
                     }
                     return NULL;
@@ -303,7 +305,7 @@ def time_isoformat(
     } elif given_spec == 4 {
         result = PyUnicode_FromFormat("%02ld:%02ld:%02ld.%06ld", h, m, s, us);
     } else {
-        PyErr_Format(PyExc_ValueError, "Unknown timespec value");
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Unknown timespec value"));
         return NULL;
     }
     if not result
@@ -401,7 +403,8 @@ def time_richcompare(
             result = PyBool_FromLong(1);
         } else {
             PyErr_SetString(
-                PyExc_TypeError, "can't compare offset-naive and offset-aware times"
+                PyExc_TypeError,
+                ptr[u8]("can't compare offset-naive and offset-aware times")
             );
         }
     }
@@ -467,13 +470,15 @@ def time_hash(op: ptr[PyObject]) -> i64 {
 
 def time_fromisoformat(cls: ptr[PyObject], tstr: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(tstr) == 0 {
-        PyErr_SetString(PyExc_TypeError, "fromisoformat: argument must be str");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("fromisoformat: argument must be str")
+        );
         return NULL;
     }
     length: i64 = 0;
     text = PyUnicode_AsUTF8AndSize(tstr, &mut length);
     if not text {
-        PyErr_Format(PyExc_ValueError, "Invalid isoformat string: %R", tstr);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Invalid isoformat string: %R"), tstr);
         return NULL;
     }
     # The spec actually requires that time-only ISO 8601 strings start with
@@ -486,7 +491,7 @@ def time_fromisoformat(cls: ptr[PyObject], tstr: ptr[PyObject]) -> ptr[PyObject]
     parsed = IsoTime();
     rv = parse_isoformat_time(text, int(length), parsed);
     if rv < 0 {
-        PyErr_Format(PyExc_ValueError, "Invalid isoformat string: %R", tstr);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Invalid isoformat string: %R"), tstr);
         return NULL;
     }
     if parsed.hour == 24 {
@@ -495,7 +500,7 @@ def time_fromisoformat(cls: ptr[PyObject], tstr: ptr[PyObject]) -> ptr[PyObject]
         } else {
             PyErr_SetString(
                 PyExc_ValueError,
-                "minute, second, and microsecond must be 0 when hour is 24"
+                ptr[u8]("minute, second, and microsecond must be 0 when hour is 24")
             );
             return NULL;
         }

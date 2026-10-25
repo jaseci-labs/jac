@@ -32,7 +32,7 @@ impl unwinder_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     PyErr_SetString(
-        PyExc_RuntimeError, "Remote debugging support has not been compiled in"
+        PyExc_RuntimeError, ptr[u8]("Remote debugging support has not been compiled in")
     );
     return NULL;
 }

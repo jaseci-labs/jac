@@ -31,15 +31,15 @@ import from c {
         } elif not endptr
             and (int(fail_pos) == int(s) or fail_pos.view(1)[0] != u8(0)) {
             PyErr_Format(
-                PyExc_ValueError, "could not convert string to float: '%.200s'", s
+                PyExc_ValueError, ptr[u8]("could not convert string to float: '%.200s'"), s
             );
         } elif int(fail_pos) == int(s) {
             PyErr_Format(
-                PyExc_ValueError, "could not convert string to float: '%.200s'", s
+                PyExc_ValueError, ptr[u8]("could not convert string to float: '%.200s'"), s
             );
         } elif errno == ERANGE and fabs(x) >= 1.0 and overflow_exception {
             PyErr_Format(
-                overflow_exception, "value too large to convert to float: '%.200s'", s
+                overflow_exception, ptr[u8]("value too large to convert to float: '%.200s'"), s
             );
         } else {
             result = x;
@@ -101,7 +101,7 @@ import from c {
         if bad {
             PyMem_Free(ptr(dup));
             PyErr_Format(
-                PyExc_ValueError, "could not convert string to %s: %R", what, obj_
+                PyExc_ValueError, ptr[u8]("could not convert string to %s: %R"), what, obj_
             );
             return NULL;
         }

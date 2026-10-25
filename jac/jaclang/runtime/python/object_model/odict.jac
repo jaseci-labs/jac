@@ -751,7 +751,9 @@ impl keys_equal(a: ptr[PyObject], b: ptr[PyObject]) -> i32 {
         }
         if od_of(a).view(1)[0].od_state != state_a
             or od_of(b).view(1)[0].od_state != state_b {
-            PyErr_SetString(PyExc_RuntimeError, "OrderedDict mutated during iteration");
+            PyErr_SetString(
+                PyExc_RuntimeError, ptr[u8]("OrderedDict mutated during iteration")
+            );
             return i32(-1);
         }
 
@@ -978,7 +980,7 @@ impl odict_popitem_bound(args: BoundArguments) -> ptr[PyObject] {
         return NULL;
     }
     if not od_first(self) {
-        PyErr_SetString(PyExc_KeyError, "dictionary is empty");
+        PyErr_SetString(PyExc_KeyError, ptr[u8]("dictionary is empty"));
         return NULL;
     }
     link = od_last(self) if last != 0 else od_first(self);
@@ -1189,7 +1191,9 @@ impl odict_init(self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -
         return i32(-1);
     }
     if length > 1 {
-        PyErr_Format(PyExc_TypeError, "expected at most 1 argument, got %zd", length);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("expected at most 1 argument, got %zd"), length
+        );
         return i32(-1);
     }
 
@@ -1286,13 +1290,15 @@ impl odictiter_nextkey(op: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     if od_of(od).view(1)[0].od_state != it.view(1)[0].di_state {
-        PyErr_SetString(PyExc_RuntimeError, "OrderedDict mutated during iteration");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("OrderedDict mutated during iteration")
+        );
         oiter_clear_odict(op);
         return NULL;
     }
     if it.view(1)[0].di_size != dict_used(od) {
         PyErr_SetString(
-            PyExc_RuntimeError, "OrderedDict changed size during iteration"
+            PyExc_RuntimeError, ptr[u8]("OrderedDict changed size during iteration")
         );
 
         it.view(1)[0].di_size = -1;
@@ -1471,7 +1477,7 @@ impl mutablemapping_add_pairs(self: ptr[PyObject], pairs: ptr[PyObject]) -> i32 
             if not key {
                 if not PyErr_Occurred() {
                     PyErr_SetString(
-                        PyExc_ValueError, "need more than 0 values to unpack"
+                        PyExc_ValueError, ptr[u8]("need more than 0 values to unpack")
                     );
                 }
             } else {
@@ -1479,7 +1485,8 @@ impl mutablemapping_add_pairs(self: ptr[PyObject], pairs: ptr[PyObject]) -> i32 
                 if not value {
                     if not PyErr_Occurred() {
                         PyErr_SetString(
-                            PyExc_ValueError, "need more than 1 value to unpack"
+                            PyExc_ValueError,
+                            ptr[u8]("need more than 1 value to unpack")
                         );
                     }
                 } else {
@@ -1487,7 +1494,8 @@ impl mutablemapping_add_pairs(self: ptr[PyObject], pairs: ptr[PyObject]) -> i32 
                     if unexpected {
                         object_decref(unexpected);
                         PyErr_SetString(
-                            PyExc_ValueError, "too many values to unpack (expected 2)"
+                            PyExc_ValueError,
+                            ptr[u8]("too many values to unpack (expected 2)")
                         );
                     } elif not PyErr_Occurred() {
                         res = PyObject_SetItem(self, key, value);
@@ -1582,7 +1590,7 @@ impl mutablemapping_update(
     if length > 1 {
         PyErr_Format(
             PyExc_TypeError,
-            "update() takes at most 1 positional argument (%zd given)",
+            ptr[u8]("update() takes at most 1 positional argument (%zd given)"),
             length
         );
         return NULL;

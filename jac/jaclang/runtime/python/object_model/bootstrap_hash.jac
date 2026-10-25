@@ -201,7 +201,7 @@ impl dev_urandom(buffer: ptr[u8], size: i64, raise_: bool) -> i32 {
                 if err == ENOENT or err == ENXIO or err == ENODEV or err == EACCES {
                     PyErr_SetString(
                         PyExc_NotImplementedError,
-                        "/dev/urandom (or equivalent) not found"
+                        ptr[u8]("/dev/urandom (or equivalent) not found")
                     );
                 }
 
@@ -230,7 +230,7 @@ impl dev_urandom(buffer: ptr[u8], size: i64, raise_: bool) -> i32 {
             if n == 0 {
                 PyErr_Format(
                     PyExc_RuntimeError,
-                    "Failed to read %zi bytes from /dev/urandom",
+                    ptr[u8]("Failed to read %zi bytes from /dev/urandom"),
                     remaining
                 );
                 return i32(-1);
@@ -289,7 +289,7 @@ impl lcg_urandom(x0: u32, buffer: ptr[u8], size: i64) {
 impl pyurandom(buffer: ptr[u8], size: i64, blocking: bool, raise_: bool) -> i32 {
     if size < 0 {
         if raise_ {
-            PyErr_Format(PyExc_ValueError, "negative argument not allowed");
+            PyErr_Format(PyExc_ValueError, ptr[u8]("negative argument not allowed"));
         }
         return i32(-1);
     }

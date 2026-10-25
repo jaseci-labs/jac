@@ -136,12 +136,14 @@ impl bool_vectorcall(
 impl bool_invert(v: ptr[PyObject]) -> ptr[PyObject] {
     if PyErr_WarnEx(
         PyExc_DeprecationWarning,
-        "Bitwise inversion '~' on bool is deprecated and will be removed in "
-        "Python 3.16. This returns the bitwise inversion of the underlying int "
-        "object and is usually not what you expect from negating "
-        "a bool. Use the 'not' operator for boolean negation or "
-        "~int(x) if you really want the bitwise inversion of the "
-        "underlying int.",
+        ptr[u8](
+            "Bitwise inversion '~' on bool is deprecated and will be removed in "
+            "Python 3.16. This returns the bitwise inversion of the underlying int "
+            "object and is usually not what you expect from negating "
+            "a bool. Use the 'not' operator for boolean negation or "
+            "~int(x) if you really want the bitwise inversion of the "
+            "underlying int."
+        ),
         1
     )
         < 0 {

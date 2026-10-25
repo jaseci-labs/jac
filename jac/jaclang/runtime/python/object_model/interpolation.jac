@@ -163,7 +163,9 @@ import from c {
         } else {
             PyErr_SetString(
                 PyExc_SystemError,
-                "Interpolation() argument 'conversion' must be one of 's', 'a' or 'r'"
+                ptr[u8](
+                    "Interpolation() argument 'conversion' must be one of 's', 'a' or 'r'"
+                )
             );
             jacpy_release(op);
             return NULL;
@@ -239,7 +241,7 @@ impl conversion_converter(arg: ptr[PyObject]) -> bool {
     if jacpy_is_unicode(arg) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "Interpolation() argument 'conversion' must be str, not %T",
+            ptr[u8]("Interpolation() argument 'conversion' must be str, not %T"),
             arg
         );
         return False;
@@ -250,7 +252,9 @@ impl conversion_converter(arg: ptr[PyObject]) -> bool {
     if length != 1 or not (code == 97 or code == 114 or code == 115) {
         PyErr_SetString(
             PyExc_ValueError,
-            "Interpolation() argument 'conversion' must be one of 's', 'a' or 'r'"
+            ptr[u8](
+                "Interpolation() argument 'conversion' must be one of 's', 'a' or 'r'"
+            )
         );
         return False;
     }

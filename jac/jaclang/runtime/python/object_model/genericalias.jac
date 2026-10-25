@@ -274,7 +274,7 @@ import from c {
     ) -> ptr[PyObject] {
         nparams = object_size(parameters);
         if nparams == 0 {
-            PyErr_Format(PyExc_TypeError, "%R is not a generic class", op);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("%R is not a generic class"), op);
             return NULL;
         }
         item = unpack_args(item);
@@ -310,7 +310,7 @@ import from c {
             jacpy_release(item);
             PyErr_Format(
                 PyExc_TypeError,
-                "Too %s arguments for %R; actual %zd, expected %zd",
+                ptr[u8]("Too %s arguments for %R; actual %zd, expected %zd"),
                 ptr[u8]("many") if nitems > nparams else ptr[u8]("few"),
                 op,
                 nitems,
@@ -397,7 +397,9 @@ import from c {
                     jacpy_release(item);
                     PyErr_Format(
                         PyExc_TypeError,
-                        "expected __typing_subst__ of %T objects to return a tuple, not %T",
+                        ptr[u8](
+                            "expected __typing_subst__ of %T objects to return a tuple, not %T"
+                        ),
                         tuple_get_item(args, i64(iarg)),
                         substituted
                     );
@@ -887,14 +889,16 @@ impl ga_mro_entries(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
 
 impl ga_instancecheck(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_SetString(
-        PyExc_TypeError, "isinstance() argument 2 cannot be a parameterized generic"
+        PyExc_TypeError,
+        ptr[u8]("isinstance() argument 2 cannot be a parameterized generic")
     );
     return NULL;
 }
 
 impl ga_subclasscheck(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_SetString(
-        PyExc_TypeError, "issubclass() argument 2 cannot be a parameterized generic"
+        PyExc_TypeError,
+        ptr[u8]("issubclass() argument 2 cannot be a parameterized generic")
     );
     return NULL;
 }

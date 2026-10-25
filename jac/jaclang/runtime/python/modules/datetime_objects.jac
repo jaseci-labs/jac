@@ -637,7 +637,9 @@ impl clear_current_module(interp: ptr[PyInterpreterState], expected: ptr[PyObjec
     }
     jacpy_release(key);
     if failed {
-        PyErr_FormatUnraisable("Exception ignored while clearing _datetime module");
+        PyErr_FormatUnraisable(
+            ptr[u8]("Exception ignored while clearing _datetime module")
+        );
     }
     PyErr_SetRaisedException(exc);
 }
@@ -648,7 +650,7 @@ impl check_delta_day_range(days: int) -> int {
     }
     PyErr_Format(
         PyExc_OverflowError,
-        "days=%ld; must have magnitude <= %ld",
+        ptr[u8]("days=%ld; must have magnitude <= %ld"),
         days,
         MAX_DELTA_DAYS
     );
@@ -659,7 +661,7 @@ impl check_date_args(year: int, month: int, day: int) -> int {
     if year < MINYEAR or year > MAXYEAR {
         PyErr_Format(
             PyExc_ValueError,
-            "year must be in %ld..%ld, not %ld",
+            ptr[u8]("year must be in %ld..%ld, not %ld"),
             MINYEAR,
             MAXYEAR,
             year
@@ -667,14 +669,16 @@ impl check_date_args(year: int, month: int, day: int) -> int {
         return -1;
     }
     if month < 1 or month > 12 {
-        PyErr_Format(PyExc_ValueError, "month must be in 1..12, not %ld", month);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("month must be in 1..12, not %ld"), month
+        );
         return -1;
     }
     dim = days_in_month(year, month);
     if day < 1 or day > dim {
         PyErr_Format(
             PyExc_ValueError,
-            "day %ld must be in range 1..%ld for month %ld in year %ld",
+            ptr[u8]("day %ld must be in range 1..%ld for month %ld in year %ld"),
             day,
             dim,
             month,
@@ -687,23 +691,27 @@ impl check_date_args(year: int, month: int, day: int) -> int {
 
 impl check_time_args(h: int, m: int, s: int, us: int, fold: int) -> int {
     if h < 0 or h > 23 {
-        PyErr_Format(PyExc_ValueError, "hour must be in 0..23, not %ld", h);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("hour must be in 0..23, not %ld"), h);
         return -1;
     }
     if m < 0 or m > 59 {
-        PyErr_Format(PyExc_ValueError, "minute must be in 0..59, not %ld", m);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("minute must be in 0..59, not %ld"), m);
         return -1;
     }
     if s < 0 or s > 59 {
-        PyErr_Format(PyExc_ValueError, "second must be in 0..59, not %ld", s);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("second must be in 0..59, not %ld"), s);
         return -1;
     }
     if us < 0 or us > 999999 {
-        PyErr_Format(PyExc_ValueError, "microsecond must be in 0..999999, not %ld", us);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("microsecond must be in 0..999999, not %ld"), us
+        );
         return -1;
     }
     if fold != 0 and fold != 1 {
-        PyErr_Format(PyExc_ValueError, "fold must be either 0 or 1, not %ld", fold);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("fold must be either 0 or 1, not %ld"), fold
+        );
         return -1;
     }
     return 0;
@@ -713,7 +721,7 @@ impl normalize_date(fields: DateTimeFields) -> int {
     if normalize_y_m_d(fields) {
         return 0;
     }
-    PyErr_SetString(PyExc_OverflowError, "date value out of range");
+    PyErr_SetString(PyExc_OverflowError, ptr[u8]("date value out of range"));
     return -1;
 }
 
@@ -723,7 +731,7 @@ impl check_tzinfo_subclass(p: ptr[PyObject]) -> int {
     }
     PyErr_Format(
         PyExc_TypeError,
-        "tzinfo argument must be None or of a tzinfo subclass, not type '%s'",
+        ptr[u8]("tzinfo argument must be None or of a tzinfo subclass, not type '%s'"),
         type_name_of(p)
     );
     return -1;
@@ -1061,7 +1069,9 @@ impl new_timezone(offset: ptr[PyObject], name: ptr[PyObject]) -> ptr[PyObject] {
     if offset_out_of_range(offset) {
         PyErr_Format(
             PyExc_ValueError,
-            "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not %R",
+            ptr[u8](
+                "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not %R"
+            ),
             offset
         );
         return NULL;
@@ -1093,7 +1103,9 @@ impl call_tzinfo_method(
         if offset_out_of_range(offset) {
             PyErr_Format(
                 PyExc_ValueError,
-                "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not %R",
+                ptr[u8](
+                    "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not %R"
+                ),
                 offset
             );
             jacpy_release(offset);
@@ -1102,7 +1114,7 @@ impl call_tzinfo_method(
     } else {
         PyErr_Format(
             PyExc_TypeError,
-            "tzinfo.%s() must return None or timedelta, not '%.200s'",
+            ptr[u8]("tzinfo.%s() must return None or timedelta, not '%.200s'"),
             name,
             type_name_of(offset)
         );
@@ -1131,7 +1143,7 @@ impl call_tzname(tzinfo: ptr[PyObject], tzinfoarg: ptr[PyObject]) -> ptr[PyObjec
     if jacpy_is_unicode(result) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "tzinfo.tzname() must return None or a string, not '%s'",
+            ptr[u8]("tzinfo.tzname() must return None or a string, not '%s'"),
             type_name_of(result)
         );
         jacpy_release(result);
@@ -1280,7 +1292,7 @@ impl checked_divmod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
         if jacpy_is_tuple(result) == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "divmod() returned non-tuple (type %.200s)",
+                ptr[u8]("divmod() returned non-tuple (type %.200s)"),
                 type_name_of(result)
             );
             jacpy_release(result);
@@ -1289,7 +1301,7 @@ impl checked_divmod(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
         size = PyTuple_Size(result);
         if size != 2 {
             PyErr_Format(
-                PyExc_TypeError, "divmod() returned a tuple of size %zd", size
+                PyExc_TypeError, ptr[u8]("divmod() returned a tuple of size %zd"), size
             );
             jacpy_release(result);
             return NULL;
@@ -1304,7 +1316,9 @@ impl divmod_part(pair: ptr[PyObject], index: int, bound: int) -> int {
         return -1;
     }
     if not (0 <= value and value < bound) {
-        PyErr_SetString(PyExc_TypeError, "divmod() returned a value out of range");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("divmod() returned a value out of range")
+        );
         return -1;
     }
     return value;
@@ -1377,7 +1391,7 @@ impl add_datetime_timedelta(
         microsecond=date_get_microsecond(date) + td_microseconds(delta) * factor
     );
     if not normalize_datetime(fields) {
-        PyErr_SetString(PyExc_OverflowError, "date value out of range");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("date value out of range"));
         return NULL;
     }
     return new_datetime_subclass_ex(

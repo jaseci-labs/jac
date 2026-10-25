@@ -456,7 +456,7 @@ import from c {
             if maxchar > MAX_UNICODE {
                 PyErr_SetString(
                     PyExc_SystemError,
-                    "invalid maximum character passed to PyUnicode_New"
+                    ptr[u8]("invalid maximum character passed to PyUnicode_New")
                 );
                 return NULL;
             }
@@ -465,7 +465,9 @@ import from c {
         }
 
         if size < 0 {
-            PyErr_SetString(PyExc_SystemError, "Negative size passed to PyUnicode_New");
+            PyErr_SetString(
+                PyExc_SystemError, ptr[u8]("Negative size passed to PyUnicode_New")
+            );
             return NULL;
         }
         if size > ((PY_SSIZE_T_MAX - struct_size) // char_size - 1) {
@@ -749,15 +751,15 @@ import from c {
         }
 
         if u64.wrap(from_start) > u64(uo_length(from_obj)) {
-            PyErr_SetString(PyExc_IndexError, "string index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("string index out of range"));
             return -1;
         }
         if u64.wrap(to_start) > u64(uo_length(to)) {
-            PyErr_SetString(PyExc_IndexError, "string index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("string index out of range"));
             return -1;
         }
         if how_many_arg < 0 {
-            PyErr_SetString(PyExc_SystemError, "how_many cannot be negative");
+            PyErr_SetString(PyExc_SystemError, ptr[u8]("how_many cannot be negative"));
             return -1;
         }
         how_many = min(uo_length(from_obj) - from_start, how_many_arg);
@@ -765,7 +767,9 @@ import from c {
         if to_start + how_many > to_length {
             PyErr_Format(
                 PyExc_SystemError,
-                "Cannot write %zi characters at %zi in a string of %zi characters",
+                ptr[u8](
+                    "Cannot write %zi characters at %zi in a string of %zi characters"
+                ),
                 how_many,
                 to_start,
                 to_length
@@ -782,7 +786,7 @@ import from c {
         if err != i32(0) {
             PyErr_Format(
                 PyExc_SystemError,
-                "Cannot copy %s characters into a string of %s characters",
+                ptr[u8]("Cannot copy %s characters into a string of %s characters"),
                 unicode_kind_name(from_obj),
                 unicode_kind_name(to)
             );
@@ -887,7 +891,8 @@ import from c {
     }  def PyUnicode_FromStringAndSize(u: ptr[u8], size: i64) -> ptr[PyObject] {
         if size < 0 {
             PyErr_SetString(
-                PyExc_SystemError, "Negative size passed to PyUnicode_FromStringAndSize"
+                PyExc_SystemError,
+                ptr[u8]("Negative size passed to PyUnicode_FromStringAndSize")
             );
             return NULL;
         }
@@ -899,7 +904,9 @@ import from c {
         if size > 0 {
             PyErr_SetString(
                 PyExc_SystemError,
-                "NULL string with positive size with NULL passed to PyUnicode_FromStringAndSize"
+                ptr[u8](
+                    "NULL string with positive size with NULL passed to PyUnicode_FromStringAndSize"
+                )
             );
             return NULL;
         }
@@ -907,7 +914,7 @@ import from c {
     }  def PyUnicode_FromString(u: ptr[u8]) -> ptr[PyObject] {
         size = strlen(u);
         if size > u64(PY_SSIZE_T_MAX) {
-            PyErr_SetString(PyExc_OverflowError, "input too long");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("input too long"));
             return NULL;
         }
         return unicode_decode_utf8(
@@ -1007,7 +1014,7 @@ import from c {
     ) -> i32 {
         writer = ptr[UnicodeWriter](pub_writer);
         if size < 0 {
-            PyErr_SetString(PyExc_ValueError, "size must be positive");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("size must be positive"));
             return i32(-1);
         }
         if size == 0 {
@@ -1036,7 +1043,7 @@ import from c {
         kind: i32, buffer: ptr[u8], size: i64
     ) -> ptr[PyObject] {
         if size < 0 {
-            PyErr_SetString(PyExc_ValueError, "size must be positive");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("size must be positive"));
             return NULL;
         }
         k = i64(kind);
@@ -1049,7 +1056,7 @@ import from c {
         if k == PyUnicode_4BYTE_KIND {
             return _PyUnicode_FromUCS4(ptr[u32](buffer), size);
         }
-        PyErr_SetString(PyExc_SystemError, "invalid kind");
+        PyErr_SetString(PyExc_SystemError, ptr[u8]("invalid kind"));
         return NULL;
     }  def _PyUnicode_FindMaxChar(unicode: ptr[PyObject], start: i64, end: i64) -> u32 {
         if start == 0 and end == uo_length(unicode) {
@@ -1164,7 +1171,7 @@ import from c {
         }
         PyErr_Format(
             PyExc_TypeError,
-            "argument must be str, not %.50s",
+            ptr[u8]("argument must be str, not %.50s"),
             object_type(obj_).view(1)[0].tp_name
         );
         return i32(0);
@@ -1191,13 +1198,15 @@ import from c {
         }
         PyErr_Format(
             PyExc_TypeError,
-            "argument must be str or None, not %.50s",
+            ptr[u8]("argument must be str or None, not %.50s"),
             object_type(obj_).view(1)[0].tp_name
         );
         return i32(0);
     }  def PyUnicode_FromOrdinal(ordinal: i32) -> ptr[PyObject] {
         if ordinal < i32(0) or i64(ordinal) > i64(MAX_UNICODE) {
-            PyErr_SetString(PyExc_ValueError, "chr() arg not in range(0x110000)");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("chr() arg not in range(0x110000)")
+            );
             return NULL;
         }
         return unicode_char(u32(ordinal));
@@ -1210,7 +1219,7 @@ import from c {
         }
         PyErr_Format(
             PyExc_TypeError,
-            "Can't convert '%.100s' object to str implicitly",
+            ptr[u8]("Can't convert '%.100s' object to str implicitly"),
             object_type(obj_).view(1)[0].tp_name
         );
         return NULL;
@@ -1234,7 +1243,7 @@ import from c {
             );
         }
         if unicode_check(obj_) {
-            PyErr_SetString(PyExc_TypeError, "decoding str is not supported");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("decoding str is not supported"));
             return NULL;
         }
 
@@ -1246,7 +1255,7 @@ import from c {
             PyMem_Free(ptr(buffer));
             PyErr_Format(
                 PyExc_TypeError,
-                "decoding to str: need a bytes-like object, %.80s found",
+                ptr[u8]("decoding to str: need a bytes-like object, %.80s found"),
                 object_type(obj_).view(1)[0].tp_name
             );
             return NULL;
@@ -1365,7 +1374,9 @@ import from c {
         if not unicode_check(unicode) {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%.400s' decoder returned '%.400s' instead of 'str'; use codecs.decode() to decode to arbitrary types",
+                ptr[u8](
+                    "'%.400s' decoder returned '%.400s' instead of 'str'; use codecs.decode() to decode to arbitrary types"
+                ),
                 encoding,
                 object_type(unicode).view(1)[0].tp_name
             );
@@ -1384,7 +1395,9 @@ import from c {
         }
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "PyUnicode_AsDecodedObject() is deprecated and will be removed in 3.15; use PyCodec_Decode() to decode from str",
+            ptr[u8](
+                "PyUnicode_AsDecodedObject() is deprecated and will be removed in 3.15; use PyCodec_Decode() to decode from str"
+            ),
             1
         )
             < 0 {
@@ -1405,7 +1418,9 @@ import from c {
         }
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "PyUnicode_AsDecodedUnicode() is deprecated and will be removed in 3.15; use PyCodec_Decode() to decode from str to str",
+            ptr[u8](
+                "PyUnicode_AsDecodedUnicode() is deprecated and will be removed in 3.15; use PyCodec_Decode() to decode from str to str"
+            ),
             1
         )
             < 0 {
@@ -1423,7 +1438,9 @@ import from c {
         if not unicode_check(v) {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%.400s' decoder returned '%.400s' instead of 'str'; use codecs.decode() to decode to arbitrary types",
+                ptr[u8](
+                    "'%.400s' decoder returned '%.400s' instead of 'str'; use codecs.decode() to decode to arbitrary types"
+                ),
                 enc,
                 object_type(unicode).view(1)[0].tp_name
             );
@@ -1440,7 +1457,9 @@ import from c {
         }
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "PyUnicode_AsEncodedObject() is deprecated and will be removed in 3.15; use PyUnicode_AsEncodedString() to encode from str to bytes or PyCodec_Encode() for generic encoding",
+            ptr[u8](
+                "PyUnicode_AsEncodedObject() is deprecated and will be removed in 3.15; use PyUnicode_AsEncodedString() to encode from str to bytes or PyCodec_Encode() for generic encoding"
+            ),
             1
         )
             < 0 {
@@ -1531,7 +1550,9 @@ import from c {
             error = PyErr_WarnFormat(
                 PyExc_RuntimeWarning,
                 1,
-                "encoder %s returned bytearray instead of bytes; use codecs.encode() to encode to arbitrary types",
+                ptr[u8](
+                    "encoder %s returned bytearray instead of bytes; use codecs.encode() to encode to arbitrary types"
+                ),
                 encoding
             );
             if error != 0 {
@@ -1544,7 +1565,9 @@ import from c {
         }
         PyErr_Format(
             PyExc_TypeError,
-            "'%.400s' encoder returned '%.400s' instead of 'bytes'; use codecs.encode() to encode to arbitrary types",
+            ptr[u8](
+                "'%.400s' encoder returned '%.400s' instead of 'bytes'; use codecs.encode() to encode to arbitrary types"
+            ),
             encoding,
             object_type(v).view(1)[0].tp_name
         );
@@ -1559,7 +1582,9 @@ import from c {
         }
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "PyUnicode_AsEncodedUnicode() is deprecated and will be removed in 3.15; use PyCodec_Encode() to encode from str to str",
+            ptr[u8](
+                "PyUnicode_AsEncodedUnicode() is deprecated and will be removed in 3.15; use PyCodec_Encode() to encode from str to str"
+            ),
             1
         )
             < 0 {
@@ -1577,7 +1602,9 @@ import from c {
         if not unicode_check(v) {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%.400s' encoder returned '%.400s' instead of 'str'; use codecs.encode() to encode to arbitrary types",
+                ptr[u8](
+                    "'%.400s' encoder returned '%.400s' instead of 'str'; use codecs.encode() to encode to arbitrary types"
+                ),
                 enc,
                 object_type(v).view(1)[0].tp_name
             );
@@ -1650,7 +1677,7 @@ import from c {
         size = object_size(output);
         data = bytes_data(output);
         if i64(strlen(data)) != size {
-            PyErr_SetString(PyExc_ValueError, "embedded null byte");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null byte"));
             object_decref(output);
             return i32(0);
         }
@@ -1681,7 +1708,7 @@ import from c {
         } else {
             PyErr_Format(
                 PyExc_TypeError,
-                "path should be string, bytes, or os.PathLike, not %.200s",
+                ptr[u8]("path should be string, bytes, or os.PathLike, not %.200s"),
                 object_type(arg).view(1)[0].tp_name
             );
             object_decref(path);
@@ -1689,7 +1716,7 @@ import from c {
         }
         if findchar(uo_data(output), uo_kind(output), uo_length(output), u32(0), i32(1))
             >= 0 {
-            PyErr_SetString(PyExc_ValueError, "embedded null character");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
             object_decref(output);
             return i32(0);
         }
@@ -1715,12 +1742,14 @@ import from c {
     }  def _PyUnicode_AsUTF8NoNUL(unicode: ptr[PyObject]) -> ptr[u8] {
         (s, size) = unicode_as_utf8_and_size(unicode);
         if s and i64(strlen(s)) != size {
-            PyErr_SetString(PyExc_ValueError, "embedded null character");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
             return ptr[u8]();
         }
         return s;
     }  def PyUnicode_GetSize(unicode: ptr[PyObject]) -> i64 {
-        PyErr_SetString(PyExc_RuntimeError, "PyUnicode_GetSize has been removed.");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("PyUnicode_GetSize has been removed.")
+        );
         return -1;
     }  def PyUnicode_GetLength(unicode: ptr[PyObject]) -> i64 {
         if not unicode_check(unicode) {
@@ -1734,7 +1763,7 @@ import from c {
             return u32(0xFFFFFFFF);
         }
         if index < 0 or index >= uo_length(unicode) {
-            PyErr_SetString(PyExc_IndexError, "string index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("string index out of range"));
             return u32(0xFFFFFFFF);
         }
         return ch_read(uo_kind(unicode), uo_data(unicode), index);
@@ -1744,14 +1773,14 @@ import from c {
             return i32(-1);
         }
         if index < 0 or index >= uo_length(unicode) {
-            PyErr_SetString(PyExc_IndexError, "string index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("string index out of range"));
             return i32(-1);
         }
         if unicode_check_modifiable(unicode) != 0 {
             return i32(-1);
         }
         if ch > uo_max_char_value(unicode) {
-            PyErr_SetString(PyExc_ValueError, "character out of range");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("character out of range"));
             return i32(-1);
         }
         ch_write(uo_kind(unicode), uo_data(unicode), index, ch);
@@ -2911,14 +2940,18 @@ import from c {
                 warned = PyErr_WarnFormat(
                     PyExc_DeprecationWarning,
                     1,
-                    "\"\\%o\" is an invalid octal escape sequence. Such sequences will not work in the future. ",
+                    ptr[u8](
+                        "\"\\%o\" is an invalid octal escape sequence. Such sequences will not work in the future. "
+                    ),
                     first_char
                 );
             } else {
                 warned = PyErr_WarnFormat(
                     PyExc_DeprecationWarning,
                     1,
-                    "\"\\%c\" is an invalid escape sequence. Such sequences will not work in the future. ",
+                    ptr[u8](
+                        "\"\\%c\" is an invalid escape sequence. Such sequences will not work in the future. "
+                    ),
                     first_char
                 );
             }
@@ -4356,7 +4389,7 @@ import from c {
                 if not unicode_check(separator) {
                     PyErr_Format(
                         PyExc_TypeError,
-                        "separator: expected str instance, %.80s found",
+                        ptr[u8]("separator: expected str instance, %.80s found"),
                         object_type(separator).view(1)[0].tp_name
                     );
                     return NULL;
@@ -4376,7 +4409,7 @@ import from c {
             if not unicode_check(item) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "sequence item %zd: expected str instance, %.80s found",
+                    ptr[u8]("sequence item %zd: expected str instance, %.80s found"),
                     i,
                     object_type(item).view(1)[0].tp_name
                 );
@@ -4393,7 +4426,8 @@ import from c {
             }
             if add_sz > u64(PY_SSIZE_T_MAX - sz) {
                 PyErr_SetString(
-                    PyExc_OverflowError, "join() result is too long for a Python string"
+                    PyExc_OverflowError,
+                    ptr[u8]("join() result is too long for a Python string")
                 );
                 object_xdecref(sep);
                 return NULL;
@@ -4470,13 +4504,13 @@ import from c {
             return -1;
         }
         if start < 0 {
-            PyErr_SetString(PyExc_IndexError, "string index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("string index out of range"));
             return -1;
         }
         if fill_char > uo_max_char_value(unicode) {
             PyErr_SetString(
                 PyExc_ValueError,
-                "fill character is bigger than the string maximum character"
+                ptr[u8]("fill character is bigger than the string maximum character")
             );
             return -1;
         }
@@ -4599,11 +4633,15 @@ import from c {
         return i32(1) if unicode_eq(str1, str2) else i32(0);
     }  def PyUnicode_Equal(str1: ptr[PyObject], str2: ptr[PyObject]) -> i32 {
         if not unicode_check(str1) {
-            PyErr_Format(PyExc_TypeError, "first argument must be str, not %T", str1);
+            PyErr_Format(
+                PyExc_TypeError, ptr[u8]("first argument must be str, not %T"), str1
+            );
             return i32(-1);
         }
         if not unicode_check(str2) {
-            PyErr_Format(PyExc_TypeError, "second argument must be str, not %T", str2);
+            PyErr_Format(
+                PyExc_TypeError, ptr[u8]("second argument must be str, not %T"), str2
+            );
             return i32(-1);
         }
         return _PyUnicode_Equal(str1, str2);
@@ -4616,7 +4654,7 @@ import from c {
         }
         PyErr_Format(
             PyExc_TypeError,
-            "Can't compare %.100s and %.100s",
+            ptr[u8]("Can't compare %.100s and %.100s"),
             object_type(left).view(1)[0].tp_name,
             object_type(right).view(1)[0].tp_name
         );
@@ -4797,7 +4835,7 @@ import from c {
         if not unicode_check(substr) {
             PyErr_Format(
                 PyExc_TypeError,
-                "'in <string>' requires string as left operand, not %.100s",
+                ptr[u8]("'in <string>' requires string as left operand, not %.100s"),
                 object_type(substr).view(1)[0].tp_name
             );
             return i32(-1);
@@ -4841,7 +4879,7 @@ import from c {
         if not unicode_check(right) {
             PyErr_Format(
                 PyExc_TypeError,
-                "can only concatenate str (not \"%.200s\") to str",
+                ptr[u8]("can only concatenate str (not \"%.200s\") to str"),
                 object_type(right).view(1)[0].tp_name
             );
             return NULL;
@@ -4857,7 +4895,9 @@ import from c {
         left_len = uo_length(left);
         right_len = uo_length(right);
         if left_len > PY_SSIZE_T_MAX - right_len {
-            PyErr_SetString(PyExc_OverflowError, "strings are too large to concat");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("strings are too large to concat")
+            );
             return NULL;
         }
         new_len = left_len + right_len;
@@ -4905,7 +4945,9 @@ import from c {
         left_len = uo_length(left);
         right_len = uo_length(right);
         if left_len > PY_SSIZE_T_MAX - right_len {
-            PyErr_SetString(PyExc_OverflowError, "strings are too large to concat");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("strings are too large to concat")
+            );
             append_clear(p_left);
             return;
         }
@@ -5146,7 +5188,7 @@ import from c {
             return unicode_result_unchanged(self_);
         }
         if start < 0 or end < 0 {
-            PyErr_SetString(PyExc_IndexError, "string index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("string index out of range"));
             return NULL;
         }
         if start >= length or end < start {
@@ -5468,7 +5510,7 @@ import from c {
         writer.view(1)[0].min_char = u32(127);
     }  def PyUnicodeWriter_Create(length: i64) -> ptr[PyUnicodeWriter] {
         if length < 0 {
-            PyErr_SetString(PyExc_ValueError, "length must be positive");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("length must be positive"));
             return ptr[PyUnicodeWriter]();
         }
         pub_writer = ptr[PyUnicodeWriter](unicode_writers_pop());
@@ -5575,7 +5617,9 @@ import from c {
         return writer_write_char_inline(writer, ch);
     }  def PyUnicodeWriter_WriteChar(writer: ptr[PyUnicodeWriter], ch: u32) -> i32 {
         if ch > MAX_UNICODE {
-            PyErr_SetString(PyExc_ValueError, "character must be in range(0x110000)");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("character must be in range(0x110000)")
+            );
             return i32(-1);
         }
         return _PyUnicodeWriter_WriteChar(ptr[UnicodeWriter](writer), ch);
@@ -5673,15 +5717,15 @@ import from c {
         writer: ptr[PyUnicodeWriter], str_obj: ptr[PyObject], start: i64, end: i64
     ) -> i32 {
         if not unicode_check(str_obj) {
-            PyErr_Format(PyExc_TypeError, "expect str, not %T", str_obj);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expect str, not %T"), str_obj);
             return i32(-1);
         }
         if start < 0 or start > end {
-            PyErr_Format(PyExc_ValueError, "invalid start argument");
+            PyErr_Format(PyExc_ValueError, ptr[u8]("invalid start argument"));
             return i32(-1);
         }
         if end > uo_length(str_obj) {
-            PyErr_Format(PyExc_ValueError, "invalid end argument");
+            PyErr_Format(PyExc_ValueError, ptr[u8]("invalid end argument"));
             return i32(-1);
         }
         return _PyUnicodeWriter_WriteSubstring(
@@ -6218,7 +6262,7 @@ import from c {
         numnondigits: i64 = 0;
 
         if i64(prec) > INT_MAX - 3 {
-            PyErr_SetString(PyExc_OverflowError, "precision too large");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("precision too large"));
             return NULL;
         }
 
@@ -6247,7 +6291,7 @@ import from c {
         if length > INT_MAX {
             object_decref(result);
             PyErr_SetString(
-                PyExc_ValueError, "string too large in _PyUnicode_FormatLong"
+                PyExc_ValueError, ptr[u8]("string too large in _PyUnicode_FormatLong")
             );
             return NULL;
         }
@@ -6443,7 +6487,8 @@ import from c {
             and ctx.view(1)[0].argidx < ctx.view(1)[0].arglen
             and not ctx.view(1)[0].dct {
             PyErr_SetString(
-                PyExc_TypeError, "not all arguments converted during string formatting"
+                PyExc_TypeError,
+                ptr[u8]("not all arguments converted during string formatting")
             );
             failed = True;
         }
@@ -7501,13 +7546,13 @@ import from c {
         return PyModuleDef_Init(ptr[PyModuleDef](addressof(_string_module)));
     }  def PyUnicode_KIND(op: ptr[PyObject]) -> i32 {
         if not unicode_check(op) {
-            PyErr_Format(PyExc_TypeError, "expect str, got %T", op);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expect str, got %T"), op);
             return i32(-1);
         }
         return i32(uo_kind(op));
     }  def PyUnicode_DATA(op: ptr[PyObject]) -> ptr {
         if not unicode_check(op) {
-            PyErr_Format(PyExc_TypeError, "expect str, got %T", op);
+            PyErr_Format(PyExc_TypeError, ptr[u8]("expect str, got %T"), op);
             return ptr();
         }
         return ptr(uo_data(op));
@@ -7890,7 +7935,7 @@ impl ensure_unicode(obj_: ptr[PyObject]) -> i32 {
     if not unicode_check(obj_) {
         PyErr_Format(
             PyExc_TypeError,
-            "must be str, not %.100s",
+            ptr[u8]("must be str, not %.100s"),
             object_type(obj_).view(1)[0].tp_name
         );
         return i32(-1);
@@ -8312,7 +8357,8 @@ impl backslashreplace(
         }
         if size > PY_SSIZE_T_MAX - incr {
             PyErr_SetString(
-                PyExc_OverflowError, "encoded result is too long for a Python string"
+                PyExc_OverflowError,
+                ptr[u8]("encoded result is too long for a Python string")
             );
             return ptr[u8]();
         }
@@ -8382,7 +8428,8 @@ impl xmlcharrefreplace(
         }
         if size > PY_SSIZE_T_MAX - incr {
             PyErr_SetString(
-                PyExc_OverflowError, "encoded result is too long for a Python string"
+                PyExc_OverflowError,
+                ptr[u8]("encoded result is too long for a Python string")
             );
             return ptr[u8]();
         }
@@ -8541,7 +8588,9 @@ impl unicode_kind_name(unicode: ptr[PyObject]) -> ptr[u8] {
 
 impl unicode_check_modifiable(unicode: ptr[PyObject]) -> i32 {
     if not unicode_modifiable(unicode) {
-        PyErr_SetString(PyExc_SystemError, "Cannot modify a string currently used");
+        PyErr_SetString(
+            PyExc_SystemError, ptr[u8]("Cannot modify a string currently used")
+        );
         return i32(-1);
     }
     return i32(0);
@@ -8637,7 +8686,7 @@ impl find_maxchar_surrogates(begin: ptr[i32], end: ptr[i32]) -> tuple[i32, u32, 
             if maxchar > MAX_UNICODE {
                 PyErr_Format(
                     PyExc_ValueError,
-                    "character U+%x is not in range [U+0000; U+%x]",
+                    ptr[u8]("character U+%x is not in range [U+0000; U+%x]"),
                     ch,
                     MAX_UNICODE
                 );
@@ -8672,7 +8721,8 @@ impl unicode_dealloc(unicode: ptr[PyObject]) {
         popped_slot.view(1)[0] = ptr[PyObject]();
         if r == i32(-1) {
             PyErr_FormatUnraisable(
-                "Exception ignored while removing an interned string %R", unicode
+                ptr[u8]("Exception ignored while removing an interned string %R"),
+                unicode
             );
 
             _Py_SetImmortal(unicode);
@@ -8939,7 +8989,7 @@ impl as_ucs4(
             return target;
         }
     } elif targetsize < targetlen {
-        PyErr_Format(PyExc_SystemError, "string is longer than the buffer");
+        PyErr_Format(PyExc_SystemError, ptr[u8]("string is longer than the buffer"));
         if copy_null and 0 < targetsize {
             target.view(1)[0] = u32(0);
         }
@@ -9000,7 +9050,7 @@ impl unicode_as_widechar_string(
     unicode_copy_as_widechar(unicode, buffer, buflen + 1);
     if reject_nul and wcslen(buffer) != u64(buflen) {
         PyMem_Free(ptr(buffer));
-        PyErr_SetString(PyExc_ValueError, "embedded null character");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
         return (ptr[i32](), i64(-1));
     }
     return (buffer, buflen);
@@ -9055,7 +9105,7 @@ impl unicode_encode_locale(
         return NULL;
     }
     if u64(wlen) != wcslen(wstr) {
-        PyErr_SetString(PyExc_ValueError, "embedded null character");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
         PyMem_Free(ptr(wstr));
         return NULL;
     }
@@ -9083,7 +9133,7 @@ impl unicode_encode_locale(
                 object_decref(exc);
             }
         } elif res == -3 {
-            PyErr_SetString(PyExc_ValueError, "unsupported error handler");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("unsupported error handler"));
         } else {
             PyErr_NoMemory();
         }
@@ -9103,7 +9153,7 @@ impl unicode_decode_locale(
     s: ptr[u8], length: i64, errors: i32, current_locale: i32
 ) -> ptr[PyObject] {
     if (s + length).view(1)[0] != u8(0) or i64(strlen(s)) != length {
-        PyErr_SetString(PyExc_ValueError, "embedded null byte");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null byte"));
         return NULL;
     }
     wstr = ptr[i32]();
@@ -9130,7 +9180,7 @@ impl unicode_decode_locale(
                 object_decref(exc);
             }
         } elif res == -3 {
-            PyErr_SetString(PyExc_ValueError, "unsupported error handler");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("unsupported error handler"));
         } else {
             PyErr_NoMemory();
         }
@@ -9188,14 +9238,16 @@ impl make_decode_exception(
 impl decode_handler_result(restuple: ptr[PyObject]) -> tuple[bool, ptr[PyObject], i64] {
     if object_size(restuple) != 2 {
         PyErr_SetString(
-            PyExc_TypeError, "decoding error handler must return (str, int) tuple"
+            PyExc_TypeError,
+            ptr[u8]("decoding error handler must return (str, int) tuple")
         );
         return (False, NULL, i64(0));
     }
     repunicode = tuple_get_item(restuple, 0);
     if not unicode_check(repunicode) {
         PyErr_SetString(
-            PyExc_TypeError, "decoding error handler must return (str, int) tuple"
+            PyExc_TypeError,
+            ptr[u8]("decoding error handler must return (str, int) tuple")
         );
         return (False, NULL, i64(0));
     }
@@ -9260,7 +9312,8 @@ impl unicode_decode_call_errorhandler_writer(
     }
     if not tuple_check(restuple) {
         PyErr_SetString(
-            PyExc_TypeError, "decoding error handler must return (str, int) tuple"
+            PyExc_TypeError,
+            ptr[u8]("decoding error handler must return (str, int) tuple")
         );
         return decode_errorhandler_failed(
             restuple, handler, exc_obj, input, inend, endinpos
@@ -9290,7 +9343,9 @@ impl unicode_decode_call_errorhandler_writer(
     }
     if newpos < 0 or newpos > insize {
         PyErr_Format(
-            PyExc_IndexError, "position %zd from error handler out of bounds", newpos
+            PyExc_IndexError,
+            ptr[u8]("position %zd from error handler out of bounds"),
+            newpos
         );
         return decode_errorhandler_failed(
             restuple, handler, exc_obj, input, inend, endinpos
@@ -11741,7 +11796,8 @@ impl unicode_encode_call_errorhandler(
 
     if not tuple_check(restuple) or object_size(restuple) != 2 {
         PyErr_SetString(
-            PyExc_TypeError, "encoding error handler must return (str/bytes, int) tuple"
+            PyExc_TypeError,
+            ptr[u8]("encoding error handler must return (str/bytes, int) tuple")
         );
         object_decref(restuple);
         return (NULL, handler, cache, newpos);
@@ -11759,7 +11815,8 @@ impl unicode_encode_call_errorhandler(
     }
     if not unicode_check(resunicode) and not bytes_check(resunicode) {
         PyErr_SetString(
-            PyExc_TypeError, "encoding error handler must return (str/bytes, int) tuple"
+            PyExc_TypeError,
+            ptr[u8]("encoding error handler must return (str/bytes, int) tuple")
         );
         object_decref(restuple);
         return (NULL, handler, cache, newpos);
@@ -11769,7 +11826,9 @@ impl unicode_encode_call_errorhandler(
     }
     if newpos < 0 or newpos > length {
         PyErr_Format(
-            PyExc_IndexError, "position %zd from error handler out of bounds", newpos
+            PyExc_IndexError,
+            ptr[u8]("position %zd from error handler out of bounds"),
+            newpos
         );
         object_decref(restuple);
         return (NULL, handler, cache, newpos);
@@ -11970,7 +12029,9 @@ impl decode_unicode_escape(
                 if not ucnhash_capi {
                     PyErr_SetString(
                         PyExc_UnicodeError,
-                        "\\N escapes not supported (can't load unicodedata module)"
+                        ptr[u8](
+                            "\\N escapes not supported (can't load unicodedata module)"
+                        )
                     );
                     return (
                         codec_writer_fail(writer, error_handler, exc),
@@ -12406,7 +12467,7 @@ impl charmap_decode_mapping(
                     if value < 0 or value > i64(MAX_UNICODE) {
                         PyErr_Format(
                             PyExc_TypeError,
-                            "character mapping must be in range(0x%lx)",
+                            ptr[u8]("character mapping must be in range(0x%lx)"),
                             limit
                         );
                         return charmap_decode_fail(item, error_handler, exc);
@@ -12432,7 +12493,7 @@ impl charmap_decode_mapping(
             } else {
                 PyErr_SetString(
                     PyExc_TypeError,
-                    "character mapping must return integer, None or str"
+                    ptr[u8]("character mapping must return integer, None or str")
                 );
                 return charmap_decode_fail(item, error_handler, exc);
             }
@@ -12554,7 +12615,9 @@ impl charmapencode_lookup(c: u32, mapping: ptr[PyObject]) -> tuple[ptr[PyObject]
     if long_check(x) {
         value = PyLong_AsLong(x);
         if value < 0 or value > 255 {
-            PyErr_SetString(PyExc_TypeError, "character mapping must be in range(256)");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("character mapping must be in range(256)")
+            );
             object_decref(x);
             return (NULL, u8(0));
         }
@@ -12566,7 +12629,7 @@ impl charmapencode_lookup(c: u32, mapping: ptr[PyObject]) -> tuple[ptr[PyObject]
 
     PyErr_Format(
         PyExc_TypeError,
-        "character mapping must return integer, bytes or None, not %.400s",
+        ptr[u8]("character mapping must return integer, bytes or None, not %.400s"),
         object_type(x).view(1)[0].tp_name
     );
     object_decref(x);
@@ -12920,7 +12983,8 @@ impl unicode_translate_call_errorhandler(
     }
     if not tuple_check(restuple) {
         PyErr_SetString(
-            PyExc_TypeError, "translating error handler must return (str, int) tuple"
+            PyExc_TypeError,
+            ptr[u8]("translating error handler must return (str, int) tuple")
         );
         object_decref(restuple);
         return (NULL, handler, ex, 0);
@@ -12928,7 +12992,8 @@ impl unicode_translate_call_errorhandler(
 
     if object_size(restuple) != 2 or not unicode_check(tuple_get_item(restuple, 0)) {
         PyErr_SetString(
-            PyExc_TypeError, "translating error handler must return (str, int) tuple"
+            PyExc_TypeError,
+            ptr[u8]("translating error handler must return (str, int) tuple")
         );
         object_decref(restuple);
         return (NULL, handler, ex, 0);
@@ -12950,7 +13015,9 @@ impl unicode_translate_call_errorhandler(
     }
     if newpos < 0 or newpos > uo_length(unicode) {
         PyErr_Format(
-            PyExc_IndexError, "position %zd from error handler out of bounds", newpos
+            PyExc_IndexError,
+            ptr[u8]("position %zd from error handler out of bounds"),
+            newpos
         );
         object_decref(restuple);
         return (NULL, handler, ex, newpos);
@@ -12988,7 +13055,9 @@ impl charmaptranslate_lookup(
         if value < 0 or value > i64(MAX_UNICODE) {
             limit = u64(MAX_UNICODE) + u64(1);
             PyErr_Format(
-                PyExc_ValueError, "character mapping must be in range(0x%lx)", limit
+                PyExc_ValueError,
+                ptr[u8]("character mapping must be in range(0x%lx)"),
+                limit
             );
             object_decref(x);
             return (i32(-1), NULL, u32(0));
@@ -13000,7 +13069,7 @@ impl charmaptranslate_lookup(
     }
 
     PyErr_SetString(
-        PyExc_TypeError, "character mapping must return integer, None or str"
+        PyExc_TypeError, ptr[u8]("character mapping must return integer, None or str")
     );
     object_decref(x);
     return (i32(-1), NULL, u32(0));
@@ -13670,7 +13739,7 @@ impl case_operation(self_: ptr[PyObject], which: i64) -> ptr[PyObject] {
     data = uo_data(self_);
     length = uo_length(self_);
     if length > PY_SSIZE_T_MAX // 12 {
-        PyErr_SetString(PyExc_OverflowError, "string is too long");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("string is too long"));
         return NULL;
     }
     tmp = ptr[u32](PyMem_Malloc(u64(12 * length)));
@@ -15156,7 +15225,7 @@ impl sl_split(
     maxcount_in: i64
 ) -> ptr[PyObject] {
     if sep_len == 0 {
-        PyErr_SetString(PyExc_ValueError, "empty separator");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("empty separator"));
         return NULL;
     }
     if sep_len == 1 {
@@ -15316,7 +15385,7 @@ impl sl_rsplit(
     maxcount_in: i64
 ) -> ptr[PyObject] {
     if sep_len == 0 {
-        PyErr_SetString(PyExc_ValueError, "empty separator");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("empty separator"));
         return NULL;
     }
     if sep_len == 1 {
@@ -15439,7 +15508,7 @@ impl sl_partition(
     sep_len: i64
 ) -> ptr[PyObject] {
     if sep_len == 0 {
-        PyErr_SetString(PyExc_ValueError, "empty separator");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("empty separator"));
         return NULL;
     }
     out = PyTuple_New(3);
@@ -15467,7 +15536,7 @@ impl sl_rpartition(
     sep_len: i64
 ) -> ptr[PyObject] {
     if sep_len == 0 {
-        PyErr_SetString(PyExc_ValueError, "empty separator");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("empty separator"));
         return NULL;
     }
     out = PyTuple_New(3);
@@ -15560,7 +15629,7 @@ impl pad(
     }
     length = uo_length(self_);
     if left > PY_SSIZE_T_MAX - length or right > PY_SSIZE_T_MAX - (left + length) {
-        PyErr_SetString(PyExc_OverflowError, "padded string is too long");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("padded string is too long"));
         return NULL;
     }
     maxchar = uo_max_char_value(self_);
@@ -15914,7 +15983,7 @@ impl replace(
             release1 = True;
         }
         if len1 < len2 and len2 - len1 > (PY_SSIZE_T_MAX - slen) // n {
-            PyErr_SetString(PyExc_OverflowError, "replace string is too long");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("replace string is too long"));
             replace_release(srelease, sbuf, release1, buf1, release2, buf2);
             return NULL;
         }
@@ -15924,7 +15993,7 @@ impl replace(
             return unicode_get_empty();
         }
         if new_size > PY_SSIZE_T_MAX // rkind {
-            PyErr_SetString(PyExc_OverflowError, "replace string is too long");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("replace string is too long"));
             replace_release(srelease, sbuf, release1, buf1, release2, buf2);
             return NULL;
         }
@@ -16067,14 +16136,15 @@ impl convert_uc(obj_: ptr[PyObject]) -> tuple[bool, u32] {
     if not unicode_check(obj_) {
         PyErr_Format(
             PyExc_TypeError,
-            "The fill character must be a unicode character, not %.100s",
+            ptr[u8]("The fill character must be a unicode character, not %.100s"),
             object_type(obj_).view(1)[0].tp_name
         );
         return (False, u32(0));
     }
     if uo_length(obj_) != 1 {
         PyErr_SetString(
-            PyExc_TypeError, "The fill character must be exactly one character long"
+            PyExc_TypeError,
+            ptr[u8]("The fill character must be exactly one character long")
         );
         return (False, u32(0));
     }
@@ -16269,7 +16339,7 @@ impl encode_text_arg(value: ptr[PyObject], is_errors: bool) -> tuple[bool, ptr[u
         return (False, text);
     }
     if i64(strlen(text)) != length {
-        PyErr_SetString(PyExc_ValueError, "embedded null character");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
         return (False, ptr[u8]());
     }
     return (True, text);
@@ -16331,7 +16401,9 @@ impl unicode_expandtabs_impl(self_: ptr[PyObject], tabsize_in: i32) -> ptr[PyObj
             if tabsize > 0 {
                 incr = tabsize - (line_pos % tabsize);
                 if j > PY_SSIZE_T_MAX - incr {
-                    PyErr_SetString(PyExc_OverflowError, "new string is too long");
+                    PyErr_SetString(
+                        PyExc_OverflowError, ptr[u8]("new string is too long")
+                    );
                     return NULL;
                 }
                 line_pos += incr;
@@ -16339,7 +16411,7 @@ impl unicode_expandtabs_impl(self_: ptr[PyObject], tabsize_in: i32) -> ptr[PyObj
             }
         } else {
             if j > PY_SSIZE_T_MAX - 1 {
-                PyErr_SetString(PyExc_OverflowError, "new string is too long");
+                PyErr_SetString(PyExc_OverflowError, ptr[u8]("new string is too long"));
                 return NULL;
             }
             line_pos += 1;
@@ -16455,7 +16527,7 @@ impl unicode_getitem(self_: ptr[PyObject], index: i64) -> ptr[PyObject] {
         return NULL;
     }
     if index < 0 or index >= uo_length(self_) {
-        PyErr_SetString(PyExc_IndexError, "string index out of range");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("string index out of range"));
         return NULL;
     }
     ch = ch_read(uo_kind(self_), uo_data(self_), index);
@@ -16477,7 +16549,7 @@ impl unicode_index_impl(
 ) -> i64 {
     result = any_find_slice(str_obj, substr, start, end, i32(1));
     if result == -1 {
-        PyErr_SetString(PyExc_ValueError, "substring not found");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("substring not found"));
     } elif result < 0 {
         return -1;
     }
@@ -16900,7 +16972,7 @@ impl do_argstrip(
         } elif striptype == RIGHTSTRIP {
             name = ptr[u8]("rstrip");
         }
-        PyErr_Format(PyExc_TypeError, "%s arg must be None or str", name);
+        PyErr_Format(PyExc_TypeError, ptr[u8]("%s arg must be None or str"), name);
         return NULL;
     }
     return do_strip(self_, striptype);
@@ -16955,7 +17027,7 @@ impl unicode_repeat(str_obj: ptr[PyObject], len_: i64) -> ptr[PyObject] {
     }
     length = uo_length(str_obj);
     if length > PY_SSIZE_T_MAX // len_ {
-        PyErr_SetString(PyExc_OverflowError, "repeated string is too long");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("repeated string is too long"));
         return NULL;
     }
     nchars = len_ * length;
@@ -17208,7 +17280,9 @@ impl unicode_repr(unicode: ptr[PyObject]) -> ptr[PyObject] {
             incr = 10;
         }
         if osize > PY_SSIZE_T_MAX - incr {
-            PyErr_SetString(PyExc_OverflowError, "string is too long to generate repr");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("string is too long to generate repr")
+            );
             return NULL;
         }
         osize += incr;
@@ -17285,7 +17359,7 @@ impl unicode_rindex_impl(
 ) -> i64 {
     result = any_find_slice(str_obj, substr, start, end, i32(-1));
     if result == -1 {
-        PyErr_SetString(PyExc_ValueError, "substring not found");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("substring not found"));
     } elif result < 0 {
         return -1;
     }
@@ -17368,7 +17442,7 @@ impl unicode_split_impl(
     }
     PyErr_Format(
         PyExc_TypeError,
-        "must be str or None, not %.100s",
+        ptr[u8]("must be str or None, not %.100s"),
         object_type(sep).view(1)[0].tp_name
     );
     return NULL;
@@ -17439,7 +17513,7 @@ impl unicode_rsplit_impl(
     }
     PyErr_Format(
         PyExc_TypeError,
-        "must be str or None, not %.100s",
+        ptr[u8]("must be str or None, not %.100s"),
         object_type(sep).view(1)[0].tp_name
     );
     return NULL;
@@ -17523,7 +17597,7 @@ impl unicode_maketrans_from_dict(x: ptr[PyObject], newdict: ptr[PyObject]) -> i3
             if uo_length(key) != 1 {
                 PyErr_SetString(
                     PyExc_ValueError,
-                    "string keys in translatetable must be of length 1"
+                    ptr[u8]("string keys in translatetable must be of length 1")
                 );
                 return i32(-1);
             }
@@ -17544,7 +17618,8 @@ impl unicode_maketrans_from_dict(x: ptr[PyObject], newdict: ptr[PyObject]) -> i3
             }
         } else {
             PyErr_SetString(
-                PyExc_TypeError, "keys in translate table mustbe strings or integers"
+                PyExc_TypeError,
+                ptr[u8]("keys in translate table mustbe strings or integers")
             );
             return i32(-1);
         }
@@ -17563,7 +17638,9 @@ impl unicode_maketrans_impl(
         if not unicode_check(x) {
             PyErr_SetString(
                 PyExc_TypeError,
-                "first maketrans argument must be a string if there is a second argument"
+                ptr[u8](
+                    "first maketrans argument must be a string if there is a second argument"
+                )
             );
             object_decref(new_dict);
             return NULL;
@@ -17571,7 +17648,7 @@ impl unicode_maketrans_impl(
         if uo_length(x) != uo_length(y) {
             PyErr_SetString(
                 PyExc_ValueError,
-                "the first two maketrans arguments must have equal length"
+                ptr[u8]("the first two maketrans arguments must have equal length")
             );
             object_decref(new_dict);
             return NULL;
@@ -17623,7 +17700,7 @@ impl unicode_maketrans_impl(
         if not object_is_type(x, ptr[PyTypeObject](addressof(PyDict_Type))) {
             PyErr_SetString(
                 PyExc_TypeError,
-                "if you give only one argument to maketrans it must be a dict"
+                ptr[u8]("if you give only one argument to maketrans it must be a dict")
             );
             object_decref(new_dict);
             return NULL;
@@ -17723,7 +17800,7 @@ impl unicode_startswith_impl(
             if not unicode_check(substring) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "tuple for startswith must only contain str, not %.100s",
+                    ptr[u8]("tuple for startswith must only contain str, not %.100s"),
                     object_type(substring).view(1)[0].tp_name
                 );
                 return NULL;
@@ -17742,7 +17819,7 @@ impl unicode_startswith_impl(
     if not unicode_check(subobj) {
         PyErr_Format(
             PyExc_TypeError,
-            "startswith first arg must be str or a tuple of str, not %.100s",
+            ptr[u8]("startswith first arg must be str or a tuple of str, not %.100s"),
             object_type(subobj).view(1)[0].tp_name
         );
         return NULL;
@@ -17781,7 +17858,7 @@ impl unicode_endswith_impl(
             if not unicode_check(substring) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "tuple for endswith must only contain str, not %.100s",
+                    ptr[u8]("tuple for endswith must only contain str, not %.100s"),
                     object_type(substring).view(1)[0].tp_name
                 );
                 return NULL;
@@ -17799,7 +17876,7 @@ impl unicode_endswith_impl(
     if not unicode_check(subobj) {
         PyErr_Format(
             PyExc_TypeError,
-            "endswith first arg must be str or a tuple of str, not %.100s",
+            ptr[u8]("endswith first arg must be str or a tuple of str, not %.100s"),
             object_type(subobj).view(1)[0].tp_name
         );
         return NULL;
@@ -17875,7 +17952,9 @@ impl autonumber_state_error(state: i32, field_name_is_empty: bool) -> i32 {
         if field_name_is_empty {
             PyErr_SetString(
                 PyExc_ValueError,
-                "cannot switch from manual field specification to automatic field numbering"
+                ptr[u8](
+                    "cannot switch from manual field specification to automatic field numbering"
+                )
             );
             return i32(1);
         }
@@ -17883,7 +17962,9 @@ impl autonumber_state_error(state: i32, field_name_is_empty: bool) -> i32 {
         if not field_name_is_empty {
             PyErr_SetString(
                 PyExc_ValueError,
-                "cannot switch from automatic field numbering to manual field specification"
+                ptr[u8](
+                    "cannot switch from automatic field numbering to manual field specification"
+                )
             );
             return i32(1);
         }
@@ -17905,7 +17986,9 @@ impl get_integer(s: ptr[PyObject], start: i64, end: i64) -> i64 {
         }
 
         if accumulator > (PY_SSIZE_T_MAX - digitval) // 10 {
-            PyErr_Format(PyExc_ValueError, "Too many decimal digits in format string");
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("Too many decimal digits in format string")
+            );
             return -1;
         }
         accumulator = accumulator * 10 + digitval;
@@ -17980,7 +18063,7 @@ impl _FieldNameIterator_item(
     }
 
     if not bracket_seen {
-        PyErr_SetString(PyExc_ValueError, "Missing ']' in format string");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Missing ']' in format string"));
         return (i32(0), index);
     }
     return (i32(1), index);
@@ -18019,13 +18102,14 @@ impl FieldNameIterator_next(
         }
     } else {
         PyErr_SetString(
-            PyExc_ValueError, "Only '.' or '[' may follow ']' in format field specifier"
+            PyExc_ValueError,
+            ptr[u8]("Only '.' or '[' may follow ']' in format field specifier")
         );
         return (i32(0), index, is_attribute, name_idx, name_start, name_end);
     }
 
     if name_start == name_end {
-        PyErr_SetString(PyExc_ValueError, "Empty attribute in format string");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Empty attribute in format string"));
         return (i32(0), index, is_attribute, name_idx, name_start, name_end);
     }
     return (i32(2), index, is_attribute, name_idx, name_start, name_end);
@@ -18110,7 +18194,7 @@ impl get_field_object(
     } else {
         if not args {
             PyErr_SetString(
-                PyExc_ValueError, "Format string contains positional fields"
+                PyExc_ValueError, ptr[u8]("Format string contains positional fields")
             );
             return NULL;
         }
@@ -18118,7 +18202,7 @@ impl get_field_object(
         if not obj_ {
             PyErr_Format(
                 PyExc_IndexError,
-                "Replacement index %zd out of range for positional args tuple",
+                ptr[u8]("Replacement index %zd out of range for positional args tuple"),
                 index
             );
             return NULL;
@@ -18224,7 +18308,7 @@ impl parse_field(
         c = uo_read_char(s, pos);
         pos += 1;
         if c == FMT_LBRACE {
-            PyErr_SetString(PyExc_ValueError, "unexpected '{' in field name");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("unexpected '{' in field name"));
             ok = i32(0);
             break;
         }
@@ -18250,7 +18334,7 @@ impl parse_field(
             if pos >= end {
                 PyErr_SetString(
                     PyExc_ValueError,
-                    "end of string while looking for conversion specifier"
+                    ptr[u8]("end of string while looking for conversion specifier")
                 );
                 ok = i32(0);
             } else {
@@ -18263,7 +18347,8 @@ impl parse_field(
                         finished = True;
                     } elif c != FMT_COLON {
                         PyErr_SetString(
-                            PyExc_ValueError, "expected ':' after conversion specifier"
+                            PyExc_ValueError,
+                            ptr[u8]("expected ':' after conversion specifier")
                         );
                         ok = i32(0);
                     }
@@ -18290,12 +18375,14 @@ impl parse_field(
                 }
             }
             if not finished {
-                PyErr_SetString(PyExc_ValueError, "unmatched '{' in format spec");
+                PyErr_SetString(
+                    PyExc_ValueError, ptr[u8]("unmatched '{' in format spec")
+                );
                 ok = i32(0);
             }
         }
     } elif c != FMT_RBRACE {
-        PyErr_SetString(PyExc_ValueError, "expected '}' before end of string");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("expected '}' before end of string"));
         ok = i32(0);
     }
     return (ok, pos, fn_end, fs_str, fs_start, fs_end, conversion, expand);
@@ -18372,11 +18459,15 @@ impl MarkupIterator_next(
     at_end = pos >= end;
     length = pos - start;
     if c == FMT_RBRACE and (at_end or c != uo_read_char(s, pos)) {
-        PyErr_SetString(PyExc_ValueError, "Single '}' encountered in format string");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("Single '}' encountered in format string")
+        );
         return markup_literal(i32(0), pos, i64(0), i64(0));
     }
     if at_end and c == FMT_LBRACE {
-        PyErr_SetString(PyExc_ValueError, "Single '{' encountered in format string");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("Single '{' encountered in format string")
+        );
         return markup_literal(i32(0), pos, i64(0), i64(0));
     }
     if not at_end {
@@ -18425,11 +18516,13 @@ impl do_conversion(obj_: ptr[PyObject], conversion: u32) -> ptr[PyObject] {
     }
     if conversion > u32(32) and conversion < u32(127) {
         PyErr_Format(
-            PyExc_ValueError, "Unknown conversion specifier %c", i32(conversion)
+            PyExc_ValueError,
+            ptr[u8]("Unknown conversion specifier %c"),
+            i32(conversion)
         );
     } else {
         PyErr_Format(
-            PyExc_ValueError, "Unknown conversion specifier \\x%x", conversion
+            PyExc_ValueError, ptr[u8]("Unknown conversion specifier \\x%x"), conversion
         );
     }
     return NULL;
@@ -18565,7 +18658,7 @@ impl build_string(
     auto_number: ptr[AutoNumber]
 ) -> ptr[PyObject] {
     if recursion_depth <= 0 {
-        PyErr_SetString(PyExc_ValueError, "Max string recursion exceeded");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Max string recursion exceeded"));
         return NULL;
     }
     writer = writer_new();
@@ -18679,7 +18772,7 @@ impl formatter_parser(ignored: ptr[PyObject], self_: ptr[PyObject]) -> ptr[PyObj
     if not unicode_check(self_) {
         PyErr_Format(
             PyExc_TypeError,
-            "expected str, got %s",
+            ptr[u8]("expected str, got %s"),
             object_type(self_).view(1)[0].tp_name
         );
         return NULL;
@@ -18741,7 +18834,7 @@ impl formatter_field_name_split(
     if not unicode_check(self_) {
         PyErr_Format(
             PyExc_TypeError,
-            "expected str, got %s",
+            ptr[u8]("expected str, got %s"),
             object_type(self_).view(1)[0].tp_name
         );
         return NULL;
@@ -18930,7 +19023,7 @@ impl unicode_subscript(self_: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObjec
     }
     PyErr_Format(
         PyExc_TypeError,
-        "string indices must be integers, not '%.200s'",
+        ptr[u8]("string indices must be integers, not '%.200s'"),
         object_type(item).view(1)[0].tp_name
     );
     return NULL;
@@ -19002,7 +19095,7 @@ impl unicode_format_getnextarg(ctx: ptr[UnicodeFormatter]) -> ptr[PyObject] {
         }
         return PyTuple_GetItem(ctx.view(1)[0].args, argidx);
     }
-    PyErr_SetString(PyExc_TypeError, "not enough arguments for format string");
+    PyErr_SetString(PyExc_TypeError, ptr[u8]("not enough arguments for format string"));
     return NULL;
 }
 
@@ -19047,14 +19140,14 @@ impl formatlong_wrongtype(v: ptr[PyObject], conv: u32) -> i32 {
     if format_wants_index(conv) {
         PyErr_Format(
             PyExc_TypeError,
-            "%%%c format: an integer is required, not %.200s",
+            ptr[u8]("%%%c format: an integer is required, not %.200s"),
             i32(conv),
             object_type(v).view(1)[0].tp_name
         );
     } else {
         PyErr_Format(
             PyExc_TypeError,
-            "%%%c format: a real number is required, not %.200s",
+            ptr[u8]("%%%c format: a real number is required, not %.200s"),
             i32(conv),
             object_type(v).view(1)[0].tp_name
         );
@@ -19121,7 +19214,9 @@ impl formatchar(v: ptr[PyObject]) -> u32 {
         }
         PyErr_Format(
             PyExc_TypeError,
-            "%%c requires an int or a unicode character, not a string of length %zd",
+            ptr[u8](
+                "%%c requires an int or a unicode character, not a string of length %zd"
+            ),
             uo_length(v)
         );
         return u32(0xFFFFFFFF);
@@ -19131,13 +19226,15 @@ impl formatchar(v: ptr[PyObject]) -> u32 {
     if x == -1 and PyErr_Occurred() {
         if PyErr_ExceptionMatches(PyExc_TypeError) != i32(0) {
             PyErr_Format(
-                PyExc_TypeError, "%%c requires an int or a unicode character, not %T", v
+                PyExc_TypeError,
+                ptr[u8]("%%c requires an int or a unicode character, not %T"),
+                v
             );
         }
         return u32(0xFFFFFFFF);
     }
     if x < 0 or x > i64(MAX_UNICODE) {
-        PyErr_SetString(PyExc_OverflowError, "%c arg not in range(0x110000)");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("%c arg not in range(0x110000)"));
         return u32(0xFFFFFFFF);
     }
     return u32(x);
@@ -19169,7 +19266,7 @@ impl unicode_format_arg_parse(
     v = NULL;
     if ch == PCT_LPAREN {
         if not ctx.view(1)[0].dct {
-            PyErr_SetString(PyExc_TypeError, "format requires a mapping");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("format requires a mapping"));
             return i32(-1);
         }
         ctx.view(1)[0].fmtpos += 1;
@@ -19187,7 +19284,7 @@ impl unicode_format_arg_parse(
         }
         keylen = ctx.view(1)[0].fmtpos - keystart - 1;
         if ctx.view(1)[0].fmtcnt < 0 or pcount > 0 {
-            PyErr_SetString(PyExc_ValueError, "incomplete format key");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("incomplete format key"));
             return i32(-1);
         }
         key = PyUnicode_Substring(ctx.view(1)[0].fmtstr, keystart, keystart + keylen);
@@ -19231,7 +19328,7 @@ impl unicode_format_arg_parse(
             return i32(-1);
         }
         if not long_check(v) {
-            PyErr_SetString(PyExc_TypeError, "* wants int");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("* wants int"));
             return i32(-1);
         }
         width = PyLong_AsSsize_t(v);
@@ -19254,7 +19351,7 @@ impl unicode_format_arg_parse(
                 break;
             }
             if width > (PY_SSIZE_T_MAX - i64(ch - PCT_ZERO)) // 10 {
-                PyErr_SetString(PyExc_ValueError, "width too big");
+                PyErr_SetString(PyExc_ValueError, ptr[u8]("width too big"));
                 return i32(-1);
             }
             width = width * 10 + i64(ch - PCT_ZERO);
@@ -19272,7 +19369,7 @@ impl unicode_format_arg_parse(
                 return i32(-1);
             }
             if not long_check(v) {
-                PyErr_SetString(PyExc_TypeError, "* wants int");
+                PyErr_SetString(PyExc_TypeError, ptr[u8]("* wants int"));
                 return i32(-1);
             }
             prec = PyLong_AsInt(v);
@@ -19293,7 +19390,7 @@ impl unicode_format_arg_parse(
                     break;
                 }
                 if i64(prec) > (INT_MAX - i64(ch - PCT_ZERO)) // 10 {
-                    PyErr_SetString(PyExc_ValueError, "precision too big");
+                    PyErr_SetString(PyExc_ValueError, ptr[u8]("precision too big"));
                     return i32(-1);
                 }
                 prec = i32(i64(prec) * 10 + i64(ch - PCT_ZERO));
@@ -19309,7 +19406,7 @@ impl unicode_format_arg_parse(
         }
     }
     if ctx.view(1)[0].fmtcnt < 0 {
-        PyErr_SetString(PyExc_ValueError, "incomplete format");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("incomplete format"));
         return i32(-1);
     }
     arg.view(1)[0].ch = ch;
@@ -19401,7 +19498,7 @@ impl unicode_format_arg_format(
         }
         PyErr_Format(
             PyExc_ValueError,
-            "unsupported format character '%c' (0x%x) at index %zd",
+            ptr[u8]("unsupported format character '%c' (0x%x) at index %zd"),
             shown,
             i32(ch),
             ctx.view(1)[0].fmtpos - 1
@@ -19595,7 +19692,8 @@ impl unicode_format_arg(ctx: ptr[UnicodeFormatter], arg: ptr[UnicodeFormatArg]) 
     }
     if ctx.view(1)[0].dct and ctx.view(1)[0].argidx < ctx.view(1)[0].arglen {
         PyErr_SetString(
-            PyExc_TypeError, "not all arguments converted during string formatting"
+            PyExc_TypeError,
+            ptr[u8]("not all arguments converted during string formatting")
         );
         return i32(-1);
     }
@@ -19786,7 +19884,10 @@ impl unicode_new(
 impl arg_as_utf8(obj_: ptr[PyObject], name: ptr[u8]) -> ptr[u8] {
     if not unicode_check(obj_) {
         PyErr_Format(
-            PyExc_TypeError, "str() argument '%s' must be str, not %T", name, obj_
+            PyExc_TypeError,
+            ptr[u8]("str() argument '%s' must be str, not %T"),
+            name,
+            obj_
         );
         return ptr[u8]();
     }
@@ -20108,7 +20209,7 @@ impl unicode_iter(seq: ptr[PyObject]) -> ptr[PyObject] {
 impl encode_wstr_utf8(wstr: ptr[i32], name: ptr[u8]) -> tuple[i32, ptr[u8]] {
     (res, text, has_pos, error_pos) = encode_utf8_ex(wstr, i32(1), _Py_ERROR_STRICT);
     if res == i32(-2) {
-        PyErr_Format(PyExc_RuntimeError, "cannot encode %s", name);
+        PyErr_Format(PyExc_RuntimeError, ptr[u8]("cannot encode %s"), name);
         return (i32(-1), ptr[u8]());
     }
     if res < i32(0) {
@@ -20172,7 +20273,9 @@ impl init_fs_codec(interp: ptr[u8]) -> i32 {
     filesystem_errors = ptr[ptr[i32]](config + PyConfig_FILESYSTEM_ERRORS).view(1)[0];
     error_handler = get_error_handler_wide(filesystem_errors);
     if error_handler == _Py_ERROR_UNKNOWN {
-        PyErr_SetString(PyExc_RuntimeError, "unknown filesystem error handler");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("unknown filesystem error handler")
+        );
         return i32(-1);
     }
     (res, encoding) = encode_wstr_utf8(

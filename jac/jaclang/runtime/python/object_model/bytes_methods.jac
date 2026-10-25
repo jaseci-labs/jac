@@ -488,7 +488,9 @@ import from c {
         frm: ptr[Py_buffer], to_buf: ptr[Py_buffer]
     ) -> ptr[PyObject] {
         if frm.view(1)[0].length != to_buf.view(1)[0].length {
-            PyErr_Format(PyExc_ValueError, "maketrans arguments must have same length");
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("maketrans arguments must have same length")
+            );
             return NULL;
         }
         res = PyBytes_FromStringAndSize(ptr[u8](), 256);
@@ -521,7 +523,7 @@ import from c {
             return NULL;
         }
         if result == -1 {
-            PyErr_SetString(PyExc_ValueError, "subsection not found");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("subsection not found"));
             return NULL;
         }
         return PyLong_FromSsize_t(result);
@@ -541,7 +543,7 @@ import from c {
             return NULL;
         }
         if result == -1 {
-            PyErr_SetString(PyExc_ValueError, "subsection not found");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("subsection not found"));
             return NULL;
         }
         return PyLong_FromSsize_t(result);
@@ -594,7 +596,7 @@ import from c {
             return i32(1) if pos >= 0 else i32(0);
         }
         if ival < 0 or ival >= 256 {
-            PyErr_SetString(PyExc_ValueError, "byte must be in range(0, 256)");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("byte must be in range(0, 256)"));
             return i32(-1);
         }
         if memchr(ptr(s), i32(ival), u64(length)).is_null() {
@@ -1570,7 +1572,7 @@ impl parse_args_finds_byte(subobj: ptr[PyObject]) -> tuple[bool, ptr[PyObject], 
     if PyIndex_Check(subobj) == i32(0) {
         PyErr_Format(
             PyExc_TypeError,
-            "argument should be integer or bytes-like object, not '%.200s'",
+            ptr[u8]("argument should be integer or bytes-like object, not '%.200s'"),
             object_type(subobj).view(1)[0].tp_name
         );
         return (False, NULL, u8(0));
@@ -1580,7 +1582,7 @@ impl parse_args_finds_byte(subobj: ptr[PyObject]) -> tuple[bool, ptr[PyObject], 
         return (False, NULL, u8(0));
     }
     if ival < 0 or ival > 255 {
-        PyErr_SetString(PyExc_ValueError, "byte must be in range(0, 256)");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("byte must be in range(0, 256)"));
         return (False, NULL, u8(0));
     }
     return (True, NULL, u8(ival));
@@ -1735,7 +1737,7 @@ impl bytes_tailmatch(
         if PyErr_ExceptionMatches(PyExc_TypeError) != i32(0) {
             PyErr_Format(
                 PyExc_TypeError,
-                "%s first arg must be bytes or a tuple of bytes, not %s",
+                ptr[u8]("%s first arg must be bytes or a tuple of bytes, not %s"),
                 function_name,
                 object_type(subobj).view(1)[0].tp_name
             );
@@ -1900,7 +1902,7 @@ impl bl_split(
     maxcount_in: i64
 ) -> ptr[PyObject] {
     if sep_len == 0 {
-        PyErr_SetString(PyExc_ValueError, "empty separator");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("empty separator"));
         return NULL;
     }
     if sep_len == 1 {
@@ -2046,7 +2048,7 @@ impl bl_rsplit(
     maxcount_in: i64
 ) -> ptr[PyObject] {
     if sep_len == 0 {
-        PyErr_SetString(PyExc_ValueError, "empty separator");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("empty separator"));
         return NULL;
     }
     if sep_len == 1 {
@@ -2159,7 +2161,7 @@ impl bl_partition(
     sep_len: i64
 ) -> ptr[PyObject] {
     if sep_len == 0 {
-        PyErr_SetString(PyExc_ValueError, "empty separator");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("empty separator"));
         return NULL;
     }
     out = PyTuple_New(3);
@@ -2196,7 +2198,7 @@ impl bl_rpartition(
     sep_len: i64
 ) -> ptr[PyObject] {
     if sep_len == 0 {
-        PyErr_SetString(PyExc_ValueError, "empty separator");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("empty separator"));
         return NULL;
     }
     out = PyTuple_New(3);
@@ -2268,7 +2270,9 @@ impl bl_bytes_join(sep: ptr[PyObject], iterable: ptr[PyObject]) -> ptr[PyObject]
             if PyObject_GetBuffer(item, view, PyBUF_SIMPLE) != i32(0) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "sequence item %zd: expected a bytes-like object, %.80s found",
+                    ptr[u8](
+                        "sequence item %zd: expected a bytes-like object, %.80s found"
+                    ),
                     i,
                     object_type(item).view(1)[0].tp_name
                 );
@@ -2281,14 +2285,16 @@ impl bl_bytes_join(sep: ptr[PyObject], iterable: ptr[PyObject]) -> ptr[PyObject]
         nbufs = i + 1;
         itemlen = view.view(1)[0].length;
         if itemlen > PY_SSIZE_T_MAX - sz {
-            PyErr_SetString(PyExc_OverflowError, "join() result is too long");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("join() result is too long"));
             failed = True;
             break;
         }
         sz += itemlen;
         if i != 0 {
             if seplen > PY_SSIZE_T_MAX - sz {
-                PyErr_SetString(PyExc_OverflowError, "join() result is too long");
+                PyErr_SetString(
+                    PyExc_OverflowError, ptr[u8]("join() result is too long")
+                );
                 failed = True;
                 break;
             }
@@ -2296,7 +2302,7 @@ impl bl_bytes_join(sep: ptr[PyObject], iterable: ptr[PyObject]) -> ptr[PyObject]
         }
         if seqlen != object_size(seq) {
             PyErr_SetString(
-                PyExc_RuntimeError, "sequence changed size during iteration"
+                PyExc_RuntimeError, ptr[u8]("sequence changed size during iteration")
             );
             failed = True;
             break;
@@ -2437,7 +2443,7 @@ impl bl_return_self(op: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl expandtabs_overflow -> ptr[PyObject] {
-    PyErr_SetString(PyExc_OverflowError, "result too long");
+    PyErr_SetString(PyExc_OverflowError, ptr[u8]("result too long"));
     return NULL;
 }
 
@@ -2664,7 +2670,9 @@ impl fillchar_arg(which: i64, arg: ptr[PyObject]) -> tuple[bool, u8] {
         if object_size(arg) != 1 {
             PyErr_Format(
                 PyExc_TypeError,
-                "%s(): argument 2 must be a byte string of length 1, not a bytes object of length %zd",
+                ptr[u8](
+                    "%s(): argument 2 must be a byte string of length 1, not a bytes object of length %zd"
+                ),
                 just_name(which),
                 object_size(arg)
             );
@@ -2676,7 +2684,9 @@ impl fillchar_arg(which: i64, arg: ptr[PyObject]) -> tuple[bool, u8] {
         if object_size(arg) != 1 {
             PyErr_Format(
                 PyExc_TypeError,
-                "%s(): argument 2 must be a byte string of length 1, not a bytearray object of length %zd",
+                ptr[u8](
+                    "%s(): argument 2 must be a byte string of length 1, not a bytearray object of length %zd"
+                ),
                 just_name(which),
                 object_size(arg)
             );
@@ -2772,7 +2782,7 @@ impl bl_countchar(target: ptr[u8], target_len: i64, c: u8, maxcount: i64) -> i64
 }
 
 impl replace_overflow -> ptr[PyObject] {
-    PyErr_SetString(PyExc_OverflowError, "replace bytes is too long");
+    PyErr_SetString(PyExc_OverflowError, ptr[u8]("replace bytes is too long"));
     return NULL;
 }
 

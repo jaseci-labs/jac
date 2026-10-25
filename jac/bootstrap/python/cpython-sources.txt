@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 232 C files / 404,254 lines; 161 headers / 154,886 lines.
-#   Total: 393 files / 559,140 source lines.
+#   Excluded: 236 C files / 409,693 lines; 163 headers / 155,308 lines.
+#   Total: 399 files / 565,001 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -96,7 +96,7 @@ Parser/myreadline.c
 Python/Python-ast.c
 # Python/Python-tokenize.c  # removed: 445 source lines
 # Python/_contextvars.c  # removed: 68 source lines
-Python/_warnings.c
+# Python/_warnings.c  # removed: 1,691 source lines
 Python/asdl.c
 # Python/asm_trampoline.S  # removed: 63 source lines
 # Python/asm_trampoline_aarch64.h  # removed: 56 source lines
@@ -113,7 +113,7 @@ Python/brc.c
 # Python/ceval_macros.h  # removed: 439 source lines
 # Python/clinic/Python-tokenize.c.h  # removed: 86 source lines
 # Python/clinic/_contextvars.c.h  # removed: 21 source lines
-Python/clinic/_warnings.c.h
+# Python/clinic/_warnings.c.h  # removed: 287 source lines
 # Python/clinic/bltinmodule.c.h  # removed: 1,287 source lines
 # Python/clinic/context.c.h  # removed: 262 source lines
 Python/clinic/import.c.h
@@ -121,7 +121,7 @@ Python/clinic/import.c.h
 # Python/clinic/instrumentation.c.h  # removed: 334 source lines
 Python/clinic/marshal.c.h
 Python/clinic/sysmodule.c.h
-Python/clinic/traceback.c.h
+# Python/clinic/traceback.c.h  # removed: 135 source lines
 # Python/codecs.c  # removed: 1,708 source lines
 # Python/codegen.c  # removed: 6,485 source lines
 # Python/compile.c  # removed: 1,753 source lines
@@ -135,7 +135,7 @@ Python/crossinterp_exceptions.h
 # Python/dtoa.c  # removed: 2,843 source lines
 Python/dynamic_annotations.c
 Python/dynload_shlib.c
-Python/errors.c
+# Python/errors.c  # removed: 2,069 source lines
 # Python/executor_cases.c.h  # pruned: 7,163 source lines
 # Python/fileutils.c  # removed: 3,112 source lines
 # Python/flowgraph.c  # removed: 4,167 source lines
@@ -202,14 +202,14 @@ Python/pythonrun.c
 Python/stackrefs.c
 Python/stdlib_module_names.h
 # Python/structmember.c  # removed: 382 source lines
-Python/suggestions.c
+# Python/suggestions.c  # removed: 206 source lines
 # Python/symtable.c  # removed: 3,272 source lines
 Python/sysmodule.c
 # Python/thread.c  # removed: 301 source lines
 # Python/thread_nt.h  # pruned: 532 source lines
 # Python/thread_pthread.h  # removed: 1,002 source lines
 # Python/thread_pthread_stubs.h  # pruned: 191 source lines
-Python/traceback.c
+# Python/traceback.c  # removed: 1,473 source lines
 # Python/tracemalloc.c  # removed: 1,489 source lines
 Python/uniqueid.c
 

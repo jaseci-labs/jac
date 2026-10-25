@@ -1145,7 +1145,7 @@ impl thread_run(boot_raw: ptr) {
                 PyErr_Clear();
             } else {
                 PyErr_FormatUnraisable(
-                    "Exception ignored in thread started by %R", func
+                    ptr[u8]("Exception ignored in thread started by %R"), func
                 );
             }
         } else {
@@ -1179,7 +1179,7 @@ impl ThreadHandle_start(
     PyMutex_Lock(handle_mutex(self_));
     if self_.view(1)[0].state != THREAD_HANDLE_NOT_STARTED {
         PyMutex_Unlock(handle_mutex(self_));
-        PyErr_SetString(PyExc_RuntimeError, "thread already started");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("thread already started"));
         return -1;
     }
     self_.view(1)[0].state = THREAD_HANDLE_STARTING;
@@ -1217,7 +1217,7 @@ impl ThreadHandle_start(
         PyThreadState_Clear(tstate);
         PyThreadState_Delete(tstate);
         thread_bootstate_free(boot, True);
-        PyErr_SetString(PyExc_RuntimeError, "can't start new thread");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("can't start new thread"));
         once_call(handle_once(self_), ptr(force_done), ptr(self_));
         return -1;
     }
@@ -1241,7 +1241,7 @@ impl join_thread(arg: ptr) -> i32 {
         err = PyThread_join_thread(os_handle);
         PyEval_RestoreThread(save);
         if err != 0 {
-            PyErr_SetString(PyExc_RuntimeError, "Failed joining thread");
+            PyErr_SetString(PyExc_RuntimeError, ptr[u8]("Failed joining thread"));
             return -1;
         }
     }
@@ -1251,7 +1251,7 @@ impl join_thread(arg: ptr) -> i32 {
 
 impl check_started(self_: ptr[ThreadHandle]) -> i32 {
     if get_thread_handle_state(self_) < THREAD_HANDLE_RUNNING {
-        PyErr_SetString(PyExc_RuntimeError, "thread not started");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("thread not started"));
         return -1;
     }
     return 0;
@@ -1265,13 +1265,13 @@ impl ThreadHandle_join(self_: ptr[ThreadHandle], timeout_in: i64) -> i32 {
 
     if _PyEvent_IsSet(handle_exiting(self_)) == 0 {
         if ThreadHandle_ident(self_) == PyThread_get_thread_ident_ex() {
-            PyErr_SetString(PyExc_RuntimeError, "Cannot join current thread");
+            PyErr_SetString(PyExc_RuntimeError, ptr[u8]("Cannot join current thread"));
             return -1;
         }
         if Py_IsFinalizing() != 0 {
             PyErr_SetString(
                 PyExc_PythonFinalizationError,
-                "cannot join thread at interpreter shutdown"
+                ptr[u8]("cannot join thread at interpreter shutdown")
             );
             return -1;
         }
@@ -1308,7 +1308,7 @@ impl ThreadHandle_join(self_: ptr[ThreadHandle], timeout_in: i64) -> i32 {
 impl set_done(arg: ptr) -> i32 {
     handle = ptr[ThreadHandle](arg);
     if detach_thread(handle) < 0 {
-        PyErr_SetString(PyExc_RuntimeError, "failed detaching handle");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("failed detaching handle"));
         return -1;
     }
     _PyEvent_Notify(handle_exiting(handle));
@@ -1469,13 +1469,13 @@ impl lock_acquire_parse_args(
 
     if not blocking and timeout != unset_timeout {
         PyErr_SetString(
-            PyExc_ValueError, "can't specify a timeout for a non-blocking call"
+            PyExc_ValueError, ptr[u8]("can't specify a timeout for a non-blocking call")
         );
         return (i32(-1), i64(0));
     }
     if timeout < 0 and timeout != unset_timeout {
         PyErr_SetString(
-            PyExc_ValueError, "timeout value must be a non-negative number"
+            PyExc_ValueError, ptr[u8]("timeout value must be a non-negative number")
         );
         return (i32(-1), i64(0));
     }
@@ -1484,7 +1484,7 @@ impl lock_acquire_parse_args(
     } elif timeout != unset_timeout {
         microseconds = _PyTime_AsMicroseconds(timeout, _PyTime_ROUND_TIMEOUT);
         if microseconds > PY_TIMEOUT_MAX {
-            PyErr_SetString(PyExc_OverflowError, "timeout value is too large");
+            PyErr_SetString(PyExc_OverflowError, ptr[u8]("timeout value is too large"));
             return (i32(-1), i64(0));
         }
     }
@@ -1512,7 +1512,7 @@ impl lock_PyThread_release_lock(
     op: ptr[PyObject], dummy: ptr[PyObject]
 ) -> ptr[PyObject] {
     if _PyMutex_TryUnlock(lock_mutex(op)) < 0 {
-        PyErr_SetString(PyExc_RuntimeError, "release unlocked lock");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("release unlocked lock"));
         return NULL;
     }
     return object_new_ref(Py_None);
@@ -1591,7 +1591,7 @@ impl rlock_acquire(
 
 impl rlock_release(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if _PyRecursiveMutex_TryUnlock(rlock_mutex(op)) < 0 {
-        PyErr_SetString(PyExc_RuntimeError, "cannot release un-acquired lock");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("cannot release un-acquired lock"));
         return NULL;
     }
     return object_new_ref(Py_None);
@@ -1611,7 +1611,7 @@ impl parse_restore_state(args: ptr[PyObject]) -> tuple[bool, i64, u64] {
     if not type_flag(state, Py_TPFLAGS_TUPLE_SUBCLASS) or PyTuple_Size(state) != 2 {
         PyErr_Format(
             PyExc_TypeError,
-            "_acquire_restore() argument 1 must be sequence of length 2, not %.50s",
+            ptr[u8]("_acquire_restore() argument 1 must be sequence of length 2, not %.50s"),
             object_type(state).view(1)[0].tp_name
         );
         return (False, i64(0), u64(0));
@@ -1629,7 +1629,7 @@ impl parse_restore_state(args: ptr[PyObject]) -> tuple[bool, i64, u64] {
     if PyIndex_Check(owner_obj) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "_acquire_restore() argument 1 must be int, not %.50s",
+            ptr[u8]("_acquire_restore() argument 1 must be int, not %.50s"),
             object_type(owner_obj).view(1)[0].tp_name
         );
         return (False, i64(0), u64(0));
@@ -1655,7 +1655,7 @@ impl rlock_acquire_restore(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObje
 
 impl rlock_release_save(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if _PyRecursiveMutex_IsLockedByCurrentThread(rlock_mutex(op)) == 0 {
-        PyErr_SetString(PyExc_RuntimeError, "cannot release un-acquired lock");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("cannot release un-acquired lock"));
         return NULL;
     }
 
@@ -1796,7 +1796,7 @@ impl local_new(
         if rc != 0 {
             if rc > 0 {
                 PyErr_SetString(
-                    PyExc_TypeError, "Initialization arguments are not supported"
+                    PyExc_TypeError, ptr[u8]("Initialization arguments are not supported")
                 );
             }
             return NULL;
@@ -1916,7 +1916,7 @@ impl drop_local_dict(self_: ptr[PyObject], key: ptr[PyObject]) {
     exc = PyErr_GetRaisedException();
     if PyDict_DelItem(ptr[localobject](self_).view(1)[0].localdicts, key) < 0 {
         PyErr_FormatUnraisable(
-            "Exception ignored while deleting thread local of %R", self_
+            ptr[u8]("Exception ignored while deleting thread local of %R"), self_
         );
     }
     PyErr_SetRaisedException(exc);
@@ -1986,12 +1986,12 @@ impl _ldict(self_: ptr[PyObject], state: ptr[ThreadModuleState]) -> ptr[PyObject
             exc = PyErr_GetRaisedException();
             if PyDict_DelItem(local[0].localdicts, key) < 0 {
                 PyErr_FormatUnraisable(
-                    "Exception ignored while deleting thread local of %R", self_
+                    ptr[u8]("Exception ignored while deleting thread local of %R"), self_
                 );
             }
             if PySet_Discard(local[0].thread_watchdogs, wr) < 0 {
                 PyErr_FormatUnraisable(
-                    "Exception ignored while discarding thread watchdog of %R", self_
+                    ptr[u8]("Exception ignored while discarding thread watchdog of %R"), self_
                 );
             }
             PyErr_SetRaisedException(exc);
@@ -2023,7 +2023,7 @@ impl local_setattro(op: ptr[PyObject], name: ptr[PyObject], v: ptr[PyObject]) ->
     if r == 1 {
         PyErr_Format(
             PyExc_AttributeError,
-            "'%.100s' object attribute %R is read-only",
+            ptr[u8]("'%.100s' object attribute %R is read-only"),
             object_type(op).view(1)[0].tp_name,
             name
         );
@@ -2087,14 +2087,14 @@ impl clear_locals(
         key = PyTuple_GetItem(locals_and_key, 1);
         if PyDict_Pop(local[0].localdicts, key, None) < 0 {
             PyErr_FormatUnraisable(
-                "Exception ignored while clearing thread local %R", self_
+                ptr[u8]("Exception ignored while clearing thread local %R"), self_
             );
         }
     }
     if local[0].thread_watchdogs {
         if PySet_Discard(local[0].thread_watchdogs, dummyweakref) < 0 {
             PyErr_FormatUnraisable(
-                "Exception ignored while clearing thread local %R", self_
+                ptr[u8]("Exception ignored while clearing thread local %R"), self_
             );
         }
     }
@@ -2124,14 +2124,14 @@ impl do_start_new_thread(
     flags = ptr[u64](interp + PyInterpreterState_FEATURE_FLAGS).view(1)[0];
     if (flags & Py_RTFLAGS_THREADS) == u64(0) {
         PyErr_SetString(
-            PyExc_RuntimeError, "thread is not supported for isolated subinterpreters"
+            PyExc_RuntimeError, ptr[u8]("thread is not supported for isolated subinterpreters")
         );
         return -1;
     }
     if __atomic_load_i64(int(interp) + PyInterpreterState_FINALIZING, 0) != 0 {
         PyErr_SetString(
             PyExc_PythonFinalizationError,
-            "can't create new thread at interpreter shutdown"
+            ptr[u8]("can't create new thread at interpreter shutdown")
         );
         return -1;
     }
@@ -2163,15 +2163,15 @@ impl thread_PyThread_start_new_thread(
         return NULL;
     }
     if PyCallable_Check(func) == 0 {
-        PyErr_SetString(PyExc_TypeError, "first arg must be callable");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("first arg must be callable"));
         return NULL;
     }
     if not type_flag(args, Py_TPFLAGS_TUPLE_SUBCLASS) {
-        PyErr_SetString(PyExc_TypeError, "2nd arg must be a tuple");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("2nd arg must be a tuple"));
         return NULL;
     }
     if kwargs != NULL and not type_flag(kwargs, Py_TPFLAGS_DICT_SUBCLASS) {
-        PyErr_SetString(PyExc_TypeError, "optional 3rd arg must be a dictionary");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("optional 3rd arg must be a dictionary"));
         return NULL;
     }
 
@@ -2211,7 +2211,7 @@ impl thread_PyThread_start_joinable_thread(
     daemon = not values[2].given or values[2].flag;
 
     if PyCallable_Check(func) == 0 {
-        PyErr_SetString(PyExc_TypeError, "thread function must be callable");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("thread function must be callable"));
         return NULL;
     }
 
@@ -2219,7 +2219,7 @@ impl thread_PyThread_start_joinable_thread(
         hobj = Py_None;
     } elif hobj != Py_None
         and object_type(hobj) != state.view(1)[0].thread_handle_type {
-        PyErr_SetString(PyExc_TypeError, "'handle' must be a _ThreadHandle");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("'handle' must be a _ThreadHandle"));
         return NULL;
     }
 
@@ -2272,7 +2272,7 @@ impl thread_PyThread_interrupt_main(
     }
 
     if PyErr_SetInterruptEx(signum) != 0 {
-        PyErr_SetString(PyExc_ValueError, "signal number out of range");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("signal number out of range"));
         return NULL;
     }
     return object_new_ref(Py_None);
@@ -2287,7 +2287,7 @@ impl thread_PyThread_allocate_lock(
 impl thread_get_ident(self_: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObject] {
     ident = PyThread_get_thread_ident_ex();
     if ident == PYTHREAD_INVALID_THREAD_ID {
-        PyErr_SetString(PyExc_RuntimeError, "no current thread ident");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("no current thread ident"));
         return NULL;
     }
     return PyLong_FromUnsignedLongLong(ident);
@@ -2319,7 +2319,7 @@ impl thread_stack_size(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
 
     min_size = PYOS_MIN_STACK_SIZE + SYSTEM_PAGE_SIZE;
     if new_size != 0 and new_size < min_size {
-        PyErr_Format(PyExc_ValueError, "size must be at least %zi bytes", min_size);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("size must be at least %zi bytes"), min_size);
         return NULL;
     }
 
@@ -2327,11 +2327,11 @@ impl thread_stack_size(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
 
     rc = PyThread_set_stacksize(u64.wrap(new_size));
     if rc == -1 {
-        PyErr_Format(PyExc_ValueError, "size not valid: %zd bytes", new_size);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("size not valid: %zd bytes"), new_size);
         return NULL;
     }
     if rc == -2 {
-        PyErr_SetString(PyExc_RuntimeError, "setting stack size not supported");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("setting stack size not supported"));
         return NULL;
     }
     return PyLong_FromSsize_t(i64.wrap(old_size));
@@ -2394,7 +2394,7 @@ impl thread_excepthook(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObje
 
     if object_type(args) != state.view(1)[0].excepthook_type {
         PyErr_SetString(
-            PyExc_TypeError, "_thread.excepthook argument type must be ExceptHookArgs"
+            PyExc_TypeError, ptr[u8]("_thread.excepthook argument type must be ExceptHookArgs")
         );
         return NULL;
     }
@@ -2472,7 +2472,7 @@ impl thread_shutdown(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
 
         if ThreadHandle_join(handle, -1) < 0 {
             PyErr_FormatUnraisable(
-                "Exception ignored while joining a thread in _thread._shutdown()"
+                ptr[u8]("Exception ignored while joining a thread in _thread._shutdown()")
             );
             ThreadHandle_decref(handle);
             return object_new_ref(Py_None);
@@ -2488,7 +2488,7 @@ impl thread__make_thread_handle(
 ) -> ptr[PyObject] {
     state = get_thread_state(module);
     if not type_flag(identobj, Py_TPFLAGS_LONG_SUBCLASS) {
-        PyErr_SetString(PyExc_TypeError, "ident must be an integer");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("ident must be an integer"));
         return NULL;
     }
     ident = PyLong_AsUnsignedLongLong(identobj);

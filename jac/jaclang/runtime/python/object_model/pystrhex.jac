@@ -47,23 +47,23 @@ impl strhex_impl(
             return NULL;
         }
         if seplen != 1 {
-            PyErr_SetString(PyExc_ValueError, "sep must be length 1.");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("sep must be length 1."));
             return NULL;
         }
         if unicode_check(sep) {
             if uo_kind(sep) != 1 {
-                PyErr_SetString(PyExc_ValueError, "sep must be ASCII.");
+                PyErr_SetString(PyExc_ValueError, ptr[u8]("sep must be ASCII."));
                 return NULL;
             }
             sep_char = u8.wrap(uo_read_char(sep, 0));
         } elif bytes_check(sep) {
             sep_char = bytes_data(sep).view(1)[0];
         } else {
-            PyErr_SetString(PyExc_TypeError, "sep must be str or bytes.");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("sep must be str or bytes."));
             return NULL;
         }
         if sep_char > u8(127) and not return_bytes {
-            PyErr_SetString(PyExc_ValueError, "sep must be ASCII.");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("sep must be ASCII."));
             return NULL;
         }
     } else {

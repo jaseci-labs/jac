@@ -416,7 +416,9 @@ import from c {
                 PyMem_Free(ptr(view));
                 PyErr_Format(
                     PyExc_TypeError,
-                    "float() argument must be a string or a real number, not '%.200s'",
+                    ptr[u8](
+                        "float() argument must be a string or a real number, not '%.200s'"
+                    ),
                     object_type(v).view(1)[0].tp_name
                 );
                 return NULL;
@@ -466,7 +468,7 @@ import from c {
             }
             PyErr_Format(
                 PyExc_TypeError,
-                "must be real number, not %.50s",
+                ptr[u8]("must be real number, not %.50s"),
                 object_type(op).view(1)[0].tp_name
             );
             return -1.0;
@@ -479,7 +481,7 @@ import from c {
             if not float_check(res) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "%.50s.__float__ returned non-float (type %.50s)",
+                    ptr[u8]("%.50s.__float__ returned non-float (type %.50s)"),
                     object_type(op).view(1)[0].tp_name,
                     object_type(res).view(1)[0].tp_name
                 );
@@ -489,7 +491,9 @@ import from c {
             if PyErr_WarnFormat(
                 PyExc_DeprecationWarning,
                 1,
-                "%.50s.__float__ returned non-float (type %.50s).  The ability to return an instance of a strict subclass of float is deprecated, and may be removed in a future version of Python.",
+                ptr[u8](
+                    "%.50s.__float__ returned non-float (type %.50s).  The ability to return an instance of a strict subclass of float is deprecated, and may be removed in a future version of Python."
+                ),
                 object_type(op).view(1)[0].tp_name,
                 object_type(res).view(1)[0].tp_name
             )
@@ -704,14 +708,17 @@ import from c {
             f = frexp(x, &mut fe);
             e = i64(fe);
             if f < 0.5 or f >= 1.0 {
-                PyErr_SetString(PyExc_SystemError, "frexp() result out of range");
+                PyErr_SetString(
+                    PyExc_SystemError, ptr[u8]("frexp() result out of range")
+                );
                 return i32(-1);
             }
             f *= 2.0;
             e -= 1;
             if e >= 16 {
                 PyErr_SetString(
-                    PyExc_OverflowError, "float too large to pack with e format"
+                    PyExc_OverflowError,
+                    ptr[u8]("float too large to pack with e format")
                 );
                 return i32(-1);
             } elif e < -25 {
@@ -734,7 +741,8 @@ import from c {
                     e += 1;
                     if e == 31 {
                         PyErr_SetString(
-                            PyExc_OverflowError, "float too large to pack with e format"
+                            PyExc_OverflowError,
+                            ptr[u8]("float too large to pack with e format")
                         );
                         return i32(-1);
                     }
@@ -755,7 +763,7 @@ import from c {
         y = f32(x);
         if is_inf(f64(y)) and not is_inf(x) {
             PyErr_SetString(
-                PyExc_OverflowError, "float too large to pack with f format"
+                PyExc_OverflowError, ptr[u8]("float too large to pack with f format")
             );
             return i32(-1);
         }
@@ -915,7 +923,9 @@ impl float_from_string_inner(s_in: ptr[u8], length: i64, ob: ptr) -> ptr[PyObjec
     }
     if s == last {
         PyErr_Format(
-            PyExc_ValueError, "could not convert string to float: %R", ptr[PyObject](ob)
+            PyExc_ValueError,
+            ptr[u8]("could not convert string to float: %R"),
+            ptr[PyObject](ob)
         );
         return NULL;
     }
@@ -928,7 +938,9 @@ impl float_from_string_inner(s_in: ptr[u8], length: i64, ob: ptr) -> ptr[PyObjec
     x = PyOS_string_to_double(s, ptr(end_slot), NULL);
     if end_slot.view(1)[0] != last {
         PyErr_Format(
-            PyExc_ValueError, "could not convert string to float: %R", ptr[PyObject](ob)
+            PyExc_ValueError,
+            ptr[u8]("could not convert string to float: %R"),
+            ptr[PyObject](ob)
         );
         return NULL;
     }
@@ -1111,7 +1123,7 @@ impl float_div(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
         return unconverted(sb);
     }
     if b == 0.0 {
-        PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+        PyErr_SetString(PyExc_ZeroDivisionError, ptr[u8]("division by zero"));
         return NULL;
     }
     return PyFloat_FromDouble(a / b);
@@ -1127,7 +1139,7 @@ impl float_rem(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
         return unconverted(sb);
     }
     if wx == 0.0 {
-        PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+        PyErr_SetString(PyExc_ZeroDivisionError, ptr[u8]("division by zero"));
         return NULL;
     }
     mod = fmod(vx, wx);
@@ -1175,7 +1187,7 @@ impl float_divmod(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
         return unconverted(sb);
     }
     if wx == 0.0 {
-        PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+        PyErr_SetString(PyExc_ZeroDivisionError, ptr[u8]("division by zero"));
         return NULL;
     }
     (floordiv, mod) = float_div_mod(vx, wx);
@@ -1192,7 +1204,7 @@ impl float_floor_div(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
         return unconverted(sb);
     }
     if wx == 0.0 {
-        PyErr_SetString(PyExc_ZeroDivisionError, "division by zero");
+        PyErr_SetString(PyExc_ZeroDivisionError, ptr[u8]("division by zero"));
         return NULL;
     }
     (floordiv, mod) = float_div_mod(vx, wx);
@@ -1207,7 +1219,7 @@ impl float_pow(v: ptr[PyObject], w: ptr[PyObject], z: ptr[PyObject]) -> ptr[PyOb
     if z != Py_None {
         PyErr_SetString(
             PyExc_TypeError,
-            "pow() 3rd argument not allowed unless all arguments are integers"
+            ptr[u8]("pow() 3rd argument not allowed unless all arguments are integers")
         );
         return NULL;
     }
@@ -1249,7 +1261,9 @@ impl float_pow(v: ptr[PyObject], w: ptr[PyObject], z: ptr[PyObject]) -> ptr[PyOb
     if iv == 0.0 {
         iw_is_odd = double_is_odd_integer(iw);
         if iw < 0.0 {
-            PyErr_SetString(PyExc_ZeroDivisionError, "zero to a negative power");
+            PyErr_SetString(
+                PyExc_ZeroDivisionError, ptr[u8]("zero to a negative power")
+            );
             return NULL;
         }
 
@@ -1390,7 +1404,9 @@ impl double_round(x: f64, ndigits: i32) -> ptr[PyObject] {
     errno = jacpy_errno();
     PyMem_Free(ptr(mybuf));
     if errno == ERANGE and fabs(rounded) >= 1.0 {
-        PyErr_SetString(PyExc_OverflowError, "rounded value too large to represent");
+        PyErr_SetString(
+            PyExc_OverflowError, ptr[u8]("rounded value too large to represent")
+        );
         return NULL;
     }
     return PyFloat_FromDouble(rounded);
@@ -1680,12 +1696,15 @@ impl float_fromhex(type: ptr[PyObject], string: ptr[PyObject]) -> ptr[PyObject] 
     (x, end, failure) = parse_hex_float(s);
     if failure == FROMHEX_OVERFLOW {
         PyErr_SetString(
-            PyExc_OverflowError, "hexadecimal value too large to represent as a float"
+            PyExc_OverflowError,
+            ptr[u8]("hexadecimal value too large to represent as a float")
         );
         return NULL;
     }
     if failure == FROMHEX_TOO_LONG {
-        PyErr_SetString(PyExc_ValueError, "hexadecimal string too long to convert");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("hexadecimal string too long to convert")
+        );
         return NULL;
     }
 
@@ -1693,7 +1712,9 @@ impl float_fromhex(type: ptr[PyObject], string: ptr[PyObject]) -> ptr[PyObject] 
         end = end + 1;
     }
     if failure != 0 or end != s_end {
-        PyErr_SetString(PyExc_ValueError, "invalid hexadecimal floating-point string");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("invalid hexadecimal floating-point string")
+        );
         return NULL;
     }
     result = PyFloat_FromDouble(x);
@@ -1714,12 +1735,14 @@ impl float_as_integer_ratio(
     }
     if is_inf(self_double) {
         PyErr_SetString(
-            PyExc_OverflowError, "cannot convert Infinity to integer ratio"
+            PyExc_OverflowError, ptr[u8]("cannot convert Infinity to integer ratio")
         );
         return NULL;
     }
     if is_nan(self_double) {
-        PyErr_SetString(PyExc_ValueError, "cannot convert NaN to integer ratio");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("cannot convert NaN to integer ratio")
+        );
         return NULL;
     }
     exponent = i32(0);
@@ -1859,7 +1882,7 @@ impl float___getformat__(type: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObjec
         return NULL;
     }
     if i64(strlen(typestr)) != length {
-        PyErr_SetString(PyExc_ValueError, "embedded null character");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
         return NULL;
     }
     r = FORMAT_UNKNOWN;
@@ -1869,7 +1892,8 @@ impl float___getformat__(type: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObjec
         r = float_format;
     } else {
         PyErr_SetString(
-            PyExc_ValueError, "__getformat__() argument 1 must be 'double' or 'float'"
+            PyExc_ValueError,
+            ptr[u8]("__getformat__() argument 1 must be 'double' or 'float'")
         );
         return NULL;
     }

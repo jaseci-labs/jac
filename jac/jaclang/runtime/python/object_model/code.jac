@@ -781,7 +781,9 @@ import from c {
                 return i32(i);
             }
         }
-        PyErr_SetString(PyExc_RuntimeError, "no more code watcher IDs available");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("no more code watcher IDs available")
+        );
         return i32(-1);
     }  def PyCode_ClearWatcher(watcher_id: i32) -> i32 {
         interp = current_interp();
@@ -847,12 +849,14 @@ import from c {
         }
 
         if object_size(code) > INT_MAX {
-            PyErr_SetString(PyExc_OverflowError, "code: co_code larger than INT_MAX");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("code: co_code larger than INT_MAX")
+            );
             return i32(-1);
         }
         if object_size(code) % CODEUNIT_SIZE != 0
             or (int(bytes_data(code)) % CODEUNIT_SIZE) != 0 {
-            PyErr_SetString(PyExc_ValueError, "code: co_code is malformed");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("code: co_code is malformed"));
             return i32(-1);
         }
 
@@ -867,7 +871,9 @@ import from c {
             nplainlocals -= 1;
         }
         if nplainlocals < 0 {
-            PyErr_SetString(PyExc_ValueError, "code: co_varnames is too small");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("code: co_varnames is too small")
+            );
             return i32(-1);
         }
         return i32(0);
@@ -1021,7 +1027,7 @@ import from c {
                     if oparg >= nlocalsplus {
                         PyErr_Format(
                             PyExc_ValueError,
-                            "code: LOAD_FAST_AND_CLEAR oparg %d out of range",
+                            ptr[u8]("code: LOAD_FAST_AND_CLEAR oparg %d out of range"),
                             i32.wrap(oparg)
                         );
                         ok = False;
@@ -1075,7 +1081,9 @@ import from c {
             }
         }
         if ok and i64(nlocals) != object_size(varnames) {
-            PyErr_SetString(PyExc_ValueError, "code: co_nlocals != len(co_varnames)");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("code: co_nlocals != len(co_varnames)")
+            );
             ok = False;
         }
         if ok {
@@ -1478,7 +1486,7 @@ import from c {
         } elif not set_check(globalnames) {
             PyErr_Format(
                 PyExc_TypeError,
-                "expected a set for \"globalnames\", got %R",
+                ptr[u8]("expected a set for \"globalnames\", got %R"),
                 globalnames
             );
             ok = False;
@@ -1493,7 +1501,7 @@ import from c {
             } elif not set_check(attrnames) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "expected a set for \"attrnames\", got %R",
+                    ptr[u8]("expected a set for \"attrnames\", got %R"),
                     attrnames
                 );
                 ok = False;
@@ -2125,7 +2133,7 @@ impl notify_code_watchers(event: i32, co: ptr[PyObject]) {
             calls.view(1)[0].watcher = code_watcher_slot(interp, i).view(1)[0];
             if calls.view(1)[0].watcher(event, co) < 0 {
                 PyErr_FormatUnraisable(
-                    "Exception ignored in %s watcher callback for %R",
+                    ptr[u8]("Exception ignored in %s watcher callback for %R"),
                     code_event_name(event),
                     co
                 );
@@ -2138,11 +2146,15 @@ impl notify_code_watchers(event: i32, co: ptr[PyObject]) {
 
 impl validate_watcher_id(interp: ptr[u8], watcher_id: i32) -> i32 {
     if watcher_id < 0 or i64(watcher_id) >= CODE_MAX_WATCHERS {
-        PyErr_Format(PyExc_ValueError, "Invalid code watcher ID %d", watcher_id);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("Invalid code watcher ID %d"), watcher_id
+        );
         return i32(-1);
     }
     if code_watcher_slot(interp, i64(watcher_id)).view(1)[0] == 0 {
-        PyErr_Format(PyExc_ValueError, "No code watcher set for ID %d", watcher_id);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("No code watcher set for ID %d"), watcher_id
+        );
         return i32(-1);
     }
     return i32(0);
@@ -2169,7 +2181,9 @@ impl intern_strings(tup: ptr[PyObject]) -> i32 {
     while i >= 0 {
         v = tuple_get_item(tup, i);
         if not v or not unicode_check_exact(v) {
-            PyErr_SetString(PyExc_SystemError, "non-string found in code slot");
+            PyErr_SetString(
+                PyExc_SystemError, ptr[u8]("non-string found in code slot")
+            );
             return i32(-1);
         }
         _PyUnicode_InternImmortal(interp, tuple_items(tup) + i);
@@ -2238,7 +2252,7 @@ impl validate_and_copy_tuple(tup: ptr[PyObject]) -> ptr[PyObject] {
         } elif not unicode_check(item) {
             PyErr_Format(
                 PyExc_TypeError,
-                "name tuples must contain only strings, not '%.500s'",
+                ptr[u8]("name tuples must contain only strings, not '%.500s'"),
                 object_type(item).view(1)[0].tp_name
             );
             object_decref(newtuple);
@@ -3032,7 +3046,7 @@ impl verify_stateless_with(
     }
     errmsg = internal_state_error(co);
     if errmsg {
-        PyErr_Format(PyExc_ValueError, "%s", errmsg);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("%s"), errmsg);
         return i32(-1);
     }
     if builtinsns {
@@ -3044,7 +3058,7 @@ impl verify_stateless_with(
     }
     external = external_state_error(counts);
     if external {
-        PyErr_Format(PyExc_ValueError, "%s", external);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("%s"), external);
         return i32(-1);
     }
     return i32(0);
@@ -3343,19 +3357,27 @@ impl code_new_impl(
         ok = False;
     }
     if ok and argcount < 0 {
-        PyErr_SetString(PyExc_ValueError, "code: argcount must not be negative");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("code: argcount must not be negative")
+        );
         ok = False;
     }
     if ok and posonlyargcount < 0 {
-        PyErr_SetString(PyExc_ValueError, "code: posonlyargcount must not be negative");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("code: posonlyargcount must not be negative")
+        );
         ok = False;
     }
     if ok and kwonlyargcount < 0 {
-        PyErr_SetString(PyExc_ValueError, "code: kwonlyargcount must not be negative");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("code: kwonlyargcount must not be negative")
+        );
         ok = False;
     }
     if ok and nlocals < 0 {
-        PyErr_SetString(PyExc_ValueError, "code: nlocals must not be negative");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("code: nlocals must not be negative")
+        );
         ok = False;
     }
     if ok {
@@ -3714,7 +3736,9 @@ impl code_hash(self: ptr[PyObject]) -> i64 {
 
 impl code_getlnotab(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     if PyErr_WarnEx(
-        PyExc_DeprecationWarning, "co_lnotab is deprecated, use co_lines instead.", 1
+        PyExc_DeprecationWarning,
+        ptr[u8]("co_lnotab is deprecated, use co_lines instead."),
+        1
     )
         < 0 {
         return NULL;
@@ -3790,35 +3814,45 @@ impl code_replace_impl(
     co_exceptiontable: ptr[PyObject]
 ) -> ptr[PyObject] {
     if co_argcount < 0 {
-        PyErr_SetString(PyExc_ValueError, "co_argcount must be a positive integer");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("co_argcount must be a positive integer")
+        );
         return NULL;
     }
     if co_posonlyargcount < 0 {
         PyErr_SetString(
-            PyExc_ValueError, "co_posonlyargcount must be a positive integer"
+            PyExc_ValueError, ptr[u8]("co_posonlyargcount must be a positive integer")
         );
         return NULL;
     }
     if co_kwonlyargcount < 0 {
         PyErr_SetString(
-            PyExc_ValueError, "co_kwonlyargcount must be a positive integer"
+            PyExc_ValueError, ptr[u8]("co_kwonlyargcount must be a positive integer")
         );
         return NULL;
     }
     if co_nlocals < 0 {
-        PyErr_SetString(PyExc_ValueError, "co_nlocals must be a positive integer");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("co_nlocals must be a positive integer")
+        );
         return NULL;
     }
     if co_stacksize < 0 {
-        PyErr_SetString(PyExc_ValueError, "co_stacksize must be a positive integer");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("co_stacksize must be a positive integer")
+        );
         return NULL;
     }
     if co_flags_in < 0 {
-        PyErr_SetString(PyExc_ValueError, "co_flags must be a positive integer");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("co_flags must be a positive integer")
+        );
         return NULL;
     }
     if co_firstlineno < 0 {
-        PyErr_SetString(PyExc_ValueError, "co_firstlineno must be a positive integer");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("co_firstlineno must be a positive integer")
+        );
         return NULL;
     }
 

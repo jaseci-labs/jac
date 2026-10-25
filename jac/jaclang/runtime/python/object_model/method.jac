@@ -319,11 +319,11 @@ impl method_new(
     function = tuple_get_item(args, 0);
     instance = tuple_get_item(args, 1);
     if PyCallable_Check(function) == 0 {
-        PyErr_SetString(PyExc_TypeError, "first argument must be callable");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("first argument must be callable"));
         return NULL;
     }
     if not instance or instance == Py_None {
-        PyErr_SetString(PyExc_TypeError, "instance must not be None");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("instance must not be None"));
         return NULL;
     }
     return PyMethod_New(function, instance);
@@ -529,7 +529,7 @@ impl instancemethod_new(
     }
     function = tuple_get_item(args, 0);
     if PyCallable_Check(function) == 0 {
-        PyErr_SetString(PyExc_TypeError, "first argument must be callable");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("first argument must be callable"));
         return NULL;
     }
     return PyInstanceMethod_New(function);

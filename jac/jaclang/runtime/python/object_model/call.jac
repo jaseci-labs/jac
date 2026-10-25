@@ -133,13 +133,13 @@ import from c {
                 if callable {
                     PyErr_Format(
                         PyExc_SystemError,
-                        "%R returned NULL without setting an exception",
+                        ptr[u8]("%R returned NULL without setting an exception"),
                         callable
                     );
                 } else {
                     PyErr_Format(
                         PyExc_SystemError,
-                        "%s returned NULL without setting an exception",
+                        ptr[u8]("%s returned NULL without setting an exception"),
                         where
                     );
                 }
@@ -150,13 +150,13 @@ import from c {
             if callable {
                 _PyErr_FormatFromCause(
                     PyExc_SystemError,
-                    "%R returned a result with an exception set",
+                    ptr[u8]("%R returned a result with an exception set"),
                     callable
                 );
             } else {
                 _PyErr_FormatFromCause(
                     PyExc_SystemError,
-                    "%s returned a result with an exception set",
+                    ptr[u8]("%s returned a result with an exception set"),
                     where
                 );
             }
@@ -285,7 +285,7 @@ import from c {
         if offset <= 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%.200s' object does not support vectorcall",
+                ptr[u8]("'%.200s' object does not support vectorcall"),
                 object_type(callable).view(1)[0].tp_name
             );
             return NULL;
@@ -294,7 +294,7 @@ import from c {
         if func == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%.200s' object does not support vectorcall",
+                ptr[u8]("'%.200s' object does not support vectorcall"),
                 object_type(callable).view(1)[0].tp_name
             );
             return NULL;
@@ -366,11 +366,13 @@ import from c {
     ) -> ptr[PyObject] {
         tstate = thread_state();
         if args and not tuple_check(args) {
-            PyErr_SetString(PyExc_TypeError, "argument list must be a tuple");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("argument list must be a tuple"));
             return NULL;
         }
         if kwargs and not dict_check(kwargs) {
-            PyErr_SetString(PyExc_TypeError, "keyword list must be a dictionary");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("keyword list must be a dictionary")
+            );
             return NULL;
         }
         if not args {
@@ -389,7 +391,7 @@ import from c {
             );
         }
         if not tuple_check(args) {
-            PyErr_SetString(PyExc_TypeError, "argument list must be a tuple");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("argument list must be a tuple"));
             return NULL;
         }
         return _PyObject_Call(tstate, callable, args, NULL);
@@ -731,7 +733,9 @@ impl arg_array(address: int) -> ptr[ptr[PyObject]] {
 
 impl null_error(tstate: ptr[PyThreadState]) -> ptr[PyObject] {
     if not exception_raised(tstate) {
-        PyErr_SetString(PyExc_SystemError, "null argument to internal routine");
+        PyErr_SetString(
+            PyExc_SystemError, ptr[u8]("null argument to internal routine")
+        );
     }
     return NULL;
 }
@@ -811,7 +815,9 @@ impl object_is_not_callable(callable: ptr[PyObject]) {
             } elif res > 0 and PyCallable_Check(attr) != 0 {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "'%.200s' object is not callable. Did you mean: '%U.%U(...)'?",
+                    ptr[u8](
+                        "'%.200s' object is not callable. Did you mean: '%U.%U(...)'?"
+                    ),
                     tp_name,
                     name,
                     name
@@ -824,7 +830,7 @@ impl object_is_not_callable(callable: ptr[PyObject]) {
             object_decref(name);
         }
     }
-    PyErr_Format(PyExc_TypeError, "'%.200s' object is not callable", tp_name);
+    PyErr_Format(PyExc_TypeError, ptr[u8]("'%.200s' object is not callable"), tp_name);
 }
 
 impl vectorcall_call(
@@ -892,7 +898,7 @@ impl unpack_dict(
     }
 
     if keys_are_strings == u64(0) {
-        PyErr_SetString(PyExc_TypeError, "keywords must be strings");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("keywords must be strings"));
         _PyStack_UnpackDict_Free(stack, nargs, kwnames);
         return (ptr[ptr[PyObject]](), NULL);
     }

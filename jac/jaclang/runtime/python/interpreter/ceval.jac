@@ -466,7 +466,9 @@ import from c {
         if stack_size < CEVAL_MIN_STACK_SIZE {
             min_size = i64(CEVAL_MIN_STACK_SIZE);
             PyErr_Format(
-                PyExc_ValueError, "stack_size must be at least %zu bytes", min_size
+                PyExc_ValueError,
+                ptr[u8]("stack_size must be at least %zu bytes"),
+                min_size
             );
             return -1;
         }
@@ -1068,7 +1070,7 @@ import from c {
             if not tuple_check_exact(pair) {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "%.200s.split must return a tuple, not %.200s",
+                    ptr[u8]("%.200s.split must return a tuple, not %.200s"),
                     ceval_tp_name(exc_value),
                     ceval_tp_name(pair)
                 );
@@ -1079,7 +1081,9 @@ import from c {
             if pair_size < 2 {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "%.200s.split must return a 2-tuple, got tuple of size %zd",
+                    ptr[u8](
+                        "%.200s.split must return a 2-tuple, got tuple of size %zd"
+                    ),
                     ceval_tp_name(exc_value),
                     pair_size
                 );
@@ -1267,19 +1271,23 @@ import from c {
         return result;
     }  def PyEval_SetProfile(func: ptr, arg: ptr[PyObject]) {
         if _PyEval_SetProfile(current_tstate(), func, arg) < 0 {
-            PyErr_FormatUnraisable("Exception ignored in PyEval_SetProfile");
+            PyErr_FormatUnraisable(ptr[u8]("Exception ignored in PyEval_SetProfile"));
         }
     }  def PyEval_SetProfileAllThreads(func: ptr, arg: ptr[PyObject]) {
         if _PyEval_SetProfileAllThreads(current_interp(), func, arg) < 0 {
-            PyErr_FormatUnraisable("Exception ignored in PyEval_SetProfileAllThreads");
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored in PyEval_SetProfileAllThreads")
+            );
         }
     }  def PyEval_SetTrace(func: ptr, arg: ptr[PyObject]) {
         if _PyEval_SetTrace(current_tstate(), func, arg) < 0 {
-            PyErr_FormatUnraisable("Exception ignored in PyEval_SetTrace");
+            PyErr_FormatUnraisable(ptr[u8]("Exception ignored in PyEval_SetTrace"));
         }
     }  def PyEval_SetTraceAllThreads(func: ptr, arg: ptr[PyObject]) {
         if _PyEval_SetTraceAllThreads(current_interp(), func, arg) < 0 {
-            PyErr_FormatUnraisable("Exception ignored in PyEval_SetTraceAllThreads");
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored in PyEval_SetTraceAllThreads")
+            );
         }
     }  def _PyEval_SetCoroutineOriginTrackingDepth(depth: i32) -> i32 {
         tstate = current_tstate();
@@ -1904,7 +1912,9 @@ import from c {
         if not am or int(am.view(1)[0].am_anext) == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "'async for' requires an iterator with __anext__ method, got %.100s",
+                ptr[u8](
+                    "'async for' requires an iterator with __anext__ method, got %.100s"
+                ),
                 type.view(1)[0].tp_name
             );
             return NULL;
@@ -1917,7 +1927,9 @@ import from c {
         if not awaitable {
             _PyErr_FormatFromCause(
                 PyExc_TypeError,
-                "'async for' received an invalid object from __anext__: %.100s",
+                ptr[u8](
+                    "'async for' received an invalid object from __anext__: %.100s"
+                ),
                 ceval_tp_name(next_iter)
             );
         }

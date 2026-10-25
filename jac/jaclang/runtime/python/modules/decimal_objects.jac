@@ -349,29 +349,29 @@ def condition_exception(module: ptr[PyObject], index: int) -> ptr[PyObject] {
 # Errors.
 
 def value_error_int(message: str) -> i32 {
-    PyErr_SetString(PyExc_ValueError, message);
+    object_error(PyExc_ValueError, message);
     return i32(-1);
 }
 
 def value_error_ptr(message: str) -> ptr[PyObject] {
-    PyErr_SetString(PyExc_ValueError, message);
+    object_error(PyExc_ValueError, message);
     return NULL;
 }
 
 def type_error_int(message: str) -> i32 {
-    PyErr_SetString(PyExc_TypeError, message);
+    object_error(PyExc_TypeError, message);
     return i32(-1);
 }
 
 """INTERNAL_ERROR_INT."""
 def internal_error_int(funcname: str) -> i32 {
-    PyErr_SetString(PyExc_RuntimeError, "internal error in " + funcname);
+    object_error(PyExc_RuntimeError, "internal error in " + funcname);
     return i32(-1);
 }
 
 """INTERNAL_ERROR_PTR."""
 def internal_error_ptr(funcname: str) -> ptr[PyObject] {
-    PyErr_SetString(PyExc_RuntimeError, "internal error in " + funcname);
+    object_error(PyExc_RuntimeError, "internal error in " + funcname);
     return NULL;
 }
 
@@ -395,7 +395,7 @@ def exception_as_flag(module: ptr[PyObject], ex: ptr[PyObject]) -> u32 {
             return SIGNAL_FLAGS[index];
         }
     }
-    PyErr_SetString(PyExc_KeyError, INVALID_SIGNALS_ERR);
+    object_error(PyExc_KeyError, INVALID_SIGNALS_ERR);
     return DEC_INVALID_SIGNALS;
 }
 
@@ -474,11 +474,11 @@ def flags_as_dict(module: ptr[PyObject], flags: u32) -> ptr[PyObject] {
 """The flags of a dict of all signals to truth values, or an error code."""
 def dict_as_flags(module: ptr[PyObject], value: ptr[PyObject]) -> u32 {
     if jacpy_is_dict(value) == 0 {
-        PyErr_SetString(PyExc_TypeError, "argument must be a signal dict");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("argument must be a signal dict"));
         return DEC_INVALID_SIGNALS;
     }
     if PyDict_Size(value) != i64(SIGNAL_MAP_LEN) {
-        PyErr_SetString(PyExc_KeyError, "invalid signal dict");
+        PyErr_SetString(PyExc_KeyError, ptr[u8]("invalid signal dict"));
         return DEC_INVALID_SIGNALS;
     }
     flags: u32 = 0;
@@ -488,7 +488,7 @@ def dict_as_flags(module: ptr[PyObject], value: ptr[PyObject]) -> u32 {
             if PyErr_Occurred() {
                 return DEC_ERR_OCCURRED;
             }
-            PyErr_SetString(PyExc_KeyError, "invalid signal dict");
+            PyErr_SetString(PyExc_KeyError, ptr[u8]("invalid signal dict"));
             return DEC_INVALID_SIGNALS;
         }
         x = PyObject_IsTrue(b);
@@ -652,7 +652,9 @@ def context_or_current(module: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyO
         return current_context_borrowed(module);
     }
     if not context_check(module, context) {
-        PyErr_SetString(PyExc_TypeError, "optional argument must be a context");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("optional argument must be a context")
+        );
         return NULL;
     }
     return context;
@@ -662,7 +664,7 @@ def context_or_current(module: ptr[PyObject], context: ptr[PyObject]) -> ptr[PyO
 decimal.py does."""
 def set_current_context(module: ptr[PyObject], v: ptr[PyObject]) -> ptr[PyObject] {
     if not context_check(module, v) {
-        PyErr_SetString(PyExc_TypeError, "argument must be a context");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("argument must be a context"));
         return NULL;
     }
     if v == state_value(module, STATE_DEFAULT_CONTEXT_TEMPLATE)

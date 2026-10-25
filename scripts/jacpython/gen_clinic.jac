@@ -335,10 +335,17 @@ def accepted(conv: any) -> set[str] {
     };
 }
 
+# Built-in modules the interpreter core defines rather than Setup: their C
+# source under Python/, by module name.
+glob CORE_SOURCES: dict[str, str] = {"_warnings": "Python/_warnings.c"};
+
 # A module's C sources: those Setup lists, each followed by the local `.c`
 # files it textually includes (_ssl.c's `#include "_ssl/cert.c"`), whose clinic
 # blocks belong to the same module.
 def module_sources(tree: Path, module: str) -> list[Path] {
+    if module in CORE_SOURCES {
+        return [tree / CORE_SOURCES[module]];
+    }
     for setup in ("Modules/Setup.stdlib.in", "Modules/Setup.bootstrap.in") {
         for line in (tree / setup).read_text().splitlines() {
             parts = re.sub(r"^@[A-Z0-9_]+@", "", line.strip()).split();
@@ -2230,7 +2237,15 @@ with entry:__main__ {
     version = pin()["version"];
     stale: list[str] = [];
     with tempfile.TemporaryDirectory() as scratch {
-        tree = extract_tree(Path(scratch), ("Tools/clinic/", "Modules/"));
+        tree = extract_tree(
+            Path(scratch),
+            ("Tools/clinic/", "Modules/")
+                + tuple(sorted(set(CORE_SOURCES.values())))
+                + tuple(
+                    str(Path(source).parent / "clinic" / (Path(source).name + ".h"))
+                    for source in sorted(set(CORE_SOURCES.values()))
+                )
+        );
         rendered = [
             generate(tree, module, version) for module in args.modules or registered()
         ];

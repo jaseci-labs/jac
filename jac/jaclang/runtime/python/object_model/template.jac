@@ -134,7 +134,9 @@ import from c {
         }
         PyErr_Format(
             PyExc_TypeError,
-            "can only concatenate string.templatelib.Template (not \"%T\") to string.templatelib.Template",
+            ptr[u8](
+                "can only concatenate string.templatelib.Template (not \"%T\") to string.templatelib.Template"
+            ),
             other
         );
         return NULL;
@@ -222,7 +224,7 @@ impl template_new(
 ) -> ptr[PyObject] {
     if kwds {
         PyErr_SetString(
-            PyExc_TypeError, "Template.__new__ only accepts *args arguments"
+            PyExc_TypeError, ptr[u8]("Template.__new__ only accepts *args arguments")
         );
         return NULL;
     }
@@ -246,7 +248,9 @@ impl template_new(
         } else {
             PyErr_Format(
                 PyExc_TypeError,
-                "Template.__new__ *args need to be of type 'str' or 'Interpolation', got %T",
+                ptr[u8](
+                    "Template.__new__ *args need to be of type 'str' or 'Interpolation', got %T"
+                ),
                 item
             );
             return NULL;

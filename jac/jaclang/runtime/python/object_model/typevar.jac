@@ -1212,7 +1212,7 @@ import from c {
         generic = cached_type(PyInterpreterState_CACHED_GENERIC_TYPE);
         if not generic {
             object_xdecref(params);
-            PyErr_SetString(PyExc_SystemError, "Cannot find Generic type");
+            PyErr_SetString(PyExc_SystemError, ptr[u8]("Cannot find Generic type"));
             return NULL;
         }
         result = call_typing_func_object(
@@ -1280,7 +1280,9 @@ import from c {
             offset = typevartupleobject_EVALUATE_DEFAULT;
         }
         if offset < 0 {
-            PyErr_Format(PyExc_TypeError, "Expected a type param, got %R", typeparam);
+            PyErr_Format(
+                PyExc_TypeError, ptr[u8]("Expected a type param, got %R"), typeparam
+            );
             return NULL;
         }
         replace_field(typeparam, offset, object_new_ref(evaluate_default));
@@ -1383,7 +1385,7 @@ impl nodefault_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     if object_size(args) != 0 or (kwargs and PyDict_Size(kwargs) != 0) {
-        PyErr_SetString(PyExc_TypeError, "NoDefaultType takes no arguments");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("NoDefaultType takes no arguments"));
         return NULL;
     }
     return no_default();
@@ -1640,7 +1642,7 @@ impl variance_repr(
 }
 
 impl mro_entries_error(name: str) -> ptr[PyObject] {
-    PyErr_Format(PyExc_TypeError, "Cannot subclass an instance of %s", name);
+    PyErr_Format(PyExc_TypeError, ptr[u8]("Cannot subclass an instance of %s"), name);
     return NULL;
 }
 
@@ -1783,12 +1785,15 @@ impl typevar_alloc(
 
 impl check_variance(covariant: i32, contravariant: i32, infer_variance: i32) -> bool {
     if covariant != 0 and contravariant != 0 {
-        PyErr_SetString(PyExc_ValueError, "Bivariant types are not supported.");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("Bivariant types are not supported.")
+        );
         return False;
     }
     if infer_variance != 0 and (covariant != 0 or contravariant != 0) {
         PyErr_SetString(
-            PyExc_ValueError, "Variance cannot be specified with infer_variance."
+            PyExc_ValueError,
+            ptr[u8]("Variance cannot be specified with infer_variance.")
         );
         return False;
     }
@@ -1846,14 +1851,14 @@ impl typevar_new_values(
     n_constraints = object_size(constraints);
     kept = constraints;
     if n_constraints == 1 {
-        PyErr_SetString(PyExc_TypeError, "A single constraint is not allowed");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("A single constraint is not allowed"));
         object_xdecref(bound);
         return NULL;
     } elif n_constraints == 0 {
         kept = NULL;
     } elif bound {
         PyErr_SetString(
-            PyExc_TypeError, "Constraints cannot be combined with bound=..."
+            PyExc_TypeError, ptr[u8]("Constraints cannot be combined with bound=...")
         );
         object_xdecref(bound);
         return NULL;
@@ -1952,7 +1957,7 @@ impl typevar_typing_prepare_subst(
     object_decref(params);
     PyErr_Format(
         PyExc_TypeError,
-        "Too few arguments for %S; actual %zd, expected at least %zd",
+        ptr[u8]("Too few arguments for %S; actual %zd, expected at least %zd"),
         alias,
         args_len,
         i + 1
@@ -2327,7 +2332,7 @@ impl typevartuple_typing_subst(
     self: ptr[PyObject], arg: ptr[PyObject]
 ) -> ptr[PyObject] {
     PyErr_SetString(
-        PyExc_TypeError, "Substitution of bare TypeVarTuple is not supported"
+        PyExc_TypeError, ptr[u8]("Substitution of bare TypeVarTuple is not supported")
     );
     return NULL;
 }
@@ -2412,7 +2417,7 @@ impl get_type_param_default(typeparam: ptr[PyObject]) -> ptr[PyObject] {
     ) {
         return typevartuple_default(typeparam, ptr());
     }
-    PyErr_Format(PyExc_TypeError, "Expected a type param, got %R", typeparam);
+    PyErr_Format(PyExc_TypeError, ptr[u8]("Expected a type param, got %R"), typeparam);
     return NULL;
 }
 
@@ -2515,7 +2520,9 @@ impl typealias_check_type_params(
             if default_seen {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "non-default type parameter '%R' follows default type parameter",
+                    ptr[u8](
+                        "non-default type parameter '%R' follows default type parameter"
+                    ),
                     type_param
                 );
                 return (i32(-1), NULL);
@@ -2583,7 +2590,9 @@ impl typealias_reduce(self: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObje
 
 impl typealias_subscript(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if not field(op, typealiasobject_TYPE_PARAMS) {
-        PyErr_SetString(PyExc_TypeError, "Only generic type aliases are subscriptable");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("Only generic type aliases are subscriptable")
+        );
         return NULL;
     }
     return Py_GenericAlias(op, args);
@@ -2600,7 +2609,7 @@ impl typealias_new_values(
     type_params = (values + 2).view(1)[0];
     if type_params
         and not type_has_feature(object_type(type_params), Py_TPFLAGS_TUPLE_SUBCLASS) {
-        PyErr_SetString(PyExc_TypeError, "type_params must be a tuple");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("type_params must be a tuple"));
         return NULL;
     }
     (status, checked_params) = typealias_check_type_params(type_params);

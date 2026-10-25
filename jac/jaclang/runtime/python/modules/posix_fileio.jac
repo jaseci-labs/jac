@@ -337,12 +337,12 @@ def:priv itimerspec_of(initial: i64, interval: i64) -> (itimerspec | None) {
     new_value = itimerspec();
     value_ts = timespec();
     if _PyTime_AsTimespec(initial, &mut value_ts) < 0 {
-        PyErr_SetString(PyExc_ValueError, "invalid initial value");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("invalid initial value"));
         return None;
     }
     interval_ts = timespec();
     if _PyTime_AsTimespec(interval, &mut interval_ts) < 0 {
-        PyErr_SetString(PyExc_ValueError, "invalid interval value");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("invalid interval value"));
         return None;
     }
     new_value.it_value = value_ts;
@@ -603,7 +603,7 @@ def os_readinto_impl(module: ptr[PyObject], fd: i32, buffer: BufferArgument) -> 
 # count, or -1 with the exception set.
 def:priv sequence_count(buffers: ptr[PyObject], message: str) -> i64 {
     if PySequence_Check(buffers) == 0 {
-        PyErr_SetString(PyExc_TypeError, message);
+        object_error(PyExc_TypeError, message);
         return -1;
     }
     return PySequence_Size(buffers);
@@ -750,7 +750,7 @@ def:priv sendfile_vectors(
         return part;
     }
     if PySequence_Check(items) == 0 {
-        PyErr_SetString(PyExc_TypeError, "sendfile() " + what + "s must be a sequence");
+        object_error(PyExc_TypeError, "sendfile() " + what + "s must be a sequence");
         return None;
     }
     i = PySequence_Size(items);
@@ -758,7 +758,7 @@ def:priv sendfile_vectors(
         return None;
     }
     if i > INT_MAX {
-        PyErr_SetString(PyExc_OverflowError, "sendfile() " + what + " is too large");
+        object_error(PyExc_OverflowError, "sendfile() " + what + " is too large");
         return None;
     }
     if i > 0 {
@@ -773,7 +773,7 @@ def:priv sendfile_vectors(
             for j in range(part.count) {
                 blen = i64.wrap((part.iov + j).view(1)[0].iov_len);
                 if part.sbytes >= OFF_T_MAX - blen {
-                    PyErr_SetString(
+                    object_error(
                         PyExc_OverflowError, "sendfile() " + what + " is too large"
                     );
                     return None;
@@ -1079,7 +1079,9 @@ def:priv offset_pair(
     count: i64, offset_src: ptr[PyObject], offset_dst: ptr[PyObject]
 ) -> (OffsetPair | None) {
     if count < 0 {
-        PyErr_SetString(PyExc_ValueError, "negative value for 'count' not allowed");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("negative value for 'count' not allowed")
+        );
         return None;
     }
     pair = OffsetPair();

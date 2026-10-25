@@ -709,7 +709,7 @@ impl instrumented_line_original_opcode(frame: ptr[u8], this_instr: ptr[u16]) -> 
 impl instrumented_not_an_iterator(iter_o: ptr[PyObject]) {
     PyErr_Format(
         PyExc_TypeError,
-        "'%.100s' object is not an iterator",
+        ptr[u8]("'%.100s' object is not an iterator"),
         object_type(iter_o).view(1)[0].tp_name
     );
 }

@@ -160,7 +160,7 @@ def socket_error(code: int) -> ptr[PyObject] {
 }
 
 def select_error -> ptr[PyObject] {
-    PyErr_SetString(PyExc_OSError, "unable to select on socket");
+    PyErr_SetString(PyExc_OSError, ptr[u8]("unable to select on socket"));
     return NULL;
 }
 
@@ -340,7 +340,7 @@ def sock_call_ex(
                 if capture {
                     call.error = EWOULDBLOCK;
                 } else {
-                    PyErr_SetString(PyExc_TimeoutError, "timed out");
+                    PyErr_SetString(PyExc_TimeoutError, ptr[u8]("timed out"));
                 }
                 return -1;
             }
@@ -406,7 +406,7 @@ def socket_parse_timeout(timeout_obj: ptr[PyObject]) -> int {
         return TIMEOUT_ERROR;
     }
     if timeout < 0 {
-        PyErr_SetString(PyExc_ValueError, "Timeout value out of range");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Timeout value out of range"));
         return TIMEOUT_ERROR;
     }
     return int(timeout);

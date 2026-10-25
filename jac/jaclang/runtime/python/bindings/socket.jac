@@ -264,13 +264,13 @@ def:priv socket_exec(module: ptr[PyObject]) -> i32 {
         module,
         STATE_HERROR,
         "herror",
-        PyErr_NewException("socket.herror", PyExc_OSError, NULL)
+        PyErr_NewException(ptr[u8]("socket.herror"), PyExc_OSError, NULL)
     )
         or not add_state(
             module,
             STATE_GAIERROR,
             "gaierror",
-            PyErr_NewException("socket.gaierror", PyExc_OSError, NULL)
+            PyErr_NewException(ptr[u8]("socket.gaierror"), PyExc_OSError, NULL)
         ) {
         return i32(-1);
     }

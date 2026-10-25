@@ -323,7 +323,13 @@ impl plural(count: int) -> str {
 }
 
 impl CallSignature.warn(message: str) -> bool {
-    return PyErr_WarnEx(PyExc_DeprecationWarning, message, 1) == 0;
+    text = jacpy_unicode_from_text(message);
+    if not text {
+        return False;
+    }
+    status = PyErr_WarnEx(PyExc_DeprecationWarning, PyUnicode_AsUTF8(text), 1);
+    jacpy_release(text);
+    return status == 0;
 }
 
 impl CallSignature.bind_values(

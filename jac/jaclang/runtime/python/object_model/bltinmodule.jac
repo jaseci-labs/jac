@@ -1668,7 +1668,7 @@ impl update_bases(
             return NULL;
         }
         if not tuple_check(new_base) {
-            PyErr_SetString(PyExc_TypeError, "__mro_entries__ must return a tuple");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("__mro_entries__ must return a tuple"));
             object_decref(new_base);
             object_xdecref(new_bases);
             return NULL;
@@ -1724,17 +1724,17 @@ impl builtin___build_class__(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if nargs < 2 {
-        PyErr_SetString(PyExc_TypeError, "__build_class__: not enough arguments");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("__build_class__: not enough arguments"));
         return NULL;
     }
     func = arg_at(args, 0);
     if not object_is_type(func, ptr[PyTypeObject](addressof(PyFunction_Type))) {
-        PyErr_SetString(PyExc_TypeError, "__build_class__: func must be a function");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("__build_class__: func must be a function"));
         return NULL;
     }
     name = arg_at(args, 1);
     if not unicode_check(name) {
-        PyErr_SetString(PyExc_TypeError, "__build_class__: name is not a string");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("__build_class__: name is not a string"));
         return NULL;
     }
     orig_bases = _PyTuple_FromArray(args + 2, nargs - 2);
@@ -1807,7 +1807,7 @@ impl builtin___build_class__(
         }
         PyErr_Format(
             PyExc_TypeError,
-            "%.200s.__prepare__() must return a mapping, not %.200s",
+            ptr[u8]("%.200s.__prepare__() must return a mapping, not %.200s"),
             meta_name,
             object_type(ns).view(1)[0].tp_name
         );
@@ -1836,15 +1836,15 @@ impl builtin___build_class__(
                 if not cell_cls {
                     PyErr_Format(
                         PyExc_RuntimeError,
-                        "__class__ not set defining %.200R as %.200R. "
-                        "Was __classcell__ propagated to type.__new__?",
+                        ptr[u8]("__class__ not set defining %.200R as %.200R. "
+                        "Was __classcell__ propagated to type.__new__?"),
                         name,
                         cls
                     );
                 } else {
                     PyErr_Format(
                         PyExc_TypeError,
-                        "__class__ set to %.200R defining %.200R as %.200R",
+                        ptr[u8]("__class__ set to %.200R defining %.200R as %.200R"),
                         cell_cls,
                         name,
                         cls
@@ -2203,11 +2203,11 @@ impl builtin_compile_impl(
         ptr[i32](cf + PyCompilerFlags_CF_FEATURE_VERSION).view(1)[0] = feature_version;
     }
     if (flags & ~(PyCF_MASK | PyCF_MASK_OBSOLETE | PyCF_COMPILE_MASK)) != 0 {
-        PyErr_SetString(PyExc_ValueError, "compile(): unrecognised flags");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("compile(): unrecognised flags"));
         return NULL;
     }
     if optimize < -1 or optimize > 2 {
-        PyErr_SetString(PyExc_ValueError, "compile(): invalid optimize value");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("compile(): invalid optimize value"));
         return NULL;
     }
     flags_ptr = ptr[PyCompilerFlags](cf);
@@ -2225,7 +2225,7 @@ impl builtin_compile_impl(
         if (flags & PyCF_ONLY_AST) == 0 {
             PyErr_SetString(
                 PyExc_ValueError,
-                "compile() mode 'func_type' requires flag PyCF_ONLY_AST"
+                ptr[u8]("compile() mode 'func_type' requires flag PyCF_ONLY_AST")
             );
             return NULL;
         }
@@ -2234,11 +2234,11 @@ impl builtin_compile_impl(
         if (flags & PyCF_ONLY_AST) != 0 {
             PyErr_SetString(
                 PyExc_ValueError,
-                "compile() mode must be 'exec', 'eval', 'single' or 'func_type'"
+                ptr[u8]("compile() mode must be 'exec', 'eval', 'single' or 'func_type'")
             );
         } else {
             PyErr_SetString(
-                PyExc_ValueError, "compile() mode must be 'exec', 'eval' or 'single'"
+                PyExc_ValueError, ptr[u8]("compile() mode must be 'exec', 'eval' or 'single'")
             );
         }
         return NULL;
@@ -2294,7 +2294,7 @@ impl builtin_compile(
         return compile_done(filename_slot, NULL);
     }
     if strlen(mode) != u64(mode_length) {
-        PyErr_SetString(PyExc_ValueError, "embedded null character");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
         return compile_done(filename_slot, NULL);
     }
     flags: i32 = 0;
@@ -2400,7 +2400,7 @@ impl eval_in(
         if code_nfree(source) > 0 {
             PyErr_SetString(
                 PyExc_TypeError,
-                "code object passed to eval() may not contain free variables"
+                ptr[u8]("code object passed to eval() may not contain free variables")
             );
             return NULL;
         }
@@ -2438,17 +2438,17 @@ impl builtin_eval_impl(
 ) -> ptr[PyObject] {
     tstate = thread_state();
     if locals != Py_None and PyMapping_Check(locals) == 0 {
-        PyErr_SetString(PyExc_TypeError, "locals must be a mapping");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("locals must be a mapping"));
         return NULL;
     }
     if globals != Py_None and not dict_check(globals) {
         if PyMapping_Check(globals) != 0 {
             PyErr_SetString(
                 PyExc_TypeError,
-                "globals must be a real dict; try eval(expr, {}, mapping)"
+                ptr[u8]("globals must be a real dict; try eval(expr, {}, mapping)")
             );
         } else {
-            PyErr_SetString(PyExc_TypeError, "globals must be a dict");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("globals must be a dict"));
         }
         return NULL;
     }
@@ -2465,7 +2465,7 @@ impl builtin_eval_impl(
             if not exception_raised(tstate) {
                 PyErr_SetString(
                     PyExc_TypeError,
-                    "eval must be given globals and locals when called without a frame"
+                    ptr[u8]("eval must be given globals and locals when called without a frame")
                 );
             }
             return NULL;
@@ -2534,7 +2534,7 @@ impl exec_in(
     if not dict_check(globals) {
         PyErr_Format(
             PyExc_TypeError,
-            "exec() globals must be a dict, not %.100s",
+            ptr[u8]("exec() globals must be a dict, not %.100s"),
             object_type(globals).view(1)[0].tp_name
         );
         return NULL;
@@ -2542,7 +2542,7 @@ impl exec_in(
     if PyMapping_Check(locals) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "locals must be a mapping or None, not %.100s",
+            ptr[u8]("locals must be a mapping or None, not %.100s"),
             object_type(locals).view(1)[0].tp_name
         );
         return NULL;
@@ -2558,7 +2558,7 @@ impl exec_in(
         if num_free == 0 {
             if closure {
                 PyErr_SetString(
-                    PyExc_TypeError, "cannot use a closure with this code object"
+                    PyExc_TypeError, ptr[u8]("cannot use a closure with this code object")
                 );
                 return NULL;
             }
@@ -2580,7 +2580,7 @@ impl exec_in(
             if not closure_is_ok {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "code object requires a closure of exactly length %zd",
+                    ptr[u8]("code object requires a closure of exactly length %zd"),
                     num_free
                 );
                 return NULL;
@@ -2608,7 +2608,7 @@ impl exec_in(
     }
     if closure {
         PyErr_SetString(
-            PyExc_TypeError, "closure can only be used when source is a code object"
+            PyExc_TypeError, ptr[u8]("closure can only be used when source is a code object")
         );
         return NULL;
     }
@@ -2658,7 +2658,7 @@ impl builtin_exec_impl(
         globals = _PyEval_GetGlobalsFromRunningMain(tstate);
         if not globals {
             if not exception_raised(tstate) {
-                PyErr_SetString(PyExc_SystemError, "globals and locals cannot be NULL");
+                PyErr_SetString(PyExc_SystemError, ptr[u8]("globals and locals cannot be NULL"));
             }
             return NULL;
         }
@@ -2823,7 +2823,7 @@ impl map_new(
     }
     numargs = PyTuple_Size(args);
     if numargs < 2 {
-        PyErr_SetString(PyExc_TypeError, "map() must have at least two arguments.");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("map() must have at least two arguments."));
         return NULL;
     }
     iters = PyTuple_New(numargs - 1);
@@ -2859,7 +2859,7 @@ impl map_vectorcall(
         return _PyObject_MakeTpCall(thread_state(), type, args, nargs, kwnames);
     }
     if nargs < 2 {
-        PyErr_SetString(PyExc_TypeError, "map() must have at least two arguments.");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("map() must have at least two arguments."));
         return NULL;
     }
     iters = PyTuple_New(nargs - 1);
@@ -2914,7 +2914,7 @@ impl map_strict_check(iters: ptr[PyObject], i: i64, niters: i64) {
         plural = ptr[u8](" ") if i == 1 else ptr[u8]("s 1-");
         PyErr_Format(
             PyExc_ValueError,
-            "map() argument %zd is shorter than argument%s%zd",
+            ptr[u8]("map() argument %zd is shorter than argument%s%zd"),
             i + 1,
             plural,
             i
@@ -2929,7 +2929,7 @@ impl map_strict_check(iters: ptr[PyObject], i: i64, niters: i64) {
             plural = ptr[u8](" ") if j == 1 else ptr[u8]("s 1-");
             PyErr_Format(
                 PyExc_ValueError,
-                "map() argument %zd is longer than argument%s%zd",
+                ptr[u8]("map() argument %zd is longer than argument%s%zd"),
                 j + 1,
                 plural,
                 j
@@ -3025,7 +3025,7 @@ impl builtin_next(
     if PyIter_Check(it) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%.200s' object is not an iterator",
+            ptr[u8]("'%.200s' object is not an iterator"),
             object_type(it).view(1)[0].tp_name
         );
         return NULL;
@@ -3117,7 +3117,7 @@ impl builtin_iter(
         return PyObject_GetIter(v);
     }
     if PyCallable_Check(v) == 0 {
-        PyErr_SetString(PyExc_TypeError, "iter(v, w): v must be callable");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("iter(v, w): v must be callable"));
         return NULL;
     }
     return PyCallIter_New(v, arg_at(args, 1));
@@ -3137,7 +3137,7 @@ impl builtin_anext_impl(
     if not am or int(am.view(1)[0].am_anext) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%.200s' object is not an async iterator",
+            ptr[u8]("'%.200s' object is not an async iterator"),
             t.view(1)[0].tp_name
         );
         return NULL;
@@ -3214,7 +3214,7 @@ impl min_max(
         parser = addressof(min_parser);
     }
     if nargs == 0 {
-        PyErr_Format(PyExc_TypeError, "%s expected at least 1 argument, got 0", name);
+        PyErr_Format(PyExc_TypeError, ptr[u8]("%s expected at least 1 argument, got 0"), name);
         return NULL;
     }
     keyfunc = NULL;
@@ -3230,7 +3230,7 @@ impl min_max(
     if positional and defaultval {
         PyErr_Format(
             PyExc_TypeError,
-            "Cannot specify a default for %s() with multiple positional arguments",
+            ptr[u8]("Cannot specify a default for %s() with multiple positional arguments"),
             name
         );
         return NULL;
@@ -3299,7 +3299,7 @@ impl min_max(
         if defaultval {
             maxitem = object_new_ref(defaultval);
         } else {
-            PyErr_Format(PyExc_ValueError, "%s() iterable argument is empty", name);
+            PyErr_Format(PyExc_ValueError, ptr[u8]("%s() iterable argument is empty"), name);
         }
     } else {
         object_decref(maxval);
@@ -3346,14 +3346,14 @@ impl builtin_ord(module: ptr[PyObject], c: ptr[PyObject]) -> ptr[PyObject] {
     } else {
         PyErr_Format(
             PyExc_TypeError,
-            "ord() expected string of length 1, but %.200s found",
+            ptr[u8]("ord() expected string of length 1, but %.200s found"),
             object_type(c).view(1)[0].tp_name
         );
         return NULL;
     }
     PyErr_Format(
         PyExc_TypeError,
-        "ord() expected a character, but string of length %zd found",
+        ptr[u8]("ord() expected a character, but string of length %zd found"),
         size
     );
     return NULL;
@@ -3420,7 +3420,7 @@ impl builtin_print_impl(
     } elif sep and not unicode_check(sep) {
         PyErr_Format(
             PyExc_TypeError,
-            "sep must be None or a string, not %.200s",
+            ptr[u8]("sep must be None or a string, not %.200s"),
             object_type(sep).view(1)[0].tp_name
         );
         object_decref(file);
@@ -3431,7 +3431,7 @@ impl builtin_print_impl(
     } elif end and not unicode_check(end) {
         PyErr_Format(
             PyExc_TypeError,
-            "end must be None or a string, not %.200s",
+            ptr[u8]("end must be None or a string, not %.200s"),
             object_type(end).view(1)[0].tp_name
         );
         object_decref(file);
@@ -3736,7 +3736,7 @@ impl input_tty(
         promptstr = bytes_data(po);
         if i64(strlen(promptstr)) != object_size(po) {
             PyErr_SetString(
-                PyExc_ValueError, "input: prompt string cannot contain null characters"
+                PyExc_ValueError, ptr[u8]("input: prompt string cannot contain null characters")
             );
             return (
                 readline_errors(
@@ -3769,7 +3769,7 @@ impl input_tty(
     if length == u64(0) {
         PyErr_SetNone(PyExc_EOFError);
     } elif length > u64(0x7FFFFFFFFFFFFFFF) {
-        PyErr_SetString(PyExc_OverflowError, "input: input too long");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("input: input too long"));
     } else {
         n = i64(length) - 1;
         if n != 0 and (s + (n - 1)).view(1)[0] == u8(13) {
@@ -3798,7 +3798,7 @@ impl builtin_input_impl(module: ptr[PyObject], prompt: ptr[PyObject]) -> ptr[PyO
         return input_fail(fin, fout, ferr);
     }
     if fin == Py_None {
-        PyErr_SetString(PyExc_RuntimeError, "lost sys.stdin");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("lost sys.stdin"));
         return input_fail(fin, fout, ferr);
     }
     fout = required_stream(_Py_ID_stdout);
@@ -3806,7 +3806,7 @@ impl builtin_input_impl(module: ptr[PyObject], prompt: ptr[PyObject]) -> ptr[PyO
         return input_fail(fin, fout, ferr);
     }
     if fout == Py_None {
-        PyErr_SetString(PyExc_RuntimeError, "lost sys.stdout");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("lost sys.stdout"));
         return input_fail(fin, fout, ferr);
     }
     ferr = required_stream(_Py_ID_stderr);
@@ -3814,7 +3814,7 @@ impl builtin_input_impl(module: ptr[PyObject], prompt: ptr[PyObject]) -> ptr[PyO
         return input_fail(fin, fout, ferr);
     }
     if ferr == Py_None {
-        PyErr_SetString(PyExc_RuntimeError, "lost sys.stderr");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("lost sys.stderr"));
         return input_fail(fin, fout, ferr);
     }
     audit_prompt = prompt;
@@ -3912,7 +3912,7 @@ impl builtin_round_impl(
     if not result and not PyErr_Occurred() {
         PyErr_Format(
             PyExc_TypeError,
-            "type %.100s doesn't define __round__ method",
+            ptr[u8]("type %.100s doesn't define __round__ method"),
             object_type(number).view(1)[0].tp_name
         );
     }
@@ -3993,7 +3993,7 @@ impl builtin_vars(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         }
     } elif PyObject_GetOptionalAttr(v, py_id(_Py_ID___dict__), &mut d) == 0 {
         PyErr_SetString(
-            PyExc_TypeError, "vars() argument must have __dict__ attribute"
+            PyExc_TypeError, ptr[u8]("vars() argument must have __dict__ attribute")
         );
     }
     return d;
@@ -4040,21 +4040,21 @@ impl builtin_sum_impl(
     } else {
         if unicode_check(result) {
             PyErr_SetString(
-                PyExc_TypeError, "sum() can't sum strings [use ''.join(seq) instead]"
+                PyExc_TypeError, ptr[u8]("sum() can't sum strings [use ''.join(seq) instead]")
             );
             object_decref(iter_obj);
             return NULL;
         }
         if bytes_check(result) {
             PyErr_SetString(
-                PyExc_TypeError, "sum() can't sum bytes [use b''.join(seq) instead]"
+                PyExc_TypeError, ptr[u8]("sum() can't sum bytes [use b''.join(seq) instead]")
             );
             object_decref(iter_obj);
             return NULL;
         }
         if bytearray_check(result) {
             PyErr_SetString(
-                PyExc_TypeError, "sum() can't sum bytearray [use b''.join(seq) instead]"
+                PyExc_TypeError, ptr[u8]("sum() can't sum bytearray [use b''.join(seq) instead]")
             );
             object_decref(iter_obj);
             return NULL;
@@ -4360,7 +4360,7 @@ impl zip_strict_check(ittuple: ptr[PyObject], i: i64, tuplesize: i64) -> ptr[PyO
         plural = ptr[u8](" ") if i == 1 else ptr[u8]("s 1-");
         return PyErr_Format(
             PyExc_ValueError,
-            "zip() argument %zd is shorter than argument%s%zd",
+            ptr[u8]("zip() argument %zd is shorter than argument%s%zd"),
             i + 1,
             plural,
             i
@@ -4374,7 +4374,7 @@ impl zip_strict_check(ittuple: ptr[PyObject], i: i64, tuplesize: i64) -> ptr[PyO
             plural = ptr[u8](" ") if j == 1 else ptr[u8]("s 1-");
             return PyErr_Format(
                 PyExc_ValueError,
-                "zip() argument %zd is longer than argument%s%zd",
+                ptr[u8]("zip() argument %zd is longer than argument%s%zd"),
                 j + 1,
                 plural,
                 j

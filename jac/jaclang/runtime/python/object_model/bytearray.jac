@@ -907,7 +907,7 @@ import from c {
         if size < 0 {
             PyErr_SetString(
                 PyExc_SystemError,
-                "Negative size passed to PyByteArray_FromStringAndSize"
+                ptr[u8]("Negative size passed to PyByteArray_FromStringAndSize")
             );
             return NULL;
         }
@@ -962,7 +962,7 @@ import from c {
             or PyObject_GetBuffer(b, vb, PyBUF_SIMPLE) != i32(0) {
             PyErr_Format(
                 PyExc_TypeError,
-                "can't concat %.100s to %.100s",
+                ptr[u8]("can't concat %.100s to %.100s"),
                 object_type(b).view(1)[0].tp_name,
                 object_type(a).view(1)[0].tp_name
             );
@@ -1427,7 +1427,7 @@ impl getbytevalue(arg: ptr[PyObject]) -> tuple[bool, i64] {
         return (False, i64(-1));
     }
     if face_value < 0 or face_value >= 256 {
-        PyErr_SetString(PyExc_ValueError, "byte must be in range(0, 256)");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("byte must be in range(0, 256)"));
         return (False, i64(-1));
     }
     return (True, face_value);
@@ -1436,7 +1436,8 @@ impl getbytevalue(arg: ptr[PyObject]) -> tuple[bool, i64] {
 impl can_resize(op: ptr[PyObject]) -> bool {
     if ba_exports(op) > 0 {
         PyErr_SetString(
-            PyExc_BufferError, "Existing exports of data: object cannot be re-sized"
+            PyExc_BufferError,
+            ptr[u8]("Existing exports of data: object cannot be re-sized")
         );
         return False;
     }
@@ -1477,7 +1478,7 @@ impl bytearray_resize(op: ptr[PyObject], requested_size: i64) -> i32 {
     if requested_size < 0 {
         PyErr_Format(
             PyExc_ValueError,
-            "Can only resize to positive sizes, got %zd",
+            ptr[u8]("Can only resize to positive sizes, got %zd"),
             requested_size
         );
         return i32(-1);
@@ -1556,7 +1557,8 @@ impl bytearray_from_buffer_object(source: ptr[PyObject]) -> ptr[PyObject] {
 impl bytearray_getbuffer(op: ptr[PyObject], view: ptr[Py_buffer], flags: i32) -> i32 {
     if not view {
         PyErr_SetString(
-            PyExc_BufferError, "bytearray_getbuffer: view==NULL argument is obsolete"
+            PyExc_BufferError,
+            ptr[u8]("bytearray_getbuffer: view==NULL argument is obsolete")
         );
         return i32(-1);
     }
@@ -1590,7 +1592,7 @@ impl bytearray_iconcat(op: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject]
     if PyObject_GetBuffer(other, vo, PyBUF_SIMPLE) != i32(0) {
         PyErr_Format(
             PyExc_TypeError,
-            "can't concat %.100s to %.100s",
+            ptr[u8]("can't concat %.100s to %.100s"),
             object_type(other).view(1)[0].tp_name,
             object_type(op).view(1)[0].tp_name
         );
@@ -1652,7 +1654,7 @@ impl bytearray_irepeat(op: ptr[PyObject], count_in: i64) -> ptr[PyObject] {
 
 impl bytearray_getitem(op: ptr[PyObject], i: i64) -> ptr[PyObject] {
     if i < 0 or i >= object_size(op) {
-        PyErr_SetString(PyExc_IndexError, "bytearray index out of range");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("bytearray index out of range"));
         return NULL;
     }
     return get_small_int(i64(peek(ba_start(op) + i)));
@@ -1668,7 +1670,7 @@ impl bytearray_subscript(op: ptr[PyObject], index: ptr[PyObject]) -> ptr[PyObjec
             i += object_size(op);
         }
         if i < 0 or i >= object_size(op) {
-            PyErr_SetString(PyExc_IndexError, "bytearray index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("bytearray index out of range"));
             return NULL;
         }
         return get_small_int(i64(peek(ba_start(op) + i)));
@@ -1676,7 +1678,7 @@ impl bytearray_subscript(op: ptr[PyObject], index: ptr[PyObject]) -> ptr[PyObjec
     if not slice_check(index) {
         PyErr_Format(
             PyExc_TypeError,
-            "bytearray indices must be integers or slices, not %.200s",
+            ptr[u8]("bytearray indices must be integers or slices, not %.200s"),
             object_type(index).view(1)[0].tp_name
         );
         return NULL;
@@ -1780,7 +1782,7 @@ impl bytearray_setslice(
         if PyObject_GetBuffer(values, vbytes, PyBUF_SIMPLE) != i32(0) {
             PyErr_Format(
                 PyExc_TypeError,
-                "can't set bytearray slice from %.100s",
+                ptr[u8]("can't set bytearray slice from %.100s"),
                 object_type(values).view(1)[0].tp_name
             );
             buffer_free(vbytes);
@@ -1821,7 +1823,7 @@ impl bytearray_setitem(op: ptr[PyObject], index: i64, value: ptr[PyObject]) -> i
         i += object_size(op);
     }
     if i < 0 or i >= object_size(op) {
-        PyErr_SetString(PyExc_IndexError, "bytearray index out of range");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("bytearray index out of range"));
         return i32(-1);
     }
     if not value {
@@ -1897,7 +1899,7 @@ impl bytearray_ass_subscript(
             i += object_size(op);
         }
         if i < 0 or i >= object_size(op) {
-            PyErr_SetString(PyExc_IndexError, "bytearray index out of range");
+            PyErr_SetString(PyExc_IndexError, ptr[u8]("bytearray index out of range"));
             return i32(-1);
         }
         if values {
@@ -1917,7 +1919,7 @@ impl bytearray_ass_subscript(
     } else {
         PyErr_Format(
             PyExc_TypeError,
-            "bytearray indices must be integers or slices, not %.200s",
+            ptr[u8]("bytearray indices must be integers or slices, not %.200s"),
             object_type(index).view(1)[0].tp_name
         );
         return i32(-1);
@@ -1929,7 +1931,9 @@ impl bytearray_ass_subscript(
             if PyNumber_Check(values) != i32(0) or unicode_check(values) {
                 PyErr_SetString(
                     PyExc_TypeError,
-                    "can assign only bytes, buffers, or iterables of ints in range(0, 256)"
+                    ptr[u8](
+                        "can assign only bytes, buffers, or iterables of ints in range(0, 256)"
+                    )
                 );
                 return i32(-1);
             }
@@ -1960,7 +1964,9 @@ impl bytearray_ass_subscript(
     if needed != slicelen {
         PyErr_Format(
             PyExc_ValueError,
-            "attempt to assign bytes of size %zd to extended slice of size %zd",
+            ptr[u8](
+                "attempt to assign bytes of size %zd to extended slice of size %zd"
+            ),
             needed,
             slicelen
         );
@@ -2014,7 +2020,7 @@ impl text_arg(value: ptr[PyObject], which: i64) -> tuple[bool, ptr[u8]] {
         return (False, text);
     }
     if i64(strlen(text)) != length {
-        PyErr_SetString(PyExc_ValueError, "embedded null character");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
         return (False, ptr[u8]());
     }
     return (True, text);
@@ -2022,9 +2028,9 @@ impl text_arg(value: ptr[PyObject], which: i64) -> tuple[bool, ptr[u8]] {
 
 impl without_string_error(encoding: ptr[u8]) -> i32 {
     if encoding {
-        PyErr_SetString(PyExc_TypeError, "encoding without a string argument");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("encoding without a string argument"));
     } else {
-        PyErr_SetString(PyExc_TypeError, "errors without a string argument");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("errors without a string argument"));
     }
     return i32(-1);
 }
@@ -2059,7 +2065,7 @@ impl init_from_iterable(op: ptr[PyObject], arg: ptr[PyObject]) -> i32 {
         if PyErr_ExceptionMatches(PyExc_TypeError) != i32(0) {
             PyErr_Format(
                 PyExc_TypeError,
-                "cannot convert '%.200s' object to bytearray",
+                ptr[u8]("cannot convert '%.200s' object to bytearray"),
                 object_type(arg).view(1)[0].tp_name
             );
         }
@@ -2118,7 +2124,9 @@ impl bytearray_init_impl(
     }
     if unicode_check(arg) {
         if not encoding {
-            PyErr_SetString(PyExc_TypeError, "string argument without an encoding");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("string argument without an encoding")
+            );
             return i32(-1);
         }
         encoded = PyUnicode_AsEncodedString(arg, encoding, errors);
@@ -2148,7 +2156,7 @@ impl bytearray_init_impl(
             PyErr_Clear();
         } else {
             if count < 0 {
-                PyErr_SetString(PyExc_ValueError, "negative count");
+                PyErr_SetString(PyExc_ValueError, ptr[u8]("negative count"));
                 return i32(-1);
             }
             if count > 0 {
@@ -2244,7 +2252,7 @@ impl bytearray_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     name_len = i64(strlen(class_name));
     if length > (PY_SSIZE_T_MAX - 6 - name_len) // 4 {
         PyErr_SetString(
-            PyExc_OverflowError, "bytearray object is too large to make repr"
+            PyExc_OverflowError, ptr[u8]("bytearray object is too large to make repr")
         );
         return NULL;
     }
@@ -2319,7 +2327,9 @@ impl bytearray_repr(op: ptr[PyObject]) -> ptr[PyObject] {
 
 impl bytearray_str(op: ptr[PyObject]) -> ptr[PyObject] {
     if config_bytes_warning() != i32(0)
-        and PyErr_WarnEx(PyExc_BytesWarning, "str() on a bytearray instance", 1)
+        and PyErr_WarnEx(
+            PyExc_BytesWarning, ptr[u8]("str() on a bytearray instance"), 1
+        )
             != i32(0) {
         return NULL;
     }
@@ -2334,7 +2344,9 @@ impl bytearray_richcompare(
             and config_bytes_warning() != i32(0)
             and (cmp_op == Py_EQ or cmp_op == Py_NE)
             and PyErr_WarnEx(
-                PyExc_BytesWarning, "Comparison between bytearray and string", 1
+                PyExc_BytesWarning,
+                ptr[u8]("Comparison between bytearray and string"),
+                1
             )
                 != i32(0) {
             return NULL;
@@ -2387,7 +2399,8 @@ impl bytearray_richcompare(
 impl bytearray_dealloc(op: ptr[PyObject]) {
     if ba_exports(op) > 0 {
         PyErr_SetString(
-            PyExc_SystemError, "deallocated bytearray object has exported buffers"
+            PyExc_SystemError,
+            ptr[u8]("deallocated bytearray object has exported buffers")
         );
         PyErr_Print();
     }
@@ -2605,7 +2618,8 @@ impl translate_with(
         }
         if vtable.view(1)[0].length != 256 {
             PyErr_SetString(
-                PyExc_ValueError, "translation table must be 256 characters long"
+                PyExc_ValueError,
+                ptr[u8]("translation table must be 256 characters long")
             );
             return NULL;
         }
@@ -2928,7 +2942,9 @@ impl bytearray_insert(
     }
     n = object_size(op);
     if n == PY_SSIZE_T_MAX {
-        PyErr_SetString(PyExc_OverflowError, "cannot add more objects to bytearray");
+        PyErr_SetString(
+            PyExc_OverflowError, ptr[u8]("cannot add more objects to bytearray")
+        );
         return NULL;
     }
     if bytearray_resize(op, n + 1) < i32(0) {
@@ -3036,7 +3052,9 @@ impl bytearray_append(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     }
     n = object_size(op);
     if n == PY_SSIZE_T_MAX {
-        PyErr_SetString(PyExc_OverflowError, "cannot add more objects to bytearray");
+        PyErr_SetString(
+            PyExc_OverflowError, ptr[u8]("cannot add more objects to bytearray")
+        );
         return NULL;
     }
     if bytearray_resize(op, n + 1) < i32(0) {
@@ -3061,7 +3079,7 @@ impl bytearray_extend(
         if PyErr_ExceptionMatches(PyExc_TypeError) != i32(0) {
             PyErr_Format(
                 PyExc_TypeError,
-                "can't extend bytearray with %.100s",
+                ptr[u8]("can't extend bytearray with %.100s"),
                 object_type(iterable_of_ints).view(1)[0].tp_name
             );
         }
@@ -3090,7 +3108,8 @@ impl bytearray_extend(
             if PyErr_ExceptionMatches(PyExc_TypeError) != i32(0)
                 and unicode_check(iterable_of_ints) {
                 PyErr_Format(
-                    PyExc_TypeError, "expected iterable of integers; got: 'str'"
+                    PyExc_TypeError,
+                    ptr[u8]("expected iterable of integers; got: 'str'")
                 );
             }
             object_decref(item);
@@ -3156,14 +3175,14 @@ impl bytearray_pop(
     }
     n = object_size(op);
     if n == 0 {
-        PyErr_SetString(PyExc_IndexError, "pop from empty bytearray");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("pop from empty bytearray"));
         return NULL;
     }
     if index < 0 {
         index += object_size(op);
     }
     if index < 0 or index >= object_size(op) {
-        PyErr_SetString(PyExc_IndexError, "pop index out of range");
+        PyErr_SetString(PyExc_IndexError, ptr[u8]("pop index out of range"));
         return NULL;
     }
     if not can_resize(op) {
@@ -3187,7 +3206,7 @@ impl bytearray_remove(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     buf = ba_as_string(op);
     where = bl_find_char(buf, n, u8(value));
     if where < 0 {
-        PyErr_SetString(PyExc_ValueError, "value not found in bytearray");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("value not found in bytearray"));
         return NULL;
     }
     if not can_resize(op) {

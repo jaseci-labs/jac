@@ -434,7 +434,15 @@ def:priv version_info(libver: u64) -> ptr[PyObject];
 def version_constants -> list[tuple[str, ptr[PyObject]]];
 
 impl deprecated(message: str, stacklevel: int) -> bool {
-    return PyErr_WarnEx(PyExc_DeprecationWarning, message, i64(stacklevel)) != -1;
+    text = jacpy_unicode_from_text(message);
+    if not text {
+        return False;
+    }
+    status = PyErr_WarnEx(
+        PyExc_DeprecationWarning, PyUnicode_AsUTF8(text), i64(stacklevel)
+    );
+    jacpy_release(text);
+    return status != -1;
 }
 
 impl bio_set_nbio(bio: ptr, nonblocking: bool) {
@@ -592,7 +600,7 @@ impl context_set_msg_callback(instance: ptr[PyObject], arg: ptr[PyObject]) -> i3
     } else {
         if PyCallable_Check(arg) == 0 {
             SSL_CTX_set_msg_callback(ctx.ctx, ptr());
-            PyErr_SetString(PyExc_TypeError, "not a callable object");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("not a callable object"));
             return i32(-1);
         }
         ctx.msg_cb = Py_NewRef(arg);
@@ -678,7 +686,7 @@ impl context_set_keylog_filename(instance: ptr[PyObject], arg: ptr[PyObject]) ->
     if not ctx.keylog_bio {
         PyErr_SetString(
             state_ref(ctx.module, STATE_SSL_ERROR),
-            "Can't malloc memory for keylog file"
+            ptr[u8]("Can't malloc memory for keylog file")
         );
         return i32(-1);
     }
@@ -704,7 +712,9 @@ impl configure_hostname(sock: SSLSocketState, server_hostname: ptr[u8]) -> int {
     if length == 0 or server_hostname.view(1)[0] == u8(46) {
         PyErr_SetString(
             PyExc_ValueError,
-            "server_hostname cannot be an empty string or start with a leading dot."
+            ptr[u8](
+                "server_hostname cannot be an empty string or start with a leading dot."
+            )
         );
         return -1;
     }
@@ -767,7 +777,7 @@ impl socket_set_owner(sock: SSLSocketState, value: ptr[PyObject]) -> int {
 impl socket_set_session(sock: SSLSocketState, value: ptr[PyObject]) -> int {
     module = module_of_socket(sock);
     if Py_TYPE(value) != state_ref(module, STATE_SESSION_TYPE) {
-        PyErr_SetString(PyExc_TypeError, "Value is not a SSLSession.");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("Value is not a SSLSession."));
         return -1;
     }
     session = session_of(value);
@@ -780,17 +790,21 @@ impl socket_set_session(sock: SSLSocketState, value: ptr[PyObject]) -> int {
         return -1;
     }
     if ctx.ctx != session_ctx.ctx {
-        PyErr_SetString(PyExc_ValueError, "Session refers to a different SSLContext.");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("Session refers to a different SSLContext.")
+        );
         return -1;
     }
     if sock.socket_type != PY_SSL_CLIENT {
         PyErr_SetString(
-            PyExc_ValueError, "Cannot set session for server-side SSLSocket."
+            PyExc_ValueError, ptr[u8]("Cannot set session for server-side SSLSocket.")
         );
         return -1;
     }
     if SSL_is_init_finished(sock.ssl) != 0 {
-        PyErr_SetString(PyExc_ValueError, "Cannot set session after handshake.");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("Cannot set session after handshake.")
+        );
         return -1;
     }
     if SSL_set_session(sock.ssl, session.session) == 0 {
@@ -986,21 +1000,22 @@ impl _ssl__SSLSocket_do_handshake_impl(receiver: ptr[PyObject]) -> ptr[PyObject]
         }
         if sockstate == SOCKET_HAS_TIMED_OUT {
             PyErr_SetString(
-                PyExc_TimeoutError, "_ssl.c:1064: The handshake operation timed out"
+                PyExc_TimeoutError,
+                ptr[u8]("_ssl.c:1064: The handshake operation timed out")
             );
             failed = True;
             break;
         } elif sockstate == SOCKET_HAS_BEEN_CLOSED {
             PyErr_SetString(
                 state_ref(module, STATE_SSL_ERROR),
-                "_ssl.c:1068: Underlying socket has been closed."
+                ptr[u8]("_ssl.c:1068: Underlying socket has been closed.")
             );
             failed = True;
             break;
         } elif sockstate == SOCKET_TOO_LARGE_FOR_SELECT {
             PyErr_SetString(
                 state_ref(module, STATE_SSL_ERROR),
-                "_ssl.c:1072: Underlying socket too large for select()."
+                ptr[u8]("_ssl.c:1072: Underlying socket too large for select().")
             );
             failed = True;
             break;
@@ -1035,7 +1050,8 @@ impl _ssl__test_decode_cert_impl(
     cert = BIO_new(BIO_s_file());
     if not cert {
         PyErr_SetString(
-            state_ref(module, STATE_SSL_ERROR), "Can't malloc memory to read file"
+            state_ref(module, STATE_SSL_ERROR),
+            ptr[u8]("Can't malloc memory to read file")
         );
     } elif BIO_ctrl(
         cert,
@@ -1044,12 +1060,13 @@ impl _ssl__test_decode_cert_impl(
         ptr(PyBytes_AsString(path))
     )
         <= 0 {
-        PyErr_SetString(state_ref(module, STATE_SSL_ERROR), "Can't open file");
+        PyErr_SetString(state_ref(module, STATE_SSL_ERROR), ptr[u8]("Can't open file"));
     } else {
         x = PEM_read_bio_X509(cert, ptr(), ptr(), ptr());
         if not x {
             PyErr_SetString(
-                state_ref(module, STATE_SSL_ERROR), "Error decoding PEM-encoded file"
+                state_ref(module, STATE_SSL_ERROR),
+                ptr[u8]("Error decoding PEM-encoded file")
             );
         } else {
             retval = decode_certificate(module, x);
@@ -1070,7 +1087,7 @@ impl _ssl__SSLSocket_getpeercert_impl(
         return NULL;
     }
     if SSL_is_init_finished(sock.ssl) == 0 {
-        PyErr_SetString(PyExc_ValueError, "handshake not done yet");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("handshake not done yet"));
         return NULL;
     }
     peer_cert = SSL_get1_peer_certificate(sock.ssl);
@@ -1368,7 +1385,7 @@ impl _ssl__SSLSocket_context_set_impl(
         return -1;
     }
     if not type_check(value, state_ref(module_of_socket(sock), STATE_CONTEXT_TYPE)) {
-        PyErr_SetString(PyExc_TypeError, "The value must be a SSLContext");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("The value must be a SSLContext"));
         return -1;
     }
     ctx = context_of(value);
@@ -1457,17 +1474,18 @@ impl _ssl__SSLSocket_write_impl(
     count = u64(0);
     sockstate = ssl_select(target, True, timeout);
     if sockstate == SOCKET_HAS_TIMED_OUT {
-        PyErr_SetString(PyExc_TimeoutError, "The write operation timed out");
+        PyErr_SetString(PyExc_TimeoutError, ptr[u8]("The write operation timed out"));
         failed = True;
     } elif sockstate == SOCKET_HAS_BEEN_CLOSED {
         PyErr_SetString(
-            state_ref(module, STATE_SSL_ERROR), "Underlying socket has been closed."
+            state_ref(module, STATE_SSL_ERROR),
+            ptr[u8]("Underlying socket has been closed.")
         );
         failed = True;
     } elif sockstate == SOCKET_TOO_LARGE_FOR_SELECT {
         PyErr_SetString(
             state_ref(module, STATE_SSL_ERROR),
-            "Underlying socket too large for select()."
+            ptr[u8]("Underlying socket too large for select().")
         );
         failed = True;
     }
@@ -1497,12 +1515,15 @@ impl _ssl__SSLSocket_write_impl(
             sockstate = SOCKET_OPERATION_OK;
         }
         if sockstate == SOCKET_HAS_TIMED_OUT {
-            PyErr_SetString(PyExc_TimeoutError, "The write operation timed out");
+            PyErr_SetString(
+                PyExc_TimeoutError, ptr[u8]("The write operation timed out")
+            );
             failed = True;
             break;
         } elif sockstate == SOCKET_HAS_BEEN_CLOSED {
             PyErr_SetString(
-                state_ref(module, STATE_SSL_ERROR), "Underlying socket has been closed."
+                state_ref(module, STATE_SSL_ERROR),
+                ptr[u8]("Underlying socket has been closed.")
             );
             failed = True;
             break;
@@ -1557,7 +1578,7 @@ impl ssl_socket_read(
         return NULL;
     }
     if not group_right_1 and size < 0 {
-        PyErr_SetString(PyExc_ValueError, "size should not be negative");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("size should not be negative"));
         return NULL;
     }
     target = method_socket(sock, 2630);
@@ -1592,7 +1613,8 @@ impl ssl_socket_read(
             length = i64(c_int(view.length));
             if view.length != length {
                 PyErr_SetString(
-                    PyExc_OverflowError, "maximum length can't fit in a C 'int'"
+                    PyExc_OverflowError,
+                    ptr[u8]("maximum length can't fit in a C 'int'")
                 );
                 failed = True;
             } elif length == 0 {
@@ -1640,7 +1662,9 @@ impl ssl_socket_read(
                 break;
             }
             if sockstate == SOCKET_HAS_TIMED_OUT {
-                PyErr_SetString(PyExc_TimeoutError, "The read operation timed out");
+                PyErr_SetString(
+                    PyExc_TimeoutError, ptr[u8]("The read operation timed out")
+                );
                 failed = True;
                 break;
             } elif sockstate == SOCKET_IS_NONBLOCKING {
@@ -1750,16 +1774,20 @@ impl _ssl__SSLSocket_shutdown_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
         }
         if sockstate == SOCKET_HAS_TIMED_OUT {
             if sock.err_ssl == SSL_ERROR_WANT_READ {
-                PyErr_SetString(PyExc_TimeoutError, "The read operation timed out");
+                PyErr_SetString(
+                    PyExc_TimeoutError, ptr[u8]("The read operation timed out")
+                );
             } else {
-                PyErr_SetString(PyExc_TimeoutError, "The write operation timed out");
+                PyErr_SetString(
+                    PyExc_TimeoutError, ptr[u8]("The write operation timed out")
+                );
             }
             failed = True;
             break;
         } elif sockstate == SOCKET_TOO_LARGE_FOR_SELECT {
             PyErr_SetString(
                 state_ref(module, STATE_SSL_ERROR),
-                "Underlying socket too large for select()."
+                ptr[u8]("Underlying socket too large for select().")
             );
             failed = True;
             break;
@@ -1830,7 +1858,7 @@ impl _ssl__SSLSocket_verify_client_post_handshake_impl(
     if not HAVE_POST_HS_AUTH {
         PyErr_SetString(
             PyExc_NotImplementedError,
-            "Post-handshake auth is not supported by your OpenSSL version."
+            ptr[u8]("Post-handshake auth is not supported by your OpenSSL version.")
         );
         return NULL;
     }
@@ -1905,7 +1933,7 @@ impl set_verify_mode(ctx: SSLContextState, n: int) -> int {
     } elif n == PY_SSL_CERT_REQUIRED {
         mode = SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT;
     } else {
-        PyErr_SetString(PyExc_ValueError, "invalid value for verify_mode");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("invalid value for verify_mode"));
         return -1;
     }
 
@@ -1921,7 +1949,9 @@ impl _ssl__SSLContext_impl(type: ptr[PyObject], proto_version: i32) -> ptr[PyObj
     module = module_of_type(type);
     if not module {
         PyErr_Clear();
-        PyErr_SetString(PyExc_RuntimeError, "Cannot find internal module state");
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("Cannot find internal module state")
+        );
         return NULL;
     }
     version = int(proto_version);
@@ -1959,7 +1989,7 @@ impl _ssl__SSLContext_impl(type: ptr[PyObject], proto_version: i32) -> ptr[PyObj
     if not method {
         PyErr_Format(
             PyExc_ValueError,
-            "invalid or unsupported protocol version %i",
+            ptr[u8]("invalid or unsupported protocol version %i"),
             proto_version
         );
         return NULL;
@@ -2039,7 +2069,7 @@ impl _ssl__SSLContext_impl(type: ptr[PyObject], proto_version: i32) -> ptr[PyObj
     if result == 0 {
         ERR_clear_error();
         PyErr_SetString(
-            state_ref(module, STATE_SSL_ERROR), "No cipher can be selected."
+            state_ref(module, STATE_SSL_ERROR), ptr[u8]("No cipher can be selected.")
         );
         jacpy_release(instance);
         ERR_clear_error();
@@ -2051,7 +2081,7 @@ impl _ssl__SSLContext_impl(type: ptr[PyObject], proto_version: i32) -> ptr[PyObj
         if ctx_ctrl(ctx, SSL_CTRL_SET_MIN_PROTO_VERSION, PY_SSL_MIN_PROTOCOL) == 0 {
             PyErr_Format(
                 PyExc_ValueError,
-                "Failed to set minimum protocol 0x%x",
+                ptr[u8]("Failed to set minimum protocol 0x%x"),
                 c_int(PY_SSL_MIN_PROTOCOL)
             );
             jacpy_release(instance);
@@ -2082,7 +2112,8 @@ impl _ssl__SSLContext_set_ciphers_impl(
     if SSL_CTX_set_cipher_list(ctx.ctx, cipherlist) == 0 {
         ERR_clear_error();
         PyErr_SetString(
-            state_ref(ctx.module, STATE_SSL_ERROR), "No cipher can be selected."
+            state_ref(ctx.module, STATE_SSL_ERROR),
+            ptr[u8]("No cipher can be selected.")
         );
         return NULL;
     }
@@ -2160,7 +2191,9 @@ impl _ssl__SSLContext__set_alpn_protocols_impl(
     size = protos.size();
     if size > UINT_MAX {
         PyErr_Format(
-            PyExc_OverflowError, "protocols longer than %u bytes", u32(UINT_MAX)
+            PyExc_OverflowError,
+            ptr[u8]("protocols longer than %u bytes"),
+            u32(UINT_MAX)
         );
         return NULL;
     }
@@ -2206,7 +2239,7 @@ impl _ssl__SSLContext_verify_mode_get_impl(receiver: ptr[PyObject]) -> ptr[PyObj
     }
     PyErr_SetString(
         state_ref(ctx.module, STATE_SSL_ERROR),
-        "invalid return value from SSL_CTX_get_verify_mode"
+        ptr[u8]("invalid return value from SSL_CTX_get_verify_mode")
     );
     return NULL;
 }
@@ -2225,7 +2258,9 @@ impl _ssl__SSLContext_verify_mode_set_impl(
     if int(n) == PY_SSL_CERT_NONE and ctx.check_hostname {
         PyErr_SetString(
             PyExc_ValueError,
-            "Cannot set verify_mode to CERT_NONE when check_hostname is enabled."
+            ptr[u8](
+                "Cannot set verify_mode to CERT_NONE when check_hostname is enabled."
+            )
         );
         return -1;
     }
@@ -2280,7 +2315,9 @@ impl set_min_max_proto_version(
         and ctx.protocol != PY_SSL_VERSION_TLS {
         PyErr_SetString(
             PyExc_ValueError,
-            "The context's protocol doesn't support modification of highest and lowest version."
+            ptr[u8](
+                "The context's protocol doesn't support modification of highest and lowest version."
+            )
         );
         return -1;
     }
@@ -2302,7 +2339,7 @@ impl set_min_max_proto_version(
         and v != PY_PROTO_TLSv1_2
         and v != PY_PROTO_TLSv1_3 {
         PyErr_Format(
-            PyExc_ValueError, "Unsupported TLS/SSL version 0x%x", u32(c_int(v))
+            PyExc_ValueError, ptr[u8]("Unsupported TLS/SSL version 0x%x"), u32(c_int(v))
         );
         return -1;
     }
@@ -2324,7 +2361,9 @@ impl set_min_max_proto_version(
     }
     if result == 0 {
         PyErr_Format(
-            PyExc_ValueError, "Unsupported protocol version 0x%x", u32(c_int(v))
+            PyExc_ValueError,
+            ptr[u8]("Unsupported protocol version 0x%x"),
+            u32(c_int(v))
         );
         return -1;
     }
@@ -2399,15 +2438,17 @@ impl _ssl__SSLContext_num_tickets_set_impl(
         return -1;
     }
     if num < 0 {
-        PyErr_SetString(PyExc_ValueError, "value must be non-negative");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("value must be non-negative"));
         return -1;
     }
     if ctx.protocol != PY_SSL_VERSION_TLS_SERVER {
-        PyErr_SetString(PyExc_ValueError, "SSLContext is not a server context.");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("SSLContext is not a server context.")
+        );
         return -1;
     }
     if SSL_CTX_set_num_tickets(ctx.ctx, u64(num)) != 1 {
-        PyErr_SetString(PyExc_ValueError, "failed to set num tickets.");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("failed to set num tickets."));
         return -1;
     }
     return 0;
@@ -2544,7 +2585,7 @@ impl context_set_post_handshake_auth(
         return i32(-1);
     }
     if not arg {
-        PyErr_SetString(PyExc_AttributeError, "cannot delete attribute");
+        PyErr_SetString(PyExc_AttributeError, ptr[u8]("cannot delete attribute"));
         return i32(-1);
     }
     pha = PyObject_IsTrue(arg);
@@ -2581,12 +2622,14 @@ impl pwinfo_set(
         data = jacpy_bytes_address(password);
         size = jacpy_bytes_length(password);
     } else {
-        PyErr_SetString(PyExc_TypeError, bad_type_error);
+        object_error(PyExc_TypeError, bad_type_error);
         return False;
     }
     if size > INT_MAX {
         PyErr_Format(
-            PyExc_ValueError, "password cannot be longer than %d bytes", c_int(INT_MAX)
+            PyExc_ValueError,
+            ptr[u8]("password cannot be longer than %d bytes"),
+            c_int(INT_MAX)
         );
         if password_bytes {
             jacpy_release(password_bytes);
@@ -2598,7 +2641,9 @@ impl pwinfo_set(
     copy = PyMem_Malloc(u64(size) if size > 0 else u64(1));
     if not copy {
         info.view(1)[0].password = ptr();
-        PyErr_SetString(PyExc_MemoryError, "unable to allocate password buffer");
+        PyErr_SetString(
+            PyExc_MemoryError, ptr[u8]("unable to allocate password buffer")
+        );
         if password_bytes {
             jacpy_release(password_bytes);
         }
@@ -2633,7 +2678,9 @@ impl password_callback(buf: ptr[u8], size: i32, rwflag: i32, userdata: ptr) -> i
         }
     }
     if not failed and info.view(1)[0].size > size {
-        PyErr_Format(PyExc_ValueError, "password cannot be longer than %d bytes", size);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("password cannot be longer than %d bytes"), size
+        );
         failed = True;
     }
     if failed {
@@ -2661,7 +2708,7 @@ impl fs_path(value: ptr[PyObject], message: str) -> ptr[PyObject] {
     result = NULL;
     if PyUnicode_FSConverter(value, &mut result) == 0 {
         if PyErr_ExceptionMatches(PyExc_TypeError) != 0 {
-            PyErr_SetString(PyExc_TypeError, message);
+            object_error(PyExc_TypeError, message);
         }
         return NULL;
     }
@@ -2792,10 +2839,10 @@ impl _ssl__SSLContext_load_cert_chain_impl(
 
 impl add_ca_certs(ctx: SSLContextState, data: ptr, length: i64, filetype: int) -> int {
     if length <= 0 {
-        PyErr_SetString(PyExc_ValueError, "Empty certificate data");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Empty certificate data"));
         return -1;
     } elif length > INT_MAX {
-        PyErr_SetString(PyExc_OverflowError, "Certificate data is too long.");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("Certificate data is too long."));
         return -1;
     }
     biobuf = BIO_new_mem_buf(data, i32(length));
@@ -2885,7 +2932,7 @@ impl _ssl__SSLContext_load_verify_locations_impl(
     ok = True;
     if not cafile and not capath and not cadata {
         PyErr_SetString(
-            PyExc_TypeError, "cafile, capath and cadata cannot be all omitted"
+            PyExc_TypeError, ptr[u8]("cafile, capath and cadata cannot be all omitted")
         );
         ok = False;
     }
@@ -2926,7 +2973,9 @@ impl _ssl__SSLContext_load_verify_locations_impl(
                 view.close();
                 PyErr_SetString(
                     PyExc_TypeError,
-                    "cadata should be a contiguous buffer with a single dimension"
+                    ptr[u8](
+                        "cadata should be a contiguous buffer with a single dimension"
+                    )
                 );
                 ok = False;
             } else {
@@ -2940,7 +2989,7 @@ impl _ssl__SSLContext_load_verify_locations_impl(
         if invalid_cadata {
             PyErr_SetString(
                 PyExc_TypeError,
-                "cadata should be an ASCII string or a bytes-like object"
+                ptr[u8]("cadata should be an ASCII string or a bytes-like object")
             );
             ok = False;
         }
@@ -3148,7 +3197,7 @@ impl _ssl__SSLContext_set_ecdh_curve_impl(
     nid = OBJ_sn2nid(PyBytes_AsString(name_bytes));
     jacpy_release(name_bytes);
     if nid == 0 {
-        PyErr_Format(PyExc_ValueError, "unknown elliptic curve name %R", name);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("unknown elliptic curve name %R"), name);
         return NULL;
     }
     nids = ptr[i32](PyMem_Malloc(u64(4)));
@@ -3199,7 +3248,9 @@ impl servername_callback(s: ptr, al: ptr[i32], args: ptr) -> i32 {
     } else {
         servername_bytes = PyBytes_FromString(servername);
         if not servername_bytes {
-            PyErr_FormatUnraisable("Exception ignored in ssl servername callback");
+            PyErr_FormatUnraisable(
+                ptr[u8]("Exception ignored in ssl servername callback")
+            );
             jacpy_release(ssl_socket);
             jacpy_release(sni_cb);
             al.view(1)[0] = i32(SSL_AD_INTERNAL_ERROR);
@@ -3211,7 +3262,9 @@ impl servername_callback(s: ptr, al: ptr[i32], args: ptr) -> i32 {
         );
         if not servername_str {
             PyErr_FormatUnraisable(
-                "Exception ignored in ssl servername callback while decoding name %R",
+                ptr[u8](
+                    "Exception ignored in ssl servername callback while decoding name %R"
+                ),
                 servername_bytes
             );
             jacpy_release(servername_bytes);
@@ -3231,7 +3284,9 @@ impl servername_callback(s: ptr, al: ptr[i32], args: ptr) -> i32 {
     ret = i32(SSL_TLSEXT_ERR_OK);
     if not result {
         PyErr_FormatUnraisable(
-            "Exception ignored in ssl servername callback while calling set SNI callback %R",
+            ptr[u8](
+                "Exception ignored in ssl servername callback while calling set SNI callback %R"
+            ),
             sni_cb
         );
         al.view(1)[0] = i32(SSL_AD_HANDSHAKE_FAILURE);
@@ -3241,7 +3296,9 @@ impl servername_callback(s: ptr, al: ptr[i32], args: ptr) -> i32 {
             al.view(1)[0] = c_int(PyLong_AsLong(result));
             if PyErr_Occurred() {
                 PyErr_FormatUnraisable(
-                    "Exception ignored in ssl servername callback while calling set SNI callback (result=%R)",
+                    ptr[u8](
+                        "Exception ignored in ssl servername callback while calling set SNI callback (result=%R)"
+                    ),
                     result
                 );
                 al.view(1)[0] = i32(SSL_AD_INTERNAL_ERROR);
@@ -3275,7 +3332,8 @@ impl _ssl__SSLContext_sni_callback_set_impl(
     }
     if ctx.protocol == PY_SSL_VERSION_TLS_CLIENT {
         PyErr_SetString(
-            PyExc_ValueError, "sni_callback cannot be set on TLS_CLIENT context"
+            PyExc_ValueError,
+            ptr[u8]("sni_callback cannot be set on TLS_CLIENT context")
         );
         return -1;
     }
@@ -3287,7 +3345,7 @@ impl _ssl__SSLContext_sni_callback_set_impl(
             jacpy_release(previous);
         }
         if value != Py_None {
-            PyErr_SetString(PyExc_TypeError, "not a callable object");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("not a callable object"));
             return -1;
         }
     } else {
@@ -3320,7 +3378,7 @@ impl _ssl__SSLContext_cert_store_stats_impl(receiver: ptr[PyObject]) -> ptr[PyOb
     }
     objs = X509_STORE_get1_objects(SSL_CTX_get_cert_store(ctx.ctx));
     if not objs {
-        PyErr_SetString(PyExc_MemoryError, "failed to query cert store");
+        PyErr_SetString(PyExc_MemoryError, ptr[u8]("failed to query cert store"));
         return NULL;
     }
     x509 = 0;
@@ -3363,7 +3421,7 @@ impl _ssl__SSLContext_get_ca_certs_impl(
     }
     objs = X509_STORE_get1_objects(SSL_CTX_get_cert_store(ctx.ctx));
     if not objs {
-        PyErr_SetString(PyExc_MemoryError, "failed to query cert store");
+        PyErr_SetString(PyExc_MemoryError, ptr[u8]("failed to query cert store"));
         jacpy_release(rlist);
         return NULL;
     }
@@ -3464,7 +3522,9 @@ impl psk_client_callback(
     }
     if result_len == u32(0) and PyErr_Occurred() {
         PyErr_FormatUnraisable(
-            "Exception ignored in ssl PSK client callback while calling callback %R",
+            ptr[u8](
+                "Exception ignored in ssl PSK client callback while calling callback %R"
+            ),
             callback
         );
     }
@@ -3486,7 +3546,7 @@ impl _ssl__SSLContext_set_psk_client_callback_impl(
     if OPENSSL_NO_PSK {
         PyErr_SetString(
             PyExc_NotImplementedError,
-            "TLS-PSK is not supported by your OpenSSL version."
+            ptr[u8]("TLS-PSK is not supported by your OpenSSL version.")
         );
         return NULL;
     }
@@ -3505,7 +3565,7 @@ impl _ssl__SSLContext_set_psk_client_callback_impl(
     stored = NULL;
     if callback != Py_None {
         if PyCallable_Check(callback) == 0 {
-            PyErr_SetString(PyExc_TypeError, "callback must be callable");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("callback must be callable"));
             return NULL;
         }
         stored = Py_NewRef(callback);
@@ -3550,7 +3610,9 @@ impl psk_server_callback(
     }
     if result_len == u32(0) and PyErr_Occurred() {
         PyErr_FormatUnraisable(
-            "Exception ignored in ssl PSK server callback while calling callback %R",
+            ptr[u8](
+                "Exception ignored in ssl PSK server callback while calling callback %R"
+            ),
             callback
         );
     }
@@ -3564,7 +3626,7 @@ impl _ssl__SSLContext_set_psk_server_callback_impl(
     if OPENSSL_NO_PSK {
         PyErr_SetString(
             PyExc_NotImplementedError,
-            "TLS-PSK is not supported by your OpenSSL version."
+            ptr[u8]("TLS-PSK is not supported by your OpenSSL version.")
         );
         return NULL;
     }
@@ -3586,13 +3648,13 @@ impl _ssl__SSLContext_set_psk_server_callback_impl(
         hint = ptr[u8]();
     } else {
         if PyCallable_Check(callback) == 0 {
-            PyErr_SetString(PyExc_TypeError, "callback must be callable");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("callback must be callable"));
             return NULL;
         }
         stored = callback;
     }
     if SSL_CTX_use_psk_identity_hint(ctx.ctx, hint) != 1 {
-        PyErr_SetString(PyExc_ValueError, "failed to set identity hint");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("failed to set identity hint"));
         return NULL;
     }
     previous = ctx.psk_server_callback;
@@ -3611,7 +3673,7 @@ impl _ssl__SSLContext_set_psk_server_callback_impl(
 impl _ssl_MemoryBIO_impl(type: ptr[PyObject]) -> ptr[PyObject] {
     bio = BIO_new(BIO_s_mem());
     if not bio {
-        PyErr_SetString(PyExc_MemoryError, "failed to allocate BIO");
+        PyErr_SetString(PyExc_MemoryError, ptr[u8]("failed to allocate BIO"));
         return NULL;
     }
 
@@ -3685,7 +3747,7 @@ impl _ssl_MemoryBIO_write_impl(
     }
     if b.size() > INT_MAX {
         PyErr_Format(
-            PyExc_OverflowError, "string longer than %d bytes", c_int(INT_MAX)
+            PyExc_OverflowError, ptr[u8]("string longer than %d bytes"), c_int(INT_MAX)
         );
         return NULL;
     }
@@ -3695,7 +3757,8 @@ impl _ssl_MemoryBIO_write_impl(
             return NULL;
         }
         PyErr_SetString(
-            state_ref(module, STATE_SSL_ERROR), "cannot write() after write_eof()"
+            state_ref(module, STATE_SSL_ERROR),
+            ptr[u8]("cannot write() after write_eof()")
         );
         return NULL;
     }
@@ -3830,7 +3893,9 @@ impl _ssl_Certificate_public_bytes_impl(
     module = module_of_object(receiver);
     bio = BIO_new(BIO_s_mem());
     if not bio {
-        PyErr_SetString(state_ref(module, STATE_SSL_ERROR), "failed to allocate BIO");
+        PyErr_SetString(
+            state_ref(module, STATE_SSL_ERROR), ptr[u8]("failed to allocate BIO")
+        );
         return NULL;
     }
     kind = int(format_);
@@ -3842,7 +3907,7 @@ impl _ssl_Certificate_public_bytes_impl(
     } elif kind == int(PY_SSL_ENCODING_DER) {
         retcode = i2d_X509_bio(bio, state.cert);
     } else {
-        PyErr_SetString(PyExc_ValueError, "Unsupported format");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Unsupported format"));
         BIO_free(bio);
         return NULL;
     }
@@ -3945,7 +4010,7 @@ impl _ssl_RAND_add_impl(
 
 impl ssl_rand(module: ptr[PyObject], length: int, pseudo: bool) -> ptr[PyObject] {
     if length < 0 {
-        PyErr_SetString(PyExc_ValueError, "num must be positive");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("num must be positive"));
         return NULL;
     }
     data = jacpy_bytes_from_memory(ptr(), i64(length));
@@ -4011,7 +4076,7 @@ impl _ssl_get_default_verify_paths_impl(module: ptr[PyObject]) -> ptr[PyObject] 
 impl asn1obj_tuple(module: ptr[PyObject], obj_: ptr) -> ptr[PyObject] {
     nid = OBJ_obj2nid(obj_);
     if i64(nid) == NID_undef {
-        PyErr_Format(PyExc_ValueError, "Unknown object");
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Unknown object"));
         return NULL;
     }
     sn = OBJ_nid2sn(nid);
@@ -4032,12 +4097,12 @@ impl _ssl_txt2obj_impl(module: ptr[PyObject], txt: str, name: bool) -> ptr[PyObj
 
 impl _ssl_nid2obj_impl(module: ptr[PyObject], nid: i32) -> ptr[PyObject] {
     if i64(nid) < NID_undef {
-        PyErr_SetString(PyExc_ValueError, "NID must be positive.");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("NID must be positive."));
         return NULL;
     }
     obj_ = OBJ_nid2obj(nid);
     if not obj_ {
-        PyErr_Format(PyExc_ValueError, "unknown NID %i", nid);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("unknown NID %i"), nid);
         return NULL;
     }
     result = asn1obj_tuple(module, obj_);

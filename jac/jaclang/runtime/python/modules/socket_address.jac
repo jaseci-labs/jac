@@ -248,12 +248,14 @@ impl setipaddr(
             siz = 16;
         } else {
             freeaddrinfo(res);
-            PyErr_SetString(PyExc_OSError, "unsupported address family");
+            PyErr_SetString(PyExc_OSError, ptr[u8]("unsupported address family"));
             return -1;
         }
         if record[0].ai_next {
             freeaddrinfo(res);
-            PyErr_SetString(PyExc_OSError, "wildcard resolved to multiple address");
+            PyErr_SetString(
+                PyExc_OSError, ptr[u8]("wildcard resolved to multiple address")
+            );
             return -1;
         }
         size = addr_ret_size;
@@ -267,7 +269,7 @@ impl setipaddr(
 
     if c_string_is(name, "255.255.255.255") or c_string_is(name, "<broadcast>") {
         if af != AF_INET and af != AF_UNSPEC {
-            PyErr_SetString(PyExc_OSError, "address family mismatched");
+            PyErr_SetString(PyExc_OSError, ptr[u8]("address family mismatched"));
             return -1;
         }
         jacpy_memory_zero(ptr(addr_ret), i64(SOCKADDR_IN_SIZE));
@@ -317,7 +319,7 @@ impl setipaddr(
     if family == AF_INET6 {
         return 16;
     }
-    PyErr_SetString(PyExc_OSError, "unknown address family");
+    PyErr_SetString(PyExc_OSError, ptr[u8]("unknown address family"));
     return -1;
 }
 
@@ -466,7 +468,7 @@ impl makesockaddr(
                 scope_bits
             );
         }
-        PyErr_SetString(PyExc_ValueError, "Invalid address type");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Invalid address type"));
         return NULL;
     }
     if HAS_CAN and family == AF_CAN {
@@ -505,7 +507,7 @@ impl makesockaddr(
                 ptr[u8]("(II)"), u32(get_u32(addr, 4)), u32(get_u32(addr, 8))
             );
         }
-        PyErr_SetString(PyExc_ValueError, "Invalid address type");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Invalid address type"));
         return NULL;
     }
     if HAS_ALG and family == AF_ALG {
@@ -546,7 +548,9 @@ impl idna_converter(value: ptr[PyObject], arg: ptr) -> i32 {
         } else {
             obj2 = PyUnicode_AsEncodedString(value, ptr[u8]("idna"), ptr[u8]());
             if not obj2 {
-                PyErr_SetString(PyExc_TypeError, "encoding of hostname failed");
+                PyErr_SetString(
+                    PyExc_TypeError, ptr[u8]("encoding of hostname failed")
+                );
                 return i32(0);
             }
             data[0].obj_ = obj2;
@@ -567,7 +571,9 @@ impl idna_converter(value: ptr[PyObject], arg: ptr) -> i32 {
     if c_string_length(data[0].buf) != length {
         jacpy_release(data[0].obj_);
         data[0].obj_ = NULL;
-        PyErr_SetString(PyExc_TypeError, "host name must not contain null character");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("host name must not contain null character")
+        );
         return i32(0);
     }
     return Py_CLEANUP_SUPPORTED;
@@ -627,7 +633,7 @@ impl can_interface_index(s: ptr[PySocketSockObject], interface: ptr[PyObject]) -
     if length < IFNAMSIZ {
         return interface_index(s, ptr[u8](jacpy_bytes_address(interface)));
     }
-    PyErr_SetString(PyExc_OSError, "AF_CAN interface name too long");
+    PyErr_SetString(PyExc_OSError, ptr[u8]("AF_CAN interface name too long"));
     return -1;
 }
 
@@ -743,12 +749,12 @@ impl unix_address(
         sun_path = addrbuf + SUN_PATH_OFFSET;
         if HAS_ABSTRACT_UNIX and (length == 0 or int(source.view(1)[0]) == 0) {
             if length > SUN_PATH_SIZE {
-                PyErr_SetString(PyExc_OSError, "AF_UNIX path too long");
+                PyErr_SetString(PyExc_OSError, ptr[u8]("AF_UNIX path too long"));
             } else {
                 retval = length + SUN_PATH_OFFSET;
             }
         } elif length >= SUN_PATH_SIZE {
-            PyErr_SetString(PyExc_OSError, "AF_UNIX path too long");
+            PyErr_SetString(PyExc_OSError, ptr[u8]("AF_UNIX path too long"));
         } else {
             (sun_path + length).view(1)[0] = u8(0);
             retval = length + SUN_PATH_OFFSET + 1;
@@ -890,7 +896,9 @@ impl packet_address(
     }
     view = haddr.view(1);
     if view[0].buf and view[0].length > 8 {
-        PyErr_SetString(PyExc_ValueError, "Hardware address must be 8 bytes or less");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("Hardware address must be 8 bytes or less")
+        );
         jacpy_buffer_release(haddr);
         return -1;
     }
@@ -951,7 +959,7 @@ impl tipc_address(args: ptr[PyObject], addrbuf: ptr[u8], caller: str) -> int {
         put_u32(addrbuf, 8, int(v1));
         put_u32(addrbuf, 4, int(v2));
     } else {
-        PyErr_SetString(PyExc_TypeError, "Invalid address type");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("Invalid address type"));
         return -1;
     }
     return SOCKADDR_TIPC_SIZE;
@@ -1059,7 +1067,7 @@ impl system_address(
             return -1;
         }
         if jacpy_bytes_length(ctl_name) > MAX_KCTL_NAME {
-            PyErr_SetString(PyExc_ValueError, "provided string is too long");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("provided string is too long"));
             jacpy_release(ctl_name);
             return -1;
         }
@@ -1076,7 +1084,7 @@ impl system_address(
         if ioctl(get_sock_fd(s), u64(CTLIOCGINFO), info) != 0 {
             PyMem_Free(ptr(info));
             PyErr_SetString(
-                PyExc_OSError, "cannot find kernel control with provided name"
+                PyExc_OSError, ptr[u8]("cannot find kernel control with provided name")
             );
             return -1;
         }
@@ -1125,13 +1133,13 @@ impl alg_address(args: ptr[PyObject], addrbuf: ptr[u8], caller: str) -> int {
 
     type_length = c_string_length(alg_type);
     if type_length >= SALG_TYPE_SIZE {
-        PyErr_SetString(PyExc_ValueError, "AF_ALG type too long.");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("AF_ALG type too long."));
         return -1;
     }
     jacpy_memory_copy(ptr(addrbuf + 2), ptr(alg_type), i64(type_length));
     name_length = c_string_length(alg_name);
     if name_length >= SALG_NAME_SIZE {
-        PyErr_SetString(PyExc_ValueError, "AF_ALG name too long.");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("AF_ALG name too long."));
         return -1;
     }
     jacpy_memory_copy(ptr(addrbuf + 24), ptr(alg_name), i64(name_length));
@@ -1171,12 +1179,14 @@ impl getsockaddrlen(s: ptr[PySocketSockObject]) -> int {
         if sock_proto(s) == SYSPROTO_CONTROL {
             return SOCKADDR_CTL_SIZE;
         }
-        PyErr_SetString(PyExc_OSError, "getsockaddrlen: unknown PF_SYSTEM protocol");
+        PyErr_SetString(
+            PyExc_OSError, ptr[u8]("getsockaddrlen: unknown PF_SYSTEM protocol")
+        );
         return -1;
     }
     if HAS_ALG and family == AF_ALG {
         return SOCKADDR_ALG_SIZE;
     }
-    PyErr_SetString(PyExc_OSError, "getsockaddrlen: bad family");
+    PyErr_SetString(PyExc_OSError, ptr[u8]("getsockaddrlen: bad family"));
     return -1;
 }

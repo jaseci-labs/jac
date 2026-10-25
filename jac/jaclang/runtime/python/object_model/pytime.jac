@@ -159,7 +159,7 @@ import from c {
         if float_check(obj_) {
             d = PyFloat_AsDouble(obj_);
             if d != d {
-                PyErr_SetString(PyExc_ValueError, "Invalid value NaN (not a number)");
+                PyErr_SetString(PyExc_ValueError, ptr[u8]("Invalid value NaN (not a number)"));
                 return -1;
             }
 
@@ -196,7 +196,7 @@ import from c {
         if not long_check(obj_) {
             PyErr_Format(
                 PyExc_TypeError,
-                "expect int, got %s",
+                ptr[u8]("expect int, got %s"),
                 object_type(obj_).view(1)[0].tp_name
             );
             return -1;
@@ -369,12 +369,12 @@ impl _PyTime_GCD(x: i64, y: i64) -> i64 {
 }
 
 impl pytime_time_t_overflow {
-    PyErr_SetString(PyExc_OverflowError, "timestamp out of range for platform time_t");
+    PyErr_SetString(PyExc_OverflowError, ptr[u8]("timestamp out of range for platform time_t"));
 }
 
 impl pytime_overflow {
     PyErr_SetString(
-        PyExc_OverflowError, "timestamp too large to convert to C PyTime_t"
+        PyExc_OverflowError, ptr[u8]("timestamp too large to convert to C PyTime_t")
     );
 }
 
@@ -487,7 +487,7 @@ impl pytime_object_to_denominator(
         d = PyFloat_AsDouble(obj_);
         if d != d {
             numerator.view(1)[0] = 0;
-            PyErr_SetString(PyExc_ValueError, "Invalid value NaN (not a number)");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("Invalid value NaN (not a number)"));
             return -1;
         }
         (status, whole, part) = pytime_double_to_denominator(d, denominator, rounding);
@@ -504,7 +504,7 @@ impl pytime_object_to_denominator(
     if value == -1 and PyErr_Occurred() {
         if PyErr_ExceptionMatches(PyExc_TypeError) {
             PyErr_Format(
-                PyExc_TypeError, "argument must be int or float, not %T", obj_
+                PyExc_TypeError, ptr[u8]("argument must be int or float, not %T"), obj_
             );
         }
         return -1;
@@ -556,7 +556,7 @@ impl pytime_from_object(
     if float_check(obj_) {
         d = PyFloat_AsDouble(obj_);
         if d != d {
-            PyErr_SetString(PyExc_ValueError, "Invalid value NaN (not a number)");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("Invalid value NaN (not a number)"));
             return -1;
         }
         return pytime_from_double(tp, d, rounding, unit_to_ns);
@@ -569,7 +569,7 @@ impl pytime_from_object(
         } elif PyErr_ExceptionMatches(PyExc_TypeError) {
             PyErr_Format(
                 PyExc_TypeError,
-                "'%T' object cannot be interpreted as an integer or float",
+                ptr[u8]("'%T' object cannot be interpreted as an integer or float"),
                 obj_
             );
         }

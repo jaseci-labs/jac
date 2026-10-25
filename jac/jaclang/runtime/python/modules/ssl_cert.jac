@@ -84,7 +84,7 @@ impl memory_data(bio: ptr) -> tuple[ptr, i64] {
     data = cell.view(1)[0];
     PyMem_Free(cell);
     if not data or size < 0 {
-        PyErr_SetString(PyExc_ValueError, "Not a memory BIO");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("Not a memory BIO"));
         return (ptr(), -1);
     }
     return (data, size);
@@ -357,7 +357,10 @@ impl general_name_tuple(
 
     if gntype != GEN_OTHERNAME and gntype != GEN_X400 and gntype != GEN_EDIPARTY {
         if PyErr_WarnFormat(
-            PyExc_RuntimeWarning, 1, "Unknown general name type %d", c_int(gntype)
+            PyExc_RuntimeWarning,
+            1,
+            ptr[u8]("Unknown general name type %d"),
+            c_int(gntype)
         )
             == -1 {
             return NULL;
@@ -387,7 +390,7 @@ impl general_name_tuple(
         position += 1;
     }
     if colon < 0 {
-        PyErr_Format(PyExc_ValueError, "Invalid value %.200s", buf);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Invalid value %.200s"), buf);
         PyMem_Free(buf);
         return NULL;
     }
@@ -408,7 +411,9 @@ impl peer_alt_names(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject] {
 
     biobuf = BIO_new(BIO_s_mem());
     if not biobuf {
-        PyErr_SetString(state_ref(module, STATE_SSL_ERROR), "failed to allocate BIO");
+        PyErr_SetString(
+            state_ref(module, STATE_SSL_ERROR), ptr[u8]("failed to allocate BIO")
+        );
         return NULL;
     }
     names = X509_get_ext_d2i(certificate, i32(NID_subject_alt_name), ptr(), ptr());
@@ -579,7 +584,9 @@ impl decode_certificate(module: ptr[PyObject], certificate: ptr) -> ptr[PyObject
 
     biobuf = BIO_new(BIO_s_mem());
     if not biobuf {
-        PyErr_SetString(state_ref(module, STATE_SSL_ERROR), "failed to allocate BIO");
+        PyErr_SetString(
+            state_ref(module, STATE_SSL_ERROR), ptr[u8]("failed to allocate BIO")
+        );
         jacpy_release(retval);
         return NULL;
     }
@@ -704,7 +711,7 @@ impl x509name_print(
 ) -> ptr[PyObject] {
     biobuf = BIO_new(BIO_s_mem());
     if not biobuf {
-        PyErr_SetString(PyExc_MemoryError, "failed to allocate BIO");
+        PyErr_SetString(PyExc_MemoryError, ptr[u8]("failed to allocate BIO"));
         return NULL;
     }
     if X509_NAME_print_ex(biobuf, name, i32(indent), flags) <= 0 {

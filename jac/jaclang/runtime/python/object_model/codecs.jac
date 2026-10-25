@@ -194,7 +194,7 @@ import from c {
             return i32(-1);
         }
         if PyCallable_Check(search_function) == 0 {
-            PyErr_SetString(PyExc_TypeError, "argument must be callable");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("argument must be callable"));
             return i32(-1);
         }
         return PyList_Append(search_path(interp), search_function);
@@ -253,7 +253,7 @@ import from c {
         if len_ == 0 {
             PyErr_SetString(
                 PyExc_LookupError,
-                "no codec search functions registered: can't find encoding"
+                ptr[u8]("no codec search functions registered: can't find encoding")
             );
             object_decref(v);
             return NULL;
@@ -280,7 +280,7 @@ import from c {
             }
             if not tuple_check(result) or object_size(result) != 4 {
                 PyErr_SetString(
-                    PyExc_TypeError, "codec search functions must return 4-tuples"
+                    PyExc_TypeError, ptr[u8]("codec search functions must return 4-tuples")
                 );
                 object_decref(result);
                 object_decref(v);
@@ -289,7 +289,7 @@ import from c {
             break;
         }
         if not result {
-            PyErr_Format(PyExc_LookupError, "unknown encoding: %s", encoding);
+            PyErr_Format(PyExc_LookupError, ptr[u8]("unknown encoding: %s"), encoding);
             object_decref(v);
             return NULL;
         }
@@ -389,14 +389,14 @@ import from c {
                         if alternate_command {
                             PyErr_Format(
                                 PyExc_LookupError,
-                                "'%.400s' is not a text encoding; use %s to handle arbitrary codecs",
+                                ptr[u8]("'%.400s' is not a text encoding; use %s to handle arbitrary codecs"),
                                 encoding,
                                 alternate_command
                             );
                         } else {
                             PyErr_Format(
                                 PyExc_LookupError,
-                                "'%.400s' is not a text encoding",
+                                ptr[u8]("'%.400s' is not a text encoding"),
                                 encoding
                             );
                         }
@@ -426,7 +426,7 @@ import from c {
     }  def PyCodec_RegisterError(name: ptr[u8], error: ptr[PyObject]) -> i32 {
         interp = current_interp();
         if PyCallable_Check(error) == 0 {
-            PyErr_SetString(PyExc_TypeError, "handler must be callable");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("handler must be callable"));
             return i32(-1);
         }
         return PyDict_SetItemString(error_registry(interp), name, error);
@@ -437,7 +437,7 @@ import from c {
                 == 0 {
                 PyErr_Format(
                     PyExc_ValueError,
-                    "cannot un-register built-in error handler '%s'",
+                    ptr[u8]("cannot un-register built-in error handler '%s'"),
                     name
                 );
                 return i32(-1);
@@ -463,7 +463,7 @@ import from c {
         }
         if not handler {
             PyErr_Format(
-                PyExc_LookupError, "unknown error handler name '%.400s'", handler_name
+                PyExc_LookupError, ptr[u8]("unknown error handler name '%.400s'"), handler_name
             );
             return NULL;
         }
@@ -494,7 +494,7 @@ import from c {
         if type_has_feature(object_type(exc), Py_TPFLAGS_BASE_EXC_SUBCLASS) {
             reraise_exception(exc);
         } else {
-            PyErr_SetString(PyExc_TypeError, "codec must pass exception instance");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("codec must pass exception instance"));
         }
         return NULL;
     }
@@ -808,7 +808,7 @@ impl hexdigit(v: u32) -> u8 {
 impl normalizestring(string: ptr[u8]) -> ptr[PyObject] {
     len_ = strlen(string);
     if len_ > u64(PY_SSIZE_T_MAX) {
-        PyErr_SetString(PyExc_OverflowError, "string is too large");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("string is too large"));
         return NULL;
     }
 
@@ -818,7 +818,7 @@ impl normalizestring(string: ptr[u8]) -> ptr[PyObject] {
     }
 
     if _Py_normalize_encoding(string, encoding, len_ + u64(1)) == 0 {
-        PyErr_SetString(PyExc_RuntimeError, "_Py_normalize_encoding() failed");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("_Py_normalize_encoding() failed"));
         PyMem_Free(ptr(encoding));
         return NULL;
     }
@@ -923,7 +923,7 @@ impl _PyCodec_EncodeInternal(
 
     if not tuple_check(result) or object_size(result) != 2 {
         PyErr_SetString(
-            PyExc_TypeError, "encoder must return a tuple (object, integer)"
+            PyExc_TypeError, ptr[u8]("encoder must return a tuple (object, integer)")
         );
         object_decref(result);
         object_decref(args);
@@ -956,7 +956,7 @@ impl _PyCodec_DecodeInternal(
     }
     if not tuple_check(result) or object_size(result) != 2 {
         PyErr_SetString(
-            PyExc_TypeError, "decoder must return a tuple (object,integer)"
+            PyExc_TypeError, ptr[u8]("decoder must return a tuple (object,integer)")
         );
         object_decref(args);
         object_xdecref(decoder);
@@ -993,7 +993,7 @@ impl _PyCodec_TextDecoder(encoding: ptr[u8]) -> ptr[PyObject] {
 }
 
 impl wrong_exception_type(exc: ptr[PyObject]) {
-    PyErr_Format(PyExc_TypeError, "don't know how to handle %T in error callback", exc);
+    PyErr_Format(PyExc_TypeError, ptr[u8]("don't know how to handle %T in error callback"), exc);
 }
 
 impl is_unicode_encode_error(exc: ptr[PyObject]) -> bool {

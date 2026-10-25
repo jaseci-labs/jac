@@ -216,7 +216,7 @@ impl datetime_from_pickle(
 ) -> ptr[PyObject] {
     aware = tzinfo != Py_None;
     if aware and check_tzinfo_subclass(tzinfo) < 0 {
-        PyErr_SetString(PyExc_TypeError, "bad tzinfo state arg");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("bad tzinfo state arg"));
         return NULL;
     }
     me = type_alloc(type, 1 if aware else 0);
@@ -264,7 +264,9 @@ impl datetime_new(
                     if PyErr_ExceptionMatches(PyExc_UnicodeEncodeError) != 0 {
                         PyErr_SetString(
                             PyExc_ValueError,
-                            "Failed to encode latin1 string when unpickling a datetime object. pickle.load(data, encoding='latin1') is assumed."
+                            ptr[u8](
+                                "Failed to encode latin1 string when unpickling a datetime object. pickle.load(data, encoding='latin1') is assumed."
+                            )
                         );
                     }
                     return NULL;
@@ -315,7 +317,7 @@ impl utc_to_seconds(
     if year < MINYEAR or year > MAXYEAR {
         PyErr_Format(
             PyExc_ValueError,
-            "year must be in %ld..%ld, not %ld",
+            ptr[u8]("year must be in %ld..%ld, not %ld"),
             MINYEAR,
             MAXYEAR,
             year
@@ -432,7 +434,9 @@ impl datetime_now(type: ptr[PyObject], tz: ptr[PyObject]) -> ptr[PyObject] {
 impl datetime_utcnow(cls: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if PyErr_WarnEx(
         PyExc_DeprecationWarning,
-        "datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).",
+        ptr[u8](
+            "datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC)."
+        ),
         1
     )
         != 0 {
@@ -469,7 +473,9 @@ impl datetime_utcfromtimestamp(
 ) -> ptr[PyObject] {
     if PyErr_WarnEx(
         PyExc_DeprecationWarning,
-        "datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).",
+        ptr[u8](
+            "datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC)."
+        ),
         1
     )
         != 0 {
@@ -549,20 +555,24 @@ impl sanitize_isoformat_str(dtstr: ptr[PyObject]) -> ptr[PyObject] {
 
 impl datetime_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(dtstr) == 0 {
-        PyErr_SetString(PyExc_TypeError, "fromisoformat: argument must be str");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("fromisoformat: argument must be str")
+        );
         return NULL;
     }
 
     dtstr_clean = sanitize_isoformat_str(dtstr);
     if not dtstr_clean {
-        PyErr_Format(PyExc_ValueError, "Invalid isoformat string: %R", dtstr);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Invalid isoformat string: %R"), dtstr);
         return NULL;
     }
     length: i64 = 0;
     text = PyUnicode_AsUTF8AndSize(dtstr_clean, &mut length);
     if not text {
         if PyErr_ExceptionMatches(PyExc_UnicodeEncodeError) != 0 {
-            PyErr_Format(PyExc_ValueError, "Invalid isoformat string: %R", dtstr);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("Invalid isoformat string: %R"), dtstr
+            );
         }
         jacpy_release(dtstr_clean);
         return NULL;
@@ -589,7 +599,7 @@ impl datetime_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyO
         rv = parse_isoformat_time(p, int(length) - (p - text), parsed);
     }
     if rv < 0 {
-        PyErr_Format(PyExc_ValueError, "Invalid isoformat string: %R", dtstr);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Invalid isoformat string: %R"), dtstr);
         jacpy_release(dtstr_clean);
         return NULL;
     }
@@ -619,7 +629,7 @@ impl datetime_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyO
             } else {
                 PyErr_SetString(
                     PyExc_ValueError,
-                    "minute, second, and microsecond must be 0 when hour is 24"
+                    ptr[u8]("minute, second, and microsecond must be 0 when hour is 24")
                 );
                 jacpy_release(tzinfo);
                 jacpy_release(dtstr_clean);
@@ -694,7 +704,7 @@ impl datetime_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObjec
         if (offset1 != Py_None) != (offset2 != Py_None) {
             PyErr_SetString(
                 PyExc_TypeError,
-                "can't subtract offset-naive and offset-aware datetimes"
+                ptr[u8]("can't subtract offset-naive and offset-aware datetimes")
             );
             jacpy_release(offset1);
             jacpy_release(offset2);
@@ -848,7 +858,7 @@ impl datetime_isoformat(
             us
         );
     } else {
-        PyErr_Format(PyExc_ValueError, "Unknown timespec value");
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Unknown timespec value"));
         return NULL;
     }
     if not result or not has_tzinfo(op) {
@@ -974,7 +984,8 @@ impl datetime_richcompare(
             result = PyBool_FromLong(1);
         } else {
             PyErr_SetString(
-                PyExc_TypeError, "can't compare offset-naive and offset-aware datetimes"
+                PyExc_TypeError,
+                ptr[u8]("can't compare offset-naive and offset-aware datetimes")
             );
         }
     }
@@ -1220,7 +1231,7 @@ impl datetime_astimezone(
     if not delta_check(offset) {
         PyErr_Format(
             PyExc_TypeError,
-            "utcoffset() returned %.200s, expected timedelta or None",
+            ptr[u8]("utcoffset() returned %.200s, expected timedelta or None"),
             type_name_of(offset)
         );
         jacpy_release(offset);

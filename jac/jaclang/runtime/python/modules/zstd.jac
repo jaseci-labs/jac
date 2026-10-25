@@ -202,11 +202,16 @@ def:priv set_zstd_error(module: ptr[PyObject], kind: ZstdErrorKind, zstd_ret: u6
     if not module {
         return;
     }
+    format = jacpy_unicode_from_text(ERROR_FORMATS[kind.value]);
+    if not format {
+        return;
+    }
     PyErr_Format(
         jacpy_binding_state_get(module, i64(ZSTD_ERROR)),
-        ERROR_FORMATS[kind.value],
+        PyUnicode_AsUTF8(format),
         ZSTD_getErrorName(zstd_ret)
     );
+    jacpy_release(format);
 }
 
 def:priv set_zstd_error_of(
@@ -218,7 +223,7 @@ def:priv set_zstd_error_of(
 def:priv set_zstd_message(instance: ptr[PyObject], message: str) {
     module = module_of(instance);
     if module {
-        PyErr_SetString(jacpy_binding_state_get(module, i64(ZSTD_ERROR)), message);
+        object_error(jacpy_binding_state_get(module, i64(ZSTD_ERROR)), message);
     }
 }
 
@@ -580,7 +585,7 @@ def convert_zstd_contentsize_converter(
         if PyErr_ExceptionMatches(PyExc_OverflowError) != 0 {
             PyErr_Format(
                 PyExc_ValueError,
-                "size argument should be a positive int less than %llu",
+                ptr[u8]("size argument should be a positive int less than %llu"),
                 ZSTD_CONTENTSIZE_ERROR
             );
         }
@@ -589,7 +594,7 @@ def convert_zstd_contentsize_converter(
     if pledged_size >= ZSTD_CONTENTSIZE_ERROR {
         PyErr_Format(
             PyExc_ValueError,
-            "size argument should be a positive int less than %llu",
+            ptr[u8]("size argument should be a positive int less than %llu"),
             ZSTD_CONTENTSIZE_ERROR
         );
         raise boundary_failure();
@@ -650,7 +655,7 @@ def:priv set_c_parameters(
     if jacpy_is_dict(options) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "ZstdCompressor() argument 'options' must be dict, not %T",
+            ptr[u8]("ZstdCompressor() argument 'options' must be dict, not %T"),
             options
         );
         return False;
@@ -1071,7 +1076,7 @@ def:priv set_d_parameters(
     if jacpy_is_dict(options) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "ZstdDecompressor() argument 'options' must be dict, not %T",
+            ptr[u8]("ZstdDecompressor() argument 'options' must be dict, not %T"),
             options
         );
         return False;
@@ -1404,7 +1409,9 @@ def:priv samples_stats(
     chunks_number = PyTuple_Size(samples_sizes);
     if u64(chunks_number) > UINT32_MAX {
         PyErr_Format(
-            PyExc_ValueError, "The number of samples should be <= %u.", u32(UINT32_MAX)
+            PyExc_ValueError,
+            ptr[u8]("The number of samples should be <= %u."),
+            u32(UINT32_MAX)
         );
         return (-1, ptr[u64]());
     }
@@ -1570,7 +1577,9 @@ def _zstd_get_frame_size_impl(
     if is_error(frame_size) {
         PyErr_Format(
             jacpy_binding_state_get(module, i64(ZSTD_ERROR)),
-            "Error when finding the compressed size of a Zstandard frame. Ensure the frame_buffer argument starts from the beginning of a frame, and its length is not less than this complete frame. Zstd error message: %s.",
+            ptr[u8](
+                "Error when finding the compressed size of a Zstandard frame. Ensure the frame_buffer argument starts from the beginning of a frame, and its length is not less than this complete frame. Zstd error message: %s."
+            ),
             ZSTD_getErrorName(frame_size)
         );
         return NULL;
@@ -1587,7 +1596,9 @@ def _zstd_get_frame_info_impl(
     if decompressed_size == ZSTD_CONTENTSIZE_ERROR {
         PyErr_SetString(
             jacpy_binding_state_get(module, i64(ZSTD_ERROR)),
-            "Error when getting information from the header of a Zstandard frame. Ensure the frame_buffer argument starts from the beginning of a frame, and its length is not less than the frame header (6~18 bytes)."
+            ptr[u8](
+                "Error when getting information from the header of a Zstandard frame. Ensure the frame_buffer argument starts from the beginning of a frame, and its length is not less than the frame header (6~18 bytes)."
+            )
         );
         return NULL;
     }

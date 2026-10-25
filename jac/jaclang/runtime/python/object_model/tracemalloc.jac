@@ -255,7 +255,7 @@ import from c {
         if max_nframe < 1 or max_nframe > MAX_NFRAME {
             PyErr_Format(
                 PyExc_ValueError,
-                "the number of frames must be in range [1; %i]",
+                ptr[u8]("the number of frames must be in range [1; %i]"),
                 MAX_NFRAME
             );
             return i32(-1);

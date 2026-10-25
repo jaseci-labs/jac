@@ -313,13 +313,15 @@ import from c {
         orig: ptr[PyObject], excs: ptr[PyObject]
     ) -> ptr[PyObject] {
         if not orig or not exception_instance_check(orig) {
-            PyErr_SetString(PyExc_TypeError, "orig must be an exception instance");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("orig must be an exception instance")
+            );
             return NULL;
         }
         if not excs
             or not type_has_feature(object_type(excs), Py_TPFLAGS_LIST_SUBCLASS) {
             PyErr_SetString(
-                PyExc_TypeError, "excs must be a list of exception instances"
+                PyExc_TypeError, ptr[u8]("excs must be a list of exception instances")
             );
             return NULL;
         }
@@ -327,7 +329,7 @@ import from c {
             exc = PyList_GetItem(excs, i);
             if not exc or not (exception_instance_check(exc) or exc == Py_None) {
                 PyErr_Format(
-                    PyExc_TypeError, "item %zd of excs is not an exception", i
+                    PyExc_TypeError, ptr[u8]("item %zd of excs is not an exception"), i
                 );
                 return NULL;
             }
@@ -335,7 +337,7 @@ import from c {
 
         tb = PyException_GetTraceback(orig);
         if not tb {
-            PyErr_Format(PyExc_ValueError, "orig must be a raised exception");
+            PyErr_Format(PyExc_ValueError, ptr[u8]("orig must be a raised exception"));
             return NULL;
         }
         object_decref(tb);
@@ -826,7 +828,7 @@ import from c {
         if not exception_instance_check(exc) {
             PyErr_Format(
                 PyExc_TypeError,
-                "exc must be an exception, not '%s'",
+                ptr[u8]("exc must be an exception, not '%s'"),
                 object_type(exc).view(1)[0].tp_name
             );
             return i32(-1);
@@ -2983,7 +2985,7 @@ impl BaseException___setstate__(
 ) -> ptr[PyObject] {
     if state != Py_None {
         if not type_has_feature(object_type(state), Py_TPFLAGS_DICT_SUBCLASS) {
-            PyErr_SetString(PyExc_TypeError, "state is not a dictionary");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("state is not a dictionary"));
             return NULL;
         }
         pos: i64 = 0;
@@ -3034,7 +3036,9 @@ impl BaseException_add_note(op: ptr[PyObject], note: ptr[PyObject]) -> ptr[PyObj
         }
     } elif not type_has_feature(object_type(notes), Py_TPFLAGS_LIST_SUBCLASS) {
         object_decref(notes);
-        PyErr_SetString(PyExc_TypeError, "Cannot add note: __notes__ is not a list");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("Cannot add note: __notes__ is not a list")
+        );
         return NULL;
     }
     if PyList_Append(notes, note) < 0 {
@@ -3061,7 +3065,7 @@ impl BaseException_args_set(
     op: ptr[PyObject], value: ptr[PyObject], _closure: ptr
 ) -> i32 {
     if not value {
-        PyErr_SetString(PyExc_TypeError, "args may not be deleted");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("args may not be deleted"));
         return i32(-1);
     }
     seq = PySequence_Tuple(value);
@@ -3081,7 +3085,7 @@ impl BaseException___traceback___get(
 
 impl traceback_set(op: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     if not value {
-        PyErr_SetString(PyExc_TypeError, "__traceback__ may not be deleted");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("__traceback__ may not be deleted"));
         return i32(-1);
     }
     if object_type_check(value, ptr[PyTypeObject](addressof(PyTraceBack_Type))) {
@@ -3089,7 +3093,9 @@ impl traceback_set(op: ptr[PyObject], value: ptr[PyObject]) -> i32 {
     } elif value == Py_None {
         base_store(op, 3, NULL);
     } else {
-        PyErr_SetString(PyExc_TypeError, "__traceback__ must be a traceback or None");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__traceback__ must be a traceback or None")
+        );
         return i32(-1);
     }
     return i32(0);
@@ -3115,7 +3121,7 @@ impl BaseException___context___set(
 ) -> i32 {
     value = value_in;
     if not value {
-        PyErr_SetString(PyExc_TypeError, "__context__ may not be deleted");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("__context__ may not be deleted"));
         return i32(-1);
     }
     if value == Py_None {
@@ -3123,7 +3129,7 @@ impl BaseException___context___set(
     } elif not exception_instance_check(value) {
         PyErr_SetString(
             PyExc_TypeError,
-            "exception context must be None or derive from BaseException"
+            ptr[u8]("exception context must be None or derive from BaseException")
         );
         return i32(-1);
     } else {
@@ -3143,14 +3149,15 @@ impl BaseException___cause___set(
 ) -> i32 {
     value = value_in;
     if not value {
-        PyErr_SetString(PyExc_TypeError, "__cause__ may not be deleted");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("__cause__ may not be deleted"));
         return i32(-1);
     }
     if value == Py_None {
         value = NULL;
     } elif not exception_instance_check(value) {
         PyErr_SetString(
-            PyExc_TypeError, "exception cause must be None or derive from BaseException"
+            PyExc_TypeError,
+            ptr[u8]("exception cause must be None or derive from BaseException")
         );
         return i32(-1);
     } else {
@@ -3273,7 +3280,9 @@ impl BaseExceptionGroup_new(
     if nargs != 2 {
         PyErr_Format(
             PyExc_TypeError,
-            "BaseExceptionGroup.__new__() takes exactly 2 arguments (%zd given)",
+            ptr[u8](
+                "BaseExceptionGroup.__new__() takes exactly 2 arguments (%zd given)"
+            ),
             nargs
         );
         return NULL;
@@ -3291,7 +3300,7 @@ impl BaseExceptionGroup_new(
     }
     if PySequence_Check(exceptions) == 0 {
         PyErr_SetString(
-            PyExc_TypeError, "second argument (exceptions) must be a sequence"
+            PyExc_TypeError, ptr[u8]("second argument (exceptions) must be a sequence")
         );
         return NULL;
     }
@@ -3315,7 +3324,7 @@ impl BaseExceptionGroup_new(
     if numexcs == 0 {
         PyErr_SetString(
             PyExc_ValueError,
-            "second argument (exceptions) must be a non-empty sequence"
+            ptr[u8]("second argument (exceptions) must be a non-empty sequence")
         );
         failed = True;
     }
@@ -3325,7 +3334,7 @@ impl BaseExceptionGroup_new(
         if not exception_instance_check(exc) {
             PyErr_Format(
                 PyExc_ValueError,
-                "Item %zd of second argument (exceptions) is not an exception",
+                ptr[u8]("Item %zd of second argument (exceptions) is not an exception"),
                 i
             );
             failed = True;
@@ -3344,7 +3353,8 @@ impl BaseExceptionGroup_new(
         if cls == exception_group {
             if nested_base_exceptions {
                 PyErr_SetString(
-                    PyExc_TypeError, "Cannot nest BaseExceptions in an ExceptionGroup"
+                    PyExc_TypeError,
+                    ptr[u8]("Cannot nest BaseExceptions in an ExceptionGroup")
                 );
                 failed = True;
             }
@@ -3359,7 +3369,7 @@ impl BaseExceptionGroup_new(
             } elif nonbase == 1 {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "Cannot nest BaseExceptions in '%.200s'",
+                    ptr[u8]("Cannot nest BaseExceptions in '%.200s'"),
                     ptr[PyTypeObject](cls).view(1)[0].tp_name
                 );
                 failed = True;
@@ -3489,7 +3499,8 @@ impl exceptiongroup_subset(
     }
     if not is_base_exception_group(eg) {
         PyErr_SetString(
-            PyExc_TypeError, "derive must return an instance of BaseExceptionGroup"
+            PyExc_TypeError,
+            ptr[u8]("derive must return an instance of BaseExceptionGroup")
         );
         object_decref(eg);
         return (i32(-1), NULL);
@@ -3558,7 +3569,9 @@ impl get_matcher_type(value: ptr[PyObject]) -> i32 {
     }
     PyErr_SetString(
         PyExc_TypeError,
-        "expected an exception type, a tuple of exception types, or a callable (other than a class)"
+        ptr[u8](
+            "expected an exception type, a tuple of exception types, or a callable (other than a class)"
+        )
     );
     return i32(-1);
 }
@@ -3774,7 +3787,7 @@ impl create_exception_group_class -> ptr[PyObject] {
     if not bases {
         return NULL;
     }
-    group = PyErr_NewException("builtins.ExceptionGroup", bases, NULL);
+    group = PyErr_NewException(ptr[u8]("builtins.ExceptionGroup"), bases, NULL);
     exception_group_slot().view(1)[0] = group;
     object_decref(bases);
     return group;
@@ -4145,7 +4158,7 @@ impl OSError_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
 impl OSError_written_get(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     written = os_of(op).view(1)[0].written;
     if written == -1 {
-        PyErr_SetString(PyExc_AttributeError, "characters_written");
+        PyErr_SetString(PyExc_AttributeError, ptr[u8]("characters_written"));
         return NULL;
     }
     return PyLong_FromSsize_t(written);
@@ -4155,7 +4168,7 @@ impl OSError_written_set(op: ptr[PyObject], arg: ptr[PyObject], _closure: ptr) -
     o = os_of(op);
     if not arg {
         if o.view(1)[0].written == -1 {
-            PyErr_SetString(PyExc_AttributeError, "characters_written");
+            PyErr_SetString(PyExc_AttributeError, ptr[u8]("characters_written"));
             return i32(-1);
         }
         o.view(1)[0].written = -1;
@@ -4356,7 +4369,7 @@ impl SyntaxError_init(
             and not exc_field(op, PySyntaxErrorObject_END_OFFSET) {
             PyErr_SetString(
                 PyExc_TypeError,
-                "end_offset must be provided when end_lineno is provided"
+                ptr[u8]("end_offset must be provided when end_lineno is provided")
             );
             return i32(-1);
         }
@@ -4479,14 +4492,16 @@ impl check_unicode_error_attribute(
     attr: ptr[PyObject], name: str, as_bytes: bool
 ) -> i32 {
     if not attr {
-        PyErr_Format(PyExc_TypeError, "UnicodeError '%s' attribute is not set", name);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("UnicodeError '%s' attribute is not set"), name
+        );
         return i32(-1);
     }
     flag = Py_TPFLAGS_BYTES_SUBCLASS if as_bytes else Py_TPFLAGS_UNICODE_SUBCLASS;
     if not type_has_feature(object_type(attr), flag) {
         PyErr_Format(
             PyExc_TypeError,
-            "UnicodeError '%s' attribute must be a %s",
+            ptr[u8]("UnicodeError '%s' attribute must be a %s"),
             name,
             "bytes" if as_bytes else "string"
         );
@@ -4506,7 +4521,9 @@ impl as_unicode_error_attribute(
 
 impl check_unicode_error_type(op: ptr[PyObject], expect_type: str) -> i32 {
     if not object_type_check(op, addressof(_PyExc_UnicodeError)) {
-        PyErr_Format(PyExc_TypeError, "expecting a %s object, got %T", expect_type, op);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("expecting a %s object, got %T"), expect_type, op
+        );
         return i32(-1);
     }
     return i32(0);

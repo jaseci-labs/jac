@@ -397,11 +397,11 @@ impl set_ssl_exception_from_errcode(exc: ptr[PyObject], errcode: u64) {
     func = ERR_func_error_string(errcode);
     reason = ERR_reason_error_string(errcode);
     if lib and func {
-        PyErr_Format(exc, "[%s: %s] %s", lib, func, reason);
+        PyErr_Format(exc, ptr[u8]("[%s: %s] %s"), lib, func, reason);
     } elif lib {
-        PyErr_Format(exc, "[%s] %s", lib, reason);
+        PyErr_Format(exc, ptr[u8]("[%s] %s"), lib, reason);
     } else {
-        PyErr_Format(exc, "%s", reason);
+        PyErr_Format(exc, ptr[u8]("%s"), reason);
     }
 }
 
@@ -483,7 +483,7 @@ impl py_digest_by_digestmod(
         if not PyErr_Occurred() {
             PyErr_Format(
                 state_ref(module, STATE_UNSUPPORTED_DIGESTMOD_ERROR),
-                "Unsupported digestmod %R",
+                ptr[u8]("Unsupported digestmod %R"),
                 digestmod
             );
         }
@@ -1461,7 +1461,7 @@ impl hashlib_init_constructors(
 
 impl hashlib_exception -> ptr[PyObject] {
     return PyErr_NewException(
-        "_hashlib.UnsupportedDigestmodError", PyExc_ValueError, NULL
+        ptr[u8]("_hashlib.UnsupportedDigestmodError"), PyExc_ValueError, NULL
     );
 }
 

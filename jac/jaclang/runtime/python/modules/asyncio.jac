@@ -358,7 +358,7 @@ impl alive(op: ptr[PyObject]) -> bool {
 impl not_initialized(module: ptr[PyObject]) -> ptr[PyObject] {
     PyErr_SetString(
         state_ref(module, STATE_INVALID_STATE_ERROR),
-        "Future object is not initialized."
+        ptr[u8]("Future object is not initialized.")
     );
     return NULL;
 }
@@ -421,7 +421,7 @@ impl _asyncio_Future_exception_impl(
     if state != STATE_FINISHED {
         PyErr_SetString(
             state_ref(defining_module(receiver, cls), STATE_INVALID_STATE_ERROR),
-            "Exception is not set."
+            ptr[u8]("Exception is not set.")
         );
         return NULL;
     }
@@ -627,7 +627,7 @@ impl _asyncio_Future__asyncio_future_blocking_set_impl(
         return -1;
     }
     if not value {
-        PyErr_SetString(PyExc_AttributeError, "cannot delete attribute");
+        PyErr_SetString(PyExc_AttributeError, ptr[u8]("cannot delete attribute"));
         return -1;
     }
     is_true = int(PyObject_IsTrue(value));
@@ -649,7 +649,7 @@ impl _asyncio_Future__log_traceback_set_impl(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> int {
     if not value {
-        PyErr_SetString(PyExc_AttributeError, "cannot delete attribute");
+        PyErr_SetString(PyExc_AttributeError, ptr[u8]("cannot delete attribute"));
         return -1;
     }
     is_true = int(PyObject_IsTrue(value));
@@ -657,7 +657,9 @@ impl _asyncio_Future__log_traceback_set_impl(
         return -1;
     }
     if is_true {
-        PyErr_SetString(PyExc_ValueError, "_log_traceback can only be set to False");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("_log_traceback can only be set to False")
+        );
         return -1;
     }
     set_bit(receiver, BIT_LOG_TB, False);
@@ -752,7 +754,7 @@ impl _asyncio_Future__cancel_message_set_impl(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> int {
     if not value {
-        PyErr_SetString(PyExc_AttributeError, "cannot delete attribute");
+        PyErr_SetString(PyExc_AttributeError, ptr[u8]("cannot delete attribute"));
         return -1;
     }
     record = fut_of(receiver).view(1);
@@ -809,7 +811,7 @@ impl call_exception_handler(
             res = PyObject_CallOneArg(func, context);
             if not res {
                 PyErr_FormatUnraisable(
-                    "Exception ignored while calling asyncio function %R", func
+                    ptr[u8]("Exception ignored while calling asyncio function %R"), func
                 );
             } else {
                 jacpy_release(res);
@@ -906,7 +908,7 @@ impl futureiter_am_send(
             out[0] = Py_NewRef(fut);
             return PYGEN_NEXT;
         }
-        PyErr_SetString(PyExc_RuntimeError, "await wasn't used with future");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("await wasn't used with future"));
         return PYGEN_ERROR;
     }
     res = done_result(fut);
@@ -924,7 +926,7 @@ impl futureiter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
             set_bit(fut, BIT_BLOCKING, True);
             return Py_NewRef(fut);
         }
-        PyErr_SetString(PyExc_RuntimeError, "await wasn't used with future");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("await wasn't used with future"));
         return NULL;
     }
     res = done_result(fut);
@@ -948,7 +950,9 @@ impl futureiter_throw(
     if nargs > 1 {
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "the (type, exc, tb) signature of throw() is deprecated, use the single-arg signature instead.",
+            ptr[u8](
+                "the (type, exc, tb) signature of throw() is deprecated, use the single-arg signature instead."
+            ),
             1
         )
             < 0 {
@@ -971,7 +975,9 @@ impl futureiter_throw(
     if tb == Py_None {
         tb = NULL;
     } elif tb and Py_TYPE(tb) != addressof(PyTraceBack_Type) {
-        PyErr_SetString(PyExc_TypeError, "throw() third argument must be a traceback");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("throw() third argument must be a traceback")
+        );
         return NULL;
     }
     type = Py_NewRef(type);
@@ -986,7 +992,8 @@ impl futureiter_throw(
     } elif exception_instance_check(type) {
         if val {
             PyErr_SetString(
-                PyExc_TypeError, "instance exception may not have a separate value"
+                PyExc_TypeError,
+                ptr[u8]("instance exception may not have a separate value")
             );
             jacpy_release(type);
             release(val);
@@ -1001,7 +1008,9 @@ impl futureiter_throw(
     } else {
         PyErr_SetString(
             PyExc_TypeError,
-            "exceptions must be classes deriving BaseException or instances of such a class"
+            ptr[u8](
+                "exceptions must be classes deriving BaseException or instances of such a class"
+            )
         );
         jacpy_release(type);
         release(val);
@@ -1061,11 +1070,15 @@ impl stepwrapper_call(
     op: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwds and jacpy_dict_size(kwds) != 0 {
-        PyErr_SetString(PyExc_TypeError, "function takes no keyword arguments");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("function takes no keyword arguments")
+        );
         return NULL;
     }
     if args and PyTuple_Size(args) != 0 {
-        PyErr_SetString(PyExc_TypeError, "function takes no positional arguments");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("function takes no positional arguments")
+        );
         return NULL;
     }
     record = wrapper_of(op).view(1);
@@ -1188,7 +1201,9 @@ impl _asyncio_Task___init___impl(
     }
     if is_coro == 0 {
         set_bit(receiver, BIT_LOG_DESTROY_PENDING, False);
-        PyErr_Format(PyExc_TypeError, "a coroutine was expected, got %R", coro);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("a coroutine was expected, got %R"), coro
+        );
         return i32(-1);
     }
     previous = record[0].task_context;
@@ -1309,7 +1324,7 @@ impl _asyncio_Task__log_destroy_pending_set_impl(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> int {
     if not value {
-        PyErr_SetString(PyExc_AttributeError, "cannot delete attribute");
+        PyErr_SetString(PyExc_AttributeError, ptr[u8]("cannot delete attribute"));
         return -1;
     }
     is_true = int(PyObject_IsTrue(value));
@@ -1438,7 +1453,9 @@ impl _asyncio_Task_print_stack_impl(
 impl _asyncio_Task_set_result_impl(
     receiver: ptr[PyObject], result: ptr[PyObject]
 ) -> ptr[PyObject] {
-    PyErr_SetString(PyExc_RuntimeError, "Task does not support set_result operation");
+    PyErr_SetString(
+        PyExc_RuntimeError, ptr[u8]("Task does not support set_result operation")
+    );
     return NULL;
 }
 
@@ -1446,7 +1463,7 @@ impl _asyncio_Task_set_exception_impl(
     receiver: ptr[PyObject], exception: ptr[PyObject]
 ) -> ptr[PyObject] {
     PyErr_SetString(
-        PyExc_RuntimeError, "Task does not support set_exception operation"
+        PyExc_RuntimeError, ptr[u8]("Task does not support set_exception operation")
     );
     return NULL;
 }
@@ -1728,7 +1745,7 @@ impl task_step_impl(
     if int(fut_of(task).view(1)[0].fut_state) != STATE_PENDING {
         PyErr_Format(
             state_ref(module, STATE_INVALID_STATE_ERROR),
-            "__step(): already done: %R %R",
+            ptr[u8]("__step(): already done: %R %R"),
             task,
             exc or Py_None
         );
@@ -1754,7 +1771,7 @@ impl task_step_impl(
     release(waiter);
     coro = record[0].task_coro;
     if not coro {
-        PyErr_SetString(PyExc_RuntimeError, "uninitialized Task object");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("uninitialized Task object"));
         if clear_exc {
             jacpy_release(exc);
         }
@@ -1903,7 +1920,7 @@ impl _asyncio_get_event_loop_impl(module: ptr[PyObject]) -> ptr[PyObject] {
 impl _asyncio_get_running_loop_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     loop = running_loop();
     if not loop {
-        PyErr_SetString(PyExc_RuntimeError, "no running event loop");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("no running event loop"));
         return NULL;
     }
     return Py_NewRef(loop);

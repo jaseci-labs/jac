@@ -413,11 +413,11 @@ impl disable_result -> ptr[PyObject] {
 impl missing_frame_error(message_kind: i32) -> ptr[PyObject] {
     if message_kind == 0 {
         PyErr_SetString(
-            PyExc_SystemError, "Missing frame when calling profile function."
+            PyExc_SystemError, ptr[u8]("Missing frame when calling profile function.")
         );
     } else {
         PyErr_SetString(
-            PyExc_SystemError, "Missing frame when calling trace function."
+            PyExc_SystemError, ptr[u8]("Missing frame when calling trace function.")
         );
     }
     return NULL;

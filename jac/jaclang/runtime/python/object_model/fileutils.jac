@@ -636,7 +636,7 @@ import from c {
         if change_locale {
             oldloc = setlocale(LC_CTYPE, ptr[u8]());
             if not oldloc {
-                PyErr_SetString(PyExc_RuntimeWarning, "failed to get LC_CTYPE locale");
+                PyErr_SetString(PyExc_RuntimeWarning, ptr[u8]("failed to get LC_CTYPE locale"));
                 return -1;
             }
 

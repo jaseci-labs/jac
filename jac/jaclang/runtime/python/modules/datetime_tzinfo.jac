@@ -90,7 +90,9 @@ def timezone_getinitargs(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObjec
 
 impl tzinfo_nogo(methodname: str) -> ptr[PyObject] {
     PyErr_Format(
-        PyExc_NotImplementedError, "a tzinfo subclass must implement %s()", methodname
+        PyExc_NotImplementedError,
+        ptr[u8]("a tzinfo subclass must implement %s()"),
+        methodname
     );
     return NULL;
 }
@@ -109,11 +111,13 @@ impl tzinfo_dst(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
 
 impl tzinfo_fromutc(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     if not datetime_check(dt) {
-        PyErr_SetString(PyExc_TypeError, "fromutc: argument must be a datetime");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("fromutc: argument must be a datetime")
+        );
         return NULL;
     }
     if datetime_tzinfo_of(dt) != self {
-        PyErr_SetString(PyExc_ValueError, "fromutc: dt.tzinfo is not self");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("fromutc: dt.tzinfo is not self"));
         return NULL;
     }
     off = datetime_utcoffset(dt, NULL);
@@ -126,13 +130,13 @@ impl tzinfo_fromutc(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
     failed = True;
     if off == Py_None {
         PyErr_SetString(
-            PyExc_ValueError, "fromutc: non-None utcoffset() result required"
+            PyExc_ValueError, ptr[u8]("fromutc: non-None utcoffset() result required")
         );
     } else {
         dst = datetime_dst(dt, NULL);
         if dst == Py_None {
             PyErr_SetString(
-                PyExc_ValueError, "fromutc: non-None dst() result required"
+                PyExc_ValueError, ptr[u8]("fromutc: non-None dst() result required")
             );
         } elif dst {
             delta = delta_subtract(off, dst);
@@ -145,7 +149,9 @@ impl tzinfo_fromutc(self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
                 if dst == Py_None {
                     PyErr_SetString(
                         PyExc_ValueError,
-                        "fromutc: tz.dst() gave inconsistent results; cannot convert"
+                        ptr[u8](
+                            "fromutc: tz.dst() gave inconsistent results; cannot convert"
+                        )
                     );
                 } elif dst {
                     failed = False;
@@ -254,7 +260,7 @@ impl timezone_check_argument(dt: ptr[PyObject], meth: str) -> int {
     }
     PyErr_Format(
         PyExc_TypeError,
-        "%s(dt) argument must be a datetime instance or None, not %.200s",
+        ptr[u8]("%s(dt) argument must be a datetime instance or None, not %.200s"),
         meth,
         type_name_of(dt)
     );
@@ -347,11 +353,13 @@ impl timezone_dst(op: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
 
 impl timezone_fromutc(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     if not datetime_check(arg) {
-        PyErr_SetString(PyExc_TypeError, "fromutc: argument must be a datetime");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("fromutc: argument must be a datetime")
+        );
         return NULL;
     }
     if not has_tzinfo(arg) or ptr[PyDateTime_DateTime](arg).view(1)[0].tzinfo != op {
-        PyErr_SetString(PyExc_ValueError, "fromutc: dt.tzinfo is not self");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("fromutc: dt.tzinfo is not self"));
         return NULL;
     }
     return add_datetime_timedelta(arg, timezone_offset(op), 1);
