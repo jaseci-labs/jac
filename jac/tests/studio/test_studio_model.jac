@@ -130,8 +130,10 @@ test "a wiring file created while the workspace is open is wired in" {
         model = ProjectModel(root_dir=str(base));
         model.build(index=False);
         assert not model.wires;
+        before = os.path.getmtime(str(base));
         arch = base / "archwire.jac";
         arch.write_text("graph import {\n    core.a ++> main { one }\n}\n");
+        os.utime(str(base), (before, before));
         stale = model.stale_files();
         assert os.path.realpath(str(arch)) in stale , stale;
         for path in stale {

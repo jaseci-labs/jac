@@ -88,9 +88,7 @@ impl ProjectModel._head_files -> list[str] {
                 if not x.startswith(".") and x not in SKIP_DIRS
             ]
         );
-        try {
-            self.dir_mtimes[d] = os.path.getmtime(d);
-        } except OSError {}
+        self._note_dir(d);
         for f in sorted(fs) {
             if f.endswith(".jac") and f.count(".") == 1 and f != ARCH_FILE_NAME {
                 found.append(os.path.join(d, f));
@@ -649,18 +647,33 @@ impl ProjectModel._forget_file(real: str) -> list[str] {
     return [str(key)];
 }
 
+impl ProjectModel._note_dir(path: str) -> None {
+    try {
+        stamp = os.path.getmtime(path);
+    } except OSError {
+        return;
+    }
+    self.dir_mtimes[path] = stamp;
+    if time.time() - stamp < 2.0 {
+        self.hot_dirs.add(path);
+    } else {
+        self.hot_dirs.discard(path);
+    }
+}
+
 impl ProjectModel.new_files -> list[str] {
     for (d, seen) in list(self.dir_mtimes.items()) {
         try {
             now = os.path.getmtime(d);
         } except OSError {
             self.dir_mtimes.pop(d, None);
+            self.hot_dirs.discard(d);
             continue;
         }
-        if now == seen {
+        if now == seen and d not in self.hot_dirs {
             continue;
         }
-        self.dir_mtimes[d] = now;
+        self._note_dir(d);
         try {
             names = sorted(os.listdir(d));
         } except OSError {
@@ -680,9 +693,7 @@ impl ProjectModel.new_files -> list[str] {
                         for x in subdirs
                         if not x.startswith(".") and x not in SKIP_DIRS
                     ];
-                    try {
-                        self.dir_mtimes[sub] = os.path.getmtime(sub);
-                    } except OSError {}
+                    self._note_dir(sub);
                     for f in files {
                         if f == ARCH_FILE_NAME {
                             arch = os.path.realpath(os.path.join(sub, f));

@@ -129,6 +129,7 @@ obj ProjectModel {
         arch_mtimes: dict[str, float] = {},
         rule_recs: dict[str, any] = {},
         dir_mtimes: dict[str, float] = {},
+        hot_dirs: set[str] = set(),
         found: list[str] = [],
         _host: (ProjectHost | None) = None;
 
@@ -159,6 +160,7 @@ obj ProjectModel {
     def stale_files -> list[str];
     def project_host -> ProjectHost;
     def new_files -> list[str];
+    def _note_dir(path: str) -> None;
     def _forget_file(real: str) -> list[str];
     def module_for_file(path: str) -> (StModule | None);
     def providers(key: str) -> list[WireInfo];
