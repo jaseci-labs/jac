@@ -371,24 +371,9 @@ import from c {
         }
         return floatinfo;
     }  def PyFloat_FromDouble(fval: f64) -> ptr[PyObject] {
-        op = freelist_pop(_Py_freelists_FLOATS);
-        if not op {
-            op = ptr[PyObject](PyObject_Malloc(u64(PyFloatObject_SIZE)));
-            if not op {
-                return PyErr_NoMemory();
-            }
-            PyObject_Init(op, ptr[PyObject](float_type()));
-        }
-        float_of(op).view(1)[0].ob_fval = fval;
-        return op;
+        return float_from_double(fval);
     }  def _PyFloat_FromDouble_ConsumeInputs(left: u64, right: u64, value: f64) -> u64 {
-        close_float_ref(left);
-        close_float_ref(right);
-        result = PyFloat_FromDouble(value);
-        if not result {
-            return u64(1);
-        }
-        return stackref_steal(result);
+        return float_from_double_consume(left, right, value);
     }  def PyFloat_FromString(v: ptr[PyObject]) -> ptr[PyObject] {
         s = ptr[u8]();
         length: i64 = 0;
@@ -444,9 +429,7 @@ import from c {
         object_xdecref(s_buffer);
         return result;
     }  def _PyFloat_ExactDealloc(ob: ptr[PyObject]) {
-        if not freelist_push(_Py_freelists_FLOATS, ob, Py_floats_MAXFREELIST) {
-            PyObject_Free(ptr(ob));
-        }
+        float_exact_dealloc(ob);
     }  def PyFloat_AsDouble(op: ptr[PyObject]) -> f64 {
         if not op {
             PyErr_BadArgument();
@@ -523,9 +506,13 @@ import from c {
 
 def type_of_object(type: ptr[PyObject]) -> ptr[PyTypeObject];
 
-def stackref_steal(op: ptr[PyObject]) -> u64;
-
 def close_float_ref(ref: u64);
+
+def float_from_double(fval: f64) -> ptr[PyObject];
+
+def float_from_double_consume(left: u64, right: u64, value: f64) -> u64;
+
+def float_exact_dealloc(ob: ptr[PyObject]);
 
 def float_from_string_inner(s_in: ptr[u8], length: i64, ob: ptr) -> ptr[PyObject];
 
@@ -895,11 +882,6 @@ impl type_of_object(type: ptr[PyObject]) -> ptr[PyTypeObject] {
     return ptr[PyTypeObject](type);
 }
 
-impl stackref_steal(op: ptr[PyObject]) -> u64 {
-    flags = u64.wrap(ptr[_object](op).view(1)[0].ob_refcnt_full) >> u64(48);
-    return u64.wrap(int(op)) | (flags & u64(1));
-}
-
 impl close_float_ref(ref: u64) {
     if (ref & u64(1)) != u64(0) {
         return;
@@ -910,7 +892,42 @@ impl close_float_ref(ref: u64) {
     refcnt.view(1)[0] = count;
     if count == u32(0) {
         reftracer_track(op, PYREFTRACER_DESTROY);
-        _PyFloat_ExactDealloc(op);
+        float_exact_dealloc(op);
+    }
+}
+
+impl float_from_double(fval: f64) -> ptr[PyObject] {
+    op = freelist_pop(_Py_freelists_FLOATS);
+    if not op {
+        op = ptr[PyObject](PyObject_Malloc(u64(PyFloatObject_SIZE)));
+        if not op {
+            return PyErr_NoMemory();
+        }
+        PyObject_Init(op, ptr[PyObject](float_type()));
+    }
+    float_of(op).view(1)[0].ob_fval = fval;
+    return op;
+}
+
+impl float_from_double_consume(left: u64, right: u64, value: f64) -> u64 {
+    close_float_ref(left);
+    close_float_ref(right);
+    op = freelist_pop(_Py_freelists_FLOATS);
+    if not op {
+        op = ptr[PyObject](PyObject_Malloc(u64(PyFloatObject_SIZE)));
+        if not op {
+            PyErr_NoMemory();
+            return u64(1);
+        }
+        PyObject_Init(op, ptr[PyObject](float_type()));
+    }
+    float_of(op).view(1)[0].ob_fval = value;
+    return u64.wrap(int(op));
+}
+
+impl float_exact_dealloc(ob: ptr[PyObject]) {
+    if not freelist_push(_Py_freelists_FLOATS, ob, Py_floats_MAXFREELIST) {
+        PyObject_Free(ptr(ob));
     }
 }
 
@@ -952,7 +969,7 @@ impl float_from_string_inner(s_in: ptr[u8], length: i64, ob: ptr) -> ptr[PyObjec
 
 impl float_dealloc(op: ptr[PyObject]) {
     if float_check_exact(op) {
-        _PyFloat_ExactDealloc(op);
+        float_exact_dealloc(op);
     } else {
         object_type(op).view(1)[0].tp_free(ptr(op));
     }

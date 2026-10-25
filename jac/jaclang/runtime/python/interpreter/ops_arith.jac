@@ -11,13 +11,9 @@ import from c {
         value: u64, instr: ptr[u16]
     );  def _Py_Specialize_StoreSubscr(container: u64, sub: u64, instr: ptr[u16]);  def _Py_Specialize_ToBool(
         value: u64, instr: ptr[u16]
-    );  def _PyFloat_FromDouble_ConsumeInputs(
-        left: u64, right: u64, value: f64
-    ) -> u64;  def _PyFloat_ExactDealloc(ob: ptr[PyObject]);  def _PyUnicode_ExactDealloc(
-        op: ptr[PyObject]
-    );  def _PyUnicode_Equal(str1: ptr[PyObject], str2: ptr[PyObject]) -> i32;  def _PySet_Contains(
-        so: ptr[PyObject], key: ptr[PyObject]
-    ) -> i32;  def _PyList_SliceSubscript(
+    );  def _PyUnicode_ExactDealloc(op: ptr[PyObject]);  def _PyUnicode_Equal(
+        str1: ptr[PyObject], str2: ptr[PyObject]
+    ) -> i32;  def _PySet_Contains(so: ptr[PyObject], key: ptr[PyObject]) -> i32;  def _PyList_SliceSubscript(
         op: ptr[PyObject], item: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyBuildSlice_ConsumeRefs(
         start: ptr[PyObject], stop: ptr[PyObject]
@@ -174,7 +170,7 @@ impl arith_close_float(ref: u64) {
         refcnt.view(1)[0] = count;
         if count == u32(0) {
             reftracer_track(op, 1);
-            _PyFloat_ExactDealloc(op);
+            float_exact_dealloc(op);
         }
     }
 }
@@ -343,7 +339,7 @@ impl _GUARD_TOS_FLOAT(value: u64) -> bool {
 
 impl _BINARY_OP_MULTIPLY_FLOAT(left: u64, right: u64) -> u64 {
     dres = arith_float_value(left) * arith_float_value(right);
-    res = _PyFloat_FromDouble_ConsumeInputs(left, right, dres);
+    res = float_from_double_consume(left, right, dres);
     if res == SR_NULL {
         return u64(0);
     }
@@ -352,7 +348,7 @@ impl _BINARY_OP_MULTIPLY_FLOAT(left: u64, right: u64) -> u64 {
 
 impl _BINARY_OP_ADD_FLOAT(left: u64, right: u64) -> u64 {
     dres = arith_float_value(left) + arith_float_value(right);
-    res = _PyFloat_FromDouble_ConsumeInputs(left, right, dres);
+    res = float_from_double_consume(left, right, dres);
     if res == SR_NULL {
         return u64(0);
     }
@@ -361,7 +357,7 @@ impl _BINARY_OP_ADD_FLOAT(left: u64, right: u64) -> u64 {
 
 impl _BINARY_OP_SUBTRACT_FLOAT(left: u64, right: u64) -> u64 {
     dres = arith_float_value(left) - arith_float_value(right);
-    res = _PyFloat_FromDouble_ConsumeInputs(left, right, dres);
+    res = float_from_double_consume(left, right, dres);
     if res == SR_NULL {
         return u64(0);
     }
@@ -607,7 +603,7 @@ impl _STORE_SUBSCR_LIST_INT(value: u64, list_st: u64, sub_st: u64) -> i32 {
     slot.view(1)[0] = sr_as_steal(value);
     sr_close_long(sub_st);
     sr_close(list_st);
-    object_decref(old_value);
+    sr_decref_object(old_value);
     return ST_OK;
 }
 

@@ -1,7 +1,9 @@
 import from c {
     glob PyType_Type: PyTypeObject,
          _Py_TrueStruct: PyObject,
-         _Py_FalseStruct: PyObject;
+         _Py_FalseStruct: PyObject; obj HeaderTracerCall {
+        has call: Callable[[ptr[PyObject], i32, ptr], i32] = 0;
+    }
 }
 
 def object_incref(op: ptr[PyObject]);
@@ -54,6 +56,8 @@ def freelist_pop(offset: i64) -> ptr[PyObject];
 
 def freelist_pop_in(interp: ptr[u8], offset: i64) -> ptr[PyObject];
 
+def freelist_new_reference(op: ptr[PyObject]);
+
 def freelist_push(offset: i64, op: ptr[PyObject], maxsize: i64) -> bool;
 
 def freelist_push_in(
@@ -73,12 +77,12 @@ def object_gc_track(op: ptr[PyObject]);
 def object_gc_untrack(op: ptr[PyObject]);
 
 impl object_incref(op: ptr[PyObject]) {
-    header = ptr[_object](op);
-    full = header.view(1)[0].ob_refcnt_full;
-    if (full & 0xFFFFFFFF) >= _Py_IMMORTAL_INITIAL_REFCNT {
+    refcnt = ptr[u32](op);
+    count = refcnt.view(1)[0];
+    if count >= u32(0xC0000000) {
         return;
     }
-    header.view(1)[0].ob_refcnt_full = wrapping_add(full, 1);
+    refcnt.view(1)[0] = wrapping_add(count, u32(1));
 }
 
 impl object_new_ref(op: ptr[PyObject]) -> ptr[PyObject] {
@@ -226,10 +230,25 @@ impl freelist_pop_in(interp: ptr[u8], offset: i64) -> ptr[PyObject] {
     op = ptr[PyObject](fl.view(1)[0].freelist);
     if op {
         fl.view(1)[0].freelist = ptr[ptr](op).view(1)[0];
-        fl.view(1)[0].size -= 1;
-        _Py_NewReference(op);
+        fl.view(1)[0].size = wrapping_sub(fl.view(1)[0].size, 1);
+        freelist_new_reference(op);
     }
     return op;
+}
+
+impl freelist_new_reference(op: ptr[PyObject]) {
+    ptr[_object](op).view(1)[0].ob_refcnt_full = 1;
+    runtime = ptr[u8](addressof(_PyRuntime));
+    tracer = ptr[ptr](runtime + _PyRuntimeState_REF_TRACER_FUNC).view(1)[0];
+    if not tracer {
+        return;
+    }
+    data = ptr[ptr](runtime + _PyRuntimeState_REF_TRACER_DATA).view(1)[0];
+    slot = ptr[HeaderTracerCall](
+        __thread_local_block("jac_object_model_header_tracer_slot", 8)
+    );
+    slot.view(1)[0].call = int(tracer);
+    slot.view(1)[0].call(op, 0, data);
 }
 
 impl freelist_push(offset: i64, op: ptr[PyObject], maxsize: i64) -> bool {

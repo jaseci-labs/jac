@@ -25534,8 +25534,8 @@ graph import runtime.python {
             Py_NewRef,
             Py_NotImplemented,
             _PyEval_GetBuiltin,
+            _PyRuntime,
             _Py_Dealloc,
-            _Py_NewReference,
             jacpy_release,
             jacpy_unicode_intern_text
         },
@@ -32909,7 +32909,12 @@ graph import runtime.python {
             PyInterpreterState_HAMT_EMPTY,
             _PyRuntimeState_HAMT_BITMAP_NODE_EMPTY
         },
-        object_model.header { PyInterpreterState_FREELISTS, PyInterpreterState_GC },
+        object_model.header {
+            PyInterpreterState_FREELISTS,
+            PyInterpreterState_GC,
+            _PyRuntimeState_REF_TRACER_DATA,
+            _PyRuntimeState_REF_TRACER_FUNC
+        },
         object_model.initconfig {
             BUFSIZ,
             LC_CTYPE,
@@ -36926,12 +36931,15 @@ graph import runtime.python {
         bindings.converters | modules.select { PyObject_AsFileDescriptor },
         modules.warnings { PyFile_WriteObject, PyFile_WriteString },
     ]
-    object_model.float ++> modules.ctypes_cfield {
-        PyFloat_Pack4,
-        PyFloat_Pack8,
-        PyFloat_Unpack4,
-        PyFloat_Unpack8
-    }
+    object_model.float ++> [
+        interpreter.ops_arith { float_exact_dealloc, float_from_double_consume },
+        modules.ctypes_cfield {
+            PyFloat_Pack4,
+            PyFloat_Pack8,
+            PyFloat_Unpack4,
+            PyFloat_Unpack8
+        },
+    ]
     object_model.frame ++> [
         interpreter.importing_api { PyFrame_GetCode },
         interpreter.instrumentation { parse_varint },
@@ -37422,7 +37430,7 @@ graph import runtime.python {
         | modules.ctypes_stgdict
         | modules.warnings { list_check }
     object_model.long ++> [
-        interpreter.ops { get_small_int },
+        interpreter.ops { get_small_int, long_add, long_mul, long_sub },
         interpreter.specialize {
             compact_value,
             long_is_compact,
@@ -39882,6 +39890,7 @@ graph import runtime.python.interpreter {
             sr_borrow,
             sr_close,
             sr_close_long,
+            sr_decref_object,
             sr_false,
             sr_immortal,
             sr_is,

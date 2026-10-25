@@ -271,7 +271,7 @@ impl attr_unicode_entry(keys: ptr[u8], index: i64) -> ptr[ptr[PyObject]] {
     return ptr[ptr[PyObject]](
         keys
             + PyDictKeysObject_INDICES
-            + (i64(1) << log2)
+            + wrapping_shl(i64(1), log2)
             + index * ATTR_UNICODE_ENTRY_SIZE
     );
 }

@@ -286,17 +286,17 @@ import from c {
 }
 
 glob:priv PyLong_SHIFT: i64 = 30,
-     PyLong_BASE: u64 = u64(1073741824),
-     PyLong_MASK: u64 = u64(1073741823),
+     PyLong_BASE: Final[u64] = u64(1073741824),
+     PyLong_MASK: Final[u64] = u64(1073741823),
      PyLong_MASK_SIGNED: i64 = 1073741823,
      PyLong_DECIMAL_SHIFT: i64 = 9,
-     PyLong_DECIMAL_BASE: u64 = u64(1000000000),
-     SIGN_MASK: u64 = u64(3),
-     SIGN_ZERO: u64 = u64(1),
-     SIGN_NEGATIVE: u64 = u64(2),
+     PyLong_DECIMAL_BASE: Final[u64] = u64(1000000000),
+     SIGN_MASK: Final[u64] = u64(3),
+     SIGN_ZERO: Final[u64] = u64(1),
+     SIGN_NEGATIVE: Final[u64] = u64(2),
      NON_SIZE_BITS: i64 = 3,
-     IMMORTALITY_BIT_MASK: u64 = u64(4),
-     NON_SIZE_MASK: u64 = ~u64(7),
+     IMMORTALITY_BIT_MASK: Final[u64] = u64(4),
+     NON_SIZE_MASK: Final[u64] = u64(0xFFFFFFFFFFFFFFF8),
      _PY_NSMALLPOSINTS: i64 = 257,
      _PY_NSMALLNEGINTS: i64 = 5,
      MAX_LONG_DIGITS: i64 = 307445734561825860,
@@ -388,8 +388,6 @@ def long_normalize(v: ptr[PyLongObject]) -> ptr[PyLongObject];
 def long_alloc(size: i64) -> ptr[PyLongObject];
 
 def long_from_medium(x: i64) -> ptr[PyObject];
-
-def long_from_large(ival: i64) -> ptr[PyObject];
 
 def long_from_stwodigits(x: i64) -> ptr[PyLongObject];
 
@@ -2852,9 +2850,9 @@ impl is_small_uint(ival: u64) -> bool {
 
 impl get_small_int(ival: i64) -> ptr[PyObject] {
     return ptr[PyObject](
-        int(addressof(_PyRuntime))
+        ptr[u8](addressof(_PyRuntime))
             + _PyRuntimeState_SMALL_INTS
-            + (_PY_NSMALLNEGINTS + ival) * PyLongObject_SIZE
+            + wrapping_mul(wrapping_add(ival, _PY_NSMALLNEGINTS), PyLongObject_SIZE)
     );
 }
 
@@ -2953,39 +2951,9 @@ impl long_from_medium(x: i64) -> ptr[PyObject] {
         }
         PyObject_Init(as_object(v), ptr[PyObject](long_type()));
     }
-    abs_x = -x if x < 0 else x;
+    abs_x = wrapping_sub(0, x) if x < 0 else x;
     set_sign_and_digit_count(v, -1 if x < 0 else 1, 1);
     set_digit(v, 0, u32.wrap(abs_x));
-    return as_object(v);
-}
-
-impl long_from_large(ival: i64) -> ptr[PyObject] {
-    abs_ival = u64(0);
-    sign: i64 = 1;
-    if ival < 0 {
-        abs_ival = wrapping_sub(u64(0), u64.wrap(ival));
-        sign = -1;
-    } else {
-        abs_ival = u64.wrap(ival);
-    }
-
-    t = abs_ival >> u64(PyLong_SHIFT * 2);
-    ndigits: i64 = 2;
-    while t != u64(0) {
-        ndigits += 1;
-        t = t >> u64(PyLong_SHIFT);
-    }
-    v = long_alloc(ndigits);
-    if v {
-        p = ob_digits(v);
-        set_sign_and_digit_count(v, sign, ndigits);
-        t = abs_ival;
-        while t != u64(0) {
-            p.view(1)[0] = u32.wrap(t & PyLong_MASK);
-            p = p + 1;
-            t = t >> u64(PyLong_SHIFT);
-        }
-    }
     return as_object(v);
 }
 
@@ -2993,10 +2961,7 @@ impl long_from_stwodigits(x: i64) -> ptr[PyLongObject] {
     if is_small_int(x) {
         return long_of(get_small_int(x));
     }
-    if is_medium_int(x) {
-        return long_of(long_from_medium(x));
-    }
-    return long_of(long_from_large(x));
+    return long_of(long_from_int(x));
 }
 
 impl long_negate(x: ptr[PyLongObject]) -> ptr[PyLongObject] {

@@ -4350,7 +4350,6 @@ import from c {
                 frame, stack_pointer, tstate, this_instr, oparg
             );
         }
-        frame_set_stackpointer(frame, (stack_pointer - 2));
         v3 = _BINARY_OP_MULTIPLY_FLOAT(v2, v1);
         if v3 == u64(0) {
             return tail _TAIL_CALL_error(
@@ -4386,7 +4385,6 @@ import from c {
                 frame, stack_pointer, tstate, this_instr, oparg
             );
         }
-        frame_set_stackpointer(frame, (stack_pointer - 2));
         v3 = _BINARY_OP_ADD_FLOAT(v2, v1);
         if v3 == u64(0) {
             return tail _TAIL_CALL_error(
@@ -4422,7 +4420,6 @@ import from c {
                 frame, stack_pointer, tstate, this_instr, oparg
             );
         }
-        frame_set_stackpointer(frame, (stack_pointer - 2));
         v3 = _BINARY_OP_SUBTRACT_FLOAT(v2, v1);
         if v3 == u64(0) {
             return tail _TAIL_CALL_error(
@@ -5518,7 +5515,6 @@ import from c {
                 frame, stack_pointer, tstate, next_instr, oparg
             );
         }
-        frame_set_stackpointer(frame, stack_pointer);
         v3 = _ITER_NEXT_RANGE(v1);
         if v3 == u64(0) {
             return tail _TAIL_CALL_error(

@@ -24,6 +24,8 @@ def sr_xclose(ref: u64);
 
 def sr_close_long(ref: u64);
 
+def sr_decref_object(op: ptr[PyObject]);
+
 def sr_borrow_ref(ref: u64) -> u64;
 
 def sr_from_borrow(op: ptr[PyObject]) -> u64;
@@ -126,39 +128,53 @@ impl sr_close_long(ref: u64) {
     }
 }
 
+impl sr_decref_object(op: ptr[PyObject]) {
+    refcnt = ptr[u32](op);
+    count = refcnt.view(1)[0];
+    if (count & u32(0x80000000)) != u32(0) {
+        return;
+    }
+    count = wrapping_sub(count, u32(1));
+    refcnt.view(1)[0] = count;
+    if count == u32(0) {
+        reftracer_track(op, 1);
+        ptr[_object](op).view(1)[0].ob_type.view(1)[0].tp_dealloc(op);
+    }
+}
+
 impl sr_borrow_ref(ref: u64) -> u64 {
     return ref | SR_TAG_REFCNT;
 }
 
 impl sr_from_borrow(op: ptr[PyObject]) -> u64 {
-    return u64(int(op)) | SR_TAG_REFCNT;
+    return u64.wrap(int(op)) | SR_TAG_REFCNT;
 }
 
 impl sr_immortal(op: ptr[PyObject]) -> u64 {
-    return u64(int(op)) | SR_TAG_REFCNT;
+    return u64.wrap(int(op)) | SR_TAG_REFCNT;
 }
 
 impl sr_steal(op: ptr[PyObject]) -> u64 {
-    full = ptr[_object](op).view(1)[0].ob_refcnt_full;
-    return u64(int(op)) | (u64(full >> 48) & SR_TAG_REFCNT);
+    flags = u64.wrap(ptr[_object](op).view(1)[0].ob_refcnt_full) >> u64(48);
+    return u64.wrap(int(op)) | (flags & SR_TAG_REFCNT);
 }
 
 impl sr_steal_mortal(op: ptr[PyObject]) -> u64 {
-    return u64(int(op));
+    return u64.wrap(int(op));
 }
 
 impl sr_new(op: ptr[PyObject]) -> u64 {
     full = ptr[_object](op).view(1)[0].ob_refcnt_full;
     if (full & 0x80000000) != 0 {
-        return u64(int(op)) | SR_TAG_REFCNT;
+        return u64.wrap(int(op)) | SR_TAG_REFCNT;
     }
     ptr[_object](op).view(1)[0].ob_refcnt_full = wrapping_add(full, 1);
-    return u64(int(op));
+    return u64.wrap(int(op));
 }
 
 impl sr_new_mortal(op: ptr[PyObject]) -> u64 {
     sr_incref_mortal(op);
-    return u64(int(op));
+    return u64.wrap(int(op));
 }
 
 impl sr_as_steal(ref: u64) -> ptr[PyObject] {
@@ -169,27 +185,27 @@ impl sr_as_steal(ref: u64) -> ptr[PyObject] {
 }
 
 impl sr_true -> u64 {
-    return u64(int(addressof(_Py_TrueStruct))) | SR_TAG_REFCNT;
+    return u64.wrap(int(addressof(_Py_TrueStruct))) | SR_TAG_REFCNT;
 }
 
 impl sr_false -> u64 {
-    return u64(int(addressof(_Py_FalseStruct))) | SR_TAG_REFCNT;
+    return u64.wrap(int(addressof(_Py_FalseStruct))) | SR_TAG_REFCNT;
 }
 
 impl sr_none -> u64 {
-    return u64(int(addressof(_Py_NoneStruct))) | SR_TAG_REFCNT;
+    return u64.wrap(int(addressof(_Py_NoneStruct))) | SR_TAG_REFCNT;
 }
 
 impl sr_is_true(ref: u64) -> bool {
-    return ref == (u64(int(addressof(_Py_TrueStruct))) | SR_TAG_REFCNT);
+    return ref == (u64.wrap(int(addressof(_Py_TrueStruct))) | SR_TAG_REFCNT);
 }
 
 impl sr_is_false(ref: u64) -> bool {
-    return ref == (u64(int(addressof(_Py_FalseStruct))) | SR_TAG_REFCNT);
+    return ref == (u64.wrap(int(addressof(_Py_FalseStruct))) | SR_TAG_REFCNT);
 }
 
 impl sr_is_none(ref: u64) -> bool {
-    return ref == (u64(int(addressof(_Py_NoneStruct))) | SR_TAG_REFCNT);
+    return ref == (u64.wrap(int(addressof(_Py_NoneStruct))) | SR_TAG_REFCNT);
 }
 
 impl sr_is(a: u64, b: u64) -> bool {
@@ -222,7 +238,7 @@ impl sr_make_heap_safe(ref: u64) -> u64 {
     }
     op = sr_borrow(ref);
     object_incref(op);
-    return u64(int(op));
+    return u64.wrap(int(op));
 }
 
 impl sr_type(ref: u64) -> ptr[PyTypeObject] {

@@ -161,7 +161,7 @@ impl names_keys_version(keys: ptr[u8]) -> u32 {
 impl names_unicode_value(keys: ptr[u8], index: u16) -> ptr[PyObject] {
     log2_index_bytes = (keys + PyDictKeysObject_LOG2_INDEX_BYTES).view(1)[0];
     entries = ptr[NamesUnicodeEntry](
-        keys + PyDictKeysObject_INDICES + (i64(1) << i64(log2_index_bytes))
+        keys + PyDictKeysObject_INDICES + wrapping_shl(i64(1), i64(log2_index_bytes))
     );
     return (entries + i64(index)).view(1)[0].me_value;
 }

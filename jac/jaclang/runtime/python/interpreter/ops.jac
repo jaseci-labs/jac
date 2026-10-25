@@ -3,13 +3,9 @@ import from c {
     obj HandlerSlot {
         has handler:
             Callable[[ptr[u8], ptr[u64], ptr, ptr[u16], i32], ptr[PyObject]] = 0;
-    }  glob INSTRUCTION_TABLE: HandlerSlot; def _PyLong_Add(
-        a: ptr[PyLongObject], b: ptr[PyLongObject]
-    ) -> ptr[PyObject];  def _PyLong_Subtract(
-        a: ptr[PyLongObject], b: ptr[PyLongObject]
-    ) -> ptr[PyObject];  def _PyLong_Multiply(
-        a: ptr[PyLongObject], b: ptr[PyLongObject]
-    ) -> ptr[PyObject];  def _Py_HandlePending(tstate: ptr[PyThreadState]) -> i32;
+    }  glob INSTRUCTION_TABLE: HandlerSlot; def _Py_HandlePending(
+        tstate: ptr[PyThreadState]
+    ) -> i32;
 }
 
 glob OP_LOAD_CONST: Final[u16] = u16(82),
@@ -277,8 +273,10 @@ impl _GUARD_NOS_INT(left: u64) -> bool {
 }
 
 impl _BINARY_OP_ADD_INT(left: u64, right: u64) -> u64 {
-    res = _PyLong_Add(
-        ptr[PyLongObject](sr_borrow(left)), ptr[PyLongObject](sr_borrow(right))
+    res = ptr[PyObject](
+        long_add(
+            ptr[PyLongObject](sr_borrow(left)), ptr[PyLongObject](sr_borrow(right))
+        )
     );
     sr_close_long(right);
     sr_close_long(left);
@@ -289,8 +287,10 @@ impl _BINARY_OP_ADD_INT(left: u64, right: u64) -> u64 {
 }
 
 impl _BINARY_OP_SUBTRACT_INT(left: u64, right: u64) -> u64 {
-    res = _PyLong_Subtract(
-        ptr[PyLongObject](sr_borrow(left)), ptr[PyLongObject](sr_borrow(right))
+    res = ptr[PyObject](
+        long_sub(
+            ptr[PyLongObject](sr_borrow(left)), ptr[PyLongObject](sr_borrow(right))
+        )
     );
     sr_close_long(right);
     sr_close_long(left);
@@ -301,8 +301,10 @@ impl _BINARY_OP_SUBTRACT_INT(left: u64, right: u64) -> u64 {
 }
 
 impl _BINARY_OP_MULTIPLY_INT(left: u64, right: u64) -> u64 {
-    res = _PyLong_Multiply(
-        ptr[PyLongObject](sr_borrow(left)), ptr[PyLongObject](sr_borrow(right))
+    res = ptr[PyObject](
+        long_mul(
+            ptr[PyLongObject](sr_borrow(left)), ptr[PyLongObject](sr_borrow(right))
+        )
     );
     sr_close_long(right);
     sr_close_long(left);
