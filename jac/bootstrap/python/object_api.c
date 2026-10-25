@@ -2121,3 +2121,38 @@ done:
 #endif
     return status;
 }
+
+/* Modules/getpath.c's build inputs (getpath.c itself is native Jac, in
+ * jaclang/runtime/python/interpreter/getpath.jac): the frozen getpath.py and
+ * the install locations the Makefile passes when it compiles this file. */
+#include "marshal.h"
+#include "Python/frozen_modules/getpath.h"
+
+#if (!defined(PREFIX) || !defined(EXEC_PREFIX) \
+        || !defined(VERSION) || !defined(VPATH) \
+        || !defined(PLATLIBDIR))
+#error "PREFIX, EXEC_PREFIX, VERSION, VPATH and PLATLIBDIR macros must be defined"
+#endif
+
+#if !defined(PYTHONPATH)
+#define PYTHONPATH NULL
+#endif
+
+PyAPI_FUNC(PyObject *)
+_Py_Get_Getpath_CodeObject(void)
+{
+    return PyMarshal_ReadObjectFromString(
+        (const char*)_Py_M__getpath, sizeof(_Py_M__getpath));
+}
+
+/* 0 PREFIX, 1 EXEC_PREFIX, 2 PYTHONPATH, 3 VPATH, 4 PLATLIBDIR. */
+const char *jacpy_getpath_macro(int64_t which) {
+    switch (which) {
+        case 0: return PREFIX;
+        case 1: return EXEC_PREFIX;
+        case 2: return PYTHONPATH;
+        case 3: return VPATH;
+        case 4: return PLATLIBDIR;
+    }
+    return NULL;
+}

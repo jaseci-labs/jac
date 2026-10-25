@@ -4035,6 +4035,16 @@ CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_write), 41256LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_warnoptions), 40848LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__xoptions), 13544LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___sizeof__), 9856LL);
+CONSTANT(PyCF_IGNORE_COOKIE, 2048LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_ps1), 34248LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_ps2), 34296LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_code), 18360LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_last_exc), 27952LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_last_type), 28120LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_last_value), 28176LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_last_traceback), 28064LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_excepthook), 21696LL);
+CONSTANT(offsetof(struct _Py_global_strings, literals._py_anon_string), 384LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -4553,6 +4563,8 @@ CONSTANT(O_NOFOLLOW, 131072LL);
 CONSTANT(F_OK, 0LL);
 CONSTANT(JAC_PLATFORM_LINUX, 1LL);
 CONSTANT(JAC_HAVE_X87, 1LL);
+CONSTANT(offsetof(PyInterpreterState, _interactive_src_count), 224920LL);
+CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 2328LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -5069,6 +5081,8 @@ CONSTANT(O_NOFOLLOW, 32768LL);
 CONSTANT(F_OK, 0LL);
 CONSTANT(JAC_PLATFORM_LINUX, 1LL);
 CONSTANT(JAC_HAVE_X87, 0LL);
+CONSTANT(offsetof(PyInterpreterState, _interactive_src_count), 224936LL);
+CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 2328LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -5585,6 +5599,8 @@ CONSTANT(O_NOFOLLOW, 256LL);
 CONSTANT(F_OK, 0LL);
 CONSTANT(JAC_PLATFORM_LINUX, 0LL);
 CONSTANT(JAC_HAVE_X87, 1LL);
+CONSTANT(offsetof(PyInterpreterState, _interactive_src_count), 224968LL);
+CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 1800LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -6101,6 +6117,8 @@ CONSTANT(O_NOFOLLOW, 256LL);
 CONSTANT(F_OK, 0LL);
 CONSTANT(JAC_PLATFORM_LINUX, 0LL);
 CONSTANT(JAC_HAVE_X87, 0LL);
+CONSTANT(offsetof(PyInterpreterState, _interactive_src_count), 224968LL);
+CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 1800LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

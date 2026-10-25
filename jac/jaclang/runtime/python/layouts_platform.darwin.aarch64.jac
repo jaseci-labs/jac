@@ -513,4 +513,6 @@ glob LAYOUTS_PLATFORM: str = "darwin.aarch64",
      O_NOFOLLOW: Final[i32] = 256,
      F_OK: Final[i32] = 0,
      SYS_PLATFORM_LINUX: Final[i64] = 0,
-     SYS_ARCH_X86_64: Final[i64] = 0;
+     SYS_ARCH_X86_64: Final[i64] = 0,
+     PyInterpreterState_INTERACTIVE_SRC_COUNT: Final[i64] = 224968,
+     _PyRuntimeState_SIGNALS_UNHANDLED_KEYBOARD_INTERRUPT: Final[i64] = 1800;

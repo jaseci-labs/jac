@@ -17910,6 +17910,41 @@ graph import runtime.python {
             _PyUnicode_EqualToASCIIString,
             _Py_CalculateSuggestions
         },
+        interpreter.getpath {
+            FILE,
+            NULL,
+            PyCFunction_NewEx,
+            PyCode_Type,
+            PyDict_New,
+            PyDict_SetItemString,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_NoMemory,
+            PyErr_SetFromErrno,
+            PyErr_SetString,
+            PyExc_MemoryError,
+            PyExc_OSError,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyList_Append,
+            PyList_New,
+            PyLong_FromLong,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyMethodDef,
+            PyObject,
+            PyUnicode_AsUTF8,
+            PyUnicode_AsWideCharString,
+            PyUnicode_FindChar,
+            PyUnicode_FromWideChar,
+            PyUnicode_GetLength,
+            PyUnicode_Substring,
+            Py_GetConstant,
+            Py_None
+        },
         interpreter.instrumentation {
             NULL,
             PyCode_Type,
@@ -18040,6 +18075,25 @@ graph import runtime.python {
             _PyDeadline_Get,
             _PyTime_Add,
             jacpy_errno
+        },
+        interpreter.myreadline {
+            PyErr_CheckSignals,
+            PyErr_NoMemory,
+            PyErr_SetString,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyMem_Malloc,
+            PyMem_RawFree,
+            PyMem_RawRealloc,
+            PyMutex,
+            PyMutex_Lock,
+            PyMutex_Unlock,
+            PyThreadState,
+            _PyInterpreterState_Main,
+            jacpy_errno,
+            jacpy_set_errno
         },
         interpreter.ops { PyList_Type, PyLong_Type, PyObject, PyThreadState },
         interpreter.ops_arith {
@@ -18218,6 +18272,44 @@ graph import runtime.python {
             PyObject,
             PyUnicode_FromWideChar
         },
+        interpreter.pymain {
+            FILE,
+            NULL,
+            PyBytes_AsString,
+            PyCompilerFlags,
+            PyDict_GetItemWithError,
+            PyDict_New,
+            PyDict_SetItemString,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Occurred,
+            PyErr_SetFromErrnoWithFilenameObjects,
+            PyErr_SetString,
+            PyExc_AttributeError,
+            PyExc_OSError,
+            PyExc_RuntimeError,
+            PyImport_ImportModule,
+            PyImport_ImportModuleAttrString,
+            PyList_Insert,
+            PyMem_Free,
+            PyObject,
+            PyObject_Call,
+            PyObject_CallNoArgs,
+            PyObject_GetAttrString,
+            PyTuple_New,
+            PyTuple_Pack,
+            PyUnicode_AsUTF8String,
+            PyUnicode_AsWideCharString,
+            PyUnicode_DecodeFSDefault,
+            PyUnicode_FromWideChar,
+            Py_MakePendingCalls,
+            Py_None,
+            Py_fopen,
+            _PyRuntime,
+            _Py_fstat_noraise,
+            jacpy_errno,
+            jacpy_set_errno
+        },
         interpreter.pystate {
             NULL,
             PyDict_Clear,
@@ -18248,6 +18340,75 @@ graph import runtime.python {
             PyUnicode_FromString,
             _PyRuntime,
             _PyRuntimeState
+        },
+        interpreter.pythonrun {
+            FILE,
+            NULL,
+            PyBuffer_Release,
+            PyByteArray_AsString,
+            PyByteArray_Type,
+            PyBytes_AsString,
+            PyBytes_FromStringAndSize,
+            PyCallable_Check,
+            PyCode_Type,
+            PyCompilerFlags,
+            PyDict_PopString,
+            PyDict_SetItemString,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_GetRaisedException,
+            PyErr_GivenExceptionMatches,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_KeyboardInterrupt,
+            PyExc_MemoryError,
+            PyExc_RuntimeError,
+            PyExc_SyntaxError,
+            PyExc_SystemError,
+            PyExc_SystemExit,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyException_GetTraceback,
+            PyException_SetTraceback,
+            PyImport_ImportModuleAttrString,
+            PyList_GetItem,
+            PyLong_AsInt,
+            PyLong_AsLongLong,
+            PyLong_FromVoidPtr,
+            PyModule_GetDict,
+            PyObject,
+            PyObject_CallFunction,
+            PyObject_CallFunctionObjArgs,
+            PyObject_CallOneArg,
+            PyObject_CheckBuffer,
+            PyObject_GetAttr,
+            PyObject_GetBuffer,
+            PyObject_GetOptionalAttr,
+            PyObject_SetAttr,
+            PyObject_Str,
+            PyObject_Vectorcall,
+            PySet_Add,
+            PySet_Contains,
+            PySet_New,
+            PyThreadState,
+            PyTraceBack_Type,
+            PyType_IsSubtype,
+            PyUnicode_AsUTF8,
+            PyUnicode_AsUTF8AndSize,
+            PyUnicode_DecodeFSDefault,
+            PyUnicode_EqualToUTF8,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            PyUnicode_GetLength,
+            PyUnicode_ReadChar,
+            PyUnicode_Splitlines,
+            PyUnicode_Substring,
+            Py_None,
+            Py_buffer,
+            Py_fopen,
+            _PyRuntime
         },
         interpreter.remote_debugging { PyErr_SetString, PyExc_RuntimeError },
         interpreter.specialize {
@@ -26013,6 +26174,16 @@ graph import runtime.python {
             gc_generation,
             gc_generation_stats
         },
+        interpreter.getpath {
+            METH_VARARGS,
+            PY_MAJOR_VERSION,
+            PY_MINOR_VERSION,
+            PyStatus,
+            Py_CONSTANT_EMPTY_STR,
+            Py_TPFLAGS_TUPLE_SUBCLASS,
+            Py_TPFLAGS_UNICODE_SUBCLASS,
+            _PyStatus_TYPE_OK
+        },
         interpreter.instrumentation {
             ADAPTIVE_WARMUP_BACKOFF,
             ADAPTIVE_WARMUP_VALUE,
@@ -26252,6 +26423,7 @@ graph import runtime.python {
             _qsbr_thread_state_TSTATE,
             llist_node
         },
+        interpreter.myreadline { PyThreadState_INTERP },
         interpreter.ops {
             PyCodeObject_CONSTS,
             PyLongObject,
@@ -26457,6 +26629,16 @@ graph import runtime.python {
             PyStatus,
             _PyStatus_TYPE_OK
         },
+        interpreter.pymain {
+            PY_MINOR_VERSION,
+            PyCF_IGNORE_COOKIE,
+            PyCompilerFlags_CF_FEATURE_VERSION,
+            PyCompilerFlags_CF_FLAGS,
+            PyPreConfig_SIZE,
+            PyStatus,
+            _PyStatus_TYPE_OK,
+            _Py_ID_path
+        },
         interpreter.pystate {
             CODE_MAX_WATCHERS,
             CONTEXT_MAX_WATCHERS,
@@ -26486,6 +26668,46 @@ graph import runtime.python {
             _Py_THREAD_DETACHED,
             _Py_THREAD_SHUTTING_DOWN,
             _Py_THREAD_SUSPENDED
+        },
+        interpreter.pythonrun {
+            PY_MINOR_VERSION,
+            PyBUF_SIMPLE,
+            PyBaseExceptionObject_SUPPRESS_CONTEXT,
+            PyCF_IGNORE_COOKIE,
+            PyCF_MASK,
+            PyCodeObject_FLAGS,
+            PyCompilerFlags_CF_FEATURE_VERSION,
+            PyCompilerFlags_CF_FLAGS,
+            PyThreadState_INTERP,
+            PyTypeObject,
+            Py_PRINT_RAW,
+            Py_TPFLAGS_BASE_EXC_SUBCLASS,
+            Py_TPFLAGS_BYTES_SUBCLASS,
+            Py_TPFLAGS_DICT_SUBCLASS,
+            Py_TPFLAGS_LONG_SUBCLASS,
+            Py_TPFLAGS_UNICODE_SUBCLASS,
+            Py_file_input,
+            Py_single_input,
+            _Py_ID___main__,
+            _Py_ID___module__,
+            _Py_ID_builtins,
+            _Py_ID_code,
+            _Py_ID_encoding,
+            _Py_ID_excepthook,
+            _Py_ID_filename,
+            _Py_ID_last_exc,
+            _Py_ID_last_traceback,
+            _Py_ID_last_type,
+            _Py_ID_last_value,
+            _Py_ID_lineno,
+            _Py_ID_print_file_and_line,
+            _Py_ID_ps1,
+            _Py_ID_ps2,
+            _Py_ID_stderr,
+            _Py_ID_stdin,
+            _Py_ID_stdout,
+            _Py_ID_text,
+            _Py_STR_anon_string
         },
         interpreter.specialize {
             ADAPTIVE_COOLDOWN_BACKOFF,
@@ -29602,6 +29824,7 @@ graph import runtime.python {
             _PyInterpreterFrame_LOCALSPLUS,
             _PyInterpreterFrame_STACKPOINTER
         },
+        interpreter.getpath { MAXPATHLEN, PyConfig_PATHCONFIG_WARNINGS },
         interpreter.instrumentation {
             PyInterpreterState_CEVAL_INSTRUMENTATION_VERSION,
             PyInterpreterState_LAST_RESTART_VERSION,
@@ -29706,6 +29929,7 @@ graph import runtime.python {
             PyThreadState_STATE,
             _PyThreadStateImpl_QSBR
         },
+        interpreter.myreadline { EINTR },
         interpreter.ops {
             PyInterpreterState_EVAL_FRAME,
             PyThreadState_CURRENT_FRAME,
@@ -29805,6 +30029,27 @@ graph import runtime.python {
             PyConfig_PREFIX,
             PyConfig_PROGRAM_NAME,
             PyConfig_STDLIB_DIR
+        },
+        interpreter.pymain {
+            PyConfig_ARGV,
+            PyConfig_INSPECT,
+            PyConfig_INTERACTIVE,
+            PyConfig_ISOLATED,
+            PyConfig_PROGRAM_NAME,
+            PyConfig_QUIET,
+            PyConfig_RUN_COMMAND,
+            PyConfig_RUN_FILENAME,
+            PyConfig_RUN_MODULE,
+            PyConfig_SAFE_PATH,
+            PyConfig_SITE_IMPORT,
+            PyConfig_SIZE,
+            PyConfig_SKIP_SOURCE_FIRST_LINE,
+            PyConfig_SYS_PATH_0,
+            PyConfig_USE_ENVIRONMENT,
+            PyConfig_VERBOSE,
+            PyInterpreterState_SYSDICT,
+            _PyRuntimeState_GLOBAL_STRINGS,
+            _PyRuntimeState_SIGNALS_UNHANDLED_KEYBOARD_INTERRUPT
         },
         interpreter.pystate {
             PyConfig_VERBOSE,
@@ -29954,6 +30199,13 @@ graph import runtime.python {
             _stoptheworld_state_REQUESTED,
             _stoptheworld_state_STOP_EVENT,
             _stoptheworld_state_THREAD_COUNTDOWN
+        },
+        interpreter.pythonrun {
+            PyConfig_INSPECT,
+            PyInterpreterState_BUILTINS,
+            PyInterpreterState_INTERACTIVE_SRC_COUNT,
+            _PyRuntimeState_GLOBAL_STRINGS,
+            _PyRuntimeState_SIGNALS_UNHANDLED_KEYBOARD_INTERRUPT
         },
         interpreter.specialize {
             PyInterpreterState_CALLABLE_CACHE_ISINSTANCE,
@@ -31545,6 +31797,10 @@ graph import runtime.python {
             partial_state
         },
     ]
+    modules.getpath_platform ++> interpreter.getpath {
+        getpath_executable_path,
+        getpath_os_name
+    }
     modules.grp ++> bindings.clinic.grp {
         grp_getgrall_impl,
         grp_getgrgid_impl,
@@ -33327,7 +33583,9 @@ graph import runtime.python {
         UF_TRACKED
     }
     modules.stat_records ++> cpython_api
+        | interpreter.getpath
         | interpreter.lifecycle
+        | interpreter.pymain
         | object_model.bootstrap_hash
         | object_model.fileutils { _Py_stat_struct }
     modules.statistics ++> bindings.clinic.statistics {
@@ -33857,6 +34115,18 @@ graph import runtime.python {
             tuple_get_item,
             type_has_feature
         },
+        interpreter.getpath {
+            _Py_FalseStruct,
+            _Py_TrueStruct,
+            current_tstate,
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
+            type_has_feature
+        },
         interpreter.instrumentation {
             PyType_Type,
             current_interp,
@@ -33889,7 +34159,9 @@ graph import runtime.python {
             object_xdecref,
             tuple_get_item
         },
-        interpreter.lock | modules.posix_core { current_tstate },
+        interpreter.lock | interpreter.myreadline | modules.posix_core {
+            current_tstate
+        },
         interpreter.ops { tuple_get_item },
         interpreter.ops_arith | interpreter.ops_callnative { object_decref },
         interpreter.ops_attr { object_decref, object_xdecref, tuple_get_item },
@@ -33937,12 +34209,32 @@ graph import runtime.python {
             object_xdecref,
             tuple_get_item
         },
+        interpreter.pymain {
+            _Py_FalseStruct,
+            _Py_TrueStruct,
+            current_interp,
+            object_decref,
+            object_new_ref,
+            object_xdecref
+        },
         interpreter.pystate {
             object_decref,
             object_incref,
             object_new_ref,
             object_type,
             object_xdecref
+        },
+        interpreter.pythonrun {
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_type_check,
+            object_xdecref,
+            type_has_feature
         },
         interpreter.specialize {
             current_interp,

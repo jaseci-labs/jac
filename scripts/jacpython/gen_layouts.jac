@@ -4193,6 +4193,52 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_Py_ID___sizeof__",
              "offsetof(struct _Py_global_strings, identifiers._py___sizeof__)",
              "i64"
+         ),
+         ("PyCF_IGNORE_COOKIE", "PyCF_IGNORE_COOKIE", "i32"),
+         (
+             "_Py_ID_ps1",
+             "offsetof(struct _Py_global_strings, identifiers._py_ps1)",
+             "i64"
+         ),
+         (
+             "_Py_ID_ps2",
+             "offsetof(struct _Py_global_strings, identifiers._py_ps2)",
+             "i64"
+         ),
+         (
+             "_Py_ID_code",
+             "offsetof(struct _Py_global_strings, identifiers._py_code)",
+             "i64"
+         ),
+         (
+             "_Py_ID_last_exc",
+             "offsetof(struct _Py_global_strings, identifiers._py_last_exc)",
+             "i64"
+         ),
+         (
+             "_Py_ID_last_type",
+             "offsetof(struct _Py_global_strings, identifiers._py_last_type)",
+             "i64"
+         ),
+         (
+             "_Py_ID_last_value",
+             "offsetof(struct _Py_global_strings, identifiers._py_last_value)",
+             "i64"
+         ),
+         (
+             "_Py_ID_last_traceback",
+             "offsetof(struct _Py_global_strings, identifiers._py_last_traceback)",
+             "i64"
+         ),
+         (
+             "_Py_ID_excepthook",
+             "offsetof(struct _Py_global_strings, identifiers._py_excepthook)",
+             "i64"
+         ),
+         (
+             "_Py_STR_anon_string",
+             "offsetof(struct _Py_global_strings, literals._py_anon_string)",
+             "i64"
          )
      ],
      # Constants whose values differ between the supported platforms, in the
@@ -5930,7 +5976,17 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("O_NOFOLLOW", "O_NOFOLLOW", "i32"),
          ("F_OK", "F_OK", "i32"),
          ("SYS_PLATFORM_LINUX", "JAC_PLATFORM_LINUX", "i64"),
-         ("SYS_ARCH_X86_64", "JAC_HAVE_X87", "i64")
+         ("SYS_ARCH_X86_64", "JAC_HAVE_X87", "i64"),
+         (
+             "PyInterpreterState_INTERACTIVE_SRC_COUNT",
+             "offsetof(PyInterpreterState, _interactive_src_count)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_SIGNALS_UNHANDLED_KEYBOARD_INTERRUPT",
+             "offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt)",
+             "i64"
+         )
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

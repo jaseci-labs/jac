@@ -1,162 +1,3 @@
---- a/Python/pythonrun.c
-+++ b/Python/pythonrun.c
-@@ -28,6 +28,7 @@
- #include "pycore_unicodeobject.h" // _PyUnicode_Equal()
-
- #include "errcode.h"              // E_EOF
-+#include "jac_compile.h"
- #include "marshal.h"              // PyMarshal_ReadLongFromFile()
-
- #include <stdbool.h>
-@@ -42,6 +43,25 @@
- #endif
-
- /* Forward */
-+static PyObject *run_eval_code_obj(PyThreadState *, PyCodeObject *, PyObject *, PyObject *);
-+static PyObject *get_interactive_filename(PyObject *, Py_ssize_t);
-+static PyObject *
-+jac_eval_compiled(PyObject *code, PyObject *globals, PyObject *locals)
-+{
-+    if (code == NULL) return NULL;
-+    if (!PyCode_Check(code)) {
-+        Py_DECREF(code);
-+        PyErr_SetString(PyExc_TypeError, "execution requires a code object");
-+        return NULL;
-+    }
-+    PyObject *result = NULL;
-+    if (PySys_Audit("exec", "O", code) == 0) {
-+        result = run_eval_code_obj(_PyThreadState_GET(), (PyCodeObject *)code, globals, locals);
-+    }
-+    Py_DECREF(code);
-+    return result;
-+}
-+
- static void flush_io(void);
- static PyObject *run_mod(mod_ty, PyObject *, PyObject *, PyObject *,
-                           PyCompilerFlags *, PyArena *, PyObject*, int);
-@@ -1234,34 +1254,31 @@
-                            PyObject *globals, PyObject *locals, PyCompilerFlags *flags,
-                            int generate_new_source)
- {
--    PyObject *ret = NULL;
--    mod_ty mod;
--    PyArena *arena;
--
--    arena = _PyArena_New();
--    if (arena == NULL)
--        return NULL;
--
--    PyObject* source = NULL;
--    _Py_DECLARE_STR(anon_string, "<string>");
--
--    if (name) {
--        source = PyUnicode_FromString(str);
--        if (!source) {
-+    PyObject *filename = name
-+        ? (generate_new_source
-+            ? get_interactive_filename(name, _PyThreadState_GET()->interp->_interactive_src_count++)
-+            : Py_NewRef(name))
-+        : PyUnicode_FromString("<string>");
-+    if (filename == NULL) return NULL;
-+    PyObject *code = _PyJac_CompileString(str, filename, start, flags, -1);
-+    Py_DECREF(filename);
-+    if (code == NULL) return NULL;
-+    if (name != NULL) {
-+        PyObject *source = PyUnicode_FromString(str);
-+        if (source == NULL) {
-             PyErr_Clear();
-         }
--    } else {
--        name = &_Py_STR(anon_string);
--    }
--
--    mod = _PyParser_ASTFromString(str, name, start, flags, arena);
--
--   if (mod != NULL) {
--        ret = run_mod(mod, name, globals, locals, flags, arena, source, generate_new_source);
--    }
--    Py_XDECREF(source);
--    _PyArena_Free(arena);
--    return ret;
-+        else {
-+            PyObject *register_code = PyImport_ImportModuleAttrString("linecache", "_register_code");
-+            PyObject *registered = register_code
-+                ? PyObject_CallFunctionObjArgs(register_code, code, source, name, NULL) : NULL;
-+            Py_XDECREF(register_code);
-+            Py_DECREF(source);
-+            if (registered == NULL) { Py_DECREF(code); return NULL; }
-+            Py_DECREF(registered);
-+        }
-+    }
-+    return jac_eval_compiled(code, globals, locals);
- }
-
-
-@@ -1276,29 +1293,9 @@
- pyrun_file(FILE *fp, PyObject *filename, int start, PyObject *globals,
-            PyObject *locals, int closeit, PyCompilerFlags *flags)
- {
--    PyArena *arena = _PyArena_New();
--    if (arena == NULL) {
--        return NULL;
--    }
--
--    mod_ty mod;
--    mod = _PyParser_ASTFromFile(fp, filename, NULL, start, NULL, NULL,
--                                flags, NULL, arena);
--
--    if (closeit) {
--        fclose(fp);
--    }
--
--    PyObject *ret;
--    if (mod != NULL) {
--        ret = run_mod(mod, filename, globals, locals, flags, arena, NULL, 0);
--    }
--    else {
--        ret = NULL;
--    }
--    _PyArena_Free(arena);
--
--    return ret;
-+    PyObject *code = _PyJac_CompileFile(fp, filename, start, flags);
-+    if (closeit) fclose(fp);
-+    return jac_eval_compiled(code, globals, locals);
- }
-
-
-@@ -1509,30 +1506,7 @@
- Py_CompileStringObject(const char *str, PyObject *filename, int start,
-                        PyCompilerFlags *flags, int optimize)
- {
--    PyCodeObject *co;
--    mod_ty mod;
--    PyArena *arena = _PyArena_New();
--    if (arena == NULL)
--        return NULL;
--
--    mod = _PyParser_ASTFromString(str, filename, start, flags, arena);
--    if (mod == NULL) {
--        _PyArena_Free(arena);
--        return NULL;
--    }
--    if (flags && (flags->cf_flags & PyCF_ONLY_AST)) {
--        int syntax_check_only = ((flags->cf_flags & PyCF_OPTIMIZED_AST) == PyCF_ONLY_AST); /* unoptiomized AST */
--        if (_PyCompile_AstPreprocess(mod, filename, flags, optimize, arena, syntax_check_only) < 0) {
--            _PyArena_Free(arena);
--            return NULL;
--        }
--        PyObject *result = PyAST_mod2obj(mod);
--        _PyArena_Free(arena);
--        return result;
--    }
--    co = _PyAST_Compile(mod, filename, flags, optimize, arena);
--    _PyArena_Free(arena);
--    return (PyObject *)co;
-+    return _PyJac_CompileString(str, filename, start, flags, optimize);
- }
-
- PyObject *
 --- a/Modules/Setup.bootstrap.in
 +++ b/Modules/Setup.bootstrap.in
 @@ -36,7 +36,6 @@
@@ -240,9 +81,10 @@
 -#endif
 --- a/Makefile.pre.in
 +++ b/Makefile.pre.in
-@@ -351,1 +238,0 @@
+@@ -350,2 +176,0 @@
+-		Modules/main.o \
 -		Modules/gcmodule.o
-@@ -381,38 +380,2 @@
+@@ -381,38 +379,2 @@
 -PEGEN_OBJS=		\
 -		Parser/pegen.o \
 -		Parser/pegen_errors.o \
@@ -281,35 +123,35 @@
 -PARSER_HEADERS= \
 -		$(PEGEN_HEADERS) \
 -		$(TOKENIZER_HEADERS)
-+PARSER_OBJS= Parser/myreadline.o
++PARSER_OBJS=
 +PARSER_HEADERS= $(srcdir)/Include/internal/pycore_parser.h
-@@ -424,2 +386,0 @@
+@@ -424,2 +385,0 @@
 -		Python/_contextvars.o \
 -		Python/_warnings.o \
-@@ -427,1 +388,5 @@
+@@ -427,1 +387,5 @@
 -		Python/Python-tokenize.o \
 +		Python/jac_compile.o \
 +		Python/jac_runtime.o \
 +		Python/jac_objects.o \
 +		Python/jac_bindings.o \
 +		Python/jacpython.o \
-@@ -429,3 +389,0 @@
+@@ -429,3 +388,0 @@
 -		Python/assemble.o \
 -		Python/ast.o \
 -		Python/ast_preprocess.o \
-@@ -433,2 +390,0 @@
+@@ -433,2 +389,0 @@
 -		Python/bltinmodule.o \
 -		Python/brc.o \
-@@ -435,2 +390,0 @@
+@@ -435,2 +389,0 @@
 -		Python/ceval.o \
 -		Python/codecs.o \
-@@ -437,3 +390,0 @@
+@@ -437,3 +389,0 @@
 -		Python/codegen.o \
 -		Python/compile.o \
 -		Python/context.o \
-@@ -440,1 +390,0 @@
+@@ -440,1 +389,0 @@
 -		Python/critical_section.o \
-@@ -442,17 +391,0 @@
+@@ -442,17 +390,0 @@
 -		Python/dynamic_annotations.o \
 -		Python/errors.o \
 -		Python/flowgraph.o \
@@ -327,55 +169,56 @@
 -		Python/ceval_gil.o \
 -		Python/hamt.o \
 -		Python/hashtable.o \
-@@ -461,3 +393,0 @@
+@@ -461,3 +392,0 @@
 -		Python/index_pool.o \
 -		Python/initconfig.o \
 -		Python/interpconfig.o \
-@@ -464,6 +393,0 @@
+@@ -464,6 +392,0 @@
 -		Python/instrumentation.o \
 -		Python/instruction_sequence.o \
 -		Python/intrinsics.o \
 -		Python/jit.o \
 -		Python/legacy_tracing.o \
 -		Python/lock.o \
-@@ -471,5 +394,0 @@
+@@ -471,5 +393,0 @@
 -		Python/modsupport.o \
 -		Python/mysnprintf.o \
 -		Python/mystrtoul.o \
 -		Python/object_stack.o \
 -		Python/optimizer.o \
-@@ -476,5 +394,0 @@
+@@ -476,5 +393,0 @@
 -		Python/optimizer_analysis.o \
 -		Python/optimizer_symbols.o \
 -		Python/parking_lot.o \
 -		Python/pathconfig.o \
 -		Python/preconfig.o \
-@@ -482,4 +395,0 @@
+@@ -482,4 +394,0 @@
 -		Python/pyctype.o \
 -		Python/pyfpe.o \
 -		Python/pyhash.o \
 -		Python/pylifecycle.o \
-@@ -486,2 +395,0 @@
+@@ -486,3 +394,0 @@
 -		Python/pymath.o \
 -		Python/pystate.o \
-@@ -489,5 +396,0 @@
+-		Python/pythonrun.o \
+@@ -489,5 +394,0 @@
 -		Python/pytime.o \
 -		Python/qsbr.o \
 -		Python/bootstrap_hash.o \
 -		Python/specialize.o \
 -		Python/stackrefs.o \
-@@ -494,3 +396,0 @@
+@@ -494,3 +394,0 @@
 -		Python/structmember.o \
 -		Python/symtable.o \
 -		Python/sysmodule.o \
-@@ -497,2 +396,0 @@
+@@ -497,2 +394,0 @@
 -		Python/thread.o \
 -		Python/traceback.o \
-@@ -499,3 +396,0 @@
+@@ -499,3 +394,0 @@
 -		Python/tracemalloc.o \
 -		Python/uniqueid.o \
 -		Python/getopt.o \
-@@ -502,7 +396,0 @@
+@@ -502,7 +394,0 @@
 -		Python/pystrcmp.o \
 -		Python/pystrtod.o \
 -		Python/pystrhex.o \
@@ -383,7 +226,7 @@
 -		Python/formatter_unicode.o \
 -		Python/fileutils.o \
 -		Python/suggestions.o \
-@@ -522,10 +409,0 @@
+@@ -522,10 +407,0 @@
 -		Objects/abstract.o \
 -		Objects/boolobject.o \
 -		Objects/bytes_methods.o \
@@ -394,62 +237,75 @@
 -		Objects/cellobject.o \
 -		Objects/classobject.o \
 -		Objects/codeobject.o \
-@@ -532,2 +409,0 @@
+@@ -532,2 +407,0 @@
 -		Objects/complexobject.o \
 -		Objects/descrobject.o \
-@@ -534,2 +409,0 @@
+@@ -534,2 +407,0 @@
 -		Objects/enumobject.o \
 -		Objects/exceptions.o \
-@@ -536,2 +409,0 @@
+@@ -536,2 +407,0 @@
 -		Objects/genericaliasobject.o \
 -		Objects/genobject.o \
-@@ -538,3 +409,0 @@
+@@ -538,3 +407,0 @@
 -		Objects/fileobject.o \
 -		Objects/floatobject.o \
 -		Objects/frameobject.o \
-@@ -541,5 +409,0 @@
+@@ -541,5 +407,0 @@
 -		Objects/funcobject.o \
 -		Objects/interpolationobject.o \
 -		Objects/iterobject.o \
 -		Objects/listobject.o \
 -		Objects/longobject.o \
-@@ -546,3 +409,0 @@
+@@ -546,3 +407,0 @@
 -		Objects/dictobject.o \
 -		Objects/odictobject.o \
 -		Objects/memoryobject.o \
-@@ -549,5 +409,0 @@
+@@ -549,5 +407,0 @@
 -		Objects/methodobject.o \
 -		Objects/moduleobject.o \
 -		Objects/namespaceobject.o \
 -		Objects/object.o \
 -		Objects/obmalloc.o \
-@@ -554,6 +409,0 @@
+@@ -554,6 +407,0 @@
 -		Objects/picklebufobject.o \
 -		Objects/rangeobject.o \
 -		Objects/setobject.o \
 -		Objects/sliceobject.o \
 -		Objects/structseq.o \
 -		Objects/templateobject.o \
-@@ -560,2 +409,0 @@
+@@ -560,2 +407,0 @@
 -		Objects/tupleobject.o \
 -		Objects/typeobject.o \
-@@ -562,3 +409,0 @@
+@@ -562,3 +407,0 @@
 -		Objects/typevarobject.o \
 -		Objects/unicodeobject.o \
 -		Objects/unicodectype.o \
-@@ -565,2 +409,0 @@
+@@ -565,2 +407,0 @@
 -		Objects/unionobject.o \
 -		Objects/weakrefobject.o \
-@@ -572,1 +414,0 @@
+@@ -572,1 +412,0 @@
 -		Modules/getbuildinfo.o \
-@@ -1447,1 +1305,0 @@
+@@ -581,1 +420,0 @@
+-		Modules/getpath.o \
+@@ -1447,1 +1302,0 @@
 -		$(srcdir)/Python/stdlib_module_names.h
-@@ -1937,1 +1796,1 @@
+@@ -1919,10 +1776,0 @@
+-Modules/getpath.o: $(srcdir)/Modules/getpath.c Python/frozen_modules/getpath.h Makefile $(PYTHON_HEADERS)
+-	$(CC) -c $(PY_CORE_CFLAGS) -DPYTHONPATH='"$(PYTHONPATH)"' \
+-		-DPREFIX='"$(host_prefix)"' \
+-		-DEXEC_PREFIX='"$(host_exec_prefix)"' \
+-		-DVERSION='"$(VERSION)"' \
+-		-DVPATH='"$(VPATH)"' \
+-		-DPLATLIBDIR='"$(PLATLIBDIR)"' \
+-		-DPYTHONFRAMEWORK='"$(PYTHONFRAMEWORK)"' \
+-		-o $@ $(srcdir)/Modules/getpath.c
+-
+@@ -1937,1 +1793,1 @@
 -Modules/posixmodule.o: $(srcdir)/Modules/posixmodule.c $(srcdir)/Modules/posixmodule.h
 +# posixmodule.c and posixmodule.h are native Jac (jaclang/runtime/python/modules/posix*.jac).
-@@ -1943,1 +1801,0 @@
+@@ -1943,1 +1798,0 @@
 -Modules/signalmodule.o: $(srcdir)/Modules/signalmodule.c $(srcdir)/Modules/posixmodule.h
-@@ -1986,8 +1844,2 @@
+@@ -1986,8 +1841,2 @@
 -	@$(MKDIR_P) $(srcdir)/Parser
 -	@$(MKDIR_P) $(srcdir)/Parser/tokenizer
 -	@$(MKDIR_P) $(srcdir)/Parser/lexer
@@ -460,7 +316,7 @@
 -	$(UPDATE_FILE) --create $(srcdir)/Parser/parser.c $(srcdir)/Parser/parser.c.new
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2015,21 +1867,2 @@
+@@ -2015,21 +1864,2 @@
 -	# Regenerate Doc/library/token-list.inc from Grammar/Tokens
 -	# using Tools/build/generate_token.py
 -	$(PYTHON_FOR_REGEN) $(srcdir)/Tools/build/generate_token.py rst \
@@ -484,10 +340,10 @@
 -		$(srcdir)/Lib/token.py
 +	@echo "JacPython supplies this compiler component; C regeneration is disabled" >&2
 +	@false
-@@ -2065,1 +1898,1 @@
+@@ -2065,1 +1895,1 @@
 -Python/compile.o Python/codegen.o Python/symtable.o Python/ast_unparse.o Python/ast.o Python/future.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
 +Python/ast_unparse.o: $(srcdir)/Include/internal/pycore_ast.h $(srcdir)/Include/internal/pycore_ast.h
-@@ -2201,7 +2033,0 @@
+@@ -2201,7 +2030,0 @@
 -Python/compile.o Python/codegen.o Python/assemble.o Python/flowgraph.o Python/instruction_sequence.o: \
 -                $(srcdir)/Include/internal/pycore_compile.h \
 -                $(srcdir)/Include/internal/pycore_flowgraph.h \
@@ -495,23 +351,32 @@
 -                $(srcdir)/Include/internal/pycore_opcode_metadata.h \
 -                $(srcdir)/Include/internal/pycore_opcode_utils.h
 -
-@@ -2214,3 +2039,0 @@
+@@ -2214,3 +2036,0 @@
 -
 -Python/flowgraph.o: \
 -		$(srcdir)/Include/internal/pycore_opcode_metadata.h
-@@ -2247,1 +2069,0 @@
+@@ -2247,1 +2066,0 @@
 -Objects/typeobject.o: Objects/typeslots.inc
-@@ -2817,1 +2639,1 @@
+@@ -2817,1 +2636,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -2822,1 +2644,1 @@
+@@ -2822,1 +2641,1 @@
 -	-PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
 +	PYTHONPATH=$(DESTDIR)$(LIBDEST) $(RUNSHARED) \
-@@ -3422,0 +3245,7 @@
+@@ -3422,0 +3242,16 @@
 +
 +# Compiler/parser objects are supplied by native Jac and retained-runtime ABI adapters.
 +Python/jac_compile.o: $(srcdir)/Python/jac_compile.c $(srcdir)/Python/jac_compile.h
 +Python/jac_runtime.o: $(srcdir)/Python/jac_runtime.c
-+Python/jac_objects.o: $(srcdir)/Python/jac_objects.c
++# jac_objects.c holds the C side of Modules/getpath.c: the frozen getpath.py and
++# the configured install locations.
++Python/jac_objects.o: $(srcdir)/Python/jac_objects.c Python/frozen_modules/getpath.h Makefile $(PYTHON_HEADERS)
++	$(CC) -c $(PY_CORE_CFLAGS) -DPYTHONPATH='"$(PYTHONPATH)"' \
++		-DPREFIX='"$(host_prefix)"' \
++		-DEXEC_PREFIX='"$(host_exec_prefix)"' \
++		-DVERSION='"$(VERSION)"' \
++		-DVPATH='"$(VPATH)"' \
++		-DPLATLIBDIR='"$(PLATLIBDIR)"' \
++		-DPYTHONFRAMEWORK='"$(PYTHONFRAMEWORK)"' \
++		-o $@ $(srcdir)/Python/jac_objects.c
 +Python/jac_bindings.o: $(srcdir)/Python/jac_bindings.c
-+Python/pythonrun.o: $(srcdir)/Python/jac_compile.h

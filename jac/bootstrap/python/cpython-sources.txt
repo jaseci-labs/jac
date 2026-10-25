@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 257 C files / 433,787 lines; 166 headers / 157,629 lines.
-#   Total: 423 files / 591,416 source lines.
+#   Excluded: 262 C files / 437,783 lines; 166 headers / 157,629 lines.
+#   Total: 428 files / 595,412 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -301,7 +301,7 @@ Include/weakrefobject.h
 # Parser/lexer/lexer.h  # removed: 10 source lines
 # Parser/lexer/state.c  # removed: 154 source lines
 # Parser/lexer/state.h  # removed: 151 source lines
-Parser/myreadline.c
+# Parser/myreadline.c  # removed: 437 source lines
 # Parser/parser.c  # removed: 38,073 source lines
 # Parser/peg_api.c  # removed: 40 source lines
 # Parser/pegen.c  # removed: 1,083 source lines
@@ -419,7 +419,7 @@ Python/pyarena.c
 # Python/pystrcmp.c  # removed: 30 source lines
 # Python/pystrhex.c  # removed: 171 source lines
 # Python/pystrtod.c  # removed: 1,286 source lines
-Python/pythonrun.c
+# Python/pythonrun.c  # removed: 1,737 source lines
 # Python/pytime.c  # removed: 1,356 source lines
 # Python/qsbr.c  # removed: 290 source lines
 # Python/remote_debug.h  # removed: 1,191 source lines
@@ -798,15 +798,15 @@ Modules/config.c.in
 # Modules/getaddrinfo.c  # removed: 642 source lines
 # Modules/getbuildinfo.c  # removed: 79 source lines
 # Modules/getnameinfo.c  # removed: 207 source lines
-Modules/getpath.c
+# Modules/getpath.c  # removed: 981 source lines
 Modules/getpath.py
-Modules/getpath_noop.c
+# Modules/getpath_noop.c  # removed: 10 source lines
 # Modules/grpmodule.c  # removed: 409 source lines
 # Modules/hashlib.h  # removed: 107 source lines
 # Modules/hmacmodule.c  # removed: 1,865 source lines
 # Modules/itertoolsmodule.c  # removed: 4,103 source lines
 Modules/ld_so_aix.in
-Modules/main.c
+# Modules/main.c  # removed: 831 source lines
 Modules/makesetup
 # Modules/mathmodule.c  # removed: 4,202 source lines
 # Modules/md5module.c  # removed: 413 source lines
