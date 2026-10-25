@@ -6422,6 +6422,7 @@ impl NativeBuiltinEmitter.emit_bytearray(
         return buf;
     }
 
+    p._mark_owned(buf);
     _bv = _emit_bytes_from_int_list(p, a0, "byte must be in range(0, 256)", [buf]);
     if _bv is None and ctx.arg_nodes {
         _bv = _emit_bytes_drained(
@@ -7720,10 +7721,11 @@ impl _emit_bytes_drained(
     if drained is None {
         return None;
     }
-    made = _emit_bytes_from_int_list(p, drained, message, release_on_error);
+    p._mark_owned(drained);
+    made = _emit_bytes_from_int_list(p, drained, message, [*release_on_error, *args]);
     if made is None {
         return None;
     }
-    p._release_owned_args([p._mark_owned(drained)]);
+    p._release_owned_args([drained]);
     return made;
 }
