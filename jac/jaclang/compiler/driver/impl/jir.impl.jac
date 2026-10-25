@@ -1418,8 +1418,7 @@ impl precompiled_jir_matches_source(
 }
 
 impl jir_cacheable_source_path(source_path: str) -> bool {
-    return is_stub_like_path(source_path)
-        or (source_path.endswith('.jac') and not source_path.endswith('.na.jac'));
+    return is_stub_like_path(source_path) or source_path.endswith('.jac');
 }
 
 impl cache_mode -> tuple[bool, bool] {
@@ -1584,13 +1583,22 @@ impl read_sections_blob(data: bytes) -> dict[int, bytes] {
 }
 
 impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
-    memo = isinstance(data, bytes);
-    if memo {
+    if isinstance(data, bytes) {
         held = _SECTION_TABLES.get(id(data));
         if held is not None and held[0] is data and held[1] == start_pos {
             return dict(held[2]);
         }
+        table = _decode_sections(data, start_pos);
+        if len(_SECTION_TABLES) >= SECTION_TABLE_CAP {
+            del _SECTION_TABLES[next(iter(_SECTION_TABLES))];
+        }
+        _SECTION_TABLES[id(data)] = (data, start_pos, table);
+        return dict(table);
     }
+    return _decode_sections(data, start_pos);
+}
+
+impl _decode_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
     result: dict[int, bytes] = {};
     pos = start_pos;
     try {
@@ -1612,13 +1620,6 @@ impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, byte
             pos += sec_len;
         }
     } except Exception {}
-    if memo {
-        if len(_SECTION_TABLES) >= SECTION_TABLE_CAP {
-            del _SECTION_TABLES[next(iter(_SECTION_TABLES))];
-        }
-        _SECTION_TABLES[id(data)] = (data, start_pos, result);
-        return dict(result);
-    }
     return result;
 }
 

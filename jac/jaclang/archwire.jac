@@ -195,7 +195,6 @@ graph import {
         },
     ]
     cache.registry --> [
-        compiler.driver.jir._manifest_compiler_digest { bucket, maybe_sweep },
         compiler.driver.jir._sweep_once { bucket, maybe_sweep },
         compiler.driver.jir._touch_generation
             | compiler.types.stubcat.locate.StubcatArtifact.probe_checkout { bucket },
@@ -2354,10 +2353,7 @@ graph import {
     ]
     project.textio --> [
         cli.commands.analysis._check_file_job { read_file_with_encoding as _read_src },
-        compiler.driver.compiler.JacCompiler.get_bytecode
-            | compiler.driver.nativecache._module_files_and_imports {
-            read_file_with_encoding
-        },
+        compiler.driver.compiler.JacCompiler.get_bytecode { read_file_with_encoding },
     ]
     project.tomlio ++> [
         cli.commands.config | cli.commands.project._toml_apps_and_default {
@@ -5010,7 +5006,6 @@ graph import client {
             __overlaps as cache___overlaps
         },
     ]
-    import_processor ++> jac_client_compiler { ImportProcessor }
     jac_client_compiler ++> compiler | targets.react_native.build { JacClientCompiler }
     jac_to_js ++> jac_client_compiler { JacToJSCompiler }
     js_engine --> js_runtime.js_runtime_path { node_executable }
@@ -5621,9 +5616,7 @@ graph import compiler {
     ]
     type capability_notes ++> driver.progstate { CapabilityNote }
     driver.bccache ++> [
-        backends.native.kernel_stage0.unit_line_count | tools.code_intel {
-            discover_annex_files
-        },
+        backends.native.kernel_stage0.unit_line_count { discover_annex_files },
         tests.test_batch_decl_identity | tests.test_global_narrowing {
             discover_base_file
         },
@@ -7435,10 +7428,10 @@ graph import compiler {
             parse as rd_parse
         },
     ]
-    frontend.parser.frontend --> [
-        driver.nativecache._module_files_and_imports { parse as rd_parse },
-        driver.program.JacProgram.parse_source { annex_sources, parse_woven },
-    ]
+    frontend.parser.frontend --> driver.program.JacProgram.parse_source {
+        annex_sources,
+        parse_woven
+    }
     frontend.parser.lexer ++> [
         tools.jac_auto_lint_pass.JacAutoLintPass._impl_header { tokenize_full },
         tools.jac_auto_lint_pass.JacAutoLintPass._reparse_signature { tokenize_full },
@@ -9977,7 +9970,6 @@ graph import compiler {
         driver.compiler.JacCompiler.native_entry_engine { summary_store },
         driver.ifacecache.IfaceRegistry._persist_in_context { get_module_summary },
         driver.module_analysis.run_analysis { record_decided },
-        driver.nativecache._module_files_and_imports { jac_import_targets },
     ]
     type placement.placement ++> driver.progstate { PlacementSummary }
     placement.placement_export ++> driver.unit_products.placement_record {
@@ -11604,9 +11596,9 @@ graph import compiler.driver {
     }
     bccache ++> [
         application._stamp { LISTING_SETTLE_NS },
-        ifacecache.IfaceRegistry._entry_fresh
-            | jir._related_files
-            | nativecache._module_files_and_imports { discover_annex_files },
+        ifacecache.IfaceRegistry._entry_fresh | jir._related_files {
+            discover_annex_files
+        },
     ]
     boundary_classify ++> [
         program.JacProgram.declared_codespace { _default_codespace_for },
@@ -11817,7 +11809,6 @@ graph import compiler.driver {
             SEC_NOBJ,
             cache_mode,
             carried_native_sections,
-            compute_content_sha256,
             ct_dep_text_fresh,
             current_native_stamp,
             get_module_cache_path,
@@ -11961,7 +11952,6 @@ graph import compiler.driver {
             | unit_products { JacProgram },
         compiler.JacCompiler._prepare_tool_program { JacProgram },
     ]
-    program --> nativecache._module_files_and_imports { JacProgram }
     type program ++> build_services
         | compilation_context
         | ifacecache
@@ -13876,7 +13866,6 @@ graph import compiler.placement {
         placement_facts.native_unit { effective_module_pin },
     ]
     placement_solver ++> [
-        placement_facts.declared_path_spaces { _materialize_module },
         placement_work.PlacementWork.drain { _pull_boundary_import },
         placement_work.PlacementWork.refs { _ref_top_ids },
     ]

@@ -387,6 +387,8 @@ def read_sections_blob(data: bytes) -> dict[int, bytes];
 
 def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes];
 
+def _decode_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes];
+
 def read_jir(cache_path: Path) -> bytes;
 
 glob JIR_READ_CACHE_CAP: int = 256,

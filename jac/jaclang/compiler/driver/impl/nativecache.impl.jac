@@ -1257,65 +1257,6 @@ impl _ir_referenced_symbols(unit_ir: any) -> set[str] {
     return used;
 }
 
-impl _stat_key(path: str) -> (tuple[int, int] | None) {
-    try {
-        st = os.stat(path);
-        return (st.st_mtime_ns, st.st_size);
-    } except OSError {
-        return None;
-    }
-}
-
-impl _module_files_and_imports(path: str) -> tuple[list[str], list[str]] {
-    files = [path]
-        + discover_annex_files(path, '.impl.jac')
-        + discover_annex_files(path, '.test.jac');
-    fresh = tuple(_stat_key(f) for f in files);
-    cached = _closure_memo.get(path);
-    if cached is not None and cached[0] == fresh {
-        return (cached[1], cached[2]);
-    }
-    import from jaclang.project.textio { read_file_with_encoding }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.parser.frontend { parse as rd_parse }
-    import from jaclang.compiler.placement.placement { jac_import_targets }
-    imports: list[str] = [];
-    for f in files {
-        try {
-            (mod, _had_err) = rd_parse(
-                read_file_with_encoding(f), f, prog=JacProgram()
-            );
-        } except Exception {
-            continue;
-        }
-        for target in jac_import_targets(mod) {
-            if target not in imports {
-                imports.append(target);
-            }
-        }
-    }
-    _closure_memo[path] = (fresh, files, imports);
-    return (files, imports);
-}
-
-impl _file_digest(path: str) -> str {
-    key = _stat_key(path);
-    if key is None {
-        return "";
-    }
-    cached = _dep_digest_memo.get(path);
-    if cached is not None and cached[0] == key {
-        return cached[1];
-    }
-    try {
-        digest = compute_content_sha256(path);
-    } except OSError {
-        return "";
-    }
-    _dep_digest_memo[path] = (key, digest);
-    return digest;
-}
-
 impl _interface_changes(before: any, after: any, path: str, out: list[str]) {
     if before == after {
         return;

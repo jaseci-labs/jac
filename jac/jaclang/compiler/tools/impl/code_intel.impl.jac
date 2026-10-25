@@ -391,15 +391,21 @@ impl CodeIntelligence._compile_and_index(stale: set[str]) {
             }
             key = f"{decl.loc.mod_path}:{decl.loc.first_line}";
             for nd in sym.uses {
-                loc = nd.loc;
-                if loc is None {
+                use_loc = nd.loc;
+                if use_loc is None {
                     continue;
                 }
-                at = self._head_for(_real(loc.mod_path));
+                at = self._head_for(_real(use_loc.mod_path));
                 if at not in uses {
                     continue;
                 }
-                row = [key, sym.sym_name, loc.mod_path, loc.first_line, loc.col_start];
+                row = [
+                    key,
+                    sym.sym_name,
+                    use_loc.mod_path,
+                    use_loc.first_line,
+                    use_loc.col_start
+                ];
                 mark = json.dumps(row);
                 if mark not in seen_uses {
                     seen_uses.add(mark);

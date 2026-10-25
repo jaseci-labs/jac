@@ -190,19 +190,10 @@ obj NativeBuildSession {
     def close;
 }
 
-glob _closure_memo:
-         dict[str, tuple[tuple[(tuple[int, int] | None), ...], list[str], list[str]]] = {},
-     _dep_digest_memo: dict[str, tuple[tuple[int, int], str]] = {},
-     VERDICT_CLOSURE_LIMIT: int = 4096;
+glob VERDICT_CLOSURE_LIMIT: int = 4096;
 
 def _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None);
 
 def _ir_referenced_symbols(unit_ir: any) -> set[str];
-
-def _stat_key(path: str) -> (tuple[int, int] | None);
-
-def _module_files_and_imports(path: str) -> tuple[list[str], list[str]];
-
-def _file_digest(path: str) -> str;
 
 def _interface_changes(before: any, after: any, path: str, out: list[str]);

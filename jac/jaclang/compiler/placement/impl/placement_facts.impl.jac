@@ -83,10 +83,6 @@ impl emits_server_code(mod: (uni.Module | None)) -> bool {
     return SPACE_SERVER in module_spaces(mod);
 }
 
-impl declared_path_spaces(source_path: str, prog: JacProgram) -> set[str] {
-    return module_spaces(_materialize_module(source_path, prog));
-}
-
 impl discover_spaces(
     paths: list[str], prog: (JacProgram | None) = None
 ) -> dict[str, set[str]] {
@@ -118,17 +114,6 @@ impl pinned_module_space(source_path: str) -> str {
 
 impl spaces_are_client_only(spaces: set[str]) -> bool {
     return len(spaces) == 1 and SPACE_CLIENT in spaces;
-}
-
-impl client_only_paths(paths: list[str]) -> set[str] {
-    facts = discover_spaces(paths);
-    out: set[str] = set();
-    for (p, spaces) in facts.items() {
-        if spaces_are_client_only(spaces) {
-            out.add(p);
-        }
-    }
-    return out;
 }
 
 impl _toolchain_rel(source_path: str) -> (str | None) {

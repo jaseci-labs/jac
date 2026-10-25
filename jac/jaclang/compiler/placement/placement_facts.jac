@@ -41,9 +41,6 @@ def is_client_only(mod: (uni.Module | None)) -> bool;
 def emits_server_code(mod: (uni.Module | None)) -> bool;
 
 
-def declared_path_spaces(source_path: str, prog: JacProgram) -> set[str];
-
-
 def discover_spaces(
     paths: list[str], prog: (JacProgram | None) = None
 ) -> dict[str, set[str]];
@@ -54,8 +51,6 @@ def pinned_module_space(source_path: str) -> str;
 
 def spaces_are_client_only(spaces: set[str]) -> bool;
 
-
-def client_only_paths(paths: list[str]) -> set[str];
 
 
 def _toolchain_rel(source_path: str) -> (str | None);
