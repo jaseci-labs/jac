@@ -1,30 +1,14 @@
-"""The posix file descriptor area: open/close/dup, read and write in all
-their vector and positional forms, sendfile, pipes, pseudo-terminals, the
-inheritable and blocking flags, eventfd, timerfd and os.terminal_size.
-
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
-The descriptor helpers the C calls (_Py_read, _Py_write, _Py_dup,
-_Py_set_inheritable, _Py_get_blocking, ...) are Python/fileutils.c's. A libc
-function or record only one target has is reached through
-posix_fileio_platform.<os>.jac. HAVE_OPENAT_RUNTIME and
-HAVE_PTSNAME_R_RUNTIME are always true for the supported deployment targets.
-"""
-
 import from c {
     obj winsize {
         has ws_row: u16 = 0,
             ws_col: u16 = 0,
             ws_xpixel: u16 = 0,
             ws_ypixel: u16 = 0;
-    }
-    # The fileutils.c flag os.open() lends _Py_set_inheritable().
-    glob _Py_open_cloexec_works: i32;
-    # PyOS_sighandler_t as an untyped function pointer.
-    def PyOS_setsig(sig: i32, handler: ptr) -> ptr;  def open(
-        path: ptr[u8], flags: i32, *args: any
-    ) -> i32;  def openat(dir_fd: i32, path: ptr[u8], flags: i32, *args: any) -> i32;  def close(
-        fd: i32
-    ) -> i32;  def dup2(fd: i32, fd2: i32) -> i32;  def lseek(
+    }  glob _Py_open_cloexec_works: i32; def PyOS_setsig(
+        sig: i32, handler: ptr
+    ) -> ptr;  def open(path: ptr[u8], flags: i32, *args: any) -> i32;  def openat(
+        dir_fd: i32, path: ptr[u8], flags: i32, *args: any
+    ) -> i32;  def close(fd: i32) -> i32;  def dup2(fd: i32, fd2: i32) -> i32;  def lseek(
         fd: i32, offset: i64, whence: i32
     ) -> i64;  def pread(fd: i32, buffer: ptr, count: u64, offset: i64) -> i64;  def pwrite(
         fd: i32, buffer: ptr, count: u64, offset: i64
@@ -49,13 +33,238 @@ glob PyBUF_SIMPLE: i32 = 0,
      PyBUF_WRITABLE: i32 = 1,
      _PyTime_ROUND_FLOOR: i32 = 0,
      OFF_T_MAX: i64 = 0x7fffffffffffffff,
-     # dup3() may be missing from the running kernel: -1 until known.
      DUP3_WORKS: i32 = -1;
 
-# --- helpers -----------------------------------------------------------------
+def:priv Py_off_t_converter(value: ptr[PyObject]) -> (i64 | None);
 
-# Py_off_t_converter: off_t is a long on every supported target.
-def:priv Py_off_t_converter(value: ptr[PyObject]) -> (i64 | None) {
+obj IoVectors {
+    has iov: ptr[iovec] = ptr[iovec](),
+        buf: ptr[Py_buffer] = ptr[Py_buffer]();
+}
+
+def iov_setup(seq: ptr[PyObject], cnt: i64, type_flags: i32) -> (IoVectors | None);
+
+def:priv iov_setup_failed(
+    iov: ptr[iovec], buf: ptr[Py_buffer], filled: i64
+) -> (IoVectors | None);
+
+def iov_cleanup(vectors: IoVectors, cnt: i32);
+
+def:priv fd_tuple(first: i32, second: i32) -> ptr[PyObject];
+
+def os_ttyname_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_ctermid_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_posix_openpt_impl(module: ptr[PyObject], oflag: i32) -> i32;
+
+def os_grantpt_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_unlockpt_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def:priv py_ptsname(fd: i32) -> ptr[PyObject];
+
+def os_ptsname_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_openpty_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_login_tty_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def:priv build_itimerspec(curr_value: itimerspec) -> ptr[PyObject];
+
+def:priv build_itimerspec_ns(curr_value: itimerspec) -> ptr[PyObject];
+
+def:priv itimerspec_of(initial: i64, interval: i64) -> (itimerspec | None);
+
+def os_timerfd_create_impl(
+    module: ptr[PyObject], clockid: i32, flags: i32
+) -> ptr[PyObject];
+
+def:priv timerfd_settime_common(
+    fd: i32, flags: i32, initial: i64, interval: i64
+) -> (itimerspec | None);
+
+def os_timerfd_settime_impl(
+    module: ptr[PyObject],
+    fd: i32,
+    flags: i32,
+    initial_double: f64,
+    interval_double: f64
+) -> ptr[PyObject];
+
+def os_timerfd_settime_ns_impl(
+    module: ptr[PyObject], fd: i32, flags: i32, initial: i64, interval: i64
+) -> ptr[PyObject];
+
+def:priv timerfd_gettime_common(fd: i32) -> (itimerspec | None);
+
+def os_timerfd_gettime_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_timerfd_gettime_ns_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_open_impl(
+    module: ptr[PyObject], path: path_t, flags: i32, mode: i32, dir_fd: i32
+) -> i32;
+
+def os_close_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_closerange_impl(
+    module: ptr[PyObject], fd_low: i32, fd_high: i32
+) -> ptr[PyObject];
+
+def os_dup_impl(module: ptr[PyObject], fd: i32) -> i32;
+
+def:priv dup2_then_set_inheritable(fd: i32, fd2: i32, inheritable: bool) -> i32;
+
+def os_dup2_impl(module: ptr[PyObject], fd: i32, fd2: i32, inheritable: bool) -> i32;
+
+def os_lseek_impl(module: ptr[PyObject], fd: i32, position: i64, how: i32) -> i64;
+
+def os_read_impl(module: ptr[PyObject], fd: i32, length: i64) -> ptr[PyObject];
+
+def os_readinto_impl(module: ptr[PyObject], fd: i32, buffer: BufferArgument) -> i64;
+
+def:priv sequence_count(buffers: ptr[PyObject], message: str) -> i64;
+
+def os_readv_impl(module: ptr[PyObject], fd: i32, buffers: ptr[PyObject]) -> i64;
+
+def os_pread_impl(
+    module: ptr[PyObject], fd: i32, length: i64, offset: i64
+) -> ptr[PyObject];
+
+def os_preadv_impl(
+    module: ptr[PyObject], fd: i32, buffers: ptr[PyObject], offset: i64, flags: i32
+) -> i64;
+
+def os_write_impl(module: ptr[PyObject], fd: i32, data: BufferArgument) -> i64;
+
+obj:priv SendfileVectors {
+    has iov: ptr[iovec] = ptr[iovec](),
+        buf: ptr[Py_buffer] = ptr[Py_buffer](),
+        count: i32 = 0,
+        sbytes: i64 = 0;
+}
+
+def:priv sendfile_vectors(
+    items: ptr[PyObject], what: str, sbytes: i64, counted: bool
+) -> (SendfileVectors | None);
+
+def:priv sendfile_cleanup(part: SendfileVectors);
+
+def os_sendfile_darwin_impl(
+    module: ptr[PyObject],
+    out_fd: i32,
+    in_fd: i32,
+    offset: i64,
+    sbytes: i64,
+    headers: ptr[PyObject],
+    trailers: ptr[PyObject],
+    flags: i32
+) -> ptr[PyObject];
+
+def os_sendfile_linux_impl(
+    module: ptr[PyObject], out_fd: i32, in_fd: i32, offobj: ptr[PyObject], count: i64
+) -> ptr[PyObject];
+
+def os__fcopyfile_impl(
+    module: ptr[PyObject], in_fd: i32, out_fd: i32, flags: i32
+) -> ptr[PyObject];
+
+def os_isatty_impl(module: ptr[PyObject], fd: i32) -> i32;
+
+def os_pipe_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_pipe2_impl(module: ptr[PyObject], flags: i32) -> ptr[PyObject];
+
+def os_writev_impl(module: ptr[PyObject], fd: i32, buffers: ptr[PyObject]) -> i64;
+
+def os_pwrite_impl(
+    module: ptr[PyObject], fd: i32, buffer: BufferArgument, offset: i64
+) -> i64;
+
+def os_pwritev_impl(
+    module: ptr[PyObject], fd: i32, buffers: ptr[PyObject], offset: i64, flags: i32
+) -> i64;
+
+obj:priv OffsetPair {
+    has src: i64 = 0,
+        dst: i64 = 0,
+        has_src: bool = False,
+        has_dst: bool = False;
+}
+
+def:priv offset_pair(
+    count: i64, offset_src: ptr[PyObject], offset_dst: ptr[PyObject]
+) -> (OffsetPair | None);
+
+def:priv offset_copy_call(
+    use_splice: bool, src: i32, dst: i32, count: i64, offsets: OffsetPair, flags: u32
+) -> i64;
+
+def:priv offset_copy(
+    use_splice: bool,
+    src: i32,
+    dst: i32,
+    count: i64,
+    offset_src: ptr[PyObject],
+    offset_dst: ptr[PyObject],
+    flags: u32
+) -> ptr[PyObject];
+
+def os_copy_file_range_impl(
+    module: ptr[PyObject],
+    src: i32,
+    dst: i32,
+    count: i64,
+    offset_src: ptr[PyObject],
+    offset_dst: ptr[PyObject]
+) -> ptr[PyObject];
+
+def os_splice_impl(
+    module: ptr[PyObject],
+    src: i32,
+    dst: i32,
+    count: i64,
+    offset_src: ptr[PyObject],
+    offset_dst: ptr[PyObject],
+    flags: u32
+) -> ptr[PyObject];
+
+def os_device_encoding_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_memfd_create_impl(
+    module: ptr[PyObject], name: ptr[PyObject], flags: u32
+) -> ptr[PyObject];
+
+def os_eventfd_impl(module: ptr[PyObject], initval: u32, flags: i32) -> ptr[PyObject];
+
+def os_eventfd_read_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_eventfd_write_impl(module: ptr[PyObject], fd: i32, value: u64) -> ptr[PyObject];
+
+glob TERMINAL_SIZE_DOC: str = "A tuple of (columns, lines) for holding terminal window size",
+     TERMINAL_SIZE_FIELDS: list[tuple[str, str]] = [
+         ("columns", "width of the terminal window in characters"),
+         ("lines", "height of the terminal window in characters")
+     ];
+
+def os_get_terminal_size_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_get_inheritable_impl(module: ptr[PyObject], fd: i32) -> i32;
+
+def os_set_inheritable_impl(
+    module: ptr[PyObject], fd: i32, inheritable: i32
+) -> ptr[PyObject];
+
+def os_get_blocking_impl(module: ptr[PyObject], fd: i32) -> i32;
+
+def os_set_blocking_impl(
+    module: ptr[PyObject], fd: i32, blocking: bool
+) -> ptr[PyObject];
+
+def posix_fileio_exec(module: ptr[PyObject]) -> bool;
+
+impl Py_off_t_converter(value: ptr[PyObject]) -> (i64 | None) {
     offset = PyLong_AsLong(value);
     if PyErr_Occurred() {
         return None;
@@ -63,17 +272,7 @@ def:priv Py_off_t_converter(value: ptr[PyObject]) -> (i64 | None) {
     return offset;
 }
 
-# The struct iovec array and the Py_buffer views behind it, both PyMem
-# memory, as iov_setup() leaves them.
-obj IoVectors {
-    has iov: ptr[iovec] = ptr[iovec](),
-        buf: ptr[Py_buffer] = ptr[Py_buffer]();
-}
-
-# iov_setup(): export a buffer from each of the `cnt` items of `seq` with the
-# PyBUF_* `type`; None with the exception set on failure.
-def iov_setup(seq: ptr[PyObject], cnt: i64, type_flags: i32) -> (IoVectors | None) {
-    # PyMem_New() refuses a count whose byte size overflows Py_ssize_t.
+impl iov_setup(seq: ptr[PyObject], cnt: i64, type_flags: i32) -> (IoVectors | None) {
     if u64(cnt) > u64(0x7fffffffffffffff) / u64(16) {
         PyErr_NoMemory();
         return None;
@@ -112,7 +311,7 @@ def iov_setup(seq: ptr[PyObject], cnt: i64, type_flags: i32) -> (IoVectors | Non
     return IoVectors(iov=iov, buf=buf);
 }
 
-def:priv iov_setup_failed(
+impl iov_setup_failed(
     iov: ptr[iovec], buf: ptr[Py_buffer], filled: i64
 ) -> (IoVectors | None) {
     PyMem_Free(ptr(iov));
@@ -123,7 +322,7 @@ def:priv iov_setup_failed(
     return None;
 }
 
-def iov_cleanup(vectors: IoVectors, cnt: i32) {
+impl iov_cleanup(vectors: IoVectors, cnt: i32) {
     PyMem_Free(ptr(vectors.iov));
     for i in range(cnt) {
         PyBuffer_Release(vectors.buf + i);
@@ -131,14 +330,11 @@ def iov_cleanup(vectors: IoVectors, cnt: i32) {
     PyMem_Free(ptr(vectors.buf));
 }
 
-# The `(ii)` tuple of two descriptors.
-def:priv fd_tuple(first: i32, second: i32) -> ptr[PyObject] {
+impl fd_tuple(first: i32, second: i32) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("(ii)"), first, second);
 }
 
-# --- terminals ---------------------------------------------------------------
-
-def os_ttyname_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_ttyname_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     size = sysconf(i32(_SC_TTY_NAME_MAX));
     if size == -1 {
         return posix_error();
@@ -158,8 +354,7 @@ def os_ttyname_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return res;
 }
 
-# ctermid() into the char buffer[L_ctermid] of the C, ctermid_r() on macOS.
-def os_ctermid_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_ctermid_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     buffer = ptr[u8](PyMem_RawMalloc(u64(L_ctermid)));
     if not buffer {
         return PyErr_NoMemory();
@@ -175,14 +370,14 @@ def os_ctermid_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def os_posix_openpt_impl(module: ptr[PyObject], oflag: i32) -> i32 {
+impl os_posix_openpt_impl(module: ptr[PyObject], oflag: i32) -> i32 {
     oflag |= i32(O_CLOEXEC);
     fd = posix_openpt(oflag);
     if fd == -1 {
         posix_error();
         return i32(-1);
     }
-    # Just in case, likely a no-op given O_CLOEXEC above.
+
     no_atomic = i32(0);
     if _Py_set_inheritable(fd, 0, &mut no_atomic) < 0 {
         close(fd);
@@ -191,7 +386,7 @@ def os_posix_openpt_impl(module: ptr[PyObject], oflag: i32) -> i32 {
     return fd;
 }
 
-def os_grantpt_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_grantpt_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     saved_errno = i64(0);
     sig_saved = PyOS_setsig(i32(SIGCHLD), ptr());
     ret = grantpt(fd);
@@ -206,15 +401,14 @@ def os_grantpt_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def os_unlockpt_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_unlockpt_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     if unlockpt(fd) == -1 {
         return posix_error();
     }
     return Py_NewRef(Py_None);
 }
 
-def:priv py_ptsname(fd: i32) -> ptr[PyObject] {
-    # ptsname() may fail without setting errno.
+impl py_ptsname(fd: i32) -> ptr[PyObject] {
     jacpy_set_errno(0);
     name = ptsname(fd);
     if not name {
@@ -223,7 +417,7 @@ def:priv py_ptsname(fd: i32) -> ptr[PyObject] {
     return PyUnicode_DecodeFSDefault(name);
 }
 
-def os_ptsname_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_ptsname_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     if not HAVE_PTSNAME_R {
         return py_ptsname(fd);
     }
@@ -244,7 +438,7 @@ def os_ptsname_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return result;
 }
 
-def os_openpty_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_openpty_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     master_fd = i32(-1);
     slave_fd = i32(-1);
     failed = False;
@@ -270,22 +464,22 @@ def os_openpty_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return fd_tuple(master_fd, slave_fd);
 }
 
-def os_login_tty_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_login_tty_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     if HAVE_LOGIN_TTY {
         if login_tty(fd) == -1 {
             return posix_error();
         }
         return Py_NewRef(Py_None);
     }
-    # Establish a new session.
+
     if setsid() == -1 {
         return posix_error();
     }
-    # The tty becomes the controlling terminal.
+
     if ioctl(fd, u64.wrap(TIOCSCTTY), ptr()) == -1 {
         return posix_error();
     }
-    # The tty becomes stdin/stdout/stderr.
+
     if dup2(fd, 0) == -1 or dup2(fd, 1) == -1 or dup2(fd, 2) == -1 {
         return posix_error();
     }
@@ -295,9 +489,7 @@ def os_login_tty_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-# --- timerfd -----------------------------------------------------------------
-
-def:priv build_itimerspec(curr_value: itimerspec) -> ptr[PyObject] {
+impl build_itimerspec(curr_value: itimerspec) -> ptr[PyObject] {
     value = PyFloat_FromDouble(
         f64(curr_value.it_value.tv_sec) + f64(curr_value.it_value.tv_nsec) * 1e-9
     );
@@ -317,7 +509,7 @@ def:priv build_itimerspec(curr_value: itimerspec) -> ptr[PyObject] {
     return tuple;
 }
 
-def:priv build_itimerspec_ns(curr_value: itimerspec) -> ptr[PyObject] {
+impl build_itimerspec_ns(curr_value: itimerspec) -> ptr[PyObject] {
     value = i64(0);
     interval = i64(0);
     it_value = curr_value.it_value;
@@ -331,9 +523,7 @@ def:priv build_itimerspec_ns(curr_value: itimerspec) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("LL"), value, interval);
 }
 
-# The new value of a timerfd_settime*() call from its nanosecond times; None
-# with the ValueError set.
-def:priv itimerspec_of(initial: i64, interval: i64) -> (itimerspec | None) {
+impl itimerspec_of(initial: i64, interval: i64) -> (itimerspec | None) {
     new_value = itimerspec();
     value_ts = timespec();
     if _PyTime_AsTimespec(initial, &mut value_ts) < 0 {
@@ -350,11 +540,11 @@ def:priv itimerspec_of(initial: i64, interval: i64) -> (itimerspec | None) {
     return new_value;
 }
 
-def os_timerfd_create_impl(
+impl os_timerfd_create_impl(
     module: ptr[PyObject], clockid: i32, flags: i32
 ) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
-    # PEP 446: always create non-inheritable FD
+
     flags |= i32(TFD_CLOEXEC);
     fd = timerfd_create_call(clockid, flags);
     PyEval_RestoreThread(thread);
@@ -364,7 +554,7 @@ def os_timerfd_create_impl(
     return PyLong_FromLong(i64(fd));
 }
 
-def:priv timerfd_settime_common(
+impl timerfd_settime_common(
     fd: i32, flags: i32, initial: i64, interval: i64
 ) -> (itimerspec | None) {
     new_value = itimerspec_of(initial, interval);
@@ -382,7 +572,7 @@ def:priv timerfd_settime_common(
     return old_value;
 }
 
-def os_timerfd_settime_impl(
+impl os_timerfd_settime_impl(
     module: ptr[PyObject],
     fd: i32,
     flags: i32,
@@ -406,7 +596,7 @@ def os_timerfd_settime_impl(
     return build_itimerspec(old_value);
 }
 
-def os_timerfd_settime_ns_impl(
+impl os_timerfd_settime_ns_impl(
     module: ptr[PyObject], fd: i32, flags: i32, initial: i64, interval: i64
 ) -> ptr[PyObject] {
     old_value = timerfd_settime_common(fd, flags, initial, interval);
@@ -416,7 +606,7 @@ def os_timerfd_settime_ns_impl(
     return build_itimerspec_ns(old_value);
 }
 
-def:priv timerfd_gettime_common(fd: i32) -> (itimerspec | None) {
+impl timerfd_gettime_common(fd: i32) -> (itimerspec | None) {
     curr_value = itimerspec();
     thread = PyEval_SaveThread();
     result = timerfd_gettime_call(fd, &mut curr_value);
@@ -428,7 +618,7 @@ def:priv timerfd_gettime_common(fd: i32) -> (itimerspec | None) {
     return curr_value;
 }
 
-def os_timerfd_gettime_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_timerfd_gettime_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     curr_value = timerfd_gettime_common(fd);
     if curr_value is None {
         return NULL;
@@ -436,7 +626,7 @@ def os_timerfd_gettime_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return build_itimerspec(curr_value);
 }
 
-def os_timerfd_gettime_ns_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_timerfd_gettime_ns_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     curr_value = timerfd_gettime_common(fd);
     if curr_value is None {
         return NULL;
@@ -444,9 +634,7 @@ def os_timerfd_gettime_ns_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] 
     return build_itimerspec_ns(curr_value);
 }
 
-# --- open, close, dup --------------------------------------------------------
-
-def os_open_impl(
+impl os_open_impl(
     module: ptr[PyObject], path: path_t, flags: i32, mode: i32, dir_fd: i32
 ) -> i32 {
     fd = i32(-1);
@@ -484,8 +672,7 @@ def os_open_impl(
     return fd;
 }
 
-def os_close_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
-    # No retry on EINTR: see http://lwn.net/Articles/576478/.
+impl os_close_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
     res = close(fd);
     PyEval_RestoreThread(thread);
@@ -495,7 +682,7 @@ def os_close_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def os_closerange_impl(
+impl os_closerange_impl(
     module: ptr[PyObject], fd_low: i32, fd_high: i32
 ) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
@@ -504,12 +691,11 @@ def os_closerange_impl(
     return Py_NewRef(Py_None);
 }
 
-def os_dup_impl(module: ptr[PyObject], fd: i32) -> i32 {
+impl os_dup_impl(module: ptr[PyObject], fd: i32) -> i32 {
     return _Py_dup(fd);
 }
 
-# dup2() then, for a non-inheritable copy, clearing the flag.
-def:priv dup2_then_set_inheritable(fd: i32, fd2: i32, inheritable: bool) -> i32 {
+impl dup2_then_set_inheritable(fd: i32, fd2: i32, inheritable: bool) -> i32 {
     thread = PyEval_SaveThread();
     res = dup2(fd, fd2);
     PyEval_RestoreThread(thread);
@@ -525,9 +711,7 @@ def:priv dup2_then_set_inheritable(fd: i32, fd2: i32, inheritable: bool) -> i32 
     return res;
 }
 
-# dup2() can fail with EINTR if the target FD is already open, because it
-# then has to be closed; like close(), EINTR is not retried.
-def os_dup2_impl(module: ptr[PyObject], fd: i32, fd2: i32, inheritable: bool) -> i32 {
+impl os_dup2_impl(module: ptr[PyObject], fd: i32, fd2: i32, inheritable: bool) -> i32 {
     if not HAVE_DUP3 {
         return dup2_then_set_inheritable(fd, fd2, inheritable);
     }
@@ -552,10 +736,7 @@ def os_dup2_impl(module: ptr[PyObject], fd: i32, fd2: i32, inheritable: bool) ->
     return res;
 }
 
-# --- lseek, read, write ------------------------------------------------------
-
-def os_lseek_impl(module: ptr[PyObject], fd: i32, position: i64, how: i32) -> i64 {
-    # Turn 0, 1, 2 into SEEK_{SET,CUR,END}.
+impl os_lseek_impl(module: ptr[PyObject], fd: i32, position: i64, how: i32) -> i64 {
     if how == 0 {
         how = i32(SEEK_SET);
     } elif how == 1 {
@@ -572,7 +753,7 @@ def os_lseek_impl(module: ptr[PyObject], fd: i32, position: i64, how: i32) -> i6
     return result;
 }
 
-def os_read_impl(module: ptr[PyObject], fd: i32, length: i64) -> ptr[PyObject] {
+impl os_read_impl(module: ptr[PyObject], fd: i32, length: i64) -> ptr[PyObject] {
     if length < 0 {
         jacpy_set_errno(EINVAL);
         return posix_error();
@@ -595,13 +776,11 @@ def os_read_impl(module: ptr[PyObject], fd: i32, length: i64) -> ptr[PyObject] {
     return buffer;
 }
 
-def os_readinto_impl(module: ptr[PyObject], fd: i32, buffer: BufferArgument) -> i64 {
+impl os_readinto_impl(module: ptr[PyObject], fd: i32, buffer: BufferArgument) -> i64 {
     return _Py_read(fd, buffer.address(), u64(buffer.size()));
 }
 
-# The PySequence_Check()/PySequence_Size() preamble of the vector calls: the
-# count, or -1 with the exception set.
-def:priv sequence_count(buffers: ptr[PyObject], message: str) -> i64 {
+impl sequence_count(buffers: ptr[PyObject], message: str) -> i64 {
     if PySequence_Check(buffers) == 0 {
         object_error(PyExc_TypeError, message);
         return -1;
@@ -609,7 +788,7 @@ def:priv sequence_count(buffers: ptr[PyObject], message: str) -> i64 {
     return PySequence_Size(buffers);
 }
 
-def os_readv_impl(module: ptr[PyObject], fd: i32, buffers: ptr[PyObject]) -> i64 {
+impl os_readv_impl(module: ptr[PyObject], fd: i32, buffers: ptr[PyObject]) -> i64 {
     cnt = sequence_count(buffers, "readv() arg 2 must be a sequence");
     if cnt < 0 {
         return -1;
@@ -644,7 +823,7 @@ def os_readv_impl(module: ptr[PyObject], fd: i32, buffers: ptr[PyObject]) -> i64
     return n;
 }
 
-def os_pread_impl(
+impl os_pread_impl(
     module: ptr[PyObject], fd: i32, length: i64, offset: i64
 ) -> ptr[PyObject] {
     if length < 0 {
@@ -682,7 +861,7 @@ def os_pread_impl(
     return buffer;
 }
 
-def os_preadv_impl(
+impl os_preadv_impl(
     module: ptr[PyObject], fd: i32, buffers: ptr[PyObject], offset: i64, flags: i32
 ) -> i64 {
     cnt = sequence_count(buffers, "preadv2() arg 2 must be a sequence");
@@ -727,22 +906,11 @@ def os_preadv_impl(
     return n;
 }
 
-def os_write_impl(module: ptr[PyObject], fd: i32, data: BufferArgument) -> i64 {
+impl os_write_impl(module: ptr[PyObject], fd: i32, data: BufferArgument) -> i64 {
     return _Py_write(fd, data.address(), u64(data.size()));
 }
 
-# --- sendfile ----------------------------------------------------------------
-
-# The headers or trailers of the BSD sendfile(): their iovec array and count,
-# with `sbytes` grown by the headers' length.
-obj:priv SendfileVectors {
-    has iov: ptr[iovec] = ptr[iovec](),
-        buf: ptr[Py_buffer] = ptr[Py_buffer](),
-        count: i32 = 0,
-        sbytes: i64 = 0;
-}
-
-def:priv sendfile_vectors(
+impl sendfile_vectors(
     items: ptr[PyObject], what: str, sbytes: i64, counted: bool
 ) -> (SendfileVectors | None) {
     part = SendfileVectors(sbytes=sbytes);
@@ -785,13 +953,13 @@ def:priv sendfile_vectors(
     return part;
 }
 
-def:priv sendfile_cleanup(part: SendfileVectors) {
+impl sendfile_cleanup(part: SendfileVectors) {
     if part.iov {
         iov_cleanup(IoVectors(iov=part.iov, buf=part.buf), part.count);
     }
 }
 
-def os_sendfile_darwin_impl(
+impl os_sendfile_darwin_impl(
     module: ptr[PyObject],
     out_fd: i32,
     in_fd: i32,
@@ -841,11 +1009,9 @@ def os_sendfile_darwin_impl(
     sendfile_cleanup(tail);
     if ret < 0 {
         if (saved_errno == EAGAIN or saved_errno == EBUSY) and total != 0 {
-            # some data has been sent
             return PyLong_FromLong(total);
         }
-        # no data has been sent; upper application is supposed
-        # to retry on EAGAIN or EBUSY
+
         if not async_err {
             jacpy_set_errno(saved_errno);
             posix_error();
@@ -855,7 +1021,7 @@ def os_sendfile_darwin_impl(
     return PyLong_FromLong(total);
 }
 
-def os_sendfile_linux_impl(
+impl os_sendfile_linux_impl(
     module: ptr[PyObject], out_fd: i32, in_fd: i32, offobj: ptr[PyObject], count: i64
 ) -> ptr[PyObject] {
     ret = i64(0);
@@ -906,7 +1072,7 @@ def os_sendfile_linux_impl(
     return PyLong_FromSsize_t(ret);
 }
 
-def os__fcopyfile_impl(
+impl os__fcopyfile_impl(
     module: ptr[PyObject], in_fd: i32, out_fd: i32, flags: i32
 ) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
@@ -918,16 +1084,14 @@ def os__fcopyfile_impl(
     return Py_NewRef(Py_None);
 }
 
-# --- isatty, pipes -----------------------------------------------------------
-
-def os_isatty_impl(module: ptr[PyObject], fd: i32) -> i32 {
+impl os_isatty_impl(module: ptr[PyObject], fd: i32) -> i32 {
     thread = PyEval_SaveThread();
     return_value = isatty(fd);
     PyEval_RestoreThread(thread);
     return return_value;
 }
 
-def os_pipe_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_pipe_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     fds = fd_pair();
     res = i32(0);
     fallback = True;
@@ -957,7 +1121,7 @@ def os_pipe_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return fd_tuple(fds.fd0, fds.fd1);
 }
 
-def os_pipe2_impl(module: ptr[PyObject], flags: i32) -> ptr[PyObject] {
+impl os_pipe2_impl(module: ptr[PyObject], flags: i32) -> ptr[PyObject] {
     fds = fd_pair();
     res = pipe2_call(&mut fds, flags);
     if res != 0 {
@@ -966,9 +1130,7 @@ def os_pipe2_impl(module: ptr[PyObject], flags: i32) -> ptr[PyObject] {
     return fd_tuple(fds.fd0, fds.fd1);
 }
 
-# --- writev, pwrite, pwritev -------------------------------------------------
-
-def os_writev_impl(module: ptr[PyObject], fd: i32, buffers: ptr[PyObject]) -> i64 {
+impl os_writev_impl(module: ptr[PyObject], fd: i32, buffers: ptr[PyObject]) -> i64 {
     cnt = sequence_count(buffers, "writev() arg 2 must be a sequence");
     if cnt < 0 {
         return -1;
@@ -998,7 +1160,7 @@ def os_writev_impl(module: ptr[PyObject], fd: i32, buffers: ptr[PyObject]) -> i6
     return result;
 }
 
-def os_pwrite_impl(
+impl os_pwrite_impl(
     module: ptr[PyObject], fd: i32, buffer: BufferArgument, offset: i64
 ) -> i64 {
     size = i64(0);
@@ -1021,7 +1183,7 @@ def os_pwrite_impl(
     return size;
 }
 
-def os_pwritev_impl(
+impl os_pwritev_impl(
     module: ptr[PyObject], fd: i32, buffers: ptr[PyObject], offset: i64, flags: i32
 ) -> i64 {
     cnt = sequence_count(buffers, "pwritev() arg 2 must be a sequence");
@@ -1064,18 +1226,7 @@ def os_pwritev_impl(
     return result;
 }
 
-# --- copy_file_range, splice -------------------------------------------------
-
-# The optional offsets of copy_file_range() and splice(): a Py_off_t each,
-# None standing for the current position.
-obj:priv OffsetPair {
-    has src: i64 = 0,
-        dst: i64 = 0,
-        has_src: bool = False,
-        has_dst: bool = False;
-}
-
-def:priv offset_pair(
+impl offset_pair(
     count: i64, offset_src: ptr[PyObject], offset_dst: ptr[PyObject]
 ) -> (OffsetPair | None) {
     if count < 0 {
@@ -1104,11 +1255,9 @@ def:priv offset_pair(
     return pair;
 }
 
-# One copy_file_range() (`use_splice` False) or splice() call on `offsets`.
-def:priv offset_copy_call(
+impl offset_copy_call(
     use_splice: bool, src: i32, dst: i32, count: i64, offsets: OffsetPair, flags: u32
 ) -> i64 {
-    # The offsets the call moves persist across its EINTR retries.
     if use_splice {
         (ret, moved_src, moved_dst) = splice_call(
             src,
@@ -1139,7 +1288,7 @@ def:priv offset_copy_call(
     return copied;
 }
 
-def:priv offset_copy(
+impl offset_copy(
     use_splice: bool,
     src: i32,
     dst: i32,
@@ -1172,7 +1321,7 @@ def:priv offset_copy(
     return PyLong_FromSsize_t(ret);
 }
 
-def os_copy_file_range_impl(
+impl os_copy_file_range_impl(
     module: ptr[PyObject],
     src: i32,
     dst: i32,
@@ -1180,12 +1329,10 @@ def os_copy_file_range_impl(
     offset_src: ptr[PyObject],
     offset_dst: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # The flags argument is provided to allow for future extensions and
-    # currently must be 0.
     return offset_copy(False, src, dst, count, offset_src, offset_dst, u32(0));
 }
 
-def os_splice_impl(
+impl os_splice_impl(
     module: ptr[PyObject],
     src: i32,
     dst: i32,
@@ -1197,13 +1344,11 @@ def os_splice_impl(
     return offset_copy(True, src, dst, count, offset_src, offset_dst, flags);
 }
 
-# --- device_encoding, memfd, eventfd -----------------------------------------
-
-def os_device_encoding_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_device_encoding_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return _Py_device_encoding(fd);
 }
 
-def os_memfd_create_impl(
+impl os_memfd_create_impl(
     module: ptr[PyObject], name: ptr[PyObject], flags: u32
 ) -> ptr[PyObject] {
     name_bytes = PyBytes_AsString(name);
@@ -1216,8 +1361,7 @@ def os_memfd_create_impl(
     return PyLong_FromLong(i64(fd));
 }
 
-def os_eventfd_impl(module: ptr[PyObject], initval: u32, flags: i32) -> ptr[PyObject] {
-    # initval is limited to uint32_t, internal counter is uint64_t
+impl os_eventfd_impl(module: ptr[PyObject], initval: u32, flags: i32) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
     fd = eventfd_call(initval, flags);
     PyEval_RestoreThread(thread);
@@ -1227,7 +1371,7 @@ def os_eventfd_impl(module: ptr[PyObject], initval: u32, flags: i32) -> ptr[PyOb
     return PyLong_FromLong(i64(fd));
 }
 
-def os_eventfd_read_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_eventfd_read_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
     (result, value) = eventfd_read_call(fd);
     PyEval_RestoreThread(thread);
@@ -1237,7 +1381,9 @@ def os_eventfd_read_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return PyLong_FromUnsignedLongLong(value);
 }
 
-def os_eventfd_write_impl(module: ptr[PyObject], fd: i32, value: u64) -> ptr[PyObject] {
+impl os_eventfd_write_impl(
+    module: ptr[PyObject], fd: i32, value: u64
+) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
     result = eventfd_write_call(fd, value);
     PyEval_RestoreThread(thread);
@@ -1247,19 +1393,7 @@ def os_eventfd_write_impl(module: ptr[PyObject], fd: i32, value: u64) -> ptr[PyO
     return Py_NewRef(Py_None);
 }
 
-# --- terminal size -----------------------------------------------------------
-
-glob TERMINAL_SIZE_DOC: str = "A tuple of (columns, lines) for holding terminal window size",
-     TERMINAL_SIZE_FIELDS: list[tuple[str, str]] = [
-         ("columns", "width of the terminal window in characters"),
-         ("lines", "height of the terminal window in characters")
-     ];
-
-# Under some conditions stdout may not be connected and fileno(stdout) may
-# point to an invalid file descriptor; the ioctl then fails with EBADF.
-def os_get_terminal_size_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
-    # struct winsize w, in PyMem memory the variadic ioctl() gets the
-    # address of.
+impl os_get_terminal_size_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     w = ptr[winsize](PyMem_Malloc(u64(8)));
     if not w {
         return PyErr_NoMemory();
@@ -1291,13 +1425,11 @@ def os_get_terminal_size_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return termsize;
 }
 
-# --- inheritable and blocking flags ------------------------------------------
-
-def os_get_inheritable_impl(module: ptr[PyObject], fd: i32) -> i32 {
+impl os_get_inheritable_impl(module: ptr[PyObject], fd: i32) -> i32 {
     return _Py_get_inheritable(fd);
 }
 
-def os_set_inheritable_impl(
+impl os_set_inheritable_impl(
     module: ptr[PyObject], fd: i32, inheritable: i32
 ) -> ptr[PyObject] {
     no_atomic = i32(0);
@@ -1307,11 +1439,11 @@ def os_set_inheritable_impl(
     return Py_NewRef(Py_None);
 }
 
-def os_get_blocking_impl(module: ptr[PyObject], fd: i32) -> i32 {
+impl os_get_blocking_impl(module: ptr[PyObject], fd: i32) -> i32 {
     return _Py_get_blocking(fd);
 }
 
-def os_set_blocking_impl(
+impl os_set_blocking_impl(
     module: ptr[PyObject], fd: i32, blocking: bool
 ) -> ptr[PyObject] {
     if _Py_set_blocking(fd, i32(1) if blocking else i32(0)) < 0 {
@@ -1320,9 +1452,7 @@ def os_set_blocking_impl(
     return Py_NewRef(Py_None);
 }
 
-# --- module exec -------------------------------------------------------------
-
-def posix_fileio_exec(module: ptr[PyObject]) -> bool {
+impl posix_fileio_exec(module: ptr[PyObject]) -> bool {
     terminal_size = struct_sequence_type(
         "os.terminal_size", TERMINAL_SIZE_DOC, TERMINAL_SIZE_FIELDS, 2
     );

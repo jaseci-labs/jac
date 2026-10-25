@@ -1,13 +1,3 @@
-"""Zstandard compressor, decompressor and dictionary objects.
-
-Derived from CPython 3.14.6 Modules/_zstd/ (_zstdmodule.c, compressor.c,
-decompressor.c, zstddict.c, buffer.h); see ../LICENSE.cpython. Each object
-holds its zstd context in native state guarded by a PyMutex, as the C objects
-do; the library runs with the GIL released. A ZstdDict caches one digested
-compression dictionary per compression level and one digested decompression
-dictionary.
-"""
-
 import from zstd {
     obj ZSTD_inBuffer {
         has src: ptr = ptr(),
@@ -77,7 +67,6 @@ import from zstd {
     ) -> u64;  def ZDICT_isError(errorCode: u64) -> u32;
 }
 
-# zstd.h parameter and directive values.
 glob ZSTD_c_compressionLevel: i32 = 100,
      ZSTD_c_windowLog: i32 = 101,
      ZSTD_c_hashLog: i32 = 102,
@@ -117,10 +106,8 @@ glob:priv ZSTD_reset_session_only: i32 = 1,
      SIZE_MAX: u64 = 0xFFFFFFFFFFFFFFFF,
      SSIZE_MAX: u64 = 0x7FFFFFFFFFFFFFFF,
      UINT32_MAX: u64 = 0xFFFFFFFF,
-     # Py_CONSTANT_EMPTY_BYTES
      EMPTY_BYTES: u32 = 8;
 
-# Module state slots (_zstd_state).
 glob ZSTD_DICT_TYPE: int = 0,
      ZSTD_COMPRESSOR_TYPE: int = 1,
      ZSTD_DECOMPRESSOR_TYPE: int = 2,
@@ -133,12 +120,10 @@ glob ZstdDict_token = ClassToken(),
      ZstdCompressor_token = ClassToken(),
      ZstdDecompressor_token = ClassToken();
 
-# dictionary_type
 glob:priv DICT_TYPE_DIGESTED: i32 = 0,
      DICT_TYPE_UNDIGESTED: i32 = 1,
      DICT_TYPE_PREFIX: i32 = 2;
 
-# error_type, indexing the message formats of set_zstd_error().
 enum ZstdErrorKind {
     DECOMPRESS = 0,
     COMPRESS = 1,
@@ -164,7 +149,6 @@ glob:priv ERROR_FORMATS: list[str] = [
          "Unable to train the Zstandard dictionary: %s",
          "Unable to finalize the Zstandard dictionary: %s"
      ],
-     # ParameterInfo lists: (parameter, name) for the error messages.
      CP_LIST: list[tuple[i32, str]] = [
          (ZSTD_c_compressionLevel, "compression_level"),
          (ZSTD_c_windowLog, "window_log"),
@@ -188,17 +172,291 @@ glob:priv ERROR_FORMATS: list[str] = [
      ],
      DP_LIST: list[tuple[i32, str]] = [(ZSTD_d_windowLogMax, "window_log_max")];
 
-def:priv is_error(code: u64) -> bool {
+def:priv is_error(code: u64) -> bool;
+
+def:priv module_of(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv set_zstd_error(module: ptr[PyObject], kind: ZstdErrorKind, zstd_ret: u64);
+
+def:priv set_zstd_error_of(
+    instance: ptr[PyObject], kind: ZstdErrorKind, zstd_ret: u64
+);
+
+def:priv set_zstd_message(instance: ptr[PyObject], message: str);
+
+def:priv set_parameter_error(is_compress: bool, key_v: i32, value_v: i32);
+
+def:priv new_mutex -> ptr[PyMutex];
+
+def:priv window(cursor: Cursor, out: &mut ZSTD_outBuffer);
+
+def:priv output_init_and_grow(
+    buffer: BlocksOutputBuffer, out: &mut ZSTD_outBuffer, max_length: i64
+) -> bool;
+
+def:priv output_init_with_size(
+    buffer: BlocksOutputBuffer,
+    out: &mut ZSTD_outBuffer,
+    max_length: i64,
+    init_size: i64
+) -> bool;
+
+def:priv output_grow(buffer: BlocksOutputBuffer, out: &mut ZSTD_outBuffer) -> bool;
+
+def:priv output_finish(
+    buffer: BlocksOutputBuffer, out: &mut ZSTD_outBuffer
+) -> ptr[PyObject];
+
+obj ZstdDictState(NativeState) {
+    has d_dict: ptr = ptr(),
+        c_dicts: dict[int, ptr] = {},
+        dict_buffer: ptr = ptr(),
+        dict_len: i64 = 0,
+        dict_id: u32 = 0,
+        lock: ptr[PyMutex] = ptr[PyMutex]();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
+
+def dict_of(instance: ptr[PyObject]) -> ZstdDictState | None;
+
+def _zstd_ZstdDict_new_impl(
+    type: ptr[PyObject], dict_content: BufferArgument, is_raw: bool
+) -> ptr[PyObject];
+
+def zstd_dict_repr(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def zstd_dict_length(instance: ptr[PyObject]) -> i64;
+
+def zstd_dict_id(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def _zstd_ZstdDict_dict_content_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _zstd_ZstdDict_as_digested_dict_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _zstd_ZstdDict_as_undigested_dict_get_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _zstd_ZstdDict_as_prefix_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv parse_zstd_dict(
+    module: ptr[PyObject], zstd_dict: ptr[PyObject], default_type: i32
+) -> tuple[ptr[PyObject], i32];
+
+def:priv get_cdict(
+    instance: ptr[PyObject], zd: ZstdDictState, compression_level: i32
+) -> ptr;
+
+def:priv get_ddict(instance: ptr[PyObject], zd: ZstdDictState) -> ptr;
+
+obj CompressorState(NativeState) {
+    has cctx: ptr = ptr(),
+        dict: ptr[PyObject] = NULL,
+        last_mode: i32 = ZSTD_e_end,
+        use_multithread: bool = False,
+        compression_level: i32 = 0,
+        lock: ptr[PyMutex] = ptr[PyMutex]();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def free_context;
+    def drop;
+}
+
+def compressor_of(instance: ptr[PyObject]) -> CompressorState | None;
+
+def release_compressor_context(instance: ptr[PyObject]);
+
+def convert_zstd_contentsize_converter(
+    size: ptr[PyObject], fname: str, label: str
+) -> u64;
+
+def:priv set_c_level(
+    instance: ptr[PyObject], state: CompressorState, level: i32
+) -> bool;
+
+def:priv option_values(
+    key: ptr[PyObject], value: ptr[PyObject]
+) -> tuple[bool, i32, i32];
+
+def:priv set_c_parameters(
+    instance: ptr[PyObject], state: CompressorState, options: ptr[PyObject]
+) -> bool;
+
+def:priv load_c_impl(
+    instance: ptr[PyObject],
+    state: CompressorState,
+    zd_object: ptr[PyObject],
+    zd: ZstdDictState,
+    load_type: i32
+) -> bool;
+
+def:priv load_c_dict(
+    instance: ptr[PyObject], state: CompressorState, zstd_dict: ptr[PyObject]
+) -> bool;
+
+def _zstd_ZstdCompressor_new_impl(
+    type: ptr[PyObject],
+    level: ptr[PyObject],
+    options: ptr[PyObject],
+    zstd_dict: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj CompressInput {
+    has address: ptr = ptr(),
+        size: i64 = 0,
+        present: bool = False;
+}
+
+def:priv compress_lock_held(
+    instance: ptr[PyObject],
+    state: CompressorState,
+    data: CompressInput,
+    end_directive: i32
+) -> ptr[PyObject];
+
+def:priv compress_mt_continue_lock_held(
+    instance: ptr[PyObject], state: CompressorState, data: CompressInput
+) -> ptr[PyObject];
+
+def:priv settle_mode(state: CompressorState, result: ptr[PyObject], mode: i32);
+
+def _zstd_ZstdCompressor_compress_impl(
+    receiver: ptr[PyObject], data: BufferArgument, mode: i32
+) -> ptr[PyObject];
+
+def _zstd_ZstdCompressor_flush_impl(
+    receiver: ptr[PyObject], mode: i32
+) -> ptr[PyObject];
+
+def _zstd_ZstdCompressor_set_pledged_input_size_impl(
+    receiver: ptr[PyObject], size: u64
+) -> ptr[PyObject];
+
+obj DecompressorState(NativeState) {
+    has dctx: ptr = ptr(),
+        dict: ptr[PyObject] = NULL,
+        input_buffer: ptr = ptr(),
+        input_buffer_size: u64 = 0,
+        in_begin: u64 = 0,
+        in_end: u64 = 0,
+        unused_data: ptr[PyObject] = NULL,
+        needs_input: bool = True,
+        eof: bool = False,
+        lock: ptr[PyMutex] = ptr[PyMutex]();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def free_context;
+    def drop;
+}
+
+def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None;
+
+def release_decompressor_context(instance: ptr[PyObject]);
+
+def:priv set_d_parameters(
+    instance: ptr[PyObject], state: DecompressorState, options: ptr[PyObject]
+) -> bool;
+
+def:priv load_d_impl(
+    instance: ptr[PyObject],
+    state: DecompressorState,
+    zd_object: ptr[PyObject],
+    zd: ZstdDictState,
+    load_type: i32
+) -> bool;
+
+def:priv load_d_dict(
+    instance: ptr[PyObject], state: DecompressorState, zstd_dict: ptr[PyObject]
+) -> bool;
+
+def:priv decompress_lock_held(
+    instance: ptr[PyObject],
+    state: DecompressorState,
+    source: &mut ZSTD_inBuffer,
+    max_length: i64
+) -> ptr[PyObject];
+
+def:priv reset_session_lock_held(state: DecompressorState);
+
+def:priv stream_decompress_lock_held(
+    instance: ptr[PyObject],
+    state: DecompressorState,
+    data: BufferArgument,
+    max_length: i64
+) -> ptr[PyObject];
+
+def _zstd_ZstdDecompressor_new_impl(
+    type: ptr[PyObject], zstd_dict: ptr[PyObject], options: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _zstd_ZstdDecompressor_unused_data_get_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _zstd_ZstdDecompressor_decompress_impl(
+    receiver: ptr[PyObject], data: BufferArgument, max_length: i64
+) -> ptr[PyObject];
+
+def:priv samples_stats(
+    samples_bytes: ptr[PyObject], samples_sizes: ptr[PyObject]
+) -> tuple[i64, ptr[u64]];
+
+def _zstd_train_dict_impl(
+    module: ptr[PyObject],
+    samples_bytes: ptr[PyObject],
+    samples_sizes: ptr[PyObject],
+    dict_size: i64
+) -> ptr[PyObject];
+
+def _zstd_finalize_dict_impl(
+    module: ptr[PyObject],
+    custom_dict_bytes: ptr[PyObject],
+    samples_bytes: ptr[PyObject],
+    samples_sizes: ptr[PyObject],
+    dict_size: i64,
+    compression_level: i32
+) -> ptr[PyObject];
+
+def _zstd_get_param_bounds_impl(
+    module: ptr[PyObject], parameter: i32, is_compress: bool
+) -> ptr[PyObject];
+
+def _zstd_get_frame_size_impl(
+    module: ptr[PyObject], frame_buffer: BufferArgument
+) -> ptr[PyObject];
+
+def _zstd_get_frame_info_impl(
+    module: ptr[PyObject], frame_buffer: BufferArgument
+) -> ptr[PyObject];
+
+def _zstd_set_parameter_types_impl(
+    module: ptr[PyObject],
+    c_parameter_type: ptr[PyObject],
+    d_parameter_type: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zstd_version_number -> i64;
+
+def zstd_version -> ptr[u8];
+
+def zstd_default_level -> i64;
+
+def zstd_dstream_out_size -> u64;
+
+impl is_error(code: u64) -> bool {
     return ZSTD_isError(code) != 0;
 }
 
-# The module a type of this module belongs to (PyType_GetModuleState).
-def:priv module_of(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl module_of(instance: ptr[PyObject]) -> ptr[PyObject] {
     return PyType_GetModule(Py_TYPE(instance));
 }
 
-# set_zstd_error(): format the message and set ZstdError.
-def:priv set_zstd_error(module: ptr[PyObject], kind: ZstdErrorKind, zstd_ret: u64) {
+impl set_zstd_error(module: ptr[PyObject], kind: ZstdErrorKind, zstd_ret: u64) {
     if not module {
         return;
     }
@@ -214,20 +472,18 @@ def:priv set_zstd_error(module: ptr[PyObject], kind: ZstdErrorKind, zstd_ret: u6
     jacpy_release(format);
 }
 
-def:priv set_zstd_error_of(
-    instance: ptr[PyObject], kind: ZstdErrorKind, zstd_ret: u64
-) {
+impl set_zstd_error_of(instance: ptr[PyObject], kind: ZstdErrorKind, zstd_ret: u64) {
     set_zstd_error(module_of(instance), kind, zstd_ret);
 }
 
-def:priv set_zstd_message(instance: ptr[PyObject], message: str) {
+impl set_zstd_message(instance: ptr[PyObject], message: str) {
     module = module_of(instance);
     if module {
         object_error(jacpy_binding_state_get(module, i64(ZSTD_ERROR)), message);
     }
 }
 
-def:priv set_parameter_error(is_compress: bool, key_v: i32, value_v: i32) {
+impl set_parameter_error(is_compress: bool, key_v: i32, value_v: i32) {
     entries = CP_LIST if is_compress else DP_LIST;
     kind = "compression" if is_compress else "decompression";
     name = f"unknown parameter (key {key_v})";
@@ -251,19 +507,17 @@ def:priv set_parameter_error(is_compress: bool, key_v: i32, value_v: i32) {
     );
 }
 
-# A PyMutex in raw memory, so its address stays put while threads park on it.
-def:priv new_mutex -> ptr[PyMutex] {
+impl new_mutex -> ptr[PyMutex] {
     return ptr[PyMutex](PyMem_RawCalloc(1, 1));
 }
 
-# The output window of the blocks buffer as a ZSTD_outBuffer (buffer.h).
-def:priv window(cursor: Cursor, out: &mut ZSTD_outBuffer) {
+impl window(cursor: Cursor, out: &mut ZSTD_outBuffer) {
     out.dst = ptr(cursor.next_out);
     out.size = u64(cursor.avail_out);
     out.pos = 0;
 }
 
-def:priv output_init_and_grow(
+impl output_init_and_grow(
     buffer: BlocksOutputBuffer, out: &mut ZSTD_outBuffer, max_length: i64
 ) -> bool {
     cursor = Cursor();
@@ -274,7 +528,7 @@ def:priv output_init_and_grow(
     return True;
 }
 
-def:priv output_init_with_size(
+impl output_init_with_size(
     buffer: BlocksOutputBuffer,
     out: &mut ZSTD_outBuffer,
     max_length: i64,
@@ -293,7 +547,7 @@ def:priv output_init_with_size(
     return True;
 }
 
-def:priv output_grow(buffer: BlocksOutputBuffer, out: &mut ZSTD_outBuffer) -> bool {
+impl output_grow(buffer: BlocksOutputBuffer, out: &mut ZSTD_outBuffer) -> bool {
     cursor = Cursor(avail_out=0);
     if buffer.grow(cursor) < 0 {
         return False;
@@ -302,7 +556,7 @@ def:priv output_grow(buffer: BlocksOutputBuffer, out: &mut ZSTD_outBuffer) -> bo
     return True;
 }
 
-def:priv output_finish(
+impl output_finish(
     buffer: BlocksOutputBuffer, out: &mut ZSTD_outBuffer
 ) -> ptr[PyObject] {
     result = buffer.finish(i64(out.size - out.pos));
@@ -312,35 +566,24 @@ def:priv output_finish(
     return result;
 }
 
-# ----------------------------------------------------------------- ZstdDict
-
-obj ZstdDictState(NativeState) {
-    has d_dict: ptr = ptr(),
-        # int(compressionLevel) -> ZSTD_CDict*
-        c_dicts: dict[int, ptr] = {},
-        dict_buffer: ptr = ptr(),
-        dict_len: i64 = 0,
-        dict_id: u32 = 0,
-        lock: ptr[PyMutex] = ptr[PyMutex]();
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
-    def drop {
-        if self.d_dict {
-            ZSTD_freeDDict(self.d_dict);
-        }
-        for cdict in self.c_dicts.values() {
-            ZSTD_freeCDict(cdict);
-        }
-        PyMem_Free(self.dict_buffer);
-        PyMem_RawFree(self.lock);
-    }
+impl ZstdDictState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
 }
 
-def dict_of(instance: ptr[PyObject]) -> ZstdDictState | None {
+impl ZstdDictState.clear {}
+
+impl ZstdDictState.drop {
+    if self.d_dict {
+        ZSTD_freeDDict(self.d_dict);
+    }
+    for cdict in self.c_dicts.values() {
+        ZSTD_freeCDict(cdict);
+    }
+    PyMem_Free(self.dict_buffer);
+    PyMem_RawFree(self.lock);
+}
+
+impl dict_of(instance: ptr[PyObject]) -> ZstdDictState | None {
     if jacpy_binding_native_present(instance, ZstdDict_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZstdDict_token.handle);
         if isinstance(state, ZstdDictState) {
@@ -351,10 +594,9 @@ def dict_of(instance: ptr[PyObject]) -> ZstdDictState | None {
     return None;
 }
 
-def _zstd_ZstdDict_new_impl(
+impl _zstd_ZstdDict_new_impl(
     type: ptr[PyObject], dict_content: BufferArgument, is_raw: bool
 ) -> ptr[PyObject] {
-    # All dictionaries must be at least 8 bytes
     if dict_content.size() < 8 {
         object_error(
             PyExc_ValueError,
@@ -385,9 +627,9 @@ def _zstd_ZstdDict_new_impl(
     }
     jacpy_memory_copy(state.dict_buffer, dict_content.address(), length);
     state.dict_len = length;
-    # Get dict_id, 0 means "raw content" dictionary.
+
     state.dict_id = ZSTD_getDictID_fromDict(state.dict_buffer, u64(length));
-    # Check validity for ordinary dictionary
+
     if not is_raw and state.dict_id == 0 {
         jacpy_release(instance);
         object_error(PyExc_ValueError, "invalid Zstandard dictionary");
@@ -396,7 +638,7 @@ def _zstd_ZstdDict_new_impl(
     return instance;
 }
 
-def zstd_dict_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl zstd_dict_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = dict_of(instance);
     if state is None {
         return NULL;
@@ -406,17 +648,17 @@ def zstd_dict_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def zstd_dict_length(instance: ptr[PyObject]) -> i64 {
+impl zstd_dict_length(instance: ptr[PyObject]) -> i64 {
     state = dict_of(instance);
     return state.dict_len if state is not None else -1;
 }
 
-def zstd_dict_id(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl zstd_dict_id(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = dict_of(instance);
     return PyLong_FromSize_t(u64(state.dict_id)) if state is not None else NULL;
 }
 
-def _zstd_ZstdDict_dict_content_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _zstd_ZstdDict_dict_content_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = dict_of(receiver);
     if state is None {
         return NULL;
@@ -424,23 +666,23 @@ def _zstd_ZstdDict_dict_content_get_impl(receiver: ptr[PyObject]) -> ptr[PyObjec
     return jacpy_bytes_from_memory(state.dict_buffer, state.dict_len);
 }
 
-def _zstd_ZstdDict_as_digested_dict_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _zstd_ZstdDict_as_digested_dict_get_impl(
+    receiver: ptr[PyObject]
+) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("Oi"), receiver, DICT_TYPE_DIGESTED);
 }
 
-def _zstd_ZstdDict_as_undigested_dict_get_impl(
+impl _zstd_ZstdDict_as_undigested_dict_get_impl(
     receiver: ptr[PyObject]
 ) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("Oi"), receiver, DICT_TYPE_UNDIGESTED);
 }
 
-def _zstd_ZstdDict_as_prefix_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _zstd_ZstdDict_as_prefix_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("Oi"), receiver, DICT_TYPE_PREFIX);
 }
 
-# _Py_parse_zstd_dict(): the ZstdDict of a zstd_dict argument (borrowed) and
-# its load type, which a (ZstdDict, type) pair selects; NULL with an error set.
-def:priv parse_zstd_dict(
+impl parse_zstd_dict(
     module: ptr[PyObject], zstd_dict: ptr[PyObject], default_type: i32
 ) -> tuple[ptr[PyObject], i32] {
     if not module {
@@ -468,9 +710,7 @@ def:priv parse_zstd_dict(
     return (NULL, default_type);
 }
 
-# _get_CDict(): the digested compression dictionary for a level, created once
-# and cached. The dictionary's lock is held.
-def:priv get_cdict(
+impl get_cdict(
     instance: ptr[PyObject], zd: ZstdDictState, compression_level: i32
 ) -> ptr {
     level = int(compression_level);
@@ -493,9 +733,7 @@ def:priv get_cdict(
     return cdict;
 }
 
-# _get_DDict(): the digested decompression dictionary, created once. The
-# dictionary's lock is held.
-def:priv get_ddict(instance: ptr[PyObject], zd: ZstdDictState) -> ptr {
+impl get_ddict(instance: ptr[PyObject], zd: ZstdDictState) -> ptr {
     if not zd.d_dict {
         content = zd.dict_buffer;
         length = u64(zd.dict_len);
@@ -513,45 +751,30 @@ def:priv get_ddict(instance: ptr[PyObject], zd: ZstdDictState) -> ptr {
     return zd.d_dict;
 }
 
-# ----------------------------------------------------------- ZstdCompressor
+impl CompressorState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return visit_reference(self.dict, visitor, context);
+}
 
-obj CompressorState(NativeState) {
-    has cctx: ptr = ptr(),
-        # ZstdDict object in use
-        dict: ptr[PyObject] = NULL,
-        # Last mode, initialized to ZSTD_e_end
-        last_mode: i32 = ZSTD_e_end,
-        use_multithread: bool = False,
-        compression_level: i32 = 0,
-        lock: ptr[PyMutex] = ptr[PyMutex]();
+impl CompressorState.clear {
+    previous = self.dict;
+    self.dict = NULL;
+    jacpy_release(previous);
+}
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return visit_reference(self.dict, visitor, context);
-    }
-
-    def clear {
-        previous = self.dict;
-        self.dict = NULL;
-        jacpy_release(previous);
-    }
-
-    # The context may reference the dictionary's digested form, so it is
-    # freed before the dictionary is released.
-    def free_context {
-        if self.cctx {
-            ZSTD_freeCCtx(self.cctx);
-            self.cctx = ptr();
-        }
-    }
-
-    def drop {
-        self.free_context();
-        jacpy_release(self.dict);
-        PyMem_RawFree(self.lock);
+impl CompressorState.free_context {
+    if self.cctx {
+        ZSTD_freeCCtx(self.cctx);
+        self.cctx = ptr();
     }
 }
 
-def compressor_of(instance: ptr[PyObject]) -> CompressorState | None {
+impl CompressorState.drop {
+    self.free_context();
+    jacpy_release(self.dict);
+    PyMem_RawFree(self.lock);
+}
+
+impl compressor_of(instance: ptr[PyObject]) -> CompressorState | None {
     if jacpy_binding_native_present(instance, ZstdCompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZstdCompressor_token.handle);
         if isinstance(state, CompressorState) {
@@ -562,9 +785,7 @@ def compressor_of(instance: ptr[PyObject]) -> CompressorState | None {
     return None;
 }
 
-# Free the context ahead of the payload's release, the dealloc order of
-# compressor.c; no error when the state was never set.
-def release_compressor_context(instance: ptr[PyObject]) {
+impl release_compressor_context(instance: ptr[PyObject]) {
     if jacpy_binding_native_present(instance, ZstdCompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZstdCompressor_token.handle);
         if isinstance(state, CompressorState) {
@@ -573,8 +794,7 @@ def release_compressor_context(instance: ptr[PyObject]) {
     }
 }
 
-# zstd_contentsize_converter: None is an unknown size.
-def convert_zstd_contentsize_converter(
+impl convert_zstd_contentsize_converter(
     size: ptr[PyObject], fname: str, label: str
 ) -> u64 {
     if size == Py_None {
@@ -602,9 +822,7 @@ def convert_zstd_contentsize_converter(
     return pledged_size;
 }
 
-def:priv set_c_level(
-    instance: ptr[PyObject], state: CompressorState, level: i32
-) -> bool {
+impl set_c_level(instance: ptr[PyObject], state: CompressorState, level: i32) -> bool {
     min_level = ZSTD_minCLevel();
     max_level = ZSTD_maxCLevel();
     if level < min_level or level > max_level {
@@ -614,7 +832,7 @@ def:priv set_c_level(
         );
         return False;
     }
-    # Save for generating ZSTD_CDICT
+
     state.compression_level = level;
     zstd_ret = ZSTD_CCtx_setParameter(state.cctx, ZSTD_c_compressionLevel, level);
     if is_error(zstd_ret) {
@@ -624,11 +842,7 @@ def:priv set_c_level(
     return True;
 }
 
-# Read one options entry as (key, value) C ints; the pair is retained while
-# converting, since __index__ may mutate the dictionary.
-def:priv option_values(
-    key: ptr[PyObject], value: ptr[PyObject]
-) -> tuple[bool, i32, i32] {
+impl option_values(key: ptr[PyObject], value: ptr[PyObject]) -> tuple[bool, i32, i32] {
     Py_NewRef(key);
     Py_NewRef(value);
     key_v = PyLong_AsInt(key);
@@ -645,7 +859,7 @@ def:priv option_values(
     return (True, key_v, value_v);
 }
 
-def:priv set_c_parameters(
+impl set_c_parameters(
     instance: ptr[PyObject], state: CompressorState, options: ptr[PyObject]
 ) -> bool {
     module = module_of(instance);
@@ -664,7 +878,6 @@ def:priv set_c_parameters(
     key = NULL;
     value = NULL;
     while PyDict_Next(options, &mut pos, &mut key, &mut value) != 0 {
-        # Check key type
         if Py_TYPE(key) == jacpy_binding_state_get(module, i64(D_PARAMETER_TYPE)) {
             object_error(
                 PyExc_TypeError,
@@ -682,7 +895,7 @@ def:priv set_c_parameters(
             }
             continue;
         }
-        # nbWorkers >= 1 makes ZSTD_compressStream2() asynchronous.
+
         if key_v == ZSTD_c_nbWorkers and value_v != 0 {
             state.use_multithread = True;
         }
@@ -695,7 +908,7 @@ def:priv set_c_parameters(
     return True;
 }
 
-def:priv load_c_impl(
+impl load_c_impl(
     instance: ptr[PyObject],
     state: CompressorState,
     zd_object: ptr[PyObject],
@@ -704,8 +917,6 @@ def:priv load_c_impl(
 ) -> bool {
     zstd_ret: u64 = 0;
     if load_type == DICT_TYPE_DIGESTED {
-        # Reference a prepared dictionary; it overrides some of the
-        # context's parameters.
         c_dict = get_cdict(zd_object, zd, state.compression_level);
         if not c_dict {
             return False;
@@ -725,10 +936,9 @@ def:priv load_c_impl(
     return True;
 }
 
-def:priv load_c_dict(
+impl load_c_dict(
     instance: ptr[PyObject], state: CompressorState, zstd_dict: ptr[PyObject]
 ) -> bool {
-    # When compressing, use undigested dictionary by default.
     (zd_object, load_type) = parse_zstd_dict(
         module_of(instance), zstd_dict, DICT_TYPE_UNDIGESTED
     );
@@ -745,7 +955,7 @@ def:priv load_c_dict(
     return ok;
 }
 
-def _zstd_ZstdCompressor_new_impl(
+impl _zstd_ZstdCompressor_new_impl(
     type: ptr[PyObject],
     level: ptr[PyObject],
     options: ptr[PyObject],
@@ -765,7 +975,7 @@ def _zstd_ZstdCompressor_new_impl(
         jacpy_release(instance);
         return NULL;
     }
-    # Compression context
+
     state.cctx = ZSTD_createCCtx();
     if not state.cctx {
         set_zstd_message(instance, "Unable to create ZSTD_CCtx instance.");
@@ -777,7 +987,7 @@ def _zstd_ZstdCompressor_new_impl(
         jacpy_release(instance);
         return NULL;
     }
-    # Set compression level
+
     if level != Py_None {
         if jacpy_is_long(level) == 0 {
             object_error(PyExc_TypeError, "invalid type for level, expected int");
@@ -800,12 +1010,12 @@ def _zstd_ZstdCompressor_new_impl(
             return NULL;
         }
     }
-    # Set options dictionary
+
     if options != Py_None and not set_c_parameters(instance, state, options) {
         jacpy_release(instance);
         return NULL;
     }
-    # Load Zstandard dictionary to compression context
+
     if zstd_dict != Py_None {
         if not load_c_dict(instance, state, zstd_dict) {
             jacpy_release(instance);
@@ -816,14 +1026,7 @@ def _zstd_ZstdCompressor_new_impl(
     return instance;
 }
 
-# The data a compress call reads: a buffer, or nothing when flushing.
-obj CompressInput {
-    has address: ptr = ptr(),
-        size: i64 = 0,
-        present: bool = False;
-}
-
-def:priv compress_lock_held(
+impl compress_lock_held(
     instance: ptr[PyObject],
     state: CompressorState,
     data: CompressInput,
@@ -832,7 +1035,7 @@ def:priv compress_lock_held(
     source = ZSTD_inBuffer(src=data.address, size=u64(data.size), pos=0);
     out = ZSTD_outBuffer();
     buffer = BlocksOutputBuffer();
-    # Calculate output buffer's size
+
     output_buffer_size = ZSTD_compressBound(source.size);
     if output_buffer_size > SSIZE_MAX {
         PyErr_NoMemory();
@@ -842,7 +1045,7 @@ def:priv compress_lock_held(
         buffer.discard();
         return NULL;
     }
-    # Without data the input is empty but not NULL.
+
     if not data.present {
         source.src = out.dst;
     }
@@ -856,11 +1059,11 @@ def:priv compress_lock_held(
             buffer.discard();
             return NULL;
         }
-        # Finished
+
         if zstd_ret == 0 {
             break;
         }
-        # Output buffer should be exhausted, grow the buffer.
+
         if out.pos == out.size and not output_grow(buffer, &mut out) {
             buffer.discard();
             return NULL;
@@ -869,7 +1072,7 @@ def:priv compress_lock_held(
     return output_finish(buffer, &mut out);
 }
 
-def:priv compress_mt_continue_lock_held(
+impl compress_mt_continue_lock_held(
     instance: ptr[PyObject], state: CompressorState, data: CompressInput
 ) -> ptr[PyObject] {
     source = ZSTD_inBuffer(src=data.address, size=u64(data.size), pos=0);
@@ -896,7 +1099,7 @@ def:priv compress_mt_continue_lock_held(
             buffer.discard();
             return NULL;
         }
-        # Like compress_lock_held(), output as much as possible.
+
         if out.pos == out.size {
             if not output_grow(buffer, &mut out) {
                 buffer.discard();
@@ -909,9 +1112,7 @@ def:priv compress_mt_continue_lock_held(
     return output_finish(buffer, &mut out);
 }
 
-# Record the mode after a compress or flush; a failure ends the frame and
-# resets the session, which never fails.
-def:priv settle_mode(state: CompressorState, result: ptr[PyObject], mode: i32) {
+impl settle_mode(state: CompressorState, result: ptr[PyObject], mode: i32) {
     if result {
         state.last_mode = mode;
     } else {
@@ -920,7 +1121,7 @@ def:priv settle_mode(state: CompressorState, result: ptr[PyObject], mode: i32) {
     }
 }
 
-def _zstd_ZstdCompressor_compress_impl(
+impl _zstd_ZstdCompressor_compress_impl(
     receiver: ptr[PyObject], data: BufferArgument, mode: i32
 ) -> ptr[PyObject] {
     if mode != ZSTD_e_continue and mode != ZSTD_e_flush and mode != ZSTD_e_end {
@@ -947,7 +1148,7 @@ def _zstd_ZstdCompressor_compress_impl(
     return result;
 }
 
-def _zstd_ZstdCompressor_flush_impl(
+impl _zstd_ZstdCompressor_flush_impl(
     receiver: ptr[PyObject], mode: i32
 ) -> ptr[PyObject] {
     if mode != ZSTD_e_end and mode != ZSTD_e_flush {
@@ -968,7 +1169,7 @@ def _zstd_ZstdCompressor_flush_impl(
     return result;
 }
 
-def _zstd_ZstdCompressor_set_pledged_input_size_impl(
+impl _zstd_ZstdCompressor_set_pledged_input_size_impl(
     receiver: ptr[PyObject], size: u64
 ) -> ptr[PyObject] {
     state = compressor_of(receiver);
@@ -976,7 +1177,7 @@ def _zstd_ZstdCompressor_set_pledged_input_size_impl(
         return NULL;
     }
     PyMutex_Lock(state.lock);
-    # Check the current mode
+
     if state.last_mode != ZSTD_e_end {
         object_error(
             PyExc_ValueError,
@@ -994,57 +1195,35 @@ def _zstd_ZstdCompressor_set_pledged_input_size_impl(
     return Py_NewRef(Py_None);
 }
 
-# --------------------------------------------------------- ZstdDecompressor
+impl DecompressorState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return visit_reference(self.dict, visitor, context);
+}
 
-obj DecompressorState(NativeState) {
-    has dctx: ptr = ptr(),
-        # ZstdDict object in use
-        dict: ptr[PyObject] = NULL,
-        # Unconsumed input data
-        input_buffer: ptr = ptr(),
-        input_buffer_size: u64 = 0,
-        in_begin: u64 = 0,
-        in_end: u64 = 0,
-        # Unused data, made on first read after the end of a frame
-        unused_data: ptr[PyObject] = NULL,
-        # False if the decompressor has (or may have) unconsumed input data
-        needs_input: bool = True,
-        # True when the end of the first frame has been reached
-        eof: bool = False,
-        lock: ptr[PyMutex] = ptr[PyMutex]();
+impl DecompressorState.clear {
+    previous = self.dict;
+    self.dict = NULL;
+    jacpy_release(previous);
+    previous = self.unused_data;
+    self.unused_data = NULL;
+    jacpy_release(previous);
+}
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return visit_reference(self.dict, visitor, context);
-    }
-
-    def clear {
-        previous = self.dict;
-        self.dict = NULL;
-        jacpy_release(previous);
-        previous = self.unused_data;
-        self.unused_data = NULL;
-        jacpy_release(previous);
-    }
-
-    # The context may reference the dictionary's digested form, so it is
-    # freed before the dictionary is released.
-    def free_context {
-        if self.dctx {
-            ZSTD_freeDCtx(self.dctx);
-            self.dctx = ptr();
-        }
-    }
-
-    def drop {
-        self.free_context();
-        jacpy_release(self.dict);
-        PyMem_Free(self.input_buffer);
-        jacpy_release(self.unused_data);
-        PyMem_RawFree(self.lock);
+impl DecompressorState.free_context {
+    if self.dctx {
+        ZSTD_freeDCtx(self.dctx);
+        self.dctx = ptr();
     }
 }
 
-def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
+impl DecompressorState.drop {
+    self.free_context();
+    jacpy_release(self.dict);
+    PyMem_Free(self.input_buffer);
+    jacpy_release(self.unused_data);
+    PyMem_RawFree(self.lock);
+}
+
+impl decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
     if jacpy_binding_native_present(instance, ZstdDecompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZstdDecompressor_token.handle);
         if isinstance(state, DecompressorState) {
@@ -1055,9 +1234,7 @@ def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
     return None;
 }
 
-# Free the context ahead of the payload's release, the dealloc order of
-# decompressor.c; no error when the state was never set.
-def release_decompressor_context(instance: ptr[PyObject]) {
+impl release_decompressor_context(instance: ptr[PyObject]) {
     if jacpy_binding_native_present(instance, ZstdDecompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZstdDecompressor_token.handle);
         if isinstance(state, DecompressorState) {
@@ -1066,7 +1243,7 @@ def release_decompressor_context(instance: ptr[PyObject]) {
     }
 }
 
-def:priv set_d_parameters(
+impl set_d_parameters(
     instance: ptr[PyObject], state: DecompressorState, options: ptr[PyObject]
 ) -> bool {
     module = module_of(instance);
@@ -1085,7 +1262,6 @@ def:priv set_d_parameters(
     key = NULL;
     value = NULL;
     while PyDict_Next(options, &mut pos, &mut key, &mut value) != 0 {
-        # Check key type
         if Py_TYPE(key) == jacpy_binding_state_get(module, i64(C_PARAMETER_TYPE)) {
             object_error(
                 PyExc_TypeError,
@@ -1106,7 +1282,7 @@ def:priv set_d_parameters(
     return True;
 }
 
-def:priv load_d_impl(
+impl load_d_impl(
     instance: ptr[PyObject],
     state: DecompressorState,
     zd_object: ptr[PyObject],
@@ -1134,11 +1310,9 @@ def:priv load_d_impl(
     return True;
 }
 
-# Load dictionary or prefix to decompression context
-def:priv load_d_dict(
+impl load_d_dict(
     instance: ptr[PyObject], state: DecompressorState, zstd_dict: ptr[PyObject]
 ) -> bool {
-    # When decompressing, use digested dictionary by default.
     (zd_object, load_type) = parse_zstd_dict(
         module_of(instance), zstd_dict, DICT_TYPE_DIGESTED
     );
@@ -1155,9 +1329,7 @@ def:priv load_d_dict(
     return ok;
 }
 
-# ZSTD_decompressStream() returns 0 when a frame is completely decoded and
-# flushed, an error code, or a positive count of work left in the frame.
-def:priv decompress_lock_held(
+impl decompress_lock_held(
     instance: ptr[PyObject],
     state: DecompressorState,
     source: &mut ZSTD_inBuffer,
@@ -1179,13 +1351,12 @@ def:priv decompress_lock_held(
             buffer.discard();
             return NULL;
         }
-        # Stop when a frame is decompressed
+
         if zstd_ret == 0 {
             state.eof = True;
             break;
         }
-        # Check the output before the input: zstd's internal buffer may still
-        # hold output.
+
         if out.pos == out.size {
             if buffer.allocated == buffer.max_length {
                 break;
@@ -1201,7 +1372,7 @@ def:priv decompress_lock_held(
     return output_finish(buffer, &mut out);
 }
 
-def:priv reset_session_lock_held(state: DecompressorState) {
+impl reset_session_lock_held(state: DecompressorState) {
     state.in_begin = 0;
     state.in_end = 0;
     previous = state.unused_data;
@@ -1209,11 +1380,11 @@ def:priv reset_session_lock_held(state: DecompressorState) {
     jacpy_release(previous);
     state.needs_input = True;
     state.eof = False;
-    # Resetting the session never fails
+
     ZSTD_DCtx_reset(state.dctx, ZSTD_reset_session_only);
 }
 
-def:priv stream_decompress_lock_held(
+impl stream_decompress_lock_held(
     instance: ptr[PyObject],
     state: DecompressorState,
     data: BufferArgument,
@@ -1227,21 +1398,16 @@ def:priv stream_decompress_lock_held(
     source = ZSTD_inBuffer();
     use_input_buffer = False;
     if state.in_begin == state.in_end {
-        # No unconsumed data
         source.src = data.address();
         source.size = data_len;
     } elif data_len == 0 {
-        # Unconsumed data, fast path for b''
         use_input_buffer = True;
         source.src = state.input_buffer + i64(state.in_begin);
         source.size = state.in_end - state.in_begin;
     } else {
         use_input_buffer = True;
-        # Unconsumed data size in input_buffer
         used_now = state.in_end - state.in_begin;
-        # Bytes that can be appended to the input buffer
         avail_now = state.input_buffer_size - state.in_end;
-        # Bytes that can be appended after moving the contents to the start
         avail_total = state.input_buffer_size - used_now;
         if avail_total < data_len {
             new_size = used_now + data_len;
@@ -1260,7 +1426,6 @@ def:priv stream_decompress_lock_held(
             state.in_begin = 0;
             state.in_end = used_now;
         } elif avail_now < data_len {
-            # Move unconsumed data to the beginning; the ranges may overlap.
             jacpy_memory_move(
                 state.input_buffer,
                 state.input_buffer + i64(state.in_begin),
@@ -1282,7 +1447,6 @@ def:priv stream_decompress_lock_held(
         return NULL;
     }
     if source.pos == source.size {
-        # All input consumed
         state.needs_input = not (PyBytes_Size(result) == max_length or state.eof);
         if use_input_buffer {
             state.in_begin = 0;
@@ -1292,8 +1456,6 @@ def:priv stream_decompress_lock_held(
         data_size = source.size - source.pos;
         state.needs_input = False;
         if not use_input_buffer {
-            # Discard a buffer too small for the rest (resizing it may copy
-            # its contents needlessly)
             if state.input_buffer and state.input_buffer_size < data_size {
                 PyMem_Free(state.input_buffer);
                 state.input_buffer = ptr();
@@ -1321,7 +1483,7 @@ def:priv stream_decompress_lock_held(
     return result;
 }
 
-def _zstd_ZstdDecompressor_new_impl(
+impl _zstd_ZstdDecompressor_new_impl(
     type: ptr[PyObject], zstd_dict: ptr[PyObject], options: ptr[PyObject]
 ) -> ptr[PyObject] {
     instance = jacpy_binding_allocate(type);
@@ -1338,14 +1500,14 @@ def _zstd_ZstdDecompressor_new_impl(
         jacpy_release(instance);
         return NULL;
     }
-    # Decompression context
+
     state.dctx = ZSTD_createDCtx();
     if not state.dctx {
         set_zstd_message(instance, "Unable to create ZSTD_DCtx instance.");
         jacpy_release(instance);
         return NULL;
     }
-    # Load Zstandard dictionary to decompression context
+
     if zstd_dict != Py_None {
         if not load_d_dict(instance, state, zstd_dict) {
             jacpy_release(instance);
@@ -1353,7 +1515,7 @@ def _zstd_ZstdDecompressor_new_impl(
         }
         state.dict = Py_NewRef(zstd_dict);
     }
-    # Set options dictionary
+
     if options != Py_None and not set_d_parameters(instance, state, options) {
         jacpy_release(instance);
         return NULL;
@@ -1361,7 +1523,7 @@ def _zstd_ZstdDecompressor_new_impl(
     return instance;
 }
 
-def _zstd_ZstdDecompressor_unused_data_get_impl(
+impl _zstd_ZstdDecompressor_unused_data_get_impl(
     receiver: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = decompressor_of(receiver);
@@ -1386,7 +1548,7 @@ def _zstd_ZstdDecompressor_unused_data_get_impl(
     return result;
 }
 
-def _zstd_ZstdDecompressor_decompress_impl(
+impl _zstd_ZstdDecompressor_decompress_impl(
     receiver: ptr[PyObject], data: BufferArgument, max_length: i64
 ) -> ptr[PyObject] {
     state = decompressor_of(receiver);
@@ -1399,11 +1561,7 @@ def _zstd_ZstdDecompressor_decompress_impl(
     return result;
 }
 
-# --------------------------------------------------------- module functions
-
-# calculate_samples_stats(): the sample count and a PyMem array of the sample
-# sizes (NULL on failure, else the caller frees it), or -1 with an error set.
-def:priv samples_stats(
+impl samples_stats(
     samples_bytes: ptr[PyObject], samples_sizes: ptr[PyObject]
 ) -> tuple[i64, ptr[u64]] {
     chunks_number = PyTuple_Size(samples_sizes);
@@ -1415,7 +1573,7 @@ def:priv samples_stats(
         );
         return (-1, ptr[u64]());
     }
-    # PyMem_New(size_t, chunks_number)
+
     chunk_sizes = ptr[u64]();
     if chunks_number <= i64(SSIZE_MAX // 8) {
         chunk_sizes = ptr[u64](PyMem_Malloc(u64(chunks_number) * 8));
@@ -1452,7 +1610,7 @@ def:priv samples_stats(
     return (chunks_number, chunk_sizes);
 }
 
-def _zstd_train_dict_impl(
+impl _zstd_train_dict_impl(
     module: ptr[PyObject],
     samples_bytes: ptr[PyObject],
     samples_sizes: ptr[PyObject],
@@ -1485,14 +1643,14 @@ def _zstd_train_dict_impl(
         jacpy_release(dst_dict_bytes);
         return NULL;
     }
-    # Resize dict_buffer
+
     if _PyBytes_Resize(&mut dst_dict_bytes, i64(zstd_ret)) < 0 {
         return NULL;
     }
     return dst_dict_bytes;
 }
 
-def _zstd_finalize_dict_impl(
+impl _zstd_finalize_dict_impl(
     module: ptr[PyObject],
     custom_dict_bytes: ptr[PyObject],
     samples_bytes: ptr[PyObject],
@@ -1514,8 +1672,7 @@ def _zstd_finalize_dict_impl(
         PyMem_Free(chunk_sizes);
         return NULL;
     }
-    # Optimize for a specific level (0 is the default), no notifications,
-    # and an automatic (random) dictionary id.
+
     params = ZDICT_params_t(
         compressionLevel=compression_level, notificationLevel=0, dictID=0
     );
@@ -1541,14 +1698,14 @@ def _zstd_finalize_dict_impl(
         jacpy_release(dst_dict_bytes);
         return NULL;
     }
-    # Resize dict_buffer
+
     if _PyBytes_Resize(&mut dst_dict_bytes, i64(zstd_ret)) < 0 {
         return NULL;
     }
     return dst_dict_bytes;
 }
 
-def _zstd_get_param_bounds_impl(
+impl _zstd_get_param_bounds_impl(
     module: ptr[PyObject], parameter: i32, is_compress: bool
 ) -> ptr[PyObject] {
     bound = ZSTD_bounds();
@@ -1568,7 +1725,7 @@ def _zstd_get_param_bounds_impl(
     return Py_BuildValue(ptr[u8]("ii"), bound.lowerBound, bound.upperBound);
 }
 
-def _zstd_get_frame_size_impl(
+impl _zstd_get_frame_size_impl(
     module: ptr[PyObject], frame_buffer: BufferArgument
 ) -> ptr[PyObject] {
     frame_size = ZSTD_findFrameCompressedSize(
@@ -1587,7 +1744,7 @@ def _zstd_get_frame_size_impl(
     return PyLong_FromSize_t(frame_size);
 }
 
-def _zstd_get_frame_info_impl(
+impl _zstd_get_frame_info_impl(
     module: ptr[PyObject], frame_buffer: BufferArgument
 ) -> ptr[PyObject] {
     decompressed_size = ZSTD_getFrameContentSize(
@@ -1611,7 +1768,7 @@ def _zstd_get_frame_info_impl(
     return Py_BuildValue(ptr[u8]("KI"), decompressed_size, dict_id);
 }
 
-def _zstd_set_parameter_types_impl(
+impl _zstd_set_parameter_types_impl(
     module: ptr[PyObject],
     c_parameter_type: ptr[PyObject],
     d_parameter_type: ptr[PyObject]
@@ -1621,19 +1778,18 @@ def _zstd_set_parameter_types_impl(
     return Py_NewRef(Py_None);
 }
 
-# The library's version and defaults, for the module constants.
-def zstd_version_number -> i64 {
+impl zstd_version_number -> i64 {
     return i64(ZSTD_versionNumber());
 }
 
-def zstd_version -> ptr[u8] {
+impl zstd_version -> ptr[u8] {
     return ZSTD_versionString();
 }
 
-def zstd_default_level -> i64 {
+impl zstd_default_level -> i64 {
     return i64(ZSTD_defaultCLevel());
 }
 
-def zstd_dstream_out_size -> u64 {
+impl zstd_dstream_out_size -> u64 {
     return ZSTD_DStreamOutSize();
 }

@@ -1,17 +1,6 @@
-"""The datetime.date type and IsoCalendarDate of the _datetime module.
-
-Modules/_datetimemodule.c's PyDateTime_Date implementation in native Jac:
-`PyDateTime_DateType` is C data under its C name. The IsoCalendarDate
-tuple subclass is a heap type per module; its slots are here and its spec
-is in bindings/datetime.jac beside the clinic glue its constructor comes
-from. See ../LICENSE.cpython.
-"""
-
 import from c {
     glob PyType_Type: PyTypeObject,
-         PyTuple_Type: PyTypeObject;
-    # A tp_traverse slot, called with the visitproc it was given.
-    obj TraverseCall {
+         PyTuple_Type: PyTypeObject; obj TraverseCall {
         has call: Callable[[ptr[PyObject], ptr, ptr], i32] = 0;
     }  glob:priv date_as_number: PyNumberMethods = PyNumberMethods(
              nb_add=date_add, nb_subtract=date_subtract
@@ -44,29 +33,121 @@ import from c {
          );
 }
 
-# _PyDateTime_DATE_DATASIZE: bytes of year, month, and day.
 glob DATE_DATASIZE: Final[int] = 4;
 
-# ---------------------------------------------------------------------------
-# Accessor properties.
+def date_year(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
 
-def date_year(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+def date_month(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def date_day(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def date_from_pickle(type: ptr[PyTypeObject], state: ptr[PyObject]) -> ptr[PyObject];
+
+def month_is_sane(month: int) -> bool;
+
+def date_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def date_fromtimestamp(cls: ptr[PyObject], timestamp: ptr[PyObject]) -> ptr[PyObject];
+
+def date_today(cls: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def date_fromordinal(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def date_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyObject];
+
+def date_fromisocalendar(
+    cls: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def strptime_via(
+    cls: ptr[PyObject], args: ptr[PyObject], function: str
+) -> ptr[PyObject];
+
+def date_strptime(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def add_date_timedelta(
+    date: ptr[PyObject], delta: ptr[PyObject], negate: bool
+) -> ptr[PyObject];
+
+def date_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def date_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject];
+
+def date_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def date_isoformat(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def date_str(self: ptr[PyObject]) -> ptr[PyObject];
+
+def date_ctime(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def date_strftime(
+    self: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def date_format(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def date_isoweekday(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def iso_calendar_date_repr(self: ptr[PyObject]) -> ptr[PyObject];
+
+def iso_calendar_date_reduce(
+    self: ptr[PyObject], ignored: ptr[PyObject]
+) -> ptr[PyObject];
+
+def iso_calendar_date_item(self: ptr[PyObject], index: int) -> ptr[PyObject];
+
+def iso_calendar_date_year(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def iso_calendar_date_week(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def iso_calendar_date_weekday(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def iso_calendar_date_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def iso_calendar_date_dealloc(self: ptr[PyObject]);
+
+def new_iso_calendar_date(
+    type: ptr[PyTypeObject], year: int, week: int, weekday_number: int
+) -> ptr[PyObject];
+
+def date_isocalendar(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def compare_data(left: ptr[PyObject], right: ptr[PyObject], size: int) -> int;
+
+def date_richcompare(
+    self: ptr[PyObject], other: ptr[PyObject], op: i32
+) -> ptr[PyObject];
+
+def date_timetuple(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def generic_hash(op: ptr[PyObject], size: int) -> i64;
+
+def date_hash(op: ptr[PyObject]) -> i64;
+
+def date_toordinal(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def date_weekday(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def date_getstate(self: ptr[PyObject]) -> ptr[PyObject];
+
+def date_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+impl date_year(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(get_year(op));
 }
 
-def date_month(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl date_month(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(get_month(op));
 }
 
-def date_day(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl date_day(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(get_day(op));
 }
 
-# ---------------------------------------------------------------------------
-# Constructors.
-
-"""A date from the 4-byte state of its pickle."""
-def date_from_pickle(type: ptr[PyTypeObject], state: ptr[PyObject]) -> ptr[PyObject] {
+impl date_from_pickle(type: ptr[PyTypeObject], state: ptr[PyObject]) -> ptr[PyObject] {
     me = type_alloc(type, 0);
     if me {
         source = ptr[u8](jacpy_bytes_address(state));
@@ -79,15 +160,13 @@ def date_from_pickle(type: ptr[PyTypeObject], state: ptr[PyObject]) -> ptr[PyObj
     return me;
 }
 
-"""MONTH_IS_SANE."""
-def month_is_sane(month: int) -> bool {
+impl month_is_sane(month: int) -> bool {
     return 1 <= month and month <= 12;
 }
 
-def date_new(
+impl date_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # Check for invocation from pickle with __getstate__ state
     if PyTuple_Size(args) == 1 {
         state = PyTuple_GetItem(args, 0);
         if jacpy_is_bytes(state) != 0 {
@@ -103,7 +182,6 @@ def date_new(
                 latin1 = PyUnicode_AsLatin1String(state);
                 if not latin1 {
                     if PyErr_ExceptionMatches(PyExc_UnicodeEncodeError) != 0 {
-                        # More informative error message.
                         PyErr_SetString(
                             PyExc_ValueError,
                             ptr[u8](
@@ -129,8 +207,7 @@ def date_new(
     return new_date_ex(values[0].signed, values[1].signed, values[2].signed, type);
 }
 
-"""date.fromtimestamp(timestamp) for the class `cls`: the local date."""
-def date_fromtimestamp(cls: ptr[PyObject], timestamp: ptr[PyObject]) -> ptr[PyObject] {
+impl date_fromtimestamp(cls: ptr[PyObject], timestamp: ptr[PyObject]) -> ptr[PyObject] {
     t: i64 = 0;
     if _PyTime_ObjectToTime_t(timestamp, &mut t, _PyTime_ROUND_FLOOR) == -1 {
         return NULL;
@@ -144,10 +221,7 @@ def date_fromtimestamp(cls: ptr[PyObject], timestamp: ptr[PyObject]) -> ptr[PyOb
     );
 }
 
-"""Return new date from current time: fromtimestamp(time.time()) of the
-class, which may be datetime, so all the accuracy time.time() gives is
-kept."""
-def date_today(cls: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl date_today(cls: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     time = time_time();
     if not time {
         return NULL;
@@ -157,9 +231,7 @@ def date_today(cls: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""Return new date from proleptic Gregorian ordinal; ValueError if the
-ordinal is out of range."""
-def date_fromordinal(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl date_fromordinal(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     try {
         ordinal = ArgumentFormat(name="fromordinal").parse(args, "i")[0].signed;
     } except boundary_failure {
@@ -173,8 +245,7 @@ def date_fromordinal(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return new_date_subclass_ex(found.year, found.month, found.day, cls);
 }
 
-"""Return the new date from a string as generated by date.isoformat()."""
-def date_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyObject] {
+impl date_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(dtstr) == 0 {
         PyErr_SetString(
             PyExc_TypeError, ptr[u8]("fromisoformat: argument must be str")
@@ -195,7 +266,7 @@ def date_fromisoformat(cls: ptr[PyObject], dtstr: ptr[PyObject]) -> ptr[PyObject
     return new_date_subclass_ex(found.year, found.month, found.day, cls);
 }
 
-def date_fromisocalendar(
+impl date_fromisocalendar(
     cls: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -238,8 +309,7 @@ def date_fromisocalendar(
     return new_date_subclass_ex(found.year, found.month, found.day, cls);
 }
 
-"""Parse `string` with `format` through _strptime's `function` for `cls`."""
-def strptime_via(
+impl strptime_via(
     cls: ptr[PyObject], args: ptr[PyObject], function: str
 ) -> ptr[PyObject] {
     try {
@@ -258,17 +328,11 @@ def strptime_via(
     return result;
 }
 
-"""Return new date from _strptime._strptime_datetime_date()."""
-def date_strptime(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl date_strptime(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return strptime_via(cls, args, "_strptime_datetime_date");
 }
 
-# ---------------------------------------------------------------------------
-# Date arithmetic.
-
-"""date + timedelta -> date; subtract the timedelta instead when negate is
-set."""
-def add_date_timedelta(
+impl add_date_timedelta(
     date: ptr[PyObject], delta: ptr[PyObject], negate: bool
 ) -> ptr[PyObject] {
     deltadays = td_days(delta);
@@ -283,71 +347,60 @@ def add_date_timedelta(
     return new_date_subclass_ex(fields.year, fields.month, fields.day, type_of(date));
 }
 
-def date_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl date_add(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if datetime_check(left) or datetime_check(right) {
         return not_implemented();
     }
     if date_check(left) {
-        # date + delta
         if delta_check(right) {
             return add_date_timedelta(left, right, False);
         }
     } elif delta_check(left) {
-        # delta + date; `right` must be one of us, or we wouldn't have been
-        # called
         return add_date_timedelta(right, left, False);
     }
     return not_implemented();
 }
 
-def date_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
+impl date_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject] {
     if datetime_check(left) or datetime_check(right) {
         return not_implemented();
     }
     if date_check(left) {
         if date_check(right) {
-            # date - date
             left_ord = ymd_to_ord(get_year(left), get_month(left), get_day(left));
             right_ord = ymd_to_ord(get_year(right), get_month(right), get_day(right));
             return new_delta(left_ord - right_ord, 0, 0, 0);
         }
         if delta_check(right) {
-            # date - delta
             return add_date_timedelta(left, right, True);
         }
     }
     return not_implemented();
 }
 
-# ---------------------------------------------------------------------------
-# Various ways to turn a date into a string.
-
-def date_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl date_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_FromFormat(
         "%s(%ld, %ld, %ld)", type_name_of(op), get_year(op), get_month(op), get_day(op)
     );
 }
 
-def date_isoformat(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl date_isoformat(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_FromFormat(
         "%04ld-%02ld-%02ld", get_year(op), get_month(op), get_day(op)
     );
 }
 
-"""str() calls the appropriate isoformat() method."""
-def date_str(self: ptr[PyObject]) -> ptr[PyObject] {
+impl date_str(self: ptr[PyObject]) -> ptr[PyObject] {
     return PyObject_CallMethod(self, "isoformat", "");
 }
 
-def date_ctime(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl date_ctime(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return format_ctime(self, 0, 0, 0);
 }
 
-def date_strftime(
+impl date_strftime(
     self: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # This method can be inherited, and needs to call the timetuple() method
-    # appropriate to self's class.
     try {
         values = ArgumentFormat(name="strftime").parse_keywords(
             args, kw, "U", ["format"]
@@ -364,31 +417,25 @@ def date_strftime(
     return result;
 }
 
-def date_format(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl date_format(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     try {
         format = ArgumentFormat(name="__format__").parse(args, "U")[0].object;
     } except boundary_failure {
         return NULL;
     }
-    # if the format is zero length, return str(self)
+
     if PyUnicode_GetLength(format) == 0 {
         return PyObject_Str(self);
     }
     return PyObject_CallMethod(self, "strftime", "O", format);
 }
 
-# ---------------------------------------------------------------------------
-# ISO methods.
-
-def date_isoweekday(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl date_isoweekday(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     dow = weekday(get_year(self), get_month(self), get_day(self));
     return PyLong_FromLong(dow + 1);
 }
 
-# IsoCalendarDate: the result of date.isocalendar() or datetime.isocalendar(),
-# a tuple of (year, week, weekday) with those attribute names.
-
-def iso_calendar_date_repr(self: ptr[PyObject]) -> ptr[PyObject] {
+impl iso_calendar_date_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     year = PyTuple_GetItem(self, 0);
     if not year {
         return NULL;
@@ -410,10 +457,9 @@ def iso_calendar_date_repr(self: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def iso_calendar_date_reduce(
+impl iso_calendar_date_reduce(
     self: ptr[PyObject], ignored: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # Construct the tuple that this reduces to
     return Py_BuildValue(
         ptr[u8]("O((OOO))"),
         ptr[PyObject](addressof(PyTuple_Type)),
@@ -423,7 +469,7 @@ def iso_calendar_date_reduce(
     );
 }
 
-def iso_calendar_date_item(self: ptr[PyObject], index: int) -> ptr[PyObject] {
+impl iso_calendar_date_item(self: ptr[PyObject], index: int) -> ptr[PyObject] {
     item = PyTuple_GetItem(self, i64(index));
     if not item {
         return NULL;
@@ -431,20 +477,19 @@ def iso_calendar_date_item(self: ptr[PyObject], index: int) -> ptr[PyObject] {
     return Py_NewRef(item);
 }
 
-def iso_calendar_date_year(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl iso_calendar_date_year(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return iso_calendar_date_item(self, 0);
 }
 
-def iso_calendar_date_week(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl iso_calendar_date_week(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return iso_calendar_date_item(self, 1);
 }
 
-def iso_calendar_date_weekday(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl iso_calendar_date_weekday(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return iso_calendar_date_item(self, 2);
 }
 
-"""Py_VISIT(Py_TYPE(self)), then the tuple's own traversal."""
-def iso_calendar_date_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl iso_calendar_date_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     status = visit_reference(type_of(self), visitor, arg);
     if status != 0 {
         return status;
@@ -456,15 +501,14 @@ def iso_calendar_date_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i
     return tuple_traverse.call(self, visitor, arg);
 }
 
-def iso_calendar_date_dealloc(self: ptr[PyObject]) {
+impl iso_calendar_date_dealloc(self: ptr[PyObject]) {
     tp = type_of(self);
-    # delegate GC-untrack as well
+
     addressof(PyTuple_Type).view(1)[0].tp_dealloc(self);
     jacpy_release(tp);
 }
 
-"""IsoCalendarDate(year, week, weekday) of the heap type `type`."""
-def new_iso_calendar_date(
+impl new_iso_calendar_date(
     type: ptr[PyTypeObject], year: int, week: int, weekday_number: int
 ) -> ptr[PyObject] {
     self = type_alloc(type, 3);
@@ -477,7 +521,7 @@ def new_iso_calendar_date(
     return self;
 }
 
-def date_isocalendar(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl date_isocalendar(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     year = get_year(self);
     week1_monday = iso_week1_monday(year);
     today = ymd_to_ord(year, get_month(self), get_day(self));
@@ -506,11 +550,7 @@ def date_isocalendar(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject]
     return v;
 }
 
-# ---------------------------------------------------------------------------
-# Miscellaneous methods.
-
-"""memcmp of the first `size` data bytes of two date-like objects."""
-def compare_data(left: ptr[PyObject], right: ptr[PyObject], size: int) -> int {
+impl compare_data(left: ptr[PyObject], right: ptr[PyObject], size: int) -> int {
     a = data_address(left);
     b = data_address(right);
     for i in range(size) {
@@ -522,30 +562,26 @@ def compare_data(left: ptr[PyObject], right: ptr[PyObject], size: int) -> int {
     return 0;
 }
 
-def date_richcompare(
+impl date_richcompare(
     self: ptr[PyObject], other: ptr[PyObject], op: i32
 ) -> ptr[PyObject] {
-    # Since DateTime is a subclass of Date, comparing a date with a datetime
-    # would compare the date part alone, which we don't want; the behavior is
-    # as if Date and DateTime were independent classes.
     if date_check(other) and not datetime_check(other) {
         return diff_to_bool(compare_data(self, other, DATE_DATASIZE), int(op));
     }
     return not_implemented();
 }
 
-def date_timetuple(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl date_timetuple(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return build_struct_time(
         get_year(self), get_month(self), get_day(self), 0, 0, 0, -1
     );
 }
 
-"""Py_HashBuffer over the first `size` data bytes."""
-def generic_hash(op: ptr[PyObject], size: int) -> i64 {
+impl generic_hash(op: ptr[PyObject], size: int) -> i64 {
     return Py_HashBuffer(ptr(data_address(op)), i64(size));
 }
 
-def date_hash(op: ptr[PyObject]) -> i64 {
+impl date_hash(op: ptr[PyObject]) -> i64 {
     record = ptr[PyDateTime_Date](op).view(1);
     hash = record[0].hashcode;
     if hash == -1 {
@@ -555,20 +591,19 @@ def date_hash(op: ptr[PyObject]) -> i64 {
     return hash;
 }
 
-def date_toordinal(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl date_toordinal(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(ymd_to_ord(get_year(self), get_month(self), get_day(self)));
 }
 
-def date_weekday(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl date_weekday(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(weekday(get_year(self), get_month(self), get_day(self)));
 }
 
-"""Pickle support, a simple use of __reduce__; __getstate__ isn't exposed."""
-def date_getstate(self: ptr[PyObject]) -> ptr[PyObject] {
+impl date_getstate(self: ptr[PyObject]) -> ptr[PyObject] {
     field = data_bytes(self, DATE_DATASIZE);
     return Py_BuildValue(ptr[u8]("(N)"), field);
 }
 
-def date_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl date_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("(ON)"), type_of(op), date_getstate(op));
 }

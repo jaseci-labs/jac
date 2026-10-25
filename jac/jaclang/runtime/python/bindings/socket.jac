@@ -1,11 +1,3 @@
-"""The _socket module: the socket type, its CAPI capsule for _ssl, the lookup
-and conversion functions, and the platform's constants.
-
-Derived from CPython 3.14.6 Modules/socketmodule.c; see ../LICENSE.cpython.
-The socket type is a heap type from a C-data PyType_Spec whose objects are
-PySocketSockObject records, the layout Modules/socketmodule.h gives _ssl.c.
-"""
-
 import from c {
     glob:priv sock_members: list[PyMemberDef] = [
              PyMemberDef(
@@ -39,8 +31,6 @@ import from c {
              ),
              PyGetSetDef()
          ],
-         # Py_tp_methods (SOCK_METHODS_SLOT) is filled once per process from
-         # type_methods(), clinic glue included, before the first type is made.
          sock_slots: list[PyType_Slot] = [
              PyType_Slot(slot=Py_tp_dealloc, pfunc=ptr(sock_dealloc)),
              PyType_Slot(slot=Py_tp_traverse, pfunc=ptr(sock_traverse)),
@@ -69,14 +59,11 @@ import from c {
                      | Py_TPFLAGS_IMMUTABLETYPE
              ),
              slots=addressof(sock_slots)
-         );
-    # PySocket_CAPSULE_NAME, which the capsule keeps pointing at.
-    glob:priv capsule_name: ptr[u8] = ptr[u8]("_socket.CAPI");
+         ); glob:priv capsule_name: ptr[u8] = ptr[u8]("_socket.CAPI");
 }
 
 glob:priv SOCK_METHODS_SLOT: int = 4,
      MODULE_DOC: str = "Implementation module for socket operations.\n\nSee the socket module for documentation.",
-     # Constants the module reads without publishing them.
      INTERNAL: list[str] = [
          "FIONBIO",
          "POLLIN",
@@ -90,7 +77,6 @@ glob:priv SOCK_METHODS_SLOT: int = 4,
          "CTLIOCGINFO",
          "AF_SYS_CONTROL"
      ],
-     # The values the C module publishes where the headers lack a macro.
      FALLBACKS: list[tuple[str, int]] = [
          ("SOMAXCONN", 5),
          ("SOL_IP", 0),
@@ -114,8 +100,6 @@ glob:priv SOCK_METHODS_SLOT: int = 4,
          ("SHUT_WR", 1),
          ("SHUT_RDWR", 2)
      ],
-     # The VSOCK values the C module publishes as literals with AF_VSOCK;
-     # IOCTL_VM_SOCKETS_GET_LOCAL_CID is _IO(7, 0xb9).
      VSOCK_CONSTANTS: list[tuple[str, int]] = [
          ("SO_VM_SOCKETS_BUFFER_SIZE", 0),
          ("SO_VM_SOCKETS_BUFFER_MIN_SIZE", 1),
@@ -128,19 +112,56 @@ glob:priv SOCK_METHODS_SLOT: int = 4,
          ("IOCTL_VM_SOCKETS_GET_LOCAL_CID", 0x7B9)
      ];
 
-# ---------------------------------------------------------------------------
-# The CAPI capsule.
+def:priv sock_capi_of(capsule: ptr[PyObject]) -> ptr[PySocketModule_APIObject];
 
-def:priv sock_capi_of(capsule: ptr[PyObject]) -> ptr[PySocketModule_APIObject] {
+def:priv sock_capi_traverse(capsule: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def:priv sock_capi_clear(capsule: ptr[PyObject]) -> i32;
+
+def:priv sock_capi_free(capi: ptr[PySocketModule_APIObject]);
+
+def:priv sock_capi_destroy(capsule: ptr[PyObject]);
+
+def:priv sock_get_api(sock_type: ptr[PyObject]) -> ptr[PySocketModule_APIObject];
+
+def:priv clinic_methods(
+    methods: list[MethodDefinition], names: list[str]
+) -> list[MethodDefinition];
+
+def:priv install_sock_methods -> bool;
+
+def:priv add_state(
+    module: ptr[PyObject], index: int, name: str, value: ptr[PyObject]
+) -> bool;
+
+def:priv add_constants(module: ptr[PyObject]) -> bool;
+
+def:priv socket_exec(module: ptr[PyObject]) -> i32;
+
+def:priv type_methods -> list[MethodDefinition];
+
+def:priv module_functions -> list[MethodDefinition];
+
+glob:priv definition = ModuleDefinition(
+         "_socket",
+         MODULE_DOC,
+         module_functions(),
+         ModuleHooks(execute=socket_exec),
+         STATE_COUNT
+     );
+
+def:pub PyInit__socket -> ptr[PyObject];
+
+impl sock_capi_of(capsule: ptr[PyObject]) -> ptr[PySocketModule_APIObject] {
     return ptr[PySocketModule_APIObject](PyCapsule_GetPointer(capsule, capsule_name));
 }
 
-def:priv sock_capi_traverse(capsule: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl sock_capi_traverse(capsule: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     capi = sock_capi_of(capsule);
     return visit_reference(ptr[PyObject](capi.view(1)[0].Sock_Type), visitor, arg);
 }
 
-def:priv sock_capi_clear(capsule: ptr[PyObject]) -> i32 {
+impl sock_capi_clear(capsule: ptr[PyObject]) -> i32 {
     capi = sock_capi_of(capsule).view(1);
     sock_type = ptr[PyObject](capi[0].Sock_Type);
     capi[0].Sock_Type = ptr[PyTypeObject]();
@@ -148,21 +169,20 @@ def:priv sock_capi_clear(capsule: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def:priv sock_capi_free(capi: ptr[PySocketModule_APIObject]) {
+impl sock_capi_free(capi: ptr[PySocketModule_APIObject]) {
     record = capi.view(1);
-    # sock_capi_clear() can have cleared the type.
+
     jacpy_release(ptr[PyObject](record[0].Sock_Type));
     jacpy_release(record[0].error);
     jacpy_release(record[0].timeout_error);
     PyMem_Free(ptr(capi));
 }
 
-def:priv sock_capi_destroy(capsule: ptr[PyObject]) {
+impl sock_capi_destroy(capsule: ptr[PyObject]) {
     sock_capi_free(sock_capi_of(capsule));
 }
 
-"""sock_get_api(): the type and the error classes _ssl reads."""
-def:priv sock_get_api(sock_type: ptr[PyObject]) -> ptr[PySocketModule_APIObject] {
+impl sock_get_api(sock_type: ptr[PyObject]) -> ptr[PySocketModule_APIObject] {
     capi = ptr[PySocketModule_APIObject](PyMem_Malloc(u64(PY_SOCKET_API_SIZE)));
     if not capi {
         PyErr_NoMemory();
@@ -175,11 +195,7 @@ def:priv sock_get_api(sock_type: ptr[PyObject]) -> ptr[PySocketModule_APIObject]
     return capi;
 }
 
-# ---------------------------------------------------------------------------
-# Module execution.
-
-"""A list of the clinic glue's method definitions named in `names`."""
-def:priv clinic_methods(
+impl clinic_methods(
     methods: list[MethodDefinition], names: list[str]
 ) -> list[MethodDefinition] {
     selected: list[MethodDefinition] = [];
@@ -193,9 +209,7 @@ def:priv clinic_methods(
     return selected;
 }
 
-"""Fill the type's method table once; the table lives for the process, as
-the C module's static sock_methods[] does."""
-def:priv install_sock_methods -> bool {
+impl install_sock_methods -> bool {
     slot = (addressof(sock_slots) + SOCK_METHODS_SLOT).view(1);
     if slot[0].pfunc {
         return True;
@@ -208,8 +222,7 @@ def:priv install_sock_methods -> bool {
     return True;
 }
 
-"""A new reference stored in state slot `index` and published as `name`."""
-def:priv add_state(
+impl add_state(
     module: ptr[PyObject], index: int, name: str, value: ptr[PyObject]
 ) -> bool {
     if not value {
@@ -221,9 +234,7 @@ def:priv add_state(
     return status >= 0;
 }
 
-"""The platform's constants, the C module's fallbacks for the ones the
-headers lack, and the VSOCK literals."""
-def:priv add_constants(module: ptr[PyObject]) -> bool {
+impl add_constants(module: ptr[PyObject]) -> bool {
     published: set[str] = set();
     for (name, value) in CONSTANTS {
         if name in INTERNAL {
@@ -250,7 +261,7 @@ def:priv add_constants(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-def:priv socket_exec(module: ptr[PyObject]) -> i32 {
+impl socket_exec(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
             PyExc_ImportError,
@@ -289,7 +300,7 @@ def:priv socket_exec(module: ptr[PyObject]) -> i32 {
     if PyModule_AddObjectRef(module, ptr[u8]("has_ipv6"), py_true()) < 0 {
         return i32(-1);
     }
-    # Export the C API.
+
     capi = sock_get_api(sock_type);
     if not capi {
         return i32(-1);
@@ -310,7 +321,7 @@ def:priv socket_exec(module: ptr[PyObject]) -> i32 {
     if not add_constants(module) {
         return i32(-1);
     }
-    # The gethostbyname lock of a C library without gethostbyname_r().
+
     if not HAS_GETHOSTBYNAME_R and not netdb_lock {
         netdb_lock = PyThread_allocate_lock();
         if not netdb_lock {
@@ -320,9 +331,7 @@ def:priv socket_exec(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-"""The socket type's methods, in sock_methods[] order; the clinic glue
-supplies close()."""
-def:priv type_methods -> list[MethodDefinition] {
+impl type_methods -> list[MethodDefinition] {
     methods: list[MethodDefinition] = [];
     methods.append(
         MethodDefinition(
@@ -533,7 +542,7 @@ def:priv type_methods -> list[MethodDefinition] {
             1
         )
     );
-    # sendmsg_afalg() exists where the headers have AF_ALG.
+
     if HAS_ALG {
         methods.append(
             MethodDefinition(
@@ -547,9 +556,7 @@ def:priv type_methods -> list[MethodDefinition] {
     return methods;
 }
 
-"""The module's functions, in socket_methods[] order; the clinic glue
-supplies the Argument Clinic ones."""
-def:priv module_functions -> list[MethodDefinition] {
+impl module_functions -> list[MethodDefinition] {
     methods: list[MethodDefinition] = [];
     methods.append(
         MethodDefinition(
@@ -718,14 +725,6 @@ def:priv module_functions -> list[MethodDefinition] {
     return methods;
 }
 
-glob:priv definition = ModuleDefinition(
-         "_socket",
-         MODULE_DOC,
-         module_functions(),
-         ModuleHooks(execute=socket_exec),
-         STATE_COUNT
-     );
-
-def:pub PyInit__socket -> ptr[PyObject] {
+impl PyInit__socket -> ptr[PyObject] {
     return definition.initialize();
 }

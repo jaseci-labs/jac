@@ -1,17 +1,3 @@
-"""The posix module's file system functions: access, the working directory,
-modes, owners and flags, links, renames, directories, times, fifos and
-device nodes, truncation, path configuration, extended attributes, lockf and
-umask.
-
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
-The configure feature macros are the FEATURES of posix_constants.<os>.jac;
-the *at() run-time checks hold on every supported deployment target except
-mkfifoat() and mknodat() on macOS, which posix_files_platform.darwin.jac
-looks up. Calls whose symbol or ABI differs by OS live in
-posix_files_platform.<os>.jac.
-"""
-
-# Portable calls; mode_t travels as a zero-extended u32 masked to its width.
 import from c {
     def access(path: ptr[u8], mode: i32) -> i32;  def faccessat(
         dir_fd: i32, path: ptr[u8], mode: i32, flags: i32
@@ -54,25 +40,238 @@ glob:priv PY_SSIZE_T_MAX: u64 = u64(0x7FFFFFFFFFFFFFFF),
      _PyTime_ROUND_FLOOR: i32 = 0,
      TIMESPEC_SIZE: u64 = 16;
 
-def posix_files_exec(module: ptr[PyObject]) -> bool {
+def posix_files_exec(module: ptr[PyObject]) -> bool;
+
+def:priv mode_t(mode: i32) -> u32;
+
+def:priv audit_dir_fd(dir_fd: i32) -> i32;
+
+def:priv none -> ptr[PyObject];
+
+def os_access_impl(
+    module: ptr[PyObject],
+    path: path_t,
+    mode: i32,
+    dir_fd: i32,
+    effective_ids: bool,
+    follow_symlinks: bool
+) -> i32;
+
+def os_chdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject];
+
+def os_fchdir_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def:priv posix_getcwd(use_bytes: bool) -> ptr[PyObject];
+
+def os_getcwd_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_getcwdb_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_chmod_impl(
+    module: ptr[PyObject], path: path_t, mode: i32, dir_fd: i32, follow_symlinks: bool
+) -> ptr[PyObject];
+
+def os_fchmod_impl(module: ptr[PyObject], fd: i32, mode: i32) -> ptr[PyObject];
+
+def os_lchmod_impl(module: ptr[PyObject], path: path_t, mode: i32) -> ptr[PyObject];
+
+def os_chflags_impl(
+    module: ptr[PyObject], path: path_t, flags: u64, follow_symlinks: bool
+) -> ptr[PyObject];
+
+def os_lchflags_impl(module: ptr[PyObject], path: path_t, flags: u64) -> ptr[PyObject];
+
+def os_chroot_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject];
+
+def os_fsync_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_sync_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_fdatasync_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_chown_impl(
+    module: ptr[PyObject],
+    path: path_t,
+    uid: u32,
+    gid: u32,
+    dir_fd: i32,
+    follow_symlinks: bool
+) -> ptr[PyObject];
+
+def os_fchown_impl(
+    module: ptr[PyObject], fd: i32, uid: u32, gid: u32
+) -> ptr[PyObject];
+
+def os_lchown_impl(
+    module: ptr[PyObject], path: path_t, uid: u32, gid: u32
+) -> ptr[PyObject];
+
+def os_link_impl(
+    module: ptr[PyObject],
+    src: path_t,
+    dst: path_t,
+    src_dir_fd: i32,
+    dst_dir_fd: i32,
+    follow_symlinks: i32
+) -> ptr[PyObject];
+
+def os_mkdir_impl(
+    module: ptr[PyObject], path: path_t, mode: i32, dir_fd: i32
+) -> ptr[PyObject];
+
+def internal_rename(
+    src: path_t, dst: path_t, src_dir_fd: i32, dst_dir_fd: i32, is_replace: bool
+) -> ptr[PyObject];
+
+def os_rename_impl(
+    module: ptr[PyObject], src: path_t, dst: path_t, src_dir_fd: i32, dst_dir_fd: i32
+) -> ptr[PyObject];
+
+def os_replace_impl(
+    module: ptr[PyObject], src: path_t, dst: path_t, src_dir_fd: i32, dst_dir_fd: i32
+) -> ptr[PyObject];
+
+def os_rmdir_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject];
+
+def os_umask_impl(module: ptr[PyObject], mask: i32) -> ptr[PyObject];
+
+def os_unlink_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject];
+
+def os_remove_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject];
+
+def os_readlink_impl(
+    module: ptr[PyObject], path: path_t, dir_fd: i32
+) -> ptr[PyObject];
+
+def os_symlink_impl(
+    module: ptr[PyObject],
+    src: path_t,
+    dst: path_t,
+    target_is_directory: bool,
+    dir_fd: i32
+) -> ptr[PyObject];
+
+def os__path_splitroot_ex_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject];
+
+def os__path_normpath_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject];
+
+obj:priv utime_t {
+    has now: bool = False,
+        atime_s: i64 = 0,
+        atime_ns: i64 = 0,
+        mtime_s: i64 = 0,
+        mtime_ns: i64 = 0;
+}
+
+def:priv utime_to_timespec(ut: utime_t, memory: ptr[timespec]) -> ptr[timespec];
+
+def:priv utime_dir_fd(
+    ut: utime_t,
+    memory: ptr[timespec],
+    dir_fd: i32,
+    path: ptr[u8],
+    follow_symlinks: bool
+) -> i32;
+
+def:priv utime_fd(ut: utime_t, memory: ptr[timespec], fd: i32) -> i32;
+
+def:priv utime_nofollow_symlinks(
+    ut: utime_t, memory: ptr[timespec], path: ptr[u8]
+) -> i32;
+
+def:priv utime_default(ut: utime_t, memory: ptr[timespec], path: ptr[u8]) -> i32;
+
+def:priv split_py_long_to_s_and_ns(
+    module: ptr[PyObject], py_long: ptr[PyObject]
+) -> (tuple[bool, i64, i64]);
+
+def os_utime_impl(
+    module: ptr[PyObject],
+    path: path_t,
+    times: ptr[PyObject],
+    ns: ptr[PyObject],
+    dir_fd: i32,
+    follow_symlinks: bool
+) -> ptr[PyObject];
+
+def os_mkfifo_impl(
+    module: ptr[PyObject], path: path_t, mode: i32, dir_fd: i32
+) -> ptr[PyObject];
+
+def os_mknod_impl(
+    module: ptr[PyObject], path: path_t, mode: i32, device: u64, dir_fd: i32
+) -> ptr[PyObject];
+
+def:priv major_minor_conv(value: u32) -> ptr[PyObject];
+
+def:priv major_minor_check(value: u64) -> bool;
+
+def os_major_impl(module: ptr[PyObject], device: u64) -> ptr[PyObject];
+
+def os_minor_impl(module: ptr[PyObject], device: u64) -> ptr[PyObject];
+
+def os_makedev_impl(module: ptr[PyObject], major: u64, minor: u64) -> u64;
+
+def os_ftruncate_impl(module: ptr[PyObject], fd: i32, length: i64) -> ptr[PyObject];
+
+def os_truncate_impl(
+    module: ptr[PyObject], path: path_t, length: i64
+) -> ptr[PyObject];
+
+def os_posix_fallocate_impl(
+    module: ptr[PyObject], fd: i32, offset: i64, length: i64
+) -> ptr[PyObject];
+
+def os_posix_fadvise_impl(
+    module: ptr[PyObject], fd: i32, offset: i64, length: i64, advice: i32
+) -> ptr[PyObject];
+
+def os_lockf_impl(
+    module: ptr[PyObject], fd: i32, command: i32, length: i64
+) -> ptr[PyObject];
+
+def os_fpathconf_impl(module: ptr[PyObject], fd: i32, name: i32) -> i64;
+
+def os_pathconf_impl(module: ptr[PyObject], path: path_t, name: i32) -> i64;
+
+def os_getxattr_impl(
+    module: ptr[PyObject], path: path_t, attribute: path_t, follow_symlinks: bool
+) -> ptr[PyObject];
+
+def os_setxattr_impl(
+    module: ptr[PyObject],
+    path: path_t,
+    attribute: path_t,
+    value: BufferArgument,
+    flags: i32,
+    follow_symlinks: bool
+) -> ptr[PyObject];
+
+def os_removexattr_impl(
+    module: ptr[PyObject], path: path_t, attribute: path_t, follow_symlinks: bool
+) -> ptr[PyObject];
+
+def os_listxattr_impl(
+    module: ptr[PyObject], path: path_t, follow_symlinks: bool
+) -> ptr[PyObject];
+
+impl posix_files_exec(module: ptr[PyObject]) -> bool {
     return True;
 }
 
-def:priv mode_t(mode: i32) -> u32 {
+impl mode_t(mode: i32) -> u32 {
     return u32.wrap(mode) & MODE_T_MASK;
 }
 
-def:priv audit_dir_fd(dir_fd: i32) -> i32 {
+impl audit_dir_fd(dir_fd: i32) -> i32 {
     return i32(-1) if dir_fd == DEFAULT_DIR_FD else dir_fd;
 }
 
-def:priv none -> ptr[PyObject] {
+impl none -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-# --- access and the working directory --------------------------------------
-
-def os_access_impl(
+impl os_access_impl(
     module: ptr[PyObject],
     path: path_t,
     mode: i32,
@@ -109,7 +308,7 @@ def os_access_impl(
     return i32(1) if result == 0 else i32(0);
 }
 
-def os_chdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
+impl os_chdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     if PySys_Audit("os.chdir", "(O)", path.object) < 0 {
         return NULL;
     }
@@ -129,16 +328,14 @@ def os_chdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     return none();
 }
 
-def os_fchdir_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_fchdir_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     if PySys_Audit("os.chdir", "(i)", fd) < 0 {
         return NULL;
     }
     return posix_fildes_fd(fd, 2);
 }
 
-# posix_getcwd(): the working directory as str, or bytes when `use_bytes`,
-# growing the buffer a chunk at a time while getcwd() reports ERANGE.
-def:priv posix_getcwd(use_bytes: bool) -> ptr[PyObject] {
+impl posix_getcwd(use_bytes: bool) -> ptr[PyObject] {
     chunk = u64(1024);
     buffer = ptr[u8]();
     cwd = ptr[u8]();
@@ -177,8 +374,6 @@ def:priv posix_getcwd(use_bytes: bool) -> ptr[PyObject] {
         result = PyUnicode_DecodeFSDefault(buffer);
     }
     if PLATFORM == "linux" and buffer.view(1)[0] != u8(47) {
-        # Linux >= 2.6.36 with glibc < 2.27 can return a relative path
-        # starting with '(unreachable)'; fail with ENOENT as newer glibc does.
         jacpy_set_errno(ENOENT);
         path_object_error(result);
         jacpy_release(result);
@@ -189,17 +384,15 @@ def:priv posix_getcwd(use_bytes: bool) -> ptr[PyObject] {
     return result;
 }
 
-def os_getcwd_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_getcwd_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return posix_getcwd(False);
 }
 
-def os_getcwdb_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_getcwdb_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return posix_getcwd(True);
 }
 
-# --- modes, owners and flags -------------------------------------------------
-
-def os_chmod_impl(
+impl os_chmod_impl(
     module: ptr[PyObject], path: path_t, mode: i32, dir_fd: i32, follow_symlinks: bool
 ) -> ptr[PyObject] {
     fchmodat_nofollow_unsupported = False;
@@ -221,8 +414,6 @@ def os_chmod_impl(
     } elif HAVE_LCHMOD and not follow_symlinks and dir_fd == DEFAULT_DIR_FD {
         result = lchmod_call(narrow, mode_t(mode));
     } elif HAVE_FCHMODAT and (dir_fd != DEFAULT_DIR_FD or not follow_symlinks) {
-        # fchmodat() may not support AT_SYMLINK_NOFOLLOW (glibc); that
-        # failure becomes the NotImplementedError below.
         result = fchmodat(
             dir_fd,
             narrow,
@@ -253,7 +444,7 @@ def os_chmod_impl(
     return none();
 }
 
-def os_fchmod_impl(module: ptr[PyObject], fd: i32, mode: i32) -> ptr[PyObject] {
+impl os_fchmod_impl(module: ptr[PyObject], fd: i32, mode: i32) -> ptr[PyObject] {
     if PySys_Audit("os.chmod", "iii", fd, mode, i32(-1)) < 0 {
         return NULL;
     }
@@ -278,7 +469,7 @@ def os_fchmod_impl(module: ptr[PyObject], fd: i32, mode: i32) -> ptr[PyObject] {
     return none();
 }
 
-def os_lchmod_impl(module: ptr[PyObject], path: path_t, mode: i32) -> ptr[PyObject] {
+impl os_lchmod_impl(module: ptr[PyObject], path: path_t, mode: i32) -> ptr[PyObject] {
     if PySys_Audit("os.chmod", "Oii", path.object, mode, i32(-1)) < 0 {
         return NULL;
     }
@@ -293,7 +484,7 @@ def os_lchmod_impl(module: ptr[PyObject], path: path_t, mode: i32) -> ptr[PyObje
     return none();
 }
 
-def os_chflags_impl(
+impl os_chflags_impl(
     module: ptr[PyObject], path: path_t, flags: u64, follow_symlinks: bool
 ) -> ptr[PyObject] {
     if not HAVE_LCHFLAGS {
@@ -319,7 +510,9 @@ def os_chflags_impl(
     return none();
 }
 
-def os_lchflags_impl(module: ptr[PyObject], path: path_t, flags: u64) -> ptr[PyObject] {
+impl os_lchflags_impl(
+    module: ptr[PyObject], path: path_t, flags: u64
+) -> ptr[PyObject] {
     if PySys_Audit("os.chflags", "Ok", path.object, flags) < 0 {
         return NULL;
     }
@@ -333,7 +526,7 @@ def os_lchflags_impl(module: ptr[PyObject], path: path_t, flags: u64) -> ptr[PyO
     return none();
 }
 
-def os_chroot_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
+impl os_chroot_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     narrow = path.narrow;
     thread = PyEval_SaveThread();
     result = chroot(narrow);
@@ -344,22 +537,22 @@ def os_chroot_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     return none();
 }
 
-def os_fsync_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_fsync_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return posix_fildes_fd(fd, 0);
 }
 
-def os_sync_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_sync_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
     sync();
     PyEval_RestoreThread(thread);
     return none();
 }
 
-def os_fdatasync_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_fdatasync_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     return posix_fildes_fd(fd, 1);
 }
 
-def os_chown_impl(
+impl os_chown_impl(
     module: ptr[PyObject],
     path: path_t,
     uid: u32,
@@ -406,7 +599,7 @@ def os_chown_impl(
     return none();
 }
 
-def os_fchown_impl(
+impl os_fchown_impl(
     module: ptr[PyObject], fd: i32, uid: u32, gid: u32
 ) -> ptr[PyObject] {
     if PySys_Audit("os.chown", "iIIi", fd, uid, gid, i32(-1)) < 0 {
@@ -433,7 +626,7 @@ def os_fchown_impl(
     return none();
 }
 
-def os_lchown_impl(
+impl os_lchown_impl(
     module: ptr[PyObject], path: path_t, uid: u32, gid: u32
 ) -> ptr[PyObject] {
     if PySys_Audit("os.chown", "OIIi", path.object, uid, gid, i32(-1)) < 0 {
@@ -449,9 +642,7 @@ def os_lchown_impl(
     return none();
 }
 
-# --- links, renames and directories -----------------------------------------
-
-def os_link_impl(
+impl os_link_impl(
     module: ptr[PyObject],
     src: path_t,
     dst: path_t,
@@ -460,7 +651,6 @@ def os_link_impl(
     follow_symlinks: i32
 ) -> ptr[PyObject] {
     if HAVE_LINKAT {
-        # -1: not given.
         if follow_symlinks < 0 {
             follow_symlinks = i32(1);
         }
@@ -469,8 +659,6 @@ def os_link_impl(
             argument_unavailable_error("link", "src_dir_fd and dst_dir_fd");
             return NULL;
         }
-        # link() on Linux works like linkat() without AT_SYMLINK_FOLLOW, on
-        # macOS like linkat() with it (issue 85527).
         if PLATFORM == "linux" and follow_symlinks == 1 {
             argument_unavailable_error("link", "follow_symlinks=True");
             return NULL;
@@ -513,7 +701,7 @@ def os_link_impl(
     return none();
 }
 
-def os_mkdir_impl(
+impl os_mkdir_impl(
     module: ptr[PyObject], path: path_t, mode: i32, dir_fd: i32
 ) -> ptr[PyObject] {
     if PySys_Audit("os.mkdir", "Oii", path.object, mode, audit_dir_fd(dir_fd)) < 0 {
@@ -534,7 +722,7 @@ def os_mkdir_impl(
     return none();
 }
 
-def internal_rename(
+impl internal_rename(
     src: path_t, dst: path_t, src_dir_fd: i32, dst_dir_fd: i32, is_replace: bool
 ) -> ptr[PyObject] {
     function_name = "replace" if is_replace else "rename";
@@ -570,19 +758,19 @@ def internal_rename(
     return none();
 }
 
-def os_rename_impl(
+impl os_rename_impl(
     module: ptr[PyObject], src: path_t, dst: path_t, src_dir_fd: i32, dst_dir_fd: i32
 ) -> ptr[PyObject] {
     return internal_rename(src, dst, src_dir_fd, dst_dir_fd, False);
 }
 
-def os_replace_impl(
+impl os_replace_impl(
     module: ptr[PyObject], src: path_t, dst: path_t, src_dir_fd: i32, dst_dir_fd: i32
 ) -> ptr[PyObject] {
     return internal_rename(src, dst, src_dir_fd, dst_dir_fd, True);
 }
 
-def os_rmdir_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
+impl os_rmdir_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
     if PySys_Audit("os.rmdir", "Oi", path.object, audit_dir_fd(dir_fd)) < 0 {
         return NULL;
     }
@@ -601,7 +789,7 @@ def os_rmdir_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObj
     return none();
 }
 
-def os_umask_impl(module: ptr[PyObject], mask: i32) -> ptr[PyObject] {
+impl os_umask_impl(module: ptr[PyObject], mask: i32) -> ptr[PyObject] {
     previous = i32.wrap(umask_call(mode_t(mask)) & MODE_T_MASK);
     if previous < 0 {
         return posix_error();
@@ -609,7 +797,7 @@ def os_umask_impl(module: ptr[PyObject], mask: i32) -> ptr[PyObject] {
     return PyLong_FromLong(i64(previous));
 }
 
-def os_unlink_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
+impl os_unlink_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
     if PySys_Audit("os.remove", "Oi", path.object, audit_dir_fd(dir_fd)) < 0 {
         return NULL;
     }
@@ -628,14 +816,13 @@ def os_unlink_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyOb
     return none();
 }
 
-def os_remove_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
+impl os_remove_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
     return os_unlink_impl(module, path, dir_fd);
 }
 
-def os_readlink_impl(
+impl os_readlink_impl(
     module: ptr[PyObject], path: path_t, dir_fd: i32
 ) -> ptr[PyObject] {
-    # char buffer[MAXPATHLEN+1]
     buffer = ptr[u8](PyMem_Malloc(u64(MAXPATHLEN + 1)));
     if not buffer {
         return PyErr_NoMemory();
@@ -664,7 +851,7 @@ def os_readlink_impl(
     return result;
 }
 
-def os_symlink_impl(
+impl os_symlink_impl(
     module: ptr[PyObject],
     src: path_t,
     dst: path_t,
@@ -691,9 +878,7 @@ def os_symlink_impl(
     return none();
 }
 
-# --- path strings ------------------------------------------------------------
-
-def os__path_splitroot_ex_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
+impl os__path_splitroot_ex_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     buffer = ptr[i32](int(path.wide));
     drvsize = i64(0);
     rootsize = i64(0);
@@ -737,7 +922,7 @@ def os__path_splitroot_ex_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObj
     return result;
 }
 
-def os__path_normpath_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
+impl os__path_normpath_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     norm_len = i64(0);
     norm_path = _Py_normpath_and_size(
         ptr[i32](int(path.wide)), path.length, &mut norm_len
@@ -756,20 +941,7 @@ def os__path_normpath_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject]
     return result;
 }
 
-# --- times -------------------------------------------------------------------
-
-# utime_t: the times os.utime() sets, or `now` for the current time.
-obj:priv utime_t {
-    has now: bool = False,
-        atime_s: i64 = 0,
-        atime_ns: i64 = 0,
-        mtime_s: i64 = 0,
-        mtime_ns: i64 = 0;
-}
-
-# UTIME_TO_TIMESPEC: the struct timespec[2] of `ut` in `memory`, or NULL for
-# the current time.
-def:priv utime_to_timespec(ut: utime_t, memory: ptr[timespec]) -> ptr[timespec] {
+impl utime_to_timespec(ut: utime_t, memory: ptr[timespec]) -> ptr[timespec] {
     if ut.now {
         return ptr[timespec]();
     }
@@ -781,8 +953,7 @@ def:priv utime_to_timespec(ut: utime_t, memory: ptr[timespec]) -> ptr[timespec] 
     return memory;
 }
 
-# Both targets have utimensat(), which utime_dir_fd() prefers to futimesat().
-def:priv utime_dir_fd(
+impl utime_dir_fd(
     ut: utime_t,
     memory: ptr[timespec],
     dir_fd: i32,
@@ -793,24 +964,21 @@ def:priv utime_dir_fd(
     return utimensat(dir_fd, path, utime_to_timespec(ut, memory), flags);
 }
 
-def:priv utime_fd(ut: utime_t, memory: ptr[timespec], fd: i32) -> i32 {
+impl utime_fd(ut: utime_t, memory: ptr[timespec], fd: i32) -> i32 {
     return futimens(fd, utime_to_timespec(ut, memory));
 }
 
-def:priv utime_nofollow_symlinks(
-    ut: utime_t, memory: ptr[timespec], path: ptr[u8]
-) -> i32 {
+impl utime_nofollow_symlinks(ut: utime_t, memory: ptr[timespec], path: ptr[u8]) -> i32 {
     return utimensat(
         DEFAULT_DIR_FD, path, utime_to_timespec(ut, memory), i32(AT_SYMLINK_NOFOLLOW)
     );
 }
 
-def:priv utime_default(ut: utime_t, memory: ptr[timespec], path: ptr[u8]) -> i32 {
+impl utime_default(ut: utime_t, memory: ptr[timespec], path: ptr[u8]) -> i32 {
     return utimensat(DEFAULT_DIR_FD, path, utime_to_timespec(ut, memory), i32(0));
 }
 
-# split_py_long_to_s_and_ns(): divmod(py_long, 10**9) as a time_t and a long.
-def:priv split_py_long_to_s_and_ns(
+impl split_py_long_to_s_and_ns(
     module: ptr[PyObject], py_long: ptr[PyObject]
 ) -> (tuple[bool, i64, i64]) {
     divmod = PyNumber_Divmod(py_long, state_object(module, STATE_BILLION));
@@ -841,7 +1009,7 @@ def:priv split_py_long_to_s_and_ns(
     return (True, seconds, nanoseconds);
 }
 
-def os_utime_impl(
+impl os_utime_impl(
     module: ptr[PyObject],
     path: path_t,
     times: ptr[PyObject],
@@ -909,7 +1077,6 @@ def os_utime_impl(
         ut.mtime_s = seconds;
         ut.mtime_ns = nanoseconds;
     } else {
-        # times and ns are both None/unspecified: use "now".
         ut.now = True;
     }
     have_nofollow_symlinks = HAVE_UTIMENSAT or HAVE_LUTIMES;
@@ -938,7 +1105,7 @@ def os_utime_impl(
         < 0 {
         return NULL;
     }
-    # The struct timespec ts[2] the macros fill on the C stack.
+
     memory = ptr[timespec](PyMem_Calloc(2, TIMESPEC_SIZE));
     if not memory {
         return PyErr_NoMemory();
@@ -960,7 +1127,6 @@ def os_utime_impl(
     PyEval_RestoreThread(thread);
     PyMem_Free(ptr(memory));
     if PLATFORM == "darwin" and HAVE_UTIMENSAT {
-        # See utime_dir_fd.
         if result == -1 and jacpy_errno() == ENOSYS {
             argument_unavailable_error("", "dir_fd");
             return NULL;
@@ -973,9 +1139,7 @@ def os_utime_impl(
     return none();
 }
 
-# --- fifos and device nodes --------------------------------------------------
-
-def os_mkfifo_impl(
+impl os_mkfifo_impl(
     module: ptr[PyObject], path: path_t, mode: i32, dir_fd: i32
 ) -> ptr[PyObject] {
     async_err = False;
@@ -1014,7 +1178,7 @@ def os_mkfifo_impl(
     return none();
 }
 
-def os_mknod_impl(
+impl os_mknod_impl(
     module: ptr[PyObject], path: path_t, mode: i32, device: u64, dir_fd: i32
 ) -> ptr[PyObject] {
     async_err = False;
@@ -1053,15 +1217,14 @@ def os_mknod_impl(
     return none();
 }
 
-def:priv major_minor_conv(value: u32) -> ptr[PyObject] {
+impl major_minor_conv(value: u32) -> ptr[PyObject] {
     if value == u32.wrap(NODEV) {
         return PyLong_FromLong(NODEV);
     }
     return PyLong_FromUnsignedLong(u64(value));
 }
 
-# (dev_t)(unsigned int)value == value, NODEV passing.
-def:priv major_minor_check(value: u64) -> bool {
+impl major_minor_check(value: u64) -> bool {
     if dev_value(value) == NODEV {
         return True;
     }
@@ -1071,15 +1234,15 @@ def:priv major_minor_check(value: u64) -> bool {
     return u64(u32.wrap(value)) == value;
 }
 
-def os_major_impl(module: ptr[PyObject], device: u64) -> ptr[PyObject] {
+impl os_major_impl(module: ptr[PyObject], device: u64) -> ptr[PyObject] {
     return major_minor_conv(dev_major(device));
 }
 
-def os_minor_impl(module: ptr[PyObject], device: u64) -> ptr[PyObject] {
+impl os_minor_impl(module: ptr[PyObject], device: u64) -> ptr[PyObject] {
     return major_minor_conv(dev_minor(device));
 }
 
-def os_makedev_impl(module: ptr[PyObject], major: u64, minor: u64) -> u64 {
+impl os_makedev_impl(module: ptr[PyObject], major: u64, minor: u64) -> u64 {
     if not major_minor_check(major) or not major_minor_check(minor) {
         PyErr_SetString(
             PyExc_OverflowError,
@@ -1090,9 +1253,7 @@ def os_makedev_impl(module: ptr[PyObject], major: u64, minor: u64) -> u64 {
     return dev_makedev(major, minor);
 }
 
-# --- truncation and allocation -----------------------------------------------
-
-def os_ftruncate_impl(module: ptr[PyObject], fd: i32, length: i64) -> ptr[PyObject] {
+impl os_ftruncate_impl(module: ptr[PyObject], fd: i32, length: i64) -> ptr[PyObject] {
     if PySys_Audit("os.truncate", "in", fd, length) < 0 {
         return NULL;
     }
@@ -1117,7 +1278,7 @@ def os_ftruncate_impl(module: ptr[PyObject], fd: i32, length: i64) -> ptr[PyObje
     return none();
 }
 
-def os_truncate_impl(
+impl os_truncate_impl(
     module: ptr[PyObject], path: path_t, length: i64
 ) -> ptr[PyObject] {
     if path.fd != -1 {
@@ -1136,7 +1297,7 @@ def os_truncate_impl(
     return none();
 }
 
-def os_posix_fallocate_impl(
+impl os_posix_fallocate_impl(
     module: ptr[PyObject], fd: i32, offset: i64, length: i64
 ) -> ptr[PyObject] {
     async_err = False;
@@ -1164,7 +1325,7 @@ def os_posix_fallocate_impl(
     return posix_error();
 }
 
-def os_posix_fadvise_impl(
+impl os_posix_fadvise_impl(
     module: ptr[PyObject], fd: i32, offset: i64, length: i64, advice: i32
 ) -> ptr[PyObject] {
     async_err = False;
@@ -1192,7 +1353,7 @@ def os_posix_fadvise_impl(
     return posix_error();
 }
 
-def os_lockf_impl(
+impl os_lockf_impl(
     module: ptr[PyObject], fd: i32, command: i32, length: i64
 ) -> ptr[PyObject] {
     if PySys_Audit("os.lockf", "iiL", fd, command, length) < 0 {
@@ -1207,9 +1368,7 @@ def os_lockf_impl(
     return none();
 }
 
-# --- path configuration ------------------------------------------------------
-
-def os_fpathconf_impl(module: ptr[PyObject], fd: i32, name: i32) -> i64 {
+impl os_fpathconf_impl(module: ptr[PyObject], fd: i32, name: i32) -> i64 {
     jacpy_set_errno(0);
     limit = fpathconf(fd, name);
     if limit == -1 and jacpy_errno() != 0 {
@@ -1218,7 +1377,7 @@ def os_fpathconf_impl(module: ptr[PyObject], fd: i32, name: i32) -> i64 {
     return limit;
 }
 
-def os_pathconf_impl(module: ptr[PyObject], path: path_t, name: i32) -> i64 {
+impl os_pathconf_impl(module: ptr[PyObject], path: path_t, name: i32) -> i64 {
     jacpy_set_errno(0);
     limit = i64(0);
     if HAVE_FPATHCONF and path.is_fd {
@@ -1228,7 +1387,6 @@ def os_pathconf_impl(module: ptr[PyObject], path: path_t, name: i32) -> i64 {
     }
     if limit == -1 and jacpy_errno() != 0 {
         if jacpy_errno() == EINVAL {
-            # Could be a path or name problem.
             posix_error();
         } else {
             path_error(path);
@@ -1237,9 +1395,7 @@ def os_pathconf_impl(module: ptr[PyObject], path: path_t, name: i32) -> i64 {
     return limit;
 }
 
-# --- extended attributes -----------------------------------------------------
-
-def os_getxattr_impl(
+impl os_getxattr_impl(
     module: ptr[PyObject], path: path_t, attribute: path_t, follow_symlinks: bool
 ) -> ptr[PyObject] {
     if fd_and_follow_symlinks_invalid("getxattr", path.fd, follow_symlinks) {
@@ -1279,7 +1435,6 @@ def os_getxattr_impl(
             return NULL;
         }
         if result != buffer_size {
-            # Can only shrink.
             _PyBytes_Resize(&mut buffer, result);
         }
         break;
@@ -1287,7 +1442,7 @@ def os_getxattr_impl(
     return buffer;
 }
 
-def os_setxattr_impl(
+impl os_setxattr_impl(
     module: ptr[PyObject],
     path: path_t,
     attribute: path_t,
@@ -1325,7 +1480,7 @@ def os_setxattr_impl(
     return none();
 }
 
-def os_removexattr_impl(
+impl os_removexattr_impl(
     module: ptr[PyObject], path: path_t, attribute: path_t, follow_symlinks: bool
 ) -> ptr[PyObject] {
     if fd_and_follow_symlinks_invalid("removexattr", path.fd, follow_symlinks) {
@@ -1346,7 +1501,7 @@ def os_removexattr_impl(
     return none();
 }
 
-def os_listxattr_impl(
+impl os_listxattr_impl(
     module: ptr[PyObject], path: path_t, follow_symlinks: bool
 ) -> ptr[PyObject] {
     if fd_and_follow_symlinks_invalid("listxattr", path.fd, follow_symlinks) {
@@ -1355,7 +1510,7 @@ def os_listxattr_impl(
     if PySys_Audit("os.listxattr", "(O)", path.object or Py_None) < 0 {
         return NULL;
     }
-    # name = path->narrow ? path->narrow : "."
+
     current = ptr[u8]();
     name = path.narrow;
     if not name {
@@ -1376,7 +1531,6 @@ def os_listxattr_impl(
         buffer_size = buffer_sizes[index];
         index += 1;
         if buffer_size == 0 {
-            # ERANGE
             path_error(path);
             break;
         }

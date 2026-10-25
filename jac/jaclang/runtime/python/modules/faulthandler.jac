@@ -370,7 +370,9 @@ impl faulthandler_get_fileno(file_in: ptr[PyObject]) -> tuple[i32, ptr[PyObject]
             return (i32(-1), NULL);
         }
         if fd < 0 {
-            PyErr_SetString(PyExc_ValueError, ptr[u8]("file is not a valid file descriptor"));
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("file is not a valid file descriptor")
+            );
             return (i32(-1), NULL);
         }
         return (fd, NULL);
@@ -410,7 +412,9 @@ impl faulthandler_get_fileno(file_in: ptr[PyObject]) -> tuple[i32, ptr[PyObject]
 impl get_thread_state -> ptr[PyThreadState] {
     tstate = current_tstate();
     if not tstate {
-        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("unable to get the current thread state"));
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("unable to get the current thread state")
+        );
         return ptr[PyThreadState]();
     }
     return tstate;
@@ -1253,7 +1257,9 @@ impl faulthandler_stack_overflow(
     }
     PyErr_Format(
         PyExc_RuntimeError,
-        ptr[u8]("unable to raise a stack overflow (allocated %zu bytes on the stack, %zu recursive calls)"),
+        ptr[u8](
+            "unable to raise a stack overflow (allocated %zu bytes on the stack, %zu recursive calls)"
+        ),
         i64.wrap(size),
         i64.wrap(depth)
     );

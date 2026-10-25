@@ -1,19 +1,8 @@
-"""The _zoneinfo module: the ZoneInfo type, a datetime.tzinfo subclass."""
+def:priv zoneinfo_dealloc(instance: ptr[PyObject]);
 
-# The record holds the state's key borrowed: zeroed before the state goes.
-def:priv zoneinfo_dealloc(instance: ptr[PyObject]) {
-    record_clear(jacpy_binding_record(instance, ZoneInfo_token.handle), 8);
-    dispose_payload(instance, ZoneInfo_token.handle);
-}
+def:priv zoneinfo_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv zoneinfo_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, ZoneInfo_token.handle, visitor, context);
-}
-
-def:priv zoneinfo_clear(instance: ptr[PyObject]) -> i32 {
-    record_clear(jacpy_binding_record(instance, ZoneInfo_token.handle), 8);
-    return clear_payload(instance, ZoneInfo_token.handle);
-}
+def:priv zoneinfo_clear(instance: ptr[PyObject]) -> i32;
 
 glob:priv methods: list[MethodDefinition] = ZoneInfo_methods
          + [
@@ -55,7 +44,32 @@ glob:priv methods: list[MethodDefinition] = ZoneInfo_methods
          generic_getattr=True
      );
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "_zoneinfo",
+         "C implementation of the zoneinfo module",
+         [],
+         ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit__zoneinfo -> ptr[PyObject];
+
+impl zoneinfo_dealloc(instance: ptr[PyObject]) {
+    record_clear(jacpy_binding_record(instance, ZoneInfo_token.handle), 8);
+    dispose_payload(instance, ZoneInfo_token.handle);
+}
+
+impl zoneinfo_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, ZoneInfo_token.handle, visitor, context);
+}
+
+impl zoneinfo_clear(instance: ptr[PyObject]) -> i32 {
+    record_clear(jacpy_binding_record(instance, ZoneInfo_token.handle), 8);
+    return clear_payload(instance, ZoneInfo_token.handle);
+}
+
+impl execute(module: ptr[PyObject]) -> i32 {
     ZoneInfo_token.handle = zoneinfo_type.handle;
     module_definition.handle = definition.handle;
     api = datetime_import();
@@ -76,13 +90,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "_zoneinfo",
-         "C implementation of the zoneinfo module",
-         [],
-         ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit__zoneinfo -> ptr[PyObject] {
+impl PyInit__zoneinfo -> ptr[PyObject] {
     return definition.initialize();
 }

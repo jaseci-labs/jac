@@ -1,11 +1,3 @@
-"""The _locale module: locale.Error and the locale and langinfo constants over the generated clinic table.
-
-The constants come from locale_constants.<os>.jac, generated from the target's
-<locale.h> and <langinfo.h>. CHAR_MAX follows the target ABI's char, so it is
-read from the C library. The gettext functions exist only where the C library
-has <libintl.h>.
-"""
-
 glob:priv LIBINTL: list[str] = [
          "gettext",
          "dgettext",
@@ -15,7 +7,23 @@ glob:priv LIBINTL: list[str] = [
          "bind_textdomain_codeset"
      ];
 
-def:priv add_constants(module: ptr[PyObject], categories: bool) -> bool {
+def:priv add_constants(module: ptr[PyObject], categories: bool) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+def:priv methods -> list[MethodDefinition];
+
+glob:priv definition = ModuleDefinition(
+         "_locale",
+         "Support for POSIX locales.",
+         methods(),
+         ModuleHooks(execute=execute),
+         1
+     );
+
+def:pub PyInit__locale -> ptr[PyObject];
+
+impl add_constants(module: ptr[PyObject], categories: bool) -> bool {
     for (name, value) in CONSTANTS {
         if name.startswith("LC_") == categories
             and jacpy_module_add_int_text(module, name, value) < 0 {
@@ -25,8 +33,7 @@ def:priv add_constants(module: ptr[PyObject], categories: bool) -> bool {
     return True;
 }
 
-"""Categories, CHAR_MAX and Error first, then the langinfo keys, as C adds them."""
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
             PyExc_ImportError,
@@ -45,7 +52,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def:priv methods -> list[MethodDefinition] {
+impl methods -> list[MethodDefinition] {
     return [
         method
         for method in module_methods
@@ -53,14 +60,6 @@ def:priv methods -> list[MethodDefinition] {
     ];
 }
 
-glob:priv definition = ModuleDefinition(
-         "_locale",
-         "Support for POSIX locales.",
-         methods(),
-         ModuleHooks(execute=execute),
-         1
-     );
-
-def:pub PyInit__locale -> ptr[PyObject] {
+impl PyInit__locale -> ptr[PyObject] {
     return definition.initialize();
 }

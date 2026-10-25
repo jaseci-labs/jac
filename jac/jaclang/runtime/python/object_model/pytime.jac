@@ -159,7 +159,9 @@ import from c {
         if float_check(obj_) {
             d = PyFloat_AsDouble(obj_);
             if d != d {
-                PyErr_SetString(PyExc_ValueError, ptr[u8]("Invalid value NaN (not a number)"));
+                PyErr_SetString(
+                    PyExc_ValueError, ptr[u8]("Invalid value NaN (not a number)")
+                );
                 return -1;
             }
 
@@ -369,7 +371,9 @@ impl _PyTime_GCD(x: i64, y: i64) -> i64 {
 }
 
 impl pytime_time_t_overflow {
-    PyErr_SetString(PyExc_OverflowError, ptr[u8]("timestamp out of range for platform time_t"));
+    PyErr_SetString(
+        PyExc_OverflowError, ptr[u8]("timestamp out of range for platform time_t")
+    );
 }
 
 impl pytime_overflow {
@@ -487,7 +491,9 @@ impl pytime_object_to_denominator(
         d = PyFloat_AsDouble(obj_);
         if d != d {
             numerator.view(1)[0] = 0;
-            PyErr_SetString(PyExc_ValueError, ptr[u8]("Invalid value NaN (not a number)"));
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("Invalid value NaN (not a number)")
+            );
             return -1;
         }
         (status, whole, part) = pytime_double_to_denominator(d, denominator, rounding);
@@ -556,7 +562,9 @@ impl pytime_from_object(
     if float_check(obj_) {
         d = PyFloat_AsDouble(obj_);
         if d != d {
-            PyErr_SetString(PyExc_ValueError, ptr[u8]("Invalid value NaN (not a number)"));
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("Invalid value NaN (not a number)")
+            );
             return -1;
         }
         return pytime_from_double(tp, d, rounding, unit_to_ns);

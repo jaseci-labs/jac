@@ -1,8 +1,16 @@
-"""The _uuid module: generate_time_safe() and the library capability flags."""
-
 glob:priv METH_NOARGS: i64 = 4;
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+def:priv methods -> list[MethodDefinition];
+
+glob:priv definition = ModuleDefinition(
+         "_uuid", "", methods(), ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit__uuid -> ptr[PyObject];
+
+impl execute(module: ptr[PyObject]) -> i32 {
     if PyModule_AddIntConstant(
         module, ptr[u8]("has_uuid_generate_time_safe"), i64(HAVE_GENERATE_TIME_SAFE)
     )
@@ -18,7 +26,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def:priv methods -> list[MethodDefinition] {
+impl methods -> list[MethodDefinition] {
     if not HAVE_UUID_HEADER {
         return [];
     }
@@ -32,10 +40,6 @@ def:priv methods -> list[MethodDefinition] {
     ];
 }
 
-glob:priv definition = ModuleDefinition(
-         "_uuid", "", methods(), ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit__uuid -> ptr[PyObject] {
+impl PyInit__uuid -> ptr[PyObject] {
     return definition.initialize();
 }

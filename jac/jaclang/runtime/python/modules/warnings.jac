@@ -1704,19 +1704,25 @@ impl warnings_module_exec(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     if PyModule_AddObjectRef(
-        module, ptr[u8]("_onceregistry"), state_get(st, _warnings_runtime_state_ONCE_REGISTRY)
+        module,
+        ptr[u8]("_onceregistry"),
+        state_get(st, _warnings_runtime_state_ONCE_REGISTRY)
     )
         < i32(0) {
         return i32(-1);
     }
     if PyModule_AddObjectRef(
-        module, ptr[u8]("_defaultaction"), state_get(st, _warnings_runtime_state_DEFAULT_ACTION)
+        module,
+        ptr[u8]("_defaultaction"),
+        state_get(st, _warnings_runtime_state_DEFAULT_ACTION)
     )
         < i32(0) {
         return i32(-1);
     }
     if PyModule_AddObjectRef(
-        module, ptr[u8]("_warnings_context"), state_get(st, _warnings_runtime_state_CONTEXT)
+        module,
+        ptr[u8]("_warnings_context"),
+        state_get(st, _warnings_runtime_state_CONTEXT)
     )
         < i32(0) {
         return i32(-1);

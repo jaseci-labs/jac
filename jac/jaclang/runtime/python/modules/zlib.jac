@@ -1,11 +1,3 @@
-"""zlib compression: one-shot functions, stream objects and checksums.
-
-Derived from CPython 3.14.6 Modules/zlibmodule.c; see ../LICENSE.cpython.
-The z_stream is a C-layout record the library keeps a pointer to between
-calls, so every stream is pinned. zlib runs with the GIL released; only its
-allocator callbacks, which touch no Python object, run in that window.
-"""
-
 import from z {
     obj z_stream {
         has next_in: ptr[u8] = ptr[u8](),
@@ -75,7 +67,6 @@ glob MAX_WBITS: i32 = 15,
      Decompress_token = ClassToken(),
      ZlibDecompressor_token = ClassToken();
 
-# Module state slots, in the order the binding fills them.
 glob COMPRESS_TYPE: int = 0,
      DECOMPRESS_TYPE: int = 1,
      DECOMPRESSOR_TYPE: int = 2,
@@ -95,23 +86,224 @@ glob:priv Z_OK: i32 = 0,
      DEF_MAX_INITIAL_BUF_SIZE: i64 = 16 * 1024 * 1024,
      CRC_CHUNK_SIZE: i64 = 0x40000000;
 
-# zlib's allocator hooks; they run with the GIL released, like CPython's.
-def:priv zlib_malloc(opaque: ptr, items: u32, size: u32) -> ptr {
+def:priv zlib_malloc(opaque: ptr, items: u32, size: u32) -> ptr;
+
+def:priv zlib_free(opaque: ptr, address: ptr);
+
+def:priv new_stream -> Pinned[z_stream];
+
+def:priv deflate_init(
+    zst: &mut Pinned[z_stream],
+    level: i32,
+    method: i32,
+    wbits: i32,
+    memLevel: i32,
+    strategy: i32
+) -> i32;
+
+def:priv inflate_init(zst: &mut Pinned[z_stream], wbits: i32) -> i32;
+
+def:priv zlib_error(module: ptr[PyObject], message: ptr[u8], err: i32, context: str);
+
+def:priv zlib_error_message(module: ptr[PyObject], message: str);
+
+def:priv arrange_input(zst: &mut Pinned[z_stream], remains: i64) -> i64;
+
+def:priv release_gil -> ptr[PyThreadState];
+
+def:priv sync_out(zst: &mut Pinned[z_stream], cursor: Cursor);
+
+def:priv grow(buffer: BlocksOutputBuffer, zst: &mut Pinned[z_stream]) -> bool;
+
+obj Window {
+    has left: i64 = 0,
+        next: ptr[u8] = ptr[u8]();
+}
+
+def:priv window_init(
+    buffer: BlocksOutputBuffer, window: Window, size: i64, zst: &mut Pinned[z_stream]
+) -> bool;
+
+def:priv window_grow(
+    buffer: BlocksOutputBuffer, window: Window, zst: &mut Pinned[z_stream]
+) -> bool;
+
+def:priv window_finish(
+    buffer: BlocksOutputBuffer, window: Window, zst: &mut Pinned[z_stream]
+) -> ptr[PyObject];
+
+def:priv start_output(
+    buffer: BlocksOutputBuffer, max_length: i64, zst: &mut Pinned[z_stream]
+) -> bool;
+
+def zlib_compress_impl(
+    module: ptr[PyObject], data: BufferArgument, level: i32, wbits: i32
+) -> ptr[PyObject];
+
+def zlib_decompress_impl(
+    module: ptr[PyObject], data: BufferArgument, wbits: i32, bufsize: i64
+) -> ptr[PyObject];
+
+obj ZlibStream(NativeState) {
+    has zst: Pinned[z_stream],
+        deflating: bool,
+        unused_data: ptr[PyObject] = NULL,
+        unconsumed_tail: ptr[PyObject] = NULL,
+        zdict: ptr[PyObject] = NULL,
+        eof: bool = False,
+        is_initialised: bool = False,
+        lock: ptr = ptr();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def enter;
+    def leave;
+    def drop;
+}
+
+def:priv empty_bytes -> ptr[PyObject];
+
+def:priv new_stream_object(
+    module: ptr[PyObject], slot: int, token: ClassToken, deflating: bool
+) -> tuple[ptr[PyObject], ZlibStream | None];
+
+def:priv stream_of(instance: ptr[PyObject], token: ClassToken) -> ZlibStream | None;
+
+def zlib_compressobj_impl(
+    module: ptr[PyObject],
+    level: i32,
+    method: i32,
+    wbits: i32,
+    memLevel: i32,
+    strategy: i32,
+    zdict: BufferArgument
+) -> ptr[PyObject];
+
+def:priv set_inflate_zdict(
+    module: ptr[PyObject], zst: &mut Pinned[z_stream], zdict: ptr[PyObject]
+) -> bool;
+
+def zlib_decompressobj_impl(
+    module: ptr[PyObject], wbits: i32, zdict: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zlib_Compress_compress_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], data: BufferArgument
+) -> ptr[PyObject];
+
+def:priv save_unconsumed(
+    stream: ZlibStream, data_start: ptr, data_length: i64, err: i32
+) -> bool;
+
+def zlib_Decompress_decompress_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], data: BufferArgument, max_length: i64
+) -> ptr[PyObject];
+
+def zlib_Compress_flush_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], mode: i32
+) -> ptr[PyObject];
+
+def:priv copy_stream(
+    receiver: ptr[PyObject], cls: ptr[PyObject], deflating: bool
+) -> ptr[PyObject];
+
+def zlib_Compress_copy_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zlib_Compress___copy___impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zlib_Compress___deepcopy___impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], memo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zlib_Decompress_copy_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zlib_Decompress___copy___impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zlib_Decompress___deepcopy___impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], memo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def zlib_Decompress_flush_impl(
+    receiver: ptr[PyObject], cls: ptr[PyObject], length: i64
+) -> ptr[PyObject];
+
+obj ZlibDecompressorState(NativeState) {
+    has zst: Pinned[z_stream],
+        zdict: ptr[PyObject] = NULL,
+        lock: ptr = ptr(),
+        unused_data: ptr[PyObject] = NULL,
+        input_buffer: ptr = ptr(),
+        input_buffer_size: i64 = 0,
+        avail_in_real: i64 = 0,
+        is_initialised: bool = False,
+        eof: bool = False,
+        needs_input: bool = True;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
+
+def:priv decompressor_of(instance: ptr[PyObject]) -> ZlibDecompressorState | None;
+
+def mirror_decompressor(instance: ptr[PyObject], state: ZlibDecompressorState);
+
+def zlib_decompressor_new(
+    cls: ptr[PyObject], wbits: i32, zdict: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv arrange_output(
+    state: ZlibDecompressorState, result: ptr[PyObject], length: i64, limit: i64
+) -> tuple[ptr[PyObject], i64];
+
+def:priv decompress_buf(
+    state: ZlibDecompressorState, module: ptr[PyObject], max_length: i64
+) -> ptr[PyObject];
+
+def:priv decompress_input(
+    state: ZlibDecompressorState,
+    module: ptr[PyObject],
+    data: ptr,
+    length: i64,
+    max_length: i64
+) -> ptr[PyObject];
+
+def zlib_ZlibDecompressor_decompress_impl(
+    receiver: ptr[PyObject], data: BufferArgument, max_length: i64
+) -> ptr[PyObject];
+
+def zlib_adler32_impl(
+    module: ptr[PyObject], data: BufferArgument, value_: u32
+) -> ptr[PyObject];
+
+def zlib_crc32_impl(module: ptr[PyObject], data: BufferArgument, value_: u32) -> u32;
+
+def runtime_version -> ptr[PyObject];
+
+impl zlib_malloc(opaque: ptr, items: u32, size: u32) -> ptr {
     if size != 0 and i64(items) > SSIZE_MAX // i64(size) {
         return ptr();
     }
     return PyMem_RawMalloc(u64(items) * u64(size));
 }
 
-def:priv zlib_free(opaque: ptr, address: ptr) {
+impl zlib_free(opaque: ptr, address: ptr) {
     PyMem_RawFree(address);
 }
 
-def:priv new_stream -> Pinned[z_stream] {
+impl new_stream -> Pinned[z_stream] {
     return pin(z_stream(zalloc=zlib_malloc, zfree=zlib_free));
 }
 
-def:priv deflate_init(
+impl deflate_init(
     zst: &mut Pinned[z_stream],
     level: i32,
     method: i32,
@@ -124,11 +316,11 @@ def:priv deflate_init(
     );
 }
 
-def:priv inflate_init(zst: &mut Pinned[z_stream], wbits: i32) -> i32 {
+impl inflate_init(zst: &mut Pinned[z_stream], wbits: i32) -> i32 {
     return inflateInit2_(zst, wbits, ZLIB_VERSION, Z_STREAM_SIZE);
 }
 
-def:priv zlib_error(module: ptr[PyObject], message: ptr[u8], err: i32, context: str) {
+impl zlib_error(module: ptr[PyObject], message: ptr[u8], err: i32, context: str) {
     detail = "";
     if err == Z_VERSION_ERROR {
         detail = "library version mismatch";
@@ -152,30 +344,28 @@ def:priv zlib_error(module: ptr[PyObject], message: ptr[u8], err: i32, context: 
     );
 }
 
-def:priv zlib_error_message(module: ptr[PyObject], message: str) {
+impl zlib_error_message(module: ptr[PyObject], message: str) {
     object_error(jacpy_binding_state_get(module, ZLIB_ERROR), message);
 }
 
-# Feed at most UINT_MAX bytes per call, keeping the rest for later rounds.
-def:priv arrange_input(zst: &mut Pinned[z_stream], remains: i64) -> i64 {
+impl arrange_input(zst: &mut Pinned[z_stream], remains: i64) -> i64 {
     chunk = remains if remains < UINT_MAX else UINT_MAX;
     zst.value.avail_in = u32(chunk);
     return remains - chunk;
 }
 
-def:priv release_gil -> ptr[PyThreadState] {
+impl release_gil -> ptr[PyThreadState] {
     return PyEval_SaveThread();
 }
 
-# The codec's cursor lives in the z_stream; the buffer tracks blocks.
-def:priv sync_out(zst: &mut Pinned[z_stream], cursor: Cursor) {
+impl sync_out(zst: &mut Pinned[z_stream], cursor: Cursor) {
     zst.value.next_out = cursor.next_out;
     zst.value.avail_out = u32(
         cursor.avail_out if cursor.avail_out < UINT_MAX else UINT_MAX
     );
 }
 
-def:priv grow(buffer: BlocksOutputBuffer, zst: &mut Pinned[z_stream]) -> bool {
+impl grow(buffer: BlocksOutputBuffer, zst: &mut Pinned[z_stream]) -> bool {
     cursor = Cursor(avail_out=i64(zst.value.avail_out));
     if buffer.grow(cursor) < 0 {
         return False;
@@ -184,13 +374,7 @@ def:priv grow(buffer: BlocksOutputBuffer, zst: &mut Pinned[z_stream]) -> bool {
     return True;
 }
 
-# A UINT32 window sliding over one large first block (decompress/flush).
-obj Window {
-    has left: i64 = 0,
-        next: ptr[u8] = ptr[u8]();
-}
-
-def:priv window_init(
+impl window_init(
     buffer: BlocksOutputBuffer, window: Window, size: i64, zst: &mut Pinned[z_stream]
 ) -> bool {
     cursor = Cursor();
@@ -206,7 +390,7 @@ def:priv window_init(
     return True;
 }
 
-def:priv window_grow(
+impl window_grow(
     buffer: BlocksOutputBuffer, window: Window, zst: &mut Pinned[z_stream]
 ) -> bool {
     if zst.value.avail_out != 0 {
@@ -226,13 +410,13 @@ def:priv window_grow(
     return grow(buffer, zst);
 }
 
-def:priv window_finish(
+impl window_finish(
     buffer: BlocksOutputBuffer, window: Window, zst: &mut Pinned[z_stream]
 ) -> ptr[PyObject] {
     return buffer.finish(i64(zst.value.avail_out) + window.left);
 }
 
-def:priv start_output(
+impl start_output(
     buffer: BlocksOutputBuffer, max_length: i64, zst: &mut Pinned[z_stream]
 ) -> bool {
     cursor = Cursor();
@@ -243,7 +427,7 @@ def:priv start_output(
     return True;
 }
 
-def zlib_compress_impl(
+impl zlib_compress_impl(
     module: ptr[PyObject], data: BufferArgument, level: i32, wbits: i32
 ) -> ptr[PyObject] {
     buffer = BlocksOutputBuffer();
@@ -302,7 +486,7 @@ def zlib_compress_impl(
     return buffer.finish(i64(zst.value.avail_out));
 }
 
-def zlib_decompress_impl(
+impl zlib_decompress_impl(
     module: ptr[PyObject], data: BufferArgument, wbits: i32, bufsize: i64
 ) -> ptr[PyObject] {
     if bufsize < 0 {
@@ -379,61 +563,48 @@ def zlib_decompress_impl(
     return window_finish(buffer, window, &mut zst);
 }
 
-# The native state behind zlib.Compress and zlib.Decompress objects.
-obj ZlibStream(NativeState) {
-    has zst: Pinned[z_stream],
-        deflating: bool,
-        unused_data: ptr[PyObject] = NULL,
-        unconsumed_tail: ptr[PyObject] = NULL,
-        zdict: ptr[PyObject] = NULL,
-        eof: bool = False,
-        is_initialised: bool = False,
-        lock: ptr = ptr();
+impl ZlibStream.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return visit_reference(self.zdict, visitor, context);
+}
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return visit_reference(self.zdict, visitor, context);
-    }
+impl ZlibStream.clear {
+    jacpy_release(self.zdict);
+    self.zdict = NULL;
+}
 
-    def clear {
-        jacpy_release(self.zdict);
-        self.zdict = NULL;
-    }
-
-    def enter {
-        if PyThread_acquire_lock(self.lock, 0) == 0 {
-            thread = release_gil();
-            PyThread_acquire_lock(self.lock, 1);
-            PyEval_RestoreThread(thread);
-        }
-    }
-
-    def leave {
-        PyThread_release_lock(self.lock);
-    }
-
-    def drop {
-        if self.is_initialised {
-            if self.deflating {
-                deflateEnd(&mut self.zst);
-            } else {
-                inflateEnd(&mut self.zst);
-            }
-        }
-        if self.lock {
-            PyThread_free_lock(self.lock);
-        }
-        jacpy_release(self.unused_data);
-        jacpy_release(self.unconsumed_tail);
-        jacpy_release(self.zdict);
+impl ZlibStream.enter {
+    if PyThread_acquire_lock(self.lock, 0) == 0 {
+        thread = release_gil();
+        PyThread_acquire_lock(self.lock, 1);
+        PyEval_RestoreThread(thread);
     }
 }
 
-def:priv empty_bytes -> ptr[PyObject] {
+impl ZlibStream.leave {
+    PyThread_release_lock(self.lock);
+}
+
+impl ZlibStream.drop {
+    if self.is_initialised {
+        if self.deflating {
+            deflateEnd(&mut self.zst);
+        } else {
+            inflateEnd(&mut self.zst);
+        }
+    }
+    if self.lock {
+        PyThread_free_lock(self.lock);
+    }
+    jacpy_release(self.unused_data);
+    jacpy_release(self.unconsumed_tail);
+    jacpy_release(self.zdict);
+}
+
+impl empty_bytes -> ptr[PyObject] {
     return jacpy_buffer_new(0);
 }
 
-# newcompobject(): a fresh instance of the module's Compress or Decompress type.
-def:priv new_stream_object(
+impl new_stream_object(
     module: ptr[PyObject], slot: int, token: ClassToken, deflating: bool
 ) -> tuple[ptr[PyObject], ZlibStream | None] {
     instance = jacpy_binding_allocate(jacpy_binding_state_get(module, slot));
@@ -462,7 +633,7 @@ def:priv new_stream_object(
     return (instance, stream);
 }
 
-def:priv stream_of(instance: ptr[PyObject], token: ClassToken) -> ZlibStream | None {
+impl stream_of(instance: ptr[PyObject], token: ClassToken) -> ZlibStream | None {
     if jacpy_binding_native_present(instance, token.handle) != 0 {
         state = jacpy_binding_native_get(instance, token.handle);
         if isinstance(state, ZlibStream) {
@@ -473,7 +644,7 @@ def:priv stream_of(instance: ptr[PyObject], token: ClassToken) -> ZlibStream | N
     return None;
 }
 
-def zlib_compressobj_impl(
+impl zlib_compressobj_impl(
     module: ptr[PyObject],
     level: i32,
     method: i32,
@@ -519,7 +690,7 @@ def zlib_compressobj_impl(
     return NULL;
 }
 
-def:priv set_inflate_zdict(
+impl set_inflate_zdict(
     module: ptr[PyObject], zst: &mut Pinned[z_stream], zdict: ptr[PyObject]
 ) -> bool {
     view = BufferArgument();
@@ -540,7 +711,7 @@ def:priv set_inflate_zdict(
     return True;
 }
 
-def zlib_decompressobj_impl(
+impl zlib_decompressobj_impl(
     module: ptr[PyObject], wbits: i32, zdict: ptr[PyObject]
 ) -> ptr[PyObject] {
     if zdict and PyObject_CheckBuffer(zdict) == 0 {
@@ -584,7 +755,7 @@ def zlib_decompressobj_impl(
     return NULL;
 }
 
-def zlib_Compress_compress_impl(
+impl zlib_Compress_compress_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], data: BufferArgument
 ) -> ptr[PyObject] {
     stream = stream_of(receiver, Compress_token);
@@ -628,8 +799,7 @@ def zlib_Compress_compress_impl(
     return result;
 }
 
-# save_unconsumed_input(): bytes past the stream end, and input not yet read.
-def:priv save_unconsumed(
+impl save_unconsumed(
     stream: ZlibStream, data_start: ptr, data_length: i64, err: i32
 ) -> bool {
     data_end = data_start + data_length;
@@ -664,7 +834,7 @@ def:priv save_unconsumed(
     return True;
 }
 
-def zlib_Decompress_decompress_impl(
+impl zlib_Decompress_decompress_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], data: BufferArgument, max_length: i64
 ) -> ptr[PyObject] {
     stream = stream_of(receiver, Decompress_token);
@@ -740,7 +910,7 @@ def zlib_Decompress_decompress_impl(
     return result;
 }
 
-def zlib_Compress_flush_impl(
+impl zlib_Compress_flush_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], mode: i32
 ) -> ptr[PyObject] {
     if mode == Z_NO_FLUSH {
@@ -797,7 +967,7 @@ def zlib_Compress_flush_impl(
     return result;
 }
 
-def:priv copy_stream(
+impl copy_stream(
     receiver: ptr[PyObject], cls: ptr[PyObject], deflating: bool
 ) -> ptr[PyObject] {
     token = Compress_token if deflating else Decompress_token;
@@ -840,43 +1010,43 @@ def:priv copy_stream(
     return NULL;
 }
 
-def zlib_Compress_copy_impl(
+impl zlib_Compress_copy_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     return copy_stream(receiver, cls, True);
 }
 
-def zlib_Compress___copy___impl(
+impl zlib_Compress___copy___impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     return copy_stream(receiver, cls, True);
 }
 
-def zlib_Compress___deepcopy___impl(
+impl zlib_Compress___deepcopy___impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], memo: ptr[PyObject]
 ) -> ptr[PyObject] {
     return copy_stream(receiver, cls, True);
 }
 
-def zlib_Decompress_copy_impl(
+impl zlib_Decompress_copy_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     return copy_stream(receiver, cls, False);
 }
 
-def zlib_Decompress___copy___impl(
+impl zlib_Decompress___copy___impl(
     receiver: ptr[PyObject], cls: ptr[PyObject]
 ) -> ptr[PyObject] {
     return copy_stream(receiver, cls, False);
 }
 
-def zlib_Decompress___deepcopy___impl(
+impl zlib_Decompress___deepcopy___impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], memo: ptr[PyObject]
 ) -> ptr[PyObject] {
     return copy_stream(receiver, cls, False);
 }
 
-def zlib_Decompress_flush_impl(
+impl zlib_Decompress_flush_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], length: i64
 ) -> ptr[PyObject] {
     stream = stream_of(receiver, Decompress_token);
@@ -954,42 +1124,28 @@ def zlib_Decompress_flush_impl(
     return result;
 }
 
-# ZlibDecompressor: a single-object stream with its own input buffer.
-obj ZlibDecompressorState(NativeState) {
-    has zst: Pinned[z_stream],
-        zdict: ptr[PyObject] = NULL,
-        lock: ptr = ptr(),
-        unused_data: ptr[PyObject] = NULL,
-        input_buffer: ptr = ptr(),
-        input_buffer_size: i64 = 0,
-        avail_in_real: i64 = 0,
-        is_initialised: bool = False,
-        eof: bool = False,
-        needs_input: bool = True;
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return visit_reference(self.zdict, visitor, context);
-    }
-
-    def clear {
-        jacpy_release(self.zdict);
-        self.zdict = NULL;
-    }
-
-    def drop {
-        if self.lock {
-            PyThread_free_lock(self.lock);
-        }
-        if self.is_initialised {
-            inflateEnd(&mut self.zst);
-        }
-        PyMem_Free(self.input_buffer);
-        jacpy_release(self.unused_data);
-        jacpy_release(self.zdict);
-    }
+impl ZlibDecompressorState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return visit_reference(self.zdict, visitor, context);
 }
 
-def:priv decompressor_of(instance: ptr[PyObject]) -> ZlibDecompressorState | None {
+impl ZlibDecompressorState.clear {
+    jacpy_release(self.zdict);
+    self.zdict = NULL;
+}
+
+impl ZlibDecompressorState.drop {
+    if self.lock {
+        PyThread_free_lock(self.lock);
+    }
+    if self.is_initialised {
+        inflateEnd(&mut self.zst);
+    }
+    PyMem_Free(self.input_buffer);
+    jacpy_release(self.unused_data);
+    jacpy_release(self.zdict);
+}
+
+impl decompressor_of(instance: ptr[PyObject]) -> ZlibDecompressorState | None {
     if jacpy_binding_native_present(instance, ZlibDecompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, ZlibDecompressor_token.handle);
         if isinstance(state, ZlibDecompressorState) {
@@ -1000,18 +1156,14 @@ def:priv decompressor_of(instance: ptr[PyObject]) -> ZlibDecompressorState | Non
     return None;
 }
 
-# tp_new: _ZlibDecompressor(wbits=15, zdict=b'').
-# ZlibDecompressor_members[]: eof and needs_input (Py_T_BOOL) and unused_data
-# (Py_T_OBJECT_EX) read the record, which mirrors the state after every change
-# and holds unused_data borrowed.
-def mirror_decompressor(instance: ptr[PyObject], state: ZlibDecompressorState) {
+impl mirror_decompressor(instance: ptr[PyObject], state: ZlibDecompressorState) {
     record = jacpy_binding_record(instance, ZlibDecompressor_token.handle);
     record_set_byte(record, 0, 1 if state.eof else 0);
     record_set_byte(record, 1, 1 if state.needs_input else 0);
     record_set_object(record, 8, state.unused_data);
 }
 
-def zlib_decompressor_new(
+impl zlib_decompressor_new(
     cls: ptr[PyObject], wbits: i32, zdict: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = PyType_GetModule(cls);
@@ -1065,9 +1217,7 @@ def zlib_decompressor_new(
     return NULL;
 }
 
-# arrange_output_buffer_with_maximum(): one growable bytes result. Returns the
-# (possibly reallocated) result and its length; -1 on failure, -2 at the limit.
-def:priv arrange_output(
+impl arrange_output(
     state: ZlibDecompressorState, result: ptr[PyObject], length: i64, limit: i64
 ) -> tuple[ptr[PyObject], i64] {
     occupied: i64 = 0;
@@ -1096,7 +1246,7 @@ def:priv arrange_output(
     return (current, length);
 }
 
-def:priv decompress_buf(
+impl decompress_buf(
     state: ZlibDecompressorState, module: ptr[PyObject], max_length: i64
 ) -> ptr[PyObject] {
     result = NULL;
@@ -1162,7 +1312,7 @@ def:priv decompress_buf(
     return result;
 }
 
-def:priv decompress_input(
+impl decompress_input(
     state: ZlibDecompressorState,
     module: ptr[PyObject],
     data: ptr,
@@ -1247,7 +1397,7 @@ def:priv decompress_input(
     return result;
 }
 
-def zlib_ZlibDecompressor_decompress_impl(
+impl zlib_ZlibDecompressor_decompress_impl(
     receiver: ptr[PyObject], data: BufferArgument, max_length: i64
 ) -> ptr[PyObject] {
     state = decompressor_of(receiver);
@@ -1277,7 +1427,7 @@ def zlib_ZlibDecompressor_decompress_impl(
     return result;
 }
 
-def zlib_adler32_impl(
+impl zlib_adler32_impl(
     module: ptr[PyObject], data: BufferArgument, value_: u32
 ) -> ptr[PyObject] {
     checksum = u64(value_);
@@ -1296,7 +1446,7 @@ def zlib_adler32_impl(
     return PyLong_FromUnsignedLong(checksum & u64(0xFFFFFFFF));
 }
 
-def zlib_crc32_impl(module: ptr[PyObject], data: BufferArgument, value_: u32) -> u32 {
+impl zlib_crc32_impl(module: ptr[PyObject], data: BufferArgument, value_: u32) -> u32 {
     checksum = u64(value_);
     position = data.address();
     remains = data.size();
@@ -1313,6 +1463,6 @@ def zlib_crc32_impl(module: ptr[PyObject], data: BufferArgument, value_: u32) ->
     return u32(checksum & u64(0xFFFFFFFF));
 }
 
-def runtime_version -> ptr[PyObject] {
+impl runtime_version -> ptr[PyObject] {
     return jacpy_fs_text(zlibVersion());
 }

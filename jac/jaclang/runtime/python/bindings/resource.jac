@@ -1,8 +1,16 @@
-"""The resource module: generated clinic tables, struct_rusage and the constants."""
-
 glob:priv INTERNAL: list[str] = ["RLIM_INFINITY", "RLIM_NLIMITS"];
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+def:priv methods -> list[MethodDefinition];
+
+glob:priv definition = ModuleDefinition(
+         "resource", "", methods(), ModuleHooks(execute=execute), 1
+     );
+
+def:pub PyInit_resource -> ptr[PyObject];
+
+impl execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" or len(CONSTANTS) == 0 {
         object_error(
             PyExc_ImportError,
@@ -33,7 +41,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         else i32(-1);
 }
 
-def:priv methods -> list[MethodDefinition] {
+impl methods -> list[MethodDefinition] {
     return [
         method
         for method in module_methods
@@ -41,10 +49,6 @@ def:priv methods -> list[MethodDefinition] {
     ];
 }
 
-glob:priv definition = ModuleDefinition(
-         "resource", "", methods(), ModuleHooks(execute=execute), 1
-     );
-
-def:pub PyInit_resource -> ptr[PyObject] {
+impl PyInit_resource -> ptr[PyObject] {
     return definition.initialize();
 }

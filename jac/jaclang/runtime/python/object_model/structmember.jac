@@ -25,7 +25,8 @@ import from c {
     def PyMember_GetOne(obj_addr: ptr[u8], l: ptr[PyMemberDef]) -> ptr[PyObject] {
         if (l.view(1)[0].flags & Py_RELATIVE_OFFSET) != 0 {
             PyErr_SetString(
-                PyExc_SystemError, ptr[u8]("PyMember_GetOne used with Py_RELATIVE_OFFSET")
+                PyExc_SystemError,
+                ptr[u8]("PyMember_GetOne used with Py_RELATIVE_OFFSET")
             );
             return NULL;
         }
@@ -96,7 +97,8 @@ import from c {
     ) -> i32 {
         if (l.view(1)[0].flags & Py_RELATIVE_OFFSET) != 0 {
             PyErr_SetString(
-                PyExc_SystemError, ptr[u8]("PyMember_SetOne used with Py_RELATIVE_OFFSET")
+                PyExc_SystemError,
+                ptr[u8]("PyMember_SetOne used with Py_RELATIVE_OFFSET")
             );
             return -1;
         }
@@ -107,12 +109,16 @@ import from c {
             return -1;
         }
         if not v and kind != Py_T_OBJECT_EX and kind != _Py_T_OBJECT {
-            PyErr_SetString(PyExc_TypeError, ptr[u8]("can't delete numeric/char attribute"));
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("can't delete numeric/char attribute")
+            );
             return -1;
         }
         if kind == Py_T_BOOL {
             if not bool_check(v) {
-                PyErr_SetString(PyExc_TypeError, ptr[u8]("attribute value type must be bool"));
+                PyErr_SetString(
+                    PyExc_TypeError, ptr[u8]("attribute value type must be bool")
+                );
                 return -1;
             }
             if v == py_true() {
@@ -127,7 +133,9 @@ import from c {
             }
             field.view(1)[0] = u8.wrap(long_val);
             if long_val > CHAR_MAX or long_val < CHAR_MIN {
-                if PyErr_WarnEx(PyExc_RuntimeWarning, ptr[u8]("Truncation of value to char"), 1)
+                if PyErr_WarnEx(
+                    PyExc_RuntimeWarning, ptr[u8]("Truncation of value to char"), 1
+                )
                     < 0 {
                     return -1;
                 }
@@ -140,7 +148,9 @@ import from c {
             field.view(1)[0] = u8.wrap(long_val);
             if long_val > UCHAR_MAX or long_val < 0 {
                 if PyErr_WarnEx(
-                    PyExc_RuntimeWarning, ptr[u8]("Truncation of value to unsigned char"), 1
+                    PyExc_RuntimeWarning,
+                    ptr[u8]("Truncation of value to unsigned char"),
+                    1
                 )
                     < 0 {
                     return -1;
@@ -153,7 +163,9 @@ import from c {
             }
             ptr[i16](field).view(1)[0] = i16.wrap(long_val);
             if long_val > SHRT_MAX or long_val < SHRT_MIN {
-                if PyErr_WarnEx(PyExc_RuntimeWarning, ptr[u8]("Truncation of value to short"), 1)
+                if PyErr_WarnEx(
+                    PyExc_RuntimeWarning, ptr[u8]("Truncation of value to short"), 1
+                )
                     < 0 {
                     return -1;
                 }
@@ -166,7 +178,9 @@ import from c {
             ptr[u16](field).view(1)[0] = u16.wrap(long_val);
             if long_val > USHRT_MAX or long_val < 0 {
                 if PyErr_WarnEx(
-                    PyExc_RuntimeWarning, ptr[u8]("Truncation of value to unsigned short"), 1
+                    PyExc_RuntimeWarning,
+                    ptr[u8]("Truncation of value to unsigned short"),
+                    1
                 )
                     < 0 {
                     return -1;
@@ -179,7 +193,9 @@ import from c {
             }
             ptr[i32](field).view(1)[0] = i32.wrap(long_val);
             if long_val > INT_MAX or long_val < INT_MIN {
-                if PyErr_WarnEx(PyExc_RuntimeWarning, ptr[u8]("Truncation of value to int"), 1)
+                if PyErr_WarnEx(
+                    PyExc_RuntimeWarning, ptr[u8]("Truncation of value to int"), 1
+                )
                     < 0 {
                     return -1;
                 }
@@ -208,7 +224,9 @@ import from c {
                 ptr[u32](field).view(1)[0] = u32.wrap(ulong_val);
                 if ulong_val > UINT_MAX {
                     if PyErr_WarnEx(
-                        PyExc_RuntimeWarning, ptr[u8]("Truncation of value to unsigned int"), 1
+                        PyExc_RuntimeWarning,
+                        ptr[u8]("Truncation of value to unsigned int"),
+                        1
                     )
                         < 0 {
                         return -1;
@@ -316,7 +334,9 @@ import from c {
             }
         } else {
             PyErr_Format(
-                PyExc_SystemError, ptr[u8]("bad memberdescr type for %s"), l.view(1)[0].name
+                PyExc_SystemError,
+                ptr[u8]("bad memberdescr type for %s"),
+                l.view(1)[0].name
             );
             return -1;
         }

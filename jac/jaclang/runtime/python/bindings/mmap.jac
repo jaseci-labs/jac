@@ -1,5 +1,3 @@
-"""The mmap module: the mmap type with its buffer, sequence and mapping protocols."""
-
 glob:priv INTERNAL: list[str] = [
          "_SC_PAGESIZE",
          "MS_SYNC",
@@ -12,26 +10,14 @@ glob:priv INTERNAL: list[str] = [
          ("ACCESS_WRITE", 2),
          ("ACCESS_COPY", 3)
      ],
-     # mmap_object_methods[]: __sizeof__ and _protect are Windows-only.
      WINDOWS_ONLY: list[str] = ["__sizeof__", "_protect"],
      MMAP_DOC: str = "Windows: mmap(fileno, length[, tagname[, access[, offset]]])\n\nMaps length bytes from the file specified by the file handle fileno,\nand returns a mmap object.  If length is larger than the current size\nof the file, the file is extended to contain length bytes.  If length\nis 0, the maximum length of the map is the current size of the file,\nexcept that if the file is empty Windows raises an exception (you cannot\ncreate an empty mapping on Windows).\n\nUnix: mmap(fileno, length[, flags[, prot[, access[, offset[, trackfd]]]]])\n\nMaps length bytes from the file specified by the file descriptor fileno,\nand returns a mmap object.  If length is 0, the maximum length of the map\nwill be the current size of the file when mmap is called.\nflags specifies the nature of the mapping. MAP_PRIVATE creates a\nprivate copy-on-write mapping, so changes to the contents of the mmap\nobject will be private to this process, and MAP_SHARED creates a mapping\nthat's shared with all other processes mapping the same areas of the file.\nThe default value is MAP_SHARED.\n\nTo map anonymous memory, pass -1 as the fileno (both versions).";
 
-def:priv mmap_dealloc(instance: ptr[PyObject]) {
-    mmap_release(instance);
-    dispose_payload(instance, mmap_token.handle);
-}
+def:priv mmap_dealloc(instance: ptr[PyObject]);
 
-def:priv mmap_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, mmap_token.handle, visitor, context);
-}
+def:priv mmap_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv methods -> list[MethodDefinition] {
-    return [
-        method
-        for method in mmap_methods
-        if method.name not in WINDOWS_ONLY
-    ];
-}
+def:priv methods -> list[MethodDefinition];
 
 glob:priv mmap_type = TypeDefinition(
          "mmap.mmap",
@@ -57,8 +43,34 @@ glob:priv mmap_type = TypeDefinition(
          generic_getattr=True
      );
 
-# The MADV_* constants, or all the others.
-def:priv add_constants(module: ptr[PyObject], advice: bool) -> bool {
+def:priv add_constants(module: ptr[PyObject], advice: bool) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "mmap", "", [], ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit_mmap -> ptr[PyObject];
+
+impl mmap_dealloc(instance: ptr[PyObject]) {
+    mmap_release(instance);
+    dispose_payload(instance, mmap_token.handle);
+}
+
+impl mmap_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, mmap_token.handle, visitor, context);
+}
+
+impl methods -> list[MethodDefinition] {
+    return [
+        method
+        for method in mmap_methods
+        if method.name not in WINDOWS_ONLY
+    ];
+}
+
+impl add_constants(module: ptr[PyObject], advice: bool) -> bool {
     for (name, value) in CONSTANTS {
         if name in INTERNAL or name.startswith("MADV_") != advice {
             continue;
@@ -70,7 +82,7 @@ def:priv add_constants(module: ptr[PyObject], advice: bool) -> bool {
     return True;
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
             PyExc_ImportError, "mmap has no mmap_constants for this target platform"
@@ -84,7 +96,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if not add_owned(module, "mmap", mmap_type.create(module)) {
         return i32(-1);
     }
-    # PROT_* and MAP_*, the page size, the access modes, then MADV_*.
+
     if not add_constants(module, False) {
         return i32(-1);
     }
@@ -104,10 +116,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0) if add_constants(module, True) else i32(-1);
 }
 
-glob:priv definition = ModuleDefinition(
-         "mmap", "", [], ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit_mmap -> ptr[PyObject] {
+impl PyInit_mmap -> ptr[PyObject] {
     return definition.initialize();
 }

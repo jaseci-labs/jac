@@ -1668,7 +1668,9 @@ impl update_bases(
             return NULL;
         }
         if not tuple_check(new_base) {
-            PyErr_SetString(PyExc_TypeError, ptr[u8]("__mro_entries__ must return a tuple"));
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("__mro_entries__ must return a tuple")
+            );
             object_decref(new_base);
             object_xdecref(new_bases);
             return NULL;
@@ -1724,17 +1726,23 @@ impl builtin___build_class__(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if nargs < 2 {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("__build_class__: not enough arguments"));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__build_class__: not enough arguments")
+        );
         return NULL;
     }
     func = arg_at(args, 0);
     if not object_is_type(func, ptr[PyTypeObject](addressof(PyFunction_Type))) {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("__build_class__: func must be a function"));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__build_class__: func must be a function")
+        );
         return NULL;
     }
     name = arg_at(args, 1);
     if not unicode_check(name) {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("__build_class__: name is not a string"));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("__build_class__: name is not a string")
+        );
         return NULL;
     }
     orig_bases = _PyTuple_FromArray(args + 2, nargs - 2);
@@ -1836,8 +1844,10 @@ impl builtin___build_class__(
                 if not cell_cls {
                     PyErr_Format(
                         PyExc_RuntimeError,
-                        ptr[u8]("__class__ not set defining %.200R as %.200R. "
-                        "Was __classcell__ propagated to type.__new__?"),
+                        ptr[u8](
+                            "__class__ not set defining %.200R as %.200R. "
+                            "Was __classcell__ propagated to type.__new__?"
+                        ),
                         name,
                         cls
                     );
@@ -2136,7 +2146,10 @@ impl filter_next(self_: ptr[PyObject]) -> ptr[PyObject] {
 impl filter_reduce(self_: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     lz = ptr[filterobject](self_);
     return Py_BuildValue(
-        ptr[u8]("O(OO)"), ptr[PyObject](object_type(self_)), lz.view(1)[0].func, lz.view(1)[0].it
+        ptr[u8]("O(OO)"),
+        ptr[PyObject](object_type(self_)),
+        lz.view(1)[0].func,
+        lz.view(1)[0].it
     );
 }
 
@@ -2158,7 +2171,9 @@ impl builtin_format(
     if nargs >= 2 {
         spec = arg_at(args, 1);
         if not unicode_check(spec) {
-            _PyArg_BadArgument(ptr[u8]("format"), ptr[u8]("argument 2"), ptr[u8]("str"), spec);
+            _PyArg_BadArgument(
+                ptr[u8]("format"), ptr[u8]("argument 2"), ptr[u8]("str"), spec
+            );
             return NULL;
         }
         format_spec = spec;
@@ -2234,11 +2249,14 @@ impl builtin_compile_impl(
         if (flags & PyCF_ONLY_AST) != 0 {
             PyErr_SetString(
                 PyExc_ValueError,
-                ptr[u8]("compile() mode must be 'exec', 'eval', 'single' or 'func_type'")
+                ptr[u8](
+                    "compile() mode must be 'exec', 'eval', 'single' or 'func_type'"
+                )
             );
         } else {
             PyErr_SetString(
-                PyExc_ValueError, ptr[u8]("compile() mode must be 'exec', 'eval' or 'single'")
+                PyExc_ValueError,
+                ptr[u8]("compile() mode must be 'exec', 'eval' or 'single'")
             );
         }
         return NULL;
@@ -2285,7 +2303,9 @@ impl builtin_compile(
     }
     mode_obj = arg_at(fast, 2);
     if not unicode_check(mode_obj) {
-        _PyArg_BadArgument(ptr[u8]("compile"), ptr[u8]("argument 'mode'"), ptr[u8]("str"), mode_obj);
+        _PyArg_BadArgument(
+            ptr[u8]("compile"), ptr[u8]("argument 'mode'"), ptr[u8]("str"), mode_obj
+        );
         return compile_done(filename_slot, NULL);
     }
     mode_length: i64 = 0;
@@ -2465,7 +2485,9 @@ impl builtin_eval_impl(
             if not exception_raised(tstate) {
                 PyErr_SetString(
                     PyExc_TypeError,
-                    ptr[u8]("eval must be given globals and locals when called without a frame")
+                    ptr[u8](
+                        "eval must be given globals and locals when called without a frame"
+                    )
                 );
             }
             return NULL;
@@ -2558,7 +2580,8 @@ impl exec_in(
         if num_free == 0 {
             if closure {
                 PyErr_SetString(
-                    PyExc_TypeError, ptr[u8]("cannot use a closure with this code object")
+                    PyExc_TypeError,
+                    ptr[u8]("cannot use a closure with this code object")
                 );
                 return NULL;
             }
@@ -2608,7 +2631,8 @@ impl exec_in(
     }
     if closure {
         PyErr_SetString(
-            PyExc_TypeError, ptr[u8]("closure can only be used when source is a code object")
+            PyExc_TypeError,
+            ptr[u8]("closure can only be used when source is a code object")
         );
         return NULL;
     }
@@ -2658,7 +2682,9 @@ impl builtin_exec_impl(
         globals = _PyEval_GetGlobalsFromRunningMain(tstate);
         if not globals {
             if not exception_raised(tstate) {
-                PyErr_SetString(PyExc_SystemError, ptr[u8]("globals and locals cannot be NULL"));
+                PyErr_SetString(
+                    PyExc_SystemError, ptr[u8]("globals and locals cannot be NULL")
+                );
             }
             return NULL;
         }
@@ -2823,7 +2849,9 @@ impl map_new(
     }
     numargs = PyTuple_Size(args);
     if numargs < 2 {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("map() must have at least two arguments."));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("map() must have at least two arguments.")
+        );
         return NULL;
     }
     iters = PyTuple_New(numargs - 1);
@@ -2859,7 +2887,9 @@ impl map_vectorcall(
         return _PyObject_MakeTpCall(thread_state(), type, args, nargs, kwnames);
     }
     if nargs < 2 {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("map() must have at least two arguments."));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("map() must have at least two arguments.")
+        );
         return NULL;
     }
     iters = PyTuple_New(nargs - 1);
@@ -3000,7 +3030,9 @@ impl map_reduce(self_: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
         tuple_set_item(args, i + 1, object_new_ref(tuple_get_item(iters, i)));
     }
     if lz.view(1)[0].strict != 0 {
-        return Py_BuildValue(ptr[u8]("ONO"), ptr[PyObject](object_type(self_)), args, py_true());
+        return Py_BuildValue(
+            ptr[u8]("ONO"), ptr[PyObject](object_type(self_)), args, py_true()
+        );
     }
     return Py_BuildValue(ptr[u8]("ON"), ptr[PyObject](object_type(self_)), args);
 }
@@ -3214,7 +3246,9 @@ impl min_max(
         parser = addressof(min_parser);
     }
     if nargs == 0 {
-        PyErr_Format(PyExc_TypeError, ptr[u8]("%s expected at least 1 argument, got 0"), name);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("%s expected at least 1 argument, got 0"), name
+        );
         return NULL;
     }
     keyfunc = NULL;
@@ -3230,7 +3264,9 @@ impl min_max(
     if positional and defaultval {
         PyErr_Format(
             PyExc_TypeError,
-            ptr[u8]("Cannot specify a default for %s() with multiple positional arguments"),
+            ptr[u8](
+                "Cannot specify a default for %s() with multiple positional arguments"
+            ),
             name
         );
         return NULL;
@@ -3299,7 +3335,9 @@ impl min_max(
         if defaultval {
             maxitem = object_new_ref(defaultval);
         } else {
-            PyErr_Format(PyExc_ValueError, ptr[u8]("%s() iterable argument is empty"), name);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("%s() iterable argument is empty"), name
+            );
         }
     } else {
         object_decref(maxval);
@@ -3736,7 +3774,8 @@ impl input_tty(
         promptstr = bytes_data(po);
         if i64(strlen(promptstr)) != object_size(po) {
             PyErr_SetString(
-                PyExc_ValueError, ptr[u8]("input: prompt string cannot contain null characters")
+                PyExc_ValueError,
+                ptr[u8]("input: prompt string cannot contain null characters")
             );
             return (
                 readline_errors(
@@ -4040,21 +4079,24 @@ impl builtin_sum_impl(
     } else {
         if unicode_check(result) {
             PyErr_SetString(
-                PyExc_TypeError, ptr[u8]("sum() can't sum strings [use ''.join(seq) instead]")
+                PyExc_TypeError,
+                ptr[u8]("sum() can't sum strings [use ''.join(seq) instead]")
             );
             object_decref(iter_obj);
             return NULL;
         }
         if bytes_check(result) {
             PyErr_SetString(
-                PyExc_TypeError, ptr[u8]("sum() can't sum bytes [use b''.join(seq) instead]")
+                PyExc_TypeError,
+                ptr[u8]("sum() can't sum bytes [use b''.join(seq) instead]")
             );
             object_decref(iter_obj);
             return NULL;
         }
         if bytearray_check(result) {
             PyErr_SetString(
-                PyExc_TypeError, ptr[u8]("sum() can't sum bytearray [use b''.join(seq) instead]")
+                PyExc_TypeError,
+                ptr[u8]("sum() can't sum bytearray [use b''.join(seq) instead]")
             );
             object_decref(iter_obj);
             return NULL;

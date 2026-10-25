@@ -443,7 +443,9 @@ import from c {
         return ptr[PyObject](context_new_empty());
     }  def PyContext_Copy(octx: ptr[PyObject]) -> ptr[PyObject] {
         if not context_check_exact(octx) {
-            PyErr_SetString(PyExc_TypeError, ptr[u8]("an instance of Context was expected"));
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("an instance of Context was expected")
+            );
             return NULL;
         }
         return ptr[PyObject](
@@ -466,18 +468,24 @@ import from c {
                 return i32(i);
             }
         }
-        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("no more context watcher IDs available"));
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("no more context watcher IDs available")
+        );
         return i32(-1);
     }  def PyContext_ClearWatcher(watcher_id: i32) -> i32 {
         interp = current_interp();
         if watcher_id < 0 or i64(watcher_id) >= CONTEXT_MAX_WATCHERS {
-            PyErr_Format(PyExc_ValueError, ptr[u8]("Invalid context watcher ID %d"), watcher_id);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("Invalid context watcher ID %d"), watcher_id
+            );
             return i32(-1);
         }
         slot = ptr[int](interp + PyInterpreterState_CONTEXT_WATCHERS) + i64(watcher_id);
         if slot.view(1)[0] == 0 {
             PyErr_Format(
-                PyExc_ValueError, ptr[u8]("No context watcher set for ID %d"), watcher_id
+                PyExc_ValueError,
+                ptr[u8]("No context watcher set for ID %d"),
+                watcher_id
             );
             return i32(-1);
         }
@@ -501,7 +509,9 @@ import from c {
         ovar: ptr[PyObject], dflt: ptr[PyObject], val: ptr[ptr[PyObject]]
     ) -> i32 {
         if not contextvar_check_exact(ovar) {
-            PyErr_SetString(PyExc_TypeError, ptr[u8]("an instance of ContextVar was expected"));
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("an instance of ContextVar was expected")
+            );
             return i32(-1);
         }
         (status, found) = contextvar_get(ovar, dflt);
@@ -511,7 +521,9 @@ import from c {
         return status;
     }  def PyContextVar_Set(ovar: ptr[PyObject], val: ptr[PyObject]) -> ptr[PyObject] {
         if not contextvar_check_exact(ovar) {
-            PyErr_SetString(PyExc_TypeError, ptr[u8]("an instance of ContextVar was expected"));
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("an instance of ContextVar was expected")
+            );
             return NULL;
         }
         var = contextvar_of(ovar);
@@ -533,22 +545,30 @@ import from c {
         return tok;
     }  def PyContextVar_Reset(ovar: ptr[PyObject], otok: ptr[PyObject]) -> i32 {
         if not contextvar_check_exact(ovar) {
-            PyErr_SetString(PyExc_TypeError, ptr[u8]("an instance of ContextVar was expected"));
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("an instance of ContextVar was expected")
+            );
             return i32(-1);
         }
         if not token_check_exact(otok) {
-            PyErr_SetString(PyExc_TypeError, ptr[u8]("an instance of Token was expected"));
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("an instance of Token was expected")
+            );
             return i32(-1);
         }
         var = contextvar_of(ovar);
         tok = token_of(otok);
         if tok.view(1)[0].tok_used != 0 {
-            PyErr_Format(PyExc_RuntimeError, ptr[u8]("%R has already been used once"), otok);
+            PyErr_Format(
+                PyExc_RuntimeError, ptr[u8]("%R has already been used once"), otok
+            );
             return i32(-1);
         }
         if var != tok.view(1)[0].tok_var {
             PyErr_Format(
-                PyExc_ValueError, ptr[u8]("%R was created by a different ContextVar"), otok
+                PyExc_ValueError,
+                ptr[u8]("%R was created by a different ContextVar"),
+                otok
             );
             return i32(-1);
         }
@@ -666,7 +686,9 @@ impl context_switched(ts: ptr[PyThreadState]) {
 
 impl _PyContext_Enter(ts: ptr[PyThreadState], octx: ptr[PyObject]) -> i32 {
     if not context_check_exact(octx) {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("an instance of Context was expected"));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("an instance of Context was expected")
+        );
         return i32(-1);
     }
     ctx = context_of(octx);
@@ -690,13 +712,17 @@ impl _PyContext_Enter(ts: ptr[PyThreadState], octx: ptr[PyObject]) -> i32 {
 
 impl _PyContext_Exit(ts: ptr[PyThreadState], octx: ptr[PyObject]) -> i32 {
     if not context_check_exact(octx) {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("an instance of Context was expected"));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("an instance of Context was expected")
+        );
         return i32(-1);
     }
     ctx = context_of(octx);
     if ctx.view(1)[0].ctx_entered == 0 {
         PyErr_Format(
-            PyExc_RuntimeError, ptr[u8]("cannot exit context: %R has not been entered"), octx
+            PyExc_RuntimeError,
+            ptr[u8]("cannot exit context: %R has not been entered"),
+            octx
         );
         return i32(-1);
     }
@@ -704,7 +730,9 @@ impl _PyContext_Exit(ts: ptr[PyThreadState], octx: ptr[PyObject]) -> i32 {
     if slot.view(1)[0] != octx {
         PyErr_SetString(
             PyExc_RuntimeError,
-            ptr[u8]("cannot exit context: thread state references a different context object")
+            ptr[u8](
+                "cannot exit context: thread state references a different context object"
+            )
         );
         return i32(-1);
     }
@@ -721,7 +749,9 @@ impl contextvar_get(
     ovar: ptr[PyObject], dflt: ptr[PyObject]
 ) -> tuple[i32, ptr[PyObject]] {
     if not contextvar_check_exact(ovar) {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("an instance of ContextVar was expected"));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("an instance of ContextVar was expected")
+        );
         return (i32(-1), NULL);
     }
     var = contextvar_of(ovar);
@@ -810,7 +840,9 @@ impl context_get -> ptr[PyContext] {
 
 impl context_check_key_type(key: ptr[PyObject]) -> i32 {
     if not contextvar_check_exact(key) {
-        PyErr_Format(PyExc_TypeError, ptr[u8]("a ContextVar key was expected, got %R"), key);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("a ContextVar key was expected, got %R"), key
+        );
         return i32(-1);
     }
     return i32(0);
@@ -820,7 +852,9 @@ impl context_tp_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     if PyTuple_Size(args) != 0 or (kwds and PyDict_Size(kwds) != 0) {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("Context() does not accept any arguments"));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("Context() does not accept any arguments")
+        );
         return NULL;
     }
     return PyContext_New();
@@ -1065,7 +1099,9 @@ impl contextvar_generate_hash(addr: ptr, name: ptr[PyObject]) -> i64 {
 
 impl contextvar_new(name: ptr[PyObject], dflt: ptr[PyObject]) -> ptr[PyObject] {
     if not unicode_check(name) {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("context variable name must be a str"));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("context variable name must be a str")
+        );
         return NULL;
     }
     op = _PyObject_GC_New(ptr[PyObject](addressof(PyContextVar_Type)));
@@ -1218,7 +1254,9 @@ impl _contextvars_ContextVar_reset_impl(
     self_: ptr[PyObject], token: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not token_check_exact(token) {
-        PyErr_Format(PyExc_TypeError, ptr[u8]("expected an instance of Token, got %R"), token);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("expected an instance of Token, got %R"), token
+        );
         return NULL;
     }
     if PyContextVar_Reset(self_, token) != 0 {
@@ -1236,7 +1274,9 @@ impl _contextvars_ContextVar_reset(
 impl token_tp_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
-    PyErr_SetString(PyExc_RuntimeError, ptr[u8]("Tokens can only be created by ContextVars"));
+    PyErr_SetString(
+        PyExc_RuntimeError, ptr[u8]("Tokens can only be created by ContextVars")
+    );
     return NULL;
 }
 

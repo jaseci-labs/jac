@@ -388,7 +388,9 @@ impl get_integer(
             break;
         }
         if accumulator > (PY_SSIZE_T_MAX - digitval) // 10 {
-            PyErr_Format(PyExc_ValueError, ptr[u8]("Too many decimal digits in format string"));
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("Too many decimal digits in format string")
+            );
             return (i32(-1), pos, result_in);
         }
         accumulator = accumulator * 10 + digitval;
@@ -552,7 +554,9 @@ impl parse_internal_render_format_spec(
         }
 
         if consumed == 0 {
-            PyErr_Format(PyExc_ValueError, ptr[u8]("Format specifier missing precision"));
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("Format specifier missing precision")
+            );
             return 0;
         }
     }
@@ -1042,7 +1046,8 @@ impl format_string_internal(
     if fmt.sign != u32(0) {
         if fmt.sign == u32(32) {
             PyErr_SetString(
-                PyExc_ValueError, ptr[u8]("Space not allowed in string format specifier")
+                PyExc_ValueError,
+                ptr[u8]("Space not allowed in string format specifier")
             );
         } else {
             PyErr_SetString(
@@ -1070,7 +1075,8 @@ impl format_string_internal(
 
     if fmt.align == u32(61) {
         PyErr_SetString(
-            PyExc_ValueError, ptr[u8]("'=' alignment not allowed in string format specifier")
+            PyExc_ValueError,
+            ptr[u8]("'=' alignment not allowed in string format specifier")
         );
         return -1;
     }
@@ -1139,14 +1145,17 @@ impl format_long_internal(
 
     if fmt.precision != -1 {
         PyErr_SetString(
-            PyExc_ValueError, ptr[u8]("Precision not allowed in integer format specifier")
+            PyExc_ValueError,
+            ptr[u8]("Precision not allowed in integer format specifier")
         );
         return number_done(tmp, locale, -1);
     }
     if fmt.no_neg_0 != 0 {
         PyErr_SetString(
             PyExc_ValueError,
-            ptr[u8]("Negative zero coercion (z) not allowed in integer format specifier")
+            ptr[u8](
+                "Negative zero coercion (z) not allowed in integer format specifier"
+            )
         );
         return number_done(tmp, locale, -1);
     }
@@ -1154,14 +1163,17 @@ impl format_long_internal(
     if fmt.type_ == u32(99) {
         if fmt.sign != u32(0) {
             PyErr_SetString(
-                PyExc_ValueError, ptr[u8]("Sign not allowed with integer format specifier 'c'")
+                PyExc_ValueError,
+                ptr[u8]("Sign not allowed with integer format specifier 'c'")
             );
             return number_done(tmp, locale, -1);
         }
         if fmt.alternate != 0 {
             PyErr_SetString(
                 PyExc_ValueError,
-                ptr[u8]("Alternate form (#) not allowed with integer format specifier 'c'")
+                ptr[u8](
+                    "Alternate form (#) not allowed with integer format specifier 'c'"
+                )
             );
             return number_done(tmp, locale, -1);
         }
@@ -1171,7 +1183,9 @@ impl format_long_internal(
             return number_done(tmp, locale, -1);
         }
         if x < 0 or x > 0x10ffff {
-            PyErr_SetString(PyExc_OverflowError, ptr[u8]("%c arg not in range(0x110000)"));
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("%c arg not in range(0x110000)")
+            );
             return number_done(tmp, locale, -1);
         }
         tmp = PyUnicode_FromOrdinal(i32(x));
@@ -1457,7 +1471,8 @@ impl format_complex_internal(
 
     if fmt.fill_char == u32(48) {
         PyErr_SetString(
-            PyExc_ValueError, ptr[u8]("Zero padding is not allowed in complex format specifier")
+            PyExc_ValueError,
+            ptr[u8]("Zero padding is not allowed in complex format specifier")
         );
         return complex_done(re_buf, im_buf, re_unicode_tmp, im_unicode_tmp, locale, -1);
     }

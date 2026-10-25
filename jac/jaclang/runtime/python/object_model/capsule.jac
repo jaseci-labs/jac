@@ -1,14 +1,3 @@
-"""Capsules, which wrap a C pointer for passing between extension modules:
-Objects/capsule.c in native Jac.
-
-`PyCapsule_Type` is C data Jac defines under its C name, and the capsule API
-(`PyCapsule_New`, `PyCapsule_GetPointer`, `PyCapsule_Import`, ...) and
-`_PyCapsule_SetTraverse` are C functions under theirs. The object layout,
-`PyCapsule`, comes from layouts.jac; its destructor, traverse and clear
-callbacks are C function pointers C code stores and Jac calls. See
-../LICENSE.cpython.
-"""
-
 import from c {
     def strcmp(left: ptr[u8], right: ptr[u8]) -> i32;  def strlen(
         text: ptr[u8]
@@ -41,34 +30,13 @@ import from c {
          );
 }
 
-"""The capsule layout behind a handle."""
-def capsule_of(op: ptr[PyObject]) -> ptr[PyCapsule] {
-    return ptr[PyCapsule](op);
-}
+def capsule_of(op: ptr[PyObject]) -> ptr[PyCapsule];
 
-"""PyCapsule_CheckExact."""
-def capsule_check_exact(op: ptr[PyObject]) -> bool {
-    return object_is_type(op, addressof(PyCapsule_Type));
-}
+def capsule_check_exact(op: ptr[PyObject]) -> bool;
 
-"""is_legal_capsule: whether `op` is a capsule holding a pointer; otherwise
-ValueError "<caller> called with invalid PyCapsule object"."""
-def is_legal_capsule(op: ptr[PyObject], invalid_capsule: ptr[u8]) -> bool {
-    if op and capsule_check_exact(op) and capsule_of(op).view(1)[0].pointer {
-        return True;
-    }
-    PyErr_SetString(PyExc_ValueError, invalid_capsule);
-    return False;
-}
+def is_legal_capsule(op: ptr[PyObject], invalid_capsule: ptr[u8]) -> bool;
 
-"""Two capsule names match when both are NULL or their text is equal."""
-def name_matches(name1: ptr[u8], name2: ptr[u8]) -> bool {
-    # if either is NULL, they're only the same if they're both NULL.
-    if not name1 or not name2 {
-        return name1 == name2;
-    }
-    return strcmp(name1, name2) == 0;
-}
+def name_matches(name1: ptr[u8], name2: ptr[u8]) -> bool;
 
 import from c {
     def PyCapsule_New(pointer: ptr, name: ptr[u8], destructor: ptr) -> ptr[PyObject] {
@@ -89,7 +57,7 @@ import from c {
         capsule.view(1)[0].destructor = int(destructor);
         capsule.view(1)[0].traverse_func = 0;
         capsule.view(1)[0].clear_func = 0;
-        # Only track the object by the GC when _PyCapsule_SetTraverse() is called
+
         return op;
     }  def PyCapsule_IsValid(op: ptr[PyObject], name: ptr[u8]) -> i32 {
         return i32(
@@ -232,7 +200,6 @@ import from c {
             trace = dot;
         }
         if module {
-            # compare attribute name to module.name by hand
             if PyCapsule_IsValid(module, name) != 0 {
                 return_value = capsule_of(module).view(1)[0].pointer;
             } else {
@@ -249,7 +216,38 @@ import from c {
     }
 }
 
-def capsule_dealloc(op: ptr[PyObject]) {
+def capsule_dealloc(op: ptr[PyObject]);
+
+def capsule_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def capsule_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def capsule_clear(op: ptr[PyObject]) -> i32;
+
+impl capsule_of(op: ptr[PyObject]) -> ptr[PyCapsule] {
+    return ptr[PyCapsule](op);
+}
+
+impl capsule_check_exact(op: ptr[PyObject]) -> bool {
+    return object_is_type(op, addressof(PyCapsule_Type));
+}
+
+impl is_legal_capsule(op: ptr[PyObject], invalid_capsule: ptr[u8]) -> bool {
+    if op and capsule_check_exact(op) and capsule_of(op).view(1)[0].pointer {
+        return True;
+    }
+    PyErr_SetString(PyExc_ValueError, invalid_capsule);
+    return False;
+}
+
+impl name_matches(name1: ptr[u8], name2: ptr[u8]) -> bool {
+    if not name1 or not name2 {
+        return name1 == name2;
+    }
+    return strcmp(name1, name2) == 0;
+}
+
+impl capsule_dealloc(op: ptr[PyObject]) {
     capsule = capsule_of(op);
     object_gc_untrack(op);
     if int(capsule.view(1)[0].destructor) != 0 {
@@ -258,7 +256,7 @@ def capsule_dealloc(op: ptr[PyObject]) {
     PyObject_GC_Del(op);
 }
 
-def capsule_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl capsule_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     capsule = capsule_of(op);
     quote = ptr[u8]("");
     name = ptr[u8]("NULL");
@@ -271,10 +269,7 @@ def capsule_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def capsule_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
-    # Capsule object is only tracked by the GC
-    # if _PyCapsule_SetTraverse() is called, but
-    # this can still be manually triggered by gc.get_referents()
+impl capsule_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     capsule = capsule_of(op);
     if int(capsule.view(1)[0].traverse_func) != 0 {
         return capsule.view(1)[0].traverse_func(op, int(visitor), arg);
@@ -282,8 +277,6 @@ def capsule_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return i32(0);
 }
 
-def capsule_clear(op: ptr[PyObject]) -> i32 {
-    # Capsule object is only tracked by the GC
-    # if _PyCapsule_SetTraverse() is called
+impl capsule_clear(op: ptr[PyObject]) -> i32 {
     return capsule_of(op).view(1)[0].clear_func(op);
 }

@@ -1,15 +1,7 @@
-"""The unicodedata module: the UCD type, ucd_3_2_0 and the name capsule."""
+def:priv ucd_dealloc(instance: ptr[PyObject]);
 
-def:priv ucd_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, UCD_token.handle);
-}
+def:priv ucd_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv ucd_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, UCD_token.handle, visitor, context);
-}
-
-# The functions are both the module's and the UCD type's methods: for a
-# module function self is the module, for a method a UCD object.
 glob:priv ucd_type = TypeDefinition(
          "unicodedata.UCD",
          "",
@@ -27,31 +19,7 @@ glob:priv ucd_type = TypeDefinition(
          generic_getattr=True
      );
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
-    UCD_token.handle = ucd_type.handle;
-    if jacpy_module_add_string_text(module, "unidata_version", UNIDATA_VERSION) < 0 {
-        return i32(-1);
-    }
-    type_ = ucd_type.create(module);
-    if not type_ {
-        return i32(-1);
-    }
-    if PyModule_AddType(module, type_) < 0 {
-        jacpy_release(type_);
-        return i32(-1);
-    }
-    # Unicode database version 3.2.0 used by the IDNA encoding
-    v = new_previous_version(type_, addressof(ucd_3_2_0_version));
-    jacpy_release(type_);
-    if PyModule_Add(module, ptr[u8]("ucd_3_2_0"), v) < 0 {
-        return i32(-1);
-    }
-    # Export C API
-    if PyModule_Add(module, ptr[u8]("_ucnhash_CAPI"), unicodedata_create_capi()) < 0 {
-        return i32(-1);
-    }
-    return i32(0);
-}
+def:priv execute(module: ptr[PyObject]) -> i32;
 
 glob:priv definition = ModuleDefinition(
          "unicodedata",
@@ -69,6 +37,42 @@ glob:priv definition = ModuleDefinition(
          ModuleHooks(execute=execute)
      );
 
-def:pub PyInit_unicodedata -> ptr[PyObject] {
+def:pub PyInit_unicodedata -> ptr[PyObject];
+
+impl ucd_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, UCD_token.handle);
+}
+
+impl ucd_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, UCD_token.handle, visitor, context);
+}
+
+impl execute(module: ptr[PyObject]) -> i32 {
+    UCD_token.handle = ucd_type.handle;
+    if jacpy_module_add_string_text(module, "unidata_version", UNIDATA_VERSION) < 0 {
+        return i32(-1);
+    }
+    type_ = ucd_type.create(module);
+    if not type_ {
+        return i32(-1);
+    }
+    if PyModule_AddType(module, type_) < 0 {
+        jacpy_release(type_);
+        return i32(-1);
+    }
+
+    v = new_previous_version(type_, addressof(ucd_3_2_0_version));
+    jacpy_release(type_);
+    if PyModule_Add(module, ptr[u8]("ucd_3_2_0"), v) < 0 {
+        return i32(-1);
+    }
+
+    if PyModule_Add(module, ptr[u8]("_ucnhash_CAPI"), unicodedata_create_capi()) < 0 {
+        return i32(-1);
+    }
+    return i32(0);
+}
+
+impl PyInit_unicodedata -> ptr[PyObject] {
     return definition.initialize();
 }

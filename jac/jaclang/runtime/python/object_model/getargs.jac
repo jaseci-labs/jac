@@ -482,12 +482,14 @@ impl convertsimple(
             return (msgbuf, format, va);
         } elif ival < 0 {
             PyErr_SetString(
-                PyExc_OverflowError, ptr[u8]("unsigned byte integer is less than minimum")
+                PyExc_OverflowError,
+                ptr[u8]("unsigned byte integer is less than minimum")
             );
             return (msgbuf, format, va);
         } elif ival > UCHAR_MAX {
             PyErr_SetString(
-                PyExc_OverflowError, ptr[u8]("unsigned byte integer is greater than maximum")
+                PyExc_OverflowError,
+                ptr[u8]("unsigned byte integer is greater than maximum")
             );
             return (msgbuf, format, va);
         }
@@ -506,12 +508,14 @@ impl convertsimple(
             return (msgbuf, format, va);
         } elif ival < SHRT_MIN {
             PyErr_SetString(
-                PyExc_OverflowError, ptr[u8]("signed short integer is less than minimum")
+                PyExc_OverflowError,
+                ptr[u8]("signed short integer is less than minimum")
             );
             return (msgbuf, format, va);
         } elif ival > SHRT_MAX {
             PyErr_SetString(
-                PyExc_OverflowError, ptr[u8]("signed short integer is greater than maximum")
+                PyExc_OverflowError,
+                ptr[u8]("signed short integer is greater than maximum")
             );
             return (msgbuf, format, va);
         }
@@ -534,7 +538,9 @@ impl convertsimple(
             );
             return (msgbuf, format, va);
         } elif ival < i64(INT_MIN) {
-            PyErr_SetString(PyExc_OverflowError, ptr[u8]("signed integer is less than minimum"));
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("signed integer is less than minimum")
+            );
             return (msgbuf, format, va);
         }
         pi32.view(1)[0] = i32(ival);
@@ -792,7 +798,9 @@ impl convertsimple(
                     );
                 }
                 if i64(strlen(sarg)) != size {
-                    PyErr_SetString(PyExc_ValueError, ptr[u8]("embedded null character"));
+                    PyErr_SetString(
+                        PyExc_ValueError, ptr[u8]("embedded null character")
+                    );
                     return (msgbuf, format, va);
                 }
                 ps.view(1)[0] = sarg;
@@ -1378,7 +1386,9 @@ import from c {
 
                     PyErr_Format(
                         PyExc_TypeError,
-                        ptr[u8]("argument for %.200s%s given by name ('%U') and position (%d)"),
+                        ptr[u8](
+                            "argument for %.200s%s given by name ('%U') and position (%d)"
+                        ),
                         fname_or_function(fname),
                         fname_parens(fname),
                         keyword,
@@ -1450,7 +1460,8 @@ import from c {
     ) -> i32 {
         if not tuple_check(args) {
             PyErr_SetString(
-                PyExc_SystemError, ptr[u8]("PyArg_UnpackTuple() argument list is not a tuple")
+                PyExc_SystemError,
+                ptr[u8]("PyArg_UnpackTuple() argument list is not a tuple")
             );
             return 0;
         }
@@ -1477,7 +1488,9 @@ import from c {
         if dict_size(kwargs) == 0 {
             return 1;
         }
-        PyErr_Format(PyExc_TypeError, ptr[u8]("%.200s() takes no keyword arguments"), funcname);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("%.200s() takes no keyword arguments"), funcname
+        );
         return 0;
     }  def _PyArg_NoPositional(funcname: ptr[u8], args: ptr[PyObject]) -> i32 {
         if not args {
@@ -1501,7 +1514,9 @@ import from c {
         if object_size(kwnames) == 0 {
             return 1;
         }
-        PyErr_Format(PyExc_TypeError, ptr[u8]("%s() takes no keyword arguments"), funcname);
+        PyErr_Format(
+            PyExc_TypeError, ptr[u8]("%s() takes no keyword arguments"), funcname
+        );
         return 0;
     }  def _PyArg_Fini {
         slot = static_parsers_slot();
@@ -1789,7 +1804,9 @@ impl vgetargs1_impl(
         and tail != CH_BAR
         and tail != CH_COLON
         and tail != CH_SEMI {
-        PyErr_Format(PyExc_SystemError, ptr[u8]("bad format string: %.200s"), formatsave);
+        PyErr_Format(
+            PyExc_SystemError, ptr[u8]("bad format string: %.200s"), formatsave
+        );
         return cleanreturn(0, freelist);
     }
     return cleanreturn(1, freelist);
@@ -2097,7 +2114,9 @@ impl error_unexpected_keyword_arg(
                 if suggestion_keyword {
                     PyErr_Format(
                         PyExc_TypeError,
-                        ptr[u8]("%.200s%s got an unexpected keyword argument '%S'. Did you mean '%S'?"),
+                        ptr[u8](
+                            "%.200s%s got an unexpected keyword argument '%S'. Did you mean '%S'?"
+                        ),
                         fname_or_this(fname),
                         fname_parens(fname),
                         keyword,
@@ -2193,7 +2212,8 @@ impl vgetargskeywords(
         if char_at(f) == CH_BAR {
             if min != INT_MAX {
                 PyErr_SetString(
-                    PyExc_SystemError, ptr[u8]("Invalid format string (| specified twice)")
+                    PyExc_SystemError,
+                    ptr[u8]("Invalid format string (| specified twice)")
                 );
                 return cleanreturn(0, freelist);
             }
@@ -2209,14 +2229,17 @@ impl vgetargskeywords(
         if char_at(f) == CH_DOLLAR {
             if max != INT_MAX {
                 PyErr_SetString(
-                    PyExc_SystemError, ptr[u8]("Invalid format string ($ specified twice)")
+                    PyExc_SystemError,
+                    ptr[u8]("Invalid format string ($ specified twice)")
                 );
                 return cleanreturn(0, freelist);
             }
             max = i;
             f = f + 1;
             if max < pos {
-                PyErr_SetString(PyExc_SystemError, ptr[u8]("Empty parameter name after $"));
+                PyErr_SetString(
+                    PyExc_SystemError, ptr[u8]("Empty parameter name after $")
+                );
                 return cleanreturn(0, freelist);
             }
             if skipping {
@@ -2233,7 +2256,9 @@ impl vgetargskeywords(
                 } else {
                     PyErr_Format(
                         PyExc_TypeError,
-                        ptr[u8]("%.200s%s takes %s %d positional argument%s (%zd given)"),
+                        ptr[u8](
+                            "%.200s%s takes %s %d positional argument%s (%zd given)"
+                        ),
                         fname_or_function(fname),
                         fname_parens(fname),
                         ptr[u8]("at most") if min != INT_MAX else ptr[u8]("exactly"),
@@ -2332,7 +2357,9 @@ impl vgetargskeywords(
         and char_at(f) != CH_DOLLAR {
         PyErr_Format(
             PyExc_SystemError,
-            ptr[u8]("more argument specifiers than keyword list entries (remaining format:'%s')"),
+            ptr[u8](
+                "more argument specifiers than keyword list entries (remaining format:'%s')"
+            ),
             f
         );
         return cleanreturn(0, freelist);
@@ -2352,7 +2379,9 @@ impl vgetargskeywords(
 
                 PyErr_Format(
                     PyExc_TypeError,
-                    ptr[u8]("argument for %.200s%s given by name ('%s') and position (%d)"),
+                    ptr[u8](
+                        "argument for %.200s%s given by name ('%s') and position (%d)"
+                    ),
                     fname_or_function(fname),
                     fname_parens(fname),
                     (kwlist + k).view(1)[0],
@@ -2395,7 +2424,9 @@ impl vgetargskeywords(
                 if suggestion_keyword {
                     PyErr_Format(
                         PyExc_TypeError,
-                        ptr[u8]("%.200s%s got an unexpected keyword argument '%S'. Did you mean '%S'?"),
+                        ptr[u8](
+                            "%.200s%s got an unexpected keyword argument '%S'. Did you mean '%S'?"
+                        ),
                         fname_or_this(fname),
                         fname_parens(fname),
                         key,
@@ -2464,7 +2495,8 @@ impl parse_format(
         if char_at(f) == CH_BAR {
             if min != INT_MAX {
                 PyErr_SetString(
-                    PyExc_SystemError, ptr[u8]("Invalid format string (| specified twice)")
+                    PyExc_SystemError,
+                    ptr[u8]("Invalid format string (| specified twice)")
                 );
                 return (i32(-1), fname, custommsg, min, max);
             }
@@ -2480,12 +2512,15 @@ impl parse_format(
         if char_at(f) == CH_DOLLAR {
             if max != INT_MAX {
                 PyErr_SetString(
-                    PyExc_SystemError, ptr[u8]("Invalid format string ($ specified twice)")
+                    PyExc_SystemError,
+                    ptr[u8]("Invalid format string ($ specified twice)")
                 );
                 return (i32(-1), fname, custommsg, min, max);
             }
             if i < npos {
-                PyErr_SetString(PyExc_SystemError, ptr[u8]("Empty parameter name after $"));
+                PyErr_SetString(
+                    PyExc_SystemError, ptr[u8]("Empty parameter name after $")
+                );
                 return (i32(-1), fname, custommsg, min, max);
             }
             max = i;
@@ -2515,7 +2550,9 @@ impl parse_format(
         and char_at(f) != CH_DOLLAR {
         PyErr_Format(
             PyExc_SystemError,
-            ptr[u8]("more argument specifiers than keyword list entries (remaining format:'%s')"),
+            ptr[u8](
+                "more argument specifiers than keyword list entries (remaining format:'%s')"
+            ),
             f
         );
         return (i32(-1), fname, custommsg, min, max);
@@ -2810,7 +2847,9 @@ impl vgetargskeywordsfast_impl(
 
                 PyErr_Format(
                     PyExc_TypeError,
-                    ptr[u8]("argument for %.200s%s given by name ('%U') and position (%zd)"),
+                    ptr[u8](
+                        "argument for %.200s%s given by name ('%U') and position (%zd)"
+                    ),
                     fname_or_function(fname),
                     fname_parens(fname),
                     keyword,

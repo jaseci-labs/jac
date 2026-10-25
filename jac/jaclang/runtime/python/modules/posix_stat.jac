@@ -1,18 +1,7 @@
-"""The posix stat area: stat/lstat/fstat and os.stat_result, statvfs and
-os.statvfs_result, listdir, scandir and os.DirEntry.
-
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
-struct stat is the per-target `_Py_stat_struct` of stat_records.jac, filled
-by the C stat helpers (macOS x86_64 binds the $INODE64 stat and directory
-symbols); the fields only some targets have (st_flags, st_gen,
-st_birthtime) and the statvfs record live in posix_stat_platform.<os>.jac.
-"""
-
 import from c { def strlen(text: ptr[u8]) -> u64;  def close(fd: i32) -> i32;  }
 
 glob STAT_RESULT_DOC: str = "stat_result: Result from stat, fstat, or lstat.\n\nThis object may be accessed either as a tuple of\n  (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime)\nor via the attributes st_mode, st_ino, st_dev, st_nlink, and so on.\n\nPosix/windows: If your platform supports st_blksize, st_blocks, st_rdev,\nor st_flags, they are available as attributes only.\n\nSee os.stat for more information.",
      STATVFS_RESULT_DOC: str = "statvfs_result: Result from statvfs or fstatvfs.\n\nThis object may be accessed either as a tuple of\n  (bsize, frsize, blocks, bfree, bavail, files, ffree, favail, flag, namemax),\nor via the attributes f_bsize, f_frsize, f_blocks, f_bfree, and so on.\n\nSee os.statvfs for more information.",
-     # stat_result_fields: the three integer times are unnamed.
      STAT_RESULT_FIELDS: list[tuple[str, str]] = [
          ("st_mode", "protection bits"),
          ("st_ino", "inode"),
@@ -51,10 +40,7 @@ glob STAT_RESULT_DOC: str = "stat_result: Result from stat, fstat, or lstat.\n\n
      ST_BLOCKS_IDX: i64 = 17,
      ST_RDEV_IDX: i64 = 18;
 
-# --- os.stat_result --------------------------------------------------------
-
 import from c {
-    # A tp_new slot read from the struct sequence type, so it can be called.
     obj NewFunctionSlot {
         has call:
             Callable[
@@ -64,13 +50,179 @@ import from c {
     }
 }
 
-# statresult_new(): the struct sequence tp_new, then an st_?time given as
-# None takes the integer slot's value.
 def statresult_new(
     type_object: ptr[TypeLayout], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv fill_time(
+    module: ptr[PyObject],
+    v: ptr[PyObject],
+    s_index: i64,
+    f_index: i64,
+    ns_index: i64,
+    sec: i64,
+    nsec: u64
+) -> bool;
+
+def set_stat_item(v: ptr[PyObject], index: i64, value: ptr[PyObject]) -> bool;
+
+def _pystat_fromstructstat(
+    module: ptr[PyObject], st: _Py_stat_struct
+) -> ptr[PyObject];
+
+def:priv posix_do_stat(
+    module: ptr[PyObject],
+    function_name: str,
+    path: path_t,
+    dir_fd: i32,
+    follow_symlinks: bool
+) -> ptr[PyObject];
+
+def os_stat_impl(
+    module: ptr[PyObject], path: path_t, dir_fd: i32, follow_symlinks: bool
+) -> ptr[PyObject];
+
+def os_lstat_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject];
+
+def os_fstat_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_fstatvfs_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject];
+
+def os_statvfs_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject];
+
+def:priv is_dot(name: ptr[u8], length: i64) -> bool;
+
+def:priv close_directory(directory: ptr, rewind: bool);
+
+def:priv posix_listdir(path: path_t) -> ptr[PyObject];
+
+def os_listdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject];
+
+import from c {
+    obj DirEntryRecord {
+        has name: ptr[PyObject] = ptr[PyObject](),
+            path: ptr[PyObject] = ptr[PyObject](),
+            stat: ptr[PyObject] = ptr[PyObject](),
+            lstat: ptr[PyObject] = ptr[PyObject](),
+            d_ino: u64 = 0,
+            dir_fd: i32 = 0,
+            d_type: u8 = 0;
+    }
+}
+
+glob DirEntry_token = ClassToken(),
+     ScandirIterator_token = ClassToken(),
+     DIR_ENTRY_RECORD_SIZE: int = 48,
+     DIR_ENTRY_MEMBERS: list[MemberField] = [
+         MemberField(
+             name="name",
+             kind=MemberType.OBJECT_EX.value,
+             offset=0,
+             readonly=True,
+             doc="the entry's base filename, relative to scandir() \"path\" argument"
+         ),
+         MemberField(
+             name="path",
+             kind=MemberType.OBJECT_EX.value,
+             offset=8,
+             readonly=True,
+             doc="the entry's full path name; equivalent to\nos.path.join(scandir_path, entry.name)"
+         )
+     ];
+
+def:priv dir_entry(instance: ptr[PyObject]) -> ptr[DirEntryRecord];
+
+def DirEntry_dealloc(instance: ptr[PyObject]);
+
+def DirEntry_repr(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def os_DirEntry_is_symlink_impl(
+    instance: ptr[PyObject], defining_class: ptr[PyObject]
+) -> i32;
+
+def os_DirEntry_is_junction_impl(instance: ptr[PyObject]) -> i32;
+
+def:priv DirEntry_fetch_stat(
+    module: ptr[PyObject], instance: ptr[PyObject], follow_symlinks: bool
+) -> ptr[PyObject];
+
+def:priv DirEntry_get_lstat(
+    defining_class: ptr[PyObject], instance: ptr[PyObject]
+) -> ptr[PyObject];
+
+def os_DirEntry_stat_impl(
+    instance: ptr[PyObject], defining_class: ptr[PyObject], follow_symlinks: bool
+) -> ptr[PyObject];
+
+def:priv DirEntry_test_mode(
+    defining_class: ptr[PyObject],
+    instance: ptr[PyObject],
+    follow_symlinks: bool,
+    mode_bits: u64
+) -> i32;
+
+def os_DirEntry_is_dir_impl(
+    instance: ptr[PyObject], defining_class: ptr[PyObject], follow_symlinks: bool
+) -> i32;
+
+def os_DirEntry_is_file_impl(
+    instance: ptr[PyObject], defining_class: ptr[PyObject], follow_symlinks: bool
+) -> i32;
+
+def os_DirEntry_inode_impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def os_DirEntry___fspath___impl(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv join_path_filename(
+    path_narrow: ptr[u8], name: ptr[u8], length: i64
+) -> ptr[u8];
+
+def:priv DirEntry_from_posix_info(
+    module: ptr[PyObject],
+    path: path_t,
+    name: ptr[u8],
+    name_length: i64,
+    d_ino: u64,
+    d_type: i64
+) -> ptr[PyObject];
+
+obj ScandirState(NativeState) {
+    has path: path_t,
+        directory: ptr = ptr();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+}
+
+def:priv scandir_state(instance: ptr[PyObject]) -> (ScandirState | None);
+
+def:priv scandir_closedir(state: ScandirState);
+
+def ScandirIterator_iternext(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def ScandirIterator_close(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+def ScandirIterator_enter(
+    instance: ptr[PyObject], unused: ptr[PyObject]
+) -> ptr[PyObject];
+
+def ScandirIterator_exit(
+    instance: ptr[PyObject], args: ptr[PyObject]
+) -> ptr[PyObject];
+
+def ScandirIterator_finalize(instance: ptr[PyObject]);
+
+def ScandirIterator_dealloc(instance: ptr[PyObject]);
+
+def os_scandir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject];
+
+def posix_stat_exec(module: ptr[PyObject]) -> bool;
+
+impl statresult_new(
+    type_object: ptr[TypeLayout], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # ht_module is not set by PyStructSequence_NewType(), so the module is
-    # looked up by name.
     module = posix_module();
     if not module {
         return NULL;
@@ -99,9 +251,7 @@ def statresult_new(
     return result;
 }
 
-# fill_time(): the integer seconds, float seconds and integer nanoseconds of
-# one timestamp at the given indices (negative to skip).
-def:priv fill_time(
+impl fill_time(
     module: ptr[PyObject],
     v: ptr[PyObject],
     s_index: i64,
@@ -145,8 +295,7 @@ def:priv fill_time(
     return True;
 }
 
-# Store a new reference at `index`; False when `value` is NULL.
-def set_stat_item(v: ptr[PyObject], index: i64, value: ptr[PyObject]) -> bool {
+impl set_stat_item(v: ptr[PyObject], index: i64, value: ptr[PyObject]) -> bool {
     if not value {
         return False;
     }
@@ -154,8 +303,7 @@ def set_stat_item(v: ptr[PyObject], index: i64, value: ptr[PyObject]) -> bool {
     return True;
 }
 
-# _pystat_fromstructstat(): pack a struct stat into os.stat_result.
-def _pystat_fromstructstat(
+impl _pystat_fromstructstat(
     module: ptr[PyObject], st: _Py_stat_struct
 ) -> ptr[PyObject] {
     v = PyStructSequence_New(state_object(module, STATE_STAT_RESULT_TYPE));
@@ -183,9 +331,7 @@ def _pystat_fromstructstat(
     return v;
 }
 
-# --- stat, lstat, fstat ----------------------------------------------------
-
-def:priv posix_do_stat(
+impl posix_do_stat(
     module: ptr[PyObject],
     function_name: str,
     path: path_t,
@@ -230,17 +376,17 @@ def:priv posix_do_stat(
     return _pystat_fromstructstat(module, st);
 }
 
-def os_stat_impl(
+impl os_stat_impl(
     module: ptr[PyObject], path: path_t, dir_fd: i32, follow_symlinks: bool
 ) -> ptr[PyObject] {
     return posix_do_stat(module, "stat", path, dir_fd, follow_symlinks);
 }
 
-def os_lstat_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
+impl os_lstat_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
     return posix_do_stat(module, "lstat", path, dir_fd, False);
 }
 
-def os_fstat_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_fstat_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     st = _Py_stat_struct();
     while True {
         thread = PyEval_SaveThread();
@@ -258,9 +404,7 @@ def os_fstat_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     }
 }
 
-# --- statvfs ---------------------------------------------------------------
-
-def os_fstatvfs_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
+impl os_fstatvfs_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     record = PyMem_Malloc(u64(STATVFS_RECORD_SIZE));
     if not record {
         return PyErr_NoMemory();
@@ -287,7 +431,7 @@ def os_fstatvfs_impl(module: ptr[PyObject], fd: i32) -> ptr[PyObject] {
     }
 }
 
-def os_statvfs_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
+impl os_statvfs_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     record = PyMem_Malloc(u64(STATVFS_RECORD_SIZE));
     if not record {
         return PyErr_NoMemory();
@@ -306,14 +450,12 @@ def os_statvfs_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     return value;
 }
 
-# --- listdir ---------------------------------------------------------------
-
-def:priv is_dot(name: ptr[u8], length: i64) -> bool {
+impl is_dot(name: ptr[u8], length: i64) -> bool {
     return name.view(1)[0] == u8(46)
         and (length == 1 or ((name + 1).view(1)[0] == u8(46) and length == 2));
 }
 
-def:priv close_directory(directory: ptr, rewind: bool) {
+impl close_directory(directory: ptr, rewind: bool) {
     thread = PyEval_SaveThread();
     if rewind {
         jacpy_rewinddir(directory);
@@ -322,14 +464,12 @@ def:priv close_directory(directory: ptr, rewind: bool) {
     PyEval_RestoreThread(thread);
 }
 
-# _posix_listdir()
-def:priv posix_listdir(path: path_t) -> ptr[PyObject] {
+impl posix_listdir(path: path_t) -> ptr[PyObject] {
     directory = ptr();
     fd = i32(-1);
     return_str = True;
     jacpy_set_errno(0);
     if bool(HAVE_FDOPENDIR) and path.fd != -1 {
-        # closedir() closes the FD, so it is duplicated.
         fd = _Py_dup(path.fd);
         if fd == -1 {
             return NULL;
@@ -341,7 +481,7 @@ def:priv posix_listdir(path: path_t) -> ptr[PyObject] {
         name = ptr[u8]("");
         if path.narrow {
             name = path.narrow;
-            # Only return bytes if a bytes object was given.
+
             return_str = jacpy_is_bytes(path.object) == 0;
         } else {
             name = ptr[u8](".");
@@ -403,53 +543,18 @@ def:priv posix_listdir(path: path_t) -> ptr[PyObject] {
     return names;
 }
 
-def os_listdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
+impl os_listdir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     if not audit_event("os.listdir", [Py_NewRef(path.object or Py_None)]) {
         return NULL;
     }
     return posix_listdir(path);
 }
 
-# --- os.DirEntry -----------------------------------------------------------
-
-import from c {
-    # DirEntry's fields after the object header.
-    obj DirEntryRecord {
-        has name: ptr[PyObject] = ptr[PyObject](),
-            path: ptr[PyObject] = ptr[PyObject](),
-            stat: ptr[PyObject] = ptr[PyObject](),
-            lstat: ptr[PyObject] = ptr[PyObject](),
-            d_ino: u64 = 0,
-            dir_fd: i32 = 0,
-            d_type: u8 = 0;
-    }
-}
-
-glob DirEntry_token = ClassToken(),
-     ScandirIterator_token = ClassToken(),
-     DIR_ENTRY_RECORD_SIZE: int = 48,
-     DIR_ENTRY_MEMBERS: list[MemberField] = [
-         MemberField(
-             name="name",
-             kind=MemberType.OBJECT_EX.value,
-             offset=0,
-             readonly=True,
-             doc="the entry's base filename, relative to scandir() \"path\" argument"
-         ),
-         MemberField(
-             name="path",
-             kind=MemberType.OBJECT_EX.value,
-             offset=8,
-             readonly=True,
-             doc="the entry's full path name; equivalent to\nos.path.join(scandir_path, entry.name)"
-         )
-     ];
-
-def:priv dir_entry(instance: ptr[PyObject]) -> ptr[DirEntryRecord] {
+impl dir_entry(instance: ptr[PyObject]) -> ptr[DirEntryRecord] {
     return ptr[DirEntryRecord](jacpy_binding_record(instance, DirEntry_token.handle));
 }
 
-def DirEntry_dealloc(instance: ptr[PyObject]) {
+impl DirEntry_dealloc(instance: ptr[PyObject]) {
     fields = dir_entry(instance);
     for held in [
         fields.view(1)[0].name,
@@ -462,11 +567,11 @@ def DirEntry_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, DirEntry_token.handle);
 }
 
-def DirEntry_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl DirEntry_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_FromFormat("<DirEntry %R>", dir_entry(instance).view(1)[0].name);
 }
 
-def os_DirEntry_is_symlink_impl(
+impl os_DirEntry_is_symlink_impl(
     instance: ptr[PyObject], defining_class: ptr[PyObject]
 ) -> i32 {
     d_type = i64(dir_entry(instance).view(1)[0].d_type);
@@ -476,11 +581,11 @@ def os_DirEntry_is_symlink_impl(
     return DirEntry_test_mode(defining_class, instance, False, S_IFLNK);
 }
 
-def os_DirEntry_is_junction_impl(instance: ptr[PyObject]) -> i32 {
+impl os_DirEntry_is_junction_impl(instance: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-def:priv DirEntry_fetch_stat(
+impl DirEntry_fetch_stat(
     module: ptr[PyObject], instance: ptr[PyObject], follow_symlinks: bool
 ) -> ptr[PyObject] {
     fields = dir_entry(instance);
@@ -523,7 +628,7 @@ def:priv DirEntry_fetch_stat(
     return _pystat_fromstructstat(module, st);
 }
 
-def:priv DirEntry_get_lstat(
+impl DirEntry_get_lstat(
     defining_class: ptr[PyObject], instance: ptr[PyObject]
 ) -> ptr[PyObject] {
     fields = dir_entry(instance);
@@ -535,7 +640,7 @@ def:priv DirEntry_get_lstat(
     return Py_XNewRef(dir_entry(instance).view(1)[0].lstat);
 }
 
-def os_DirEntry_stat_impl(
+impl os_DirEntry_stat_impl(
     instance: ptr[PyObject], defining_class: ptr[PyObject], follow_symlinks: bool
 ) -> ptr[PyObject] {
     if not follow_symlinks {
@@ -558,8 +663,7 @@ def os_DirEntry_stat_impl(
     return Py_XNewRef(dir_entry(instance).view(1)[0].stat);
 }
 
-# DirEntry_test_mode(): -1 with the exception set, 0 for False, 1 for True.
-def:priv DirEntry_test_mode(
+impl DirEntry_test_mode(
     defining_class: ptr[PyObject],
     instance: ptr[PyObject],
     follow_symlinks: bool,
@@ -572,7 +676,6 @@ def:priv DirEntry_test_mode(
         stat = os_DirEntry_stat_impl(instance, defining_class, follow_symlinks);
         if not stat {
             if PyErr_ExceptionMatches(PyExc_FileNotFoundError) != 0 {
-                # A file that no longer exists is not a file or directory.
                 PyErr_Clear();
                 return i32(0);
             }
@@ -600,30 +703,27 @@ def:priv DirEntry_test_mode(
     return i32(1) if d_type == DT_REG else i32(0);
 }
 
-def os_DirEntry_is_dir_impl(
+impl os_DirEntry_is_dir_impl(
     instance: ptr[PyObject], defining_class: ptr[PyObject], follow_symlinks: bool
 ) -> i32 {
     return DirEntry_test_mode(defining_class, instance, follow_symlinks, S_IFDIR);
 }
 
-def os_DirEntry_is_file_impl(
+impl os_DirEntry_is_file_impl(
     instance: ptr[PyObject], defining_class: ptr[PyObject], follow_symlinks: bool
 ) -> i32 {
     return DirEntry_test_mode(defining_class, instance, follow_symlinks, S_IFREG);
 }
 
-def os_DirEntry_inode_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl os_DirEntry_inode_impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromUnsignedLongLong(dir_entry(instance).view(1)[0].d_ino);
 }
 
-def os_DirEntry___fspath___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl os_DirEntry___fspath___impl(instance: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(dir_entry(instance).view(1)[0].path);
 }
 
-# join_path_filename(): "<path>/<name>" in PyMem memory ("." for no path).
-def:priv join_path_filename(
-    path_narrow: ptr[u8], name: ptr[u8], length: i64
-) -> ptr[u8] {
+impl join_path_filename(path_narrow: ptr[u8], name: ptr[u8], length: i64) -> ptr[u8] {
     base = path_narrow or ptr[u8](".");
     base_length = i64(strlen(base));
     joined = ptr[u8](PyMem_Malloc(u64(base_length + 1 + length + 1)));
@@ -646,8 +746,7 @@ def:priv join_path_filename(
     return joined;
 }
 
-# DirEntry_from_posix_info()
-def:priv DirEntry_from_posix_info(
+impl DirEntry_from_posix_info(
     module: ptr[PyObject],
     path: path_t,
     name: ptr[u8],
@@ -703,21 +802,13 @@ def:priv DirEntry_from_posix_info(
     return dir_item;
 }
 
-# --- scandir ---------------------------------------------------------------
-
-"""ScandirIterator's state: the path it owns and the open DIR *."""
-obj ScandirState(NativeState) {
-    has path: path_t,
-        directory: ptr = ptr();
-
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
+impl ScandirState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
 }
 
-def:priv scandir_state(instance: ptr[PyObject]) -> (ScandirState | None) {
+impl ScandirState.clear {}
+
+impl scandir_state(instance: ptr[PyObject]) -> (ScandirState | None) {
     if jacpy_binding_native_present(instance, ScandirIterator_token.handle) == 0 {
         return None;
     }
@@ -728,8 +819,7 @@ def:priv scandir_state(instance: ptr[PyObject]) -> (ScandirState | None) {
     return None;
 }
 
-# ScandirIterator_closedir()
-def:priv scandir_closedir(state: ScandirState) {
+impl scandir_closedir(state: ScandirState) {
     directory = state.directory;
     if not directory {
         return;
@@ -738,9 +828,9 @@ def:priv scandir_closedir(state: ScandirState) {
     close_directory(directory, bool(HAVE_FDOPENDIR) and state.path.fd != -1);
 }
 
-def ScandirIterator_iternext(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl ScandirIterator_iternext(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = scandir_state(instance);
-    # Iterated twice, or closed explicitly.
+
     if state is None or not state.directory {
         return NULL;
     }
@@ -773,7 +863,7 @@ def ScandirIterator_iternext(instance: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def ScandirIterator_close(
+impl ScandirIterator_close(
     instance: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = scandir_state(instance);
@@ -783,20 +873,19 @@ def ScandirIterator_close(
     return Py_NewRef(Py_None);
 }
 
-def ScandirIterator_enter(
+impl ScandirIterator_enter(
     instance: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
     return Py_NewRef(instance);
 }
 
-def ScandirIterator_exit(
+impl ScandirIterator_exit(
     instance: ptr[PyObject], args: ptr[PyObject]
 ) -> ptr[PyObject] {
     return ScandirIterator_close(instance, NULL);
 }
 
-def ScandirIterator_finalize(instance: ptr[PyObject]) {
-    # Keep the current exception, if any.
+impl ScandirIterator_finalize(instance: ptr[PyObject]) {
     exc = PyErr_GetRaisedException();
     state = scandir_state(instance);
     if state is not None {
@@ -806,7 +895,6 @@ def ScandirIterator_finalize(instance: ptr[PyObject]) {
                 instance, 1, ptr[u8]("unclosed scandir iterator %R"), instance
             )
                 != 0 {
-                # Spurious errors can appear at shutdown.
                 if PyErr_ExceptionMatches(PyExc_Warning) != 0 {
                     PyErr_FormatUnraisable(
                         ptr[u8](
@@ -822,14 +910,14 @@ def ScandirIterator_finalize(instance: ptr[PyObject]) {
     PyErr_SetRaisedException(exc);
 }
 
-def ScandirIterator_dealloc(instance: ptr[PyObject]) {
+impl ScandirIterator_dealloc(instance: ptr[PyObject]) {
     if PyObject_CallFinalizerFromDealloc(instance) < 0 {
         return;
     }
     dispose_payload(instance, ScandirIterator_token.handle);
 }
 
-def os_scandir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
+impl os_scandir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     if not audit_event("os.scandir", [Py_NewRef(path.object or Py_None)]) {
         return NULL;
     }
@@ -839,7 +927,7 @@ def os_scandir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     if not iterator {
         return NULL;
     }
-    # Move the ownership of the path to the iterator.
+
     owned = path_t(
         function_name=path.function_name,
         argument_name=path.argument_name,
@@ -867,7 +955,6 @@ def os_scandir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     fd = i32(-1);
     directory = ptr();
     if bool(HAVE_FDOPENDIR) and owned.fd != -1 {
-        # closedir() closes the FD, so it is duplicated.
         fd = _Py_dup(owned.fd);
         if fd == -1 {
             jacpy_release(iterator);
@@ -896,11 +983,7 @@ def os_scandir_impl(module: ptr[PyObject], path: path_t) -> ptr[PyObject] {
     return iterator;
 }
 
-# --- module exec -----------------------------------------------------------
-
-# stat_result and statvfs_result, with stat_result's tp_new wrapped by
-# statresult_new, as posixmodule_exec() makes them.
-def posix_stat_exec(module: ptr[PyObject]) -> bool {
+impl posix_stat_exec(module: ptr[PyObject]) -> bool {
     stat_type = struct_sequence_type(
         "os.stat_result", STAT_RESULT_DOC, STAT_RESULT_FIELDS + STAT_EXTRA_FIELDS, 10
     );

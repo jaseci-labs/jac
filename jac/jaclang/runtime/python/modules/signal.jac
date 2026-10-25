@@ -522,7 +522,8 @@ impl signal_signal_impl(
     tstate = current_tstate();
     if not thread_can_handle_signals(tstate_interp(tstate)) {
         PyErr_SetString(
-            PyExc_ValueError, ptr[u8]("signal only works in main thread of the main interpreter")
+            PyExc_ValueError,
+            ptr[u8]("signal only works in main thread of the main interpreter")
         );
         return NULL;
     }
@@ -540,7 +541,9 @@ impl signal_signal_impl(
     } else {
         PyErr_SetString(
             PyExc_TypeError,
-            ptr[u8]("signal handler must be signal.SIG_IGN, signal.SIG_DFL, or a callable object")
+            ptr[u8](
+                "signal handler must be signal.SIG_IGN, signal.SIG_DFL, or a callable object"
+            )
         );
         return NULL;
     }

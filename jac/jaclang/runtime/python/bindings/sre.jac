@@ -1,57 +1,10 @@
-"""The _sre module's definition: Modules/_sre/sre.c's type specs and tables.
+def:priv class_getitem(doc: str) -> MethodDefinition;
 
-The Pattern, Match, Scanner and Template types are heap types made from C
-data specs, as sre.c makes them, with the member, getter and slot tables of
-the C module; the Pattern and Scanner specs are their types' tokens, which
-the clinic glue's defining_class finds. Methods take their arguments
-through the generated clinic glue, and Match.group through a METH_VARARGS
-callback as in the C. See ../LICENSE.cpython.
-"""
+def:priv pattern_methods -> ptr[PyMethodDef];
 
-# --------------------------------------------------------- method tables
+def:priv match_methods -> ptr[PyMethodDef];
 
-def:priv class_getitem(doc: str) -> MethodDefinition {
-    return MethodDefinition(
-        "__class_getitem__",
-        MethodCallbacks(positional=Py_GenericAlias),
-        doc,
-        i64(METH_O | METH_CLASS)
-    );
-}
-
-def:priv pattern_methods -> ptr[PyMethodDef] {
-    methods = list(SRE_Pattern_methods);
-    methods.append(
-        class_getitem(
-            "Patterns are generic over the type of string they handle (str or bytes)"
-        )
-    );
-    return method_table(methods);
-}
-
-def:priv match_methods -> ptr[PyMethodDef] {
-    methods = [
-        MethodDefinition(
-            "group",
-            MethodCallbacks(positional=match_group),
-            "group([group1, ...]) -> str or tuple.\n    Return subgroup(s) of the match by indices or names.\n    For 0 returns the entire match.",
-            i64(METH_VARARGS)
-        )
-    ];
-    methods.extend(SRE_Match_methods);
-    methods.append(
-        class_getitem(
-            "Matches are generic over the type of string which was matched (str or bytes)"
-        )
-    );
-    return method_table(methods);
-}
-
-def:priv scanner_methods -> ptr[PyMethodDef] {
-    return method_table(SRE_Scanner_methods);
-}
-
-# ------------------------------------------------------------- the types
+def:priv scanner_methods -> ptr[PyMethodDef];
 
 import from c {
     glob:priv pattern_members: list[PyMemberDef] = [
@@ -183,8 +136,6 @@ import from c {
              PyType_Slot(slot=Py_tp_getset, pfunc=ptr(addressof(match_getset))),
              PyType_Slot(slot=Py_tp_traverse, pfunc=ptr(match_traverse)),
              PyType_Slot(slot=Py_tp_clear, pfunc=ptr(match_clear)),
-             # As mapping. Match objects do not support length or
-             # assignment, but do support __getitem__.
              PyType_Slot(slot=Py_mp_subscript, pfunc=ptr(match_getitem)),
              PyType_Slot(slot=0, pfunc=ptr())
          ]; glob match_spec: PyType_Spec = PyType_Spec(
@@ -245,10 +196,60 @@ import from c {
          );
 }
 
-# Fill the method slots (the first slot of each table) once: the tables,
-# clinic glue included, live for the process as static ones do. False with
-# the exception set.
-def:priv install_method_tables -> bool {
+def:priv install_method_tables -> bool;
+
+def:priv create_type(module: ptr[PyObject], spec: ptr[PyType_Spec], slot: int) -> bool;
+
+def:priv sre_exec(module: ptr[PyObject]) -> i32;
+
+glob sre_definition = ModuleDefinition(
+         "_sre", "", module_methods, ModuleHooks(execute=sre_exec), STATE_COUNT
+     );
+
+def:pub PyInit__sre -> ptr[PyObject];
+
+impl class_getitem(doc: str) -> MethodDefinition {
+    return MethodDefinition(
+        "__class_getitem__",
+        MethodCallbacks(positional=Py_GenericAlias),
+        doc,
+        i64(METH_O | METH_CLASS)
+    );
+}
+
+impl pattern_methods -> ptr[PyMethodDef] {
+    methods = list(SRE_Pattern_methods);
+    methods.append(
+        class_getitem(
+            "Patterns are generic over the type of string they handle (str or bytes)"
+        )
+    );
+    return method_table(methods);
+}
+
+impl match_methods -> ptr[PyMethodDef] {
+    methods = [
+        MethodDefinition(
+            "group",
+            MethodCallbacks(positional=match_group),
+            "group([group1, ...]) -> str or tuple.\n    Return subgroup(s) of the match by indices or names.\n    For 0 returns the entire match.",
+            i64(METH_VARARGS)
+        )
+    ];
+    methods.extend(SRE_Match_methods);
+    methods.append(
+        class_getitem(
+            "Matches are generic over the type of string which was matched (str or bytes)"
+        )
+    );
+    return method_table(methods);
+}
+
+impl scanner_methods -> ptr[PyMethodDef] {
+    return method_table(SRE_Scanner_methods);
+}
+
+impl install_method_tables -> bool {
     slots: list[ptr[PyType_Slot]] = [
         addressof(pattern_slots),
         addressof(match_slots),
@@ -267,8 +268,7 @@ def:priv install_method_tables -> bool {
     return True;
 }
 
-# CREATE_TYPE: the type of `spec` into state slot `slot`.
-def:priv create_type(module: ptr[PyObject], spec: ptr[PyType_Spec], slot: int) -> bool {
+impl create_type(module: ptr[PyObject], spec: ptr[PyType_Spec], slot: int) -> bool {
     type = PyType_FromModuleAndSpec(module, spec, NULL);
     if not type {
         return False;
@@ -278,11 +278,11 @@ def:priv create_type(module: ptr[PyObject], spec: ptr[PyType_Spec], slot: int) -
     return True;
 }
 
-def:priv sre_exec(module: ptr[PyObject]) -> i32 {
+impl sre_exec(module: ptr[PyObject]) -> i32 {
     if not install_method_tables() {
         return i32(-1);
     }
-    # Create heap types
+
     if not create_type(module, addressof(pattern_spec), STATE_PATTERN_TYPE)
         or not create_type(module, addressof(match_spec), STATE_MATCH_TYPE)
         or not create_type(module, addressof(scanner_spec), STATE_SCANNER_TYPE)
@@ -307,10 +307,6 @@ def:priv sre_exec(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob sre_definition = ModuleDefinition(
-         "_sre", "", module_methods, ModuleHooks(execute=sre_exec), STATE_COUNT
-     );
-
-def:pub PyInit__sre -> ptr[PyObject] {
+impl PyInit__sre -> ptr[PyObject] {
     return sre_definition.initialize();
 }

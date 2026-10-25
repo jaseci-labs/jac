@@ -1,9 +1,6 @@
-"""The time module: its method table, struct_time, the clock constants and time zone."""
-
 glob:priv METH_VARARGS: i64 = 1,
      METH_NOARGS: i64 = 4,
      METH_O: i64 = 8,
-     # Constants the module reads without publishing them.
      INTERNAL: list[str] = ["CLOCKS_PER_SEC", "TIMER_ABSTIME"],
      STRFTIME_FORMAT_CODES: str = "Commonly used format codes:\n\n%Y  Year with century as a decimal number.\n%m  Month as a decimal number [01,12].\n%d  Day of the month as a decimal number [01,31].\n%H  Hour (24-hour clock) as a decimal number [00,23].\n%M  Minute as a decimal number [00,59].\n%S  Second as a decimal number [00,61].\n%z  Time zone offset from UTC.\n%a  Locale's abbreviated weekday name.\n%A  Locale's full weekday name.\n%b  Locale's abbreviated month name.\n%B  Locale's full month name.\n%c  Locale's appropriate date and time representation.\n%I  Hour (12-hour clock) as a decimal number [01,12].\n%p  Locale's equivalent of either AM or PM.\n\nOther codes may be available on your platform.  See documentation for\nthe C library strftime function.\n",
      MODULE_DOC: str = "This module provides various functions to manipulate time values.\n\nThere are two standard representations of time.  One is the number\nof seconds since the Epoch, in UTC (a.k.a. GMT).  It may be an integer\nor a floating-point number (to represent fractions of seconds).\nThe epoch is the point where the time starts, the return value of time.gmtime(0).\nIt is January 1, 1970, 00:00:00 (UTC) on all platforms.\n\nThe other representation is a tuple of 9 integers giving local time.\nThe tuple items are:\n  year (including century, e.g. 1998)\n  month (1-12)\n  day (1-31)\n  hours (0-23)\n  minutes (0-59)\n  seconds (0-59)\n  weekday (0-6, Monday is 0)\n  Julian day (day in the year, 1-366)\n  DST (Daylight Savings Time) flag (-1, 0 or 1)\nIf the DST flag is 0, the time is given in the regular time zone;\nif it is 1, the time is given in the DST time zone;\nif it is -1, mktime() should guess based on the date and time.\n",
@@ -12,13 +9,25 @@ glob:priv METH_VARARGS: i64 = 1,
 
 def:priv method(
     name: str, callbacks: MethodCallbacks, flags: i64, doc: str
+) -> MethodDefinition;
+
+def:priv methods -> list[MethodDefinition];
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "time", MODULE_DOC, methods(), ModuleHooks(execute=execute), 1
+     );
+
+def:pub PyInit_time -> ptr[PyObject];
+
+impl method(
+    name: str, callbacks: MethodCallbacks, flags: i64, doc: str
 ) -> MethodDefinition {
     return MethodDefinition(name, callbacks, doc, flags=flags);
 }
 
-# time_methods[] in the C module's order; clinic generates clock_gettime and
-# clock_gettime_ns.
-def:priv methods -> list[MethodDefinition] {
+impl methods -> list[MethodDefinition] {
     table = [
         method(
             "time",
@@ -179,7 +188,7 @@ def:priv methods -> list[MethodDefinition] {
         ];
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" {
         object_error(
             PyExc_ImportError,
@@ -208,10 +217,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return init_clock_bases();
 }
 
-glob:priv definition = ModuleDefinition(
-         "time", MODULE_DOC, methods(), ModuleHooks(execute=execute), 1
-     );
-
-def:pub PyInit_time -> ptr[PyObject] {
+impl PyInit_time -> ptr[PyObject] {
     return definition.initialize();
 }

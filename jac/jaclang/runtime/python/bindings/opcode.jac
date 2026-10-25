@@ -1,6 +1,15 @@
-"""The _opcode module: generated clinic tables plus its two build constants."""
+def:priv execute(module: ptr[PyObject]) -> i32;
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+glob:priv definition = ModuleDefinition(
+         "_opcode",
+         "Opcode support module.",
+         module_methods,
+         ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit__opcode -> ptr[PyObject];
+
+impl execute(module: ptr[PyObject]) -> i32 {
     if PyModule_AddIntConstant(
         module, ptr[u8]("ENABLE_SPECIALIZATION"), ENABLE_SPECIALIZATION
     )
@@ -16,13 +25,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "_opcode",
-         "Opcode support module.",
-         module_methods,
-         ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit__opcode -> ptr[PyObject] {
+impl PyInit__opcode -> ptr[PyObject] {
     return definition.initialize();
 }

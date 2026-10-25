@@ -1,14 +1,3 @@
-"""The range type and its iterators: Objects/rangeobject.c in native Jac.
-
-`PyRange_Type`, `PyRangeIter_Type` and `PyLongRangeIter_Type` are C data Jac
-defines under their C names, so the builtins module, the evaluator's
-FOR_ITER_RANGE specialization (which reads `_PyRangeIterObject` directly) and
-C code use them unchanged. The object layouts come from layouts.jac; range
-objects and C-long range iterators are recycled through the interpreter's
-freelists as rangeobject.c does. Lengths above PY_SSIZE_T_MAX are supported
-with int arithmetic. See ../LICENSE.cpython.
-"""
-
 import from c {
     glob PyLong_Type: PyTypeObject; glob:priv range_as_sequence:
              PySequenceMethods = PySequenceMethods(
@@ -186,29 +175,135 @@ import from c {
          );
 }
 
-# The immortal small ints 0 and 1 (_PyLong_GetZero, _PyLong_GetOne): borrowed.
-def long_zero -> ptr[PyObject] {
+def long_zero -> ptr[PyObject];
+
+def long_one -> ptr[PyObject];
+
+def exact_int_or_bool(ob: ptr[PyObject]) -> bool;
+
+def range_of(op: ptr[PyObject]) -> ptr[rangeobject];
+
+def validate_step(step: ptr[PyObject]) -> ptr[PyObject];
+
+def make_range_object(
+    _type: ptr[PyTypeObject],
+    start: ptr[PyObject],
+    stop: ptr[PyObject],
+    step: ptr[PyObject]
+) -> ptr[PyObject];
+
+def range_from_array(
+    _type: ptr[PyTypeObject], args: ptr[ptr[PyObject]], num_args: i64
+) -> ptr[PyObject];
+
+def range_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def range_vectorcall(
+    rangetype: ptr[PyObject],
+    args: ptr[ptr[PyObject]],
+    nargsf: u64,
+    kwnames: ptr[PyObject]
+) -> ptr[PyObject];
+
+def range_dealloc(op: ptr[PyObject]);
+
+def get_len_of_range(lo: i64, hi: i64, step: i64) -> u64;
+
+def compute_range_length_long(
+    start: ptr[PyObject], stop: ptr[PyObject], step: ptr[PyObject]
+) -> i64;
+
+def compute_range_length(
+    start: ptr[PyObject], stop: ptr[PyObject], step: ptr[PyObject]
+) -> ptr[PyObject];
+
+def range_length(op: ptr[PyObject]) -> i64;
+
+def compute_item(r: ptr[rangeobject], i: ptr[PyObject]) -> ptr[PyObject];
+
+def compute_range_item(r: ptr[rangeobject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+def range_item(op: ptr[PyObject], i: i64) -> ptr[PyObject];
+
+def compute_slice(r: ptr[rangeobject], slice: ptr[PyObject]) -> ptr[PyObject];
+
+def range_contains_long(r: ptr[rangeobject], ob: ptr[PyObject]) -> i32;
+
+def range_contains(op: ptr[PyObject], ob: ptr[PyObject]) -> i32;
+
+def range_equals(r0: ptr[rangeobject], r1: ptr[rangeobject]) -> i32;
+
+def range_richcompare(
+    op: ptr[PyObject], other: ptr[PyObject], cmp: i32
+) -> ptr[PyObject];
+
+def range_hash(op: ptr[PyObject]) -> i64;
+
+def range_count(op: ptr[PyObject], ob: ptr[PyObject]) -> ptr[PyObject];
+
+def range_index(op: ptr[PyObject], ob: ptr[PyObject]) -> ptr[PyObject];
+
+def range_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def range_reduce(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject];
+
+def range_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject];
+
+def range_bool(op: ptr[PyObject]) -> i32;
+
+def rangeiter_of(op: ptr[PyObject]) -> ptr[_PyRangeIterObject];
+
+def rangeiter_next(op: ptr[PyObject]) -> ptr[PyObject];
+
+def rangeiter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def rangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def rangeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject];
+
+def rangeiter_dealloc(op: ptr[PyObject]);
+
+def fast_range_iter(start: i64, _stop: i64, step: i64, length: i64) -> ptr[PyObject];
+
+def longrangeiter_of(op: ptr[PyObject]) -> ptr[longrangeiterobject];
+
+def longrangeiter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def longrangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def longrangeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject];
+
+def longrangeiter_dealloc(op: ptr[PyObject]);
+
+def longrangeiter_next(op: ptr[PyObject]) -> ptr[PyObject];
+
+def long_range_iter(r: ptr[rangeobject]) -> ptr[PyObject];
+
+def long_fields(r: ptr[rangeobject]) -> tuple[i64, i64, i64, bool];
+
+def range_iter(seq: ptr[PyObject]) -> ptr[PyObject];
+
+def range_reverse(seq: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+impl long_zero -> ptr[PyObject] {
     return PyLong_FromLong(0);
 }
 
-def long_one -> ptr[PyObject] {
+impl long_one -> ptr[PyObject] {
     return PyLong_FromLong(1);
 }
 
-"""PyLong_CheckExact(ob) || PyBool_Check(ob)."""
-def exact_int_or_bool(ob: ptr[PyObject]) -> bool {
+impl exact_int_or_bool(ob: ptr[PyObject]) -> bool {
     return object_is_type(ob, addressof(PyLong_Type)) or bool_check(ob);
 }
 
-def range_of(op: ptr[PyObject]) -> ptr[rangeobject] {
+impl range_of(op: ptr[PyObject]) -> ptr[rangeobject] {
     return ptr[rangeobject](op);
 }
 
-# Support objects whose length is > PY_SSIZE_T_MAX.
-
-# Validate the step: a new reference, 1 when absent, or NULL on error.
-def validate_step(step: ptr[PyObject]) -> ptr[PyObject] {
-    # No step specified, use a step of 1.
+impl validate_step(step: ptr[PyObject]) -> ptr[PyObject] {
     if not step {
         return PyLong_FromLong(1);
     }
@@ -227,8 +322,7 @@ def validate_step(step: ptr[PyObject]) -> ptr[PyObject] {
     return step;
 }
 
-# A range owning `start`, `stop` and `step`, or NULL (the caller releases them).
-def make_range_object(
+impl make_range_object(
     _type: ptr[PyTypeObject],
     start: ptr[PyObject],
     stop: ptr[PyObject],
@@ -254,7 +348,7 @@ def make_range_object(
     return op;
 }
 
-def range_from_array(
+impl range_from_array(
     _type: ptr[PyTypeObject], args: ptr[ptr[PyObject]], num_args: i64
 ) -> ptr[PyObject] {
     start = NULL;
@@ -264,7 +358,7 @@ def range_from_array(
         if num_args == 3 {
             step = (args + 2).view(1)[0];
         }
-        # Convert borrowed refs to owned refs
+
         start = PyNumber_Index(args.view(1)[0]);
         if not start {
             return NULL;
@@ -274,7 +368,7 @@ def range_from_array(
             jacpy_release(start);
             return NULL;
         }
-        step = validate_step(step);  # Caution, this can clear exceptions
+        step = validate_step(step);
         if not step {
             jacpy_release(start);
             jacpy_release(stop);
@@ -304,14 +398,14 @@ def range_from_array(
     if op {
         return op;
     }
-    # Failed to create object, release attributes
+
     jacpy_release(start);
     jacpy_release(stop);
     jacpy_release(step);
     return NULL;
 }
 
-def range_new(
+impl range_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kw and _PyArg_NoKeywords(ptr[u8]("range"), kw) == 0 {
@@ -320,7 +414,7 @@ def range_new(
     return range_from_array(_type, tuple_items(args), object_size(args));
 }
 
-def range_vectorcall(
+impl range_vectorcall(
     rangetype: ptr[PyObject],
     args: ptr[ptr[PyObject]],
     nargsf: u64,
@@ -333,7 +427,7 @@ def range_vectorcall(
     return range_from_array(ptr[PyTypeObject](rangetype), args, nargs);
 }
 
-def range_dealloc(op: ptr[PyObject]) {
+impl range_dealloc(op: ptr[PyObject]) {
     r = range_of(op);
     jacpy_release(r.view(1)[0].start);
     jacpy_release(r.view(1)[0].stop);
@@ -344,12 +438,7 @@ def range_dealloc(op: ptr[PyObject]) {
     }
 }
 
-# Return number of items in range (lo, hi, step). step != 0 required. The
-# result always fits in an unsigned long: for step > 0 and lo < hi the last of
-# n values is lo + (n-1)*step <= hi-1, so n = (hi - lo - 1)/step + 1, and
-# hi-lo-1 is at most 2*LONG_MAX, which unsigned arithmetic holds exactly. The
-# analysis for step < 0 is similar.
-def get_len_of_range(lo: i64, hi: i64, step: i64) -> u64 {
+impl get_len_of_range(lo: i64, hi: i64, step: i64) -> u64 {
     if step > 0 and lo < hi {
         return u64(1)
             + wrapping_sub(wrapping_sub(u64.wrap(hi), u64(1)), u64.wrap(lo))
@@ -363,9 +452,7 @@ def get_len_of_range(lo: i64, hi: i64, step: i64) -> u64 {
     return u64(0);
 }
 
-# Return the length as a long, -2 for an overflow and -1 for any other type of
-# error. In case of an overflow no error is set.
-def compute_range_length_long(
+impl compute_range_length_long(
     start: ptr[PyObject], stop: ptr[PyObject], step: ptr[PyObject]
 ) -> i64 {
     overflow = i32(0);
@@ -392,26 +479,21 @@ def compute_range_length_long(
     }
     ulen = get_len_of_range(long_start, long_stop, long_step);
     if ulen > u64(i64.MAX) {
-        # length too large for a long
         return -2;
     }
     return i64(ulen);
 }
 
-# Return number of items in range (lo, hi, step) as a PyLong object, when
-# arguments are PyLong objects: get_len_of_range() on int objects.
-def compute_range_length(
+impl compute_range_length(
     start: ptr[PyObject], stop: ptr[PyObject], step: ptr[PyObject]
 ) -> ptr[PyObject] {
     zero = long_zero();
     one = long_one();
-    # fast path when all arguments fit into a long integer
+
     length = compute_range_length_long(start, stop, step);
     if length >= 0 {
         return PyLong_FromLong(length);
     } elif length == -1 {
-        # unexpected error from compute_range_length_long, we propagate to the
-        # caller
         return NULL;
     }
     cmp_result = PyObject_RichCompareBool(step, zero, Py_GT);
@@ -430,7 +512,7 @@ def compute_range_length(
             return NULL;
         }
     }
-    # if (lo >= hi), return length of 0.
+
     cmp_result = PyObject_RichCompareBool(lo, hi, Py_GE);
     if cmp_result != 0 {
         jacpy_release(step);
@@ -453,12 +535,11 @@ def compute_range_length(
     return result;
 }
 
-def range_length(op: ptr[PyObject]) -> i64 {
+impl range_length(op: ptr[PyObject]) -> i64 {
     return PyLong_AsSsize_t(range_of(op).view(1)[0].length);
 }
 
-# r.start + (i * r.step), on int objects.
-def compute_item(r: ptr[rangeobject], i: ptr[PyObject]) -> ptr[PyObject] {
+impl compute_item(r: ptr[rangeobject], i: ptr[PyObject]) -> ptr[PyObject] {
     if r.view(1)[0].step == long_one() {
         return PyNumber_Add(r.view(1)[0].start, i);
     }
@@ -471,10 +552,10 @@ def compute_item(r: ptr[rangeobject], i: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def compute_range_item(r: ptr[rangeobject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl compute_range_item(r: ptr[rangeobject], arg: ptr[PyObject]) -> ptr[PyObject] {
     zero = long_zero();
     length = r.view(1)[0].length;
-    # i = r.length + arg if arg < 0 else arg
+
     cmp_result = PyObject_RichCompareBool(arg, zero, Py_LT);
     if cmp_result == -1 {
         return NULL;
@@ -488,7 +569,7 @@ def compute_range_item(r: ptr[rangeobject], arg: ptr[PyObject]) -> ptr[PyObject]
     } else {
         i = Py_NewRef(arg);
     }
-    # if i < 0 or i >= r.length: <report index out of bounds>
+
     cmp_result = PyObject_RichCompareBool(i, zero, Py_LT);
     if cmp_result == 0 {
         cmp_result = PyObject_RichCompareBool(i, length, Py_GE);
@@ -507,7 +588,7 @@ def compute_range_item(r: ptr[rangeobject], arg: ptr[PyObject]) -> ptr[PyObject]
     return result;
 }
 
-def range_item(op: ptr[PyObject], i: i64) -> ptr[PyObject] {
+impl range_item(op: ptr[PyObject], i: i64) -> ptr[PyObject] {
     arg = PyLong_FromSsize_t(i);
     if not arg {
         return NULL;
@@ -517,7 +598,7 @@ def range_item(op: ptr[PyObject], i: i64) -> ptr[PyObject] {
     return result;
 }
 
-def compute_slice(r: ptr[rangeobject], slice: ptr[PyObject]) -> ptr[PyObject] {
+impl compute_slice(r: ptr[rangeobject], slice: ptr[PyObject]) -> ptr[PyObject] {
     (start, stop, step) = slice_get_long_indices(slice, r.view(1)[0].length);
     if not step {
         return NULL;
@@ -548,10 +629,9 @@ def compute_slice(r: ptr[rangeobject], slice: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-# Assumes (PyLong_CheckExact(ob) || PyBool_Check(ob))
-def range_contains_long(r: ptr[rangeobject], ob: ptr[PyObject]) -> i32 {
+impl range_contains_long(r: ptr[rangeobject], ob: ptr[PyObject]) -> i32 {
     zero = long_zero();
-    # Check if the value can possibly be in the range.
+
     cmp1 = PyObject_RichCompareBool(r.view(1)[0].step, zero, Py_GT);
     if cmp1 == -1 {
         return i32(-1);
@@ -559,28 +639,23 @@ def range_contains_long(r: ptr[rangeobject], ob: ptr[PyObject]) -> i32 {
     cmp2 = i32(0);
     cmp3 = i32(0);
     if cmp1 == 1 {
-        # positive steps: start <= ob < stop
         cmp2 = PyObject_RichCompareBool(r.view(1)[0].start, ob, Py_LE);
         cmp3 = PyObject_RichCompareBool(ob, r.view(1)[0].stop, Py_LT);
     } else {
-        # negative steps: stop < ob <= start
         cmp2 = PyObject_RichCompareBool(ob, r.view(1)[0].start, Py_LE);
         cmp3 = PyObject_RichCompareBool(r.view(1)[0].stop, ob, Py_LT);
     }
     if cmp2 == -1 or cmp3 == -1 {
-        # TypeError
         return i32(-1);
     }
     if cmp2 == 0 or cmp3 == 0 {
-        # ob outside of range
         return i32(0);
     }
-    # Check that the stride does not invalidate ob's membership.
+
     result = i32(-1);
     tmp1 = PyNumber_Subtract(ob, r.view(1)[0].start);
     tmp2 = PyNumber_Remainder(tmp1, r.view(1)[0].step) if tmp1 else NULL;
     if tmp2 {
-        # result = ((int(ob) - start) % step) == 0
         result = PyObject_RichCompareBool(tmp2, zero, Py_EQ);
     }
     jacpy_release(tmp1);
@@ -588,48 +663,45 @@ def range_contains_long(r: ptr[rangeobject], ob: ptr[PyObject]) -> i32 {
     return result;
 }
 
-def range_contains(op: ptr[PyObject], ob: ptr[PyObject]) -> i32 {
+impl range_contains(op: ptr[PyObject], ob: ptr[PyObject]) -> i32 {
     if exact_int_or_bool(ob) {
         return range_contains_long(range_of(op), ob);
     }
     return i32(_PySequence_IterSearch(op, ob, PY_ITERSEARCH_CONTAINS));
 }
 
-# Compare two range objects: 1 for equal, 0 for not equal and -1 on error.
-# Roughly: r0 is r1, or equal lengths and (empty, or equal starts and (one
-# item, or equal steps)).
-def range_equals(r0: ptr[rangeobject], r1: ptr[rangeobject]) -> i32 {
+impl range_equals(r0: ptr[rangeobject], r1: ptr[rangeobject]) -> i32 {
     if r0 == r1 {
         return i32(1);
     }
     cmp_result = PyObject_RichCompareBool(
         r0.view(1)[0].length, r1.view(1)[0].length, Py_EQ
     );
-    # Return False or error to the caller.
+
     if cmp_result != 1 {
         return cmp_result;
     }
     cmp_result = PyObject_Not(r0.view(1)[0].length);
-    # Return True or error to the caller.
+
     if cmp_result != 0 {
         return cmp_result;
     }
     cmp_result = PyObject_RichCompareBool(
         r0.view(1)[0].start, r1.view(1)[0].start, Py_EQ
     );
-    # Return False or error to the caller.
+
     if cmp_result != 1 {
         return cmp_result;
     }
     cmp_result = PyObject_RichCompareBool(r0.view(1)[0].length, long_one(), Py_EQ);
-    # Return True or error to the caller.
+
     if cmp_result != 0 {
         return cmp_result;
     }
     return PyObject_RichCompareBool(r0.view(1)[0].step, r1.view(1)[0].step, Py_EQ);
 }
 
-def range_richcompare(
+impl range_richcompare(
     op: ptr[PyObject], other: ptr[PyObject], cmp: i32
 ) -> ptr[PyObject] {
     if not object_is_type(other, addressof(PyRange_Type)) {
@@ -655,10 +727,7 @@ def range_richcompare(
     return NULL;
 }
 
-# Hash function for range objects: hash((len(r), None, None)) when empty,
-# hash((len(r), r.start, None)) for one item, else
-# hash((len(r), r.start, r.step)).
-def range_hash(op: ptr[PyObject]) -> i64 {
+impl range_hash(op: ptr[PyObject]) -> i64 {
     r = range_of(op);
     t = PyTuple_New(3);
     if not t {
@@ -686,7 +755,7 @@ def range_hash(op: ptr[PyObject]) -> i64 {
     return result;
 }
 
-def range_count(op: ptr[PyObject], ob: ptr[PyObject]) -> ptr[PyObject] {
+impl range_count(op: ptr[PyObject], ob: ptr[PyObject]) -> ptr[PyObject] {
     if exact_int_or_bool(ob) {
         result = range_contains_long(range_of(op), ob);
         if result == -1 {
@@ -701,7 +770,7 @@ def range_count(op: ptr[PyObject], ob: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(count);
 }
 
-def range_index(op: ptr[PyObject], ob: ptr[PyObject]) -> ptr[PyObject] {
+impl range_index(op: ptr[PyObject], ob: ptr[PyObject]) -> ptr[PyObject] {
     r = range_of(op);
     if not exact_int_or_bool(ob) {
         index = _PySequence_IterSearch(op, ob, PY_ITERSEARCH_INDEX);
@@ -722,20 +791,19 @@ def range_index(op: ptr[PyObject], ob: ptr[PyObject]) -> ptr[PyObject] {
         if r.view(1)[0].step == long_one() {
             return idx;
         }
-        # idx = (ob - r.start) // r.step
+
         sidx = PyNumber_FloorDivide(idx, r.view(1)[0].step);
         jacpy_release(idx);
         return sidx;
     }
-    # object is not in the range
+
     PyErr_SetString(PyExc_ValueError, ptr[u8]("range.index(x): x not in range"));
     return NULL;
 }
 
-def range_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl range_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     r = range_of(op);
-    # Check for special case values for printing. We don't always need the
-    # step value. We don't care about overflow.
+
     istep = PyNumber_AsSsize_t(r.view(1)[0].step, NULL);
     if istep == -1 and PyErr_Occurred() {
         return NULL;
@@ -750,8 +818,7 @@ def range_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-# Pickling support
-def range_reduce(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
+impl range_reduce(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
     r = range_of(op);
     return Py_BuildValue(
         ptr[u8]("(O(OOO))"),
@@ -762,7 +829,7 @@ def range_reduce(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def range_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
+impl range_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     if PyIndex_Check(item) != 0 {
         i = PyNumber_Index(item);
         if not i {
@@ -783,20 +850,15 @@ def range_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def range_bool(op: ptr[PyObject]) -> i32 {
+impl range_bool(op: ptr[PyObject]) -> i32 {
     return PyObject_IsTrue(range_of(op).view(1)[0].length);
 }
 
-# ---------------------------------------------------------- range iterators
-# There are 2 types of iterators, one for C longs, the other for Python ints.
-# This makes iteration fast in the normal case, but possible for any numeric
-# value.
-
-def rangeiter_of(op: ptr[PyObject]) -> ptr[_PyRangeIterObject] {
+impl rangeiter_of(op: ptr[PyObject]) -> ptr[_PyRangeIterObject] {
     return ptr[_PyRangeIterObject](op);
 }
 
-def rangeiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
+impl rangeiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
     r = rangeiter_of(op);
     if r.view(1)[0].len > 0 {
         result = r.view(1)[0].start;
@@ -807,13 +869,13 @@ def rangeiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def rangeiter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl rangeiter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(rangeiter_of(op).view(1)[0].len);
 }
 
-def rangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl rangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     r = rangeiter_of(op);
-    # create a range object for pickling
+
     start = PyLong_FromLong(r.view(1)[0].start);
     stop = PyLong_FromLong(r.view(1)[0].start + r.view(1)[0].len * r.view(1)[0].step)
         if start
@@ -822,7 +884,6 @@ def rangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject]
     if step {
         pickled = make_range_object(addressof(PyRange_Type), start, stop, step);
         if pickled {
-            # return the result
             return Py_BuildValue(
                 ptr[u8]("N(N)O"), eval_builtin("iter"), pickled, Py_None
             );
@@ -834,31 +895,30 @@ def rangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject]
     return NULL;
 }
 
-def rangeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
+impl rangeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
     r = rangeiter_of(op);
     index = PyLong_AsLong(state);
     if index == -1 and PyErr_Occurred() {
         return NULL;
     }
-    # silently clip the index value
+
     if index < 0 {
         index = 0;
     } elif index > r.view(1)[0].len {
-        index = r.view(1)[0].len;  # exhausted iterator
+        index = r.view(1)[0].len;
     }
     r.view(1)[0].start += index * r.view(1)[0].step;
     r.view(1)[0].len -= index;
     return Py_NewRef(Py_None);
 }
 
-def rangeiter_dealloc(op: ptr[PyObject]) {
+impl rangeiter_dealloc(op: ptr[PyObject]) {
     if not freelist_push(_Py_freelists_RANGE_ITERS, op, Py_range_iters_MAXFREELIST) {
         PyObject_Free(ptr(op));
     }
 }
 
-# A C-long range iterator; its length is known to fit a C long.
-def fast_range_iter(start: i64, _stop: i64, step: i64, length: i64) -> ptr[PyObject] {
+impl fast_range_iter(start: i64, _stop: i64, step: i64, length: i64) -> ptr[PyObject] {
     op = freelist_pop(_Py_freelists_RANGE_ITERS);
     if not op {
         op = _PyObject_New(ptr[PyObject](addressof(PyRangeIter_Type)));
@@ -873,17 +933,17 @@ def fast_range_iter(start: i64, _stop: i64, step: i64, length: i64) -> ptr[PyObj
     return op;
 }
 
-def longrangeiter_of(op: ptr[PyObject]) -> ptr[longrangeiterobject] {
+impl longrangeiter_of(op: ptr[PyObject]) -> ptr[longrangeiterobject] {
     return ptr[longrangeiterobject](op);
 }
 
-def longrangeiter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl longrangeiter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(longrangeiter_of(op).view(1)[0].len);
 }
 
-def longrangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl longrangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     r = longrangeiter_of(op);
-    # create a range object for pickling. Must calculate the "stop" value
+
     product = PyNumber_Multiply(r.view(1)[0].len, r.view(1)[0].step);
     if not product {
         return NULL;
@@ -905,18 +965,18 @@ def longrangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObj
         jacpy_release(r.view(1)[0].step);
         return NULL;
     }
-    # return the result
+
     return Py_BuildValue(ptr[u8]("N(N)O"), eval_builtin("iter"), pickled, Py_None);
 }
 
-def longrangeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
+impl longrangeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
     if not object_is_type(state, addressof(PyLong_Type)) {
         PyErr_Format(PyExc_TypeError, ptr[u8]("state must be an int, not %T"), state);
         return NULL;
     }
     r = longrangeiter_of(op);
     zero = long_zero();
-    # clip the value
+
     cmp = PyObject_RichCompareBool(state, zero, Py_LT);
     if cmp < 0 {
         return NULL;
@@ -955,7 +1015,7 @@ def longrangeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObj
     return Py_NewRef(Py_None);
 }
 
-def longrangeiter_dealloc(op: ptr[PyObject]) {
+impl longrangeiter_dealloc(op: ptr[PyObject]) {
     r = longrangeiter_of(op);
     jacpy_release(r.view(1)[0].start);
     jacpy_release(r.view(1)[0].step);
@@ -963,7 +1023,7 @@ def longrangeiter_dealloc(op: ptr[PyObject]) {
     PyObject_Free(ptr(op));
 }
 
-def longrangeiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
+impl longrangeiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
     r = longrangeiter_of(op);
     if PyObject_RichCompareBool(r.view(1)[0].len, long_zero(), Py_GT) != 1 {
         return NULL;
@@ -985,8 +1045,7 @@ def longrangeiter_next(op: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-# A long range iterator over the range's int fields, as new references.
-def long_range_iter(r: ptr[rangeobject]) -> ptr[PyObject] {
+impl long_range_iter(r: ptr[rangeobject]) -> ptr[PyObject] {
     op = _PyObject_New(ptr[PyObject](addressof(PyLongRangeIter_Type)));
     if not op {
         return NULL;
@@ -998,9 +1057,7 @@ def long_range_iter(r: ptr[rangeobject]) -> ptr[PyObject] {
     return op;
 }
 
-# The C longs of a range's start, stop and step, and whether all three fit
-# (the error is cleared when one does not).
-def long_fields(r: ptr[rangeobject]) -> tuple[i64, i64, i64, bool] {
+impl long_fields(r: ptr[rangeobject]) -> tuple[i64, i64, i64, bool] {
     start = PyLong_AsLong(r.view(1)[0].start);
     if start == -1 and PyErr_Occurred() {
         PyErr_Clear();
@@ -1019,9 +1076,9 @@ def long_fields(r: ptr[rangeobject]) -> tuple[i64, i64, i64, bool] {
     return (start, stop, step, True);
 }
 
-def range_iter(seq: ptr[PyObject]) -> ptr[PyObject] {
+impl range_iter(seq: ptr[PyObject]) -> ptr[PyObject] {
     r = range_of(seq);
-    # If all three fields and the length convert to long, use the int version
+
     (lstart, lstop, lstep, fits) = long_fields(r);
     if not fits {
         return long_range_iter(r);
@@ -1030,7 +1087,7 @@ def range_iter(seq: ptr[PyObject]) -> ptr[PyObject] {
     if ulen > u64(i64.MAX) {
         return long_range_iter(r);
     }
-    # check for potential overflow of lstart + ulen * lstep
+
     if ulen != u64(0) {
         if lstep > 0 {
             if lstop > i64.MAX - (lstep - 1) {
@@ -1043,20 +1100,13 @@ def range_iter(seq: ptr[PyObject]) -> ptr[PyObject] {
     return fast_range_iter(lstart, lstop, lstep, i64(ulen));
 }
 
-# reversed(range(start, stop, step)) is range(start+(n-1)*step, start-step,
-# -step), where n is the number of integers in the range. When start, stop,
-# step, -step, start-step and the length all fit a C long, the C-long iterator
-# runs it; that excludes some reversible ranges but keeps the checks simple.
-def range_reverse(seq: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl range_reverse(seq: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     r = range_of(seq);
     (lstart, lstop, lstep, fits) = long_fields(r);
-    # check for possible overflow of -lstep
+
     fits = fits and lstep != i64.MIN;
     ulen = u64(0);
     if fits {
-        # check for overflow of lstart - lstep, as unsigned longs to avoid
-        # signed overflow: lstart - LONG_MIN < lstep for lstep > 0, and
-        # LONG_MAX - lstart < -lstep for lstep < 0.
         if lstep > 0 {
             fits = wrapping_sub(u64.wrap(lstart), u64.wrap(i64.MIN)) >= u64(lstep);
         } else {
@@ -1082,7 +1132,7 @@ def range_reverse(seq: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     it = longrangeiter_of(op);
     it.view(1)[0].start = NULL;
     it.view(1)[0].step = NULL;
-    # start + (len - 1) * step
+
     it.view(1)[0].len = Py_NewRef(r.view(1)[0].length);
     diff = PyNumber_Subtract(it.view(1)[0].len, long_one());
     product = PyNumber_Multiply(diff, r.view(1)[0].step) if diff else NULL;

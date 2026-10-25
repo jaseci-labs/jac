@@ -155,7 +155,8 @@ impl do_mkvalue(format: ptr[u8], va: VaList) -> (ptr[PyObject], ptr[u8], VaList)
                 m = strlen(text);
                 if m > PY_SSIZE_T_MAX {
                     PyErr_SetString(
-                        PyExc_OverflowError, ptr[u8]("string too long for Python string")
+                        PyExc_OverflowError,
+                        ptr[u8]("string too long for Python string")
                     );
                     return (NULL, f, va);
                 }
@@ -564,7 +565,8 @@ impl va_build_value(format: ptr[u8], va: VaList) -> ptr[PyObject] {
 impl module_dict_for_add(mod: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
     if not object_type_check(mod, ptr[PyTypeObject](addressof(PyModule_Type))) {
         PyErr_SetString(
-            PyExc_TypeError, ptr[u8]("PyModule_AddObjectRef() first argument must be a module")
+            PyExc_TypeError,
+            ptr[u8]("PyModule_AddObjectRef() first argument must be a module")
         );
         return NULL;
     }
@@ -572,7 +574,9 @@ impl module_dict_for_add(mod: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObje
         if not PyErr_Occurred() {
             PyErr_SetString(
                 PyExc_SystemError,
-                ptr[u8]("PyModule_AddObjectRef() must be called with an exception raised if value is NULL")
+                ptr[u8](
+                    "PyModule_AddObjectRef() must be called with an exception raised if value is NULL"
+                )
             );
         }
         return NULL;
@@ -580,7 +584,9 @@ impl module_dict_for_add(mod: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObje
     dict = PyModule_GetDict(mod);
     if not dict {
         PyErr_Format(
-            PyExc_SystemError, ptr[u8]("module '%s' has no __dict__"), PyModule_GetName(mod)
+            PyExc_SystemError,
+            ptr[u8]("module '%s' has no __dict__"),
+            PyModule_GetName(mod)
         );
     }
     return dict;

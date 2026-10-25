@@ -1,11 +1,3 @@
-"""The datetime.time type of the _datetime module.
-
-Modules/_datetimemodule.c's PyDateTime_Time implementation in native Jac:
-`PyDateTime_TimeType` is C data under its C name. A time is allocated
-with or without room for its tzinfo member, as the C tp_alloc does. See
-../LICENSE.cpython.
-"""
-
 import from c {
     glob PyType_Type: PyTypeObject; glob:priv time_getset: list[PyGetSetDef] = [
              PyGetSetDef(name=ptr[u8]("hour"), get=time_hour),
@@ -44,12 +36,81 @@ import from c {
          );
 }
 
-# _PyDateTime_TIME_DATASIZE: bytes of hour, minute, second, and usecond.
 glob TIME_DATASIZE: Final[int] = 6;
 
-"""tp_alloc: `aware` (C's nitems) says whether the tzinfo member is needed,
-so a naive time takes less memory. Subclasses allocate the full size."""
-def time_alloc(type: ptr[PyTypeObject], aware: i64) -> ptr[PyObject] {
+def time_alloc(type: ptr[PyTypeObject], aware: i64) -> ptr[PyObject];
+
+def time_hour(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def time_minute(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def py_time_second(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def time_microsecond(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def time_tzinfo(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def time_fold(op: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def time_from_pickle(
+    type: ptr[PyTypeObject], state: ptr[PyObject], tzinfo: ptr[PyObject]
+) -> ptr[PyObject];
+
+def time_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def time_strptime(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def time_dealloc(op: ptr[PyObject]);
+
+def time_utcoffset(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def time_dst(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def time_tzname(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def time_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def time_str(op: ptr[PyObject]) -> ptr[PyObject];
+
+glob TIMESPECS: list[str] = [
+         "hours",
+         "minutes",
+         "seconds",
+         "milliseconds",
+         "microseconds"
+     ];
+
+def timespec_index(timespec: str, given: bool, us: int) -> int;
+
+def append_utcoffset(
+    result: ptr[PyObject], tzinfo: ptr[PyObject], tzinfoarg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def time_isoformat(
+    op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def time_strftime(
+    op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
+) -> ptr[PyObject];
+
+def time_richcompare(
+    self: ptr[PyObject], other: ptr[PyObject], op: i32
+) -> ptr[PyObject];
+
+def time_hash(op: ptr[PyObject]) -> i64;
+
+def time_fromisoformat(cls: ptr[PyObject], tstr: ptr[PyObject]) -> ptr[PyObject];
+
+def time_getstate(op: ptr[PyObject], proto: int) -> ptr[PyObject];
+
+def time_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def time_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+impl time_alloc(type: ptr[PyTypeObject], aware: i64) -> ptr[PyObject] {
     size = PY_DATETIME_TIME_SIZE if aware != 0 else PY_DATETIME_BASE_TIME_SIZE;
     self = PyObject_Malloc(u64(size));
     if not self {
@@ -58,40 +119,31 @@ def time_alloc(type: ptr[PyTypeObject], aware: i64) -> ptr[PyObject] {
     return PyObject_Init(ptr[PyObject](self), ptr[PyObject](type));
 }
 
-# ---------------------------------------------------------------------------
-# Accessor properties.
-
-def time_hour(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl time_hour(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(time_get_hour(op));
 }
 
-def time_minute(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl time_minute(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(time_get_minute(op));
 }
 
-"""The name time_second conflicted with some platform header file."""
-def py_time_second(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl py_time_second(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(time_get_second(op));
 }
 
-def time_microsecond(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl time_microsecond(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(time_get_microsecond(op));
 }
 
-def time_tzinfo(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl time_tzinfo(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(time_tzinfo_of(op));
 }
 
-def time_fold(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl time_fold(op: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return PyLong_FromLong(time_get_fold(op));
 }
 
-# ---------------------------------------------------------------------------
-# Constructors.
-
-"""A time from the 6-byte state of its pickle and its tzinfo; the high bit
-of the first byte is the fold."""
-def time_from_pickle(
+impl time_from_pickle(
     type: ptr[PyTypeObject], state: ptr[PyObject], tzinfo: ptr[PyObject]
 ) -> ptr[PyObject] {
     aware = tzinfo != Py_None;
@@ -122,10 +174,9 @@ def time_from_pickle(
     return me;
 }
 
-def time_new(
+impl time_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
-    # Check for invocation from pickle with __getstate__ state
     count = PyTuple_Size(args);
     if count >= 1 and count <= 2 {
         state = PyTuple_GetItem(args, 0);
@@ -141,7 +192,6 @@ def time_new(
                 latin1 = PyUnicode_AsLatin1String(state);
                 if not latin1 {
                     if PyErr_ExceptionMatches(PyExc_UnicodeEncodeError) != 0 {
-                        # More informative error message.
                         PyErr_SetString(
                             PyExc_ValueError,
                             ptr[u8](
@@ -178,37 +228,30 @@ def time_new(
     );
 }
 
-"""Return new time from _strptime._strptime_datetime_time()."""
-def time_strptime(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_strptime(cls: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return strptime_via(cls, args, "_strptime_datetime_time");
 }
 
-def time_dealloc(op: ptr[PyObject]) {
+impl time_dealloc(op: ptr[PyObject]) {
     if has_tzinfo(op) {
         jacpy_release(ptr[PyDateTime_Time](op).view(1)[0].tzinfo);
     }
     type_free(op);
 }
 
-# ---------------------------------------------------------------------------
-# Indirect access to tzinfo methods.
-
-def time_utcoffset(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl time_utcoffset(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return call_utcoffset(time_tzinfo_of(op), Py_None);
 }
 
-def time_dst(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl time_dst(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return call_dst(time_tzinfo_of(op), Py_None);
 }
 
-def time_tzname(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl time_tzname(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return call_tzname(time_tzinfo_of(op), Py_None);
 }
 
-# ---------------------------------------------------------------------------
-# Various ways to turn a time into a string.
-
-def time_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl time_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     type_name = type_name_of(op);
     h = time_get_hour(op);
     m = time_get_minute(op);
@@ -234,23 +277,11 @@ def time_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def time_str(op: ptr[PyObject]) -> ptr[PyObject] {
+impl time_str(op: ptr[PyObject]) -> ptr[PyObject] {
     return PyObject_CallMethod(op, "isoformat", "");
 }
 
-# The timespec names isoformat() takes, in C's table order.
-glob TIMESPECS: list[str] = [
-         "hours",
-         "minutes",
-         "seconds",
-         "milliseconds",
-         "microseconds"
-     ];
-
-"""The index of `timespec` in TIMESPECS, choosing seconds or microseconds
-for "auto" (or none given) by whether there are microseconds; the length of
-TIMESPECS for an unknown name."""
-def timespec_index(timespec: str, given: bool, us: int) -> int {
+impl timespec_index(timespec: str, given: bool, us: int) -> int {
     if not given or timespec == "auto" {
         return 4 if us != 0 else 2;
     }
@@ -262,9 +293,7 @@ def timespec_index(timespec: str, given: bool, us: int) -> int {
     return len(TIMESPECS);
 }
 
-"""Append the UTC offset of `tzinfo` (called with `tzinfoarg`) to
-`result`, which this consumes."""
-def append_utcoffset(
+impl append_utcoffset(
     result: ptr[PyObject], tzinfo: ptr[PyObject], tzinfoarg: ptr[PyObject]
 ) -> ptr[PyObject] {
     offset = format_utcoffset(":", tzinfo, tzinfoarg);
@@ -277,7 +306,7 @@ def append_utcoffset(
     return joined;
 }
 
-def time_isoformat(
+impl time_isoformat(
     op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -300,7 +329,6 @@ def time_isoformat(
     } elif given_spec == 2 {
         result = PyUnicode_FromFormat("%02ld:%02ld:%02ld", h, m, s);
     } elif given_spec == 3 {
-        # milliseconds
         result = PyUnicode_FromFormat("%02ld:%02ld:%02ld.%03ld", h, m, s, us // 1000);
     } elif given_spec == 4 {
         result = PyUnicode_FromFormat("%02ld:%02ld:%02ld.%06ld", h, m, s, us);
@@ -313,13 +341,13 @@ def time_isoformat(
         or ptr[PyDateTime_Time](op).view(1)[0].tzinfo == Py_None {
         return result;
     }
-    # We need to append the UTC offset.
+
     return append_utcoffset(
         result, ptr[PyDateTime_Time](op).view(1)[0].tzinfo, Py_None
     );
 }
 
-def time_strftime(
+impl time_strftime(
     op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
@@ -329,9 +357,7 @@ def time_strftime(
     } except boundary_failure {
         return NULL;
     }
-    # Python's strftime does insane things with the year part of the
-    # timetuple. The year is forced to (the otherwise nonsensical) 1900 to
-    # work around that.
+
     tuple = Py_BuildValue(
         ptr[u8]("lllllllll"),
         1900,
@@ -352,10 +378,7 @@ def time_strftime(
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Miscellaneous methods.
-
-def time_richcompare(
+impl time_richcompare(
     self: ptr[PyObject], other: ptr[PyObject], op: i32
 ) -> ptr[PyObject] {
     if not time_check(other) {
@@ -371,8 +394,6 @@ def time_richcompare(
     offset2 = time_utcoffset(other, NULL);
     result: ptr[PyObject] = NULL;
     if offset2 {
-        # If they're both naive, or both aware and have the same offsets, we
-        # get off cheap. Both naive means offset1 == offset2 == None here.
         if offset1 == offset2
             or (
                 delta_check(offset1)
@@ -381,7 +402,6 @@ def time_richcompare(
             ) {
             result = diff_to_bool(compare_data(self, other, TIME_DATASIZE), int(op));
         } elif offset1 != Py_None and offset2 != Py_None {
-            # The hard case: both aware with different UTC offsets
             offsecs1 = time_get_hour(self) * 3600
                 + time_get_minute(self) * 60
                 + time_get_second(self)
@@ -413,7 +433,7 @@ def time_richcompare(
     return result;
 }
 
-def time_hash(op: ptr[PyObject]) -> i64 {
+impl time_hash(op: ptr[PyObject]) -> i64 {
     record = ptr[PyDateTime_Time](op).view(1);
     hash = record[0].hashcode;
     if hash != -1 {
@@ -441,7 +461,7 @@ def time_hash(op: ptr[PyObject]) -> i64 {
     if not offset {
         return -1;
     }
-    # Reduce this to a hash of another object.
+
     if offset == Py_None {
         hash = generic_hash(op, TIME_DATASIZE);
         record[0].hashcode = hash;
@@ -468,7 +488,7 @@ def time_hash(op: ptr[PyObject]) -> i64 {
     return hash;
 }
 
-def time_fromisoformat(cls: ptr[PyObject], tstr: ptr[PyObject]) -> ptr[PyObject] {
+impl time_fromisoformat(cls: ptr[PyObject], tstr: ptr[PyObject]) -> ptr[PyObject] {
     if jacpy_is_unicode(tstr) == 0 {
         PyErr_SetString(
             PyExc_TypeError, ptr[u8]("fromisoformat: argument must be str")
@@ -481,9 +501,7 @@ def time_fromisoformat(cls: ptr[PyObject], tstr: ptr[PyObject]) -> ptr[PyObject]
         PyErr_Format(PyExc_ValueError, ptr[u8]("Invalid isoformat string: %R"), tstr);
         return NULL;
     }
-    # The spec actually requires that time-only ISO 8601 strings start with
-    # T, but the extended format allows this to be omitted as long as there
-    # is no ambiguity with date strings.
+
     if text.view(1)[0] == 84 {
         text += 1;
         length -= 1;
@@ -529,19 +547,12 @@ def time_fromisoformat(cls: ptr[PyObject], tstr: ptr[PyObject]) -> ptr[PyObject]
     return t;
 }
 
-# ---------------------------------------------------------------------------
-# Pickle support, a simple use of __reduce__.
-
-"""(basestate,) or (basestate, tzinfo), where basestate is the non-tzinfo
-data; the fold sets the first bit of the first byte for protocols above 3.
-__getstate__ isn't exposed."""
-def time_getstate(op: ptr[PyObject], proto: int) -> ptr[PyObject] {
+impl time_getstate(op: ptr[PyObject], proto: int) -> ptr[PyObject] {
     basestate = data_bytes(op, TIME_DATASIZE);
     if not basestate {
         return NULL;
     }
     if proto > 3 and time_get_fold(op) != 0 {
-        # Set the first bit of the first byte
         first = ptr[u8](jacpy_bytes_address(basestate));
         first.view(1)[0] = first.view(1)[0] | u8(128);
     }
@@ -555,7 +566,7 @@ def time_getstate(op: ptr[PyObject], proto: int) -> ptr[PyObject] {
     return result;
 }
 
-def time_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl time_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     try {
         proto = ArgumentFormat(name="__reduce_ex__").parse(args, "i")[0].signed;
     } except boundary_failure {
@@ -564,6 +575,6 @@ def time_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("(ON)"), type_of(op), time_getstate(op, proto));
 }
 
-def time_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl time_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("(ON)"), type_of(op), time_getstate(op, 2));
 }

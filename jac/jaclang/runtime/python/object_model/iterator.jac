@@ -1,13 +1,3 @@
-"""Sequence, callable and anext iterators: Objects/iterobject.c in native Jac.
-
-`PySeqIter_Type` (iter(sequence)), `PyCallIter_Type` (iter(callable,
-sentinel)) and `_PyAnextAwaitable_Type` (anext(iterator, default)) are C data
-Jac defines under their C names, and `PySeqIter_New`, `PyCallIter_New` and
-`PyAnextAwaitable_New` C functions under theirs, so the builtins and the C
-API use them unchanged. The object layouts come from layouts.jac. See
-../LICENSE.cpython.
-"""
-
 import from c {
     glob:priv seqiter_methods: list[PyMethodDef] = [
              PyMethodDef(
@@ -131,10 +121,7 @@ import from c {
          );
 }
 
-# ---------------------------------------------------------- sequence iterator
-def seqiter_of(op: ptr[PyObject]) -> ptr[seqiterobject] {
-    return ptr[seqiterobject](op);
-}
+def seqiter_of(op: ptr[PyObject]) -> ptr[seqiterobject];
 
 import from c {
     def PySeqIter_New(seq: ptr[PyObject]) -> ptr[PyObject] {
@@ -153,17 +140,95 @@ import from c {
     }
 }
 
-def iter_dealloc(op: ptr[PyObject]) {
+def iter_dealloc(op: ptr[PyObject]);
+
+def iter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def iter_iternext(op: ptr[PyObject]) -> ptr[PyObject];
+
+def iter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def iter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject];
+
+def calliter_of(op: ptr[PyObject]) -> ptr[calliterobject];
+
+import from c {
+    def PyCallIter_New(
+        function: ptr[PyObject], sentinel: ptr[PyObject]
+    ) -> ptr[PyObject] {
+        op = _PyObject_GC_New(ptr[PyObject](addressof(PyCallIter_Type)));
+        if not op {
+            return NULL;
+        }
+        calliter_of(op).view(1)[0].it_callable = Py_NewRef(function);
+        calliter_of(op).view(1)[0].it_sentinel = Py_NewRef(sentinel);
+        object_gc_track(op);
+        return op;
+    }
+}
+
+def calliter_dealloc(op: ptr[PyObject]);
+
+def calliter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def calliter_exhaust(it: ptr[calliterobject]);
+
+def calliter_iternext(op: ptr[PyObject]) -> ptr[PyObject];
+
+def calliter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def anext_of(op: ptr[PyObject]) -> ptr[anextawaitableobject];
+
+def anextawaitable_dealloc(op: ptr[PyObject]);
+
+def anextawaitable_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def anextawaitable_getiter(op: ptr[PyObject]) -> ptr[PyObject];
+
+def anextawaitable_iternext(op: ptr[PyObject]) -> ptr[PyObject];
+
+def anextawaitable_proxy(
+    op: ptr[PyObject], meth: str, arg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def anextawaitable_send(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject];
+
+def anextawaitable_throw(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def anextawaitable_close(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+import from c {
+    def PyAnextAwaitable_New(
+        awaitable: ptr[PyObject], default_value: ptr[PyObject]
+    ) -> ptr[PyObject] {
+        op = _PyObject_GC_New(ptr[PyObject](addressof(_PyAnextAwaitable_Type)));
+        if not op {
+            return NULL;
+        }
+        anext_of(op).view(1)[0].wrapped = Py_NewRef(awaitable);
+        anext_of(op).view(1)[0].default_value = Py_NewRef(default_value);
+        object_gc_track(op);
+        return op;
+    }
+}
+
+impl seqiter_of(op: ptr[PyObject]) -> ptr[seqiterobject] {
+    return ptr[seqiterobject](op);
+}
+
+impl iter_dealloc(op: ptr[PyObject]) {
     object_gc_untrack(op);
     jacpy_release(seqiter_of(op).view(1)[0].it_seq);
     PyObject_GC_Del(op);
 }
 
-def iter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl iter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(seqiter_of(op).view(1)[0].it_seq, visitor, arg);
 }
 
-def iter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
+impl iter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     it = seqiter_of(op);
     seq = it.view(1)[0].it_seq;
     if not seq {
@@ -187,7 +252,7 @@ def iter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def iter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl iter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     it = seqiter_of(op);
     seq = it.view(1)[0].it_seq;
     if seq {
@@ -206,9 +271,7 @@ def iter_len(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(0);
 }
 
-def iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
-    # _PyEval_GetBuiltin can invoke arbitrary code, so the call must come
-    # before the iterator's fields are read. see issue #101765
+impl iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     iterator = eval_builtin("iter");
     it = seqiter_of(op);
     if it.view(1)[0].it_seq {
@@ -219,7 +282,7 @@ def iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("N(())"), iterator);
 }
 
-def iter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
+impl iter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
     index = PyLong_AsSsize_t(state);
     if index == -1 and PyErr_Occurred() {
         return NULL;
@@ -231,34 +294,18 @@ def iter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-# ---------------------------------------------------------- callable iterator
-def calliter_of(op: ptr[PyObject]) -> ptr[calliterobject] {
+impl calliter_of(op: ptr[PyObject]) -> ptr[calliterobject] {
     return ptr[calliterobject](op);
 }
 
-import from c {
-    def PyCallIter_New(
-        function: ptr[PyObject], sentinel: ptr[PyObject]
-    ) -> ptr[PyObject] {
-        op = _PyObject_GC_New(ptr[PyObject](addressof(PyCallIter_Type)));
-        if not op {
-            return NULL;
-        }
-        calliter_of(op).view(1)[0].it_callable = Py_NewRef(function);
-        calliter_of(op).view(1)[0].it_sentinel = Py_NewRef(sentinel);
-        object_gc_track(op);
-        return op;
-    }
-}
-
-def calliter_dealloc(op: ptr[PyObject]) {
+impl calliter_dealloc(op: ptr[PyObject]) {
     object_gc_untrack(op);
     jacpy_release(calliter_of(op).view(1)[0].it_callable);
     jacpy_release(calliter_of(op).view(1)[0].it_sentinel);
     PyObject_GC_Del(op);
 }
 
-def calliter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl calliter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     status = visit_reference(calliter_of(op).view(1)[0].it_callable, visitor, arg);
     if status != 0 {
         return status;
@@ -266,8 +313,7 @@ def calliter_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(calliter_of(op).view(1)[0].it_sentinel, visitor, arg);
 }
 
-"""Py_CLEAR of both fields: the iterator is exhausted."""
-def calliter_exhaust(it: ptr[calliterobject]) {
+impl calliter_exhaust(it: ptr[calliterobject]) {
     function = it.view(1)[0].it_callable;
     it.view(1)[0].it_callable = NULL;
     jacpy_release(function);
@@ -276,7 +322,7 @@ def calliter_exhaust(it: ptr[calliterobject]) {
     jacpy_release(sentinel);
 }
 
-def calliter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
+impl calliter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     it = calliter_of(op);
     if not it.view(1)[0].it_callable {
         return NULL;
@@ -285,7 +331,7 @@ def calliter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     if result and it.view(1)[0].it_sentinel {
         ok = PyObject_RichCompareBool(it.view(1)[0].it_sentinel, result, Py_EQ);
         if ok == 0 {
-            return result;  # Common case, fast path
+            return result;
         }
         if ok > 0 {
             calliter_exhaust(it);
@@ -298,9 +344,7 @@ def calliter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def calliter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
-    # _PyEval_GetBuiltin can invoke arbitrary code, so the call must come
-    # before the iterator's fields are read. see issue #101765
+impl calliter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     iterator = eval_builtin("iter");
     it = calliter_of(op);
     if it.view(1)[0].it_callable and it.view(1)[0].it_sentinel {
@@ -314,19 +358,18 @@ def calliter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
     return Py_BuildValue(ptr[u8]("N(())"), iterator);
 }
 
-# ---------------------------------------------------------- anext awaitable
-def anext_of(op: ptr[PyObject]) -> ptr[anextawaitableobject] {
+impl anext_of(op: ptr[PyObject]) -> ptr[anextawaitableobject] {
     return ptr[anextawaitableobject](op);
 }
 
-def anextawaitable_dealloc(op: ptr[PyObject]) {
+impl anextawaitable_dealloc(op: ptr[PyObject]) {
     object_gc_untrack(op);
     jacpy_release(anext_of(op).view(1)[0].wrapped);
     jacpy_release(anext_of(op).view(1)[0].default_value);
     PyObject_GC_Del(op);
 }
 
-def anextawaitable_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl anextawaitable_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     status = visit_reference(anext_of(op).view(1)[0].wrapped, visitor, arg);
     if status != 0 {
         return status;
@@ -334,14 +377,12 @@ def anextawaitable_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(anext_of(op).view(1)[0].default_value, visitor, arg);
 }
 
-def anextawaitable_getiter(op: ptr[PyObject]) -> ptr[PyObject] {
+impl anextawaitable_getiter(op: ptr[PyObject]) -> ptr[PyObject] {
     awaitable = _PyCoro_GetAwaitableIter(anext_of(op).view(1)[0].wrapped);
     if not awaitable {
         return NULL;
     }
     if int(object_type(awaitable).view(1)[0].tp_iternext) == 0 {
-        # _PyCoro_GetAwaitableIter returns a Coroutine, a Generator,
-        # or an iterator. Of these, only coroutines lack tp_iternext.
         new_awaitable = object_type(awaitable).view(1)[0].tp_as_async.view(1)[
             0
         ].am_await(
@@ -363,10 +404,7 @@ def anextawaitable_getiter(op: ptr[PyObject]) -> ptr[PyObject] {
     return awaitable;
 }
 
-def anextawaitable_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
-    # `await anext(a)` for an object with an async __anext__ calls
-    # a.__anext__().__await__().__next__(); for an async generator,
-    # gen.__anext__().__next__() is enough.
+impl anextawaitable_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     awaitable = anextawaitable_getiter(op);
     if not awaitable {
         return NULL;
@@ -383,15 +421,14 @@ def anextawaitable_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
     return NULL;
 }
 
-def anextawaitable_proxy(
+impl anextawaitable_proxy(
     op: ptr[PyObject], meth: str, arg: ptr[PyObject]
 ) -> ptr[PyObject] {
     awaitable = anextawaitable_getiter(op);
     if not awaitable {
         return NULL;
     }
-    # When specified, 'arg' may be a tuple (if coming from a METH_VARARGS
-    # method) or a single object (if coming from a METH_O method).
+
     result = PyObject_CallMethod(awaitable, meth, ptr[u8]())
         if not arg
         else PyObject_CallMethod(awaitable, meth, "O", arg);
@@ -400,38 +437,20 @@ def anextawaitable_proxy(
         return result;
     }
     if PyErr_ExceptionMatches(PyExc_StopAsyncIteration) != 0 {
-        # The anext awaitable is only used by anext() when a default value is
-        # provided, so StopAsyncIteration becomes StopIteration(default), as
-        # if it was the return value of the __anext__() coroutine.
         PyErr_Clear();
         _PyGen_SetStopIterationValue(anext_of(op).view(1)[0].default_value);
     }
     return NULL;
 }
 
-def anextawaitable_send(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
+impl anextawaitable_send(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     return anextawaitable_proxy(op, "send", arg);
 }
 
-def anextawaitable_throw(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl anextawaitable_throw(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return anextawaitable_proxy(op, "throw", args);
 }
 
-def anextawaitable_close(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl anextawaitable_close(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return anextawaitable_proxy(op, "close", NULL);
-}
-
-import from c {
-    def PyAnextAwaitable_New(
-        awaitable: ptr[PyObject], default_value: ptr[PyObject]
-    ) -> ptr[PyObject] {
-        op = _PyObject_GC_New(ptr[PyObject](addressof(_PyAnextAwaitable_Type)));
-        if not op {
-            return NULL;
-        }
-        anext_of(op).view(1)[0].wrapped = Py_NewRef(awaitable);
-        anext_of(op).view(1)[0].default_value = Py_NewRef(default_value);
-        object_gc_track(op);
-        return op;
-    }
 }

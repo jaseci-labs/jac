@@ -581,7 +581,12 @@ impl tb_new_bound(args: BoundArguments) -> ptr[PyObject] {
     tb_next = args.values[0];
     tb_frame = args.values[1];
     if not object_type_check(tb_frame, ptr[PyTypeObject](addressof(PyFrame_Type))) {
-        _PyArg_BadArgument(ptr[u8]("traceback"), ptr[u8]("argument 'tb_frame'"), ptr[u8]("frame"), tb_frame);
+        _PyArg_BadArgument(
+            ptr[u8]("traceback"),
+            ptr[u8]("argument 'tb_frame'"),
+            ptr[u8]("frame"),
+            tb_frame
+        );
         return NULL;
     }
     tb_lasti = PyLong_AsInt(args.values[2]);

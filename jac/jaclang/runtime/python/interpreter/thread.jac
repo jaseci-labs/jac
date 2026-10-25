@@ -147,7 +147,8 @@ import from c {
         }
         if blocking == 0 {
             PyErr_SetString(
-                PyExc_ValueError, ptr[u8]("can't specify a timeout for a non-blocking call")
+                PyExc_ValueError,
+                ptr[u8]("can't specify a timeout for a non-blocking call")
             );
             return -1;
         }

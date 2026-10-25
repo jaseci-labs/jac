@@ -1,11 +1,3 @@
-"""Cell objects: Objects/cellobject.c in native Jac.
-
-`PyCell_Type` is C data Jac defines under its C name, and `PyCell_New`,
-`PyCell_Get` and `PyCell_Set` are C functions under theirs, so closures built
-by the evaluator and the C API use them unchanged. The cell layout is
-Include/cpython/cellobject.h's `PyCellObject`. See ../LICENSE.cpython.
-"""
-
 import from c {
     glob:priv cell_getsetlist: list[PyGetSetDef] = [
              PyGetSetDef(
@@ -44,27 +36,13 @@ import from c {
          );
 }
 
-"""The cell layout behind a handle."""
-def cell_of(op: ptr[PyObject]) -> ptr[PyCellObject] {
-    return ptr[PyCellObject](op);
-}
+def cell_of(op: ptr[PyObject]) -> ptr[PyCellObject];
 
-"""PyCell_Check."""
-def cell_check(op: ptr[PyObject]) -> bool {
-    return object_is_type(op, addressof(PyCell_Type));
-}
+def cell_check(op: ptr[PyObject]) -> bool;
 
-"""PyCell_GetRef: the contents as a new reference, or NULL when empty."""
-def cell_get_ref(cell: ptr[PyCellObject]) -> ptr[PyObject] {
-    return Py_XNewRef(cell.view(1)[0].ob_ref);
-}
+def cell_get_ref(cell: ptr[PyCellObject]) -> ptr[PyObject];
 
-"""PyCell_SetTakeRef: store `value` (stealing it) and release the old contents."""
-def cell_set_take_ref(cell: ptr[PyCellObject], value: ptr[PyObject]) {
-    old = cell.view(1)[0].ob_ref;
-    cell.view(1)[0].ob_ref = value;
-    jacpy_release(old);
-}
+def cell_set_take_ref(cell: ptr[PyCellObject], value: ptr[PyObject]);
 
 import from c {
     def PyCell_New(value: ptr[PyObject]) -> ptr[PyObject] {
@@ -93,46 +71,83 @@ import from c {
 
 def cell_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+def cell_dealloc(op: ptr[PyObject]);
+
+def cell_compare_impl(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject];
+
+def cell_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject];
+
+def cell_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def cell_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def cell_clear(op: ptr[PyObject]) -> i32;
+
+def cell_get_contents(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def cell_set_contents(op: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> i32;
+
+impl cell_of(op: ptr[PyObject]) -> ptr[PyCellObject] {
+    return ptr[PyCellObject](op);
+}
+
+impl cell_check(op: ptr[PyObject]) -> bool {
+    return object_is_type(op, addressof(PyCell_Type));
+}
+
+impl cell_get_ref(cell: ptr[PyCellObject]) -> ptr[PyObject] {
+    return Py_XNewRef(cell.view(1)[0].ob_ref);
+}
+
+impl cell_set_take_ref(cell: ptr[PyCellObject], value: ptr[PyObject]) {
+    old = cell.view(1)[0].ob_ref;
+    cell.view(1)[0].ob_ref = value;
+    jacpy_release(old);
+}
+
+impl cell_new(
+    _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     value = NULL;
     if kwargs and _PyArg_NoKeywords(ptr[u8]("cell"), kwargs) == 0 {
         return NULL;
     }
-    # min = 0: we allow the cell to be empty
+
     if PyArg_UnpackTuple(args, ptr[u8]("cell"), 0, 1, &mut value) == 0 {
         return NULL;
     }
     return PyCell_New(value);
 }
 
-def cell_dealloc(op: ptr[PyObject]) {
+impl cell_dealloc(op: ptr[PyObject]) {
     object_gc_untrack(op);
     jacpy_release(cell_of(op).view(1)[0].ob_ref);
     PyObject_GC_Del(op);
 }
 
-def cell_compare_impl(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject] {
+impl cell_compare_impl(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject] {
     if a and b {
         return PyObject_RichCompare(a, b, op);
     }
     return rich_compare_values(i64(not b), i64(not a), op);
 }
 
-def cell_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject] {
-    # both arguments should be instances of PyCellObject
+impl cell_richcompare(a: ptr[PyObject], b: ptr[PyObject], op: i32) -> ptr[PyObject] {
     if not cell_check(a) or not cell_check(b) {
         return Py_NewRef(Py_NotImplemented);
     }
     a_ref = cell_get_ref(cell_of(a));
     b_ref = cell_get_ref(cell_of(b));
-    # compare cells by contents; empty cells come before anything else
+
     result = cell_compare_impl(a_ref, b_ref, op);
     jacpy_release(a_ref);
     jacpy_release(b_ref);
     return result;
 }
 
-def cell_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl cell_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     ref = cell_get_ref(cell_of(op));
     if not ref {
         return PyUnicode_FromFormat("<cell at %p: empty>", op);
@@ -144,18 +159,18 @@ def cell_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def cell_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl cell_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(cell_of(op).view(1)[0].ob_ref, visitor, arg);
 }
 
-def cell_clear(op: ptr[PyObject]) -> i32 {
+impl cell_clear(op: ptr[PyObject]) -> i32 {
     old = cell_of(op).view(1)[0].ob_ref;
     cell_of(op).view(1)[0].ob_ref = NULL;
     jacpy_release(old);
     return i32(0);
 }
 
-def cell_get_contents(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl cell_get_contents(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     result = cell_get_ref(cell_of(op));
     if not result {
         PyErr_SetString(PyExc_ValueError, ptr[u8]("Cell is empty"));
@@ -164,7 +179,7 @@ def cell_get_contents(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     return result;
 }
 
-def cell_set_contents(op: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> i32 {
+impl cell_set_contents(op: ptr[PyObject], value: ptr[PyObject], _closure: ptr) -> i32 {
     cell_set_take_ref(cell_of(op), Py_XNewRef(value));
     return i32(0);
 }

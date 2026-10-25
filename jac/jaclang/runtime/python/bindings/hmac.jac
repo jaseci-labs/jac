@@ -1,13 +1,6 @@
-"""The _hmac module: the HMAC type, UnknownHashError and the one-shot functions
-over the generated clinic glue."""
+def:priv hmac_dealloc(instance: ptr[PyObject]);
 
-def:priv hmac_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, HMAC_token.handle);
-}
-
-def:priv hmac_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, HMAC_token.handle, visitor, context);
-}
+def:priv hmac_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
 glob:priv hmac_type = TypeDefinition(
          "_hmac.HMAC",
@@ -22,7 +15,23 @@ glob:priv hmac_type = TypeDefinition(
          HMAC_getset
      );
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "_hmac", "", module_methods, ModuleHooks(execute=execute), 2
+     );
+
+def:pub PyInit__hmac -> ptr[PyObject];
+
+impl hmac_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, HMAC_token.handle);
+}
+
+impl hmac_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, HMAC_token.handle, visitor, context);
+}
+
+impl execute(module: ptr[PyObject]) -> i32 {
     HMAC_token.handle = hmac_type.handle;
     if not add_state_owned(
         module,
@@ -38,10 +47,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "_hmac", "", module_methods, ModuleHooks(execute=execute), 2
-     );
-
-def:pub PyInit__hmac -> ptr[PyObject] {
+impl PyInit__hmac -> ptr[PyObject] {
     return definition.initialize();
 }

@@ -1,89 +1,18 @@
-"""Own an exported Python buffer across conversions that can invoke user code."""
-
 obj BufferArgument {
     has view: ptr[Py_buffer] = ptr[Py_buffer]();
 
-    def acquire(value: ptr[PyObject], ascii: bool = False) -> bool {
-        self.close();
-        self.view = jacpy_buffer_acquire(value, i64(ascii));
-        return bool(self.view);
-    }
-
-    # A str is read as its UTF-8 bytes, as clinic's Py_buffer(accept={str, buffer}).
-    def acquire_text(value: ptr[PyObject]) -> bool {
-        self.close();
-        self.view = jacpy_buffer_acquire(value, 2);
-        return bool(self.view);
-    }
-
-    def bytes -> ptr[PyObject] {
-        return jacpy_buffer_bytes(self.view);
-    }
-
-    # The "w*" format: a writable contiguous buffer.
-    def acquire_writable(value: ptr[PyObject]) -> bool {
-        self.close();
-        view = new_view();
-        if view and PyArg_Parse(value, ptr[u8]("w*"), view) == 0 {
-            PyMem_Free(view);
-            view = ptr[Py_buffer]();
-        }
-        self.view = view;
-        return bool(view);
-    }
-
-    # The "s*" format: a str as its UTF-8 encoding or a contiguous buffer.
-    def acquire_string(value: ptr[PyObject]) -> bool {
-        self.close();
-        view = new_view();
-        if view and PyArg_Parse(value, ptr[u8]("s*"), view) == 0 {
-            PyMem_Free(view);
-            view = ptr[Py_buffer]();
-        }
-        self.view = view;
-        return bool(view);
-    }
-
-    # PyObject_GetBuffer with PyBUF_* flags, keeping the exporter's exception.
-    def export(value: ptr[PyObject], flags: i64) -> bool {
-        self.close();
-        view = new_view();
-        if view and PyObject_GetBuffer(value, view, i32(flags)) < 0 {
-            PyMem_Free(view);
-            view = ptr[Py_buffer]();
-        }
-        self.view = view;
-        return bool(view);
-    }
-
-    def owner -> ptr[PyObject] {
-        if not self.view {
-            return NULL;
-        }
-        return self.view.view(1)[0].owner;
-    }
-
-    def close {
-        previous = self.view;
-        self.view = ptr[Py_buffer]();
-        jacpy_buffer_release(previous);
-    }
-
-    def address -> ptr {
-        return self.view.view(1)[0].buf;
-    }
-
-    def size -> i64 {
-        return self.view.view(1)[0].length;
-    }
-
-    def dimensions -> i64 {
-        return i64(self.view.view(1)[0].ndim);
-    }
-
-    def drop {
-        self.close();
-    }
+    def acquire(value: ptr[PyObject], ascii: bool = False) -> bool;
+    def acquire_text(value: ptr[PyObject]) -> bool;
+    def bytes -> ptr[PyObject];
+    def acquire_writable(value: ptr[PyObject]) -> bool;
+    def acquire_string(value: ptr[PyObject]) -> bool;
+    def export(value: ptr[PyObject], flags: i64) -> bool;
+    def owner -> ptr[PyObject];
+    def close;
+    def address -> ptr;
+    def size -> i64;
+    def dimensions -> i64;
+    def drop;
 }
 
 import from jaclang.runtime.python.cpython_api {
@@ -101,15 +30,7 @@ import from jaclang.runtime.python.cpython_api {
 }
 import from jaclang.runtime.python.layouts { PY_BUFFER_SIZE }
 
-# A zeroed Py_buffer in PyMem memory for an acquisition to fill;
-# jacpy_buffer_release releases the view and frees it.
-def:priv new_view -> ptr[Py_buffer] {
-    view = ptr[Py_buffer](PyMem_Calloc(1, PY_BUFFER_SIZE));
-    if not view {
-        PyErr_NoMemory();
-    }
-    return view;
-}
+def:priv new_view -> ptr[Py_buffer];
 
 import from c {
     obj BufferLayout {
@@ -124,4 +45,90 @@ import from c {
         format: str,
         flags: i32
     ) -> i32;  def jacpy_binding_buffer_dispose(view: ptr[Py_buffer]);
+}
+
+impl BufferArgument.acquire(value: ptr[PyObject], ascii: bool = False) -> bool {
+    self.close();
+    self.view = jacpy_buffer_acquire(value, i64(ascii));
+    return bool(self.view);
+}
+
+impl BufferArgument.acquire_text(value: ptr[PyObject]) -> bool {
+    self.close();
+    self.view = jacpy_buffer_acquire(value, 2);
+    return bool(self.view);
+}
+
+impl BufferArgument.bytes -> ptr[PyObject] {
+    return jacpy_buffer_bytes(self.view);
+}
+
+impl BufferArgument.acquire_writable(value: ptr[PyObject]) -> bool {
+    self.close();
+    view = new_view();
+    if view and PyArg_Parse(value, ptr[u8]("w*"), view) == 0 {
+        PyMem_Free(view);
+        view = ptr[Py_buffer]();
+    }
+    self.view = view;
+    return bool(view);
+}
+
+impl BufferArgument.acquire_string(value: ptr[PyObject]) -> bool {
+    self.close();
+    view = new_view();
+    if view and PyArg_Parse(value, ptr[u8]("s*"), view) == 0 {
+        PyMem_Free(view);
+        view = ptr[Py_buffer]();
+    }
+    self.view = view;
+    return bool(view);
+}
+
+impl BufferArgument.export(value: ptr[PyObject], flags: i64) -> bool {
+    self.close();
+    view = new_view();
+    if view and PyObject_GetBuffer(value, view, i32(flags)) < 0 {
+        PyMem_Free(view);
+        view = ptr[Py_buffer]();
+    }
+    self.view = view;
+    return bool(view);
+}
+
+impl BufferArgument.owner -> ptr[PyObject] {
+    if not self.view {
+        return NULL;
+    }
+    return self.view.view(1)[0].owner;
+}
+
+impl BufferArgument.close {
+    previous = self.view;
+    self.view = ptr[Py_buffer]();
+    jacpy_buffer_release(previous);
+}
+
+impl BufferArgument.address -> ptr {
+    return self.view.view(1)[0].buf;
+}
+
+impl BufferArgument.size -> i64 {
+    return self.view.view(1)[0].length;
+}
+
+impl BufferArgument.dimensions -> i64 {
+    return i64(self.view.view(1)[0].ndim);
+}
+
+impl BufferArgument.drop {
+    self.close();
+}
+
+impl new_view -> ptr[Py_buffer] {
+    view = ptr[Py_buffer](PyMem_Calloc(1, PY_BUFFER_SIZE));
+    if not view {
+        PyErr_NoMemory();
+    }
+    return view;
 }

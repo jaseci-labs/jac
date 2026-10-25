@@ -280,7 +280,8 @@ import from c {
             }
             if not tuple_check(result) or object_size(result) != 4 {
                 PyErr_SetString(
-                    PyExc_TypeError, ptr[u8]("codec search functions must return 4-tuples")
+                    PyExc_TypeError,
+                    ptr[u8]("codec search functions must return 4-tuples")
                 );
                 object_decref(result);
                 object_decref(v);
@@ -389,7 +390,9 @@ import from c {
                         if alternate_command {
                             PyErr_Format(
                                 PyExc_LookupError,
-                                ptr[u8]("'%.400s' is not a text encoding; use %s to handle arbitrary codecs"),
+                                ptr[u8](
+                                    "'%.400s' is not a text encoding; use %s to handle arbitrary codecs"
+                                ),
                                 encoding,
                                 alternate_command
                             );
@@ -463,7 +466,9 @@ import from c {
         }
         if not handler {
             PyErr_Format(
-                PyExc_LookupError, ptr[u8]("unknown error handler name '%.400s'"), handler_name
+                PyExc_LookupError,
+                ptr[u8]("unknown error handler name '%.400s'"),
+                handler_name
             );
             return NULL;
         }
@@ -494,7 +499,9 @@ import from c {
         if type_has_feature(object_type(exc), Py_TPFLAGS_BASE_EXC_SUBCLASS) {
             reraise_exception(exc);
         } else {
-            PyErr_SetString(PyExc_TypeError, ptr[u8]("codec must pass exception instance"));
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("codec must pass exception instance")
+            );
         }
         return NULL;
     }
@@ -993,7 +1000,9 @@ impl _PyCodec_TextDecoder(encoding: ptr[u8]) -> ptr[PyObject] {
 }
 
 impl wrong_exception_type(exc: ptr[PyObject]) {
-    PyErr_Format(PyExc_TypeError, ptr[u8]("don't know how to handle %T in error callback"), exc);
+    PyErr_Format(
+        PyExc_TypeError, ptr[u8]("don't know how to handle %T in error callback"), exc
+    );
 }
 
 impl is_unicode_encode_error(exc: ptr[PyObject]) -> bool {

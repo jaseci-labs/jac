@@ -592,7 +592,12 @@ import from c {
         if filenameObject {
             if filenameObject2 {
                 args = Py_BuildValue(
-                    ptr[u8]("(iOOiO)"), i, message, filenameObject, i32(0), filenameObject2
+                    ptr[u8]("(iOOiO)"),
+                    i,
+                    message,
+                    filenameObject,
+                    i32(0),
+                    filenameObject2
                 );
             } else {
                 args = Py_BuildValue(ptr[u8]("(iOO)"), i, message, filenameObject);
