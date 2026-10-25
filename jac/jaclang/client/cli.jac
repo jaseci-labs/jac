@@ -55,7 +55,8 @@ def run_client_start(
     port: int,
     api_port: int,
     dev: bool,
-    no_client: bool
+    no_client: bool,
+    tunnel: bool = False
 ) -> int | None;
 
 def get_config -> JacConfig | None;
@@ -227,7 +228,8 @@ impl run_client_start(
     port: int,
     api_port: int,
     dev: bool,
-    no_client: bool
+    no_client: bool,
+    tunnel: bool = False
 ) -> int | None {
     config = get_config();
     if not config {
@@ -277,9 +279,26 @@ impl run_client_start(
         if app_platform and app_platform != "auto" {
             os.environ["JAC_MOBILE_PLATFORM"] = app_platform;
         }
+        import from jaclang.client.targets.react_native.dev {
+            JAC_RN_DEV_HOST_ENV,
+            JAC_RN_TUNNEL_ENV
+        }
         if host {
-            import from jaclang.client.targets.react_native.dev { JAC_RN_DEV_HOST_ENV }
             os.environ[JAC_RN_DEV_HOST_ENV] = str(host);
+        }
+        if tunnel {
+            os.environ[JAC_RN_TUNNEL_ENV] = "1";
+        } else {
+            os.environ.pop(JAC_RN_TUNNEL_ENV, None);
+        }
+        if not dev {
+            build_target = "" if app.implicit else f" {app.name}";
+            console.print(
+                "  A mobile app runs through the Expo dev server; for an "
+                f"installable build use: jac build --platform android{build_target}",
+                style="muted"
+            );
+            dev = True;
         }
     }
     try {
