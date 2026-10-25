@@ -1,18 +1,22 @@
 import ctypes;
-import logging;
 import from collections.abc { Callable, Iterable }
 import from typing { Protocol }
 class CallbackSignature(Protocol) {
     has name: str,
+        symbol: str,
         ret_type: str,
         param_types: list[str];
 }
 
 obj NativeCallback {
     has name: str,
+        symbol: str,
         ret_type: str,
         param_types: list[str];
 }
+
+def native_callback_of(record: dict[str, any], product: str) -> NativeCallback;
+def callback_ctype(type_name: str) -> (type | None);
 
 obj NativeLibrary {
     has path: str,
@@ -28,13 +32,7 @@ obj NativeLibrary {
     def initialize -> None;
 }
 
-glob logger = logging.getLogger(__name__),
-     JAC_TO_CTYPES: dict[(str, type)] = {
-         'int': ctypes.c_int64,
-         'float': ctypes.c_double,
-         'bool': ctypes.c_bool,
-         'str': ctypes.c_char_p
-     },
+glob CALLBACK_VOID_RETURNS: tuple[str, ...] = ('None', 'void'),
      _pyb_shadows: dict[(int, object)] = {},
      _pyb_class_memo: dict[(tuple[any, ...], type)] = {},
      _pyb_module_memo: dict[(str, object)] = {};

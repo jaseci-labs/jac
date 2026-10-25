@@ -2383,7 +2383,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5093",
          Category.CODEGEN,
          "Type '{type}' on {what} of '{name}' cannot cross the native->Python call boundary",
-         help="Native code calling a Python-context function marshals through a fixed ctypes callback table: int (c_int64), float (c_double), bool (c_bool), str (c_char_p), sized ints, plus None returns. Any other type would be reinterpreted as a raw c_int64 and produce garbage values at runtime. Use a supported primitive at the boundary, or move the callee into the native context. (Python calling INTO native code is unaffected: that direction goes through the native marshal bridge, which handles lists, structs, and enums.)"
+         help="Native code calling a Python-context function passes its arguments as C values: int (c_int64), float (c_double), bool (c_bool), str (c_char_p), the sized scalars at their own width and sign (i8 to u64, f32, f64), plus None returns. No other type has a C form at this boundary, bytes included. Use a supported primitive at the boundary, or move the callee into the native context. (Python calling INTO native code is unaffected: that direction goes through the native marshal bridge, which handles lists, structs, and enums.)"
      ),
      E5080 = _err(
          "E5080",
@@ -2602,6 +2602,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.ICE,
          "ICE: missing semantic annotation -- {details}",
          help="Codegen required a fact the central analysis pipeline never recorded on the unitree. This is a compiler bug, not an error in your program."
+     ),
+     E9003 = _err(
+         "E9003",
+         Category.ICE,
+         "ICE: the native backend crashed lowering {kind} '{name}': {details}",
+         help="This is a compiler bug, not an error in your program -- please report it. A crash is never treated as a construct the backend declined, so the module does not run until it is fixed. Pin the module to the server codespace under [placement.pins] in jac.toml to keep working meanwhile.",
+         blocks_codegen=True
      ),
      E7001 = _err(
          "E7001",

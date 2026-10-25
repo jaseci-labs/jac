@@ -334,7 +334,13 @@ impl JacCompiler._adopt_kernel_compile(
     }
     target = compiled.unit(full_target);
     if target is None {
-        return (bool(compiled.analysis.errors), None);
+        if compiled.analysis.errors {
+            return (True, None);
+        }
+        raise RuntimeError(
+            f"the native compiler kernel compiled {full_target} but returned no "
+            "unit for it and reported no error"
+        );
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     adopted: (bytes | None) = None;
@@ -1207,17 +1213,14 @@ impl JacCompiler._get_client_artifact(
     }
     mark = len(actual_program.errors_had);
     if not has_live_tree and not actual_program.internal {
-        (handled, adopted) = self._adopt_kernel_compile(
+        (handled, _) = self._adopt_kernel_compile(
             full_target, actual_program, CompileOptions(skip_native_engine=True)
         );
         if len(actual_program.errors_had) > mark {
             return None;
         }
-        emitted = actual_program.hub.client_artifacts.get(full_target)
-            if handled
-            else None;
-        if emitted is not None or adopted is not None {
-            return emitted;
+        if handled {
+            return actual_program.hub.client_artifacts.get(full_target);
         }
     }
     compiled = self.compile(
