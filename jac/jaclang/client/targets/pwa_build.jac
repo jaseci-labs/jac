@@ -1,4 +1,5 @@
 import from pathlib { Path }
+import from urllib.parse { quote }
 
 import json;
 import shutil;
@@ -215,7 +216,7 @@ impl _get_precache_files(dist_dir: Path) -> list[str] {
     }
     for f in dist_dir.iterdir() {
         if f.is_file() and f.suffix in PWA_CACHEABLE_EXTENSIONS {
-            precache_files.append(f"'./{f.name}'");
+            precache_files.append(json.dumps("./" + quote(f.name)));
         }
     }
     return precache_files;

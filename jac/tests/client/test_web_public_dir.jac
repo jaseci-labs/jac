@@ -1,6 +1,8 @@
 """A web build copies `public/` into `dist/`, so a deployment that serves only `dist/`
 answers the same root URLs (`/robots.txt`, `/logo.png`) as `jac run --serve` (#9456)."""
 
+import json;
+import subprocess;
 import tempfile;
 import from pathlib { Path }
 import from unittest.mock { patch }
@@ -190,18 +192,31 @@ test "linked folders inside public/ are copied, links that leave it or loop are 
 }
 
 test "a PWA build's service worker precaches the files copied from public/" {
+    import from jaclang.testing.requires { require_tool }
+    require_tool("node");
     with tempfile.TemporaryDirectory() as tmp {
         project_dir = Path(tmp).resolve();
-        entry_path = single_app(project_dir, {"logo.png": "png\n"});
+        entry_path = single_app(
+            project_dir, {"logo.png": "png\n", "team's #1?.png": "png\n"}
+        );
         with open(project_dir / "jac.toml", "a") as f {
             f.write('\n[client.pwa]\ntheme_color = "#000000"\n');
         }
         dist = build_web(project_dir, entry_path);
-        assert (dist / "logo.png").is_file() , "public/logo.png is missing from dist";
-        sw = (dist / "sw.js").read_text();
-        assert "'./logo.png'" in sw , (
-            "sw.js was written before public/ was copied, so logo.png is not precached"
+        sw_path = dist / "sw.js";
+        check = subprocess.run(
+            ["node", "--check", str(sw_path)], capture_output=True, text=True
         );
-        assert "'./index.html'" in sw , "sw.js no longer precaches the built index.html";
+        assert check.returncode == 0 , f"sw.js is not valid JavaScript:\n{check.stderr}";
+        sw = sw_path.read_text();
+        rows = [
+            ("a plain name", "logo.png", "./logo.png"),
+            ("a quote, space, # and ?", "team's #1?.png", "./team%27s%20%231%3F.png"),
+            ("the built page", "index.html", "./index.html")
+        ];
+        for (label, name, url) in rows {
+            assert (dist / name).is_file() , f"{label}: {name} is missing from dist";
+            assert json.dumps(url) in sw , f"{label}: sw.js does not precache {url}";
+        }
     }
 }
