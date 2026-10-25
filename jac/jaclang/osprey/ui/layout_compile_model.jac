@@ -69,13 +69,3 @@ obj _Allocation {
         overflow: bool = False,
         hard_overflow: bool = False;
 }
-
-impl _wants(phase: str, horizontal: bool) -> bool {
-    if phase == "h" {
-        return horizontal;
-    }
-    if phase == "v" {
-        return not horizontal;
-    }
-    return True;
-}
