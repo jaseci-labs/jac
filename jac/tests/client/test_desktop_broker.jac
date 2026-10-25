@@ -382,23 +382,69 @@ test "the backend script keeps jac_token the active backend's own" {
     def script_for(active: str) -> str {
         return BackendChoice(backends=backends, active=active).script();
     }
+    def sign_in(token: str) -> str {
+        return "window.localStorage.setItem('jac_token'," + json.dumps(token) + ");";
+    }
     seen = _run_backend_scripts(
-        [script_for("local"), script_for("web"), script_for("local"), script_for("")],
-        {"jac_token": "tok-before"}
+        [
+            script_for("local"),
+            sign_in("tok-local"),
+            script_for("web"),
+            sign_in("tok-web"),
+            script_for("local"),
+            script_for(""),
+            script_for("local")
+        ],
+        {"jac_token": "tok-from-before-the-choice"}
     );
     if not seen {
         return;
     }
-    assert seen[0]["store"] == {"jac_token": "tok-before", "jac_backend": "local"} , "a first pick adopts the token already there";
-    assert seen[1]["store"]
-        == {"jac_token@local": "tok-before", "jac_backend": "web"} , "the web backend never sees the local token";
-    assert seen[1]["base"] == "https://web.example";
-    seen2 = _run_backend_scripts(
-        [script_for("web")],
-        {"jac_token@local": "tok-local", "jac_token": "tok-web", "jac_backend": "web"}
+    assert seen[0]["store"] == {"jac_backend": "local"} , (
+        "a token no backend can be named for is dropped, never sent on",
+        seen[0]
     );
-    assert seen2[0]["store"]["jac_token"] == "tok-web" , "an unchanged pick leaves the token alone";
-    assert seen[2]["store"]["jac_token"] == "tok-before"
-        and seen[2]["store"]["jac_backend"] == "local" , "switching back restores that backend's token";
-    assert seen[3]["store"] == seen[2]["store"] , "before a choice the script touches nothing";
+    assert seen[2]["store"] == {"jac_token@local": "tok-local", "jac_backend": "web"} , "the web backend never sees the local token";
+    assert seen[2]["base"] == "https://web.example";
+    assert seen[4]["store"]
+        == {
+            "jac_token": "tok-local",
+            "jac_token@local": "tok-local",
+            "jac_token@web": "tok-web",
+            "jac_backend": "local"
+        } , "switching back restores that backend's token";
+    assert seen[5]["store"] == seen[4]["store"] , "before a choice the script touches nothing";
+    assert seen[6]["store"] == seen[4]["store"] , "an unchanged pick leaves the token alone";
+}
+
+
+test "concurrent switches save one choice and relaunch once" {
+    import threading;
+    tmp = tempfile.mkdtemp(prefix="jac_backend_race_");
+    try {
+        path = os.path.join(tmp, "backend.json");
+        choice = BackendChoice.load(
+            {"a": "embedded", "b": "https://b.example"}, "ask", path
+        );
+        errors: list[any] = [];
+        def pick {
+            try {
+                choice.choose("b");
+            } except Exception as e {
+                errors.append(e);
+            }
+        }
+        threads = [threading.Thread(target=pick) for _ in range(16)];
+        for t in threads {
+            t.start();
+        }
+        for t in threads {
+            t.join();
+        }
+        assert errors == [] , errors;
+        assert BackendChoice.load(choice.backends, "ask", path).active == "b";
+        assert not os.path.exists(path + ".tmp");
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
 }

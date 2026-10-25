@@ -63,9 +63,11 @@ The build ships every listed backend (sealed image + Postgres if one is embedded
 ```jac
 import from "@jac/desktop" { backend }
 
-backend.choices();          # [{"name", "kind": "embedded"|"remote", "url"}], [] in a single-backend app
-backend.current();          # the running entry, or None before a choice
-await backend.use("web");   # save + relaunch into it; False if it is already running
+async def go_online {
+    backend.choices();          # [{"name", "kind": "embedded"|"remote", "url"}], [] in a single-backend app
+    backend.current();          # the running entry, or None before a choice
+    await backend.use("web");   # save + relaunch into it; False if it is already running
+}
 ```
 
 A remote backend must accept the app's loopback origin (CORS), as with a single remote `backend`.

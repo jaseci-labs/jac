@@ -255,6 +255,7 @@ test "[desktop] backends rejects a choice the host could not offer" {
             "\n[apps.kiosk.desktop.backends]\nonly = \"embedded\"\n",
             "at least two"
         );
+        _rejects(d, "kiosk", "\n[apps.kiosk.desktop.backends]\n", "at least two");
         _rejects(
             d,
             "kiosk",
@@ -325,6 +326,64 @@ test "a backend choice stages the assets a remote pick serves and seals the loca
         assert (base / "out" / "dist" / "assets" / "logo.svg").read_text()
             == "<svg>desktop</svg>";
     } finally {
+        set_config(None);
+        Jac.set_full_target_path("");
+        shutil.rmtree(d, ignore_errors=True);
+    }
+}
+
+
+"""A choice build leaves the API base to `/__jac/backend.js`: nothing in the
+environment is baked in, and a fixed `[client.api] base_url` is refused rather
+than silently overriding every pick."""
+test "a backend choice build bakes no API base and refuses a fixed one" {
+    import from unittest.mock { patch }
+    import from jaclang.client.targets.desktop.desktop_target { DesktopTarget }
+    import from jaclang.client.targets.web_target { WebTarget }
+    import jaclang.client.targets.desktop.webview_shell as webview_shell;
+    d = _workspace();
+    prior = os.environ.get("JAC_CLIENT_API_BASE_URL");
+    try {
+        toml = Path(d) / "jac.toml";
+        toml.write_text(
+            _TOML
+                + "\n[apps.kiosk.desktop.backends]\nlocal = \"embedded\"\nweb = \"https://web.example\"\n"
+        );
+        _target(d, "kiosk");
+        seen: list[any] = [];
+        def fake_build(
+            target: any, entry_file: Path, proj: Path, platform: any = None
+        ) -> Path {
+            seen.append(os.environ.get("JAC_CLIENT_API_BASE_URL"));
+            return Path(d) / "dist" / "client.js";
+        }
+        os.environ["JAC_CLIENT_API_BASE_URL"] = "https://stale.example";
+        with patch.object(WebTarget, "build", fake_build), patch.object(
+            webview_shell, "webview_build", return_value=Path(d) / "app"
+        ) {
+            DesktopTarget().build(Path(d) / "kiosk" / "main.jac", Path(d));
+        }
+        assert seen == [None] , seen;
+        assert os.environ["JAC_CLIENT_API_BASE_URL"] == "https://stale.example" , "the env is restored";
+
+        toml.write_text(
+            toml.read_text() + "\n[client.api]\nbase_url = \"https://fixed.example\"\n"
+        );
+        _target(d, "kiosk");
+        raised = "";
+        try {
+            DesktopTarget().build(Path(d) / "kiosk" / "main.jac", Path(d));
+        } except ValueError as e {
+            raised = str(e);
+        }
+        assert "base_url" in raised , raised;
+    } finally {
+        if prior is None {
+            os.environ.pop("JAC_CLIENT_API_BASE_URL", None);
+        } else {
+            os.environ["JAC_CLIENT_API_BASE_URL"] = prior;
+        }
+        reset_desktop_config();
         set_config(None);
         Jac.set_full_target_path("");
         shutil.rmtree(d, ignore_errors=True);

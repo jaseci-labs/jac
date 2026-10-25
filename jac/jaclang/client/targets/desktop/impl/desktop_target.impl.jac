@@ -22,16 +22,24 @@ impl DesktopTarget.build(
 
     cfg = get_desktop_config(project_dir);
     choosable = bool(cfg.get_backends());
+    if choosable
+        and str(JacClientConfig(project_dir).get_api_config().get("base_url") or "") {
+        raise ValueError(
+            "Desktop configuration error: [client.api] base_url fixes the API base, so [desktop] backends cannot choose one; remove base_url"
+        );
+    }
     baked = "" if choosable else cfg.get_backend();
     baked = "" if baked == "embedded" else baked;
     prior = os.environ.get(API_BASE_URL_ENV_VAR);
     if baked {
         os.environ[API_BASE_URL_ENV_VAR] = baked;
+    } elif choosable {
+        os.environ.pop(API_BASE_URL_ENV_VAR, None);
     }
     try {
         web_bundle = super.build(entry_file, project_dir, platform);
     } finally {
-        if baked {
+        if baked or choosable {
             if prior is None {
                 os.environ.pop(API_BASE_URL_ENV_VAR, None);
             } else {

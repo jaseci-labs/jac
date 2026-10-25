@@ -1,5 +1,6 @@
 import json;
 import os;
+import threading;
 
 glob ASK: str = "ask",
      EMBEDDED_BACKEND: str = "embedded",
@@ -8,7 +9,7 @@ glob ASK: str = "ask",
          + "if(p===a)return;var t=s.getItem('jac_token');"
          + "if(p){if(t)s.setItem('jac_token@'+p,t);else s.removeItem('jac_token@'+p);}"
          + "var n=s.getItem('jac_token@'+a);"
-         + "if(n)s.setItem('jac_token',n);else if(p)s.removeItem('jac_token');"
+         + "if(n)s.setItem('jac_token',n);else s.removeItem('jac_token');"
          + "s.setItem('jac_backend',a);}catch(e){}})"
      );
 
@@ -18,7 +19,8 @@ obj BackendChoice {
         active: str = "",
         default_name: str = ASK,
         path: str = "",
-        relaunch: bool = False;
+        relaunch: bool = False,
+        _lock: threading.Lock = threading.Lock();
 
     static def load(
         backends: dict[str, str], default_name: str, path: str
@@ -93,12 +95,14 @@ impl BackendChoice.choose(name: str) -> bool {
     if name == self.active {
         return False;
     }
-    os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True);
-    tmp = self.path + ".tmp";
-    with open(tmp, "w", encoding="utf-8") as f {
-        json.dump({"name": name}, f);
+    with self._lock {
+        os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True);
+        tmp = self.path + ".tmp";
+        with open(tmp, "w", encoding="utf-8") as f {
+            json.dump({"name": name}, f);
+        }
+        os.replace(tmp, self.path);
+        self.relaunch = True;
     }
-    os.replace(tmp, self.path);
-    self.relaunch = True;
     return True;
 }

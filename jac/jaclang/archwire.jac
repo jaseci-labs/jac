@@ -4956,6 +4956,7 @@ graph import client {
         asset_processor.AssetProcessor.copy_custom_asset_types
             | client_deps
             | jac_client_compiler.JacClientCompiler.copy_root_assets
+            | targets.desktop.desktop_target.DesktopTarget.build
             | targets.mobile_target
             | targets.react_native.common
             | targets.web_target._pwa_enabled
