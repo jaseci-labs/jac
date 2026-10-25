@@ -1,6 +1,5 @@
 obj Painter {
     def paint(x: float) -> float;
-
     def inline_paint(x: float) -> float {
         return Math.cos(x);
     }
