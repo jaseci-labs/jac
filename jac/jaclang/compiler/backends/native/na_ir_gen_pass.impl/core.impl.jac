@@ -264,6 +264,7 @@ impl NaIRGenPass._lower_module -> None {
             self._emit_glob_init_func();
         }
         self._volatilize_setjmp_locals();
+        self._fold_direct_c_entries();
         self._exc_context_cache = {};
         self.module.gen.ir_module = self.llvm_module;
         self.module.gen.llvm_ir = self.llvm_module;

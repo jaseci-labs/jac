@@ -85,4 +85,9 @@ test "a runtime build's handlers jump straight in and its views are unchecked" {
     assert "centry.region.open" in plain , plain;
     assert "c.view.null" not in text , text;
     assert "null.field.chk" not in handler , handler;
+    # The handler's body takes its C symbol: no thunk jumps into a separate
+    # Jac copy.
+    assert '@"pn_hop.jac"' not in text , text;
+    assert 'define i64 @"plain_entry.jac"(' in text
+        or 'define internal i64 @"plain_entry.jac"(' in text , text;
 }

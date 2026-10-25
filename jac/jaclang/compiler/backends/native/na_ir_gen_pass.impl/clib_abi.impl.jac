@@ -595,6 +595,7 @@ impl NaIRGenPass._c_entry_tail_or_escape(
     }
     if self._direct_c_entry(c_entry) {
         self._thunk_tail_call(c_entry, jac_fn);
+        self._direct_c_entries.append((c_entry, jac_fn));
         return True;
     }
     b = self.builder;
@@ -674,4 +675,38 @@ impl NaIRGenPass._thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> No
     } else {
         b.ret(call);
     }
+}
+
+impl NaIRGenPass._fold_direct_c_entries -> None {
+    if not self._direct_c_entries {
+        return;
+    }
+    renamed: dict[str, ir.Function] = {};
+    dropped: set[str] = set();
+    for (c_entry, jac_fn) in self._direct_c_entries {
+        if len(c_entry.blocks) != 1 or jac_fn.name in dropped {
+            continue;
+        }
+        dropped.add(jac_fn.name);
+        renamed[c_entry.name] = jac_fn;
+    }
+    if not renamed {
+        return;
+    }
+    folded: dict[str, ir.GlobalValue] = {};
+    for (key, value) in self.llvm_module.globals.items() {
+        if key in dropped {
+            continue;
+        }
+        body = renamed.get(key);
+        if body is None {
+            folded[key] = value;
+            continue;
+        }
+        body._name = key;
+        body.linkage = "";
+        folded[key] = body;
+    }
+    self.llvm_module.globals = folded;
+    self._direct_c_entries = [];
 }

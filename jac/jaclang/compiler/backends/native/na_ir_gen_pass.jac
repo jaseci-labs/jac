@@ -168,6 +168,7 @@ walker NaIRGenPass(CompilerPass) {
         _foreign_clib_abilities: dict[str, uni.Ability] = {},
         _shared_raise_blocks: dict[str, ir.Block] = {},
         _clib_exports: dict[str, ir.Function] = {},
+        _direct_c_entries: list[tuple[ir.Function, ir.Function]] = [],
         _clib_data_inits: list[tuple[ir.GlobalVariable, uni.Expr, any]] = [],
         _c_strings: dict[str, ir.GlobalVariable] = {},
         _foreign_modules: list[uni.Module] = [],
@@ -1546,6 +1547,9 @@ walker NaIRGenPass(CompilerPass) {
     def _native_sjlj_on -> bool;
     def _unchecked_views_on -> bool;
     def _direct_c_entry(fn: ir.Function) -> bool;
+    def _fold_direct_c_entries -> None;
+    def _is_address_word(value: ir.Value) -> bool;
+    def _address_sum(left: ir.Value, right: ir.Value, op: str) -> bool;
     def _emit_exc_arm(b: ir.IRBuilder, env: ir.Value, name: str = "") -> ir.Value;
     def _emit_exc_push_helper -> None;
     def _emit_exc_pop_helper -> None;
