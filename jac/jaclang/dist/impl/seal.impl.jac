@@ -326,14 +326,18 @@ impl make_sealed_image(
         }
         shutil.move(str(pkg_copy), str(dest));
         if key {
+            partial = cache_root / f".partial-{key}-{os.getpid()}";
             try {
                 if cache_root.is_dir() {
                     for old in cache_root.glob("image-*") {
                         shutil.rmtree(old, ignore_errors=True);
                     }
                 }
-                shutil.copytree(dest, cached, symlinks=True);
-            } except OSError {}
+                shutil.copytree(dest, partial / name, symlinks=True);
+                os.replace(partial, cached.parent);
+            } except OSError {
+                shutil.rmtree(partial, ignore_errors=True);
+            }
         }
         return dest;
     } finally {
@@ -393,7 +397,7 @@ impl sealed_image_key(
     if lock.is_file() {
         h.update(file_sha256(str(lock)).encode("utf-8"));
     }
-    for (dirpath, dirnames, filenames) in os.walk(proj_root) {
+    for (dirpath, dirnames, filenames) in os.walk(proj_root, followlinks=True) {
         skipped = set(ignore(dirpath, dirnames + filenames));
         dirnames[:] = sorted(
             d

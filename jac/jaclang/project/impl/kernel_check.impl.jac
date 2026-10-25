@@ -185,6 +185,11 @@ impl _replayed_outcome(record_path: str, path: str) -> (AnalysisReport | None) {
                 return None;
             }
         }
+        for (directory, stamp) in record.get("dirs", []) {
+            if os.stat(directory).st_mtime_ns != stamp {
+                return None;
+            }
+        }
         return AnalysisReport.from_dict(record["report"]);
     } except (OSError, ValueError, KeyError, TypeError) {
         return None;
@@ -196,14 +201,21 @@ impl _record_outcome(record_path: str, path: str, outcome: AnalysisReport) {
     real = os.path.realpath(path);
     try {
         deps: list[list[str]] = [];
+        searched: set[str] = {os.path.dirname(real)};
         for dep in sorted({os.path.realpath(p) for p in reached_modules(outcome)}) {
             if dep != real and os.path.isfile(dep) {
                 deps.append([dep, ct_dep_digest(dep, with_annexes=True)]);
+                searched.add(os.path.dirname(dep));
             }
         }
+        """An import that did not resolve can resolve once a file appears in a
+        directory the check searched; such a file changes that directory's
+        stamp, so the record stops replaying.""";
+        dirs = [[d, os.stat(d).st_mtime_ns] for d in sorted(searched)];
         record = {
             "key": module_cache_key(real),
             "deps": deps,
+            "dirs": dirs,
             "report": outcome.to_dict()
         };
         atomic_write(record_path, json.dumps(record).encode("utf-8"));

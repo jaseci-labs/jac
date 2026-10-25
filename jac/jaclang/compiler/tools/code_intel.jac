@@ -10,7 +10,7 @@ walker SymbolCollector(ScopeWalker) {
     can collect_scope with uni.UniScopeNode entry;
 }
 
-glob INDEX_SCHEMA: int = 1,
+glob INDEX_SCHEMA: int = 2,
      _SKIP_DIRS: set[str] = {
          "__pycache__",
          ".git",
@@ -154,3 +154,5 @@ obj CodeIntelligence {
     def _type_names(info: SymbolInfo) -> list[str];
     def _idents(text: str) -> list[str];
 }
+
+def _decl_key(loc: uni.CodeLocInfo) -> str;

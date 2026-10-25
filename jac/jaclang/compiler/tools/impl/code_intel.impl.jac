@@ -340,6 +340,15 @@ impl CodeIntelligence._cached_record(real: str) -> (dict[str, any] | None) {
         or rec.get("file") != real {
         return None;
     }
+    try {
+        for (dep, digest) in rec.get("external", {}).items() {
+            if compute_content_sha256(dep) != digest {
+                return None;
+            }
+        }
+    } except OSError {
+        return None;
+    }
     return rec;
 }
 
@@ -389,7 +398,7 @@ impl CodeIntelligence._compile_and_index(stale: set[str]) {
             if getattr(sym, "imported", False) or decl is None or decl.loc is None {
                 continue;
             }
-            key = f"{decl.loc.mod_path}:{decl.loc.first_line}";
+            key = _decl_key(decl.loc);
             for nd in sym.uses {
                 use_loc = nd.loc;
                 if use_loc is None {
@@ -447,7 +456,7 @@ impl CodeIntelligence._build_record(
         if getattr(sym, "imported", False) or decl is None or decl.loc is None {
             continue;
         }
-        key = f"{decl.loc.mod_path}:{decl.loc.first_line}";
+        key = _decl_key(decl.loc);
         if key in seen {
             continue;
         }
@@ -492,26 +501,32 @@ impl CodeIntelligence._build_record(
         _ = e;
     }
     deps: set[str] = set();
+    external: dict[str, str] = {};
     for prog in [self.prog] + list(self.prog.contexts.values()) {
         for (target, importers) in prog.deps.dependents.items() {
             if real in {_real(i) for i in importers} {
                 dep = self._head_for(_real(target));
                 if dep in self._file_set and dep != real {
                     deps.add(dep);
+                } elif dep != real and os.path.isfile(dep) {
+                    external[dep] = compute_content_sha256(dep);
                 }
             }
         }
     }
     for row in uses {
-        dep = self._head_for(_real(str(row[0]).rsplit(":", 1)[0]));
+        dep = self._head_for(_real(str(row[0]).rsplit(":", 2)[0]));
         if dep in self._file_set and dep != real {
             deps.add(dep);
+        } elif dep != real and os.path.isfile(dep) {
+            external[dep] = compute_content_sha256(dep);
         }
     }
     return {
         "schema": INDEX_SCHEMA,
         "file": real,
         "deps": sorted(deps),
+        "external": external,
         "decls": decls,
         "uses": uses,
         "top": top,
@@ -1019,4 +1034,8 @@ impl CodeIntelligence._idents(text: str) -> list[str] {
         }
     }
     return out;
+}
+
+impl _decl_key(loc: uni.CodeLocInfo) -> str {
+    return f"{loc.mod_path}:{loc.first_line}:{loc.col_start}";
 }

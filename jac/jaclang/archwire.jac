@@ -5884,6 +5884,7 @@ graph import compiler {
         },
         tools.code_intel {
             SEC_SYMINDEX,
+            compute_content_sha256,
             get_module_cache_path,
             is_module_cache_valid,
             read_jir,

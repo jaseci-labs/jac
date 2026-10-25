@@ -1109,6 +1109,16 @@ impl ViteBundler._build_inputs_digest(
             rows.append(f"{name}:{file_sha256(str(lock))}");
         }
     }
+    for env_file in sorted(self.project_dir.glob(".env*")) {
+        if env_file.is_file() {
+            rows.append(f"{env_file.name}:{file_sha256(str(env_file))}");
+        }
+    }
+    for (key, value) in sorted(os.environ.items()) {
+        if key.startswith("VITE_") or key in ("NODE_ENV", API_BASE_URL_ENV_VAR) {
+            rows.append(f"env:{key}={value}");
+        }
+    }
     return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest();
 }
 
