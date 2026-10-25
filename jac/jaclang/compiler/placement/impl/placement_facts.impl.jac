@@ -66,7 +66,7 @@ impl module_spaces(mod: (uni.Module | None)) -> set[str] {
     spaces: set[str] = set();
     for stmt in mod.elements {
         if isinstance(stmt, uni.ContextAwareNode) {
-            spaces.add(str(stmt.code_context));
+            spaces.add(stmt.code_context.value);
         }
     }
     if not spaces {
