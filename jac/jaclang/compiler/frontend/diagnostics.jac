@@ -2603,6 +2603,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "ICE: missing semantic annotation -- {details}",
          help="Codegen required a fact the central analysis pipeline never recorded on the unitree. This is a compiler bug, not an error in your program."
      ),
+     E9003 = _err(
+         "E9003",
+         Category.ICE,
+         "ICE: the native backend crashed lowering {kind} '{name}': {details}",
+         help="This is a compiler bug, not an error in your program -- please report it. A crash is never treated as a construct the backend declined, so the module does not run until it is fixed. Pin the module to the server codespace under [placement.pins] in jac.toml to keep working meanwhile.",
+         blocks_codegen=True
+     ),
      E7001 = _err(
          "E7001",
          Category.RUNTIME,
@@ -2638,13 +2645,4 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.RUNTIME,
          "Client error could not be traced to Jac source: {message}",
          help="The dev loop kept the raw location it was given, but nothing under .jac/client/compiled claims it -- a browser extension, a dependency with no source map, or an artifact from a build that has since been replaced. Reload after a clean build if the location should be yours."
-     ),
-     E0059 = _err(
-         "E0059",
-         Category.SYNTAX,
-         "'continue' is not valid inside a loop's else block",
-         help="the else block runs after the loop has already exhausted, so there"
-         " is no next iteration for 'continue' to skip to (Python would re-enter"
-         " the loop test here, usually re-running the else forever). Use 'break'"
-         " to leave the loop from the else block, or restructure the condition."
      );

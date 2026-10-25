@@ -111,7 +111,7 @@ impl serve_ws_connection(
                 );
                 continue;
             }
-            with scope {
+            async with scope {
                 (ok, result) = await ws_execute_target(
                     websocket,
                     label,
