@@ -443,7 +443,7 @@ impl _STORE_SLICE(v: u64, container: u64, start: u64, stop: u64) -> i32 {
 }
 
 impl _BINARY_OP_SUBSCR_LIST_INT(list_st: u64, sub_st: u64, res: ptr[u64]) -> i32 {
-    if arith_long_tag(sub_st) > u64(8) {
+    if (arith_long_tag(sub_st) & ~u64(4)) > u64(8) {
         return ST_DEOPT;
     }
     index = arith_long_digit0(sub_st);
@@ -464,7 +464,7 @@ impl _BINARY_OP_SUBSCR_LIST_SLICE(list_st: u64, sub_st: u64) -> u64 {
 }
 
 impl _BINARY_OP_SUBSCR_STR_INT(str_st: u64, sub_st: u64, res: ptr[u64]) -> i32 {
-    if arith_long_tag(sub_st) > u64(8) {
+    if (arith_long_tag(sub_st) & ~u64(4)) > u64(8) {
         return ST_DEOPT;
     }
     index = arith_long_digit0(sub_st);
@@ -492,7 +492,7 @@ impl _GUARD_NOS_TUPLE(nos: u64) -> bool {
 }
 
 impl _BINARY_OP_SUBSCR_TUPLE_INT(tuple_st: u64, sub_st: u64, res: ptr[u64]) -> i32 {
-    if arith_long_tag(sub_st) > u64(8) {
+    if (arith_long_tag(sub_st) & ~u64(4)) > u64(8) {
         return ST_DEOPT;
     }
     index = arith_long_digit0(sub_st);
@@ -594,7 +594,7 @@ impl _STORE_SUBSCR(v: u64, container: u64, sub: u64) -> i32 {
 }
 
 impl _STORE_SUBSCR_LIST_INT(value: u64, list_st: u64, sub_st: u64) -> i32 {
-    if arith_long_tag(sub_st) > u64(8) {
+    if (arith_long_tag(sub_st) & ~u64(4)) > u64(8) {
         return ST_DEOPT;
     }
     index = arith_long_digit0(sub_st);
