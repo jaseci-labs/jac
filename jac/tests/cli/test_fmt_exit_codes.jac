@@ -505,6 +505,31 @@ test "lintfix on a sibling annex alone moves it through its module" {
     }
 }
 
+test "lint --fix leaves an ignored module alone even when its sibling annex is selected" {
+    repo = annex_project();
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        proj = Path(repo);
+        (proj / "side.jac").write_text(DECL + "\n" + IMPL);
+        mod_src = (proj / "side.jac").read_text();
+        (proj / "side.impl.jac").write_text(
+            "impl Foo.baz -> int {\n    return 2;\n}\n"
+        );
+        reset_state();
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+            lint_cmd([repo], fix=True, ignore=["side.jac"]);
+        }
+        mod_text = (proj / "side.jac").read_text();
+        moved = (proj / "impl" / "side.impl.jac").exists();
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+    assert mod_text == mod_src , f"the ignored module is untouched, got:\n{mod_text!r}";
+    assert not moved , "its annex is only moved through the module, which is ignored";
+}
+
 test "lintfix rolls a move back when the old annex cannot be removed" {
     for mode in ("fmt-0", "fmt-2", "lint") {
         repo = annex_project();

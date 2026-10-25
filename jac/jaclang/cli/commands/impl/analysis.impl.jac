@@ -569,7 +569,7 @@ impl lint(
     total_unfixable = 0;
     (all_files, had_path_errors) = _iter_jac_files(paths, ignore_list);
     if fix {
-        all_files = _with_annex_owners(all_files);
+        all_files = _with_annex_owners(all_files, ignore_list);
     }
     import os;
     covered: set[str] = {os.path.realpath(f) for f in all_files};
@@ -650,7 +650,9 @@ def _remove_or_restore(
     paths: list[str], backups: dict[str, (bytes | None)]
 ) -> (str | None);
 
-def _with_annex_owners(files: list[str]) -> list[str];
+def _with_annex_owners(
+    files: list[str], ignore_list: (list[str] | None) = None
+) -> list[str];
 
 impl _restore_files(backups: dict[str, (bytes | None)]) -> None {
     for (path, data) in backups.items() {
@@ -744,7 +746,9 @@ impl _remove_or_restore(
     return None;
 }
 
-impl _with_annex_owners(files: list[str]) -> list[str] {
+impl _with_annex_owners(
+    files: list[str], ignore_list: (list[str] | None) = None
+) -> list[str] {
     import os;
 
     present = {os.path.realpath(f) for f in files};
@@ -756,6 +760,7 @@ impl _with_annex_owners(files: list[str]) -> list[str] {
         owner = discover_base_file(f);
         if owner is None
             or os.path.realpath(owner) in present
+            or _should_ignore(owner, ignore_list or [])
             or os.path.dirname(os.path.realpath(owner))
                 != os.path.dirname(os.path.realpath(f)) {
             continue;
