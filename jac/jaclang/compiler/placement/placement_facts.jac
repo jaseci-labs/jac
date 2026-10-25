@@ -52,6 +52,13 @@ def pinned_module_space(source_path: str) -> str;
 def spaces_are_client_only(spaces: set[str]) -> bool;
 
 
+def module_record(
+    source_path: str, program: (JacProgram | None) = None
+) -> (PlacementSummary | None);
+
+def _record_at(real: str) -> (PlacementSummary | None);
+
+
 def _toolchain_rel(source_path: str) -> (str | None);
 
 def variant_selected(source_path: str) -> (bool | None);

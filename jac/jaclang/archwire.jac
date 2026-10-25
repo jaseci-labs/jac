@@ -1319,6 +1319,7 @@ graph import {
         dist.precompile_bytecode.find_jac_files { native_only },
         dist.precompile_bytecode.package_native_units { native_units_of },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
+        testing.cl_test_runner.module_is_client { module_record },
     ]
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
@@ -3389,7 +3390,8 @@ graph import {
             | project.plugin_config
             | scale.memory.context.JScaleExecutionContext.init
             | server.request_scope
-            | server.sv_client._local_call { JacRuntime },
+            | server.sv_client._local_call
+            | testing.cl_test_runner.module_is_client { JacRuntime },
         byllm.visit_routing.route_visit
             | cli.commands.cli_helpers.proc_file
             | cli.commands.execution._discover_config_from_file
@@ -5720,6 +5722,7 @@ graph import compiler {
             is_client_native_edge_import
         },
         passes.wasm_contract.host_contracts { symbol_linked_source_module },
+        placement.placement.summarize_module { module_own_native_anchor },
         placement.placement_facts.discover_spaces
             | placement.placement_solver._materialize_module { hub_module_for_path },
         placement.placement_solver._is_sv_import { import_crosses_apps },
@@ -5767,6 +5770,7 @@ graph import compiler {
         frontend.kernel_host { package_owned },
         passes.access_check_pass.AccessCheckPass._module_app_facts
             | placement.placement_pins { context_app },
+        placement.placement_facts.module_record { cache_scope, owner_scope_options },
         types.type_evaluator.TypeEvaluator._in_flight_module { program_for },
     ]
     driver.compile_options ++> [
@@ -5850,6 +5854,14 @@ graph import compiler {
         backends.native.link_plan._write_sidecar { native_producer_digest },
         backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
             get_native_debug_dir
+        },
+        placement.placement_facts._record_at {
+            SEC_PLACEMENT,
+            get_module_cache_path,
+            is_module_cache_valid,
+            read_jir,
+            read_jir_paths,
+            read_section_bytes
         },
         tools.code_intel {
             SEC_SYMINDEX,
@@ -6713,6 +6725,7 @@ graph import compiler {
             | passes.boundary_analysis_pass
             | passes.placement_pass
             | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
+            | placement.placement.summarize_module
             | placement.placement_export
             | placement.placement_facts.settle_server
             | placement.placement_solver
@@ -13855,6 +13868,8 @@ graph import compiler.placement {
         placement_solver._closure_pullable { module_has_root_access },
         placement_solver._pullable_by_client_reference { module_has_root_access },
     ]
+    type placement ++> placement_facts { PlacementSummary }
+    placement_export ++> placement_facts._record_at { summary_from_bytes }
     placement_facts ++> placement_solver.native_closure_blocker { pinned_module_space }
     placement_pins ++> [
         placement.module_anchor_reasons

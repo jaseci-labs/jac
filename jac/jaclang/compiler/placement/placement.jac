@@ -1,6 +1,6 @@
 import os;
 
-glob PLACEMENT_SCHEMA: int = 4,
+glob PLACEMENT_SCHEMA: int = 5,
      PLACEMENT_SV_SIGNAL_NODES: list[tuple[str, type[uni.UniNode]]] = [
          ("TypedCtxBlock", uni.TypedCtxBlock),
          ("PyInlineCode", uni.PyInlineCode),
@@ -59,6 +59,9 @@ obj PlacementSummary {
         native_blocker: str = '',
         jac_deps: list[str] = [],
         has_refs: bool = False,
+        client_declared: bool = False,
+        native_declared: bool = False,
+        native_anchor: bool = False,
         elements: list[ElementSummary] = [];
 
     def element_at(index: int) -> (ElementSummary | None);

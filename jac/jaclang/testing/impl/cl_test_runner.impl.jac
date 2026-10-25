@@ -556,6 +556,11 @@ impl module_is_client(filepath: str) -> bool {
         return _COLOR_CACHE[path];
     }
 
+    recorded = module_record(path, JacRuntime.get_program());
+    if recorded is not None {
+        _COLOR_CACHE[path] = recorded.client_declared;
+        return recorded.client_declared;
+    }
     result = False;
     try {
         mod = JacProgram().compile(path, options=CompileOptions(symtab_ir_only=True));

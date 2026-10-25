@@ -759,6 +759,9 @@ impl summarize_module(
         }
         ps.elements.append(es);
     }
+    ps.client_declared = module.declares_codespace(CodeContext.CLIENT);
+    ps.native_declared = module.declares_codespace(CodeContext.NATIVE);
+    ps.native_anchor = module_own_native_anchor(module);
     return ps;
 }
 

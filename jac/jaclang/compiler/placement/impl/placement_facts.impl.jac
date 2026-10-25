@@ -116,6 +116,38 @@ impl spaces_are_client_only(spaces: set[str]) -> bool {
     return len(spaces) == 1 and SPACE_CLIENT in spaces;
 }
 
+impl module_record(
+    source_path: str, program: (JacProgram | None) = None
+) -> (PlacementSummary | None) {
+    """With a program, the record is read where that program's compile of the
+    module keys its cache file.""";
+    real = os.path.realpath(source_path);
+    if program is None {
+        return _record_at(real);
+    }
+    actual = program._get_compiler().product_program(real, program, execution=True);
+    with cache_scope(owner_scope_options(actual)) {
+        return _record_at(real);
+    }
+}
+
+impl _record_at(real: str) -> (PlacementSummary | None) {
+    try {
+        cache_path = get_module_cache_path(real);
+        if not is_module_cache_valid(real, cache_path) {
+            return None;
+        }
+        data = read_jir(cache_path);
+        raw = read_section_bytes(data, SEC_PLACEMENT);
+        if raw is None {
+            return None;
+        }
+        return summary_from_bytes(raw, path_mapper=read_jir_paths(data).resolve);
+    } except OSError {
+        return None;
+    }
+}
+
 impl _toolchain_rel(source_path: str) -> (str | None) {
     return target_package_rel(source_path);
 }

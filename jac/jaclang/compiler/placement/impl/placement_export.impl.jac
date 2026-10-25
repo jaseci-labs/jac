@@ -112,6 +112,9 @@ impl summary_to_dict(ps: PlacementSummary) -> dict[str, any] {
         'native_blocker': ps.native_blocker,
         'jac_deps': list(ps.jac_deps),
         'has_refs': ps.has_refs,
+        'client_declared': ps.client_declared,
+        'native_declared': ps.native_declared,
+        'native_anchor': ps.native_anchor,
         'elements': [element_to_dict(e) for e in ps.elements]
     };
 }
@@ -127,6 +130,9 @@ impl summary_from_dict(d: dict[str, any]) -> (PlacementSummary | None) {
     ps.native_blocker = str(d.get('native_blocker', ''));
     ps.jac_deps = _str_list(d.get('jac_deps'));
     ps.has_refs = bool(d.get('has_refs', False));
+    ps.client_declared = bool(d.get('client_declared', False));
+    ps.native_declared = bool(d.get('native_declared', False));
+    ps.native_anchor = bool(d.get('native_anchor', False));
     ps.elements = [element_from_dict(e) for e in _maps(d.get('elements'))];
     return ps;
 }
