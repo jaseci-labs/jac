@@ -3657,6 +3657,7 @@ walker NaIRGenPass(CompilerPass) {
     def _apply_list_tbaa -> None;
     def _body_keeps_list_headers(body: list[uni.UniNode]) -> bool;
     def _anchor_plain(e: object) -> bool;
+    def _anchor_immutable(e: object) -> bool;
     def _anchor_container(e: object) -> bool;
     def _anchor_builtin_call(nd: uni.FuncCall) -> bool;
     def _emit_list_anchors(body: list[uni.UniNode]) -> None;

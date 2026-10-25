@@ -638,14 +638,6 @@ impl NaIRGenPass._emit_list_index_check(
 impl NaIRGenPass._codegen_index(
     target_val: ir.Value, index_val: ir.Value, elem_type_name: str
 ) -> (ir.Value | None) {
-    """A subscript read, `target[index]`.
-
-    An element read of a list that a range loop anchored checks against the
-    anchored length and loads through the anchored data pointer. Behind that
-    fast path the old path stays out of line, so LLVM cannot merge the two
-    loads into one through a pointer phi; both helpers only read, so the calls
-    clobber nothing.
-    """;
     helpers = self.list_helpers.get(elem_type_name);
     if helpers is None {
         return None;
@@ -1064,7 +1056,6 @@ impl NaIRGenPass._container_is_view(nd: uni.UniNode) -> bool {
 }
 
 impl NaIRGenPass._tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> any {
-    """The access tag of scalar TBAA type `name` under the module's root.""";
     found = cache.get(name);
     if found is not None {
         return found;
@@ -1077,7 +1068,6 @@ impl NaIRGenPass._tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> 
 }
 
 impl NaIRGenPass._tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None) {
-    """Which header field (0 len, 1 cap, 2 data) of a list `gep` addresses, if any.""";
     base_ty: any = gep.pointer.type;
     if not isinstance(base_ty, ir.PointerType) or id(base_ty.pointee) not in list_tys {
         return None;
@@ -1095,19 +1085,6 @@ impl NaIRGenPass._tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None) 
 }
 
 impl NaIRGenPass._apply_list_tbaa -> None {
-    """Tell LLVM that list headers and list elements never overlap.
-
-    The IR carried no alias information, so a store into a list element might
-    have changed any list's length or data pointer as far as LLVM knew: a loop
-    over `c[j] += a * b[j]` reloaded both lengths and both data pointers after
-    every store, and the bounds checks could not leave the loop. Each load and
-    store of a list header field (`len`, `cap`, `data`, by field index, the same
-    for every list type) now gets its own TBAA tag, and so does each element
-    access whose address indexes a `data` pointer loaded right there, by the
-    element's type (all pointers share one tag). Everything else stays untagged,
-    which TBAA treats as possibly aliasing anything, so no access is ever told
-    apart from memory it might share. `JAC_NO_TBAA=1` turns this off.
-    """;
     import os;
     if os.environ.get("JAC_NO_TBAA") or not self.list_types {
         return;
@@ -1166,19 +1143,6 @@ impl NaIRGenPass._apply_list_tbaa -> None {
 }
 
 impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
-    """Can nothing in `body` change a list's length or data pointer?
-
-    Only an operation on the list itself (append, pop, a slice store, `del`)
-    or code the body runs out of sight can; element stores cannot. Code runs
-    out of sight through a call, a generator step, a context manager or a
-    spawn, and also through a user object's dunder methods: an operator, a
-    comparison, a truth test, formatting, `len`, indexing or iterating it, or
-    a property read. So the body may call only a few builtins, and only when
-    the name is the builtin itself (a function of the user's called `min`
-    is not) and its arguments are plain values; it may iterate only a range
-    or a builtin container, index only a builtin container, and apply
-    operators, comparisons and truth tests only to plain values.
-    """;
     allowed = (
         "range",
         "len",
@@ -1281,7 +1245,7 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
                     return False;
                 }
             } elif isinstance(nd, uni.Assignment) and nd.aug_op is not None {
-                if not all(self._anchor_plain(t) for t in nd.target) {
+                if not all(self._anchor_immutable(t) for t in nd.target) {
                     return False;
                 }
             }
@@ -1291,11 +1255,6 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
 }
 
 impl NaIRGenPass._anchor_plain(e: object) -> bool {
-    """Whether `e`'s value is a builtin scalar, a string or a builtin container of them.
-
-    Using such a value (an operator, a comparison, a truth test, formatting,
-    hashing) runs no user code. A value of unknown type is not plain.
-    """;
     while isinstance(e, uni.CfgExpr) {
         e = e.expr;
     }
@@ -1343,13 +1302,48 @@ impl NaIRGenPass._anchor_plain(e: object) -> bool {
     return bool(words) and all(w in plain for w in words);
 }
 
-impl NaIRGenPass._anchor_container(e: object) -> bool {
-    """Whether indexing or iterating `e` runs no user code: a range, or a builtin container.
+impl NaIRGenPass._anchor_immutable(e: object) -> bool {
+    while isinstance(e, uni.CfgExpr) {
+        e = e.expr;
+    }
+    if not isinstance(e, uni.Expr) or e.type is None {
+        return False;
+    }
+    mangled = "";
+    try {
+        mangled = e.type.mangle();
+    } except Exception {
+        return False;
+    }
+    immutable = (
+        "int",
+        "float",
+        "bool",
+        "str",
+        "bytes",
+        "None",
+        "NoneType",
+        "complex",
+        "LiteralString",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "u8",
+        "u16",
+        "u32",
+        "u64",
+        "f32",
+        "f64",
+        "isize",
+        "usize",
+        "byte"
+    );
+    words = "".join(c if c.isalnum() or c == "_" else " " for c in mangled).split();
+    return bool(words) and all(w in immutable for w in words);
+}
 
-    A list, tuple or string never runs code to be indexed or iterated,
-    whatever it holds. A dict or set hashes and compares keys, so its keys
-    have to be plain as well.
-    """;
+impl NaIRGenPass._anchor_container(e: object) -> bool {
     while isinstance(e, uni.CfgExpr) {
         e = e.expr;
     }
@@ -1370,13 +1364,6 @@ impl NaIRGenPass._anchor_container(e: object) -> bool {
 }
 
 impl NaIRGenPass._anchor_builtin_call(nd: uni.FuncCall) -> bool {
-    """Whether `nd` calls the builtin its name spells, on values that run no user code.
-
-    The name has to resolve to the builtins stub: a function or class of the
-    user's with the same name runs code of its own. `len` looks only at a
-    builtin container itself; every other allowed builtin compares, converts
-    or measures its arguments, so they have to be plain values.
-    """;
     tgt = nd.target;
     if not isinstance(tgt, uni.Name) or tgt.sym is None {
         return False;
@@ -1401,20 +1388,6 @@ impl NaIRGenPass._anchor_builtin_call(nd: uni.FuncCall) -> bool {
 }
 
 impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
-    """Load each indexed list's length and data pointer once, before a range loop.
-
-    A list access loaded the list's length and data pointer anew each time,
-    after the bounds check of the access before it, where LLVM could not lift
-    them out of the loop (a failing check leaves the loop, so the loads behind
-    it might not run). When nothing in the body can change a list header,
-    every list local the body indexes gets both read here, before the loop,
-    and its scalar element reads and writes in the body check against and
-    index through them; anything out of range takes the old path, which
-    raises as before. A local that holds no list yet reads as an empty one.
-
-    A name the body binds, directly or by unpacking, is never anchored: `(a,
-    b) = (b, a)` rebinds `a` as surely as `a = b` does.
-    """;
     import os;
     if os.environ.get("JAC_NO_LIST_ANCHORS")
         or not self._body_keeps_list_headers(body) {
@@ -1515,11 +1488,6 @@ impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
 impl NaIRGenPass._list_anchor_of(
     target_val: ir.Value, elem_type: ir.Type
 ) -> (tuple[ir.Value, ir.Value] | None) {
-    """The anchored (length, data) of the list `target_val` was loaded from, for a scalar element.
-
-    A comprehension or generator body may be a function of its own, so an
-    anchor counts only in the function that read it.
-    """;
     if not self._list_anchors or self._elem_kind(elem_type) != "raw" {
         return None;
     }

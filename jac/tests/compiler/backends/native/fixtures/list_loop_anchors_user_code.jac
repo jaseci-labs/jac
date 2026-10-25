@@ -2,8 +2,9 @@
 
 `shadowed` calls a function of its own named `min` and `nested` steps a
 generator: each of them empties `xs` while the loop runs, so the next `xs[0]`
-has to raise IndexError. Neither loop may read the list's header once up
-front.
+has to raise IndexError. `grow_list` and `grow_bytes` grow the list or the
+bytearray in place through another name (`alias += ...`), which can move its
+buffer. None of these loops may read the list's header once up front.
 """
 
 def min(xs: list[int]) -> int {
@@ -46,10 +47,33 @@ def nested(xs: list[int], it: Iterator[int]) -> str {
 }
 
 
+def grow_list(xs: list[int]) -> int {
+    alias = xs;
+    total = 0;
+    for j in range(3) {
+        alias += [j, j, j, j];
+        total += xs[0] * 10;
+    }
+    return total;
+}
+
+def grow_bytes(buf: bytearray) -> int {
+    alias = buf;
+    total = 0;
+    for j in range(3) {
+        alias += b"abcdefgh";
+        total += buf[0] + len(buf);
+    }
+    return total;
+}
+
 with entry {
     print(shadowed([5, 6]));
 }
+
 glob ys = [5, 6];
+
 with entry {
     print(nested(ys, popper(ys)));
+    print(grow_list([5]), grow_bytes(bytearray(b"x")));
 }
