@@ -660,6 +660,7 @@ graph import {
     compiler.driver.bccache ++> [
         cli.commands.analysis._annex_moves
             | project.compiler_host.ProjectHost.base_file
+            | project.workspace.app_for_path
             | server.hmr
             | studio.intel
             | testing.cl_test_runner.module_entry_for { discover_base_file },
