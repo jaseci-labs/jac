@@ -4501,6 +4501,9 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         _nt,
         name="ffor.chunk"
     );
+    _stack_top = self.builder.call(
+        self._get_or_declare_extern("llvm.stacksave", i8p, []), [], name="ffor.sp"
+    );
     _tid_arr = self.builder.alloca(i64, size=_nt, name="ffor.tids");
     _arg_arr = self.builder.alloca(_arg_ty, size=_nt, name="ffor.args");
 
@@ -4742,6 +4745,10 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
             self.builder.load(_cur_slot, name=f"ffor.comb.{_red[0]}.fin"), _acc_slot
         );
     }
+    self.builder.call(
+        self._get_or_declare_extern("llvm.stackrestore", ir.VoidType(), [i8p]),
+        [_stack_top]
+    );
     return True;
 }
 

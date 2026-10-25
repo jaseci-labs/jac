@@ -19,6 +19,7 @@ with entry {
 }
 
 glob rows: list[list[int]] = [];
+
 with entry {
     for row in [[1, 3], [2, 5], [7]] {
         for x in row {

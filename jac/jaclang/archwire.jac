@@ -5,7 +5,7 @@ graph import {
     edge Cache: cache.* --> byllm.* | cli.* | client.* | compiler.* | data.* | dist.* | packages.* | project.* | scale.* | server.* | toolchains.*;
     edge Cli: cli.* --> byllm.* | client.* | compiler.* | dist.* | jac0core.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
     edge Client: client.* --> cli.* | compiler.* | dist.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
-    edge Compiler: compiler.* --> cli.* | client.* | dist.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.*;
+    edge Compiler: compiler.* --> cli.* | client.* | dist.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
     edge Comptime: comptime --> byllm.* | cli.* | client.* | scale.* | server.*;
     edge Data: data.* --> cli.* | client.* | compiler.* | runtime.* | scale.* | server.*;
     edge Dist: dist.* --> cli.* | client.* | compiler.* | packages.* | scale.*;
@@ -656,15 +656,18 @@ graph import {
         server.hmr.HotReloader._reload_server_module { reprepare_application },
     ]
     compiler.driver.bccache ++> [
-        cli.commands.analysis._check_file_job
+        cli.commands.analysis._annex_moves
             | project.compiler_host.ProjectHost.base_file
             | server.hmr
             | testing.cl_test_runner.module_entry_for { discover_base_file },
+        cli.commands.analysis._check_file_job { discover_base_file },
         cli.commands.analysis._drop_covered_annexes { discover_base_file },
         cli.commands.analysis._float_impls_to_annex
             | cli.commands.architecture
-            | project.compiler_host.ProjectHost.annex_files { discover_annex_files },
+            | project.compiler_host.ProjectHost.annex_files
+            | toolchains.desktop.module_files { discover_annex_files },
         cli.commands.analysis._unit_weight { discover_annex_files },
+        cli.commands.analysis._with_annex_owners { discover_base_file },
         lsp.server.engine { discover_annex_files, discover_base_file },
         project.compiler_host.ProjectHost.is_annex_path_of
             | project.kernel_snapshot.session_inputs { host_layout_tables },
@@ -905,7 +908,7 @@ graph import {
         | cli.commands.transform.py2jac
         | project.compiler_host.ProjectHost.parse_python { CompilationProduct }
     compiler.driver.program ++> [
-        cli.commands.analysis._check_file_job
+        cli.commands.analysis._annex_moves
             | cli.commands.architecture
             | cli.commands.fix._format_source
             | cli.commands.native_build.native_build
@@ -927,26 +930,27 @@ graph import {
             | server.hmr.HotReloader._classify_declarations
             | testing.cl_test_runner.compile_cl_module
             | testing.test_runner._fresh_jac_state { JacProgram },
-        cli.commands.analysis._float_impls_to_annex
+        cli.commands.analysis._check_file_job
             | cli.commands.fix._verify_claims
             | cli.commands.transform.jac2py
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_js._do_jac2js
             | dist.precompile_bytecode.prebuild_native_closure
             | testing.cl_test_runner.module_is_client { JacProgram },
-        cli.commands.analysis._format_single_file_worker
+        cli.commands.analysis._float_impls_to_annex
             | cli.commands.transform.py2jac
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py
             | dist.precompile_bytecode.precompile_native_unit { JacProgram },
-        cli.commands.analysis.explain
+        cli.commands.analysis._format_single_file_worker
             | cli.mcp.compiler_bridge.CompilerBridge.parse_snippet._do_parse
             | dist.precompile_bytecode.precompile_unit_context { JacProgram },
-        cli.commands.analysis.grammar
+        cli.commands.analysis.explain
             | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac
             | dist.precompile_bytecode.seal_native { JacProgram },
-        cli.commands.analysis.lint
+        cli.commands.analysis.grammar
             | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck {
             JacProgram
         },
+        cli.commands.analysis.lint { JacProgram },
         dist.publish.builder._backend_source { JacProgram as JacProgramRt },
         dist.publish.builder._module_is_client_source { JacProgram as JacProgramRt },
     ]
@@ -2345,7 +2349,11 @@ graph import {
         compiler.passes.import_wiring_pass
             | compiler.passes.pyast_load_pass.PyastBuildPass.convert
             | compiler.tools.lang_tools { pascal_to_snake },
+        dist.seal.make_sealed_image { is_secret_file, path_matches_exclude },
+        packages.artifact.package_copy_ignore
+            | scale.injector.bundle.BundleSourceFilter.excludes { is_secret_file },
         runtime.traceback_render { pretty_print_source_location },
+        scale.injector.bundle.BundleSourceFilter.exclusion_reason { is_secret_file },
         scale.injector.bundle.BundleSourceFilter.parks { path_matches_exclude },
     ]
     project.template_loader ++> [
@@ -2367,12 +2375,13 @@ graph import {
         TemplateRegistry
     }
     project.textio ++> [
-        cli.commands.analysis._float_impls_to_annex
+        cli.commands.analysis._annex_moves
             | cli.commands.architecture
             | cli.commands.transform.py2jac
             | compiler.driver.compiler
             | compiler.tools.lang_tools
             | runtime.traceback_render { read_file_with_encoding },
+        cli.commands.analysis._float_impls_to_annex { read_file_with_encoding },
         cli.commands.analysis._format_single_file_worker { read_file_with_encoding },
         cli.commands.analysis._iter_jac_files | cli.commands.architecture._arch_files {
             drop_git_ignored
@@ -2381,7 +2390,9 @@ graph import {
             read_file_with_encoding,
             span_for_file
         },
-        scale.injector.bundle.source_filter_for { read_jacignore_patterns },
+        dist.seal.make_sealed_image | scale.injector.bundle.source_filter_for {
+            read_jacignore_patterns
+        },
     ]
     project.textio --> [
         cli.commands.analysis._check_file_job { read_file_with_encoding as _read_src },
@@ -4326,6 +4337,14 @@ graph import {
     }
     toolchains.cef ++> client.targets.desktop.cef_shell { ensure_cef }
     toolchains.desktop ++> [
+        client.targets.desktop.cef_shell._ensure_cef_subprocess
+            | client.targets.desktop.desktop_build._unit_source { module_files },
+        client.targets.desktop.cef_shell._ensure_libcef_dispatch { module_files },
+        client.targets.desktop.cef_shell.cef_build
+            | client.targets.desktop.desktop_build._stage_fused_runtime
+            | client.targets.desktop.webview_shell._assemble_native_host {
+            stage_module
+        },
         client.targets.desktop.desktop_build._find_cef_dir { source_workspace },
         client.targets.desktop.desktop_build._find_webview_dir { source_workspace },
         client.targets.desktop.desktop_build.build_cef_dispatch { source_workspace },
@@ -7181,7 +7200,8 @@ graph import compiler {
             W3051,
             W3053,
             W3054,
-            W3055
+            W3055,
+            W3056
         },
         tools.jac_auto_lint_pass.JacAutoLintPass._check_filter_compare_tautology {
             W3040
@@ -7342,6 +7362,7 @@ graph import compiler {
         },
         driver.pass_driver { CheckSettings, active_host },
         driver.program.JacProgram.jac_file_linter
+            | tools.jac_auto_lint_pass.JacAutoLintPass._is_sibling_annex
             | types.type_evaluator.TypeEvaluator._jac_virtual_sibling_dts {
             active_host
         },

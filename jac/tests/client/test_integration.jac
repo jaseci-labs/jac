@@ -20,6 +20,8 @@ import sys;
 import sysconfig;
 import tempfile;
 import from pathlib { Path }
+import from jaclang.toolchains.desktop { stage_module }
+import from tests.support { unit_source }
 
 
 # ---------------------------------------------------------------------------
@@ -1084,9 +1086,9 @@ __jac_invoke). The native webview host (_host_bootstrap.jac) emits the same
 SDK body and sets __JAC_NATIVE__, while window.__jac_invoke comes from
 wv.bind. Both hosts must keep the shared invoke/on/__emit__ body in sync."""
 test "js sdk snippet matches generated host source" {
-    cef_src = (_native_dir() / "cef" / "cef_dispatch.jac").read_text();
+    cef_src = unit_source(_native_dir() / "cef" / "cef_dispatch.jac");
     assert _bootstrap_js_snippet() in cef_src , "in-test JS shim drifted from cef_dispatch.jac BOOTSTRAP_JS";
-    host_boot = (_pkg_root() / "_host_bootstrap.jac").read_text();
+    host_boot = unit_source(_pkg_root() / "_host_bootstrap.jac");
     # Native bootstrap stores the SDK as a Python string concat; spot-check the
     # critical pieces rather than requiring a single contiguous literal.
     assert "window.__jac={" in host_boot;
@@ -1105,13 +1107,13 @@ expose more commands than the SDK surfaces -- that direction is allowed.)"""
 test "client SDK commands map to host plugin commands" {
     import re;
     plugin_dir = _plugin_src_dir();
-    sdk_text = (plugin_dir / "desktop_api.jac").read_text();
+    sdk_text = unit_source(plugin_dir / "desktop_api.jac");
     sdk_pairs = re.findall(r'_invoke\(\s*"([^"]+)"\s*,\s*"([^"]+)"', sdk_text);
     assert len(sdk_pairs) > 0 , "no _invoke() calls found in desktop_api.jac";
     # Map host plugin name -> handled commands, parsed from each plugin source.
     host = {};
     for pf in sorted((plugin_dir / "built_in").`glob("*_plugin.jac")) {
-        text = pf.read_text();
+        text = unit_source(pf);
         nm = re.search(r'name="(jac\.[a-z]+)"', text);
         if nm is None {
             continue;
@@ -1137,14 +1139,14 @@ than at app startup."""
 test "desktop_sdk exports match api declarations" {
     import re;
     plugin_dir = _plugin_src_dir();
-    sdk_text = (plugin_dir / "desktop_api.jac").read_text();
+    sdk_text = unit_source(plugin_dir / "desktop_api.jac");
     declared = set(re.findall(r'^obj\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{', sdk_text, re.M));
     # `_invoke` is a free `def`, not an exported `obj`; we only compare obj
     # surfaces, so non-obj helpers can't perturb the result.
     assert len(declared) > 0 , "no obj declarations found in desktop_api.jac";
     # Scope to the desktop_sdk_exports function body so unrelated string
     # literals elsewhere in desktop_plugin_config.jac can't create false matches.
-    cfg_text = _plugin_config_path().read_text();
+    cfg_text = unit_source(_plugin_config_path());
     fn = re.search(
         r'def\s+desktop_sdk_exports.*?return\s*\[([^\]]*)\]', cfg_text, re.S
     );
@@ -1225,7 +1227,7 @@ test "plugin configs empty when no plugins section" {
 """plugin_bridge.jac contains the expected native shim elements."""
 test "plugin bridge source contains expected elements" {
     bridge = _native_dir() / "plugin_bridge.jac";
-    src = bridge.read_text();
+    src = unit_source(bridge);
     assert "PyGILState_Ensure" in src;
     assert "PyGILState_Release" in src;
     assert "PyObject_CallOneArg" in src;
@@ -1302,9 +1304,7 @@ test "plugin bridge links with full native stack" {
     jac = shutil.which("jac") or "jac";
     tmp = tempfile.mkdtemp();
     try {
-        shutil.copy2(
-            str(webview_dir / "webview.jac"), os.path.join(tmp, "webview.jac")
-        );
+        stage_module(webview_dir / "webview.jac", Path(tmp));
         with open(os.path.join(tmp, "host.jac"), "w") as f {
             f.write(src);
         }
@@ -1487,7 +1487,7 @@ test "bridge marker extraction from plugin_bridge.jac" {
     import from pathlib { Path }
 
     bridge_path = _native_dir() / "plugin_bridge.jac";
-    src = bridge_path.read_text();
+    src = unit_source(bridge_path);
     assert "_PH_DISPATCH" in src;
     assert "_jac_invoke_handler" in src;
     assert "_stash_wv_in_python" in src;
