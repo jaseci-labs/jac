@@ -115,7 +115,6 @@ walker PlacementApplyPass(CompilerPass) {
 }
 
 impl PlacementApplyPass._run_impl(ir_in: uni.Module) -> uni.Module {
-    import from jaclang.compiler.symbol_utils { report_serverless_kind_errors }
     if ir_in.loc is not None {
         self.prog.analysis.placement_refusals.pop(
             os.path.realpath(ir_in.loc.mod_path), None

@@ -903,7 +903,6 @@ impl stored_wiring_digest(source_path: str) -> str {
 }
 
 impl unit_source_digest(path: str) -> str {
-    import from jaclang.compiler.driver.wiring { wiring_digest_for }
     real = os.path.realpath(path);
     h = hashlib.sha256();
     h.update(ct_dep_digest(real, with_annexes=True).encode("utf-8"));
@@ -912,7 +911,6 @@ impl unit_source_digest(path: str) -> str {
 }
 
 impl sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
-    import from jaclang.compiler.kernel_target { target_pkg_root }
     units = sidecar.get("units");
     ids = sidecar.get("unit_ids");
     recorded = [str(u) for u in units] if isinstance(units, list) else [];
@@ -1023,7 +1021,6 @@ impl ct_dep_digest(path: str, with_annexes: bool = False) -> str {
 }
 
 impl _ct_pkg_ref(path: str) -> str {
-    import from jaclang.compiler.kernel_target { target_package_rel }
     rel = target_package_rel(path);
     if rel is None {
         return path;

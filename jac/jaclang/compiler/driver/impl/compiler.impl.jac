@@ -398,7 +398,6 @@ impl JacCompiler._adopt_kernel_compile(
 impl JacCompiler.native_entry_engine(
     full_target: str, target_program: JacProgram
 ) -> any {
-    import from jaclang.compiler.placement.placement { summary_store }
     path = JacProgram.hub_key(full_target);
     if self.get_bytecode(full_target=path, target_program=target_program) is None {
         return None;

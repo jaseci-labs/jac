@@ -562,7 +562,7 @@ impl ProjectHost.host_platform -> HostPlatform {
 impl ProjectHost.ct_environment -> CtEnvironment {
     import sys;
     import platform;
-    import from jaclang.compiler.frontend.codeinfo { effective_native_target }
+
     triple = effective_native_target().lower();
     if triple {
         arch = "";

@@ -1119,8 +1119,6 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
 }
 
 impl NativeBuildSession._finish(paths: list[str]) {
-    import from jaclang.compiler.driver.pipeline { require }
-    import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
     self.prog.options = self.options.clone_for_native_import();
     for path in paths {
         if path in self.source_keys
