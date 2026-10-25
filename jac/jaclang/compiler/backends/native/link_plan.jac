@@ -113,6 +113,8 @@ def _build_link_plan(
 
 def _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine;
 
+def unique_callbacks(bindings: list[InteropBinding]) -> list[InteropBinding];
+def callback_bind_exports(plan: LinkPlan) -> list[str];
 def callback_glue_ir(plan: LinkPlan) -> str;
 
 def heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]];

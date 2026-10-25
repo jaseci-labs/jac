@@ -529,6 +529,40 @@ test "the embedded store env scopes the cluster and points at the bundle" {
 }
 
 
+"""The postgres resolution follows the store env the host moves.
+
+The artifact router caches what it resolved per process, and the postgres
+distribution it resolves depends on `JAC_PG_HOME` / `JAC_PG_DIST`. A host that
+moves those must drop the cached answer, or the next boot in the same process
+reuses a distribution under the previous app's data dir (which may be gone).
+"""
+test "moving the embedded store env forgets the postgres resolution" {
+    import os;
+    import from jaclang.artifacts.model { Resolution }
+    import from jaclang.artifacts.router { _RESOLVED }
+    import from jaclang.client.targets.desktop.native.host_boot {
+        _enter_embedded_env,
+        _leave_embedded_env
+    }
+    prior = os.environ.get("JAC_PG_HOME");
+    try {
+        _RESOLVED["postgres"] = Resolution(name="postgres", reason="stale");
+        _enter_embedded_env({"JAC_PG_HOME": "/xdg/org.example.first"});
+        assert "postgres" not in _RESOLVED , "entering must forget the old answer";
+        _RESOLVED["postgres"] = Resolution(name="postgres", reason="first app");
+        _leave_embedded_env();
+        assert "postgres" not in _RESOLVED , "leaving must forget the app's answer";
+    } finally {
+        _leave_embedded_env();
+        if prior is None {
+            os.environ.pop("JAC_PG_HOME", None);
+        } else {
+            os.environ["JAC_PG_HOME"] = prior;
+        }
+    }
+}
+
+
 test "the embedded stop path is the shared Postgres cluster dir" {
     import os;
     import from unittest.mock { patch }
@@ -713,10 +747,8 @@ test "a workspace app scopes its storage identity to the served app" {
         desktop_storage_identifier
     }
     entry_file = Path("/ws/app/main.jac");
-    # A workspace entry that resolves to a named app carries that app in the
-    # storage identity, so two served apps never share one data dir.
     with patch("jaclang.project.config.get_config_for_dir", return_value=None), patch(
-        "jaclang.client.targets.desktop.desktop_build.serving_app_for",
+        "jaclang.client.targets.desktop.desktop_build.storage_app_for",
         return_value="notes"
     ) {
         assert desktop_storage_identifier(
@@ -724,9 +756,8 @@ test "a workspace app scopes its storage identity to the served app" {
         )
             == "org.example.notes.notes";
     }
-    # A project without a distinct serving app keeps the plain identifier.
     with patch("jaclang.project.config.get_config_for_dir", return_value=None), patch(
-        "jaclang.client.targets.desktop.desktop_build.serving_app_for", return_value=""
+        "jaclang.client.targets.desktop.desktop_build.storage_app_for", return_value=""
     ) {
         assert desktop_storage_identifier(
             "org.example.notes", Path("/ws"), entry_file, "embedded"

@@ -201,3 +201,26 @@ test "a sealed boot reads each module's imports from the seal instead of disasse
         shutil.rmtree(os.path.dirname(ws), ignore_errors=True);
     }
 }
+
+test "only server and desktop apps include sibling services" {
+    with tempfile.TemporaryDirectory() as directory {
+        project_dir = Path(directory);
+        api_dir = project_dir / "api";
+        api_dir.mkdir();
+        (project_dir / "jac.toml").write_text(
+            "[project]\nname=\"topology\"\ndefault-app=\"cli\"\n"
+                + "[apps.cli]\nkind=\"cli\"\nentry-point=\"cli\"\n"
+                + "[apps.desktop]\nkind=\"desktop\"\nentry-point=\"main\"\n"
+                + "[apps.api]\nkind=\"service\"\nentry-point=\"api.main\"\n"
+        );
+        (project_dir / "cli.jac").write_text("with entry {}\n");
+        (project_dir / "main.jac").write_text("with entry {}\n");
+        (api_dir / "main.jac").write_text("with entry {}\n");
+        config = JacConfig.load(project_dir / "jac.toml");
+        import from jaclang.server.assembly { service_apps }
+        cli_services = service_apps(config, config.app("cli"));
+        desktop_services = service_apps(config, config.app("desktop"));
+        assert not cli_services , cli_services;
+        assert [app.name for app in desktop_services] == ["api"] , desktop_services;
+    }
+}

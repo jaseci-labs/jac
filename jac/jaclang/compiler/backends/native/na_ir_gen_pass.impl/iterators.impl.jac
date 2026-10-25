@@ -684,14 +684,6 @@ impl NaIRGenPass._make_iter_from_value(
 }
 
 impl NaIRGenPass._iter_yield_llvm(storage: ir.Type, expr: uni.UniNode) -> ir.Type {
-    """The type a collection iterator yields, as the loop body reads it.
-
-    A `ptr`-spec list or set stores every boxed element (a tuple, an object)
-    as an erased `i8*`; the iterator's next function writes that word into
-    the out slot unchanged. The consumer must read it back as the element's
-    static layout, the same refinement the indexed for-loop applies through
-    `elem_cast`, or a tuple element reaches the body typed as a string.
-    """;
     if storage != ir.IntType(8).as_pointer() {
         return storage;
     }
@@ -1278,9 +1270,6 @@ impl NaIRGenPass._make_user_iter_from_obj(
 }
 
 impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
-    """`next(it)` / `next(it, default)`. An argument that is not already an
-    iterator (a list, a generator expression, a user iterable) gets a
-    temporary iterator, released once the element is taken.""";
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if not params
         or len(params) > 2
@@ -1554,19 +1543,18 @@ impl NaIRGenPass._try_iter_protocol_for(nd: uni.InForStmt) -> bool {
         );
         self.builder.branch(cond_bb);
     }
-    self._emit_loop_else(nd, else_bb, end_bb);
     self.loop_stack.pop();
-
-    if _gen_it_spill is not None {
-        _it_end = self._mark_owned(
-            self.builder.load(_gen_it_spill, name="iterf.it.end")
-        );
-        self._emit_rc_release_simple(_it_end, op="iter_end", loc=_loc);
-        self.builder.store(ir.Constant(_it_end.type, None), _gen_it_spill);
-    } elif _it_slot_var is not None {
-        self._release_loop_coll_slot(_it_slot_var, op="iter_end", loc=_loc);
-    } elif owns_iter {
-        self._emit_rc_release_simple(iter_val, op="iter_end", loc=_loc);
+    if else_bb is None {
+        self.builder.position_at_end(end_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+    } else {
+        join_bb = self.builder.function.append_basic_block(name="iterf.join");
+        self.builder.position_at_end(end_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+        self.builder.branch(join_bb);
+        self.builder.position_at_end(else_bb);
+        self._release_iter_end(_gen_it_spill, _it_slot_var, owns_iter, iter_val, _loc);
+        self._emit_loop_else(nd, else_bb, join_bb);
     }
     return True;
 }

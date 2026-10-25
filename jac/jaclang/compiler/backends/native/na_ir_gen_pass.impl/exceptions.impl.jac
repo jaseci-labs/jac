@@ -2,7 +2,7 @@ impl NaIRGenPass._get_exception_state_type -> ir.Type {
     if self._exc_state_type is not None {
         return self._exc_state_type;
     }
-    """The Windows floor's pair saves xmm6-xmm15 as well: 240 bytes.""";
+
     jmp_buf_type = ir.ArrayType(
         ir.IntType(8), 256 if self._exc_jmp_symbols()[0] == "__jac_setjmp" else 200
     );
@@ -41,20 +41,6 @@ impl NaIRGenPass._declare_exception_runtime -> None {
 }
 
 impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
-    """The setjmp/longjmp pair every native exception frame arms and unwinds through.
-
-    Plain `setjmp` saves the signal mask: on Darwin it costs a `sigprocmask`
-    and a `sigaltstack` syscall per armed frame (and `longjmp` two more per
-    raise), on glibc it is `__sigsetjmp(env, 1)` and one `rt_sigprocmask`. Jac
-    code never changes the mask between arming a frame and raising into it,
-    so that is dead work on every `try`, walker spawn and guarded call.
-    `_setjmp`/`_longjmp` leave the mask alone. They only work as a pair --
-    Darwin's `longjmp` restores the mask from a buffer slot `_setjmp` never
-    writes -- so every frame raises through the matching `_longjmp`. wasm
-    keeps the portable names, which its SjLj lowering matches. Windows raises
-    through the floor's own pair (win_floor.jac): the UCRT's `longjmp` unwinds
-    through exception tables a Jac image does not carry.
-    """;
     triple = str(self.llvm_module.triple or "").lower();
     if "wasm" in triple {
         return ("setjmp", "longjmp");
@@ -68,12 +54,10 @@ impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
 }
 
 impl NaIRGenPass._exc_setjmp_fn -> ir.Function {
-    """The setjmp of `_exc_jmp_symbols`, once `_declare_exception_runtime` ran.""";
     return self.extern_funcs[self._exc_jmp_symbols()[0]];
 }
 
 impl NaIRGenPass._exc_longjmp_fn -> ir.Function {
-    """The longjmp of `_exc_jmp_symbols`, the pair of `_exc_setjmp_fn`.""";
     return self.extern_funcs[self._exc_jmp_symbols()[1]];
 }
 
@@ -313,11 +297,6 @@ impl NaIRGenPass._emit_runtime_raise(
 }
 
 impl NaIRGenPass._emit_raise_value(exc_type_name: str, msg_val: ir.Value) -> None {
-    """Raise `exc_type_name` here with a message computed at run time.
-
-    The block ends at the raise, so the caller positions the builder elsewhere
-    before emitting more code.
-    """;
     if not self._slot_lowering_active() and self._exc_raise_fn is None {
         self._declare_exception_runtime();
     }
@@ -1408,12 +1387,6 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
 }
 
 impl NaIRGenPass._exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value {
-    """The local an `except ... as name` binds, shared by every handler of the name.
-
-    Each handler used to take a fresh slot for the name, so scope exit (which
-    releases the slot the name maps to last) never released what an earlier
-    handler bound: one caught exception leaked per function per such handler.
-    """;
     existing = self.local_vars.get(var_name);
     if not self._nogc_headerless()
         and self._gen_ctx is None
@@ -1428,7 +1401,6 @@ impl NaIRGenPass._exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Valu
 impl NaIRGenPass._unwind_top_slot(
     b: ir.IRBuilder, context: (ir.Value | None) = None
 ) -> ir.Value {
-    """The thread's unwind chain head: the newest frame that owns rc locals.""";
     if context is None {
         context = b.call(self._get_exception_context_fn(), []);
     }
@@ -1438,24 +1410,11 @@ impl NaIRGenPass._unwind_top_slot(
 }
 
 impl NaIRGenPass._unwind_node_type -> ir.Type {
-    """`{prev, cleanup, env}`: one frame's link in the unwind chain.""";
     i8p = ir.IntType(8).as_pointer();
     return ir.LiteralStructType([i8p, i8p, i8p]);
 }
 
 impl NaIRGenPass._register_unwind_cleanup -> None {
-    """Let a raise that crosses this frame release its owned locals.
-
-    A raise reaches its handler with `longjmp`, which skips every frame in
-    between, and with them the scope cleanup each frame would have run on a
-    normal return: every rc object those frames held leaked, once per raise.
-    A frame that owns such locals now links a node into the thread's unwind
-    chain on entry (its local slots and a cleanup function built from the
-    same scope cleanup a return runs) and unlinks it on every return. The
-    raise walks the chain down to the handler's saved head, releasing each
-    crossed frame's locals, before it jumps. A frame whose locals need no
-    cleanup (scalars, borrowed values, parameters) links nothing.
-    """;
     if self._builder is None or self._gen_ctx is not None {
         return;
     }
@@ -1630,20 +1589,6 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
 impl NaIRGenPass._unwind_shadow_slots(
     func: ir.Function, slots: list[tuple[str, ir.Value]]
 ) -> dict[int, ir.Value] {
-    """Shadow each registered local the function only loads and stores directly.
-
-    The unwind node needs, for every owned local, a word that holds the
-    local's current value when a raise crosses the frame. Handing the chain
-    the local's own slot publishes its address, and an escaped slot can never
-    be promoted to a register: every call may then read or write it, so the
-    local is reloaded after each one. A slot whose only uses are loads from it
-    and stores into it gets a shadow instead -- its own entry alloca, written
-    right after every store into the slot -- and the chain is handed the
-    shadow. The shadow holds the slot's value at every call, which is the only
-    place a raise can start, and the slot itself stays promotable. A slot used
-    any other way (its address taken, stored, cast or passed on) is handed over
-    as before. Returns the shadow of each shadowed slot, by the slot's id.
-    """;
     plain: dict[int, ir.Value] = {};
     for (_name, slot) in slots {
         plain[id(slot)] = slot;
@@ -1726,14 +1671,6 @@ impl NaIRGenPass._unwind_shadow_slots(
 }
 
 impl NaIRGenPass._hoist_entry_allocas(entry_blk: ir.Block) -> None {
-    """Move every local slot of the entry block, with the zero stores that
-    initialize it, ahead of the block's other instructions.
-
-    `_entry_alloca` prepends each slot to the entry block, and so does
-    entry code such as a closure cell's allocation, so a slot created
-    before that code sits after it. The unwind link registers every slot at
-    the end of the leading slots; each must be defined there.
-    """;
     slots: list[ir.NamedValue] = [];
     rest: list[ir.NamedValue] = [];
     insts = list(entry_blk.instructions);
@@ -1783,13 +1720,6 @@ impl NaIRGenPass._nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value] {
 }
 
 impl NaIRGenPass._nogc_err_drop_slot -> ir.Value {
-    """The error record's drop slot: how to free the pending payload.
-
-    A raise that hands its payload to the record stores the function that
-    frees it here, and null when the payload is not the record's to free (a
-    static message, or an object someone else still owns). Whoever takes the
-    error off the record takes this with it.
-    """;
     i32 = ir.IntType(32);
     context = self.builder.call(self._get_exception_context_fn(), []);
     return self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, 4)]);
@@ -1798,13 +1728,6 @@ impl NaIRGenPass._nogc_err_drop_slot -> ir.Value {
 impl NaIRGenPass._raise_payload_drop(
     payload: (ir.Value | None), msg: ir.Value, type_name: str
 ) -> (ir.Value | None) {
-    """The drop a raise hands to the error record with its payload, if any.
-
-    Only a value the raise owns outright is handed over: a freshly built
-    exception object is dropped through its class's drop (which reads the
-    object's own vtable for a subclass), and a freshly built message string
-    is freed. A borrowed object or a static message gets no drop.
-    """;
     i8p = ir.IntType(8).as_pointer();
     if payload is not None and payload is not msg {
         if not self._is_owned(payload) or type_name not in self.struct_types {
@@ -1824,7 +1747,6 @@ impl NaIRGenPass._raise_payload_drop(
 }
 
 impl NaIRGenPass._emit_caught_drop(drop_slot: ir.Value, obj_slot: ir.Value) -> None {
-    """Drop the exception a handler took off the error record, then forget it.""";
     i8p = ir.IntType(8).as_pointer();
     func = self.builder.function;
     drop = self.builder.load(drop_slot, name="exc.drop");
@@ -1849,17 +1771,6 @@ impl NaIRGenPass._emit_caught_drop(drop_slot: ir.Value, obj_slot: ir.Value) -> N
 }
 
 impl NaIRGenPass._exc_binding_escapes(handler: uni.Except) -> bool {
-    """Can the exception bound by `except ... as e` outlive its handler?
-
-    The handler drops the caught exception when it ends, so every use of the
-    binding must only read it: an argument to a plain function call, an
-    operand of arithmetic, comparison or `not`, an f-string part, a branch
-    condition, a statement of its own, or `raise e`, reached directly or
-    through attribute, index and method-call chains rooted at `e`. Anything
-    else -- storing it, returning it, putting it in a container, handing it to
-    a method, capturing it in a closure -- may keep a reference past the
-    drop, so the handler leaves such an exception undropped.
-    """;
     if not isinstance(handler.name, uni.Name) {
         return False;
     }
@@ -1956,13 +1867,6 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
 impl NaIRGenPass._emit_err_check(
     callee: (uni.Ability | None), site: (uni.UniNode | None) = None
 ) -> None {
-    """Propagate a raise the callee left pending, unless the call is a tail call.
-
-    A `return tail` call returns the callee's result straight to this
-    function's caller, which checks the pending error itself; the frame has no
-    handler and nothing to clean up (the tail lowering refuses otherwise), so
-    propagating here would return the same fallback one frame earlier.
-    """;
     if callee is not None and (site is None or site is not self._tail_call_site) {
         self._emit_pending_error_check();
     }
@@ -2340,15 +2244,6 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
 }
 
 impl NaIRGenPass._mark_setjmp_function(func: ir.Function) -> None {
-    """Record a function that arms a setjmp frame.
-
-    It stays optimizable. What C requires of such a function -- a local
-    written between the arming and the longjmp that returns to it must be
-    volatile, or the second return may see a stale register copy -- is
-    applied before the module is handed on (_volatilize_setjmp_locals). The
-    setjmp call keeps returns_twice, so LLVM neither inlines the function
-    nor reuses its stack slots across the arming.
-    """;
     for known in self._setjmp_functions {
         if known is func {
             return;
@@ -2358,7 +2253,6 @@ impl NaIRGenPass._mark_setjmp_function(func: ir.Function) -> None {
 }
 
 impl NaIRGenPass._setjmp_local_base(value: ir.Value) -> (ir.Value | None) {
-    """The local (alloca) a pointer addresses through GEPs and casts, or None.""";
     current = value;
     while True {
         if isinstance(current, ir.AllocaInstr) {
@@ -2393,16 +2287,6 @@ impl NaIRGenPass._block_successors(block: ir.Block) -> list[ir.Block] {
 }
 
 impl NaIRGenPass._volatilize_setjmp_locals -> None {
-    """Make volatile exactly the locals a setjmp function writes after an arming.
-
-    Every instruction that can run after an arming -- the rest of the arming
-    block and every block reachable from it -- is scanned for stores into a
-    local; each such local's loads and stores anywhere in the function become
-    volatile, so the value a handler, finally clause or re-armed generator
-    frame reads after the longjmp is the one last written. Locals only
-    written before every arming keep their register and SSA form, and the
-    rest of the function is optimized as usual.
-    """;
     if not self._setjmp_functions {
         return;
     }
@@ -2470,17 +2354,6 @@ impl NaIRGenPass._volatilize_setjmp_locals -> None {
 }
 
 impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
-    """The thread's exception context for a handler armed or popped at `b`.
-
-    The context is one per-thread block (pthread key, so JIT, AOT and every
-    unit share it) holding the handler chain and the unwind-chain head. A
-    function fetches it once, at entry, and every arming, pop and unwind
-    link in the activation reuses that value: an activation runs on one
-    thread, and the value is set before any setjmp and never changed, so a
-    longjmp back into the function still sees it. A generator's resume
-    function can run on a different thread each time it resumes, and
-    fetches it where it is used.
-    """;
     func = b.function;
     gc = self._gen_ctx;
     if gc is not None and func is gc.resume_fn {

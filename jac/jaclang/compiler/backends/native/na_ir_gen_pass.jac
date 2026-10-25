@@ -7,6 +7,18 @@ glob GEN_PENDING_FLAG_OFF: int = 8,
      GEN_PENDING_MSG_OFF: int = 32,
      GEN_FRAME_HEADER: int = 40;
 
+glob UTF8_CURSOR_MIN_BYTES: int = 64,
+     UTF8_CURSOR_WAYS: int = 4,
+     UTF8_CURSOR_WORDS: int = 8,
+     UTF8_CURSOR_BASE: int = 0,
+     UTF8_CURSOR_DATA: int = 1,
+     UTF8_CURSOR_LEN: int = 2,
+     UTF8_CURSOR_EPOCH: int = 3,
+     UTF8_CURSOR_TOTAL: int = 4,
+     UTF8_CURSOR_K: int = 5,
+     UTF8_CURSOR_OFF: int = 6,
+     UTF8_CURSOR_USED: int = 7;
+
 def _jc_optional_payload(semantic: (TypeBase | None)) -> (TypeBase | None);
 
 def _restore_entry[V](table: dict[str, V], key: str, prior: (V | None));
@@ -378,6 +390,7 @@ walker NaIRGenPass(CompilerPass) {
         str_isascii_fn: (ir.Function | None) = None,
         utf8_cplen_fn: (ir.Function | None) = None,
         utf8_cp_off_fn: (ir.Function | None) = None,
+        utf8_cp_count_fn: (ir.Function | None) = None,
         utf8_cp_len_at_fn: (ir.Function | None) = None,
         utf8_char_at_fn: (ir.Function | None) = None,
         utf8_advance_fn: (ir.Function | None) = None,
@@ -386,6 +399,7 @@ walker NaIRGenPass(CompilerPass) {
         utf8_unit_in_fn: (ir.Function | None) = None,
         utf8_gather_fn: (ir.Function | None) = None,
         _str_desc_ty: (ir.IdentifiedStructType | None) = None,
+        _last_inplace_handled: bool = False,
         rc_roots_buf_gv: (ir.GlobalVariable | None) = None,
         rc_roots_cap_gv: (ir.GlobalVariable | None) = None,
         rc_roots_count_gv: (ir.GlobalVariable | None) = None,
@@ -765,6 +779,18 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
+    def _emit_intrinsic_buffer_data(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _emit_intrinsic_str_data(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _emit_intrinsic_ref_addr(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
     def _emit_intrinsic_alloca(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
@@ -975,6 +1001,8 @@ walker NaIRGenPass(CompilerPass) {
     def _c_abi_same(have: ir.FunctionType, want: ir.FunctionType) -> bool;
     def _c_calls_directly(target: ir.Function) -> bool;
     def _c_address_of_value(value: (ir.Value | None)) -> (ir.Value | None);
+    def _c_literal_address(arg: uni.UniNode) -> (ir.Constant | None);
+    def _literal_destination(nd: uni.Int) -> (str | None);
     def _reads_c_callback(nd: uni.Expr) -> bool;
     def _c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None);
     def _clib_global_of(nd: uni.Name) -> (tuple[ir.GlobalVariable, any] | None);
@@ -2600,7 +2628,8 @@ walker NaIRGenPass(CompilerPass) {
         ptr: ir.Value,
         nbytes: ir.Value,
         ascii: ir.Value,
-        name: str = "u8.cplen"
+        name: str = "u8.cplen",
+        base: (ir.Value | None) = None
     ) -> ir.Value;
 
     def _call_utf8_cp_off(
@@ -2609,8 +2638,36 @@ walker NaIRGenPass(CompilerPass) {
         nbytes: ir.Value,
         cp_index: ir.Value,
         ascii: ir.Value,
-        name: str = "u8.cpoff"
+        name: str = "u8.cpoff",
+        base: (ir.Value | None) = None
     ) -> ir.Value;
+
+    def _call_utf8_cp_count(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        upto: ir.Value,
+        ascii: ir.Value,
+        name: str = "u8.cpcount",
+        base: (ir.Value | None) = None
+    ) -> ir.Value;
+
+    def _utf8_base_arg(b: ir.IRBuilder, base: (ir.Value | None)) -> ir.Value;
+    def _utf8_cursor_state -> tuple[ir.Function, ir.Function, ir.GlobalVariable];
+    def _utf8_cursor_keyed(b: ir.IRBuilder, base: ir.Value) -> ir.Value;
+    def _utf8_cursor_tag_keyed(b: ir.IRBuilder, tag: ir.Value, name: str) -> ir.Value;
+    def _utf8_cursor_fn -> ir.Function;
+    def _utf8_forget_fn -> ir.Function;
+    def _utf8_forget_on_free(b: ir.IRBuilder, ptr: ir.Value) -> ir.IRBuilder;
+    def _utf8_pick_anchor(
+        b: ir.IRBuilder,
+        want: ir.Value,
+        spots: tuple[ir.Value, ir.Value],
+        cursor: tuple[ir.Value, ir.Value],
+        tail: tuple[ir.Value, ir.Value],
+        known: ir.Value,
+        name: str
+    ) -> tuple[ir.Value, ir.Value, ir.Value];
 
     def _call_utf8_cp_len_at(
         b: ir.IRBuilder,
@@ -2851,6 +2908,7 @@ walker NaIRGenPass(CompilerPass) {
     def _lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value;
     def _convert_scalar(val: ir.Value, src: ScalarShape, dst: ScalarShape) -> ir.Value;
     def _codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value | None);
+    def _names_user_symbol(target: uni.UniNode) -> bool;
     def _codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value | None);
     def _codegen_sized_bound(name: str, attr: str) -> (ir.Value | None);
     def _codegen_wrapping(nd: uni.FuncCall, name: str) -> (ir.Value | None);
@@ -2891,8 +2949,28 @@ walker NaIRGenPass(CompilerPass) {
         end_bb: ir.Block
     ) -> None;
 
+    def _release_iter_end(
+        spill: (ir.Value | None),
+        slot_var: (str | None),
+        owns_iter: bool,
+        iter_val: ir.Value,
+        loc: str
+    ) -> None;
+
+    def _release_for_coll(
+        spill: (ir.Value | None),
+        slot_var: (str | None),
+        release_op: str,
+        collection_val: ir.Value,
+        loc: str
+    ) -> None;
+
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
+    def _codegen_assert_computed(
+        nd: uni.AssertStmt, is_false: ir.Value, where: str
+    ) -> None;
+
     def _exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value;
     def _unwind_top_slot(
         b: ir.IRBuilder, context: (ir.Value | None) = None
@@ -3081,6 +3159,11 @@ walker NaIRGenPass(CompilerPass) {
         replaced: list[tuple[str, ir.Value]]
     ) -> bool;
 
+    def _value_kind(ty: ir.Type) -> str;
+    def _rebinds_slot(
+        slot_type: ir.Type, target_type: (ir.Type | None), value_type: ir.Type
+    ) -> bool;
+
     def _unpack_store_global(
         var_name: str,
         value: ir.Value,
@@ -3252,7 +3335,16 @@ walker NaIRGenPass(CompilerPass) {
         left: ir.Value,
         right: ir.Value,
         unsigned: bool = False,
-        checked: bool = False
+        checked: bool = False,
+        inplace_slot: (ir.Value | None) = None
+    ) -> (ir.Value | None);
+
+    def _str_concat_fresh(
+        left: ir.Value, right: ir.Value, len1: ir.Value, len2: ir.Value, total: ir.Value
+    ) -> ir.Value;
+
+    def _emit_str_concat_inplace(
+        left: ir.Value, right: ir.Value, slot: ir.Value
     ) -> (ir.Value | None);
 
     def _unify_int_widths(

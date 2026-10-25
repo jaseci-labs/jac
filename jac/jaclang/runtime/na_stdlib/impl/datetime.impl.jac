@@ -829,8 +829,7 @@ impl _wrap_strftime_slow(
 }
 
 impl _is_ascii_digit(c: str) -> bool {
-    d: int = ord(c) - 48;
-    return d >= 0 and d <= 9;
+    return is_digit(ord(c));
 }
 
 impl _dig2(s: bytes, p: int) -> int {
@@ -2857,12 +2856,7 @@ impl _mk_time(
 }
 
 impl _is_ws(c: str) -> bool {
-    return c == " "
-        or c == "\t"
-        or c == "\n"
-        or c == "\r"
-        or c == "\x0b"
-        or c == "\x0c";
+    return is_space(ord(c));
 }
 
 impl _collapse_ws(s: str) -> str {

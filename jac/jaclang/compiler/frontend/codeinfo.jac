@@ -15,7 +15,10 @@ obj ClientManifest {
         server_imports: list[str] = [],
         server_import_routes: dict[(str, dict[(str, str)])] = {},
         page_export: (str | None) = None,
-        layout_export: (str | None) = None;
+        layout_export: (str | None) = None,
+        linkable: list[str] = [],
+        components: list[str] = [],
+        forwards: dict[str, list[str]] = {};
 }
 
 obj ClientArtifact {
@@ -140,6 +143,7 @@ def native_module_key(path: str) -> str;
 
 def native_unit_prefix(path: str) -> str;
 
+def interop_callback_symbol(provider_path: str, name: str) -> str;
 def native_symbol_name(prefix: str, name: str) -> str;
 
 def native_glob_init_name(path: str) -> str;
@@ -311,7 +315,7 @@ def resolve_native_module(
 
 def native_wasm_stem(path: str) -> str;
 
-glob NATIVE_ABI_VERSION: int = 2;
+glob NATIVE_ABI_VERSION: int = 3;
 
 obj NativeModuleLayout {
     has abi_version: int = NATIVE_ABI_VERSION,
@@ -350,9 +354,11 @@ obj InteropBinding {
         kind: str = 'function',
         provider_app: str = '',
         native_contract: dict[str, any] = {},
-        endpoint_id: str = '';
+        endpoint_id: str = '',
+        symbol: str = '';
 
     has is_cross_module: bool { getter; }
+    has native_callable: bool { getter; }
 }
 
 obj InteropManifest {

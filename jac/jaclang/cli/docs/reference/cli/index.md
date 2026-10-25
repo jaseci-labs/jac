@@ -63,7 +63,7 @@ A task-first index into the commands below. The full alphabetical list follows i
 | `jac publish` | Publish a Jac package or template to the package index (`--dry-run` to run the gates only) |
 | `jac x` | Run an installed CLI tool (Python console-script or npm tool) under the `jac` runtime |
 | `jac remove` | Remove packages from project |
-| `jac update` | Update dependencies to latest compatible versions |
+| `jac update` | Update dependencies to latest compatible versions; with `--self`, update the jac binary itself |
 | `jac tool` | Language tools & source transforms (`jac2py`, `py2jac`, `jac2js`, `grammar`, IR, AST) |
 | `jac guide` | Show curated Jac reference guides |
 | `jac lsp` | Language server |
@@ -175,7 +175,7 @@ A named file otherwise runs under the project that owns it: the nearest `jac.tom
 
 Like Python, everything after the target is passed to the script. Jac flags must come **before** the target.
 
-**App-aware run.** `jac run` resolves the target app -- the named app, `[project] default-app`, or the sole app (a project with no `[apps]` table is one implicit app) -- reads its *kind* (`[apps.<name>] kind`, or `[project] kind`, or inferred from the entry-point's codespace) and does the natural action for that kind: **execute** runnable kinds (`cli`, `cli-native`), **serve** server kinds (`service`, `web-app`, ...), or **build** artifact kinds (`native-binary`, `native-lib`, `py-package`, `js-package`). Flag defaults with a `config_key` (`--port`, `--cache`, ...) come from the app's *effective config* -- base `jac.toml` merged with its `[apps.<name>.*]` overlays and the active profile. Use `jac run --show` to preview the plan and the equivalent command without running it. A serve-only flag against a kind that executes (or the reverse) is a hard error, not a silent no-op -- pass `--serve` / `--no-serve` to override the kind deliberately. See [project kinds](../../quick-guide/project-kinds.md), [Workspaces & Apps](../apps.md) and [config `[apps]`](../config/index.md#apps).
+**App-aware run.** `jac run` resolves the target app -- the named app, `[project] default-app`, or the sole app (a project with no `[apps]` table is one implicit app) -- reads its *kind* (`[apps.<name>] kind`, or `[project] kind`, or inferred from the entry-point's codespace) and does the natural action for that kind: **execute** runnable kinds (`cli`, `cli-native`, and `native-binary`, compiled in-process), or **serve** server and client kinds (`service`, `web-app`, `mobile`, ...). `jac run` never builds: a build-only kind with no program to run (`native-lib`, `py-package`, `js-package`) is refused with the `jac build` command that makes it. Flag defaults with a `config_key` (`--port`, `--cache`, ...) come from the app's *effective config* -- base `jac.toml` merged with its `[apps.<name>.*]` overlays and the active profile. Use `jac run --show` to preview the plan and the equivalent command without running it. A serve-only flag against a kind that executes (or the reverse) is a hard error, not a silent no-op -- pass `--serve` / `--no-serve` to override the kind deliberately. See [project kinds](../../quick-guide/project-kinds.md), [Workspaces & Apps](../apps.md) and [config `[apps]`](../config/index.md#apps).
 
 **Diagnostics modes:**
 
@@ -316,14 +316,17 @@ jac run --dev --no-client
 # Print the endpoint docs without starting a server
 jac run --faux
 
-# Mobile dev for the app named `mobile` (Metro Fast Refresh on a device or simulator)
-jac run --dev mobile
+# Serve the app named `mobile` to your phone: scan the printed QR code with Expo Go
+jac run mobile
+
+# The same, through an Expo tunnel when the phone can't reach this machine
+jac run --tunnel mobile
+
+# Open it in Expo Go on the iOS simulator (no app build)
+jac run --platform ios mobile
 
 # The same app in a browser, through react-native-web
-jac run --dev --platform web mobile
-
-# Build the mobile app for iOS and launch it on the simulator
-jac run --platform ios mobile
+jac run --platform web mobile
 
 # Evict a stuck session holding this project's database
 jac run --takeover
@@ -1536,15 +1539,19 @@ jac remove react --npm
 
 Re-resolve dependencies to their newest compatible versions. With no names, every Jac package is re-resolved within its range, the Python dependencies are re-installed and re-pinned in `jac.lock`, and each Python package declared with a compatible-release spec gets the installed version written back as `~=X.Y`. With `org/name` arguments only those Jac packages are unlocked. `--pypi` updates named Python packages only.
 
+With `--self`, the command skips dependencies entirely and updates the `jac` binary itself: it resolves the newest GitHub release (or the `--release` tag), downloads this platform's binary, verifies the published sha256, and atomically replaces the running launcher. Already-running `jac` processes keep their version; the next invocation uses the new binary. `--self` refuses to touch anything it should not: a plain interpreter session (e.g. `python -m jaclang`), a linked dev binary (`zig build -Ddev`), an unwritable install location, and a JacPython install (the release channel only ships the default CPython build, so an update would silently drop the JacPython compiler -- reinstall with `install.sh --jacpython` instead). A download that passes the sha256 check but is not a valid `jac` binary (missing the runtime trailer) is discarded and the installed version kept. On hosts no release ships (Windows), it says so and points at the releases page.
+
 ```bash
-jac update [-h] [--pypi] [-d] [-v] [packages ...]
+jac update [-h] [--pypi] [-d] [--self] [--release TAG] [-v] [packages ...]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `packages` | Jac packages to re-resolve (all if empty); with `--pypi`, Python packages | None |
+| `packages` | Jac packages to re-resolve (all if empty); with `--pypi`, Python packages; not valid with `--self` | None |
 | `--pypi` | Update Python packages only | `False` |
 | `-d, --dev` | Include Python dev dependencies | `False` |
+| `--self` | Update the jac binary itself to the latest release | `False` |
+| `--release TAG` | With `--self`: update to this release tag (e.g. `2.3.1`) instead of the latest | `""` |
 | `-v, --verbose` | Show detailed output | `False` |
 
 **Examples:**
@@ -1558,6 +1565,12 @@ jac update jaseci/vecdb
 
 # Update one Python package
 jac update --pypi requests
+
+# Update the jac binary itself to the latest release
+jac update --self
+
+# Pin the jac binary to a specific release
+jac update --self --release 2.3.1
 ```
 
 ---
@@ -1661,6 +1674,7 @@ Every bucket has a **retention policy**:
 | `jir-stubcat`, `jir-kernel-units`, `jir-digests` | stub catalogs, native kernel units, per-checkout compiler digests | unused 14 days |
 | `apps` | materialized `.jab` images | unused 30 days |
 | `scale-binaries` | pinned release binaries for deploys | unused 30 days |
+| `admin` | built admin consoles, one per UI source and compiler | unused 30 days |
 | `toolchains-downloads` | verified toolchain archives | unused 14 days |
 | `toolchains-installed`, `toolchains-build` | installed toolchains and builds | unused 90 days |
 | `models` | byLLM model weights | pinned: never collected, `purge` removes it |
@@ -2089,7 +2103,8 @@ jac setup mobile
 | `jac create` | `--kind web-app` | Create full-stack project template |
 | `jac create` | `--app <name> --kind <kind>` | Add an app to the current project |
 | `jac create` | `--skip` | Skip npm package installation |
-| `jac run` | `--platform <android\|ios\|web>` | Where a mobile app runs (device/simulator, or a browser via react-native-web) |
+| `jac run` | `--platform <android\|ios\|web>` | Where a mobile app runs (Expo Go on an emulator/simulator, or a browser via react-native-web; omit for the QR code) |
+| `jac run` | `--tunnel` | Serve a mobile app through an Expo tunnel instead of the LAN |
 | `jac build` | `--as client` | Build only the app's client bundle |
 | `jac run` | `--fleet` | Run service apps as separate local processes |
 | `jac install` | `--npm` | Add npm (client-side) dependency |

@@ -1,7 +1,5 @@
 import argparse;
 import asyncio;
-import json;
-import re;
 import sys;
 import from jaclang.server.bridge {
     BridgeError,
@@ -181,230 +179,12 @@ impl run_post(text: str) -> int {
     }
 }
 
-glob USER_AGENT: str = "jaclang.org cli scorer",
-     MAX_TAR_BYTES: int = 52428800,
-     MAX_MEMBER_BYTES: int = 2097152;
-
-glob ERROR_TEXT: dict[str, str] = {
-         "bad_ref": "expected owner/name or a github.com URL",
-         "not_found": "GitHub knows no such repo (a private repo and a rate limit look the same; set GITHUB_TOKEN)",
-         "fetch_failed": "could not download the default-branch tarball (over 50 MB, or GitHub is unreachable)",
-         "not_jac": "no .jac files on the default branch, so there is nothing to score"
-     };
-
-obj ScoreResult {
-    has ok: bool = False,
-        error: str = "",
-        meta: RepoMeta = RepoMeta(),
-        an: RepoAnalysis = RepoAnalysis(),
-        breakdown: ScoreBreakdown = ScoreBreakdown(),
-        sha: str = "";
-}
-
-def parse_repo_ref(text: str) -> tuple[str, str] | None;
-
-def score_repo(owner: str, name: str, quiet: bool = False) -> ScoreResult;
-
-def as_dict(res: ScoreResult) -> dict[str, object];
-
-def render(res: ScoreResult) -> str;
-
-def run_score(repo: str, as_json: bool) -> int;
-
-impl parse_repo_ref(text: str) -> tuple[str, str] | None {
-    u = text.strip().rstrip("/");
-    m = re.`match(
-        r"^(?:https?://)?(?:www\.)?github\.com/([\w.\-]+)/([\w.\-]+?)(?:\.git)?$", u
-    );
-    if m is None {
-        m = re.`match(r"^([\w.\-]+)/([\w.\-]+)$", u);
-    }
-    if m is None {
-        return None;
-    }
-    return (m.group(1) as str, m.group(2) as str);
-}
-
-impl score_repo(owner: str, name: str, quiet: bool = False) -> ScoreResult {
-    def say(note: str) {
-        if not quiet {
-            warn(note);
-        }
-    }
-    meta = repo_meta(owner + "/" + name, USER_AGENT);
-    if meta is None {
-        return ScoreResult(error="not_found");
-    }
-    full = (meta.owner or owner) + "/" + (meta.name or name);
-    sha = head_sha(full, meta.default_branch, USER_AGENT);
-    ref = sha if sha != "" else meta.default_branch;
-    say("fetching " + full + " @ " + ref[:12]);
-    blob = download_tarball(full, ref, USER_AGENT, max_bytes=MAX_TAR_BYTES);
-    if blob is None {
-        return ScoreResult(error="fetch_failed", meta=meta);
-    }
-    say("unpacked " + mb_of(len(blob)) + ", analyzing");
-    members = untar(
-        blob,
-        prefixes=[".github/workflows/", "docs/"],
-        suffixes=[".jac", "jac.toml"],
-        names=["readme.md", "license", "license.md", "license.txt"],
-        max_member_bytes=MAX_MEMBER_BYTES
-    );
-    files: dict[str, str] = {};
-    for rel in members.keys() {
-        files[rel] = text_of(members[rel]);
-    }
-    an = analyze(files);
-    stats = code_breakdown(blob);
-    an.jac_bytes = stats[0];
-    an.other_code_bytes = stats[1];
-    if an.jac_files == 0 {
-        return ScoreResult(error="not_jac", meta=meta);
-    }
-    breakdown = score(meta, an);
-    breakdown.ai_review = optional_review(files);
-    return ScoreResult(ok=True, meta=meta, an=an, breakdown=breakdown, sha=sha);
-}
-
-impl as_dict(res: ScoreResult) -> dict[str, object] {
-    sc = res.breakdown;
-    an = res.an;
-    meta = res.meta;
-    return {
-        "repo": meta.full_name,
-        "url": meta.html_url,
-        "sha": res.sha,
-        "stars": meta.stars,
-        "forks": meta.forks,
-        "topics": meta.topics,
-        "pushed_at": meta.pushed_at,
-        "jac_files": an.jac_files,
-        "jac_lines": an.jac_lines,
-        "jac_pct": an.jac_pct(),
-        "features": {
-            "osp": an.features.osp,
-            "ai": an.features.ai,
-            "cl": an.features.cl,
-            "sv": an.features.sv,
-            "na": an.features.na,
-            "tests": an.features.tests
-        },
-        "readme": an.readme,
-        "toml": an.toml,
-        "license": an.license,
-        "ci": an.ci,
-        "docs": an.docs,
-        "total": sc.total,
-        "belt": sc.belt,
-        "substance": sc.substance,
-        "breadth": sc.breadth,
-        "craft": sc.craft,
-        "community": sc.community,
-        "ai_review": {
-            "summary": sc.ai_review.summary,
-            "strength": {
-                "observation": sc.ai_review.strength.observation,
-                "evidence": sc.ai_review.strength.evidence
-            },
-            "opportunity": {
-                "action": sc.ai_review.opportunity.action,
-                "reason": sc.ai_review.opportunity.reason
-            }
-        }
-            if sc.ai_review
-            else None,
-        "details": [
-            {
-                "category": p.category,
-                "label": p.label,
-                "pts": p.pts,
-                "max": p.max,
-                "note": p.note
-            } for p in sc.details
-        ]
-    };
-}
-
-impl render(res: ScoreResult) -> str {
-    sc = res.breakdown;
-    an = res.an;
-    meta = res.meta;
-    lines: list[str] = [
-        meta.full_name + "  " + str(sc.total) + "/100  " + sc.belt + " belt",
-        "  substance "
-            + str(sc.substance)
-            + "/30 · breadth "
-            + str(sc.breadth)
-            + "/30 · craft "
-            + str(sc.craft)
-            + "/20 · community "
-            + str(sc.community)
-            + "/20",
-        "  "
-            + str(an.jac_files)
-            + " jac files · "
-            + str(an.jac_lines)
-            + " lines · "
-            + str(an.jac_pct())
-            + "% jac · "
-            + str(meta.stars)
-            + " stars · "
-            + str(meta.forks)
-            + " forks"
-    ];
-    if res.sha and meta.html_url {
-        lines.append("  scored at " + meta.html_url + "/tree/" + res.sha);
-    }
-    lines.append("");
-    for p in sc.details {
-        lines.append(
-            f"  {p.category:<10} {p.label:<26} {p.pts:>5.1f} / {p.max:<4.0f} {p.note}"
-        );
-    }
-    if sc.ai_review {
-        lines.append("\n  AI code review · sampled files");
-        lines.append("  " + sc.ai_review.summary);
-        lines.append("  Strength: " + sc.ai_review.strength.observation);
-        lines.append("  Evidence: " + sc.ai_review.strength.evidence);
-        lines.append("  Next step: " + sc.ai_review.opportunity.action);
-        lines.append("  " + sc.ai_review.opportunity.reason);
-    }
-    return "\n".join(lines);
-}
-
-impl run_score(repo: str, as_json: bool) -> int {
-    parsed = parse_repo_ref(repo);
-    if parsed is None {
-        warn("jacorg score: " + ERROR_TEXT["bad_ref"] + ": " + repo);
-        return EXIT_USAGE;
-    }
-    res = score_repo(parsed[0], parsed[1], quiet=as_json);
-    if not res.ok {
-        hint = ERROR_TEXT.get(res.error, res.error);
-        if as_json {
-            print(json.dumps({"ok": False, "error": res.error, "hint": hint}));
-        } else {
-            warn("jacorg score: " + hint);
-        }
-        return EXIT_FAILURE;
-    }
-    if as_json {
-        print(json.dumps(as_dict(res), indent=2));
-    } else {
-        print(render(res));
-    }
-    return EXIT_OK;
-}
-
 glob PROG: str = "jacorg",
      DEFAULT_LIMIT: int = 20;
 
 obj Invocation {
     has command: str = "",
         action: str = "",
-        repo: str = "",
-        as_json: bool = False,
         limit: int = DEFAULT_LIMIT,
         query: str = "",
         text: str = "";
@@ -426,20 +206,10 @@ impl build_parser -> argparse.ArgumentParser {
     parser = argparse.ArgumentParser(
         prog=PROG,
         description="The command-line face of jaclang.org. "
-        "`score` runs offline; the rest talk to a running site."
+        "Every command talks to a running site."
     );
     commands = parser.add_subparsers(
         dest="command", metavar="<command>", required=True
-    );
-    scorer = commands.add_parser(
-        "score", help="score a GitHub repo against the ninja rubric, offline"
-    );
-    scorer.add_argument("repo", help="owner/name or a github.com URL");
-    scorer.add_argument(
-        "--json",
-        dest="as_json",
-        action="store_true",
-        help="print the breakdown as JSON"
     );
     docs = commands.add_parser("docs", help="the docs graph of a running site");
     docs.add_argument(
@@ -470,8 +240,6 @@ impl parse_args(argv: list[str]) -> Invocation {
     inv = Invocation(
         command=str(getattr(ns, "command", "") or ""),
         action=str(getattr(ns, "action", "") or ""),
-        repo=str(getattr(ns, "repo", "") or ""),
-        as_json=bool(getattr(ns, "as_json", False)),
         limit=int(getattr(ns, "limit", DEFAULT_LIMIT)),
         query=str(getattr(ns, "query", "") or ""),
         text=str(getattr(ns, "text", "") or "")
@@ -483,9 +251,6 @@ impl parse_args(argv: list[str]) -> Invocation {
 }
 
 impl dispatch(inv: Invocation) -> int {
-    if inv.command == "score" {
-        return run_score(inv.repo, inv.as_json);
-    }
     if inv.command == "docs" {
         return await run_docs(inv.action);
     }

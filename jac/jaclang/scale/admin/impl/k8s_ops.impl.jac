@@ -79,12 +79,6 @@ impl autoscaling_api -> any {
 }
 
 impl custom_objects_api -> any {
-    """The client for KEDA's ScaledObject and TriggerAuthentication.
-
-    Reaching these also needs the `keda.sh` rule in OPS_READ_RULES, which a pod
-    whose Role predates that rule does not carry, so a caller has to treat a 403
-    from here as "no autoscaler view" rather than as an error.
-    """;
     if not _ensure_config() {
         return None;
     }

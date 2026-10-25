@@ -637,10 +637,28 @@ impl ManifestBuilder.generate_manifests(
 
     if getattr(self.k8s_config, "ops_console", False) {
         import from jaclang.scale.deploy.target.kubernetes.ops_rbac { build_ops_rbac }
+        if self._service_account_name() == ops_sa_name(self.k8s_config.app_name) {
+            raise ValueError(
+                f"[scale.kubernetes].service_account_name = "
+                f"'{self._service_account_name()}' is the ServiceAccount the "
+                f"Ops Console Role is bound to, so every pod would run as it "
+                f"and inherit the console's rights. Set service_account_name "
+                f"to another account, or leave it empty."
+            );
+        }
+        if self._service_account_name() and self.logger {
+            self.logger.warning(
+                f"[scale.kubernetes].service_account_name = "
+                f"'{self._service_account_name()}' does not apply to the "
+                f"gateway while ops_console is on: it runs as "
+                f"'{ops_sa_name(self.k8s_config.app_name)}'. Pre-create that "
+                f"ServiceAccount to give the gateway a cloud identity."
+            );
+        }
         bundle["ops_rbac"] = build_ops_rbac(
             self.k8s_config.app_name,
             self.k8s_config.namespace,
-            self._service_account_name(),
+            ops_sa_name(self.k8s_config.app_name),
             bool(getattr(self.k8s_config, "ops_console_mutations", False))
         );
     } elif getattr(self.k8s_config, "ops_console_mutations", False) {
@@ -1158,6 +1176,13 @@ impl ManifestBuilder._service_account_name -> str {
     return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
 }
 
+impl ManifestBuilder._pod_service_account(svc_name: str) -> str {
+    if svc_name == GATEWAY_NAME and getattr(self.k8s_config, "ops_console", False) {
+        return ops_sa_name(self.k8s_config.app_name);
+    }
+    return self._service_account_name();
+}
+
 impl ManifestBuilder._peer_dns_url(peer_name: str) -> str {
     return k8s_service_dns_url(
         k8s_safe_name(peer_name),
@@ -1418,15 +1443,6 @@ impl ManifestBuilder._build_service_manifest(svc_name: str) -> dict[str, any] {
 impl ManifestBuilder._resolve_scaling(
     svc_name: str, deployment: dict[str, any], service: dict[str, any]
 ) -> dict[str, any] {
-    """Resolve a service's single, mutually-exclusive scaling decision.
-
-        The one place a service's scaling mode is decided. The scale-target
-        name is read from the Deployment manifest just built (never rebuilt
-        from svc_name), so build, apply, and `jac plan` can never disagree on
-        it. The gateway is forced out of HTTP_ACTIVATION here: it is the
-        ingress entry point and must stay warm, so it must never inherit the
-        shared scale-to-zero default.
-        """;
     scale_target: str = deployment["metadata"]["name"];
     service_name: str = service["metadata"]["name"];
     http: dict[str, any] | None = self._get_http_activation_config(svc_name);
@@ -1496,13 +1512,6 @@ impl ManifestBuilder._resolve_scaling(
 }
 
 impl ManifestBuilder._canonical_rules_fingerprint(rules: list[dict[str, any]]) -> str {
-    """A rules fingerprint that ignores list ordering, so two services
-        with the same match criteria collide in _validate_http_activation_rules
-        even when `hosts`/`paths`/`headers`, or the rules themselves, are
-        written in a different order -- fields within a rule are AND'd and
-        separate rules are OR'd, so reordering never changes what a rule set
-        actually matches.
-        """;
     import json;
     canonical_rules = [];
     for rule in rules {
@@ -1525,10 +1534,6 @@ impl ManifestBuilder._canonical_rules_fingerprint(rules: list[dict[str, any]]) -
 impl ManifestBuilder._validate_http_activation_rules(
     scaling: dict[str, dict[str, any]]
 ) {
-    """Two services sharing the top-level http_activation default with no
-        per-service override resolve to identical routing rules; the interceptor
-        then has no way to tell which target a matching request belongs to.
-        """;
     by_rules: dict[str, list[str]] = {};
     for (svc_name, plan) in scaling.items() {
         if plan.get("mode") != ScalingMode.HTTP_ACTIVATION {
@@ -1816,7 +1821,7 @@ impl ManifestBuilder._build_pod_spec(svc_name: str, image: str) -> dict[str, any
             + _EXIT_CUSHION_S
             + self._alb_deregistration_cushion()
     };
-    sa_name = self._service_account_name();
+    sa_name = self._pod_service_account(svc_name);
     if sa_name {
         spec["serviceAccountName"] = sa_name;
     }

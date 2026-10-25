@@ -252,7 +252,42 @@ impl JacProgram.has_failed_parse(self: JacProgram, path: str) -> bool {
 }
 
 impl JacProgram.drop_module_alerts(self: JacProgram, resolved_path: str) -> None {
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.drop_module_alerts(resolved_path);
+            }
+        }
+    }
     self.diags.drop_module(resolved_path);
+}
+
+impl JacProgram.forget_failed_modules(self: JacProgram) -> None {
+    if self.context_root is not None {
+        self.context_root.forget_failed_modules();
+        return;
+    }
+    programs = {id(prog): prog for prog in [self, *self.contexts.values()]};
+    failed: set[str] = set();
+    for prog in programs.values() {
+        for alert in prog.errors_had {
+            if alert.owner {
+                failed.add(alert.owner);
+            }
+        }
+    }
+    stale = set(failed);
+    for prog in programs.values() {
+        for path in failed {
+            stale.update(prog.transitive_dependents(path));
+        }
+    }
+    for path in stale {
+        self.invalidate_module(path);
+    }
+    for path in failed {
+        self.drop_module_alerts(path);
+    }
 }
 
 impl JacProgram.reset_module_root(
@@ -399,8 +434,6 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
 }
 
 impl JacProgram.execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]] {
-    """Enumerate loaded runtime metadata; source analysis uses only its own hub.""";
-    import from jaclang.compiler.frontend.host { active_host }
     hubs: list[dict[str, uni.Module]] = [self.mod.hub];
     internal = active_host().internal_program(self);
     if internal is not None and internal is not self {
@@ -434,8 +467,6 @@ impl JacProgram.compile(
     options: (CompileOptions | None) = None
 ) -> uni.Module {
     if (options is None) {
-        """A compile inside a native unit build parses for that build: whether
-        a native-scope module is a native unit is fixed when it is parsed.""";
         import from jaclang.compiler.frontend.codeinfo { native_unit_compile_active }
         options = CompileOptions(
             symtab_ir_only=symtab_ir_only,

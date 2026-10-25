@@ -190,18 +190,6 @@ impl _stage_fused_runtime(out_dir: Path) {
 }
 
 impl stage_postgres(resources: Path, backend: str, vendor: bool = True) -> str {
-    """Vendor the self-contained Postgres distribution for an embedded app.
-
-    Returns the app-relative path of the vendored tree, which the host config
-    carries so `host_boot` can point `JAC_PG_DIST` at it and start with no
-    network. A remote-backend app needs no local database and vendors nothing.
-    Only a relocatable distribution is accepted (`bundled_dist_dir` refuses a
-    bare system bin directory), so the bundled tree runs from any machine.
-
-    With `vendor` off (a dev session) nothing is copied: the returned path
-    points at the shared machine cache, which the compiler already populated,
-    so the host finds that distribution instead of a fresh per-app cache.
-    """;
     if backend != "embedded" {
         return "";
     }
@@ -348,23 +336,27 @@ impl serving_app_for(config: any, entry_file: Path, backend: str) -> str {
         return "";
     }
     selected_app = config.app_for_path(str(entry_file.resolve()));
+    if selected_app is not None {
+        return selected_app.name;
+    }
     if backend != "embedded" {
-        return selected_app.name if selected_app is not None else "";
+        return "";
     }
     try {
         chosen = config.resolve_app("");
     } except ValueError {
         chosen = None;
     }
-    if chosen is not None and chosen.has_server {
+    serving = config.serving_apps();
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
         return chosen.name;
     }
-    for app in config.serving_apps() {
+    for app in serving {
         if app.kind == "web-app" {
             return app.name;
         }
     }
-    return selected_app.name if selected_app is not None else "";
+    return "";
 }
 
 impl stage_program(
@@ -412,19 +404,38 @@ def desktop_storage_identifier(
 impl desktop_storage_identifier(
     identifier: str, project_dir: Path, entry_file: Path, backend: str
 ) -> str {
-    """Suffix the storage identity with the app a workspace entry serves.
-
-    The `[desktop]` identifier is a project-wide default, but one workspace
-    can serve several apps, and a shared data dir would let them read and
-    overwrite each other's graph, session, and embedded cluster. When the
-    entry resolves to a named serving app, that name joins the identifier so
-    every served app keeps its own storage; a project without distinct apps
-    keeps the plain identifier, so existing installs see no change.""";
     if not identifier {
         return identifier;
     }
     import from jaclang.project.config { get_config_for_dir }
     config = get_config_for_dir(str(project_dir));
-    serving = serving_app_for(config, entry_file, backend);
+    serving = storage_app_for(config, entry_file, backend);
     return f"{identifier}.{serving}" if serving else identifier;
+}
+
+def storage_app_for(config: any, entry_file: Path, backend: str) -> str;
+
+impl storage_app_for(config: any, entry_file: Path, backend: str) -> str {
+    if config is None or not config.is_workspace or not config.apps {
+        return "";
+    }
+    selected_app = config.app_for_path(str(entry_file.resolve()));
+    if backend != "embedded" {
+        return selected_app.name if selected_app is not None else "";
+    }
+    try {
+        chosen = config.resolve_app("");
+    } except ValueError {
+        chosen = None;
+    }
+    serving = config.serving_apps();
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
+        return chosen.name;
+    }
+    for app in serving {
+        if app.kind == "web-app" {
+            return app.name;
+        }
+    }
+    return selected_app.name if selected_app is not None else "";
 }

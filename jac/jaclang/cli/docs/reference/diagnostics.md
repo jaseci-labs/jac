@@ -171,7 +171,7 @@ All three block code generation for the module that reports them.
 
 | Code | Message |
 |------|---------|
-| `W0060` | Docstrings in Jac go before the declaration, not inside the body |
+| `W0060` | A string on its own does nothing. Docstrings go before the declaration, not inside the body |
 | `W0063` | JSX spread `{...expr}` is JS-idiomatic. Prefer `{**expr}` in Jac. |
 
 ### Lexer Errors
@@ -634,7 +634,7 @@ Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/in
 | `W3054` | `remove-dead-import` | Import of '{name}' from '{module}' is neither wired nor read | default |
 | `W3055` | `separate-impls` | Body of '{name}' belongs in a separate impl | all |
 
-> **all group**: `strip-comments`, `strip-docstrings` and `separate-impls` are on under `select = ["all"]` and off under `["default"]`. The first two delete comments and docstrings; `separate-impls` moves bodies into `impl` blocks. Each can be named explicitly or listed in `ignore`; see the [config reference](config/index.md#checklint).
+> **all group**: `strip-comments`, `strip-docstrings` and `separate-impls` are on under `select = ["all"]` and off under `["default"]`. The first two delete comments and docstrings (`strip-docstrings` also deletes a string written as a statement inside a body); `separate-impls` moves bodies into `impl` blocks. Each can be named explicitly or listed in `ignore`; see the [config reference](config/index.md#checklint).
 
 ---
 

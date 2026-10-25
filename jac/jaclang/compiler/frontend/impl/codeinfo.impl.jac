@@ -2,6 +2,13 @@ impl InteropBinding.is_cross_module.getter -> bool {
     return (self.source_module is not None);
 }
 
+impl InteropBinding.native_callable.getter -> bool {
+    return self.source_context == InteropContext.SERVER
+        and InteropContext.NATIVE in self.callers
+        and self.kind == 'function'
+        and bool(self.symbol);
+}
+
 impl InteropManifest.boundary_types_for(scope: str) -> dict[str, BoundaryTypeInfo] {
     return {
         name: self.boundary_types[type_id]
@@ -23,8 +30,8 @@ impl InteropManifest.native_imports.getter -> list[InteropBinding] {
 impl InteropManifest.callable_native_imports.getter -> list[InteropBinding] {
     return [
         b
-        for b in self.native_imports
-        if b.kind == 'function'
+        for b in self.bindings.values()
+        if b.native_callable
     ];
 }
 
@@ -195,7 +202,7 @@ impl _reserved_c_symbols -> frozenset[str] {
         "posix_spawn_file_actions_addchdir_np "
         "__errno_location environ _NSGetExecutablePath "
         "pthread_create pthread_join pthread_key_create pthread_getspecific "
-        "pthread_setspecific "
+        "pthread_setspecific sched_yield "
         "socket connect send recv shutdown getaddrinfo freeaddrinfo gai_strerror "
         "dlopen dlsym dlclose dlerror "
         "__jac_win_executable_path "
@@ -422,10 +429,6 @@ impl native_unit_identity(path: str) -> str {
 }
 
 impl native_module_key(path: str) -> str {
-    """The key names a unit the same wherever its package lands: a module
-    under a sealed package, a `jac.toml` project or the jaclang package is
-    keyed by its path within that root, so the symbols a sealed unit
-    defines at build time are the ones consumers reference at run time.""";
     import os;
     rp = real_path(path);
     base = os.path.basename(rp);
@@ -437,6 +440,12 @@ impl native_module_key(path: str) -> str {
 
 impl native_unit_prefix(path: str) -> str {
     return native_safe_sym(native_module_key(path));
+}
+
+impl interop_callback_symbol(provider_path: str, name: str) -> str {
+    return f"__jac_na_import_{native_unit_prefix(provider_path)}_{native_safe_sym(
+        name
+    )}";
 }
 
 impl native_symbol_name(prefix: str, name: str) -> str {
@@ -824,15 +833,6 @@ impl is_selected_native_variant(path: str) -> bool {
 }
 
 impl is_native_variant_path(path: str) -> bool {
-    """Is `path` a platform variant of a portable module beside it?
-
-    `<name>.<os>.<arch>.jac`, `<name>.<arch>.jac` and `<name>.<os>.jac` are the
-    spellings `_native_variant_path` chooses between, and each exists only to
-    be lowered natively in place of `<name>.jac`. A variant is reached through
-    native module resolution alone, never by an import the checker reads, so
-    no import edge carries the portable module's placement to it: the variant
-    is a native unit by what it is.
-    """;
     import os;
     name = os.path.basename(path);
     if not name.endswith(".jac") {

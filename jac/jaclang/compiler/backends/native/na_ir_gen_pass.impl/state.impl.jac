@@ -5,11 +5,6 @@ impl NaIRGenPass.emit(
     help_text: (str | None) = None,
     **kwargs: any
 ) -> bool {
-    """A lowering diagnostic is a routing fact before it is a report: the
-demotion of a function is decided by the errors its lowering recorded, so a
-suppressed code must still be recorded here. The pass driver applies the
-policy when it delivers the pass's alerts to the program, so a suppressed
-diagnostic never reaches a user.""";
     saved = self.ctx.policy;
     self.ctx.policy = None;
     try {
@@ -113,4 +108,42 @@ impl NaIRGenPass._emit_loop_else(
         }
     }
     self.builder.position_at_end(end_bb);
+}
+
+impl NaIRGenPass._release_iter_end(
+    spill: (ir.Value | None),
+    slot_var: (str | None),
+    owns_iter: bool,
+    iter_val: ir.Value,
+    loc: str
+) -> None {
+    if spill is not None {
+        _it_end = self._mark_owned(self.builder.load(spill, name="iterf.it.end"));
+        self._emit_rc_release_simple(_it_end, op="iter_end", loc=loc);
+        self.builder.store(ir.Constant(_it_end.type, None), spill);
+    } elif slot_var is not None {
+        self._release_loop_coll_slot(slot_var, op="iter_end", loc=loc);
+    } elif owns_iter {
+        self._emit_rc_release_simple(iter_val, op="iter_end", loc=loc);
+    }
+}
+
+impl NaIRGenPass._release_for_coll(
+    spill: (ir.Value | None),
+    slot_var: (str | None),
+    release_op: str,
+    collection_val: ir.Value,
+    loc: str
+) -> None {
+    if spill is not None {
+        _coll_end = self.builder.load(spill, name="for.coll.end");
+        self._emit_rc_release_simple(_coll_end, op=release_op or "for_coll", loc=loc);
+        self.builder.store(ir.Constant(_coll_end.type, None), spill);
+    } elif slot_var is not None {
+        self._release_loop_coll_slot(slot_var, op=release_op, loc=loc);
+    } elif release_op
+        and isinstance(collection_val.type, ir.PointerType)
+        and self._is_owned(collection_val) {
+        self._emit_rc_release_simple(collection_val, op=release_op, loc=loc);
+    }
 }

@@ -332,17 +332,11 @@ impl _refresh_rs_hashes(
     }
 }
 
-impl delete_namespace(namespace: str) -> None {
+impl delete_namespace(core_v1: client.CoreV1Api, namespace: str) -> None {
     if (namespace == 'default') {
         return;
     }
     try {
-        try {
-            config.load_kube_config();
-        } except ConfigException {
-            config.load_incluster_config();
-        }
-        core_v1 = client.CoreV1Api();
         core_v1.delete_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' deleted successfully.");
     } except ApiException as e {

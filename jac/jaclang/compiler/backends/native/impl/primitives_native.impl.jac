@@ -2982,10 +2982,17 @@ impl NativeListEmitter.emit_pop(
     b.branch(shift_bb);
     b.position_at_start(done_bb);
     b.store(new_len, len_ptr);
-    if is_ptr {
-        p._mark_owned(popped);
+    result: ir.Value = popped;
+    if ctx.receiver_node is not None {
+        restored = p._restore_list_read(popped, ctx.receiver_node);
+        if restored is not None {
+            result = restored;
+        }
     }
-    return popped;
+    if is_ptr {
+        p._mark_owned(result);
+    }
+    return result;
 }
 
 impl NativeListEmitter.emit_clear(
@@ -3360,19 +3367,6 @@ impl NativeListEmitter._emit_value_sort(
     target: ir.Value,
     reverse: (ir.Value | None)
 ) -> (ir.Value | None) {
-    """Stable merge sort of the list's own elements, compared in place.
-
-    Scalars compare as themselves. Every other element lives in an erased
-    `i8*` slot, whatever it holds, so the slot type cannot say how to order
-    it: only the checked element type can. A `str` compares through the
-    string helper; anything else -- a tuple, `bytes`, a nested list --
-    goes through the same `_emit_comparison` a `key=` result does, which
-    views the pointers through that type. Treating every pointer as a
-    string ordered a tuple by the bytes of its first field, so float and
-    string leads (and most ints) came back unsorted. An element type the
-    comparison cannot order (a class without the protocol) refuses rather
-    than guess; one whose shape is not fully known keeps the string compare.
-    """;
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);
@@ -7551,7 +7545,7 @@ impl _str_cp_region(
     zero = ir.Constant(i64, 0);
     blen = p._call_str_len(b, target, name="rg.blen");
     ascii = p._call_str_isascii(b, target, target, blen, name="rg.isa");
-    cplen = p._call_utf8_cplen(b, target, blen, ascii, name="rg.cplen");
+    cplen = p._call_utf8_cplen(b, target, blen, ascii, name="rg.cplen", base=target);
     lo = p._emit_wrap_clamp(
         b, bounds[0], cplen, zero, ir.Constant(i64, 0x7FFFFFFFFFFFFFFF), name="rg.lo"
     )
@@ -7562,8 +7556,12 @@ impl _str_cp_region(
         else cplen;
     inverted = b.icmp_signed(">", lo, hi, name="rg.inv");
     lo_safe = b.select(inverted, hi, lo, name="rg.lo.safe");
-    lo_off = p._call_utf8_cp_off(b, target, blen, lo_safe, ascii, name="rg.lo.off");
-    hi_off = p._call_utf8_cp_off(b, target, blen, hi, ascii, name="rg.hi.off");
+    lo_off = p._call_utf8_cp_off(
+        b, target, blen, lo_safe, ascii, name="rg.lo.off", base=target
+    );
+    hi_off = p._call_utf8_cp_off(
+        b, target, blen, hi, ascii, name="rg.hi.off", base=target
+    );
     return (blen, ascii, lo, hi, lo_off, hi_off, inverted);
 }
 
@@ -7621,8 +7619,14 @@ impl _emit_str_search(
         return b.select(empty, slots, found, name="ss.count");
     }
     hit = b.icmp_signed(">=", found, zero, name="ss.hit");
-    cp_pos = p._call_utf8_cplen(
-        b, target, b.select(hit, found, zero, name="ss.safe"), ascii, name="ss.cppos"
+    cp_pos = p._call_utf8_cp_count(
+        b,
+        target,
+        blen,
+        b.select(hit, found, zero, name="ss.safe"),
+        ascii,
+        name="ss.cppos",
+        base=target
     );
     if missing {
         p._emit_runtime_raise(b.not_(hit, name="ss.miss"), "ValueError", missing);
