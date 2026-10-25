@@ -44,7 +44,6 @@ glob COMMAND: str = "scripts/jacpython/gen_inittab.jac",
          ("builtins", ""),
          ("sys", ""),
          ("gc", "PyInit_gc"),
-         ("_contextvars", "PyInit__contextvars"),
          ("_warnings", "_PyWarnings_Init"),
          ("_string", "PyInit__string")
      ];

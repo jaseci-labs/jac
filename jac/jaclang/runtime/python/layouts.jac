@@ -1,5 +1,5 @@
 import from c {
-    obj PyAsyncGenObject;  obj PyCodeObject;  obj PyCoroObject;  obj PyDictKeysObject;  obj PyDictValues;  obj PyWrapperDescrObject;  obj _dictkeysobject;  obj _socket_state;  obj _object {
+    obj PyAsyncGenObject;  obj PyCodeObject;  obj PyCoroObject;  obj PyDictKeysObject;  obj PyDictValues;  obj PyHamtNode;  obj PyWrapperDescrObject;  obj _dictkeysobject;  obj _socket_state;  obj _object {
         has ob_refcnt_full: i64,
             ob_type: ptr[PyTypeObject];
     }  obj PyVarObject {
@@ -859,6 +859,99 @@ import from c {
             max: i32,
             kwtuple: ptr[PyObject],
             next: ptr[_PyArg_Parser];
+    }  obj PyHamtObject {
+        has ob_base: _object,
+            h_root: ptr[PyHamtNode],
+            h_weakreflist: ptr[PyObject],
+            h_count: i64;
+    }  obj PyHamtNode_Bitmap {
+        has ob_base: PyVarObject,
+            b_bitmap: u32,
+            b_array: ptr[PyObject];
+    }  obj PyHamtNode_Array {
+        has ob_base: _object,
+            a_array: ptr[PyHamtNode],
+            a_array_1: ptr[PyHamtNode],
+            a_array_2: ptr[PyHamtNode],
+            a_array_3: ptr[PyHamtNode],
+            a_array_4: ptr[PyHamtNode],
+            a_array_5: ptr[PyHamtNode],
+            a_array_6: ptr[PyHamtNode],
+            a_array_7: ptr[PyHamtNode],
+            a_array_8: ptr[PyHamtNode],
+            a_array_9: ptr[PyHamtNode],
+            a_array_10: ptr[PyHamtNode],
+            a_array_11: ptr[PyHamtNode],
+            a_array_12: ptr[PyHamtNode],
+            a_array_13: ptr[PyHamtNode],
+            a_array_14: ptr[PyHamtNode],
+            a_array_15: ptr[PyHamtNode],
+            a_array_16: ptr[PyHamtNode],
+            a_array_17: ptr[PyHamtNode],
+            a_array_18: ptr[PyHamtNode],
+            a_array_19: ptr[PyHamtNode],
+            a_array_20: ptr[PyHamtNode],
+            a_array_21: ptr[PyHamtNode],
+            a_array_22: ptr[PyHamtNode],
+            a_array_23: ptr[PyHamtNode],
+            a_array_24: ptr[PyHamtNode],
+            a_array_25: ptr[PyHamtNode],
+            a_array_26: ptr[PyHamtNode],
+            a_array_27: ptr[PyHamtNode],
+            a_array_28: ptr[PyHamtNode],
+            a_array_29: ptr[PyHamtNode],
+            a_array_30: ptr[PyHamtNode],
+            a_array_31: ptr[PyHamtNode],
+            a_count: i64;
+    }  obj PyHamtNode_Collision {
+        has ob_base: PyVarObject,
+            c_hash: i32,
+            c_array: ptr[PyObject];
+    }  obj PyHamtIteratorState {
+        has i_nodes: ptr[PyHamtNode],
+            i_nodes_1: ptr[PyHamtNode],
+            i_nodes_2: ptr[PyHamtNode],
+            i_nodes_3: ptr[PyHamtNode],
+            i_nodes_4: ptr[PyHamtNode],
+            i_nodes_5: ptr[PyHamtNode],
+            i_nodes_6: ptr[PyHamtNode],
+            i_nodes_7: ptr[PyHamtNode],
+            i_pos: i64,
+            i_pos_1: i64,
+            i_pos_2: i64,
+            i_pos_3: i64,
+            i_pos_4: i64,
+            i_pos_5: i64,
+            i_pos_6: i64,
+            i_pos_7: i64,
+            i_level: i8;
+    }  obj PyHamtIterator {
+        has ob_base: _object,
+            hi_obj: ptr[PyHamtObject],
+            hi_iter: PyHamtIteratorState,
+            hi_yield: Callable[[ptr[PyObject], ptr[PyObject]], ptr[PyObject]];
+    }  obj PyContext {
+        has ob_base: _object,
+            ctx_prev: ptr[PyContext],
+            ctx_vars: ptr[PyHamtObject],
+            ctx_weakreflist: ptr[PyObject],
+            ctx_entered: i32;
+    }  obj PyContextVar {
+        has ob_base: _object,
+            var_name: ptr[PyObject],
+            var_default: ptr[PyObject],
+            var_cached: ptr[PyObject],
+            var_cached_tsid: u64,
+            var_cached_tsver: u64,
+            var_hash: i64;
+    }  obj PyContextToken {
+        has ob_base: _object,
+            tok_ctx: ptr[PyContext],
+            tok_var: ptr[PyContextVar],
+            tok_oldval: ptr[PyObject],
+            tok_used: i32;
+    }  obj _PyContextTokenMissing {
+        has ob_base: _object;
     }
 }
 
@@ -2263,4 +2356,26 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      Bigint_MAXWDS: Final[i64] = 12,
      Bigint_SIGN: Final[i64] = 16,
      Bigint_WDS: Final[i64] = 20,
-     Bigint_X: Final[i64] = 24;
+     Bigint_X: Final[i64] = 24,
+     CONTEXT_MAX_WATCHERS: Final[i64] = 8,
+     Py_CONTEXT_SWITCHED: Final[i32] = 1,
+     Py_contexts_MAXFREELIST: Final[i64] = 255,
+     _Py_HAMT_MAX_TREE_DEPTH: Final[i64] = 8,
+     PyHamtObject_SIZE: Final[i64] = 40,
+     PyHamtObject_H_WEAKREFLIST: Final[i64] = 24,
+     PyHamtNode_Array_SIZE: Final[i64] = 280,
+     PyHamtNode_Array_A_ARRAY: Final[i64] = 16,
+     PyHamtNode_Bitmap_BASICSIZE: Final[i64] = 32,
+     PyHamtNode_Bitmap_B_ARRAY: Final[i64] = 32,
+     PyHamtNode_Collision_BASICSIZE: Final[i64] = 32,
+     PyHamtNode_Collision_C_ARRAY: Final[i64] = 32,
+     PyHamtIteratorState_SIZE: Final[i64] = 136,
+     PyHamtIteratorState_I_POS: Final[i64] = 64,
+     PyHamtIterator_SIZE: Final[i64] = 168,
+     PyHamtIterator_HI_ITER: Final[i64] = 24,
+     PyContext_SIZE: Final[i64] = 48,
+     PyContext_CTX_WEAKREFLIST: Final[i64] = 32,
+     PyContextVar_SIZE: Final[i64] = 64,
+     PyContextVar_VAR_NAME: Final[i64] = 16,
+     PyContextToken_SIZE: Final[i64] = 48,
+     _PyContextTokenMissing_SIZE: Final[i64] = 16;

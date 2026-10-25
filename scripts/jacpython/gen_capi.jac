@@ -249,6 +249,7 @@ glob OPAQUE: list[str] = [
          "PyDict_GetItemStringRef": {1},
          "PyDict_PopString": {1},
          "PyDict_SetItemString": {1},
+         "PyContextVar_New": {0},
          "PyModule_New": {0},
          "PyUnicodeDecodeError_Create": {5},
          "PyUnicodeDecodeError_SetReason": {1},

@@ -53,6 +53,8 @@
 #include "errno.h"
 #include "opcode_ids.h"
 #include "opcode.h"
+#include "internal/pycore_hamt.h"
+#include "internal/pycore_context.h"
 #include <stddef.h>
 #ifdef _Py_FORCE_UTF8_FS_ENCODING
 #define JAC_FORCE_UTF8_FS_ENCODING 1
@@ -146,6 +148,8 @@ typedef struct { PyTypeObject *Sock_Type; PyObject *error; PyObject *timeout_err
 typedef struct { PyObject_HEAD PyObject *func; PyObject *it; } filterobject;
 typedef struct { PyObject_HEAD PyObject *iters; PyObject *func; int strict; } mapobject;
 typedef struct { PyObject_HEAD Py_ssize_t tuplesize; PyObject *ittuple; PyObject *result; int strict; } zipobject;
+typedef struct { PyObject_HEAD PyHamtNode *a_array[32]; Py_ssize_t a_count; } PyHamtNode_Array;
+typedef struct { PyObject_VAR_HEAD int32_t c_hash; PyObject *c_array[1]; } PyHamtNode_Collision;
 
 #define FIELD(type, field, offset, size) \
     _Static_assert(offsetof(type, field) == (offset), #type "." #field " offset"); \
@@ -2054,6 +2058,220 @@ FIELD(struct _PyArg_Parser, next, 64, 8);
 KIND(struct _PyArg_Parser, next, 5);
 LAYOUT(struct _PyArg_Parser, 72, 8);
 
+/* PyHamtObject */
+FIELD(PyHamtObject, ob_base, 0, 16);
+KIND(PyHamtObject, ob_base, 12);
+FIELD(PyHamtObject, h_root, 16, 8);
+KIND(PyHamtObject, h_root, 5);
+FIELD(PyHamtObject, h_weakreflist, 24, 8);
+KIND(PyHamtObject, h_weakreflist, 5);
+FIELD(PyHamtObject, h_count, 32, 8);
+KIND(PyHamtObject, h_count, 1);
+SIGNED(PyHamtObject, h_count, 1);
+LAYOUT(PyHamtObject, 40, 8);
+
+/* PyHamtNode_Bitmap */
+FIELD(PyHamtNode_Bitmap, ob_base, 0, 24);
+KIND(PyHamtNode_Bitmap, ob_base, 12);
+FIELD(PyHamtNode_Bitmap, b_bitmap, 24, 4);
+KIND(PyHamtNode_Bitmap, b_bitmap, 1);
+SIGNED(PyHamtNode_Bitmap, b_bitmap, 0);
+FIELD(PyHamtNode_Bitmap, b_array, 32, 8);
+KIND(PyHamtNode_Bitmap, b_array[0], 5);
+LAYOUT(PyHamtNode_Bitmap, 40, 8);
+
+/* PyHamtNode_Array */
+FIELD(PyHamtNode_Array, ob_base, 0, 16);
+KIND(PyHamtNode_Array, ob_base, 12);
+FIELD(PyHamtNode_Array, a_array[0], 16, 8);
+KIND(PyHamtNode_Array, a_array[0], 5);
+FIELD(PyHamtNode_Array, a_array[1], 24, 8);
+KIND(PyHamtNode_Array, a_array[1], 5);
+FIELD(PyHamtNode_Array, a_array[2], 32, 8);
+KIND(PyHamtNode_Array, a_array[2], 5);
+FIELD(PyHamtNode_Array, a_array[3], 40, 8);
+KIND(PyHamtNode_Array, a_array[3], 5);
+FIELD(PyHamtNode_Array, a_array[4], 48, 8);
+KIND(PyHamtNode_Array, a_array[4], 5);
+FIELD(PyHamtNode_Array, a_array[5], 56, 8);
+KIND(PyHamtNode_Array, a_array[5], 5);
+FIELD(PyHamtNode_Array, a_array[6], 64, 8);
+KIND(PyHamtNode_Array, a_array[6], 5);
+FIELD(PyHamtNode_Array, a_array[7], 72, 8);
+KIND(PyHamtNode_Array, a_array[7], 5);
+FIELD(PyHamtNode_Array, a_array[8], 80, 8);
+KIND(PyHamtNode_Array, a_array[8], 5);
+FIELD(PyHamtNode_Array, a_array[9], 88, 8);
+KIND(PyHamtNode_Array, a_array[9], 5);
+FIELD(PyHamtNode_Array, a_array[10], 96, 8);
+KIND(PyHamtNode_Array, a_array[10], 5);
+FIELD(PyHamtNode_Array, a_array[11], 104, 8);
+KIND(PyHamtNode_Array, a_array[11], 5);
+FIELD(PyHamtNode_Array, a_array[12], 112, 8);
+KIND(PyHamtNode_Array, a_array[12], 5);
+FIELD(PyHamtNode_Array, a_array[13], 120, 8);
+KIND(PyHamtNode_Array, a_array[13], 5);
+FIELD(PyHamtNode_Array, a_array[14], 128, 8);
+KIND(PyHamtNode_Array, a_array[14], 5);
+FIELD(PyHamtNode_Array, a_array[15], 136, 8);
+KIND(PyHamtNode_Array, a_array[15], 5);
+FIELD(PyHamtNode_Array, a_array[16], 144, 8);
+KIND(PyHamtNode_Array, a_array[16], 5);
+FIELD(PyHamtNode_Array, a_array[17], 152, 8);
+KIND(PyHamtNode_Array, a_array[17], 5);
+FIELD(PyHamtNode_Array, a_array[18], 160, 8);
+KIND(PyHamtNode_Array, a_array[18], 5);
+FIELD(PyHamtNode_Array, a_array[19], 168, 8);
+KIND(PyHamtNode_Array, a_array[19], 5);
+FIELD(PyHamtNode_Array, a_array[20], 176, 8);
+KIND(PyHamtNode_Array, a_array[20], 5);
+FIELD(PyHamtNode_Array, a_array[21], 184, 8);
+KIND(PyHamtNode_Array, a_array[21], 5);
+FIELD(PyHamtNode_Array, a_array[22], 192, 8);
+KIND(PyHamtNode_Array, a_array[22], 5);
+FIELD(PyHamtNode_Array, a_array[23], 200, 8);
+KIND(PyHamtNode_Array, a_array[23], 5);
+FIELD(PyHamtNode_Array, a_array[24], 208, 8);
+KIND(PyHamtNode_Array, a_array[24], 5);
+FIELD(PyHamtNode_Array, a_array[25], 216, 8);
+KIND(PyHamtNode_Array, a_array[25], 5);
+FIELD(PyHamtNode_Array, a_array[26], 224, 8);
+KIND(PyHamtNode_Array, a_array[26], 5);
+FIELD(PyHamtNode_Array, a_array[27], 232, 8);
+KIND(PyHamtNode_Array, a_array[27], 5);
+FIELD(PyHamtNode_Array, a_array[28], 240, 8);
+KIND(PyHamtNode_Array, a_array[28], 5);
+FIELD(PyHamtNode_Array, a_array[29], 248, 8);
+KIND(PyHamtNode_Array, a_array[29], 5);
+FIELD(PyHamtNode_Array, a_array[30], 256, 8);
+KIND(PyHamtNode_Array, a_array[30], 5);
+FIELD(PyHamtNode_Array, a_array[31], 264, 8);
+KIND(PyHamtNode_Array, a_array[31], 5);
+FIELD(PyHamtNode_Array, a_count, 272, 8);
+KIND(PyHamtNode_Array, a_count, 1);
+SIGNED(PyHamtNode_Array, a_count, 1);
+LAYOUT(PyHamtNode_Array, 280, 8);
+
+/* PyHamtNode_Collision */
+FIELD(PyHamtNode_Collision, ob_base, 0, 24);
+KIND(PyHamtNode_Collision, ob_base, 12);
+FIELD(PyHamtNode_Collision, c_hash, 24, 4);
+KIND(PyHamtNode_Collision, c_hash, 1);
+SIGNED(PyHamtNode_Collision, c_hash, 1);
+FIELD(PyHamtNode_Collision, c_array, 32, 8);
+KIND(PyHamtNode_Collision, c_array[0], 5);
+LAYOUT(PyHamtNode_Collision, 40, 8);
+
+/* PyHamtIteratorState */
+FIELD(PyHamtIteratorState, i_nodes[0], 0, 8);
+KIND(PyHamtIteratorState, i_nodes[0], 5);
+FIELD(PyHamtIteratorState, i_nodes[1], 8, 8);
+KIND(PyHamtIteratorState, i_nodes[1], 5);
+FIELD(PyHamtIteratorState, i_nodes[2], 16, 8);
+KIND(PyHamtIteratorState, i_nodes[2], 5);
+FIELD(PyHamtIteratorState, i_nodes[3], 24, 8);
+KIND(PyHamtIteratorState, i_nodes[3], 5);
+FIELD(PyHamtIteratorState, i_nodes[4], 32, 8);
+KIND(PyHamtIteratorState, i_nodes[4], 5);
+FIELD(PyHamtIteratorState, i_nodes[5], 40, 8);
+KIND(PyHamtIteratorState, i_nodes[5], 5);
+FIELD(PyHamtIteratorState, i_nodes[6], 48, 8);
+KIND(PyHamtIteratorState, i_nodes[6], 5);
+FIELD(PyHamtIteratorState, i_nodes[7], 56, 8);
+KIND(PyHamtIteratorState, i_nodes[7], 5);
+FIELD(PyHamtIteratorState, i_pos[0], 64, 8);
+KIND(PyHamtIteratorState, i_pos[0], 1);
+SIGNED(PyHamtIteratorState, i_pos[0], 1);
+FIELD(PyHamtIteratorState, i_pos[1], 72, 8);
+KIND(PyHamtIteratorState, i_pos[1], 1);
+SIGNED(PyHamtIteratorState, i_pos[1], 1);
+FIELD(PyHamtIteratorState, i_pos[2], 80, 8);
+KIND(PyHamtIteratorState, i_pos[2], 1);
+SIGNED(PyHamtIteratorState, i_pos[2], 1);
+FIELD(PyHamtIteratorState, i_pos[3], 88, 8);
+KIND(PyHamtIteratorState, i_pos[3], 1);
+SIGNED(PyHamtIteratorState, i_pos[3], 1);
+FIELD(PyHamtIteratorState, i_pos[4], 96, 8);
+KIND(PyHamtIteratorState, i_pos[4], 1);
+SIGNED(PyHamtIteratorState, i_pos[4], 1);
+FIELD(PyHamtIteratorState, i_pos[5], 104, 8);
+KIND(PyHamtIteratorState, i_pos[5], 1);
+SIGNED(PyHamtIteratorState, i_pos[5], 1);
+FIELD(PyHamtIteratorState, i_pos[6], 112, 8);
+KIND(PyHamtIteratorState, i_pos[6], 1);
+SIGNED(PyHamtIteratorState, i_pos[6], 1);
+FIELD(PyHamtIteratorState, i_pos[7], 120, 8);
+KIND(PyHamtIteratorState, i_pos[7], 1);
+SIGNED(PyHamtIteratorState, i_pos[7], 1);
+FIELD(PyHamtIteratorState, i_level, 128, 1);
+KIND(PyHamtIteratorState, i_level, 1);
+SIGNED(PyHamtIteratorState, i_level, 1);
+LAYOUT(PyHamtIteratorState, 136, 8);
+
+/* PyHamtIterator */
+FIELD(PyHamtIterator, ob_base, 0, 16);
+KIND(PyHamtIterator, ob_base, 12);
+FIELD(PyHamtIterator, hi_obj, 16, 8);
+KIND(PyHamtIterator, hi_obj, 5);
+FIELD(PyHamtIterator, hi_iter, 24, 136);
+KIND(PyHamtIterator, hi_iter, 12);
+FIELD(PyHamtIterator, hi_yield, 160, 8);
+KIND(PyHamtIterator, hi_yield, 5);
+LAYOUT(PyHamtIterator, 168, 8);
+
+/* PyContext */
+FIELD(struct _pycontextobject, ob_base, 0, 16);
+KIND(struct _pycontextobject, ob_base, 12);
+FIELD(struct _pycontextobject, ctx_prev, 16, 8);
+KIND(struct _pycontextobject, ctx_prev, 5);
+FIELD(struct _pycontextobject, ctx_vars, 24, 8);
+KIND(struct _pycontextobject, ctx_vars, 5);
+FIELD(struct _pycontextobject, ctx_weakreflist, 32, 8);
+KIND(struct _pycontextobject, ctx_weakreflist, 5);
+FIELD(struct _pycontextobject, ctx_entered, 40, 4);
+KIND(struct _pycontextobject, ctx_entered, 1);
+SIGNED(struct _pycontextobject, ctx_entered, 1);
+LAYOUT(struct _pycontextobject, 48, 8);
+
+/* PyContextVar */
+FIELD(struct _pycontextvarobject, ob_base, 0, 16);
+KIND(struct _pycontextvarobject, ob_base, 12);
+FIELD(struct _pycontextvarobject, var_name, 16, 8);
+KIND(struct _pycontextvarobject, var_name, 5);
+FIELD(struct _pycontextvarobject, var_default, 24, 8);
+KIND(struct _pycontextvarobject, var_default, 5);
+FIELD(struct _pycontextvarobject, var_cached, 32, 8);
+KIND(struct _pycontextvarobject, var_cached, 5);
+FIELD(struct _pycontextvarobject, var_cached_tsid, 40, 8);
+KIND(struct _pycontextvarobject, var_cached_tsid, 1);
+SIGNED(struct _pycontextvarobject, var_cached_tsid, 0);
+FIELD(struct _pycontextvarobject, var_cached_tsver, 48, 8);
+KIND(struct _pycontextvarobject, var_cached_tsver, 1);
+SIGNED(struct _pycontextvarobject, var_cached_tsver, 0);
+FIELD(struct _pycontextvarobject, var_hash, 56, 8);
+KIND(struct _pycontextvarobject, var_hash, 1);
+SIGNED(struct _pycontextvarobject, var_hash, 1);
+LAYOUT(struct _pycontextvarobject, 64, 8);
+
+/* PyContextToken */
+FIELD(struct _pycontexttokenobject, ob_base, 0, 16);
+KIND(struct _pycontexttokenobject, ob_base, 12);
+FIELD(struct _pycontexttokenobject, tok_ctx, 16, 8);
+KIND(struct _pycontexttokenobject, tok_ctx, 5);
+FIELD(struct _pycontexttokenobject, tok_var, 24, 8);
+KIND(struct _pycontexttokenobject, tok_var, 5);
+FIELD(struct _pycontexttokenobject, tok_oldval, 32, 8);
+KIND(struct _pycontexttokenobject, tok_oldval, 5);
+FIELD(struct _pycontexttokenobject, tok_used, 40, 4);
+KIND(struct _pycontexttokenobject, tok_used, 1);
+SIGNED(struct _pycontexttokenobject, tok_used, 1);
+LAYOUT(struct _pycontexttokenobject, 48, 8);
+
+/* _PyContextTokenMissing */
+FIELD(_PyContextTokenMissing, ob_base, 0, 16);
+KIND(_PyContextTokenMissing, ob_base, 12);
+LAYOUT(_PyContextTokenMissing, 16, 8);
+
 CONSTANT(_Py_STATIC_IMMORTAL_INITIAL_REFCNT, 1407378104778752LL);
 CONSTANT(_Py_IMMORTAL_INITIAL_REFCNT, 3221225472LL);
 CONSTANT(Py_TPFLAGS_DEFAULT, 0LL);
@@ -3456,6 +3674,28 @@ CONSTANT(offsetof(struct Bigint, maxwds), 12LL);
 CONSTANT(offsetof(struct Bigint, sign), 16LL);
 CONSTANT(offsetof(struct Bigint, wds), 20LL);
 CONSTANT(offsetof(struct Bigint, x), 24LL);
+CONSTANT(CONTEXT_MAX_WATCHERS, 8LL);
+CONSTANT(Py_CONTEXT_SWITCHED, 1LL);
+CONSTANT(Py_contexts_MAXFREELIST, 255LL);
+CONSTANT(_Py_HAMT_MAX_TREE_DEPTH, 8LL);
+CONSTANT(sizeof(PyHamtObject), 40LL);
+CONSTANT(offsetof(PyHamtObject, h_weakreflist), 24LL);
+CONSTANT(sizeof(PyHamtNode_Array), 280LL);
+CONSTANT(offsetof(PyHamtNode_Array, a_array), 16LL);
+CONSTANT(sizeof(PyHamtNode_Bitmap) - sizeof(PyObject *), 32LL);
+CONSTANT(offsetof(PyHamtNode_Bitmap, b_array), 32LL);
+CONSTANT(sizeof(PyHamtNode_Collision) - sizeof(PyObject *), 32LL);
+CONSTANT(offsetof(PyHamtNode_Collision, c_array), 32LL);
+CONSTANT(sizeof(PyHamtIteratorState), 136LL);
+CONSTANT(offsetof(PyHamtIteratorState, i_pos), 64LL);
+CONSTANT(sizeof(PyHamtIterator), 168LL);
+CONSTANT(offsetof(PyHamtIterator, hi_iter), 24LL);
+CONSTANT(sizeof(PyContext), 48LL);
+CONSTANT(offsetof(PyContext, ctx_weakreflist), 32LL);
+CONSTANT(sizeof(PyContextVar), 64LL);
+CONSTANT(offsetof(PyContextVar, var_name), 16LL);
+CONSTANT(sizeof(PyContextToken), 48LL);
+CONSTANT(sizeof(_PyContextTokenMissing), 16LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -3672,6 +3912,14 @@ CONSTANT(offsetof(PyInterpreterState, dtoa.freelist), 11880LL);
 CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated), 11944LL);
 CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated_next), 14248LL);
 CONSTANT(JAC_HAVE_X87, 1LL);
+CONSTANT(offsetof(PyThreadState, context), 208LL);
+CONSTANT(offsetof(PyThreadState, context_ver), 216LL);
+CONSTANT(offsetof(PyThreadState, id), 224LL);
+CONSTANT(offsetof(PyInterpreterState, context_watchers), 11048LL);
+CONSTANT(offsetof(PyInterpreterState, active_context_watchers), 11113LL);
+CONSTANT(offsetof(PyInterpreterState, static_objects.singletons.hamt_empty), 224808LL);
+CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.hamt_bitmap_node_empty), 90600LL);
+CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.context_token_missing), 90640LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -3886,6 +4134,14 @@ CONSTANT(offsetof(PyInterpreterState, dtoa.freelist), 11896LL);
 CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated), 11960LL);
 CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated_next), 14264LL);
 CONSTANT(JAC_HAVE_X87, 0LL);
+CONSTANT(offsetof(PyThreadState, context), 208LL);
+CONSTANT(offsetof(PyThreadState, context_ver), 216LL);
+CONSTANT(offsetof(PyThreadState, id), 224LL);
+CONSTANT(offsetof(PyInterpreterState, context_watchers), 11064LL);
+CONSTANT(offsetof(PyInterpreterState, active_context_watchers), 11129LL);
+CONSTANT(offsetof(PyInterpreterState, static_objects.singletons.hamt_empty), 224824LL);
+CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.hamt_bitmap_node_empty), 90600LL);
+CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.context_token_missing), 90640LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4100,6 +4356,14 @@ CONSTANT(offsetof(PyInterpreterState, dtoa.freelist), 11928LL);
 CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated), 11992LL);
 CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated_next), 14296LL);
 CONSTANT(JAC_HAVE_X87, 1LL);
+CONSTANT(offsetof(PyThreadState, context), 208LL);
+CONSTANT(offsetof(PyThreadState, context_ver), 216LL);
+CONSTANT(offsetof(PyThreadState, id), 224LL);
+CONSTANT(offsetof(PyInterpreterState, context_watchers), 11096LL);
+CONSTANT(offsetof(PyInterpreterState, active_context_watchers), 11161LL);
+CONSTANT(offsetof(PyInterpreterState, static_objects.singletons.hamt_empty), 224856LL);
+CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.hamt_bitmap_node_empty), 90104LL);
+CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.context_token_missing), 90144LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4314,6 +4578,14 @@ CONSTANT(offsetof(PyInterpreterState, dtoa.freelist), 11928LL);
 CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated), 11992LL);
 CONSTANT(offsetof(PyInterpreterState, dtoa.preallocated_next), 14296LL);
 CONSTANT(JAC_HAVE_X87, 0LL);
+CONSTANT(offsetof(PyThreadState, context), 208LL);
+CONSTANT(offsetof(PyThreadState, context_ver), 216LL);
+CONSTANT(offsetof(PyThreadState, id), 224LL);
+CONSTANT(offsetof(PyInterpreterState, context_watchers), 11096LL);
+CONSTANT(offsetof(PyInterpreterState, active_context_watchers), 11161LL);
+CONSTANT(offsetof(PyInterpreterState, static_objects.singletons.hamt_empty), 224856LL);
+CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.hamt_bitmap_node_empty), 90104LL);
+CONSTANT(offsetof(_PyRuntimeState, static_objects.singletons.context_token_missing), 90144LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

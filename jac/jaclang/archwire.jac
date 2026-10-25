@@ -15861,6 +15861,7 @@ graph import runtime.python {
     bindings.codecs_kr ++> inittab { PyInit__codecs_kr }
     bindings.codecs_tw ++> inittab { PyInit__codecs_tw }
     bindings.collections ++> inittab { PyInit__collections }
+    bindings.contextvars ++> inittab { PyInit__contextvars }
     bindings.converters ++> [
         modules.abc | modules.mmap | modules.select {
             ClassToken,
@@ -15969,6 +15970,7 @@ graph import runtime.python {
             | object_model.bytes
             | object_model.cell
             | object_model.cfunction
+            | object_model.context
             | object_model.descr
             | object_model.dict
             | object_model.enumerate
@@ -15977,6 +15979,7 @@ graph import runtime.python {
             | object_model.func
             | object_model.gen
             | object_model.genericalias
+            | object_model.hamt
             | object_model.interpolation
             | object_model.iterator
             | object_model.list
@@ -17017,6 +17020,7 @@ graph import runtime.python {
             jacpy_tuple_item,
             jacpy_type_check
         },
+        bindings.contextvars { PyModule_AddType, PyObject },
         bindings.converters {
             NULL,
             PyArg_Parse,
@@ -18609,6 +18613,7 @@ graph import runtime.python {
             jacpy_tuple_item,
             jacpy_tuple_set_owned
         },
+        modules.contextvars { PyContext_CopyCurrent, PyObject },
         modules.csv {
             NULL,
             PyDict_Keys,
@@ -22493,6 +22498,47 @@ graph import runtime.python {
             jacpy_release,
             jacpy_set_errno
         },
+        object_model.context {
+            NULL,
+            PyArg_ParseTupleAndKeywords,
+            PyBool_FromLong,
+            PyDict_SetItemString,
+            PyDict_Size,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_SetObject,
+            PyErr_SetString,
+            PyExc_KeyError,
+            PyExc_LookupError,
+            PyExc_RuntimeError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyMemberDef,
+            PyMethodDef,
+            PyObject,
+            PyObject_ClearWeakRefs,
+            PyObject_GC_Del,
+            PyObject_GC_Track,
+            PyObject_GC_UnTrack,
+            PyObject_GenericGetAttr,
+            PyObject_Hash,
+            PyObject_HashNotImplemented,
+            PyThreadState,
+            PyTuple_Size,
+            PyUnicodeWriter_Create,
+            PyUnicodeWriter_Discard,
+            PyUnicodeWriter_Finish,
+            PyUnicodeWriter_Format,
+            PyUnicodeWriter_WriteASCII,
+            PyUnicodeWriter_WriteRepr,
+            PyUnicode_FromString,
+            Py_None,
+            Py_NotImplemented,
+            _PyArg_CheckPositional,
+            _PyObject_GC_New,
+            _PyRuntime,
+            _PyType_GetDict
+        },
         object_model.descr {
             NULL,
             PyBool_FromLong,
@@ -23138,6 +23184,32 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_equal_text,
             jacpy_unicode_from_text
+        },
+        object_model.hamt {
+            NULL,
+            PyArg_UnpackTuple,
+            PyBool_FromLong,
+            PyErr_SetNone,
+            PyErr_SetObject,
+            PyExc_KeyError,
+            PyExc_StopIteration,
+            PyMethodDef,
+            PyObject,
+            PyObject_ClearWeakRefs,
+            PyObject_GC_Del,
+            PyObject_GC_Track,
+            PyObject_GC_UnTrack,
+            PyObject_GenericGetAttr,
+            PyObject_Hash,
+            PyObject_HashNotImplemented,
+            PyObject_RichCompareBool,
+            PyObject_SelfIter,
+            PyTuple_Pack,
+            Py_None,
+            Py_NotImplemented,
+            _PyObject_GC_New,
+            _PyObject_GC_NewVar,
+            _PyRuntime
         },
         object_model.header {
             NULL,
@@ -26033,6 +26105,42 @@ graph import runtime.python {
             _Py_TYPE_VERSION_COMPLEX,
             _object
         },
+        object_model.context {
+            CONTEXT_MAX_WATCHERS,
+            METH_CLASS,
+            METH_FASTCALL,
+            METH_KEYWORDS,
+            METH_NOARGS,
+            METH_O,
+            PyContext,
+            PyContextToken,
+            PyContextToken_SIZE,
+            PyContextVar,
+            PyContextVar_SIZE,
+            PyContextVar_VAR_NAME,
+            PyContext_CTX_WEAKREFLIST,
+            PyContext_SIZE,
+            PyGetSetDef,
+            PyHamtObject,
+            PyMappingMethods,
+            PySequenceMethods,
+            PyStatus,
+            PyThreadState_INTERP,
+            PyTypeObject,
+            PyVarObject,
+            Py_CONTEXT_SWITCHED,
+            Py_EQ,
+            Py_NE,
+            Py_READONLY,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_contexts_MAXFREELIST,
+            _PyContextTokenMissing_SIZE,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _Py_T_OBJECT,
+            _Py_freelists_CONTEXTS,
+            _object
+        },
         object_model.descr {
             METH_CLASS,
             METH_FASTCALL,
@@ -26575,6 +26683,40 @@ graph import runtime.python {
             gaobject_STARRED,
             gaobject_VECTORCALL,
             gaobject_WEAKREFLIST
+        },
+        object_model.hamt {
+            METH_NOARGS,
+            METH_O,
+            METH_VARARGS,
+            PyHamtIterator,
+            PyHamtIteratorState,
+            PyHamtIteratorState_I_POS,
+            PyHamtIterator_HI_ITER,
+            PyHamtIterator_SIZE,
+            PyHamtNode,
+            PyHamtNode_Array,
+            PyHamtNode_Array_A_ARRAY,
+            PyHamtNode_Array_SIZE,
+            PyHamtNode_Bitmap,
+            PyHamtNode_Bitmap_BASICSIZE,
+            PyHamtNode_Bitmap_B_ARRAY,
+            PyHamtNode_Collision,
+            PyHamtNode_Collision_BASICSIZE,
+            PyHamtNode_Collision_C_ARRAY,
+            PyHamtObject,
+            PyHamtObject_H_WEAKREFLIST,
+            PyHamtObject_SIZE,
+            PyMappingMethods,
+            PySequenceMethods,
+            PyTypeObject,
+            PyVarObject,
+            Py_EQ,
+            Py_NE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            _Py_HAMT_MAX_TREE_DEPTH,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
         },
         object_model.header {
             PyGC_Head_SIZE,
@@ -28086,6 +28228,14 @@ graph import runtime.python {
             PyInterpreterState_FUNC_STATE_NEXT_VERSION,
             _PyRuntimeState_BYTES_EMPTY
         },
+        object_model.context {
+            PyInterpreterState_ACTIVE_CONTEXT_WATCHERS,
+            PyInterpreterState_CONTEXT_WATCHERS,
+            PyThreadState_CONTEXT,
+            PyThreadState_CONTEXT_VER,
+            PyThreadState_ID,
+            _PyRuntimeState_CONTEXT_TOKEN_MISSING
+        },
         object_model.dict {
             PyInterpreterState_DICT_NEXT_KEYS_VERSION,
             PyInterpreterState_DICT_WATCHERS
@@ -28145,6 +28295,10 @@ graph import runtime.python {
             _PyInterpreterFrame_PREVIOUS,
             _PyInterpreterFrame_STACKPOINTER,
             _PyInterpreterFrame_VISITED
+        },
+        object_model.hamt {
+            PyInterpreterState_HAMT_EMPTY,
+            _PyRuntimeState_HAMT_BITMAP_NODE_EMPTY
         },
         object_model.header { PyInterpreterState_FREELISTS, PyInterpreterState_GC },
         object_model.long {
@@ -28709,6 +28863,7 @@ graph import runtime.python {
             search
         },
     ]
+    modules.contextvars ++> bindings.contextvars { _contextvars_copy_context_impl }
     modules.csv ++> [
         bindings.clinic.csv {
             _csv_field_size_limit_impl,
@@ -31358,6 +31513,11 @@ graph import runtime.python {
         },
         modules.decimal_convert { PyComplex_AsCComplex },
     ]
+    object_model.context ++> bindings.contextvars {
+        PyContextToken_Type,
+        PyContextVar_Type,
+        PyContext_Type
+    }
     object_model.dict ++> [
         interpreter.gc { object_is_immortal },
         interpreter.ops_attr { add_to_insertion_order, notify_event },
@@ -32763,6 +32923,7 @@ graph import runtime.python.bindings {
             | codecs_jp
             | codecs_kr
             | codecs_tw
+            | contextvars
             | stat
             | syslog
             | uuid { MethodCallbacks, MethodDefinition, ModuleDefinition, ModuleHooks },
@@ -36622,6 +36783,7 @@ graph import runtime.python.object_model {
             vectorcall_nargs,
             vectorcall_tstate
         },
+        context { thread_state, vectorcall_tstate },
         type {
             exception_raised,
             stackref_borrow,
@@ -36637,7 +36799,9 @@ graph import runtime.python.object_model {
     ]
     complex ++> bltinmodule { complex_check_exact }
     dict ++> [
+        context { object_xincref, object_xnew_ref },
         descr { PyObject_Size },
+        hamt { object_xnew_ref },
         odict {
             PyDictItems_Type,
             PyDictKeys_Type,
@@ -36667,7 +36831,8 @@ graph import runtime.python.object_model {
             unicode_check_exact
         },
     ]
-    genericalias ++> descr
+    genericalias ++> context
+        | descr
         | dict
         | enumerate
         | exceptions
@@ -36681,6 +36846,17 @@ graph import runtime.python.object_model {
         | tuple
         | typevar
         | weakref { Py_GenericAlias }
+    hamt ++> context {
+        _PyHamt_Assoc,
+        _PyHamt_Eq,
+        _PyHamt_Len,
+        _PyHamt_New,
+        _PyHamt_NewIterItems,
+        _PyHamt_NewIterKeys,
+        _PyHamt_NewIterValues,
+        _PyHamt_Without,
+        hamt_find_value
+    }
     header ++> [
         abstract {
             PyType_Type,
@@ -36818,6 +36994,19 @@ graph import runtime.python.object_model {
             object_type,
             object_type_check,
             tuple_get_item
+        },
+        context {
+            PyType_Type,
+            current_interp,
+            freelist_pop,
+            freelist_push,
+            object_decref,
+            object_gc_track,
+            object_gc_untrack,
+            object_is_type,
+            object_new_ref,
+            object_type,
+            object_xdecref
         },
         descr {
             eval_builtin,
@@ -36964,6 +37153,18 @@ graph import runtime.python.object_model {
             object_type_check,
             tuple_get_item,
             tuple_set_item
+        },
+        hamt {
+            PyType_Type,
+            current_interp,
+            object_decref,
+            object_gc_track,
+            object_incref,
+            object_is_type,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref
         },
         interpolation { object_gc_track, object_gc_untrack, object_type },
         iterator {
@@ -37288,6 +37489,7 @@ graph import runtime.python.object_model {
         bltinmodule { compact_value, long_is_compact },
         bytearray | bytes { get_small_int },
         formatter_unicode { long_check_exact },
+        hamt { popcount_digit },
         mystrtoul { digit_value },
     ]
     method ++> func { PyMethod_New }
@@ -37300,6 +37502,7 @@ graph import runtime.python.object_model {
             type_check,
             unicode_check
         },
+        context { status_err, status_ok, unicode_check },
         type { stackref_as_object_steal, type_is_ready, var_size },
     ]
     set ++> exceptions { Py_FatalError }
@@ -37311,8 +37514,14 @@ graph import runtime.python.object_model {
         range { slice_check, slice_get_long_indices },
     ]
     structseq ++> float | long { PyStructSequence_New }
-    tuple ++> bytes | float | long | unicode { reftracer_track }
-    type ++> bltinmodule { py_id }
+    tuple ++> [
+        bytes | float | long | unicode { reftracer_track },
+        context { gc_may_be_tracked },
+    ]
+    type ++> [
+        bltinmodule { py_id },
+        hamt { py_clear, py_xsetref },
+    ]
     unicode ++> [
         bltinmodule { uo_read_char },
         formatter_unicode {

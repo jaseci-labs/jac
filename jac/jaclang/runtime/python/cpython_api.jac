@@ -135,7 +135,7 @@ import from c {
     ) -> i32;  def PyContextVar_Get(
         var: ptr[PyObject], default_value: ptr[PyObject], value: &mut ptr[PyObject]
     ) -> i32;  def PyContextVar_New(
-        name: str, default_value: ptr[PyObject]
+        name: ptr[u8], default_value: ptr[PyObject]
     ) -> ptr[PyObject];  def PyContextVar_Set(
         var: ptr[PyObject], value: ptr[PyObject]
     ) -> ptr[PyObject];  def PyContext_CopyCurrent -> ptr[PyObject];  def PyContext_Enter(

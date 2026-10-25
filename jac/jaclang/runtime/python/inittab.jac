@@ -8,10 +8,9 @@ import from c {
         PyObject
     ];  def PyInit__ast -> ptr[PyObject];  def PyInit__tokenize -> ptr[PyObject];  def PyInit__symtable -> ptr[
         PyObject
-    ];  def PyInit_gc -> ptr[PyObject];  def PyInit__contextvars -> ptr[PyObject];  def _PyWarnings_Init -> ptr[
+    ];  def PyInit_gc -> ptr[PyObject];  def _PyWarnings_Init -> ptr[PyObject];  def PyInit__string -> ptr[
         PyObject
-    ];  def PyInit__string -> ptr[PyObject];  glob _PyImport_Inittab:
-             list[_inittab] = [
+    ];  glob _PyImport_Inittab: list[_inittab] = [
              _inittab(name=ptr[u8]("_bisect"), initfunc=ptr(PyInit__bisect)),
              _inittab(name=ptr[u8]("_heapq"), initfunc=ptr(PyInit__heapq)),
              _inittab(name=ptr[u8]("_random"), initfunc=ptr(PyInit__random)),
@@ -98,6 +97,7 @@ import from c {
              _inittab(name=ptr[u8]("_ssl"), initfunc=ptr(PyInit__ssl)),
              _inittab(name=ptr[u8]("_asyncio"), initfunc=ptr(PyInit__asyncio)),
              _inittab(name=ptr[u8]("posix"), initfunc=ptr(PyInit_posix)),
+             _inittab(name=ptr[u8]("_contextvars"), initfunc=ptr(PyInit__contextvars)),
              _inittab(name=ptr[u8]("faulthandler"), initfunc=ptr(PyInit_faulthandler)),
              _inittab(name=ptr[u8]("_signal"), initfunc=ptr(PyInit__signal)),
              _inittab(name=ptr[u8]("_io"), initfunc=ptr(PyInit__io)),
@@ -110,7 +110,6 @@ import from c {
              _inittab(name=ptr[u8]("builtins"), initfunc=ptr()),
              _inittab(name=ptr[u8]("sys"), initfunc=ptr()),
              _inittab(name=ptr[u8]("gc"), initfunc=ptr(PyInit_gc)),
-             _inittab(name=ptr[u8]("_contextvars"), initfunc=ptr(PyInit__contextvars)),
              _inittab(name=ptr[u8]("_warnings"), initfunc=ptr(_PyWarnings_Init)),
              _inittab(name=ptr[u8]("_string"), initfunc=ptr(PyInit__string)),
              _inittab(name=ptr[u8](), initfunc=ptr())

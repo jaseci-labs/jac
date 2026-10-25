@@ -105,7 +105,11 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/internal/pycore_obmalloc.h",
          "Include/internal/pycore_gc.h",
          "Include/internal/pycore_interp_structs.h",
-         "Include/cpython/modsupport.h"
+         "Include/cpython/modsupport.h",
+         "Include/internal/pycore_structs.h",
+         "Include/internal/pycore_hamt.h",
+         "Include/cpython/context.h",
+         "Include/internal/pycore_context.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -134,7 +138,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          # The socket object and the _socket.CAPI record: the _socket and
          # _ssl ports define and read them; the header has no C user left.
          "Modules/socketmodule.h",
-         "Python/bltinmodule.c"
+         "Python/bltinmodule.c",
+         "Python/hamt.c"
      ],
      # Configuration macros a constant reads, folded to 0 or 1 for the probe
      # and layouts_check.c (a constant expression cannot use `defined`).
@@ -226,7 +231,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "fcntl.h",
          "errno.h",
          "opcode_ids.h",
-         "opcode.h"
+         "opcode.h",
+         "internal/pycore_hamt.h",
+         "internal/pycore_context.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -355,7 +362,17 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("mapobject", "mapobject"),
          ("zipobject", "zipobject"),
          ("_PyOnceFlag", "_PyOnceFlag"),
-         ("_PyArg_Parser", "struct _PyArg_Parser")
+         ("_PyArg_Parser", "struct _PyArg_Parser"),
+         ("PyHamtObject", "PyHamtObject"),
+         ("PyHamtNode_Bitmap", "PyHamtNode_Bitmap"),
+         ("PyHamtNode_Array", "PyHamtNode_Array"),
+         ("PyHamtNode_Collision", "PyHamtNode_Collision"),
+         ("PyHamtIteratorState", "PyHamtIteratorState"),
+         ("PyHamtIterator", "PyHamtIterator"),
+         ("PyContext", "struct _pycontextobject"),
+         ("PyContextVar", "struct _pycontextvarobject"),
+         ("PyContextToken", "struct _pycontexttokenobject"),
+         ("_PyContextTokenMissing", "_PyContextTokenMissing")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -3595,7 +3612,41 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("Bigint_MAXWDS", "offsetof(struct Bigint, maxwds)", "i64"),
          ("Bigint_SIGN", "offsetof(struct Bigint, sign)", "i64"),
          ("Bigint_WDS", "offsetof(struct Bigint, wds)", "i64"),
-         ("Bigint_X", "offsetof(struct Bigint, x)", "i64")
+         ("Bigint_X", "offsetof(struct Bigint, x)", "i64"),
+         ("CONTEXT_MAX_WATCHERS", "CONTEXT_MAX_WATCHERS", "i64"),
+         ("Py_CONTEXT_SWITCHED", "Py_CONTEXT_SWITCHED", "i32"),
+         ("Py_contexts_MAXFREELIST", "Py_contexts_MAXFREELIST", "i64"),
+         ("_Py_HAMT_MAX_TREE_DEPTH", "_Py_HAMT_MAX_TREE_DEPTH", "i64"),
+         ("PyHamtObject_SIZE", "sizeof(PyHamtObject)", "i64"),
+         ("PyHamtObject_H_WEAKREFLIST", "offsetof(PyHamtObject, h_weakreflist)", "i64"),
+         ("PyHamtNode_Array_SIZE", "sizeof(PyHamtNode_Array)", "i64"),
+         ("PyHamtNode_Array_A_ARRAY", "offsetof(PyHamtNode_Array, a_array)", "i64"),
+         (
+             "PyHamtNode_Bitmap_BASICSIZE",
+             "sizeof(PyHamtNode_Bitmap) - sizeof(PyObject *)",
+             "i64"
+         ),
+         ("PyHamtNode_Bitmap_B_ARRAY", "offsetof(PyHamtNode_Bitmap, b_array)", "i64"),
+         (
+             "PyHamtNode_Collision_BASICSIZE",
+             "sizeof(PyHamtNode_Collision) - sizeof(PyObject *)",
+             "i64"
+         ),
+         (
+             "PyHamtNode_Collision_C_ARRAY",
+             "offsetof(PyHamtNode_Collision, c_array)",
+             "i64"
+         ),
+         ("PyHamtIteratorState_SIZE", "sizeof(PyHamtIteratorState)", "i64"),
+         ("PyHamtIteratorState_I_POS", "offsetof(PyHamtIteratorState, i_pos)", "i64"),
+         ("PyHamtIterator_SIZE", "sizeof(PyHamtIterator)", "i64"),
+         ("PyHamtIterator_HI_ITER", "offsetof(PyHamtIterator, hi_iter)", "i64"),
+         ("PyContext_SIZE", "sizeof(PyContext)", "i64"),
+         ("PyContext_CTX_WEAKREFLIST", "offsetof(PyContext, ctx_weakreflist)", "i64"),
+         ("PyContextVar_SIZE", "sizeof(PyContextVar)", "i64"),
+         ("PyContextVar_VAR_NAME", "offsetof(PyContextVar, var_name)", "i64"),
+         ("PyContextToken_SIZE", "sizeof(PyContextToken)", "i64"),
+         ("_PyContextTokenMissing_SIZE", "sizeof(_PyContextTokenMissing)", "i64")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -4394,7 +4445,35 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "offsetof(PyInterpreterState, dtoa.preallocated_next)",
              "i64"
          ),
-         ("HAVE_X87_CONTROL_WORD", "JAC_HAVE_X87", "i64")
+         ("HAVE_X87_CONTROL_WORD", "JAC_HAVE_X87", "i64"),
+         ("PyThreadState_CONTEXT", "offsetof(PyThreadState, context)", "i64"),
+         ("PyThreadState_CONTEXT_VER", "offsetof(PyThreadState, context_ver)", "i64"),
+         ("PyThreadState_ID", "offsetof(PyThreadState, id)", "i64"),
+         (
+             "PyInterpreterState_CONTEXT_WATCHERS",
+             "offsetof(PyInterpreterState, context_watchers)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_ACTIVE_CONTEXT_WATCHERS",
+             "offsetof(PyInterpreterState, active_context_watchers)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_HAMT_EMPTY",
+             "offsetof(PyInterpreterState, static_objects.singletons.hamt_empty)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_HAMT_BITMAP_NODE_EMPTY",
+             "offsetof(_PyRuntimeState, static_objects.singletons.hamt_bitmap_node_empty)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_CONTEXT_TOKEN_MISSING",
+             "offsetof(_PyRuntimeState, static_objects.singletons.context_token_missing)",
+             "i64"
+         )
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.
@@ -4683,7 +4762,10 @@ def read_headers(found: Headers) {
     # A source's own macros stay out of the headers' namespace; its typedef'd
     # structs are kept verbatim for layouts_check.c.
     for source in OBJECT_SOURCES {
-        body = preprocess([texts[source]], dict(defines));
+        local = dict(defines);
+        # An array bound a source defines itself (hamt.c's
+        # HAMT_ARRAY_NODE_SIZE) is folded here, as the headers' are below.
+        body = array_bounds(preprocess([texts[source]], local), local);
         # Scalar typedefs a private struct names (socketmodule.h's SOCKET_T).
         for hit in re.finditer(
             r"\btypedef\s+((?:unsigned\s+|signed\s+)?(?:int|long|short|char))\s+(\w+)\s*;",

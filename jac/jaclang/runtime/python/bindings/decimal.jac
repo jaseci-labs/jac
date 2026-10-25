@@ -2180,7 +2180,9 @@ impl create_contexts(module: ptr[PyObject]) -> bool {
         return False;
     }
     if not set_state(
-        module, STATE_CURRENT_CONTEXT_VAR, PyContextVar_New("decimal_context", NULL)
+        module,
+        STATE_CURRENT_CONTEXT_VAR,
+        PyContextVar_New(ptr[u8]("decimal_context"), NULL)
     )
         or PyModule_AddObjectRef(module, "HAVE_CONTEXTVAR", py_true()) < 0
         or PyModule_AddObjectRef(module, "HAVE_THREADS", py_true()) < 0 {

@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 215 C files / 380,131 lines; 155 headers / 152,397 lines.
-#   Total: 370 files / 532,528 source lines.
+#   Excluded: 218 C files / 384,450 lines; 157 headers / 152,680 lines.
+#   Total: 375 files / 537,130 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -95,7 +95,7 @@ Parser/myreadline.c
 # Interpreter and compiler
 Python/Python-ast.c
 # Python/Python-tokenize.c  # removed: 445 source lines
-Python/_contextvars.c
+# Python/_contextvars.c  # removed: 68 source lines
 Python/_warnings.c
 Python/asdl.c
 # Python/asm_trampoline.S  # removed: 63 source lines
@@ -112,10 +112,10 @@ Python/brc.c
 # Python/ceval_gil.c  # removed: 1,434 source lines
 # Python/ceval_macros.h  # removed: 439 source lines
 # Python/clinic/Python-tokenize.c.h  # removed: 86 source lines
-Python/clinic/_contextvars.c.h
+# Python/clinic/_contextvars.c.h  # removed: 21 source lines
 Python/clinic/_warnings.c.h
 # Python/clinic/bltinmodule.c.h  # removed: 1,287 source lines
-Python/clinic/context.c.h
+# Python/clinic/context.c.h  # removed: 262 source lines
 Python/clinic/import.c.h
 # Python/clinic/instruction_sequence.c.h  # removed: 313 source lines
 # Python/clinic/instrumentation.c.h  # removed: 334 source lines
@@ -127,7 +127,7 @@ Python/codecs.c
 # Python/compile.c  # removed: 1,753 source lines
 Python/condvar.h
 Python/config_common.h
-Python/context.c
+# Python/context.c  # removed: 1,364 source lines
 # Python/critical_section.c  # removed: 205 source lines
 Python/crossinterp.c
 Python/crossinterp_data_lookup.h
@@ -155,7 +155,7 @@ Python/getcopyright.c
 Python/getopt.c
 Python/getplatform.c
 Python/getversion.c
-Python/hamt.c
+# Python/hamt.c  # removed: 2,887 source lines
 Python/hashtable.c
 Python/import.c
 Python/importdl.c
