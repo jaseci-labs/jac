@@ -366,3 +366,27 @@ test "a build compile keeps the warning for a declared missing dependency" {
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+test "a relative import in an impl/ annex resolves from its module, as at runtime" {
+    base = tempfile.mkdtemp(prefix="annex_rel_");
+    try {
+        os.makedirs(os.path.join(base, "impl"));
+        with open(os.path.join(base, "helper.jac"), "w") as f {
+            f.write("glob VALUE: int = 7;\n");
+        }
+        with open(os.path.join(base, "mod.jac"), "w") as f {
+            f.write("def get -> int;\n");
+        }
+        with open(os.path.join(base, "impl", "mod.impl.jac"), "w") as f {
+            f.write(
+                "import from .helper { VALUE }\n\nimpl get -> int {\n    return VALUE;\n}\n"
+            );
+        }
+        prog = JacProgram();
+        prog.compile(os.path.join(base, "mod.jac"));
+        assert "E1134" not in _codes(prog) , _codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
