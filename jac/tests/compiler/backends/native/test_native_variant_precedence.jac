@@ -64,11 +64,16 @@ test "an importer that is a platform variant resolves its own os first" {
                 handle.write("");
             }
         }
-        prev = set_native_variant_os(importer_variant_os("/x/subprocess.linux.jac"));
+        """The darwin target pin makes this non-vacuous on linux CI: if the
+        os override were ignored, the target probe would pick the darwin
+        variant, not the linux one the linux importer needs.""";
+        prev_os = set_native_variant_os(importer_variant_os("/x/subprocess.linux.jac"));
+        prev_target = set_native_target_override("x86_64-apple-darwin");
         try {
             chosen = _native_variant_path(base);
         } finally {
-            set_native_variant_os(prev);
+            set_native_variant_os(prev_os);
+            set_native_target_override(prev_target);
         }
         assert (
             chosen is not None and os.path.basename(chosen) == "records.linux.jac"
