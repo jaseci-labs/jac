@@ -136,6 +136,10 @@ impl ViteCompiler._wasm_input_key(self: ViteCompiler, units: list[str]) -> str {
     import hashlib;
     import os;
     h = hashlib.sha256(running_compiler_digest().encode("utf-8"));
+    config = self.project_dir / "jac.toml";
+    if config.is_file() {
+        h.update(file_sha256(str(config)).encode("utf-8"));
+    }
     for path in sorted(units) {
         if not os.path.isfile(path) {
             return "";
