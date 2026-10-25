@@ -23871,6 +23871,68 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_intern_text
         },
+        object_model.initconfig {
+            NULL,
+            PyBool_FromLong,
+            PyDict_GetItemStringRef,
+            PyDict_New,
+            PyDict_Next,
+            PyDict_SetItem,
+            PyDict_SetItemString,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyFrozenSet_New,
+            PyList_Append,
+            PyList_New,
+            PyLong_AsInt,
+            PyLong_AsUnsignedLong,
+            PyLong_FromLong,
+            PyLong_FromUnsignedLong,
+            PyMem_Free,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyMem_RawRealloc,
+            PyObject,
+            PyObject_IsTrue,
+            PySys_Audit,
+            PyThreadState,
+            PyTuple_New,
+            PyUnicode_AsWideCharString,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            PyUnicode_FromWideChar,
+            Py_None,
+            _PyRuntimeState,
+            _PySys_GetOptionalAttrString,
+            jacpy_errno,
+            jacpy_set_errno
+        },
+        object_model.interpconfig {
+            NULL,
+            PyDict_GetItemStringRef,
+            PyDict_New,
+            PyDict_PopString,
+            PyDict_SetItemString,
+            PyDict_Update,
+            PyErr_Format,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyObject,
+            PyUnicode_AsUTF8,
+            PyUnicode_FromString
+        },
         object_model.interpolation {
             NULL,
             PyDict_SetItemString,
@@ -24477,6 +24539,15 @@ graph import runtime.python {
             Py_None,
             Py_buffer,
             jacpy_release
+        },
+        object_model.preconfig {
+            NULL,
+            PyDict_New,
+            PyDict_SetItemString,
+            PyLong_FromLong,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyObject
         },
         object_model.pyhash { PyObject, _Py_HashSecret_t },
         object_model.pystrhex {
@@ -27890,6 +27961,45 @@ graph import runtime.python {
             _gc_runtime_state_HEAP_SIZE,
             _object
         },
+        object_model.initconfig {
+            PyListObject,
+            PyPreConfig,
+            PyPreConfig_ALLOCATOR,
+            PyPreConfig_COERCE_C_LOCALE,
+            PyPreConfig_COERCE_C_LOCALE_WARN,
+            PyPreConfig_CONFIGURE_LOCALE,
+            PyPreConfig_CONFIG_INIT,
+            PyPreConfig_DEV_MODE,
+            PyPreConfig_ISOLATED,
+            PyPreConfig_PARSE_ARGV,
+            PyPreConfig_USE_ENVIRONMENT,
+            PyPreConfig_UTF8_MODE,
+            PyStatus,
+            PyThreadState_INTERP,
+            PyWideStringList,
+            _PY_LONG_DEFAULT_MAX_STR_DIGITS,
+            _PY_LONG_MAX_STR_DIGITS_THRESHOLD,
+            _PyArgv,
+            _PyConfig_INIT_COMPAT,
+            _PyConfig_INIT_ISOLATED,
+            _PyConfig_INIT_PYTHON,
+            _PyPreCmdline,
+            _PyStatus_TYPE_ERROR,
+            _PyStatus_TYPE_EXIT,
+            _PyStatus_TYPE_OK
+        },
+        object_model.interpconfig {
+            PyInterpreterConfig,
+            PyInterpreterConfig_DEFAULT_GIL,
+            PyInterpreterConfig_OWN_GIL,
+            PyInterpreterConfig_SHARED_GIL,
+            Py_RTFLAGS_DAEMON_THREADS,
+            Py_RTFLAGS_EXEC,
+            Py_RTFLAGS_FORK,
+            Py_RTFLAGS_MULTI_INTERP_EXTENSIONS,
+            Py_RTFLAGS_THREADS,
+            Py_RTFLAGS_USE_MAIN_OBMALLOC
+        },
         object_model.interpolation {
             FVC_ASCII,
             FVC_REPR,
@@ -28343,6 +28453,20 @@ graph import runtime.python {
             _Py_MEMORYVIEW_FORTRAN,
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _object
+        },
+        object_model.preconfig {
+            PYMEM_ALLOCATOR_DEBUG,
+            PYMEM_ALLOCATOR_NOT_SET,
+            PyPreConfig,
+            PyPreConfig_SIZE,
+            PyStatus,
+            PyWideStringList,
+            _PyArgv,
+            _PyConfig_INIT_COMPAT,
+            _PyConfig_INIT_ISOLATED,
+            _PyConfig_INIT_PYTHON,
+            _PyPreCmdline,
+            _PyStatus_TYPE_OK
         },
         object_model.pystrtod { Py_DTSF_ADD_DOT_0, Py_DTSF_SIGN },
         object_model.pytime {
@@ -29920,6 +30044,93 @@ graph import runtime.python {
             _PyRuntimeState_HAMT_BITMAP_NODE_EMPTY
         },
         object_model.header { PyInterpreterState_FREELISTS, PyInterpreterState_GC },
+        object_model.initconfig {
+            BUFSIZ,
+            LC_CTYPE,
+            MI_PLATFORM_LINUX,
+            PyConfig_ARGV,
+            PyConfig_BASE_EXECUTABLE,
+            PyConfig_BASE_EXEC_PREFIX,
+            PyConfig_BASE_PREFIX,
+            PyConfig_BUFFERED_STDIO,
+            PyConfig_BYTES_WARNING,
+            PyConfig_CHECK_HASH_PYCS_MODE,
+            PyConfig_CODE_DEBUG_RANGES,
+            PyConfig_CONFIGURE_C_STDIO,
+            PyConfig_CONFIG_INIT,
+            PyConfig_CONTEXT_AWARE_WARNINGS,
+            PyConfig_CPU_COUNT,
+            PyConfig_DEV_MODE,
+            PyConfig_DUMP_REFS,
+            PyConfig_DUMP_REFS_FILE,
+            PyConfig_EXECUTABLE,
+            PyConfig_EXEC_PREFIX,
+            PyConfig_FAULTHANDLER,
+            PyConfig_FILESYSTEM_ENCODING,
+            PyConfig_FILESYSTEM_ERRORS,
+            PyConfig_HASH_SEED,
+            PyConfig_HOME,
+            PyConfig_IMPORT_TIME,
+            PyConfig_INIT_MAIN,
+            PyConfig_INSPECT,
+            PyConfig_INSTALL_IMPORTLIB,
+            PyConfig_INSTALL_SIGNAL_HANDLERS,
+            PyConfig_INTERACTIVE,
+            PyConfig_INT_MAX_STR_DIGITS,
+            PyConfig_ISOLATED,
+            PyConfig_IS_PYTHON_BUILD,
+            PyConfig_MALLOC_STATS,
+            PyConfig_MODULE_SEARCH_PATHS,
+            PyConfig_MODULE_SEARCH_PATHS_SET,
+            PyConfig_OPTIMIZATION_LEVEL,
+            PyConfig_ORIG_ARGV,
+            PyConfig_PARSER_DEBUG,
+            PyConfig_PARSE_ARGV,
+            PyConfig_PATHCONFIG_WARNINGS,
+            PyConfig_PERF_PROFILING,
+            PyConfig_PLATLIBDIR,
+            PyConfig_PREFIX,
+            PyConfig_PROGRAM_NAME,
+            PyConfig_PYCACHE_PREFIX,
+            PyConfig_PYTHONPATH_ENV,
+            PyConfig_QUIET,
+            PyConfig_REMOTE_DEBUG,
+            PyConfig_RUN_COMMAND,
+            PyConfig_RUN_FILENAME,
+            PyConfig_RUN_MODULE,
+            PyConfig_SAFE_PATH,
+            PyConfig_SHOW_REF_COUNT,
+            PyConfig_SITE_IMPORT,
+            PyConfig_SIZE,
+            PyConfig_SKIP_SOURCE_FIRST_LINE,
+            PyConfig_STDIO_ENCODING,
+            PyConfig_STDIO_ERRORS,
+            PyConfig_STDLIB_DIR,
+            PyConfig_SYS_PATH_0,
+            PyConfig_THREAD_INHERIT_CONTEXT,
+            PyConfig_TRACEMALLOC,
+            PyConfig_USER_SITE_DIRECTORY,
+            PyConfig_USE_ENVIRONMENT,
+            PyConfig_USE_FROZEN_MODULES,
+            PyConfig_USE_HASH_SEED,
+            PyConfig_VERBOSE,
+            PyConfig_WARNOPTIONS,
+            PyConfig_WARN_DEFAULT_ENCODING,
+            PyConfig_WRITE_BYTECODE,
+            PyConfig_XOPTIONS,
+            PyInterpreterState_CONFIG,
+            PyInterpreterState_LONG_MAX_STR_DIGITS,
+            PyInterpreterState_RUNTIME,
+            _IOLBF,
+            _IONBF,
+            _PyRuntimeState_ORIG_ARGV,
+            _PyRuntimeState_PRECONFIG,
+            _Py_FORCE_UTF8_FS_ENCODING
+        },
+        object_model.interpconfig {
+            PyInterpreterState_CEVAL_OWN_GIL,
+            PyInterpreterState_FEATURE_FLAGS
+        },
         object_model.long {
             PyInterpreterState_LONG_MAX_STR_DIGITS,
             _PyRuntimeState_SMALL_INTS
@@ -29998,6 +30209,18 @@ graph import runtime.python {
             _PyRuntimeState_OBMALLOC_INTERPRETER_LEAKS,
             _PyThreadStateImpl_MEM_FREE_QUEUE,
             _PyThreadStateImpl_QSBR
+        },
+        object_model.preconfig {
+            LC_CTYPE,
+            PyConfig_CONFIG_INIT,
+            PyConfig_DEV_MODE,
+            PyConfig_ISOLATED,
+            PyConfig_PARSE_ARGV,
+            PyConfig_USE_ENVIRONMENT,
+            PyConfig_WARN_DEFAULT_ENCODING,
+            PyConfig_XOPTIONS,
+            _PyRuntimeState_CORE_INITIALIZED,
+            _PyRuntimeState_PRECONFIG
         },
         object_model.pymath { HAVE_X87_CONTROL_WORD },
         object_model.pytime {
@@ -38670,6 +38893,8 @@ graph import runtime.python.object_model {
             unicode_check,
             unicode_length
         },
+        initconfig { list_check_exact, long_check, tuple_check_exact, unicode_check },
+        interpconfig { unicode_check },
         modsupport { index_check },
         structmember { long_is_negative },
         traceback { long_check, strlen, unicode_check, unicode_length },
@@ -38677,8 +38902,12 @@ graph import runtime.python.object_model {
     ]
     bool ++> [
         bltinmodule | range | structmember { bool_check },
-        cfunction | list | odict | tuple | type | weakref { py_false, py_true },
+        cfunction | interpconfig | list | odict | tuple | type | weakref {
+            py_false,
+            py_true
+        },
         file { PyBool_FromLong, bool_check },
+        initconfig { bool_check, py_true },
     ]
     bytes_methods ++> [
         bytearray {
@@ -38813,6 +39042,8 @@ graph import runtime.python.object_model {
         descr { PyObject_Size },
         errors | traceback { object_xincref },
         hamt { object_xnew_ref },
+        initconfig { dict_check, dict_check_exact, unicode_check_exact },
+        interpconfig { dict_check, dict_used },
         odict {
             PyDictItems_Type,
             PyDictKeys_Type,
@@ -39270,6 +39501,16 @@ graph import runtime.python.object_model {
             object_type,
             object_xdecref
         },
+        initconfig {
+            current_interp,
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_xdecref,
+            tuple_get_item,
+            tuple_set_item
+        },
+        interpconfig { object_decref, object_new_ref, object_xdecref },
         interpolation { object_gc_track, object_gc_untrack, object_type },
         iterator {
             PyType_Type,
@@ -39420,6 +39661,7 @@ graph import runtime.python.object_model {
             tuple_set_item
         },
         picklebuffer { object_gc_untrack, object_is_type, object_type },
+        preconfig { object_decref },
         pytime { object_type, object_type_check, type_has_feature },
         range {
             PyType_Type,
@@ -39620,7 +39862,7 @@ graph import runtime.python.object_model {
     }
     list ++> [
         dict { memcmp },
-        traceback | type { list_check },
+        initconfig | traceback | type { list_check },
     ]
     long ++> [
         bltinmodule { compact_value, long_is_compact },
@@ -39630,6 +39872,7 @@ graph import runtime.python.object_model {
         mystrtoul { digit_value },
     ]
     method ++> func { PyMethod_New }
+    module ++> initconfig { PySys_FormatStderr, PySys_WriteStderr }
     object ++> [
         bltinmodule {
             dict_check,
@@ -39639,7 +39882,7 @@ graph import runtime.python.object_model {
             type_check,
             unicode_check
         },
-        bootstrap_hash { status_err, status_ok },
+        bootstrap_hash | initconfig | preconfig { status_err, status_ok },
         context { status_err, status_ok, unicode_check },
         errors { Py_FatalError },
         modsupport { type_is_ready },
@@ -39658,6 +39901,15 @@ graph import runtime.python.object_model {
         errors { _Py_FatalErrorFunc },
         fileutils { _PyMem_RawWcsdup },
     ]
+    preconfig ++> initconfig {
+        config_int,
+        config_list,
+        env_flag,
+        get_xoption_ascii,
+        no_memory,
+        set_config_int,
+        str_to_int
+    }
     set ++> exceptions { Py_FatalError }
     slice ++> [
         bytearray | bytes | list | memory | tuple | unicode {
@@ -39676,6 +39928,7 @@ graph import runtime.python.object_model {
         codecs { py_id, tuple_check, tuple_check_exact },
         errors { object_xnewref, py_id },
         hamt { py_clear, py_xsetref },
+        initconfig | preconfig { runtime_at },
         suggestions { object_xnewref },
         traceback { object_xnewref, py_id, stackref_is_null },
         tracemalloc { type_preheader_size },

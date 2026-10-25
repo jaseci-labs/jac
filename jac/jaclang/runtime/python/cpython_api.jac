@@ -131,7 +131,7 @@ import from c {
     ) -> ptr[PyObject];  def PyCodec_Unregister(
         search_function: ptr[PyObject]
     ) -> i32;  def PyComplex_FromDoubles(real: f64, imag: f64) -> ptr[PyObject];  def PyConfig_GetInt(
-        name: str, value: &mut i32
+        name: ptr[u8], value: &mut i32
     ) -> i32;  def PyContextVar_Get(
         var: ptr[PyObject], default_value: ptr[PyObject], value: &mut ptr[PyObject]
     ) -> i32;  def PyContextVar_New(

@@ -624,7 +624,7 @@ impl os_getrandom_impl(module: ptr[PyObject], size: i64, flags: i32) -> ptr[PyOb
 
 impl os_cpu_count_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     cpu_count = i32(0);
-    if PyConfig_GetInt("cpu_count", &mut cpu_count) < 0 {
+    if PyConfig_GetInt(ptr[u8]("cpu_count"), &mut cpu_count) < 0 {
         return NULL;
     }
     if cpu_count > 0 {

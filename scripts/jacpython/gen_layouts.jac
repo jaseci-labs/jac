@@ -110,7 +110,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/internal/pycore_hamt.h",
          "Include/cpython/context.h",
          "Include/internal/pycore_context.h",
-         "Include/internal/pycore_hashtable.h"
+         "Include/internal/pycore_hashtable.h",
+         "Include/internal/pycore_initconfig.h",
+         "Include/cpython/pylifecycle.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -398,7 +400,12 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_Py_slist_t", "_Py_slist_t"),
          ("_Py_hashtable_entry_t", "_Py_hashtable_entry_t"),
          ("_Py_hashtable_allocator_t", "_Py_hashtable_allocator_t"),
-         ("_Py_hashtable_t", "struct _Py_hashtable_t")
+         ("_Py_hashtable_t", "struct _Py_hashtable_t"),
+         ("PyWideStringList", "PyWideStringList"),
+         ("PyPreConfig", "struct PyPreConfig"),
+         ("_PyArgv", "struct _PyArgv"),
+         ("_PyPreCmdline", "_PyPreCmdline"),
+         ("PyInterpreterConfig", "PyInterpreterConfig")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -4077,7 +4084,42 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_Py_ID_mode",
              "offsetof(struct _Py_global_strings, identifiers._py_mode)",
              "i64"
-         )
+         ),
+         ("_PyConfig_INIT_COMPAT", "_PyConfig_INIT_COMPAT", "i32"),
+         ("_PyConfig_INIT_PYTHON", "_PyConfig_INIT_PYTHON", "i32"),
+         ("_PyConfig_INIT_ISOLATED", "_PyConfig_INIT_ISOLATED", "i32"),
+         ("_PY_LONG_DEFAULT_MAX_STR_DIGITS", "_PY_LONG_DEFAULT_MAX_STR_DIGITS", "i32"),
+         (
+             "_PY_LONG_MAX_STR_DIGITS_THRESHOLD",
+             "_PY_LONG_MAX_STR_DIGITS_THRESHOLD",
+             "i32"
+         ),
+         ("PyPreConfig_CONFIG_INIT", "offsetof(PyPreConfig, _config_init)", "i64"),
+         ("PyPreConfig_PARSE_ARGV", "offsetof(PyPreConfig, parse_argv)", "i64"),
+         ("PyPreConfig_ISOLATED", "offsetof(PyPreConfig, isolated)", "i64"),
+         (
+             "PyPreConfig_USE_ENVIRONMENT",
+             "offsetof(PyPreConfig, use_environment)",
+             "i64"
+         ),
+         (
+             "PyPreConfig_CONFIGURE_LOCALE",
+             "offsetof(PyPreConfig, configure_locale)",
+             "i64"
+         ),
+         (
+             "PyPreConfig_COERCE_C_LOCALE",
+             "offsetof(PyPreConfig, coerce_c_locale)",
+             "i64"
+         ),
+         (
+             "PyPreConfig_COERCE_C_LOCALE_WARN",
+             "offsetof(PyPreConfig, coerce_c_locale_warn)",
+             "i64"
+         ),
+         ("PyPreConfig_UTF8_MODE", "offsetof(PyPreConfig, utf8_mode)", "i64"),
+         ("PyPreConfig_DEV_MODE", "offsetof(PyPreConfig, dev_mode)", "i64"),
+         ("PyPreConfig_ALLOCATOR", "offsetof(PyPreConfig, allocator)", "i64")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -5731,7 +5773,78 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "offsetof(PyConfig, module_search_paths)",
              "i64"
          ),
-         ("LC_ALL", "LC_ALL", "i32")
+         ("LC_ALL", "LC_ALL", "i32"),
+         ("PyConfig_CONFIG_INIT", "offsetof(PyConfig, _config_init)", "i64"),
+         ("PyConfig_ISOLATED", "offsetof(PyConfig, isolated)", "i64"),
+         ("PyConfig_USE_ENVIRONMENT", "offsetof(PyConfig, use_environment)", "i64"),
+         ("PyConfig_PERF_PROFILING", "offsetof(PyConfig, perf_profiling)", "i64"),
+         ("PyConfig_REMOTE_DEBUG", "offsetof(PyConfig, remote_debug)", "i64"),
+         ("PyConfig_IMPORT_TIME", "offsetof(PyConfig, import_time)", "i64"),
+         ("PyConfig_SHOW_REF_COUNT", "offsetof(PyConfig, show_ref_count)", "i64"),
+         ("PyConfig_DUMP_REFS", "offsetof(PyConfig, dump_refs)", "i64"),
+         ("PyConfig_DUMP_REFS_FILE", "offsetof(PyConfig, dump_refs_file)", "i64"),
+         ("PyConfig_PYCACHE_PREFIX", "offsetof(PyConfig, pycache_prefix)", "i64"),
+         ("PyConfig_ORIG_ARGV", "offsetof(PyConfig, orig_argv)", "i64"),
+         ("PyConfig_XOPTIONS", "offsetof(PyConfig, xoptions)", "i64"),
+         ("PyConfig_WARNOPTIONS", "offsetof(PyConfig, warnoptions)", "i64"),
+         (
+             "PyConfig_WARN_DEFAULT_ENCODING",
+             "offsetof(PyConfig, warn_default_encoding)",
+             "i64"
+         ),
+         ("PyConfig_INSPECT", "offsetof(PyConfig, inspect)", "i64"),
+         ("PyConfig_PARSER_DEBUG", "offsetof(PyConfig, parser_debug)", "i64"),
+         ("PyConfig_WRITE_BYTECODE", "offsetof(PyConfig, write_bytecode)", "i64"),
+         ("PyConfig_QUIET", "offsetof(PyConfig, quiet)", "i64"),
+         (
+             "PyConfig_USER_SITE_DIRECTORY",
+             "offsetof(PyConfig, user_site_directory)",
+             "i64"
+         ),
+         ("PyConfig_CONFIGURE_C_STDIO", "offsetof(PyConfig, configure_c_stdio)", "i64"),
+         (
+             "PyConfig_CHECK_HASH_PYCS_MODE",
+             "offsetof(PyConfig, check_hash_pycs_mode)",
+             "i64"
+         ),
+         (
+             "PyConfig_USE_FROZEN_MODULES",
+             "offsetof(PyConfig, use_frozen_modules)",
+             "i64"
+         ),
+         (
+             "PyConfig_THREAD_INHERIT_CONTEXT",
+             "offsetof(PyConfig, thread_inherit_context)",
+             "i64"
+         ),
+         (
+             "PyConfig_CONTEXT_AWARE_WARNINGS",
+             "offsetof(PyConfig, context_aware_warnings)",
+             "i64"
+         ),
+         ("PyConfig_CPU_COUNT", "offsetof(PyConfig, cpu_count)", "i64"),
+         ("PyConfig_PYTHONPATH_ENV", "offsetof(PyConfig, pythonpath_env)", "i64"),
+         ("PyConfig_PLATLIBDIR", "offsetof(PyConfig, platlibdir)", "i64"),
+         (
+             "PyConfig_MODULE_SEARCH_PATHS_SET",
+             "offsetof(PyConfig, module_search_paths_set)",
+             "i64"
+         ),
+         ("PyConfig_BASE_EXECUTABLE", "offsetof(PyConfig, base_executable)", "i64"),
+         ("PyConfig_BASE_PREFIX", "offsetof(PyConfig, base_prefix)", "i64"),
+         ("PyConfig_BASE_EXEC_PREFIX", "offsetof(PyConfig, base_exec_prefix)", "i64"),
+         (
+             "PyConfig_SKIP_SOURCE_FIRST_LINE",
+             "offsetof(PyConfig, skip_source_first_line)",
+             "i64"
+         ),
+         ("PyConfig_RUN_COMMAND", "offsetof(PyConfig, run_command)", "i64"),
+         ("PyConfig_RUN_MODULE", "offsetof(PyConfig, run_module)", "i64"),
+         ("PyConfig_RUN_FILENAME", "offsetof(PyConfig, run_filename)", "i64"),
+         ("_PyRuntimeState_ORIG_ARGV", "offsetof(_PyRuntimeState, orig_argv)", "i64"),
+         ("BUFSIZ", "BUFSIZ", "u64"),
+         ("_IONBF", "_IONBF", "i32"),
+         ("_IOLBF", "_IOLBF", "i32")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.
@@ -5796,6 +5909,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "uint": ("u32", False),
          "pymem_uint": ("u32", False),
          "intptr_t": ("i64", True),
+         # wchar_t is 4 bytes on every supported platform; the runtime reads
+         # wide strings as i32 code units.
+         "wchar_t": ("i32", True),
          "double": ("f64", True),
          "float": ("f32", True),
          # C's bool: one unsigned byte, which the asserts hold to kind 4.

@@ -975,6 +975,40 @@ import from c {
             key_destroy_func: Callable[[ptr], None],
             value_destroy_func: Callable[[ptr], None],
             alloc: _Py_hashtable_allocator_t;
+    }  obj PyWideStringList {
+        has length: i64,
+            items: ptr[ptr[i32]];
+    }  obj PyPreConfig {
+        has _config_init: i32,
+            parse_argv: i32,
+            isolated: i32,
+            use_environment: i32,
+            configure_locale: i32,
+            coerce_c_locale: i32,
+            coerce_c_locale_warn: i32,
+            utf8_mode: i32,
+            dev_mode: i32,
+            allocator: i32;
+    }  obj _PyArgv {
+        has argc: i64,
+            use_bytes_argv: i32,
+            bytes_argv: ptr[ptr[u8]],
+            wchar_argv: ptr[ptr[i32]];
+    }  obj _PyPreCmdline {
+        has argv: PyWideStringList,
+            xoptions: PyWideStringList,
+            isolated: i32,
+            use_environment: i32,
+            dev_mode: i32,
+            warn_default_encoding: i32;
+    }  obj PyInterpreterConfig {
+        has use_main_obmalloc: i32,
+            allow_fork: i32,
+            allow_exec: i32,
+            allow_threads: i32,
+            allow_daemon_threads: i32,
+            check_multi_interp_extensions: i32,
+            gil: i32;
     }
 }
 
@@ -2538,4 +2572,19 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      _Py_ID__shutdown: Final[i64] = 12984,
      _Py_ID_raw: Final[i64] = 34448,
      _Py_ID_isatty: Final[i64] = 26744,
-     _Py_ID_mode: Final[i64] = 30088;
+     _Py_ID_mode: Final[i64] = 30088,
+     _PyConfig_INIT_COMPAT: Final[i32] = 1,
+     _PyConfig_INIT_PYTHON: Final[i32] = 2,
+     _PyConfig_INIT_ISOLATED: Final[i32] = 3,
+     _PY_LONG_DEFAULT_MAX_STR_DIGITS: Final[i32] = 4300,
+     _PY_LONG_MAX_STR_DIGITS_THRESHOLD: Final[i32] = 640,
+     PyPreConfig_CONFIG_INIT: Final[i64] = 0,
+     PyPreConfig_PARSE_ARGV: Final[i64] = 4,
+     PyPreConfig_ISOLATED: Final[i64] = 8,
+     PyPreConfig_USE_ENVIRONMENT: Final[i64] = 12,
+     PyPreConfig_CONFIGURE_LOCALE: Final[i64] = 16,
+     PyPreConfig_COERCE_C_LOCALE: Final[i64] = 20,
+     PyPreConfig_COERCE_C_LOCALE_WARN: Final[i64] = 24,
+     PyPreConfig_UTF8_MODE: Final[i64] = 28,
+     PyPreConfig_DEV_MODE: Final[i64] = 32,
+     PyPreConfig_ALLOCATOR: Final[i64] = 36;

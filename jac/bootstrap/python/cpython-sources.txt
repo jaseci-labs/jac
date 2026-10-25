@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 252 C files / 423,103 lines; 163 headers / 155,308 lines.
-#   Total: 415 files / 578,411 source lines.
+#   Excluded: 256 C files / 429,264 lines; 164 headers / 155,344 lines.
+#   Total: 420 files / 584,608 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -352,7 +352,7 @@ Python/clinic/sysmodule.c.h
 # Python/codegen.c  # removed: 6,485 source lines
 # Python/compile.c  # removed: 1,753 source lines
 # Python/condvar.h  # removed: 315 source lines
-Python/config_common.h
+# Python/config_common.h  # removed: 36 source lines
 # Python/context.c  # removed: 1,364 source lines
 # Python/critical_section.c  # removed: 205 source lines
 Python/crossinterp.c
@@ -378,7 +378,7 @@ Python/frozen_modules/
 # Python/getargs.c  # removed: 2,863 source lines
 # Python/getcompiler.c  # removed: 27 source lines
 # Python/getcopyright.c  # removed: 23 source lines
-Python/getopt.c
+# Python/getopt.c  # removed: 163 source lines
 # Python/getplatform.c  # removed: 12 source lines
 # Python/getversion.c  # removed: 34 source lines
 # Python/hamt.c  # removed: 2,887 source lines
@@ -386,10 +386,10 @@ Python/getopt.c
 Python/import.c
 Python/importdl.c
 # Python/index_pool.c  # removed: 197 source lines
-Python/initconfig.c
+# Python/initconfig.c  # removed: 4,751 source lines
 # Python/instruction_sequence.c  # removed: 483 source lines
 # Python/instrumentation.c  # removed: 3,174 source lines
-Python/interpconfig.c
+# Python/interpconfig.c  # removed: 269 source lines
 # Python/intrinsics.c  # removed: 287 source lines
 # Python/jit.c  # pruned: 523 source lines
 # Python/legacy_tracing.c  # removed: 781 source lines
@@ -408,7 +408,7 @@ Python/marshal.c
 # Python/pathconfig.c  # removed: 471 source lines
 # Python/perf_jit_trampoline.c  # removed: 1,376 source lines
 # Python/perf_trampoline.c  # removed: 641 source lines
-Python/preconfig.c
+# Python/preconfig.c  # removed: 978 source lines
 Python/pyarena.c
 # Python/pyctype.c  # removed: 214 source lines
 # Python/pyfpe.c  # removed: 18 source lines
