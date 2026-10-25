@@ -44,20 +44,20 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
 
 impl JcirGenPass._native_import_registration_map -> dict[str, list[CgSplice]] {
     manifest = self.module.gen.interop_manifest;
-    if not (manifest and manifest.bindings and manifest.native_imports) {
+    if not (manifest and manifest.bindings) {
         return {};
     }
     reg_map: dict[str, list[CgSplice]] = {};
-    for binding in manifest.native_imports {
-        if binding.name in reg_map {
+    for (local_name, binding) in manifest.bindings.items() {
+        if not binding.native_callable {
             continue;
         }
         src = (
             f"if '__jac_interop_py_funcs__' in globals() "
-            + f"and '{binding.name}' in globals():\n"
-            + f"    __jac_interop_py_funcs__['{binding.name}'] = {binding.name}"
+            + f"and '{local_name}' in globals():\n"
+            + f"    __jac_interop_py_funcs__['{binding.symbol}'] = {local_name}"
         );
-        reg_map[binding.name] = [CgSplice(src=src, offset=0)];
+        reg_map[local_name] = [CgSplice(src=src, offset=0)];
     }
     return reg_map;
 }

@@ -191,6 +191,12 @@ impl CompileOptions.module_projection -> str {
     );
 }
 
+impl CompileOptions.keeps_interfaces -> bool {
+    return not (
+        self.aot_mode or bool(self.force_codespace) or bool(self.default_codespace)
+    );
+}
+
 impl CompileOptions.for_symbols(need_tree: bool = False) -> CompileOptions {
     import copy;
     result = copy.copy(self);

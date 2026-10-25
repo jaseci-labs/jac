@@ -6,5 +6,5 @@ def:pub Editor -> JsxElement;
 
 impl Editor -> JsxElement {
     has bioText: str = "";
-    return <Field value={bioText} onBioChange={lambda (t: str) { bioText = t; }} />;
+    return <Field value={bioText} onBioChange={lambda (t: str) { bioText = t; }}/>;
 }

@@ -26,6 +26,8 @@ obj RunPlan {
     }
 
     def command_line -> str;
+    def build_line -> str;
+    def:priv _target -> str;
 }
 
 def _has_client(config: JacConfig) -> bool;

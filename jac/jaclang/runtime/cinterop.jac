@@ -5,6 +5,7 @@ import os;
 import sys;
 import from ctypes.util { find_library }
 
+def shape_ctype(shape: ScalarShape) -> any;
 def _scalar_ctypes -> dict[str, any];
 
 glob _SCALAR_CTYPES: dict[str, any] = _scalar_ctypes(),

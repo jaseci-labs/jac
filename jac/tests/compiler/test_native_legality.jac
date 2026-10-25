@@ -518,13 +518,19 @@ test "a backend crash is a compiler error, never a placement decision" {
     crashes = [
         e
         for e in prog.errors_had
-        if e.code is not None and e.code.code == "E5092"
+        if e.code is not None and e.code.code == "E9003"
     ];
-    assert crashes , f"a backend crash must surface as an error: {[
+    assert crashes , f"a backend crash must surface as E9003: {[
         str(e) for e in prog.errors_had
     ]}";
-    assert "compiler bug" in (crashes[0].help_text or "");
+    assert "boom" in str(crashes[0]);
+    assert not [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E5092"
+    ] , "a crash must not read as a refusal";
     assert mod.decided_codespace == 'native' , "a crash must not move the module";
+    assert mod.gen.jcir is None , "a crashed module must keep nothing to run";
 }
 
 test "a native type alias is something the native library provides" {

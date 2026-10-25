@@ -2530,7 +2530,17 @@ def _lit_quote_len(text: str, start: int) -> int;
 
 def radix_int(digits: str, base: int) -> int;
 
+def int_literal_digits(text: str) -> tuple[str, int];
+
 def int_literal_value(text: str) -> int;
+
+def int_literal_limbs(text: str) -> (tuple[int, int] | None);
+
+def int_literal_i64(text: str) -> (int | None);
+
+def int_literal_u64_bits(text: str) -> (int | None);
+
+def int_literal_float(text: str) -> float;
 
 def _hex_escape_value(text: str, at: int, width: int, kind: str) -> int;
 

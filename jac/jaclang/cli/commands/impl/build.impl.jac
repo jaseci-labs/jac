@@ -208,9 +208,8 @@ impl _build_app(
         }
     }
     entry_path = entry_override or (plan.entry_path if plan is not None else "");
-    kind_builds = plan is not None and plan.action == "build";
+    builds_native = plan is not None and plan.verb == "native";
     plan_flags: dict[str, any] = plan.flags if plan is not None else {};
-    plan_verb = plan.verb if plan is not None else "";
     spec = plan.spec if plan is not None else None;
     client_artifact = projection == "client"
         or (
@@ -257,7 +256,7 @@ impl _build_app(
         );
     }
 
-    if kind_builds and plan_verb == "native" {
+    if builds_native {
         import from jaclang.cli.commands.native_build { native_build }
         if not entry_path or not os.path.isfile(entry_path) {
             console.error(
@@ -277,7 +276,7 @@ impl _build_app(
             os.makedirs(out_dir, exist_ok=True);
         }
         return native_build(
-            filename=entry_path, output=out, lib=bool(plan_flags.get("shared", False))
+            filename=entry_path, output=out, lib=bool(plan_flags.get("lib", False))
         );
     }
 
@@ -288,12 +287,7 @@ impl _build_app(
         );
         return 1;
     }
-    if (
-        projection == "jab"
-        and kind_builds
-        and plan_verb == "build"
-        and plan_flags.get("as") in ("wheel", "npm")
-    ) {
+    if projection == "jab" and plan_flags.get("as") in ("wheel", "npm") {
         projection = str(plan_flags["as"]);
     }
 

@@ -604,9 +604,7 @@ impl IfaceRegistry._replay_records(prof: dict[str, any], err0: int, warn0: int) 
 }
 
 impl IfaceRegistry.eligible(compiler: any, resolved: str, options: any) -> bool {
-    if options.aot_mode
-        or bool(options.force_codespace)
-        or bool(options.default_codespace) {
+    if not options.keeps_interfaces() {
         return False;
     }
     if not _interface_source_path(resolved) {

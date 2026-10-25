@@ -2611,7 +2611,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if binding is not None
             and func_name not in self.generic_fns
             and (
-                binding.source_context.value == "server"
+                binding.native_callable
                 or (
                     binding.source_context.value == "native"
                     and binding.source_module is not None
@@ -2653,7 +2653,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             if sig.return_type is None and clib_import_of(sig) is not None {
                 ret_ir_type = ir.VoidType();
             }
-            _extern_sym = func_name;
+            _extern_sym = binding.symbol if binding.native_callable else func_name;
             if binding.source_context.value == "native" and _src_ab is not None {
                 _extern_sym = self._symbol_for(
                     func_name,
