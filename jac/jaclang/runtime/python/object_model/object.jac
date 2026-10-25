@@ -115,7 +115,7 @@ import from c {
          _Py_FalseStruct: PyObject,
          _Py_EllipsisObject: PyObject; def Py_EnterRecursiveCall(
         where: ptr[u8]
-    ) -> i32;  def Py_FatalError(message: str);  def _PyType_LookupStackRefAndVersion(
+    ) -> i32;  def Py_FatalError(message: ptr[u8]);  def _PyType_LookupStackRefAndVersion(
         type: ptr[PyTypeObject], name: ptr[PyObject], out: &mut u64
     ) -> u32;  def _Py_type_getattro(
         type: ptr[PyObject], name: ptr[PyObject]
@@ -913,7 +913,7 @@ import from c {
             fprintf(err, "\n");
             fflush(err);
         }
-        Py_FatalError("_PyObject_AssertFailed");
+        Py_FatalError(ptr[u8]("_PyObject_AssertFailed"));
     }
 }
 

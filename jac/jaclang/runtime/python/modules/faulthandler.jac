@@ -10,7 +10,7 @@ import from c {
     ) -> i32;  def setrlimit(resource: i32, limit: &mut rlimit) -> i32;  def memset(
         target: ptr, value: i32, size: u64
     ) -> ptr;  def memcpy(target: ptr, source: ptr, size: u64) -> ptr;  def Py_FatalError(
-        message: str
+        message: ptr[u8]
     );  def _Py_write_noraise(fd: i32, buf: ptr, count: u64) -> i64;  def _Py_DumpTraceback(
         fd: i32, tstate: ptr[PyThreadState]
     );  def _Py_DumpTracebackThreads(
@@ -1176,7 +1176,7 @@ impl faulthandler_sigsegv(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyOb
 }
 
 impl faulthandler_fatal_error_thread(plock: ptr) {
-    Py_FatalError("in new thread");
+    Py_FatalError(ptr[u8]("in new thread"));
 }
 
 impl faulthandler_fatal_error_c_thread(

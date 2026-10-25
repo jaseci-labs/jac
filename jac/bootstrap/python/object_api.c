@@ -2010,3 +2010,112 @@ _PyObject_CallMethod_SizeT(PyObject *obj, const char *name,
     Py_DECREF(callable);
     return retval;
 }
+
+/* _PyRuntime, as Python/pylifecycle.c defines it. Its initializer,
+ * _PyRuntimeState_INIT, is the generated static form of every statically
+ * allocated object (the small ints, the _Py_ID/_Py_STR strings, the empty
+ * singletons), which only the C preprocessor builds. The rest of
+ * pylifecycle.c is interpreter/lifecycle.jac. */
+#include "internal/pycore_ceval.h"
+#include "internal/pycore_initconfig.h"
+#include "internal/pycore_runtime_init.h"
+
+_Py_COMP_DIAG_PUSH
+_Py_COMP_DIAG_IGNORE_DEPR_DECLS
+GENERATE_DEBUG_SECTION(PyRuntime, _PyRuntimeState _PyRuntime)
+= _PyRuntimeState_INIT(_PyRuntime, _Py_Debug_Cookie);
+_Py_COMP_DIAG_POP
+
+/* init_apple_streams() of Python/pylifecycle.c: os_log_with_type expands to
+ * compiler builtins that format the record at compile time, so the macOS
+ * system-log streams stay C. interpreter/lifecycle.jac calls this where
+ * pylifecycle.c calls init_apple_streams(); it reads config->use_system_logger
+ * itself, since that field exists only on Apple platforms. */
+#if defined(__APPLE__)
+#  include <AvailabilityMacros.h>
+#  include <TargetConditionals.h>
+#  if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#    define JACPY_APPLE_SYSTEM_LOG 1
+#  elif defined(TARGET_OS_OSX) && TARGET_OS_OSX
+#    if defined(MAC_OS_X_VERSION_10_12) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_12
+#      define JACPY_APPLE_SYSTEM_LOG 1
+#    else
+#      define JACPY_APPLE_SYSTEM_LOG 0
+#    endif
+#  else
+#    define JACPY_APPLE_SYSTEM_LOG 0
+#  endif
+#else
+#  define JACPY_APPLE_SYSTEM_LOG 0
+#endif
+
+#if JACPY_APPLE_SYSTEM_LOG
+#include <os/log.h>
+
+static PyObject *
+apple_log_write_impl(PyObject *self, PyObject *args)
+{
+    int logtype = 0;
+    const char *text = NULL;
+    if (!PyArg_ParseTuple(args, "iy", &logtype, &text)) {
+        return NULL;
+    }
+
+    // Pass the user-provided text through explicit %s formatting
+    // to avoid % literals being interpreted as a formatting directive.
+    // Using {public} ensures "dynamic" string messages are visible
+    // in the log without special configuration.
+    os_log_with_type(OS_LOG_DEFAULT, logtype, "%{public}s", text);
+    Py_RETURN_NONE;
+}
+
+static PyMethodDef apple_log_write_method = {
+    "apple_log_write", apple_log_write_impl, METH_VARARGS
+};
+#endif
+
+PyStatus
+jacpy_apple_streams(PyThreadState *tstate)
+{
+    PyStatus status = _PyStatus_OK();
+#if JACPY_APPLE_SYSTEM_LOG
+    const PyConfig *config = _PyInterpreterState_GetConfig(tstate->interp);
+    if (!config->use_system_logger) {
+        return status;
+    }
+    PyObject *_apple_support = NULL;
+    PyObject *apple_log_write = NULL;
+    PyObject *result = NULL;
+
+    _apple_support = PyImport_ImportModule("_apple_support");
+    if (_apple_support == NULL) {
+        goto error;
+    }
+
+    apple_log_write = PyCFunction_New(&apple_log_write_method, NULL);
+    if (apple_log_write == NULL) {
+        goto error;
+    }
+
+    // Initialize the logging streams, sending stdout -> Default; stderr -> Error
+    result = PyObject_CallMethod(
+        _apple_support, "init_streams", "Oii",
+        apple_log_write, OS_LOG_TYPE_DEFAULT, OS_LOG_TYPE_ERROR);
+    if (result == NULL) {
+        goto error;
+    }
+    goto done;
+
+error:
+    _PyErr_Print(tstate);
+    status = _PyStatus_ERR("failed to initialize Apple log streams");
+
+done:
+    Py_XDECREF(result);
+    Py_XDECREF(apple_log_write);
+    Py_XDECREF(_apple_support);
+#else
+    (void)tstate;
+#endif
+    return status;
+}

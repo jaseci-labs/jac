@@ -17963,6 +17963,73 @@ graph import runtime.python {
             _PyObject_New,
             _PyRuntime
         },
+        interpreter.lifecycle {
+            NULL,
+            PyBaseObject_Type,
+            PyDict_Clear,
+            PyDict_Copy,
+            PyDict_GetItemStringRef,
+            PyDict_GetItemWithError,
+            PyDict_Next,
+            PyDict_SetItemString,
+            PyDict_Update,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_FormatUnraisable,
+            PyErr_Occurred,
+            PyErr_Print,
+            PyErr_WarnEx,
+            PyExc_AssertionError,
+            PyExc_NotImplementedError,
+            PyExc_OSError,
+            PyExc_RuntimeWarning,
+            PyException_GetTraceback,
+            PyInterpreterState,
+            PyInterpreterState_Get,
+            PyIter_Next,
+            PyList_Append,
+            PyList_Insert,
+            PyList_New,
+            PyList_Size,
+            PyList_Type,
+            PyModule_GetDict,
+            PyMutex,
+            PyMutex_Lock,
+            PyMutex_Unlock,
+            PyObject,
+            PyObject_CallMethodObjArgs,
+            PyObject_GetAttr,
+            PyObject_GetAttrString,
+            PyObject_GetItem,
+            PyObject_GetIter,
+            PyObject_IsTrue,
+            PyObject_SetAttr,
+            PyObject_SetAttrString,
+            PyObject_SetItem,
+            PyThreadState,
+            PyThreadState_Swap,
+            PyTuple_Pack,
+            PyTuple_Type,
+            PyUnicode_AsUTF8,
+            PyUnicode_Compare,
+            PyUnicode_CompareWithASCIIString,
+            PyUnicode_FromString,
+            PyUnicode_FromWideChar,
+            PyWeakref_NewRef,
+            Py_None,
+            _PyEval_StartTheWorldAll,
+            _PyEval_StopTheWorldAll,
+            _PyInterpreterState_Main,
+            _PyRuntime,
+            _PyRuntimeState,
+            _PyThreadState_DeleteList,
+            _PyThreadState_RemoveExcept,
+            _Py_FalseStruct,
+            _Py_TrueStruct,
+            _Py_fstat_noraise,
+            jacpy_runtime_head_lock,
+            jacpy_runtime_head_unlock
+        },
         interpreter.lock {
             PyMem_RawCalloc,
             PyMem_RawFree,
@@ -18143,6 +18210,13 @@ graph import runtime.python {
             PyThreadState,
             PyTuple_GetItem,
             _PyRuntime
+        },
+        interpreter.pathconfig {
+            PyErr_NoMemory,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyObject,
+            PyUnicode_FromWideChar
         },
         interpreter.pystate {
             NULL,
@@ -25583,6 +25657,17 @@ graph import runtime.python {
             Py_tp_str
         },
         bindings.type { PyGetSetDef },
+        interpreter.buildinfo {
+            JAC_CLANG_MAJOR,
+            JAC_CLANG_MINOR,
+            JAC_CLANG_PATCHLEVEL,
+            PY_MAJOR_VERSION,
+            PY_MICRO_VERSION,
+            PY_MINOR_VERSION,
+            PY_RELEASE_LEVEL,
+            PY_RELEASE_SERIAL,
+            PY_VERSION_HEX
+        },
         interpreter.ceval {
             CO_VARARGS,
             CO_VARKEYWORDS,
@@ -25895,6 +25980,69 @@ graph import runtime.python {
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _object
         },
+        interpreter.lifecycle {
+            CONSTANT_ASSERTIONERROR,
+            CONSTANT_BUILTIN_ALL,
+            CONSTANT_BUILTIN_ANY,
+            CONSTANT_BUILTIN_TUPLE,
+            CONSTANT_NOTIMPLEMENTEDERROR,
+            NEXITFUNCS,
+            PyInterpreterConfig_ALLOW_DAEMON_THREADS,
+            PyInterpreterConfig_ALLOW_EXEC,
+            PyInterpreterConfig_ALLOW_FORK,
+            PyInterpreterConfig_ALLOW_THREADS,
+            PyInterpreterConfig_CHECK_MULTI_INTERP_EXTENSIONS,
+            PyInterpreterConfig_DEFAULT_GIL,
+            PyInterpreterConfig_GIL_FIELD,
+            PyInterpreterConfig_OWN_GIL,
+            PyInterpreterConfig_SHARED_GIL,
+            PyInterpreterConfig_USE_MAIN_OBMALLOC,
+            PyListObject,
+            PyStatus,
+            PyThreadState_INTERP,
+            PyTypeObject,
+            PyWideStringList_ITEMS,
+            PyWideStringList_LENGTH,
+            Py_RTFLAGS_DAEMON_THREADS,
+            Py_RTFLAGS_EXEC,
+            Py_RTFLAGS_FORK,
+            Py_RTFLAGS_MULTI_INTERP_EXTENSIONS,
+            Py_RTFLAGS_THREADS,
+            Py_RTFLAGS_USE_MAIN_OBMALLOC,
+            _PyArgv_ARGC,
+            _PyArgv_BYTES_ARGV,
+            _PyArgv_USE_BYTES_ARGV,
+            _PyArgv_WCHAR_ARGV,
+            _PyInterpreterConfig_LEGACY_CHECK_MULTI_INTERP_EXTENSIONS,
+            _PyInterpreterState_WHENCE_CAPI,
+            _PyInterpreterState_WHENCE_LEGACY_CAPI,
+            _PyInterpreterState_WHENCE_RUNTIME,
+            _PyStatus_TYPE_ERROR,
+            _PyStatus_TYPE_EXIT,
+            _PyStatus_TYPE_OK,
+            _PyThreadState_WHENCE_FINI,
+            _PyThreadState_WHENCE_INIT,
+            _Py_ID_TextIOWrapper,
+            _Py_ID___getattribute__,
+            _Py_ID___main__,
+            _Py_ID__shutdown,
+            _Py_ID_all,
+            _Py_ID_any,
+            _Py_ID_append,
+            _Py_ID_clear,
+            _Py_ID_isatty,
+            _Py_ID_isinstance,
+            _Py_ID_len,
+            _Py_ID_mode,
+            _Py_ID_name,
+            _Py_ID_open,
+            _Py_ID_path,
+            _Py_ID_raw,
+            _Py_ID_stderr,
+            _Py_ID_stdin,
+            _Py_ID_stdout,
+            _Py_ID_threading
+        },
         interpreter.lock {
             PY_LOCK_ACQUIRED,
             PY_LOCK_FAILURE,
@@ -26123,6 +26271,13 @@ graph import runtime.python {
             PyTypeObject,
             _Py_ID___annotations__,
             _object
+        },
+        interpreter.pathconfig {
+            PyStatus,
+            PyWideStringList_ITEMS,
+            PyWideStringList_LENGTH,
+            _PyStatus_TYPE_ERROR,
+            _PyStatus_TYPE_OK
         },
         interpreter.perf_trampoline | modules.posix_core {
             PyStatus,
@@ -29074,6 +29229,7 @@ graph import runtime.python {
     ]
     layouts_platform ++> [
         bindings.signal { Py_NSIG },
+        interpreter.buildinfo { MI_PLATFORM_LINUX },
         interpreter.ceval {
             MI_PLATFORM_LINUX,
             PyInterpreterState_BUILTINS,
@@ -29190,6 +29346,70 @@ graph import runtime.python {
             PyThreadState_NEXT,
             _PyInterpreterFrame_FRAME_OBJ
         },
+        interpreter.lifecycle {
+            CODESET,
+            LC_ALL,
+            LC_CTYPE,
+            PyConfig_ARGV,
+            PyConfig_BUFFERED_STDIO,
+            PyConfig_FAULTHANDLER,
+            PyConfig_INIT_MAIN,
+            PyConfig_INSTALL_IMPORTLIB,
+            PyConfig_INSTALL_SIGNAL_HANDLERS,
+            PyConfig_INTERACTIVE,
+            PyConfig_INT_MAX_STR_DIGITS,
+            PyConfig_MALLOC_STATS,
+            PyConfig_PARSE_ARGV,
+            PyConfig_PATHCONFIG_WARNINGS,
+            PyConfig_SITE_IMPORT,
+            PyConfig_SIZE,
+            PyConfig_STDIO_ENCODING,
+            PyConfig_STDIO_ERRORS,
+            PyConfig_SYS_PATH_0,
+            PyConfig_TRACEMALLOC,
+            PyConfig_VERBOSE,
+            PyInterpreterState_BUILTINS,
+            PyInterpreterState_BUILTINS_COPY,
+            PyInterpreterState_CALLABLE_CACHE_ISINSTANCE,
+            PyInterpreterState_CALLABLE_CACHE_LEN,
+            PyInterpreterState_CALLABLE_CACHE_LIST_APPEND,
+            PyInterpreterState_CALLABLE_CACHE_OBJECT_GETATTRIBUTE,
+            PyInterpreterState_COMMON_CONSTS,
+            PyInterpreterState_CONFIG,
+            PyInterpreterState_DICT_WATCHERS,
+            PyInterpreterState_FEATURE_FLAGS,
+            PyInterpreterState_FINALIZING,
+            PyInterpreterState_FINALIZING_FLAG,
+            PyInterpreterState_FINALIZING_ID,
+            PyInterpreterState_FREELISTS,
+            PyInterpreterState_JIT,
+            PyInterpreterState_LONG_MAX_STR_DIGITS,
+            PyInterpreterState_NEXT,
+            PyInterpreterState_RARE_BUILTIN_DICT,
+            PyInterpreterState_READY,
+            PyInterpreterState_RUNTIME,
+            PyInterpreterState_SYSDICT,
+            PyThreadState_CURRENT_FRAME,
+            PyThreadState_NEXT,
+            PyThreadState_THREAD_ID,
+            _PyRuntimeState_ATEXIT_CALLBACKS,
+            _PyRuntimeState_ATEXIT_MUTEX,
+            _PyRuntimeState_ATEXIT_NCALLBACKS,
+            _PyRuntimeState_CORE_INITIALIZED,
+            _PyRuntimeState_FINALIZING,
+            _PyRuntimeState_FINALIZING_ID,
+            _PyRuntimeState_GILSTATE_CHECK_ENABLED,
+            _PyRuntimeState_INITIALIZED,
+            _PyRuntimeState_INTERPRETERS_HEAD,
+            _PyRuntimeState_MAIN_TSTATE,
+            _PyRuntimeState_PRECONFIG_COERCE_C_LOCALE_WARN,
+            _PyRuntimeState_PREINITIALIZED,
+            _PyRuntimeState_PREINITIALIZING,
+            _PyThreadStateImpl_C_STACK_HARD_LIMIT,
+            sigaction_SA_FLAGS,
+            sigaction_SA_HANDLER,
+            sigaction_SA_MASK
+        },
         interpreter.lock {
             EINTR,
             ETIMEDOUT,
@@ -29285,6 +29505,17 @@ graph import runtime.python {
             _PyInterpreterFrame_F_LOCALS,
             _PyInterpreterFrame_LOCALSPLUS,
             _PyRuntimeState_GLOBAL_STRINGS
+        },
+        interpreter.pathconfig {
+            MAXPATHLEN,
+            PyConfig_EXECUTABLE,
+            PyConfig_EXEC_PREFIX,
+            PyConfig_HOME,
+            PyConfig_IS_PYTHON_BUILD,
+            PyConfig_MODULE_SEARCH_PATHS,
+            PyConfig_PREFIX,
+            PyConfig_PROGRAM_NAME,
+            PyConfig_STDLIB_DIR
         },
         interpreter.pystate {
             PyConfig_VERBOSE,
@@ -32108,7 +32339,10 @@ graph import runtime.python {
             signal_handler
         },
     ]
-    modules.signal_constants ++> bindings.signal { CONSTANTS, SIGINT }
+    modules.signal_constants ++> [
+        bindings.signal { CONSTANTS, SIGINT },
+        interpreter.lifecycle { SA_ONSTACK },
+    ]
     modules.signal_platform ++> bindings.signal {
         HAS_PIDFD_SEND_SIGNAL,
         HAS_RT_SIGNALS,
@@ -32636,6 +32870,7 @@ graph import runtime.python {
         UF_TRACKED
     }
     modules.stat_records ++> cpython_api
+        | interpreter.lifecycle
         | object_model.bootstrap_hash
         | object_model.fileutils { _Py_stat_struct }
     modules.statistics ++> bindings.clinic.statistics {
@@ -33039,7 +33274,9 @@ graph import runtime.python {
         },
     ]
     object_model.call ++> [
-        interpreter.gc | interpreter.ops_build { exception_raised },
+        interpreter.gc | interpreter.lifecycle | interpreter.ops_build {
+            exception_raised
+        },
         interpreter.instrumentation { vectorcall_tstate },
     ]
     object_model.capsule ++> [
@@ -33068,6 +33305,7 @@ graph import runtime.python {
     }
     object_model.dict ++> [
         interpreter.gc { object_is_immortal },
+        interpreter.lifecycle { dict_check },
         interpreter.ops_attr { add_to_insertion_order, notify_event },
         interpreter.specialize {
             dk_is_unicode,
@@ -33184,6 +33422,15 @@ graph import runtime.python {
             object_type_check,
             object_xdecref,
             tuple_set_item
+        },
+        interpreter.lifecycle {
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_xdecref,
+            tuple_get_item
         },
         interpreter.lock | modules.posix_core { current_tstate },
         interpreter.ops { tuple_get_item },
@@ -33315,7 +33562,7 @@ graph import runtime.python {
         },
     ]
     object_model.iterator ++> modules.sre { PyCallIter_New }
-    object_model.list ++> modules.warnings { list_check }
+    object_model.list ++> interpreter.lifecycle | modules.warnings { list_check }
     object_model.long ++> [
         interpreter.ops { get_small_int },
         interpreter.specialize {
@@ -33327,9 +33574,10 @@ graph import runtime.python {
         modules.warnings { long_zero },
     ]
     object_model.method ++> bindings.functools { PyMethod_New }
-    object_model.module ++> bindings.faulthandler | bindings.signal | bindings.thread {
-        PyModuleDef_Init
-    }
+    object_model.module ++> [
+        bindings.faulthandler | bindings.signal | bindings.thread { PyModuleDef_Init },
+        interpreter.lifecycle { module_check, module_get_dict },
+    ]
     object_model.namespace ++> modules.time { _PyNamespace_New }
     object_model.object ++> [
         interpreter.gc {
@@ -33339,7 +33587,7 @@ graph import runtime.python {
             object_is_gc,
             var_size
         },
-        interpreter.instrumentation { unicode_check },
+        interpreter.instrumentation | interpreter.lifecycle { unicode_check },
         interpreter.ops_arith | interpreter.stackref { reftracer_track },
         interpreter.ops_attr { managed_dict },
         interpreter.pystate { py_none },
@@ -33360,6 +33608,7 @@ graph import runtime.python {
         pytime_monotonic,
         pytime_system
     }
+    object_model.set ++> interpreter.lifecycle { frozenset_check }
     object_model.slice ++> modules.elementtree | modules.sqlite3 {
         PySlice_AdjustIndices,
         PySlice_Unpack
@@ -33392,6 +33641,7 @@ graph import runtime.python {
     object_model.type ++> [
         interpreter.ceval { dict_check_exact, py_id, tuple_check, tuple_check_exact },
         interpreter.gc { inline_values_size, type_preheader_size },
+        interpreter.lifecycle { dict_check_exact, py_id, weakref_get_ref },
         interpreter.ops_iter
             | interpreter.pystate
             | interpreter.specialize

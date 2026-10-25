@@ -5,7 +5,7 @@ import from c {
         runtime: ptr[_PyRuntimeState]
     ) -> PyStatus;  def _PyPerfTrampoline_AfterFork_Child -> PyStatus;  def Py_ExitStatusException(
         status: PyStatus
-    );  def _Py_FatalErrorFunc(function: str, message: str);
+    );  def _Py_FatalErrorFunc(function: ptr[u8], message: ptr[u8]);
 }
 import from c {
     def wcslen(text: ptr) -> u64;  def strlen(text: ptr[u8]) -> u64;  def sigemptyset(
@@ -408,8 +408,10 @@ import from c {
         tstate = current_tstate();
         if not tstate {
             _Py_FatalErrorFunc(
-                "PyOS_AfterFork_Child",
-                "the function must be called with the GIL held, after Python initialization and before Python finalization, but the GIL is released (the current Python thread state is NULL)"
+                ptr[u8]("PyOS_AfterFork_Child"),
+                ptr[u8](
+                    "the function must be called with the GIL held, after Python initialization and before Python finalization, but the GIL is released (the current Python thread state is NULL)"
+                )
             );
         }
         jacpy_thread_state_native_id(tstate);

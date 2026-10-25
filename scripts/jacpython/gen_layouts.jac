@@ -253,7 +253,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "opcode.h",
          "internal/pycore_hamt.h",
          "internal/pycore_context.h",
-         "osdefs.h"
+         "osdefs.h",
+         "internal/pycore_initconfig.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -3940,7 +3941,143 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("_Py_THREAD_SHUTTING_DOWN", "_Py_THREAD_SHUTTING_DOWN", "i32"),
          ("PyGILState_LOCKED", "PyGILState_LOCKED", "i32"),
          ("PyGILState_UNLOCKED", "PyGILState_UNLOCKED", "i32"),
-         ("_PY_DATA_STACK_CHUNK_SIZE", "_PY_DATA_STACK_CHUNK_SIZE", "i64")
+         ("_PY_DATA_STACK_CHUNK_SIZE", "_PY_DATA_STACK_CHUNK_SIZE", "i64"),
+         (
+             "PyInterpreterConfig_USE_MAIN_OBMALLOC",
+             "offsetof(PyInterpreterConfig, use_main_obmalloc)",
+             "i64"
+         ),
+         (
+             "PyInterpreterConfig_ALLOW_FORK",
+             "offsetof(PyInterpreterConfig, allow_fork)",
+             "i64"
+         ),
+         (
+             "PyInterpreterConfig_ALLOW_EXEC",
+             "offsetof(PyInterpreterConfig, allow_exec)",
+             "i64"
+         ),
+         (
+             "PyInterpreterConfig_ALLOW_THREADS",
+             "offsetof(PyInterpreterConfig, allow_threads)",
+             "i64"
+         ),
+         (
+             "PyInterpreterConfig_ALLOW_DAEMON_THREADS",
+             "offsetof(PyInterpreterConfig, allow_daemon_threads)",
+             "i64"
+         ),
+         (
+             "PyInterpreterConfig_CHECK_MULTI_INTERP_EXTENSIONS",
+             "offsetof(PyInterpreterConfig, check_multi_interp_extensions)",
+             "i64"
+         ),
+         ("PyInterpreterConfig_GIL_FIELD", "offsetof(PyInterpreterConfig, gil)", "i64"),
+         ("PyInterpreterConfig_SIZE", "sizeof(PyInterpreterConfig)", "i64"),
+         ("PyInterpreterConfig_DEFAULT_GIL", "PyInterpreterConfig_DEFAULT_GIL", "i32"),
+         ("PyInterpreterConfig_SHARED_GIL", "PyInterpreterConfig_SHARED_GIL", "i32"),
+         ("PyInterpreterConfig_OWN_GIL", "PyInterpreterConfig_OWN_GIL", "i32"),
+         (
+             "_PyInterpreterConfig_LEGACY_CHECK_MULTI_INTERP_EXTENSIONS",
+             "_PyInterpreterConfig_LEGACY_CHECK_MULTI_INTERP_EXTENSIONS",
+             "i32"
+         ),
+         ("PyPreConfig_SIZE", "sizeof(PyPreConfig)", "i64"),
+         ("_PyArgv_ARGC", "offsetof(_PyArgv, argc)", "i64"),
+         ("_PyArgv_USE_BYTES_ARGV", "offsetof(_PyArgv, use_bytes_argv)", "i64"),
+         ("_PyArgv_BYTES_ARGV", "offsetof(_PyArgv, bytes_argv)", "i64"),
+         ("_PyArgv_WCHAR_ARGV", "offsetof(_PyArgv, wchar_argv)", "i64"),
+         ("_PyArgv_SIZE", "sizeof(_PyArgv)", "i64"),
+         ("PyWideStringList_LENGTH", "offsetof(PyWideStringList, length)", "i64"),
+         ("PyWideStringList_ITEMS", "offsetof(PyWideStringList, items)", "i64"),
+         ("_PyStatus_TYPE_EXIT", "_PyStatus_TYPE_EXIT", "u32"),
+         ("Py_RTFLAGS_FORK", "Py_RTFLAGS_FORK", "u64"),
+         ("Py_RTFLAGS_EXEC", "Py_RTFLAGS_EXEC", "u64"),
+         (
+             "Py_RTFLAGS_MULTI_INTERP_EXTENSIONS",
+             "Py_RTFLAGS_MULTI_INTERP_EXTENSIONS",
+             "u64"
+         ),
+         (
+             "_PyInterpreterState_WHENCE_RUNTIME",
+             "_PyInterpreterState_WHENCE_RUNTIME",
+             "i64"
+         ),
+         (
+             "_PyInterpreterState_WHENCE_LEGACY_CAPI",
+             "_PyInterpreterState_WHENCE_LEGACY_CAPI",
+             "i64"
+         ),
+         ("_PyInterpreterState_WHENCE_CAPI", "_PyInterpreterState_WHENCE_CAPI", "i64"),
+         ("_PyThreadState_WHENCE_INIT", "_PyThreadState_WHENCE_INIT", "i32"),
+         ("CONSTANT_NOTIMPLEMENTEDERROR", "CONSTANT_NOTIMPLEMENTEDERROR", "i32"),
+         ("CONSTANT_BUILTIN_TUPLE", "CONSTANT_BUILTIN_TUPLE", "i32"),
+         ("CONSTANT_BUILTIN_ALL", "CONSTANT_BUILTIN_ALL", "i32"),
+         ("CONSTANT_BUILTIN_ANY", "CONSTANT_BUILTIN_ANY", "i32"),
+         ("NEXITFUNCS", "NEXITFUNCS", "i64"),
+         ("PY_VERSION_HEX", "PY_VERSION_HEX", "u64"),
+         ("PY_MAJOR_VERSION", "PY_MAJOR_VERSION", "i32"),
+         ("PY_MICRO_VERSION", "PY_MICRO_VERSION", "i32"),
+         ("PY_RELEASE_LEVEL", "PY_RELEASE_LEVEL", "i32"),
+         ("PY_RELEASE_SERIAL", "PY_RELEASE_SERIAL", "i32"),
+         ("JAC_CLANG_MAJOR", "__clang_major__", "i32"),
+         ("JAC_CLANG_MINOR", "__clang_minor__", "i32"),
+         ("JAC_CLANG_PATCHLEVEL", "__clang_patchlevel__", "i32"),
+         (
+             "_Py_ID_isinstance",
+             "offsetof(struct _Py_global_strings, identifiers._py_isinstance)",
+             "i64"
+         ),
+         (
+             "_Py_ID_len",
+             "offsetof(struct _Py_global_strings, identifiers._py_len)",
+             "i64"
+         ),
+         (
+             "_Py_ID_all",
+             "offsetof(struct _Py_global_strings, identifiers._py_all)",
+             "i64"
+         ),
+         (
+             "_Py_ID_any",
+             "offsetof(struct _Py_global_strings, identifiers._py_any)",
+             "i64"
+         ),
+         (
+             "_Py_ID_append",
+             "offsetof(struct _Py_global_strings, identifiers._py_append)",
+             "i64"
+         ),
+         (
+             "_Py_ID_clear",
+             "offsetof(struct _Py_global_strings, identifiers._py_clear)",
+             "i64"
+         ),
+         (
+             "_Py_ID_threading",
+             "offsetof(struct _Py_global_strings, identifiers._py_threading)",
+             "i64"
+         ),
+         (
+             "_Py_ID__shutdown",
+             "offsetof(struct _Py_global_strings, identifiers._py__shutdown)",
+             "i64"
+         ),
+         (
+             "_Py_ID_raw",
+             "offsetof(struct _Py_global_strings, identifiers._py_raw)",
+             "i64"
+         ),
+         (
+             "_Py_ID_isatty",
+             "offsetof(struct _Py_global_strings, identifiers._py_isatty)",
+             "i64"
+         ),
+         (
+             "_Py_ID_mode",
+             "offsetof(struct _Py_global_strings, identifiers._py_mode)",
+             "i64"
+         )
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -5495,7 +5632,106 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "PyInterpreterState_RARE_SET_EVAL_FRAME_FUNC",
              "offsetof(PyInterpreterState, rare_events.set_eval_frame_func)",
              "i64"
-         )
+         ),
+         (
+             "_PyRuntimeState_INITIALIZED",
+             "offsetof(_PyRuntimeState, initialized)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_CORE_INITIALIZED",
+             "offsetof(_PyRuntimeState, core_initialized)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_PREINITIALIZED",
+             "offsetof(_PyRuntimeState, preinitialized)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_PREINITIALIZING",
+             "offsetof(_PyRuntimeState, preinitializing)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FINALIZING_ID",
+             "offsetof(_PyRuntimeState, _finalizing_id)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ATEXIT_NCALLBACKS",
+             "offsetof(_PyRuntimeState, atexit.ncallbacks)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ATEXIT_CALLBACKS",
+             "offsetof(_PyRuntimeState, atexit.callbacks)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_PRECONFIG_COERCE_C_LOCALE_WARN",
+             "offsetof(_PyRuntimeState, preconfig.coerce_c_locale_warn)",
+             "i64"
+         ),
+         ("PyInterpreterState_READY", "offsetof(PyInterpreterState, _ready)", "i64"),
+         (
+             "PyInterpreterState_FINALIZING_FLAG",
+             "offsetof(PyInterpreterState, finalizing)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_FINALIZING_ID",
+             "offsetof(PyInterpreterState, _finalizing_id)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_RARE_BUILTIN_DICT",
+             "offsetof(PyInterpreterState, rare_events.builtin_dict)",
+             "i64"
+         ),
+         ("PyConfig_SIZE", "sizeof(PyConfig)", "i64"),
+         (
+             "PyConfig_INSTALL_IMPORTLIB",
+             "offsetof(PyConfig, _install_importlib)",
+             "i64"
+         ),
+         ("PyConfig_INIT_MAIN", "offsetof(PyConfig, _init_main)", "i64"),
+         ("PyConfig_PARSE_ARGV", "offsetof(PyConfig, parse_argv)", "i64"),
+         ("PyConfig_ARGV", "offsetof(PyConfig, argv)", "i64"),
+         (
+             "PyConfig_INSTALL_SIGNAL_HANDLERS",
+             "offsetof(PyConfig, install_signal_handlers)",
+             "i64"
+         ),
+         ("PyConfig_FAULTHANDLER", "offsetof(PyConfig, faulthandler)", "i64"),
+         ("PyConfig_TRACEMALLOC", "offsetof(PyConfig, tracemalloc)", "i64"),
+         ("PyConfig_SITE_IMPORT", "offsetof(PyConfig, site_import)", "i64"),
+         ("PyConfig_BUFFERED_STDIO", "offsetof(PyConfig, buffered_stdio)", "i64"),
+         ("PyConfig_INTERACTIVE", "offsetof(PyConfig, interactive)", "i64"),
+         (
+             "PyConfig_INT_MAX_STR_DIGITS",
+             "offsetof(PyConfig, int_max_str_digits)",
+             "i64"
+         ),
+         ("PyConfig_MALLOC_STATS", "offsetof(PyConfig, malloc_stats)", "i64"),
+         (
+             "PyConfig_PATHCONFIG_WARNINGS",
+             "offsetof(PyConfig, pathconfig_warnings)",
+             "i64"
+         ),
+         ("PyConfig_PREFIX", "offsetof(PyConfig, prefix)", "i64"),
+         ("PyConfig_EXEC_PREFIX", "offsetof(PyConfig, exec_prefix)", "i64"),
+         ("PyConfig_STDLIB_DIR", "offsetof(PyConfig, stdlib_dir)", "i64"),
+         ("PyConfig_PROGRAM_NAME", "offsetof(PyConfig, program_name)", "i64"),
+         ("PyConfig_HOME", "offsetof(PyConfig, home)", "i64"),
+         ("PyConfig_EXECUTABLE", "offsetof(PyConfig, executable)", "i64"),
+         ("PyConfig_IS_PYTHON_BUILD", "offsetof(PyConfig, _is_python_build)", "i64"),
+         (
+             "PyConfig_MODULE_SEARCH_PATHS",
+             "offsetof(PyConfig, module_search_paths)",
+             "i64"
+         ),
+         ("LC_ALL", "LC_ALL", "i32")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

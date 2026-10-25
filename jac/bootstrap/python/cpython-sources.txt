@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 243 C files / 418,572 lines; 163 headers / 155,308 lines.
-#   Total: 406 files / 573,880 source lines.
+#   Excluded: 252 C files / 423,103 lines; 163 headers / 155,308 lines.
+#   Total: 415 files / 578,411 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -359,7 +359,7 @@ Python/crossinterp.c
 Python/crossinterp_data_lookup.h
 Python/crossinterp_exceptions.h
 # Python/dtoa.c  # removed: 2,843 source lines
-Python/dynamic_annotations.c
+# Python/dynamic_annotations.c  # removed: 154 source lines
 Python/dynload_shlib.c
 # Python/errors.c  # removed: 2,069 source lines
 # Python/executor_cases.c.h  # pruned: 7,163 source lines
@@ -369,18 +369,18 @@ Python/dynload_shlib.c
 # Python/frame.c  # removed: 159 source lines
 Python/frozen.c
 Python/frozen_modules/
-Python/frozenmain.c
+# Python/frozenmain.c  # removed: 99 source lines
 # Python/future.c  # removed: 119 source lines
 # Python/gc.c  # removed: 2,057 source lines
 # Python/gc_free_threading.c  # removed: 3,006 source lines
 # Python/gc_gil.c  # removed: 17 source lines
 # Python/generated_cases.c.h  # removed: 12,528 source lines
 # Python/getargs.c  # removed: 2,863 source lines
-Python/getcompiler.c
-Python/getcopyright.c
+# Python/getcompiler.c  # removed: 27 source lines
+# Python/getcopyright.c  # removed: 23 source lines
 Python/getopt.c
-Python/getplatform.c
-Python/getversion.c
+# Python/getplatform.c  # removed: 12 source lines
+# Python/getversion.c  # removed: 34 source lines
 # Python/hamt.c  # removed: 2,887 source lines
 # Python/hashtable.c  # removed: 424 source lines
 Python/import.c
@@ -405,7 +405,7 @@ Python/marshal.c
 # Python/optimizer_cases.c.h  # pruned: 2,520 source lines
 # Python/optimizer_symbols.c  # pruned: 880 source lines
 # Python/parking_lot.c  # removed: 442 source lines
-Python/pathconfig.c
+# Python/pathconfig.c  # removed: 471 source lines
 # Python/perf_jit_trampoline.c  # removed: 1,376 source lines
 # Python/perf_trampoline.c  # removed: 641 source lines
 Python/preconfig.c
@@ -413,7 +413,7 @@ Python/pyarena.c
 # Python/pyctype.c  # removed: 214 source lines
 # Python/pyfpe.c  # removed: 18 source lines
 # Python/pyhash.c  # removed: 498 source lines
-Python/pylifecycle.c
+# Python/pylifecycle.c  # removed: 3,632 source lines
 # Python/pymath.c  # removed: 19 source lines
 # Python/pystate.c  # removed: 3,262 source lines
 # Python/pystrcmp.c  # removed: 30 source lines
@@ -796,7 +796,7 @@ Modules/config.c.in
 # Modules/fcntlmodule.c  # removed: 789 source lines
 # Modules/gcmodule.c  # removed: 585 source lines
 # Modules/getaddrinfo.c  # removed: 642 source lines
-Modules/getbuildinfo.c
+# Modules/getbuildinfo.c  # removed: 79 source lines
 # Modules/getnameinfo.c  # removed: 207 source lines
 Modules/getpath.c
 Modules/getpath.py
