@@ -109,7 +109,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/internal/pycore_structs.h",
          "Include/internal/pycore_hamt.h",
          "Include/cpython/context.h",
-         "Include/internal/pycore_context.h"
+         "Include/internal/pycore_context.h",
+         "Include/internal/pycore_hashtable.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -372,7 +373,12 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyContext", "struct _pycontextobject"),
          ("PyContextVar", "struct _pycontextvarobject"),
          ("PyContextToken", "struct _pycontexttokenobject"),
-         ("_PyContextTokenMissing", "_PyContextTokenMissing")
+         ("_PyContextTokenMissing", "_PyContextTokenMissing"),
+         ("_Py_slist_item_t", "_Py_slist_item_t"),
+         ("_Py_slist_t", "_Py_slist_t"),
+         ("_Py_hashtable_entry_t", "_Py_hashtable_entry_t"),
+         ("_Py_hashtable_allocator_t", "_Py_hashtable_allocator_t"),
+         ("_Py_hashtable_t", "struct _Py_hashtable_t")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -3646,7 +3652,49 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyContextVar_SIZE", "sizeof(PyContextVar)", "i64"),
          ("PyContextVar_VAR_NAME", "offsetof(PyContextVar, var_name)", "i64"),
          ("PyContextToken_SIZE", "sizeof(PyContextToken)", "i64"),
-         ("_PyContextTokenMissing_SIZE", "sizeof(_PyContextTokenMissing)", "i64")
+         ("_PyContextTokenMissing_SIZE", "sizeof(_PyContextTokenMissing)", "i64"),
+         (
+             "_Py_ID__is_text_encoding",
+             "offsetof(struct _Py_global_strings, identifiers._py__is_text_encoding)",
+             "i64"
+         ),
+         (
+             "_Py_STR_anon_unknown",
+             "offsetof(struct _Py_global_strings, literals._py_anon_unknown)",
+             "i64"
+         ),
+         ("PyRefTracer_CREATE", "PyRefTracer_CREATE", "i32"),
+         ("PyUnicode_2BYTE_KIND", "PyUnicode_2BYTE_KIND", "i32"),
+         ("tracemalloc_frame_SIZE", "sizeof(struct tracemalloc_frame)", "i64"),
+         (
+             "tracemalloc_frame_LINENO",
+             "offsetof(struct tracemalloc_frame, lineno)",
+             "i64"
+         ),
+         ("tracemalloc_traceback_SIZE", "sizeof(struct tracemalloc_traceback)", "i64"),
+         (
+             "tracemalloc_traceback_HASH",
+             "offsetof(struct tracemalloc_traceback, hash)",
+             "i64"
+         ),
+         (
+             "tracemalloc_traceback_NFRAME",
+             "offsetof(struct tracemalloc_traceback, nframe)",
+             "i64"
+         ),
+         (
+             "tracemalloc_traceback_TOTAL_NFRAME",
+             "offsetof(struct tracemalloc_traceback, total_nframe)",
+             "i64"
+         ),
+         (
+             "tracemalloc_traceback_FRAMES",
+             "offsetof(struct tracemalloc_traceback, frames)",
+             "i64"
+         ),
+         ("_Py_slist_t_SIZE", "sizeof(_Py_slist_t)", "u64"),
+         ("_Py_hashtable_entry_t_SIZE", "sizeof(_Py_hashtable_entry_t)", "u64"),
+         ("_Py_hashtable_t_SIZE", "sizeof(_Py_hashtable_t)", "u64")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -4473,7 +4521,114 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_PyRuntimeState_CONTEXT_TOKEN_MISSING",
              "offsetof(_PyRuntimeState, static_objects.singletons.context_token_missing)",
              "i64"
-         )
+         ),
+         (
+             "PyInterpreterState_CODECS_SEARCH_PATH",
+             "offsetof(PyInterpreterState, codecs.search_path)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_CODECS_SEARCH_CACHE",
+             "offsetof(PyInterpreterState, codecs.search_cache)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_CODECS_ERROR_REGISTRY",
+             "offsetof(PyInterpreterState, codecs.error_registry)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_CODECS_INITIALIZED",
+             "offsetof(PyInterpreterState, codecs.initialized)",
+             "i64"
+         ),
+         ("PyConfig_USE_HASH_SEED", "offsetof(PyConfig, use_hash_seed)", "i64"),
+         ("PyConfig_HASH_SEED", "offsetof(PyConfig, hash_seed)", "i64"),
+         (
+             "_PyRuntimeState_TRACEMALLOC_INITIALIZED",
+             "offsetof(_PyRuntimeState, tracemalloc.config.initialized)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_TRACING",
+             "offsetof(_PyRuntimeState, tracemalloc.config.tracing)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_MAX_NFRAME",
+             "offsetof(_PyRuntimeState, tracemalloc.config.max_nframe)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_ALLOCATORS_MEM",
+             "offsetof(_PyRuntimeState, tracemalloc.allocators.mem)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_ALLOCATORS_RAW",
+             "offsetof(_PyRuntimeState, tracemalloc.allocators.raw)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_ALLOCATORS_OBJ",
+             "offsetof(_PyRuntimeState, tracemalloc.allocators.obj)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_TABLES_LOCK",
+             "offsetof(_PyRuntimeState, tracemalloc.tables_lock)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_TRACED_MEMORY",
+             "offsetof(_PyRuntimeState, tracemalloc.traced_memory)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_PEAK_TRACED_MEMORY",
+             "offsetof(_PyRuntimeState, tracemalloc.peak_traced_memory)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_FILENAMES",
+             "offsetof(_PyRuntimeState, tracemalloc.filenames)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_TRACEBACK",
+             "offsetof(_PyRuntimeState, tracemalloc.traceback)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_TRACEBACKS",
+             "offsetof(_PyRuntimeState, tracemalloc.tracebacks)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_TRACES",
+             "offsetof(_PyRuntimeState, tracemalloc.traces)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_DOMAINS",
+             "offsetof(_PyRuntimeState, tracemalloc.domains)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_EMPTY_TRACEBACK",
+             "offsetof(_PyRuntimeState, tracemalloc.empty_traceback)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_TRACEMALLOC_REENTRANT_KEY",
+             "offsetof(_PyRuntimeState, tracemalloc.reentrant_key)",
+             "i64"
+         ),
+         ("EPERM", "EPERM", "i32"),
+         ("ENOENT", "ENOENT", "i32"),
+         ("ENXIO", "ENXIO", "i32"),
+         ("ENODEV", "ENODEV", "i32"),
+         ("EACCES", "EACCES", "i32")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.
@@ -4508,6 +4663,7 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
      # C scalar types: Jac type and whether the C type is signed.
      SCALARS: dict[str, tuple[str, bool]] = {
          "char": ("i8", True),
+         "Py_uhash_t": ("u64", False),
          "signed char": ("i8", True),
          "unsigned char": ("u8", False),
          "short": ("i16", True),

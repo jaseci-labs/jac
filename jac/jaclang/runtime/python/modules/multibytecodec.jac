@@ -349,7 +349,11 @@ impl internal_error_callback(errors: ptr[u8]) -> ptr[PyObject] {
 }
 
 impl call_error_callback(errors: ptr[PyObject], exc: ptr[PyObject]) -> ptr[PyObject] {
-    cb = PyCodec_LookupError(text_value(errors));
+    str_ = PyUnicode_AsUTF8(errors);
+    if not str_ {
+        return NULL;
+    }
+    cb = PyCodec_LookupError(str_);
     if not cb {
         return NULL;
     }

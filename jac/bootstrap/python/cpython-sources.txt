@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 218 C files / 384,450 lines; 157 headers / 152,680 lines.
-#   Total: 375 files / 537,130 source lines.
+#   Excluded: 223 C files / 389,167 lines; 157 headers / 152,680 lines.
+#   Total: 380 files / 541,847 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -105,7 +105,7 @@ Python/asdl.c
 # Python/ast_preprocess.c  # removed: 990 source lines
 Python/ast_unparse.c
 # Python/bltinmodule.c  # removed: 3,506 source lines
-Python/bootstrap_hash.c
+# Python/bootstrap_hash.c  # removed: 598 source lines
 Python/brc.c
 # Python/bytecodes.c  # pruned: 5,549 source lines
 # Python/ceval.c  # removed: 3,725 source lines
@@ -122,7 +122,7 @@ Python/clinic/import.c.h
 Python/clinic/marshal.c.h
 Python/clinic/sysmodule.c.h
 Python/clinic/traceback.c.h
-Python/codecs.c
+# Python/codecs.c  # removed: 1,708 source lines
 # Python/codegen.c  # removed: 6,485 source lines
 # Python/compile.c  # removed: 1,753 source lines
 Python/condvar.h
@@ -156,7 +156,7 @@ Python/getopt.c
 Python/getplatform.c
 Python/getversion.c
 # Python/hamt.c  # removed: 2,887 source lines
-Python/hashtable.c
+# Python/hashtable.c  # removed: 424 source lines
 Python/import.c
 Python/importdl.c
 Python/index_pool.c
@@ -186,7 +186,7 @@ Python/preconfig.c
 Python/pyarena.c
 # Python/pyctype.c  # removed: 214 source lines
 # Python/pyfpe.c  # removed: 18 source lines
-Python/pyhash.c
+# Python/pyhash.c  # removed: 498 source lines
 Python/pylifecycle.c
 # Python/pymath.c  # removed: 19 source lines
 Python/pystate.c
@@ -210,7 +210,7 @@ Python/thread.c
 Python/thread_pthread.h
 # Python/thread_pthread_stubs.h  # pruned: 191 source lines
 Python/traceback.c
-Python/tracemalloc.c
+# Python/tracemalloc.c  # removed: 1,489 source lines
 Python/uniqueid.c
 
 # Builtin objects

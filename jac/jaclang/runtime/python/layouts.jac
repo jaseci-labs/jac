@@ -1,5 +1,5 @@
 import from c {
-    obj PyAsyncGenObject;  obj PyCodeObject;  obj PyCoroObject;  obj PyDictKeysObject;  obj PyDictValues;  obj PyHamtNode;  obj PyWrapperDescrObject;  obj _dictkeysobject;  obj _socket_state;  obj _object {
+    obj PyAsyncGenObject;  obj PyCodeObject;  obj PyCoroObject;  obj PyDictKeysObject;  obj PyDictValues;  obj PyHamtNode;  obj PyWrapperDescrObject;  obj _Py_slist_item_s;  obj _dictkeysobject;  obj _socket_state;  obj _object {
         has ob_refcnt_full: i64,
             ob_type: ptr[PyTypeObject];
     }  obj PyVarObject {
@@ -952,6 +952,29 @@ import from c {
             tok_used: i32;
     }  obj _PyContextTokenMissing {
         has ob_base: _object;
+    }  obj _Py_slist_item_t {
+        has next: ptr[_Py_slist_item_s];
+    }  obj _Py_slist_t {
+        has head: ptr[_Py_slist_item_t];
+    }  obj _Py_hashtable_entry_t {
+        has _Py_slist_item: _Py_slist_item_t,
+            key_hash: u64,
+            key: ptr,
+            value: ptr;
+    }  obj _Py_hashtable_allocator_t {
+        has malloc: Callable[[u64], ptr],
+            free: Callable[[ptr], None];
+    }  obj _Py_hashtable_t {
+        has nentries: u64,
+            nbuckets: u64,
+            buckets: ptr[_Py_slist_t],
+            get_entry_func:
+                Callable[[ptr[_Py_hashtable_t], ptr], ptr[_Py_hashtable_entry_t]],
+            hash_func: Callable[[ptr], u64],
+            compare_func: Callable[[ptr, ptr], i32],
+            key_destroy_func: Callable[[ptr], None],
+            value_destroy_func: Callable[[ptr], None],
+            alloc: _Py_hashtable_allocator_t;
     }
 }
 
@@ -2378,4 +2401,18 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      PyContextVar_SIZE: Final[i64] = 64,
      PyContextVar_VAR_NAME: Final[i64] = 16,
      PyContextToken_SIZE: Final[i64] = 48,
-     _PyContextTokenMissing_SIZE: Final[i64] = 16;
+     _PyContextTokenMissing_SIZE: Final[i64] = 16,
+     _Py_ID__is_text_encoding: Final[i64] = 12408,
+     _Py_STR_anon_unknown: Final[i64] = 440,
+     PyRefTracer_CREATE: Final[i32] = 0,
+     PyUnicode_2BYTE_KIND: Final[i32] = 2,
+     tracemalloc_frame_SIZE: Final[i64] = 12,
+     tracemalloc_frame_LINENO: Final[i64] = 8,
+     tracemalloc_traceback_SIZE: Final[i64] = 24,
+     tracemalloc_traceback_HASH: Final[i64] = 0,
+     tracemalloc_traceback_NFRAME: Final[i64] = 8,
+     tracemalloc_traceback_TOTAL_NFRAME: Final[i64] = 10,
+     tracemalloc_traceback_FRAMES: Final[i64] = 12,
+     _Py_slist_t_SIZE: Final[u64] = 8,
+     _Py_hashtable_entry_t_SIZE: Final[u64] = 32,
+     _Py_hashtable_t_SIZE: Final[u64] = 80;

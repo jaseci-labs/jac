@@ -43,7 +43,14 @@ def _codecs_unregister_impl(
 }
 
 def _codecs_lookup_impl(module: ptr[PyObject], encoding: str) -> ptr[PyObject] {
-    return _PyCodec_Lookup(encoding);
+    text = jacpy_unicode_from_text(encoding);
+    if not text {
+        return NULL;
+    }
+    c_encoding = PyUnicode_AsUTF8(text);
+    result = _PyCodec_Lookup(c_encoding) if c_encoding else NULL;
+    jacpy_release(text);
+    return result;
 }
 
 def _codecs_encode_impl(
@@ -449,18 +456,39 @@ def _codecs_charmap_build_impl(
 def _codecs_register_error_impl(
     module: ptr[PyObject], errors: str, handler: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if PyCodec_RegisterError(errors, handler) != 0 {
+    text = jacpy_unicode_from_text(errors);
+    if not text {
         return NULL;
     }
+    c_errors = PyUnicode_AsUTF8(text);
+    if not c_errors or PyCodec_RegisterError(c_errors, handler) != 0 {
+        jacpy_release(text);
+        return NULL;
+    }
+    jacpy_release(text);
     return Py_NewRef(borrowed_none());
 }
 
 """Only custom error handlers can be un-registered: 1 when one was, 0 when
 none is registered under errors, -1 with an exception for a built-in name."""
 def _codecs__unregister_error_impl(module: ptr[PyObject], errors: str) -> i32 {
-    return _PyCodec_UnregisterError(errors);
+    text = jacpy_unicode_from_text(errors);
+    if not text {
+        return i32(-1);
+    }
+    c_errors = PyUnicode_AsUTF8(text);
+    result = _PyCodec_UnregisterError(c_errors) if c_errors else i32(-1);
+    jacpy_release(text);
+    return result;
 }
 
 def _codecs_lookup_error_impl(module: ptr[PyObject], name: str) -> ptr[PyObject] {
-    return PyCodec_LookupError(name);
+    text = jacpy_unicode_from_text(name);
+    if not text {
+        return NULL;
+    }
+    c_name = PyUnicode_AsUTF8(text);
+    result = PyCodec_LookupError(c_name) if c_name else NULL;
+    jacpy_release(text);
+    return result;
 }

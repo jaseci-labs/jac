@@ -124,9 +124,9 @@ import from c {
         object_: ptr[PyObject], encoding: ptr[u8], errors: ptr[u8]
     ) -> ptr[PyObject];  def PyCodec_Encode(
         object_: ptr[PyObject], encoding: ptr[u8], errors: ptr[u8]
-    ) -> ptr[PyObject];  def PyCodec_LookupError(name: str) -> ptr[PyObject];  def PyCodec_Register(
+    ) -> ptr[PyObject];  def PyCodec_LookupError(name: ptr[u8]) -> ptr[PyObject];  def PyCodec_Register(
         search_function: ptr[PyObject]
-    ) -> i32;  def PyCodec_RegisterError(name: str, error: ptr[PyObject]) -> i32;  def PyCodec_StrictErrors(
+    ) -> i32;  def PyCodec_RegisterError(name: ptr[u8], error: ptr[PyObject]) -> i32;  def PyCodec_StrictErrors(
         exc: ptr[PyObject]
     ) -> ptr[PyObject];  def PyCodec_Unregister(
         search_function: ptr[PyObject]
@@ -680,8 +680,8 @@ import from c {
         haystack: ptr, len_haystack: i64, needle: ptr, len_needle: i64, offset: i64
     ) -> i64;  def _PyBytes_Resize(arg0: &mut ptr[PyObject], arg1: i64) -> i32;  def _PyBytes_ReverseFind(
         haystack: ptr, len_haystack: i64, needle: ptr, len_needle: i64, offset: i64
-    ) -> i64;  def _PyCodec_Lookup(encoding: str) -> ptr[PyObject];  def _PyCodec_UnregisterError(
-        name: str
+    ) -> i64;  def _PyCodec_Lookup(encoding: ptr[u8]) -> ptr[PyObject];  def _PyCodec_UnregisterError(
+        name: ptr[u8]
     ) -> i32;  def _PyCompile_GetBinaryIntrinsicName(index: i32) -> ptr[PyObject];  def _PyCompile_GetUnaryIntrinsicName(
         index: i32
     ) -> ptr[PyObject];  def _PyComplex_FormatAdvancedWriter(
