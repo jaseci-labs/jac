@@ -1196,7 +1196,10 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
                     decl: any = nd.right.sym.decl
                         if isinstance(nd.right, uni.Name) and nd.right.sym is not None
                         else None;
-                    if decl is not None and isinstance(decl?.name_of, uni.Ability) {
+                    owner: any = decl?.name_of if decl is not None else None;
+                    if owner is None
+                        or isinstance(owner, uni.Ability)
+                        or (isinstance(owner, uni.HasVar) and owner.accessors) {
                         return False;
                     }
                 } elif isinstance(nd.right, uni.IndexSlice) {

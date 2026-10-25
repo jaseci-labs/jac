@@ -67,11 +67,12 @@ test "the program prints what the Python backend prints under rc and managed" {
 
 test "loops whose body can run user code keep the old access" {
     text = fixture_ir(USER_CODE_FIXTURE);
-    for name in ["shadowed", "nested", "grow_list", "grow_bytes"] {
+    for name in ["shadowed", "nested", "grow_list", "grow_bytes", "via_getter"] {
         assert "anchor.len" not in body_of(text, name) , (
             f"{name} reads its list header once although its body runs user code"
         );
     }
     out = assert_native_identity(USER_CODE_FIXTURE, profiles=["rc", "managed"]);
-    assert out.splitlines()[:3] == ["caught 5", "caught 6", "150 411"] , out;
+    assert out.splitlines()[:4]
+        == ["caught 5", "caught 6", "150 411", "caught 6"] , out;
 }
