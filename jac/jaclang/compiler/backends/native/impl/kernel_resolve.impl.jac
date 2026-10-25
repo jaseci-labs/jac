@@ -254,9 +254,10 @@ impl _verdict_key(
     units: list[str],
     spec: (TargetSpec | None) = None
 ) -> str {
-    """What a clean drift check depended on. The running compiler digest
-    covers every unit, annex and archwire.jac the compiler inputs declare by
-    content, so only units outside that cover are digested here.""";
+    """What a drift check depended on. The running compiler digest covers
+    every unit, annex and archwire.jac the compiler inputs declare by content,
+    so a unit outside that cover only adds its own source and annexes (its
+    wiring comes from the covered archwire.jac).""";
     lib_id = file_identity(lib_path);
     side_id = file_identity(lib_path + LAYOUT_SIDECAR_SUFFIX);
     if lib_id is None or side_id is None {
@@ -282,7 +283,7 @@ impl _verdict_key(
         covered = any([rel == r or rel.startswith(r + "/") for r in roots])
             and not is_roster_input(rel, roster);
         if not covered {
-            h.update(unit_source_digest(unit).encode());
+            h.update(ct_dep_digest(os.path.realpath(unit), with_annexes=True).encode());
         }
     }
     return h.hexdigest();

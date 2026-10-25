@@ -1688,7 +1688,8 @@ graph import {
         compiler.backends.es.client_kernel_cache._cache_dir { get_jir_cache_dir },
         compiler.backends.native.kernel_resolve._sha256_file
             | compiler.driver.jir.compute_content_sha256 { file_sha256 },
-        compiler.backends.native.kernel_resolve._verdict_key { file_identity },
+        compiler.backends.native.kernel_resolve._verdict_key
+            | compiler.driver.jir.read_jir { file_identity },
         compiler.backends.native.kernel_resolve._verdict_path { get_digest_ledger_dir },
         compiler.driver.jir.get_jir_cache_dir { get_jir_cache_dir as _root },
     ]
@@ -5829,8 +5830,8 @@ graph import compiler {
         backends.native.kernel_resolve._inspect { sidecar_unit_paths },
         backends.native.kernel_resolve._verdict_key {
             compiler_input_rules,
-            running_compiler_digest,
-            unit_source_digest
+            ct_dep_digest,
+            running_compiler_digest
         },
         backends.native.kernel_resolve.unit_drift {
             native_producer_digest,
@@ -11718,6 +11719,7 @@ graph import compiler.driver {
             HEADER_SIZE,
             SECTIONS_MAGIC,
             get_module_cache_path,
+            read_jir,
             read_sections
         },
         application._identity { compiler_generation },
@@ -11755,6 +11757,7 @@ graph import compiler.driver {
             patch_co_filenames_bytes,
             precompiled_jir_matches_source,
             read_bytecode_only,
+            read_jir,
             read_section_bytes,
             read_sections,
             seed_definition_texts,
@@ -11790,6 +11793,7 @@ graph import compiler.driver {
             module_cache_key,
             module_ct_deps_section,
             read_dep_hashes,
+            read_jir,
             read_jir_paths,
             read_section_bytes,
             write_module_cache
@@ -11814,6 +11818,7 @@ graph import compiler.driver {
             module_ct_deps_section,
             native_producer_digest,
             native_section_payload,
+            read_jir,
             read_native_dep_hashes,
             read_section_bytes,
             stale_ct_dep_rows,

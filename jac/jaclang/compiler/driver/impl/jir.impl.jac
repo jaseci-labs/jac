@@ -1584,6 +1584,13 @@ impl read_sections_blob(data: bytes) -> dict[int, bytes] {
 }
 
 impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
+    memo = isinstance(data, bytes);
+    if memo {
+        held = _SECTION_TABLES.get(id(data));
+        if held is not None and held[0] is data and held[1] == start_pos {
+            return dict(held[2]);
+        }
+    }
     result: dict[int, bytes] = {};
     pos = start_pos;
     try {
@@ -1605,7 +1612,42 @@ impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, byte
             pos += sec_len;
         }
     } except Exception {}
+    if memo {
+        if len(_SECTION_TABLES) >= SECTION_TABLE_CAP {
+            del _SECTION_TABLES[next(iter(_SECTION_TABLES))];
+        }
+        _SECTION_TABLES[id(data)] = (data, start_pos, result);
+        return dict(result);
+    }
     return result;
+}
+
+impl read_jir(cache_path: Path) -> bytes {
+    key = str(cache_path);
+    ident = file_identity(key);
+    if ident is None {
+        return Path(key).read_bytes();
+    }
+    held = _JIR_READS.pop(key, None);
+    if held is not None and held[0] == ident {
+        _JIR_READS[key] = held;
+        return held[1];
+    }
+    if held is not None {
+        _JIR_READ_TOTAL[0] -= len(held[1]);
+    }
+    data = Path(key).read_bytes();
+    _JIR_READS[key] = (ident, data);
+    _JIR_READ_TOTAL[0] += len(data);
+    while _JIR_READS
+        and (
+            len(_JIR_READS) > JIR_READ_CACHE_CAP
+            or _JIR_READ_TOTAL[0] > JIR_READ_CACHE_BYTES
+        ) {
+        oldest = next(iter(_JIR_READS));
+        _JIR_READ_TOTAL[0] -= len(_JIR_READS.pop(oldest)[1]);
+    }
+    return data;
 }
 
 impl read_bytecode_only(data: bytes) -> (bytes | None) {
@@ -1680,7 +1722,7 @@ impl module_cache_invalid_reason(source_path: str, cache_path: Path) -> str {
         return "no cached module";
     }
     try {
-        data: bytes = cache_path.read_bytes();
+        data: bytes = read_jir(cache_path);
         header = parse_header(data[:HEADER_SIZE]);
         if header is None or not header.is_compatible() {
             return "incompatible cache format";
@@ -1721,7 +1763,7 @@ impl _mergeable_sections(
         if not cache_path.exists() {
             return ({}, 0, False);
         }
-        data: bytes = cache_path.read_bytes();
+        data: bytes = read_jir(cache_path);
         header = parse_header(data[:HEADER_SIZE]);
         if header is None or not header.is_compatible() {
             return ({}, 0, False);

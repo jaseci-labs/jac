@@ -200,7 +200,7 @@ impl JacCompiler._get_bytecode(
     cache_path = get_module_cache_path(full_target);
     if (not rebuild) and is_module_cache_valid(full_target, cache_path) {
         try {
-            jir_data = cache_path.read_bytes();
+            jir_data = read_jir(cache_path);
             magic_bytes: any = SECTIONS_MAGIC;
             sec_pos = jir_data.find(magic_bytes, HEADER_SIZE);
             secs: dict[int, bytes] = (
@@ -883,7 +883,7 @@ impl JacCompiler._persist_module_cache(
     try {
         _pmc_path = get_module_cache_path(full_target);
         if is_module_cache_valid(full_target, _pmc_path) {
-            _pmc_data = _pmc_path.read_bytes();
+            _pmc_data = read_jir(_pmc_path);
             _pmc_client_done = (
                 not result.gen.js
                 or read_section_bytes(_pmc_data, SEC_CLIENT) is not None
@@ -1113,7 +1113,7 @@ impl JacCompiler.last_client_artifact(
     raw: (bytes | None) = None;
     with compilation_scope(owner_scope_options(actual)) {
         try {
-            held = get_module_cache_path(JacProgram.hub_key(full_target)).read_bytes();
+            held = read_jir(get_module_cache_path(JacProgram.hub_key(full_target)));
             raw = read_section_bytes(held, SEC_CLIENT);
         } except Exception {
             return None;
@@ -1305,7 +1305,7 @@ impl cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
         if not is_module_cache_valid(full_target, cache_path) {
             return None;
         }
-        raw = read_section_bytes(cache_path.read_bytes(), SEC_CLIENT);
+        raw = read_section_bytes(read_jir(cache_path), SEC_CLIENT);
     } except Exception {
         return None;
     }

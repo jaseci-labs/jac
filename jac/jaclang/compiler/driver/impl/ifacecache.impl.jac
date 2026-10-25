@@ -365,7 +365,7 @@ impl IfaceRegistry._module_jir_in_context(resolved: str) -> (tuple[bytes, str] |
     try {
         cache_path = get_module_cache_path(resolved);
         if is_module_cache_valid(resolved, cache_path) {
-            return (cache_path.read_bytes(), "", );
+            return (read_jir(cache_path), "", );
         }
     } except Exception {}
     try {
@@ -1210,7 +1210,7 @@ impl seed_dep_edges(prog: any, root_dir: str, limit: int = 5000) -> int {
                 if not cache_path.exists() {
                     continue;
                 }
-                data: bytes = cache_path.read_bytes();
+                data: bytes = read_jir(cache_path);
             } except Exception {
                 continue;
             }

@@ -208,13 +208,13 @@ impl NativeUnitRegistry._module_jir(
     try {
         cache_path = get_module_cache_path(resolved);
         why = module_cache_invalid_reason(resolved, cache_path);
-        data = b"" if why else cache_path.read_bytes();
+        data = b"" if why else read_jir(cache_path);
         if stamp is not None
             and native_section_payload(read_section_bytes(data, SEC_NIFACE), stamp)
                 is None
             and self._carry(resolved, stamp) {
             why = module_cache_invalid_reason(resolved, cache_path);
-            data = b"" if why else cache_path.read_bytes();
+            data = b"" if why else read_jir(cache_path);
         }
         if not why {
             return (data, "", );
@@ -303,7 +303,7 @@ impl NativeUnitRegistry._explain_iface_change(
 ) {
     resolved = os.path.realpath(path);
     try {
-        data = get_module_cache_path(resolved).read_bytes();
+        data = read_jir(get_module_cache_path(resolved));
     } except Exception {
         return;
     }
