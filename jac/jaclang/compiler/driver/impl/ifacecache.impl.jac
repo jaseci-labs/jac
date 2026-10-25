@@ -901,7 +901,9 @@ impl IfaceRegistry._persist_in_context(
     }
     sections[SEC_DEPS] = deps_section(self.dep_rows(resolved, mod));
     import from jaclang.compiler.driver.unit_products { placement_record }
-    placement = placement_record(mod, self.prog);
+    placement = placement_record(
+        mod, self.prog, solved=not self.prog.errors_had[err_start:]
+    );
     if placement {
         sections[SEC_PLACEMENT] = placement.encode("utf-8");
     }
