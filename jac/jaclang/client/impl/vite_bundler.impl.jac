@@ -1017,6 +1017,7 @@ impl ViteBundler.find_bundle(self: ViteBundler) -> Optional[Path] {
 
 impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> None {
     import time;
+    stat_note("vite_build");
 
     bun = _require_bun();
 
@@ -1049,6 +1050,20 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         command = [bun, 'run', 'build'];
     }
 
+    inputs = self._build_inputs_digest(build_dir, command);
+    stamp = self.output_dir / ".jac-build-inputs";
+    try {
+        if inputs
+            and stamp.read_text() == inputs
+            and any(
+                p
+                for p in self.output_dir.iterdir()
+                if p.name != stamp.name
+            ) {
+            console.print("\n  ✔ Client bundle unchanged");
+            return;
+        }
+    } except OSError {}
     console.print("\n  ⏳ Building client bundle...\n");
     start_time = time.time();
     result = subprocess.run(
@@ -1062,7 +1077,39 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
         )}";
         raise ClientBundleError(error_msg) from None;
     }
+    if inputs {
+        try {
+            stamp.write_text(inputs);
+        } except OSError {}
+    }
     console.print(f"\n  ✔ Client bundle built ({elapsed:.1f}s)");
+}
+
+impl ViteBundler._build_inputs_digest(
+    self: ViteBundler, build_dir: Path, command: list[str]
+) -> str {
+    compiled = self._client_app_dir() / "compiled";
+    if not compiled.is_dir() {
+        return "";
+    }
+    rows: list[str] = ["\x00".join(command), str(self.output_dir)];
+    for tree in [compiled, build_dir / "configs"] {
+        if not tree.is_dir() {
+            continue;
+        }
+        for p in sorted(tree.rglob("*")) {
+            if p.is_file() {
+                rows.append(f"{p.relative_to(build_dir)}:{file_sha256(str(p))}");
+            }
+        }
+    }
+    for name in ("bun.lock", "package.json") {
+        lock = build_dir / name;
+        if lock.is_file() {
+            rows.append(f"{name}:{file_sha256(str(lock))}");
+        }
+    }
+    return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest();
 }
 
 impl ViteBundler.init(

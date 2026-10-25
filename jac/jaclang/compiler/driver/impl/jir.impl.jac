@@ -879,6 +879,7 @@ impl sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
 }
 
 impl _compute_module_key_uncached(source_path: str) -> str {
+    stat_note("key_compute");
     """A module the running compiler package owns is keyed canonically,
     whatever compilation scope is active: the package's precompile, the
     compiler's bootstrap, a consumer's analysis and a native build session
@@ -1599,6 +1600,7 @@ impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, byte
 }
 
 impl _decode_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
+    stat_note("jir_decode");
     result: dict[int, bytes] = {};
     pos = start_pos;
     try {
@@ -1632,12 +1634,14 @@ impl read_jir(cache_path: Path) -> bytes {
     held = _JIR_READS.pop(key, None);
     if held is not None and held[0] == ident {
         _JIR_READS[key] = held;
+        stat_note("jir_read_hit");
         return held[1];
     }
     if held is not None {
         _JIR_READ_TOTAL[0] -= len(held[1]);
     }
     data = Path(key).read_bytes();
+    stat_note("jir_read");
     _JIR_READS[key] = (ident, data);
     _JIR_READ_TOTAL[0] += len(data);
     while _JIR_READS
@@ -2030,6 +2034,7 @@ impl write_module_cache(
             cache_path.parent.mkdir(parents=True, exist_ok=True);
             jir_bytes = write_precompiled_jir(None, "", merged_flags, sections);
             atomic_write(cache_path, jir_bytes);
+            stat_note("jir_write");
             return True;
         }
     } except Exception as exc {

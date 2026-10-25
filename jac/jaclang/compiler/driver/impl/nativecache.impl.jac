@@ -123,6 +123,7 @@ impl NativeUnitRegistry._miss(path: str, why: str) {
 impl NativeUnitRegistry._event(name: str) {
     counters = self.prog.analysis.cache_events;
     counters[name] = counters.get(name, 0) + 1;
+    stat_note(name);
 }
 
 impl NativeUnitRegistry._add_time(name: str, seconds: float) {

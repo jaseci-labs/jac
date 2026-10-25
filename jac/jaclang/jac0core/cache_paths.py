@@ -210,6 +210,7 @@ def _digest_shard(name: str) -> dict[str, list]:
 
 
 def _hash_file(path: str) -> str:
+    stat_note("content_hash")
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
@@ -275,3 +276,42 @@ def forget_file_digests() -> None:
     _digest_memo.clear()
     _digest_shards.clear()
     _digest_dirty.clear()
+
+
+# Cache work counters: the one telemetry authority for "how much work did this
+# process do". Every tier notes events here (JIR reads, decodes and writes, key
+# computations, content hashes, parses, analyses, codegen, bundle builds), and
+# JAC_CACHE_STATS dumps the totals at exit: "1" writes a JSON line to stderr,
+# a path appends one JSON line per process to that file.
+
+_stat_counts: dict[str, int] = {}
+_stat_dump_armed: list[bool] = []
+
+
+def stat_note(event: str, n: int = 1) -> None:
+    """Count one occurrence of a cache-relevant event."""
+    _stat_counts[event] = _stat_counts.get(event, 0) + n
+    if not _stat_dump_armed:
+        _stat_dump_armed.append(True)
+        if os.environ.get("JAC_CACHE_STATS", "").strip():
+            import atexit
+
+            atexit.register(_dump_stats)
+
+
+def stats_snapshot() -> dict[str, int]:
+    """The counters noted so far in this process."""
+    return dict(sorted(_stat_counts.items()))
+
+
+def _dump_stats() -> None:
+    sink = os.environ.get("JAC_CACHE_STATS", "").strip()
+    line = json.dumps({"pid": os.getpid(), "argv": sys.argv[1:4], "stats": stats_snapshot()})
+    if os.sep in sink:
+        try:
+            with open(sink, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass
+    else:
+        sys.stderr.write(f"jac cache stats: {line}\n")

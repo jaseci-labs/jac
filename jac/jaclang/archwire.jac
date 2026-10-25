@@ -1661,8 +1661,16 @@ graph import {
     jac0core.artifact_registry --> compiler.driver.compiler.JacCompiler.ensure_stub_catalog
         | compiler.native_compiler.ensure_loaded { resolution_in_flight }
     jac0core.cache_paths ++> [
-        artifacts.router.publish | compiler.driver.jir { FileLock, atomic_write },
+        artifacts.router.publish { FileLock, atomic_write },
         cache.home { get_cache_home },
+        client.compiler.ViteCompiler._compile_wasm_module
+            | client.vite_bundler.ViteBundler.build
+            | compiler.driver.ifacecache.IfaceRegistry._event
+            | compiler.driver.module_analysis.analyze_module
+            | compiler.driver.module_compile.run_codegen
+            | compiler.driver.nativecache.NativeUnitRegistry._event
+            | compiler.driver.program.JacProgram.parse_source
+            | compiler.frontend.kernel_host.KernelSession.run_module { stat_note },
         client.js_runtime.JsEngineArtifact.build
             | compiler.backends.native.kernel_resolve._inspect
             | compiler.backends.native.link_plan
@@ -1684,12 +1692,14 @@ graph import {
             | toolchains.cef
             | toolchains.desktop
             | toolchains.store { FileLock },
-        compiler.backends.es.client_kernel_cache._cache_dir { get_jir_cache_dir },
-        compiler.backends.native.kernel_resolve._sha256_file
+        client.vite_bundler.ViteBundler._build_inputs_digest
+            | compiler.backends.native.kernel_resolve._sha256_file
             | compiler.driver.jir.compute_content_sha256 { file_sha256 },
+        compiler.backends.es.client_kernel_cache._cache_dir { get_jir_cache_dir },
         compiler.backends.native.kernel_resolve._verdict_key
             | compiler.driver.jir.read_jir { file_identity },
         compiler.backends.native.kernel_resolve._verdict_path { get_digest_ledger_dir },
+        compiler.driver.jir { FileLock, atomic_write, stat_note },
         compiler.driver.jir.get_jir_cache_dir { get_jir_cache_dir as _root },
     ]
     jac0core.ext_registry ++> [

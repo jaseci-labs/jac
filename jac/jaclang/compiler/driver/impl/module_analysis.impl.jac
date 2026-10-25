@@ -175,6 +175,7 @@ impl run_plan(task: ModuleAnalysis, steps: tuple[PlanStep, ...]) {
 impl analyze_module(
     program: JacProgram, path: str, options: CompileOptions, source: str | None = None
 ) -> ModuleAnalysis {
+    stat_note("analyze");
     program.analysis.capability_notes.pop(os.path.realpath(path), None);
     task = ModuleAnalysis(program, path, options, source);
     run_plan(task, ANALYSIS_PLAN);

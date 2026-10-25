@@ -87,6 +87,7 @@ impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bo
 impl ViteCompiler._compile_wasm_module(
     self: ViteCompiler, module_path: Path
 ) -> dict[str, bytes] {
+    stat_note("wasm_emit");
     try {
         wasm = build_wasm(client_program(self.program), str(module_path), []);
     } except Exception as e {

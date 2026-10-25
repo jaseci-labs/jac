@@ -103,6 +103,7 @@ impl KernelSession.run_module(
     host = self.host;
     if host.fallback is None {
         host.census.count("run_module");
+        stat_note("kernel_analyze");
         task = analyze_module(target_program, file_path, options, use_str)
             if options.no_cgen or options.symtab_ir_only
             else compile_task(self, target_program, file_path, options, use_str);

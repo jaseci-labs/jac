@@ -150,6 +150,7 @@ impl IfaceRegistry.on_closure_release {
 impl IfaceRegistry._event(name: str) {
     counters = self.prog.analysis.cache_events;
     counters[name] = counters.get(name, 0) + 1;
+    stat_note(name);
 }
 
 impl IfaceRegistry._pkg_dir -> str {
