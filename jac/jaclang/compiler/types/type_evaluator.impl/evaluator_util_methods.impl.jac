@@ -180,16 +180,18 @@ impl TypeEvaluator._literal_type_from_expr(val: Expr) -> TypeBase | None {
     if isinstance(val, Bool) {
         base = self.prefetch.bool_class;
         value = val.lit_value;
-    } elif isinstance(val, Int) {
+    } elif isinstance(val, Int)
+        or (
+            isinstance(val, UnaryExpr)
+            and val.op.name == Tok.MINUS
+            and isinstance(val.operand, Int)
+        ) {
+        folded = folded_number(val);
+        if not isinstance(folded, int) {
+            return None;
+        }
         base = self.prefetch.int_class;
-        value = val.lit_value;
-    } elif (
-        isinstance(val, UnaryExpr)
-        and val.op.name == Tok.MINUS
-        and isinstance(val.operand, Int)
-    ) {
-        base = self.prefetch.int_class;
-        value = -val.operand.lit_value;
+        value = folded;
     } elif isinstance(val, String) and isinstance(val.lit_value, str) {
         base = self.prefetch.str_class;
         value = val.lit_value;
