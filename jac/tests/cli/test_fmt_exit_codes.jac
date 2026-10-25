@@ -566,6 +566,68 @@ test "lintfix rolls a move back when the old annex cannot be removed" {
     }
 }
 
+test "lintfix rolls every destination back when one annex cannot be written" {
+    for jobs in ("0", "2") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            proj = Path(repo);
+            (proj / "side.jac").write_text(
+                "obj Foo {\n    def bar -> int;\n    def baz -> int;\n}\n"
+            );
+            (proj / "side.extra.impl.jac").write_text(
+                "impl Foo.baz -> int {\n    return 2;\n}\n"
+            );
+            (proj / "side.impl.jac").write_text(IMPL);
+            reset_state();
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                with deny_writes([str(proj / "impl" / "side.impl.jac")]) {
+                    ret = fmt_cmd([str(proj / "side.jac")], lintfix=True, jobs=jobs);
+                }
+            }
+            copies = sorted(str(p.relative_to(proj)) for p in proj.rglob("*.impl.jac"));
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 1 , f"[jobs={jobs}] the failed write fails the run, got {ret}";
+        assert copies == ["side.extra.impl.jac", "side.impl.jac"] , (
+            f"[jobs={jobs}] both annexes stay where they were, once: {copies}"
+        );
+    }
+}
+
+test "a cached lintfix check still sees an annex moved beside its module" {
+    repo = annex_project();
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        pkg = Path(repo) / "pkg" / "impl";
+        (pkg / "impl").mkdir(parents=True);
+        (pkg / "foo.jac").write_text(DECL);
+        (pkg / "impl" / "foo.impl.jac").write_text(IMPL);
+        reset_state();
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+            first = fmt_cmd(
+                [str(pkg / "foo.jac")], lintfix=True, check=True, cache=True
+            );
+        }
+        (pkg / "impl" / "foo.impl.jac").rename(pkg / "foo.impl.jac");
+        reset_state();
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+            second = fmt_cmd(
+                [str(pkg / "foo.jac")], lintfix=True, check=True, cache=True
+            );
+        }
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+    assert first == 0 , f"the placed annex is clean, got {first}";
+    assert second == 1 , f"the misplaced annex is not served from the cache, got {second}";
+}
+
 test "lintfix keeps a module's bodies when its impl annex cannot be formatted" {
     broken = "impl Foo.bar -> int {\n    return 1;\n";
     for mode in ("fmt-0", "fmt-2", "lint") {

@@ -632,7 +632,7 @@ def _float_impls_to_annex(
 
 def _annex_home(file_path: str, annex_path: str) -> str;
 
-def _annex_slot(annex_path: str) -> str;
+def _annex_slot(module_path: str, annex_path: str) -> str;
 
 def _annex_moves(
     file_path: str, annex_paths: list[str], logical: dict[str, str]
@@ -677,11 +677,11 @@ impl _annex_home(file_path: str, annex_path: str) -> str {
     return os.path.join(folder, os.path.basename(annex_path));
 }
 
-impl _annex_slot(annex_path: str) -> str {
+impl _annex_slot(module_path: str, annex_path: str) -> str {
     import os;
 
-    return os.path.join(
-        os.path.basename(os.path.dirname(annex_path)), os.path.basename(annex_path)
+    return os.path.relpath(
+        os.path.realpath(annex_path), os.path.dirname(os.path.realpath(module_path))
     );
 }
 
@@ -1058,6 +1058,7 @@ impl format(
                 backups: dict[str, (bytes | None)] = {};
                 for (out_path, code) in outputs {
                     is_module = out_path == res['path'];
+                    is_owned = os.path.realpath(out_path) in owned;
                     if floated_failed and is_module {
                         write_errors.append(
                             f"Left '{out_path}' unchanged: its moved bodies could not "
@@ -1065,7 +1066,9 @@ impl format(
                         );
                         continue;
                     }
-                    is_owned = os.path.realpath(out_path) in owned;
+                    if floated_failed and is_owned {
+                        continue;
+                    }
                     try {
                         if to_screen {
                             console.print(code, markup=False, highlight=False);
@@ -1087,6 +1090,13 @@ impl format(
                         }
                         if is_owned {
                             floated_failed = True;
+                            _restore_files(
+                                {
+                                    p: b
+                                    for (p, b) in backups.items()
+                                    if os.path.realpath(p) in owned
+                                }
+                            );
                         } elif is_module {
                             _restore_files(
                                 {
@@ -2091,7 +2101,7 @@ impl _format_single_file_worker(
             for ap in annex_paths {
                 ap_obj = Path(ap);
                 if ap_obj.exists() {
-                    unit_parts.append(_annex_slot(ap).encode());
+                    unit_parts.append(_annex_slot(file_path, ap).encode());
                     unit_parts.append(ap_obj.read_bytes());
                 }
             }
@@ -2332,7 +2342,7 @@ impl _format_single_file_worker(
                         if not annex_ok {
                             break;
                         }
-                        new_parts.append(_annex_slot(ap).encode());
+                        new_parts.append(_annex_slot(file_path, ap).encode());
                         if ap in annex_formatted_map {
                             new_parts.append(annex_formatted_map[ap].encode());
                         } elif Path(ap).exists() {
