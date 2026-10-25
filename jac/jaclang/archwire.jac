@@ -828,6 +828,9 @@ graph import {
             get_jir_cache_dir,
             running_compiler_digest
         },
+        project.kernel_check._check_record_path { get_module_cache_path },
+        project.kernel_check._record_outcome { ct_dep_digest, module_cache_key },
+        project.kernel_check._replayed_outcome { ct_dep_digest, module_cache_key },
         project.kernel_snapshot.compiled_already {
             get_module_cache_path,
             is_module_cache_valid
@@ -1685,6 +1688,7 @@ graph import {
             | compiler.backends.native.llvm.shim_path.write_shim_record
             | compiler.backends.native.native_link
             | compiler.types.stubcat.build
+            | project.kernel_check._record_outcome
             | scale.injector.binary { atomic_write },
         client.js_runtime.write_bun_record { atomic_write },
         client.targets.desktop.desktop_build._native_build_cef

@@ -51,3 +51,11 @@ def report_parity(
 ) -> list[str];
 
 def reached_modules(outcome: AnalysisReport) -> list[str];
+
+def _check_record_path(
+    program: JacProgram, path: str, options: CompileOptions
+) -> (str | None);
+
+def _replayed_outcome(record_path: str, path: str) -> (AnalysisReport | None);
+
+def _record_outcome(record_path: str, path: str, outcome: AnalysisReport);

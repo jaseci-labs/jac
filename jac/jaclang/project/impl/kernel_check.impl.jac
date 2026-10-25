@@ -97,6 +97,17 @@ impl kernel_check(
         refuse_unloadable();
         return KernelCheck();
     }
+    record_path = None if parity else _check_record_path(program, path, options);
+    replayed = _replayed_outcome(record_path, path) if record_path else None;
+    if replayed is not None {
+        for diag in replayed.errors {
+            program.errors_had.append(alert_of(diag));
+        }
+        for diag in replayed.warnings {
+            program.warnings_had.append(alert_of(diag));
+        }
+        return KernelCheck(outcome=replayed, adopted=True);
+    }
     try {
         outcome = kernel_analysis(active_host(), program, path, options, isolated=True);
     } except Exception as err {
@@ -138,7 +149,65 @@ impl kernel_check(
     for diag in outcome.warnings {
         program.warnings_had.append(alert_of(diag));
     }
+    if record_path {
+        _record_outcome(record_path, path, outcome);
+    }
     return KernelCheck(outcome=outcome, adopted=True);
+}
+
+impl _check_record_path(
+    program: JacProgram, path: str, options: CompileOptions
+) -> (str | None) {
+    import hashlib;
+    try {
+        profile = program.iface_registry().analysis_profile(options);
+        cache_path = get_module_cache_path(os.path.realpath(path));
+    } except Exception {
+        return None;
+    }
+    tag = hashlib.sha256(profile.encode("utf-8")).hexdigest()[:12];
+    return str(cache_path.with_name(cache_path.stem + f".check-{tag}.json"));
+}
+
+impl _replayed_outcome(record_path: str, path: str) -> (AnalysisReport | None) {
+    import json;
+    try {
+        with open(record_path, encoding="utf-8") as f {
+            record = json.load(f);
+        }
+        real = os.path.realpath(path);
+        if record.get("key") != module_cache_key(real) {
+            return None;
+        }
+        for (dep, digest) in record.get("deps", []) {
+            if not os.path.isfile(dep)
+                or ct_dep_digest(dep, with_annexes=True) != digest {
+                return None;
+            }
+        }
+        return AnalysisReport.from_dict(record["report"]);
+    } except (OSError, ValueError, KeyError, TypeError) {
+        return None;
+    }
+}
+
+impl _record_outcome(record_path: str, path: str, outcome: AnalysisReport) {
+    import json;
+    real = os.path.realpath(path);
+    try {
+        deps: list[list[str]] = [];
+        for dep in sorted({os.path.realpath(p) for p in reached_modules(outcome)}) {
+            if dep != real and os.path.isfile(dep) {
+                deps.append([dep, ct_dep_digest(dep, with_annexes=True)]);
+            }
+        }
+        record = {
+            "key": module_cache_key(real),
+            "deps": deps,
+            "report": outcome.to_dict()
+        };
+        atomic_write(record_path, json.dumps(record).encode("utf-8"));
+    } except (OSError, ValueError, TypeError) {}
 }
 
 impl shown(
