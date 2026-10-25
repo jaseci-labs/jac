@@ -164,6 +164,26 @@ test "JacPython sources participate in the producing compiler identity" {
     }
 }
 
+test "the wiring file is part of the producing compiler identity" {
+    # Every module under jaclang/ takes its imports from archwire.jac, so the
+    # same sources wired differently are a different compiler.
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        _manifest_compiler_digest
+    }
+    with tempfile.TemporaryDirectory() as pkg {
+        src = Path(pkg) / "compiler" / "module.jac";
+        src.parent.mkdir(parents=True, exist_ok=True);
+        src.write_text("def f() -> int { return 1; }\n");
+        wiring = Path(pkg) / "archwire.jac";
+        wiring.write_text("graph import compiler {}\n");
+        before = compiler_source_digest(pkg);
+        wiring.write_text("graph import compiler {\n    module --> other { f }\n}\n");
+        assert compiler_source_digest(pkg) != before;
+        assert _manifest_compiler_digest(pkg) != before;
+    }
+}
+
 test "a pruned staging resolves compiler identity from its recorded hashes" {
     # The payload drops the natively lowered trees (they live in JacPython's
     # native object, not as source), so a staged jaclang holds fewer files than
