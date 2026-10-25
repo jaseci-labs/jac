@@ -39,9 +39,13 @@ glob _ndesc_of_cls: dict[type, OspNodeDesc] = {};
 
 def _sv_node_desc(tag: int) -> OspNodeDesc;
 
+def _sv_settle(scope: OspWalkScope) -> bool;
+
 def _sv_on_complete(scope: OspWalkScope, ok: bool);
 
-def make_sv_runtime -> OspRuntime;
+def _sv_on_complete_uncommitted(scope: OspWalkScope, ok: bool);
+
+def make_sv_runtime(commit: bool = True) -> OspRuntime;
 
 async def osp_spawn_async(
     rt: OspRuntime, wlk: any, wdesc: OspWalkerDesc, starts: list[any]

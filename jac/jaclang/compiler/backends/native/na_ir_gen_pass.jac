@@ -1004,6 +1004,8 @@ walker NaIRGenPass(CompilerPass) {
     def _c_abi_same(have: ir.FunctionType, want: ir.FunctionType) -> bool;
     def _c_calls_directly(target: ir.Function) -> bool;
     def _c_address_of_value(value: (ir.Value | None)) -> (ir.Value | None);
+    def _c_literal_address(arg: uni.UniNode) -> (ir.Constant | None);
+    def _literal_destination(nd: uni.Int) -> (str | None);
     def _reads_c_callback(nd: uni.Expr) -> bool;
     def _c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None);
     def _clib_global_of(nd: uni.Name) -> (tuple[ir.GlobalVariable, any] | None);
@@ -2909,6 +2911,7 @@ walker NaIRGenPass(CompilerPass) {
     def _lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value;
     def _convert_scalar(val: ir.Value, src: ScalarShape, dst: ScalarShape) -> ir.Value;
     def _codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value | None);
+    def _names_user_symbol(target: uni.UniNode) -> bool;
     def _codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value | None);
     def _codegen_sized_bound(name: str, attr: str) -> (ir.Value | None);
     def _codegen_wrapping(nd: uni.FuncCall, name: str) -> (ir.Value | None);
@@ -2949,8 +2952,28 @@ walker NaIRGenPass(CompilerPass) {
         end_bb: ir.Block
     ) -> None;
 
+    def _release_iter_end(
+        spill: (ir.Value | None),
+        slot_var: (str | None),
+        owns_iter: bool,
+        iter_val: ir.Value,
+        loc: str
+    ) -> None;
+
+    def _release_for_coll(
+        spill: (ir.Value | None),
+        slot_var: (str | None),
+        release_op: str,
+        collection_val: ir.Value,
+        loc: str
+    ) -> None;
+
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
+    def _codegen_assert_computed(
+        nd: uni.AssertStmt, is_false: ir.Value, where: str
+    ) -> None;
+
     def _exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value;
     def _unwind_top_slot(
         b: ir.IRBuilder, context: (ir.Value | None) = None

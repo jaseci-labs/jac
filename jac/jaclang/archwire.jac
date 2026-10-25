@@ -88,10 +88,12 @@ graph import {
         client.js_runtime._engine | compiler.backends.native.native_link.musl_lib_dir {
             resolve
         },
+        client.targets.desktop.native.host_boot._enter_embedded_env
+            | project.kernel_snapshot.require_stub_catalog { forget },
+        client.targets.desktop.native.host_boot._leave_embedded_env { forget },
         compiler.backends.native.kernel_resolve.build_kernel { publish },
         compiler.types.stubcat.build.build_catalog { building },
         project.kernel_snapshot.build_stub_catalog { artifact_named, build, forget },
-        project.kernel_snapshot.require_stub_catalog { forget },
     ]
     artifacts.router --> [
         compiler.driver.toolchain.native_pipeline_available { resolve },
@@ -1103,7 +1105,6 @@ graph import {
             ANALYSIS_CRASHED,
             AnalysisReport,
             CompileReport,
-            ModuleReport,
             kernel_trace,
             run_kernel_compile
         },
@@ -1858,7 +1859,6 @@ graph import {
         client.cli.setup { kind_has_client },
         compiler.placement.placement.project_has_server
             | compiler.placement.placement_pins { kind_codespace },
-        dist.seal.build_serve_manifest { kind_has_server },
         dist.source.project.export_project { kind_has_client, kind_has_server },
     ]
     project.app_kinds --> [
@@ -4795,10 +4795,9 @@ graph import cli {
 
 graph import cli.commands {
     analysis --> build.build { check }
-    build --> execution._build_plan { build }
     cli_helpers ++> execution | tools { proc_file as _proc_file }
     native_build --> [
-        build._build_app | execution._build_plan { native_build },
+        build._build_app { native_build },
         build.build { native_build },
     ]
     project --> [
@@ -5059,7 +5058,10 @@ graph import client {
     targets.node_tooling_common ++> vite_bundler._build_vite_command {
         resolve_node_tool_entry
     }
-    targets.react_native.dev --> cli.run_client_start { JAC_RN_DEV_HOST_ENV }
+    targets.react_native.dev --> cli.run_client_start {
+        JAC_RN_DEV_HOST_ENV,
+        JAC_RN_TUNNEL_ENV
+    }
     targets.react_native.html_tag_map ++> client_runtime_native {
         RN_HTML_TEXT_TAGS as _TEXT_TAGS,
         RN_HTML_VIEW_TAGS as _VIEW_TAGS
@@ -5174,7 +5176,10 @@ graph import client.targets {
     }
     react_native.dev ++> mobile_target {
         JAC_RN_DEV_HOST_ENV,
+        JAC_RN_TUNNEL_ENV,
+        METRO_API_PREFIX,
         inject_dev_api_base_url,
+        inject_metro_api_base,
         resolve_metro_port,
         restore_app_json,
         rn_hmr_on_jac_changed,
@@ -5183,6 +5188,7 @@ graph import client.targets {
     }
     react_native.scaffold ++> mobile_target {
         ensure_native_deps_installed,
+        refresh_metro_config,
         write_expo_scaffold
     }
     register --> registry.get_target_registry { register_targets }
@@ -6822,7 +6828,8 @@ graph import compiler {
             E5113,
             E5114,
             E9001,
-            E9002
+            E9002,
+            E9003
         },
         backends.native.primitives_native
             | driver.module_compile.report_missing_native_ir { E5092 },
@@ -6872,7 +6879,6 @@ graph import compiler {
             E0052,
             E0055,
             E0058,
-            E0059,
             E0063,
             E0065,
             E0066,
@@ -7350,7 +7356,8 @@ graph import compiler {
             binding_sites,
             binds_target,
             confined_to,
-            enclosing_loop
+            enclosing_loop,
+            in_loop_else
         },
         backends.native.na_ir_gen_pass {
             LoopLinks,
@@ -7359,7 +7366,9 @@ graph import compiler {
             enclosing_loop,
             frame_owns
         },
-        backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink },
+        backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
+        passes.ast_validation_pass { in_loop_else },
+        passes.cfg_build_pass { enclosing_loop },
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
@@ -9180,7 +9189,10 @@ graph import compiler {
             Name,
             Token,
             UnaryExpr,
-            UniNode
+            UniNode,
+            int_literal_float,
+            int_literal_i64,
+            int_literal_u64_bits
         },
         types.operations {
             AtomTrailer,
@@ -14240,6 +14252,7 @@ graph import compiler.types {
             unify_numeric_operands
         },
         type_evaluator.TypeEvaluator._extern_field_type { numeric_name_of },
+        type_evaluator.TypeEvaluator._literal_type_from_expr { folded_number },
     ]
     fixed_width --> type_evaluator.TypeEvaluator._get_type_from_flow_node {
         numeric_name_of
@@ -15315,6 +15328,7 @@ graph import runtime {
         },
         runtime.JacBuiltin.log_report { _current_scope, osp_report },
         runtime.JacGraph.clear_edges { osp_forget },
+        runtime.JacWalker.async_spawn_call { _current_scope },
         runtime.JacWalker.disengage { osp_disengage },
         runtime.JacWalker.spawn_call { osp_spawn },
         runtime.JacWalker.visit { osp_visit, scope_of },
@@ -15368,7 +15382,7 @@ graph import runtime {
             | osp_kernel_sv._sv_on_complete
             | prepared_loader.PreparedFinder.find_spec { JacRuntime },
         archetype.NodeAnchor.all_edges { JacRuntimeInterface },
-        archetype.Root.__getattr__ { JacRuntime },
+        archetype.Root.__getattr__ | osp_kernel_sv._sv_settle { JacRuntime },
         archetype._dirty_delattr { JacRuntime },
         archetype._dirty_setattr { JacRuntime },
         interop_bridge._pyb_import_module { JacModule },
