@@ -113,6 +113,26 @@ def _build_link_plan(
 
 def _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine;
 
+obj UnitGlueSymbols {
+    has declared: dict[str, str] = {},
+        defined: list[str] = [];
+}
+
+glob HEAP_GLUE_SYMBOLS: list[str] = ["jac_heap_size", "jac_list_heap_size"],
+     _glue_symbol_memo: dict[str, UnitGlueSymbols] = {};
+
+def unit_glue_symbols(
+    bitcode: bytes, wanted: list[str], options: CompileOptions
+) -> UnitGlueSymbols;
+
+def _glue_symbols_store(key: str, options: CompileOptions) -> str;
+
+def _read_glue_symbols(store: str) -> (UnitGlueSymbols | None);
+
+def _write_glue_symbols(store: str, symbols: UnitGlueSymbols);
+
+def glue_symbol_memo_clear;
+
 def callback_glue_ir(plan: LinkPlan) -> str;
 
 def heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]];

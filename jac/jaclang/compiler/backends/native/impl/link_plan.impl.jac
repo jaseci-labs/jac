@@ -620,12 +620,118 @@ impl _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine {
     return tm;
 }
 
+impl unit_glue_symbols(
+    bitcode: bytes, wanted: list[str], options: CompileOptions
+) -> UnitGlueSymbols {
+    names = sorted(set(wanted));
+    h = hashlib.sha256();
+    h.update(b"glue-symbols-1");
+    for name in names {
+        h.update(b"\x1f");
+        h.update(name.encode("utf-8"));
+    }
+    h.update(b"\x1e");
+    h.update(bitcode);
+    key = h.hexdigest();
+    known = _glue_symbol_memo.get(key);
+    if known is not None {
+        return known;
+    }
+    store = _glue_symbols_store(key, options);
+    found = _read_glue_symbols(store);
+    if found is None {
+        scanned = UnitGlueSymbols();
+        module = llvm.parse_bitcode(bitcode);
+        for function in module.functions {
+            name = function.name;
+            if name in names {
+                if function.is_declaration {
+                    scanned.declared[name] = str(function);
+                } elif name not in scanned.defined {
+                    scanned.defined.append(name);
+                }
+            }
+        }
+        _write_glue_symbols(store, scanned);
+        found = scanned;
+    }
+    _glue_symbol_memo[key] = found;
+    return found;
+}
+
+impl _glue_symbols_store(key: str, options: CompileOptions) -> str {
+    (rebuild, _) = cache_mode();
+    if rebuild or options.no_ir_cache {
+        return "";
+    }
+    return os.path.join(
+        str(get_jir_cache_dir()), "nativeglue", compiler_generation(), key[:2], key
+    );
+}
+
+impl _read_glue_symbols(store: str) -> (UnitGlueSymbols | None) {
+    if not store {
+        return None;
+    }
+    raw: any = None;
+    try {
+        with open(store, "r", encoding="utf-8") as handle {
+            raw = json.load(handle);
+        }
+    } except Exception {
+        return None;
+    }
+    if not isinstance(raw, dict) {
+        return None;
+    }
+    declared = raw.get("declared");
+    defined = raw.get("defined");
+    if not isinstance(declared, dict) or not isinstance(defined, list) {
+        return None;
+    }
+    out = UnitGlueSymbols();
+    for (name, text) in declared.items() {
+        if not isinstance(name, str) or not isinstance(text, str) {
+            return None;
+        }
+        out.declared[name] = text;
+    }
+    for name in defined {
+        if not isinstance(name, str) {
+            return None;
+        }
+        out.defined.append(name);
+    }
+    return out;
+}
+
+impl _write_glue_symbols(store: str, symbols: UnitGlueSymbols) {
+    if not store {
+        return;
+    }
+    try {
+        os.makedirs(os.path.dirname(store), exist_ok=True);
+        scratch = f"{store}.{os.getpid()}.tmp";
+        with open(scratch, "w", encoding="utf-8") as handle {
+            json.dump(
+                {"declared": dict(symbols.declared), "defined": list(symbols.defined)},
+                handle
+            );
+        }
+        os.replace(scratch, store);
+    } except OSError {}
+}
+
+impl glue_symbol_memo_clear {
+    _glue_symbol_memo.clear();
+}
+
 impl callback_glue_ir(plan: LinkPlan) -> str {
     if not plan.callback_bindings {
         return "";
     }
 
-    wanted = {binding.name for binding in plan.callback_bindings};
+    wanted = sorted({binding.name for binding in plan.callback_bindings});
     declarations: dict[str, str] = {};
     defined: set[str] = set();
     registry = plan.prog.native_units();
@@ -634,15 +740,12 @@ impl callback_glue_ir(plan: LinkPlan) -> str {
         if bitcode is None {
             raise LinkPlanError(f"No bitcode for {unit.path}");
         }
-        module = llvm.parse_bitcode(bitcode);
-        for function in module.functions {
-            if function.name in wanted {
-                if function.is_declaration {
-                    declarations[function.name] = str(function);
-                } else {
-                    defined.add(function.name);
-                }
-            }
+        symbols = unit_glue_symbols(bitcode, wanted, plan.options);
+        for (name, text) in symbols.declared.items() {
+            declarations[name] = text;
+        }
+        for name in symbols.defined {
+            defined.add(name);
         }
     }
     bindings = [
@@ -675,16 +778,12 @@ impl heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
         if bitcode is None {
             raise LinkPlanError(f"No bitcode for {unit.path}");
         }
-        module = llvm.parse_bitcode(bitcode);
-        for function in module.functions {
-            name = function.name;
-            if name in ("jac_heap_size", "jac_list_heap_size") {
-                if function.is_declaration {
-                    declarations[name] = str(function);
-                } else {
-                    defined.add(name);
-                }
-            }
+        symbols = unit_glue_symbols(bitcode, HEAP_GLUE_SYMBOLS, plan.options);
+        for (name, text) in symbols.declared.items() {
+            declarations[name] = text;
+        }
+        for name in symbols.defined {
+            defined.add(name);
         }
     }
     text = '\n'.join(

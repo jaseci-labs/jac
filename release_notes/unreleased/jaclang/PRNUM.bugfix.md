@@ -1,0 +1,1 @@
+- A native link reads which heap-accounting and callback symbols each unit declares or defines from a scan kept by the hash of the unit's bitcode, in memory and under the JIR cache, instead of parsing every unit's bitcode again (twice in an objects-mode link); a unit whose bitcode changes is scanned again.
