@@ -2123,10 +2123,10 @@ done:
 }
 
 /* Modules/getpath.c's build inputs (getpath.c itself is native Jac, in
- * jaclang/runtime/python/interpreter/getpath.jac): the frozen getpath.py and
- * the install locations the Makefile passes when it compiles this file. */
-#include "marshal.h"
-#include "Python/frozen_modules/getpath.h"
+ * jaclang/runtime/python/interpreter/getpath.jac): the install locations the
+ * Makefile passes when it compiles this file. The frozen getpath.py and
+ * _Py_Get_Getpath_CodeObject are in the module scripts/jacpython/gen_frozen.jac
+ * writes at build time. */
 
 #if (!defined(PREFIX) || !defined(EXEC_PREFIX) \
         || !defined(VERSION) || !defined(VPATH) \
@@ -2137,13 +2137,6 @@ done:
 #if !defined(PYTHONPATH)
 #define PYTHONPATH NULL
 #endif
-
-PyAPI_FUNC(PyObject *)
-_Py_Get_Getpath_CodeObject(void)
-{
-    return PyMarshal_ReadObjectFromString(
-        (const char*)_Py_M__getpath, sizeof(_Py_M__getpath));
-}
 
 /* 0 PREFIX, 1 EXEC_PREFIX, 2 PYTHONPATH, 3 VPATH, 4 PLATLIBDIR. */
 const char *jacpy_getpath_macro(int64_t which) {

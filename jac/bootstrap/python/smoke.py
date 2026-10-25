@@ -44,6 +44,25 @@ assert hashlib.sha256(sample).digest()
 assert ctypes.pythonapi.PyInitConfig_Create
 mode = sys.argv[1] if len(sys.argv) > 1 else "jacpython"
 assert mode in ("jacpython", "host"), mode
+# Every extension module this configuration built imports: what `make
+# checksharedmods` runs Tools/build/check_extension_modules.py for, which
+# JacPython does not keep. Here the check is strict and reads the installed
+# tree: the modules the Setup files build (MODBUILT_NAMES, MODSHARED_NAMES)
+# and those configure enabled, minus Setup.local's *disabled* block.
+build_vars = sysconfig.get_config_vars()
+built = set(build_vars["MODBUILT_NAMES"].split()) | set(build_vars["MODSHARED_NAMES"].split())
+built |= {
+    key[len("MODULE_"):-len("_STATE")].lower()
+    for key, value in build_vars.items()
+    if key.startswith("MODULE_") and key.endswith("_STATE") and value == "yes"
+}
+unimportable = []
+for name in sorted(built - set(build_vars["MODDISABLED_NAMES"].split())):
+    try:
+        __import__(name)
+    except ImportError as error:
+        unimportable.append(f"{name}: {error}")
+assert not unimportable, "built extension modules fail to import:\n" + "\n".join(unimportable)
 if mode == "jacpython":
     assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
 try:

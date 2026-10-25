@@ -91,7 +91,7 @@ with entry {
 }
 
 glob totals = {
-         "removed": {"c": [0, 0], "h": [0, 0], "all": [0, 0]},
+         "removed": {"c": [0, 0], "h": [0, 0], "other": [0, 0], "all": [0, 0]},
          "pruned": {"all": [0, 0]},
          "generated": {"all": [0, 0]}
      };
@@ -116,9 +116,9 @@ with entry {
             totals[kind]["all"][0] += 1;
             totals[kind]["all"][1] += counts[name];
             if kind == "removed" {
-                suffix = "c" if name.endswith(".c") else "h";
-                totals[kind][suffix][0] += 1;
-                totals[kind][suffix][1] += counts[name];
+                bucket = {".c": "c", ".h": "h"}.get(Path(name).suffix, "other");
+                totals[kind][bucket][0] += 1;
+                totals[kind][bucket][1] += counts[name];
             }
         }
         updated.append(
@@ -134,7 +134,8 @@ glob removed = totals["removed"],
 with entry {
     excluded = (
         f"#   Excluded: {removed['c'][0]} C files / {grouped(removed['c'][1])} lines; "
-        + f"{removed['h'][0]} headers / {grouped(removed['h'][1])} lines."
+        + f"{removed['h'][0]} headers / {grouped(removed['h'][1])} lines; "
+        + f"{removed['other'][0]} other files / {grouped(removed['other'][1])} lines."
     );
     summaries = [
         f"#   Total: {removed['all'][0]} files / {grouped(

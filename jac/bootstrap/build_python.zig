@@ -19,6 +19,14 @@ const inputs = [_][]const u8{
     "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
     "bootstrap/python/jacpython-modules.txt", "bootstrap/python/jacpython-clinic.txt",
 };
+// The Jac generators build.sh runs with the build-time host before and after
+// make (the frozen modules, build-details.json), relative to the repository
+// root, the Jac root's parent. Only the JacPython build runs them.
+const generator_inputs = [_][]const u8{
+    "scripts/jacpython/common.jac",
+    "scripts/jacpython/gen_frozen.jac",
+    "scripts/jacpython/gen_build_details.jac",
+};
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
 const Mode = enum { host, jacpython };
 
@@ -263,6 +271,10 @@ fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
         hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, copy }), a, .unlimited));
     }
     if (mode == .jacpython) {
+        for (generator_inputs) |path| {
+            hash.update(path);
+            hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, "..", path }), a, .unlimited));
+        }
         // Rebuild the native replacement when the producing compiler or its
         // source inputs change; never reuse an object from another generation.
         for ([_][]const u8{ "jaclang/vendor/typeshed/PIN", "jaclang/vendor/typeshed/TARBALL_SHA256" }) |path| {
@@ -603,57 +615,68 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     const a = arena.allocator();
     var tmp = std.testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
+    for (generator_inputs) |path| {
+        try tmp.dir.createDirPath(io, std.fs.path.dirname(path).?);
+        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "generator" });
+    }
+    try tmp.dir.createDirPath(io, "jac");
+    var dir = try tmp.dir.openDir(io, "jac", .{});
+    defer dir.close(io);
     for (inputs) |path| {
-        if (std.fs.path.dirname(path)) |parent| try tmp.dir.createDirPath(io, parent);
-        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "recipe" });
+        if (std.fs.path.dirname(path)) |parent| try dir.createDirPath(io, parent);
+        try dir.writeFile(io, .{ .sub_path = path, .data = "recipe" });
     }
     for (native_inputs.toolchain_inputs) |path| {
-        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "toolchain" });
+        try dir.writeFile(io, .{ .sub_path = path, .data = "toolchain" });
     }
-    try tmp.dir.createDirPath(io, "native");
-    try tmp.dir.createDirPath(io, "jaclang/vendor/typeshed");
+    try dir.createDirPath(io, "native");
+    try dir.createDirPath(io, "jaclang/vendor/typeshed");
     for ([_][]const u8{ "PIN", "TARBALL_SHA256" }) |name| {
-        try tmp.dir.writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ "jaclang/vendor/typeshed", name }), .data = "pin" });
+        try dir.writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ "jaclang/vendor/typeshed", name }), .data = "pin" });
     }
-    try tmp.dir.createDirPath(io, "host");
-    try tmp.dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "host-key" });
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler_inputs.txt", .data = "compiler.jac\ncompiler\nruntime\n" });
-    const root = try tmp.dir.realPathFileAlloc(io, ".", a);
+    try dir.createDirPath(io, "host");
+    try dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "host-key" });
+    try dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
+    try dir.writeFile(io, .{ .sub_path = "jaclang/compiler_inputs.txt", .data = "compiler.jac\ncompiler\nruntime\n" });
+    const root = try dir.realPathFileAlloc(io, ".", a);
     const host = try std.fs.path.join(a, &.{ root, "host" });
     const before_host = try buildKey(io, a, hostPlatform(), root, host, .host);
     const before_runtime = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try std.testing.expect(!std.mem.eql(u8, &before_host, &before_runtime));
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
+    try dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
     const changed_runtime = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try std.testing.expect(!std.mem.eql(u8, &before_runtime, &changed_runtime));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/vendor/generated.py", .data = "materialized vendor data" });
+    try dir.writeFile(io, .{ .sub_path = "jaclang/vendor/generated.py", .data = "materialized vendor data" });
     try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
-    try tmp.dir.writeFile(io, .{ .sub_path = "native/shim.cpp", .data = "changed emitter" });
+    try dir.writeFile(io, .{ .sub_path = "native/shim.cpp", .data = "changed emitter" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
-    try tmp.dir.deleteFile(io, "native/shim.cpp");
+    try dir.deleteFile(io, "native/shim.cpp");
     for ([_][]const u8{ "scale/server.jac", "compiler/tests/example.jac", "compiler/example.test.jac", "runtime/test/fixture.py", "compiler/.generated/source.py" }) |rel| {
         const path = try std.fs.path.join(a, &.{ "jaclang", rel });
-        try tmp.dir.createDirPath(io, std.fs.path.dirname(path).?);
-        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "unrelated source" });
+        try dir.createDirPath(io, std.fs.path.dirname(path).?);
+        try dir.writeFile(io, .{ .sub_path = path, .data = "unrelated source" });
         try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
     }
-    try tmp.dir.createDirPath(io, "jaclang/runtime/python");
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "new runtime input" });
+    try dir.createDirPath(io, "jaclang/runtime/python");
+    try dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "new runtime input" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
-    try tmp.dir.deleteFile(io, "jaclang/runtime/python/eval.jac");
+    try dir.deleteFile(io, "jaclang/runtime/python/eval.jac");
     try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
-    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/compiler_runtime.c", .data = "changed native adapter" });
+    try dir.writeFile(io, .{ .sub_path = "bootstrap/python/compiler_runtime.c", .data = "changed native adapter" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
+    const before_generator = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
+    try tmp.dir.writeFile(io, .{ .sub_path = "scripts/jacpython/gen_frozen.jac", .data = "changed generator" });
+    try std.testing.expect(!std.mem.eql(u8, &before_generator, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+    try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
     const before_recipe = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
-    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/cpython-sources.txt", .data = "changed C source selection" });
+    try dir.writeFile(io, .{ .sub_path = "bootstrap/python/cpython-sources.txt", .data = "changed C source selection" });
     try std.testing.expect(!std.mem.eql(u8, &before_host, &(try buildKey(io, a, hostPlatform(), root, host, .host))));
     try std.testing.expect(!std.mem.eql(u8, &before_recipe, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     const before_host_key = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
-    try tmp.dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "rebuilt host" });
+    try dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "rebuilt host" });
     try std.testing.expect(!std.mem.eql(u8, &before_host_key, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
 }
 
@@ -664,44 +687,51 @@ test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
     const a = arena.allocator();
     var tmp = std.testing.tmpDir(.{ .iterate = true });
     defer tmp.cleanup();
+    for (generator_inputs) |path| {
+        try tmp.dir.createDirPath(io, std.fs.path.dirname(path).?);
+        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "generator" });
+    }
+    try tmp.dir.createDirPath(io, "jac");
+    var dir = try tmp.dir.openDir(io, "jac", .{});
+    defer dir.close(io);
     for (inputs) |path| {
-        if (std.fs.path.dirname(path)) |parent| try tmp.dir.createDirPath(io, parent);
-        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "recipe" });
+        if (std.fs.path.dirname(path)) |parent| try dir.createDirPath(io, parent);
+        try dir.writeFile(io, .{ .sub_path = path, .data = "recipe" });
     }
     for (native_inputs.toolchain_inputs) |path| {
-        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "toolchain" });
+        try dir.writeFile(io, .{ .sub_path = path, .data = "toolchain" });
     }
-    try tmp.dir.createDirPath(io, "native");
-    try tmp.dir.createDirPath(io, "jaclang/vendor/typeshed");
+    try dir.createDirPath(io, "native");
+    try dir.createDirPath(io, "jaclang/vendor/typeshed");
     for ([_][]const u8{ "PIN", "TARBALL_SHA256" }) |name| {
-        try tmp.dir.writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ "jaclang/vendor/typeshed", name }), .data = "pin" });
+        try dir.writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ "jaclang/vendor/typeshed", name }), .data = "pin" });
     }
-    try tmp.dir.createDirPath(io, "host");
-    try tmp.dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "host-key" });
-    try tmp.dir.createDirPath(io, "jaclang/runtime/python");
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "lowered" });
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler_inputs.txt", .data = "compiler.jac\nruntime\n" });
-    const root = try tmp.dir.realPathFileAlloc(io, ".", a);
+    try dir.createDirPath(io, "host");
+    try dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "host-key" });
+    try dir.createDirPath(io, "jaclang/runtime/python");
+    try dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "compiler" });
+    try dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "lowered" });
+    try dir.writeFile(io, .{ .sub_path = "jaclang/compiler_inputs.txt", .data = "compiler.jac\nruntime\n" });
+    const root = try dir.realPathFileAlloc(io, ".", a);
     const host = try std.fs.path.join(a, &.{ root, "host" });
     const built = try std.fs.path.join(a, &.{ root, "built" });
 
     // No record: nothing to reuse.
     try std.testing.expect((try sourcesKey(io, a, hostPlatform(), root, host, built)) == null);
-    try tmp.dir.createDirPath(io, "built/python/build");
-    try tmp.dir.writeFile(io, .{ .sub_path = "built/python/build/jacpython-native-sources", .data = "jaclang/runtime/python/eval.jac\n" });
+    try dir.createDirPath(io, "built/python/build");
+    try dir.writeFile(io, .{ .sub_path = "built/python/build/jacpython-native-sources", .data = "jaclang/runtime/python/eval.jac\n" });
     const lowered = (try sourcesKey(io, a, hostPlatform(), root, host, built)).?;
     // A compiler edit outside what the runtime was lowered from keeps it...
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
+    try dir.writeFile(io, .{ .sub_path = "jaclang/compiler.jac", .data = "changed compiler" });
     try std.testing.expectEqual(lowered, (try sourcesKey(io, a, hostPlatform(), root, host, built)).?);
     // ...while the full key, which main uses, still moves.
     try std.testing.expect(!std.mem.eql(u8, &lowered, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     // An edit to a recorded source does not reuse it.
-    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "edited" });
+    try dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "edited" });
     const edited = (try sourcesKey(io, a, hostPlatform(), root, host, built)).?;
     try std.testing.expect(!std.mem.eql(u8, &lowered, &edited));
     // Nor does a recipe or toolchain change.
-    try tmp.dir.writeFile(io, .{ .sub_path = native_inputs.toolchain_inputs[0], .data = "new toolchain" });
+    try dir.writeFile(io, .{ .sub_path = native_inputs.toolchain_inputs[0], .data = "new toolchain" });
     try std.testing.expect(!std.mem.eql(u8, &edited, &(try sourcesKey(io, a, hostPlatform(), root, host, built)).?));
 }
 

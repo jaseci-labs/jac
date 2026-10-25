@@ -10,18 +10,21 @@
 # use pinned CPython 3.14.6 source lines, including comments and blanks.
 #
 #   "# path  # removed: N source lines"
-#   Replaced by the native Jac implementation. A separate build-only CPython
-#   host restores these to produce the native object; no shipped runtime has
-#   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 288 C files / 499,823 lines; 184 headers / 167,126 lines.
-#   Total: 472 files / 666,949 source lines.
+#   Replaced by the native Jac implementation, or by a Jac generator run with
+#   the build-only host's interpreter (scripts/jacpython/gen_frozen.jac and
+#   gen_build_details.jac replace the frozen-module tools and Tools/build).
+#   That separate build-only CPython host restores these to produce the native
+#   object; no shipped runtime has them, and compiler-bridge.patch detaches
+#   upstream rules that name them.
+#   Excluded: 291 C files / 500,315 lines; 182 headers / 166,979 lines; 28 other files / 6,178 lines.
+#   Total: 501 files / 673,472 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
 #   so build-graph.patch detaches upstream rules that name them.
 #   A path is pruned only when no supported platform's configure selects it
 #   and its outer #if has no #else that the retained build still links.
-#   Total: 29 files / 59,417 source lines.
+#   Total: 31 files / 61,064 source lines.
 #
 #   "# path  # generated: N source lines"
 #   Written from the Jac instruction table by scripts/jacpython/gen_opcode_meta.jac
@@ -41,7 +44,7 @@
 # use it.
 
 # Build, install and license inputs
-Grammar/
+# Grammar/  # pruned: 1,647 source lines
 LICENSE
 Makefile.pre.in
 Misc/platform_triplet.c
@@ -50,14 +53,14 @@ Misc/python-config.sh.in
 Misc/python-embed.pc.in
 # Misc/python.man  # pruned: 768 source lines
 Misc/python.pc.in
-Programs/_bootstrap_python.c
-Programs/_freeze_module.c
-Programs/_freeze_module.py
+# Programs/_bootstrap_python.c  # removed: 109 source lines
+# Programs/_freeze_module.c  # removed: 251 source lines
+# Programs/_freeze_module.py  # removed: 68 source lines
 # Programs/_testembed.c  # pruned: 2,641 source lines
 Programs/python.c
 # Programs/test_frozenmain.h  # pruned: 39 source lines
 # README.rst  # pruned: 235 source lines
-Tools/build/
+# Tools/build/  # removed: 5,956 source lines
 Tools/freeze/flag.py
 # Tools/gdb/libpython.py  # pruned: 2,190 source lines
 Tools/scripts/idle3
@@ -367,8 +370,8 @@ Include/weakrefobject.h
 # Python/flowgraph.c  # removed: 4,167 source lines
 # Python/formatter_unicode.c  # removed: 1,726 source lines
 # Python/frame.c  # removed: 159 source lines
-Python/frozen.c
-Python/frozen_modules/
+# Python/frozen.c  # removed: 132 source lines
+# Python/frozen_modules/  # removed: 7 source lines
 # Python/frozenmain.c  # removed: 99 source lines
 # Python/future.c  # removed: 119 source lines
 # Python/gc.c  # removed: 2,057 source lines

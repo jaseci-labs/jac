@@ -18,6 +18,10 @@ triple = {
     "macos-x86_64": "x86_64-apple-macosx12.0.0",
     "macos-aarch64": "arm64-apple-macosx11.0.0",
 }[sys.argv[3]]
+# Jac modules this build wrote for the object (the frozen modules that
+# scripts/jacpython/gen_frozen.jac writes). They are lowered with the runtime
+# but are not sources: the build key covers their generators and inputs.
+generated = [Path(path).resolve() for path in sys.argv[4:]]
 pin = json.loads((root / "bootstrap/python/sources.json").read_text())["cpython"]
 if tuple(map(int, pin["version"].split("."))) != sys.version_info[:3]:
     raise RuntimeError("Build JacPython with pinned CPython " + pin["version"])
@@ -51,6 +55,7 @@ entries = [
         for path in (root / "jaclang/runtime/python" / package).glob("*.jac")
         if path.name != "__init__.jac"
     ),
+    *generated,
 ]
 options = CompileOptions(
     aot_mode=True, default_codespace="native", skip_native_engine=True,
@@ -129,12 +134,16 @@ object_bytes = machine.emit_object(compiled)
 def lowered_sources():
     """Every source the object was lowered from, relative to the jac root: the
     plan's units, their annexes and their compile-time inputs. A dependency can
-    only be added by editing one of these, so they key the object exactly."""
+    only be added by editing one of these, so they key the object exactly. The
+    generated modules are left out: they live in the build tree."""
     from jaclang.compiler.driver.jir import _related_files, _ct_dep_rows, _ct_row_path
     registry = program.native_units()
     paths = set()
+    skipped = {os.path.realpath(path) for path in generated}
     for unit in plan.units:
         real = os.path.realpath(unit.path)
+        if real in skipped:
+            continue
         paths.add(real)
         for rel, _digest in _related_files(unit.path):
             paths.add(os.path.realpath(os.path.join(os.path.dirname(real), rel)))
