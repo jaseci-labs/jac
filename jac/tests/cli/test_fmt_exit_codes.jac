@@ -31,7 +31,11 @@ import from io { StringIO }
 import from contextlib { redirect_stderr, redirect_stdout }
 import from unittest.mock { patch }
 
-import from jaclang.cli.commands.analysis { format as fmt_cmd, lint as lint_cmd }
+import from jaclang.cli.commands.analysis {
+    check as check_cmd,
+    format as fmt_cmd,
+    lint as lint_cmd
+}
 import from jaclang.project { config as config_mod }
 
 glob CLEAN = "def f(x: int) -> int {\n    return x + 1;\n}\n",
@@ -365,6 +369,302 @@ test "lintfix moves separate-impls bodies into the module's impl annex" {
             f"one, got:\n{annex_text!r}"
         );
         assert again == 0 , f"[jobs={jobs}] a second run must find nothing to move";
+    }
+}
+
+test "lintfix moves impls-in-annex impls and sibling annexes into an impl folder" {
+    for mode in ("fmt-0", "fmt-2", "lint") {
+        repo = make_project();
+        (Path(repo) / "jac.toml").write_text(
+            '[project]\nname = "fx"\nversion = "0.0.1"\n\n'
+                + '[check.lint]\nselect = ["impls-in-annex"]\n'
+        );
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            decl = "obj Foo {\n    def bar -> int;\n}\n";
+            proj = Path(repo);
+            (proj / "inline.jac").write_text(decl + "\n" + ANNEX_SRC);
+            (proj / "side.jac").write_text(decl);
+            (proj / "side.impl.jac").write_text(ANNEX_SRC);
+            (proj / "both.jac").write_text(
+                "obj Foo {\n    def bar -> int;\n    def baz -> int;\n}\n\n"
+                    + "impl Foo.baz -> int {\n    return 2;\n}\n"
+            );
+            (proj / "both.impl.jac").write_text(ANNEX_SRC);
+            (proj / "plat.native.jac").write_text(decl);
+            (proj / "plat.native.impl.jac").write_text(ANNEX_SRC);
+            (proj / "settled.jac").write_text(decl);
+            (proj / "impl").mkdir();
+            settled_src = "impl Foo.bar -> int {\n    return 1;\n}\n";
+            (proj / "impl" / "settled.impl.jac").write_text(settled_src);
+            inputs = [str(p) for p in sorted(proj.glob("*.jac"))];
+            reset_state();
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                if mode == "lint" {
+                    ret = lint_cmd(inputs, fix=True);
+                } else {
+                    ret = fmt_cmd(inputs, lintfix=True, jobs=mode[-1]);
+                }
+            }
+            left = sorted(p.name for p in proj.glob("*.impl.jac"));
+            inline_text = (proj / "inline.jac").read_text();
+            inline_annex = (proj / "impl" / "inline.impl.jac").read_text();
+            side_annex = (proj / "impl" / "side.impl.jac").read_text();
+            both_text = (proj / "both.jac").read_text();
+            both_annex = (proj / "impl" / "both.impl.jac").read_text();
+            plat_annex = (
+                proj / "plat.native.impl" / "plat.native.impl.jac"
+            ).read_text();
+            settled_annex = (proj / "impl" / "settled.impl.jac").read_text();
+            reset_state();
+            inputs = [str(p) for p in sorted(proj.glob("**/*.jac"))];
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                again = fmt_cmd(inputs, lintfix=True, check=True);
+            }
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 0 , f"[{mode}] every move is fixable, got {ret}";
+        assert left == [] , f"[{mode}] no annex stays beside its module, got {left}";
+        assert "impl" not in inline_text and "return 1" in inline_annex , (
+            f"[{mode}] an impl in the module moves to impl/, got:\n{inline_text!r}"
+        );
+        assert "return 1" in side_annex , f"[{mode}] a sibling annex moves to impl/";
+        assert "impl" not in both_text , f"[{mode}] got:\n{both_text!r}";
+        assert "Foo.bar" in both_annex and "Foo.baz" in both_annex , (
+            f"[{mode}] the moved impl joins the relocated annex, got:\n{both_annex!r}"
+        );
+        assert "return 1" in plat_annex , f"[{mode}] a dotted stem keeps its folder";
+        assert settled_annex == settled_src , f"[{mode}] a placed annex is untouched";
+        assert again == 0 , f"[{mode}] a second run must find nothing to move";
+    }
+}
+
+"""Run lintfix over `inputs` in `mode`: fmt-0, fmt-2 (pooled) or lint."""
+def run_lintfix(mode: str, inputs: list[str]) -> int {
+    reset_state();
+    with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+        if mode == "lint" {
+            return lint_cmd(inputs, fix=True);
+        }
+        return fmt_cmd(inputs, lintfix=True, jobs=mode[-1]);
+    }
+}
+
+"""Make a project that selects impls-in-annex and chdir into it."""
+def annex_project -> str {
+    repo = make_project();
+    (Path(repo) / "jac.toml").write_text(
+        '[project]\nname = "fx"\nversion = "0.0.1"\n\n'
+            + '[check.lint]\nselect = ["impls-in-annex"]\n'
+    );
+    return repo;
+}
+
+glob DECL = "obj Foo {\n    def bar -> int;\n}\n",
+     IMPL = "impl Foo.bar -> int {\n    return 1;\n}\n";
+
+test "lintfix gives a variant's sibling annex one home, beside the variant" {
+    for mode in ("fmt-0", "fmt-2", "lint") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            proj = Path(repo);
+            (proj / "foo.jac").write_text(DECL);
+            (proj / "foo.native.jac").write_text(DECL);
+            (proj / "foo.native.impl.jac").write_text(IMPL);
+            ret = run_lintfix(
+                mode, [str(proj / "foo.jac"), str(proj / "foo.native.jac")]
+            );
+            homes = sorted(str(p.relative_to(proj)) for p in proj.rglob("*.impl.jac"));
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 0 , f"[{mode}] got {ret}";
+        assert homes == ["foo.native.impl/foo.native.impl.jac"] , f"[{mode}] {homes}";
+    }
+}
+
+test "lintfix on a sibling annex alone moves it through its module" {
+    for mode in ("fmt-0", "lint") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            proj = Path(repo);
+            (proj / "side.jac").write_text(DECL);
+            (proj / "side.impl.jac").write_text(IMPL);
+            ret = run_lintfix(mode, [str(proj / "side.impl.jac")]);
+            moved = (proj / "impl" / "side.impl.jac").exists();
+            left = (proj / "side.impl.jac").exists();
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 0 and moved and not left , f"[{mode}] ret={ret} moved={moved} left={left}";
+    }
+}
+
+test "lint --fix leaves an ignored module alone even when its sibling annex is selected" {
+    repo = annex_project();
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        proj = Path(repo);
+        (proj / "side.jac").write_text(DECL + "\n" + IMPL);
+        mod_src = (proj / "side.jac").read_text();
+        (proj / "side.impl.jac").write_text(
+            "impl Foo.baz -> int {\n    return 2;\n}\n"
+        );
+        reset_state();
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+            lint_cmd([repo], fix=True, ignore=["side.jac"]);
+        }
+        mod_text = (proj / "side.jac").read_text();
+        moved = (proj / "impl" / "side.impl.jac").exists();
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+    assert mod_text == mod_src , f"the ignored module is untouched, got:\n{mod_text!r}";
+    assert not moved , "its annex is only moved through the module, which is ignored";
+}
+
+test "lintfix rolls a move back when the old annex cannot be removed" {
+    for mode in ("fmt-0", "fmt-2", "lint") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            proj = Path(repo);
+            (proj / "side.jac").write_text(
+                "obj Foo {\n    def bar -> int;\n    def baz -> int;\n}\n\n"
+                    + "impl Foo.baz -> int {\n    return 2;\n}\n"
+            );
+            mod_src = (proj / "side.jac").read_text();
+            (proj / "side.impl.jac").write_text(IMPL);
+            sibling = os.path.realpath(proj / "side.impl.jac");
+            real_unlink = Path.unlink;
+            def guarded_unlink(self: Path, missing_ok: bool = False) {
+                if os.path.realpath(self) == sibling {
+                    raise PermissionError(13, "Permission denied", str(self));
+                }
+                real_unlink(self, missing_ok=missing_ok);
+            }
+            with patch.object(Path, "unlink", guarded_unlink) {
+                ret = run_lintfix(mode, [str(proj / "side.jac")]);
+            }
+            mod_text = (proj / "side.jac").read_text();
+            copies = sorted(str(p.relative_to(proj)) for p in proj.rglob("*.impl.jac"));
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 1 , f"[{mode}] a failed removal fails the run, got {ret}";
+        assert copies == ["side.impl.jac"] , f"[{mode}] no second copy survives: {copies}";
+        assert mod_text == mod_src , f"[{mode}] the module is restored, got:\n{mod_text!r}";
+    }
+}
+
+test "lintfix rolls every destination back when one annex cannot be written" {
+    for jobs in ("0", "2") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            proj = Path(repo);
+            (proj / "side.jac").write_text(
+                "obj Foo {\n    def bar -> int;\n    def baz -> int;\n}\n"
+            );
+            (proj / "side.extra.impl.jac").write_text(
+                "impl Foo.baz -> int {\n    return 2;\n}\n"
+            );
+            (proj / "side.impl.jac").write_text(IMPL);
+            reset_state();
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                with deny_writes([str(proj / "impl" / "side.impl.jac")]) {
+                    ret = fmt_cmd([str(proj / "side.jac")], lintfix=True, jobs=jobs);
+                }
+            }
+            copies = sorted(str(p.relative_to(proj)) for p in proj.rglob("*.impl.jac"));
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 1 , f"[jobs={jobs}] the failed write fails the run, got {ret}";
+        assert copies == ["side.extra.impl.jac", "side.impl.jac"] , (
+            f"[jobs={jobs}] both annexes stay where they were, once: {copies}"
+        );
+    }
+}
+
+test "a cached lintfix check still sees an annex moved beside its module" {
+    repo = annex_project();
+    old = os.getcwd();
+    os.chdir(repo);
+    try {
+        pkg = Path(repo) / "pkg" / "impl";
+        (pkg / "impl").mkdir(parents=True);
+        (pkg / "foo.jac").write_text(DECL);
+        (pkg / "impl" / "foo.impl.jac").write_text(IMPL);
+        reset_state();
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+            first = fmt_cmd(
+                [str(pkg / "foo.jac")], lintfix=True, check=True, cache=True
+            );
+        }
+        (pkg / "impl" / "foo.impl.jac").rename(pkg / "foo.impl.jac");
+        reset_state();
+        with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+            second = fmt_cmd(
+                [str(pkg / "foo.jac")], lintfix=True, check=True, cache=True
+            );
+        }
+    } finally {
+        os.chdir(old);
+        shutil.rmtree(repo, ignore_errors=True);
+    }
+    assert first == 0 , f"the placed annex is clean, got {first}";
+    assert second == 1 , f"the misplaced annex is not served from the cache, got {second}";
+}
+
+test "lintfix moves relative imports unchanged, since an annex imports as its module" {
+    for mode in ("fmt-0", "lint") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            pkg = Path(repo) / "pkg";
+            pkg.mkdir();
+            (pkg / "__init__.jac").write_text("");
+            (pkg / "helper.jac").write_text("glob VALUE: int = 7;\n");
+            (pkg / "inline.jac").write_text(
+                "def get -> int;\n\nimpl get -> int {\n"
+                    + "    import from .helper { VALUE }\n    return VALUE;\n}\n"
+            );
+            (pkg / "side.jac").write_text("def get -> int;\n");
+            (pkg / "side.impl.jac").write_text(
+                "import from .helper { VALUE }\n\nimpl get -> int {\n    return VALUE;\n}\n"
+            );
+            ret = run_lintfix(mode, [str(pkg / "inline.jac"), str(pkg / "side.jac")]);
+            inline_annex = (pkg / "impl" / "inline.impl.jac").read_text();
+            side_annex = (pkg / "impl" / "side.impl.jac").read_text();
+            reset_state();
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                checked = check_cmd([str(pkg / "inline.jac"), str(pkg / "side.jac")]);
+            }
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 0 , f"[{mode}] got {ret}";
+        assert "import from .helper { VALUE }" in inline_annex , f"[{mode}] {inline_annex!r}";
+        assert "import from .helper { VALUE }" in side_annex , f"[{mode}] {side_annex!r}";
+        assert checked == 0 , f"[{mode}] the moved code still checks, got {checked}";
     }
 }
 
