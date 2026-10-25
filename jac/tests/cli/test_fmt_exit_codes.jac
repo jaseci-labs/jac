@@ -31,7 +31,11 @@ import from io { StringIO }
 import from contextlib { redirect_stderr, redirect_stdout }
 import from unittest.mock { patch }
 
-import from jaclang.cli.commands.analysis { format as fmt_cmd, lint as lint_cmd }
+import from jaclang.cli.commands.analysis {
+    check as check_cmd,
+    format as fmt_cmd,
+    lint as lint_cmd
+}
 import from jaclang.project { config as config_mod }
 
 glob CLEAN = "def f(x: int) -> int {\n    return x + 1;\n}\n",
@@ -626,6 +630,42 @@ test "a cached lintfix check still sees an annex moved beside its module" {
     }
     assert first == 0 , f"the placed annex is clean, got {first}";
     assert second == 1 , f"the misplaced annex is not served from the cache, got {second}";
+}
+
+test "lintfix moves relative imports unchanged, since an annex imports as its module" {
+    for mode in ("fmt-0", "lint") {
+        repo = annex_project();
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            pkg = Path(repo) / "pkg";
+            pkg.mkdir();
+            (pkg / "__init__.jac").write_text("");
+            (pkg / "helper.jac").write_text("glob VALUE: int = 7;\n");
+            (pkg / "inline.jac").write_text(
+                "def get -> int;\n\nimpl get -> int {\n"
+                    + "    import from .helper { VALUE }\n    return VALUE;\n}\n"
+            );
+            (pkg / "side.jac").write_text("def get -> int;\n");
+            (pkg / "side.impl.jac").write_text(
+                "import from .helper { VALUE }\n\nimpl get -> int {\n    return VALUE;\n}\n"
+            );
+            ret = run_lintfix(mode, [str(pkg / "inline.jac"), str(pkg / "side.jac")]);
+            inline_annex = (pkg / "impl" / "inline.impl.jac").read_text();
+            side_annex = (pkg / "impl" / "side.impl.jac").read_text();
+            reset_state();
+            with redirect_stdout(StringIO()), redirect_stderr(StringIO()) {
+                checked = check_cmd([str(pkg / "inline.jac"), str(pkg / "side.jac")]);
+            }
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 0 , f"[{mode}] got {ret}";
+        assert "import from .helper { VALUE }" in inline_annex , f"[{mode}] {inline_annex!r}";
+        assert "import from .helper { VALUE }" in side_annex , f"[{mode}] {side_annex!r}";
+        assert checked == 0 , f"[{mode}] the moved code still checks, got {checked}";
+    }
 }
 
 test "lintfix keeps a module's bodies when its impl annex cannot be formatted" {

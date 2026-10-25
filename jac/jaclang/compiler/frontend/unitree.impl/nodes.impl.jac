@@ -1839,6 +1839,14 @@ impl ModulePath.postinit -> None {
 }
 
 
+impl ModulePath.importer_path.getter -> str {
+    owner = self.find_parent_of_type(Module);
+    if owner is not None and owner.loc.mod_path {
+        return owner.loc.mod_path;
+    }
+    return self.loc.mod_path if self.loc else "";
+}
+
 impl ModulePath.is_import_from.getter -> bool {
     if (self.parent and isinstance(self.parent, Import)) {
         return (self.parent.from_loc == self);
@@ -1885,17 +1893,17 @@ impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
     }
     spv = self.string_path_value;
     if spv is not None {
-        return active_host().resolve_module(spv, self.loc.mod_path, string_spec=True)[
+        return active_host().resolve_module(spv, self.importer_path, string_spec=True)[
             0
         ];
     }
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
-    return active_host().resolve_module(target, self.loc.mod_path)[0];
+    return active_host().resolve_module(target, self.importer_path)[0];
 }
 
 impl ModulePath.native_bundled_path -> (str | None) {
     import os;
-    mod_path = self.loc.mod_path if self.loc else None;
+    mod_path = self.importer_path or None;
     if not self.in_native_context() {
         return None;
     }
@@ -1913,7 +1921,7 @@ impl ModulePath.native_bundled_path -> (str | None) {
 
 impl ModulePath.native_variant_path -> (str | None) {
     import os;
-    mod_path = self.loc.mod_path if self.loc else None;
+    mod_path = self.importer_path or None;
     if not mod_path
         or self.level == 0
         or self.string_path_value is not None

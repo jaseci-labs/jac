@@ -753,6 +753,7 @@ node ModulePath(UniNode) {
     def postinit -> None;
 
     has is_import_from: bool { getter; }
+    has importer_path: str { getter; }
     has dot_path_str: str { getter; }
     has base_module_name: str { getter; }
     has string_path_value: (str | None) { getter; }
