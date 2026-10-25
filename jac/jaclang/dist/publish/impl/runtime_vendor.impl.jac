@@ -148,13 +148,6 @@ impl _compile_runtime_module(
 }
 
 impl _runtime_module_options(path: Path) -> CompileOptions {
-    """A vendored runtime module takes the codespace the running compiler gives
-    its own package: the server codespace, unless the module is native by policy
-    (a bundled native library or a shared runtime module), which keeps the
-    placement an application gives it. Placement inference over the rest of the
-    package would try to lower every runtime module the application reaches, and
-    almost none of them can.""";
-
     source = str(path);
     if is_native_by_location(source) or is_shared_runtime_module(source) {
         return CompileOptions();
@@ -196,11 +189,7 @@ impl build_runtime_closure(
     );
     processed: set[str] = {'jaclang'};
     modules: list[dict[str, any]] = [];
-    """One program serves the whole closure: a fresh program per module
-    re-hydrates the type catalog and evaluator for every runtime module, which
-    turned a ten-minute export into an hour. The program's options change per
-    module (server codespace unless native by policy) and the compile state
-    is released once the closure is complete.""";
+
     program = JacProgram();
     while pending {
         module = min(pending);

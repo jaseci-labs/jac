@@ -41,13 +41,7 @@ impl BundleSourceFilter.excludes(rel: Path) -> bool {
         return True;
     }
     name = rel.name;
-    if name in _EXCLUDE_FILES {
-        return True;
-    }
-    if name == ".env" or name.startswith(".env.") {
-        return True;
-    }
-    return name.endswith(_EXCLUDE_SUFFIXES);
+    return name == "jac.toml" or is_secret_file(name);
 }
 
 impl BundleSourceFilter.matching_ignore_pattern(rel: Path) -> str {
@@ -82,7 +76,7 @@ impl BundleSourceFilter.exclusion_reason(rel: Path) -> str {
             "[scale.secrets] or pod env"
         );
     }
-    if name in _EXCLUDE_FILES or name.endswith(_EXCLUDE_SUFFIXES) {
+    if is_secret_file(name) {
         return f"'{name}' is key material the deploy never ships";
     }
     return "excluded from the bundle";
