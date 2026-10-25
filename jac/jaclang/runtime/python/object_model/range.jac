@@ -308,7 +308,7 @@ def range_from_array(
 def range_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kw and _PyArg_NoKeywords("range", kw) == 0 {
+    if kw and _PyArg_NoKeywords(ptr[u8]("range"), kw) == 0 {
         return NULL;
     }
     return range_from_array(_type, tuple_items(args), object_size(args));
@@ -321,7 +321,7 @@ def range_vectorcall(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     nargs = PyVectorcall_NARGS(nargsf);
-    if kwnames and _PyArg_NoKwnames("range", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("range"), kwnames) == 0 {
         return NULL;
     }
     return range_from_array(ptr[PyTypeObject](rangetype), args, nargs);
@@ -748,7 +748,7 @@ def range_repr(op: ptr[PyObject]) -> ptr[PyObject] {
 def range_reduce(op: ptr[PyObject], _args: ptr[PyObject]) -> ptr[PyObject] {
     r = range_of(op);
     return Py_BuildValue(
-        "(O(OOO))",
+        ptr[u8]("(O(OOO))"),
         object_type(op),
         r.view(1)[0].start,
         r.view(1)[0].stop,
@@ -817,7 +817,9 @@ def rangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject]
         pickled = make_range_object(addressof(PyRange_Type), start, stop, step);
         if pickled {
             # return the result
-            return Py_BuildValue("N(N)O", eval_builtin("iter"), pickled, Py_None);
+            return Py_BuildValue(
+                ptr[u8]("N(N)O"), eval_builtin("iter"), pickled, Py_None
+            );
         }
     }
     jacpy_release(start);
@@ -898,7 +900,7 @@ def longrangeiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObj
         return NULL;
     }
     # return the result
-    return Py_BuildValue("N(N)O", eval_builtin("iter"), pickled, Py_None);
+    return Py_BuildValue(ptr[u8]("N(N)O"), eval_builtin("iter"), pickled, Py_None);
 }
 
 def longrangeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {

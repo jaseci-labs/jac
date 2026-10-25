@@ -1209,7 +1209,7 @@ impl cipher_to_dict(cipher: ptr) -> ptr[PyObject] {
     kx = nid_long_name(SSL_CIPHER_get_kx_nid(cipher));
     auth = nid_long_name(SSL_CIPHER_get_auth_nid(cipher));
     result = Py_BuildValue(
-        "{sksssssssisisOssssssss}",
+        ptr[u8]("{sksssssssisisOssssssss}"),
         ptr[u8]("id"),
         u64(cipher_id),
         ptr[u8]("name"),
@@ -2219,7 +2219,7 @@ impl _ssl__SSLContext_verify_mode_set_impl(
         return -1;
     }
     n = i32(0);
-    if PyArg_Parse(value, "i", &mut n) == 0 {
+    if PyArg_Parse(value, ptr[u8]("i"), &mut n) == 0 {
         return -1;
     }
     if int(n) == PY_SSL_CERT_NONE and ctx.check_hostname {
@@ -2249,7 +2249,7 @@ impl _ssl__SSLContext_verify_flags_set_impl(
         return -1;
     }
     new_flags = u64(0);
-    if PyArg_Parse(value, "k", &mut new_flags) == 0 {
+    if PyArg_Parse(value, ptr[u8]("k"), &mut new_flags) == 0 {
         return -1;
     }
     params = SSL_CTX_get0_param(ctx.ctx);
@@ -2271,7 +2271,7 @@ impl set_min_max_proto_version(
     ctx: SSLContextState, arg: ptr[PyObject], what: int
 ) -> int {
     parsed = i32(0);
-    if PyArg_Parse(arg, "i", &mut parsed) == 0 {
+    if PyArg_Parse(arg, ptr[u8]("i"), &mut parsed) == 0 {
         return -1;
     }
     v = int(parsed);
@@ -2395,7 +2395,7 @@ impl _ssl__SSLContext_num_tickets_set_impl(
         return -1;
     }
     num = i64(0);
-    if PyArg_Parse(value, "l", &mut num) == 0 {
+    if PyArg_Parse(value, ptr[u8]("l"), &mut num) == 0 {
         return -1;
     }
     if num < 0 {
@@ -2447,7 +2447,9 @@ impl _ssl__SSLContext_options_set_impl(
             | SSL_OP_NO_TLSv1_3
     );
     new_opts = u64(0);
-    if PyArg_Parse(value, "O&", ptr(_PyLong_UnsignedLongLong_Converter), &mut new_opts)
+    if PyArg_Parse(
+        value, ptr[u8]("O&"), ptr(_PyLong_UnsignedLongLong_Converter), &mut new_opts
+    )
         == 0 {
         return -1;
     }
@@ -2485,7 +2487,7 @@ impl _ssl__SSLContext__host_flags_set_impl(
         return -1;
     }
     new_flags = u32(0);
-    if PyArg_Parse(value, "I", &mut new_flags) == 0 {
+    if PyArg_Parse(value, ptr[u8]("I"), &mut new_flags) == 0 {
         return -1;
     }
     X509_VERIFY_PARAM_set_hostflags(SSL_CTX_get0_param(ctx.ctx), new_flags);
@@ -2510,7 +2512,7 @@ impl _ssl__SSLContext_check_hostname_set_impl(
         return -1;
     }
     check_hostname = i32(0);
-    if PyArg_Parse(value, "p", &mut check_hostname) == 0 {
+    if PyArg_Parse(value, ptr[u8]("p"), &mut check_hostname) == 0 {
         return -1;
     }
     verify_mode = int(SSL_CTX_get_verify_mode(ctx.ctx)) if check_hostname else 0;
@@ -3013,7 +3015,8 @@ impl _ssl__SSLContext_load_dh_params_impl(
 impl wrap_hostname(hostname_obj: ptr[PyObject]) -> tuple[bool, ptr[u8]] {
     hostname = ptr[u8]();
     if hostname_obj != Py_None {
-        if PyArg_Parse(hostname_obj, "es", ptr[u8]("ascii"), &mut hostname) == 0 {
+        if PyArg_Parse(hostname_obj, ptr[u8]("es"), ptr[u8]("ascii"), &mut hostname)
+            == 0 {
             return (False, ptr[u8]());
         }
     }
@@ -3337,7 +3340,7 @@ impl _ssl__SSLContext_cert_store_stats_impl(receiver: ptr[PyObject]) -> ptr[PyOb
     }
     free_objects(objs);
     return Py_BuildValue(
-        "{sisisi}",
+        ptr[u8]("{sisisi}"),
         ptr[u8]("x509"),
         c_int(x509),
         ptr[u8]("crl"),
@@ -3439,7 +3442,7 @@ impl psk_client_callback(
                 psk_len_ = i64(0);
                 if PyArg_ParseTuple(
                     result,
-                    "z#y#",
+                    ptr[u8]("z#y#"),
                     &mut identity_,
                     &mut identity_len_,
                     &mut psk_,
@@ -3953,7 +3956,7 @@ impl ssl_rand(module: ptr[PyObject], length: int, pseudo: bool) -> ptr[PyObject]
     if pseudo {
         if ok == 0 or ok == 1 {
             return Py_BuildValue(
-                "NO", data, borrowed_true() if ok == 1 else borrowed_false()
+                ptr[u8]("NO"), data, borrowed_true() if ok == 1 else borrowed_false()
             );
         }
     } elif ok == 1 {
@@ -3962,7 +3965,7 @@ impl ssl_rand(module: ptr[PyObject], length: int, pseudo: bool) -> ptr[PyObject]
     jacpy_release(data);
     err = ERR_get_error();
     errstr = ERR_reason_error_string(err);
-    v = Py_BuildValue("(ks)", err, errstr);
+    v = Py_BuildValue(ptr[u8]("(ks)"), err, errstr);
     if v {
         PyErr_SetObject(state_ref(module, STATE_SSL_ERROR), v);
         jacpy_release(v);
@@ -4002,7 +4005,7 @@ impl _ssl_get_default_verify_paths_impl(module: ptr[PyObject]) -> ptr[PyObject] 
         }
         return NULL;
     }
-    return Py_BuildValue("NNNN", ofile_env, ofile, odir_env, odir);
+    return Py_BuildValue(ptr[u8]("NNNN"), ofile_env, ofile, odir_env, odir);
 }
 
 impl asn1obj_tuple(module: ptr[PyObject], obj_: ptr) -> ptr[PyObject] {
@@ -4013,7 +4016,7 @@ impl asn1obj_tuple(module: ptr[PyObject], obj_: ptr) -> ptr[PyObject] {
     }
     sn = OBJ_nid2sn(nid);
     ln = OBJ_nid2ln(nid);
-    return Py_BuildValue("issN", nid, sn, ln, asn1obj2py(module, obj_, True));
+    return Py_BuildValue(ptr[u8]("issN"), nid, sn, ln, asn1obj2py(module, obj_, True));
 }
 
 impl _ssl_txt2obj_impl(module: ptr[PyObject], txt: str, name: bool) -> ptr[PyObject] {
@@ -4053,7 +4056,7 @@ impl version_info(libver: u64) -> ptr[PyObject] {
     libver = libver >> u64(8);
     major = libver & u64(0xFF);
     return Py_BuildValue(
-        "IIIII", u32(major), u32(minor), u32(fix), u32(patch), u32(status)
+        ptr[u8]("IIIII"), u32(major), u32(minor), u32(fix), u32(patch), u32(status)
     );
 }
 

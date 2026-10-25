@@ -275,7 +275,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     for (name, value) in constants() {
-        if PyModule_AddIntConstant(module, name, i64(value)) < 0 {
+        if jacpy_module_add_int_text(module, name, i64(value)) < 0 {
             return i32(-1);
         }
     }

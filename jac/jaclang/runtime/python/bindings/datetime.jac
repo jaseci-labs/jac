@@ -818,7 +818,7 @@ impl init_state(module: ptr[PyObject], old_module: ptr[PyObject]) -> int {
 impl add_capi_types(module: ptr[PyObject]) -> bool {
     types = capi_types();
     for index in range(len(types)) {
-        if PyModule_AddObjectRef(
+        if jacpy_module_add_object_ref_text(
             module, CAPI_TYPE_NAMES[index], ptr[PyObject](types[index])
         )
             < 0 {
@@ -835,12 +835,12 @@ impl datetime_exec(module: ptr[PyObject]) -> i32 {
     ready = status >= 0
         and add_capi_types(module)
         and init_state(module, old_module) >= 0
-        and PyModule_AddIntConstant(module, "MINYEAR", MINYEAR) >= 0
-        and PyModule_AddIntConstant(module, "MAXYEAR", MAXYEAR) >= 0
-        and PyModule_AddObjectRef(module, "UTC", utc()) >= 0
+        and PyModule_AddIntConstant(module, ptr[u8]("MINYEAR"), MINYEAR) >= 0
+        and PyModule_AddIntConstant(module, ptr[u8]("MAXYEAR"), MAXYEAR) >= 0
+        and PyModule_AddObjectRef(module, ptr[u8]("UTC"), utc()) >= 0
         and PyModule_Add(
             module,
-            "datetime_CAPI",
+            ptr[u8]("datetime_CAPI"),
             PyCapsule_New(ptr(addressof(capi)), capsule_name, ptr())
         )
             >= 0

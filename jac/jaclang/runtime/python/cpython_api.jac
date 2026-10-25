@@ -92,12 +92,12 @@ import from c {
             step: i64,
             count: i64,
             valid: i64;
-    }  def PyArg_Parse(arg0: ptr[PyObject], arg1: str, *args: any) -> i32;  def PyArg_ParseTuple(
-        arg0: ptr[PyObject], arg1: str, *args: any
+    }  def PyArg_Parse(arg0: ptr[PyObject], arg1: ptr[u8], *args: any) -> i32;  def PyArg_ParseTuple(
+        arg0: ptr[PyObject], arg1: ptr[u8], *args: any
     ) -> i32;  def PyArg_ParseTupleAndKeywords(
-        arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: str, arg3: ptr, *args: any
+        arg0: ptr[PyObject], arg1: ptr[PyObject], arg2: ptr[u8], arg3: ptr, *args: any
     ) -> i32;  def PyArg_UnpackTuple(
-        arg0: ptr[PyObject], arg1: str, arg2: i64, arg3: i64, *args: any
+        arg0: ptr[PyObject], arg1: ptr[u8], arg2: i64, arg3: i64, *args: any
     ) -> i32;  def PyArg_ValidateKeywordArguments(arg0: ptr[PyObject]) -> i32;  def PyBool_FromLong(
         arg0: i64
     ) -> ptr[PyObject];  def PyBuffer_IsContiguous(
@@ -304,13 +304,13 @@ import from c {
     ) -> ptr[PyObject];  def PyMember_SetOne(
         arg0: ptr, arg1: &mut PyMemberDef, arg2: ptr[PyObject]
     ) -> i32;  def PyMemoryView_FromObject(base: ptr[PyObject]) -> ptr[PyObject];  def PyModule_Add(
-        mod: ptr[PyObject], name: str, value: ptr[PyObject]
+        mod: ptr[PyObject], name: ptr[u8], value: ptr[PyObject]
     ) -> i32;  def PyModule_AddIntConstant(
-        arg0: ptr[PyObject], arg1: str, arg2: i64
+        arg0: ptr[PyObject], arg1: ptr[u8], arg2: i64
     ) -> i32;  def PyModule_AddObjectRef(
-        mod: ptr[PyObject], name: str, value: ptr[PyObject]
+        mod: ptr[PyObject], name: ptr[u8], value: ptr[PyObject]
     ) -> i32;  def PyModule_AddStringConstant(
-        arg0: ptr[PyObject], arg1: str, arg2: str
+        arg0: ptr[PyObject], arg1: ptr[u8], arg2: ptr[u8]
     ) -> i32;  def PyModule_AddType(
         module: ptr[PyObject], type_: ptr[PyObject]
     ) -> i32;  def PyModule_GetDict(arg0: ptr[PyObject]) -> ptr[PyObject];  def PyModule_GetNameObject(
@@ -658,9 +658,9 @@ import from c {
         ob: ptr[PyObject], callback: ptr[PyObject]
     ) -> ptr[PyObject];  def PyWeakref_NewRef(
         ob: ptr[PyObject], callback: ptr[PyObject]
-    ) -> ptr[PyObject];  def Py_BuildValue(arg0: str, *args: any) -> ptr[PyObject];  def Py_GetConstant(
-        constant_id: u32
-    ) -> ptr[PyObject];  def Py_GetConstantBorrowed(
+    ) -> ptr[PyObject];  def Py_BuildValue(
+        arg0: ptr[u8], *args: any
+    ) -> ptr[PyObject];  def Py_GetConstant(constant_id: u32) -> ptr[PyObject];  def Py_GetConstantBorrowed(
         constant_id: u32
     ) -> ptr[PyObject];  def Py_HashBuffer(ptr_: ptr, len_: i64) -> i64;  def Py_IncRef(
         arg0: ptr[PyObject]
@@ -673,12 +673,12 @@ import from c {
     ) -> ptr[PyObject];  def Py_fopen(
         path: ptr[PyObject], mode: ptr[u8]
     ) -> ptr[FILE];  def _PyArg_BadArgument(
-        fname: str, displayname: str, expected: str, arg: ptr[PyObject]
-    );  def _PyArg_CheckPositional(arg0: str, arg1: i64, arg2: i64, arg3: i64) -> i32;  def _PyArg_NoKeywords(
-        funcname: str, kwargs: ptr[PyObject]
-    ) -> i32;  def _PyArg_NoKwnames(funcname: str, kwnames: ptr[PyObject]) -> i32;  def _PyArg_NoPositional(
-        funcname: str, args: ptr[PyObject]
-    ) -> i32;  def _PyBytes_Find(
+        fname: ptr[u8], displayname: ptr[u8], expected: ptr[u8], arg: ptr[PyObject]
+    );  def _PyArg_CheckPositional(
+        arg0: ptr[u8], arg1: i64, arg2: i64, arg3: i64
+    ) -> i32;  def _PyArg_NoKeywords(funcname: ptr[u8], kwargs: ptr[PyObject]) -> i32;  def _PyArg_NoKwnames(
+        funcname: ptr[u8], kwnames: ptr[PyObject]
+    ) -> i32;  def _PyArg_NoPositional(funcname: ptr[u8], args: ptr[PyObject]) -> i32;  def _PyBytes_Find(
         haystack: ptr, len_haystack: i64, needle: ptr, len_needle: i64, offset: i64
     ) -> i64;  def _PyBytes_Resize(arg0: &mut ptr[PyObject], arg1: i64) -> i32;  def _PyBytes_ReverseFind(
         haystack: ptr, len_haystack: i64, needle: ptr, len_needle: i64, offset: i64
@@ -944,6 +944,16 @@ import from c {
         op: ptr[PyObject], name: str, value: ptr[PyObject]
     ) -> i32;  def jacpy_object_getoptionalattr_text(
         op: ptr[PyObject], name: str, result: &mut ptr[PyObject]
+    ) -> i32;  def jacpy_module_add_object_ref_text(
+        mod: ptr[PyObject], name: str, value: ptr[PyObject]
+    ) -> i32;  def jacpy_module_add_text(
+        mod: ptr[PyObject], name: str, value: ptr[PyObject]
+    ) -> i32;  def jacpy_module_add_int_text(
+        mod: ptr[PyObject], name: str, value: i64
+    ) -> i32;  def jacpy_module_add_string_text(
+        mod: ptr[PyObject], name: str, value: str
+    ) -> i32;  def jacpy_arg_parse_sized_text(
+        arg: ptr[PyObject], format: str, data: &mut ptr[u8], size: &mut i64
     ) -> i32;  def jacpy_unicode_equal_text(op: ptr[PyObject], text: str) -> i32;  def jacpy_unicode_writer_write_text(
         writer: ptr[PyUnicodeWriter], text: str, size: i64
     ) -> i32;  def jacpy_bytes_length(value: ptr[PyObject]) -> i64;  def jacpy_bytes_unescape(

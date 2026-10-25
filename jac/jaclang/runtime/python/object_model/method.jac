@@ -265,7 +265,7 @@ impl method_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     return Py_BuildValue(
-        "N(ON)", eval_builtin("getattr"), m.view(1)[0].im_self, funcname
+        ptr[u8]("N(ON)"), eval_builtin("getattr"), m.view(1)[0].im_self, funcname
     );
 }
 
@@ -309,11 +309,11 @@ impl method_new(
         or int(_type.view(1)[0].tp_init) == int(base_tp.view(1)[0].tp_init)
     )
         and kwargs
-        and _PyArg_NoKeywords("method", kwargs) == 0 {
+        and _PyArg_NoKeywords(ptr[u8]("method"), kwargs) == 0 {
         return NULL;
     }
     nargs = object_size(args);
-    if nargs != 2 and _PyArg_CheckPositional("method", nargs, 2, 2) == 0 {
+    if nargs != 2 and _PyArg_CheckPositional(ptr[u8]("method"), nargs, 2, 2) == 0 {
         return NULL;
     }
     function = tuple_get_item(args, 0);
@@ -519,11 +519,12 @@ impl instancemethod_new(
         or int(_type.view(1)[0].tp_init) == int(base_tp.view(1)[0].tp_init)
     )
         and kwargs
-        and _PyArg_NoKeywords("instancemethod", kwargs) == 0 {
+        and _PyArg_NoKeywords(ptr[u8]("instancemethod"), kwargs) == 0 {
         return NULL;
     }
     nargs = object_size(args);
-    if nargs != 1 and _PyArg_CheckPositional("instancemethod", nargs, 1, 1) == 0 {
+    if nargs != 1
+        and _PyArg_CheckPositional(ptr[u8]("instancemethod"), nargs, 1, 1) == 0 {
         return NULL;
     }
     function = tuple_get_item(args, 0);

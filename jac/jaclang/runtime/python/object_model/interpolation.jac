@@ -112,7 +112,7 @@ def interpolation_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObj
 import from c {
     def _PyInterpolation_InitTypes(_interp: ptr[PyInterpreterState]) -> PyStatus {
         tuple = Py_BuildValue(
-            "(ssss)", "value", "expression", "conversion", "format_spec"
+            ptr[u8]("(ssss)"), "value", "expression", "conversion", "format_spec"
         );
         if tuple {
             dict = _PyType_GetDict(ptr[PyObject](addressof(_PyInterpolation_Type)));
@@ -203,7 +203,12 @@ impl interpolation_new_bound(args: BoundArguments) -> ptr[PyObject] {
     if not expression {
         expression = Py_GetConstantBorrowed(Py_CONSTANT_EMPTY_STR);
     } elif jacpy_is_unicode(expression) == 0 {
-        _PyArg_BadArgument("Interpolation", "argument 'expression'", "str", expression);
+        _PyArg_BadArgument(
+            ptr[u8]("Interpolation"),
+            ptr[u8]("argument 'expression'"),
+            ptr[u8]("str"),
+            expression
+        );
         return NULL;
     }
     if not conversion {
@@ -215,7 +220,10 @@ impl interpolation_new_bound(args: BoundArguments) -> ptr[PyObject] {
         format_spec = Py_GetConstantBorrowed(Py_CONSTANT_EMPTY_STR);
     } elif jacpy_is_unicode(format_spec) == 0 {
         _PyArg_BadArgument(
-            "Interpolation", "argument 'format_spec'", "str", format_spec
+            ptr[u8]("Interpolation"),
+            ptr[u8]("argument 'format_spec'"),
+            ptr[u8]("str"),
+            format_spec
         );
         return NULL;
     }
@@ -322,7 +330,7 @@ impl interpolation_repr(op: ptr[PyObject]) -> ptr[PyObject] {
 impl interpolation_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     item = interpolation_of(op);
     return Py_BuildValue(
-        "(O(OOOO))",
+        ptr[u8]("(O(OOOO))"),
         object_type(op),
         item.view(1)[0].value,
         item.view(1)[0].expression,

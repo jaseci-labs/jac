@@ -346,7 +346,7 @@ impl add_owned(module: ptr[PyObject], name: str, value: ptr[PyObject]) -> bool {
     if value == 0 {
         return False;
     }
-    result = PyModule_AddObjectRef(module, name, value);
+    result = jacpy_module_add_object_ref_text(module, name, value);
     jacpy_release(value);
     return result == 0;
 }

@@ -420,17 +420,17 @@ def _zstd_ZstdDict_dict_content_get_impl(receiver: ptr[PyObject]) -> ptr[PyObjec
 }
 
 def _zstd_ZstdDict_as_digested_dict_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("Oi", receiver, DICT_TYPE_DIGESTED);
+    return Py_BuildValue(ptr[u8]("Oi"), receiver, DICT_TYPE_DIGESTED);
 }
 
 def _zstd_ZstdDict_as_undigested_dict_get_impl(
     receiver: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return Py_BuildValue("Oi", receiver, DICT_TYPE_UNDIGESTED);
+    return Py_BuildValue(ptr[u8]("Oi"), receiver, DICT_TYPE_UNDIGESTED);
 }
 
 def _zstd_ZstdDict_as_prefix_get_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("Oi", receiver, DICT_TYPE_PREFIX);
+    return Py_BuildValue(ptr[u8]("Oi"), receiver, DICT_TYPE_PREFIX);
 }
 
 # _Py_parse_zstd_dict(): the ZstdDict of a zstd_dict argument (borrowed) and
@@ -1558,7 +1558,7 @@ def _zstd_get_param_bounds_impl(
             return NULL;
         }
     }
-    return Py_BuildValue("ii", bound.lowerBound, bound.upperBound);
+    return Py_BuildValue(ptr[u8]("ii"), bound.lowerBound, bound.upperBound);
 }
 
 def _zstd_get_frame_size_impl(
@@ -1595,9 +1595,9 @@ def _zstd_get_frame_info_impl(
         frame_buffer.address(), u64(frame_buffer.size())
     );
     if decompressed_size == ZSTD_CONTENTSIZE_UNKNOWN {
-        return Py_BuildValue("OI", Py_None, dict_id);
+        return Py_BuildValue(ptr[u8]("OI"), Py_None, dict_id);
     }
-    return Py_BuildValue("KI", decompressed_size, dict_id);
+    return Py_BuildValue(ptr[u8]("KI"), decompressed_size, dict_id);
 }
 
 def _zstd_set_parameter_types_impl(

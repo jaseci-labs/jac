@@ -291,17 +291,17 @@ def:priv sre_exec(module: ptr[PyObject]) -> i32 {
     }
     SRE_Pattern_token.handle = ptr(addressof(pattern_spec));
     SRE_Scanner_token.handle = ptr(addressof(scanner_spec));
-    if PyModule_AddIntConstant(module, "MAGIC", SRE_MAGIC) < 0
-        or PyModule_AddIntConstant(module, "CODESIZE", SRE_CODE_SIZE) < 0
+    if PyModule_AddIntConstant(module, ptr[u8]("MAGIC"), SRE_MAGIC) < 0
+        or PyModule_AddIntConstant(module, ptr[u8]("CODESIZE"), SRE_CODE_SIZE) < 0
         or PyModule_Add(
-            module, "MAXREPEAT", PyLong_FromUnsignedLong(u64(SRE_MAXREPEAT))
+            module, ptr[u8]("MAXREPEAT"), PyLong_FromUnsignedLong(u64(SRE_MAXREPEAT))
         )
             < 0
         or PyModule_Add(
-            module, "MAXGROUPS", PyLong_FromUnsignedLong(u64(SRE_MAXGROUPS))
+            module, ptr[u8]("MAXGROUPS"), PyLong_FromUnsignedLong(u64(SRE_MAXGROUPS))
         )
             < 0
-        or PyModule_AddStringConstant(module, "copyright", COPYRIGHT) < 0 {
+        or jacpy_module_add_string_text(module, "copyright", COPYRIGHT) < 0 {
         return i32(-1);
     }
     return i32(0);

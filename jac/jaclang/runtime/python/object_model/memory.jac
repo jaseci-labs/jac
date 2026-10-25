@@ -1991,7 +1991,9 @@ impl memoryview_cast_checked(
     op: ptr[PyObject], fmt_obj: ptr[PyObject], shape: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not is_unicode(fmt_obj) {
-        _PyArg_BadArgument("cast", "argument 'format'", "str", fmt_obj);
+        _PyArg_BadArgument(
+            ptr[u8]("cast"), ptr[u8]("argument 'format'"), ptr[u8]("str"), fmt_obj
+        );
         return NULL;
     }
     return memoryview_cast_impl(op, fmt_obj, shape);
@@ -2626,7 +2628,9 @@ impl tobytes_order(value: ptr[PyObject]) -> tuple[ptr[u8], bool] {
         }
         return (order, True);
     }
-    _PyArg_BadArgument("tobytes", "argument 'order'", "str or None", value);
+    _PyArg_BadArgument(
+        ptr[u8]("tobytes"), ptr[u8]("argument 'order'"), ptr[u8]("str or None"), value
+    );
     return (ptr[u8](), False);
 }
 
@@ -3130,7 +3134,8 @@ impl memoryview_index_impl(
 impl memoryview_index(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if (nargs < 1 or nargs > 3) and _PyArg_CheckPositional("index", nargs, 1, 3) == 0 {
+    if (nargs < 1 or nargs > 3)
+        and _PyArg_CheckPositional(ptr[u8]("index"), nargs, 1, 3) == 0 {
         return NULL;
     }
     value = args.view(1)[0];

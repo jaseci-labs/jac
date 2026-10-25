@@ -289,7 +289,7 @@ impl add_exception(
     if not exception {
         return NULL;
     }
-    if PyModule_AddObjectRef(module, name, exception) < 0 {
+    if jacpy_module_add_object_ref_text(module, name, exception) < 0 {
         jacpy_release(exception);
         return NULL;
     }
@@ -330,7 +330,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
         ("PrepareProtocol", state.PrepareProtocolType),
         ("Row", state.RowType)
     ] {
-        if PyModule_AddObjectRef(module, name, type) < 0 {
+        if jacpy_module_add_object_ref_text(module, name, type) < 0 {
             return i32(-1);
         }
     }
@@ -401,7 +401,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     for (name, value) in ERROR_CODES + INTEGER_CONSTANTS {
-        if PyModule_AddIntConstant(module, name, value) < 0 {
+        if jacpy_module_add_int_text(module, name, value) < 0 {
             return i32(-1);
         }
     }
@@ -409,25 +409,27 @@ impl execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     if PyModule_AddIntConstant(
-        module, "LEGACY_TRANSACTION_CONTROL", i64(LEGACY_TRANSACTION_CONTROL)
+        module, ptr[u8]("LEGACY_TRANSACTION_CONTROL"), i64(LEGACY_TRANSACTION_CONTROL)
     )
         < 0 {
         return i32(-1);
     }
     level = threadsafety(state);
-    if level < 0 or PyModule_AddIntConstant(module, "threadsafety", i64(level)) < 0 {
+    if level < 0
+        or PyModule_AddIntConstant(module, ptr[u8]("threadsafety"), i64(level)) < 0 {
         return i32(-1);
     }
 
     state.psyco_adapters = PyDict_New();
     if not state.psyco_adapters
-        or PyModule_AddObjectRef(module, "adapters", state.psyco_adapters) < 0 {
+        or PyModule_AddObjectRef(module, ptr[u8]("adapters"), state.psyco_adapters)
+            < 0 {
         return i32(-1);
     }
 
     state.converters = PyDict_New();
     if not state.converters
-        or PyModule_AddObjectRef(module, "converters", state.converters) < 0 {
+        or PyModule_AddObjectRef(module, ptr[u8]("converters"), state.converters) < 0 {
         return i32(-1);
     }
     state.lru_cache = PyImport_ImportModuleAttrString("functools", "lru_cache");

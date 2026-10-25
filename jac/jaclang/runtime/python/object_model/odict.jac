@@ -1400,7 +1400,7 @@ impl odictiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject
         object_decref(list);
         return NULL;
     }
-    return Py_BuildValue("N(N)", iter, list);
+    return Py_BuildValue(ptr[u8]("N(N)"), iter, list);
 }
 
 impl view_odict(op: ptr[PyObject]) -> ptr[PyObject] {

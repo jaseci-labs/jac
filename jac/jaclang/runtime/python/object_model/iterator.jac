@@ -213,10 +213,10 @@ def iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     it = seqiter_of(op);
     if it.view(1)[0].it_seq {
         return Py_BuildValue(
-            "N(O)n", iterator, it.view(1)[0].it_seq, it.view(1)[0].it_index
+            ptr[u8]("N(O)n"), iterator, it.view(1)[0].it_seq, it.view(1)[0].it_index
         );
     }
-    return Py_BuildValue("N(())", iterator);
+    return Py_BuildValue(ptr[u8]("N(())"), iterator);
 }
 
 def iter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {
@@ -305,10 +305,13 @@ def calliter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
     it = calliter_of(op);
     if it.view(1)[0].it_callable and it.view(1)[0].it_sentinel {
         return Py_BuildValue(
-            "N(OO)", iterator, it.view(1)[0].it_callable, it.view(1)[0].it_sentinel
+            ptr[u8]("N(OO)"),
+            iterator,
+            it.view(1)[0].it_callable,
+            it.view(1)[0].it_sentinel
         );
     }
-    return Py_BuildValue("N(())", iterator);
+    return Py_BuildValue(ptr[u8]("N(())"), iterator);
 }
 
 # ---------------------------------------------------------- anext awaitable

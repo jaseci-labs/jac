@@ -1423,7 +1423,7 @@ impl hashlib_md_meth_names(module: ptr[PyObject]) -> bool {
         jacpy_release(names);
         return False;
     }
-    return PyModule_Add(module, "openssl_md_meth_names", names) == 0;
+    return PyModule_Add(module, ptr[u8]("openssl_md_meth_names"), names) == 0;
 }
 
 impl hashlib_init_constructors(
@@ -1470,5 +1470,5 @@ impl dict_proxy(mapping: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl add_object(module: ptr[PyObject], name: str, value: ptr[PyObject]) -> bool {
-    return PyModule_AddObjectRef(module, name, value) == 0;
+    return jacpy_module_add_object_ref_text(module, name, value) == 0;
 }

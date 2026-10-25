@@ -1671,7 +1671,8 @@ impl gen_throw_here(
 impl gen_throw(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if (nargs < 1 or nargs > 3) and _PyArg_CheckPositional("throw", nargs, 1, 3) == 0 {
+    if (nargs < 1 or nargs > 3)
+        and _PyArg_CheckPositional(ptr[u8]("throw"), nargs, 1, 3) == 0 {
         return NULL;
     }
     if nargs > 1 {
@@ -1866,7 +1867,7 @@ impl compute_cr_origin(origin_depth: i32, current_frame: ptr[u8]) -> ptr[PyObjec
         code = frame_code(frame);
         line = PyUnstable_InterpreterFrame_GetLine(frame);
         frameinfo = Py_BuildValue(
-            "OiO",
+            ptr[u8]("OiO"),
             slot_get(code, PyCodeObject_FILENAME),
             line,
             slot_get(code, PyCodeObject_NAME)
@@ -2411,7 +2412,9 @@ impl async_gen_athrow_send(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObj
             typ: ptr[PyObject] = NULL;
             tb: ptr[PyObject] = NULL;
             val: ptr[PyObject] = NULL;
-            if PyArg_UnpackTuple(agt_args, "athrow", 1, 3, &mut typ, &mut val, &mut tb)
+            if PyArg_UnpackTuple(
+                agt_args, ptr[u8]("athrow"), 1, 3, &mut typ, &mut val, &mut tb
+            )
                 == 0 {
                 return NULL;
             }

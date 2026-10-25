@@ -271,7 +271,7 @@ impl namespace_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject
 impl namespace_replace(
     op: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if args and _PyArg_NoPositional("__replace__", args) == 0 {
+    if args and _PyArg_NoPositional(ptr[u8]("__replace__"), args) == 0 {
         return NULL;
     }
     result = PyObject_CallNoArgs(ptr[PyObject](object_type(op)));

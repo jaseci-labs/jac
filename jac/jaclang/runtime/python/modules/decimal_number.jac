@@ -977,7 +977,7 @@ impl dec_as_tuple(dec: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
             expt = PyUnicode_FromString(ptr[u8]("F"));
 
             if expt {
-                coeff = Py_BuildValue("(i)", i32(0));
+                coeff = Py_BuildValue(ptr[u8]("(i)"), i32(0));
             }
         } else {
             if mpd_isnan(x) != 0 {
@@ -1754,7 +1754,7 @@ impl dec_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if not text {
         return NULL;
     }
-    result = Py_BuildValue("O(O)", ptr[PyObject](object_type(self)), text);
+    result = Py_BuildValue(ptr[u8]("O(O)"), ptr[PyObject](object_type(self)), text);
     jacpy_release(text);
     return result;
 }

@@ -152,16 +152,18 @@ impl execute(module: ptr[PyObject]) -> i32 {
     if not state.error {
         return i32(-1);
     }
-    if PyModule_AddObjectRef(module, "error", state.error) < 0
-        or PyModule_AddObjectRef(module, "ExpatError", state.error) < 0
-        or PyModule_AddObjectRef(module, "XMLParserType", state.xml_parse_type) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("error"), state.error) < 0
+        or PyModule_AddObjectRef(module, ptr[u8]("ExpatError"), state.error) < 0
+        or PyModule_AddObjectRef(module, ptr[u8]("XMLParserType"), state.xml_parse_type)
+            < 0 {
         return i32(-1);
     }
     if add_version(module) < 0 {
         return i32(-1);
     }
 
-    if PyModule_AddStringConstant(module, "native_encoding", "UTF-8") < 0 {
+    if PyModule_AddStringConstant(module, ptr[u8]("native_encoding"), ptr[u8]("UTF-8"))
+        < 0 {
         return i32(-1);
     }
     if add_errors_module(module) < 0
@@ -177,7 +179,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
         ),
         ("XML_PARAM_ENTITY_PARSING_ALWAYS", XML_PARAM_ENTITY_PARSING_ALWAYS)
     ] {
-        if PyModule_AddIntConstant(module, name, i64(value)) < 0 {
+        if jacpy_module_add_int_text(module, name, i64(value)) < 0 {
             return i32(-1);
         }
     }
@@ -185,7 +187,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
     if not capsule {
         return i32(-1);
     }
-    if PyModule_Add(module, "expat_CAPI", capsule) < 0 {
+    if PyModule_Add(module, ptr[u8]("expat_CAPI"), capsule) < 0 {
         return i32(-1);
     }
     return i32(0);

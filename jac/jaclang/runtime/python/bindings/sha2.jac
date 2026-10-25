@@ -145,7 +145,8 @@ impl execute(module: ptr[PyObject]) -> i32 {
         or not add_state_owned(module, 1, "SHA256Type", sha256_type.create(module))
         or not add_state_owned(module, 2, "SHA384Type", sha384_type.create(module))
         or not add_state_owned(module, 3, "SHA512Type", sha512_type.create(module))
-        or PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0 {
+        or PyModule_AddIntConstant(module, ptr[u8]("_GIL_MINSIZE"), HASHLIB_GIL_MINSIZE)
+            < 0 {
         return i32(-1);
     }
     return i32(0);

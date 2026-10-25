@@ -911,7 +911,7 @@ impl zoneinfo_reduce(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyOb
     if not constructor {
         return NULL;
     }
-    result = Py_BuildValue("O(OB)", constructor, zone.key, i32(from_cache));
+    result = Py_BuildValue(ptr[u8]("O(OB)"), constructor, zone.key, i32(from_cache));
     jacpy_release(constructor);
     return result;
 }

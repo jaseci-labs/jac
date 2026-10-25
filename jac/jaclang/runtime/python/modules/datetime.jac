@@ -144,7 +144,7 @@ def datetime_date_fromtimestamp_capi(
     cls: ptr[PyObject], args: ptr[PyObject]
 ) -> ptr[PyObject] {
     timestamp: ptr[PyObject] = NULL;
-    if PyArg_UnpackTuple(args, "fromtimestamp", 1, 1, &mut timestamp) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("fromtimestamp"), 1, 1, &mut timestamp) == 0 {
         return NULL;
     }
     return date_fromtimestamp(cls, timestamp);

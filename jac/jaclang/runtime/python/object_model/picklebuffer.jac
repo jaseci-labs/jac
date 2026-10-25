@@ -123,7 +123,11 @@ def picklebuf_new(
 ) -> ptr[PyObject] {
     base = NULL;
     if PyArg_ParseTupleAndKeywords(
-        args, kwds, "O:PickleBuffer", ptr(addressof(picklebuf_keywords)), &mut base
+        args,
+        kwds,
+        ptr[u8]("O:PickleBuffer"),
+        ptr(addressof(picklebuf_keywords)),
+        &mut base
     )
         == 0 {
         return NULL;

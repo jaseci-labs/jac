@@ -1417,9 +1417,9 @@ impl datetime_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     } except boundary_failure {
         return NULL;
     }
-    return Py_BuildValue("(ON)", type_of(op), datetime_getstate(op, proto));
+    return Py_BuildValue(ptr[u8]("(ON)"), type_of(op), datetime_getstate(op, proto));
 }
 
 impl datetime_reduce(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("(ON)", type_of(op), datetime_getstate(op, 2));
+    return Py_BuildValue(ptr[u8]("(ON)"), type_of(op), datetime_getstate(op, 2));
 }

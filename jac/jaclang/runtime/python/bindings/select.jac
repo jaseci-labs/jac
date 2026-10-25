@@ -123,7 +123,7 @@ impl add_constants(module: ptr[PyObject], prefix: str) -> bool {
     for (name, value) in CONSTANTS {
         if name.startswith(prefix)
             and name not in INTERNAL
-            and PyModule_AddIntConstant(module, name, value) < 0 {
+            and jacpy_module_add_int_text(module, name, value) < 0 {
             return False;
         }
     }
@@ -167,7 +167,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     jacpy_binding_module_native_set(module, SelectState(close=close));
-    if PyModule_AddObjectRef(module, "error", PyExc_OSError) < 0
+    if PyModule_AddObjectRef(module, ptr[u8]("error"), PyExc_OSError) < 0
         or not add_constants(module, "PIPE_BUF") {
         return i32(-1);
     }

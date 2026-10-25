@@ -1677,6 +1677,13 @@ FILE *jacpy_stdio_stream(int32_t stream) { return stream == 2 ? stderr : stream 
 PyObject *jacpy_object_getattr_text(PyObject *op, const char *name) { return PyObject_GetAttrString(op, name); }
 int jacpy_object_setattr_text(PyObject *op, const char *name, PyObject *value) { return PyObject_SetAttrString(op, name, value); }
 int jacpy_object_getoptionalattr_text(PyObject *op, const char *name, PyObject **result) { return PyObject_GetOptionalAttrString(op, name, result); }
+/* The module-attribute and argument-parsing C API for a Jac str name or
+ * format, which arrives as its UTF-8 address. */
+int jacpy_module_add_object_ref_text(PyObject *mod, const char *name, PyObject *value) { return PyModule_AddObjectRef(mod, name, value); }
+int jacpy_module_add_text(PyObject *mod, const char *name, PyObject *value) { return PyModule_Add(mod, name, value); }
+int jacpy_module_add_int_text(PyObject *mod, const char *name, long value) { return PyModule_AddIntConstant(mod, name, value); }
+int jacpy_module_add_string_text(PyObject *mod, const char *name, const char *value) { return PyModule_AddStringConstant(mod, name, value); }
+int jacpy_arg_parse_sized_text(PyObject *arg, const char *format, const char **data, Py_ssize_t *size) { return PyArg_Parse(arg, format, data, size); }
 
 /* The va_list calls of Objects/call.c, as call.c defines them. The rest of
  * call.c is object_model/call.jac; a Jac definition cannot receive a
@@ -1699,6 +1706,18 @@ intptr_t
 jacpy_stack_address(void *slots)
 {
     return (intptr_t)slots;
+}
+
+/* A C va_list argument as the VaList value a Jac definition reads it with.
+ * Every supported target passes a va_list parameter as one pointer-sized
+ * word (the address of the argument state, or on Darwin arm64 the argument
+ * pointer itself), which is the value a Jac VaList holds, so the Jac
+ * definitions of Py_VaBuildValue and PyArg_VaParse take it as a pointer and
+ * read it through this. */
+void *
+jacpy_va_list(void *va)
+{
+    return va;
 }
 
 static PyObject *

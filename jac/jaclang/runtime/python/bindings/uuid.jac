@@ -4,12 +4,12 @@ glob:priv METH_NOARGS: i64 = 4;
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
     if PyModule_AddIntConstant(
-        module, "has_uuid_generate_time_safe", i64(HAVE_GENERATE_TIME_SAFE)
+        module, ptr[u8]("has_uuid_generate_time_safe"), i64(HAVE_GENERATE_TIME_SAFE)
     )
         < 0
         or PyModule_AddIntConstant(
             module,
-            "has_stable_extractable_node",
+            ptr[u8]("has_stable_extractable_node"),
             i64(HAVE_GENERATE_TIME_SAFE_STABLE_MAC)
         )
             < 0 {

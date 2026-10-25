@@ -29,7 +29,7 @@ glob:priv ucd_type = TypeDefinition(
 
 def:priv execute(module: ptr[PyObject]) -> i32 {
     UCD_token.handle = ucd_type.handle;
-    if PyModule_AddStringConstant(module, "unidata_version", UNIDATA_VERSION) < 0 {
+    if jacpy_module_add_string_text(module, "unidata_version", UNIDATA_VERSION) < 0 {
         return i32(-1);
     }
     type_ = ucd_type.create(module);
@@ -43,11 +43,11 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     # Unicode database version 3.2.0 used by the IDNA encoding
     v = new_previous_version(type_, addressof(ucd_3_2_0_version));
     jacpy_release(type_);
-    if PyModule_Add(module, "ucd_3_2_0", v) < 0 {
+    if PyModule_Add(module, ptr[u8]("ucd_3_2_0"), v) < 0 {
         return i32(-1);
     }
     # Export C API
-    if PyModule_Add(module, "_ucnhash_CAPI", unicodedata_create_capi()) < 0 {
+    if PyModule_Add(module, ptr[u8]("_ucnhash_CAPI"), unicodedata_create_capi()) < 0 {
         return i32(-1);
     }
     return i32(0);

@@ -336,7 +336,7 @@ impl register_maps(module: ptr[PyObject], maps: ptr[ptr[DbcsMap]], count: int) -
             "ascii"
         );
         capsule = PyCapsule_New(ptr(map), ptr[u8]("multibytecodec.map"), ptr());
-        if PyModule_Add(module, "__map_" + charset, capsule) < 0 {
+        if jacpy_module_add_text(module, "__map_" + charset, capsule) < 0 {
             return i32(-1);
         }
     }

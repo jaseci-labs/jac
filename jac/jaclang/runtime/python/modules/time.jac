@@ -714,7 +714,7 @@ impl time_asctime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     buf = tm();
     try {
         count = PyTuple_Size(args);
-        if _PyArg_CheckPositional("asctime", count, 0, 1) == 0 {
+        if _PyArg_CheckPositional(ptr[u8]("asctime"), count, 0, 1) == 0 {
             return NULL;
         }
         if count == 0 {
@@ -1049,9 +1049,10 @@ impl init_timezone(m: ptr[PyObject]) -> i32 {
     standard = (julyzone, janzone, julyname, janname)
         if janzone < julyzone
         else (janzone, julyzone, janname, julyname);
-    if PyModule_AddIntConstant(m, "timezone", i64(standard[0])) < 0
-        or PyModule_AddIntConstant(m, "altzone", i64(standard[1])) < 0
-        or PyModule_AddIntConstant(m, "daylight", i64(janzone != julyzone)) < 0 {
+    if PyModule_AddIntConstant(m, ptr[u8]("timezone"), i64(standard[0])) < 0
+        or PyModule_AddIntConstant(m, ptr[u8]("altzone"), i64(standard[1])) < 0
+        or PyModule_AddIntConstant(m, ptr[u8]("daylight"), i64(janzone != julyzone))
+            < 0 {
         jacpy_release(janname);
         jacpy_release(julyname);
         return i32(-1);
@@ -1064,7 +1065,7 @@ impl init_timezone(m: ptr[PyObject]) -> i32 {
     names = object_tuple([standard[2], standard[3]]);
     jacpy_release(janname);
     jacpy_release(julyname);
-    status = PyModule_AddObjectRef(m, "tzname", names);
+    status = PyModule_AddObjectRef(m, ptr[u8]("tzname"), names);
     jacpy_release(names);
     if status < 0 or PyErr_Occurred() {
         return i32(-1);

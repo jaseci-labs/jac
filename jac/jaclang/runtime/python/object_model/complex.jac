@@ -915,14 +915,16 @@ impl complex_conjugate(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObjec
 impl complex___getnewargs__(
     op: ptr[PyObject], _unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return Py_BuildValue("(dd)", real_of(op), imag_of(op));
+    return Py_BuildValue(ptr[u8]("(dd)"), real_of(op), imag_of(op));
 }
 
 impl complex___format__(
     op: ptr[PyObject], format_spec: ptr[PyObject]
 ) -> ptr[PyObject] {
     if jacpy_is_unicode(format_spec) == 0 {
-        _PyArg_BadArgument("__format__", "argument", "str", format_spec);
+        _PyArg_BadArgument(
+            ptr[u8]("__format__"), ptr[u8]("argument"), ptr[u8]("str"), format_spec
+        );
         return NULL;
     }
     writer = PyUnicodeWriter_Create(0);

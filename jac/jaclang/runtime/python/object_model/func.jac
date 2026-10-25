@@ -19,7 +19,7 @@ import from c {
         globalsns: ptr[PyObject],
         builtinsns: ptr[PyObject]
     ) -> i32;  def _PyArg_BadArgument(
-        fname: str, displayname: str, expected: ptr[u8], arg: ptr[PyObject]
+        fname: ptr[u8], displayname: ptr[u8], expected: ptr[u8], arg: ptr[PyObject]
     );  obj FuncCall {
         has watcher: Callable[[i32, ptr[PyObject], ptr[PyObject]], i32] = 0,
             free: Callable[[ptr], None] = 0;
@@ -818,7 +818,7 @@ def wrapper_init(
     self: ptr[PyObject],
     args: ptr[PyObject],
     kwds: ptr[PyObject],
-    name: str,
+    name: ptr[u8],
     callable_offset: i64
 ) -> i32;
 
@@ -1372,15 +1372,17 @@ impl func_new_values(
     kwdefaults = (values + 5).view(1)[0] if (values + 5).view(1)[0] else Py_None;
     if not object_type_check(code, ptr[PyTypeObject](addressof(PyCode_Type))) {
         _PyArg_BadArgument(
-            "function",
-            "argument 'code'",
+            ptr[u8]("function"),
+            ptr[u8]("argument 'code'"),
             ptr[PyTypeObject](addressof(PyCode_Type)).view(1)[0].tp_name,
             code
         );
         return NULL;
     }
     if not dict_check(globals) {
-        _PyArg_BadArgument("function", "argument 'globals'", ptr[u8]("dict"), globals);
+        _PyArg_BadArgument(
+            ptr[u8]("function"), ptr[u8]("argument 'globals'"), ptr[u8]("dict"), globals
+        );
         return NULL;
     }
     if name != Py_None and not unicode_check(name) {
@@ -1647,7 +1649,7 @@ impl wrapper_init(
     self: ptr[PyObject],
     args: ptr[PyObject],
     kwds: ptr[PyObject],
-    name: str,
+    name: ptr[u8],
     callable_offset: i64
 ) -> i32 {
     if kwds and _PyArg_NoKeywords(name, kwds) == 0 {
@@ -1711,7 +1713,7 @@ impl cm_new(
 }
 
 impl cm_init(self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32 {
-    return wrapper_init(self, args, kwds, "classmethod", classmethod_CALLABLE);
+    return wrapper_init(self, args, kwds, ptr[u8]("classmethod"), classmethod_CALLABLE);
 }
 
 impl cm_get___isabstractmethod__(self: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
@@ -1782,7 +1784,9 @@ impl sm_new(
 }
 
 impl sm_init(self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32 {
-    return wrapper_init(self, args, kwds, "staticmethod", staticmethod_CALLABLE);
+    return wrapper_init(
+        self, args, kwds, ptr[u8]("staticmethod"), staticmethod_CALLABLE
+    );
 }
 
 impl sm_call(

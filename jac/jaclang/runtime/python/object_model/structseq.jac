@@ -547,7 +547,7 @@ impl structseq_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject
         }
         jacpy_release(key);
     }
-    result = Py_BuildValue("(O(OO))", object_type(op), tup, dict);
+    result = Py_BuildValue(ptr[u8]("(O(OO))"), object_type(op), tup, dict);
     jacpy_release(tup);
     jacpy_release(dict);
     return result;
@@ -556,7 +556,7 @@ impl structseq_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject
 impl structseq_replace(
     op: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if args and _PyArg_NoPositional("__replace__", args) == 0 {
+    if args and _PyArg_NoPositional(ptr[u8]("__replace__"), args) == 0 {
         return NULL;
     }
     n_fields = get_real_size(op);

@@ -125,7 +125,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         ("PRESET_EXTREME", i64(LZMA_PRESET_EXTREME))
     ];
     for (name, value) in constants {
-        if PyModule_Add(module, name, PyLong_FromLongLong(value)) < 0 {
+        if jacpy_module_add_text(module, name, PyLong_FromLongLong(value)) < 0 {
             return i32(-1);
         }
     }

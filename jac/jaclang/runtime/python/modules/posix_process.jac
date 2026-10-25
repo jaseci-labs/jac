@@ -682,7 +682,7 @@ impl parse_posix_spawn_flags(
             schedparam_obj = NULL;
             if PyArg_ParseTuple(
                 scheduler,
-                "OO;A scheduler tuple must have two elements",
+                ptr[u8]("OO;A scheduler tuple must have two elements"),
                 &mut py_schedpolicy,
                 &mut schedparam_obj
             )
@@ -797,7 +797,7 @@ impl parse_file_actions(
 
             if PyArg_ParseTuple(
                 file_action,
-                "OiOOO;A open file_action tuple must have 5 elements",
+                ptr[u8]("OiOOO;A open file_action tuple must have 5 elements"),
                 &mut tag_obj,
                 &mut fd,
                 &mut path_obj,
@@ -813,12 +813,14 @@ impl parse_file_actions(
                 break;
             }
             if PyArg_Parse(
-                oflag_obj, "i;A open file_action tuple must have 5 elements", &mut oflag
+                oflag_obj,
+                ptr[u8]("i;A open file_action tuple must have 5 elements"),
+                &mut oflag
             )
                 == 0
                 or PyArg_Parse(
                     mode_obj,
-                    "k;A open file_action tuple must have 5 elements",
+                    ptr[u8]("k;A open file_action tuple must have 5 elements"),
                     &mut mode
                 )
                     == 0 {
@@ -846,7 +848,7 @@ impl parse_file_actions(
             fd = i32(0);
             if PyArg_ParseTuple(
                 file_action,
-                "Oi;A close file_action tuple must have 2 elements",
+                ptr[u8]("Oi;A close file_action tuple must have 2 elements"),
                 &mut tag_obj,
                 &mut fd
             )
@@ -866,7 +868,7 @@ impl parse_file_actions(
             fd2 = i32(0);
             if PyArg_ParseTuple(
                 file_action,
-                "Oii;A dup2 file_action tuple must have 3 elements",
+                ptr[u8]("Oii;A dup2 file_action tuple must have 3 elements"),
                 &mut tag_obj,
                 &mut fd1,
                 &mut fd2
@@ -1288,7 +1290,7 @@ impl os_forkpty_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if pid == -1 {
         return posix_error();
     }
-    return Py_BuildValue("(Ni)", PyLong_FromLong(i64(pid)), master_fd);
+    return Py_BuildValue(ptr[u8]("(Ni)"), PyLong_FromLong(i64(pid)), master_fd);
 }
 
 impl os_sched_get_priority_max_impl(
@@ -1333,7 +1335,9 @@ impl os_sched_param_impl(
 }
 
 impl sched_param_reduce(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("(O(O))", Py_TYPE(self), PyStructSequence_GetItem(self, 0));
+    return Py_BuildValue(
+        ptr[u8]("(O(O))"), Py_TYPE(self), PyStructSequence_GetItem(self, 0)
+    );
 }
 
 impl os_sched_setscheduler_impl(
@@ -1637,7 +1641,7 @@ impl wait_helper(
             return NULL;
         }
     }
-    return Py_BuildValue("NiN", PyLong_FromLong(i64(pid)), status, result);
+    return Py_BuildValue(ptr[u8]("NiN"), PyLong_FromLong(i64(pid)), status, result);
 }
 
 impl os_wait3_impl(module: ptr[PyObject], options: i32) -> ptr[PyObject] {
@@ -1752,7 +1756,7 @@ impl os_waitpid_impl(module: ptr[PyObject], pid: i32, options: i32) -> ptr[PyObj
     if res < 0 {
         return posix_error() if async_err == 0 else NULL;
     }
-    return Py_BuildValue("Ni", PyLong_FromLong(i64(res)), status);
+    return Py_BuildValue(ptr[u8]("Ni"), PyLong_FromLong(i64(res)), status);
 }
 
 impl os_wait_impl(module: ptr[PyObject]) -> ptr[PyObject] {
@@ -1774,7 +1778,7 @@ impl os_wait_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if pid < 0 {
         return posix_error() if async_err == 0 else NULL;
     }
-    return Py_BuildValue("Ni", PyLong_FromLong(i64(pid)), status);
+    return Py_BuildValue(ptr[u8]("Ni"), PyLong_FromLong(i64(pid)), status);
 }
 
 impl os_pidfd_open_impl(module: ptr[PyObject], pid: i32, flags: u32) -> ptr[PyObject] {
@@ -1919,7 +1923,7 @@ impl os_getloadavg_impl(module: ptr[PyObject]) -> ptr[PyObject] {
         PyErr_SetString(PyExc_OSError, "Load averages are unobtainable");
         return NULL;
     }
-    return Py_BuildValue("ddd", loadavg.one, loadavg.five, loadavg.fifteen);
+    return Py_BuildValue(ptr[u8]("ddd"), loadavg.one, loadavg.five, loadavg.fifteen);
 }
 
 impl posix_process_exec(module: ptr[PyObject]) -> bool {

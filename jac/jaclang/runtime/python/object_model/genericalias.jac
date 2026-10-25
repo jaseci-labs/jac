@@ -911,10 +911,13 @@ impl ga_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
         if not tmp {
             return NULL;
         }
-        return Py_BuildValue("N(N)", eval_builtin("next"), tmp);
+        return Py_BuildValue(ptr[u8]("N(N)"), eval_builtin("next"), tmp);
     }
     return Py_BuildValue(
-        "O(OO)", object_type(op), alias.view(1)[0].origin, alias.view(1)[0].args
+        ptr[u8]("O(OO)"),
+        object_type(op),
+        alias.view(1)[0].origin,
+        alias.view(1)[0].args
     );
 }
 
@@ -980,11 +983,12 @@ impl setup_ga(
 impl ga_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwds and _PyArg_NoKeywords("GenericAlias", kwds) == 0 {
+    if kwds and _PyArg_NoKeywords(ptr[u8]("GenericAlias"), kwds) == 0 {
         return NULL;
     }
     nargs = object_size(args);
-    if nargs != 2 and _PyArg_CheckPositional("GenericAlias", nargs, 2, 2) == 0 {
+    if nargs != 2
+        and _PyArg_CheckPositional(ptr[u8]("GenericAlias"), nargs, 2, 2) == 0 {
         return NULL;
     }
     op = _type.view(1)[0].tp_alloc(_type, 0);
@@ -1041,9 +1045,9 @@ impl ga_iter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
     iterator = eval_builtin("iter");
     wrapped = gaiter_of(op).view(1)[0].obj_;
     if wrapped {
-        return Py_BuildValue("N(O)", iterator, wrapped);
+        return Py_BuildValue(ptr[u8]("N(O)"), iterator, wrapped);
     }
-    return Py_BuildValue("N(())", iterator);
+    return Py_BuildValue(ptr[u8]("N(())"), iterator);
 }
 
 impl ga_iter(op: ptr[PyObject]) -> ptr[PyObject] {

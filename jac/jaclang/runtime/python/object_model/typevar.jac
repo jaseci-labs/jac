@@ -13,7 +13,7 @@ import from c {
     ) -> i32;  def PyUnicodeWriter_WriteStr(writer: ptr, ob: ptr[PyObject]) -> i32;  def PyFunction_GetModule(
         op: ptr[PyObject]
     ) -> ptr[PyObject];  def _PyArg_BadArgument(
-        fname: str, displayname: str, expected: ptr[u8], arg: ptr[PyObject]
+        fname: ptr[u8], displayname: ptr[u8], expected: ptr[u8], arg: ptr[PyObject]
     );  obj TypevarCall {
         has free: Callable[[ptr], None] = 0;
     }  glob:priv origin_key: ptr[PyObject] = ptr[PyObject](),
@@ -956,7 +956,7 @@ def check_variance(covariant: i32, contravariant: i32, infer_variance: i32) -> b
 
 def variance_flags(values: ptr[ptr[PyObject]]) -> tuple[i32, i32, i32, i32];
 
-def check_name(name: ptr[PyObject], fname: str) -> bool;
+def check_name(name: ptr[PyObject], fname: ptr[u8]) -> bool;
 
 def typevar_new_values(
     constraints: ptr[PyObject], values: ptr[ptr[PyObject]], count: i64
@@ -1417,11 +1417,11 @@ impl constevaluator_repr(self: ptr[PyObject]) -> ptr[PyObject] {
 impl constevaluator_call(
     self: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwargs and _PyArg_NoKeywords("constevaluator.__call__", kwargs) == 0 {
+    if kwargs and _PyArg_NoKeywords(ptr[u8]("constevaluator.__call__"), kwargs) == 0 {
         return NULL;
     }
     format: i32 = 0;
-    if PyArg_ParseTuple(args, "i:constevaluator.__call__", &mut format) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("i:constevaluator.__call__"), &mut format) == 0 {
         return NULL;
     }
     value = field(self, constevaluatorobject_VALUE);
@@ -1811,9 +1811,9 @@ impl variance_flags(values: ptr[ptr[PyObject]]) -> tuple[i32, i32, i32, i32] {
     return (i32(0), covariant, contravariant, infer_variance);
 }
 
-impl check_name(name: ptr[PyObject], fname: str) -> bool {
+impl check_name(name: ptr[PyObject], fname: ptr[u8]) -> bool {
     if not type_has_feature(object_type(name), Py_TPFLAGS_UNICODE_SUBCLASS) {
-        _PyArg_BadArgument(fname, "argument 'name'", ptr[u8]("str"), name);
+        _PyArg_BadArgument(fname, ptr[u8]("argument 'name'"), ptr[u8]("str"), name);
         return False;
     }
     return True;
@@ -1823,7 +1823,7 @@ impl typevar_new_values(
     constraints: ptr[PyObject], values: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     name = values.view(1)[0];
-    if not check_name(name, "typevar") {
+    if not check_name(name, ptr[u8]("typevar")) {
         return NULL;
     }
     bound = (values + 1).view(1)[0];
@@ -1907,7 +1907,7 @@ impl typevar_typing_subst(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObje
 impl typevar_typing_prepare_subst(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("__typing_prepare_subst__", nargs, 2, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("__typing_prepare_subst__"), nargs, 2, 2) == 0 {
         return NULL;
     }
     alias = args.view(1)[0];
@@ -2170,7 +2170,7 @@ impl paramspec_new_values(
     type: ptr[PyObject], values: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     name = values.view(1)[0];
-    if not check_name(name, "paramspec") {
+    if not check_name(name, ptr[u8]("paramspec")) {
         return NULL;
     }
     bound = (values + 1).view(1)[0] if (values + 1).view(1)[0] else Py_None;
@@ -2218,7 +2218,7 @@ impl paramspec_typing_subst(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyOb
 impl paramspec_typing_prepare_subst(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("__typing_prepare_subst__", nargs, 2, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("__typing_prepare_subst__"), nargs, 2, 2) == 0 {
         return NULL;
     }
     return call_typing_func_object(
@@ -2300,7 +2300,7 @@ impl typevartuple_new_values(
     type: ptr[PyObject], values: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     name = values.view(1)[0];
-    if not check_name(name, "typevartuple") {
+    if not check_name(name, ptr[u8]("typevartuple")) {
         return NULL;
     }
     default_value = (values + 1).view(1)[0]
@@ -2335,7 +2335,7 @@ impl typevartuple_typing_subst(
 impl typevartuple_typing_prepare_subst(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("__typing_prepare_subst__", nargs, 2, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("__typing_prepare_subst__"), nargs, 2, 2) == 0 {
         return NULL;
     }
     return call_typing_func_object(
@@ -2593,7 +2593,7 @@ impl typealias_new_values(
     type: ptr[PyObject], values: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     name = values.view(1)[0];
-    if not check_name(name, "typealias") {
+    if not check_name(name, ptr[u8]("typealias")) {
         return NULL;
     }
     value = (values + 1).view(1)[0];

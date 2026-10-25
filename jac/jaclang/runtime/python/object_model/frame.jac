@@ -1678,7 +1678,7 @@ impl framelocalsproxy_setdefault(
 impl framelocalsproxy_pop(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("pop", nargs, 1, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("pop"), nargs, 1, 2) == 0 {
         return NULL;
     }
     key = args.view(1)[0];

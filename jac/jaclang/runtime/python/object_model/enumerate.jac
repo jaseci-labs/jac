@@ -171,7 +171,7 @@ impl enum_new(
     if PyArg_ParseTupleAndKeywords(
         args,
         kwargs,
-        "O|O:enumerate",
+        ptr[u8]("O|O:enumerate"),
         ptr(addressof(enum_keywords)),
         &mut iterable,
         &mut start
@@ -381,11 +381,14 @@ impl enum_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     en = enum_of(op);
     if en.view(1)[0].en_longindex {
         return Py_BuildValue(
-            "O(OO)", object_type(op), en.view(1)[0].en_sit, en.view(1)[0].en_longindex
+            ptr[u8]("O(OO)"),
+            object_type(op),
+            en.view(1)[0].en_sit,
+            en.view(1)[0].en_longindex
         );
     }
     return Py_BuildValue(
-        "O(On)", object_type(op), en.view(1)[0].en_sit, en.view(1)[0].en_index
+        ptr[u8]("O(On)"), object_type(op), en.view(1)[0].en_sit, en.view(1)[0].en_index
     );
 }
 
@@ -446,11 +449,11 @@ impl reversed_new(
         or int(_type.view(1)[0].tp_init) == int(base_tp.view(1)[0].tp_init)
     )
         and kwargs
-        and _PyArg_NoKeywords("reversed", kwargs) == 0 {
+        and _PyArg_NoKeywords(ptr[u8]("reversed"), kwargs) == 0 {
         return NULL;
     }
     nargs = object_size(args);
-    if nargs != 1 and _PyArg_CheckPositional("reversed", nargs, 1, 1) == 0 {
+    if nargs != 1 and _PyArg_CheckPositional(ptr[u8]("reversed"), nargs, 1, 1) == 0 {
         return NULL;
     }
     return reversed_new_impl(_type, tuple_get_item(args, 0));
@@ -459,11 +462,11 @@ impl reversed_new(
 impl reversed_vectorcall(
     _type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwnames and _PyArg_NoKwnames("reversed", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("reversed"), kwnames) == 0 {
         return NULL;
     }
     nargs = PyVectorcall_NARGS(nargsf);
-    if nargs != 1 and _PyArg_CheckPositional("reversed", nargs, 1, 1) == 0 {
+    if nargs != 1 and _PyArg_CheckPositional(ptr[u8]("reversed"), nargs, 1, 1) == 0 {
         return NULL;
     }
     return reversed_new_impl(ptr[PyTypeObject](_type), args.view(1)[0]);
@@ -518,10 +521,10 @@ impl reversed_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject]
     ro = reversed_of(op);
     if ro.view(1)[0].index != -1 {
         return Py_BuildValue(
-            "O(O)n", object_type(op), ro.view(1)[0].seq, ro.view(1)[0].index
+            ptr[u8]("O(O)n"), object_type(op), ro.view(1)[0].seq, ro.view(1)[0].index
         );
     }
-    return Py_BuildValue("O(())", object_type(op));
+    return Py_BuildValue(ptr[u8]("O(())"), object_type(op));
 }
 
 impl reversed_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {

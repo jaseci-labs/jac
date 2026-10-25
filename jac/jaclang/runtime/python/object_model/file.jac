@@ -393,7 +393,7 @@ impl stdprinter_write(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         return Py_NewRef(Py_None);
     }
     unicode = NULL;
-    if PyArg_ParseTuple(args, "U", &mut unicode) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("U"), &mut unicode) == 0 {
         return NULL;
     }
     size = i64(0);

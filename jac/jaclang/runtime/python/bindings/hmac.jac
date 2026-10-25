@@ -31,7 +31,8 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         jacpy_binding_exception("_hmac.UnknownHashError", PyExc_ValueError, "")
     )
         or not add_state_owned(module, HMAC_TYPE, "HMAC", hmac_type.create(module))
-        or PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0 {
+        or PyModule_AddIntConstant(module, ptr[u8]("_GIL_MINSIZE"), HASHLIB_GIL_MINSIZE)
+            < 0 {
         return i32(-1);
     }
     return i32(0);

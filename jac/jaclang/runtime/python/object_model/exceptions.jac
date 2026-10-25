@@ -4,7 +4,7 @@ import from c {
     );  def _PyErr_SetRaisedException(tstate: ptr, exc: ptr[PyObject]);  def _Py_NewReference(
         op: ptr[PyObject]
     );  def _PyTuple_FromArray(src: ptr[ptr[PyObject]], n: i64) -> ptr[PyObject];  def _PyArg_BadArgument(
-        fname: str, displayname: str, expected: ptr[u8], arg: ptr[PyObject]
+        fname: ptr[u8], displayname: ptr[u8], expected: ptr[u8], arg: ptr[PyObject]
     );  def PyObject_GenericGetDict(ob: ptr[PyObject], context: ptr) -> ptr[PyObject];  def PyObject_GenericSetDict(
         ob: ptr[PyObject], value: ptr[PyObject], context: ptr
     ) -> i32;  obj ExcCall {
@@ -3014,7 +3014,9 @@ impl BaseException_with_traceback(
 
 impl BaseException_add_note(op: ptr[PyObject], note: ptr[PyObject]) -> ptr[PyObject] {
     if not type_has_feature(object_type(note), Py_TPFLAGS_UNICODE_SUBCLASS) {
-        _PyArg_BadArgument("add_note", "argument", ptr[u8]("str"), note);
+        _PyArg_BadArgument(
+            ptr[u8]("add_note"), ptr[u8]("argument"), ptr[u8]("str"), note
+        );
         return NULL;
     }
     notes: ptr[PyObject] = NULL;
@@ -3280,7 +3282,10 @@ impl BaseExceptionGroup_new(
     exceptions = tuple_get_item(args, 1);
     if not type_has_feature(object_type(message), Py_TPFLAGS_UNICODE_SUBCLASS) {
         _PyArg_BadArgument(
-            "BaseExceptionGroup.__new__", "argument 1", ptr[u8]("str"), message
+            ptr[u8]("BaseExceptionGroup.__new__"),
+            ptr[u8]("argument 1"),
+            ptr[u8]("str"),
+            message
         );
         return NULL;
     }
@@ -3792,7 +3797,7 @@ impl ImportError_init(
     if PyArg_ParseTupleAndKeywords(
         empty_tuple,
         kwds,
-        "|$OOO:ImportError",
+        ptr[u8]("|$OOO:ImportError"),
         ptr(addressof(import_error_keywords)),
         &mut name,
         &mut path,
@@ -4179,7 +4184,7 @@ impl NameError_init(
     if PyArg_ParseTupleAndKeywords(
         empty_tuple,
         kwds,
-        "|$O:NameError",
+        ptr[u8]("|$O:NameError"),
         ptr(addressof(name_error_keywords)),
         &mut name
     )
@@ -4220,7 +4225,7 @@ impl AttributeError_init(
     if PyArg_ParseTupleAndKeywords(
         empty_tuple,
         kwds,
-        "|$OO:AttributeError",
+        ptr[u8]("|$OO:AttributeError"),
         ptr(addressof(attribute_error_keywords)),
         &mut name,
         &mut ob
@@ -4322,7 +4327,7 @@ impl SyntaxError_init(
         metadata: ptr[PyObject] = NULL;
         if PyArg_ParseTuple(
             info,
-            "OOOO|OOO",
+            ptr[u8]("OOOO|OOO"),
             &mut filename,
             &mut lineno,
             &mut offset,
@@ -4603,7 +4608,13 @@ impl UnicodeEncodeError_init(
     start: i64 = -1;
     end: i64 = -1;
     if PyArg_ParseTuple(
-        args, "UUnnU", &mut encoding, &mut ob, &mut start, &mut end, &mut reason
+        args,
+        ptr[u8]("UUnnU"),
+        &mut encoding,
+        &mut ob,
+        &mut start,
+        &mut end,
+        &mut reason
     )
         == 0 {
         return i32(-1);
@@ -4687,7 +4698,13 @@ impl UnicodeDecodeError_init(
     start: i64 = -1;
     end: i64 = -1;
     if PyArg_ParseTuple(
-        args, "UOnnU", &mut encoding, &mut ob, &mut start, &mut end, &mut reason
+        args,
+        ptr[u8]("UOnnU"),
+        &mut encoding,
+        &mut ob,
+        &mut start,
+        &mut end,
+        &mut reason
     )
         == 0 {
         return i32(-1);
@@ -4776,7 +4793,9 @@ impl UnicodeTranslateError_init(
     reason: ptr[PyObject] = NULL;
     start: i64 = -1;
     end: i64 = -1;
-    if PyArg_ParseTuple(args, "UnnU", &mut ob, &mut start, &mut end, &mut reason)
+    if PyArg_ParseTuple(
+        args, ptr[u8]("UnnU"), &mut ob, &mut start, &mut end, &mut reason
+    )
         == 0 {
         return i32(-1);
     }

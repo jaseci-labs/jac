@@ -714,11 +714,11 @@ impl gc_clear(op: ptr[PyObject]) -> i32 {
 impl weakref_vectorcall(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwnames and _PyArg_NoKwnames("weakref", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("weakref"), kwnames) == 0 {
         return NULL;
     }
     nargs = PyVectorcall_NARGS(nargsf);
-    if nargs != 0 and _PyArg_CheckPositional("weakref", nargs, 0, 0) == 0 {
+    if nargs != 0 and _PyArg_CheckPositional(ptr[u8]("weakref"), nargs, 0, 0) == 0 {
         return NULL;
     }
     ob = weakref_get_ref(op);
@@ -955,7 +955,7 @@ impl weakref___new__(
 impl weakref___init__(
     op: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> i32 {
-    if kwargs and _PyArg_NoKeywords("ref", kwargs) == 0 {
+    if kwargs and _PyArg_NoKeywords(ptr[u8]("ref"), kwargs) == 0 {
         return i32(-1);
     }
     return i32(0) if unpack_weakref_args(args, "__init__") else i32(-1);

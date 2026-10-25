@@ -1587,7 +1587,7 @@ impl setiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
     if not keys {
         return NULL;
     }
-    return Py_BuildValue("N(N)", eval_builtin("iter"), keys);
+    return Py_BuildValue(ptr[u8]("N(N)"), eval_builtin("iter"), keys);
 }
 
 impl setiter_iternext(op: ptr[PyObject]) -> ptr[PyObject] {
@@ -1784,7 +1784,7 @@ impl frozenset_new(
     base = frozenset_type();
     if (type == base or int(type.view(1)[0].tp_init) == int(base.view(1)[0].tp_init))
         and kwds
-        and _PyArg_NoKeywords("frozenset", kwds) == 0 {
+        and _PyArg_NoKeywords(ptr[u8]("frozenset"), kwds) == 0 {
         return NULL;
     }
     if not at_most_one_argument(args, type.view(1)[0].tp_name) {
@@ -1796,11 +1796,11 @@ impl frozenset_new(
 impl frozenset_vectorcall(
     type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwnames and _PyArg_NoKwnames("frozenset", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("frozenset"), kwnames) == 0 {
         return NULL;
     }
     nargs = PyVectorcall_NARGS(nargsf);
-    if nargs > 1 and _PyArg_CheckPositional("frozenset", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("frozenset"), nargs, 0, 1) == 0 {
         return NULL;
     }
     iterable = args.view(1)[0] if nargs != 0 else NULL;
@@ -2618,7 +2618,7 @@ impl set___sizeof__(so: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
 }
 
 impl set_init(so: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32 {
-    if kwds and _PyArg_NoKeywords("set", kwds) == 0 {
+    if kwds and _PyArg_NoKeywords(ptr[u8]("set"), kwds) == 0 {
         return i32(-1);
     }
     if not at_most_one_argument(args, object_type(so).view(1)[0].tp_name) {
@@ -2645,11 +2645,11 @@ impl set_init(so: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i3
 impl set_vectorcall(
     type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwnames and _PyArg_NoKwnames("set", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("set"), kwnames) == 0 {
         return NULL;
     }
     nargs = PyVectorcall_NARGS(nargsf);
-    if nargs > 1 and _PyArg_CheckPositional("set", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("set"), nargs, 0, 1) == 0 {
         return NULL;
     }
     if nargs != 0 {

@@ -16850,6 +16850,7 @@ graph import runtime.python {
             PyObject,
             PyType_GetDict,
             Py_TYPE,
+            jacpy_module_add_int_text,
             jacpy_release
         },
         bindings.clinic.abc
@@ -17023,7 +17024,6 @@ graph import runtime.python {
         bindings.contextvars { PyModule_AddType, PyObject },
         bindings.converters {
             NULL,
-            PyArg_Parse,
             PyErr_Clear,
             PyErr_Occurred,
             PyExc_OverflowError,
@@ -17059,6 +17059,7 @@ graph import runtime.python {
             _PyLong_UInt8_Converter,
             _PyLong_UnsignedInt_Converter,
             _PyLong_UnsignedShort_Converter,
+            jacpy_arg_parse_sized_text,
             jacpy_is_exact_long,
             jacpy_is_float,
             jacpy_is_unicode,
@@ -17110,6 +17111,7 @@ graph import runtime.python {
             Py_None,
             _PyStaticType_InitForExtension,
             _PyType_GetDict,
+            jacpy_module_add_object_ref_text,
             jacpy_release
         },
         bindings.decimal {
@@ -17152,6 +17154,7 @@ graph import runtime.python {
             PyUnicode_InternFromString,
             Py_NewRef,
             jacpy_is_type,
+            jacpy_module_add_object_ref_text,
             jacpy_release
         },
         bindings.elementtree {
@@ -17161,6 +17164,7 @@ graph import runtime.python {
             PyModule_AddObjectRef,
             PyObject,
             PyObject_GenericGetAttr,
+            jacpy_module_add_object_ref_text,
             jacpy_unicode_intern_text
         },
         bindings.errno {
@@ -17174,7 +17178,7 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_from_text
         },
-        bindings.fcntl { PyExc_ImportError, PyModule_AddIntConstant, PyObject },
+        bindings.fcntl { PyExc_ImportError, PyObject, jacpy_module_add_int_text },
         bindings.functools {
             NULL,
             PyBaseObject_Type,
@@ -17243,15 +17247,16 @@ graph import runtime.python {
             PyExc_ImportError,
             PyModule_AddIntConstant,
             PyObject,
-            jacpy_char_max
+            jacpy_char_max,
+            jacpy_module_add_int_text
         },
         bindings.lsprof { PyObject, jacpy_struct_sequence_type },
         bindings.lzma {
             NULL,
             PyLong_FromLongLong,
-            PyModule_Add,
             PyObject,
             PyTuple_New,
+            jacpy_module_add_text,
             jacpy_release
         },
         bindings.math { NULL, PyFloat_FromDouble, PyObject },
@@ -17267,7 +17272,8 @@ graph import runtime.python {
             PyExc_OSError,
             PyModule_AddIntConstant,
             PyModule_AddObjectRef,
-            PyObject
+            PyObject,
+            jacpy_module_add_int_text
         },
         bindings.module {
             NULL,
@@ -17275,8 +17281,8 @@ graph import runtime.python {
             PyErr_NoMemory,
             PyMem_RawCalloc,
             PyMethodDef,
-            PyModule_AddObjectRef,
             PyObject,
+            jacpy_module_add_object_ref_text,
             jacpy_release
         },
         bindings.multibytecodec {
@@ -17328,13 +17334,13 @@ graph import runtime.python {
             PyList_New,
             PyLong_FromLong,
             PyMethodDef,
-            PyModule_AddIntConstant,
             PyModule_AddObjectRef,
             PyObject,
             PyObject_SelfIter,
             PyType_Modified,
             PyUnicode_InternFromString,
             _PyType_AddMethod,
+            jacpy_module_add_int_text,
             jacpy_release,
             jacpy_unicode_from_text
         },
@@ -17342,11 +17348,11 @@ graph import runtime.python {
         bindings.pyexpat {
             NULL,
             PyModule_Add,
-            PyModule_AddIntConstant,
             PyModule_AddObjectRef,
             PyModule_AddStringConstant,
             PyObject,
-            PyUnicode_InternFromString
+            PyUnicode_InternFromString,
+            jacpy_module_add_int_text
         },
         bindings.random { NULL, PyObject, jacpy_release },
         bindings.references {
@@ -17368,24 +17374,21 @@ graph import runtime.python {
             PyExc_ImportError,
             PyExc_OSError,
             PyLong_FromLong,
-            PyModule_AddIntConstant,
             PyModule_AddObjectRef,
             PyObject,
+            jacpy_module_add_int_text,
             jacpy_struct_sequence_type
         },
-        bindings.runtime_objects | bindings.zoneinfo {
-            PyModule_AddObjectRef,
-            PyObject
-        },
+        bindings.runtime_objects { PyObject, jacpy_module_add_object_ref_text },
         bindings.select {
             PyErr_Clear,
             PyExc_ImportError,
             PyExc_OSError,
-            PyModule_AddIntConstant,
             PyModule_AddObjectRef,
             PyObject,
             PyObject_DelAttrString,
             PyUnicode_InternFromString,
+            jacpy_module_add_int_text,
             jacpy_release
         },
         bindings.sha2 {
@@ -17413,7 +17416,6 @@ graph import runtime.python {
             PyMem_Malloc,
             PyMemberDef,
             PyModule_Add,
-            PyModule_AddIntConstant,
             PyModule_AddObjectRef,
             PyModule_AddType,
             PyObject,
@@ -17422,6 +17424,8 @@ graph import runtime.python {
             PyType_Slot,
             PyType_Spec,
             Py_NewRef,
+            jacpy_module_add_int_text,
+            jacpy_module_add_object_ref_text,
             jacpy_release
         },
         bindings.sqlite3 {
@@ -17434,6 +17438,8 @@ graph import runtime.python {
             PyObject,
             PyObject_CallFinalizerFromDealloc,
             PyUnicode_InternFromString,
+            jacpy_module_add_int_text,
+            jacpy_module_add_object_ref_text,
             jacpy_release
         },
         bindings.sre {
@@ -17443,11 +17449,11 @@ graph import runtime.python {
             PyMethodDef,
             PyModule_Add,
             PyModule_AddIntConstant,
-            PyModule_AddStringConstant,
             PyObject,
             PyType_FromModuleAndSpec,
             PyType_Slot,
             PyType_Spec,
+            jacpy_module_add_string_text,
             jacpy_release
         },
         bindings.ssl {
@@ -17464,10 +17470,7 @@ graph import runtime.python {
             PyLong_FromLong,
             PyLong_FromUnsignedLongLong,
             PyMem_Free,
-            PyModule_Add,
-            PyModule_AddIntConstant,
             PyModule_AddObjectRef,
-            PyModule_AddStringConstant,
             PyObject,
             PyObject_Str,
             PyThread_allocate_lock,
@@ -17482,6 +17485,10 @@ graph import runtime.python {
             Py_buffer,
             jacpy_buffer_release,
             jacpy_is_unicode,
+            jacpy_module_add_int_text,
+            jacpy_module_add_object_ref_text,
+            jacpy_module_add_string_text,
+            jacpy_module_add_text,
             jacpy_release,
             jacpy_unicode_from_text,
             jacpy_unicode_intern_text
@@ -17490,8 +17497,8 @@ graph import runtime.python {
             NULL,
             PyExc_ImportError,
             PyLong_FromUnsignedLong,
-            PyModule_AddIntConstant,
             PyObject,
+            jacpy_module_add_int_text,
             jacpy_unicode_from_text
         },
         bindings.struct {
@@ -17516,22 +17523,23 @@ graph import runtime.python {
             NULL,
             PyExc_ImportError,
             PyExc_TypeError,
-            PyModule_AddIntConstant,
             PyObject,
             PyTuple_GetItem,
-            PyTuple_Size
+            PyTuple_Size,
+            jacpy_module_add_int_text
         },
         bindings.termios {
             NULL,
             PyExc_ImportError,
             PyLong_FromUnsignedLong,
-            PyModule_AddIntConstant,
-            PyObject
+            PyObject,
+            jacpy_module_add_int_text
         },
         bindings.time {
             PyExc_ImportError,
             PyModule_AddIntConstant,
             PyObject,
+            jacpy_module_add_int_text,
             jacpy_struct_sequence_type
         },
         bindings.type {
@@ -17582,9 +17590,9 @@ graph import runtime.python {
         },
         bindings.unicodedata {
             PyModule_Add,
-            PyModule_AddStringConstant,
             PyModule_AddType,
             PyObject,
+            jacpy_module_add_string_text,
             jacpy_release
         },
         bindings.weakref {
@@ -17595,13 +17603,14 @@ graph import runtime.python {
         },
         bindings.zlib {
             NULL,
-            PyModule_AddIntConstant,
             PyObject,
             PyUnicode_FromString,
             Py_NewRef,
+            jacpy_module_add_int_text,
             jacpy_release,
             jacpy_unicode_from_text
         },
+        bindings.zoneinfo { PyModule_AddObjectRef, PyObject },
         bindings.zstd {
             NULL,
             PyLong_FromLong,
@@ -17609,6 +17618,7 @@ graph import runtime.python {
             PyModule_AddIntConstant,
             PyObject,
             PyType_Freeze,
+            jacpy_module_add_int_text,
             jacpy_object_setattr_text,
             jacpy_release
         },
@@ -18513,7 +18523,6 @@ graph import runtime.python {
             PyImport_ImportModuleAttrString,
             PyMem_Free,
             PyMem_Malloc,
-            PyModule_Add,
             PyObject,
             PyObject_CallOneArg,
             PyUnicodeWriter,
@@ -18521,6 +18530,7 @@ graph import runtime.python {
             PyUnicode_AsUTF8,
             Py_NewRef,
             jacpy_is_unicode,
+            jacpy_module_add_text,
             jacpy_object_getattr_text,
             jacpy_release
         },
@@ -19377,7 +19387,6 @@ graph import runtime.python {
             PyMem_Free,
             PyMem_Malloc,
             PyModule_Add,
-            PyModule_AddObjectRef,
             PyObject,
             PySet_Add,
             PyThread_acquire_lock,
@@ -19391,6 +19400,7 @@ graph import runtime.python {
             jacpy_bytes_address,
             jacpy_bytes_from_memory,
             jacpy_is_unicode,
+            jacpy_module_add_object_ref_text,
             jacpy_object_getattr_text,
             jacpy_release,
             jacpy_unicode_from_text
@@ -20703,8 +20713,6 @@ graph import runtime.python {
             PyMem_Free,
             PyMem_Malloc,
             PyModule_Add,
-            PyModule_AddIntConstant,
-            PyModule_AddObjectRef,
             PyModule_AddStringConstant,
             PyObject,
             PyObject_Call,
@@ -20736,6 +20744,9 @@ graph import runtime.python {
             jacpy_is_long,
             jacpy_is_unicode,
             jacpy_memory_copy,
+            jacpy_module_add_int_text,
+            jacpy_module_add_object_ref_text,
+            jacpy_module_add_text,
             jacpy_object_setattr_text,
             jacpy_recursion_enter,
             jacpy_release,
@@ -23312,6 +23323,62 @@ graph import runtime.python {
             jacpy_unicode_equal_text,
             jacpy_unicode_from_text
         },
+        object_model.getargs {
+            NULL,
+            PyBuffer_Release,
+            PyByteArray_AsString,
+            PyDict_GetItemRef,
+            PyDict_GetItemStringRef,
+            PyDict_Next,
+            PyErr_BadInternalCall,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetObject,
+            PyErr_SetString,
+            PyErr_WarnFormat,
+            PyExc_DeprecationWarning,
+            PyExc_OverflowError,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyFloat_AsDouble,
+            PyInterpreterState,
+            PyInterpreterState_Get,
+            PyLong_AsLong,
+            PyLong_AsLongLong,
+            PyLong_AsSsize_t,
+            PyLong_AsUnsignedLongLongMask,
+            PyLong_AsUnsignedLongMask,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyObject,
+            PyObject_GetBuffer,
+            PyObject_IsTrue,
+            PySequence_Check,
+            PySequence_Contains,
+            PySequence_List,
+            PySequence_Size,
+            PySequence_Tuple,
+            PyThreadState,
+            PyThreadState_Swap,
+            PyTuple_New,
+            PyType_IsSubtype,
+            PyUnicode_AsEncodedString,
+            PyUnicode_AsUTF8AndSize,
+            PyUnicode_EqualToUTF8,
+            PyUnicode_FromString,
+            PyUnicode_GetDefaultEncoding,
+            PyUnicode_ReadChar,
+            Py_None,
+            Py_buffer,
+            Py_complex,
+            _PyInterpreterState_Main,
+            _PyNumber_Index,
+            _PyRuntime,
+            _Py_CalculateSuggestions
+        },
         object_model.hamt {
             NULL,
             PyArg_UnpackTuple,
@@ -23664,6 +23731,43 @@ graph import runtime.python {
             jacpy_release
         },
         object_model.mimalloc { jacpy_errno, jacpy_set_errno },
+        object_model.modsupport {
+            NULL,
+            PyBool_FromLong,
+            PyBytes_FromStringAndSize,
+            PyDict_New,
+            PyDict_SetItem,
+            PyDict_SetItemString,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_OverflowError,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyFloat_FromDouble,
+            PyList_New,
+            PyLong_FromLong,
+            PyLong_FromLongLong,
+            PyLong_FromUnsignedLong,
+            PyLong_FromUnsignedLongLong,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyModule_GetDict,
+            PyModule_Type,
+            PyNumber_AsSsize_t,
+            PyObject,
+            PyTuple_New,
+            PyType_Ready,
+            PyUnicode_FromOrdinal,
+            PyUnicode_FromString,
+            PyUnicode_FromWideChar,
+            Py_None,
+            Py_complex,
+            _PyType_Name
+        },
         object_model.module {
             NULL,
             PyCFunction_NewEx,
@@ -24106,6 +24210,38 @@ graph import runtime.python {
             _Py_SetImmortal,
             jacpy_is_long,
             jacpy_release
+        },
+        object_model.structmember {
+            NULL,
+            PyBool_FromLong,
+            PyErr_BadArgument,
+            PyErr_Format,
+            PyErr_Occurred,
+            PyErr_SetObject,
+            PyErr_SetString,
+            PyErr_WarnEx,
+            PyExc_AttributeError,
+            PyExc_RuntimeWarning,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyFloat_AsDouble,
+            PyFloat_FromDouble,
+            PyLong_AsLong,
+            PyLong_AsLongLong,
+            PyLong_AsSsize_t,
+            PyLong_AsUnsignedLong,
+            PyLong_AsUnsignedLongLong,
+            PyLong_FromLong,
+            PyLong_FromLongLong,
+            PyLong_FromSsize_t,
+            PyLong_FromUnsignedLong,
+            PyLong_FromUnsignedLongLong,
+            PyMemberDef,
+            PyObject,
+            PyUnicode_AsUTF8AndSize,
+            PyUnicode_FromString,
+            Py_None,
+            _PyNumber_Index
         },
         object_model.structseq {
             NULL,
@@ -26881,6 +27017,16 @@ graph import runtime.python {
             gaobject_VECTORCALL,
             gaobject_WEAKREFLIST
         },
+        object_model.getargs {
+            PyBUF_SIMPLE,
+            PyBUF_WRITABLE,
+            PyDictObject,
+            PyTypeObject,
+            Py_CLEANUP_SUPPORTED,
+            _PyArg_Parser,
+            _PyArg_Parser_ONCE,
+            _Py_ONCE_INITIALIZED
+        },
         object_model.hamt {
             METH_NOARGS,
             METH_O,
@@ -27162,6 +27308,7 @@ graph import runtime.python {
             MI_MEDIUM_OBJ_SIZE_MAX,
             MI_SMALL_OBJ_SIZE_MAX
         },
+        object_model.modsupport { PyListObject, PyTypeObject },
         object_model.module {
             METH_CLASS,
             METH_NOARGS,
@@ -27509,6 +27656,30 @@ graph import runtime.python {
             _Py_T_OBJECT,
             _Py_freelists_SLICES,
             _object
+        },
+        object_model.structmember {
+            Py_READONLY,
+            Py_RELATIVE_OFFSET,
+            Py_T_BOOL,
+            Py_T_BYTE,
+            Py_T_CHAR,
+            Py_T_DOUBLE,
+            Py_T_FLOAT,
+            Py_T_INT,
+            Py_T_LONG,
+            Py_T_LONGLONG,
+            Py_T_OBJECT_EX,
+            Py_T_PYSSIZET,
+            Py_T_SHORT,
+            Py_T_STRING,
+            Py_T_STRING_INPLACE,
+            Py_T_UBYTE,
+            Py_T_UINT,
+            Py_T_ULONG,
+            Py_T_ULONGLONG,
+            Py_T_USHORT,
+            _Py_T_NONE,
+            _Py_T_OBJECT
         },
         object_model.structseq {
             METH_KEYWORDS,
@@ -28606,6 +28777,7 @@ graph import runtime.python {
             _PyInterpreterFrame_STACKPOINTER,
             _PyInterpreterFrame_VISITED
         },
+        object_model.getargs { _PyRuntimeState_GETARGS_STATIC_PARSERS },
         object_model.hamt {
             PyInterpreterState_HAMT_EMPTY,
             _PyRuntimeState_HAMT_BITMAP_NODE_EMPTY
@@ -28697,6 +28869,7 @@ graph import runtime.python {
             EINVAL,
             _PyRuntimeState_TIME
         },
+        object_model.structmember { CHAR_MAX, CHAR_MIN },
         object_model.tracemalloc {
             PyThreadState_CURRENT_FRAME,
             _PyInterpreterFrame_F_BUILTINS,
@@ -37059,10 +37232,24 @@ graph import runtime.python.object_model {
             tuple_check_exact,
             unicode_length
         },
+        getargs {
+            bytearray_check,
+            bytes_check,
+            bytes_data,
+            dict_check,
+            dict_check_exact,
+            index_check,
+            tuple_check,
+            tuple_check_exact,
+            unicode_check,
+            unicode_length
+        },
+        modsupport { index_check },
+        structmember { long_is_negative },
         type { type_check, unicode_check },
     ]
     bool ++> [
-        bltinmodule | range { bool_check },
+        bltinmodule | range | structmember { bool_check },
         cfunction | list | odict | tuple | type | weakref { py_false, py_true },
         file { PyBool_FromLong, bool_check },
     ]
@@ -37574,6 +37761,16 @@ graph import runtime.python.object_model {
             tuple_get_item,
             tuple_set_item
         },
+        getargs {
+            current_interp,
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
+            tuple_items
+        },
         hamt {
             PyType_Type,
             current_interp,
@@ -37668,6 +37865,15 @@ graph import runtime.python.object_model {
             object_size,
             object_type,
             tuple_get_item
+        },
+        modsupport {
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_type,
+            object_type_check,
+            object_xdecref,
+            tuple_set_item
         },
         module {
             current_interp,
@@ -37767,6 +37973,7 @@ graph import runtime.python.object_model {
             object_size,
             object_type
         },
+        structmember { object_decref, object_incref, object_new_ref, object_xdecref },
         structseq {
             PyType_Type,
             fast_items,
@@ -37934,6 +38141,8 @@ graph import runtime.python.object_model {
         },
         bootstrap_hash { status_err, status_ok },
         context { status_err, status_ok, unicode_check },
+        modsupport { type_is_ready },
+        structmember { py_true },
         tracemalloc {
             is_ptr_freed,
             stackref_borrow,

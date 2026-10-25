@@ -133,7 +133,7 @@ def iov_cleanup(vectors: IoVectors, cnt: i32) {
 
 # The `(ii)` tuple of two descriptors.
 def:priv fd_tuple(first: i32, second: i32) -> ptr[PyObject] {
-    return Py_BuildValue("(ii)", first, second);
+    return Py_BuildValue(ptr[u8]("(ii)"), first, second);
 }
 
 # --- terminals ---------------------------------------------------------------
@@ -328,7 +328,7 @@ def:priv build_itimerspec_ns(curr_value: itimerspec) -> ptr[PyObject] {
     if _PyTime_FromTimespec(&mut interval, &it_interval) < 0 {
         return NULL;
     }
-    return Py_BuildValue("LL", value, interval);
+    return Py_BuildValue(ptr[u8]("LL"), value, interval);
 }
 
 # The new value of a timerfd_settime*() call from its nanosecond times; None

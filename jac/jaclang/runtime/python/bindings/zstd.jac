@@ -209,9 +209,14 @@ impl execute(module: ptr[PyObject]) -> i32 {
         ) {
         return i32(-1);
     }
-    if PyModule_AddIntConstant(module, "zstd_version_number", zstd_version_number()) < 0
+    if PyModule_AddIntConstant(
+        module, ptr[u8]("zstd_version_number"), zstd_version_number()
+    )
+        < 0
         or not add_owned(module, "zstd_version", c_string_text(zstd_version()))
-        or PyModule_AddIntConstant(module, "ZSTD_CLEVEL_DEFAULT", zstd_default_level())
+        or PyModule_AddIntConstant(
+            module, ptr[u8]("ZSTD_CLEVEL_DEFAULT"), zstd_default_level()
+        )
             < 0
         or not add_owned(
             module, "ZSTD_DStreamOutSize", PyLong_FromSize_t(zstd_dstream_out_size())
@@ -251,7 +256,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
         ("ZSTD_btultra2", ZSTD_btultra2)
     ];
     for (name, value) in constants {
-        if PyModule_AddIntConstant(module, name, i64(value)) < 0 {
+        if jacpy_module_add_int_text(module, name, i64(value)) < 0 {
             return i32(-1);
         }
     }

@@ -254,7 +254,21 @@ glob OPAQUE: list[str] = [
          "PyUnicodeDecodeError_Create": {5},
          "PyUnicodeDecodeError_SetReason": {1},
          "PyUnicodeEncodeError_SetReason": {1},
-         "PyUnicodeTranslateError_SetReason": {1}
+         "PyUnicodeTranslateError_SetReason": {1},
+         "PyArg_Parse": {1},
+         "PyArg_ParseTuple": {1},
+         "PyArg_ParseTupleAndKeywords": {2},
+         "PyArg_UnpackTuple": {1},
+         "Py_BuildValue": {0},
+         "PyModule_Add": {1},
+         "PyModule_AddIntConstant": {1},
+         "PyModule_AddObjectRef": {1},
+         "PyModule_AddStringConstant": {1, 2},
+         "_PyArg_BadArgument": {0, 1, 2},
+         "_PyArg_CheckPositional": {0},
+         "_PyArg_NoKeywords": {0},
+         "_PyArg_NoKwnames": {0},
+         "_PyArg_NoPositional": {0}
      },
      # Pointer parameters that take memory the caller holds as a raw address
      # (a HACL* digest buffer, a Py_buffer, a path read after fork(), an

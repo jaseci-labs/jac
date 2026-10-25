@@ -1164,7 +1164,9 @@ impl module_init_checked(
     op: ptr[PyObject], name: ptr[PyObject], doc: ptr[PyObject]
 ) -> i32 {
     if not unicode_check(name) {
-        _PyArg_BadArgument("module", "argument 'name'", "str", name);
+        _PyArg_BadArgument(
+            ptr[u8]("module"), ptr[u8]("argument 'name'"), ptr[u8]("str"), name
+        );
         return i32(-1);
     }
     return module_init_dict(op, module_of(op).view(1)[0].md_dict, name, doc);

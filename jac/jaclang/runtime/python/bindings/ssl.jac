@@ -303,7 +303,7 @@ impl socket_read_call(receiver: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
     size = i64(0);
     count = PyTuple_Size(args);
     if count == 1 {
-        if PyArg_ParseTuple(args, "n:read", &mut size) == 0 {
+        if PyArg_ParseTuple(args, ptr[u8]("n:read"), &mut size) == 0 {
             return NULL;
         }
         return ssl_socket_read(receiver, size, False, ptr[Py_buffer]());
@@ -313,7 +313,7 @@ impl socket_read_call(receiver: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
         if not buffer {
             return NULL;
         }
-        if PyArg_ParseTuple(args, "nw*:read", &mut size, buffer) == 0 {
+        if PyArg_ParseTuple(args, ptr[u8]("nw*:read"), &mut size, buffer) == 0 {
             PyMem_Free(ptr(buffer));
             return NULL;
         }
@@ -352,7 +352,7 @@ impl init_types(module: ptr[PyObject]) -> bool {
         (STATE_SESSION_TYPE, "SSLSession"),
         (STATE_CERTIFICATE_TYPE, "Certificate")
     ] {
-        if PyModule_AddObjectRef(
+        if jacpy_module_add_object_ref_text(
             module, name, jacpy_binding_state_get(module, i64(index))
         )
             < 0 {
@@ -371,7 +371,7 @@ impl add_exception(
     }
     jacpy_binding_state_set(module, i64(index), exc);
     jacpy_release(exc);
-    return PyModule_AddObjectRef(module, name, exc) == 0;
+    return jacpy_module_add_object_ref_text(module, name, exc) == 0;
 }
 
 impl init_exceptions(module: ptr[PyObject]) -> bool {
@@ -381,7 +381,7 @@ impl init_exceptions(module: ptr[PyObject]) -> bool {
     }
     jacpy_binding_state_set(module, i64(STATE_SSL_ERROR), sslerror);
     jacpy_release(sslerror);
-    if PyModule_AddObjectRef(module, "SSLError", sslerror) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("SSLError"), sslerror) < 0 {
         return False;
     }
 
@@ -468,7 +468,7 @@ impl init_errorcodes(module: ptr[PyObject]) -> bool {
         if not mnemo {
             return False;
         }
-        key = Py_BuildValue("ii", i32(library), i32(reason));
+        key = Py_BuildValue(ptr[u8]("ii"), i32(library), i32(reason));
         if not key {
             jacpy_release(mnemo);
             return False;
@@ -500,7 +500,7 @@ impl defined(name: str) -> bool {
 }
 
 impl init_constants(module: ptr[PyObject]) -> bool {
-    if PyModule_AddStringConstant(
+    if jacpy_module_add_string_text(
         module, "_DEFAULT_CIPHERS", PY_SSL_DEFAULT_CIPHER_STRING
     )
         < 0 {
@@ -604,7 +604,7 @@ impl init_constants(module: ptr[PyObject]) -> bool {
         ("PROTOCOL_TLSv1_2", PY_SSL_VERSION_TLS1_2)
     ];
     for (name, value) in constants {
-        if PyModule_AddIntConstant(module, name, i64(value)) < 0 {
+        if jacpy_module_add_int_text(module, name, i64(value)) < 0 {
             return False;
         }
     }
@@ -643,7 +643,8 @@ impl init_constants(module: ptr[PyObject]) -> bool {
         }
     }
     for (name, value) in options {
-        if PyModule_Add(module, name, PyLong_FromUnsignedLongLong(u64(value))) < 0 {
+        if jacpy_module_add_text(module, name, PyLong_FromUnsignedLongLong(u64(value)))
+            < 0 {
             return False;
         }
     }
@@ -696,7 +697,7 @@ impl init_constants(module: ptr[PyObject]) -> bool {
         ("PROTO_TLSv1_3", PY_PROTO_TLSv1_3)
     ];
     for (name, value) in host_flags {
-        if PyModule_AddIntConstant(module, name, i64(value)) < 0 {
+        if jacpy_module_add_int_text(module, name, i64(value)) < 0 {
             return False;
         }
     }
@@ -715,7 +716,10 @@ impl init_constants(module: ptr[PyObject]) -> bool {
         ("HAS_PSK", not OPENSSL_NO_PSK),
         ("HAS_PHA", defined("SSL_VERIFY_POST_HANDSHAKE"))
     ] {
-        if PyModule_AddObjectRef(module, name, py_true() if flag else py_false()) < 0 {
+        if jacpy_module_add_object_ref_text(
+            module, name, py_true() if flag else py_false()
+        )
+            < 0 {
             return False;
         }
     }
@@ -724,7 +728,7 @@ impl init_constants(module: ptr[PyObject]) -> bool {
 
 impl init_versioninfo(module: ptr[PyObject]) -> bool {
     for (name, value) in version_constants() {
-        if PyModule_Add(module, name, value) < 0 {
+        if jacpy_module_add_text(module, name, value) < 0 {
             return False;
         }
     }

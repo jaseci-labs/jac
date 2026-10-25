@@ -95,11 +95,11 @@ def cell_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     value = NULL;
-    if kwargs and _PyArg_NoKeywords("cell", kwargs) == 0 {
+    if kwargs and _PyArg_NoKeywords(ptr[u8]("cell"), kwargs) == 0 {
         return NULL;
     }
     # min = 0: we allow the cell to be empty
-    if PyArg_UnpackTuple(args, "cell", 0, 1, &mut value) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("cell"), 0, 1, &mut value) == 0 {
         return NULL;
     }
     return PyCell_New(value);

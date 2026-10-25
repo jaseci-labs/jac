@@ -133,7 +133,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     jacpy_binding_state_set(module, i64(STATE_CONSTRUCTS), constructs);
     proxy = dict_proxy(constructs);
     jacpy_release(constructs);
-    if PyModule_Add(module, "_constructors", proxy) < 0 {
+    if PyModule_Add(module, ptr[u8]("_constructors"), proxy) < 0 {
         return i32(-1);
     }
     # hashlib_exception
@@ -151,7 +151,8 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     # hashlib_constants
-    if PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0 {
+    if PyModule_AddIntConstant(module, ptr[u8]("_GIL_MINSIZE"), HASHLIB_GIL_MINSIZE)
+        < 0 {
         return i32(-1);
     }
     return i32(0);

@@ -69,7 +69,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     state.zoneinfo_type = zoneinfo;
-    if PyModule_AddObjectRef(module, "ZoneInfo", zoneinfo) < 0
+    if PyModule_AddObjectRef(module, ptr[u8]("ZoneInfo"), zoneinfo) < 0
         or not populate_module_state(state) {
         return i32(-1);
     }

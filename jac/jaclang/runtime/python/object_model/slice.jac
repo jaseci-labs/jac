@@ -390,10 +390,11 @@ impl slice_new(
     start = NULL;
     stop = NULL;
     step = NULL;
-    if kw and _PyArg_NoKeywords("slice", kw) == 0 {
+    if kw and _PyArg_NoKeywords(ptr[u8]("slice"), kw) == 0 {
         return NULL;
     }
-    if PyArg_UnpackTuple(args, "slice", 1, 3, &mut start, &mut stop, &mut step) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("slice"), 1, 3, &mut start, &mut stop, &mut step)
+        == 0 {
         return NULL;
     }
 
@@ -563,13 +564,13 @@ impl slice_indices(op: ptr[PyObject], length_arg: ptr[PyObject]) -> ptr[PyObject
     if not step {
         return NULL;
     }
-    return Py_BuildValue("(NNN)", start, stop, step);
+    return Py_BuildValue(ptr[u8]("(NNN)"), start, stop, step);
 }
 
 impl slice_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     r = slice_of(op);
     return Py_BuildValue(
-        "O(OOO)",
+        ptr[u8]("O(OOO)"),
         object_type(op),
         r.view(1)[0].start,
         r.view(1)[0].stop,

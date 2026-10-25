@@ -151,7 +151,9 @@ impl attribute_tuple(module: ptr[PyObject], name: ptr, value: ptr) -> ptr[PyObje
     }
     if i64(ASN1_STRING_type(value)) == V_ASN1_BIT_STRING {
         buflen = i64(ASN1_STRING_length(value));
-        return Py_BuildValue("Ny#", pyname, ASN1_STRING_get0_data(value), buflen);
+        return Py_BuildValue(
+            ptr[u8]("Ny#"), pyname, ASN1_STRING_get0_data(value), buflen
+        );
     }
     valuebuf = ptr[u8]();
     buflen = i64(ASN1_STRING_to_UTF8(&mut valuebuf, value));
@@ -160,7 +162,7 @@ impl attribute_tuple(module: ptr[PyObject], name: ptr, value: ptr) -> ptr[PyObje
         jacpy_release(pyname);
         return NULL;
     }
-    pyattr = Py_BuildValue("Ns#", pyname, valuebuf, buflen);
+    pyattr = Py_BuildValue(ptr[u8]("Ns#"), pyname, valuebuf, buflen);
     openssl_free(valuebuf);
     return pyattr;
 }

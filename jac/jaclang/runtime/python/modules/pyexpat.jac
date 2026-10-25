@@ -2265,7 +2265,7 @@ impl add_submodule(module: ptr[PyObject], fullname: str) -> ptr[PyObject] {
         return NULL;
     }
     jacpy_release(key);
-    if PyModule_Add(module, name, submodule) < 0 {
+    if jacpy_module_add_text(module, name, submodule) < 0 {
         return NULL;
     }
     return submodule;
@@ -2293,7 +2293,7 @@ impl add_errors_module(module: ptr[PyObject]) -> i32 {
         number = PyLong_FromLong(i64(code)) if message else NULL;
         if not message
             or not number
-            or PyModule_AddObjectRef(errors, name, message) < 0
+            or jacpy_module_add_object_ref_text(errors, name, message) < 0
             or PyDict_SetItem(codes, message, number) < 0
             or PyDict_SetItem(messages, number, message) < 0 {
             jacpy_release(message);
@@ -2306,18 +2306,20 @@ impl add_errors_module(module: ptr[PyObject]) -> i32 {
         jacpy_release(number);
     }
     if PyModule_AddStringConstant(
-        errors, "__doc__", "Constants used to describe error conditions."
+        errors,
+        ptr[u8]("__doc__"),
+        ptr[u8]("Constants used to describe error conditions.")
     )
         < 0 {
         jacpy_release(codes);
         jacpy_release(messages);
         return i32(-1);
     }
-    if PyModule_Add(errors, "codes", codes) < 0 {
+    if PyModule_Add(errors, ptr[u8]("codes"), codes) < 0 {
         jacpy_release(messages);
         return i32(-1);
     }
-    if PyModule_Add(errors, "messages", messages) < 0 {
+    if PyModule_Add(errors, ptr[u8]("messages"), messages) < 0 {
         return i32(-1);
     }
     return i32(0);
@@ -2329,13 +2331,15 @@ impl add_model_module(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     if PyModule_AddStringConstant(
-        model, "__doc__", "Constants used to interpret content model information."
+        model,
+        ptr[u8]("__doc__"),
+        ptr[u8]("Constants used to interpret content model information.")
     )
         < 0 {
         return i32(-1);
     }
     for (name, value) in MODEL_CONSTANTS {
-        if PyModule_AddIntConstant(model, name, i64(value)) < 0 {
+        if jacpy_module_add_int_text(model, name, i64(value)) < 0 {
             return i32(-1);
         }
     }
@@ -2366,12 +2370,12 @@ impl add_features(module: ptr[PyObject]) -> i32 {
         }
         index += 1;
     }
-    return PyModule_Add(module, "features", features);
+    return PyModule_Add(module, ptr[u8]("features"), features);
 }
 
 impl add_version(module: ptr[PyObject]) -> i32 {
     text = c_string_text(XML_ExpatVersion());
-    if not text or PyModule_Add(module, "EXPAT_VERSION", text) < 0 {
+    if not text or PyModule_Add(module, ptr[u8]("EXPAT_VERSION"), text) < 0 {
         return i32(-1);
     }
     (major, minor, micro) = expat_version();
@@ -2382,5 +2386,5 @@ impl add_version(module: ptr[PyObject]) -> i32 {
             PyLong_FromLong(i64(micro))
         ]
     );
-    return PyModule_Add(module, "version_info", info);
+    return PyModule_Add(module, ptr[u8]("version_info"), info);
 }

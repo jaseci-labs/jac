@@ -2133,7 +2133,7 @@ impl create_exceptions(module: ptr[PyObject]) -> bool {
             return False;
         }
         ex = state(module, STATE_SIGNAL_EXCEPTIONS + index);
-        if PyModule_AddObjectRef(module, SIGNAL_NAMES[index], ex) < 0 {
+        if jacpy_module_add_object_ref_text(module, SIGNAL_NAMES[index], ex) < 0 {
             return False;
         }
         PyTuple_SetItem(signal_tuple, i64(index), Py_NewRef(ex));
@@ -2154,7 +2154,7 @@ impl create_exceptions(module: ptr[PyObject]) -> bool {
         ex = PyErr_NewException("decimal." + CONDITION_NAMES[index], base, NULL);
         jacpy_release(base);
         if not set_state(module, STATE_CONDITION_EXCEPTIONS + index - 1, ex)
-            or PyModule_AddObjectRef(
+            or jacpy_module_add_object_ref_text(
                 module,
                 CONDITION_NAMES[index],
                 state(module, STATE_CONDITION_EXCEPTIONS + index - 1)
@@ -2170,7 +2170,7 @@ impl create_context_template(module: ptr[PyObject], index: int, name: str) -> bo
     return set_state(
         module, index, PyObject_CallObject(state(module, STATE_CONTEXT_TYPE), NULL)
     )
-        and PyModule_AddObjectRef(module, name, state(module, index)) >= 0;
+        and jacpy_module_add_object_ref_text(module, name, state(module, index)) >= 0;
 }
 
 impl create_contexts(module: ptr[PyObject]) -> bool {
@@ -2184,8 +2184,8 @@ impl create_contexts(module: ptr[PyObject]) -> bool {
         STATE_CURRENT_CONTEXT_VAR,
         PyContextVar_New(ptr[u8]("decimal_context"), NULL)
     )
-        or PyModule_AddObjectRef(module, "HAVE_CONTEXTVAR", py_true()) < 0
-        or PyModule_AddObjectRef(module, "HAVE_THREADS", py_true()) < 0 {
+        or PyModule_AddObjectRef(module, ptr[u8]("HAVE_CONTEXTVAR"), py_true()) < 0
+        or PyModule_AddObjectRef(module, ptr[u8]("HAVE_THREADS"), py_true()) < 0 {
         return False;
     }
     if not create_context_template(
@@ -2204,12 +2204,15 @@ impl create_contexts(module: ptr[PyObject]) -> bool {
 }
 
 impl add_constants(module: ptr[PyObject]) -> bool {
-    if PyModule_Add(module, "MAX_PREC", PyLong_FromSsize_t(MPD_MAX_PREC)) < 0
-        or PyModule_Add(module, "MAX_EMAX", PyLong_FromSsize_t(MPD_MAX_EMAX)) < 0
-        or PyModule_Add(module, "MIN_EMIN", PyLong_FromSsize_t(MPD_MIN_EMIN)) < 0
-        or PyModule_Add(module, "MIN_ETINY", PyLong_FromSsize_t(MPD_MIN_ETINY)) < 0
+    if PyModule_Add(module, ptr[u8]("MAX_PREC"), PyLong_FromSsize_t(MPD_MAX_PREC)) < 0
+        or PyModule_Add(module, ptr[u8]("MAX_EMAX"), PyLong_FromSsize_t(MPD_MAX_EMAX))
+            < 0
+        or PyModule_Add(module, ptr[u8]("MIN_EMIN"), PyLong_FromSsize_t(MPD_MIN_EMIN))
+            < 0
+        or PyModule_Add(module, ptr[u8]("MIN_ETINY"), PyLong_FromSsize_t(MPD_MIN_ETINY))
+            < 0
         or PyModule_AddIntConstant(
-            module, "IEEE_CONTEXT_MAX_BITS", i64(MPD_IEEE_CONTEXT_MAX_BITS)
+            module, ptr[u8]("IEEE_CONTEXT_MAX_BITS"), i64(MPD_IEEE_CONTEXT_MAX_BITS)
         )
             < 0 {
         return False;
@@ -2222,13 +2225,18 @@ impl add_constants(module: ptr[PyObject]) -> bool {
         ) {
             return False;
         }
-        if PyModule_AddObjectRef(module, name, state(module, STATE_ROUND_MAP + i))
+        if jacpy_module_add_object_ref_text(
+            module, name, state(module, STATE_ROUND_MAP + i)
+        )
             < 0 {
             return False;
         }
     }
-    return PyModule_AddStringConstant(module, "__version__", "1.70") >= 0
-        and PyModule_AddStringConstant(module, "__libmpdec_version__", mpd_version())
+    return PyModule_AddStringConstant(module, ptr[u8]("__version__"), ptr[u8]("1.70"))
+        >= 0
+        and PyModule_AddStringConstant(
+            module, ptr[u8]("__libmpdec_version__"), mpd_version()
+        )
             >= 0;
 }
 

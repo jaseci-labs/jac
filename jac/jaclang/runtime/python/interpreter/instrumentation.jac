@@ -3536,7 +3536,9 @@ impl arg_int(arg: ptr[PyObject]) -> tuple[bool, i32] {
 impl monitoring_use_tool_id(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not (nargs == 2 or _PyArg_CheckPositional("use_tool_id", nargs, 2, 2) != 0) {
+    if not (
+        nargs == 2 or _PyArg_CheckPositional(ptr[u8]("use_tool_id"), nargs, 2, 2) != 0
+    ) {
         return NULL;
     }
     (ok, tool_id) = arg_int(args.view(2)[0]);
@@ -3578,7 +3580,8 @@ impl monitoring_register_callback(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not (
-        nargs == 3 or _PyArg_CheckPositional("register_callback", nargs, 3, 3) != 0
+        nargs == 3
+        or _PyArg_CheckPositional(ptr[u8]("register_callback"), nargs, 3, 3) != 0
     ) {
         return NULL;
     }
@@ -3608,7 +3611,9 @@ impl monitoring_get_events(module: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyO
 impl monitoring_set_events(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if not (nargs == 2 or _PyArg_CheckPositional("set_events", nargs, 2, 2) != 0) {
+    if not (
+        nargs == 2 or _PyArg_CheckPositional(ptr[u8]("set_events"), nargs, 2, 2) != 0
+    ) {
         return NULL;
     }
     (ok, tool_id) = arg_int(args.view(2)[0]);
@@ -3626,7 +3631,8 @@ impl monitoring_get_local_events(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not (
-        nargs == 2 or _PyArg_CheckPositional("get_local_events", nargs, 2, 2) != 0
+        nargs == 2
+        or _PyArg_CheckPositional(ptr[u8]("get_local_events"), nargs, 2, 2) != 0
     ) {
         return NULL;
     }
@@ -3645,7 +3651,8 @@ impl monitoring_set_local_events(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if not (
-        nargs == 3 or _PyArg_CheckPositional("set_local_events", nargs, 3, 3) != 0
+        nargs == 3
+        or _PyArg_CheckPositional(ptr[u8]("set_local_events"), nargs, 3, 3) != 0
     ) {
         return NULL;
     }

@@ -331,7 +331,7 @@ def time_strftime(
     # timetuple. The year is forced to (the otherwise nonsensical) 1900 to
     # work around that.
     tuple = Py_BuildValue(
-        "lllllllll",
+        ptr[u8]("lllllllll"),
         1900,
         1,
         1,
@@ -556,9 +556,9 @@ def time_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     } except boundary_failure {
         return NULL;
     }
-    return Py_BuildValue("(ON)", type_of(op), time_getstate(op, proto));
+    return Py_BuildValue(ptr[u8]("(ON)"), type_of(op), time_getstate(op, proto));
 }
 
 def time_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("(ON)", type_of(op), time_getstate(op, 2));
+    return Py_BuildValue(ptr[u8]("(ON)"), type_of(op), time_getstate(op, 2));
 }

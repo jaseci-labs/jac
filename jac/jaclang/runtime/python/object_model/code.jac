@@ -1838,7 +1838,7 @@ def code_replace_impl(
 ) -> ptr[PyObject];
 
 def replace_object(
-    value: ptr[PyObject], dflt: ptr[PyObject], kind: i64, argname: str
+    value: ptr[PyObject], dflt: ptr[PyObject], kind: i64, argname: ptr[u8]
 ) -> tuple[bool, ptr[PyObject]];
 
 def replace_int(value: ptr[PyObject], dflt: i64) -> tuple[bool, i32];
@@ -3428,12 +3428,12 @@ impl code_new(
         or int(type.view(1)[0].tp_init) == int(base_tp.view(1)[0].tp_init)
     )
         and kwargs
-        and _PyArg_NoKeywords("code", kwargs) == 0 {
+        and _PyArg_NoKeywords(ptr[u8]("code"), kwargs) == 0 {
         return NULL;
     }
     nargs = object_size(args);
     if (nargs < 16 or nargs > 18)
-        and _PyArg_CheckPositional("code", nargs, 16, 18) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("code"), nargs, 16, 18) == 0 {
         return NULL;
     }
     (ok0, argcount) = arg_int(tuple_get_item(args, 0));
@@ -3462,37 +3462,51 @@ impl code_new(
     }
     code = tuple_get_item(args, 6);
     if not bytes_check(code) {
-        _PyArg_BadArgument("code", "argument 7", "bytes", code);
+        _PyArg_BadArgument(
+            ptr[u8]("code"), ptr[u8]("argument 7"), ptr[u8]("bytes"), code
+        );
         return NULL;
     }
     consts = tuple_get_item(args, 7);
     if not tuple_check(consts) {
-        _PyArg_BadArgument("code", "argument 8", "tuple", consts);
+        _PyArg_BadArgument(
+            ptr[u8]("code"), ptr[u8]("argument 8"), ptr[u8]("tuple"), consts
+        );
         return NULL;
     }
     names = tuple_get_item(args, 8);
     if not tuple_check(names) {
-        _PyArg_BadArgument("code", "argument 9", "tuple", names);
+        _PyArg_BadArgument(
+            ptr[u8]("code"), ptr[u8]("argument 9"), ptr[u8]("tuple"), names
+        );
         return NULL;
     }
     varnames = tuple_get_item(args, 9);
     if not tuple_check(varnames) {
-        _PyArg_BadArgument("code", "argument 10", "tuple", varnames);
+        _PyArg_BadArgument(
+            ptr[u8]("code"), ptr[u8]("argument 10"), ptr[u8]("tuple"), varnames
+        );
         return NULL;
     }
     filename = tuple_get_item(args, 10);
     if not unicode_check(filename) {
-        _PyArg_BadArgument("code", "argument 11", "str", filename);
+        _PyArg_BadArgument(
+            ptr[u8]("code"), ptr[u8]("argument 11"), ptr[u8]("str"), filename
+        );
         return NULL;
     }
     name = tuple_get_item(args, 11);
     if not unicode_check(name) {
-        _PyArg_BadArgument("code", "argument 12", "str", name);
+        _PyArg_BadArgument(
+            ptr[u8]("code"), ptr[u8]("argument 12"), ptr[u8]("str"), name
+        );
         return NULL;
     }
     qualname = tuple_get_item(args, 12);
     if not unicode_check(qualname) {
-        _PyArg_BadArgument("code", "argument 13", "str", qualname);
+        _PyArg_BadArgument(
+            ptr[u8]("code"), ptr[u8]("argument 13"), ptr[u8]("str"), qualname
+        );
         return NULL;
     }
     (ok13, firstlineno) = arg_int(tuple_get_item(args, 13));
@@ -3501,12 +3515,16 @@ impl code_new(
     }
     linetable = tuple_get_item(args, 14);
     if not bytes_check(linetable) {
-        _PyArg_BadArgument("code", "argument 15", "bytes", linetable);
+        _PyArg_BadArgument(
+            ptr[u8]("code"), ptr[u8]("argument 15"), ptr[u8]("bytes"), linetable
+        );
         return NULL;
     }
     exceptiontable = tuple_get_item(args, 15);
     if not bytes_check(exceptiontable) {
-        _PyArg_BadArgument("code", "argument 16", "bytes", exceptiontable);
+        _PyArg_BadArgument(
+            ptr[u8]("code"), ptr[u8]("argument 16"), ptr[u8]("bytes"), exceptiontable
+        );
         return NULL;
     }
     freevars: ptr[PyObject] = NULL;
@@ -3514,14 +3532,18 @@ impl code_new(
     if nargs >= 17 {
         freevars = tuple_get_item(args, 16);
         if not tuple_check(freevars) {
-            _PyArg_BadArgument("code", "argument 17", "tuple", freevars);
+            _PyArg_BadArgument(
+                ptr[u8]("code"), ptr[u8]("argument 17"), ptr[u8]("tuple"), freevars
+            );
             return NULL;
         }
     }
     if nargs >= 18 {
         cellvars = tuple_get_item(args, 17);
         if not tuple_check(cellvars) {
-            _PyArg_BadArgument("code", "argument 18", "tuple", cellvars);
+            _PyArg_BadArgument(
+                ptr[u8]("code"), ptr[u8]("argument 18"), ptr[u8]("tuple"), cellvars
+            );
             return NULL;
         }
     }
@@ -3893,21 +3915,21 @@ impl code_replace_impl(
 }
 
 impl replace_object(
-    value: ptr[PyObject], dflt: ptr[PyObject], kind: i64, argname: str
+    value: ptr[PyObject], dflt: ptr[PyObject], kind: i64, argname: ptr[u8]
 ) -> tuple[bool, ptr[PyObject]] {
     if not value {
         return (True, dflt);
     }
     if kind == 0 and not bytes_check(value) {
-        _PyArg_BadArgument("replace", argname, "bytes", value);
+        _PyArg_BadArgument(ptr[u8]("replace"), argname, ptr[u8]("bytes"), value);
         return (False, dflt);
     }
     if kind == 1 and not tuple_check(value) {
-        _PyArg_BadArgument("replace", argname, "tuple", value);
+        _PyArg_BadArgument(ptr[u8]("replace"), argname, ptr[u8]("tuple"), value);
         return (False, dflt);
     }
     if kind == 2 and not unicode_check(value) {
-        _PyArg_BadArgument("replace", argname, "str", value);
+        _PyArg_BadArgument(ptr[u8]("replace"), argname, ptr[u8]("str"), value);
         return (False, dflt);
     }
     return (True, value);
@@ -3963,31 +3985,43 @@ impl code_replace_bound(args: BoundArguments) -> ptr[PyObject] {
     if not ok6 {
         return NULL;
     }
-    (ok7, co_code) = replace_object(values[7], NULL, 0, "argument 'co_code'");
+    (ok7, co_code) = replace_object(values[7], NULL, 0, ptr[u8]("argument 'co_code'"));
     if not ok7 {
         return NULL;
     }
     (ok8, co_consts) = replace_object(
-        values[8], co_obj(code_self, PyCodeObject_CONSTS), 1, "argument 'co_consts'"
+        values[8],
+        co_obj(code_self, PyCodeObject_CONSTS),
+        1,
+        ptr[u8]("argument 'co_consts'")
     );
     if not ok8 {
         return NULL;
     }
     (ok9, co_names) = replace_object(
-        values[9], co_obj(code_self, PyCodeObject_NAMES), 1, "argument 'co_names'"
+        values[9],
+        co_obj(code_self, PyCodeObject_NAMES),
+        1,
+        ptr[u8]("argument 'co_names'")
     );
     if not ok9 {
         return NULL;
     }
-    (ok10, co_varnames) = replace_object(values[10], NULL, 1, "argument 'co_varnames'");
+    (ok10, co_varnames) = replace_object(
+        values[10], NULL, 1, ptr[u8]("argument 'co_varnames'")
+    );
     if not ok10 {
         return NULL;
     }
-    (ok11, co_freevars) = replace_object(values[11], NULL, 1, "argument 'co_freevars'");
+    (ok11, co_freevars) = replace_object(
+        values[11], NULL, 1, ptr[u8]("argument 'co_freevars'")
+    );
     if not ok11 {
         return NULL;
     }
-    (ok12, co_cellvars) = replace_object(values[12], NULL, 1, "argument 'co_cellvars'");
+    (ok12, co_cellvars) = replace_object(
+        values[12], NULL, 1, ptr[u8]("argument 'co_cellvars'")
+    );
     if not ok12 {
         return NULL;
     }
@@ -3995,13 +4029,16 @@ impl code_replace_bound(args: BoundArguments) -> ptr[PyObject] {
         values[13],
         co_obj(code_self, PyCodeObject_FILENAME),
         2,
-        "argument 'co_filename'"
+        ptr[u8]("argument 'co_filename'")
     );
     if not ok13 {
         return NULL;
     }
     (ok14, co_name) = replace_object(
-        values[14], co_obj(code_self, PyCodeObject_NAME), 2, "argument 'co_name'"
+        values[14],
+        co_obj(code_self, PyCodeObject_NAME),
+        2,
+        ptr[u8]("argument 'co_name'")
     );
     if not ok14 {
         return NULL;
@@ -4010,7 +4047,7 @@ impl code_replace_bound(args: BoundArguments) -> ptr[PyObject] {
         values[15],
         co_obj(code_self, PyCodeObject_QUALNAME),
         2,
-        "argument 'co_qualname'"
+        ptr[u8]("argument 'co_qualname'")
     );
     if not ok15 {
         return NULL;
@@ -4019,7 +4056,7 @@ impl code_replace_bound(args: BoundArguments) -> ptr[PyObject] {
         values[16],
         co_obj(code_self, PyCodeObject_LINETABLE),
         0,
-        "argument 'co_linetable'"
+        ptr[u8]("argument 'co_linetable'")
     );
     if not ok16 {
         return NULL;
@@ -4028,7 +4065,7 @@ impl code_replace_bound(args: BoundArguments) -> ptr[PyObject] {
         values[17],
         co_obj(code_self, PyCodeObject_EXCEPTIONTABLE),
         0,
-        "argument 'co_exceptiontable'"
+        ptr[u8]("argument 'co_exceptiontable'")
     );
     if not ok17 {
         return NULL;

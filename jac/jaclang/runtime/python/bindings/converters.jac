@@ -324,7 +324,7 @@ obj SizedText {
 def convert_sized_str(value: ptr[PyObject], fname: str, label: str) -> SizedText {
     data = ptr[u8]();
     size: i64 = 0;
-    if PyArg_Parse(value, f"s#:{fname}", &mut data, &mut size) == 0 {
+    if jacpy_arg_parse_sized_text(value, f"s#:{fname}", &mut data, &mut size) == 0 {
         raise boundary_failure();
     }
     return SizedText(data=data, size=size);

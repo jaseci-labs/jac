@@ -182,10 +182,10 @@ impl socket_gethostname(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObj
 impl socket_sethostname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     hnobj = NULL;
     flag = False;
-    if PyArg_ParseTuple(args, "S:sethostname", &mut hnobj) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("S:sethostname"), &mut hnobj) == 0 {
         PyErr_Clear();
         if PyArg_ParseTuple(
-            args, "O&:sethostname", ptr(PyUnicode_FSConverter), &mut hnobj
+            args, ptr[u8]("O&:sethostname"), ptr(PyUnicode_FSConverter), &mut hnobj
         )
             == 0 {
             return NULL;
@@ -223,7 +223,8 @@ impl socket_sethostname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
 
 impl socket_gethostbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     name = ptr[u8]();
-    if PyArg_ParseTuple(args, "et:gethostbyname", ptr[u8]("idna"), &mut name) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("et:gethostbyname"), ptr[u8]("idna"), &mut name)
+        == 0 {
         return NULL;
     }
     ret = NULL;
@@ -327,7 +328,7 @@ impl gethost_common(
     if ok {
         name = c_string_text(record[0].h_name);
         if name {
-            rtn_tuple = Py_BuildValue("NOO", name, name_list, addr_list);
+            rtn_tuple = Py_BuildValue(ptr[u8]("NOO"), name, name_list, addr_list);
         }
     }
     jacpy_release(name_list);
@@ -347,7 +348,10 @@ impl socket_gethostbyname_ex(
     self: ptr[PyObject], args: ptr[PyObject]
 ) -> ptr[PyObject] {
     name = ptr[u8]();
-    if PyArg_ParseTuple(args, "et:gethostbyname_ex", ptr[u8]("idna"), &mut name) == 0 {
+    if PyArg_ParseTuple(
+        args, ptr[u8]("et:gethostbyname_ex"), ptr[u8]("idna"), &mut name
+    )
+        == 0 {
         return NULL;
     }
     ret = NULL;
@@ -379,7 +383,8 @@ impl socket_gethostbyname_ex(
 
 impl socket_gethostbyaddr(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     ip_num = ptr[u8]();
-    if PyArg_ParseTuple(args, "et:gethostbyaddr", ptr[u8]("idna"), &mut ip_num) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("et:gethostbyaddr"), ptr[u8]("idna"), &mut ip_num)
+        == 0 {
         return NULL;
     }
     ret = NULL;
@@ -425,7 +430,8 @@ impl socket_gethostbyaddr(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
 impl socket_getservbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     name = ptr[u8]();
     proto = ptr[u8]();
-    if PyArg_ParseTuple(args, "s|s:getservbyname", &mut name, &mut proto) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("s|s:getservbyname"), &mut name, &mut proto)
+        == 0 {
         return NULL;
     }
     if PySys_Audit("socket.getservbyname", "ss", name, proto) < 0 {
@@ -444,7 +450,8 @@ impl socket_getservbyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
 impl socket_getservbyport(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     port = i32(0);
     proto = ptr[u8]();
-    if PyArg_ParseTuple(args, "i|s:getservbyport", &mut port, &mut proto) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("i|s:getservbyport"), &mut port, &mut proto)
+        == 0 {
         return NULL;
     }
     if port < 0 or port > 0xFFFF {
@@ -466,7 +473,7 @@ impl socket_getservbyport(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObj
 
 impl socket_getprotobyname(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     name = ptr[u8]();
-    if PyArg_ParseTuple(args, "s:getprotobyname", &mut name) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("s:getprotobyname"), &mut name) == 0 {
         return NULL;
     }
     thread = PyEval_SaveThread();
@@ -523,7 +530,9 @@ impl socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     family = i32(AF_UNIX);
     type = i32(SOCK_STREAM);
     proto = i32(0);
-    if PyArg_ParseTuple(args, "|iii:socketpair", &mut family, &mut type, &mut proto)
+    if PyArg_ParseTuple(
+        args, ptr[u8]("|iii:socketpair"), &mut family, &mut type, &mut proto
+    )
         == 0 {
         return NULL;
     }
@@ -631,7 +640,7 @@ impl _socket_inet_ntoa_impl(
 impl socket_inet_pton(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     af = i32(0);
     ip = ptr[u8]();
-    if PyArg_ParseTuple(args, "is:inet_pton", &mut af, &mut ip) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("is:inet_pton"), &mut af, &mut ip) == 0 {
         return NULL;
     }
     packed = PyMem_Calloc(1, u64(16));
@@ -662,7 +671,7 @@ impl socket_inet_ntop(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     if not packed_ip {
         return NULL;
     }
-    if PyArg_ParseTuple(args, "iy*:inet_ntop", &mut af, packed_ip) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("iy*:inet_ntop"), &mut af, packed_ip) == 0 {
         PyMem_Free(ptr(packed_ip));
         return NULL;
     }
@@ -719,7 +728,7 @@ impl socket_getaddrinfo(
     if PyArg_ParseTupleAndKeywords(
         args,
         kwargs,
-        "OO|iiii:getaddrinfo",
+        ptr[u8]("OO|iiii:getaddrinfo"),
         ptr(addressof(getaddrinfo_keywords)),
         &mut hobj,
         &mut pobj,
@@ -825,7 +834,7 @@ impl addrinfo_list(res0: ptr, protocol: int) -> ptr[PyObject] {
         }
         canonname = record[0].ai_canonname if record[0].ai_canonname else ptr[u8]("");
         single = Py_BuildValue(
-            "iiisO",
+            ptr[u8]("iiisO"),
             record[0].ai_family,
             record[0].ai_socktype,
             record[0].ai_protocol,
@@ -851,7 +860,7 @@ impl addrinfo_list(res0: ptr, protocol: int) -> ptr[PyObject] {
 impl socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     sa = NULL;
     flags = i32(0);
-    if PyArg_ParseTuple(args, "Oi:getnameinfo", &mut sa, &mut flags) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("Oi:getnameinfo"), &mut sa, &mut flags) == 0 {
         return NULL;
     }
     if jacpy_is_tuple(sa) == 0 {
@@ -864,7 +873,7 @@ impl socket_getnameinfo(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
     scope_id = u32(0);
     if PyArg_ParseTuple(
         sa,
-        "si|II;getnameinfo(): illegal sockaddr argument",
+        ptr[u8]("si|II;getnameinfo(): illegal sockaddr argument"),
         &mut hostp,
         &mut port,
         &mut flowinfo,
@@ -959,7 +968,7 @@ impl name_of_address(
     if not name {
         return NULL;
     }
-    return Py_BuildValue("Ns", name, pbuf);
+    return Py_BuildValue(ptr[u8]("Ns"), name, pbuf);
 }
 
 impl socket_getdefaulttimeout(
@@ -999,7 +1008,7 @@ impl socket_if_nameindex(self: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObjec
         name = jacpy_fs_text(ptr(record[0].if_name));
         ni_tuple = NULL;
         if name {
-            ni_tuple = Py_BuildValue("IN", record[0].if_index, name);
+            ni_tuple = Py_BuildValue(ptr[u8]("IN"), record[0].if_index, name);
         }
         if not ni_tuple or PyList_Append(list, ni_tuple) == -1 {
             jacpy_release(ni_tuple);
@@ -1045,7 +1054,7 @@ impl _socket_if_indextoname_impl(module: ptr[PyObject], index: u32) -> ptr[PyObj
 
 impl socket_CMSG_LEN(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     length = i64(0);
-    if PyArg_ParseTuple(args, "n:CMSG_LEN", &mut length) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("n:CMSG_LEN"), &mut length) == 0 {
         return NULL;
     }
     result = get_CMSG_LEN(int(length)) if length >= 0 else -1;
@@ -1058,7 +1067,7 @@ impl socket_CMSG_LEN(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
 
 impl socket_CMSG_SPACE(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     length = i64(0);
-    if PyArg_ParseTuple(args, "n:CMSG_SPACE", &mut length) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("n:CMSG_SPACE"), &mut length) == 0 {
         return NULL;
     }
     result = get_CMSG_SPACE(int(length)) if length >= 0 else -1;

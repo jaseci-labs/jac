@@ -1519,7 +1519,7 @@ impl descr_reduce(self: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
         return NULL;
     }
     return Py_BuildValue(
-        "N(OO)", getattr, ptr(descr_type(self)), descr_name_object(self)
+        ptr[u8]("N(OO)"), getattr, ptr(descr_type(self)), descr_name_object(self)
     );
 }
 
@@ -1663,7 +1663,7 @@ impl call_mapping_method(self: ptr[PyObject], name: str) -> ptr[PyObject] {
 impl mappingproxy_get(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("get", nargs, 1, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("get"), nargs, 1, 2) == 0 {
         return NULL;
     }
     default_value = (args + 1).view(1)[0] if nargs > 1 else Py_None;
@@ -1810,7 +1810,10 @@ impl wrapper_reduce(self: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject
         return NULL;
     }
     return Py_BuildValue(
-        "N(OO)", getattr, wrapper_self(self), descr_name_object(wrapper_descr(self))
+        ptr[u8]("N(OO)"),
+        getattr,
+        wrapper_self(self),
+        descr_name_object(wrapper_descr(self))
     );
 }
 

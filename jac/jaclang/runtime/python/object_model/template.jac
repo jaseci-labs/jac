@@ -446,7 +446,7 @@ impl template_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject]
     }
     t = template_of(op);
     result = Py_BuildValue(
-        "O(OO)", func, t.view(1)[0].strings, t.view(1)[0].interpolations
+        ptr[u8]("O(OO)"), func, t.view(1)[0].strings, t.view(1)[0].interpolations
     );
     jacpy_release(func);
     return result;

@@ -894,7 +894,7 @@ impl new_datetime_subclass_fold_ex(
         cls,
         fold,
         Py_BuildValue(
-            "lllllllO", year, month, day, hour, minute, second, usecond, tzinfo
+            ptr[u8]("lllllllO"), year, month, day, hour, minute, second, usecond, tzinfo
         )
     );
 }
@@ -976,7 +976,9 @@ impl new_time_subclass_fold_ex(
     }
 
     return call_subclass_fold(
-        cls, fold, Py_BuildValue("llllO", hour, minute, second, usecond, tzinfo)
+        cls,
+        fold,
+        Py_BuildValue(ptr[u8]("llllO"), hour, minute, second, usecond, tzinfo)
     );
 }
 

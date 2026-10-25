@@ -21,7 +21,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
             ) {
                 return i32(-1);
             }
-        } elif PyModule_AddIntConstant(module, name, value) < 0 {
+        } elif jacpy_module_add_int_text(module, name, value) < 0 {
             return i32(-1);
         }
     }

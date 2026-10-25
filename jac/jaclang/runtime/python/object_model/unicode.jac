@@ -16097,7 +16097,7 @@ impl unicode_center(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 2)
-        and _PyArg_CheckPositional("center", nargs, 1, 2) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("center"), nargs, 1, 2) == i32(0) {
         return NULL;
     }
     (ok, width) = clinic_ssize_arg(args.view(1)[0]);
@@ -16224,12 +16224,14 @@ impl unicode_count(
     str_obj: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("count", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("count"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     substr = args.view(1)[0];
     if not unicode_check(substr) {
-        _PyArg_BadArgument("count", "argument 1", "str", substr);
+        _PyArg_BadArgument(
+            ptr[u8]("count"), ptr[u8]("argument 1"), ptr[u8]("str"), substr
+        );
         return NULL;
     }
     (ok, start, end) = clinic_slice_bounds(args, nargs);
@@ -16252,9 +16254,13 @@ impl unicode_encode_impl(
 impl encode_text_arg(value: ptr[PyObject], is_errors: bool) -> tuple[bool, ptr[u8]] {
     if not unicode_check(value) {
         if is_errors {
-            _PyArg_BadArgument("encode", "argument 'errors'", "str", value);
+            _PyArg_BadArgument(
+                ptr[u8]("encode"), ptr[u8]("argument 'errors'"), ptr[u8]("str"), value
+            );
         } else {
-            _PyArg_BadArgument("encode", "argument 'encoding'", "str", value);
+            _PyArg_BadArgument(
+                ptr[u8]("encode"), ptr[u8]("argument 'encoding'"), ptr[u8]("str"), value
+            );
         }
         return (False, ptr[u8]());
     }
@@ -16422,12 +16428,14 @@ impl unicode_find(
     str_obj: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("find", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("find"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     substr = args.view(1)[0];
     if not unicode_check(substr) {
-        _PyArg_BadArgument("find", "argument 1", "str", substr);
+        _PyArg_BadArgument(
+            ptr[u8]("find"), ptr[u8]("argument 1"), ptr[u8]("str"), substr
+        );
         return NULL;
     }
     (ok, start, end) = clinic_slice_bounds(args, nargs);
@@ -16480,12 +16488,14 @@ impl unicode_index(
     str_obj: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("index", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("index"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     substr = args.view(1)[0];
     if not unicode_check(substr) {
-        _PyArg_BadArgument("index", "argument 1", "str", substr);
+        _PyArg_BadArgument(
+            ptr[u8]("index"), ptr[u8]("argument 1"), ptr[u8]("str"), substr
+        );
         return NULL;
     }
     (ok, start, end) = clinic_slice_bounds(args, nargs);
@@ -16800,7 +16810,7 @@ impl unicode_ljust(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 2)
-        and _PyArg_CheckPositional("ljust", nargs, 1, 2) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("ljust"), nargs, 1, 2) == i32(0) {
         return NULL;
     }
     (ok, width) = clinic_ssize_arg(args.view(1)[0]);
@@ -16903,7 +16913,7 @@ impl unicode_strip_impl(self_: ptr[PyObject], chars: ptr[PyObject]) -> ptr[PyObj
 impl unicode_strip(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("strip", nargs, 0, 1) == i32(0) {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("strip"), nargs, 0, 1) == i32(0) {
         return NULL;
     }
     return unicode_strip_impl(self_, args.view(1)[0] if nargs >= 1 else Py_None);
@@ -16916,7 +16926,7 @@ impl unicode_lstrip_impl(self_: ptr[PyObject], chars: ptr[PyObject]) -> ptr[PyOb
 impl unicode_lstrip(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("lstrip", nargs, 0, 1) == i32(0) {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("lstrip"), nargs, 0, 1) == i32(0) {
         return NULL;
     }
     return unicode_lstrip_impl(self_, args.view(1)[0] if nargs >= 1 else Py_None);
@@ -16929,7 +16939,7 @@ impl unicode_rstrip_impl(self_: ptr[PyObject], chars: ptr[PyObject]) -> ptr[PyOb
 impl unicode_rstrip(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("rstrip", nargs, 0, 1) == i32(0) {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("rstrip"), nargs, 0, 1) == i32(0) {
         return NULL;
     }
     return unicode_rstrip_impl(self_, args.view(1)[0] if nargs >= 1 else Py_None);
@@ -16993,11 +17003,15 @@ impl unicode_replace_with(
     count_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not unicode_check(old) {
-        _PyArg_BadArgument("replace", "argument 1", "str", old);
+        _PyArg_BadArgument(
+            ptr[u8]("replace"), ptr[u8]("argument 1"), ptr[u8]("str"), old
+        );
         return NULL;
     }
     if not unicode_check(new) {
-        _PyArg_BadArgument("replace", "argument 2", "str", new);
+        _PyArg_BadArgument(
+            ptr[u8]("replace"), ptr[u8]("argument 2"), ptr[u8]("str"), new
+        );
         return NULL;
     }
     count: i64 = -1;
@@ -17047,7 +17061,9 @@ impl unicode_removeprefix_impl(
 
 impl unicode_removeprefix(self_: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     if not unicode_check(arg) {
-        _PyArg_BadArgument("removeprefix", "argument", "str", arg);
+        _PyArg_BadArgument(
+            ptr[u8]("removeprefix"), ptr[u8]("argument"), ptr[u8]("str"), arg
+        );
         return NULL;
     }
     return unicode_removeprefix_impl(self_, arg);
@@ -17068,7 +17084,9 @@ impl unicode_removesuffix_impl(
 
 impl unicode_removesuffix(self_: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     if not unicode_check(arg) {
-        _PyArg_BadArgument("removesuffix", "argument", "str", arg);
+        _PyArg_BadArgument(
+            ptr[u8]("removesuffix"), ptr[u8]("argument"), ptr[u8]("str"), arg
+        );
         return NULL;
     }
     return unicode_removesuffix_impl(self_, arg);
@@ -17237,12 +17255,14 @@ impl unicode_rfind(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("rfind", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("rfind"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     substr = args.view(1)[0];
     if not unicode_check(substr) {
-        _PyArg_BadArgument("rfind", "argument 1", "str", substr);
+        _PyArg_BadArgument(
+            ptr[u8]("rfind"), ptr[u8]("argument 1"), ptr[u8]("str"), substr
+        );
         return NULL;
     }
     start: i64 = 0;
@@ -17276,12 +17296,14 @@ impl unicode_rindex(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("rindex", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("rindex"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     substr = args.view(1)[0];
     if not unicode_check(substr) {
-        _PyArg_BadArgument("rindex", "argument 1", "str", substr);
+        _PyArg_BadArgument(
+            ptr[u8]("rindex"), ptr[u8]("argument 1"), ptr[u8]("str"), substr
+        );
         return NULL;
     }
     start: i64 = 0;
@@ -17312,7 +17334,7 @@ impl unicode_rjust(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 2)
-        and _PyArg_CheckPositional("rjust", nargs, 1, 2) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("rjust"), nargs, 1, 2) == i32(0) {
         return NULL;
     }
     ival: i64 = -1;
@@ -17618,7 +17640,7 @@ impl unicode_maketrans(
     null: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("maketrans", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("maketrans"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     x = args.view(1)[0];
@@ -17627,14 +17649,18 @@ impl unicode_maketrans(
     if nargs >= 2 {
         y = (args + 1).view(1)[0];
         if not unicode_check(y) {
-            _PyArg_BadArgument("maketrans", "argument 2", "str", y);
+            _PyArg_BadArgument(
+                ptr[u8]("maketrans"), ptr[u8]("argument 2"), ptr[u8]("str"), y
+            );
             return NULL;
         }
     }
     if nargs >= 3 {
         z = (args + 2).view(1)[0];
         if not unicode_check(z) {
-            _PyArg_BadArgument("maketrans", "argument 3", "str", z);
+            _PyArg_BadArgument(
+                ptr[u8]("maketrans"), ptr[u8]("argument 3"), ptr[u8]("str"), z
+            );
             return NULL;
         }
     }
@@ -17732,7 +17758,7 @@ impl unicode_startswith(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("startswith", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("startswith"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     start: i64 = 0;
@@ -17789,7 +17815,7 @@ impl unicode_endswith(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("endswith", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("endswith"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     start: i64 = 0;
@@ -18774,7 +18800,9 @@ impl unicode___format___impl(
 
 impl unicode___format__(self_: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     if not unicode_check(arg) {
-        _PyArg_BadArgument("__format__", "argument", "str", arg);
+        _PyArg_BadArgument(
+            ptr[u8]("__format__"), ptr[u8]("argument"), ptr[u8]("str"), arg
+        );
         return NULL;
     }
     return unicode___format___impl(self_, arg);
@@ -18807,7 +18835,7 @@ impl unicode_getnewargs(v: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObjec
     if not copy {
         return NULL;
     }
-    return Py_BuildValue("(N)", copy);
+    return Py_BuildValue(ptr[u8]("(N)"), copy);
 }
 
 impl search_longest_common_leading_whitespace(
@@ -19704,7 +19732,12 @@ impl unicode_new_args(
     errors = ptr[u8]();
     if encoding_obj {
         if not unicode_check(encoding_obj) {
-            _PyArg_BadArgument("str", "argument 'encoding'", "str", encoding_obj);
+            _PyArg_BadArgument(
+                ptr[u8]("str"),
+                ptr[u8]("argument 'encoding'"),
+                ptr[u8]("str"),
+                encoding_obj
+            );
             return NULL;
         }
         encoding = _PyUnicode_AsUTF8NoNUL(encoding_obj);
@@ -19714,7 +19747,9 @@ impl unicode_new_args(
     }
     if errors_obj {
         if not unicode_check(errors_obj) {
-            _PyArg_BadArgument("str", "argument 'errors'", "str", errors_obj);
+            _PyArg_BadArgument(
+                ptr[u8]("str"), ptr[u8]("argument 'errors'"), ptr[u8]("str"), errors_obj
+            );
             return NULL;
         }
         errors = _PyUnicode_AsUTF8NoNUL(errors_obj);
@@ -19777,7 +19812,7 @@ impl unicode_vectorcall(
         object_decref(dct);
         return ret;
     }
-    if nargs > 3 and _PyArg_CheckPositional("str", nargs, 0, 3) == 0 {
+    if nargs > 3 and _PyArg_CheckPositional(ptr[u8]("str"), nargs, 0, 3) == 0 {
         return NULL;
     }
     if nargs == 0 {
@@ -20023,10 +20058,12 @@ impl unicodeiter_reduce(op: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObje
     iter_builtin = eval_builtin("iter");
     seq = it.view(1)[0].it_seq;
     if seq {
-        return Py_BuildValue("N(O)n", iter_builtin, seq, it.view(1)[0].it_index);
+        return Py_BuildValue(
+            ptr[u8]("N(O)n"), iter_builtin, seq, it.view(1)[0].it_index
+        );
     }
     u = unicode_get_empty();
-    return Py_BuildValue("N(N)", iter_builtin, u);
+    return Py_BuildValue(ptr[u8]("N(N)"), iter_builtin, u);
 }
 
 impl unicodeiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {

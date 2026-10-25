@@ -866,7 +866,7 @@ def dict_fromkeys(
 def dict_update_arg(self: ptr[PyObject], arg: ptr[PyObject]) -> i32;
 
 def dict_update_common(
-    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], methname: str
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], methname: ptr[u8]
 ) -> i32;
 
 def dict_update(
@@ -3465,7 +3465,7 @@ impl dict_to_list(dict: ptr[PyObject], what: i32) -> ptr[PyObject] {
 impl dict_fromkeys(
     type: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("fromkeys", nargs, 1, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("fromkeys"), nargs, 1, 2) == 0 {
         return NULL;
     }
     value = (args + 1).view(1)[0] if nargs > 1 else Py_None;
@@ -3487,7 +3487,7 @@ impl dict_update_arg(self: ptr[PyObject], arg: ptr[PyObject]) -> i32 {
 }
 
 impl dict_update_common(
-    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], methname: str
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], methname: ptr[u8]
 ) -> i32 {
     result = i32(0);
     nargs = object_size(args);
@@ -3509,7 +3509,7 @@ impl dict_update_common(
 impl dict_update(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if dict_update_common(self, args, kwds, "update") != -1 {
+    if dict_update_common(self, args, kwds, ptr[u8]("update")) != -1 {
         return object_new_ref(Py_None);
     }
     return NULL;
@@ -3857,7 +3857,7 @@ impl dict___contains__(self: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject]
 impl dict_get(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("get", nargs, 1, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("get"), nargs, 1, 2) == 0 {
         return NULL;
     }
     key = args.view(1)[0];
@@ -3944,7 +3944,7 @@ impl setdefault_ref(
 impl dict_setdefault(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("setdefault", nargs, 1, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("setdefault"), nargs, 1, 2) == 0 {
         return NULL;
     }
     default_value = (args + 1).view(1)[0] if nargs > 1 else Py_None;
@@ -3960,7 +3960,7 @@ impl dict_clear(self: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
 impl dict_pop(
     self: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("pop", nargs, 1, 2) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("pop"), nargs, 1, 2) == 0 {
         return NULL;
     }
     default_value = (args + 1).view(1)[0] if nargs > 1 else NULL;
@@ -4092,14 +4092,14 @@ impl dict_new(
 }
 
 impl dict_init(self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32 {
-    return dict_update_common(self, args, kwds, "dict");
+    return dict_update_common(self, args, kwds, ptr[u8]("dict"));
 }
 
 impl dict_vectorcall(
     type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     nargs = PyVectorcall_NARGS(nargsf);
-    if _PyArg_CheckPositional("dict", nargs, 0, 1) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("dict"), nargs, 0, 1) == 0 {
         return NULL;
     }
     self = dict_new(type, NULL, NULL);

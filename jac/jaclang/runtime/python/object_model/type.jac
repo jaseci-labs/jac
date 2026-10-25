@@ -7761,7 +7761,7 @@ impl type_vectorcall(
 ) -> ptr[PyObject] {
     nargs = vectorcall_nargs(nargsf);
     if nargs == 1 and metatype == ptr[PyObject](addressof(PyType_Type)) {
-        if kwnames and _PyArg_NoKwnames("type", kwnames) == 0 {
+        if kwnames and _PyArg_NoKwnames(ptr[u8]("type"), kwnames) == 0 {
             return NULL;
         }
         return object_new_ref(ptr[PyObject](object_type(args.view(1)[0])));
@@ -9026,7 +9026,9 @@ impl object___format___impl(
 
 impl object___format__(self_: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     if not unicode_check(arg) {
-        _PyArg_BadArgument("__format__", "argument", "str", arg);
+        _PyArg_BadArgument(
+            ptr[u8]("__format__"), ptr[u8]("argument"), ptr[u8]("str"), arg
+        );
         return NULL;
     }
     return object___format___impl(self_, arg);
@@ -10690,7 +10692,8 @@ impl wrap_sq_setitem(
 ) -> ptr[PyObject] {
     arg = NULL;
     value = NULL;
-    if PyArg_UnpackTuple(args, "__setitem__", 2, 2, &mut arg, &mut value) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("__setitem__"), 2, 2, &mut arg, &mut value)
+        == 0 {
         return NULL;
     }
     i = getindex(self_, arg);
@@ -10753,7 +10756,8 @@ impl wrap_objobjargproc(
 ) -> ptr[PyObject] {
     key = NULL;
     value = NULL;
-    if PyArg_UnpackTuple(args, "__setitem__", 2, 2, &mut key, &mut value) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("__setitem__"), 2, 2, &mut key, &mut value)
+        == 0 {
         return NULL;
     }
     calls = ptr[TypeCall](
@@ -10840,7 +10844,8 @@ impl wrap_setattr(
 ) -> ptr[PyObject] {
     name = NULL;
     value = NULL;
-    if PyArg_UnpackTuple(args, "__setattr__", 2, 2, &mut name, &mut value) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("__setattr__"), 2, 2, &mut name, &mut value)
+        == 0 {
         return NULL;
     }
     if hackcheck(self_, wrapped, ptr[u8]("__setattr__")) == 0 {
@@ -10992,7 +10997,7 @@ impl wrap_descr_get(
 ) -> ptr[PyObject] {
     obj_ = NULL;
     type = NULL;
-    if PyArg_UnpackTuple(args, "__get__", 1, 2, &mut obj_, &mut type) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("__get__"), 1, 2, &mut obj_, &mut type) == 0 {
         return NULL;
     }
     if obj_ == Py_None {
@@ -11018,7 +11023,7 @@ impl wrap_descr_set(
 ) -> ptr[PyObject] {
     obj_ = NULL;
     value = NULL;
-    if PyArg_UnpackTuple(args, "__set__", 2, 2, &mut obj_, &mut value) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("__set__"), 2, 2, &mut obj_, &mut value) == 0 {
         return NULL;
     }
 
@@ -11055,7 +11060,7 @@ impl wrap_buffer(
     self_: ptr[PyObject], args: ptr[PyObject], wrapped: ptr
 ) -> ptr[PyObject] {
     arg = NULL;
-    if PyArg_UnpackTuple(args, "__buffer__", 1, 1, &mut arg) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("__buffer__"), 1, 1, &mut arg) == 0 {
         return NULL;
     }
     flags = PyNumber_AsSsize_t(arg, PyExc_OverflowError);
@@ -11074,7 +11079,7 @@ impl wrap_releasebuffer(
     self_: ptr[PyObject], args: ptr[PyObject], wrapped: ptr
 ) -> ptr[PyObject] {
     arg = NULL;
-    if PyArg_UnpackTuple(args, "__release_buffer__", 1, 1, &mut arg) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("__release_buffer__"), 1, 1, &mut arg) == 0 {
         return NULL;
     }
 
@@ -13512,7 +13517,7 @@ impl super_init_without_args(
 }
 
 impl super_init(self_: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]) -> i32 {
-    if kwds and _PyArg_NoKeywords("super", kwds) == 0 {
+    if kwds and _PyArg_NoKeywords(ptr[u8]("super"), kwds) == 0 {
         return -1;
     }
     if not tuple_check(args) {
@@ -13622,12 +13627,12 @@ impl super_traverse(self_: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
 impl super_vectorcall(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwnames and _PyArg_NoKwnames("super", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("super"), kwnames) == 0 {
         return NULL;
     }
     nargs = vectorcall_nargs(nargsf);
     if (nargs < 0 or nargs > 2)
-        and _PyArg_CheckPositional("super()", nargs, 0, 2) == 0 {
+        and _PyArg_CheckPositional(ptr[u8]("super()"), nargs, 0, 2) == 0 {
         return NULL;
     }
     cls = ptr[PyTypeObject]();

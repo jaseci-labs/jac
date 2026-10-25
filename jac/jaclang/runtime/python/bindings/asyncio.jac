@@ -661,7 +661,9 @@ impl module_init(module: ptr[PyObject]) -> bool {
     if not set_state(module, STATE_ASYNCIO_MOD, PyImport_ImportModule("asyncio"))
         or not set_state(module, STATE_ISCOROUTINE_TYPECACHE, PySet_New(NULL))
         or not set_state(
-            module, STATE_CONTEXT_KWNAME, Py_BuildValue("(s)", ptr[u8]("context"))
+            module,
+            STATE_CONTEXT_KWNAME,
+            Py_BuildValue(ptr[u8]("(s)"), ptr[u8]("context"))
         ) {
         return False;
     }

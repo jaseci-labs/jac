@@ -407,7 +407,7 @@ def iso_calendar_date_reduce(
 ) -> ptr[PyObject] {
     # Construct the tuple that this reduces to
     return Py_BuildValue(
-        "O((OOO))",
+        ptr[u8]("O((OOO))"),
         ptr[PyObject](addressof(PyTuple_Type)),
         PyTuple_GetItem(self, 0),
         PyTuple_GetItem(self, 1),
@@ -558,9 +558,9 @@ def date_weekday(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
 """Pickle support, a simple use of __reduce__; __getstate__ isn't exposed."""
 def date_getstate(self: ptr[PyObject]) -> ptr[PyObject] {
     field = data_bytes(self, DATE_DATASIZE);
-    return Py_BuildValue("(N)", field);
+    return Py_BuildValue(ptr[u8]("(N)"), field);
 }
 
 def date_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("(ON)", type_of(op), date_getstate(op));
+    return Py_BuildValue(ptr[u8]("(ON)"), type_of(op), date_getstate(op));
 }

@@ -191,11 +191,12 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     for (name, value) in CONSTANTS {
-        if name not in INTERNAL and PyModule_AddIntConstant(module, name, value) < 0 {
+        if name not in INTERNAL
+            and jacpy_module_add_int_text(module, name, value) < 0 {
             return i32(-1);
         }
     }
-    if PyModule_AddIntConstant(module, "_STRUCT_TM_ITEMS", 11) < 0 {
+    if PyModule_AddIntConstant(module, ptr[u8]("_STRUCT_TM_ITEMS"), 11) < 0 {
         return i32(-1);
     }
     struct_time = jacpy_struct_sequence_type(

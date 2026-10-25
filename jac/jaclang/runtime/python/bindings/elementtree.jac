@@ -227,7 +227,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
     state.parseerror_obj = jacpy_binding_exception(
         "xml.etree.ElementTree.ParseError", PyExc_SyntaxError, ""
     );
-    if PyModule_AddObjectRef(module, "ParseError", state.parseerror_obj) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("ParseError"), state.parseerror_obj) < 0 {
         return i32(-1);
     }
     for (name, type) in [
@@ -235,7 +235,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
         ("TreeBuilder", state.TreeBuilder_Type),
         ("XMLParser", state.XMLParser_Type)
     ] {
-        if PyModule_AddObjectRef(module, name, type) < 0 {
+        if jacpy_module_add_object_ref_text(module, name, type) < 0 {
             return i32(-1);
         }
     }

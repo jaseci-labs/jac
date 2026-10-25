@@ -103,8 +103,10 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
             return i32(-1);
         }
     }
-    if PyModule_AddStringConstant(module, "implementation", "HACL") < 0
-        or PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0 {
+    if PyModule_AddStringConstant(module, ptr[u8]("implementation"), ptr[u8]("HACL"))
+        < 0
+        or PyModule_AddIntConstant(module, ptr[u8]("_GIL_MINSIZE"), HASHLIB_GIL_MINSIZE)
+            < 0 {
         return i32(-1);
     }
     return i32(0);

@@ -221,7 +221,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     for (name, value) in CONSTANTS {
-        if PyModule_AddIntConstant(module, name, value) < 0 {
+        if jacpy_module_add_int_text(module, name, value) < 0 {
             return i32(-1);
         }
     }
@@ -237,7 +237,7 @@ impl execute(module: ptr[PyObject]) -> i32 {
         and not add_confname_table(module, SYSCONF_TABLE, "sysconf_names") {
         return i32(-1);
     }
-    if PyModule_AddObjectRef(module, "error", PyExc_OSError) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("error"), PyExc_OSError) < 0 {
         return i32(-1);
     }
     if not posix_stat_exec(module)

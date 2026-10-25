@@ -3717,7 +3717,21 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_Py_STR_utf_8",
              "offsetof(struct _Py_global_strings, literals._py_utf_8)",
              "i64"
-         )
+         ),
+         ("_PyArg_Parser_ONCE", "offsetof(struct _PyArg_Parser, once)", "i64"),
+         ("Py_T_SHORT", "Py_T_SHORT", "i32"),
+         ("Py_T_LONG", "Py_T_LONG", "i32"),
+         ("Py_T_FLOAT", "Py_T_FLOAT", "i32"),
+         ("Py_T_STRING", "Py_T_STRING", "i32"),
+         ("Py_T_CHAR", "Py_T_CHAR", "i32"),
+         ("Py_T_BYTE", "Py_T_BYTE", "i32"),
+         ("Py_T_UBYTE", "Py_T_UBYTE", "i32"),
+         ("Py_T_USHORT", "Py_T_USHORT", "i32"),
+         ("Py_T_UINT", "Py_T_UINT", "i32"),
+         ("Py_T_STRING_INPLACE", "Py_T_STRING_INPLACE", "i32"),
+         ("Py_T_LONGLONG", "Py_T_LONGLONG", "i32"),
+         ("Py_T_ULONGLONG", "Py_T_ULONGLONG", "i32"),
+         ("_Py_T_NONE", "_Py_T_NONE", "i32")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -4726,7 +4740,14 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("MAXPATHLEN", "MAXPATHLEN", "i64"),
          ("LC_CTYPE", "LC_CTYPE", "i32"),
          ("LC_NUMERIC", "LC_NUMERIC", "i32"),
-         ("CODESET", "CODESET", "i32")
+         ("CODESET", "CODESET", "i32"),
+         (
+             "_PyRuntimeState_GETARGS_STATIC_PARSERS",
+             "offsetof(_PyRuntimeState, getargs.static_parsers)",
+             "i64"
+         ),
+         ("CHAR_MIN", "CHAR_MIN", "i64"),
+         ("CHAR_MAX", "CHAR_MAX", "i64")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

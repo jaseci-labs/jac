@@ -590,7 +590,7 @@ impl sock_setsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     if HAS_VSOCK and sock_family(s) == AF_VSOCK {
         vflag = u64(0);
         if PyArg_ParseTuple(
-            args, "iiK:setsockopt", &mut level, &mut optname, &mut vflag
+            args, ptr[u8]("iiK:setsockopt"), &mut level, &mut optname, &mut vflag
         )
             == 0 {
             PyMem_Free(ptr(scratch));
@@ -601,7 +601,9 @@ impl sock_setsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
         return setsockopt_done(scratch, res);
     }
     flag = i32(0);
-    if PyArg_ParseTuple(args, "iii:setsockopt", &mut level, &mut optname, &mut flag)
+    if PyArg_ParseTuple(
+        args, ptr[u8]("iii:setsockopt"), &mut level, &mut optname, &mut flag
+    )
         != 0 {
         ptr[i32](scratch).view(1)[0] = flag;
         res = setsockopt(get_sock_fd(s), level, optname, ptr(scratch), u32(4));
@@ -612,7 +614,7 @@ impl sock_setsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     optlen = u32(0);
     if PyArg_ParseTuple(
         args,
-        "iiO!I:setsockopt",
+        ptr[u8]("iiO!I:setsockopt"),
         &mut level,
         &mut optname,
         ptr(object_type(Py_None)),
@@ -629,7 +631,9 @@ impl sock_setsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
         PyMem_Free(ptr(scratch));
         return NULL;
     }
-    if PyArg_ParseTuple(args, "iiy*:setsockopt", &mut level, &mut optname, optval)
+    if PyArg_ParseTuple(
+        args, ptr[u8]("iiy*:setsockopt"), &mut level, &mut optname, optval
+    )
         == 0 {
         jacpy_buffer_release(optval);
         PyMem_Free(ptr(scratch));
@@ -657,7 +661,9 @@ impl sock_getsockopt(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     level = i32(0);
     optname = i32(0);
     buflen = i32(0);
-    if PyArg_ParseTuple(args, "ii|i:getsockopt", &mut level, &mut optname, &mut buflen)
+    if PyArg_ParseTuple(
+        args, ptr[u8]("ii|i:getsockopt"), &mut level, &mut optname, &mut buflen
+    )
         == 0 {
         return NULL;
     }
@@ -894,7 +900,7 @@ impl sock_getpeername(self: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyObje
 impl sock_listen(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     backlog = i32(SOMAXCONN if SOMAXCONN < 128 else 128);
-    if PyArg_ParseTuple(args, "|i:listen", &mut backlog) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("|i:listen"), &mut backlog) == 0 {
         return NULL;
     }
     if backlog < 0 {
@@ -927,7 +933,7 @@ impl sock_recv(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     recvlen = i64(0);
     flags = i32(0);
-    if PyArg_ParseTuple(args, "n|i:recv", &mut recvlen, &mut flags) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("n|i:recv"), &mut recvlen, &mut flags) == 0 {
         return NULL;
     }
     if recvlen < 0 {
@@ -962,7 +968,7 @@ impl sock_recv_into(
     if PyArg_ParseTupleAndKeywords(
         args,
         kwds,
-        "w*|ni:recv_into",
+        ptr[u8]("w*|ni:recv_into"),
         ptr(addressof(recv_into_keywords)),
         pbuf,
         &mut recvlen,
@@ -1026,7 +1032,7 @@ impl sock_recvfrom(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     s = sock_of(self);
     recvlen = i64(0);
     flags = i32(0);
-    if PyArg_ParseTuple(args, "n|i:recvfrom", &mut recvlen, &mut flags) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("n|i:recvfrom"), &mut recvlen, &mut flags) == 0 {
         return NULL;
     }
     if recvlen < 0 {
@@ -1064,7 +1070,7 @@ impl sock_recvfrom_into(
     if PyArg_ParseTupleAndKeywords(
         args,
         kwds,
-        "w*|ni:recvfrom_into",
+        ptr[u8]("w*|ni:recvfrom_into"),
         ptr(addressof(recv_into_keywords)),
         pbuf,
         &mut recvlen,
@@ -1095,7 +1101,7 @@ impl sock_recvfrom_into(
         jacpy_release(outcome.address);
         return NULL;
     }
-    return Py_BuildValue("nN", i64(outcome.count), outcome.address);
+    return Py_BuildValue(ptr[u8]("nN"), i64(outcome.count), outcome.address);
 }
 
 impl ReceivedData.value(received: int) -> ptr[PyObject] {
@@ -1225,7 +1231,9 @@ impl received_message(
         }
         record = header.view(1);
         payload = jacpy_bytes_from_memory(ptr(cmsg_data(header)), i64(data.length));
-        item = Py_BuildValue("iiN", record[0].cmsg_level, record[0].cmsg_type, payload);
+        item = Py_BuildValue(
+            ptr[u8]("iiN"), record[0].cmsg_level, record[0].cmsg_type, payload
+        );
         if not item {
             jacpy_release(cmsg_list);
             return NULL;
@@ -1252,7 +1260,7 @@ impl received_message(
     retval = NULL;
     if value and address {
         retval = Py_BuildValue(
-            "NOiN", value, cmsg_list, message.view(1)[0].msg_flags, address
+            ptr[u8]("NOiN"), value, cmsg_list, message.view(1)[0].msg_flags, address
         );
     } else {
         jacpy_release(value);
@@ -1267,7 +1275,9 @@ impl sock_recvmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     bufsize = i64(0);
     ancbufsize = i64(0);
     flags = i32(0);
-    if PyArg_ParseTuple(args, "n|ni:recvmsg", &mut bufsize, &mut ancbufsize, &mut flags)
+    if PyArg_ParseTuple(
+        args, ptr[u8]("n|ni:recvmsg"), &mut bufsize, &mut ancbufsize, &mut flags
+    )
         == 0 {
         return NULL;
     }
@@ -1312,7 +1322,11 @@ impl sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     flags = i32(0);
     buffers_arg = NULL;
     if PyArg_ParseTuple(
-        args, "O|ni:recvmsg_into", &mut buffers_arg, &mut ancbufsize, &mut flags
+        args,
+        ptr[u8]("O|ni:recvmsg_into"),
+        &mut buffers_arg,
+        &mut ancbufsize,
+        &mut flags
     )
         == 0 {
         return NULL;
@@ -1346,7 +1360,9 @@ impl sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
         view = ptr[Py_buffer](bufs + nbufs * int(PY_BUFFER_SIZE));
         if PyArg_Parse(
             jacpy_fast_item(fast, i64(nbufs)),
-            "w*;recvmsg_into() argument 1 must be an iterable of single-segment read-write buffers",
+            ptr[u8](
+                "w*;recvmsg_into() argument 1 must be an iterable of single-segment read-write buffers"
+            ),
             view
         )
             == 0 {
@@ -1377,7 +1393,7 @@ impl sock_send(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if not pbuf {
         return NULL;
     }
-    if PyArg_ParseTuple(args, "y*|i:send", pbuf, &mut flags) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("y*|i:send"), pbuf, &mut flags) == 0 {
         PyMem_Free(ptr(pbuf));
         return NULL;
     }
@@ -1398,7 +1414,7 @@ impl sock_sendall(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if not pbuf {
         return NULL;
     }
-    if PyArg_ParseTuple(args, "y*|i:sendall", pbuf, &mut flags) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("y*|i:sendall"), pbuf, &mut flags) == 0 {
         PyMem_Free(ptr(pbuf));
         return NULL;
     }
@@ -1453,9 +1469,11 @@ impl sock_sendto(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     }
     parsed = 0;
     if arglen == 2 {
-        parsed = PyArg_ParseTuple(args, "y*O:sendto", pbuf, &mut addro);
+        parsed = PyArg_ParseTuple(args, ptr[u8]("y*O:sendto"), pbuf, &mut addro);
     } elif arglen == 3 {
-        parsed = PyArg_ParseTuple(args, "y*iO:sendto", pbuf, &mut flags, &mut addro);
+        parsed = PyArg_ParseTuple(
+            args, ptr[u8]("y*iO:sendto"), pbuf, &mut flags, &mut addro
+        );
     } else {
         PyMem_Free(ptr(pbuf));
         object_error(
@@ -1539,7 +1557,9 @@ impl sock_sendmsg_iovec(
         view = ptr[Py_buffer](buffers.views + index * int(PY_BUFFER_SIZE));
         if PyArg_Parse(
             jacpy_fast_item(data_fast, i64(index)),
-            "y*;sendmsg() argument 1 must be an iterable of bytes-like objects",
+            ptr[u8](
+                "y*;sendmsg() argument 1 must be an iterable of bytes-like objects"
+            ),
             view
         )
             == 0 {
@@ -1563,7 +1583,12 @@ impl sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     addr_arg = NULL;
     flags = i32(0);
     if PyArg_ParseTuple(
-        args, "O|OiO:sendmsg", &mut data_arg, &mut cmsg_arg, &mut flags, &mut addr_arg
+        args,
+        ptr[u8]("O|OiO:sendmsg"),
+        &mut data_arg,
+        &mut cmsg_arg,
+        &mut flags,
+        &mut addr_arg
     )
         == 0 {
         return NULL;
@@ -1637,7 +1662,7 @@ impl sock_sendmsg(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         info = cmsgs + ncmsgbufs * CMSGINFO_SIZE;
         if PyArg_Parse(
             PyTuple_GetItem(cmsg_fast, i64(ncmsgbufs)),
-            "(iiy*):[sendmsg() ancillary data items]",
+            ptr[u8]("(iiy*):[sendmsg() ancillary data items]"),
             ptr[i32](info),
             ptr[i32](info + 4),
             ptr[Py_buffer](info + 8)
@@ -1795,7 +1820,7 @@ impl sock_sendmsg_afalg(
     if PyArg_ParseTupleAndKeywords(
         args,
         kwds,
-        "|O$O!y*O!i:sendmsg_afalg",
+        ptr[u8]("|O$O!y*O!i:sendmsg_afalg"),
         ptr(addressof(sendmsg_afalg_keywords)),
         &mut data_arg,
         ptr(addressof(PyLong_Type)),

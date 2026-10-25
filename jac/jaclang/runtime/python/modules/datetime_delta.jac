@@ -311,7 +311,9 @@ impl delta_richcompare(
 }
 
 impl delta_getstate(self: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("lll", td_days(self), td_seconds(self), td_microseconds(self));
+    return Py_BuildValue(
+        ptr[u8]("lll"), td_days(self), td_seconds(self), td_microseconds(self)
+    );
 }
 
 impl delta_hash(op: ptr[PyObject]) -> i64 {
@@ -676,5 +678,5 @@ impl delta_total_seconds(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObjec
 }
 
 impl delta_reduce(op: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("ON", type_of(op), delta_getstate(op));
+    return Py_BuildValue(ptr[u8]("ON"), type_of(op), delta_getstate(op));
 }

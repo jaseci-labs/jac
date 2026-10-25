@@ -744,7 +744,8 @@ impl tuple_repeat(op: ptr[PyObject], n: i64) -> ptr[PyObject] {
 impl tuple_index(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if (nargs < 1 or nargs > 3) and _PyArg_CheckPositional("index", nargs, 1, 3) == 0 {
+    if (nargs < 1 or nargs > 3)
+        and _PyArg_CheckPositional(ptr[u8]("index"), nargs, 1, 3) == 0 {
         return NULL;
     }
     value = args.view(1)[0];
@@ -863,11 +864,11 @@ impl tuple_new(
     base = addressof(PyTuple_Type);
     if (type == base or int(type.view(1)[0].tp_init) == int(base.view(1)[0].tp_init))
         and kwargs
-        and _PyArg_NoKeywords("tuple", kwargs) == 0 {
+        and _PyArg_NoKeywords(ptr[u8]("tuple"), kwargs) == 0 {
         return NULL;
     }
     nargs = object_size(args);
-    if nargs > 1 and _PyArg_CheckPositional("tuple", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("tuple"), nargs, 0, 1) == 0 {
         return NULL;
     }
     iterable = tuple_get_item(args, 0) if nargs >= 1 else NULL;
@@ -877,11 +878,11 @@ impl tuple_new(
 impl tuple_vectorcall(
     type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwnames and _PyArg_NoKwnames("tuple", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("tuple"), kwnames) == 0 {
         return NULL;
     }
     nargs = PyVectorcall_NARGS(nargsf);
-    if nargs > 1 and _PyArg_CheckPositional("tuple", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("tuple"), nargs, 0, 1) == 0 {
         return NULL;
     }
     if nargs != 0 {
@@ -967,7 +968,7 @@ impl tuple_subscript(op: ptr[PyObject], item: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl tuple___getnewargs__(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("(N)", tuple_slice(op, 0, object_size(op)));
+    return Py_BuildValue(ptr[u8]("(N)"), tuple_slice(op, 0, object_size(op)));
 }
 
 impl tuple_iter(seq: ptr[PyObject]) -> ptr[PyObject] {
@@ -1034,9 +1035,9 @@ impl tupleiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject
     it = tupleiter_of(op);
     seq = ptr[PyObject](it.view(1)[0].it_seq);
     if seq {
-        return Py_BuildValue("N(O)n", iter, seq, it.view(1)[0].it_index);
+        return Py_BuildValue(ptr[u8]("N(O)n"), iter, seq, it.view(1)[0].it_index);
     }
-    return Py_BuildValue("N(())", iter);
+    return Py_BuildValue(ptr[u8]("N(())"), iter);
 }
 
 impl tupleiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {

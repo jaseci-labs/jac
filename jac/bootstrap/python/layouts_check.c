@@ -3781,6 +3781,20 @@ CONSTANT(sizeof(_Py_slist_t), 8LL);
 CONSTANT(sizeof(_Py_hashtable_entry_t), 32LL);
 CONSTANT(sizeof(_Py_hashtable_t), 80LL);
 CONSTANT(offsetof(struct _Py_global_strings, literals._py_utf_8), 1184LL);
+CONSTANT(offsetof(struct _PyArg_Parser, once), 32LL);
+CONSTANT(Py_T_SHORT, 0LL);
+CONSTANT(Py_T_LONG, 2LL);
+CONSTANT(Py_T_FLOAT, 3LL);
+CONSTANT(Py_T_STRING, 5LL);
+CONSTANT(Py_T_CHAR, 7LL);
+CONSTANT(Py_T_BYTE, 8LL);
+CONSTANT(Py_T_UBYTE, 9LL);
+CONSTANT(Py_T_USHORT, 10LL);
+CONSTANT(Py_T_UINT, 11LL);
+CONSTANT(Py_T_STRING_INPLACE, 13LL);
+CONSTANT(Py_T_LONGLONG, 17LL);
+CONSTANT(Py_T_ULONGLONG, 18LL);
+CONSTANT(_Py_T_NONE, 20LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -4071,6 +4085,9 @@ CONSTANT(MAXPATHLEN, 4096LL);
 CONSTANT(LC_CTYPE, 0LL);
 CONSTANT(LC_NUMERIC, 1LL);
 CONSTANT(CODESET, 14LL);
+CONSTANT(offsetof(_PyRuntimeState, getargs.static_parsers), 10008LL);
+CONSTANT(CHAR_MIN, -128LL);
+CONSTANT(CHAR_MAX, 127LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4359,6 +4376,9 @@ CONSTANT(MAXPATHLEN, 4096LL);
 CONSTANT(LC_CTYPE, 0LL);
 CONSTANT(LC_NUMERIC, 1LL);
 CONSTANT(CODESET, 14LL);
+CONSTANT(offsetof(_PyRuntimeState, getargs.static_parsers), 10008LL);
+CONSTANT(CHAR_MIN, 0LL);
+CONSTANT(CHAR_MAX, 255LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4647,6 +4667,9 @@ CONSTANT(MAXPATHLEN, 1024LL);
 CONSTANT(LC_CTYPE, 2LL);
 CONSTANT(LC_NUMERIC, 4LL);
 CONSTANT(CODESET, 0LL);
+CONSTANT(offsetof(_PyRuntimeState, getargs.static_parsers), 9496LL);
+CONSTANT(CHAR_MIN, -128LL);
+CONSTANT(CHAR_MAX, 127LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4935,6 +4958,9 @@ CONSTANT(MAXPATHLEN, 1024LL);
 CONSTANT(LC_CTYPE, 2LL);
 CONSTANT(LC_NUMERIC, 4LL);
 CONSTANT(CODESET, 0LL);
+CONSTANT(offsetof(_PyRuntimeState, getargs.static_parsers), 9496LL);
+CONSTANT(CHAR_MIN, -128LL);
+CONSTANT(CHAR_MAX, 127LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

@@ -98,17 +98,17 @@ impl add_blake2_type(
         and add_type_int(type_dict, "MAX_DIGEST_SIZE", digest);
     jacpy_release(type_dict);
     return ok
-        and PyModule_AddIntConstant(module, f"{prefix}_SALT_SIZE", i64(salt)) == 0
-        and PyModule_AddIntConstant(module, f"{prefix}_PERSON_SIZE", i64(person)) == 0
-        and PyModule_AddIntConstant(module, f"{prefix}_MAX_KEY_SIZE", i64(key)) == 0
-        and PyModule_AddIntConstant(module, f"{prefix}_MAX_DIGEST_SIZE", i64(digest))
+        and jacpy_module_add_int_text(module, f"{prefix}_SALT_SIZE", i64(salt)) == 0
+        and jacpy_module_add_int_text(module, f"{prefix}_PERSON_SIZE", i64(person)) == 0
+        and jacpy_module_add_int_text(module, f"{prefix}_MAX_KEY_SIZE", i64(key)) == 0
+        and jacpy_module_add_int_text(module, f"{prefix}_MAX_DIGEST_SIZE", i64(digest))
             == 0;
 }
 
 impl execute(module: ptr[PyObject]) -> i32 {
     Blake2_token.handle = blake2b_type.handle;
     Blake2_token.share(blake2s_type.handle);
-    if PyModule_AddIntConstant(module, "_GIL_MINSIZE", HASHLIB_GIL_MINSIZE) < 0
+    if PyModule_AddIntConstant(module, ptr[u8]("_GIL_MINSIZE"), HASHLIB_GIL_MINSIZE) < 0
         or not add_blake2_type(
             module,
             0,

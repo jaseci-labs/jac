@@ -212,7 +212,10 @@ def os_getresuid_impl(module: ptr[PyObject]) -> ptr[PyObject] {
         return posix_error();
     }
     return Py_BuildValue(
-        "(NNN)", _PyLong_FromUid(ruid), _PyLong_FromUid(euid), _PyLong_FromUid(suid)
+        ptr[u8]("(NNN)"),
+        _PyLong_FromUid(ruid),
+        _PyLong_FromUid(euid),
+        _PyLong_FromUid(suid)
     );
 }
 
@@ -222,7 +225,10 @@ def os_getresgid_impl(module: ptr[PyObject]) -> ptr[PyObject] {
         return posix_error();
     }
     return Py_BuildValue(
-        "(NNN)", _PyLong_FromGid(rgid), _PyLong_FromGid(egid), _PyLong_FromGid(sgid)
+        ptr[u8]("(NNN)"),
+        _PyLong_FromGid(rgid),
+        _PyLong_FromGid(egid),
+        _PyLong_FromGid(sgid)
     );
 }
 

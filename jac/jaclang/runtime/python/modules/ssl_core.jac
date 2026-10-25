@@ -553,7 +553,7 @@ impl fill_and_set_sslerror(
     if errcode != u64(0) {
         lib = err_get_lib(errcode);
         reason = err_get_reason(errcode);
-        key = Py_BuildValue("ii", c_int(lib), c_int(reason));
+        key = Py_BuildValue(ptr[u8]("ii"), c_int(lib), c_int(reason));
         if not key {
             return;
         }
@@ -642,7 +642,9 @@ impl fill_and_set_sslerror(
         failed = not msg;
     }
     if not failed {
-        init_value = Py_BuildValue("iN", c_int(err_get_reason(ssl_errno)), msg);
+        init_value = Py_BuildValue(
+            ptr[u8]("iN"), c_int(err_get_reason(ssl_errno)), msg
+        );
         if init_value {
             err_value = PyObject_CallObject(type, init_value);
             jacpy_release(init_value);

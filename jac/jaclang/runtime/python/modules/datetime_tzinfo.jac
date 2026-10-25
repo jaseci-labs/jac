@@ -195,7 +195,7 @@ impl tzinfo_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
         jacpy_release(args);
         return NULL;
     }
-    return Py_BuildValue("(ONN)", type_of(self), args, state);
+    return Py_BuildValue(ptr[u8]("(ONN)"), type_of(self), args, state);
 }
 
 impl timezone_offset(op: ptr[PyObject]) -> ptr[PyObject] {

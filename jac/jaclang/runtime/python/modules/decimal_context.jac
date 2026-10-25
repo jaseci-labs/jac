@@ -829,7 +829,7 @@ impl context_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] 
         return NULL;
     }
     result = Py_BuildValue(
-        "O(nsnniiOO)",
+        ptr[u8]("O(nsnniiOO)"),
         ptr[PyObject](object_type(self)),
         ctx[0].prec,
         round_string(ctx[0].round),

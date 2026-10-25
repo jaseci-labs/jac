@@ -1984,13 +1984,27 @@ impl bytearray_contains(op: ptr[PyObject], arg: ptr[PyObject]) -> i32 {
 impl text_arg(value: ptr[PyObject], which: i64) -> tuple[bool, ptr[u8]] {
     if not unicode_check(value) {
         if which == ARG_DECODE_ENCODING {
-            _PyArg_BadArgument("decode", "argument 'encoding'", "str", value);
+            _PyArg_BadArgument(
+                ptr[u8]("decode"), ptr[u8]("argument 'encoding'"), ptr[u8]("str"), value
+            );
         } elif which == ARG_DECODE_ERRORS {
-            _PyArg_BadArgument("decode", "argument 'errors'", "str", value);
+            _PyArg_BadArgument(
+                ptr[u8]("decode"), ptr[u8]("argument 'errors'"), ptr[u8]("str"), value
+            );
         } elif which == ARG_INIT_ENCODING {
-            _PyArg_BadArgument("bytearray", "argument 'encoding'", "str", value);
+            _PyArg_BadArgument(
+                ptr[u8]("bytearray"),
+                ptr[u8]("argument 'encoding'"),
+                ptr[u8]("str"),
+                value
+            );
         } else {
-            _PyArg_BadArgument("bytearray", "argument 'errors'", "str", value);
+            _PyArg_BadArgument(
+                ptr[u8]("bytearray"),
+                ptr[u8]("argument 'errors'"),
+                ptr[u8]("str"),
+                value
+            );
         }
         return (False, ptr[u8]());
     }
@@ -2410,7 +2424,7 @@ impl bytearray_find(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("find", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("find"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     (ok, start, end) = slice_bounds(args, nargs);
@@ -2424,7 +2438,7 @@ impl bytearray_count(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("count", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("count"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     (ok, start, end) = slice_bounds(args, nargs);
@@ -2449,7 +2463,7 @@ impl bytearray_index(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("index", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("index"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     (ok, start, end) = slice_bounds(args, nargs);
@@ -2463,7 +2477,7 @@ impl bytearray_rfind(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("rfind", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("rfind"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     (ok, start, end) = slice_bounds(args, nargs);
@@ -2477,7 +2491,7 @@ impl bytearray_rindex(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("rindex", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("rindex"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     (ok, start, end) = slice_bounds(args, nargs);
@@ -2491,7 +2505,7 @@ impl bytearray_startswith(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("startswith", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("startswith"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     (ok, start, end) = slice_bounds(args, nargs);
@@ -2505,7 +2519,7 @@ impl bytearray_endswith(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 3)
-        and _PyArg_CheckPositional("endswith", nargs, 1, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("endswith"), nargs, 1, 3) == i32(0) {
         return NULL;
     }
     (ok, start, end) = slice_bounds(args, nargs);
@@ -2691,7 +2705,8 @@ impl bytearray_translate(
 impl bytearray_maketrans(
     _null: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs != 2 and _PyArg_CheckPositional("maketrans", nargs, 2, 2) == i32(0) {
+    if nargs != 2
+        and _PyArg_CheckPositional(ptr[u8]("maketrans"), nargs, 2, 2) == i32(0) {
         return NULL;
     }
     frm = buffer_slot();
@@ -2717,7 +2732,7 @@ impl bytearray_replace(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 2 or nargs > 3)
-        and _PyArg_CheckPositional("replace", nargs, 2, 3) == i32(0) {
+        and _PyArg_CheckPositional(ptr[u8]("replace"), nargs, 2, 3) == i32(0) {
         return NULL;
     }
     old = buffer_slot();
@@ -2899,7 +2914,8 @@ impl bytearray_reverse(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObjec
 impl bytearray_insert(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs != 2 and _PyArg_CheckPositional("insert", nargs, 2, 2) == i32(0) {
+    if nargs != 2
+        and _PyArg_CheckPositional(ptr[u8]("insert"), nargs, 2, 2) == i32(0) {
         return NULL;
     }
     (ok, index) = ssize_arg(args.view(1)[0]);
@@ -3128,7 +3144,7 @@ impl bytearray_extend(
 impl bytearray_pop(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("pop", nargs, 0, 1) == i32(0) {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("pop"), nargs, 0, 1) == i32(0) {
         return NULL;
     }
     index: i64 = -1;
@@ -3237,7 +3253,7 @@ impl strip_helper(
 impl bytearray_strip(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("strip", nargs, 0, 1) == i32(0) {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("strip"), nargs, 0, 1) == i32(0) {
         return NULL;
     }
     return strip_helper(op, args.view(1)[0] if nargs >= 1 else Py_None, BOTHSTRIP);
@@ -3246,7 +3262,7 @@ impl bytearray_strip(
 impl bytearray_lstrip(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("lstrip", nargs, 0, 1) == i32(0) {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("lstrip"), nargs, 0, 1) == i32(0) {
         return NULL;
     }
     return strip_helper(op, args.view(1)[0] if nargs >= 1 else Py_None, LEFTSTRIP);
@@ -3255,7 +3271,7 @@ impl bytearray_lstrip(
 impl bytearray_rstrip(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("rstrip", nargs, 0, 1) == i32(0) {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("rstrip"), nargs, 0, 1) == i32(0) {
         return NULL;
     }
     return strip_helper(op, args.view(1)[0] if nargs >= 1 else Py_None, RIGHTSTRIP);
@@ -3397,15 +3413,17 @@ impl common_reduce(op: ptr[PyObject], proto: i32) -> ptr[PyObject] {
     }
     tp = ptr[PyObject](object_type(op));
     if object_size(op) == 0 {
-        return Py_BuildValue("(O()N)", tp, state);
+        return Py_BuildValue(ptr[u8]("(O()N)"), tp, state);
     }
     buf = ba_as_string(op);
     if proto < i32(3) {
         latin1 = PyUnicode_DecodeLatin1(ptr(buf), object_size(op), ptr[u8]());
-        return Py_BuildValue("(O(Ns)N)", tp, latin1, ptr[u8]("latin-1"), state);
+        return Py_BuildValue(
+            ptr[u8]("(O(Ns)N)"), tp, latin1, ptr[u8]("latin-1"), state
+        );
     }
 
-    return Py_BuildValue("(O(y#)N)", tp, buf, object_size(op), state);
+    return Py_BuildValue(ptr[u8]("(O(y#)N)"), tp, buf, object_size(op), state);
 }
 
 impl bytearray_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
@@ -3415,7 +3433,8 @@ impl bytearray_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject
 impl bytearray_reduce_ex(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("__reduce_ex__", nargs, 0, 1) == i32(0) {
+    if nargs > 1
+        and _PyArg_CheckPositional(ptr[u8]("__reduce_ex__"), nargs, 0, 1) == i32(0) {
         return NULL;
     }
     proto = i32(0);
@@ -3491,9 +3510,9 @@ impl bytearrayiter_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyOb
     iter_builtin = eval_builtin("iter");
     index = baiter_of(op).view(1)[0].it_index;
     if index >= 0 {
-        return Py_BuildValue("N(O)n", iter_builtin, baiter_seq(op), index);
+        return Py_BuildValue(ptr[u8]("N(O)n"), iter_builtin, baiter_seq(op), index);
     }
-    return Py_BuildValue("N(())", iter_builtin);
+    return Py_BuildValue(ptr[u8]("N(())"), iter_builtin);
 }
 
 impl bytearrayiter_setstate(op: ptr[PyObject], state: ptr[PyObject]) -> ptr[PyObject] {

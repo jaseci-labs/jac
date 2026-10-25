@@ -99,10 +99,10 @@ impl bool_new(
     _type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     x = py_false();
-    if kwds and _PyArg_NoKeywords("bool", kwds) == 0 {
+    if kwds and _PyArg_NoKeywords(ptr[u8]("bool"), kwds) == 0 {
         return NULL;
     }
-    if PyArg_UnpackTuple(args, "bool", 0, 1, &mut x) == 0 {
+    if PyArg_UnpackTuple(args, ptr[u8]("bool"), 0, 1, &mut x) == 0 {
         return NULL;
     }
     ok = PyObject_IsTrue(x);
@@ -116,11 +116,12 @@ impl bool_vectorcall(
     _type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     ok: i64 = 0;
-    if kwnames and _PyArg_NoKwnames("bool", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("bool"), kwnames) == 0 {
         return NULL;
     }
     nargs = PyVectorcall_NARGS(nargsf);
-    if (nargs < 0 or nargs > 1) and _PyArg_CheckPositional("bool", nargs, 0, 1) == 0 {
+    if (nargs < 0 or nargs > 1)
+        and _PyArg_CheckPositional(ptr[u8]("bool"), nargs, 0, 1) == 0 {
         return NULL;
     }
     if nargs != 0 {

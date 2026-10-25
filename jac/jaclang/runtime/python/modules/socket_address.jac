@@ -366,7 +366,7 @@ impl makesockaddr(
         if not addrobj {
             return NULL;
         }
-        ret = Py_BuildValue("Oi", addrobj, i32(ntohs(get_u16(addr, 2))));
+        ret = Py_BuildValue(ptr[u8]("Oi"), addrobj, i32(ntohs(get_u16(addr, 2))));
         jacpy_release(addrobj);
         return ret;
     }
@@ -380,13 +380,19 @@ impl makesockaddr(
         return jacpy_fs_text(ptr(path));
     }
     if HAS_NETLINK and family == AF_NETLINK {
-        return Py_BuildValue("II", u32(get_u32(addr, 4)), u32(get_u32(addr, 8)));
+        return Py_BuildValue(
+            ptr[u8]("II"), u32(get_u32(addr, 4)), u32(get_u32(addr, 8))
+        );
     }
     if HAS_QIPCRTR and family == AF_QIPCRTR {
-        return Py_BuildValue("II", u32(get_u32(addr, 4)), u32(get_u32(addr, 8)));
+        return Py_BuildValue(
+            ptr[u8]("II"), u32(get_u32(addr, 4)), u32(get_u32(addr, 8))
+        );
     }
     if HAS_VSOCK and family == AF_VSOCK {
-        return Py_BuildValue("II", u32(get_u32(addr, 8)), u32(get_u32(addr, 4)));
+        return Py_BuildValue(
+            ptr[u8]("II"), u32(get_u32(addr, 8)), u32(get_u32(addr, 4))
+        );
     }
     if family == AF_INET6 {
         addrobj = make_ipv6_addr(addr);
@@ -394,7 +400,7 @@ impl makesockaddr(
             return NULL;
         }
         ret = Py_BuildValue(
-            "OiII",
+            ptr[u8]("OiII"),
             addrobj,
             i32(ntohs(get_u16(addr, 2))),
             u32(ntohl(get_u32(addr, 4))),
@@ -411,7 +417,7 @@ impl makesockaddr(
 
         ifname = interface_name_of(sockfd, get_i32(addr, 4), ifr);
         ret = Py_BuildValue(
-            "shbhy#",
+            ptr[u8]("shbhy#"),
             ifname,
             i32(ntohs(get_u16(addr, 2))),
             i32(get_u8(addr, 10)),
@@ -432,7 +438,7 @@ impl makesockaddr(
         scope_bits = u32(scope & 0xFFFFFFFF);
         if addrtype == TIPC_ADDR_NAMESEQ {
             return Py_BuildValue(
-                "IIIII",
+                ptr[u8]("IIIII"),
                 u32(addrtype),
                 u32(get_u32(addr, 4)),
                 u32(get_u32(addr, 8)),
@@ -442,7 +448,7 @@ impl makesockaddr(
         }
         if addrtype == TIPC_ADDR_NAME {
             return Py_BuildValue(
-                "IIIII",
+                ptr[u8]("IIIII"),
                 u32(addrtype),
                 u32(get_u32(addr, 4)),
                 u32(get_u32(addr, 8)),
@@ -452,7 +458,7 @@ impl makesockaddr(
         }
         if addrtype == TIPC_ADDR_ID {
             return Py_BuildValue(
-                "IIIII",
+                ptr[u8]("IIIII"),
                 u32(addrtype),
                 u32(get_u32(addr, 8)),
                 u32(get_u32(addr, 4)),
@@ -477,25 +483,27 @@ impl makesockaddr(
         ret = NULL;
         if HAS_CAN_ISOTP and proto == CAN_ISOTP {
             ret = Py_BuildValue(
-                "Okk", name, u64(get_u32(addr, 8)), u64(get_u32(addr, 12))
+                ptr[u8]("Okk"), name, u64(get_u32(addr, 8)), u64(get_u32(addr, 12))
             );
         } elif HAS_CAN_J1939 and proto == CAN_J1939 {
             ret = Py_BuildValue(
-                "OKIB",
+                ptr[u8]("OKIB"),
                 name,
                 u64(get_u64(addr, 8)),
                 u32(get_u32(addr, 16)),
                 i32(get_u8(addr, 20))
             );
         } else {
-            ret = Py_BuildValue("(O)", name);
+            ret = Py_BuildValue(ptr[u8]("(O)"), name);
         }
         jacpy_release(name);
         return ret;
     }
     if HAS_SYSTEM and family == PF_SYSTEM {
         if proto == SYSPROTO_CONTROL {
-            return Py_BuildValue("(II)", u32(get_u32(addr, 4)), u32(get_u32(addr, 8)));
+            return Py_BuildValue(
+                ptr[u8]("(II)"), u32(get_u32(addr, 4)), u32(get_u32(addr, 8))
+            );
         }
         PyErr_SetString(PyExc_ValueError, "Invalid address type");
         return NULL;
@@ -504,7 +512,7 @@ impl makesockaddr(
         salg_type = addr + 2;
         salg_name = addr + 24;
         return Py_BuildValue(
-            "s#s#HH",
+            ptr[u8]("s#s#HH"),
             salg_type,
             i64(c_string_length(salg_type, SALG_TYPE_SIZE)),
             salg_name,
@@ -515,7 +523,7 @@ impl makesockaddr(
     }
 
     return Py_BuildValue(
-        "iy#", i32(family), ptr(addr + SA_DATA_OFFSET), i64(SA_DATA_SIZE)
+        ptr[u8]("iy#"), i32(family), ptr(addr + SA_DATA_OFFSET), i64(SA_DATA_SIZE)
     );
 }
 
@@ -639,7 +647,7 @@ impl getsockaddrarg(
         groups = u32(0);
         if PyArg_ParseTuple(
             args,
-            "II;AF_NETLINK address must be a pair (pid, groups)",
+            ptr[u8]("II;AF_NETLINK address must be a pair (pid, groups)"),
             &mut pid,
             &mut groups
         )
@@ -660,7 +668,8 @@ impl getsockaddrarg(
         }
         node_id = u32(0);
         port = u32(0);
-        if PyArg_ParseTuple(args, "II:getsockaddrarg", &mut node_id, &mut port) == 0 {
+        if PyArg_ParseTuple(args, ptr[u8]("II:getsockaddrarg"), &mut node_id, &mut port)
+            == 0 {
             return -1;
         }
         put_u16(addrbuf, 0, AF_QIPCRTR);
@@ -675,7 +684,8 @@ impl getsockaddrarg(
         }
         cid = u32(0);
         port = u32(0);
-        if PyArg_ParseTuple(args, "II:getsockaddrarg", &mut cid, &mut port) == 0 {
+        if PyArg_ParseTuple(args, ptr[u8]("II:getsockaddrarg"), &mut cid, &mut port)
+            == 0 {
             return -1;
         }
         put_u16(addrbuf, 0, family);
@@ -726,7 +736,7 @@ impl unix_address(
         return -1;
     }
     retval = -1;
-    if PyArg_Parse(path_obj, "y*", path) != 0 {
+    if PyArg_Parse(path_obj, ptr[u8]("y*"), path) != 0 {
         length = int(path.view(1)[0].length);
         source = ptr[u8](path.view(1)[0].buf);
         jacpy_memory_zero(ptr(addrbuf), i64(SOCKADDR_UN_SIZE));
@@ -766,7 +776,7 @@ impl inet_address(
     port = i32(0);
     if PyArg_ParseTuple(
         args,
-        "O&i;AF_INET address must be a pair (host, port)",
+        ptr[u8]("O&i;AF_INET address must be a pair (host, port)"),
         ptr(idna_converter),
         ptr(host),
         &mut port
@@ -808,7 +818,9 @@ impl inet6_address(
     scope_id = u32(0);
     if PyArg_ParseTuple(
         args,
-        "O&i|II;AF_INET6 address must be a tuple (host, port[, flowinfo[, scopeid]])",
+        ptr[u8](
+            "O&i|II;AF_INET6 address must be a tuple (host, port[, flowinfo[, scopeid]])"
+        ),
         ptr(idna_converter),
         ptr(host),
         &mut port,
@@ -859,7 +871,7 @@ impl packet_address(
     hatype = i32(0);
     if PyArg_ParseTuple(
         args,
-        "si|iiy*;AF_PACKET address must be a tuple of two to five elements",
+        ptr[u8]("si|iiy*;AF_PACKET address must be a tuple of two to five elements"),
         &mut interface_name,
         &mut proto_number,
         &mut pkttype,
@@ -912,7 +924,9 @@ impl tipc_address(args: ptr[PyObject], addrbuf: ptr[u8], caller: str) -> int {
     scope = u32(TIPC_CLUSTER_SCOPE);
     if PyArg_ParseTuple(
         args,
-        "IIII|I;AF_TIPC address must be a tuple (addr_type, v1, v2, v3[, scope])",
+        ptr[u8](
+            "IIII|I;AF_TIPC address must be a tuple (addr_type, v1, v2, v3[, scope])"
+        ),
         &mut atype,
         &mut v1,
         &mut v2,
@@ -955,7 +969,7 @@ impl can_address(
         }
         if PyArg_ParseTuple(
             args,
-            "O&;AF_CAN address must be a tuple (interface, )",
+            ptr[u8]("O&;AF_CAN address must be a tuple (interface, )"),
             ptr(PyUnicode_FSConverter),
             &mut interface
         )
@@ -976,7 +990,7 @@ impl can_address(
         tx_id = u64(0);
         if PyArg_ParseTuple(
             args,
-            "O&kk",
+            ptr[u8]("O&kk"),
             ptr(PyUnicode_FSConverter),
             &mut interface,
             &mut rx_id,
@@ -1002,7 +1016,7 @@ impl can_address(
         j1939_addr = u8(0);
         if PyArg_ParseTuple(
             args,
-            "O&KIB",
+            ptr[u8]("O&KIB"),
             ptr(PyUnicode_FSConverter),
             &mut interface,
             &mut j1939_name,
@@ -1040,7 +1054,8 @@ impl system_address(
     put_u16(addrbuf, 2, AF_SYS_CONTROL);
     if jacpy_is_unicode(args) != 0 {
         ctl_name = NULL;
-        if PyArg_Parse(args, "O&", ptr(PyUnicode_FSConverter), &mut ctl_name) == 0 {
+        if PyArg_Parse(args, ptr[u8]("O&"), ptr(PyUnicode_FSConverter), &mut ctl_name)
+            == 0 {
             return -1;
         }
         if jacpy_bytes_length(ctl_name) > MAX_KCTL_NAME {
@@ -1071,7 +1086,7 @@ impl system_address(
     } else {
         sc_id = u32(0);
         sc_unit = u32(0);
-        if PyArg_ParseTuple(args, "II", &mut sc_id, &mut sc_unit) == 0 {
+        if PyArg_ParseTuple(args, ptr[u8]("II"), &mut sc_id, &mut sc_unit) == 0 {
             object_error(
                 PyExc_TypeError,
                 f"{caller}(): PF_SYSTEM address must be a str or a pair (id, unit)"
@@ -1096,7 +1111,7 @@ impl alg_address(args: ptr[PyObject], addrbuf: ptr[u8], caller: str) -> int {
     mask = u16(0);
     if PyArg_ParseTuple(
         args,
-        "ss|HH;AF_ALG address must be a tuple (type, name[, feat[, mask]])",
+        ptr[u8]("ss|HH;AF_ALG address must be a tuple (type, name[, feat[, mask]])"),
         &mut alg_type,
         &mut alg_name,
         &mut feat,

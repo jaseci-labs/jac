@@ -17,7 +17,7 @@ import from c {
     ) -> i32;  def _PyUnicode_FromASCII(s: ptr[u8], size: i64) -> ptr[PyObject];  def _PyStructSequence_InitBuiltinWithFlags(
         interp: ptr, type: ptr[PyObject], desc: ptr[PyStructSequence_Desc], flags: u64
     ) -> i32;  def _PyStructSequence_FiniBuiltin(interp: ptr, type: ptr[PyObject]);  def _PyArg_BadArgument(
-        fname: str, displayname: str, expected: str, arg: ptr[PyObject]
+        fname: ptr[u8], displayname: ptr[u8], expected: ptr[u8], arg: ptr[PyObject]
     );  def _PyDebugAllocatorStats(
         out: ptr, block_name: str, num_blocks: i32, sizeof_block: u64
     );  def strtol(s: ptr[u8], end: ptr, base: i32) -> i64;  def strlen(
@@ -1179,7 +1179,7 @@ impl float_divmod(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
         return NULL;
     }
     (floordiv, mod) = float_div_mod(vx, wx);
-    return Py_BuildValue("(dd)", floordiv, mod);
+    return Py_BuildValue(ptr[u8]("(dd)"), floordiv, mod);
 }
 
 impl float_floor_div(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
@@ -1399,7 +1399,7 @@ impl double_round(x: f64, ndigits: i32) -> ptr[PyObject] {
 impl float___round__(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("__round__", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("__round__"), nargs, 0, 1) == 0 {
         return NULL;
     }
     o_ndigits = args.view(1)[0] if nargs >= 1 else Py_None;
@@ -1799,11 +1799,11 @@ impl float_new(
     base = float_type();
     if (type == base or int(type.view(1)[0].tp_init) == int(base.view(1)[0].tp_init))
         and kwargs
-        and _PyArg_NoKeywords("float", kwargs) == 0 {
+        and _PyArg_NoKeywords(ptr[u8]("float"), kwargs) == 0 {
         return NULL;
     }
     nargs = object_size(args);
-    if nargs > 1 and _PyArg_CheckPositional("float", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("float"), nargs, 0, 1) == 0 {
         return NULL;
     }
     x = tuple_get_item(args, 0) if nargs >= 1 else NULL;
@@ -1813,11 +1813,11 @@ impl float_new(
 impl float_vectorcall(
     type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwnames and _PyArg_NoKwnames("float", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("float"), kwnames) == 0 {
         return NULL;
     }
     nargs = PyVectorcall_NARGS(nargsf);
-    if nargs > 1 and _PyArg_CheckPositional("float", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("float"), nargs, 0, 1) == 0 {
         return NULL;
     }
     x = args.view(1)[0] if nargs >= 1 else NULL;
@@ -1843,12 +1843,14 @@ impl float_from_number(type: ptr[PyObject], number: ptr[PyObject]) -> ptr[PyObje
 }
 
 impl float___getnewargs__(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("(d)", float_value(op));
+    return Py_BuildValue(ptr[u8]("(d)"), float_value(op));
 }
 
 impl float___getformat__(type: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     if not type_has_feature(object_type(arg), Py_TPFLAGS_UNICODE_SUBCLASS) {
-        _PyArg_BadArgument("__getformat__", "argument", "str", arg);
+        _PyArg_BadArgument(
+            ptr[u8]("__getformat__"), ptr[u8]("argument"), ptr[u8]("str"), arg
+        );
         return NULL;
     }
     length: i64 = 0;
@@ -1890,7 +1892,9 @@ impl float_getimag(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
 
 impl float___format__(op: ptr[PyObject], format_spec: ptr[PyObject]) -> ptr[PyObject] {
     if not type_has_feature(object_type(format_spec), Py_TPFLAGS_UNICODE_SUBCLASS) {
-        _PyArg_BadArgument("__format__", "argument", "str", format_spec);
+        _PyArg_BadArgument(
+            ptr[u8]("__format__"), ptr[u8]("argument"), ptr[u8]("str"), format_spec
+        );
         return NULL;
     }
     writer = PyUnicodeWriter_Create(0);

@@ -18,7 +18,7 @@ glob:priv LIBINTL: list[str] = [
 def:priv add_constants(module: ptr[PyObject], categories: bool) -> bool {
     for (name, value) in CONSTANTS {
         if name.startswith("LC_") == categories
-            and PyModule_AddIntConstant(module, name, value) < 0 {
+            and jacpy_module_add_int_text(module, name, value) < 0 {
             return False;
         }
     }
@@ -35,7 +35,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     if not add_constants(module, True)
-        or PyModule_AddIntConstant(module, "CHAR_MAX", jacpy_char_max()) < 0
+        or PyModule_AddIntConstant(module, ptr[u8]("CHAR_MAX"), jacpy_char_max()) < 0
         or not add_state_owned(
             module, ERROR, "Error", jacpy_binding_exception("locale.Error", NULL, "")
         )

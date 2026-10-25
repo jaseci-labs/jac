@@ -2626,21 +2626,36 @@ impl just_check_positional(which: i64, nargs: i64) -> bool {
         return True;
     }
     if which == JUST_LEFT {
-        return _PyArg_CheckPositional("ljust", nargs, 1, 2) != i32(0);
+        return _PyArg_CheckPositional(ptr[u8]("ljust"), nargs, 1, 2) != i32(0);
     }
     if which == JUST_RIGHT {
-        return _PyArg_CheckPositional("rjust", nargs, 1, 2) != i32(0);
+        return _PyArg_CheckPositional(ptr[u8]("rjust"), nargs, 1, 2) != i32(0);
     }
-    return _PyArg_CheckPositional("center", nargs, 1, 2) != i32(0);
+    return _PyArg_CheckPositional(ptr[u8]("center"), nargs, 1, 2) != i32(0);
 }
 
 impl just_bad_fillchar(which: i64, arg: ptr[PyObject]) {
     if which == JUST_LEFT {
-        _PyArg_BadArgument("ljust", "argument 2", "a byte string of length 1", arg);
+        _PyArg_BadArgument(
+            ptr[u8]("ljust"),
+            ptr[u8]("argument 2"),
+            ptr[u8]("a byte string of length 1"),
+            arg
+        );
     } elif which == JUST_RIGHT {
-        _PyArg_BadArgument("rjust", "argument 2", "a byte string of length 1", arg);
+        _PyArg_BadArgument(
+            ptr[u8]("rjust"),
+            ptr[u8]("argument 2"),
+            ptr[u8]("a byte string of length 1"),
+            arg
+        );
     } else {
-        _PyArg_BadArgument("center", "argument 2", "a byte string of length 1", arg);
+        _PyArg_BadArgument(
+            ptr[u8]("center"),
+            ptr[u8]("argument 2"),
+            ptr[u8]("a byte string of length 1"),
+            arg
+        );
     }
 }
 

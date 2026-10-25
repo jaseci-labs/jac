@@ -24,7 +24,7 @@ obj BufferArgument {
     def acquire_writable(value: ptr[PyObject]) -> bool {
         self.close();
         view = new_view();
-        if view and PyArg_Parse(value, "w*", view) == 0 {
+        if view and PyArg_Parse(value, ptr[u8]("w*"), view) == 0 {
             PyMem_Free(view);
             view = ptr[Py_buffer]();
         }
@@ -36,7 +36,7 @@ obj BufferArgument {
     def acquire_string(value: ptr[PyObject]) -> bool {
         self.close();
         view = new_view();
-        if view and PyArg_Parse(value, "s*", view) == 0 {
+        if view and PyArg_Parse(value, ptr[u8]("s*"), view) == 0 {
             PyMem_Free(view);
             view = ptr[Py_buffer]();
         }

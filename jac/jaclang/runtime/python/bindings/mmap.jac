@@ -63,7 +63,7 @@ def:priv add_constants(module: ptr[PyObject], advice: bool) -> bool {
         if name in INTERNAL or name.startswith("MADV_") != advice {
             continue;
         }
-        if PyModule_AddIntConstant(module, name, value) < 0 {
+        if jacpy_module_add_int_text(module, name, value) < 0 {
             return False;
         }
     }
@@ -78,7 +78,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     mmap_token.handle = mmap_type.handle;
-    if PyModule_AddObjectRef(module, "error", PyExc_OSError) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("error"), PyExc_OSError) < 0 {
         return i32(-1);
     }
     if not add_owned(module, "mmap", mmap_type.create(module)) {
@@ -89,12 +89,15 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     granularity = page_size();
-    if PyModule_AddIntConstant(module, "PAGESIZE", granularity) < 0
-        or PyModule_AddIntConstant(module, "ALLOCATIONGRANULARITY", granularity) < 0 {
+    if PyModule_AddIntConstant(module, ptr[u8]("PAGESIZE"), granularity) < 0
+        or PyModule_AddIntConstant(
+            module, ptr[u8]("ALLOCATIONGRANULARITY"), granularity
+        )
+            < 0 {
         return i32(-1);
     }
     for (name, value) in ACCESS_MODES {
-        if PyModule_AddIntConstant(module, name, value) < 0 {
+        if jacpy_module_add_int_text(module, name, value) < 0 {
             return i32(-1);
         }
     }

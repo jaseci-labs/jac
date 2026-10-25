@@ -942,7 +942,7 @@ impl futureiter_send(op: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] 
 impl futureiter_throw(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if _PyArg_CheckPositional("throw", nargs, 1, 3) == 0 {
+    if _PyArg_CheckPositional(ptr[u8]("throw"), nargs, 1, 3) == 0 {
         return NULL;
     }
     if nargs > 1 {

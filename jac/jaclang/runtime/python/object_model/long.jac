@@ -6102,7 +6102,7 @@ impl long_new_bound(args: BoundArguments) -> ptr[PyObject] {
 }
 
 impl int___getnewargs__(self_: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("(N)", _PyLong_Copy(long_of(self_)));
+    return Py_BuildValue(ptr[u8]("(N)"), _PyLong_Copy(long_of(self_)));
 }
 
 impl long_get0(_self: ptr[PyObject], _context: ptr) -> ptr[PyObject] {
@@ -6115,7 +6115,9 @@ impl long_get1(_self: ptr[PyObject], _ignored: ptr) -> ptr[PyObject] {
 
 impl int___format__(self_: ptr[PyObject], format_spec: ptr[PyObject]) -> ptr[PyObject] {
     if not type_has_feature(object_type(format_spec), Py_TPFLAGS_UNICODE_SUBCLASS) {
-        _PyArg_BadArgument("__format__", "argument", "str", format_spec);
+        _PyArg_BadArgument(
+            ptr[u8]("__format__"), ptr[u8]("argument"), ptr[u8]("str"), format_spec
+        );
         return NULL;
     }
     writer = PyUnicodeWriter_Create(0);
@@ -6190,7 +6192,7 @@ impl int___round___impl(
 impl int___round__(
     self_: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("__round__", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("__round__"), nargs, 0, 1) == 0 {
         return NULL;
     }
     o_ndigits = args.view(1)[0] if nargs >= 1 else Py_None;
@@ -6318,7 +6320,10 @@ impl int_to_bytes_convert(
             object_type(byteorder_arg), Py_TPFLAGS_UNICODE_SUBCLASS
         ) {
             _PyArg_BadArgument(
-                "to_bytes", "argument 'byteorder'", "str", byteorder_arg
+                ptr[u8]("to_bytes"),
+                ptr[u8]("argument 'byteorder'"),
+                ptr[u8]("str"),
+                byteorder_arg
             );
             return NULL;
         }
@@ -6391,7 +6396,10 @@ impl int_from_bytes_convert(
             object_type(byteorder_arg), Py_TPFLAGS_UNICODE_SUBCLASS
         ) {
             _PyArg_BadArgument(
-                "from_bytes", "argument 'byteorder'", "str", byteorder_arg
+                ptr[u8]("from_bytes"),
+                ptr[u8]("argument 'byteorder'"),
+                ptr[u8]("str"),
+                byteorder_arg
             );
             return NULL;
         }

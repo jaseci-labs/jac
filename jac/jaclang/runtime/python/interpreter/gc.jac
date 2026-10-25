@@ -1494,7 +1494,7 @@ impl invoke_gc_callback(
     info = NULL;
     if object_size(callbacks_slot.view(1)[0]) != 0 {
         info = Py_BuildValue(
-            "{sisnsn}",
+            ptr[u8]("{sisnsn}"),
             ptr[u8]("generation"),
             generation,
             ptr[u8]("collected"),
@@ -1868,7 +1868,7 @@ impl unexpected_keyword_arg(kwnames: ptr[PyObject], fname: ptr[u8]) {
             return;
         }
         if _PyUnicode_EqualToASCIIString(keyword, ptr[u8]("generation")) == 0 {
-            kwlist = Py_BuildValue("[s]", ptr[u8]("generation"));
+            kwlist = Py_BuildValue(ptr[u8]("[s]"), ptr[u8]("generation"));
             if not kwlist {
                 return;
             }
@@ -2033,7 +2033,7 @@ impl gc_set_threshold(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
 impl gc_get_threshold_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     gcstate = get_gc_state();
     return Py_BuildValue(
-        "(iii)",
+        ptr[u8]("(iii)"),
         gen_at(gcstate, i32(0)).view(1)[0].threshold,
         gen_at(gcstate, i32(1)).view(1)[0].threshold,
         gen_at(gcstate, i32(2)).view(1)[0].threshold
@@ -2047,7 +2047,7 @@ impl gc_get_threshold(module: ptr[PyObject], ignored: ptr[PyObject]) -> ptr[PyOb
 impl gc_get_count_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     gcstate = get_gc_state();
     return Py_BuildValue(
-        "(iii)",
+        ptr[u8]("(iii)"),
         gen_at(gcstate, i32(0)).view(1)[0].count,
         gen_at(gcstate, i32(1)).view(1)[0].count,
         gen_at(gcstate, i32(2)).view(1)[0].count
@@ -2203,7 +2203,7 @@ impl gc_get_stats_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     while i < NUM_GENERATIONS {
         st = snapshot + i64(i);
         dct = Py_BuildValue(
-            "{snsnsn}",
+            ptr[u8]("{snsnsn}"),
             ptr[u8]("collections"),
             st.view(1)[0].collections,
             ptr[u8]("collected"),
@@ -2288,33 +2288,42 @@ impl gc_get_freeze_count(
 
 impl gcmodule_exec(module: ptr[PyObject]) -> i32 {
     gcstate = get_gc_state();
-    if PyModule_AddObjectRef(module, "garbage", gc_garbage_slot(gcstate).view(1)[0])
+    if PyModule_AddObjectRef(
+        module, ptr[u8]("garbage"), gc_garbage_slot(gcstate).view(1)[0]
+    )
         < 0 {
         return -1;
     }
-    if PyModule_AddObjectRef(module, "callbacks", gc_callbacks_slot(gcstate).view(1)[0])
+    if PyModule_AddObjectRef(
+        module, ptr[u8]("callbacks"), gc_callbacks_slot(gcstate).view(1)[0]
+    )
         < 0 {
         return -1;
     }
-    if PyModule_AddIntConstant(module, "DEBUG_STATS", i64(_PyGC_DEBUG_STATS)) < 0 {
+    if PyModule_AddIntConstant(module, ptr[u8]("DEBUG_STATS"), i64(_PyGC_DEBUG_STATS))
+        < 0 {
         return -1;
     }
     if PyModule_AddIntConstant(
-        module, "DEBUG_COLLECTABLE", i64(_PyGC_DEBUG_COLLECTABLE)
+        module, ptr[u8]("DEBUG_COLLECTABLE"), i64(_PyGC_DEBUG_COLLECTABLE)
     )
         < 0 {
         return -1;
     }
     if PyModule_AddIntConstant(
-        module, "DEBUG_UNCOLLECTABLE", i64(_PyGC_DEBUG_UNCOLLECTABLE)
+        module, ptr[u8]("DEBUG_UNCOLLECTABLE"), i64(_PyGC_DEBUG_UNCOLLECTABLE)
     )
         < 0 {
         return -1;
     }
-    if PyModule_AddIntConstant(module, "DEBUG_SAVEALL", i64(_PyGC_DEBUG_SAVEALL)) < 0 {
+    if PyModule_AddIntConstant(
+        module, ptr[u8]("DEBUG_SAVEALL"), i64(_PyGC_DEBUG_SAVEALL)
+    )
+        < 0 {
         return -1;
     }
-    if PyModule_AddIntConstant(module, "DEBUG_LEAK", i64(_PyGC_DEBUG_LEAK)) < 0 {
+    if PyModule_AddIntConstant(module, ptr[u8]("DEBUG_LEAK"), i64(_PyGC_DEBUG_LEAK))
+        < 0 {
         return -1;
     }
     return 0;

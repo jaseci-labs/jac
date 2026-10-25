@@ -166,7 +166,7 @@ def select_error -> ptr[PyObject] {
 
 """set_herror(): socket.herror((h_error, hstrerror(h_error)))."""
 def set_herror(module: ptr[PyObject], h_error: int) -> ptr[PyObject] {
-    v = Py_BuildValue("(is)", i32(h_error), hstrerror(i32(h_error)));
+    v = Py_BuildValue(ptr[u8]("(is)"), i32(h_error), hstrerror(i32(h_error)));
     if v {
         PyErr_SetObject(state_ref(module, STATE_HERROR), v);
         jacpy_release(v);
@@ -180,7 +180,7 @@ def set_gaierror(module: ptr[PyObject], error: int) -> ptr[PyObject] {
     if error == EAI_SYSTEM {
         return set_error();
     }
-    v = Py_BuildValue("(is)", i32(error), gai_strerror(i32(error)));
+    v = Py_BuildValue(ptr[u8]("(is)"), i32(error), gai_strerror(i32(error)));
     if v {
         PyErr_SetObject(state_ref(module, STATE_GAIERROR), v);
         jacpy_release(v);

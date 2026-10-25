@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 226 C files / 393,936 lines; 159 headers / 153,997 lines.
-#   Total: 385 files / 547,933 source lines.
+#   Excluded: 229 C files / 397,854 lines; 159 headers / 153,997 lines.
+#   Total: 388 files / 551,851 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -149,7 +149,7 @@ Python/frozenmain.c
 Python/gc_free_threading.c
 # Python/gc_gil.c  # removed: 17 source lines
 # Python/generated_cases.c.h  # removed: 12,528 source lines
-Python/getargs.c
+# Python/getargs.c  # removed: 2,863 source lines
 Python/getcompiler.c
 Python/getcopyright.c
 Python/getopt.c
@@ -169,7 +169,7 @@ Python/interpconfig.c
 # Python/legacy_tracing.c  # removed: 781 source lines
 # Python/lock.c  # removed: 638 source lines
 Python/marshal.c
-Python/modsupport.c
+# Python/modsupport.c  # removed: 673 source lines
 # Python/mysnprintf.c  # removed: 80 source lines
 # Python/mystrtoul.c  # removed: 297 source lines
 # Python/object_stack.c  # removed: 66 source lines
@@ -201,7 +201,7 @@ Python/pythonrun.c
 # Python/specialize.c  # removed: 3,232 source lines
 Python/stackrefs.c
 Python/stdlib_module_names.h
-Python/structmember.c
+# Python/structmember.c  # removed: 382 source lines
 Python/suggestions.c
 # Python/symtable.c  # removed: 3,272 source lines
 Python/sysmodule.c

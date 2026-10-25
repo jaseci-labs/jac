@@ -1502,17 +1502,17 @@ impl jacpy_math_parts(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
         if not (isnan(x) or isinf(x) or x == 0.0) {
             x = frexp(x, &mut exponent);
         }
-        return Py_BuildValue("(di)", x, exponent);
+        return Py_BuildValue(ptr[u8]("(di)"), x, exponent);
     }
     if isinf(x) {
-        return Py_BuildValue("(dd)", copysign(0.0, x), x);
+        return Py_BuildValue(ptr[u8]("(dd)"), copysign(0.0, x), x);
     }
     if isnan(x) {
-        return Py_BuildValue("(dd)", x, x);
+        return Py_BuildValue(ptr[u8]("(dd)"), x, x);
     }
     whole: float = 0.0;
     fraction = modf(x, &mut whole);
-    return Py_BuildValue("(dd)", fraction, whole);
+    return Py_BuildValue(ptr[u8]("(dd)"), fraction, whole);
 }
 
 impl jacpy_math_ldexp(value: ptr[PyObject], exponent: ptr[PyObject]) -> ptr[PyObject] {

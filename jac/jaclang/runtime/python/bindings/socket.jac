@@ -216,7 +216,7 @@ def:priv add_state(
         return False;
     }
     jacpy_binding_state_set(module, i64(index), value);
-    status = PyModule_AddObjectRef(module, name, value);
+    status = jacpy_module_add_object_ref_text(module, name, value);
     jacpy_release(value);
     return status >= 0;
 }
@@ -229,20 +229,20 @@ def:priv add_constants(module: ptr[PyObject]) -> bool {
         if name in INTERNAL {
             continue;
         }
-        if PyModule_AddIntConstant(module, name, value) < 0 {
+        if jacpy_module_add_int_text(module, name, value) < 0 {
             return False;
         }
         published.add(name);
     }
     for (name, value) in FALLBACKS {
         if name not in published
-            and PyModule_AddIntConstant(module, name, i64(value)) < 0 {
+            and jacpy_module_add_int_text(module, name, i64(value)) < 0 {
             return False;
         }
     }
     if HAS_VSOCK {
         for (name, value) in VSOCK_CONSTANTS {
-            if PyModule_AddIntConstant(module, name, i64(value)) < 0 {
+            if jacpy_module_add_int_text(module, name, i64(value)) < 0 {
                 return False;
             }
         }
@@ -274,8 +274,8 @@ def:priv socket_exec(module: ptr[PyObject]) -> i32 {
         ) {
         return i32(-1);
     }
-    if PyModule_AddObjectRef(module, "error", PyExc_OSError) < 0
-        or PyModule_AddObjectRef(module, "timeout", PyExc_TimeoutError) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("error"), PyExc_OSError) < 0
+        or PyModule_AddObjectRef(module, ptr[u8]("timeout"), PyExc_TimeoutError) < 0 {
         return i32(-1);
     }
     if not install_sock_methods() {
@@ -286,7 +286,7 @@ def:priv socket_exec(module: ptr[PyObject]) -> i32 {
         or PyModule_AddType(module, sock_type) < 0 {
         return i32(-1);
     }
-    if PyModule_AddObjectRef(module, "has_ipv6", py_true()) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("has_ipv6"), py_true()) < 0 {
         return i32(-1);
     }
     # Export the C API.
@@ -304,7 +304,7 @@ def:priv socket_exec(module: ptr[PyObject]) -> i32 {
         sock_capi_free(capi);
         return i32(-1);
     }
-    if PyModule_Add(module, "CAPI", capsule) < 0 {
+    if PyModule_Add(module, ptr[u8]("CAPI"), capsule) < 0 {
         return i32(-1);
     }
     if not add_constants(module) {

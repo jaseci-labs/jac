@@ -398,7 +398,7 @@ impl meth_reduce(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     if not self or module_check(self) {
         return unicode_from_cstring(name);
     }
-    return Py_BuildValue("N(Os)", eval_builtin("getattr"), self, name);
+    return Py_BuildValue(ptr[u8]("N(Os)"), eval_builtin("getattr"), self, name);
 }
 
 impl meth_get__text_signature__(op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {

@@ -1389,7 +1389,7 @@ impl list_ass_item(op: ptr[PyObject], i: i64, v: ptr[PyObject]) -> i32 {
 impl list_insert(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs != 2 and _PyArg_CheckPositional("insert", nargs, 2, 2) == 0 {
+    if nargs != 2 and _PyArg_CheckPositional(ptr[u8]("insert"), nargs, 2, 2) == 0 {
         return NULL;
     }
     index = index_argument(args.view(1)[0]);
@@ -1630,7 +1630,7 @@ impl list_inplace_concat(op: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObjec
 impl list_pop(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if nargs > 1 and _PyArg_CheckPositional("pop", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("pop"), nargs, 0, 1) == 0 {
         return NULL;
     }
     index: i64 = -1;
@@ -2860,7 +2860,8 @@ impl list_reverse(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
 impl list_index(
     op: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    if (nargs < 1 or nargs > 3) and _PyArg_CheckPositional("index", nargs, 1, 3) == 0 {
+    if (nargs < 1 or nargs > 3)
+        and _PyArg_CheckPositional(ptr[u8]("index"), nargs, 1, 3) == 0 {
         return NULL;
     }
     value = args.view(1)[0];
@@ -3030,11 +3031,11 @@ impl list___init__(
         or int(object_type(op).view(1)[0].tp_new) == int(base.view(1)[0].tp_new)
     )
         and kwargs
-        and _PyArg_NoKeywords("list", kwargs) == 0 {
+        and _PyArg_NoKeywords(ptr[u8]("list"), kwargs) == 0 {
         return i32(-1);
     }
     nargs = object_size(args);
-    if nargs > 1 and _PyArg_CheckPositional("list", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("list"), nargs, 0, 1) == 0 {
         return i32(-1);
     }
     iterable = tuple_get_item(args, 0) if nargs >= 1 else NULL;
@@ -3044,11 +3045,11 @@ impl list___init__(
 impl list_vectorcall(
     type: ptr[PyObject], args: ptr[ptr[PyObject]], nargsf: u64, kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if kwnames and _PyArg_NoKwnames("list", kwnames) == 0 {
+    if kwnames and _PyArg_NoKwnames(ptr[u8]("list"), kwnames) == 0 {
         return NULL;
     }
     nargs = PyVectorcall_NARGS(nargsf);
-    if nargs > 1 and _PyArg_CheckPositional("list", nargs, 0, 1) == 0 {
+    if nargs > 1 and _PyArg_CheckPositional(ptr[u8]("list"), nargs, 0, 1) == 0 {
         return NULL;
     }
     op = PyType_GenericAlloc(type, 0);
@@ -3447,12 +3448,14 @@ impl listiter_reduce_general(op: ptr[PyObject], forward: bool) -> ptr[PyObject] 
     it = listiter_of(op);
     index = it.view(1)[0].it_index;
     if index >= 0 {
-        return Py_BuildValue("N(O)n", iter, ptr[PyObject](it.view(1)[0].it_seq), index);
+        return Py_BuildValue(
+            ptr[u8]("N(O)n"), iter, ptr[PyObject](it.view(1)[0].it_seq), index
+        );
     }
     empty = PyList_New(0);
     if not empty {
         object_xdecref(iter);
         return NULL;
     }
-    return Py_BuildValue("N(N)", iter, empty);
+    return Py_BuildValue(ptr[u8]("N(N)"), iter, empty);
 }
