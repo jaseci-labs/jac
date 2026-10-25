@@ -338,10 +338,7 @@ impl native_capability_violations(
                     resolve_native_module,
                     set_native_variant_os
                 }
-                """Judge bundled-stdlib lookups against the module being
-                checked, not the host: `subprocess.linux.jac` importing
-                `signal` resolves to the linux bundle even on a darwin
-                host, where the host-os probe finds no bundle at all.""";
+
                 _imp_os = (
                     importer_variant_os(mod.loc.mod_path)
                         if (mod?.loc and mod.loc.mod_path)

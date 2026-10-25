@@ -736,18 +736,12 @@ impl is_bundled_native_module(module_name: str) -> bool {
 }
 
 impl set_native_variant_os(os_name: str | None) -> (str | None) {
-    """Pin the os _native_variant_path probes, for code checking an importer
-    that is itself a platform variant: subprocess.linux.jac importing
-    ._subprocess_native must find the linux variant even on a darwin host,
-    where the host-os probe finds nothing and the import fails.""";
     prev = _native_variant_os_ctx.get(None);
     _native_variant_os_ctx.set(os_name);
     return prev;
 }
 
 impl importer_variant_os(path: str) -> str {
-    """The os a platform-variant module path declares: signal.linux.jac is
-    linux, time_platform.darwin.aarch64.jac is darwin, mod.jac has none.""";
     import os;
     name = os.path.basename(path);
     if not name.endswith(".jac") {
