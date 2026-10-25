@@ -18111,6 +18111,26 @@ graph import runtime.python {
             _Py_NoneStruct,
             _Py_TrueStruct
         },
+        interpreter.thread {
+            NULL,
+            PyErr_Clear,
+            PyErr_SetString,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyExc_OverflowError,
+            PyExc_ValueError,
+            PyInterpreterState,
+            PyMem_RawCalloc,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyObject,
+            PyUnicode_DecodeFSDefaultAndSize,
+            PyUnicode_FromString,
+            Py_None,
+            _PyRuntime,
+            jacpy_errno,
+            jacpy_set_errno
+        },
         layouts { PyMemberDef, PyMethodDef, PyObject, Py_buffer, Py_complex },
         modules.abc {
             NULL,
@@ -22932,6 +22952,37 @@ graph import runtime.python {
             jacpy_set_errno,
             jacpy_stdio_fileno
         },
+        object_model.fileutils {
+            FILE,
+            NULL,
+            PyErr_CheckSignals,
+            PyErr_NoMemory,
+            PyErr_SetFromErrno,
+            PyErr_SetFromErrnoWithFilenameObject,
+            PyErr_SetFromErrnoWithFilenameObjects,
+            PyErr_SetString,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyExc_OSError,
+            PyExc_RuntimeWarning,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyObject,
+            PySys_Audit,
+            PyUnicode_DecodeFSDefault,
+            PyUnicode_DecodeLocale,
+            PyUnicode_EncodeFSDefault,
+            PyUnicode_FSConverter,
+            PyUnicode_FromWideChar,
+            Py_None,
+            _PyMem_Strdup,
+            _PyRuntime,
+            jacpy_errno,
+            jacpy_set_errno,
+            lconv
+        },
         object_model.float {
             NULL,
             PyBool_FromLong,
@@ -23890,6 +23941,27 @@ graph import runtime.python {
             PyMem_Free,
             PyMem_Malloc,
             PyObject,
+            jacpy_errno,
+            jacpy_set_errno
+        },
+        object_model.pytime {
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_Occurred,
+            PyErr_SetFromErrno,
+            PyErr_SetString,
+            PyExc_OSError,
+            PyExc_OverflowError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyFloat_AsDouble,
+            PyFloat_Type,
+            PyLong_AsLongLong,
+            PyLong_FromLongLong,
+            PyObject,
+            _PyRuntime,
+            _PyTimeFraction,
+            _Py_clock_info_t,
             jacpy_errno,
             jacpy_set_errno
         },
@@ -25630,6 +25702,16 @@ graph import runtime.python {
             propertyobject
         },
         interpreter.stackref | modules.decimal_objects { PyTypeObject, _object },
+        interpreter.thread {
+            PY_LOCK_ACQUIRED,
+            PY_LOCK_FAILURE,
+            PY_LOCK_INTR,
+            PyStructSequence_Desc,
+            PyStructSequence_Field,
+            PyTypeObject,
+            _PyTime_ROUND_CEILING,
+            _PyTime_ROUND_TIMEOUT
+        },
         modules.asyncio {
             PYGEN_ERROR,
             PYGEN_NEXT,
@@ -26499,6 +26581,7 @@ graph import runtime.python {
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _object
         },
+        object_model.fileutils { PyBytesObject_OB_SVAL, _Py_STR_utf_8 },
         object_model.float {
             METH_CLASS,
             METH_FASTCALL,
@@ -27321,6 +27404,16 @@ graph import runtime.python {
             _object
         },
         object_model.pystrtod { Py_DTSF_ADD_DOT_0, Py_DTSF_SIGN },
+        object_model.pytime {
+            PyStatus,
+            PyTypeObject,
+            Py_TPFLAGS_LONG_SUBCLASS,
+            _PyStatus_TYPE_ERROR,
+            _PyStatus_TYPE_OK,
+            _PyTime_ROUND_CEILING,
+            _PyTime_ROUND_FLOOR,
+            _PyTime_ROUND_HALF_EVEN
+        },
         object_model.range {
             METH_NOARGS,
             METH_O,
@@ -28356,6 +28449,29 @@ graph import runtime.python {
             _PyRuntimeState_BYTES_EMPTY,
             _PyRuntimeState_TUPLE_EMPTY
         },
+        interpreter.thread {
+            EAGAIN,
+            EBUSY,
+            EINTR,
+            ENOMEM,
+            ETIMEDOUT,
+            PTHREAD_ATTR_SIZE,
+            PTHREAD_KEY_T_IS_COMPATIBLE_WITH_INT,
+            PTHREAD_LOCK_COND,
+            PTHREAD_LOCK_MUTEX,
+            PTHREAD_LOCK_SIZE,
+            PTHREAD_SCOPE_SYSTEM,
+            PYTHREAD_CS_GNU_LIBPTHREAD_VERSION,
+            PyInterpreterState_THREADS_STACKSIZE,
+            Py_tss_t_SIZE,
+            Py_tss_t__KEY,
+            SEM_T_SIZE,
+            SIZEOF_PTHREAD_KEY_T,
+            _PyRuntimeState_THREADS_CONDATTR_PTR,
+            _PyRuntimeState_THREADS_CONDATTR_VAL,
+            _PyRuntimeState_THREADS_INITIALIZED,
+            _SC_THREAD_STACK_MIN
+        },
         object_model.bltinmodule { PyConfig_OPTIMIZATION_LEVEL },
         object_model.bootstrap_hash {
             EACCES,
@@ -28419,6 +28535,33 @@ graph import runtime.python {
             PyInterpreterState_EXC_MEMERRORS_FREELIST,
             PyInterpreterState_EXC_MEMERRORS_NUMFREE,
             PyInterpreterState_LAST_RESORT_MEMORY_ERROR
+        },
+        object_model.fileutils {
+            CODESET,
+            EACCES,
+            EBADF,
+            EINTR,
+            EINVAL,
+            ENOMEM,
+            ENOTTY,
+            FD_CLOEXEC,
+            FIOCLEX,
+            FIONBIO,
+            FIONCLEX,
+            F_DUPFD_CLOEXEC,
+            F_GETFD,
+            F_GETFL,
+            F_SETFD,
+            HAVE_O_PATH,
+            LC_CTYPE,
+            LC_NUMERIC,
+            MAXPATHLEN,
+            O_CLOEXEC,
+            O_NONBLOCK,
+            _PyRuntimeState_FILEUTILS_FORCE_ASCII,
+            _PyRuntimeState_PRECONFIG_UTF8_MODE,
+            _Py_FORCE_UTF8_FS_ENCODING,
+            _SC_CLK_TCK
         },
         object_model.frame {
             PyThreadState_EXC_INFO,
@@ -28548,6 +28691,12 @@ graph import runtime.python {
             _PyThreadStateImpl_QSBR
         },
         object_model.pymath { HAVE_X87_CONTROL_WORD },
+        object_model.pytime {
+            CLOCK_MONOTONIC,
+            CLOCK_REALTIME,
+            EINVAL,
+            _PyRuntimeState_TIME
+        },
         object_model.tracemalloc {
             PyThreadState_CURRENT_FRAME,
             _PyInterpreterFrame_F_BUILTINS,
@@ -29056,6 +29205,22 @@ graph import runtime.python {
         },
     ]
     modules.contextvars ++> bindings.contextvars { _contextvars_copy_context_impl }
+    modules.core_platform ++> [
+        interpreter.thread {
+            PYTHREAD_CONDATTR_MONOTONIC,
+            PYTHREAD_USE_SEMAPHORES,
+            THREAD_STACK_SIZE,
+            condattr_set_monotonic,
+            native_thread_id,
+            semaphore_timedwait
+        },
+        object_model.pytime {
+            PYTIME_MACH_CLOCK,
+            mach_ticks,
+            mach_timebase,
+            timeval_store
+        },
+    ]
     modules.csv ++> [
         bindings.clinic.csv {
             _csv_field_size_limit_impl,
@@ -31321,9 +31486,9 @@ graph import runtime.python {
         UF_SETTABLE,
         UF_TRACKED
     }
-    modules.stat_records ++> cpython_api | object_model.bootstrap_hash {
-        _Py_stat_struct
-    }
+    modules.stat_records ++> cpython_api
+        | object_model.bootstrap_hash
+        | object_model.fileutils { _Py_stat_struct }
     modules.statistics ++> bindings.clinic.statistics {
         _statistics__normal_dist_inv_cdf_impl
     }
@@ -31424,7 +31589,10 @@ graph import runtime.python {
     ]
     modules.time_constants ++> bindings.time { CONSTANTS, PLATFORM }
     modules.time_platform ++> bindings.time { HAS_PTHREAD_GETCPUCLOCKID }
-    modules.time_records ++> cpython_api { timespec, timeval, tm }
+    modules.time_records ++> [
+        cpython_api | object_model.pytime { timespec, timeval, tm },
+        interpreter.thread { timespec },
+    ]
     modules.tracemalloc ++> bindings.clinic.tracemalloc {
         _tracemalloc__get_object_traceback_impl,
         _tracemalloc__get_traces_impl,
@@ -31873,6 +32041,13 @@ graph import runtime.python {
             type_has_feature
         },
         interpreter.stackref { object_incref, object_new_ref },
+        interpreter.thread {
+            current_interp,
+            current_tstate,
+            object_decref,
+            object_new_ref,
+            tuple_set_item
+        },
         modules.asyncio { freelist_pop, freelist_push },
         modules.datetime_objects { object_type, object_type_check },
         modules.decimal_context
@@ -31911,11 +32086,27 @@ graph import runtime.python {
         interpreter.ops_attr { managed_dict },
         interpreter.specialize { type_is_ready },
     ]
+    object_model.pytime ++> interpreter.thread {
+        pytime_add,
+        pytime_as_microseconds,
+        pytime_as_timespec,
+        pytime_deadline_get,
+        pytime_deadline_init,
+        pytime_from_microseconds_clamp,
+        pytime_from_object,
+        pytime_monotonic,
+        pytime_system
+    }
     object_model.slice ++> modules.elementtree | modules.sqlite3 {
         PySlice_AdjustIndices,
         PySlice_Unpack
     }
     object_model.structseq ++> [
+        interpreter.thread {
+            PyStructSequence_New,
+            _PyStructSequence_FiniBuiltin,
+            _PyStructSequence_InitBuiltinWithFlags
+        },
         modules.grp
             | modules.lsprof
             | modules.posix_fileio
@@ -33585,7 +33776,10 @@ graph import runtime.python.bindings {
 }
 
 graph import runtime.python.interpreter {
-    ceval_gil ++> ceval | instrumentation | legacy_tracing { head_lock, head_unlock }
+    ceval_gil ++> [
+        ceval | instrumentation | legacy_tracing { head_lock, head_unlock },
+        thread { _PyEval_MakePendingCalls },
+    ]
     frame ++> [
         ceval { iframe_first_complete },
         instrumentation {
@@ -36789,9 +36983,9 @@ graph import runtime.python.modules {
         pthread_getcpuclockid
     }
     time_records ++> [
+        core_platform | select { timespec, timeval },
         datetime_date | datetime_datetime | datetime_format { tm },
         posix_fileio | posix_fileio_platform | posix_files | time_platform { timespec },
-        select { timespec, timeval },
         time { timespec, timeval, tm, tms },
     ]
     unicodedata_db ++> unicodedata {
@@ -37302,6 +37496,7 @@ graph import runtime.python.object_model {
             type_has_feature
         },
         file { PyType_Type, _Py_FalseStruct, _Py_TrueStruct },
+        fileutils { object_decref, object_new_ref },
         float {
             freelist,
             freelist_pop,
@@ -37532,6 +37727,7 @@ graph import runtime.python.object_model {
             tuple_set_item
         },
         picklebuffer { object_gc_untrack, object_is_type, object_type },
+        pytime { object_type, object_type_check, type_has_feature },
         range {
             PyType_Type,
             _Py_FalseStruct,
@@ -37747,6 +37943,7 @@ graph import runtime.python.object_model {
         },
         type { stackref_as_object_steal, type_is_ready, var_size },
     ]
+    obmalloc ++> fileutils { _PyMem_RawWcsdup }
     set ++> exceptions { Py_FatalError }
     slice ++> [
         bytearray | bytes | list | memory | tuple | unicode {
@@ -37761,7 +37958,7 @@ graph import runtime.python.object_model {
         context { gc_may_be_tracked },
     ]
     type ++> [
-        bltinmodule { py_id },
+        bltinmodule | fileutils { py_id },
         codecs { py_id, tuple_check, tuple_check_exact },
         hamt { py_clear, py_xsetref },
         tracemalloc { type_preheader_size },

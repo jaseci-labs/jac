@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 223 C files / 389,167 lines; 157 headers / 152,680 lines.
-#   Total: 380 files / 541,847 source lines.
+#   Excluded: 226 C files / 393,936 lines; 159 headers / 153,997 lines.
+#   Total: 385 files / 547,933 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -125,7 +125,7 @@ Python/clinic/traceback.c.h
 # Python/codecs.c  # removed: 1,708 source lines
 # Python/codegen.c  # removed: 6,485 source lines
 # Python/compile.c  # removed: 1,753 source lines
-Python/condvar.h
+# Python/condvar.h  # removed: 315 source lines
 Python/config_common.h
 # Python/context.c  # removed: 1,364 source lines
 # Python/critical_section.c  # removed: 205 source lines
@@ -137,7 +137,7 @@ Python/dynamic_annotations.c
 Python/dynload_shlib.c
 Python/errors.c
 # Python/executor_cases.c.h  # pruned: 7,163 source lines
-Python/fileutils.c
+# Python/fileutils.c  # removed: 3,112 source lines
 # Python/flowgraph.c  # removed: 4,167 source lines
 # Python/formatter_unicode.c  # removed: 1,726 source lines
 # Python/frame.c  # removed: 159 source lines
@@ -194,7 +194,7 @@ Python/pystate.c
 # Python/pystrhex.c  # removed: 171 source lines
 # Python/pystrtod.c  # removed: 1,286 source lines
 Python/pythonrun.c
-Python/pytime.c
+# Python/pytime.c  # removed: 1,356 source lines
 # Python/qsbr.c  # removed: 290 source lines
 # Python/remote_debug.h  # removed: 1,191 source lines
 # Python/remote_debugging.c  # removed: 401 source lines
@@ -205,9 +205,9 @@ Python/structmember.c
 Python/suggestions.c
 # Python/symtable.c  # removed: 3,272 source lines
 Python/sysmodule.c
-Python/thread.c
+# Python/thread.c  # removed: 301 source lines
 # Python/thread_nt.h  # pruned: 532 source lines
-Python/thread_pthread.h
+# Python/thread_pthread.h  # removed: 1,002 source lines
 # Python/thread_pthread_stubs.h  # pruned: 191 source lines
 Python/traceback.c
 # Python/tracemalloc.c  # removed: 1,489 source lines

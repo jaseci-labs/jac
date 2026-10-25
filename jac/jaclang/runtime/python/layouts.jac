@@ -2415,4 +2415,5 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      tracemalloc_traceback_FRAMES: Final[i64] = 12,
      _Py_slist_t_SIZE: Final[u64] = 8,
      _Py_hashtable_entry_t_SIZE: Final[u64] = 32,
-     _Py_hashtable_t_SIZE: Final[u64] = 80;
+     _Py_hashtable_t_SIZE: Final[u64] = 80,
+     _Py_STR_utf_8: Final[i64] = 1184;

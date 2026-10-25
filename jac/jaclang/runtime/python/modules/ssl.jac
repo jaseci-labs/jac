@@ -670,7 +670,7 @@ impl context_set_keylog_filename(instance: ptr[PyObject], arg: ptr[PyObject]) ->
         return i32(0);
     }
 
-    fp = Py_fopen(arg, "a");
+    fp = Py_fopen(arg, ptr[u8]("a"));
     if not fp {
         return i32(-1);
     }
@@ -2982,7 +2982,7 @@ impl _ssl__SSLContext_load_dh_params_impl(
     if ctx is None {
         return NULL;
     }
-    f = Py_fopen(filepath, "rb");
+    f = Py_fopen(filepath, ptr[u8]("rb"));
     if not f {
         return NULL;
     }

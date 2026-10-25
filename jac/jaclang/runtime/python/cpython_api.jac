@@ -670,7 +670,9 @@ import from c {
         arg0: ptr[PyObject]
     );  def Py_TYPE(ob: ptr[PyObject]) -> ptr[PyObject];  def Py_XNewRef(
         obj_: ptr[PyObject]
-    ) -> ptr[PyObject];  def Py_fopen(path: ptr[PyObject], mode: str) -> ptr[FILE];  def _PyArg_BadArgument(
+    ) -> ptr[PyObject];  def Py_fopen(
+        path: ptr[PyObject], mode: ptr[u8]
+    ) -> ptr[FILE];  def _PyArg_BadArgument(
         fname: str, displayname: str, expected: str, arg: ptr[PyObject]
     );  def _PyArg_CheckPositional(arg0: str, arg1: i64, arg2: i64, arg3: i64) -> i32;  def _PyArg_NoKeywords(
         funcname: str, kwargs: ptr[PyObject]

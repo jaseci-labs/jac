@@ -92,6 +92,24 @@
 #else
 #define JAC_HAVE_X87 0
 #endif
+#include <semaphore.h>
+#include <sys/ioctl.h>
+#include <sys/param.h>
+#include <locale.h>
+#include <langinfo.h>
+#ifdef O_PATH
+#define JAC_HAVE_O_PATH 1
+#else
+#define JAC_HAVE_O_PATH 0
+#endif
+#ifdef _CS_GNU_LIBPTHREAD_VERSION
+#define JAC_CS_GNU_LIBPTHREAD_VERSION _CS_GNU_LIBPTHREAD_VERSION
+#else
+#define JAC_CS_GNU_LIBPTHREAD_VERSION -1
+#endif
+#ifndef SYS_gettid
+#define SYS_gettid 0
+#endif
 
 /* The private object structs of the ported Objects/ files, as the
  * pinned sources define them. */
@@ -3762,6 +3780,7 @@ CONSTANT(offsetof(struct tracemalloc_traceback, frames), 12LL);
 CONSTANT(sizeof(_Py_slist_t), 8LL);
 CONSTANT(sizeof(_Py_hashtable_entry_t), 32LL);
 CONSTANT(sizeof(_Py_hashtable_t), 80LL);
+CONSTANT(offsetof(struct _Py_global_strings, literals._py_utf_8), 1184LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -4013,6 +4032,45 @@ CONSTANT(ENOENT, 2LL);
 CONSTANT(ENXIO, 6LL);
 CONSTANT(ENODEV, 19LL);
 CONSTANT(EACCES, 13LL);
+CONSTANT(offsetof(_PyRuntimeState, time), 13952LL);
+CONSTANT(offsetof(_PyRuntimeState, preconfig.utf8_mode), 10508LL);
+CONSTANT(offsetof(_PyRuntimeState, fileutils.force_ascii), 10016LL);
+CONSTANT(offsetof(_PyRuntimeState, threads.initialized), 1216LL);
+CONSTANT(offsetof(_PyRuntimeState, threads._condattr_monotonic.ptr), 1224LL);
+CONSTANT(offsetof(_PyRuntimeState, threads._condattr_monotonic.val), 1232LL);
+CONSTANT(offsetof(PyInterpreterState, threads.stacksize), 7376LL);
+CONSTANT(offsetof(Py_tss_t, _key), 4LL);
+CONSTANT(sizeof(Py_tss_t), 8LL);
+CONSTANT(sizeof(pthread_key_t), 4LL);
+CONSTANT(sizeof(pthread_key_t) == sizeof(int), 1LL);
+CONSTANT(sizeof(pthread_attr_t), 56LL);
+CONSTANT(_Alignof(pthread_cond_t), 8LL);
+CONSTANT((_Alignof(pthread_cond_t) + sizeof(pthread_cond_t) + _Alignof(pthread_mutex_t) - 1) / _Alignof(pthread_mutex_t) * _Alignof(pthread_mutex_t), 56LL);
+CONSTANT(sizeof(struct { char locked; pthread_cond_t lock_released; pthread_mutex_t mut; }), 96LL);
+CONSTANT(sizeof(sem_t), 32LL);
+CONSTANT(PTHREAD_SCOPE_SYSTEM, 0LL);
+CONSTANT(_SC_THREAD_STACK_MIN, 75LL);
+CONSTANT(_SC_CLK_TCK, 2LL);
+CONSTANT(JAC_CS_GNU_LIBPTHREAD_VERSION, 3LL);
+CONSTANT(SYS_gettid, 186LL);
+CONSTANT(CLOCK_REALTIME, 0LL);
+CONSTANT(EBADF, 9LL);
+CONSTANT(ENOTTY, 25LL);
+CONSTANT(EBUSY, 16LL);
+CONSTANT(O_NONBLOCK, 2048LL);
+CONSTANT(JAC_HAVE_O_PATH, 1LL);
+CONSTANT(F_GETFD, 1LL);
+CONSTANT(F_SETFD, 2LL);
+CONSTANT(FD_CLOEXEC, 1LL);
+CONSTANT(F_GETFL, 3LL);
+CONSTANT(F_DUPFD_CLOEXEC, 1030LL);
+CONSTANT(FIOCLEX, 21585LL);
+CONSTANT(FIONCLEX, 21584LL);
+CONSTANT(FIONBIO, 21537LL);
+CONSTANT(MAXPATHLEN, 4096LL);
+CONSTANT(LC_CTYPE, 0LL);
+CONSTANT(LC_NUMERIC, 1LL);
+CONSTANT(CODESET, 14LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4262,6 +4320,45 @@ CONSTANT(ENOENT, 2LL);
 CONSTANT(ENXIO, 6LL);
 CONSTANT(ENODEV, 19LL);
 CONSTANT(EACCES, 13LL);
+CONSTANT(offsetof(_PyRuntimeState, time), 13952LL);
+CONSTANT(offsetof(_PyRuntimeState, preconfig.utf8_mode), 10508LL);
+CONSTANT(offsetof(_PyRuntimeState, fileutils.force_ascii), 10016LL);
+CONSTANT(offsetof(_PyRuntimeState, threads.initialized), 1216LL);
+CONSTANT(offsetof(_PyRuntimeState, threads._condattr_monotonic.ptr), 1224LL);
+CONSTANT(offsetof(_PyRuntimeState, threads._condattr_monotonic.val), 1232LL);
+CONSTANT(offsetof(PyInterpreterState, threads.stacksize), 7376LL);
+CONSTANT(offsetof(Py_tss_t, _key), 4LL);
+CONSTANT(sizeof(Py_tss_t), 8LL);
+CONSTANT(sizeof(pthread_key_t), 4LL);
+CONSTANT(sizeof(pthread_key_t) == sizeof(int), 1LL);
+CONSTANT(sizeof(pthread_attr_t), 64LL);
+CONSTANT(_Alignof(pthread_cond_t), 8LL);
+CONSTANT((_Alignof(pthread_cond_t) + sizeof(pthread_cond_t) + _Alignof(pthread_mutex_t) - 1) / _Alignof(pthread_mutex_t) * _Alignof(pthread_mutex_t), 56LL);
+CONSTANT(sizeof(struct { char locked; pthread_cond_t lock_released; pthread_mutex_t mut; }), 104LL);
+CONSTANT(sizeof(sem_t), 32LL);
+CONSTANT(PTHREAD_SCOPE_SYSTEM, 0LL);
+CONSTANT(_SC_THREAD_STACK_MIN, 75LL);
+CONSTANT(_SC_CLK_TCK, 2LL);
+CONSTANT(JAC_CS_GNU_LIBPTHREAD_VERSION, 3LL);
+CONSTANT(SYS_gettid, 178LL);
+CONSTANT(CLOCK_REALTIME, 0LL);
+CONSTANT(EBADF, 9LL);
+CONSTANT(ENOTTY, 25LL);
+CONSTANT(EBUSY, 16LL);
+CONSTANT(O_NONBLOCK, 2048LL);
+CONSTANT(JAC_HAVE_O_PATH, 1LL);
+CONSTANT(F_GETFD, 1LL);
+CONSTANT(F_SETFD, 2LL);
+CONSTANT(FD_CLOEXEC, 1LL);
+CONSTANT(F_GETFL, 3LL);
+CONSTANT(F_DUPFD_CLOEXEC, 1030LL);
+CONSTANT(FIOCLEX, 21585LL);
+CONSTANT(FIONCLEX, 21584LL);
+CONSTANT(FIONBIO, 21537LL);
+CONSTANT(MAXPATHLEN, 4096LL);
+CONSTANT(LC_CTYPE, 0LL);
+CONSTANT(LC_NUMERIC, 1LL);
+CONSTANT(CODESET, 14LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4511,6 +4608,45 @@ CONSTANT(ENOENT, 2LL);
 CONSTANT(ENXIO, 6LL);
 CONSTANT(ENODEV, 19LL);
 CONSTANT(EACCES, 13LL);
+CONSTANT(offsetof(_PyRuntimeState, time), 13448LL);
+CONSTANT(offsetof(_PyRuntimeState, preconfig.utf8_mode), 10004LL);
+CONSTANT(offsetof(_PyRuntimeState, fileutils.force_ascii), 9504LL);
+CONSTANT(offsetof(_PyRuntimeState, threads.initialized), 1208LL);
+CONSTANT(offsetof(_PyRuntimeState, threads._condattr_monotonic.ptr), 1216LL);
+CONSTANT(offsetof(_PyRuntimeState, threads._condattr_monotonic.val), 1224LL);
+CONSTANT(offsetof(PyInterpreterState, threads.stacksize), 7376LL);
+CONSTANT(offsetof(Py_tss_t, _key), 8LL);
+CONSTANT(sizeof(Py_tss_t), 16LL);
+CONSTANT(sizeof(pthread_key_t), 8LL);
+CONSTANT(sizeof(pthread_key_t) == sizeof(int), 0LL);
+CONSTANT(sizeof(pthread_attr_t), 64LL);
+CONSTANT(_Alignof(pthread_cond_t), 8LL);
+CONSTANT((_Alignof(pthread_cond_t) + sizeof(pthread_cond_t) + _Alignof(pthread_mutex_t) - 1) / _Alignof(pthread_mutex_t) * _Alignof(pthread_mutex_t), 56LL);
+CONSTANT(sizeof(struct { char locked; pthread_cond_t lock_released; pthread_mutex_t mut; }), 120LL);
+CONSTANT(sizeof(sem_t), 4LL);
+CONSTANT(PTHREAD_SCOPE_SYSTEM, 1LL);
+CONSTANT(_SC_THREAD_STACK_MIN, 93LL);
+CONSTANT(_SC_CLK_TCK, 3LL);
+CONSTANT(JAC_CS_GNU_LIBPTHREAD_VERSION, -1LL);
+CONSTANT(SYS_gettid, 0LL);
+CONSTANT(CLOCK_REALTIME, 0LL);
+CONSTANT(EBADF, 9LL);
+CONSTANT(ENOTTY, 25LL);
+CONSTANT(EBUSY, 16LL);
+CONSTANT(O_NONBLOCK, 4LL);
+CONSTANT(JAC_HAVE_O_PATH, 0LL);
+CONSTANT(F_GETFD, 1LL);
+CONSTANT(F_SETFD, 2LL);
+CONSTANT(FD_CLOEXEC, 1LL);
+CONSTANT(F_GETFL, 3LL);
+CONSTANT(F_DUPFD_CLOEXEC, 67LL);
+CONSTANT(FIOCLEX, 536897025LL);
+CONSTANT(FIONCLEX, 536897026LL);
+CONSTANT(FIONBIO, 2147772030LL);
+CONSTANT(MAXPATHLEN, 1024LL);
+CONSTANT(LC_CTYPE, 2LL);
+CONSTANT(LC_NUMERIC, 4LL);
+CONSTANT(CODESET, 0LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -4760,6 +4896,45 @@ CONSTANT(ENOENT, 2LL);
 CONSTANT(ENXIO, 6LL);
 CONSTANT(ENODEV, 19LL);
 CONSTANT(EACCES, 13LL);
+CONSTANT(offsetof(_PyRuntimeState, time), 13448LL);
+CONSTANT(offsetof(_PyRuntimeState, preconfig.utf8_mode), 10004LL);
+CONSTANT(offsetof(_PyRuntimeState, fileutils.force_ascii), 9504LL);
+CONSTANT(offsetof(_PyRuntimeState, threads.initialized), 1208LL);
+CONSTANT(offsetof(_PyRuntimeState, threads._condattr_monotonic.ptr), 1216LL);
+CONSTANT(offsetof(_PyRuntimeState, threads._condattr_monotonic.val), 1224LL);
+CONSTANT(offsetof(PyInterpreterState, threads.stacksize), 7376LL);
+CONSTANT(offsetof(Py_tss_t, _key), 8LL);
+CONSTANT(sizeof(Py_tss_t), 16LL);
+CONSTANT(sizeof(pthread_key_t), 8LL);
+CONSTANT(sizeof(pthread_key_t) == sizeof(int), 0LL);
+CONSTANT(sizeof(pthread_attr_t), 64LL);
+CONSTANT(_Alignof(pthread_cond_t), 8LL);
+CONSTANT((_Alignof(pthread_cond_t) + sizeof(pthread_cond_t) + _Alignof(pthread_mutex_t) - 1) / _Alignof(pthread_mutex_t) * _Alignof(pthread_mutex_t), 56LL);
+CONSTANT(sizeof(struct { char locked; pthread_cond_t lock_released; pthread_mutex_t mut; }), 120LL);
+CONSTANT(sizeof(sem_t), 4LL);
+CONSTANT(PTHREAD_SCOPE_SYSTEM, 1LL);
+CONSTANT(_SC_THREAD_STACK_MIN, 93LL);
+CONSTANT(_SC_CLK_TCK, 3LL);
+CONSTANT(JAC_CS_GNU_LIBPTHREAD_VERSION, -1LL);
+CONSTANT(SYS_gettid, 0LL);
+CONSTANT(CLOCK_REALTIME, 0LL);
+CONSTANT(EBADF, 9LL);
+CONSTANT(ENOTTY, 25LL);
+CONSTANT(EBUSY, 16LL);
+CONSTANT(O_NONBLOCK, 4LL);
+CONSTANT(JAC_HAVE_O_PATH, 0LL);
+CONSTANT(F_GETFD, 1LL);
+CONSTANT(F_SETFD, 2LL);
+CONSTANT(FD_CLOEXEC, 1LL);
+CONSTANT(F_GETFL, 3LL);
+CONSTANT(F_DUPFD_CLOEXEC, 67LL);
+CONSTANT(FIOCLEX, 536897025LL);
+CONSTANT(FIONCLEX, 536897026LL);
+CONSTANT(FIONBIO, 2147772030LL);
+CONSTANT(MAXPATHLEN, 1024LL);
+CONSTANT(LC_CTYPE, 2LL);
+CONSTANT(LC_NUMERIC, 4LL);
+CONSTANT(CODESET, 0LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

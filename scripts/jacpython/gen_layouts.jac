@@ -181,6 +181,24 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "#define JAC_HAVE_X87 1",
          "#else",
          "#define JAC_HAVE_X87 0",
+         "#endif",
+         "#include <semaphore.h>",
+         "#include <sys/ioctl.h>",
+         "#include <sys/param.h>",
+         "#include <locale.h>",
+         "#include <langinfo.h>",
+         "#ifdef O_PATH",
+         "#define JAC_HAVE_O_PATH 1",
+         "#else",
+         "#define JAC_HAVE_O_PATH 0",
+         "#endif",
+         "#ifdef _CS_GNU_LIBPTHREAD_VERSION",
+         "#define JAC_CS_GNU_LIBPTHREAD_VERSION _CS_GNU_LIBPTHREAD_VERSION",
+         "#else",
+         "#define JAC_CS_GNU_LIBPTHREAD_VERSION -1",
+         "#endif",
+         "#ifndef SYS_gettid",
+         "#define SYS_gettid 0",
          "#endif"
      ],
      # Headers the constant probe and layouts_check.c include after Python.h
@@ -3694,7 +3712,12 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ),
          ("_Py_slist_t_SIZE", "sizeof(_Py_slist_t)", "u64"),
          ("_Py_hashtable_entry_t_SIZE", "sizeof(_Py_hashtable_entry_t)", "u64"),
-         ("_Py_hashtable_t_SIZE", "sizeof(_Py_hashtable_t)", "u64")
+         ("_Py_hashtable_t_SIZE", "sizeof(_Py_hashtable_t)", "u64"),
+         (
+             "_Py_STR_utf_8",
+             "offsetof(struct _Py_global_strings, literals._py_utf_8)",
+             "i64"
+         )
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -4628,7 +4651,82 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("ENOENT", "ENOENT", "i32"),
          ("ENXIO", "ENXIO", "i32"),
          ("ENODEV", "ENODEV", "i32"),
-         ("EACCES", "EACCES", "i32")
+         ("EACCES", "EACCES", "i32"),
+         ("_PyRuntimeState_TIME", "offsetof(_PyRuntimeState, time)", "i64"),
+         (
+             "_PyRuntimeState_PRECONFIG_UTF8_MODE",
+             "offsetof(_PyRuntimeState, preconfig.utf8_mode)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_FILEUTILS_FORCE_ASCII",
+             "offsetof(_PyRuntimeState, fileutils.force_ascii)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_THREADS_INITIALIZED",
+             "offsetof(_PyRuntimeState, threads.initialized)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_THREADS_CONDATTR_PTR",
+             "offsetof(_PyRuntimeState, threads._condattr_monotonic.ptr)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_THREADS_CONDATTR_VAL",
+             "offsetof(_PyRuntimeState, threads._condattr_monotonic.val)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_THREADS_STACKSIZE",
+             "offsetof(PyInterpreterState, threads.stacksize)",
+             "i64"
+         ),
+         ("Py_tss_t__KEY", "offsetof(Py_tss_t, _key)", "i64"),
+         ("Py_tss_t_SIZE", "sizeof(Py_tss_t)", "i64"),
+         ("SIZEOF_PTHREAD_KEY_T", "sizeof(pthread_key_t)", "i64"),
+         (
+             "PTHREAD_KEY_T_IS_COMPATIBLE_WITH_INT",
+             "sizeof(pthread_key_t) == sizeof(int)",
+             "i64"
+         ),
+         ("PTHREAD_ATTR_SIZE", "sizeof(pthread_attr_t)", "i64"),
+         ("PTHREAD_LOCK_COND", "_Alignof(pthread_cond_t)", "i64"),
+         (
+             "PTHREAD_LOCK_MUTEX",
+             "(_Alignof(pthread_cond_t) + sizeof(pthread_cond_t) + _Alignof(pthread_mutex_t) - 1) / _Alignof(pthread_mutex_t) * _Alignof(pthread_mutex_t)",
+             "i64"
+         ),
+         (
+             "PTHREAD_LOCK_SIZE",
+             "sizeof(struct { char locked; pthread_cond_t lock_released; pthread_mutex_t mut; })",
+             "i64"
+         ),
+         ("SEM_T_SIZE", "sizeof(sem_t)", "i64"),
+         ("PTHREAD_SCOPE_SYSTEM", "PTHREAD_SCOPE_SYSTEM", "i32"),
+         ("_SC_THREAD_STACK_MIN", "_SC_THREAD_STACK_MIN", "i32"),
+         ("_SC_CLK_TCK", "_SC_CLK_TCK", "i32"),
+         ("PYTHREAD_CS_GNU_LIBPTHREAD_VERSION", "JAC_CS_GNU_LIBPTHREAD_VERSION", "i32"),
+         ("SYS_gettid", "SYS_gettid", "i64"),
+         ("CLOCK_REALTIME", "CLOCK_REALTIME", "i32"),
+         ("EBADF", "EBADF", "i32"),
+         ("ENOTTY", "ENOTTY", "i32"),
+         ("EBUSY", "EBUSY", "i32"),
+         ("O_NONBLOCK", "O_NONBLOCK", "i32"),
+         ("HAVE_O_PATH", "JAC_HAVE_O_PATH", "i64"),
+         ("F_GETFD", "F_GETFD", "i32"),
+         ("F_SETFD", "F_SETFD", "i32"),
+         ("FD_CLOEXEC", "FD_CLOEXEC", "i32"),
+         ("F_GETFL", "F_GETFL", "i32"),
+         ("F_DUPFD_CLOEXEC", "F_DUPFD_CLOEXEC", "i32"),
+         ("FIOCLEX", "FIOCLEX", "u64"),
+         ("FIONCLEX", "FIONCLEX", "u64"),
+         ("FIONBIO", "FIONBIO", "u64"),
+         ("MAXPATHLEN", "MAXPATHLEN", "i64"),
+         ("LC_CTYPE", "LC_CTYPE", "i32"),
+         ("LC_NUMERIC", "LC_NUMERIC", "i32"),
+         ("CODESET", "CODESET", "i32")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.
