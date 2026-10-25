@@ -2179,13 +2179,13 @@ graph import {
             kernel_compile_application
         },
         compiler.driver.application._release_compile_state { forget_application_units },
-        compiler.driver.compiler.JacCompiler.kernel_native_entry {
-            kernel_generates_native
-        },
     ]
     project.kernel_compile --> [
         compiler.driver.application._prepare { host_prepared },
         compiler.driver.application._prepare_revision { host_preparing },
+        compiler.driver.compiler.JacCompiler.kernel_native_entry {
+            kernel_generates_native
+        },
     ]
     project.kernel_snapshot ++> compiler.driver.application._release_compile_state {
         forget_interface_memo
@@ -10018,6 +10018,7 @@ graph import compiler {
     ]
     placement.placement_facts ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._dep_is_native_unit { native_unit },
+        driver.compiler.JacCompiler.kernel_native_entry { module_record },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,

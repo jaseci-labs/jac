@@ -413,7 +413,11 @@ impl JacCompiler.kernel_native_entry(
     full_target: str, target_program: JacProgram, options: (CompileOptions | None)
 ) -> tuple[bool, any] {
     path = JacProgram.hub_key(full_target);
+    if options is None and module_record(path, target_program) is not None {
+        return (False, None);
+    }
     actual = self.selfhost.resolve(path, target_program, execution=True);
+    import from jaclang.project.kernel_compile { kernel_generates_native }
     if actual.internal or not kernel_generates_native(actual, path) {
         return (False, None);
     }
