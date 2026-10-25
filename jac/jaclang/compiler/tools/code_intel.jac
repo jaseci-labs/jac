@@ -1,7 +1,6 @@
 import os;
 import time;
 import json;
-import zlib;
 
 import from pathlib { Path }
 
@@ -11,7 +10,8 @@ walker SymbolCollector(ScopeWalker) {
     can collect_scope with uni.UniScopeNode entry;
 }
 
-glob _SKIP_DIRS: set[str] = {
+glob INDEX_SCHEMA: int = 1,
+     _SKIP_DIRS: set[str] = {
          "__pycache__",
          ".git",
          ".venv",
@@ -95,9 +95,6 @@ obj EntryPoint {
 }
 
 
-def _combined_source_hash(file: str) -> int;
-
-
 obj ContextSlice {
     has query: str,
         target: SymbolInfo | None = None,
@@ -119,22 +116,27 @@ obj CodeIntelligence {
     def refresh(file: str = "") -> None;
     def _head_for(real: str) -> str;
     def _drop_file(real: str);
-    def _full_compile_one(file: str);
+    def _full_compile_one(file: str) -> tuple[list[Alert], list[Alert]];
+    def _cached_record(real: str) -> (dict[str, any] | None);
+    def _compile_and_index(stale: set[str]);
+    def _build_record(
+        real: str, mod: uni.Module, uses: list[list[any]], diags: list[list[any]]
+    ) -> dict[str, any];
+
+    def _project_modules -> dict[str, uni.Module];
+    def _dependents_of(targets: set[str]) -> set[str];
+    def _decls_named(name: str) -> list[dict[str, any]];
     def _dir_signature -> dict[str, float];
-    def _keep_diagnostics(alerts: list[Alert], stale: set[str]) -> list[Alert];
     def _ensure;
     def is_loaded -> bool;
     def files -> list[str];
     def _discover -> list[str];
-    def _modules -> list[uni.Module];
     def _collect_syms(scope: uni.UniScopeNode, out: list[uni.Symbol]);
-    def _all_syms -> list[uni.Symbol];
     def _kind_of(owner: uni.UniNode) -> str;
     def _expr_str(expr: uni.UniNode | None) -> str;
     def _doc_of(owner: uni.UniNode) -> str;
     def _info(sym: uni.Symbol) -> SymbolInfo | None;
     def _fill_archetype(info: SymbolInfo, arch: uni.Archetype);
-    def _resolve(name: str) -> list[uni.Symbol];
     def lookup(name: str) -> list[SymbolInfo];
     def definition(name: str) -> SymbolInfo | None;
     def references(name: str) -> list[SourceRef];

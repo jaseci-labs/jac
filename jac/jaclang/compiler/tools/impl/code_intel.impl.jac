@@ -131,36 +131,6 @@ impl EntryPoint.from_dict(d: dict[str, any]) -> EntryPoint {
     );
 }
 
-impl _combined_source_hash(file: str) -> int {
-    crc = 0;
-    try {
-        with open(file, 'rb') as f {
-            crc = zlib.crc32(f.read(), crc);
-        }
-    } except OSError as e {
-        _ = e;
-        return -1;
-    }
-    annexes: list[str] = [];
-    for suffix in ANNEX_SUFFIXES {
-        try {
-            annexes.extend(discover_annex_files(file, suffix));
-        } except Exception as e {
-            _ = e;
-        }
-    }
-    for annex in sorted(set(annexes)) {
-        try {
-            with open(annex, 'rb') as f {
-                crc = zlib.crc32(f.read(), crc);
-            }
-        } except OSError as e {
-            _ = e;
-        }
-    }
-    return crc & 0xFFFFFFFF;
-}
-
 impl ContextSlice.render -> str {
     if self.target is None {
         return f"(no symbol named {self.query} was found)";
@@ -197,7 +167,7 @@ impl CodeIntelligence.postinit {
     self.prog.deps.tracking = True;
     self._files: list[str] = [];
     self._file_set: set[str] = set();
-    self._compiled: dict[str, uni.Module] = {};
+    self._records: dict[str, dict[str, any]] = {};
 
     self._dir_sig: dict[str, float] = {};
     self._loaded: bool = False;
@@ -207,14 +177,34 @@ impl CodeIntelligence.load {
     t0 = time.time();
     self._files = self._discover();
     self._file_set = {_real(f) for f in self._files};
-    self.prog.diags.clear();
-    self._compiled = {};
-    for f in self._files {
-        self._full_compile_one(f);
+    records: dict[str, dict[str, any]] = {};
+    stale: set[str] = set();
+    for real in sorted(self._file_set) {
+        rec = self._cached_record(real);
+        if rec is None {
+            stale.add(real);
+        } else {
+            records[real] = rec;
+        }
     }
+    changed = True;
+    while changed {
+        changed = False;
+        for (real, rec) in list(records.items()) {
+            if any(
+                [d in stale or d not in self._file_set for d in rec.get("deps", [])]
+            ) {
+                stale.add(real);
+                records.pop(real);
+                changed = True;
+            }
+        }
+    }
+    self._records = records;
+    self._compile_and_index(stale);
     self._dir_sig = self._dir_signature();
     self._loaded = True;
-    self._emit("load", "", len(self._files), t0);
+    self._emit("load", "", len(stale), t0, cached=len(records));
 }
 
 impl CodeIntelligence._emit(
@@ -248,10 +238,11 @@ impl CodeIntelligence.refresh(file: str = "") -> None {
     t0 = time.time();
     target = self._head_for(_real(file));
     mode = "edit";
+    stale: set[str] = set();
     if not Path(target).exists() {
         mode = "delete";
         self._drop_file(target);
-        stale: set[str] = self.prog.transitive_dependents(target);
+        stale = self._dependents_of({target});
     } else {
         if target not in self._file_set {
             mode = "create";
@@ -259,27 +250,24 @@ impl CodeIntelligence.refresh(file: str = "") -> None {
             self._file_set.add(target);
             self._dir_sig = self._dir_signature();
         }
-        stale = self.prog.transitive_dependents(target);
+        stale = self._dependents_of({target});
         stale.add(target);
     }
+    stale = {
+        p
+        for p in stale
+        if p in self._file_set
+    };
     for p in stale {
+        self._records.pop(p, None);
         try {
             self.prog.invalidate_module(p);
         } except Exception as e {
             _ = e;
         }
     }
-
-    self.prog.errors_had[:] = self._keep_diagnostics(self.prog.errors_had, stale);
-    self.prog.warnings_had[:] = self._keep_diagnostics(self.prog.warnings_had, stale);
-    recompiled = 0;
-    for p in stale {
-        if p in self._file_set {
-            self._full_compile_one(p);
-            recompiled += 1;
-        }
-    }
-    self._emit(mode, target, recompiled, t0);
+    self._compile_and_index(stale);
+    self._emit(mode, target, len(stale), t0);
 }
 
 impl CodeIntelligence._head_for(real: str) -> str {
@@ -315,24 +303,276 @@ impl CodeIntelligence._drop_file(real: str) {
         if _real(f) != real
     ];
     self._file_set.discard(real);
-    if real in self._compiled {
-        self._compiled.pop(real);
-    }
+    self._records.pop(real, None);
     self._dir_sig = self._dir_signature();
 }
 
-impl CodeIntelligence._full_compile_one(file: str) {
+impl CodeIntelligence._full_compile_one(file: str) -> tuple[list[Alert], list[Alert]] {
+    err0 = len(self.prog.errors_had);
+    warn0 = len(self.prog.warnings_had);
     try {
         import from jaclang.compiler.driver.compile_options { CompileOptions }
-        mod = self.prog.compile(
+        self.prog.compile(
             file_path=file, options=CompileOptions(no_cgen=True, need_full_ast=True)
         );
-        if mod is not None and mod.loc {
-            self._compiled[_real(mod.loc.mod_path)] = mod;
+    } except Exception as e {
+        _ = e;
+    }
+    return (list(self.prog.errors_had[err0:]), list(self.prog.warnings_had[warn0:]));
+}
+
+impl CodeIntelligence._cached_record(real: str) -> (dict[str, any] | None) {
+    try {
+        cache_path = get_module_cache_path(real);
+        if not is_module_cache_valid(real, cache_path) {
+            return None;
+        }
+        raw = read_section_bytes(read_jir(cache_path), SEC_SYMINDEX);
+        if not raw {
+            return None;
+        }
+        rec = json.loads(raw.decode("utf-8"));
+    } except (OSError, ValueError) {
+        return None;
+    }
+    if not isinstance(rec, dict)
+        or rec.get("schema") != INDEX_SCHEMA
+        or rec.get("file") != real {
+        return None;
+    }
+    return rec;
+}
+
+impl CodeIntelligence._compile_and_index(stale: set[str]) {
+    if not stale {
+        return;
+    }
+    """Diagnostics land on the module whose source they point into; one
+    reported outside the project stays with the file whose compile raised it.""";
+    diags: dict[str, list[list[any]]] = {p: [] for p in stale};
+    seen_diags: set[str] = set();
+    for real in sorted(stale) {
+        (errors, warnings) = self._full_compile_one(real);
+        for (sev, alerts) in [("error", errors), ("warning", warnings)] {
+            for al in alerts {
+                loc = al.loc;
+                path = loc.mod_path if loc else "";
+                owner = self._head_for(_real(path)) if path else real;
+                if owner not in self._file_set {
+                    owner = real;
+                }
+                if owner not in diags {
+                    continue;
+                }
+                row = [sev, path, loc.first_line if loc else 0, str(al.msg)];
+                key = json.dumps(row);
+                if key in seen_diags {
+                    continue;
+                }
+                seen_diags.add(key);
+                diags[owner].append(row);
+            }
+        }
+    }
+    modules = self._project_modules();
+    uses: dict[str, list[list[any]]] = {p: [] for p in stale};
+    seen_uses: set[str] = set();
+    for (owner_path, mod) in modules.items() {
+        syms: list[uni.Symbol] = [];
+        try {
+            self._collect_syms(mod.sym_tab, syms);
+        } except Exception as e {
+            _ = e;
+        }
+        for sym in syms {
+            decl = sym.decl;
+            if getattr(sym, "imported", False) or decl is None or decl.loc is None {
+                continue;
+            }
+            key = f"{decl.loc.mod_path}:{decl.loc.first_line}";
+            for nd in sym.uses {
+                loc = nd.loc;
+                if loc is None {
+                    continue;
+                }
+                at = self._head_for(_real(loc.mod_path));
+                if at not in uses {
+                    continue;
+                }
+                row = [key, sym.sym_name, loc.mod_path, loc.first_line, loc.col_start];
+                mark = json.dumps(row);
+                if mark not in seen_uses {
+                    seen_uses.add(mark);
+                    uses[at].append(row);
+                }
+            }
+        }
+    }
+    for real in sorted(stale) {
+        mod = modules.get(real);
+        if mod is None {
+            continue;
+        }
+        rec = self._build_record(real, mod, uses.get(real, []), diags.get(real, []));
+        self._records[real] = rec;
+        try {
+            write_module_cache(
+                real,
+                None,
+                extra_sections={SEC_SYMINDEX: json.dumps(rec).encode("utf-8")}
+            );
+        } except OSError {}
+    }
+}
+
+impl CodeIntelligence._build_record(
+    real: str, mod: uni.Module, uses: list[list[any]], diags: list[list[any]]
+) -> dict[str, any] {
+    decls: list[dict[str, any]] = [];
+    seen: set[str] = set();
+    syms: list[uni.Symbol] = [];
+    try {
+        self._collect_syms(mod.sym_tab, syms);
+    } except Exception as e {
+        _ = e;
+    }
+    for sym in syms {
+        decl = sym.decl;
+        if getattr(sym, "imported", False) or decl is None or decl.loc is None {
+            continue;
+        }
+        key = f"{decl.loc.mod_path}:{decl.loc.first_line}";
+        if key in seen {
+            continue;
+        }
+        seen.add(key);
+        info = self._info(sym);
+        decls.append(
+            {
+                "name": sym.sym_name,
+                "key": key,
+                "info": info.to_dict() if info is not None else None,
+                "defs": [
+                    [nd.loc.mod_path, nd.loc.first_line, nd.loc.col_start]
+                    for nd in sym.defn
+                    if nd.loc is not None
+                ]
+            }
+        );
+    }
+    top: list[dict[str, any]] = [];
+    try {
+        for sym in mod.sym_tab.names_in_scope.values() {
+            if getattr(sym, "imported", False) {
+                continue;
+            }
+            info = self._info(sym);
+            if info is not None {
+                top.append(info.to_dict());
+            }
         }
     } except Exception as e {
         _ = e;
     }
+    archetypes: list[dict[str, any]] = [];
+    try {
+        for arch in mod.get_all_sub_nodes(uni.Archetype) {
+            info = self._archetype_info(arch);
+            if info is not None {
+                archetypes.append(info.to_dict());
+            }
+        }
+    } except Exception as e {
+        _ = e;
+    }
+    deps: set[str] = set();
+    for prog in [self.prog] + list(self.prog.contexts.values()) {
+        for (target, importers) in prog.deps.dependents.items() {
+            if real in {_real(i) for i in importers} {
+                dep = self._head_for(_real(target));
+                if dep in self._file_set and dep != real {
+                    deps.add(dep);
+                }
+            }
+        }
+    }
+    for row in uses {
+        dep = self._head_for(_real(str(row[0]).rsplit(":", 1)[0]));
+        if dep in self._file_set and dep != real {
+            deps.add(dep);
+        }
+    }
+    return {
+        "schema": INDEX_SCHEMA,
+        "file": real,
+        "deps": sorted(deps),
+        "decls": decls,
+        "uses": uses,
+        "top": top,
+        "archetypes": archetypes,
+        "entries": [ep.to_dict() for ep in self._module_entry_points(mod)],
+        "diags": diags
+    };
+}
+
+impl CodeIntelligence._project_modules -> dict[str, uni.Module] {
+    """Project modules across the program and its per-app contexts.""";
+    out: dict[str, uni.Module] = {};
+    for prog in [self.prog] + list(self.prog.contexts.values()) {
+        for (path, mod) in list(prog.mod.hub.items()) {
+            real = _real(path);
+            if real in self._file_set
+                and real not in out
+                and mod is not None
+                and mod.loc {
+                out[real] = mod;
+            }
+        }
+    }
+    return out;
+}
+
+impl CodeIntelligence._dependents_of(targets: set[str]) -> set[str] {
+    out: set[str] = set();
+    frontier = set(targets);
+    while frontier {
+        nxt: set[str] = set();
+        for (real, rec) in self._records.items() {
+            if real in out or real in targets {
+                continue;
+            }
+            if any([d in frontier for d in rec.get("deps", [])]) {
+                out.add(real);
+                nxt.add(real);
+            }
+        }
+        for t in frontier {
+            for p in self.prog.transitive_dependents(t) {
+                real = _real(p);
+                if real not in out and real not in targets and real in self._file_set {
+                    out.add(real);
+                    nxt.add(real);
+                }
+            }
+        }
+        frontier = nxt;
+    }
+    return out;
+}
+
+impl CodeIntelligence._decls_named(name: str) -> list[dict[str, any]] {
+    hits: list[dict[str, any]] = [];
+    seen: set[str] = set();
+    for real in sorted(self._records) {
+        for decl in self._records[real].get("decls", []) {
+            if decl.get("name") != name or decl.get("key") in seen {
+                continue;
+            }
+            seen.add(decl.get("key"));
+            hits.append(decl);
+        }
+    }
+    return hits;
 }
 
 impl CodeIntelligence._dir_signature -> dict[str, float] {
@@ -349,19 +589,6 @@ impl CodeIntelligence._dir_signature -> dict[str, float] {
         }
     }
     return sig;
-}
-
-impl CodeIntelligence._keep_diagnostics(
-    alerts: list[Alert], stale: set[str]
-) -> list[Alert] {
-    out: list[Alert] = [];
-    for al in alerts {
-        loc = al.loc;
-        if loc is None or _real(loc.mod_path) not in stale {
-            out.append(al);
-        }
-    }
-    return out;
 }
 
 impl CodeIntelligence._ensure {
@@ -398,25 +625,8 @@ impl CodeIntelligence._discover -> list[str] {
     return found;
 }
 
-impl CodeIntelligence._modules -> list[uni.Module] {
-    self._ensure();
-    return list(self._compiled.values());
-}
-
 impl CodeIntelligence._collect_syms(scope: uni.UniScopeNode, out: list[uni.Symbol]) {
     scope spawn SymbolCollector(symbols=out);
-}
-
-impl CodeIntelligence._all_syms -> list[uni.Symbol] {
-    out: list[uni.Symbol] = [];
-    for mod in self._modules() {
-        try {
-            self._collect_syms(mod.sym_tab, out);
-        } except Exception as e {
-            _ = e;
-        }
-    }
-    return out;
 }
 
 impl CodeIntelligence._kind_of(owner: uni.UniNode) -> str {
@@ -537,39 +747,13 @@ impl CodeIntelligence._fill_archetype(info: SymbolInfo, arch: uni.Archetype) {
     }
 }
 
-impl CodeIntelligence._resolve(name: str) -> list[uni.Symbol] {
-    hits: list[uni.Symbol] = [];
-    seen: set[str] = set();
-    for sym in self._all_syms() {
-        if sym.sym_name != name {
-            continue;
-        }
-        if getattr(sym, "imported", False) {
-            continue;
-        }
-        decl = sym.decl;
-        if decl is None or decl.loc is None {
-            continue;
-        }
-        key = f"{decl.loc.mod_path}:{decl.loc.first_line}";
-        if key in seen {
-            continue;
-        }
-        seen.add(key);
-        hits.append(sym);
-    }
-    return hits;
-}
-
 impl CodeIntelligence.lookup(name: str) -> list[SymbolInfo] {
-    out: list[SymbolInfo] = [];
-    for sym in self._resolve(name) {
-        info = self._info(sym);
-        if info is not None {
-            out.append(info);
-        }
-    }
-    return out;
+    self._ensure();
+    return [
+        SymbolInfo.from_dict(decl["info"])
+        for decl in self._decls_named(name)
+        if decl.get("info")
+    ];
 }
 
 impl CodeIntelligence.definition(name: str) -> SymbolInfo | None {
@@ -578,29 +762,25 @@ impl CodeIntelligence.definition(name: str) -> SymbolInfo | None {
 }
 
 impl CodeIntelligence.references(name: str) -> list[SourceRef] {
+    self._ensure();
     out: list[SourceRef] = [];
     seen: set[str] = set();
-    for sym in self._resolve(name) {
-        for (role, nodes) in [("def", sym.defn), ("use", sym.uses)] {
-            for nd in nodes {
-                loc = nd.loc;
-                if loc is None {
-                    continue;
+    for decl in self._decls_named(name) {
+        rows: list[tuple[str, list[any]]] = [("def", r) for r in decl.get("defs", [])];
+        for rec in self._records.values() {
+            for use in rec.get("uses", []) {
+                if use[0] == decl["key"] and use[1] == decl["name"] {
+                    rows.append(("use", use[2:]));
                 }
-                key = f"{loc.mod_path}:{loc.first_line}:{loc.col_start}";
-                if key in seen {
-                    continue;
-                }
-                seen.add(key);
-                out.append(
-                    SourceRef(
-                        file=loc.mod_path,
-                        line=loc.first_line,
-                        col=loc.col_start,
-                        role=role
-                    )
-                );
             }
+        }
+        for (role, loc) in rows {
+            key = f"{loc[0]}:{loc[1]}:{loc[2]}";
+            if key in seen {
+                continue;
+            }
+            seen.add(key);
+            out.append(SourceRef(file=loc[0], line=loc[1], col=loc[2], role=role));
         }
     }
     return out;
@@ -617,41 +797,29 @@ impl CodeIntelligence.importers(name: str) -> list[str] {
 }
 
 impl CodeIntelligence.symbols(file: str = "") -> list[SymbolInfo] {
+    self._ensure();
     target = _real(file) if file else "";
     out: list[SymbolInfo] = [];
-    for mod in self._modules() {
-        try {
-            if target and _real(mod.loc.mod_path) != target {
-                continue;
-            }
-            for sym in mod.sym_tab.names_in_scope.values() {
-                if getattr(sym, "imported", False) {
-                    continue;
-                }
-                info = self._info(sym);
-                if info is not None {
-                    out.append(info);
-                }
-            }
-        } except Exception as e {
-            _ = e;
+    for real in sorted(self._records) {
+        if target and real != target {
+            continue;
         }
+        out.extend(
+            [SymbolInfo.from_dict(d) for d in self._records[real].get("top", [])]
+        );
     }
     return out;
 }
 
 impl CodeIntelligence.archetypes(kind: str = "") -> list[SymbolInfo] {
+    self._ensure();
     out: list[SymbolInfo] = [];
-    for mod in self._modules() {
-        try {
-            for arch in mod.get_all_sub_nodes(uni.Archetype) {
-                info = self._archetype_info(arch);
-                if info is not None and (not kind or info.kind == kind) {
-                    out.append(info);
-                }
+    for real in sorted(self._records) {
+        for d in self._records[real].get("archetypes", []) {
+            info = SymbolInfo.from_dict(d);
+            if not kind or info.kind == kind {
+                out.append(info);
             }
-        } except Exception as e {
-            _ = e;
         }
     }
     return out;
@@ -671,9 +839,12 @@ impl CodeIntelligence._archetype_info(arch: uni.Archetype) -> SymbolInfo | None 
 }
 
 impl CodeIntelligence.entry_points -> list[EntryPoint] {
+    self._ensure();
     out: list[EntryPoint] = [];
-    for mod in self._modules() {
-        out.extend(self._module_entry_points(mod));
+    for real in sorted(self._records) {
+        out.extend(
+            [EntryPoint.from_dict(d) for d in self._records[real].get("entries", [])]
+        );
     }
     return out;
 }
@@ -734,27 +905,24 @@ impl CodeIntelligence.nodes_visited_by(walker_name: str) -> list[EntryPoint] {
 
 impl CodeIntelligence.diagnostics(file: str = "") -> list[Diagnostic] {
     self._ensure();
-
     target = _real(file) if file else "";
     out: list[Diagnostic] = [];
-    for (sev, alerts) in [
-        ("error", self.prog.errors_had),
-        ("warning", self.prog.warnings_had)
-    ] {
-        for al in alerts {
-            loc = al.loc;
-            path = loc.mod_path if loc else "";
-            if target and (not path or _real(path) != target) {
-                continue;
+    for sev in ("error", "warning") {
+        for real in sorted(self._records) {
+            for row in self._records[real].get("diags", []) {
+                if row[0] != sev {
+                    continue;
+                }
+                path = str(row[1]);
+                if target and (not path or _real(path) != target) {
+                    continue;
+                }
+                out.append(
+                    Diagnostic(
+                        file=path, line=int(row[2]), severity=sev, message=str(row[3])
+                    )
+                );
             }
-            out.append(
-                Diagnostic(
-                    file=path,
-                    line=loc.first_line if loc else 0,
-                    severity=sev,
-                    message=str(al.msg)
-                )
-            );
         }
     }
     return out;

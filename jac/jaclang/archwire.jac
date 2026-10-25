@@ -5847,6 +5847,14 @@ graph import compiler {
         backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
             get_native_debug_dir
         },
+        tools.code_intel {
+            SEC_SYMINDEX,
+            get_module_cache_path,
+            is_module_cache_valid,
+            read_jir,
+            read_section_bytes,
+            write_module_cache
+        },
     ]
     driver.jir --> backends.native.kernel_resolve.KernelArtifact.build {
         require_exact_compiler_products
