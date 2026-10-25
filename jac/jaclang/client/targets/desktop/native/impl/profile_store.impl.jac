@@ -40,7 +40,7 @@ impl ProfileStore.load(path: str) -> ProfileStore {
 
 impl ProfileStore.save {
     os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True);
-    tmp = self.path + ".tmp";
+    tmp = f"{self.path}.{os.getpid()}.{threading.get_ident()}.tmp";
     with open(tmp, "w", encoding="utf-8") as f {
         json.dump(
             {
@@ -60,6 +60,42 @@ impl ProfileStore.save {
     os.replace(tmp, self.path);
 }
 
+impl ProfileStore._lock_file -> any {
+    os.makedirs(os.path.dirname(os.path.abspath(self.path)), exist_ok=True);
+    handle = open(self.path + ".lock", "a+");
+    if sys.platform == "win32" {
+        msvcrt: any = importlib.import_module("msvcrt");
+        handle.seek(0);
+        while True {
+            try {
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1);
+                break;
+            } except OSError {
+                continue;
+            }
+        }
+    } else {
+        import fcntl;
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX);
+    }
+    return handle;
+}
+
+impl ProfileStore._unlock_file(handle: any) {
+    if sys.platform == "win32" {
+        msvcrt: any = importlib.import_module("msvcrt");
+        handle.seek(0);
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1);
+    }
+    handle.close();
+}
+
+impl ProfileStore._reload {
+    fresh = ProfileStore.load(self.path);
+    self.profiles = fresh.profiles;
+    self.active = fresh.active;
+}
+
 impl ProfileStore.find(profile_id: str) -> (LocalProfile | None) {
     for p in self.profiles {
         if p.id == profile_id {
@@ -75,23 +111,36 @@ impl ProfileStore.describe -> dict[str, any] {
 
 impl ProfileStore.add(name: str, user_id: str, profile_id: str) -> LocalProfile {
     with self._lock {
-        made = LocalProfile(
-            id=profile_id, name=name, user_id=user_id, created=time.time()
-        );
-        self.profiles.append(made);
-        self.active = made.id;
-        self.save();
-        return made;
+        handle = self._lock_file();
+        try {
+            self._reload();
+            made = LocalProfile(
+                id=profile_id, name=name, user_id=user_id, created=time.time()
+            );
+            self.profiles.append(made);
+            self.active = made.id;
+            self.save();
+            return made;
+        } finally {
+            self._unlock_file(handle);
+        }
     }
 }
 
 impl ProfileStore.select(profile_id: str) {
     with self._lock {
-        if profile_id and self.find(profile_id) is None {
-            raise ValueError(f"unknown profile '{profile_id}'");
+        handle = self._lock_file();
+        try {
+            fresh = ProfileStore.load(self.path);
+            self.profiles = fresh.profiles;
+            if profile_id and fresh.find(profile_id) is None {
+                raise ValueError(f"unknown profile '{profile_id}'");
+            }
+            self.active = profile_id;
+            self.save();
+        } finally {
+            self._unlock_file(handle);
         }
-        self.active = profile_id;
-        self.save();
     }
 }
 

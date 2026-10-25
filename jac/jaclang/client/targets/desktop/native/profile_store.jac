@@ -1,3 +1,5 @@
+import sys;
+import importlib;
 import json;
 import os;
 import secrets;
@@ -31,6 +33,9 @@ obj ProfileStore {
 
     static def load(path: str) -> ProfileStore;
     def save;
+    def _lock_file -> any;
+    def _unlock_file(handle: any);
+    def _reload;
     def find(profile_id: str) -> (LocalProfile | None);
     def describe -> dict[str, any];
     def add(name: str, user_id: str, profile_id: str) -> LocalProfile;
