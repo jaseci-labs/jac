@@ -121,7 +121,11 @@ obj EditGate {
         log_path: str = "",
         _host: (OverlayHost | None) = None,
         _baselines:
-            dict[str, tuple[tuple[tuple[str, int, int], ...], list[DiagInfo]]] = {};
+            dict[
+                str,
+                tuple[tuple[tuple[str, int, int], ...], list[DiagInfo], list[str]]
+            ] = {},
+        _last_deps: list[str] = [];
 
     def postinit;
     def stage(path: str, new_text: str) -> None;
@@ -640,6 +644,7 @@ impl EditGate._quiet_exit(saved: dict[str, any]) -> None {
 }
 
 impl EditGate._check(target: str, overlay: bool) -> list[DiagInfo] {
+    target = os.path.realpath(target);
     if self._host is None {
         self._host = OverlayHost();
     }
@@ -672,6 +677,11 @@ impl EditGate._check(target: str, overlay: bool) -> list[DiagInfo] {
             if (overlay or os.path.exists(target))
             else "";
         prog.compile(target, use_str=source, options=opts);
+        read: set[str] = set(prog.deps.dependents.keys());
+        for importers in prog.deps.dependents.values() {
+            read.update(importers);
+        }
+        self._last_deps = sorted(read);
     } finally {
         install_host(previous);
         set_kernel_host_mode(previous_mode);
@@ -726,22 +736,25 @@ impl EditGate._check(target: str, overlay: bool) -> list[DiagInfo] {
 }
 
 impl EditGate._baseline(target: str) -> list[DiagInfo] {
+    target = os.path.realpath(target);
     files = self._module_files(target);
     arch = arch_file_for(target);
     if arch {
         files.append(arch);
     }
-    stamp = self._stamp(files + list(self.overlay.keys()));
+    staged = list(self.overlay.keys());
     cached = self._baselines.get(target);
-    if cached is not None and cached[0] == stamp {
+    if cached is not None and cached[0] == self._stamp(files + staged + cached[2]) {
         return cached[1];
     }
+    self._last_deps = [];
     if not os.path.exists(target) {
         result: list[DiagInfo] = [];
     } else {
         result = self._check(target, False);
     }
-    self._baselines[target] = (stamp, result);
+    deps = sorted(set(self._last_deps));
+    self._baselines[target] = (self._stamp(files + staged + deps), result, deps);
     return result;
 }
 

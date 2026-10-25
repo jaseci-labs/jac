@@ -46,3 +46,23 @@ test "a review cancelled before it runs stages nothing" {
         assert not gate.staged();
     }
 }
+
+test "a cached baseline is redone when a file the check read changes" {
+    with TemporaryDirectory() as tmp {
+        base = Path(tmp);
+        (base / "jac.toml").write_text("[project]\nname = \"g\"\n");
+        (base / "a.jac").write_text("def other -> int {\n    return 1;\n}\n");
+        target = base / "b.jac";
+        target.write_text(
+            "import from a { thing }\n\nwith entry {\n    print(thing());\n}\n"
+        );
+        gate = EditGate(root_dir=tmp);
+        before = gate._baseline(str(target));
+        assert any([d.code == "W1101" for d in before]) , [d.message for d in before];
+        (base / "a.jac").write_text(
+            "def other -> int {\n    return 1;\n}\n\ndef thing -> int {\n    return 2;\n}\n"
+        );
+        after = gate._baseline(str(target));
+        assert not any([d.code == "W1101" for d in after]) , "the baseline kept a finding the change to a.jac fixed";
+    }
+}

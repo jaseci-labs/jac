@@ -876,6 +876,15 @@ impl cmd_ask(
     }
     history = transcript_of(st.entries) if session_id else "";
     st.add("user", f"[{key}] {instruction}");
+    gate_mode = str(reg.config.get("gate", "ask"));
+    checker: (EditGate | None) = None;
+    if gate_mode != "off" {
+        try {
+            checker = EditGate(root_dir=root_dir);
+        } except Exception as e {
+            err(f"  compiler-checked edits are off: {e}");
+        }
+    }
     def gate(path: str, content: str) -> (str | None) {
         old = "";
         try {
@@ -885,6 +894,21 @@ impl cmd_ask(
         } except OSError {}
         out(f"\n  ~ write requested: {os.path.relpath(path, root_dir)}");
         sys.stdout.write(unified_diff(path, old, content, root_dir));
+        if checker is not None {
+            try {
+                rv = checker.review(path, content);
+            } finally {
+                checker.unstage(path);
+            }
+            out(f"  compiler: {rv.summary()}");
+            if not rv.clean() {
+                out("  -> sent back with the compiler's findings");
+                st.decide(
+                    "write", False, path=path, message="did not pass the compiler check"
+                );
+                return str(rv.feedback());
+            }
+        }
         if assume_yes {
             out("  -> applied (--yes)");
             st.decide("write", True, path=path);

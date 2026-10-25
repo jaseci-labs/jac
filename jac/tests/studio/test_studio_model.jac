@@ -107,5 +107,12 @@ test "refreshing a package keeps its children's symbols, and new files are found
             model.symbols
         );
         assert os.path.realpath(str(extra)) not in model.stale_files();
+        extra.unlink();
+        for path in model.stale_files() {
+            model.refresh(path);
+        }
+        assert not any([k.endswith(".more") for k in model.symbols]) , "a deleted module's symbols remain";
+        assert not any([m.file.endswith("extra.jac") for m in model.modules.values()]);
+        assert not model.stale_files() , "a deleted file is retried forever";
     }
 }

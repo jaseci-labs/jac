@@ -174,7 +174,7 @@ jac hack sessions                    # saved sessions
 jac hack sessions fork <id>          # copy a session to take it in another direction
 ```
 
-`jac hack ask` hands a symbol or module and an instruction to an agent without the UI. With `--yes` it approves permission requests and writes, so use it only where that is safe.
+`jac hack ask` hands a symbol or module and an instruction to an agent without the UI. With `--yes` it approves permission requests and writes that pass the compiler check; a write that does not compile goes back to the agent with the findings, unless `[hack] gate = "off"`. Use `--yes` only where approving the agent's actions unattended is safe.
 
 ## Sessions
 

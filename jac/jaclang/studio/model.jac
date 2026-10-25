@@ -159,6 +159,7 @@ obj ProjectModel {
     def stale_files -> list[str];
     def project_host -> ProjectHost;
     def new_files -> list[str];
+    def _forget_file(real: str) -> list[str];
     def module_for_file(path: str) -> (StModule | None);
     def providers(key: str) -> list[WireInfo];
     def consumers(key: str) -> list[WireInfo];
@@ -766,6 +767,9 @@ impl ProjectModel.refresh(path: str) -> list[str] {
     if real in self.found {
         self.found.remove(real);
     }
+    if not os.path.exists(real) and os.path.basename(real) != ARCH_FILE_NAME {
+        return self._forget_file(real);
+    }
     if os.path.basename(real) == ARCH_FILE_NAME {
         self.rewire();
         return [real];
@@ -796,6 +800,35 @@ impl ProjectModel.refresh(path: str) -> list[str] {
         self.uses_done = set();
     }
     return [key];
+}
+
+impl ProjectModel._forget_file(real: str) -> list[str] {
+    key = self.by_file.get(real);
+    mod = self.modules.get(key) if key else None;
+    if mod is None {
+        return [];
+    }
+    if real != mod.file {
+        with self.lock {
+            if real in mod.files {
+                mod.files.remove(real);
+            }
+            self.by_file.pop(real, None);
+        }
+        self.prog = JacProgram();
+        self.index_module(mod.key);
+        return [mod.key];
+    }
+    with self.lock {
+        self._clear_module_symbols(mod);
+        for f in mod.files {
+            self.by_file.pop(f, None);
+        }
+        self.modules.pop(mod.key, None);
+        self.uses_done = set();
+        del mod;
+    }
+    return [str(key)];
 }
 
 impl ProjectModel.new_files -> list[str] {
