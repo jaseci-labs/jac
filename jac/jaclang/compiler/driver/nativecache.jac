@@ -69,7 +69,11 @@ obj NativeUnitRegistry {
 
     def _entry_fresh(ent: NativeUnitEntry) -> bool;
     def _register(
-        resolved: str, iface: NativeIface, stamp: NativeStamp, source: str
+        resolved: str,
+        iface: NativeIface,
+        stamp: NativeStamp,
+        source: str,
+        digest: str = ""
     ) -> NativeUnitEntry;
 
     def record(

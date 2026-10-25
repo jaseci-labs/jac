@@ -58,6 +58,7 @@ def build_native_legality(
 ) -> NativeLegality;
 
 def import_bindings(imp: Import) -> set[str];
+def interop_refusal(mod: Module, nm: Name) -> (NativeRefusal | None);
 def bridged_use_crosses(nm: Name) -> (str | None);
 def binds_module_name(mod: Module, nm: Name) -> bool;
 def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]];
@@ -506,6 +507,15 @@ impl build_native_legality(
                 );
                 legality.prefer_against(mod, uses);
             }
+            unprovided = interop_refusal(mod, nm);
+            if unprovided is not None {
+                caller = native_capability_demotion_owner(nm);
+                if caller is None {
+                    legality.refuse_site(mod, unprovided);
+                } else {
+                    legality.refuse_unit(caller, unprovided);
+                }
+            }
             if judging is not None {
                 for gap in binding_gaps(judging, nm, base_dir) {
                     missing = NativeRefusal(
@@ -572,6 +582,40 @@ impl import_bindings(imp: Import) -> set[str] {
         }
     }
     return bound;
+}
+
+impl interop_refusal(mod: Module, nm: Name) -> (NativeRefusal | None) {
+    call = nm.parent;
+    if not isinstance(call, FuncCall) or call.target is not nm {
+        return None;
+    }
+    if nm.sym is not None and not binds_module_name(mod, nm) {
+        return None;
+    }
+    binding = mod.gen.interop_manifest.bindings.get(nm.value);
+    if binding is None
+        or binding.source_context.value != "server"
+        or binding.kind != "function"
+        or binding.native_callable {
+        return None;
+    }
+    why = "the compiler recorded no native call to it";
+    if binding.provider_app {
+        why = f"it is served by the application '{binding.provider_app}', and native "
+        "code cannot call into another application";
+    } elif binding.callers and all(c.value == "client" for c in binding.callers) {
+        why = "it is imported only for client code";
+    } elif not binding.symbol {
+        why = "no Jac module defines it, so native code has nothing to link the call to";
+    }
+    return NativeRefusal(
+        kind="call to Python function",
+        name=nm.value,
+        site=nm,
+        code="E5092",
+        help=f"Native code cannot call '{nm.value}': {why}. Call it from server code "
+        "and pass the result to the native code."
+    );
 }
 
 impl binds_module_name(mod: Module, nm: Name) -> bool {

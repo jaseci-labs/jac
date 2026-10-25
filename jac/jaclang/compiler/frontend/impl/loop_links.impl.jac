@@ -154,10 +154,17 @@ impl made_per_element(sym: Symbol, closure: UniNode) -> bool {
     return cur is owner;
 }
 
+impl in_loop_else(nd: UniNode, at: UniNode) -> bool {
+    return isinstance(at, (InForStmt, IterForStmt, WhileStmt))
+        and at.else_body is not None
+        and nd.is_within(at.else_body);
+}
+
 impl enclosing_loop(ctrl: CtrlStmt) -> (LoopStmt | None) {
     cur = ctrl.decl_parent;
     while cur is not None and not is_frame(cur) {
-        if isinstance(cur, (InForStmt, IterForStmt, WhileStmt, ForeverStmt)) {
+        if isinstance(cur, (InForStmt, IterForStmt, WhileStmt, ForeverStmt))
+            and not in_loop_else(ctrl, cur) {
             return cur;
         }
         cur = cur.decl_parent;

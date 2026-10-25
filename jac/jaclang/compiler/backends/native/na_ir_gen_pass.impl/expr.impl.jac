@@ -15,16 +15,30 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         return _folded;
     }
     if isinstance(nd, uni.Int) {
-        tok_name = nd?.name;
-        if tok_name == Tok.HEX {
-            _lit = ir.Constant(ir.IntType(64), int(nd.value, 16));
-        } elif tok_name == Tok.OCT {
-            _lit = ir.Constant(ir.IntType(64), int(nd.value, 8));
-        } elif tok_name == Tok.BIN {
-            _lit = ir.Constant(ir.IntType(64), int(nd.value, 2));
-        } else {
-            _lit = ir.Constant(ir.IntType(64), int(nd.value, 0));
+        _bits = uni.int_literal_i64(nd.value);
+        if _bits is None {
+            _shape = self._scalar_shape_named(self._literal_destination(nd));
+            if _shape is not None and _shape.is_float {
+                _wide = ir.Constant(ir.DoubleType(), uni.int_literal_float(nd.value));
+                return self._lower_coercion(nd, _wide)
+                    if nd.coerce_to is not None
+                    else _wide;
+            }
+            if _shape is not None and not _shape.signed and _shape.width >= 64 {
+                _bits = uni.int_literal_u64_bits(nd.value);
+            }
         }
+        if _bits is None {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="integer literal",
+                name=nd.value,
+                help_text="A native int is 64 bits and this literal does not fit one. Annotate it as u64 if it is an unsigned 64-bit value; any wider integer runs in the server codespace, where ints are unbounded."
+            );
+            return None;
+        }
+        _lit = ir.Constant(ir.IntType(64), _bits);
         return self._lower_coercion(nd, _lit) if nd.coerce_to is not None else _lit;
     }
     if isinstance(nd, uni.Float) {
@@ -2031,6 +2045,20 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
     if lent is not None {
         return self._c_lent_address(nd, lent);
     }
+    _magnitude: (uni.UniNode | None) = nd.operand;
+    while isinstance(_magnitude, uni.AtomUnit) {
+        _magnitude = _magnitude.value;
+    }
+    if isinstance(nd.op, uni.Token)
+        and nd.op.name == Tok.MINUS
+        and isinstance(_magnitude, uni.Int)
+        and uni.int_literal_i64(_magnitude.value) is None
+        and uni.int_literal_u64_bits(_magnitude.value) == -9223372036854775807 - 1 {
+        _i64_min = ir.Constant(ir.IntType(64), -9223372036854775807 - 1);
+        return self._lower_coercion(nd, _i64_min)
+            if nd.coerce_to is not None
+            else _i64_min;
+    }
     operand = self._codegen_expr(nd.operand);
     if operand is None {
         return None;
@@ -3493,4 +3521,27 @@ impl _class_typed_operand(
     }
     typed = pass_ref.builder.bitcast(value, class_type.as_pointer(), name="cmp.typed");
     return typed;
+}
+
+impl NaIRGenPass._literal_destination(nd: uni.Int) -> (str | None) {
+    """The fixed-width type a literal is converted to. The checker records it on
+    the outermost expression that is only the literal, so `(x)`, `+x` and `-x`
+    carry it on the wrapper. A negated literal reaches here only for a float
+    destination: the checker refuses one past 64 bits for an integer type, and
+    `-2**63` lowers as a constant before its operand.""";
+    dest = nd.coerce_to;
+    up: (uni.UniNode | None) = nd.parent;
+    while dest is None
+        and (
+            isinstance(up, uni.AtomUnit)
+            or (
+                isinstance(up, uni.UnaryExpr)
+                and isinstance(up.op, uni.Token)
+                and up.op.name in (Tok.PLUS, Tok.MINUS)
+            )
+        ) {
+        dest = up.coerce_to;
+        up = up.parent;
+    }
+    return dest;
 }
