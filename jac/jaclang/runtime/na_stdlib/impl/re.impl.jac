@@ -2323,13 +2323,15 @@ impl Pattern.fullmatch(
     return _one(self._re, _new_st(self._re), string, pos, endpos, 2);
 }
 
-impl Pattern.finditer(string: str, pos: int = 0, endpos: int = _MAXPOS) -> list[Match] {
+impl Pattern.finditer(
+    string: str, pos: int = 0, endpos: int = _MAXPOS
+) -> Iterator[Match] {
     if self._acquire() {
         out: list[Match] = _iter(self._re, self._st, string, pos, endpos);
         self._release();
-        return out;
+        return iter(out);
     }
-    return _iter(self._re, _new_st(self._re), string, pos, endpos);
+    return iter(_iter(self._re, _new_st(self._re), string, pos, endpos));
 }
 
 impl Pattern.findall(string: str, pos: int = 0, endpos: int = _MAXPOS) -> list[str] {
@@ -2698,7 +2700,7 @@ impl findall(pattern: str, string: str, flags: int = 0) -> list[str] {
 }
 
 
-impl finditer(pattern: str, string: str, flags: int = 0) -> list[Match] {
+impl finditer(pattern: str, string: str, flags: int = 0) -> Iterator[Match] {
     return _cached(pattern, flags).finditer(string);
 }
 
