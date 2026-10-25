@@ -4500,6 +4500,9 @@ impl NaIRGenPass._emit_intrinsic_c_thread_local(
         }
         existing.thread_local = True;
         existing.tls_model = "initialexec";
+        if intr.name == "__thread_local" {
+            self._record_export(name, name, "global", True);
+        }
     } elif not isinstance(existing, ir.GlobalVariable) or not existing.thread_local {
         self._emit_intrinsic_misuse(
             nd, intr, f"'{name}' is already declared and is not thread-local"

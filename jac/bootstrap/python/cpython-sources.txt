@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 236 C files / 409,693 lines; 163 headers / 155,308 lines.
-#   Total: 399 files / 565,001 source lines.
+#   Excluded: 243 C files / 418,572 lines; 163 headers / 155,308 lines.
+#   Total: 406 files / 573,880 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -332,7 +332,7 @@ Python/asdl.c
 Python/ast_unparse.c
 # Python/bltinmodule.c  # removed: 3,506 source lines
 # Python/bootstrap_hash.c  # removed: 598 source lines
-Python/brc.c
+# Python/brc.c  # removed: 208 source lines
 # Python/bytecodes.c  # pruned: 5,549 source lines
 # Python/ceval.c  # removed: 3,725 source lines
 # Python/ceval_gil.c  # removed: 1,434 source lines
@@ -372,7 +372,7 @@ Python/frozen_modules/
 Python/frozenmain.c
 # Python/future.c  # removed: 119 source lines
 # Python/gc.c  # removed: 2,057 source lines
-Python/gc_free_threading.c
+# Python/gc_free_threading.c  # removed: 3,006 source lines
 # Python/gc_gil.c  # removed: 17 source lines
 # Python/generated_cases.c.h  # removed: 12,528 source lines
 # Python/getargs.c  # removed: 2,863 source lines
@@ -385,7 +385,7 @@ Python/getversion.c
 # Python/hashtable.c  # removed: 424 source lines
 Python/import.c
 Python/importdl.c
-Python/index_pool.c
+# Python/index_pool.c  # removed: 197 source lines
 Python/initconfig.c
 # Python/instruction_sequence.c  # removed: 483 source lines
 # Python/instrumentation.c  # removed: 3,174 source lines
@@ -400,7 +400,7 @@ Python/marshal.c
 # Python/mystrtoul.c  # removed: 297 source lines
 # Python/object_stack.c  # removed: 66 source lines
 # Python/opcode_targets.h  # removed: 766 source lines
-Python/optimizer.c
+# Python/optimizer.c  # removed: 1,755 source lines
 # Python/optimizer_analysis.c  # pruned: 664 source lines
 # Python/optimizer_cases.c.h  # pruned: 2,520 source lines
 # Python/optimizer_symbols.c  # pruned: 880 source lines
@@ -415,7 +415,7 @@ Python/pyarena.c
 # Python/pyhash.c  # removed: 498 source lines
 Python/pylifecycle.c
 # Python/pymath.c  # removed: 19 source lines
-Python/pystate.c
+# Python/pystate.c  # removed: 3,262 source lines
 # Python/pystrcmp.c  # removed: 30 source lines
 # Python/pystrhex.c  # removed: 171 source lines
 # Python/pystrtod.c  # removed: 1,286 source lines
@@ -425,7 +425,7 @@ Python/pythonrun.c
 # Python/remote_debug.h  # removed: 1,191 source lines
 # Python/remote_debugging.c  # removed: 401 source lines
 # Python/specialize.c  # removed: 3,232 source lines
-Python/stackrefs.c
+# Python/stackrefs.c  # removed: 219 source lines
 Python/stdlib_module_names.h
 # Python/structmember.c  # removed: 382 source lines
 # Python/suggestions.c  # removed: 206 source lines
@@ -437,7 +437,7 @@ Python/sysmodule.c
 # Python/thread_pthread_stubs.h  # pruned: 191 source lines
 # Python/traceback.c  # removed: 1,473 source lines
 # Python/tracemalloc.c  # removed: 1,489 source lines
-Python/uniqueid.c
+# Python/uniqueid.c  # removed: 232 source lines
 
 # Builtin objects
 # Objects/abstract.c  # removed: 2,947 source lines

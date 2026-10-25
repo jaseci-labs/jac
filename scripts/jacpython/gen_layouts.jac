@@ -3925,7 +3925,22 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_Py_ID_ignore",
              "offsetof(struct _Py_global_strings, identifiers._py_ignore)",
              "i64"
-         )
+         ),
+         ("DICT_MAX_WATCHERS", "DICT_MAX_WATCHERS", "i64"),
+         (
+             "_PyInterpreterState_WHENCE_UNKNOWN",
+             "_PyInterpreterState_WHENCE_UNKNOWN",
+             "i64"
+         ),
+         ("_PyThreadState_WHENCE_UNKNOWN", "_PyThreadState_WHENCE_UNKNOWN", "i32"),
+         ("_PyThreadState_WHENCE_FINI", "_PyThreadState_WHENCE_FINI", "i32"),
+         ("_PyThreadState_WHENCE_GILSTATE", "_PyThreadState_WHENCE_GILSTATE", "i32"),
+         ("_Py_THREAD_DETACHED", "_Py_THREAD_DETACHED", "i32"),
+         ("_Py_THREAD_SUSPENDED", "_Py_THREAD_SUSPENDED", "i32"),
+         ("_Py_THREAD_SHUTTING_DOWN", "_Py_THREAD_SHUTTING_DOWN", "i32"),
+         ("PyGILState_LOCKED", "PyGILState_LOCKED", "i32"),
+         ("PyGILState_UNLOCKED", "PyGILState_UNLOCKED", "i32"),
+         ("_PY_DATA_STACK_CHUNK_SIZE", "_PY_DATA_STACK_CHUNK_SIZE", "i64")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -5181,7 +5196,306 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          ("PyInterpreterState_SYSDICT", "offsetof(PyInterpreterState, sysdict)", "i64"),
-         ("PyThreadState_THREAD_ID", "offsetof(PyThreadState, thread_id)", "i64")
+         ("PyThreadState_THREAD_ID", "offsetof(PyThreadState, thread_id)", "i64"),
+         ("_PyRuntimeState_SIZE", "sizeof(_PyRuntimeState)", "i64"),
+         (
+             "_PyRuntimeState__INITIALIZED",
+             "offsetof(_PyRuntimeState, _initialized)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_DEBUG_OFFSETS_COOKIE",
+             "offsetof(_PyRuntimeState, debug_offsets.cookie)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_INTERPRETERS_HEAD",
+             "offsetof(_PyRuntimeState, interpreters.head)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_INTERPRETERS_MAIN",
+             "offsetof(_PyRuntimeState, interpreters.main)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_INTERPRETERS_NEXT_ID",
+             "offsetof(_PyRuntimeState, interpreters.next_id)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_XI_DATA_LOOKUP_REGISTRY_MUTEX",
+             "offsetof(_PyRuntimeState, xi.data_lookup.registry.mutex)",
+             "i64"
+         ),
+         ("_PyRuntimeState_THREADS", "offsetof(_PyRuntimeState, threads)", "i64"),
+         ("_PyRuntimeState_AUTOTSSKEY", "offsetof(_PyRuntimeState, autoTSSkey)", "i64"),
+         (
+             "_PyRuntimeState_TRASHTSSKEY",
+             "offsetof(_PyRuntimeState, trashTSSkey)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_ATEXIT_MUTEX",
+             "offsetof(_PyRuntimeState, atexit.mutex)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_IMPORTS_EXTENSIONS_MUTEX",
+             "offsetof(_PyRuntimeState, imports.extensions.mutex)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_CEVAL_PENDING_MAINTHREAD_MUTEX",
+             "offsetof(_PyRuntimeState, ceval.pending_mainthread.mutex)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_GILSTATE_CHECK_ENABLED",
+             "offsetof(_PyRuntimeState, gilstate.check_enabled)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_GILSTATE_AUTOINTERPRETERSTATE",
+             "offsetof(_PyRuntimeState, gilstate.autoInterpreterState)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_STOPTHEWORLD",
+             "offsetof(_PyRuntimeState, stoptheworld)",
+             "i64"
+         ),
+         ("_PyRuntimeState_PRECONFIG", "offsetof(_PyRuntimeState, preconfig)", "i64"),
+         (
+             "_PyRuntimeState_OPEN_CODE_HOOK",
+             "offsetof(_PyRuntimeState, open_code_hook)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_OPEN_CODE_USERDATA",
+             "offsetof(_PyRuntimeState, open_code_userdata)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_AUDIT_HOOKS_MUTEX",
+             "offsetof(_PyRuntimeState, audit_hooks.mutex)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_AUDIT_HOOKS_HEAD",
+             "offsetof(_PyRuntimeState, audit_hooks.head)",
+             "i64"
+         ),
+         (
+             "_PyRuntimeState_MAIN_INTERPRETER",
+             "offsetof(_PyRuntimeState, _main_interpreter)",
+             "i64"
+         ),
+         ("PyInterpreterState_SIZE", "sizeof(PyInterpreterState)", "i64"),
+         ("PyInterpreterState_ALIGN", "_Alignof(PyInterpreterState)", "i64"),
+         ("PyInterpreterState_NEXT", "offsetof(PyInterpreterState, next)", "i64"),
+         ("PyInterpreterState_ID", "offsetof(PyInterpreterState, id)", "i64"),
+         (
+             "PyInterpreterState_ID_REFCOUNT",
+             "offsetof(PyInterpreterState, id_refcount)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_REQUIRES_IDREF",
+             "offsetof(PyInterpreterState, requires_idref)",
+             "i64"
+         ),
+         ("PyInterpreterState__WHENCE", "offsetof(PyInterpreterState, _whence)", "i64"),
+         (
+             "PyInterpreterState__INITIALIZED",
+             "offsetof(PyInterpreterState, _initialized)",
+             "i64"
+         ),
+         ("PyInterpreterState__READY", "offsetof(PyInterpreterState, _ready)", "i64"),
+         (
+             "PyInterpreterState_THREADS_NEXT_UNIQUE_ID",
+             "offsetof(PyInterpreterState, threads.next_unique_id)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_THREADS_PREALLOCATED",
+             "offsetof(PyInterpreterState, threads.preallocated)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_THREADS_MAIN",
+             "offsetof(PyInterpreterState, threads.main)",
+             "i64"
+         ),
+         ("PyInterpreterState_CONFIG", "offsetof(PyInterpreterState, config)", "i64"),
+         ("PyInterpreterState_DICT", "offsetof(PyInterpreterState, dict)", "i64"),
+         (
+             "PyInterpreterState_SYSDICT_COPY",
+             "offsetof(PyInterpreterState, sysdict_copy)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_BUILTINS_COPY",
+             "offsetof(PyInterpreterState, builtins_copy)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_BEFORE_FORKERS",
+             "offsetof(PyInterpreterState, before_forkers)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_AFTER_FORKERS_PARENT",
+             "offsetof(PyInterpreterState, after_forkers_parent)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_AFTER_FORKERS_CHILD",
+             "offsetof(PyInterpreterState, after_forkers_child)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_STOPTHEWORLD",
+             "offsetof(PyInterpreterState, stoptheworld)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_ASYNCIO_TASKS_HEAD",
+             "offsetof(PyInterpreterState, asyncio_tasks_head)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_ASYNCIO_TASKS_LOCK",
+             "offsetof(PyInterpreterState, asyncio_tasks_lock)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_AUDIT_HOOKS",
+             "offsetof(PyInterpreterState, audit_hooks)",
+             "i64"
+         ),
+         ("PyInterpreterState_DTOA", "offsetof(PyInterpreterState, dtoa)", "i64"),
+         (
+             "PyInterpreterState_CODE_STATE_MUTEX",
+             "offsetof(PyInterpreterState, code_state.mutex)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_DICT_STATE_WATCHER_MUTEX",
+             "offsetof(PyInterpreterState, dict_state.watcher_mutex)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_MEM_FREE_QUEUE_HEAD",
+             "offsetof(PyInterpreterState, mem_free_queue.head)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_EXECUTOR_LIST_HEAD",
+             "offsetof(PyInterpreterState, executor_list_head)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_EXECUTOR_DELETION_LIST_HEAD",
+             "offsetof(PyInterpreterState, executor_deletion_list_head)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_EXECUTOR_DELETION_LIST_REMAINING_CAPACITY",
+             "offsetof(PyInterpreterState, executor_deletion_list_remaining_capacity)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState__INITIAL_THREAD",
+             "offsetof(PyInterpreterState, _initial_thread)",
+             "i64"
+         ),
+         ("_dtoa_state_SIZE", "sizeof(struct _dtoa_state)", "i64"),
+         (
+             "_stoptheworld_state_REQUESTED",
+             "offsetof(struct _stoptheworld_state, requested)",
+             "i64"
+         ),
+         (
+             "_stoptheworld_state_STOP_EVENT",
+             "offsetof(struct _stoptheworld_state, stop_event)",
+             "i64"
+         ),
+         (
+             "_stoptheworld_state_THREAD_COUNTDOWN",
+             "offsetof(struct _stoptheworld_state, thread_countdown)",
+             "i64"
+         ),
+         ("PyThreadState_PREV", "offsetof(PyThreadState, prev)", "i64"),
+         ("PyThreadState__STATUS", "offsetof(PyThreadState, _status)", "i64"),
+         ("PyThreadState__WHENCE", "offsetof(PyThreadState, _whence)", "i64"),
+         (
+             "PyThreadState_GILSTATE_COUNTER",
+             "offsetof(PyThreadState, gilstate_counter)",
+             "i64"
+         ),
+         (
+             "PyThreadState_NATIVE_THREAD_ID",
+             "offsetof(PyThreadState, native_thread_id)",
+             "i64"
+         ),
+         ("PyThreadState_DICT", "offsetof(PyThreadState, dict)", "i64"),
+         (
+             "PyThreadState_CRITICAL_SECTION",
+             "offsetof(PyThreadState, critical_section)",
+             "i64"
+         ),
+         (
+             "PyThreadState_DATASTACK_CHUNK",
+             "offsetof(PyThreadState, datastack_chunk)",
+             "i64"
+         ),
+         ("PyThreadState_EXC_STATE", "offsetof(PyThreadState, exc_state)", "i64"),
+         (
+             "PyThreadState_CURRENT_EXECUTOR",
+             "offsetof(PyThreadState, current_executor)",
+             "i64"
+         ),
+         (
+             "PyThreadState_DICT_GLOBAL_VERSION",
+             "offsetof(PyThreadState, dict_global_version)",
+             "i64"
+         ),
+         (
+             "PyThreadState_DATASTACK_CACHED_CHUNK",
+             "offsetof(PyThreadState, datastack_cached_chunk)",
+             "i64"
+         ),
+         ("_PyThreadStateImpl_SIZE", "sizeof(_PyThreadStateImpl)", "i64"),
+         (
+             "_PyThreadStateImpl_REFCOUNT",
+             "offsetof(_PyThreadStateImpl, refcount)",
+             "i64"
+         ),
+         (
+             "_PyThreadStateImpl_ASYNCIO_RUNNING_LOOP",
+             "offsetof(_PyThreadStateImpl, asyncio_running_loop)",
+             "i64"
+         ),
+         (
+             "_PyThreadStateImpl_ASYNCIO_RUNNING_TASK",
+             "offsetof(_PyThreadStateImpl, asyncio_running_task)",
+             "i64"
+         ),
+         (
+             "_PyThreadStateImpl_ASYNCIO_TASKS_HEAD",
+             "offsetof(_PyThreadStateImpl, asyncio_tasks_head)",
+             "i64"
+         ),
+         ("_PyStackChunk_PREVIOUS", "offsetof(_PyStackChunk, previous)", "i64"),
+         ("_PyStackChunk_CHUNK_SIZE", "offsetof(_PyStackChunk, size)", "i64"),
+         ("_PyStackChunk_TOP", "offsetof(_PyStackChunk, top)", "i64"),
+         ("_PyStackChunk_DATA", "offsetof(_PyStackChunk, data)", "i64"),
+         (
+             "PyInterpreterState_RARE_SET_EVAL_FRAME_FUNC",
+             "offsetof(PyInterpreterState, rare_events.set_eval_frame_func)",
+             "i64"
+         )
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.
