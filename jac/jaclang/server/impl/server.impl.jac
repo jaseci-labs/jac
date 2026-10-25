@@ -1290,7 +1290,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
             if name not in registry {
                 return {'error': f"'{name}' is no longer registered"};
             }
-            with _self.request_scope() {
+            async with _self.request_scope() {
                 if is_walker {
                     return await _self.execution_manager.spawn_walker(
                         registry[name], {}, SYSTEM_USER
