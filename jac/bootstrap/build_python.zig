@@ -125,6 +125,7 @@ pub fn main(init: std.process.Init) !void {
             const list_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/cpython-sources.txt" });
             const list = try Io.Dir.cwd().readFileAlloc(io, list_path, a, .limited(128 * 1024));
             try retainSources(io, a, dir, if (mode == .jacpython) list else try cSourceManifest(a, list));
+            try stageGenerated(io, a, root, dir, list);
             // One parser owns the manifest. build.sh checks the finished tree
             // against this list rather than reading the markers again.
             try Io.Dir.cwd().writeFile(io, .{
@@ -250,6 +251,17 @@ fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
         hash.update(path);
         hash.update(content);
     }
+    // The checked-in copies staged in place of archive files.
+    const list_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/cpython-sources.txt" });
+    const list = try Io.Dir.cwd().readFileAlloc(io, list_path, a, .limited(128 * 1024));
+    var lines = std.mem.splitScalar(u8, list, '\n');
+    while (lines.next()) |line| {
+        const entry = try markedExclusion(line) orelse continue;
+        if (entry.marker != .generated) continue;
+        const copy = try generatedCopy(a, entry.path);
+        hash.update(copy);
+        hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, copy }), a, .unlimited));
+    }
     if (mode == .jacpython) {
         // Rebuild the native replacement when the producing compiler or its
         // source inputs change; never reuse an object from another generation.
@@ -318,6 +330,10 @@ const Marker = enum {
     removed,
     // Needed by no build. Absent from the host tree as well.
     pruned,
+    // Written from the Jac instruction table and checked in as
+    // bootstrap/python/generated/<path>.in; both trees stage that copy where
+    // the archive's was.
+    generated,
 };
 const Exclusion = struct { path: []const u8, marker: Marker };
 
@@ -361,11 +377,33 @@ fn absentInputs(a: std.mem.Allocator, manifest: []const u8, mode: Mode) ![]const
     var lines = std.mem.splitScalar(u8, manifest, '\n');
     while (lines.next()) |line| {
         const excluded = try markedExclusion(line) orelse continue;
+        if (excluded.marker == .generated) continue;
         if (excluded.marker == .removed and mode != .jacpython) continue;
         try out.appendSlice(a, excluded.path);
         try out.append(a, '\n');
     }
     return out.toOwnedSlice(a);
+}
+
+// The checked-in copy of a path the manifest marks generated, relative to the
+// Jac root.
+fn generatedCopy(a: std.mem.Allocator, path: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(a, "bootstrap/python/generated/{s}.in", .{path});
+}
+
+// Put each generated path's checked-in copy into the extracted tree. The
+// manifest comments the path out, so the archive's copy is already gone and a
+// missing checked-in copy fails the build instead of falling back to it.
+fn stageGenerated(io: Io, a: std.mem.Allocator, root: []const u8, dir: Io.Dir, manifest: []const u8) !void {
+    var lines = std.mem.splitScalar(u8, manifest, '\n');
+    while (lines.next()) |line| {
+        const entry = try markedExclusion(line) orelse continue;
+        if (entry.marker != .generated) continue;
+        const copy = try std.fs.path.join(a, &.{ root, try generatedCopy(a, entry.path) });
+        const data = try Io.Dir.cwd().readFileAlloc(io, copy, a, .unlimited);
+        if (std.fs.path.dirname(entry.path)) |parent| try dir.createDirPath(io, parent);
+        try dir.writeFile(io, .{ .sub_path = entry.path, .data = data });
+    }
 }
 
 fn runSmoke(io: Io, python: []const u8, smoke: []const u8, mode: Mode) !void {
@@ -463,6 +501,9 @@ test "manifest markers name the builds that must lack a path" {
     const pruned = (try markedExclusion("# Lib/pydoc_data/  # pruned: 14,979 source lines")).?;
     try std.testing.expectEqual(Marker.pruned, pruned.marker);
     try std.testing.expectEqualStrings("Lib/pydoc_data/", pruned.path);
+    const generated = (try markedExclusion("# Include/opcode_ids.h  # generated: 259 source lines")).?;
+    try std.testing.expectEqual(Marker.generated, generated.marker);
+    try std.testing.expectEqualStrings("Include/opcode_ids.h", generated.path);
     // Prose, including the header lines that quote the marker syntax.
     try std.testing.expectEqual(@as(?Exclusion, null), try markedExclusion("# Parser and tokenizer"));
     try std.testing.expectEqual(@as(?Exclusion, null), try markedExclusion("#   \"# path  # pruned: N source lines\""));
@@ -473,7 +514,7 @@ test "manifest markers name the builds that must lack a path" {
 
 test "only the reduced runtime must lack the entries the host restores" {
     const a = std.testing.allocator;
-    const source = "# head\n# Parser/parser.c  # removed: 100 source lines\n# Lib/turtle.py  # pruned: 4,291 source lines\nPython/ceval.c\n";
+    const source = "# head\n# Parser/parser.c  # removed: 100 source lines\n# Lib/turtle.py  # pruned: 4,291 source lines\n# Lib/_opcode_metadata.py  # generated: 371 source lines\nPython/ceval.c\n";
     const reduced = try absentInputs(a, source, .jacpython);
     defer a.free(reduced);
     try std.testing.expectEqualStrings("Parser/parser.c\nLib/turtle.py\n", reduced);
@@ -517,6 +558,26 @@ test "source allowlist preserves exact files and subtrees and removes an entry o
     try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(io, "Lib/test", .{}));
     try retainSources(io, a, tmp.dir, "# Objects/listobject.c  # removed: 1 source lines\nObjects/dictobject.c\nLib/re/\nLICENSE\n");
     try std.testing.expectError(error.FileNotFound, tmp.dir.statFile(io, "Objects/listobject.c", .{}));
+}
+
+test "generated paths come from their checked-in copies" {
+    const io = std.testing.io;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "root/bootstrap/python/generated/Include/internal");
+    try tmp.dir.writeFile(io, .{ .sub_path = "root/bootstrap/python/generated/Include/internal/table.h.in", .data = "from jac\n" });
+    try tmp.dir.createDirPath(io, "tree/Include");
+    try tmp.dir.writeFile(io, .{ .sub_path = "tree/Include/Python.h", .data = "header\n" });
+    const root = try tmp.dir.realPathFileAlloc(io, "root", a);
+    var tree = try tmp.dir.openDir(io, "tree", .{ .iterate = true });
+    defer tree.close(io);
+    const manifest = "Include/Python.h\n# Include/internal/table.h  # generated: 1 source lines\n";
+    try stageGenerated(io, a, root, tree, manifest);
+    try std.testing.expectEqualStrings("from jac\n", try tree.readFileAlloc(io, "Include/internal/table.h", a, .unlimited));
+    try std.testing.expectError(error.FileNotFound, stageGenerated(io, a, root, tree, "# Lib/missing.py  # generated: 1 source lines\n"));
 }
 
 test "invalid source manifests fail before pruning" {
