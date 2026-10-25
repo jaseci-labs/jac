@@ -85,6 +85,9 @@ impl ModelPool.invoke(mt_run: MTRuntime) -> any {
     if self._run is not mt_run {
         serving = copy.copy(self);
         serving._run = mt_run;
+        if self._run is None {
+            serving._turn = {};
+        }
         return serving.invoke(mt_run);
     }
     return super.invoke(mt_run);
@@ -94,6 +97,9 @@ impl ModelPool.ainvoke(mt_run: MTRuntime) -> any {
     if self._run is not mt_run {
         serving = copy.copy(self);
         serving._run = mt_run;
+        if self._run is None {
+            serving._turn = {};
+        }
         return await serving.ainvoke(mt_run);
     }
     return await super.ainvoke(mt_run);
@@ -143,7 +149,7 @@ impl ModelPool._fallback(params: dict[str, any], stream: bool) -> any {
         if key != "model"
     };
     count = len(self.models);
-    order = [(self._start + step) % count for step in range(count)];
+    order = [(self._turn.get("start", 0) + step) % count for step in range(count)];
     for (pos, idx) in enumerate(order) {
         name = self._fallback_model_names[idx];
         try {
@@ -177,7 +183,7 @@ impl ModelPool._fallback(params: dict[str, any], stream: bool) -> any {
             continue;
         }
         if self.sticky {
-            self._start = idx;
+            self._turn["start"] = idx;
         }
         return result;
     }
