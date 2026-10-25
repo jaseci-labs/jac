@@ -370,8 +370,8 @@ impl _imp_create_dynamic_impl(
         _extensions_cache_delete(info.view(1)[0].path, info.view(1)[0].name);
     }
     if PySys_Audit(
-        "import",
-        "OOOOO",
+        ptr[u8]("import"),
+        ptr[u8]("OOOOO"),
         info.view(1)[0].name,
         info.view(1)[0].filename,
         Py_None,

@@ -504,7 +504,7 @@ impl _io_FileIO___init___impl(
 
     flags |= O_CLOEXEC;
 
-    if PySys_Audit("open", "Osi", nameobj, cmode, flags) < 0 {
+    if PySys_Audit(ptr[u8]("open"), ptr[u8]("Osi"), nameobj, cmode, flags) < 0 {
         return fileio_init_failed(op, fd_is_own, stringobj, modeobj);
     }
 

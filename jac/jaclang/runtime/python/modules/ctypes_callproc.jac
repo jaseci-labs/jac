@@ -54,7 +54,10 @@ import from c {
         restype: ptr[PyObject],
         checker: ptr[PyObject]
     ) -> ptr[PyObject] {
-        if PySys_Audit("ctypes.call_function", "KO", u64(int(pProc)), arguments) < 0 {
+        if PySys_Audit(
+            ptr[u8]("ctypes.call_function"), ptr[u8]("KO"), u64(int(pProc)), arguments
+        )
+            < 0 {
             return NULL;
         }
 
@@ -573,14 +576,14 @@ impl set_error_internal(
 }
 
 impl get_errno(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    if PySys_AuditTuple("ctypes.get_errno", NULL) < 0 {
+    if PySys_AuditTuple(ptr[u8]("ctypes.get_errno"), NULL) < 0 {
         return NULL;
     }
     return get_error_internal(self_, args, 0);
 }
 
 impl set_errno(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    if PySys_Audit("ctypes.set_errno", "O", args) < 0 {
+    if PySys_Audit(ptr[u8]("ctypes.set_errno"), ptr[u8]("O"), args) < 0 {
         return NULL;
     }
     return set_error_internal(self_, args, 0);
@@ -1134,7 +1137,7 @@ impl py_dl_open(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         }
         name_str = PyBytes_AsString(name2);
     }
-    if PySys_Audit("ctypes.dlopen", "O", name) < 0 {
+    if PySys_Audit(ptr[u8]("ctypes.dlopen"), ptr[u8]("O"), name) < 0 {
         return NULL;
     }
     handle = dlopen(name_str, mode);
@@ -1188,7 +1191,7 @@ impl py_dl_sym(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     } except boundary_failure {
         return NULL;
     }
-    if PySys_Audit("ctypes.dlsym/handle", "O", args) < 0 {
+    if PySys_Audit(ptr[u8]("ctypes.dlsym/handle"), ptr[u8]("O"), args) < 0 {
         return NULL;
     }
 
@@ -1295,7 +1298,7 @@ impl _ctypes_byref_impl(
 impl _ctypes_addressof_impl(
     module: ptr[PyObject], obj_: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if PySys_Audit("ctypes.addressof", "(O)", obj_) < 0 {
+    if PySys_Audit(ptr[u8]("ctypes.addressof"), ptr[u8]("(O)"), obj_) < 0 {
         return NULL;
     }
     return PyLong_FromVoidPtr(ptr(ptr[CDataObject](obj_).view(1)[0].b_ptr));
@@ -1319,7 +1322,7 @@ impl My_PyObj_FromPtr(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
         return NULL;
     }
     ob = ptr[PyObject](address);
-    if PySys_Audit("ctypes.PyObj_FromPtr", "(O)", ob) < 0 {
+    if PySys_Audit(ptr[u8]("ctypes.PyObj_FromPtr"), ptr[u8]("(O)"), ob) < 0 {
         return NULL;
     }
     return object_new_ref(ob);

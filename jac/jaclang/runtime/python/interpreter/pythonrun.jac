@@ -542,7 +542,7 @@ import from c {
         }
 
         print_exception_fn = PyImport_ImportModuleAttrString(
-            "traceback", "_print_exception_bltin"
+            ptr[u8]("traceback"), ptr[u8]("_print_exception_bltin")
         );
         if print_exception_fn and PyCallable_Check(print_exception_fn) != 0 {
             result = PyObject_CallOneArg(print_exception_fn, value);
@@ -1510,7 +1510,7 @@ impl _PyRun_StringFlagsWithName(
             PyErr_Clear();
         } else {
             register_code = PyImport_ImportModuleAttrString(
-                "linecache", "_register_code"
+                ptr[u8]("linecache"), ptr[u8]("_register_code")
             );
             registered = NULL;
             if register_code {
@@ -1648,7 +1648,9 @@ impl run_mod(
     }
 
     if interactive_src {
-        print_tb_func = PyImport_ImportModuleAttrString("linecache", "_register_code");
+        print_tb_func = PyImport_ImportModuleAttrString(
+            ptr[u8]("linecache"), ptr[u8]("_register_code")
+        );
         if not print_tb_func {
             object_decref(co);
             object_decref(interactive_filename);

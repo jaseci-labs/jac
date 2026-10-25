@@ -109,7 +109,7 @@ import from c {
             }
 
             layout_func = PyImport_ImportModuleAttrString(
-                "ctypes._layout", "get_layout"
+                ptr[u8]("ctypes._layout"), ptr[u8]("get_layout")
             );
             if not layout_func {
                 break;

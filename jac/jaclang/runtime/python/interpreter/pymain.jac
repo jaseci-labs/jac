@@ -386,13 +386,13 @@ impl pymain_import_readline(config: ptr[u8]) {
         return;
     }
 
-    mod = PyImport_ImportModule("readline");
+    mod = PyImport_ImportModule(ptr[u8]("readline"));
     if not mod {
         PyErr_Clear();
     } else {
         object_decref(mod);
     }
-    mod = PyImport_ImportModule("rlcompleter");
+    mod = PyImport_ImportModule(ptr[u8]("rlcompleter"));
     if not mod {
         PyErr_Clear();
     } else {
@@ -441,7 +441,7 @@ impl pymain_start_pyrepl(pythonstartup: i32) -> i32 {
     console_result = NULL;
     main_module = NULL;
 
-    pyrepl = PyImport_ImportModule("_pyrepl.main");
+    pyrepl = PyImport_ImportModule(ptr[u8]("_pyrepl.main"));
     while True {
         if not pyrepl {
             fprintf(stdio(2), ptr[u8]("Could not import _pyrepl.main\n"));
@@ -495,7 +495,9 @@ impl pymain_run_module(modname: ptr[i32], set_argv0: i32) -> i32 {
     if PySys_Audit(ptr[u8]("cpython.run_module"), ptr[u8]("u"), modname) < 0 {
         return pymain_exit_err_print();
     }
-    runmodule = PyImport_ImportModuleAttrString("runpy", "_run_module_as_main");
+    runmodule = PyImport_ImportModuleAttrString(
+        ptr[u8]("runpy"), ptr[u8]("_run_module_as_main")
+    );
     if not runmodule {
         fprintf(stdio(2), ptr[u8]("Could not import runpy._run_module_as_main\n"));
         return pymain_exit_err_print();
@@ -649,7 +651,9 @@ impl pymain_run_startup(config: ptr[u8]) -> tuple[i32, i32] {
 }
 
 impl pymain_run_interactive_hook -> tuple[i32, i32] {
-    hook = PyImport_ImportModuleAttrString("sys", "__interactivehook__");
+    hook = PyImport_ImportModuleAttrString(
+        ptr[u8]("sys"), ptr[u8]("__interactivehook__")
+    );
     if not hook {
         if PyErr_ExceptionMatches(PyExc_AttributeError) != 0 {
             PyErr_Clear();

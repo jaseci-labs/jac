@@ -359,7 +359,7 @@ import from c {
         w_long(x, p);
         w_flush(p);
     }  def PyMarshal_WriteObjectToFile(x: ptr[PyObject], fp: ptr, version: i32) {
-        if PySys_Audit("marshal.dumps", "Oi", x, version) < 0 {
+        if PySys_Audit(ptr[u8]("marshal.dumps"), ptr[u8]("Oi"), x, version) < 0 {
             return;
         }
         slots: own MarshalStack = MarshalStack();
@@ -1150,7 +1150,7 @@ impl w_clear_refs(p: ptr[MarshalWriter]) {
 impl write_object_to_string(
     x: ptr[PyObject], version: i32, allow_code: i32
 ) -> ptr[PyObject] {
-    if PySys_Audit("marshal.dumps", "Oi", x, version) < 0 {
+    if PySys_Audit(ptr[u8]("marshal.dumps"), ptr[u8]("Oi"), x, version) < 0 {
         return NULL;
     }
     slots: own MarshalStack = MarshalStack();
@@ -2086,11 +2086,11 @@ impl read_object(p: ptr[MarshalReader]) -> ptr[PyObject] {
     cur = p.view(1)[0].cur;
     if cur and p.view(1)[0].end {
         length = i64(int(p.view(1)[0].end) - int(cur));
-        if PySys_Audit("marshal.loads", "y#", cur, length) < 0 {
+        if PySys_Audit(ptr[u8]("marshal.loads"), ptr[u8]("y#"), cur, length) < 0 {
             return NULL;
         }
     } elif p.view(1)[0].fp or p.view(1)[0].readable {
-        if PySys_AuditTuple("marshal.load", NULL) < 0 {
+        if PySys_AuditTuple(ptr[u8]("marshal.load"), NULL) < 0 {
             return NULL;
         }
     }

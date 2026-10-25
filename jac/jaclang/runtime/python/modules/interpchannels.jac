@@ -948,10 +948,10 @@ impl wait_for_lock(mutex: ptr, timeout: i64) -> i32 {
 }
 
 impl ensure_highlevel_module_loaded -> i32 {
-    highlevel = PyImport_ImportModule("concurrent.interpreters._channels");
+    highlevel = PyImport_ImportModule(ptr[u8]("concurrent.interpreters._channels"));
     if not highlevel {
         PyErr_Clear();
-        highlevel = PyImport_ImportModule("test.support.channels");
+        highlevel = PyImport_ImportModule(ptr[u8]("test.support.channels"));
         if not highlevel {
             return -1;
         }
@@ -967,7 +967,7 @@ impl get_module_state(mod: ptr[PyObject]) -> ptr[module_state] {
 impl _get_current_module_state -> ptr[module_state] {
     mod = _get_current_module();
     if not mod {
-        mod = PyImport_ImportModule("_interpchannels");
+        mod = PyImport_ImportModule(ptr[u8]("_interpchannels"));
         if not mod {
             return ptr[module_state]();
         }
@@ -2781,7 +2781,7 @@ impl _channelobj_from_cidobj(cidobj: ptr[PyObject], end: i32) -> ptr[PyObject] {
 impl _channelid_from_xid(data: ptr[_PyXIData_t]) -> ptr[PyObject] {
     xid = ptr[_channelid_xid](data.view(1)[0].data).view(1);
 
-    mod = PyImport_ImportModule("_interpchannels");
+    mod = PyImport_ImportModule(ptr[u8]("_interpchannels"));
     if not mod {
         return NULL;
     }

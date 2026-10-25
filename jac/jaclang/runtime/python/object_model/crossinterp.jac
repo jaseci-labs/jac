@@ -1622,7 +1622,7 @@ impl _Py_GetMainfile(buffer: ptr[u8], maxlen: u64) -> i64 {
 }
 
 impl runpy_run_path(filename: ptr[u8], modname: ptr[u8]) -> ptr[PyObject] {
-    run_path = PyImport_ImportModuleAttrString("runpy", "run_path");
+    run_path = PyImport_ImportModuleAttrString(ptr[u8]("runpy"), ptr[u8]("run_path"));
     if not run_path {
         return NULL;
     }
@@ -1995,7 +1995,7 @@ impl _get_xidata(
 }
 
 impl _PyPickle_Dumps(tstate: ptr[PyThreadState], obj_: ptr[PyObject]) -> ptr[PyObject] {
-    dumps = PyImport_ImportModuleAttrString("pickle", "dumps");
+    dumps = PyImport_ImportModuleAttrString(ptr[u8]("pickle"), ptr[u8]("dumps"));
     if not dumps {
         return NULL;
     }
@@ -2040,7 +2040,7 @@ impl _PyPickle_Loads(
 ) -> ptr[PyObject] {
     tstate = ctx.view(1)[0].tstate;
     exc = NULL;
-    loads = PyImport_ImportModuleAttrString("pickle", "loads");
+    loads = PyImport_ImportModuleAttrString(ptr[u8]("pickle"), ptr[u8]("loads"));
     if not loads {
         return NULL;
     }
@@ -2245,7 +2245,9 @@ impl _convert_exc_to_TracebackException(
     args = NULL;
     kwargs = NULL;
     create = NULL;
-    tbexc_type = PyImport_ImportModuleAttrString("traceback", "TracebackException");
+    tbexc_type = PyImport_ImportModuleAttrString(
+        ptr[u8]("traceback"), ptr[u8]("TracebackException")
+    );
     if not tbexc_type {
         return (i32(-1), NULL);
     }

@@ -542,7 +542,7 @@ impl idarg_int64_converter(arg: ptr[PyObject], p: ptr) -> i32 {
 }
 
 impl ensure_highlevel_module_loaded -> i32 {
-    highlevel = PyImport_ImportModule("concurrent.interpreters._queues");
+    highlevel = PyImport_ImportModule(ptr[u8]("concurrent.interpreters._queues"));
     if not highlevel {
         return -1;
     }
@@ -1447,7 +1447,7 @@ impl _queueobj_from_xid(data: ptr[_PyXIData_t]) -> ptr[PyObject] {
 
     mod = _get_current_module();
     if not mod {
-        mod = PyImport_ImportModule("_interpqueues");
+        mod = PyImport_ImportModule(ptr[u8]("_interpqueues"));
         if not mod {
             object_decref(qidobj);
             return NULL;

@@ -1676,7 +1676,8 @@ impl Pointer_bool(self_: ptr[PyObject]) -> i32 {
 }
 
 impl string_at(ptr_: ptr[u8], size: i32) -> ptr[PyObject] {
-    if PySys_Audit("ctypes.string_at", "ni", i64(int(ptr_)), size) < 0 {
+    if PySys_Audit(ptr[u8]("ctypes.string_at"), ptr[u8]("ni"), i64(int(ptr_)), size)
+        < 0 {
         return NULL;
     }
     if size == -1 {
@@ -1783,7 +1784,8 @@ impl cast(ptr_: ptr, src: ptr[PyObject], ctype: ptr[PyObject]) -> ptr[PyObject] 
 
 impl wstring_at(ptr_: ptr[i32], size: i32) -> ptr[PyObject] {
     ssize = i64(size);
-    if PySys_Audit("ctypes.wstring_at", "nn", i64(int(ptr_)), ssize) < 0 {
+    if PySys_Audit(ptr[u8]("ctypes.wstring_at"), ptr[u8]("nn"), i64(int(ptr_)), ssize)
+        < 0 {
         return NULL;
     }
     if ssize == -1 {
@@ -1793,7 +1795,10 @@ impl wstring_at(ptr_: ptr[i32], size: i32) -> ptr[PyObject] {
 }
 
 impl memoryview_at(ptr_: ptr, size: i64, readonly: i32) -> ptr[PyObject] {
-    if PySys_Audit("ctypes.memoryview_at", "nni", i64(int(ptr_)), size, readonly) < 0 {
+    if PySys_Audit(
+        ptr[u8]("ctypes.memoryview_at"), ptr[u8]("nni"), i64(int(ptr_)), size, readonly
+    )
+        < 0 {
         return NULL;
     }
     if size < 0 {

@@ -2208,7 +2208,9 @@ impl _ctypes_fixint_fielddesc(nbytes: i64, is_signed: bool) -> ptr[fielddesc] {
     }
 
     Py_FatalError(
-        "We've reached an unreachable state. Anything is possible.\nThe limits were in our heads all along. Follow your dreams.\nhttps://xkcd.com/2200"
+        ptr[u8](
+            "We've reached an unreachable state. Anything is possible.\nThe limits were in our heads all along. Follow your dreams.\nhttps://xkcd.com/2200"
+        )
     );
     return ptr[fielddesc]();
 }

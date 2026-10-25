@@ -47,7 +47,7 @@ import from c {
         st: ptr[ctypes_state], type: ptr[PyObject], buf: ptr
     ) -> ptr[PyObject] {
         address = i64(int(buf));
-        if PySys_Audit("ctypes.cdata", "n", address) < 0 {
+        if PySys_Audit(ptr[u8]("ctypes.cdata"), ptr[u8]("n"), address) < 0 {
             return NULL;
         }
 
@@ -1606,7 +1606,7 @@ impl PyCFuncPtr_FromDll(
     }
     dll = tuple_get_item(ftuple, 1);
 
-    if PySys_Audit("ctypes.dlsym", "Os", dll, name) < 0 {
+    if PySys_Audit(ptr[u8]("ctypes.dlsym"), ptr[u8]("Os"), dll, name) < 0 {
         object_decref(ftuple);
         return NULL;
     }

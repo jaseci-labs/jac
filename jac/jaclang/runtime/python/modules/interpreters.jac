@@ -572,7 +572,7 @@ impl get_module_state(mod: ptr[PyObject]) -> ptr[module_state] {
 impl _get_current_module_state -> ptr[module_state] {
     mod = _get_current_module();
     if not mod {
-        mod = PyImport_ImportModule("_interpreters");
+        mod = PyImport_ImportModule(ptr[u8]("_interpreters"));
         if not mod {
             return ptr[module_state]();
         }

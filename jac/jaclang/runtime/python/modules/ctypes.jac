@@ -390,7 +390,10 @@ impl CDataType_from_buffer_impl(
         return NULL;
     }
     buf_addr = i64(int(buffer.view(1)[0].buf));
-    if PySys_Audit("ctypes.cdata/buffer", "nnn", buf_addr, buf_len, offset) < 0 {
+    if PySys_Audit(
+        ptr[u8]("ctypes.cdata/buffer"), ptr[u8]("nnn"), buf_addr, buf_len, offset
+    )
+        < 0 {
         object_decref(mv);
         return NULL;
     }
@@ -434,7 +437,10 @@ impl CDataType_from_buffer_copy_impl(
         return NULL;
     }
     buf_addr = i64(int(view.view(1)[0].buf));
-    if PySys_Audit("ctypes.cdata/buffer", "nnn", buf_addr, buf_len, offset) < 0 {
+    if PySys_Audit(
+        ptr[u8]("ctypes.cdata/buffer"), ptr[u8]("nnn"), buf_addr, buf_len, offset
+    )
+        < 0 {
         return NULL;
     }
     result = generic_pycdata_new(st, ptr[PyTypeObject](type), NULL, NULL);
@@ -455,7 +461,7 @@ impl CDataType_in_dll_impl(
     if not name_obj {
         return NULL;
     }
-    if PySys_Audit("ctypes.dlsym", "OO", dll, name_obj) < 0 {
+    if PySys_Audit(ptr[u8]("ctypes.dlsym"), ptr[u8]("OO"), dll, name_obj) < 0 {
         object_decref(name_obj);
         return NULL;
     }

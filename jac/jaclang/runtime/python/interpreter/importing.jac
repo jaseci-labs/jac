@@ -1464,7 +1464,7 @@ impl import_find_extension(
 
     if config_verbose(tstate_interp(tstate)) != 0 {
         PySys_FormatStderr(
-            "import %U # previously loaded (%R)\n",
+            ptr[u8]("import %U # previously loaded (%R)\n"),
             info.view(1)[0].name,
             info.view(1)[0].path
         );
