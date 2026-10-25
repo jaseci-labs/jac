@@ -66,3 +66,15 @@ test "a cached baseline is redone when a file the check read changes" {
         assert not any([d.code == "W1101" for d in after]) , "the baseline kept a finding the change to a.jac fixed";
     }
 }
+
+test "a file that is not Jac source is shown but not compiled" {
+    with TemporaryDirectory() as tmp {
+        gate = EditGate(root_dir=tmp);
+        rv = gate.review(
+            str(Path(tmp) / "README.md"), "# Notes\n\nA plain sentence.\n"
+        );
+        assert not rv.checked and not rv.new_diagnostics , rv.summary();
+        assert "does not check" in rv.summary() and rv.diff , rv.summary();
+        assert not gate.staged();
+    }
+}

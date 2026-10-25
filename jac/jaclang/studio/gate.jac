@@ -228,6 +228,9 @@ impl EditReview.clean -> bool {
 impl EditReview.summary -> str {
     name = os.path.basename(self.path);
     secs = f"{self.elapsed:.1f}s";
+    if not self.path.endswith(".jac") {
+        return f"{name}: not Jac source, so the compiler does not check it";
+    }
     if not self.checked {
         why = self.check_error.splitlines()[0] if self.check_error else "not checked";
         return f"{name}: could not check ({why}) [{secs}]";
@@ -899,6 +902,25 @@ impl EditGate._targets(real: str, review: EditReview) -> list[str] {
 impl EditGate.review(path: str, new_text: str, cancelled: any = None) -> EditReview {
     started = time.perf_counter();
     real = os.path.realpath(path);
+    if not real.endswith(".jac") {
+        old_plain = self._disk_text(real);
+        plain = EditReview(
+            path=real,
+            old_text=old_plain or "",
+            new_text=new_text,
+            root_dir=self.root_dir
+        );
+        rel_plain = _rel(real, self.root_dir);
+        plain.diff = "".join(
+            difflib.unified_diff(
+                (old_plain or "").splitlines(keepends=True),
+                new_text.splitlines(keepends=True),
+                fromfile=f"a/{rel_plain}" if old_plain is not None else "/dev/null",
+                tofile=f"b/{rel_plain}"
+            )
+        );
+        return plain;
+    }
     with _GATE_LOCK, COMPILE_LOCK {
         if cancelled is not None and cancelled() {
             return EditReview(

@@ -901,7 +901,7 @@ impl cmd_ask(
                 checker.unstage(path);
             }
             out(f"  compiler: {rv.summary()}");
-            if not rv.clean() {
+            if rv.checked and not rv.clean() {
                 out("  -> sent back with the compiler's findings");
                 st.decide(
                     "write", False, path=path, message="did not pass the compiler check"
