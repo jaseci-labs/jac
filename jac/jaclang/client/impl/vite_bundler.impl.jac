@@ -1103,6 +1103,9 @@ impl ViteBundler._build_inputs_digest(
             }
         }
     }
+    if self.config_path and Path(self.config_path).is_file() {
+        rows.append(f"config:{file_sha256(str(self.config_path))}");
+    }
     for name in ("bun.lock", "package.json") {
         lock = build_dir / name;
         if lock.is_file() {

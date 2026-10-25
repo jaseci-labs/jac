@@ -200,6 +200,11 @@ impl _record_outcome(record_path: str, path: str, outcome: AnalysisReport) {
     import json;
     real = os.path.realpath(path);
     try {
+        if _reads_compile_time_inputs(
+            {real} | {os.path.realpath(p) for p in reached_modules(outcome)}
+        ) {
+            return;
+        }
         deps: list[list[str]] = [];
         searched: set[str] = {os.path.dirname(real)};
         for dep in sorted({os.path.realpath(p) for p in reached_modules(outcome)}) {
@@ -294,4 +299,28 @@ impl report_parity(
 
 impl reached_modules(outcome: AnalysisReport) -> list[str] {
     return [m.path for m in outcome.modules];
+}
+
+impl _reads_compile_time_inputs(modules: set[str]) -> bool {
+    for module in modules {
+        if not module.endswith(".jac") or not os.path.isfile(module) {
+            continue;
+        }
+        base = os.path.dirname(module);
+        files = [module]
+            + [os.path.join(base, rel) for (rel, _) in _related_files(module)];
+        for source in files {
+            try {
+                with open(source, encoding="utf-8") as f {
+                    text = f.read();
+                }
+            } except (OSError, UnicodeDecodeError) {
+                return True;
+            }
+            if "comptime" in text or "embed_file" in text {
+                return True;
+            }
+        }
+    }
+    return False;
 }

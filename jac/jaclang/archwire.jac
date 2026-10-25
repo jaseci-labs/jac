@@ -844,6 +844,7 @@ graph import {
             running_compiler_digest
         },
         project.kernel_check._check_record_path { get_module_cache_path },
+        project.kernel_check._reads_compile_time_inputs { _related_files },
         project.kernel_check._record_outcome { ct_dep_digest, module_cache_key },
         project.kernel_check._replayed_outcome { ct_dep_digest, module_cache_key },
         project.kernel_snapshot.compiled_already {

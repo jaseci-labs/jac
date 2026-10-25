@@ -59,3 +59,5 @@ def _check_record_path(
 def _replayed_outcome(record_path: str, path: str) -> (AnalysisReport | None);
 
 def _record_outcome(record_path: str, path: str, outcome: AnalysisReport);
+
+def _reads_compile_time_inputs(modules: set[str]) -> bool;
