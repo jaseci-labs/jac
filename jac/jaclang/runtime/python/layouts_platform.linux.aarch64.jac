@@ -515,4 +515,6 @@ glob LAYOUTS_PLATFORM: str = "linux.aarch64",
      SYS_PLATFORM_LINUX: Final[i64] = 1,
      SYS_ARCH_X86_64: Final[i64] = 0,
      PyInterpreterState_INTERACTIVE_SRC_COUNT: Final[i64] = 224936,
-     _PyRuntimeState_SIGNALS_UNHANDLED_KEYBOARD_INTERRUPT: Final[i64] = 2328;
+     _PyRuntimeState_SIGNALS_UNHANDLED_KEYBOARD_INTERRUPT: Final[i64] = 2328,
+     PyInterpreterState_XI: Final[i64] = 10664,
+     _PyRuntimeState_XI: Final[i64] = 848;

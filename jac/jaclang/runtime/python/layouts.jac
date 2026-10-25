@@ -1009,6 +1009,31 @@ import from c {
             allow_daemon_threads: i32,
             check_multi_interp_extensions: i32,
             gil: i32;
+    }  obj _PyXIData_t {
+        has data: ptr,
+            obj_: ptr[PyObject],
+            interpid: i64,
+            new_object: Callable[[ptr[_PyXIData_t]], ptr[PyObject]],
+            free: Callable[[ptr], None];
+    }  obj _PyXIData_getdata_t {
+        has basic: Callable[[ptr[PyThreadState], ptr[PyObject], ptr[_PyXIData_t]], i32],
+            fallback:
+                Callable[
+                    [ptr[PyThreadState], ptr[PyObject], i32, ptr[_PyXIData_t]],
+                    i32
+                ];
+    }  obj _PyXI_session_result {
+        has preserved: ptr[PyObject],
+            excinfo: ptr[PyObject],
+            errcode: i32;
+    }  obj _PyXI_excinfo_type {
+        has builtin: ptr[PyTypeObject],
+            name: ptr[u8],
+            qualname: ptr[u8],
+            module: ptr[u8];
+    }  obj _PyBytes_data_t {
+        has bytes: ptr[u8],
+            len: i64;
     }
 }
 
@@ -2615,4 +2640,15 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      _Py_ID_last_value: Final[i64] = 28176,
      _Py_ID_last_traceback: Final[i64] = 28064,
      _Py_ID_excepthook: Final[i64] = 21696,
-     _Py_STR_anon_string: Final[i64] = 384;
+     _Py_STR_anon_string: Final[i64] = 384,
+     _PyXI_state_t_SIZE: Final[i64] = 48,
+     _PyXI_global_state_t_SIZE: Final[i64] = 24,
+     _PyXI_state_t_EXC_INTERPRETER_ERROR: Final[i64] = 24,
+     _PyXI_state_t_EXC_INTERPRETER_NOT_FOUND_ERROR: Final[i64] = 32,
+     _PyXI_state_t_EXC_NOT_SHAREABLE_ERROR: Final[i64] = 40,
+     _PyXIData_registry_t_MUTEX: Final[i64] = 8,
+     _PyXIData_registry_t_HEAD: Final[i64] = 16,
+     _PyXIData_regitem_t_SIZE: Final[i64] = 56,
+     _PyXI_excinfo_SIZE: Final[i64] = 48,
+     _PyXI_excinfo_MSG: Final[i64] = 32,
+     _PyXI_excinfo_ERRDISPLAY: Final[i64] = 40;

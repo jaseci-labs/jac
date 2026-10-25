@@ -2441,6 +2441,56 @@ KIND(PyInterpreterConfig, gil, 1);
 SIGNED(PyInterpreterConfig, gil, 1);
 LAYOUT(PyInterpreterConfig, 28, 4);
 
+/* _PyXIData_t */
+FIELD(struct _xidata, data, 0, 8);
+KIND(struct _xidata, data, 5);
+FIELD(struct _xidata, obj, 8, 8);
+KIND(struct _xidata, obj, 5);
+FIELD(struct _xidata, interpid, 16, 8);
+KIND(struct _xidata, interpid, 1);
+SIGNED(struct _xidata, interpid, 1);
+FIELD(struct _xidata, new_object, 24, 8);
+KIND(struct _xidata, new_object, 5);
+FIELD(struct _xidata, free, 32, 8);
+KIND(struct _xidata, free, 5);
+LAYOUT(struct _xidata, 40, 8);
+
+/* _PyXIData_getdata_t */
+FIELD(_PyXIData_getdata_t, basic, 0, 8);
+KIND(_PyXIData_getdata_t, basic, 5);
+FIELD(_PyXIData_getdata_t, fallback, 8, 8);
+KIND(_PyXIData_getdata_t, fallback, 5);
+LAYOUT(_PyXIData_getdata_t, 16, 8);
+
+/* _PyXI_session_result */
+FIELD(_PyXI_session_result, preserved, 0, 8);
+KIND(_PyXI_session_result, preserved, 5);
+FIELD(_PyXI_session_result, excinfo, 8, 8);
+KIND(_PyXI_session_result, excinfo, 5);
+FIELD(_PyXI_session_result, errcode, 16, 4);
+KIND(_PyXI_session_result, errcode, 1);
+SIGNED(_PyXI_session_result, errcode, 1);
+LAYOUT(_PyXI_session_result, 24, 8);
+
+/* _PyXI_excinfo_type */
+FIELD(struct _excinfo_type, builtin, 0, 8);
+KIND(struct _excinfo_type, builtin, 5);
+FIELD(struct _excinfo_type, name, 8, 8);
+KIND(struct _excinfo_type, name, 5);
+FIELD(struct _excinfo_type, qualname, 16, 8);
+KIND(struct _excinfo_type, qualname, 5);
+FIELD(struct _excinfo_type, module, 24, 8);
+KIND(struct _excinfo_type, module, 5);
+LAYOUT(struct _excinfo_type, 32, 8);
+
+/* _PyBytes_data_t */
+FIELD(_PyBytes_data_t, bytes, 0, 8);
+KIND(_PyBytes_data_t, bytes, 5);
+FIELD(_PyBytes_data_t, len, 8, 8);
+KIND(_PyBytes_data_t, len, 1);
+SIGNED(_PyBytes_data_t, len, 1);
+LAYOUT(_PyBytes_data_t, 16, 8);
+
 CONSTANT(_Py_STATIC_IMMORTAL_INITIAL_REFCNT, 1407378104778752LL);
 CONSTANT(_Py_IMMORTAL_INITIAL_REFCNT, 3221225472LL);
 CONSTANT(Py_TPFLAGS_DEFAULT, 0LL);
@@ -4045,6 +4095,17 @@ CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_last_value), 28176L
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_last_traceback), 28064LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_excepthook), 21696LL);
 CONSTANT(offsetof(struct _Py_global_strings, literals._py_anon_string), 384LL);
+CONSTANT(sizeof(_PyXI_state_t), 48LL);
+CONSTANT(sizeof(_PyXI_global_state_t), 24LL);
+CONSTANT(offsetof(_PyXI_state_t, exceptions.PyExc_InterpreterError), 24LL);
+CONSTANT(offsetof(_PyXI_state_t, exceptions.PyExc_InterpreterNotFoundError), 32LL);
+CONSTANT(offsetof(_PyXI_state_t, exceptions.PyExc_NotShareableError), 40LL);
+CONSTANT(offsetof(_PyXIData_registry_t, mutex), 8LL);
+CONSTANT(offsetof(_PyXIData_registry_t, head), 16LL);
+CONSTANT(sizeof(_PyXIData_regitem_t), 56LL);
+CONSTANT(sizeof(_PyXI_excinfo), 48LL);
+CONSTANT(offsetof(_PyXI_excinfo, msg), 32LL);
+CONSTANT(offsetof(_PyXI_excinfo, errdisplay), 40LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -4565,6 +4626,8 @@ CONSTANT(JAC_PLATFORM_LINUX, 1LL);
 CONSTANT(JAC_HAVE_X87, 1LL);
 CONSTANT(offsetof(PyInterpreterState, _interactive_src_count), 224920LL);
 CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 2328LL);
+CONSTANT(offsetof(PyInterpreterState, xi), 10648LL);
+CONSTANT(offsetof(_PyRuntimeState, xi), 848LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -5083,6 +5146,8 @@ CONSTANT(JAC_PLATFORM_LINUX, 1LL);
 CONSTANT(JAC_HAVE_X87, 0LL);
 CONSTANT(offsetof(PyInterpreterState, _interactive_src_count), 224936LL);
 CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 2328LL);
+CONSTANT(offsetof(PyInterpreterState, xi), 10664LL);
+CONSTANT(offsetof(_PyRuntimeState, xi), 848LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -5601,6 +5666,8 @@ CONSTANT(JAC_PLATFORM_LINUX, 0LL);
 CONSTANT(JAC_HAVE_X87, 1LL);
 CONSTANT(offsetof(PyInterpreterState, _interactive_src_count), 224968LL);
 CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 1800LL);
+CONSTANT(offsetof(PyInterpreterState, xi), 10696LL);
+CONSTANT(offsetof(_PyRuntimeState, xi), 848LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -6119,6 +6186,8 @@ CONSTANT(JAC_PLATFORM_LINUX, 0LL);
 CONSTANT(JAC_HAVE_X87, 0LL);
 CONSTANT(offsetof(PyInterpreterState, _interactive_src_count), 224968LL);
 CONSTANT(offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt), 1800LL);
+CONSTANT(offsetof(PyInterpreterState, xi), 10696LL);
+CONSTANT(offsetof(_PyRuntimeState, xi), 848LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

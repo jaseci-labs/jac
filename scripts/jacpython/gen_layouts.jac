@@ -112,7 +112,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "Include/internal/pycore_context.h",
          "Include/internal/pycore_hashtable.h",
          "Include/internal/pycore_initconfig.h",
-         "Include/cpython/pylifecycle.h"
+         "Include/cpython/pylifecycle.h",
+         "Include/internal/pycore_crossinterp.h"
      ],
      # Object files whose private object structs are layouts: the ports of
      # these files define the objects, so the structs are no header's.
@@ -405,7 +406,12 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyPreConfig", "struct PyPreConfig"),
          ("_PyArgv", "struct _PyArgv"),
          ("_PyPreCmdline", "_PyPreCmdline"),
-         ("PyInterpreterConfig", "PyInterpreterConfig")
+         ("PyInterpreterConfig", "PyInterpreterConfig"),
+         ("_PyXIData_t", "struct _xidata"),
+         ("_PyXIData_getdata_t", "_PyXIData_getdata_t"),
+         ("_PyXI_session_result", "_PyXI_session_result"),
+         ("_PyXI_excinfo_type", "struct _excinfo_type"),
+         ("_PyBytes_data_t", "_PyBytes_data_t")
      ],
      # Header constants and layout expressions object initializers need: Jac
      # name, the C expression that defines it, and the Jac type of the C
@@ -4239,7 +4245,30 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_Py_STR_anon_string",
              "offsetof(struct _Py_global_strings, literals._py_anon_string)",
              "i64"
-         )
+         ),
+         ("_PyXI_state_t_SIZE", "sizeof(_PyXI_state_t)", "i64"),
+         ("_PyXI_global_state_t_SIZE", "sizeof(_PyXI_global_state_t)", "i64"),
+         (
+             "_PyXI_state_t_EXC_INTERPRETER_ERROR",
+             "offsetof(_PyXI_state_t, exceptions.PyExc_InterpreterError)",
+             "i64"
+         ),
+         (
+             "_PyXI_state_t_EXC_INTERPRETER_NOT_FOUND_ERROR",
+             "offsetof(_PyXI_state_t, exceptions.PyExc_InterpreterNotFoundError)",
+             "i64"
+         ),
+         (
+             "_PyXI_state_t_EXC_NOT_SHAREABLE_ERROR",
+             "offsetof(_PyXI_state_t, exceptions.PyExc_NotShareableError)",
+             "i64"
+         ),
+         ("_PyXIData_registry_t_MUTEX", "offsetof(_PyXIData_registry_t, mutex)", "i64"),
+         ("_PyXIData_registry_t_HEAD", "offsetof(_PyXIData_registry_t, head)", "i64"),
+         ("_PyXIData_regitem_t_SIZE", "sizeof(_PyXIData_regitem_t)", "i64"),
+         ("_PyXI_excinfo_SIZE", "sizeof(_PyXI_excinfo)", "i64"),
+         ("_PyXI_excinfo_MSG", "offsetof(_PyXI_excinfo, msg)", "i64"),
+         ("_PyXI_excinfo_ERRDISPLAY", "offsetof(_PyXI_excinfo, errdisplay)", "i64")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -5986,7 +6015,9 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "_PyRuntimeState_SIGNALS_UNHANDLED_KEYBOARD_INTERRUPT",
              "offsetof(_PyRuntimeState, signals.unhandled_keyboard_interrupt)",
              "i64"
-         )
+         ),
+         ("PyInterpreterState_XI", "offsetof(PyInterpreterState, xi)", "i64"),
+         ("_PyRuntimeState_XI", "offsetof(_PyRuntimeState, xi)", "i64")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.
@@ -6060,7 +6091,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "bool": ("u8", False),
          "_Bool": ("u8", False),
          # An enum with a negative enumerator is an int.
-         "PySendResult": ("i32", True)
+         "PySendResult": ("i32", True),
+         "_PyXI_errcode": ("i32", True)
      },
      # Jac keywords a C member name may collide with.
      JAC_KEYWORDS: set[str] = set(

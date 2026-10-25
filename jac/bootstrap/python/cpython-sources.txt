@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 262 C files / 437,783 lines; 166 headers / 157,629 lines.
-#   Total: 428 files / 595,412 source lines.
+#   Excluded: 266 C files / 448,489 lines; 169 headers / 158,786 lines.
+#   Total: 435 files / 607,275 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -355,9 +355,9 @@ Python/clinic/marshal.c.h
 # Python/config_common.h  # removed: 36 source lines
 # Python/context.c  # removed: 1,364 source lines
 # Python/critical_section.c  # removed: 205 source lines
-Python/crossinterp.c
-Python/crossinterp_data_lookup.h
-Python/crossinterp_exceptions.h
+# Python/crossinterp.c  # removed: 3,304 source lines
+# Python/crossinterp_data_lookup.h  # removed: 835 source lines
+# Python/crossinterp_exceptions.h  # removed: 199 source lines
 # Python/dtoa.c  # removed: 2,843 source lines
 # Python/dynamic_annotations.c  # removed: 154 source lines
 Python/dynload_shlib.c
@@ -605,10 +605,10 @@ Modules/_hacl/libintvector.h
 Modules/_hacl/python_hacl_namespaces.h
 # Modules/_hashopenssl.c  # removed: 2,390 source lines
 # Modules/_heapqmodule.c  # removed: 811 source lines
-Modules/_interpchannelsmodule.c
-Modules/_interpqueuesmodule.c
-Modules/_interpreters_common.h
-Modules/_interpretersmodule.c
+# Modules/_interpchannelsmodule.c  # removed: 3,660 source lines
+# Modules/_interpqueuesmodule.c  # removed: 1,995 source lines
+# Modules/_interpreters_common.h  # removed: 123 source lines
+# Modules/_interpretersmodule.c  # removed: 1,747 source lines
 Modules/_io/_iomodule.c
 Modules/_io/_iomodule.h
 Modules/_io/bufferedio.c

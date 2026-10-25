@@ -107,6 +107,15 @@ import from c {
              _inittab(name=ptr[u8]("faulthandler"), initfunc=ptr(PyInit_faulthandler)),
              _inittab(name=ptr[u8]("_signal"), initfunc=ptr(PyInit__signal)),
              _inittab(name=ptr[u8]("_thread"), initfunc=ptr(PyInit__thread)),
+             _inittab(
+                 name=ptr[u8]("_interpreters"), initfunc=ptr(PyInit__interpreters)
+             ),
+             _inittab(
+                 name=ptr[u8]("_interpchannels"), initfunc=ptr(PyInit__interpchannels)
+             ),
+             _inittab(
+                 name=ptr[u8]("_interpqueues"), initfunc=ptr(PyInit__interpqueues)
+             ),
              _inittab(name=ptr[u8]("_io"), initfunc=ptr(PyInit__io)),
              _inittab(name=ptr[u8]("marshal"), initfunc=ptr(PyMarshal_Init)),
              _inittab(name=ptr[u8]("_imp"), initfunc=ptr(PyInit__imp)),

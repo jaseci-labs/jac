@@ -15943,6 +15943,9 @@ graph import runtime.python {
     bindings.hashopenssl ++> inittab { PyInit__hashlib }
     bindings.heapq ++> inittab { PyInit__heapq }
     bindings.hmac ++> inittab { PyInit__hmac }
+    bindings.interpchannels ++> inittab { PyInit__interpchannels }
+    bindings.interpqueues ++> inittab { PyInit__interpqueues }
+    bindings.interpreters ++> inittab { PyInit__interpreters }
     bindings.itertools ++> inittab { PyInit_itertools }
     bindings.json ++> inittab { PyInit__json }
     bindings.locale ++> inittab { PyInit__locale }
@@ -15971,6 +15974,9 @@ graph import runtime.python {
         interpreter.frame
             | modules.datetime_date
             | modules.decimal_context
+            | modules.interpchannels
+            | modules.interpqueues
+            | modules.interpreters
             | modules.socket_object
             | modules.thread
             | object_model.bltinmodule
@@ -17206,7 +17212,11 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_from_text
         },
-        bindings.faulthandler { PyMethodDef, PyModuleDef, PyObject },
+        bindings.faulthandler | bindings.interpreters {
+            PyMethodDef,
+            PyModuleDef,
+            PyObject
+        },
         bindings.fcntl { PyExc_ImportError, PyObject, jacpy_module_add_int_text },
         bindings.functools {
             NULL,
@@ -17257,6 +17267,7 @@ graph import runtime.python {
         },
         bindings.heapq { PyObject, jacpy_unicode_from_text },
         bindings.hmac { PyExc_ValueError, PyModule_AddIntConstant, PyObject },
+        bindings.interpchannels | bindings.interpqueues { PyModuleDef, PyObject },
         bindings.json {
             NULL,
             PyExc_SystemError,
@@ -18452,7 +18463,14 @@ graph import runtime.python {
             jacpy_errno,
             jacpy_set_errno
         },
-        layouts { PyMemberDef, PyMethodDef, PyObject, Py_buffer, Py_complex },
+        layouts {
+            PyMemberDef,
+            PyMethodDef,
+            PyObject,
+            PyThreadState,
+            Py_buffer,
+            Py_complex
+        },
         modules.abc {
             NULL,
             PyDict_Pop,
@@ -19801,6 +19819,175 @@ graph import runtime.python {
             jacpy_is_unicode,
             jacpy_release,
             jacpy_unicode_from_text
+        },
+        modules.interpchannels {
+            NULL,
+            PyArg_ParseTupleAndKeywords,
+            PyBool_FromLong,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NewException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_RuntimeError,
+            PyExc_TimeoutError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyImport_GetModule,
+            PyImport_ImportModule,
+            PyIndex_Check,
+            PyList_Insert,
+            PyList_New,
+            PyLong_AsLongLong,
+            PyLong_AsLongLongAndOverflow,
+            PyLong_FromLongLong,
+            PyLong_FromSsize_t,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyMemoryView_FromObject,
+            PyMethodDef,
+            PyModule_AddType,
+            PyMutex,
+            PyMutex_Lock,
+            PyMutex_Unlock,
+            PyNumber_Check,
+            PyObject,
+            PyObject_CallFunctionObjArgs,
+            PyObject_CallOneArg,
+            PyObject_GetAttrString,
+            PyObject_Hash,
+            PyObject_RichCompare,
+            PyThreadState,
+            PyThread_acquire_lock,
+            PyThread_allocate_lock,
+            PyThread_free_lock,
+            PyThread_release_lock,
+            PyType_FromModuleAndSpec,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            PyUnicode_InternFromString,
+            Py_BuildValue,
+            Py_None,
+            Py_NotImplemented,
+            _PyObject_New,
+            _PyType_Name
+        },
+        modules.interpqueues {
+            NULL,
+            PyArg_ParseTupleAndKeywords,
+            PyBool_FromLong,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NewExceptionWithDoc,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetObject,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyImport_GetModule,
+            PyImport_ImportModule,
+            PyIndex_Check,
+            PyInterpreterState_Get,
+            PyList_New,
+            PyLong_AsLongLongAndOverflow,
+            PyLong_FromLongLong,
+            PyLong_FromSsize_t,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyModule_AddType,
+            PyMutex,
+            PyMutex_Lock,
+            PyMutex_Unlock,
+            PyObject,
+            PyObject_CallOneArg,
+            PyObject_GetAttrString,
+            PyThreadState,
+            PyThreadState_Get,
+            PyThread_acquire_lock,
+            PyThread_allocate_lock,
+            PyThread_free_lock,
+            PyThread_release_lock,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            Py_BuildValue,
+            Py_None
+        },
+        modules.interpreters {
+            NULL,
+            PyArg_ParseTuple,
+            PyArg_ParseTupleAndKeywords,
+            PyBool_FromLong,
+            PyBuffer_Release,
+            PyCallable_Check,
+            PyCode_Type,
+            PyDict_Size,
+            PyDict_Type,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_Occurred,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_RuntimeError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyException_SetCause,
+            PyFunction_Type,
+            PyImport_GetModule,
+            PyImport_ImportModule,
+            PyInterpreterState,
+            PyList_Insert,
+            PyList_New,
+            PyLong_FromLong,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyMemoryView_FromObject,
+            PyModule_AddIntConstant,
+            PyModule_AddType,
+            PyObject,
+            PyObject_Call,
+            PyObject_GetAttrString,
+            PyObject_GetBuffer,
+            PyObject_Init,
+            PyObject_Malloc,
+            PyObject_SetAttrString,
+            PyThreadState,
+            PyThreadState_Get,
+            PyTuple_New,
+            PyTuple_Pack,
+            PyTuple_Type,
+            PyType_FromModuleAndSpec,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AsUTF8,
+            PyUnicode_FromString,
+            Py_BuildValue,
+            Py_None,
+            Py_buffer,
+            _PyArg_BadArgument,
+            _PyErr_ChainExceptions1,
+            _PyInterpreterState_Main
+        },
+        modules.interpreters_common {
+            PyErr_Format,
+            PyExc_ValueError,
+            PyInterpreterState_Get,
+            PyThreadState,
+            PyThreadState_Get
         },
         modules.iterators {
             NULL,
@@ -23208,6 +23395,99 @@ graph import runtime.python {
             _PyRuntime,
             _PyType_GetDict
         },
+        object_model.crossinterp {
+            NULL,
+            PyBool_Type,
+            PyBytes_AsStringAndSize,
+            PyBytes_FromStringAndSize,
+            PyBytes_Type,
+            PyCompilerFlags,
+            PyDict_GetItemRef,
+            PyDict_GetItemStringRef,
+            PyDict_New,
+            PyDict_Next,
+            PyDict_SetItem,
+            PyDict_SetItemString,
+            PyDict_Size,
+            PyDict_Update,
+            PyErr_BadInternalCall,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_GetRaisedException,
+            PyErr_GivenExceptionMatches,
+            PyErr_NewException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetNone,
+            PyErr_SetObject,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_AttributeError,
+            PyExc_Exception,
+            PyExc_MemoryError,
+            PyExc_NotImplementedError,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyException_SetCause,
+            PyException_SetContext,
+            PyFloat_AsDouble,
+            PyFloat_FromDouble,
+            PyFloat_Type,
+            PyImport_ImportModuleAttrString,
+            PyInterpreterState,
+            PyInterpreterState_Get,
+            PyInterpreterState_GetDict,
+            PyLong_AsSsize_t,
+            PyLong_FromSsize_t,
+            PyLong_Type,
+            PyMem_Calloc,
+            PyMem_Free,
+            PyMem_RawCalloc,
+            PyMem_RawFree,
+            PyMem_RawMalloc,
+            PyModule_GetDict,
+            PyMutex,
+            PyMutex_Lock,
+            PyMutex_Unlock,
+            PyObject,
+            PyObject_Call,
+            PyObject_CallNoArgs,
+            PyObject_CallOneArg,
+            PyObject_GetAttrString,
+            PyObject_SetAttrString,
+            PyObject_Str,
+            PySequence_Check,
+            PySequence_GetItem,
+            PySequence_Size,
+            PyThreadState,
+            PyThreadState_Get,
+            PyThreadState_GetInterpreter,
+            PyThreadState_Swap,
+            PyTuple_New,
+            PyTuple_Pack,
+            PyTuple_Type,
+            PyUnicode_AsUTF8,
+            PyUnicode_AsUTF8AndSize,
+            PyUnicode_FromFormat,
+            PyUnicode_FromKindAndData,
+            PyUnicode_FromString,
+            PyUnicode_Join,
+            PyUnicode_Type,
+            PyWeakref_NewRef,
+            Py_BuildValue,
+            Py_LeaveRecursiveCall,
+            Py_None,
+            _PyErr_ChainExceptions1,
+            _PyImport_SetModule,
+            _PyInterpreterState_Main,
+            _Py_FalseStruct,
+            _Py_TrueStruct
+        },
         object_model.descr {
             NULL,
             PyBool_FromLong,
@@ -25915,6 +26195,20 @@ graph import runtime.python {
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _object
         },
+        bindings.interpreters {
+            METH_KEYWORDS,
+            METH_NOARGS,
+            METH_VARARGS,
+            ModuleDef,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyTypeObject,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
         bindings.posix { METH_COEXIST, METH_NOARGS, PyTypeObject as TypeLayout },
         bindings.signal {
             ModuleDef,
@@ -27004,6 +27298,78 @@ graph import runtime.python {
             _Py_ID_fileno,
             _Py_ID_stderr
         },
+        modules.interpchannels {
+            METH_KEYWORDS,
+            METH_NOARGS,
+            METH_VARARGS,
+            ModuleDef,
+            PY_LOCK_FAILURE,
+            PY_LOCK_INTR,
+            PyGetSetDef,
+            PyListObject,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyStructSequence_Desc,
+            PyStructSequence_Field,
+            PyThreadState_INTERP,
+            PyTypeObject,
+            Py_EQ,
+            Py_NE,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            Py_nb_int,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_hash,
+            Py_tp_repr,
+            Py_tp_richcompare,
+            Py_tp_str,
+            _PyXIData_t,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
+        modules.interpqueues {
+            METH_KEYWORDS,
+            METH_NOARGS,
+            METH_VARARGS,
+            PyListObject,
+            PyMethodDef,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyThreadState_INTERP,
+            PyTypeObject,
+            Py_TPFLAGS_BASE_EXC_SUBCLASS,
+            Py_TPFLAGS_TYPE_SUBCLASS,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            _PyXIData_t,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
+        modules.interpreters {
+            PyBUF_FULL_RO,
+            PyDictObject,
+            PyFunctionObject_CODE,
+            PyInterpreterConfig,
+            PyTypeObject,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_BASE_EXC_SUBCLASS,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_tp_dealloc,
+            _PyXIData_t,
+            _PyXI_session_result,
+            _object
+        },
+        modules.interpreters_common { PyTypeObject, _PyXIData_getdata_t, _PyXIData_t },
         modules.posix_fileio { PY_BUFFER_SIZE },
         modules.posix_stat { PyTypeObject as TypeLayout },
         modules.signal {
@@ -27636,6 +28002,46 @@ graph import runtime.python {
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _Py_T_OBJECT,
             _Py_freelists_CONTEXTS,
+            _object
+        },
+        object_model.crossinterp {
+            CO_VARARGS,
+            CO_VARKEYWORDS,
+            PY_MINOR_VERSION,
+            PyBUF_READ,
+            PyCF_SOURCE_IS_UTF8,
+            PyCodeObject_ARGCOUNT,
+            PyCodeObject_FLAGS,
+            PyCodeObject_KWONLYARGCOUNT,
+            PyCodeObject_POSONLYARGCOUNT,
+            PyFunctionObject_CODE,
+            PyInterpreterConfig,
+            PyStatus,
+            PyThreadState_INTERP,
+            PyTypeObject,
+            PyVarObject,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_HEAPTYPE,
+            Py_file_input,
+            _PyBytes_data_t,
+            _PyStatus_TYPE_ERROR,
+            _PyStatus_TYPE_OK,
+            _PyXIData_getdata_t,
+            _PyXIData_registry_t_MUTEX,
+            _PyXIData_regitem_t_SIZE,
+            _PyXIData_t,
+            _PyXI_excinfo_SIZE,
+            _PyXI_excinfo_type,
+            _PyXI_session_result,
+            _PyXI_state_t_EXC_INTERPRETER_ERROR,
+            _PyXI_state_t_EXC_INTERPRETER_NOT_FOUND_ERROR,
+            _PyXI_state_t_EXC_NOT_SHAREABLE_ERROR,
+            _Py_ID___main__,
+            _Py_PENDING_RAWFREE,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _Py_TPFLAGS_STATIC_BUILTIN,
             _object
         },
         object_model.descr {
@@ -30362,6 +30768,12 @@ graph import runtime.python {
             PyThreadState_ID,
             _PyRuntimeState_CONTEXT_TOKEN_MISSING
         },
+        object_model.crossinterp {
+            MAXPATHLEN,
+            PyInterpreterState_RUNTIME,
+            PyInterpreterState_XI,
+            _PyRuntimeState_XI
+        },
         object_model.dict {
             PyInterpreterState_DICT_NEXT_KEYS_VERSION,
             PyInterpreterState_DICT_WATCHERS
@@ -31909,6 +32321,37 @@ graph import runtime.python {
         },
         bindings.hmac { HMAC_TYPE, HMAC_token, UNKNOWN_HASH_ERROR, hmac_repr },
     ]
+    modules.interpchannels ++> bindings.interpchannels {
+        interpchannels_moduledef,
+        module_clear,
+        module_free,
+        module_traverse
+    }
+    modules.interpqueues ++> bindings.interpqueues { moduledef }
+    modules.interpreters ++> bindings.interpreters {
+        capture_exception,
+        interp_call,
+        interp_create,
+        interp_decref,
+        interp_destroy,
+        interp_exec,
+        interp_get_config,
+        interp_get_current,
+        interp_get_main,
+        interp_incref,
+        interp_is_running,
+        interp_list_all,
+        interp_new_config,
+        interp_run_func,
+        interp_run_string,
+        interp_set___main___attrs,
+        interp_whence,
+        module_clear,
+        module_exec,
+        module_free,
+        module_traverse,
+        object_is_shareable
+    }
     modules.itertools ++> [
         bindings.clinic.itertools {
             _grouper_token,
@@ -33943,6 +34386,7 @@ graph import runtime.python {
     object_model.abstract ++> [
         bindings.signal { PyMapping_GetItemString },
         modules.faulthandler { call_method_no_args, long_check },
+        modules.interpchannels { long_check },
         modules.warnings {
             long_check_exact,
             tuple_check,
@@ -33993,6 +34437,8 @@ graph import runtime.python {
             exception_raised
         },
         interpreter.instrumentation { vectorcall_tstate },
+        modules.interpchannels { thread_state },
+        modules.interpreters { exception_raised, thread_state },
     ]
     object_model.capsule ++> [
         bindings.datetime | modules.unicodedata { PyCapsule_New },
@@ -34273,6 +34719,30 @@ graph import runtime.python {
             object_type,
             object_xdecref
         },
+        modules.interpchannels {
+            current_interp,
+            object_decref,
+            object_new_ref,
+            object_type,
+            object_type_check,
+            object_xdecref
+        },
+        modules.interpqueues {
+            object_decref,
+            object_new_ref,
+            object_type,
+            object_xdecref,
+            type_has_feature
+        },
+        modules.interpreters {
+            current_interp,
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            type_has_feature
+        },
         modules.signal {
             current_interp,
             current_tstate,
@@ -34324,7 +34794,12 @@ graph import runtime.python {
     ]
     object_model.method ++> bindings.functools { PyMethod_New }
     object_model.module ++> [
-        bindings.faulthandler | bindings.signal | bindings.thread { PyModuleDef_Init },
+        bindings.faulthandler
+            | bindings.interpchannels
+            | bindings.interpqueues
+            | bindings.interpreters
+            | bindings.signal
+            | bindings.thread { PyModuleDef_Init },
         interpreter.lifecycle { module_check, module_get_dict },
     ]
     object_model.namespace ++> modules.time { _PyNamespace_New }
@@ -34336,11 +34811,14 @@ graph import runtime.python {
             object_is_gc,
             var_size
         },
-        interpreter.instrumentation | interpreter.lifecycle { unicode_check },
+        interpreter.instrumentation | interpreter.lifecycle | modules.interpreters {
+            unicode_check
+        },
         interpreter.ops_arith | interpreter.stackref { reftracer_track },
         interpreter.ops_attr { managed_dict },
         interpreter.pystate { py_none },
         interpreter.specialize { type_is_ready },
+        modules.interpchannels { type_check },
     ]
     object_model.obmalloc ++> [
         modules.thread { llist_init, llist_remove },
@@ -34376,6 +34854,11 @@ graph import runtime.python {
             | modules.pwd
             | modules.resource
             | modules.signal { PyStructSequence_New, PyStructSequence_SetItem },
+        modules.interpchannels {
+            PyStructSequence_New,
+            PyStructSequence_NewType,
+            PyStructSequence_SetItem
+        },
         modules.posix_process | modules.posix_stat | modules.time {
             PyStructSequence_GetItem,
             PyStructSequence_New,
@@ -37561,6 +38044,20 @@ graph import runtime.python.modules {
         },
         operator { compare_digest },
     ]
+    interpreters_common ++> [
+        interpchannels | interpqueues {
+            UNBOUND_ERROR,
+            UNBOUND_REMOVE,
+            UNBOUND_REPLACE,
+            XIDATA_FULL_FALLBACK,
+            clear_xid_class,
+            ensure_xid_class,
+            get_interpid,
+            resolve_fallback,
+            resolve_unboundop
+        },
+        interpreters { XIDATA_FULL_FALLBACK, ensure_xid_class },
+    ]
     iterators ++> [
         combinatorics { reusable_tuple },
         itertools {
@@ -39546,6 +40043,7 @@ graph import runtime.python.object_model {
             vectorcall_tstate
         },
         context { thread_state, vectorcall_tstate },
+        crossinterp { thread_state },
         errors { PyObject_VectorcallDict, error_occurred, thread_state },
         sysmodule { exception_raised, thread_state, vectorcall_tstate },
         traceback { stackref_borrow, thread_state },
@@ -39562,7 +40060,10 @@ graph import runtime.python.object_model {
         descr { PyCMethod_New },
         exceptions { Py_EnterRecursiveCall },
     ]
-    code ++> traceback { PyCode_Addr2Line, PyCode_NewEmpty, _PyCode_SafeAddr2Line }
+    code ++> [
+        crossinterp { code_check },
+        traceback { PyCode_Addr2Line, PyCode_NewEmpty, _PyCode_SafeAddr2Line },
+    ]
     complex ++> bltinmodule { complex_check_exact }
     descr ++> errors { PyType_GetQualName }
     dict ++> [
@@ -39604,6 +40105,7 @@ graph import runtime.python.object_model {
     errors ++> sysmodule { ensure_tstate_not_null }
     exceptions ++> [
         codecs { unicode_error_params },
+        crossinterp { exception_class_check, exception_instance_check },
         errors {
             PyExc_ModuleNotFoundError,
             PyException_GetContext,
@@ -39649,6 +40151,7 @@ graph import runtime.python.object_model {
             iframe_previous
         },
     ]
+    func ++> crossinterp { function_check }
     gen ++> [
         sysmodule {
             frame_first_complete,
@@ -39858,6 +40361,16 @@ graph import runtime.python.object_model {
             object_new_ref,
             object_type,
             object_xdecref
+        },
+        crossinterp {
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item,
+            tuple_set_item
         },
         descr {
             eval_builtin,
@@ -40436,6 +40949,7 @@ graph import runtime.python.object_model {
         },
         bootstrap_hash | initconfig | preconfig { status_err, status_ok },
         context { status_err, status_ok, unicode_check },
+        crossinterp { bytes_check, type_check, unicode_check },
         errors { Py_FatalError },
         modsupport { type_is_ready },
         structmember { py_true },
@@ -40488,6 +41002,7 @@ graph import runtime.python.object_model {
     type ++> [
         bltinmodule | fileutils { py_id },
         codecs { py_id, tuple_check, tuple_check_exact },
+        crossinterp { dict_check_exact, py_id },
         errors { object_xnewref, py_id },
         hamt { py_clear, py_xsetref },
         initconfig | preconfig { runtime_at },
@@ -40506,6 +41021,7 @@ graph import runtime.python.object_model {
     unicode ++> [
         bltinmodule { uo_read_char },
         codecs { _PyUnicode_GetNameCAPI, intern_common, uo_data, uo_read_char },
+        crossinterp { unicode_get_empty, uo_data, uo_kind, uo_length },
         formatter_unicode {
             UnicodeWriter,
             ch_read,
@@ -40555,6 +41071,7 @@ graph import runtime.python.object_model {
         uct_whitespace
     }
     union ++> genericalias { _Py_union_type_or }
+    weakref ++> crossinterp { weakref_get_ref }
 }
 
 graph import scale {

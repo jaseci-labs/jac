@@ -100,3 +100,6 @@ _contextvars    test.test_context
 faulthandler    test.test_faulthandler
 _signal         test.test_signal
 _thread         test.test_thread,test.test_threading,test.test_threading_local
+_interpreters   test.test__interpreters,test.test_interpreters,test.test_crossinterp,test.test_concurrent_futures.test_interpreter_pool
+_interpchannels test.test__interpchannels
+_interpqueues   test.test_interpreters
