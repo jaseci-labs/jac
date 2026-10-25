@@ -1704,6 +1704,7 @@ graph import {
             | client.targets.node_tooling_common.run_manifest_install
             | client.targets.react_native.build.run_gradle_assemble
             | data.pg_dist.download_dist
+            | dist.seal.make_sealed_image
             | packages.sources.checkout
             | packages.store.materialize
             | project.kernel_snapshot.build_stub_catalog

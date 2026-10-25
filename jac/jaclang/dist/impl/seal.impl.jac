@@ -282,9 +282,14 @@ impl make_sealed_image(
         if dest.exists() {
             shutil.rmtree(dest);
         }
-        shutil.copytree(cached, dest, symlinks=True);
-        console.print("  ✔ Sealed image unchanged", style="muted");
-        return dest;
+        cache_root.mkdir(parents=True, exist_ok=True);
+        with FileLock(str(cache_root / ".lock")) {
+            if cached.is_dir() {
+                shutil.copytree(cached, dest, symlinks=True);
+                console.print("  ✔ Sealed image unchanged", style="muted");
+                return dest;
+            }
+        }
     }
     stage = Path(tempfile.mkdtemp(prefix=f"{name}-seal-"));
     try {
@@ -328,13 +333,13 @@ impl make_sealed_image(
         if key {
             partial = cache_root / f".partial-{key}-{os.getpid()}";
             try {
-                if cache_root.is_dir() {
+                shutil.copytree(dest, partial / name, symlinks=True);
+                with FileLock(str(cache_root / ".lock")) {
                     for old in cache_root.glob("image-*") {
                         shutil.rmtree(old, ignore_errors=True);
                     }
+                    os.replace(partial, cached.parent);
                 }
-                shutil.copytree(dest, partial / name, symlinks=True);
-                os.replace(partial, cached.parent);
             } except OSError {
                 shutil.rmtree(partial, ignore_errors=True);
             }
@@ -396,6 +401,13 @@ impl sealed_image_key(
     lock = Path(proj_root) / ".jac" / "client" / "bun.lock";
     if lock.is_file() {
         h.update(file_sha256(str(lock)).encode("utf-8"));
+    }
+    for (env_key, env_value) in sorted(os.environ.items()) {
+        if env_key.startswith("VITE_")
+            or env_key in ("NODE_ENV", "JAC_CLIENT_API_BASE_URL") {
+            h.update(f"{env_key}={env_value}".encode("utf-8"));
+            h.update(b"\x00");
+        }
     }
     for (dirpath, dirnames, filenames) in os.walk(proj_root, followlinks=True) {
         skipped = set(ignore(dirpath, dirnames + filenames));

@@ -1109,6 +1109,17 @@ impl ViteBundler._build_inputs_digest(
             rows.append(f"{name}:{file_sha256(str(lock))}");
         }
     }
+    for target_path in sorted(self.config_loader.get_paths_config().values()) {
+        target = self.project_dir / target_path.lstrip('./').rstrip('/*');
+        sources = [target]
+            if target.is_file()
+            else (sorted(target.rglob("*")) if target.is_dir() else []);
+        for p in sources {
+            if p.is_file() and "node_modules" not in p.parts {
+                rows.append(f"{p}:{file_sha256(str(p))}");
+            }
+        }
+    }
     for env_file in sorted(self.project_dir.glob(".env*")) {
         if env_file.is_file() {
             rows.append(f"{env_file.name}:{file_sha256(str(env_file))}");
