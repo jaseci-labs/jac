@@ -6597,6 +6597,9 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
             SymbolStorage
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_clib_args {
+            is_borrow_kind
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_unary {
             OwnershipKind,
             is_borrow_kind
