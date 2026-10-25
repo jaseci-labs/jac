@@ -2014,10 +2014,10 @@ impl set_refcnt(op: ptr[PyObject], refcnt: i64) {
 }
 
 impl decref_mortal(op: ptr[PyObject]) {
-    header = ptr[_object](op);
-    full = header.view(1)[0].ob_refcnt_full - 1;
-    header.view(1)[0].ob_refcnt_full = full;
-    if (full & 0xFFFFFFFF) == 0 {
+    refcnt = ptr[u32](op);
+    count = wrapping_sub(refcnt.view(1)[0], u32(1));
+    refcnt.view(1)[0] = count;
+    if count == u32(0) {
         _Py_Dealloc(op);
     }
 }

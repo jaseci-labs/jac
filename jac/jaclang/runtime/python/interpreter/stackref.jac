@@ -86,10 +86,10 @@ impl sr_incref_mortal(op: ptr[PyObject]) {
 }
 
 impl sr_decref_mortal(op: ptr[PyObject]) {
-    header = ptr[_object](op);
-    full = wrapping_sub(header.view(1)[0].ob_refcnt_full, 1);
-    header.view(1)[0].ob_refcnt_full = full;
-    if (full & 0xFFFFFFFF) == 0 {
+    refcnt = ptr[u32](op);
+    count = wrapping_sub(refcnt.view(1)[0], u32(1));
+    refcnt.view(1)[0] = count;
+    if count == u32(0) {
         _Py_Dealloc(op);
     }
 }
@@ -116,10 +116,10 @@ impl sr_xclose(ref: u64) {
 impl sr_close_long(ref: u64) {
     if (ref & SR_TAG_REFCNT) == u64(0) {
         op = ptr[PyObject](i64.wrap(ref));
-        header = ptr[_object](op);
-        full = wrapping_sub(header.view(1)[0].ob_refcnt_full, 1);
-        header.view(1)[0].ob_refcnt_full = full;
-        if (full & 0xFFFFFFFF) == 0 {
+        refcnt = ptr[u32](op);
+        count = wrapping_sub(refcnt.view(1)[0], u32(1));
+        refcnt.view(1)[0] = count;
+        if count == u32(0) {
             reftracer_track(op, 1);
             _PyLong_ExactDealloc(op);
         }

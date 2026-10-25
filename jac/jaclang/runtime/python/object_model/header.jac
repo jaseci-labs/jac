@@ -87,14 +87,14 @@ impl object_new_ref(op: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl object_decref(op: ptr[PyObject]) {
-    header = ptr[_object](op);
-    full = header.view(1)[0].ob_refcnt_full;
-    if (full & 0x80000000) != 0 {
+    refcnt = ptr[u32](op);
+    count = refcnt.view(1)[0];
+    if (count & u32(0x80000000)) != u32(0) {
         return;
     }
-    full = wrapping_sub(full, 1);
-    header.view(1)[0].ob_refcnt_full = full;
-    if (full & 0xFFFFFFFF) == 0 {
+    count = wrapping_sub(count, u32(1));
+    refcnt.view(1)[0] = count;
+    if count == u32(0) {
         _Py_Dealloc(op);
     }
 }

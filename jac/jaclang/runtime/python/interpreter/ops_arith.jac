@@ -169,10 +169,10 @@ def _BINARY_OP(oparg: i32, lhs: u64, rhs: u64) -> u64;
 impl arith_close_float(ref: u64) {
     if (ref & SR_TAG_REFCNT) == u64(0) {
         op = ptr[PyObject](i64.wrap(ref));
-        header = ptr[_object](op);
-        full = header.view(1)[0].ob_refcnt_full - 1;
-        header.view(1)[0].ob_refcnt_full = full;
-        if (full & 0xFFFFFFFF) == 0 {
+        refcnt = ptr[u32](op);
+        count = wrapping_sub(refcnt.view(1)[0], u32(1));
+        refcnt.view(1)[0] = count;
+        if count == u32(0) {
             reftracer_track(op, 1);
             _PyFloat_ExactDealloc(op);
         }
@@ -182,10 +182,10 @@ impl arith_close_float(ref: u64) {
 impl arith_close_unicode(ref: u64) {
     if (ref & SR_TAG_REFCNT) == u64(0) {
         op = ptr[PyObject](i64.wrap(ref));
-        header = ptr[_object](op);
-        full = header.view(1)[0].ob_refcnt_full - 1;
-        header.view(1)[0].ob_refcnt_full = full;
-        if (full & 0xFFFFFFFF) == 0 {
+        refcnt = ptr[u32](op);
+        count = wrapping_sub(refcnt.view(1)[0], u32(1));
+        refcnt.view(1)[0] = count;
+        if count == u32(0) {
             reftracer_track(op, 1);
             _PyUnicode_ExactDealloc(op);
         }
