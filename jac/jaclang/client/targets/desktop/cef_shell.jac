@@ -25,7 +25,10 @@ def _generate_host_source(
     dispatch_max_queue: int = 128,
     dispatch_debug: bool = False,
     identifier: str = "",
-    pg_dist: str = ""
+    pg_dist: str = "",
+    backends: (dict[str, str] | None) = None,
+    default_backend: str = "",
+    profiles: bool = False
 ) -> str;
 
 def _stage_cef_runtime(cef_dist: Path, out_dir: Path);
@@ -89,6 +92,9 @@ impl _generate_host_source(
     dispatch_debug: bool = False,
     identifier: str = "",
     pg_dist: str = "",
+    backends: (dict[str, str] | None) = None,
+    default_backend: str = "",
+    profiles: bool = False,
 ) -> str {
     boot_py = _host_boot_py(
         app_name,
@@ -100,7 +106,10 @@ impl _generate_host_source(
         dispatch_debug,
         plugin_configs,
         identifier,
-        pg_dist
+        pg_dist,
+        backends,
+        default_backend,
+        profiles
     );
     return (
         '"""Generated CEF desktop host - do not edit (jac-desktop)."""\n'
@@ -146,6 +155,11 @@ impl _generate_host_source(
         "    cef_run_loop();\n"
         "    api.PyEval_RestoreThread(ts);\n"
         '    api.PyRun_SimpleString("_ctx.shutdown()");\n'
+        '    relaunch: int = api.PyLong_AsLong(api.PyRun_String("int(_ctx.wants_relaunch())", PY_EVAL, d, d));\n'
+        "    if relaunch == 1 {\n"
+        "        cef_cleanup();\n"
+        '        api.PyRun_SimpleString("_ctx.relaunch()");\n'
+        "    }\n"
         "    api.Py_Finalize();\n"
         "    cef_cleanup();\n"
         "}\n"
@@ -219,6 +233,9 @@ impl cef_build(
     out_dir.mkdir(parents=True, exist_ok=True);
 
     shutil.copytree(dist_dir, out_dir / "dist");
+    if cfg.get_backends() or cfg.get_profiles() {
+        inject_backend_script(out_dir / "dist" / "index.html");
+    }
 
     cef_dir = _find_cef_dir();
     fonts_conf = cef_dir / "minimal-fonts.conf";
@@ -234,8 +251,16 @@ impl cef_build(
     shutil.copy2(cef_dir / "cef.jac", out_dir / "cef.jac");
     _stage_cef_runtime(cef_dist, out_dir);
 
-    backend = cfg.get_backend();
-    program = stage_program(entry_file, project_dir, out_dir, backend, dist_dir);
+    backends = cfg.get_backends();
+    backend = cfg.get_build_backend();
+    program = stage_program(
+        entry_file,
+        project_dir,
+        out_dir,
+        backend,
+        dist_dir,
+        serves_remote=any(v != "embedded" for v in backends.values())
+    );
     pg_dist = stage_postgres(out_dir, backend);
     _stage_fused_runtime(out_dir);
     cache_path = str(project_dir / ".jac" / "desktop" / "cef-cache" / str(app_name));
@@ -253,6 +278,9 @@ impl cef_build(
         dispatch.debug,
         desktop_storage_identifier(ident.identifier, project_dir, entry_file, backend),
         pg_dist,
+        backends,
+        cfg.get_default_backend(),
+        cfg.get_profiles(),
     );
     (out_dir / "host.jac").write_text(host_src);
 

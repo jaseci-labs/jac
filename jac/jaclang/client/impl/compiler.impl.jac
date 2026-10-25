@@ -87,9 +87,6 @@ impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bo
 impl ViteCompiler._compile_wasm_module(
     self: ViteCompiler, module_path: Path
 ) -> dict[str, bytes] {
-    """A module's wasm is reused while every unit its last build lowered is
-    unchanged: the build records those units with their source digests beside
-    the assets, and a later build checks them before compiling anything.""";
     import json;
     stem = native_wasm_stem(str(module_path));
     cache = self.project_dir / ".jac" / "cache" / "wasm" / stem;

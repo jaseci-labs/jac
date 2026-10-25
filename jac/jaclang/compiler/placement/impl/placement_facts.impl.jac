@@ -124,8 +124,6 @@ impl spaces_are_client_only(spaces: set[str]) -> bool {
 impl module_record(
     source_path: str, program: (JacProgram | None) = None
 ) -> (PlacementSummary | None) {
-    """With a program, the record is read where that program's compile of the
-    module keys its cache file.""";
     real = os.path.realpath(source_path);
     if program is None {
         return _record_at(real);

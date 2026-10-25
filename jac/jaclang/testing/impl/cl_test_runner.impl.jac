@@ -13,8 +13,6 @@ import from pathlib { Path }
 impl compile_cl_module(
     filepath: str
 ) -> tuple[str, list[any], dict[str, any], list[any]] {
-    """The module's client artifact, served from its cache record when the
-    module is unchanged and compiled otherwise.""";
     prog = JacProgram();
     artifact = prog._get_compiler().get_client_artifact(
         os.path.abspath(str(filepath)), prog

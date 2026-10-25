@@ -208,9 +208,7 @@ impl _record_outcome(record_path: str, path: str, outcome: AnalysisReport) {
                 searched.add(os.path.dirname(dep));
             }
         }
-        """An import that did not resolve can resolve once a file appears in a
-        directory the check searched; such a file changes that directory's
-        stamp, so the record stops replaying.""";
+
         dirs = [[d, os.stat(d).st_mtime_ns] for d in sorted(searched)];
         record = {
             "key": module_cache_key(real),

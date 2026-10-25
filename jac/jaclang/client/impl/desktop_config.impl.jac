@@ -1,3 +1,4 @@
+import re;
 import from pathlib { Path }
 
 impl JacDesktopConfig.get_plugin_name(self: JacDesktopConfig) -> str {
@@ -81,6 +82,101 @@ impl JacDesktopConfig.get_backend(self: JacDesktopConfig) -> str {
     );
 }
 
+impl JacDesktopConfig.get_backends(self: JacDesktopConfig) -> dict[str, str] {
+    config = self.load();
+    raw = config.get('backends', {});
+    if 'backends' not in config {
+        if 'default_backend' in config {
+            raise ValueError(
+                "Desktop configuration error: default_backend needs a [desktop] backends table"
+            );
+        }
+        return {};
+    }
+    if not isinstance(raw, dict) or not raw {
+        raise ValueError(
+            "Desktop configuration error: backends must be a table of at least two name = 'embedded' or http(s) URL entries"
+        );
+    }
+    if 'backend' in config {
+        raise ValueError(
+            "Desktop configuration error: set either backend (one backend) or backends (a choice), not both"
+        );
+    }
+    backends: dict[str, str] = {};
+    for (key, raw_value) in raw.items() {
+        name = str(key).strip();
+        value = str(raw_value or '').strip();
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', name) or name == 'ask' {
+            raise ValueError(
+                f"Desktop configuration error: backend name '{name}' must be letters, digits, '-' or '_', and not 'ask'"
+            );
+        }
+        if value == 'embedded' {
+            if 'embedded' in backends.values() {
+                raise ValueError(
+                    "Desktop configuration error: backends may name 'embedded' only once; the app has one local store"
+                );
+            }
+        } elif value.startswith('http://') or value.startswith('https://') {
+            value = value.rstrip('/');
+        } else {
+            raise ValueError(
+                f"Desktop configuration error: backends.{name} must be 'embedded' or an http(s) URL, got '{value}'"
+            );
+        }
+        backends[name] = value;
+    }
+    if len(backends) < 2 {
+        raise ValueError(
+            "Desktop configuration error: backends needs at least two entries; use backend = ... for a single one"
+        );
+    }
+    return backends;
+}
+
+impl JacDesktopConfig.get_default_backend(self: JacDesktopConfig) -> str {
+    backends = self.get_backends();
+    if not backends {
+        return "";
+    }
+    config = self.load();
+    chosen = str(config.get('default_backend', 'ask') or 'ask').strip();
+    if chosen != 'ask' and chosen not in backends {
+        names = ", ".join(backends.keys());
+        raise ValueError(
+            f"Desktop configuration error: default_backend must be 'ask' or one of {names}, got '{chosen}'"
+        );
+    }
+    return chosen;
+}
+
+impl JacDesktopConfig.get_build_backend(self: JacDesktopConfig) -> str {
+    backends = self.get_backends();
+    if not backends {
+        return self.get_backend();
+    }
+    if 'embedded' in backends.values() {
+        return 'embedded';
+    }
+    return list(backends.values())[0];
+}
+
+impl JacDesktopConfig.get_profiles(self: JacDesktopConfig) -> bool {
+    raw = self.load().get('profiles', False);
+    if not isinstance(raw, bool) {
+        raise ValueError(
+            f"Desktop configuration error: profiles must be true or false, got '{raw}'"
+        );
+    }
+    if raw and self.get_build_backend() != 'embedded' {
+        raise ValueError(
+            "Desktop configuration error: profiles needs an embedded backend; a remote server keeps its own accounts"
+        );
+    }
+    return raw;
+}
+
 impl JacDesktopConfig.get_plugin_configs(self: JacDesktopConfig) -> dict[str, any] {
     config = self.load();
     plugins = config.get('plugins', {});
@@ -159,6 +255,8 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     if isinstance(plugins, dict) {
         _validate_plugin_keys(plugins);
     }
+    self.get_default_backend();
+    self.get_profiles();
 }
 
 def _validate_plugin_keys(plugins: dict[str, any]) -> None;

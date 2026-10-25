@@ -456,14 +456,6 @@ impl TypeEvaluator._scope_has_fields(tab: UniScopeNode | None) -> bool {
 }
 
 impl TypeEvaluator._dataclass_shadows_base_init(class_type: ClassType) -> bool {
-    """Does a field-bearing `obj` replace the `__init__` of a non-`obj` base?
-
-    An `obj` deriving from a builtin class such as `Exception` synthesizes its
-    own `__init__` from its fields, as a dataclass does, and that is the
-    initializer a construction runs: `Coded("msg")` binds `"msg"` to the first
-    field. The base's `__new__` still accepts any arguments, so validating it
-    alone would let a mistyped field argument through.
-    """;
     if not class_type.is_data_class() {
         return False;
     }

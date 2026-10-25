@@ -1,7 +1,4 @@
 impl JacToJSCompiler.add_runtime_imports(js_code: str) -> str {
-    """The import prelude is a function of the module's JS and the active
-    backend; a client rebuild re-emits every module, so unchanged ones reuse
-    it instead of re-scanning their JS.""";
     key = (type(resolve_active_backend()).__name__, js_code);
     held = _RUNTIME_IMPORTS_MEMO.get(key);
     if held is not None {

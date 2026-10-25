@@ -51,6 +51,9 @@ impl _assemble_native_host(
 
     if dist_dir is not None {
         shutil.copytree(dist_dir, layout.resources / "dist");
+        if cfg.get_backends() or cfg.get_profiles() {
+            inject_backend_script(layout.resources / "dist" / "index.html");
+        }
     }
     webview_dir = _find_webview_dir();
     shutil.copy2(
@@ -58,9 +61,15 @@ impl _assemble_native_host(
     );
     shutil.copy2(webview_dir / "webview.jac", output_dir / "webview.jac");
 
-    backend = cfg.get_backend();
+    backends = cfg.get_backends();
+    backend = cfg.get_build_backend();
     program = stage_program(
-        entry_file, project_dir, layout.resources, backend, dist_dir
+        entry_file,
+        project_dir,
+        layout.resources,
+        backend,
+        dist_dir,
+        serves_remote=any(v != "embedded" for v in backends.values())
     );
     pg_dist = stage_postgres(layout.resources, backend, vendor);
 
@@ -79,7 +88,10 @@ impl _assemble_native_host(
         identifier=desktop_storage_identifier(
             ident.identifier, project_dir, entry_file, backend
         ),
-        pg_dist=pg_dist
+        pg_dist=pg_dist,
+        backends=backends,
+        default_backend=cfg.get_default_backend(),
+        profiles=cfg.get_profiles()
     );
     (output_dir / "host.jac").write_text(host_src);
 
@@ -179,6 +191,10 @@ impl webview_dev(
     vite_process = bundler.start_dev_server(port=vite_port, host="127.0.0.1");
     if not vite_process {
         raise RuntimeError("Failed to start Vite dev server");
+    }
+    dev_cfg = get_desktop_config(project_dir);
+    if dev_cfg.get_backends() or dev_cfg.get_profiles() {
+        inject_backend_script(bundler._get_client_dir() / "index.html");
     }
 
     binary_proc = None;

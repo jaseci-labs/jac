@@ -356,8 +356,7 @@ impl CodeIntelligence._compile_and_index(stale: set[str]) {
     if not stale {
         return;
     }
-    """Diagnostics land on the module whose source they point into; one
-    reported outside the project stays with the file whose compile raised it.""";
+
     diags: dict[str, list[list[any]]] = {p: [] for p in stale};
     seen_diags: set[str] = set();
     for real in sorted(stale) {
@@ -537,7 +536,6 @@ impl CodeIntelligence._build_record(
 }
 
 impl CodeIntelligence._project_modules -> dict[str, uni.Module] {
-    """Project modules across the program and its per-app contexts.""";
     out: dict[str, uni.Module] = {};
     for prog in [self.prog] + list(self.prog.contexts.values()) {
         for (path, mod) in list(prog.mod.hub.items()) {

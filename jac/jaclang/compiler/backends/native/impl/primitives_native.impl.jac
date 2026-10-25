@@ -3367,19 +3367,6 @@ impl NativeListEmitter._emit_value_sort(
     target: ir.Value,
     reverse: (ir.Value | None)
 ) -> (ir.Value | None) {
-    """Stable merge sort of the list's own elements, compared in place.
-
-    Scalars compare as themselves. Every other element lives in an erased
-    `i8*` slot, whatever it holds, so the slot type cannot say how to order
-    it: only the checked element type can. A `str` compares through the
-    string helper; anything else -- a tuple, `bytes`, a nested list --
-    goes through the same `_emit_comparison` a `key=` result does, which
-    views the pointers through that type. Treating every pointer as a
-    string ordered a tuple by the bytes of its first field, so float and
-    string leads (and most ints) came back unsorted. An element type the
-    comparison cannot order (a class without the protocol) refuses rather
-    than guess; one whose shape is not fully known keeps the string compare.
-    """;
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);

@@ -57,8 +57,13 @@ def stage_program(
     project_dir: Path,
     image_dir: Path,
     backend: str,
-    dist_dir: (Path | None)
+    dist_dir: (Path | None),
+    serves_remote: bool = False
 ) -> dict[str, str];
+
+def inject_backend_script(index_html: Path);
+
+glob BACKEND_SCRIPT_TAG: str = '<script src="/__jac/backend.js"></script>';
 
 def stage_postgres(resources: Path, backend: str, vendor: bool = True) -> str;
 
@@ -190,18 +195,6 @@ impl _stage_fused_runtime(out_dir: Path) {
 }
 
 impl stage_postgres(resources: Path, backend: str, vendor: bool = True) -> str {
-    """Vendor the self-contained Postgres distribution for an embedded app.
-
-    Returns the app-relative path of the vendored tree, which the host config
-    carries so `host_boot` can point `JAC_PG_DIST` at it and start with no
-    network. A remote-backend app needs no local database and vendors nothing.
-    Only a relocatable distribution is accepted (`bundled_dist_dir` refuses a
-    bare system bin directory), so the bundled tree runs from any machine.
-
-    With `vendor` off (a dev session) nothing is copied: the returned path
-    points at the shared machine cache, which the compiler already populated,
-    so the host finds that distribution instead of a fresh per-app cache.
-    """;
     if backend != "embedded" {
         return "";
     }
@@ -376,20 +369,19 @@ impl stage_program(
     project_dir: Path,
     image_dir: Path,
     backend: str,
-    dist_dir: (Path | None)
+    dist_dir: (Path | None),
+    serves_remote: bool = False
 ) -> dict[str, str] {
-    if backend != "embedded" {
-        if dist_dir is not None {
-            import from jaclang.project.client_paths { client_assets_dir }
-            import from jaclang.project.config { get_config_for_dir }
-            config = get_config_for_dir(str(project_dir));
-            assets = client_assets_dir(config, project_dir, str(entry_file));
-            if assets.is_dir() {
-                shutil.copytree(
-                    assets, image_dir / "dist" / "assets", dirs_exist_ok=True
-                );
-            }
+    if (backend != "embedded" or serves_remote) and dist_dir is not None {
+        import from jaclang.project.client_paths { client_assets_dir }
+        import from jaclang.project.config { get_config_for_dir }
+        config = get_config_for_dir(str(project_dir));
+        assets = client_assets_dir(config, project_dir, str(entry_file));
+        if assets.is_dir() {
+            shutil.copytree(assets, image_dir / "dist" / "assets", dirs_exist_ok=True);
         }
+    }
+    if backend != "embedded" {
         return {};
     }
     if dist_dir is None {
@@ -409,6 +401,21 @@ impl stage_program(
     return {"jab": "app.jab"};
 }
 
+impl inject_backend_script(index_html: Path) {
+    html = index_html.read_text(encoding="utf-8");
+    if BACKEND_SCRIPT_TAG in html {
+        return;
+    }
+    if "<head>" not in html {
+        raise RuntimeError(
+            f"jac-desktop: {index_html} has no <head>; the backend script cannot load before the bundle"
+        );
+    }
+    index_html.write_text(
+        html.replace("<head>", "<head>\n    " + BACKEND_SCRIPT_TAG, 1), encoding="utf-8"
+    );
+}
+
 def desktop_storage_identifier(
     identifier: str, project_dir: Path, entry_file: Path, backend: str
 ) -> str;
@@ -416,12 +423,6 @@ def desktop_storage_identifier(
 impl desktop_storage_identifier(
     identifier: str, project_dir: Path, entry_file: Path, backend: str
 ) -> str {
-    """Suffix the storage identity with the legacy selected workspace app.
-
-    The `[desktop]` identifier is a project-wide default. A workspace may serve
-    several apps, so each app needs its own data directory. This helper keeps
-    the pre-existing selection order for storage identity: changing which app
-    a release seals must not move an existing install to a new, empty store.""";
     if not identifier {
         return identifier;
     }

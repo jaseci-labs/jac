@@ -207,8 +207,6 @@ impl emit_wasm_from_ir(
 }
 
 impl _exported_functions(mod: ModuleRef) -> list[str] {
-    """Every function the module defines with external linkage and default
-    visibility: a wasm module's host calls its functions by these names.""";
     names: list[str] = [];
     for fn in _mod_functions(mod) {
         if not fn.is_declaration
@@ -228,10 +226,6 @@ impl link_wasm_object(
     host_module: str = "",
     app_imports: (set | None) = None
 ) -> bytes {
-    """Link one wasm object into a module with wasm-ld. Its undefined
-    functions become imports: the host ABI's are imported from
-    `host_module`, and once the app's imports are known, any other import
-    is an error.""";
     import tempfile;
     allowed: (list[str] | None) = None;
     if app_imports is not None {
@@ -296,9 +290,6 @@ impl app_declared_imports(ir_module: UniModule, plan: any = None) -> set[str] {
         names.update(sym_lib.keys());
     }
     if plan is not None {
-        """A C declaration in any unit of the program is the application's
-        import: the platform layer of a game declares the host calls its
-        entry module never names.""";
         names.update(plan.clib_symbol_lib().keys());
     }
     manifest = gen.interop_manifest;

@@ -3159,6 +3159,11 @@ walker NaIRGenPass(CompilerPass) {
         replaced: list[tuple[str, ir.Value]]
     ) -> bool;
 
+    def _value_kind(ty: ir.Type) -> str;
+    def _rebinds_slot(
+        slot_type: ir.Type, target_type: (ir.Type | None), value_type: ir.Type
+    ) -> bool;
+
     def _unpack_store_global(
         var_name: str,
         value: ir.Value,

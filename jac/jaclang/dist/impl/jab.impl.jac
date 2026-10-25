@@ -15,9 +15,6 @@ impl materialize_jab_bytes(data: bytes, expected_sha256: str = "") -> Path {
 impl _materialize_jab_data(
     load: Callable[[], bytes], label: str, expected_sha256: str = ""
 ) -> Path {
-    """The extraction directory is addressed by the image's sha256, and an
-    image is only renamed into it after its bytes matched that digest, so a
-    present directory needs no re-hash.""";
     data: (bytes | None) = None;
     digest = expected_sha256;
     if not digest {

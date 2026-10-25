@@ -77,7 +77,10 @@ impl run_client_dependencies(task: ModuleAnalysis) {
 impl admits_interface(task: ModuleAnalysis) -> bool {
     options = task.options;
     closure = session_of(task).closure_options() or options;
-    if task.parse_failed or task.blocked or task.source is not None {
+    if task.parse_failed
+        or task.blocked
+        or task.source is not None
+        or not options.keeps_interfaces() {
         return False;
     }
     return (options.no_cgen and not options.symtab_ir_only)
@@ -152,10 +155,6 @@ impl client_import_paths(module: uni.Module) -> list[str] {
 }
 
 impl drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool {
-    """A module that may not run keeps nothing runnable: not the bytecode the
-    host assembles, not the JCIR the kernel hands the host, not native code.
-    A native module may not run past a codegen error; no module may run past
-    a blocking one (a backend crash, E9003).""";
     mod_path = mod.loc.mod_path if mod?.loc else '';
     if not mod_path {
         return False;

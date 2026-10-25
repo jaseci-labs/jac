@@ -2119,13 +2119,6 @@ impl Archetype.postinit -> None {
 
 
 impl Archetype._get_impl_resolved_body -> list[UniNode] {
-    """The nested ternary this replaced lowers natively now, but not here:
-    `Archetype.body` is the `T` of the generic `AstImplNeedingNode[T]`, whose
-    layout is type-erased, so the narrow can say "a list" and not what of.
-    Both copies then unify at `list[jacval]` and the coercion to the declared
-    `list[UniNode]` is refused. The typed local below is what pins the element
-    type, so the flat form stays until a generic archetype's layout carries
-    its argument.""";
     src = self.body.body if isinstance(self.body, ImplDef) else self.body;
     out: list[UniNode] = [];
     if isinstance(src, list) {
@@ -2877,9 +2870,6 @@ impl LambdaExpr.captures.getter -> list[Symbol] {
 }
 
 impl LambdaExpr.tail_return_expr -> Expr | None {
-    """Implicit return: a braced body consisting of a single expression
-    statement returns that expression's value. Any other body (multiple
-    statements, or a non-expression statement) uses an explicit `return`.""";
     if isinstance(self.body, Expr) or not isinstance(self.body, list) {
         return None;
     }
