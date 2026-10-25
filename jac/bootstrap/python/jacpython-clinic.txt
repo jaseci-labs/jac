@@ -72,3 +72,4 @@ _thread
 _warnings
 _imp
 marshal
+_io raise-free

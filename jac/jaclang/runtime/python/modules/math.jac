@@ -1398,7 +1398,7 @@ impl jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
         } elif operation == 14 {
             result = fabs(x);
         } elif operation == 17 {
-            result = log1p(x);
+            result = _Py_log1p(x);
         } elif operation == 18 {
             result = sin(x);
         } elif operation == 19 {

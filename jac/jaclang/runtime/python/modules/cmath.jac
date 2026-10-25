@@ -875,7 +875,7 @@ def:priv _c_log(z: complex_parts) -> tuple[float, float, int] {
         if 0.71 <= h and h <= 1.73 {
             am = ax if ax > ay else ay;
             an = ay if ax > ay else ax;
-            re = log1p((am - 1.0) * (am + 1.0) + an * an) / 2.0;
+            re = _Py_log1p((am - 1.0) * (am + 1.0) + an * an) / 2.0;
         } else {
             re = log(h);
         }
@@ -971,7 +971,7 @@ def:priv _c_atanh(z: complex_parts) -> tuple[float, float, int] {
             err = 0;
         }
     } else {
-        re = log1p(4.0 * zz.real / ((1.0 - zz.real) * (1.0 - zz.real) + ay * ay)) / 4.0;
+        re = _Py_log1p(4.0 * zz.real / ((1.0 - zz.real) * (1.0 - zz.real) + ay * ay)) / 4.0;
         im = -atan2(-2.0 * zz.imag, (1.0 - zz.real) * (1.0 + zz.real) - ay * ay) / 2.0;
         err = 0;
     }

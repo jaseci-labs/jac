@@ -15839,6 +15839,9 @@ graph import runtime.python {
             | modules.hashlib
             | modules.hashopenssl
             | modules.imp
+            | modules.io_buffered
+            | modules.io_bytesio
+            | modules.io_fileio
             | modules.lzma
             | modules.marshal
             | modules.multibytecodec
@@ -15860,6 +15863,49 @@ graph import runtime.python {
         },
     ]
     bindings.bz2 ++> inittab { PyInit__bz2 }
+    bindings.clinic.io ++> [
+        modules.io_buffered {
+            BufferedRWPair_doc,
+            BufferedRandom_doc,
+            BufferedReader_doc,
+            BufferedWriter_doc,
+            BufferedWriter_methods,
+            _BufferedIOBase_methods,
+            _Buffered_getset,
+            _Buffered_methods,
+            _io_BufferedRWPair___init___init,
+            _io_BufferedRandom___init___init,
+            _io_BufferedReader___init___init,
+            _io_BufferedWriter___init___init,
+            bufferediobase_doc
+        },
+        modules.io_bytesio { BytesIO_doc, BytesIO_methods, _io_BytesIO___init___init },
+        modules.io_fileio { FileIO_doc, FileIO_methods, _io_FileIO___init___init },
+        modules.io_iobase {
+            _IOBase_methods,
+            _RawIOBase_methods,
+            iobase_doc,
+            rawiobase_doc
+        },
+        modules.io_stringio {
+            StringIO_doc,
+            StringIO_getset,
+            StringIO_methods,
+            _io_StringIO___init___init
+        },
+        modules.io_textio {
+            IncrementalNewlineDecoder_doc,
+            IncrementalNewlineDecoder_methods,
+            TextIOWrapper_doc,
+            TextIOWrapper_getset,
+            TextIOWrapper_methods,
+            _TextIOBase_getset,
+            _TextIOBase_methods,
+            _io_IncrementalNewlineDecoder___init___init,
+            _io_TextIOWrapper___init___init,
+            textiobase_doc
+        },
+    ]
     bindings.cmath ++> inittab { PyInit_cmath }
     bindings.codecs ++> inittab { PyInit__codecs }
     bindings.codecs_cn ++> inittab { PyInit__codecs_cn }
@@ -15884,6 +15930,7 @@ graph import runtime.python {
             | modules.collections
             | modules.functools
             | modules.hmac
+            | modules.io
             | modules.lzma
             | modules.md5
             | modules.multibytecodec
@@ -15950,6 +15997,7 @@ graph import runtime.python {
     bindings.interpchannels ++> inittab { PyInit__interpchannels }
     bindings.interpqueues ++> inittab { PyInit__interpqueues }
     bindings.interpreters ++> inittab { PyInit__interpreters }
+    bindings.io ++> inittab { PyInit__io }
     bindings.itertools ++> inittab { PyInit_itertools }
     bindings.json ++> inittab { PyInit__json }
     bindings.locale ++> inittab { PyInit__locale }
@@ -16070,6 +16118,13 @@ graph import runtime.python {
             jacpy_binding_module_native_present,
             jacpy_binding_state_get
         },
+        modules.io { MethodDefinition, method_table, visit_reference },
+        modules.io_buffered
+            | modules.io_bytesio
+            | modules.io_fileio
+            | modules.io_iobase
+            | modules.io_stringio
+            | modules.io_textio { MethodCallbacks, MethodDefinition, visit_reference },
         modules.posix_core { jacpy_binding_module_native_get, jacpy_binding_state_get },
         modules.posix_fileio | modules.posix_ids | modules.posix_stat {
             add_state_owned
@@ -16272,6 +16327,7 @@ graph import runtime.python {
             jacpy_binding_owner,
             jacpy_binding_record
         },
+        modules.io { PropertyDefinition, getset_table },
         modules.itertools {
             TypeSlot,
             jacpy_binding_allocate,
@@ -16337,7 +16393,9 @@ graph import runtime.python {
             type_name
         },
         bindings.array | bindings.functools { object_error, text_object },
-        bindings.asyncio | bindings.module | bindings.type { c_string_copy },
+        bindings.asyncio | bindings.module | bindings.type | modules.io {
+            c_string_copy
+        },
         bindings.blake2
             | bindings.datetime
             | bindings.multiprocessing
@@ -16362,6 +16420,7 @@ graph import runtime.python {
             | bindings.clinic.heapq
             | bindings.clinic.hmac
             | bindings.clinic.imp
+            | bindings.clinic.io
             | bindings.clinic.itertools
             | bindings.clinic.locale
             | bindings.clinic.lsprof
@@ -16975,6 +17034,16 @@ graph import runtime.python {
             jacpy_tuple_items
         },
         bindings.clinic.heapq { NULL, PyObject, jacpy_is_list },
+        bindings.clinic.io {
+            NULL,
+            PyLong_AsSsize_t,
+            PyMem_Free,
+            PyObject,
+            PyTuple_Size,
+            jacpy_dict_size,
+            jacpy_release,
+            jacpy_tuple_items
+        },
         bindings.clinic.itertools {
             NULL,
             PyMem_Free,
@@ -17282,6 +17351,7 @@ graph import runtime.python {
         bindings.heapq { PyObject, jacpy_unicode_from_text },
         bindings.hmac { PyExc_ValueError, PyModule_AddIntConstant, PyObject },
         bindings.interpchannels | bindings.interpqueues { PyModuleDef, PyObject },
+        bindings.io | bindings.thread { NULL, PyModuleDef, PyObject },
         bindings.json {
             NULL,
             PyExc_SystemError,
@@ -17604,7 +17674,6 @@ graph import runtime.python {
             PyObject,
             jacpy_module_add_int_text
         },
-        bindings.thread { NULL, PyModuleDef, PyObject },
         bindings.time {
             PyExc_ImportError,
             PyModule_AddIntConstant,
@@ -20180,6 +20249,379 @@ graph import runtime.python {
             PyInterpreterState_Get,
             PyThreadState,
             PyThreadState_Get
+        },
+        modules.io {
+            NULL,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_GivenExceptionMatches,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyErr_WarnEx,
+            PyExc_OSError,
+            PyExc_OverflowError,
+            PyExc_RuntimeWarning,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyLong_AsLong,
+            PyLong_AsLongAndOverflow,
+            PyLong_AsSsize_t,
+            PyLong_FromLong,
+            PyLong_FromSsize_t,
+            PyLong_IsNegative,
+            PyModuleDef,
+            PyModule_AddIntConstant,
+            PyModule_AddObjectRef,
+            PyModule_AddType,
+            PyNumber_AsSsize_t,
+            PyNumber_Check,
+            PyObject,
+            PyObject_CallFunction,
+            PyObject_GetAttr,
+            PyObject_IsTrue,
+            PyObject_SetAttr,
+            PyObject_SetAttrString,
+            PyObject_Vectorcall,
+            PyObject_VectorcallMethod,
+            PyType_FromModuleAndSpec,
+            PyType_Slot,
+            PyType_Spec,
+            PyType_Type,
+            PyUnicode_AsUTF8,
+            PyUnicode_FromString,
+            Py_None,
+            _PyErr_ChainExceptions1,
+            _PyNumber_Index,
+            _PyRuntime,
+            _Py_FalseStruct,
+            _Py_TrueStruct,
+            jacpy_is_exact_long,
+            jacpy_unicode_from_text
+        },
+        modules.io_buffered {
+            NULL,
+            PyBuffer_Release,
+            PyBytes_Concat,
+            PyBytes_FromStringAndSize,
+            PyBytes_Join,
+            PyErr_CheckSignals,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_GivenExceptionMatches,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetObject,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyExc_AttributeError,
+            PyExc_OSError,
+            PyExc_RuntimeError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyInterpreterState,
+            PyList_Append,
+            PyList_New,
+            PyLong_FromLong,
+            PyLong_FromSize_t,
+            PyLong_FromSsize_t,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMemberDef,
+            PyMethodDef,
+            PyNumber_AsSsize_t,
+            PyObject,
+            PyObject_CallFunction,
+            PyObject_CallNoArgs,
+            PyObject_CallObject,
+            PyObject_ClearWeakRefs,
+            PyObject_GetAttr,
+            PyObject_GetBuffer,
+            PyObject_GetOptionalAttr,
+            PyObject_IsTrue,
+            PyThread_acquire_lock,
+            PyThread_allocate_lock,
+            PyThread_free_lock,
+            PyThread_get_thread_ident,
+            PyThread_release_lock,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AsUTF8,
+            PyUnicode_FromFormat,
+            Py_None,
+            Py_ReprEnter,
+            Py_ReprLeave,
+            Py_buffer,
+            _PyBytes_Resize,
+            _PyErr_ChainExceptions1,
+            _PyErr_FormatFromCause,
+            _Py_IsInterpreterFinalizing,
+            jacpy_errno,
+            jacpy_set_errno
+        },
+        modules.io_bytesio {
+            NULL,
+            PyBuffer_Release,
+            PyBytes_FromStringAndSize,
+            PyBytes_Type,
+            PyDict_Copy,
+            PyDict_Update,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_Print,
+            PyErr_SetString,
+            PyExc_BufferError,
+            PyExc_OverflowError,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyIter_Next,
+            PyList_Append,
+            PyList_New,
+            PyLong_AsLong,
+            PyLong_AsSsize_t,
+            PyLong_FromSize_t,
+            PyLong_FromSsize_t,
+            PyMemberDef,
+            PyMemoryView_FromObject,
+            PyObject,
+            PyObject_ClearWeakRefs,
+            PyObject_GC_UnTrack,
+            PyObject_GetBuffer,
+            PyObject_GetIter,
+            PyObject_SelfIter,
+            PyType_Slot,
+            PyType_Spec,
+            Py_BuildValue,
+            Py_None,
+            Py_buffer,
+            _PyBytes_Resize
+        },
+        modules.io_fileio {
+            NULL,
+            PyBool_FromLong,
+            PyBuffer_Release,
+            PyBytes_FromStringAndSize,
+            PyErr_CheckSignals,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_ResourceWarning,
+            PyErr_SetFromErrno,
+            PyErr_SetFromErrnoWithFilenameObject,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyErr_WarnEx,
+            PyEval_RestoreThread,
+            PyEval_SaveThread,
+            PyExc_OSError,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyExc_RuntimeWarning,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyExc_Warning,
+            PyLong_AsInt,
+            PyLong_AsLongLong,
+            PyLong_FromLong,
+            PyLong_FromLongLong,
+            PyLong_FromSsize_t,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMemberDef,
+            PyNumber_AsSsize_t,
+            PyObject,
+            PyObject_ClearWeakRefs,
+            PyObject_GetBuffer,
+            PyObject_GetOptionalAttr,
+            PyObject_SetAttr,
+            PySys_Audit,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AsUTF8,
+            PyUnicode_FromFormat,
+            PyUnicode_FromString,
+            Py_None,
+            Py_ReprEnter,
+            Py_ReprLeave,
+            Py_buffer,
+            _PyBytes_Resize,
+            _PyErr_ChainExceptions1,
+            _Py_fstat_noraise,
+            _Py_read,
+            _Py_set_inheritable,
+            _Py_write,
+            jacpy_errno,
+            jacpy_is_bool,
+            jacpy_is_exact_long,
+            jacpy_set_errno,
+            jacpy_unicode_from_text
+        },
+        modules.io_iobase {
+            NULL,
+            PyBool_FromLong,
+            PyByteArray_AsString,
+            PyByteArray_Resize,
+            PyBytes_FromStringAndSize,
+            PyBytes_Join,
+            PyErr_Clear,
+            PyErr_Format,
+            PyErr_FormatUnraisable,
+            PyErr_GetRaisedException,
+            PyErr_Occurred,
+            PyErr_SetNone,
+            PyErr_SetRaisedException,
+            PyErr_SetString,
+            PyExc_NotImplementedError,
+            PyExc_OSError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyIter_Next,
+            PyList_Append,
+            PyList_New,
+            PyMemberDef,
+            PyNumber_AsSsize_t,
+            PyObject,
+            PyObject_CallFinalizerFromDealloc,
+            PyObject_CallOneArg,
+            PyObject_ClearWeakRefs,
+            PyObject_GenericGetDict,
+            PyObject_GetIter,
+            PyObject_GetOptionalAttr,
+            PyObject_HasAttrWithError,
+            PyObject_IsTrue,
+            PyObject_SetAttr,
+            PyType_Slot,
+            PyType_Spec,
+            Py_None,
+            _PyErr_ChainExceptions1,
+            _PyType_Name
+        },
+        modules.io_stringio {
+            NULL,
+            PyBool_FromLong,
+            PyDict_Copy,
+            PyDict_Update,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_OSError,
+            PyExc_OverflowError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyLong_AsSsize_t,
+            PyLong_FromSsize_t,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_Realloc,
+            PyMemberDef,
+            PyObject,
+            PyObject_ClearWeakRefs,
+            PyObject_GetAttr,
+            PyTuple_GetSlice,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicodeWriter,
+            PyUnicodeWriter_Create,
+            PyUnicodeWriter_Discard,
+            PyUnicodeWriter_Finish,
+            PyUnicodeWriter_WriteStr,
+            PyUnicode_AsUTF8,
+            PyUnicode_FromKindAndData,
+            PyUnicode_FromString,
+            PyUnicode_GetLength,
+            Py_BuildValue,
+            Py_GetConstant,
+            Py_None
+        },
+        modules.io_textio {
+            NULL,
+            PyBuffer_Release,
+            PyBytes_AsStringAndSize,
+            PyBytes_Concat,
+            PyBytes_FromStringAndSize,
+            PyCodec_LookupError,
+            PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_Format,
+            PyErr_GetRaisedException,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyErr_WarnEx,
+            PyExc_AttributeError,
+            PyExc_OSError,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyExc_TypeError,
+            PyExc_ValueError,
+            PyIndex_Check,
+            PyList_Append,
+            PyList_New,
+            PyList_Type,
+            PyLong_AsLong,
+            PyLong_AsLongLong,
+            PyLong_AsUnsignedLongLongMask,
+            PyLong_FromLong,
+            PyLong_FromSsize_t,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMemberDef,
+            PyNumber_AsSsize_t,
+            PyNumber_Long,
+            PyObject,
+            PyObject_ClearWeakRefs,
+            PyObject_GetAttr,
+            PyObject_GetBuffer,
+            PyObject_GetOptionalAttr,
+            PyObject_HasAttrWithError,
+            PyObject_IsTrue,
+            PyObject_RichCompareBool,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_AppendAndDel,
+            PyUnicode_AsUTF8,
+            PyUnicode_Concat,
+            PyUnicode_FindChar,
+            PyUnicode_FromFormat,
+            PyUnicode_FromKindAndData,
+            PyUnicode_FromString,
+            PyUnicode_GetLength,
+            PyUnicode_Join,
+            PyUnicode_New,
+            PyUnicode_Substring,
+            Py_BuildValue,
+            Py_GetConstant,
+            Py_None,
+            Py_ReprEnter,
+            Py_ReprLeave,
+            Py_buffer,
+            _PyErr_ChainExceptions1,
+            _PyLong_AsByteArray,
+            _PyLong_FromByteArray,
+            _PyRuntime,
+            _PyUnicode_AsASCIIString,
+            _PyUnicode_AsLatin1String,
+            _PyUnicode_AsUTF8NoNUL,
+            _PyUnicode_AsUTF8String,
+            _PyUnicode_EncodeUTF16,
+            _PyUnicode_EncodeUTF32,
+            _PyUnicode_EqualToASCIIString,
+            _Py_GetLocaleEncodingObject
         },
         modules.iterators {
             NULL,
@@ -27829,6 +28271,263 @@ graph import runtime.python {
             _object
         },
         modules.interpreters_common { PyTypeObject, _PyXIData_getdata_t, _PyXIData_t },
+        modules.io {
+            ModuleDef,
+            PY_VECTORCALL_ARGUMENTS_OFFSET,
+            PyHeapTypeObject,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyModuleObject,
+            PyOSErrorObject,
+            PyTypeObject,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_methods,
+            _Py_ID__blksize,
+            _Py_ID__isatty_open_only,
+            _Py_ID_close,
+            _Py_ID_io,
+            _Py_ID_locale,
+            _Py_ID_mode,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _Py_STR_utf_8,
+            _object
+        },
+        modules.io_buffered {
+            METH_NOARGS,
+            METH_VARARGS,
+            PY_LOCK_ACQUIRED,
+            PyBUF_ND,
+            PyBUF_SIMPLE,
+            PyBUF_WRITABLE,
+            PyGetSetDef,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_T_BOOL,
+            Py_T_PYSSIZET,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_init,
+            Py_tp_iternext,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_repr,
+            Py_tp_token,
+            Py_tp_traverse,
+            _Py_ID__dealloc_warn,
+            _Py_ID_close,
+            _Py_ID_closed,
+            _Py_ID_fileno,
+            _Py_ID_flush,
+            _Py_ID_isatty,
+            _Py_ID_mode,
+            _Py_ID_name,
+            _Py_ID_peek,
+            _Py_ID_read,
+            _Py_ID_read1,
+            _Py_ID_readable,
+            _Py_ID_readall,
+            _Py_ID_readinto,
+            _Py_ID_readinto1,
+            _Py_ID_readline,
+            _Py_ID_seek,
+            _Py_ID_seekable,
+            _Py_ID_tell,
+            _Py_ID_truncate,
+            _Py_ID_writable,
+            _Py_ID_write,
+            _Py_T_OBJECT,
+            _object
+        },
+        modules.io_bytesio {
+            METH_NOARGS,
+            METH_O,
+            PyBUF_ND,
+            PyBUF_WRITABLE,
+            PyGetSetDef,
+            PyTypeObject,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_T_PYSSIZET,
+            Py_bf_getbuffer,
+            Py_bf_releasebuffer,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_init,
+            Py_tp_iter,
+            Py_tp_iternext,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_new,
+            Py_tp_token,
+            Py_tp_traverse,
+            _object
+        },
+        modules.io_fileio {
+            METH_NOARGS,
+            METH_O,
+            PyBUF_SIMPLE,
+            PyBUF_WRITABLE,
+            PyGetSetDef,
+            PyTypeObject,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_T_BOOL,
+            Py_T_PYSSIZET,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_init,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_new,
+            Py_tp_repr,
+            Py_tp_token,
+            Py_tp_traverse,
+            SEEK_SET,
+            _Py_ID_close,
+            _Py_ID_name,
+            _object
+        },
+        modules.io_iobase {
+            METH_NOARGS,
+            METH_VARARGS,
+            PyGetSetDef,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_HEAPTYPE,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_T_PYSSIZET,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_finalize,
+            Py_tp_getset,
+            Py_tp_iter,
+            Py_tp_iternext,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_token,
+            Py_tp_traverse,
+            _Py_ID___IOBase_closed,
+            _Py_ID__finalizing,
+            _Py_ID_close,
+            _Py_ID_closed,
+            _Py_ID_extend,
+            _Py_ID_peek,
+            _Py_ID_read,
+            _Py_ID_readable,
+            _Py_ID_readall,
+            _Py_ID_readinto,
+            _Py_ID_readline,
+            _Py_ID_seek,
+            _Py_ID_seekable,
+            _Py_ID_writable,
+            _Py_ID_write,
+            _object
+        },
+        modules.io_stringio {
+            PyTypeObject,
+            Py_CONSTANT_EMPTY_STR,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_T_PYSSIZET,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_init,
+            Py_tp_iternext,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_new,
+            Py_tp_traverse,
+            _Py_ID_newlines,
+            _Py_ID_readline,
+            _object
+        },
+        modules.io_textio {
+            METH_NOARGS,
+            PyGetSetDef,
+            PyListObject,
+            PyTypeObject,
+            Py_CONSTANT_EMPTY_STR,
+            Py_EQ,
+            Py_LT,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_T_BOOL,
+            Py_T_PYSSIZET,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_init,
+            Py_tp_iternext,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_repr,
+            Py_tp_token,
+            Py_tp_traverse,
+            SEEK_SET,
+            _Py_ID__dealloc_warn,
+            _Py_ID_close,
+            _Py_ID_closed,
+            _Py_ID_decode,
+            _Py_ID_encode,
+            _Py_ID_fileno,
+            _Py_ID_flush,
+            _Py_ID_getstate,
+            _Py_ID_isatty,
+            _Py_ID_mode,
+            _Py_ID_name,
+            _Py_ID_newlines,
+            _Py_ID_raw,
+            _Py_ID_read,
+            _Py_ID_read1,
+            _Py_ID_readable,
+            _Py_ID_readline,
+            _Py_ID_replace,
+            _Py_ID_reset,
+            _Py_ID_seek,
+            _Py_ID_seekable,
+            _Py_ID_setstate,
+            _Py_ID_strict,
+            _Py_ID_tell,
+            _Py_ID_truncate,
+            _Py_ID_writable,
+            _Py_ID_write,
+            _Py_STR_empty,
+            _Py_STR_utf_8,
+            _Py_T_OBJECT,
+            _object
+        },
         modules.marshal {
             PY_VECTORCALL_ARGUMENTS_OFFSET,
             PyASCIIObject_LENGTH,
@@ -31304,6 +32003,38 @@ graph import runtime.python {
             PyInterpreterState_IMPORTS_OVERRIDE_FROZEN_MODULES,
             PyInterpreterState_IMPORTS_OVERRIDE_MULTI_INTERP_EXTENSIONS_CHECK
         },
+        modules.io {
+            EINTR,
+            PyConfig_WARN_DEFAULT_ENCODING,
+            _PyRuntimeState_PRECONFIG_UTF8_MODE
+        },
+        modules.io_fileio {
+            EAGAIN,
+            EBADF,
+            EINTR,
+            EISDIR,
+            ESPIPE,
+            IO_READ_MAX,
+            IO_SMALLCHUNK,
+            IO_STAT_SIZE,
+            O_APPEND,
+            O_CLOEXEC,
+            O_CREAT,
+            O_EXCL,
+            O_RDONLY,
+            O_RDWR,
+            O_TRUNC,
+            O_WRONLY,
+            SEEK_CUR,
+            SEEK_END
+        },
+        modules.io_textio {
+            PyConfig_DEV_MODE,
+            PyConfig_WARN_DEFAULT_ENCODING,
+            SEEK_CUR,
+            SEEK_END,
+            _PyRuntimeState_PRECONFIG_UTF8_MODE
+        },
         modules.marshal { _PyRuntimeState_GLOBAL_STRINGS },
         modules.signal {
             Py_NSIG,
@@ -32998,6 +33729,186 @@ graph import runtime.python {
         module_traverse,
         object_is_shareable
     }
+    modules.io ++> [
+        bindings.clinic.io {
+            BufferedRWPair_token,
+            BytesIO_token,
+            DEFAULT_BUFFER_SIZE,
+            FileIO_token,
+            _BufferedIOBase_token,
+            _Buffered_token,
+            _IOBase_token,
+            _TextIOBase_token,
+            _io_open_code_impl,
+            _io_open_impl,
+            _io_text_encoding_impl
+        },
+        bindings.io { _PyIO_Module, iomodule_clear, iomodule_free, iomodule_traverse },
+    ]
+    modules.io_buffered ++> [
+        bindings.clinic.io {
+            _io_BufferedRWPair___init___impl,
+            _io_BufferedRandom___init___impl,
+            _io_BufferedReader___init___impl,
+            _io_BufferedWriter___init___impl,
+            _io_BufferedWriter_write_impl,
+            _io__BufferedIOBase_detach_impl,
+            _io__BufferedIOBase_read1_impl,
+            _io__BufferedIOBase_read_impl,
+            _io__BufferedIOBase_readinto1_impl,
+            _io__BufferedIOBase_readinto_impl,
+            _io__BufferedIOBase_write_impl,
+            _io__Buffered___sizeof___impl,
+            _io__Buffered__dealloc_warn_impl,
+            _io__Buffered_close_impl,
+            _io__Buffered_closed_get_impl,
+            _io__Buffered_detach_impl,
+            _io__Buffered_fileno_impl,
+            _io__Buffered_flush_impl,
+            _io__Buffered_isatty_impl,
+            _io__Buffered_mode_get_impl,
+            _io__Buffered_name_get_impl,
+            _io__Buffered_peek_impl,
+            _io__Buffered_read1_impl,
+            _io__Buffered_read_impl,
+            _io__Buffered_readable_impl,
+            _io__Buffered_readinto1_impl,
+            _io__Buffered_readinto_impl,
+            _io__Buffered_readline_impl,
+            _io__Buffered_seek_impl,
+            _io__Buffered_seekable_impl,
+            _io__Buffered_simple_flush_impl,
+            _io__Buffered_tell_impl,
+            _io__Buffered_truncate_impl,
+            _io__Buffered_writable_impl
+        },
+        bindings.io { install_buffered_tables },
+    ]
+    modules.io_bytesio ++> [
+        bindings.clinic.io {
+            _io_BytesIO___init___impl,
+            _io_BytesIO_close_impl,
+            _io_BytesIO_flush_impl,
+            _io_BytesIO_getbuffer_impl,
+            _io_BytesIO_getvalue_impl,
+            _io_BytesIO_isatty_impl,
+            _io_BytesIO_read1_impl,
+            _io_BytesIO_read_impl,
+            _io_BytesIO_readable_impl,
+            _io_BytesIO_readinto_impl,
+            _io_BytesIO_readline_impl,
+            _io_BytesIO_readlines_impl,
+            _io_BytesIO_seek_impl,
+            _io_BytesIO_seekable_impl,
+            _io_BytesIO_tell_impl,
+            _io_BytesIO_truncate_impl,
+            _io_BytesIO_writable_impl,
+            _io_BytesIO_write_impl,
+            _io_BytesIO_writelines_impl
+        },
+        bindings.io { install_bytesio_tables },
+    ]
+    modules.io_fileio ++> [
+        bindings.clinic.io {
+            _io_FileIO___init___impl,
+            _io_FileIO_close_impl,
+            _io_FileIO_fileno_impl,
+            _io_FileIO_isatty_impl,
+            _io_FileIO_read_impl,
+            _io_FileIO_readable_impl,
+            _io_FileIO_readall_impl,
+            _io_FileIO_readinto_impl,
+            _io_FileIO_seek_impl,
+            _io_FileIO_seekable_impl,
+            _io_FileIO_tell_impl,
+            _io_FileIO_truncate_impl,
+            _io_FileIO_writable_impl,
+            _io_FileIO_write_impl
+        },
+        bindings.io { install_fileio_tables },
+    ]
+    modules.io_iobase ++> [
+        bindings.clinic.io {
+            _io__IOBase_close_impl,
+            _io__IOBase_fileno_impl,
+            _io__IOBase_flush_impl,
+            _io__IOBase_isatty_impl,
+            _io__IOBase_readable_impl,
+            _io__IOBase_readline_impl,
+            _io__IOBase_readlines_impl,
+            _io__IOBase_seek_impl,
+            _io__IOBase_seekable_impl,
+            _io__IOBase_tell_impl,
+            _io__IOBase_truncate_impl,
+            _io__IOBase_writable_impl,
+            _io__IOBase_writelines_impl,
+            _io__RawIOBase_read_impl,
+            _io__RawIOBase_readall_impl
+        },
+        bindings.io { install_iobase_tables },
+    ]
+    modules.io_stringio ++> [
+        bindings.clinic.io {
+            _io_StringIO___getstate___impl,
+            _io_StringIO___init___impl,
+            _io_StringIO___setstate___impl,
+            _io_StringIO_close_impl,
+            _io_StringIO_closed_get_impl,
+            _io_StringIO_getvalue_impl,
+            _io_StringIO_line_buffering_get_impl,
+            _io_StringIO_newlines_get_impl,
+            _io_StringIO_read_impl,
+            _io_StringIO_readable_impl,
+            _io_StringIO_readline_impl,
+            _io_StringIO_seek_impl,
+            _io_StringIO_seekable_impl,
+            _io_StringIO_tell_impl,
+            _io_StringIO_truncate_impl,
+            _io_StringIO_writable_impl,
+            _io_StringIO_write_impl,
+            self_pos
+        },
+        bindings.io { install_stringio_tables },
+    ]
+    modules.io_textio ++> [
+        bindings.clinic.io {
+            _io_IncrementalNewlineDecoder___init___impl,
+            _io_IncrementalNewlineDecoder_decode_impl,
+            _io_IncrementalNewlineDecoder_getstate_impl,
+            _io_IncrementalNewlineDecoder_reset_impl,
+            _io_IncrementalNewlineDecoder_setstate_impl,
+            _io_TextIOWrapper__CHUNK_SIZE_get_impl,
+            _io_TextIOWrapper__CHUNK_SIZE_set_impl,
+            _io_TextIOWrapper___init___impl,
+            _io_TextIOWrapper_close_impl,
+            _io_TextIOWrapper_closed_get_impl,
+            _io_TextIOWrapper_detach_impl,
+            _io_TextIOWrapper_errors_get_impl,
+            _io_TextIOWrapper_fileno_impl,
+            _io_TextIOWrapper_flush_impl,
+            _io_TextIOWrapper_isatty_impl,
+            _io_TextIOWrapper_name_get_impl,
+            _io_TextIOWrapper_newlines_get_impl,
+            _io_TextIOWrapper_read_impl,
+            _io_TextIOWrapper_readable_impl,
+            _io_TextIOWrapper_readline_impl,
+            _io_TextIOWrapper_reconfigure_impl,
+            _io_TextIOWrapper_seek_impl,
+            _io_TextIOWrapper_seekable_impl,
+            _io_TextIOWrapper_tell_impl,
+            _io_TextIOWrapper_truncate_impl,
+            _io_TextIOWrapper_writable_impl,
+            _io_TextIOWrapper_write_impl,
+            _io__TextIOBase_detach_impl,
+            _io__TextIOBase_encoding_get_impl,
+            _io__TextIOBase_errors_get_impl,
+            _io__TextIOBase_newlines_get_impl,
+            _io__TextIOBase_read_impl,
+            _io__TextIOBase_readline_impl,
+            _io__TextIOBase_write_impl
+        },
+        bindings.io { install_textio_tables },
+    ]
     modules.itertools ++> [
         bindings.clinic.itertools {
             _grouper_token,
@@ -35052,6 +35963,12 @@ graph import runtime.python {
         modules.faulthandler { call_method_no_args, long_check },
         modules.imp { unicode_check },
         modules.interpchannels { long_check },
+        modules.io_buffered { bytes_data },
+        modules.io_bytesio { bytes_data, long_check, tuple_check },
+        modules.io_fileio { bytes_data, long_check },
+        modules.io_iobase { PyObject_Size, bytes_data },
+        modules.io_stringio { long_check, tuple_check, unicode_length },
+        modules.io_textio { bytes_data, tuple_check, unicode_length },
         modules.warnings {
             long_check_exact,
             tuple_check,
@@ -35098,6 +36015,9 @@ graph import runtime.python {
             py_true
         },
     ]
+    object_model.bytes ++> modules.io_buffered | modules.io_iobase | modules.io_textio {
+        bytes_get_empty
+    }
     object_model.call ++> [
         interpreter.gc
             | interpreter.importing_api
@@ -35168,12 +36088,16 @@ graph import runtime.python {
             _PyErr_SetRaisedException
         },
     ]
-    object_model.exceptions ++> modules.warnings {
-        PyExc_ImportWarning,
-        PyExc_PendingDeprecationWarning,
-        PyExc_ResourceWarning,
-        PyExc_UserWarning
-    }
+    object_model.exceptions ++> [
+        modules.io | modules.io_textio { PyExc_BlockingIOError, PyExc_EncodingWarning },
+        modules.io_buffered { PyExc_BlockingIOError },
+        modules.warnings {
+            PyExc_ImportWarning,
+            PyExc_PendingDeprecationWarning,
+            PyExc_ResourceWarning,
+            PyExc_UserWarning
+        },
+    ]
     object_model.file ++> [
         bindings.converters | modules.select { PyObject_AsFileDescriptor },
         modules.warnings { PyFile_WriteObject, PyFile_WriteString },
@@ -35482,6 +36406,68 @@ graph import runtime.python {
             object_xdecref,
             type_has_feature
         },
+        modules.io { object_decref, object_new_ref, object_type, object_xdecref },
+        modules.io_buffered {
+            current_interp,
+            object_decref,
+            object_gc_untrack,
+            object_is_type,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref
+        },
+        modules.io_bytesio {
+            object_decref,
+            object_gc_untrack,
+            object_is_type,
+            object_new_ref,
+            object_refcount,
+            object_size,
+            object_type,
+            tuple_get_item
+        },
+        modules.io_fileio {
+            object_decref,
+            object_gc_untrack,
+            object_incref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref
+        },
+        modules.io_iobase {
+            object_decref,
+            object_gc_untrack,
+            object_incref,
+            object_new_ref,
+            object_refcount,
+            object_size,
+            object_type,
+            object_xdecref,
+            type_has_feature
+        },
+        modules.io_stringio {
+            object_decref,
+            object_gc_untrack,
+            object_is_type,
+            object_new_ref,
+            object_size,
+            object_type,
+            tuple_get_item
+        },
+        modules.io_textio {
+            current_interp,
+            object_decref,
+            object_gc_untrack,
+            object_incref,
+            object_is_type,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_xdecref,
+            tuple_get_item
+        },
         modules.marshal {
             _Py_FalseStruct,
             _Py_TrueStruct,
@@ -35551,6 +36537,7 @@ graph import runtime.python {
             | bindings.interpchannels
             | bindings.interpqueues
             | bindings.interpreters
+            | bindings.io
             | bindings.signal
             | bindings.thread { PyModuleDef_Init },
         interpreter.importdl { PyModuleDef_Type },
@@ -35585,6 +36572,10 @@ graph import runtime.python {
         interpreter.pystate { py_none },
         interpreter.specialize { type_is_ready },
         modules.interpchannels { type_check },
+        modules.io | modules.io_textio { bytes_check, unicode_check },
+        modules.io_buffered | modules.io_iobase { bytes_check },
+        modules.io_bytesio { dict_check },
+        modules.io_stringio { dict_check, unicode_check },
     ]
     object_model.obmalloc ++> [
         interpreter.importing {
@@ -35654,11 +36645,28 @@ graph import runtime.python {
             | modules.warnings { py_id },
         interpreter.importing { py_id, weakref_get_ref },
         interpreter.lifecycle { dict_check_exact, py_id, weakref_get_ref },
+        modules.io | modules.io_fileio | modules.io_stringio { py_clear, py_id },
+        modules.io_buffered { object_xincref, py_clear, py_id, py_xsetref },
+        modules.io_bytesio { py_clear, py_xsetref },
+        modules.io_iobase { long_one, long_zero, py_clear, py_id },
+        modules.io_textio { long_zero, py_clear, py_id, py_xsetref },
         modules.signal { thread_state_get_frame },
         modules.thread { object_xnewref, py_id, weakref_get_ref },
     ]
     object_model.unicode ++> [
         interpreter.ops_build { unicode_get_empty },
+        modules.io_stringio { UnicodeWriter, latin1_char },
+        modules.io_textio {
+            ch_read,
+            ch_write,
+            fs_codec_encoding,
+            latin1_char,
+            uo_data,
+            uo_is_ascii,
+            uo_kind,
+            uo_max_char_value,
+            uo_read_char
+        },
         modules.warnings {
             PyUnicode_Contains,
             PyUnicode_Tailmatch,
@@ -35869,6 +36877,17 @@ graph import runtime.python.bindings {
             unpack_mapping,
             unpack_stack
         },
+        clinic.io {
+            CallSignature,
+            PARSE_KEYWORDS,
+            PARSE_NO_ARGUMENTS,
+            PARSE_POSITIONAL,
+            check_positional,
+            invoke_stack,
+            invoke_tuple,
+            unpack_mapping,
+            unpack_stack
+        },
         clinic.lzma | clinic.struct | clinic.zstd {
             CallSignature,
             PARSE_KEYWORDS,
@@ -35982,6 +37001,7 @@ graph import runtime.python.bindings {
             | clinic.codecs
             | clinic.hashopenssl
             | clinic.imp
+            | clinic.io
             | clinic.lzma
             | clinic.marshal
             | clinic.mmap
@@ -36109,6 +37129,7 @@ graph import runtime.python.bindings {
     clinic.heapq ++> heapq { __about__, module_doc, module_methods }
     clinic.hmac ++> hmac { HMAC_getset, HMAC_methods, module_methods }
     clinic.imp ++> imp { module_methods }
+    clinic.io ++> io { module_methods }
     clinic.itertools ++> itertools {
         _tee_doc,
         accumulate_doc,
@@ -36485,6 +37506,25 @@ graph import runtime.python.bindings {
             convert_unicode,
             return_int
         },
+        clinic.io {
+            argument_label,
+            borrowed_none,
+            convert_bool,
+            convert_buffer,
+            convert_cstr,
+            convert_int,
+            convert_optional_ssize,
+            convert_ssize,
+            convert_str,
+            convert_unicode,
+            convert_writable_buffer,
+            defining_class,
+            defining_class_or_null,
+            exact_int_at,
+            failed,
+            init_checks_arguments,
+            return_int
+        },
         clinic.itertools {
             argument_label,
             bad_argument,
@@ -36839,6 +37879,7 @@ graph import runtime.python.bindings {
             | clinic.heapq
             | clinic.hmac
             | clinic.imp
+            | clinic.io
             | clinic.itertools
             | clinic.locale
             | clinic.lsprof
@@ -36981,6 +38022,7 @@ graph import runtime.python.bindings {
             jacpy_binding_state_get,
             jacpy_binding_state_set
         },
+        io { method_table },
         itertools | time {
             MethodCallbacks,
             MethodDefinition,
@@ -37274,10 +38316,12 @@ graph import runtime.python.bindings {
             TypeHooks,
             jacpy_binding_record
         },
-        clinic.asyncio | clinic.hmac | clinic.sqlite3 | clinic.ssl | clinic.zstd {
-            PropertyCallbacks,
-            PropertyDefinition
-        },
+        clinic.asyncio
+            | clinic.hmac
+            | clinic.io
+            | clinic.sqlite3
+            | clinic.ssl
+            | clinic.zstd { PropertyCallbacks, PropertyDefinition },
         collections {
             PropertyCallbacks,
             PropertyDefinition,
@@ -38894,6 +39938,135 @@ graph import runtime.python.modules {
         },
         interpreters { XIDATA_FULL_FALLBACK, ensure_xid_class },
     ]
+    io ++> [
+        io_buffered {
+            BufferedRWPair_token,
+            IOModuleState,
+            IOStack,
+            PyNumber_AsOff_t,
+            _BufferedIOBase_token,
+            _Buffered_token,
+            _PyIO_trap_eintr,
+            find_io_state_by_def,
+            get_io_state_by_cls,
+            io_call_function,
+            io_call_noargs,
+            io_call_onearg,
+            io_call_ssize,
+            io_call_twoargs,
+            io_false,
+            io_fast_size,
+            io_fill_slots,
+            io_select_methods,
+            io_select_properties,
+            io_true
+        },
+        io_bytesio {
+            BytesIO_token,
+            IOStack,
+            get_io_state_by_cls,
+            io_false,
+            io_fast_size,
+            io_fill_slots,
+            io_select_methods,
+            io_true
+        },
+        io_fileio {
+            DEFAULT_BUFFER_SIZE,
+            FileIO_token,
+            IOModuleState,
+            IOStack,
+            find_io_state_by_def,
+            get_io_state_by_cls,
+            io_call_function,
+            io_call_onearg,
+            io_false,
+            io_fill_slots,
+            io_select_methods
+        },
+        io_iobase {
+            DEFAULT_BUFFER_SIZE,
+            IOModuleState,
+            _IOBase_token,
+            _PyIO_trap_eintr,
+            find_io_state_by_def,
+            get_io_state_by_cls,
+            io_call_noargs,
+            io_call_onearg,
+            io_call_ssize,
+            io_call_twoargs,
+            io_false,
+            io_fill_slots,
+            io_select_methods,
+            io_true
+        },
+        io_stringio {
+            IOModuleState,
+            IOStack,
+            find_io_state_by_def,
+            io_bool,
+            io_call_function,
+            io_call_noargs,
+            io_false,
+            io_fast_size,
+            io_fill_slots,
+            io_select_methods,
+            io_select_properties,
+            io_true
+        },
+        io_textio {
+            IOModuleState,
+            IOStack,
+            _PyIO_trap_eintr,
+            _TextIOBase_token,
+            find_io_state_by_def,
+            get_io_state_by_cls,
+            io_bool,
+            io_call_function,
+            io_call_noargs,
+            io_call_onearg,
+            io_call_ssize,
+            io_call_twoargs,
+            io_fast_size,
+            io_fill_slots,
+            io_select_methods,
+            io_select_properties,
+            io_true
+        },
+    ]
+    io_buffered ++> io {
+        bufferediobase_spec,
+        bufferedrandom_spec,
+        bufferedreader_spec,
+        bufferedrwpair_spec,
+        bufferedwriter_spec
+    }
+    io_bytesio ++> io { bytesio_spec, bytesiobuf_spec }
+    io_fileio ++> [
+        io { fileio_spec },
+        io_buffered | io_textio { _PyFileIO_closed },
+    ]
+    io_iobase ++> [
+        io { iobase_spec, rawiobase_spec },
+        io_buffered {
+            _PyIOBase_cannot_pickle,
+            _PyIOBase_check_readable,
+            _PyIOBase_check_seekable,
+            _PyIOBase_check_writable,
+            _PyIOBase_finalize
+        },
+        io_fileio { _PyIOBase_cannot_pickle, _PyIOBase_finalize },
+        io_textio {
+            _PyIOBase_cannot_pickle,
+            _PyIOBase_check_closed,
+            _PyIOBase_finalize
+        },
+    ]
+    io_stringio ++> io { stringio_spec }
+    io_textio ++> [
+        io { nldecoder_spec, textiobase_spec, textiowrapper_spec },
+        io_stringio { _PyIO_find_line_ending, _PyIncrementalNewlineDecoder_decode },
+    ]
     iterators ++> [
         combinatorics { reusable_tuple },
         itertools {
@@ -39156,6 +40329,7 @@ graph import runtime.python.modules {
     multiprocessing_constants ++> multiprocessing { O_CREAT, O_EXCL }
     numeric ++> [
         cmath {
+            _Py_log1p,
             asinh,
             atan2,
             copysign,
@@ -39168,7 +40342,6 @@ graph import runtime.python.modules {
             isinf,
             isnan,
             log,
-            log1p,
             scaled,
             sin,
             sinh,
@@ -39179,6 +40352,7 @@ graph import runtime.python.modules {
         datetime_delta { fabs, modf, round },
         decimal_convert { copysign, isinf, isnan },
         math {
+            _Py_log1p,
             acos,
             acosh,
             asin,
@@ -39207,7 +40381,6 @@ graph import runtime.python.modules {
             isnan,
             log,
             log10,
-            log1p,
             log2,
             modf,
             nan,
@@ -39700,6 +40873,7 @@ graph import runtime.python.modules {
         pickle_objects { builtin_stream_error, stream_error },
     ]
     posix_constants ++> [
+        io_buffered { SEEK_DATA, SEEK_HOLE },
         posix_core {
             AT_FDCWD,
             EFD_CLOEXEC as EFD_CLOEXEC_VALUE,
@@ -40043,19 +41217,22 @@ graph import runtime.python.modules {
         spawnattr_setschedpolicy,
         unshare_call
     }
-    posix_stat_platform ++> posix_stat {
-        STATVFS_RECORD_SIZE,
-        STAT_EXTRA_FIELDS,
-        set_stat_extra,
-        stat_blksize,
-        stat_device,
-        stat_mode,
-        stat_nlink,
-        stat_rdev,
-        statvfs_fd,
-        statvfs_path,
-        statvfs_result
-    }
+    posix_stat_platform ++> [
+        io_fileio { stat_blksize, stat_mode },
+        posix_stat {
+            STATVFS_RECORD_SIZE,
+            STAT_EXTRA_FIELDS,
+            set_stat_extra,
+            stat_blksize,
+            stat_device,
+            stat_mode,
+            stat_nlink,
+            stat_rdev,
+            statvfs_fd,
+            statvfs_path,
+            statvfs_result
+        },
+    ]
     posixsubprocess_constants ++> [
         posixsubprocess { ENOENT, ENOTDIR, NGROUPS_MAX },
         posixsubprocess_fds { _SC_OPEN_MAX },
@@ -40614,10 +41791,16 @@ graph import runtime.python.modules {
             state_ref
         },
     ]
-    stat ++> posix_stat { S_IFDIR, S_IFLNK, S_IFMT, S_IFREG }
-    stat_records ++> marshal | mmap | posix_stat | posix_stat_platform | signal {
-        _Py_stat_struct
-    }
+    stat ++> [
+        io_fileio { S_IFCHR, S_IFDIR, S_IFMT },
+        posix_stat { S_IFDIR, S_IFLNK, S_IFMT, S_IFREG },
+    ]
+    stat_records ++> io_fileio
+        | marshal
+        | mmap
+        | posix_stat
+        | posix_stat_platform
+        | signal { _Py_stat_struct }
     syslog_constants ++> syslog { LOG_INFO, LOG_USER }
     tee ++> itertools {
         TeeBindings,

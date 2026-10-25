@@ -43,6 +43,13 @@ def isnan(value: float) -> bool {
     return value != value;
 }
 
+def _Py_log1p(x: f64) -> f64 {
+    if x == 0.0 {
+        return x;
+    }
+    return log1p(x);
+}
+
 def scaled(value: float, exponent: int) -> float {
     return ldexp(value, i32(exponent));
 }

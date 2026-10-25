@@ -10,11 +10,10 @@ import from c {
     obj _inittab {
         has name: ptr[u8],
             initfunc: ptr;
-    }  def PyInit__io -> ptr[PyObject];  def PyInit__ast -> ptr[PyObject];  def PyInit__tokenize -> ptr[
+    }  def PyInit__ast -> ptr[PyObject];  def PyInit__tokenize -> ptr[PyObject];  def PyInit__symtable -> ptr[
         PyObject
-    ];  def PyInit__symtable -> ptr[PyObject];  def PyInit_gc -> ptr[PyObject];  def PyInit__string -> ptr[
-        PyObject
-    ];  glob _PyImport_Inittab: list[_inittab] = [
+    ];  def PyInit_gc -> ptr[PyObject];  def PyInit__string -> ptr[PyObject];  glob _PyImport_Inittab:
+             list[_inittab] = [
              _inittab(name=ptr[u8]("_bisect"), initfunc=ptr(PyInit__bisect)),
              _inittab(name=ptr[u8]("_heapq"), initfunc=ptr(PyInit__heapq)),
              _inittab(name=ptr[u8]("_random"), initfunc=ptr(PyInit__random)),

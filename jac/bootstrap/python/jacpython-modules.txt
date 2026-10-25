@@ -105,3 +105,4 @@ _interpchannels test.test__interpchannels
 _interpqueues   test.test_interpreters
 marshal         test.test_marshal
 _imp            test.test_imp,test.test_importlib
+_io             test.test_io,test.test_fileio,test.test_memoryio,test.test_bufio,test.test_univnewlines,test.test_file

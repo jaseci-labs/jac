@@ -61,6 +61,7 @@
 #include "internal/pycore_ast_state.h"
 #include "internal/pycore_magic_number.h"
 #include "internal/pycore_import.h"
+#include "internal/pycore_fileutils.h"
 #include <stddef.h>
 #ifdef _Py_FORCE_UTF8_FS_ENCODING
 #define JAC_FORCE_UTF8_FS_ENCODING 1
@@ -4668,6 +4669,37 @@ CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_reload), 35184LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_replace), 35280LL);
 CONSTANT(sizeof(PyModuleDef_Base), 40LL);
 CONSTANT(sizeof(struct _inittab), 16LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___IOBase_closed), 1768LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__blksize), 11456LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__dealloc_warn), 11624LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__finalizing), 11912LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py__isatty_open_only), 12472LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_closed), 17200LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_decode), 19440LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_encode), 20960LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_extend), 21976LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_flush), 23192LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_getstate), 24288LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_io), 26480LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_locale), 28832LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_newlines), 31288LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_peek), 33288LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_read1), 34544LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_readable), 34592LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_readall), 34648LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_readinto1), 34752LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_readline), 34808LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_reset), 35384LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_seek), 35960LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_seekable), 36008LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_setstate), 36744LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_strict), 38144LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_tell), 38944LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_truncate), 39824LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_writable), 41200LL);
+CONSTANT(offsetof(struct _Py_global_strings, literals._py_empty), 752LL);
+CONSTANT(Py_bf_getbuffer, 1LL);
+CONSTANT(Py_bf_releasebuffer, 2LL);
 
 /* The platform constants of layouts_platform.<os>.<arch>.jac. */
 #if defined(__linux__) && defined(__x86_64__)
@@ -5206,6 +5238,17 @@ CONSTANT(offsetof(PyInterpreterState, imports.lock.thread), 7744LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.import_level), 7760LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.accumulated), 7768LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.header), 7776LL);
+CONSTANT(O_RDWR, 2LL);
+CONSTANT(O_EXCL, 128LL);
+CONSTANT(O_TRUNC, 512LL);
+CONSTANT(ESPIPE, 29LL);
+CONSTANT(EISDIR, 21LL);
+CONSTANT(SEEK_CUR, 1LL);
+CONSTANT(SEEK_END, 2LL);
+CONSTANT(_PY_READ_MAX, 9223372036854775807LL);
+CONSTANT(_PY_WRITE_MAX, 9223372036854775807LL);
+CONSTANT((BUFSIZ < 8 * 1024 ? 8 * 1024 : BUFSIZ), 8192LL);
+CONSTANT(sizeof(struct stat), 144LL);
 #elif defined(__linux__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -5742,6 +5785,17 @@ CONSTANT(offsetof(PyInterpreterState, imports.lock.thread), 7744LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.import_level), 7760LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.accumulated), 7768LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.header), 7776LL);
+CONSTANT(O_RDWR, 2LL);
+CONSTANT(O_EXCL, 128LL);
+CONSTANT(O_TRUNC, 512LL);
+CONSTANT(ESPIPE, 29LL);
+CONSTANT(EISDIR, 21LL);
+CONSTANT(SEEK_CUR, 1LL);
+CONSTANT(SEEK_END, 2LL);
+CONSTANT(_PY_READ_MAX, 9223372036854775807LL);
+CONSTANT(_PY_WRITE_MAX, 9223372036854775807LL);
+CONSTANT((BUFSIZ < 8 * 1024 ? 8 * 1024 : BUFSIZ), 8192LL);
+CONSTANT(sizeof(struct stat), 128LL);
 #elif defined(__APPLE__) && defined(__x86_64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -6278,6 +6332,17 @@ CONSTANT(offsetof(PyInterpreterState, imports.lock.thread), 7744LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.import_level), 7760LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.accumulated), 7768LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.header), 7776LL);
+CONSTANT(O_RDWR, 2LL);
+CONSTANT(O_EXCL, 2048LL);
+CONSTANT(O_TRUNC, 1024LL);
+CONSTANT(ESPIPE, 29LL);
+CONSTANT(EISDIR, 21LL);
+CONSTANT(SEEK_CUR, 1LL);
+CONSTANT(SEEK_END, 2LL);
+CONSTANT(_PY_READ_MAX, 2147483647LL);
+CONSTANT(_PY_WRITE_MAX, 2147483647LL);
+CONSTANT((BUFSIZ < 8 * 1024 ? 8 * 1024 : BUFSIZ), 8192LL);
+CONSTANT(sizeof(struct stat), 144LL);
 #elif defined(__APPLE__) && defined(__aarch64__)
 CONSTANT(offsetof(PyConfig, verbose), 208LL);
 CONSTANT(offsetof(PyConfig, dev_mode), 12LL);
@@ -6814,6 +6879,17 @@ CONSTANT(offsetof(PyInterpreterState, imports.lock.thread), 7744LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.import_level), 7760LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.accumulated), 7768LL);
 CONSTANT(offsetof(PyInterpreterState, imports.find_and_load.header), 7776LL);
+CONSTANT(O_RDWR, 2LL);
+CONSTANT(O_EXCL, 2048LL);
+CONSTANT(O_TRUNC, 1024LL);
+CONSTANT(ESPIPE, 29LL);
+CONSTANT(EISDIR, 21LL);
+CONSTANT(SEEK_CUR, 1LL);
+CONSTANT(SEEK_END, 2LL);
+CONSTANT(_PY_READ_MAX, 2147483647LL);
+CONSTANT(_PY_WRITE_MAX, 2147483647LL);
+CONSTANT((BUFSIZ < 8 * 1024 ? 8 * 1024 : BUFSIZ), 8192LL);
+CONSTANT(sizeof(struct stat), 144LL);
 #else
 #error "no generated layouts_platform table for this platform"
 #endif

@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 274 C files / 475,969 lines; 171 headers / 159,773 lines.
-#   Total: 445 files / 635,742 source lines.
+#   Excluded: 281 C files / 487,688 lines; 180 headers / 165,207 lines.
+#   Total: 461 files / 652,895 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -609,26 +609,26 @@ Modules/_hacl/python_hacl_namespaces.h
 # Modules/_interpqueuesmodule.c  # removed: 1,995 source lines
 # Modules/_interpreters_common.h  # removed: 123 source lines
 # Modules/_interpretersmodule.c  # removed: 1,747 source lines
-Modules/_io/_iomodule.c
-Modules/_io/_iomodule.h
-Modules/_io/bufferedio.c
-Modules/_io/bytesio.c
-Modules/_io/clinic/_iomodule.c.h
-Modules/_io/clinic/bufferedio.c.h
-Modules/_io/clinic/bytesio.c.h
-Modules/_io/clinic/fileio.c.h
-Modules/_io/clinic/iobase.c.h
-Modules/_io/clinic/stringio.c.h
-Modules/_io/clinic/textio.c.h
-Modules/_io/fileio.c
-Modules/_io/iobase.c
-Modules/_io/stringio.c
-Modules/_io/textio.c
+# Modules/_io/_iomodule.c  # removed: 746 source lines
+# Modules/_io/_iomodule.h  # removed: 197 source lines
+# Modules/_io/bufferedio.c  # removed: 2,775 source lines
+# Modules/_io/bytesio.c  # removed: 1,265 source lines
+# Modules/_io/clinic/_iomodule.c.h  # removed: 414 source lines
+# Modules/_io/clinic/bufferedio.c.h  # removed: 1,268 source lines
+# Modules/_io/clinic/bytesio.c.h  # removed: 640 source lines
+# Modules/_io/clinic/fileio.c.h  # removed: 552 source lines
+# Modules/_io/clinic/iobase.c.h  # removed: 448 source lines
+# Modules/_io/clinic/stringio.c.h  # removed: 556 source lines
+# Modules/_io/clinic/textio.c.h  # removed: 1,334 source lines
+# Modules/_io/fileio.c  # removed: 1,345 source lines
+# Modules/_io/iobase.c  # removed: 1,057 source lines
+# Modules/_io/stringio.c  # removed: 1,096 source lines
+# Modules/_io/textio.c  # removed: 3,435 source lines
 # Modules/_json.c  # removed: 1,974 source lines
 # Modules/_localemodule.c  # removed: 1,129 source lines
 # Modules/_lsprof.c  # removed: 1,146 source lines
 # Modules/_lzmamodule.c  # removed: 1,664 source lines
-Modules/_math.h
+# Modules/_math.h  # removed: 25 source lines
 # Modules/_multiprocessing/clinic/multiprocessing.c.h  # removed: 167 source lines
 # Modules/_multiprocessing/clinic/posixshmem.c.h  # removed: 89 source lines
 # Modules/_multiprocessing/clinic/semaphore.c.h  # removed: 585 source lines

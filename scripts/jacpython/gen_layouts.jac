@@ -265,7 +265,8 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "internal/pycore_ast.h",
          "internal/pycore_ast_state.h",
          "internal/pycore_magic_number.h",
-         "internal/pycore_import.h"
+         "internal/pycore_import.h",
+         "internal/pycore_fileutils.h"
      ],
      # Jac name and C type of each layout the object ports use. Structs a
      # layout embeds by value are emitted too; pointers to anything else are
@@ -4390,7 +4391,154 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          ("PyModuleDef_Base_SIZE", "sizeof(PyModuleDef_Base)", "i64"),
-         ("_inittab_SIZE", "sizeof(struct _inittab)", "i64")
+         ("_inittab_SIZE", "sizeof(struct _inittab)", "i64"),
+         (
+             "_Py_ID___IOBase_closed",
+             "offsetof(struct _Py_global_strings, identifiers._py___IOBase_closed)",
+             "i64"
+         ),
+         (
+             "_Py_ID__blksize",
+             "offsetof(struct _Py_global_strings, identifiers._py__blksize)",
+             "i64"
+         ),
+         (
+             "_Py_ID__dealloc_warn",
+             "offsetof(struct _Py_global_strings, identifiers._py__dealloc_warn)",
+             "i64"
+         ),
+         (
+             "_Py_ID__finalizing",
+             "offsetof(struct _Py_global_strings, identifiers._py__finalizing)",
+             "i64"
+         ),
+         (
+             "_Py_ID__isatty_open_only",
+             "offsetof(struct _Py_global_strings, identifiers._py__isatty_open_only)",
+             "i64"
+         ),
+         (
+             "_Py_ID_closed",
+             "offsetof(struct _Py_global_strings, identifiers._py_closed)",
+             "i64"
+         ),
+         (
+             "_Py_ID_decode",
+             "offsetof(struct _Py_global_strings, identifiers._py_decode)",
+             "i64"
+         ),
+         (
+             "_Py_ID_encode",
+             "offsetof(struct _Py_global_strings, identifiers._py_encode)",
+             "i64"
+         ),
+         (
+             "_Py_ID_extend",
+             "offsetof(struct _Py_global_strings, identifiers._py_extend)",
+             "i64"
+         ),
+         (
+             "_Py_ID_flush",
+             "offsetof(struct _Py_global_strings, identifiers._py_flush)",
+             "i64"
+         ),
+         (
+             "_Py_ID_getstate",
+             "offsetof(struct _Py_global_strings, identifiers._py_getstate)",
+             "i64"
+         ),
+         (
+             "_Py_ID_io",
+             "offsetof(struct _Py_global_strings, identifiers._py_io)",
+             "i64"
+         ),
+         (
+             "_Py_ID_locale",
+             "offsetof(struct _Py_global_strings, identifiers._py_locale)",
+             "i64"
+         ),
+         (
+             "_Py_ID_newlines",
+             "offsetof(struct _Py_global_strings, identifiers._py_newlines)",
+             "i64"
+         ),
+         (
+             "_Py_ID_peek",
+             "offsetof(struct _Py_global_strings, identifiers._py_peek)",
+             "i64"
+         ),
+         (
+             "_Py_ID_read1",
+             "offsetof(struct _Py_global_strings, identifiers._py_read1)",
+             "i64"
+         ),
+         (
+             "_Py_ID_readable",
+             "offsetof(struct _Py_global_strings, identifiers._py_readable)",
+             "i64"
+         ),
+         (
+             "_Py_ID_readall",
+             "offsetof(struct _Py_global_strings, identifiers._py_readall)",
+             "i64"
+         ),
+         (
+             "_Py_ID_readinto1",
+             "offsetof(struct _Py_global_strings, identifiers._py_readinto1)",
+             "i64"
+         ),
+         (
+             "_Py_ID_readline",
+             "offsetof(struct _Py_global_strings, identifiers._py_readline)",
+             "i64"
+         ),
+         (
+             "_Py_ID_reset",
+             "offsetof(struct _Py_global_strings, identifiers._py_reset)",
+             "i64"
+         ),
+         (
+             "_Py_ID_seek",
+             "offsetof(struct _Py_global_strings, identifiers._py_seek)",
+             "i64"
+         ),
+         (
+             "_Py_ID_seekable",
+             "offsetof(struct _Py_global_strings, identifiers._py_seekable)",
+             "i64"
+         ),
+         (
+             "_Py_ID_setstate",
+             "offsetof(struct _Py_global_strings, identifiers._py_setstate)",
+             "i64"
+         ),
+         (
+             "_Py_ID_strict",
+             "offsetof(struct _Py_global_strings, identifiers._py_strict)",
+             "i64"
+         ),
+         (
+             "_Py_ID_tell",
+             "offsetof(struct _Py_global_strings, identifiers._py_tell)",
+             "i64"
+         ),
+         (
+             "_Py_ID_truncate",
+             "offsetof(struct _Py_global_strings, identifiers._py_truncate)",
+             "i64"
+         ),
+         (
+             "_Py_ID_writable",
+             "offsetof(struct _Py_global_strings, identifiers._py_writable)",
+             "i64"
+         ),
+         (
+             "_Py_STR_empty",
+             "offsetof(struct _Py_global_strings, literals._py_empty)",
+             "i64"
+         ),
+         ("Py_bf_getbuffer", "Py_bf_getbuffer", "i32"),
+         ("Py_bf_releasebuffer", "Py_bf_releasebuffer", "i32")
      ],
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
@@ -6215,7 +6363,18 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "PyInterpreterState_IMPORTS_FIND_AND_LOAD_HEADER",
              "offsetof(PyInterpreterState, imports.find_and_load.header)",
              "i64"
-         )
+         ),
+         ("O_RDWR", "O_RDWR", "i32"),
+         ("O_EXCL", "O_EXCL", "i32"),
+         ("O_TRUNC", "O_TRUNC", "i32"),
+         ("ESPIPE", "ESPIPE", "i32"),
+         ("EISDIR", "EISDIR", "i32"),
+         ("SEEK_CUR", "SEEK_CUR", "i32"),
+         ("SEEK_END", "SEEK_END", "i32"),
+         ("IO_READ_MAX", "_PY_READ_MAX", "i64"),
+         ("IO_WRITE_MAX", "_PY_WRITE_MAX", "i64"),
+         ("IO_SMALLCHUNK", "(BUFSIZ < 8 * 1024 ? 8 * 1024 : BUFSIZ)", "i64"),
+         ("IO_STAT_SIZE", "sizeof(struct stat)", "u64")
      ],
      # The supported platforms: variant module suffix, zig target and the C
      # condition that selects the platform in layouts_check.c.

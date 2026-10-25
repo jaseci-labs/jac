@@ -2137,14 +2137,17 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
     );
     functions = clinic_functions(tree, sources);
     # A function C defines once per system (#ifdef __APPLE__ ... #else): the
-    # definitions that can exist on a JacPython target, by full name and kind
-    # (a getter and its setter share a name).
+    # definitions that can exist on a JacPython target, by full name, kind
+    # (a getter and its setter share a name) and C name (a clone under
+    # another C name, like _io's _Buffered.flush, is a function of its own).
     defined: dict[str, list[any]] = {};
     for pair in functions {
         f = pair[1];
         condition = CONDITIONS.get(id(f), "");
         if not windows_only(condition) and condition_platforms(condition) {
-            defined.setdefault(f"{f.full_name}:{f.kind.name}", []).append(f);
+            defined.setdefault(f"{f.full_name}:{f.kind.name}:{f.c_basename}", []).append(
+                f
+            );
         }
     }
     for pair in functions {
@@ -2165,7 +2168,7 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
             continue;
         }
         emitter.table_suffix = "";
-        if len(defined.get(f"{f.full_name}:{f.kind.name}", [])) > 1 {
+        if len(defined.get(f"{f.full_name}:{f.kind.name}:{f.c_basename}", [])) > 1 {
             if len(targets) != 1 {
                 sys.exit(f"{f.full_name} has definitions for more than one target");
             }
