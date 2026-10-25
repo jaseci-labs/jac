@@ -28044,8 +28044,7 @@ graph import runtime.python {
             PyTypeObject,
             PyUnicodeObject_DATA,
             PyVarObject,
-            Py_TPFLAGS_HEAPTYPE,
-            _object
+            Py_TPFLAGS_HEAPTYPE
         },
         interpreter.ops_attr {
             CO_OPTIMIZED,

@@ -35,6 +35,7 @@ from jaclang.compiler.backends.native.link_plan import (
     internalize_native_implementation, _platform_of,
 )
 import jaclang.compiler.backends.native.llvm.binding as llvm
+from jaclang.compiler.backends.native.llvm.binding.value import Linkage, Visibility
 
 program = JacProgram()
 # The roots of the native object: the compiler's entry points, the table of
@@ -93,6 +94,21 @@ for symbol, option in (("@pthread_getspecific", "native_tls"), ("@_setjmp", "nat
 internalize_native_implementation(
     compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
 )
+# CPython compiles with -fno-semantic-interposition: libpython's own references
+# to its exported functions and data bind inside the library. Protected
+# visibility keeps a definition exported and makes it dso_local, so Jac code
+# reaches the instruction table and the C API without the GOT or the PLT.
+# The C API names this object only declares (`_PyRuntime`, `_Py_Dealloc`, the
+# C modules' tables) are defined by libpython's remaining C objects, so they
+# bind the same way.
+for value in [*compiled.functions, *compiled.global_variables]:
+    if value.name.startswith("llvm."):
+        continue
+    if value.linkage in (Linkage.internal, Linkage.private) or value.visibility != Visibility.default:
+        continue
+    if value.is_declaration and not re.match(r"_?Py", value.name):
+        continue
+    value.visibility = Visibility.protected
 compiled.verify()
 machine = llvm.Target.from_triple(triple).create_target_machine(
     opt=2, reloc="pic", codemodel="small",
