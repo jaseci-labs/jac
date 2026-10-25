@@ -359,6 +359,14 @@ impl _fresh_jac_state(clear_modules: bool = True) -> None {
     } else {
         set_config(_CONFIG_PIN_BASELINE[0]);
     }
+
+    carried_mtir: dict[str, any] = {};
+    if not clear_modules and JacRuntime.program is not None {
+        owner = JacRuntime.program.context_root or JacRuntime.program;
+        for prog in [owner, *owner.contexts.values()] {
+            carried_mtir.update(prog.mtir_map);
+        }
+    }
     JacRuntime.reset_process_state(clear_modules=clear_modules);
     fresh_base = tempfile.mkdtemp(prefix="jac-test-base-");
     _TEST_BASES.append(fresh_base);
@@ -366,6 +374,7 @@ impl _fresh_jac_state(clear_modules: bool = True) -> None {
     JacRuntime.set_base_path(fresh_base);
     JacRuntime.set_full_target_path(None);
     JacRuntime.program = JacProgram();
+    JacRuntime.program.mtir_map.update(carried_mtir);
     JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(
         user_root=None, base_path_dir=fresh_base, full_target_path=None
     );

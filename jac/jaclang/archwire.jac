@@ -700,6 +700,7 @@ graph import {
     ]
     compiler.driver.compile_options ++> [
         cli.commands.analysis._check_file_job
+            | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck
             | dist.precompile_bytecode._application_sources
             | dist.publish.builder._module_is_client_source
             | dist.publish.npm_sources._compile_module
@@ -896,7 +897,6 @@ graph import {
     compiler.driver.program ++> [
         cli.commands.analysis._check_file_job
             | cli.commands.architecture
-            | cli.commands.execution.debug
             | cli.commands.fix._format_source
             | cli.commands.native_build.native_build
             | cli.commands.transform.jac2js
@@ -3409,6 +3409,7 @@ graph import {
             | server.server.ModuleIntrospector.route_spec { JacRuntime as Jac },
         cli.commands.execution._load_executable { JacRuntime as Jac },
         cli.commands.execution._pin_run_scope { JacRuntime as Jac },
+        cli.commands.execution.debug { JacRuntime as Jac },
         cli.commands.execution.serve { JacRuntime as Jac },
         data.query_planner.LazyRefs._mem | lib.jaclib | testing.runner {
             JacRuntimeInterface
