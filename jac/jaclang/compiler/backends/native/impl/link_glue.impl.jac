@@ -38,9 +38,6 @@ impl entry_preamble_ir(spec: GlueSpec) -> str {
         + "  ret void\n}\n\n"
     );
     if spec.platform == "wasm" and not spec.shared {
-        """A wasm host initializes the module before it calls exported
-        functions and may never run the entry: `__jac_glob_init` runs every
-        unit's initializer, each of which runs once whoever calls first.""";
         init_calls = [
             f'  call void @"{unit.init_symbol}"()'
             for unit in spec.units
@@ -124,11 +121,6 @@ impl _main_body -> str {
 }
 
 impl init_array_runner_ir -> str {
-    """`__jac_libc_init`, the `init` argument `_start` hands
-    `__libc_start_main`: it runs the executable's `.init_array` (bounded by
-    the linker's `__init_array_start` / `__init_array_end`). glibc runs a
-    non-null `init` instead of walking the array itself, so constructors run
-    exactly once on every glibc, old or new.""";
     return (
         "@__init_array_start = external hidden global ptr\n"
         "@__init_array_end = external hidden global ptr\n\n"
@@ -176,8 +168,6 @@ impl entry_elf_ir -> str {
 }
 
 impl entry_elf_static_ir -> str {
-    """musl's crt1.o enters `__libc_start_main`, which runs `.init_array`
-    itself before `main`.""";
     return "; --- ELF entry point (musl static) ---\n"
         + argv_globals_ir()
         + _main_body();
@@ -238,11 +228,6 @@ impl shared_entry_symbol(spec: GlueSpec) -> str {
 }
 
 impl shared_main_ir(spec: GlueSpec) -> str {
-    """A shared library whose root module has an entry exports it as
-    `jac_main(argc, argv)`: a host that loads the library (its initializers
-    already ran) hands the process to the program, which reads that argv as
-    `sys.argv` and starts single-threaded like an executable, with plain
-    reference counts until it spawns a thread.""";
     root_entry = shared_entry_symbol(spec);
     if not root_entry {
         return "";
@@ -284,13 +269,6 @@ impl platform_entry_ir(spec: GlueSpec) -> str {
 }
 
 impl shared_init_registration_ir(spec: GlueSpec) -> str {
-    """How the loader runs `__jac_shared_init` when it loads the library.
-    ELF lists it in `.init_array` directly: LLVM, left to `llvm.global_ctors`,
-    emits ELF constructors into `.ctors`, which only a crtbegin.o runs. The
-    glue is the last input, so it runs after every constructor the inputs
-    carry. Mach-O lists it as a module initializer. A PE DLL has no C runtime
-    to run constructors, so its entry point calls it on
-    DLL_PROCESS_ATTACH.""";
     if spec.platform == "pe" {
         return (
             f"define i32 @__jac_dll_main(ptr %module, i32 %reason, ptr %reserved) {{\n"
@@ -374,8 +352,14 @@ impl bind_shared_callbacks(
     assert isinstance(module, llvm.ModuleRef);
     definitions: list[str] = [];
     callbacks: list[InteropBinding] = [];
+    bound: set[str] = set();
     for binding in bindings {
-        function = module.get_function(binding.name);
+        _sym = binding.symbol;
+        if _sym in bound {
+            continue;
+        }
+        bound.add(_sym);
+        function = module.get_function(_sym);
         assert isinstance(function, llvm.ValueRef);
         if not function.is_declaration {
             continue;
@@ -387,9 +371,9 @@ impl bind_shared_callbacks(
             );
         }
         callbacks.append(binding);
-        name = _wrapname(binding.name);
-        slot = _wrapname('__jac_callback_' + binding.name);
-        bind_function = _wrapname('__jac_bind_' + binding.name);
+        name = _wrapname(_sym);
+        slot = _wrapname('__jac_callback_' + _sym);
+        bind_function = _wrapname('__jac_bind_' + _sym);
         arguments = ', '.join(
             f'{kind} %arg{index}' for (index, kind) in enumerate(parameters)
         );

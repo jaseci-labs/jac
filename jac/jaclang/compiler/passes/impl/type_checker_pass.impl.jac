@@ -57,8 +57,6 @@ impl TypeCheckPass.exit_formatted_value with FormattedValue exit {
 }
 
 impl TypeCheckPass._is_generator(scope: Ability) -> bool {
-    """Whether a function body yields, asked once per function per run: every
-    return statement of the body asks it.""";
     known = self._generator_bodies.get(id(scope));
     if known is None {
         known = ModuleFacts.ability_is_generator(scope);

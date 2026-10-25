@@ -1,11 +1,4 @@
 impl NaIRGenPass._peer_dict_key -> (str | None) {
-    """Dict layout an empty display should adopt from the operand beside it.
-
-    Set only where one branch's container answers for the other's: a ternary
-    arm and the right operand of `or`/`and`. An empty `{}` has no entries to
-    infer from, so `h.tbl or {}` would otherwise pick its own flavour, and
-    the phi would erase both branches to `i8*`.
-    """;
     _pt = self._peer_container_ty;
     if _pt is None or not isinstance(_pt, ir.PointerType) {
         return None;
@@ -271,13 +264,6 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
 }
 
 impl NaIRGenPass._any_view_target(target_type: ir.Type) -> (tuple[str, str] | None) {
-    """The container-of-`any` family a pointer unbox target names, if any.
-
-    `("list", "")` for `list[any]`, `("dict", K)` for a `dict[K, any]` whose
-    keys hash as spec `K`. Those are the targets whose element slots hold
-    boxed values, so a typed container arriving through `any` cannot be
-    reinterpreted as one: its slots hold raw payloads.
-    """;
     if not self?.jacval_type or not isinstance(target_type, ir.PointerType) {
         return None;
     }
@@ -296,19 +282,6 @@ impl NaIRGenPass._any_view_target(target_type: ir.Type) -> (tuple[str, str] | No
 impl NaIRGenPass._unbox_any_container(
     jv: ir.Value, target_type: ir.Type
 ) -> (ir.Value | None) {
-    """Unbox an `any` into a container of `any`, converting a typed one.
-
-    The box records only the heap kind, so a `dict[str, int]` passed as
-    `any` and narrowed to `dict[str, any]` would otherwise be read with its
-    `i64` slots taken for boxed values. `_any_view_fn` reads the allocation
-    header's type tag instead: a container already of the target family is
-    returned as is, a typed one is copied into a fresh container of the
-    target family with every element boxed, and one it cannot convert is a
-    `TypeError`. The copy is parked in a hidden local of the current
-    function, released when that local is overwritten or at scope exit, so
-    the result stays a borrow like every other unbox. A headerless build has
-    no tag to read and refuses the site.
-    """;
     if self._any_view_target(target_type) is None {
         return None;
     }
@@ -391,12 +364,6 @@ impl NaIRGenPass._adopt_any_view(
 }
 
 impl NaIRGenPass._binding_function_active -> bool {
-    """Do the current bindings belong to the function being emitted into?
-
-    False while a helper body is built on a swapped builder: a hidden local
-    registered then would be an alloca of the helper that the enclosing
-    function's scope exit loads.
-    """;
     if self._builder is None {
         return False;
     }
@@ -410,14 +377,6 @@ impl NaIRGenPass._binding_function_active -> bool {
 }
 
 impl NaIRGenPass._heap_ref_jacval_tag_fn -> ir.Function {
-    """`__jac_heap_ref_jvtag(p)`: the `any` tag a bare heap reference boxes to.
-
-    A container whose slots are plain pointers (`list[str]`,
-    `list[list[int]]`, `dict[str, Item]`) has erased which heap kind each
-    slot holds, so boxing one of its elements reads the kind back out of the
-    allocation header's type tag, the stamp `isinstance` reads. Null is
-    None; a string without an allocated header is `str`.
-    """;
     _name = "__jac_heap_ref_jvtag";
     _cached = self.extern_funcs.get(_name);
     if _cached is not None {
@@ -485,17 +444,6 @@ impl NaIRGenPass._heap_ref_jacval_tag_fn -> ir.Function {
 }
 
 impl NaIRGenPass._any_view_fn(target_type: ir.Type) -> (ir.Function | None) {
-    """`__jac_any_view_<family>(jv)`: a boxed container as the target family.
-
-    Returns the payload unchanged when it is not a live container the header
-    can speak for (None, a scalar, no tag) or already is the target family;
-    a fresh, owned copy with each element boxed when its tag names a typed
-    family of the same kind (and, for a dict, the same key spec), or when it
-    is an empty container of the kind whatever its family; null when it
-    names anything else. Element slots of a pointer family box through
-    `__jac_heap_ref_jvtag`, since the slot type no longer says which heap
-    kind it holds.
-    """;
     _tgt = self._any_view_target(target_type);
     if _tgt is None {
         return None;
@@ -1007,16 +955,6 @@ impl NaIRGenPass._emit_dict_eq(
 impl NaIRGenPass._dict_eq_fn(
     dict_key: str, val_ty: (TypeBase | None)
 ) -> (ir.Function | None) {
-    """Python's dictionary equality for one dictionary layout.
-
-    Two dictionaries are equal when they hold the same keys, each mapped to
-    equal values; insertion order plays no part. With equal sizes that is:
-    every key of the left is found in the right (through the right's own
-    hash), and the two values under it compare equal. Values are compared
-    under the dictionary's checked value type, so a nested container or an
-    archetype with its own `__eq__` is compared as Python would, not by
-    address.
-    """;
     helpers = self.dict_helpers.get(dict_key);
     dict_struct = self.dict_types.get(dict_key);
     if helpers is None or dict_struct is None {

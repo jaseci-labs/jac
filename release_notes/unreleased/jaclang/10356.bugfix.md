@@ -1,0 +1,1 @@
+- A native build no longer encodes an interface for every module it compiles: under the options a native build compiles with (`aot_mode`, a default codespace) no interface is persisted, so the interface step, which forced every symbol's type, now runs only when its result is kept.
