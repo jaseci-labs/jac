@@ -315,6 +315,29 @@ const Bullet = struct {
     life: f64,
 };
 
+/// One member of the flock: position, velocity, and the acceleration the
+/// steering pass computes for it before the integration pass applies it.
+const Boid = struct {
+    x: f64,
+    y: f64,
+    z: f64,
+    vx: f64,
+    vy: f64,
+    vz: f64,
+    ax: f64,
+    ay: f64,
+    az: f64,
+};
+
+// Flock size and steering radii (mirrors the Jac globals). Every boid looks at
+// every other boid each frame: NUM_BOIDS * NUM_BOIDS neighbour tests of pure
+// arithmetic - the part of the frame that runs outside raylib.
+const NUM_BOIDS = 256;
+const BOID_VIEW2: f64 = 9.0;
+const BOID_SEP2: f64 = 1.0;
+const BOID_MAX_SPEED: f64 = 5.0;
+const BOID_MIN_SPEED: f64 = 2.0;
+
 /// cos via range-reduced Taylor series (good to ~1e-4 on the reduced range).
 fn jcos(a_in: f64) f64 {
     const twopi = 6.283185307179586;
@@ -349,6 +372,120 @@ fn rand01() f64 {
 /// Random float in [lo, hi).
 fn rand_range(lo: f64, hi: f64) f64 {
     return lo + rand01() * (hi - lo);
+}
+
+/// Square root by Newton's method (12 fixed iterations, so no libm is needed).
+fn jsqrt(v: f64) f64 {
+    if (v <= 0.0) {
+        return 0.0;
+    }
+    var g: f64 = if (v > 1.0) v else 1.0;
+    var k: i32 = 0;
+    while (k < 12) : (k += 1) {
+        g = 0.5 * (g + v / g);
+    }
+    return g;
+}
+
+/// A boid at a random spot over the arena with a random heading.
+fn spawn_boid() Boid {
+    const x = rand_range(-12.0, 12.0);
+    const y = rand_range(1.0, 7.0);
+    const z = rand_range(-14.0, 4.0);
+    const vx = rand_range(-2.0, 2.0);
+    const vy = rand_range(-0.5, 0.5);
+    const vz = rand_range(-2.0, 2.0);
+    return Boid{ .x = x, .y = y, .z = z, .vx = vx, .vy = vy, .vz = vz, .ax = 0.0, .ay = 0.0, .az = 0.0 };
+}
+
+/// Steer every boid by separation, alignment and cohesion over the neighbours
+/// within its view radius (an all-pairs pass), then integrate with a speed clamp.
+fn update_flock(flock: []Boid, step: f64) void {
+    const n = flock.len;
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        const b = &flock[i];
+        var cnt: i32 = 0;
+        var cx: f64 = 0.0;
+        var cy: f64 = 0.0;
+        var cz: f64 = 0.0;
+        var avx: f64 = 0.0;
+        var avy: f64 = 0.0;
+        var avz: f64 = 0.0;
+        var sx: f64 = 0.0;
+        var sy: f64 = 0.0;
+        var sz: f64 = 0.0;
+        var j: usize = 0;
+        while (j < n) : (j += 1) {
+            if (j != i) {
+                const o = &flock[j];
+                const dx = o.x - b.x;
+                const dy = o.y - b.y;
+                const dz = o.z - b.z;
+                const d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 < BOID_VIEW2) {
+                    cnt += 1;
+                    cx += o.x;
+                    cy += o.y;
+                    cz += o.z;
+                    avx += o.vx;
+                    avy += o.vy;
+                    avz += o.vz;
+                    if (d2 < BOID_SEP2) {
+                        const inv = 1.0 / (d2 + 0.01);
+                        sx -= dx * inv;
+                        sy -= dy * inv;
+                        sz -= dz * inv;
+                    }
+                }
+            }
+        }
+        var ax: f64 = 0.0;
+        var ay: f64 = 0.0;
+        var az: f64 = 0.0;
+        if (cnt > 0) {
+            const fc: f64 = @floatFromInt(cnt);
+            ax = (cx / fc - b.x) * 0.6 + (avx / fc - b.vx) * 0.9 + sx * 1.5;
+            ay = (cy / fc - b.y) * 0.6 + (avy / fc - b.vy) * 0.9 + sy * 1.5;
+            az = (cz / fc - b.z) * 0.6 + (avz / fc - b.vz) * 0.9 + sz * 1.5;
+        }
+        b.ax = ax - b.x * 0.08;
+        b.ay = ay + (4.0 - b.y) * 0.3;
+        b.az = az - (b.z + 5.0) * 0.08;
+    }
+    i = 0;
+    while (i < n) : (i += 1) {
+        const b = &flock[i];
+        b.vx += b.ax * step;
+        b.vy += b.ay * step;
+        b.vz += b.az * step;
+        const s2 = b.vx * b.vx + b.vy * b.vy + b.vz * b.vz;
+        if (s2 > BOID_MAX_SPEED * BOID_MAX_SPEED) {
+            const k = BOID_MAX_SPEED / jsqrt(s2);
+            b.vx *= k;
+            b.vy *= k;
+            b.vz *= k;
+        } else if (s2 > 0.0 and s2 < BOID_MIN_SPEED * BOID_MIN_SPEED) {
+            const k = BOID_MIN_SPEED / jsqrt(s2);
+            b.vx *= k;
+            b.vy *= k;
+            b.vz *= k;
+        }
+        b.x += b.vx * step;
+        b.y += b.vy * step;
+        b.z += b.vz * step;
+    }
+}
+
+/// Draw each boid as a short streak trailing back along its velocity.
+fn draw_flock(flock: []Boid) void {
+    rlBegin(RL_LINES);
+    rlColor4ub(120, 200, 255, 255);
+    for (flock) |*b| {
+        rlVertex3f(@floatCast(b.x), @floatCast(b.y), @floatCast(b.z));
+        rlVertex3f(@floatCast(b.x - b.vx * 0.12), @floatCast(b.y - b.vy * 0.12), @floatCast(b.z - b.vz * 0.12));
+    }
+    rlEnd();
 }
 
 /// (Re)place a target somewhere in the arena in front of the player.
@@ -496,6 +633,7 @@ const NUM_BULLETS = 24;
 pub fn main() void {
     var targets: [NUM_TARGETS]Target = undefined;
     var bullets: [NUM_BULLETS]Bullet = undefined;
+    var flock: [NUM_BOIDS]Boid = undefined;
 
     open_window(960, 600, "Jac Cube Shooter (Zig)");
 
@@ -506,6 +644,16 @@ pub fn main() void {
 
     for (&bullets) |*b| {
         b.* = Bullet{ .x = 0.0, .y = 0.0, .z = 0.0, .vx = 0.0, .vy = 0.0, .vz = 0.0, .life = 0.0 };
+    }
+
+    // High-compute mode (dormant unless `.flock` exists): spawn the flock that
+    // update_flock steers every frame. Without the file the shooter is exactly
+    // the original one, as in the Jac twin.
+    const flock_on = FileExists(".flock");
+    if (flock_on) {
+        for (&flock) |*b| {
+            b.* = spawn_boid();
+        }
     }
 
     const bench = bench_seconds();
@@ -536,6 +684,9 @@ pub fn main() void {
         for (&targets) |*t| {
             t.y = t.base_y + 0.4 * jsin(world_t * 1.5 + t.phase);
         }
+        if (flock_on) {
+            update_flock(&flock, step);
+        }
 
         begin_frame(15, 18, 28);
         set_camera(@floatCast(px), @floatCast(py), @floatCast(pz), @floatCast(yaw), @floatCast(pitch), 1.6);
@@ -551,6 +702,9 @@ pub fn main() void {
             if (b.life > 0.0) {
                 draw_box(@floatCast(b.x), @floatCast(b.y), @floatCast(b.z), 0.22, 0.22, 0.22, 250, 220, 90);
             }
+        }
+        if (flock_on) {
+            draw_flock(&flock);
         }
 
         end_camera(960.0, 600.0);
