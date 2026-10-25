@@ -13,8 +13,8 @@
 #   Replaced by the native Jac implementation. A separate build-only CPython
 #   host restores these to produce the native object; no shipped runtime has
 #   them, and compiler-bridge.patch detaches upstream rules that name them.
-#   Excluded: 201 C files / 362,754 lines; 153 headers / 150,776 lines.
-#   Total: 354 files / 513,530 source lines.
+#   Excluded: 202 C files / 365,986 lines; 153 headers / 150,776 lines.
+#   Total: 355 files / 516,762 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -198,7 +198,7 @@ Python/pytime.c
 # Python/qsbr.c  # removed: 290 source lines
 # Python/remote_debug.h  # removed: 1,191 source lines
 # Python/remote_debugging.c  # removed: 401 source lines
-Python/specialize.c
+# Python/specialize.c  # removed: 3,232 source lines
 Python/stackrefs.c
 Python/stdlib_module_names.h
 Python/structmember.c

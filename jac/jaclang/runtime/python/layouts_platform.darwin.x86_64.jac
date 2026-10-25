@@ -192,4 +192,5 @@ glob LAYOUTS_PLATFORM: str = "darwin.x86_64",
      _PyThreadStateImpl_C_STACK_INIT_BASE: Final[i64] = 920,
      _PyThreadStateImpl_C_STACK_INIT_TOP: Final[i64] = 928,
      PyInterpreterState_CEVAL_RECURSION_LIMIT: Final[i64] = 8,
-     PyInterpreterState_BUILTINS: Final[i64] = 7680;
+     PyInterpreterState_BUILTINS: Final[i64] = 7680,
+     PyInterpreterState_CALLABLE_CACHE_OBJECT_GETATTRIBUTE: Final[i64] = 223184;

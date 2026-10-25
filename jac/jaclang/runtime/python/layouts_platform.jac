@@ -192,4 +192,5 @@ glob LAYOUTS_PLATFORM: str = "",
      _PyThreadStateImpl_C_STACK_INIT_BASE: Final[i64] = 0,
      _PyThreadStateImpl_C_STACK_INIT_TOP: Final[i64] = 0,
      PyInterpreterState_CEVAL_RECURSION_LIMIT: Final[i64] = 0,
-     PyInterpreterState_BUILTINS: Final[i64] = 0;
+     PyInterpreterState_BUILTINS: Final[i64] = 0,
+     PyInterpreterState_CALLABLE_CACHE_OBJECT_GETATTRIBUTE: Final[i64] = 0;
