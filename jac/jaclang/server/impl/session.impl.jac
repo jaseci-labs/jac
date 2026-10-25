@@ -355,8 +355,10 @@ impl Session.postinit -> None {
     self._flushing = None;
     self._read_scopes = 0;
     self._ro_units = 0;
+    self._ro_retry_raised = None;
     self._unit_stack = [];
     self._snapshot_reads = set();
+    self._txn_gen = 0;
     self._foreign_refs = set();
     self._contended = set();
     self._hop_writes = 0;
@@ -445,7 +447,7 @@ impl Session.get(id: UUID) -> (Anchor | None) {
     if id in self._deleted {
         return None;
     }
-    if (hit := self.__mem__.get(id)) is not None {
+    if (hit := self.__mem__.get(id)) is not None and not self._expired(hit) {
         return hit;
     }
     if self.store is None {
@@ -521,7 +523,7 @@ impl Session.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         if i in self._deleted {
             continue;
         }
-        if (hit := self.__mem__.get(i)) is not None {
+        if (hit := self.__mem__.get(i)) is not None and not self._expired(hit) {
             out[i] = hit;
         } else {
             missing.append(i);
@@ -575,6 +577,13 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
                 } except Exception as e {
                     if not _is_serialization_conflict(e) {
                         self._rollback_txn();
+                        if isinstance(e, WriteConflict) and self._active_units == 0 {
+                            self._dirty.pop(e.anchor_id, None);
+                            self._ensure_txn();
+                            for row in self._store.load_full([e.anchor_id]).values() {
+                                self._materialize(row);
+                            }
+                        }
                         raise;
                     }
                     self._replay_txn(e, exhausted=attempt >= MAX_RETRIES);
@@ -673,7 +682,15 @@ impl Session._raise_ro_retry -> None {
     import from uuid { UUID as _UUID }
     last = self._register_ro_writers();
     self._rollback_txn();
+    self._ro_retry_raised = last;
     raise ReadOnlyRetry(anchor_id=_UUID(int=0), unit_key=last);
+}
+
+
+impl Session.take_ro_retry -> str | None {
+    raised = self._ro_retry_raised;
+    self._ro_retry_raised = None;
+    return raised;
 }
 
 
@@ -689,6 +706,29 @@ impl Session._drop_snapshot_reads -> None {
         }
     }
     self._snapshot_reads.clear();
+}
+
+
+impl Session._expired(anchor: Anchor) -> bool {
+    id = anchor.id;
+    if self._store is None
+        or id is None
+        or not anchor.persistent
+        or anchor.__dict__.get('_txn_gen') == self._txn_gen
+        or id in self._dirty
+        or not anchor.is_populated() {
+        return False;
+    }
+    known = self._rows.current(id);
+    if known is None or frozen_fields(anchor) {
+        return True;
+    }
+    try {
+        h = Serializer.stored_hash(anchor, Serializer.stored_form(anchor));
+    } except Exception {
+        return False;
+    }
+    return h != 0 and h == known.hash;
 }
 
 
@@ -764,6 +804,11 @@ impl Session.unit_exit -> None {
                 self.abort();
                 raise TransactionLost(anchor_id=UUID(int=0));
             }
+            swallowed = self.take_ro_retry();
+            if swallowed is not None {
+                self.abort();
+                raise ReadOnlyRetry(anchor_id=UUID(int=0), unit_key=swallowed);
+            }
             if self._store is None or not self._store.in_txn() {
                 return;
             }
@@ -811,6 +856,7 @@ impl Session._commit_txn -> None {
         self._store.commit();
         self._rows.promote();
     }
+    self._txn_gen += 1;
 }
 
 
@@ -822,6 +868,7 @@ impl Session._rollback_txn -> None {
             logger.debug(f"rollback failed: {type(e).__name__}: {e}");
         }
     }
+    self._txn_gen += 1;
     lost = self._rows.discard();
     if lost.joined {
         self._lost = True;
@@ -1103,7 +1150,11 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
 
     self._foreign_refs.discard(row.id);
     existing = self.__mem__.get(row.id);
-    if existing is not None and existing.is_populated() {
+    known = self._rows.current(row.id);
+    if existing is not None
+        and existing.is_populated()
+        and (row.id in self._dirty or known is None or known.version == row.version) {
+        existing.__dict__['_txn_gen'] = self._txn_gen;
         return existing;
     }
 
@@ -1130,6 +1181,16 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
         return None;
     }
     anchor: Anchor = got;
+    if existing is not None and existing.is_populated() {
+        archetype = existing.archetype;
+        fields = dict(anchor.archetype.__dict__);
+        fields.pop('__jac__', None);
+        archetype.__dict__.update(fields);
+        existing.__dict__.pop('_frozen', None);
+        existing.__dict__.update(anchor.__dict__);
+        existing.__dict__['archetype'] = archetype;
+        anchor = existing;
+    }
     if isinstance(anchor, NodeAnchor) {
         if self._store is not None {
             anchor.__dict__.pop('edges', None);
@@ -1141,6 +1202,7 @@ impl Session._materialize(row: AnchorRow) -> (Anchor | None) {
     self._rows.loaded(
         row.id, RowState(hash=anchor.hash, version=row.version, arch_type=row.arch_type)
     );
+    anchor.__dict__['_txn_gen'] = self._txn_gen;
     if self._store is not None
         and self._store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
         self._snapshot_reads.add(row.id);
@@ -1200,6 +1262,9 @@ impl Session._begin_writable -> None {
     with self._lock {
         if self._store is None {
             return;
+        }
+        if self._ro_retry_raised is not None {
+            raise ReadOnlyRetry(anchor_id=UUID(int=0), unit_key=self._ro_retry_raised);
         }
         self._reclaim_dead_txn();
         if self._store.txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY {
@@ -1281,6 +1346,21 @@ impl Session.acommit(anchor: (Anchor | None) = None) -> None {
         self.commit(anchor);
     }
     await _off_loop(settle);
+}
+
+impl Session.aclose -> None {
+    import asyncio;
+    job = asyncio.ensure_future(_off_loop(self.close));
+    try {
+        await asyncio.shield(job);
+    } except asyncio.CancelledError {
+        while not job.done() {
+            try {
+                await asyncio.shield(job);
+            } except asyncio.CancelledError {}
+        }
+        raise;
+    }
 }
 
 

@@ -311,10 +311,3 @@ impl Events.hurt(amount: float) {
         self.damage.append(amount);
     }
 }
-
-impl remove_at[T](items: &mut list[own T], i: int) {
-    last = items.pop();
-    if i < len(items) {
-        items[i] = last;
-    }
-}

@@ -19,17 +19,3 @@ obj StaticTarget(WebTarget) {
         entry_file: Path, project_dir: Path, api_port: int = 8000
     ) -> None;
 }
-
-impl _DistRequestHandler.translate_path(self: _DistRequestHandler, path: str) -> str {
-    if path.startswith("/static/") {
-        path = path[len("/static"):];
-    }
-    return super.translate_path(path);
-}
-
-impl _DistRequestHandler.guess_type(self: _DistRequestHandler, path: str) -> str {
-    if str(path).endswith(".wasm") {
-        return "application/wasm";
-    }
-    return super.guess_type(path);
-}

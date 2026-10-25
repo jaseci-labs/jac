@@ -871,7 +871,7 @@ impl stored_wiring_digest(source_path: str) -> str {
     );
     table = _WIRING_DIGESTS.get(stamp);
     store = os.path.join(
-        str(get_jir_cache_dir()), "wiring-v2", stamp[:2], stamp + ".json"
+        str(get_jir_cache_dir()), "wiring-v3", stamp[:2], stamp + ".json"
     );
     if table is None {
         table = {};
@@ -903,11 +903,6 @@ impl stored_wiring_digest(source_path: str) -> str {
 }
 
 impl unit_source_digest(path: str) -> str {
-    """What one unit contributes to a kernel's inputs: its source with its
-    annexes and the wiring that shapes its imports. Unlike the module key,
-    nothing here fingerprints the environment, so a build at another path
-    records digests a checkout can reproduce.""";
-    import from jaclang.compiler.driver.wiring { wiring_digest_for }
     real = os.path.realpath(path);
     h = hashlib.sha256();
     h.update(ct_dep_digest(real, with_annexes=True).encode("utf-8"));
@@ -916,11 +911,6 @@ impl unit_source_digest(path: str) -> str {
 }
 
 impl sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
-    """The units a sidecar names, found where this process's jaclang lives:
-    a kernel built by the kit records its units by package identity, so the
-    checkout that matches the kit's sources can accept it without the
-    build's paths existing here.""";
-    import from jaclang.compiler.kernel_target { target_pkg_root }
     units = sidecar.get("units");
     ids = sidecar.get("unit_ids");
     recorded = [str(u) for u in units] if isinstance(units, list) else [];
@@ -942,10 +932,6 @@ impl sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
 }
 
 impl _compute_module_key_uncached(source_path: str) -> str {
-    """A module the running compiler package owns is keyed canonically,
-    whatever compilation scope is active: the package's precompile, the
-    compiler's bootstrap, a consumer's analysis and a native build session
-    all read and write the same entry for it.""";
     h = hashlib.sha256();
     projection = ''
         if is_package_keyed_path(source_path)
@@ -1035,11 +1021,6 @@ impl ct_dep_digest(path: str, with_annexes: bool = False) -> str {
 }
 
 impl _ct_pkg_ref(path: str) -> str {
-    """A dependency inside the package being compiled is named by its place in
-    that package, so a unit cached from one staging of the tree still reads as
-    fresh in another: kernel units are built under a per-build staging
-    directory, and an absolute row there names a file the next build lacks.""";
-    import from jaclang.compiler.kernel_target { target_package_rel }
     rel = target_package_rel(path);
     if rel is None {
         return path;
@@ -1232,9 +1213,6 @@ impl _compute_definition_digest(files: list[str], qualname: str) -> str {
 }
 
 impl rebase_placement_section(raw: bytes, base: str) -> bytes {
-    """A placement summary names its module by path; sealed under a
-    package it names it under the package sentinel, so two seals of one
-    tree are the same bytes wherever they were staged.""";
     import json as _json;
     try {
         parsed = _json.loads(raw.decode("utf-8"));
@@ -1758,8 +1736,7 @@ impl module_cache_invalid_reason(source_path: str, cache_path: Path) -> str {
         if stale {
             return "comptime dependency changed: " + stale[0];
         }
-        """Timestamps are not source identities: restores can preserve mtimes
-        and annex deletion must invalidate the same way annex edits do.""";
+
         if not jir_matches_source(data, source_path) {
             return "source or annexes changed";
         }
@@ -1774,12 +1751,6 @@ impl _mergeable_sections(
     key_sections: dict[int, bytes],
     incoming: (dict[int, bytes] | None) = None
 ) -> tuple[dict[int, bytes], int, bool] {
-    """The sections a writer may carry forward, their flags, and whether the
-    carried Python-lane products are stale. A different environment key keeps
-    only the stamped native sections: each validates its own compile-time
-    inputs when it is read, so nothing carried here can make one look fresh.
-    `incoming` is the provenance the writer brings; a changed compile-time
-    dependency record or interop manifest makes the carried bytecode stale.""";
     try {
         if not cache_path.exists() {
             return ({}, 0, False);
@@ -1823,15 +1794,6 @@ impl _mergeable_sections(
 impl merge_native_sections(
     existing: dict[int, bytes], incoming: dict[int, bytes]
 ) -> dict[int, bytes] {
-    """Fold one producer's stamped native sections into the entry's variants. A
-    replaced bitcode variant invalidates the object emitted from the old one, and
-    a write that relowers a unit (a new interface or dependency record) without
-    bringing bitcode drops the bitcode and object compiled before it. A
-    native write carries the running compiler's digest on every stamped section
-    it brings, so variants of any native section under another compiler digest
-    are obsolete and pruned: a compiler upgrade replaces products instead of
-    accumulating them, while other targets and codegen identities under the
-    same compiler coexist.""";
     merged: dict[int, bytes] = {};
     before = native_section_variants(existing.get(SEC_NBITCODE));
     after = native_section_variants(incoming.get(SEC_NBITCODE));
@@ -1889,11 +1851,6 @@ impl merge_native_sections(
 }
 
 impl _module_lock_path(cache_path: Path) -> Path {
-    """One lock per module would leave a permanent zero-byte sibling beside every
-    cache entry. Writers share a small pool of lock files under the generation
-    directory instead, keyed by the entry's name: two entries that land in one
-    slot serialize briefly, and a generation sweep removes the pool along with the
-    entries it guarded.""";
     pool = cache_path.parent / ".locks";
     pool.mkdir(parents=True, exist_ok=True);
     slot = int(hashlib.sha256(cache_path.name.encode("utf-8")).hexdigest()[:8], 16);
@@ -1994,12 +1951,6 @@ impl write_module_cache(
     extra_sections: (dict[int, bytes] | None) = None,
     flags: int = 0
 ) -> bool {
-    """Merge one producer's sections into the module's JIR under the shared
-    file lock. A full compile (one carrying bytecode) and a Python-lane
-    metadata refresh judge the carried products by the provenance they bring.
-    A native unit persisting only its stamped products leaves the Python
-    lane's interop manifest to the compile that produced the bytecode, and
-    fills it in only when none exists.""";
     resolved_path = str(Path(source_path).resolve());
     if not jir_cacheable_source_path(resolved_path) {
         return False;
@@ -2062,9 +2013,6 @@ impl write_module_cache(
 }
 
 impl drop_python_lane_products(source_path: str) -> None {
-    """Discard a module's Python-lane products and keep its stamped native
-    sections, which validate their own inputs when read. With no native
-    sections left the entry is removed.""";
     resolved_path = str(Path(source_path).resolve());
     cache_path = get_module_cache_path(resolved_path);
     if not cache_path.exists() {

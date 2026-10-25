@@ -965,12 +965,6 @@ impl KubernetesTarget._resolve_service_triggers(
 impl KubernetesTarget._autoscaler_spec(
     svc_name: str, plan: dict[str, any], autoscaler: any, namespace: str
 ) -> AutoscalerSpec {
-    """Build the AutoscalerSpec for a METRIC-mode service from its already-
-        resolved scaling plan, so the scale target here is the same Deployment
-        name apply_manifests actually applied -- never re-derived from svc_name,
-        which is exactly the drift that caused apply_http_activation to 404 on
-        a real cluster before _resolve_scaling existed.
-        """;
     k8s_name = k8s_safe_name(svc_name);
     cfg: dict[str, any] = dict(plan.get("autoscaler", {}));
     cfg_idle = plan.get("idle_replicas", self.k8s_config.idle_replicas);
@@ -1634,14 +1628,6 @@ impl KubernetesTarget.rollback_to(app_name: str, revision: int) -> DeploymentRes
 impl KubernetesTarget._deployment_patch_body(
     manifest: dict[str, any], plan: dict[str, any]
 ) -> (dict[str, any] | None) {
-    """The body an update PATCH gets, or None to send the manifest whole.
-
-        Every scaling mode hands `spec.replicas` to a controller -- the HPA
-        under METRIC, the ScaledObject or HTTP interceptor under
-        HTTP_ACTIVATION -- so both are patched without it and a redeploy cannot
-        reset the count that controller set. NONE is the only mode where the
-        manifest still owns the field.
-        """;
     if plan.get("mode", ScalingMode.NONE) == ScalingMode.NONE {
         return None;
     }
@@ -1663,15 +1649,6 @@ impl KubernetesTarget._apply_or_replace(
     manifest: dict[str, any],
     patch_body: (dict[str, any] | None) = None
 ) {
-    """patch_body, when given, is sent to `update` instead of `manifest` --
-        e.g. a copy with `spec.replicas` stripped so a strategic-merge PATCH
-        leaves an externally-scaled field (KEDA's ScaledObject) alone, while a
-        fresh `create` still gets the full manifest including that field.
-        Every scaling mode relies on this: the HPA, ScaledObject or HTTP
-        interceptor owns `replicas` once it manages a Deployment, and the
-        strategic-merge PATCH this omission produces is what keeps a redeploy
-        from resetting the live value the autoscaler set.
-        """;
     name: str = manifest["metadata"]["name"];
     try {
         getattr(api, read)(name=name, namespace=namespace);
@@ -1832,7 +1809,6 @@ impl KubernetesTarget._destroy_monitoring(
 }
 
 impl KubernetesTarget._postgres_pvc_name(app_name: str) -> str {
-    """Name the PVC the postgres volumeClaimTemplates entry creates.""";
     pg_name: str = f"{app_name}-postgres";
     return f"{pg_name}-data-{pg_name}-0";
 }
@@ -1911,7 +1887,6 @@ impl KubernetesTarget._destroy_shared_volume_pvcs(
 impl KubernetesTarget._list_managed(
     lister: any, namespace: str, selector: str
 ) -> list[any] {
-    """List the objects a lister returns, tolerating a kind the cluster lacks.""";
     try {
         return lister(namespace=namespace, label_selector=selector).items;
     } except ApiException as e {
@@ -1925,7 +1900,6 @@ impl KubernetesTarget._list_managed(
 impl KubernetesTarget._foreign_app_resources(
     app_name: str, namespace: str, apps_v1: any, core_v1: any
 ) -> list[str] {
-    """Name the jac-scale resources in this namespace another app owns.""";
     owner: str = k8s_safe_name(app_name);
     our_bundle: str = bundle_pvc_name(owner);
     our_postgres: str = f"{app_name}-postgres";

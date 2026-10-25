@@ -970,6 +970,9 @@ impl CatalogWriter.encode_symbol(idx: int) -> bytes {
     put_uvar(out, access);
     put_uvar(out, 1 if sym.imported else 0);
     loc = sym.decl.loc if sym.decl and self.spans else None;
+    if loc is not None and is_arch_file(loc.mod_path) {
+        loc = None;
+    }
     put_uvar(out, max(loc.first_line, 0) if loc else 0);
     put_uvar(out, max(loc.col_start, 0) if loc else 0);
     put_uvar(out, max(loc.last_line, 0) if loc else 0);

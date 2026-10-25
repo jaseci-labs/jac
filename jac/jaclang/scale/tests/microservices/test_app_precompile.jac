@@ -653,7 +653,14 @@ test "an explicit app seal follows its entry and excludes unrelated apps" {
         assert sources == {'web.jac', 'helper.jac', 'scoring.jac'} , sources;
         (base / 'cli.jac').write_text('def:pub main -> int { return 3; }\n');
         assert {Path(p).name for p in sealable_sources(td, 'cli')} == {'cli.jac'};
-        assert {Path(p).name for p in sealable_sources(td, 'desktop')}
-            == {'desktop.jac'};
+        desktop_sources = {Path(p).name for p in sealable_sources(td, 'desktop')};
+        assert desktop_sources
+            == {
+                'desktop.jac',
+                'web.jac',
+                'scoring.jac',
+                'helper.jac'
+            } , desktop_sources;
+        assert 'cli.jac' not in desktop_sources;
     }
 }

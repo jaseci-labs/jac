@@ -6,9 +6,10 @@ first), then counts the vote on the poll node. It commits once before any of
 that, so the poll it holds was read by an earlier transaction than the one
 that writes it. Two switches, each consumed by the run that honours it:
 
-- `rival_commits`: right after that commit, a second connection commits a
-  change to the poll row, so this request's write of the poll is stale and
-  the upsert reports a `WriteConflict` after the edge was already flushed.
+- `rival_commits`: once this transaction has read the poll and its voters, a
+  second connection commits a change to the poll row, so this request's write
+  of the poll is stale and the upsert reports a `WriteConflict` after the edge
+  was already flushed.
 - `commit_faults`: each entry is taken by one run and makes that many of the
   request's following COMMITs fail the way Postgres fails a serializable
   transaction at commit (rolled back, SQLSTATE 40001).
@@ -140,10 +141,6 @@ walker:pub Vote {
         polls = [here-->[?:Poll]];
         poll = polls[0];
         commit();
-        if rival_commits {
-            rival_commits.pop();
-            rival_bump(jid(poll));
-        }
         if commit_faults {
             fail_commits(commit_faults.pop());
         }
@@ -151,6 +148,10 @@ walker:pub Vote {
             if not ballot.cast {
                 ballot.cast = True;
                 voters = [poll<--];
+                if rival_commits {
+                    rival_commits.pop();
+                    rival_bump(jid(poll));
+                }
                 poll.total += len(voters);
             }
         }

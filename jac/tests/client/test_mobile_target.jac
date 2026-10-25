@@ -12,7 +12,7 @@ in default CI.
 
 import os;
 import from pathlib { Path }
-import from tests.support { offline_project }
+import from tests.support { offline_project, unit_source }
 
 # Client target modules ship with core under jaclang/client/.
 glob _client_dir = (
@@ -92,8 +92,9 @@ test "the mobile kind resolves to the mobile target" {
     assert kind_ui("mobile") == UI_MOBUI;
     assert kind_is_mobui("mobile") and kind_has_client("mobile");
     assert KIND_SPECS["mobile"].ui == "mobui";
-    assert KIND_SPECS["mobile"].flags == {} , (
-        "the mobile kind carries no client flag; the kind decides the target"
+    assert KIND_SPECS["mobile"].flags == {"dev": True} , (
+        "the mobile kind carries no client flag (the kind decides the target); "
+        "its only flag is the dev default jac run serves with"
     );
     assert MOBILE_PLATFORMS == ["android", "ios", "web"];
 
@@ -452,8 +453,8 @@ test "mobile build source includes iOS, web and release wiring" {
     cfg_path = _targets_dir / "react_native" / "config.jac";
 
     impl_content = impl_path.read_text();
-    build_content = build_path.read_text();
-    cfg_content = cfg_path.read_text();
+    build_content = unit_source(build_path);
+    cfg_content = unit_source(cfg_path);
 
     build_section = impl_content.split("impl MobileTarget.build")[1].split(
         "impl MobileTarget.dev"
@@ -508,8 +509,8 @@ test "native runtime file ships parallel to the web runtime" {
     assert "import from jaclang.client.client_react_core"
         in _woven_text(runtime_native);
 
-    core_content = runtime_core.read_text();
-    cl_content = runtime_native.read_text();
+    core_content = unit_source(runtime_core);
+    cl_content = unit_source(runtime_native);
     impl_content = runtime_native_impl.read_text();
 
     # Renderer dispatch lives in core (R3); native supplies __jacNativeCreate.
@@ -568,7 +569,7 @@ test "JacClientCompiler selects the native runtime with native=True" {
     # Source-level contract check.
     src_path = _client_dir / "jac_client_compiler.jac";
     impl_path = _client_dir / "impl" / "jac_client_compiler.impl.jac";
-    src_content = src_path.read_text();
+    src_content = unit_source(src_path);
     impl_content = impl_path.read_text();
 
     assert 'NATIVE_RUNTIME_FILE = "client_runtime_native.jac"' in src_content , (
@@ -651,9 +652,9 @@ test "target selection keeps web and native entry/runtime paths separate" {
     web_compiler_impl = _client_dir / "impl" / "compiler.impl.jac";
     web_target_impl = _targets_dir / "impl" / "web_target.impl.jac";
 
-    rn_build_content = rn_build_src.read_text();
+    rn_build_content = unit_source(rn_build_src);
     rn_impl_content = rn_impl_src.read_text();
-    rn_dev_content = rn_dev_src.read_text();
+    rn_dev_content = unit_source(rn_dev_src);
     web_content = web_compiler_impl.read_text();
 
     assert "registerRootComponent(App)" in rn_build_content;
@@ -1232,6 +1233,77 @@ test "build_expo_start_argv emits expected metro flags" {
 
     assert "9090" in argv2;
     assert "--clear" not in argv2;
+    for flag in ("--android", "--ios", "--tunnel") {
+        assert flag not in argv , f"{flag} only when asked for";
+    }
+}
+
+test "build_expo_start_argv opens a device and tunnels only when asked" {
+    import tempfile;
+    import unittest.mock;
+    import from jaclang.client.targets.react_native.dev { build_expo_start_argv }
+
+    def _fake_get_bun -> str {
+        return "/opt/jac/_bun/bun";
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        rn_dir = Path(tmp);
+        _stub_node_tool(rn_dir, "expo", "expo");
+        with unittest.mock.patch(
+            "jaclang.client.targets.node_tooling_common.js_runtime_path",
+            side_effect=_fake_get_bun
+        ) {
+            android = build_expo_start_argv(rn_dir, 8081, platform="android");
+            ios = build_expo_start_argv(rn_dir, 8081, platform="ios", tunnel=True);
+            web = build_expo_start_argv(rn_dir, 8081, platform="web");
+        }
+    }
+    assert "--android" in android and "--tunnel" not in android;
+    assert "--ios" in ios and "--tunnel" in ios;
+    assert "--web" not in web , "the browser path never reaches expo start";
+}
+
+test "inject_metro_api_base points the app at Metro's own origin" {
+    import json;
+    import tempfile;
+    import from jaclang.client.targets.react_native.dev {
+        METRO_API_PREFIX,
+        inject_metro_api_base,
+        restore_app_json
+    }
+
+    with tempfile.TemporaryDirectory() as tmp {
+        rn_dir = Path(tmp);
+        raw = json.dumps({"expo": {"extra": {"apiBaseUrl": "http://10.0.0.2:8000"}}});
+        (rn_dir / "app.json").write_text(raw);
+        original = inject_metro_api_base(rn_dir);
+        assert original == raw;
+        cfg = json.loads((rn_dir / "app.json").read_text());
+        assert cfg["expo"]["extra"]["apiBaseUrl"] == "" , (
+            "a LAN URL left in app.json would win over nothing, but mislead"
+        );
+        shim = (rn_dir / "__jacApiBase.js").read_text();
+        assert "Constants.expoConfig.hostUri" in shim;
+        assert METRO_API_PREFIX in shim;
+        assert "__JAC_API_BASE_URL__" in shim;
+        restore_app_json(rn_dir, original);
+        assert (rn_dir / "app.json").read_text() == raw;
+    }
+}
+
+test "the scaffold's metro.config.js proxies the API only under --tunnel" {
+    import from jaclang.client.targets.react_native.scaffold { _build_metro_config }
+    import from jaclang.client.targets.react_native.dev {
+        JAC_RN_API_PROXY_ENV,
+        METRO_API_PREFIX
+    }
+
+    content = _build_metro_config();
+    assert f"process.env.{JAC_RN_API_PROXY_ENV}" in content;
+    assert f"'{METRO_API_PREFIX}'" in content;
+    assert "if (jacApiProxy) {" in content , "the proxy is off unless the env names it";
+    assert content.rstrip().endswith("module.exports = config;");
 }
 
 test "inject_dev_api_base_url rewrites app.json and roundtrips" {
@@ -2256,7 +2328,7 @@ test "react native scaffold includes EAS docs pointer in setup output" {
     # The next-step hints use the kind-only CLI surface.
     assert "jac build --platform android <app>" in setup_section;
     assert "jac build --platform web <app>" in setup_section;
-    assert "jac run --dev <app>" in setup_section;
+    assert "jac run <app>" in setup_section;
     assert "jac setup react-native" not in impl_content;
     assert "--client" not in setup_section;
 }

@@ -3,7 +3,7 @@ impl dump_traceback(e: Exception) -> str {
     def byte_offset_to_char_offset(string: str, offset: int) -> int {
         return len(string.encode('utf-8')[:offset].decode('utf-8', errors='replace'));
     }
-    """Return (jac_filename, jac_source) if available, else (None, None).""";
+
     def get_jac_source_info(py_filename: str) -> tuple[((str | None), (str | None))] {
         return (None, None);
     }
@@ -12,7 +12,7 @@ impl dump_traceback(e: Exception) -> str {
     tb.stack.pop(0);
     tb.stack.reverse();
     dump_tab_width = 2;
-    """Check if a frame is part of the Jac internal runtime.""";
+
     def is_internal_runtime_frame(filename: str) -> bool {
         normalized: str = filename.replace('\\', '/');
         return (

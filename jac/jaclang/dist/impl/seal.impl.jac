@@ -86,8 +86,7 @@ impl build_serve_manifest(
         services: list[AppConfig] = [];
         if config is not None {
             selected = config.app_for_path(str(entry_file.resolve()));
-            if selected is not None
-                and kind_has_server(config.resolved_kind(selected)) {
+            if selected is not None {
                 services = service_apps(config, selected);
             }
         }
@@ -259,19 +258,34 @@ impl make_sealed_image(
         } except ValueError {}
     }
 
+    proj_dir = os.path.abspath(str(proj_root));
+    parked = read_jacignore_patterns(str(proj_root));
+
     def copy_ignore(d: str, items: list[str]) -> list[str] {
-        skipped = seal_copy_ignore(d, items);
-        if out_names and Path(d).resolve() == Path(proj_root).resolve() {
-            skipped = list(
-                set(skipped)
-                    | {
-                        it
-                        for it in items
-                        if it in out_names
-                    }
-            );
+        skipped = set(seal_copy_ignore(d, items));
+        here = os.path.abspath(d);
+        if out_names and here == proj_dir {
+            skipped |= {
+                it
+                for it in items
+                if it in out_names
+            };
         }
-        return skipped;
+        for it in items {
+            if it in skipped {
+                continue;
+            }
+            full = os.path.join(here, it);
+            if is_secret_file(it) and os.path.isfile(full) {
+                skipped.add(it);
+            } elif parked
+                and path_matches_exclude(
+                    os.path.relpath(full, proj_dir).replace(os.sep, "/"), parked
+                ) {
+                skipped.add(it);
+            }
+        }
+        return list(skipped);
     }
 
     stage = Path(tempfile.mkdtemp(prefix=f"{name}-seal-"));

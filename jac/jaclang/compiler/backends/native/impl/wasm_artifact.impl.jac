@@ -5,11 +5,6 @@ impl wasm_ld_args(
     allow_file: str = "",
     memory_pages: int = WASM_MEMORY_PAGES
 ) -> list[str] {
-    """wasm-ld's arguments for a Jac wasm module: memory and the stack pointer
-    stay inside the module (256 pages, a 256 KiB stack above the data, which
-    starts at 1024), and the module exports its memory, `__stack_pointer`,
-    `__heap_base` and the functions named. Undefined functions become
-    imports: only those listed in `allow_file`, or any when there is none.""";
     args = [
         "-o",
         output_path,
@@ -30,10 +25,6 @@ impl wasm_ld_args(
 }
 
 impl wasm_object_functions(obj_bytes: bytes) -> list[str] {
-    """The functions a wasm relocatable object defines and does not keep
-    local, read from its `linking` section's symbol table: what a module
-    exports when its caller names no exports. (The wasm target hides
-    symbols by default, so visibility does not decide this.)""";
     names: list[str] = [];
     o = 8;
     while o < len(obj_bytes) {
@@ -138,10 +129,6 @@ impl _name_bytes(name: str) -> bytes {
 }
 
 impl rename_wasm_imports(wasm_bytes: bytes, names: set[str], module: str) -> bytes {
-    """Move the function imports named in `names` into import module
-    `module`. wasm-ld imports every undefined function from `env`; the host
-    ABI lives in its own module, so the host can tell its syscalls from the
-    app's imports.""";
     out = bytearray(wasm_bytes[:8]);
     o = 8;
     while o < len(wasm_bytes) {

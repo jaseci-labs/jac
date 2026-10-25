@@ -3,7 +3,7 @@ import from pathlib { Path }
 
 comptime SPEC_RUN: CommandSpec = CommandSpec(
          name="run",
-         help="Run an app or a Jac file (executes or serves, per app kind)",
+         help="Run an app or a Jac file (executes or serves, per app kind; never builds)",
          tier="core",
          args=[
              Arg.create(
@@ -162,9 +162,10 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                  typ=str,
                  `default=None,
                  help=(
-                     "Mobile apps: android or ios runs on a device or simulator, web runs "
-                     "the same app in a browser via react-native-web "
-                     "(auto = the app's [apps.<name>] platform, else android)"
+                     "Mobile apps: android or ios also opens the app in Expo Go on an "
+                     "emulator, simulator or connected device; web runs the same app in "
+                     "a browser via react-native-web (auto = the app's [apps.<name>] "
+                     "platform; none = just the QR code for any phone)"
                  ),
                  choices=["auto", "android", "ios", "web"],
                  short=""
@@ -188,6 +189,17 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
                  help=(
                      "Run the workspace's service apps as separate local processes "
                      "instead of colocating them in this server (serving only)"
+                 ),
+                 short=""
+             ),
+             Arg.create(
+                 "tunnel",
+                 typ=bool,
+                 `default=False,
+                 help=(
+                     "Mobile apps: reach the dev server through an Expo tunnel instead "
+                     "of the LAN, for a phone that cannot reach this machine (the API "
+                     "rides the same tunnel through Metro)"
                  ),
                  short=""
              ),
@@ -225,6 +237,18 @@ comptime SPEC_RUN: CommandSpec = CommandSpec(
              ("jac run --dev", "Serve the default app with hot module replacement"),
              ("jac run --dev --no-client", "HMR mode without client bundling"),
              ("jac run --faux", "Print the app's endpoint docs without serving"),
+             (
+                 "jac run mobile",
+                 "Serve a mobile app to Expo Go: scan the printed QR code on your phone"
+             ),
+             (
+                 "jac run --tunnel mobile",
+                 "Same, through an Expo tunnel when the phone is off this network"
+             ),
+             (
+                 "jac run --platform android mobile",
+                 "Open the mobile app in Expo Go on an Android emulator or device"
+             ),
              ("jac run --platform web mobile", "Run a mobile app in the browser"),
              (
                  "jac run web --fleet",
@@ -265,6 +289,7 @@ def run(
     takeover: bool | None = None,
     fleet: bool = False,
     workers: str | None = None,
+    tunnel: bool = False,
     args: list[str] = [],
     backend: str = ""
 ) -> int;
@@ -282,7 +307,8 @@ def serve(
     takeover: bool = False,
     fleet: bool = False,
     app: str = "",
-    workers: str = ""
+    workers: str = "",
+    tunnel: bool = False
 ) -> int;
 
 def debug(filename: str, main: bool = True, cache: bool = False) -> int;

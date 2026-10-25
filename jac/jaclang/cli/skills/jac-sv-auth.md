@@ -141,6 +141,7 @@ max_age_days = 0
 
 [serve.auth.registration]
 enabled = true              # false: 403 REGISTRATION_CLOSED, accounts come from an admin
+challenge = false           # true: /user/register needs a solved proof-of-work challenge; jacSignup solves it
 
 [serve.auth.lockout]
 max_attempts = 10           # failed logins per source address + identity per window_seconds (900); 429 RATE_LIMITED. Behind an ingress, list it in [serve.proxy] trusted or the limit is per identity (anyone can lock an account out)

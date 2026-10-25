@@ -120,6 +120,32 @@ test "host binding validates inherited signatures loaded from an interface cache
     );
 }
 
+"""When the native module is read as an interface only (a warm check), the
+export's symbol does not lead back to its ability, and the binding used to fail
+with E5110 on alternate runs. The provider is now found through the import."""
+test "host binding finds an export whose provider was read as an interface" {
+    import unittest.mock;
+    import jaclang.compiler.frontend.unitree as unitree;
+    real = unitree.ability_of_symbol;
+
+    def lookup(sym: any) -> any {
+        if sym is not None and sym.sym_name == "init" {
+            return None;
+        }
+        return real(sym);
+    }
+    with unittest.mock.patch.object(unitree, "ability_of_symbol", side_effect=lookup), unittest.mock.patch.object(
+        unitree, "resolved_decl_of", return_value=None
+    ) {
+        ok = host_errors('obj Host { def CloseWindow {} }\n');
+        missing = host_errors('obj Host {}\n');
+    }
+    assert not ok , "\n".join(ok);
+    assert any("Host is missing native import 'CloseWindow'" in e for e in missing) , (
+        "the contract must still be checked against the interface-loaded export"
+    );
+}
+
 test "host annotations cannot widen native scalar widths" {
     for (native_type, wide_type, primitive) in [
         ("i32", "i64", "int"),

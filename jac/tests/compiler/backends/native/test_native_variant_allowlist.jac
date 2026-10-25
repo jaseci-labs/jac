@@ -39,7 +39,7 @@ test "the bundled stdlib's per-target files are exactly the allowed ones" {
     found: set[str] = set();
     for (dirpath, _dirs, files) in os.walk(stdlib) {
         for name in files {
-            if pattern.search(name) {
+            if pattern.search(name) and not name.endswith((".impl.jac", ".test.jac")) {
                 found.add(os.path.relpath(os.path.join(dirpath, name), stdlib));
             }
         }

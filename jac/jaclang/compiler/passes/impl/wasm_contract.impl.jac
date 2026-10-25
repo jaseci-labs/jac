@@ -162,6 +162,56 @@ impl _host_type(name: str) -> str {
     return name;
 }
 
+impl _host_export(export: Expr | KWPair, program: JacProgram) -> (Ability | None) {
+    if not isinstance(export, Name) or export.sym is None {
+        return None;
+    }
+    found = ability_of_symbol(export.sym);
+    if found is not None {
+        return found;
+    }
+    decl = resolved_decl_of(export.sym);
+    if decl is not None and isinstance(decl.parent, Ability) {
+        return decl.parent;
+    }
+    items: list[ModuleItem] = [];
+    for link in import_chain_of(export.sym) {
+        if isinstance(link.decl.parent, ModuleItem) {
+            items.append(link.decl.parent);
+        }
+    }
+    consumer = export.find_parent_of_type(Module);
+    if consumer is not None {
+        for item in consumer.get_all_sub_nodes(ModuleItem) {
+            bound = item.alias.value if item.alias is not None else item.name.value;
+            if bound == export.value {
+                items.append(item);
+            }
+        }
+    }
+    for item in items {
+        imp = item.find_parent_of_type(Import);
+        if imp is None or imp.from_loc is None {
+            continue;
+        }
+        path = imp.from_loc.resolve_relative_path();
+        if not path.endswith(".jac") {
+            continue;
+        }
+        provider_module = program.load_dependency_module(path, need_tree=True);
+        if provider_module is None {
+            continue;
+        }
+        for ab in provider_module.get_all_sub_nodes(Ability) {
+            if ab.sym_name == item.name.value
+                and ab.enclosing_decl(Archetype) is None {
+                return ab;
+            }
+        }
+    }
+    return None;
+}
+
 impl check_host_call(call: FuncCall, program: JacProgram) -> None {
     callee = call.target;
     if not isinstance(callee, Name) or callee.value != "bind_na_host" {
@@ -182,7 +232,7 @@ impl check_host_call(call: FuncCall, program: JacProgram) -> None {
         raise ValueError("bind_na_host requires a native export and a typed host");
     }
     export = args[0];
-    provider = ability_of_symbol(export.sym) if isinstance(export, Name) else None;
+    provider = _host_export(export, program);
 
     host = args[1];
     host_type = (host.narrowed_type or host.type) if isinstance(host, Expr) else None;

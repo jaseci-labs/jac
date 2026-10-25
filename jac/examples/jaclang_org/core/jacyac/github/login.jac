@@ -46,6 +46,6 @@ impl complete_web_login(code: str, state: str) -> str {
     }
     jacSetToken(result.token);
     __setLocalStorage("jacyac_username", result.username);
-    window.location.replace("/jacyac/scores");
+    window.location.replace("/jacyac");
     return "";
 }
