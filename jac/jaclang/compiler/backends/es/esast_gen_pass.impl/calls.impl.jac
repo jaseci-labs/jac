@@ -1035,7 +1035,18 @@ impl EsastGenPass._build_server_forwarder(
 impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] {
     forwarders: list[es.Statement] = [];
     bound: set[str] = set();
+    stubbed: set[str] = set();
+    for info in nd.gen.interop_manifest.boundary_types.values() {
+        if info.type_scope == nd.loc.mod_path {
+            stubbed.add(info.name);
+        }
+    }
     for (ref_name, top) in client_value_ref_targets(nd, self.shared_arch_names) {
+        if isinstance(top, (uni.Archetype, uni.Enum))
+            and top.name is not None
+            and top.name.value in stubbed {
+            continue;
+        }
         if (isinstance(top, uni.Ability) and client_bridged_endpoint(nd, top)) {
             func_name = element_display_name(top);
             if func_name in bound {

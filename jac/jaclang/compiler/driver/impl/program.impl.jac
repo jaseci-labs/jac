@@ -434,8 +434,6 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
 }
 
 impl JacProgram.execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]] {
-    """Enumerate loaded runtime metadata; source analysis uses only its own hub.""";
-    import from jaclang.compiler.frontend.host { active_host }
     hubs: list[dict[str, uni.Module]] = [self.mod.hub];
     internal = active_host().internal_program(self);
     if internal is not None and internal is not self {
@@ -469,8 +467,6 @@ impl JacProgram.compile(
     options: (CompileOptions | None) = None
 ) -> uni.Module {
     if (options is None) {
-        """A compile inside a native unit build parses for that build: whether
-        a native-scope module is a native unit is fixed when it is parsed.""";
         import from jaclang.compiler.frontend.codeinfo { native_unit_compile_active }
         options = CompileOptions(
             symtab_ir_only=symtab_ir_only,

@@ -236,9 +236,6 @@ impl CStrArray.release {
 }
 
 impl export_ca_bundle(rt: str) {
-    """Point OpenSSL at the runtime's CA bundle unless the user chose one: the
-    bundled OpenSSL (CPython's, and the JavaScript engine's) has no system
-    certificate directory of its own.""";
     ca_bundle = rt + "/python/floor/cacert.pem";
     if not os.environ.get("SSL_CERT_FILE", "")
         and not os.environ.get("SSL_CERT_DIR", "")

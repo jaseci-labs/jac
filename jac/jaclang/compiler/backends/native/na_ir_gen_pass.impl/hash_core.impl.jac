@@ -1107,14 +1107,6 @@ impl NaIRGenPass._emit_hash_core_helpers(
 }
 
 impl NaIRGenPass._emit_cstr_hash_fn -> ir.Function {
-    """`__jac_cstr_hash(s)`: FNV-1a over the bytes of a NUL-terminated string.
-
-    The runtime twin of `_static_str_hash`, with the same basis and prime, so a
-    hash folded at compile time matches the one computed here for the same
-    bytes. It serves every consumer that hashes a C string: dict keys stored as
-    NUL-terminated `str`, and the class-name identity `isinstance` reads out of
-    an allocation header.
-    """;
     if self._cstr_hash_fn is not None {
         return self._cstr_hash_fn;
     }
