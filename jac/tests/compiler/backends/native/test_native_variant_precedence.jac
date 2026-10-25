@@ -16,8 +16,10 @@ compiled and linked.
 import os;
 import tempfile;
 import from jaclang.compiler.frontend.codeinfo {
+    importer_variant_os,
     native_target_os,
     set_native_target_override,
+    set_native_variant_os,
     _native_variant_path
 }
 import from tests.support { native_build, native_run }
@@ -46,6 +48,31 @@ test "the most specific platform variant of a native module wins" {
                 f"{target}: {chosen}"
             );
         }
+    }
+}
+
+test "an importer that is a platform variant resolves its own os first" {
+    """subprocess.linux.jac importing ._subprocess_native must find the linux
+    variant even on a darwin host, where the host-os probe finds nothing.""";
+    assert importer_variant_os("/x/na_stdlib/signal.linux.jac") == "linux";
+    assert importer_variant_os("/x/time_platform.darwin.aarch64.jac") == "darwin";
+    assert importer_variant_os("/x/mod.jac") == "";
+    with tempfile.TemporaryDirectory() as scratch {
+        base = os.path.join(scratch, "records");
+        for suffix in ["", ".darwin", ".linux"] {
+            with open(base + suffix + ".jac", "w") as handle {
+                handle.write("");
+            }
+        }
+        prev = set_native_variant_os(importer_variant_os("/x/subprocess.linux.jac"));
+        try {
+            chosen = _native_variant_path(base);
+        } finally {
+            set_native_variant_os(prev);
+        }
+        assert (
+            chosen is not None and os.path.basename(chosen) == "records.linux.jac"
+        ) , chosen;
     }
 }
 
