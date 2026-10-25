@@ -58,17 +58,24 @@ impl ProfileStore.load(path: str) -> ProfileStore {
     if not isinstance(data, dict) {
         return store;
     }
-    for raw in data.get("profiles") or [] {
-        if isinstance(raw, dict) and raw.get("id") and raw.get("user_id") {
-            store.profiles.append(
-                LocalProfile(
-                    id=str(raw["id"]),
-                    name=str(raw.get("name") or ""),
-                    user_id=str(raw["user_id"]),
-                    created=float(raw.get("created") or 0.0)
-                )
-            );
+    raw_profiles = data.get("profiles");
+    for raw in raw_profiles if isinstance(raw_profiles, list) else [] {
+        if not isinstance(raw, dict) or not raw.get("id") or not raw.get("user_id") {
+            continue;
         }
+        try {
+            created = float(raw.get("created") or 0.0);
+        } except (TypeError, ValueError) {
+            created = 0.0;
+        }
+        store.profiles.append(
+            LocalProfile(
+                id=str(raw["id"]),
+                name=str(raw.get("name") or ""),
+                user_id=str(raw["user_id"]),
+                created=created
+            )
+        );
     }
     active = str(data.get("active") or "");
     store.active = active if store.find(active) is not None else "";

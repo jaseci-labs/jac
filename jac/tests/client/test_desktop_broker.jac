@@ -569,3 +569,39 @@ test "the profile script signs the page in as the active profile before the bund
     );
     assert "jac_token" not in none[0]["store"] , "no active profile leaves no session behind";
 }
+
+
+test "a damaged profile list still opens: bad entries are skipped or repaired" {
+    tmp = tempfile.mkdtemp(prefix="jac_profiles_bad_");
+    try {
+        path = os.path.join(tmp, "profiles.json");
+        Path(path).write_text(
+            json.dumps(
+                {
+                    "active": "p2",
+                    "profiles": [
+                        {
+                            "id": "p1",
+                            "name": "Work",
+                            "user_id": "u1",
+                            "created": "unknown"
+                        },
+                        {"id": "p2", "name": "Play", "user_id": "u2", "created": 5},
+                        {"id": "p3", "name": "No user"},
+                        "not a profile",
+                        {"id": "p4", "name": "Side", "user_id": "u4", "created": [1]}
+                    ]
+                }
+            )
+        );
+        store = ProfileStore.load(path);
+        assert [p.id for p in store.profiles] == ["p1", "p2", "p4"] , store.profiles;
+        assert [p.created for p in store.profiles] == [0.0, 5.0, 0.0] , "a bad timestamp is repaired, not fatal";
+        assert store.active == "p2";
+        Path(path).write_text(json.dumps({"active": "p1", "profiles": "oops"}));
+        broken = ProfileStore.load(path);
+        assert broken.profiles == [] and broken.active == "";
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

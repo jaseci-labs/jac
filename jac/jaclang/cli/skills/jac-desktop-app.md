@@ -79,10 +79,13 @@ For an embedded backend: the user creates and picks named profiles (save slots) 
 ```jac
 import from "@jac/desktop" { profiles }
 
-profiles.choices();                 # [{"id", "name", "created"}]
-profiles.current();              # the active profile, or None -> show a picker
-await profiles.create("Work");   # create + pick + reload signed in
-await profiles.use(pid);  await profiles.leave();   # switch / back to none (both reload)
+async def manage(pid: str) {
+    profiles.choices();              # [{"id", "name", "created"}]
+    profiles.current();              # the active profile, or None -> show a picker
+    await profiles.create("Work");   # create + pick + reload signed in
+    await profiles.use(pid);         # switch to another (reloads)
+    await profiles.leave();          # back to no profile (reloads)
+}
 ```
 
 ## OS capabilities - the `@jac/desktop` plugins (IPC)
