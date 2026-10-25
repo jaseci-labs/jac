@@ -387,7 +387,10 @@ impl NaIRGenPass._emit_closure_escape_error(var_name: str, nd: uni.UniNode) -> N
 }
 
 impl NaIRGenPass._codegen_closure_call(
-    nd: uni.FuncCall, clos_val: ir.Value, struct_name: str
+    nd: uni.FuncCall,
+    clos_val: ir.Value,
+    struct_name: str,
+    none_guard: (ir.Value | None) = None
 ) -> (ir.Value | None) {
     (_st, fnty_env) = self.closure_sig_registry[struct_name];
     i32 = ir.IntType(32);
@@ -409,6 +412,14 @@ impl NaIRGenPass._codegen_closure_call(
     }
     while len(coerced) < len(declared) {
         coerced.append(self._default_arg_fallback(declared[len(coerced)]));
+    }
+    if none_guard is not None {
+        self._emit_runtime_raise(
+            none_guard,
+            "TypeError",
+            "'NoneType' object is not callable",
+            release_on_error=raw_args
+        );
     }
     fn_slot = self.builder.gep(
         clos_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="ccall.fn.slot"

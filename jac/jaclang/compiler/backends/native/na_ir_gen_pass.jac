@@ -1069,7 +1069,10 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_closure_value(var_name: str, nd: uni.UniNode) -> (ir.Value | None);
     def _emit_closure_escape_error(var_name: str, nd: uni.UniNode) -> None;
     def _codegen_closure_call(
-        nd: uni.FuncCall, clos_val: ir.Value, struct_name: str
+        nd: uni.FuncCall,
+        clos_val: ir.Value,
+        struct_name: str,
+        none_guard: (ir.Value | None) = None
     ) -> (ir.Value | None);
 
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);

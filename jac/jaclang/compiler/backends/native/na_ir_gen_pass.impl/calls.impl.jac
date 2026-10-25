@@ -4413,6 +4413,26 @@ impl NaIRGenPass._codegen_callable_value(
             return None;
         }
         _owned = self._is_owned(value);
+        _opt_closure = self._closure_struct_of(_opt_pl);
+        if _opt_closure is not None {
+            _none = self.builder.icmp_signed(
+                "==",
+                self.builder.extract_value(value, 0, name="call.opt.tag"),
+                ir.Constant(ir.IntType(8), 0),
+                name="call.opt.none"
+            );
+            _callee = self.builder.select(
+                _none,
+                ir.Constant(_opt_pl, None),
+                self.builder.extract_value(value, 1, name="call.opt.val"),
+                name="call.opt.callee"
+            );
+            if not _owned {
+                self._emit_rc_retain(_callee, op="opt_callee", loc="");
+            }
+            self._mark_owned(_callee);
+            return self._codegen_closure_call(nd, _callee, _opt_closure, _none);
+        }
         _unwrapped = self._opt_unwrap_guarded(
             value, "call", "'NoneType' object is not callable"
         );

@@ -427,6 +427,66 @@ def cleared_call -> int {
     assert cleared() == -7 , "calling a None callable must raise TypeError";
 }
 
+test "typed callable: an Optional callable runs its arguments first and outlives them" {
+    (prog, ir) = compile_na_inline_ir(
+        "optional_callable_arg_order",
+        """
+glob noted: list[int] = [];
+obj Hooks {
+    has f: (Callable[[int], int] | None) = None;
+    def clear { self.f = None; }
+    def note(x: int) -> int {
+        noted.append(x);
+        return x;
+    }
+    def clear_then(x: int) -> int {
+        self.f = None;
+        junk = [str(i) + "-" + str(x) for i in range(64)];
+        return x + len(junk) - 64;
+    }
+    def call_after_clear(x: int) -> int {
+        if self.f is not None {
+            self.clear();
+            return self.f(self.note(x));
+        }
+        return -1;
+    }
+    def call_clearing(x: int) -> int {
+        if self.f is not None {
+            return self.f(self.clear_then(x));
+        }
+        return -1;
+    }
+}
+def dbl(x: int) -> int { return x * 2; }
+def raised_after_args -> int {
+    h = Hooks(f=dbl);
+    try {
+        return h.call_after_clear(4);
+    } except TypeError {
+        return len(noted) * 10 + noted[0];
+    }
+}
+def cleared_by_arg -> int {
+    total = 0;
+    for i in range(20) {
+        h = Hooks(f=dbl);
+        total += h.call_clearing(i);
+    }
+    return total;
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    for fn in ["raised_after_args", "cleared_by_arg"] {
+        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+    }
+    raised = get_func(ir.gen.native_engine, "raised_after_args", ctypes.c_int64);
+    assert raised() == 14 , "the argument must run before the None callable raises";
+    cleared = get_func(ir.gen.native_engine, "cleared_by_arg", ctypes.c_int64);
+    assert cleared() == 380 , "the callable read before its arguments must still run";
+}
+
 test "typed callable: an Optional Callable without a parameter list stays rejected" {
     (prog, ir) = compile_na_inline_ir(
         "optional_bare_callable",
