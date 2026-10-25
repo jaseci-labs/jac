@@ -236,11 +236,11 @@ impl NativeUnitRegistry._entry_fresh(ent: NativeUnitEntry) -> bool {
 }
 
 impl NativeUnitRegistry._register(
-    resolved: str, iface: NativeIface, stamp: NativeStamp, source: str
+    resolved: str, iface: NativeIface, stamp: NativeStamp, source: str, digest: str = ""
 ) -> NativeUnitEntry {
     ent = NativeUnitEntry(
         path=resolved,
-        digest=iface.digest(),
+        digest=digest or iface.digest(),
         iface=iface,
         stamp=stamp,
         source=source,
@@ -418,7 +418,9 @@ impl NativeUnitRegistry._read_from_disk(
         self._dep_miss(resolved);
         return None;
     }
-    ent = self._register(resolved, iface, stamp, "disk");
+    ent = self._register(
+        resolved, iface, stamp, "disk", digest=NativeIface.read_digest(payload) or ""
+    );
     ent.compile_deps = compile_deps;
     ent.compile_deps_base = base_dir;
     ent.dep_digests = dict(dep_digests);

@@ -235,6 +235,7 @@ graph import {
             | compiler.tools.lang_tools
             | dist.precompile_bytecode
             | dist.seal
+            | dist.self_update
             | lsp.server.engine
             | lsp.server.server
             | packages.commands
@@ -580,6 +581,7 @@ graph import {
             build_link_plan,
             link_artifact,
             optimize_merged_program,
+            unique_callbacks,
             whole_program_module
         },
         dist.precompile_bytecode.prebuild_native_closure { build_link_plan },
@@ -1109,7 +1111,6 @@ graph import {
             ANALYSIS_CRASHED,
             AnalysisReport,
             CompileReport,
-            ModuleReport,
             kernel_trace,
             run_kernel_compile
         },
@@ -1617,6 +1618,7 @@ graph import {
         cli.commands.project { build_jab, make_sealed_image as _make_sealed_image },
         client.targets.desktop.desktop_build.stage_program { build_jab },
     ]
+    dist.self_update --> cli.commands.project.update { update_self }
     dist.source.project --> cli.commands.build._build_app { export_project }
     jac0 ++> dist.precompile_bytecode._seal_boot_unit {
         compile_jac as jac0_compile,
@@ -1826,6 +1828,7 @@ graph import {
         cli.commands.project.install { add_packages },
         cli.commands.project.remove { remove_packages },
     ]
+    packages.github ++> dist.self_update.update_self { GitHub, GitHubError, find_token }
     packages.install ++> [
         client.config_loader._package_npm_deps {
             InstallError,
@@ -1843,6 +1846,7 @@ graph import {
     }
     packages.publish ++> cli.commands.project.publish { publish_project }
     packages.publish --> cli.commands.project.publish { yank_version }
+    packages.semver ++> dist.self_update.up_to_date { SemverError, Version }
     packages.templates ++> cli.commands.project._resolve_template {
         TemplateError,
         fetch_template,
@@ -4332,11 +4336,10 @@ graph import {
         client.targets.react_native.build.run_gradle_assemble { offline },
         client.targets.react_native.build.run_xcodebuild_ios { offline },
         data.pg_dist._unpack { Artifact as Download, extract, fetch },
+        dist.self_update.update_self
+            | packages.index.fetch_verified
+            | scale.injector.binary._fetch_verified_asset { Artifact, fetch },
         packages.index.Registry._read { allowed_url, offline },
-        packages.index.fetch_verified | scale.injector.binary._fetch_verified_asset {
-            Artifact,
-            fetch
-        },
     ]
     toolchains.system ++> client.targets.desktop.desktop_build._patchelf_rpath {
         ensure_patchelf
@@ -4769,6 +4772,7 @@ graph import cli {
         cli.jac_version { resolve_cli_version },
         cli.start_cli { handle_manifest_route },
     ]
+    manifest_route --> commands.project.update { resolve_cli_version }
     mcp.mode --> commands.mcp.mcp_cmd { set_mcp_mode }
     mcp.prompts ++> commands.mcp._print_mcp_inventory { PromptProvider }
     mcp.resources ++> commands.mcp._print_mcp_inventory { ResourceProvider }
@@ -5849,9 +5853,15 @@ graph import compiler {
             get_native_debug_dir
         },
     ]
-    driver.jir --> backends.native.kernel_resolve.KernelArtifact.build {
-        require_exact_compiler_products
-    }
+    driver.jir --> [
+        backends.native.kernel_resolve.KernelArtifact.build {
+            require_exact_compiler_products
+        },
+        backends.native.link_plan.build_link_plan {
+            begin_prepare_memo,
+            end_prepare_memo
+        },
+    ]
     driver.module_analysis ++> [
         frontend.kernel_analyze { ModuleAnalysis },
         frontend.kernel_host { ModuleAnalysis, analyze_module },
@@ -6437,6 +6447,9 @@ graph import compiler {
             InteropContext,
             InteropManifest
         },
+        passes.boundary_analysis_pass.BoundaryAnalysisPass._interop_symbol {
+            interop_callback_symbol
+        },
         passes.capability_check_pass { NATIVE_SUPPORTED_STDLIB, is_native_by_location },
         passes.capability_check_pass.classify_native_import
             | placement.placement._erased_only_import { native_erased_import_names },
@@ -6842,7 +6855,8 @@ graph import compiler {
             E5113,
             E5114,
             E9001,
-            E9002
+            E9002,
+            E9003
         },
         backends.native.primitives_native
             | driver.module_compile.report_missing_native_ir { E5092 },
@@ -8650,6 +8664,7 @@ graph import compiler {
             Archetype,
             AtomTrailer,
             ContextAwareNode,
+            FuncCall,
             Import,
             Module,
             ModuleCode,
@@ -9204,7 +9219,10 @@ graph import compiler {
             Name,
             Token,
             UnaryExpr,
-            UniNode
+            UniNode,
+            int_literal_float,
+            int_literal_i64,
+            int_literal_u64_bits
         },
         types.operations {
             AtomTrailer,
@@ -10019,7 +10037,10 @@ graph import compiler {
             config_kind_space,
             effective_module_pin
         },
-        driver.program.JacProgram.stamp_boundary_facts { config_module_pin },
+        driver.program.JacProgram.stamp_boundary_facts
+            | passes.boundary_analysis_pass.BoundaryAnalysisPass._bind_server_callee {
+            config_module_pin
+        },
         passes.placement_pass.element_requirements {
             config_element_pin,
             config_pin_for
@@ -14264,6 +14285,7 @@ graph import compiler.types {
             unify_numeric_operands
         },
         type_evaluator.TypeEvaluator._extern_field_type { numeric_name_of },
+        type_evaluator.TypeEvaluator._literal_type_from_expr { folded_number },
     ]
     fixed_width --> type_evaluator.TypeEvaluator._get_type_from_flow_node {
         numeric_name_of
@@ -14686,6 +14708,15 @@ graph import data.storage {
 
 graph import dist {
     archive ++> seal.build_jab { tar_gz_dir }
+    fused_binary ++> [
+        payload.assemble { LINKED_SOURCE_FILE },
+        self_update.update_self {
+            linked_source_dir,
+            materialized_runtime_dir,
+            running_executable,
+            runtime_trailer
+        },
+    ]
     jab ++> seal.build_jab { jab_app_meta }
     jab_vendor ++> [
         jab { activate_vendored },
@@ -15251,6 +15282,7 @@ graph import runtime {
         runtime.JacRuntime.get_selfhost { build_services },
     ]
     builtin --> archetype.Archetype.__init_subclass__ { _jac_region_instrument }
+    cinterop ++> interop_bridge.callback_ctype { shape_ctype }
     cinterop as _cinterop_mod --> builtin.__getattr__;
     constants ++> [
         context { Constants as Con },
@@ -15298,7 +15330,7 @@ graph import runtime {
     }
     interop_bridge --> [
         prepared.execute_module { NativeLibrary },
-        source_app._load_application { NativeCallback, NativeLibrary },
+        source_app._load_application { NativeLibrary, native_callback_of },
     ]
     memory ++> context { Memory }
     object_interop ++> typecache { fields, is_record }
@@ -15402,7 +15434,8 @@ graph import runtime {
     type runtime ++> builtin { LLMModel }
     scalars ++> [
         builtin._is_sized_type_name { is_sized },
-        cinterop { numeric_shapes },
+        cinterop { ScalarShape, numeric_shapes },
+        interop_bridge { shape_of },
         sized { numeric_shapes, range_of, shape_of, wrap_value },
     ]
     semantic ++> runtime { Info }
@@ -15715,6 +15748,11 @@ graph import runtime.na_stdlib {
         },
     ]
     _typename ++> hmac | secrets { typename }
+    _unicodedata_tables ++> unicodedata {
+        UNICODE_CATEGORIES,
+        UNICODE_EAST_ASIAN_WIDTHS,
+        UNICODE_PROPERTY_RANGES
+    }
     _user_home ++> os.path { user_home }
     _utf8 ++> [
         re { cps_str, utf8_cps },

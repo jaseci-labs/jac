@@ -3516,6 +3516,7 @@ impl EmptyToken.init(orig_src: (Source | None) = None) -> None {
         pos_start=0,
         pos_end=0
     );
+    self._is_synthetic = True;
 }
 
 impl Semi.init(

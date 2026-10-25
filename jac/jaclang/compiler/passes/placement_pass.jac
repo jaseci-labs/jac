@@ -58,6 +58,7 @@ def build_native_legality(
 ) -> NativeLegality;
 
 def import_bindings(imp: Import) -> set[str];
+def interop_refusal(mod: Module, nm: Name) -> (NativeRefusal | None);
 def bridged_use_crosses(nm: Name) -> (str | None);
 def binds_module_name(mod: Module, nm: Name) -> bool;
 def element_requirements(mod: Module, prog: JacProgram) -> dict[int, tuple[str, str]];

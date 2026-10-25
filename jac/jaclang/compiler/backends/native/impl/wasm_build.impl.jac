@@ -304,7 +304,11 @@ impl app_declared_imports(ir_module: UniModule, plan: any = None) -> set[str] {
     manifest = gen.interop_manifest;
     bindings = manifest.bindings if manifest else None;
     if bindings {
-        names.update(bindings.keys());
+        for binding in bindings.values() {
+            if binding.native_callable and binding.symbol {
+                names.add(binding.symbol);
+            }
+        }
     }
     return names;
 }

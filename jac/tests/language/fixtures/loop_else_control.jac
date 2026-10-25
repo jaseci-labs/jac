@@ -16,8 +16,11 @@ with entry {
         total += 1000;
     }
     assert total == 112;
+}
 
-    rows: list[list[int]] = [];
+glob rows: list[list[int]] = [];
+
+with entry {
     for row in [[1, 3], [2, 5], [7]] {
         for x in row {
             if x % 2 == 0 {

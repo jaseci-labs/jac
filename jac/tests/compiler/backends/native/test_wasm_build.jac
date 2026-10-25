@@ -28,6 +28,8 @@ import from jaclang.compiler.backends.native.wasm_host_abi {
     WASM_HOST_ABI,
     WASM_HOST_MODULE
 }
+import from jaclang.compiler.backends.native.wasm_build { app_declared_imports }
+import from jaclang.compiler.frontend.codeinfo { InteropBinding, InteropContext }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -113,6 +115,25 @@ test "wasm links retain their target in a host application context" {
         assert "pthread_key_create" not in llvm_ir;
         assert "pthread_getspecific" not in llvm_ir;
     }
+}
+
+test "wasm app imports use the qualified interop provider symbol" {
+    prog = JacProgram();
+    mod = prog.compile(
+        file_path=os.path.join(FIXTURES, FIXTURE), options=CompileOptions()
+    );
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    symbol = "__jac_na_import_pkg_helper_answer";
+    mod.gen.interop_manifest.bindings["local_alias"] = InteropBinding(
+        name="answer",
+        source_context=InteropContext.SERVER,
+        callers={InteropContext.NATIVE},
+        source_module="helper.jac",
+        symbol=symbol
+    );
+    imports = app_declared_imports(mod);
+    assert symbol in imports , f"the declared callback provider must be allowed: {imports}";
+    assert "local_alias" not in imports , f"a local alias is not an import provider: {imports}";
 }
 
 test "libc folds in-module; the host surface is jac_host1 only" {

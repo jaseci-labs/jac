@@ -2104,7 +2104,7 @@ impl IPv6Address.is_link_local.getter -> bool {
 
 
 impl IPv6Address.is_site_local.getter -> bool {
-    return _v6_in_net(self._hi, self._lo, 18356672081162141696, 0, 10);
+    return _v6_in_net(self._hi, self._lo, -90071992547409920, 0, 10);
 }
 
 
