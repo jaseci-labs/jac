@@ -95,7 +95,10 @@ test "refreshing a package keeps its children's symbols, and new files are found
             for k in model.symbols
             if k.endswith(".leaf")
         ];
-        assert child , sorted(model.symbols);
+        assert child , (
+            f"no symbols indexed (ambient host {type(ambient).__name__}): "
+            + str({k: (m.kind, m.error) for (k, m) in model.modules.items()})
+        );
         model.refresh(str(base / "pkg" / "__init__.jac"));
         assert child[0] in model.symbols , "refreshing the package dropped a child module's symbols";
         extra = base / "pkg" / "extra.jac";

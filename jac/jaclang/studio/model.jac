@@ -613,14 +613,34 @@ impl ProjectModel.index_module(key: str) -> bool {
     if not mod.indexed and self._load_cache(mod) {
         return True;
     }
+    tree: (uni.Module | None) = None;
+    why = "";
     try {
         tree = self.project_host().woven_module(mod.file, self.prog);
     } except Exception as e {
-        mod.error = str(e);
-        return False;
+        why = str(e);
     }
     if tree is None {
-        mod.error = "could not parse";
+        try {
+            with open(mod.file, encoding="utf-8") as fh {
+                text = fh.read();
+            }
+            (plain, failed) = parse(text, mod.file, prog=self.prog);
+            if not failed {
+                for annex in annex_sources(mod.file) {
+                    (extra, _) = parse(annex.source, annex.path, prog=self.prog);
+                    merge_annex_into(plain, extra);
+                }
+                tree = plain;
+            } else {
+                why = why or "syntax errors";
+            }
+        } except Exception as e {
+            why = why or str(e);
+        }
+    }
+    if tree is None {
+        mod.error = f"could not parse: {why}" if why else "could not parse";
         return False;
     }
     with self.lock {
