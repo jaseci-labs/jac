@@ -35,3 +35,31 @@ impl python_source(path: str, program: JacProgram) -> tuple[str, Module | None] 
     import from jaclang.compiler.backends.py.codegen_shim { generated_python }
     return (generated_python(module.gen), module);
 }
+
+impl python_text(path: str, program: JacProgram) -> str {
+    import os;
+    if Path(path).suffix == '.py' {
+        return Path(path).read_text(encoding='utf-8');
+    }
+    real = os.path.realpath(path);
+    owner = program._get_compiler().selfhost.resolve(path, program);
+    scope = owner_scope_options(program_for(path, owner));
+    with cache_scope(scope) {
+        cache_path = get_module_cache_path(real);
+        if is_module_cache_valid(real, cache_path) {
+            cached = read_section_bytes(read_jir(cache_path), SEC_PYSRC);
+            if cached is not None {
+                return cached.decode('utf-8');
+            }
+        }
+    }
+    text = python_source(path, program)[0];
+    with cache_scope(scope) {
+        if is_module_cache_valid(real, get_module_cache_path(real)) {
+            write_module_cache(
+                real, None, extra_sections={SEC_PYSRC: text.encode('utf-8')}
+            );
+        }
+    }
+    return text;
+}

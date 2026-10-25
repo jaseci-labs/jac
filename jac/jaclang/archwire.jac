@@ -989,9 +989,12 @@ graph import {
             compiler_source_failure_origin
         },
     ]
-    compiler.driver.source_products ++> dist.publish.builder
-        | dist.publish.runtime_vendor._compile_runtime_module
-        | dist.source.project { python_source }
+    compiler.driver.source_products ++> [
+        dist.publish.builder { python_text },
+        dist.publish.runtime_vendor._compile_runtime_module | dist.source.project {
+            python_source
+        },
+    ]
     compiler.driver.toolchain ++> dist.precompile_bytecode.seal_native
         | project.compiler_host.ProjectHost.native_pipeline_available {
         native_pipeline_available
@@ -11684,6 +11687,7 @@ graph import compiler.driver {
         jir.compute_precompile_module_key | nativecache.NativeUnitRegistry._source_key {
             cache_scope
         },
+        source_products.python_text { cache_scope, owner_scope_options, program_for },
     ]
     compilation_context --> [
         application._prepare_revision
@@ -11855,6 +11859,14 @@ graph import compiler.driver {
             read_native_dep_hashes,
             read_section_bytes,
             stale_ct_dep_rows,
+            write_module_cache
+        },
+        source_products.python_text {
+            SEC_PYSRC,
+            get_module_cache_path,
+            is_module_cache_valid,
+            read_jir,
+            read_section_bytes,
             write_module_cache
         },
     ]

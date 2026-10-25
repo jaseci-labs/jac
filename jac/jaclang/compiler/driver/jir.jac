@@ -33,6 +33,7 @@ glob MAGIC = b"JIR\x00",
      SEC_NCTDEPS: int = 0x14,
      SEC_PATH_ROOT: int = 0x15,
      SEC_EMITKEY: int = 0x16,
+     SEC_PYSRC: int = 0x17,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      FLAG_CARRIED: int = 0x08,
@@ -57,7 +58,8 @@ glob STALE_CODE_SECTIONS: tuple[int, ...] = (
          SEC_BYTECODE,
          SEC_INTEROP,
          SEC_MTIR,
-         SEC_CLIENT
+         SEC_CLIENT,
+         SEC_PYSRC
      );
 
 obj NativeStamp {

@@ -79,7 +79,7 @@ impl WheelBuilder._assemble_src_data -> dict[str, bytes] {
             }
             target = wp[:-len(".jac")] + ".py";
             _claim(target);
-            texts[target] = python_source(str(src_path), program)[0];
+            texts[target] = python_text(str(src_path), program);
             origins[target] = src_path;
             transpiled.add(target);
         } elif self.transpile_jac and wp.endswith(".py") and (src_path is not None) {
@@ -493,7 +493,7 @@ impl _primary_package(tops: list[str], pkg_name: str) -> str {
 }
 
 impl _backend_source -> str {
-    source = python_source(str(wheel_archive.__file__), JacProgramRt())[0];
+    source = python_text(str(wheel_archive.__file__), JacProgramRt());
     leaked = scan_jaclang_imports(source);
     if leaked {
         raise RuntimeError(
