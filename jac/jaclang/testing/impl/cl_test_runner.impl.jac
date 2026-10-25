@@ -13,25 +13,33 @@ import from pathlib { Path }
 impl compile_cl_module(
     filepath: str
 ) -> tuple[str, list[any], dict[str, any], list[any]] {
+    """The module's client artifact, served from its cache record when the
+    module is unchanged and compiled otherwise.""";
     prog = JacProgram();
-    mod = prog.compile(str(filepath));
-    if prog.errors_had {
-        errs = "\n".join([str(e) for e in prog.errors_had]);
+    artifact = prog._get_compiler().get_client_artifact(
+        os.path.abspath(str(filepath)), prog
+    );
+    if prog.errors_had or artifact is None {
+        errs = "\n".join([str(e) for e in prog.errors_had]) or "no client artifact";
         raise RuntimeError(f"Failed to compile {filepath}:\n{errs}");
     }
-    manifest = mod.gen.client_manifest;
+    manifest = artifact.manifest;
     tests = list(getattr(manifest, "tests", []) or []);
     imports = dict(getattr(manifest, "imports", {}) or {});
     server_imports = list(getattr(manifest, "server_imports", []) or []);
-    return (mod.gen.js, tests, imports, server_imports);
+    return (artifact.js, tests, imports, server_imports);
 }
 
 impl _compile_runtime -> tuple[str, str] {
+    if _RUNTIME_JS {
+        return _RUNTIME_JS[0];
+    }
     runtime_src = resolve_jac_virtual_module_path("@jac/runtime");
     if (not runtime_src) or (not Path(runtime_src).exists()) {
         raise RuntimeError("could not resolve @jac/runtime to a client runtime source");
     }
     (js, _tests, _imports, _server_imports) = compile_cl_module(runtime_src);
+    _RUNTIME_JS.append((runtime_src, js));
     return (runtime_src, js);
 }
 

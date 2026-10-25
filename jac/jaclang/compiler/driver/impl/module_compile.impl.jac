@@ -100,7 +100,6 @@ impl admits_codegen(task: ModuleAnalysis) -> bool {
 }
 
 impl run_codegen(task: ModuleAnalysis) {
-    stat_note("codegen");
     options = task.options;
     program = task.program;
     module = task.module;

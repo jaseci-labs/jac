@@ -1668,11 +1668,7 @@ graph import {
         client.compiler.ViteCompiler._compile_wasm_module
             | client.vite_bundler.ViteBundler.build
             | compiler.driver.ifacecache.IfaceRegistry._event
-            | compiler.driver.module_analysis.analyze_module
-            | compiler.driver.module_compile.run_codegen
-            | compiler.driver.nativecache.NativeUnitRegistry._event
-            | compiler.driver.program.JacProgram.parse_source
-            | compiler.frontend.kernel_host.KernelSession.run_module { stat_note },
+            | compiler.driver.nativecache.NativeUnitRegistry._event { stat_note },
         client.js_runtime.JsEngineArtifact.build
             | compiler.backends.native.kernel_resolve._inspect
             | compiler.backends.native.link_plan

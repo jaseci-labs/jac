@@ -577,7 +577,6 @@ impl JacProgram.parse_source(
     file_path: str,
     cancel_token: (CancelToken | None) = None
 ) -> uni.Module {
-    stat_note("parse");
     had_error = False;
     if (file_path.endswith('.py') or file_path.endswith('.pyi')) {
         (parsed, had_error) = active_host().parse_python(source_str, file_path, self);
