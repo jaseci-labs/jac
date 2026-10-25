@@ -10040,7 +10040,6 @@ graph import compiler {
             | driver.ifacecache.IfaceRegistry._restore_placement
             | frontend.kernel_host.KernelHost.python_module { summary_store },
         driver.compiler.JacCompiler.kernel_native_entry { summary_store },
-        driver.ifacecache.IfaceRegistry._persist_in_context { get_module_summary },
         driver.module_analysis.run_analysis { record_decided },
     ]
     type placement.placement ++> driver.progstate { PlacementSummary }
@@ -10050,7 +10049,6 @@ graph import compiler {
     placement.placement_export --> [
         driver.compiler.JacCompiler._restore_sections
             | driver.ifacecache.IfaceRegistry._restore_placement { summary_from_bytes },
-        driver.ifacecache.IfaceRegistry._persist_in_context { summary_to_bytes },
         frontend.kernel_host.KernelHost.python_module { summary_from_dict },
     ]
     placement.placement_facts ++> [
@@ -10066,6 +10064,7 @@ graph import compiler {
             native_only,
             native_placement_hard
         },
+        driver.unit_products.placement_record { module_spaces },
         passes.placement_pass { native_placement_soft },
         passes.placement_pass.PlacementPass._run_undecided { contexts_of },
         passes.placement_pass.settle_native_module { settle_server },
@@ -10074,7 +10073,6 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._native_imports {
             native_unit as _typed_native_unit
         },
-        driver.ifacecache.IfaceRegistry._persist_in_context { module_spaces },
         driver.module_analysis.run_analysis { settle_server },
         driver.nativecache.NativeUnitRegistry.known_native_deps { native_unit },
         native_scope.package_host_edge { native_lowered, native_unit },
@@ -11972,9 +11970,7 @@ graph import compiler.driver {
             | module_analysis.ModuleAnalysis.require
             | nativecache.NativeBuildSession._finish { require },
         compiler.JacCompiler.assemble_python { require },
-        module_analysis.ModuleAnalysis.ready | module_compile.run_client_dependencies {
-            product_ready
-        },
+        module_analysis.ModuleAnalysis.ready { product_ready },
         module_compile { product_passes, unavailable },
         source_failures.bootstrap_tier_failure_details { tier_reason },
         toolchain { schedule_loading },
@@ -12096,7 +12092,10 @@ graph import compiler.driver {
         jir.seed_definition_texts { DEF_DEP_SEP },
     ]
     unit_products --> [
-        ifacecache.IfaceRegistry._persist_in_context { interop_record },
+        ifacecache.IfaceRegistry._persist_in_context {
+            interop_record,
+            placement_record
+        },
         ifacecache.IfaceRegistry.client_boundary_facts { interop_manifest_of },
     ]
     wiring ++> [

@@ -448,8 +448,11 @@ impl client_artifact_of(module: uni.Module) -> (ClientArtifact | None) {
 }
 
 impl placement_record(module: uni.Module, program: JacProgram) -> str {
+    import copy;
     try {
-        return json.dumps(summary_to_dict(get_module_summary(module, program)));
+        summary = copy.copy(get_module_summary(module, program));
+        summary.spaces = sorted(module_spaces(module));
+        return json.dumps(summary_to_dict(summary));
     } except Exception {
         return "";
     }

@@ -900,17 +900,11 @@ impl IfaceRegistry._persist_in_context(
             else b"";
     }
     sections[SEC_DEPS] = deps_section(self.dep_rows(resolved, mod));
-    try {
-        import from jaclang.compiler.placement.placement { get_module_summary }
-        import from jaclang.compiler.placement.placement_export { summary_to_bytes }
-        import from jaclang.compiler.placement.placement_facts { module_spaces }
-        summary = get_module_summary(mod, self.prog);
-
-        summary.spaces = []
-            if self.prog.errors_had[err_start:]
-            else sorted(module_spaces(mod));
-        sections[SEC_PLACEMENT] = summary_to_bytes(summary);
-    } except Exception {}
+    import from jaclang.compiler.driver.unit_products { placement_record }
+    placement = placement_record(mod, self.prog);
+    if placement {
+        sections[SEC_PLACEMENT] = placement.encode("utf-8");
+    }
     ct_rows = module_ct_deps_section(mod);
     if ct_rows is not None {
         sections[SEC_CTDEPS] = ct_rows;
