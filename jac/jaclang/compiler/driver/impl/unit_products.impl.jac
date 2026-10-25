@@ -483,6 +483,8 @@ impl unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
     artifact = client_artifact_of(module);
     if artifact is not None {
         products.client = client_artifact_json(artifact);
+    } elif SPACE_CLIENT not in module_spaces(module) {
+        products.client = NO_CLIENT_SIDE;
     }
     products.placement = placement_record(module, program);
     products.app = module.app or "";

@@ -10032,6 +10032,7 @@ graph import compiler {
             native_only,
             native_placement_hard
         },
+        driver.unit_products.unit_products { SPACE_CLIENT, module_spaces },
         passes.placement_pass { native_placement_soft },
         passes.placement_pass.PlacementPass._run_undecided { contexts_of },
         passes.placement_pass.settle_native_module { settle_server },
@@ -12047,6 +12048,7 @@ graph import compiler.driver {
         application._tree_source { import_edge_rows },
         application._unit_source { interop_manifest_of, manifest_from_record },
         compiler {
+            NO_CLIENT_SIDE,
             UnitProducts,
             client_artifact_from_json,
             client_artifact_json,

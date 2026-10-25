@@ -19,6 +19,8 @@ def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None);
 
 def cached_client_artifact(full_target: str) -> (ClientArtifact | None);
 
+def client_side_absent(full_target: str) -> bool;
+
 def cached_client_pulls(full_target: str) -> str;
 
 def native_first(units: list[UnitProducts]) -> list[UnitProducts];
