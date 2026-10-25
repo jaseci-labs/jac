@@ -1611,7 +1611,9 @@ impl parse_restore_state(args: ptr[PyObject]) -> tuple[bool, i64, u64] {
     if not type_flag(state, Py_TPFLAGS_TUPLE_SUBCLASS) or PyTuple_Size(state) != 2 {
         PyErr_Format(
             PyExc_TypeError,
-            ptr[u8]("_acquire_restore() argument 1 must be sequence of length 2, not %.50s"),
+            ptr[u8](
+                "_acquire_restore() argument 1 must be sequence of length 2, not %.50s"
+            ),
             object_type(state).view(1)[0].tp_name
         );
         return (False, i64(0), u64(0));
@@ -1796,7 +1798,8 @@ impl local_new(
         if rc != 0 {
             if rc > 0 {
                 PyErr_SetString(
-                    PyExc_TypeError, ptr[u8]("Initialization arguments are not supported")
+                    PyExc_TypeError,
+                    ptr[u8]("Initialization arguments are not supported")
                 );
             }
             return NULL;
@@ -1986,12 +1989,14 @@ impl _ldict(self_: ptr[PyObject], state: ptr[ThreadModuleState]) -> ptr[PyObject
             exc = PyErr_GetRaisedException();
             if PyDict_DelItem(local[0].localdicts, key) < 0 {
                 PyErr_FormatUnraisable(
-                    ptr[u8]("Exception ignored while deleting thread local of %R"), self_
+                    ptr[u8]("Exception ignored while deleting thread local of %R"),
+                    self_
                 );
             }
             if PySet_Discard(local[0].thread_watchdogs, wr) < 0 {
                 PyErr_FormatUnraisable(
-                    ptr[u8]("Exception ignored while discarding thread watchdog of %R"), self_
+                    ptr[u8]("Exception ignored while discarding thread watchdog of %R"),
+                    self_
                 );
             }
             PyErr_SetRaisedException(exc);
@@ -2124,7 +2129,8 @@ impl do_start_new_thread(
     flags = ptr[u64](interp + PyInterpreterState_FEATURE_FLAGS).view(1)[0];
     if (flags & Py_RTFLAGS_THREADS) == u64(0) {
         PyErr_SetString(
-            PyExc_RuntimeError, ptr[u8]("thread is not supported for isolated subinterpreters")
+            PyExc_RuntimeError,
+            ptr[u8]("thread is not supported for isolated subinterpreters")
         );
         return -1;
     }
@@ -2171,7 +2177,9 @@ impl thread_PyThread_start_new_thread(
         return NULL;
     }
     if kwargs != NULL and not type_flag(kwargs, Py_TPFLAGS_DICT_SUBCLASS) {
-        PyErr_SetString(PyExc_TypeError, ptr[u8]("optional 3rd arg must be a dictionary"));
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("optional 3rd arg must be a dictionary")
+        );
         return NULL;
     }
 
@@ -2319,7 +2327,9 @@ impl thread_stack_size(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
 
     min_size = PYOS_MIN_STACK_SIZE + SYSTEM_PAGE_SIZE;
     if new_size != 0 and new_size < min_size {
-        PyErr_Format(PyExc_ValueError, ptr[u8]("size must be at least %zi bytes"), min_size);
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("size must be at least %zi bytes"), min_size
+        );
         return NULL;
     }
 
@@ -2331,7 +2341,9 @@ impl thread_stack_size(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObjec
         return NULL;
     }
     if rc == -2 {
-        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("setting stack size not supported"));
+        PyErr_SetString(
+            PyExc_RuntimeError, ptr[u8]("setting stack size not supported")
+        );
         return NULL;
     }
     return PyLong_FromSsize_t(i64.wrap(old_size));
@@ -2394,7 +2406,8 @@ impl thread_excepthook(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObje
 
     if object_type(args) != state.view(1)[0].excepthook_type {
         PyErr_SetString(
-            PyExc_TypeError, ptr[u8]("_thread.excepthook argument type must be ExceptHookArgs")
+            PyExc_TypeError,
+            ptr[u8]("_thread.excepthook argument type must be ExceptHookArgs")
         );
         return NULL;
     }
@@ -2472,7 +2485,9 @@ impl thread_shutdown(self_: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
 
         if ThreadHandle_join(handle, -1) < 0 {
             PyErr_FormatUnraisable(
-                ptr[u8]("Exception ignored while joining a thread in _thread._shutdown()")
+                ptr[u8](
+                    "Exception ignored while joining a thread in _thread._shutdown()"
+                )
             );
             ThreadHandle_decref(handle);
             return object_new_ref(Py_None);
@@ -2642,14 +2657,18 @@ impl thread_module_exec(module: ptr[PyObject]) -> i32 {
     }
     timeout_max = floor(timeout_max);
 
-    if PyModule_Add(module, ptr[u8]("TIMEOUT_MAX"), PyFloat_FromDouble(timeout_max)) < 0 {
+    if PyModule_Add(module, ptr[u8]("TIMEOUT_MAX"), PyFloat_FromDouble(timeout_max))
+        < 0 {
         return -1;
     }
 
     llist_init(shutdown_handles_of(get_thread_state(module)));
 
     if HAS_THREAD_NAMES {
-        if PyModule_AddIntConstant(module, ptr[u8]("_NAME_MAXLEN"), PYTHREAD_NAME_MAXLEN) < 0 {
+        if PyModule_AddIntConstant(
+            module, ptr[u8]("_NAME_MAXLEN"), PYTHREAD_NAME_MAXLEN
+        )
+            < 0 {
             return -1;
         }
     }
@@ -2701,7 +2720,7 @@ impl thread_module_free(module: ptr) {
 }
 
 impl install_clinic_methods(table: ptr[PyMethodDef], count: i64) {
-    first = (addressof(thread_methods) + CLINIC_METHODS_SLOT).view(1);
+    first = (addressof(thread_methods) + CLINIC_METHODS_SLOT).view(count);
     i = i64(0);
     while i < count {
         first[i] = (table + i).view(1)[0];

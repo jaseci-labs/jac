@@ -6,6 +6,7 @@ object contains the native Jac compiler and its native runtime support.
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 
@@ -76,10 +77,19 @@ compiled_ir = str(compiled)
 native_fallbacks_in_ir(compiled_ir).require()
 # Every unit must agree on how thread-local slots are held and how frames
 # arm: the accessors and the raise path are shared, so a unit lowered without
-# these options would bring back the pthread-key lookup or libc's setjmp.
+# these options would bring back the pthread-key lookup or libc's setjmp. The
+# C API's thread-specific storage (PyThread_tss_get and the old key API) is
+# the one place that calls pthread_getspecific by design.
+by_design = {"PyThread_tss_get", "PyThread_get_key_value"}
 for symbol, option in (("@pthread_getspecific", "native_tls"), ("@_setjmp", "native_sjlj")):
-    if getattr(options, option) and symbol in compiled_ir:
-        raise RuntimeError(f"a JacPython unit was lowered without {option}")
+    if not getattr(options, option) or symbol not in compiled_ir:
+        continue
+    for function in re.finditer(r'^define [^\n]*?@"?([\w.$]+)"?\((.*?)^\}', compiled_ir, re.M | re.S):
+        name = function.group(1).split(".")[0]
+        if not re.search('@"?' + re.escape(symbol[1:]) + r'"?\(', function.group(2)):
+            continue
+        if name not in by_design:
+            raise RuntimeError(f"a JacPython unit was lowered without {option} ({name})")
 internalize_native_implementation(
     compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
 )
