@@ -1455,6 +1455,12 @@ graph import {
         },
         server.session.own_child_databases { process_alive, this_host },
     ]
+    data.dbcatalog --> client.targets.desktop.native.host_boot._migrate_legacy_database {
+        MAINTENANCE_DB,
+        connect_admin,
+        list_databases,
+        rename_database
+    }
     data.pg_dist ++> cli.commands.db._db_fetch { download_dist }
     data.pg_dist --> client.targets.desktop.desktop_build.stage_postgres {
         bundled_dist_dir,
@@ -1477,12 +1483,13 @@ graph import {
         },
     ]
     data.pgembed --> [
+        client.targets.desktop.native.host_boot._migrate_legacy_database
+            | scale.tests.data.test_auth_cutover
+            | scale.tests.deploy.test_postgres_predicate_lock_headroom { PgRuntime },
         client.targets.desktop.native.host_boot._stop_embedded_store { stop_cluster },
         scale.deploy.database.kubernetes_postgres.KubernetesPostgresProvider.deploy {
             pg_tuning_settings
         },
-        scale.tests.data.test_auth_cutover
-            | scale.tests.deploy.test_postgres_predicate_lock_headroom { PgRuntime },
     ]
     data.pgpool ++> runtime.runtime.JacRuntime.after_fork_in_child
         | server.shared_store._after_fork_in_child { detach }
@@ -4138,6 +4145,10 @@ graph import {
             conninfo_from_url
         },
         cli.commands.execution.serve { takeover_project },
+        client.targets.desktop.native.host_boot._migrate_legacy_database {
+            project_database,
+            shared_pg_data_dir
+        },
         runtime.runtime.JacGraph.refs | scale.tests.server.test_sv_outbox_endpoints {
             Session
         },
