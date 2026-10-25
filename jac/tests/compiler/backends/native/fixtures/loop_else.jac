@@ -125,7 +125,7 @@ def flow_for_else_ran() -> bool {
     return ran;
 }
 
-def inner_else_break_stays_inner() -> bool {
+def inner_else_break_leaves_outer() -> bool {
     inner_done: bool = False;
     outer_else_ran: bool = False;
     for a in [1, 2] {
@@ -136,5 +136,30 @@ def inner_else_break_stays_inner() -> bool {
     } else {
         outer_else_ran = True;
     }
-    return inner_done and outer_else_ran;
+    return not inner_done and not outer_else_ran;
+}
+
+def inner_else_continue_skips_rest() -> int {
+    kept: int = 0;
+    for a in [1, 2, 3] {
+        for b in [1] {} else {
+            if a == 2 {
+                continue;
+            }
+        }
+        kept += a;
+    }
+    return kept;
+}
+
+def iter_for_else_continue_steps() -> int {
+    count: int = 0;
+    for i = 0 while i < 3 with i += 1 {
+        for b in [1] {} else {
+            count += 1;
+            continue;
+        }
+        count += 100;
+    }
+    return count;
 }

@@ -292,6 +292,7 @@ impl _enter_embedded_env(env: dict[str, str]) {
         }
         os.environ[key] = value;
     }
+    forget("postgres");
 }
 
 impl _leave_embedded_env {
@@ -303,6 +304,7 @@ impl _leave_embedded_env {
         }
     }
     _EMBEDDED_ENV_PRIOR.clear();
+    forget("postgres");
 }
 
 impl _stop_embedded_store(home: str) -> None {

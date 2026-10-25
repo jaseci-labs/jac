@@ -123,7 +123,7 @@ impl _sv_node_desc(tag: int) -> OspNodeDesc {
     return nd;
 }
 
-impl _sv_on_complete(scope: OspWalkScope, ok: bool) {
+impl _sv_settle(scope: OspWalkScope) -> bool {
     if isinstance(scope.wlk, WalkerArchetype) {
         anch = scope.wlk.__jac__;
         walked: list[(NodeAnchor | EdgeAnchor)] = [];
@@ -138,7 +138,7 @@ impl _sv_on_complete(scope: OspWalkScope, ok: bool) {
         anch.ignores = [];
     }
     if scope.nested {
-        return;
+        return False;
     }
 
     if isinstance(scope.wlk, WalkerArchetype) {
@@ -146,11 +146,10 @@ impl _sv_on_complete(scope: OspWalkScope, ok: bool) {
     }
 
     import from jaclang.runtime.runtime { JacRuntime }
-    ctx = None;
     try {
         ctx = JacRuntime.peek_context();
         if ctx is None {
-            return;
+            return False;
         }
         cs = ctx.call_state.get(None);
         if cs is not None {
@@ -159,19 +158,33 @@ impl _sv_on_complete(scope: OspWalkScope, ok: bool) {
             }
         }
     } except Exception {}
-    if ok and (ctx is not None) {
-        try {
-            ctx.mem.commit();
-        } except Exception {}
-    }
+    return True;
 }
 
-impl make_sv_runtime -> OspRuntime {
+impl _sv_on_complete(scope: OspWalkScope, ok: bool) {
+    if not _sv_settle(scope) or not ok {
+        return;
+    }
+    import from jaclang.runtime.runtime { JacRuntime }
+    ctx = JacRuntime.peek_context();
+    if ctx is None {
+        return;
+    }
+    try {
+        ctx.mem.commit();
+    } except Exception {}
+}
+
+impl _sv_on_complete_uncommitted(scope: OspWalkScope, ok: bool) {
+    _sv_settle(scope);
+}
+
+impl make_sv_runtime(commit: bool = True) -> OspRuntime {
     return OspRuntime(
         tag_of=_sv_tag_of,
         is_a=_sv_is_a,
         node_desc=_sv_node_desc,
-        on_complete=_sv_on_complete
+        on_complete=_sv_on_complete if commit else _sv_on_complete_uncommitted
     );
 }
 

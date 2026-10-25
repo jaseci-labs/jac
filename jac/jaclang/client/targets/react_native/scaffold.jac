@@ -43,6 +43,8 @@ def write_expo_scaffold(
 
 def ensure_native_deps_installed(rn_dir: Path);
 
+def refresh_metro_config(rn_dir: Path) -> bool;
+
 impl _is_scaffold_managed(path: Path, managed_key: str = "") -> bool {
     if not path.exists() {
         return True;
@@ -216,6 +218,45 @@ impl _build_metro_config -> str {
         "  ...(config.resolver.nodeModulesPaths || []),\n"
         "];\n"
         "\n"
+        "// `jac run --tunnel` serves the Jac API through Metro's origin so one\n"
+        "// tunnel reaches both: /__jac_api/* is forwarded to the local backend.\n"
+        "const jacApiProxy = process.env.JAC_RN_API_PROXY;\n"
+        "if (jacApiProxy) {\n"
+        "  const http = require('http');\n"
+        "  const upstream = new URL(jacApiProxy);\n"
+        "  const prefix = '/__jac_api';\n"
+        "  const priorEnhance = config.server && config.server.enhanceMiddleware;\n"
+        "  config.server = {\n"
+        "    ...(config.server || {}),\n"
+        "    enhanceMiddleware: (middleware, server) => {\n"
+        "      const inner = priorEnhance ? priorEnhance(middleware, server) : middleware;\n"
+        "      return (req, res, next) => {\n"
+        "        if (req.url !== prefix && !req.url.startsWith(prefix + '/')) {\n"
+        "          return inner(req, res, next);\n"
+        "        }\n"
+        "        const forward = http.request(\n"
+        "          {\n"
+        "            hostname: upstream.hostname,\n"
+        "            port: upstream.port,\n"
+        "            path: req.url.slice(prefix.length) || '/',\n"
+        "            method: req.method,\n"
+        "            headers: { ...req.headers, host: upstream.host },\n"
+        "          },\n"
+        "          (upstreamRes) => {\n"
+        "            res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);\n"
+        "            upstreamRes.pipe(res);\n"
+        "          }\n"
+        "        );\n"
+        "        forward.on('error', (err) => {\n"
+        "          res.statusCode = 502;\n"
+        "          res.end(String(err));\n"
+        "        });\n"
+        "        req.pipe(forward);\n"
+        "      };\n"
+        "    },\n"
+        "  };\n"
+        "}\n"
+        "\n"
         "module.exports = config;\n"
     );
 }
@@ -343,6 +384,12 @@ impl _build_gitignore -> str {
         ".eas-managed\n"
         "*.tsbuildinfo\n"
         ".DS_Store\n"
+    );
+}
+
+impl refresh_metro_config(rn_dir: Path) -> bool {
+    return _write_if_managed(
+        rn_dir / "metro.config.js", _build_metro_config(), "metro.config.js"
     );
 }
 

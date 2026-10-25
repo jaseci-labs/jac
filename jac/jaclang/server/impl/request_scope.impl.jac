@@ -45,6 +45,19 @@ impl RequestScope.close {
     }
 }
 
+impl RequestScope.aclose {
+    try {
+        if self._aborted {
+            self._discard();
+        }
+        await self.context.aclose();
+    } except Exception as e {
+        logger.warning(f"Failed to close request context: {e}", exc_info=True);
+    } finally {
+        JacRuntime.reset_request_context(self._token);
+    }
+}
+
 impl RequestScope.__enter__ -> ExecutionContext {
     return self.context;
 }
@@ -55,5 +68,18 @@ impl RequestScope.__exit__(
     tb: (TracebackType | None)
 ) -> bool {
     self.close();
+    return False;
+}
+
+impl RequestScope.__aenter__ -> ExecutionContext {
+    return self.context;
+}
+
+impl RequestScope.__aexit__(
+    exc_type: (type[BaseException] | None),
+    exc: (BaseException | None),
+    tb: (TracebackType | None)
+) -> bool {
+    await self.aclose();
     return False;
 }
