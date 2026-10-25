@@ -11937,7 +11937,9 @@ graph import compiler.driver {
             require
         },
         compiler.JacCompiler.assemble_python { require },
-        module_analysis.ModuleAnalysis.ready { product_ready },
+        module_analysis.ModuleAnalysis.ready | module_compile.run_client_dependencies {
+            product_ready
+        },
         module_compile { product_passes, unavailable },
         source_failures.bootstrap_tier_failure_details { tier_reason },
         toolchain { schedule_loading },

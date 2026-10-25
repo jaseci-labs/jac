@@ -57,8 +57,10 @@ impl run_client_dependencies(task: ModuleAnalysis) {
         dep = program.find_module(dep_path);
         has_facts = dep is not None
             and dep.gen
-            and dep.gen.interop_manifest
-            and bool(dep.gen.interop_manifest.bindings);
+            and (
+                bool(dep.gen.interop_manifest.bindings)
+                or product_ready(program, dep, CompilationProduct.BOUNDARIES)
+            );
         if not has_facts and not program.has_failed_parse(dep_path) {
             served = host.client_boundary_facts(program, dep_path);
             if served is not None {
