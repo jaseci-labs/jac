@@ -284,7 +284,7 @@ import from c {
         }
         return 0;
     }  def PyAST_obj2mod(ast: ptr[PyObject], arena: ptr, mode: i32) -> ptr[_mod] {
-        if PySys_Audit("compile", "OO", ast, Py_None) < 0 {
+        if PySys_Audit(ptr[u8]("compile"), ptr[u8]("OO"), ast, Py_None) < 0 {
             return ptr[_mod]();
         }
         state = get_ast_state();
