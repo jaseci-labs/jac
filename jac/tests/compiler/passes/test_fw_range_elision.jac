@@ -196,10 +196,33 @@ test "a u64 operand of unknown value is proved by the same arithmetic" {
     }
 }
 
-test "a literal past the signed 64-bit top keeps the plain arithmetic" {
-    assert interval_of_op("+", (EDGE + 1, EDGE + 1), (1, 1), "u64");
-    assert not interval_of_op("+", (U64_TOP, U64_TOP), (1, 1), "u64");
-    assert interval_of_op("-", (U64_TOP, U64_TOP), (0, -1), "i64") is False;
-    assert interval_of_op("*", (EDGE + 1, EDGE + 1), (1, 1), "u64");
-    assert not interval_of_op("*", (EDGE + 1, EDGE + 1), (2, 2), "u64");
+"""A literal past the signed 64-bit top folds to no interval: the native
+compiler kernel cannot hold its value, and the bytecode compiler reads it the
+same way so the two never mark a program differently. The operation keeps its
+check, which is sound; only an in-range literal pins the interval."""
+test "a literal past the signed 64-bit top keeps the check" {
+    import os;
+    import from tests.support { TESTS_DIR }
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.unitree { BinaryExpr }
+    src = (
+        "with entry {\n"
+        "    a: u64 = 1;\n"
+        "    past: u64 = a + 9223372036854775808;\n"
+        "    top: u64 = 18446744073709551614 + u64(1);\n"
+        "}\n"
+    );
+    prog = JacProgram();
+    ir = prog.compile(
+        file_path=os.path.join(
+            TESTS_DIR, "compiler", "passes", "fixtures", "checker", "_elide_wide.jac"
+        ),
+        use_str=src,
+        options=CompileOptions(no_cgen=True, force_codespace="server")
+    );
+    assert not prog.errors_had , [str(e) for e in prog.errors_had];
+    sums = ir.get_all_sub_nodes(BinaryExpr);
+    assert [nd.fw for nd in sums] == ["u64", "u64"] , [nd.fw for nd in sums];
+    assert [nd.fw_safe for nd in sums] == [False, False];
 }
