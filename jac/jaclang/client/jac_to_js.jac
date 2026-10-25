@@ -1,6 +1,9 @@
 import from pathlib { Path }
 import from types { ModuleType }
 
+glob _RUNTIME_IMPORTS_MEMO: dict[tuple[str, str], str] = {},
+     RUNTIME_IMPORTS_MEMO_CAP: int = 4096;
+
 obj JacToJSCompiler {
     has _compile_to_js: Callable[[Path], ClientArtifact],
         _extract_client_exports: Callable[[ClientManifest | None], list[str]],

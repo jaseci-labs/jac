@@ -1,5 +1,18 @@
 impl JacToJSCompiler.add_runtime_imports(js_code: str) -> str {
-    return prepend_active_runtime_globals(js_code);
+    """The import prelude is a function of the module's JS and the active
+    backend; a client rebuild re-emits every module, so unchanged ones reuse
+    it instead of re-scanning their JS.""";
+    key = (type(resolve_active_backend()).__name__, js_code);
+    held = _RUNTIME_IMPORTS_MEMO.get(key);
+    if held is not None {
+        return held;
+    }
+    text = prepend_active_runtime_globals(js_code);
+    if len(_RUNTIME_IMPORTS_MEMO) >= RUNTIME_IMPORTS_MEMO_CAP {
+        _RUNTIME_IMPORTS_MEMO.clear();
+    }
+    _RUNTIME_IMPORTS_MEMO[key] = text;
+    return text;
 }
 
 impl JacToJSCompiler.extract_globals(

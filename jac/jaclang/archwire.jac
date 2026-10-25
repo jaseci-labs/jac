@@ -496,7 +496,8 @@ graph import {
     compiler ++> cli.commands.analysis.gen_parser { gen_all_parsers }
     compiler.backends.es.backends.registry ++> [
         client.client_surface.prepend_active_runtime_globals
-            | client.compiler.ViteCompiler._create_pages_entry_content {
+            | client.compiler.ViteCompiler._create_pages_entry_content
+            | client.jac_to_js.JacToJSCompiler.add_runtime_imports {
             resolve_active_backend
         },
         client.compiler.ViteCompiler.create_entry_file { resolve_active_backend },
