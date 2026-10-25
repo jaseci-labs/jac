@@ -129,9 +129,6 @@ impl LinkPlan.layout_digest -> str {
 }
 
 impl LinkPlan.demoted_symbols -> list[str] {
-    """The demoted functions a linked program could reach. A demoted test is
-    left out: a binary never runs a module's tests, and the test runner
-    takes a demoted test to the server codespace on its own.""";
     out: list[str] = [];
     for u in self.units {
         for name in u.iface.demoted {
