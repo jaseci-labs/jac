@@ -3665,8 +3665,11 @@ walker NaIRGenPass(CompilerPass) {
         target_val: ir.Value, elem_type: ir.Type
     ) -> (tuple[ir.Value, ir.Value] | None);
 
-    def _tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> any;
-    def _tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None);
+    def _tbaa_tag(
+        tbaa_root: ir.MDValue, cache: dict[str, ir.MDValue], name: str
+    ) -> ir.MDValue;
+
+    def _tbaa_list_field(gep: ir.GEPInstr, list_tys: set[int]) -> (int | None);
     def _setjmp_local_base(value: ir.Value) -> (ir.Value | None);
     def _block_successors(block: ir.Block) -> list[ir.Block];
     def _push_exception_handler(

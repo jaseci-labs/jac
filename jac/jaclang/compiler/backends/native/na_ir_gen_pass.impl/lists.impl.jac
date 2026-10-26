@@ -1055,7 +1055,9 @@ impl NaIRGenPass._container_is_view(nd: uni.UniNode) -> bool {
     return False;
 }
 
-impl NaIRGenPass._tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> any {
+impl NaIRGenPass._tbaa_tag(
+    tbaa_root: ir.MDValue, cache: dict[str, ir.MDValue], name: str
+) -> ir.MDValue {
     found = cache.get(name);
     if found is not None {
         return found;
@@ -1102,7 +1104,7 @@ impl NaIRGenPass._apply_list_tbaa -> None {
     for lt in self.list_types.values() {
         list_tys.add(id(lt));
     }
-    cache: dict[str, any] = {};
+    cache: dict[str, ir.MDValue] = {};
     tbaa_root = self.llvm_module.add_metadata(["jac.tbaa"]);
     header = {0: "jac.list.len", 1: "jac.list.cap", 2: "jac.list.data"};
     for fn in self.llvm_module.functions {
