@@ -66,7 +66,7 @@ impl module_spaces(mod: (uni.Module | None)) -> set[str] {
     spaces: set[str] = set();
     for stmt in mod.elements {
         if isinstance(stmt, uni.ContextAwareNode) {
-            spaces.add(str(stmt.code_context));
+            spaces.add(stmt.code_context.value);
         }
     }
     if not spaces {
@@ -83,10 +83,6 @@ impl emits_server_code(mod: (uni.Module | None)) -> bool {
     return SPACE_SERVER in module_spaces(mod);
 }
 
-impl declared_path_spaces(source_path: str, prog: JacProgram) -> set[str] {
-    return module_spaces(_materialize_module(source_path, prog));
-}
-
 impl discover_spaces(
     paths: list[str], prog: (JacProgram | None) = None
 ) -> dict[str, set[str]] {
@@ -96,6 +92,11 @@ impl discover_spaces(
         ap = os.path.abspath(p);
         mod = hub_module_for_path(ap, target);
         if mod is None {
+            record = module_record(ap, target);
+            if record is not None and record.spaces {
+                out[ap] = set(record.spaces);
+                continue;
+            }
             try {
                 mod = target.compile(file_path=ap, no_cgen=True);
             } except Exception {}
@@ -120,15 +121,34 @@ impl spaces_are_client_only(spaces: set[str]) -> bool {
     return len(spaces) == 1 and SPACE_CLIENT in spaces;
 }
 
-impl client_only_paths(paths: list[str]) -> set[str] {
-    facts = discover_spaces(paths);
-    out: set[str] = set();
-    for (p, spaces) in facts.items() {
-        if spaces_are_client_only(spaces) {
-            out.add(p);
-        }
+impl module_record(
+    source_path: str, program: (JacProgram | None) = None
+) -> (PlacementSummary | None) {
+    real = os.path.realpath(source_path);
+    if program is None {
+        return _record_at(real);
     }
-    return out;
+    actual = program._get_compiler().product_program(real, program, execution=True);
+    with cache_scope(owner_scope_options(actual)) {
+        return _record_at(real);
+    }
+}
+
+impl _record_at(real: str) -> (PlacementSummary | None) {
+    try {
+        cache_path = get_module_cache_path(real);
+        if not is_module_cache_valid(real, cache_path) {
+            return None;
+        }
+        data = read_jir(cache_path);
+        raw = read_section_bytes(data, SEC_PLACEMENT);
+        if raw is None {
+            return None;
+        }
+        return summary_from_bytes(raw, path_mapper=read_jir_paths(data).resolve);
+    } except OSError {
+        return None;
+    }
 }
 
 impl _toolchain_rel(source_path: str) -> (str | None) {

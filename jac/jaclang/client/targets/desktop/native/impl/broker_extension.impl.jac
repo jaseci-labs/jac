@@ -252,7 +252,13 @@ impl DesktopBrokerExtension.register(server: JacAPIServer) {
                 }
             );
         }
-        created = profiles.add(name, user_id, profile_id);
+        try {
+            created = profiles.add(name, user_id, profile_id);
+        } except RuntimeError as e {
+            return JSONResponse(
+                status_code=500, content={"ok": False, "error": str(e)}
+            );
+        }
         return JSONResponse(content={"ok": True, "profile": created.public()});
     }
 
@@ -265,6 +271,10 @@ impl DesktopBrokerExtension.register(server: JacAPIServer) {
         } except ValueError as e {
             return JSONResponse(
                 status_code=400, content={"ok": False, "error": str(e)}
+            );
+        } except RuntimeError as e {
+            return JSONResponse(
+                status_code=500, content={"ok": False, "error": str(e)}
             );
         }
         return JSONResponse(content={"ok": True, "active": profiles.active});

@@ -103,6 +103,7 @@ graph import {
     artifacts.router as router ++> cli.commands.native
         | compiler.tests.test_stubcat_roundtrip;
     bootstrap_manifest ++> [
+        compiler.backends.native.kernel_resolve._verdict_key { is_roster_input },
         compiler.backends.native.kernel_stage0.running_kernel_target {
             NATIVE_LOWERED_PATHS,
             NATIVE_ONLY_DIR_REL,
@@ -197,7 +198,6 @@ graph import {
         },
     ]
     cache.registry --> [
-        compiler.driver.jir._manifest_compiler_digest { bucket, maybe_sweep },
         compiler.driver.jir._sweep_once { bucket, maybe_sweep },
         compiler.driver.jir._touch_generation
             | compiler.types.stubcat.locate.StubcatArtifact.probe_checkout { bucket },
@@ -500,7 +500,8 @@ graph import {
     compiler ++> cli.commands.analysis.gen_parser { gen_all_parsers }
     compiler.backends.es.backends.registry ++> [
         client.client_surface.prepend_active_runtime_globals
-            | client.compiler.ViteCompiler._create_pages_entry_content {
+            | client.compiler.ViteCompiler._create_pages_entry_content
+            | client.jac_to_js.JacToJSCompiler.add_runtime_imports {
             resolve_active_backend
         },
         client.compiler.ViteCompiler.create_entry_file { resolve_active_backend },
@@ -711,6 +712,7 @@ graph import {
     ]
     compiler.driver.compile_options ++> [
         cli.commands.analysis._check_file_job
+            | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck
             | dist.precompile_bytecode._application_sources
             | dist.publish.builder._module_is_client_source
             | dist.publish.npm_sources._compile_module
@@ -766,6 +768,11 @@ graph import {
     type compiler.driver.ifacecache ++> project.compiler_host { IfaceRegistry }
     compiler.driver.jir ++> [
         client.client_bundle.ClientBundleBuilder._signature { ct_dep_digest },
+        client.compiler.ViteCompiler._compile_wasm_module { ct_dep_text_fresh },
+        client.compiler.ViteCompiler._wasm_input_key {
+            ct_dep_digest,
+            running_compiler_digest
+        },
         client.jac_client_compiler.JacClientCompiler.emit_dependencies {
             compute_content_sha256
         },
@@ -821,6 +828,7 @@ graph import {
             jir_cacheable_source_path,
             precompiled_jir_matches_source
         },
+        dist.seal.sealed_image_key { running_compiler_digest },
         packages.artifact.package_manifest | packages.resolve.resolve_graph {
             jaclang_version
         },
@@ -835,6 +843,10 @@ graph import {
             get_jir_cache_dir,
             running_compiler_digest
         },
+        project.kernel_check._check_record_path { get_module_cache_path },
+        project.kernel_check._reads_compile_time_inputs { _related_files },
+        project.kernel_check._record_outcome { ct_dep_digest, module_cache_key },
+        project.kernel_check._replayed_outcome { ct_dep_digest, module_cache_key },
         project.kernel_snapshot.compiled_already {
             get_module_cache_path,
             is_module_cache_valid
@@ -893,7 +905,7 @@ graph import {
     ]
     compiler.driver.pipeline as pipeline --> scale.tests.apps.test_fleet_from_apps;
     compiler.driver.pipeline_runner ++> [
-        client.compiler.ViteCompiler._compile_wasm_module { build_wasm },
+        client.compiler.ViteCompiler._compile_wasm_module { wasm_artifact_inputs },
         client.route_scanner.resolve_route_exports { route_exports },
         dist.precompile_bytecode._application_sources { compile_application },
         dist.source.client.write_client { wasm_ir },
@@ -908,7 +920,6 @@ graph import {
     compiler.driver.program ++> [
         cli.commands.analysis._annex_moves
             | cli.commands.architecture
-            | cli.commands.execution.debug
             | cli.commands.fix._client_imports
             | cli.commands.native_build.native_build
             | cli.commands.transform.jac2js
@@ -997,9 +1008,14 @@ graph import {
             compiler_source_failure_origin
         },
     ]
-    compiler.driver.source_products ++> dist.publish.builder
-        | dist.publish.runtime_vendor._compile_runtime_module
-        | dist.source.project { python_source }
+    compiler.driver.source_products ++> [
+        dist.publish.builder { python_text },
+        dist.publish.runtime_vendor._compile_runtime_module {
+            python_source,
+            python_text
+        },
+        dist.source.project { python_source },
+    ]
     compiler.driver.toolchain ++> dist.precompile_bytecode.seal_native
         | project.compiler_host.ProjectHost.native_pipeline_available {
         native_pipeline_available
@@ -1358,6 +1374,8 @@ graph import {
         },
         dist.precompile_bytecode.find_jac_files { native_only },
         dist.precompile_bytecode.package_native_units { native_units_of },
+        dist.publish.runtime_vendor._compile_runtime_module
+            | testing.cl_test_runner.module_is_client { module_record },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
     ]
     compiler.placement.placement_facts --> [
@@ -1493,6 +1511,12 @@ graph import {
         },
         server.session.own_child_databases { process_alive, this_host },
     ]
+    data.dbcatalog --> client.targets.desktop.native.host_boot._migrate_legacy_database {
+        MAINTENANCE_DB,
+        connect_admin,
+        list_databases,
+        rename_database
+    }
     data.pg_dist ++> cli.commands.db._db_fetch { download_dist }
     data.pg_dist --> client.targets.desktop.desktop_build.stage_postgres {
         bundled_dist_dir,
@@ -1515,12 +1539,13 @@ graph import {
         },
     ]
     data.pgembed --> [
+        client.targets.desktop.native.host_boot._migrate_legacy_database
+            | scale.tests.data.test_auth_cutover
+            | scale.tests.deploy.test_postgres_predicate_lock_headroom { PgRuntime },
         client.targets.desktop.native.host_boot._stop_embedded_store { stop_cluster },
         scale.deploy.database.kubernetes_postgres.KubernetesPostgresProvider.deploy {
             pg_tuning_settings
         },
-        scale.tests.data.test_auth_cutover
-            | scale.tests.deploy.test_postgres_predicate_lock_headroom { PgRuntime },
     ]
     data.pgpool ++> runtime.runtime.JacRuntime.after_fork_in_child
         | server.shared_store._after_fork_in_child { detach }
@@ -1706,19 +1731,32 @@ graph import {
     jac0core.artifact_registry --> compiler.driver.compiler.JacCompiler.ensure_stub_catalog
         | compiler.native_compiler.ensure_loaded { resolution_in_flight }
     jac0core.cache_paths ++> [
-        artifacts.router.publish | compiler.driver.jir { FileLock, atomic_write },
+        artifacts.router.publish { FileLock, atomic_write },
         cache.home { get_cache_home },
+        client.compiler.ViteCompiler._compile_wasm_module
+            | client.vite_bundler.ViteBundler.build
+            | compiler.driver.ifacecache.IfaceRegistry._event
+            | compiler.driver.nativecache.NativeUnitRegistry._event { stat_note },
+        client.compiler.ViteCompiler._wasm_input_key
+            | client.vite_bundler.ViteBundler._build_inputs_digest
+            | compiler.backends.native.kernel_resolve._sha256_file
+            | compiler.driver.jir.compute_content_sha256
+            | dist.jab.materialize_jab
+            | dist.seal.sealed_image_key { file_sha256 },
         client.js_runtime.JsEngineArtifact.build
+            | compiler.backends.native.kernel_resolve._inspect
             | compiler.backends.native.link_plan
             | compiler.backends.native.llvm.shim_path.write_shim_record
             | compiler.backends.native.native_link
             | compiler.types.stubcat.build
+            | project.kernel_check._record_outcome
             | scale.injector.binary { atomic_write },
         client.js_runtime.write_bun_record { atomic_write },
         client.targets.desktop.desktop_build._native_build_cef
             | client.targets.node_tooling_common.run_manifest_install
             | client.targets.react_native.build.run_gradle_assemble
             | data.pg_dist.download_dist
+            | dist.seal.make_sealed_image
             | packages.sources.checkout
             | packages.store.materialize
             | project.kernel_snapshot.build_stub_catalog
@@ -1729,6 +1767,10 @@ graph import {
             | toolchains.desktop
             | toolchains.store { FileLock },
         compiler.backends.es.client_kernel_cache._cache_dir { get_jir_cache_dir },
+        compiler.backends.native.kernel_resolve._verdict_key
+            | compiler.driver.jir.read_jir { file_identity },
+        compiler.backends.native.kernel_resolve._verdict_path { get_digest_ledger_dir },
+        compiler.driver.jir { FileLock, atomic_write, stat_note },
         compiler.driver.jir.get_jir_cache_dir { get_jir_cache_dir as _root },
     ]
     jac0core.ext_registry ++> [
@@ -1877,6 +1919,7 @@ graph import {
             load_lock,
             package_npm_requirements
         },
+        dist.seal.sealed_image_key { has_packages },
         dist.seal.vendor_packages { has_packages, sync },
     ]
     packages.migrate ++> cli.commands.fix._fix_dependencies {
@@ -2089,6 +2132,7 @@ graph import {
         cli.commands.execution.serve | cli.commands.project.script { get_config },
         cli.commands.execution.x | cli.commands.project.update { get_config },
         cli.commands.fix._append_app_table { _toml_append_section },
+        cli.commands.fix._report_invalid_manifest { JacConfig },
         cli.commands.project._bootstrap_project_deps
             | testing.testing.JacTestClient._ensure_initialized {
             get_config,
@@ -2201,13 +2245,13 @@ graph import {
             kernel_compile_application
         },
         compiler.driver.application._release_compile_state { forget_application_units },
-        compiler.driver.compiler.JacCompiler.kernel_native_entry {
-            kernel_generates_native
-        },
     ]
     project.kernel_compile --> [
         compiler.driver.application._prepare { host_prepared },
         compiler.driver.application._prepare_revision { host_preparing },
+        compiler.driver.compiler.JacCompiler.kernel_native_entry {
+            kernel_generates_native
+        },
     ]
     project.kernel_snapshot ++> compiler.driver.application._release_compile_state {
         forget_interface_memo
@@ -2233,9 +2277,10 @@ graph import {
         mobui_module_exempt
     }
     project.modresolver ++> [
-        cli.commands.fix._verify_claims | server.outbox.outbox_db_path {
+        cli.commands.fix._report_invalid_manifest | server.outbox.outbox_db_path {
             find_jac_project_root
         },
+        cli.commands.fix._verify_claims { find_jac_project_root },
         cli.commands.fix.fix { find_jac_project_root },
         client.compiler.ViteCompiler.compile_desktop_sdk
             | compiler.tests.test_jac_mobui_typing
@@ -2408,10 +2453,7 @@ graph import {
     ]
     project.textio --> [
         cli.commands.analysis._check_file_job { read_file_with_encoding as _read_src },
-        compiler.driver.compiler.JacCompiler.get_bytecode
-            | compiler.driver.nativecache._module_files_and_imports {
-            read_file_with_encoding
-        },
+        compiler.driver.compiler.JacCompiler.get_bytecode { read_file_with_encoding },
     ]
     project.tomlio ++> [
         cli.commands.config | cli.commands.project._toml_apps_and_default {
@@ -3438,7 +3480,8 @@ graph import {
             | scale.memory.context.JScaleExecutionContext.init
             | server.request_scope
             | server.sv_client._local_call
-            | studio.session { JacRuntime },
+            | studio.session
+            | testing.cl_test_runner.module_is_client { JacRuntime },
         byllm.visit_routing.route_visit
             | cli.commands.cli_helpers.proc_file
             | cli.commands.execution._discover_config_from_file
@@ -3456,7 +3499,6 @@ graph import {
             | server.static_files { JacRuntime as Jac },
         cli.commands.execution._exec_file
             | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac
-            | client.targets.web_target._get_client_function_name
             | server.hmr.HotReloader._recompile_client_unified
             | server.server.ModuleIntrospector._resolve_declared { JacRuntime as Jac },
         cli.commands.execution._invoke_entrypoint
@@ -3464,6 +3506,7 @@ graph import {
             | server.server.ModuleIntrospector.route_spec { JacRuntime as Jac },
         cli.commands.execution._load_executable { JacRuntime as Jac },
         cli.commands.execution._pin_run_scope { JacRuntime as Jac },
+        cli.commands.execution.debug { JacRuntime as Jac },
         cli.commands.execution.serve { JacRuntime as Jac },
         data.query_planner.LazyRefs._mem | lib.jaclib | testing.runner {
             JacRuntimeInterface
@@ -3799,7 +3842,8 @@ graph import {
             NATIVE_DIR_REL,
             SERVE_MANIFEST_REL
         },
-        dist.precompile_bytecode.seal_runtime_closure { SERVE_MANIFEST_REL },
+        dist.precompile_bytecode.seal_runtime_closure
+            | scale.injector.bundle.require_serve_manifest { SERVE_MANIFEST_REL },
         dist.seal.bake_serve_payloads { CLIENT_DIST_REL, SERVE_MANIFEST_REL },
         dist.seal.build_serve_manifest { serve_manifest_stamp },
     ]
@@ -3808,7 +3852,9 @@ graph import {
             sealed_root_for,
             unlisted_image_root
         },
-        scale.injector.bundle.pack_jab { SERVE_MANIFEST_REL },
+        scale.injector.bundle.pack_jab | scale.tests.microservices.test_app_precompile {
+            SERVE_MANIFEST_REL
+        },
     ]
     server.server ++> [
         client.targets.desktop.native.broker_extension
@@ -4185,6 +4231,10 @@ graph import {
             conninfo_from_url
         },
         cli.commands.execution.serve { takeover_project },
+        client.targets.desktop.native.host_boot._migrate_legacy_database {
+            project_database,
+            shared_pg_data_dir
+        },
         runtime.runtime.JacGraph.refs | scale.tests.server.test_sv_outbox_endpoints {
             Session
         },
@@ -4425,7 +4475,9 @@ graph import byllm {
     _optdeps.pillow ++> types { PILImageCls, open_image }
     _optdeps.pydantic ++> schema | types { TypeAdapter }
     config_loader ++> llm | mtir { get_byllm_config }
+    deadline ++> llm | mtir { CallDeadline }
     exceptions ++> [
+        deadline { LLMTimeout },
         lib {
             AuthenticationError,
             ByLLMError,
@@ -5077,7 +5129,6 @@ graph import client {
             __overlaps as cache___overlaps
         },
     ]
-    import_processor ++> jac_client_compiler { ImportProcessor }
     jac_client_compiler ++> compiler | targets.react_native.build { JacClientCompiler }
     jac_to_js ++> jac_client_compiler { JacToJSCompiler }
     js_engine --> js_runtime.js_runtime_path { node_executable }
@@ -5441,7 +5492,7 @@ graph import compiler {
     backends.native.link_plan --> [
         driver.compiler.JacCompiler._load_native_from_cache { jit_engine_for_cached },
         driver.nativecache.NativeUnitRegistry.compile_unit { build_link_plan },
-        driver.pipeline_runner.wasm_ir { build_link_plan, wasm_program_ir },
+        driver.pipeline_runner.wasm_ir_units { build_link_plan, wasm_program_ir },
     ]
     backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache;
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
@@ -5483,8 +5534,8 @@ graph import compiler {
     ]
     backends.native.na_ir_gen_pass --> driver.pipeline.codegen_passes { NaIRGenPass }
     backends.native.wasm_build ++> [
-        driver.pipeline_runner.wasm_artifact { emit_wasm_from_ir },
-        driver.pipeline_runner.wasm_ir {
+        driver.pipeline_runner.wasm_artifact_inputs { emit_wasm_from_ir },
+        driver.pipeline_runner.wasm_ir_units {
             _assert_ir_rc_free,
             _project_gc_settings,
             app_declared_imports
@@ -5698,9 +5749,7 @@ graph import compiler {
     ]
     type capability_notes ++> driver.progstate { CapabilityNote }
     driver.bccache ++> [
-        backends.native.kernel_stage0.unit_line_count | tools.code_intel {
-            discover_annex_files
-        },
+        backends.native.kernel_stage0.unit_line_count { discover_annex_files },
         tests.test_batch_decl_identity | tests.test_global_narrowing {
             discover_base_file
         },
@@ -5794,6 +5843,7 @@ graph import compiler {
             is_client_native_edge_import
         },
         passes.wasm_contract.host_contracts { symbol_linked_source_module },
+        placement.placement.summarize_module { module_own_native_anchor },
         placement.placement_facts.discover_spaces
             | placement.placement_solver._materialize_module { hub_module_for_path },
         placement.placement_solver._is_sv_import { import_crosses_apps },
@@ -5841,6 +5891,7 @@ graph import compiler {
         frontend.kernel_host { package_owned },
         passes.access_check_pass.AccessCheckPass._module_app_facts
             | placement.placement_pins { context_app },
+        placement.placement_facts.module_record { cache_scope, owner_scope_options },
         types.type_evaluator.TypeEvaluator._in_flight_module { program_for },
     ]
     driver.compile_options ++> [
@@ -5906,6 +5957,11 @@ graph import compiler {
     driver.jir ++> [
         backends.es.client_kernel_cache._artifact_path { running_compiler_digest },
         backends.native.kernel_resolve._inspect { sidecar_unit_paths },
+        backends.native.kernel_resolve._verdict_key {
+            compiler_input_rules,
+            ct_dep_digest,
+            running_compiler_digest
+        },
         backends.native.kernel_resolve.unit_drift {
             native_producer_digest,
             running_compiler_digest,
@@ -5919,6 +5975,23 @@ graph import compiler {
         backends.native.link_plan._write_sidecar { native_producer_digest },
         backends.native.na_compile_pass.NativeCompilePass._emit_debug_products {
             get_native_debug_dir
+        },
+        placement.placement_facts._record_at {
+            SEC_PLACEMENT,
+            get_module_cache_path,
+            is_module_cache_valid,
+            read_jir,
+            read_jir_paths,
+            read_section_bytes
+        },
+        tools.code_intel {
+            SEC_SYMINDEX,
+            compute_content_sha256,
+            get_module_cache_path,
+            is_module_cache_valid,
+            read_jir,
+            read_section_bytes,
+            write_module_cache
         },
     ]
     driver.jir --> [
@@ -6268,6 +6341,7 @@ graph import compiler {
             endpoint_key
         },
         backends.es.esast_gen_pass.EsastGenPass.prepare { ClientManifest },
+        backends.native.kernel_resolve._verdict_key { jaclang_pkg_root },
         backends.native.kernel_resolve.source_tree_kernel_path { jaclang_pkg_root },
         backends.native.kernel_resolve.unit_drift
             | backends.native.kernel_stage0.plan_kernel_prefix
@@ -6782,6 +6856,7 @@ graph import compiler {
             | passes.boundary_analysis_pass
             | passes.placement_pass
             | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
+            | placement.placement.summarize_module
             | placement.placement_export
             | placement.placement_facts.settle_server
             | placement.placement_solver
@@ -7512,10 +7587,10 @@ graph import compiler {
             parse as rd_parse
         },
     ]
-    frontend.parser.frontend --> [
-        driver.nativecache._module_files_and_imports { parse as rd_parse },
-        driver.program.JacProgram.parse_source { annex_sources, parse_woven },
-    ]
+    frontend.parser.frontend --> driver.program.JacProgram.parse_source {
+        annex_sources,
+        parse_woven
+    }
     frontend.parser.lexer ++> [
         tools.jac_auto_lint_pass.JacAutoLintPass._impl_header { tokenize_full },
         tools.jac_auto_lint_pass.JacAutoLintPass._reparse_signature { tokenize_full },
@@ -10056,9 +10131,7 @@ graph import compiler {
             | driver.ifacecache.IfaceRegistry._restore_placement
             | frontend.kernel_host.KernelHost.python_module { summary_store },
         driver.compiler.JacCompiler.kernel_native_entry { summary_store },
-        driver.ifacecache.IfaceRegistry._persist_in_context { get_module_summary },
         driver.module_analysis.run_analysis { record_decided },
-        driver.nativecache._module_files_and_imports { jac_import_targets },
     ]
     type placement.placement ++> driver.progstate { PlacementSummary }
     placement.placement_export ++> driver.unit_products.placement_record {
@@ -10067,11 +10140,11 @@ graph import compiler {
     placement.placement_export --> [
         driver.compiler.JacCompiler._restore_sections
             | driver.ifacecache.IfaceRegistry._restore_placement { summary_from_bytes },
-        driver.ifacecache.IfaceRegistry._persist_in_context { summary_to_bytes },
         frontend.kernel_host.KernelHost.python_module { summary_from_dict },
     ]
     placement.placement_facts ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._dep_is_native_unit { native_unit },
+        driver.compiler.JacCompiler.kernel_native_entry { module_record },
         driver.module_compile.admits_native_checks { variant_selected },
         driver.program.JacProgram.declared_codespace {
             native_only,
@@ -10082,6 +10155,7 @@ graph import compiler {
             native_only,
             native_placement_hard
         },
+        driver.unit_products.placement_record { module_spaces },
         passes.placement_pass { native_placement_soft },
         passes.placement_pass.PlacementPass._run_undecided { contexts_of },
         passes.placement_pass.settle_native_module { settle_server },
@@ -11686,9 +11760,9 @@ graph import compiler.driver {
     }
     bccache ++> [
         application._stamp { LISTING_SETTLE_NS },
-        ifacecache.IfaceRegistry._entry_fresh
-            | jir._related_files
-            | nativecache._module_files_and_imports { discover_annex_files },
+        ifacecache.IfaceRegistry._entry_fresh | jir._related_files {
+            discover_annex_files
+        },
     ]
     boundary_classify ++> [
         program.JacProgram.declared_codespace { _default_codespace_for },
@@ -11741,6 +11815,7 @@ graph import compiler.driver {
         jir.compute_precompile_module_key | nativecache.NativeUnitRegistry._source_key {
             cache_scope
         },
+        source_products.python_text { cache_scope, owner_scope_options, program_for },
     ]
     compilation_context --> [
         application._prepare_revision
@@ -11773,7 +11848,7 @@ graph import compiler.driver {
             pop_native_target,
             push_native_target
         },
-        pipeline_runner.wasm_ir {
+        pipeline_runner.wasm_ir_units {
             CompileOptions,
             pop_native_target,
             push_native_target
@@ -11810,6 +11885,7 @@ graph import compiler.driver {
             HEADER_SIZE,
             SECTIONS_MAGIC,
             get_module_cache_path,
+            read_jir,
             read_sections
         },
         application._identity { compiler_generation },
@@ -11847,6 +11923,7 @@ graph import compiler.driver {
             patch_co_filenames_bytes,
             precompiled_jir_matches_source,
             read_bytecode_only,
+            read_jir,
             read_section_bytes,
             read_sections,
             seed_definition_texts,
@@ -11882,6 +11959,7 @@ graph import compiler.driver {
             module_cache_key,
             module_ct_deps_section,
             read_dep_hashes,
+            read_jir,
             read_jir_paths,
             read_section_bytes,
             write_module_cache
@@ -11896,7 +11974,6 @@ graph import compiler.driver {
             SEC_NOBJ,
             cache_mode,
             carried_native_sections,
-            compute_content_sha256,
             ct_dep_text_fresh,
             current_native_stamp,
             get_module_cache_path,
@@ -11906,9 +11983,19 @@ graph import compiler.driver {
             module_ct_deps_section,
             native_producer_digest,
             native_section_payload,
+            read_jir,
             read_native_dep_hashes,
             read_section_bytes,
             stale_ct_dep_rows,
+            write_module_cache
+        },
+        pipeline_runner.wasm_ir_units { absolutize_ct_deps_section },
+        source_products.python_text {
+            SEC_PYSRC,
+            get_module_cache_path,
+            is_module_cache_valid,
+            read_jir,
+            read_section_bytes,
             write_module_cache
         },
     ]
@@ -11946,7 +12033,7 @@ graph import compiler.driver {
         run_plan
     }
     module_compile ++> compiler { compile_module }
-    na_coverage ++> pipeline_runner.wasm_ir { na_coverage_begin, na_coverage_end }
+    na_coverage ++> pipeline_runner.wasm_ir_units { na_coverage_begin, na_coverage_end }
     native_iface ++> [
         jir.native_deps_section { native_unit_ref },
         jir.parse_native_dep_rows { resolve_native_unit_ref },
@@ -12038,7 +12125,6 @@ graph import compiler.driver {
             | unit_products { JacProgram },
         compiler.JacCompiler._prepare_tool_program { JacProgram },
     ]
-    program --> nativecache._module_files_and_imports { JacProgram }
     type program ++> build_services
         | compilation_context
         | ifacecache
@@ -12098,7 +12184,10 @@ graph import compiler.driver {
         jir.seed_definition_texts { DEF_DEP_SEP },
     ]
     unit_products --> [
-        ifacecache.IfaceRegistry._persist_in_context { interop_record },
+        ifacecache.IfaceRegistry._persist_in_context {
+            interop_record,
+            placement_record
+        },
         ifacecache.IfaceRegistry.client_boundary_facts { interop_manifest_of },
     ]
     wiring ++> [
@@ -13932,6 +14021,8 @@ graph import compiler.placement {
         placement_solver._closure_pullable { module_has_root_access },
         placement_solver._pullable_by_client_reference { module_has_root_access },
     ]
+    type placement ++> placement_facts { PlacementSummary }
+    placement_export ++> placement_facts._record_at { summary_from_bytes }
     placement_facts ++> placement_solver.native_closure_blocker { pinned_module_space }
     placement_pins ++> [
         placement.module_anchor_reasons
@@ -13953,7 +14044,6 @@ graph import compiler.placement {
         placement_facts.native_unit { effective_module_pin },
     ]
     placement_solver ++> [
-        placement_facts.declared_path_spaces { _materialize_module },
         placement_work.PlacementWork.drain { _pull_boundary_import },
         placement_work.PlacementWork.refs { _ref_top_ids },
     ]

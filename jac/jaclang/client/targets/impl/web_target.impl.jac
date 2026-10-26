@@ -77,15 +77,10 @@ impl WebTarget.start(
 impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
-    import shutil;
-
     bundler = ViteBundler(project_dir=project_dir);
 
     dist_dir = bundler.output_dir;
     if dist_dir {
-        if dist_dir.exists() {
-            shutil.rmtree(dist_dir);
-        }
         dist_dir.mkdir(parents=True, exist_ok=True);
     }
 
@@ -95,13 +90,16 @@ impl WebTarget.build(
     builder = make_client_bundle_builder(project_dir);
     try {
         before = len(program.errors_had);
-        program.compile(str(entry_file.resolve()));
+        artifact = program._get_compiler().get_client_artifact(
+            str(entry_file.resolve()), program
+        );
         if len(program.errors_had) > before {
             errors = '\n'.join(str(e) for e in program.errors_had[before:]);
             raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
         }
         inputs = builder.prepare(loaded_mod);
-        function_name = _get_client_function_name(loaded_mod);
+        exports = list(artifact.manifest.exports or []) if artifact is not None else [];
+        function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
     } finally {
         program._get_compiler().release_compile_state(program);
     }
@@ -123,8 +121,6 @@ impl WebTarget.build(
     }
     return bundle_path;
 }
-
-def _get_client_function_name(loaded_mod: types.ModuleType) -> str;
 
 def _build_css_link(bundler: ViteBundler) -> str;
 
@@ -149,33 +145,6 @@ impl _parse_entry_file(entry_file: Path) -> tuple[str, str] {
 
 impl _pwa_enabled(project_dir: Path) -> bool {
     return JacClientConfig(project_dir).is_pwa_enabled();
-}
-
-impl _get_client_function_name(loaded_mod: types.ModuleType) -> str {
-    mod_path = loaded_mod?.__file__;
-    if not mod_path {
-        return DEFAULT_FUNCTION_NAME;
-    }
-
-    mod = Jac.get_program().find_module(mod_path);
-    if not mod {
-        return DEFAULT_FUNCTION_NAME;
-    }
-    gen = mod?.gen;
-    if not gen {
-        return DEFAULT_FUNCTION_NAME;
-    }
-
-    client_manifest = gen?.client_manifest;
-    if not client_manifest {
-        return DEFAULT_FUNCTION_NAME;
-    }
-
-    client_exports = client_manifest?.exports;
-    if client_exports and len(client_exports) > 0 {
-        return client_exports[0];
-    }
-    return DEFAULT_FUNCTION_NAME;
 }
 
 impl _build_css_link(bundler: ViteBundler) -> str {
