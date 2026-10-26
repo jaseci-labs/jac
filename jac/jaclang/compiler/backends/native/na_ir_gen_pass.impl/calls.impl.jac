@@ -1609,6 +1609,9 @@ impl NaIRGenPass._emit_intrinsic_region_tls(
         operands.append(val);
     }
     result = self.builder.call(self.extern_funcs[intr.name], operands);
+    if intr.name == "__jac_region_tls_set" {
+        self.builder.store(ir.Constant(ir.IntType(64), 1), self._region_live_flag());
+    }
     return None if intr.result_spec == "none" else result;
 }
 
