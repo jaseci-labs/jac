@@ -880,6 +880,13 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         args: list[ir.Value]
     ) -> (ir.Value | None);
 
+    def emit_repeat_inplace(
+        self: NativeListEmitter,
+        ctx: NativeEmitCtx,
+        target: ir.Value,
+        count: ir.Value
+    ) -> (ir.Value | None);
+
     def emit_insert(
         self: NativeListEmitter,
         ctx: NativeEmitCtx,

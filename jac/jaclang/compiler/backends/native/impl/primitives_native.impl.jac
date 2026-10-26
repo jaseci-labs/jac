@@ -2682,6 +2682,7 @@ impl NativeListEmitter.emit_extend(
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     src = args[0];
+    src_owned = p._is_owned(src);
     if p._opt_payload_of(src.type) is not None {
         src = p._coerce_type(src, target.type);
     }
@@ -2737,10 +2738,79 @@ impl NativeListEmitter.emit_extend(
     idx.add_incoming(next_idx, body_bb);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
-    if _aos_struct is not None and src_helpers is helpers {
+    if _aos_struct is not None and src_helpers is helpers and src_owned {
         b.store(ir.Constant(i64, 0), src_len_ptr);
     }
     p._release_owned_args(args, op="extend_arg");
+    return ir.Constant(i64, 0);
+}
+
+impl NativeListEmitter.emit_repeat_inplace(
+    self: NativeListEmitter, ctx: NativeEmitCtx, target: ir.Value, count: ir.Value
+) -> (ir.Value | None) {
+    p = ctx.pass_ref;
+    helpers = p.list_helpers.get(ctx.type_key);
+    if helpers is None {
+        return None;
+    }
+    b = get_builder(p);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    cnt = p._coerce_type(count, i64);
+    len_ptr = b.gep(
+        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="rep.len.ptr"
+    );
+    orig_len = b.load(len_ptr, name="rep.orig.len");
+    func = b.basic_block.function;
+    entry_bb = b.basic_block;
+    zero_bb = func.append_basic_block(name="rep.zero");
+    pass_bb = func.append_basic_block(name="rep.pass");
+    done_bb = func.append_basic_block(name="rep.done");
+    # count <= 0 clears the list (CPython list.__imul__ semantics).
+    nonpos = b.icmp_signed("<=", cnt, ir.Constant(i64, 0), name="rep.nonpos");
+    b.cbranch(nonpos, zero_bb, pass_bb);
+
+    b.position_at_start(zero_bb);
+    b.store(ir.Constant(i64, 0), len_ptr);
+    b.branch(done_bb);
+
+    # for pass in 1..cnt-1: for j in 0..orig_len-1: append(get(j))
+    b.position_at_start(pass_bb);
+    pass_idx = b.phi(i64, name="rep.passidx");
+    pass_idx.add_incoming(ir.Constant(i64, 1), entry_bb);
+    more_passes = b.icmp_signed("<", pass_idx, cnt, name="rep.more");
+    inner_bb = func.append_basic_block(name="rep.inner");
+    next_pass_bb = func.append_basic_block(name="rep.nextpass");
+    b.cbranch(more_passes, inner_bb, done_bb);
+
+    b.position_at_start(inner_bb);
+    j_idx = b.phi(i64, name="rep.j");
+    j_idx.add_incoming(ir.Constant(i64, 0), pass_bb);
+    j_done = b.icmp_unsigned(">=", j_idx, orig_len, name="rep.jdone");
+    copy_bb = func.append_basic_block(name="rep.copy");
+    b.cbranch(j_done, next_pass_bb, copy_bb);
+
+    b.position_at_start(copy_bb);
+    elem = b.call(helpers["get"], [target, j_idx], name="rep.elem");
+    _aos_struct = p._aos_elem_struct(ctx.type_key);
+    b.call(
+        helpers["push"] if _aos_struct is not None else helpers["append"],
+        [target, elem]
+    );
+    j_next_bb = func.append_basic_block(name="rep.nextj");
+    b.branch(j_next_bb);
+
+    b.position_at_start(j_next_bb);
+    j_next = b.add(j_idx, ir.Constant(i64, 1), name="rep.jnext");
+    j_idx.add_incoming(j_next, j_next_bb);
+    b.branch(inner_bb);
+
+    b.position_at_start(next_pass_bb);
+    pass_next = b.add(pass_idx, ir.Constant(i64, 1), name="rep.passnext");
+    pass_idx.add_incoming(pass_next, next_pass_bb);
+    b.branch(pass_bb);
+
+    b.position_at_start(done_bb);
     return ir.Constant(i64, 0);
 }
 
