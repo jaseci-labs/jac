@@ -86,6 +86,12 @@ glob RETIRED: tuple[str, ...] = (
              summary="file content digests keyed by file identity (retired compiler_digest manifests age out)"
          ),
          Bucket(
+             name="jir-nativescan",
+             relpath="jir/nativescan",
+             policy=Policy(ttl_days=14.0, depth=2, pattern="*.txt"),
+             summary="native placement scans of a module's files, keyed by content, project and compiler"
+         ),
+         Bucket(
              name="apps",
              relpath="apps",
              policy=Policy(ttl_days=30.0, markers=[".used"]),

@@ -1,5 +1,4 @@
 import hashlib;
-import json;
 import os;
 
 
@@ -14,7 +13,8 @@ glob _SPACE_BY_NAME: dict[str, CodeContext] = {
          'client': CodeContext.CLIENT,
          'native': CodeContext.NATIVE
      },
-     _na_scan_memo: dict[str, NativeDepScan] = {};
+     _na_scan_memo: dict[str, NativeDepScan] = {},
+     NATIVE_SCAN_RECORD: str = "nativescan1";
 
 def native_scan_memo_clear;
 
@@ -26,11 +26,13 @@ def _native_dep_scan(
     path: str, hold_exempt: bool = False
 ) -> (tuple[str, list[str]] | None);
 
-def _native_scan_store(path: str, files: list[str], hold_exempt: bool) -> str;
+def _native_scan_digest(files: list[str], hold_exempt: bool) -> str;
 
-def _read_native_scan(store: str) -> (NativeDepScan | None);
+def _read_native_scan(path: str, digest: str) -> (NativeDepScan | None);
 
-def _write_native_scan(store: str, reason: str, deps: list[str]);
+def _keep_native_scan(
+    path: str, digest: str, reason: str, deps: list[str], probes: list[str]
+);
 
 def _native_deps_ok(
     root_path: str, root_deps: list[str], hold_exempt: bool = False

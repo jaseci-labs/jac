@@ -8,9 +8,13 @@ compiler, the module's environment and the content of each file the scan
 reads, so an unchanged dependency is not parsed again and any edit to it is.
 """
 import os;
+import time;
+import from pathlib { Path }
 import from tempfile { TemporaryDirectory }
 import from unittest.mock { patch }
 import jaclang.compiler.frontend.parser.frontend as frontend_mod;
+import from jaclang.cache.policy { sweep_dir }
+import from jaclang.cache.registry { bucket }
 import from jaclang.compiler.placement.placement_solver {
     _native_dep_scan,
     native_scan_memo_clear
@@ -75,5 +79,77 @@ test "an edit to an annex of the scanned module is scanned again" {
             );
         }
         assert _native_dep_scan(use)[0] == "root access (persistent graph)";
+    }
+}
+
+def stored_records_naming(text: str) -> list[Path] {
+    store_root = str(bucket("jir-nativescan").path());
+    found: list[Path] = [];
+    for (dirpath, _dirnames, filenames) in os.walk(store_root) {
+        for name in filenames {
+            if not name.endswith(".txt") {
+                continue;
+            }
+            record = os.path.join(dirpath, name);
+            try {
+                with open(record, encoding="utf-8") as handle {
+                    body = handle.read();
+                }
+            } except OSError {
+                continue;
+            }
+            if text in body {
+                found.append(Path(record));
+            }
+        }
+    }
+    return found;
+}
+
+test "a missing import target is judged again once it exists" {
+    with TemporaryDirectory() as directory {
+        use = write_closure(os.path.realpath(directory));
+        lib = os.path.join(os.path.dirname(use), "lib.jac");
+        os.remove(lib);
+        assert _native_dep_scan(use)[0] == "unresolved import 'lib'";
+        native_scan_memo_clear();
+        with open(lib, "w") as handle {
+            handle.write(LIB);
+        }
+        again = _native_dep_scan(use);
+        assert again is not None;
+        assert again[0] == "" , again;
+        assert again[1] == [lib] , again;
+    }
+}
+
+test "a stored scan whose import target disappeared is judged again" {
+    with TemporaryDirectory() as directory {
+        use = write_closure(os.path.realpath(directory));
+        lib = os.path.join(os.path.dirname(use), "lib.jac");
+        assert _native_dep_scan(use) == ("", [lib]);
+        native_scan_memo_clear();
+        os.remove(lib);
+        assert _native_dep_scan(use)[0] == "unresolved import 'lib'";
+    }
+}
+
+test "stored scans live in a cache bucket whose sweep reaches them" {
+    with TemporaryDirectory() as directory {
+        use = write_closure(os.path.realpath(directory));
+        lib = os.path.join(os.path.dirname(use), "lib.jac");
+        assert _native_dep_scan(use) == ("", [lib]);
+        records = stored_records_naming(lib);
+        assert len(records) == 1 , records;
+        record = records[0];
+        base = bucket("jir-nativescan").path();
+        assert record.parent.parent == base , record;
+        stale = time.time() - 40.0 * 86400.0;
+        os.utime(record, (stale, stale));
+        swept = sweep_dir(base, bucket("jir-nativescan").policy);
+        assert not record.exists() , swept;
+        native_scan_memo_clear();
+        assert _native_dep_scan(use) == ("", [lib]);
+        assert len(stored_records_naming(lib)) == 1;
     }
 }
