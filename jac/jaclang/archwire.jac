@@ -10355,16 +10355,20 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass.exit_archetype
             | backends.native.na_ir_gen_pass.NaIRGenPass._c_scalar_llvm
             | passes.type_checker_pass.TypeCheckPass.exit_archetype
-            | types.type_evaluator.TypeEvaluator._is_typed_c_declaration {
+            | types.type_evaluator.TypeEvaluator._has_numeric_member {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass.EsastGenPass.exit_raise_stmt
             | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
-            | passes.type_checker_pass.TypeCheckPass.exit_type_alias {
+            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_emitters
+            | passes.type_checker_pass.TypeCheckPass.exit_type_alias
+            | types.type_evaluator.TypeEvaluator._is_typed_c_declaration {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass._raised_exc_identity
-            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_sized_builtin_call {
+            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_sized_builtin_call
+            | backends.native.na_ir_gen_pass.NaIRGenPass._get_exc_descendants
+            | types.type_evaluator.TypeEvaluator._numeric_args_invariant {
             JAC_TYPE_REGISTRY
         },
         backends.native.na_ir_gen_pass { JacTypeEntry },
@@ -10388,9 +10392,7 @@ graph import compiler {
     type_registry --> [
         backends.es.esast_gen_pass.EsastGenPass._lower_func_call
             | passes.ownership_check_pass.OwnershipCheckPass._handled_by_enclosing_try
-            | types.type_evaluator.TypeEvaluator._assign_class
-            | types.type_evaluator.TypeEvaluator._numeric_args_invariant
-            | types.type_evaluator.TypeEvaluator._has_numeric_member { JAC_TYPE_REGISTRY },
+            | types.type_evaluator.TypeEvaluator._assign_class { JAC_TYPE_REGISTRY },
         backends.es.esast_gen_pass.EsastGenPass.exit_try_stmt { JAC_TYPE_REGISTRY },
     ]
     type types.ct_eval ++> backends.native.na_ir_gen_pass { CtEvaluator }
