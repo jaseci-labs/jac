@@ -71,31 +71,6 @@ obj UploadFile {
     async def close;
 }
 
-impl UploadFile.size.getter -> int {
-    return self._size;
-}
-
-impl UploadFile.file.getter -> any {
-    if self._file is None {
-        import io;
-        self._file = io.BytesIO(b'');
-    }
-    return self._file;
-}
-
-impl UploadFile.body.getter -> bytes {
-    handle = self.file;
-    try {
-        here = handle.tell();
-    } except Exception {
-        here = 0;
-    }
-    handle.seek(0);
-    data = handle.read();
-    handle.seek(here);
-    return data;
-}
-
 obj Request {
     has method: str = 'GET',
         url: URL = URL(),

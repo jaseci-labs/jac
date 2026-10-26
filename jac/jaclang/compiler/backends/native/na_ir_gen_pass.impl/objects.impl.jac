@@ -296,17 +296,6 @@ impl NaIRGenPass._constructor_ability_for(cls: str, slot: str) -> (uni.Ability |
 }
 
 impl NaIRGenPass._predemote_capability_constructors -> None {
-    """Demote capability-blocked constructors before any body is lowered.
-
-    Every other seam demotes at its own body-codegen point, which is enough
-    because a call site that binds too early still resolves its callee by name.
-    A construction site does not: it reads `init`/`postinit` straight out of
-    `method_funcs` while lowering some OTHER archetype's body, so a constructor
-    that only demoted later would already have been bound -- silently, to what
-    becomes an abort stub. Running the constructor half of the capability
-    partition up front makes the refusal independent of which archetype the
-    backend reaches first.
-    """;
     if self._legality is None or not self._legality.units {
         return;
     }
@@ -339,18 +328,6 @@ impl NaIRGenPass._predemote_capability_constructors -> None {
 }
 
 impl NaIRGenPass._codegen_constructors_first(archetypes: list[uni.Archetype]) -> None {
-    """Lower every constructor body before any other body is lowered.
-
-    The companion to `_predemote_capability_constructors`, for the demotions
-    the capability partition cannot predict: a structured error or an emitter
-    exception while lowering a constructor. Those only surface at the
-    constructor's own codegen point, and a construction site lowered before
-    that point would already hold a direct reference to what becomes an abort
-    stub. Lowering constructors first means every non-constructor body sees a
-    settled answer from `_demoted_init_of`. A constructor that constructs
-    another class whose constructor demotes later in this same pass is the one
-    case left, and it is bounded by construction order among constructors.
-    """;
     _slots = self._constructor_slots();
     for arch in archetypes {
         arch_name = self._arch_key(arch);
@@ -369,14 +346,6 @@ impl NaIRGenPass._codegen_constructors_first(archetypes: list[uni.Archetype]) ->
 }
 
 impl NaIRGenPass._demoted_init_of(type_name: str) -> (str | None) {
-    """The demoted initializer a `type_name()` would have needed, or None.
-
-    Walks the MRO the way the construction site does and stops at the first
-    class that provides an initializer at all, so a live `init` on a subclass
-    still wins over a demoted one further up. The skipped-methods check comes
-    first per candidate because a demotion that kept its function (a virtual
-    slot) leaves the abort stub sitting in `method_funcs`.
-    """;
     if not self._native_skipped_methods {
         return None;
     }
@@ -694,14 +663,6 @@ impl NaIRGenPass._derived_field_decls(nd: uni.Archetype) -> dict[str, uni.HasVar
 }
 
 impl NaIRGenPass._erased_sig_typevars(nd: uni.Archetype) -> dict[str, list[str]] {
-    """The type params a method signature erases, keyed by the slot naming it.
-
-    A sequence of `T` in a signature lays out as the pointer-flavoured list,
-    exactly as a bare `T` lays out as a raw pointer, so an instantiation at a
-    by-value type is as unsound there as it is in a field. Recording those
-    slots alongside the erased fields lets the construction site refuse both
-    with one rule.
-    """;
     out: dict[str, list[str]] = {};
     if nd.body is None {
         return out;
@@ -776,14 +737,6 @@ impl NaIRGenPass._reject_scalar_type_args(nd: uni.UniNode, type_name: str) -> bo
 impl NaIRGenPass._emit_scalar_type_arg_refusal(
     nd: uni.UniNode, type_name: str, fname: str, tv_name: str, arg: any
 ) -> bool {
-    """Refuse a touch of an erased slot, inside the callable that touches it.
-
-    The slot carries no value the native side put there, so answering with
-    its bits would be wrong rather than merely un-lowered. Emitting here puts
-    the diagnostic inside the enclosing callable's demotion window, which is
-    what turns one un-lowerable declaration into a seam per method that reads
-    or writes it instead of a dead module.
-    """;
     self.emit(
         E5092,
         node_override=nd,
@@ -1245,15 +1198,6 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     keep_func: bool = False,
     stub_body: bool = True
 ) -> bool {
-    """Settle one unit after its lowering ran. Diagnostics the unit recorded
-    since `local_mark` are a refusal the static legality rules did not predict:
-    they move out of the pending list into the legality table as late refusals
-    and the unit is placed on its Python-only implementation. Where the module
-    requires native, or the unit belongs to an element that must be native (an
-    element pin, a native-only construct), they stay behind as errors as
-    well. A unit of a native element in a mixed module has no Python
-    implementation to fall back on: its diagnostics stay pending and the
-    module settles on the server as a whole.""";
     if len(self.ctx.errors_had) <= local_mark {
         return False;
     }
@@ -1288,8 +1232,6 @@ impl NaIRGenPass._owner_element(full_name: str) -> (uni.UniNode | None) {
 }
 
 impl NaIRGenPass._owner_required(full_name: str) -> bool {
-    """Whether the unit belongs to a top-level element of an inferred module
-    that must be native: an element pin or a native-only construct.""";
     if self.module.gen.placement_mode != "inferred" {
         return False;
     }
@@ -1303,10 +1245,6 @@ impl NaIRGenPass._owner_required(full_name: str) -> bool {
 }
 
 impl NaIRGenPass._lacks_python_body(full_name: str) -> bool {
-    """Whether the unit belongs to a native element of an inferred module that
-    placement left part native and part Python. The Python backend emits no
-    body for such an element, only a stub that calls its native symbol, so
-    the unit has no Python implementation to fall back on.""";
     if self.module.gen.placement_mode != "inferred"
         or self.module.decided_codespace == "native" {
         return False;
@@ -1396,7 +1334,6 @@ impl NaIRGenPass._place_unit_python(
 }
 
 impl NaIRGenPass._seam_warnings_on -> bool {
-    """Whether a seam this run takes should also be announced on stderr.""";
     if self._na_debug_on() or bool(self.prog.options.native_debug) {
         return True;
     }
@@ -1408,21 +1345,6 @@ impl NaIRGenPass._seam_warnings_on -> bool {
 impl NaIRGenPass._opaque_field_if_unlowerable(
     arch_name: str, fname: str, local_mark: int
 ) -> (ir.Type | None) {
-    """Spend a field declaration's refusal on the field, not on the module.
-
-    A `has` type with no native layout sits outside every ability body, so
-    `_demote_method_if_unlowerable` has nothing to take it from and the
-    diagnostic used to survive to the end of the run, where a non-empty
-    `errors_had` withholds the module's IR. The declaration owns it here the
-    way #8285 made a signature's declaration own its own: the slot erases to
-    an opaque pointer, the field is recorded so that every read and write of
-    it refuses inside the callable that performs it, and the refusal is
-    re-published as a coverage seam keyed on the field rather than swallowed.
-
-    An erased slot is storage the native side never writes, so the field also
-    joins `struct_field_foreign` -- the constructor, the tracer, the arena and
-    the reference counter all already skip that set.
-    """;
     if len(self.ctx.errors_had) <= local_mark {
         return None;
     }
@@ -1585,13 +1507,6 @@ impl NaIRGenPass._trigger_struct_names(method: uni.Ability) -> list[str] {
 impl NaIRGenPass._read_field_or_refuse(
     nd: uni.UniNode, obj_val: ir.Value, field_name: str, arch_name: str
 ) -> (ir.Value | None) {
-    """Read a field, naming the ancestor when an inherited one is unreachable.
-
-    Only the inherited case speaks up here. Every other way a name can miss
-    the layout already has an owner further out that reports it, and claiming
-    them from this depth would rename diagnostics this change has no business
-    touching.
-    """;
     _mark = len(self.ctx.errors_had);
     _val = self._codegen_field_access(obj_val, field_name, arch_name, nd);
     if _val is None and len(self.ctx.errors_had) == _mark {
@@ -1606,13 +1521,6 @@ impl NaIRGenPass._read_field_or_refuse(
 impl NaIRGenPass._unadopted_field_owner(
     arch_name: str, field_name: str
 ) -> (str | None) {
-    """The ancestor that declares a field this class's layout does not hold.
-
-    A subclass whose ancestor lays out in another unit adopts that unit's slot
-    assignment, and where the two disagree about the header slots there is no
-    assignment to adopt. Naming the ancestor turns the resulting refusal from
-    'some attribute did not lower' into the layout fact behind it.
-    """;
     _arch = self.arch_ast_map.get(arch_name);
     if _arch is None {
         return None;
@@ -2668,20 +2576,6 @@ impl NaIRGenPass._codegen_instantiation(
 }
 
 impl NaIRGenPass._unregistered_class_target(target: uni.UniNode) -> (str | None) {
-    """The class a `Cls.method(...)` names when the native lane has no `Cls`.
-
-    The native import walk registers a struct type for an imported archetype
-    only when it walked that archetype's module; a module it classified
-    Python-side (a Python base, a `::py::` body) leaves nothing behind, so the
-    class name resolves to no native type at all. That is the same crossing a
-    cross-module free-function call makes, and the free-function form refuses
-    out loud -- this lookup is what lets the class-qualified form say the same
-    thing instead of dropping the call on the floor.
-
-    Only a name that resolves to an archetype declared in *another* Jac module
-    answers, so an instance receiver, an enum, and an in-module class that has
-    simply not been registered yet all stay out of it.
-    """;
     import os;
     name = self._get_name(target);
     if name is None
@@ -3491,17 +3385,6 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
 impl NaIRGenPass._refuse_unlowered_method_call(
     nd: uni.FuncCall, method_name: (str | None), receiver: (ir.Value | None), mark: int
 ) -> None {
-    """Refuse a method call that no dispatch arm lowered.
-
-    Every arm of `_codegen_method_call_inner` that lowers a call returns its
-    result; an arm that falls through to `None` has emitted no call at all.
-    A `None` from a method call is indistinguishable from a void result at
-    the expression-statement site, so an unrefused fall-through deletes the
-    call from the program without a word (`x.append(v)` on an `any`
-    receiver lowered to nothing). A refusal already recorded since `mark`
-    names the real cause and stands alone; otherwise this one is emitted, so
-    the enclosing callable demotes instead of running without the call.
-    """;
     if len(self.ctx.errors_had) > mark {
         return;
     }
@@ -3880,7 +3763,6 @@ impl NaIRGenPass._receiver_union_parts(nd: (uni.UniNode | None)) -> (list[str] |
 impl NaIRGenPass._codegen_union_member(
     obj_val: ir.Value, field_name: str, nd: uni.AtomTrailer, parts: list[str]
 ) -> (ir.Value | None) {
-    """Read each union member through its own field layout or accessor.""";
     source_receiver = obj_val;
     result_type = self._lower_type(nd.type);
     if result_type is None {
@@ -4385,15 +4267,6 @@ impl NaIRGenPass._hasvar_is_own(var: uni.UniNode) -> bool {
 impl NaIRGenPass._nogc_drop_replaced_field(
     ftype: ir.Type, old_val: ir.Value, new_val: ir.Value, type_name: str
 ) -> None {
-    """Drop the object an owned field held before a store replaced it.
-
-    A headerless build frees an object when its single owner lets go of it.
-    The object's destructor drops every owned object field, and a field
-    flattened inline drops its old payload on store; a field held by pointer
-    (a class with a vtable, or one on a cycle) must do the same, or the
-    replaced object leaks and its `drop` never runs. Storing the pointer the
-    field already holds replaces nothing.
-    """;
     if not isinstance(ftype, ir.PointerType) {
         return;
     }
@@ -4659,14 +4532,6 @@ impl NaIRGenPass._emit_field_store(
     value_node: (uni.Expr | None) = None,
     union_parts: (list[str] | None) = None
 ) -> None {
-    """Store a lowered value into a resolved receiver's field.
-
-    The receiver and its static type are already known, so this serves both
-    `obj.field = value` and stores with no attribute target in the source,
-    such as the attribute assignments of a typed connect
-    (`+>:E:field=value:+>`). The caller has checked that the field or a
-    property setter exists on `type_name`.
-    """;
     field_indices = self.struct_field_indices.get(type_name, {});
     _setter = self._accessor_slot_of(type_name, field_name, "setter");
     if _setter is None and self._refuse_opaque_field(nd, type_name, field_name) {
@@ -4907,13 +4772,6 @@ impl NaIRGenPass._receiver_routed_method_fn(
 }
 
 impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None) {
-    """`super.init(...)` that reaches the initializer an `obj` derives from
-    its `has` fields. No ancestor defines `init`, so there is no function to
-    call; the derived initializer only assigns its fields, which lowers as
-    those field stores on `self`. Returns None, emitting nothing, for anything
-    that initializer would do beyond the stores: a post-initializer to run, a
-    defaulted field to reset, a property setter, or an ancestor this unit
-    cannot see.""";
     owner = self._self_arch;
     if owner is None {
         return None;
@@ -4993,13 +4851,7 @@ impl NaIRGenPass._codegen_super_field_init(nd: uni.FuncCall) -> (ir.Value | None
     if self_slot is None {
         return None;
     }
-    """Every argument is evaluated before any field changes, as the call would
-    evaluate them before the initializer runs: `super.init(1, self.x)` reads
-    the `x` the child had, not the 1 it is about to store. Each value is also
-    made owned before the next is evaluated: a borrowed read such as
-    `self.first` would otherwise be released, or its text freed, by the store
-    into `first` before the store into another field takes it. The store then
-    moves the owned value into its field.""";
+
     values: list[tuple[str, uni.Expr, ir.Value, bool]] = [];
     field_types = self.struct_field_types.get(owner, {});
     borrow_fields = self.struct_field_borrow.get(owner, set());
@@ -5178,7 +5030,6 @@ impl NaIRGenPass._jc_reference_schema(
     layouts: dict[str, tuple[list[int], int]],
     semantic: TypeBase | None = None
 ) -> (dict[str, any] | None) {
-    """Combine semantic reference types with the backend's container ABI.""";
     args = semantic.private.type_args or [] if isinstance(semantic, ClassType) else [];
 
     semantic_name = (class_type_native_name(semantic) or "")
@@ -5385,25 +5236,6 @@ impl NaIRGenPass._build_jc_layout -> dict[str, any] {
 }
 
 impl NaIRGenPass._report_unreachable_overrides -> None {
-    """Refuse an override an imported base's own body can never reach (E5113).
-
-    Whether a class carries a vtable is decided in its own module
-    (`LayoutPass`), where subclasses in other modules are not visible. A
-    root class that is nobody's parent there, nor abstract, nor an
-    isinstance or OSP archetype, is lowered flat: its methods bind
-    `self.m()` straight to its own `m`. When an importer subclasses it,
-    `relax_vtable_header` drops the subclass's header to agree, so an
-    override declared here is reachable only through the subclass's own
-    static type -- a base method the subclass inherits still calls the
-    base's body, and nothing says so.
-
-    Like E5089 the check is deliberately narrow: it reports what the tree
-    proves, an inherited method of a flat imported base whose body calls
-    `self.X(...)` for an `X` this class overrides. An override no base body
-    dispatches to diverges only through callers holding the base type,
-    which this unit cannot see, and stays unreported. A base that carries a
-    vtable dispatches through it and is never reported.
-    """;
     import os;
 
     if self.module is None or self.module.loc is None {

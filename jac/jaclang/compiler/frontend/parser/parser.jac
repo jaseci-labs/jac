@@ -199,6 +199,7 @@ obj Parser {
         source: Source postinit,
         diags: list[SrcDiag] = [],
         _view_body_depth: int = 0,
+        _lambda_block: bool = False,
         _no_connect_op_depth: int = 0,
         _gen_test_idx: int = 0;
 

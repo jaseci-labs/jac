@@ -23,7 +23,3 @@ def:pub TabsTrigger(props: any) -> JsxElement;
 def:pub TabsContent(props: any) -> JsxElement;
 
 def:pub tabsListVariants -> any;
-
-impl tabsListVariants -> any {
-    return _tabsListVariants;
-}
