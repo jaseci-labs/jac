@@ -1,16 +1,34 @@
+impl module_files(module: Path) -> list[Path] {
+    return [module] + [Path(p) for p in discover_annex_files(str(module), ".impl.jac")];
+}
+
+impl stage_module(module: Path, dst_dir: Path) -> None {
+    home = module.resolve().parent;
+    for part in module_files(module) {
+        target = dst_dir / part.resolve().relative_to(home);
+        target.parent.mkdir(parents=True, exist_ok=True);
+        shutil.copy2(part, target);
+    }
+}
+
 impl source_workspace(source: Path, name: str) -> Path {
     digest = hashlib.sha256();
     digest.update(file_digest(Path(sys.executable)).encode());
-    files = sorted(
-        [
-            p
-            for p in source.iterdir()
-            if p.is_file() and (p.suffix == ".jac" or p.name == "cef_sums.lock")
-        ]
-    );
-    for path in files {
-        digest.update(path.name.encode());
-        digest.update(path.read_bytes());
+    real_source = source.resolve();
+    files: list[Path] = [];
+    for p in sorted(source.iterdir()) {
+        if p.is_file() and p.name == "cef_sums.lock" {
+            files.append(p);
+        } elif p.is_file()
+            and p.suffix == ".jac"
+            and not p.name.endswith(".impl.jac") {
+            files.extend(module_files(p));
+        }
+    }
+    rels = sorted({str(p.resolve().relative_to(real_source)) for p in files});
+    for rel in rels {
+        digest.update(rel.encode());
+        digest.update((real_source / rel).read_bytes());
     }
     destination = build_slot(name, host_platform(), digest.hexdigest()[:20]);
     with FileLock(destination.with_suffix(".lock")) {
@@ -21,8 +39,9 @@ impl source_workspace(source: Path, name: str) -> Path {
             ) as tmp {
                 staged = Path(tmp) / "source";
                 staged.mkdir();
-                for path in files {
-                    shutil.copy2(path, staged / path.name);
+                for rel in rels {
+                    (staged / rel).parent.mkdir(parents=True, exist_ok=True);
+                    shutil.copy2(real_source / rel, staged / rel);
                 }
                 publish_build_slot(staged, destination);
             }

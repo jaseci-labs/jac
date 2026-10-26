@@ -44,35 +44,3 @@ obj CodeLocInfo {
     def __str__ -> str;
     def span -> Span;
 }
-
-impl CodeLocInfo.orig_src.getter -> Source {
-    return self.first_tok.orig_src;
-}
-
-impl CodeLocInfo.mod_path.getter -> str {
-    return self.first_tok.orig_src.file_path;
-}
-
-impl CodeLocInfo.first_line.getter -> int {
-    return self.first_tok.line_no;
-}
-
-impl CodeLocInfo.last_line.getter -> int {
-    return self.last_tok.end_line;
-}
-
-impl CodeLocInfo.col_start.getter -> int {
-    return self.first_tok.c_start;
-}
-
-impl CodeLocInfo.col_end.getter -> int {
-    return self.last_tok.c_end;
-}
-
-impl CodeLocInfo.pos_start.getter -> int {
-    return self.first_tok.pos_start;
-}
-
-impl CodeLocInfo.pos_end.getter -> int {
-    return self.last_tok.pos_end;
-}

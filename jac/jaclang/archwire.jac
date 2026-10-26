@@ -1,23 +1,24 @@
 graph import {
     edge Artifacts: artifacts.* --> cli.* | client.* | compiler.* | data.* | dist.* | project.* | server.* | toolchains.*;
     edge BootstrapManifest: bootstrap_manifest --> compiler.* | dist.* | project.*;
-    edge Byllm: byllm.* --> cli.* | runtime.* | scale.*;
+    edge Byllm: byllm.* --> cli.* | runtime.* | scale.* | studio.*;
     edge Cache: cache.* --> byllm.* | cli.* | client.* | compiler.* | data.* | dist.* | packages.* | project.* | scale.* | server.* | toolchains.*;
     edge Cli: cli.* --> byllm.* | client.* | compiler.* | dist.* | jac0core.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
     edge Client: client.* --> cli.* | compiler.* | dist.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
-    edge Compiler: compiler.* --> cli.* | client.* | dist.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.*;
+    edge Compiler: compiler.* --> cli.* | client.* | dist.* | lsp.* | packages.* | project.* | runtime.* | scale.* | server.* | studio.* | testing.* | toolchains.*;
     edge Comptime: comptime --> byllm.* | cli.* | client.* | scale.* | server.*;
-    edge Data: data.* --> cli.* | client.* | compiler.* | runtime.* | scale.* | server.*;
+    edge Data: data.* --> cli.* | client.* | compiler.* | runtime.* | scale.* | server.* | studio.*;
     edge Dist: dist.* --> cli.* | client.* | compiler.* | packages.* | scale.*;
     edge Jac0: jac0 --> dist.*;
     edge Jac0core: jac0core.* --> artifacts.* | cache.* | cli.* | client.* | compiler.* | data.* | dist.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
-    edge Lsp: lsp.* --> cli.*;
+    edge Lsp: lsp.* --> cli.* | studio.*;
     edge MetaImporter: meta_importer --> client.*;
     edge Packages: packages.* --> cli.* | client.* | dist.* | project.*;
-    edge Project: project.* --> artifacts.* | byllm.* | cache.* | cli.* | client.* | compiler.* | data.* | dist.* | lsp.* | packages.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
-    edge Runtime: runtime.* --> byllm.* | cli.* | client.* | compiler.* | comptime | data.* | dist.* | lib.* | project.* | scale.* | server.* | testing.*;
+    edge Project: project.* --> artifacts.* | byllm.* | cache.* | cli.* | client.* | compiler.* | data.* | dist.* | lsp.* | packages.* | runtime.* | scale.* | server.* | studio.* | testing.* | toolchains.*;
+    edge Runtime: runtime.* --> byllm.* | cli.* | client.* | compiler.* | comptime | data.* | dist.* | lib.* | project.* | scale.* | server.* | studio.* | testing.*;
     edge Scale: scale.* --> cli.* | client.* | runtime.* | server.*;
     edge Server: server.* --> cli.* | client.* | compiler.* | data.* | dist.* | runtime.* | scale.* | testing.*;
+    edge Studio: studio.* --> cli.*;
     edge Testing: testing.* --> cli.* | compiler.* | runtime.* | scale.*;
     edge Toolchains: toolchains.* --> client.* | compiler.* | data.* | dist.* | packages.* | scale.*;
 
@@ -142,10 +143,12 @@ graph import {
         when_litellm_loaded
     }
     comptime byllm.cli ++> cli.manifest { SPEC_MODEL }
-    byllm.config_loader --> runtime.runtime.JacLLM.default_llm { get_byllm_config }
+    byllm.config_loader --> runtime.runtime.JacLLM.default_llm
+        | studio.native_agent.NativeAgentSession.resolve_llm { get_byllm_config }
     byllm.exceptions --> runtime.runtime.JacLLM.default_llm { ConfigurationError }
     byllm.llm ++> runtime.runtime.JacLLM.by_operator { BaseLLM }
-    byllm.llm --> runtime.runtime.JacLLM.default_llm { Model }
+    byllm.llm --> runtime.runtime.JacLLM.default_llm
+        | studio.native_agent.NativeAgentSession.resolve_llm { Model }
     byllm.mtir ++> [
         runtime.runtime.JacLLM.by._decorator._wrapped_caller { MTIR },
         runtime.runtime.JacLLM.get_mtir { MTIR },
@@ -655,16 +658,23 @@ graph import {
         server.hmr.HotReloader._reload_server_module { reprepare_application },
     ]
     compiler.driver.bccache ++> [
-        cli.commands.analysis._check_file_job
+        cli.commands.analysis._annex_moves
             | project.compiler_host.ProjectHost.base_file
             | server.hmr
+            | studio.intel
             | testing.cl_test_runner.module_entry_for { discover_base_file },
+        cli.commands.analysis._check_file_job { discover_base_file },
         cli.commands.analysis._drop_covered_annexes { discover_base_file },
         cli.commands.analysis._float_impls_to_annex
             | cli.commands.architecture
-            | project.compiler_host.ProjectHost.annex_files { discover_annex_files },
+            | project.compiler_host.ProjectHost.annex_files
+            | toolchains.desktop.module_files { discover_annex_files },
         cli.commands.analysis._unit_weight { discover_annex_files },
-        lsp.server.engine { discover_annex_files, discover_base_file },
+        cli.commands.analysis._with_annex_owners { discover_base_file },
+        lsp.server.engine | studio.intel_server {
+            discover_annex_files,
+            discover_base_file
+        },
         project.compiler_host.ProjectHost.is_annex_path_of
             | project.kernel_snapshot.session_inputs { host_layout_tables },
         project.compiler_host.ProjectHost.package_init { host_layout_tables },
@@ -710,6 +720,7 @@ graph import {
             | project.kernel_check
             | project.kernel_compile
             | project.kernel_snapshot
+            | studio.gate
             | testing.cl_test_runner.module_is_client { CompileOptions },
         cli.commands.analysis.explain
             | dist.precompile_bytecode.prebuild_native_closure { CompileOptions },
@@ -724,7 +735,7 @@ graph import {
         },
         dist.precompile_bytecode.precompile_native_unit { CompileOptions },
         dist.precompile_bytecode.seal_native { CompileOptions },
-        lsp.server.engine { CancelToken },
+        lsp.server.engine | studio.intel_server { CancelToken },
     ]
     compiler.driver.compile_options --> [
         cli.commands.execution._exec_file { CompileOptions as _RunOpts },
@@ -895,7 +906,7 @@ graph import {
         | cli.commands.transform.py2jac
         | project.compiler_host.ProjectHost.parse_python { CompilationProduct }
     compiler.driver.program ++> [
-        cli.commands.analysis._check_file_job
+        cli.commands.analysis._annex_moves
             | cli.commands.architecture
             | cli.commands.execution.debug
             | cli.commands.fix._format_source
@@ -916,28 +927,31 @@ graph import {
             | project.kernel_compile
             | project.kernel_snapshot
             | server.hmr.HotReloader._classify_declarations
+            | studio.gate
+            | studio.model
             | testing.cl_test_runner.compile_cl_module
             | testing.test_runner._fresh_jac_state { JacProgram },
-        cli.commands.analysis._float_impls_to_annex
+        cli.commands.analysis._check_file_job
             | cli.commands.fix._verify_claims
             | cli.commands.transform.jac2py
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_js._do_jac2js
             | dist.precompile_bytecode.prebuild_native_closure
             | testing.cl_test_runner.module_is_client { JacProgram },
-        cli.commands.analysis._format_single_file_worker
+        cli.commands.analysis._float_impls_to_annex
             | cli.commands.transform.py2jac
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py
             | dist.precompile_bytecode.precompile_native_unit { JacProgram },
-        cli.commands.analysis.explain
+        cli.commands.analysis._format_single_file_worker
             | cli.mcp.compiler_bridge.CompilerBridge.parse_snippet._do_parse
             | dist.precompile_bytecode.precompile_unit_context { JacProgram },
-        cli.commands.analysis.grammar
+        cli.commands.analysis.explain
             | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac
             | dist.precompile_bytecode.seal_native { JacProgram },
-        cli.commands.analysis.lint
+        cli.commands.analysis.grammar
             | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck {
             JacProgram
         },
+        cli.commands.analysis.lint { JacProgram },
         dist.publish.builder._backend_source { JacProgram as JacProgramRt },
         dist.publish.builder._module_is_client_source { JacProgram as JacProgramRt },
     ]
@@ -1011,7 +1025,19 @@ graph import {
         project.compiler_host.ProjectHost.place_wired_imports { place_wired_imports },
         project.compiler_host.ProjectHost.session { wiring_scope },
         project.compiler_host.ProjectHost.wiring_file { arch_file_for, is_arch_file },
+        studio.gate {
+            WireRec,
+            WiringSpec,
+            arch_file_for,
+            is_arch_file,
+            parse_records,
+            rule_text,
+            wiring_facts,
+            wiring_for_path
+        },
+        studio.model { ARCH_FILE_NAME, WiringSpec, wiring_for_path },
     ]
+    compiler.driver.wiring as wiring_mod ++> studio.gate;
     compiler.frontend.codeinfo ++> [
         cli.check_report.print_native_coverage { effective_default_codespace },
         cli.commands.execution._count_jac_files
@@ -1065,6 +1091,7 @@ graph import {
             JacSemTokenType as SemTokType
         },
         packages.api { SymbolAccess, SymbolType },
+        studio.intel_server { JacSemTokenModifier, JacSemTokenType },
     ]
     compiler.frontend.diagnostic_utils ++> cli.commands.analysis.check {
         resolve_diagnostic_tokens
@@ -1096,6 +1123,7 @@ graph import {
             kernel_host_mode
         },
         project.kernel_snapshot.session_inputs { package_root },
+        studio.gate { active_host, install_host, set_kernel_host_mode },
     ]
     compiler.frontend.host --> project.compiler_host.ProjectHost.native_analyze {
         active_host,
@@ -1150,15 +1178,16 @@ graph import {
         cli.commands.fix._parses_clean { parse as rd_parse },
     ]
     compiler.frontend.parser.frontend ++> [
-        cli.commands.architecture._parse_imports { parse_woven },
+        cli.commands.architecture._parse_imports | studio.gate { parse_woven },
         project.compiler_host.ProjectHost.native_parse { finish_parse },
         project.compiler_host.ProjectHost.woven_module { annex_sources, parse_woven },
+        studio.model { annex_sources, parse },
     ]
     compiler.frontend.parser.frontend --> cli.commands.analysis._check_file_job
         | lsp.server.engine.JacLangServer.type_check_file { _replay_diags, parse_diags }
     compiler.frontend.parser.lexer ++> [
         cli.commands.fix._strip_markers { tokenize },
-        lsp.server.engine { tokenize_full },
+        lsp.server.engine | studio.intel { tokenize_full },
     ]
     compiler.frontend.parser.lexer --> [
         cli.commands.analysis._check_file_job { Lexer },
@@ -1261,7 +1290,10 @@ graph import {
             | lsp.server.sem_manager
             | lsp.server.utils
             | project.compiler_host.ProjectHost.parse_python
-            | project.kernel_snapshot,
+            | project.kernel_snapshot
+            | studio.gate
+            | studio.intel_server
+            | studio.model,
         cli.commands.fix._imported_names,
         cli.commands.fix._module_has_jsx,
         cli.commands.fix._plain_top_decls,
@@ -1272,7 +1304,9 @@ graph import {
         | project.compiler_host { Module }
     compiler.frontend.unparse ++> dist.publish.dts
         | dist.publish.jsdoc
-        | lsp.server.engine { unparse_node }
+        | lsp.server.engine
+        | studio.gate
+        | studio.model { unparse_node }
     compiler.native_compiler ++> project.kernel_check.analysis_kernel
         | project.kernel_compile.kernel_route
         | project.kernel_snapshot.loaded_kernel { ensure_loaded }
@@ -1287,7 +1321,10 @@ graph import {
         dist.precompile_bytecode.seal_native { in_native_scope_path },
     ]
     compiler.native_scope --> dist.precompile_bytecode.native_roots { kernel_root_path }
-    compiler.passes.annex_weave ++> cli.commands.architecture { import_form }
+    compiler.passes.annex_weave ++> [
+        cli.commands.architecture { import_form },
+        studio.model { merge_annex_into },
+    ]
     type compiler.passes.annex_weave ++> project.compiler_host { WovenAnnex }
     compiler.passes.context ++> [
         lsp.server.utils | project.kernel_check { Alert },
@@ -1346,7 +1383,9 @@ graph import {
         dist.precompile_bytecode.adopt_kernel { host_target_spec },
     ]
     compiler.target_spec --> dist.precompile_bytecode.seal_native { host_target_spec }
-    compiler.tools.code_intel ++> cli.commands.code { CodeIntelligence }
+    compiler.tools.code_intel ++> cli.commands.code | studio.native_agent {
+        CodeIntelligence
+    }
     compiler.tools.grammar_extract_pass ++> cli.commands.analysis.grammar {
         GrammarExtractPass
     }
@@ -1416,6 +1455,7 @@ graph import {
             | cli.commands.native
             | cli.commands.precompile
             | cli.commands.project
+            | cli.commands.studio
             | cli.commands.tools
             | cli.shadcn.cli
             | client.cli
@@ -1497,7 +1537,8 @@ graph import {
             | runtime.builtin._get_archetype_alias.factory.decorator
             | server.endpoints.walkers
             | server.server
-            | server.session.Session._expired { Serializer },
+            | server.session.Session._expired
+            | studio.session { Serializer },
         server.session { frozen_fields },
         server.session.Session._load_edges { Serializer },
         server.session.Session._materialize { Serializer },
@@ -1803,6 +1844,9 @@ graph import {
         | project.modresolver._candidate_from_stub_catalog { active }
     lib.jaclib as _jaclib ++> lib;
     include lib.jaclib ++> lib;
+    lsp.protocol.server ++> studio.intel_server { Workspace }
+    lsp.protocol.types as lspt ++> studio.intel_server;
+    lsp.server.engine ++> studio.intel_server { JacLangServer }
     lsp.server.server ++> cli.commands.tools.lsp { run_lang_server }
     meta_importer ++> client.targets.desktop.native.host_boot._ensure_jac_meta_importer {
         JacMetaImporter
@@ -1919,6 +1963,7 @@ graph import {
         client.targets.desktop.desktop_build.stage_program { client_assets_dir },
         compiler.driver.application._prepare_revision { client_input_dirs },
     ]
+    project.compiler_host ++> studio.gate | studio.model { ProjectHost }
     project.config ++> [
         artifacts.router._provision
             | data.pg_dist.bundled_dist_dir
@@ -2054,7 +2099,8 @@ graph import {
             | client.targets.react_native.scaffold._project_native_deps
             | scale.config.app_config
             | scale.runtime.realizer.kubernetes_realizer.KubernetesRealizer._resolve_fleet
-            | server.endpoints.colocated.served_app_route { get_config_for_dir },
+            | server.endpoints.colocated.served_app_route
+            | studio.app { get_config_for_dir },
         dist.publish.metadata | dist.publish.package_json { JacConfig, PersonConfig },
         packages.migrate { serialize_toml, toml_minimal_update },
         scale.config.dev_config.resolve_dev_channel
@@ -2282,7 +2328,9 @@ graph import {
         client.cli | client.plugin_config { EcosystemProvider },
     ]
     project.pyvenv ++> [
-        cli.commands.execution._discover_config_from_file { add_venv_to_path },
+        cli.commands.execution._discover_config_from_file | studio.app {
+            add_venv_to_path
+        },
         cli.commands.execution._ensure_watchdog_installed { add_venv_to_path },
         cli.commands.execution._pin_run_scope { add_venv_to_path },
         cli.commands.project._update_pypi { make_git_spec },
@@ -2311,7 +2359,11 @@ graph import {
         compiler.passes.import_wiring_pass
             | compiler.passes.pyast_load_pass.PyastBuildPass.convert
             | compiler.tools.lang_tools { pascal_to_snake },
+        dist.seal.make_sealed_image { is_secret_file, path_matches_exclude },
+        packages.artifact.package_copy_ignore
+            | scale.injector.bundle.BundleSourceFilter.excludes { is_secret_file },
         runtime.traceback_render { pretty_print_source_location },
+        scale.injector.bundle.BundleSourceFilter.exclusion_reason { is_secret_file },
         scale.injector.bundle.BundleSourceFilter.parks { path_matches_exclude },
     ]
     project.template_loader ++> [
@@ -2333,12 +2385,13 @@ graph import {
         TemplateRegistry
     }
     project.textio ++> [
-        cli.commands.analysis._float_impls_to_annex
+        cli.commands.analysis._annex_moves
             | cli.commands.architecture
             | cli.commands.transform.py2jac
             | compiler.driver.compiler
             | compiler.tools.lang_tools
             | runtime.traceback_render { read_file_with_encoding },
+        cli.commands.analysis._float_impls_to_annex { read_file_with_encoding },
         cli.commands.analysis._format_single_file_worker { read_file_with_encoding },
         cli.commands.analysis._iter_jac_files | cli.commands.architecture._arch_files {
             drop_git_ignored
@@ -2347,7 +2400,9 @@ graph import {
             read_file_with_encoding,
             span_for_file
         },
-        scale.injector.bundle.source_filter_for { read_jacignore_patterns },
+        dist.seal.make_sealed_image | scale.injector.bundle.source_filter_for {
+            read_jacignore_patterns
+        },
     ]
     project.textio --> [
         cli.commands.analysis._check_file_job { read_file_with_encoding as _read_src },
@@ -3380,7 +3435,8 @@ graph import {
             | project.plugin_config
             | scale.memory.context.JScaleExecutionContext.init
             | server.request_scope
-            | server.sv_client._local_call { JacRuntime },
+            | server.sv_client._local_call
+            | studio.session { JacRuntime },
         byllm.visit_routing.route_visit
             | cli.commands.cli_helpers.proc_file
             | cli.commands.execution._discover_config_from_file
@@ -4236,6 +4292,7 @@ graph import {
         client.targets.mobile_target.MobileTarget.dev
             | client.targets.web_target.WebTarget.dev { JacFileWatcher },
     ]
+    studio.app ++> cli.commands.studio.studio { run_studio }
     testing.cl_test_runner ++> scale.tests.server.test_cl_test_runner {
         run_cl_test_file
     }
@@ -4294,6 +4351,14 @@ graph import {
     }
     toolchains.cef ++> client.targets.desktop.cef_shell { ensure_cef }
     toolchains.desktop ++> [
+        client.targets.desktop.cef_shell._ensure_cef_subprocess
+            | client.targets.desktop.desktop_build._unit_source { module_files },
+        client.targets.desktop.cef_shell._ensure_libcef_dispatch { module_files },
+        client.targets.desktop.cef_shell.cef_build
+            | client.targets.desktop.desktop_build._stage_fused_runtime
+            | client.targets.desktop.webview_shell._assemble_native_host {
+            stage_module
+        },
         client.targets.desktop.desktop_build._find_cef_dir { source_workspace },
         client.targets.desktop.desktop_build._find_webview_dir { source_workspace },
         client.targets.desktop.desktop_build.build_cef_dispatch { source_workspace },
@@ -4522,7 +4587,7 @@ graph import byllm {
 
 graph import byllm._optdeps {
     _deferred ++> [
-        litellm { DeferredClassMeta, DeferredModule, is_installed, when_loaded },
+        litellm { DeferredClassMeta, is_installed, when_loaded },
         openai { DeferredClassMeta, DeferredModule, is_installed },
     ]
 }
@@ -4598,6 +4663,7 @@ graph import cli {
             | commands.native
             | commands.precompile
             | commands.project
+            | commands.studio
             | commands.tools { Arg, ArgKind, CommandSpec },
         commands.mcp | shadcn.cli { Arg, CommandSpec },
         commands.tools._extract_commands { ArgKind },
@@ -4644,6 +4710,7 @@ graph import cli {
         SPEC_REMOVE,
         SPEC_UPDATE
     }
+    comptime commands.studio ++> manifest { SPEC_STUDIO }
     comptime commands.tools ++> manifest {
         SPEC_COMPLETIONS,
         SPEC_DOT,
@@ -4956,6 +5023,7 @@ graph import client {
         asset_processor.AssetProcessor.copy_custom_asset_types
             | client_deps
             | jac_client_compiler.JacClientCompiler.copy_root_assets
+            | targets.desktop.desktop_target.DesktopTarget.build
             | targets.mobile_target
             | targets.react_native.common
             | targets.web_target._pwa_enabled
@@ -4971,7 +5039,8 @@ graph import client {
             | targets.desktop.webview_shell._assemble_native_host {
             get_desktop_config
         },
-        targets.desktop.desktop_target.DesktopTarget.engine { get_desktop_config },
+        targets.desktop.desktop_target.DesktopTarget.engine
+            | targets.desktop.webview_shell.webview_dev { get_desktop_config },
         targets.desktop.macos_bundle { DesktopIdentity },
     ]
     desktop_plugin_config ++> desktop_config._validate_plugin_keys {
@@ -5238,6 +5307,7 @@ graph import client.targets.desktop {
             build_cef_dispatch,
             build_cef_subprocess,
             desktop_storage_identifier,
+            inject_backend_script,
             stage_postgres,
             stage_program
         },
@@ -5249,6 +5319,7 @@ graph import client.targets.desktop {
             _jac_subprocess_env,
             _stage_fused_runtime,
             desktop_storage_identifier,
+            inject_backend_script,
             stage_postgres,
             stage_program
         },
@@ -5262,7 +5333,11 @@ graph import client.targets.desktop {
 }
 
 graph import client.targets.desktop.native {
-    broker_extension ++> host_boot.serve_program { DesktopBrokerExtension }
+    backend_choice ++> [
+        broker_extension { BackendChoice },
+        host_boot.boot { ASK, BackendChoice },
+    ]
+    broker_extension ++> host_boot.boot { DesktopBrokerExtension }
     oauth_broker ++> [
         broker_extension {
             CLOSE_PAGE,
@@ -5274,6 +5349,10 @@ graph import client.targets.desktop.native {
             build_sso_login_url
         },
         host_boot.boot { SessionStore },
+    ]
+    profile_store ++> [
+        broker_extension { ProfileStore, clean_profile_name, new_profile_id },
+        host_boot.boot { ProfileStore },
     ]
     webview.webview ++> plugin_bridge { respond }
 }
@@ -7114,7 +7193,8 @@ graph import compiler {
             W3051,
             W3053,
             W3054,
-            W3055
+            W3055,
+            W3056
         },
         tools.jac_auto_lint_pass.JacAutoLintPass._check_filter_compare_tautology {
             W3040
@@ -7275,6 +7355,7 @@ graph import compiler {
         },
         driver.pass_driver { CheckSettings, active_host },
         driver.program.JacProgram.jac_file_linter
+            | tools.jac_auto_lint_pass.JacAutoLintPass._is_sibling_annex
             | types.type_evaluator.TypeEvaluator._jac_virtual_sibling_dts {
             active_host
         },
@@ -32837,6 +32918,230 @@ graph import server.serving {
         client { parse_sse },
     ]
     ws ++> client | server { WebSocket, compute_accept_key }
+}
+
+graph import studio {
+    acp ++> agents { AcpSession }
+    agent_session ++> [
+        acp { AgentEvent, AgentSession, blocks_text },
+        agents { AgentSession },
+        native_agent { AgentSession, blocks_text },
+        session | tui { AgentEvent },
+    ]
+    agents ++> [
+        app { AgentRegistry },
+        tui { AgentRegistry, read_studio_table, user_config_path },
+    ]
+    bridge ++> [
+        studio_mcp {
+            BridgeClient,
+            BridgeError,
+            BridgeUnavailable,
+            SOCKET_ENV,
+            find_studio_socket
+        },
+        tui { BridgeServer, StudioQueries },
+    ]
+    context ++> [
+        app { context_blocks, resolve_key },
+        native_agent {
+            WIRE_PREFIX,
+            context_block,
+            module_of,
+            resolve_key,
+            rule_lines,
+            sig_suffix,
+            symbol_context,
+            tidy_sig,
+            wire_line
+        },
+        tui { context_blocks },
+    ]
+    gate ++> [
+        app { EditGate, EditReview, format_review },
+        tui { EditGate, change_groups, leaf_changes, partial_text },
+    ]
+    graph ++> [
+        app { graph_level, in_scope, level_dict, level_text, scope_for },
+        bridge { graph_level, level_dict, scope_for },
+        context {
+            DEPS_PREFIX,
+            MAP_PREFIX,
+            deps_text,
+            graph_level,
+            level_text,
+            parse_deps_key,
+            split_spec
+        },
+        insight {
+            GraphEdge,
+            GraphLevel,
+            effective_scope,
+            graph_level,
+            group_of,
+            in_scope
+        },
+        map_view { GraphEdge, GraphLevel, GraphNode },
+        native_agent { graph_level, level_text, scope_for },
+        tui {
+            MAP_PREFIX,
+            deps_key,
+            edge_wires,
+            graph_level,
+            group_of,
+            parent_scope,
+            parse_deps_key,
+            scope_for,
+            split_spec
+        },
+    ]
+    insight ++> [
+        app {
+            arch_diff,
+            cluster_report,
+            clusters_dict,
+            clusters_text,
+            default_base,
+            diff_dict,
+            diff_text,
+            intent_dict,
+            intent_report,
+            intent_text,
+            interface_dict,
+            interface_of,
+            interface_text,
+            module_roles,
+            reach,
+            reach_dict,
+            reach_text,
+            roles_dict,
+            roles_text,
+            tour_text
+        },
+        bridge | native_agent { insight_run },
+        context { filter_label, filter_modules },
+        map_view {
+            ClusterReport,
+            IntentReport,
+            InterfaceReport,
+            ROLE_ORDER,
+            ROLE_TEXT,
+            RolesReport,
+            WHOLE
+        },
+        tui {
+            arch_diff,
+            cluster_report,
+            default_base,
+            diff_text,
+            filter_label,
+            filter_modules,
+            intent_report,
+            interface_of,
+            module_roles,
+            reach,
+            spec_parts,
+            tour_text
+        },
+    ]
+    intel ++> [
+        app { CodeIntel, Span },
+        tui { CodeIntel },
+    ]
+    intel_server --> [
+        intel.CodeIntel._do_check { check_head, new_cancel_token },
+        intel.CodeIntel._do_invalidate { invalidate_path },
+        intel.CodeIntel._do_query { definition_at, hover_at, references_at },
+        intel.CodeIntel._ensure_engine { new_server },
+        intel.CodeIntel._run { shutdown_server },
+    ]
+    map_view ++> tui {
+        MAP_VIEWS,
+        MapItem,
+        MapState,
+        crumbs,
+        issue_items,
+        map_lines,
+        map_move,
+        view_tabs
+    }
+    model ++> [
+        app { ProjectModel, find_project_root },
+        bridge {
+            ProjectModel,
+            SYM_SCHEME,
+            StAbility,
+            StArchetype,
+            StImpl,
+            StModule,
+            StNode
+        },
+        context {
+            ProjectModel,
+            StAbility,
+            StArchetype,
+            StField,
+            StModule,
+            StNode,
+            WireInfo,
+            sym_uri
+        },
+        graph { Governs, ProjectModel, WireInfo },
+        insight { Governs, ProjectModel, StRule, WireInfo },
+        native_agent { ProjectModel, SKIP_DIRS },
+        tui { ProjectModel, StAbility, StImpl, StModule, StNode, WireInfo },
+    ]
+    native_agent ++> agents { NativeAgentSession }
+    session ++> [
+        app {
+            StudioSession,
+            fork_session,
+            list_sessions,
+            load_session,
+            new_session,
+            sessions_dir,
+            transcript_of
+        },
+        tui { load_session, new_session, transcript_of },
+    ]
+    studio_mcp ++> app { serve_studio_mcp }
+    theme ++> [
+        map_view {
+            C_DIM,
+            C_SEL,
+            C_SEL_FOCUS,
+            THEME,
+            blank,
+            fit,
+            kind_attrs,
+            kind_icon,
+            plain,
+            restyle,
+            sp,
+            with_bg
+        },
+        tui {
+            CODE_STYLES,
+            C_SEL,
+            C_SEL_FOCUS,
+            THEME,
+            blank,
+            fit,
+            kind_attrs,
+            kind_icon,
+            plain,
+            restyle,
+            sp,
+            with_bg,
+            wrap_plain
+        },
+    ]
+    tui ++> app { run_tui }
+    util ++> [
+        app { jac_mcp_server, permission_diffs, unified_diff },
+        gate | intel { COMPILE_LOCK },
+        tui { jac_mcp_server, permission_diffs, read_or_empty, unified_diff },
+    ]
 }
 
 graph import testing {
