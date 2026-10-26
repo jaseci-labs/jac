@@ -1105,7 +1105,6 @@ graph import {
             ANALYSIS_CRASHED,
             AnalysisReport,
             CompileReport,
-            ModuleReport,
             kernel_trace,
             run_kernel_compile
         },
@@ -6829,7 +6828,8 @@ graph import compiler {
             E5113,
             E5114,
             E9001,
-            E9002
+            E9002,
+            E9003
         },
         backends.native.primitives_native
             | driver.module_compile.report_missing_native_ir { E5092 },
@@ -9189,7 +9189,10 @@ graph import compiler {
             Name,
             Token,
             UnaryExpr,
-            UniNode
+            UniNode,
+            int_literal_float,
+            int_literal_i64,
+            int_literal_u64_bits
         },
         types.operations {
             AtomTrailer,
@@ -14249,6 +14252,7 @@ graph import compiler.types {
             unify_numeric_operands
         },
         type_evaluator.TypeEvaluator._extern_field_type { numeric_name_of },
+        type_evaluator.TypeEvaluator._literal_type_from_expr { folded_number },
     ]
     fixed_width --> type_evaluator.TypeEvaluator._get_type_from_flow_node {
         numeric_name_of

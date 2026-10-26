@@ -155,14 +155,11 @@ impl NaIRGenPass._internal_error(
     }
     mark = len(self.ctx.errors_had);
     self.emit(
-        E5092,
+        E9003,
         node_override=nd,
-        kind=f"{kind} (native emitter error in)",
+        kind=kind,
         name=name,
-        help_text=f"The native backend raised {type(exc).__name__} while lowering "
-        f"this {kind}: {exc}. This is a compiler bug -- please report it. Pin the "
-        f"module to the server codespace under [placement.pins] in jac.toml to "
-        f"keep working until it is fixed."
+        details=f"{type(exc).__name__}: {exc}"
     );
     self._internal_errors.extend(self.ctx.errors_had[mark:]);
     del self.ctx.errors_had[mark:];

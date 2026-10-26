@@ -652,17 +652,27 @@ impl EsastGenPass._apply_fw_coercion(nd: uni.Expr) -> None {
     if dst_shape is None {
         return;
     }
+    literal: (uni.UniNode | None) = nd;
+    while isinstance(literal, uni.AtomUnit) {
+        literal = literal.value;
+    }
+    big: (es.Literal | None) = None;
+    if isinstance(cur, es.Literal) {
+        if isinstance(cur.value, int) and not isinstance(cur.value, bool) {
+            big = es.Literal(value=cur.value, raw=f"{cur.value}n");
+        } elif cur.value is None and isinstance(literal, uni.Int) {
+            big = es.Literal(
+                value=None, raw=f"{self._js_int_spelling(literal.value)}n"
+            );
+        }
+    }
     if (
         dst_shape.sized
         and not dst_shape.is_float
         and dst_shape.width == 64
-        and isinstance(cur, es.Literal)
-        and isinstance(cur.value, int)
-        and not isinstance(cur.value, bool)
+        and big is not None
     ) {
-        nd.gen.es_ast = self.sync_loc(
-            es.Literal(value=cur.value, raw=f"{cur.value}n"), jac_node=nd
-        );
+        nd.gen.es_ast = self.sync_loc(big, jac_node=nd);
         return;
     }
     parent = nd.parent;
@@ -742,4 +752,13 @@ impl EsastGenPass._fw_binary(
         return None;
     }
     return self._fw_call(f"{helper}_{name}", [left, right], nd);
+}
+
+impl EsastGenPass._js_int_spelling(text: str) -> str {
+    """Jac allows an underscore right after a radix prefix (`0x_FF`);
+    JavaScript allows one only between digits.""";
+    if len(text) > 2 and text[0] == "0" and text[1] in "xXoObB" and text[2] == "_" {
+        return text[:2] + text[3:];
+    }
+    return text;
 }

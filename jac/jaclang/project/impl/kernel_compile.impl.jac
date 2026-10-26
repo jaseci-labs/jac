@@ -22,7 +22,10 @@ impl kernel_compile(
     emit_closure: bool = False,
     emit_cached: bool = True,
     seeds: (list[PythonInterface] | None) = None
-) -> CompileReport {
+) -> (CompileReport | None) {
+    """The kernel's answer is final. None means only that the program reaches
+    something the host alone can answer (`host_deferred`), so the host
+    compiles it; every other outcome, a crash included, is the kernel's.""";
     import time;
     started = time.monotonic();
     snapshot = kernel_snapshot(
@@ -66,12 +69,7 @@ impl kernel_compile(
         }
     }
     if host_deferred(analysis) {
-        return CompileReport(
-            analysis=AnalysisReport(
-                entry_path=path,
-                modules=[ModuleReport(path=os.path.realpath(path), native=True)]
-            )
-        );
+        return None;
     }
     if analysis.status == ANALYSIS_CRASHED {
         detail = f" ({analysis.misses[-1]})" if analysis.misses else "";
@@ -113,7 +111,7 @@ impl kernel_compile_reported(
     emit_closure: bool,
     emit_cached: bool = True,
     seeds: (list[PythonInterface] | None) = None
-) -> CompileReport {
+) -> (CompileReport | None) {
     try {
         compiled = kernel_compile(
             host,
@@ -129,6 +127,9 @@ impl kernel_compile_reported(
         raise KernelCompileError(
             f"the native compiler kernel could not compile {path}: {err}"
         ) from err;
+    }
+    if compiled is None {
+        return None;
     }
     kernel_trace(
         f"kernel compiled {path}: {len(compiled.units)} unit(s), "
@@ -180,6 +181,9 @@ impl kernel_compile_application(
     compiled = kernel_compile_reported(
         host, program, path, options, in_process, True, seeds=seeds
     );
+    if compiled is None {
+        return None;
+    }
     for unit in compiled.units {
         _APPLICATION_UNITS[os.path.realpath(unit.path)] = unit;
     }

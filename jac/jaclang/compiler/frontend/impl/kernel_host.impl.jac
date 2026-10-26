@@ -1042,9 +1042,7 @@ impl KernelHost.native_lowering_failed(program: JacProgram, path: str, detail: s
     self.census.count("native_lowering_failed");
     if self.fallback is not None {
         self.fallback.native_lowering_failed(program, path, detail);
-        return;
     }
-    self.native_failures[os.path.realpath(path)] = detail;
 }
 
 impl KernelHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {

@@ -88,7 +88,7 @@ impl radix_int(digits: str, base: int) -> int {
     return value;
 }
 
-impl int_literal_value(text: str) -> int {
+impl int_literal_digits(text: str) -> tuple[str, int] {
     lowered = text.lower();
     for (prefix, base) in (("0x", 16), ("0o", 8), ("0b", 2)) {
         if lowered.startswith(prefix) {
@@ -96,14 +96,113 @@ impl int_literal_value(text: str) -> int {
             if body.startswith("_") {
                 body = body[1:];
             }
-            return radix_int(body, base);
+            return (body, base);
         }
     }
     digits = text.replace("_", "");
     if len(digits) > 1 and digits.startswith("0") and digits.strip("0") {
         raise ValueError(f"invalid literal for int() with base 0: '{text}'");
     }
-    return radix_int(text, 10);
+    return (text, 10);
+}
+
+impl int_literal_value(text: str) -> int {
+    (body, base) = int_literal_digits(text);
+    return radix_int(body, base);
+}
+
+impl int_literal_limbs(text: str) -> (tuple[int, int] | None) {
+    """The literal as two 32-bit halves `(high, low)`, or None past 64 bits.
+    No intermediate leaves 37 bits, so the native compiler, whose int is 64
+    bits, reads every literal the way the bytecode compiler does.""";
+    (body, base) = int_literal_digits(text);
+    high = 0;
+    low = 0;
+    seen = False;
+    for c in body.lower() {
+        if c == "_" and seen {
+            continue;
+        }
+        digit = _RADIX_DIGITS.find(c);
+        if digit < 0 or digit >= base {
+            raise ValueError(f"invalid literal for int() with base {base}: '{body}'");
+        }
+        low = low * base + digit;
+        high = high * base + (low >> 32);
+        low = low & 4294967295;
+        if high > 4294967295 {
+            return None;
+        }
+        seen = True;
+    }
+    if not seen {
+        raise ValueError(f"invalid literal for int() with base {base}: '{body}'");
+    }
+    return (high, low);
+}
+
+impl int_literal_i64(text: str) -> (int | None) {
+    limbs = int_literal_limbs(text);
+    if limbs is None or limbs[0] >= 2147483648 {
+        return None;
+    }
+    return limbs[0] * 4294967296 + limbs[1];
+}
+
+impl int_literal_u64_bits(text: str) -> (int | None) {
+    """The literal's 64-bit two's-complement pattern, as the signed int that
+    holds it, when it fits an unsigned 64-bit int: `0xFFFF_FFFF_FFFF_FFFF`
+    is -1. None past 64 bits.""";
+    limbs = int_literal_limbs(text);
+    if limbs is None {
+        return None;
+    }
+    (high, low) = limbs;
+    if high >= 2147483648 {
+        return (high - 4294967296) * 4294967296 + low;
+    }
+    return high * 4294967296 + low;
+}
+
+impl int_literal_float(text: str) -> float {
+    """The literal's value as the nearest float, without forming the integer: a
+    literal past 64 bits still has one (`x: f64 = 9223372036854775808`). A
+    power-of-two radix is rounded once, from its bits: the top 53 are the
+    mantissa and the rest decide round-half-to-even.""";
+    (body, base) = int_literal_digits(text);
+    digits = body.replace("_", "").lower();
+    if base == 10 {
+        return float(digits);
+    }
+    width = 4 if base == 16 else (3 if base == 8 else 1);
+    bits = "";
+    for c in digits {
+        digit = _RADIX_DIGITS.find(c);
+        chunk = "";
+        k = 0;
+        while k < width {
+            chunk = ("1" if digit % 2 == 1 else "0") + chunk;
+            digit = digit // 2;
+            k += 1;
+        }
+        bits += chunk;
+    }
+    bits = bits.lstrip("0");
+    if not bits {
+        return 0.0;
+    }
+    if len(bits) > 1024 {
+        return float("inf");
+    }
+    if len(bits) <= 53 {
+        return float(radix_int(bits, 2));
+    }
+    mantissa = radix_int(bits[:53], 2);
+    rest = bits[53:];
+    if rest[0] == "1" and ("1" in rest[1:] or mantissa % 2 == 1) {
+        mantissa += 1;
+    }
+    return float(mantissa) * (2.0 ** len(rest));
 }
 
 impl _hex_escape_value(text: str, at: int, width: int, kind: str) -> int {

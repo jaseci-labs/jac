@@ -322,8 +322,15 @@ interfaces is checked (`E5116`). A refusal only the backend can see places
 the module on the server in place (`settle_native_module`): the tree was
 typed for no codespace, so the Python backend, which runs after the native
 one in the same schedule, emits it as it is. A backend exception is a
-compiler error and is never absorbed as a refusal, and so is a native unit
-the host fails to link after the kernel lowered it. Nothing about a
+compiler error (E9003, which blocks the module: neither its bytecode nor the
+JCIR the kernel hands the host survives it) and is never absorbed as a
+refusal, and so is a native unit the host fails to link after the kernel
+lowered it. Once the kernel is loaded its answer is final: the host compiles a
+program itself only when the program reaches something only the host can
+answer (`host_deferred`: another copy of the compiler, a native stdlib module
+the kernel has no interface for, third-party Python source). A kernel crash,
+or a kernel answer with no unit and no error, is an error, never a reason to
+compile the program again on the host. Nothing about a
 placement is stored between compiles beyond each module's summary.
 
 Between client and server code the same boundary rule judges what a request
