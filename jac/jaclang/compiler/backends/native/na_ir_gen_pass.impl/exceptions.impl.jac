@@ -66,17 +66,6 @@ impl NaIRGenPass._exc_builtin_sjlj -> bool {
 impl NaIRGenPass._emit_exc_arm(
     b: ir.IRBuilder, env: ir.Value, name: str = ""
 ) -> ir.Value {
-    """Arm the frame whose jump buffer is `env`; nonzero when a raise lands.
-
-    LLVM's builtin setjmp reads the frame and stack pointers from the buffer's
-    first and third words, which the arming function stores itself. LLVM
-    gives an intrinsic its own declaration attributes, so the call carries
-    `returns_twice` itself: without it the code generator reuses the stack
-    slots a raise lands back on while the guarded body runs. Nor does the
-    intrinsic keep LLVM from inlining the arming function, and an inlined
-    arming escapes the volatile locals `_volatilize_setjmp_locals` gives the
-    function it was emitted in, so the function is kept out of line.
-    """;
     if self._exc_builtin_sjlj() {
         b.function.attributes.add("noinline");
         i8p = ir.IntType(8).as_pointer();
@@ -179,14 +168,6 @@ impl NaIRGenPass._emit_exc_pop_helper -> None {
 }
 
 impl NaIRGenPass._emit_exc_raise_helper -> None {
-    """Every checked operation branches to a call of this helper, and LLVM's
-    inliner charges each call site as a full call: its penalty plus one
-    instruction per argument. A small function with a few overflow and null
-    checks then costs more than the inline threshold, so helpers a few loads
-    long stay out of line. A raise site never returns and sits in a block
-    LLVM already treats as cold, so the helper tells the inliner what a site
-    really adds: about one instruction (`call-inline-cost`).
-    """;
     exc_state_type = self._get_exception_state_type();
     exc_state_ptr = exc_state_type.as_pointer();
     i8p = ir.IntType(8).as_pointer();
@@ -1618,8 +1599,7 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     } else {
         b.position_at_end(entry_blk);
     }
-    # The record allocas come before the context call: inlined, that call
-    # branches, and an alloca after the branch is a dynamic stack bump.
+
     env_slot = b.alloca(env_ty, name="unwind.env");
     node_ty = self._unwind_node_type();
     link = b.alloca(node_ty, name="unwind.node");

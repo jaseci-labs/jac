@@ -2758,8 +2758,7 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _wi64 = ir.IntType(64);
             _wi8p = ir.IntType(8).as_pointer();
             _wfn = val;
-            # A named function captures nothing: its closure is one immortal
-            # record per function, built at link time instead of per use.
+
             if isinstance(val, ir.Function) {
                 return self._static_fn_closure(_clos_tgt, val);
             }

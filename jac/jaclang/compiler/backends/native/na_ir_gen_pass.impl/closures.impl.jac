@@ -106,8 +106,6 @@ impl NaIRGenPass._static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Va
     if key in self.llvm_module.globals {
         holder = self.llvm_module.get_global(key);
     } else {
-        # The rc header (alloc id, tag, count, destructor) then the closure:
-        # a sentinel count makes retain and release leave it alone.
         holder_ty = ir.LiteralStructType([i64, i8p, i64, i64, st]);
         holder = ir.GlobalVariable(self.llvm_module, holder_ty, name=key);
         holder.linkage = "private";

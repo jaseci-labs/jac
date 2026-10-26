@@ -1850,7 +1850,7 @@ impl NaIRGenPass._stack_alloc_target_ok(nd: uni.UniNode) -> bool {
     if sym is None or not sym.na_stack_ok {
         return False;
     }
-    # A generator's locals outlive each resumption's native frame.
+
     ability = nd.find_parent_of_type(uni.Ability);
     return ability is None or not self._ability_is_generator(ability);
 }
@@ -2093,8 +2093,6 @@ impl NaIRGenPass._codegen_instantiation(
         if self.rc_set_type_fn is not None {
             self._emit_set_type_tag(self.builder, _stk_i8, type_name);
         }
-        # A local only ever bound to stack records holds no reference to
-        # release, so neither its scope end nor an unwind releases it.
         _stk_asgn = nd.find_parent_of_type(uni.Assignment);
         if _stk_asgn is not None
             and len(_stk_asgn.target) == 1
