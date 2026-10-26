@@ -116,7 +116,6 @@ impl running_executable -> str {
 }
 
 impl jac_binary -> str {
-    """This process's executable when it is a fused jac binary, else empty.""";
     exe = running_executable();
     return exe if runtime_trailer(exe) is not None else "";
 }

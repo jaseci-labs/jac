@@ -166,8 +166,6 @@ impl NaIRGenPass._maybe_declare_ability(
         self._module_functions[(real_path(_fdm.source.file_path), name)] = func;
         self._func_def_mod[name] = _fdm.name;
         if _fdm is not self.module {
-            """Two imported modules may each define a function of one name;
-            a module-qualified call finds the one its module defines.""";
             self.scope.bind_function(f"{_fdm.name}.{name}", func);
         }
     }
@@ -790,9 +788,6 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
 impl NaIRGenPass._demote_native_test(
     nd: uni.Test, func: ir.Function, local_mark: int
 ) -> None {
-    """A test that cannot run natively is a seam like any function: it leaves
-    the native test table and runs its Python body in the server codespace.""";
-
     line = nd.loc.first_line if nd.loc else 0;
     key = native_test_symbol(nd.name.sym_name, line);
     if not self._demote_method_if_unlowerable(key, func, local_mark, keep_func=True) {
@@ -1134,7 +1129,6 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._ability_is_generator(nd: uni.Ability) -> bool {
-    """Whether the ability's own body yields -- inline, or in its impl annex.""";
     for y in nd.element_sub_nodes(uni.YieldExpr) {
         if y.enclosing_frame is nd {
             return True;

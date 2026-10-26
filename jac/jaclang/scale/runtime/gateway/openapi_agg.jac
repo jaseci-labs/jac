@@ -12,11 +12,6 @@ obj SpecFetch {
 }
 
 
-impl SpecFetch.answered -> bool {
-    return self.status > 0 and self.status < 500;
-}
-
-
 async def fetch_service_spec(
     service_entry: ServiceEntry, timeout: float = 5.0
 ) -> SpecFetch;

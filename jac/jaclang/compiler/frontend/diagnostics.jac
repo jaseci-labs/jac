@@ -367,7 +367,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,
-         "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc."
+         "A string on its own does nothing. Docstrings go before the declaration, not inside the body; write a note inside a body as a # comment."
      ),
      W0063 = _warn(
          "W0063",
@@ -2112,7 +2112,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Docstring can be removed [strip-docstrings]",
          help="'Deslop' rule, on under select = [\"all\"] (not [\"default\"]) or "
          "when \"strip-docstrings\" is named in [check.lint] select. "
-         "`jac fmt --lintfix` then removes all docstrings."
+         "`jac fmt --lintfix` then removes all docstrings, and every string "
+         "written as a statement inside a body."
      ),
      W3053 = _warn(
          "W3053",
@@ -2140,6 +2141,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "\"separate-impls\" is named in [check.lint] select. "
          "`jac fmt --lintfix` leaves the declaration in place and moves its body"
          " into an `impl` at the bottom of the module."
+     ),
+     W3056 = _warn(
+         "W3056",
+         Category.LINT,
+         "{what} [impls-in-annex]",
+         help="On under select = [\"all\"] (not [\"default\"]) or when "
+         "\"impls-in-annex\" is named in [check.lint] select. Every impl lives in"
+         " its module's `impl/<module>.impl.jac` annex (or `<module>.impl/` for a"
+         " dotted stem such as a platform variant), never in the module itself or"
+         " beside it. `jac fmt --lintfix` moves the impls and relocates the annex."
      ),
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -2174,7 +2185,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "strip-docstrings": "W3051",
          "remove-wired-import": "W3053",
          "remove-dead-import": "W3054",
-         "separate-impls": "W3055"
+         "separate-impls": "W3055",
+         "impls-in-annex": "W3056"
      },
      E5001 = _err(
          "E5001",

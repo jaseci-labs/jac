@@ -239,7 +239,6 @@ impl BoundaryAnalysisPass._register_native_absorb(nd: Import) -> None {
 impl BoundaryAnalysisPass._caller_context(
     nd: Import, import_context: InteropContext
 ) -> InteropContext {
-    """Interop context of the caller site: client wins, then native.""";
     if (nd.in_client_context()) {
         return InteropContext.CLIENT;
     }
@@ -1559,6 +1558,7 @@ impl BoundaryAnalysisPass.finish with exit {
 }
 
 impl BoundaryAnalysisPass._record_surface(manifest: InteropManifest) -> None {
+    import os;
     if not (self.module and self.module.body) {
         return;
     }
@@ -1573,7 +1573,7 @@ impl BoundaryAnalysisPass._record_surface(manifest: InteropManifest) -> None {
                 kind=item.surface_kind,
                 exposure=item.exposure.value,
                 placement=item.placement_name,
-                module=self.module.loc.mod_path,
+                module=os.path.abspath(self.module.loc.mod_path),
                 explicit_access=item.access is not None,
                 route=route,
                 scheduled=scheduled,

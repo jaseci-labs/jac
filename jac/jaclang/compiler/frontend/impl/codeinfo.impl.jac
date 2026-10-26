@@ -196,7 +196,7 @@ impl _reserved_c_symbols -> frozenset[str] {
         "chmod chdir getcwd mkdir rmdir link symlink readlink unlink utime "
         "opendir readdir closedir getpid getpwuid_r getpwnam_r getuid uname "
         "gnu_get_libc_version errno __error "
-        "pipe poll fcntl ioctl tcgetattr tcsetattr cfgetispeed cfgetospeed cfsetispeed cfsetospeed waitpid posix_spawnp posix_spawn_file_actions_init "
+        "pipe poll fcntl ioctl isatty sigset tcgetattr tcsetattr cfgetispeed cfgetospeed cfsetispeed cfsetospeed waitpid posix_spawnp posix_spawn_file_actions_init "
         "posix_spawn_file_actions_destroy posix_spawn_file_actions_addopen "
         "posix_spawn_file_actions_addclose posix_spawn_file_actions_adddup2 "
         "posix_spawn_file_actions_addchdir_np "
@@ -429,10 +429,6 @@ impl native_unit_identity(path: str) -> str {
 }
 
 impl native_module_key(path: str) -> str {
-    """The key names a unit the same wherever its package lands: a module
-    under a sealed package, a `jac.toml` project or the jaclang package is
-    keyed by its path within that root, so the symbols a sealed unit
-    defines at build time are the ones consumers reference at run time.""";
     import os;
     rp = real_path(path);
     base = os.path.basename(rp);
@@ -837,15 +833,6 @@ impl is_selected_native_variant(path: str) -> bool {
 }
 
 impl is_native_variant_path(path: str) -> bool {
-    """Is `path` a platform variant of a portable module beside it?
-
-    `<name>.<os>.<arch>.jac`, `<name>.<arch>.jac` and `<name>.<os>.jac` are the
-    spellings `_native_variant_path` chooses between, and each exists only to
-    be lowered natively in place of `<name>.jac`. A variant is reached through
-    native module resolution alone, never by an import the checker reads, so
-    no import edge carries the portable module's placement to it: the variant
-    is a native unit by what it is.
-    """;
     import os;
     name = os.path.basename(path);
     if not name.endswith(".jac") {
@@ -939,7 +926,8 @@ impl resolve_native_module(
             _native_variant_path(candidate[:-len('.jac')]) or candidate
         );
         if (native_unit_compile_active() and in_native_scope_path(candidate))
-            or clean in SHARED_RUNTIME_MODULES {
+            or clean in SHARED_RUNTIME_MODULES
+            or clean.startswith("jaclang.osprey.") {
             return (candidate, candidate);
         }
         if allow_inferred {

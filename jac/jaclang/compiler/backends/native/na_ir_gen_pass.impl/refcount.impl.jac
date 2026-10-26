@@ -61,18 +61,6 @@ impl NaIRGenPass._emit_rc_count_update(
     ordering: str,
     tag: str
 ) -> tuple[ir.IRBuilder, ir.Value] {
-    """Add or subtract 1 at `cnt_ptr` and return (builder, count before the update).
-
-    Until a program starts its first thread, `__jac_rc_threaded` is 0, only one
-    thread exists, and a plain load/add/store is enough; a `lock`-prefixed RMW
-    there costs roughly an order of magnitude more per retain/release. Every
-    thread spawn the compiler emits sets the flag before `pthread_create` (see
-    `_emit_rc_mark_threaded`) and nothing clears it, so from then on every unit
-    takes the atomic RMW with the ordering the caller passes. pthread_create
-    orders the flag store and all earlier plain updates before the new thread's
-    first instruction. `old_cnt`, when given, is the count the caller already
-    loaded on this path; the single-threaded branch reuses it.
-    """;
     i8 = ir.IntType(8);
     one = ir.Constant(ir.IntType(64), 1);
     st_bb = fn.append_basic_block(f"{tag}.st");
@@ -102,11 +90,6 @@ impl NaIRGenPass._emit_rc_count_update(
 }
 
 impl NaIRGenPass._emit_rc_mark_threaded -> None {
-    """Switch every refcount update to atomic RMW; call right before a thread spawn.
-
-    The store goes before `pthread_create` so the new thread starts with the
-    flag already set. It is sticky: joining the threads does not switch back.
-    """;
     if self.rc_threaded_gv is None {
         return;
     }
@@ -2142,12 +2125,6 @@ impl NaIRGenPass._emit_struct_drop_fn(type_name: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._emit_struct_drop_body_fn(type_name: str) -> (ir.Function | None) {
-    """Drop an object known to be exactly `type_name`: its fields, then itself.
-
-    This is the body a headerless build stores in the class's vtable drop
-    slot, so `__drop_T` for any ancestor `T` reaches it through the object's
-    own vtable and drops the subclass's extra fields and runs its `drop` hook.
-    """;
     if type_name in self.struct_drop_body_fns {
         return self.struct_drop_body_fns[type_name];
     }
@@ -2171,13 +2148,6 @@ impl NaIRGenPass._emit_struct_drop_body_fn(type_name: str) -> (ir.Function | Non
 }
 
 impl NaIRGenPass._drop_dispatches(type_name: str) -> bool {
-    """Must dropping a `type_name` reference read the object's own vtable?
-
-    A reference typed as a class may hold a subclass instance with its own
-    `drop` hook and owned fields, declared in a module this one never sees.
-    Only a class with a vtable can say which it holds, and only a private
-    class with no subclass in its own registry is provably final.
-    """;
     if not self._arch_has_vtable(type_name) or type_name in self.clib_struct_names {
         return False;
     }
@@ -2812,8 +2782,7 @@ impl NaIRGenPass._nogc_elem_prep(
     if isinstance(expr, uni.FString) or self._is_owned(val) {
         return val;
     }
-    """A slice of a string is fresh text; an index is a character from the
-    static per-byte cache, which an owner must copy.""";
+
     if isinstance(expr, uni.AtomTrailer)
         and isinstance(expr.right, uni.IndexSlice)
         and expr.right.is_range {
@@ -2834,13 +2803,6 @@ impl NaIRGenPass._nogc_elem_prep(
 }
 
 impl NaIRGenPass._nogc_text_field(type_name: str, fname: str) -> str {
-    """`str` or `bytes` when a headerless object owns this field's text.
-
-    Such a field holds a heap copy only its object frees: a store copies in
-    a borrowed or static value and moves an owned one, replacing the field
-    frees the value it held, and the class drop frees the last. Empty for
-    every other field and every other build.
-    """;
     if not self._nogc_headerless() or type_name in self.clib_struct_names {
         return "";
     }
@@ -2850,7 +2812,6 @@ impl NaIRGenPass._nogc_text_field(type_name: str, fname: str) -> str {
 impl NaIRGenPass._nogc_own_text(
     expr: (uni.UniNode | None), val: ir.Value, kind: str
 ) -> ir.Value {
-    """A text value an owner may keep: moved when owned, else a heap copy.""";
     if kind == "str" {
         _owned = self._nogc_elem_prep(expr, val);
         return _owned if _owned is not None else val;
@@ -2865,7 +2826,6 @@ impl NaIRGenPass._nogc_own_text(
 }
 
 impl NaIRGenPass._nogc_free_text(b: ir.IRBuilder, val: ir.Value, kind: str) -> None {
-    """Free the heap text an owned `str` or `bytes` slot holds.""";
     i8p = ir.IntType(8).as_pointer();
     data = val;
     if kind == "str"
@@ -2883,12 +2843,6 @@ impl NaIRGenPass._nogc_free_text(b: ir.IRBuilder, val: ir.Value, kind: str) -> N
 }
 
 impl NaIRGenPass._nogc_release_dict_key(key: ir.Value) -> None {
-    """Free an owned string key a headerless dictionary insert copied.
-
-    A headerless dictionary stores its own copy of a string key, so a key the
-    caller built for the insert (an f-string, a concatenation, a call result)
-    is the caller's to free once the insert returns.
-    """;
     if self._nogc_headerless()
         and key.type == ir.IntType(8).as_pointer()
         and self._is_owned(key) {

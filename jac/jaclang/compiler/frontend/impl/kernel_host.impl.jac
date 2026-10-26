@@ -359,12 +359,7 @@ impl KernelHost.record_unit(task: ModuleAnalysis) {
     if not products.path {
         products.path = real;
     }
-    """A dependency lowered for an importer (`lower_dependency`) was
-        compiled under native-import options, which select a context program
-        of their own, so the module recorded here is not the one that was
-        lowered. The unit carries that lowering's products: without them the
-        host registers no interface for the dependency, and the importer
-        records the dependency's digest as empty.""";
+
     lowered = self._lowered.get(real);
     if lowered is not None and lowered is not module and not products.native_ir {
         native_products(lowered, products);

@@ -591,15 +591,6 @@ impl NaIRGenPass._codegen_tuple_index(
 impl NaIRGenPass._variadic_tuple_seq_type(
     type_args: list[TypeBase]
 ) -> (ir.Type | None) {
-    """The native shape of a tuple annotation that withholds its arity.
-
-    `tuple[T, ...]` describes any number of `T`, and a native tuple carries its
-    arity in its type, so no tuple struct can stand for it. The one native shape
-    that holds N-of-T with N only known at runtime is the sequence `list[T]`
-    already lowers to, and that is what such an annotation means here. The type
-    system marks the variadic form by parking an `UnknownType` among the type
-    arguments, which is the same signal `_tuple_has_variadic_arg` reads.
-    """;
     try {
         import from jaclang.compiler.types.types { UnknownType as _VtUnknown }
     } except ImportError {
@@ -636,13 +627,6 @@ impl NaIRGenPass._variadic_tuple_seq_type(
 impl NaIRGenPass._tuple_seq_coerce(
     val: ir.Value, target_type: ir.Type
 ) -> (ir.Value | None) {
-    """Materialize a tuple value into the sequence a variadic tuple lowers to.
-
-    Fires when the target is exactly the sequence type the value's own element
-    flavor would build, or when it is the boxed `jacval` sequence an erased
-    `tuple[Any, ...]` lowers to, which holds any element flavor by boxing each
-    one. It never reinterprets one unboxed element flavor as another.
-    """;
     if not isinstance(target_type, ir.PointerType) {
         return None;
     }
@@ -675,17 +659,6 @@ impl NaIRGenPass._tuple_seq_coerce(
 impl NaIRGenPass._variadic_elem_coerce(
     val: ir.Value, container: (uni.UniNode | None)
 ) -> ir.Value {
-    """Give a fixed-arity tuple the shape a `list[tuple[T, ...]]` slot holds.
-
-    A variadic tuple lowers to the sequence `list[T]` does (see
-    `_variadic_tuple_seq_type`), and every read out of such a list views its
-    erased slot through that sequence type. A tuple display stored into the
-    list is built with its own fixed arity, though, and the erased `i8*` slot
-    took the tuple box as it was, so the next read walked a tuple struct as a
-    list header. Every element store into a list whose checked element type
-    is variadic comes through here and is materialized as that sequence; any
-    other value, or a list of anything else, passes through untouched.
-    """;
     if self._tuple_struct_of_value(val) is None {
         return val;
     }

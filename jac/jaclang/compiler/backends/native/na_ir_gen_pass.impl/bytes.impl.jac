@@ -754,10 +754,6 @@ impl NaIRGenPass._private_cstr(data: bytes, name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._name_lookup_fn -> ir.Function {
-    """Look `name` up in a table of `<tag byte><name>\\0` rows ended by a 0 tag.
-
-    Returns the matching row's tag, or 0 when no row matches.
-    """;
     if self._name_lookup_function is not None {
         return self._name_lookup_function;
     }
@@ -805,13 +801,6 @@ impl NaIRGenPass._name_lookup_fn -> ir.Function {
 }
 
 impl NaIRGenPass._codec_lookup_fn -> ir.Function {
-    """Map a codec name to 0 (utf-8), 1 (latin-1) or 2 (ascii) at run time.
-
-    The name is normalized the way `encodings.normalize_encoding` does it and
-    looked up in CPython's alias table, a dotted name retrying with dots as
-    underscores against the aliases only. Returns -1 for an unknown codec and
-    -2 for a codec CPython knows that the native decoder does not implement.
-    """;
     if self._codec_lookup_function is not None {
         return self._codec_lookup_function;
     }
@@ -952,21 +941,6 @@ impl NaIRGenPass._codec_lookup_fn -> ir.Function {
 }
 
 impl NaIRGenPass._bytes_decode_fn -> ir.Function {
-    """Decode bytes as utf-8 (codec 0), latin-1 (1) or ascii (2), CPython style.
-
-    Error handlers: 0 strict, 1 ignore, 2 replace, 3 backslashreplace,
-    4 surrogateescape, 5 surrogatepass; any other id fails like strict and
-    the caller picks the exception. A utf-8 error spans CPython's maximal
-    invalid subpart, so `replace` writes one U+FFFD per subpart. Lone
-    surrogates are stored as their three-byte encoding, as native strings
-    hold them.
-
-    With `measure` set nothing is kept: every write lands in the first bytes
-    of `out`, a four-byte scratch buffer, and the result is the decoded
-    length. Returns the length written, or -1 on an error the handler does not
-    absorb, leaving start, end and a reason code in `info[0..2]`; `info[3]`
-    counts the errors a handler absorbed.
-    """;
     if self._bytes_decode_function is not None {
         return self._bytes_decode_function;
     }
@@ -1282,13 +1256,6 @@ impl NaIRGenPass._emit_bytes_decode(
     kwargs: dict[str, uni.UniNode],
     call_node: (uni.UniNode | None)
 ) -> (ir.Value | None) {
-    """Lower `bytes.decode(encoding="utf-8", errors="strict")`.
-
-    Literal arguments resolve at compile time; a literal naming a codec
-    CPython knows but this decoder does not implement is left unlowered.
-    Other arguments resolve at run time. Empty input decodes to "" without
-    looking the codec up, as CPython does.
-    """;
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1491,12 +1458,6 @@ impl NaIRGenPass._emit_decode_failure(
     errors_name: (ir.Value | None),
     errors_literal: (str | None)
 ) -> None {
-    """Raise what CPython raises when a decode error reaches its handler.
-
-    Strict (and a surrogatepass that cannot apply) raises UnicodeDecodeError;
-    an error handler that only encodes raises TypeError; an unknown handler
-    name raises LookupError, which CPython also defers to the first error.
-    """;
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);

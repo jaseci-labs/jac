@@ -129,3 +129,7 @@ impl aggregate_openapi(registry: ServiceRegistry) -> dict[str, any] {
         "components": {"schemas": merged_schemas}
     };
 }
+
+impl SpecFetch.answered -> bool {
+    return self.status > 0 and self.status < 500;
+}
