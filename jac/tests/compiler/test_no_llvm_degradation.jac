@@ -208,3 +208,39 @@ print("IMPORTED")
         assert proc.returncode == 0 and "IMPORTED" in out , out;
     }
 }
+
+
+"""A module that asks codegen for native lowering may be the first to need the
+native verdict, for example a module pinned native in a project that places
+nothing native by inference, so no placement probe has consulted the shim yet.
+That verdict must come from the shim before the codegen schedule starts
+loading: inside the loading window the host defers to an optimistic answer and
+`NaIRGenPass` would be scheduled against a stale shim."""
+test "a native codegen request in a fresh process takes the shim's verdict" {
+    script = f"""
+import sys
+sys.path.insert(0, {JAC_ROOT!r})
+from unittest.mock import patch
+from jaclang.artifacts.model import Probe
+from jaclang.compiler.backends.native.llvm.shim_path import ShimArtifact
+for probe in ('probe_sealed', 'probe_checkout', 'probe_kit'):
+    patch.object(ShimArtifact, probe, return_value={STALE}).start()
+import jaclang
+from jaclang.compiler.driver.pipeline import resolve
+from jaclang.compiler.driver.pipeline_types import CompilationProduct, ProductRequest
+from jaclang.compiler.driver.toolchain import _native_env_memo
+assert not _native_env_memo, _native_env_memo
+schedule = resolve(CompilationProduct.CODEGEN, ProductRequest(native=True))[0]
+names = [p.__name__ for p in schedule or []]
+assert 'NaIRGenPass' not in names, names
+assert 'EsastGenPass' in names, names
+""";
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=JAC_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=900
+    );
+    assert proc.returncode == 0 , proc.stdout + proc.stderr;
+}

@@ -307,6 +307,11 @@ impl resolve(
     if spec.blocker() {
         return (spec.bootstrap(req), False, False);
     }
+    if req.native and PRODUCTS[CompilationProduct.NATIVE_LOWER].blocker() {
+        req = ProductRequest(
+            gen_mtir=req.gen_mtir, native=False, endpoint_effects=req.endpoint_effects
+        );
+    }
     spec.precheck();
     token = _LOADING.set(_LOADING.get() + [product]);
     schedule: PassSchedule = [];
