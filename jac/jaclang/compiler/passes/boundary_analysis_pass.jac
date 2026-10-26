@@ -15,6 +15,11 @@ walker BoundaryAnalysisPass(TreePass) {
     def _extract_type_name(expr: (UniNode | None)) -> str;
     def _in_native_module -> bool;
     def _native_source_module_of(mod: (Module | None)) -> (str | None);
+    def _bind_server_callee(call: FuncCall, local_name: str) -> None;
+    def _interop_symbol(
+        decl: (UniNode | None), provider: (Module | None), fallback: str, name: str
+    ) -> str;
+
     def _register_native_absorb(nd: Import) -> None;
     can enter_import with Import entry;
     def _register_sv_import(

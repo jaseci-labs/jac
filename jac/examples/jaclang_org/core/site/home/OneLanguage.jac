@@ -229,21 +229,3 @@ def:pub StackCompare -> JsxElement;
 def:pub ImportTable -> JsxElement;
 
 def:pub OneLanguage -> JsxElement;
-
-impl glue_color(kind: str) -> str {
-    for g in _GLUE_KINDS {
-        if g["key"] == kind {
-            return g["color"];
-        }
-    }
-    return "";
-}
-
-impl glue_label(kind: str) -> str {
-    for g in _GLUE_KINDS {
-        if g["key"] == kind {
-            return g["label"];
-        }
-    }
-    return "";
-}

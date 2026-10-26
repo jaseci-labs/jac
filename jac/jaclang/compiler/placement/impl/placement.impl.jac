@@ -684,7 +684,7 @@ impl summarize_module(
 ) -> PlacementSummary {
     ps = PlacementSummary();
     ps.schema = PLACEMENT_SCHEMA;
-    ps.mod_path = module.loc.mod_path or '';
+    ps.mod_path = os.path.abspath(module.loc.mod_path) if module.loc.mod_path else '';
     ps.decided = module.decided_codespace or '';
     ps.anchors = module_anchor_reasons(module);
     base_dir = os.path.dirname(os.path.abspath(ps.mod_path)) if ps.mod_path else '';
@@ -759,6 +759,9 @@ impl summarize_module(
         }
         ps.elements.append(es);
     }
+    ps.client_declared = module.declares_codespace(CodeContext.CLIENT);
+    ps.native_declared = module.declares_codespace(CodeContext.NATIVE);
+    ps.native_anchor = module_own_native_anchor(module);
     return ps;
 }
 

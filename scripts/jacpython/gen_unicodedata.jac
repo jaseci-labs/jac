@@ -27,6 +27,7 @@ import re;
 import sys;
 import from pathlib { Path }
 import from common {
+    JAC,
     RUNTIME,
     archive_texts,
     bytes_literal,
@@ -38,6 +39,7 @@ import from common {
 glob COMMAND: str = "scripts/jacpython/gen_unicodedata.jac",
      DATABASE: Path = RUNTIME / "modules/unicodedata_db.jac",
      NAMES: Path = RUNTIME / "modules/unicodename_db.jac",
+     NA_DATABASE: Path = JAC / "jaclang/runtime/na_stdlib/_unicodedata_tables.jac",
      # C scalar types of the tables and struct fields, as Jac sized types.
      C_TYPES: dict[str, str] = {
          "unsigned char": "u8",
@@ -352,6 +354,66 @@ def database(text: str, module: str, version: str) -> str {
     );
 }
 
+
+# Compact category and east-asian-width ranges for the native standard library.
+def native_database(text: str, version: str) -> str {
+    found = defines(text);
+    unidata = found["UNIDATA_VERSION"].strip('"');
+    shift = define_int(found, "SHIFT");
+    (_, index1) = int_array(text, "index1");
+    (_, index2) = int_array(text, "index2");
+    (_, records_body) = array(text, "_PyUnicode_Database_Records");
+    database_records = records(records_body);
+    (_, categories_body) = array(text, "_PyUnicode_CategoryNames");
+    categories = re.findall(r'"((?:[^"\\]|\\.)*)"', strip_comments(categories_body));
+    (_, widths_body) = array(text, "_PyUnicode_EastAsianWidthNames");
+    widths = re.findall(r'"((?:[^"\\]|\\.)*)"', strip_comments(widths_body));
+    if not categories or not widths or not database_records {
+        raise Unsupported("Unicode property tables are empty");
+    }
+
+    values: list[int] = [];
+    range_start = 0;
+    previous_category = -1;
+    previous_width = -1;
+    for code in range(0x110000) {
+        page = int(index1[code >> shift]);
+        offset = (page << shift) + (code & ((1 << shift) - 1));
+        record_index = int(index2[offset]);
+        category = int(database_records[record_index][0], 0);
+        width = int(database_records[record_index][4], 0);
+        if code == 0 {
+            previous_category = category;
+            previous_width = width;
+        } elif category != previous_category or width != previous_width {
+            values.append(range_start);
+            values.append(code - 1);
+            values.append(previous_category);
+            values.append(previous_width);
+            range_start = code;
+            previous_category = category;
+            previous_width = width;
+        }
+    }
+    values.append(range_start);
+    values.append(0x10FFFF);
+    values.append(previous_category);
+    values.append(previous_width);
+    return "\n".join(
+        [
+            f'glob UNICODE_DATA_VERSION: Final[str] = "{unidata}",',
+            f"       UNICODE_CATEGORIES: list[str] = [{', '.join(
+                repr(x) for x in categories
+            )}],",
+            f"       UNICODE_EAST_ASIAN_WIDTHS: list[str] = [{', '.join(
+                repr(x) for x in widths
+            )}],",
+            f"       UNICODE_PROPERTY_RANGES: bytes = {bytes_literal(values, 'u32')};",
+            ""
+        ]
+    );
+}
+
 def names(text: str, version: str) -> str {
     emitter = Emitter();
     found = defines(text);
@@ -449,7 +511,8 @@ with entry:__main__ {
                 ),
                 DATABASE
             ),
-            (names(texts["Modules/unicodename_db.h"], version), NAMES)
+            (names(texts["Modules/unicodename_db.h"], version), NAMES),
+            (native_database(texts["Modules/unicodedata_db.h"], version), NA_DATABASE)
         ];
     } except Unsupported as reason {
         sys.exit(f"{COMMAND}: {reason}");

@@ -64,6 +64,7 @@ obj WiringSpec {
         wires: list[WireRec] = [],
         rules: list[RuleRec] = [],
         _raw: dict[str, list[WireRec]] = {},
+        _raw_by_prefix: dict[str, list[str]] = {},
         _by_consumer: dict[str, list[WireRec]] = {},
         _splits: dict[str, (tuple[str, list[str]] | None)] = {},
         _annex_cache: dict[str, str] = {},

@@ -15,6 +15,7 @@ import jaclang;
 import from pathlib { Path }
 import from jaclang.compiler.backends.native.wasm_build { _ABI64_ADAPTED }
 import from jaclang.compiler.backends.native.wasm_host_abi { WASM_HOST_ABI }
+import from tests.support { unit_source }
 
 glob _PKG_DIR: Path = Path(str(jaclang.__file__)).parent;
 
@@ -33,7 +34,7 @@ test "_ABI64_ADAPTED matches the adapters defined in jac_abi64.c" {
 }
 
 test "WASM_HOST_ABI matches the host functions in wasm_host.jac" {
-    host_src = (_PKG_DIR / "client" / "wasm_host.jac").read_text(encoding="utf-8");
+    host_src = unit_source(_PKG_DIR / "client" / "wasm_host.jac");
     implemented = {str(m) for m in re.findall(r'"(\w+)": lambda', host_src)};
     declared = {str(x) for x in WASM_HOST_ABI};
     assert implemented == declared , (
