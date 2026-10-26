@@ -162,13 +162,13 @@ custom_extensions = [
 
 [client.app_meta_data]
 title = "The Jac Programming Language"
-description = "One language, one compiler, the whole stack. No glue. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features."
+description = "The ultimate language for agents to build everything. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features."
 keywords = "jac, jaclang, programming language, jaseci, object-spatial programming, by llm, full-stack"
 author = "Jaseci Labs"
 theme_color = "#ff6b35"
 icon = "/static/assets/jac-logo.svg"
 og_title = "The Jac Programming Language"
-og_description = "One language, one compiler, the whole stack. No glue. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features."
+og_description = "The ultimate language for agents to build everything. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features."
 og_type = "website"
 og_url = "https://jaclang.org/"
 og_site_name = "jaclang.org"

@@ -130,6 +130,9 @@ impl LinkPlan.demoted_symbols -> list[str] {
     out: list[str] = [];
     for u in self.units {
         for name in u.iface.demoted {
+            if "__jac_test_" in name {
+                continue;
+            }
             out.append(f"{os.path.basename(u.path)}:{name}");
         }
     }

@@ -1287,9 +1287,9 @@ impl NativeStrEmitter.emit_rpartition(
     notfound_bb = func.append_basic_block(name="rpart.no");
     merge_bb = func.append_basic_block(name="rpart.merge");
 
-    last_match_alloca = b.alloca(i8p, name="rpart.last");
+    last_match_alloca = p._stack_entry_alloca(i8p, "rpart.last");
     b.store(ir.Constant(i8p, None), last_match_alloca);
-    cur_alloca = b.alloca(i8p, name="rpart.cur");
+    cur_alloca = p._stack_entry_alloca(i8p, "rpart.cur");
     b.store(target, cur_alloca);
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
@@ -3208,25 +3208,43 @@ impl NativeListEmitter.emit_sort(
         );
         return None;
     }
-    key_fn: (ir.Function | None) = None;
+    key_fn: (ir.Value | None) = None;
+    key_signature: (ir.FunctionType | None) = None;
+    key_extra: list[ir.Value] = [];
+    key_owner: (ir.Value | None) = None;
     if _key_node is not None {
-        _key_val = p._codegen_expr(_key_node);
-        _key_caps = p._pending_lambda_captures;
         p._pending_lambda_captures = None;
-        if (
-            not isinstance(_key_val, ir.Function)
-            or _key_caps is not None
-            or len(_key_val.args) != 1
-        ) {
+        _key_val = p._codegen_expr(_key_node);
+        _key_caps = p._pending_lambda_captures
+            or p.scope.lambda_captures(p._get_name(_key_node) or "")
+            or [];
+        p._pending_lambda_captures = None;
+        _closure = p._closure_struct_of(_key_val.type)
+            if _key_val is not None
+            else None;
+        if _closure is not None {
+            (_struct, key_signature) = p.closure_sig_registry[_closure];
+            fn_slot = b.gep(_key_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
+            key_fn = b.inttoptr(b.load(fn_slot), key_signature.as_pointer());
+            env_slot = b.gep(_key_val, [ir.Constant(i32, 0), ir.Constant(i32, 1)]);
+            key_extra.append(b.load(env_slot));
+            key_owner = _key_val;
+        } elif isinstance(_key_val, ir.Function) {
+            key_fn = _key_val;
+            key_signature = _key_val.function_type;
+            for (capture_name, slot) in _key_caps {
+                key_extra.append(b.load(slot, name=f"sort.cap.{capture_name}"));
+            }
+        }
+        if key_signature is None or len(key_signature.args) != 1 + len(key_extra) {
             p.ctx.emit(
                 E5092,
                 node_override=_key_node,
                 kind="sort key",
-                name="key= (only a capture-free single-parameter lambda works)"
+                name="key= (expected a single-parameter callable with a native signature)"
             );
             return None;
         }
-        key_fn = _key_val;
     }
     rev_i1: (ir.Value | None) = None;
     if _rev_node is not None {
@@ -3283,10 +3301,13 @@ impl NativeListEmitter.emit_sort(
     cj1: ir.Value = ej1;
     cmp_type = elem_type;
     if key_fn is not None {
-        _kp_type = key_fn.args[0].type;
-        cj = b.call(key_fn, [p._coerce_type(ej, _kp_type)], name="sort.kj");
-        cj1 = b.call(key_fn, [p._coerce_type(ej1, _kp_type)], name="sort.kj1");
-        cmp_type = key_fn.function_type.return_type;
+        assert key_signature is not None;
+        _kp_type = key_signature.args[0];
+        cj = b.call(key_fn, [p._coerce_type(ej, _kp_type)] + key_extra, name="sort.kj");
+        cj1 = b.call(
+            key_fn, [p._coerce_type(ej1, _kp_type)] + key_extra, name="sort.kj1"
+        );
+        cmp_type = key_signature.return_type;
 
         if cj.type != cmp_type {
             cmp_type = cj.type;
@@ -3358,6 +3379,9 @@ impl NativeListEmitter.emit_sort(
     oi.add_incoming(next_oi, outer_next);
     b.branch(outer_bb);
     b.position_at_start(done_bb);
+    if key_owner is not None and p._is_owned(key_owner) {
+        p._emit_rc_release_simple(key_owner, op="sort_key", loc="target");
+    }
     return ir.Constant(i64, 0);
 }
 
@@ -4230,7 +4254,7 @@ impl NativeSetEmitter._emit_set_elem_loop(
         }
     }
     n = b.call(src_helpers["len"], [src_set], name=f"{prefix}.len");
-    iv = b.alloca(i64, name=f"{prefix}.i");
+    iv = p._stack_entry_alloca(i64, f"{prefix}.i");
     b.store(ir.Constant(i64, 0), iv);
     func = b.basic_block.function;
     loop_bb = func.append_basic_block(name=f"{prefix}.loop");
@@ -4572,7 +4596,7 @@ impl NativeSetEmitter._emit_set_relation(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    res_a = b.alloca(i64, name=f"{prefix}.res");
+    res_a = p._stack_entry_alloca(i64, f"{prefix}.res");
     b.store(ir.Constant(i64, 1), res_a);
 
     def _probe(b2: ir.IRBuilder, ev: ir.Value) {
@@ -5863,7 +5887,7 @@ impl NativeBuiltinEmitter._int_from_c_string(
         );
     }
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
-    endptr_alloca = b.alloca(i8p, name="endptr");
+    endptr_alloca = p._stack_entry_alloca(i8p, "endptr");
     result_val = b.call(
         strtol_fn,
         [text, endptr_alloca, base if base is not None else ir.Constant(i32, 10)],
@@ -5947,7 +5971,7 @@ impl NativeBuiltinEmitter.emit_float(
         strtod_fn = p._get_or_declare_extern(
             "strtod", ir.DoubleType(), [i8p, i8p.as_pointer()]
         );
-        endptr_alloca = b.alloca(i8p, name="float.endptr");
+        endptr_alloca = p._stack_entry_alloca(i8p, "float.endptr");
         result = b.call(strtod_fn, [arg_val, endptr_alloca], name="float.result");
         endptr_val = b.load(endptr_alloca, name="float.endptr.val");
         no_parse = b.icmp_unsigned("==", endptr_val, arg_val, name="float.noparse");
@@ -6344,8 +6368,20 @@ impl NativeBuiltinEmitter.emit_bytes(
     if _src is not None {
         return p._bytes_from_raw(_src[0], _src[1]);
     }
-    return _emit_bytes_from_int_list(p, val, "bytes must be in range(0, 256)", []);
+    listed = _emit_bytes_from_int_list(p, val, "bytes must be in range(0, 256)", []);
+    if listed is not None or not ctx.arg_nodes {
+        return listed;
+    }
+    return _emit_bytes_drained(self, ctx, args, "bytes must be in range(0, 256)", []);
 }
+
+def _emit_bytes_drained(
+    emitter: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    args: list[ir.Value],
+    message: str,
+    release_on_error: list[ir.Value]
+) -> (ir.Value | None);
 
 def _emit_zeroed_bytes(p: NaIRGenPass, count: ir.Value) -> ir.Value;
 
@@ -6397,7 +6433,13 @@ impl NativeBuiltinEmitter.emit_bytearray(
         return buf;
     }
 
+    p._mark_owned(buf);
     _bv = _emit_bytes_from_int_list(p, a0, "byte must be in range(0, 256)", [buf]);
+    if _bv is None and ctx.arg_nodes {
+        _bv = _emit_bytes_drained(
+            self, ctx, args, "byte must be in range(0, 256)", [buf]
+        );
+    }
     if _bv is not None and p._is_bytes_value(_bv) {
         _bsrc = p._bytearray_src_of(_bv);
         if _bsrc is not None {
@@ -7676,4 +7718,25 @@ impl _emit_affix_window_match(
     result.add_incoming(ir.Constant(ir.IntType(1), 1), match_bb);
     result.add_incoming(ir.Constant(ir.IntType(1), 0), miss);
     return result;
+}
+
+impl _emit_bytes_drained(
+    emitter: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    args: list[ir.Value],
+    message: str,
+    release_on_error: list[ir.Value]
+) -> (ir.Value | None) {
+    p = ctx.pass_ref;
+    drained = emitter.emit_list(ctx, args);
+    if drained is None {
+        return None;
+    }
+    p._mark_owned(drained);
+    made = _emit_bytes_from_int_list(p, drained, message, [*release_on_error, *args]);
+    if made is None {
+        return None;
+    }
+    p._release_owned_args([drained]);
+    return made;
 }

@@ -1722,3 +1722,18 @@ impl _dev_head -> str {
     head = HeaderBuilder(meta_data, 'dev').build_head();
     return '\n'.join('    ' + line.strip() for line in head.split('\n'));
 }
+
+impl _build_vite_dev_command(
+    build_dir: Path, config_rel: Path, port: int, host: str = ""
+) -> list[str] {
+    cmd = _build_vite_command(
+        build_dir, ['--config', str(config_rel), '--port', str(port)]
+    );
+    if host {
+        cmd.append('--host');
+        cmd.append(host);
+    } else {
+        cmd.append('--host');
+    }
+    return cmd;
+}
