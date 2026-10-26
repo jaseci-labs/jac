@@ -28,6 +28,8 @@ obj MTRuntime {
         _tool_arg_deltas: list[dict[str, any]] = [],
         _usage_history: list[dict[str, any]] = [],
         _compactions: list[dict[str, any]] = [],
+        _fallbacks: list[dict[str, any]] = [],
+        _fallbacks_reported: int = 0,
         _call_kind: str = "react_iteration",
         _invocation_id: str = "",
         _parent_invocation_id: str | None = None,

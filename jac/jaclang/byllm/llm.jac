@@ -181,12 +181,19 @@ obj ModelPool(BaseLLM) {
         strategy: str | None = None,
         num_retries: int | None = None,
         timeout: float | None = None,
+        sticky: bool = False,
         _router: Router | None = None,
-        _fallback_model_names: list[str] = [];
+        _fallback_model_names: list[str] = [],
+        _turn: dict[str, int] = {},
+        _run: MTRuntime | None = None;
 
     def postinit -> None;
+    override def invoke(mt_run: MTRuntime) -> any;
+    override async def ainvoke(mt_run: MTRuntime) -> any;
+    override def make_model_params(mt_run: MTRuntime) -> dict[str, any];
     override def model_call_no_stream(params: dict[str, any]) -> dict[str, any];
     override def model_call_with_stream(params: dict[str, any]) -> Iterable[object];
+    def _fallback(params: dict[str, any], stream: bool) -> any;
     override def _get_ctx_window(call_params: dict[str, any]) -> int;
     override def _resolve_timeout(mt_run: MTRuntime) -> float | None;
 }

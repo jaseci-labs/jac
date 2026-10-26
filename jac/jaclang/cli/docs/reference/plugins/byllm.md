@@ -418,6 +418,29 @@ glob llm = ModelPool(
 
 Any `by llm()` call in the file uses the pool automatically.
 
+Every switch is reported. A `logging=True` stream or a `stream_handler` gets a `model_fallback` event naming the model that failed (`from`), the model tried next (`to`) and the error type (`error`). If every model fails, these events still arrive before the error is raised. The usage entry of the call that was then answered lists the same switches under `fallbacks`, so a call that does not stream can read them from [`register_llm_call_hook`](#recording-every-call).
+
+#### Staying on the model that answered
+
+Every call starts at the first model, so while it is down, each call of an agent loop waits for it to fail before reaching the next one. With `sticky=True`, once a model fails and a later one answers, the rest of that `by` call starts at the model that answered. If that model fails too, the pool moves on through the list, wrapping round to its start. The next `by` call starts at the first model again.
+
+```jac
+import from jaclang.byllm.lib { Model, ModelPool }
+
+glob llm = ModelPool(
+    models=[
+        Model(model_name="together_ai/zai-org/GLM-5.3-Flash"),
+        Model(model_name="gpt-4o-mini"),
+    ],
+    strategy="fallback",
+    sticky=True,
+);
+```
+
+#### Settings per model
+
+Each model's own `call_params` (`temperature`, `max_tokens`, `reasoning_effort`, `thinking`, `extra_body`) are sent with the requests that model serves, on every strategy. A setting given at the call site (`by llm(temperature=0.2)`) wins over the model's, and `[byllm.call_params]` in `jac.toml` fills in what neither sets.
+
 ### Load-Balancing (simple-shuffle)
 
 For free-tier key rotation or spreading load across multiple API keys for the same model, use the `"simple-shuffle"` strategy. Each call picks a random deployment from the pool:
@@ -444,8 +467,9 @@ Each `by llm()` call is routed to a randomly selected deployment - ideal for dis
 |-----------|------|---------|-------------|
 | `models` | list[BaseLLM] | required | List of `Model` instances to include in the pool |
 | `strategy` | str | `"fallback"` | Routing strategy (see table below) |
-| `num_retries` | int | `1` | Number of retries per deployment before moving to the next |
+| `num_retries` | int | `1` | Number of retries per deployment before moving to the next. A streamed `"fallback"` call tries each model once |
 | `timeout` | float | `60.0` | Per-request timeout in seconds |
+| `sticky` | bool | `False` | `"fallback"` only: after a failure, start the rest of the `by` call at the model that answered (see [Staying on the model that answered](#staying-on-the-model-that-answered)) |
 
 **Routing Strategies:**
 
@@ -1622,6 +1646,7 @@ delta from a stream that replaced an abandoned one.
 | `steps_done` | ReAct loop finished, final answer next | `iterations` (int), `reason` (str): `"max_iterations"`, `"aborted"`, or `"aborted_with_summary"` |
 | `chunk` | One token of the final streamed answer | `content` (str) |
 | `compaction` | Auto-compaction replaced the message history (tool-calling invocations only) | See [Observing compactions](#observing-compactions) |
+| `model_fallback` | A `ModelPool` model failed and the pool moved to the next one (see [Fallback](#fallback)) | `from` (str), `to` (str), `error` (str) |
 | `usage_step` | A single LLM call finished (tool-calling invocations only; see [Per-Call Usage](#per-call-usage)) | Same shape as `usage`, scoped to that one call |
 | `usage` | All LLM calls complete (always the last event) | `total` (dict), `by_kind` (dict), `per_call` (list[dict]), `requests` (int) |
 

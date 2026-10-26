@@ -85,6 +85,11 @@ def _compaction_events(
 ) -> Generator[StreamEvent, None, None];
 
 
+def _fallback_events(
+    mt_run: MTRuntime, failed: bool = False
+) -> Generator[StreamEvent, None, None];
+
+
 def _usage_history_total_cost(mt_run: MTRuntime) -> float;
 
 
@@ -99,7 +104,9 @@ glob _CHARS_PER_TOKEN: int = 4,
          "reasoning_effort",
          "thinking",
          "extra_body"
-     );
+     ),
+     _MODEL_SETTINGS: tuple[str, ...] = ("temperature", "max_tokens")
+         + _PASS_THROUGH_PARAMS;
 
 
 def _delta_reasoning(chunk: object) -> str;
@@ -639,6 +646,7 @@ impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> obje
         and mt_run.resp_type is not str {
         accumulated = "";
         _seen_resets = mt_run._stream_reset_count;
+        failed = True;
         try {
             for token in self.dispatch_streaming(mt_run) {
                 if mt_run._stream_reset_count != _seen_resets {
@@ -665,10 +673,17 @@ impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> obje
                     }
                 }
             }
+            failed = False;
         } finally {
             mt_run.write_back_conversation();
+            for ev in _fallback_events(mt_run, failed) {
+                try {
+                    on_event(ev);
+                } except Exception as e {
+                    logger.debug(f"stream_handler raised: {e}");
+                }
+            }
         }
-
         if mt_run._usage_history {
             try {
                 on_event(
@@ -1137,6 +1152,11 @@ impl BaseLLM._should_retry_stream(
         return False;
     }
     if usage_base >= 0 {
+        switches: list[dict[str, any]] = [];
+        for record in mt_run._usage_history[usage_base:] {
+            switches.extend(record.get("fallbacks", []));
+        }
+        mt_run._fallbacks = switches + mt_run._fallbacks;
         mt_run._usage_history = mt_run._usage_history[:usage_base];
     }
     mt_run._stream_reset_count += 1;
@@ -1767,6 +1787,9 @@ impl BaseLLM._invoke_streaming(
 ) -> Generator[StreamEvent, None, None] {
     try {
         yield from self._stream_steps(mt_run);
+    } except Exception {
+        yield from _fallback_events(mt_run, failed=True);
+        raise;
     } finally {
         mt_run.write_back_conversation();
     }
@@ -1782,6 +1805,7 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
             }
             yield from _answer_events(mt_run, token, 0);
         }
+        yield from _fallback_events(mt_run);
     } else {
         max_iters = (
             mt_run.call_params.get("max_react_iterations")
@@ -2507,6 +2531,10 @@ impl _record_usage(
         usage_obj, "cache_creation_input_tokens"
     );
     record["reasoning_tokens"] = _usage_int(usage_obj, "reasoning_tokens");
+    if mt_run._fallbacks {
+        record["fallbacks"] = mt_run._fallbacks;
+        mt_run._fallbacks = [];
+    }
     mt_run._usage_history.append(record);
 }
 
@@ -2515,10 +2543,28 @@ impl _usage_step_events(
     mt_run: MTRuntime, usage_base: int
 ) -> Generator[StreamEvent, None, None] {
     if len(mt_run._usage_history) > usage_base {
+        yield from _fallback_events(mt_run);
         yield StreamEvent(
             event_type="usage_step",
             data=_aggregate_usage(mt_run._usage_history[usage_base:])
         );
+    }
+}
+
+
+impl _fallback_events(
+    mt_run: MTRuntime, failed: bool = False
+) -> Generator[StreamEvent, None, None] {
+    switches: list[dict[str, any]] = [];
+    for record in mt_run._usage_history {
+        switches.extend(record.get("fallbacks", []));
+    }
+    if failed {
+        switches.extend(mt_run._fallbacks);
+    }
+    for fallback in switches[mt_run._fallbacks_reported:] {
+        mt_run._fallbacks_reported += 1;
+        yield StreamEvent(event_type="model_fallback", data=dict(fallback));
     }
 }
 
@@ -2735,6 +2781,7 @@ impl _default_compact(
     } finally {
         if parent_mt_run is not None {
             parent_mt_run._usage_history.extend(comp_mt_run._usage_history);
+            parent_mt_run._fallbacks.extend(comp_mt_run._fallbacks);
         }
     }
     summary_msg = {
