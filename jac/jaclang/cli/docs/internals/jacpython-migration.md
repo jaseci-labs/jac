@@ -51,6 +51,7 @@ the module's own Jac files and one line in each list.
 |---|---|---|
 | `jac/bootstrap/python/jacpython-modules.txt` | hand | module name, upstream test modules, extra linker flags |
 | `jac/bootstrap/python/jacpython-clinic.txt` | hand | modules whose argument parsing is generated |
+| `scripts/jacpython/clinic/<name>.jac` | hand (first taken from the C by `scripts/jacpython/gen_clinic_data.jac`) | the module's Argument Clinic signatures, as `clinic_schema.jac` records |
 | `jac/bootstrap/python/jacpython-compiler-tests.txt` | hand | upstream suites for the Python frontend (tokenizer, parser, AST, codegen) that CI runs |
 | `runtime/python/cpython_api.jac` | `scripts/jacpython/gen_capi.jac` | typed clib declarations of every CPython function the Jac code calls |
 | `runtime/python/bindings/clinic/<name>.jac` | `scripts/jacpython/gen_clinic.jac` | signatures, converters, return conversion, method/getset tables |
@@ -59,7 +60,10 @@ the module's own Jac files and one line in each list.
 
 Steps for a module `_foo` built from `Modules/_foomodule.c`:
 
-1. Add `_foo` to `jacpython-clinic.txt` and run `jac run scripts/jacpython/gen_clinic.jac _foo`.
+1. Add `_foo` to `jacpython-clinic.txt`, take its signatures from the C with
+   `jac run scripts/jacpython/gen_clinic_data.jac _foo` (or write
+   `scripts/jacpython/clinic/foo.jac` by hand) and run
+   `jac run scripts/jacpython/gen_clinic.jac _foo`.
    The generated file uses `<c_basename>_impl` functions, C macro defaults
    and module converters from `runtime/python/modules/foo.jac` without
    imports: wire each name into `bindings.clinic.foo` in `archwire.jac`.
@@ -178,9 +182,9 @@ Functions the C module parses with `PyArg_ParseTuple` or
 their conversions and messages are `getargs.c`'s.
 
 Argument errors match CPython's text because the glue uses CPython's own
-calling conventions. `gen_clinic.jac` reads the `PyMethodDef` flags and the
+calling conventions. The clinic data records the `PyMethodDef` flags and the
 parser Tools/clinic generates for each function (limited C API sources
-included) and emits the same flags with a callback of that shape
+included), and `gen_clinic.jac` emits the same flags with a callback of that shape
 (`MethodCallbacks.positional` for `METH_NOARGS`/`METH_O`/`METH_VARARGS`,
 `fast` for `METH_FASTCALL`, `fast_keywords` with `METH_KEYWORDS`), so
 CPython's call machinery reports "`_mod.f() takes no keyword arguments`" with
