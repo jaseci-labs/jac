@@ -3297,8 +3297,10 @@ impl NativeListEmitter._emit_key_sort(
     length = b.load(
         b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 0)]), name="ksort.len"
     );
-    data_type = helpers["elem_type"].as_pointer();
-    itemsize = p._abi_sizeof(helpers["elem_type"]);
+    elem_type = helpers["elem_type"];
+    assert isinstance(elem_type, ir.Type);
+    data_type = elem_type.as_pointer();
+    itemsize = p._abi_sizeof(elem_type);
     keysize = p._abi_sizeof(key_type);
     fn = b.basic_block.function;
     allocate = fn.append_basic_block("ksort.allocate");
