@@ -233,17 +233,7 @@ impl _workspace_for_path(path: str) -> (WorkspaceSpec | None) {
 
 impl app_for_path(path: str) -> (AppSpec | None) {
     ws = workspace_for_path(path);
-    if ws is None or not path {
-        return None;
-    }
-    app = ws.app_at(_real(path));
-    if app is None {
-        base = discover_base_file(path);
-        if base {
-            app = ws.app_at(_real(base));
-        }
-    }
-    return app;
+    return ws.app_at(_real(path)) if (ws is not None and path) else None;
 }
 
 impl _fact_digest(app: AppSpec, ws_root: str) -> str {
