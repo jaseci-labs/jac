@@ -61,6 +61,7 @@ obj CompileOptions {
     def unit_codegen_identity(path: str) -> str;
     def dependency_projection(path: str) -> str;
     def module_projection -> str;
+    def keeps_interfaces -> bool;
     def for_symbols(need_tree: bool = False) -> CompileOptions;
     def clone_for_native_import -> CompileOptions;
     def native_required_for(mod_path: str) -> bool;

@@ -48,17 +48,6 @@ impl JacScaleRuntime.store(
 }
 
 impl JacScaleRuntime.get_sv_service_routes -> dict[str, any] {
-    """K8s-mode-only bundled resolution: url + interceptor Host-header
-        override together, per service, from ONE call -- the single source
-        of truth get_sv_registry() (below) and sv-to-sv RPC (rpc.jac) both
-        read from, so they can never independently drift.
-
-        This whole lookup fails or succeeds atomically for every service at
-        once (it fails before any per-service resolution starts), so a
-        broken route table -- unreachable or malformed config -- would
-        otherwise warn on every sv-to-sv call and every rpc.jac fallback
-        that reaches here a second time through get_sv_registry(). Warn
-        once until it recovers.""";
     import os;
     if "KUBERNETES_SERVICE_HOST" not in os.environ {
         return {};

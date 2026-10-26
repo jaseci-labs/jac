@@ -1135,9 +1135,6 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
 }
 
 impl NaIRGenPass._c_literal_address(arg: uni.UniNode) -> (ir.Constant | None) {
-    """An address is an unsigned 64-bit pattern, so an integer literal given as
-    one lowers to its bits even past the signed top (`0xFFFF_FFFF_FFFF_FFF0`),
-    where it is no native int.""";
     if not isinstance(arg, uni.Int) {
         return None;
     }
@@ -1272,9 +1269,6 @@ impl NaIRGenPass._c_global_store(
 }
 
 impl NaIRGenPass._c_va_start(nd: uni.UniNode) -> (ir.Value | None) {
-    """Start a C variadic argument list. Its va_list lives in a 32-byte,
-    8-aligned slot, which holds any target's va_list, and llvm.va_start
-    fills it the target's way; the floor's __jac_va_* read it.""";
     if self._target_is_wasm() {
         self.ctx.emit(
             E5092,

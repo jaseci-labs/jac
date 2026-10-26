@@ -171,20 +171,6 @@ impl NaIRGenPass._vtable_candidates(names: list[str]) -> list[ir.GlobalVariable]
 }
 
 impl NaIRGenPass._isinstance_needs_class_name(names: list[str]) -> bool {
-    """Is some class that answers `True` for these names missing a vtable?
-
-    The vtable-pointer compare can only see classes whose layout carries a
-    vtable slot, and a class earns that slot from facts its OWN module can see:
-    it has a base, something there subclasses it, or something there names it in
-    an `isinstance`. A flat archetype an importer is the first to test satisfies
-    none of those, so it carries no slot -- and then the pointer compare has
-    nothing to compare against (the site demotes) or, once a consumer-side
-    subclass puts a vtable-carrying class in the candidate set, reads the
-    instance's first field as if it were a vtable pointer and answers from
-    garbage. Either way the answer has to come from the class-name identity
-    every instance carries instead.
-    """;
-
     _reach = self._vtable_less_reach;
     if _reach is None {
         reg = get_layout_registry(self.module, self.prog);
@@ -210,27 +196,6 @@ impl NaIRGenPass._isinstance_needs_class_name(names: list[str]) -> bool {
 impl NaIRGenPass._isinstance_unprovable_class(
     names: list[str], operand_arch: (str | None)
 ) -> (str | None) {
-    """A class this operand could be whose MRO is too short to decide these names.
-
-    A class that subclasses an imported one is linearized by its own module,
-    which reaches the base's name but not the base's own bases -- those live in
-    a registry that is only merged in later. The recorded MRO then stops one
-    link short, and every ancestor past that link silently drops out of the
-    hierarchy. Answering from those facts is how `isinstance` came to report
-    `False` for a base a class genuinely derives from, so a site whose targets
-    fall in the missing span refuses instead.
-
-    A short chain elsewhere in the program is only this site's problem if the
-    operand could actually hold one: a statically typed operand narrows the
-    candidates to itself and its subclasses, and only an erased one has to
-    answer for every class. That narrowing walks the candidate's chain link by
-    link rather than reading its recorded MRO, because the recorded MRO is the
-    very thing that is short -- reading it would drop a candidate precisely
-    when the ancestor it omits is the operand's declared type, which is the
-    case that most needs the refusal. Returns the class whose MRO is short, or
-    `None` when every chain this operand could take is whole.
-    """;
-
     _missing = self._short_mro_reach;
     if _missing is None {
         reg = get_layout_registry(self.module, self.prog);
@@ -283,18 +248,6 @@ impl NaIRGenPass._isinstance_unprovable_class(
 impl NaIRGenPass._isinstance_class_name_hit(
     obj_ptr: ir.Value, names: list[str]
 ) -> (ir.Value | None) {
-    """Does the object's runtime class name answer for any of these names?
-
-    Every archetype instantiation stamps its class name into the allocation
-    header, so this identity survives the module boundary the vtable does not:
-    the name is the same string whichever unit allocated the object. The
-    targets here are classes the compiler can name, so each one's hash is
-    folded into a constant for `__jac_isa_h`, whose index comes from the same
-    merged `mro_order` that `_register_imported_hierarchy` fills: an imported
-    base matches through an imported MRO without a second identity scheme.
-    `None` when no header is around to read -- a headerless build keeps the site
-    loud rather than guessing.
-    """;
     if self._emit_runtime_class_name_fn() is None {
         return None;
     }
@@ -500,14 +453,6 @@ impl NaIRGenPass._codegen_virtual_call(
 }
 
 impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
-    """The class-name string that is an archetype's runtime identity.
-
-    It is the archetype's native name, so two same-named archetypes from
-    different modules never answer for each other in `isinstance` or dispatch.
-    A module-scoped name is laid out behind a pointer to its source-level name
-    (`CLASS_DISPLAY_OFF` bytes before the text), which is what `__name__` reads
-    back when the class is only known at run time.
-    """;
     cached = self._class_name_consts.get(arch_name);
     if cached is not None {
         return cached;
@@ -549,7 +494,6 @@ impl NaIRGenPass._emit_class_name_const(arch_name: str) -> ir.Constant {
 }
 
 impl NaIRGenPass._emit_class_display_const(arch_name: str) -> ir.Constant {
-    """The source-level name of an archetype, as a static string.""";
     display = self._arch_display(arch_name);
     if display == arch_name {
         return self._emit_class_name_const(arch_name);
@@ -575,13 +519,6 @@ impl NaIRGenPass._emit_class_display_const(arch_name: str) -> ir.Constant {
 }
 
 impl NaIRGenPass._emit_class_display_fn -> ir.Function {
-    """`__jac_class_display(cls)`: the source-level name of a runtime class id.
-
-    A module-scoped identity (it contains the scope separator) was emitted by
-    `_emit_class_name_const`, which stores a pointer to the source-level name
-    `CLASS_DISPLAY_OFF` bytes before the text; any other class name already is
-    its source-level name.
-    """;
     if self._class_display_fn is not None {
         return self._class_display_fn;
     }
@@ -709,16 +646,6 @@ impl NaIRGenPass._emit_runtime_class_name_fn -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._codegen_runtime_class_name(obj_val: ir.Value) -> (ir.Value | None) {
-    """The runtime class name of the object `obj_val` points at.
-
-    A build whose allocations carry a header reads the name stamped there,
-    which answers for every class. The static pointee type is not evidence of
-    a vtable: a union-typed value is lowered as a pointer to its first member,
-    so a `Left | Stored` receiver typed `Left*` may hold a flat `Stored` whose
-    first field would be read as a vtable pointer. Only a headerless build,
-    which has no header to read, falls back to the vtable, and its callers
-    refuse a receiver that may be a flat class.
-    """;
     i8_ptr = ir.IntType(8).as_pointer();
     _headerless = self._nogc_headerless();
     if self._opt_payload_of(obj_val.type) is not None {
@@ -927,13 +854,6 @@ impl NaIRGenPass._is_enum_arch(name: str) -> bool {
 }
 
 impl NaIRGenPass._emit_isa_fn -> ir.Function {
-    """`__jac_isa(cls, tgt)`: the class-name check for a target known only at run time.
-
-    A runtime class handle, or an arm of a variadic tuple of them, reaches the
-    check as a bare name, so its hash is taken here before handing off to the
-    shared core. Sites whose target is a class the compiler can name call
-    `__jac_isa_h` directly and fold that hash into a constant.
-    """;
     if self._isa_fn is not None {
         return self._isa_fn;
     }
@@ -955,30 +875,6 @@ impl NaIRGenPass._emit_isa_fn -> ir.Function {
 }
 
 impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
-    """`__jac_isa_h(cls, tgt, tgt_hash)`: does class `cls` answer for class `tgt`?
-
-    Both arguments are class names read as identity: the object's, out of its
-    allocation header, and the target's. A name is the same string in every
-    unit, which is what lets this answer across module boundaries where a
-    vtable pointer cannot.
-
-    The program's classes are indexed at compile time by the FNV hash of their
-    name (`_static_str_hash`), each entry pointing at that class's ancestors,
-    which carry their own hashes. A check is then a pointer compare, one
-    runtime hash of the object's name, one probe, and a walk of that class's own
-    ancestors: O(depth), never a scan of the whole program's classes.
-
-    Names from this unit are the same linkonce_odr constants on both sides, so
-    they match by address and no string is compared. A name from another unit
-    has a different address and is confirmed with one `strcmp`, taken only
-    after the hashes agree, which also keeps two names that collide on 64 bits
-    distinct.
-
-    A class this unit cannot see (a subclass an importer defines) is not in
-    the index; its ancestry comes from the class record its defining module
-    registered at initialization, which every unit of the program shares.
-    """;
-
     if self._isa_h_fn is not None {
         return self._isa_h_fn;
     }
@@ -1214,15 +1110,6 @@ impl NaIRGenPass._emit_isa_hashed_fn -> ir.Function {
 }
 
 impl NaIRGenPass._emit_vtable_ancestry(arch_name: str) -> ir.GlobalVariable {
-    """The class's own MRO, which vtable header slot 1 points at.
-
-    Records of `{name hash, class name}`, the class itself first and a
-    `{0, null}` record last. The vtable is emitted once, by the module that
-    defines the class, and that module sees the class's whole chain -- so an
-    `isinstance` in a module that never imported the class can still ask its
-    instances what they derive from, although that module's candidate vtables
-    and class index do not list the class at all.
-    """;
     gv_name = f".jac.mro.{arch_name}";
     existing = self.llvm_module.globals.get(gv_name);
     if isinstance(existing, ir.GlobalVariable) {
@@ -1255,14 +1142,6 @@ impl NaIRGenPass._emit_vtable_ancestry(arch_name: str) -> ir.GlobalVariable {
 }
 
 impl NaIRGenPass._emit_isa_vtable_fn -> ir.Function {
-    """`__jac_isa_vt(vptr, tgt, tgt_hash)`: does the class behind a vtable answer for `tgt`?
-
-    Walks the ancestry records that vtable header slot 1 points at (see
-    `_emit_vtable_ancestry`); an object with no vtable stamped answers
-    `False`. The candidate-vtable compare and the class index only know the
-    classes the checking module can see; this also answers for a subclass
-    defined in a module it never imported.
-    """;
     if self._isa_vt_fn is not None {
         return self._isa_vt_fn;
     }
@@ -1302,14 +1181,6 @@ impl NaIRGenPass._emit_isa_vtable_fn -> ir.Function {
 }
 
 impl NaIRGenPass._emit_isa_records_fn -> ir.Function {
-    """`__jac_isa_mro(records, tgt, tgt_hash)`: does an ancestry list name `tgt`?
-
-    `records` is a class's `{name hash, class name}` MRO ending in a null
-    record (`_emit_vtable_ancestry`), reached through its vtable or its class
-    record; null answers `False`. Names match as in `__jac_isa_h`: the hash
-    first, then the address, then one `strcmp` for a name another unit
-    emitted.
-    """;
     if self._isa_mro_fn is not None {
         return self._isa_mro_fn;
     }
@@ -1383,7 +1254,6 @@ impl NaIRGenPass._emit_isa_records_fn -> ir.Function {
 }
 
 impl NaIRGenPass._isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.Value {
-    """Whether the class whose vtable is `vptr` derives from any of `names`.""";
     i1 = ir.IntType(1);
     i8p = ir.IntType(8).as_pointer();
     i64 = ir.IntType(64);
@@ -1406,16 +1276,6 @@ impl NaIRGenPass._isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.
 }
 
 impl NaIRGenPass._vtable_slot_certain(ty: (TypeBase | None)) -> bool {
-    """Does every object this static type admits hold a vtable pointer in slot 0?
-
-    The ancestry walk dereferences slot 0 as a vtable, so it may only run where
-    no admitted class is flat. A union of class pointers is stored with its
-    first member's layout, and a flat member there keeps a field in slot 0;
-    the candidate compare shrugs that off as a miss, a walk would chase it.
-    `None` members are fine (the operand is null-checked first); an unknown or
-    non-class type is not.
-    """;
-
     members: list[TypeBase] = (
         list(ty.types or []) if isinstance(ty, UnionType) else ([ty] if ty else [])
     );
@@ -1442,16 +1302,6 @@ impl NaIRGenPass._vtable_slot_certain(ty: (TypeBase | None)) -> bool {
 impl NaIRGenPass._isinstance_vtable_fallback(
     hit: (ir.Value | None), vptr: ir.Value, names: list[str], prefix: str
 ) -> ir.Value {
-    """`hit`, or else what the object's own vtable ancestry answers.
-
-    `hit` is the compare against the candidate vtables this module knows, which
-    settles every class the module can see; the ancestry walk runs only on a
-    miss, where the object may be a subclass from a module this one never
-    imported and no local candidate names it. Only pass a `vptr` read from an
-    operand whose static archetype carries a vtable, so that slot 0 is known to
-    hold one (see `_vtable_slot_certain`). With no local candidate at all (`hit` is `None`) the walk alone
-    answers.
-    """;
     if hit is None {
         return self._isinstance_vtable_hit(vptr, names);
     }
@@ -1485,7 +1335,6 @@ impl NaIRGenPass._vtable_set -> ir.GlobalVariable {
 }
 
 impl NaIRGenPass._emit_vtable_set_registrations -> None {
-    """Link this unit's vtables into the program's vtable set (module init).""";
     if not self._vtable_nodes {
         return;
     }
@@ -1523,13 +1372,6 @@ impl NaIRGenPass._emit_vtable_set_registrations -> None {
 }
 
 impl NaIRGenPass._emit_isa_vtobj_fn -> ir.Function {
-    """`__jac_isa_vtobj(word, tgt, tgt_hash)`: an erased object's first word, as a vtable.
-
-    A headerless build cannot tell a vtable-carrying object from a flat one,
-    whose first word is a field. The word is read as a vtable only when it is
-    one of the program's registered vtables; its ancestry then answers for
-    `tgt` through `__jac_isa_vt`. Anything else answers `False`.
-    """;
     if self._isa_vtobj_fn is not None {
         return self._isa_vtobj_fn;
     }
@@ -1617,15 +1459,6 @@ impl NaIRGenPass._emit_isa_vtobj_fn -> ir.Function {
 impl NaIRGenPass._isinstance_name_fallback(
     hit: ir.Value, obj_ptr: ir.Value, names: list[str], prefix: str
 ) -> ir.Value {
-    """`hit`, or else what the object's own ancestry answers.
-
-    The candidate vtables only list the classes this module can see, so a
-    subclass an importer defines misses them. Every instance of a headered
-    build carries its class name, and `__jac_isa_h` resolves a name this unit
-    does not index through the class records every unit registers. A
-    headerless build reads the object's first word, as a vtable only when it
-    is one of the program's registered vtables (`__jac_isa_vtobj`).
-    """;
     i1 = ir.IntType(1);
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
@@ -1683,13 +1516,6 @@ impl NaIRGenPass._emit_isa_name_match(
     on_match: ir.Block,
     on_miss: ir.Block
 ) -> None {
-    """End `b`'s block by branching on whether two class names are the same class.
-
-    Names from one unit are the same constant, so the address compare settles
-    them; only a name from another unit falls through to `strcmp`. `gate`, when
-    given, must hold before either compare runs -- the hash agreement that makes
-    a confirm worth taking -- and a false gate goes straight to `on_miss`.
-    """;
     fn = b.block.function;
     by_text = fn.append_basic_block("isa.by.text");
     by_addr = b.block if gate is None else fn.append_basic_block("isa.by.addr");
@@ -1736,13 +1562,6 @@ impl NaIRGenPass._runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value |
 }
 
 impl NaIRGenPass._is_runtime_class_tuple(t: any) -> bool {
-    """Is this the type of a tuple whose every arm is a class handle?
-
-    That is the shape `isinstance(x, types)` needs: the arms arrive as values,
-    and each one has to be a `type[...]` so the compare has a class id to walk.
-    An arity-less arm (the `UnknownType` a variadic tuple parks) is skipped, so
-    both `tuple[type[T], type[T]]` and `tuple[type[T], ...]` qualify.
-    """;
     try {
         import from jaclang.compiler.types.types { ClassType as _SeqClassType }
     } except ImportError {
@@ -1774,15 +1593,6 @@ impl NaIRGenPass._is_runtime_class_tuple(t: any) -> bool {
 impl NaIRGenPass._runtime_class_arms(
     expr: (uni.UniNode | None)
 ) -> tuple[list[ir.Value] | None, ir.Value | None] {
-    """The class handles an `isinstance` type argument carries as a value.
-
-    `isinstance(x, types)` where `types` is a value is the same check as a
-    literal tuple of arms, only the arms arrive at runtime. Returns them as
-    `(unrolled, sequence)`: an arity the type states unrolls into one compare
-    per arm, and a variadic tuple -- which lowers to a native sequence, so its
-    arity is a runtime value -- comes back whole for the loop to walk. Both are
-    `None` when the argument is not a runtime class handle at all.
-    """;
     none_pair: tuple[list[ir.Value] | None, ir.Value | None] = (None, None, );
     one = self._runtime_class_value(expr);
     if one is not None {
@@ -1820,12 +1630,6 @@ impl NaIRGenPass._runtime_class_arms(
 }
 
 impl NaIRGenPass._emit_isa_seq_fn -> ir.Function {
-    """`__jac_isa_seq(cls, seq)`: does any class handle in `seq` answer for `cls`?
-
-    A variadic tuple of types arrives as a native pointer sequence, so its arity
-    is a runtime value and the per-arm compare has to run in a loop rather than
-    unroll. The body is the same `__jac_isa` walk each named arm performs.
-    """;
     if self._isa_seq_fn is not None {
         return self._isa_seq_fn;
     }

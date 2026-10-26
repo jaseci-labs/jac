@@ -560,16 +560,11 @@ impl ProjectHost.host_platform -> HostPlatform {
 }
 
 impl ProjectHost.ct_environment -> CtEnvironment {
-    """The comptime `target`: the native target this compile builds for, else
-    the host. Analysis identities carry the target, so each target's comptime
-    answers are cached apart.""";
     import sys;
     import platform;
-    import from jaclang.compiler.frontend.codeinfo { effective_native_target }
+
     triple = effective_native_target().lower();
     if triple {
-        """Parsed here rather than through target_spec: this runs while the
-        type evaluator compiles any module, target_spec.jac included.""";
         arch = "";
         if "aarch64" in triple or "arm64" in triple {
             arch = "aarch64";
