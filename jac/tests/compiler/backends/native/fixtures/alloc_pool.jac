@@ -2,7 +2,9 @@
 
 Objects of several sizes, strings and small containers are made and dropped
 in turn, so most allocations reuse a block an earlier free put in the pool;
-a long-lived structure holds some of them across the churn. Then `flow`
+a long-lived structure holds some of them across the churn. A small pooled
+string grown in place with `+=` must leave its neighbours intact: the pool
+class and the string's capacity live in different header bits. Then `flow`
 starts threads, after which allocation and free go back to malloc: blocks
 still in the pool, and objects allocated before the threads, are freed by
 other threads from then on.
@@ -44,6 +46,15 @@ def churn(n: int, keep: list[Mid]) -> int {
     return total;
 }
 
+def grown(n: int) -> list[str] {
+    a = "ab" * 8;
+    b = "cd" * 8;
+    for i in range(n) {
+        a += "x";
+    }
+    return [str(len(a)), b];
+}
+
 def work(seed: int) -> int {
     keep: list[Mid] = [];
     total = churn(20000 + seed, keep);
@@ -57,6 +68,7 @@ glob keep: list[Mid] = [];
 with entry {
     first = churn(50000, keep);
     print(first, len(keep), keep[3].tag);
+    print(grown(200), grown(3000));
     h1 = flow work(1) ;
     h2 = flow work(2) ;
     a = wait h1 ;

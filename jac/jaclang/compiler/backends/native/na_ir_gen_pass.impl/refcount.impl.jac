@@ -264,9 +264,15 @@ impl NaIRGenPass._emit_rc_helpers -> None {
             _fb_class
         );
         fb = ir.IRBuilder(_fb_class);
-        _fb_cls = fb.lshr(
-            fb.load(fb.bitcast(fb_fn.args[0], i64_ptr, name="fb.wp"), name="fb.word"),
-            ir.Constant(i64, 56),
+        _fb_cls = fb.and_(
+            fb.lshr(
+                fb.load(
+                    fb.bitcast(fb_fn.args[0], i64_ptr, name="fb.wp"), name="fb.word"
+                ),
+                ir.Constant(i64, POOL_CLASS_SHIFT),
+                name="fb.clsw"
+            ),
+            ir.Constant(i64, POOL_CLASS_MASK),
             name="fb.cls"
         );
         _fb_st = fb.icmp_unsigned(
@@ -354,6 +360,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     total = b.add(total, ir.Constant(i64, 15), name="total.pad");
     total = b.and_(total, ir.Constant(i64, -16), name="total.align");
     _class_byte: (ir.Value | None) = None;
+    raw: ir.Value;
     if pool_free_gv is not None and pool_count_gv is not None {
         _in_class = b.and_(
             b.icmp_unsigned(">=", total, ir.Constant(i64, 48), name="pool.lo"),
@@ -420,9 +427,10 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         _p_fresh = b.call(self.malloc_fn, [total], name="raw.fresh");
         b.branch(_p_got);
         b = ir.IRBuilder(_p_got);
-        raw = b.phi(i8_ptr, name="raw");
-        raw.add_incoming(_p_head, _p_pop);
-        raw.add_incoming(_p_fresh, _p_malloc);
+        raw_phi = b.phi(i8_ptr, name="raw");
+        raw_phi.add_incoming(_p_head, _p_pop);
+        raw_phi.add_incoming(_p_fresh, _p_malloc);
+        raw = raw_phi;
     } else {
         raw = b.call(self.malloc_fn, [total], name="raw");
     }
@@ -431,15 +439,15 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         alloc_fn, b, alloc_id_gv, None, "add", "monotonic", "aid"
     );
     _aid_ptr = b.bitcast(raw, i64_ptr, name="aid.ptr");
-    _magic_base = ir.Constant(i64, HDR_MAGIC_SHIFT_BASE);
+    _magic_base: ir.Value = ir.Constant(i64, HDR_MAGIC_SHIFT_BASE);
     if _class_byte is not None {
         _magic_base = b.or_(
             _magic_base,
-            b.shl(_class_byte, ir.Constant(i64, 56), name="pool.clsbits"),
+            b.shl(_class_byte, ir.Constant(i64, POOL_CLASS_SHIFT), name="pool.clsbits"),
             name="aid.base"
         );
     }
-    _aid_lo32 = b.and_(_aid_old, ir.Constant(i64, 4294967295), name="aid.lo");
+    _aid_lo32 = b.and_(_aid_old, ir.Constant(i64, ALLOC_ID_MASK), name="aid.lo");
     _aid_magic = b.or_(_magic_base, _aid_lo32, name="aid.magic");
     b.store(_aid_magic, _aid_ptr);
 
@@ -3583,7 +3591,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
     _sf_aid_ptr = b.bitcast(obj_raw, i64_ptr, name="sf.aid.ptr");
     _sf_aid_raw = b.load(_sf_aid_ptr, name="sf.aid.raw");
     _sf_aid = b.and_(
-        _sf_aid_raw, ir.Constant(ir.IntType(64), 4294967295), name="sf.aid"
+        _sf_aid_raw, ir.Constant(ir.IntType(64), ALLOC_ID_MASK), name="sf.aid"
     );
     _sf_tag_slot = b.gep(obj_cast, [ir.Constant(i64, HDR_TAG_OFF)], name="sf.tag.slot");
     _sf_tag_ptr = b.bitcast(_sf_tag_slot, i8_ptr.as_pointer(), name="sf.tag.ptr");

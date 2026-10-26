@@ -3464,7 +3464,13 @@ impl NaIRGenPass._emit_str_concat_inplace(
         name="ip.guc"
     );
     _gst = self.builder.or_(
-        self.builder.and_(aw, ir.Constant(i64, 0x000FFFFFFFFFFFFF), name="ip.nawkeep"),
+        self.builder.and_(
+            aw,
+            ir.Constant(
+                i64, 0x000FFFFFFFFFFFFF & ~(POOL_CLASS_MASK << POOL_CLASS_SHIFT)
+            ),
+            name="ip.nawkeep"
+        ),
         self.builder.shl(_gclamped, ir.Constant(i64, 52), name="ip.gushift"),
         name="ip.gstamp"
     );
