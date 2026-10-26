@@ -3235,7 +3235,7 @@ impl NativeListEmitter.emit_sort(
             rev_i1 = p._to_bool(_rev_val);
         }
     }
-    if key_fn is None {
+    if key_fn is None or _key_node is None {
         return self._emit_value_sort(ctx, target, rev_i1);
     }
     return self._emit_key_sort(ctx, target, key_fn, rev_i1, _key_node);
