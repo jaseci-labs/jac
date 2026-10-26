@@ -387,8 +387,13 @@ def:pub _h_create_bigint_uint64(argv: int) -> int {
     # For unsigned BigInt, format as unsigned if negative (i.e. high bit set)
     val_str: str = str(val);
     if val < 0 {
-        # Two's complement unsigned representation: 2^64 + val
-        val_str = str(val + 18446744073709551616);
+        # The unsigned value u = 2^64 + val, without 2^64 (no native int holds
+        # it): half = u // 2 is val's low 63 bits shifted right, so the digits
+        # before the last are half // 5 and the last is rebuilt from the
+        # remainder and the bit shifted out. Every step stays within int64.
+        half: int = (val >> 1) & 9223372036854775807;
+        lead: int = half // 5;
+        val_str = str(lead) + str((half - lead * 5) * 2 + (val & 1));
     }
     id: int = str_intern(val_str);
     bigv: JSValue = jsv_from_cell_kind(id, JS_CELL_KIND_BIGINT);
