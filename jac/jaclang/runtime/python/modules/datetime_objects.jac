@@ -10,7 +10,9 @@ import from c {
          PyDateTime_TZInfoType: PyTypeObject,
          PyDateTime_TimeZoneType: PyTypeObject,
          zero_delta: PyDateTime_Delta,
-         utc_timezone: PyDateTime_TimeZone;
+         utc_timezone: PyDateTime_TimeZone; glob:priv utcoffset_name:
+             ptr[PyObject] = ptr[PyObject](),
+         dst_name: ptr[PyObject] = ptr[PyObject]();
 }
 
 glob Py_LT: Final[int] = 0,
@@ -1124,12 +1126,22 @@ impl call_tzinfo_method(
     return offset;
 }
 
+def:priv call_tzinfo_offset(
+    tzinfo: ptr[PyObject], name: ptr[PyObject], cname: ptr[u8], tzinfoarg: ptr[PyObject]
+) -> ptr[PyObject];
+
 impl call_utcoffset(tzinfo: ptr[PyObject], tzinfoarg: ptr[PyObject]) -> ptr[PyObject] {
-    return call_tzinfo_method(tzinfo, "utcoffset", tzinfoarg);
+    if not utcoffset_name {
+        utcoffset_name = PyUnicode_InternFromString(ptr[u8]("utcoffset"));
+    }
+    return call_tzinfo_offset(tzinfo, utcoffset_name, ptr[u8]("utcoffset"), tzinfoarg);
 }
 
 impl call_dst(tzinfo: ptr[PyObject], tzinfoarg: ptr[PyObject]) -> ptr[PyObject] {
-    return call_tzinfo_method(tzinfo, "dst", tzinfoarg);
+    if not dst_name {
+        dst_name = PyUnicode_InternFromString(ptr[u8]("dst"));
+    }
+    return call_tzinfo_offset(tzinfo, dst_name, ptr[u8]("dst"), tzinfoarg);
 }
 
 impl call_tzname(tzinfo: ptr[PyObject], tzinfoarg: ptr[PyObject]) -> ptr[PyObject] {
@@ -1413,4 +1425,56 @@ impl data_bytes(op: ptr[PyObject], size: int) -> ptr[PyObject] {
 
 impl data_address(op: ptr[PyObject]) -> ptr[u8] {
     return ptr[u8](op) + PY_DATETIME_DATA_OFFSET;
+}
+
+impl call_tzinfo_offset(
+    tzinfo: ptr[PyObject], name: ptr[PyObject], cname: ptr[u8], tzinfoarg: ptr[PyObject]
+) -> ptr[PyObject] {
+    if tzinfo == Py_None {
+        return Py_NewRef(Py_None);
+    }
+    if not name {
+        return NULL;
+    }
+    callable = PyObject_GetAttr(tzinfo, name);
+    if not callable {
+        return NULL;
+    }
+    if PyCallable_Check(callable) == 0 {
+        PyErr_Format(
+            PyExc_TypeError,
+            ptr[u8]("attribute of type '%.200s' is not callable"),
+            type_name_of(callable)
+        );
+        jacpy_release(callable);
+        return NULL;
+    }
+    offset = PyObject_CallOneArg(callable, tzinfoarg);
+    jacpy_release(callable);
+    if offset == Py_None or not offset {
+        return offset;
+    }
+    if delta_check(offset) {
+        if offset_out_of_range(offset) {
+            PyErr_Format(
+                PyExc_ValueError,
+                ptr[u8](
+                    "offset must be a timedelta strictly between -timedelta(hours=24) and timedelta(hours=24), not %R"
+                ),
+                offset
+            );
+            jacpy_release(offset);
+            return NULL;
+        }
+    } else {
+        PyErr_Format(
+            PyExc_TypeError,
+            ptr[u8]("tzinfo.%s() must return None or timedelta, not '%.200s'"),
+            cname,
+            type_name_of(offset)
+        );
+        jacpy_release(offset);
+        return NULL;
+    }
+    return offset;
 }

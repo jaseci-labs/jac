@@ -222,7 +222,6 @@ assert _heapq.heappop([1, 2, 3]) == 1
     del source
     gc.collect()
     assert reference() is None
-    assert ctypes.pythonapi.jacpy_array_insert
     numeric_array = array.array('q')
     array_empty_size = numeric_array.__sizeof__()
     numeric_array.extend(range(10000))
@@ -268,8 +267,12 @@ assert _heapq.heappop([1, 2, 3]) == 1
             return 7
     numeric_array[0] = ArrayMutation()
     assert numeric_array.tolist() == [7]
-    numeric_array.append(ArrayMutation())
-    assert numeric_array.tolist() == [4, 7]
+    try:
+        numeric_array.append(ArrayMutation())
+    except IndexError:
+        pass  # as CPython: the append index no longer exists after the clear
+    else:
+        raise AssertionError("array append kept a stale index")
     assert array.array('w', 'aΩ😀').tounicode() == 'aΩ😀'
     class IteratorOwner:
         def key(self, value):
@@ -293,7 +296,6 @@ assert _heapq.heappop([1, 2, 3]) == 1
     del first, lagging
     gc.collect()  # Releasing a long replay chain must use the destruction budget.
 
-    assert ctypes.pythonapi.jacpy_tee_next
     assert list(itertools.batched(range(5), 2)) == [(0, 1), (2, 3), (4,)]
     assert list(itertools.permutations("ab")) == [("a", "b"), ("b", "a")]
     assert [(key, list(group)) for key, group in itertools.groupby("aabb")] == [
@@ -580,7 +582,6 @@ assert _heapq.heappop([1, 2, 3]) == 1
     recursive_getter = _operator.itemgetter(recursive_items)
     recursive_items.append(recursive_getter)
     assert repr(recursive_getter) == "operator.itemgetter([operator.itemgetter(...)])"
-    assert ctypes.pythonapi.jacpy_binascii_convert
     assert binascii.a2b_base64(binascii.b2a_base64(b"native codec")) == b"native codec"
     assert binascii.crc32(b"123456789") == 0xcbf43926
     # Private Jac helpers must not interpose on zlib's distinct C ABI.

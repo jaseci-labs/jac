@@ -15889,13 +15889,6 @@ graph import runtime.python {
             | modules.sqlite3
             | modules.time { ArgumentFormat },
         modules.decimal_number | modules.mmap { ArgumentFormat, ArgumentValue },
-        modules.itertools {
-            BoundArguments,
-            CallSignature,
-            PARSE_FORMAT_KEYWORDS,
-            index_value,
-            keywords_of_dict
-        },
         modules.math { vector_tuple },
         modules.thread { ArgumentFormat, check_positional },
         object_model.bytearray
@@ -16019,6 +16012,29 @@ graph import runtime.python {
             textiobase_doc
         },
     ]
+    bindings.clinic.itertools ++> modules.itertools {
+        batched_new_new,
+        itertools__grouper_new,
+        itertools__tee_new,
+        itertools_accumulate_new,
+        itertools_combinations_new,
+        itertools_combinations_with_replacement_new,
+        itertools_compress_new,
+        itertools_count_new,
+        itertools_cycle_new,
+        itertools_dropwhile_new,
+        itertools_filterfalse_new,
+        itertools_groupby_new,
+        itertools_permutations_new,
+        itertools_starmap_new,
+        itertools_takewhile_new,
+        itertools_teedataobject_new,
+        pairwise_new_new
+    }
+    bindings.clinic.zoneinfo ++> modules.zoneinfo {
+        ZoneInfo_methods,
+        zoneinfo_ZoneInfo_new
+    }
     bindings.cmath ++> inittab { PyInit_cmath }
     bindings.codecs ++> inittab { PyInit__codecs }
     bindings.codecs_cn ++> inittab { PyInit__codecs_cn }
@@ -16126,7 +16142,7 @@ graph import runtime.python {
     bindings.md5 ++> inittab { PyInit__md5 }
     bindings.members ++> [
         modules.bz2 | modules.zlib { record_set_byte, record_set_object },
-        modules.collections | modules.zoneinfo { record_set_object },
+        modules.collections { record_set_object },
         modules.elementtree
             | modules.pyexpat
             | modules.select_platform
@@ -16143,6 +16159,7 @@ graph import runtime.python {
     bindings.mmap ++> inittab { PyInit_mmap }
     bindings.module ++> [
         interpreter.frame
+            | modules.array
             | modules.ctypes
             | modules.ctypes_callbacks
             | modules.ctypes_callproc
@@ -16155,6 +16172,7 @@ graph import runtime.python {
             | modules.interpchannels
             | modules.interpqueues
             | modules.interpreters
+            | modules.itertools
             | modules.socket_object
             | modules.thread
             | object_model.bltinmodule
@@ -16201,17 +16219,6 @@ graph import runtime.python {
             jacpy_binding_module_native_present,
             jacpy_binding_state_get
         },
-        modules.array
-            | modules.collections
-            | modules.functools
-            | modules.itertools
-            | modules.lsprof
-            | modules.multibytecodec
-            | modules.pickle_decode
-            | modules.pickle_encode
-            | modules.queue
-            | modules.struct
-            | modules.zlib { jacpy_binding_state_get, visit_reference },
         modules.asyncio { PositionalMethodRecord, visit_reference },
         modules.asyncio_core | modules.csv | modules.socket_core {
             jacpy_binding_module_native_get,
@@ -16234,6 +16241,15 @@ graph import runtime.python {
             | modules.sha3
             | modules.termios
             | modules.time { jacpy_binding_state_get },
+        modules.collections
+            | modules.functools
+            | modules.lsprof
+            | modules.multibytecodec
+            | modules.pickle_decode
+            | modules.pickle_encode
+            | modules.queue
+            | modules.struct
+            | modules.zlib { jacpy_binding_state_get, visit_reference },
         modules.decimal_number { jacpy_binding_state_set, visit_reference },
         modules.elementtree | modules.pyexpat {
             jacpy_binding_module_native_get,
@@ -16266,7 +16282,7 @@ graph import runtime.python {
             jacpy_binding_state_get,
             visit_reference
         },
-        modules.sqlite3 | modules.zoneinfo {
+        modules.sqlite3 {
             jacpy_binding_module_native_get,
             jacpy_binding_module_native_present,
             visit_reference
@@ -16282,6 +16298,12 @@ graph import runtime.python {
             jacpy_binding_state_get,
             visit_reference
         },
+        modules.zoneinfo {
+            MethodCallbacks,
+            MethodDefinition,
+            method_table,
+            visit_reference
+        },
     ]
     bindings.multibytecodec ++> inittab { PyInit__multibytecodec }
     bindings.multiprocessing ++> inittab { PyInit__multiprocessing }
@@ -16289,7 +16311,6 @@ graph import runtime.python {
     bindings.operator ++> inittab { PyInit__operator }
     bindings.payload ++> [
         modules.abc
-            | modules.array
             | modules.bz2
             | modules.functools
             | modules.hashlib
@@ -16305,7 +16326,6 @@ graph import runtime.python {
             | modules.struct
             | modules.unicodedata
             | modules.zlib
-            | modules.zoneinfo
             | modules.zstd {
             jacpy_binding_native_get,
             jacpy_binding_native_present,
@@ -16318,15 +16338,6 @@ graph import runtime.python {
             jacpy_binding_native_set
         },
         modules.elementtree { jacpy_binding_clear_weakrefs, jacpy_binding_untrack },
-        modules.itertools {
-            clear_payload,
-            dispose_payload,
-            jacpy_binding_dealloc_guard,
-            jacpy_binding_native_set,
-            jacpy_binding_own_get,
-            jacpy_binding_own_present,
-            traverse_payload
-        },
         modules.posix_stat {
             dispose_payload,
             jacpy_binding_native_get,
@@ -16349,12 +16360,12 @@ graph import runtime.python {
     bindings.queue ++> inittab { PyInit__queue }
     bindings.random ++> inittab { PyInit__random }
     bindings.references ++> [
-        modules.abc | modules.array | modules.collections | modules.pickle {
+        modules.abc | modules.collections | modules.pickle {
             ReferenceState,
             owned_tuple
         },
         modules.codecs | modules.mmap | modules.uuid { owned_tuple },
-        modules.functools | modules.itertools | modules.struct { ReferenceState },
+        modules.functools | modules.struct { ReferenceState },
         modules.lsprof { call_method },
     ]
     bindings.remote_debugging ++> inittab { PyInit__remote_debugging }
@@ -16371,7 +16382,6 @@ graph import runtime.python {
     bindings.ssl ++> inittab { PyInit__ssl }
     bindings.stat ++> inittab { PyInit__stat }
     bindings.state ++> modules.abc
-        | modules.array
         | modules.asyncio_core
         | modules.blake2
         | modules.bz2
@@ -16382,7 +16392,6 @@ graph import runtime.python {
         | modules.hashlib
         | modules.hashopenssl
         | modules.hmac
-        | modules.itertools
         | modules.lsprof
         | modules.lzma
         | modules.md5
@@ -16405,7 +16414,6 @@ graph import runtime.python {
         | modules.struct
         | modules.unicodedata
         | modules.zlib
-        | modules.zoneinfo
         | modules.zstd { NativeState }
     bindings.statistics ++> inittab { PyInit__statistics }
     bindings.struct ++> inittab { PyInit__struct }
@@ -16425,12 +16433,6 @@ graph import runtime.python {
             | modules.ssl
             | modules.ssl_cert
             | modules.zstd { jacpy_binding_allocate },
-        modules.array {
-            jacpy_binding_allocate,
-            jacpy_binding_basicsize,
-            jacpy_binding_matches,
-            jacpy_binding_owner
-        },
         modules.asyncio.free_object { jacpy_binding_free },
         modules.asyncio_core
             | modules.decimal_objects
@@ -16456,14 +16458,6 @@ graph import runtime.python {
             jacpy_binding_record
         },
         modules.io { PropertyDefinition, getset_table },
-        modules.itertools {
-            TypeSlot,
-            jacpy_binding_allocate,
-            jacpy_binding_basicsize,
-            jacpy_binding_matches,
-            jacpy_binding_owner,
-            jacpy_binding_token
-        },
         modules.lsprof { descriptor_get },
         modules.multibytecodec | modules.struct {
             jacpy_binding_allocate,
@@ -16495,7 +16489,7 @@ graph import runtime.python {
             jacpy_binding_owner,
             jacpy_binding_record
         },
-        modules.sqlite3 | modules.zoneinfo {
+        modules.sqlite3 {
             jacpy_binding_allocate,
             jacpy_binding_owner,
             jacpy_binding_record
@@ -16520,7 +16514,6 @@ graph import runtime.python {
             text_value,
             type_name
         },
-        bindings.array | bindings.functools { object_error, text_object },
         bindings.asyncio | bindings.module | bindings.type | modules.io {
             c_string_copy
         },
@@ -16596,6 +16589,7 @@ graph import runtime.python {
             | bindings.clinic.zlib
             | bindings.clinic.zoneinfo
             | bindings.clinic.zstd
+            | modules.binascii
             | modules.ctypes_callproc
             | modules.datetime_date
             | modules.datetime_datetime
@@ -16645,8 +16639,8 @@ graph import runtime.python {
             | modules.sha3
             | modules.statistics
             | modules.suggestions
-            | modules.termios
-            | modules.zoneinfo { object_error },
+            | modules.termios { object_error },
+        bindings.functools { object_error, text_object },
         bindings.json { boundary_failure, object_error, object_tuple, type_name },
         bindings.operator { boundary_failure, object_error, text_object },
         bindings.pickle { builtin_kind, builtin_type, object_error, text_value },
@@ -16667,25 +16661,7 @@ graph import runtime.python {
         bindings.zstd | modules.decimal_context { c_string_text },
         constant_input { boundary_failure, read_buffer },
         constant_output { checked, required, text_object, write_buffer },
-        modules.array {
-            boundary_failure,
-            checked,
-            jac_heap_size,
-            object_error,
-            object_tuple,
-            repr_value,
-            required,
-            text_object,
-            type_name
-        },
         modules.binary_scalars { memory_byte, memory_set, required },
-        modules.binascii {
-            boundary_failure,
-            module_failure,
-            object_error,
-            read_buffer,
-            write_buffer
-        },
         modules.cmath { boundary_failure, object_error, object_tuple, required },
         modules.collections {
             boundary_failure,
@@ -16698,14 +16674,6 @@ graph import runtime.python {
             text_object,
             text_value,
             type_name
-        },
-        modules.combinatorics {
-            boundary_failure,
-            checked,
-            jac_heap_size,
-            jac_list_heap_size,
-            object_error,
-            required
         },
         modules.csv {
             boundary_failure,
@@ -16735,7 +16703,6 @@ graph import runtime.python {
             text_value,
             type_name
         },
-        modules.grouping { boundary_failure, checked, required },
         modules.grp | modules.pwd { object_error, repr_value },
         modules.hashopenssl {
             c_size,
@@ -16745,16 +16712,6 @@ graph import runtime.python {
             text_value
         },
         modules.hmac | modules.zlib { object_error, text_value },
-        modules.iterators {
-            boundary_failure,
-            checked,
-            object_error,
-            repr_value,
-            required,
-            text_object,
-            type_name
-        },
-        modules.itertools { boundary_failure, object_error, required, text_object },
         modules.json {
             boundary_failure,
             checked,
@@ -16853,7 +16810,6 @@ graph import runtime.python {
             required,
             type_name
         },
-        modules.tee { boundary_failure, checked, object_error, required },
         modules.time {
             boundary_failure,
             c_string_text,
@@ -16936,36 +16892,10 @@ graph import runtime.python {
             jacpy_unicode_intern_text,
             jacpy_unicode_size
         },
-        bindings.array {
+        bindings.array | bindings.io | bindings.itertools | bindings.thread {
             NULL,
-            PyErr_WarnEx,
-            PyExc_DeprecationWarning,
-            PyExc_IndexError,
-            PyExc_TypeError,
-            PyImport_ImportModuleAttrString,
-            PyIndex_Check,
-            PyLong_FromLongLong,
-            PyNumber_AsSsize_t,
-            PyObject,
-            PyObject_CallOneArg,
-            PyObject_GetAttrString,
-            PySys_AuditTuple,
-            PyType_GetSlot,
-            PyUnicode_FromOrdinal,
-            Py_NewRef,
-            Py_None,
-            Py_NotImplemented,
-            Py_TYPE,
-            Py_buffer,
-            jacpy_dict_size,
-            jacpy_error_pending,
-            jacpy_is_bytearray,
-            jacpy_is_bytes,
-            jacpy_is_slice,
-            jacpy_is_unicode,
-            jacpy_release,
-            jacpy_slice_adjust,
-            jacpy_slice_unpack
+            PyModuleDef,
+            PyObject
         },
         bindings.asyncio {
             NULL,
@@ -17005,7 +16935,6 @@ graph import runtime.python {
             | bindings.codecs_kr
             | bindings.codecs_tw
             | bindings.imp
-            | bindings.itertools
             | bindings.marshal
             | bindings.posixshmem
             | bindings.statistics
@@ -17447,8 +17376,10 @@ graph import runtime.python {
         },
         bindings.heapq { PyObject, jacpy_unicode_from_text },
         bindings.hmac { PyExc_ValueError, PyModule_AddIntConstant, PyObject },
-        bindings.interpchannels | bindings.interpqueues { PyModuleDef, PyObject },
-        bindings.io | bindings.thread { NULL, PyModuleDef, PyObject },
+        bindings.interpchannels | bindings.interpqueues | bindings.zoneinfo {
+            PyModuleDef,
+            PyObject
+        },
         bindings.json {
             NULL,
             PyExc_SystemError,
@@ -17846,7 +17777,6 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_from_text
         },
-        bindings.zoneinfo { PyModule_AddObjectRef, PyObject },
         bindings.zstd {
             NULL,
             PyLong_FromLong,
@@ -18849,65 +18779,96 @@ graph import runtime.python {
         },
         modules.array {
             NULL,
-            PyByteArray_Resize,
+            PyBuffer_Release,
+            PyBytes_FromStringAndSize,
+            PyErr_BadArgument,
+            PyErr_BadInternalCall,
+            PyErr_Format,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyErr_WarnEx,
             PyExc_BufferError,
+            PyExc_DeprecationWarning,
             PyExc_EOFError,
             PyExc_IndexError,
-            PyExc_MemoryError,
             PyExc_OverflowError,
             PyExc_RuntimeError,
-            PyExc_SystemError,
             PyExc_TypeError,
             PyExc_ValueError,
             PyFloat_AsDouble,
             PyFloat_FromDouble,
+            PyFloat_Type,
+            PyImport_ImportModuleAttrString,
+            PyIndex_Check,
             PyIter_Next,
-            PyList_Append,
+            PyList_New,
+            PyList_Size,
+            PyLong_AsLong,
             PyLong_AsLongLong,
             PyLong_AsSsize_t,
+            PyLong_AsUnsignedLong,
             PyLong_AsUnsignedLongLong,
+            PyLong_FromLong,
             PyLong_FromLongLong,
+            PyLong_FromSize_t,
+            PyLong_FromSsize_t,
+            PyLong_FromUnsignedLong,
+            PyLong_FromUnsignedLongLong,
             PyLong_FromVoidPtr,
-            PyNumber_Index,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_Realloc,
+            PyMemberDef,
+            PyModuleDef,
+            PyModule_Add,
+            PyModule_AddObjectRef,
+            PyModule_AddType,
+            PyNumber_AsSsize_t,
             PyObject,
-            PyObject_Call,
             PyObject_CallOneArg,
+            PyObject_ClearWeakRefs,
+            PyObject_GC_Del,
+            PyObject_GC_Track,
+            PyObject_GC_UnTrack,
+            PyObject_GenericGetAttr,
             PyObject_GetAttrString,
+            PyObject_GetBuffer,
             PyObject_GetIter,
+            PyObject_GetOptionalAttr,
             PyObject_RichCompare,
             PyObject_RichCompareBool,
+            PyObject_SelfIter,
+            PyObject_VectorcallMethod,
+            PySequence_GetItem,
+            PySlice_Type,
+            PySys_Audit,
+            PyTuple_New,
+            PyType_FromModuleAndSpec,
+            PyType_GenericAlloc,
+            PyType_GetModule,
             PyType_IsSubtype,
+            PyType_Slot,
+            PyType_Spec,
+            PyType_Type,
+            PyUnicode_AsWideCharString,
+            PyUnicode_DecodeASCII,
+            PyUnicode_FromFormat,
             PyUnicode_FromOrdinal,
-            PyUnicode_Join,
+            PyUnicode_FromWideChar,
+            PyUnicode_GetLength,
+            PyUnicode_InternFromString,
             PyUnicode_ReadChar,
-            Py_NewRef,
+            Py_BuildValue,
             Py_None,
-            Py_TYPE,
-            jacpy_builtins,
-            jacpy_bytearray_memory,
-            jacpy_bytearray_new,
-            jacpy_bytes_address,
-            jacpy_bytes_from_memory,
-            jacpy_bytes_length,
-            jacpy_dict_get,
-            jacpy_error_pending,
-            jacpy_float32_bits,
-            jacpy_float_bits,
-            jacpy_float_unpack,
-            jacpy_is_bytes,
-            jacpy_is_list,
-            jacpy_is_long,
-            jacpy_is_type,
-            jacpy_is_unicode,
-            jacpy_list_new,
-            jacpy_memory_copy,
-            jacpy_memory_move,
-            jacpy_native_little_endian,
-            jacpy_native_size,
-            jacpy_optional_attr,
-            jacpy_release,
-            jacpy_unicode_decode_bytes,
-            jacpy_unicode_size
+            Py_NotImplemented,
+            Py_buffer,
+            _PyArg_NoKeywords,
+            _PyEval_GetBuiltin,
+            _PyLong_FromByteArray,
+            _PyNumber_Index,
+            _PyObject_GC_New,
+            _PyType_Name
         },
         modules.asyncio {
             NULL,
@@ -19082,22 +19043,16 @@ graph import runtime.python {
         },
         modules.binascii {
             NULL,
-            PyBytes_AsString,
             PyBytes_FromStringAndSize,
+            PyErr_Format,
             PyErr_NoMemory,
-            PyExc_SystemError,
-            PyExc_TypeError,
-            PyExc_ValueError,
-            PyLong_FromLongLong,
+            PyErr_SetString,
+            PyLong_FromUnsignedLong,
+            PyMem_Calloc,
+            PyMem_Free,
             PyObject,
-            PySequence_Size,
-            PyUnicode_ReadChar,
-            jacpy_buffer_byte,
-            jacpy_buffer_size,
-            jacpy_is_bytes,
-            jacpy_is_unicode,
-            jacpy_release,
-            jacpy_set_exception
+            _PyBytes_Resize,
+            jacpy_release
         },
         modules.bisect {
             NULL,
@@ -19281,20 +19236,6 @@ graph import runtime.python {
             jacpy_dict_repr,
             jacpy_error_pending,
             jacpy_release,
-            jacpy_tuple_set_owned
-        },
-        modules.combinatorics {
-            NULL,
-            PyExc_MemoryError,
-            PyExc_OverflowError,
-            PyObject,
-            PySequence_Tuple,
-            PyTuple_New,
-            PyTuple_Size,
-            Py_NewRef,
-            jacpy_release,
-            jacpy_tuple_exchange,
-            jacpy_tuple_item,
             jacpy_tuple_set_owned
         },
         modules.contextvars { PyContext_CopyCurrent, PyObject },
@@ -19734,6 +19675,7 @@ graph import runtime.python {
             PyObject_Hash,
             PyObject_Init,
             PyObject_Malloc,
+            PyObject_VectorcallMethod,
             PyTime_Time,
             PyTuple_GetItem,
             PyTuple_Pack,
@@ -19832,6 +19774,7 @@ graph import runtime.python {
         },
         modules.datetime_objects {
             NULL,
+            PyCallable_Check,
             PyDict_GetItemRef,
             PyDict_New,
             PyDict_SetItem,
@@ -19859,6 +19802,8 @@ graph import runtime.python {
             PyObject_Call,
             PyObject_CallFunction,
             PyObject_CallMethod,
+            PyObject_CallOneArg,
+            PyObject_GetAttr,
             PyTuple_GetItem,
             PyTuple_Size,
             PyUnicode_FromFormat,
@@ -20335,19 +20280,6 @@ graph import runtime.python {
             jacpy_object_type,
             jacpy_release,
             jacpy_tuple_item,
-            jacpy_tuple_set_owned
-        },
-        modules.grouping {
-            NULL,
-            PyIter_Next,
-            PyObject,
-            PyObject_CallOneArg,
-            PyObject_GetIter,
-            PyObject_RichCompareBool,
-            PyTuple_New,
-            Py_NewRef,
-            Py_None,
-            jacpy_release,
             jacpy_tuple_set_owned
         },
         modules.grp {
@@ -21057,59 +20989,67 @@ graph import runtime.python {
             _PyUnicode_EqualToASCIIString,
             _Py_GetLocaleEncodingObject
         },
-        modules.iterators {
+        modules.itertools {
             NULL,
+            PyArg_ParseTupleAndKeywords,
+            PyArg_UnpackTuple,
+            PyBool_Type,
+            PyDict_GetItemWithError,
+            PyDict_Type,
             PyErr_Clear,
+            PyErr_ExceptionMatches,
+            PyErr_NoMemory,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_OverflowError,
+            PyExc_RuntimeError,
+            PyExc_StopIteration,
+            PyExc_TypeError,
             PyExc_ValueError,
             PyIter_Next,
             PyList_Append,
-            PyList_GetItemRef,
-            PyLong_AsLongLong,
-            PyNumber_Add,
-            PyObject,
-            PyObject_Call,
-            PyObject_CallOneArg,
-            PyObject_GetIter,
-            PyObject_IsTrue,
-            PySequence_Tuple,
-            PyTuple_New,
-            PyTuple_Size,
-            Py_NewRef,
-            Py_None,
-            jacpy_call_two,
-            jacpy_error_pending,
-            jacpy_is_long,
-            jacpy_list_exchange,
-            jacpy_list_new,
-            jacpy_list_size,
-            jacpy_release,
-            jacpy_tuple_exchange,
-            jacpy_tuple_item,
-            jacpy_tuple_set_owned,
-            jacpy_tuple_unique
-        },
-        modules.itertools {
-            NULL,
-            PyErr_Clear,
-            PyExc_OverflowError,
-            PyExc_RuntimeError,
-            PyExc_SystemError,
-            PyExc_TypeError,
-            PyExc_ValueError,
+            PyList_New,
+            PyLong_AsLong,
             PyLong_AsSsize_t,
-            PyLong_FromLongLong,
+            PyLong_FromSize_t,
+            PyLong_FromSsize_t,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMemberDef,
+            PyMethodDef,
+            PyModuleDef,
+            PyModule_AddType,
+            PyNumber_Add,
             PyNumber_AsSsize_t,
             PyNumber_Check,
             PyObject,
-            PyType_GetSlot,
-            Py_NewRef,
+            PyObject_Call,
+            PyObject_CallFunctionObjArgs,
+            PyObject_CallOneArg,
+            PyObject_ClearWeakRefs,
+            PyObject_GC_Del,
+            PyObject_GenericGetAttr,
+            PyObject_GetIter,
+            PyObject_IsTrue,
+            PyObject_RichCompareBool,
+            PyObject_SelfIter,
+            PySequence_Tuple,
+            PyTuple_New,
+            PyTuple_Pack,
+            PyTuple_Size,
+            PyTuple_Type,
+            PyType_FromModuleAndSpec,
+            PyType_GenericAlloc,
+            PyType_Slot,
+            PyType_Spec,
+            PyUnicode_FromFormat,
+            PyUnicode_InternFromString,
             Py_None,
-            Py_TYPE,
-            jacpy_dict_get,
-            jacpy_dict_size,
-            jacpy_error_pending,
-            jacpy_list_size,
-            jacpy_release
+            _PyArg_NoKeywords,
+            _PyObject_GC_New,
+            _PyTuple_FromArray,
+            _PyTuple_Resize,
+            _PyType_Name
         },
         modules.json {
             NULL,
@@ -23304,22 +23244,6 @@ graph import runtime.python {
             jacpy_release,
             jacpy_unicode_from_text
         },
-        modules.tee {
-            NULL,
-            PyExc_RuntimeError,
-            PyExc_ValueError,
-            PyIter_Next,
-            PyList_GetItemRef,
-            PyObject,
-            PyObject_GetIter,
-            PyTuple_New,
-            Py_NewRef,
-            jacpy_list_size,
-            jacpy_object_type,
-            jacpy_release,
-            jacpy_tuple_set_owned,
-            jacpy_type_check
-        },
         modules.termios {
             NULL,
             PyBytes_AsString,
@@ -23692,10 +23616,11 @@ graph import runtime.python {
             PyErr_ExceptionMatches,
             PyErr_Format,
             PyErr_GetRaisedException,
+            PyErr_NoMemory,
             PyErr_Occurred,
+            PyErr_SetString,
             PyExc_MemoryError,
             PyExc_RuntimeError,
-            PyExc_SystemError,
             PyExc_TypeError,
             PyExc_ValueError,
             PyImport_ImportModule,
@@ -23705,14 +23630,24 @@ graph import runtime.python {
             PyLong_AsLongLong,
             PyLong_AsSsize_t,
             PyLong_FromLong,
+            PyMem_Calloc,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMemberDef,
+            PyMethodDef,
+            PyModuleDef,
+            PyModule_AddObjectRef,
             PyNumber_Add,
             PyObject,
             PyObject_Call,
             PyObject_CallFunction,
+            PyObject_CallFunctionObjArgs,
             PyObject_CallMethod,
             PyObject_CallMethodObjArgs,
             PyObject_CallNoArgs,
-            PyObject_CallOneArg,
+            PyObject_ClearWeakRefs,
+            PyObject_GC_UnTrack,
+            PyObject_GenericGetAttr,
             PyObject_GetAttrString,
             PyObject_GetIter,
             PyObject_IsTrue,
@@ -23723,18 +23658,15 @@ graph import runtime.python {
             PyTuple_New,
             PyTuple_Size,
             PyTuple_Type,
-            PyUnicode_DecodeUTF8Stateful,
+            PyType_FromModuleAndSpec,
+            PyType_Slot,
+            PyType_Spec,
             PyUnicode_FromFormat,
             PyUnicode_FromString,
             Py_BuildValue,
-            Py_NewRef,
             Py_None,
-            Py_TYPE,
             _PyErr_ChainExceptions1,
-            _PyType_Name,
-            jacpy_object_getattr_text,
-            jacpy_release,
-            jacpy_type_check
+            _PyType_Name
         },
         modules.zstd {
             NULL,
@@ -27349,6 +27281,7 @@ graph import runtime.python {
             | modules.pickle
             | modules.ssl
             | modules.ssl_cert { PyTypeObject },
+        bindings.array | bindings.itertools { METH_CLASS, METH_O },
         bindings.asyncio {
             METH_FASTCALL,
             METH_NOARGS,
@@ -28521,6 +28454,63 @@ graph import runtime.python {
             _PyTime_ROUND_CEILING,
             _PyTime_ROUND_TIMEOUT
         },
+        modules.array {
+            ModuleDef,
+            PyBUF_FORMAT,
+            PyBUF_ND,
+            PyBUF_SIMPLE,
+            PyBUF_STRIDES,
+            PyFloatObject,
+            PyGetSetDef,
+            PyListObject,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyModuleObject,
+            PyTypeObject,
+            PyVarObject,
+            Py_EQ,
+            Py_GE,
+            Py_GT,
+            Py_LE,
+            Py_LT,
+            Py_NE,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_TPFLAGS_SEQUENCE,
+            Py_T_PYSSIZET,
+            Py_bf_getbuffer,
+            Py_bf_releasebuffer,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            Py_mp_ass_subscript,
+            Py_mp_length,
+            Py_mp_subscript,
+            Py_sq_ass_item,
+            Py_sq_item,
+            Py_sq_length,
+            Py_sq_repeat,
+            Py_tp_alloc,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_getattro,
+            Py_tp_getset,
+            Py_tp_iter,
+            Py_tp_iternext,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_new,
+            Py_tp_repr,
+            Py_tp_richcompare,
+            Py_tp_token,
+            Py_tp_traverse,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
         modules.asyncio {
             PYGEN_ERROR,
             PYGEN_NEXT,
@@ -28714,6 +28704,7 @@ graph import runtime.python {
         modules.datetime_datetime {
             PY_DATETIME_BASE_DATETIME_SIZE,
             PY_DATETIME_DATETIME_SIZE,
+            PY_VECTORCALL_ARGUMENTS_OFFSET,
             PyDateTime_DateTime,
             PyGetSetDef,
             PyNumberMethods,
@@ -28723,6 +28714,7 @@ graph import runtime.python {
             Py_TPFLAGS_DEFAULT,
             _PyTime_ROUND_FLOOR,
             _PyTime_ROUND_HALF_EVEN,
+            _Py_ID_fromutc,
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _object
         },
@@ -29117,6 +29109,43 @@ graph import runtime.python {
             _Py_T_OBJECT,
             _object
         },
+        modules.itertools {
+            METH_NOARGS,
+            PyDictObject,
+            PyHeapTypeObject,
+            PyListObject,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyModuleObject,
+            PyTypeObject,
+            Py_EQ,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_TPFLAGS_LONG_SUBCLASS,
+            Py_T_PYSSIZET,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            Py_tp_alloc,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_doc,
+            Py_tp_free,
+            Py_tp_getattro,
+            Py_tp_iter,
+            Py_tp_iternext,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_new,
+            Py_tp_repr,
+            Py_tp_token,
+            Py_tp_traverse,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
         modules.marshal {
             PY_VECTORCALL_ARGUMENTS_OFFSET,
             PyASCIIObject_LENGTH,
@@ -29317,7 +29346,43 @@ graph import runtime.python {
             _warnings_runtime_state_LOCK,
             _warnings_runtime_state_ONCE_REGISTRY
         },
-        modules.zoneinfo { PyDateTime_CAPI, PyDateTime_DateTime },
+        modules.zoneinfo {
+            METH_CLASS,
+            METH_KEYWORDS,
+            METH_NOARGS,
+            METH_O,
+            METH_VARARGS,
+            PyDateTime_CAPI,
+            PyDateTime_DateTime,
+            PyHeapTypeObject,
+            PyModuleDef_Base,
+            PyModuleDef_Slot,
+            PyModuleObject,
+            PyTypeObject,
+            Py_EQ,
+            Py_READONLY,
+            Py_TPFLAGS_BASETYPE,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_T_OBJECT_EX,
+            Py_T_PYSSIZET,
+            Py_mod_exec,
+            Py_mod_gil,
+            Py_mod_multiple_interpreters,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_getattro,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_new,
+            Py_tp_repr,
+            Py_tp_str,
+            Py_tp_token,
+            Py_tp_traverse,
+            _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+            _object
+        },
         object_model.abstract {
             PYGEN_ERROR,
             PYGEN_NEXT,
@@ -33233,31 +33298,14 @@ graph import runtime.python {
     ]
     modules.array ++> [
         bindings.array {
-            ArrayIteratorState,
-            ArrayState,
-            allocate,
-            append_buffer,
-            array_array___copy___impl,
-            array_module_token,
-            array_token,
-            arrayiterator_token,
-            iterator_state,
-            jacpy_array_address,
-            jacpy_array_assign,
-            jacpy_array_assign_slice,
-            jacpy_array_compare,
-            jacpy_array_copy,
-            jacpy_array_cursor_new,
-            jacpy_array_cursor_next,
-            jacpy_array_delete,
-            jacpy_array_export,
-            jacpy_array_extend,
-            jacpy_array_item,
-            jacpy_array_repeat,
-            jacpy_array_repr,
-            jacpy_array_search,
-            module_for,
-            state_for
+            ARRAYITER_SLOTS_METHODS,
+            ARRAY_SLOTS_METHODS,
+            array_clear,
+            array_free,
+            array_slots,
+            array_traverse,
+            arrayiter_slots,
+            arraymodule
         },
         bindings.clinic.array {
             array__array_reconstructor_impl,
@@ -34658,24 +34706,7 @@ graph import runtime.python {
             takewhile_token,
             teedataobject_token
         },
-        bindings.itertools {
-            Kind,
-            combination_size,
-            data_dealloc,
-            iterator_clear,
-            iterator_dealloc,
-            iterator_new,
-            iterator_next,
-            iterator_repr,
-            iterator_self,
-            iterator_traverse,
-            itertools_module_token,
-            kind_tokens,
-            names,
-            pipeline_iterator_next,
-            repeat_length,
-            tee_copy
-        },
+        bindings.itertools { chain_slots, itertoolsmodule },
     ]
     modules.json ++> bindings.json {
         jacpy_json_encode,
@@ -36574,18 +36605,7 @@ graph import runtime.python {
             zoneinfo_ZoneInfo_tzname_impl,
             zoneinfo_ZoneInfo_utcoffset_impl
         },
-        bindings.zoneinfo {
-            ZoneInfoModuleState,
-            ZoneInfo_token,
-            datetime_import,
-            module_definition,
-            populate_module_state,
-            zoneinfo_fromutc,
-            zoneinfo_init_subclass,
-            zoneinfo_reduce,
-            zoneinfo_repr,
-            zoneinfo_str
-        },
+        bindings.zoneinfo { zoneinfomodule },
     ]
     modules.zstd ++> [
         bindings.clinic.zstd {
@@ -36679,6 +36699,16 @@ graph import runtime.python {
             call_method_one_arg
         },
         interpreter.importing_api { unicode_check, unicode_length },
+        modules.array {
+            bytearray_check,
+            bytes_check,
+            bytes_data,
+            long_check,
+            tuple_check,
+            type_check,
+            unicode_check,
+            unicode_length
+        },
         modules.ctypes {
             Py_EnterRecursiveCall,
             bytes_check,
@@ -37152,6 +37182,16 @@ graph import runtime.python {
             object_new_ref,
             tuple_set_item
         },
+        modules.array {
+            object_decref,
+            object_new_ref,
+            object_size,
+            object_type,
+            object_type_check,
+            object_xdecref,
+            tuple_get_item,
+            tuple_set_item
+        },
         modules.asyncio { freelist_pop, freelist_push },
         modules.ctypes {
             PyType_Type,
@@ -37325,6 +37365,25 @@ graph import runtime.python {
             object_xdecref,
             tuple_get_item
         },
+        modules.itertools {
+            PyType_Type,
+            object_decref,
+            object_gc_is_tracked,
+            object_gc_track,
+            object_gc_untrack,
+            object_incref,
+            object_new_ref,
+            object_refcount,
+            object_size,
+            object_type,
+            object_type_check,
+            object_xdecref,
+            tuple_get_item,
+            tuple_items,
+            tuple_recycle,
+            tuple_set_item,
+            type_has_feature
+        },
         modules.marshal {
             _Py_FalseStruct,
             _Py_TrueStruct,
@@ -37399,10 +37458,19 @@ graph import runtime.python {
             object_xdecref,
             tuple_get_item
         },
+        modules.zoneinfo {
+            object_decref,
+            object_incref,
+            object_new_ref,
+            object_type,
+            object_type_check,
+            object_xdecref
+        },
     ]
     object_model.iterator ++> modules.sre { PyCallIter_New }
     object_model.list ++> interpreter.importing_api
         | interpreter.lifecycle
+        | modules.array
         | modules.ctypes_stgdict
         | modules.warnings { list_check }
     object_model.long ++> [
@@ -37427,15 +37495,18 @@ graph import runtime.python {
     object_model.memory ++> modules.ctypes_objects { PyMemoryView_FromMemory }
     object_model.method ++> bindings.functools { PyMethod_New }
     object_model.module ++> [
-        bindings.ctypes
+        bindings.array
+            | bindings.ctypes
             | bindings.faulthandler
             | bindings.interpchannels
             | bindings.interpqueues
             | bindings.interpreters
             | bindings.io
+            | bindings.itertools
             | bindings.scproxy
             | bindings.signal
-            | bindings.thread { PyModuleDef_Init },
+            | bindings.thread
+            | bindings.zoneinfo { PyModuleDef_Init },
         interpreter.importdl { PyModuleDef_Type },
         interpreter.importing {
             PyModule_ExecDef,
@@ -37542,6 +37613,7 @@ graph import runtime.python {
             | interpreter.ops_iter
             | interpreter.pystate
             | interpreter.specialize
+            | modules.datetime_datetime
             | modules.faulthandler
             | modules.pickle_decode
             | modules.pickle_encode
@@ -37564,8 +37636,10 @@ graph import runtime.python {
         modules.io_bytesio { py_clear, py_xsetref },
         modules.io_iobase { long_one, long_zero, py_clear, py_id },
         modules.io_textio { long_zero, py_clear, py_id, py_xsetref },
+        modules.itertools { PyType_GetModuleByDef, long_one, long_zero },
         modules.signal { thread_state_get_frame },
         modules.thread { object_xnewref, py_id, weakref_get_ref },
+        modules.zoneinfo { long_one },
     ]
     object_model.unicode ++> [
         interpreter.ops_build { unicode_get_empty },
@@ -37699,7 +37773,6 @@ graph import runtime.python {
 
 graph import runtime.python.bindings {
     arguments ++> [
-        array { BoundArguments, CallSignature, PARSE_FORMAT, invoke },
         clinic.abc
             | clinic.fcntl
             | clinic.heapq
@@ -37912,40 +37985,33 @@ graph import runtime.python.bindings {
         },
         struct { vector_tuple },
     ]
-    buffer ++> [
-        array { BufferLayout, jacpy_binding_buffer_dispose, jacpy_binding_buffer_fill },
-        clinic.array
-            | clinic.binascii
-            | clinic.blake2
-            | clinic.bz2
-            | clinic.codecs
-            | clinic.ctypes
-            | clinic.hashopenssl
-            | clinic.imp
-            | clinic.io
-            | clinic.lzma
-            | clinic.marshal
-            | clinic.mmap
-            | clinic.multibytecodec
-            | clinic.posix
-            | clinic.socket
-            | clinic.sqlite3
-            | clinic.ssl
-            | clinic.struct
-            | clinic.zlib
-            | clinic.zstd
-            | converters
-            | struct { BufferArgument },
-    ]
+    buffer ++> clinic.array
+        | clinic.binascii
+        | clinic.blake2
+        | clinic.bz2
+        | clinic.codecs
+        | clinic.ctypes
+        | clinic.hashopenssl
+        | clinic.imp
+        | clinic.io
+        | clinic.lzma
+        | clinic.marshal
+        | clinic.mmap
+        | clinic.multibytecodec
+        | clinic.posix
+        | clinic.socket
+        | clinic.sqlite3
+        | clinic.ssl
+        | clinic.struct
+        | clinic.zlib
+        | clinic.zstd
+        | converters
+        | struct { BufferArgument }
     clinic.abc ++> abc { module_methods }
     clinic.array ++> array {
-        array_getsets_itemsize_doc,
-        array_getsets_typecode_doc,
         array_methods,
         array_methods___class_getitem___doc,
         arrayiterator_methods,
-        arraytype_doc,
-        module_doc,
         module_methods
     }
     clinic.asyncio ++> asyncio {
@@ -38067,51 +38133,9 @@ graph import runtime.python.bindings {
     clinic.imp ++> imp { module_methods }
     clinic.io ++> io { module_methods }
     clinic.itertools ++> itertools {
-        _tee_doc,
-        accumulate_doc,
-        batched_doc,
-        batched_new_new,
         chain_class_getitem_doc,
-        chain_doc,
         chain_methods,
-        combinations_doc,
-        combinations_with_replacement_doc,
-        compress_doc,
-        count_doc,
-        cycle_doc,
-        dropwhile_doc,
-        filterfalse_doc,
-        groupby_doc,
-        islice_doc,
-        itertools__grouper_new,
-        itertools__tee_new,
-        itertools_accumulate_new,
-        itertools_combinations_new,
-        itertools_combinations_with_replacement_new,
-        itertools_compress_new,
-        itertools_count_new,
-        itertools_cycle_new,
-        itertools_dropwhile_new,
-        itertools_filterfalse_new,
-        itertools_groupby_new,
-        itertools_permutations_new,
-        itertools_starmap_new,
-        itertools_takewhile_new,
-        itertools_teedataobject_new,
-        length_hint_doc,
-        module_doc,
-        module_methods,
-        pairwise_doc,
-        pairwise_new_new,
-        permutations_doc,
-        product_doc,
-        repeat_doc,
-        sizeof_doc,
-        starmap_doc,
-        takewhile_doc,
-        teecopy_doc,
-        teedataobject_doc,
-        zip_longest_doc
+        module_methods
     }
     clinic.json ++> json {
         encoder_doc,
@@ -38319,7 +38343,6 @@ graph import runtime.python.bindings {
         ZlibDecompressor_unused_data__doc__,
         module_methods
     }
-    clinic.zoneinfo ++> zoneinfo { ZoneInfo_methods, zoneinfo_ZoneInfo_new }
     clinic.zstd ++> zstd {
         ZstdCompressor_doc,
         ZstdCompressor_methods,
@@ -38334,7 +38357,6 @@ graph import runtime.python.bindings {
         module_methods
     }
     converters ++> [
-        array { convert_unicode_char },
         clinic.array {
             argument_label,
             convert_buffer,
@@ -38728,7 +38750,7 @@ graph import runtime.python.bindings {
         syslog { argument_label, convert_int, convert_str },
     ]
     members ++> [
-        bz2 | lzma | zlib | zoneinfo { MemberField, MemberType, record_clear },
+        bz2 | lzma | zlib { MemberField, MemberType, record_clear },
         collections | pickle {
             MemberField,
             MemberType,
@@ -38758,16 +38780,7 @@ graph import runtime.python.bindings {
             jacpy_binding_module_native_set,
             jacpy_binding_state_set
         },
-        array {
-            MethodCallbacks,
-            MethodDefinition,
-            ModuleDefinition,
-            ModuleHooks,
-            add_owned,
-            add_state_owned,
-            jacpy_binding_state_get,
-            jacpy_binding_state_set
-        },
+        array | ctypes | itertools { MethodCallbacks, MethodDefinition, method_table },
         asyncio {
             MethodCallbacks,
             MethodDefinition,
@@ -38913,7 +38926,6 @@ graph import runtime.python.bindings {
             jacpy_binding_state_get,
             visit_reference
         },
-        ctypes { MethodCallbacks, MethodDefinition, method_table },
         datetime {
             MethodCallbacks,
             MethodDefinition,
@@ -38971,13 +38983,6 @@ graph import runtime.python.bindings {
             jacpy_binding_state_set
         },
         io { method_table },
-        itertools | time {
-            MethodCallbacks,
-            MethodDefinition,
-            ModuleDefinition,
-            ModuleHooks,
-            add_state_owned
-        },
         json | math | operator {
             MethodCallbacks,
             MethodDefinition,
@@ -39118,6 +39123,13 @@ graph import runtime.python.bindings {
             jacpy_binding_exception
         },
         thread { MethodDefinition, method_table },
+        time {
+            MethodCallbacks,
+            MethodDefinition,
+            ModuleDefinition,
+            ModuleHooks,
+            add_state_owned
+        },
         type { MethodDefinition, install_methods },
         zlib {
             ModuleDefinition,
@@ -39126,13 +39138,6 @@ graph import runtime.python.bindings {
             add_state_owned,
             jacpy_binding_exception,
             jacpy_binding_state_set
-        },
-        zoneinfo {
-            MethodCallbacks,
-            MethodDefinition,
-            ModuleDefinition,
-            ModuleHooks,
-            jacpy_binding_module_native_set
         },
         zstd {
             ModuleDefinition,
@@ -39144,17 +39149,7 @@ graph import runtime.python.bindings {
         },
     ]
     payload ++> [
-        abc | queue | ssl | zoneinfo | zstd {
-            clear_payload,
-            dispose_payload,
-            traverse_payload
-        },
-        array {
-            clear_payload,
-            dispose_payload,
-            jacpy_binding_native_set,
-            traverse_payload
-        },
+        abc | queue | ssl | zstd { clear_payload, dispose_payload, traverse_payload },
         blake2
             | bz2
             | hmac
@@ -39214,29 +39209,16 @@ graph import runtime.python.bindings {
         },
     ]
     references ++> [
-        array | collections { ReferenceState, owned_tuple },
+        collections { ReferenceState, owned_tuple },
         csv | functools | json | operator | pickle { ReferenceState },
     ]
     runtime_objects ++> types | typing | weakref { export_runtime_objects }
     state ++> functools | module | payload | references { NativeState }
     type ++> [
-        abc
-            | hmac
-            | itertools
-            | lsprof
-            | multiprocessing
-            | posix
-            | queue
-            | unicodedata { TypeDefinition, TypeFlags, TypeHooks },
-        array {
-            PropertyCallbacks,
-            PropertyDefinition,
+        abc | hmac | lsprof | multiprocessing | posix | queue | unicodedata {
             TypeDefinition,
             TypeFlags,
-            TypeHooks,
-            TypeSlot,
-            jacpy_binding_allocate,
-            jacpy_binding_matches
+            TypeHooks
         },
         asyncio { PropertyDefinition, getset_table },
         blake2
@@ -39258,12 +39240,7 @@ graph import runtime.python.bindings {
             TypeFlags,
             TypeHooks
         },
-        bz2 | lzma | zoneinfo {
-            TypeDefinition,
-            TypeFlags,
-            TypeHooks,
-            jacpy_binding_record
-        },
+        bz2 | lzma { TypeDefinition, TypeFlags, TypeHooks, jacpy_binding_record },
         clinic.asyncio
             | clinic.ctypes
             | clinic.hmac
@@ -40048,7 +40025,7 @@ graph import runtime.python.modules {
         asyncio.call_with_context { CallStack },
         asyncio.future_clear { clear_future_fields },
     ]
-    binary_scalars ++> array | struct { integer_from_bits, read_bits, write_bits }
+    binary_scalars ++> struct { integer_from_bits, read_bits, write_bits }
     blake2_simd ++> blake2 {
         Hacl_Hash_Blake2b_blake2_params,
         simd128_copy,
@@ -40301,15 +40278,6 @@ graph import runtime.python.modules {
         cjk_big5_map,
         cjk_cp950ext_map,
         cjk_tw_mappings
-    }
-    combinatorics ++> itertools {
-        combinatorial_state,
-        jacpy_combinatorial_clear,
-        jacpy_combinatorial_field,
-        jacpy_combinatorial_init,
-        jacpy_combinatorial_memory,
-        jacpy_combinatorial_new,
-        jacpy_combinatorial_next
     }
     ctypes ++> [
         ctypes_cdata {
@@ -41163,15 +41131,6 @@ graph import runtime.python.modules {
         LOCK_UN
     }
     fcntl_records ++> fcntl { flock_record }
-    grouping ++> itertools {
-        group_state,
-        jacpy_group_activate,
-        jacpy_group_clear,
-        jacpy_group_field,
-        jacpy_group_init,
-        jacpy_group_next,
-        jacpy_grouper_next
-    }
     hashlib ++> [
         blake2 | md5 | sha1 | sha2 | sha3 {
             HashLock,
@@ -41345,19 +41304,6 @@ graph import runtime.python.modules {
     io_textio ++> [
         io { nldecoder_spec, textiobase_spec, textiowrapper_spec },
         io_stringio { _PyIO_find_line_ending, _PyIncrementalNewlineDecoder_decode },
-    ]
-    iterators ++> [
-        combinatorics { reusable_tuple },
-        itertools {
-            jacpy_pipeline_clear,
-            jacpy_pipeline_field,
-            jacpy_pipeline_init,
-            jacpy_pipeline_length,
-            jacpy_pipeline_new,
-            jacpy_pipeline_next,
-            jacpy_pipeline_repr,
-            pipeline_state
-        },
     ]
     locale_constants ++> locale {
         ALT_DIGITS,
@@ -43111,20 +43057,6 @@ graph import runtime.python.modules {
         | posix_stat_platform
         | signal { _Py_stat_struct }
     syslog_constants ++> syslog { LOG_INFO, LOG_USER }
-    tee ++> itertools {
-        TeeBindings,
-        jacpy_tee_block_clear,
-        jacpy_tee_block_count,
-        jacpy_tee_block_field,
-        jacpy_tee_block_init,
-        jacpy_tee_construct,
-        jacpy_tee_cursor_clear,
-        jacpy_tee_cursor_field,
-        jacpy_tee_next,
-        jacpy_tee_split,
-        tee_block,
-        tee_cursor
-    }
     termios_constants ++> termios { ICANON, NCCS, TIOCGWINSZ, TIOCSWINSZ, VMIN, VTIME }
     termios_records ++> termios {
         CC_OFFSET,

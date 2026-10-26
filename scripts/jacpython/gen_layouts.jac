@@ -1207,6 +1207,11 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          (
+             "_Py_ID_fromutc",
+             "offsetof(struct _Py_global_strings, identifiers._py_fromutc)",
+             "i64"
+         ),
+         (
              "_gc_runtime_state_ENABLED",
              "offsetof(struct _gc_runtime_state, enabled)",
              "i64"

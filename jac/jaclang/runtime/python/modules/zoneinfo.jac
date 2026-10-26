@@ -1,153 +1,199 @@
-obj DefinitionHandle {
-    has handle: ptr = ptr();
+import from c {
+    def PyModule_GetState(m: ptr[PyObject]) -> ptr;  def PyType_GetModuleByDef(
+        type: ptr[PyTypeObject], mod_def: ptr[PyModuleDef]
+    ) -> ptr[PyObject];  def PyUnicode_FromStringAndSize(
+        u: ptr[u8], size: i64
+    ) -> ptr[PyObject];  def memcpy(target: ptr, source: ptr, size: u64) -> ptr;  obj ZoneInfoStack {
+        has w0: u64 = 0,
+            w1: u64 = 0,
+            w2: u64 = 0,
+            w3: u64 = 0,
+            w4: u64 = 0,
+            w5: u64 = 0,
+            w6: u64 = 0,
+            w7: u64 = 0,
+            w8: u64 = 0,
+            w9: u64 = 0,
+            w10: u64 = 0,
+            w11: u64 = 0;
+    }  def jacpy_stack_address(slots: &mut ZoneInfoStack) -> int;  obj _ttinfo {
+        has utcoff: ptr[PyObject],
+            dstoff: ptr[PyObject],
+            tzname: ptr[PyObject],
+            utcoff_seconds: i64;
+    }  obj TransitionRuleType {
+        has year_to_timestamp: Callable[[ptr[TransitionRuleType], i32], i64];
+    }  obj _tzrule {
+        has std: _ttinfo,
+            dst: _ttinfo,
+            dst_diff: i32,
+            start: ptr[TransitionRuleType],
+            end: ptr[TransitionRuleType],
+            std_only: u8;
+    }  obj PyZoneInfo_ZoneInfo {
+        has ob_base: _object,
+            key: ptr[PyObject],
+            file_repr: ptr[PyObject],
+            weakreflist: ptr[PyObject],
+            num_transitions: u64,
+            num_ttinfos: u64,
+            trans_list_utc: ptr[i64],
+            trans_list_wall_0: ptr[i64],
+            trans_list_wall_1: ptr[i64],
+            trans_ttinfos: ptr[ptr[_ttinfo]],
+            ttinfo_before: ptr[_ttinfo],
+            tzrule_after: _tzrule,
+            _ttinfos: ptr[_ttinfo],
+            fixed_offset: u8,
+            source: u8;
+    }  obj CalendarRule {
+        has base: TransitionRuleType,
+            month: u8,
+            week: u8,
+            day: u8,
+            hour: i16,
+            minute: i8,
+            second: i8;
+    }  obj DayRule {
+        has base: TransitionRuleType,
+            julian: u8,
+            day: u16,
+            hour: i16,
+            minute: i8,
+            second: i8;
+    }  obj StrongCacheNode {
+        has next: ptr[StrongCacheNode],
+            prev: ptr[StrongCacheNode],
+            key: ptr[PyObject],
+            zone: ptr[PyObject];
+    }  obj zoneinfo_state {
+        has ZoneInfoType: ptr[PyTypeObject],
+            io_open: ptr[PyObject],
+            _tzpath_find_tzfile: ptr[PyObject],
+            _common_mod: ptr[PyObject],
+            TIMEDELTA_CACHE: ptr[PyObject],
+            ZONEINFO_WEAK_CACHE: ptr[PyObject],
+            ZONEINFO_STRONG_CACHE: ptr[StrongCacheNode],
+            NO_TTINFO: _ttinfo;
+    }  obj LoadScratch {
+        has utcoff: ptr[i64],
+            dstoff: ptr[i64],
+            trans_idx: ptr[i64],
+            isdst: ptr[u8],
+            ttinfos_allocated: i64;
+    }  obj ZoneInfoModuleDef {
+        has m_base: PyModuleDef_Base,
+            m_name: ptr[u8],
+            m_doc: ptr[u8],
+            m_size: i64,
+            m_methods: ptr[PyMethodDef],
+            m_slots: ptr[PyModuleDef_Slot],
+            m_traverse: ptr,
+            m_clear: ptr,
+            m_free: ptr;
+    }  glob:priv PyDateTimeAPI: ptr[PyDateTime_CAPI] = ptr[PyDateTime_CAPI](),
+         DAYS_IN_MONTH: list[i32] = [
+             i32(-1),
+             i32(31),
+             i32(28),
+             i32(31),
+             i32(30),
+             i32(31),
+             i32(30),
+             i32(31),
+             i32(31),
+             i32(30),
+             i32(31),
+             i32(30),
+             i32(31)
+         ],
+         DAYS_BEFORE_MONTH: list[i32] = [
+             i32(-1),
+             i32(0),
+             i32(31),
+             i32(59),
+             i32(90),
+             i32(120),
+             i32(151),
+             i32(181),
+             i32(212),
+             i32(243),
+             i32(273),
+             i32(304),
+             i32(334)
+         ];
 }
 
-glob module_definition = DefinitionHandle(),
-     ZoneInfo_token = ClassToken();
+glob EPOCHORDINAL: Final[i64] = 719163,
+     SOURCE_NOCACHE: Final[u8] = 0,
+     SOURCE_CACHE: Final[u8] = 1,
+     SOURCE_FILE: Final[u8] = 2,
+     ZONEINFO_STRONG_CACHE_MAX_SIZE: Final[i64] = 8,
+     TTINFO_SIZE: Final[i64] = 32,
+     TZRULE_SIZE: Final[i64] = 96,
+     TZRULE_DST: Final[i64] = 32,
+     CALENDARRULE_SIZE: Final[i64] = 16,
+     DAYRULE_SIZE: Final[i64] = 16,
+     STRONGCACHENODE_SIZE: Final[i64] = 32,
+     ZONEINFO_SIZE: Final[i64] = 208,
+     ZONEINFO_KEY: Final[i64] = 16,
+     ZONEINFO_WEAKREFLIST: Final[i64] = 32,
+     ZONEINFO_TRANS_LIST_WALL: Final[i64] = 64,
+     ZONEINFO_TZRULE_AFTER: Final[i64] = 96,
+     ZONEINFO_STATE_SIZE: Final[i64] = 88,
+     ZONEINFO_STATE_STRONG_CACHE: Final[i64] = 48,
+     ZONEINFO_STATE_NO_TTINFO: Final[i64] = 56,
+     ZONEINFO_METHODS_SLOT: Final[i64] = 0;
 
-glob:priv EPOCHORDINAL: i64 = 719163,
-     DAYS_IN_MONTH: list[i64] = [-1, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
-     DAYS_BEFORE_MONTH: list[i64] = [
-         -1,
-         0,
-         31,
-         59,
-         90,
-         120,
-         151,
-         181,
-         212,
-         243,
-         273,
-         304,
-         334
-     ],
-     SOURCE_NOCACHE: i64 = 0,
-     SOURCE_CACHE: i64 = 1,
-     SOURCE_FILE: i64 = 2,
-     ZONEINFO_STRONG_CACHE_MAX_SIZE: int = 8,
-     PY_EQ: i32 = 2;
+glob ZoneInfo_token = ClassToken();
 
-obj TTInfo {
-    has utcoff: ptr[PyObject] = NULL,
-        dstoff: ptr[PyObject] = NULL,
-        tzname: ptr[PyObject] = NULL,
-        utcoff_seconds: i64 = 0;
+def zoneinfo_record(op: ptr[PyObject]) -> ptr[PyZoneInfo_ZoneInfo];
 
-    def drop;
-}
+def trans_list_wall_of(self_: ptr[PyZoneInfo_ZoneInfo]) -> ptr[ptr[i64]];
 
-obj TransitionRule {
-    def year_to_timestamp(year: i64) -> i64 abst;
-}
+def tzrule_after_of(self_: ptr[PyZoneInfo_ZoneInfo]) -> ptr[_tzrule];
 
-obj CalendarRule(TransitionRule) {
-    has month: i64 = 0,
-        week: i64 = 0,
-        day: i64 = 0,
-        hour: i64 = 0,
-        minute: i64 = 0,
-        second: i64 = 0;
+def tzrule_std(rule: ptr[_tzrule]) -> ptr[_ttinfo];
 
-    override def year_to_timestamp(year: i64) -> i64;
-}
+def tzrule_dst(rule: ptr[_tzrule]) -> ptr[_ttinfo];
 
-obj DayRule(TransitionRule) {
-    has julian: bool = False,
-        day: i64 = 0,
-        hour: i64 = 0,
-        minute: i64 = 0,
-        second: i64 = 0;
+def no_ttinfo_of(state: ptr[zoneinfo_state]) -> ptr[_ttinfo];
 
-    override def year_to_timestamp(year: i64) -> i64;
-}
+def strong_cache_root(state: ptr[zoneinfo_state]) -> ptr[ptr[StrongCacheNode]];
 
-obj TZRule {
-    has std: TTInfo = TTInfo(),
-        dst: TTInfo = TTInfo(),
-        dst_diff: i64 = 0,
-        start: (TransitionRule | None) = None,
-        end: (TransitionRule | None) = None,
-        std_only: bool = False;
-}
+def datetime_record(dt: ptr[PyObject]) -> ptr[PyDateTime_DateTime];
 
-obj StrongCacheNode {
-    has key: ptr[PyObject] = NULL,
-        zone: ptr[PyObject] = NULL;
+def datetime_get_year(dt: ptr[PyObject]) -> i32;
 
-    def drop;
-}
+def datetime_get_tzinfo(dt: ptr[PyObject]) -> ptr[PyObject];
 
-obj ZoneInfoModuleState(NativeState) {
-    has zoneinfo_type: ptr[PyObject] = NULL,
-        io_open: ptr[PyObject] = NULL,
-        tzpath_find_tzfile: ptr[PyObject] = NULL,
-        common_mod: ptr[PyObject] = NULL,
-        timedelta_cache: ptr[PyObject] = NULL,
-        weak_cache: ptr[PyObject] = NULL,
-        strong_cache: list[StrongCacheNode] = [],
-        no_ttinfo: TTInfo = TTInfo(),
-        datetime_api: ptr[PyDateTime_CAPI] = ptr[PyDateTime_CAPI]();
+def py_isdigit(c: u8) -> bool;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32;
-    def clear;
-    def drop;
-}
+def py_isalpha(c: u8) -> bool;
 
-obj ZoneInfoState(NativeState) {
-    has key: ptr[PyObject] = NULL,
-        file_repr: ptr[PyObject] = NULL,
-        trans_list_utc: list[i64] = [],
-        trans_list_wall: list[list[i64]] = [[], []],
-        trans_ttinfos: list[TTInfo] = [],
-        ttinfo_before: (TTInfo | None) = None,
-        tzrule_after: TZRule = TZRule(),
-        ttinfos: list[TTInfo] = [],
-        fixed_offset: bool = False,
-        source: i64 = 0;
+def zoneinfo_get_state(mod: ptr[PyObject]) -> ptr[zoneinfo_state];
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32;
-    def clear;
-    def drop;
-}
+def zoneinfo_get_state_by_cls(cls: ptr[PyObject]) -> ptr[zoneinfo_state];
 
-def module_state(module: ptr[PyObject]) -> (ZoneInfoModuleState | None);
+def zoneinfo_get_state_by_self(self_: ptr[PyObject]) -> ptr[zoneinfo_state];
 
-def:priv state_by_type(type: ptr[PyObject]) -> (ZoneInfoModuleState | None);
-
-def:priv state_by_class(cls: ptr[PyObject]) -> (ZoneInfoModuleState | None);
-
-def zoneinfo_of(instance: ptr[PyObject]) -> (ZoneInfoState | None);
-
-def:priv before_ttinfo(zone: ZoneInfoState) -> TTInfo;
-
-def:priv datetime_year(dt: ptr[PyObject]) -> i64;
-
-def:priv datetime_fold(dt: ptr[PyObject]) -> i64;
-
-def:priv datetime_tzinfo(dt: ptr[PyObject]) -> ptr[PyObject];
-
-def:priv datetime_type(state: ZoneInfoModuleState) -> ptr[PyObject];
-
-def:priv is_datetime_exact(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool;
-
-def:priv is_datetime(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool;
-
-def:priv zoneinfo_new_instance(
-    state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
+def zoneinfo_new_instance(
+    state: ptr[zoneinfo_state], type: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject];
 
-def:priv get_weak_cache(
-    state: ZoneInfoModuleState, type: ptr[PyObject]
-) -> ptr[PyObject];
+def get_weak_cache(state: ptr[zoneinfo_state], type: ptr[PyObject]) -> ptr[PyObject];
 
 def zoneinfo_ZoneInfo_impl(type: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject];
+
+def zoneinfo_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def zoneinfo_clear(op: ptr[PyObject]) -> i32;
+
+def zoneinfo_dealloc(obj_self: ptr[PyObject]);
 
 def zoneinfo_ZoneInfo_from_file_impl(
     type: ptr[PyObject], cls: ptr[PyObject], file_obj: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject];
-
-def mirror_key(instance: ptr[PyObject], zone: ZoneInfoState);
 
 def zoneinfo_ZoneInfo_no_cache_impl(
     type: ptr[PyObject], cls: ptr[PyObject], key: ptr[PyObject]
@@ -155,10 +201,6 @@ def zoneinfo_ZoneInfo_no_cache_impl(
 
 def zoneinfo_ZoneInfo_clear_cache_impl(
     type: ptr[PyObject], cls: ptr[PyObject], only_keys: ptr[PyObject]
-) -> ptr[PyObject];
-
-def:priv ttinfo_method(
-    receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject], field: int
 ) -> ptr[PyObject];
 
 def zoneinfo_ZoneInfo_utcoffset_impl(
@@ -173,456 +215,541 @@ def zoneinfo_ZoneInfo_tzname_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
 ) -> ptr[PyObject];
 
-def zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
+def zoneinfo_fromutc(obj_self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject];
 
-def zoneinfo_repr(receiver: ptr[PyObject]) -> ptr[PyObject];
+def zoneinfo_repr(op: ptr[PyObject]) -> ptr[PyObject];
 
-def zoneinfo_str(receiver: ptr[PyObject]) -> ptr[PyObject];
+def zoneinfo_str(op: ptr[PyObject]) -> ptr[PyObject];
 
-def zoneinfo_reduce(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+def zoneinfo_reduce(obj_self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
 
 def zoneinfo_ZoneInfo__unpickle_impl(
     type: ptr[PyObject], cls: ptr[PyObject], key: ptr[PyObject], from_cache: u8
 ) -> ptr[PyObject];
 
-def zoneinfo_init_subclass(
-    cls: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject];
+def load_timedelta(state: ptr[zoneinfo_state], seconds: i64) -> ptr[PyObject];
 
-def:priv load_timedelta(state: ZoneInfoModuleState, seconds: i64) -> ptr[PyObject];
+def build_ttinfo(
+    state: ptr[zoneinfo_state],
+    utcoffset: i64,
+    dstoffset: i64,
+    tzname: ptr[PyObject],
+    out: ptr[_ttinfo]
+) -> i32;
 
-def:priv build_ttinfo(
-    state: ZoneInfoModuleState, utcoffset: i64, dstoffset: i64, tzname: ptr[PyObject]
-) -> (TTInfo | None);
+def xdecref_ttinfo(ttinfo: ptr[_ttinfo]);
 
-def:priv ttinfo_eq(first: TTInfo, second: TTInfo) -> i32;
+def ttinfo_eq(tti0: ptr[_ttinfo], tti1: ptr[_ttinfo]) -> i32;
 
+def load_data(
+    state: ptr[zoneinfo_state], self_: ptr[PyZoneInfo_ZoneInfo], file_obj: ptr[PyObject]
+) -> i32;
 
-def:priv load_data(
-    state: ZoneInfoModuleState, zone: ZoneInfoState, file_obj: ptr[PyObject]
-) -> bool;
+def load_data_error(self_: ptr[PyZoneInfo_ZoneInfo], ttinfos_allocated: i64);
 
-def:priv fill_zone(
-    state: ZoneInfoModuleState, zone: ZoneInfoState, data_tuple: ptr[PyObject]
-) -> bool;
+def load_data_tuple(
+    state: ptr[zoneinfo_state],
+    self_: ptr[PyZoneInfo_ZoneInfo],
+    data_tuple: ptr[PyObject],
+    scratch: ptr[LoadScratch]
+) -> i32;
 
-obj RuleTransitions {
-    has start: i64 = 0,
-        end: i64 = 0;
+import from c {
+    def calendarrule_year_to_timestamp(
+        base_self: ptr[TransitionRuleType], year: i32
+    ) -> i64 {
+        rule = ptr[CalendarRule](base_self).view(1);
+        month = i32(rule[0].month);
+
+        first_day = (ymd_to_ord(year, month, 1) + 6) % 7;
+        days_in_month = (addressof(DAYS_IN_MONTH) + i64(month)).view(1)[0];
+        if month == 2 and is_leap_year(year) {
+            days_in_month += 1;
+        }
+
+        month_day = (i32(rule[0].day) - (first_day + 1)) % 7;
+        if month_day < 0 {
+            month_day += 7;
+        }
+        month_day += 1;
+
+        month_day += (i32(rule[0].week) - 1) * 7;
+
+        if month_day > days_in_month {
+            month_day -= 7;
+        }
+
+        ordinal = i64(ymd_to_ord(year, month, month_day)) - EPOCHORDINAL;
+        return ordinal * 86400
+            + i64(rule[0].hour) * 3600
+            + i64(rule[0].minute) * 60
+            + i64(rule[0].second);
+    }  def calendarrule_new(
+        month: i32,
+        week: i32,
+        day: i32,
+        hour: i32,
+        minute: i32,
+        second: i32,
+        out: ptr[CalendarRule]
+    ) -> i32 {
+        if month < 1 or month > 12 {
+            PyErr_Format(PyExc_ValueError, ptr[u8]("Month must be in [1, 12]"));
+            return -1;
+        }
+
+        if week < 1 or week > 5 {
+            PyErr_Format(PyExc_ValueError, ptr[u8]("Week must be in [1, 5]"));
+            return -1;
+        }
+
+        if day < 0 or day > 6 {
+            PyErr_Format(PyExc_ValueError, ptr[u8]("Day must be in [0, 6]"));
+            return -1;
+        }
+
+        if hour < -167 or hour > 167 {
+            PyErr_Format(PyExc_ValueError, ptr[u8]("Hour must be in [0, 167]"));
+            return -1;
+        }
+
+        ptr[TransitionRuleType](out).view(1)[0].year_to_timestamp = calendarrule_year_to_timestamp;
+        o = out.view(1);
+        o[0].month = u8.wrap(month);
+        o[0].week = u8.wrap(week);
+        o[0].day = u8.wrap(day);
+        o[0].hour = i16.wrap(hour);
+        o[0].minute = i8.wrap(minute);
+        o[0].second = i8.wrap(second);
+        return 0;
+    }  def dayrule_year_to_timestamp(
+        base_self: ptr[TransitionRuleType], year: i32
+    ) -> i64 {
+        rule = ptr[DayRule](base_self).view(1);
+
+        days_before_year = i64(ymd_to_ord(year, 1, 1)) - EPOCHORDINAL - 1;
+
+        day = i64(rule[0].day);
+        if rule[0].julian != 0 and day >= 59 and is_leap_year(year) {
+            day += 1;
+        }
+
+        return (days_before_year + day) * 86400
+            + i64(rule[0].hour) * 3600
+            + i64(rule[0].minute) * 60
+            + i64(rule[0].second);
+    }
 }
 
-def:priv tzrule_transitions(rule: TZRule, year: i64) -> RuleTransitions;
+def dayrule_new(
+    julian: i32, day: i32, hour: i32, minute: i32, second: i32, out: ptr[DayRule]
+) -> i32;
 
-def:priv find_tzrule_ttinfo(rule: TZRule, ts: i64, fold: i64, year: i64) -> TTInfo;
+def tzrule_transitions(rule: ptr[_tzrule], year: i32) -> tuple[i64, i64];
 
-obj RuleMatch {
-    has tti: TTInfo,
-        fold: bool = False;
-}
+def find_tzrule_ttinfo(
+    rule: ptr[_tzrule], ts: i64, fold: u8, year: i32
+) -> ptr[_ttinfo];
 
-def:priv find_tzrule_ttinfo_fromutc(rule: TZRule, ts: i64, year: i64) -> RuleMatch;
+def find_tzrule_ttinfo_fromutc(
+    rule: ptr[_tzrule], ts: i64, year: i32
+) -> tuple[ptr[_ttinfo], u8];
 
-obj TZCursor {
-    has text: ptr[u8],
-        pos: int = 0;
+def parse_tz_str_error(
+    std_abbr: ptr[PyObject],
+    dst_abbr: ptr[PyObject],
+    start: ptr[TransitionRuleType],
+    end: ptr[TransitionRuleType]
+) -> i32;
 
-    def at(offset: int = 0) -> int;
-}
+def parse_tz_str(
+    state: ptr[zoneinfo_state], tz_str_obj: ptr[PyObject], out: ptr[_tzrule]
+) -> i32;
 
-def:priv is_digit(c: int) -> bool;
+def parse_digits(p: ptr[u8], least: i32, most: i32) -> tuple[i32, ptr[u8], i32];
 
-def:priv is_alpha(c: int) -> bool;
+def parse_abbr(p: ptr[u8]) -> tuple[i32, ptr[u8], ptr[PyObject]];
 
-def:priv parse_tz_str(
-    state: ZoneInfoModuleState, tz_str_obj: ptr[PyObject]
-) -> (TZRule | None);
+def parse_tz_delta(p: ptr[u8], total_seconds: i64) -> tuple[i32, ptr[u8], i64];
 
-def:priv parse_digits(cursor: TZCursor, least: int, most: int) -> (int | None);
+def parse_transition_rule(p: ptr[u8]) -> tuple[i32, ptr[u8], ptr[TransitionRuleType]];
 
-def:priv parse_abbr(cursor: TZCursor) -> ptr[PyObject];
+def parse_transition_time(
+    p: ptr[u8], hour: i32, minute: i32, second: i32
+) -> tuple[i32, ptr[u8], i32, i32, i32];
 
-def:priv parse_tz_delta(cursor: TZCursor) -> (i64 | None);
-
-obj TransitionTime {
-    has hour: i64 = 0,
-        minute: i64 = 0,
-        second: i64 = 0;
-}
-
-def:priv parse_transition_time(cursor: TZCursor, hour: i64) -> (TransitionTime | None);
-
-def:priv parse_transition_rule(cursor: TZCursor) -> (TransitionRule | None);
-
-def:priv calendarrule_new(
-    month: i64, week: i64, day: i64, hour: i64, minute: i64, second: i64
-) -> (TransitionRule | None);
-
-def:priv dayrule_new(
-    julian: bool, day: i64, hour: i64, minute: i64, second: i64
-) -> (TransitionRule | None);
-
-def:priv build_tzrule(
-    state: ZoneInfoModuleState,
+def build_tzrule(
+    state: ptr[zoneinfo_state],
     std_abbr: ptr[PyObject],
     dst_abbr: ptr[PyObject],
     std_offset: i64,
     dst_offset: i64,
-    start: (TransitionRule | None),
-    end: (TransitionRule | None)
-) -> (TZRule | None);
+    start: ptr[TransitionRuleType],
+    end: ptr[TransitionRuleType],
+    out: ptr[_tzrule]
+) -> i32;
 
-def:priv utcoff_to_dstoff(
-    trans_idx: list[int], utcoffs: list[i64], dstoffs: list[i64], isdsts: list[bool]
+def free_tzrule(tzrule: ptr[_tzrule]);
+
+def utcoff_to_dstoff(
+    trans_idx: ptr[i64],
+    utcoffs: ptr[i64],
+    dstoffs: ptr[i64],
+    isdsts: ptr[u8],
+    num_transitions: i64,
+    num_ttinfos: i64
 );
 
-def:priv ts_to_local(
-    trans_idx: list[int], trans_utc: list[i64], utcoff: list[i64]
-) -> list[list[i64]];
+def ts_to_local(
+    trans_idx: ptr[i64],
+    trans_utc: ptr[i64],
+    utcoff: ptr[i64],
+    trans_local: ptr[ptr[i64]],
+    num_ttinfos: i64,
+    num_transitions: i64
+) -> i32;
 
-def:priv bisect_right(value: i64, values: list[i64]) -> int;
+def _bisect(value: i64, arr: ptr[i64], size: i64) -> i64;
 
-def:priv find_ttinfo(
-    state: ZoneInfoModuleState, zone: ZoneInfoState, dt: ptr[PyObject]
-) -> (TTInfo | None);
+def find_ttinfo(
+    state: ptr[zoneinfo_state], self_: ptr[PyZoneInfo_ZoneInfo], dt: ptr[PyObject]
+) -> ptr[_ttinfo];
 
-def:priv is_leap_year(year: i64) -> bool;
+def is_leap_year(year: i32) -> bool;
 
-def:priv ymd_to_ord(y: i64, m: i64, d: i64) -> i64;
+def ymd_to_ord(y: i32, m: i32, d: i32) -> i32;
 
-def:priv int_attribute(dt: ptr[PyObject], name: str) -> (i64 | None);
+def get_local_timestamp(dt: ptr[PyObject]) -> tuple[i32, i64];
 
-def:priv local_timestamp(
-    state: ZoneInfoModuleState, dt: ptr[PyObject]
-) -> (i64 | None);
+def strong_cache_node_new(
+    key: ptr[PyObject], zone: ptr[PyObject]
+) -> ptr[StrongCacheNode];
 
-def:priv find_in_strong_cache(
-    state: ZoneInfoModuleState, key: ptr[PyObject]
-) -> (StrongCacheNode | None);
+import from c {
+    def strong_cache_node_free(cache_node: ptr[StrongCacheNode]) {
+        n = cache_node.view(1);
+        object_xdecref(n[0].key);
+        object_xdecref(n[0].zone);
 
-def:priv remove_from_strong_cache(state: ZoneInfoModuleState, cached: StrongCacheNode);
+        PyMem_Free(cache_node);
+    }  def strong_cache_free(top: ptr[StrongCacheNode]) {
+        cache_node = top;
+        while cache_node {
+            next_node = cache_node.view(1)[0].next;
+            strong_cache_node_free(cache_node);
 
-def:priv move_strong_cache_node_to_front(
-    state: ZoneInfoModuleState, cached: StrongCacheNode
+            cache_node = next_node;
+        }
+    }  def clear_strong_cache(state: ptr[zoneinfo_state], type: ptr[PyTypeObject]) {
+        s = state.view(1);
+        if type != s[0].ZoneInfoType {
+            return;
+        }
+
+        strong_cache_free(s[0].ZONEINFO_STRONG_CACHE);
+        s[0].ZONEINFO_STRONG_CACHE = ptr[StrongCacheNode]();
+    }
+}
+
+def remove_from_strong_cache(
+    state: ptr[zoneinfo_state], cache_node: ptr[StrongCacheNode]
 );
 
-def:priv eject_from_strong_cache(
-    state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
-) -> bool;
+def find_in_strong_cache(
+    top: ptr[StrongCacheNode], key: ptr[PyObject]
+) -> ptr[StrongCacheNode];
 
-def:priv zone_from_strong_cache(
-    state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
+def eject_from_strong_cache(
+    state: ptr[zoneinfo_state], type: ptr[PyTypeObject], key: ptr[PyObject]
+) -> i32;
+
+def move_strong_cache_node_to_front(
+    state: ptr[zoneinfo_state],
+    top: ptr[ptr[StrongCacheNode]],
+    cache_node: ptr[StrongCacheNode]
+);
+
+def zone_from_strong_cache(
+    state: ptr[zoneinfo_state], type: ptr[PyTypeObject], key: ptr[PyObject]
 ) -> ptr[PyObject];
 
-def:priv update_strong_cache(
-    state: ZoneInfoModuleState,
-    type: ptr[PyObject],
+def update_strong_cache(
+    state: ptr[zoneinfo_state],
+    type: ptr[PyTypeObject],
     key: ptr[PyObject],
     zone: ptr[PyObject]
 );
 
-def:priv clear_strong_cache(state: ZoneInfoModuleState, type: ptr[PyObject]);
+def new_weak_cache -> ptr[PyObject];
 
-def:priv new_weak_cache -> ptr[PyObject];
+def initialize_caches(state: ptr[zoneinfo_state]) -> i32;
 
-def datetime_import -> ptr[PyDateTime_CAPI];
+def zoneinfo_init_subclass(
+    cls: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
 
-def populate_module_state(state: ZoneInfoModuleState) -> bool;
-
-impl TTInfo.drop {
-    jacpy_release(self.utcoff);
-    jacpy_release(self.dstoff);
-    jacpy_release(self.tzname);
+import from c {
+    glob:priv zoneinfo_members: list[PyMemberDef] = [
+             PyMemberDef(
+                 name=ptr[u8]("key"),
+                 type_=Py_T_OBJECT_EX,
+                 offset=ZONEINFO_KEY,
+                 flags=Py_READONLY
+             ),
+             PyMemberDef(
+                 name=ptr[u8]("__weaklistoffset__"),
+                 type_=Py_T_PYSSIZET,
+                 offset=ZONEINFO_WEAKREFLIST,
+                 flags=Py_READONLY
+             ),
+             PyMemberDef()
+         ],
+         zoneinfo_slots: list[PyType_Slot] = [
+             PyType_Slot(slot=Py_tp_methods, pfunc=ptr()),
+             PyType_Slot(slot=Py_tp_repr, pfunc=ptr(zoneinfo_repr)),
+             PyType_Slot(slot=Py_tp_str, pfunc=ptr(zoneinfo_str)),
+             PyType_Slot(slot=Py_tp_getattro, pfunc=ptr(PyObject_GenericGetAttr)),
+             PyType_Slot(slot=Py_tp_members, pfunc=ptr(addressof(zoneinfo_members))),
+             PyType_Slot(slot=Py_tp_new, pfunc=ptr(zoneinfo_ZoneInfo_new)),
+             PyType_Slot(slot=Py_tp_dealloc, pfunc=ptr(zoneinfo_dealloc)),
+             PyType_Slot(slot=Py_tp_traverse, pfunc=ptr(zoneinfo_traverse)),
+             PyType_Slot(slot=Py_tp_clear, pfunc=ptr(zoneinfo_clear)),
+             PyType_Slot(slot=Py_tp_token, pfunc=ptr()),
+             PyType_Slot(slot=0, pfunc=ptr())
+         ]; glob:priv zoneinfo_spec: PyType_Spec = PyType_Spec(
+             name=ptr[u8]("zoneinfo.ZoneInfo"),
+             basicsize=i32(ZONEINFO_SIZE),
+             itemsize=0,
+             flags=u32(
+                 Py_TPFLAGS_DEFAULT
+                     | Py_TPFLAGS_BASETYPE
+                     | Py_TPFLAGS_HAVE_GC
+                     | Py_TPFLAGS_IMMUTABLETYPE
+             ),
+             slots=addressof(zoneinfo_slots)
+         ); glob:priv zoneinfo_module_methods: list[PyMethodDef] = [
+             PyMethodDef(ml_name=ptr[u8](), ml_meth=ptr(), ml_flags=0, ml_doc=ptr[u8]())
+         ],
+         zoneinfomodule_slots: list[PyModuleDef_Slot] = [
+             PyModuleDef_Slot(slot=Py_mod_exec, value=ptr(zoneinfomodule_exec)),
+             PyModuleDef_Slot(slot=Py_mod_multiple_interpreters, value=ptr(2)),
+             PyModuleDef_Slot(slot=Py_mod_gil, value=ptr(1)),
+             PyModuleDef_Slot(slot=0, value=ptr())
+         ]; glob zoneinfomodule: ZoneInfoModuleDef = ZoneInfoModuleDef(
+             m_base=PyModuleDef_Base(
+                 ob_base=_object(
+                     ob_refcnt_full=_Py_STATIC_IMMORTAL_INITIAL_REFCNT,
+                     ob_type=ptr[PyTypeObject]()
+                 ),
+                 m_index=0,
+                 m_copy=ptr[PyObject]()
+             ),
+             m_name=ptr[u8]("_zoneinfo"),
+             m_doc=ptr[u8]("C implementation of the zoneinfo module"),
+             m_size=ZONEINFO_STATE_SIZE,
+             m_methods=addressof(zoneinfo_module_methods),
+             m_slots=addressof(zoneinfomodule_slots),
+             m_traverse=ptr(module_traverse),
+             m_clear=ptr(module_clear),
+             m_free=ptr(module_free)
+         );
 }
 
-impl CalendarRule.year_to_timestamp(year: i64) -> i64 {
-    first_day = (ymd_to_ord(year, self.month, 1) + 6) % 7;
-    days_in_month = DAYS_IN_MONTH[self.month];
-    if self.month == 2 and is_leap_year(year) {
-        days_in_month += 1;
+def install_zoneinfo_methods -> bool;
+
+def module_traverse(mod: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def module_clear(mod: ptr[PyObject]) -> i32;
+
+def module_free(mod: ptr);
+
+def zoneinfomodule_exec(m: ptr[PyObject]) -> i32;
+
+impl zoneinfo_record(op: ptr[PyObject]) -> ptr[PyZoneInfo_ZoneInfo] {
+    return ptr[PyZoneInfo_ZoneInfo](op);
+}
+
+impl trans_list_wall_of(self_: ptr[PyZoneInfo_ZoneInfo]) -> ptr[ptr[i64]] {
+    return ptr[ptr[i64]](ptr[u8](self_) + ZONEINFO_TRANS_LIST_WALL);
+}
+
+impl tzrule_after_of(self_: ptr[PyZoneInfo_ZoneInfo]) -> ptr[_tzrule] {
+    return ptr[_tzrule](ptr[u8](self_) + ZONEINFO_TZRULE_AFTER);
+}
+
+impl tzrule_std(rule: ptr[_tzrule]) -> ptr[_ttinfo] {
+    return ptr[_ttinfo](rule);
+}
+
+impl tzrule_dst(rule: ptr[_tzrule]) -> ptr[_ttinfo] {
+    return ptr[_ttinfo](ptr[u8](rule) + TZRULE_DST);
+}
+
+impl no_ttinfo_of(state: ptr[zoneinfo_state]) -> ptr[_ttinfo] {
+    return ptr[_ttinfo](ptr[u8](state) + ZONEINFO_STATE_NO_TTINFO);
+}
+
+impl strong_cache_root(state: ptr[zoneinfo_state]) -> ptr[ptr[StrongCacheNode]] {
+    return ptr[ptr[StrongCacheNode]](ptr[u8](state) + ZONEINFO_STATE_STRONG_CACHE);
+}
+
+impl datetime_record(dt: ptr[PyObject]) -> ptr[PyDateTime_DateTime] {
+    return ptr[PyDateTime_DateTime](dt);
+}
+
+impl datetime_get_year(dt: ptr[PyObject]) -> i32 {
+    d = datetime_record(dt).view(1);
+    return (i32(d[0].data) << 8) | i32(d[0].data_1);
+}
+
+impl datetime_get_tzinfo(dt: ptr[PyObject]) -> ptr[PyObject] {
+    d = datetime_record(dt).view(1);
+    if d[0].hastzinfo != 0 {
+        return d[0].tzinfo;
     }
-
-    month_day = (self.day - (first_day + 1)) % 7;
-    if month_day < 0 {
-        month_day += 7;
-    }
-    month_day += 1;
-    month_day += (self.week - 1) * 7;
-
-    if month_day > days_in_month {
-        month_day -= 7;
-    }
-    ordinal = ymd_to_ord(year, self.month, month_day) - EPOCHORDINAL;
-    return ordinal * 86400 + self.hour * 3600 + self.minute * 60 + self.second;
+    return Py_None;
 }
 
-impl DayRule.year_to_timestamp(year: i64) -> i64 {
-    days_before_year = ymd_to_ord(year, 1, 1) - EPOCHORDINAL - 1;
-
-    day = self.day;
-    if self.julian and day >= 59 and is_leap_year(year) {
-        day += 1;
-    }
-    return (days_before_year + day) * 86400
-        + self.hour * 3600
-        + self.minute * 60
-        + self.second;
+impl py_isdigit(c: u8) -> bool {
+    return c >= 48 and c <= 57;
 }
 
-impl StrongCacheNode.drop {
-    jacpy_release(self.key);
-    jacpy_release(self.zone);
+impl py_isalpha(c: u8) -> bool {
+    return (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
 }
 
-impl ZoneInfoModuleState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
-    for value in [
-        self.zoneinfo_type,
-        self.io_open,
-        self.tzpath_find_tzfile,
-        self.common_mod,
-        self.timedelta_cache,
-        self.weak_cache
-    ] {
-        status = visit_reference(value, visitor, context);
-        if status != 0 {
-            return status;
-        }
-    }
-    for cached in self.strong_cache {
-        status = visit_reference(cached.key, visitor, context);
-        if status == 0 {
-            status = visit_reference(cached.zone, visitor, context);
-        }
-        if status != 0 {
-            return status;
-        }
-    }
-    for value in [
-        self.no_ttinfo.utcoff,
-        self.no_ttinfo.dstoff,
-        self.no_ttinfo.tzname
-    ] {
-        status = visit_reference(value, visitor, context);
-        if status != 0 {
-            return status;
-        }
-    }
-    return i32(0);
+impl zoneinfo_get_state(mod: ptr[PyObject]) -> ptr[zoneinfo_state] {
+    return ptr[zoneinfo_state](PyModule_GetState(mod));
 }
 
-impl ZoneInfoModuleState.clear {
-    references = [
-        self.zoneinfo_type,
-        self.io_open,
-        self.tzpath_find_tzfile,
-        self.common_mod,
-        self.timedelta_cache,
-        self.weak_cache
-    ];
-    self.zoneinfo_type = NULL;
-    self.io_open = NULL;
-    self.tzpath_find_tzfile = NULL;
-    self.common_mod = NULL;
-    self.timedelta_cache = NULL;
-    self.weak_cache = NULL;
-    self.strong_cache = [];
-    self.no_ttinfo = TTInfo();
-    for value in references {
-        jacpy_release(value);
-    }
+impl zoneinfo_get_state_by_cls(cls: ptr[PyObject]) -> ptr[zoneinfo_state] {
+    module = ptr[PyHeapTypeObject](cls).view(1)[0].ht_module;
+    return ptr[zoneinfo_state](ptr[PyModuleObject](module).view(1)[0].md_state);
 }
 
-impl ZoneInfoModuleState.drop {
-    self.clear();
-}
-
-impl ZoneInfoState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
-    return visit_reference(self.key, visitor, context);
-}
-
-impl ZoneInfoState.clear {
-    key = self.key;
-    file_repr = self.file_repr;
-    self.key = NULL;
-    self.file_repr = NULL;
-    jacpy_release(key);
-    jacpy_release(file_repr);
-}
-
-impl ZoneInfoState.drop {
-    self.clear();
-}
-
-impl module_state(module: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
-    if module and jacpy_binding_module_native_present(module) != 0 {
-        state = jacpy_binding_module_native_get(module);
-        if isinstance(state, ZoneInfoModuleState) {
-            return state;
-        }
-    }
-    if not PyErr_Occurred() {
-        object_error(PyExc_SystemError, "_zoneinfo module state is unavailable");
-    }
-    return None;
-}
-
-impl state_by_type(type: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
-    return module_state(jacpy_binding_owner(type, module_definition.handle));
-}
-
-impl state_by_class(cls: ptr[PyObject]) -> (ZoneInfoModuleState | None) {
-    return state_by_type(cls);
-}
-
-impl zoneinfo_of(instance: ptr[PyObject]) -> (ZoneInfoState | None) {
-    if jacpy_binding_native_present(instance, ZoneInfo_token.handle) != 0 {
-        state = jacpy_binding_native_get(instance, ZoneInfo_token.handle);
-        if isinstance(state, ZoneInfoState) {
-            return state;
-        }
-    }
-    if not PyErr_Occurred() {
-        object_error(PyExc_SystemError, "ZoneInfo state is unavailable");
-    }
-    return None;
-}
-
-impl before_ttinfo(zone: ZoneInfoState) -> TTInfo {
-    before = zone.ttinfo_before;
-    if before is None {
-        return TTInfo();
-    }
-    return before;
-}
-
-impl datetime_year(dt: ptr[PyObject]) -> i64 {
-    fields = ptr[PyDateTime_DateTime](dt).view(1);
-    return (i64(fields[0].data) << 8) | i64(fields[0].data_1);
-}
-
-impl datetime_fold(dt: ptr[PyObject]) -> i64 {
-    return i64(ptr[PyDateTime_DateTime](dt).view(1)[0].fold);
-}
-
-impl datetime_tzinfo(dt: ptr[PyObject]) -> ptr[PyObject] {
-    fields = ptr[PyDateTime_DateTime](dt).view(1);
-    return fields[0].tzinfo if fields[0].hastzinfo != 0 else Py_None;
-}
-
-impl datetime_type(state: ZoneInfoModuleState) -> ptr[PyObject] {
-    return ptr[PyObject](state.datetime_api.view(1)[0].DateTimeType);
-}
-
-impl is_datetime_exact(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool {
-    return Py_TYPE(value) == datetime_type(state);
-}
-
-impl is_datetime(state: ZoneInfoModuleState, value: ptr[PyObject]) -> bool {
-    return jacpy_type_check(value, datetime_type(state)) != 0;
+impl zoneinfo_get_state_by_self(self_: ptr[PyObject]) -> ptr[zoneinfo_state] {
+    mod = PyType_GetModuleByDef(
+        ptr[PyTypeObject](self_), ptr[PyModuleDef](addressof(zoneinfomodule))
+    );
+    return zoneinfo_get_state(mod);
 }
 
 impl zoneinfo_new_instance(
-    state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
+    state: ptr[zoneinfo_state], type: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
+    s = state.view(1);
     file_obj = NULL;
-    file_path = PyObject_CallOneArg(state.tzpath_find_tzfile, key);
+    file_path = PyObject_CallFunctionObjArgs(s[0]._tzpath_find_tzfile, key, NULL);
     if not file_path {
         return NULL;
     } elif file_path == Py_None {
-        file_obj = PyObject_CallMethod(state.common_mod, "load_tzdata", "O", key);
+        meth = s[0]._common_mod;
+        file_obj = PyObject_CallMethod(meth, "load_tzdata", "O", key);
         if not file_obj {
-            jacpy_release(file_path);
+            object_decref(file_path);
             return NULL;
         }
     }
-    instance = jacpy_binding_allocate(type);
-    failed = not instance;
-    if not failed and not file_obj {
-        file_obj = PyObject_CallFunction(state.io_open, "Os", file_path, "rb");
-        failed = not file_obj;
+
+    tp = ptr[PyTypeObject](type);
+    self_ = tp.view(1)[0].tp_alloc(tp, 0);
+    ok = True;
+    if not self_ {
+        ok = False;
     }
-    if not failed {
-        zone = ZoneInfoState();
-        failed = not load_data(state, zone, file_obj);
-        if not failed {
-            closed = PyObject_CallMethod(file_obj, "close", "");
-            jacpy_release(file_obj);
-            file_obj = NULL;
-            if closed {
-                jacpy_release(closed);
-                zone.key = Py_NewRef(key);
-                failed = jacpy_binding_native_set(instance, ZoneInfo_token.handle, zone)
-                    < 0;
-                if not failed {
-                    mirror_key(instance, zone);
-                }
-            } else {
-                failed = True;
-            }
+
+    if ok and not file_obj {
+        func = s[0].io_open;
+        file_obj = PyObject_CallFunction(func, "Os", file_path, ptr[u8]("rb"));
+        if not file_obj {
+            ok = False;
         }
     }
-    if failed {
-        jacpy_release(instance);
-        instance = NULL;
+
+    self_zinfo = zoneinfo_record(self_);
+    if ok and load_data(state, self_zinfo, file_obj) != 0 {
+        ok = False;
+    }
+
+    if ok {
+        rv = PyObject_CallMethod(file_obj, "close", "");
+        old_file = file_obj;
+        file_obj = NULL;
+        object_decref(old_file);
+        if not rv {
+            ok = False;
+        } else {
+            object_decref(rv);
+            self_zinfo.view(1)[0].key = object_new_ref(key);
+        }
+    }
+
+    if not ok and self_ {
+        failed = self_;
+        self_ = NULL;
+        object_decref(failed);
     }
     if file_obj {
         exc = PyErr_GetRaisedException();
-        closed = PyObject_CallMethod(file_obj, "close", "");
+        tmp = PyObject_CallMethod(file_obj, "close", "");
         _PyErr_ChainExceptions1(exc);
-        if not closed {
-            jacpy_release(instance);
-            instance = NULL;
+        if not tmp and self_ {
+            failed = self_;
+            self_ = NULL;
+            object_decref(failed);
         }
-        jacpy_release(closed);
-        jacpy_release(file_obj);
+        object_xdecref(tmp);
+        object_decref(file_obj);
     }
-    jacpy_release(file_path);
-    return instance;
+    object_decref(file_path);
+    return self_;
 }
 
-impl get_weak_cache(state: ZoneInfoModuleState, type: ptr[PyObject]) -> ptr[PyObject] {
-    if type == state.zoneinfo_type {
-        return Py_NewRef(state.weak_cache);
+impl get_weak_cache(state: ptr[zoneinfo_state], type: ptr[PyObject]) -> ptr[PyObject] {
+    s = state.view(1);
+    if ptr[PyTypeObject](type) == s[0].ZoneInfoType {
+        object_incref(s[0].ZONEINFO_WEAK_CACHE);
+        return s[0].ZONEINFO_WEAK_CACHE;
     }
     return PyObject_GetAttrString(type, ptr[u8]("_weak_cache"));
 }
 
 impl zoneinfo_ZoneInfo_impl(type: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyObject] {
-    state = state_by_type(type);
-    if state is None {
-        return NULL;
-    }
-    instance = zone_from_strong_cache(state, type, key);
+    state = zoneinfo_get_state_by_self(type);
+    tp = ptr[PyTypeObject](type);
+    instance = zone_from_strong_cache(state, tp, key);
     if instance or PyErr_Occurred() {
         return instance;
     }
+
     weak_cache = get_weak_cache(state, type);
     if not weak_cache {
         return NULL;
     }
-    instance = PyObject_CallMethod(weak_cache, "get", "O", key);
+    instance = PyObject_CallMethod(weak_cache, "get", "O", key, Py_None);
     if not instance {
-        jacpy_release(weak_cache);
+        object_decref(weak_cache);
         return NULL;
     }
+
     if instance == Py_None {
-        jacpy_release(instance);
-        created = zoneinfo_new_instance(state, type, key);
-        if not created {
-            jacpy_release(weak_cache);
+        object_decref(instance);
+        tmp = zoneinfo_new_instance(state, type, key);
+        if not tmp {
+            object_decref(weak_cache);
             return NULL;
         }
-        zone = zoneinfo_of(created);
-        if zone is not None {
-            zone.source = SOURCE_CACHE;
-        }
-        instance = PyObject_CallMethod(weak_cache, "setdefault", "OO", key, created);
-        jacpy_release(created);
+
+        zoneinfo_record(tmp).view(1)[0].source = SOURCE_CACHE;
+        instance = PyObject_CallMethod(weak_cache, "setdefault", "OO", key, tmp);
+        object_decref(tmp);
         if not instance {
-            jacpy_release(weak_cache);
+            object_decref(weak_cache);
             return NULL;
         }
     }
-    if jacpy_type_check(instance, type) == 0 {
+
+    if not object_type_check(instance, tp) {
         PyErr_Format(
             PyExc_RuntimeError,
             ptr[u8]("Unexpected instance of %T in %s weak cache for key %R"),
@@ -630,64 +757,124 @@ impl zoneinfo_ZoneInfo_impl(type: ptr[PyObject], key: ptr[PyObject]) -> ptr[PyOb
             _PyType_Name(type),
             key
         );
-        jacpy_release(instance);
-        jacpy_release(weak_cache);
+        object_decref(instance);
+        object_decref(weak_cache);
         return NULL;
     }
-    update_strong_cache(state, type, key, instance);
-    jacpy_release(weak_cache);
+
+    update_strong_cache(state, tp, key, instance);
+    object_decref(weak_cache);
     return instance;
+}
+
+impl zoneinfo_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+    vret = visit_reference(ptr[PyObject](object_type(op)), visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+    vret = visit_reference(zoneinfo_record(op).view(1)[0].key, visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+    return 0;
+}
+
+impl zoneinfo_clear(op: ptr[PyObject]) -> i32 {
+    z = zoneinfo_record(op).view(1);
+    key = z[0].key;
+    if key {
+        z[0].key = NULL;
+        object_decref(key);
+    }
+    file_repr = z[0].file_repr;
+    if file_repr {
+        z[0].file_repr = NULL;
+        object_decref(file_repr);
+    }
+    return 0;
+}
+
+impl zoneinfo_dealloc(obj_self: ptr[PyObject]) {
+    self_ = zoneinfo_record(obj_self);
+    z = self_.view(1);
+    tp = object_type(obj_self);
+    PyObject_GC_UnTrack(ptr(obj_self));
+
+    if z[0].weakreflist {
+        PyObject_ClearWeakRefs(obj_self);
+    }
+
+    if z[0].trans_list_utc {
+        PyMem_Free(z[0].trans_list_utc);
+    }
+
+    wall = trans_list_wall_of(self_);
+    i: i64 = 0;
+    while i < 2 {
+        if (wall + i).view(1)[0] {
+            PyMem_Free((wall + i).view(1)[0]);
+        }
+        i += 1;
+    }
+
+    if z[0]._ttinfos {
+        num_ttinfos = i64(z[0].num_ttinfos);
+        i = 0;
+        while i < num_ttinfos {
+            xdecref_ttinfo(z[0]._ttinfos + i);
+            i += 1;
+        }
+        PyMem_Free(z[0]._ttinfos);
+    }
+
+    if z[0].trans_ttinfos {
+        PyMem_Free(z[0].trans_ttinfos);
+    }
+
+    free_tzrule(tzrule_after_of(self_));
+
+    zoneinfo_clear(obj_self);
+    tp.view(1)[0].tp_free(ptr(obj_self));
+    object_decref(ptr[PyObject](tp));
 }
 
 impl zoneinfo_ZoneInfo_from_file_impl(
     type: ptr[PyObject], cls: ptr[PyObject], file_obj: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
-    instance = jacpy_binding_allocate(type);
-    if not instance {
+    tp = ptr[PyTypeObject](type);
+    obj_self = tp.view(1)[0].tp_alloc(tp, 0);
+    if not obj_self {
         return NULL;
     }
+    self_ = zoneinfo_record(obj_self);
+
     file_repr = PyObject_Repr(file_obj);
     if not file_repr {
-        jacpy_release(instance);
+        object_decref(obj_self);
         return NULL;
     }
-    state = state_by_class(cls);
-    zone = ZoneInfoState();
-    if state is None or not load_data(state, zone, file_obj) {
-        jacpy_release(file_repr);
-        jacpy_release(instance);
-        return NULL;
-    }
-    zone.source = SOURCE_FILE;
-    zone.file_repr = file_repr;
-    zone.key = Py_NewRef(key);
-    if jacpy_binding_native_set(instance, ZoneInfo_token.handle, zone) < 0 {
-        jacpy_release(instance);
-        return NULL;
-    }
-    mirror_key(instance, zone);
-    return instance;
-}
 
-impl mirror_key(instance: ptr[PyObject], zone: ZoneInfoState) {
-    record_set_object(
-        jacpy_binding_record(instance, ZoneInfo_token.handle), 0, zone.key
-    );
+    state = zoneinfo_get_state_by_cls(cls);
+    if load_data(state, self_, file_obj) != 0 {
+        object_decref(file_repr);
+        object_decref(obj_self);
+        return NULL;
+    }
+
+    z = self_.view(1);
+    z[0].source = SOURCE_FILE;
+    z[0].file_repr = file_repr;
+    z[0].key = object_new_ref(key);
+    return obj_self;
 }
 
 impl zoneinfo_ZoneInfo_no_cache_impl(
     type: ptr[PyObject], cls: ptr[PyObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
-    state = state_by_class(cls);
-    if state is None {
-        return NULL;
-    }
+    state = zoneinfo_get_state_by_cls(cls);
     out = zoneinfo_new_instance(state, type, key);
     if out {
-        zone = zoneinfo_of(out);
-        if zone is not None {
-            zone.source = SOURCE_NOCACHE;
-        }
+        zoneinfo_record(out).view(1)[0].source = SOURCE_NOCACHE;
     }
     return out;
 }
@@ -695,227 +882,244 @@ impl zoneinfo_ZoneInfo_no_cache_impl(
 impl zoneinfo_ZoneInfo_clear_cache_impl(
     type: ptr[PyObject], cls: ptr[PyObject], only_keys: ptr[PyObject]
 ) -> ptr[PyObject] {
-    state = state_by_class(cls);
-    if state is None {
-        return NULL;
-    }
+    state = zoneinfo_get_state_by_cls(cls);
+    tp = ptr[PyTypeObject](type);
     weak_cache = get_weak_cache(state, type);
     if not weak_cache {
         return NULL;
     }
+
     if not only_keys or only_keys == Py_None {
-        cleared = PyObject_CallMethod(weak_cache, "clear", "");
-        jacpy_release(cleared);
-        clear_strong_cache(state, type);
+        rv = PyObject_CallMethod(weak_cache, "clear", "");
+        if rv {
+            object_decref(rv);
+        }
+
+        clear_strong_cache(state, tp);
     } else {
         pop = PyUnicode_FromString(ptr[u8]("pop"));
         if not pop {
-            jacpy_release(weak_cache);
+            object_decref(weak_cache);
             return NULL;
         }
-        iterator = PyObject_GetIter(only_keys);
-        if not iterator {
-            jacpy_release(pop);
-            jacpy_release(weak_cache);
+        it = PyObject_GetIter(only_keys);
+        if not it {
+            object_decref(pop);
+            object_decref(weak_cache);
             return NULL;
         }
-        item = PyIter_Next(iterator);
+        item = PyIter_Next(it);
         while item {
-            if not eject_from_strong_cache(state, type, item) {
-                jacpy_release(item);
+            if eject_from_strong_cache(state, tp, item) < 0 {
+                object_decref(item);
                 break;
             }
-            popped = PyObject_CallMethodObjArgs(weak_cache, pop, item, Py_None, NULL);
-            jacpy_release(item);
-            if not popped {
+
+            tmp = PyObject_CallMethodObjArgs(weak_cache, pop, item, Py_None, NULL);
+
+            object_decref(item);
+            if not tmp {
                 break;
             }
-            jacpy_release(popped);
-            item = PyIter_Next(iterator);
+            object_decref(tmp);
+            item = PyIter_Next(it);
         }
-        jacpy_release(iterator);
-        jacpy_release(pop);
+        object_decref(it);
+        object_decref(pop);
     }
-    jacpy_release(weak_cache);
+
+    object_decref(weak_cache);
     if PyErr_Occurred() {
         return NULL;
     }
-    return Py_NewRef(Py_None);
-}
 
-impl ttinfo_method(
-    receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject], field: int
-) -> ptr[PyObject] {
-    state = state_by_class(cls);
-    zone = zoneinfo_of(receiver);
-    if state is None or zone is None {
-        return NULL;
-    }
-    tti = find_ttinfo(state, zone, dt);
-    if tti is None {
-        return NULL;
-    }
-    if field == 0 {
-        return Py_NewRef(tti.utcoff);
-    }
-    return Py_NewRef(tti.dstoff) if field == 1 else Py_NewRef(tti.tzname);
+    return object_new_ref(Py_None);
 }
 
 impl zoneinfo_ZoneInfo_utcoffset_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return ttinfo_method(receiver, cls, dt, 0);
+    state = zoneinfo_get_state_by_cls(cls);
+    tti = find_ttinfo(state, zoneinfo_record(receiver), dt);
+    if not tti {
+        return NULL;
+    }
+    return object_new_ref(tti.view(1)[0].utcoff);
 }
 
 impl zoneinfo_ZoneInfo_dst_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return ttinfo_method(receiver, cls, dt, 1);
+    state = zoneinfo_get_state_by_cls(cls);
+    tti = find_ttinfo(state, zoneinfo_record(receiver), dt);
+    if not tti {
+        return NULL;
+    }
+    return object_new_ref(tti.view(1)[0].dstoff);
 }
 
 impl zoneinfo_ZoneInfo_tzname_impl(
     receiver: ptr[PyObject], cls: ptr[PyObject], dt: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return ttinfo_method(receiver, cls, dt, 2);
+    state = zoneinfo_get_state_by_cls(cls);
+    tti = find_ttinfo(state, zoneinfo_record(receiver), dt);
+    if not tti {
+        return NULL;
+    }
+    return object_new_ref(tti.view(1)[0].tzname);
 }
 
-impl zoneinfo_fromutc(receiver: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
-    state = state_by_type(Py_TYPE(receiver));
-    if state is None {
-        return NULL;
-    }
-    if not is_datetime(state, dt) {
-        object_error(PyExc_TypeError, "fromutc: argument must be a datetime");
-        return NULL;
-    }
-    if datetime_tzinfo(dt) != receiver {
-        object_error(PyExc_ValueError, "fromutc: dt.tzinfo is not self");
-        return NULL;
-    }
-    zone = zoneinfo_of(receiver);
-    if zone is None {
-        return NULL;
-    }
-    timestamp = local_timestamp(state, dt);
-    if timestamp is None {
-        return NULL;
-    }
-    num_trans = len(zone.trans_list_utc);
-    tti = before_ttinfo(zone);
-    fold = False;
-    if num_trans >= 1 and timestamp < zone.trans_list_utc[0] {
-        tti = before_ttinfo(zone);
-    } elif num_trans == 0 or timestamp > zone.trans_list_utc[num_trans - 1] {
-        found = find_tzrule_ttinfo_fromutc(
-            zone.tzrule_after, timestamp, datetime_year(dt)
+impl zoneinfo_fromutc(obj_self: ptr[PyObject], dt: ptr[PyObject]) -> ptr[PyObject] {
+    api = PyDateTimeAPI.view(1);
+    if not object_type_check(dt, api[0].DateTimeType) {
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("fromutc: argument must be a datetime")
         );
-        tti = found.tti;
-        fold = found.fold;
-        if num_trans {
-            tti_prev = before_ttinfo(zone)
-                if num_trans == 1
-                else zone.trans_ttinfos[num_trans - 2];
-            diff = tti_prev.utcoff_seconds - tti.utcoff_seconds;
-            if diff > 0 and timestamp < zone.trans_list_utc[num_trans - 1] + diff {
-                fold = True;
+        return NULL;
+    }
+    if datetime_get_tzinfo(dt) != obj_self {
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("fromutc: dt.tzinfo is not self"));
+        return NULL;
+    }
+
+    self_ = zoneinfo_record(obj_self);
+    z = self_.view(1);
+
+    (status, timestamp) = get_local_timestamp(dt);
+    if status != 0 {
+        return NULL;
+    }
+    num_trans = i64(z[0].num_transitions);
+    utc = z[0].trans_list_utc;
+
+    tti = ptr[_ttinfo]();
+    fold: u8 = 0;
+
+    if num_trans >= 1 and timestamp < utc.view(1)[0] {
+        tti = z[0].ttinfo_before;
+    } elif num_trans == 0 or timestamp > (utc + (num_trans - 1)).view(1)[0] {
+        (rule_tti, rule_fold) = find_tzrule_ttinfo_fromutc(
+            tzrule_after_of(self_), timestamp, datetime_get_year(dt)
+        );
+        tti = rule_tti;
+        fold = rule_fold;
+        if num_trans != 0 {
+            tti_prev = z[0].ttinfo_before;
+            if num_trans != 1 {
+                tti_prev = (z[0].trans_ttinfos + (num_trans - 2)).view(1)[0];
+            }
+            diff = wrapping_sub(
+                tti_prev.view(1)[0].utcoff_seconds, tti.view(1)[0].utcoff_seconds
+            );
+            if diff > 0
+                and timestamp
+                    < wrapping_add((utc + (num_trans - 1)).view(1)[0], diff) {
+                fold = 1;
             }
         }
     } else {
-        idx = bisect_right(timestamp, zone.trans_list_utc);
-        tti_prev = before_ttinfo(zone);
+        idx = _bisect(timestamp, utc, num_trans);
+        prev_tti = z[0].ttinfo_before;
         if idx >= 2 {
-            tti_prev = zone.trans_ttinfos[idx - 2];
-            tti = zone.trans_ttinfos[idx - 1];
+            prev_tti = (z[0].trans_ttinfos + (idx - 2)).view(1)[0];
+            tti = (z[0].trans_ttinfos + (idx - 1)).view(1)[0];
         } else {
-            tti = zone.trans_ttinfos[0];
+            tti = z[0].trans_ttinfos.view(1)[0];
         }
-        shift = tti_prev.utcoff_seconds - tti.utcoff_seconds;
-        if shift > timestamp - zone.trans_list_utc[idx - 1] {
-            fold = True;
+        shift = wrapping_sub(
+            prev_tti.view(1)[0].utcoff_seconds, tti.view(1)[0].utcoff_seconds
+        );
+        if shift > wrapping_sub(timestamp, (utc + (idx - 1)).view(1)[0]) {
+            fold = 1;
         }
     }
-    shifted = PyNumber_Add(dt, tti.utcoff);
-    if not shifted or not fold {
-        return shifted;
-    }
-    if is_datetime_exact(state, shifted) {
-        ptr[PyDateTime_DateTime](shifted).view(1)[0].fold = 1;
-        return shifted;
-    }
-    replace = PyObject_GetAttrString(shifted, ptr[u8]("replace"));
-    jacpy_release(shifted);
-    if not replace {
+
+    tmp = PyNumber_Add(dt, tti.view(1)[0].utcoff);
+    if not tmp {
         return NULL;
     }
-    args = PyTuple_New(0);
-    if not args {
-        jacpy_release(replace);
-        return NULL;
+
+    if fold != 0 {
+        if object_type(tmp) == api[0].DateTimeType {
+            datetime_record(tmp).view(1)[0].fold = 1;
+            return tmp;
+        }
+        replace = PyObject_GetAttrString(tmp, ptr[u8]("replace"));
+        object_decref(tmp);
+        if not replace {
+            return NULL;
+        }
+        args = PyTuple_New(0);
+        if not args {
+            object_decref(replace);
+            return NULL;
+        }
+        kwargs = PyDict_New();
+        if not kwargs {
+            object_decref(replace);
+            object_decref(args);
+            return NULL;
+        }
+
+        result = NULL;
+        if PyDict_SetItemString(kwargs, ptr[u8]("fold"), long_one()) == 0 {
+            result = PyObject_Call(replace, args, kwargs);
+        }
+
+        object_decref(args);
+        object_decref(kwargs);
+        object_decref(replace);
+        return result;
     }
-    kwargs = PyDict_New();
-    if not kwargs {
-        jacpy_release(replace);
-        jacpy_release(args);
-        return NULL;
-    }
-    result = NULL;
-    one = PyLong_FromLong(1);
-    if one and PyDict_SetItemString(kwargs, ptr[u8]("fold"), one) == 0 {
-        result = PyObject_Call(replace, args, kwargs);
-    }
-    jacpy_release(one);
-    jacpy_release(args);
-    jacpy_release(kwargs);
-    jacpy_release(replace);
-    return result;
+    return tmp;
 }
 
-impl zoneinfo_repr(receiver: ptr[PyObject]) -> ptr[PyObject] {
-    zone = zoneinfo_of(receiver);
-    if zone is None {
-        return NULL;
+impl zoneinfo_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+    z = zoneinfo_record(op).view(1);
+    if z[0].key != Py_None {
+        return PyUnicode_FromFormat("%T(key=%R)", op, z[0].key);
     }
-    if zone.key != Py_None {
-        return PyUnicode_FromFormat("%T(key=%R)", receiver, zone.key);
-    }
-    return PyUnicode_FromFormat("%T.from_file(%U)", receiver, zone.file_repr);
+    return PyUnicode_FromFormat("%T.from_file(%U)", op, z[0].file_repr);
 }
 
-impl zoneinfo_str(receiver: ptr[PyObject]) -> ptr[PyObject] {
-    zone = zoneinfo_of(receiver);
-    if zone is None {
-        return NULL;
+impl zoneinfo_str(op: ptr[PyObject]) -> ptr[PyObject] {
+    z = zoneinfo_record(op).view(1);
+    if z[0].key != Py_None {
+        return object_new_ref(z[0].key);
     }
-    if zone.key != Py_None {
-        return Py_NewRef(zone.key);
-    }
-    return zoneinfo_repr(receiver);
+    return zoneinfo_repr(op);
 }
 
-impl zoneinfo_reduce(receiver: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    zone = zoneinfo_of(receiver);
-    if zone is None {
-        return NULL;
-    }
-    if zone.source == SOURCE_FILE {
+impl zoneinfo_reduce(obj_self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+    z = zoneinfo_record(obj_self).view(1);
+    if z[0].source == SOURCE_FILE {
         pickle_error = PyImport_ImportModuleAttrString(
             ptr[u8]("pickle"), ptr[u8]("PicklingError")
         );
         if not pickle_error {
             return NULL;
         }
-        object_error(pickle_error, "Cannot pickle a ZoneInfo file from a file stream.");
-        jacpy_release(pickle_error);
+
+        PyErr_Format(
+            pickle_error, ptr[u8]("Cannot pickle a ZoneInfo file from a file stream.")
+        );
+        object_decref(pickle_error);
         return NULL;
     }
-    from_cache = 1 if zone.source == SOURCE_CACHE else 0;
-    constructor = PyObject_GetAttrString(receiver, ptr[u8]("_unpickle"));
+
+    from_cache: i32 = 0;
+    if z[0].source == SOURCE_CACHE {
+        from_cache = 1;
+    }
+    constructor = PyObject_GetAttrString(obj_self, ptr[u8]("_unpickle"));
+
     if not constructor {
         return NULL;
     }
-    result = Py_BuildValue(ptr[u8]("O(OB)"), constructor, zone.key, i32(from_cache));
-    jacpy_release(constructor);
-    return result;
+
+    rv = Py_BuildValue(ptr[u8]("O(OB)"), constructor, z[0].key, from_cache);
+    object_decref(constructor);
+    return rv;
 }
 
 impl zoneinfo_ZoneInfo__unpickle_impl(
@@ -924,920 +1128,1328 @@ impl zoneinfo_ZoneInfo__unpickle_impl(
     if from_cache != 0 {
         return zoneinfo_ZoneInfo_impl(type, key);
     }
-    state = state_by_class(cls);
-    if state is None {
-        return NULL;
-    }
+    state = zoneinfo_get_state_by_cls(cls);
     return zoneinfo_new_instance(state, type, key);
 }
 
-impl zoneinfo_init_subclass(
-    cls: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    weak_cache = new_weak_cache();
-    if not weak_cache {
-        return NULL;
-    }
-    status = PyObject_SetAttrString(cls, ptr[u8]("_weak_cache"), weak_cache);
-    jacpy_release(weak_cache);
-    if status < 0 {
-        return NULL;
-    }
-    return Py_NewRef(Py_None);
-}
-
-impl load_timedelta(state: ZoneInfoModuleState, seconds: i64) -> ptr[PyObject] {
+impl load_timedelta(state: ptr[zoneinfo_state], seconds: i64) -> ptr[PyObject] {
+    rv = NULL;
     pyoffset = PyLong_FromLong(seconds);
     if not pyoffset {
         return NULL;
     }
-    result = NULL;
-    if PyDict_GetItemRef(state.timedelta_cache, pyoffset, &mut result) == 0 {
-        api = state.datetime_api.view(1);
-        created = api[0].Delta_FromDelta(
+    cache = state.view(1)[0].TIMEDELTA_CACHE;
+    if PyDict_GetItemRef(cache, pyoffset, &mut rv) == 0 {
+        api = PyDateTimeAPI.view(1);
+        tmp = api[0].Delta_FromDelta(
             i32(0), i32.wrap(seconds), i32(0), i32(1), api[0].DeltaType
         );
-        if created {
-            PyDict_SetDefaultRef(state.timedelta_cache, pyoffset, created, &mut result);
-            jacpy_release(created);
+
+        if tmp {
+            PyDict_SetDefaultRef(cache, pyoffset, tmp, &mut rv);
+            object_decref(tmp);
         }
     }
-    jacpy_release(pyoffset);
-    return result;
+
+    object_decref(pyoffset);
+    return rv;
 }
 
 impl build_ttinfo(
-    state: ZoneInfoModuleState, utcoffset: i64, dstoffset: i64, tzname: ptr[PyObject]
-) -> (TTInfo | None) {
-    tti = TTInfo(utcoff_seconds=utcoffset);
-    tti.utcoff = load_timedelta(state, utcoffset);
-    if not tti.utcoff {
-        return None;
+    state: ptr[zoneinfo_state],
+    utcoffset: i64,
+    dstoffset: i64,
+    tzname: ptr[PyObject],
+    out: ptr[_ttinfo]
+) -> i32 {
+    o = out.view(1);
+    o[0].utcoff = NULL;
+    o[0].dstoff = NULL;
+    o[0].tzname = NULL;
+
+    o[0].utcoff_seconds = utcoffset;
+    o[0].utcoff = load_timedelta(state, utcoffset);
+    if not o[0].utcoff {
+        return -1;
     }
-    tti.dstoff = load_timedelta(state, dstoffset);
-    if not tti.dstoff {
-        return None;
+
+    o[0].dstoff = load_timedelta(state, dstoffset);
+    if not o[0].dstoff {
+        return -1;
     }
-    tti.tzname = Py_NewRef(tzname);
-    return tti;
+
+    o[0].tzname = object_new_ref(tzname);
+
+    return 0;
 }
 
-impl ttinfo_eq(first: TTInfo, second: TTInfo) -> i32 {
-    result = PyObject_RichCompareBool(first.utcoff, second.utcoff, PY_EQ);
-    if result < 1 {
-        return result;
+impl xdecref_ttinfo(ttinfo: ptr[_ttinfo]) {
+    if ttinfo {
+        t = ttinfo.view(1);
+        object_xdecref(t[0].utcoff);
+        object_xdecref(t[0].dstoff);
+        object_xdecref(t[0].tzname);
     }
-    result = PyObject_RichCompareBool(first.dstoff, second.dstoff, PY_EQ);
-    if result < 1 {
-        return result;
-    }
-    return PyObject_RichCompareBool(first.tzname, second.tzname, PY_EQ);
 }
 
+impl ttinfo_eq(tti0: ptr[_ttinfo], tti1: ptr[_ttinfo]) -> i32 {
+    a = tti0.view(1);
+    b = tti1.view(1);
+    rv = PyObject_RichCompareBool(a[0].utcoff, b[0].utcoff, Py_EQ);
+    if rv < 1 {
+        return rv;
+    }
+    rv = PyObject_RichCompareBool(a[0].dstoff, b[0].dstoff, Py_EQ);
+    if rv < 1 {
+        return rv;
+    }
+    return PyObject_RichCompareBool(a[0].tzname, b[0].tzname, Py_EQ);
+}
 
 impl load_data(
-    state: ZoneInfoModuleState, zone: ZoneInfoState, file_obj: ptr[PyObject]
-) -> bool {
-    data_tuple = PyObject_CallMethod(state.common_mod, "load_data", "O", file_obj);
-    if not data_tuple {
-        return False;
+    state: ptr[zoneinfo_state], self_: ptr[PyZoneInfo_ZoneInfo], file_obj: ptr[PyObject]
+) -> i32 {
+    rv: i32 = 0;
+    z = self_.view(1);
+    wall = trans_list_wall_of(self_);
+
+    z[0].trans_list_utc = ptr[i64]();
+    wall.view(1)[0] = ptr[i64]();
+    (wall + 1).view(1)[0] = ptr[i64]();
+    z[0].trans_ttinfos = ptr[ptr[_ttinfo]]();
+    z[0]._ttinfos = ptr[_ttinfo]();
+    z[0].file_repr = NULL;
+
+    stack: own ZoneInfoStack = ZoneInfoStack();
+    scratch = ptr[LoadScratch](jacpy_stack_address(&mut stack));
+    sc = scratch.view(1);
+
+    data_tuple = PyObject_CallMethod(
+        state.view(1)[0]._common_mod, "load_data", "O", file_obj
+    );
+
+    if not data_tuple or load_data_tuple(state, self_, data_tuple, scratch) != 0 {
+        load_data_error(self_, sc[0].ttinfos_allocated);
+        rv = -1;
     }
-    ok = fill_zone(state, zone, data_tuple);
-    jacpy_release(data_tuple);
-    return ok;
+
+    object_xdecref(data_tuple);
+
+    if sc[0].utcoff {
+        PyMem_Free(sc[0].utcoff);
+    }
+
+    if sc[0].dstoff {
+        PyMem_Free(sc[0].dstoff);
+    }
+
+    if sc[0].isdst {
+        PyMem_Free(sc[0].isdst);
+    }
+
+    if sc[0].trans_idx {
+        PyMem_Free(sc[0].trans_idx);
+    }
+
+    return rv;
 }
 
-impl fill_zone(
-    state: ZoneInfoModuleState, zone: ZoneInfoState, data_tuple: ptr[PyObject]
-) -> bool {
-    if Py_TYPE(data_tuple) != addressof(PyTuple_Type) {
+impl load_data_error(self_: ptr[PyZoneInfo_ZoneInfo], ttinfos_allocated: i64) {
+    z = self_.view(1);
+    if z[0].trans_list_utc {
+        PyMem_Free(z[0].trans_list_utc);
+        z[0].trans_list_utc = ptr[i64]();
+    }
+
+    wall = trans_list_wall_of(self_);
+    i: i64 = 0;
+    while i < 2 {
+        if (wall + i).view(1)[0] {
+            PyMem_Free((wall + i).view(1)[0]);
+            (wall + i).view(1)[0] = ptr[i64]();
+        }
+        i += 1;
+    }
+
+    if z[0]._ttinfos {
+        i = 0;
+        while i < ttinfos_allocated {
+            xdecref_ttinfo(z[0]._ttinfos + i);
+            i += 1;
+        }
+        PyMem_Free(z[0]._ttinfos);
+        z[0]._ttinfos = ptr[_ttinfo]();
+    }
+
+    if z[0].trans_ttinfos {
+        PyMem_Free(z[0].trans_ttinfos);
+        z[0].trans_ttinfos = ptr[ptr[_ttinfo]]();
+    }
+}
+
+impl load_data_tuple(
+    state: ptr[zoneinfo_state],
+    self_: ptr[PyZoneInfo_ZoneInfo],
+    data_tuple: ptr[PyObject],
+    scratch: ptr[LoadScratch]
+) -> i32 {
+    z = self_.view(1);
+    sc = scratch.view(1);
+
+    if object_type(data_tuple) != addressof(PyTuple_Type) {
         PyErr_Format(
             PyExc_TypeError, ptr[u8]("Invalid data result type: %R"), data_tuple
         );
-        return False;
+        return -1;
     }
 
     trans_idx_list = PyTuple_GetItem(data_tuple, 0);
     if not trans_idx_list {
-        return False;
+        return -1;
     }
+
     trans_utc = PyTuple_GetItem(data_tuple, 1);
     if not trans_utc {
-        return False;
+        return -1;
     }
+
     utcoff_list = PyTuple_GetItem(data_tuple, 2);
     if not utcoff_list {
-        return False;
+        return -1;
     }
+
     isdst_list = PyTuple_GetItem(data_tuple, 3);
     if not isdst_list {
-        return False;
+        return -1;
     }
+
     abbr = PyTuple_GetItem(data_tuple, 4);
     if not abbr {
-        return False;
+        return -1;
     }
+
     tz_str = PyTuple_GetItem(data_tuple, 5);
     if not tz_str {
-        return False;
+        return -1;
     }
+
     num_transitions = PyTuple_Size(trans_utc);
     if num_transitions < 0 {
-        return False;
+        return -1;
     }
+
     num_ttinfos = PyTuple_Size(utcoff_list);
     if num_ttinfos < 0 {
-        return False;
+        return -1;
     }
 
-    trans_list_utc: list[i64] = [];
-    trans_idx: list[int] = [];
-    for i in range(int(num_transitions)) {
-        num = PyTuple_GetItem(trans_utc, i64(i));
+    z[0].num_transitions = u64(num_transitions);
+    z[0].num_ttinfos = u64(num_ttinfos);
+
+    utc = ptr[i64](PyMem_Malloc(u64(num_transitions) * 8));
+    z[0].trans_list_utc = utc;
+    if not utc {
+        PyErr_NoMemory();
+        return -1;
+    }
+    trans_idx = ptr[i64](PyMem_Malloc(u64(num_transitions) * 8));
+    sc[0].trans_idx = trans_idx;
+    if not trans_idx {
+        PyErr_NoMemory();
+        return -1;
+    }
+
+    i: i64 = 0;
+    while i < num_transitions {
+        num = PyTuple_GetItem(trans_utc, i);
         if not num {
-            return False;
+            return -1;
         }
-        utc = PyLong_AsLongLong(num);
-        if utc == -1 and PyErr_Occurred() {
-            return False;
+        value = PyLong_AsLongLong(num);
+        (utc + i).view(1)[0] = value;
+        if value == -1 and PyErr_Occurred() {
+            return -1;
         }
-        trans_list_utc.append(utc);
-        num = PyTuple_GetItem(trans_idx_list, i64(i));
+
+        num = PyTuple_GetItem(trans_idx_list, i);
         if not num {
-            return False;
+            return -1;
         }
+
         cur_trans_idx = PyLong_AsSsize_t(num);
         if cur_trans_idx == -1 {
-            return False;
+            return -1;
         }
+
+        (trans_idx + i).view(1)[0] = cur_trans_idx;
         if cur_trans_idx < 0 or cur_trans_idx >= num_ttinfos {
-            object_error(
+            PyErr_Format(
                 PyExc_ValueError,
-                f"Invalid transition index found while reading TZif: {cur_trans_idx}"
+                ptr[u8]("Invalid transition index found while reading TZif: %zd"),
+                cur_trans_idx
             );
-            return False;
+
+            return -1;
         }
-        trans_idx.append(int(cur_trans_idx));
+        i += 1;
     }
 
-    utcoff: list[i64] = [];
-    isdst: list[bool] = [];
-    for i in range(int(num_ttinfos)) {
-        num = PyTuple_GetItem(utcoff_list, i64(i));
+    utcoff = ptr[i64](PyMem_Malloc(u64(num_ttinfos) * 8));
+    sc[0].utcoff = utcoff;
+    isdst = ptr[u8](PyMem_Malloc(u64(num_ttinfos)));
+    sc[0].isdst = isdst;
+
+    if not utcoff or not isdst {
+        PyErr_NoMemory();
+        return -1;
+    }
+    i = 0;
+    while i < num_ttinfos {
+        num = PyTuple_GetItem(utcoff_list, i);
         if not num {
-            return False;
+            return -1;
         }
+
         offset = PyLong_AsLong(num);
+        (utcoff + i).view(1)[0] = offset;
         if offset == -1 and PyErr_Occurred() {
-            return False;
+            return -1;
         }
-        utcoff.append(offset);
-        num = PyTuple_GetItem(isdst_list, i64(i));
+
+        num = PyTuple_GetItem(isdst_list, i);
         if not num {
-            return False;
+            return -1;
         }
-        flag = PyObject_IsTrue(num);
-        if flag == -1 {
-            return False;
+
+        isdst_with_error = PyObject_IsTrue(num);
+        if isdst_with_error == -1 {
+            return -1;
         }
-        isdst.append(flag != 0);
+        (isdst + i).view(1)[0] = u8.wrap(isdst_with_error);
+        i += 1;
     }
 
-    dstoff: list[i64] = [0 for _ in range(int(num_ttinfos))];
-    utcoff_to_dstoff(trans_idx, utcoff, dstoff, isdst);
-    wall = ts_to_local(trans_idx, trans_list_utc, utcoff);
+    dstoff = ptr[i64](PyMem_Calloc(u64(num_ttinfos), 8));
+    sc[0].dstoff = dstoff;
+    if not dstoff {
+        PyErr_NoMemory();
+        return -1;
+    }
 
-    ttinfos: list[TTInfo] = [];
-    for i in range(int(num_ttinfos)) {
-        tzname = PyTuple_GetItem(abbr, i64(i));
+    utcoff_to_dstoff(trans_idx, utcoff, dstoff, isdst, num_transitions, num_ttinfos);
+
+    if ts_to_local(
+        trans_idx, utc, utcoff, trans_list_wall_of(self_), num_ttinfos, num_transitions
+    )
+        != 0 {
+        return -1;
+    }
+
+    ttinfos = ptr[_ttinfo](PyMem_Malloc(u64(num_ttinfos) * u64(TTINFO_SIZE)));
+    z[0]._ttinfos = ttinfos;
+    if not ttinfos {
+        PyErr_NoMemory();
+        return -1;
+    }
+    i = 0;
+    while i < num_ttinfos {
+        tzname = PyTuple_GetItem(abbr, i);
         if not tzname {
-            return False;
+            return -1;
         }
-        tti = build_ttinfo(state, utcoff[i], dstoff[i], tzname);
-        if tti is None {
-            return False;
+
+        sc[0].ttinfos_allocated += 1;
+        rc = build_ttinfo(
+            state, (utcoff + i).view(1)[0], (dstoff + i).view(1)[0], tzname, ttinfos + i
+        );
+        if rc != 0 {
+            return -1;
         }
-        ttinfos.append(tti);
+        i += 1;
     }
-    zone.trans_list_utc = trans_list_utc;
-    zone.trans_list_wall = wall;
-    zone.ttinfos = ttinfos;
 
-    zone.trans_ttinfos = [ttinfos[index] for index in trans_idx];
+    trans_ttinfos = ptr[ptr[_ttinfo]](PyMem_Calloc(u64(num_transitions), 8));
+    z[0].trans_ttinfos = trans_ttinfos;
+    if not trans_ttinfos {
+        PyErr_NoMemory();
+        return -1;
+    }
+    i = 0;
+    while i < num_transitions {
+        ttinfo_idx = (trans_idx + i).view(1)[0];
+        (trans_ttinfos + i).view(1)[0] = ttinfos + ttinfo_idx;
+        i += 1;
+    }
 
-    zone.ttinfo_before = None;
-    for i in range(int(num_ttinfos)) {
-        if not isdst[i] {
-            zone.ttinfo_before = ttinfos[i];
+    i = 0;
+    while i < num_ttinfos {
+        if (isdst + i).view(1)[0] == 0 {
+            z[0].ttinfo_before = ttinfos + i;
             break;
         }
+        i += 1;
     }
-    if zone.ttinfo_before is None and num_ttinfos > 0 {
-        zone.ttinfo_before = ttinfos[0];
+
+    if not z[0].ttinfo_before and num_ttinfos > 0 {
+        z[0].ttinfo_before = ttinfos;
     }
+
+    rule_after = tzrule_after_of(self_);
     if tz_str != Py_None and PyObject_IsTrue(tz_str) != 0 {
-        rule = parse_tz_str(state, tz_str);
-        if rule is None {
-            return False;
+        if parse_tz_str(state, tz_str, rule_after) != 0 {
+            return -1;
         }
-        zone.tzrule_after = rule;
     } else {
         if num_ttinfos == 0 {
-            object_error(PyExc_ValueError, "No time zone information found.");
-            return False;
+            PyErr_Format(PyExc_ValueError, ptr[u8]("No time zone information found."));
+            return -1;
         }
-        idx = int(num_ttinfos) - 1 if num_transitions == 0 else trans_idx[-1];
-        tti = ttinfos[idx];
-        rule = build_tzrule(state, tti.tzname, NULL, tti.utcoff_seconds, 0, None, None);
-        if rule is None {
-            return False;
+        idx = num_ttinfos - 1;
+        if num_transitions != 0 {
+            idx = (trans_idx + (num_transitions - 1)).view(1)[0];
         }
-        truth = PyObject_IsTrue(tti.dstoff);
-        if truth != 0 {
-            previous = rule.std.dstoff;
-            rule.std.dstoff = Py_NewRef(tti.dstoff);
-            jacpy_release(previous);
+        tti = ttinfos + idx;
+        build_tzrule(
+            state,
+            tti.view(1)[0].tzname,
+            NULL,
+            tti.view(1)[0].utcoff_seconds,
+            0,
+            ptr[TransitionRuleType](),
+            ptr[TransitionRuleType](),
+            rule_after
+        );
+        if PyObject_IsTrue(tti.view(1)[0].dstoff) != 0 {
+            tti_after = tzrule_std(rule_after).view(1);
+            old_dstoff = tti_after[0].dstoff;
+            tti_after[0].dstoff = object_new_ref(tti.view(1)[0].dstoff);
+            object_xdecref(old_dstoff);
         }
-        zone.tzrule_after = rule;
     }
 
-    if num_ttinfos > 1 or not zone.tzrule_after.std_only {
-        zone.fixed_offset = False;
+    if num_ttinfos > 1 or rule_after.view(1)[0].std_only == 0 {
+        z[0].fixed_offset = 0;
     } elif num_ttinfos == 0 {
-        zone.fixed_offset = True;
+        z[0].fixed_offset = 1;
     } else {
-        constant_offset = ttinfo_eq(ttinfos[0], zone.tzrule_after.std);
+        constant_offset = ttinfo_eq(ttinfos, tzrule_std(rule_after));
         if constant_offset < 0 {
-            return False;
+            return -1;
         }
-        zone.fixed_offset = constant_offset != 0;
+        z[0].fixed_offset = u8.wrap(constant_offset);
     }
-    return True;
+
+    return 0;
 }
 
-impl tzrule_transitions(rule: TZRule, year: i64) -> RuleTransitions {
-    transitions = RuleTransitions();
-    start = rule.start;
-    end = rule.end;
-    if start is not None and end is not None {
-        transitions.start = start.year_to_timestamp(year);
-        transitions.end = end.year_to_timestamp(year);
+impl dayrule_new(
+    julian: i32, day: i32, hour: i32, minute: i32, second: i32, out: ptr[DayRule]
+) -> i32 {
+    if day < julian or day > 365 {
+        PyErr_Format(
+            PyExc_ValueError, ptr[u8]("day must be in [%d, 365], not: %d"), julian, day
+        );
+        return -1;
     }
-    return transitions;
+
+    if hour < -167 or hour > 167 {
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Hour must be in [0, 167]"));
+        return -1;
+    }
+
+    ptr[TransitionRuleType](out).view(1)[0].year_to_timestamp = dayrule_year_to_timestamp;
+    o = out.view(1);
+    o[0].julian = u8.wrap(julian);
+    o[0].day = u16.wrap(day);
+    o[0].hour = i16.wrap(hour);
+    o[0].minute = i8.wrap(minute);
+    o[0].second = i8.wrap(second);
+
+    return 0;
 }
 
-impl find_tzrule_ttinfo(rule: TZRule, ts: i64, fold: i64, year: i64) -> TTInfo {
-    if rule.std_only {
-        return rule.std;
-    }
-    transitions = tzrule_transitions(rule, year);
-    start = transitions.start;
-    end = transitions.end;
-
-    if fold == (1 if rule.dst_diff >= 0 else 0) {
-        end -= rule.dst_diff;
-    } else {
-        start += rule.dst_diff;
-    }
-    isdst = (ts >= start and ts < end) if start < end else (ts < end or ts >= start);
-    return rule.dst if isdst else rule.std;
-}
-
-impl find_tzrule_ttinfo_fromutc(rule: TZRule, ts: i64, year: i64) -> RuleMatch {
-    if rule.std_only {
-        return RuleMatch(tti=rule.std, fold=False);
-    }
-    transitions = tzrule_transitions(rule, year);
-    start = transitions.start - rule.std.utcoff_seconds;
-    end = transitions.end - rule.dst.utcoff_seconds;
-    isdst = (ts >= start and ts < end) if start < end else (ts < end or ts >= start);
-
-    ambig_start = end;
-    ambig_end = end + rule.dst_diff;
-    if rule.dst_diff <= 0 {
-        ambig_start = start;
-        ambig_end = start - rule.dst_diff;
-    }
-    return RuleMatch(
-        tti=rule.dst if isdst else rule.std, fold=ts >= ambig_start and ts < ambig_end
+impl tzrule_transitions(rule: ptr[_tzrule], year: i32) -> tuple[i64, i64] {
+    r = rule.view(1);
+    start = r[0].start;
+    end = r[0].end;
+    return (
+        start.view(1)[0].year_to_timestamp(start, year),
+        end.view(1)[0].year_to_timestamp(end, year)
     );
 }
 
-impl TZCursor.at(offset: int = 0) -> int {
-    return int((self.text + (self.pos + offset)).view(1)[0]);
+impl find_tzrule_ttinfo(
+    rule: ptr[_tzrule], ts: i64, fold: u8, year: i32
+) -> ptr[_ttinfo] {
+    r = rule.view(1);
+    if r[0].std_only != 0 {
+        return tzrule_std(rule);
+    }
+
+    (start, end) = tzrule_transitions(rule, year);
+
+    dst_diff = i64(r[0].dst_diff);
+    positive: u8 = 0;
+    if r[0].dst_diff >= 0 {
+        positive = 1;
+    }
+    if fold == positive {
+        end = end - dst_diff;
+    } else {
+        start = start + dst_diff;
+    }
+
+    isdst = False;
+    if start < end {
+        isdst = ts >= start and ts < end;
+    } else {
+        isdst = ts < end or ts >= start;
+    }
+
+    if isdst {
+        return tzrule_dst(rule);
+    }
+    return tzrule_std(rule);
 }
 
-impl is_digit(c: int) -> bool {
-    return c >= 48 and c <= 57;
+impl find_tzrule_ttinfo_fromutc(
+    rule: ptr[_tzrule], ts: i64, year: i32
+) -> tuple[ptr[_ttinfo], u8] {
+    r = rule.view(1);
+    if r[0].std_only != 0 {
+        return (tzrule_std(rule), u8(0));
+    }
+
+    (start, end) = tzrule_transitions(rule, year);
+    start = start - r[0].std.utcoff_seconds;
+    end = end - r[0].dst.utcoff_seconds;
+
+    isdst = False;
+    if start < end {
+        isdst = ts >= start and ts < end;
+    } else {
+        isdst = ts < end or ts >= start;
+    }
+
+    dst_diff = i64(r[0].dst_diff);
+    ambig_start: i64 = 0;
+    ambig_end: i64 = 0;
+    if dst_diff > 0 {
+        ambig_start = end;
+        ambig_end = end + dst_diff;
+    } else {
+        ambig_start = start;
+        ambig_end = start - dst_diff;
+    }
+
+    fold: u8 = 0;
+    if ts >= ambig_start and ts < ambig_end {
+        fold = 1;
+    }
+
+    if isdst {
+        return (tzrule_dst(rule), fold);
+    }
+    return (tzrule_std(rule), fold);
 }
 
-impl is_alpha(c: int) -> bool {
-    return (c >= 65 and c <= 90) or (c >= 97 and c <= 122);
+impl parse_tz_str_error(
+    std_abbr: ptr[PyObject],
+    dst_abbr: ptr[PyObject],
+    start: ptr[TransitionRuleType],
+    end: ptr[TransitionRuleType]
+) -> i32 {
+    object_xdecref(std_abbr);
+    if dst_abbr and dst_abbr != Py_None {
+        object_decref(dst_abbr);
+    }
+
+    if start {
+        PyMem_Free(start);
+    }
+
+    if end {
+        PyMem_Free(end);
+    }
+
+    return -1;
 }
 
 impl parse_tz_str(
-    state: ZoneInfoModuleState, tz_str_obj: ptr[PyObject]
-) -> (TZRule | None) {
-    tz_str = PyBytes_AsString(tz_str_obj);
-    if tz_str.is_null() {
-        return None;
-    }
-    cursor = TZCursor(text=tz_str);
-
+    state: ptr[zoneinfo_state], tz_str_obj: ptr[PyObject], out: ptr[_tzrule]
+) -> i32 {
+    std_abbr = NULL;
+    dst_abbr = NULL;
+    start = ptr[TransitionRuleType]();
+    end = ptr[TransitionRuleType]();
     std_offset: i64 = 1 << 20;
     dst_offset: i64 = 1 << 20;
-    start: (TransitionRule | None) = None;
-    end: (TransitionRule | None) = None;
 
-    std_abbr = parse_abbr(cursor);
-    if not std_abbr {
+    tz_str = PyBytes_AsString(tz_str_obj);
+    if not tz_str {
+        return -1;
+    }
+    p = tz_str;
+
+    (rc, p, std_abbr) = parse_abbr(p);
+    if rc != 0 {
         if not PyErr_Occurred() {
             PyErr_Format(
                 PyExc_ValueError, ptr[u8]("Invalid STD format in %R"), tz_str_obj
             );
         }
-        return None;
+        return parse_tz_str_error(std_abbr, dst_abbr, start, end);
     }
-    dst_abbr = NULL;
-    try {
-        parsed = parse_tz_delta(cursor);
-        if parsed is None {
-            PyErr_Format(
-                PyExc_ValueError, ptr[u8]("Invalid STD offset in %R"), tz_str_obj
-            );
-            return None;
-        }
-        std_offset = parsed;
 
-        if cursor.at() != 0 {
-            dst_abbr = parse_abbr(cursor);
-            if not dst_abbr {
-                if not PyErr_Occurred() {
-                    PyErr_Format(
-                        PyExc_ValueError,
-                        ptr[u8]("Invalid DST format in %R"),
-                        tz_str_obj
-                    );
-                }
-                return None;
+    (rc, p, std_offset) = parse_tz_delta(p, std_offset);
+    if rc != 0 {
+        PyErr_Format(PyExc_ValueError, ptr[u8]("Invalid STD offset in %R"), tz_str_obj);
+        return parse_tz_str_error(std_abbr, dst_abbr, start, end);
+    }
+
+    if p.view(1)[0] != 0 {
+        (rc, p, dst_abbr) = parse_abbr(p);
+        if rc != 0 {
+            if not PyErr_Occurred() {
+                PyErr_Format(
+                    PyExc_ValueError, ptr[u8]("Invalid DST format in %R"), tz_str_obj
+                );
             }
-            if cursor.at() == 44 {
-                dst_offset = std_offset + 3600;
-            } else {
-                parsed = parse_tz_delta(cursor);
-                if parsed is None {
-                    PyErr_Format(
-                        PyExc_ValueError,
-                        ptr[u8]("Invalid DST offset in %R"),
-                        tz_str_obj
-                    );
-                    return None;
-                }
-                dst_offset = parsed;
+            return parse_tz_str_error(std_abbr, dst_abbr, start, end);
+        }
+
+        if p.view(1)[0] == 44 {
+            dst_offset = std_offset + 3600;
+        } else {
+            (rc, p, dst_offset) = parse_tz_delta(p, dst_offset);
+            if rc != 0 {
+                PyErr_Format(
+                    PyExc_ValueError, ptr[u8]("Invalid DST offset in %R"), tz_str_obj
+                );
+                return parse_tz_str_error(std_abbr, dst_abbr, start, end);
             }
-            rules: list[TransitionRule] = [];
-            for _ in range(2) {
-                if cursor.at() != 44 {
-                    PyErr_Format(
-                        PyExc_ValueError,
-                        ptr[u8]("Missing transition rules in TZ string: %R"),
-                        tz_str_obj
-                    );
-                    return None;
-                }
-                cursor.pos += 1;
-                rule = parse_transition_rule(cursor);
-                if rule is None {
-                    if PyErr_ExceptionMatches(PyExc_MemoryError) == 0 {
-                        PyErr_Format(
-                            PyExc_ValueError,
-                            ptr[u8]("Malformed transition rule in TZ string: %R"),
-                            tz_str_obj
-                        );
-                    }
-                    return None;
-                }
-                rules.append(rule);
-            }
-            start = rules[0];
-            end = rules[1];
-            if cursor.at() != 0 {
+        }
+
+        i: i64 = 0;
+        while i < 2 {
+            if p.view(1)[0] != 44 {
                 PyErr_Format(
                     PyExc_ValueError,
-                    ptr[u8]("Extraneous characters at end of TZ string: %R"),
+                    ptr[u8]("Missing transition rules in TZ string: %R"),
                     tz_str_obj
                 );
-                return None;
+                return parse_tz_str_error(std_abbr, dst_abbr, start, end);
             }
+            p = p + 1;
+
+            (rc, p, transition) = parse_transition_rule(p);
+            if rc != 0 {
+                if PyErr_ExceptionMatches(PyExc_MemoryError) == 0 {
+                    PyErr_Format(
+                        PyExc_ValueError,
+                        ptr[u8]("Malformed transition rule in TZ string: %R"),
+                        tz_str_obj
+                    );
+                }
+                return parse_tz_str_error(std_abbr, dst_abbr, start, end);
+            }
+            if i == 0 {
+                start = transition;
+            } else {
+                end = transition;
+            }
+            i += 1;
         }
-        return build_tzrule(
-            state, std_abbr, dst_abbr, std_offset, dst_offset, start, end
-        );
-    } finally {
-        jacpy_release(std_abbr);
-        jacpy_release(dst_abbr);
+
+        if p.view(1)[0] != 0 {
+            PyErr_Format(
+                PyExc_ValueError,
+                ptr[u8]("Extraneous characters at end of TZ string: %R"),
+                tz_str_obj
+            );
+            return parse_tz_str_error(std_abbr, dst_abbr, start, end);
+        }
     }
+
+    build_tzrule(state, std_abbr, dst_abbr, std_offset, dst_offset, start, end, out);
+    object_decref(std_abbr);
+    object_xdecref(dst_abbr);
+
+    return 0;
 }
 
-impl parse_digits(cursor: TZCursor, least: int, most: int) -> (int | None) {
-    value = 0;
-    for i in range(most) {
-        c = cursor.at();
-        if not is_digit(c) {
-            return None if i < least else value;
+impl parse_digits(p: ptr[u8], least: i32, most: i32) -> tuple[i32, ptr[u8], i32] {
+    value: i32 = 0;
+    q = p;
+    i: i32 = 0;
+    while i < most {
+        c = q.view(1)[0];
+        if not py_isdigit(c) {
+            if i < least {
+                return (i32(-1), q, value);
+            }
+            return (i32(0), q, value);
         }
-        value = value * 10 + (c - 48);
-        cursor.pos += 1;
+        value = value * 10 + (i32(c) - 48);
+        i += 1;
+        q = q + 1;
     }
-    return value;
+    return (i32(0), q, value);
 }
 
-impl parse_abbr(cursor: TZCursor) -> ptr[PyObject] {
-    start = cursor.pos;
-    offset = 0;
-    str_start = 0;
-    str_end = 0;
-    if cursor.at() == 60 {
-        offset = 1;
-        str_start = offset;
-        while True {
-            c = cursor.at(offset);
-            if c == 62 {
-                break;
-            }
+impl parse_abbr(p: ptr[u8]) -> tuple[i32, ptr[u8], ptr[PyObject]] {
+    q = p;
+    str_start = q;
+    str_end = q;
 
-            if not is_alpha(c) and not is_digit(c) and c != 43 and c != 45 {
-                return NULL;
+    if q.view(1)[0] == 60 {
+        q = q + 1;
+        str_start = q;
+        buff = q.view(1)[0];
+        while buff != 62 {
+            if not py_isalpha(buff)
+                and not py_isdigit(buff)
+                and buff != 43
+                and buff != 45 {
+                return (i32(-1), p, NULL);
             }
-            offset += 1;
+            q = q + 1;
+            buff = q.view(1)[0];
         }
-        str_end = offset;
-        offset += 1;
+        str_end = q;
+        q = q + 1;
     } else {
-        while is_alpha(cursor.at(offset)) {
-            offset += 1;
+        str_start = q;
+        while py_isalpha(q.view(1)[0]) {
+            q = q + 1;
         }
-        str_end = offset;
+        str_end = q;
         if str_end == str_start {
-            return NULL;
+            return (i32(-1), p, NULL);
         }
     }
 
-    abbr = PyUnicode_DecodeUTF8Stateful(
-        cursor.text + (start + str_start), i64(str_end - str_start), ptr[u8](), None
-    );
+    abbr = PyUnicode_FromStringAndSize(str_start, i64(int(str_end) - int(str_start)));
     if not abbr {
-        return NULL;
+        return (i32(-1), p, NULL);
     }
-    cursor.pos = start + offset;
-    return abbr;
+
+    return (i32(0), q, abbr);
 }
 
-impl parse_tz_delta(cursor: TZCursor) -> (i64 | None) {
-    time = parse_transition_time(cursor, 0);
-    if time is None {
-        return None;
+impl parse_tz_delta(p: ptr[u8], total_seconds: i64) -> tuple[i32, ptr[u8], i64] {
+    (rc, q, hours, minutes, seconds) = parse_transition_time(p, 0, 0, 0);
+    if rc != 0 {
+        return (i32(-1), p, total_seconds);
     }
-    if time.hour > 24 or time.hour < -24 {
-        return None;
+
+    if hours > 24 or hours < -24 {
+        return (i32(-1), p, total_seconds);
     }
-    return -(time.hour * 3600 + time.minute * 60 + time.second);
+
+    total = -((i64(hours) * 3600) + i64(minutes * 60) + i64(seconds));
+    return (i32(0), q, total);
 }
 
-impl parse_transition_time(cursor: TZCursor, hour: i64) -> (TransitionTime | None) {
-    start = cursor.pos;
-    sign = 1;
-    if cursor.at() == 45 or cursor.at() == 43 {
-        if cursor.at() == 45 {
+impl parse_transition_rule(p: ptr[u8]) -> tuple[i32, ptr[u8], ptr[TransitionRuleType]] {
+    q = p;
+    hour: i32 = 2;
+    minute: i32 = 0;
+    second: i32 = 0;
+    failed = ptr[TransitionRuleType]();
+    out = ptr[TransitionRuleType]();
+
+    if q.view(1)[0] == 77 {
+        q = q + 1;
+
+        (rc, q, month) = parse_digits(q, 1, 2);
+        if rc != 0 {
+            return (i32(-1), p, failed);
+        }
+        c = q.view(1)[0];
+        q = q + 1;
+        if c != 46 {
+            return (i32(-1), p, failed);
+        }
+        (rc, q, week) = parse_digits(q, 1, 1);
+        if rc != 0 {
+            return (i32(-1), p, failed);
+        }
+        c = q.view(1)[0];
+        q = q + 1;
+        if c != 46 {
+            return (i32(-1), p, failed);
+        }
+        (rc, q, day) = parse_digits(q, 1, 1);
+        if rc != 0 {
+            return (i32(-1), p, failed);
+        }
+
+        if q.view(1)[0] == 47 {
+            q = q + 1;
+            (rc, q, hour, minute, second) = parse_transition_time(
+                q, hour, minute, second
+            );
+            if rc != 0 {
+                return (i32(-1), p, failed);
+            }
+        }
+
+        calendar_rule = ptr[CalendarRule](PyMem_Calloc(1, u64(CALENDARRULE_SIZE)));
+        if not calendar_rule {
+            PyErr_NoMemory();
+            return (i32(-1), p, failed);
+        }
+
+        if calendarrule_new(month, week, day, hour, minute, second, calendar_rule)
+            != 0 {
+            PyMem_Free(calendar_rule);
+            return (i32(-1), p, failed);
+        }
+
+        out = ptr[TransitionRuleType](calendar_rule);
+    } else {
+        julian: i32 = 0;
+        if q.view(1)[0] == 74 {
+            julian = 1;
+            q = q + 1;
+        }
+        (rc, q, day) = parse_digits(q, 1, 3);
+        if rc != 0 {
+            return (i32(-1), p, failed);
+        }
+        if q.view(1)[0] == 47 {
+            q = q + 1;
+            (rc, q, hour, minute, second) = parse_transition_time(
+                q, hour, minute, second
+            );
+            if rc != 0 {
+                return (i32(-1), p, failed);
+            }
+        }
+        day_rule = ptr[DayRule](PyMem_Calloc(1, u64(DAYRULE_SIZE)));
+        if not day_rule {
+            PyErr_NoMemory();
+            return (i32(-1), p, failed);
+        }
+        if dayrule_new(julian, day, hour, minute, second, day_rule) != 0 {
+            PyMem_Free(day_rule);
+            return (i32(-1), p, failed);
+        }
+        out = ptr[TransitionRuleType](day_rule);
+    }
+
+    return (i32(0), q, out);
+}
+
+impl parse_transition_time(
+    p: ptr[u8], hour: i32, minute: i32, second: i32
+) -> tuple[i32, ptr[u8], i32, i32, i32] {
+    q = p;
+    sign: i32 = 1;
+
+    if q.view(1)[0] == 45 or q.view(1)[0] == 43 {
+        if q.view(1)[0] == 45 {
             sign = -1;
         }
-        cursor.pos += 1;
+        q = q + 1;
     }
-    result = TransitionTime(hour=hour);
 
-    hours = parse_digits(cursor, 1, 3);
-    if hours is None {
-        cursor.pos = start;
-        return None;
+    (rc, q, hours) = parse_digits(q, 1, 3);
+    if rc != 0 {
+        return (i32(-1), p, hours, minute, second);
     }
-    result.hour = i64(hours * sign);
+    hours = hours * sign;
+    minutes = minute;
+    seconds = second;
 
-    if cursor.at() == 58 {
-        cursor.pos += 1;
-        minutes = parse_digits(cursor, 2, 2);
-        if minutes is None {
-            cursor.pos = start;
-            return None;
+    if q.view(1)[0] == 58 {
+        q = q + 1;
+        (rc, q, minutes) = parse_digits(q, 2, 2);
+        if rc != 0 {
+            return (i32(-1), p, hours, minutes, seconds);
         }
-        result.minute = i64(minutes * sign);
-        if cursor.at() == 58 {
-            cursor.pos += 1;
-            seconds = parse_digits(cursor, 2, 2);
-            if seconds is None {
-                cursor.pos = start;
-                return None;
+        minutes = minutes * sign;
+
+        if q.view(1)[0] == 58 {
+            q = q + 1;
+            (rc, q, seconds) = parse_digits(q, 2, 2);
+            if rc != 0 {
+                return (i32(-1), p, hours, minutes, seconds);
             }
-            result.second = i64(seconds * sign);
+            seconds = seconds * sign;
         }
     }
-    return result;
-}
 
-impl parse_transition_rule(cursor: TZCursor) -> (TransitionRule | None) {
-    start = cursor.pos;
-    if cursor.at() == 77 {
-        cursor.pos += 1;
-        month = parse_digits(cursor, 1, 2);
-        if month is None or cursor.at() != 46 {
-            cursor.pos = start;
-            return None;
-        }
-        cursor.pos += 1;
-        week = parse_digits(cursor, 1, 1);
-        if week is None or cursor.at() != 46 {
-            cursor.pos = start;
-            return None;
-        }
-        cursor.pos += 1;
-        day = parse_digits(cursor, 1, 1);
-        if day is None {
-            cursor.pos = start;
-            return None;
-        }
-        time = TransitionTime(hour=2);
-        if cursor.at() == 47 {
-            cursor.pos += 1;
-            parsed = parse_transition_time(cursor, 2);
-            if parsed is None {
-                cursor.pos = start;
-                return None;
-            }
-            time = parsed;
-        }
-        rule = calendarrule_new(
-            i64(month), i64(week), i64(day), time.hour, time.minute, time.second
-        );
-        if rule is None {
-            cursor.pos = start;
-        }
-        return rule;
-    }
-    julian = False;
-    if cursor.at() == 74 {
-        julian = True;
-        cursor.pos += 1;
-    }
-    day = parse_digits(cursor, 1, 3);
-    if day is None {
-        cursor.pos = start;
-        return None;
-    }
-    time = TransitionTime(hour=2);
-    if cursor.at() == 47 {
-        cursor.pos += 1;
-        parsed = parse_transition_time(cursor, 2);
-        if parsed is None {
-            cursor.pos = start;
-            return None;
-        }
-        time = parsed;
-    }
-    rule = dayrule_new(julian, i64(day), time.hour, time.minute, time.second);
-    if rule is None {
-        cursor.pos = start;
-    }
-    return rule;
-}
-
-impl calendarrule_new(
-    month: i64, week: i64, day: i64, hour: i64, minute: i64, second: i64
-) -> (TransitionRule | None) {
-    if month < 1 or month > 12 {
-        object_error(PyExc_ValueError, "Month must be in [1, 12]");
-        return None;
-    }
-    if week < 1 or week > 5 {
-        object_error(PyExc_ValueError, "Week must be in [1, 5]");
-        return None;
-    }
-    if day < 0 or day > 6 {
-        object_error(PyExc_ValueError, "Day must be in [0, 6]");
-        return None;
-    }
-    if hour < -167 or hour > 167 {
-        object_error(PyExc_ValueError, "Hour must be in [0, 167]");
-        return None;
-    }
-    return CalendarRule(
-        month=month, week=week, day=day, hour=hour, minute=minute, second=second
-    );
-}
-
-impl dayrule_new(
-    julian: bool, day: i64, hour: i64, minute: i64, second: i64
-) -> (TransitionRule | None) {
-    least = 1 if julian else 0;
-    if day < least or day > 365 {
-        object_error(PyExc_ValueError, f"day must be in [{least}, 365], not: {day}");
-        return None;
-    }
-    if hour < -167 or hour > 167 {
-        object_error(PyExc_ValueError, "Hour must be in [0, 167]");
-        return None;
-    }
-    return DayRule(julian=julian, day=day, hour=hour, minute=minute, second=second);
+    return (i32(0), q, hours, minutes, seconds);
 }
 
 impl build_tzrule(
-    state: ZoneInfoModuleState,
+    state: ptr[zoneinfo_state],
     std_abbr: ptr[PyObject],
     dst_abbr: ptr[PyObject],
     std_offset: i64,
     dst_offset: i64,
-    start: (TransitionRule | None),
-    end: (TransitionRule | None)
-) -> (TZRule | None) {
-    rule = TZRule(start=start, end=end);
-    std = build_ttinfo(state, std_offset, 0, std_abbr);
-    if std is None {
-        return None;
+    start: ptr[TransitionRuleType],
+    end: ptr[TransitionRuleType],
+    out: ptr[_tzrule]
+) -> i32 {
+    stack: own ZoneInfoStack = ZoneInfoStack();
+    rv = ptr[_tzrule](jacpy_stack_address(&mut stack));
+    r = rv.view(1);
+
+    r[0].start = start;
+    r[0].end = end;
+
+    if build_ttinfo(state, std_offset, 0, std_abbr, tzrule_std(rv)) != 0 {
+        xdecref_ttinfo(tzrule_std(rv));
+        xdecref_ttinfo(tzrule_dst(rv));
+        return -1;
     }
-    rule.std = std;
+
     if dst_abbr {
-        rule.dst_diff = dst_offset - std_offset;
-        dst = build_ttinfo(state, dst_offset, rule.dst_diff, dst_abbr);
-        if dst is None {
-            return None;
+        r[0].dst_diff = i32.wrap(dst_offset - std_offset);
+        if build_ttinfo(state, dst_offset, i64(r[0].dst_diff), dst_abbr, tzrule_dst(rv))
+            != 0 {
+            xdecref_ttinfo(tzrule_std(rv));
+            xdecref_ttinfo(tzrule_dst(rv));
+            return -1;
         }
-        rule.dst = dst;
     } else {
-        rule.std_only = True;
+        r[0].std_only = 1;
     }
-    return rule;
+
+    memcpy(out, rv, u64(TZRULE_SIZE));
+
+    return 0;
+}
+
+impl free_tzrule(tzrule: ptr[_tzrule]) {
+    t = tzrule.view(1);
+    xdecref_ttinfo(tzrule_std(tzrule));
+    if t[0].std_only == 0 {
+        xdecref_ttinfo(tzrule_dst(tzrule));
+    }
+
+    if t[0].start {
+        PyMem_Free(t[0].start);
+    }
+
+    if t[0].end {
+        PyMem_Free(t[0].end);
+    }
 }
 
 impl utcoff_to_dstoff(
-    trans_idx: list[int], utcoffs: list[i64], dstoffs: list[i64], isdsts: list[bool]
+    trans_idx: ptr[i64],
+    utcoffs: ptr[i64],
+    dstoffs: ptr[i64],
+    isdsts: ptr[u8],
+    num_transitions: i64,
+    num_ttinfos: i64
 ) {
-    num_transitions = len(trans_idx);
-    num_ttinfos = len(utcoffs);
-    dst_count = num_ttinfos;
-    dst_found = 0;
-    for i in range(1, num_transitions) {
+    dst_count: i64 = 0;
+    dst_found: i64 = 0;
+    i: i64 = 0;
+    while i < num_ttinfos {
+        dst_count += 1;
+        i += 1;
+    }
+
+    i = 0;
+    while i + 1 < num_transitions {
+        i += 1;
         if dst_count == dst_found {
             break;
         }
-        idx = trans_idx[i];
-        comp_idx = trans_idx[i - 1];
 
-        if not isdsts[idx] or dstoffs[idx] != 0 {
+        idx = (trans_idx + i).view(1)[0];
+        comp_idx = (trans_idx + (i - 1)).view(1)[0];
+
+        if (isdsts + idx).view(1)[0] == 0 or (dstoffs + idx).view(1)[0] != 0 {
             continue;
         }
-        dstoff: i64 = 0;
-        utcoff = utcoffs[idx];
-        if not isdsts[comp_idx] {
-            dstoff = utcoff - utcoffs[comp_idx];
-        }
-        if dstoff == 0 and idx < num_ttinfos - 1 and i + 1 < num_transitions {
-            comp_idx = trans_idx[i + 1];
 
-            if isdsts[comp_idx] {
+        dstoff: i64 = 0;
+        utcoff = (utcoffs + idx).view(1)[0];
+
+        if (isdsts + comp_idx).view(1)[0] == 0 {
+            dstoff = wrapping_sub(utcoff, (utcoffs + comp_idx).view(1)[0]);
+        }
+
+        if dstoff == 0 and idx < (num_ttinfos - 1) and i + 1 < num_transitions {
+            comp_idx = (trans_idx + (i + 1)).view(1)[0];
+
+            if (isdsts + comp_idx).view(1)[0] != 0 {
                 continue;
             }
-            dstoff = utcoff - utcoffs[comp_idx];
+
+            dstoff = wrapping_sub(utcoff, (utcoffs + comp_idx).view(1)[0]);
         }
+
         if dstoff != 0 {
             dst_found += 1;
-            dstoffs[idx] = dstoff;
+            (dstoffs + idx).view(1)[0] = dstoff;
         }
     }
+
     if dst_found < dst_count {
-        for idx in range(num_ttinfos) {
-            if isdsts[idx] and dstoffs[idx] == 0 {
-                dstoffs[idx] = 3600;
+        idx2: i64 = 0;
+        while idx2 < num_ttinfos {
+            if (isdsts + idx2).view(1)[0] != 0 and (dstoffs + idx2).view(1)[0] == 0 {
+                (dstoffs + idx2).view(1)[0] = 3600;
             }
+            idx2 += 1;
         }
     }
 }
 
 impl ts_to_local(
-    trans_idx: list[int], trans_utc: list[i64], utcoff: list[i64]
-) -> list[list[i64]] {
-    num_transitions = len(trans_utc);
+    trans_idx: ptr[i64],
+    trans_utc: ptr[i64],
+    utcoff: ptr[i64],
+    trans_local: ptr[ptr[i64]],
+    num_ttinfos: i64,
+    num_transitions: i64
+) -> i32 {
     if num_transitions == 0 {
-        return [[], []];
+        return 0;
     }
-    fold_0 = list(trans_utc);
-    fold_1 = list(trans_utc);
-    offset_0 = utcoff[0];
-    offset_1 = utcoff[0];
-    if len(utcoff) > 1 {
-        offset_1 = utcoff[trans_idx[0]];
-        if offset_1 > offset_0 {
-            (offset_0, offset_1) = (offset_1, offset_0);
+
+    i: i64 = 0;
+    while i < 2 {
+        block = ptr[i64](PyMem_Malloc(u64(num_transitions) * 8));
+        (trans_local + i).view(1)[0] = block;
+        if not block {
+            PyErr_NoMemory();
+            return -1;
         }
+
+        memcpy(block, trans_utc, u64(num_transitions) * 8);
+        i += 1;
     }
-    fold_0[0] += offset_0;
-    fold_1[0] += offset_1;
-    for i in range(1, num_transitions) {
-        offset_0 = utcoff[trans_idx[i - 1]];
-        offset_1 = utcoff[trans_idx[i]];
+
+    local_0 = trans_local.view(1)[0];
+    local_1 = (trans_local + 1).view(1)[0];
+
+    offset_0: i64 = 0;
+    offset_1: i64 = 0;
+    buff: i64 = 0;
+    if num_ttinfos > 1 {
+        offset_0 = utcoff.view(1)[0];
+        offset_1 = (utcoff + trans_idx.view(1)[0]).view(1)[0];
+
         if offset_1 > offset_0 {
-            (offset_0, offset_1) = (offset_1, offset_0);
+            buff = offset_0;
+            offset_0 = offset_1;
+            offset_1 = buff;
         }
-        fold_0[i] += offset_0;
-        fold_1[i] += offset_1;
+    } else {
+        offset_0 = utcoff.view(1)[0];
+        offset_1 = utcoff.view(1)[0];
     }
-    return [fold_0, fold_1];
+
+    local_0.view(1)[0] = wrapping_add(local_0.view(1)[0], offset_0);
+    local_1.view(1)[0] = wrapping_add(local_1.view(1)[0], offset_1);
+
+    i = 1;
+    while i < num_transitions {
+        offset_0 = (utcoff + (trans_idx + (i - 1)).view(1)[0]).view(1)[0];
+        offset_1 = (utcoff + (trans_idx + i).view(1)[0]).view(1)[0];
+
+        if offset_1 > offset_0 {
+            buff = offset_1;
+            offset_1 = offset_0;
+            offset_0 = buff;
+        }
+
+        (local_0 + i).view(1)[0] = wrapping_add((local_0 + i).view(1)[0], offset_0);
+        (local_1 + i).view(1)[0] = wrapping_add((local_1 + i).view(1)[0], offset_1);
+        i += 1;
+    }
+
+    return 0;
 }
 
-impl bisect_right(value: i64, values: list[i64]) -> int {
-    lo = 0;
-    hi = len(values);
+impl _bisect(value: i64, arr: ptr[i64], size: i64) -> i64 {
+    lo: i64 = 0;
+    hi = size;
+
     while lo < hi {
-        middle = (lo + hi) // 2;
-        if values[middle] > value {
-            hi = middle;
+        m = (lo + hi) >> 1;
+        if (arr + m).view(1)[0] > value {
+            hi = m;
         } else {
-            lo = middle + 1;
+            lo = m + 1;
         }
     }
+
     return hi;
 }
 
 impl find_ttinfo(
-    state: ZoneInfoModuleState, zone: ZoneInfoState, dt: ptr[PyObject]
-) -> (TTInfo | None) {
+    state: ptr[zoneinfo_state], self_: ptr[PyZoneInfo_ZoneInfo], dt: ptr[PyObject]
+) -> ptr[_ttinfo] {
+    z = self_.view(1);
     if dt == Py_None {
-        return zone.tzrule_after.std if zone.fixed_offset else state.no_ttinfo;
+        if z[0].fixed_offset != 0 {
+            return tzrule_std(tzrule_after_of(self_));
+        }
+        return no_ttinfo_of(state);
     }
-    ts = local_timestamp(state, dt);
-    if ts is None {
-        return None;
+
+    (status, ts) = get_local_timestamp(dt);
+    if status != 0 {
+        return ptr[_ttinfo]();
     }
-    fold = datetime_fold(dt);
-    local_transitions = zone.trans_list_wall[1 if fold != 0 else 0];
-    num_trans = len(zone.trans_list_utc);
-    if num_trans and ts < local_transitions[0] {
-        return before_ttinfo(zone);
-    } elif not num_trans or ts > local_transitions[num_trans - 1] {
-        return find_tzrule_ttinfo(zone.tzrule_after, ts, fold, datetime_year(dt));
+
+    fold = datetime_record(dt).view(1)[0].fold;
+    local_transitions = (trans_list_wall_of(self_) + i64(fold)).view(1)[0];
+    num_trans = i64(z[0].num_transitions);
+
+    if num_trans != 0 and ts < local_transitions.view(1)[0] {
+        return z[0].ttinfo_before;
+    } elif num_trans == 0 or ts > (local_transitions + (num_trans - 1)).view(1)[0] {
+        return find_tzrule_ttinfo(
+            tzrule_after_of(self_), ts, fold, datetime_get_year(dt)
+        );
     }
-    return zone.trans_ttinfos[bisect_right(ts, local_transitions) - 1];
+    idx = _bisect(ts, local_transitions, num_trans) - 1;
+    return (z[0].trans_ttinfos + idx).view(1)[0];
 }
 
-impl is_leap_year(year: i64) -> bool {
-    ayear = year & 0xFFFFFFFF;
+impl is_leap_year(year: i32) -> bool {
+    ayear = u32.wrap(year);
     return ayear % 4 == 0 and (ayear % 100 != 0 or ayear % 400 == 0);
 }
 
-impl ymd_to_ord(y: i64, m: i64, d: i64) -> i64 {
-    y -= 1;
-    days_before_year = y * 365 + y // 4 - y // 100 + y // 400;
-    yearday = DAYS_BEFORE_MONTH[m];
-    if m > 2 and is_leap_year(y + 1) {
+impl ymd_to_ord(y: i32, m: i32, d: i32) -> i32 {
+    yy = y - 1;
+    days_before_year = (yy * 365) + (yy // 4) - (yy // 100) + (yy // 400);
+    yearday = (addressof(DAYS_BEFORE_MONTH) + i64(m)).view(1)[0];
+    if m > 2 and is_leap_year(yy + 1) {
         yearday += 1;
     }
+
     return days_before_year + yearday + d;
 }
 
-impl int_attribute(dt: ptr[PyObject], name: str) -> (i64 | None) {
-    num = jacpy_object_getattr_text(dt, name);
-    if not num {
-        return None;
-    }
-    value = i64(i32.wrap(PyLong_AsLong(num)));
-    jacpy_release(num);
-    return None if value == -1 else value;
-}
+impl get_local_timestamp(dt: ptr[PyObject]) -> tuple[i32, i64] {
+    hour: i32 = 0;
+    minute: i32 = 0;
+    second: i32 = 0;
+    ordinal: i32 = 0;
+    if object_type(dt) == PyDateTimeAPI.view(1)[0].DateTimeType {
+        d = datetime_record(dt).view(1);
+        y = (i32(d[0].data) << 8) | i32(d[0].data_1);
+        m = i32(d[0].data_2);
+        day = i32(d[0].data_3);
+        hour = i32(d[0].data_4);
+        minute = i32(d[0].data_5);
+        second = i32(d[0].data_6);
 
-impl local_timestamp(state: ZoneInfoModuleState, dt: ptr[PyObject]) -> (i64 | None) {
-    hour: i64 = 0;
-    minute: i64 = 0;
-    second: i64 = 0;
-    ordinal: i64 = 0;
-    if is_datetime_exact(state, dt) {
-        fields = ptr[PyDateTime_DateTime](dt).view(1);
-        ordinal = ymd_to_ord(
-            datetime_year(dt), i64(fields[0].data_2), i64(fields[0].data_3)
-        );
-        hour = i64(fields[0].data_4);
-        minute = i64(fields[0].data_5);
-        second = i64(fields[0].data_6);
+        ordinal = ymd_to_ord(y, m, day);
     } else {
         num = PyObject_CallMethod(dt, "toordinal", "");
         if not num {
-            return None;
+            return (i32(-1), i64(0));
         }
-        value = i64(i32.wrap(PyLong_AsLong(num)));
-        jacpy_release(num);
-        if value == -1 and PyErr_Occurred() {
-            return None;
+        ordinal = i32.wrap(PyLong_AsLong(num));
+        object_decref(num);
+        if ordinal == -1 and PyErr_Occurred() {
+            return (i32(-1), i64(0));
         }
-        ordinal = value;
-        parsed = int_attribute(dt, "hour");
-        if parsed is None {
-            return None;
+        num = PyObject_GetAttrString(dt, ptr[u8]("hour"));
+        if not num {
+            return (i32(-1), i64(0));
         }
-        hour = parsed;
-        parsed = int_attribute(dt, "minute");
-        if parsed is None {
-            return None;
+        hour = i32.wrap(PyLong_AsLong(num));
+        object_decref(num);
+        if hour == -1 {
+            return (i32(-1), i64(0));
         }
-        minute = parsed;
-        parsed = int_attribute(dt, "second");
-        if parsed is None {
-            return None;
+        num = PyObject_GetAttrString(dt, ptr[u8]("minute"));
+        if not num {
+            return (i32(-1), i64(0));
         }
-        second = parsed;
+        minute = i32.wrap(PyLong_AsLong(num));
+        object_decref(num);
+        if minute == -1 {
+            return (i32(-1), i64(0));
+        }
+        num = PyObject_GetAttrString(dt, ptr[u8]("second"));
+        if not num {
+            return (i32(-1), i64(0));
+        }
+        second = i32.wrap(PyLong_AsLong(num));
+        object_decref(num);
+        if second == -1 {
+            return (i32(-1), i64(0));
+        }
     }
-    return (ordinal - EPOCHORDINAL) * 86400 + (hour * 3600 + minute * 60 + second);
+
+    return (
+        i32(0),
+        (i64(ordinal) - EPOCHORDINAL) * 86400
+            + (i64(hour) * 3600 + i64(minute) * 60 + i64(second))
+    );
+}
+
+impl strong_cache_node_new(
+    key: ptr[PyObject], zone: ptr[PyObject]
+) -> ptr[StrongCacheNode] {
+    cache_node = ptr[StrongCacheNode](PyMem_Malloc(u64(STRONGCACHENODE_SIZE)));
+    if not cache_node {
+        return cache_node;
+    }
+
+    n = cache_node.view(1);
+    n[0].next = ptr[StrongCacheNode]();
+    n[0].prev = ptr[StrongCacheNode]();
+    n[0].key = object_new_ref(key);
+    n[0].zone = object_new_ref(zone);
+
+    return cache_node;
+}
+
+impl remove_from_strong_cache(
+    state: ptr[zoneinfo_state], cache_node: ptr[StrongCacheNode]
+) {
+    s = state.view(1);
+    n = cache_node.view(1);
+    if s[0].ZONEINFO_STRONG_CACHE == cache_node {
+        s[0].ZONEINFO_STRONG_CACHE = n[0].next;
+    }
+
+    prev = n[0].prev;
+    if prev {
+        prev.view(1)[0].next = n[0].next;
+    }
+
+    next_node = n[0].next;
+    if next_node {
+        next_node.view(1)[0].prev = n[0].prev;
+    }
+
+    n[0].next = ptr[StrongCacheNode]();
+    n[0].prev = ptr[StrongCacheNode]();
 }
 
 impl find_in_strong_cache(
-    state: ZoneInfoModuleState, key: ptr[PyObject]
-) -> (StrongCacheNode | None) {
-    for cached in list(state.strong_cache) {
-        rv = PyObject_RichCompareBool(key, cached.key, PY_EQ);
+    top: ptr[StrongCacheNode], key: ptr[PyObject]
+) -> ptr[StrongCacheNode] {
+    cache_node = top;
+    while cache_node {
+        rv = PyObject_RichCompareBool(key, cache_node.view(1)[0].key, Py_EQ);
         if rv < 0 {
-            return None;
+            return ptr[StrongCacheNode]();
         }
         if rv != 0 {
-            return cached;
+            return cache_node;
         }
-    }
-    return None;
-}
 
-impl remove_from_strong_cache(state: ZoneInfoModuleState, cached: StrongCacheNode) {
-    for i in range(len(state.strong_cache)) {
-        if state.strong_cache[i] is cached {
-            state.strong_cache.pop(i);
-            return;
-        }
+        cache_node = cache_node.view(1)[0].next;
     }
-}
 
-impl move_strong_cache_node_to_front(
-    state: ZoneInfoModuleState, cached: StrongCacheNode
-) {
-    if state.strong_cache and state.strong_cache[0] is cached {
-        return;
-    }
-    remove_from_strong_cache(state, cached);
-    state.strong_cache.insert(0, cached);
+    return ptr[StrongCacheNode]();
 }
 
 impl eject_from_strong_cache(
-    state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
-) -> bool {
-    if type != state.zoneinfo_type {
-        return True;
+    state: ptr[zoneinfo_state], type: ptr[PyTypeObject], key: ptr[PyObject]
+) -> i32 {
+    s = state.view(1);
+    if type != s[0].ZoneInfoType {
+        return 0;
     }
-    cached = find_in_strong_cache(state, key);
-    if cached is not None {
-        remove_from_strong_cache(state, cached);
+
+    cache = s[0].ZONEINFO_STRONG_CACHE;
+    cache_node = find_in_strong_cache(cache, key);
+    if cache_node {
+        remove_from_strong_cache(state, cache_node);
+
+        strong_cache_node_free(cache_node);
     } elif PyErr_Occurred() {
-        return False;
+        return -1;
     }
-    return True;
+    return 0;
+}
+
+impl move_strong_cache_node_to_front(
+    state: ptr[zoneinfo_state],
+    top: ptr[ptr[StrongCacheNode]],
+    cache_node: ptr[StrongCacheNode]
+) {
+    root_p = top.view(1)[0];
+    if root_p == cache_node {
+        return;
+    }
+
+    remove_from_strong_cache(state, cache_node);
+
+    n = cache_node.view(1);
+    n[0].prev = ptr[StrongCacheNode]();
+    n[0].next = root_p;
+
+    if root_p {
+        root_p.view(1)[0].prev = cache_node;
+    }
+
+    top.view(1)[0] = cache_node;
 }
 
 impl zone_from_strong_cache(
-    state: ZoneInfoModuleState, type: ptr[PyObject], key: ptr[PyObject]
+    state: ptr[zoneinfo_state], type: ptr[PyTypeObject], key: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if type != state.zoneinfo_type {
+    s = state.view(1);
+    if type != s[0].ZoneInfoType {
         return NULL;
     }
-    cached = find_in_strong_cache(state, key);
-    if cached is None {
-        return NULL;
+
+    cache = s[0].ZONEINFO_STRONG_CACHE;
+    cache_node = find_in_strong_cache(cache, key);
+
+    if cache_node {
+        move_strong_cache_node_to_front(state, strong_cache_root(state), cache_node);
+        return object_new_ref(cache_node.view(1)[0].zone);
     }
-    move_strong_cache_node_to_front(state, cached);
-    return Py_NewRef(cached.zone);
+
+    return NULL;
 }
 
 impl update_strong_cache(
-    state: ZoneInfoModuleState,
-    type: ptr[PyObject],
+    state: ptr[zoneinfo_state],
+    type: ptr[PyTypeObject],
     key: ptr[PyObject],
     zone: ptr[PyObject]
 ) {
-    if type != state.zoneinfo_type {
+    s = state.view(1);
+    if type != s[0].ZoneInfoType {
         return;
     }
-    cached = StrongCacheNode(key=Py_NewRef(key), zone=Py_NewRef(zone));
-    move_strong_cache_node_to_front(state, cached);
-    if len(state.strong_cache) > ZONEINFO_STRONG_CACHE_MAX_SIZE {
-        state.strong_cache = state.strong_cache[:ZONEINFO_STRONG_CACHE_MAX_SIZE];
-    }
-}
 
-impl clear_strong_cache(state: ZoneInfoModuleState, type: ptr[PyObject]) {
-    if type != state.zoneinfo_type {
+    new_node = strong_cache_node_new(key, zone);
+    if not new_node {
         return;
     }
-    state.strong_cache = [];
+    move_strong_cache_node_to_front(state, strong_cache_root(state), new_node);
+
+    cache_node = new_node.view(1)[0].next;
+    i: i64 = 1;
+    while i < ZONEINFO_STRONG_CACHE_MAX_SIZE {
+        if not cache_node {
+            return;
+        }
+        cache_node = cache_node.view(1)[0].next;
+        i += 1;
+    }
+
+    if cache_node {
+        prev = cache_node.view(1)[0].prev;
+        if prev {
+            prev.view(1)[0].next = ptr[StrongCacheNode]();
+        }
+        strong_cache_free(cache_node);
+    }
 }
 
 impl new_weak_cache -> ptr[PyObject] {
@@ -1848,38 +2460,237 @@ impl new_weak_cache -> ptr[PyObject] {
         return NULL;
     }
     weak_cache = PyObject_CallNoArgs(weak_value_dictionary);
-    jacpy_release(weak_value_dictionary);
+    object_decref(weak_value_dictionary);
     return weak_cache;
 }
 
-impl datetime_import -> ptr[PyDateTime_CAPI] {
-    return ptr[PyDateTime_CAPI](PyCapsule_Import(ptr[u8]("datetime.datetime_CAPI"), 0));
+impl initialize_caches(state: ptr[zoneinfo_state]) -> i32 {
+    s = state.view(1);
+    s[0].TIMEDELTA_CACHE = PyDict_New();
+    if not s[0].TIMEDELTA_CACHE {
+        return -1;
+    }
+
+    s[0].ZONEINFO_WEAK_CACHE = new_weak_cache();
+    if not s[0].ZONEINFO_WEAK_CACHE {
+        return -1;
+    }
+
+    return 0;
 }
 
-impl populate_module_state(state: ZoneInfoModuleState) -> bool {
-    state.tzpath_find_tzfile = PyImport_ImportModuleAttrString(
+impl zoneinfo_init_subclass(
+    cls: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    weak_cache = new_weak_cache();
+    if not weak_cache {
+        return NULL;
+    }
+
+    if PyObject_SetAttrString(cls, ptr[u8]("_weak_cache"), weak_cache) < 0 {
+        object_decref(weak_cache);
+        return NULL;
+    }
+    object_decref(weak_cache);
+    return object_new_ref(Py_None);
+}
+
+impl install_zoneinfo_methods -> bool {
+    slot = ptr[PyType_Slot](addressof(zoneinfo_slots)) + ZONEINFO_METHODS_SLOT;
+    if slot.view(1)[0].pfunc {
+        return True;
+    }
+    methods: list[MethodDefinition] = list(ZoneInfo_methods);
+    methods.append(
+        MethodDefinition(
+            "fromutc",
+            MethodCallbacks(positional=zoneinfo_fromutc),
+            "Given a datetime with local time in UTC, retrieve an adjusted datetime in local time.",
+            i64(METH_O)
+        )
+    );
+    methods.append(
+        MethodDefinition(
+            "__reduce__",
+            MethodCallbacks(positional=zoneinfo_reduce),
+            "Function for serialization with the pickle protocol.",
+            i64(METH_NOARGS)
+        )
+    );
+    methods.append(
+        MethodDefinition(
+            "__init_subclass__",
+            MethodCallbacks(keywords=zoneinfo_init_subclass),
+            "Function to initialize subclasses.",
+            i64(METH_VARARGS | METH_KEYWORDS | METH_CLASS)
+        )
+    );
+    table = method_table(methods);
+    if not table {
+        return False;
+    }
+    slot.view(1)[0].pfunc = ptr(table);
+    return True;
+}
+
+impl module_traverse(mod: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+    state = zoneinfo_get_state(mod);
+    s = state.view(1);
+
+    vret = visit_reference(ptr[PyObject](s[0].ZoneInfoType), visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+    vret = visit_reference(s[0].io_open, visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+    vret = visit_reference(s[0]._tzpath_find_tzfile, visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+    vret = visit_reference(s[0]._common_mod, visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+    vret = visit_reference(s[0].TIMEDELTA_CACHE, visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+    vret = visit_reference(s[0].ZONEINFO_WEAK_CACHE, visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+
+    cache_node = s[0].ZONEINFO_STRONG_CACHE;
+    while cache_node {
+        next_node = cache_node.view(1)[0].next;
+        vret = visit_reference(cache_node.view(1)[0].key, visitor, arg);
+        if vret != 0 {
+            return vret;
+        }
+        vret = visit_reference(cache_node.view(1)[0].zone, visitor, arg);
+        if vret != 0 {
+            return vret;
+        }
+        cache_node = next_node;
+    }
+
+    no = no_ttinfo_of(state).view(1);
+    vret = visit_reference(no[0].utcoff, visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+    vret = visit_reference(no[0].dstoff, visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+    vret = visit_reference(no[0].tzname, visitor, arg);
+    if vret != 0 {
+        return vret;
+    }
+
+    return 0;
+}
+
+impl module_clear(mod: ptr[PyObject]) -> i32 {
+    state = zoneinfo_get_state(mod);
+    s = state.view(1);
+
+    zone_type = ptr[PyObject](s[0].ZoneInfoType);
+    s[0].ZoneInfoType = ptr[PyTypeObject]();
+    object_xdecref(zone_type);
+    old = s[0].io_open;
+    s[0].io_open = NULL;
+    object_xdecref(old);
+    old = s[0]._tzpath_find_tzfile;
+    s[0]._tzpath_find_tzfile = NULL;
+    object_xdecref(old);
+    old = s[0]._common_mod;
+    s[0]._common_mod = NULL;
+    object_xdecref(old);
+    old = s[0].TIMEDELTA_CACHE;
+    s[0].TIMEDELTA_CACHE = NULL;
+    object_xdecref(old);
+    old = s[0].ZONEINFO_WEAK_CACHE;
+    s[0].ZONEINFO_WEAK_CACHE = NULL;
+    object_xdecref(old);
+    clear_strong_cache(state, s[0].ZoneInfoType);
+    no = no_ttinfo_of(state).view(1);
+    old = no[0].utcoff;
+    no[0].utcoff = NULL;
+    object_xdecref(old);
+    old = no[0].dstoff;
+    no[0].dstoff = NULL;
+    object_xdecref(old);
+    old = no[0].tzname;
+    no[0].tzname = NULL;
+    object_xdecref(old);
+
+    return 0;
+}
+
+impl module_free(mod: ptr) {
+    module_clear(ptr[PyObject](mod));
+}
+
+impl zoneinfomodule_exec(m: ptr[PyObject]) -> i32 {
+    PyDateTimeAPI = ptr[PyDateTime_CAPI](
+        PyCapsule_Import(ptr[u8]("datetime.datetime_CAPI"), 0)
+    );
+    if not PyDateTimeAPI {
+        return -1;
+    }
+
+    if not install_zoneinfo_methods() {
+        return -1;
+    }
+    ZoneInfo_token.handle = ptr(addressof(zoneinfo_spec));
+
+    state = zoneinfo_get_state(m);
+    s = state.view(1);
+    base = ptr[PyObject](PyDateTimeAPI.view(1)[0].TZInfoType);
+    s[0].ZoneInfoType = ptr[PyTypeObject](
+        PyType_FromModuleAndSpec(m, addressof(zoneinfo_spec), base)
+    );
+    if not s[0].ZoneInfoType {
+        return -1;
+    }
+
+    rc = PyModule_AddObjectRef(
+        m, ptr[u8]("ZoneInfo"), ptr[PyObject](s[0].ZoneInfoType)
+    );
+    if rc < 0 {
+        return -1;
+    }
+
+    s[0]._tzpath_find_tzfile = PyImport_ImportModuleAttrString(
         ptr[u8]("zoneinfo._tzpath"), ptr[u8]("find_tzfile")
     );
-    if not state.tzpath_find_tzfile {
-        return False;
+    if not s[0]._tzpath_find_tzfile {
+        return -1;
     }
-    state.io_open = PyImport_ImportModuleAttrString(ptr[u8]("io"), ptr[u8]("open"));
-    if not state.io_open {
-        return False;
+
+    s[0].io_open = PyImport_ImportModuleAttrString(ptr[u8]("io"), ptr[u8]("open"));
+    if not s[0].io_open {
+        return -1;
     }
-    state.common_mod = PyImport_ImportModule(ptr[u8]("zoneinfo._common"));
-    if not state.common_mod {
-        return False;
+
+    s[0]._common_mod = PyImport_ImportModule(ptr[u8]("zoneinfo._common"));
+    if not s[0]._common_mod {
+        return -1;
     }
-    if not state.no_ttinfo.utcoff {
-        state.no_ttinfo.utcoff = Py_NewRef(Py_None);
-        state.no_ttinfo.dstoff = Py_NewRef(Py_None);
-        state.no_ttinfo.tzname = Py_NewRef(Py_None);
+
+    no = no_ttinfo_of(state).view(1);
+    if not no[0].utcoff {
+        no[0].utcoff = object_new_ref(Py_None);
+        no[0].dstoff = object_new_ref(Py_None);
+        no[0].tzname = object_new_ref(Py_None);
     }
-    state.timedelta_cache = PyDict_New();
-    if not state.timedelta_cache {
-        return False;
+
+    if initialize_caches(state) != 0 {
+        return -1;
     }
-    state.weak_cache = new_weak_cache();
-    return bool(state.weak_cache);
+
+    return 0;
 }

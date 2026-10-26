@@ -1,6 +1,10 @@
 import from c {
-    glob PyType_Type: PyTypeObject; glob:priv datetime_as_number:
-             PyNumberMethods = PyNumberMethods(
+    obj DateTimeCallStack {
+        has s0: ptr[PyObject] = ptr[PyObject](),
+            s1: ptr[PyObject] = ptr[PyObject](),
+            s2: ptr[PyObject] = ptr[PyObject]();
+    }  def jacpy_stack_address(slots: &mut DateTimeCallStack) -> int;  glob PyType_Type:
+             PyTypeObject; glob:priv datetime_as_number: PyNumberMethods = PyNumberMethods(
              nb_add=datetime_add, nb_subtract=datetime_subtract
          ),
          datetime_getset: list[PyGetSetDef] = [
@@ -1183,17 +1187,24 @@ impl local_timezone_from_local(local_dt: ptr[PyObject]) -> ptr[PyObject] {
     return local_timezone_from_timestamp(seconds - EPOCH_SECONDS);
 }
 
+def:priv astimezone_keyword_args(
+    args: ptr[PyObject], kw: ptr[PyObject]
+) -> tuple[i32, ptr[PyObject]];
+
 impl datetime_astimezone(
     op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        values = ArgumentFormat(name="astimezone").parse_keywords(
-            args, kw, "|O", ["tz"]
-        );
-    } except boundary_failure {
-        return NULL;
+    tzinfo = Py_None;
+    nargs = PyTuple_Size(args);
+    if kw or nargs > 1 {
+        (status, parsed) = astimezone_keyword_args(args, kw);
+        if status < 0 {
+            return NULL;
+        }
+        tzinfo = parsed;
+    } elif nargs == 1 {
+        tzinfo = PyTuple_GetItem(args, 0);
     }
-    tzinfo = values[0].object if values[0].given else Py_None;
     if check_tzinfo_subclass(tzinfo) == -1 {
         return NULL;
     }
@@ -1283,7 +1294,13 @@ impl datetime_astimezone(
     record[0].tzinfo = tzinfo;
     jacpy_release(old);
     temp = result;
-    result = PyObject_CallMethod(tzinfo, "fromutc", "O", temp);
+    slots: own DateTimeCallStack = DateTimeCallStack();
+    stack = ptr[ptr[PyObject]](jacpy_stack_address(&mut slots));
+    stack.view(2)[0] = tzinfo;
+    stack.view(2)[1] = temp;
+    result = PyObject_VectorcallMethod(
+        py_id(_Py_ID_fromutc), stack, u64(2) | PY_VECTORCALL_ARGUMENTS_OFFSET, NULL
+    );
     jacpy_release(temp);
     return result;
 }
@@ -1433,4 +1450,20 @@ impl datetime_reduce_ex(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
 
 impl datetime_reduce(op: ptr[PyObject], arg: ptr[PyObject]) -> ptr[PyObject] {
     return Py_BuildValue(ptr[u8]("(ON)"), type_of(op), datetime_getstate(op, 2));
+}
+
+impl astimezone_keyword_args(
+    args: ptr[PyObject], kw: ptr[PyObject]
+) -> tuple[i32, ptr[PyObject]] {
+    try {
+        values = ArgumentFormat(name="astimezone").parse_keywords(
+            args, kw, "|O", ["tz"]
+        );
+    } except boundary_failure {
+        return (i32(-1), NULL);
+    }
+    if values[0].given {
+        return (i32(0), values[0].object);
+    }
+    return (i32(0), Py_None);
 }

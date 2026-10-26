@@ -233,20 +233,23 @@ impl index_lookup(
 }
 
 impl map_encode(map: ptr[DbcsMap], uni: int) -> int {
-    record = map.view(1)[0];
     return index_lookup(
-        record.encindex, ptr[u16](record.encdata), uni >> 8, uni & 0xFF, NOCHAR
+        map.view(1)[0].encindex,
+        ptr[u16](map.view(1)[0].encdata),
+        uni >> 8,
+        uni & 0xFF,
+        NOCHAR
     );
 }
 
 impl map_decode(map: ptr[DbcsMap], c1: int, c2: int) -> int {
-    record = map.view(1)[0];
-    return index_lookup(record.decindex, ptr[u16](record.decdata), c1, c2, UNIINV);
+    return index_lookup(
+        map.view(1)[0].decindex, ptr[u16](map.view(1)[0].decdata), c1, c2, UNIINV
+    );
 }
 
 impl map_decode_wide(map: ptr[DbcsMap], c1: int, c2: int) -> int {
-    record = map.view(1)[0];
-    index = record.decindex;
+    index = map.view(1)[0].decindex;
     if index.is_null() {
         return UNIINV;
     }
@@ -254,7 +257,7 @@ impl map_decode_wide(map: ptr[DbcsMap], c1: int, c2: int) -> int {
     if item == 0 or c2 < ((item >> 8) & 0xFF) or c2 > (item & 0xFF) {
         return UNIINV;
     }
-    codes = ptr[u32](record.decdata);
+    codes = ptr[u32](map.view(1)[0].decdata);
     return int((codes + ((item >> 16) - 1 + c2 - ((item >> 8) & 0xFF))).view(1)[0]);
 }
 

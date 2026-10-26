@@ -147,12 +147,11 @@ comparison keys, and cache policy. Bounded caches reuse the retained runtime's
 ordered dictionary; native binding state stores cached hashes and visits references.
 There is no separate native hash table or Python cache-policy callback.
 
-Iterator policies live in `modules/iterators.jac`, `combinatorics.jac`,
-`grouping.jac`, and `tee.jac`. Shared tee replay blocks have one CPython GC owner
-per block, so multiple cursors do not report duplicate reference edges. Tuple
-reuse preserves callback safety. As with deque, the four upstream iterator
-size tests describe the retired C layout; smoke tests check native storage
-accounting instead.
+`modules/itertools.jac` follows itertoolsmodule.c: every iterator type is a C
+record with its own slots, created from a `PyType_Spec` when the module executes
+and kept in the module state. Combinatoric iterators, `pairwise` and
+`zip_longest` reuse their result tuple while they hold its only reference, and
+index arrays are `PyMem` blocks, so `__sizeof__` reports the C layout.
 
 `modules/array.jac` shares endian-aware scalar operations with `struct` through
 `modules/binary_scalars.jac`. Its buffer uses retained CPython bytearray storage;

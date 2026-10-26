@@ -3417,6 +3417,7 @@ CONSTANT(sizeof(_PyObjectStackChunk), 2048LL);
 CONSTANT(offsetof(_PyObjectStack, head), 0LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py___all__), 2208LL);
 CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_displayhook), 20432LL);
+CONSTANT(offsetof(struct _Py_global_strings, identifiers._py_fromutc), 23672LL);
 CONSTANT(offsetof(struct _gc_runtime_state, enabled), 12LL);
 CONSTANT(offsetof(struct _gc_runtime_state, debug), 16LL);
 CONSTANT(offsetof(struct _gc_runtime_state, generations), 24LL);

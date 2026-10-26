@@ -393,15 +393,14 @@ impl decode_writer(buf: ptr[MultibyteDecodeBuffer]) -> ptr[DecodeWriter] {
 }
 
 impl expand_encodebuffer(buf: ptr[MultibyteEncodeBuffer], esize: int) -> int {
-    b = buf.view(1)[0];
-    orgpos = int(b.outbuf - bytes_data(b.outobj));
-    orgsize = int(jacpy_bytes_length(b.outobj));
+    outobj = buf.view(1)[0].outobj;
+    orgpos = int(buf.view(1)[0].outbuf - bytes_data(outobj));
+    orgsize = int(jacpy_bytes_length(outobj));
     incsize = ((orgsize >> 1) | 1) if esize < (orgsize >> 1) else esize;
     if orgsize > PY_SSIZE_T_MAX - incsize {
         PyErr_NoMemory();
         return -1;
     }
-    outobj = b.outobj;
     resized = _PyBytes_Resize(&mut outobj, i64(orgsize + incsize));
     buf.view(1)[0].outobj = outobj;
     if resized == -1 {
@@ -414,8 +413,7 @@ impl expand_encodebuffer(buf: ptr[MultibyteEncodeBuffer], esize: int) -> int {
 }
 
 impl require_encodebuffer(buf: ptr[MultibyteEncodeBuffer], s: int) -> bool {
-    b = buf.view(1)[0];
-    if s < 0 or s > int(b.outbuf_end - b.outbuf) {
+    if s < 0 or s > int(buf.view(1)[0].outbuf_end - buf.view(1)[0].outbuf) {
         return expand_encodebuffer(buf, s) != -1;
     }
     return True;
