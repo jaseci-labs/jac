@@ -691,6 +691,9 @@ impl _read_glue_symbols(store: str) -> (UnitGlueSymbols | None) {
         }
         out.defined.append(name);
     }
+    try {
+        os.utime(store, None);
+    } except OSError {}
     return out;
 }
 
@@ -708,7 +711,13 @@ impl _write_glue_symbols(store: str, symbols: UnitGlueSymbols) {
             );
         }
         os.replace(scratch, store);
-    } except OSError {}
+    } except OSError {
+        return;
+    }
+    try {
+        import from jaclang.cache.registry { maybe_sweep }
+        maybe_sweep("jir-nativeglue");
+    } except Exception {}
 }
 
 impl glue_symbol_memo_clear {

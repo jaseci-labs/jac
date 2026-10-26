@@ -9,13 +9,18 @@ edit that changes what a unit declares is scanned again.
 """
 import os;
 import tempfile;
+import time;
+import from pathlib { Path }
+import from types { SimpleNamespace }
 import from unittest.mock { patch }
 import jaclang.compiler.backends.native.llvm.binding as llvm_binding;
 import from jaclang.compiler.backends.native.link_glue { inject_heap_accounting }
+import from jaclang.cache.registry { bucket, gc }
 import from jaclang.compiler.backends.native.link_plan {
     build_link_plan,
     glue_symbol_memo_clear,
-    heap_glue_ir
+    heap_glue_ir,
+    unit_glue_symbols
 }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -140,4 +145,56 @@ test "a unit that comes to declare heap accounting is scanned again" {
         assert after == parsed_heap_glue(heap);
         assert "jac_heap_size" in after[1] , after[1];
     }
+}
+
+"""Every glue-symbol scan file kept under the bucket, as bucket-relative paths."""
+def stored_scans(base: Path) -> set[str] {
+    return {
+        p.relative_to(base).as_posix()
+        for p in base.rglob("*")
+        if p.is_file() and len(p.name) == 64
+    };
+}
+
+"""A parsed module with no functions, so a scan needs no real bitcode."""
+def no_functions(data: bytes) -> any {
+    return SimpleNamespace(functions=[]);
+}
+
+test "glue-symbol scans live in a cache bucket that ages out the unused ones" {
+    with tempfile.TemporaryDirectory() as home {
+        with patch.dict(os.environ, {"JAC_CACHE_HOME": home}) {
+            base = bucket("jir-nativeglue").path();
+            assert base == Path(home) / "jir" / "nativeglue";
+            opts = CompileOptions();
+            with patch.object(llvm_binding, "parse_bitcode", no_functions) {
+                glue_symbol_memo_clear();
+                unit_glue_symbols(b"stale unit", ["jac_heap_size"], opts);
+                stale = stored_scans(base);
+                assert len(stale) == 1 , stale;
+                unit_glue_symbols(b"used unit", ["jac_heap_size"], opts);
+                used = stored_scans(base) - stale;
+                assert len(used) == 1 , used;
+                old = time.time() - 30 * 86400.0;
+                for rel in stale | used {
+                    os.utime(base / rel, (old, old));
+                }
+                glue_symbol_memo_clear();
+                unit_glue_symbols(b"used unit", ["jac_heap_size"], opts);
+            }
+            reports = [
+                r
+                for r in gc()
+                if r.bucket == "jir-nativeglue"
+            ];
+            assert len(reports) == 1 , [r.bucket for r in gc(dry_run=True)];
+            assert set(reports[0].removed) == stale , reports[0].removed;
+            assert stored_scans(base) == used;
+            stale_dir = (base / list(stale)[0]).parent;
+            if stale_dir != (base / list(used)[0]).parent {
+                assert not stale_dir.exists() , stale_dir;
+            }
+        }
+    }
+    glue_symbol_memo_clear();
 }

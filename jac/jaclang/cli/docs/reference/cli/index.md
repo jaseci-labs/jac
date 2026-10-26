@@ -1700,7 +1700,7 @@ Every bucket has a **retention policy**:
 | `rt` | fused-binary runtimes, one per payload hash | unused 30 days |
 | `jir-modules` | compiled modules, one generation per compiler digest | unused 14 days (`JAC_CACHE_GENERATION_TTL_DAYS`) |
 | `jir-bootstrap` | bootstrap-tier bytecode | unused 14 days, at most 4000 entries |
-| `jir-stubcat`, `jir-kernel-units`, `jir-digests` | stub catalogs, native kernel units, per-checkout compiler digests | unused 14 days |
+| `jir-stubcat`, `jir-kernel-units`, `jir-digests`, `jir-nativeglue` | stub catalogs, native kernel units, per-checkout compiler digests, glue-symbol scans of native unit bitcode | unused 14 days |
 | `apps` | materialized `.jab` images | unused 30 days |
 | `scale-binaries` | pinned release binaries for deploys | unused 30 days |
 | `admin` | built admin consoles, one per UI source and compiler | unused 30 days |
