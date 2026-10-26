@@ -67,6 +67,7 @@ with entry {
 }
 
 glob errors: list[str] = [];
+
 with entry {
     for r in range(40) {
         for i in range(5) {

@@ -1753,8 +1753,7 @@ impl NaIRGenPass._unwind_raise_sites(
     }
 
     for blk in func.blocks {
-        for inst_value in blk.instructions {
-            inst: any = inst_value;
+        for inst in blk.instructions {
             if isinstance(inst, ir.LoadInstr) {
                 continue;
             }
@@ -1764,7 +1763,10 @@ impl NaIRGenPass._unwind_raise_sites(
                 }
                 continue;
             }
-            for operand in getattr(inst, "operands", []) {
+            if not isinstance(inst, ir.Instruction) {
+                continue;
+            }
+            for operand in inst.operands {
                 if id(operand) in tracked {
                     return None;
                 }
@@ -1773,22 +1775,27 @@ impl NaIRGenPass._unwind_raise_sites(
     }
     succs: dict[int, list[ir.Block]] = {};
     for blk in func.blocks {
-        term: any = blk.instructions[-1] if blk.instructions else None;
-        if term is None {
+        if not blk.instructions {
             return None;
         }
+        term = blk.instructions[-1];
+        dests: list[ir.Block] = [];
         if isinstance(term, ir.SwitchInstr) {
-            succs[id(blk)] = [term.default_bb] + [dest for (_val, dest) in term.cases];
-        } elif getattr(term, "opname", "")
-            in ("br", "ret", "ret void", "unreachable") {
-            succs[id(blk)] = [
-                op
-                for op in term.operands
-                if isinstance(op, ir.Block)
-            ];
+            dests.append(term.default_bb);
+            for (_val, dest) in term.cases {
+                dests.append(dest);
+            }
+        } elif isinstance(term, ir.Instruction)
+            and term.opname in ("br", "ret", "ret void", "unreachable") {
+            for op in term.operands {
+                if isinstance(op, ir.Block) {
+                    dests.append(op);
+                }
+            }
         } else {
             return None;
         }
+        succs[id(blk)] = dests;
     }
 
     held_in: dict[int, set[int]] = {};
@@ -1824,8 +1831,7 @@ impl NaIRGenPass._unwind_raise_sites(
     sites: list[tuple[ir.Instruction, set[int]]] = [];
     for blk in func.blocks {
         held = set(held_in[id(blk)]);
-        for inst_value in blk.instructions {
-            inst: any = inst_value;
+        for inst in blk.instructions {
             if isinstance(inst, ir.StoreInstr) and id(inst.operands[1]) in tracked {
                 stored = inst.operands[0];
                 if isinstance(stored, ir.Constant) and stored.constant is None {
@@ -1838,8 +1844,10 @@ impl NaIRGenPass._unwind_raise_sites(
             if not isinstance(inst, ir.CallInstr) {
                 continue;
             }
-            callee: any = inst.callee;
-            name = callee.name if isinstance(callee, ir.Function) else None;
+            callee = inst.callee;
+            name: (str | None) = callee.name
+                if isinstance(callee, ir.Function)
+                else None;
             if name == "__jac_exc_raise" {
                 if len(blk.instructions) < 2
                     or blk.instructions[-2] is not inst
@@ -1878,16 +1886,27 @@ impl NaIRGenPass._unwind_release_at_raises(
     saved_regions = self.region_open_stack;
     saved_cells = self.closure_cell_handles;
     try {
-        for (site_value, held) in sites {
-            site: any = site_value;
+        for (site, held) in sites {
             blk = site.parent;
-            at = blk.instructions.index(site);
-            tail = blk.instructions[at:];
-            del blk.instructions[at:];
+            insts = list(blk.instructions);
+            kept: list[ir.NamedValue] = [];
+            tail: list[ir.NamedValue] = [];
+            i = 0;
+            while i < len(insts) and insts[i] is not site {
+                kept.append(insts[i]);
+                i += 1;
+            }
+            while i < len(insts) {
+                tail.append(insts[i]);
+                i += 1;
+            }
+            blk.instructions.clear();
+            blk.instructions.extend(kept);
             raise_blk = func.append_basic_block(name="raise.at");
-            for inst_value in tail {
-                moved: any = inst_value;
-                moved.parent = raise_blk;
+            for moved in tail {
+                if isinstance(moved, ir.Instruction) {
+                    moved.parent = raise_blk;
+                }
                 raise_blk.instructions.append(moved);
             }
             raise_blk.terminator = blk.terminator;
