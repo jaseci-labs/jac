@@ -2405,22 +2405,28 @@ test "bug_8580_numeric_container_covariance_rejected" {
         for e in program.errors_had
         if e.loc
     };
-    assert len(program.errors_had) == 3 , (
+    assert len(program.errors_had) == 4 , (
         "Bug #8580: numeric widening must not carry list[int] into "
-        "list[float], an IntBox into Box[float], or dict[str, int] into "
-        f"dict[str, float]. Got: {[str(e) for e in program.errors_had]}"
+        "list[float], an IntBox into Box[float], dict[str, int] into "
+        "dict[str, float], or list[int] into list[float | None]. "
+        f"Got: {[str(e) for e in program.errors_had]}"
     );
-    assert "list[int]" in by_line.get(38, "") and "list[float]" in by_line.get(38, "") , (
-        "Bug #8580: line 38 must reject list[int] into list[float]. "
-        f"Line 38 reported: {by_line.get(38)}"
+    assert "list[int]" in by_line.get(44, "") and "list[float]" in by_line.get(44, "") , (
+        "Bug #8580: line 44 must reject list[int] into list[float]. "
+        f"Line 44 reported: {by_line.get(44)}"
     );
-    assert "IntBox" in by_line.get(40, "") and "Box[float]" in by_line.get(40, "") , (
-        "Bug #8580: line 40 must reject IntBox (a Box[int]) into Box[float]. "
-        f"Line 40 reported: {by_line.get(40)}"
+    assert "IntBox" in by_line.get(46, "") and "Box[float]" in by_line.get(46, "") , (
+        "Bug #8580: line 46 must reject IntBox (a Box[int]) into Box[float]. "
+        f"Line 46 reported: {by_line.get(46)}"
     );
-    assert "dict[str, int]" in by_line.get(42, "") and "dict[str, float]" in by_line.get(42, "") , (
-        "Bug #8580: line 42 must reject dict[str, int] into dict[str, float]. "
-        f"Line 42 reported: {by_line.get(42)}"
+    assert "dict[str, int]" in by_line.get(48, "") and "dict[str, float]" in by_line.get(48, "") , (
+        "Bug #8580: line 48 must reject dict[str, int] into dict[str, float]. "
+        f"Line 48 reported: {by_line.get(48)}"
+    );
+    assert "list[int]" in by_line.get(49, "") and "NoneType" in by_line.get(49, "") , (
+        "Bug #8580: line 49 must reject list[int] into list[float | None]; a "
+        "union destination stores any member, so the callee could append a "
+        f"float the caller reads as int. Line 49 reported: {by_line.get(49)}"
     );
 }
 

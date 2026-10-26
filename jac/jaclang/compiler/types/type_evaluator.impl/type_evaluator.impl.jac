@@ -3102,6 +3102,25 @@ impl TypeEvaluator._callable_mismatch(
 impl TypeEvaluator._numeric_args_invariant(
     src_arg: TypeBase, dest_arg: TypeBase, strict: bool = False
 ) -> bool {
+    # A union destination stores any of its members, so the invariant must
+    # hold against each numeric member: list[int] into list[float | None]
+    # would otherwise let the callee append a float the caller reads as int.
+    if isinstance(dest_arg, UnionType) and dest_arg.types {
+        for member in dest_arg.types {
+            if not self._numeric_args_invariant(src_arg, member, strict) {
+                return False;
+            }
+        }
+        return True;
+    }
+    if isinstance(src_arg, UnionType) and src_arg.types {
+        for member in src_arg.types {
+            if not self._numeric_args_invariant(member, dest_arg, strict) {
+                return False;
+            }
+        }
+        return True;
+    }
     if not isinstance(src_arg, ClassType) or not isinstance(dest_arg, ClassType) {
         return True;
     }
@@ -3170,15 +3189,31 @@ impl TypeEvaluator._assign_class(
                     dest_arg = self._convert_to_instance(
                         dest_type.private.type_args[i]
                     );
-
-                    if not self.assign_type(src_arg, dest_arg, strict) {
-                        return False;
-                    }
-                    # Mutable containers of numeric value elements must be
-                    # invariant: a class deriving list[int] must not flow
-                    # into list[float] (raw-bits reinterpretation natively).
-                    if not self._numeric_args_invariant(src_arg, dest_arg, strict) {
-                        return False;
+                    tp = dest_type.shared.type_params[i]
+                        if (
+                            dest_type.shared.type_params
+                            and i < len(dest_type.shared.type_params)
+                        )
+                        else None;
+                    if tp and tp.is_contravariant {
+                        # Contravariant parameters already demand the
+                        # stronger element relation (dest usable as src);
+                        # the numeric invariant's extra forward demand does
+                        # not apply to a consumer position.
+                        if not self.assign_type(dest_arg, src_arg, strict) {
+                            return False;
+                        }
+                    } else {
+                        if not self.assign_type(src_arg, dest_arg, strict) {
+                            return False;
+                        }
+                        # Mutable containers of numeric value elements must
+                        # be invariant: a class deriving list[int] must not
+                        # flow into list[float] (raw-bits reinterpretation
+                        # natively).
+                        if not self._numeric_args_invariant(src_arg, dest_arg, strict) {
+                            return False;
+                        }
                     }
                 }
             }

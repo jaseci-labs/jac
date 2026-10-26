@@ -13,8 +13,26 @@ def take_floats(xs: list[float]) -> float {
     return xs[0];
 }
 
+def take_maybe_floats(xs: list[float | None]) -> float | None {
+    return xs[0];
+}
+
 def first[T](xs: list[T]) -> T {
     return xs[0];
+}
+
+glob C = TypeVar('C', contravariant=True);
+
+obj Consumer(Generic[C]) {
+    def consume(item: C) -> None {
+        ;
+    }
+}
+
+obj ObjConsumer(Consumer[object]) {}
+
+def feed_strs(c: Consumer[str]) -> None {
+    c.consume("x");
 }
 
 with entry {
@@ -24,4 +42,8 @@ with entry {
     o2: object = take_anything(words);
     i1: int = first(ints);
     f1: float = take_floats([1, 2]);
+    fs: list[float] = [1.0];
+    f2: float | None = take_maybe_floats(fs);
+    oc: ObjConsumer = ObjConsumer();
+    feed_strs(oc);
 }
