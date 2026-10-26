@@ -1785,6 +1785,21 @@ def _aug_assign__list_imul_alias(eng: any, _ir: any) {
     assert f() == 404 , "list *= must mutate the list seen by existing aliases";
 }
 
+def _aug_assign__list_imul_zero_reuse(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_imul_zero_reuse", ctypes.c_int64);
+    assert f() == 102 , "list *= 0 must clear in place and stay reusable";
+}
+
+def _aug_assign__list_imul_empty_huge(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_imul_empty_huge", ctypes.c_int64);
+    assert f() == 0 , "[] *= huge must short-circuit to an empty list";
+}
+
+def _aug_assign__list_imul_str_nine(eng: any, _ir: any) {
+    f = get_func(eng, "test_list_imul_str_nine", ctypes.c_int64);
+    assert f() == 1809 , "list[str] *= 9 must preserve elements past cap 8";
+}
+
 test "aug_assign" {
     (_eng, _ir) = compile_native("aug_assign.jac");
     _aug_assign__aug_assign_add_assign(_eng, _ir);
@@ -1804,6 +1819,9 @@ test "aug_assign" {
     _aug_assign__aug_assign_count_primes(_eng, _ir);
     _aug_assign__list_iadd_alias(_eng, _ir);
     _aug_assign__list_imul_alias(_eng, _ir);
+    _aug_assign__list_imul_zero_reuse(_eng, _ir);
+    _aug_assign__list_imul_empty_huge(_eng, _ir);
+    _aug_assign__list_imul_str_nine(_eng, _ir);
 }
 
 test "chess compiles" {

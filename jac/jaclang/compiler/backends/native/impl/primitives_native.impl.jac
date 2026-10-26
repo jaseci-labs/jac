@@ -2764,20 +2764,142 @@ impl NativeListEmitter.emit_repeat_inplace(
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     zero_bb = func.append_basic_block(name="rep.zero");
+    empty_bb = func.append_basic_block(name="rep.isempty");
+    pre_bb = func.append_basic_block(name="rep.pre");
+    reserve_bb = func.append_basic_block(name="rep.reserve");
     pass_bb = func.append_basic_block(name="rep.pass");
     done_bb = func.append_basic_block(name="rep.done");
-    # count <= 0 clears the list (CPython list.__imul__ semantics).
+    _aos_struct = p._aos_elem_struct(ctx.type_key);
+
     nonpos = b.icmp_signed("<=", cnt, ir.Constant(i64, 0), name="rep.nonpos");
-    b.cbranch(nonpos, zero_bb, pass_bb);
+    b.cbranch(nonpos, zero_bb, empty_bb);
 
     b.position_at_start(zero_bb);
+    if _aos_struct is None
+        and p._elem_kind(helpers["elem_type"]) != "raw"
+        and not p._nogc_headerless() {
+        _clr_data = b.load(
+            b.gep(
+                target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="clr.data.pp"
+            ),
+            name="clr.data"
+        );
+        _clr_loop_bb = func.append_basic_block(name="clr.loop");
+        _clr_body_bb = func.append_basic_block(name="clr.body");
+        _clr_end_bb = func.append_basic_block(name="clr.end");
+        _clr_i_a = p._entry_alloca(i64, "clr_i");
+        b.store(ir.Constant(i64, 0), _clr_i_a);
+        b.branch(_clr_loop_bb);
+
+        p.builder.position_at_end(_clr_loop_bb);
+        b = p.builder;
+        _clr_i = b.load(_clr_i_a, name="clr.i");
+        _clr_done = b.icmp_unsigned(">=", _clr_i, orig_len, name="clr.done");
+        b.cbranch(_clr_done, _clr_end_bb, _clr_body_bb);
+
+        p.builder.position_at_end(_clr_body_bb);
+        b = p.builder;
+        _clr_ev = b.load(b.gep(_clr_data, [_clr_i], name="clr.ep"), name="clr.ev");
+        p._emit_elem_release(b, helpers["elem_type"], _clr_ev);
+        _clr_next = b.add(_clr_i, ir.Constant(i64, 1), name="clr.next");
+        b.store(_clr_next, _clr_i_a);
+        b.branch(_clr_loop_bb);
+
+        p.builder.position_at_end(_clr_end_bb);
+        b = p.builder;
+    }
+    if _aos_struct is not None {
+        _clr_fields_fn = helpers.get("drop_fields");
+        if _clr_fields_fn is not None {
+            i8p = ir.IntType(8).as_pointer();
+            _clr_data = b.load(
+                b.gep(
+                    target,
+                    [ir.Constant(i32, 0), ir.Constant(i32, 2)],
+                    name="clr.data.pp"
+                ),
+                name="clr.data"
+            );
+            _clr_loop_bb = func.append_basic_block(name="clr.loop");
+            _clr_body_bb = func.append_basic_block(name="clr.body");
+            _clr_end_bb = func.append_basic_block(name="clr.end");
+            _clr_i_a = p._entry_alloca(i64, "clr_i");
+            b.store(ir.Constant(i64, 0), _clr_i_a);
+            b.branch(_clr_loop_bb);
+
+            p.builder.position_at_end(_clr_loop_bb);
+            b = p.builder;
+            _clr_i = b.load(_clr_i_a, name="clr.i");
+            _clr_done = b.icmp_unsigned(">=", _clr_i, orig_len, name="clr.done");
+            b.cbranch(_clr_done, _clr_end_bb, _clr_body_bb);
+
+            p.builder.position_at_end(_clr_body_bb);
+            b = p.builder;
+            _clr_ep = b.gep(_clr_data, [_clr_i], name="clr.ep");
+            b.call(_clr_fields_fn, [b.bitcast(_clr_ep, i8p, name="clr.elem8")]);
+            _clr_next = b.add(_clr_i, ir.Constant(i64, 1), name="clr.next");
+            b.store(_clr_next, _clr_i_a);
+            b.branch(_clr_loop_bb);
+
+            p.builder.position_at_end(_clr_end_bb);
+            b = p.builder;
+        }
+    }
     b.store(ir.Constant(i64, 0), len_ptr);
     b.branch(done_bb);
 
-    # for pass in 1..cnt-1: for j in 0..orig_len-1: append(get(j))
+    b.position_at_start(empty_bb);
+    is_empty = b.icmp_unsigned("==", orig_len, ir.Constant(i64, 0), name="rep.empty");
+    b.cbranch(is_empty, done_bb, pre_bb);
+
+    b.position_at_start(pre_bb);
+    if _aos_struct is not None {
+        i8p = ir.IntType(8).as_pointer();
+        _sz = _aos_size_of(b, _aos_struct, "rep");
+        _total = b.mul(orig_len, cnt, name="rep.total");
+        _cap_ptr = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="rep.cap.ptr"
+        );
+        _data_pp = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="rep.data.pp"
+        );
+        _cur_cap = b.load(_cap_ptr, name="rep.cap");
+        _need = b.icmp_unsigned(">", _total, _cur_cap, name="rep.need");
+        b.cbranch(_need, reserve_bb, pass_bb);
+
+        b.position_at_start(reserve_bb);
+        _malloc = p._get_or_declare_extern("malloc", i8p, [i64]);
+        _free = p._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+        _memcpy = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+        _new_raw = b.call(
+            _malloc, [b.mul(_total, _sz, name="rep.newbytes")], name="rep.newbuf"
+        );
+        _old = b.load(_data_pp, name="rep.oldbuf");
+        b.call(
+            _memcpy,
+            [
+                _new_raw,
+                b.bitcast(_old, i8p, name="rep.old8"),
+                b.mul(orig_len, _sz, name="rep.oldbytes")
+            ]
+        );
+        b.call(_free, [b.bitcast(_old, i8p, name="rep.old8f")]);
+        b.store(
+            b.bitcast(_new_raw, _aos_struct.as_pointer(), name="rep.newbuf.t"), _data_pp
+        );
+        b.store(_total, _cap_ptr);
+        b.branch(pass_bb);
+    } else {
+        b.branch(pass_bb);
+        b.position_at_start(reserve_bb);
+        b.branch(pass_bb);
+    }
+
     b.position_at_start(pass_bb);
     pass_idx = b.phi(i64, name="rep.passidx");
-    pass_idx.add_incoming(ir.Constant(i64, 1), entry_bb);
+    for _pred in [pre_bb, reserve_bb] {
+        pass_idx.add_incoming(ir.Constant(i64, 1), _pred);
+    }
     more_passes = b.icmp_signed("<", pass_idx, cnt, name="rep.more");
     inner_bb = func.append_basic_block(name="rep.inner");
     next_pass_bb = func.append_basic_block(name="rep.nextpass");
@@ -2792,7 +2914,6 @@ impl NativeListEmitter.emit_repeat_inplace(
 
     b.position_at_start(copy_bb);
     elem = b.call(helpers["get"], [target, j_idx], name="rep.elem");
-    _aos_struct = p._aos_elem_struct(ctx.type_key);
     b.call(
         helpers["push"] if _aos_struct is not None else helpers["append"],
         [target, elem]

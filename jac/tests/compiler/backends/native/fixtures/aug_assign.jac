@@ -159,3 +159,30 @@ def test_list_imul_alias() -> int {
     xs *= 2;
     return len(xs) * 100 + len(alias);
 }
+
+
+def test_list_imul_zero_reuse() -> int {
+    ys: list[str] = ["aa", "bb", "cc"];
+    ys *= 0;
+    if len(ys) != 0 {
+        return -1;
+    }
+    ys.append("dd");
+    return len(ys) * 100 + len(ys[0]);
+}
+
+def test_list_imul_empty_huge() -> int {
+    zs: list[int] = [];
+    zs *= 1000000000;
+    return len(zs);
+}
+
+def test_list_imul_str_nine() -> int {
+    ws: list[str] = ["xy"];
+    ws *= 9;
+    total: int = 0;
+    for w in ws {
+        total += len(w);
+    }
+    return total * 100 + len(ws);
+}
