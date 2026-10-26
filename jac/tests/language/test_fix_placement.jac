@@ -314,6 +314,73 @@ test "a server-placed sv import is not hidden by a later client import of the sa
 }
 
 
+test "an sv import used only by an element the run pins to client declares no service app" {
+    import io;
+    import from contextlib { redirect_stderr, redirect_stdout }
+    import from pathlib { Path }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        root_path = Path(tmpdir).resolve();
+        (root_path / "jac.toml").write_text(
+            '[project]\nname = "notes"\nkind = "web-app"\nentry-point = "main"\n'
+        );
+        (root_path / "main.jac").write_text(
+            "def:pub app -> JsxElement {\n    return <div>notes</div>;\n}\n"
+        );
+        (root_path / "notes").mkdir();
+        (root_path / "notes" / "store.jac").write_text(NOTES_STORE);
+        (root_path / "notes" / "helper.jac").write_text(
+            "sv import from .store { list_notes }\n\n"
+            "cl def count_notes -> int {\n    return len(list_notes());\n}\n"
+        );
+        out = io.StringIO();
+        with redirect_stdout(out) {
+            with redirect_stderr(out) {
+                assert fix("placement", [str(root_path)], dry_run=True) == 0;
+            }
+        }
+        assert "unverified" in out.getvalue()
+            and "notes/helper.jac:1" in out.getvalue() , (
+            "the preview cannot apply the pin, so it must not present the service "
+            "app as settled: "
+            + out.getvalue()
+        );
+        assert fix("placement", [str(root_path)]) == 0;
+        toml = (root_path / "jac.toml").read_text();
+        assert '"notes.helper.count_notes" = "client"' in toml , toml;
+        assert "[apps.store]" not in toml , (
+            "the import's only user is pinned to client, so it needs no service: "
+            + toml
+        );
+    }
+}
+
+
+test "an sv import that server code also reads still declares a service app" {
+    import from pathlib { Path }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        root_path = Path(tmpdir).resolve();
+        (root_path / "jac.toml").write_text(
+            '[project]\nname = "notes"\nkind = "web-app"\nentry-point = "main"\n'
+        );
+        (root_path / "main.jac").write_text(
+            "def:pub app -> JsxElement {\n    return <div>notes</div>;\n}\n"
+        );
+        (root_path / "notes").mkdir();
+        (root_path / "notes" / "store.jac").write_text(NOTES_STORE);
+        (root_path / "notes" / "helper.jac").write_text(
+            "sv import from .store { list_notes }\n\n"
+            "cl def count_notes -> int {\n    return len(list_notes());\n}\n\n"
+            "def:pub note_total -> int {\n    return len(list_notes());\n}\n"
+        );
+        assert fix("placement", [str(root_path)]) == 0;
+        toml = (root_path / "jac.toml").read_text();
+        assert "[apps.store]" in toml , (
+            "server code reads the import too, so the service is still needed: " + toml
+        );
+    }
+}
+
+
 test "--dry-run classifies an sv import as the run does while its target still has markers" {
     import io;
     import from contextlib { redirect_stderr, redirect_stdout }

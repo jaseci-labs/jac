@@ -285,6 +285,15 @@ impl fix(
             _verify_claims(path, claims, pins, unverified);
         }
     }
+    pins_added: list[str] = [];
+    for (pin_root, pins) in sorted(pins_by_root.items()) {
+        if pins {
+            added = _append_toml_entries(
+                os.path.join(pin_root, 'jac.toml'), '[placement.pins]', pins, dry_run
+            );
+            pins_added.extend([f"{pin_root}: {a}" for a in added]);
+        }
+    }
     apps_by_root: dict[str, dict[str, dict[str, str]]] = {};
     causes_by_root: dict[str, dict[str, str]] = {};
     orphaned: list[str] = [];
@@ -309,6 +318,12 @@ impl fix(
                 unverified.append(
                     f"{cause} 'sv import from {tgt}' (placement not inferred; "
                     "treated as a server-to-server import)"
+                );
+            } elif dry_run and path in claims_by_file {
+                unverified.append(
+                    f"{cause} 'sv import from {tgt}' (the preview does not apply the "
+                    "[placement.pins] this file's markers may add, which can make "
+                    "the import client-side)"
                 );
             }
             stem = tgt.strip('.').rsplit('.', 1)[-1];
@@ -339,16 +354,7 @@ impl fix(
         }
     }
 
-    pins_added: list[str] = [];
     apps_added: list[str] = [];
-    for (pin_root, pins) in sorted(pins_by_root.items()) {
-        if pins {
-            added = _append_toml_entries(
-                os.path.join(pin_root, 'jac.toml'), '[placement.pins]', pins, dry_run
-            );
-            pins_added.extend([f"{pin_root}: {a}" for a in added]);
-        }
-    }
     for (app_root, tables) in sorted(apps_by_root.items()) {
         if not tables {
             continue;
@@ -877,13 +883,38 @@ impl _client_imports(file_path: str, src: str) -> dict[tuple[int, str], bool] {
     if prog.count_module_errors(os.path.normpath(mod.loc.mod_path)) {
         return {};
     }
+    users: dict[str, set[str]] = {};
+    for stmt in mod.body {
+        if isinstance(stmt, uni.Import) {
+            continue;
+        }
+        spaces = {getattr(stmt?.code_context, 'value', '')};
+        if getattr(stmt, 'codespace_dual', False) {
+            spaces.add('server');
+        }
+        for nm in stmt.get_all_sub_nodes(uni.Name) {
+            users.setdefault(nm.value, set()).update(spaces);
+        }
+    }
     client: dict[tuple[int, str], bool] = {};
     for stmt in mod.body {
         if isinstance(stmt, uni.Import) and stmt.from_loc is not None {
             key = (stmt.loc.first_line, stmt.from_loc.dot_path_str);
+            read_by: set[str] = set();
+            for item in (stmt.items or []) {
+                if isinstance(item, uni.ModuleItem) {
+                    bound = item.alias or item.name;
+                    read_by.update(users.get(getattr(bound, 'value', ''), set()));
+                }
+            }
             client[key] = client.get(key, True)
-                and getattr(stmt?.code_context, 'value', '') == 'client'
-                and not getattr(stmt, 'codespace_dual', False);
+                and (
+                    (
+                        getattr(stmt?.code_context, 'value', '') == 'client'
+                        and not getattr(stmt, 'codespace_dual', False)
+                    )
+                    or read_by == {'client'}
+                );
         }
     }
     return client;
