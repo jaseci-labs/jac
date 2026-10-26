@@ -1300,23 +1300,11 @@ impl NaIRGenPass._anchor_plain(e: object) -> bool {
         "tuple",
         "range",
         "complex",
-        "LiteralString",
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-        "u8",
-        "u16",
-        "u32",
-        "u64",
-        "f32",
-        "f64",
-        "isize",
-        "usize",
-        "byte"
+        "LiteralString"
     );
     words = "".join(c if c.isalnum() or c == "_" else " " for c in mangled).split();
-    return bool(words) and all(w in plain for w in words);
+    return bool(words)
+        and all(w in plain or JAC_TYPE_REGISTRY.is_sized(w) for w in words);
 }
 
 impl NaIRGenPass._anchor_immutable(e: object) -> bool {
@@ -1341,23 +1329,11 @@ impl NaIRGenPass._anchor_immutable(e: object) -> bool {
         "None",
         "NoneType",
         "complex",
-        "LiteralString",
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-        "u8",
-        "u16",
-        "u32",
-        "u64",
-        "f32",
-        "f64",
-        "isize",
-        "usize",
-        "byte"
+        "LiteralString"
     );
     words = "".join(c if c.isalnum() or c == "_" else " " for c in mangled).split();
-    return bool(words) and all(w in immutable for w in words);
+    return bool(words)
+        and all(w in immutable or JAC_TYPE_REGISTRY.is_sized(w) for w in words);
 }
 
 impl NaIRGenPass._anchor_container(e: object) -> bool {

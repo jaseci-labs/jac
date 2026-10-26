@@ -10296,7 +10296,7 @@ graph import compiler {
             | types.type_utils.primitive_type_name_of { JAC_TYPE_REGISTRY },
         backends.es.esast_gen_pass.EsastGenPass._ensure_emitters
             | backends.es.jac_runtime_js._build_types_runtime_js
-            | backends.native.na_ir_gen_pass.NaIRGenPass._c_scalar_llvm
+            | backends.native.na_ir_gen_pass.NaIRGenPass._anchor_immutable
             | c_interop.c_bytes_elem_shape
             | passes.type_checker_pass.TypeCheckPass._c_plain_data
             | passes.wasm_contract.value_contract
@@ -10304,28 +10304,34 @@ graph import compiler {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass.EsastGenPass._primitive_type_ref
-            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
+            | backends.native.na_ir_gen_pass.NaIRGenPass._anchor_plain
             | c_interop.c_scalar_constant
             | passes.type_checker_pass.TypeCheckPass._stamp_fixed_width
             | types.type_evaluator.TypeEvaluator._extern_scalar_type {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass.EsastGenPass.exit_archetype
-            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_sized_builtin_call
+            | backends.native.na_ir_gen_pass.NaIRGenPass._c_scalar_llvm
             | passes.type_checker_pass.TypeCheckPass.exit_archetype
             | types.type_evaluator.TypeEvaluator._is_typed_c_declaration {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass.EsastGenPass.exit_raise_stmt
-            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_emitters
+            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
             | passes.type_checker_pass.TypeCheckPass.exit_type_alias {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass._raised_exc_identity
-            | backends.native.na_ir_gen_pass.NaIRGenPass._get_exc_descendants {
+            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_sized_builtin_call {
             JAC_TYPE_REGISTRY
         },
         backends.native.na_ir_gen_pass { JacTypeEntry },
+        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_emitters {
+            JAC_TYPE_REGISTRY
+        },
+        backends.native.na_ir_gen_pass.NaIRGenPass._get_exc_descendants {
+            JAC_TYPE_REGISTRY
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._get_or_register_exc_type {
             JAC_TYPE_REGISTRY
         },
