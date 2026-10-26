@@ -883,7 +883,26 @@ impl _client_imports(file_path: str, src: str) -> dict[tuple[int, str], bool] {
     if prog.count_module_errors(os.path.normpath(mod.loc.mod_path)) {
         return {};
     }
-    users: dict[str, set[str]] = {};
+    client: dict[tuple[int, str], bool] = {};
+    read_by: dict[tuple[int, str], set[str]] = {};
+    import_of: dict[int, tuple[int, str]] = {};
+    for stmt in mod.body {
+        if isinstance(stmt, uni.Import) and stmt.from_loc is not None {
+            key = (stmt.loc.first_line, stmt.from_loc.dot_path_str);
+            client[key] = client.get(key, True)
+                and getattr(stmt?.code_context, 'value', '') == 'client'
+                and not getattr(stmt, 'codespace_dual', False);
+            read_by.setdefault(key, set());
+            for item in (stmt.items or []) {
+                if isinstance(item, uni.ModuleItem) {
+                    bound: any = item.alias or item.name;
+                    if bound.sym is not None {
+                        import_of[id(bound.sym)] = key;
+                    }
+                }
+            }
+        }
+    }
     for stmt in mod.body {
         if isinstance(stmt, uni.Import) {
             continue;
@@ -893,28 +912,15 @@ impl _client_imports(file_path: str, src: str) -> dict[tuple[int, str], bool] {
             spaces.add('server');
         }
         for nm in stmt.get_all_sub_nodes(uni.Name) {
-            users.setdefault(nm.value, set()).update(spaces);
+            owner = import_of.get(id(nm.sym)) if nm.sym is not None else None;
+            if owner is not None {
+                read_by[owner].update(spaces);
+            }
         }
     }
-    client: dict[tuple[int, str], bool] = {};
-    for stmt in mod.body {
-        if isinstance(stmt, uni.Import) and stmt.from_loc is not None {
-            key = (stmt.loc.first_line, stmt.from_loc.dot_path_str);
-            read_by: set[str] = set();
-            for item in (stmt.items or []) {
-                if isinstance(item, uni.ModuleItem) {
-                    bound = item.alias or item.name;
-                    read_by.update(users.get(getattr(bound, 'value', ''), set()));
-                }
-            }
-            client[key] = client.get(key, True)
-                and (
-                    (
-                        getattr(stmt?.code_context, 'value', '') == 'client'
-                        and not getattr(stmt, 'codespace_dual', False)
-                    )
-                    or read_by == {'client'}
-                );
+    for (key, spaces) in read_by.items() {
+        if spaces == {'client'} {
+            client[key] = True;
         }
     }
     return client;

@@ -381,6 +381,31 @@ test "an sv import that server code also reads still declares a service app" {
 }
 
 
+test "a client local that shares an sv import's name does not hide its service app" {
+    import from pathlib { Path }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        root_path = Path(tmpdir).resolve();
+        (root_path / "jac.toml").write_text(
+            '[project]\nname = "notes"\nkind = "web-app"\nentry-point = "main"\n'
+        );
+        (root_path / "main.jac").write_text(
+            "sv import from analytics { Track }\n\n"
+            "def:pub home -> str {\n    return \"hi\";\n}\n\n"
+            "def:pub Panel -> JsxElement {\n"
+            "    Track = 3;\n    return <div>{Track}</div>;\n}\n"
+        );
+        (root_path / "analytics.jac").write_text("walker:pub Track {}\n");
+        assert fix("placement", [str(root_path)]) == 0;
+        toml = (root_path / "jac.toml").read_text();
+        assert "[apps.analytics]" in toml , (
+            "Panel's local Track is not the import, so the import has no client "
+            "reader and keeps its service: "
+            + toml
+        );
+    }
+}
+
+
 test "--dry-run classifies an sv import as the run does while its target still has markers" {
     import io;
     import from contextlib { redirect_stderr, redirect_stdout }
