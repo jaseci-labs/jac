@@ -1,4 +1,5 @@
 import os;
+import time;
 import socket;
 import threading;
 import from uuid { uuid4 }
@@ -58,6 +59,8 @@ obj Runner {
 
 glob MIN_CONFIDENCE: float = 0.6,
      MAX_REPAIRS: int = 2,
+     JOB_LEASE_S: float = 7200.0,
+     LEASE_MARGIN_S: float = 1200.0,
      CANDIDATES: int = 12,
      REPLY_LIMIT: int = 280,
      RUNNER: Runner = Runner(),
@@ -79,8 +82,14 @@ def gap_reply(links: list[LinkView], job_id: str) -> str;
 
 def generated_reply(job_id: str) -> str;
 
+def step_fits(deadline: float, step_s: float) -> bool;
+
 def write_verified(
-    spec: JobSpec, note: Callable
+    spec: JobSpec, note: Callable, deadline: float
+) -> tuple[TutorialDraft | None, list[BlockView], str];
+
+def _write_verified(
+    spec: JobSpec, note: Callable, deadline: float
 ) -> tuple[TutorialDraft | None, list[BlockView], str];
 
 def run_pipeline(spec: JobSpec, catalog: list[IndexDoc], note: Callable) -> Outcome;

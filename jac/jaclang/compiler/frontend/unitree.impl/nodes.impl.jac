@@ -1839,6 +1839,14 @@ impl ModulePath.postinit -> None {
 }
 
 
+impl ModulePath.importer_path.getter -> str {
+    owner = self.find_parent_of_type(Module);
+    if owner is not None and owner.loc.mod_path {
+        return owner.loc.mod_path;
+    }
+    return self.loc.mod_path if self.loc else "";
+}
+
 impl ModulePath.is_import_from.getter -> bool {
     if (self.parent and isinstance(self.parent, Import)) {
         return (self.parent.from_loc == self);
@@ -1890,7 +1898,8 @@ impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
         ];
     }
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
-    return active_host().resolve_module(target, self.loc.mod_path)[0];
+    importer = self.importer_path if self.level > 0 else self.loc.mod_path;
+    return active_host().resolve_module(target, importer)[0];
 }
 
 impl ModulePath.native_bundled_path -> (str | None) {
@@ -1913,7 +1922,7 @@ impl ModulePath.native_bundled_path -> (str | None) {
 
 impl ModulePath.native_variant_path -> (str | None) {
     import os;
-    mod_path = self.loc.mod_path if self.loc else None;
+    mod_path = self.importer_path or None;
     if not mod_path
         or self.level == 0
         or self.string_path_value is not None
@@ -2119,13 +2128,6 @@ impl Archetype.postinit -> None {
 
 
 impl Archetype._get_impl_resolved_body -> list[UniNode] {
-    """The nested ternary this replaced lowers natively now, but not here:
-    `Archetype.body` is the `T` of the generic `AstImplNeedingNode[T]`, whose
-    layout is type-erased, so the narrow can say "a list" and not what of.
-    Both copies then unify at `list[jacval]` and the coercion to the declared
-    `list[UniNode]` is refused. The typed local below is what pins the element
-    type, so the flat form stays until a generic archetype's layout carries
-    its argument.""";
     src = self.body.body if isinstance(self.body, ImplDef) else self.body;
     out: list[UniNode] = [];
     if isinstance(src, list) {
@@ -2877,9 +2879,6 @@ impl LambdaExpr.captures.getter -> list[Symbol] {
 }
 
 impl LambdaExpr.tail_return_expr -> Expr | None {
-    """Implicit return: a braced body consisting of a single expression
-    statement returns that expression's value. Any other body (multiple
-    statements, or a non-expression statement) uses an explicit `return`.""";
     if isinstance(self.body, Expr) or not isinstance(self.body, list) {
         return None;
     }
@@ -3516,6 +3515,7 @@ impl EmptyToken.init(orig_src: (Source | None) = None) -> None {
         pos_start=0,
         pos_end=0
     );
+    self._is_synthetic = True;
 }
 
 impl Semi.init(
@@ -4171,4 +4171,57 @@ impl Ability.event_triggers.setter(event_triggers: (list[TypeBase] | None)) -> N
     for t in (event_triggers or []) {
         self +>:EventTriggerOf:+> t;
     }
+}
+
+impl UniNode.get_all_sub_nodes[T](typ: type[T]) -> list[T] {
+    result: list[T] = [];
+    if typ in self._sub_node_tab {
+        for i in self._sub_node_tab[typ] {
+            if isinstance(i, typ) {
+                result.append(i);
+            }
+        }
+    }
+    return result;
+}
+
+impl UniNode.find_parent_of_type[T](typ: type[T]) -> (T | None) {
+    nd: (UniNode | None) = self.parent;
+    while nd is not None {
+        if isinstance(nd, typ) {
+            return nd;
+        }
+        nd = nd.parent;
+    }
+    return None;
+}
+
+impl UniNode.parent_of_type[T](typ: type[T]) -> T {
+    ret = self.find_parent_of_type(typ);
+    if isinstance(ret, typ) {
+        return ret;
+    }
+    raise ValueError(f"Parent of type {typ} not found from{type(self)}.");
+}
+
+impl UniNode.enclosing_decl[T](typ: type[T]) -> (T | None) {
+    nd: (UniNode | None) = self.decl_parent;
+    while nd is not None {
+        if isinstance(nd, typ) {
+            return nd;
+        }
+        nd = nd.decl_parent;
+    }
+    return None;
+}
+
+impl UniNode.element_sub_nodes[T](typ: type[T]) -> list[T] {
+    found: list[T] = self.get_all_sub_nodes(typ);
+    pending: list[ImplDef] = list(reversed(self.linked_impls()));
+    while pending {
+        impl_def = pending.pop();
+        found.extend(impl_def.get_all_sub_nodes(typ));
+        pending.extend(reversed(impl_def.linked_impls()));
+    }
+    return found;
 }

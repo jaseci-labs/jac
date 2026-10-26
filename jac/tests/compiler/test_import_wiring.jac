@@ -179,6 +179,19 @@ test "a wire-bound name resolves to the provider's declaration" {
         );
         assert sym.decl is not None
             and sym.decl.find_parent_of_type(Archetype) is not None , sym.decl;
+
+        import from jaclang.compiler.types.stubcat.writer { build_module_iface }
+        def svc_iface -> bytes {
+            prog = JacProgram();
+            mod = prog.compile(
+                os.path.join(base, "core/svc.jac"),
+                options=CompileOptions(no_cgen=True, need_full_ast=True)
+            );
+            return build_module_iface(mod, prog.get_type_evaluator(), base);
+        }
+        before = svc_iface();
+        _write(base, "archwire.jac", "\n\n\n" + _read(base, "archwire.jac"));
+        assert svc_iface() == before;
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }

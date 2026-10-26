@@ -26,7 +26,7 @@ obj Chore {
 glob CHORE: Chore = Chore();
 
 def sweep_items(
-    tutorials: list[tuple[str, str, str, str]], version: str
+    tutorials: list[tuple[str, str, str, str, str]], version: str
 ) -> list[SweepItem];
 
 def sweep(items: list[SweepItem], note: Callable) -> dict[str, list[BlockView]];

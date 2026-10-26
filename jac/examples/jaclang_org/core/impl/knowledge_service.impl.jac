@@ -216,14 +216,21 @@ impl finish_chore {
 impl start_sweep(version: str) -> bool {
     items = sweep_items(sweep_inputs(), version);
     if not items {
-        apply_sweep({}, version, "");
+        apply_sweep({}, version, "", True);
         return False;
     }
+    left = len(items);
+    items = items[:SWEEP_BATCH];
     if not claim_chore() {
         return True;
     }
     log.info(
-        "ninjaclaw: re-verifying " + str(len(items)) + " tutorial(s) on jac " + version
+        "ninjaclaw: re-verifying "
+            + str(len(items))
+            + " of "
+            + str(left)
+            + " tutorial(s) on jac "
+            + version
     );
 
     def work(note: Callable) -> tuple[str, dict[str, list[BlockView]]] {

@@ -1290,7 +1290,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
             if name not in registry {
                 return {'error': f"'{name}' is no longer registered"};
             }
-            with _self.request_scope() {
+            async with _self.request_scope() {
                 if is_walker {
                     return await _self.execution_manager.spawn_walker(
                         registry[name], {}, SYSTEM_USER
@@ -1607,11 +1607,11 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     functions = server.introspector.get_functions();
     walkers = server.introspector.get_walkers();
     client_exports = server.introspector._client_manifest.get('exports', []);
-    """Print section header.""";
+
     def section(title: str, auth: str = '') {
         console.print(f"{title}{f' ({auth})' if auth else ''}{('-' * 80)}");
     }
-    """Print endpoint with description.""";
+
     def endpoint(method: str, path: str, desc: str, details: str = '') {
         console.print(f"{method:6} {path}");
         console.print(f"       {desc}");
@@ -1619,7 +1619,7 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
             console.print(f"       {details}");
         }
     }
-    """Format parameter info.""";
+
     def format_param(name: str, info: dict[(str, any)]) -> str {
         req = 'required' if info['required'] else 'optional';
         `default = f", default: {info['default']}" if info.get('default') else '';

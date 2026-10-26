@@ -19,6 +19,7 @@ obj ReleaseLines {
 glob REPO_TICK_S: float = 60.0,
      WORK_TICK_S: float = 5.0,
      UPKEEP_TICK_S: float = 60.0,
+     SWEEP_BATCH: int = 5,
      QUEUE_LIMIT: int = 20,
      _BUNDLES: dict[str, DocBundle] = {},
      _CATALOG: dict[str, list[IndexDoc]] = {},

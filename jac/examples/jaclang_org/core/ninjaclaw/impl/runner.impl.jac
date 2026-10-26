@@ -34,8 +34,26 @@ impl generated_reply(job_id: str) -> str {
         + job_path(job_id);
 }
 
+impl step_fits(deadline: float, step_s: float) -> bool {
+    return deadline - time.monotonic() >= step_s;
+}
+
 impl write_verified(
-    spec: JobSpec, note: Callable
+    spec: JobSpec, note: Callable, deadline: float
+) -> tuple[TutorialDraft | None, list[BlockView], str] {
+    if not step_fits(deadline, 4 * CALL_MAX_S) {
+        return (None, [], "not enough time left in this job to write a tutorial");
+    }
+    DEADLINE["at"] = deadline;
+    try {
+        return _write_verified(spec, note, deadline);
+    } finally {
+        DEADLINE.pop("at", None);
+    }
+}
+
+impl _write_verified(
+    spec: JobSpec, note: Callable, deadline: float
 ) -> tuple[TutorialDraft | None, list[BlockView], str] {
     repo_root = Path(spec.repo_root);
     open_toolbox(repo_root, agent_catalog(repo_root), note);
@@ -44,7 +62,7 @@ impl write_verified(
     blocks: list[BlockView] = [];
     for attempt in range(MAX_REPAIRS + 1) {
         note("write", "draft: " + draft.title);
-        blocks = verify_markdown(draft.body, note);
+        blocks = verify_markdown(draft.body, note, deadline);
         failures: list[str] = [];
         if not blocks {
             failures = [
@@ -70,6 +88,10 @@ impl write_verified(
             );
         }
         if attempt == MAX_REPAIRS {
+            break;
+        }
+        if not step_fits(deadline, 3 * CALL_MAX_S) {
+            note("repair", "out of time for this question; logging it as a docs gap");
             break;
         }
         note("repair", str(len(failures)) + " problem(s); fixing the draft");
@@ -152,6 +174,7 @@ impl Runner.ack(run_ids: list[str]) -> None {
 }
 
 impl run_pipeline(spec: JobSpec, catalog: list[IndexDoc], note: Callable) -> Outcome {
+    deadline = time.monotonic() + JOB_LEASE_S - LEASE_MARGIN_S;
     out = Outcome();
     note("classify", "reading the post");
     if classify_ask(spec.question) == AskKind.OFF_TOPIC {
@@ -193,7 +216,7 @@ impl run_pipeline(spec: JobSpec, catalog: list[IndexDoc], note: Callable) -> Out
         note("retrieve", "nothing in the tutorials or docs matches");
     }
     if spec.repo_root {
-        (tutorial, blocks, why) = write_verified(spec, note);
+        (tutorial, blocks, why) = write_verified(spec, note, deadline);
         out.blocks = blocks;
         if tutorial is not None {
             note("publish", "every example passed: publishing " + tutorial.title);

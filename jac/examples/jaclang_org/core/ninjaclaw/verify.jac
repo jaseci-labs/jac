@@ -4,6 +4,7 @@ import shutil;
 import subprocess;
 import sys;
 import tempfile;
+import time;
 import from pathlib { Path }
 import from jaclang.jac0core.handoff { handoff }
 
@@ -53,4 +54,6 @@ def run_jac(args: list[str], cwd: Path, timeout: int) -> tuple[bool, str];
 
 def verify_block(index: int, code: str) -> BlockView;
 
-def verify_markdown(markdown: str, note: Callable) -> list[BlockView];
+def verify_markdown(
+    markdown: str, note: Callable, deadline: float = 0.0
+) -> list[BlockView];

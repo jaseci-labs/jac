@@ -18,8 +18,16 @@ obj RequestScope {
     def abort;
     def _discard;
     def close;
+    async def aclose;
     def __enter__ -> ExecutionContext;
     def __exit__(
+        exc_type: (type[BaseException] | None),
+        exc: (BaseException | None),
+        tb: (TracebackType | None)
+    ) -> bool;
+
+    async def __aenter__ -> ExecutionContext;
+    async def __aexit__(
         exc_type: (type[BaseException] | None),
         exc: (BaseException | None),
         tb: (TracebackType | None)

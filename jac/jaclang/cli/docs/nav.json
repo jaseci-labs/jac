@@ -169,6 +169,7 @@
             {"title": "CLI Commands", "page": "reference/cli/index.md"},
             {"title": "MCP Server", "page": "reference/mcp.md"},
             {"title": "Agent Skills & MCP", "page": "reference/agent-skills-and-mcp.md"},
+            {"title": "Hack mode", "page": "reference/hack.md"},
             {"title": "Configuration", "page": "reference/config/index.md"},
             {"title": "Workspaces & Apps", "page": "reference/apps.md"},
             {"title": "Packages", "page": "reference/packages.md"},

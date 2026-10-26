@@ -121,3 +121,22 @@ test "a chore claim excludes other workers until it expires or is released" {
     release_chore();
     assert hub.chore_owner == "";
 }
+
+test "a partial sweep marks what it checked and completes only after the last batch" {
+    hub = claw_hub();
+    hub +>:HasTutorial():+> ClawTutorial(
+        slug="sweep-a", status="published", verified_version="0.1.0"
+    );
+    hub +>:HasTutorial():+> ClawTutorial(
+        slug="sweep-b", status="published", verified_version="0.1.0"
+    );
+    apply_sweep({"sweep-a": [BlockView(index=0, ok=True)]}, "0.2.0", "");
+    assert hub.swept_version != "0.2.0" , "a batch is not the whole sweep";
+    a = tutorial_by_slug("sweep-a");
+    b = tutorial_by_slug("sweep-b");
+    assert a is not None and b is not None;
+    assert a.checked_version == "0.2.0";
+    assert b.checked_version == "";
+    apply_sweep({}, "0.2.0", "", True);
+    assert hub.swept_version == "0.2.0";
+}

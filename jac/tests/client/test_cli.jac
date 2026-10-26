@@ -7,7 +7,7 @@ import tomllib;
 import time;
 import json;
 import from pathlib { Path }
-import from subprocess { PIPE, Popen, run }
+import from subprocess { PIPE, Popen, TimeoutExpired, run }
 import unittest.mock;
 
 """Test jac create --kind mobile command."""
@@ -1060,16 +1060,23 @@ test "create cl and run no root files" {
 
             files_before_run = get_root_files(project_path);
 
-            # Run jac run main.jac
+            # Execute the entry. A mobile app serves the Expo dev server by
+            # default, which never exits; --no-serve runs the program itself.
             process = Popen(
-                ["jac", "run", "main.jac"],
+                ["jac", "run", "--no-serve", "main.jac"],
                 cwd=project_path,
                 stdin=PIPE,
                 stdout=PIPE,
                 stderr=PIPE,
                 text=True,
             );
-            (stdout, stderr) = process.communicate();
+            try {
+                (stdout, stderr) = process.communicate(timeout=600);
+            } except TimeoutExpired {
+                process.kill();
+                (stdout, stderr) = process.communicate();
+                assert False , f"jac run --no-serve did not exit: {stderr}";
+            }
             assert process.returncode == 0 , f"jac run failed: {stderr}";
 
             # Record files after run

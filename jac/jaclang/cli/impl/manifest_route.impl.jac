@@ -55,7 +55,7 @@ impl handle_manifest_route(raw_argv: list[str]) -> None {
     first = _first_command_token(raw_argv);
     if first is None {
         if '-h' in raw_argv or '--help' in raw_argv {
-            _write_stdout(format_verbose_help());
+            _write_stdout(format_verbose_help(include_hidden='--all' in raw_argv));
             return;
         }
         if '-V' in raw_argv or '--version' in raw_argv {
