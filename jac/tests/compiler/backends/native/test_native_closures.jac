@@ -369,6 +369,20 @@ test "native getattr shadowed by a parameter is not specialized" {
     assert "compute" not in ir.gen.native_layout.functions;
 }
 
+test "native getattr alias read in call arguments stays outside native layout" {
+    (prog, ir) = compile_na_inline_ir(
+        "getattr_alias_argument_read",
+        "import math;\n"
+        "def compute -> int {\n"
+        "    f = getattr(math, \"sqrt\");\n"
+        "    return int(f(81.0 if f else 16.0));\n"
+        "}\n"
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert ir.gen.native_layout is not None;
+    assert "compute" not in ir.gen.native_layout.functions;
+}
+
 test "native getattr alias used as a value stays outside native layout" {
     (prog, ir) = compile_na_inline_ir(
         "getattr_alias_escape",

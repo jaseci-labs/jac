@@ -1307,6 +1307,7 @@ impl NaIRGenPass._native_getattr_alias_for_symbol(
     for use in sym.uses {
         call = use.find_parent_of_type(uni.FuncCall);
         if call is None
+            or use is not call.target
             or not isinstance(call.target, uni.Name)
             or call.target.sym is not sym
             or self._native_getattr_alias_scope(call) is not owner
