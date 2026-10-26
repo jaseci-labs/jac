@@ -3102,13 +3102,24 @@ impl TypeEvaluator._callable_mismatch(
 impl TypeEvaluator._numeric_args_invariant(
     src_arg: TypeBase, dest_arg: TypeBase, strict: bool = False
 ) -> bool {
-    # A union destination stores any of its members, so the invariant must
-    # hold for each member against the source element as a whole: list[int]
-    # into list[float | None] would otherwise let the callee append a float
-    # the caller reads as an int. The source side stays unexpanded:
-    # assign_type already applies union semantics to it, so identical
-    # union-element containers (list[int | float] into itself) keep
-    # passing and only a widening member (float against int) is refused.
+    # Union elements. A destination union stores any of its members, so the
+    # invariant must hold for each member against the source element as a
+    # whole: list[int] into list[float | None] would let the callee append
+    # a float the caller reads as an int. When both elements are unions the
+    # sound invariant is mutual assignability: neither side may store a
+    # value the other cannot read (list[int | None] into list[float | None]
+    # lets the callee append a float the caller reads as int | None), while
+    # identical unions stay assignable both ways (Box[int | float] into
+    # Box[int | float]). A union source against a single-class destination
+    # is safe unchecked: the callee can only store that class, which the
+    # wider source union reads back.
+    if isinstance(src_arg, UnionType) and src_arg.types
+        and isinstance(dest_arg, UnionType) and dest_arg.types {
+        if not self.assign_type(src_arg, dest_arg, strict) {
+            return False;
+        }
+        return self.assign_type(dest_arg, src_arg, strict);
+    }
     if isinstance(dest_arg, UnionType) and dest_arg.types {
         for member in dest_arg.types {
             if not self._numeric_args_invariant(src_arg, member, strict) {

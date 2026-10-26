@@ -10,8 +10,10 @@ must also hold in reverse: the same-class branch rejects list[int] into
 list[float] and dict[str, int] into dict[str, float], the derived-class
 branch rejects IntBox (a Box[int]) into Box[float]. A union destination
 stores any of its members, so list[int] into list[float | None] is
-rejected too. Every call below must be rejected; non-numeric elements
-keep covariant behavior (see the positive fixture).
+rejected too. Both element unions must be mutually assignable, so
+list[int | None] into list[float | None] is rejected as well. Every
+call below must be rejected; non-numeric elements keep covariant
+behavior (see the positive fixture).
 """
 
 def take_floats(xs: list[float]) -> float {
@@ -47,4 +49,6 @@ with entry {
     scores: dict[str, int] = {"x": 1};
     f3: float = take_scores(scores);
     f4: float | None = take_maybe_floats(ints);
+    opt_ints: list[int | None] = [1, None];
+    f5: float | None = take_maybe_floats(opt_ints);
 }
