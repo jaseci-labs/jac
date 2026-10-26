@@ -1,3 +1,30 @@
+impl native_callback_of(record: dict[str, any], product: str) -> NativeCallback {
+    if not record.get('symbol') {
+        raise RuntimeError(
+            f"The native product {product} was built by an older jac: its Python "
+            f"callback '{record.get('name', '?')}' records no interop symbol. "
+            "Rebuild this product with the current jac."
+        );
+    }
+    return NativeCallback(
+        name=record['name'],
+        symbol=record['symbol'],
+        ret_type=record['ret_type'],
+        param_types=list(record['param_types'])
+    );
+}
+
+impl callback_ctype(type_name: str) -> (type | None) {
+    if type_name == 'str' {
+        return ctypes.c_char_p;
+    }
+    shape = shape_of(type_name);
+    if shape is None {
+        return None;
+    }
+    return shape_ctype(shape);
+}
+
 impl NativeLibrary.handle -> ctypes.CDLL {
     if self.library is None {
         self.library = ctypes.CDLL(self.path);
@@ -146,35 +173,50 @@ impl register_py_callbacks(
     callbacks_list: list[object],
     register_symbol: Callable[[str, int], None]
 ) {
+    registered: set[str] = set();
     for binding in bindings {
-        ret_ct = JAC_TO_CTYPES.get(binding.ret_type, ctypes.c_int64);
-        arg_cts = [JAC_TO_CTYPES.get(pt, ctypes.c_int64) for pt in binding.param_types];
+        if binding.symbol in registered {
+            continue;
+        }
+        registered.add(binding.symbol);
+        ret_void = binding.ret_type in CALLBACK_VOID_RETURNS;
+        ret_ct = None if ret_void else callback_ctype(binding.ret_type);
+        arg_cts = [callback_ctype(pt) for pt in binding.param_types];
+        if (ret_ct is None and not ret_void) or None in arg_cts {
+            raise RuntimeError(
+                f"Native callback '{binding.name}' has a signature that cannot "
+                f"cross from native code into Python (returns {binding.ret_type}, "
+                f"takes {binding.param_types})."
+            );
+        }
         cb_type = ctypes.CFUNCTYPE(ret_ct, *arg_cts);
         def _make_callback(
-            func_name: str, table: dict[(str, Callable[(..., object)])]
+            symbol: str, func_name: str, table: dict[(str, Callable[(..., object)])]
         ) -> Callable[(..., object)] {
-            warned = [False];
             def callback(*args: object) -> object {
-                fn = table.get(func_name);
-                if (fn is not None) {
+                fn = table.get(symbol);
+                if fn is not None {
                     return fn(*args);
                 }
-                if not warned[0] {
-                    logger.warning(
-                        f"Native code called Python function '{func_name}' butit's not registered. Returning 0. Ensure Python code defining '{func_name}'executes before native code calls it."
-                    );
-                    warned[0] = True;
-                }
-                return 0;
+                import os;
+                import sys;
+                sys.stderr.write(
+                    f"Native code called the Python function '{func_name}' before "
+                        + "the module defining it ran. A native call into Python "
+                        + "cannot raise, so the process stops. Import the module "
+                        + f"that defines '{func_name}' before native code calls it.\n"
+                );
+                sys.stderr.flush();
+                os.abort();
             }
             return callback;
         }
-        cb = cb_type(_make_callback(binding.name, py_func_table));
+        cb = cb_type(_make_callback(binding.symbol, binding.name, py_func_table));
         callbacks_list.append(cb);
         cb_addr = ctypes.cast(cb, ctypes.c_void_p).value;
         if cb_addr is None {
             raise RuntimeError(f'Cannot allocate native callback {binding.name!r}');
         }
-        register_symbol(binding.name, cb_addr);
+        register_symbol(binding.symbol, cb_addr);
     }
 }

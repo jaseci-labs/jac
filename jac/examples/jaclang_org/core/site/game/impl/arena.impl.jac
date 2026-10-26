@@ -267,3 +267,19 @@ impl frame(w: &mut Game) -> bool {
     render(&view, w.input.acc / TICK_DT);
     return should_close();
 }
+
+impl shutdown(w: own Game) {
+    close_window();
+}
+
+impl get_score(w: &Game) -> int {
+    return w.stats.score;
+}
+
+impl get_hp(w: &Game) -> float {
+    return w.player.hp;
+}
+
+impl get_deaths(w: &Game) -> int {
+    return w.stats.deaths;
+}

@@ -28,10 +28,6 @@ glob _AXIS_MAX: int = 640000,
 
 def pct(v: int) -> str;
 
-impl pct(v: int) -> str {
-    return str(v * 100 / _AXIS_MAX) + "%";
-}
-
 def:pub ReductionBars -> JsxElement;
 
 def:pub InProduction -> JsxElement;
