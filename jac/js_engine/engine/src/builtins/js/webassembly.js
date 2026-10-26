@@ -199,7 +199,12 @@
                 continue;
             }
             try {
-                if (nb.detach(old) !== 1) detached = false;
+                // The hook is plain JS a script can replace to claim success.
+                // A detached buffer natively reports byteLength 0, so require
+                // the observable detach, not just the hook's word.
+                if (nb.detach(old) !== 1 || old.byteLength !== 0) {
+                    detached = false;
+                }
             } catch (e) { detached = false; }
         }
         // Keep the replaced allocation alive if any wrapper could not detach.

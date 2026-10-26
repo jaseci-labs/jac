@@ -386,10 +386,11 @@ def _name -> str {
             return "";
         }
         if cp == 0 {
-            # Jac str is a C string (no embedded NUL). Store the engine's
-            # 4-char NUL sentinel so the name round-trips through str_intern
-            # back to a real U+0000 in the JS string table.
-            out = out + "\\x00";
+            # The string runtime carries U+0000 as the two-byte C0 80
+            # sentinel, so chr(0) round-trips through str_intern and JS sees
+            # the real name. A literal "\\x00" here would rename every NUL
+            # to that 4-char text and collide with a genuine "\\x00" export.
+            out = out + chr(0);
         } else {
             out = out + chr(cp);
         }

@@ -204,7 +204,9 @@ def _unhex(h: str) -> str {
             k = k + 1;
         }
         if cp == 0 {
-            out = out + "\\x00";
+            # Same representation compile.jac's _name stores: the runtime's
+            # NUL sentinel, so registry keys match module import names.
+            out = out + chr(0);
         } else {
             out = out + chr(cp);
         }
