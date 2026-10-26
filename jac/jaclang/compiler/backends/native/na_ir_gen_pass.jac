@@ -581,9 +581,11 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_fmt_int(
         b: ir.IRBuilder, val: ir.Value, out: ir.Value, unsigned: bool
     ) -> ir.Value;
+
     def _fstring_direct(
         fmt_parts: list[str], args: list[ir.Value]
     ) -> (ir.Value | None);
+
     def _emit_value_repr(
         val: ir.Value, type_node: (uni.UniNode | None)
     ) -> (ir.Value | None);

@@ -2056,16 +2056,15 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
     if not isinstance(val, uni.BinaryExpr) or not isinstance(val.op, uni.Token) {
         return False;
     }
-    aug = {
+    aug_ops: dict[str, str] = {
         Tok.PLUS: "+=",
         Tok.MINUS: "-=",
         Tok.STAR_MUL: "*=",
         Tok.BW_OR: "|=",
         Tok.BW_AND: "&=",
         Tok.BW_XOR: "^="
-    }.get(
-        val.op.name
-    );
+    };
+    aug = aug_ops.get(val.op.name);
     call = val.left;
     if aug is None
         or not isinstance(call, uni.FuncCall)
