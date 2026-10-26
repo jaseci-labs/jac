@@ -39,11 +39,36 @@ def repeat_empty() -> int {
     return len(cells);
 }
 
+def self_extend_cells() -> int {
+    cells: list[own Cell] = [
+        Cell(a=1, b=1), Cell(a=2, b=1), Cell(a=3, b=1),
+        Cell(a=4, b=1), Cell(a=5, b=1)
+    ];
+    cells += cells;
+    total: int = 0;
+    for c in cells {
+        total = total + c.a * 100 + c.b;
+    }
+    return total;
+}
+
+def overflow_repeat_raises() -> bool {
+    cells: list[own Cell] = [Cell(a=1, b=1)];
+    try {
+        cells *= 1152921504606846976;
+    } except MemoryError {
+        return True;
+    }
+    return False;
+}
+
 def run {
     print(repeat_cells(9));
     print(clear_cells());
     print(reuse_after_clear());
     print(repeat_empty());
+    print(self_extend_cells());
+    print(overflow_repeat_raises());
 }
 
 with entry {

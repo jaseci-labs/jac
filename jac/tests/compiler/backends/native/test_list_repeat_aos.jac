@@ -45,7 +45,7 @@ test "list[own Cell] *= n grows once, clears, and skips empty repeats" {
     out_bin = os.path.join(tempfile.mkdtemp(), "rep_aos.bin");
     out = _build_and_run(out_bin);
     # 9 cells of (a=7, b=11): each contributes 7*100 + 11 = 711.
-    assert out == ["6399", "0", "506", "0", "end"] , f"aos repeat output mismatch: {out}";
+    assert out == ["6399", "0", "506", "0", "3010", "True", "end"] , f"aos list mutation output mismatch: {out}";
 }
 
 test "list[own Cell] *= n binary is leak-free" {
