@@ -169,6 +169,7 @@ impl plain_native_import_target(nd: uni.Import, prog: JacProgram) -> (str | None
     if (
         real_resolved.startswith(jaclang_root + os.sep)
         and (os.sep + 'na_stdlib' + os.sep) not in real_resolved
+        and not real_resolved.startswith(os.path.join(jaclang_root, 'osprey') + os.sep)
     ) {
         return None;
     }

@@ -3,19 +3,19 @@ obj AssignVerdict {
         diagnosed: bool = False;
 }
 
+obj WideLiteral {
+    has text: str,
+        negative: bool = False,
+        magnitude_bits: (int | None) = None;
+
+    def fits_u64 -> bool;
+    def written -> str;
+}
+
 glob I64_TOP: int = 9223372036854775807,
      I64_BOTTOM: int = -9223372036854775807 - 1;
 
 def value_in_range(value: int, t_lo: int, t_hi: int, wide: bool) -> bool;
-
-def unbounded_interval_in_range(
-    op: str,
-    left: tuple[int, int],
-    right: tuple[int, int],
-    t_lo: int,
-    t_hi: int,
-    wide: bool
-) -> bool;
 
 def corner_in_range(op: str, x: int, y: int, t_lo: int, t_hi: int, wide: bool) -> bool;
 
@@ -34,7 +34,13 @@ def interval_of_expr(expr: (Expr | None)) -> (tuple[int, int] | None);
 
 def numeric_name_of(t: TypeBase | None) -> str | None;
 
-def folded_number(expr: UniNode | None) -> int | float | None;
+def folded_number(expr: UniNode | None) -> int | float | WideLiteral | None;
+
+def _negated(value: int | float | WideLiteral) -> int | float | WideLiteral;
+
+def _wide_unsigned(name: str) -> bool;
+
+def _range_text(name: str) -> tuple[str, str];
 
 def _numeric_dest(evaluator: TypeEvaluator, dest: TypeBase) -> ClassType | None;
 
@@ -43,7 +49,7 @@ def annotate_coercion(expr: Expr | None, target: ClassType);
 def adopt_literal(
     evaluator: TypeEvaluator,
     expr: Expr,
-    value: int | float,
+    value: int | float | WideLiteral,
     target: ClassType,
     probe: bool = False
 ) -> AssignVerdict;

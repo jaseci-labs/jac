@@ -36,7 +36,7 @@ glob SCAN_ROOTS: list[str] = [
          "byllm"
      ],
      SANCTIONED: dict[str, tuple[any, ...]] = {
-         "runtime/graph_fragment.jac": (
+         "runtime/impl/graph_fragment.impl.jac": (
              1,
              "adopts the recorded edge values of a construction fragment; "
              "this is fragment membership, not NodeAnchor adjacency"

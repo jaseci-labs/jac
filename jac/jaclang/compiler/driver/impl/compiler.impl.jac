@@ -200,7 +200,7 @@ impl JacCompiler._get_bytecode(
     cache_path = get_module_cache_path(full_target);
     if (not rebuild) and is_module_cache_valid(full_target, cache_path) {
         try {
-            jir_data = cache_path.read_bytes();
+            jir_data = read_jir(cache_path);
             magic_bytes: any = SECTIONS_MAGIC;
             sec_pos = jir_data.find(magic_bytes, HEADER_SIZE);
             secs: dict[int, bytes] = (
@@ -334,7 +334,13 @@ impl JacCompiler._adopt_kernel_compile(
     }
     target = compiled.unit(full_target);
     if target is None {
-        return (bool(compiled.analysis.errors), None);
+        if compiled.analysis.errors {
+            return (True, None);
+        }
+        raise RuntimeError(
+            f"the native compiler kernel compiled {full_target} but returned no "
+            "unit for it and reported no error"
+        );
     }
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     adopted: (bytes | None) = None;
@@ -392,10 +398,6 @@ impl JacCompiler._adopt_kernel_compile(
 impl JacCompiler.native_entry_engine(
     full_target: str, target_program: JacProgram
 ) -> any {
-    """The engine that runs `full_target`'s entry natively, or None when the
-    module was not placed native. It compiles through the module cache, so a
-    warm run compiles nothing, and an entry placed native is compiled once.""";
-    import from jaclang.compiler.placement.placement { summary_store }
     path = JacProgram.hub_key(full_target);
     if self.get_bytecode(full_target=path, target_program=target_program) is None {
         return None;
@@ -413,7 +415,11 @@ impl JacCompiler.kernel_native_entry(
     full_target: str, target_program: JacProgram, options: (CompileOptions | None)
 ) -> tuple[bool, any] {
     path = JacProgram.hub_key(full_target);
+    if options is None and module_record(path, target_program) is not None {
+        return (False, None);
+    }
     actual = self.selfhost.resolve(path, target_program, execution=True);
+    import from jaclang.project.kernel_compile { kernel_generates_native }
     if actual.internal or not kernel_generates_native(actual, path) {
         return (False, None);
     }
@@ -883,7 +889,7 @@ impl JacCompiler._persist_module_cache(
     try {
         _pmc_path = get_module_cache_path(full_target);
         if is_module_cache_valid(full_target, _pmc_path) {
-            _pmc_data = _pmc_path.read_bytes();
+            _pmc_data = read_jir(_pmc_path);
             _pmc_client_done = (
                 not result.gen.js
                 or read_section_bytes(_pmc_data, SEC_CLIENT) is not None
@@ -1113,7 +1119,7 @@ impl JacCompiler.last_client_artifact(
     raw: (bytes | None) = None;
     with compilation_scope(owner_scope_options(actual)) {
         try {
-            held = get_module_cache_path(JacProgram.hub_key(full_target)).read_bytes();
+            held = read_jir(get_module_cache_path(JacProgram.hub_key(full_target)));
             raw = read_section_bytes(held, SEC_CLIENT);
         } except Exception {
             return None;
@@ -1209,11 +1215,8 @@ impl JacCompiler._get_client_artifact(
         if len(actual_program.errors_had) > mark {
             return None;
         }
-        emitted = actual_program.hub.client_artifacts.get(full_target)
-            if handled
-            else None;
-        if emitted is not None {
-            return emitted;
+        if handled {
+            return actual_program.hub.client_artifacts.get(full_target);
         }
     }
     compiled = self.compile(
@@ -1305,7 +1308,7 @@ impl cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
         if not is_module_cache_valid(full_target, cache_path) {
             return None;
         }
-        raw = read_section_bytes(cache_path.read_bytes(), SEC_CLIENT);
+        raw = read_section_bytes(read_jir(cache_path), SEC_CLIENT);
     } except Exception {
         return None;
     }

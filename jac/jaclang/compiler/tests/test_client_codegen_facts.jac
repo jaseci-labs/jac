@@ -166,3 +166,112 @@ test "an unlowered builtin in the bundle is an error, never silence" {
         shutil.rmtree(base, ignore_errors=True);
     }
 }
+
+
+# The toolchain precompile (jaclang's own seal) compiles every module with
+# `skip_analysis`, which stops analysis for code that runs on the server. A
+# module that declares client code still needs the checker's facts, because its
+# client codegen reads them: without them `len(xs)` was emitted bare (E5103).
+# The error used to be reported and then ignored, since a blocking error raised
+# during codegen blocked nothing, so jaclang/client/auth_contract.jac and three
+# siblings sealed with bare builtins in their client code.
+test "a client module compiled without asked-for analysis still lowers its builtins" {
+    base = os.path.realpath(tempfile.mkdtemp(prefix="jac_codegen_facts_"));
+    try {
+        with open(os.path.join(base, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "counts"\n\n[placement.pins]\n"counts" = "client"\n'
+            );
+        }
+        path = os.path.join(base, "counts.jac");
+        with open(path, "w") as f {
+            f.write(
+                "def:pub count(xs: list[str]) -> int {\n"
+                "    return len(xs) + len([x for x in range(3)]);\n"
+                "}\n"
+            );
+        }
+        prog = JacProgram();
+        code = prog._get_compiler().get_bytecode(
+            full_target=path, target_program=prog, skip_analysis=True
+        );
+        assert "E5103" not in _codes(prog) , _codes(prog);
+        assert code is not None , f"no bytecode: {_codes(prog)}";
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+# An enum that client code reads is emitted into the bundle as a boundary type
+# stub, so a client function pinned beside server code can read `Color.RED`. The
+# unbound-reference audit (E5086) did not count those stubs as bindings, so it
+# reported every such read: an error that blocked nothing until blocking errors
+# raised during codegen began to block, and then a false one that stopped the
+# module (the cross-backend `prim_enums` fixture).
+test "a client function reading a module enum binds it once and reports nothing" {
+    base = os.path.realpath(tempfile.mkdtemp(prefix="jac_codegen_facts_"));
+    try {
+        with open(os.path.join(base, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "shades"\n\n[placement.pins]\n"shades.pick_cl" = "client"\n'
+            );
+        }
+        path = os.path.join(base, "shades.jac");
+        with open(path, "w") as f {
+            f.write(
+                "enum Color: int { RED, GREEN, BLUE }\n\n"
+                "def pick_py -> int {\n    return int(Color.GREEN);\n}\n\n"
+                "def pick_cl -> int {\n    return int(Color.GREEN);\n}\n"
+            );
+        }
+        prog = JacProgram();
+        compiler = prog._get_compiler();
+        assert compiler.get_bytecode(full_target=path, target_program=prog)
+            is not None , _codes(prog);
+        artifact = compiler.get_client_artifact(path, prog);
+        assert "E5086" not in _codes(prog) , _codes(prog);
+        assert artifact is not None , _codes(prog);
+        assert artifact.js.count("const Color =") == 1 , artifact.js;
+        assert "GREEN: 2" in artifact.js , artifact.js;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+# A boundary type is emitted into the bundle as a stub: its name, not its body.
+# Counting the name as a binding must not make the audit read the type's own
+# server-only methods as client code, or a server object whose method reads a
+# server global would report that global unbound although no client code
+# touches either.
+test "a stubbed server type's own methods are not audited as client code" {
+    base = os.path.realpath(tempfile.mkdtemp(prefix="jac_codegen_facts_"));
+    try {
+        with open(os.path.join(base, "jac.toml"), "w") as f {
+            f.write(
+                '[project]\nname = "ledger"\n\n[placement.pins]\n"ledger.show_cl" = "client"\n'
+            );
+        }
+        path = os.path.join(base, "ledger.jac");
+        with open(path, "w") as f {
+            f.write(
+                "glob RATE: int = 3;\n\n"
+                "enum Kind: int { DEBIT, CREDIT }\n\n"
+                "obj Entry {\n    has amount: int = 0;\n\n"
+                "    def scaled -> int {\n        return self.amount * RATE;\n    }\n}\n\n"
+                "def:pub total -> Entry {\n    return Entry(amount=1);\n}\n\n"
+                "def show_cl -> int {\n    return int(Kind.CREDIT);\n}\n"
+            );
+        }
+        prog = JacProgram();
+        compiler = prog._get_compiler();
+        assert compiler.get_bytecode(full_target=path, target_program=prog)
+            is not None , _codes(prog);
+        artifact = compiler.get_client_artifact(path, prog);
+        assert "E5086" not in _codes(prog) , _codes(prog);
+        assert artifact is not None , _codes(prog);
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
