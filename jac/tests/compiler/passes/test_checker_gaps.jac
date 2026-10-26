@@ -784,4 +784,10 @@ test "gap 61 is not None on a value narrowed to None excludes None from the decl
         if nm.value == "aim" and nm.loc.first_line in (20, 31, 41, 48)
     ];
     assert stamped == ["int", "int", "int", "int"] , f"Gap #61: arm reads stamped {stamped}";
+    after = [
+        str(nm.type)
+        for nm in mod.get_all_sub_nodes(uni.Name)
+        if nm.value in ("scope", "top") and nm.loc.first_line in (80, 105)
+    ];
+    assert after == ["Fnc", "Fun | Arch"] , f"Gap #61: reads past an impossible arm stamped {after}";
 }

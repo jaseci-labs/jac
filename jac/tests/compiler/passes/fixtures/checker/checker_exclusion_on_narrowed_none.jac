@@ -59,3 +59,50 @@ def none_still_possible(start: int, pick: bool) -> list[int] {
     out: list[int] = [start, aim];
     return out;
 }
+
+obj Lam {}
+
+obj Fnc {
+    has prop: bool = False;
+}
+
+def needs_fnc(f: Fnc) -> int {
+    return 1;
+}
+
+def impossible_arm_keeps_earlier_narrowing(scope: Lam | Fnc) -> int {
+    if isinstance(scope, Lam) {
+        return 0;
+    }
+    if isinstance(scope, Fnc) and scope.prop {
+        return 2;
+    }
+    return needs_fnc(scope);
+}
+
+obj Top {}
+
+obj Ctx(Top) {
+    has native: bool = False;
+}
+
+obj Fun(Ctx) {}
+
+obj Arch(Ctx) {}
+
+def impossible_arm_in_a_loop(items: list[Top | None]) -> list[Ctx] {
+    out: list[Ctx] = [];
+    for top in items {
+        if top is None {
+            continue;
+        }
+        if not isinstance(top, (Fun, Arch)) {
+            continue;
+        }
+        if isinstance(top, Ctx) and top.native {
+            continue;
+        }
+        out.append(top);
+    }
+    return out;
+}
