@@ -1067,21 +1067,30 @@ impl NaIRGenPass._tbaa_tag(tbaa_root: any, cache: dict[str, any], name: str) -> 
     return tag;
 }
 
-impl NaIRGenPass._tbaa_list_field(gep: any, list_tys: set[int]) -> (int | None) {
-    base_ty: any = gep.pointer.type;
+impl NaIRGenPass._tbaa_list_field(
+    gep: ir.GEPInstr, list_tys: set[int]
+) -> (int | None) {
+    base_ty = gep.pointer.type;
     if not isinstance(base_ty, ir.PointerType) or id(base_ty.pointee) not in list_tys {
         return None;
     }
-    idx = list(gep.indices);
-    if len(idx) != 2
-        or not isinstance(idx[0], ir.Constant)
-        or not isinstance(idx[1], ir.Constant) {
+    if len(gep.indices) != 2 {
         return None;
     }
-    if idx[0].constant != 0 or idx[1].constant not in (0, 1, 2) {
+    first = gep.indices[0];
+    second = gep.indices[1];
+    if not isinstance(first, ir.Constant) or not isinstance(second, ir.Constant) {
         return None;
     }
-    return int(idx[1].constant);
+    lead = first.constant;
+    field = second.constant;
+    if not isinstance(lead, int) or not isinstance(field, int) {
+        return None;
+    }
+    if lead != 0 or field < 0 or field > 2 {
+        return None;
+    }
+    return field;
 }
 
 impl NaIRGenPass._apply_list_tbaa -> None {
@@ -1096,16 +1105,17 @@ impl NaIRGenPass._apply_list_tbaa -> None {
     cache: dict[str, any] = {};
     tbaa_root = self.llvm_module.add_metadata(["jac.tbaa"]);
     header = {0: "jac.list.len", 1: "jac.list.cap", 2: "jac.list.data"};
-    for fn_value in self.llvm_module.functions {
-        fn: any = fn_value;
+    for fn in self.llvm_module.functions {
         if fn.is_declaration {
             continue;
         }
         data_loads: set[int] = set();
-        elem_sites: list[tuple[any, any]] = [];
+        elem_sites: list[tuple[ir.Instruction, ir.GEPInstr]] = [];
         for blk in fn.blocks {
-            for inst_value in blk.instructions {
-                inst: any = inst_value;
+            for inst in blk.instructions {
+                if not isinstance(inst, ir.Instruction) {
+                    continue;
+                }
                 is_load = isinstance(inst, ir.LoadInstr);
                 if not is_load and not isinstance(inst, ir.StoreInstr) {
                     continue;
@@ -1124,7 +1134,7 @@ impl NaIRGenPass._apply_list_tbaa -> None {
                     }
                     continue;
                 }
-                if len(list(ptr.indices)) == 1 {
+                if len(ptr.indices) == 1 {
                     elem_sites.append((inst, ptr));
                 }
             }
@@ -1193,13 +1203,15 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
                 }
             } elif isinstance(nd, uni.AtomTrailer) {
                 if nd.is_attr {
-                    decl: any = nd.right.sym.decl
-                        if isinstance(nd.right, uni.Name) and nd.right.sym is not None
-                        else None;
-                    owner: any = decl?.name_of if decl is not None else None;
-                    if owner is None
-                        or isinstance(owner, uni.Ability)
-                        or (isinstance(owner, uni.HasVar) and owner.accessors) {
+                    attr = nd.right;
+                    if not isinstance(attr, uni.Name) or attr.sym is None {
+                        return False;
+                    }
+                    owner = attr.sym.decl.name_of;
+                    if isinstance(owner, uni.Ability) {
+                        return False;
+                    }
+                    if isinstance(owner, uni.HasVar) and owner.accessors {
                         return False;
                     }
                 } elif isinstance(nd.right, uni.IndexSlice) {
@@ -1371,14 +1383,12 @@ impl NaIRGenPass._anchor_builtin_call(nd: uni.FuncCall) -> bool {
     if not isinstance(tgt, uni.Name) or tgt.sym is None {
         return False;
     }
-    decl: any = tgt.sym.decl;
-    if decl is None
-        or decl.loc is None
-        or not str(decl.loc.mod_path).endswith("builtins.pyi") {
+    decl = tgt.sym.decl;
+    if decl.loc is None or not str(decl.loc.mod_path).endswith("builtins.pyi") {
         return False;
     }
     for p in (nd.params or []) {
-        arg: any = p.value if isinstance(p, uni.KWPair) else p;
+        arg = p.value if isinstance(p, uni.KWPair) else p;
         if tgt.value == "len" {
             if not (self._anchor_container(arg) or self._anchor_plain(arg)) {
                 return False;
@@ -1405,7 +1415,7 @@ impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
     for stmt in body {
         nodes: list[uni.UniNode] = list(stmt.flatten());
         for nd in nodes {
-            bound: list[any] = [];
+            bound: list[uni.UniNode] = [];
             if isinstance(nd, uni.Assignment) {
                 bound = list(nd.target);
             } elif isinstance(nd, uni.InForStmt) {
@@ -1415,14 +1425,14 @@ impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
                 and nd.op.name == Tok.WALRUS_EQ {
                 bound = [nd.left];
             } elif type(nd).__name__ in ("MatchAs", "MatchStar") {
-                _match_name: any = nd?.name;
-                if _match_name is not None {
+                _match_name = nd?.name;
+                if isinstance(_match_name, uni.UniNode) {
                     bound = [_match_name];
                 }
             }
 
             while bound {
-                tgt: any = bound.pop();
+                tgt = bound.pop();
                 if isinstance(tgt, uni.Name) {
                     assigned.add(tgt.value);
                 } elif isinstance(tgt, (uni.TupleVal, uni.ListVal)) {
@@ -1450,11 +1460,11 @@ impl NaIRGenPass._emit_list_anchors(body: list[uni.UniNode]) -> None {
         if slot is None or id(slot) in self._list_anchors {
             continue;
         }
-        slot_ty: any = slot.type;
+        slot_ty = slot.type;
         if not isinstance(slot_ty, ir.PointerType) {
             continue;
         }
-        held: any = slot_ty.pointee;
+        held = slot_ty.pointee;
         if not isinstance(held, ir.PointerType) or id(held.pointee) not in list_tys {
             continue;
         }
@@ -1502,12 +1512,13 @@ impl NaIRGenPass._list_anchor_of(
         return None;
     }
 
-    anchor_inst: any = found[0];
-    if anchor_inst.parent is None
+    anchor_inst = found[0];
+    if not isinstance(anchor_inst, ir.Instruction)
+        or anchor_inst.parent is None
         or anchor_inst.parent.parent is not self.builder.function {
         return None;
     }
-    data_ty: any = found[1].type;
+    data_ty = found[1].type;
     if not isinstance(data_ty, ir.PointerType) or data_ty.pointee != elem_type {
         return None;
     }
