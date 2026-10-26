@@ -1,6 +1,9 @@
 def tally(n: int) -> int {
     total = 0;
-    add = lambda (t: int) -> int { total = total + t; return total; };
+    add = lambda (t: int) -> int {
+        total = total + t;
+        return total;
+    };
     for i in range(n) {
         add(i);
     }
@@ -12,7 +15,14 @@ def scaled(n: int, unused: int) -> int {
 }
 
 def first_even(items: list[int]) -> int {
-    if (found := [i for i in items if i % 2 == 0]) {
+    if (
+        found
+        := [
+            i
+            for i in items
+            if i % 2 == 0
+        ]
+    ) {
         return found[0];
     }
     return -1;
@@ -43,5 +53,12 @@ obj Point {
 }
 
 with entry {
-    print(tally(4), scaled(2, 0), first_even([1, 4, 6]), outer(3), Point(x=1, y=-2).shifted(2).norm1(), Point.origin().x);
+    print(
+        tally(4),
+        scaled(2, 0),
+        first_even([1, 4, 6]),
+        outer(3),
+        Point(x=1, y=-2).shifted(2).norm1(),
+        Point.origin().x
+    );
 }

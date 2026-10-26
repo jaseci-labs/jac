@@ -1650,6 +1650,11 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     def _object_meet_type(nd: uni.Expr) -> (ir.Type | None);
     def _recast_object(value: ir.Value, target: ir.Type) -> ir.Value;
+    def _optional_tuple_meet_type(
+        nd: uni.Expr, then_val: ir.Value, else_val: ir.Value
+    ) -> (ir.Type | None);
+
+    def _meet_optional_tuple_side(value: ir.Value, target: ir.Type) -> ir.Value;
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_kernel_spawn(
         walker_name: str,
@@ -3159,6 +3164,11 @@ walker NaIRGenPass(CompilerPass) {
         replaced: list[tuple[str, ir.Value]]
     ) -> bool;
 
+    def _value_kind(ty: ir.Type) -> str;
+    def _rebinds_slot(
+        slot_type: ir.Type, target_type: (ir.Type | None), value_type: ir.Type
+    ) -> bool;
+
     def _unpack_store_global(
         var_name: str,
         value: ir.Value,
@@ -3687,12 +3697,4 @@ walker NaIRGenPass(CompilerPass) {
     def _decl_field_llvm_types(arch_name: str) -> (dict[str, ir.Type] | None);
     def _lower_view_container(t: any) -> (ir.Type | None);
     def _program_has_subclasses(arch_name: str) -> bool;
-}
-
-impl _restore_entry[V](table: dict[str, V], key: str, prior: (V | None)) {
-    if prior is None {
-        table.pop(key, None);
-    } else {
-        table[key] = prior;
-    }
 }

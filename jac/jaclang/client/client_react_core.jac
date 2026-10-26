@@ -107,7 +107,3 @@ def:pub __jacReportError(
 ) -> None;
 
 def:pub __jacReactErrorHandler(error: any, info: any) -> None;
-
-impl BridgeError.postinit {
-    self.message = self.detail;
-}

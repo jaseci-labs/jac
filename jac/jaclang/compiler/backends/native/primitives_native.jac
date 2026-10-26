@@ -972,7 +972,10 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         self: NativeListEmitter,
         ctx: NativeEmitCtx,
         target: ir.Value,
-        key_fn: ir.Function,
+        key_fn: ir.Value,
+        key_signature: ir.FunctionType,
+        key_extra: list[ir.Value],
+        key_owner: (ir.Value | None),
         reverse: (ir.Value | None),
         key_node: UniNode
     ) -> (ir.Value | None);

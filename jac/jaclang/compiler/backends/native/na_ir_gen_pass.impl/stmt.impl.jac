@@ -646,15 +646,6 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
 }
 
 impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
-    """Lower `return tail f(args);` to an LLVM `musttail` call.
-
-    The callee reuses the caller's frame, so the call has to be the last thing
-    the function does and has to fit the frame exactly. Every condition LLVM
-    places on `musttail` is checked here, before anything is emitted where it
-    can be, and a call that cannot be guaranteed is `E5114` naming the reason;
-    it is never quietly lowered as an ordinary call, which would bring back the
-    stack growth the programmer asked to rule out.
-    """;
     func = self.builder.function;
     reason = self._tail_frame_blocker();
     if reason is not None {
@@ -705,13 +696,6 @@ impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
 }
 
 impl NaIRGenPass._tail_frame_blocker -> (str | None) {
-    """Why the current frame cannot be handed to a tail callee, if it cannot.
-
-    Scope-exit cleanup runs after a normal return's call, which `musttail`
-    forbids, so it has to be empty: the dry run emits it into a scratch block
-    that is discarded, and any instruction there is an owned value to release,
-    a region to leave or a string to free.
-    """;
     func = self.builder.function;
     if self._gen_ctx is not None and func is self._gen_ctx.resume_fn {
         return "a generator's frame outlives each resumption";
@@ -750,13 +734,6 @@ impl NaIRGenPass._tail_frame_blocker -> (str | None) {
 impl NaIRGenPass._tail_call_mismatch(
     call: ir.CallInstr, func: ir.Function
 ) -> (str | None) {
-    """Why `call` cannot be `musttail` from `func`, if it cannot.
-
-    LLVM requires the callee to take the caller's parameter list and return
-    type with the same calling convention and variadic-ness, and ABI-affecting
-    parameter attributes (`sret`, `byval`, `inalloca`) to agree. A pointer the
-    callee receives must not be the address of the caller's stack.
-    """;
     callee = call.callee;
     fnty = func.function_type;
     callee_ty: (ir.FunctionType | None) = None;
@@ -2221,6 +2198,18 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
             }
             if target_val is not None
                 and isinstance(target_expr.right, uni.IndexSlice)
+                and target_expr.right.is_range {
+                self.emit(
+                    E5092,
+                    node_override=target_expr,
+                    kind="slice assignment",
+                    name=self._get_name(target_expr.target) or "sequence",
+                    help_text="Assigning to a slice is not lowered natively; assign the elements one by one."
+                );
+                continue;
+            }
+            if target_val is not None
+                and isinstance(target_expr.right, uni.IndexSlice)
                 and target_expr.right.slices {
                 slices = target_expr.right.slices or [];
                 if slices {
@@ -2414,6 +2403,15 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         alloca = self._entry_alloca(_declared_type, var_name);
                         self.local_vars[var_name] = alloca;
                     }
+                }
+            } elif nd.aug_op is None and nd.value is not None {
+                _rebound_ty = self._lower_type(nd.value.type);
+                if _rebound_ty is not None
+                    and self._rebinds_slot(
+                        alloca.pointee_type, _rebound_ty, value.type
+                    ) {
+                    alloca = self._entry_alloca(_rebound_ty, var_name);
+                    self.local_vars[var_name] = alloca;
                 }
             }
             is_inplace_set_op = False;
@@ -4515,6 +4513,9 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
         _nt,
         name="ffor.chunk"
     );
+    _stack_top = self.builder.call(
+        self._get_or_declare_extern("llvm.stacksave", i8p, []), [], name="ffor.sp"
+    );
     _tid_arr = self.builder.alloca(i64, size=_nt, name="ffor.tids");
     _arg_arr = self.builder.alloca(_arg_ty, size=_nt, name="ffor.args");
 
@@ -4756,6 +4757,10 @@ impl NaIRGenPass._try_flow_for_parallel(nd: uni.InForStmt) -> bool {
             self.builder.load(_cur_slot, name=f"ffor.comb.{_red[0]}.fin"), _acc_slot
         );
     }
+    self.builder.call(
+        self._get_or_declare_extern("llvm.stackrestore", ir.VoidType(), [i8p]),
+        [_stack_top]
+    );
     return True;
 }
 

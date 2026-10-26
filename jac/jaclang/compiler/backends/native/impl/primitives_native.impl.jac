@@ -1287,9 +1287,9 @@ impl NativeStrEmitter.emit_rpartition(
     notfound_bb = func.append_basic_block(name="rpart.no");
     merge_bb = func.append_basic_block(name="rpart.merge");
 
-    last_match_alloca = b.alloca(i8p, name="rpart.last");
+    last_match_alloca = p._stack_entry_alloca(i8p, "rpart.last");
     b.store(ir.Constant(i8p, None), last_match_alloca);
-    cur_alloca = b.alloca(i8p, name="rpart.cur");
+    cur_alloca = p._stack_entry_alloca(i8p, "rpart.cur");
     b.store(target, cur_alloca);
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
@@ -3208,25 +3208,43 @@ impl NativeListEmitter.emit_sort(
         );
         return None;
     }
-    key_fn: (ir.Function | None) = None;
+    key_fn: (ir.Value | None) = None;
+    key_signature: (ir.FunctionType | None) = None;
+    key_extra: list[ir.Value] = [];
+    key_owner: (ir.Value | None) = None;
     if _key_node is not None {
-        _key_val = p._codegen_expr(_key_node);
-        _key_caps = p._pending_lambda_captures;
         p._pending_lambda_captures = None;
-        if (
-            not isinstance(_key_val, ir.Function)
-            or _key_caps is not None
-            or len(_key_val.args) != 1
-        ) {
+        _key_val = p._codegen_expr(_key_node);
+        _key_caps = p._pending_lambda_captures
+            or p.scope.lambda_captures(p._get_name(_key_node) or "")
+            or [];
+        p._pending_lambda_captures = None;
+        _closure = p._closure_struct_of(_key_val.type)
+            if _key_val is not None
+            else None;
+        if _closure is not None {
+            (_struct, key_signature) = p.closure_sig_registry[_closure];
+            fn_slot = b.gep(_key_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
+            key_fn = b.inttoptr(b.load(fn_slot), key_signature.as_pointer());
+            env_slot = b.gep(_key_val, [ir.Constant(i32, 0), ir.Constant(i32, 1)]);
+            key_extra.append(b.load(env_slot));
+            key_owner = _key_val;
+        } elif isinstance(_key_val, ir.Function) {
+            key_fn = _key_val;
+            key_signature = _key_val.function_type;
+            for (capture_name, slot) in _key_caps {
+                key_extra.append(b.load(slot, name=f"sort.cap.{capture_name}"));
+            }
+        }
+        if key_signature is None or len(key_signature.args) != 1 + len(key_extra) {
             p.ctx.emit(
                 E5092,
                 node_override=_key_node,
                 kind="sort key",
-                name="key= (only a capture-free single-parameter lambda works)"
+                name="key= (expected a single-parameter callable with a native signature)"
             );
             return None;
         }
-        key_fn = _key_val;
     }
     rev_i1: (ir.Value | None) = None;
     if _rev_node is not None {
@@ -3235,36 +3253,25 @@ impl NativeListEmitter.emit_sort(
             rev_i1 = p._to_bool(_rev_val);
         }
     }
-    if key_fn is None or _key_node is None {
+    if key_fn is None or key_signature is None or _key_node is None {
         return self._emit_value_sort(ctx, target, rev_i1);
     }
-    return self._emit_key_sort(ctx, target, key_fn, rev_i1, _key_node);
+    return self._emit_key_sort(
+        ctx, target, key_fn, key_signature, key_extra, key_owner, rev_i1, _key_node
+    );
 }
 
 impl NativeListEmitter._emit_key_sort(
     self: NativeListEmitter,
     ctx: NativeEmitCtx,
     target: ir.Value,
-    key_fn: ir.Function,
+    key_fn: ir.Value,
+    key_signature: ir.FunctionType,
+    key_extra: list[ir.Value],
+    key_owner: (ir.Value | None),
     reverse: (ir.Value | None),
     key_node: UniNode
 ) -> (ir.Value | None) {
-    """Stable sort by a key: every key computed once, then a merge sort of positions.
-
-    The key sort was a bubble sort that called the key twice per comparison,
-    quadratic in the length. Now each element's key goes into an array once,
-    in element order, a stable merge sort orders the positions 0..n-1 by
-    those keys (a tie keeps the earlier position first, which keeps
-    `reverse=True` stable as well), and the elements are rearranged by the
-    sorted positions, through a copy of the data. A key the call returns is
-    owned, as a call expression's result is, and keys handed over owned are
-    released once the order is known.
-
-    A workspace allocation that fails raises MemoryError without leaking:
-    the first two buffers are freed together, and a failed copy buffer skips
-    the rearrangement (the list stays as it was), releases the keys and frees
-    the workspace before it raises.
-    """;
     p = ctx.pass_ref;
     helpers = p.list_helpers.get(ctx.type_key);
     b = get_builder(p);
@@ -3273,13 +3280,17 @@ impl NativeListEmitter._emit_key_sort(
     i8p = ir.IntType(8).as_pointer();
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);
-    key_type = key_fn.function_type.return_type;
+    key_type = key_signature.return_type;
     key_ret = p._sort_key_return_type(key_node);
     key_orderable = p._sort_key_orderable(key_ret);
     if (key_orderable is not None and not key_orderable)
         or (key_orderable is None and not p._sort_key_supported(key_type)) {
         p.ctx.emit(E5092, node_override=key_node, kind="sort key", name=SORT_KEY_MSG);
         return None;
+    }
+    owner_drop: list[ir.Value] = [];
+    if key_owner is not None and p._is_owned(key_owner) {
+        owner_drop.append(key_owner);
     }
     cmp_float = isinstance(key_type, (ir.DoubleType, ir.FloatType));
     cmp_unsigned = p._sort_key_unsigned(key_node);
@@ -3329,7 +3340,8 @@ impl NativeListEmitter._emit_key_sort(
     p._emit_runtime_raise(
         b.icmp_unsigned(">", length, ir.Constant(i64, 9223372036854775807 // widest)),
         "MemoryError",
-        "sort workspace is too large"
+        "sort workspace is too large",
+        release_on_error=owner_drop
     );
     malloc = p._get_or_declare_extern("malloc", i8p, [i64]);
     free = p._get_or_declare_extern("free", ir.VoidType(), [i8p]);
@@ -3355,7 +3367,10 @@ impl NativeListEmitter._emit_key_sort(
     b.call(free, [keys_raw]);
     b.call(free, [perm_raw]);
     p._emit_runtime_raise(
-        ir.Constant(ir.IntType(1), 1), "MemoryError", "cannot allocate sort workspace"
+        ir.Constant(ir.IntType(1), 1),
+        "MemoryError",
+        "cannot allocate sort workspace",
+        release_on_error=owner_drop
     );
     b.branch(alloc_ok);
     b.position_at_start(alloc_ok);
@@ -3373,7 +3388,11 @@ impl NativeListEmitter._emit_key_sort(
     elem = b.call(helpers["get"], [target, i], name="ksort.elem");
 
     key = p._mark_reference_owned(
-        b.call(key_fn, [p._coerce_type(elem, key_fn.args[0].type)], name="ksort.key")
+        b.call(
+            key_fn,
+            [p._coerce_type(elem, key_signature.args[0])] + key_extra,
+            name="ksort.key"
+        )
     );
     key_owned = p._is_owned(key);
     key_tuple_owned = key.na_tuple_owned;
@@ -3522,10 +3541,14 @@ impl NativeListEmitter._emit_key_sort(
     p._emit_runtime_raise(
         b.load(failed_slot, name="ksort.failed.now"),
         "MemoryError",
-        "cannot allocate sort workspace"
+        "cannot allocate sort workspace",
+        release_on_error=owner_drop
     );
     b.branch(done);
     b.position_at_start(done);
+    for owner in owner_drop {
+        p._emit_rc_release_simple(owner, op="sort_key", loc="target");
+    }
     return ir.Constant(i64, 0);
 }
 
@@ -3535,19 +3558,6 @@ impl NativeListEmitter._emit_value_sort(
     target: ir.Value,
     reverse: (ir.Value | None)
 ) -> (ir.Value | None) {
-    """Stable merge sort of the list's own elements, compared in place.
-
-    Scalars compare as themselves. Every other element lives in an erased
-    `i8*` slot, whatever it holds, so the slot type cannot say how to order
-    it: only the checked element type can. A `str` compares through the
-    string helper; anything else -- a tuple, `bytes`, a nested list --
-    goes through the same `_emit_comparison` a `key=` result does, which
-    views the pointers through that type. Treating every pointer as a
-    string ordered a tuple by the bytes of its first field, so float and
-    string leads (and most ints) came back unsorted. An element type the
-    comparison cannot order (a class without the protocol) refuses rather
-    than guess; one whose shape is not fully known keeps the string compare.
-    """;
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);
@@ -4411,7 +4421,7 @@ impl NativeSetEmitter._emit_set_elem_loop(
         }
     }
     n = b.call(src_helpers["len"], [src_set], name=f"{prefix}.len");
-    iv = b.alloca(i64, name=f"{prefix}.i");
+    iv = p._stack_entry_alloca(i64, f"{prefix}.i");
     b.store(ir.Constant(i64, 0), iv);
     func = b.basic_block.function;
     loop_bb = func.append_basic_block(name=f"{prefix}.loop");
@@ -4753,7 +4763,7 @@ impl NativeSetEmitter._emit_set_relation(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    res_a = b.alloca(i64, name=f"{prefix}.res");
+    res_a = p._stack_entry_alloca(i64, f"{prefix}.res");
     b.store(ir.Constant(i64, 1), res_a);
 
     def _probe(b2: ir.IRBuilder, ev: ir.Value) {
@@ -6044,7 +6054,7 @@ impl NativeBuiltinEmitter._int_from_c_string(
         );
     }
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
-    endptr_alloca = b.alloca(i8p, name="endptr");
+    endptr_alloca = p._stack_entry_alloca(i8p, "endptr");
     result_val = b.call(
         strtol_fn,
         [text, endptr_alloca, base if base is not None else ir.Constant(i32, 10)],
@@ -6128,7 +6138,7 @@ impl NativeBuiltinEmitter.emit_float(
         strtod_fn = p._get_or_declare_extern(
             "strtod", ir.DoubleType(), [i8p, i8p.as_pointer()]
         );
-        endptr_alloca = b.alloca(i8p, name="float.endptr");
+        endptr_alloca = p._stack_entry_alloca(i8p, "float.endptr");
         result = b.call(strtod_fn, [arg_val, endptr_alloca], name="float.result");
         endptr_val = b.load(endptr_alloca, name="float.endptr.val");
         no_parse = b.icmp_unsigned("==", endptr_val, arg_val, name="float.noparse");
@@ -6525,8 +6535,20 @@ impl NativeBuiltinEmitter.emit_bytes(
     if _src is not None {
         return p._bytes_from_raw(_src[0], _src[1]);
     }
-    return _emit_bytes_from_int_list(p, val, "bytes must be in range(0, 256)", []);
+    listed = _emit_bytes_from_int_list(p, val, "bytes must be in range(0, 256)", []);
+    if listed is not None or not ctx.arg_nodes {
+        return listed;
+    }
+    return _emit_bytes_drained(self, ctx, args, "bytes must be in range(0, 256)", []);
 }
+
+def _emit_bytes_drained(
+    emitter: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    args: list[ir.Value],
+    message: str,
+    release_on_error: list[ir.Value]
+) -> (ir.Value | None);
 
 def _emit_zeroed_bytes(p: NaIRGenPass, count: ir.Value) -> ir.Value;
 
@@ -6578,7 +6600,13 @@ impl NativeBuiltinEmitter.emit_bytearray(
         return buf;
     }
 
+    p._mark_owned(buf);
     _bv = _emit_bytes_from_int_list(p, a0, "byte must be in range(0, 256)", [buf]);
+    if _bv is None and ctx.arg_nodes {
+        _bv = _emit_bytes_drained(
+            self, ctx, args, "byte must be in range(0, 256)", [buf]
+        );
+    }
     if _bv is not None and p._is_bytes_value(_bv) {
         _bsrc = p._bytearray_src_of(_bv);
         if _bsrc is not None {
@@ -7857,4 +7885,25 @@ impl _emit_affix_window_match(
     result.add_incoming(ir.Constant(ir.IntType(1), 1), match_bb);
     result.add_incoming(ir.Constant(ir.IntType(1), 0), miss);
     return result;
+}
+
+impl _emit_bytes_drained(
+    emitter: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    args: list[ir.Value],
+    message: str,
+    release_on_error: list[ir.Value]
+) -> (ir.Value | None) {
+    p = ctx.pass_ref;
+    drained = emitter.emit_list(ctx, args);
+    if drained is None {
+        return None;
+    }
+    p._mark_owned(drained);
+    made = _emit_bytes_from_int_list(p, drained, message, [*release_on_error, *args]);
+    if made is None {
+        return None;
+    }
+    p._release_owned_args([drained]);
+    return made;
 }
