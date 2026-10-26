@@ -7,7 +7,9 @@ obj PreparedInProcessRuntime {
     has server: any,
         transport_kind: str,
         client: any | None = None,
-        _prior_ctx: (ExecutionContext | None) = None;
+        _prior_ctx: (ExecutionContext | None) = None,
+        _prior_target: (str | None) = None,
+        _sets_target: bool = False;
 
     def close;
 }

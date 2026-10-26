@@ -33,10 +33,3 @@ def:pub useSession -> Session;
 def:pub stored_username -> str;
 
 async def account_handle(fallback: str) -> str;
-
-impl stored_username -> str {
-    return __getLocalStorage("jacyac_username")
-        or __getLocalStorage("lx_username")
-        or __getLocalStorage("socialize_username")
-        or "";
-}
