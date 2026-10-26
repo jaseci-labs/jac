@@ -586,6 +586,170 @@ def drops -> int { return dropped; }
     );
 }
 
+test "typed callable: each new function value keeps its own identity" {
+    (prog, ir) = compile_na_inline_ir(
+        "fresh_function_identity",
+        """
+def make -> Callable[[int], int] {
+    def inner(x: int) -> int { return x + 1; }
+    return inner;
+}
+def make_lam -> Callable[[int], int] {
+    return lambda (x: int) -> int { x + 2; };
+}
+def plain(x: int) -> int { return x; }
+def identities -> int {
+    a = make();
+    b = make();
+    l1 = make_lam();
+    l2 = make_lam();
+    p: Callable[[int], int] = plain;
+    q: Callable[[int], int] = plain;
+    r = 0;
+    if a != b { r += 1; }
+    if a == a { r += 10; }
+    if l1 != l2 { r += 100; }
+    if p == q { r += 1000; }
+    return r * 10 + a(1) - l1(1) + 1;
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert "identities" in ir.gen.native_layout.functions , "identities demoted";
+    got = get_func(ir.gen.native_engine, "identities", ctypes.c_int64)();
+    assert got == 11110 , (
+        f"separate function objects compare unequal, wraps of one function equal: {got}"
+    );
+}
+
+test "typed callable: a method read through different static types compares equal" {
+    (prog, ir) = compile_na_inline_ir(
+        "bound_method_cross_type",
+        """
+obj Base {
+    has n: int = 0;
+    def bump(amt: int) -> int {
+        self.n += amt;
+        return self.n;
+    }
+    def other(amt: int) -> int { return amt; }
+}
+obj Mid(Base) {}
+obj Twice(Base) {
+    override def bump(amt: int) -> int {
+        self.n += amt * 2;
+        return self.n;
+    }
+}
+def same_mid(b: Base, m: Mid) -> bool { return b.bump == m.bump; }
+def same_twice(b: Base, t: Twice) -> bool { return b.bump == t.bump; }
+def through_base(b: Base) -> int {
+    f: Callable[[int], int] = b.bump;
+    return f(3);
+}
+def cross -> int {
+    m = Mid();
+    t = Twice();
+    r = 0;
+    if same_mid(m, m) { r += 1; }
+    if same_twice(t, t) { r += 10; }
+    if not same_mid(Mid(), m) { r += 100; }
+    if m.bump != m.other { r += 1000; }
+    return r * 10 + through_base(t);
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert "cross" in ir.gen.native_layout.functions , "cross demoted";
+    got = get_func(ir.gen.native_engine, "cross", ctypes.c_int64)();
+    assert got == 11116 , (
+        f"one method on one receiver compares equal through any static type: {got}"
+    );
+}
+
+test "typed callable: a raising call releases the callable it saved" {
+    (prog, ir) = compile_na_inline_ir(
+        "optional_callable_raise_release",
+        """
+glob dropped: int = 0;
+obj Counter {
+    has n: int = 0;
+    def bump(amt: int) -> int {
+        if amt < 0 { raise ValueError("negative"); }
+        self.n += amt;
+        return self.n;
+    }
+    def drop { dropped += 1; }
+}
+obj Hooks {
+    has f: (Callable[[int], int] | None) = None;
+    def bad(x: int) -> int { raise ValueError("bad argument"); }
+    def fire(x: int) -> int {
+        if self.f is not None { return self.f(x); }
+        return 0;
+    }
+    def fire_bad_arg(x: int) -> int {
+        if self.f is not None { return self.f(self.bad(x)); }
+        return 0;
+    }
+}
+def raised_in_callee -> int {
+    h = Hooks(f=Counter().bump);
+    try {
+        h.fire(-1);
+    } except ValueError {
+        h.f = None;
+    }
+    return dropped;
+}
+def raised_in_arg -> int {
+    h = Hooks(f=Counter().bump);
+    try {
+        h.fire_bad_arg(1);
+    } except ValueError {
+        h.f = None;
+    }
+    return dropped;
+}
+def caught_in_frame -> int {
+    h = Hooks(f=Counter().bump);
+    hits = 0;
+    for i in range(3) {
+        if h.f is not None {
+            try {
+                h.f(-1);
+            } except ValueError {
+                hits += 1;
+            }
+        }
+    }
+    h.f = None;
+    return hits;
+}
+def drops -> int { return dropped; }
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    for fn in ["raised_in_callee", "raised_in_arg", "caught_in_frame"] {
+        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+    }
+    eng = ir.gen.native_engine;
+    drops = get_func(eng, "drops", ctypes.c_int64);
+    before = drops();
+    assert get_func(eng, "raised_in_callee", ctypes.c_int64)() - before == 1 , (
+        "a callback that raises must not keep its receiver alive"
+    );
+    before = drops();
+    assert get_func(eng, "raised_in_arg", ctypes.c_int64)() - before == 1 , (
+        "an argument that raises must not keep the callback's receiver alive"
+    );
+    before = drops();
+    assert get_func(eng, "caught_in_frame", ctypes.c_int64)() == 3;
+    assert drops() - before == 1 , (
+        "a raise caught in the calling frame must release the callback once"
+    );
+}
+
 test "adapter: map with a capturing lambda callback" {
     (eng, _) = compile_native("closures_adapters.jac");
     f = get_func(eng, "scale_all", ctypes.c_int64, ctypes.c_int64);
