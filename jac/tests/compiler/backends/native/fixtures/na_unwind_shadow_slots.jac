@@ -3,8 +3,11 @@
 Each function owns a reference, so it registers an unwind record; the test
 reads the generated IR to see what the record holds."""
 
+"""Its list field keeps a Box on the heap: a record of scalars alone would
+live on the stack and register nothing."""
 obj Box {
-    has v: int = 0;
+    has v: int = 0,
+        tags: list[int] = [];
 }
 
 """One owned local among scalars: only `box` is registered, through its

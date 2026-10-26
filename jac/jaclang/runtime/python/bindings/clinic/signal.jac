@@ -390,13 +390,7 @@ impl signal_set_wakeup_fd_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return signal_set_wakeup_fd_bound(receiver, args, nargs);
     }
-    values = unpack_stack(signal_set_wakeup_fd_signature, args, nargs, kwnames);
-    if values {
-        unpacked = signal_set_wakeup_fd_bound(receiver, values, 2);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         signal_set_wakeup_fd_signature,
         args,
         nargs,
@@ -455,9 +449,7 @@ impl signal_pthread_sigmask_bound(
         value = clinic_args[0];
         how: i32 = convert_int(value);
         value = clinic_args[1];
-        mask = convert__Py_Sigset_Converter(
-            value, "pthread_sigmask", argument_label("", 2)
-        );
+        mask = convert__Py_Sigset_Converter(value, "pthread_sigmask", "argument 2");
         return signal_pthread_sigmask_impl(receiver, how, mask);
     } except boundary_failure {
         return NULL;
@@ -522,9 +514,7 @@ impl signal_sigtimedwait_bound(
     clinic_args = stack.view(count);
     try {
         value = clinic_args[0];
-        sigset = convert__Py_Sigset_Converter(
-            value, "sigtimedwait", argument_label("", 1)
-        );
+        sigset = convert__Py_Sigset_Converter(value, "sigtimedwait", "argument 1");
         value = clinic_args[1];
         timeout: ptr[PyObject] = value;
         return signal_sigtimedwait_impl(receiver, sigset, timeout);
@@ -550,7 +540,7 @@ impl signal_pthread_kill_bound(
     try {
         value = clinic_args[0];
         thread_id: u64 = convert_unsigned_long(
-            value, True, "pthread_kill", argument_label("", 1)
+            value, True, "pthread_kill", "argument 1"
         );
         value = clinic_args[1];
         signalnum: i32 = convert_int(value);

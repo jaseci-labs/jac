@@ -97,6 +97,36 @@ impl NaIRGenPass._closure_struct_of(val_type: ir.Type) -> (str | None) {
     return None;
 }
 
+impl NaIRGenPass._static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Value {
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    st = self.struct_types[closure_name];
+    key = f"__jac_fnclos.{closure_name}.{fn.name}";
+    if key in self.llvm_module.globals {
+        holder = self.llvm_module.get_global(key);
+    } else {
+        # The rc header (alloc id, tag, count, destructor) then the closure:
+        # a sentinel count makes retain and release leave it alone.
+        holder_ty = ir.LiteralStructType([i64, i8p, i64, i64, st]);
+        holder = ir.GlobalVariable(self.llvm_module, holder_ty, name=key);
+        holder.linkage = "private";
+        holder.initializer = ir.Constant(
+            holder_ty,
+            [
+                ir.Constant(i64, 0),
+                ir.Constant(i8p, None),
+                ir.Constant(i64, RC_SENTINEL),
+                ir.Constant(i64, 0),
+                ir.Constant(st, [fn.ptrtoint(i64), ir.Constant(i8p, None)])
+            ]
+        );
+    }
+    return self.builder.gep(
+        holder, [ir.Constant(i32, 0), ir.Constant(i32, 4)], name="clos.static"
+    );
+}
+
 impl NaIRGenPass._callable_signature_of(val_type: ir.Type) -> (ir.FunctionType | None) {
     closure_name = self._closure_struct_of(val_type);
     if closure_name is not None {

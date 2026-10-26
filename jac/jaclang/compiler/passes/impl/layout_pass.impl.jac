@@ -695,6 +695,10 @@ impl LayoutPass._expand_type_keys(key: str) -> (list[str] | None) {
         if p.startswith("type[") and p.endswith("]") {
             continue;
         }
+        # A raw pointer holds an address, never a counted reference.
+        if p == "ptr" or (p.startswith("ptr[") and p.endswith("]")) {
+            continue;
+        }
         inner: (str | None) = None;
         if p.startswith("list[") and p.endswith("]") {
             inner = p[5:-1];

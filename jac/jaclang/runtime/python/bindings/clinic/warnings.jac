@@ -140,9 +140,7 @@ impl warnings_warn_bound(
         if count > 4 and clinic_args[4] != NULL {
             value = clinic_args[4];
             if jacpy_is_tuple(value) == 0 {
-                bad_argument(
-                    "warn", argument_label("skip_file_prefixes", 5), "tuple", value
-                );
+                bad_argument("warn", "argument 'skip_file_prefixes'", "tuple", value);
             }
             skip_file_prefixes = value;
         }
@@ -163,13 +161,7 @@ impl warnings_warn_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 4 {
         return warnings_warn_bound(receiver, args, nargs);
     }
-    values = unpack_stack(warnings_warn_signature, args, nargs, kwnames);
-    if values {
-        unpacked = warnings_warn_bound(receiver, values, 5);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         warnings_warn_signature, args, nargs, kwnames, warnings_warn_bound, receiver
     );
 }
@@ -185,7 +177,7 @@ impl warnings_warn_explicit_bound(
         category: ptr[PyObject] = value;
         value = clinic_args[2];
         filename: ptr[PyObject] = convert_unicode(
-            value, "warn_explicit", argument_label("filename", 3)
+            value, "warn_explicit", "argument 'filename'"
         );
         value = clinic_args[3];
         lineno: i32 = convert_int(value);
@@ -234,13 +226,7 @@ impl warnings_warn_explicit_call(
     if kwnames == NULL and nargs >= 4 and nargs <= 8 {
         return warnings_warn_explicit_bound(receiver, args, nargs);
     }
-    values = unpack_stack(warnings_warn_explicit_signature, args, nargs, kwnames);
-    if values {
-        unpacked = warnings_warn_explicit_bound(receiver, values, 8);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         warnings_warn_explicit_signature,
         args,
         nargs,

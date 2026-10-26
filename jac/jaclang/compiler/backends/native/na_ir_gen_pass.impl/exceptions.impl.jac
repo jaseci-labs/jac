@@ -1618,19 +1618,21 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     } else {
         b.position_at_end(entry_blk);
     }
+    # The record allocas come before the context call: inlined, that call
+    # branches, and an alloca after the branch is a dynamic stack bump.
+    env_slot = b.alloca(env_ty, name="unwind.env");
+    node_ty = self._unwind_node_type();
+    link = b.alloca(node_ty, name="unwind.node");
     if cached is not None {
         entry_blk.instructions.insert(b._anchor, cached);
         b._anchor += 1;
     }
-    env_slot = b.alloca(env_ty, name="unwind.env");
     for (k, (_name, slot)) in enumerate(slots) {
         b.store(
             b.bitcast(shadows.get(id(slot), slot), i8p),
             b.gep(env_slot, [ir.Constant(i32, 0), ir.Constant(i32, k)])
         );
     }
-    node_ty = self._unwind_node_type();
-    link = b.alloca(node_ty, name="unwind.node");
     top_slot = self._unwind_top_slot(b, cached);
     prev = b.load(top_slot, name="unwind.prev");
     b.store(prev, b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));

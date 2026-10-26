@@ -1064,6 +1064,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> tuple[str, ir.IdentifiedStructType, ir.FunctionType];
 
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
+    def _static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Value;
     def _wrap_fn_as_closure_value(val: ir.Value) -> ir.Value;
     def _is_bare_function_value(val: ir.Value) -> bool;
     def _closure_like_type(val_type: ir.Type) -> bool;
@@ -2317,6 +2318,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _stack_alloc_target_ok(nd: uni.UniNode) -> bool;
+    def _stack_only_bound(sym: any, type_name: str) -> bool;
     def _emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_os_const(name: str) -> (ir.Value | None);
     def _emit_os_environ_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);

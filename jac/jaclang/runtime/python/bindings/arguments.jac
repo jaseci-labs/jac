@@ -11,6 +11,29 @@ obj BoundArguments {
     def drop;
 }
 
+import from c {
+    obj ArgumentSlots {
+        has s0: ptr[PyObject] = ptr[PyObject](),
+            s1: ptr[PyObject] = ptr[PyObject](),
+            s2: ptr[PyObject] = ptr[PyObject](),
+            s3: ptr[PyObject] = ptr[PyObject](),
+            s4: ptr[PyObject] = ptr[PyObject](),
+            s5: ptr[PyObject] = ptr[PyObject](),
+            s6: ptr[PyObject] = ptr[PyObject](),
+            s7: ptr[PyObject] = ptr[PyObject](),
+            s8: ptr[PyObject] = ptr[PyObject](),
+            s9: ptr[PyObject] = ptr[PyObject](),
+            s10: ptr[PyObject] = ptr[PyObject](),
+            s11: ptr[PyObject] = ptr[PyObject](),
+            s12: ptr[PyObject] = ptr[PyObject](),
+            s13: ptr[PyObject] = ptr[PyObject](),
+            s14: ptr[PyObject] = ptr[PyObject](),
+            s15: ptr[PyObject] = ptr[PyObject]();
+    }  def jacpy_stack_address(slots: &mut ArgumentSlots) -> int;
+}
+
+glob ARGUMENT_SLOTS: int = 16;
+
 def invalid(message: str) -> bool;
 
 def index_value(value: ptr[PyObject]) -> (i64 | None);
@@ -54,7 +77,51 @@ obj CallSignature {
         positional_warn_range: tuple[int, int] = (0, 0),
         keyword_warning: str = "",
         keyword_warn_required: int = -1,
-        keyword_warn_optional: list[int] = [];
+        keyword_warn_optional: list[int] = [],
+        spare: (BoundArguments | None) = None;
+
+    def take(context: ptr[PyObject]) -> BoundArguments;
+    def give(bound: BoundArguments);
+    def resolved -> int;
+    def plain(count: int) -> bool;
+    def bind_plain(
+        result: BoundArguments, args: ptr[ptr[PyObject]], count: int
+    ) -> bool;
+
+    def fill_keyword(
+        slots: ptr[ptr[PyObject]], key: ptr[PyObject], value: ptr[PyObject], start: int
+    ) -> bool;
+
+    def fill_slots(
+        args: ptr[ptr[PyObject]],
+        nargs: i64,
+        kwnames: ptr[ptr[PyObject]],
+        kwvalues: ptr[ptr[PyObject]],
+        nkw: i64,
+        kwargs: ptr[PyObject],
+        slots: ptr[ptr[PyObject]]
+    ) -> bool;
+
+    def bind_slots(
+        result: BoundArguments,
+        args: ptr[ptr[PyObject]],
+        nargs: i64,
+        kwnames: ptr[ptr[PyObject]],
+        kwvalues: ptr[ptr[PyObject]],
+        nkw: i64,
+        kwargs: ptr[PyObject]
+    ) -> bool;
+
+    def bind_quick(
+        result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
+    ) -> bool;
+
+    def bind_vector_quick(
+        result: BoundArguments,
+        args: ptr[ptr[PyObject]],
+        nargs: i64,
+        kwnames: ptr[PyObject]
+    ) -> bool;
 
     def warn(message: str) -> bool;
     def bind_values(
@@ -114,6 +181,27 @@ def call_bound(
     bound: BoundArguments, implementation: Callable[[BoundArguments], ptr[PyObject]]
 ) -> ptr[PyObject];
 
+def bind_checked(
+    signature: CallSignature,
+    bound: BoundArguments,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject]
+) -> bool;
+
+def bind_vector_checked(
+    signature: CallSignature,
+    bound: BoundArguments,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> bool;
+
+def call_bound_values(
+    signature: CallSignature,
+    bound: BoundArguments,
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]]
+) -> ptr[PyObject];
+
 def invoke(
     signature: CallSignature,
     args: ptr[PyObject],
@@ -150,6 +238,24 @@ def unpack_mapping(
 ) -> ptr[ptr[PyObject]];
 
 def kwnames_items(kwnames: ptr[PyObject]) -> ptr[ptr[PyObject]];
+
+def invoke_keywords(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def invoke_mapping(
+    signature: CallSignature,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject],
+    checked: bool = True
+) -> ptr[PyObject];
 
 def invoke_stack(
     signature: CallSignature,
@@ -368,6 +474,9 @@ impl CallSignature.caller -> str {
 impl CallSignature.bind(
     result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> bool {
+    if self.bind_quick(result, args, kwargs) {
+        return True;
+    }
     count = int(PyTuple_Size(args));
     if count < 0 {
         return False;
@@ -379,6 +488,9 @@ impl CallSignature.bind(
 impl CallSignature.bind_vector(
     result: BoundArguments, args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
 ) -> bool {
+    if self.bind_vector_quick(result, args, nargs, kwnames) {
+        return True;
+    }
     count = int(nargs);
     positional: list[ptr[PyObject]] = [];
     if count > 0 {
@@ -470,6 +582,222 @@ impl CallSignature.keyword_slot(key: ptr[PyObject], start: int) -> int {
     return -1;
 }
 
+impl CallSignature.take(context: ptr[PyObject]) -> BoundArguments {
+    if current_interp() == ptr[u8](_PyInterpreterState_Main()) {
+        spare = self.spare;
+        if spare is not None {
+            self.spare = None;
+            spare.context = context;
+            return spare;
+        }
+    }
+    return BoundArguments([NULL for _ in self.names], context);
+}
+
+impl CallSignature.give(bound: BoundArguments) {
+    values = bound.values;
+    for i in range(len(values)) {
+        value = values[i];
+        if value {
+            values[i] = NULL;
+            jacpy_release(value);
+        }
+    }
+    keywords = bound.keywords;
+    if keywords {
+        bound.keywords = NULL;
+        jacpy_release(keywords);
+    }
+    if bound.failure_at >= 0 {
+        bound.failure = "";
+        bound.failure_at = -1;
+    }
+    bound.context = NULL;
+    bound.nargs = 0;
+    if current_interp() == ptr[u8](_PyInterpreterState_Main()) {
+        self.spare = bound;
+    }
+}
+
+impl CallSignature.resolved -> int {
+    if self.parser != PARSE_AUTO {
+        return self.parser;
+    }
+    return PARSE_POSITIONAL
+        if self.positional_only == len(self.names)
+        else PARSE_KEYWORDS;
+}
+
+impl CallSignature.plain(count: int) -> bool {
+    if self.positional_warning or self.keyword_warning {
+        return False;
+    }
+    parser = self.resolved();
+    if parser == PARSE_KEYWORDS {
+        return self.keyword_required == 0
+            and self.required_count <= count
+            and count <= self.positional_count;
+    }
+    if parser == PARSE_POSITIONAL or parser == PARSE_FORMAT {
+        return self.required_count <= count and count <= self.positional_count;
+    }
+    if parser == PARSE_NOTHING or parser == PARSE_NO_ARGUMENTS {
+        return count == 0;
+    }
+    return parser == PARSE_GIVEN;
+}
+
+impl CallSignature.bind_plain(
+    result: BoundArguments, args: ptr[ptr[PyObject]], count: int
+) -> bool {
+    if not self.plain(count) {
+        return False;
+    }
+    result.nargs = count;
+    values = result.values;
+    size = min(count, len(values));
+    if size > 0 {
+        given = args.view(size);
+        for i in range(size) {
+            values[i] = Py_NewRef(given[i]);
+        }
+    }
+    return True;
+}
+
+impl CallSignature.fill_keyword(
+    slots: ptr[ptr[PyObject]], key: ptr[PyObject], value: ptr[PyObject], start: int
+) -> bool {
+    if jacpy_is_unicode(key) == 0 {
+        return False;
+    }
+    slot = self.keyword_slot(key, start);
+    if slot < 0 or (slots + slot).view(1)[0] != NULL {
+        return False;
+    }
+    (slots + slot).view(1)[0] = value;
+    return True;
+}
+
+impl CallSignature.fill_slots(
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[ptr[PyObject]],
+    kwvalues: ptr[ptr[PyObject]],
+    nkw: i64,
+    kwargs: ptr[PyObject],
+    slots: ptr[ptr[PyObject]]
+) -> bool {
+    total = len(self.names);
+    posonly = self.positional_only;
+    maxpos = self.positional_count;
+    minpos = self.required_count;
+    count = int(nargs);
+    nkeys = int(jacpy_dict_size(kwargs)) if kwargs else int(nkw);
+    if count > maxpos or count < min(posonly, minpos) or count + nkeys > total {
+        return False;
+    }
+    if count > 0 {
+        given = args.view(count);
+        bound = slots.view(count);
+        for i in range(count) {
+            bound[i] = given[i];
+        }
+    }
+    start = max(count, posonly);
+    if kwargs {
+        position: i64 = 0;
+        key: ptr[PyObject] = NULL;
+        value: ptr[PyObject] = NULL;
+        while PyDict_Next(kwargs, &mut position, &mut key, &mut value) != 0 {
+            if not self.fill_keyword(slots, key, value, start) {
+                return False;
+            }
+        }
+    } elif nkeys > 0 {
+        keys = kwnames.view(nkeys);
+        values = kwvalues.view(nkeys);
+        for j in range(nkeys) {
+            if not self.fill_keyword(slots, keys[j], values[j], start) {
+                return False;
+            }
+        }
+    }
+    required = maxpos + self.keyword_required if self.keyword_required else minpos;
+    if total > 0 {
+        filled = slots.view(total);
+        for i in range(total) {
+            if filled[i] == NULL and (i < minpos or (maxpos <= i and i < required)) {
+                return False;
+            }
+        }
+    }
+    return True;
+}
+
+impl CallSignature.bind_slots(
+    result: BoundArguments,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[ptr[PyObject]],
+    kwvalues: ptr[ptr[PyObject]],
+    nkw: i64,
+    kwargs: ptr[PyObject]
+) -> bool {
+    if self.positional_warning
+        or self.keyword_warning
+        or self.resolved() != PARSE_KEYWORDS {
+        return False;
+    }
+    total = len(self.names);
+    if total > ARGUMENT_SLOTS {
+        return False;
+    }
+    slots: own ArgumentSlots = ArgumentSlots();
+    buffer = ptr[ptr[PyObject]](jacpy_stack_address(&mut slots));
+    if not self.fill_slots(args, nargs, kwnames, kwvalues, nkw, kwargs, buffer) {
+        return False;
+    }
+    result.nargs = int(nargs);
+    if total > 0 {
+        values = result.values;
+        filled = buffer.view(total);
+        for i in range(total) {
+            if filled[i] {
+                values[i] = Py_NewRef(filled[i]);
+            }
+        }
+    }
+    return True;
+}
+
+impl CallSignature.bind_quick(
+    result: BoundArguments, args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> bool {
+    count = PyTuple_Size(args);
+    if count < 0 {
+        return False;
+    }
+    items = jacpy_tuple_items(args);
+    if not kwargs or jacpy_dict_size(kwargs) == 0 {
+        return self.bind_plain(result, items, int(count));
+    }
+    none = ptr[ptr[PyObject]](0);
+    return self.bind_slots(result, items, count, none, none, 0, kwargs);
+}
+
+impl CallSignature.bind_vector_quick(
+    result: BoundArguments, args: ptr[ptr[PyObject]], nargs: i64, kwnames: ptr[PyObject]
+) -> bool {
+    nkw = PyTuple_Size(kwnames) if kwnames else i64(0);
+    if nkw == 0 {
+        return self.bind_plain(result, args, int(nargs));
+    }
+    return self.bind_slots(
+        result, args, nargs, kwnames_items(kwnames), args + nargs, nkw, NULL
+    );
+}
+
 impl CallSignature.unpack_array(
     args: ptr[ptr[PyObject]],
     nargs: i64,
@@ -477,49 +805,14 @@ impl CallSignature.unpack_array(
     kwvalues: ptr[ptr[PyObject]],
     nkw: i64
 ) -> ptr[ptr[PyObject]] {
-    none = ptr[ptr[PyObject]](0);
     total = len(self.names);
-    posonly = self.positional_only;
-    maxpos = self.positional_count;
-    minpos = self.required_count;
-    count = int(nargs);
-    if count > maxpos or count < min(posonly, minpos) or count + int(nkw) > total {
-        return none;
-    }
-    array = ptr[ptr[PyObject]](PyMem_Malloc(u64(max(total, 1) * 8)));
+    array = ptr[ptr[PyObject]](PyMem_Calloc(u64(max(total, 1)), u64(8)));
     if array == 0 {
-        return none;
+        return ptr[ptr[PyObject]](0);
     }
-    slots = array.view(total);
-    for i in range(total) {
-        slots[i] = NULL;
-    }
-    if count > 0 {
-        given = args.view(count);
-        for i in range(count) {
-            slots[i] = given[i];
-        }
-    }
-    if nkw > 0 {
-        keys = kwnames.view(int(nkw));
-        values = kwvalues.view(int(nkw));
-        start = max(count, posonly);
-        for j in range(int(nkw)) {
-            key = keys[j];
-            slot = self.keyword_slot(key, start) if jacpy_is_unicode(key) != 0 else -1;
-            if slot < 0 or slots[slot] != NULL {
-                PyMem_Free(array);
-                return none;
-            }
-            slots[slot] = values[j];
-        }
-    }
-    required = maxpos + self.keyword_required if self.keyword_required else minpos;
-    for i in range(total) {
-        if slots[i] == NULL and (i < minpos or (maxpos <= i and i < required)) {
-            PyMem_Free(array);
-            return none;
-        }
+    if not self.fill_slots(args, nargs, kwnames, kwvalues, nkw, NULL, array) {
+        PyMem_Free(array);
+        return ptr[ptr[PyObject]](0);
     }
     return array;
 }
@@ -778,24 +1071,58 @@ impl invoke(
     forward_keywords: bool = False,
     checked: bool = True
 ) -> ptr[PyObject] {
+    bound = signature.take(context);
     if not checked {
         if signature.parser == PARSE_NOTHING {
-            return call_bound(BoundArguments([], context), implementation);
+            result = call_bound(bound, implementation);
+            signature.give(bound);
+            return result;
         }
         kwargs = NULL;
     }
-    bound = BoundArguments([NULL for _ in signature.names], context);
     if forward_keywords and kwargs != 0 {
         bound.keywords = Py_NewRef(kwargs);
     }
-    try {
-        if not signature.bind(bound, args, NULL if forward_keywords else kwargs) {
-            return NULL;
-        }
-    } except boundary_failure {
+    if not bind_checked(signature, bound, args, NULL if forward_keywords else kwargs) {
+        signature.give(bound);
         return NULL;
     }
-    return call_bound(bound, implementation);
+    result = call_bound(bound, implementation);
+    signature.give(bound);
+    return result;
+}
+
+impl bind_checked(
+    signature: CallSignature,
+    bound: BoundArguments,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject]
+) -> bool {
+    if signature.bind_quick(bound, args, kwargs) {
+        return True;
+    }
+    try {
+        return signature.bind(bound, args, kwargs);
+    } except boundary_failure {
+        return False;
+    }
+}
+
+impl bind_vector_checked(
+    signature: CallSignature,
+    bound: BoundArguments,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject]
+) -> bool {
+    if signature.bind_vector_quick(bound, args, nargs, kwnames) {
+        return True;
+    }
+    try {
+        return signature.bind_vector(bound, args, nargs, kwnames);
+    } except boundary_failure {
+        return False;
+    }
 }
 
 impl invoke_vector(
@@ -806,15 +1133,14 @@ impl invoke_vector(
     implementation: Callable[[BoundArguments], ptr[PyObject]],
     context: ptr[PyObject] = 0
 ) -> ptr[PyObject] {
-    bound = BoundArguments([NULL for _ in signature.names], context);
-    try {
-        if not signature.bind_vector(bound, args, nargs, kwnames) {
-            return NULL;
-        }
-    } except boundary_failure {
+    bound = signature.take(context);
+    if not bind_vector_checked(signature, bound, args, nargs, kwnames) {
+        signature.give(bound);
         return NULL;
     }
-    return call_bound(bound, implementation);
+    result = call_bound(bound, implementation);
+    signature.give(bound);
+    return result;
 }
 
 impl call_values(
@@ -825,16 +1151,35 @@ impl call_values(
     if count == 0 {
         return implementation(bound.context, ptr[ptr[PyObject]](0), i64(0));
     }
+    if count <= ARGUMENT_SLOTS {
+        slots: own ArgumentSlots = ArgumentSlots();
+        buffer = ptr[ptr[PyObject]](jacpy_stack_address(&mut slots));
+        values = buffer.view(count);
+        for i in range(count) {
+            values[i] = bound.values[i];
+        }
+        return implementation(bound.context, buffer, i64(count));
+    }
     array = ptr[ptr[PyObject]](PyMem_Malloc(u64(count * 8)));
     if array == 0 {
         return PyErr_NoMemory();
     }
-    slots = array.view(count);
+    copied = array.view(count);
     for i in range(count) {
-        slots[i] = bound.values[i];
+        copied[i] = bound.values[i];
     }
     result = implementation(bound.context, array, i64(count));
     PyMem_Free(array);
+    return result;
+}
+
+impl call_bound_values(
+    signature: CallSignature,
+    bound: BoundArguments,
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]]
+) -> ptr[PyObject] {
+    result = call_values(bound, implementation);
+    signature.give(bound);
     return result;
 }
 
@@ -853,36 +1198,86 @@ impl unpack_stack(
 impl unpack_mapping(
     signature: CallSignature, args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[ptr[PyObject]] {
-    nargs = PyTuple_Size(args);
-    count = jacpy_dict_size(kwargs) if kwargs else i64(0);
-    none = ptr[ptr[PyObject]](0);
-    if count == 0 {
-        return signature.unpack_array(jacpy_tuple_items(args), nargs, none, none, 0);
+    total = len(signature.names);
+    array = ptr[ptr[PyObject]](PyMem_Calloc(u64(max(total, 1)), u64(8)));
+    if array == 0 {
+        return ptr[ptr[PyObject]](0);
     }
-    pairs = ptr[ptr[PyObject]](PyMem_Malloc(u64(count * 16)));
-    if pairs == 0 {
+    none = ptr[ptr[PyObject]](0);
+    if not signature.fill_slots(
+        jacpy_tuple_items(args), PyTuple_Size(args), none, none, 0, kwargs, array
+    ) {
+        PyMem_Free(array);
         return none;
     }
-    slots = pairs.view(int(count * 2));
-    position: i64 = 0;
-    key: ptr[PyObject] = NULL;
-    value: ptr[PyObject] = NULL;
-    index = 0;
-    while index < int(count)
-        and PyDict_Next(kwargs, &mut position, &mut key, &mut value) != 0 {
-        slots[index] = key;
-        slots[int(count) + index] = value;
-        index += 1;
-    }
-    result = signature.unpack_array(
-        jacpy_tuple_items(args), nargs, pairs, pairs + count, count
-    );
-    PyMem_Free(pairs);
-    return result;
+    return array;
 }
 
 impl kwnames_items(kwnames: ptr[PyObject]) -> ptr[ptr[PyObject]] {
     return jacpy_tuple_items(kwnames) if kwnames else ptr[ptr[PyObject]](0);
+}
+
+impl invoke_keywords(
+    signature: CallSignature,
+    args: ptr[ptr[PyObject]],
+    nargs: i64,
+    kwnames: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject]
+) -> ptr[PyObject] {
+    total = len(signature.names);
+    nkw = PyTuple_Size(kwnames) if kwnames else i64(0);
+    if total <= ARGUMENT_SLOTS {
+        slots: own ArgumentSlots = ArgumentSlots();
+        buffer = ptr[ptr[PyObject]](jacpy_stack_address(&mut slots));
+        if signature.fill_slots(
+            args, nargs, kwnames_items(kwnames), args + nargs, nkw, NULL, buffer
+        ) {
+            return implementation(context, buffer, i64(total));
+        }
+    } else {
+        values = signature.unpack_array(
+            args, nargs, kwnames_items(kwnames), args + nargs, nkw
+        );
+        if values {
+            unpacked = implementation(context, values, i64(total));
+            PyMem_Free(values);
+            return unpacked;
+        }
+    }
+    return invoke_stack(signature, args, nargs, kwnames, implementation, context);
+}
+
+impl invoke_mapping(
+    signature: CallSignature,
+    args: ptr[PyObject],
+    kwargs: ptr[PyObject],
+    implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
+    context: ptr[PyObject],
+    checked: bool = True
+) -> ptr[PyObject] {
+    if not checked {
+        return invoke_tuple(signature, args, kwargs, implementation, context, False);
+    }
+    total = len(signature.names);
+    if total <= ARGUMENT_SLOTS {
+        slots: own ArgumentSlots = ArgumentSlots();
+        buffer = ptr[ptr[PyObject]](jacpy_stack_address(&mut slots));
+        none = ptr[ptr[PyObject]](0);
+        if signature.fill_slots(
+            jacpy_tuple_items(args), PyTuple_Size(args), none, none, 0, kwargs, buffer
+        ) {
+            return implementation(context, buffer, i64(total));
+        }
+    } else {
+        values = unpack_mapping(signature, args, kwargs);
+        if values {
+            unpacked = implementation(context, values, i64(total));
+            PyMem_Free(values);
+            return unpacked;
+        }
+    }
+    return invoke_tuple(signature, args, kwargs, implementation, context);
 }
 
 impl invoke_stack(
@@ -893,15 +1288,12 @@ impl invoke_stack(
     implementation: Callable[[ptr[PyObject], ptr[ptr[PyObject]], i64], ptr[PyObject]],
     context: ptr[PyObject]
 ) -> ptr[PyObject] {
-    bound = BoundArguments([NULL for _ in signature.names], context);
-    try {
-        if not signature.bind_vector(bound, args, nargs, kwnames) {
-            return NULL;
-        }
-    } except boundary_failure {
+    bound = signature.take(context);
+    if not bind_vector_checked(signature, bound, args, nargs, kwnames) {
+        signature.give(bound);
         return NULL;
     }
-    return call_values(bound, implementation);
+    return call_bound_values(signature, bound, implementation);
 }
 
 impl invoke_tuple(
@@ -918,15 +1310,12 @@ impl invoke_tuple(
         }
         kwargs = NULL;
     }
-    bound = BoundArguments([NULL for _ in signature.names], context);
-    try {
-        if not signature.bind(bound, args, kwargs) {
-            return NULL;
-        }
-    } except boundary_failure {
+    bound = signature.take(context);
+    if not bind_checked(signature, bound, args, kwargs) {
+        signature.give(bound);
         return NULL;
     }
-    return call_values(bound, implementation);
+    return call_bound_values(signature, bound, implementation);
 }
 
 impl invoke_given(

@@ -60,8 +60,9 @@ the module's own Jac files and one line in each list.
 Steps for a module `_foo` built from `Modules/_foomodule.c`:
 
 1. Add `_foo` to `jacpython-clinic.txt` and run `jac run scripts/jacpython/gen_clinic.jac _foo`.
-   The generated file imports `<c_basename>_impl` functions, C macro defaults
-   and module converters from `runtime/python/modules/foo.jac`.
+   The generated file uses `<c_basename>_impl` functions, C macro defaults
+   and module converters from `runtime/python/modules/foo.jac` without
+   imports: wire each name into `bindings.clinic.foo` in `archwire.jac`.
 2. Write `modules/foo.jac`: one `_impl` function per clinic function, with the C
    name and the C parameter list (`PyObject *` is `ptr[PyObject]`,
    `Py_ssize_t` is `i64`, `Py_buffer` is `BufferArgument`). The body calls the
@@ -194,10 +195,17 @@ place, a positional-only `METH_FASTCALL` function checks its arity with
 `check_positional` and converts the vectorcall stack, and a keyword-capable
 function or a `tp_new`/`tp_init` hands its stack or its tuple's items
 (`jacpy_tuple_items`) to the `_bound` function when no keywords are passed and
-the positional count is in range. Only the other calls go through the
-`CallSignature` (`invoke_stack`, `invoke_tuple`), which binds into an array as
-long as the parameter list. The glue calls its `_bound` function directly
-there: passing a Jac function as a `Callable` allocates a closure per call.
+the positional count is in range. A call with keywords binds, as
+`_PyArg_UnpackKeywords` does, into an argument array on the C stack
+(`invoke_keywords` for a vectorcall, `invoke_mapping` for a tuple and dict;
+an `ArgumentSlots` record, or an allocated array past its 16 slots), and only
+a call that does not bind goes on to the `CallSignature`'s parser
+(`invoke_stack`, `invoke_tuple`), which reports it with CPython's message. A
+named Jac function passed as a `Callable` is one static closure, so handing
+`_bound` to these allocates nothing. Hand-written bindings that take
+`BoundArguments` (`invoke`, `invoke_vector`) bind positional calls and
+keyword calls of a `PARSE_KEYWORDS` signature straight into the bound values,
+and the main interpreter reuses each signature's `BoundArguments`.
 `ArgumentFormat` analyses each format string once (`format_plan`). A
 hand-written binding picks the same flags and parser as the C module's clinic
 output. A C type's `PyMemberDef` fields are real member

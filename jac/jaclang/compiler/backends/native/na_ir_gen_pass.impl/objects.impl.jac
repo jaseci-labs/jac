@@ -1847,7 +1847,43 @@ impl NaIRGenPass._stack_alloc_target_ok(nd: uni.UniNode) -> bool {
         return False;
     }
     sym = targets[0].sym;
-    return sym is not None and sym.na_stack_ok;
+    if sym is None or not sym.na_stack_ok {
+        return False;
+    }
+    # A generator's locals outlive each resumption's native frame.
+    ability = nd.find_parent_of_type(uni.Ability);
+    return ability is None or not self._ability_is_generator(ability);
+}
+
+impl NaIRGenPass._stack_only_bound(sym: any, type_name: str) -> bool {
+    for occurrence in list(sym.defn) + list(sym.uses) {
+        child: uni.UniNode = occurrence;
+        holder = occurrence.parent;
+        while holder is not None
+            and not isinstance(holder, (uni.Assignment, uni.InForStmt))
+            and not isinstance(holder, uni.CodeBlockStmt) {
+            child = holder;
+            holder = holder.parent;
+        }
+        if isinstance(holder, uni.InForStmt) and holder.target is child {
+            return False;
+        }
+        if not isinstance(holder, uni.Assignment)
+            or not any(target is child for target in holder.target) {
+            continue;
+        }
+        value = holder.value;
+        if child is not occurrence
+            or holder.aug_op is not None
+            or len(holder.target) != 1
+            or not isinstance(value, uni.FuncCall)
+            or (self._arch_ref_key(value.target) or self._get_name(value.target))
+                != type_name
+            or not self._stack_alloc_target_ok(value) {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl NaIRGenPass._empty_container_for_field(
@@ -2056,6 +2092,16 @@ impl NaIRGenPass._codegen_instantiation(
         );
         if self.rc_set_type_fn is not None {
             self._emit_set_type_tag(self.builder, _stk_i8, type_name);
+        }
+        # A local only ever bound to stack records holds no reference to
+        # release, so neither its scope end nor an unwind releases it.
+        _stk_asgn = nd.find_parent_of_type(uni.Assignment);
+        if _stk_asgn is not None
+            and len(_stk_asgn.target) == 1
+            and isinstance(_stk_asgn.target[0], uni.Name)
+            and _stk_asgn.target[0].sym is not None
+            and self._stack_only_bound(_stk_asgn.target[0].sym, type_name) {
+            self.borrowed_vars.add(_stk_asgn.target[0].sym_name);
         }
     } else {
         null_ptr = ir.Constant(struct_ptr_type, None);

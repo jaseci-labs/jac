@@ -1864,7 +1864,7 @@ impl _io_open_bound(
         mode: str = "r";
         if count > 1 and clinic_args[1] != NULL {
             value = clinic_args[1];
-            mode = convert_str(value, "open", argument_label("mode", 2));
+            mode = convert_str(value, "open", "argument 'mode'");
         }
         buffering: i32 = -1;
         if count > 2 and clinic_args[2] != NULL {
@@ -1874,17 +1874,17 @@ impl _io_open_bound(
         encoding: ptr[u8] = ptr[u8]();
         if count > 3 and clinic_args[3] != NULL {
             value = clinic_args[3];
-            encoding = convert_cstr(value, "open", argument_label("encoding", 4), True);
+            encoding = convert_cstr(value, "open", "argument 'encoding'", True);
         }
         errors: ptr[u8] = ptr[u8]();
         if count > 4 and clinic_args[4] != NULL {
             value = clinic_args[4];
-            errors = convert_cstr(value, "open", argument_label("errors", 5), True);
+            errors = convert_cstr(value, "open", "argument 'errors'", True);
         }
         newline: ptr[u8] = ptr[u8]();
         if count > 5 and clinic_args[5] != NULL {
             value = clinic_args[5];
-            newline = convert_cstr(value, "open", argument_label("newline", 6), True);
+            newline = convert_cstr(value, "open", "argument 'newline'", True);
         }
         closefd: bool = True;
         if count > 6 and clinic_args[6] != NULL {
@@ -1913,13 +1913,7 @@ impl _io_open_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 8 {
         return _io_open_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io_open_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io_open_bound(receiver, values, 8);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io_open_signature, args, nargs, kwnames, _io_open_bound, receiver
     );
 }
@@ -1958,9 +1952,7 @@ impl _io_open_code_bound(
     clinic_args = stack.view(count);
     try {
         value = clinic_args[0];
-        path: ptr[PyObject] = convert_unicode(
-            value, "open_code", argument_label("path", 1)
-        );
+        path: ptr[PyObject] = convert_unicode(value, "open_code", "argument 'path'");
         return _io_open_code_impl(receiver, path);
     } except boundary_failure {
         return NULL;
@@ -1976,13 +1968,7 @@ impl _io_open_code_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return _io_open_code_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io_open_code_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io_open_code_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io_open_code_signature, args, nargs, kwnames, _io_open_code_bound, receiver
     );
 }
@@ -2015,13 +2001,7 @@ impl _io__IOBase_seek_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 2 {
         return _io__IOBase_seek_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io__IOBase_seek_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io__IOBase_seek_bound(receiver, values, 2);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io__IOBase_seek_signature,
         args,
         nargs,
@@ -2078,13 +2058,7 @@ impl _io__IOBase_truncate_call(
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
         return _io__IOBase_truncate_direct(receiver, args, nargs);
     }
-    values = unpack_stack(_io__IOBase_truncate_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io__IOBase_truncate_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io__IOBase_truncate_signature,
         args,
         nargs,
@@ -2323,7 +2297,7 @@ impl _io_FileIO___init___bound(
         mode: str = "r";
         if count > 1 and clinic_args[1] != NULL {
             value = clinic_args[1];
-            mode = convert_str(value, "FileIO", argument_label("mode", 2));
+            mode = convert_str(value, "FileIO", "argument 'mode'");
         }
         closefd: bool = True;
         if count > 2 and clinic_args[2] != NULL {
@@ -2356,16 +2330,7 @@ impl _io_FileIO___init___init(
         }
     }
     if not bound {
-        values = unpack_mapping(_io_FileIO___init___signature, args, kwargs);
-        if values {
-            unpacked = _io_FileIO___init___bound(receiver, values, 4);
-            PyMem_Free(values);
-            bound = True;
-            result = unpacked;
-        }
-    }
-    if not bound {
-        result = invoke_tuple(
+        result = invoke_mapping(
             _io_FileIO___init___signature,
             args,
             kwargs,
@@ -2412,7 +2377,7 @@ impl _io_FileIO_readinto_bound(
         cls = defining_class(receiver, FileIO_token);
         value = clinic_args[0];
         buffer: BufferArgument = convert_writable_buffer(
-            value, "readinto", argument_label("", 1)
+            value, "readinto", "argument 1"
         );
         try {
             return _io_FileIO_readinto_impl(receiver, cls, buffer);
@@ -2433,13 +2398,7 @@ impl _io_FileIO_readinto_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return _io_FileIO_readinto_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io_FileIO_readinto_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io_FileIO_readinto_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io_FileIO_readinto_signature,
         args,
         nargs,
@@ -2480,13 +2439,7 @@ impl _io_FileIO_read_call(
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
         return _io_FileIO_read_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io_FileIO_read_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io_FileIO_read_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io_FileIO_read_signature, args, nargs, kwnames, _io_FileIO_read_bound, receiver
     );
 }
@@ -2498,7 +2451,7 @@ impl _io_FileIO_write_bound(
     try {
         cls = defining_class(receiver, FileIO_token);
         value = clinic_args[0];
-        b: BufferArgument = convert_buffer(value, "write", argument_label("", 1));
+        b: BufferArgument = convert_buffer(value, "write", "argument 1");
         try {
             return _io_FileIO_write_impl(receiver, cls, b);
         } finally {
@@ -2518,13 +2471,7 @@ impl _io_FileIO_write_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return _io_FileIO_write_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io_FileIO_write_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io_FileIO_write_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io_FileIO_write_signature,
         args,
         nargs,
@@ -2608,13 +2555,7 @@ impl _io_FileIO_truncate_call(
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
         return _io_FileIO_truncate_direct(receiver, args, nargs);
     }
-    values = unpack_stack(_io_FileIO_truncate_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io_FileIO_truncate_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io_FileIO_truncate_signature,
         args,
         nargs,
@@ -2949,16 +2890,7 @@ impl _io_BytesIO___init___init(
         }
     }
     if not bound {
-        values = unpack_mapping(_io_BytesIO___init___signature, args, kwargs);
-        if values {
-            unpacked = _io_BytesIO___init___bound(receiver, values, 1);
-            PyMem_Free(values);
-            bound = True;
-            result = unpacked;
-        }
-    }
-    if not bound {
-        result = invoke_tuple(
+        result = invoke_mapping(
             _io_BytesIO___init___signature,
             args,
             kwargs,
@@ -3071,13 +3003,7 @@ impl _io__BufferedIOBase_read_call(
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
         return _io__BufferedIOBase_read_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io__BufferedIOBase_read_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io__BufferedIOBase_read_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io__BufferedIOBase_read_signature,
         args,
         nargs,
@@ -3113,13 +3039,7 @@ impl _io__BufferedIOBase_read1_call(
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
         return _io__BufferedIOBase_read1_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io__BufferedIOBase_read1_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io__BufferedIOBase_read1_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io__BufferedIOBase_read1_signature,
         args,
         nargs,
@@ -3164,13 +3084,7 @@ impl _io__BufferedIOBase_write_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return _io__BufferedIOBase_write_direct(receiver, args, nargs);
     }
-    values = unpack_stack(_io__BufferedIOBase_write_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io__BufferedIOBase_write_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io__BufferedIOBase_write_signature,
         args,
         nargs,
@@ -3497,13 +3411,7 @@ impl _io__Buffered_truncate_call(
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
         return _io__Buffered_truncate_direct(receiver, args, nargs);
     }
-    values = unpack_stack(_io__Buffered_truncate_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io__Buffered_truncate_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io__Buffered_truncate_signature,
         args,
         nargs,
@@ -3546,16 +3454,7 @@ impl _io_BufferedReader___init___init(
         }
     }
     if not bound {
-        values = unpack_mapping(_io_BufferedReader___init___signature, args, kwargs);
-        if values {
-            unpacked = _io_BufferedReader___init___bound(receiver, values, 2);
-            PyMem_Free(values);
-            bound = True;
-            result = unpacked;
-        }
-    }
-    if not bound {
-        result = invoke_tuple(
+        result = invoke_mapping(
             _io_BufferedReader___init___signature,
             args,
             kwargs,
@@ -3603,16 +3502,7 @@ impl _io_BufferedWriter___init___init(
         }
     }
     if not bound {
-        values = unpack_mapping(_io_BufferedWriter___init___signature, args, kwargs);
-        if values {
-            unpacked = _io_BufferedWriter___init___bound(receiver, values, 2);
-            PyMem_Free(values);
-            bound = True;
-            result = unpacked;
-        }
-    }
-    if not bound {
-        result = invoke_tuple(
+        result = invoke_mapping(
             _io_BufferedWriter___init___signature,
             args,
             kwargs,
@@ -3728,16 +3618,7 @@ impl _io_BufferedRandom___init___init(
         }
     }
     if not bound {
-        values = unpack_mapping(_io_BufferedRandom___init___signature, args, kwargs);
-        if values {
-            unpacked = _io_BufferedRandom___init___bound(receiver, values, 2);
-            PyMem_Free(values);
-            bound = True;
-            result = unpacked;
-        }
-    }
-    if not bound {
-        result = invoke_tuple(
+        result = invoke_mapping(
             _io_BufferedRandom___init___signature,
             args,
             kwargs,
@@ -3791,20 +3672,7 @@ impl _io_IncrementalNewlineDecoder___init___init(
         }
     }
     if not bound {
-        values = unpack_mapping(
-            _io_IncrementalNewlineDecoder___init___signature, args, kwargs
-        );
-        if values {
-            unpacked = _io_IncrementalNewlineDecoder___init___bound(
-                receiver, values, 3
-            );
-            PyMem_Free(values);
-            bound = True;
-            result = unpacked;
-        }
-    }
-    if not bound {
-        result = invoke_tuple(
+        result = invoke_mapping(
             _io_IncrementalNewlineDecoder___init___signature,
             args,
             kwargs,
@@ -3846,15 +3714,7 @@ impl _io_IncrementalNewlineDecoder_decode_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 2 {
         return _io_IncrementalNewlineDecoder_decode_bound(receiver, args, nargs);
     }
-    values = unpack_stack(
-        _io_IncrementalNewlineDecoder_decode_signature, args, nargs, kwnames
-    );
-    if values {
-        unpacked = _io_IncrementalNewlineDecoder_decode_bound(receiver, values, 2);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io_IncrementalNewlineDecoder_decode_signature,
         args,
         nargs,
@@ -3894,7 +3754,7 @@ impl _io_TextIOWrapper___init___bound(
         if count > 1 and clinic_args[1] != NULL {
             value = clinic_args[1];
             encoding = convert_cstr(
-                value, "TextIOWrapper", argument_label("encoding", 2), True
+                value, "TextIOWrapper", "argument 'encoding'", True
             );
         }
         errors: ptr[PyObject] = borrowed_none();
@@ -3905,9 +3765,7 @@ impl _io_TextIOWrapper___init___bound(
         newline: ptr[u8] = ptr[u8]();
         if count > 3 and clinic_args[3] != NULL {
             value = clinic_args[3];
-            newline = convert_cstr(
-                value, "TextIOWrapper", argument_label("newline", 4), True
-            );
+            newline = convert_cstr(value, "TextIOWrapper", "argument 'newline'", True);
         }
         line_buffering: bool = False;
         if count > 4 and clinic_args[4] != NULL {
@@ -3950,16 +3808,7 @@ impl _io_TextIOWrapper___init___init(
         }
     }
     if not bound {
-        values = unpack_mapping(_io_TextIOWrapper___init___signature, args, kwargs);
-        if values {
-            unpacked = _io_TextIOWrapper___init___bound(receiver, values, 6);
-            PyMem_Free(values);
-            bound = True;
-            result = unpacked;
-        }
-    }
-    if not bound {
-        result = invoke_tuple(
+        result = invoke_mapping(
             _io_TextIOWrapper___init___signature,
             args,
             kwargs,
@@ -4050,15 +3899,7 @@ impl _io_TextIOWrapper_reconfigure_call(
     if kwnames == NULL and nargs >= 0 and nargs <= 0 {
         return _io_TextIOWrapper_reconfigure_direct(receiver, args, nargs);
     }
-    values = unpack_stack(
-        _io_TextIOWrapper_reconfigure_signature, args, nargs, kwnames
-    );
-    if values {
-        unpacked = _io_TextIOWrapper_reconfigure_bound(receiver, values, 5);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io_TextIOWrapper_reconfigure_signature,
         args,
         nargs,
@@ -4364,13 +4205,7 @@ impl _io__TextIOBase_read_call(
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
         return _io__TextIOBase_read_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io__TextIOBase_read_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io__TextIOBase_read_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io__TextIOBase_read_signature,
         args,
         nargs,
@@ -4406,13 +4241,7 @@ impl _io__TextIOBase_readline_call(
     if kwnames == NULL and nargs >= 0 and nargs <= 1 {
         return _io__TextIOBase_readline_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io__TextIOBase_readline_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io__TextIOBase_readline_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io__TextIOBase_readline_signature,
         args,
         nargs,
@@ -4429,7 +4258,7 @@ impl _io__TextIOBase_write_bound(
     try {
         cls = defining_class(receiver, _TextIOBase_token);
         value = clinic_args[0];
-        s: str = convert_str(value, "write", argument_label("", 1));
+        s: str = convert_str(value, "write", "argument 1");
         return _io__TextIOBase_write_impl(receiver, cls, s);
     } except boundary_failure {
         return NULL;
@@ -4445,13 +4274,7 @@ impl _io__TextIOBase_write_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return _io__TextIOBase_write_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_io__TextIOBase_write_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _io__TextIOBase_write_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _io__TextIOBase_write_signature,
         args,
         nargs,
@@ -4639,16 +4462,7 @@ impl _io_StringIO___init___init(
         }
     }
     if not bound {
-        values = unpack_mapping(_io_StringIO___init___signature, args, kwargs);
-        if values {
-            unpacked = _io_StringIO___init___bound(receiver, values, 2);
-            PyMem_Free(values);
-            bound = True;
-            result = unpacked;
-        }
-    }
-    if not bound {
-        result = invoke_tuple(
+        result = invoke_mapping(
             _io_StringIO___init___signature,
             args,
             kwargs,

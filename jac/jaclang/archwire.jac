@@ -16312,7 +16312,6 @@ graph import runtime.python {
     bindings.payload ++> [
         modules.abc
             | modules.bz2
-            | modules.functools
             | modules.hashlib
             | modules.lsprof
             | modules.lzma
@@ -16338,6 +16337,7 @@ graph import runtime.python {
             jacpy_binding_native_set
         },
         modules.elementtree { jacpy_binding_clear_weakrefs, jacpy_binding_untrack },
+        modules.functools | modules.ssl | modules.ssl_cert { jacpy_binding_native_set },
         modules.posix_stat {
             dispose_payload,
             jacpy_binding_native_get,
@@ -16349,7 +16349,6 @@ graph import runtime.python {
             jacpy_binding_native_get,
             jacpy_binding_native_present
         },
-        modules.ssl | modules.ssl_cert { jacpy_binding_native_set },
     ]
     bindings.pickle ++> inittab { PyInit__pickle }
     bindings.posix ++> inittab { PyInit_posix }
@@ -16388,7 +16387,6 @@ graph import runtime.python {
         | modules.collections
         | modules.csv
         | modules.elementtree
-        | modules.functools
         | modules.hashlib
         | modules.hashopenssl
         | modules.hmac
@@ -16640,7 +16638,7 @@ graph import runtime.python {
             | modules.statistics
             | modules.suggestions
             | modules.termios { object_error },
-        bindings.functools { object_error, text_object },
+        bindings.functools { c_string_copy, object_error, text_object },
         bindings.json { boundary_failure, object_error, object_tuple, type_name },
         bindings.operator { boundary_failure, object_error, text_object },
         bindings.pickle { builtin_kind, builtin_type, object_error, text_value },
@@ -16879,6 +16877,7 @@ graph import runtime.python {
             Py_NewRef,
             Py_None,
             Py_TYPE,
+            _PyInterpreterState_Main,
             _Py_CalculateSuggestions,
             jacpy_dict_size,
             jacpy_error_pending,
@@ -16963,52 +16962,52 @@ graph import runtime.python {
             jacpy_release
         },
         bindings.clinic.abc
-            | bindings.clinic.fcntl
-            | bindings.clinic.locale
-            | bindings.clinic.mmap
-            | bindings.clinic.operator
-            | bindings.clinic.resource
-            | bindings.clinic.statistics
-            | bindings.clinic.suggestions
-            | bindings.clinic.sysconfig
-            | bindings.clinic.termios
-            | bindings.clinic.time
-            | bindings.clinic.tracemalloc
-            | bindings.clinic.typing
-            | bindings.clinic.unicodedata
-            | bindings.queue
-            | modules.object_ring { NULL, PyObject },
-        bindings.clinic.array
+            | bindings.clinic.array
             | bindings.clinic.binascii
             | bindings.clinic.bisect
             | bindings.clinic.cmath
             | bindings.clinic.csv
+            | bindings.clinic.fcntl
             | bindings.clinic.functools
             | bindings.clinic.grp
             | bindings.clinic.hashopenssl
             | bindings.clinic.hmac
             | bindings.clinic.imp
+            | bindings.clinic.locale
             | bindings.clinic.marshal
             | bindings.clinic.math
             | bindings.clinic.md5
+            | bindings.clinic.mmap
             | bindings.clinic.opcode
+            | bindings.clinic.operator
             | bindings.clinic.pyexpat
+            | bindings.clinic.resource
             | bindings.clinic.sha1
             | bindings.clinic.sha2
             | bindings.clinic.signal
+            | bindings.clinic.statistics
+            | bindings.clinic.suggestions
+            | bindings.clinic.sysconfig
             | bindings.clinic.syslog
+            | bindings.clinic.termios
             | bindings.clinic.thread
-            | bindings.clinic.zlib { NULL, PyMem_Free, PyObject },
+            | bindings.clinic.time
+            | bindings.clinic.tracemalloc
+            | bindings.clinic.typing
+            | bindings.clinic.unicodedata
+            | bindings.clinic.zlib
+            | bindings.queue
+            | modules.object_ring { NULL, PyObject },
         bindings.clinic.asyncio
             | bindings.clinic.collections
             | bindings.clinic.lsprof
             | bindings.clinic.pickle
             | bindings.clinic.posix
+            | bindings.clinic.random
             | bindings.clinic.socket
             | bindings.clinic.ssl
             | bindings.clinic.struct {
             NULL,
-            PyMem_Free,
             PyObject,
             PyTuple_Size,
             jacpy_dict_size,
@@ -17025,17 +17024,19 @@ graph import runtime.python {
             | bindings.clinic.sha3
             | bindings.clinic.zoneinfo {
             NULL,
-            PyMem_Free,
             PyObject,
             PyTuple_Size,
             jacpy_dict_size,
             jacpy_tuple_items
         },
-        bindings.clinic.codecs { NULL, PyMem_Free, PyObject, jacpy_is_bytes },
-        bindings.clinic.ctypes { NULL, PyMem_Free, PyObject, jacpy_is_unicode },
+        bindings.clinic.codecs { NULL, PyObject, jacpy_is_bytes },
+        bindings.clinic.ctypes | bindings.clinic.posixshmem | bindings.clinic.pwd {
+            NULL,
+            PyObject,
+            jacpy_is_unicode
+        },
         bindings.clinic.elementtree {
             NULL,
-            PyMem_Free,
             PyObject,
             PyTuple_Size,
             jacpy_dict_size,
@@ -17047,7 +17048,6 @@ graph import runtime.python {
         bindings.clinic.io {
             NULL,
             PyLong_AsSsize_t,
-            PyMem_Free,
             PyObject,
             PyTuple_Size,
             jacpy_dict_size,
@@ -17056,7 +17056,6 @@ graph import runtime.python {
         },
         bindings.clinic.itertools {
             NULL,
-            PyMem_Free,
             PyObject,
             PyTuple_Size,
             jacpy_dict_size,
@@ -17065,28 +17064,17 @@ graph import runtime.python {
         },
         bindings.clinic.multibytecodec {
             NULL,
-            PyMem_Free,
             PyObject,
             jacpy_is_long,
             jacpy_is_tuple
         },
-        bindings.clinic.posixshmem | bindings.clinic.pwd {
+        bindings.clinic.posixsubprocess | bindings.clinic.warnings {
             NULL,
             PyObject,
-            jacpy_is_unicode
-        },
-        bindings.clinic.posixsubprocess { NULL, PyObject, jacpy_is_tuple },
-        bindings.clinic.random {
-            NULL,
-            PyObject,
-            PyTuple_Size,
-            jacpy_dict_size,
-            jacpy_release,
-            jacpy_tuple_items
+            jacpy_is_tuple
         },
         bindings.clinic.sqlite3 {
             NULL,
-            PyMem_Free,
             PyObject,
             PyTuple_Size,
             jacpy_dict_size,
@@ -17097,17 +17085,14 @@ graph import runtime.python {
         bindings.clinic.sre {
             NULL,
             PyLong_AsSsize_t,
-            PyMem_Free,
             PyObject,
             jacpy_is_dict,
             jacpy_is_list,
             jacpy_is_tuple
         },
-        bindings.clinic.warnings { NULL, PyMem_Free, PyObject, jacpy_is_tuple },
         bindings.clinic.weakref { NULL, PyObject, jacpy_is_dict },
         bindings.clinic.zstd {
             NULL,
-            PyMem_Free,
             PyObject,
             PyTuple_Size,
             jacpy_dict_size,
@@ -17333,26 +17318,25 @@ graph import runtime.python {
             PyCallable_Check,
             PyDict_New,
             PyDict_SetItem,
+            PyErr_NoMemory,
             PyExc_AttributeError,
             PyExc_SystemError,
             PyExc_TypeError,
-            PyIndex_Check,
             PyObject,
             PyObject_CallNoArgs,
             PyObject_GenericGetDict,
             PyObject_GenericSetDict,
-            PyObject_GetAttrString,
             PyObject_IsTrue,
-            PyObject_RichCompare,
             PyTuple_GetItem,
             PyTuple_GetSlice,
             PyTuple_New,
             PyTuple_Size,
+            PyType_FromModuleAndSpec,
+            PyType_Spec,
             PyVectorcall_NARGS,
             Py_LeaveRecursiveCall,
             Py_NewRef,
             Py_None,
-            Py_NotImplemented,
             Py_TYPE,
             jacpy_dict_size,
             jacpy_recursion_enter,
@@ -20242,42 +20226,47 @@ graph import runtime.python {
             PyDict_Copy,
             PyDict_New,
             PyDict_Next,
-            PyDict_SetItem,
+            PyDict_Size,
             PyDict_Update,
             PyErr_ExceptionMatches,
-            PyExc_SystemError,
+            PyErr_Occurred,
+            PyErr_SetString,
+            PyExc_OverflowError,
             PyExc_TypeError,
+            PyIndex_Check,
             PyIter_Next,
             PyLong_FromLongLong,
-            PyODict_Type,
+            PyMemberDef,
+            PyMethodDef,
+            PyNumber_AsSsize_t,
             PyObject,
             PyObject_Call,
-            PyObject_CallNoArgs,
-            PyObject_CallOneArg,
+            PyObject_CallFunction,
+            PyObject_ClearWeakRefs,
+            PyObject_GC_UnTrack,
+            PyObject_GenericGetDict,
+            PyObject_GenericSetDict,
             PyObject_GetAttrString,
             PyObject_GetIter,
             PyObject_Hash,
             PyObject_RichCompare,
-            PyObject_SetItem,
             PyObject_Str,
             PySequence_Tuple,
             PyTuple_New,
             PyTuple_Size,
+            PyType_Slot,
+            PyType_Spec,
             Py_NewRef,
             Py_None,
             Py_ReprEnter,
             Py_ReprLeave,
+            _PyObject_New,
             jacpy_call_two,
-            jacpy_dict_get,
-            jacpy_dict_size,
             jacpy_error_pending,
             jacpy_is_dict,
             jacpy_is_exact_dict,
-            jacpy_is_exact_long,
             jacpy_is_exact_tuple,
-            jacpy_is_exact_unicode,
             jacpy_is_tuple,
-            jacpy_object_type,
             jacpy_release,
             jacpy_tuple_item,
             jacpy_tuple_set_owned
@@ -28779,6 +28768,28 @@ graph import runtime.python {
             _Py_ID_fileno,
             _Py_ID_stderr
         },
+        modules.functools {
+            PyGetSetDef,
+            PyTypeObject,
+            Py_READONLY,
+            Py_TPFLAGS_DEFAULT,
+            Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            Py_TPFLAGS_HAVE_GC,
+            Py_TPFLAGS_IMMUTABLETYPE,
+            Py_TPFLAGS_METHOD_DESCRIPTOR,
+            Py_T_PYSSIZET,
+            Py_tp_call,
+            Py_tp_clear,
+            Py_tp_dealloc,
+            Py_tp_descr_get,
+            Py_tp_doc,
+            Py_tp_getset,
+            Py_tp_members,
+            Py_tp_methods,
+            Py_tp_new,
+            Py_tp_traverse,
+            _object
+        },
         modules.imp { PYC_MAGIC_NUMBER_TOKEN, PyBUF_READ, PyBUF_SIMPLE, PyTypeObject },
         modules.interpchannels {
             METH_KEYWORDS,
@@ -34311,18 +34322,21 @@ graph import runtime.python {
         },
         bindings.functools {
             KeyWrapper_token,
-            LruState,
-            _lru_cache_wrapper_token,
             jacpy_cmp_key,
-            jacpy_lru_call,
-            jacpy_lru_init,
             jacpy_partial_call,
             jacpy_partial_clear,
             jacpy_partial_field,
             jacpy_partial_init,
             jacpy_partial_repr,
             jacpy_partial_restore,
-            lru_state,
+            lru_cache_copy,
+            lru_cache_deepcopy,
+            lru_cache_install_slots,
+            lru_cache_new,
+            lru_cache_reduce,
+            lru_cache_slots_ready,
+            lru_cache_type_spec,
+            lru_list_elem_type_spec,
             partial_state
         },
     ]
@@ -36743,6 +36757,7 @@ graph import runtime.python {
             unicode_check
         },
         modules.faulthandler { call_method_no_args, long_check },
+        modules.functools { long_check_exact },
         modules.interpchannels { long_check },
         modules.io_buffered { bytes_data },
         modules.io_bytesio { bytes_data, long_check, tuple_check },
@@ -36785,7 +36800,6 @@ graph import runtime.python {
             | modules.datetime_time
             | modules.decimal_number
             | modules.decimal_objects
-            | modules.functools
             | modules.hashlib
             | modules.json
             | modules.lzma
@@ -36873,6 +36887,7 @@ graph import runtime.python {
         },
         modules.ctypes_cdata { dict_check, dict_check_exact, object_xincref },
         modules.ctypes_objects { dict_check_exact },
+        modules.functools { unicode_check_exact },
         modules.pickle_decode { dict_check, unicode_check_exact },
         modules.pickle_encode { dict_check, dict_check_exact },
         modules.warnings { dict_check, object_xincref, unicode_check_exact },
@@ -36950,6 +36965,7 @@ graph import runtime.python {
         _Py_hashtable_set
     }
     object_model.header ++> [
+        bindings.arguments { current_interp },
         bindings.ctypes
             | modules.decimal_context
             | modules.decimal_convert
@@ -37210,7 +37226,7 @@ graph import runtime.python {
             object_xdecref,
             tuple_get_item
         },
-        modules.ctypes_callproc | modules.ctypes_objects {
+        modules.ctypes_callproc | modules.ctypes_objects | modules.functools {
             object_decref,
             object_incref,
             object_new_ref,
@@ -37493,7 +37509,7 @@ graph import runtime.python {
         modules.ctypes_objects | modules.warnings { long_zero },
     ]
     object_model.memory ++> modules.ctypes_objects { PyMemoryView_FromMemory }
-    object_model.method ++> bindings.functools { PyMethod_New }
+    object_model.method ++> bindings.functools | modules.functools { PyMethod_New }
     object_model.module ++> [
         bindings.array
             | bindings.ctypes
@@ -37794,8 +37810,8 @@ graph import runtime.python.bindings {
             PARSE_KEYWORDS,
             PARSE_NO_ARGUMENTS,
             check_positional,
-            invoke_stack,
-            unpack_stack
+            invoke_keywords,
+            invoke_stack
         },
         clinic.asyncio
             | clinic.ctypes
@@ -37806,10 +37822,9 @@ graph import runtime.python.bindings {
             PARSE_KEYWORDS,
             PARSE_NO_ARGUMENTS,
             check_positional,
-            invoke_stack,
-            invoke_tuple,
-            unpack_mapping,
-            unpack_stack
+            invoke_keywords,
+            invoke_mapping,
+            invoke_stack
         },
         clinic.binascii
             | clinic.cmath
@@ -37821,8 +37836,7 @@ graph import runtime.python.bindings {
             CallSignature,
             PARSE_KEYWORDS,
             check_positional,
-            invoke_stack,
-            unpack_stack
+            invoke_keywords
         },
         clinic.bisect
             | clinic.csv
@@ -37833,42 +37847,29 @@ graph import runtime.python.bindings {
             | clinic.pyexpat
             | clinic.syslog
             | clinic.thread
-            | clinic.warnings {
-            CallSignature,
-            PARSE_KEYWORDS,
-            invoke_stack,
-            unpack_stack
-        },
-        clinic.blake2 | clinic.socket {
-            CallSignature,
-            PARSE_KEYWORDS,
-            invoke_tuple,
-            unpack_mapping
-        },
+            | clinic.warnings { CallSignature, PARSE_KEYWORDS, invoke_keywords },
+        clinic.blake2 | clinic.socket { CallSignature, PARSE_KEYWORDS, invoke_mapping },
         clinic.bz2 {
             CallSignature,
             PARSE_KEYWORDS,
             PARSE_NOTHING,
             PARSE_POSITIONAL,
-            invoke_stack,
-            invoke_tuple,
-            unpack_stack
+            invoke_keywords,
+            invoke_tuple
         },
         clinic.collections | clinic.itertools {
             CallSignature,
             PARSE_KEYWORDS,
             PARSE_POSITIONAL,
             check_positional,
-            invoke_tuple,
-            unpack_mapping
+            invoke_mapping,
+            invoke_tuple
         },
         clinic.datetime | clinic.sha3 | clinic.zoneinfo {
             CallSignature,
             PARSE_KEYWORDS,
-            invoke_stack,
-            invoke_tuple,
-            unpack_mapping,
-            unpack_stack
+            invoke_keywords,
+            invoke_mapping
         },
         clinic.io {
             CallSignature,
@@ -37876,45 +37877,41 @@ graph import runtime.python.bindings {
             PARSE_NO_ARGUMENTS,
             PARSE_POSITIONAL,
             check_positional,
+            invoke_keywords,
+            invoke_mapping,
             invoke_stack,
-            invoke_tuple,
-            unpack_mapping,
-            unpack_stack
+            invoke_tuple
         },
         clinic.lzma | clinic.struct | clinic.zstd {
             CallSignature,
             PARSE_KEYWORDS,
             check_positional,
-            invoke_stack,
-            invoke_tuple,
-            unpack_mapping,
-            unpack_stack
+            invoke_keywords,
+            invoke_mapping
         },
         clinic.md5 | clinic.sha1 | clinic.sha2 {
             CallSignature,
             PARSE_KEYWORDS,
             PARSE_NO_ARGUMENTS,
-            invoke_stack,
-            unpack_stack
+            invoke_keywords,
+            invoke_stack
         },
         clinic.multiprocessing {
             CallSignature,
             PARSE_FORMAT,
             PARSE_KEYWORDS,
             check_positional,
-            invoke_stack,
-            invoke_tuple,
-            unpack_mapping,
-            unpack_stack
+            invoke_keywords,
+            invoke_mapping,
+            invoke_stack
         },
         clinic.pickle {
             CallSignature,
             PARSE_KEYWORDS,
             PARSE_NO_ARGUMENTS,
-            invoke_stack,
-            invoke_tuple,
-            unpack_mapping,
-            unpack_stack
+            invoke_keywords,
+            invoke_mapping,
+            invoke_stack
         },
         clinic.posixshmem | csv | zlib {
             BoundArguments,
@@ -37927,9 +37924,9 @@ graph import runtime.python.bindings {
             PARSE_KEYWORDS,
             PARSE_NOTHING,
             PARSE_NO_ARGUMENTS,
+            invoke_keywords,
             invoke_stack,
-            invoke_tuple,
-            unpack_stack
+            invoke_tuple
         },
         clinic.random {
             CallSignature,
@@ -37942,19 +37939,18 @@ graph import runtime.python.bindings {
             PARSE_KEYWORDS,
             PARSE_NOTHING,
             check_positional,
-            invoke_stack,
-            invoke_tuple,
-            unpack_mapping,
-            unpack_stack
+            invoke_keywords,
+            invoke_mapping,
+            invoke_tuple
         },
         clinic.sqlite3 {
             CallSignature,
             PARSE_KEYWORDS,
             PARSE_POSITIONAL,
             check_positional,
+            invoke_keywords,
             invoke_stack,
-            invoke_tuple,
-            unpack_stack
+            invoke_tuple
         },
         clinic.ssl {
             CallSignature,
@@ -37962,9 +37958,8 @@ graph import runtime.python.bindings {
             PARSE_NOTHING,
             PARSE_POSITIONAL,
             check_positional,
-            invoke_stack,
-            invoke_tuple,
-            unpack_stack
+            invoke_keywords,
+            invoke_tuple
         },
         collections {
             BoundArguments,
@@ -37974,7 +37969,7 @@ graph import runtime.python.bindings {
             invoke
         },
         datetime { BoundArguments, CallSignature, PARSE_KEYWORDS, invoke_vector },
-        functools { BoundArguments, CallSignature, index_value, invoke, vector_tuple },
+        functools { BoundArguments, CallSignature, invoke, vector_tuple },
         json {
             BoundArguments,
             CallSignature,
@@ -38358,7 +38353,6 @@ graph import runtime.python.bindings {
     }
     converters ++> [
         clinic.array {
-            argument_label,
             convert_buffer,
             convert_int,
             convert_slice_index_not_none,
@@ -38369,7 +38363,6 @@ graph import runtime.python.bindings {
         },
         clinic.asyncio { borrowed_none, convert_bool, defining_class, return_int },
         clinic.binascii {
-            argument_label,
             convert_bool,
             convert_buffer,
             convert_int,
@@ -38383,23 +38376,15 @@ graph import runtime.python.bindings {
             return_ssize
         },
         clinic.blake2 {
-            argument_label,
             convert_bool,
             convert_buffer,
             convert_int,
             convert_unsigned_long,
             convert_unsigned_long_long
         },
-        clinic.bz2 {
-            argument_label,
-            convert_buffer,
-            convert_int,
-            convert_ssize,
-            new_checks_arguments
-        },
-        clinic.cmath { argument_label, convert_double, return_bool },
+        clinic.bz2 { convert_buffer, convert_int, convert_ssize, new_checks_arguments },
+        clinic.cmath { convert_double, return_bool },
         clinic.codecs {
-            argument_label,
             bad_argument,
             borrowed_none,
             convert_bool,
@@ -38412,14 +38397,12 @@ graph import runtime.python.bindings {
             return_bool
         },
         clinic.collections {
-            argument_label,
             convert_slice_index_not_none,
             convert_ssize,
             new_checks_arguments,
             return_int
         },
         clinic.ctypes {
-            argument_label,
             bad_argument,
             borrowed_none,
             convert_bool,
@@ -38430,7 +38413,6 @@ graph import runtime.python.bindings {
         },
         clinic.datetime { borrowed_none, convert_int },
         clinic.elementtree {
-            argument_label,
             bad_argument,
             borrowed_none,
             convert_bool,
@@ -38441,18 +38423,13 @@ graph import runtime.python.bindings {
             return_size
         },
         clinic.fcntl {
-            argument_label,
             convert_bool,
             convert_fildes,
             convert_int,
             convert_unsigned_long
         },
-        clinic.grp | clinic.suggestions | clinic.thread {
-            argument_label,
-            convert_unicode
-        },
+        clinic.grp | clinic.suggestions | clinic.thread { convert_unicode },
         clinic.hashopenssl {
-            argument_label,
             borrowed_none,
             convert_bool,
             convert_buffer,
@@ -38462,10 +38439,9 @@ graph import runtime.python.bindings {
             convert_unsigned_long,
             return_int
         },
-        clinic.heapq { argument_label, bad_argument },
+        clinic.heapq | clinic.pwd | collections { bad_argument },
         clinic.hmac { defining_class },
         clinic.imp {
-            argument_label,
             borrowed_none,
             convert_bool,
             convert_buffer,
@@ -38475,7 +38451,6 @@ graph import runtime.python.bindings {
             return_int
         },
         clinic.io {
-            argument_label,
             borrowed_none,
             convert_bool,
             convert_buffer,
@@ -38494,33 +38469,19 @@ graph import runtime.python.bindings {
             return_int
         },
         clinic.itertools {
-            argument_label,
             bad_argument,
             borrowed_none,
             convert_bool,
             convert_ssize,
             new_checks_arguments
         },
-        clinic.locale {
-            argument_label,
-            convert_cstr,
-            convert_int,
-            convert_str,
-            convert_unicode
-        },
+        clinic.locale { convert_cstr, convert_int, convert_str, convert_unicode },
         clinic.lsprof { convert_bool, convert_double, defining_class, return_int },
-        clinic.lzma {
-            argument_label,
-            borrowed_none,
-            convert_buffer,
-            convert_int,
-            convert_ssize
-        },
-        clinic.marshal { argument_label, convert_bool, convert_buffer, convert_int },
+        clinic.lzma { borrowed_none, convert_buffer, convert_int, convert_ssize },
+        clinic.marshal { convert_bool, convert_buffer, convert_int },
         clinic.math { borrowed_none, convert_double, return_bool, return_double },
         clinic.md5 | clinic.sha1 | clinic.sha2 { convert_bool, defining_class },
         clinic.mmap {
-            argument_label,
             borrowed_none,
             convert_buffer,
             convert_int,
@@ -38529,7 +38490,6 @@ graph import runtime.python.bindings {
             convert_unsigned_bounded
         },
         clinic.multibytecodec {
-            argument_label,
             bad_argument,
             borrowed_none,
             convert_bool,
@@ -38538,7 +38498,6 @@ graph import runtime.python.bindings {
             defining_class
         },
         clinic.multiprocessing {
-            argument_label,
             borrowed_none,
             convert_bool,
             convert_cstr,
@@ -38548,7 +38507,6 @@ graph import runtime.python.bindings {
         clinic.opcode { borrowed_none, convert_int, return_bool, return_int },
         clinic.operator { convert_ssize, return_bool, return_ssize },
         clinic.pickle {
-            argument_label,
             borrowed_none,
             convert_bool,
             convert_str,
@@ -38557,7 +38515,6 @@ graph import runtime.python.bindings {
             return_size
         },
         clinic.posix {
-            argument_label,
             borrowed_none,
             convert_PyUnicode_FSConverter,
             convert_bool,
@@ -38580,22 +38537,9 @@ graph import runtime.python.bindings {
             return_long,
             return_ssize
         },
-        clinic.posixshmem {
-            argument_label,
-            bad_argument,
-            convert_int,
-            convert_unicode,
-            return_int
-        },
-        clinic.posixsubprocess {
-            argument_label,
-            bad_argument,
-            convert_bool,
-            convert_int
-        },
-        clinic.pwd | collections { bad_argument },
+        clinic.posixshmem { bad_argument, convert_int, convert_unicode, return_int },
+        clinic.posixsubprocess { bad_argument, convert_bool, convert_int },
         clinic.pyexpat {
-            argument_label,
             convert_bool,
             convert_cstr,
             convert_float,
@@ -38621,7 +38565,6 @@ graph import runtime.python.bindings {
         },
         clinic.resource { borrowed_none, convert_int, return_int },
         clinic.select {
-            argument_label,
             borrowed_none,
             convert_fildes,
             convert_int,
@@ -38629,9 +38572,8 @@ graph import runtime.python.bindings {
             convert_unsigned_short,
             new_checks_arguments
         },
-        clinic.sha3 { argument_label, convert_bool, convert_unsigned_long },
+        clinic.sha3 { convert_bool, convert_unsigned_long },
         clinic.signal {
-            argument_label,
             borrowed_none,
             convert_bool,
             convert_int,
@@ -38648,7 +38590,6 @@ graph import runtime.python.bindings {
             return_int
         },
         clinic.sqlite3 {
-            argument_label,
             bad_argument,
             borrowed_none,
             convert_bool,
@@ -38667,7 +38608,6 @@ graph import runtime.python.bindings {
             return_int
         },
         clinic.sre {
-            argument_label,
             bad_argument,
             borrowed_none,
             convert_int,
@@ -38681,7 +38621,6 @@ graph import runtime.python.bindings {
             return_ssize
         },
         clinic.ssl {
-            argument_label,
             borrowed_none,
             convert_PyUnicode_FSConverter,
             convert_bool,
@@ -38694,35 +38633,26 @@ graph import runtime.python.bindings {
             new_checks_arguments
         },
         clinic.statistics { convert_double, return_double },
-        clinic.struct {
-            argument_label,
-            convert_buffer,
-            convert_ssize,
-            return_int,
-            return_ssize
-        },
-        clinic.syslog { argument_label, convert_long, convert_unicode, return_long },
-        clinic.termios { argument_label, convert_fildes, convert_int },
+        clinic.struct { convert_buffer, convert_ssize, return_int, return_ssize },
+        clinic.syslog { convert_long, convert_unicode, return_long },
+        clinic.termios { convert_fildes, convert_int },
         clinic.tracemalloc | datetime | zlib { convert_int },
         clinic.unicodedata {
             SizedText,
-            argument_label,
             convert_sized_str,
             convert_unicode,
             convert_unicode_char,
             return_int
         },
         clinic.warnings {
-            argument_label,
             bad_argument,
             borrowed_none,
             convert_int,
             convert_ssize,
             convert_unicode
         },
-        clinic.weakref { argument_label, bad_argument, return_ssize },
+        clinic.weakref { bad_argument, return_ssize },
         clinic.zlib {
-            argument_label,
             convert_buffer,
             convert_int,
             convert_ssize,
@@ -38731,14 +38661,12 @@ graph import runtime.python.bindings {
             return_unsigned
         },
         clinic.zoneinfo {
-            argument_label,
             borrowed_none,
             convert_unsigned_bounded,
             defining_class,
             defining_class_of_type
         },
         clinic.zstd {
-            argument_label,
             bad_argument,
             borrowed_none,
             convert_bool,
@@ -38972,6 +38900,7 @@ graph import runtime.python.bindings {
             add_owned,
             jacpy_binding_state_get,
             jacpy_binding_state_set,
+            method_table,
             visit_reference
         },
         hashopenssl {

@@ -17,6 +17,9 @@ porting its `_impl` bodies. A module's type hooks and state stay in the
 handwritten jaclang/runtime/python/bindings/<name>.jac, as they do in C. A
 class whose methods take defining_class reads it through `<Class>_token`, a
 ClassToken the module file defines and the binding points at the created type.
+The glue names everything it uses from other modules (the `_impl` functions,
+the shared machinery of bindings/arguments.jac and bindings/converters.jac)
+without imports: jaclang/archwire.jac wires each name into the module.
 
 Converters without a generic Jac equivalent (posix's path_t, a module's own
 converter functions) are called as convert_<name>(value, fname, label) and
@@ -858,10 +861,14 @@ obj Emitter {
         kind = class_name(conv).removesuffix("_converter");
         # getargs' own conversions (a format parser) number every argument.
         shown = p.name if p.kind.name != "POSITIONAL_ONLY" and not numbered else "";
-        # Position 0 is clinic's METH_O argument, named only "argument".
-        label = jac_string("argument")
-            if position == 0
-            else self.use("argument_label") + f"({jac_string(shown)}, {position})";
+        # Position 0 is clinic's METH_O argument, named only "argument". The
+        # label is argument_label()'s text as a literal, so a call formats
+        # nothing unless an argument fails to convert.
+        label = jac_string(
+            "argument"
+                if position == 0
+                else (f"argument '{shown}'" if shown else f"argument {position}")
+        );
         where = f"{jac_string(fname)}, {label}";
         accept_names = accepted(conv);
         # The limited C API reports a mismatch with the type's %T name.
@@ -1560,21 +1567,17 @@ obj Emitter {
             )})";
         }
         invoke_args = "invoke" if stepwise else "invoke_tuple";
+        # A keyword-capable parser binds a call with keywords into argsbuf on
+        # the C stack, as clinic's _PyArg_UnpackKeywords does.
+        if not stepwise and not self.slow_only and parser == "PARSE_KEYWORDS" {
+            invoke_args = "invoke_mapping";
+        }
         if kind == "METHOD_NEW" {
             self.lines.append(
                 f"def:pub {base}_new(type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]) -> ptr[PyObject] {{"
             );
             if not stepwise {
                 self.lines += self.tuple_fast_path(parser, generator, base, "type");
-                if parser == "PARSE_KEYWORDS" {
-                    self.lines += self.unpacked(
-                        f"{self.invoker('unpack_mapping')}({sig}, args, kwargs)",
-                        base,
-                        "type",
-                        len(params),
-                        "    return "
-                    );
-                }
             }
             self.lines.append(
                 f"    return {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, type{type_check});"
@@ -1604,20 +1607,6 @@ obj Emitter {
                     "    }",
                     "    if not bound {"
                 ];
-                if parser == "PARSE_KEYWORDS" {
-                    self.lines += [
-                        "        " + line
-                        for line in self.unpacked(
-                            f"{self.invoker('unpack_mapping')}({sig}, args, kwargs)",
-                            base,
-                            "receiver",
-                            len(params),
-                            "    bound = True;\n    result = "
-                        )
-                    ];
-                    self.lines.append("    }");
-                    self.lines.append("    if not bound {");
-                }
                 self.lines += [
                     f"        result = {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, receiver{type_check});",
                     "    }"
@@ -1696,17 +1685,15 @@ obj Emitter {
                     );
                     self.lines.append("    }");
                 }
-                if parser == "PARSE_KEYWORDS" and keywords {
-                    self.lines += self.unpacked(
-                        f"{self.invoker('unpack_stack')}({sig}, args, nargs, kwnames)",
-                        base,
-                        "receiver",
-                        len(params),
-                        "    return "
-                    );
+                # A call with keywords binds into argsbuf on the C stack, as
+                # clinic's _PyArg_UnpackKeywords does; the parser reports one
+                # that does not bind.
+                invoke_stack = "invoke_stack";
+                if parser == "PARSE_KEYWORDS" and keywords and not self.slow_only {
+                    invoke_stack = "invoke_keywords";
                 }
                 self.lines.append(
-                    f"    return {self.invoker('invoke_stack')}({sig}, args, nargs, {'kwnames'
+                    f"    return {self.invoker(invoke_stack)}({sig}, args, nargs, {'kwnames'
                         if keywords
                         else 'NULL'}, {base}_bound, receiver);"
                 );
@@ -1716,18 +1703,8 @@ obj Emitter {
             self.lines.append(
                 head + "args: ptr[PyObject], kwargs: ptr[PyObject]) -> ptr[PyObject] {"
             );
-            invoke_args = "invoke" if stepwise else "invoke_tuple";
             if not stepwise {
                 self.lines += self.tuple_fast_path(parser, generator, base, "receiver");
-                if parser == "PARSE_KEYWORDS" {
-                    self.lines += self.unpacked(
-                        f"{self.invoker('unpack_mapping')}({sig}, args, kwargs)",
-                        base,
-                        "receiver",
-                        len(params),
-                        "    return "
-                    );
-                }
             }
             self.lines.append(
                 f"    return {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, receiver);"
@@ -1888,28 +1865,6 @@ obj Emitter {
         return "";
     }
 
-    # The glue's keyword path: `unpack` binds into a new array, which the
-    # _bound function reads and the glue frees; `finish` receives the result
-    # ("    return " or an assignment). A NULL array falls through to the
-    # parser, which reports the call as CPython does.
-    def unpacked(
-        unpack: str, base: str, receiver: str, count: int, finish: str
-    ) -> list[str] {
-        if self.slow_only {
-            return [];
-        }
-        self.api.add("PyMem_Free");
-        lines = [
-            f"    values = {unpack};",
-            "    if values {",
-            f"        unpacked = {base}_bound({receiver}, values, {count});",
-            "        PyMem_Free(values);"
-        ];
-        lines += ["    " + part for part in (finish + "unpacked;").split("\n")];
-        lines.append("    }");
-        return lines;
-    }
-
     # The positional counts a tuple-and-dict call without keywords binds as
     # its tuple's items: the parser's own arity, when it has one to check.
     def tuple_arity(parser: str, generator: any) -> list[int] {
@@ -2037,47 +1992,6 @@ obj Emitter {
             head += [f"    {item}" for item in self.debug];
         }
         head.append('"""');
-        imports = [
-            f"import from jaclang.runtime.python.cpython_api {{ {', '.join(
-                sorted(self.api)
-            )} }}",
-            "import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }",
-            "import from jaclang.runtime.python.bindings.type { PropertyDefinition, PropertyCallbacks }",
-            "import from jaclang.runtime.python.bindings.buffer { BufferArgument }"
-        ];
-        if self.invokers {
-            imports.insert(
-                3,
-                f"import from jaclang.runtime.python.bindings.arguments {{ {', '.join(
-                    sorted(self.invokers)
-                )} }}"
-            );
-        }
-        if self.capi {
-            imports.append(
-                f"import from jaclang.runtime.python.capi {{ {', '.join(
-                    sorted(self.capi)
-                )} }}"
-            );
-        }
-        converters = sorted(self.converters);
-        if converters {
-            imports.append(
-                f"import from jaclang.runtime.python.bindings.converters {{ {', '.join(
-                    converters
-                )} }}"
-            );
-        }
-        # A class's ClassToken lives in the module file with its impls, which
-        # also read the instance state through it; the binding fills it in.
-        provided = sorted(
-            self.impls | self.module_names | {self.token_name(c) for c in self.tokens}
-        );
-        if provided {
-            imports.append(
-                f"import from {MODULES}.{self.name} {{ {', '.join(provided)} }}"
-            );
-        }
         tables: list[str] = [];
         for (cls_name, doc) in sorted(self.class_docs.items()) {
             tables.append(f"glob {cls_name}_doc: str = {jac_string(doc)};");
@@ -2121,7 +2035,7 @@ obj Emitter {
             }
             tables.append("];");
         }
-        return "\n".join(head + imports + [""] + self.lines + [""] + tables) + "\n";
+        return "\n".join(head + [""] + self.lines + [""] + tables) + "\n";
     }
 }
 

@@ -126,13 +126,7 @@ impl marshal_dump_call(
     if kwnames == NULL and nargs >= 2 and nargs <= 3 {
         return marshal_dump_bound(receiver, args, nargs);
     }
-    values = unpack_stack(marshal_dump_signature, args, nargs, kwnames);
-    if values {
-        unpacked = marshal_dump_bound(receiver, values, 4);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         marshal_dump_signature, args, nargs, kwnames, marshal_dump_bound, receiver
     );
 }
@@ -164,13 +158,7 @@ impl marshal_load_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return marshal_load_bound(receiver, args, nargs);
     }
-    values = unpack_stack(marshal_load_signature, args, nargs, kwnames);
-    if values {
-        unpacked = marshal_load_bound(receiver, values, 2);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         marshal_load_signature, args, nargs, kwnames, marshal_load_bound, receiver
     );
 }
@@ -207,13 +195,7 @@ impl marshal_dumps_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 2 {
         return marshal_dumps_bound(receiver, args, nargs);
     }
-    values = unpack_stack(marshal_dumps_signature, args, nargs, kwnames);
-    if values {
-        unpacked = marshal_dumps_bound(receiver, values, 3);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         marshal_dumps_signature, args, nargs, kwnames, marshal_dumps_bound, receiver
     );
 }
@@ -224,7 +206,7 @@ impl marshal_loads_bound(
     clinic_args = stack.view(count);
     try {
         value = clinic_args[0];
-        bytes_: BufferArgument = convert_buffer(value, "loads", argument_label("", 1));
+        bytes_: BufferArgument = convert_buffer(value, "loads", "argument 1");
         try {
             allow_code: bool = True;
             if count > 1 and clinic_args[1] != NULL {
@@ -249,13 +231,7 @@ impl marshal_loads_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return marshal_loads_bound(receiver, args, nargs);
     }
-    values = unpack_stack(marshal_loads_signature, args, nargs, kwnames);
-    if values {
-        unpacked = marshal_loads_bound(receiver, values, 2);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         marshal_loads_signature, args, nargs, kwnames, marshal_loads_bound, receiver
     );
 }

@@ -7,15 +7,9 @@ obj PartialState(NativeState) {
 }
 
 
-obj CacheKeyState(ReferenceState) {
-    has hash: i64;
-}
-
 def:priv module_for(type: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv partial_value(instance: ptr[PyObject]) -> (PartialState | None);
-
-def:priv lru_value(instance: ptr[PyObject]) -> (LruState | None);
 
 def:priv reference_value(
     instance: ptr[PyObject], type: TypeDefinition
@@ -82,16 +76,6 @@ def:priv key_set_object(
 
 def:priv key_text_signature(instance: ptr[PyObject], unused: u64) -> ptr[PyObject];
 
-def:priv make_cache_key(
-    type_handle: ptr[PyObject], key: ptr[PyObject], hash: i64
-) -> ptr[PyObject];
-
-def:priv hashed_hash(instance: ptr[PyObject]) -> i64;
-
-def:priv hashed_compare(
-    instance: ptr[PyObject], other: ptr[PyObject], operation: i32
-) -> ptr[PyObject];
-
 glob:priv lru_signature = CallSignature(
          "lru_cache", ["user_function", "maxsize", "typed", "cache_info_type"], 4, 4
      );
@@ -101,14 +85,6 @@ def:priv lru_create_bound(args: BoundArguments) -> ptr[PyObject];
 def:priv lru_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject];
-
-def:priv lru_call(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject];
-
-def:priv lru_reduce(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
-
-def:priv lru_copy(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv placeholder_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
@@ -135,22 +111,6 @@ def:priv key_traverse(
 def:priv key_clear(instance: ptr[PyObject]) -> i32;
 
 def:priv key_dealloc(instance: ptr[PyObject]);
-
-def:priv hashed_traverse(
-    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
-) -> i32;
-
-def:priv hashed_clear(instance: ptr[PyObject]) -> i32;
-
-def:priv hashed_dealloc(instance: ptr[PyObject]);
-
-def:priv lru_traverse(
-    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
-) -> i32;
-
-def:priv lru_clear(instance: ptr[PyObject]) -> i32;
-
-def:priv lru_dealloc(instance: ptr[PyObject]);
 
 def:priv placeholder_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
@@ -260,56 +220,6 @@ glob:priv sealed_flags = u64(
          ],
          unhashable=True
      ),
-     hashed_type = TypeDefinition(
-         "functools._CacheKey",
-         "",
-         [],
-         sealed_flags,
-         TypeHooks(
-             dealloc=hashed_dealloc,
-             traverse=hashed_traverse,
-             clear=hashed_clear,
-             hash=hashed_hash,
-             compare=hashed_compare
-         )
-     ),
-     lru_type = TypeDefinition(
-         "functools._lru_cache_wrapper",
-         lru_cache_doc,
-         _lru_cache_wrapper_methods
-             + [
-                 MethodDefinition(
-                     "__reduce__", MethodCallbacks(positional=lru_reduce), "", flags=4
-                 ),
-                 MethodDefinition(
-                     "__copy__", MethodCallbacks(positional=lru_copy), "", flags=1
-                 ),
-                 MethodDefinition(
-                     "__deepcopy__", MethodCallbacks(positional=lru_copy), "", flags=1
-                 )
-             ],
-         u64(
-             TypeFlags.GC.value
-                 | TypeFlags.METHOD_DESCRIPTOR.value
-                 | TypeFlags.IMMUTABLE.value
-         ),
-         TypeHooks(
-             create=lru_create,
-             dealloc=lru_dealloc,
-             traverse=lru_traverse,
-             clear=lru_clear,
-             call=lru_call,
-             descriptor=bind
-         ),
-         [
-             PropertyDefinition(
-                 "__dict__",
-                 PropertyCallbacks(read=generic_get_dict, write=generic_set_dict)
-             )
-         ],
-         instance_dict=True,
-         weaklist=True
-     ),
      placeholder_type = TypeDefinition(
          "functools._PlaceholderType",
          placeholder_doc,
@@ -329,6 +239,16 @@ glob:priv sealed_flags = u64(
              dealloc=placeholder_dealloc
          )
      );
+
+def:priv create_declared(
+    module: ptr[PyObject], declaration: TypeDefinition, slot: int
+) -> bool;
+
+def:priv create_from_spec(
+    module: ptr[PyObject], spec: ptr[PyType_Spec], slot: int
+) -> bool;
+
+def:priv install_lru_slots -> bool;
 
 def:priv execute(module: ptr[PyObject]) -> i32;
 
@@ -375,17 +295,6 @@ impl partial_value(instance: ptr[PyObject]) -> (PartialState | None) {
         }
     }
     object_error(PyExc_SystemError, "native partial state is unavailable");
-    return None;
-}
-
-impl lru_value(instance: ptr[PyObject]) -> (LruState | None) {
-    if jacpy_binding_native_present(instance, lru_type.handle) != 0 {
-        state = jacpy_binding_native_get(instance, lru_type.handle);
-        if isinstance(state, LruState) {
-            return state;
-        }
-    }
-    object_error(PyExc_SystemError, "native cache state is unavailable");
     return None;
 }
 
@@ -667,54 +576,7 @@ impl key_text_signature(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
     return text_object("(obj)");
 }
 
-impl make_cache_key(
-    type_handle: ptr[PyObject], key: ptr[PyObject], hash: i64
-) -> ptr[PyObject] {
-    state = CacheKeyState(references=[Py_NewRef(key)], hash=hash);
-    return allocate(type_handle, hashed_type, state);
-}
-
-impl hashed_hash(instance: ptr[PyObject]) -> i64 {
-    state = reference_value(instance, hashed_type);
-    if isinstance(state, CacheKeyState) {
-        return state.hash;
-    }
-    return -1;
-}
-
-impl hashed_compare(
-    instance: ptr[PyObject], other: ptr[PyObject], operation: i32
-) -> ptr[PyObject] {
-    if Py_TYPE(instance) != Py_TYPE(other) {
-        return Py_NewRef(Py_NotImplemented);
-    }
-    left = reference_value(instance, hashed_type);
-    right = reference_value(other, hashed_type);
-    if left is None or right is None {
-        return NULL;
-    }
-    return PyObject_RichCompare(
-        left.references[0], right.references[0], i32(operation)
-    );
-}
-
 impl lru_create_bound(args: BoundArguments) -> ptr[PyObject] {
-    if PyCallable_Check(args.values[0]) == 0 {
-        object_error(PyExc_TypeError, "the first argument must be callable");
-        return NULL;
-    }
-    maximum: i64 = -1;
-    if args.values[1] != Py_None {
-        if PyIndex_Check(args.values[1]) == 0 {
-            object_error(PyExc_TypeError, "maxsize should be integer or None");
-            return NULL;
-        }
-        value = index_value(args.values[1]);
-        if value is None {
-            return NULL;
-        }
-        maximum = value if value > 0 else i64(0);
-    }
     typed = PyObject_IsTrue(args.values[2]);
     if typed < 0 {
         return NULL;
@@ -723,51 +585,21 @@ impl lru_create_bound(args: BoundArguments) -> ptr[PyObject] {
     if module == 0 {
         return NULL;
     }
-    state = LruState(native=lru_state(key_factory=make_cache_key));
-    if jacpy_lru_init(
-        state.native,
+    return lru_cache_new(
+        args.context,
         args.values[0],
-        maximum,
+        args.values[1],
         typed,
         args.values[3],
-        jacpy_binding_state_get(module, 3),
-        jacpy_binding_state_get(module, 6)
-    )
-        < 0 {
-        return NULL;
-    }
-    return allocate(args.context, lru_type, state);
+        jacpy_binding_state_get(module, 6),
+        jacpy_binding_state_get(module, 3)
+    );
 }
 
 impl lru_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     return invoke(lru_signature, args, kwargs, lru_create_bound, type);
-}
-
-impl lru_call(
-    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    state = lru_value(instance);
-    if state is None {
-        return NULL;
-    }
-    if jacpy_recursion_enter(" while calling a Python object") != 0 {
-        return NULL;
-    }
-    try {
-        return jacpy_lru_call(state.native, args, kwargs);
-    } finally {
-        Py_LeaveRecursiveCall();
-    }
-}
-
-impl lru_reduce(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    return PyObject_GetAttrString(instance, ptr[u8]("__qualname__"));
-}
-
-impl lru_copy(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_NewRef(instance);
 }
 
 impl placeholder_create(
@@ -823,34 +655,6 @@ impl key_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, key_type.handle);
 }
 
-impl hashed_traverse(
-    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
-) -> i32 {
-    return traverse_payload(instance, hashed_type.handle, visitor, context);
-}
-
-impl hashed_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, hashed_type.handle);
-}
-
-impl hashed_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, hashed_type.handle);
-}
-
-impl lru_traverse(
-    instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
-) -> i32 {
-    return traverse_payload(instance, lru_type.handle, visitor, context);
-}
-
-impl lru_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, lru_type.handle);
-}
-
-impl lru_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, lru_type.handle);
-}
-
 impl placeholder_traverse(
     instance: ptr[PyObject], visitor: ptr[PyObject], context: ptr[PyObject]
 ) -> i32 {
@@ -865,17 +669,71 @@ impl placeholder_dealloc(instance: ptr[PyObject]) {
     dispose_payload(instance, placeholder_type.handle);
 }
 
+impl create_declared(
+    module: ptr[PyObject], declaration: TypeDefinition, slot: int
+) -> bool {
+    type = declaration.create(module);
+    if type == 0 {
+        return False;
+    }
+    jacpy_binding_state_set(module, i64(slot), type);
+    jacpy_release(type);
+    return True;
+}
+
+impl create_from_spec(
+    module: ptr[PyObject], spec: ptr[PyType_Spec], slot: int
+) -> bool {
+    type = PyType_FromModuleAndSpec(module, spec, NULL);
+    if type == 0 {
+        return False;
+    }
+    jacpy_binding_state_set(module, i64(slot), type);
+    jacpy_release(type);
+    return True;
+}
+
+impl install_lru_slots -> bool {
+    if lru_cache_slots_ready() {
+        return True;
+    }
+    methods = _lru_cache_wrapper_methods
+        + [
+            MethodDefinition(
+                "__reduce__", MethodCallbacks(positional=lru_cache_reduce), "", flags=4
+            ),
+            MethodDefinition(
+                "__copy__", MethodCallbacks(positional=lru_cache_copy), "", flags=1
+            ),
+            MethodDefinition(
+                "__deepcopy__",
+                MethodCallbacks(positional=lru_cache_deepcopy),
+                "",
+                flags=1
+            )
+        ];
+    table = method_table(methods);
+    if not table {
+        return False;
+    }
+    doc = c_string_copy(lru_cache_doc);
+    if not doc {
+        PyErr_NoMemory();
+        return False;
+    }
+    lru_cache_install_slots(doc, table, ptr(lru_create));
+    return True;
+}
+
 impl execute(module: ptr[PyObject]) -> i32 {
     KeyWrapper_token.handle = key_type.handle;
-    _lru_cache_wrapper_token.handle = lru_type.handle;
-    declarations = [partial_type, key_type, lru_type, hashed_type, placeholder_type];
-    for i in range(len(declarations)) {
-        type = declarations[i].create(module);
-        if type == 0 {
-            return i32(-1);
-        }
-        jacpy_binding_state_set(module, i64(i), type);
-        jacpy_release(type);
+    if not create_declared(module, partial_type, 0)
+        or not create_declared(module, key_type, 1)
+        or not create_declared(module, placeholder_type, 4)
+        or not install_lru_slots()
+        or not create_from_spec(module, addressof(lru_cache_type_spec), 2)
+        or not create_from_spec(module, addressof(lru_list_elem_type_spec), 3) {
+        return i32(-1);
     }
     placeholder = jacpy_binding_allocate(jacpy_binding_state_get(module, 4));
     if placeholder == 0 {

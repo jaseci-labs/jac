@@ -265,12 +265,10 @@ impl _imp__fix_co_filename_bound(
     clinic_args = stack.view(count);
     try {
         value = clinic_args[0];
-        subclass_PyCode_Type(value, "_fix_co_filename", argument_label("", 1));
+        subclass_PyCode_Type(value, "_fix_co_filename", "argument 1");
         code: ptr[PyObject] = value;
         value = clinic_args[1];
-        path: ptr[PyObject] = convert_unicode(
-            value, "_fix_co_filename", argument_label("", 2)
-        );
+        path: ptr[PyObject] = convert_unicode(value, "_fix_co_filename", "argument 2");
         return _imp__fix_co_filename_impl(receiver, code, path);
     } except boundary_failure {
         return NULL;
@@ -325,9 +323,7 @@ impl _imp_find_frozen_bound(
     clinic_args = stack.view(count);
     try {
         value = clinic_args[0];
-        name: ptr[PyObject] = convert_unicode(
-            value, "find_frozen", argument_label("", 1)
-        );
+        name: ptr[PyObject] = convert_unicode(value, "find_frozen", "argument 1");
         withdata: bool = False;
         if count > 1 and clinic_args[1] != NULL {
             value = clinic_args[1];
@@ -348,13 +344,7 @@ impl _imp_find_frozen_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return _imp_find_frozen_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_imp_find_frozen_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _imp_find_frozen_bound(receiver, values, 2);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _imp_find_frozen_signature,
         args,
         nargs,
@@ -370,9 +360,7 @@ impl _imp_get_frozen_object_bound(
     clinic_args = stack.view(count);
     try {
         value = clinic_args[0];
-        name: ptr[PyObject] = convert_unicode(
-            value, "get_frozen_object", argument_label("", 1)
-        );
+        name: ptr[PyObject] = convert_unicode(value, "get_frozen_object", "argument 1");
         data: ptr[PyObject] = borrowed_none();
         if count > 1 and clinic_args[1] != NULL {
             value = clinic_args[1];
@@ -518,7 +506,7 @@ impl _imp_source_hash_bound(
         key: i64 = convert_long(value);
         value = clinic_args[1];
         source: BufferArgument = convert_buffer(
-            value, "source_hash", argument_label("source", 2)
+            value, "source_hash", "argument 'source'"
         );
         try {
             return _imp_source_hash_impl(receiver, key, source);
@@ -539,13 +527,7 @@ impl _imp_source_hash_call(
     if kwnames == NULL and nargs >= 2 and nargs <= 2 {
         return _imp_source_hash_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_imp_source_hash_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _imp_source_hash_bound(receiver, values, 2);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _imp_source_hash_signature,
         args,
         nargs,

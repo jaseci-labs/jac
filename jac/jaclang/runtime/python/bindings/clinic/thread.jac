@@ -87,9 +87,7 @@ impl _thread_set_name_bound(
     clinic_args = stack.view(count);
     try {
         value = clinic_args[0];
-        name: ptr[PyObject] = convert_unicode(
-            value, "set_name", argument_label("name", 1)
-        );
+        name: ptr[PyObject] = convert_unicode(value, "set_name", "argument 'name'");
         return _thread_set_name_impl(receiver, name);
     } except boundary_failure {
         return NULL;
@@ -105,13 +103,7 @@ impl _thread_set_name_call(
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
         return _thread_set_name_bound(receiver, args, nargs);
     }
-    values = unpack_stack(_thread_set_name_signature, args, nargs, kwnames);
-    if values {
-        unpacked = _thread_set_name_bound(receiver, values, 1);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         _thread_set_name_signature,
         args,
         nargs,
