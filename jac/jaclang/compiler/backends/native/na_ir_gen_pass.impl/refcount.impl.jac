@@ -116,17 +116,6 @@ impl NaIRGenPass._emit_rc_mark_threaded -> None {
 }
 
 impl NaIRGenPass._emit_rc_helpers -> None {
-    """The refcount runtime helpers: allocation, retain, release and free.
-
-    Small objects recycle their blocks: one free list per 16-byte size class
-    from 48 to 128 bytes (header included), shared by every unit. A free
-    pushes the block onto its class's list (up to `pool_cap` blocks) and an
-    allocation pops one before it calls malloc, both inline. The class sits
-    in the top byte of the alloc-id word, which nothing else uses. Only the
-    single-threaded program pools (the refcount fast path's flag): once a
-    thread runs, blocks go back to malloc and free -- every pooled block is a
-    malloc block, so free takes it as well. A debug build does not pool.
-    """;
     if self._nogc_headerless() {
         i8_ptr_hl = ir.IntType(8).as_pointer();
         i64_hl = ir.IntType(64);
