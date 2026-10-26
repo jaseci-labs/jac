@@ -2107,14 +2107,14 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
     cur.add_incoming(cur_miss, miss_end);
     rhs = self._codegen_expr(val.right);
     new = (
-        self._apply_scalar_aug_op(
+        self._emit_binary_op(
+            val.op.name,
             cur,
             rhs,
-            aug,
-            val.right,
-            target_type=tgt.type,
             unsigned=self._is_unsigned_node(val) or self._is_unsigned_node(val.left),
-            checked=self._is_sized_node(tgt) or self._is_sized_node(val)
+            checked=self._is_sized_node(val)
+                or self._is_sized_node(val.left)
+                or self._is_sized_node(val.right)
         )
             if rhs is not None
             else None

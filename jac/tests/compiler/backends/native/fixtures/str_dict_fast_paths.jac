@@ -67,7 +67,17 @@ def counters -> list[str] {
     for i in range(5) {
         lit["fixed"] = lit.get("fixed", 10) + i;
     }
-    return [str(c), str(m), str(bits), str(f), str(lit)];
+    on = True;
+    off = False;
+    flags: dict[str, float] = {};
+    hits: dict[str, int] = {};
+    for w in words {
+        flags[w] = flags.get(w, 2.0) + on;
+        flags[w] = flags.get(w, 0.0) * on;
+        flags[w] = flags.get(w, 0.0) - off;
+        hits[w] = hits.get(w, 0) + on;
+    }
+    return [str(c), str(m), str(bits), str(f), str(lit), str(flags), str(hits)];
 }
 
 def floats -> list[str] {
