@@ -144,3 +144,18 @@ def test_forever_continue() -> int {
     }
     return total;
 }
+
+
+def test_list_iadd_alias() -> int {
+    xs: list[int] = [1, 2];
+    alias = xs;
+    xs += [3];
+    return len(xs) * 100 + len(alias);
+}
+
+def test_list_imul_alias() -> int {
+    xs: list[int] = [1, 2];
+    alias = xs;
+    xs *= 2;
+    return len(xs) * 100 + len(alias);
+}
