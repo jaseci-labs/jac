@@ -1,7 +1,7 @@
 """`dict.pop` and `dict.get` with a `None` default on dicts of raw values."""
 
-glob tried: dict[str, float] = {"a": 1.5, "b": 2.5};
 with entry {
+    tried: dict[str, float] = {"a": 1.5, "b": 2.5};
     tried.pop("a", None);
     gone = tried.pop("zz", None);
     kept = tried.pop("b", None);
@@ -11,8 +11,8 @@ with entry {
     }
 }
 
-glob counts: dict[str, int] = {"x": 3};
 with entry {
+    counts: dict[str, int] = {"x": 3};
     print(
         counts.get("x", None),
         counts.get("y", None),
@@ -20,12 +20,14 @@ with entry {
         counts.pop("x", None)
     );
 }
-glob flags: dict[int, bool] = {1: True};
+
 with entry {
+    flags: dict[int, bool] = {1: True};
     print(flags.get(1, None), flags.pop(1, None), flags.pop(2, None));
 }
-glob names: dict[str, str] = {"k": "v"};
+
 with entry {
+    names: dict[str, str] = {"k": "v"};
     first = names.pop("k", None);
     again = names.pop("k", None);
     print(first, again);
