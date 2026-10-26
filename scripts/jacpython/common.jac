@@ -62,6 +62,39 @@ def archive_texts(prefixes: tuple[str, ...]) -> dict[str, str] {
     return found;
 }
 
+# The paths cpython-sources.txt marks `generated`: a Jac generator writes each
+# as bootstrap/python/generated/<path>.in and the build stages that copy in
+# place of the archive's.
+def generated_paths -> list[str] {
+    marker = re.compile(r"^# (\S+)\s+# generated: [\d,]+ source lines$");
+    found: list[str] = [];
+    for line in (BOOTSTRAP / "cpython-sources.txt").read_text().splitlines() {
+        hit = marker.match(line);
+        if hit {
+            found.append(hit.group(1));
+        }
+    }
+    return found;
+}
+
+# The checked-in copy the build stages for a generated path.
+def generated_copy(path: str) -> Path {
+    return BOOTSTRAP / "generated" / f"{path}.in";
+}
+
+# Files of a build's CPython tree whose relative path starts with one of
+# `prefixes`, as the build stages them: a generated path is read from its
+# checked-in copy, every other path from the pinned archive.
+def source_texts(prefixes: tuple[str, ...]) -> dict[str, str] {
+    found = archive_texts(prefixes);
+    for path in generated_paths() {
+        if path.startswith(prefixes) {
+            found[path] = generated_copy(path).read_text(encoding="utf-8");
+        }
+    }
+    return found;
+}
+
 # Extract the archive members under `prefixes` into `target`; returns the tree root.
 def extract_tree(target: Path, prefixes: tuple[str, ...]) -> Path {
     with tarfile.open(archive_path()) as bundle {

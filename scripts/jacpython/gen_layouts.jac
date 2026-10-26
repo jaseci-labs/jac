@@ -1,12 +1,15 @@
-"""Generate CPython's object layouts as C-layout Jac declarations.
+"""Check CPython's object layouts against their C-layout Jac declarations.
 
 A native Jac object-model port defines and reads CPython objects in place, so
 their layouts are ABI: `PyObject`, `PyVarObject`, `PyTypeObject`, the slot
-tables and the concrete object structs must match the pinned headers byte for
-byte. This script writes both sides of that contract:
+tables and the concrete object structs must match the headers byte for byte.
+jaclang/runtime/python/layouts.jac declares them, and gen_include.jac writes
+the public headers' structs and constants from it. This script reads the
+headers a build stages and holds both sides of that contract:
 
-    jac run scripts/jacpython/gen_layouts.jac            # rewrite both files
+    jac run scripts/jacpython/gen_layouts.jac            # rewrite the checks
     jac run scripts/jacpython/gen_layouts.jac --check    # fail on drift
+    jac run scripts/jacpython/gen_layouts.jac --adopt    # take layouts.jac from the headers
 
 The platform constants need `zig` (or `--zig`) to cross-compile their probe
 for each target.
@@ -15,7 +18,11 @@ for each target.
   (and the structs they embed by value), function-pointer slots as
   `Callable[...]` fields, pointers to layouts as `ptr[Layout]` and pointers to
   records no port reads as opaque types; plus the header constants in
-  CONSTANTS that object initializers need.
+  CONSTANTS that object initializers need. It is the input: every run checks
+  it against what the headers declare, and only --adopt writes it, for a
+  record or constant of a header that is still the archive's (the internal
+  headers and the OBJECT_SOURCES), or one newly listed in LAYOUTS or
+  CONSTANTS.
 - jaclang/runtime/python/layouts_platform.<os>.<arch>.jac: the constants in
   PLATFORM_CONSTANTS, whose values differ between the supported platforms
   (where a field sits in the interpreter state, past records sized by the C
@@ -25,18 +32,19 @@ for each target.
 - bootstrap/python/layouts_check.c: `_Static_assert`s on the offset, size and
   signedness of every generated field, each struct's size and alignment, and
   each constant's value, the platform constants under an `#if` for their
-  platform. build.sh compiles it against the configured headers
-  of every JacPython build, so a layout that drifts on any platform fails the
-  build instead of corrupting objects.
+  platform. build.sh compiles it against the staged headers of every
+  JacPython build, so a layout that drifts on any platform fails the build
+  instead of corrupting objects.
 
-Struct bodies are read from the headers of the pinned archive through a small
-preprocessor that evaluates `#if` blocks for the release build every supported
-platform shares (64-bit, little-endian, GIL-enabled, 30-bit digits); the
-generated asserts are what make that assumption checked rather than trusted.
-An object struct a `.c` file keeps private (`rangeobject`, `PyCapsule`) is read
-from that file in OBJECT_SOURCES: its port defines the layout from then on, and
-layouts_check.c repeats the upstream definition so the Jac layout is checked
-against it as a header's would be.
+Struct bodies are read from the headers a build stages (the public ones
+gen_include.jac writes, the internal ones of the pinned archive) through a
+small preprocessor that evaluates `#if` blocks for the release build every
+supported platform shares (64-bit, little-endian, GIL-enabled, 30-bit digits);
+the generated asserts are what make that assumption checked rather than
+trusted. An object struct a `.c` file keeps private (`rangeobject`,
+`PyCapsule`) is read from that file in OBJECT_SOURCES: its Jac module defines the
+layout from then on, and layouts_check.c repeats the upstream definition so the
+Jac layout is checked against it as a header's would be.
 Constant values are read back from the configured headers of a local JacPython
 build, as gen_constants.jac reads system headers.
 """
@@ -47,15 +55,7 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from common {
-    BOOTSTRAP,
-    JAC,
-    RUNTIME,
-    archive_texts,
-    format_jac,
-    pin,
-    write_or_check
-}
+import from common { BOOTSTRAP, JAC, RUNTIME, format_jac, source_texts, write_or_check }
 
 glob OUTPUT: Path = RUNTIME / "layouts.jac",
      CHECK: Path = BOOTSTRAP / "layouts_check.c",
@@ -6621,7 +6621,8 @@ obj Layout {
 
 """What the headers declare once their active `#if` branches are kept."""
 obj Headers {
-    has bodies: dict[str, str] = {},
+    has macros: dict[str, str] = {},
+        bodies: dict[str, str] = {},
         private: dict[str, str] = {},
         private_scalars: dict[str, str] = {},
         aliases: dict[str, str] = {},
@@ -6765,17 +6766,18 @@ def array_bounds(text: str, defines: dict[str, str]) -> str {
 }
 
 def read_headers(found: Headers) {
-    texts = archive_texts(tuple(HEADERS + OBJECT_SOURCES));
+    texts = source_texts(tuple(HEADERS + OBJECT_SOURCES));
     missing = [
         h
         for h in HEADERS + OBJECT_SOURCES
         if h not in texts
     ];
     if missing {
-        sys.exit(f"Not in the pinned archive: {', '.join(missing)}");
+        sys.exit(f"Not in the CPython sources: {', '.join(missing)}");
     }
     defines: dict[str, str] = {};
     text = preprocess([texts[h] for h in HEADERS], defines);
+    found.macros = dict(defines);
     # A source's own macros stay out of the headers' namespace; its typedef'd
     # structs are kept verbatim for layouts_check.c.
     for source in OBJECT_SOURCES {
@@ -6834,11 +6836,7 @@ def read_headers(found: Headers) {
     }
     # Expand the object-like macros struct bodies use (PyObject_HEAD), and the
     # ones those expand to (datetime.h's _PyTZINFO_HEAD names PyObject_HEAD).
-    heads = {
-        name: body
-        for (name, body) in defines.items()
-        if body.strip().endswith(";")
-    };
+    heads = head_macros(defines);
     for _ in range(8) {
         expanded = text;
         for (name, body) in heads.items() {
@@ -6874,6 +6872,15 @@ def read_headers(found: Headers) {
     for hit in re.finditer(r"\btypedef\s+([\w\s]+?)\s+(\w+)\s*;", text) {
         found.aliases[hit.group(2)] = " ".join(hit.group(1).split());
     }
+}
+
+# The object-like macros that expand to member declarations (PyObject_HEAD).
+def head_macros(defines: dict[str, str]) -> dict[str, str] {
+    return {
+        name: body
+        for (name, body) in defines.items()
+        if body.strip().endswith(";")
+    };
 }
 
 # ------------------------------------------------------------------ type model
@@ -7146,6 +7153,18 @@ def require(name: str) -> None {
     order.append(name);
 }
 
+# The layouts the headers define, read as the generator reads them, and what
+# else the headers declare: what gen_include.jac compares with the Jac records.
+def header_layouts -> tuple[dict[str, Layout], Headers] {
+    if not emitted {
+        read_headers(headers);
+        for (name, _) in LAYOUTS {
+            require(name);
+        }
+    }
+    return (emitted, headers);
+}
+
 # --------------------------------------------------------------------- output
 # The records cpython_api.jac declares, opaque (`obj PyObject;`) or C-layout
 # (`obj PyMethodDef { ... }`); layouts.jac imports them rather than
@@ -7184,6 +7203,20 @@ def c_type_name(layout: Layout) -> str {
     return layout.ctype;
 }
 
+# layouts.jac, without a docstring (runtime modules carry none).
+# `PyObject` stays the opaque handle of cpython_api.jac; `_object` is the
+# layout behind it (C's `struct _object`), read by casting a handle to
+# `ptr[_object]`. Its reference count is an anonymous union whose widest
+# member, `ob_refcnt_full`, stands for it: the release build's 32-bit count,
+# overflow and flags are the low, middle and high parts of that i64 on every
+# supported (little-endian) target. A trailing C array `T name[1]`
+# (`_PyLongValue.ob_digit`, `PyTupleObject.ob_item`) is one T field with the
+# same offset, size and alignment: element 0 is that field, and the object's
+# further elements follow it in memory, reached by pointer arithmetic from the
+# field's offset exactly as C indexes past the declared bound. A fixed array
+# `T name[N]` (`PyDateTime_DateTime.data`) is N T fields, `name` for element 0
+# and `name_1` to `name_<N-1>` for the rest. Pointers to records no Jac module
+# reads yet are opaque.
 def render_jac(values: dict[str, int]) -> str {
     records = capi_records();
     shared = [
@@ -7196,32 +7229,7 @@ def render_jac(values: dict[str, int]) -> str {
     }
     from_capi = sorted({"PyObject"} | (set(opaque) & records) | set(shared));
     local = sorted(set(opaque) - set(from_capi));
-    lines = [
-        '"""CPython object layouts for native Jac object-model ports.',
-        "",
-        f"Generated by scripts/jacpython/gen_layouts.jac from CPython {pin()[
-            'version'
-        ]}",
-        "headers; do not edit. bootstrap/python/layouts_check.c asserts every offset,",
-        "size and constant against the configured headers of each JacPython build.",
-        "",
-        "`PyObject` stays the opaque handle of cpython_api.jac; `_object` is the",
-        "layout behind it (C's `struct _object`), read by casting a handle to",
-        "`ptr[_object]`. Its reference count is an anonymous union whose widest",
-        "member, `ob_refcnt_full`, stands for it: the release build's 32-bit count,",
-        "overflow and flags are the low, middle and high parts of that i64 on every",
-        "supported (little-endian) target. A trailing C array `T name[1]`",
-        "(`_PyLongValue.ob_digit`, `PyTupleObject.ob_item`) is one T field with",
-        "the same offset, size and alignment: element 0 is that field, and the",
-        "object's further elements follow it in memory, reached by pointer",
-        "arithmetic from the field's offset exactly as C indexes past the declared",
-        "bound. A fixed array `T name[N]` (`PyDateTime_DateTime.data`) is N T",
-        "fields, `name` for element 0 and `name_1` to `name_<N-1>` for the rest.",
-        "Pointers to records no port reads yet are opaque.",
-        '"""',
-        "",
-        "import from c {"
-    ];
+    lines = ["import from c {"];
     lines += [f"    obj {name};" for name in local];
     for name in order {
         if name in shared {
@@ -7247,19 +7255,7 @@ def render_jac(values: dict[str, int]) -> str {
 # table of a platform with none generated: LAYOUTS_PLATFORM is "" and every
 # value 0.
 def render_platform(suffix: str, values: dict[str, int]) -> str {
-    target = f"the {suffix.replace('.', ' ')}" if suffix else "no generated";
-    lines = [
-        f'"""Platform layout constants for {target} JacPython build.',
-        "",
-        f"Generated by scripts/jacpython/gen_layouts.jac from CPython {pin()[
-            'version'
-        ]}",
-        "headers; do not edit. bootstrap/python/layouts_check.c asserts each value on",
-        "its platform.",
-        '"""',
-        "",
-        f'glob LAYOUTS_PLATFORM: str = "{suffix}";'
-    ];
+    lines = [f'glob LAYOUTS_PLATFORM: str = "{suffix}";'];
     for (name, _, jac) in PLATFORM_CONSTANTS {
         lines.append(f"glob {name}: Final[{jac}] = {values.get(name, 0)};");
     }
@@ -7501,6 +7497,11 @@ with entry:__main__ {
     parser.add_argument("--zig", help="zig, for the platform constants");
     parser.set_defaults(cc="cc", zig="zig");
     parser.add_argument("--check", action="store_true");
+    parser.add_argument(
+        "--adopt",
+        action="store_true",
+        help="rewrite layouts.jac from the headers (a record or constant a Jac-owned header lacks)"
+    );
     args = parser.parse_args();
     read_headers(headers);
     for (name, _) in LAYOUTS {
@@ -7517,8 +7518,14 @@ with entry:__main__ {
     }
     check = render_check(values, platform_values);
     verify(check, headers_dir, compiler);
+    # layouts.jac is the input of the public headers (gen_include.jac): it is
+    # only checked against the headers, unless --adopt takes a new record or
+    # constant from them.
     current = write_or_check(
-        OUTPUT, format_jac(render_jac(values), OUTPUT), args.check, COMMAND
+        OUTPUT,
+        format_jac(render_jac(values), OUTPUT),
+        not args.adopt,
+        "scripts/jacpython/gen_include.jac, or this script with --adopt for a record of an archive header"
     );
     current = write_or_check(CHECK, check, args.check, COMMAND) and current;
     for (suffix, _, _) in PLATFORMS + [("", "", "")] {

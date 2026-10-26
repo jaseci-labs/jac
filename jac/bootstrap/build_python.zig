@@ -342,9 +342,9 @@ const Marker = enum {
     removed,
     // Needed by no build. Absent from the host tree as well.
     pruned,
-    // Written from the Jac instruction table and checked in as
-    // bootstrap/python/generated/<path>.in; both trees stage that copy where
-    // the archive's was.
+    // Written by a Jac generator (the opcode tables, the public C API
+    // headers) and checked in as bootstrap/python/generated/<path>.in; both
+    // trees stage that copy where the archive's was.
     generated,
 };
 const Exclusion = struct { path: []const u8, marker: Marker };

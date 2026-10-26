@@ -1,9 +1,10 @@
-"""Generate jac/jaclang/runtime/python/cpython_api.jac from the pinned CPython headers.
+"""Generate jac/jaclang/runtime/python/cpython_api.jac from the C API headers.
 
 Native Jac modules call the CPython C API by its own names. This script reads
-every PyAPI_FUNC declaration from the checksum-pinned CPython archive's
-Include/ tree and emits a typed clib declaration for each function the JacPython
-sources use, so a Jac port reads like the C it replaces:
+every PyAPI_FUNC declaration from the Include/ tree a build stages (the public
+headers gen_include.jac writes, the internal ones of the checksum-pinned
+CPython archive) and emits a typed clib declaration for each function the
+JacPython sources use, so Jac code reads like the C it replaces:
 
     jac run scripts/jacpython/gen_capi.jac            # rewrite the file
     jac run scripts/jacpython/gen_capi.jac --check    # fail on drift
@@ -29,9 +30,9 @@ import from common {
     REPO,
     RUNTIME,
     SOURCES,
-    archive_texts,
     format_jac,
     pin,
+    source_texts,
     write_or_check
 }
 
@@ -851,7 +852,7 @@ with entry:__main__ {
     args = parser.parse_args();
     headers = {
         path: text
-        for (path, text) in archive_texts(("Include/", )).items()
+        for (path, text) in source_texts(("Include/", )).items()
         if path.endswith(".h")
     };
     functions = declarations(headers);

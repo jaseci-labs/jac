@@ -27,10 +27,13 @@
 #   Total: 31 files / 61,064 source lines.
 #
 #   "# path  # generated: N source lines"
-#   Written from the Jac instruction table by scripts/jacpython/gen_opcode_meta.jac
-#   and checked in as bootstrap/python/generated/<path>.in. Neither tree keeps
-#   the archive's copy; both builds stage the checked-in one in its place.
-#   Total: 5 files / 4,286 source lines.
+#   Written by a Jac generator and checked in as
+#   bootstrap/python/generated/<path>.in: the opcode tables from the Jac
+#   instruction table (scripts/jacpython/gen_opcode_meta.jac), the public C API
+#   headers (Include/*.h, Include/cpython/*.h) from the Jac layouts and
+#   constants (scripts/jacpython/gen_include.jac). Neither tree keeps the
+#   archive's copy; both builds stage the checked-in one in its place.
+#   Total: 141 files / 23,324 source lines.
 #
 # After each build, build.sh checks that no removed or pruned path came back,
 # reading the marker to decide which builds must lack it.
@@ -74,33 +77,91 @@ install-sh
 pyconfig.h.in
 
 # Public and internal headers
-Include/Python.h
+# Include/Python.h  # generated: 155 source lines
 Include/README.rst
-Include/abstract.h
-Include/audit.h
-Include/bltinmodule.h
-Include/boolobject.h
-Include/bytearrayobject.h
-Include/bytesobject.h
-Include/ceval.h
-Include/codecs.h
-Include/compile.h
-Include/complexobject.h
-Include/cpython/
-Include/critical_section.h
-Include/datetime.h
-Include/descrobject.h
-Include/dictobject.h
-Include/dynamic_annotations.h
-Include/enumobject.h
-Include/errcode.h
-Include/exports.h
-Include/fileobject.h
-Include/fileutils.h
-Include/floatobject.h
-Include/frameobject.h
-Include/genericaliasobject.h
-Include/import.h
+# Include/abstract.h  # generated: 915 source lines
+# Include/audit.h  # generated: 30 source lines
+# Include/bltinmodule.h  # generated: 14 source lines
+# Include/boolobject.h  # generated: 54 source lines
+# Include/bytearrayobject.h  # generated: 44 source lines
+# Include/bytesobject.h  # generated: 66 source lines
+# Include/ceval.h  # generated: 145 source lines
+# Include/codecs.h  # generated: 176 source lines
+# Include/compile.h  # generated: 22 source lines
+# Include/complexobject.h  # generated: 30 source lines
+# Include/cpython/abstract.h  # generated: 104 source lines
+# Include/cpython/audit.h  # generated: 8 source lines
+# Include/cpython/bytearrayobject.h  # generated: 38 source lines
+# Include/cpython/bytesobject.h  # generated: 42 source lines
+# Include/cpython/cellobject.h  # generated: 50 source lines
+# Include/cpython/ceval.h  # generated: 43 source lines
+# Include/cpython/classobject.h  # generated: 71 source lines
+# Include/cpython/code.h  # generated: 340 source lines
+# Include/cpython/compile.h  # generated: 50 source lines
+# Include/cpython/complexobject.h  # generated: 33 source lines
+# Include/cpython/context.h  # generated: 107 source lines
+# Include/cpython/critical_section.h  # generated: 154 source lines
+# Include/cpython/descrobject.h  # generated: 62 source lines
+# Include/cpython/dictobject.h  # generated: 105 source lines
+# Include/cpython/fileobject.h  # generated: 16 source lines
+# Include/cpython/fileutils.h  # generated: 16 source lines
+# Include/cpython/floatobject.h  # generated: 27 source lines
+# Include/cpython/frameobject.h  # generated: 35 source lines
+# Include/cpython/funcobject.h  # generated: 185 source lines
+# Include/cpython/genobject.h  # generated: 56 source lines
+# Include/cpython/import.h  # generated: 30 source lines
+# Include/cpython/initconfig.h  # generated: 334 source lines
+# Include/cpython/listobject.h  # generated: 53 source lines
+# Include/cpython/lock.h  # generated: 74 source lines
+# Include/cpython/longintrepr.h  # generated: 184 source lines
+# Include/cpython/longobject.h  # generated: 89 source lines
+# Include/cpython/memoryobject.h  # generated: 50 source lines
+# Include/cpython/methodobject.h  # generated: 66 source lines
+# Include/cpython/modsupport.h  # generated: 26 source lines
+# Include/cpython/monitoring.h  # generated: 269 source lines
+# Include/cpython/object.h  # generated: 493 source lines
+# Include/cpython/objimpl.h  # generated: 104 source lines
+# Include/cpython/odictobject.h  # generated: 43 source lines
+# Include/cpython/picklebufobject.h  # generated: 31 source lines
+# Include/cpython/pthread_stubs.h  # generated: 105 source lines
+# Include/cpython/pyatomic.h  # generated: 628 source lines
+# Include/cpython/pyatomic_gcc.h  # generated: 619 source lines
+# Include/cpython/pyatomic_msc.h  # generated: 1,204 source lines
+# Include/cpython/pyatomic_std.h  # generated: 1,112 source lines
+# Include/cpython/pyctype.h  # generated: 39 source lines
+# Include/cpython/pydebug.h  # generated: 38 source lines
+# Include/cpython/pyerrors.h  # generated: 133 source lines
+# Include/cpython/pyfpe.h  # generated: 15 source lines
+# Include/cpython/pyframe.h  # generated: 45 source lines
+# Include/cpython/pyhash.h  # generated: 54 source lines
+# Include/cpython/pylifecycle.h  # generated: 89 source lines
+# Include/cpython/pymem.h  # generated: 84 source lines
+# Include/cpython/pystate.h  # generated: 277 source lines
+# Include/cpython/pystats.h  # generated: 194 source lines
+# Include/cpython/pythonrun.h  # generated: 96 source lines
+# Include/cpython/pythread.h  # generated: 43 source lines
+# Include/cpython/pytime.h  # generated: 27 source lines
+# Include/cpython/setobject.h  # generated: 71 source lines
+# Include/cpython/traceback.h  # generated: 13 source lines
+# Include/cpython/tracemalloc.h  # generated: 32 source lines
+# Include/cpython/tupleobject.h  # generated: 40 source lines
+# Include/cpython/unicodeobject.h  # generated: 773 source lines
+# Include/cpython/warnings.h  # generated: 20 source lines
+# Include/cpython/weakrefobject.h  # generated: 66 source lines
+# Include/critical_section.h  # generated: 16 source lines
+# Include/datetime.h  # generated: 267 source lines
+# Include/descrobject.h  # generated: 100 source lines
+# Include/dictobject.h  # generated: 108 source lines
+# Include/dynamic_annotations.h  # generated: 502 source lines
+# Include/enumobject.h  # generated: 17 source lines
+# Include/errcode.h  # generated: 45 source lines
+# Include/exports.h  # generated: 105 source lines
+# Include/fileobject.h  # generated: 41 source lines
+# Include/fileutils.h  # generated: 62 source lines
+# Include/floatobject.h  # generated: 54 source lines
+# Include/frameobject.h  # generated: 20 source lines
+# Include/genericaliasobject.h  # generated: 14 source lines
+# Include/import.h  # generated: 103 source lines
 Include/internal/mimalloc/
 Include/internal/pycore_abstract.h
 Include/internal/pycore_asdl.h
@@ -241,60 +302,60 @@ Include/internal/pycore_uniqueid.h
 # Include/internal/pycore_uop_metadata.h  # generated: 1,204 source lines
 Include/internal/pycore_warnings.h
 Include/internal/pycore_weakref.h
-Include/intrcheck.h
-Include/iterobject.h
-Include/listobject.h
-Include/lock.h
-Include/longobject.h
-Include/marshal.h
-Include/memoryobject.h
-Include/methodobject.h
-Include/modsupport.h
-Include/moduleobject.h
-Include/monitoring.h
-Include/object.h
-Include/objimpl.h
-Include/opcode.h
+# Include/intrcheck.h  # generated: 23 source lines
+# Include/iterobject.h  # generated: 24 source lines
+# Include/listobject.h  # generated: 55 source lines
+# Include/lock.h  # generated: 16 source lines
+# Include/longobject.h  # generated: 178 source lines
+# Include/marshal.h  # generated: 31 source lines
+# Include/memoryobject.h  # generated: 34 source lines
+# Include/methodobject.h  # generated: 146 source lines
+# Include/modsupport.h  # generated: 146 source lines
+# Include/moduleobject.h  # generated: 122 source lines
+# Include/monitoring.h  # generated: 18 source lines
+# Include/object.h  # generated: 828 source lines
+# Include/objimpl.h  # generated: 211 source lines
+# Include/opcode.h  # generated: 43 source lines
 # Include/opcode_ids.h  # generated: 259 source lines
-Include/osdefs.h
-Include/osmodule.h
-Include/patchlevel.h
-Include/py_curses.h
-Include/pyatomic.h
-Include/pybuffer.h
-Include/pycapsule.h
+# Include/osdefs.h  # generated: 57 source lines
+# Include/osmodule.h  # generated: 17 source lines
+# Include/patchlevel.h  # generated: 49 source lines
+# Include/py_curses.h  # generated: 117 source lines
+# Include/pyatomic.h  # generated: 16 source lines
+# Include/pybuffer.h  # generated: 145 source lines
+# Include/pycapsule.h  # generated: 58 source lines
 Include/pydtrace.d
-Include/pydtrace.h
-Include/pyerrors.h
-Include/pyexpat.h
-Include/pyframe.h
-Include/pyhash.h
-Include/pylifecycle.h
-Include/pymacconfig.h
-Include/pymacro.h
-Include/pymath.h
-Include/pymem.h
-Include/pyport.h
-Include/pystate.h
-Include/pystats.h
-Include/pystrcmp.h
-Include/pystrtod.h
-Include/pythonrun.h
-Include/pythread.h
-Include/pytypedefs.h
-Include/rangeobject.h
-Include/refcount.h
-Include/setobject.h
-Include/sliceobject.h
-Include/structmember.h
-Include/structseq.h
-Include/sysmodule.h
-Include/traceback.h
-Include/tupleobject.h
-Include/typeslots.h
-Include/unicodeobject.h
-Include/warnings.h
-Include/weakrefobject.h
+# Include/pydtrace.h  # generated: 59 source lines
+# Include/pyerrors.h  # generated: 335 source lines
+# Include/pyexpat.h  # generated: 70 source lines
+# Include/pyframe.h  # generated: 26 source lines
+# Include/pyhash.h  # generated: 59 source lines
+# Include/pylifecycle.h  # generated: 80 source lines
+# Include/pymacconfig.h  # generated: 91 source lines
+# Include/pymacro.h  # generated: 249 source lines
+# Include/pymath.h  # generated: 65 source lines
+# Include/pymem.h  # generated: 110 source lines
+# Include/pyport.h  # generated: 710 source lines
+# Include/pystate.h  # generated: 132 source lines
+# Include/pystats.h  # generated: 28 source lines
+# Include/pystrcmp.h  # generated: 23 source lines
+# Include/pystrtod.h  # generated: 37 source lines
+# Include/pythonrun.h  # generated: 42 source lines
+# Include/pythread.h  # generated: 131 source lines
+# Include/pytypedefs.h  # generated: 30 source lines
+# Include/rangeobject.h  # generated: 27 source lines
+# Include/refcount.h  # generated: 555 source lines
+# Include/setobject.h  # generated: 49 source lines
+# Include/sliceobject.h  # generated: 69 source lines
+# Include/structmember.h  # generated: 56 source lines
+# Include/structseq.h  # generated: 46 source lines
+# Include/sysmodule.h  # generated: 27 source lines
+# Include/traceback.h  # generated: 26 source lines
+# Include/tupleobject.h  # generated: 46 source lines
+# Include/typeslots.h  # generated: 96 source lines
+# Include/unicodeobject.h  # generated: 1,029 source lines
+# Include/warnings.h  # generated: 45 source lines
+# Include/weakrefobject.h  # generated: 46 source lines
 
 # Parser and tokenizer
 # Parser/action_helpers.c  # removed: 1,953 source lines
