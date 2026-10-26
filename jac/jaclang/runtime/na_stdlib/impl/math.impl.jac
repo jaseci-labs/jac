@@ -842,3 +842,256 @@ impl isclose(
         or diff <= m_fabs(rel_tol * a)
         or diff <= m_fabs(rel_tol * b);
 }
+
+impl ceil[T](x: T) -> int {
+    if isinstance(x, int) {
+        xi: int = x;
+        return xi;
+    }
+    return _float_to_int(m_ceil(float(x)));
+}
+
+
+impl floor[T](x: T) -> int {
+    if isinstance(x, int) {
+        xi: int = x;
+        return xi;
+    }
+    return _float_to_int(m_floor(float(x)));
+}
+
+
+impl trunc[T](x: T) -> int {
+    if isinstance(x, int) {
+        xi: int = x;
+        return xi;
+    }
+    return _float_to_int(m_trunc(float(x)));
+}
+
+
+impl fsum[C: Iterable](data: C) -> float {
+    partials: list[float] = [];
+    special: float = 0.0;
+    infinities: float = 0.0;
+    low: float = 0.0;
+    for item in data {
+        x = float(item);
+        original = x;
+        count = 0;
+        for j in range(len(partials)) {
+            y = partials[j];
+            if m_fabs(x) < m_fabs(y) {
+                tmp = x;
+                x = y;
+                y = tmp;
+            }
+            high = x + y;
+            rounded = high - x;
+            low = y - rounded;
+            if low != 0.0 {
+                partials[count] = low;
+                count += 1;
+            }
+            x = high;
+        }
+        while len(partials) > count {
+            partials.pop();
+        }
+        if x != 0.0 {
+            if not isfinite(x) {
+                if isfinite(original) {
+                    raise OverflowError("intermediate overflow in fsum");
+                }
+                if isinf(original) {
+                    infinities += original;
+                }
+                special += original;
+                partials.clear();
+            } else {
+                partials.append(x);
+            }
+        }
+    }
+    if special != 0.0 {
+        if isnan(infinities) {
+            raise ValueError("-inf + inf in fsum");
+        }
+        return special;
+    }
+    high: float = 0.0;
+    if len(partials) > 0 {
+        high = partials.pop();
+        while len(partials) > 0 {
+            x = high;
+            y = partials.pop();
+            high = x + y;
+            rounded = high - x;
+            low = y - rounded;
+            if low != 0.0 {
+                break;
+            }
+        }
+        if len(partials) > 0
+            and (
+                (low < 0.0 and partials[-1] < 0.0) or (low > 0.0 and partials[-1] > 0.0)
+            ) {
+            y = low * 2.0;
+            x = high + y;
+            rounded = x - high;
+            if y == rounded {
+                high = x;
+            }
+        }
+    }
+    return high;
+}
+
+
+impl dist[P: Iterable, Q: Iterable](p: P, q: Q) -> float {
+    diffs: list[float] = [];
+    for v in p {
+        diffs.append(float(v));
+    }
+    n = 0;
+    largest: float = 0.0;
+    found_nan = False;
+    for w in q {
+        if n >= len(diffs) {
+            raise ValueError("both points must have the same number of dimensions");
+        }
+        d = m_fabs(diffs[n] - float(w));
+        diffs[n] = d;
+        found_nan = found_nan or isnan(d);
+        if d > largest {
+            largest = d;
+        }
+        n += 1;
+    }
+    if n != len(diffs) {
+        raise ValueError("both points must have the same number of dimensions");
+    }
+    return _vector_norm(diffs, largest, found_nan);
+}
+
+
+impl prod[C: Iterable](data: C, *, start: int | float = 1) -> (int | float) {
+    ri: int = 1;
+    rf: float = 1.0;
+    isint = True;
+    s = start;
+    if isinstance(s, int) {
+        si: int = s;
+        ri = si;
+    } else {
+        rf = float(s);
+        isint = False;
+    }
+    for v in data {
+        if isint {
+            if isinstance(v, int) {
+                iv: int = v;
+                if _imul_fits(ri, iv) {
+                    ri *= iv;
+                } else {
+                    raise OverflowError("prod() result too large");
+                }
+            } else {
+                rf = float(ri) * float(v);
+                isint = False;
+            }
+        } else {
+            rf *= float(v);
+        }
+    }
+    if isint {
+        return ri;
+    }
+    return rf;
+}
+
+
+impl sumprod[P: Iterable, Q: Iterable](p: P, q: Q) -> (int | float) {
+    p_flts: list[float] = [];
+    p_ints: list[int] = [];
+    p_int = True;
+    for v in p {
+        if isinstance(v, int) {
+            vi: int = v;
+            p_ints.append(vi);
+        } else {
+            p_int = False;
+        }
+        p_flts.append(float(v));
+    }
+    q_flts: list[float] = [];
+    q_ints: list[int] = [];
+    q_int = True;
+    for w in q {
+        if isinstance(w, int) {
+            wi: int = w;
+            q_ints.append(wi);
+        } else {
+            q_int = False;
+        }
+        q_flts.append(float(w));
+    }
+    if len(p_flts) != len(q_flts) {
+        raise ValueError("Inputs are not the same length");
+    }
+    if p_int and q_int {
+        total: int = 0;
+        for i in range(len(p_ints)) {
+            a = p_ints[i];
+            b = q_ints[i];
+            if not _imul_fits(a, b) {
+                raise OverflowError("sumprod() result too large");
+            }
+            t = a * b;
+            if not _iadd_fits(total, t) {
+                raise OverflowError("sumprod() result too large");
+            }
+            total += t;
+        }
+        return total;
+    }
+    hi: float = 0.0;
+    lo: float = 0.0;
+    tiny: float = 0.0;
+    in_use = False;
+    general = False;
+    acc: float = 0.0;
+    for i in range(len(p_flts)) {
+        x = p_flts[i];
+        y = q_flts[i];
+        if not general {
+            ph = x * y;
+            pl = m_fma(x, y, -ph);
+            s_hi = hi + ph;
+            s_z = s_hi - hi;
+            s_lo = (hi - (s_hi - s_z)) + (ph - s_z);
+            r1_hi = lo + pl;
+            r1_z = r1_hi - lo;
+            r1_lo = (lo - (r1_hi - r1_z)) + (pl - r1_z);
+            r2_hi = r1_hi + s_lo;
+            r2_z = r2_hi - r1_hi;
+            r2_lo = (r1_hi - (r2_hi - r2_z)) + (s_lo - r2_z);
+            if isfinite(s_hi) {
+                hi = s_hi;
+                lo = r2_hi;
+                tiny = tiny + r1_lo + r2_lo;
+                in_use = True;
+                continue;
+            }
+            general = True;
+            if in_use {
+                acc = _tl_to_double(hi, lo, tiny);
+            }
+        }
+        acc += x * y;
+    }
+    if general {
+        return acc;
+    }
+    return _tl_to_double(hi, lo, tiny);
+}
