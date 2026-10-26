@@ -1288,7 +1288,7 @@ import from c {
          _Py_TrueStruct: PyObject;
 }
 
-glob NULL: ptr[PyObject] = ptr[PyObject](),
-     Py_Ellipsis: ptr[PyObject] = addressof(_Py_EllipsisObject),
-     Py_None: ptr[PyObject] = addressof(_Py_NoneStruct),
-     Py_NotImplemented: ptr[PyObject] = addressof(_Py_NotImplementedStruct);
+glob NULL: Final[ptr[PyObject]] = ptr[PyObject](),
+     Py_Ellipsis: Final[ptr[PyObject]] = addressof(_Py_EllipsisObject),
+     Py_None: Final[ptr[PyObject]] = addressof(_Py_NoneStruct),
+     Py_NotImplemented: Final[ptr[PyObject]] = addressof(_Py_NotImplementedStruct);

@@ -830,10 +830,10 @@ def render(
             );
         }
     }
-    lines += ["", "glob NULL: ptr[PyObject] = ptr[PyObject]();"];
+    lines += ["", "glob NULL: Final[ptr[PyObject]] = ptr[PyObject]();"];
     for name in sorted(macros) {
         lines.append(
-            f"glob {name}: ptr[PyObject] = addressof({ADDRESS_MACROS[name]});"
+            f"glob {name}: Final[ptr[PyObject]] = addressof({ADDRESS_MACROS[name]});"
         );
     }
     if failures {
