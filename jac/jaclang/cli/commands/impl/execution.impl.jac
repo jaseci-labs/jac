@@ -64,7 +64,8 @@ def _serve_overrides(
     platform: (str | None),
     fleet: bool,
     cfg: any,
-    workers: (str | None) = None
+    workers: (str | None) = None,
+    tunnel: bool = False
 ) -> dict[str, any];
 
 def _entry_flags_used(
@@ -84,7 +85,7 @@ def _serve_with(
     takeover: bool = False
 ) -> int;
 
-def _build_plan(plan: RunPlan) -> int;
+def _refuse_build_kind(plan: RunPlan) -> int;
 
 def _show_run(
     plan: (RunPlan | None), app: any, target: str, file: str, want_serve: bool
@@ -210,6 +211,7 @@ impl run(
     takeover: (bool | None) = None,
     fleet: bool = False,
     workers: (str | None) = None,
+    tunnel: bool = False,
     args: list[str] = [],
     backend: str = ""
 ) -> int {
@@ -256,7 +258,17 @@ impl run(
     eff = _effective_config(cfg, app);
 
     over = _serve_overrides(
-        port, dev, api_port, no_client, faux, host, platform, fleet, eff, workers
+        port,
+        dev,
+        api_port,
+        no_client,
+        faux,
+        host,
+        platform,
+        fleet,
+        eff,
+        workers,
+        tunnel
     );
     entry_flags = _entry_flags_used(entry_name, nd, root_id, debug_mode);
     kind_serves = plan is not None and plan.action == "serve";
@@ -329,7 +341,7 @@ impl run(
             );
         }
         if plan is not None and plan.action == "build" and not file {
-            return _build_plan(plan);
+            return _refuse_build_kind(plan);
         }
 
         exec_target = file or (plan.entry_path if plan is not None else "");
@@ -388,7 +400,8 @@ impl serve(
     takeover: bool = False,
     fleet: bool = False,
     app: str = "",
-    workers: str = ""
+    workers: str = "",
+    tunnel: bool = False
 ) -> int {
     import from pathlib { Path }
 
@@ -414,10 +427,18 @@ impl serve(
     _discover_config_from_file(filename);
     cfg = get_config();
     served = _serve_app(cfg, app, filename);
+    if tunnel and not _serves_mobile_device(cfg, served, platform) {
+        console.error(
+            "--tunnel applies only to a mobile app served to a device "
+            "(not --platform web).",
+            hint="jac run --tunnel <mobile-app>"
+        );
+        return 1;
+    }
     if served is not None {
         import from jaclang.client.cli { run_client_start }
         client_rc = run_client_start(
-            served, host, platform, port, api_port, dev, no_client
+            served, host, platform, port, api_port, dev, no_client, tunnel
         );
         if client_rc is not None {
             return client_rc;
@@ -686,6 +707,8 @@ def _get_network_ips -> list[str];
 
 def _serves_web_client(kind: (str | None), platform: (str | None)) -> bool;
 
+def _serves_mobile_device(cfg: any, served: any, platform: str) -> bool;
+
 def _count_jac_files(directory: str) -> int;
 
 def _print_startup_message(
@@ -718,10 +741,12 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
     base = base or './';
     mod = mod[:-4];
     if filename.endswith('.jac') {
-        bytecode = JacProgram().compile(filename).gen.py_bytecode;
-        if bytecode {
-            code = marshal.loads(bytecode);
-            if db.has_breakpoint(bytecode) {
+        program = Jac.get_program();
+        code = program._get_compiler().get_bytecode(
+            full_target=os.path.abspath(filename), target_program=program
+        );
+        if code is not None {
+            if db.has_breakpoint(marshal.dumps(code)) {
                 run(filename, main, cache);
             } else {
                 func = types.FunctionType(code, globals());
@@ -1056,6 +1081,9 @@ impl _print_plan(plan: RunPlan, app: any) {
         console.print(f"route        : {route}");
     }
     console.print(f"equivalent   : {plan.command_line()}");
+    if plan.action != "build" and plan.verb == "native" {
+        console.print(f"build        : {plan.build_line()}");
+    }
 }
 
 impl _workspace_plans(cfg: any, project_root: str) -> list[RunPlan] {
@@ -1129,7 +1157,8 @@ impl _serve_flag_spelling -> dict[str, str] {
         "host": "--host",
         "platform": "--platform",
         "fleet": "--fleet",
-        "workers": "--workers"
+        "workers": "--workers",
+        "tunnel": "--tunnel"
     };
 }
 
@@ -1158,7 +1187,8 @@ impl _serve_overrides(
     platform: (str | None),
     fleet: bool,
     cfg: any,
-    workers: (str | None) = None
+    workers: (str | None) = None,
+    tunnel: bool = False
 ) -> dict[str, any] {
     over: dict[str, any] = {};
     if _port_is_explicit(port, cfg) {
@@ -1187,6 +1217,9 @@ impl _serve_overrides(
     }
     if workers is not None {
         over["workers"] = workers;
+    }
+    if tunnel {
+        over["tunnel"] = True;
     }
     return over;
 }
@@ -1253,7 +1286,8 @@ impl _serve_with(
         "platform": "",
         "takeover": False,
         "fleet": False,
-        "workers": ""
+        "workers": "",
+        "tunnel": False
     };
     for (k, v) in plan_flags.items() {
         if k in kw {
@@ -1270,30 +1304,14 @@ impl _serve_with(
     return serve(filename=entry_path, main=main, app=app_name, **kw);
 }
 
-impl _build_plan(plan: RunPlan) -> int {
-    if plan.verb == "native" {
-        import from jaclang.cli.commands.native_build { native_build }
-        out = plan.flags.get("output", "");
-        if out {
-            out_dir = os.path.dirname(out);
-            if out_dir {
-                os.makedirs(out_dir, exist_ok=True);
-            }
-        }
-        return native_build(
-            filename=plan.entry_path, output=out, lib=plan.flags.get("lib", False)
-        );
-    }
-    if plan.verb == "build" {
-        import from jaclang.cli.commands.build { build }
-        return build(
-            target=plan.app,
-            projection=plan.flags.get("as", "jab"),
-            platform=plan.flags.get("platform", None)
-        );
-    }
-
-    console.error(f"Project kind '{plan.kind}' has no build verb '{plan.verb}'.");
+impl _refuse_build_kind(plan: RunPlan) -> int {
+    label = f"'{plan.app}'"
+        if plan.app
+        else os.path.basename(plan.entry_path) or "This project";
+    console.error(
+        f"{label} is a {plan.kind} app: it has no program to run, and jac run never builds.",
+        hint=f"Build it with: {plan.build_line()}"
+    );
     return 1;
 }
 
@@ -1313,7 +1331,9 @@ impl _show_run(
         console.print("override     : --no-serve forces execution");
     }
     if (not want_serve) and plan.action == "build" and file {
-        console.print("override     : a named file executes; a bare run builds");
+        console.print(
+            "override     : a named file executes; a bare run refuses (build-only kind)"
+        );
     }
     return 0;
 }
@@ -1639,7 +1659,8 @@ impl _exec_file(
                 _app = _cfg_kind.app_for_path(_abs_file);
                 _kind_forced = (
                     _app is not None
-                    and resolve_app_kind(_cfg_kind, _app, _abs_file) == 'cli-native'
+                    and resolve_app_kind(_cfg_kind, _app, _abs_file)
+                        in ('cli-native', 'native-binary')
                 );
             }
             if (not _graphmend_may_engage(graphmend, filename))
@@ -1883,6 +1904,15 @@ impl _get_network_ips -> list[str] {
         }
     } except Exception {}
     return ips;
+}
+
+impl _serves_mobile_device(cfg: any, served: any, platform: str) -> bool {
+    if served is None {
+        return False;
+    }
+    kind = cfg.resolved_kind(served) if cfg is not None else served.kind;
+    return kind == "mobile"
+        and (platform or served.platform or "").strip().lower() != "web";
 }
 
 impl _serves_web_client(kind: (str | None), platform: (str | None)) -> bool {

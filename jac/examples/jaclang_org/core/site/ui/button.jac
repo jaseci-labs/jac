@@ -38,7 +38,3 @@ glob _buttonVariants: any = cva(
 def:pub Button(props: any) -> JsxElement;
 
 def:pub buttonVariants -> any;
-
-impl buttonVariants -> any {
-    return _buttonVariants;
-}

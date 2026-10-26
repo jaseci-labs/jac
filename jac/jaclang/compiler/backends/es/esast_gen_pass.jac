@@ -202,6 +202,7 @@ walker EsastGenPass(TreePass) {
         _view_branch_base: dict[(int, int)] = {},
         _view_slot_loops: set[int] = set(),
         _loop_label_stack: list[str] = [],
+        _loop_labels: dict[int, str] = {},
         _loop_label_savepoints: list[list[str]] = [],
         _used_loop_labels: set[str] = set(),
         _loop_label_seq: int = 0,
@@ -246,6 +247,7 @@ walker EsastGenPass(TreePass) {
     ) -> es.Expression;
 
     def _apply_fw_coercion(nd: uni.Expr) -> None;
+    def _js_int_spelling(text: str) -> str;
     def _fw_js_binop(
         op: str, left: es.Expression, right: es.Expression, jac_node: uni.UniNode
     ) -> es.Expression;

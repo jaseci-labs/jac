@@ -39,24 +39,6 @@ glob _EXCLUDE_DIRS: set[str] = {
          ".pytest_cache"
      };
 
-glob _EXCLUDE_FILES: set[str] = {
-         ".env",
-         "jac.toml",
-         "id_rsa",
-         "id_dsa",
-         "id_ecdsa",
-         "id_ed25519"
-     };
-glob _EXCLUDE_SUFFIXES: tuple[str, ...] = (
-         ".pem",
-         ".key",
-         ".crt",
-         ".cer",
-         ".p12",
-         ".pfx",
-         ".jks",
-         ".keystore"
-     );
 glob _EXCLUDE_ENV: set[str] = {"PYTHONPATH", "PYTHONHOME", "JAC_HANDOFF"};
 
 
@@ -191,6 +173,9 @@ def _legacy_sealer_script_for(
 def sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str;
 
 
+def require_serve_manifest(stage: Path, detail: str = "") -> Path;
+
+
 def _precompile_app(
     base: Path,
     seal_binary: bytes,
@@ -255,6 +240,9 @@ def _seed_precompiled(stage: Path, seed: (Path | None)) -> int;
 
 
 def _cached_seal(base: Path, key: str) -> (bytes | None);
+
+
+def _bundle_ships(raw: bytes, member: str) -> bool;
 
 
 def _remember_seal(base: Path, key: str, raw: bytes);

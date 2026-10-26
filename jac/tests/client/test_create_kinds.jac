@@ -64,6 +64,6 @@ test "create --kind web-static" {
 }
 
 test "create --kind mobile" {
-    _assert_kind("mobile", "build");
+    _assert_kind("mobile", "serve");
     _cleanup();
 }

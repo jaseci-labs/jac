@@ -121,3 +121,17 @@ impl PackagesIndex(
             }   }
         </div>;
 }
+
+impl matches(p: PackageSummary, q: str) -> bool {
+    needle = q.strip().lower();
+    if needle == "" {
+        return True;
+    }
+    hay = [p.name, p.description, *p.exports, *p.symbols];
+    for text in hay {
+        if needle in text.lower() {
+            return True;
+        }
+    }
+    return False;
+}

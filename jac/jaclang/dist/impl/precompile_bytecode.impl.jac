@@ -154,10 +154,8 @@ impl _application_sources(package_dir: str, app: str) -> list[str] | None {
     }
     program = JacProgram();
     entries: list[any] = [selected];
-    if selected.has_server {
-        import from jaclang.server.assembly { service_apps }
-        entries.extend(service_apps(workspace, selected));
-    }
+    import from jaclang.server.assembly { service_apps }
+    entries.extend(service_apps(workspace, selected));
     try {
         for application in entries {
             options = bind_options(
@@ -827,8 +825,9 @@ impl app_metadata(pkg_path: Path, pkg_name: str, app: str = "") -> dict[str, any
         `entry = {"module": f"{pkg_name}.{stem}", "path": rel};
     }
 
+    serving = config.serving_apps();
     caps: list[str] = [];
-    if kind in ["service", "service-mesh", "web-app", "desktop", "mobile"] {
+    if chosen is not None and any(app.name == chosen.name for app in serving) {
         caps.append("has-server");
     }
     if `entry {
@@ -1253,9 +1252,7 @@ impl seal_native(
         }
         refuse_missing_entries(plan, str(pkg_path));
     }
-    """The plan holds every unit's interface and the link needs only their
-    products, which the module cache holds, so the analyzed trees go before
-    the link's code generation needs the memory.""";
+
     prog.release_compile_closure();
     result = link_artifact(
         plan, str(artifact_path), ArtifactKind.SHARED, log=console.print
@@ -1402,10 +1399,6 @@ impl adopt_kernel(
 }
 
 impl _refresh_native_twin(twin: Path, jac_path: str, pkg_root: str) -> None {
-    """Carry a unit's native sections from the module cache into its sealed
-JIR twin. A dual module's twin was written by the compile pass, before the
-plan compiled the module as a native unit; the plan's products are what
-the artifact linked, so the twin takes them now.""";
     fresh = _native_extra(jac_path, pkg_root);
     if not fresh {
         return;
