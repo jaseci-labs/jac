@@ -3103,19 +3103,15 @@ impl TypeEvaluator._numeric_args_invariant(
     src_arg: TypeBase, dest_arg: TypeBase, strict: bool = False
 ) -> bool {
     # A union destination stores any of its members, so the invariant must
-    # hold against each numeric member: list[int] into list[float | None]
-    # would otherwise let the callee append a float the caller reads as int.
+    # hold for each member against the source element as a whole: list[int]
+    # into list[float | None] would otherwise let the callee append a float
+    # the caller reads as an int. The source side stays unexpanded:
+    # assign_type already applies union semantics to it, so identical
+    # union-element containers (list[int | float] into itself) keep
+    # passing and only a widening member (float against int) is refused.
     if isinstance(dest_arg, UnionType) and dest_arg.types {
         for member in dest_arg.types {
             if not self._numeric_args_invariant(src_arg, member, strict) {
-                return False;
-            }
-        }
-        return True;
-    }
-    if isinstance(src_arg, UnionType) and src_arg.types {
-        for member in src_arg.types {
-            if not self._numeric_args_invariant(member, dest_arg, strict) {
                 return False;
             }
         }

@@ -35,6 +35,18 @@ def feed_strs(c: Consumer[str]) -> None {
     c.consume("x");
 }
 
+glob BT = TypeVar('BT');
+
+obj Box(Generic[BT]) {
+    has v: BT;
+}
+
+obj NumBox(Box[int | float]) {}
+
+def take_num_box(b: Box[int | float]) -> int | float {
+    return b.v;
+}
+
 with entry {
     ints: list[int] = [1, 2, 3];
     words: list[str] = ["a"];
@@ -46,4 +58,8 @@ with entry {
     f2: float | None = take_maybe_floats(fs);
     oc: ObjConsumer = ObjConsumer();
     feed_strs(oc);
+    nb: NumBox = NumBox(v=1);
+    n: int | float = take_num_box(nb);
+    nums: list[int | float] = [1, 2.5];
+    same_nums: list[int | float] = nums;
 }
