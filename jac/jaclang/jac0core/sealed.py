@@ -82,7 +82,6 @@ ImportError at the caller, never a recompile.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import marshal
 import os
@@ -94,6 +93,7 @@ from pathlib import Path
 from typing import Any
 
 from jaclang.jac0core import ext_registry
+from jaclang.jac0core.cache_paths import file_sha256
 
 MANIFEST_NAME = "MANIFEST.json"
 MANIFEST_FORMAT = 9
@@ -291,7 +291,7 @@ class SealedImage:
             raise RuntimeError(f"sealed image: illegal native artifact path {rel!r}")
         path = self.pkg_dir / rel
         try:
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            digest = file_sha256(path)
         except OSError as exc:
             raise RuntimeError(
                 f"sealed image: cannot read native artifact {path}: {exc}"
@@ -334,7 +334,7 @@ class SealedImage:
         for entry, _src in self.index.values():
             path = self.jir_path(entry)
             try:
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                digest = file_sha256(path)
             except OSError as exc:
                 raise RuntimeError(f"sealed image: cannot read {path}: {exc}") from exc
             if digest != entry.get("sha256"):
@@ -346,7 +346,7 @@ class SealedImage:
                 raise RuntimeError(f"sealed image: illegal payload path {rel!r}")
             path = self.pkg_dir / rel
             try:
-                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                digest = file_sha256(path)
             except OSError as exc:
                 raise RuntimeError(f"sealed image: cannot read {path}: {exc}") from exc
             if digest != want:

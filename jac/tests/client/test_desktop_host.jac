@@ -555,3 +555,267 @@ test "local profiles each sign in to their own root, with no password" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+
+"""The served program is the runtime's target, as under `jac run`.
+
+Project-relative plugin config resolves from the runtime's target path: with
+none set it falls back to the process's cwd, which for a desktop host is the
+app's output directory. byLLM then ignored the app's `[byllm.model]` and sent
+every `by llm` call to its default model.
+"""
+test "an in-process host targets the program it serves, so its jac.toml config applies" {
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    toml = Path(proj) / "jac.toml";
+    toml.write_text(
+        toml.read_text()
+            + "\n[byllm.model]\ndefault_model = \"anthropic/claude-test\"\n"
+    );
+    (Path(proj) / "main.jac").write_text(
+        _APP_SRC
+            + "\nimport from jaclang.byllm.config_loader { JacByllmConfig }\n"
+            + "import from jaclang { JacRuntime }\n\n"
+            + "def:pub configured_model -> str {\n"
+            + "    return JacByllmConfig().get_model_config()[\"default_model\"];\n"
+            + "}\n\n"
+            + "def:pub target -> str {\n"
+            + "    return str(JacRuntime.get_full_target_path() or \"\");\n"
+            + "}\n"
+    );
+    ctx: any = None;
+    prior_cwd = os.getcwd();
+    try {
+        app_dir = _app_dir(tmp);
+        os.chdir(app_dir);
+        os.environ["JAC_DATA_PATH"] = os.path.join(tmp, "data");
+        ctx = host_boot.boot(
+            _config(app_dir, {"entry": os.path.join(proj, "main.jac")})
+        );
+        origin = f"http://127.0.0.1:{ctx.port}";
+        (code, body) = _post(f"{origin}/function/target", {});
+        assert code == 200 , (code, body);
+        assert json.loads(body)["data"]["result"]
+            == os.path.join(proj, "main.jac") , body;
+        (code, body) = _post(f"{origin}/function/configured_model", {});
+        assert code == 200 , (code, body);
+        assert json.loads(body)["data"]["result"] == "anthropic/claude-test" , body;
+    } finally {
+        os.chdir(prior_cwd);
+        if ctx is not None {
+            ctx.shutdown();
+        }
+        os.environ.pop("JAC_DATA_PATH", None);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+"""An app upgraded across the target fix keeps its database.
+
+Before the runtime targeted the served program, an embedded app's database was
+`jac_main_<digest of its base path>`; now it is named from the app's own
+project. The host renames the old one at boot, so users and graph carry over.
+"""
+test "an embedded boot renames the app's pre-target database to its current name" {
+    import from jaclang.data.dbcatalog {
+        MAINTENANCE_DB,
+        connect_admin,
+        list_databases,
+        record_database,
+        DbKind
+    }
+    import from jaclang.data.pgembed { PgRuntime }
+    import from jaclang.server.session { project_database, shared_pg_data_dir }
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    ctx: any = None;
+    try {
+        app_dir = _app_dir(tmp);
+        data = os.path.join(tmp, "data");
+        os.environ["JAC_DATA_PATH"] = data;
+        entry_path = os.path.join(proj, "main.jac");
+        base = os.path.join(data, ".jac", "desktop", "graph");
+        os.makedirs(base, exist_ok=True);
+        legacy = host_boot.legacy_database_name(base);
+        current = project_database(base, entry_path).name;
+        assert legacy != current , (legacy, current);
+
+        host_boot._enter_embedded_env(host_boot.embedded_store_env(app_dir, data, ""));
+        rt = PgRuntime(data_dir=shared_pg_data_dir(), database=MAINTENANCE_DB);
+        conn: any = connect_admin(rt.ensure());
+        try {
+            conn.run(f'CREATE DATABASE "{legacy}"');
+            record_database(conn, legacy, DbKind.PROJECT, base);
+        } finally {
+            conn.close();
+        }
+        host_boot._leave_embedded_env();
+
+        ctx = host_boot.boot(_config(app_dir, {"entry": entry_path}));
+        (code, body) = _post(
+            f"http://127.0.0.1:{ctx.port}/walker/greet", {"name": "kept"}
+        );
+        assert code == 200 , (code, body);
+        conn = connect_admin(rt.ensure());
+        try {
+            names = {r.database for r in list_databases(conn, with_size=False)};
+        } finally {
+            conn.close();
+        }
+        assert current in names and legacy not in names , names;
+    } finally {
+        if ctx is not None {
+            ctx.shutdown();
+        }
+        os.environ.pop("JAC_DATA_PATH", None);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "closing an in-process runtime gives the caller its target back" {
+    import from jaclang.scale.server.inprocess { prepare_inprocess_runtime }
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    prior = Jac.get_full_target_path();
+    rt: any = None;
+    try {
+        Jac.set_full_target_path("/caller/main.jac");
+        rt = prepare_inprocess_runtime(
+            os.path.join(proj, "main.jac"), os.path.join(tmp, "base")
+        );
+        assert Jac.get_full_target_path() == os.path.join(proj, "main.jac");
+        rt.close();
+        rt = None;
+        assert Jac.get_full_target_path() == "/caller/main.jac" , Jac.get_full_target_path();
+    } finally {
+        if rt is not None {
+            rt.close();
+        }
+        Jac.set_full_target_path(prior);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+"""A rename that cannot happen now (another instance still holds the old
+database) stops the boot instead of letting the server create an empty
+database under the new name; the next boot then moves the data."""
+test "a blocked database rename stops the boot and the next boot finishes it" {
+    import from jaclang.data.dbcatalog {
+        MAINTENANCE_DB,
+        connect_admin,
+        list_databases,
+        record_database,
+        DbKind
+    }
+    import from jaclang.data.pgembed { PgRuntime }
+    import from jaclang.data.pgload { connect }
+    import from jaclang.server.session { project_database, shared_pg_data_dir }
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    ctx: any = None;
+    holder: any = None;
+    try {
+        app_dir = _app_dir(tmp);
+        data = os.path.join(tmp, "data");
+        os.environ["JAC_DATA_PATH"] = data;
+        entry_path = os.path.join(proj, "main.jac");
+        base = os.path.join(data, ".jac", "desktop", "graph");
+        os.makedirs(base, exist_ok=True);
+        legacy = host_boot.legacy_database_name(base);
+        current = project_database(base, entry_path).name;
+
+        host_boot._enter_embedded_env(host_boot.embedded_store_env(app_dir, data, ""));
+        rt = PgRuntime(data_dir=shared_pg_data_dir(), database=MAINTENANCE_DB);
+        info = rt.ensure();
+        conn: any = connect_admin(info);
+        try {
+            conn.run(f'CREATE DATABASE "{legacy}"');
+            record_database(conn, legacy, DbKind.PROJECT, base);
+        } finally {
+            conn.close();
+        }
+        holder = connect(
+            info.user,
+            host=info.host,
+            port=info.port,
+            unix_socket_dir=info.unix_socket_dir,
+            database=legacy,
+            password=info.password or None
+        );
+        host_boot._leave_embedded_env();
+
+        raised = "";
+        try {
+            ctx = host_boot.boot(_config(app_dir, {"entry": entry_path}));
+        } except RuntimeError as e {
+            raised = str(e);
+        }
+        assert legacy in raised and current in raised , raised;
+        conn = connect_admin(rt.ensure());
+        try {
+            names = {r.database for r in list_databases(conn, with_size=False)};
+        } finally {
+            conn.close();
+        }
+        assert legacy in names and current not in names , (
+            "no empty replacement",
+            names
+        );
+
+        holder.close();
+        holder = None;
+        ctx = host_boot.boot(_config(app_dir, {"entry": entry_path}));
+        conn = connect_admin(rt.ensure());
+        try {
+            names = {r.database for r in list_databases(conn, with_size=False)};
+        } finally {
+            conn.close();
+        }
+        assert current in names and legacy not in names , names;
+    } finally {
+        if holder is not None {
+            holder.close();
+        }
+        if ctx is not None {
+            ctx.shutdown();
+        }
+        os.environ.pop("JAC_DATA_PATH", None);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+test "an app on an external database skips the local database migration" {
+    import from unittest.mock { patch }
+    import jaclang.data.pgembed as pgembed;
+    prior = os.environ.get("JAC_DB_URL");
+    try {
+        os.environ["JAC_DB_URL"] = "postgresql://app:secret@db.example:5432/app";
+        with patch.object(
+            pgembed,
+            "PgRuntime",
+            side_effect=AssertionError("an external database starts no local Postgres")
+        ) {
+            host_boot._migrate_legacy_database(
+                "/nonexistent/graph", "/nonexistent/main.jac"
+            );
+        }
+    } finally {
+        if prior is None {
+            os.environ.pop("JAC_DB_URL", None);
+        } else {
+            os.environ["JAC_DB_URL"] = prior;
+        }
+    }
+}

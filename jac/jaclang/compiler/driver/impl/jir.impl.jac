@@ -261,17 +261,7 @@ impl get_jir_cache_dir -> Path {
 }
 
 impl compute_content_sha256(file_path: str) -> str {
-    h = hashlib.sha256();
-    with open(file_path, 'rb') as f {
-        while True {
-            chunk = f.read(8192);
-            if not chunk {
-                break;
-            }
-            h.update(chunk);
-        }
-    }
-    return h.hexdigest();
+    return file_sha256(file_path);
 }
 
 impl _related_files(source_path: str) -> list[tuple[str, str]] {
@@ -472,30 +462,11 @@ impl write_compiler_identity(pkg_dir: str, dest_dir: str) -> str {
     return digest;
 }
 
-impl _digest_manifest_path(pkg_dir: str) -> Path {
-    tag = hashlib.sha256(str(Path(pkg_dir).resolve()).encode()).hexdigest()[:8];
-    return get_jir_cache_dir() / f"compiler_digest.{tag}.json";
-}
-
 impl _manifest_compiler_digest(pkg_dir: str) -> str {
-    import json;
     base = str(Path(pkg_dir));
     recorded = read_compiler_identity(base);
     rels = declared_compiler_inputs(base, recorded);
     (_roots, roster) = compiler_input_rules(base);
-    manifest_path = _digest_manifest_path(base);
-    entries: dict[str, any] = {};
-    stored_digest = "";
-    try {
-        raw = json.loads(manifest_path.read_text());
-        entries: any = raw.get("entries", {}) or {};
-        stored_digest = raw.get("digest", "") or "";
-    } except Exception {
-        entries = {};
-        stored_digest = "";
-    }
-    changed = False;
-    new_entries: dict[str, list[float | int | str]] = {};
     rows: list[tuple[str, str]] = [];
     for rel in rels {
         if is_roster_input(rel, roster) {
@@ -503,48 +474,14 @@ impl _manifest_compiler_digest(pkg_dir: str) -> str {
             continue;
         }
         full = os.path.join(base, rel.replace("/", os.sep));
-        st: any = None;
-        try {
-            st = os.stat(full);
-        } except OSError {
-            st = None;
-        }
-        if st is None {
-            rows.append((rel, resolve_compiler_input(base, rel, recorded)));
-            continue;
-        }
-        prev = entries.get(rel);
-        if (
-            isinstance(prev, list)
-            and len(prev) == 3
-            and prev[0] == st.st_mtime
-            and prev[1] == st.st_size
-        ) {
-            sha = prev[2];
+        if os.path.isfile(full) {
+            rows.append((rel, compute_content_sha256(full)));
         } else {
-            sha = compute_content_sha256(full);
-            changed = True;
+            rows.append((rel, resolve_compiler_input(base, rel, recorded)));
         }
-        new_entries[rel] = [st.st_mtime, st.st_size, sha];
-        rows.append((rel, sha));
-    }
-    if len(new_entries) != len(entries) {
-        changed = True;
     }
     digest = fold_compiler_digest(rows);
     _COMPILER_INPUT_ROWS[digest] = rows;
-    try {
-        import from jaclang.cache.registry { bucket, maybe_sweep }
-        if changed or digest != stored_digest {
-            manifest_path.parent.mkdir(parents=True, exist_ok=True);
-            tmp = manifest_path.with_suffix(f".{os.getpid()}.tmp");
-            tmp.write_text(json.dumps({"entries": new_entries, "digest": digest}));
-            tmp.rename(manifest_path);
-            maybe_sweep("jir-digests");
-        } else {
-            bucket("jir-digests").note_hit(manifest_path);
-        }
-    } except Exception {}
     return digest;
 }
 
@@ -932,6 +869,7 @@ impl sidecar_unit_paths(sidecar: dict[str, any]) -> list[str] {
 }
 
 impl _compute_module_key_uncached(source_path: str) -> str {
+    stat_note("key_compute");
     h = hashlib.sha256();
     projection = ''
         if is_package_keyed_path(source_path)
@@ -1459,8 +1397,7 @@ impl precompiled_jir_matches_source(
 }
 
 impl jir_cacheable_source_path(source_path: str) -> bool {
-    return is_stub_like_path(source_path)
-        or (source_path.endswith('.jac') and not source_path.endswith('.na.jac'));
+    return is_stub_like_path(source_path) or source_path.endswith('.jac');
 }
 
 impl cache_mode -> tuple[bool, bool] {
@@ -1625,6 +1562,36 @@ impl read_sections_blob(data: bytes) -> dict[int, bytes] {
 }
 
 impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
+    if isinstance(data, bytes) {
+        held = _SECTION_TABLES.get(id(data));
+        if held is not None and held[0] is data and held[1] == start_pos {
+            return dict(held[2]);
+        }
+        table = _decode_sections(data, start_pos);
+        if held is not None {
+            _SECTION_TABLE_TOTAL[0] -= 2 * len(held[0]);
+            del _SECTION_TABLES[id(data)];
+        }
+        while _SECTION_TABLES
+            and (
+                len(_SECTION_TABLES) >= SECTION_TABLE_CAP
+                or _SECTION_TABLE_TOTAL[0] + 2 * len(data) > JIR_READ_CACHE_BYTES
+            ) {
+            oldest = next(iter(_SECTION_TABLES));
+            _SECTION_TABLE_TOTAL[0] -= 2 * len(_SECTION_TABLES[oldest][0]);
+            del _SECTION_TABLES[oldest];
+        }
+        if 2 * len(data) <= JIR_READ_CACHE_BYTES {
+            _SECTION_TABLES[id(data)] = (data, start_pos, table);
+            _SECTION_TABLE_TOTAL[0] += 2 * len(data);
+        }
+        return dict(table);
+    }
+    return _decode_sections(data, start_pos);
+}
+
+impl _decode_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
+    stat_note("jir_decode");
     result: dict[int, bytes] = {};
     pos = start_pos;
     try {
@@ -1647,6 +1614,36 @@ impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, byte
         }
     } except Exception {}
     return result;
+}
+
+impl read_jir(cache_path: Path) -> bytes {
+    key = str(cache_path);
+    ident = file_identity(key);
+    if ident is None {
+        return Path(key).read_bytes();
+    }
+    held = _JIR_READS.pop(key, None);
+    if held is not None and held[0] == ident {
+        _JIR_READS[key] = held;
+        stat_note("jir_read_hit");
+        return held[1];
+    }
+    if held is not None {
+        _JIR_READ_TOTAL[0] -= len(held[1]);
+    }
+    data = Path(key).read_bytes();
+    stat_note("jir_read");
+    _JIR_READS[key] = (ident, data);
+    _JIR_READ_TOTAL[0] += len(data);
+    while _JIR_READS
+        and (
+            len(_JIR_READS) > JIR_READ_CACHE_CAP
+            or _JIR_READ_TOTAL[0] > JIR_READ_CACHE_BYTES
+        ) {
+        oldest = next(iter(_JIR_READS));
+        _JIR_READ_TOTAL[0] -= len(_JIR_READS.pop(oldest)[1]);
+    }
+    return data;
 }
 
 impl read_bytecode_only(data: bytes) -> (bytes | None) {
@@ -1721,7 +1718,7 @@ impl module_cache_invalid_reason(source_path: str, cache_path: Path) -> str {
         return "no cached module";
     }
     try {
-        data: bytes = cache_path.read_bytes();
+        data: bytes = read_jir(cache_path);
         header = parse_header(data[:HEADER_SIZE]);
         if header is None or not header.is_compatible() {
             return "incompatible cache format";
@@ -1755,7 +1752,7 @@ impl _mergeable_sections(
         if not cache_path.exists() {
             return ({}, 0, False);
         }
-        data: bytes = cache_path.read_bytes();
+        data: bytes = read_jir(cache_path);
         header = parse_header(data[:HEADER_SIZE]);
         if header is None or not header.is_compatible() {
             return ({}, 0, False);
@@ -2001,6 +1998,7 @@ impl write_module_cache(
             cache_path.parent.mkdir(parents=True, exist_ok=True);
             jir_bytes = write_precompiled_jir(None, "", merged_flags, sections);
             atomic_write(cache_path, jir_bytes);
+            stat_note("jir_write");
             return True;
         }
     } except Exception as exc {

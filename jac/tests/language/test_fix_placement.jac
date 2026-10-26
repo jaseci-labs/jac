@@ -124,20 +124,26 @@ test "app table append declares the service once and keeps the file intact" {
 }
 
 
-test "fix placement migrates a template-shaped [project] into [apps] before adding a service" {
+test "fix placement waits for fix dependencies, then migrates a template-shaped [project] into [apps]" {
     import from pathlib { Path }
     import from jaclang.project.config { JacConfig }
     with tempfile.TemporaryDirectory() as tmpdir {
         root_path = Path(tmpdir);
         (root_path / "jac.toml").write_text(
             '[project]\nname = "shop"\nversion = "0.1.0"\nkind = "web-app"\n'
-            'entry-point = "main"\n\n[dependencies.pypi]\nrequests = ">=2"\n'
+            'entry-point = "main"\n\n[dependencies]\nrequests = ">=2"\n'
         );
         (root_path / "main.jac").write_text(
             "sv import from analytics { Track }\n\n"
             "def:pub home -> str {\n    return \"hi\";\n}\n"
         );
         (root_path / "analytics.jac").write_text("walker:pub Track {}\n");
+        source = (root_path / "main.jac").read_text();
+        assert fix("placement", [str(root_path)]) == 2;
+        assert (root_path / "main.jac").read_text() == source , (
+            "an invalid jac.toml must stop placement before it rewrites a marker"
+        );
+        assert fix("dependencies", [str(root_path)]) == 0;
         rc = fix("placement", [str(root_path)]);
         assert rc == 0 , rc;
         text = (root_path / "jac.toml").read_text();
