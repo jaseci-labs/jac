@@ -113,6 +113,11 @@ impl CompileOptions.codegen_fingerprint -> str {
 }
 
 impl CompileOptions.analysis_identity -> str {
+    return self.artifact_identity()
+        + (";strict_deps=1" if self.strict_dependencies else "");
+}
+
+impl CompileOptions.artifact_identity -> str {
     return ";".join(
         [
             f"native_required={int(self.native_required)}",
@@ -125,8 +130,7 @@ impl CompileOptions.analysis_identity -> str {
             f"app={self.target_app}",
             f"app_kind={self.app_kind}"
         ]
-    )
-        + (";strict_deps=1" if self.strict_dependencies else "");
+    );
 }
 
 impl CompileOptions.analysis_fingerprint -> str {
@@ -135,9 +139,6 @@ impl CompileOptions.analysis_fingerprint -> str {
 }
 
 impl CompileOptions.base_codegen_identity -> str {
-    """The codegen identity every unit shares. The placement policy is
-        left out: its patterns name modules, and a unit's own identity records
-        only whether the policy names that unit.""";
     return ";".join(
         [
             f"gc={self.na_gc_mode}",
@@ -154,12 +155,6 @@ impl CompileOptions.base_codegen_identity -> str {
 }
 
 impl CompileOptions.unit_codegen_identity(path: str) -> str {
-    """What decides one unit's native products. A unit built under a
-        project's placement policy and the same unit built without it differ
-        only when the policy names the unit, so a stamp records that bit and
-        not the policy; the consumer's application never shapes a unit's code
-        and is left out too. Products a kit sealed under its build policy
-        therefore serve every consumer whose memory model and target agree.""";
     required = int(self.native_required_for(path)) if path else 0;
     return self.base_codegen_identity() + f";required={required}";
 }
@@ -180,7 +175,7 @@ impl CompileOptions.dependency_projection(path: str) -> str {
 impl CompileOptions.module_projection -> str {
     return ";".join(
         [
-            self.analysis_identity(),
+            self.artifact_identity(),
             self.codegen_identity(),
             f"aot={int(bool(self.aot_mode))}",
             f"force_cs={self.force_codespace}",
@@ -188,6 +183,12 @@ impl CompileOptions.module_projection -> str {
             f"ui={self.ui}",
             f"root={self.project_root or ''}"
         ]
+    );
+}
+
+impl CompileOptions.keeps_interfaces -> bool {
+    return not (
+        self.aot_mode or bool(self.force_codespace) or bool(self.default_codespace)
     );
 }
 

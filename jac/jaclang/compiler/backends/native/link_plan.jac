@@ -113,6 +113,9 @@ def _build_link_plan(
 
 def _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine;
 
+def unique_callbacks(bindings: list[InteropBinding]) -> list[InteropBinding];
+def callback_bind_exports(plan: LinkPlan) -> list[str];
+
 obj UnitGlueSymbols {
     has declared: dict[str, str] = {},
         defined: list[str] = [];

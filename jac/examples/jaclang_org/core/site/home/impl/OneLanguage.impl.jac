@@ -569,3 +569,21 @@ impl OneLanguage -> JsxElement {
             </Reveal>
         </HomeSection>;
 }
+
+impl glue_color(kind: str) -> str {
+    for g in _GLUE_KINDS {
+        if g["key"] == kind {
+            return g["color"];
+        }
+    }
+    return "";
+}
+
+impl glue_label(kind: str) -> str {
+    for g in _GLUE_KINDS {
+        if g["key"] == kind {
+            return g["label"];
+        }
+    }
+    return "";
+}
