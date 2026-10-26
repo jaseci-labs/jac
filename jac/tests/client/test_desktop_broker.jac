@@ -710,3 +710,36 @@ test "on Windows the profile lock uses msvcrt" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
+
+
+"""A write rereads the saved list; if that file is there but cannot be read, the
+write is refused rather than replacing the list with only the new profile."""
+test "an unreadable profile list is never overwritten by a write" {
+    tmp = tempfile.mkdtemp(prefix="jac_profiles_unreadable_");
+    try {
+        path = os.path.join(tmp, "profiles.json");
+        store = ProfileStore.load(path);
+        store.add("Work", "u-work", "p-work");
+        Path(path).write_text("{ this is not json");
+        for attempt in ["add", "select"] {
+            raised = "";
+            try {
+                if attempt == "add" {
+                    store.add("Play", "u-play", "p-play");
+                } else {
+                    store.select("p-work");
+                }
+            } except RuntimeError as e {
+                raised = str(e);
+            }
+            assert "not overwriting" in raised , (attempt, raised);
+            assert Path(path).read_text() == "{ this is not json" , attempt;
+        }
+        os.remove(path);
+        fresh = ProfileStore.load(path);
+        fresh.add("New", "u-new", "p-new");
+        assert [p.name for p in ProfileStore.load(path).profiles] == ["New"] , "a missing file still starts an empty list";
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

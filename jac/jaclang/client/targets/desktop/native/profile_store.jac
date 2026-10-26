@@ -32,6 +32,7 @@ obj ProfileStore {
         _lock: threading.Lock = threading.Lock();
 
     static def load(path: str) -> ProfileStore;
+    static def load_for_write(path: str) -> ProfileStore;
     def save;
     def _lock_file -> any;
     def _unlock_file(handle: any);

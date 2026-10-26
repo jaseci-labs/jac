@@ -90,8 +90,29 @@ impl ProfileStore._unlock_file(handle: any) {
     handle.close();
 }
 
+impl ProfileStore.load_for_write(path: str) -> ProfileStore {
+    if not os.path.exists(path) {
+        return ProfileStore(path=path, profiles=[]);
+    }
+    try {
+        with open(path, encoding="utf-8") as f {
+            data = json.load(f);
+        }
+    } except (OSError, ValueError) as e {
+        raise RuntimeError(
+            f"the saved profile list {path} cannot be read ({e}); not overwriting it"
+        );
+    }
+    if not isinstance(data, dict) or not isinstance(data.get("profiles", []), list) {
+        raise RuntimeError(
+            f"the saved profile list {path} is not a profile list; not overwriting it"
+        );
+    }
+    return ProfileStore.load(path);
+}
+
 impl ProfileStore._reload {
-    fresh = ProfileStore.load(self.path);
+    fresh = ProfileStore.load_for_write(self.path);
     self.profiles = fresh.profiles;
     self.active = fresh.active;
 }
@@ -131,7 +152,7 @@ impl ProfileStore.select(profile_id: str) {
     with self._lock {
         handle = self._lock_file();
         try {
-            fresh = ProfileStore.load(self.path);
+            fresh = ProfileStore.load_for_write(self.path);
             self.profiles = fresh.profiles;
             if profile_id and fresh.find(profile_id) is None {
                 raise ValueError(f"unknown profile '{profile_id}'");
