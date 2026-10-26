@@ -669,17 +669,6 @@ impl NaIRGenPass._emit_optional_str(
 }
 
 impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
-    """An f-string as one string: its literal text with each piece's text in place.
-
-    A string piece the f-string owns, one made just for it such as `{w[1:]}`,
-    is the f-string's to release once its text is copied, with or without a
-    format spec; a headerless `nogc` build's owned strings follow their own
-    rules. Each owned value goes into `obj_strs` once: the text an optional
-    or a `!r` conversion made is already there when the piece reaches the
-    plain string paths, and releasing it twice would free a string the
-    caller still holds. A `!r` piece's own value, `{w[1:]!r}` say, is
-    released too once its repr is made.
-    """;
     fmt_parts: list[str] = [];
     args: list[ir.Value] = [];
 
