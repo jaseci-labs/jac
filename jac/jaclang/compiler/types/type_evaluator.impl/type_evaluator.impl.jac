@@ -3141,7 +3141,6 @@ impl TypeEvaluator._numeric_args_invariant(
     if src_arg.is_literal_type() or dest_arg.is_literal_type() {
         return True;
     }
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if not JAC_TYPE_REGISTRY.is_numeric(src_arg.shared.class_name)
         or not JAC_TYPE_REGISTRY.is_numeric(dest_arg.shared.class_name) {
         return True;
@@ -3150,7 +3149,6 @@ impl TypeEvaluator._numeric_args_invariant(
 }
 
 impl TypeEvaluator._has_numeric_member(u: TypeBase) -> bool {
-    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     if not isinstance(u, UnionType) or not u.types {
         return False;
     }

@@ -10388,7 +10388,9 @@ graph import compiler {
     type_registry --> [
         backends.es.esast_gen_pass.EsastGenPass._lower_func_call
             | passes.ownership_check_pass.OwnershipCheckPass._handled_by_enclosing_try
-            | types.type_evaluator.TypeEvaluator._assign_class { JAC_TYPE_REGISTRY },
+            | types.type_evaluator.TypeEvaluator._assign_class
+            | types.type_evaluator.TypeEvaluator._numeric_args_invariant
+            | types.type_evaluator.TypeEvaluator._has_numeric_member { JAC_TYPE_REGISTRY },
         backends.es.esast_gen_pass.EsastGenPass.exit_try_stmt { JAC_TYPE_REGISTRY },
     ]
     type types.ct_eval ++> backends.native.na_ir_gen_pass { CtEvaluator }
