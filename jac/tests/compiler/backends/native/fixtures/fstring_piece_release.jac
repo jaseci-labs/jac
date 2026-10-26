@@ -14,10 +14,13 @@ def shout(w: str) -> str {
 }
 
 glob mode = sys.argv[1];
+
 with entry {
     steps = int(sys.argv[2]);
 }
+
 glob w = "hello world";
+
 with entry {
     total = 0;
     if mode == "slice" {

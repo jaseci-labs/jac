@@ -108,6 +108,7 @@ test "optional, !r and formatted string pieces are released once" {
             == "120 ello world [ello world] <'ello world'> | HELLO WORLD|" , (
             f"{memory}: {proc.stdout[:400]}"
         );
+        assert lines[1] == "45 [4, 5] [4, 8] 4" , f"{memory}: {proc.stdout[:400]}";
         assert "RC LIVE OBJECTS at exit" in proc.stdout , proc.stdout[-400:];
         leaks = [
             line

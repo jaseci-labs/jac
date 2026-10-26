@@ -725,7 +725,7 @@ impl NaIRGenPass._codegen_fstring(nd: uni.FString) -> (ir.Value | None) {
                 if self._is_owned(val) {
                     obj_strs.append(val);
                 }
-                if isinstance(_repr_src.type, ir.PointerType)
+                if _repr_src.type == ir.IntType(8).as_pointer()
                     and self._is_owned(_repr_src)
                     and not self._nogc_headerless()
                     and not any(_t is _repr_src for _t in obj_strs) {
