@@ -729,10 +729,7 @@ graph import {
         },
         cli.commands.analysis.grammar
             | dist.precompile_bytecode.prebuild_native_closure { CompileOptions },
-        cli.commands.execution._apply_graphmend
-            | runtime.runtime.JacRuntime.reset_process_state {
-            override_graphmend_disable
-        },
+        cli.commands.execution._apply_graphmend { override_graphmend_disable },
         cli.commands.execution.run {
             graphmend_disable_override,
             override_graphmend_disable

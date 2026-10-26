@@ -2207,7 +2207,10 @@ impl JacRuntime.reset_process_state(cls: any, clear_modules: bool = True) -> Non
     cls.selfhost = None;
     import from jaclang.project.config { set_config }
     set_config(None);
-    override_graphmend_disable([]);
+    options = sys.modules.get('jaclang.compiler.driver.compile_options');
+    if options is not None {
+        options.override_graphmend_disable([]);
+    }
 }
 
 impl JacRuntime.get_compiler(cls: any) -> JacCompiler {
