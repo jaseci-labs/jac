@@ -804,7 +804,8 @@ impl NaIRGenPass._reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str |
             }
             for operand in instr.operands {
                 op = operand;
-                if isinstance(op, ir.GlobalVariable) and op.name in self._static_closure_fns {
+                if isinstance(op, ir.GlobalVariable)
+                    and op.name in self._static_closure_fns {
                     op = self._static_closure_fns[op.name];
                 }
                 if not isinstance(op, ir.Function) or id(op) in seen {
