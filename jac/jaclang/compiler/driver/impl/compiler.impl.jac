@@ -381,7 +381,7 @@ impl JacCompiler._get_bytecode(
         graphmend=gm_active,
         graphmend_disable=gm_disable
     );
-    if not is_internal {
+    if (not is_internal) and (not gm_active) {
         (handled, adopted) = self._adopt_kernel_compile(
             full_target, actual_program, options
         );
