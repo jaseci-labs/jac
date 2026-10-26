@@ -482,7 +482,10 @@ impl RcFactsPass._move_flow_safe(uses: list[Name], sites: list[Assignment]) -> b
     lives exactly as long and whatever else holds it (a callee, a field) is
     unaffected. What liveness cannot see leaves the local to the alias-only
     rule: the statement graph has no edge from inside a `try` to its
-    handlers, so a handler may read a local that looks dead; a lambda, a
+    handlers, so a handler may read a local that looks dead; none from a
+    `raise` inside a `with` to the code after it, which runs when the
+    context manager suppresses the exception; and none to or from a C-style
+    `for`'s initializer and step, whose reads it never sees; a lambda, a
     comprehension, a `flow` or a parallel loop reads it in a scope or at a
     time of its own; and a borrow (`&local`) refers to the local's slot.
     """;
@@ -505,20 +508,22 @@ impl RcFactsPass._move_flow_safe(uses: list[Name], sites: list[Assignment]) -> b
             return False;
         }
         cur = nd.parent;
+        prev: UniNode = nd;
         while cur is not None and cur is not owner {
-            if type(cur).__name__
-                in (
-                    "TryStmt",
-                    "LambdaExpr",
-                    "ListCompr",
-                    "DictCompr",
-                    "SetCompr",
-                    "GenCompr",
-                    "ConcurrentExpr"
-                )
-                or getattr(cur, "is_async", False) {
+            if isinstance(cur, IterForStmt)
+                and (prev is cur.iter or prev is cur.count_by) {
                 return False;
             }
+            if isinstance(
+                cur,
+                (TryStmt, WithStmt, LambdaExpr, ListCompr, DictCompr, ConcurrentExpr)
+            ) {
+                return False;
+            }
+            if isinstance(cur, AstAsyncNode) and cur.is_async {
+                return False;
+            }
+            prev = cur;
             cur = cur.parent;
         }
     }

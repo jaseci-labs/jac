@@ -7,6 +7,10 @@ locals around through a temporary. In `keep_after` the source is read after
 the copy, and in `in_try` the copy sits in a `try` whose handler reads the
 source: both stay counted. `after_call` and `after_field` pass the source to
 a call or store it in a field before the copy, which still moves it.
+`in_with` copies inside a `with` whose context manager suppresses the
+exception, after which the source is read; `loop_init` and `loop_step` read
+the source in a C-style loop's initializer and step. The statement graph
+sees none of those reads, so all three stay counted.
 """
 
 obj Node {
@@ -99,6 +103,56 @@ def in_try(n: int) -> int {
     }
 }
 
+obj Suppressor {
+    def __enter__ -> Suppressor {
+        return self;
+    }
+
+    def __exit__(et: any, ev: any, tb: any) -> bool {
+        return True;
+    }
+}
+
+def in_with(n: int) -> int {
+    a = Node(v=n);
+    with Suppressor() {
+        b = a;
+        if n % 2 == 0 {
+            raise ValueError("even");
+        }
+        return b.v * 3;
+    }
+    return a.v;
+}
+
+def loop_init(n: int) -> int {
+    a = Node(v=n);
+    b = a;
+    total = 0;
+    for i = a.v while i < n + 3 with i += 1 {
+        total += b.v;
+    }
+    return total;
+}
+
+def loop_step(n: int) -> int {
+    a = Node(v=n + 1);
+    b = a;
+    total = 0;
+    for i = 0 while i < 10 with i += a.v {
+        total += b.v;
+    }
+    return total;
+}
+
+def flow_cases -> int {
+    total = 0;
+    for i in range(6) {
+        total += in_with(i) + loop_init(i) + loop_step(i);
+    }
+    return total;
+}
+
 def run -> int {
     head = Node(v=0);
     cur = head;
@@ -121,4 +175,5 @@ def run -> int {
 
 with entry {
     print(run());
+    print(flow_cases());
 }

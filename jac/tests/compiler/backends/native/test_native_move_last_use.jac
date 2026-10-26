@@ -62,7 +62,7 @@ test "a copy at the source's last use moves the reference" {
                 )} without"
             );
         }
-        for name in ["keep_after", "in_try"] {
+        for name in ["keep_after", "in_try", "in_with", "loop_init", "loop_step"] {
             assert rc_ops(on, name) == rc_ops(off, name) , f"{gc_mode} {name} lost a count";
         }
     }
@@ -70,7 +70,7 @@ test "a copy at the source's last use moves the reference" {
 
 test "the program prints what the Python backend prints under rc and managed" {
     out = assert_native_identity(FIXTURE, profiles=["rc", "managed"]);
-    assert out.strip() == "6634" , out;
+    assert out.strip().splitlines() == ["6634", "144"] , out;
 }
 
 test "moved references are released once" {

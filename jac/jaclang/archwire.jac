@@ -8740,10 +8740,12 @@ graph import compiler {
         passes.rc_facts_pass {
             Ability,
             Assignment,
+            AstAsyncNode,
             AtomTrailer,
             BinaryExpr,
             BoolExpr,
             CompareExpr,
+            ConcurrentExpr,
             ConnectOp,
             DictCompr,
             DictVal,
@@ -8756,6 +8758,7 @@ graph import compiler {
             InForStmt,
             IterForStmt,
             KWPair,
+            LambdaExpr,
             ListCompr,
             ListVal,
             Module,
@@ -8769,10 +8772,12 @@ graph import compiler {
             String,
             Symbol,
             Token,
+            TryStmt,
             UnaryExpr,
             UniCFGNode,
             UniNode,
             WhileStmt,
+            WithStmt,
             is_frame
         },
         passes.region_infer_pass {
