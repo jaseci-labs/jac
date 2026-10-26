@@ -48,7 +48,7 @@ impl NaIRGenPass._emit_region_tls_slot -> None {
     live_gv.initializer = ir.Constant(i64, 0);
 }
 
-impl NaIRGenPass._region_live_flag -> ir.GlobalVariable {
+impl NaIRGenPass._region_live_flag -> ir.Value {
     self._emit_region_tls_slot();
     return self.llvm_module.get_global(REGION_LIVE_GLOBAL);
 }

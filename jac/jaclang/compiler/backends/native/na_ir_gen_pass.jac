@@ -1564,7 +1564,7 @@ walker NaIRGenPass(CompilerPass) {
     def _unchecked_views_on -> bool;
     def _direct_c_entry(fn: ir.Function) -> bool;
     def _fold_direct_c_entries -> None;
-    def _region_live_flag -> ir.GlobalVariable;
+    def _region_live_flag -> ir.Value;
     def _is_address_word(value: ir.Value) -> bool;
     def _address_sum(left: ir.Value, right: ir.Value, op: str) -> bool;
     def _emit_exc_arm(b: ir.IRBuilder, env: ir.Value, name: str = "") -> ir.Value;
