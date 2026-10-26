@@ -3105,20 +3105,24 @@ impl TypeEvaluator._numeric_args_invariant(
     # Union elements. A destination union stores any of its members, so the
     # invariant must hold for each member against the source element as a
     # whole: list[int] into list[float | None] would let the callee append
-    # a float the caller reads as an int. When both elements are unions the
-    # sound invariant is mutual assignability: neither side may store a
-    # value the other cannot read (list[int | None] into list[float | None]
-    # lets the callee append a float the caller reads as int | None), while
-    # identical unions stay assignable both ways (Box[int | float] into
-    # Box[int | float]). A union source against a single-class destination
-    # is safe unchecked: the callee can only store that class, which the
-    # wider source union reads back.
+    # a float the caller reads as an int. When both elements are unions and
+    # either carries a numeric member, the invariant is mutual assignability:
+    # neither side may store a value the other cannot read (list[int | None]
+    # into list[float | None] lets the callee append a float the caller
+    # reads as int | None), while identical unions stay assignable both ways
+    # (Box[int | float] into Box[int | float]). Purely non-numeric unions
+    # keep the covariant behavior. A union source against a single-class
+    # destination is also safe unchecked: the callee can only store that
+    # class, which the wider source union reads back.
     if isinstance(src_arg, UnionType) and src_arg.types
         and isinstance(dest_arg, UnionType) and dest_arg.types {
-        if not self.assign_type(src_arg, dest_arg, strict) {
-            return False;
+        if self._has_numeric_member(src_arg) and self._has_numeric_member(dest_arg) {
+            if not self.assign_type(src_arg, dest_arg, strict) {
+                return False;
+            }
+            return self.assign_type(dest_arg, src_arg, strict);
         }
-        return self.assign_type(dest_arg, src_arg, strict);
+        return True;
     }
     if isinstance(dest_arg, UnionType) and dest_arg.types {
         for member in dest_arg.types {
@@ -3143,6 +3147,24 @@ impl TypeEvaluator._numeric_args_invariant(
         return True;
     }
     return self.assign_type(dest_arg, src_arg, strict);
+}
+
+impl TypeEvaluator._has_numeric_member(u: TypeBase) -> bool {
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    if not isinstance(u, UnionType) or not u.types {
+        return False;
+    }
+    for member in u.types {
+        if (
+            isinstance(member, ClassType)
+            and member.is_class_instance()
+            and not member.is_literal_type()
+            and JAC_TYPE_REGISTRY.is_numeric(member.shared.class_name)
+        ) {
+            return True;
+        }
+    }
+    return False;
 }
 
 impl TypeEvaluator._assign_class(

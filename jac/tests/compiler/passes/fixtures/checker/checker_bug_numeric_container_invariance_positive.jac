@@ -21,6 +21,10 @@ def first[T](xs: list[T]) -> T {
     return xs[0];
 }
 
+def take_objects(xs: list[object | None]) -> object | None {
+    return xs[0];
+}
+
 glob C = TypeVar('C', contravariant=True);
 
 obj Consumer(Generic[C]) {
@@ -62,4 +66,6 @@ with entry {
     n: int | float = take_num_box(nb);
     nums: list[int | float] = [1, 2.5];
     same_nums: list[int | float] = nums;
+    strs: list[str | None] = ["a", None];
+    o3: object | None = take_objects(strs);
 }
