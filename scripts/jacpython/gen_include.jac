@@ -29,8 +29,8 @@ The Jac definitions own what the runtime defines and reads in place:
 Everything else in a header (function and data declarations, macros, static
 inline functions, comments) is the checked-in text, which is CPython's for a
 header no Jac definition has changed. Include/opcode_ids.h is
-gen_opcode_meta.jac's. build.sh compiles layouts_check.c against the staged
-headers in every JacPython build, so a header that disagrees with the Jac
+gen_opcode_meta.jac's. build_jacpython.zig compiles layouts_check.c against
+the staged headers in every JacPython build, so a header that disagrees with the Jac
 layouts fails the build.
 """
 import argparse;

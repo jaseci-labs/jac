@@ -20,9 +20,9 @@ writes it again.
 
     jac run scripts/jacpython/gen_frozen.jac --source <cpython tree> --output <module.jac>
 
-build.sh imports it and calls main() instead (the host has no `jac`). Either
-way the running interpreter must be the pinned CPython: marshal output is
-that interpreter's.
+build_jacpython.zig imports it and calls main() instead (the host has no
+`jac`). Either way the running interpreter must be the pinned CPython: marshal
+output is that interpreter's.
 """
 import argparse;
 import marshal;

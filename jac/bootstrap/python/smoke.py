@@ -48,7 +48,8 @@ assert mode in ("jacpython", "host"), mode
 # checksharedmods` runs Tools/build/check_extension_modules.py for, which
 # JacPython does not keep. Here the check is strict and reads the installed
 # tree: the modules the Setup files build (MODBUILT_NAMES, MODSHARED_NAMES)
-# and those configure enabled, minus Setup.local's *disabled* block.
+# and those configure enabled, minus Setup.local's *disabled* block. The
+# JacPython build records inittab.jac's modules under the same names.
 build_vars = sysconfig.get_config_vars()
 built = set(build_vars["MODBUILT_NAMES"].split()) | set(build_vars["MODSHARED_NAMES"].split())
 built |= {

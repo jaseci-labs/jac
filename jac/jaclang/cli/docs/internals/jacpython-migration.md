@@ -20,13 +20,13 @@ build time, and the previous JacPython builds the next one. The scope:
 | instruction set (`Python/bytecodes.c`, `generated_cases.c.h`) | defined in Jac; no translation of the upstream DSL |
 | Argument Clinic signatures, `Python.asdl`/`Python-ast.c`, grammar and token tables | owned as Jac data; generators stop reading upstream C |
 | `Include/` | generated from the Jac layouts and declarations, so C extensions still compile |
-| configure, `Makefile.pre.in`, makesetup, `Tools/build` | replaced by `build_python.zig` and Jac scripts |
+| configure, `Makefile.pre.in`, makesetup, `Tools/build` | replaced by `build_jacpython.zig`, `pyconfig.zig` (compiler probes for `pyconfig.h`) and Jac scripts |
 | the build-only host CPython | replaced by the previous JacPython |
 | remote debugging, perf trampolines, `getaddrinfo`/`getnameinfo` fallbacks | dropped, not ported |
 | HACL\*, OpenSSL, sqlite, expat, libmpdec, libffi, zlib, bzip2, xz, zstd | stay vendored libraries |
 
-A dropped feature's files are `# removed:` entries like a port's. `build.sh`
-configures JacPython without the feature, and `runtime/python/interpreter/`
+A dropped feature's files are `# removed:` entries like a port's.
+`pyconfig.zig` records the build without the feature, and `runtime/python/interpreter/`
 defines the entry points the rest of the interpreter still calls, each as the
 C file defines it in that configuration (`perf_trampoline.jac`,
 `remote_debugging.jac`). `interpreter/` is also where ports of `Python/` go;
@@ -95,19 +95,18 @@ Steps for a module `_foo` built from `Modules/_foomodule.c`:
    the file itself; `jac check native_api.jac` checks the closure's lowering.
 
 The table of built-in modules, `_PyImport_Inittab`, is C data in
-`inittab.jac`, so makesetup's `config.c` holds no table. A module's PyInit
+`inittab.jac`; JacPython has no makesetup and no `config.c`. A module's PyInit
 address in it is a real use of the binding, and `prepare_native.py` links the
-table, so every registered module enters `jacpython.o`. `build.sh` writes the
-`Setup.local` `*static*` block from the registry (a registered module's rule
-carries only its linker flags and keeps the C rule from applying) and fails
-when the table lacks a listed `PyInit`. `smoke.py` and the CI compatibility
-step read the same registry.
+table, so every registered module enters `jacpython.o`. `build_jacpython.zig`
+links libpython and the interpreter with each registered module's linker flags
+from the registry and fails when the table lacks a listed `PyInit`. `smoke.py`
+and the CI compatibility step read the same registry.
 
 A module over a library that CPython vendors and builds itself names the
 library's archive as its linker flag: `_md5` lists
-`Modules/_hacl/libHacl_Hash_MD5.a`. A registry entry has no C source, so no
-makesetup rule depends on the archive; `build.sh` makes every such target
-before linking the interpreter. The Jac module declares the library's
+`Modules/_hacl/libHacl_Hash_MD5.a`; `build_jacpython.zig` compiles the
+HACL* sources and archives them as CPython's makefile groups them before
+linking the interpreter. The Jac module declares the library's
 functions by their linked names (HACL* prefixes them with `_Py_LibHacl_`).
 Data tables CPython generates into headers become C data definitions a
 generator writes from the pinned headers, not a data-only C object:
@@ -167,7 +166,8 @@ tests, which the port reads instead of `#ifdef`; `{"NAME", MACRO}` arrays
 functions the target compiles, which the binding installs. posix's tables
 were generated this way for macOS (the host build's `pyconfig.h`) and for
 Linux glibc 2.17 on x86_64 and aarch64 (a `pyconfig.h` from configure with
-`CC="zig cc -target x86_64-linux-gnu.2.17"`, as build.sh builds Linux).
+`CC="zig cc -target x86_64-linux-gnu.2.17"`, as the build targets Linux; the
+JacPython build now writes `pyconfig.h` from the same tests in `pyconfig.zig`).
 `bootstrap/python/features_check.c`, written from every table's FEATURES,
 is compiled against each build's `pyconfig.h`, so a table that no longer
 matches its build fails the build. A module listed in `ALL_PORTABLE`
@@ -496,8 +496,9 @@ globs, read back from a configured build's headers.
 It also writes `bootstrap/python/layouts_check.c`: `_Static_assert`s on the
 offset, size, kind (integer, pointer, record) and signedness of every
 generated field, each struct's size and alignment, and each constant's value.
-`build.sh` compiles it against the configured headers of every JacPython build
-before `make`, so a layout that differs on any platform fails the build.
+`build_jacpython.zig` compiles it against the probed `pyconfig.h` and staged
+headers of every JacPython build before compiling anything else, so a layout
+that differs on any platform fails the build.
 `gen_layouts.jac --check` fails when either file is stale. To add a layout or
 constant, extend `LAYOUTS` or `CONSTANTS` in the script and rerun it.
 
@@ -522,8 +523,8 @@ slots are called through them:
 layouts.
 
 **Removing the C file.** The port marks the file `# removed:` in
-`cpython-sources.txt`, `compiler-bridge.patch` deletes its object from
-`OBJECT_OBJS` (the build-only host keeps it), and the port's definitions are
+`cpython-sources.txt` (the build-only host keeps it; `build_jacpython.zig`
+compiles only the C it lists), and the port's definitions are
 in `jacpython.o` because `prepare_native.py` links every module under
 `object_model/`. The build's absent-input check
 then proves the C object is gone.
@@ -761,8 +762,8 @@ singletons as C data. `_Py_Dealloc` stays C (in object_api.c): its trashcan
 test reads the machine stack pointer, and it runs on every deallocation.
 The attribute C API takes `ptr[u8]` names; Jac `str` names go through
 `jacpy_object_getattr_text` / `_setattr_text` / `_getoptionalattr_text`.
-compiler-bridge.patch no longer patches object.c: the port's static-type
-table leaves out the symtable and instruction-sequence types itself.
+The port's static-type table leaves out the symtable and
+instruction-sequence types itself.
 
 `call.c` and `abstract.c` (`object_model/call.jac`, `abstract.jac`) keep
 C's dispatch order: vectorcall before `tp_call`, the `nb_*` slots read at

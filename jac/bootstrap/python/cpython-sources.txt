@@ -3,21 +3,24 @@
 # One exact file per line; a trailing / includes a directory recursively.
 # Blank lines and full-line # comments are ignored, except marked removals
 # restored by the build-only host (see below). No globs.
-# Unlisted archive contents are discarded before configure/make. Missing,
+# Unlisted archive contents are discarded before the build. Missing,
 # overlapping, or incorrectly typed entries fail the build.
 #
 # A commented path carries a marker saying which builds must lack it. Counts
 # use pinned CPython 3.14.6 source lines, including comments and blanks.
 #
 #   "# path  # removed: N source lines"
-#   Replaced by the native Jac implementation, or by a Jac generator run with
+#   Replaced by the native Jac implementation, by a Jac generator run with
 #   the build-only host's interpreter (scripts/jacpython/gen_frozen.jac and
-#   gen_build_details.jac replace the frozen-module tools and Tools/build).
+#   gen_build_details.jac replace the frozen-module tools and Tools/build), or
+#   by the JacPython build itself: bootstrap/pyconfig.zig's compiler probes
+#   write pyconfig.h in place of configure, and build_jacpython.zig compiles,
+#   links and installs in place of Makefile.pre.in, makesetup and Setup*.
 #   That separate build-only CPython host restores these to produce the native
-#   object; no shipped runtime has them, and compiler-bridge.patch detaches
-#   upstream rules that name them.
-#   Excluded: 291 C files / 500,315 lines; 182 headers / 166,979 lines; 28 other files / 6,178 lines.
-#   Total: 501 files / 673,472 source lines.
+#   object and build itself with configure and make; no shipped runtime has
+#   them.
+#   Excluded: 292 C files / 500,605 lines; 182 headers / 166,979 lines; 42 other files / 62,259 lines.
+#   Total: 516 files / 729,843 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -35,8 +38,9 @@
 #   archive's copy; both builds stage the checked-in one in its place.
 #   Total: 141 files / 23,324 source lines.
 #
-# After each build, build.sh checks that no removed or pruned path came back,
-# reading the marker to decide which builds must lack it.
+# After each build, build.sh (the host) and build_jacpython.zig check that no
+# removed or pruned path came back, reading the marker to decide which builds
+# must lack it.
 # Keep build dependencies and ABI adapters aligned with these exclusions.
 # Split a directory entry before removing only part of its contents.
 # CI hashes this manifest and rebuilds/verifies Python when it changes.
@@ -49,8 +53,8 @@
 # Build, install and license inputs
 # Grammar/  # pruned: 1,647 source lines
 LICENSE
-Makefile.pre.in
-Misc/platform_triplet.c
+# Makefile.pre.in  # removed: 3,422 source lines
+# Misc/platform_triplet.c  # removed: 290 source lines
 Misc/python-config.in
 Misc/python-config.sh.in
 Misc/python-embed.pc.in
@@ -68,13 +72,13 @@ Tools/freeze/flag.py
 # Tools/gdb/libpython.py  # pruned: 2,190 source lines
 Tools/scripts/idle3
 Tools/scripts/pydoc3
-aclocal.m4
-config.guess
-config.sub
-configure
-configure.ac
-install-sh
-pyconfig.h.in
+# aclocal.m4  # removed: 794 source lines
+# config.guess  # removed: 1,807 source lines
+# config.sub  # removed: 1,974 source lines
+# configure  # removed: 36,033 source lines
+# configure.ac  # removed: 8,286 source lines
+# install-sh  # removed: 541 source lines
+# pyconfig.h.in  # removed: 2,087 source lines
 
 # Public and internal headers
 # Include/Python.h  # generated: 155 source lines
@@ -601,9 +605,9 @@ Objects/stringlib/
 # Objects/weakrefobject.c  # removed: 1,135 source lines
 
 # Builtin and extension modules
-Modules/Setup
-Modules/Setup.bootstrap.in
-Modules/Setup.stdlib.in
+# Modules/Setup  # removed: 300 source lines
+# Modules/Setup.bootstrap.in  # removed: 42 source lines
+# Modules/Setup.stdlib.in  # removed: 192 source lines
 # Modules/_abc.c  # removed: 997 source lines
 # Modules/_asynciomodule.c  # removed: 4,432 source lines
 # Modules/_bisectmodule.c  # removed: 484 source lines
@@ -854,7 +858,7 @@ Modules/_hacl/python_hacl_namespaces.h
 # Modules/clinic/unicodedata.c.h  # removed: 552 source lines
 # Modules/clinic/zlibmodule.c.h  # removed: 1,125 source lines
 # Modules/cmathmodule.c  # removed: 1,315 source lines
-Modules/config.c.in
+# Modules/config.c.in  # removed: 65 source lines
 # Modules/errnomodule.c  # removed: 988 source lines
 # Modules/faulthandler.c  # removed: 1,491 source lines
 # Modules/fcntlmodule.c  # removed: 789 source lines
@@ -869,9 +873,9 @@ Modules/getpath.py
 # Modules/hashlib.h  # removed: 107 source lines
 # Modules/hmacmodule.c  # removed: 1,865 source lines
 # Modules/itertoolsmodule.c  # removed: 4,103 source lines
-Modules/ld_so_aix.in
+# Modules/ld_so_aix.in  # removed: 195 source lines
 # Modules/main.c  # removed: 831 source lines
-Modules/makesetup
+# Modules/makesetup  # removed: 343 source lines
 # Modules/mathmodule.c  # removed: 4,202 source lines
 # Modules/md5module.c  # removed: 413 source lines
 # Modules/mmapmodule.c  # removed: 2,379 source lines

@@ -2,8 +2,9 @@
 
 CPython's `make all` runs Tools/build/generate-build-details.py with the
 interpreter it just built, and `make install` copies the file it writes into
-the library directory. JacPython keeps no Tools/build: build.sh runs this
-generator with the pinned build-time CPython between those two steps. The
+the library directory. JacPython keeps no Tools/build: build_jacpython.zig
+runs this generator with the pinned build-time CPython between those two
+steps. The
 values the upstream script reads from sysconfig come from the build's own
 sysconfig data (the _sysconfigdata module in the build directory); those it
 reads from the running interpreter (sys.version_info, sys.implementation and

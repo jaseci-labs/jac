@@ -2,26 +2,28 @@
 //! checksum-pinned. A build-only CPython host emits the native JacPython replacement object.
 const std = @import("std");
 const native_inputs = @import("native_inputs.zig");
+const build_jacpython = @import("build_jacpython.zig");
 const builtin = @import("builtin");
 const seed = @import("seed.zig");
 const Io = std.Io;
 const inputs = [_][]const u8{
-    "bootstrap/build_python.zig",          "bootstrap/seed.zig",
-    "bootstrap/python/sources.json",       "bootstrap/python/cpython-sources.txt",
-    "bootstrap/python/build.sh",           "bootstrap/python/smoke.py",
-    "bootstrap/python/finalize.py",        "bootstrap/python/compiler-bridge.patch",
-    "bootstrap/python/build-graph.patch",
-    "bootstrap/python/host-graph.patch",
-    "bootstrap/python/compiler_runtime.c", "bootstrap/python/compiler_bridge.c",
-    "bootstrap/python/object_api.c",       "bootstrap/python/binding_api.c",
-    "bootstrap/python/layouts_check.c",    "bootstrap/python/features_check.c",
-
-    "bootstrap/python/compiler_bridge.h",  "bootstrap/python/prepare_native.py",
-    "bootstrap/python/jacpython-modules.txt", "bootstrap/python/jacpython-clinic.txt",
+    "bootstrap/build_python.zig",         "bootstrap/seed.zig",
+    "bootstrap/python/sources.json",      "bootstrap/python/cpython-sources.txt",
+    "bootstrap/python/build.sh",          "bootstrap/python/smoke.py",
+    "bootstrap/python/finalize.py",       "bootstrap/python/build-graph.patch",
+    "bootstrap/python/host-graph.patch",  "bootstrap/python/jacpython-clinic.txt",
+    // Only the JacPython build reads the inputs from here on.
+    "bootstrap/build_jacpython.zig",      "bootstrap/pyconfig.zig",
+    "bootstrap/pyconfig_probes.zig",      "bootstrap/python/compiler_runtime.c",
+    "bootstrap/python/compiler_bridge.c", "bootstrap/python/object_api.c",
+    "bootstrap/python/binding_api.c",     "bootstrap/python/layouts_check.c",
+    "bootstrap/python/features_check.c",  "bootstrap/python/compiler_bridge.h",
+    "bootstrap/python/prepare_native.py", "bootstrap/python/jacpython-modules.txt",
 };
-// The Jac generators build.sh runs with the build-time host before and after
-// make (the frozen modules, build-details.json), relative to the repository
-// root, the Jac root's parent. Only the JacPython build runs them.
+const first_jacpython_input = 10;
+// The Jac generators build_jacpython.zig runs with the build-time host (the
+// frozen modules, build-details.json), relative to the repository root, the
+// Jac root's parent. Only the JacPython build runs them.
 const generator_inputs = [_][]const u8{
     "scripts/jacpython/common.jac",
     "scripts/jacpython/gen_frozen.jac",
@@ -143,10 +145,25 @@ pub fn main(init: std.process.Init) !void {
         }
     }
     const recipe = try std.fs.path.join(a, &.{ root, "bootstrap/python" });
-    const script = try std.fs.path.join(a, &.{ recipe, "build.sh" });
-    var child = try std.process.spawn(io, .{ .argv = &.{ "sh", script, platform, work, args[4], recipe, if (mode == .jacpython) host_dest else "", root, @tagName(mode) } });
-    const term = try child.wait(io);
-    if (term != .exited or term.exited != 0) seed.die("build-python: build failed; logs at {s}/logs", .{work});
+    switch (mode) {
+        // The build-only host is stock CPython: its own configure and make.
+        .host => {
+            const script = try std.fs.path.join(a, &.{ recipe, "build.sh" });
+            var child = try std.process.spawn(io, .{ .argv = &.{ "sh", script, platform, work, args[4], recipe } });
+            const term = try child.wait(io);
+            if (term != .exited or term.exited != 0) seed.die("build-python: build failed; logs at {s}/logs", .{work});
+        },
+        .jacpython => build_jacpython.build(io, a, .{
+            .platform = platform,
+            .work = work,
+            .zig = args[4],
+            .recipe = recipe,
+            .host = host_dest,
+            .root = root,
+            .jobs = try jobCount(init.environ_map),
+            .environ = init.environ_map,
+        }) catch |err| seed.die("build-python: build failed ({s}); logs at {s}/logs", .{ @errorName(err), work }),
+    }
     // Cache only the runtime and link archives, not intermediate objects or sources.
     try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "src" }));
     try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "deps" }));
@@ -162,6 +179,14 @@ pub fn main(init: std.process.Init) !void {
             try Io.Dir.cwd().writeFile(io, .{ .sub_path = sources_stamp, .data = &lowered });
         }
     }
+}
+
+/// JAC_PYTHON_JOBS: how many compilers run at once (default 4).
+fn jobCount(environ: *const std.process.Environ.Map) !usize {
+    const text = environ.get("JAC_PYTHON_JOBS") orelse return 4;
+    const jobs = std.fmt.parseInt(usize, text, 10) catch return error.InvalidJobCount;
+    if (jobs == 0) return error.InvalidJobCount;
+    return jobs;
 }
 
 // Host and native builds consume the same pinned archive. Keep it outside the
@@ -247,16 +272,18 @@ fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
         if (sdk.term != .exited or sdk.term.exited != 0) return error.MissingMacOSSDK;
         hash.update(std.mem.trim(u8, sdk.stdout, " \r\n"));
     }
-    for (inputs) |path| {
-        if (mode != .jacpython and (std.mem.endsWith(u8, path, "/compiler-bridge.patch") or
-            std.mem.endsWith(u8, path, "/compiler_bridge.c") or std.mem.endsWith(u8, path, "/compiler_bridge.h") or
-            std.mem.endsWith(u8, path, "/prepare_native.py") or std.mem.endsWith(u8, path, "/compiler_runtime.c") or
-            std.mem.endsWith(u8, path, "/object_api.c") or std.mem.endsWith(u8, path, "/binding_api.c") or
-            std.mem.endsWith(u8, path, "/layouts_check.c") or std.mem.endsWith(u8, path, "/features_check.c") or
-            std.mem.endsWith(u8, path, "/jacpython-modules.txt"))) continue;
+    for (inputs, 0..) |path, i| {
+        if (mode != .jacpython and i >= first_jacpython_input) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
-        const content = try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited);
         hash.update(path);
+        // A C adapter that has moved into Jac is no longer in bootstrap/python.
+        const content = Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited) catch |err| switch (err) {
+            error.FileNotFound => if (i >= first_jacpython_input) {
+                hash.update("\x00missing");
+                continue;
+            } else return err,
+            else => return err,
+        };
         hash.update(content);
     }
     // The checked-in copies staged in place of archive files.
@@ -491,6 +518,11 @@ fn retainSources(io: Io, a: std.mem.Allocator, dir: Io.Dir, manifest: []const u8
     seed.log("build-python: retained {d} CPython source entries", .{entries.items.len});
 }
 
+test {
+    // The JacPython builder's and pyconfig.h probes' own tests.
+    _ = build_jacpython;
+}
+
 test "only release targets are accepted" {
     try std.testing.expect(supported("linux-x86_64"));
     try std.testing.expect(supported("macos-aarch64"));
@@ -678,6 +710,13 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     const before_host_key = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "rebuilt host" });
     try std.testing.expect(!std.mem.eql(u8, &before_host_key, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+    // An adapter that moves into Jac leaves bootstrap/python: the JacPython key
+    // moves and the host's does not.
+    const with_adapter = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
+    const host_with_adapter = try buildKey(io, a, hostPlatform(), root, host, .host);
+    try dir.deleteFile(io, "bootstrap/python/object_api.c");
+    try std.testing.expect(!std.mem.eql(u8, &with_adapter, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
+    try std.testing.expectEqual(host_with_adapter, try buildKey(io, a, hostPlatform(), root, host, .host));
 }
 
 test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
