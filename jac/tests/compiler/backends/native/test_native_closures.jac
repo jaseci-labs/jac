@@ -325,6 +325,64 @@ test "closure escape: calling a closure through an any-typed value stays rejecte
     );
 }
 
+test "native getattr alias calls resolve a literal module member" {
+    (prog, ir) = compile_na_inline_ir(
+        "getattr_native_alias",
+        "import math;\n"
+        "def compute -> int {\n"
+        "    f = getattr(math, \"sqrt\");\n"
+        "    return int(f(81.0)) + int(f(16.0));\n"
+        "}\n"
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert "compute" in ir.gen.native_layout.functions;
+    f = get_func(ir.gen.native_engine, "compute", ctypes.c_int64);
+    result = f();
+    assert result == 13 , f"native alias calls returned {result}";
+}
+
+test "native getattr with a dynamic member stays outside the native layout" {
+    (prog, ir) = compile_na_inline_ir(
+        "getattr_dynamic_member",
+        "import math;\n"
+        "def compute(field: str) -> int {\n"
+        "    f = getattr(math, field);\n"
+        "    return int(f(81.0));\n"
+        "}\n"
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert ir.gen.native_layout is not None;
+    assert "compute" not in ir.gen.native_layout.functions;
+}
+
+test "native getattr shadowed by a parameter is not specialized" {
+    (prog, ir) = compile_na_inline_ir(
+        "getattr_shadowed_parameter",
+        "import math;\n"
+        "def compute(getattr: any) -> int {\n"
+        "    f = getattr(math, \"sqrt\");\n"
+        "    return int(f(81.0));\n"
+        "}\n"
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert ir.gen.native_layout is not None;
+    assert "compute" not in ir.gen.native_layout.functions;
+}
+
+test "native getattr alias used as a value stays outside native layout" {
+    (prog, ir) = compile_na_inline_ir(
+        "getattr_alias_escape",
+        "import math;\n"
+        "def compute -> any {\n"
+        "    f = getattr(math, \"sqrt\");\n"
+        "    return f;\n"
+        "}\n"
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    assert ir.gen.native_layout is not None;
+    assert "compute" not in ir.gen.native_layout.functions;
+}
+
 test "closure: a void lambda over a statement call returns void" {
     (prog, ir) = compile_na_inline_ir(
         "void_lambda_stmt_call",

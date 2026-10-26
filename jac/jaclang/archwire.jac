@@ -5446,6 +5446,12 @@ graph import client.targets.react_native {
 }
 
 graph import compiler {
+    symbol_utils ++> backends.native.na_ir_gen_pass.NaIRGenPass._native_getattr_alias_for_symbol {
+        imported_module_name
+    }
+    frontend.codeinfo ++> backends.native.na_ir_gen_pass.NaIRGenPass._native_module_member_ability {
+        resolve_native_module
+    }
     backends.es ++> tools.lang_tools { es_node_to_dict }
     backends.es --> tests.xbackend_equiv { EsastGenPass }
     backends.es.backends.registry ++> driver.build_services.CompilerBuildServices.client_runtime_basename {
