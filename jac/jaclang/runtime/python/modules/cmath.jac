@@ -971,7 +971,8 @@ def:priv _c_atanh(z: complex_parts) -> tuple[float, float, int] {
             err = 0;
         }
     } else {
-        re = _Py_log1p(4.0 * zz.real / ((1.0 - zz.real) * (1.0 - zz.real) + ay * ay)) / 4.0;
+        re = _Py_log1p(4.0 * zz.real / ((1.0 - zz.real) * (1.0 - zz.real) + ay * ay))
+            / 4.0;
         im = -atan2(-2.0 * zz.imag, (1.0 - zz.real) * (1.0 + zz.real) - ay * ay) / 2.0;
         err = 0;
     }

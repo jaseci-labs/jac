@@ -1781,7 +1781,9 @@ impl _mark_returns_twice(name: str, func: ir.Function) {
     }
 }
 
-impl NaIRGenPass._calling_convention_of(decorators: (Sequence[uni.Expr] | None)) -> str {
+impl NaIRGenPass._calling_convention_of(
+    decorators: (Sequence[uni.Expr] | None)
+) -> str {
     for dx in decorators or [] {
         if isinstance(dx, uni.Name) and dx.value in CALLING_CONVENTIONS {
             return CALLING_CONVENTIONS[dx.value];

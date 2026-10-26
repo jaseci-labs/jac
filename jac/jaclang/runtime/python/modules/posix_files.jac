@@ -473,7 +473,8 @@ impl os_fchmod_impl(module: ptr[PyObject], fd: i32, mode: i32) -> ptr[PyObject] 
 }
 
 impl os_lchmod_impl(module: ptr[PyObject], path: path_t, mode: i32) -> ptr[PyObject] {
-    if PySys_Audit(ptr[u8]("os.chmod"), ptr[u8]("Oii"), path.object, mode, i32(-1)) < 0 {
+    if PySys_Audit(ptr[u8]("os.chmod"), ptr[u8]("Oii"), path.object, mode, i32(-1))
+        < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -785,7 +786,10 @@ impl os_replace_impl(
 }
 
 impl os_rmdir_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
-    if PySys_Audit(ptr[u8]("os.rmdir"), ptr[u8]("Oi"), path.object, audit_dir_fd(dir_fd)) < 0 {
+    if PySys_Audit(
+        ptr[u8]("os.rmdir"), ptr[u8]("Oi"), path.object, audit_dir_fd(dir_fd)
+    )
+        < 0 {
         return NULL;
     }
     narrow = path.narrow;
@@ -812,7 +816,10 @@ impl os_umask_impl(module: ptr[PyObject], mask: i32) -> ptr[PyObject] {
 }
 
 impl os_unlink_impl(module: ptr[PyObject], path: path_t, dir_fd: i32) -> ptr[PyObject] {
-    if PySys_Audit(ptr[u8]("os.remove"), ptr[u8]("Oi"), path.object, audit_dir_fd(dir_fd)) < 0 {
+    if PySys_Audit(
+        ptr[u8]("os.remove"), ptr[u8]("Oi"), path.object, audit_dir_fd(dir_fd)
+    )
+        < 0 {
         return NULL;
     }
     narrow = path.narrow;

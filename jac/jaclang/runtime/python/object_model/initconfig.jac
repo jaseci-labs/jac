@@ -908,19 +908,26 @@ import from c {
         dump_config(
             ptr[u8]("program name"), config_wstr(config, PyConfig_PROGRAM_NAME)
         );
-        PySys_WriteStderr(ptr[u8]("  isolated = %i\n"), config_int(config, PyConfig_ISOLATED));
         PySys_WriteStderr(
-            ptr[u8]("  environment = %i\n"), config_int(config, PyConfig_USE_ENVIRONMENT)
+            ptr[u8]("  isolated = %i\n"), config_int(config, PyConfig_ISOLATED)
         );
         PySys_WriteStderr(
-            ptr[u8]("  user site = %i\n"), config_int(config, PyConfig_USER_SITE_DIRECTORY)
+            ptr[u8]("  environment = %i\n"),
+            config_int(config, PyConfig_USE_ENVIRONMENT)
         );
-        PySys_WriteStderr(ptr[u8]("  safe_path = %i\n"), config_int(config, PyConfig_SAFE_PATH));
+        PySys_WriteStderr(
+            ptr[u8]("  user site = %i\n"),
+            config_int(config, PyConfig_USER_SITE_DIRECTORY)
+        );
+        PySys_WriteStderr(
+            ptr[u8]("  safe_path = %i\n"), config_int(config, PyConfig_SAFE_PATH)
+        );
         PySys_WriteStderr(
             ptr[u8]("  import site = %i\n"), config_int(config, PyConfig_SITE_IMPORT)
         );
         PySys_WriteStderr(
-            ptr[u8]("  is in build tree = %i\n"), config_int(config, PyConfig_IS_PYTHON_BUILD)
+            ptr[u8]("  is in build tree = %i\n"),
+            config_int(config, PyConfig_IS_PYTHON_BUILD)
         );
         dump_config(ptr[u8]("stdlib dir"), config_wstr(config, PyConfig_STDLIB_DIR));
         dump_config(ptr[u8]("sys.path[0]"), config_wstr(config, PyConfig_SYS_PATH_0));
@@ -1402,7 +1409,8 @@ import from c {
         object_decref(names);
         return frozen;
     }  def PyConfig_Set(name: ptr[u8], value: ptr[PyObject]) -> i32 {
-        if PySys_Audit(ptr[u8]("cpython.PyConfig_Set"), ptr[u8]("sO"), name, value) < 0 {
+        if PySys_Audit(ptr[u8]("cpython.PyConfig_Set"), ptr[u8]("sO"), name, value)
+            < 0 {
             return -1;
         }
 

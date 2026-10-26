@@ -1278,15 +1278,6 @@ impl NaIRGenPass._isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.
 impl NaIRGenPass._isinstance_vtable_walk(
     vptr: ir.Value, names: list[str], prefix: str
 ) -> ir.Value {
-    """The ancestry walk of `_isinstance_vtable_hit`, behind a one-entry cache
-    of the last vtable this check answered `False` for.
-
-    A class's ancestry never changes and vtables are static, so a miss for one
-    vtable is a miss for good. The cache is one pointer per check, read and
-    written with relaxed atomics, so threads can only see a vtable that did
-    miss here. A dispatch chain of checks sees mostly misses, each of which
-    would otherwise walk the whole ancestry.
-    """;
     i1 = ir.IntType(1);
     i8p = ir.IntType(8).as_pointer();
     site = ir.GlobalVariable(

@@ -700,16 +700,6 @@ impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
 impl NaIRGenPass._retype_tail_call(
     blk: ir.Block, func: ir.Function
 ) -> (ir.CallInstr | None) {
-    """Call a C function through the caller's prototype when only the word
-    Jac keeps pointers in stands between them.
-
-    A C definition's Jac body takes and returns pointers as 64-bit words, so a
-    call it makes to a C function ends in converting the pointer result to a
-    word, and that conversion is work after the call. Both are passed and
-    returned in the same register on every target, so the call is rebuilt with
-    the callee viewed through the caller's own prototype and nothing follows
-    it. Any other difference is left for `_tail_call_mismatch` to name.
-    """;
     if len(blk.instructions) < 2 {
         return None;
     }
