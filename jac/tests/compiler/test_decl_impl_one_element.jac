@@ -312,7 +312,7 @@ test "the compiler asks the declaration, never the syntax parent, for its owner"
     offenders: list[str] = [];
     for path in sorted(Path(COMPILER_ROOT).rglob("*.jac")) {
         rel = str(path.relative_to(COMPILER_ROOT));
-        if "/tests/" in f"/{rel}" or rel.startswith("vendor/") {
+        if not path.is_file() or "/tests/" in f"/{rel}" or rel.startswith("vendor/") {
             continue;
         }
         for (lineno, line) in enumerate(path.read_text().splitlines(), start=1) {

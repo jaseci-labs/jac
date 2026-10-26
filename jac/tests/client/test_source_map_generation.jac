@@ -79,6 +79,18 @@ test "client compile writes a per-file source map even when the hub is empty" {
         assert map_path.exists() , "per-file .js.map was not generated";
         # The compiled JS must chain to its map so Vite can compose it.
         assert "sourceMappingURL=app.js.map" in js_path.read_text();
+        # Re-emitting unchanged output must not touch it: Vite treats any write
+        # to a non-boundary module (the prelude) as a change and full-reloads.
+        import os;
+        outputs = [js_path, map_path, out_dir / "jac_prelude.js"];
+        for path in outputs {
+            os.utime(path, ns=(1, 1));
+        }
+        compiler.emit_dependencies(Path(tmp) / "app.jac", visited=set());
+        for path in outputs {
+            assert path.stat().st_mtime_ns == 1 , f"{path.name} was rewritten unchanged";
+        }
+        assert js_path.read_text().count("sourceMappingURL=") == 1;
     }
 }
 

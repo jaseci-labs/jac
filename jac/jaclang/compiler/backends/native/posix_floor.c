@@ -21,6 +21,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -92,21 +93,41 @@ JAC_FLOOR const char *__jac_dirent_name(void *entry) {
 
 JAC_FLOOR int __jac_at_fdcwd(void) { return AT_FDCWD; }
 
-/* The home directory of user `name` (the calling user when it is empty)
- * copied into buf: its length, -1 when there is no such user, or -2 when the
- * user has no home directory. */
+/* The home directory of user `name` (the calling user when it is empty):
+ * its length, -1 when there is no such user, or -2 when the user has no home
+ * directory. It is copied into buf only when it fits; a length of cap or more
+ * asks the caller to call again with a larger buf. The record buffer grows
+ * while the lookup reports ERANGE, so a large account record still resolves. */
 JAC_FLOOR int64_t __jac_home_dir(const char *name, char *buf, int64_t cap) {
     struct passwd pw;
     struct passwd *found = NULL;
-    char scratch[4096];
-    int rc = name[0] ? getpwnam_r(name, &pw, scratch, sizeof scratch, &found)
-                     : getpwuid_r(getuid(), &pw, scratch, sizeof scratch, &found);
-    if (rc != 0 || found == NULL) return -1;
-    if (pw.pw_dir == NULL) return -2;
-    size_t n = strlen(pw.pw_dir);
-    if ((int64_t)n >= cap) return -1;
-    memcpy(buf, pw.pw_dir, n + 1);
-    return (int64_t)n;
+    size_t size = 4096;
+    char *scratch = NULL;
+    int rc;
+    for (;;) {
+        char *grown = realloc(scratch, size);
+        if (grown == NULL) {
+            free(scratch);
+            return -1;
+        }
+        scratch = grown;
+        rc = name[0] ? getpwnam_r(name, &pw, scratch, size, &found)
+                     : getpwuid_r(getuid(), &pw, scratch, size, &found);
+        if (rc != ERANGE) break;
+        size *= 2;
+    }
+    int64_t out;
+    if (rc != 0 || found == NULL) {
+        out = -1;
+    } else if (pw.pw_dir == NULL) {
+        out = -2;
+    } else {
+        size_t n = strlen(pw.pw_dir);
+        if ((int64_t)n < cap) memcpy(buf, pw.pw_dir, n + 1);
+        out = (int64_t)n;
+    }
+    free(scratch);
+    return out;
 }
 
 /* The running executable's path copied into buf: its length, or -1. */

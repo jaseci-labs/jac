@@ -1,5 +1,6 @@
 """Silently-dropped positional arguments (issue #7320 Cluster 2, the
-silent-kwarg family): range() step, str.find() start, pow() modulus.
+silent-kwarg family): range() step, str.find() start, pow() modulus,
+and the start/end of str.index/find/rfind/rindex/count (issue #9823).
 
 Each compiled clean and ran with the extra argument ignored, so loops
 walked every index, find searched from 0, and pow returned the full
@@ -24,6 +25,75 @@ def:pub find_with_start -> int {
     b = s.find("b");
     c = s.find("z", 1);
     return a * 100 + b * 10 + (1 if c == -1 else 0);
+}
+
+def:pub find_bounds_index_from -> int {
+    s = "ab/> cd <img x />";
+    return s.index("/>", 5);
+}
+
+def:pub find_bounds_find_end -> int {
+    s = "ab/> cd <img x />";
+    return s.find("/>", 0, 3);
+}
+
+def:pub find_bounds_rfind_window -> int {
+    s = "ab/> cd <img x />";
+    return s.rfind("/>", 0, 6);
+}
+
+def:pub find_bounds_rindex_window -> int {
+    s = "ab/> cd <img x />";
+    return s.rindex("/>", 0, 6);
+}
+
+def:pub find_bounds_rfind_from -> int {
+    s = "ab/> cd <img x />";
+    return s.rfind("/>", 5);
+}
+
+def:pub find_bounds_count_from -> int {
+    s = "ab/> cd <img x />";
+    return s.count("/>", 5);
+}
+
+def:pub find_bounds_count_window -> int {
+    s = "ab/> cd <img x />";
+    return s.count("/>", 0, 6);
+}
+
+def:pub find_bounds_negative -> int {
+    s = "ab/> cd <img x />";
+    return s.find("img", -9, -2);
+}
+
+def:pub find_bounds_empty_past_end -> int {
+    s = "ab/> cd <img x />";
+    return s.find("", 50);
+}
+
+def:pub find_bounds_empty_start_after_end -> int {
+    s = "ab/> cd <img x />";
+    return s.find("", 6, 2);
+}
+
+def:pub find_bounds_rfind_empty_window -> int {
+    s = "ab/> cd <img x />";
+    return s.rfind("", 0, 4);
+}
+
+def:pub find_bounds_count_empty_window -> int {
+    s = "ab/> cd <img x />";
+    return s.count("", 0, 4);
+}
+
+def:pub find_bounds_index_miss -> int {
+    s = "ab/> cd <img x />";
+    try {
+        return s.index("/>", 0, 3);
+    } except ValueError {
+        return -7;
+    }
 }
 
 def:pub pow_with_mod -> int {

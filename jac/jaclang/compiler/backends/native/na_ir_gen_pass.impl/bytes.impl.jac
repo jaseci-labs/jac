@@ -538,18 +538,33 @@ impl NaIRGenPass._emit_bytes_search(
             return None;
         }
     }
-    parts = self._emit_bytes_needle(args[0]);
+    i8p = ir.IntType(8).as_pointer();
+    parts: (tuple[ir.Value, ir.Value, ir.Value] | None) = None;
+    if target.type == i8p {
+        if args[0].type != i8p {
+            return None;
+        }
+        hay = target;
+        length = self._call_str_len(self.builder, target);
+        parts = (
+            args[0],
+            self._call_str_len(self.builder, args[0]),
+            ir.Constant(i64, 0)
+        );
+    } else {
+        hay = self._bytes_data_ptr(target);
+        length = self._bytes_len_val(target);
+        parts = self._emit_bytes_needle(args[0]);
+    }
     if parts is None {
         return None;
     }
     (data, size, byte) = parts;
     start = self._coerce_type(args[1], i64) if len(args) > 1 else ir.Constant(i64, 0);
-    end = self._coerce_type(args[2], i64)
-        if len(args) > 2
-        else self._bytes_len_val(target);
+    end = self._coerce_type(args[2], i64) if len(args) > 2 else length;
     result = self.builder.call(
         self._bytes_search_fn(),
-        [target, data, size, byte, start, end, ir.Constant(i64, modes[mode])],
+        [hay, length, data, size, byte, start, end, ir.Constant(i64, modes[mode])],
         name=f"by.{mode}"
     );
     if missing {
@@ -573,13 +588,13 @@ impl NaIRGenPass._bytes_search_fn -> ir.Function {
     zero = ir.Constant(i64, 0);
     one = ir.Constant(i64, 1);
     minus_one = ir.Constant(i64, -1);
-    bt_ptr = self._get_bytes_struct_type().as_pointer();
-    fnty = ir.FunctionType(i64, [bt_ptr, i8p, i64, i64, i64, i64, i64]);
+    fnty = ir.FunctionType(i64, [i8p, i64, i8p, i64, i64, i64, i64, i64]);
     fn = ir.Function(self.llvm_module, fnty, name="__jac_bytes_search");
     fn.linkage = "private";
-    (hay, needle, needle_len, byte, raw_start, raw_end, mode) = fn.args;
+    (data, length, needle, needle_len, byte, raw_start, raw_end, mode) = fn.args;
     for (arg, name) in zip(
-        fn.args, ["hay", "needle", "needle_len", "byte", "start", "end", "mode"]
+        fn.args,
+        ["data", "length", "needle", "needle_len", "byte", "start", "end", "mode"]
     ) {
         arg.name = name;
     }
@@ -588,12 +603,6 @@ impl NaIRGenPass._bytes_search_fn -> ir.Function {
     b = ir.IRBuilder(fn.append_basic_block("entry"));
     byte_slot = b.alloca(i8, name="s.byte");
     b.store(b.trunc(byte, i8), byte_slot);
-    length = b.load(
-        b.gep(hay, [ir.Constant(i32, 0), ir.Constant(i32, 0)]), name="s.len"
-    );
-    data = b.bitcast(
-        b.gep(hay, [ir.Constant(i32, 0), ir.Constant(i32, 1)]), i8p, name="s.data"
-    );
     is_byte = b.icmp_unsigned("==", needle, ir.Constant(i8p, None), name="s.isbyte");
     nd = b.select(is_byte, byte_slot, needle, name="s.nd");
     nd_len = b.select(is_byte, one, needle_len, name="s.ndlen");
@@ -745,10 +754,6 @@ impl NaIRGenPass._private_cstr(data: bytes, name: str) -> ir.Value {
 }
 
 impl NaIRGenPass._name_lookup_fn -> ir.Function {
-    """Look `name` up in a table of `<tag byte><name>\\0` rows ended by a 0 tag.
-
-    Returns the matching row's tag, or 0 when no row matches.
-    """;
     if self._name_lookup_function is not None {
         return self._name_lookup_function;
     }
@@ -796,13 +801,6 @@ impl NaIRGenPass._name_lookup_fn -> ir.Function {
 }
 
 impl NaIRGenPass._codec_lookup_fn -> ir.Function {
-    """Map a codec name to 0 (utf-8), 1 (latin-1) or 2 (ascii) at run time.
-
-    The name is normalized the way `encodings.normalize_encoding` does it and
-    looked up in CPython's alias table, a dotted name retrying with dots as
-    underscores against the aliases only. Returns -1 for an unknown codec and
-    -2 for a codec CPython knows that the native decoder does not implement.
-    """;
     if self._codec_lookup_function is not None {
         return self._codec_lookup_function;
     }
@@ -943,21 +941,6 @@ impl NaIRGenPass._codec_lookup_fn -> ir.Function {
 }
 
 impl NaIRGenPass._bytes_decode_fn -> ir.Function {
-    """Decode bytes as utf-8 (codec 0), latin-1 (1) or ascii (2), CPython style.
-
-    Error handlers: 0 strict, 1 ignore, 2 replace, 3 backslashreplace,
-    4 surrogateescape, 5 surrogatepass; any other id fails like strict and
-    the caller picks the exception. A utf-8 error spans CPython's maximal
-    invalid subpart, so `replace` writes one U+FFFD per subpart. Lone
-    surrogates are stored as their three-byte encoding, as native strings
-    hold them.
-
-    With `measure` set nothing is kept: every write lands in the first bytes
-    of `out`, a four-byte scratch buffer, and the result is the decoded
-    length. Returns the length written, or -1 on an error the handler does not
-    absorb, leaving start, end and a reason code in `info[0..2]`; `info[3]`
-    counts the errors a handler absorbed.
-    """;
     if self._bytes_decode_function is not None {
         return self._bytes_decode_function;
     }
@@ -1273,13 +1256,6 @@ impl NaIRGenPass._emit_bytes_decode(
     kwargs: dict[str, uni.UniNode],
     call_node: (uni.UniNode | None)
 ) -> (ir.Value | None) {
-    """Lower `bytes.decode(encoding="utf-8", errors="strict")`.
-
-    Literal arguments resolve at compile time; a literal naming a codec
-    CPython knows but this decoder does not implement is left unlowered.
-    Other arguments resolve at run time. Empty input decodes to "" without
-    looking the codec up, as CPython does.
-    """;
     i8 = ir.IntType(8);
     i8p = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1482,12 +1458,6 @@ impl NaIRGenPass._emit_decode_failure(
     errors_name: (ir.Value | None),
     errors_literal: (str | None)
 ) -> None {
-    """Raise what CPython raises when a decode error reaches its handler.
-
-    Strict (and a surrogatepass that cannot apply) raises UnicodeDecodeError;
-    an error handler that only encodes raises TypeError; an unknown handler
-    name raises LookupError, which CPython also defers to the first error.
-    """;
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);

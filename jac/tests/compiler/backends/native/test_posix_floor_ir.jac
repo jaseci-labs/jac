@@ -52,3 +52,90 @@ test "every release target has a floor that defines the whole API" {
     }
     assert posix_floor_ir("wasm32") == "";
 }
+
+"""The floor's home lookup grows its record buffer while the account database
+reports ERANGE. The floor's own source is compiled against stand-ins for
+getpwnam_r and getpwuid_r that need a record far larger than the first
+buffer, so no real account has to be that large."""
+test "the floor's home lookup grows its record buffer on ERANGE" {
+    import os;
+    import shlex;
+    import shutil;
+    import subprocess;
+    import tempfile;
+    import jaclang;
+    compiler = shlex.split(os.environ.get("CC", "zig cc"));
+    if shutil.which(compiler[0]) is None {
+        testskip(f"no C compiler ({compiler[0]}) to build the floor with");
+    }
+    floor = Path(jaclang.__file__).resolve().parent
+        / "compiler"
+        / "backends"
+        / "native"
+        / "posix_floor.c";
+    harness = """
+#define getpwnam_r jac_test_getpwnam_r
+#define getpwuid_r jac_test_getpwuid_r
+#include "FLOOR"
+#undef getpwnam_r
+#undef getpwuid_r
+
+static int calls = 0;
+static char home[] = "/home/jac-test";
+
+static int lookup(struct passwd *pw, char *buf, size_t len, struct passwd **out) {
+    calls++;
+    if (len < 100000) {
+        *out = NULL;
+        return ERANGE;
+    }
+    memset(pw, 0, sizeof *pw);
+    strcpy(buf, home);
+    pw->pw_dir = buf;
+    *out = pw;
+    return 0;
+}
+
+int jac_test_getpwnam_r(const char *name, struct passwd *pw, char *buf, size_t len,
+                        struct passwd **out) {
+    (void)name;
+    return lookup(pw, buf, len, out);
+}
+
+int jac_test_getpwuid_r(uid_t uid, struct passwd *pw, char *buf, size_t len,
+                        struct passwd **out) {
+    (void)uid;
+    return lookup(pw, buf, len, out);
+}
+
+int main(void) {
+    char out[64];
+    long long named = (long long)__jac_home_dir("someone", out, sizeof out);
+    printf("%lld %s %d\\n", named, named >= 0 ? out : "-", calls);
+    calls = 0;
+    char tiny[4];
+    long long mine = (long long)__jac_home_dir("", tiny, sizeof tiny);
+    printf("%lld %d\\n", mine, calls);
+    return 0;
+}
+""".replace(
+        "FLOOR", str(floor)
+    );
+    with tempfile.TemporaryDirectory() as directory {
+        source = Path(directory) / "harness.c";
+        source.write_text(harness);
+        binary = str(Path(directory) / "harness");
+        build = subprocess.run(
+            compiler + ["-o", binary, str(source)],
+            capture_output=True,
+            text=True,
+            timeout=300
+        );
+        assert build.returncode == 0 , build.stdout + build.stderr;
+        run = subprocess.run([binary], capture_output=True, text=True, timeout=60);
+        assert run.returncode == 0 , run.stdout + run.stderr;
+        lines = run.stdout.splitlines();
+        """4096 doubles to 131072, the first size past 100000: six lookups.""";
+        assert lines == ["14 /home/jac-test 6", "14 6"] , run.stdout;
+    }
+}

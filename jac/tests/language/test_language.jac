@@ -745,9 +745,9 @@ test "for else" {
     assert "Done" in lines[1];
 }
 
-test "break in loop else stays in its owning loop" {
-    output = run_jac(os.path.join(FIXTURES, "loop_else_break.jac"));
-    assert output.strip() == "1444";
+test "break and continue in a loop else belong to the enclosing loop" {
+    output = run_jac(os.path.join(FIXTURES, "loop_else_control.jac"));
+    assert output.strip() == "112 [[2, 5]] 3";
 }
 
 test "forever loop" {

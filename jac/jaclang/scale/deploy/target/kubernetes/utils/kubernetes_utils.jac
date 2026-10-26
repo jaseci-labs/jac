@@ -61,7 +61,7 @@ def ensure_namespace_exists(namespace: str, owner: str) -> None;
 
 def namespace_is_owned(core_v1: client.CoreV1Api, namespace: str, owner: str) -> bool;
 
-def delete_namespace(namespace: str) -> None;
+def delete_namespace(core_v1: client.CoreV1Api, namespace: str) -> None;
 
 def cluster_type -> str;
 

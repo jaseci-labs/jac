@@ -15,7 +15,10 @@ obj ClientManifest {
         server_imports: list[str] = [],
         server_import_routes: dict[(str, dict[(str, str)])] = {},
         page_export: (str | None) = None,
-        layout_export: (str | None) = None;
+        layout_export: (str | None) = None,
+        linkable: list[str] = [],
+        components: list[str] = [],
+        forwards: dict[str, list[str]] = {};
 }
 
 obj ClientArtifact {
@@ -42,6 +45,8 @@ glob HDR_MAGIC: int = 44061,
      RC_SENTINEL: int = 0x7FFFFFFFFFFFFFFF;
 
 glob STR_LEN_TAG_BIT: int = 1,
+     STR_ASCII_TAG_BIT: int = -9223372036854775808,
+     STR_LEN_PAYLOAD_MASK: int = 9223372036854775807,
      STR_LEN_TAG_SHIFT: int = 1;
 
 glob JACSTR_DESC_FIELDS: dict[(str, tuple[str, ...])] = {
@@ -49,7 +54,7 @@ glob JACSTR_DESC_FIELDS: dict[(str, tuple[str, ...])] = {
          'jacstr2': ('data', 'len')
      };
 
-def str_len_tag(length: int) -> int;
+def str_len_tag(length: int, is_ascii: bool = False) -> int;
 
 obj NativeFieldInfo {
     has name: str,
@@ -138,6 +143,7 @@ def native_module_key(path: str) -> str;
 
 def native_unit_prefix(path: str) -> str;
 
+def interop_callback_symbol(provider_path: str, name: str) -> str;
 def native_symbol_name(prefix: str, name: str) -> str;
 
 def native_glob_init_name(path: str) -> str;
@@ -309,7 +315,7 @@ def resolve_native_module(
 
 def native_wasm_stem(path: str) -> str;
 
-glob NATIVE_ABI_VERSION: int = 1;
+glob NATIVE_ABI_VERSION: int = 3;
 
 obj NativeModuleLayout {
     has abi_version: int = NATIVE_ABI_VERSION,
@@ -348,9 +354,11 @@ obj InteropBinding {
         kind: str = 'function',
         provider_app: str = '',
         native_contract: dict[str, any] = {},
-        endpoint_id: str = '';
+        endpoint_id: str = '',
+        symbol: str = '';
 
     has is_cross_module: bool { getter; }
+    has native_callable: bool { getter; }
 }
 
 obj InteropManifest {

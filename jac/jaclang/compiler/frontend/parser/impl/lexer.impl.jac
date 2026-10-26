@@ -193,35 +193,29 @@ impl Lexer.at_end -> bool {
     return self.pos >= self._source_len;
 }
 
-impl Lexer.match_char(expected: str) -> bool {
-    if self.current() == expected {
-        self.advance();
-        return True;
-    }
-    return False;
-}
-
 impl Lexer.match_string(expected: str) -> bool {
+    n = len(expected);
     if self._ascii {
-        if self.source[self.pos:self.pos + len(expected)] == expected {
-            for _ in range(len(expected)) {
-                self.advance();
-            }
-            return True;
-        }
+        matched = self.source[self.pos:self.pos + n] == expected;
+        nbytes = n;
+    } else {
+        exp = expected.encode("utf-8");
+        nbytes = len(exp);
+        matched = self.pos + nbytes <= self._source_len
+            and self._enc[self.pos:self.pos + nbytes] == exp;
+    }
+    if not matched {
         return False;
     }
-
-    exp = expected.encode("utf-8");
-    exp_bytes = len(exp);
-    if self.pos + exp_bytes <= self._source_len
-        and self._enc[self.pos:self.pos + exp_bytes] == exp {
-        for _ in range(len(expected)) {
+    if "\n" in expected {
+        for _ in range(n) {
             self.advance();
         }
-        return True;
+    } else {
+        self.pos += nbytes;
+        self.col += n;
     }
-    return False;
+    return True;
 }
 
 impl Lexer.make_loc(start_line: int, start_col: int, start_pos: int) -> SourceLoc {
@@ -1268,255 +1262,90 @@ impl Lexer.scan_pynline -> LexToken {
     return self.make_token(TokenKind.ERROR, code, start_line, start_col, start_pos);
 }
 
+glob _OP_CANDIDATES: dict[str, list[tuple[str, TokenKind]]] = {
+         "<": [
+             ("<-->", TokenKind.ARROW_BI),
+             ("<++>", TokenKind.CARROW_BI),
+             ("<--", TokenKind.ARROW_L),
+             ("<++", TokenKind.CARROW_L),
+             ("<-:", TokenKind.ARROW_L_P1),
+             ("<+:", TokenKind.CARROW_L_P1),
+             ("<<=", TokenKind.LSHIFT_EQ),
+             ("</>", TokenKind.JSX_FRAG_CLOSE),
+             ("<=", TokenKind.LTE),
+             ("<<", TokenKind.LSHIFT),
+             ("<|", TokenKind.PIPE_BKWD),
+             ("<:", TokenKind.A_PIPE_BKWD),
+             ("<.", TokenKind.DOT_BKWD),
+             ("</", TokenKind.JSX_CLOSE_START),
+             ("<>", TokenKind.JSX_FRAG_OPEN)
+         ],
+         "-": [
+             ("-->", TokenKind.ARROW_R),
+             ("->:", TokenKind.ARROW_R_P1),
+             ("->", TokenKind.RETURN_HINT),
+             ("-=", TokenKind.SUB_EQ)
+         ],
+         "+": [
+             ("++>", TokenKind.CARROW_R),
+             ("+>:", TokenKind.CARROW_R_P1),
+             ("+=", TokenKind.ADD_EQ)
+         ],
+         ":": [
+             (":->", TokenKind.ARROW_R_P2),
+             (":+>", TokenKind.CARROW_R_P2),
+             (":<-", TokenKind.ARROW_L_P2),
+             (":<+", TokenKind.CARROW_L_P2),
+             (":>", TokenKind.A_PIPE_FWD),
+             (":=", TokenKind.WALRUS_EQ)
+         ],
+         ".": [("...", TokenKind.ELLIPSIS), (".>", TokenKind.DOT_FWD)],
+         "*": [
+             ("**=", TokenKind.STAR_POW_EQ),
+             ("**", TokenKind.STAR_POW),
+             ("*=", TokenKind.MUL_EQ)
+         ],
+         "/": [
+             ("//=", TokenKind.FLOOR_DIV_EQ),
+             ("//", TokenKind.FLOOR_DIV),
+             ("/=", TokenKind.DIV_EQ),
+             ("/>", TokenKind.JSX_SELF_CLOSE)
+         ],
+         ">": [
+             (">>=", TokenKind.RSHIFT_EQ),
+             (">=", TokenKind.GTE),
+             (">>", TokenKind.RSHIFT)
+         ],
+         "=": [("==", TokenKind.EE)],
+         "!": [("!=", TokenKind.NE)],
+         "|": [("|>", TokenKind.PIPE_FWD), ("|=", TokenKind.BW_OR_EQ)],
+         "@": [("@=", TokenKind.MATMUL_EQ)],
+         "&": [("&=", TokenKind.BW_AND_EQ)],
+         "%": [("%=", TokenKind.MOD_EQ)],
+         "^": [("^=", TokenKind.BW_XOR_EQ)],
+         "?": [("?", TokenKind.NULL_OK)]
+     };
+
 impl Lexer.scan_operator -> LexToken {
     start_line = self.line;
     start_col = self.col;
     start_pos = self.pos;
     ch = self.current();
 
-    if self.match_string("<-->") {
-        return self.make_token(
-            TokenKind.ARROW_BI, "<-->", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<++>") {
-        return self.make_token(
-            TokenKind.CARROW_BI, "<++>", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<--") {
-        return self.make_token(
-            TokenKind.ARROW_L, "<--", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("-->") {
-        return self.make_token(
-            TokenKind.ARROW_R, "-->", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<++") {
-        return self.make_token(
-            TokenKind.CARROW_L, "<++", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("++>") {
-        return self.make_token(
-            TokenKind.CARROW_R, "++>", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<-:") {
-        return self.make_token(
-            TokenKind.ARROW_L_P1, "<-:", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(":->") {
-        return self.make_token(
-            TokenKind.ARROW_R_P2, ":->", start_line, start_col, start_pos
-        );
-    }
-
-    if self.match_string("->:") {
-        return self.make_token(
-            TokenKind.ARROW_R_P1, "->:", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<+:") {
-        return self.make_token(
-            TokenKind.CARROW_L_P1, "<+:", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(":+>") {
-        return self.make_token(
-            TokenKind.CARROW_R_P2, ":+>", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("...") {
-        return self.make_token(
-            TokenKind.ELLIPSIS, "...", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("**=") {
-        return self.make_token(
-            TokenKind.STAR_POW_EQ, "**=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("//=") {
-        return self.make_token(
-            TokenKind.FLOOR_DIV_EQ, "//=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<<=") {
-        return self.make_token(
-            TokenKind.LSHIFT_EQ, "<<=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(">>=") {
-        return self.make_token(
-            TokenKind.RSHIFT_EQ, ">>=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("</>") {
-        self.jsx_depth -= 1;
-        self.pop_mode();
-        return self.make_token(
-            TokenKind.JSX_FRAG_CLOSE, "</>", start_line, start_col, start_pos
-        );
-    }
-
-    if self.match_string("**") {
-        return self.make_token(
-            TokenKind.STAR_POW, "**", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("//") {
-        return self.make_token(
-            TokenKind.FLOOR_DIV, "//", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("==") {
-        return self.make_token(TokenKind.EE, "==", start_line, start_col, start_pos);
-    }
-    if self.match_string("!=") {
-        return self.make_token(TokenKind.NE, "!=", start_line, start_col, start_pos);
-    }
-    if self.match_string("<=") {
-        return self.make_token(TokenKind.LTE, "<=", start_line, start_col, start_pos);
-    }
-    if self.match_string(">=") {
-        return self.make_token(TokenKind.GTE, ">=", start_line, start_col, start_pos);
-    }
-    if self.match_string("<<") {
-        return self.make_token(
-            TokenKind.LSHIFT, "<<", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(">>") {
-        return self.make_token(
-            TokenKind.RSHIFT, ">>", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("|>") {
-        return self.make_token(
-            TokenKind.PIPE_FWD, "|>", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<|") {
-        return self.make_token(
-            TokenKind.PIPE_BKWD, "<|", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(":>") {
-        return self.make_token(
-            TokenKind.A_PIPE_FWD, ":>", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<:") {
-        return self.make_token(
-            TokenKind.A_PIPE_BKWD, "<:", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(".>") {
-        return self.make_token(
-            TokenKind.DOT_FWD, ".>", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<.") {
-        return self.make_token(
-            TokenKind.DOT_BKWD, "<.", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("->") {
-        return self.make_token(
-            TokenKind.RETURN_HINT, "->", start_line, start_col, start_pos
-        );
-    }
-    if self.match_char("?") {
-        return self.make_token(
-            TokenKind.NULL_OK, "?", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(":=") {
-        return self.make_token(
-            TokenKind.WALRUS_EQ, ":=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("+=") {
-        return self.make_token(
-            TokenKind.ADD_EQ, "+=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("-=") {
-        return self.make_token(
-            TokenKind.SUB_EQ, "-=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("*=") {
-        return self.make_token(
-            TokenKind.MUL_EQ, "*=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("/=") {
-        return self.make_token(
-            TokenKind.DIV_EQ, "/=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("%=") {
-        return self.make_token(
-            TokenKind.MOD_EQ, "%=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("&=") {
-        return self.make_token(
-            TokenKind.BW_AND_EQ, "&=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("|=") {
-        return self.make_token(
-            TokenKind.BW_OR_EQ, "|=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("^=") {
-        return self.make_token(
-            TokenKind.BW_XOR_EQ, "^=", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("@=") {
-        return self.make_token(
-            TokenKind.MATMUL_EQ, "@=", start_line, start_col, start_pos
-        );
-    }
-
-    if self.match_string(":<-") {
-        return self.make_token(
-            TokenKind.ARROW_L_P2, ":<-", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("+>:") {
-        return self.make_token(
-            TokenKind.CARROW_R_P1, "+>:", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string(":<+") {
-        return self.make_token(
-            TokenKind.CARROW_L_P2, ":<+", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("</") {
-        return self.make_token(
-            TokenKind.JSX_CLOSE_START, "</", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("/>") {
-        return self.make_token(
-            TokenKind.JSX_SELF_CLOSE, "/>", start_line, start_col, start_pos
-        );
-    }
-    if self.match_string("<>") {
-        self.jsx_depth += 1;
-        self.push_mode(LexerMode.JSX_CONTENT);
-        return self.make_token(
-            TokenKind.JSX_FRAG_OPEN, "<>", start_line, start_col, start_pos
-        );
+    candidates = _OP_CANDIDATES.get(ch);
+    if candidates is not None {
+        for (op, kind) in candidates {
+            if self.match_string(op) {
+                if kind == TokenKind.JSX_FRAG_CLOSE {
+                    self.jsx_depth -= 1;
+                    self.pop_mode();
+                } elif kind == TokenKind.JSX_FRAG_OPEN {
+                    self.jsx_depth += 1;
+                    self.push_mode(LexerMode.JSX_CONTENT);
+                }
+                return self.make_token(kind, op, start_line, start_col, start_pos);
+            }
+        }
     }
 
     if self.in_jsx() and self.jsx_brace_depth == 0 {

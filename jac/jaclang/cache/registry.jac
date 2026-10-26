@@ -82,8 +82,8 @@ glob RETIRED: tuple[str, ...] = (
          Bucket(
              name="jir-digests",
              relpath="jir",
-             policy=Policy(ttl_days=14.0, pattern="compiler_digest.*.json"),
-             summary="compiler source digests, one per checkout"
+             policy=Policy(ttl_days=14.0, pattern="digests|compiler_digest.*.json"),
+             summary="file content digests keyed by file identity (retired compiler_digest manifests age out)"
          ),
          Bucket(
              name="apps",
@@ -124,6 +124,12 @@ glob RETIRED: tuple[str, ...] = (
              summary="pinned jac release binaries for deploys",
              root_env="JAC_SCALE_CACHE_DIR",
              root_prefix="scale-binaries"
+         ),
+         Bucket(
+             name="admin",
+             relpath="admin",
+             policy=Policy(ttl_days=30.0, markers=[".used"]),
+             summary="built admin consoles, one per UI source and compiler"
          ),
          Bucket(
              name="models",
@@ -181,6 +187,7 @@ glob RETIRED: tuple[str, ...] = (
              name="pg",
              relpath="pg",
              policy=Policy(retention=Retention.EXTERNAL),
+             root_env="JAC_PG_HOME",
              summary="the embedded Postgres cluster and distribution (jac db)"
          ),
          Bucket(

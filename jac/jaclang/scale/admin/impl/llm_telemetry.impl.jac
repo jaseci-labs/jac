@@ -202,7 +202,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         return;
     }
 
-    async def summary_handler(request: Request) -> JSONResponse {
+    def summary_handler(request: Request) -> JSONResponse {
         guard = self.require_admin_json(request.headers.get("Authorization"));
         if guard {
             return guard;
@@ -224,7 +224,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         )
     );
 
-    async def traces_handler(request: Request) -> JSONResponse {
+    def traces_handler(request: Request) -> JSONResponse {
         guard = self.require_admin_json(request.headers.get("Authorization"));
         if guard {
             return guard;
@@ -269,9 +269,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         )
     );
 
-    async def trace_detail_handler(
-        request: Request, invocation_id: str
-    ) -> JSONResponse {
+    def trace_detail_handler(request: Request, invocation_id: str) -> JSONResponse {
         guard = self.require_admin_json(request.headers.get("Authorization"));
         if guard {
             return guard;
@@ -308,7 +306,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         )
     );
 
-    async def filters_handler(request: Request) -> JSONResponse {
+    def filters_handler(request: Request) -> JSONResponse {
         guard = self.require_admin_json(request.headers.get("Authorization"));
         if guard {
             return guard;

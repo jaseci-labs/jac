@@ -194,11 +194,18 @@ wait_ns_gone() {
     return 1
 }
 
-# Ops RBAC for one app. The sweep must delete only the rows carrying this
-# app's label, so a co-tenant's Role and RoleBinding survive.
+# Ops RBAC for one app, with the console's own ServiceAccount. The sweep must
+# delete only the rows carrying this app's label, so a co-tenant's Role,
+# RoleBinding and account survive.
 seed_ops_rbac() {
     ns="$1"; app="$2"
     kubectl apply -n "${ns}" -f - >/dev/null <<YAML
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${app}-ops
+  labels: { managed: jac-scale, app: ${app} }
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -218,6 +225,14 @@ roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: ${app}-ops }
 subjects:
   - { kind: ServiceAccount, name: default, namespace: ${ns} }
 YAML
+}
+
+# An <app>-ops account the user made, without jac-scale's labels, the way one is
+# pre-created to carry a cloud identity. It has the name destroy looks up, so
+# only the ownership check keeps it.
+seed_user_ops_account() {
+    ns="$1"; app="$2"
+    kubectl create serviceaccount "${app}-ops" -n "${ns}" >/dev/null
 }
 
 # A shared volume is named straight from user config, with no app prefix. It is
@@ -345,7 +360,9 @@ require_absent "${ADOPTED_NS}" role "${APP}-ops"
 require_absent "${ADOPTED_NS}" rolebinding "${APP}-ops"
 require_present "${ADOPTED_NS}" role "${SIBLING}-ops"
 require_present "${ADOPTED_NS}" rolebinding "${SIBLING}-ops"
-echo "  ops RBAC reclaimed for '${APP}', left alone for '${SIBLING}'"
+require_absent "${ADOPTED_NS}" serviceaccount "${APP}-ops"
+require_present "${ADOPTED_NS}" serviceaccount "${SIBLING}-ops"
+echo "  ops RBAC and account reclaimed for '${APP}', left alone for '${SIBLING}'"
 _t "B+D+E PASSED"
 
 ########################## scenario C: co-tenant apps ##########################
@@ -365,6 +382,8 @@ STILL_OWNER="$(ns_owner "${COTENANT_NS}")"
     || fail "${COTENANT_NS}" "adopting app '${COTENANT}' rewrote the owner label to '${STILL_OWNER}'"
 echo "  namespace owned by '${APP}', co-tenant '${COTENANT}' adopted it"
 
+seed_user_ops_account "${COTENANT_NS}" "${COTENANT}"
+
 _t "C deployed"
 # Destroying the co-tenant must take the adopted path and spare the namespace.
 destroy_app "${COTENANT}" "${COTENANT_NS}"
@@ -378,6 +397,10 @@ require_present "${COTENANT_NS}" statefulset "${APP}-postgres"
 require_present "${COTENANT_NS}" pvc "${APP}-bundles"
 require_absent "${COTENANT_NS}" statefulset "${COTENANT}-postgres"
 echo "  '${APP}' database and volumes survived the co-tenant's destroy"
+# The account destroy looks up for the co-tenant exists, but jac-scale did not
+# make it, so it stays.
+require_present "${COTENANT_NS}" serviceaccount "${COTENANT}-ops"
+echo "  user-made '${COTENANT}-ops' account left in place"
 _t "C adopted-app destroy PASSED"
 
 # The other direction: the owner label names the app that created the

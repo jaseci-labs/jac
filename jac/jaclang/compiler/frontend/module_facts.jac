@@ -12,6 +12,8 @@ obj ModuleFacts {
         module: Module, ctx: (CodeContext | None) = None
     ) -> list[ElementStmt];
 
+    static def iter_placement_stmts(module: Module) -> list[UniNode];
+    static def is_test_code(nd: UniNode) -> bool;
     static def iter_module_imports(
         module: Module, ctx: (CodeContext | None) = None
     ) -> list[Import];

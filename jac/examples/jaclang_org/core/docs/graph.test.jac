@@ -24,6 +24,13 @@ test "toc of collects h2 and h3 with anchors" {
     assert toc[2].text == "Second";
 }
 
+test "toc of honors an explicit heading id" {
+    toc = toc_of("## Your 5-minute quick win {#service}\n\n### Plain\n");
+    assert toc[0].text == "Your 5-minute quick win";
+    assert toc[0].anchor == "service";
+    assert toc[1].anchor == "plain";
+}
+
 test "toc of ignores headings inside fences" {
     md = "## Real\n\n```\n## Not A Heading\n```\n\n## Also Real\n";
     toc = toc_of(md);

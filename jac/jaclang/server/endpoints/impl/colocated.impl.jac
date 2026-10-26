@@ -255,6 +255,26 @@ impl served_app_route(server: JacAPIServer) -> tuple[str, str, any] {
     return (served, provider_route(config, served), config);
 }
 
+impl provider_introspector(
+    server: JacAPIServer, provider_app: str, provider_module: any
+) -> (ModuleIntrospector | None) {
+    mod_file = provider_module?.__file__;
+    intro = ModuleIntrospector(
+        module_name=str(provider_module?.__name__ or provider_app),
+        base_path=(os.path.dirname(mod_file) if mod_file else server.base_path),
+        module_file=mod_file
+    );
+    try {
+        intro.load();
+    } except Exception as exc {
+        logger.warning(
+            f"Colocated app '{provider_app}' could not be introspected: {exc}"
+        );
+        return None;
+    }
+    return intro;
+}
+
 impl register_colocated_endpoints(server: JacAPIServer) {
     (served, served_route, config) = served_app_route(server);
     if served and served_route {
@@ -268,18 +288,8 @@ impl register_colocated_endpoints(server: JacAPIServer) {
         config = get_config();
     }
     for (provider_app, provider_module) in providers.items() {
-        mod_file = provider_module?.__file__;
-        intro = ModuleIntrospector(
-            module_name=str(provider_module?.__name__ or provider_app),
-            base_path=(os.path.dirname(mod_file) if mod_file else server.base_path),
-            module_file=mod_file
-        );
-        try {
-            intro.load();
-        } except Exception as exc {
-            logger.warning(
-                f"Colocated app '{provider_app}' could not be introspected: {exc}"
-            );
+        intro = provider_introspector(server, provider_app, provider_module);
+        if intro is None {
             continue;
         }
         _mount_provider(

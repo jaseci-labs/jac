@@ -954,3 +954,11 @@ impl Binary(`obj: any) -> bytes {
         "memoryview: a bytes-like object is required, not '" + _type_name(`obj) + "'"
     );
 }
+
+impl Warning.__str__ -> str {
+    return self.message;
+}
+
+impl Error.__str__ -> str {
+    return self.message;
+}

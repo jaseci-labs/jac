@@ -318,22 +318,16 @@ impl ASTValidationPass.enter_ctrl_stmt with CtrlStmt entry {
 
     parent = here.parent;
     while parent is not None {
-        if isinstance(parent, (InForStmt, IterForStmt, WhileStmt, ForeverStmt)) {
-            return;
-        }
-
-        if kw == "break" and isinstance(parent, (SwitchStmt, MatchStmt)) {
-            return;
-        }
-        if kw == "continue" and isinstance(parent, ElseStmt) {
-            if isinstance(parent.parent, (InForStmt, IterForStmt, WhileStmt)) {
-                self.ctx.emit(E0059, node_override=here);
+        if not in_loop_else(here, parent) {
+            if isinstance(parent, (InForStmt, IterForStmt, WhileStmt, ForeverStmt)) {
                 return;
             }
-        }
-
-        if isinstance(parent, (Ability, ImplDef, Module)) {
-            break;
+            if kw == "break" and isinstance(parent, (SwitchStmt, MatchStmt)) {
+                return;
+            }
+            if isinstance(parent, (Ability, ImplDef, Module)) {
+                break;
+            }
         }
         parent = parent.parent;
     }

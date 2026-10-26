@@ -3098,7 +3098,7 @@ test "serve: X-Jac-Idempotency-Key replays the first response for a repeated cal
             );
             assert first.ok , f"greet should be callable: {first.data}";
             scoped = scoped_idempotency_key(
-                "outbox-entry-1", Con.GUEST.value, "serve_api", "greet"
+                "outbox-entry-1", Con.GUEST.value, client.server.module_name, "greet"
             );
             assert cached_result(scoped) is not None , (
                 "a successful keyed call is remembered in the outbox seen-table "

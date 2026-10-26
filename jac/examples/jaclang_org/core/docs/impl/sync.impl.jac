@@ -1,31 +1,5 @@
-impl label_of(version: str) -> str {
-    m = re.`match(r"^v?(\d+)\.(\d+)", version.strip());
-    if not m {
-        return "dev";
-    }
-    return "v" + (m.group(1) as str) + "." + (m.group(2) as str);
-}
-
 impl corpus_bundle -> DocBundle {
-    bundle = DocBundle(jac_version=resolve_cli_version());
-    ddir = docs_dir();
-    digest = hashlib.sha1(bundle.jac_version.encode("utf-8"));
-    for path in sorted(ddir.rglob("*.md"), key=lambda (p: Path) { str(p); }) {
-        rel = str(path.relative_to(ddir)).replace(os.sep, "/");
-        g = parse_guide(path);
-        if g is None {
-            continue;
-        }
-        bundle.pages[rel] = g.body;
-        digest.update(rel.encode("utf-8"));
-        digest.update(g.body.encode("utf-8"));
-    }
-    for np in nav_pages() {
-        bundle.nav[np.page] = np;
-        digest.update((np.page + "\x00" + np.title).encode("utf-8"));
-    }
-    bundle.fingerprint = digest.hexdigest();
-    return bundle;
+    return bundle_from(docs_dir(), resolve_cli_version());
 }
 
 impl first_h1(text: str) -> str {
@@ -113,7 +87,7 @@ impl build_version(bundle: DocBundle) -> DocVersion {
 }
 
 impl corpus_stale(bundle: DocBundle) -> bool {
-    vers = _version("latest");
+    vers = _version(label_of(bundle.jac_version));
     if not vers {
         return True;
     }
@@ -121,37 +95,88 @@ impl corpus_stale(bundle: DocBundle) -> bool {
 }
 
 impl ingest(bundle: DocBundle) {
+    label = label_of(bundle.jac_version);
     log.info(
-        "docs sync: ingesting the bundled docs · jac "
+        "docs sync: ingesting "
+            + label
+            + " · jac "
             + bundle.jac_version
             + " · "
             + str(len(bundle.pages))
             + " pages"
     );
-    hub = DocsHub(built_at=now_iso());
-    hub +>:HasVersion():+> build_version(bundle);
-    root.shared +>:HasHub():+> hub;
+    hub = _get_hub();
+    if hub is None {
+        hub = DocsHub(built_at=now_iso());
+        root.shared +>:HasHub():+> hub;
+    }
+    fresh = build_version(bundle);
+    hub +>:HasVersion():+> fresh;
+    for v in [hub->:HasVersion:->[?:DocVersion]] {
+        if v.label == label and jid(v) != jid(fresh) {
+            _teardown_version(v);
+        }
+    }
+    hub.built_at = now_iso();
     _sweep_stale(hub);
-    log.info("docs sync: graph ready");
+    log.info("docs sync: " + label + " ready");
+}
+
+impl retire_versions(keep: list[str]) {
+    hub = _get_hub();
+    if hub is None {
+        return;
+    }
+    for v in [hub->:HasVersion:->[?:DocVersion]] {
+        if v.label not in keep {
+            log.info("docs sync: retiring " + v.label);
+            _teardown_version(v);
+        }
+    }
+}
+
+impl sync_release_lines(serving_label: str) -> bool {
+    try {
+        offered = await release_doc_lines();
+    } except BridgeError as e {
+        log.info("docs sync: release lines unavailable: " + str(e));
+        return False;
+    }
+    if not offered.ready {
+        return False;
+    }
+    keep = [serving_label];
+    for info in offered.lines {
+        if info.label == serving_label {
+            continue;
+        }
+        keep.append(info.label);
+        have = _version(info.label);
+        if have and have[0].fingerprint == info.fingerprint {
+            continue;
+        }
+        bundle = await release_docs(info.tag);
+        if bundle is not None {
+            ingest(bundle);
+        }
+    }
+    retire_versions(keep);
+    return True;
 }
 
 impl docs_sync_tick {
-    if SYNC_STATE.get("settled", False) {
+    now = time.monotonic();
+    if now < SYNC_STATE.get("next_at", 0.0) {
         return;
     }
     try {
         bundle = corpus_bundle();
         if corpus_stale(bundle) {
             ingest(bundle);
-        } else {
-            log.info(
-                "docs sync: graph already holds jac "
-                    + bundle.jac_version
-                    + " docs — nothing to do"
-            );
         }
-        SYNC_STATE["settled"] = True;
+        settled = await sync_release_lines(label_of(bundle.jac_version));
+        SYNC_STATE["next_at"] = now + (RECHECK_S if settled else SYNC_TICK_S);
     } except Exception as e {
-        log.error("docs sync: failed — " + str(e));
+        log.error("docs sync: failed: " + str(e));
     }
 }

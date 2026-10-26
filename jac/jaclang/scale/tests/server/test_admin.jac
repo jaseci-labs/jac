@@ -537,15 +537,219 @@ test "admin page redirect" {
     }
 }
 
-test "admin index page" {
+test "admin console pages answer without waiting on a console build" {
+    import shutil;
+    import tempfile;
+    import threading;
+    import from pathlib { Path }
+    import from jaclang.scale.admin.console_build { AdminConsole, ConsoleState }
+    import from jaclang.scale.server.extensions { AdminExtension }
+
+    def write_console(dist: Path, marker: str) -> Path {
+        dist.mkdir(parents=True, exist_ok=True);
+        (dist / "index.html").write_text(f"<html>{marker}</html>");
+        (dist / "app.js").write_text(f"// {marker}");
+        return dist;
+    }
+
+    # A 503 page, building or failed, says when to come back and reloads then.
+    def assert_retries(name: str, path: str, response: any) {
+        retry = response.headers.get("retry-after");
+        assert retry , f"{name}: {path} 503 carries no Retry-After";
+        assert f'http-equiv="refresh" content="{retry}"' in response.text , (
+            f"{name}: {path} 503 page does not reload after {retry}s"
+        );
+    }
+
+    # Each row: whether the project carries a console under .jac/admin (staged
+    # by a deploy, or left unmarked by an older build), how the build behaves,
+    # and what /admin/ serves once the build has settled.
+    rows = [
+        {
+            "name": "a staged console is served and nothing builds",
+            "staged": True,
+            "build": "instant",
+            "first": 200,
+            "settled": 200,
+            "body": "staged",
+            "builds": 0
+        },
+        {
+            "name": "a running build answers 503 and is not started twice",
+            "staged": False,
+            "build": "gated",
+            "first": 503,
+            "settled": 200,
+            "body": "built",
+            "builds": 1
+        },
+        {
+            "name": "a failed build backs off instead of rebuilding",
+            "staged": False,
+            "build": "fails",
+            "first": 503,
+            "settled": 503,
+            "body": "",
+            "builds": 1
+        },
+        {
+            "name": "a console an older build left in .jac/admin is not served",
+            "staged": "unmarked",
+            "build": "gated",
+            "first": 503,
+            "settled": 200,
+            "body": "built",
+            "builds": 1
+        }
+    ];
+
+    import jaclang.scale.admin;
+    package_ui = Path(jaclang.scale.admin.__file__).parent / "ui";
     client = make_client();
+    ext = [
+        e
+        for e in client.server.extensions
+        if isinstance(e, AdminExtension)
+    ][0];
+    prior_console = ext.admin_console;
+    prior_cwd = os.getcwd();
     try {
-        response = client.get("/admin/");
-        assert response.status_code in [200, 503];
-        if response.status_code == 200 {
-            assert "text/html" in response.headers.get("content-type", "");
+        for row in rows {
+            name = str(row["name"]);
+            tmp = Path(tempfile.mkdtemp(prefix="admin_console_"));
+            try {
+                project = tmp / "project";
+                project.mkdir();
+                if row["staged"] {
+                    staged = write_console(project / ".jac" / "admin", "staged");
+                    if row["staged"] != "unmarked" {
+                        (staged / ".staged").touch();
+                    }
+                }
+                os.chdir(str(project));
+
+                source = tmp / "ui";
+                shutil.copytree(
+                    str(package_ui),
+                    str(source),
+                    ignore=shutil.ignore_patterns(".jac", "node_modules")
+                );
+                cache = tmp / "cache";
+                gate = threading.Event();
+                calls: list[str] = [];
+
+                def build(src: Path) -> Path {
+                    calls.append(str(src));
+                    if row["build"] == "fails" {
+                        raise RuntimeError("the admin build broke");
+                    }
+                    if row["build"] == "gated" {
+                        gate.wait(30);
+                    }
+                    return write_console(src / ".jac" / "client" / "dist", "built");
+                }
+
+                console = AdminConsole(
+                    source_dir=source,
+                    cache_dir=cache,
+                    build_fn=build,
+                    retry_after=300.0
+                );
+                ext.admin_console = console;
+
+                # Several requests while the console is missing: the page, a
+                # client route and an asset, as a browser sends them at once.
+                for path in ["/admin/", "/admin/quotes", "/admin/app.js"] {
+                    response = client.get(path);
+                    assert response.status_code == row["first"] , (
+                        f"{name}: {path} -> {response.status_code}"
+                    );
+                    if row["first"] == 503 {
+                        assert_retries(name, path, response);
+                    }
+                }
+
+                if row["build"] == "gated" {
+                    # Another process sharing the cache finds the build under
+                    # way and does not start its own.
+                    sibling_calls: list[str] = [];
+                    def build_sibling(src: Path) -> Path {
+                        sibling_calls.append(str(src));
+                        return write_console(
+                            src / ".jac" / "client" / "dist", "sibling"
+                        );
+                    }
+                    sibling = AdminConsole(
+                        source_dir=source, cache_dir=cache, build_fn=build_sibling
+                    );
+                    assert sibling.status().state == ConsoleState.BUILDING , name;
+                    gate.set();
+                    assert console.wait_for(30).state == ConsoleState.READY , name;
+                    assert sibling.wait_for(30).state == ConsoleState.READY , name;
+                    assert sibling_calls == [] , (
+                        f"{name}: the sibling rebuilt a console already under way"
+                    );
+                } else {
+                    console.wait_for(30);
+                }
+                if row["build"] == "fails" {
+                    # A sibling process shares the backoff instead of
+                    # starting the same failing build again.
+                    other_calls: list[str] = [];
+                    def build_other(src: Path) -> Path {
+                        other_calls.append(str(src));
+                        return write_console(src / ".jac" / "client" / "dist", "other");
+                    }
+                    other = AdminConsole(
+                        source_dir=source,
+                        cache_dir=cache,
+                        build_fn=build_other,
+                        retry_after=300.0
+                    );
+                    other.status();
+                    other.wait_for(30);
+                    assert other_calls == [] , f"{name}: the failed build was retried";
+                }
+
+                settled = client.get("/admin/quotes");
+                assert settled.status_code == row["settled"] , (
+                    f"{name}: settled /admin/quotes -> {settled.status_code}"
+                );
+                if row["settled"] == 503 {
+                    assert_retries(name, "settled /admin/quotes", settled);
+                }
+                if row["body"] {
+                    assert row["body"] in settled.text , (
+                        f"{name}: served {settled.text!r}"
+                    );
+                    asset = client.get("/admin/app.js");
+                    assert asset.status_code == 200 , name;
+                    assert row["body"] in asset.text , name;
+                    if row["builds"] {
+                        assert (console.entry_dir() / ".used").exists() , (
+                            f"{name}: serving the console did not record its use"
+                        );
+                    }
+                }
+                # Let any build the settled request started reach the build
+                # function before counting.
+                console.wait_for(30);
+                assert len(calls) == row["builds"] , (
+                    f"{name}: {len(calls)} builds, expected {row['builds']}"
+                );
+                for src in calls {
+                    assert not src.startswith(str(source)) , (
+                        f"{name}: built inside the source tree {src}"
+                    );
+                }
+            } finally {
+                os.chdir(prior_cwd);
+                shutil.rmtree(str(tmp), ignore_errors=True);
+            }
         }
     } finally {
+        ext.admin_console = prior_console;
+        os.chdir(prior_cwd);
         client.close();
     }
 }
@@ -672,36 +876,44 @@ test "admin ui includes jac.toml and styles for build" {
 test "admin UI build emits admin based assets and keeps useEffect lambda" {
     import os;
     import shutil;
-    import subprocess;
+    import stat;
     import tempfile;
     import from pathlib { Path }
     import jaclang.scale.admin;
+    import from jaclang.scale.admin.console_build { AdminConsole, ConsoleState }
 
     ui_dir = Path(jaclang.scale.admin.__file__).parent / "ui";
     assert (ui_dir / "main.jac").exists() , "admin UI source missing";
 
-    import from jaclang.scale.runtime.context.util { jac_executable }
-    jac_bin = jac_executable();
-
     tmp = tempfile.mkdtemp(prefix="admin_ui_build_");
+    source = Path(tmp) / "ui";
     try {
-        build_dir = os.path.join(tmp, "ui");
-        shutil.copytree(str(ui_dir), build_dir);
         # never build against a stale copied-in artifact dir
-        shutil.rmtree(os.path.join(build_dir, ".jac"), ignore_errors=True);
+        shutil.copytree(
+            str(ui_dir),
+            str(source),
+            ignore=shutil.ignore_patterns(".jac", "node_modules")
+        );
+        # The official image installs the runtime read-only; the build must
+        # still succeed without writing into its source tree.
+        for (dirpath, dirnames, filenames) in os.walk(str(source)) {
+            for name in filenames {
+                os.chmod(os.path.join(dirpath, name), stat.S_IRUSR | stat.S_IRGRP);
+            }
+            os.chmod(
+                dirpath, stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP
+            );
+        }
 
-        result = subprocess.run(
-            [jac_bin, "build", "--as", "client", "main.jac"],
-            cwd=build_dir,
-            capture_output=True,
-            text=True,
-            timeout=600
+        console = AdminConsole(source_dir=source, cache_dir=Path(tmp) / "cache");
+        assert console.status().state == ConsoleState.BUILDING;
+        status = console.wait_for(600);
+        assert status.state == ConsoleState.READY , (
+            f"admin UI build produced no console: {status.error[-1200:]}"
         );
-        dist = Path(build_dir) / ".jac" / "client" / "dist";
-        assert (dist / "index.html").exists() , (
-            f"admin UI build produced no dist (rc={result.returncode}); "
-            f"stdout={result.stdout[-600:]} stderr={result.stderr[-600:]}"
-        );
+        assert not (source / ".jac").exists() , "the build wrote into its source tree";
+        dist = status.dist_dir;
+        assert dist is not None;
         index_html = (dist / "index.html").read_text(encoding="utf-8");
         assert 'src="/admin/' in index_html , (
             f"admin assets not under /admin/ (base_path lost): {index_html}"
@@ -716,6 +928,9 @@ test "admin UI build emits admin based assets and keeps useEffect lambda" {
         );
         assert "useEffect([])" not in js;
     } finally {
+        for (dirpath, dirnames, filenames) in os.walk(str(source)) {
+            os.chmod(dirpath, stat.S_IRWXU);
+        }
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }

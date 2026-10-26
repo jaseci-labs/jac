@@ -819,8 +819,7 @@ i64 __jac_home_dir(const char *name, char *buf, i64 cap) {
     if (rc != 0 || found == NULL) return -1;
     if (pw.dir == NULL) return -2;
     size_t n = strlen(pw.dir);
-    if ((i64)n >= cap) return -1;
-    memcpy(buf, pw.dir, n + 1);
+    if ((i64)n < cap) memcpy(buf, pw.dir, n + 1);
     return (i64)n;
 }
 

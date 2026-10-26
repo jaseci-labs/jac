@@ -7,6 +7,7 @@ glob CONFIG_REVISION_ANNOTATION: str = "jac-scale.config-revision",
      _EXIT_CUSHION_S: int = 5,
      _CLIENT_BUILD_ATTEMPTS: int = 3,
      _CLIENT_BUILD_RETRY_PAUSE_S: int = 3,
+     _CLIENT_BUILD_ALONGSIDE_SEAL_GIB: int = 24,
      _DEP_INSTALL_TIMEOUT_S: int = 900,
      _TRANSIENT_CLIENT_BUILD_MARKERS: tuple[str, ...] = (
          "dependency installation failed",
@@ -35,6 +36,9 @@ def _output_tail(result: any, lines: int = 15) -> str;
 
 
 def _is_transient_client_build_failure(output: str) -> bool;
+
+
+def client_build_alongside_seal -> bool;
 
 
 enum ScalingMode(StrEnum) {
@@ -92,6 +96,7 @@ obj ManifestBuilder {
     ) -> str;
 
     def _build_client_bundle(project_dir: str);
+    def _start_client_build(project_dir: str) -> tuple[any, any];
     def _client_dist_candidates(stage: str, entry_rel: any) -> list[str];
     def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any];
     def check_pod_config(app_config: AppConfig, image: str);
@@ -134,6 +139,7 @@ obj ManifestBuilder {
     def _user_secret_name -> str;
     def _owner_labels -> dict[str, str];
     def _service_account_name -> str;
+    def _pod_service_account(svc_name: str) -> str;
     def _peer_dns_url(peer_name: str) -> str;
     def _build_env(svc_name: str, svc_cfg: dict[str, any]) -> list[dict[str, any]];
     def _configured_memory_request(svc_cfg: dict[str, any]) -> str | None;
