@@ -2350,10 +2350,11 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
         );
         try_bb = fn.append_basic_block("fr.fast.k0");
         b.cbranch(in_range, try_bb, slow_bb);
-        found: list[tuple[ir.Block, ir.Value, int]] = [];
+        found: list[tuple[ir.Block, ir.Value, int, int]] = [];
+        p10 = 1;
         for k in range(7) {
             b.position_at_end(try_bb);
-            scale = ir.Constant(f64, float(10 ** k));
+            scale = ir.Constant(f64, float(p10));
             scaled = b.fmul(mag, scale, name=f"fr.s{k}");
             fits = b.fcmp_ordered(
                 "<", scaled, ir.Constant(f64, 1e15), name=f"fr.fit{k}"
@@ -2373,17 +2374,18 @@ impl NaIRGenPass._float_repr_fn -> ir.Function {
             next_bb = fn.append_basic_block(f"fr.fast.k{k + 1}") if k < 6 else slow_bb;
             here = b.block;
             b.cbranch(hit, emit_bb, next_bb);
-            found.append((here, n, k));
+            found.append((here, n, k, p10));
             try_bb = next_bb;
+            p10 *= 10;
         }
         b.position_at_end(emit_bb);
         n_phi = b.phi(i64, name="fr.N");
         k_phi = b.phi(i64, name="fr.k");
         p_phi = b.phi(i64, name="fr.p10");
-        for (blk, n, k) in found {
+        for (blk, n, k, p) in found {
             n_phi.add_incoming(n, blk);
             k_phi.add_incoming(ir.Constant(i64, k), blk);
-            p_phi.add_incoming(ir.Constant(i64, 10 ** k), blk);
+            p_phi.add_incoming(ir.Constant(i64, p), blk);
         }
         out = self._str_alloc(b, ir.Constant(i64, 48), name="fr.fast.buf");
         start = b.zext(negative, i64, name="fr.signlen");
