@@ -885,7 +885,7 @@ impl _client_imports(file_path: str, src: str) -> dict[tuple[int, str], bool] {
     }
     client: dict[tuple[int, str], bool] = {};
     read_by: dict[tuple[int, str], set[str]] = {};
-    import_of: dict[int, tuple[int, str]] = {};
+    import_of: dict[tuple[int, str], list[tuple[int, str]]] = {};
     for stmt in mod.body {
         if isinstance(stmt, uni.Import) and stmt.from_loc is not None {
             key = (stmt.loc.first_line, stmt.from_loc.dot_path_str);
@@ -897,7 +897,9 @@ impl _client_imports(file_path: str, src: str) -> dict[tuple[int, str], bool] {
                 if isinstance(item, uni.ModuleItem) {
                     bound: any = item.alias or item.name;
                     if bound.sym is not None {
-                        import_of[id(bound.sym)] = key;
+                        import_of.setdefault((id(bound.sym), bound.value), []).append(
+                            key
+                        );
                     }
                 }
             }
@@ -912,8 +914,10 @@ impl _client_imports(file_path: str, src: str) -> dict[tuple[int, str], bool] {
             spaces.add('server');
         }
         for nm in stmt.get_all_sub_nodes(uni.Name) {
-            owner = import_of.get(id(nm.sym)) if nm.sym is not None else None;
-            if owner is not None {
+            owners = import_of.get((id(nm.sym), nm.value), [])
+                if nm.sym is not None
+                else [];
+            for owner in owners {
                 read_by[owner].update(spaces);
             }
         }

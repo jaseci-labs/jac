@@ -406,6 +406,36 @@ test "a client local that shares an sv import's name does not hide its service a
 }
 
 
+test "an aliased sv import keeps its client readers when another alias imports the same name" {
+    import from pathlib { Path }
+    with tempfile.TemporaryDirectory() as tmpdir {
+        root_path = Path(tmpdir).resolve();
+        (root_path / "jac.toml").write_text(
+            '[project]\nname = "notes"\nkind = "web-app"\nentry-point = "main"\n'
+        );
+        (root_path / "main.jac").write_text(
+            "def:pub app -> JsxElement {\n    return <div>notes</div>;\n}\n"
+        );
+        (root_path / "notes").mkdir();
+        (root_path / "notes" / "store.jac").write_text(NOTES_STORE);
+        (root_path / "notes" / "helper.jac").write_text(
+            "sv import from .store { list_notes as client_list }\n"
+            "import from .store { list_notes as server_list }\n\n"
+            "cl def count_notes -> int {\n    return len(client_list());\n}\n\n"
+            "def:pub note_total -> int {\n    return len(server_list());\n}\n"
+        );
+        assert fix("placement", [str(root_path)]) == 0;
+        toml = (root_path / "jac.toml").read_text();
+        assert '"notes.helper.count_notes" = "client"' in toml , toml;
+        assert "[apps.store]" not in toml , (
+            "client_list is read only by the client-pinned helper; server_list "
+            "is a plain import and needs no service: "
+            + toml
+        );
+    }
+}
+
+
 test "--dry-run classifies an sv import as the run does while its target still has markers" {
     import io;
     import from contextlib { redirect_stderr, redirect_stdout }
