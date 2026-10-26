@@ -410,10 +410,10 @@ test "E0078: a method or ability with a field's name is rejected" {
     # The later class attribute replaced the field, so `self.rise` read the
     # ability's function and `jac check` passed it silently.
     (prog, _) = compile_and_check("parser_E0078_field_method_clash.jac");
-    assert count_diagnostic_code(prog, "E0078") == 2 , "the method 'grow' and the ability 'rise'";
+    assert count_diagnostic_code(prog, "E0078") == 3 , "the method 'grow', the ability 'rise' and the impl-block 'grow'";
 }
 
-test "E0078: distinct names and property accessors are not clashes" {
+test "E0078: distinct names, property accessors and init/postinit beside same-named fields are not clashes" {
     (prog, _) = compile_and_check("parser_E0078_distinct_members.jac");
     assert not has_diagnostic_code(prog, "E0078");
 }
