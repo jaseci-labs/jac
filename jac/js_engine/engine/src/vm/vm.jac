@@ -1638,6 +1638,40 @@ def _vm_get_cached(ins: Instruction, rv: JSValue) -> JSValue {
     return _vm_mgc_get_sid(ins.arg2, rv, gc_sid);
 }
 
+"""After a GETFIELD hit through the Instruction's own-slot IC: copy the entry
+receiver `rv` matched (shape id, slot) into the site's flat IC at `ricp`.
+Shapes are immutable and carry the attributes, so a pair stays valid for as
+long as the shape does; the loop's hit re-tests the receiver every time."""
+def _ric_fill_get(ricp: int, c: int, ins: Instruction, rv: JSValue) -> None {
+    if ins.ic_holder != 1 or ins.ic_obj <= 0 {
+        return;
+    }
+    rf_sid: int = js_object_ic_shape(rv);
+    if rf_sid <= 0 {
+        return;
+    }
+    if rf_sid == ins.ic_obj {
+        __mem_store_i64(wrapping_add(ricp, wrapping_mul(c, 16)), rf_sid);
+        __mem_store_i64(
+            wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)), ins.ic_ver // 16
+        );
+    } elif ins.ic_obj2 > 0 and rf_sid == ins.ic_obj2 {
+        __mem_store_i64(wrapping_add(ricp, wrapping_mul(c, 16)), rf_sid);
+        __mem_store_i64(
+            wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)), ins.ic_ver2 // 16
+        );
+    }
+}
+
+"""After a SETFIELD hit through the Instruction's own-slot IC (_vm_set_ic_ok:
+a writable own data slot of shape ins.ic_obj): copy it into the flat IC."""
+def _ric_fill_set(ricp: int, c: int, ins: Instruction) -> None {
+    __mem_store_i64(wrapping_add(ricp, wrapping_mul(c, 16)), ins.ic_obj);
+    __mem_store_i64(
+        wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)), ins.ic_ver // 16
+    );
+}
+
 """_vm_mgc_get with the receiver's shape id already read (-1: not cacheable)."""
 def _vm_mgc_get_sid(key: int, rv: JSValue, mg_sid: int) -> JSValue {
     if mg_sid < 0 {
@@ -33647,11 +33681,18 @@ obj VM {
         # between).
         rc_k: int = 0;
         rc_rp: int = wrapping_add(frame.func.rcode_ptr, wrapping_mul(argpc, 8));
+        # The caller's registers, through its locals buffer (valid until the
+        # register file grows below).
+        rc_src: int = __list_data_ptr(frame.locals);
         if argpc >= 0 {
             while rc_k < argc {
                 rc_w: int = __mem_load_i64(wrapping_add(rc_rp, wrapping_mul(rc_k, 8)));
                 if (rc_w & 32768) != 0
-                    and js_is_tdz(frame.locals[frame.lb + (rc_w & 32767)]) {
+                    and js_is_tdz(
+                        __mem_load_i64(
+                            wrapping_add(rc_src, wrapping_mul(wrapping_add(frame.lb, rc_w & 32767), 8))
+                        )
+                    ) {
                     self._reg_tdz_throw(frame, st, rc_w & 32767, orig);
                     return 2;
                 }
@@ -33660,31 +33701,61 @@ obj VM {
         }
         np: int = len(cl.func.params);
         pb: int = cl.func.param_base;
-        # The callee's registers: a window pushed on the register file.
-        rc_base: int = self._win_alloc(cl.func.num_locals, cl.func.reg_tmp_base);
+        # The callee's registers: a window pushed on the register file
+        # (_win_alloc inline; the fill and the argument copy go through the
+        # file's buffer, taken after any growth).
+        rc_base: int = self.rtop;
+        rc_end: int = rc_base + cl.func.num_locals;
+        while len(self.regs) < rc_end {
+            self.regs.append(js_undefined());
+        }
+        self.rtop = rc_end;
+        rc_rb: int = __list_data_ptr(self.regs);
+        rc_src = __list_data_ptr(frame.locals);
+        # Only the function's own locals start as undefined; the translator's
+        # temporaries are written before they are read.
+        rc_k = 0;
+        rc_fe: int = cl.func.reg_tmp_base;
+        rc_wp: int = wrapping_add(rc_rb, wrapping_mul(rc_base, 8));
+        while rc_k < rc_fe {
+            __mem_store_i64(wrapping_add(rc_wp, wrapping_mul(rc_k, 8)), js_undefined());
+            rc_k = rc_k + 1;
+        }
+        rc_dst: int = wrapping_add(rc_wp, wrapping_mul(pb, 8));
+        rc_lbp: int = wrapping_add(rc_src, wrapping_mul(frame.lb, 8));
         if argc == -1 and np > 0 {
-            self.regs[rc_base + pb] = self.reg_arg1;
+            __mem_store_i64(rc_dst, self.reg_arg1);
         }
         rc_k = 0;
         if argpc >= 0 {
             while rc_k < np and rc_k < argc {
-                self.regs[rc_base + pb + rc_k] = frame.locals[
-                    frame.lb + (__mem_load_i64(wrapping_add(rc_rp, wrapping_mul(rc_k, 8))) & 32767)
-                ];
+                __mem_store_i64(
+                    wrapping_add(rc_dst, wrapping_mul(rc_k, 8)),
+                    __mem_load_i64(
+                        wrapping_add(
+                            rc_lbp,
+                            wrapping_mul(
+                                __mem_load_i64(wrapping_add(rc_rp, wrapping_mul(rc_k, 8))) & 32767,
+                                8
+                            )
+                        )
+                    )
+                );
                 rc_k = rc_k + 1;
             }
         } elif argpc == -1 {
             # list mode: self.reg_call_args
             while rc_k < np and rc_k < argc {
-                self.regs[rc_base + pb + rc_k] = self.reg_call_args[rc_k];
+                __mem_store_i64(wrapping_add(rc_dst, wrapping_mul(rc_k, 8)), self.reg_call_args[rc_k]);
                 rc_k = rc_k + 1;
             }
         } else {
             # contiguous argument registers from -(argpc + 2) (R_STK words)
             while rc_k < np and rc_k < argc {
-                self.regs[rc_base + pb + rc_k] = frame.locals[
-                    frame.lb + (0 - argpc - 2 + rc_k)
-                ];
+                __mem_store_i64(
+                    wrapping_add(rc_dst, wrapping_mul(rc_k, 8)),
+                    __mem_load_i64(wrapping_add(rc_lbp, wrapping_mul(0 - argpc - 2 + rc_k, 8)))
+                );
                 rc_k = rc_k + 1;
             }
         }
@@ -35282,7 +35353,14 @@ obj VM {
             return;
         }
         if ir_keep {
-            self.frames[ir_top - 1].locals[self.frames[ir_top - 1].lb + ir_dst] = st.ret;
+            # the caller's ret_reg, through its locals buffer
+            __mem_store_i64(
+                wrapping_add(
+                    __list_data_ptr(self.frames[ir_top - 1].locals),
+                    wrapping_mul(wrapping_add(self.frames[ir_top - 1].lb, ir_dst), 8)
+                ),
+                st.ret
+            );
         }
         # An implicit derived constructor's own fields, after the super
         # constructor returned (_op_new's post-ctor block); a throw unwinds
@@ -36159,11 +36237,12 @@ obj VM {
         # (rcode_ptr): no bounds check per dispatch, and a frame switch reloads
         # an integer instead of a counted list reference.
         rcp: int = frame.func.rcode_ptr;
-        code: list[Instruction] = frame.func.code;
-        regs: list[JSValue] = frame.locals;
+        ricp: int = frame.func.ric_ptr;
+        # (no `code` / `regs` locals: they are read through `frame` where
+        # needed, so a frame switch retains and releases nothing for them)
         if not frame.win {
-            while len(regs) < frame.func.num_locals {
-                regs.append(js_undefined());
+            while len(frame.locals) < frame.func.num_locals {
+                frame.locals.append(js_undefined());
             }
         }
         lb: int = frame.lb;
@@ -36182,6 +36261,7 @@ obj VM {
             rlm.safepoint_req = True;
         }
         w: int = 0;
+        rb: int = 0;
         op: int = 0;
         a: int = 0;
         b: int = 0;
@@ -36190,6 +36270,7 @@ obj VM {
         yi: int = 0;
         br: int = 0;
         cr: int = 0;
+        xo: int = 0;
         va: JSValue = 0;
         vb: JSValue = 0;
         vr: JSValue = 0;
@@ -36226,6 +36307,7 @@ obj VM {
                     rlm.safepoint_req = True;
                 }
             }
+            rb = __list_data_ptr(frame.locals);
             w = __mem_load_i64(wrapping_add(rcp, wrapping_mul(pc, 8)));
             op = w & 255;
             pc = wrapping_add(pc, 1);
@@ -36255,22 +36337,38 @@ obj VM {
                     }
                 } else {
                     ok = True;
-                    va = regs[wrapping_add(lb, (b & 32767))];
+                    va = _rget(rb, lb, (b & 32767));
                 }
                 if not ok {} elif (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(frame, st, b & 32767, c);
                 } else {
-                    vr = _vm_get_cached(code[c], va);
+                    # The site's flat own-slot IC first (ric_ptr: shape id,
+                    # slot; filled from the Instruction's IC below): a hit
+                    # reads no Instruction field and runs no IC-kind test.
+                    xi = __mem_load_i64(wrapping_add(ricp, wrapping_mul(c, 16)));
+                    vr = jsv_hole();
+                    if xi > 0 {
+                        vr = js_object_ic_hit(
+                            va,
+                            xi,
+                            __mem_load_i64(
+                                wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8))
+                            )
+                        );
+                    }
+                    if jsv_is_hole(vr) {
+                        vr = _vm_get_cached(frame.func.code[c], va);
+                        if not jsv_is_hole(vr) and jsv_is_object_cell(va) {
+                            _ric_fill_get(ricp, c, frame.func.code[c], va);
+                        }
+                    }
                     if not jsv_is_hole(vr) {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = vr;
+                        _rset(rb, lb, ((w >> 8) & 65535), vr);
                     } elif self._reg_getfield_slow(frame, st, w, c, va, pc) == 1 {
                         # a plain-JS getter entered in-loop
                         frame = self.frames[len(self.frames) - 1];
                         rcp = frame.func.rcode_ptr;
-                        code = frame.func.code;
-                        if frame.locals is not regs {
-                            regs = frame.locals;
-                        }
+                        ricp = frame.func.ric_ptr;
                         lb = frame.lb;
                         pc = 0;
                     }
@@ -36291,18 +36389,18 @@ obj VM {
                 } else {
                     vr = _TDZ_SENTINEL;
                 }
-                regs[wrapping_add(lb, ((w >> 8) & 65535))] = vr;
+                _rset(rb, lb, ((w >> 8) & 65535), vr);
             } elif op == 5 {
                 # LOADTHIS dst, orig (a shared this cell — derived ctor and
                 # its arrows — is authoritative; TDZ in it or
                 # this_uninitialized is the super() ReferenceError)
                 if frame.this_binding_cell == 0 and not frame.this_uninitialized {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = frame.this_val;
+                    _rset(rb, lb, ((w >> 8) & 65535), frame.this_val);
                 } elif frame.this_binding_cell != 0
                     and not js_is_tdz(cell_get(frame.this_binding_cell)) {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = cell_get(
+                    _rset(rb, lb, ((w >> 8) & 65535), cell_get(
                         frame.this_binding_cell
-                    );
+                    ));
                 } else {
                     self._reg_throw(
                         frame,
@@ -36315,18 +36413,18 @@ obj VM {
                 }
             } elif op == 3 {
                 # LOADI dst, imm
-                regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_int(
+                _rset(rb, lb, ((w >> 8) & 65535), js_int(
                     ((w >> 40) & 8388607) - 4194304
-                );
+                ));
             } elif op == 1 {
                 # MOVE dst, src
                 b = (w >> 24) & 65535;
-                if (b & 32768) != 0 and js_is_tdz(regs[wrapping_add(lb, (b & 32767))]) {
+                if (b & 32768) != 0 and js_is_tdz(_rget(rb, lb, (b & 32767))) {
                     self._reg_tdz_throw(
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                     );
                 } else {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = regs[wrapping_add(lb, (b & 32767))];
+                    _rset(rb, lb, ((w >> 8) & 65535), _rget(rb, lb, (b & 32767)));
                 }
             } elif op == 9 {
                 # LOADFREE dst, idx, orig
@@ -36346,19 +36444,19 @@ obj VM {
                             1
                         );
                     } else {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = vr;
+                        _rset(rb, lb, ((w >> 8) & 65535), vr);
                     }
                 } else {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_undefined();
+                    _rset(rb, lb, ((w >> 8) & 65535), js_undefined());
                 }
             } elif op == 73 {
                 # BTRUE / BFALSE r -> target
                 a = (w >> 8) & 65535;
-                if (a & 32768) != 0 and js_is_tdz(regs[wrapping_add(lb, (a & 32767))]) {
+                if (a & 32768) != 0 and js_is_tdz(_rget(rb, lb, (a & 32767))) {
                     self._reg_tdz_throw(
                         frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                     );
-                } elif jsv_coerce_to_bool(regs[wrapping_add(lb, (a & 32767))]) == (op == 72) {
+                } elif jsv_coerce_to_bool(_rget(rb, lb, (a & 32767))) == (op == 72) {
                     pc = (w >> 40) & 8388607;
                 }
             } elif op == 82 or op == 98 {
@@ -36366,11 +36464,11 @@ obj VM {
                 # as the instruction's immediate)
                 b = (w >> 24) & 65535;
                 c = (w >> 40) & 8388607;
-                va = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (b & 32767));
                 if op == 98 {
                     vb = js_int(c - 4194304);
                 } else {
-                    vb = regs[wrapping_add(lb, (c & 32767))];
+                    vb = _rget(rb, lb, (c & 32767));
                 }
                 vr = jsv_hole();
                 if jsv_is_int32(vb) and jsv_to_int32(vb) >= 0 {
@@ -36380,7 +36478,7 @@ obj VM {
                     }
                 }
                 if not jsv_is_hole(vr) {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = vr;
+                    _rset(rb, lb, ((w >> 8) & 65535), vr);
                 } else {
                     self._reg_getindex_slow(frame, st, w, va, vb, pc);
                 }
@@ -36404,10 +36502,10 @@ obj VM {
                     # ReferenceError (br = -2 skips the call).
                     br = br & 32767;
                     if frame.this_binding_cell == 0 and not frame.this_uninitialized {
-                        regs[wrapping_add(lb, (br))] = frame.this_val;
+                        _rset(rb, lb, (br), frame.this_val);
                     } elif frame.this_binding_cell != 0
                         and not js_is_tdz(cell_get(frame.this_binding_cell)) {
-                        regs[wrapping_add(lb, (br))] = cell_get(frame.this_binding_cell);
+                        _rset(rb, lb, (br), cell_get(frame.this_binding_cell));
                     } else {
                         self._reg_throw(
                             frame,
@@ -36420,7 +36518,7 @@ obj VM {
                         br = -2;
                     }
                 }
-                va = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (b & 32767));
                 if br == -2 {
                     pc = yi;
                 } elif (b & 32768) != 0 and js_is_tdz(va) {
@@ -36430,7 +36528,7 @@ obj VM {
                     pc = yi;
                 } elif br >= 0
                     and (br & 32768) != 0
-                    and js_is_tdz(regs[wrapping_add(lb, (br & 32767))]) {
+                    and js_is_tdz(_rget(rb, lb, (br & 32767))) {
                     self._reg_tdz_throw(
                         frame, st, br & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                     );
@@ -36438,15 +36536,18 @@ obj VM {
                 } else {
                     vb = js_undefined();
                     if br >= 0 {
-                        vb = regs[wrapping_add(lb, (br & 32767))];
+                        vb = _rget(rb, lb, (br & 32767));
                         br = br & 32767;
                     }
                     cr = 0;
+                    # The site's stack instruction, read once: every path below
+                    # takes it, and its arg3 bit 8 keeps a call off the
+                    # in-loop entries (ok: the bit is clear).
+                    xo = frame.func.rorig[wrapping_add(pc, -1)];
+                    ok = (frame.func.code[xo].arg3 & 8) == 0;
                     # (a closure value is never a native, a proxy or
                     # [[IsHTMLDDA]]: is_fn_val excludes them)
-                    if (code[frame.func.rorig[wrapping_add(pc, -1)]].arg3 & 8) == 0
-                        and len(frame.with_objs) == 0
-                        and is_fn_val(va) {
+                    if ok and len(frame.with_objs) == 0 and is_fn_val(va) {
                         cr = self._reg_call_enter(
                             frame,
                             st,
@@ -36455,35 +36556,30 @@ obj VM {
                             a,
                             xi,
                             c,
-                            frame.func.rorig[wrapping_add(pc, -1)],
+                            xo,
                             yi
                         );
-                    } elif br >= 0
+                    } elif ok
+                        and br >= 0
                         and is_native_val(va)
                         and get_native_kind(va) == NATIVE_KIND_FN_CALL
-                        and (code[frame.func.rorig[wrapping_add(pc, -1)]].arg3 & 8) == 0
                         and len(frame.with_objs) == 0
                         and is_fn_val(vb)
                         and not is_native_val(vb) {
                         # fn.call(t, args...) on a closure: enter fn with this = t
-                        cr = self._reg_fn_call_enter(
-                            frame, st, vb, a, xi, c, frame.func.rorig[wrapping_add(pc, -1)], yi
-                        );
+                        cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
                     }
                     if cr == 1 {
                         frame = self.frames[len(self.frames) - 1];
                         rcp = frame.func.rcode_ptr;
-                        code = frame.func.code;
-                        if frame.locals is not regs {
-                            regs = frame.locals;
-                        }
+                        ricp = frame.func.ric_ptr;
                         lb = frame.lb;
                         pc = 0;
                     } elif cr == 0 {
                         # (a plain CALL of a native passes this = undefined:
                         # the receiver-free modes 2 / 3 / 5 accept it)
-                        if is_native_val(va)
-                            and (code[frame.func.rorig[wrapping_add(pc, -1)]].arg3 & 8) == 0
+                        if ok
+                            and is_native_val(va)
                             and self._reg_native_fast_call(
                                 frame,
                                 st,
@@ -36492,12 +36588,12 @@ obj VM {
                                 vb,
                                 xi,
                                 c,
-                                frame.func.rorig[wrapping_add(pc, -1)]
+                                xo
                             ) {} else {
                             self._reg_bridge_call(
                                 frame,
                                 st,
-                                frame.func.rorig[wrapping_add(pc, -1)],
+                                xo,
                                 a,
                                 b & 32767,
                                 br,
@@ -36537,27 +36633,35 @@ obj VM {
                     }
                 } else {
                     ok = True;
-                    va = regs[wrapping_add(lb, (a & 32767))];
+                    va = _rget(rb, lb, (a & 32767));
                 }
-                vb = regs[wrapping_add(lb, (b & 32767))];
+                vb = _rget(rb, lb, (b & 32767));
                 if not ok {} elif (a & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(frame, st, a & 32767, c);
                 } elif (b & 32768) != 0 and js_is_tdz(vb) {
                     self._reg_tdz_throw(frame, st, b & 32767, c);
-                } elif _vm_set_ic_ok(code[c])
+                } elif __mem_load_i64(wrapping_add(ricp, wrapping_mul(c, 16))) > 0
                     and js_object_ic_set_hit(
-                        va, code[c].ic_obj, code[c].ic_ver // 16, vb
-                    ) {} elif _vm_set_probe(code[c], va, vb) {} elif self._reg_setfield_slow(
+                        va,
+                        __mem_load_i64(wrapping_add(ricp, wrapping_mul(c, 16))),
+                        __mem_load_i64(
+                            wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8))
+                        ),
+                        vb
+                    ) {} elif _vm_set_ic_ok(frame.func.code[c])
+                    and js_object_ic_set_hit(
+                        va, frame.func.code[c].ic_obj, frame.func.code[c].ic_ver // 16, vb
+                    ) {
+                    # (the site's flat IC takes this entry for the next hit)
+                    _ric_fill_set(ricp, c, frame.func.code[c]);
+                } elif _vm_set_probe(frame.func.code[c], va, vb) {} elif self._reg_setfield_slow(
                     frame, st, w, c, va, vb, pc
                 )
                     == 1 {
                     # a plain-JS setter entered in-loop (result dropped)
                     frame = self.frames[len(self.frames) - 1];
                     rcp = frame.func.rcode_ptr;
-                    code = frame.func.code;
-                    if frame.locals is not regs {
-                        regs = frame.locals;
-                    }
+                    ricp = frame.func.ric_ptr;
                     lb = frame.lb;
                     pc = 0;
                 }
@@ -36567,35 +36671,32 @@ obj VM {
                 ok = True;
                 if op == 92 {
                     a = (w >> 8) & 65535;
-                    if (a & 32768) != 0 and js_is_tdz(regs[wrapping_add(lb, (a & 32767))]) {
+                    if (a & 32768) != 0 and js_is_tdz(_rget(rb, lb, (a & 32767))) {
                         self._reg_tdz_throw(
                             frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                         );
                         ok = False;
                     } else {
-                        vr = regs[wrapping_add(lb, (a & 32767))];
+                        vr = _rget(rb, lb, (a & 32767));
                     }
                 }
                 if ok and self._reg_return(frame, st, vr, pc) {
                     frame = self.frames[len(self.frames) - 1];
                     rcp = frame.func.rcode_ptr;
-                    code = frame.func.code;
-                    if frame.locals is not regs {
-                        regs = frame.locals;
-                    }
+                    ricp = frame.func.ric_ptr;
                     lb = frame.lb;
                     pc = frame.rpc;
                 }
             } elif op == 7 {
                 # CHECKTDZ slot
                 a = (w >> 8) & 65535;
-                if js_is_tdz(regs[wrapping_add(lb, (a))]) {
+                if js_is_tdz(_rget(rb, lb, (a))) {
                     self._reg_tdz_throw(frame, st, a, frame.func.rorig[wrapping_add(pc, -1)]);
                 }
             } elif op == 33 {
                 # ADDI / SUBI dst, src, imm
                 b = (w >> 24) & 65535;
-                va = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (b & 32767));
                 yi = ((w >> 40) & 8388607) - 4194304;
                 if jsv_is_int32(va) {
                     if op == 32 {
@@ -36604,9 +36705,9 @@ obj VM {
                         xi = jsv_to_int32(va) - yi;
                     }
                     if xi >= -2147483648 and xi <= 2147483647 {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_int(xi);
+                        _rset(rb, lb, ((w >> 8) & 65535), js_int(xi));
                     } else {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_number(float(xi));
+                        _rset(rb, lb, ((w >> 8) & 65535), js_number(float(xi)));
                     }
                 } elif (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
@@ -36629,8 +36730,8 @@ obj VM {
                 # BSEQ / BSNE a, b -> target (strict equality never throws)
                 a = (w >> 8) & 65535;
                 b = (w >> 24) & 65535;
-                va = regs[wrapping_add(lb, (a & 32767))];
-                vb = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (a & 32767));
+                vb = _rget(rb, lb, (b & 32767));
                 if (a & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -36659,22 +36760,19 @@ obj VM {
                 ok = True;
                 if op == 92 {
                     a = (w >> 8) & 65535;
-                    if (a & 32768) != 0 and js_is_tdz(regs[wrapping_add(lb, (a & 32767))]) {
+                    if (a & 32768) != 0 and js_is_tdz(_rget(rb, lb, (a & 32767))) {
                         self._reg_tdz_throw(
                             frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                         );
                         ok = False;
                     } else {
-                        vr = regs[wrapping_add(lb, (a & 32767))];
+                        vr = _rget(rb, lb, (a & 32767));
                     }
                 }
                 if ok and self._reg_return(frame, st, vr, pc) {
                     frame = self.frames[len(self.frames) - 1];
                     rcp = frame.func.rcode_ptr;
-                    code = frame.func.code;
-                    if frame.locals is not regs {
-                        regs = frame.locals;
-                    }
+                    ricp = frame.func.ric_ptr;
                     lb = frame.lb;
                     pc = frame.rpc;
                 }
@@ -36691,7 +36789,7 @@ obj VM {
                     xi = wrapping_add(pc, 1);
                     yi = wrapping_add(wrapping_add(pc, 1), c);
                 }
-                va = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (b & 32767));
                 if (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -36699,7 +36797,7 @@ obj VM {
                     pc = yi;
                 } elif br >= 0
                     and (br & 32768) != 0
-                    and js_is_tdz(regs[wrapping_add(lb, (br & 32767))]) {
+                    and js_is_tdz(_rget(rb, lb, (br & 32767))) {
                     self._reg_tdz_throw(
                         frame, st, br & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                     );
@@ -36707,15 +36805,18 @@ obj VM {
                 } else {
                     vb = js_undefined();
                     if br >= 0 {
-                        vb = regs[wrapping_add(lb, (br & 32767))];
+                        vb = _rget(rb, lb, (br & 32767));
                         br = br & 32767;
                     }
                     cr = 0;
+                    # The site's stack instruction, read once: every path below
+                    # takes it, and its arg3 bit 8 keeps a call off the
+                    # in-loop entries (ok: the bit is clear).
+                    xo = frame.func.rorig[wrapping_add(pc, -1)];
+                    ok = (frame.func.code[xo].arg3 & 8) == 0;
                     # (a closure value is never a native, a proxy or
                     # [[IsHTMLDDA]]: is_fn_val excludes them)
-                    if (code[frame.func.rorig[wrapping_add(pc, -1)]].arg3 & 8) == 0
-                        and len(frame.with_objs) == 0
-                        and is_fn_val(va) {
+                    if ok and len(frame.with_objs) == 0 and is_fn_val(va) {
                         cr = self._reg_call_enter(
                             frame,
                             st,
@@ -36724,35 +36825,30 @@ obj VM {
                             a,
                             xi,
                             c,
-                            frame.func.rorig[wrapping_add(pc, -1)],
+                            xo,
                             yi
                         );
-                    } elif br >= 0
+                    } elif ok
+                        and br >= 0
                         and is_native_val(va)
                         and get_native_kind(va) == NATIVE_KIND_FN_CALL
-                        and (code[frame.func.rorig[wrapping_add(pc, -1)]].arg3 & 8) == 0
                         and len(frame.with_objs) == 0
                         and is_fn_val(vb)
                         and not is_native_val(vb) {
                         # fn.call(t, args...) on a closure: enter fn with this = t
-                        cr = self._reg_fn_call_enter(
-                            frame, st, vb, a, xi, c, frame.func.rorig[wrapping_add(pc, -1)], yi
-                        );
+                        cr = self._reg_fn_call_enter(frame, st, vb, a, xi, c, xo, yi);
                     }
                     if cr == 1 {
                         frame = self.frames[len(self.frames) - 1];
                         rcp = frame.func.rcode_ptr;
-                        code = frame.func.code;
-                        if frame.locals is not regs {
-                            regs = frame.locals;
-                        }
+                        ricp = frame.func.ric_ptr;
                         lb = frame.lb;
                         pc = 0;
                     } elif cr == 0 {
                         # (a plain CALL of a native passes this = undefined:
                         # the receiver-free modes 2 / 3 / 5 accept it)
-                        if is_native_val(va)
-                            and (code[frame.func.rorig[wrapping_add(pc, -1)]].arg3 & 8) == 0
+                        if ok
+                            and is_native_val(va)
                             and self._reg_native_fast_call(
                                 frame,
                                 st,
@@ -36761,12 +36857,12 @@ obj VM {
                                 vb,
                                 xi,
                                 c,
-                                frame.func.rorig[wrapping_add(pc, -1)]
+                                xo
                             ) {} else {
                             self._reg_bridge_call(
                                 frame,
                                 st,
-                                frame.func.rorig[wrapping_add(pc, -1)],
+                                xo,
                                 a,
                                 b & 32767,
                                 br,
@@ -36782,15 +36878,15 @@ obj VM {
             } elif op == 2 {
                 # LOADK dst, orig
                 c = (w >> 40) & 8388607;
-                if code[c].ic_holder == 1 {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = code[c].ic_obj;
+                if frame.func.code[c].ic_holder == 1 {
+                    _rset(rb, lb, ((w >> 8) & 65535), frame.func.code[c].ic_obj);
                 } else {
                     self._reg_bridge(frame, st, c, 0, 0, 0, 0, (w >> 8) & 65535, 1);
                 }
             } elif op == 32 {
                 # ADDI / SUBI dst, src, imm
                 b = (w >> 24) & 65535;
-                va = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (b & 32767));
                 yi = ((w >> 40) & 8388607) - 4194304;
                 if jsv_is_int32(va) {
                     if op == 32 {
@@ -36799,9 +36895,9 @@ obj VM {
                         xi = jsv_to_int32(va) - yi;
                     }
                     if xi >= -2147483648 and xi <= 2147483647 {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_int(xi);
+                        _rset(rb, lb, ((w >> 8) & 65535), js_int(xi));
                     } else {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_number(float(xi));
+                        _rset(rb, lb, ((w >> 8) & 65535), js_number(float(xi)));
                     }
                 } elif (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
@@ -36823,18 +36919,18 @@ obj VM {
             } elif op == 16 {
                 # REQCOERCE r, orig (RequireObjectCoercible; the handler throws)
                 a = (w >> 8) & 65535;
-                if (a & 32768) != 0 and js_is_tdz(regs[wrapping_add(lb, (a & 32767))]) {
+                if (a & 32768) != 0 and js_is_tdz(_rget(rb, lb, (a & 32767))) {
                     self._reg_tdz_throw(
                         frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                     );
-                } elif jsv_is_null(regs[wrapping_add(lb, (a & 32767))])
-                    or jsv_is_undefined(regs[wrapping_add(lb, (a & 32767))]) {
+                } elif jsv_is_null(_rget(rb, lb, (a & 32767)))
+                    or jsv_is_undefined(_rget(rb, lb, (a & 32767))) {
                     self._reg_bridge(
                         frame,
                         st,
                         (w >> 40) & 8388607,
                         1,
-                        regs[wrapping_add(lb, (a & 32767))],
+                        _rget(rb, lb, (a & 32767)),
                         0,
                         0,
                         frame.func.num_locals - 1,
@@ -36847,31 +36943,31 @@ obj VM {
             } elif op == 72 {
                 # BTRUE / BFALSE r -> target
                 a = (w >> 8) & 65535;
-                if (a & 32768) != 0 and js_is_tdz(regs[wrapping_add(lb, (a & 32767))]) {
+                if (a & 32768) != 0 and js_is_tdz(_rget(rb, lb, (a & 32767))) {
                     self._reg_tdz_throw(
                         frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                     );
-                } elif jsv_coerce_to_bool(regs[wrapping_add(lb, (a & 32767))]) == (op == 72) {
+                } elif jsv_coerce_to_bool(_rget(rb, lb, (a & 32767))) == (op == 72) {
                     pc = (w >> 40) & 8388607;
                 }
             } elif op == 41 {
                 # NOT dst, src
                 b = (w >> 24) & 65535;
-                if (b & 32768) != 0 and js_is_tdz(regs[wrapping_add(lb, (b & 32767))]) {
+                if (b & 32768) != 0 and js_is_tdz(_rget(rb, lb, (b & 32767))) {
                     self._reg_tdz_throw(
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                     );
                 } else {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_boolean(
-                        not jsv_coerce_to_bool(regs[wrapping_add(lb, (b & 32767))])
-                    );
+                    _rset(rb, lb, ((w >> 8) & 65535), js_boolean(
+                        not jsv_coerce_to_bool(_rget(rb, lb, (b & 32767)))
+                    ));
                 }
             } elif op == 57 {
                 # SEQ / SNEQ dst, a, b
                 b = (w >> 24) & 65535;
                 c = (w >> 40) & 8388607;
-                va = regs[wrapping_add(lb, (b & 32767))];
-                vb = regs[wrapping_add(lb, (c & 32767))];
+                va = _rget(rb, lb, (b & 32767));
+                vb = _rget(rb, lb, (c & 32767));
                 if (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -36895,16 +36991,16 @@ obj VM {
                     if op == 57 {
                         res = not res;
                     }
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_boolean(res);
+                    _rset(rb, lb, ((w >> 8) & 65535), js_boolean(res));
                 }
             } elif op == 83 {
                 # SETINDEX obj, idx, val
                 a = (w >> 8) & 65535;
                 b = (w >> 24) & 65535;
                 c = (w >> 40) & 8388607;
-                va = regs[wrapping_add(lb, (a & 32767))];
-                vb = regs[wrapping_add(lb, (b & 32767))];
-                vr = regs[wrapping_add(lb, (c & 32767))];
+                va = _rget(rb, lb, (a & 32767));
+                vb = _rget(rb, lb, (b & 32767));
+                vr = _rget(rb, lb, (c & 32767));
                 if (a & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -36917,12 +37013,12 @@ obj VM {
                     self._reg_tdz_throw(
                         frame, st, c & 32767, frame.func.rorig[wrapping_add(pc, -1)]
                     );
-                } elif code[frame.func.rorig[wrapping_add(pc, -1)]].arg3 != 1
-                    and self._reg_set_index_fast(va, vb, vr) {} elif code[
+                } elif frame.func.code[frame.func.rorig[wrapping_add(pc, -1)]].arg3 != 1
+                    and self._reg_set_index_fast(va, vb, vr) {} elif frame.func.code[
                     frame.func.rorig[wrapping_add(pc, -1)]
                 ].arg3
                     != 1
-                    and self._reg_set_index_key(va, vb, vr) {} elif code[
+                    and self._reg_set_index_key(va, vb, vr) {} elif frame.func.code[
                     frame.func.rorig[wrapping_add(pc, -1)]
                 ].arg3
                     == 1
@@ -36943,8 +37039,8 @@ obj VM {
                 # ADD / SUB dst, a, b
                 b = (w >> 24) & 65535;
                 c = (w >> 40) & 8388607;
-                va = regs[wrapping_add(lb, (b & 32767))];
-                vb = regs[wrapping_add(lb, (c & 32767))];
+                va = _rget(rb, lb, (b & 32767));
+                vb = _rget(rb, lb, (c & 32767));
                 if jsv_is_int32(va) and jsv_is_int32(vb) {
                     if op == 20 {
                         xi = jsv_to_int32(va) + jsv_to_int32(vb);
@@ -36952,9 +37048,9 @@ obj VM {
                         xi = jsv_to_int32(va) - jsv_to_int32(vb);
                     }
                     if xi >= -2147483648 and xi <= 2147483647 {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_int(xi);
+                        _rset(rb, lb, ((w >> 8) & 65535), js_int(xi));
                     } else {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_number(float(xi));
+                        _rset(rb, lb, ((w >> 8) & 65535), js_number(float(xi)));
                     }
                 } elif (jsv_is_int32(va) or jsv_is_double(va))
                     and (jsv_is_int32(vb) or jsv_is_double(vb)) {
@@ -36971,9 +37067,9 @@ obj VM {
                         fb = jsv_to_double(vb);
                     }
                     if op == 20 {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = float_to_jsval(fa + fb);
+                        _rset(rb, lb, ((w >> 8) & 65535), float_to_jsval(fa + fb));
                     } else {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = float_to_jsval(fa - fb);
+                        _rset(rb, lb, ((w >> 8) & 65535), float_to_jsval(fa - fb));
                     }
                 } elif (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
@@ -36989,7 +37085,7 @@ obj VM {
                     and _vm_add_prim(vb) {
                     # String + primitive: concatenation (js_add's string
                     # tail), no ToPrimitive or Symbol throw possible.
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_add(va, vb);
+                    _rset(rb, lb, ((w >> 8) & 65535), js_add(va, vb));
                 } else {
                     self._reg_bridge(
                         frame,
@@ -37006,7 +37102,7 @@ obj VM {
             } elif op == 110 {
                 # ITERNEXT dst, iter -> done target
                 b = (w >> 24) & 65535;
-                va = regs[wrapping_add(lb, (b))];
+                va = _rget(rb, lb, (b));
                 cr = -1;
                 if _ITER_STD_SHAPE > 0
                     and js_object_ic_shape(va) == _ITER_STD_SHAPE {
@@ -37016,9 +37112,9 @@ obj VM {
                         yi = jsv_to_int32(vb);
                         if yi
                             < js_array_len(js_object_slot_at_id(xi, _ITER_STD_I)) {
-                            regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_array_get(
+                            _rset(rb, lb, ((w >> 8) & 65535), js_array_get(
                                 js_object_slot_at_id(xi, _ITER_STD_I), yi
-                            );
+                            ));
                             js_object_slot_set_at_id(
                                 xi, _ITER_STD_J, js_int(yi + 1)
                             );
@@ -37038,7 +37134,7 @@ obj VM {
                 }
             } elif op == 11 {
                 # LOADDEREF dst, slot, orig
-                vr = regs[wrapping_add(lb, ((w >> 24) & 65535))];
+                vr = _rget(rb, lb, ((w >> 24) & 65535));
                 if js_is_tdz(vr) {
                     self._reg_bridge(
                         frame,
@@ -37052,7 +37148,7 @@ obj VM {
                         1
                     );
                 } else {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = cell_get(vr);
+                    _rset(rb, lb, ((w >> 8) & 65535), cell_get(vr));
                 }
             } elif op == 8 {
                 # LOADGLOBAL dst, orig
@@ -37065,14 +37161,11 @@ obj VM {
             } elif op == 120 {
                 # STK base, npop|npush<<12, orig
                 b = (w >> 24) & 65535;
-                if code[(w >> 40) & 8388607].opcode == Opcode.SUPER_CALL
+                if frame.func.code[(w >> 40) & 8388607].opcode == Opcode.SUPER_CALL
                     and self._reg_super_enter(frame, st, w, pc) == 1 {
                     frame = self.frames[len(self.frames) - 1];
                     rcp = frame.func.rcode_ptr;
-                    code = frame.func.code;
-                    if frame.locals is not regs {
-                        regs = frame.locals;
-                    }
+                    ricp = frame.func.ric_ptr;
                     lb = frame.lb;
                     pc = 0;
                 } elif not self._reg_stk_fast(frame, st, w) {
@@ -37090,10 +37183,7 @@ obj VM {
                 if self._reg_op_tailcall(frame, st, w, pc) == 1 {
                     frame = self.frames[len(self.frames) - 1];
                     rcp = frame.func.rcode_ptr;
-                    code = frame.func.code;
-                    if frame.locals is not regs {
-                        regs = frame.locals;
-                    }
+                    ricp = frame.func.ric_ptr;
                     lb = frame.lb;
                     pc = 0;
                 } else {
@@ -37105,28 +37195,25 @@ obj VM {
             } elif op == 18 {
                 # INC slot, delta+1 -> skip (slow path falls into the window)
                 a = (w >> 8) & 65535;
-                va = regs[wrapping_add(lb, (a))];
+                va = _rget(rb, lb, (a));
                 if jsv_is_int32(va) {
                     xi = jsv_to_int32(va) + ((w >> 24) & 65535) - 1;
                     if xi >= -2147483648 and xi <= 2147483647 {
-                        regs[wrapping_add(lb, (a))] = js_int(xi);
+                        _rset(rb, lb, (a), js_int(xi));
                     } else {
-                        regs[wrapping_add(lb, (a))] = js_number(float(xi));
+                        _rset(rb, lb, (a), js_number(float(xi)));
                     }
                     pc = (w >> 40) & 8388607;
                 }
             } elif op == 15 {
                 # NEWOBJECT dst
-                regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_object_new_ordinary();
+                _rset(rb, lb, ((w >> 8) & 65535), js_object_new_ordinary());
             } elif op == 87 {
                 # NEW dst, ctor, argc [args...] (see _reg_op_new)
                 if self._reg_op_new(frame, st, w, pc) == 1 {
                     frame = self.frames[len(self.frames) - 1];
                     rcp = frame.func.rcode_ptr;
-                    code = frame.func.code;
-                    if frame.locals is not regs {
-                        regs = frame.locals;
-                    }
+                    ricp = frame.func.ric_ptr;
                     lb = frame.lb;
                     pc = 0;
                 } else {
@@ -37135,7 +37222,7 @@ obj VM {
             } elif op == 17 {
                 # TOPROPKEY dst, src, orig
                 b = (w >> 24) & 65535;
-                va = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (b & 32767));
                 if (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -37143,7 +37230,7 @@ obj VM {
                 } elif (jsv_is_int32(va) and jsv_to_int32(va) >= 0)
                     or jsv_is_string_cell(va)
                     or jsv_is_symbol(va) {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = va;
+                    _rset(rb, lb, ((w >> 8) & 65535), va);
                 } else {
                     self._reg_bridge(
                         frame,
@@ -37164,8 +37251,8 @@ obj VM {
                 # BSEQ / BSNE a, b -> target (strict equality never throws)
                 a = (w >> 8) & 65535;
                 b = (w >> 24) & 65535;
-                va = regs[wrapping_add(lb, (a & 32767))];
-                vb = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (a & 32767));
+                vb = _rget(rb, lb, (b & 32767));
                 if (a & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, a & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -37192,8 +37279,8 @@ obj VM {
                 # SEQ / SNEQ dst, a, b
                 b = (w >> 24) & 65535;
                 c = (w >> 40) & 8388607;
-                va = regs[wrapping_add(lb, (b & 32767))];
-                vb = regs[wrapping_add(lb, (c & 32767))];
+                va = _rget(rb, lb, (b & 32767));
+                vb = _rget(rb, lb, (c & 32767));
                 if (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -37217,14 +37304,14 @@ obj VM {
                     if op == 57 {
                         res = not res;
                     }
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_boolean(res);
+                    _rset(rb, lb, ((w >> 8) & 65535), js_boolean(res));
                 }
             } elif op == 21 {
                 # ADD / SUB dst, a, b
                 b = (w >> 24) & 65535;
                 c = (w >> 40) & 8388607;
-                va = regs[wrapping_add(lb, (b & 32767))];
-                vb = regs[wrapping_add(lb, (c & 32767))];
+                va = _rget(rb, lb, (b & 32767));
+                vb = _rget(rb, lb, (c & 32767));
                 if jsv_is_int32(va) and jsv_is_int32(vb) {
                     if op == 20 {
                         xi = jsv_to_int32(va) + jsv_to_int32(vb);
@@ -37232,9 +37319,9 @@ obj VM {
                         xi = jsv_to_int32(va) - jsv_to_int32(vb);
                     }
                     if xi >= -2147483648 and xi <= 2147483647 {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_int(xi);
+                        _rset(rb, lb, ((w >> 8) & 65535), js_int(xi));
                     } else {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_number(float(xi));
+                        _rset(rb, lb, ((w >> 8) & 65535), js_number(float(xi)));
                     }
                 } elif (jsv_is_int32(va) or jsv_is_double(va))
                     and (jsv_is_int32(vb) or jsv_is_double(vb)) {
@@ -37251,9 +37338,9 @@ obj VM {
                         fb = jsv_to_double(vb);
                     }
                     if op == 20 {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = float_to_jsval(fa + fb);
+                        _rset(rb, lb, ((w >> 8) & 65535), float_to_jsval(fa + fb));
                     } else {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = float_to_jsval(fa - fb);
+                        _rset(rb, lb, ((w >> 8) & 65535), float_to_jsval(fa - fb));
                     }
                 } elif (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
@@ -37269,7 +37356,7 @@ obj VM {
                     and _vm_add_prim(vb) {
                     # String + primitive: concatenation (js_add's string
                     # tail), no ToPrimitive or Symbol throw possible.
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = js_add(va, vb);
+                    _rset(rb, lb, ((w >> 8) & 65535), js_add(va, vb));
                 } else {
                     self._reg_bridge(
                         frame,
@@ -37304,7 +37391,7 @@ obj VM {
                 }
                 xi = 0;
                 while xi < c {
-                    regs[wrapping_add(lb, (wrapping_add(a, xi)))] = vr;
+                    _rset(rb, lb, (wrapping_add(a, xi)), vr);
                     xi = xi + 1;
                 }
             } elif op >= 34 and op <= 39 {
@@ -37314,7 +37401,7 @@ obj VM {
                 # after the singles keeps the loop small enough to inline its
                 # helpers
                 b = (w >> 24) & 65535;
-                va = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (b & 32767));
                 yi = ((w >> 40) & 8388607) - 4194304;
                 if jsv_is_int32(va) {
                     xi = jsv_to_int32(va);
@@ -37340,7 +37427,7 @@ obj VM {
                             vr = js_int(xi);
                         }
                     }
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = vr;
+                    _rset(rb, lb, ((w >> 8) & 65535), vr);
                 } elif (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -37349,7 +37436,7 @@ obj VM {
                     vb = js_int(yi);
                     vr = _vm_bitop(op - 8, va, vb);
                     if not jsv_is_hole(vr) {
-                        regs[wrapping_add(lb, ((w >> 8) & 65535))] = vr;
+                        _rset(rb, lb, ((w >> 8) & 65535), vr);
                     } else {
                         self._reg_bridge(
                             frame,
@@ -37368,8 +37455,8 @@ obj VM {
                 # MUL DIV MOD POW BAND BOR BXOR SHL SHR USHR dst, a, b
                 b = (w >> 24) & 65535;
                 c = (w >> 40) & 8388607;
-                va = regs[wrapping_add(lb, (b & 32767))];
-                vb = regs[wrapping_add(lb, (c & 32767))];
+                va = _rget(rb, lb, (b & 32767));
+                vb = _rget(rb, lb, (c & 32767));
                 vr = jsv_hole();
                 if jsv_is_int32(va)
                     and jsv_is_int32(vb)
@@ -37443,7 +37530,7 @@ obj VM {
                     vr = _vm_bitop(op, va, vb);
                 }
                 if not jsv_is_hole(vr) {
-                    regs[wrapping_add(lb, ((w >> 8) & 65535))] = vr;
+                    _rset(rb, lb, ((w >> 8) & 65535), vr);
                 } elif (b & 32768) != 0 and js_is_tdz(va) {
                     self._reg_tdz_throw(
                         frame, st, b & 32767, frame.func.rorig[wrapping_add(pc, -1)]
@@ -37469,8 +37556,8 @@ obj VM {
                 # BLT BNLT BLE BNLE BGT BNGT BGE BNGE a, b -> target
                 a = (w >> 8) & 65535;
                 b = (w >> 24) & 65535;
-                va = regs[wrapping_add(lb, (a & 32767))];
-                vb = regs[wrapping_add(lb, (b & 32767))];
+                va = _rget(rb, lb, (a & 32767));
+                vb = _rget(rb, lb, (b & 32767));
                 xi = (op - 60) >> 1;
                 numeric = False;
                 if jsv_is_int32(va) and jsv_is_int32(vb) {
@@ -37534,7 +37621,7 @@ obj VM {
                 )
                     == 0 {
                     res = jsv_coerce_to_bool(
-                        regs[wrapping_add(lb, (frame.func.num_locals - 1))]
+                        frame.locals[wrapping_add(lb, (frame.func.num_locals - 1))]
                     );
                     if res == (((op - 60) & 1) == 0) {
                         pc = (w >> 40) & 8388607;
@@ -37545,10 +37632,7 @@ obj VM {
                 if pc < 0 {
                     frame = self.frames[len(self.frames) - 1];
                     rcp = frame.func.rcode_ptr;
-                    code = frame.func.code;
-                    if frame.locals is not regs {
-                        regs = frame.locals;
-                    }
+                    ricp = frame.func.ric_ptr;
                     lb = frame.lb;
                     pc = 0;
                 }
@@ -50873,6 +50957,22 @@ glob _REG_BRIDGE_KINDS: dict[int, int] = {},
 
 # JS_REG_STATS=1: executed register opcodes (the loop re-arms the safepoint
 # every dispatch while it counts, so the count costs nothing when off).
+"""One register word of the live register file, read through the file's
+buffer address: `rb` is `__list_data_ptr` of the frame's locals list (taken
+afresh at every dispatch, since an append past the list's capacity moves the
+buffer), `lb` the frame's base, `i` the register. No bounds check: the
+translator keeps every register below the function's num_locals and the
+window (or the inline frame's list) is sized to that before the loop runs."""
+def _rget(rb: int, lb: int, i: int) -> JSValue {
+    return __mem_load_i64(wrapping_add(rb, wrapping_mul(wrapping_add(lb, i), 8)));
+}
+
+"""Write one register word (see _rget); the elements are unboxed JSValues,
+so the store needs no barrier."""
+def _rset(rb: int, lb: int, i: int, v: JSValue) {
+    __mem_store_i64(wrapping_add(rb, wrapping_mul(wrapping_add(lb, i), 8)), v);
+}
+
 glob _REG_OP_HIST: list[int] = [];
 
 def _reg_op_hist_bump(op: int) {

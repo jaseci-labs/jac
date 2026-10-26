@@ -14,6 +14,7 @@ Implementation: each cell is a JS object with a single property "__c__".
 import from engine.src.runtime.jsvalue { JSValue, jsv_is_object_cell, jsv_to_table_id, jsv_hole, jsv_is_hole }
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.jsobject {
+    js_object_new_shaped1,
     js_object_create_null,
     js_object_get,
     js_object_set,
@@ -50,6 +51,9 @@ glob _CELL_SHAPE: int = -1,
 
 """Create a closure cell wrapping `val`."""
 def:pub make_cell(val: JSValue) -> JSValue {
+    if _CELL_SHAPE > 0 and _CELL_SLOT == 0 {
+        return js_object_new_shaped1(-1, _CELL_SHAPE, val);
+    }
     ck: int = _get_ck();
     cell: JSValue = js_object_create_null();
     js_object_set(cell, ck, val);

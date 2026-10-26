@@ -78,7 +78,9 @@ import from engine.src.runtime.jsobject {
     js_object_dense_set_present,
     js_object_array_shape,
     js_object_new_array,
-    js_object_new_array_range
+    js_object_new_array_range,
+    js_object_ic_shape,
+    js_object_slot_at_id
 }
 import from engine.src.runtime.jsobj_type {
     JSObject,
@@ -417,6 +419,17 @@ def:pub js_array_push(arr: JSValue, item: JSValue) -> None {
 
 """Return the length of the array as a Jac int (LengthOfArrayLike)."""
 def:pub js_array_len(arr: JSValue) -> int {
+    # An Array still at js_array_create's shape: `length` is its slot 1, a
+    # plain writable data property (any other attributes, or anything else
+    # defined on it, moves the array to another shape; a proxy is never at
+    # it), so the value is the answer whenever it is a non-negative int32
+    # (lengths up to 2^31 - 1; larger ones are stored as doubles).
+    if _ARRAY_SHAPE > 0 and js_object_ic_shape(arr) == _ARRAY_SHAPE {
+        al_v: JSValue = js_object_slot_at_id(jsv_to_table_id(arr), 1);
+        if jsv_is_int32(al_v) and jsv_to_int32(al_v) >= 0 {
+            return jsv_to_int32(al_v);
+        }
+    }
     return _length_of(arr);
 }
 

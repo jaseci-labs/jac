@@ -2652,6 +2652,16 @@ def _reg_defer_ok(fn: CompiledFunction) -> bool {
     return True;
 }
 
+"""The flat own-slot IC of a function with `n` stack instructions: two
+zeroed words per instruction (VM._exec_reg_resume's GETFIELD / SETFIELD)."""
+def _ric_raw(n: int) -> int {
+    ri_p: int = calloc(n + 1, 16);
+    if ri_p == 0 {
+        abort();
+    }
+    return ri_p;
+}
+
 """A raw copy of the register words: the register loop fetches from it with no
 bounds check (the terminator reg_translate_fn appends keeps pc inside it) and
 switches frames by reloading one integer instead of a counted list reference.
@@ -2712,6 +2722,7 @@ def:pub reg_translate_fn(fn: CompiledFunction) -> None {
     fn.rcode.append(R_RETUNDEF);
     fn.rorig.append(len(fn.code) - 1);
     fn.rcode_ptr = _rcode_raw(fn.rcode);
+    fn.ric_ptr = _ric_raw(len(fn.code));
     fn.rhandler = t.rhandler;
     fn.reg_gen_start = t.reg_gen_start;
     fn.reg_tmp_base = fn.num_locals;

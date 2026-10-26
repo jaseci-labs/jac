@@ -313,6 +313,18 @@ def _obj_alloc(prototype_idx: int) -> int {
 }
 
 """A fresh ordinary object with [[Prototype]] table id `proto_idx` (-1 =
+null) already at the one-property shape `sid` with `v0` in its slot: one
+property add from the empty root shape without the transition. `sid` must
+be learned from an object built the ordinary way."""
+def:pub js_object_new_shaped1(proto_idx: int, sid: int, v0: JSValue) -> JSValue {
+    sh1_idx: int = _obj_alloc(proto_idx);
+    _OBJ_REALM.objects[sh1_idx - 1].shape_id = sid;
+    _OBJ_REALM.objects[sh1_idx - 1].spush(v0);
+    _OBJ_REALM.objects[sh1_idx - 1].version = 1;
+    return _obj_wrap(sh1_idx);
+}
+
+"""A fresh ordinary object with [[Prototype]] table id `proto_idx` (-1 =
 null) that is already at shape `sid` with `v0`, `v1` in its two slots —
 what two property adds from the empty root shape build, without the two
 transitions. `sid` must be a two-property shape learned from an object
