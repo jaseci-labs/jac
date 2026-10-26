@@ -108,6 +108,7 @@ impl NaIRGenPass._static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Va
     } else {
         holder_ty = ir.LiteralStructType([i64, i8p, i64, i64, st]);
         holder = ir.GlobalVariable(self.llvm_module, holder_ty, name=key);
+        self._static_closure_fns[holder.name] = fn;
         holder.linkage = "private";
         holder.initializer = ir.Constant(
             holder_ty,

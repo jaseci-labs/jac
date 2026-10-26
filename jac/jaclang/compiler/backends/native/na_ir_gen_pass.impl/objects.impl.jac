@@ -1851,25 +1851,37 @@ impl NaIRGenPass._stack_alloc_target_ok(nd: uni.UniNode) -> bool {
         return False;
     }
 
-    ability = nd.find_parent_of_type(uni.Ability);
+    ability = nd.enclosing_decl(uni.Ability);
     return ability is None or not self._ability_is_generator(ability);
 }
 
-impl NaIRGenPass._stack_only_bound(sym: any, type_name: str) -> bool {
-    for occurrence in list(sym.defn) + list(sym.uses) {
+impl NaIRGenPass._stack_only_bound(sym: uni.Symbol, type_name: str) -> bool {
+    occurrences: list[uni.NameAtom] = list(sym.defn) + list(sym.uses);
+    for occurrence in occurrences {
         child: uni.UniNode = occurrence;
-        holder = occurrence.parent;
+        holder: (uni.UniNode | None) = occurrence.parent;
         while holder is not None
             and not isinstance(holder, (uni.Assignment, uni.InForStmt))
             and not isinstance(holder, uni.CodeBlockStmt) {
             child = holder;
             holder = holder.parent;
         }
-        if isinstance(holder, uni.InForStmt) and holder.target is child {
-            return False;
+        if isinstance(holder, uni.InForStmt) {
+            if holder.target is child {
+                return False;
+            }
+            continue;
         }
-        if not isinstance(holder, uni.Assignment)
-            or not any(target is child for target in holder.target) {
+        if not isinstance(holder, uni.Assignment) {
+            continue;
+        }
+        bound = False;
+        for target in holder.target {
+            if target is child {
+                bound = True;
+            }
+        }
+        if not bound {
             continue;
         }
         value = holder.value;

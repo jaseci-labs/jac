@@ -181,6 +181,7 @@ walker NaIRGenPass(CompilerPass) {
         _shared_raise_blocks: dict[str, ir.Block] = {},
         _clib_exports: dict[str, ir.Function] = {},
         _direct_c_entries: list[tuple[ir.Function, ir.Function]] = [],
+        _static_closure_fns: dict[str, ir.Function] = {},
         _clib_data_inits: list[tuple[ir.GlobalVariable, uni.Expr, any]] = [],
         _c_strings: dict[str, ir.GlobalVariable] = {},
         _foreign_modules: list[uni.Module] = [],
@@ -2318,7 +2319,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _stack_alloc_target_ok(nd: uni.UniNode) -> bool;
-    def _stack_only_bound(sym: any, type_name: str) -> bool;
+    def _stack_only_bound(sym: uni.Symbol, type_name: str) -> bool;
     def _emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_os_const(name: str) -> (ir.Value | None);
     def _emit_os_environ_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
