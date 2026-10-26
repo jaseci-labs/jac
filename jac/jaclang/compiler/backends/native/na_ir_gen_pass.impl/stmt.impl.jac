@@ -1990,7 +1990,6 @@ impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | 
 }
 
 impl NaIRGenPass._same_pure_key(a: uni.UniNode, b: uni.UniNode) -> bool {
-    """Do `a` and `b` name the same key without running code: one local, or equal literals?""";
     if isinstance(a, uni.Name) and isinstance(b, uni.Name) {
         return a.value == b.value and a.sym is not None and a.sym is b.sym;
     }
@@ -2004,16 +2003,6 @@ impl NaIRGenPass._same_pure_key(a: uni.UniNode, b: uni.UniNode) -> bool {
 }
 
 impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
-    """`d[k] = d.get(k, c) op e` with one hash of `k` and one probe of `d`.
-
-    The `get` hashed `k` and probed the table, then the store hashed and probed
-    again to find where `k` goes. When `d` and `k` are plain names (or `k` a
-    literal), `c` and `e` run no code (literals or names) and the values are
-    scalars, the key is hashed once, one probe finds its value slot, and the
-    new value is written into the slot in place; only a key that is missing
-    inserts, with the hash already in hand. Nothing between the probe and the
-    store can change the table, so the slot stays valid.
-    """;
     if nd.aug_op is not None or len(nd.target) != 1 or self._nogc_headerless() {
         return False;
     }

@@ -1476,7 +1476,6 @@ impl NaIRGenPass._emit_str_cmp_helper -> None {
 }
 
 impl NaIRGenPass._one_byte_literal(val: ir.Value) -> (int | None) {
-    """The byte of a one-byte (ASCII, non-NUL) string literal `val` points at, if it is one.""";
     cur: any = val;
     if isinstance(cur, ir.CastInstr) and cur.opname == "bitcast" {
         cur = cur.operands[0];
@@ -1496,14 +1495,6 @@ impl NaIRGenPass._one_byte_literal(val: ir.Value) -> (int | None) {
 }
 
 impl NaIRGenPass._emit_str_cmp_one_byte(val: ir.Value, byte: int) -> ir.Value {
-    """`__jac_str_cmp(val, c)` for a one-byte literal `c`, inline: its sign is all that counts.
-
-    A string ends in a NUL byte, so its first byte can be read whatever its
-    length (an empty one reads the NUL, below any literal byte). Only when that
-    byte equals `c` does the length decide: longer than one is greater. A null
-    string orders first, as in the helper. This takes `c >= "a"` from a call
-    and a `memcmp` to a load and a compare.
-    """;
     b = self.builder;
     i8p = ir.IntType(8).as_pointer();
     i32 = ir.IntType(32);
