@@ -477,6 +477,41 @@ impl ASTValidationPass.enter_archetype with Archetype entry {
         }
         seen_methods.add(dedup_name);
     }
+
+    owner = here.find_parent_of_type(Module);
+    if owner is not None and (owner.is_raised_from_py or owner.stub_only) {
+        return;
+    }
+    field_lines: dict[str, int] = {};
+    for item in body {
+        if isinstance(item, ArchHas) {
+            for var in item.vars {
+                if var.name.value not in field_lines {
+                    field_lines[var.name.value] = var.name.loc.first_line;
+                }
+            }
+        }
+    }
+    if len(field_lines) == 0 {
+        return;
+    }
+    for item in body {
+        if not isinstance(item, Ability) {
+            continue;
+        }
+        aref = item.name_ref;
+        if not isinstance(aref, Name) or aref.value not in field_lines {
+            continue;
+        }
+        kind = "ability" if isinstance(item.signature, EventSignature) else "method";
+        self.ctx.emit(
+            E0078,
+            node_override=aref,
+            name=aref.value,
+            kind=kind,
+            line=field_lines[aref.value]
+        );
+    }
 }
 
 impl ASTValidationPass.enter_try_stmt with TryStmt entry {
