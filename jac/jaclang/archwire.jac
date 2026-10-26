@@ -116,6 +116,7 @@ graph import {
             NATIVE_LOWERED_PATHS,
             is_native_lowered,
             is_roster_input,
+            is_staging_rewritten,
             read_input_rules
         },
         dist.payload.fsutil.skip_jaclang
