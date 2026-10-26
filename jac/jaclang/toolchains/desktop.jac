@@ -17,6 +17,10 @@ glob WEBVIEW_HEADER: Artifact = Artifact(
      ),
      MACOS_DESKTOP_MIN_VERSION: str = "12.0";
 
+def module_files(module: Path) -> list[Path];
+
+def stage_module(module: Path, dst_dir: Path) -> None;
+
 def source_workspace(source: Path, name: str) -> Path;
 
 def webview_library_name -> str;

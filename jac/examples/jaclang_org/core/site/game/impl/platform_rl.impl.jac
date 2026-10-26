@@ -127,3 +127,59 @@ impl draw_rect2d(x: float, y: float, w: float, h: float, r: int, g: int, b: int)
     rlVertex3f(f32(x + w), f32(y), f32(0.0));
     rlEnd();
 }
+
+impl open_window {
+    InitWindow(i32(960), i32(600), "Jac Rocket Arena");
+}
+
+impl should_close -> bool {
+    return WindowShouldClose();
+}
+
+impl frame_dt -> float {
+    return GetFrameTime();
+}
+
+impl key_held(code: int) -> bool {
+    return IsKeyDown(i32(code));
+}
+
+impl key_tapped(code: int) -> bool {
+    return IsKeyPressed(i32(code));
+}
+
+impl mouse_x -> float {
+    return float(GetMouseX());
+}
+
+impl mouse_y -> float {
+    return float(GetMouseY());
+}
+
+impl mouse_pressed(button: int) -> bool {
+    return IsMouseButtonPressed(i32(button));
+}
+
+impl lock_mouse {
+    DisableCursor();
+}
+
+impl unlock_mouse {
+    EnableCursor();
+}
+
+impl end_frame {
+    EndDrawing();
+}
+
+impl end_model {
+    rlPopMatrix();
+}
+
+impl draw_fps(x: int, y: int) {
+    DrawFPS(i32(x), i32(y));
+}
+
+impl close_window {
+    CloseWindow();
+}

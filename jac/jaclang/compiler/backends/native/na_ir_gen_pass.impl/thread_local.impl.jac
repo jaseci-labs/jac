@@ -1,16 +1,6 @@
 impl NaIRGenPass._emit_tls_slot(
     slot_name: str, get_name: str, set_name: str, destructor: ir.Function | None = None
 ) -> tuple[ir.Function, ir.Function] {
-    """A per-thread pointer slot with lock-free accessors.
-
-    Every unit that touches the slot emits these same accessors, so no unit
-    resolves another's copy: linkonce_odr lets the optimizer inline the fast
-    path into each caller, while the key, state and lock stay weak so one
-    process-wide slot serves every unit. Until the first thread publishes the
-    key, an accessor takes the cold initializer, which serializes on the spin
-    lock, re-checks under it, creates the key and publishes it with a release
-    store; the accessors' acquire load pairs with that store.
-    """;
     if get_name in self.extern_funcs {
         return (self.extern_funcs[get_name], self.extern_funcs[set_name]);
     }
@@ -113,13 +103,6 @@ impl NaIRGenPass._emit_tls_ready_key(
     key_gv: ir.GlobalVariable,
     init_fn: ir.Function
 ) -> ir.Value {
-    """Open `accessor` with the slot's readiness check and return its key.
-
-    Once the key is published the check is one acquire load, which compiles to
-    a plain load on x86-64 and AArch64; only a thread that finds the slot
-    unpublished calls the cold initializer. The builder is left positioned in
-    the block that holds the key, for the accessor to finish.
-    """;
     i64 = ir.IntType(64);
     check_bb = accessor.append_basic_block("entry");
     cold = accessor.append_basic_block("init");

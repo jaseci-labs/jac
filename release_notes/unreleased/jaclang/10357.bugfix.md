@@ -1,0 +1,1 @@
+- A native build computes each module's cache key and environment fingerprint once per link-plan walk (the per-run memo an application prepare already holds), and keeps the digest a cached native interface was verified against instead of hashing it again.

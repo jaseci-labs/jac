@@ -3151,7 +3151,8 @@ _WIRE_TOKEN = re.compile(
 )
 _WIRE_KEYWORDS = ("comptime", "include", "type")
 _SOURCE_NAMES = {"__init__": "init", "__post_init__": "postinit"}
-_wiring_cache: dict[str, tuple[tuple[float, int], list[WireFact]]] = {}
+_wiring_cache: dict[str, tuple[object, list[WireFact], dict[str, list[WireFact]]]] = {}
+_WIRE_CACHE_FORMAT = 1
 
 
 @dataclass
@@ -3318,17 +3319,78 @@ def arch_file_for(path: str) -> str | None:
         cur = parent
 
 
-def wire_facts(arch_path: str) -> list[WireFact]:
-    """Every wire fact of an archwire.jac, read once per process per version."""
-    stat = os.stat(arch_path)
-    stamp = (stat.st_mtime, stat.st_size)
+def _wiring_entry(
+    arch_path: str,
+) -> tuple[object, list[WireFact], dict[str, list[WireFact]]]:
+    """An archwire.jac's facts and their index by every consumer prefix.
+
+    Parsed once per version: the facts are kept for the process and, keyed by
+    the file's content digest, in the bootstrap cache for later processes.
+    """
+    try:
+        from jaclang.jac0core import cache_paths
+    except ImportError:
+        cache_paths = None
+    if cache_paths is not None:
+        stamp: object = cache_paths.file_identity(arch_path)
+    else:
+        stat = os.stat(arch_path)
+        stamp = (stat.st_mtime, stat.st_size)
     held = _wiring_cache.get(arch_path)
     if held is not None and held[0] == stamp:
-        return held[1]
-    with open(arch_path, encoding="utf-8") as f:
-        facts = _WireReader(f.read(), arch_path).read()
-    _wiring_cache[arch_path] = (stamp, facts)
-    return facts
+        return held
+    facts: list[WireFact] | None = None
+    stored = None
+    if cache_paths is not None:
+        import marshal
+
+        key = cache_paths.file_sha256(arch_path)[:16]
+        reader = cache_paths.file_sha256(__file__)[:8]
+        stored = cache_paths.get_bootstrap_cache_dir() / (
+            f"wirefacts.{key}.{reader}.{_WIRE_CACHE_FORMAT}.jbc"
+        )
+        try:
+            rows = marshal.loads(stored.read_bytes())  # noqa: S302
+            facts = [
+                WireFact(p, c, tuple(k), a, None if n is None else list(n), i)
+                for (p, c, k, a, n, i) in rows
+            ]
+        except (OSError, ValueError, EOFError, TypeError):
+            facts = None
+    if facts is None:
+        with open(arch_path, encoding="utf-8") as f:
+            facts = _WireReader(f.read(), arch_path).read()
+        if stored is not None:
+            import marshal
+
+            rows = [
+                (
+                    w.provider,
+                    w.consumer,
+                    tuple(w.keywords),
+                    w.alias,
+                    None if w.names is None else tuple(w.names),
+                    w.injected,
+                )
+                for w in facts
+            ]
+            try:
+                cache_paths.atomic_write(stored, marshal.dumps(rows))
+            except OSError:
+                pass
+    index: dict[str, list[WireFact]] = {}
+    for fact in facts:
+        parts = fact.consumer.split(".")
+        for k in range(1, len(parts) + 1):
+            index.setdefault(".".join(parts[:k]), []).append(fact)
+    entry = (stamp, facts, index)
+    _wiring_cache[arch_path] = entry
+    return entry
+
+
+def wire_facts(arch_path: str) -> list[WireFact]:
+    """Every wire fact of an archwire.jac, read once per version."""
+    return _wiring_entry(arch_path)[1]
 
 
 def _is_module(root: str, parts: list[str]) -> bool:
@@ -3378,7 +3440,7 @@ def wired_imports(filename: str) -> dict[tuple[str, ...], list[Import]]:
     module = ".".join(module_parts)
     prefix = _import_prefix(root)
     out: dict[tuple[str, ...], list[Import]] = {}
-    for fact in wire_facts(arch):
+    for fact in _wiring_entry(arch)[2].get(module, ()):
         if not fact.injected or (
             fact.consumer != module and not fact.consumer.startswith(module + ".")
         ):

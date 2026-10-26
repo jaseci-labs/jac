@@ -87,16 +87,65 @@ impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bo
 impl ViteCompiler._compile_wasm_module(
     self: ViteCompiler, module_path: Path
 ) -> dict[str, bytes] {
+    import json;
+    stem = native_wasm_stem(str(module_path));
+    cache = self.project_dir / ".jac" / "cache" / "wasm" / stem;
+    inputs_file = cache / "inputs.json";
     try {
-        wasm = build_wasm(client_program(self.program), str(module_path), []);
+        recorded = json.loads(inputs_file.read_text());
+        units = recorded.get("units", []);
+        if recorded.get("key") == self._wasm_input_key(units)
+            and all(ct_dep_text_fresh(unit[1]) for unit in units) {
+            held = {
+                p.name: p.read_bytes()
+                for p in cache.iterdir()
+                if p.is_file() and p.name != inputs_file.name
+            };
+            if held {
+                return held;
+            }
+        }
+    } except (OSError, ValueError, AttributeError) {}
+    stat_note("wasm_emit");
+    try {
+        (wasm, units) = wasm_artifact_inputs(
+            client_program(self.program), str(module_path), []
+        );
     } except Exception as e {
         console.error(f"na->wasm failed for '{module_path.name}': {e}");
         return {};
     }
-    stem = native_wasm_stem(str(module_path));
-
     console.print(f"  Native wasm module: /static/{stem}.wasm ({len(wasm)} bytes)");
-    return wasm_assets(stem, wasm);
+    assets = wasm_assets(stem, wasm);
+    try {
+        import shutil;
+        shutil.rmtree(cache, ignore_errors=True);
+        cache.mkdir(parents=True, exist_ok=True);
+        for (name, content) in assets.items() {
+            (cache / name).write_bytes(content);
+        }
+        inputs_file.write_text(
+            json.dumps({"units": units, "key": self._wasm_input_key(units)})
+        );
+    } except OSError {}
+    return assets;
+}
+
+impl ViteCompiler._wasm_input_key(self: ViteCompiler, units: list[list[str]]) -> str {
+    import hashlib;
+    import os;
+    h = hashlib.sha256(running_compiler_digest().encode("utf-8"));
+    config = self.project_dir / "jac.toml";
+    if config.is_file() {
+        h.update(file_sha256(str(config)).encode("utf-8"));
+    }
+    for path in sorted(unit[0] for unit in units) {
+        if not os.path.isfile(path) {
+            return "";
+        }
+        h.update(f"{path}:{ct_dep_digest(path, with_annexes=True)}\n".encode("utf-8"));
+    }
+    return h.hexdigest();
 }
 
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
