@@ -363,7 +363,8 @@ impl register_graph_endpoints(server: JacAPIServer) {
             node_type = graph_type_named(NodeArchetype, str(params.get('type')));
             if node_type is None {
                 return JSONResponse(
-                    status_code=400, content={'error': 'Unknown node type'}
+                    status_code=400,
+                    content={'error': 'Unknown node type', 'code': 'unknown_type'}
                 );
             }
         }
@@ -371,7 +372,8 @@ impl register_graph_endpoints(server: JacAPIServer) {
             edge_type = graph_type_named(EdgeArchetype, str(params.get('edge')));
             if edge_type is None {
                 return JSONResponse(
-                    status_code=400, content={'error': 'Unknown edge type'}
+                    status_code=400,
+                    content={'error': 'Unknown edge type', 'code': 'unknown_type'}
                 );
             }
         }

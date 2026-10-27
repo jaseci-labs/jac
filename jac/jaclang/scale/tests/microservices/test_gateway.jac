@@ -307,6 +307,14 @@ def _serve_owned(answers: dict[str, any]) -> tuple[any, ...] {
     def _do_get(handler_self: any) {
         payload = answers.get(handler_self.path);
         status = 200 if payload is not None else 404;
+        if isinstance(payload, dict) and "__status__" in payload {
+            status = payload["__status__"];
+            payload = {
+                k: v
+                for (k, v) in payload.items()
+                if k != "__status__"
+            };
+        }
         body = json.dumps(payload or {"error": "Node not found"}).encode();
         zipped = "gzip" in handler_self.headers.get("Accept-Encoding", "");
         if zipped {
@@ -375,7 +383,17 @@ test "graph reads reach every service that can read the node, compressed or not"
             "/graph/neighbors?id=r&limit=2": _neighbors([(1, "a"), (3, "c")], True),
             "/graph/neighbors?id=r&limit=5": _neighbors([(1, "a"), (3, "c")], False),
             "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(3, "c")], False),
-            "/graph/neighbors?id=r&limit=3": _neighbors([], False, "5.e5")
+            "/graph/neighbors?id=r&limit=3": _neighbors([], False, "5.e5"),
+            "/graph/neighbors?id=r&type=Task": {
+                "__status__": 400,
+                "error": "Unknown node type",
+                "code": "unknown_type"
+            },
+            "/graph/neighbors?id=r&type=Nope": {
+                "__status__": 400,
+                "error": "Unknown node type",
+                "code": "unknown_type"
+            }
         }
     );
     (srv_b, port_b) = _serve_owned(
@@ -384,7 +402,13 @@ test "graph reads reach every service that can read the node, compressed or not"
             "/graph/neighbors?id=r&limit=2": _neighbors([(2, "b"), (4, "d")], False),
             "/graph/neighbors?id=r&limit=5": _neighbors([(2, "b"), (4, "d")], False),
             "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(4, "d")], False),
-            "/graph/neighbors?id=r&limit=3": _neighbors([(2, "b"), (7, "g")], False)
+            "/graph/neighbors?id=r&limit=3": _neighbors([(2, "b"), (7, "g")], False),
+            "/graph/neighbors?id=r&type=Task": _neighbors([(2, "b")], False),
+            "/graph/neighbors?id=r&type=Nope": {
+                "__status__": 400,
+                "error": "Unknown node type",
+                "code": "unknown_type"
+            }
         }
     );
     reg = ServiceRegistry();
@@ -425,6 +449,9 @@ test "graph reads reach every service that can read the node, compressed or not"
         ("/graph/neighbors?id=r&limit=5", "identity", 200, ["a", "b", "c", "d"], None),
         # A service that stopped early at 5 has not ruled out rows before 7.
         ("/graph/neighbors?id=r&limit=3", "identity", 200, ["b"], "5.e5"),
+        # Only one service loads Task; the other's "unknown type" is not an error.
+        ("/graph/neighbors?id=r&type=Task", "identity", 200, ["b"], None),
+        ("/graph/neighbors?id=r&type=Nope", "identity", 400, None, None),
         ("/graph/node?id=nobody", "gzip, deflate, br", 404, None, None),
         ("/graph/neighbors?id=nobody", "gzip, deflate, br", 404, None, None)
     ];

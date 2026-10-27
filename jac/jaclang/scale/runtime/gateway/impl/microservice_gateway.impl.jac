@@ -288,6 +288,16 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
     );
     pages: list[dict[str, any]] = [];
     refused: list[tuple[int, bytes]] = [];
+    unknown: list[tuple[int, bytes]] = [];
+
+    def _unknown_type(body: bytes) -> bool {
+        try {
+            answer = json.loads(body);
+        } except ValueError {
+            return False;
+        }
+        return isinstance(answer, dict) and answer.get("code") == "unknown_type";
+    }
     for result in answers {
         if result is None {
             refused.append(
@@ -308,6 +318,8 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
             if isinstance(page, dict) {
                 pages.append(page);
             }
+        } elif status == 400 and _unknown_type(body) {
+            unknown.append((status, body));
         } elif status not in (404, 405) {
             refused.append((status, body));
         }
@@ -316,6 +328,13 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
         return Response(
             content=refused[0][1],
             status_code=refused[0][0],
+            media_type="application/json"
+        );
+    }
+    if not pages and unknown {
+        return Response(
+            content=unknown[0][1],
+            status_code=unknown[0][0],
             media_type="application/json"
         );
     }
