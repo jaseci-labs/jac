@@ -178,7 +178,7 @@ test "POST /jobs schedules a DYNAMIC target, then refuses the account past its c
 }
 
 
-test "GET /admin/schedules lists the static tasks, to admins only" {
+test "GET /admin/schedules lists the static tasks, to admins and the fleet bridge only" {
     fixtures = Path(__file__).parent.parent / "fixtures";
     base = tempfile.mkdtemp(prefix="jac-schedules-");
     for f in fixtures.iterdir() {
@@ -190,11 +190,28 @@ test "GET /admin/schedules lists the static tasks, to admins only" {
     get_scale_config(project_dir=Path(base));
     client = ScaleTestClient.from_file(str(fixtures / "test_api.jac"), base_path=base);
     server: any = client._server;
+    saved_bridge = os.environ.get(BRIDGE_TOKEN_ENV);
     try {
         server._register_scheduled_tasks();
         user = client.register_and_login("schedules-user", "password123");
+        os.environ[BRIDGE_TOKEN_ENV] = "fleet-secret";
+        for (bearer, allowed) in [
+            (user, False),
+            ("not-the-secret", False),
+            ("fleet-secret", True)
+        ] {
+            answer = client.get(
+                "/admin/schedules", headers={"Authorization": f"Bearer {bearer}"}
+            );
+            if allowed {
+                assert answer.status_code == 200 , answer.text;
+            } else {
+                assert answer.status_code in (401, 403) , answer.text;
+            }
+        }
+        os.environ.pop(BRIDGE_TOKEN_ENV, None);
         refused = client.get(
-            "/admin/schedules", headers={"Authorization": f"Bearer {user}"}
+            "/admin/schedules", headers={"Authorization": "Bearer fleet-secret"}
         );
         assert refused.status_code in (401, 403) , refused.text;
 
@@ -242,6 +259,11 @@ test "GET /admin/schedules lists the static tasks, to admins only" {
         assert ran["worker"].endswith(f":{os.getpid()}") , ran;
         assert ran["tick"] and ran["duration_ms"] >= 0.0 , ran;
     } finally {
+        if saved_bridge is None {
+            os.environ.pop(BRIDGE_TOKEN_ENV, None);
+        } else {
+            os.environ[BRIDGE_TOKEN_ENV] = saved_bridge;
+        }
         server.scheduler.stop(timeout=5.0);
         server.scheduler._tasks.clear();
         client.close();
