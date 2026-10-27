@@ -1020,7 +1020,6 @@ walker NaIRGenPass(CompilerPass) {
     def _c_calls_directly(target: ir.Function) -> bool;
     def _c_address_of_value(value: (ir.Value | None)) -> (ir.Value | None);
     def _c_const_offset_address(call: uni.UniNode, count: int) -> (ir.Constant | None);
-
     def _c_literal_address(arg: uni.UniNode) -> (ir.Constant | None);
     def _literal_destination(nd: uni.Int) -> (str | None);
     def _reads_c_callback(nd: uni.Expr) -> bool;
