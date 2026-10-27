@@ -6792,7 +6792,7 @@ graph import compiler {
             is_borrow_kind
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._clib_place_ptr { is_borrow_kind },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
             SymbolStorage
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_unary {
@@ -6949,7 +6949,7 @@ graph import compiler {
         types.types { ParamKind },
     ]
     frontend.constant --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
             OwnershipKind
         },
         backends.py.jcir_gen_pass.JcirGenPass._gen_native_interop_stubs {
