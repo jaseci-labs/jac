@@ -39928,6 +39928,20 @@ def _vm_own_key_is_enumerable_now(vm: VM, jsobj: JSValue, kid: int) -> bool {
     return prop.enumerable;
 }
 
+"""Give `boxed`, the String wrapper of `raw`, its index properties: one per
+UTF-16 code unit, each that unit as a string (a byte index would add a property
+per encoded byte of a non-ASCII character)."""
+def _vm_box_string_units(boxed: JSValue, raw: str) -> None {
+    bu_units: list[int] = js_string_utf16_units(raw);
+    bu_i: int = 0;
+    while bu_i < len(bu_units) {
+        js_object_set(
+            boxed, str_intern_index(bu_i), js_str(js_string_unit_str(bu_units[bu_i]))
+        );
+        bu_i = bu_i + 1;
+    }
+}
+
 """Object.keys — EnumerableOwnProperties kind=key (§20.1.2.17 / §7.3.23)."""
 def _vm_object_keys(vm: VM, jsobj: JSValue) -> JSValue {
     if jsv_is_null(jsobj) or jsv_is_undefined(jsobj) {
@@ -39937,15 +39951,7 @@ def _vm_object_keys(vm: VM, jsobj: JSValue) -> JSValue {
     boxed: JSValue = jsobj;
     if jsv_is_string_cell(jsobj) {
         boxed = js_String_new([jsobj]);
-        raw_k: str = str_from_id(jsv_to_table_id(jsobj));
-        ki: int = 0;
-        _nb39931_raw_k: int = str_nbytes(raw_k);
-        while ki < _nb39931_raw_k {
-            js_object_set(
-                boxed, str_intern_index(ki), js_str(str_substr(raw_k, ki, ki + 1))
-            );
-            ki = ki + 1;
-        }
+        _vm_box_string_units(boxed, str_from_id(jsv_to_table_id(jsobj)));
     } elif not jsv_is_any_object(jsobj) {
         # Other primitives box to objects with no enumerable own keys.
         return js_array_create([]);
@@ -39999,15 +40005,7 @@ def _vm_object_values(vm: VM, jsobj: JSValue) -> JSValue {
     boxed: JSValue = jsobj;
     if jsv_is_string_cell(jsobj) {
         boxed = js_String_new([jsobj]);
-        raw_v: str = str_from_id(jsv_to_table_id(jsobj));
-        vi: int = 0;
-        _nb39992_raw_v: int = str_nbytes(raw_v);
-        while vi < _nb39992_raw_v {
-            js_object_set(
-                boxed, str_intern_index(vi), js_str(str_substr(raw_v, vi, vi + 1))
-            );
-            vi = vi + 1;
-        }
+        _vm_box_string_units(boxed, str_from_id(jsv_to_table_id(jsobj)));
     } elif not jsv_is_any_object(jsobj) {
         return js_array_create([]);
     }
@@ -40045,15 +40043,7 @@ def _vm_object_entries(vm: VM, jsobj: JSValue) -> JSValue {
     boxed: JSValue = jsobj;
     if jsv_is_string_cell(jsobj) {
         boxed = js_String_new([jsobj]);
-        raw_e: str = str_from_id(jsv_to_table_id(jsobj));
-        ei: int = 0;
-        _nb40037_raw_e: int = str_nbytes(raw_e);
-        while ei < _nb40037_raw_e {
-            js_object_set(
-                boxed, str_intern_index(ei), js_str(str_substr(raw_e, ei, ei + 1))
-            );
-            ei = ei + 1;
-        }
+        _vm_box_string_units(boxed, str_from_id(jsv_to_table_id(jsobj)));
     } elif not jsv_is_any_object(jsobj) {
         return js_array_create([]);
     }
@@ -41504,17 +41494,7 @@ def _vm_object_assign(vm: VM, target: JSValue, sources: list[JSValue]) -> JSValu
         if not jsv_is_any_object(boxed) {
             if jsv_is_string_cell(boxed) {
                 boxed = js_String_new([boxed]);
-                raw_as: str = str_from_id(jsv_to_table_id(src));
-                idx_as: int = 0;
-                _nb41494_raw_as: int = str_nbytes(raw_as);
-                while idx_as < _nb41494_raw_as {
-                    js_object_set(
-                        boxed,
-                        str_intern_index(idx_as),
-                        js_str(str_substr(raw_as, idx_as, idx_as + 1))
-                    );
-                    idx_as = idx_as + 1;
-                }
+                _vm_box_string_units(boxed, str_from_id(jsv_to_table_id(src)));
             } else {
                 boxed = _to_object_or_throw(src);
                 if vm_has_native_exc() {

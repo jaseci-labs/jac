@@ -117,7 +117,9 @@ import from engine.src.runtime.mem {
     str_brfind,
     str_byte,
     str_nbytes,
-    str_bfind_in
+    str_bfind_in,
+    str_bmatch_at,
+    str_bslice_in
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -952,21 +954,45 @@ startsWith(searchString [, position]) — ECMAScript §22.1.3.20
 def:pub js_str_startsWith(v: JSValue, prefix: JSValue, pos_v: JSValue) -> JSValue {
     s: str = _raw(string_value_of(v));
     p: str = js_to_string_prim(prefix);
-    slen: int = str_nbytes(s);
-    st: int = _clamp_index(_to_int_or_inf(pos_v), slen);
+    pos_f: float = _to_int_or_inf(pos_v);
     plen: int = str_nbytes(p);
+    if _byte_clean(v, s) {
+        # Byte-clean: a UTF-16 position is a byte offset.
+        slen: int = str_nbytes(s);
+        st: int = _clamp_index(pos_f, slen);
+        if plen == 0 {
+            return js_true();
+        }
+        if st + plen > slen {
+            return js_false();
+        }
+        sub: str = str_substr(s, st, st + plen);
+        if sub == p {
+            return js_true();
+        } else {
+            return js_false();
+        }
+    }
     if plen == 0 {
         return js_true();
     }
-    if st + plen > slen {
-        return js_false();
-    }
-    sub: str = str_substr(s, st, st + plen);
-    if sub == p {
+    # The position counts UTF-16 units: compare the bytes from its byte offset.
+    if str_bmatch_at(s, p, _str_unit_byte_at(v, s, pos_f)) {
         return js_true();
-    } else {
-        return js_false();
     }
+    return js_false();
+}
+
+"""Byte offset in `s` (the text of `v`) of UTF-16 position `pos_f`, clamped to
+0..length; -1 when it falls between the two halves of a surrogate pair."""
+def _str_unit_byte_at(v: JSValue, s: str, pos_f: float) -> int {
+    if jsv_is_string_cell(v) {
+        ub_ix: U16Index = js_string_u16ix(jsv_to_table_id(v), s);
+        if ub_ix.regular {
+            return u16ix_unit_to_byte(ub_ix, s, _clamp_index(pos_f, ub_ix.total));
+        }
+    }
+    return js_string_unit_to_byte(s, _clamp_index(pos_f, js_string_utf16_len(s)));
 }
 
 """
@@ -980,29 +1006,27 @@ def:pub js_str_endsWith(v: JSValue, suffix: JSValue, endpos_v: JSValue) -> JSVal
     slen: int = str_nbytes(s);
     en: int = slen;
     if not jsv_is_undefined(endpos_v) {
-        en = _clamp_index(_to_int_or_inf(endpos_v), slen);
+        en_f: float = _to_int_or_inf(endpos_v);
+        # The end position counts UTF-16 units (a byte offset when byte-clean).
+        if _byte_clean(v, s) {
+            en = _clamp_index(en_f, slen);
+        } else {
+            en = _str_unit_byte_at(v, s, en_f);
+        }
     }
     plen2: int = str_nbytes(p);
     if plen2 == 0 {
         return js_true();
     }
-    if plen2 > en {
+    if en < 0 or plen2 > en {
         return js_false();
     }
-    if en == slen {
-        # Whole-string suffix test: no prefix copy (was str_substr(s, 0, len)).
-        if s.endswith(p) {
-            return js_true();
-        } else {
-            return js_false();
-        }
-    }
-    sub2: str = str_substr(s, en - plen2, en);  # copy only the compared window
-    if sub2 == p {
+    # A byte compare in place (str.endswith compares decoded code points, where
+    # the C0 80 NUL sentinel and U+FFFD read alike).
+    if str_bmatch_at(s, p, en - plen2) {
         return js_true();
-    } else {
-        return js_false();
     }
+    return js_false();
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1665,10 +1689,21 @@ Call(replacement, undefined, [matched, position, string]) and ToString the resul
 (§22.1.3.14 step 14). Otherwise expand the `$` patterns in `r` via GetSubstitution.
 """
 def _replace_one(
-    matched: str, s: str, position: int, replacement: JSValue, is_fn: bool, r: str
+    matched: str,
+    s: str,
+    position: int,
+    replacement: JSValue,
+    is_fn: bool,
+    r: str,
+    unit_pos: int = -1
 ) -> str {
     if is_fn {
-        pos_v: JSValue = js_int(position);
+        # The callback sees the match position in UTF-16 units; `position` is
+        # its byte offset (what the substitution below slices by).
+        if unit_pos < 0 {
+            unit_pos = position if s.isascii() else js_string_byte_to_unit(s, position);
+        }
+        pos_v: JSValue = js_int(unit_pos);
         res: JSValue = js_call_observable(
             replacement, js_undefined(), [_mk_str(matched), pos_v, _mk_str(s)]
         );
@@ -1753,6 +1788,14 @@ def _replace_all_build(
 ) -> str {
     slen: int = str_nbytes(s);
     nlen: int = str_nbytes(n);
+    asc: bool = s.isascii();
+    if nlen == 0 and not asc {
+        return _replace_all_empty_units(s, replacement, is_fn, r);
+    }
+    # UTF-16 offset of `pos` for a non-ASCII `s` (a byte offset is a unit offset
+    # in an ASCII one), counted forward so the callback positions stay linear.
+    nunits: int = 0 if asc else js_string_utf16_len(n);
+    upos: int = 0;
     out: str = "";
     pos: int = 0;
     while pos <= slen {
@@ -1763,28 +1806,113 @@ def _replace_all_build(
         } else {
             # Native offset search — no per-iteration tail copy (was
             # str_substr(s, pos, slen) + find: an O(n) copy per match).
-            found = str_bfind(s, n, pos);
+            found = str_bfind_in(s, n, pos, slen);
         }
         if found < 0 {
             break;
         }
-        out = out + str_substr(s, pos, found);
-        out = out + _replace_one(n, s, found, replacement, is_fn, r);
+        if not asc {
+            upos = upos + _units_between(s, pos, found);
+        }
+        out = out + str_substr_in(s, pos, found);
+        out = out + _replace_one(
+            n, s, found, replacement, is_fn, r, found if asc else upos
+        );
         if vm_has_native_exc() {
             return "";
         }
         if nlen == 0 {
             # advance one char past the empty match, emitting the skipped char
+            # (`s` is ASCII here: one byte is one unit)
             if found < slen {
                 out = out + byte_chr(str_byte(s, found));
             }
             pos = found + 1;
         } else {
             pos = found + nlen;
+            upos = upos + nunits;
         }
     }
     out = out + str_substr(s, pos, slen);
     return out;
+}
+
+"""UTF-16 units in the bytes [a, b) of `s`, both character boundaries."""
+def _units_between(s: str, a: int, b: int) -> int {
+    ub_u: int = 0;
+    ub_i: int = a;
+    while ub_i < b {
+        # (the C0 80 NUL sentinel is a 2-byte, 1-unit lead like any < 224)
+        ub_b: int = str_byte(s, ub_i);
+        if ub_b < 128 {
+            ub_i = ub_i + 1;
+            ub_u = ub_u + 1;
+        } elif ub_b < 224 {
+            ub_i = ub_i + 2;
+            ub_u = ub_u + 1;
+        } elif ub_b < 240 {
+            ub_i = ub_i + 3;
+            ub_u = ub_u + 1;
+        } else {
+            ub_i = ub_i + 4;
+            ub_u = ub_u + 2;
+        }
+    }
+    return ub_u;
+}
+
+"""replaceAll with an empty search on a non-ASCII `s`: a replacement goes before
+every UTF-16 unit and at the end, as in a UTF-16 engine. Each character keeps its
+own bytes; an astral one is split into its two surrogates only when something is
+inserted between them."""
+def _replace_all_empty_units(
+    s: str, replacement: JSValue, is_fn: bool, r: str
+) -> str {
+    eu_n: int = str_nbytes(s);
+    eu_parts: list[str] = [];
+    eu_b: int = 0;
+    eu_k: int = 0;
+    while eu_b < eu_n {
+        # (the C0 80 NUL sentinel is a 2-byte, 1-unit lead like any < 224)
+        eu_lead: int = str_byte(s, eu_b);
+        eu_w: int = 1;
+        if eu_lead >= 240 {
+            eu_w = 4;
+        } elif eu_lead >= 224 {
+            eu_w = 3;
+        } elif eu_lead >= 128 {
+            eu_w = 2;
+        }
+        eu_parts.append(_replace_one("", s, eu_b, replacement, is_fn, r, eu_k));
+        if vm_has_native_exc() {
+            return "";
+        }
+        if eu_w == 4 {
+            # Between the halves $` and $' still cut at the pair's start.
+            eu_mid: str = _replace_one("", s, eu_b, replacement, is_fn, r, eu_k + 1);
+            if vm_has_native_exc() {
+                return "";
+            }
+            if eu_mid == "" {
+                eu_parts.append(str_bslice_in(s, eu_b, eu_b + 4));
+            } else {
+                eu_pair: list[int] = js_string_utf16_units(str_bslice_in(s, eu_b, eu_b + 4));
+                eu_parts.append(js_string_unit_str(eu_pair[0]));
+                eu_parts.append(eu_mid);
+                eu_parts.append(js_string_unit_str(eu_pair[1]));
+            }
+            eu_k = eu_k + 2;
+        } else {
+            eu_parts.append(str_bslice_in(s, eu_b, eu_b + eu_w));
+            eu_k = eu_k + 1;
+        }
+        eu_b = eu_b + eu_w;
+    }
+    eu_parts.append(_replace_one("", s, eu_n, replacement, is_fn, r, eu_k));
+    if vm_has_native_exc() {
+        return "";
+    }
+    return "".join(eu_parts);
 }
 
 # ══════════════════════════════════════════════════════════════════════════════

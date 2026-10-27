@@ -2569,17 +2569,19 @@ def _escape_regexp_pattern(pattern: str) -> str {
             i = i + 1;
             continue;
         }
-        cp: int = str_byte(c, 0);
-        if cp == 8232 {
-            out = out + "\\u2028";
-            i = i + 1;
+        # U+2028 LINE SEPARATOR / U+2029 PARAGRAPH SEPARATOR: E2 80 A8 / A9.
+        if str_byte(pattern, i) == 0xE2
+            and i + 2 < n
+            and str_byte(pattern, i + 1) == 0x80
+            and (str_byte(pattern, i + 2) == 0xA8 or str_byte(pattern, i + 2) == 0xA9) {
+            if str_byte(pattern, i + 2) == 0xA8 {
+                out = out + "\\u2028";
+            } else {
+                out = out + "\\u2029";
+            }
+            i = i + 3;
             continue;
-        }  # LINE SEPARATOR
-        if cp == 8233 {
-            out = out + "\\u2029";
-            i = i + 1;
-            continue;
-        }  # PARAGRAPH SEPARATOR
+        }
         out = out + c;
         i = i + 1;
     }
