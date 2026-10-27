@@ -347,6 +347,9 @@ impl NaIRGenPass._emit_raw_free_bbs(
     self._emit_live_list_remove(b, ptr, i8_ptr, i64_ptr, done_bb, actual_free_bb);
 
     b = ir.IRBuilder(actual_free_bb);
+    if not self._nogc_headerless() and self._gc_mode() != "none" {
+        b = self._utf8_forget_on_free(b, ptr);
+    }
     _raw_for_free = b.gep(
         ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.for.free"
     );

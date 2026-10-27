@@ -39,28 +39,13 @@ glob _EXCLUDE_DIRS: set[str] = {
          ".pytest_cache"
      };
 
-glob _EXCLUDE_FILES: set[str] = {
-         ".env",
-         "jac.toml",
-         "id_rsa",
-         "id_dsa",
-         "id_ecdsa",
-         "id_ed25519"
-     };
-glob _EXCLUDE_SUFFIXES: tuple[str, ...] = (
-         ".pem",
-         ".key",
-         ".crt",
-         ".cer",
-         ".p12",
-         ".pfx",
-         ".jks",
-         ".keystore"
-     );
 glob _EXCLUDE_ENV: set[str] = {"PYTHONPATH", "PYTHONHOME", "JAC_HANDOFF"};
 
 
 def _is_bundle_required(rel: Path) -> bool;
+
+
+def _is_client_dist(rel: Path) -> bool;
 
 
 obj BundleSourceFilter {
@@ -97,6 +82,12 @@ def partition_bundle_sources(base: Path) -> tuple[list[Path], list[str]];
 
 
 def bundle_source_files(base: Path) -> list[Path];
+
+
+def client_build_sources(base: Path) -> list[Path];
+
+
+def _with_client_dist(raw: bytes, base: Path) -> bytes;
 
 
 def resolve_fleet_entries(project_dir: str, fleet: any) -> dict[str, str];
@@ -252,7 +243,11 @@ def _remember_seal(base: Path, key: str, raw: bytes);
 
 
 def pack_jab(
-    project_dir: str, seal_binary: bytes, pod_arch: str = "", fleet: any = None
+    project_dir: str,
+    seal_binary: bytes,
+    pod_arch: str = "",
+    fleet: any = None,
+    client_ready: any = None
 ) -> bytes;
 
 

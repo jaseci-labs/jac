@@ -123,16 +123,17 @@ impl __doWalkerFetch(
         raise __bridgeErrorFromFetch(fetch_err, app, `walker);
     }
     if not response.ok {
-        if response.status == 401 and not app {
-            globalThis.__jacRemoveLocalStorage__("jac_token");
-            handler = globalThis.__jacHandleWalkerUnauthorized__;
-            if handler {
-                handler();
+        if response.status == 401 {
+            dropped = __jacDropRejectedToken(str(token or ""));
+            if not app {
+                if dropped {
+                    handler = globalThis.__jacHandleWalkerUnauthorized__;
+                    if handler {
+                        handler();
+                    }
+                }
+                return {};
             }
-            return {};
-        }
-        if response.status == 401 and token {
-            globalThis.__jacRemoveLocalStorage__("jac_token");
         }
         error_text = await response.text();
         walker_name = f"{`walker}/{nodeId}" if nodeId else `walker;
@@ -174,16 +175,17 @@ impl __doFuncFetch(
         raise __bridgeErrorFromFetch(fetch_err, app, function_name);
     }
     if not response.ok {
-        if response.status == 401 and not app {
-            globalThis.__jacRemoveLocalStorage__("jac_token");
-            handler = globalThis.__jacHandleWalkerUnauthorized__;
-            if handler {
-                handler();
+        if response.status == 401 {
+            dropped = __jacDropRejectedToken(str(token or ""));
+            if not app {
+                if dropped {
+                    handler = globalThis.__jacHandleWalkerUnauthorized__;
+                    if handler {
+                        handler();
+                    }
+                }
+                return {};
             }
-            return {};
-        }
-        if response.status == 401 and token {
-            globalThis.__jacRemoveLocalStorage__("jac_token");
         }
         error_text = await response.text();
         raise __bridgeErrorFor(
@@ -321,6 +323,18 @@ impl jacSignup(
     if profile != None {
         body["profile"] = profile;
     }
+    registration = policy["registration"] if policy else None;
+    if registration and registration["challenge"] {
+        proof = await __solveRegistrationChallenge(str(base_url));
+        if proof["error"] {
+            return SignupResult(
+                success=False, error=proof["error"], status=int(proof["status"])
+            );
+        }
+        if proof["challenge"] {
+            body["challenge"] = proof["challenge"];
+        }
+    }
     response = await fetch(
         f"{base_url}/user/register",
         {
@@ -432,6 +446,14 @@ impl jacIsLoggedIn -> bool {
     return True;
 }
 
+impl __jacDropRejectedToken(sent: str) -> bool {
+    if str(globalThis.__jacGetLocalStorage__("jac_token") or "") != sent {
+        return False;
+    }
+    globalThis.__jacRemoveLocalStorage__("jac_token");
+    return True;
+}
+
 impl __jacTokenExpired(token: str) -> bool {
     parts = token.split(".");
     if len(parts) != 3 {
@@ -532,4 +554,8 @@ impl _awaitPlatformReady {
     if ready {
         await ready;
     }
+}
+
+impl BridgeError.postinit {
+    self.message = self.detail;
 }

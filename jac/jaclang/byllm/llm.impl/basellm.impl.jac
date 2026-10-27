@@ -32,13 +32,18 @@ async def _aretry_sleep(attempt: int);
 def _is_prompt_caching_eligible(model_name: str) -> bool;
 
 
+def _without_cache_control(block: dict[str, any]) -> dict[str, any];
+
+
 def _mark_message_for_caching(msg: dict[str, any]);
 
 
 def _usage_int(usage: any, key: str) -> int;
 
 
-def _apply_prompt_caching(messages: list[object], tools: list[dict[str, any]] | None);
+def _apply_prompt_caching(
+    messages: list[any], tools: list[dict[str, any]] | None
+) -> tuple[list[any], list[dict[str, any]] | None];
 
 
 def _quiet_lookup(lookup: Callable, fallback: any) -> any;
@@ -934,7 +939,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict[str, any] {
         if isinstance(first, dict) and first.get("role") == "system"
         else None;
     if _is_prompt_caching_eligible(self.model_name) {
-        _apply_prompt_caching(messages, tools);
+        (messages, tools) = _apply_prompt_caching(messages, tools);
     }
 
     params = {
@@ -2293,12 +2298,29 @@ impl _is_prompt_caching_eligible(model_name: str) -> bool {
 }
 
 
+impl _without_cache_control(block: dict[str, any]) -> dict[str, any] {
+    out = {
+        key: value
+        for (key, value) in block.items()
+        if key != "cache_control"
+    };
+    content = out.get("content");
+    if isinstance(content, list) {
+        out["content"] = [
+            _without_cache_control(part) if isinstance(part, dict) else part
+            for part in content
+        ];
+    }
+    return out;
+}
+
+
 impl _mark_message_for_caching(msg: dict[str, any]) {
     content = msg.get("content");
     if isinstance(content, str) {
-        msg["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
-    } elif isinstance(content, list) and len(content) > 0 {
-        content[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+        msg["cache_control"] = dict(_CACHE_CONTROL_EPHEMERAL);
+    } elif isinstance(content, list) and content and isinstance(content[-1], dict) {
+        content[-1]["cache_control"] = dict(_CACHE_CONTROL_EPHEMERAL);
     }
 }
 
@@ -2343,33 +2365,35 @@ impl _usage_int(usage: any, key: str) -> int {
 }
 
 
-impl _apply_prompt_caching(messages: list[object], tools: list[dict[str, any]] | None) {
-    last_sys_idx = -1;
-    last_nonsys_idx = -1;
-    for (i, msg) in enumerate(messages) {
+impl _apply_prompt_caching(
+    messages: list[any], tools: list[dict[str, any]] | None
+) -> tuple[list[any], list[dict[str, any]] | None] {
+    out_msgs: list[any] = [
+        _without_cache_control(msg) if isinstance(msg, dict) else msg
+        for msg in messages
+    ];
+    last_sys: dict[str, any] | None = None;
+    last_nonsys: dict[str, any] | None = None;
+    for msg in out_msgs {
         if isinstance(msg, dict) {
             if msg.get("role") == "system" {
-                last_sys_idx = i;
+                last_sys = msg;
             } else {
-                last_nonsys_idx = i;
+                last_nonsys = msg;
             }
         }
     }
-    if last_sys_idx >= 0 {
-        _sys_msg = messages[last_sys_idx];
-        if isinstance(_sys_msg, dict) {
-            _mark_message_for_caching(_sys_msg);
+    for target in (last_sys, last_nonsys) {
+        if target is not None {
+            _mark_message_for_caching(target);
         }
     }
-    if last_nonsys_idx >= 0 {
-        _nonsys_msg = messages[last_nonsys_idx];
-        if isinstance(_nonsys_msg, dict) {
-            _mark_message_for_caching(_nonsys_msg);
-        }
+    if not tools {
+        return (out_msgs, tools);
     }
-    if tools {
-        tools[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
-    }
+    out_tools = [_without_cache_control(tool) for tool in tools];
+    out_tools[-1]["cache_control"] = dict(_CACHE_CONTROL_EPHEMERAL);
+    return (out_msgs, out_tools);
 }
 
 

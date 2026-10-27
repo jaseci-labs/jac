@@ -72,9 +72,6 @@ impl NaIRGenPass._closure_sig_struct(
 }
 
 impl NaIRGenPass._wrap_fn_as_closure_value(val: ir.Value) -> ir.Value {
-    """A bare function stored into a container slot becomes an owned
-    {fn, env=null} closure box, because a Callable is read and called back
-    as a closure pair. Any other value is returned unchanged.""";
     fnty: (ir.FunctionType | None) = None;
     if isinstance(val.type, ir.FunctionType) {
         fnty = val.type;

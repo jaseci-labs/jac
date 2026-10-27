@@ -655,11 +655,11 @@ test "cross-module pulled elements dual-emit for the server side" {
     }
     _ensure_js_generated(util, prog);
     util_js = util.gen.js;
-    assert 'register' in util.gen.client_manifest.exports , (
-        "pulled accessless def must be an ES export of the pulled module"
+    assert 'register' in util.gen.client_manifest.linkable , (
+        "pulled accessless def must be exportable to its client importers"
     );
-    assert '_tags' in util.gen.client_manifest.globals , (
-        "pulled glob must be an ES export of the pulled module"
+    assert '_tags' in util.gen.client_manifest.linkable , (
+        "pulled glob must be exportable to its client importers"
     );
     assert util_js.strip() , "pulled module must produce client JS";
     run_pass(JcirGenPass, util, prog);
@@ -713,9 +713,9 @@ test "codespace stamps invalidate stale module codegen" {
     assert app is not None;
     run_pass(EsastGenPass, app, prog);
     _ensure_js_generated(util, prog);
-    assert 'register' in util.gen.client_manifest.exports , (
+    assert 'register' in util.gen.client_manifest.linkable , (
         "pull stamps must invalidate the pre-pull ES cache so the pulled def "
-        "regenerates with its export"
+        "regenerates as client code its importers can link"
     );
     assert 'register' in (util.gen.js or '') , (
         "regenerated module JS must contain the pulled def"

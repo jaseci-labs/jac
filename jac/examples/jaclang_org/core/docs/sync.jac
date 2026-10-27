@@ -1,23 +1,15 @@
-import hashlib;
 import logging;
 import os;
 import re;
-import from pathlib { Path }
-import from jaclang.cli.guide_store { NavPage, docs_dir, nav_pages, parse_guide }
+import time;
+import from jaclang.cli.guide_store { docs_dir }
 import from jaclang.cli.manifest_route { resolve_cli_version }
-
-obj DocBundle {
-    has pages: dict[str, str] = {},
-        nav: dict[str, NavPage] = {},
-        jac_version: str = "",
-        fingerprint: str = "";
-}
+import from jaclang.server.bridge { BridgeError }
 
 glob SYNC_TICK_S: float = 30.0,
-     SYNC_STATE: dict[str, bool] = {},
+     RECHECK_S: float = 600.0,
+     SYNC_STATE: dict[str, float] = {},
      log: logging.Logger = logging.getLogger("docs.sync");
-
-def label_of(version: str) -> str;
 
 def corpus_bundle -> DocBundle;
 
@@ -31,5 +23,9 @@ def corpus_stale(bundle: DocBundle) -> bool;
 
 def ingest(bundle: DocBundle);
 
+def retire_versions(keep: list[str]);
+
+async def sync_release_lines(serving_label: str) -> bool;
+
 @schedule(trigger=ScheduleTrigger.STATIC, interval=SYNC_TICK_S)
-def:protect docs_sync_tick;
+async def:protect docs_sync_tick;

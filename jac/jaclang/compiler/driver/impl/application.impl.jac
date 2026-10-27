@@ -355,7 +355,6 @@ impl _check(program: any, before: any) {
 impl _prepare_sealed(
     `entry: str, program: any, image_root: str, entries: list[str]
 ) -> PreparedApplication {
-    import json;
     bundle_dir = Path(image_root) / '_precompiled';
     image = image_for_bundle_dir(bundle_dir) or register_image(bundle_dir);
     if image is None {
@@ -363,14 +362,7 @@ impl _prepare_sealed(
             f'Sealed application has no artifact manifest: {image_root}'
         );
     }
-    serve_manifest = Path(image_root) / SERVE_MANIFEST_REL;
-    if not serve_manifest.is_file() {
-        raise RuntimeError(
-            f'Sealed application has no serving manifest: {serve_manifest}; '
-            'rebuild the bundle so the seal step writes it'
-        );
-    }
-    manifest = json.loads(serve_manifest.read_text());
+    manifest = read_serve_manifest(image_root);
     manifest['root'] = image_root;
     recorded: dict[str, set[str]] = {
         os.path.realpath(os.path.join(image_root, source)): {
@@ -636,6 +628,7 @@ impl _prepare(
     dev: any,
     console: any
 ) -> PreparedApplication {
+    program.forget_failed_modules();
     inputs: dict[str, str] = {};
     selfhost = program._get_compiler().selfhost;
     def capture(path: str) {
@@ -808,7 +801,7 @@ impl _kernel_units(
     seeds = _reusable_interfaces(previous, entries, specs, `root);
     warned = len(program.warnings_had);
     units: dict[str, ManifestSource] = {};
-    def compile_target(path: str) -> bool {
+    def compile_target(path: str) -> (bool | None) {
         options = copy.copy(program.options);
         options.project_root = `root;
         options.no_cgen = False;
@@ -817,7 +810,7 @@ impl _kernel_units(
             active_host(), program, path, options, seeds=list(seeds.values())
         );
         if compiled is None {
-            return False;
+            return None;
         }
         for reached in compiled.analysis.modules {
             if not selfhost.is_selfhost(selfhost.resolve(reached.path, program)) {
@@ -843,7 +836,12 @@ impl _kernel_units(
         failed = False;
         while targets and not failed {
             for path in targets {
-                if not compile_target(path) {
+                landed = compile_target(path);
+                if landed is None {
+                    forget_application_units();
+                    return None;
+                }
+                if not landed {
                     failed = True;
                     break;
                 }
@@ -856,7 +854,11 @@ impl _kernel_units(
             if not seeds {
                 forget_application_units();
                 if failed {
-                    return None;
+                    _check(program, before);
+                    raise RuntimeError(
+                        "the native compiler kernel compiled the application "
+                        "but returned no unit for an entry and reported no error"
+                    );
                 }
                 break;
             }

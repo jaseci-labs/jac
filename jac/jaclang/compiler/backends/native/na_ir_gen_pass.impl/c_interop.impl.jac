@@ -368,6 +368,10 @@ impl NaIRGenPass._codegen_c_interop_call(
         if named {
             return (True, address);
         }
+        literal = self._c_literal_address(params[0]);
+        if literal is not None {
+            return (True, literal);
+        }
         return (True, self._c_address_of_value(self._codegen_expr(params[0])));
     }
     if isinstance(nd.target, uni.Name)
@@ -1119,12 +1123,23 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             if named {
                 return address;
             }
-
+            literal = self._c_literal_address(arg);
+            if literal is not None {
+                return literal;
+            }
             return self._c_const_address(arg);
         }
         return None;
     }
     return self._c_const_scalar(expr, i64);
+}
+
+impl NaIRGenPass._c_literal_address(arg: uni.UniNode) -> (ir.Constant | None) {
+    if not isinstance(arg, uni.Int) {
+        return None;
+    }
+    bits = uni.int_literal_u64_bits(arg.value);
+    return ir.Constant(ir.IntType(64), bits) if bits is not None else None;
 }
 
 impl NaIRGenPass._reads_c_callback(nd: uni.Expr) -> bool {
@@ -1254,9 +1269,6 @@ impl NaIRGenPass._c_global_store(
 }
 
 impl NaIRGenPass._c_va_start(nd: uni.UniNode) -> (ir.Value | None) {
-    """Start a C variadic argument list. Its va_list lives in a 32-byte,
-    8-aligned slot, which holds any target's va_list, and llvm.va_start
-    fills it the target's way; the floor's __jac_va_* read it.""";
     if self._target_is_wasm() {
         self.ctx.emit(
             E5092,

@@ -23,7 +23,7 @@ class BuildServices(Protocol) {
     ) -> PreparedApplication abst;
 
     def hot_reloader(
-        self: BuildServices, base_path: str, module_name: str
+        self: BuildServices, base_path: str, module_name: str, entry_path: str = ""
     ) -> HotReloader abst;
 
     def run_test(

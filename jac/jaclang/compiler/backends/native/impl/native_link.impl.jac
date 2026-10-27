@@ -24,10 +24,6 @@ impl clib_to_archive_name(clib_path: str) -> str {
 }
 
 impl floor_archives(clib_paths: list[str], triple: str) -> tuple[list[str], set[str]] {
-    """The C floor's static archives for the libraries a program names, and
-    the libraries they stand in for. LLD loads an archive's members lazily, so
-    every matching archive is passed whole and only what the program reaches
-    is linked. A PE link imports its C libraries from DLLs instead.""";
     archives: list[str] = [];
     handled: set[str] = set();
     tl = triple.lower();
@@ -52,7 +48,6 @@ impl floor_archives(clib_paths: list[str], triple: str) -> tuple[list[str], set[
 }
 
 impl musl_runtime(triple: str) -> (tuple[list[str], list[str]] | None) {
-    """The static musl runtime: (crt objects in link order, archives).""";
     lib_dir = musl_lib_dir(triple);
     if lib_dir is None or not os.path.isfile(os.path.join(lib_dir, "libc.a")) {
         return None;
@@ -74,8 +69,6 @@ impl musl_runtime(triple: str) -> (tuple[list[str], list[str]] | None) {
 }
 
 impl outline_atomics_archive(triple: str) -> (str | None) {
-    """AArch64 Linux code calls `__aarch64_*` outline atomics, which only
-    compiler-rt's atomics archive defines.""";
     if triple_arch_of(triple) != "aarch64" or "linux" not in triple {
         return None;
     }
@@ -198,10 +191,6 @@ impl _undefined_symbols(objects: list[bytes]) -> list[str] {
 }
 
 impl link_native(job: NativeLinkJob) -> list[str] {
-    """Link one native artifact with LLD, in this process, and return the
-    warnings LLD printed. The image is written beside the destination and
-    moved into place only once the link succeeded, so a reader never sees a
-    partial file.""";
     final = job.output_path;
     directory = os.path.dirname(os.path.abspath(final)) or ".";
     os.makedirs(directory, exist_ok=True);
@@ -259,10 +248,6 @@ impl _empty_object(work: str, triple: str) -> str {
 }
 
 impl _elf_stub_library(work: str, triple: str, soname: str, index: int) -> str {
-    """An empty shared object whose only content is its SONAME. Linked with
-    --no-as-needed it records the DT_NEEDED entry for a library the link
-    never sees; the program's references to it stay dynamic imports that
-    the loader binds at run time.""";
     stub = os.path.join(work, f"stub{index}.so");
     _run_lld(
         [
@@ -292,10 +277,6 @@ impl _link_elf(job: NativeLinkJob, work: str) -> list[str] {
         "--hash-style=both"
     ];
     if job.static_musl {
-        """The C floor archives are built against glibc, and a few of their
-        members reference glibc-only symbols (`getcontext`, `fopen64`) on
-        paths a static musl program never takes; those resolve to 0 with a
-        warning, as they always have.""";
         crt = [
             p
             for p in job.crt_objects
@@ -376,9 +357,6 @@ impl _tbd(path: str, install_name: str, target: str, symbols: list[str]) {
 }
 
 impl _macho_install_name(lib: str) -> str {
-    """A dylib named by a relative path loads from beside the binary, as an
-    ELF library does through RUNPATH $ORIGIN: `libraylib.dylib` is recorded
-    as `@loader_path/libraylib.dylib`.""";
     if lib.startswith("/") or lib.startswith("@") {
         return lib;
     }
@@ -388,13 +366,6 @@ impl _macho_install_name(lib: str) -> str {
 impl macho_stub_symbols(
     job: NativeLinkJob, undefined: list[str]
 ) -> dict[str, list[str]] {
-    """The text stubs a Mach-O link names: each dylib it loads, with the
-    symbols bound to it two-level. An executable binds a C import to the
-    library its program named, or to libSystem. A dylib binds none of them:
-    it is loaded into a host process (a Python interpreter, an app) whose
-    images provide them, so every import stays a flat lookup
-    (`-undefined dynamic_lookup`) and the stubs only record which dylibs to
-    load.""";
     by_lib: dict[str, list[str]] = {};
     for lib in [MACHO_SYSTEM_DYLIB] + job.needed_libs {
         by_lib.setdefault(_macho_install_name(lib), []);
@@ -503,7 +474,6 @@ impl _link_pe(job: NativeLinkJob, work: str) -> list[str] {
 }
 
 impl link_wasm_module(job: WasmLinkJob) {
-    """Link a wasm module with wasm-ld (the layout is `wasm_ld_args`).""";
     work = tempfile.mkdtemp(prefix="jac-wasm-link-");
     try {
         inputs = _write_objects(work, job.objects, ".o");
@@ -523,8 +493,6 @@ impl link_wasm_module(job: WasmLinkJob) {
 }
 
 impl write_symbol_map(output_path: str) {
-    """`<binary>.symmap`: every defined symbol of the linked image, one
-    `name 0xaddress` line each, in address order.""";
     with open(output_path, "rb") as f {
         image = f.read();
     }

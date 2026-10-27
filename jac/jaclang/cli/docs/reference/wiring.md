@@ -18,10 +18,10 @@ graph import {
 }
 
 graph import core {
-    ai ++> scoring_service { optional_review }
-    github ++> [
-        scoring_service { RepoMeta, head_sha, repo_meta },
-        sync.refresh { repo_meta },
+    ai ++> knowledge_service { classify_ask }
+    knowledge.repo ++> [
+        knowledge_service { ReleaseLine, ensure_repo, read_status },
+        docs.sync { ReleaseLine },
     ]
 }
 ```

@@ -1,7 +1,15 @@
 impl service_apps(cfg: any, served: any) -> list[AppConfig] {
+    if cfg is None or served is None {
+        return [];
+    }
+    serving = cfg.serving_apps();
+    if served.kind != "desktop"
+        and not any(app.name == served.name for app in serving) {
+        return [];
+    }
     return [
         a
-        for a in cfg.serving_apps()
+        for a in serving
         if a.kind in ("service", "service-mesh") and a.name != served.name
     ];
 }

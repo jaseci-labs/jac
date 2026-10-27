@@ -200,3 +200,71 @@ test "react AuthGuard renders children, child routes, and nothing -- in jsdom" {
         );
     }
 }
+
+
+glob _STALE_401_HARNESS: str = """
+import { JSDOM } from "jsdom";
+
+const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", { url: "http://localhost/" });
+globalThis.window = dom.window;
+globalThis.document = dom.window.document;
+globalThis.localStorage = dom.window.localStorage;
+
+const failures = [];
+const check = (label, ok, detail) => {
+  console.log(`${ok ? "PASS" : "FAIL"}  ${label}${detail ? "  -- " + detail : ""}`);
+  if (!ok) failures.push(label);
+};
+
+const core = await import("./client_runtime_core.js");
+let answer;
+globalThis.fetch = () => new Promise((resolve) => {
+  answer = () => resolve(new Response("unauthorized", { status: 401 }));
+});
+const call = (token) => {
+  localStorage.setItem("jac_token", token);
+  const pending = core.__doWalkerFetch("w", "", {}, { app: "svc" }).then(
+    () => null,
+    (e) => e
+  );
+  return pending;
+};
+
+// A request sent with the old token answers 401 after the user signed in again.
+let pending = call("old-token");
+await new Promise((r) => setTimeout(r, 0));
+localStorage.setItem("jac_token", "new-token");
+answer();
+let err = await pending;
+check("a stale 401 keeps the newer login", localStorage.getItem("jac_token") === "new-token",
+  `jac_token=${localStorage.getItem("jac_token")}`);
+check("the stale call still raises a 401 BridgeRejected", !!err && err.status === 401, String(err));
+
+// A 401 for the token still in use drops it.
+pending = call("current-token");
+await new Promise((r) => setTimeout(r, 0));
+answer();
+err = await pending;
+check("a 401 for the current token drops it", !localStorage.getItem("jac_token"),
+  `jac_token=${localStorage.getItem("jac_token")}`);
+
+console.log(failures.length ? `FAILED: ${failures.join(", ")}` : "OK");
+process.exit(failures.length ? 1 : 0);
+""";
+
+"""A 401 only clears the token the failing request sent. A slow request that
+went out before the user signed in again must not erase the new login."""
+test "a delayed 401 from an old request keeps a newer login" {
+    require_client_integration("stale 401");
+    bun = js_runtime_or_none();
+    if bun is None {
+        testskip("bun is required but could not be located/installed");
+    }
+    with TemporaryDirectory() as tmp {
+        work = Path(tmp);
+        write_runtime(work);
+        (work / "harness.mjs").write_text(_STALE_401_HARNESS, encoding="utf-8");
+        bun_install(bun, work, "react-stale-401-jsdom-test");
+        run_harness(bun, work, [], "stale 401");
+    }
+}

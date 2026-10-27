@@ -179,6 +179,72 @@ test "a wire-bound name resolves to the provider's declaration" {
         );
         assert sym.decl is not None
             and sym.decl.find_parent_of_type(Archetype) is not None , sym.decl;
+
+        import from jaclang.compiler.types.stubcat.writer { build_module_iface }
+        def svc_iface -> bytes {
+            prog = JacProgram();
+            mod = prog.compile(
+                os.path.join(base, "core/svc.jac"),
+                options=CompileOptions(no_cgen=True, need_full_ast=True)
+            );
+            return build_module_iface(mod, prog.get_type_evaluator(), base);
+        }
+        before = svc_iface();
+        _write(base, "archwire.jac", "\n\n\n" + _read(base, "archwire.jac"));
+        assert svc_iface() == before;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+test "moving a wire changes its consumer's wiring digest, editing another wire does not" {
+    import from jaclang.compiler.driver.wiring { wiring_digest_for }
+    import from jaclang.compiler.frontend.unitree { Name }
+    base = _standard();
+    svc = os.path.join(base, "core/svc.jac");
+    def wire_line -> int {
+        lines = _read(base, "archwire.jac").splitlines();
+        return 1
+            + [
+                i
+                for (i, line) in enumerate(lines)
+                if line.strip() == "util ++> svc { now }"
+            ][0];
+    }
+    def import_line -> int {
+        prog = JacProgram();
+        mod = prog.compile(svc, options=CompileOptions(no_cgen=True));
+        assert _errors(prog) == [] , _errors(prog);
+        names = [
+            n
+            for n in mod.get_all_sub_nodes(Name)
+            if n.sym_name == "now" and n.loc.mod_path.endswith("archwire.jac")
+        ];
+        assert names , "the wired import of `now` was not found";
+        return names[0].loc.first_line;
+    }
+    try {
+        before = wiring_digest_for(svc);
+        assert import_line() == wire_line();
+
+        _write(base, "archwire.jac", _ARCH.replace("now as when }", "now as clock }"));
+        _write(base, "app/main.jac", _MAIN.replace("when()", "clock()"));
+        assert wiring_digest_for(svc) == before , (
+            "editing another consumer's wire in place must keep svc's digest"
+        );
+
+        _write(
+            base,
+            "archwire.jac",
+            _ARCH.replace("now as when }", "now as clock }").replace(
+                "\ngraph import core {", "\n\ngraph import core {"
+            )
+        );
+        assert wiring_digest_for(svc) != before , (
+            "svc's wire moved down a line, so its generated import moved too"
+        );
+        assert import_line() == wire_line();
     } finally {
         shutil.rmtree(base, ignore_errors=True);
     }
@@ -1084,6 +1150,98 @@ test "grouped targets on one line each reach their own function" {
         assert _errors(_compile(base, "app/main.jac")) == [];
     } finally {
         shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+"""One wire whose chain names two functions of the same module reaches both.
+The consumer index kept a single scope per wire and module, so the second
+function silently got no import; `jac fmt` merges same-payload consumers into
+one chain, so formatting alone could break a working wiring."""
+test "a chained wire reaches every function of one module it names" {
+    base = _standard(
+        arch=_ARCH
+            + "\ngraph import {\n"
+            + "    core.other ++> app.main.greet | app.main.again { helper }\n"
+            + "}\n",
+        main=(
+            "def greet -> str {\n"
+            "    return serve() + when() + str(helper());\n"
+            "}\n"
+            "\n"
+            "def again -> int {\n"
+            "    return helper();\n"
+            "}\n"
+        )
+    );
+    try {
+        assert _errors(_compile(base, "app/main.jac")) == [];
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
+"""A wire into a function and its own module places one import in each. Both
+placements once shared one node, so the function's import kept the module as
+its parent and was checked in the wrong scope."""
+test "a chained wire into a function and its module gives each its own import" {
+    import from jaclang.compiler.driver.wiring { place_wired_imports, wiring_annex_for }
+    import from jaclang.compiler.frontend.parser.frontend { parse_woven }
+    import from jaclang.compiler.frontend.unitree { Ability, Import }
+    for chain in ["app.main.greet | app.main", "app.main | app.main.greet"] {
+        base = _standard(
+            arch=_ARCH
+                + "\ngraph import {\n"
+                + f"    core.other ++> {chain} {{ helper }}\n"
+                + "}\n",
+            main=(
+                "def greet -> str {\n"
+                "    return serve() + when() + str(helper());\n"
+                "}\n"
+                "\n"
+                "with entry {\n"
+                "    print(greet(), helper());\n"
+                "}\n"
+            )
+        );
+        try {
+            path = os.path.join(base, "app", "main.jac");
+            with open(path) as f {
+                src = f.read();
+            }
+            annex = wiring_annex_for(path);
+            assert annex is not None;
+            (mod, had_error) = parse_woven(src, path, None, [annex]);
+            assert not had_error;
+            place_wired_imports(mod);
+            greet = [
+                a
+                for a in mod.get_all_sub_nodes(typ=Ability)
+                if a.sym_name == "greet"
+            ][0];
+            in_greet = [
+                s
+                for s in greet.body
+                if isinstance(s, Import)
+            ];
+            in_mod = [
+                s
+                for s in mod.body
+                if isinstance(s, Import)
+                    and s.from_loc is not None
+                    and s.from_loc.dot_path_str == "core.other"
+            ];
+            assert [len(in_greet), len(in_mod)] == [1, 1] , (chain, in_greet, in_mod);
+            assert in_greet[0] is not in_mod[0] , chain;
+            assert in_greet[0].parent is greet , (chain, in_greet[0].parent);
+            assert in_mod[0].parent is mod , (chain, in_mod[0].parent);
+            prog = _compile(base, "app/main.jac");
+            assert _errors(prog) == [] , (chain, [str(e) for e in prog.errors_had]);
+            assert "W2001" not in _warnings(prog) , (chain, _warnings(prog));
+        } finally {
+            shutil.rmtree(base, ignore_errors=True);
+        }
     }
 }
 

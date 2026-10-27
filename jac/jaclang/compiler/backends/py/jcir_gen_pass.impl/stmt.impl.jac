@@ -122,13 +122,15 @@ impl JcirGenPass._switch_flag_set(nd: SwitchStmt, value: bool) -> CgNode {
 impl JcirGenPass._ctrl_owner(nd: UniNode) -> UniNode | None {
     at = nd.parent;
     while at is not None {
-        if isinstance(
-            at, (SwitchStmt, InForStmt, IterForStmt, WhileStmt, ForeverStmt)
-        ) {
-            return at;
-        }
-        if isinstance(at, (Ability, LambdaExpr)) {
-            return None;
+        if not in_loop_else(nd, at) {
+            if isinstance(
+                at, (SwitchStmt, InForStmt, IterForStmt, WhileStmt, ForeverStmt)
+            ) {
+                return at;
+            }
+            if isinstance(at, (Ability, LambdaExpr)) {
+                return None;
+            }
         }
         at = at.parent;
     }
@@ -397,17 +399,7 @@ impl JcirGenPass.exit_else_if with ElseIf exit {
 }
 
 impl JcirGenPass.exit_else_stmt with ElseStmt exit {
-    body = self.resolve_stmt_block(here.body);
-    if isinstance(here.parent, (InForStmt, IterForStmt, WhileStmt)) {
-        body = [
-            self.nod(
-                'While',
-                ['test', 'body', 'orelse'],
-                [self.const_of(True), body + [self.nod('Break', [], [])], []]
-            )
-        ];
-    }
-    self.set_out(here, body);
+    self.set_out(here, self.resolve_stmt_block(here.body));
 }
 
 impl JcirGenPass.exit_expr_stmt with ExprStmt exit {

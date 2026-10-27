@@ -45,7 +45,8 @@ test "A removed source anchor is reported as missing" {
 
 test "Mobile showcase clip highlights the actual native component embed" {
     span = source_span(
-        "core/site/landing/MobileShowcase.jac", "<JacYacMobile embedded={True}/>"
+        "core/site/landing/impl/MobileShowcase.impl.jac",
+        "<JacYacMobile embedded={True}/>"
     );
     assert span is not None and span.found;
     assert span.raw_lines[span.hl_from - span.start].strip()

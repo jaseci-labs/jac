@@ -43,13 +43,15 @@ impl platform_slug -> (str | None) {
     }.get(
         platform.machine().lower()
     );
-    system = {'Linux': 'linux', 'Darwin': 'darwin'}.get(platform.system());
+    system = {'Linux': 'linux', 'Darwin': 'darwin', 'Windows': 'windows'}.get(
+        platform.system()
+    );
     return f"{system}-{arch}" if arch and system else None;
 }
 
 impl _bin_of(dist: str) -> (str | None) {
     for candidate in [os.path.join(dist, 'bin'), dist] {
-        if os.path.isfile(os.path.join(candidate, 'postgres')) {
+        if os.path.isfile(os.path.join(candidate, postgres_exe())) {
             return candidate;
         }
     }
@@ -57,7 +59,7 @@ impl _bin_of(dist: str) -> (str | None) {
 }
 
 impl pg_major_of(bin_dir: str) -> (int | None) {
-    postgres = os.path.join(bin_dir, 'postgres');
+    postgres = os.path.join(bin_dir, postgres_exe());
     if not os.path.isfile(postgres) {
         return None;
     }
@@ -93,7 +95,7 @@ impl _cached(major: int) -> (str | None) {
         for name in os.listdir(cache)
         if name.startswith(slug + '-')
             and not name.endswith('.part')
-            and os.path.isfile(os.path.join(cache, name, 'bin', 'postgres'))
+            and os.path.isfile(os.path.join(cache, name, 'bin', postgres_exe()))
     ];
     if not versions {
         return None;
@@ -109,7 +111,7 @@ impl _cached(major: int) -> (str | None) {
 
 impl _system(major: int) -> (str | None) {
     candidates: list[str] = [];
-    exe = shutil.which('postgres');
+    exe = shutil.which(postgres_exe());
     if exe {
         candidates.append(os.path.dirname(os.path.realpath(exe)));
     }
@@ -117,7 +119,7 @@ impl _system(major: int) -> (str | None) {
         if os.path.isdir(base) {
             for name in sorted(os.listdir(base), reverse=True) {
                 cand = os.path.join(base, name, 'bin');
-                if os.path.isfile(os.path.join(cand, 'postgres')) {
+                if os.path.isfile(os.path.join(cand, postgres_exe())) {
                     candidates.append(cand);
                 }
             }
@@ -230,7 +232,7 @@ impl download_dist -> str {
     bin_dir = os.path.join(dist_dir, 'bin');
     os.makedirs(dist_cache_dir(), exist_ok=True);
     with FileLock(Path(dist_cache_dir()) / f".{slug}-{version}.lock") {
-        if not os.path.isfile(os.path.join(bin_dir, 'postgres')) {
+        if not os.path.isfile(os.path.join(bin_dir, postgres_exe())) {
             logger.info(f"fetching embedded postgres {version} ({slug})...");
             _unpack(slug, version, dist_dir);
         }
@@ -239,13 +241,20 @@ impl download_dist -> str {
 }
 
 impl PostgresArtifact.probe_checkout -> Probe {
+    env = _env_dist();
+    if env {
+        found = _bin_of(env);
+        return Probe.hit(Source.CONFIGURED, found, {})
+            if found
+            else Probe.missing(f"JAC_PG_DIST {env!r} has no bin/{postgres_exe()}");
+    }
     configured = _configured_dist();
     if configured {
         found = _bin_of(configured);
         return Probe.hit(Source.CONFIGURED, found, {})
             if found
             else Probe.missing(
-                f"[database] postgres_dist {configured!r} has no bin/postgres"
+                f"[database] postgres_dist {configured!r} has no bin/{postgres_exe()}"
             );
     }
     major = pinned_major();
@@ -266,6 +275,101 @@ impl PostgresArtifact.checkout_path -> str {
 
 impl PostgresArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {
     log(f"  postgres {pinned_major()} -> {download_dist()}");
+}
+
+impl _env_dist -> str {
+    raw = os.environ.get('JAC_PG_DIST', '').strip();
+    return os.path.expanduser(raw) if raw else '';
+}
+
+impl postgres_exe -> str {
+    return 'postgres.exe' if platform.system() == 'Windows' else 'postgres';
+}
+
+impl _dist_root(bin_dir: (str | None)) -> (str | None) {
+    if not bin_dir {
+        return None;
+    }
+    parent = os.path.dirname(bin_dir);
+    if (
+        os.path.isdir(os.path.join(parent, 'lib'))
+        and os.path.isdir(os.path.join(parent, 'share'))
+    ) {
+        return parent;
+    }
+    return None;
+}
+
+impl bundled_dist_dir -> str {
+    env = _env_dist();
+    if env {
+        vendored = _dist_root(_bin_of(env));
+        if vendored {
+            return vendored;
+        }
+        raise ArtifactUnavailable(
+            f"JAC_PG_DIST {env!r} is not a self-contained postgres distribution "
+            "(no sibling lib/ and share/); point it at a jac-fetched dist or unset it"
+        );
+    }
+    configured = _configured_dist();
+    if configured {
+        vendored = _dist_root(_bin_of(configured));
+        if vendored {
+            return vendored;
+        }
+        raise ArtifactUnavailable(
+            f"[database] postgres_dist {configured!r} is not self-contained (no "
+            "sibling lib/ and share/); a desktop bundle needs a relocatable distribution"
+        );
+    }
+    found = _cached(pinned_major());
+    if found is not None {
+        vendored = _dist_root(found);
+        if vendored {
+            return vendored;
+        }
+    }
+    if offline_mode() {
+        raise ArtifactUnavailable(
+            f"no cached postgres {pinned_major()} distribution to bundle, and "
+            "this project is offline ([network] offline)"
+        );
+    }
+    vendored = _dist_root(download_dist());
+    if vendored is None {
+        raise ArtifactUnavailable(
+            "the fetched postgres distribution is not self-contained (no sibling lib/ and share/)"
+        );
+    }
+    return vendored;
+}
+
+impl cached_dist_dir -> str {
+    for chosen in [_env_dist(), _configured_dist()] {
+        if chosen {
+            bin_dir = _bin_of(chosen);
+            vendored = _dist_root(bin_dir) if bin_dir else None;
+            return vendored or '';
+        }
+    }
+    found = _cached(pinned_major());
+    return (_dist_root(found) or '') if found is not None else '';
+}
+
+impl PostgresArtifact.build_blocker -> str {
+    env = _env_dist();
+    if env {
+        if _bin_of(env) is None {
+            return f"JAC_PG_DIST {env!r} has no bin/{postgres_exe()}";
+        }
+        return "";
+    }
+    configured = _configured_dist();
+    if configured and _bin_of(configured) is None {
+        return f"[database] postgres_dist {configured!r} has no bin/{postgres_exe()}";
+    }
+    return "";
 }
 
 impl postgres_bin_dir -> str {

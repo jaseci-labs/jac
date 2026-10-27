@@ -103,7 +103,6 @@ obj KernelHost(HostServices) {
         kernel_asker: bool = False,
         _asked: set[str] = set(),
         grown: set[str] = set(),
-        native_failures: dict[str, str] = {},
         _native_ifaces: dict[str, NativeIface] = {},
         _lowering: set[str] = set(),
         _lowered: dict[str, Module] = {},

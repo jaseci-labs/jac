@@ -26,8 +26,16 @@ import from jaclang { JacRuntime as Jac }
 import from jaclang.project.config { JacConfig, set_config }
 import from jaclang.client.targets.desktop.native { host_boot }
 
-
-glob _APP_SRC: str = (
+glob _SERVICE_SRC: str = (
+         "walker:pub service_greet {\n"
+         "    has name: str = \"world\";\n"
+         "\n"
+         "    can run with Root entry {\n"
+         "        report {\"greeting\": f\"service hello {self.name}\"};\n"
+         "    }\n"
+         "}\n"
+     ),
+     _APP_SRC: str = (
          "walker:pub greet {\n"
          "    has name: str = \"world\";\n"
          "\n"
@@ -225,7 +233,7 @@ test "sealed remote desktop does not prepare or initialize workspace services" {
                 + '[apps.api]\nkind="service"\nentry-point="api"\n'
         );
         (Path(proj) / 'main.jac').write_text('with entry {}\n');
-        (Path(proj) / 'api.jac').write_text('this service must not be compiled');
+        (Path(proj) / 'api.jac').write_text('with entry {}\n');
         app_dir = _app_dir(tmp);
         config = JacConfig.load(Path(proj) / 'jac.toml');
         jab = build_jab(
@@ -255,6 +263,294 @@ test "sealed remote desktop does not prepare or initialize workspace services" {
         } else {
             sys.modules['hostapp'] = previous;
         }
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "desktop entry and colocated service match in dev and sealed boots" {
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    dev_ctx: any = None;
+    sealed_ctx: any = None;
+    try {
+        import from jaclang.dist.seal { build_jab }
+        import from jaclang.client.targets.desktop.desktop_build { serving_app_for }
+        api_dir = Path(proj) / "api";
+        web_dir = Path(proj) / "web";
+        api_dir.mkdir();
+        web_dir.mkdir();
+        full_toml = (
+            "[project]\nname=\"hostapp\"\ndefault-app=\"web\"\n"
+            + "[apps.desktop]\nkind=\"desktop\"\nentry-point=\"main\"\n"
+            + "[apps.api]\nkind=\"service\"\nentry-point=\"api.main\"\n"
+            + "[apps.web]\nkind=\"web-app\"\nentry-point=\"web.main\"\n"
+        );
+        (Path(proj) / "jac.toml").write_text(full_toml);
+        (api_dir / "main.jac").write_text(_SERVICE_SRC);
+        (web_dir / "main.jac").write_text("with entry {}\n");
+        config = JacConfig.load(Path(proj) / "jac.toml");
+        assert serving_app_for(config, Path(proj) / "main.jac", "embedded")
+            == "desktop";
+        import from jaclang.client.targets.desktop.desktop_build {
+            desktop_storage_identifier
+        }
+        with patch("jaclang.project.config.get_config_for_dir", return_value=config) {
+            assert desktop_storage_identifier(
+                "org.example.hostapp", Path(proj), Path(proj) / "main.jac", "embedded"
+            )
+                == "org.example.hostapp.web";
+        }
+        (Path(proj) / "jac.toml").write_text(
+            "[project]\nname=\"hostapp\"\ndefault-app=\"desktop\"\n"
+                + "[apps.desktop]\nkind=\"desktop\"\nentry-point=\"main\"\n"
+                + "[apps.api]\nkind=\"service\"\nentry-point=\"api.main\"\n"
+        );
+        no_web_config = JacConfig.load(Path(proj) / "jac.toml");
+        assert serving_app_for(no_web_config, Path(proj) / "main.jac", "embedded")
+            == "desktop";
+        (Path(proj) / "jac.toml").write_text(full_toml);
+        config = JacConfig.load(Path(proj) / "jac.toml");
+
+        app_dir = _app_dir(tmp);
+        os.environ["JAC_DATA_PATH"] = os.path.join(tmp, "data");
+        dev_ctx = host_boot.boot(
+            _config(app_dir, {"entry": str(Path(proj) / "main.jac")})
+        );
+        origin = f"http://127.0.0.1:{dev_ctx.port}";
+        (dev_code, dev_body) = _post(
+            f"{origin}/api/api/walker/service_greet", {"name": "service"}
+        );
+        assert dev_code == 200 and "service hello service" in dev_body , (
+            dev_code,
+            dev_body
+        );
+        dev_ctx.shutdown();
+        dev_ctx = None;
+
+        jab = build_jab(
+            config,
+            Path(app_dir) / "app.jab",
+            app=serving_app_for(config, Path(proj) / "main.jac", "embedded"),
+            bake_client=False
+        );
+        set_config(None);
+        sealed_ctx = host_boot.boot(_config(app_dir, {"jab": str(jab)}));
+        origin = f"http://127.0.0.1:{sealed_ctx.port}";
+        (sealed_code, sealed_body) = _post(
+            f"{origin}/api/api/walker/service_greet", {"name": "service"}
+        );
+        assert sealed_code == dev_code and "service hello service" in sealed_body , (
+            f"dev={dev_code} {dev_body}; sealed={sealed_code} {sealed_body}"
+        );
+    } finally {
+        if dev_ctx is not None {
+            dev_ctx.shutdown();
+        }
+        if sealed_ctx is not None {
+            sealed_ctx.shutdown();
+        }
+        os.environ.pop("JAC_DATA_PATH", None);
+        os.environ.pop("JAC_SCALE_RUNTIME", None);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+test "desktop release colocates services without an unrelated web app" {
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    dev_ctx: any = None;
+    sealed_ctx: any = None;
+    try {
+        import from jaclang.dist.seal { build_jab }
+        api_dir = Path(proj) / "api";
+        api_dir.mkdir();
+        (Path(proj) / "jac.toml").write_text(
+            "[project]\nname=\"hostapp\"\ndefault-app=\"desktop\"\n"
+                + "[apps.desktop]\nkind=\"desktop\"\nentry-point=\"main\"\n"
+                + "[apps.api]\nkind=\"service\"\nentry-point=\"api.main\"\n"
+        );
+        (api_dir / "main.jac").write_text(_SERVICE_SRC);
+        config = JacConfig.load(Path(proj) / "jac.toml");
+        app_dir = _app_dir(tmp);
+        os.environ["JAC_DATA_PATH"] = os.path.join(tmp, "data");
+        dev_ctx = host_boot.boot(
+            _config(app_dir, {"entry": str(Path(proj) / "main.jac")})
+        );
+        origin = f"http://127.0.0.1:{dev_ctx.port}";
+        (dev_code, dev_body) = _post(
+            f"{origin}/api/api/walker/service_greet", {"name": "service"}
+        );
+        assert dev_code == 200 and "service hello service" in dev_body , (
+            dev_code,
+            dev_body
+        );
+        dev_ctx.shutdown();
+        dev_ctx = None;
+
+        jab = build_jab(
+            config, Path(app_dir) / "app.jab", app="desktop", bake_client=False
+        );
+        set_config(None);
+        sealed_ctx = host_boot.boot(_config(app_dir, {"jab": str(jab)}));
+        origin = f"http://127.0.0.1:{sealed_ctx.port}";
+        (sealed_code, sealed_body) = _post(
+            f"{origin}/api/api/walker/service_greet", {"name": "service"}
+        );
+        assert sealed_code == dev_code and "service hello service" in sealed_body , (
+            f"dev={dev_code} {dev_body}; sealed={sealed_code} {sealed_body}"
+        );
+    } finally {
+        if dev_ctx is not None {
+            dev_ctx.shutdown();
+        }
+        if sealed_ctx is not None {
+            sealed_ctx.shutdown();
+        }
+        os.environ.pop("JAC_DATA_PATH", None);
+        os.environ.pop("JAC_SCALE_RUNTIME", None);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+def _choice_config(
+    app_dir: str, program: dict[str, any], default_backend: str = "ask"
+) -> str {
+    cfg = json.loads(_config(app_dir, program));
+    cfg["backends"] = {"local": "embedded", "web": "https://web.example"};
+    cfg["default_backend"] = default_backend;
+    return json.dumps(cfg);
+}
+
+
+test "a backend choice boots only the backend the user picked" {
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    ctx: any = None;
+    try {
+        app_dir = _app_dir(tmp);
+        data = os.path.join(tmp, "data");
+        os.environ["JAC_DATA_PATH"] = data;
+        program = {"entry": os.path.join(proj, "main.jac")};
+
+        ctx = host_boot.boot(_choice_config(app_dir, program));
+        origin = f"http://127.0.0.1:{ctx.port}";
+        (code, body) = _get(f"{origin}/__jac/backend.js");
+        assert code == 200 and '"active": ""' in body , (code, body);
+        (code, body) = _post(f"{origin}/walker/greet", {"name": "x"});
+        assert code in (404, 405) , ("nothing is served before a choice", code, body);
+        assert not ctx.wants_relaunch();
+        (code, body) = _post(f"{origin}/__jac/backend", {"name": "local"});
+        assert code == 200 and json.loads(body)["relaunch"] == True , (code, body);
+        assert ctx.wants_relaunch();
+        ctx.shutdown();
+        ctx = None;
+
+        ctx = host_boot.boot(_choice_config(app_dir, program));
+        origin = f"http://127.0.0.1:{ctx.port}";
+        (code, body) = _get(f"{origin}/__jac/backend.js");
+        assert '"active": "local"' in body
+            and "__JAC_API_BASE_URL__" not in body , body;
+        (code, body) = _post(f"{origin}/walker/greet", {"name": "local"});
+        assert code == 200 and "hello local" in body , (code, body);
+        (code, body) = _post(f"{origin}/__jac/session", {"token": "tok-local"});
+        assert code == 200 , (code, body);
+        assert os.path.isfile(
+            os.path.join(data, ".jac", "desktop", "session.local.json")
+        ) , "each backend keeps its own session";
+        (code, body) = _post(f"{origin}/__jac/backend", {"name": "web"});
+        assert json.loads(body)["relaunch"] == True , body;
+        ctx.shutdown();
+        ctx = None;
+
+        import jaclang.compiler.driver.application as application;
+        with patch.object(
+            application,
+            "prepare_application",
+            side_effect=AssertionError("the web backend must not prepare local code")
+        ) {
+            ctx = host_boot.boot(_choice_config(app_dir, program));
+        }
+        origin = f"http://127.0.0.1:{ctx.port}";
+        (code, body) = _get(f"{origin}/__jac/backend.js");
+        assert '"active": "web"' in body , body;
+        assert 'window.__JAC_API_BASE_URL__="https://web.example";' in body , body;
+        (code, body) = _get(f"{origin}/__jac/session");
+        assert json.loads(body)["token"] == "" , "the web backend does not see the local token";
+        (code, body) = _post(f"{origin}/walker/greet", {"name": "x"});
+        assert code in (404, 405) , (code, body);
+    } finally {
+        if ctx is not None {
+            ctx.shutdown();
+        }
+        os.environ.pop("JAC_DATA_PATH", None);
+        set_config(None);
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+
+def _post_auth(url: str, body: dict[str, any], token: str) -> tuple[int, str] {
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + token}
+    );
+    try {
+        with urllib.request.urlopen(req, timeout=15) as r {
+            return (int(r.status), r.read().decode("utf-8"));
+        }
+    } except urllib.error.HTTPError as e {
+        return (int(e.code), e.read().decode("utf-8"));
+    }
+}
+
+
+test "local profiles each sign in to their own root, with no password" {
+    os.environ["JAC_SCALE_RUNTIME"] = "1";
+    proj = _project();
+    tmp = os.path.dirname(proj);
+    (Path(proj) / "main.jac").write_text(
+        _APP_SRC
+            + "\nwalker:protect whoami {\n    can run with Root entry {\n        report jid(root);\n    }\n}\n"
+    );
+    ctx: any = None;
+    try {
+        app_dir = _app_dir(tmp);
+        os.environ["JAC_DATA_PATH"] = os.path.join(tmp, "data");
+        cfg = json.loads(_config(app_dir, {"entry": os.path.join(proj, "main.jac")}));
+        cfg["profiles"] = True;
+        ctx = host_boot.boot(json.dumps(cfg));
+        origin = f"http://127.0.0.1:{ctx.port}";
+        (code, body) = _get(f"{origin}/__jac/backend.js");
+        assert code == 200 and 'window.__JAC_PROFILES__={"active": ""' in body , body;
+
+        roots: list[str] = [];
+        for name in ["Work", "Play"] {
+            (code, body) = _post(f"{origin}/__jac/profiles", {"name": name});
+            assert code == 200 , (code, body);
+            (code, body) = _post(f"{origin}/__jac/profiles/session", {});
+            token = json.loads(body)["token"];
+            assert token , body;
+            (code, body) = _post_auth(f"{origin}/walker/whoami", {}, token);
+            assert code == 200 , (code, body);
+            roots.append(json.loads(body)["data"]["reports"][0]);
+        }
+        assert roots[0] != roots[1] , ("each profile is its own root", roots);
+        (code, body) = _post(f"{origin}/walker/whoami", {});
+        assert code == 401 , "the app is still protected without a profile session";
+    } finally {
+        if ctx is not None {
+            ctx.shutdown();
+        }
+        os.environ.pop("JAC_DATA_PATH", None);
         set_config(None);
         shutil.rmtree(tmp, ignore_errors=True);
     }

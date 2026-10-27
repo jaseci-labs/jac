@@ -75,29 +75,51 @@ impl unlisted_image_root(path: str) -> (str | None) {
     return img_root;
 }
 
+impl serve_manifest_stamp -> dict[str, (int | str)] {
+    try {
+        jac_version = resolve_cli_version();
+    } except Exception {
+        jac_version = "0.0.0";
+    }
+    return {'format': SERVE_MANIFEST_FORMAT, 'jaclang_version': jac_version};
+}
+
+impl read_serve_manifest(img_root: str) -> dict[str, any] {
+    mf = Path(img_root) / SERVE_MANIFEST_REL;
+    if not mf.is_file() {
+        raise RuntimeError(
+            f'Sealed application has no serving manifest: {mf}; '
+            'rebuild the bundle so the seal step writes it'
+        );
+    }
+    data = json.loads(mf.read_text(encoding="utf-8"));
+    meta = data if isinstance(data, dict) else {};
+    if meta.get('format') != SERVE_MANIFEST_FORMAT {
+        built_by = meta.get('jaclang_version');
+        origin = f'jac {built_by}' if built_by else 'an older jac';
+        runtime = serve_manifest_stamp()['jaclang_version'];
+        raise RuntimeError(
+            f'Sealed application at {img_root} was built by {origin} '
+            f'(serve manifest format {meta.get("format", "unstamped")}); '
+            f'this runtime (jac {runtime}) reads format {SERVE_MANIFEST_FORMAT}. '
+            'Rebuild the bundle with the jac that will run it.'
+        );
+    }
+    return data;
+}
+
 impl serve_manifest_for(path: str) -> (dict[str, any] | None) {
     prepared = prepared_manifest(path);
     if prepared is not None {
         return prepared;
     }
     img_root = sealed_root_for(path);
-    if img_root is None {
-        return None;
-    }
-    mf = os.path.join(img_root, SERVE_MANIFEST_REL);
-    if not os.path.isfile(mf) {
-        return None;
-    }
-    try {
-        data: dict[str, any] = json.loads(Path(mf).read_text(encoding="utf-8"));
-    } except Exception {
-        return None;
-    }
-    if not isinstance(data, dict) {
+    if img_root is None
+        or not os.path.isfile(os.path.join(img_root, SERVE_MANIFEST_REL)) {
         return None;
     }
     relative = os.path.relpath(path, img_root).replace(os.sep, '/');
-    return data.get('module_manifests', {}).get(relative);
+    return read_serve_manifest(img_root)['module_manifests'].get(relative);
 }
 
 impl client_dist_for(path: str) -> (Path | None) {

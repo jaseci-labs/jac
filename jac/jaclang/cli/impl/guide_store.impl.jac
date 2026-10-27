@@ -278,8 +278,8 @@ impl corpus_blurb(ns: str) -> str {
     return _DOC_CORPUS_BLURBS.get(ns, "");
 }
 
-impl nav_manifest -> dict[str, any] {
-    path = docs_dir() / "nav.json";
+impl nav_manifest(docs_root: Path | None = None) -> dict[str, any] {
+    path = (docs_root or docs_dir()) / "nav.json";
     if not path.is_file() {
         return {};
     }
@@ -291,7 +291,7 @@ impl nav_manifest -> dict[str, any] {
     return loaded if isinstance(loaded, dict) else {};
 }
 
-impl nav_pages -> list[NavPage] {
+impl nav_pages(docs_root: Path | None = None) -> list[NavPage] {
     pages: list[NavPage] = [];
 
     def walk(items: list[object], trail: list[str]) {
@@ -314,7 +314,7 @@ impl nav_pages -> list[NavPage] {
             }
         }
     }
-    walk(nav_manifest().get("nav", []) as list[object], []);
+    walk(nav_manifest(docs_root).get("nav", []) as list[object], []);
     return pages;
 }
 

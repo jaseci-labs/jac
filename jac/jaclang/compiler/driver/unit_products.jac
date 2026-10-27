@@ -2,7 +2,7 @@ import base64;
 import json;
 import os;
 
-glob CLIENT_RECORD_VERSION: int = 4,
+glob CLIENT_RECORD_VERSION: int = 5,
      DEF_DEP_SEP: str = "\x1f";
 
 obj UnitProducts {

@@ -226,14 +226,6 @@ obj PyInt(PyObj) {
             if a == 0 {
                 return PyInt(t="int", val=0);
             }
-            # A shift count at or beyond 2**63 overflows the C ssize_t shift
-            # bound; CPython rejects it before allocating
-            # (OverflowError "too many digits in integer"), never MemoryError.
-            # Without this guard the underlying bigint op escapes as a fatal
-            # runtime error instead of a guest-visible Python exception.
-            if b >= 9223372036854775808 {
-                return py_error("OverflowError", "too many digits in integer");
-            }
             return PyInt(t="int", val=a << b);
         }
         if kind == NB_RSHIFT {
@@ -2602,14 +2594,6 @@ def _bool_from_cmp(cmp: int, op: int) -> PyObj {
         return PyBool(t="bool", val=cmp >= 0);
     }
     return PyBool(t="bool", val=False);
-}
-
-# Two's-complement wrap of an unsigned 64-bit accumulator to signed.
-def _signed_hash(acc: int) -> int {
-    if acc >= 0x8000000000000000 {
-        return acc - 0x10000000000000000;
-    }
-    return acc;
 }
 
 # CPython 3.14's two-part unhashable TypeError, quoted at the insertion site

@@ -29,5 +29,6 @@ def select_injector(
     project_dir: str,
     dry_run: bool = False,
     access_mode: str = "ReadWriteMany",
-    fleet: any = None
+    fleet: any = None,
+    client_ready: any = None
 ) -> tuple[PvcInjector, str];

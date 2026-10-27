@@ -76,6 +76,9 @@ impl analysis_passes(request: ProductRequest) -> PassSchedule {
 }
 
 impl boundary_passes(request: ProductRequest) -> PassSchedule {
+    if not request.endpoint_effects {
+        return [BoundaryFactsPass, BoundaryAnalysisPass];
+    }
     return [BoundaryFactsPass, BoundaryAnalysisPass, EndpointEffectPass];
 }
 

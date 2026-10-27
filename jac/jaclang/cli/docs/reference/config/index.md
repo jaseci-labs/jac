@@ -414,7 +414,7 @@ hash_cost = 14           # log2 of the scrypt work factor, 10..17
 
 [serve.auth.registration]
 enabled = true           # false = no self-registration; accounts are created by an admin
-challenge = false        # Proof-of-work challenge before /user/register
+challenge = false        # Proof-of-work challenge before /user/register; jacSignup solves it
 attempts_per_hour = 0    # Per source address; 0 = unlimited
 challenges_per_10_minutes = 0
 
@@ -661,16 +661,19 @@ select = ["combine-has", "remove-empty-parens"]
 | `no-print` | `E3012` | Error on bare `print()` calls (use console abstraction instead) | all |
 | `remove-redundant-semi` | `W3013` | Remove standalone no-op semicolons from any body (`{;}` → `{}`, `x = 1;;` → `x = 1;`); `remove-import-semi` is an accepted alias for this rule | default |
 | `strip-comments` | `W3050` | Remove **all** comments | all |
-| `strip-docstrings` | `W3051` | Remove **all** docstrings | all |
-| `separate-impls` | `W3055` | Move every function, method and ability body into an `impl` at the bottom of its module | all |
+| `strip-docstrings` | `W3051` | Remove **all** docstrings, and strings written as statements inside a body | all |
+| `separate-impls` | `W3055` | Move every function, method and ability body into an `impl` in its module's `.impl.jac` annex | all |
+| `impls-in-annex` | `W3056` | Keep every `impl` in an annex inside an impl folder: none in the module itself, no annex beside it | all |
 
 Diagnostic codes can be suppressed inline with `# jac:ignore[CODE]` comments. See the full [Errors & Warnings](../diagnostics.md) reference for all diagnostic codes.
 
 **Rules only `all` turns on:**
 
-`strip-comments` and `strip-docstrings` are destructive "deslop" rules: they delete content rather than restructure it. `separate-impls` restructures every module: `jac fmt --lintfix` keeps each declaration in place (`def f(x: int) -> int;`) and moves its body into `impl f(x: int) -> int { ... }` at the bottom of the module, in declaration order. Bodies an `impl` cannot name stay inline: nested functions, nameless abilities (`can with Root entry`), accessors and `@property` methods, and names a field or another member of the same scope also uses. A generic function or method is separated like any other, and its impl restates the type parameters: `def first[T](items: list[T]) -> T;` is implemented by `impl first[T](items: list[T]) -> T { ... }`. Client component bodies are separated like any other: a body behaves the same inline and in an `impl`, so JSX, body-level `has` state and a `JsxElement` return type all move with it.
+`strip-comments` and `strip-docstrings` are destructive "deslop" rules: they delete content rather than restructure it. `separate-impls` restructures every module: `jac fmt --lintfix` keeps each declaration in place (`def f(x: int) -> int;`) and moves its body into `impl f(x: int) -> int { ... }` in the module's impl annex, in declaration order. The annex is the module's existing `.impl.jac` file, or a new `impl/<module>.impl.jac` beside it. `impl` blocks already in the module stay where they are. Bodies an `impl` cannot name stay inline: nested functions, nameless abilities (`can with Root entry`), accessors and `@property` methods, and names a field or another member of the same scope also uses. A generic function or method is separated like any other, and its impl restates the type parameters: `def first[T](items: list[T]) -> T;` is implemented by `impl first[T](items: list[T]) -> T { ... }`. Client component bodies are separated like any other: a body behaves the same inline and in an `impl`, so JSX, body-level `has` state and a `JsxElement` return type all move with it.
 
-`select = ["all"]` turns all three on; `select = ["default"]` leaves them off. Each can also be named on its own, or turned off under `all` with `ignore`:
+`impls-in-annex` finishes that layout: every `impl` lives in an annex inside an impl folder, which is `impl/<module>.impl.jac`, or `<module>.impl/` for a dotted stem such as a platform variant (`foo.linux.jac`), so the portable `foo.jac` does not claim its impls. It flags an `impl` block written in its module, and an annex that sits beside its module (`foo.impl.jac` next to `foo.jac`). `jac fmt --lintfix` and `jac check --lint --fix` move the module's `impl` blocks into the annex, after any impls it already holds, and relocate a sibling annex into the folder, merging the two when both apply.
+
+`select = ["all"]` turns all four on; `select = ["default"]` leaves them off. Each can also be named on its own, or turned off under `all` with `ignore`:
 
 ```toml
 [check.lint]
@@ -757,6 +760,42 @@ jaclang_source = "../jac"   # run the compiler from this checkout
 exact = false               # true: never reuse an earlier compiler's products
 pod_binary = "../jac/zig-out/bin/jac"  # ship this jac to scale pods (channel local)
 ```
+
+`jaclang_source` is how a project runs jac from a source checkout, for example
+one vendored as a git submodule. There is no environment variable for it.
+
+- The path is relative to this `jac.toml` and names the directory that
+  *contains* `jaclang/` (in a jac clone, its `jac/` directory).
+- Only the nearest `jac.toml` is read: a subdirectory with its own `jac.toml`
+  needs its own `[dev]` table.
+- The checkout needs its typeshed stubs (`zig build fetch-typeshed` in that
+  checkout). Without them jac prints `ignoring the dev compiler source ...` and
+  the bundled compiler serves the run.
+- The choice is made once per process tree: child processes run the same
+  compiler, even when they start in another directory.
+
+When the source is in use, every command prints
+`[dev] jac dev mode - using compiler source at <path>`.
+
+### [database]
+
+The project's own graph store. (`[scale.database]` is a different table: the
+connection a process or a deploy uses.)
+
+```toml
+[database]
+indexes = { Post = ["at", "published"] }   # promote these fields to indexed columns
+retention_days = 30          # drop databases unused this long when the embedded cluster starts
+postgres_version = "18"      # the embedded Postgres major to provision
+postgres_dist = "vendor/pg"  # a Postgres distribution to use instead of downloading one
+```
+
+- `indexes` names, per archetype, the fields that filters (`[?:Post, at > 3]`)
+  and orderings (`[?:Post, -at]`) read; the compiler reads a promoted column
+  instead of the jsonb path. Correctness never depends on it.
+- `retention_days` is unset (never) by default; `JAC_DB_RETENTION_DAYS`
+  overrides it.
+- `postgres_dist` is relative to `jac.toml`.
 
 ### [network]
 

@@ -517,3 +517,10 @@ impl Spark.step -> bool {
     self.life -= TICK_DT;
     return self.life <= 0.0;
 }
+
+impl remove_at[T](items: &mut list[own T], i: int) {
+    last = items.pop();
+    if i < len(items) {
+        items[i] = last;
+    }
+}

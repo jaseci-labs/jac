@@ -1,7 +1,7 @@
 import re;
 import base64;
 import datetime;
-import logging;
+import os;
 
 def _now -> str;
 
@@ -9,17 +9,13 @@ glob MAX_DISPLAY_NAME: int = 50,
      MAX_BIO: int = 280,
      MAX_LOCATION: int = 60,
      MAX_WEBSITE: int = 200,
-     MAX_AVATAR_BYTES: int = 393216,
-     RESCORE_TTL_S: float = 21600.0,
-     FEATURE_KEYS: list[str] = ["osp", "ai", "cl", "sv", "na", "tests"],
-     RETRYABLE_SCORE_ERRORS: list[str] = ["fetch_failed", "internal"];
+     MAX_AVATAR_BYTES: int = 393216;
 
 obj ProfileBundle {
     has profile: Profile,
         followers: list[Profile],
         following: list[Profile],
-        tweets: list[Tweet],
-        projects: list[Project] = [];
+        tweets: list[Tweet];
 }
 
 obj ChannelBundle {
@@ -60,40 +56,52 @@ obj AvatarResult {
         avatar_url: str = "";
 }
 
-obj ProjectResult {
-    has ok: bool = False,
-        error: str = "",
-        project: Project | None = None;
-}
-
 edge Follow: Profile --> Profile {}
 edge Post: Profile --> Tweet {}
 edge Member: Profile --> Channel {}
 edge ChannelPost: Channel --> Tweet {}
 edge HasAvatar: Profile --> Avatar {}
-edge Owns: Profile --> Project {}
 
-edge Studies: GeniusMemory --> GeniusTopic {}
-edge PublishesAs: GeniusTopic --> Profile {}
-
-node GeniusMemory {
-    has last_posted: str = "",
-        previous_guide: str = "";
+node NinjaclawDesk {
+    has started_at: str = "",
+        seen_until: str = "",
+        recent_keys: dict[str, str] = {},
+        pending: dict[str, str] = {},
+        asked: dict[str, str] = {},
+        recent_asks: dict[str, list[str]] = {};
 }
 
-node GeniusTopic {
-    has sample: GuideSample;
-}
+glob NINJACLAW: str = "ninjaclaw",
+     HELP_CHANNEL: str = "help",
+     DESK_TICK_S: float = 15.0,
+     ASKS_PER_HOUR: int = int(os.environ.get("NINJACLAW_ASKS_PER_HOUR", "3") or 3),
+     SCAN_GRACE_S: float = 600.0,
+     ASKED_LIMIT: int = 2000,
+     MENTION_RE: str = r"(?<![\w@])@ninjaclaw\b";
 
-@schedule(cron="0 * * * *")
-walker:priv jacyac_genius {
-    has memory: GeniusMemory | None = None,
-        content: str = "";
+def mentions_ninjaclaw(text: str) -> bool;
 
-    can wake with Root entry;
-    can explore with GeniusMemory entry;
-    can compose with GeniusTopic entry;
-    can publish with Profile entry;
+def strip_mention(text: str) -> str;
+
+def ninjaclaw_profile -> Profile;
+
+def help_channel(claw: Profile) -> Channel;
+
+def live_tweets -> dict[str, Tweet];
+
+def scan_floor(desk: NinjaclawDesk) -> str;
+
+def desk_asks(
+    desk: NinjaclawDesk, help: Channel, tweets: dict[str, Tweet]
+) -> list[AskInput];
+
+def throttled(desk: NinjaclawDesk, asker: str) -> bool;
+
+def post_reply(tweet_id: str, reply: str) -> bool;
+
+@schedule(trigger=ScheduleTrigger.STATIC, interval=DESK_TICK_S)
+async walker:priv ninjaclaw_desk {
+    async can run with Root entry;
 }
 
 node Profile {
@@ -107,7 +115,6 @@ node Profile {
         created_at: str = "";
 
     def avatar_url -> str;
-    def projects -> list[Project];
     def to_bundle -> ProfileBundle;
 }
 
@@ -115,35 +122,6 @@ node Avatar {
     has mime: str = "image/jpeg",
         data: str = "",
         updated_at: str = "";
-}
-
-node Project {
-    has full: str = "",
-        owner_verified: bool = False,
-        legacy_import: bool = False,
-        breakdown: ScoreBreakdown = ScoreBreakdown(),
-        owner: str = "",
-        name: str = "",
-        owner_username: str = "",
-        description: str = "",
-        html_url: str = "",
-        avatar_url: str = "",
-        stars: int = 0,
-        forks: int = 0,
-        topics: list[str] = [],
-        features: list[str] = [],
-        jac_files: int = 0,
-        jac_lines: int = 0,
-        jac_pct: int = 0,
-        score: int = 0,
-        belt: str = "",
-        scored_sha: str = "",
-        status: str = "pending",
-        error: str = "",
-        added_at: str = "",
-        scored_at: str = "";
-
-    def permalink -> str;
 }
 
 node Tweet {
@@ -172,10 +150,6 @@ def:protect clean_text(raw: str, limit: int, label: str) -> FieldCheck;
 def:protect decode_avatar(data_url: str) -> AvatarCheck;
 
 def:protect find_profile_by_username(username: str) -> Profile | None;
-
-def:protect apply_score(proj: Project, payload: ScoredPayload);
-
-async def:protect score_project(proj: Project);
 
 walker:protect setup_profile {
     has username: str = "",
@@ -242,43 +216,6 @@ walker:pub get_all_profiles {
     can run with Root entry;
     can gather with Profile entry;
     can deliver with Root exit;
-}
-
-def:protect import_legacy;
-
-walker:pub get_all_projects {
-    has results: list[Project] = [],
-        seen: dict[str, bool] = {},
-        reports: list[list[Project]] = [];
-
-    can run with Root entry;
-}
-
-async walker:protect add_project {
-    has url: str = "",
-        session_token: str = "",
-        reports: list[ProjectResult] = [];
-
-    can run with Root entry;
-    async can make with Profile entry;
-}
-
-walker:protect find_project {
-    has project_id: str = "";
-
-    can run with Root entry;
-}
-
-walker:protect remove_project(find_project) {
-    has reports: list[ProjectResult] = [];
-
-    can act with Project entry;
-}
-
-async walker:protect rescore_project(find_project) {
-    has reports: list[ProjectResult] = [];
-
-    async can act with Project entry;
 }
 
 walker:protect get_trending {
@@ -392,77 +329,12 @@ impl _now -> str {
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat() + "Z";
 }
 
-impl jacyac_genius.wake with Root entry {
-    visit [-->[?:GeniusMemory]] else {
-        visit here ++> GeniusMemory();
-    }
-}
-
-impl jacyac_genius.explore with GeniusMemory entry {
-    self.memory = here;
-    if here.last_posted and here.last_posted[:13] == now_iso()[:13] {
-        disengage;
-    }
-    try {
-        sample = random_guide(here.previous_guide);
-        if sample is None {
-            disengage;
-        }
-        topics = [here->:Studies:->[?:GeniusTopic]];
-        if topics {
-            topics[0].sample = sample;
-            visit topics[0];
-        } else {
-            visit here +>:Studies():+> GeniusTopic(sample=sample);
-        }
-    } except Exception {
-        disengage;
-    }
-}
-
-impl jacyac_genius.compose with GeniusTopic entry {
-    self.content = optional_fact(here.sample);
-    if not self.content {
-        disengage;
-    }
-    visit [->:PublishesAs:->[?:Profile]] else {
-        author = root ++> Profile(
-            username="jacyac_genius",
-            display_name="JacYac Genius",
-            bio="An AI Jac enthusiast sharing hourly fun facts from the Jac guide.",
-            created_at=now_iso()
-        );
-        grant(author, level=AccessLevel.CONNECT);
-        here +>:PublishesAs():+> author;
-        visit author;
-    }
-}
-
-impl jacyac_genius.publish with Profile entry {
-    if self.memory is None or not valid_post(self.content) {
-        disengage;
-    }
-    post = here +>:Post():+> Tweet(
-        content=self.content, author_username=here.username, created_at=now_iso()
-    );
-    grant(post, level=AccessLevel.WRITE);
-    self.memory.last_posted = post.created_at;
-    topics = [self.memory->:Studies:->[?:GeniusTopic]];
-    self.memory.previous_guide = topics[0].sample.title;
-}
-
 impl Profile.avatar_url -> str {
     av = [self->:HasAvatar:->[?:Avatar]];
     if not av {
         return "";
     }
     return "data:" + av[0].mime + ";base64," + av[0].data;
-}
-
-impl Profile.projects -> list[Project] {
-    found = [self->:Owns:->[?:Project]];
-    found.sort(key=lambda (p: Project) { (-p.score, p.added_at); });
-    return found;
 }
 
 impl Profile.to_bundle -> ProfileBundle {
@@ -472,16 +344,8 @@ impl Profile.to_bundle -> ProfileBundle {
         profile=self,
         followers=[self<-:Follow:<-[?:Profile]],
         following=[self->:Follow:->[?:Profile]],
-        tweets=tweets,
-        projects=self.projects()
+        tweets=tweets
     );
-}
-
-impl Project.permalink -> str {
-    if self.scored_sha != "" {
-        return self.html_url + "/tree/" + self.scored_sha;
-    }
-    return self.html_url;
 }
 
 impl Channel.to_bundle(with_posts: bool) -> ChannelBundle {
@@ -583,63 +447,6 @@ impl find_profile_by_username(username: str) -> Profile | None {
         }
     }
     return None;
-}
-
-impl apply_score(proj: Project, payload: ScoredPayload) {
-    if not payload.ok {
-        proj.status = "error";
-        proj.error = payload.error or "internal";
-        return;
-    }
-    meta = payload.meta;
-    an = payload.an;
-    proj.owner = meta.owner or proj.owner;
-    proj.name = meta.name or proj.name;
-    proj.full = proj.owner + "/" + proj.name;
-    proj.description = meta.description;
-    proj.avatar_url = meta.avatar_url;
-    proj.html_url = meta.html_url or ("https://github.com/" + proj.full);
-    proj.stars = meta.stars;
-    proj.forks = meta.forks;
-    proj.topics = meta.topics;
-    proj.jac_files = an.jac_files;
-    proj.jac_lines = an.jac_lines;
-    denom = an.jac_bytes + an.other_code_bytes;
-    proj.jac_pct = int(round(100.0 * an.jac_bytes / denom))
-        if denom > 0
-        else (100 if an.jac_files > 0 else 0);
-    flags: dict[str, bool] = {
-        "osp": an.features.osp,
-        "ai": an.features.ai,
-        "cl": an.features.cl,
-        "sv": an.features.sv,
-        "na": an.features.na,
-        "tests": an.features.tests
-    };
-    proj.features = [
-        key
-        for key in FEATURE_KEYS
-        if flags[key]
-    ];
-    proj.score = payload.breakdown.total;
-    proj.breakdown = payload.breakdown;
-    proj.belt = payload.breakdown.belt;
-    proj.scored_sha = payload.sha;
-    proj.scored_at = now_iso();
-    proj.status = "scored";
-    proj.error = "";
-}
-
-impl score_project(proj: Project) {
-    try {
-        apply_score(proj, await fetch_and_score(proj.owner, proj.name));
-    } except Exception as e {
-        logging.getLogger(__name__).exception(
-            "scoring %s for %s failed: %s", proj.full, proj.owner_username, e
-        );
-        proj.status = "error";
-        proj.error = "internal";
-    }
 }
 
 impl setup_profile.run with Root entry {
@@ -774,192 +581,6 @@ impl get_all_profiles.gather with Profile entry {
 
 impl get_all_profiles.deliver with Root exit {
     report self.results;
-}
-
-impl import_legacy {
-    for archive_root in allroots() {
-        entries = [archive_root-->[?:BoardHub]->:OnBoard:->[?:RepoEntry]];
-        if not entries {
-            continue;
-        }
-        profiles = [archive_root-->[?:Profile, username=="ninja_scores_archive"]];
-        archive = profiles[0]
-            if profiles
-            else (
-                archive_root ++> Profile(
-                    username="ninja_scores_archive",
-                    display_name="Ninja Scores archive",
-                    bio="Historical public submissions. Original submitters were not recorded.",
-                    created_at=now_iso()
-                )
-            );
-        grant(archive, level=AccessLevel.READ);
-        for item in entries {
-            existing = [archive->:Owns:->[?:Project, full==item.full]];
-            if existing {
-                continue;
-            }
-            flags = item.features;
-            features: list[str] = [];
-            if flags.osp {
-                features.append("osp");
-            }
-            if flags.ai {
-                features.append("ai");
-            }
-            if flags.cl {
-                features.append("cl");
-            }
-            if flags.sv {
-                features.append("sv");
-            }
-            if flags.na {
-                features.append("na");
-            }
-            if flags.tests {
-                features.append("tests");
-            }
-            project = archive +>:Owns():+> Project(
-                full=item.full,
-                owner=item.owner,
-                name=item.name,
-                owner_username=archive.username,
-                description=item.description,
-                html_url=item.html_url,
-                avatar_url=item.avatar_url,
-                stars=item.stars,
-                forks=item.forks,
-                topics=item.topics,
-                features=features,
-                jac_files=item.jac_files,
-                jac_lines=item.jac_lines,
-                jac_pct=item.jac_pct,
-                score=item.score,
-                belt=item.belt,
-                breakdown=item.breakdown,
-                scored_sha=item.scored_sha,
-                status="scored",
-                added_at=item.submitted_at,
-                scored_at=item.scored_at,
-                legacy_import=True
-            );
-            grant(project, level=AccessLevel.READ);
-        }
-    }
-}
-
-impl get_all_projects.run with Root entry {
-    import_legacy();
-    for r in allroots() {
-        for p in [r-->[?:Profile]] {
-            for proj in p.projects() {
-                pid = jid(proj);
-                if pid not in self.seen {
-                    self.seen[pid] = True;
-                    self.results.append(proj);
-                }
-            }
-        }
-    }
-    current = [
-        p.full.lower()
-        for p in self.results
-        if not p.legacy_import
-    ];
-    self.results = [
-        p
-        for p in self.results
-        if not p.legacy_import or p.full.lower() not in current
-    ];
-    self.results.sort(key=lambda (p: Project) { (-p.score, p.added_at); });
-    report self.results;
-}
-
-impl add_project.run with Root entry {
-    visit [-->[?:Profile]] else {
-        report ProjectResult(error="Set up your profile first");
-    }
-}
-
-impl add_project.make with Profile entry {
-    parsed = parse_repo_url(self.url);
-    if parsed is None {
-        report ProjectResult(error="bad_url");
-        disengage;
-    }
-    full = parsed[0] + "/" + parsed[1];
-    for existing in [here->:Owns:->[?:Project]] {
-        if existing.full.lower() == full.lower() {
-            report ProjectResult(error="duplicate", project=existing);
-            disengage;
-        }
-    }
-    proj = here +>:Owns():+> Project(
-        full=full,
-        owner=parsed[0],
-        name=parsed[1],
-        owner_username=here.username,
-        html_url="https://github.com/" + full,
-        added_at=now_iso()
-    );
-    grant(proj, level=AccessLevel.READ);
-    if self.session_token {
-        manager = users();
-        user_id = manager.validate_jwt_token(self.session_token) or "";
-        if user_id and manager.get_root_id(user_id) == jid(root) {
-            proj.owner_verified = verified_owner(full, self.session_token);
-        }
-    }
-    await score_project(proj);
-    if proj.status == "error" and proj.error not in RETRYABLE_SCORE_ERRORS {
-        reason = proj.error;
-        del proj;
-        report ProjectResult(error=reason);
-        disengage;
-    }
-    report ProjectResult(ok=proj.status == "scored", error=proj.error, project=proj);
-}
-
-impl find_project.run with Root entry {
-    if self.project_id {
-        target = jobj(self.project_id);
-        if isinstance(target, Project) {
-            visit [target];
-        }
-    }
-}
-
-impl remove_project.act with Project entry {
-    if jid(here) == self.project_id {
-        me = [root-->[?:Profile]];
-        if me and [edge me[0]->:Owns:->here] {
-            del here;
-            report ProjectResult(ok=True);
-        } else {
-            report ProjectResult(error="forbidden");
-        }
-        disengage;
-    }
-}
-
-impl rescore_project.act with Project entry {
-    if jid(here) == self.project_id {
-        me = [root-->[?:Profile]];
-        if not (me and [edge me[0]->:Owns:->here]) {
-            report ProjectResult(error="forbidden");
-            disengage;
-        }
-        waited = seconds_since(here.scored_at);
-        if here.status == "scored" and waited >= 0.0 and waited < RESCORE_TTL_S {
-            report ProjectResult(ok=True, error="cooldown", project=here);
-            disengage;
-        }
-        await score_project(here);
-        report ProjectResult(
-            ok=here.status == "scored", error=here.error, project=here
-        );
-        disengage;
-    }
 }
 
 impl get_trending.run with Root entry {
