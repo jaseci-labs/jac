@@ -83,7 +83,8 @@ import from engine.src.runtime.jsstring {
     u16ix_byte_to_unit,
     u16ix_unit_to_byte,
     U16Index,
-    utf8_encode_scalar
+    utf8_encode_scalar,
+    str_cell_len
 }
 import from engine.src.runtime.jsobject {
     js_object_create_null,
@@ -2382,7 +2383,15 @@ cached U16Index can map offsets: a checkpoint lookup instead of a walk from
 byte 0, which made each exec / match result on a large non-ASCII subject cost
 O(subject) (~4% of a vite build)."""
 def _re_subject_indexed(s: str) -> bool {
-    return _DM_SUBJ_ID >= 0 and str_nbytes(str_from_id(_DM_SUBJ_ID)) == str_nbytes(s);
+    if _DM_SUBJ_ID < 0 {
+        return False;
+    }
+    # The same string object: no length to measure (a strlen per call for a
+    # non-ASCII subject).
+    if __str_data(str_from_id(_DM_SUBJ_ID)) == __str_data(s) {
+        return True;
+    }
+    return str_cell_len(_DM_SUBJ_ID) == str_nbytes(s);
 }
 
 """UTF-16 unit index → byte offset; -1 when the index lies past the end (a

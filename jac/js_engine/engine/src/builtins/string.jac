@@ -69,7 +69,8 @@ import from engine.src.runtime.jsstring {
     U16Index,
     js_string_u16ix,
     u16ix_unit_to_byte,
-    u16ix_byte_to_unit
+    u16ix_byte_to_unit,
+    str_substr_in
 }
 import from engine.src.runtime.jsobject {
     KEY_LENGTH,
@@ -115,7 +116,8 @@ import from engine.src.runtime.mem {
     str_bfind,
     str_brfind,
     str_byte,
-    str_nbytes
+    str_nbytes,
+    str_bfind_in
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -783,8 +785,8 @@ def:pub js_str_indexOf(v: JSValue, needle: JSValue, from_v: JSValue) -> JSValue 
     # the returned index matches .length/charCodeAt/slice (see
     # js_string_byte_to_unit). A raw indexOf byte offset broke rollup render on
     # \0-prefixed virtual ids (positions ran +3 per embedded NUL).
-    byte_len: int = str_nbytes(s);
     if _byte_clean(v, s) {
+        byte_len: int = str_nbytes(s);
         # Byte-clean: unit offset == byte offset. Native start-offset search, NO
         # tail copy (the old `str_substr(s, from, len)` + find copied the whole
         # tail per call: 300KB and 1.7ms per `indexOf(";", pos)` on a 650KB
@@ -814,7 +816,9 @@ def:pub js_str_indexOf(v: JSValue, needle: JSValue, from_v: JSValue) -> JSValue 
             if fb_ix < 0 {
                 fb_ix = u16ix_unit_to_byte(ix_io, s, from_ix + 1);
             }
-            pos_ix: int = str_bfind(s, n, fb_ix);
+            # The index holds the byte length: a non-ASCII `s` is not measured
+            # per call (a strlen each, once per line in magic-string's scans).
+            pos_ix: int = str_bfind_in(s, n, fb_ix, ix_io.nbytes);
             if pos_ix == -1 {
                 return js_int(-1);
             }
@@ -824,7 +828,7 @@ def:pub js_str_indexOf(v: JSValue, needle: JSValue, from_v: JSValue) -> JSValue 
     unit_len: int = js_string_utf16_len(s);
     from_unit: int = _clamp_index(_to_int_or_inf(from_v), unit_len);
     from_byte: int = js_string_unit_to_byte(s, from_unit);
-    tail2: str = str_substr(s, from_byte, byte_len);
+    tail2: str = str_substr(s, from_byte, str_nbytes(s));
     bpos: int = str_bfind(tail2, n);
     if bpos == -1 {
         return js_int(-1);
@@ -1164,7 +1168,7 @@ def:pub js_str_slice(v: JSValue, start: JSValue, end_v: JSValue) -> JSValue {
             b0_x: int = u16ix_unit_to_byte(ix_sl, s, st_x);
             b1_x: int = u16ix_unit_to_byte(ix_sl, s, en_x);
             if b0_x >= 0 and b1_x >= 0 {
-                return _mk_str(str_substr(s, b0_x, b1_x));
+                return _mk_str(str_substr_in(s, b0_x, b1_x));
             }
             # A bound splits a surrogate pair: cut the code units instead.
             return _units_substr(js_string_utf16_units(s), st_x, en_x);
@@ -1271,7 +1275,7 @@ def:pub js_str_substring(v: JSValue, start: JSValue, end_v: JSValue) -> JSValue 
             b0_y: int = u16ix_unit_to_byte(ix_su, s, st_y);
             b1_y: int = u16ix_unit_to_byte(ix_su, s, en_y);
             if b0_y >= 0 and b1_y >= 0 {
-                return _mk_str(str_substr(s, b0_y, b1_y));
+                return _mk_str(str_substr_in(s, b0_y, b1_y));
             }
             return _units_substr(js_string_utf16_units(s), st_y, en_y);
         }

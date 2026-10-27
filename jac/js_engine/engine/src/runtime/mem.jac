@@ -299,20 +299,41 @@ def:pub str_bslice(s: str, a: int, b: int) -> str {
     if b > bs_n {
         b = bs_n;
     }
-    if b <= a {
-        return "";
-    }
-    bs_k: int = b - a;
-    bs_buf: Ptr = io_alloc(bs_k + 1);
-    memcpy(bs_buf, __str_data(s) + a, bs_k);
-    bs_out: str = str_from_raw(bs_buf);
-    io_free(bs_buf);
-    return bs_out;
+    return _str_bcopy(s, a, b);
 }
 
 """Bytes from `a` to the end of `s` as a new string."""
 def:pub str_bslice_from(s: str, a: int) -> str {
-    return str_bslice(s, a, str_nbytes(s));
+    if a < 0 {
+        a = 0;
+    }
+    if s.isascii() {
+        return s[a:];
+    }
+    return _str_bcopy(s, a, strlen(s));
+}
+
+"""str_bslice for bounds the caller already knows are in range
+(0 <= a, b <= str_nbytes(s)): it does not measure `s`, which for a non-ASCII
+string is a strlen. Loops over one string keep its length and slice with this."""
+def:pub str_bslice_in(s: str, a: int, b: int) -> str {
+    if s.isascii() {
+        return s[a:b];
+    }
+    return _str_bcopy(s, a, b);
+}
+
+"""Copy of the bytes [a, b) of `s`, both in range."""
+def _str_bcopy(s: str, a: int, b: int) -> str {
+    if b <= a {
+        return "";
+    }
+    bc_k: int = b - a;
+    bc_buf: Ptr = io_alloc(bc_k + 1);
+    memcpy(bc_buf, __str_data(s) + a, bc_k);
+    bc_out: str = str_from_raw(bc_buf);
+    io_free(bc_buf);
+    return bc_out;
 }
 
 """Byte offset of the first `sub` in `s` at or after byte `start`, or -1."""
@@ -340,6 +361,30 @@ def:pub str_bfind(s: str, sub: str, start: int = 0) -> int {
         return -1;
     }
     return bf_hit - bf_base;
+}
+
+"""str_bfind for a caller that already holds `n` = str_nbytes(s), so `s` is
+not measured again (a strlen per call for a non-ASCII string)."""
+def:pub str_bfind_in(s: str, sub: str, start: int, n: int) -> int {
+    if start < 0 {
+        start = 0;
+    }
+    if start > n {
+        return -1;
+    }
+    bi_m: int = str_nbytes(sub);
+    if bi_m == 0 {
+        return start;
+    }
+    if start + bi_m > n {
+        return -1;
+    }
+    bi_base: int = __str_data(s);
+    bi_hit: int = memmem(bi_base + start, n - start, __str_data(sub), bi_m);
+    if bi_hit == 0 {
+        return -1;
+    }
+    return bi_hit - bi_base;
 }
 
 """Byte offset of the last `sub` in `s`, or -1."""

@@ -24,6 +24,7 @@ import from engine.src.runtime.mem {
     str_bfind,
     str_brfind,
     str_bslice,
+    str_bslice_in,
     str_byte,
     str_nbytes
 }
@@ -153,7 +154,18 @@ def:pub str_substr(s: str, start: int, end: int) -> str {
     # view once (cf. str_stamp_copy). Replaces a per-byte write_byte(ord(s[k]))
     # loop plus a second full copy through str_from_raw.
     cp_n: int = 1;
-    return str_bslice(s, st, en) * cp_n;
+    return str_bslice_in(s, st, en) * cp_n;
+}
+
+"""str_substr for bounds the caller already knows are in range
+(0 <= start <= end <= str_nbytes(s)): an owned copy without measuring `s`,
+which for a non-ASCII string is a strlen per call."""
+def:pub str_substr_in(s: str, start: int, end: int) -> str {
+    if start >= end {
+        return "";
+    }
+    ci_n: int = 1;
+    return str_bslice_in(s, start, end) * ci_n;
 }
 
 """Return a length-STAMPED copy of `s`.
@@ -549,7 +561,8 @@ obj:pub U16Index {
         bytes: list[int] = [],
         units: list[int] = [],
         total: int = 0,
-        regular: bool = True;
+        regular: bool = True,
+        nbytes: int = 0;
 }
 
 # A few recent indexes (round-robin), keyed by string id. Converting a UTF-16
@@ -597,9 +610,10 @@ def _heap_slot_alloc(s: str, rl: int, rr: int, rlen: int, asc: int) -> int {
     # string slices (str_substr) with almost no object allocation — under 500K
     # objects while heap strings grew to 11GB in 10s, OOMing WITH --gc because
     # collections simply never triggered.
-    gc_note_alloc(_STR_REALM, 48 + str_nbytes(s) if rl < 0 else 48);
+    # A leaf's rlen is its byte length (the callers measure it once).
+    gc_note_alloc(_STR_REALM, 48 + rlen if rl < 0 else 48);
     if rl < 0 {
-        _hs_note_bytes(str_nbytes(s));
+        _hs_note_bytes(rlen);
     }  # leaf bytes (ropes are metered on flatten)
     fn: int = len(_STR_REALM.free_heap_string_slots);
     if fn > 0 {
@@ -1645,8 +1659,9 @@ def:pub _utf8_bytes_to_codepoints(raw: list[int]) -> list[int] {
 """True when s[i..i+1] is the NUL code-unit sentinel (bytes C0 80)."""
 def _str_is_nul_escape(s: str, i: int) -> bool {
     # byte values, not one-character strings: this runs per byte in the
-    # offset walkers (V4.26)
-    if i + 1 >= str_nbytes(s) or str_byte(s, i) != 192 {
+    # offset walkers (V4.26). The callers keep 0 <= i < str_nbytes(s); the
+    # byte test comes first so `s` is measured only at a C0 lead.
+    if str_byte(s, i) != 192 or i + 1 >= str_nbytes(s) {
         return False;
     }
     return str_byte(s, i + 1) == 128;
@@ -1789,6 +1804,7 @@ render phase). Any byte >= 128 ends the run, including the NUL sentinel C0 80
 def _u16ix_build(id: int, s: str) -> U16Index {
     ix: U16Index = U16Index(id=id, bytes=[0], units=[0], total=0, regular=True);
     n: int = str_nbytes(s);
+    ix.nbytes = n;
     i: int = 0;
     u: int = 0;
     nxt: int = U16IX_STEP;
@@ -1860,7 +1876,7 @@ def:pub u16ix_unit_to_byte(ix: U16Index, s: str, t: int) -> int {
         return 0;
     }
     if t >= ix.total {
-        return str_nbytes(s);
+        return ix.nbytes;
     }
     j: int = t // U16IX_STEP;
     if j >= len(ix.units) {
@@ -1874,7 +1890,7 @@ def:pub u16ix_unit_to_byte(ix: U16Index, s: str, t: int) -> int {
     }
     i: int = ix.bytes[j];
     u: int = ix.units[j];
-    n: int = str_nbytes(s);
+    n: int = ix.nbytes;
     while u < t {
         cw: int = _u16_step(s, i, n);
         i = i + (cw >> 2);
@@ -1900,7 +1916,7 @@ def:pub u16ix_byte_to_unit(ix: U16Index, s: str, b: int) -> int {
     }
     i: int = ix.bytes[lo];
     u: int = ix.units[lo];
-    n: int = str_nbytes(s);
+    n: int = ix.nbytes;
     while i < b and i < n {
         cw: int = _u16_step(s, i, n);
         i = i + (cw >> 2);

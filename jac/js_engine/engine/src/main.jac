@@ -51,8 +51,11 @@ import from engine.src.ffi.libc {
     getenv,
     fflush,
     chdir,
-    write
+    write,
+    memchr,
+    free
 }
+import from engine.src.builtins.fs { _read_file_bytes, FileBytes }
 import from engine.src.pm.cli { pm_try_dispatch }
 import from engine.src.runtime.global {
     GlobalContext,
@@ -533,7 +536,46 @@ import from engine.src.runtime.mem {
     str_bslice,
     str_bslice_from,
     str_byte,
-    str_nbytes
+    str_nbytes,
+    io_alloc,
+    io_free,
+    read_byte,
+    write_byte,
+    str_from_raw
+}
+
+"""The script at `path` as text. A raw 0x00 byte in it becomes the engine's
+U+0000 sentinel C0 80, as in every other engine string: the byte length of a
+non-ASCII str is its strlen, so a NUL inside a string literal would otherwise
+end the source there. A file without one is read as before."""
+def _read_script(path: str) -> str {
+    rs_fb: FileBytes = _read_file_bytes(path);
+    if not rs_fb.ok {
+        return open(path).read();
+    }
+    if memchr(rs_fb.ptr, 0, rs_fb.size) == 0 {
+        free(rs_fb.ptr - 32);
+        return open(path).read();
+    }
+    rs_buf: int = io_alloc(2 * rs_fb.size + 1);
+    rs_j: int = 0;
+    rs_i: int = 0;
+    while rs_i < rs_fb.size {
+        rs_b: int = read_byte(rs_fb.ptr, rs_i);
+        if rs_b == 0 {
+            write_byte(rs_buf, rs_j, 192);
+            write_byte(rs_buf, rs_j + 1, 128);
+            rs_j = rs_j + 2;
+        } else {
+            write_byte(rs_buf, rs_j, rs_b);
+            rs_j = rs_j + 1;
+        }
+        rs_i = rs_i + 1;
+    }
+    free(rs_fb.ptr - 32);
+    rs_out: str = str_from_raw(rs_buf);
+    io_free(rs_buf);
+    return rs_out;
 }
 
 with entry {
@@ -949,7 +991,7 @@ with entry {
             _exit(1);
         }
         try {
-            source = open(js_file).read();
+            source = _read_script(js_file);
         } except Exception {
             if flag_if_present {
                 _exit(0);

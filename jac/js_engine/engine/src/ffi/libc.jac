@@ -34,7 +34,7 @@ import from "libc.so.6" {
         dst: int, c: i32, n: int
     ) -> int;  def free(ptr: int) -> None;  def realloc(ptr: int, size: int) -> int;
     def strlen(s: str) -> int;  
-    def memcmp(a: int, b: int, n: int) -> i32;  
+    def memcmp(a: int, b: int, n: int) -> i32;  def memchr(s: int, c: i32, n: int) -> int;  
     def memmem(
         hay: int, hay_len: int, needle: int, needle_len: int
     ) -> int;
