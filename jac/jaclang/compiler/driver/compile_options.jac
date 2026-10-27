@@ -1,3 +1,23 @@
+glob _serving_probe: list[bool] = [False],
+     _graphmend_disable_override: list[str] = [],
+     GM_DEFER_BUFFERS_THREAD_SCOPED: bool = False;
+
+def mark_process_serving;
+
+def override_graphmend_disable(names: list[str]);
+
+def graphmend_disable_override -> list[str];
+
+def process_is_serving -> bool;
+
+def defer_declines_here -> bool;
+
+def resolved_graphmend_setting -> bool;
+
+def resolved_graphmend_disable_setting -> list[str];
+
+def resolved_graphmend_claim_imports_setting -> bool;
+
 obj CancelToken {
     has requested: bool = False;
 
@@ -20,6 +40,9 @@ obj CompileOptions {
         no_ir_cache: bool = False,
         resolve_annex_parent: bool = False,
         aot_mode: bool = False,
+        graphmend: (bool | None) = None,
+        graphmend_claim_imports: (bool | None) = None,
+        graphmend_disable: (list[str] | None) = None,
         native_unit: bool = False,
         kernel_build: bool = False,
         native_link_mode: (str | None) = None,

@@ -132,6 +132,15 @@ impl native_object_passes(request: ProductRequest) -> PassSchedule {
     return [NativeCompilePass];
 }
 
+impl graphmend_passes(request: ProductRequest) -> PassSchedule {
+    return [
+        GraphBreakDetectPass,
+        TrapLoweringPass,
+        PredicateCtrlFlowPass,
+        DeferSideEffectPass
+    ];
+}
+
 impl format_passes(request: ProductRequest) -> PassSchedule {
     return [CommentAttachPass, DocIRGenPass, JacFormatPass];
 }

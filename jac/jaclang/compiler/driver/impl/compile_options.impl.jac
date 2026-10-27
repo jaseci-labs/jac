@@ -1,3 +1,50 @@
+impl mark_process_serving {
+    _serving_probe[0] = True;
+}
+
+impl process_is_serving -> bool {
+    return _serving_probe[0];
+}
+
+impl override_graphmend_disable(names: list[str]) {
+    _graphmend_disable_override.clear();
+    _graphmend_disable_override.extend(names);
+}
+
+impl graphmend_disable_override -> list[str] {
+    return list(_graphmend_disable_override);
+}
+
+impl defer_declines_here -> bool {
+    return (not GM_DEFER_BUFFERS_THREAD_SCOPED) and process_is_serving();
+}
+
+impl resolved_graphmend_setting -> bool {
+    project = active_host().project_defaults();
+    return project.graphmend if project else True;
+}
+
+impl resolved_graphmend_disable_setting -> list[str] {
+    if _graphmend_disable_override {
+        return list(_graphmend_disable_override);
+    }
+    project = active_host().project_defaults();
+    raw = project.graphmend_disable if project else "";
+    out: list[str] = [];
+    for part in raw.split(',') {
+        stripped = part.strip().lower();
+        if stripped in ('trap', 'where', 'defer') and stripped not in out {
+            out.append(stripped);
+        }
+    }
+    return out;
+}
+
+impl resolved_graphmend_claim_imports_setting -> bool {
+    project = active_host().project_defaults();
+    return project.graphmend_claim_imports if project else False;
+}
+
 impl CancelToken.set {
     self.requested = True;
 }
@@ -12,6 +59,15 @@ impl CancelToken.is_set -> bool {
 
 impl CompileOptions.postinit {
     project = active_host().project_defaults();
+    if self.graphmend is None {
+        self.graphmend = resolved_graphmend_setting();
+    }
+    if self.graphmend_disable is None {
+        self.graphmend_disable = resolved_graphmend_disable_setting();
+    }
+    if self.graphmend_claim_imports is None {
+        self.graphmend_claim_imports = resolved_graphmend_claim_imports_setting();
+    }
     if self.native_require is None {
         self.native_require = list(project.native_require) if project else [];
     }

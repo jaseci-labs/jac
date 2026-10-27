@@ -406,6 +406,14 @@ test "E0076: Python __init__ and init are distinct methods" {
     assert not has_diagnostic_code(prog, "E0076");
 }
 
+test "E0076: an aliased typing.overload stub is not a duplicate method" {
+    # torch binds `overload as _overload` and declares `SymBool.__eq__` twice
+    # under it before the real definition; the alias the module bound, and the
+    # `typing.overload` attribute form, have to count as the overload marker.
+    (prog, _) = compile_only("parser_E0076_overload_alias.jac");
+    assert not has_diagnostic_code(prog, "E0076");
+}
+
 test "E0078: a method or ability with a field's name is rejected" {
     # The later class attribute replaced the field, so `self.rise` read the
     # ability's function and `jac check` passed it silently.

@@ -1,0 +1,303 @@
+glob _PURE_BUILTINS: set[str] = {
+         'len',
+         'float',
+         'int',
+         'bool',
+         'str',
+         'max',
+         'min',
+         'abs',
+         'sum',
+         'list',
+         'tuple',
+         'range',
+         'getattr',
+         'hasattr'
+     },
+     _PURE_TENSOR_METHODS: set[str] = {'to', 'float', 'double', 'clone', 'detach'},
+     _BOOL_TENSOR_FNS: set[str] = {
+         'all',
+         'any',
+         'bool',
+         'eq',
+         'ge',
+         'gt',
+         'isclose',
+         'isfinite',
+         'isin',
+         'isinf',
+         'isnan',
+         'le',
+         'logical_and',
+         'logical_not',
+         'logical_or',
+         'logical_xor',
+         'lt',
+         'ne'
+     },
+     _TENSOR_FNS: set[str] = {
+         'abs',
+         'acos',
+         'add',
+         'addmm',
+         'all',
+         'amax',
+         'amin',
+         'any',
+         'arange',
+         'argmax',
+         'argmin',
+         'as_tensor',
+         'asin',
+         'atan',
+         'baddbmm',
+         'bitwise_and',
+         'bitwise_not',
+         'bitwise_or',
+         'bitwise_xor',
+         'bmm',
+         'bool',
+         'cat',
+         'ceil',
+         'clamp',
+         'clip',
+         'clone',
+         'contiguous',
+         'cos',
+         'cosh',
+         'count_nonzero',
+         'cpu',
+         'cuda',
+         'cumprod',
+         'cumsum',
+         'detach',
+         'diff',
+         'div',
+         'double',
+         'einsum',
+         'eq',
+         'exp',
+         'expand',
+         'expand_as',
+         'eye',
+         'flatten',
+         'flip',
+         'float',
+         'floor',
+         'fmod',
+         'full',
+         'full_like',
+         'ge',
+         'gelu',
+         'gt',
+         'half',
+         'int',
+         'isclose',
+         'isfinite',
+         'isin',
+         'isinf',
+         'isnan',
+         'le',
+         'linspace',
+         'log',
+         'log10',
+         'log1p',
+         'log2',
+         'log_softmax',
+         'logical_and',
+         'logical_not',
+         'logical_or',
+         'logical_xor',
+         'long',
+         'lt',
+         'masked_fill',
+         'matmul',
+         'maximum',
+         'mean',
+         'minimum',
+         'mm',
+         'mul',
+         'nan_to_num',
+         'ne',
+         'neg',
+         'norm',
+         'ones',
+         'ones_like',
+         'outer',
+         'permute',
+         'pow',
+         'prod',
+         'reciprocal',
+         'relu',
+         'remainder',
+         'repeat',
+         'reshape',
+         'round',
+         'rsqrt',
+         'sigmoid',
+         'sign',
+         'sin',
+         'sinh',
+         'softmax',
+         'sqrt',
+         'square',
+         'squeeze',
+         'stack',
+         'std',
+         'sub',
+         'sum',
+         't',
+         'tan',
+         'tanh',
+         'tensor',
+         'to',
+         'transpose',
+         'tril',
+         'triu',
+         'trunc',
+         'type_as',
+         'unsqueeze',
+         'var',
+         'view',
+         'view_as',
+         'zeros',
+         'zeros_like'
+     },
+     _TENSOR_REDUCE_FNS: set[str] = {'max', 'median', 'min'},
+     _TENSOR_VIEW_ATTRS: set[str] = {'H', 'T', 'data', 'imag', 'mH', 'mT', 'real'},
+     _PURE_TORCH_FNS: set[str] = {
+         'arange',
+         'as_tensor',
+         'cat',
+         'ceil',
+         'clamp',
+         'cos',
+         'einsum',
+         'exp',
+         'eye',
+         'floor',
+         'full',
+         'linspace',
+         'log',
+         'log2',
+         'log10',
+         'maximum',
+         'minimum',
+         'ones',
+         'outer',
+         'pow',
+         'reshape',
+         'rsqrt',
+         'sin',
+         'sqrt',
+         'stack',
+         'tensor',
+         'where',
+         'zeros'
+     };
+
+walker PredicateCtrlFlowPass(TreePass) {
+    static has contract: PassContract = PassContract(
+        requires=(AnalysisFact.GRAPH_BREAKS, AnalysisFact.LOWERED_GUARDS, ),
+        provides=(AnalysisFact.PREDICATED_BRANCHES, )
+    );
+
+    has _enabled: bool = False,
+        _autograd_reachable: bool = False,
+        _counter: int = 0,
+        _mat_seen: set[str] = set();
+
+    can prepare with entry;
+    can exit_if_stmt with uni.IfStmt exit;
+    def _rewrite_assignment(
+        nd: uni.IfStmt, lhs: uni.Name, true_e: uni.Expr, false_e: uni.Expr
+    ) -> None;
+
+    def _rewrite_return(nd: uni.IfStmt, true_e: uni.Expr, false_e: uni.Expr) -> None;
+    def _merge_common_call(
+        nd: uni.IfStmt,
+        ca: uni.Expr,
+        cb: uni.Expr,
+        true_setups: Sequence[uni.CodeBlockStmt],
+        false_setups: Sequence[uni.CodeBlockStmt]
+    ) -> None;
+
+    def _has_call(e: uni.UniNode) -> bool;
+    def _has_unpack(call: uni.FuncCall) -> bool;
+    def _has_none(a: uni.Expr, b: uni.Expr) -> bool;
+    def _provably_non_tensor(e: uni.Expr) -> bool;
+    def _shape_divergent(a: uni.Expr, b: uni.Expr) -> bool;
+    def _subscript_texts(e: uni.Expr) -> set[str];
+    def _wrapped_from_training -> bool;
+    def _scalar_literal(e: uni.Expr) -> bool;
+    def _non_tensor_container(e: uni.Expr) -> bool;
+    def _same_lhs(a: uni.Assignment, b: uni.Assignment) -> (uni.Name | None);
+    def _bool_tensor(e: uni.Expr, seen: set[str], depth: int) -> bool;
+    def _tensor_valued(e: uni.Expr, seen: set[str], depth: int) -> bool;
+    def _tensor_annotation(param: uni.ParamVar) -> bool;
+    def _assign(target: uni.Name, value: uni.Expr) -> uni.Assignment;
+    def _hoist(
+        at: uni.UniNode, cond: uni.Expr, t: uni.Expr, f: uni.Expr
+    ) -> tuple[list[uni.CodeBlockStmt], uni.Name, uni.Name, uni.Name];
+
+    def _hoist_cond(
+        at: uni.UniNode, cond: uni.Expr
+    ) -> tuple[list[uni.CodeBlockStmt], uni.Name];
+
+    def _is_assert_async(stmt: uni.UniNode) -> bool;
+    def _is_eq_assert(stmt: uni.UniNode) -> bool;
+    def _gate_asserts(
+        setups: list[uni.CodeBlockStmt], n: int, taken_when_true: bool
+    ) -> list[uni.CodeBlockStmt];
+
+    def _setups_safe(setups: Sequence[uni.CodeBlockStmt], region: uni.IfStmt) -> bool;
+    def _effect_neutral(s: uni.UniNode, region: uni.IfStmt) -> bool;
+    def _is_existence_guard(s: uni.UniNode, region: uni.IfStmt) -> bool;
+    def _init_value_safe(v: (uni.Expr | uni.YieldExpr | None)) -> bool;
+    def _call_speculatable(c: uni.FuncCall) -> bool;
+    def _attr_bound_elsewhere(mod: uni.Module, attr: str) -> bool;
+    def _signature_accepts(fn: uni.Ability, c: uni.FuncCall) -> bool;
+    def _module_fn(mod: uni.Module, name: str) -> (uni.Ability | None);
+    def _dispatch_table_fns(mod: uni.Module) -> list[uni.Ability];
+    def _impure_writes(fn: uni.Ability, mod: (uni.Module | None)) -> bool;
+    def _module_scope_names(mod: uni.Module) -> set[str];
+    def _body_pure_nonraising(
+        fn: uni.Ability,
+        c: uni.FuncCall,
+        seen: (set[int] | None) = None,
+        ctx: (dict[str, list[uni.Archetype]] | None) = None
+    ) -> bool;
+
+    def _callsite_ctx(
+        fn: uni.Ability, c: uni.FuncCall
+    ) -> dict[str, list[uni.Archetype]];
+
+    def _arg_classes(
+        arg: uni.Expr, c: uni.FuncCall, selfcls: list[uni.Archetype]
+    ) -> list[uni.Archetype];
+
+    def _self_classes(c: uni.FuncCall) -> list[uni.Archetype];
+    def _ctx_dict_get(call: uni.FuncCall, ctx: dict[str, list[uni.Archetype]]) -> bool;
+    def _witnessed_dict_get(call: uni.FuncCall, fn: uni.Ability) -> bool;
+    def _mapping_witnessed(mod: uni.Module, key: str) -> bool;
+    def _hasattr_key(c: uni.Expr) -> (tuple[str, str] | None);
+    def _writes_attr(s: uni.Assignment, recv: str, key: str) -> bool;
+    def _attr_confined(region: uni.IfStmt, key: str) -> bool;
+    def _within(nd: uni.UniNode, anc: uni.UniNode) -> bool;
+    def _varkw_name(fn: uni.Ability) -> (str | None);
+    def _passes_extra_kwargs(fn: uni.Ability, c: uni.FuncCall) -> bool;
+    def _guarded_by_varkw(r: uni.RaiseStmt, varkw: str, fn: uni.Ability) -> bool;
+    def _varkw_nonempty(e: (uni.Expr | None), varkw: str) -> bool;
+    def _pure_callee(t: (uni.Expr | None)) -> bool;
+    def _pure_root(base: uni.Name) -> bool;
+    def _pure_receiver(recv: (uni.Expr | None)) -> bool;
+    def _assignment_neutral(s: uni.Assignment, region: uni.IfStmt) -> bool;
+    def _is_device_move(s: uni.Assignment) -> bool;
+    def _move_consumed(s: uni.Assignment, region: uni.IfStmt) -> bool;
+    def _consumers_harmless(s: uni.Assignment, region: uni.IfStmt) -> bool;
+    def _normalizes_first(ab: uni.Ability, tgt: str) -> bool;
+    def _stmt_spot(nd: uni.UniNode) -> (tuple[int, int] | None);
+    def _spot_chain(nd: uni.UniNode) -> dict[int, int];
+    def _all_local_targets(targets: Sequence[uni.Expr], region: uni.IfStmt) -> bool;
+    def _setup_writes(setups: Sequence[uni.CodeBlockStmt]) -> set[str];
+}

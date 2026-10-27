@@ -864,6 +864,211 @@ impl JacBuiltin.log_report(expr: any, custom: bool = False) -> None {
     }
 }
 
+impl JacBuiltin.se_emit(
+    callee: any, args: tuple[any, ...], kwargs: dict[str, any]
+) -> None {
+    if _gm_se_depth[0] > 0 {
+        _gm_se_buffer.append((callee, args, kwargs));
+    } else {
+        callee(*args, **kwargs);
+    }
+}
+
+impl JacBuiltin.se_region_enter -> None {
+    _gm_se_depth[0] += 1;
+}
+
+impl JacBuiltin.se_region_open(module: any, inputs: any) -> any {
+    JacBuiltin.se_region_enter();
+    return None;
+}
+
+impl JacBuiltin.se_region_exit -> None {
+    if _gm_se_depth[0] > 0 {
+        _gm_se_depth[0] -= 1;
+    }
+}
+
+impl JacBuiltin.se_flush -> None {
+    if _gm_se_depth[0] > 0 {
+        return;
+    }
+    pending: list[tuple[any, ...]] = list(_gm_se_buffer);
+    _gm_se_buffer.clear();
+    JacBuiltin.se_replay(pending);
+}
+
+impl JacBuiltin.se_arm_replay -> None {
+    if (_gm_eager_replay[0] is None) and ("torch" in sys.modules) {
+        import torch;
+        _gm_eager_replay[0] = torch.compiler.disable(JacBuiltin.se_replay_now);
+    }
+}
+
+impl JacBuiltin.se_replay(pending: list[tuple[any, ...]]) -> None {
+    if not pending {
+        return;
+    }
+    eager = _gm_eager_replay[0];
+    if eager is not None {
+        import torch;
+        if torch.compiler.is_compiling() {
+            eager(pending);
+            return;
+        }
+    }
+    JacBuiltin.se_replay_now(pending);
+}
+
+impl JacBuiltin.se_replay_now(pending: list[tuple[any, ...]]) -> None {
+    for `entry in pending {
+        (fn, args, kwargs) = `entry;
+        if isinstance(fn, int) {
+            _gm_log_registry[fn](*args, **kwargs);
+        } else {
+            fn(*args, **kwargs);
+        }
+    }
+}
+
+impl JacBuiltin.se_guard(fn: any) -> any {
+    JacBuiltin.se_arm_replay();
+    import functools;
+    @functools.wraps(fn)
+    def _gm_se_wrapper(*args: any, **kwargs: any) -> any {
+        JacBuiltin.se_region_enter();
+        try {
+            return fn(*args, **kwargs);
+        } finally {
+            JacBuiltin.se_region_exit();
+            JacBuiltin.se_flush();
+        }
+    }
+    return _gm_se_wrapper;
+}
+
+impl JacBuiltin.log_register(fn: any) -> int {
+    key = (id(getattr(fn, '__func__', fn)), id(getattr(fn, '__self__', fn)));
+    slot = _gm_log_slots.get(key);
+    if slot is not None {
+        return slot;
+    }
+    JacBuiltin.se_arm_replay();
+    _gm_log_registry.append(fn);
+    slot = len(_gm_log_registry) - 1;
+    _gm_log_slots[key] = slot;
+    return slot;
+}
+
+impl JacBuiltin.se_snap(v: any, tensor_type: any) -> any {
+    origs: list[any] = [];
+    copies: list[any] = [];
+    def _snap(x: any) -> any {
+        if isinstance(x, tensor_type) {
+            return x.clone();
+        }
+        for i in range(len(origs)) {
+            if origs[i] is x {
+                return copies[i];
+            }
+        }
+        if type(x) is list {
+            out: list[any] = [];
+            origs.append(x);
+            copies.append(out);
+            for e in x {
+                out.append(_snap(e));
+            }
+            origs.pop();
+            copies.pop();
+            return out;
+        }
+        if type(x) is dict {
+            table: dict[any, any] = {};
+            origs.append(x);
+            copies.append(table);
+            for (k, e) in x.items() {
+                table[k] = _snap(e);
+            }
+            origs.pop();
+            copies.pop();
+            return table;
+        }
+        if type(x) is tuple {
+            return tuple([_snap(e) for e in x]);
+        }
+        if type(x) is set {
+            return set(x);
+        }
+        return x;
+    }
+    return _snap(v);
+}
+
+impl JacBuiltin.log_emit(
+    slot: int, args: tuple[any, ...], kwargs: dict[str, any]
+) -> None {
+    if _gm_se_depth[0] > 0 {
+        _gm_se_buffer.append((slot, args, kwargs));
+    } else {
+        JacBuiltin.se_replay([(slot, args, kwargs)]);
+    }
+}
+
+impl JacBuiltin.log_flush_hook(module: any, inputs: any, output: any) -> any {
+    JacBuiltin.se_region_exit();
+    JacBuiltin.se_flush();
+    return output;
+}
+
+impl JacBuiltin.tensor_eq_assert(a: any, b: any, msg: str) -> None {
+    import torch;
+    cond: any = torch.tensor(False, device=a.device);
+    if a.shape == b.shape {
+        eq: any = a == b;
+        cond = eq.all();
+    }
+    torch._assert_async(cond, msg);
+}
+
+impl JacBuiltin.trap_guard(fn: any) -> any {
+    import functools;
+    import builtins;
+    if hasattr(fn, 'forward') {
+        if not getattr(fn.forward, '_jac_trap_boundary', False) {
+            setattr(fn, 'forward', JacBuiltin.trap_guard(fn.forward));
+        }
+        return fn;
+    }
+    @functools.wraps(fn)
+    def _gm_trap_wrapper(*args: any, **kwargs: any) -> any {
+        try {
+            return fn(*args, **kwargs);
+        } except RuntimeError as err {
+            text = str(err);
+            if "[[GM-TRAP " not in text {
+                raise err;
+            }
+            after = text.split("[[GM-TRAP ", 1)[1];
+            if "]]" not in after {
+                raise err;
+            }
+            (type_name, rest) = after.split("]]", 1);
+            if "[[/GM-TRAP]]" not in rest {
+                raise err;
+            }
+            msg = rest.split("[[/GM-TRAP]]", 1)[0];
+            exc_cls = getattr(builtins, type_name, None);
+            if not (isinstance(exc_cls, type) and issubclass(exc_cls, BaseException)) {
+                exc_cls = RuntimeError;
+            }
+            raise exc_cls(msg) from None;
+        }
+    }
+    setattr(_gm_trap_wrapper, '_jac_trap_boundary', True);
+    return _gm_trap_wrapper;
+}
+
 impl JacGraph.refs(
     path: GraphQuery | NodeArchetype | list[NodeArchetype],
     slc: (slice | None) = None,
@@ -2002,6 +2207,10 @@ impl JacRuntime.reset_process_state(cls: any, clear_modules: bool = True) -> Non
     cls.selfhost = None;
     import from jaclang.project.config { set_config }
     set_config(None);
+    options = sys.modules.get('jaclang.compiler.driver.compile_options');
+    if options is not None {
+        options.override_graphmend_disable([]);
+    }
 }
 
 impl JacRuntime.get_compiler(cls: any) -> JacCompiler {

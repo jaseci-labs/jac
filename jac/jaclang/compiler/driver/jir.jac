@@ -34,6 +34,7 @@ glob MAGIC = b"JIR\x00",
      SEC_PATH_ROOT: int = 0x15,
      SEC_EMITKEY: int = 0x16,
      SEC_PYSRC: int = 0x17,
+     SEC_GM_NOOP: int = 0x18,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      FLAG_CARRIED: int = 0x08,
@@ -206,6 +207,17 @@ def _analysis_fingerprint_for(source_path: str) -> str;
 
 def _check_policy_digest(source_path: str) -> str;
 
+glob _GM_CACHE_VARIANT: ContextVar[str] = ContextVar(
+         "jac_graphmend_cache_variant", `default=""
+     ),
+     GM_PROBE_VARIANT: str = "graphmend;probe";
+
+def swap_graphmend_cache_variant(variant: str) -> str;
+
+def graphmend_variant_config(variant: str) -> str;
+
+def graphmend_variant_region(variant: str) -> str;
+
 def _project_env_fingerprint_uncached(source_path: str) -> str;
 
 def _full_env_fingerprint(source_path: str) -> str;
@@ -250,6 +262,8 @@ def _read_key_section(data: bytes, sec_type: int) -> (str | None);
 def read_modkey(data: bytes) -> (str | None);
 
 def read_envkey(data: bytes) -> (str | None);
+
+def read_gm_noop(data: bytes) -> (str | None);
 
 def _ct_dep_rows(text: str) -> list[tuple[(str, str, str)]];
 
@@ -432,6 +446,12 @@ def _module_lock_path(cache_path: Path) -> Path;
 def carried_module_bytecode(source_path: str) -> (tuple[bytes, bytes] | None);
 
 def carried_native_sections(source_path: str, producer: str) -> dict[int, bytes];
+
+def is_module_cache_valid_gm_noop(source_path: str, cache_path: Path) -> bool;
+
+glob _SRC_SHARED: dict[(str, tuple[(int, int, str)])] = {};
+
+def read_source_shared(file_path: str) -> (str | None);
 
 def write_module_cache(
     source_path: str,

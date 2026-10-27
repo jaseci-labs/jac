@@ -14,6 +14,10 @@ def admits_interface(task: ModuleAnalysis) -> bool;
 
 def run_interface(task: ModuleAnalysis);
 
+def binds_torch_import(module: uni.Module) -> bool;
+
+def graphmend_wanted(task: ModuleAnalysis) -> bool;
+
 def admits_codegen(task: ModuleAnalysis) -> bool;
 
 def run_codegen(task: ModuleAnalysis);
