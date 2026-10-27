@@ -2803,20 +2803,16 @@ impl NativeListEmitter.emit_extend(
     idx.add_incoming(next_idx, body_bb);
     b.branch(loop_bb);
     b.position_at_start(done_bb);
-    if src_owned {
+    if _aos_struct is not None and src_helpers is helpers {
         cleanup_bb = func.append_basic_block(name="ext.cleanup.source");
         cleanup_done_bb = func.append_basic_block(name="ext.cleanup.done");
         b.cbranch(same_list, cleanup_done_bb, cleanup_bb);
         b.position_at_start(cleanup_bb);
-        if _aos_struct is not None and src_helpers is helpers {
-            b.store(ir.Constant(i64, 0), src_len_ptr);
-        }
-        p._release_owned_args(args, op="extend_arg");
+        b.store(ir.Constant(i64, 0), src_len_ptr);
         b.branch(cleanup_done_bb);
         b.position_at_start(cleanup_done_bb);
-    } else {
-        p._release_owned_args(args, op="extend_arg");
     }
+    p._release_owned_args(args, op="extend_arg");
     return ir.Constant(i64, 0);
 }
 
