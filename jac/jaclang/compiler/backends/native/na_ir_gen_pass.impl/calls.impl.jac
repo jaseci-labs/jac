@@ -1247,8 +1247,6 @@ impl NaIRGenPass._skip_is_other_module(
 impl NaIRGenPass._native_getattr_alias_for_symbol(
     sym: uni.Symbol
 ) -> tuple[str, str] | None {
-    # Replace only a single, non-escaping local alias. Other value flows
-    # still need a runtime callable representation and must use the old path.
     if len(sym.defn) != 1 or not sym.uses {
         return None;
     }
@@ -1301,10 +1299,13 @@ impl NaIRGenPass._native_getattr_alias_for_symbol(
     match sym.storage {
         case uni.SymbolStorage.MODULE_GLOBAL:
             valid_scope = isinstance(owner, uni.ModuleCode);
+
         case uni.SymbolStorage.LOCAL:
             valid_scope = True;
+
         case _:
             return None;
+
     }
     if not valid_scope {
         return None;
@@ -1324,16 +1325,22 @@ impl NaIRGenPass._native_getattr_alias_for_symbol(
     return (module_name, member_name);
 }
 
-impl NaIRGenPass._native_getattr_alias_scope(
-    nd: uni.UniNode
-) -> (uni.UniNode | None) {
+impl NaIRGenPass._native_getattr_alias_scope(nd: uni.UniNode) -> (uni.UniNode | None) {
     current = nd.parent;
     while current is not None {
         if isinstance(
             current,
-            (uni.IfStmt, uni.IfElseExpr, uni.WhileStmt, uni.ForeverStmt,
-             uni.InForStmt, uni.IterForStmt, uni.MatchStmt, uni.SwitchStmt,
-             uni.TryStmt)
+            (
+                uni.IfStmt,
+                uni.IfElseExpr,
+                uni.WhileStmt,
+                uni.ForeverStmt,
+                uni.InForStmt,
+                uni.IterForStmt,
+                uni.MatchStmt,
+                uni.SwitchStmt,
+                uni.TryStmt
+            )
         ) {
             return None;
         }
@@ -1364,9 +1371,7 @@ impl NaIRGenPass._native_module_member_ability(
     module_name: str, member_name: str, nd: uni.FuncCall
 ) -> (uni.Ability | None) {
     import os;
-    (_, source) = resolve_native_module(
-        module_name, os.path.dirname(nd.loc.mod_path)
-    );
+    (_, source) = resolve_native_module(module_name, os.path.dirname(nd.loc.mod_path));
     if source is None {
         return None;
     }

@@ -2197,7 +2197,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
             if _slot is None {
                 _slot = self.global_vars.get(nd.target[0].sym_name);
             }
-            # The static call bypasses this slot; initialize it for safe cleanup.
+
             if _slot is not None and isinstance(_slot.type, ir.PointerType) {
                 _pointee = _slot.type.pointee;
                 if _pointee is not None {

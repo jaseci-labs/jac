@@ -5446,12 +5446,6 @@ graph import client.targets.react_native {
 }
 
 graph import compiler {
-    symbol_utils ++> backends.native.na_ir_gen_pass.NaIRGenPass._native_getattr_alias_for_symbol {
-        imported_module_name
-    }
-    frontend.codeinfo ++> backends.native.na_ir_gen_pass.NaIRGenPass._native_module_member_ability {
-        resolve_native_module
-    }
     backends.es ++> tools.lang_tools { es_node_to_dict }
     backends.es --> tests.xbackend_equiv { EsastGenPass }
     backends.es.backends.registry ++> driver.build_services.CompilerBuildServices.client_runtime_basename {
@@ -6465,6 +6459,9 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._native_imports
             | driver.program.JacProgram.stamp_boundary_facts {
             is_bundled_native_module,
+            resolve_native_module
+        },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_module_member_ability {
             resolve_native_module
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_variant_decl {
@@ -10208,6 +10205,9 @@ graph import compiler {
             ability_of_symbol,
             classify_call,
             resolve_expr_symbol
+        },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_getattr_alias_for_symbol {
+            imported_module_name
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_module_call_target {
             imported_module_name
