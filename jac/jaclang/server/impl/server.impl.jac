@@ -937,7 +937,7 @@ impl JacAPIServer.postinit -> None {
     self.execution_manager = ExecutionManager(
         base_path=self.base_path, user_manager=self.user_manager
     );
-    self.scheduler = Scheduler.instance();
+    self.scheduler = Scheduler();
     self.drain = DrainState(timeout=self.settings.timeouts.drain);
     self.scheduler.drain = self.drain;
     if self.extensions is None {
@@ -1455,6 +1455,9 @@ impl JacAPIServer._prepare_to_serve(dev: bool, no_client: bool) -> ServeSettings
     }
     self._ensure_internal_users();
     self._ensure_client_bundle();
+
+    self.drain = DrainState(timeout=settings.timeouts.drain);
+    self.scheduler.drain = self.drain;
     self.build_app();
     self._register_scheduled_tasks();
     return settings;
@@ -1479,9 +1482,13 @@ impl JacAPIServer.serve_background(
     );
     self.server = serving;
     self.scheduler.start_if_pending();
-    start_worker_if_bridging();
-    for ext in (self.extensions or []) {
-        ext.on_worker_start(self);
+    bridge_owner = object();
+    def _stop_services {
+        try {
+            self.scheduler.stop(timeout=serving.drain.remaining());
+        } finally {
+            stop_worker(owner=bridge_owner);
+        }
     }
     def _ready(bound_port: int) {
         self.port = bound_port;
@@ -1489,13 +1496,28 @@ impl JacAPIServer.serve_background(
             on_ready(bound_port);
         }
     }
-    stop_transport = serving.serve_background(
-        on_ready=_ready, port_retries=port_retries
-    );
+    try {
+        start_worker_if_bridging(owner=bridge_owner);
+        for ext in (self.extensions or []) {
+            ext.on_worker_start(self);
+        }
+        stop_transport = serving.serve_background(
+            on_ready=_ready, port_retries=port_retries
+        );
+    } except BaseException {
+        try {
+            _stop_services();
+        } except BaseException {
+            logger.exception('background startup cleanup failed');
+        }
+        raise;
+    }
     def _stop {
-        stop_transport();
-        self.scheduler.stop(timeout=self.drain.remaining());
-        stop_worker();
+        try {
+            stop_transport();
+        } finally {
+            _stop_services();
+        }
     }
     return _stop;
 }
@@ -1562,10 +1584,7 @@ impl JacAPIServer._worker_main(
     );
     self.server = serving;
     self.scheduler.start_if_pending();
-    start_worker_if_bridging();
-    for ext in (self.extensions or []) {
-        ext.on_worker_start(self);
-    }
+    bridge_owner = object();
     def _ready(bound_port: int) {
         self.port = bound_port;
         if on_ready is not None {
@@ -1576,10 +1595,17 @@ impl JacAPIServer._worker_main(
         }
     }
     try {
+        start_worker_if_bridging(owner=bridge_owner);
+        for ext in (self.extensions or []) {
+            ext.on_worker_start(self);
+        }
         return serving.run(on_ready=_ready, port_retries=port_retries);
     } finally {
-        self.scheduler.stop(timeout=self.drain.remaining());
-        stop_worker();
+        try {
+            self.scheduler.stop(timeout=serving.drain.remaining());
+        } finally {
+            stop_worker(owner=bridge_owner);
+        }
     }
 }
 

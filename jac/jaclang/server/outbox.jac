@@ -136,12 +136,23 @@ obj OutboxState {
         sqlite_store: (SqliteOutboxStore | None) = None,
         worker: (threading.Thread | None) = None,
         stop_event: (threading.Event | None) = None,
+        worker_owners: set[object | None] = set(),
         lock: threading.RLock = threading.RLock(),
         seen_lru: OrderedDict = OrderedDict();
 }
 
 
 glob _state: OutboxState = OutboxState();
+
+
+def _reset_worker_after_fork;
+
+
+with entry {
+    if hasattr(os, 'register_at_fork') {
+        os.register_at_fork(after_in_child=_reset_worker_after_fork);
+    }
+}
 
 
 def canonical_kwargs(kwargs: dict[str, any]) -> str;
@@ -159,9 +170,13 @@ def prune(delivered_ttl_s: float = DELIVERED_TTL_S) -> int;
 def purge_dead(older_than_s: float = 0.0) -> int;
 def dead_letters -> list[OutboxEntry];
 
-def start_worker(interval_s: float = 1.0) -> None;
-def start_worker_if_bridging(interval_s: float = 1.0) -> bool;
-def stop_worker(timeout_s: float = 5.0) -> None;
+def start_worker(interval_s: float = 1.0, owner: (object | None) = None) -> None;
+
+def start_worker_if_bridging(
+    interval_s: float = 1.0, owner: (object | None) = None
+) -> bool;
+
+def stop_worker(timeout_s: float = 5.0, owner: (object | None) = None) -> None;
 def worker_running -> bool;
 
 def seen_idempotency_key(key: str) -> bool;

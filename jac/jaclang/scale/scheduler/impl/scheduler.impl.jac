@@ -522,7 +522,10 @@ impl JacScaleScheduler.stop(drain: bool = False) -> None {
         }
     }
     try {
-        Scheduler.instance().stop();
+        scheduler = self._server.scheduler
+            if self._server is not None
+            else Scheduler.instance();
+        scheduler.stop();
     } except Exception as e {
         logger.debug(f"Error stopping base Scheduler: {e}");
     }
