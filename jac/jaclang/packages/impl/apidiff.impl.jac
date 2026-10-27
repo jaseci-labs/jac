@@ -11,6 +11,15 @@ impl _positional(sig: dict[str, any]) -> list[str] {
     ];
 }
 
+impl _varargs(sig: dict[str, any]) -> str {
+    for p in sig.get("params", []) {
+        if p.get("kind") == "varargs" {
+            return p["name"];
+        }
+    }
+    return "";
+}
+
 impl diff_signature(
     path: str, old: dict[str, any], new: dict[str, any]
 ) -> list[ApiChange] {
@@ -63,20 +72,46 @@ impl diff_signature(
             );
         }
     }
+    old_slots = len(_positional(old));
+    new_pos = _positional(new);
+    collector = _varargs(old);
     for (name, q) in new_params.items() {
         if name in old_params {
             continue;
         }
         optional = q.get("default") or q.get("kind") in ("varargs", "kwargs");
+        if not optional {
+            out.append(
+                ApiChange(
+                    path=path, level=MAJOR, reason=f"required parameter '{name}' added"
+                )
+            );
+            continue;
+        }
+        position = new_pos.index(name) + 1 if name in new_pos else 0;
+        if position and position <= old_slots {
+            out.append(
+                ApiChange(
+                    path=path,
+                    level=MAJOR,
+                    reason=f"optional parameter '{name}' added at position {position}, shifting the positional arguments of existing calls"
+                )
+            );
+            continue;
+        }
+        if position and collector {
+            out.append(
+                ApiChange(
+                    path=path,
+                    level=MAJOR,
+                    reason=f"optional parameter '{name}' added before *{collector}, taking a positional argument it collected"
+                )
+            );
+            continue;
+        }
         out.append(
             ApiChange(
-                path=path,
-                level=MINOR if optional else MAJOR,
-                reason=(
-                    f"optional parameter '{name}' added"
-                        if optional
-                        else f"required parameter '{name}' added"
-                )
+                path=path, level=MINOR, reason=f"optional parameter '{name}' added"
             )
         );
     }

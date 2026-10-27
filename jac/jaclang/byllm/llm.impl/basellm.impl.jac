@@ -29,6 +29,15 @@ def _retry_sleep(attempt: int);
 async def _aretry_sleep(attempt: int);
 
 
+def _retry_delay(attempt: int) -> float;
+
+
+def _close_stream(stream: any);
+
+
+async def _aclose_stream(stream: any);
+
+
 def _is_prompt_caching_eligible(model_name: str) -> bool;
 
 
@@ -332,6 +341,7 @@ impl BaseLLM._compact_messages(
 
 impl BaseLLM.ainvoke(mt_run: MTRuntime) -> any {
     import asyncio;
+    self._call_deadline(mt_run);
     if image_resp_kind(mt_run.resp_type) {
         return await asyncio.to_thread(self.dispatch_image, mt_run);
     }
@@ -353,6 +363,7 @@ impl BaseLLM.__call__(**kwargs: object) -> BaseLLM {
 }
 
 impl BaseLLM.invoke(mt_run: MTRuntime) -> any {
+    self._call_deadline(mt_run);
     if image_resp_kind(mt_run.resp_type) {
         return self.dispatch_image(mt_run);
     }
@@ -422,6 +433,60 @@ impl BaseLLM._resolve_timeout(mt_run: MTRuntime) -> float | None {
     }
     resolved = float(timeout);
     return resolved if resolved > 0 else None;
+}
+
+
+impl BaseLLM._call_deadline(mt_run: MTRuntime) -> CallDeadline {
+    if mt_run._deadline is None {
+        mt_run._deadline = CallDeadline(
+            budget=self._resolve_timeout(mt_run), model=self.model_name
+        );
+    }
+    return mt_run._deadline;
+}
+
+
+impl BaseLLM._arm_attempt(
+    mt_run: MTRuntime, params: dict[str, any], stream: bool
+) -> None {
+    deadline = self._call_deadline(mt_run);
+    deadline.check();
+    if stream {
+        import httpx;
+        params["timeout"] = httpx.Timeout(
+            connect=deadline.bound(_streaming_config.get("connect_timeout", 30.0)),
+            read=deadline.bound(_streaming_config.get("read_timeout", 90.0)),
+            write=deadline.bound(_streaming_config.get("write_timeout", 30.0)),
+            pool=deadline.bound(_streaming_config.get("pool_timeout", 30.0))
+        );
+        return;
+    }
+    left = deadline.remaining();
+    if left is None {
+        params.pop("timeout", None);
+    } else {
+        params["timeout"] = left;
+    }
+}
+
+
+impl BaseLLM._may_retry(mt_run: MTRuntime, e: Exception, attempt: int) -> bool {
+    if not (
+        _is_transient_error(e) and attempt < self._resolve_stream_retries(mt_run)
+    ) {
+        return False;
+    }
+    deadline = self._call_deadline(mt_run);
+    left = deadline.remaining();
+    if left is None or left > _retry_delay(attempt + 1) {
+        return True;
+    }
+    left = max(0.0, left);
+    self.log_info(
+        f"Transient LLM error ({type(e).__name__}) on {self.model_name}; not "
+        f"retrying with {left:.1f}s left of the {deadline.budget:g}s timeout"
+    );
+    return False;
 }
 
 
@@ -976,20 +1041,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict[str, any] {
         params = inject_tool_hint(params);
     }
 
-    if mt_run.stream {
-        import httpx;
-        params["timeout"] = httpx.Timeout(
-            connect=_streaming_config.get("connect_timeout", 30.0),
-            read=_streaming_config.get("read_timeout", 90.0),
-            write=_streaming_config.get("write_timeout", 30.0),
-            pool=_streaming_config.get("pool_timeout", 30.0)
-        );
-    } else {
-        call_timeout = self._resolve_timeout(mt_run);
-        if call_timeout is not None {
-            params["timeout"] = call_timeout;
-        }
-    }
+    self._arm_attempt(mt_run, params, mt_run.stream);
     return params;
 }
 
@@ -1069,12 +1121,12 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params.pop("api_key", None);
     attempt = 0;
     while True {
+        self._arm_attempt(mt_run, params, False);
         try {
             response = self.model_call_no_stream(params);
             break;
         } except Exception as e {
-            if _is_transient_error(e)
-                and attempt < self._resolve_stream_retries(mt_run) {
+            if self._may_retry(mt_run, e, attempt) {
                 attempt += 1;
                 self.log_info(
                     f"Transient LLM error ({type(e).__name__}); "
@@ -1131,9 +1183,7 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
 impl BaseLLM._should_retry_stream(
     mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
 ) -> bool {
-    if not (
-        _is_transient_error(e) and attempt < self._resolve_stream_retries(mt_run)
-    ) {
+    if not self._may_retry(mt_run, e, attempt) {
         return False;
     }
     if usage_base >= 0 {
@@ -1158,14 +1208,18 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     usage_base = len(mt_run._usage_history);
     stream_model: str = self.model_name;
     events = bool(mt_run.call_params.get("logging", False));
+    deadline = self._call_deadline(mt_run);
     while True {
         finish_reason = "";
         produced = False;
         mt_run._last_stream_chunks = [];
         reasoning_pending = "";
+        self._arm_attempt(mt_run, params, True);
+        response: any = None;
         try {
             response = self.model_call_with_stream(params);
             for chunk in response {
+                deadline.check();
                 if mt_run._call_kind == "final_answer_restream" {
                     mt_run._last_stream_chunks.append(chunk);
                 }
@@ -1212,6 +1266,8 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
                 continue;
             }
             raise;
+        } finally {
+            _close_stream(response);
         }
     }
 
@@ -1239,11 +1295,13 @@ impl BaseLLM.dispatch_streaming_with_tools(
     no_stream = False;
     finish_reason = "";
     attempt = 0;
+    deadline = self._call_deadline(mt_run);
     while True {
         chunks = [];
         content_buf = "";
         reasoning_buf = "";
         reasoning_pending = "";
+        self._arm_attempt(mt_run, params, True);
 
         mt_run._tool_arg_deltas = [];
         settings = _tool_stream_settings(mt_run);
@@ -1256,9 +1314,11 @@ impl BaseLLM.dispatch_streaming_with_tools(
             ),
             max_per_call=int(settings.get("max_per_call", _TOOL_DELTA_MAX_PER_CALL))
         );
+        _stream_resp: any = None;
         try {
             _stream_resp = self.model_call_with_stream(params);
             for chunk in _stream_resp {
+                deadline.check();
                 chunks.append(chunk);
                 pending_before = len(mt_run._tool_arg_deltas);
                 if stream_args {
@@ -1317,6 +1377,8 @@ impl BaseLLM.dispatch_streaming_with_tools(
                 continue;
             }
             raise;
+        } finally {
+            _close_stream(_stream_resp);
         }
     }
     if no_stream {
@@ -1389,12 +1451,12 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params.pop("api_key", None);
     attempt = 0;
     while True {
+        self._arm_attempt(mt_run, params, False);
         try {
             response = await self.model_call_no_stream_async(params);
             break;
         } except Exception as e {
-            if _is_transient_error(e)
-                and attempt < self._resolve_stream_retries(mt_run) {
+            if self._may_retry(mt_run, e, attempt) {
                 attempt += 1;
                 self.log_info(
                     f"Transient LLM error ({type(e).__name__}); "
@@ -1453,12 +1515,16 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncIterator[str] {
     attempt = 0;
     usage_base = len(mt_run._usage_history);
     stream_model: str = self.model_name;
+    deadline = self._call_deadline(mt_run);
     while True {
         finish_reason = "";
         produced = False;
+        self._arm_attempt(mt_run, params, True);
+        response: any = None;
         try {
             response = await self.model_call_with_stream_async(params);
             async for chunk in response {
+                deadline.check();
                 stream_model = chunk?.model or stream_model;
                 if chunk?.choices and chunk?.choices?[0]?.finish_reason {
                     finish_reason = str(chunk?.choices?[0]?.finish_reason);
@@ -1485,6 +1551,8 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncIterator[str] {
                 continue;
             }
             raise;
+        } finally {
+            await _aclose_stream(response);
         }
     }
 
@@ -2269,22 +2337,27 @@ impl _is_transient_error(exc: object) -> bool {
             litellm.APIConnectionError,
             litellm.InternalServerError,
             litellm.ServiceUnavailableError,
+            openai.APIConnectionError,
+            openai.InternalServerError,
             RateLimitError
         )
     );
 }
 
 
+impl _retry_delay(attempt: int) -> float {
+    base = float(_streaming_config.get("retry_backoff", 1.0));
+    return min(base * (2 ** max(0, attempt - 1)), 10.0);
+}
+
 impl _retry_sleep(attempt: int) {
-    base = _streaming_config.get("retry_backoff", 1.0);
-    time.sleep(min(base * (2 ** max(0, attempt - 1)), 10.0));
+    time.sleep(_retry_delay(attempt));
 }
 
 
 impl _aretry_sleep(attempt: int) {
     import asyncio;
-    base = _streaming_config.get("retry_backoff", 1.0);
-    await asyncio.sleep(min(base * (2 ** max(0, attempt - 1)), 10.0));
+    await asyncio.sleep(_retry_delay(attempt));
 }
 
 
@@ -2941,4 +3014,28 @@ impl _images_from_response(response: dict[str, any]) -> list[Image] {
         raise OutputConversionError("The model returned no image for this call.");
     }
     return images;
+}
+
+impl _close_stream(stream: any) {
+    source = stream?.completion_stream or stream;
+    close = source?.close;
+    if callable(close) {
+        try {
+            close();
+        } except Exception {}
+    }
+}
+
+impl _aclose_stream(stream: any) {
+    import inspect;
+    close = stream?.aclose or stream?.close;
+    if not callable(close) {
+        return;
+    }
+    try {
+        closing = close();
+        if inspect.isawaitable(closing) {
+            await closing;
+        }
+    } except Exception {}
 }

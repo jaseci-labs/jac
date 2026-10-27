@@ -8,7 +8,9 @@ import from jaclang.packages.apidiff {
     minimum_next,
     required_level
 }
+import from jaclang.packages.api { package_surface }
 import from jaclang.packages.semver { Version }
+import from tests.packages.fixture_registry { fresh_dir, write_tree }
 
 def _fn(params: list[tuple[str, str, bool]], returns: str = "int") -> dict[str, any] {
     return {
@@ -38,6 +40,32 @@ def _surface(symbols: dict[str, any]) -> dict[str, any] {
 
 def _v(text: str) -> Version {
     return Version.parse(text);
+}
+
+"""Diff a function and a method declared with each parameter list, using
+the surfaces the compiler extracts from real source."""
+def _source_diff(old_params: str, new_params: str) -> list[any] {
+    tmp = fresh_dir("jac-apidiff-");
+    surfaces: list[dict[str, any]] = [];
+    for (tag, params) in [("old", old_params), ("new", new_params)] {
+        body = "(" + params + ") -> int {\n    return 0;\n}\n";
+        write_tree(
+            tmp / tag,
+            {"kit.jac": "def f" + body + "obj Box {\n    def f" + body + "}\n"}
+        );
+        surfaces.append(package_surface(tmp / tag, ["kit"]));
+    }
+    return diff_surfaces(surfaces[0], surfaces[1]);
+}
+
+def _level_at(changes: list[any], path: str) -> int {
+    return required_level(
+        [
+            c
+            for c in changes
+            if c.path == path
+        ]
+    );
 }
 
 test "additions are minor and an unchanged surface is a patch" {
@@ -112,4 +140,39 @@ test "a bump smaller than the API change is refused with the smallest valid vers
     assert str(minimum_next(_v("0.4.1"), breaking)) == "0.5.0";
     assert check_bump(_v("1.4.0"), _v("2.0.0"), breaking) == "";
     assert "greater" in check_bump(_v("1.4.0"), _v("1.4.0"), []);
+}
+
+test "an added parameter that takes an existing positional argument is major" {
+    for (old, new) in [
+        ("a: int = 10", "b: int = 20, a: int = 10"),
+        ("a: int, c: int = 30", "a: int, b: int = 20, c: int = 30"),
+        ("a: int, *rest: int", "a: int, b: int = 20, *rest: int"),
+        ("a: int = 10, /", "b: int = 20, a: int = 10, /"),
+        ("a: int, /, *rest: int", "a: int, b: int = 20, /, *rest: int"),
+        ("a: int = 10, b: int = 20", "b: int = 20, a: int = 10")
+    ] {
+        changes = _source_diff(old, new);
+        for path in ("kit.f", "kit.Box.f") {
+            assert _level_at(changes, path) == MAJOR , (old, new, path, changes);
+        }
+        assert "major" in check_bump(_v("1.4.0"), _v("1.5.0"), changes);
+        assert str(minimum_next(_v("1.4.0"), changes)) == "2.0.0";
+        assert str(minimum_next(_v("0.4.1"), changes)) == "0.5.0";
+    }
+}
+
+test "an added parameter past every positional slot stays minor" {
+    for (old, new) in [
+        ("a: int = 10", "a: int = 10, b: int = 20"),
+        ("a: int = 10", "a: int = 10, *, b: int = 20"),
+        ("a: int = 10, /", "a: int = 10, /, b: int = 20"),
+        ("a: int, *rest: int", "a: int, *rest: int, b: int = 20"),
+        ("a: int", "a: int, *rest: int")
+    ] {
+        changes = _source_diff(old, new);
+        for path in ("kit.f", "kit.Box.f") {
+            assert _level_at(changes, path) == MINOR , (old, new, path, changes);
+        }
+        assert check_bump(_v("1.4.0"), _v("1.5.0"), changes) == "";
+    }
 }
