@@ -2,6 +2,7 @@ import logging;
 import from uuid { UUID }
 
 glob logger = logging.getLogger(__name__),
+     COUNT_CHECK_CAP: int = 200,
      __all__ = [
          'resolve_query',
          'resolve_query_edges',
@@ -44,7 +45,7 @@ def resolve_query_page(
 
 def resolve_query_type_counts(
     mem: Session, q: GraphQuery, per: str = 'node'
-) -> dict[str, int];
+) -> tuple[dict[str, int], bool];
 
 
 class LazyRefs(list) {

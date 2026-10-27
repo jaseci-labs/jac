@@ -7,18 +7,12 @@ def _acl_pushdown_root(q: GraphQuery, upto: int) -> (str | None);
 def _bound_pushable -> bool;
 
 
-def _residual_classes(
-    base: type, nd: (type | tuple[type, ...] | None), roots: bool
-) -> list[type];
+def _trusted_names(
+    base: type, nd: (type | tuple[type, ...] | None), store: any
+) -> (list[str] | None);
 
 
-def _residual_names(classes: list[type], store: any) -> list[str];
-
-
-def _edge_residual(hop: QHop, store: any) -> list[str];
-
-
-def _rechecks_edge(anchor: Anchor) -> bool;
+def _edge_residual(hop: QHop, store: any) -> (list[str] | None);
 
 
 def _staged(mem: Session, q: GraphQuery) -> GraphQuery;
@@ -27,11 +21,8 @@ def _staged(mem: Session, q: GraphQuery) -> GraphQuery;
 def _acl_residual(q: GraphQuery, upto: int, store: any) -> dict[int, list[str]];
 
 
-def _rechecks(anchor: Anchor) -> bool;
-
-
 def _scan(
-    mem: Session, q: GraphQuery, distinct: bool, lookahead: bool
+    mem: Session, q: GraphQuery, unique: str, lookahead: bool
 ) -> tuple[
     list[tuple[Anchor, (Anchor | None), (tuple[int, (UUID | None)] | None)]],
     (tuple[int, (UUID | None)] | None)
@@ -60,7 +51,10 @@ impl _sql_pairs(
     bound = _effective_bound(q);
     push = bound is not None
         and (
-            _bound_pushable() or (acl_root is not None and (upto - 1) not in residual)
+            _bound_pushable()
+            or (
+                acl_root is not None and (upto - 1) not in residual and not q.edges_only
+            )
         );
     eff = q;
     if bound is not None {
@@ -159,7 +153,7 @@ impl resolve_query(mem: Session, q: GraphQuery) -> list[Anchor] {
         and _effective_bound(q) is not None
         and all(o.persistent for o in origins)
         and (not gated or _acl_fully_pushed(mem, q)) {
-        page = [n for (n, _, _) in _scan(mem, q, True, False)[0]];
+        page = [n for (n, _, _) in _scan(mem, q, 'node', False)[0]];
         mem.note_siblings([n.ensure_id() for n in page]);
         return page;
     }
@@ -180,12 +174,15 @@ impl resolve_query(mem: Session, q: GraphQuery) -> list[Anchor] {
             if _tail_ok(a, tail)
         ];
     }
-    pushed = gated and _acl_fully_pushed(mem, q);
-    if gated {
+    if gated
+        and (
+            not _acl_fully_pushed(mem, q)
+            or (len(q.hops) - 1) in _acl_residual(q, len(q.hops), mem.store)
+        ) {
         out = [
             a
             for a in out
-            if (pushed and not _rechecks(a)) or acl_read_ok(a)
+            if acl_read_ok(a)
         ];
     }
     bound = _effective_bound(q);
@@ -219,6 +216,16 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
     gated = access_gated();
     if not needs_store(mem, origins) {
         return walk_edges(origins, q, gated);
+    }
+    if not q.from_visit
+        and _effective_bound(q) is not None
+        and all(o.persistent for o in origins)
+        and (not gated or _acl_fully_pushed(mem, q)) {
+        return [
+            e
+            for (_, e, _) in _scan(mem, q, 'edge', False)[0]
+            if e is not None
+        ];
     }
     (pairs, local, tail) = _resolve_pairs(mem, q, len(q.hops));
     edge_ids: list[any] = [];
@@ -598,12 +605,11 @@ impl _acl_pushdown_root(q: GraphQuery, upto: int) -> (str | None) {
 }
 
 
-impl _residual_classes(
-    base: type, nd: (type | tuple[type, ...] | None), roots: bool
-) -> list[type] {
-    wanted = [] if nd is None else (list(nd) if isinstance(nd, tuple) else [nd]);
+impl _trusted_names(
+    base: type, nd: (type | tuple[type, ...] | None), store: any
+) -> (list[str] | None) {
     base_access = Archetype?.__jac_access__;
-    out: list[type] = [];
+    trusted: set = set();
     pending: list[type] = [base];
     seen: set = set();
     while pending {
@@ -613,66 +619,48 @@ impl _residual_classes(
         }
         seen.add(cls);
         pending.extend(cls.__subclasses__());
-        if not (
-            (roots and issubclass(cls, Root)) or cls?.__jac_access__ is not base_access
-        ) {
+        if issubclass(cls, Root) or cls?.__jac_access__ is not base_access {
             continue;
         }
-        if all(
-            issubclass(cls, t)
-            for t in wanted
-            if isinstance(t, type)
-        ) {
-            out.append(cls);
-        }
-    }
-    return out;
-}
-
-
-impl _residual_names(classes: list[type], store: any) -> list[str] {
-    names: list[str] = [];
-    for cls in classes {
         tname = storage_type(cls);
-        if not tname or tname in names {
-            continue;
-        }
-        for name in [tname] + list(store.subtype_names(tname)) {
-            if name not in names {
-                names.append(name);
-            }
+        if tname {
+            trusted.add(tname);
         }
     }
-    return names;
+    wanted = [] if nd is None else (list(nd) if isinstance(nd, tuple) else [nd]);
+    stored: (set | None) = None;
+    for t in wanted {
+        if not isinstance(t, type) {
+            continue;
+        }
+        tname = storage_type(t);
+        names = set([tname] + list(store.subtype_names(tname)));
+        stored = names if stored is None else stored & names;
+    }
+    if stored is None {
+        return sorted(trusted);
+    }
+    if stored <= trusted {
+        return None;
+    }
+    return sorted(stored & trusted);
 }
 
 
 impl _acl_residual(q: GraphQuery, upto: int, store: any) -> dict[int, list[str]] {
     out: dict[int, list[str]] = {};
     for (i, hop) in enumerate(q.hops[:upto]) {
-        names = _residual_names(_residual_classes(NodeArchetype, hop.nd, True), store);
-        if names {
-            out[i] = names;
+        trusted = _trusted_names(NodeArchetype, hop.nd, store);
+        if trusted is not None {
+            out[i] = trusted;
         }
     }
     return out;
 }
 
 
-impl _edge_residual(hop: QHop, store: any) -> list[str] {
-    return _residual_names(_residual_classes(EdgeArchetype, hop.`edge, False), store);
-}
-
-
-impl _rechecks(anchor: Anchor) -> bool {
-    arch = anchor.archetype;
-    return isinstance(arch, Root)
-        or type(arch)?.__jac_access__ is not Archetype?.__jac_access__;
-}
-
-
-impl _rechecks_edge(anchor: Anchor) -> bool {
-    return type(anchor.archetype)?.__jac_access__ is not Archetype?.__jac_access__;
+impl _edge_residual(hop: QHop, store: any) -> (list[str] | None) {
+    return _trusted_names(EdgeArchetype, hop.`edge, store);
 }
 
 
@@ -759,7 +747,7 @@ impl _with_bound(q: GraphQuery, limit: (int | None), offset: int) -> GraphQuery 
 
 
 impl _scan(
-    mem: Session, q: GraphQuery, distinct: bool, lookahead: bool
+    mem: Session, q: GraphQuery, unique: str, lookahead: bool
 ) -> tuple[
     list[tuple[Anchor, (Anchor | None), (tuple[int, (UUID | None)] | None)]],
     (tuple[int, (UUID | None)] | None)
@@ -774,10 +762,9 @@ impl _scan(
     mem.read_barrier();
     acl_root = _acl_pushdown_root(q, upto);
     residual = _acl_residual(q, upto, store) if acl_root is not None else {};
-    eres: (list[str] | None) = None;
-    if acl_root is not None and not distinct {
-        eres = _edge_residual(q.hops[upto - 1], store);
-    }
+    distinct = unique == 'node';
+    edge_acl = acl_root is not None and not distinct;
+    eres = _edge_residual(q.hops[upto - 1], store) if edge_acl else None;
     promos = store?.promotions;
     tail = _split_tail(
         compile_query(
@@ -787,7 +774,8 @@ impl _scan(
             promotions=promos,
             acl_root=acl_root,
             acl_residual=residual,
-            edge_residual=eres
+            edge_residual=eres,
+            edge_acl=edge_acl
         ),
         upto
     );
@@ -795,9 +783,18 @@ impl _scan(
     if limit == 0 {
         return ([], None);
     }
-    node_check = set(residual.get(upto - 1) or []);
-    edge_check = set(eres or []);
-    exact = not tail and not node_check and not edge_check and not distinct;
+    node_trust = residual.get(upto - 1);
+    node_known = set(node_trust or []);
+    edge_known = set(eres or []);
+    exact = not tail and node_trust is None and eres is None and unique == 'row';
+
+    def node_unknown(r: tuple[any, ...]) -> bool {
+        return node_trust is not None and str(r[3]) not in node_known;
+    }
+
+    def edge_unknown(r: tuple[any, ...]) -> bool {
+        return eres is not None and str(r[5]) not in edge_known;
+    }
     skip_left = 0 if exact else offset;
     raw_off = offset if exact else 0;
     out: list[tuple[Anchor, (Anchor | None), (tuple[int, (UUID | None)] | None)]] = [];
@@ -808,9 +805,7 @@ impl _scan(
     more = False;
 
     def checked(r: tuple[any, ...]) -> bool {
-        return bool(tail)
-            or str(r[3]) in node_check
-            or (bool(edge_check) and str(r[5]) in edge_check);
+        return bool(tail) or node_unknown(r) or edge_unknown(r);
     }
 
     def load(rows: list[tuple[any, ...]], start: int) {
@@ -860,7 +855,8 @@ impl _scan(
             promotions=promos,
             acl_root=acl_root,
             acl_residual=residual,
-            edge_residual=eres
+            edge_residual=eres,
+            edge_acl=edge_acl
         );
         cq.params['origin'] = [str(i) for i in ids];
         rows = store.rows(cq.sql, cq.params);
@@ -871,10 +867,11 @@ impl _scan(
                 continue;
             }
             nid = UUID(str(r[0]));
-            if distinct and nid in seen {
+            eid = UUID(str(r[1])) if r[1] is not None else None;
+            mark = eid if unique == 'edge' else nid;
+            if unique != 'row' and mark in seen {
                 continue;
             }
-            eid = UUID(str(r[1])) if r[1] is not None else None;
             keep = not probing and skip_left == 0;
             a: any = None;
             ea: (Anchor | None) = None;
@@ -890,7 +887,7 @@ impl _scan(
                 if tail and not _tail_ok(a, tail) {
                     continue;
                 }
-                if acl_root is not None and _rechecks(a) and not acl_read_ok(a) {
+                if node_unknown(r) and not acl_read_ok(a) {
                     continue;
                 }
                 if not distinct and eid is not None {
@@ -898,14 +895,12 @@ impl _scan(
                     if ea is None or not ea.is_populated() or ea.archetype is None {
                         continue;
                     }
-                    if acl_root is not None
-                        and _rechecks_edge(ea)
-                        and not acl_read_ok(ea) {
+                    if edge_unknown(r) and not acl_read_ok(ea) {
                         continue;
                     }
                 }
             }
-            seen.add(nid);
+            seen.add(mark);
             if probing {
                 more = True;
                 done = True;
@@ -946,7 +941,7 @@ impl resolve_query_page(
     gated = access_gated();
     if needs_store(mem, origins) and origins[0].persistent {
         if not gated or _acl_fully_pushed(mem, q) {
-            return _scan(mem, q, False, True);
+            return _scan(mem, q, 'row', True);
         }
     }
     (limit, offset) = _effective_bound(q) or (None, 0);
@@ -968,7 +963,7 @@ impl resolve_query_page(
 
 impl resolve_query_type_counts(
     mem: Session, q: GraphQuery, per: str = 'node'
-) -> dict[str, int] {
+) -> tuple[dict[str, int], bool] {
     store = mem.store;
     q = _staged(mem, q);
     origins = origin_anchors(q);
@@ -997,16 +992,14 @@ impl resolve_query_type_counts(
             name = storage_type(type(subject.archetype));
             counts[name] = counts.get(name, 0) + 1;
         }
-        return counts;
+        return (counts, True);
     }
     ids = [o.ensure_id() for o in origins];
     mem.read_barrier();
     acl_root = _acl_pushdown_root(q, upto);
     residual = _acl_residual(q, upto, store) if acl_root is not None else {};
-    eres: (list[str] | None) = None;
-    if acl_root is not None {
-        eres = _edge_residual(q.hops[upto - 1], store);
-    }
+    edge_acl = acl_root is not None;
+    eres = _edge_residual(q.hops[upto - 1], store) if edge_acl else None;
     cq = compile_query(
         _with_bound(q, None, 0),
         upto,
@@ -1016,6 +1009,7 @@ impl resolve_query_type_counts(
         acl_root=acl_root,
         acl_residual=residual,
         edge_residual=eres,
+        edge_acl=edge_acl,
         group_by=per
     );
     if cq.residual {
@@ -1025,97 +1019,110 @@ impl resolve_query_type_counts(
     for r in store.rows(cq.sql, cq.params) {
         counts[str(r[0])] = counts.get(str(r[0]), 0) + int(r[1]);
     }
-    if (upto - 1) in residual or eres {
-        rq = compile_query(
-            _with_bound(q, None, 0),
+    node_trust = residual.get(upto - 1);
+    if node_trust is None and eres is None {
+        return (counts, True);
+    }
+    rq = compile_query(
+        _with_bound(q, COUNT_CHECK_CAP + 1, 0),
+        upto,
+        store,
+        promotions=store?.promotions,
+        acl_root=acl_root,
+        acl_residual=residual,
+        edge_residual=eres,
+        edge_acl=edge_acl,
+        residual_only=True
+    );
+    rq.params['origin'] = [str(i) for i in ids];
+    rows = [
+        r
+        for r in store.rows(rq.sql, rq.params)
+        if r[0] is not None and r[1] is not None
+    ];
+    exact = len(rows) <= COUNT_CHECK_CAP;
+    rows = rows[:COUNT_CHECK_CAP];
+    node_known = set(node_trust or []);
+    edge_known = set(eres or []);
+
+    def node_unknown(r: tuple[any, ...]) -> bool {
+        return node_trust is not None and str(r[3]) not in node_known;
+    }
+
+    def edge_unknown(r: tuple[any, ...]) -> bool {
+        return eres is not None and str(r[5]) not in edge_known;
+    }
+    wanted: list[tuple[any, any]] = [];
+    for r in rows {
+        if node_unknown(r) {
+            wanted.append((UUID(str(r[0])), None));
+        }
+        if edge_unknown(r) {
+            wanted.append((UUID(str(r[1])), None));
+        }
+    }
+    found = mem.batch_get(_unique_nodes(wanted)) if wanted else {};
+
+    def readable(anchor_id: any, checked: bool) -> bool {
+        if not checked {
+            return True;
+        }
+        a = found.get(UUID(str(anchor_id)));
+        return a is not None
+            and a.is_populated()
+            and a.archetype is not None
+            and acl_read_ok(a);
+    }
+    seen: dict[str, str] = {};
+    for r in rows {
+        if not readable(r[0], node_unknown(r)) or not readable(r[1], edge_unknown(r)) {
+            continue;
+        }
+        key = str(r[1] if per == 'edge' else r[0]);
+        if key not in seen {
+            seen[key] = str(r[5] if per == 'edge' else r[3]);
+        }
+    }
+    if per != 'edge' and seen {
+        reached = mem.batch_get([UUID(k) for k in seen.keys()]);
+        last = q.hops[upto - 1];
+        narrowed = _with_bound(q, None, 0);
+        narrowed.hops = q.hops[:upto - 1]
+            + [
+                QHop(
+                    dir=last.dir,
+                    `edge=last.`edge,
+                    nd=last.nd,
+                    epreds=last.epreds,
+                    preds=last.preds,
+                    only=[
+                        a.archetype
+                        for a in reached.values()
+                        if a is not None
+                    ]
+                )
+            ];
+        dq = compile_query(
+            narrowed,
             upto,
             store,
             promotions=store?.promotions,
+            count_only=True,
             acl_root=acl_root,
             acl_residual=residual,
             edge_residual=eres,
-            residual_only=True
+            edge_acl=edge_acl,
+            group_by='node_ids'
         );
-        rq.params['origin'] = [str(i) for i in ids];
-        rows = [
-            r
-            for r in store.rows(rq.sql, rq.params)
-            if r[0] is not None and r[1] is not None
-        ];
-        node_names = set(residual.get(upto - 1) or []);
-        edge_names = set(eres or []);
-        wanted: list[tuple[any, any]] = [];
-        for r in rows {
-            if str(r[3]) in node_names {
-                wanted.append((UUID(str(r[0])), None));
-            }
-            if str(r[5]) in edge_names {
-                wanted.append((UUID(str(r[1])), None));
-            }
-        }
-        found = mem.batch_get(_unique_nodes(wanted)) if wanted else {};
-
-        def readable(anchor_id: any, checked: bool) -> bool {
-            if not checked {
-                return True;
-            }
-            a = found.get(UUID(str(anchor_id)));
-            return a is not None
-                and a.is_populated()
-                and a.archetype is not None
-                and acl_read_ok(a);
-        }
-        seen: dict[str, str] = {};
-        for r in rows {
-            if not readable(r[0], str(r[3]) in node_names)
-                or not readable(r[1], str(r[5]) in edge_names) {
-                continue;
-            }
-            key = str(r[1] if per == 'edge' else r[0]);
-            if key not in seen {
-                seen[key] = str(r[5] if per == 'edge' else r[3]);
-            }
-        }
-        if per != 'edge' and seen {
-            reached = mem.batch_get([UUID(k) for k in seen.keys()]);
-            last = q.hops[upto - 1];
-            narrowed = _with_bound(q, None, 0);
-            narrowed.hops = q.hops[:upto - 1]
-                + [
-                    QHop(
-                        dir=last.dir,
-                        `edge=last.`edge,
-                        nd=last.nd,
-                        epreds=last.epreds,
-                        preds=last.preds,
-                        only=[
-                            a.archetype
-                            for a in reached.values()
-                            if a is not None
-                        ]
-                    )
-                ];
-            dq = compile_query(
-                narrowed,
-                upto,
-                store,
-                promotions=store?.promotions,
-                count_only=True,
-                acl_root=acl_root,
-                acl_residual=residual,
-                edge_residual=eres,
-                group_by='node_ids'
-            );
-            dq.params['origin'] = [str(i) for i in ids];
-            for r in store.rows(dq.sql, dq.params) {
-                seen.pop(str(r[0]), None);
-            }
-        }
-        for name in seen.values() {
-            counts[name] = counts.get(name, 0) + 1;
+        dq.params['origin'] = [str(i) for i in ids];
+        for r in store.rows(dq.sql, dq.params) {
+            seen.pop(str(r[0]), None);
         }
     }
-    return counts;
+    for name in seen.values() {
+        counts[name] = counts.get(name, 0) + 1;
+    }
+    return (counts, exact);
 }
 
 

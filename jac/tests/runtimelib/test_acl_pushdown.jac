@@ -410,6 +410,8 @@ test "a typed hop gives the access check's answer for every grant and override" 
 
 test "a custom __jac_access__ decides visibility on every read path" {
     import from jaclang.data.query_planner {
+        COUNT_CHECK_CAP,
+        resolve_query_edges,
         resolve_query_page,
         resolve_query_type_counts
     }
@@ -490,7 +492,46 @@ test "a custom __jac_access__ decides visibility on every read path" {
                 b.edges.append(e);
                 ctx.mem.put(e);
             }
+
+            def attach(src: any, label: str, kind: type, edge_owner: any) -> any {
+                x = kind(label=label).__jac__;
+                x.persistent = True;
+                setattr(x, "root", owner.id);
+                if kind is Doc {
+                    x.own_access().all = AccessLevel.READ;
+                }
+                ctx.mem.put(x);
+                link = EdgeAnchor(
+                    archetype=GenericEdge(),
+                    source=src.__jac__,
+                    target=x,
+                    is_undirected=False
+                );
+                link.persistent = True;
+                setattr(link, "root", edge_owner.id);
+                src.__jac__.edges.append(link);
+                x.edges.append(link);
+                ctx.mem.put(link);
+                return x;
+            }
+            # d2 reaches a granted doc through an edge only its owner may read,
+            # then an open one: a bounded edge read must look past the first.
+            attach(made[4], "x-private", Doc, owner);
+            attach(made[4], "x-open", Doc, other);
+            # d3 reaches a node whose stored type this process does not know
+            # (renamed below); only its hook grants it.
+            renamed = attach(made[5], "renamed-hook", CustomDoc, other);
+            # A node with more hook-decided neighbors than a count will check.
+            crowd = attach(owner.archetype, "crowd", Doc, owner);
+            for i in range(COUNT_CHECK_CAP + 1) {
+                attach(crowd.archetype, f"c{i}", CustomDoc, other);
+            }
             ctx.mem.commit();
+            store: any = ctx.mem.store;
+            store.rows(
+                "UPDATE anchors SET arch_type = 'gone.CustomDoc' WHERE id = CAST(:i AS uuid)",
+                {"i": str(renamed.id)}
+            );
 
             ctx.set_user_root(str(other.id));
             hub = _as_any(other.archetype);
@@ -499,11 +540,26 @@ test "a custom __jac_access__ decides visibility on every read path" {
             (page, cursor) = resolve_query_page(
                 mem, GraphQuery(hub, hops=[QHop(dir=2)], limit=5)
             );
-            counts = resolve_query_type_counts(
+            (counts, _) = resolve_query_type_counts(
                 mem, GraphQuery(hub, hops=[QHop(dir=2)])
             );
-            twice = resolve_query_type_counts(
+            (twice, _) = resolve_query_type_counts(
                 mem, GraphQuery(made[6], hops=[QHop(dir=2)])
+            );
+            (unknown_page, _) = resolve_query_page(
+                mem, GraphQuery(made[5], hops=[QHop(dir=2)], limit=5)
+            );
+            (unknown_counts, _) = resolve_query_type_counts(
+                mem, GraphQuery(made[5], hops=[QHop(dir=2)])
+            );
+            (crowd_counts, crowd_exact) = resolve_query_type_counts(
+                mem, GraphQuery(crowd.archetype, hops=[QHop(dir=2)])
+            );
+            first_open = resolve_query_edges(
+                mem,
+                GraphQuery(
+                    made[4], hops=[QHop(dir=2, nd=Doc)], edges_only=True, limit=1
+                )
             );
             (whole, _) = resolve_query_page(
                 mem, GraphQuery(hub, hops=[QHop(dir=2)], limit=20)
@@ -518,9 +574,26 @@ test "a custom __jac_access__ decides visibility on every read path" {
                 (
                     "two hops",
                     [_as_any(x).label for x in [hub-->-->]],
-                    ["behind-d0", "d1"]
+                    ["behind-d0", "x-private", "x-open", "renamed-hook", "d1"]
                 ),
-                ("two hop count", len([hub-->-->]), 2),
+                ("two hop count", len([hub-->-->]), 5),
+                (
+                    "unknown stored type page",
+                    [_as_any(a).archetype.label for (a, _, _) in unknown_page],
+                    ["renamed-hook"]
+                ),
+                ("unknown stored type count", len([_as_any(made[5])-->]), 1),
+                ("unknown stored type counts", sum(unknown_counts.values()), 1),
+                (
+                    "bounded edge read past an unreadable edge",
+                    [_as_any(e).target.archetype.label for e in first_open],
+                    ["x-open"]
+                ),
+                (
+                    "capped hook counts",
+                    (sum(crowd_counts.values()), crowd_exact),
+                    (COUNT_CHECK_CAP, False)
+                ),
                 ("page", [_as_any(a).archetype.label for (a, _, _) in page], visible),
                 ("page ends", cursor, None),
                 (

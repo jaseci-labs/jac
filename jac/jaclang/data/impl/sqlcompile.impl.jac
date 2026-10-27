@@ -58,7 +58,7 @@ def _last_mode(last: bool, count_only: bool, residual_only: bool) -> str;
 def _gated_cond(
     alias: str,
     root_id: str,
-    residual: list[str],
+    trusted: (list[str] | None),
     params: dict[str, any],
     pfx: str,
     mode: str
@@ -69,8 +69,8 @@ def _gated_pair(
     node_alias: str,
     edge_alias: str,
     root_id: str,
-    node_residual: list[str],
-    edge_residual: list[str],
+    node_trusted: (list[str] | None),
+    edge_trusted: (list[str] | None),
     params: dict[str, any],
     pfx: str,
     mode: str
@@ -98,7 +98,8 @@ impl compile_query(
     acl_residual: (dict[int, list[str]] | None) = None,
     residual_only: bool = False,
     group_by: (str | None) = None,
-    edge_residual: (list[str] | None) = None
+    edge_residual: (list[str] | None) = None,
+    edge_acl: bool = False
 ) -> CompiledQuery {
     if q.after is not None {
         if upto != 1 or len(q.hops) != 1 or len(q.origin) != 1 or q.order {
@@ -166,13 +167,13 @@ impl compile_query(
                 nconds.append(cond);
             }
         }
-        if acl_root is not None and i == upto - 1 and edge_residual is not None {
+        if acl_root is not None and i == upto - 1 and edge_acl {
             nconds.append(
                 _gated_pair(
                     nd_alias,
                     e,
                     acl_root,
-                    (acl_residual or {}).get(i) or [],
+                    (acl_residual or {}).get(i),
                     edge_residual,
                     params,
                     f"h{n}",
@@ -186,7 +187,7 @@ impl compile_query(
                 _gated_cond(
                     nd_alias,
                     acl_root,
-                    (acl_residual or {}).get(i) or [],
+                    (acl_residual or {}).get(i),
                     params,
                     f"h{n}a",
                     _last_mode(i == upto - 1, count_only, residual_only)
@@ -515,25 +516,25 @@ impl _last_mode(last: bool, count_only: bool, residual_only: bool) -> str {
 impl _gated_cond(
     alias: str,
     root_id: str,
-    residual: list[str],
+    trusted: (list[str] | None),
     params: dict[str, any],
     pfx: str,
     mode: str
 ) -> str {
-    if not residual {
+    if trusted is None {
         return 'FALSE'
             if mode == 'residual'
             else _acl_cond(alias, root_id, params, pfx);
     }
-    typed = _type_cond(alias, residual, params, f"{pfx}r");
+    known = _type_cond(alias, trusted, params, f"{pfx}r");
     if mode == 'residual' {
-        return typed;
+        return f"NOT {known}";
     }
     acl = _acl_cond(alias, root_id, params, pfx);
     if mode == 'pushed' {
-        return f"({acl} AND NOT {typed})";
+        return f"({acl} AND {known})";
     }
-    return f"({acl} OR {typed})";
+    return f"({acl} OR NOT {known})";
 }
 
 
@@ -541,30 +542,30 @@ impl _gated_pair(
     node_alias: str,
     edge_alias: str,
     root_id: str,
-    node_residual: list[str],
-    edge_residual: list[str],
+    node_trusted: (list[str] | None),
+    edge_trusted: (list[str] | None),
     params: dict[str, any],
     pfx: str,
     mode: str
 ) -> str {
     side = 'either' if mode == 'residual' else mode;
-    node_cond = _gated_cond(
-        node_alias, root_id, node_residual, params, pfx + 'a', side
-    );
-    edge_cond = _gated_cond(
-        edge_alias, root_id, edge_residual, params, pfx + 'b', side
-    );
+    node_cond = _gated_cond(node_alias, root_id, node_trusted, params, pfx + 'a', side);
+    edge_cond = _gated_cond(edge_alias, root_id, edge_trusted, params, pfx + 'b', side);
     if mode != 'residual' {
         return f"({node_cond} AND {edge_cond})";
     }
-    typed: list[str] = [];
-    if node_residual {
-        typed.append(_type_cond(node_alias, node_residual, params, pfx + 'x'));
+    unknown: list[str] = [];
+    if node_trusted is not None {
+        unknown.append(
+            f"NOT {_type_cond(node_alias, node_trusted, params, pfx + 'x')}"
+        );
     }
-    if edge_residual {
-        typed.append(_type_cond(edge_alias, edge_residual, params, pfx + 'y'));
+    if edge_trusted is not None {
+        unknown.append(
+            f"NOT {_type_cond(edge_alias, edge_trusted, params, pfx + 'y')}"
+        );
     }
-    either = ' OR '.join(typed) or 'FALSE';
+    either = ' OR '.join(unknown) or 'FALSE';
     return f"({node_cond} AND {edge_cond} AND ({either}))";
 }
 

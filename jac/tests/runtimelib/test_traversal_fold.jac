@@ -897,11 +897,13 @@ test "a page or a count from an in-memory node follows the store's semantics" {
             assert all(e is not None for (_, e, _) in page) , (
                 f"a fieldless edge between in-memory nodes is still an edge: {page}"
             );
-            per_edge = resolve_query_type_counts(
+            (per_edge, _) = resolve_query_type_counts(
                 mem, GraphQuery(b, hops=[QHop(dir=2)]), 'edge'
             );
             assert sum(per_edge.values()) == 8 , per_edge;
-            counts = resolve_query_type_counts(mem, GraphQuery(b, hops=[QHop(dir=2)]));
+            (counts, _) = resolve_query_type_counts(
+                mem, GraphQuery(b, hops=[QHop(dir=2)])
+            );
             assert sum(counts.values()) == 7 , (
                 f"a node reached by two edges is one node; got {counts}"
             );

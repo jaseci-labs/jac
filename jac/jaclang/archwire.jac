@@ -2496,7 +2496,7 @@ graph import {
             | compiler.frontend.kernel_inputs { AppSpec, WorkspaceSpec },
     ]
     runtime.archetype ++> [
-        byllm.llm._mock_jsonable | data.query_planner._rechecks_edge { Archetype },
+        byllm.llm._mock_jsonable { Archetype },
         byllm.visit_routing { Anchor, Archetype, ObjectSpatialFunction },
         byllm.visit_routing._candidate_for { EdgeAnchor, EdgeArchetype, NodeAnchor },
         byllm.visit_routing._route_context {
@@ -2510,8 +2510,7 @@ graph import {
             | data.query_planner._acl_residual { NodeArchetype },
         data.query_planner { Anchor, anchor_key },
         data.query_planner._edge_residual { EdgeArchetype },
-        data.query_planner._rechecks { Archetype, Root },
-        data.query_planner._residual_classes { Archetype, Root },
+        data.query_planner._trusted_names { Archetype, Root },
         data.serializer {
             Access,
             AccessLevel,
@@ -14864,7 +14863,7 @@ graph import data {
         sqlcompile { Store },
     ]
     type_identity ++> [
-        query_planner._residual_names { storage_type },
+        query_planner._trusted_names { storage_type },
         query_planner.resolve_query_type_counts { storage_type },
         serializer {
             TypeResolutionError,
