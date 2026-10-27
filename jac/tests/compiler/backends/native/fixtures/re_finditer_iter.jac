@@ -1,4 +1,5 @@
-"""finditer hands back an iterator, as CPython's does: a loop and next() both step it."""
+"""finditer hands back an iterator, as CPython's does: a loop and next() both step it,
+and two live iterators over one pattern do not share state."""
 
 import re;
 
@@ -30,8 +31,19 @@ def none_found(s: str) -> int {
     return n;
 }
 
+def interleaved(a: str, b: str) -> list[int] {
+    pat = re.compile(r"\d");
+    ia = pat.finditer(a);
+    ib = pat.finditer(b);
+    return [next(ia).start(), next(ib).start(), next(ia).start(), next(ib).start()];
+}
+
 with entry {
     print(
-        spans("foo boo"), first_end("ab12cd"), window_count("aaaaa"), none_found("abc")
+        spans("foo boo"),
+        first_end("ab12cd"),
+        window_count("aaaaa"),
+        none_found("abc"),
+        interleaved("1a2b3", "xx9yy8")
     );
 }

@@ -39,5 +39,5 @@ test "jac run steps re.finditer as an iterator, as CPython does" {
         shutil.rmtree(work, ignore_errors=True);
     }
     assert proc.returncode == 0 , f"exit {proc.returncode}: {proc.stderr[-400:]}";
-    assert proc.stdout.splitlines()[-1] == "[1, 5] 4 3 0" , proc.stdout;
+    assert proc.stdout.splitlines()[-1] == "[1, 5] 4 3 0 [0, 2, 2, 5]" , proc.stdout;
 }

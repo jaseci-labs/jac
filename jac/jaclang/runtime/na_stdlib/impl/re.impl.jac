@@ -2105,27 +2105,25 @@ impl _one(
 }
 
 
-impl _iter(re: _Re, st: _St, string: str, pos: int, endpos: int) -> list[Match] {
-    out: list[Match] = [];
+impl _iter(re: _Re, string: str, pos: int, endpos: int) -> Iterator[Match] {
     sn: int = len(string);
     b0: int = _clamp(pos, sn);
     b1: int = _clamp(endpos, sn);
-    if b0 > b1 {
-        return out;
-    }
-    _prep(st, string, b1);
-    p: int = b0;
-    while True {
-        r: int = _exec(re, st, 0, p, 2);
-        if r < 0 {
-            break;
+    if b0 <= b1 {
+        st: _St = _new_st(re);
+        _prep(st, string, b1);
+        p: int = b0;
+        while True {
+            r: int = _exec(re, st, 0, p, 2);
+            if r < 0 {
+                break;
+            }
+            s0: int = st.slots[0];
+            yield _hit(re, st, string, b0, b1);
+            st.adv_pos = r if r == s0 else -1;
+            p = r;
         }
-        s0: int = st.slots[0];
-        out.append(_hit(re, st, string, b0, b1));
-        st.adv_pos = r if r == s0 else -1;
-        p = r;
     }
-    return out;
 }
 
 
@@ -2326,12 +2324,7 @@ impl Pattern.fullmatch(
 impl Pattern.finditer(
     string: str, pos: int = 0, endpos: int = _MAXPOS
 ) -> Iterator[Match] {
-    if self._acquire() {
-        out: list[Match] = _iter(self._re, self._st, string, pos, endpos);
-        self._release();
-        return iter(out);
-    }
-    return iter(_iter(self._re, _new_st(self._re), string, pos, endpos));
+    return _iter(self._re, string, pos, endpos);
 }
 
 impl Pattern.findall(string: str, pos: int = 0, endpos: int = _MAXPOS) -> list[str] {

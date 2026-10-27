@@ -256,7 +256,7 @@ def _one(
 ) -> (Match | None);
 
 
-def _iter(re: _Re, st: _St, string: str, pos: int, endpos: int) -> list[Match];
+def _iter(re: _Re, string: str, pos: int, endpos: int) -> Iterator[Match];
 
 
 def _all(re: _Re, st: _St, string: str, pos: int, endpos: int) -> list[str];
