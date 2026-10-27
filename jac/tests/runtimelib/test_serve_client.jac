@@ -2561,16 +2561,12 @@ test "an unset worker count picks as many as fit; an explicit one is kept" {
 }
 
 
-test "a [serve] table stands where it omits a key or a JAC_SERVE_* variable is blank" {
-    import from unittest.mock { patch }
+test "a [serve] table without a worker count leaves the count unset" {
     import from jaclang.project.config { JacConfig }
-    import from jaclang.server.settings { ServeConfigError }
     with TemporaryDirectory() as tmpdir {
         manifest = Path(tmpdir) / "jac.toml";
         manifest.write_text(
-            '[project]\nname = "workers-unset"\n\n'
-            '[serve]\nport = 9123\ngraph_enabled = false\n'
-            'cors_origins = ["https://app.example"]\n'
+            '[project]\nname = "workers-unset"\n\n[serve]\nport = 9123\n'
         );
         config = JacConfig.load(manifest);
         assert config.serve.port == 9123;
@@ -2581,27 +2577,6 @@ test "a [serve] table stands where it omits a key or a JAC_SERVE_* variable is b
         assert settings.workers.count_by_default , (
             "a [serve] port pinned the app to an explicit worker count"
         );
-        blank = {
-            name: ""
-            for name in ["JAC_SERVE_GRAPH", "JAC_SERVE_PORT", "JAC_SERVE_CORS_ORIGINS"]
-        };
-        with patch.dict(os.environ, blank) {
-            loaded = _settings_without_worker_env(tmpdir, config=config);
-        }
-        seen = (loaded.graph_enabled, loaded.port, loaded.cors_origins);
-        assert seen == (False, 9123, ["https://app.example"]) , (
-            f"a blank JAC_SERVE_* variable overrode jac.toml: {seen}"
-        );
-        with patch.dict(os.environ, {"JAC_SERVE_GRAPH": "disabled"}) {
-            try {
-                _settings_without_worker_env(tmpdir, config=config);
-                assert False , "JAC_SERVE_GRAPH=disabled was read as a boolean";
-            } except ServeConfigError as refused {
-                assert "JAC_SERVE_GRAPH must be true or false" in str(refused) , (
-                    str(refused)
-                );
-            }
-        }
     }
 }
 

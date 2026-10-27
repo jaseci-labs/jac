@@ -91,7 +91,7 @@ impl overlay_table(
             overlay_table(
                 current, nested, env_name + '_', f"{section}.{name}", {}, environ
             );
-        } elif env_value(env_name, environ) is not None {
+        } elif env_value(env_name, environ) {
             setattr(target, name, env_typed(current, env_name, environ));
         } elif name in table {
             setattr(
@@ -569,19 +569,30 @@ impl table_value(current: any, raw: any, label: str) -> any {
 
 
 impl env_typed(current: any, name: str, environ: (dict[str, str] | None)) -> any {
+    raw = str(env_value(name, environ));
     if isinstance(current, bool) {
-        return env_bool(name, current, environ);
+        if raw.lower() not in ENV_TRUE + ENV_FALSE {
+            raise ServeConfigError(
+                f"{ENV_PREFIX}{name} must be true or false, got {raw!r}"
+            );
+        }
+        return raw.lower() in ENV_TRUE;
     }
-    if isinstance(current, int) {
-        return env_int(name, current, environ);
-    }
-    if isinstance(current, float) {
-        return env_float(name, current, environ);
+    if isinstance(current, (int, float)) {
+        try {
+            return int(raw) if isinstance(current, int) else float(raw);
+        } except ValueError {
+            raise ServeConfigError(f"{ENV_PREFIX}{name} must be a number, got {raw!r}");
+        }
     }
     if isinstance(current, list) {
-        return env_list(name, current, environ);
+        return [
+            part.strip()
+            for part in raw.split(',')
+            if part.strip()
+        ];
     }
-    return env_value(name, environ) or current;
+    return raw;
 }
 
 impl WorkerSettings.multi_process -> bool {
@@ -601,28 +612,24 @@ impl in_cluster -> bool {
 }
 
 impl env_value(name: str, environ: (dict[str, str] | None) = None) -> (str | None) {
-    raw = (os.environ if environ is None else environ).get(ENV_PREFIX + name, '');
-    return raw.strip() or None;
+    raw = (os.environ if environ is None else environ).get(ENV_PREFIX + name);
+    if raw is None {
+        return None;
+    }
+    stripped = raw.strip();
+    return stripped;
 }
 
-impl env_bool(
-    name: str, `default: bool, environ: (dict[str, str] | None) = None
-) -> bool {
-    raw = env_value(name, environ);
+impl env_bool(name: str, `default: bool) -> bool {
+    raw = env_value(name);
     if raw is None {
         return `default;
     }
-    if raw.lower() not in ENV_TRUE + ENV_FALSE {
-        raise ServeConfigError(
-            f"{ENV_PREFIX}{name} must be true or false "
-            f"({'/'.join(ENV_TRUE)} or {'/'.join(ENV_FALSE)}), got {raw!r}"
-        );
-    }
-    return raw.lower() in ENV_TRUE;
+    return raw.lower() not in ('0', 'false', 'no', 'off');
 }
 
-impl env_int(name: str, `default: int, environ: (dict[str, str] | None) = None) -> int {
-    raw = env_value(name, environ);
+impl env_int(name: str, `default: int) -> int {
+    raw = env_value(name);
     if raw is None {
         return `default;
     }
@@ -633,10 +640,8 @@ impl env_int(name: str, `default: int, environ: (dict[str, str] | None) = None) 
     }
 }
 
-impl env_float(
-    name: str, `default: float, environ: (dict[str, str] | None) = None
-) -> float {
-    raw = env_value(name, environ);
+impl env_float(name: str, `default: float) -> float {
+    raw = env_value(name);
     if raw is None {
         return `default;
     }
@@ -647,10 +652,8 @@ impl env_float(
     }
 }
 
-impl env_list(
-    name: str, `default: list[str], environ: (dict[str, str] | None) = None
-) -> list[str] {
-    raw = env_value(name, environ);
+impl env_list(name: str, `default: list[str]) -> list[str] {
+    raw = env_value(name);
     if raw is None {
         return `default;
     }

@@ -226,19 +226,13 @@ def in_cluster -> bool;
 
 def env_value(name: str, environ: (dict[str, str] | None) = None) -> (str | None);
 
-def env_bool(
-    name: str, `default: bool, environ: (dict[str, str] | None) = None
-) -> bool;
+def env_bool(name: str, `default: bool) -> bool;
 
-def env_int(name: str, `default: int, environ: (dict[str, str] | None) = None) -> int;
+def env_int(name: str, `default: int) -> int;
 
-def env_float(
-    name: str, `default: float, environ: (dict[str, str] | None) = None
-) -> float;
+def env_float(name: str, `default: float) -> float;
 
-def env_list(
-    name: str, `default: list[str], environ: (dict[str, str] | None) = None
-) -> list[str];
+def env_list(name: str, `default: list[str]) -> list[str];
 
 def resolve_count(raw: str, quota: int, label: str) -> int;
 def default_threads(worker_count: int, quota: int) -> int;
