@@ -634,6 +634,9 @@ impl PredicateCtrlFlowPass._varkw_nonempty(e: (uni.Expr | None), varkw: str) -> 
     if isinstance(e, uni.AtomUnit) and isinstance(e.value, uni.Expr) {
         return self._varkw_nonempty(e.value, varkw);
     }
+    if isinstance(e, uni.CfgExpr) {
+        return self._varkw_nonempty(e.expr, varkw);
+    }
     if isinstance(e, uni.Name) {
         return e.value == varkw;
     }

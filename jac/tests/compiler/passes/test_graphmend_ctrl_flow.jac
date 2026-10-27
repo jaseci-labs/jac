@@ -451,6 +451,10 @@ glob WHERE_DECLINES = [
          (
              "an attribute callee bound from the dispatch table",
              "guard_table_bound_init.jac"
+         ),
+         (
+             "a raise guarded by an and holding a nonempty varkw check",
+             "guard_varkw_and.jac"
          )
      ];
 
