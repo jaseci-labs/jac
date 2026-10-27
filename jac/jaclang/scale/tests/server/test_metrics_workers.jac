@@ -118,6 +118,35 @@ def _worker_pids(supervisor: int) -> list[int] {
     ];
 }
 
+"""Pause every other worker until `pid` has run `beat` at least once, so each
+worker's runs land in the scrape whichever worker the shared tick claims would
+have favoured. A paused worker claims no ticks, and one paused while holding the
+run hold blocks the others only until the hold expires."""
+def _beat_on_each(base: str, workers: list[int]) {
+    for pid in workers {
+        series = f'{APP_BEATS}{{pid="{pid}"}}';
+        others = [
+            w
+            for w in workers
+            if w != pid
+        ];
+        for other in others {
+            os.kill(other, signal.SIGSTOP);
+        }
+        try {
+            def _ran(text: str) -> bool {
+                return series in _samples(text, APP_BEATS);
+            }
+            body = _scrape_until(base, _ran, 45.0);
+        } finally {
+            for other in others {
+                os.kill(other, signal.SIGCONT);
+            }
+        }
+        assert series in _samples(body, APP_BEATS) , f"worker {pid} never ran beat: {body}";
+    }
+}
+
 def _stop_fleet(server: subprocess.Popen) {
     table = _process_table();
     (_parent, command) = table.get(server.pid, (0, ""));
@@ -139,9 +168,11 @@ test "a two-worker scrape merges every worker into one series per metric" {
     base = f"http://localhost:{port}";
     server = start_server(FIXTURES_DIR, FIXTURES_DIR / "app.jac", port);
     try {
-        assert len(_worker_pids(server.pid)) == 2;
+        workers = _worker_pids(server.pid);
+        assert len(workers) == 2;
         (sent, pids) = _load_until_shared(base);
         assert len(pids) > 1 , f"one worker answered all {sent} pings: {pids}";
+        _beat_on_each(base, workers);
         def _all_counted(text: str) -> bool {
             beats = _samples(text, APP_BEATS);
             return _samples(text, REQUESTS_TOTAL).get(PING_SERIES) == float(sent)
