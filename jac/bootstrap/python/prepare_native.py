@@ -88,9 +88,13 @@ native_fallbacks_in_ir(compiled_ir).require()
 # arm: the accessors and the raise path are shared, so a unit lowered without
 # these options would bring back the pthread-key lookup or libc's setjmp. The
 # C API's thread-specific storage (PyThread_tss_get and the old key API) is
-# the one place that calls pthread_getspecific by design.
+# the one place that calls pthread_getspecific by design. Only x86_64 arms
+# through LLVM's builtin setjmp; other targets keep _setjmp under native_sjlj.
 by_design = {"PyThread_tss_get", "PyThread_get_key_value"}
+builtin_sjlj = plan.triple.startswith("x86_64")
 for symbol, option in (("@pthread_getspecific", "native_tls"), ("@_setjmp", "native_sjlj")):
+    if option == "native_sjlj" and not builtin_sjlj:
+        continue
     if not getattr(options, option) or symbol not in compiled_ir:
         continue
     for function in re.finditer(r'^define [^\n]*?@"?([\w.$]+)"?\((.*?)^\}', compiled_ir, re.M | re.S):
