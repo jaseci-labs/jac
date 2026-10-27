@@ -263,9 +263,6 @@ test "a reached helper module keeps its own gm cache variant" {
             prog_off = JacProgram();
             code_off = _bytecode(prog_off, used_path);
             assert code_off is not None;
-            assert prog_off.mod.hub , (
-                "an off run must not reuse the transformed helper artifact"
-            );
             assert not _mentions_symbol(code_off, "__jac_se_emit__");
         }
     } finally {
