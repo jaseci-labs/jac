@@ -105,7 +105,7 @@ and the CI compatibility step read the same registry.
 A module over a library that CPython vendors and builds itself names the
 library's archive as its linker flag: `_md5` lists
 `Modules/_hacl/libHacl_Hash_MD5.a`; `build_jacpython.zig` compiles the
-HACL* sources and archives them as CPython's makefile groups them before
+HACL*sources and archives them as CPython's makefile groups them before
 linking the interpreter. The Jac module declares the library's
 functions by their linked names (HACL* prefixes them with `_Py_LibHacl_`).
 Data tables CPython generates into headers become C data definitions a
