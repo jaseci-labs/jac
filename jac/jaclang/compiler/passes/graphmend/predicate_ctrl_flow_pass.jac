@@ -85,6 +85,7 @@ walker PredicateCtrlFlowPass(TreePass) {
     ) -> None;
 
     def _has_call(e: uni.UniNode) -> bool;
+    def _has_unpack(call: uni.FuncCall) -> bool;
     def _has_none(a: uni.Expr, b: uni.Expr) -> bool;
     def _provably_non_tensor(e: uni.Expr) -> bool;
     def _shape_divergent(a: uni.Expr, b: uni.Expr) -> bool;

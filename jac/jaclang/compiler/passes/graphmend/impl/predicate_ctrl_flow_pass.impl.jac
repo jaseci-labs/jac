@@ -108,6 +108,20 @@ impl PredicateCtrlFlowPass._rewrite_return(
     replace_stmt(nd, stmts + [ret]);
 }
 
+impl PredicateCtrlFlowPass._has_unpack(call: uni.FuncCall) -> bool {
+    for p in (call.params or []) {
+        if isinstance(p, uni.KWPair) {
+            if p.key is None {
+                return True;
+            }
+        } elif isinstance(p, uni.UnaryExpr)
+            and (p.op.name in [Tok.STAR_MUL, Tok.STAR_POW]) {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl PredicateCtrlFlowPass._merge_common_call(
     nd: uni.IfStmt,
     ca: uni.Expr,
@@ -116,6 +130,9 @@ impl PredicateCtrlFlowPass._merge_common_call(
     false_setups: Sequence[uni.CodeBlockStmt]
 ) -> None {
     if (not isinstance(ca, uni.FuncCall)) or (not isinstance(cb, uni.FuncCall)) {
+        return;
+    }
+    if self._has_unpack(ca) or self._has_unpack(cb) {
         return;
     }
     if (

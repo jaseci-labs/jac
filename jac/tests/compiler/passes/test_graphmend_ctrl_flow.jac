@@ -189,6 +189,13 @@ test "augmented branch updates are declined" {
     assert "dyn_ctrl_fl" in _break_kinds("where_aug_assign.jac");
 }
 
+test "a merged call with unpacked arguments is declined" {
+    src = _pysrc("where_unpack_call.jac", True);
+    assert "torch.where(" not in src;
+    assert "sink(x, **opts)" in src;
+    assert "sink(y, *rest)" in src;
+}
+
 test "a condition Python can evaluate to a bool is declined" {
     src = _pysrc("where_bool_cond.jac", True);
     assert "torch.where(" not in src;
