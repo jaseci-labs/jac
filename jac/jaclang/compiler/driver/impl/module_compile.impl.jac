@@ -140,10 +140,7 @@ impl run_codegen(task: ModuleAnalysis) {
         task.blocked = True;
         return;
     }
-    graphmend = graphmend_wanted(task);
-    if graphmend and active_host().in_kernel() {
-        return;
-    }
+    graphmend = graphmend_wanted(task) and not active_host().in_kernel();
     task.require(CompilationProduct.CODEGEN, ProductRequest(native=needs_native));
     if module.gen.has_native_ir() {
         session_of(task).assemble_native(program, module, False);
