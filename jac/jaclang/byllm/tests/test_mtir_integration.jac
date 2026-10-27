@@ -834,6 +834,18 @@ test "submodule MTIR keyed by import fullname" {
             f"JacRuntime.fetch_mtir({alias}) did not return the entry at {key}"
         );
     }
+    # `jac test` resets runtime state before each test case but keeps loaded
+    # modules; their by-llm calls must still find the same semantics.
+    import from jaclang.testing.test_runner { _fresh_jac_state }
+    _fresh_jac_state(clear_modules=False);
+    for (alias, key) in [
+        ("alpha_process", "scope_dir.module_alpha.process_data"),
+        ("beta_process", "scope_dir.module_beta.process_data")
+    ] {
+        assert JacRuntime.fetch_mtir(getattr(main, alias)) is mtir_map[key] , (
+            f"MTIR for {alias} was lost across the per-test reset"
+        );
+    }
 }
 
 test "compiled MTIR keeps the params, tools and fields a call site needs" {
