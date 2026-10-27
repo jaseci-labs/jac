@@ -61,7 +61,14 @@ import from engine.src.runtime.jsstring {
 
 import from engine.src.runtime.jssymbol { js_symbol, js_symbol_for }
 import from engine.src.runtime.realm { Realm }
-import from engine.src.runtime.mem { read_byte, write_byte, read_u16, byte_chr }
+import from engine.src.runtime.mem {
+    read_byte,
+    write_byte,
+    read_u16,
+    byte_chr,
+    str_byte,
+    str_nbytes
+}
 
 import from napi.src.napi_ops {
     NAPI_OP_CREATE_STRING_UTF8,
@@ -132,7 +139,7 @@ def _write_utf8(s: str, buf: int, bufsize: int) -> int {
     # positions past the module and MagicString threw "range out of bounds").
     # The wire helpers convert both; the usual string needs no conversion and
     # is copied verbatim in one call.
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if s.isascii() or not wire_utf8_needs_convert(s) {
         if buf == 0 or bufsize == 0 {
             return n;
@@ -192,7 +199,7 @@ Copies at most bufsize-1 bytes then appends a null terminator.
 Returns the number of bytes in the full string (without null).
 """
 def _write_latin1(s: str, buf: int, bufsize: int) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if buf != 0 and bufsize > 0 {
         copy: int = n;
         limit: int = bufsize - 1;
@@ -201,7 +208,7 @@ def _write_latin1(s: str, buf: int, bufsize: int) -> int {
         }
         i: int = 0;
         while i < copy {
-            write_byte(buf, i, ord(s[i]) & 255);
+            write_byte(buf, i, str_byte(s, i) & 255);
             i = i + 1;
         }
         write_byte(buf, copy, 0);

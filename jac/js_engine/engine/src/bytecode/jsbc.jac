@@ -76,7 +76,12 @@ import from engine.src.bytecode.op {
     opcode_to_int,
     opcode_from_int
 }
-import from engine.src.runtime.mem { io_alloc, write_byte, read_byte }
+import from engine.src.runtime.mem {
+    io_alloc,
+    write_byte,
+    read_byte,
+    str_byte
+}
 import from engine.src.runtime.jsstring { str_chars }
 import from engine.src.ffi.libc { memcpy }
 
@@ -245,7 +250,7 @@ obj JSBCWriter {
         chars: list[str] = str_chars(s);
         self.w_i64(len(chars));
         for c in chars {
-            self.bytes.append(ord(c) & 255);
+            self.bytes.append(str_byte(c, 0) & 255);
         }
     }
 

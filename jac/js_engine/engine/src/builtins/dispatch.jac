@@ -2121,6 +2121,13 @@ import from engine.src.runtime.gc {
     gc_monitor_freed
 }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_byte,
+    str_nbytes
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Debug tracing
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2471,7 +2478,7 @@ def _dn_native_kind_string(
             }
         }
         if str_is_fn {
-            if str_fn_name == "" or str_fn_name.find(" ") >= 0 {
+            if str_fn_name == "" or str_bfind(str_fn_name, " ") >= 0 {
                 return jsv_from_string_id(str_intern("function () { [native code] }"));
             }
             return jsv_from_string_id(
@@ -2521,7 +2528,7 @@ def _dn_native_kind_fn_tostring(
     nm: str = "";
     if is_native_val(this_val) {
         nm = get_native_name(this_val);
-        if nm == "" or nm.find(" ") >= 0 {
+        if nm == "" or str_bfind(nm, " ") >= 0 {
             return jsv_from_string_id(str_intern("function () { [native code] }"));
         }
         return jsv_from_string_id(
@@ -2536,7 +2543,7 @@ def _dn_native_kind_fn_tostring(
                 return jsv_from_string_id(str_intern(src_ts));
             }
             nm = realm.closures[cl_id].func.name;
-            if realm.closures[cl_id].func.is_bound or nm == "" or nm.find(" ") >= 0 {
+            if realm.closures[cl_id].func.is_bound or nm == "" or str_bfind(nm, " ") >= 0 {
                 return jsv_from_string_id(str_intern("function () { [native code] }"));
             }
             return jsv_from_string_id(
@@ -2555,7 +2562,7 @@ def _dn_native_kind_fn_tostring(
     if nm == "" {
         nm = "anonymous";
     }
-    if nm.find(" ") >= 0 {
+    if str_bfind(nm, " ") >= 0 {
         return jsv_from_string_id(str_intern("function () { [native code] }"));
     }
     return jsv_from_string_id(str_intern("function " + nm + "() { [native code] }"));
@@ -3116,8 +3123,9 @@ def _str_regexp_requires_global(search_val: JSValue, method: str) -> bool {
         return True;
     }
     gi: int = 0;
-    while gi < len(flags_s) {
-        if flags_s[gi] == "g" {
+    _nb3126_flags_s: int = str_nbytes(flags_s);
+    while gi < _nb3126_flags_s {
+        if byte_chr(str_byte(flags_s, gi)) == "g" {
             return False;
         }
         gi = gi + 1;

@@ -143,6 +143,12 @@ import from engine.src.runtime.dtoa { number_to_string_radix10 }
 import from engine.src.builtins.markers { _KEY_IS_ARRAY }
 import from engine.src.runtime.gc_pin { gc_pin_value }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_byte,
+    str_nbytes
+}
+
 """Internal: object-table index of Array.prototype, wired by init_global."""
 glob _ARRAY_PROTO: JSValue = jsv_undefined(),
      _ARRAY_SHAPE: int = -1;  # js_array_create's result shape, learned
@@ -1742,8 +1748,9 @@ def:pub js_Array_from(arraylike: JSValue) -> JSValue {
         s: str = str_from_id(jsv_to_table_id(arraylike));
         chars: list[JSValue] = [];
         ci: int = 0;
-        while ci < len(s) {
-            chars.append(jsv_from_string_id(str_intern(s[ci])));
+        _nb1751_s: int = str_nbytes(s);
+        while ci < _nb1751_s {
+            chars.append(jsv_from_string_id(str_intern(byte_chr(str_byte(s, ci)))));
             ci = ci + 1;
         }
         return js_array_create(chars);

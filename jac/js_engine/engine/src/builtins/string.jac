@@ -110,6 +110,14 @@ import from engine.src.ffi.libicu {
     icu_canonical_locale_str
 }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_brfind,
+    str_byte,
+    str_nbytes
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  Property key constants (hidden String-object sentinel)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -156,9 +164,9 @@ JS wants `1e-7`).  Two-or-more-digit exponents (`1e+21`, `1.5e-10`) are unchange
 def _js_num_normalize_exp(s: str) -> str {
     ei: int = -1;
     i: int = 0;
-    sn: int = len(s);
+    sn: int = str_nbytes(s);
     while i < sn {
-        if s[i] == "e" or s[i] == "E" {
+        if byte_chr(str_byte(s, i)) == "e" or byte_chr(str_byte(s, i)) == "E" {
             ei = i;
             i = sn;
         } else {
@@ -173,17 +181,18 @@ def _js_num_normalize_exp(s: str) -> str {
     rest: str = str_substr(s, ei + 1, sn);  # after 'e'
     sign: str = "";
     di: int = 0;
-    if len(rest) > 0 and (rest[0] == "+" or rest[0] == "-") {
+    if len(rest) > 0 and (byte_chr(str_byte(rest, 0)) == "+" or byte_chr(str_byte(rest, 0)) == "-") {
         sign = str_substr(rest, 0, 1);
         di = 1;
     } else {
         sign = "+";
     }
     # Strip leading zeros from the exponent digits (keep at least one digit).
-    while di < len(rest) - 1 and rest[di] == "0" {
+    _nb191_rest: int = str_nbytes(rest);
+    while di < _nb191_rest - 1 and byte_chr(str_byte(rest, di)) == "0" {
         di = di + 1;
     }
-    digits: str = str_substr(rest, di, len(rest));
+    digits: str = str_substr(rest, di, str_nbytes(rest));
     return head + "e" + sign + digits;
 }
 
@@ -774,7 +783,7 @@ def:pub js_str_indexOf(v: JSValue, needle: JSValue, from_v: JSValue) -> JSValue 
     # the returned index matches .length/charCodeAt/slice (see
     # js_string_byte_to_unit). A raw indexOf byte offset broke rollup render on
     # \0-prefixed virtual ids (positions ran +3 per embedded NUL).
-    byte_len: int = len(s);
+    byte_len: int = str_nbytes(s);
     if _byte_clean(v, s) {
         # Byte-clean: unit offset == byte offset. Native start-offset search, NO
         # tail copy (the old `str_substr(s, from, len)` + find copied the whole
@@ -785,7 +794,7 @@ def:pub js_str_indexOf(v: JSValue, needle: JSValue, from_v: JSValue) -> JSValue 
         if len(n) == 0 {
             return js_int(from_clean);
         }
-        pos_c: int = s.find(n, from_clean);
+        pos_c: int = str_bfind(s, n, from_clean);
         if pos_c == -1 {
             return js_int(-1);
         }
@@ -805,7 +814,7 @@ def:pub js_str_indexOf(v: JSValue, needle: JSValue, from_v: JSValue) -> JSValue 
             if fb_ix < 0 {
                 fb_ix = u16ix_unit_to_byte(ix_io, s, from_ix + 1);
             }
-            pos_ix: int = s.find(n, fb_ix);
+            pos_ix: int = str_bfind(s, n, fb_ix);
             if pos_ix == -1 {
                 return js_int(-1);
             }
@@ -816,7 +825,7 @@ def:pub js_str_indexOf(v: JSValue, needle: JSValue, from_v: JSValue) -> JSValue 
     from_unit: int = _clamp_index(_to_int_or_inf(from_v), unit_len);
     from_byte: int = js_string_unit_to_byte(s, from_unit);
     tail2: str = str_substr(s, from_byte, byte_len);
-    bpos: int = tail2.find(n);
+    bpos: int = str_bfind(tail2, n);
     if bpos == -1 {
         return js_int(-1);
     }
@@ -831,7 +840,7 @@ def:pub js_str_lastIndexOf(v: JSValue, needle: JSValue, pos_v: JSValue) -> JSVal
     if vm_has_native_exc() {
         return js_undefined();
     }
-    slen: int = len(s);
+    slen: int = str_nbytes(s);
     # numPos = ToNumber(position); NaN → +∞ (search the whole string). Otherwise
     # ToIntegerOrInfinity, clamped to [0, len]. Observable: valueOf runs / throws.
     start: int = slen;
@@ -853,7 +862,7 @@ def:pub js_str_lastIndexOf(v: JSValue, needle: JSValue, pos_v: JSValue) -> JSVal
     # Last occurrence with match start ≤ start. Positions are UTF-16 units; when
     # `s` is not byte-clean (multi-byte UTF-8 / \x00 sentinel) translate the byte
     # rfind result back to a unit index (see js_string_byte_to_unit).
-    nlen: int = len(n);
+    nlen: int = str_nbytes(n);
     unit_len_l: int = js_string_utf16_len(s);
     if slen == unit_len_l {
         limit: int = start;
@@ -863,10 +872,10 @@ def:pub js_str_lastIndexOf(v: JSValue, needle: JSValue, pos_v: JSValue) -> JSVal
         pos: int = -1;
         if limit >= 0 {
             if limit + nlen >= slen {
-                pos = s.rfind(n);  # whole string: no prefix copy
+                pos = str_brfind(s, n);  # whole string: no prefix copy
             } else {
                 cand: str = str_substr(s, 0, limit + nlen);
-                pos = cand.rfind(n);
+                pos = str_brfind(cand, n);
             }
         }
         return js_int(pos);
@@ -885,7 +894,7 @@ def:pub js_str_lastIndexOf(v: JSValue, needle: JSValue, pos_v: JSValue) -> JSVal
     bpos_l: int = -1;
     if hi_byte_l >= nlen {
         cand2: str = str_substr(s, 0, hi_byte_l);
-        bpos_l = cand2.rfind(n);
+        bpos_l = str_brfind(cand2, n);
     }
     if bpos_l == -1 {
         return js_int(-1);
@@ -904,14 +913,14 @@ def:pub js_str_includes(v: JSValue, needle: JSValue, pos_v: JSValue) -> JSValue 
     n: str = js_to_string_prim(needle);
     # `position` is a UTF-16 unit index; map to a byte offset for the search
     # window when `s` is not byte-clean (multi-byte UTF-8 / \x00 sentinel).
-    byte_len_i: int = len(s);
+    byte_len_i: int = str_nbytes(s);
     if _byte_clean(v, s) {
         # No tail copy / no rescan for byte-clean cells (see js_str_indexOf).
         st_c: int = _clamp_index(_to_int_or_inf(pos_v), byte_len_i);
         if len(n) == 0 {
             return js_true();
         }
-        if s.find(n, st_c) != -1 {
+        if str_bfind(s, n, st_c) != -1 {
             return js_true();
         } else {
             return js_false();
@@ -939,9 +948,9 @@ startsWith(searchString [, position]) — ECMAScript §22.1.3.20
 def:pub js_str_startsWith(v: JSValue, prefix: JSValue, pos_v: JSValue) -> JSValue {
     s: str = _raw(string_value_of(v));
     p: str = js_to_string_prim(prefix);
-    slen: int = len(s);
+    slen: int = str_nbytes(s);
     st: int = _clamp_index(_to_int_or_inf(pos_v), slen);
-    plen: int = len(p);
+    plen: int = str_nbytes(p);
     if plen == 0 {
         return js_true();
     }
@@ -964,12 +973,12 @@ for the check (default len); clamped to 0..len.
 def:pub js_str_endsWith(v: JSValue, suffix: JSValue, endpos_v: JSValue) -> JSValue {
     s: str = _raw(string_value_of(v));
     p: str = js_to_string_prim(suffix);
-    slen: int = len(s);
+    slen: int = str_nbytes(s);
     en: int = slen;
     if not jsv_is_undefined(endpos_v) {
         en = _clamp_index(_to_int_or_inf(endpos_v), slen);
     }
-    plen2: int = len(p);
+    plen2: int = str_nbytes(p);
     if plen2 == 0 {
         return js_true();
     }
@@ -1111,7 +1120,7 @@ def:pub js_str_slice(v: JSValue, start: JSValue, end_v: JSValue) -> JSValue {
     }
     # ASCII fast path: UTF-16 index == byte index → one str_substr, no decode.
     if _byte_clean(v, s) {
-        slen_b: int = len(s);
+        slen_b: int = str_nbytes(s);
         st_b: int = _rel_index(_to_int_or_inf(start), slen_b);
         if vm_has_native_exc() {
             return js_undefined();
@@ -1214,7 +1223,7 @@ def:pub js_str_substring(v: JSValue, start: JSValue, end_v: JSValue) -> JSValue 
     }
     # ASCII fast path — see js_str_slice.
     if _byte_clean(v, s) {
-        slen_c: int = len(s);
+        slen_c: int = str_nbytes(s);
         st_c: int = _clamp_index(_to_int_or_inf(start), slen_c);
         if vm_has_native_exc() {
             return js_undefined();
@@ -1613,12 +1622,12 @@ n with no corresponding capture is left as "$n").
 def _get_substitution_str(matched: str, s: str, position: int, repl: str) -> str {
     out: str = "";
     i: int = 0;
-    nlen: int = len(repl);
-    tail_start: int = position + len(matched);
+    nlen: int = str_nbytes(repl);
+    tail_start: int = position + str_nbytes(matched);
     while i < nlen {
-        c: str = repl[i];
+        c: str = byte_chr(str_byte(repl, i));
         if c == "$" and i + 1 < nlen {
-            nc: str = repl[i + 1];
+            nc: str = byte_chr(str_byte(repl, i + 1));
             if nc == "$" {
                 out = out + "$";
                 i = i + 2;
@@ -1635,7 +1644,7 @@ def _get_substitution_str(matched: str, s: str, position: int, repl: str) -> str
                 continue;
             }
             if nc == "'" {
-                out = out + str_substr(s, tail_start, len(s));
+                out = out + str_substr(s, tail_start, str_nbytes(s));
                 i = i + 2;
                 continue;
             }
@@ -1687,18 +1696,18 @@ def:pub js_str_replace(v: JSValue, search: JSValue, replacement: JSValue) -> JSV
             return js_undefined();
         }
     }
-    pos: int = s.find(n);
+    pos: int = str_bfind(s, n);
     if pos < 0 {
         return _mk_str(s);
     }
-    nlen_r: int = len(n);
+    nlen_r: int = str_nbytes(n);
     # All pieces inline (named owned str locals leak — see js_str_slice).
     res_r: JSValue = _mk_str(
         str_substr(s, 0, pos)
             + _replace_one(
                 str_substr(s, pos, pos + nlen_r), s, pos, replacement, is_fn, r
             )
-            + str_substr(s, pos + nlen_r, len(s))
+            + str_substr(s, pos + nlen_r, str_nbytes(s))
     );
     if vm_has_native_exc() {
         return js_undefined();
@@ -1738,8 +1747,8 @@ def:pub js_str_replaceAll(
 def _replace_all_build(
     s: str, n: str, replacement: JSValue, is_fn: bool, r: str
 ) -> str {
-    slen: int = len(s);
-    nlen: int = len(n);
+    slen: int = str_nbytes(s);
+    nlen: int = str_nbytes(n);
     out: str = "";
     pos: int = 0;
     while pos <= slen {
@@ -1750,7 +1759,7 @@ def _replace_all_build(
         } else {
             # Native offset search — no per-iteration tail copy (was
             # str_substr(s, pos, slen) + find: an O(n) copy per match).
-            found = s.find(n, pos);
+            found = str_bfind(s, n, pos);
         }
         if found < 0 {
             break;
@@ -1763,7 +1772,7 @@ def _replace_all_build(
         if nlen == 0 {
             # advance one char past the empty match, emitting the skipped char
             if found < slen {
-                out = out + s[found];
+                out = out + byte_chr(str_byte(s, found));
             }
             pos = found + 1;
         } else {
@@ -2082,14 +2091,14 @@ def:pub js_str_localeCompare(
     }
     # ICU en_US_POSIX / en-US-u-va-posix is not a usable Intl locale.
     loc_l: str = loc.lower();
-    if loc_l.find("posix") >= 0 {
+    if str_bfind(loc_l, "posix") >= 0 {
         loc = "en-US";
     }
     if numeric {
         # Append kn so ICU enables numeric collation (options override).
-        if loc.find("-u-") < 0 {
+        if str_bfind(loc, "-u-") < 0 {
             loc = loc + "-u-kn";
-        } elif loc.find("-kn") < 0 {
+        } elif str_bfind(loc, "-kn") < 0 {
             loc = loc + "-kn";
         }
     }
@@ -2293,7 +2302,7 @@ decodeURIComponent("%3B") is ";"."""
 def _uri_decode(s: str, preserve_reserved: bool) -> JSValue {
     result: str = "";
     i: int = 0;
-    slen: int = len(s);
+    slen: int = str_nbytes(s);
     while i < slen {
         ch: str = str_char_at(s, i);
         if ch == "%" {
@@ -2302,8 +2311,8 @@ def _uri_decode(s: str, preserve_reserved: bool) -> JSValue {
                 vm_throw_native(make_uri_error("URI malformed"));
                 return js_undefined();
             }
-            h1: int = _hex_val(ord(str_char_at(s, i + 1)));
-            h2: int = _hex_val(ord(str_char_at(s, i + 2)));
+            h1: int = _hex_val(str_byte(str_char_at(s, i + 1), 0));
+            h2: int = _hex_val(str_byte(str_char_at(s, i + 2), 0));
             if h1 < 0 or h2 < 0 {
                 vm_throw_native(make_uri_error("URI malformed"));
                 return js_undefined();
@@ -2398,7 +2407,7 @@ sequence is absent, malformed, or not a 10xxxxxx continuation byte.
 0x80-0xBF; without that check "%C3%28" decoded as if 0x28 were a continuation
 and produced a bogus character instead of a URIError."""
 def _decode_percent_byte(s: str, pos: int) -> int {
-    slen: int = len(s);
+    slen: int = str_nbytes(s);
     # Need three chars: '%', hex, hex — the last valid index is pos+2.
     if pos + 2 > slen - 1 {
         return -1;
@@ -2406,8 +2415,8 @@ def _decode_percent_byte(s: str, pos: int) -> int {
     if str_char_at(s, pos) != "%" {
         return -1;
     }
-    h1: int = _hex_val(ord(str_char_at(s, pos + 1)));
-    h2: int = _hex_val(ord(str_char_at(s, pos + 2)));
+    h1: int = _hex_val(str_byte(str_char_at(s, pos + 1), 0));
+    h2: int = _hex_val(str_byte(str_char_at(s, pos + 2), 0));
     if h1 < 0 or h2 < 0 {
         return -1;
     }

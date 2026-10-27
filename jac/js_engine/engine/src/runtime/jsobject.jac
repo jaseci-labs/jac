@@ -96,7 +96,14 @@ import from engine.src.runtime.shape {
     SHAPE_ATTR_ACCESSOR
 }
 import from engine.src.runtime.realm { Realm, gc_note_alloc, gc_mark_byte, objmark_push }
-import from engine.src.runtime.mem { read_byte, write_byte, read_u64, write_i64 }
+import from engine.src.runtime.mem {
+    read_byte,
+    write_byte,
+    read_u64,
+    write_i64,
+    str_byte,
+    str_nbytes
+}
 import from engine.src.ffi.libc { getenv, write }
 import from engine.src.runtime.encoding {
     PROTO_MAX_DEPTH,
@@ -291,7 +298,7 @@ def _obj_alloc(prototype_idx: int) -> int {
                 + " gc_on="
                 + str(_OBJ_REALM.gc_enabled)
                 + "\n";
-            write(2, odm, len(odm));
+            write(2, odm, str_nbytes(odm));
         }
     }
     _OBJ_REALM.objects.append(
@@ -1531,7 +1538,7 @@ def:pub obj_stats_report {
         + " intern="
         + str(intern_n)
         + "\n";
-    write(2, msg, len(msg));
+    write(2, msg, str_nbytes(msg));
 }
 
 """Own-property data read without prototype walk (IC hit path).
@@ -1673,7 +1680,7 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
                         + " acc="
                         + str(_DEOPT_ACC)
                         + "\n";
-                    write(2, dm, len(dm));
+                    write(2, dm, str_nbytes(dm));
                 }
             }
             raw.pm_ensure_dict();
@@ -2142,13 +2149,13 @@ def _obj_array_index_sort_key(kid: int) -> int {
     s: str = str_from_id(kid);
     np: int = 0;
     pi: int = 0;
-    sn: int = len(s);
+    sn: int = str_nbytes(s);
     # Byte-wise digit test: the previous `ch: str = str_substr(...)` per digit
     # parked an owned 1-byte str in a named local that is never released — two
     # leaked allocations per array-index property get (Array.prototype.join over
     # 800 elements retained 100KB per call).
     while pi < sn {
-        cc: int = ord(s[pi]);
+        cc: int = str_byte(s, pi);
         if cc >= 48 and cc <= 57 {
             np = np * 10 + (cc - 48);
         }

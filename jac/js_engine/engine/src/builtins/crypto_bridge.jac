@@ -26,7 +26,10 @@ import from engine.src.runtime.mem {
     write_byte,
     read_u32,
     read_ptr,
-    write_i64
+    write_i64,
+    byte_chr,
+    str_byte,
+    str_nbytes
 }
 import from engine.src.runtime.binary_state {
     BinaryViewWitness,
@@ -151,8 +154,8 @@ def _ptr_to_hex(ptr: int, nbytes: int) -> str {
     i: int = 0;
     while i < nbytes {
         b: int = read_byte(ptr, i);
-        out = out + hex_chars[(b >> 4) & 15];
-        out = out + hex_chars[b & 15];
+        out = out + byte_chr(str_byte(hex_chars, (b >> 4) & 15));
+        out = out + byte_chr(str_byte(hex_chars, b & 15));
         i = i + 1;
     }
     return out;
@@ -160,7 +163,7 @@ def _ptr_to_hex(ptr: int, nbytes: int) -> str {
 
 """Copy hex string into ptr; returns byte length or -1."""
 def _hex_to_ptr(hexs: str, ptr: int, max_len: int) -> int {
-    n: int = len(hexs);
+    n: int = str_nbytes(hexs);
     if n % 2 != 0 {
         return -1;
     }
@@ -170,8 +173,8 @@ def _hex_to_ptr(hexs: str, ptr: int, max_len: int) -> int {
     }
     i: int = 0;
     while i < nbytes {
-        hi: int = _hex_val(ord(hexs[i * 2]));
-        lo: int = _hex_val(ord(hexs[i * 2 + 1]));
+        hi: int = _hex_val(str_byte(hexs, i * 2));
+        lo: int = _hex_val(str_byte(hexs, i * 2 + 1));
         if hi < 0 or lo < 0 {
             return -1;
         }
@@ -183,11 +186,11 @@ def _hex_to_ptr(hexs: str, ptr: int, max_len: int) -> int {
 
 
 def _is_gcm_algo(algo: str) -> bool {
-    n: int = len(algo);
+    n: int = str_nbytes(algo);
     if n < 3 {
         return False;
     }
-    if algo[n - 3] == "g" and algo[n - 2] == "c" and algo[n - 1] == "m" {
+    if byte_chr(str_byte(algo, n - 3)) == "g" and byte_chr(str_byte(algo, n - 2)) == "c" and byte_chr(str_byte(algo, n - 1)) == "m" {
         return True;
     }
     return False;
@@ -1073,7 +1076,7 @@ def _raw_export(pkey: int, want_private: bool) -> str {
 """Copy a Jac string into a freshly calloc'd C buffer (NUL-terminated).
 Returns 0 when s is empty. Caller must free() the result."""
 def _str_cbuf(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n <= 0 {
         return 0;
     }
@@ -1083,7 +1086,7 @@ def _str_cbuf(s: str) -> int {
     }
     i: int = 0;
     while i < n {
-        write_byte(buf, i, ord(s[i]));
+        write_byte(buf, i, str_byte(s, i));
         i = i + 1;
     }
     return buf;
@@ -1128,7 +1131,7 @@ def:pub crypto_key_export(args: list[JSValue]) -> JSValue {
             _last_crypto_err = ERR_get_error();
             return jsv_from_string_id(str_intern(""));
         }
-        klen = len(passphrase);
+        klen = str_nbytes(passphrase);
         kstr = _str_cbuf(passphrase);
         # Empty passphrase is legal (Node allows it); pass a non-NULL 0-length buf.
         if kstr == 0 {

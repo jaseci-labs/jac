@@ -1241,6 +1241,15 @@ import from engine.src.ffi.wasmtime {
     WASMTIME_F64
 }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 # N-API (native `.node` addon) support is INCOMPLETE and disabled by default.
 # Parts of the JS↔native callback bridge are unimplemented, so loading a real
 # addon would call into missing code paths. Until it is finished, both addon
@@ -2026,7 +2035,7 @@ def _vm_string_index(sv: JSValue, idx: int) -> JSValue {
     si_sid: int = jsv_to_table_id(sv);
     if str_cell_ascii(si_sid) == 1 {
         si_s: str = str_from_id(si_sid);
-        if idx < len(si_s) {
+        if idx < str_nbytes(si_s) {
             return js_str(str_char_at(si_s, idx));
         }
         return js_undefined();
@@ -2381,10 +2390,10 @@ def:pub vm_attach_module_compile(mod: JSValue) {
 }
 
 def _ext_from_resolved(resolved: str) -> str {
-    n: int = len(resolved);
+    n: int = str_nbytes(resolved);
     i: int = n - 1;
     while i >= 0 {
-        if resolved[i] == "." {
+        if byte_chr(str_byte(resolved, i)) == "." {
             return str_substr(resolved, i, n);
         }
         i = i - 1;
@@ -2540,13 +2549,13 @@ def _get_parent_file(vm: VM) -> str {
 """Strip a leading 'node:' prefix from a module specifier (e.g. 'node:fs' → 'fs').
 Returns the input unchanged if it does not begin with 'node:'."""
 def _strip_node_prefix(s: str) -> str {
-    if len(s) > 5
-        and s[0] == "n"
-        and s[1] == "o"
-        and s[2] == "d"
-        and s[3] == "e"
-        and s[4] == ":" {
-        return s[5:];
+    if str_nbytes(s) > 5
+        and byte_chr(str_byte(s, 0)) == "n"
+        and byte_chr(str_byte(s, 1)) == "o"
+        and byte_chr(str_byte(s, 2)) == "d"
+        and byte_chr(str_byte(s, 3)) == "e"
+        and byte_chr(str_byte(s, 4)) == ":" {
+        return str_bslice_from(s, 5);
     }
     return s;
 }
@@ -2607,21 +2616,21 @@ def _handle_module_create_require(
     }
     cr_pf: str = cr_base;
     cr_is_file_url: bool = False;
-    if len(cr_base) > 7
-        and cr_base[0] == "f"
-        and cr_base[1] == "i"
-        and cr_base[2] == "l"
-        and cr_base[3] == "e"
-        and cr_base[4] == ":"
-        and cr_base[5] == "/"
-        and cr_base[6] == "/" {
+    if str_nbytes(cr_base) > 7
+        and byte_chr(str_byte(cr_base, 0)) == "f"
+        and byte_chr(str_byte(cr_base, 1)) == "i"
+        and byte_chr(str_byte(cr_base, 2)) == "l"
+        and byte_chr(str_byte(cr_base, 3)) == "e"
+        and byte_chr(str_byte(cr_base, 4)) == ":"
+        and byte_chr(str_byte(cr_base, 5)) == "/"
+        and byte_chr(str_byte(cr_base, 6)) == "/" {
         cr_is_file_url = True;
-        cr_pf = cr_base[7:];
+        cr_pf = str_bslice_from(cr_base, 7);
     }
-    if not cr_is_file_url and len(cr_pf) > 0 and cr_pf[0] != "/" {
+    if not cr_is_file_url and len(cr_pf) > 0 and byte_chr(str_byte(cr_pf, 0)) != "/" {
         cr_pf = path_abspath(cr_pf, vm.script_dir);
     }
-    if len(cr_pf) == 0 or cr_pf[0] != "/" {
+    if len(cr_pf) == 0 or byte_chr(str_byte(cr_pf, 0)) != "/" {
         exc_cr: JSValue = make_coded_error(
             "TypeError",
             "The argument must be a file URL or absolute path",
@@ -2786,13 +2795,13 @@ def _handle_require_resolve_paths(vm: VM, args: list[JSValue]) {
         rp_spec = str_from_id(jsv_to_table_id(args[0]));
     }
     rp_bare: str = rp_spec;
-    if len(rp_spec) > 5
-        and rp_spec[0] == "n"
-        and rp_spec[1] == "o"
-        and rp_spec[2] == "d"
-        and rp_spec[3] == "e"
-        and rp_spec[4] == ":" {
-        rp_bare = rp_spec[5:];
+    if str_nbytes(rp_spec) > 5
+        and byte_chr(str_byte(rp_spec, 0)) == "n"
+        and byte_chr(str_byte(rp_spec, 1)) == "o"
+        and byte_chr(str_byte(rp_spec, 2)) == "d"
+        and byte_chr(str_byte(rp_spec, 3)) == "e"
+        and byte_chr(str_byte(rp_spec, 4)) == ":" {
+        rp_bare = str_bslice_from(rp_spec, 5);
     }
     if is_builtin_module(rp_bare) {
         vm._push(js_null());
@@ -2903,14 +2912,15 @@ def _bigint_is_decimal_str(s: str) -> bool {
         return False;
     }
     i: int = 0;
-    if s[0:1] == "-" {
+    if str_bslice(s, 0, 1) == "-" {
         i = 1;
     }
-    if i >= len(s) {
+    if i >= str_nbytes(s) {
         return False;
     }
-    while i < len(s) {
-        ch: str = s[i:i + 1];
+    _nb2921_s: int = str_nbytes(s);
+    while i < _nb2921_s {
+        ch: str = str_bslice(s, i, i + 1);
         if ch < "0" or ch > "9" {
             return False;
         }
@@ -2921,16 +2931,16 @@ def _bigint_is_decimal_str(s: str) -> bool {
 
 def _bigint_trim_zeros(s: str) -> str {
     i: int = 0;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     while i < n - 1 {
-        if s[i:i + 1] != "0" {
+        if str_bslice(s, i, i + 1) != "0" {
             break;
         }
         i = i + 1;
     }
     out: str = "";
     while i < n {
-        out = out + s[i:i + 1];
+        out = out + str_bslice(s, i, i + 1);
         i = i + 1;
     }
     return out;
@@ -2942,9 +2952,9 @@ def _bigint_str_mul_int(s: str, n: int) -> str {
     }
     carry: int = 0;
     out: str = "";
-    i: int = len(s) - 1;
+    i: int = str_nbytes(s) - 1;
     while i >= 0 {
-        d: int = int(s[i:i + 1]);
+        d: int = int(str_bslice(s, i, i + 1));
         prod: int = d * n + carry;
         carry = prod // 10;
         out = str(prod % 10) + out;
@@ -2990,8 +3000,8 @@ def _bigint_norm_dec(bi_str: str) -> str {
     if len(bi_str) == 0 {
         return "0";
     }
-    neg: bool = bi_str[0:1] == "-";
-    body: str = bi_str[1:] if neg else bi_str;
+    neg: bool = str_bslice(bi_str, 0, 1) == "-";
+    body: str = str_bslice_from(bi_str, 1) if neg else bi_str;
     body = _bigint_trim_zeros(body);
     if body == "0" or len(body) == 0 {
         return "0";
@@ -3012,58 +3022,59 @@ whitespace is ignored; an empty/whitespace-only string is 0n; an optional +/- si
 precedes decimal digits, or a `0x`/`0o`/`0b` radix prefix (no sign allowed then)."""
 def _string_to_bigint_or_empty(s: str) -> str {
     lo: int = 0;
-    hi: int = len(s);
+    hi: int = str_nbytes(s);
     while lo < hi
         and (
-            s[lo:lo + 1] == " "
-            or s[lo:lo + 1] == "\t"
-            or s[lo:lo + 1] == "\n"
-            or s[lo:lo + 1] == "\r"
-            or s[lo:lo + 1] == "\x0b"
-            or s[lo:lo + 1] == "\x0c"
+            str_bslice(s, lo, lo + 1) == " "
+            or str_bslice(s, lo, lo + 1) == "\t"
+            or str_bslice(s, lo, lo + 1) == "\n"
+            or str_bslice(s, lo, lo + 1) == "\r"
+            or str_bslice(s, lo, lo + 1) == "\x0b"
+            or str_bslice(s, lo, lo + 1) == "\x0c"
         ) {
         lo = lo + 1;
     }
     while hi > lo
         and (
-            s[hi - 1:hi] == " "
-            or s[hi - 1:hi] == "\t"
-            or s[hi - 1:hi] == "\n"
-            or s[hi - 1:hi] == "\r"
-            or s[hi - 1:hi] == "\x0b"
-            or s[hi - 1:hi] == "\x0c"
+            str_bslice(s, hi - 1, hi) == " "
+            or str_bslice(s, hi - 1, hi) == "\t"
+            or str_bslice(s, hi - 1, hi) == "\n"
+            or str_bslice(s, hi - 1, hi) == "\r"
+            or str_bslice(s, hi - 1, hi) == "\x0b"
+            or str_bslice(s, hi - 1, hi) == "\x0c"
         ) {
         hi = hi - 1;
     }
-    t: str = s[lo:hi];
+    t: str = str_bslice(s, lo, hi);
     if len(t) == 0 {
         return "0";
     }
     # Radix-prefixed (no sign): 0x / 0o / 0b.
-    if len(t) >= 2 and t[0:1] == "0" {
-        p: str = t[1:2];
+    if str_nbytes(t) >= 2 and str_bslice(t, 0, 1) == "0" {
+        p: str = str_bslice(t, 1, 2);
         if p == "x" or p == "X" or p == "o" or p == "O" or p == "b" or p == "B" {
             radix: int = 16
                 if (p == "x" or p == "X")
                 else (8 if (p == "o" or p == "O") else 2);
-            return _radix_digits_to_dec(t[2:], radix);
+            return _radix_digits_to_dec(str_bslice_from(t, 2), radix);
         }
     }
     sign: str = "";
     i: int = 0;
-    if t[0:1] == "+" {
+    if str_bslice(t, 0, 1) == "+" {
         i = 1;
-    } elif t[0:1] == "-" {
+    } elif str_bslice(t, 0, 1) == "-" {
         sign = "-";
         i = 1;
     }
-    body: str = t[i:];
+    body: str = str_bslice_from(t, i);
     if len(body) == 0 {
         return "";
     }
     j: int = 0;
-    while j < len(body) {
-        c: str = body[j:j + 1];
+    _nb3074_body: int = str_nbytes(body);
+    while j < _nb3074_body {
+        c: str = str_bslice(body, j, j + 1);
         if c < "0" or c > "9" {
             return "";
         }
@@ -3078,13 +3089,13 @@ def _string_to_bigint_or_empty(s: str) -> str {
 
 """Add two NON-NEGATIVE decimal strings → decimal string."""
 def _bigint_str_add_dec(a: str, b: str) -> str {
-    i: int = len(a) - 1;
-    j: int = len(b) - 1;
+    i: int = str_nbytes(a) - 1;
+    j: int = str_nbytes(b) - 1;
     carry: int = 0;
     out: str = "";
     while i >= 0 or j >= 0 or carry > 0 {
-        da: int = int(a[i:i + 1]) if i >= 0 else 0;
-        db: int = int(b[j:j + 1]) if j >= 0 else 0;
+        da: int = int(str_bslice(a, i, i + 1)) if i >= 0 else 0;
+        db: int = int(str_bslice(b, j, j + 1)) if j >= 0 else 0;
         s: int = da + db + carry;
         carry = s // 10;
         out = str(s % 10) + out;
@@ -3107,14 +3118,14 @@ glob _LIMB_MASK: int = 0xFFFFFFFF,
 """Non-negative decimal string → base-2^32 limbs (never empty)."""
 def _dec_to_limbs(dec: str) -> list[int] {
     limbs: list[int] = [0];
-    n: int = len(dec);
+    n: int = str_nbytes(dec);
     start: int = 0;
     end: int = n % 9;
     if end == 0 {
         end = 9;
     }
     while start < n {
-        carry: int = int(dec[start:end]);
+        carry: int = int(str_bslice(dec, start, end));
         i: int = 0;
         while i < len(limbs) {
             v: int = limbs[i] * _DEC_CHUNK + carry;
@@ -3133,7 +3144,7 @@ def _dec_to_limbs(dec: str) -> list[int] {
 
 def _pad9_dec(n: int) -> str {
     s: str = str(n);
-    while len(s) < 9 {
+    while str_nbytes(s) < 9 {
         s = "0" + s;
     }
     return s;
@@ -3178,8 +3189,8 @@ def _limbs_to_dec(limbs_in: list[int]) -> str {
 
 """Magnitude limbs of a signed decimal string."""
 def _dec_mag_limbs(dec: str) -> list[int] {
-    if len(dec) > 0 and dec[0:1] == "-" {
-        return _dec_to_limbs(dec[1:]);
+    if len(dec) > 0 and str_bslice(dec, 0, 1) == "-" {
+        return _dec_to_limbs(str_bslice_from(dec, 1));
     }
     return _dec_to_limbs(dec);
 }
@@ -3202,7 +3213,7 @@ def _dec_to_twos(dec: str, w: int) -> list[int] {
     while len(limbs) < w {
         limbs.append(0);
     }
-    if len(dec) > 0 and dec[0:1] == "-" {
+    if len(dec) > 0 and str_bslice(dec, 0, 1) == "-" {
         _limbs_negate(limbs, w);
     }
     return limbs;
@@ -3262,7 +3273,7 @@ def _bigint_shl_dec(a_dec: str, shift: int) -> str {
     if a_dec == "0" or len(a_dec) == 0 {
         return "0";
     }
-    neg: bool = a_dec[0:1] == "-";
+    neg: bool = str_bslice(a_dec, 0, 1) == "-";
     mag: list[int] = _dec_mag_limbs(a_dec);
     out: list[int] = [];
     k: int = shift // 32;
@@ -3309,11 +3320,11 @@ def _limbs_shr(limbs: list[int], shift: int) -> list[int] {
 """`a >> shift` = floor(a / 2^shift), for non-negative int `shift`
 (arithmetic: a negative `a` gives -(((|a| - 1) >> shift) + 1))."""
 def _bigint_shr_dec(a_dec: str, shift: int) -> str {
-    if not (len(a_dec) > 0 and a_dec[0:1] == "-") {
+    if not (len(a_dec) > 0 and str_bslice(a_dec, 0, 1) == "-") {
         return _limbs_to_dec(_limbs_shr(_dec_to_limbs(a_dec), shift));
     }
     m1: str = _limbs_to_dec(
-        _limbs_shr(_dec_to_limbs(_dec_str_sub_vm(a_dec[1:], "1")), shift)
+        _limbs_shr(_dec_to_limbs(_dec_str_sub_vm(str_bslice_from(a_dec, 1), "1")), shift)
     );
     return "-" + _bigint_str_add_dec(m1, "1");
 }
@@ -3326,15 +3337,16 @@ def _radix_digits_to_dec(digits: str, radix: int) -> str {
     }
     acc: str = "0";
     k: int = 0;
-    while k < len(digits) {
-        ch: str = digits[k:k + 1];
+    _nb3338_digits: int = str_nbytes(digits);
+    while k < _nb3338_digits {
+        ch: str = str_bslice(digits, k, k + 1);
         d: int = -1;
         if ch >= "0" and ch <= "9" {
             d = int(ch);
         } elif ch >= "a" and ch <= "f" {
-            d = 10 + (ord(ch) - ord("a"));
+            d = 10 + (str_byte(ch, 0) - ord("a"));
         } elif ch >= "A" and ch <= "F" {
-            d = 10 + (ord(ch) - ord("A"));
+            d = 10 + (str_byte(ch, 0) - ord("A"));
         }
         if d < 0 or d >= radix {
             return "";
@@ -3361,8 +3373,8 @@ def _bigint_to_jsv(bn: list[int]) -> JSValue {
 glob _BIGINT_DIV_REM_STR: str = "0";
 
 def _dec_str_trim_vm(s: str) -> str {
-    while len(s) > 1 and s[0:1] == "0" {
-        s = s[1:len(s)];
+    while str_nbytes(s) > 1 and str_bslice(s, 0, 1) == "0" {
+        s = str_bslice(s, 1, str_nbytes(s));
     }
     if len(s) == 0 {
         return "0";
@@ -3373,16 +3385,17 @@ def _dec_str_trim_vm(s: str) -> str {
 def _dec_str_cmp_vm(a: str, b: str) -> int {
     a = _dec_str_trim_vm(a);
     b = _dec_str_trim_vm(b);
-    if len(a) != len(b) {
-        if len(a) > len(b) {
+    if str_nbytes(a) != str_nbytes(b) {
+        if str_nbytes(a) > str_nbytes(b) {
             return 1;
         }
         return -1;
     }
     i: int = 0;
-    while i < len(a) {
-        if a[i:i + 1] != b[i:i + 1] {
-            if a[i:i + 1] > b[i:i + 1] {
+    _nb3392_a: int = str_nbytes(a);
+    while i < _nb3392_a {
+        if str_bslice(a, i, i + 1) != str_bslice(b, i, i + 1) {
+            if str_bslice(a, i, i + 1) > str_bslice(b, i, i + 1) {
                 return 1;
             }
             return -1;
@@ -3395,13 +3408,13 @@ def _dec_str_cmp_vm(a: str, b: str) -> int {
 def _dec_str_sub_vm(a: str, b: str) -> str {
     out: str = "";
     borrow: int = 0;
-    i: int = len(a) - 1;
-    j: int = len(b) - 1;
+    i: int = str_nbytes(a) - 1;
+    j: int = str_nbytes(b) - 1;
     while i >= 0 {
-        da: int = int(a[i:i + 1]) - borrow;
+        da: int = int(str_bslice(a, i, i + 1)) - borrow;
         db: int = 0;
         if j >= 0 {
-            db = int(b[j:j + 1]);
+            db = int(str_bslice(b, j, j + 1));
         }
         if da < db {
             da = da + 10;
@@ -3422,9 +3435,9 @@ def _dec_str_mul_small_vm(s: str, n: int) -> str {
     }
     carry: int = 0;
     out: str = "";
-    i: int = len(s) - 1;
+    i: int = str_nbytes(s) - 1;
     while i >= 0 {
-        prod: int = int(s[i:i + 1]) * n + carry;
+        prod: int = int(str_bslice(s, i, i + 1)) * n + carry;
         carry = prod // 10;
         out = str(prod % 10) + out;
         i = i - 1;
@@ -3443,8 +3456,9 @@ def _bigint_str_divmod_pos(a: str, b: str) -> str {
     q: str = "";
     rem: str = "";
     pos: int = 0;
-    while pos < len(a) {
-        rem = rem + a[pos:pos + 1];
+    _nb3455_a: int = str_nbytes(a);
+    while pos < _nb3455_a {
+        rem = rem + str_bslice(a, pos, pos + 1);
         rem = _dec_str_trim_vm(rem);
         digit: str = "0";
         if _dec_str_cmp_vm(rem, b) >= 0 {
@@ -3476,13 +3490,13 @@ def _bigint_divmod_decimal(a_str: str, b_str: str) -> str {
     bneg: bool = False;
     ap: str = a_str;
     bp: str = b_str;
-    if len(ap) > 0 and ap[0:1] == "-" {
+    if len(ap) > 0 and str_bslice(ap, 0, 1) == "-" {
         aneg = True;
-        ap = ap[1:len(ap)];
+        ap = str_bslice(ap, 1, str_nbytes(ap));
     }
-    if len(bp) > 0 and bp[0:1] == "-" {
+    if len(bp) > 0 and str_bslice(bp, 0, 1) == "-" {
         bneg = True;
-        bp = bp[1:len(bp)];
+        bp = str_bslice(bp, 1, str_nbytes(bp));
     }
     q: str = _bigint_str_divmod_pos(ap, bp);
     r: str = _BIGINT_DIV_REM_STR;
@@ -3671,21 +3685,21 @@ def to_int32(x: int) -> int {
 if `rest` is `0` followed by only octal digits (0-7), returns its octal value (>=0);
 otherwise -1 (a decimal number, or contains 8/9/`.`/`e`).  Sloppy mode only."""
 def _legacy_octal_value(rest: str) -> int {
-    ln: int = len(rest);
+    ln: int = str_nbytes(rest);
     if ln < 2 {
         return -1;
     }
-    if rest[0] != "0" {
+    if byte_chr(str_byte(rest, 0)) != "0" {
         return -1;
     }
     val: int = 0;
     i: int = 1;
     while i < ln {
-        c: str = rest[i];
+        c: str = byte_chr(str_byte(rest, i));
         if c < "0" or c > "7" {
             return -1;
         }
-        val = val * 8 + ord(c) - 48;
+        val = val * 8 + str_byte(c, 0) - 48;
         i = i + 1;
     }
     return val;
@@ -3700,23 +3714,23 @@ Convention set by the compiler :
   anything else — bare identifier string (used by LOAD_GLOBAL / GET_PROP)
 """
 def const_to_jsval(s: str) -> JSValue {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n >= 2 {
-        c0: str = s[0];
-        c1: str = s[1];
+        c0: str = byte_chr(str_byte(s, 0));
+        c1: str = byte_chr(str_byte(s, 1));
         if c0 == "n" and c1 == ":" {
             rest: str = str_substr(s, 2, n);
-            rn: int = len(rest);
+            rn: int = str_nbytes(rest);
             # Handle 0o/0O octal and 0b/0B binary prefixes (strtod handles 0x already)
-            if rn >= 3 and rest[0] == "0" {
-                pfx: str = rest[1];
+            if rn >= 3 and byte_chr(str_byte(rest, 0)) == "0" {
+                pfx: str = byte_chr(str_byte(rest, 1));
                 if pfx == "o" or pfx == "O" {
                     ov: int = 0;
                     oi: int = 2;
                     while oi < rn {
-                        oc: str = rest[oi];
+                        oc: str = byte_chr(str_byte(rest, oi));
                         if oc != "_" and oc >= "0" and oc <= "7" {
-                            ov = ov * 8 + ord(oc) - 48;
+                            ov = ov * 8 + str_byte(oc, 0) - 48;
                         }
                         oi = oi + 1;
                     }
@@ -3726,7 +3740,7 @@ def const_to_jsval(s: str) -> JSValue {
                     bv: int = 0;
                     bi: int = 2;
                     while bi < rn {
-                        bc: str = rest[bi];
+                        bc: str = byte_chr(str_byte(rest, bi));
                         if bc == "1" {
                             bv = bv * 2 + 1;
                         } elif bc == "0" {
@@ -3757,12 +3771,12 @@ def const_to_jsval(s: str) -> JSValue {
             bi_base: int = 0;
             bi_neg: bool = False;
             bi_start: int = 0;
-            if len(bi_rest) > 0 and bi_rest[0] == "-" {
+            if len(bi_rest) > 0 and byte_chr(str_byte(bi_rest, 0)) == "-" {
                 bi_neg = True;
                 bi_start = 1;
             }
-            if len(bi_rest) >= bi_start + 2 and bi_rest[bi_start] == "0" {
-                bi_pfx: str = bi_rest[bi_start + 1];
+            if str_nbytes(bi_rest) >= bi_start + 2 and byte_chr(str_byte(bi_rest, bi_start)) == "0" {
+                bi_pfx: str = byte_chr(str_byte(bi_rest, bi_start + 1));
                 if bi_pfx == "x" or bi_pfx == "X" {
                     bi_base = 16;
                 } elif bi_pfx == "o" or bi_pfx == "O" {
@@ -3774,15 +3788,16 @@ def const_to_jsval(s: str) -> JSValue {
             if bi_base != 0 {
                 bi_acc: list[int] = bn_from_int(0);
                 bi_di: int = bi_start + 2;
-                while bi_di < len(bi_rest) {
-                    bi_ch: str = bi_rest[bi_di];
+                _nb3786_bi_rest: int = str_nbytes(bi_rest);
+                while bi_di < _nb3786_bi_rest {
+                    bi_ch: str = byte_chr(str_byte(bi_rest, bi_di));
                     bi_dv: int = -1;
                     if bi_ch >= "0" and bi_ch <= "9" {
-                        bi_dv = ord(bi_ch) - ord("0");
+                        bi_dv = str_byte(bi_ch, 0) - ord("0");
                     } elif bi_ch >= "a" and bi_ch <= "f" {
-                        bi_dv = ord(bi_ch) - ord("a") + 10;
+                        bi_dv = str_byte(bi_ch, 0) - ord("a") + 10;
                     } elif bi_ch >= "A" and bi_ch <= "F" {
-                        bi_dv = ord(bi_ch) - ord("A") + 10;
+                        bi_dv = str_byte(bi_ch, 0) - ord("A") + 10;
                     }
                     if bi_dv >= 0 and bi_dv < bi_base {
                         bi_acc = bn_mul_small(bi_acc, bi_base);
@@ -3845,8 +3860,8 @@ def js_add(a: JSValue, b: JSValue) -> JSValue {
 def _dec_mag_cmp(a: str, b: str) -> int {
     x: str = _bigint_trim_zeros(a);
     y: str = _bigint_trim_zeros(b);
-    if len(x) != len(y) {
-        return -1 if len(x) < len(y) else 1;
+    if str_nbytes(x) != str_nbytes(y) {
+        return -1 if str_nbytes(x) < str_nbytes(y) else 1;
     }
     if x < y {
         return -1;
@@ -3859,10 +3874,10 @@ def _dec_mag_cmp(a: str, b: str) -> int {
 
 """Compare two SIGNED decimal strings → -1/0/1."""
 def _bigint_dec_cmp(a: str, b: str) -> int {
-    an: bool = len(a) > 0 and a[0:1] == "-";
-    bn: bool = len(b) > 0 and b[0:1] == "-";
-    am: str = a[1:] if an else a;
-    bm: str = b[1:] if bn else b;
+    an: bool = len(a) > 0 and str_bslice(a, 0, 1) == "-";
+    bn: bool = len(b) > 0 and str_bslice(b, 0, 1) == "-";
+    am: str = str_bslice_from(a, 1) if an else a;
+    bm: str = str_bslice_from(b, 1) if bn else b;
     # -0 == 0
     az: bool = _bigint_trim_zeros(am) == "0";
     bz: bool = _bigint_trim_zeros(bm) == "0";
@@ -4209,7 +4224,7 @@ def _ins_cached_set_prop_key(frame: CallFrame, ins: Instruction) -> int {
     # write to find out.
     privkey: int = 0;
     kname: str = frame.func.constants.get(ins.arg);
-    if len(kname) >= 7 and str_substr(kname, 0, 7) == "__priv_" {
+    if str_nbytes(kname) >= 7 and str_substr(kname, 0, 7) == "__priv_" {
         privkey = 1;
     }
     encoded: int = (kid << 2) | (privkey << 1) | define_own;
@@ -4693,7 +4708,7 @@ obj VM {
                     + " state="
                     + str(state)
                     + "\n";
-                write(2, _ps, len(_ps));
+                write(2, _ps, str_nbytes(_ps));
             }
             scheduler_push_reaction(self.realm, on_f, on_r, state, value, next_p);
             i_r = i_r + 1;
@@ -4715,7 +4730,7 @@ obj VM {
                     + " nReact="
                     + str(js_array_len(js_promise_get_reactions(p)))
                     + "\n";
-                write(2, _erv, len(_erv));
+                write(2, _erv, str_nbytes(_erv));
             }
             return;
         }
@@ -4727,7 +4742,7 @@ obj VM {
                 + " resIsObj="
                 + str(jsv_is_object_cell(resolution))
                 + "\n";
-            write(2, _rv2, len(_rv2));
+            write(2, _rv2, str_nbytes(_rv2));
         }
         if js_is_promise(resolution) {
             if jsv_to_table_id(resolution) == jsv_to_table_id(p) {
@@ -5692,11 +5707,11 @@ obj VM {
         ba_simple: bool = fn.expected_arg_count == len(fn.params);
         if ba_simple {
             for pn_s in fn.params {
-                if len(pn_s) >= 4
-                    and pn_s[0] == "_"
-                    and pn_s[1] == "_"
-                    and pn_s[2] == "d"
-                    and pn_s[3] == "p" {
+                if str_nbytes(pn_s) >= 4
+                    and byte_chr(str_byte(pn_s, 0)) == "_"
+                    and byte_chr(str_byte(pn_s, 1)) == "_"
+                    and byte_chr(str_byte(pn_s, 2)) == "d"
+                    and byte_chr(str_byte(pn_s, 3)) == "p" {
                     ba_simple = False;
                 }
             }
@@ -7049,7 +7064,7 @@ obj VM {
                 ce_msg = "Invalid or unexpected token";
             }
             if ce_msg.startswith("SyntaxError: ") {
-                ce_msg = ce_msg[13:];
+                ce_msg = str_bslice_from(ce_msg, 13);
             }
             vm_throw_native(make_syntax_error(ce_msg));
             return js_undefined();
@@ -7280,7 +7295,7 @@ obj VM {
                 ce_msg = "Invalid or unexpected token";
             }
             if ce_msg.startswith("SyntaxError: ") {
-                ce_msg = ce_msg[13:];
+                ce_msg = str_bslice_from(ce_msg, 13);
             }
             exc_ce: JSValue = make_syntax_error(ce_msg);
             vm_throw_native(exc_ce);
@@ -7476,7 +7491,7 @@ obj VM {
     timers or web APIs — so the sandbox cannot reach the embedder.  Engine-internal
     `__*` bridges are excluded for the same reason."""
     def _ctx_global_is_host_only(name: str) -> bool {
-        if len(name) >= 2 and name[0] == "_" and name[1] == "_" {
+        if str_nbytes(name) >= 2 and byte_chr(str_byte(name, 0)) == "_" and byte_chr(str_byte(name, 1)) == "_" {
             return True;
         }
         # Node / CommonJS host surface
@@ -8032,7 +8047,7 @@ obj VM {
                 fts_name = str_from_id(jsv_to_table_id(fts_nm_v));
             }
         }
-        if fts_bound or fts_name == "" or fts_name.find(" ") >= 0 {
+        if fts_bound or fts_name == "" or str_bfind(fts_name, " ") >= 0 {
             return js_str("function () { [native code] }");
         }
         return js_str("function " + fts_name + "() { [native code] }");
@@ -8742,7 +8757,7 @@ obj VM {
                     + " recv_tid="
                     + str(jsv_to_table_id(receiver))
                     + "\n";
-                write(2, _sr_dbg, len(_sr_dbg));
+                write(2, _sr_dbg, str_nbytes(_sr_dbg));
             }
         }
         if js_is_proxy(js_obj) {
@@ -9116,7 +9131,7 @@ obj VM {
         # 'I'(nfinity). Reject the rest up front: named-property reads on Buffers /
         # typed arrays (`buf.length`, `buf.subarray`) land here, and most names
         # contain an 'e', which used to drive them through str_to_float below.
-        c0: int = ord(s[0]);
+        c0: int = str_byte(s, 0);
         if not ((c0 >= 48 and c0 <= 57) or c0 == 45 or c0 == 78 or c0 == 73) {
             return (False, -1);
         }
@@ -9125,21 +9140,22 @@ obj VM {
         }
         neg: bool = str_substr(s, 0, 1) == "-";
         start: int = 1 if neg else 0;
-        if start >= len(s) {
+        if start >= str_nbytes(s) {
             return (False, -1);
         }
         n: int = 0;
         i: int = start;
         all_digits: bool = True;
         overflowed: bool = False;
-        while i < len(s) {
+        _nb9144_s: int = str_nbytes(s);
+        while i < _nb9144_s {
             ch: str = str_substr(s, i, i + 1);
             if ch < "0" or ch > "9" {
                 all_digits = False;
                 break;
             }
             if not overflowed {
-                n = n * 10 + (ord(ch) - 48);
+                n = n * 10 + (str_byte(ch, 0) - 48);
                 if n > 9007199254740991 {
                     overflowed = True;
                 }
@@ -9147,7 +9163,7 @@ obj VM {
             i = i + 1;
         }
         if all_digits {
-            if (len(s) - start) > 1 and str_substr(s, start, start + 1) == "0" {
+            if (str_nbytes(s) - start) > 1 and str_substr(s, start, start + 1) == "0" {
                 return (False, -1);
             }
             # CanonicalNumericIndexString: SameValueString(s, ToString(ToNumber(s))).
@@ -10559,11 +10575,11 @@ obj VM {
     modules always parse.
     """
     def _builtin_key_for(filename: str) -> str {
-        n: int = len(filename);
+        n: int = str_nbytes(filename);
         if n < 3 or str_substr(filename, n - 3, n) != ".js" {
             return "";
         }
-        k: int = filename.find("/src/builtins/js/");
+        k: int = str_bfind(filename, "/src/builtins/js/");
         if k < 0 {
             return "";
         }
@@ -10750,7 +10766,7 @@ obj VM {
                     ce_msg = "Invalid or unexpected token";
                 }
                 if ce_msg.startswith("SyntaxError: ") {
-                    ce_msg = ce_msg[13:];
+                    ce_msg = str_bslice_from(ce_msg, 13);
                 }
                 self.had_exception = True;
                 self.pending_exc = make_syntax_error(ce_msg);
@@ -11258,22 +11274,23 @@ obj VM {
         ri: int = 0;
         while ri < len(raw_e) {
             e: str = raw_e[ri];
-            if len(e) >= 2 and (e[0] == "L" or e[0] == "T") and e[1] == ":" {
+            if str_nbytes(e) >= 2 and (byte_chr(str_byte(e, 0)) == "L" or byte_chr(str_byte(e, 0)) == "T") and byte_chr(str_byte(e, 1)) == ":" {
                 abs_e.append(e);
-            } elif len(e) >= 2 and e[0] == "S" and e[1] == ":" {
-                spec: str = e[2:];
+            } elif str_nbytes(e) >= 2 and byte_chr(str_byte(e, 0)) == "S" and byte_chr(str_byte(e, 1)) == ":" {
+                spec: str = str_bslice_from(e, 2);
                 dep: str = module_resolve(spec, from_dir, resolved, 1);
                 if dep != "" {
                     self._esm_ensure_export_meta(dep);
                     abs_e.append("S:" + dep);
                 }
-            } elif len(e) >= 2 and e[0] == "I" and e[1] == ":" {
-                rest: str = e[2:];
+            } elif str_nbytes(e) >= 2 and byte_chr(str_byte(e, 0)) == "I" and byte_chr(str_byte(e, 1)) == ":" {
+                rest: str = str_bslice_from(e, 2);
                 c1: int = -1;
                 c2: int = -1;
                 ci: int = 0;
-                while ci < len(rest) {
-                    if rest[ci] == ":" {
+                _nb11284_rest: int = str_nbytes(rest);
+                while ci < _nb11284_rest {
+                    if byte_chr(str_byte(rest, ci)) == ":" {
                         if c1 < 0 {
                             c1 = ci;
                         } elif c2 < 0 {
@@ -11283,9 +11300,9 @@ obj VM {
                     ci = ci + 1;
                 }
                 if c1 >= 0 and c2 > c1 {
-                    exp_n: str = rest[0:c1];
-                    imp_n: str = rest[c1 + 1:c2];
-                    spec2: str = rest[c2 + 1:];
+                    exp_n: str = str_bslice(rest, 0, c1);
+                    imp_n: str = str_bslice(rest, c1 + 1, c2);
+                    spec2: str = str_bslice_from(rest, c2 + 1);
                     dep2: str = module_resolve(spec2, from_dir, resolved, 1);
                     if dep2 != "" {
                         self._esm_ensure_export_meta(dep2);
@@ -11343,35 +11360,36 @@ obj VM {
             gc_pin_value(_TDZ_SENTINEL);  # glob-held singleton — invisible to the GC root walk
         }
         for em in entries {
-            if len(em) < 2 or em[1] != ":" {
+            if str_nbytes(em) < 2 or byte_chr(str_byte(em, 1)) != ":" {
                 continue;
             }
-            if em[0] == "L" or em[0] == "T" {
+            if byte_chr(str_byte(em, 0)) == "L" or byte_chr(str_byte(em, 0)) == "T" {
                 # Copy via str_substr, NOT a native `em[2:]` suffix-slice: a
                 # suffix-view slice of a rope is an interior pointer with no
                 # string header, so retaining it in the long-lived str_intern
                 # table dangles once the rope's flatten buffer is reused —
                 # corrupting the interned key to "" (spurious empty namespace
                 # export key; see module-namespace own-property-keys tests).
-                name_l: str = str_substr(em, 2, len(em));
+                name_l: str = str_substr(em, 2, str_nbytes(em));
                 if name_l != "" {
                     kid_l: int = str_intern(name_l);
                     if not js_object_has_own(ns, kid_l) {
                         seed_v: JSValue = js_undefined();
-                        if em[0] == "T" {
+                        if byte_chr(str_byte(em, 0)) == "T" {
                             seed_v = _TDZ_SENTINEL;
                         }
                         _ = js_object_namespace_export_set(ns, kid_l, seed_v);
                     }
                 }
-            } elif em[0] == "I" {
+            } elif byte_chr(str_byte(em, 0)) == "I" {
                 # I:expName:importName:resolvedPath
-                rest_i: str = str_substr(em, 2, len(em));
+                rest_i: str = str_substr(em, 2, str_nbytes(em));
                 c1: int = -1;
                 c2: int = -1;
                 ci: int = 0;
-                while ci < len(rest_i) {
-                    if rest_i[ci] == ":" {
+                _nb11382_rest_i: int = str_nbytes(rest_i);
+                while ci < _nb11382_rest_i {
+                    if byte_chr(str_byte(rest_i, ci)) == ":" {
                         if c1 < 0 {
                             c1 = ci;
                         } elif c2 < 0 {
@@ -11393,8 +11411,8 @@ obj VM {
                             imp_n: str = "";
                             dep_path: str = "";
                             if c2 > c1 {
-                                imp_n = rest_i[c1 + 1:c2];
-                                dep_path = rest_i[c2 + 1:];
+                                imp_n = str_bslice(rest_i, c1 + 1, c2);
+                                dep_path = str_bslice_from(rest_i, c2 + 1);
                             }
                             is_tdz_imp: bool = False;
                             if imp_n != "" {
@@ -11402,10 +11420,10 @@ obj VM {
                                 # (self-reexport / Instantiation before link).
                                 if dep_path != "" and esm_export_meta_has(dep_path) {
                                     for cem in esm_export_meta_get(dep_path) {
-                                        if len(cem) > 2
-                                            and cem[0] == "T"
-                                            and cem[1] == ":" {
-                                            if cem[2:] == imp_n {
+                                        if str_nbytes(cem) > 2
+                                            and byte_chr(str_byte(cem, 0)) == "T"
+                                            and byte_chr(str_byte(cem, 1)) == ":" {
+                                            if str_bslice_from(cem, 2) == imp_n {
                                                 is_tdz_imp = True;
                                             }
                                         }
@@ -11415,10 +11433,10 @@ obj VM {
                                     ei_chk: int = 0;
                                     while ei_chk < len(entries) {
                                         cem2: str = entries[ei_chk];
-                                        if len(cem2) > 2
-                                            and cem2[0] == "T"
-                                            and cem2[1] == ":" {
-                                            if cem2[2:] == imp_n {
+                                        if str_nbytes(cem2) > 2
+                                            and byte_chr(str_byte(cem2, 0)) == "T"
+                                            and byte_chr(str_byte(cem2, 1)) == ":" {
+                                            if str_bslice_from(cem2, 2) == imp_n {
                                                 is_tdz_imp = True;
                                             }
                                         }
@@ -11433,19 +11451,19 @@ obj VM {
                         }
                     }
                 }
-            } elif em[0] == "S" {
-                dep_s: str = str_substr(em, 2, len(em));
+            } elif byte_chr(str_byte(em, 0)) == "S" {
+                dep_s: str = str_substr(em, 2, str_nbytes(em));
                 if dep_s != "" and esm_export_meta_has(dep_s) {
                     for dem in esm_export_meta_get(dep_s) {
-                        if len(dem) >= 2
-                            and dem[1] == ":"
-                            and (dem[0] == "L" or dem[0] == "T") {
-                            dn: str = str_substr(dem, 2, len(dem));
+                        if str_nbytes(dem) >= 2
+                            and byte_chr(str_byte(dem, 1)) == ":"
+                            and (byte_chr(str_byte(dem, 0)) == "L" or byte_chr(str_byte(dem, 0)) == "T") {
+                            dn: str = str_substr(dem, 2, str_nbytes(dem));
                             if dn != "" and dn != "default" {
                                 kid_s: int = str_intern(dn);
                                 if not js_object_has_own(ns, kid_s) {
                                     seed_s: JSValue = js_undefined();
-                                    if dem[0] == "T" {
+                                    if byte_chr(str_byte(dem, 0)) == "T" {
                                         seed_s = _TDZ_SENTINEL;
                                     }
                                     _ = js_object_namespace_export_set(
@@ -11557,7 +11575,7 @@ obj VM {
                 ce_msg = "Invalid or unexpected token";
             }
             if ce_msg.startswith("SyntaxError: ") {
-                ce_msg = ce_msg[13:];
+                ce_msg = str_bslice_from(ce_msg, 13);
             }
             self.had_exception = True;
             self.pending_exc = make_syntax_error(ce_msg);
@@ -11684,10 +11702,10 @@ obj VM {
             and not is_builtin_module(bare_spec) {
             hk_internal: bool = False;
             hk_bi_root: str = self.engine_root + "/src/builtins/";
-            hk_er_len: int = len(hk_bi_root);
+            hk_er_len: int = str_nbytes(hk_bi_root);
             if hk_er_len > 0
-                and len(parent_file) >= hk_er_len
-                and parent_file[0:hk_er_len] == hk_bi_root {
+                and str_nbytes(parent_file) >= hk_er_len
+                and str_bslice(parent_file, 0, hk_er_len) == hk_bi_root {
                 hk_internal = True;
             }
             if not hk_internal {
@@ -11771,7 +11789,7 @@ obj VM {
             # --preserve-symlinks: keep the symlink path as the module identity so
             # require('./real') and require('./link') are distinct cache entries.
             if not process_get_preserve_symlinks() {
-                if len(resolved) > 0 and resolved[0] == "/" {
+                if len(resolved) > 0 and byte_chr(str_byte(resolved, 0)) == "/" {
                     rp_res: str = path_realpath_str(resolved);
                     if rp_res != "" {
                         resolved = rp_res;
@@ -11787,7 +11805,7 @@ obj VM {
                 not process_get_preserve_symlinks()
                 and resolved != resolved_before_rp
                 and len(resolved) > 0
-                and resolved[0] == "/"
+                and byte_chr(str_byte(resolved, 0)) == "/"
             ) {
                 fmt_rp: str = module_resolve_format(
                     resolved, path_dirname(resolved), resolved, is_esm_import
@@ -12072,11 +12090,11 @@ obj VM {
         # must run on the ESM path — both for ESM `import` and Node 22+ require(esm).
         # Explicit `.cjs` stays CJS even with `export` tokens (syntax error).
         is_dot_cjs: bool = (
-            len(resolved) >= 4
-            and resolved[len(resolved) - 4] == "."
-            and resolved[len(resolved) - 3] == "c"
-            and resolved[len(resolved) - 2] == "j"
-            and resolved[len(resolved) - 1] == "s"
+            str_nbytes(resolved) >= 4
+            and byte_chr(str_byte(resolved, str_nbytes(resolved) - 4)) == "."
+            and byte_chr(str_byte(resolved, str_nbytes(resolved) - 3)) == "c"
+            and byte_chr(str_byte(resolved, str_nbytes(resolved) - 2)) == "j"
+            and byte_chr(str_byte(resolved, str_nbytes(resolved) - 1)) == "s"
         );
         allow_req_esm: bool = process_get_require_esm();
         # `import defer` must still instantiate as an ESM namespace without
@@ -12198,7 +12216,7 @@ obj VM {
                     ce_msg_esm = "Invalid or unexpected token";
                 }
                 if ce_msg_esm.startswith("SyntaxError: ") {
-                    ce_msg_esm = ce_msg_esm[13:];
+                    ce_msg_esm = str_bslice_from(ce_msg_esm, 13);
                 }
                 self.had_exception = True;
                 self.pending_exc = make_syntax_error(ce_msg_esm);
@@ -13215,7 +13233,7 @@ obj VM {
         di_spec_e: str = jsval_to_str(di_spec_val_e);
         if _DBG_ESM_ON {
             _di_dbg: str = "[DBG_ESM] dyn-import spec='" + di_spec_e + "'\n";
-            write(2, _di_dbg, len(_di_dbg));
+            write(2, _di_dbg, str_nbytes(_di_dbg));
         }
         # Import options / attributes (§13.3.10.1.1 EvaluateImportCall + §13.3.10.2
         # GetImportOptions): if an options argument was supplied and is not undefined,
@@ -13439,8 +13457,9 @@ obj VM {
         rl_pair_e: str = frame.func.constants.get(ins.arg);
         rl_colon_e: int = -1;
         rl_pi_e: int = 0;
-        while rl_pi_e < len(rl_pair_e) {
-            if rl_pair_e[rl_pi_e] == ":" {
+        _nb13451_rl_pair_e: int = str_nbytes(rl_pair_e);
+        while rl_pi_e < _nb13451_rl_pair_e {
+            if byte_chr(str_byte(rl_pair_e, rl_pi_e)) == ":" {
                 rl_colon_e = rl_pi_e;
             }
             rl_pi_e = rl_pi_e + 1;
@@ -13448,8 +13467,8 @@ obj VM {
         rl_imp_e: str = rl_pair_e;
         rl_out_e: str = rl_pair_e;
         if rl_colon_e >= 0 {
-            rl_imp_e = rl_pair_e[0:rl_colon_e];
-            rl_out_e = rl_pair_e[rl_colon_e + 1:];
+            rl_imp_e = str_bslice(rl_pair_e, 0, rl_colon_e);
+            rl_out_e = str_bslice_from(rl_pair_e, rl_colon_e + 1);
         }
         rl_ns_e: JSValue = self._pop();
         rl_exp_e: JSValue = js_undefined();
@@ -13490,7 +13509,7 @@ obj VM {
                     + " same="
                     + str(jsv_to_table_id(rs_ns_e) == jsv_to_table_id(rs_exp_e))
                     + "\n";
-                write(2, _rs_dbg, len(_rs_dbg));
+                write(2, _rs_dbg, str_nbytes(_rs_dbg));
             }
             # Iterate plain own-property keys (e.g. direct exports).
             rs_keys_e: list[int] = js_object_keys(rs_ns_e);
@@ -16897,7 +16916,7 @@ obj VM {
                 + " define_own="
                 + str(sp_define_own)
                 + "\n";
-            write(2, _sp_dbg, len(_sp_dbg));
+            write(2, _sp_dbg, str_nbytes(_sp_dbg));
         }
         # Class constructors are strict: `C.caller = x` / `C.arguments = x` hit the
         # %ThrowTypeError% poison-pill (ES §10.2.4). A class is an object-cell (not is_fn_val),
@@ -17807,7 +17826,7 @@ obj VM {
                 if str_cell_ascii(gi_sid) == 1 {
                     # Byte-clean cell (ASCII, no NUL sentinel): 1 byte == 1 unit.
                     gi_s: str = str_from_id(gi_sid);
-                    if gi_char_idx < len(gi_s) {
+                    if gi_char_idx < str_nbytes(gi_s) {
                         gi_ch: str = str_char_at(gi_s, gi_char_idx);
                         self._push(js_str(gi_ch));
                     } else {
@@ -18785,7 +18804,7 @@ obj VM {
                     gi_aks: str = str_from_id(gi_akid);
                     if gi_aks != ""
                         and not (
-                            len(gi_aks) > 2 and str_substr(gi_aks, 0, 2) == "__"
+                            str_nbytes(gi_aks) > 2 and str_substr(gi_aks, 0, 2) == "__"
                         ) {
                         gi_arg_keys.append(jsv_from_string_id(gi_akid));
                     }
@@ -19128,11 +19147,11 @@ obj VM {
     scope suffix (a legacy bare `__priv_#name`)."""
     def _priv_brand_key_for(key: int) -> int {
         ks: str = str_from_id(key);
-        kn: int = len(ks);
+        kn: int = str_nbytes(ks);
         ai: int = 0;
         while ai < kn {
-            if ks[ai] == "@" {
-                return str_intern("__brand" + ks[ai:kn]);
+            if byte_chr(str_byte(ks, ai)) == "@" {
+                return str_intern("__brand" + str_bslice(ks, ai, kn));
             }
             ai = ai + 1;
         }
@@ -19143,17 +19162,18 @@ obj VM {
     or -1 if the key carries no numeric scope suffix (a legacy bare `__priv_#name`)."""
     def _priv_key_sid(key: int) -> int {
         pks_s: str = str_from_id(key);
-        pks_n: int = len(pks_s);
+        pks_n: int = str_nbytes(pks_s);
         pks_i: int = 0;
         while pks_i < pks_n {
-            if pks_s[pks_i] == "@" {
-                pks_suf: str = pks_s[pks_i + 1:pks_n];
+            if byte_chr(str_byte(pks_s, pks_i)) == "@" {
+                pks_suf: str = str_bslice(pks_s, pks_i + 1, pks_n);
                 if len(pks_suf) == 0 {
                     return -1;
                 }
                 pks_j: int = 0;
-                while pks_j < len(pks_suf) {
-                    if pks_suf[pks_j] < "0" or pks_suf[pks_j] > "9" {
+                _nb19164_pks_suf: int = str_nbytes(pks_suf);
+                while pks_j < _nb19164_pks_suf {
+                    if byte_chr(str_byte(pks_suf, pks_j)) < "0" or byte_chr(str_byte(pks_suf, pks_j)) > "9" {
                         return -1;
                     }
                     pks_j = pks_j + 1;
@@ -19274,16 +19294,16 @@ obj VM {
             cp_obj, cp_key, cp_acc_brand, cp_acc_sid
         );
         cp_name: str = frame.func.constants.get(ins.arg);
-        if len(cp_name) > 7 and cp_name[0:7] == "__priv_" {
-            cp_name = cp_name[7:];
+        if str_nbytes(cp_name) > 7 and str_bslice(cp_name, 0, 7) == "__priv_" {
+            cp_name = str_bslice_from(cp_name, 7);
         }
         # Strip the per-class scope suffix `@<id>` so the message shows the raw `#name`
         # (an identifier can't contain `@`, so the first one delimits the suffix).
         cp_ai: int = 0;
-        cp_nlen: int = len(cp_name);
+        cp_nlen: int = str_nbytes(cp_name);
         while cp_ai < cp_nlen {
-            if cp_name[cp_ai] == "@" {
-                cp_name = cp_name[0:cp_ai];
+            if byte_chr(str_byte(cp_name, cp_ai)) == "@" {
+                cp_name = str_bslice(cp_name, 0, cp_ai);
                 break;
             }
             cp_ai = cp_ai + 1;
@@ -20411,13 +20431,13 @@ obj VM {
                 return;
             }
             exp_s: str = str_from_id(jsv_to_table_id(b_pw));
-            if len(exp_s) > 0 and exp_s[0] == "-" {
+            if len(exp_s) > 0 and byte_chr(str_byte(exp_s, 0)) == "-" {
                 self._raise_exc(
                     frame, st, make_range_error("Exponent must be non-negative")
                 );
                 return;
             }
-            if not _bigint_is_decimal_str(exp_s) or len(exp_s) > 5 {
+            if not _bigint_is_decimal_str(exp_s) or str_nbytes(exp_s) > 5 {
                 self._raise_exc(
                     frame, st, make_range_error("BigInt exponent out of range")
                 );
@@ -20641,21 +20661,21 @@ obj VM {
         }
         a_dec: str = _bigint_str_of(a);
         sh: str = _bigint_str_of(b);
-        sneg: bool = len(sh) > 0 and sh[0:1] == "-";
-        smag: str = sh[1:] if sneg else sh;
+        sneg: bool = len(sh) > 0 and str_bslice(sh, 0, 1) == "-";
+        smag: str = str_bslice_from(sh, 1) if sneg else sh;
         do_left: bool = is_left;
         if sneg {
             do_left = not do_left;
         }
         # Guard pathological shift magnitudes (avoid OOM / runaway loops).
-        if len(smag) > 7 {
+        if str_nbytes(smag) > 7 {
             if do_left and not (a_dec == "0") {
                 self._raise_exc(
                     frame, st, make_range_error("Maximum BigInt size exceeded")
                 );
                 return;
             }
-            coll: str = "-1" if (len(a_dec) > 0 and a_dec[0:1] == "-") else "0";
+            coll: str = "-1" if (len(a_dec) > 0 and str_bslice(a_dec, 0, 1) == "-") else "0";
             self._push(jsv_from_cell_kind(str_intern(coll), JS_CELL_KIND_BIGINT));
             return;
         }
@@ -24306,7 +24326,7 @@ obj VM {
                                                 li_fc_i = 0;
                                             }
                                             li_fc_i = li_fc_i + 1;
-                                            if li_fc_i > len(subj_fc_s) {
+                                            if li_fc_i > str_nbytes(subj_fc_s) {
                                                 break;
                                             }
                                             js_object_set(
@@ -24442,7 +24462,7 @@ obj VM {
                                                 li_fnm_i = 0;
                                             }
                                             li_fnm_i = li_fnm_i + 1;
-                                            if li_fnm_i > len(subj_fnm_s) {
+                                            if li_fnm_i > str_nbytes(subj_fnm_s) {
                                                 break;
                                             }
                                             js_object_set(
@@ -24462,11 +24482,9 @@ obj VM {
                                 } else {
                                     # Compatibility bridge for subclassed RegExp objects that currently
                                     # miss the internal regexp marker: still exercise overridden exec().
-                                    subj_len_fnm: int = len(subj_fnm_s);
+                                    subj_len_fnm: int = str_nbytes(subj_fnm_s);
                                     if jsv_is_string_cell(subj_fnm) {
-                                        subj_len_fnm = len(
-                                            str_from_id(jsv_to_table_id(subj_fnm))
-                                        );
+                                        subj_len_fnm = str_nbytes(str_from_id(jsv_to_table_id(subj_fnm)));
                                     }
                                     max_exec_fnm: int = subj_len_fnm + 1;
                                     ei_fnm: int = 0;
@@ -24532,7 +24550,7 @@ obj VM {
                                     fncall_args[0]
                                 );
                                 subj_rpf: str = jsval_to_str(subj_rpf_v);
-                                slen_rpf: int = len(subj_rpf);
+                                slen_rpf: int = str_nbytes(subj_rpf);
                                 if is_g_rpf {
                                     js_object_set(fncall_this, WK_LASTINDEX, js_int(0));
                                 }
@@ -24579,7 +24597,7 @@ obj VM {
                                             subj_rpf, pos_rpf, pos_u_rpf, mstart_rpf
                                         );
                                     }
-                                    mend_rpf: int = mstart_b_rpf + len(mtxt_rpf);
+                                    mend_rpf: int = mstart_b_rpf + str_nbytes(mtxt_rpf);
                                     out_rpf = out_rpf
                                         + str_substr(subj_rpf, pos_rpf, mstart_b_rpf);
 
@@ -24688,7 +24706,7 @@ obj VM {
                                     if mend_rpf > pos_rpf {
                                         pos_rpf = mend_rpf;
                                         if asc_rpf {
-                                            pos_u_rpf = mstart_rpf + len(mtxt_rpf);
+                                            pos_u_rpf = mstart_rpf + str_nbytes(mtxt_rpf);
                                         } else {
                                             pos_u_rpf = mstart_rpf
                                                 + js_string_utf16_len(mtxt_rpf);
@@ -25239,7 +25257,7 @@ obj VM {
                                 is_bd_ts: bool = self.realm.closures[
                                     fi_ts
                                 ].func.is_bound;
-                                if is_bd_ts or nm_ts == "" or nm_ts.find(" ") >= 0 {
+                                if is_bd_ts or nm_ts == "" or str_bfind(nm_ts, " ") >= 0 {
                                     ts_s = "function () { [native code] }";
                                 } else {
                                     ts_s = "function " + nm_ts + "() { [native code] }";
@@ -25248,7 +25266,7 @@ obj VM {
                         }
                     } elif is_native_val(this_m) {
                         nm_nat: str = get_native_name(this_m);
-                        if nm_nat == "" or nm_nat.find(" ") >= 0 {
+                        if nm_nat == "" or str_bfind(nm_nat, " ") >= 0 {
                             ts_s = "function () { [native code] }";
                         } else {
                             ts_s = "function " + nm_nat + "() { [native code] }";
@@ -25294,7 +25312,7 @@ obj VM {
                         is_g_rp: bool = self._regexp_is_global(re_rp);
                         subj_rp_prim: JSValue = self._to_primitive_string(subj_rp_v);
                         subj_rp: str = jsval_to_str(subj_rp_prim);
-                        slen_rp: int = len(subj_rp);
+                        slen_rp: int = str_nbytes(subj_rp);
                         if is_g_rp {
                             js_object_set(re_rp, WK_LASTINDEX, js_int(0));
                         }
@@ -25345,7 +25363,7 @@ obj VM {
                                     subj_rp, pos_rp, pos_u_rp, mstart_rp
                                 );
                             }
-                            mend_rp: int = mstart_b_rp + len(mtxt_rp);
+                            mend_rp: int = mstart_b_rp + str_nbytes(mtxt_rp);
                             out_rp = out_rp + str_substr(subj_rp, pos_rp, mstart_b_rp);
                             cb_args_rp: list[JSValue] = [];
                             cb_args_rp.append(m0_rp);
@@ -25445,7 +25463,7 @@ obj VM {
                             if mend_rp > pos_rp {
                                 pos_rp = mend_rp;
                                 if asc_rp {
-                                    pos_u_rp = mstart_rp + len(mtxt_rp);
+                                    pos_u_rp = mstart_rp + str_nbytes(mtxt_rp);
                                 } else {
                                     pos_u_rp = mstart_rp + js_string_utf16_len(mtxt_rp);
                                 }
@@ -25503,8 +25521,8 @@ obj VM {
                     search_sr: str = js_to_string_prim(re_rp);
                     subj_sr_prim: JSValue = self._to_primitive_string(subj_rp_v);
                     subj_sr: str = jsval_to_str(subj_sr_prim);
-                    slen_sr: int = len(subj_sr);
-                    off_sr: int = subj_sr.find(search_sr);
+                    slen_sr: int = str_nbytes(subj_sr);
+                    off_sr: int = str_bfind(subj_sr, search_sr);
                     if off_sr < 0 {
                         self._push(js_str(subj_sr));
                     } else {
@@ -25584,7 +25602,7 @@ obj VM {
                                     str_substr(subj_sr, 0, off_sr)
                                         + rep_sr_s
                                         + str_substr(
-                                            subj_sr, off_sr + len(search_sr), slen_sr
+                                            subj_sr, off_sr + str_nbytes(search_sr), slen_sr
                                         )
                                 )
                             );  # G1.5: replace result
@@ -26349,7 +26367,7 @@ obj VM {
                 + " name='"
                 + _dbg_ne_nm
                 + "'\n";
-            write(2, _dbg_ne, len(_dbg_ne));
+            write(2, _dbg_ne, str_nbytes(_dbg_ne));
         }
         if js_is_proxy(ctor) {
             res_pxy_new: JSValue = self._proxy_trap_construct(ctor, args_nw, ctor);
@@ -26602,7 +26620,7 @@ obj VM {
                         + " nparams="
                         + str(len(_dbg_isc_cl.func.params))
                         + " has_LOAD_GLOBAL=True\n";
-                    write(2, _dbg_cand, len(_dbg_cand));
+                    write(2, _dbg_cand, str_nbytes(_dbg_cand));
                 }
             }
             if _dbg_is_scope {
@@ -26615,7 +26633,7 @@ obj VM {
                     + " nargs="
                     + str(len(args_nw))
                     + "\n";
-                write(2, _dbg_s1, len(_dbg_s1));
+                write(2, _dbg_s1, str_nbytes(_dbg_s1));
                 if is_fn_val(ctor_fn_nw) {
                     _dbg_sc_cl: JSClosure = self.realm.closures[get_fn_idx(ctor_fn_nw)];
                     _dbg_s2: str = "[DBG_SCOPE] ctor bytecode_len="
@@ -26629,7 +26647,7 @@ obj VM {
                         + " is_gen="
                         + str(_dbg_sc_cl.func.is_generator)
                         + "\n";
-                    write(2, _dbg_s2, len(_dbg_s2));
+                    write(2, _dbg_s2, str_nbytes(_dbg_s2));
                     _dbg_di: int = 0;
                     while _dbg_di < len(_dbg_sc_cl.func.code) and _dbg_di < 14 {
                         _dbg_op: Instruction = _dbg_sc_cl.func.code[_dbg_di];
@@ -26640,7 +26658,7 @@ obj VM {
                             + " arg="
                             + str(_dbg_op.arg)
                             + "\n";
-                        write(2, _dbg_s3, len(_dbg_s3));
+                        write(2, _dbg_s3, str_nbytes(_dbg_s3));
                         _dbg_di = _dbg_di + 1;
                     }
                 }
@@ -26690,7 +26708,7 @@ obj VM {
                         + " parent_undef="
                         + str(jsv_is_undefined(_dbg_parent))
                         + "\n";
-                    write(2, _dbg_nt, len(_dbg_nt));
+                    write(2, _dbg_nt, str_nbytes(_dbg_nt));
                 }
                 if self.had_exception {
                     exc_cls: JSValue = self.pending_exc;
@@ -28597,7 +28615,7 @@ obj VM {
                         + " nargs="
                         + str(len(args_nw))
                         + "\n";
-                    write(2, _dbg_new_msg, len(_dbg_new_msg));
+                    write(2, _dbg_new_msg, str_nbytes(_dbg_new_msg));
                 }
                 cr: JSValue = self.run_cl(cl_nw, ctor, new_obj, args_nw);
                 if self.had_exception {
@@ -29286,12 +29304,12 @@ obj VM {
     def _op_make_regexp(frame: CallFrame, ins: Instruction, st: ExecState) {
         mr_const: str = frame.func.constants.get(ins.arg);
         # format: "/pattern/flags" — find last "/" to split
-        mr_last: int = len(mr_const) - 1;
-        while mr_last > 0 and mr_const[mr_last] != "/" {
+        mr_last: int = str_nbytes(mr_const) - 1;
+        while mr_last > 0 and byte_chr(str_byte(mr_const, mr_last)) != "/" {
             mr_last = mr_last - 1;
         }
         mr_pat: str = str_substr(mr_const, 1, mr_last);
-        mr_flg: str = str_substr(mr_const, mr_last + 1, len(mr_const));
+        mr_flg: str = str_substr(mr_const, mr_last + 1, str_nbytes(mr_const));
         self._push(js_regexp_create(mr_pat, mr_flg));
     }
 
@@ -29393,7 +29411,7 @@ obj VM {
                     + " ctor_line="
                     + str(_dm_dbg_ln)
                     + "\n";
-                write(2, _dm_dbg, len(_dm_dbg));
+                write(2, _dm_dbg, str_nbytes(_dm_dbg));
             }
             js_object_set(dm_cls, WK_CTOR, dm_fn);
             dm_arity: int = 0;
@@ -30510,7 +30528,7 @@ obj VM {
                 + " state="
                 + str(settle_state)
                 + "\n";
-            write(2, _asd, len(_asd));
+            write(2, _asd, str_nbytes(_asd));
         }
         scheduler_push_reaction(
             self.realm, asd_rsm, asd_rjt, settle_state, settle_val, js_undefined()
@@ -30782,7 +30800,7 @@ obj VM {
             gai_s: str = str_from_id(jsv_to_table_id(gai_src));
             gai_chars: list[JSValue] = [];
             gai_ci2: int = 0;
-            gai_sn: int = len(gai_s);
+            gai_sn: int = str_nbytes(gai_s);
             while gai_ci2 < gai_sn {
                 gai_chars.append(
                     jsv_from_string_id(
@@ -31863,10 +31881,10 @@ obj VM {
                 os_excl_s: str = frame.func.constants.get(ins.arg2 - 1);
                 os_ep_start: int = 0;
                 os_ep_i: int = 0;
-                os_ep_n: int = len(os_excl_s);
+                os_ep_n: int = str_nbytes(os_excl_s);
                 while os_ep_i <= os_ep_n {
-                    if os_ep_i == os_ep_n or os_excl_s[os_ep_i] == "\x1f" {
-                        os_excl[str_intern(os_excl_s[os_ep_start:os_ep_i])] = True;
+                    if os_ep_i == os_ep_n or byte_chr(str_byte(os_excl_s, os_ep_i)) == "\x1f" {
+                        os_excl[str_intern(str_bslice(os_excl_s, os_ep_start, os_ep_i))] = True;
                         os_ep_start = os_ep_i + 1;
                     }
                     os_ep_i = os_ep_i + 1;
@@ -32002,7 +32020,7 @@ obj VM {
                 + " this_uninit="
                 + str(frame.this_uninitialized)
                 + "\n";
-            write(2, _dbg_ex, len(_dbg_ex));
+            write(2, _dbg_ex, str_nbytes(_dbg_ex));
         }
 
         # Loop invariants hoisted out of the dispatch loop (V0.4): the realm
@@ -33034,7 +33052,7 @@ obj VM {
                     + str(len(self.stack)) + ".." + str(len(self.stack) + self.rtop)
                     + " then frames (" + str(len(self.frames)) + " frames, "
                     + str(gr_nf) + " non-window locals), globals, …\n";
-                write(2, gr_msg, len(gr_msg));
+                write(2, gr_msg, str_nbytes(gr_msg));
             }
             gc_sp_freed: int = gc_collect(self.realm, gc_roots_all);
             # ADAPTIVE threshold (proportional-heap heuristic). A fixed
@@ -33236,7 +33254,7 @@ obj VM {
                 + " values on the stack, expected "
                 + str(npush)
                 + "\n";
-            write(2, rv_msg, len(rv_msg));
+            write(2, rv_msg, str_nbytes(rv_msg));
         }
         bd_k: int = npush - 1;
         while bd_k >= 0 and len(self.stack) > frame.stack_base {
@@ -38516,13 +38534,13 @@ def _vm_array_index_sort_key(kid: int) -> int {
     s: str = str_from_id(kid);
     np: int = 0;
     pi: int = 0;
-    sn: int = len(s);
+    sn: int = str_nbytes(s);
     # Byte-wise digit test: the previous `ch: str = str_substr(...)` per digit
     # parked an owned 1-byte str in a named local that is never released — two
     # leaked allocations per array-index property get (Array.prototype.join over
     # 800 elements retained 100KB per call).
     while pi < sn {
-        cc: int = ord(s[pi]);
+        cc: int = str_byte(s, pi);
         if cc >= 48 and cc <= 57 {
             np = np * 10 + (cc - 48);
         }
@@ -39786,9 +39804,9 @@ def _vm_fn_prop_key_hidden(kid: int) -> bool {
         # Cheap "__" byte test first: this runs per key of every Object.keys /
         # spread, so an ordinary key must not pay for a substring.
         fpk_s: str = str_from_id(kid);
-        if len(fpk_s) >= 8
-            and ord(fpk_s[0]) == 95
-            and ord(fpk_s[1]) == 95
+        if str_nbytes(fpk_s) >= 8
+            and str_byte(fpk_s, 0) == 95
+            and str_byte(fpk_s, 1) == 95
             and str_substr(fpk_s, 0, 8) == "__brand@" {
             return True;
         }
@@ -39921,7 +39939,8 @@ def _vm_object_keys(vm: VM, jsobj: JSValue) -> JSValue {
         boxed = js_String_new([jsobj]);
         raw_k: str = str_from_id(jsv_to_table_id(jsobj));
         ki: int = 0;
-        while ki < len(raw_k) {
+        _nb39931_raw_k: int = str_nbytes(raw_k);
+        while ki < _nb39931_raw_k {
             js_object_set(
                 boxed, str_intern_index(ki), js_str(str_substr(raw_k, ki, ki + 1))
             );
@@ -39982,7 +40001,8 @@ def _vm_object_values(vm: VM, jsobj: JSValue) -> JSValue {
         boxed = js_String_new([jsobj]);
         raw_v: str = str_from_id(jsv_to_table_id(jsobj));
         vi: int = 0;
-        while vi < len(raw_v) {
+        _nb39992_raw_v: int = str_nbytes(raw_v);
+        while vi < _nb39992_raw_v {
             js_object_set(
                 boxed, str_intern_index(vi), js_str(str_substr(raw_v, vi, vi + 1))
             );
@@ -40027,7 +40047,8 @@ def _vm_object_entries(vm: VM, jsobj: JSValue) -> JSValue {
         boxed = js_String_new([jsobj]);
         raw_e: str = str_from_id(jsv_to_table_id(jsobj));
         ei: int = 0;
-        while ei < len(raw_e) {
+        _nb40037_raw_e: int = str_nbytes(raw_e);
+        while ei < _nb40037_raw_e {
             js_object_set(
                 boxed, str_intern_index(ei), js_str(str_substr(raw_e, ei, ei + 1))
             );
@@ -41070,7 +41091,8 @@ def _vm_collect_iterable_items(vm: VM, src: JSValue) -> list[JSValue] {
     if jsv_is_string_cell(src) {
         ss: str = str_from_id(jsv_to_table_id(src));
         ci: int = 0;
-        while ci < len(ss) {
+        _nb41080_ss: int = str_nbytes(ss);
+        while ci < _nb41080_ss {
             items.append(jsv_from_string_id(str_intern(str_substr(ss, ci, ci + 1))));
             ci = ci + 1;
         }
@@ -41484,7 +41506,8 @@ def _vm_object_assign(vm: VM, target: JSValue, sources: list[JSValue]) -> JSValu
                 boxed = js_String_new([boxed]);
                 raw_as: str = str_from_id(jsv_to_table_id(src));
                 idx_as: int = 0;
-                while idx_as < len(raw_as) {
+                _nb41494_raw_as: int = str_nbytes(raw_as);
+                while idx_as < _nb41494_raw_as {
                     js_object_set(
                         boxed,
                         str_intern_index(idx_as),
@@ -43161,7 +43184,7 @@ def _vm_construct(
                 + " nargs="
                 + str(len(args))
                 + "\n";
-            write(2, _dbg_vc1, len(_dbg_vc1));
+            write(2, _dbg_vc1, str_nbytes(_dbg_vc1));
         }
         cr: JSValue = vm.run_cl(cl, ctor, new_obj, args);
         if vm.had_exception {
@@ -43202,7 +43225,7 @@ def _vm_construct(
                 + " has_super="
                 + str(js_object_has_own(ctor, WK_SUPER))
                 + "\n";
-            write(2, _dbg_vc2, len(_dbg_vc2));
+            write(2, _dbg_vc2, str_nbytes(_dbg_vc2));
         }
         if is_fn_val(ctor_fn) {
             cl_cls: JSClosure = vm.realm.closures[get_fn_idx(ctor_fn)];
@@ -48645,7 +48668,7 @@ def:pub vm_exec_reaction(
             aw_ri_re: int = jsv_to_int32(js_object_get(on_f, _KEY_ASYNC_RESUME_IDX));
             if _VM_PD2 {
                 _rr: str = "[PD2] EXEC async-resume idx=" + str(aw_ri_re) + "\n";
-                write(2, _rr, len(_rr));
+                write(2, _rr, str_nbytes(_rr));
             }
             vm._resume_async_frame(aw_ri_re, value, False);
         } elif jsv_is_object_cell(on_f)
@@ -49386,13 +49409,15 @@ def _vm_262_eval_script(vm: VM, args: list[JSValue]) -> JSValue {
         vm_throw_native(make_type_error("$262.evalScript requires a string"));
         return js_undefined();
     }
+    # The source goes straight into a str: storing js_to_string_prim's str in
+    # the JSValue local made the compiler keep that local as a str, which
+    # dropped a string argument and ran an empty script.
     src_v: JSValue = args[0];
-    if not jsv_is_string_cell(src_v) {
-        src_v = js_to_string_prim(src_v);  # jac:ignore[E1001] pointer reinterpret
-    }
     src: str = "";
     if jsv_is_string_cell(src_v) {
         src = str_from_id(jsv_to_table_id(src_v));
+    } else {
+        src = js_to_string_prim(src_v);
     }
     return vm.eval_script_source(src);
 }
@@ -49644,7 +49669,7 @@ def _impl_js_Function(args: list[JSValue]) -> JSValue {
             ce_msg = "Invalid or unexpected token";
         }
         if ce_msg.startswith("SyntaxError: ") {
-            ce_msg = ce_msg[13:];
+            ce_msg = str_bslice_from(ce_msg, 13);
         }
         exc_ce: JSValue = make_syntax_error(ce_msg);
         vm_throw_native(exc_ce);
@@ -49756,7 +49781,7 @@ def _not_fn_method_desc(this_v: JSValue, meth_v: JSValue, meth_name: str) -> str
         this_desc: str = "";
         if jsv_is_string_cell(this_v) {
             this_desc = str_from_id(jsv_to_table_id(this_v));
-            if len(this_desc) > 20 {
+            if str_nbytes(this_desc) > 20 {
                 this_desc = str_substr(this_desc, 0, 20) + "...";
             }
             this_desc = "\"" + this_desc + "\"";
@@ -50497,10 +50522,10 @@ def _vm_spread_excluded(se_s: str) -> list[int] {
     se_out: list[int] = [];
     se_start: int = 0;
     se_i: int = 0;
-    se_n: int = len(se_s);
+    se_n: int = str_nbytes(se_s);
     while se_i <= se_n {
-        if se_i == se_n or se_s[se_i] == "\x1f" {
-            se_out.append(str_intern(se_s[se_start:se_i]));
+        if se_i == se_n or byte_chr(str_byte(se_s, se_i)) == "\x1f" {
+            se_out.append(str_intern(str_bslice(se_s, se_start, se_i)));
             se_start = se_i + 1;
         }
         se_i = se_i + 1;

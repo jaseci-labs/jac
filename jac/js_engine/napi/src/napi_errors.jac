@@ -53,7 +53,11 @@ import from "libjs_native.so" {
     ) -> int;  def _napi_write_bool(p: int, v: int) -> int;
 }
 
-import from engine.src.runtime.mem { read_byte, byte_chr }
+import from engine.src.runtime.mem {
+    read_byte,
+    byte_chr,
+    str_nbytes
+}
 import from engine.src.ffi.libc { write, _exit }
 
 import from napi.src.napi_env {
@@ -267,7 +271,7 @@ def:pub _h_get_and_clear_last_exception(argv: int) -> int {
 """napi_fatal_exception — print the error and exit."""
 def:pub _h_fatal_exception(argv: int) -> int {
     msg: str = "FATAL NAPI EXCEPTION\n";
-    write(2, msg, len(msg));
+    write(2, msg, str_nbytes(msg));
     _exit(1);
     return NAPI_GENERIC_FAILURE;
 }

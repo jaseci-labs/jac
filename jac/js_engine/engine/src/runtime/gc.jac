@@ -118,7 +118,12 @@ import from engine.src.runtime.jsobj_type {
 }
 import from engine.src.ffi.libc { write, getenv, abort }
 import from engine.src.ffi.libuv { uv_hrtime }
-import from engine.src.runtime.mem { read_byte, write_byte }
+import from engine.src.runtime.mem {
+    read_byte,
+    write_byte,
+    str_bslice,
+    str_nbytes
+}
 # Pin registry lives in its own leaf module so any module can pin glob-held
 # singletons without an import cycle through this file.
 import from engine.src.runtime.gc_pin {
@@ -1520,7 +1525,7 @@ references them, then abort."""
 def _gc_verify_report(realm: Realm, extras: list[JSValue]) -> None {
     vr_msg: str = "[GCVERIFY] " + str(len(_GC_VERIFY_BAD))
         + " young cell(s) a minor collection would have freed are reachable (missing write barrier)\n";
-    write(2, vr_msg, len(vr_msg));
+    write(2, vr_msg, str_nbytes(vr_msg));
     vr_k: int = 0;
     for vr_bad in _GC_VERIFY_BAD {
         if vr_k >= 5 {
@@ -1538,7 +1543,7 @@ def _gc_verify_report(realm: Realm, extras: list[JSValue]) -> None {
         vr_line: str = "  young cell kind=" + str(jsv_cell_kind(vr_bad)) + " id="
             + str(jsv_to_table_id(vr_bad)) + vr_what + "; referenced by:"
             + _gc_verify_referrers(realm, vr_bad, extras) + "\n";
-        write(2, vr_line, len(vr_line));
+        write(2, vr_line, str_nbytes(vr_line));
     }
 }
 
@@ -1620,7 +1625,7 @@ def _gc_type_breakdown(realm: Realm) {
         + " shapeMode="
         + str(shape_ct)
         + "\n";
-    write(2, _hdr, len(_hdr));
+    write(2, _hdr, str_nbytes(_hdr));
     # Top-12 shapes by live count, with resolved key names (a shape's key-set
     # self-classifies: {type,props,key,ref}=React element, hidden marker keys
     # =promise/array, etc.).
@@ -1669,7 +1674,7 @@ def _gc_type_breakdown(realm: Realm) {
             + " {"
             + _kstr
             + "}\n";
-        write(2, _line, len(_line));
+        write(2, _line, str_nbytes(_line));
         _shown = _shown + 1;
     }
     _deep_live: int = 0;
@@ -1681,7 +1686,7 @@ def _gc_type_breakdown(realm: Realm) {
         + " idxEntries=" + str(_ss[2]) + " keysCache=" + str(_ss[3])
         + " edges=" + str(_ss[4]) + " leaves>=128slots=" + str(_ss[5])
         + " liveObjs>=128slots=" + str(_deep_live) + "\n";
-    write(2, _sl, len(_sl));
+    write(2, _sl, str_nbytes(_sl));
     for _lsid in shape_deepest_leaves(12) {
         _lk: list[int] = shape_keys(_lsid);
         _lk_n: int = shape_key_count(_lsid);
@@ -1691,7 +1696,7 @@ def _gc_type_breakdown(realm: Realm) {
             if _lj < 6 or _lj >= _lk_n - 2 {
                 _lkn: str = str_from_id(_lk[_lj]);
                 if len(_lkn) == 0 { _lkn = "#" + str(_lk[_lj]); }
-                if len(_lkn) > 24 { _lkn = _lkn[0:24]; }
+                if str_nbytes(_lkn) > 24 { _lkn = str_bslice(_lkn, 0, 24); }
                 _lks = _lks + _lkn + ",";
             } elif _lj == 6 {
                 _lks = _lks + "…,";
@@ -1700,7 +1705,7 @@ def _gc_type_breakdown(realm: Realm) {
         }
         _ll: str = "  leaf#" + str(_lsid) + " slots=" + str(shape_slot_count(_lsid))
             + " live=" + str(shape_hist.get(_lsid, 0)) + " {" + _lks + "}\n";
-        write(2, _ll, len(_ll));
+        write(2, _ll, str_nbytes(_ll));
     }
 }
 
@@ -1777,7 +1782,7 @@ def _gc_string_breakdown(realm: Realm) {
         + " freeSlots="
         + str(len(realm.free_heap_string_slots))
         + "\n";
-    write(2, _hdr, len(_hdr));
+    write(2, _hdr, str_nbytes(_hdr));
     _labels: list[str] = ["<=16", "<=64", "<=256", "<=1K", "<=16K", "<=256K", ">256K"];
     _bi2: int = 0;
     while _bi2 < 7 {
@@ -1789,7 +1794,7 @@ def _gc_string_breakdown(realm: Realm) {
                 + " strs, "
                 + str(b_by[_bi2] // 1024)
                 + "KB\n";
-            write(2, _l, len(_l));
+            write(2, _l, str_nbytes(_l));
         }
         _bi2 = _bi2 + 1;
     }
@@ -1974,7 +1979,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
                 + " cumSwept="
                 + str(_GC_TRACE_SWEPT)
                 + "\n";
-            write(2, _gc_msg, len(_gc_msg));
+            write(2, _gc_msg, str_nbytes(_gc_msg));
             if gc_total_cycles % 20 == 0 {
                 _gc_type_breakdown(realm);
                 _gc_string_breakdown(realm);
@@ -1990,7 +1995,7 @@ def:pub gc_collect(realm: Realm, extras: list[JSValue]) -> int {
         if len(_GC_VERIFY_BAD) > 0 {
             vp_msg: str = "[GCVERIFY] after a " + ("minor" if gc_minor else "major")
                 + " collection: references to dead cells follow\n";
-            write(2, vp_msg, len(vp_msg));
+            write(2, vp_msg, str_nbytes(vp_msg));
             _gc_verify_report(realm, extras);
             abort();
         }

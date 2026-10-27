@@ -51,6 +51,13 @@ import from engine.src.bytecode.op {
 import from engine.src.bytecode.optimizer { _bcopt_small_int_const, _BCOPT_NO_INT }
 import from engine.src.ffi.libc { calloc, abort }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_byte,
+    str_nbytes
+}
+
 # ── Gate / diagnostics (JS_REG_ISA=0, JS_REG_DEBUG=1; wired by init_global) ──
 glob _REG_GATE: int = 1,
      _REG_DEBUG: int = 0;
@@ -2551,12 +2558,12 @@ obj RegTranslator {
 eval: a call callee (`eval(` / `eval /*c*/ (`) that is not a member name
 (`x.eval(`) — the compiler's `_aa_collect` rule."""
 def _src_has_direct_eval(src: str) -> bool {
-    sn: int = len(src);
-    at: int = src.find("eval", 0);
+    sn: int = str_nbytes(src);
+    at: int = str_bfind(src, "eval", 0);
     while at >= 0 {
         ok: bool = True;
         if at > 0 {
-            pc: int = ord(src[at - 1]);
+            pc: int = str_byte(src, at - 1);
             if (pc >= 97 and pc <= 122)
                 or (pc >= 65 and pc <= 90)
                 or (pc >= 48 and pc <= 57)
@@ -2566,7 +2573,7 @@ def _src_has_direct_eval(src: str) -> bool {
             }
         }
         if ok and at + 4 < sn {
-            nc: int = ord(src[at + 4]);
+            nc: int = str_byte(src, at + 4);
             if (nc >= 97 and nc <= 122)
                 or (nc >= 65 and nc <= 90)
                 or (nc >= 48 and nc <= 57)
@@ -2579,14 +2586,14 @@ def _src_has_direct_eval(src: str) -> bool {
             pj: int = at - 1;
             while pj >= 0
                 and (
-                    src[pj] == " "
-                    or src[pj] == "\t"
-                    or src[pj] == "\n"
-                    or src[pj] == "\r"
+                    byte_chr(str_byte(src, pj)) == " "
+                    or byte_chr(str_byte(src, pj)) == "\t"
+                    or byte_chr(str_byte(src, pj)) == "\n"
+                    or byte_chr(str_byte(src, pj)) == "\r"
                 ) {
                 pj = pj - 1;
             }
-            if pj >= 0 and src[pj] == "." {
+            if pj >= 0 and byte_chr(str_byte(src, pj)) == "." {
                 ok = False;
             }
         }
@@ -2594,14 +2601,14 @@ def _src_has_direct_eval(src: str) -> bool {
             nj: int = at + 4;
             while nj < sn
                 and (
-                    src[nj] == " "
-                    or src[nj] == "\t"
-                    or src[nj] == "\n"
-                    or src[nj] == "\r"
+                    byte_chr(str_byte(src, nj)) == " "
+                    or byte_chr(str_byte(src, nj)) == "\t"
+                    or byte_chr(str_byte(src, nj)) == "\n"
+                    or byte_chr(str_byte(src, nj)) == "\r"
                 ) {
                 nj = nj + 1;
             }
-            if nj >= sn or (src[nj] != "(" and src[nj] != "/") {
+            if nj >= sn or (byte_chr(str_byte(src, nj)) != "(" and byte_chr(str_byte(src, nj)) != "/") {
                 ok = False;
             }
         }
@@ -2612,7 +2619,7 @@ def _src_has_direct_eval(src: str) -> bool {
         if ok {
             return True;
         }
-        at = src.find("eval", at + 4);
+        at = str_bfind(src, "eval", at + 4);
     }
     return False;
 }
@@ -3266,15 +3273,15 @@ walking back to `start`, only spaces, `*` and the keywords function / async
 def _src_eval_own_name(src: str, start: int, at: int) -> bool {
     i: int = at - 1;
     while i >= start {
-        ch: str = src[i];
+        ch: str = byte_chr(str_byte(src, i));
         if ch == " " or ch == "\t" or ch == "\n" or ch == "\r" or ch == "*" {
             i = i - 1;
         } else {
             we: int = i;
             while i >= start
                 and (
-                    (src[i] >= "a" and src[i] <= "z")
-                    or (src[i] >= "A" and src[i] <= "Z")
+                    (byte_chr(str_byte(src, i)) >= "a" and byte_chr(str_byte(src, i)) <= "z")
+                    or (byte_chr(str_byte(src, i)) >= "A" and byte_chr(str_byte(src, i)) <= "Z")
                 ) {
                 i = i - 1;
             }
@@ -3297,12 +3304,12 @@ def _src_eval_own_name(src: str, start: int, at: int) -> bool {
 }
 
 def _src_word_at(src: str, pos: int, wl: int, word: str) -> bool {
-    if wl != len(word) {
+    if wl != str_nbytes(word) {
         return False;
     }
     j: int = 0;
     while j < wl {
-        if src[pos + j] != word[j] {
+        if byte_chr(str_byte(src, pos + j)) != byte_chr(str_byte(word, j)) {
             return False;
         }
         j = j + 1;

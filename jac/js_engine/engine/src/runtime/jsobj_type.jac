@@ -46,7 +46,11 @@ import from engine.src.builtins.markers {
     _KEY_IS_ENV_OBJ,
     _KEY_IS_REGEXP_MARK
 }
-import from engine.src.runtime.mem { read_u64, write_i64 }
+import from engine.src.runtime.mem {
+    read_u64,
+    write_i64,
+    str_nbytes
+}
 import from engine.src.ffi.libc { realloc, free, write, abort, getenv, memmove }
 
 # JAC_SLOT_CHECK=1: bounds-check every JSObject slot read/write and abort on a
@@ -71,7 +75,7 @@ def _slot_check(sc_n: int, i: int, what: str) -> None {
             + ", object has "
             + str(sc_n)
             + " slots\n";
-        write(2, sc_msg, len(sc_msg));
+        write(2, sc_msg, str_nbytes(sc_msg));
         abort();
     }
 }
@@ -79,7 +83,7 @@ def _slot_check(sc_n: int, i: int, what: str) -> None {
 """Out of memory while growing a slot buffer."""
 def _slot_oom(size: int) -> None {
     so_msg: str = "FATAL: slot buffer OOM (size=" + str(size) + ")\n";
-    write(2, so_msg, len(so_msg));
+    write(2, so_msg, str_nbytes(so_msg));
     abort();
 }
 

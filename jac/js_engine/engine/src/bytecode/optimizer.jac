@@ -26,6 +26,12 @@ import from engine.src.bytecode.op {
     make_instruction
 }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_byte,
+    str_nbytes
+}
+
 # JS_BCOPT=0 lever. Wired from init_global (runtime/global.jac); the
 # js_compiler / jsbc-precompile binary never calls init_global and runs
 # with this default (ON) — .jsbc ships optimized code by design.
@@ -323,24 +329,25 @@ def _bcopt_small_int_const(fn: CompiledFunction, idx: int) -> int {
         return _BCOPT_NO_INT;
     }
     sc_s: str = fn.constants.values[idx];
-    if len(sc_s) < 3 or len(sc_s) > 10 or sc_s[0] != "n" or sc_s[1] != ":" {
+    if str_nbytes(sc_s) < 3 or str_nbytes(sc_s) > 10 or byte_chr(str_byte(sc_s, 0)) != "n" or byte_chr(str_byte(sc_s, 1)) != ":" {
         return _BCOPT_NO_INT;
     }
     sc_i: int = 2;
     sc_neg: bool = False;
-    if sc_s[2] == "-" {
+    if byte_chr(str_byte(sc_s, 2)) == "-" {
         sc_neg = True;
         sc_i = 3;
     }
-    if sc_i >= len(sc_s) {
+    if sc_i >= str_nbytes(sc_s) {
         return _BCOPT_NO_INT;
     }
-    if sc_s[sc_i] == "0" and sc_i + 1 < len(sc_s) {
+    if byte_chr(str_byte(sc_s, sc_i)) == "0" and sc_i + 1 < str_nbytes(sc_s) {
         return _BCOPT_NO_INT;
     }
     sc_v: int = 0;
-    while sc_i < len(sc_s) {
-        sc_c: int = ord(sc_s[sc_i]);
+    _nb348_sc_s: int = str_nbytes(sc_s);
+    while sc_i < _nb348_sc_s {
+        sc_c: int = str_byte(sc_s, sc_i);
         if sc_c < 48 or sc_c > 57 {
             return _BCOPT_NO_INT;
         }

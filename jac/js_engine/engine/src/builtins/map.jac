@@ -83,6 +83,10 @@ import from engine.src.builtins.native_kinds {
     NATIVE_KIND_MAP_SET_ITER_NEXT
 }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 # ── Hidden marker keys (canonical values in builtins/markers.na.jac) ─────────
 """Internal: Map.prototype object, wired by init_global."""
 glob _MAP_PROTO: JSValue = jsv_undefined();
@@ -327,7 +331,7 @@ def:pub js_svz_key(key: JSValue) -> int {
             # (the suffix-slice intern corruption class; caused nondeterministic
             # segfaults across the rollup suite when Map ops interned views).
             sk_hs: str = str_from_id(sk_sid);
-            sk_sid = str_intern(str_substr(sk_hs, 0, len(sk_hs)));
+            sk_sid = str_intern(str_substr(sk_hs, 0, str_nbytes(sk_hs)));
         }
         return jsv_from_string_id(sk_sid);
     }

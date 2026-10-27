@@ -66,10 +66,10 @@ import from engine.src.runtime.global {
 
 """True if `arg` is a CLI option token (starts with '-' but is not '-')."""
 def _cli_is_option(arg: str) -> bool {
-    if len(arg) < 2 {
+    if str_nbytes(arg) < 2 {
         return False;
     }
-    if arg[0] != "-" {
+    if byte_chr(str_byte(arg, 0)) != "-" {
         return False;
     }
     # Bare "-" means read script from stdin (Node) — treat as positional.
@@ -81,7 +81,7 @@ def _cli_is_option(arg: str) -> bool {
 
 """Unbuffered stderr line (print() is block-buffered on a pipe and _exit skips the flush)."""
 def _cli_err(s: str) {
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 def _cli_is_uint(s: str) -> bool {
@@ -89,8 +89,9 @@ def _cli_is_uint(s: str) -> bool {
         return False;
     }
     i: int = 0;
-    while i < len(s) {
-        o: int = ord(s[i]);
+    _nb92_s: int = str_nbytes(s);
+    while i < _nb92_s {
+        o: int = str_byte(s, i);
         if o < 48 or o > 57 {
             return False;
         }
@@ -150,13 +151,13 @@ def _cli_takes_value(opt: str) -> bool {
 def _cli_split_eq(arg: str) -> list[str] {
     out: list[str] = [];
     i: int = 0;
-    n: int = len(arg);
+    n: int = str_nbytes(arg);
     # Long options only: --name=value (not -e=... which Node treats differently)
-    if n >= 3 and arg[0] == "-" and arg[1] == "-" {
+    if n >= 3 and byte_chr(str_byte(arg, 0)) == "-" and byte_chr(str_byte(arg, 1)) == "-" {
         while i < n {
-            if arg[i] == "=" {
-                out.append(arg[0:i]);
-                out.append(arg[i + 1:]);
+            if byte_chr(str_byte(arg, i)) == "=" {
+                out.append(str_bslice(arg, 0, i));
+                out.append(str_bslice_from(arg, i + 1));
                 return out;
             }
             i = i + 1;
@@ -527,6 +528,14 @@ def print_bytecode(fns: list[CompiledFunction]) {
 
 import sys;
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 with entry {
     stack_expand();
     ignore_sigpipe();
@@ -638,7 +647,7 @@ with entry {
         opt: str = parts[0];
         inline_val: str = parts[1];
         has_inline: bool = inline_val != ""
-            or (len(arg) > len(opt) and arg[len(opt)] == "=");
+            or (str_nbytes(arg) > str_nbytes(opt) and byte_chr(str_byte(arg, str_nbytes(opt))) == "=");
 
         # Engine-debug flags (js_engine specific; also recorded in execArgv)
         if opt == "--ast" {
@@ -950,7 +959,7 @@ with entry {
         }
     }
     if flag_debug {
-        print("Running: " + js_file + "  (" + str(len(source)) + " bytes)");
+        print("Running: " + js_file + "  (" + str(str_nbytes(source)) + " bytes)");
     }
 
     # preload_requires / preload_imports / loaders are recorded for later waves
