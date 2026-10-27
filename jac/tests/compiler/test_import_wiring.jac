@@ -198,6 +198,50 @@ test "a wire-bound name resolves to the provider's declaration" {
 }
 
 
+test "a local def that reuses a wired name is a duplicate definition" {
+    base = _project(
+        {
+            "archwire.jac": (
+                "graph import {\n"
+                "    edge CoreInternal: core.* --> core.*;\n"
+                "}\n"
+                "\n"
+                "graph import core {\n"
+                "    util ++> svc { Spark }\n"
+                "}\n"
+            ),
+            "core/util.jac": "obj Spark {\n    has x: int = 0;\n}\n",
+            "core/svc.jac": (
+                "def Spark -> int;\n"
+                "\n"
+                "impl Spark -> int {\n"
+                "    return 7;\n"
+                "}\n"
+                "\n"
+                "def serve -> int {\n"
+                "    return Spark();\n"
+                "}\n"
+            )
+        }
+    );
+    try {
+        prog = _compile(base, "core/svc.jac");
+        dupes = [
+            e
+            for e in prog.errors_had
+            if e.code and e.code.code == "E2036"
+        ];
+        assert len(dupes) == 1 , _errors(prog);
+        assert dupes[0].loc.mod_path.endswith("svc.jac") , dupes[0].loc.mod_path;
+        assert dupes[0].loc.first_line == 1;
+        msg = dupes[0].msg;
+        assert "the wire on line 6 of archwire.jac binds it too" in msg , msg;
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
+
 test "moving a wire changes its consumer's wiring digest, editing another wire does not" {
     import from jaclang.compiler.driver.wiring { wiring_digest_for }
     import from jaclang.compiler.frontend.unitree { Name }
