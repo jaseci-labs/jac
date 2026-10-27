@@ -873,6 +873,7 @@ test "a keyset cursor walks a neighbourhood once, in edge order" {
 
 test "a page or a count from an in-memory node follows the store's semantics" {
     import from jaclang.data.query_planner {
+        resolve_query,
         resolve_query_edges,
         resolve_query_page,
         resolve_query_type_counts
@@ -921,44 +922,60 @@ test "a page or a count from an in-memory node follows the store's semantics" {
                 assert refused , origin;
             }
 
-            def shape(found: list[any]) -> list[tuple[str, any]] {
-                return [(type(x.archetype).__name__, x.archetype?.rank) for x in found];
-            }
-            # (graph, query): a sliced visit slices the edge-then-node list it
-            # returns, stored or not; a limit counts edges.
-            visits: dict[str, list[list[tuple[str, any]]]] = {};
-            for (name, origin) in [("stored", stored), ("in-memory", b)] {
-                visits[name] = [
-                    shape(
-                        resolve_query_edges(
-                            mem,
-                            GraphQuery(
-                                origin,
-                                hops=[QHop(dir=2, nd=FItem)],
-                                edges_only=True,
-                                slc=slice(0, 2)
-                            ).visit()
-                        )
-                    ),
-                    shape(
-                        resolve_query_edges(
-                            mem,
-                            GraphQuery(
-                                origin,
-                                hops=[QHop(dir=2, nd=FItem)],
-                                edges_only=True,
-                                limit=2
-                            ).visit()
-                        )
-                    )
+            def shape(found: list[any]) -> list[any] {
+                return [
+                    x.archetype?.rank
+                        if x.archetype?.rank is not None
+                        else x.archetype?.note for x in found
                 ];
             }
-            assert [len(v) for v in visits["stored"]] == [2, 4] , visits;
-            assert [[r[1] for r in v] for v in visits["stored"]]
-                == [[r[1] for r in v] for v in visits["in-memory"]] , visits;
-            assert all(e is not None for (_, e, _) in page) , (
-                f"a fieldless edge between in-memory nodes is still an edge: {page}"
-            );
+            parallel = FBoard(name="parallel");
+            for i in range(6) {
+                parallel +>:FNote(note=f"n{i}"):+> FItem(rank=i);
+            }
+            # (bound shape): every read, node or edge, plain or visit, bounds a
+            # stored graph exactly as it bounds the same graph in memory. An
+            # explicit limit wins over slc for plain reads; a visit's slc slices
+            # its final edge-then-node list after a limit counted edges.
+            shapes = [
+                {"limit": 2},
+                {"limit": 2, "offset": 1},
+                {"slc": slice(1, 3)},
+                {"limit": 2, "slc": slice(2, 3)},
+                {"slc": slice(0, 5, 2)},
+                {"limit": 4, "offset": 1, "slc": slice(1, 4)}
+            ];
+            for raw in shapes {
+                bound: dict[str, any] = raw;
+                for (edges_only, visiting) in [
+                    (False, False),
+                    (True, False),
+                    (True, True)
+                ] {
+                    got: list[list[any]] = [];
+                    for origin in [stored, parallel] {
+                        gq = GraphQuery(
+                            origin,
+                            hops=[QHop(dir=2, nd=FItem)],
+                            edges_only=edges_only,
+                            limit=bound.get("limit"),
+                            offset=bound.get("offset", 0),
+                            slc=bound.get("slc")
+                        );
+                        if visiting {
+                            gq = gq.visit();
+                        }
+                        got.append(
+                            shape(
+                                resolve_query_edges(mem, gq)
+                                    if edges_only
+                                    else resolve_query(mem, gq)
+                            )
+                        );
+                    }
+                    assert got[0] == got[1] , (bound, edges_only, visiting, got);
+                }
+            }
             (per_edge, _) = resolve_query_type_counts(
                 mem, GraphQuery(b, hops=[QHop(dir=2)]), 'edge'
             );

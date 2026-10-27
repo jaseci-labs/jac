@@ -267,7 +267,7 @@ impl walk_edges(origins: list[Anchor], q: GraphQuery, gated: bool) -> list[Ancho
         edges = edges[q.offset:q.offset + q.limit];
     }
     if not q.from_visit {
-        return edges[q.slc] if q.slc is not None else edges;
+        return edges[q.slc] if q.slc is not None and q.limit is None else edges;
     }
     out: list[Anchor] = [];
     seen_nodes: set = set();
