@@ -261,6 +261,18 @@ impl _diff_positional_fields(
             )
         );
     }
+    old_required: list[str] = old.get("required_fields", []);
+    for name in new.get("required_fields", []) {
+        if name not in old_required and name not in new_members {
+            out.append(
+                ApiChange(
+                    path=path,
+                    level=MAJOR,
+                    reason=f"the constructor now requires inherited field '{name}' (existing constructions break)"
+                )
+            );
+        }
+    }
     kept_old = [
         n
         for n in old_pos

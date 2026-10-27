@@ -43,7 +43,7 @@ def _field(sym: Symbol, mtype: any) -> dict[str, any];
 
 def _members(sym: Symbol, evaluator: any) -> dict[str, dict[str, any]];
 
-def _positional_fields(ctype: any, evaluator: any) -> list[str] | None;
+def _synthesized_init(ctype: any, evaluator: any) -> any;
 
 def describe_symbol(sym: Symbol, evaluator: any) -> dict[str, any] | None;
 

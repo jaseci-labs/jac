@@ -114,7 +114,7 @@ impl _members(sym: Symbol, evaluator: any) -> dict[str, dict[str, any]] {
     return out;
 }
 
-impl _positional_fields(ctype: any, evaluator: any) -> list[str] | None {
+impl _synthesized_init(ctype: any, evaluator: any) -> any {
     if not isinstance(ctype, ClassType) or not ctype.is_data_class() {
         return None;
     }
@@ -122,12 +122,7 @@ impl _positional_fields(ctype: any, evaluator: any) -> list[str] | None {
     if member is not None and member.class_type.shared.class_name != "object" {
         return None;
     }
-    ctor = evaluator._create_object_init_method(ctype);
-    return [
-        p.name
-        for p in ctor.parameters
-        if not p.is_self and PARAM_KINDS.get(int(p.param_kind)) == "normal"
-    ];
+    return evaluator._create_object_init_method(ctype);
 }
 
 impl describe_symbol(sym: Symbol, evaluator: any) -> dict[str, any] | None {
@@ -149,9 +144,23 @@ impl describe_symbol(sym: Symbol, evaluator: any) -> dict[str, any] | None {
             "bases": bases,
             "members": _members(sym, evaluator)
         };
-        positional = _positional_fields(ctype, evaluator);
-        if positional is not None {
-            desc["positional_fields"] = positional;
+        ctor = _synthesized_init(ctype, evaluator);
+        if ctor is not None {
+            params = [
+                p
+                for p in ctor.parameters
+                if not p.is_self
+            ];
+            desc["positional_fields"] = [
+                p.name
+                for p in params
+                if PARAM_KINDS.get(int(p.param_kind)) == "normal"
+            ];
+            desc["required_fields"] = [
+                p.name
+                for p in params
+                if p.default_value is None and not p.has_default
+            ];
         }
         return _with_doc(desc, _decl_of(sym));
     }
@@ -281,7 +290,7 @@ impl _as_format(surface: dict[str, any], fmt: int) -> dict[str, any] {
             name: {
                 k: v
                 for (k, v) in d.items()
-                if k != "positional_fields"
+                if k not in ("positional_fields", "required_fields")
             } for (name, d) in symbols.items()
         } for (module, symbols) in surface.get("modules", {}).items()
     };

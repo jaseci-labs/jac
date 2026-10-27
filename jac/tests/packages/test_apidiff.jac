@@ -228,6 +228,12 @@ test "a field that moves an existing constructor argument is major" {
             "kit.C"
         ),
         (
+            "a required field added to a private base class",
+            "obj _Base {\n    has x: int;\n}\n\nobj C(_Base) {}\n",
+            "obj _Base {\n    has x: int;\n    has b: int;\n}\n\nobj C(_Base) {}\n",
+            "kit.C"
+        ),
+        (
             "a node field inserted before an existing one",
             "node P {\n    has name: str = \"\";\n}\n",
             "node P {\n    has age: int = 0;\n    has name: str = \"\";\n}\n",
@@ -288,7 +294,7 @@ test "a surface from before API format 2 skips the order check and keeps its dig
                 name: {
                     k: v
                     for (k, v) in d.items()
-                    if k != "positional_fields"
+                    if k not in ("positional_fields", "required_fields")
                 } for (name, d) in old["modules"]["kit"].items()
             }
         }
