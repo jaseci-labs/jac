@@ -1989,7 +1989,7 @@ impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | 
     return lowered;
 }
 
-impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
+impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
         return;
