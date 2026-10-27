@@ -1,13 +1,11 @@
 //! The JavaScript engine's foreign code, built from the build.zig.zon pins
-//! into the two shared libraries that ship beside `libjs_engine.so`:
+//! into `libjs_native.so`, which ships beside `libjs_engine.so`:
 //!
 //!   * `libjs_native.so`, compiled here: the engine's C shims -- Node-API
 //!     (`napi/shim`), TZif (`tz_shim`) and ECMA-402 over ICU (`icu_shim`) --
 //!     plus PCRE2 (RegExp), libuv (event loop), nghttp2 (http2), llhttp
 //!     (http/1 parser), brotli, ICU with its data linked in, and mimalloc
 //!     (the allocator, see addMimalloc);
-//!   * `libwasmtime.so`, upstream's prebuilt Wasmtime C API (WebAssembly).
-//!
 //! Sources are compiled straight into the library, so every object is kept;
 //! the version script exports only the C APIs the engine imports plus the
 //! Node-API surface native addons resolve against, and keeps ICU and the C++
@@ -19,7 +17,7 @@ const std = @import("std");
 const ICU_DATA_SYMBOL = "icudt74_dat";
 const ICU_DATA_FILE = "source/data/in/icudt74l.dat";
 
-pub const JsNative = struct { native: std.Build.LazyPath, wasmtime: std.Build.LazyPath };
+pub const JsNative = struct { native: std.Build.LazyPath };
 
 /// Null until the lazy dependencies are fetched, and on targets the engine
 /// does not support yet (it is Linux x86_64 only).
@@ -32,7 +30,6 @@ pub fn addJsNative(
     // Ask for every package before giving up on any, so one configure pass
     // fetches them all.
     const deps = .{
-        b.lazyDependency("wasmtime_x86_64_linux", .{}),
         b.lazyDependency("pcre2", .{
             .target = target,
             .optimize = optimize,
@@ -47,8 +44,8 @@ pub fn addJsNative(
         b.lazyDependency("mimalloc", .{}),
     };
     inline for (deps) |dep| if (dep == null) return null;
-    const wasmtime, const pcre2, const libuv, const nghttp2, const brotli, const llhttp, const napi_headers, const icu, const mimalloc = .{
-        deps[0].?, deps[1].?, deps[2].?, deps[3].?, deps[4].?, deps[5].?, deps[6].?, deps[7].?, deps[8].?,
+    const pcre2, const libuv, const nghttp2, const brotli, const llhttp, const napi_headers, const icu, const mimalloc = .{
+        deps[0].?, deps[1].?, deps[2].?, deps[3].?, deps[4].?, deps[5].?, deps[6].?, deps[7].?,
     };
 
     const mod = b.createModule(.{
@@ -81,7 +78,7 @@ pub fn addJsNative(
 
     const lib = b.addLibrary(.{ .name = "js_native", .linkage = .dynamic, .root_module = mod });
     lib.setVersionScript(b.path("js_engine/native/js_native.ver"));
-    return .{ .native = lib.getEmittedBin(), .wasmtime = wasmtime.path("lib/libwasmtime.so") };
+    return .{ .native = lib.getEmittedBin() };
 }
 
 /// mimalloc in override mode: the library defines malloc, free and the rest of

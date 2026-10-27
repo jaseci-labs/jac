@@ -60,7 +60,9 @@ import from engine.src.runtime.jsstring {
     str_from_id,
     str_substr,
     str_char_at,
-    utf8_encode_scalar
+    utf8_encode_scalar,
+    utf8_decode_str_to_codepoints,
+    _str_is_nul_escape
 }
 import from engine.src.runtime.error {
     make_syntax_error,
@@ -381,7 +383,12 @@ def _parse_string(p: JSONParser) -> str {
         # tab/newline inside a string is a SyntaxError, not content. (Bytes of a
         # multi-byte UTF-8 character are all >= 0x80; U+0000 is stored as the
         # sentinel C0 80.)
-        if b < 32 or (b == 192 and p.pos + 1 < n and ord(src[p.pos + 1]) == 128) {
+        is_nul: bool = False;
+        if b == 192 or b == 65533 {
+            byte_pos: int = len(src[:p.pos].encode("utf-8"));
+            is_nul = _str_is_nul_escape(src, byte_pos);
+        }
+        if b < 32 or is_nul {
             if p.pos > run_start {
                 parts.append(str_substr(src, run_start, p.pos));
             }
@@ -788,70 +795,36 @@ glob _JSON_ESC_BSL: str = "\\" + "\\",
      _JSON_ESC_U: str = "\\" + "u";
 
 def _strf_string(s: str) -> str {
-    # Printable ASCII (0x20..0x7E: no control characters, no CESU-8 lead
-    # byte) without `"` or `\\` needs no escape: one copy (V4.19).
+    # Printable text without quotes or backslashes needs no escape.
     if s.isprintable() and s.find("\"") < 0 and s.find("\\") < 0 {
         return "\"" + s + "\"";
     }
-    # list[str] + join avoids O(n^2) host string concat on large payloads.
-    parts: list[str] = [];
-    parts.append("\"");
-    i: int = 0;
-    n: int = len(s);
-    while i < n {
-        ch: str = str_char_at(s, i);
-        o: int = ord(ch);
-        if ch == "\"" {
+    # Decode the engine's UTF-8/CESU-8 representation rather than treating
+    # native Jac codepoint indices as raw bytes. This also maps the C0 80 NUL
+    # sentinel to U+0000 before JSON escaping.
+    cps: list[int] = utf8_decode_str_to_codepoints(s);
+    parts: list[str] = ["\""];
+    for cp in cps {
+        if cp == 34 {
             parts.append(_JSON_ESC_QUOT);
-        } elif ch == "\\" {
-            # A backslash is always text here: U+0000 is the C0 80 sentinel
-            # (handled below), so `\x00` in a string is four real characters.
+        } elif cp == 92 {
             parts.append(_JSON_ESC_BSL);
-        } elif ch == "\n" {
+        } elif cp == 10 {
             parts.append(_JSON_ESC_N);
-        } elif o == 13 {
+        } elif cp == 13 {
             parts.append(_JSON_ESC_R);
-        } elif o == 9 {
+        } elif cp == 9 {
             parts.append(_JSON_ESC_T);
-        } elif o == 8 {
-            # Backspace — compare via code point; Jac "\\b" literals are unreliable.
+        } elif cp == 8 {
             parts.append(_JSON_ESC_B);
-        } elif o == 12 {
-            # Form feed
+        } elif cp == 12 {
             parts.append(_JSON_ESC_F);
-        } elif o < 32 {
-            # Other control characters → \u00XX
+        } elif cp < 32 or (cp >= 55296 and cp <= 57343) {
             parts.append(_JSON_ESC_U);
-            parts.append("00");
-            parts.append(_hex2(o));
-        } elif o == 0xC0 and i + 1 < n and ord(str_char_at(s, i + 1)) == 0x80 {
-            # U+0000 (the engine's NUL sentinel C0 80) → \u0000
-            parts.append(_JSON_ESC_U);
-            parts.append("0000");
-            i = i + 2;
-            continue;
-        } elif o == 0xED {
-            # Potential CESU-8 lone surrogate (U+D800..U+DFFF): 3-byte pattern ED [A0-BF] [80-BF]
-            sur_ok: bool = False;
-            if i + 2 < n {
-                b1: int = ord(str_char_at(s, i + 1));
-                b2: int = ord(str_char_at(s, i + 2));
-                if b1 >= 0xA0 and b1 <= 0xBF and b2 >= 0x80 and b2 <= 0xBF {
-                    cp_s: int = 0xD000 | ((b1 & 0x3F) << 6) | (b2 & 0x3F);
-                    parts.append(_JSON_ESC_U);
-                    parts.append(_hex4(cp_s));
-                    i = i + 3;
-                    sur_ok = True;
-                    continue;
-                }
-            }
-            if not sur_ok {
-                parts.append(ch);
-            }
+            parts.append(_hex4(cp));
         } else {
-            parts.append(ch);
+            parts.append(utf8_encode_scalar(cp));
         }
-        i = i + 1;
     }
     parts.append("\"");
     return "".join(parts);

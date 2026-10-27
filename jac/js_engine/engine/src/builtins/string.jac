@@ -55,6 +55,11 @@ import from engine.src.runtime.jsstring {
     str_from_id,
     str_char_at,
     str_substr,
+    str_byte_substr,
+    str_is_nul_escape,
+    str_utf8_byte_view,
+    str_view_byte_at,
+    utf8_byte_len,
     str_to_float,
     utf8_encode_scalar,
     js_string_utf16_units,
@@ -1155,7 +1160,7 @@ def:pub js_str_slice(v: JSValue, start: JSValue, end_v: JSValue) -> JSValue {
             b0_x: int = u16ix_unit_to_byte(ix_sl, s, st_x);
             b1_x: int = u16ix_unit_to_byte(ix_sl, s, en_x);
             if b0_x >= 0 and b1_x >= 0 {
-                return _mk_str(str_substr(s, b0_x, b1_x));
+                return _mk_str(str_byte_substr(s, b0_x, b1_x));
             }
             # A bound splits a surrogate pair: cut the code units instead.
             return _units_substr(js_string_utf16_units(s), st_x, en_x);
@@ -2293,8 +2298,27 @@ decodeURIComponent("%3B") is ";"."""
 def _uri_decode(s: str, preserve_reserved: bool) -> JSValue {
     result: str = "";
     i: int = 0;
+    byte_i: int = 0;
     slen: int = len(s);
+    # One byte view per decode: checking the NUL sentinel must not re-encode
+    # the whole string for every character (str_is_nul_escape does, which
+    # made decoding an N-length input copy O(n^2) bytes).
+    sraw: bytes = str_utf8_byte_view(s);
+    nraw: int = len(sraw);
     while i < slen {
+        # The engine stores U+0000 as the two-byte C0 80 sentinel. Treat it as
+        # one JS code unit; iterating the raw Jac string would otherwise copy
+        # the two encoded bytes separately and change the value.
+        if byte_i + 1 < nraw and str_view_byte_at(sraw, byte_i) == 192
+            and str_view_byte_at(sraw, byte_i + 1) == 128 {
+            result = result + utf8_encode_scalar(0);
+            # The sentinel is one JS code unit: one Jac char (i) but two
+            # raw UTF-8 bytes (byte_i). Advancing i by 2 desynced the char
+            # index and dropped the character after every NUL.
+            i = i + 1;
+            byte_i = byte_i + 2;
+            continue;
+        }
         ch: str = str_char_at(s, i);
         if ch == "%" {
             # Must have exactly 2 hex digits following % — §19.2.6.2 Decode step 4
@@ -2318,6 +2342,7 @@ def _uri_decode(s: str, preserve_reserved: bool) -> JSValue {
                     result = result + chr(byte1);
                 }
                 i = i + 3;
+                byte_i = byte_i + 3;
             } elif byte1 >= 192 and byte1 < 224 {
                 # 2-byte UTF-8: 110xxxxx 10xxxxxx — need %XX%XX
                 if i + 5 >= slen {
@@ -2336,6 +2361,7 @@ def _uri_decode(s: str, preserve_reserved: bool) -> JSValue {
                 }
                 result = result + utf8_encode_scalar(cp);
                 i = i + 6;
+                byte_i = byte_i + 6;
             } elif byte1 >= 224 and byte1 < 240 {
                 # 3-byte UTF-8: 1110xxxx 10xxxxxx 10xxxxxx — need %XX%XX%XX
                 if i + 8 >= slen {
@@ -2355,6 +2381,7 @@ def _uri_decode(s: str, preserve_reserved: bool) -> JSValue {
                 }
                 result = result + utf8_encode_scalar(cp);
                 i = i + 9;
+                byte_i = byte_i + 9;
             } elif byte1 >= 240 and byte1 < 248 {
                 # 4-byte UTF-8: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx — need %XX%XX%XX%XX
                 if i + 11 >= slen {
@@ -2378,6 +2405,7 @@ def _uri_decode(s: str, preserve_reserved: bool) -> JSValue {
                 }
                 result = result + utf8_encode_scalar(cp);
                 i = i + 12;
+                byte_i = byte_i + 12;
             } else {
                 # Byte 0x80-0xBF (continuation without lead) or 0xF8+ — not valid UTF-8 lead
                 vm_throw_native(make_uri_error("URI malformed"));
@@ -2386,6 +2414,7 @@ def _uri_decode(s: str, preserve_reserved: bool) -> JSValue {
         } else {
             result = result + ch;
             i = i + 1;
+            byte_i = byte_i + utf8_byte_len(ch);
         }
     }
     return _mk_str(result);

@@ -196,11 +196,12 @@ def:pub str_from_raw(p: Ptr) -> str {
 }
 
 """Owned str copy of the NUL-terminated C string at `p` in memory someone
-else allocated (libuv, Wasmtime, libc). Casting such a pointer (`s: str = p`)
-makes the str's refcount checks read the 32 bytes before `p`, which only
-io_alloc guarantees zeroed (see str_from_raw): with another allocator's chunk
-header there, a check that happens to pass makes the cast's release free or
-corrupt foreign memory. So the bytes are copied into an io_alloc buffer first."""
+else allocated (libuv, the WebAssembly runtime, libc). Casting such a pointer
+(`s: str = p`) makes the str's refcount checks read the 32 bytes before `p`,
+which only io_alloc guarantees zeroed (see str_from_raw): with another
+allocator's chunk header there, a check that happens to pass makes the cast's
+release free or corrupt foreign memory. So the bytes are copied into an
+io_alloc buffer first."""
 def:pub str_from_foreign_cstr(p: Ptr) -> str {
     if p == 0 {
         return "";

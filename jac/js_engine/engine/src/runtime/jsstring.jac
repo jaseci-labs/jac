@@ -14,7 +14,14 @@ Bun reference: src/string/bun_string.zig, src/bun.js/webcore/Blob.zig
 """
 
 import from engine.src.runtime.realm { Realm, gc_note_alloc, realm_request_gc }
-import from engine.src.runtime.mem { Ptr, io_alloc, io_free, write_byte, str_from_raw, byte_chr }
+import from engine.src.runtime.mem {
+    Ptr,
+    io_alloc,
+    io_free,
+    write_byte,
+    str_from_raw,
+    byte_chr
+}
 
 # Byte-based GC trigger for heap strings. The object trigger counts ALLOCATIONS
 # (gc_note_alloc), which cannot tell a 500KB slice from a 1-char string: a
@@ -134,14 +141,58 @@ def:pub str_substr(s: str, start: int, end: int) -> str {
     if st >= en {
         return "";
     }
-    # Jac `str` is UTF-8 byte-wise, so [st,en) is one contiguous byte range.
-    # `s[st:en]` alone is a BORROWED view ({root, data, len} into `s`); the
+    # Jac str slices use Unicode code-point indices. `s[st:en]` alone is a
+    # BORROWED view ({root, data, len} into `s`); the
     # result goes on to outlive `s` (heap_strings, swept by the JS GC), so take
     # an owned, length-stamped copy: a repeat with a runtime count memcpys the
     # view once (cf. str_stamp_copy). Replaces a per-byte write_byte(ord(s[k]))
     # loop plus a second full copy through str_from_raw.
     cp_n: int = 1;
     return s[st:en] * cp_n;
+}
+
+"""
+Extract a raw UTF-8 byte range from the engine string representation.
+Offsets are byte offsets (for PCRE2 and UTF-8 conversion), not Jac codepoint
+indices. Use byte_chr to preserve CESU-8 and the modified-UTF-8 NUL sentinel.
+"""
+def:pub str_byte_substr(s: str, start: int, end: int) -> str {
+    if s.isascii() {
+        return str_substr(s, start, end);
+    }
+    raw: bytes = _str_utf8_bytes(s);
+    n: int = len(raw);
+    st: int = start;
+    en: int = end;
+    if st < 0 {
+        st = n + st;
+        if st < 0 {
+            st = 0;
+        }
+    }
+    if en < 0 {
+        en = n + en;
+        if en < 0 {
+            en = 0;
+        }
+    }
+    if st > n {
+        st = n;
+    }
+    if en > n {
+        en = n;
+    }
+    if st >= en {
+        return "";
+    }
+    parts: list[str] = [];
+    i: int = st;
+    while i < en {
+        b: int = _raw_byte_at(raw, i);
+        parts.append(nul_sentinel() if b == 0 else byte_chr(b));
+        i = i + 1;
+    }
+    return "".join(parts);
 }
 
 """Return a length-STAMPED copy of `s`.
@@ -545,7 +596,9 @@ glob U16IX_STEP: int = 64,
      U16IX_SLOTS: int = 256,
      _U16IX: list[U16Index] = [],
      _U16IX_NEXT: int = 0,
-     _U16IX_POS: dict[int, int] = {};
+     _U16IX_POS: dict[int, int] = {},
+     _U16RAW_ID: int = -1,
+     _U16RAW: bytes = bytes([]);
 
 # string id -> its slot in _U16IX: lookups and the per-allocation invalidation
 # in _heap_slot_alloc used to scan all U16IX_SLOTS entries (the scan alone was
@@ -594,6 +647,9 @@ def _heap_slot_alloc(s: str, rl: int, rr: int, rlen: int, asc: int) -> int {
         # now stale — drop the memo. (Any other slot leaves the memo valid.)
         if (HEAP_STRING_BASE + idx) == _U16MEMO_ID {
             _U16MEMO_ID = -1;
+        }
+        if (HEAP_STRING_BASE + idx) == _U16RAW_ID {
+            _U16RAW_ID = -1;
         }
         u16_slot: int = _U16IX_POS.get(HEAP_STRING_BASE + idx, -1);
         if u16_slot >= 0 {
@@ -1556,6 +1612,44 @@ def:pub utf8_encode_scalar(cp: int) -> str {
     return chr(cp);
 }
 
+def _str_utf8_bytes(s: str) -> bytes {
+    return s.encode("utf-8");
+}
+
+def:pub utf8_byte_len(s: str) -> int {
+    if s.isascii() {
+        return len(s);
+    }
+    return len(_str_utf8_bytes(s));
+}
+
+def _raw_byte_at(data: bytes, i: int) -> int {
+    return int.from_bytes(data[i:i + 1], "big");
+}
+
+"""Byte view of s for offset-based scans. One encode per string: helpers
+like str_is_nul_escape re-encode the whole string on every call, which is
+O(n^2) when a loop consults them per character (URI decode did)."""
+def:pub str_utf8_byte_view(s: str) -> bytes {
+    return _str_utf8_bytes(s);
+}
+
+"""Byte at offset i of a str_utf8_byte_view view."""
+def:pub str_view_byte_at(data: bytes, i: int) -> int {
+    return _raw_byte_at(data, i);
+}
+
+def _raw_bytes_to_ints(data: bytes) -> list[int] {
+    out: list[int] = [];
+    i: int = 0;
+    n: int = len(data);
+    while i < n {
+        out.append(_raw_byte_at(data, i));
+        i = i + 1;
+    }
+    return out;
+}
+
 """
 Decode a raw list of byte integers (0-255) to Unicode code-point integers.
 Validates continuation bytes: invalid sequences fall back to the lone lead byte.
@@ -1629,46 +1723,53 @@ def:pub _utf8_bytes_to_codepoints(raw: list[int]) -> list[int] {
 
 """True when s[i..i+1] is the NUL code-unit sentinel (bytes C0 80)."""
 def _str_is_nul_escape(s: str, i: int) -> bool {
-    # byte values, not one-character strings: this runs per byte in the
-    # offset walkers (V4.26)
-    if i + 1 >= len(s) or ord(s[i]) != 192 {
-        return False;
-    }
-    return ord(s[i + 1]) == 128;
+    raw: bytes = _str_utf8_bytes(s);
+    return i >= 0
+        and i + 1 < len(raw)
+        and _raw_byte_at(raw, i) == 192
+        and _raw_byte_at(raw, i + 1) == 128;
+}
+
+"""Public NUL-sentinel predicate for builtin modules outside runtime."""
+def:pub str_is_nul_escape(s: str, i: int) -> bool {
+    return _str_is_nul_escape(s, i);
 }
 
 """Convert a raw BYTE offset in `s` into a UTF-16 code-unit offset.
 
-Byte offsets (what native `str.find`/`str.rfind` and byte slicing return) do NOT
-equal JS string indices when `s` holds multi-byte UTF-8 or the 2-byte C0 80 NUL
+Byte offsets (what PCRE2 and raw-byte APIs return) do NOT equal JS string indices
+when `s` holds multi-byte UTF-8 or the 2-byte C0 80 NUL
 sentinel: a 2/3-byte char is 1 unit, a 4-byte char is 2 units (surrogate pair),
-and the 4-byte NUL sentinel is 1 unit. Position-returning String methods
+and the 2-byte C0 80 NUL sentinel is 1 unit. Position-returning String methods
 (indexOf/lastIndexOf) MUST report code-unit indices — matching .length /
 charCodeAt / slice — or callers doing position arithmetic (e.g. rollup's
 findFirstOccurrenceOutsideComment + MagicString) go out of bounds."""
 def:pub js_string_byte_to_unit(s: str, byte_off: int) -> int {
-    n: int = len(s);
+    if s.isascii() {
+        if byte_off <= 0 {
+            return 0;
+        }
+        return byte_off if byte_off < len(s) else len(s);
+    }
+    raw: bytes = _str_utf8_bytes(s);
+    n: int = len(raw);
     lim: int = byte_off;
+    if lim < 0 {
+        lim = 0;
+    }
     if lim > n {
         lim = n;
     }
     units: int = 0;
     i: int = 0;
     while i < lim {
-        # (the C0 80 NUL sentinel is a 2-byte, 1-unit lead like any < 224)
-        b: int = ord(s[i]);
-        if b < 128 {
+        cw: int = _u16_step(raw, i, n);
+        if cw == 0 {
             i = i + 1;
             units = units + 1;
-        } elif b < 224 {
-            i = i + 2;
-            units = units + 1;
-        } elif b < 240 {
-            i = i + 3;
-            units = units + 1;
         } else {
-            i = i + 4;
-            units = units + 2;
+            i = i + (cw >> 2);
+            units = units + (cw & 3);
         }
     }
     return units;
@@ -1677,24 +1778,24 @@ def:pub js_string_byte_to_unit(s: str, byte_off: int) -> int {
 """Convert a UTF-16 code-unit offset in `s` into a raw BYTE offset (inverse of
 js_string_byte_to_unit; sentinel/multi-byte aware)."""
 def:pub js_string_unit_to_byte(s: str, unit_off: int) -> int {
-    n: int = len(s);
+    if s.isascii() {
+        if unit_off <= 0 {
+            return 0;
+        }
+        return unit_off if unit_off < len(s) else len(s);
+    }
+    raw: bytes = _str_utf8_bytes(s);
+    n: int = len(raw);
     units: int = 0;
     i: int = 0;
     while i < n and units < unit_off {
-        # (the C0 80 NUL sentinel is a 2-byte, 1-unit lead like any < 224)
-        b: int = ord(s[i]);
-        if b < 128 {
+        cw: int = _u16_step(raw, i, n);
+        if cw == 0 {
             i = i + 1;
             units = units + 1;
-        } elif b < 224 {
-            i = i + 2;
-            units = units + 1;
-        } elif b < 240 {
-            i = i + 3;
-            units = units + 1;
         } else {
-            i = i + 4;
-            units = units + 2;
+            i = i + (cw >> 2);
+            units = units + (cw & 3);
         }
     }
     return i;
@@ -1708,40 +1809,41 @@ indices in O(total) instead of rescanning from the start each time."""
 def:pub js_string_unit_to_byte_from(
     s: str, byte_from: int, unit_from: int, unit_to: int
 ) -> int {
-    n: int = len(s);
+    if s.isascii() {
+        if unit_to <= unit_from {
+            return byte_from;
+        }
+        end_byte: int = byte_from + unit_to - unit_from;
+        return end_byte if end_byte < len(s) else len(s);
+    }
+    raw: bytes = _str_utf8_bytes(s);
+    n: int = len(raw);
     units: int = unit_from;
     i: int = byte_from;
     while i < n and units < unit_to {
-        # (the C0 80 NUL sentinel is a 2-byte, 1-unit lead like any < 224)
-        b: int = ord(s[i]);
-        if b < 128 {
+        cw: int = _u16_step(raw, i, n);
+        if cw == 0 {
             i = i + 1;
             units = units + 1;
-        } elif b < 224 {
-            i = i + 2;
-            units = units + 1;
-        } elif b < 240 {
-            i = i + 3;
-            units = units + 1;
         } else {
-            i = i + 4;
-            units = units + 2;
+            i = i + (cw >> 2);
+            units = units + (cw & 3);
         }
     }
     return i;
 }
 
-"""Width of the character starting at byte `i` of `s`, packed as
+"""Width of the character starting at byte `i` of `raw`, packed as
 (bytes << 2) | utf16_units, or 0 for a sequence the decoder could read
 differently (see U16Index.regular). The C0 80 NUL sentinel is one unit.
 (An int, not a tuple: tuple returns are heap-allocated per call.)"""
-def _u16_step(s: str, i: int, n: int) -> int {
-    b: int = ord(s[i]);
+def _u16_step(raw: bytes, i: int, n: int) -> int {
+    b: int = _raw_byte_at(raw, i);
     if b < 128 {
         return 5;
     }
-    if b == 192 and _str_is_nul_escape(s, i) {
-        return 9;  # NUL sentinel: 2 bytes, 1 unit
+    if b == 192 and i + 1 < n and _raw_byte_at(raw, i + 1) == 128 {
+        return 9;
     }
     if b < 194 or b > 244 {
         return 0;
@@ -1755,7 +1857,7 @@ def _u16_step(s: str, i: int, n: int) -> int {
     if i + w > n {
         return 0;
     }
-    if b == 244 and ord(s[i + 1]) >= 144 {
+    if b == 244 and _raw_byte_at(raw, i + 1) >= 144 {
         return 0;
     }
     if w == 4 {
@@ -1772,15 +1874,16 @@ per-character step (~40 instructions; these builds were 29% of the jac_client
 render phase). Any byte >= 128 ends the run, including the NUL sentinel C0 80
 (one UTF-16 unit), which _u16_step measures."""
 def _u16ix_build(id: int, s: str) -> U16Index {
+    raw: bytes = _str_utf8_bytes(s);
     ix: U16Index = U16Index(id=id, bytes=[0], units=[0], total=0, regular=True);
-    n: int = len(s);
+    n: int = len(raw);
     i: int = 0;
     u: int = 0;
     nxt: int = U16IX_STEP;
     while i < n {
         r: int = i;
         while r < n {
-            rb: int = ord(s[r]);
+            rb: int = _raw_byte_at(raw, r);
             if rb >= 128 {
                 break;
             }
@@ -1799,7 +1902,7 @@ def _u16ix_build(id: int, s: str) -> U16Index {
                 break;
             }
         }
-        cw: int = _u16_step(s, i, n);
+        cw: int = _u16_step(raw, i, n);
         if cw == 0 {
             ix.regular = False;
             return ix;
@@ -1816,13 +1919,34 @@ def _u16ix_build(id: int, s: str) -> U16Index {
     return ix;
 }
 
+"""The raw UTF-8 byte view behind a cached U16Index.
+
+u16ix_unit_to_byte / u16ix_byte_to_unit used to re-encode the whole subject on
+EVERY call (each exec()'s index/lastIndex conversion on a large non-ASCII
+subject paid a full copy even though the checkpoint index was cached). Keep a
+one-slot raw view keyed by the index's string id, refreshed by
+js_string_u16ix, and reused by the walkers. Invalidated with the other
+per-id memos when a heap slot is recycled (see _heap_slot_alloc)."""
+def _u16ix_raw(ix: U16Index, s: str) -> bytes {
+    if _U16RAW_ID == ix.id {
+        return _U16RAW;
+    }
+    return _str_utf8_bytes(s);
+}
+
 """The U16Index of string `id` (whose text is `s`), built on first use."""
 def:pub js_string_u16ix(id: int, s: str) -> U16Index {
     hit: int = _U16IX_POS.get(id, -1);
     if hit >= 0 {
+        if _U16RAW_ID != id {
+            _U16RAW = _str_utf8_bytes(s);
+            _U16RAW_ID = id;
+        }
         return _U16IX[hit];
     }
     built: U16Index = _u16ix_build(id, s);
+    _U16RAW = _str_utf8_bytes(s);
+    _U16RAW_ID = id;
     if len(_U16IX) < U16IX_SLOTS {
         _U16IX_POS[id] = len(_U16IX);
         _U16IX.append(built);
@@ -1841,11 +1965,13 @@ def:pub js_string_u16ix(id: int, s: str) -> U16Index {
 """Byte offset of UTF-16 unit `t` (0 <= t <= ix.total) in `s`, or -1 when `t`
 falls between the two halves of a surrogate pair (no byte boundary there)."""
 def:pub u16ix_unit_to_byte(ix: U16Index, s: str, t: int) -> int {
+    raw: bytes = _u16ix_raw(ix, s);
+    n: int = len(raw);
     if t <= 0 {
         return 0;
     }
     if t >= ix.total {
-        return len(s);
+        return n;
     }
     j: int = t // U16IX_STEP;
     if j >= len(ix.units) {
@@ -1859,9 +1985,8 @@ def:pub u16ix_unit_to_byte(ix: U16Index, s: str, t: int) -> int {
     }
     i: int = ix.bytes[j];
     u: int = ix.units[j];
-    n: int = len(s);
     while u < t {
-        cw: int = _u16_step(s, i, n);
+        cw: int = _u16_step(raw, i, n);
         i = i + (cw >> 2);
         u = u + (cw & 3);
     }
@@ -1885,9 +2010,10 @@ def:pub u16ix_byte_to_unit(ix: U16Index, s: str, b: int) -> int {
     }
     i: int = ix.bytes[lo];
     u: int = ix.units[lo];
-    n: int = len(s);
+    raw: bytes = _u16ix_raw(ix, s);
+    n: int = len(raw);
     while i < b and i < n {
-        cw: int = _u16_step(s, i, n);
+        cw: int = _u16_step(raw, i, n);
         i = i + (cw >> 2);
         u = u + (cw & 3);
     }
@@ -1895,41 +2021,26 @@ def:pub u16ix_byte_to_unit(ix: U16Index, s: str, b: int) -> int {
 }
 
 """
-Decode a Jac str (raw UTF-8 byte sequence) to a list of Unicode code-point ints.
-
-Optimisation: for pure-ASCII strings (all bytes < 128) each byte IS its own codepoint,
-so we skip the expensive _utf8_bytes_to_codepoints parser entirely.
-We also read bytes via s[i] (char-cache GEP, O(1)) instead of calling str_char_at
-(which performs a redundant bounds check and len() call on each iteration).
+Decode a Jac str to Unicode code points. ASCII strings take a direct character
+loop; other strings are first viewed as UTF-8 bytes so CESU-8 and the NUL
+sentinel are decoded without depending on Jac's codepoint indexing.
 """
 def:pub utf8_decode_str_to_codepoints(s: str) -> list[int] {
-    n: int = len(s);
-    raw: list[int] = [];
-    is_ascii: bool = True;
-    i: int = 0;
-    while i < n {
-        b: int = ord(s[i]);
-        raw.append(b);
-        if b >= 128 {
-            is_ascii = False;
-        }
-        i = i + 1;
-    }
-    if is_ascii {
+    # Native Jac str indexing is by Unicode code point, not UTF-8 byte.
+    # Preserve CESU-8 and the C0 80 NUL sentinel through encode(), then decode
+    # the raw byte view explicitly.
+    if s.isascii() {
         out: list[int] = [];
-        j: int = 0;
-        while j < n {
-            if _str_is_nul_escape(s, j) {
-                out.append(0);
-                j = j + 2;
-                continue;
-            }
-            out.append(ord(s[j]));
-            j = j + 1;
+        i: int = 0;
+        n: int = len(s);
+        while i < n {
+            out.append(ord(s[i]));
+            i = i + 1;
         }
         return out;
     }
-    return _utf8_bytes_to_codepoints(raw);
+    raw: bytes = _str_utf8_bytes(s);
+    return _utf8_bytes_to_codepoints(_raw_bytes_to_ints(raw));
 }
 
 """
@@ -1999,28 +2110,26 @@ def:pub js_string_utf16_len_cell(id: int) -> int {
 Return the number of UTF-16 code units in `s` (ECMAScript String.prototype.length).
 
 ASCII fast path: for strings where every byte is < 128, each byte maps to exactly
-one UTF-16 code unit (no surrogates, no multi-byte codepoints), so the length equals
-the byte length.  We scan the raw bytes with s[i] (char-cache, O(1) per byte, no
-function-call overhead) and bail out to the full decode only when a high byte is found.
-For the vite/bundler workload (pure ASCII JS source), this eliminates the
-utf8_decode_str_to_codepoints + codepoints_to_utf16_units calls entirely.
+one UTF-16 code unit, so the length equals Jac's character length. Non-ASCII strings
+are scanned through their explicit UTF-8 byte view and decoded only if a byte sequence
+is malformed.
 """
 def:pub js_string_utf16_len(s: str) -> int {
-    n: int = len(s);
+    if s.isascii() {
+        return len(s);
+    }
+    raw: bytes = _str_utf8_bytes(s);
+    n: int = len(raw);
     i: int = 0;
     units: int = 0;
     while i < n {
-        if ord(s[i]) < 128 {
+        b: int = _raw_byte_at(raw, i);
+        if b < 128 {
             units = units + 1;
             i = i + 1;
             continue;
         }
-        # Non-ASCII (or the C0 80 NUL sentinel): count units per character in
-        # the same pass. Decoding the whole string into code points and then
-        # UTF-16 units just to take a length cost ~18M instructions per call on
-        # a bundle-sized string (regexp exec asked it per call). Only a
-        # sequence the decoder could read differently takes the full decode.
-        lw: int = _u16_step(s, i, n);
+        lw: int = _u16_step(raw, i, n);
         if lw == 0 {
             return len(codepoints_to_utf16_units(utf8_decode_str_to_codepoints(s)));
         }
@@ -2045,23 +2154,23 @@ def:pub js_string_utf16_unit_at(s: str, n: int) -> int {
     if n < 0 {
         return -1;
     }
-    blen: int = len(s);
+    if s.isascii() {
+        if n < len(s) {
+            return ord(s[n]);
+        }
+        return -1;
+    }
+    raw: bytes = _str_utf8_bytes(s);
+    blen: int = len(raw);
     ui: int = 0;
     i: int = 0;
     while i < blen {
-        if ord(s[i]) >= 128 {
+        b: int = _raw_byte_at(raw, i);
+        if b >= 128 {
             break;
         }
-        if _str_is_nul_escape(s, i) {
-            if ui == n {
-                return 0;
-            }
-            ui = ui + 1;
-            i = i + 2;
-            continue;
-        }
         if ui == n {
-            return ord(s[i]);
+            return b;
         }
         ui = ui + 1;
         i = i + 1;
