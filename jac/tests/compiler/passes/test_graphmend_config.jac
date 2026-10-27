@@ -246,3 +246,32 @@ test "a module compiled under other graphmend settings is not reused from memory
         }
     }
 }
+
+test "a file edited to use torch is probed from its new source" {
+    import shutil;
+    import tempfile;
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from tests.support { GRAPHMEND_FIXTURES, code_mentions_symbol }
+    with tempfile.TemporaryDirectory() as tmp {
+        path = os.path.join(os.path.realpath(tmp), "guard.jac");
+        with open(path, "w") as fh {
+            fh.write("def f(x: int) -> int {\n    return x;\n}\n");
+        }
+        prog = JacProgram();
+        compiler = prog._get_compiler();
+        opts = CompileOptions(graphmend=True, graphmend_disable=[]);
+        first = compiler.get_bytecode(
+            full_target=path, target_program=prog, options=opts
+        );
+        assert first is not None;
+        stamp = os.path.getmtime(path) + 10;
+        shutil.copy(os.path.join(GRAPHMEND_FIXTURES, "val_guard_all.jac"), path);
+        os.utime(path, (stamp, stamp));
+        code = compiler.get_bytecode(
+            full_target=path, target_program=prog, options=opts
+        );
+        assert (code is not None) and code_mentions_symbol(code, "_assert_async") , (
+            "the probe read the tree from before the edit and left graphmend off"
+        );
+    }
+}

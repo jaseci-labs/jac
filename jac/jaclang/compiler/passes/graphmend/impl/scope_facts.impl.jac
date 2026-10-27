@@ -167,7 +167,7 @@ impl _mod_path(mod: uni.Module, memo: dict[int, str]) -> str {
 
 impl region_context_probe(prog: JacProgram, target_path: str) -> (str | None) {
     tnorm = _norm(target_path);
-    fresh = tnorm not in prog.mod.hub;
+    fresh = (tnorm not in prog.mod.hub) or not prog.is_hub_entry_fresh(tnorm);
     prev = swap_graphmend_cache_variant(GM_PROBE_VARIANT);
     try {
         target = _compile_for_facts(prog, tnorm);
@@ -773,7 +773,10 @@ impl claim_path(prog: JacProgram, path: str) -> bool {
 impl _compile_for_facts(prog: JacProgram, path: str) -> (uni.Module | None) {
     existing = prog.mod.hub.get(path);
     if existing is not None {
-        return existing;
+        if prog.is_hub_entry_fresh(path) {
+            return existing;
+        }
+        prog.invalidate_module(path);
     }
     _saved_opts = prog.options;
     try {
