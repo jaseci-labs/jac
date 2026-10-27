@@ -856,6 +856,8 @@ import from engine.src.builtins.array {
     js_is_array_spec,
     js_array_len,
     js_array_get,
+    js_array_len_quiet,
+    js_array_get_quiet,
     js_array_set,
     js_Array_toString,
     js_array_create_with_length,
@@ -1597,6 +1599,41 @@ def _vm_mgc_get(key: int, rv: JSValue) -> JSValue {
     return _vm_mgc_get_sid(key, rv, js_object_ic_shape(rv));
 }
 
+"""Point `ins` (a GETFIELD on a string) at the prototype slot holding `key`: the
+first object from %String.prototype% up with the key, when every object passed
+is a shape-mode one the ICs read and the key is a data property there. Holder
+id, shape and slot go in ic_obj, ic_obj2 and ic_ver (ic_ver2 too, so the pair
+stays a valid own-slot entry for this key if an object fill takes the site)."""
+def _vm_str_method_ic_fill(ins: Instruction, key: int) -> None {
+    sm_h: JSValue = js_string_get_proto();
+    sm_n: int = 0;
+    while jsv_is_object_cell(sm_h) and sm_n < 8 {
+        sm_sid: int = js_object_ic_shape(sm_h);
+        if sm_sid <= 0 {
+            return;
+        }
+        sm_pk: int = shape_lookup(sm_sid, key);
+        if sm_pk >= 0 {
+            if (sm_pk & SHAPE_ATTR_ACCESSOR) != 0 {
+                return;
+            }
+            ins.ic_holder = _STR_IC_HOLDER;
+            ins.ic_obj = jsv_to_table_id(sm_h);
+            ins.ic_obj2 = sm_sid;
+            ins.ic_ver = sm_pk;
+            ins.ic_ver2 = sm_pk;
+            ins.ic_epoch = proto_epoch();
+            return;
+        }
+        sm_pid: int = js_object_proto_idx_id(jsv_to_table_id(sm_h));
+        if sm_pid <= 0 {
+            return;
+        }
+        sm_h = jsv_from_object_id(sm_pid);
+        sm_n = sm_n + 1;
+    }
+}
+
 """The register GETFIELD's cached reads in one call (V4.15): the site's own-slot
 IC (one table access), else — on ONE shape read of the receiver — its
 inherited-slot IC and the megamorphic cache. The hole on a miss."""
@@ -1605,14 +1642,18 @@ def _vm_get_cached(ins: Instruction, rv: JSValue) -> JSValue {
         return jsv_hole();
     }
     # A string receiver: `length` is its own (immutable) property; a method
-    # this site resolved on %String.prototype% is cached as the site's value
-    # while the proto epoch stands (_reg_getfield_slow fills it).
+    # this site resolved on %String.prototype% or above is read from the slot
+    # of the prototype that holds it, while the proto epoch and that holder's
+    # shape stand (_vm_str_method_ic_fill). The slot is read on every hit: an
+    # IC write to an existing slot leaves the epoch as it is.
     if jsv_is_string_cell(rv) {
         if ins.arg2 == WK_LENGTH {
             return js_int(js_string_utf16_len_cell(jsv_to_table_id(rv)));
         }
         if ins.ic_holder == _STR_IC_HOLDER and ins.ic_epoch == proto_epoch() {
-            return ins.ic_ver;
+            return js_object_ic_hit(
+                jsv_from_object_id(ins.ic_obj), ins.ic_obj2, ins.ic_ver // 16
+            );
         }
         return jsv_hole();
     }
@@ -19394,6 +19435,42 @@ obj VM {
         js_object_set(wrap, WK_ITER_NEXT_FN, icn_next);
     }
 
+    """Element `ie_idx` of the standard array iterator's array `ie_arr` (its index
+    already advanced): the quiet read when no JavaScript can run, else an
+    ordinary [[Get]] that calls an index getter (js_array_get calls getters only
+    inside a native call, so a for-of read them as undefined). The hole when
+    that getter threw: the exception is unwound here, as in _op_get_index."""
+    def _iter_std_elem(
+        frame: CallFrame, st: ExecState, ie_arr: JSValue, ie_idx: int
+    ) -> JSValue {
+        ie_v: JSValue = js_array_get_quiet(ie_arr, ie_idx);
+        if not jsv_is_hole(ie_v) {
+            return ie_v;
+        }
+        ie_v = self._get_prop_accessor(ie_arr, str_intern_index(ie_idx));
+        if vm_has_native_exc() {
+            ie_exc: JSValue = vm_take_native_exc();
+            if not self._unwind_in_frame(frame, ie_exc) {
+                self.had_exception = True;
+                self.pending_exc = ie_exc;
+                st.running = False;
+            }
+            return jsv_hole();
+        }
+        if self.had_exception {
+            ie_exc2: JSValue = self.pending_exc;
+            self.had_exception = False;
+            self.pending_exc = js_undefined();
+            if not self._unwind_in_frame(frame, ie_exc2) {
+                self.had_exception = True;
+                self.pending_exc = ie_exc2;
+                st.running = False;
+            }
+            return jsv_hole();
+        }
+        return ie_v;
+    }
+
     def _op_iter_next(frame: CallFrame, ins: Instruction, st: ExecState) -> None {
         # Peek (do NOT pop) iterator from TOS.
         # Push value + true if more; push false if done.
@@ -19410,10 +19487,13 @@ obj VM {
             if jsv_is_int32(fi_j) {
                 fi_idx: int = jsv_to_int32(fi_j);
                 if fi_idx < js_array_len(js_object_slot_at_id(fi_id, _ITER_STD_I)) {
-                    fi_val: JSValue = js_array_get(
-                        js_object_slot_at_id(fi_id, _ITER_STD_I), fi_idx
-                    );
                     js_object_slot_set_at_id(fi_id, _ITER_STD_J, js_int(fi_idx + 1));
+                    fi_val: JSValue = self._iter_std_elem(
+                        frame, st, js_object_slot_at_id(fi_id, _ITER_STD_I), fi_idx
+                    );
+                    if jsv_is_hole(fi_val) {
+                        return;
+                    }
                     self._push(fi_val);
                     self._push(js_true());
                 } else {
@@ -31491,13 +31571,15 @@ obj VM {
             if jsv_is_int32(fv_j)
                 and jsv_to_int32(fv_j)
                     < js_array_len(js_object_slot_at_id(fv_id, _ITER_STD_I)) {
-                fv_val: JSValue = js_array_get(
-                    js_object_slot_at_id(fv_id, _ITER_STD_I), jsv_to_int32(fv_j)
-                );
                 js_object_slot_set_at_id(
                     fv_id, _ITER_STD_J, js_int(jsv_to_int32(fv_j) + 1)
                 );
-                self._push(fv_val);
+                fv_val: JSValue = self._iter_std_elem(
+                    frame, st, js_object_slot_at_id(fv_id, _ITER_STD_I), jsv_to_int32(fv_j)
+                );
+                if not jsv_is_hole(fv_val) {
+                    self._push(fv_val);
+                }
                 return;
             }
         }
@@ -35481,12 +35563,9 @@ obj VM {
                 and gs_key != WK_LENGTH
                 and (is_native_val(gs_v) or is_fn_val(gs_v)) {
                 # A %String.prototype% method (a data property: the ordinary
-                # walk returns the hole for an accessor): this site's value
-                # while the proto epoch stands (_vm_get_cached).
-                frame.func.code[c].ic_holder = _STR_IC_HOLDER;
-                frame.func.code[c].ic_obj = -1;
-                frame.func.code[c].ic_ver = gs_v;
-                frame.func.code[c].ic_epoch = proto_epoch();
+                # walk returns the hole for an accessor): where it lives, for
+                # _vm_get_cached.
+                _vm_str_method_ic_fill(frame.func.code[c], gs_key);
             }
         }
         if jsv_is_hole(gs_v) and gs_key != 0 and _vm_ic_key_ok_obj(gs_key, va) {
@@ -35993,18 +36072,23 @@ obj VM {
         iv_b: int = (w >> 24) & 65535;
         va: JSValue = frame.locals[frame.lb + (iv_b)];
         if _ITER_STD_SHAPE > 0 and js_object_ic_shape(va) == _ITER_STD_SHAPE {
+            # Reads that run no JavaScript only; a getter or proxy goes to the
+            # handler (_op_iter_next_val), which calls it.
             iv_id: int = jsv_to_table_id(va);
             iv_j: JSValue = js_object_slot_at_id(iv_id, _ITER_STD_J);
             if jsv_is_int32(iv_j)
                 and jsv_to_int32(iv_j)
-                    < js_array_len(js_object_slot_at_id(iv_id, _ITER_STD_I)) {
-                frame.locals[frame.lb + ((w >> 8) & 65535)] = js_array_get(
+                    < js_array_len_quiet(js_object_slot_at_id(iv_id, _ITER_STD_I)) {
+                iv_v: JSValue = js_array_get_quiet(
                     js_object_slot_at_id(iv_id, _ITER_STD_I), jsv_to_int32(iv_j)
                 );
-                js_object_slot_set_at_id(
-                    iv_id, _ITER_STD_J, js_int(jsv_to_int32(iv_j) + 1)
-                );
-                return;
+                if not jsv_is_hole(iv_v) {
+                    js_object_slot_set_at_id(
+                        iv_id, _ITER_STD_J, js_int(jsv_to_int32(iv_j) + 1)
+                    );
+                    frame.locals[frame.lb + ((w >> 8) & 65535)] = iv_v;
+                    return;
+                }
             }
         }
         self._reg_bridge(frame, st, (w >> 40) & 8388607, 1, va, 0, 0, iv_b, 2);
@@ -37127,18 +37211,22 @@ obj VM {
                     xi = jsv_to_table_id(va);
                     vb = js_object_slot_at_id(xi, _ITER_STD_J);
                     if jsv_is_int32(vb) {
+                        # Only reads that run no JavaScript: a getter or proxy
+                        # trap could throw or grow the register file under
+                        # `rb`. Anything else takes the full protocol below.
                         yi = jsv_to_int32(vb);
-                        if yi
-                            < js_array_len(js_object_slot_at_id(xi, _ITER_STD_I)) {
-                            _rset(rb, lb, ((w >> 8) & 65535), js_array_get(
-                                js_object_slot_at_id(xi, _ITER_STD_I), yi
-                            ));
-                            js_object_slot_set_at_id(
-                                xi, _ITER_STD_J, js_int(yi + 1)
-                            );
-                            cr = 1;
-                        } else {
+                        c = js_array_len_quiet(js_object_slot_at_id(xi, _ITER_STD_I));
+                        if c >= 0 and yi >= c {
                             cr = 0;
+                        } elif c >= 0 {
+                            vb = js_array_get_quiet(js_object_slot_at_id(xi, _ITER_STD_I), yi);
+                            if not jsv_is_hole(vb) {
+                                js_object_slot_set_at_id(
+                                    xi, _ITER_STD_J, js_int(yi + 1)
+                                );
+                                _rset(rb, lb, ((w >> 8) & 65535), vb);
+                                cr = 1;
+                            }
                         }
                     }
                 }

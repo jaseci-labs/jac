@@ -339,6 +339,31 @@ def:pub js_array_get(arr: JSValue, idx: int) -> JSValue {
     return js_object_get_observable(arr, str_intern_index(idx), arr);
 }
 
+"""js_array_get when the read runs no JavaScript: a dense element, or undefined
+for a hole while no prototype carries index properties. Anything else (a getter,
+a proxy, a sparse array) gives the hole value, and the caller takes the
+observable path."""
+def:pub js_array_get_quiet(arr: JSValue, idx: int) -> JSValue {
+    if idx >= 0 and jsv_is_object_cell(arr) {
+        gq_id: int = jsv_to_table_id(arr);
+        if gq_id > 0 {
+            gq_raw: JSObject = js_object_table_get(gq_id);
+            if gq_raw.elems_kind != ELEMS_NONE {
+                if idx < gq_raw.elen() {
+                    gq_v: JSValue = gq_raw.eget(idx);
+                    if not jsv_is_hole(gq_v) {
+                        return gq_v;
+                    }
+                }
+                if idx_protector_ok() {
+                    return jsv_undefined();
+                }
+            }
+        }
+    }
+    return jsv_hole();
+}
+
 """Set the element at index idx.  Grows the array if idx >= length."""
 def:pub js_array_set(arr: JSValue, idx: int, val: JSValue) {
     if idx >= 0 and jsv_is_object_cell(arr) {
@@ -437,6 +462,18 @@ def:pub js_array_len(arr: JSValue) -> int {
         }
     }
     return _length_of(arr);
+}
+
+"""js_array_len when the read runs no JavaScript (an Array at js_array_create's
+shape, whose `length` is a plain int32 in slot 1), else -1."""
+def:pub js_array_len_quiet(arr: JSValue) -> int {
+    if _ARRAY_SHAPE > 0 and js_object_ic_shape(arr) == _ARRAY_SHAPE {
+        lq_v: JSValue = js_object_slot_at_id(jsv_to_table_id(arr), 1);
+        if jsv_is_int32(lq_v) and jsv_to_int32(lq_v) >= 0 {
+            return jsv_to_int32(lq_v);
+        }
+    }
+    return -1;
 }
 
 """Return True if v is a JS Array (has the _KEY_IS_ARRAY marker)."""
