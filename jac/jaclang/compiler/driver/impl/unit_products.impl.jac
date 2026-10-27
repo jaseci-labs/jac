@@ -447,9 +447,13 @@ impl client_artifact_of(module: uni.Module) -> (ClientArtifact | None) {
     );
 }
 
-impl placement_record(module: uni.Module, program: JacProgram) -> str {
+impl placement_record(
+    module: uni.Module, program: JacProgram, solved: bool = True
+) -> str {
     try {
-        return json.dumps(summary_to_dict(get_module_summary(module, program)));
+        record = summary_to_dict(get_module_summary(module, program));
+        record["spaces"] = sorted(module_spaces(module)) if solved else [];
+        return json.dumps(record);
     } except Exception {
         return "";
     }

@@ -127,6 +127,10 @@ impl _compile_runtime_module(
         return compile_jac(jac_source, str(path), impl_sources=impl_sources or None);
     }
 
+    recorded = module_record(str(path), prog);
+    if native is None or (recorded is not None and recorded.decided != 'native') {
+        return python_text(str(path), prog);
+    }
     (py_out, ir) = python_source(str(path), prog);
     if native is not None and ir is not None and ir.gen.native_engine is not None {
         import from jaclang.dist.native_product { write_native_product }
@@ -288,9 +292,9 @@ impl build_runtime_closure(
         for name in closure
         if name.endswith('.py')
     ] {
-        for parent in Path(relative).parents {
-            if str(parent) != '.' {
-                closure.setdefault((parent / '__init__.py').as_posix(), b'');
+        for ancestor in Path(relative).parents {
+            if str(ancestor) != '.' {
+                closure.setdefault((ancestor / '__init__.py').as_posix(), b'');
             }
         }
     }

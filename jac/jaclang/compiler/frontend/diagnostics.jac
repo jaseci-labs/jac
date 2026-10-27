@@ -235,6 +235,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Duplicate declaration of '{name}' (already declared as {kind})",
          help="Jac supports decl/impl separation, not decl/decl. Either inline the body into the first `obj/node/edge/walker/enum` block, or split into a body-less declaration plus an `impl` block."
      ),
+     E0078 = _err(
+         "E0078",
+         Category.SYNTAX,
+         "The {kind} '{name}' has the name of the field declared on line {line}",
+         help="A field and a method or ability of one archetype share one attribute name, so the {kind} replaces the field and `self.{name}` reads the function. Rename one of them."
+     ),
      E0080 = _err(
          "E0080",
          Category.SYNTAX,
@@ -605,6 +611,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E1090 = _err(
          "E1090", Category.TYPE, "Cannot raise {type} (not an exception type)"
+     ),
+     E1161 = _err(
+         "E1161",
+         Category.TYPE,
+         "Cannot use {type} as an exception cause (not an exception type or None)"
      ),
      E1091 = _err(
          "E1091",

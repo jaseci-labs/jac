@@ -1180,6 +1180,18 @@ impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     return _sig_out;
 }
 
+impl NaIRGenPass._resolve_return_type(
+    type_expr: (uni.UniNode | None), method: bool = False
+) -> ir.Type {
+    if type_expr is None {
+        return ir.VoidType();
+    }
+    if method {
+        return self._resolve_sig_type(type_expr);
+    }
+    return self._resolve_jac_type(type_expr);
+}
+
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);

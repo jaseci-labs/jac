@@ -76,6 +76,12 @@ def _leave_embedded_env;
 def _stop_embedded_store(home: str) -> None;
 
 
+def legacy_database_name(base_path: str) -> str;
+
+
+def _migrate_legacy_database(base_path: str, entry_file: str) -> None;
+
+
 def _apply_extra_deps;
 
 

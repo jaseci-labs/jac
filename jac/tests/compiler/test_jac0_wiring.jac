@@ -109,19 +109,21 @@ test "jac0 and WiringSpec weave the same imports into every seed module" {
             }
         }
         woven: set[str] = set();
-        for (scope, imports) in wired_imports(path).items() {
+        for (scope_path, imports) in wired_imports(path).items() {
             for imp in imports {
                 form = ("import type" if imp.is_typed else "import")
                     + (" from" if imp.is_from else "");
                 if not imp.is_from {
-                    woven.add(f"{'.'.join(scope)}|{imp.module}|{form}||{imp.alias}");
+                    woven.add(
+                        f"{'.'.join(scope_path)}|{imp.module}|{form}||{imp.alias}"
+                    );
                     continue;
                 }
                 for named in imp.names {
                     parts = named.split(" as ");
                     alias = parts[1] if len(parts) > 1 else "";
                     woven.add(
-                        f"{'.'.join(scope)}|{imp.module}|{form}|{parts[0]}|{alias}"
+                        f"{'.'.join(scope_path)}|{imp.module}|{form}|{parts[0]}|{alias}"
                     );
                 }
             }

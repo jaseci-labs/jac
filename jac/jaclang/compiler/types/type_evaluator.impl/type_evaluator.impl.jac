@@ -2057,10 +2057,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                             if arch := method.signature.arch_tag_info {
                                 if isinstance(arch, TupleVal) {
                                     member_insts: list[TypeBase] = [];
-                                    for member in self._annotation_args(arch) {
+                                    for arch_member in self._annotation_args(arch) {
                                         member_insts.append(
                                             self._convert_to_instance(
-                                                self.get_type_of_expression(member)
+                                                self.get_type_of_expression(arch_member)
                                             )
                                         );
                                     }
@@ -2960,6 +2960,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
 
             if isinstance(node_.parent, Except) and node_.parent.ex_type {
                 ex_type = self.get_type_of_expression(node_.parent.ex_type);
+                if caught := self._isinstance_class_alternatives(ex_type) {
+                    return self._union_narrowed_types(caught);
+                }
                 return self._convert_to_instance(ex_type);
             }
 
@@ -3378,12 +3381,23 @@ impl TypeEvaluator._protocol_signature_fits(
     return True;
 }
 
-impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool {
+impl TypeEvaluator.is_sub_class(
+    super_cls: ClassType, sub_cls: ClassType, ignore_unknown: bool = False
+) -> bool {
     self._heal_ancestry(sub_cls);
     ensure_mro_fresh(sub_cls);
     for cls in sub_cls.shared.mro {
         if cls.shared.same_class(super_cls.shared) {
             return True;
+        }
+    }
+    if ignore_unknown {
+        for cls in sub_cls.shared.mro or [sub_cls] {
+            for base in cls.shared.base_classes {
+                if not isinstance(base, ClassType) or self.is_any_type(base) {
+                    return True;
+                }
+            }
         }
     }
     return False;
@@ -4466,7 +4480,9 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
                     if source_mod is None {
                         continue;
                     }
-                    verdict = classify_client_import_item(source_mod, item);
+                    verdict = classify_client_import_item(
+                        source_mod, item, self.program
+                    );
                     if verdict != ClientImportVerdict.BRIDGED {
                         continue;
                     }
@@ -4499,6 +4515,7 @@ impl TypeEvaluator._prefetch_types {
     self.prefetch.none_type_class = get_types_class("NoneType");
     self.prefetch.object_class = get_builtin_class("object");
     self.prefetch.type_class = get_builtin_class("type");
+    self.prefetch.base_exception_class = get_builtin_class("BaseException");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
 
     self.prefetch.coroutine_class = get_typing_class("Coroutine");
@@ -4785,7 +4802,9 @@ impl TypeEvaluator.get_narrowed_type(
             key=symbol.sym_name, declared_type=symbol_type, symbol=symbol
         );
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            return self._readable_flow_type(
+                self._get_type_from_flow_node(narrowing_target, flow_node, set())
+            );
         }
         return None;
     } finally {
@@ -4842,12 +4861,21 @@ impl TypeEvaluator._narrowed_type_for_expr(
             deps=frozenset(reference_key_deps(expr)),
         );
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            return self._readable_flow_type(
+                self._get_type_from_flow_node(narrowing_target, flow_node, set())
+            );
         }
         return None;
     } finally {
         self._flow_pending_keys.discard(pending);
     }
+}
+
+impl TypeEvaluator._readable_flow_type(flow_type: TypeBase | None) -> TypeBase | None {
+    if isinstance(flow_type, NeverType) {
+        return flow_type.residual;
+    }
+    return flow_type;
 }
 
 impl TypeEvaluator._node_encloses(outer: UniNode, inner: UniNode) -> bool {
@@ -5155,6 +5183,17 @@ impl TypeEvaluator._get_type_from_flow_node(
         }
     }
 
+    residuals: list[TypeBase] = [];
+    bare_never: bool = False;
+    for t in incoming_types {
+        if isinstance(t, NeverType) {
+            if t.residual is not None {
+                residuals.append(t.residual);
+            } else {
+                bare_never = True;
+            }
+        }
+    }
     incoming_types = [
         t
         for t in incoming_types
@@ -5163,7 +5202,9 @@ impl TypeEvaluator._get_type_from_flow_node(
 
     result: TypeBase | None = None;
     if len(incoming_types) == 0 {
-        result = None;
+        if residuals and not bare_never and not has_unnarrowed_pred {
+            result = NeverType(residual=self._union_narrowed_types(residuals));
+        }
     } elif has_unnarrowed_pred {
         result = None;
     } elif len(incoming_types) == 1 {
@@ -5195,7 +5236,9 @@ impl TypeEvaluator._if_exit_type(
         if then_t is None {
             return None;
         }
-        arm_types.append(then_t);
+        if not isinstance(then_t, NeverType) {
+            arm_types.append(then_t);
+        }
     }
     eb = stmt.else_body;
     if eb is None {
@@ -5210,22 +5253,30 @@ impl TypeEvaluator._if_exit_type(
         if fall_t is None {
             return None;
         }
-        arm_types.append(fall_t);
+        if not isinstance(fall_t, NeverType) {
+            arm_types.append(fall_t);
+        }
     } elif isinstance(eb, ElseIf) {
         else_t = self._if_exit_type(target, eb, entry_type, visited);
         if else_t is None {
             return None;
         }
-        arm_types.append(else_t);
+        if not isinstance(else_t, NeverType) {
+            arm_types.append(else_t);
+        }
     } elif isinstance(eb, ElseStmt) {
         if eb.body {
             else_t = self._get_type_from_flow_node(target, eb.body[-1], visited);
             if else_t is None {
                 return None;
             }
-            arm_types.append(else_t);
+            if not isinstance(else_t, NeverType) {
+                arm_types.append(else_t);
+            }
         } elif entry_type is not None {
-            arm_types.append(entry_type);
+            if not isinstance(entry_type, NeverType) {
+                arm_types.append(entry_type);
+            }
         } else {
             return None;
         }
@@ -5819,6 +5870,18 @@ impl TypeEvaluator._apply_narrowing(
         NarrowingTarget
     }
 
+    if isinstance(incoming, NeverType) {
+        inner = self._apply_narrowing(
+            predicate, incoming.residual, is_true_branch, target
+        );
+        if inner is None {
+            return incoming;
+        }
+        if isinstance(inner, NeverType) {
+            return inner;
+        }
+        return NeverType(residual=inner);
+    }
     if is_true_branch and not predicate.narrows_on_true {
         return None;
     }
@@ -5873,6 +5936,14 @@ impl TypeEvaluator._apply_narrowing(
         result = self.exclude_type_from_union(base_type, predicate.narrow_type);
         if result is base_type {
             return incoming;
+        }
+        if isinstance(result, NeverType) and incoming is not None {
+            residual = self.exclude_type_from_union(
+                target.declared_type, predicate.narrow_type
+            );
+            if not isinstance(residual, NeverType) {
+                return NeverType(residual=residual);
+            }
         }
         return result;
     }

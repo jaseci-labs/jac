@@ -149,7 +149,8 @@ test "client error endpoint rejects empty payload" {
 # =============================================================================
 # Prod page error handler setup
 # =============================================================================
-test "prod render_page injects early error handler before module bundle script" {
+"""Render a prod page for a stub client module and return its HTML."""
+def render_stub_page -> str {
     import types;
     import from jaclang.client.serving { JacClient }
     module = types.ModuleType('stub');
@@ -164,9 +165,165 @@ test "prod render_page injects early error handler before module bundle script" 
         ensure_bundle=lambda { 'abc123'; }
     );
     result = JacClient.render_page(_as_any(introspector), 'app', {}, 'guest');
-    html = result['html'];
+    return result['html'];
+}
+
+test "prod render_page injects early error handler before module bundle script" {
+    html = render_stub_page();
     assert 'window.__jacErrorHandlersInstalled' in html;
     assert '/cl/__error__' in html;
     # Handler script must appear before the bundle so it catches errors during evaluation
     assert html.index('window.__jacErrorHandlersInstalled') < html.index('client.js');
+}
+
+# =============================================================================
+# Client-side report budget
+# =============================================================================
+"""Run the budget harness in `mode` against `targets` and return its results."""
+def run_error_budget_harness(mode: str, targets: list[Path]) -> dict[str, any] {
+    import subprocess;
+    result = subprocess.run(
+        ["node", fixture_abs_path("client_error_budget_harness.mjs"), mode]
+            + [str(t) for t in targets],
+        capture_output=True,
+        text=True,
+        timeout=120
+    );
+    assert result.returncode == 0 , f"harness failed:\n{result.stdout}\n{result.stderr}";
+    return json.loads(result.stdout.strip().splitlines()[-1]);
+}
+
+"""Compile one runtime core into `work` beside the modules it imports, with its
+npm imports stubbed, and return the path node should load."""
+def write_runtime_core(work: Path, core_name: str) -> Path {
+    import from jaclang.client.runtime_source { resolve_client_runtime_cl_path }
+    import from .react_jsdom_harness {
+        compile_react,
+        wire_jac_runtime,
+        write_runtime_support
+    }
+    runtime_path = resolve_client_runtime_cl_path("react");
+    write_runtime_support(work, runtime_path);
+    js = wire_jac_runtime(
+        compile_react(str(Path(runtime_path).parent / f"{core_name}.jac"))
+    );
+    for npm_module in ["react", "react-hook-form", "@hookform/resolvers/zod"] {
+        js = js.replace(f'"{npm_module}"', '"./npm_stub.js"');
+    }
+    (work / "jac_runtime.js").write_text(
+        "export function __jacJsx() { return null; }\n", encoding="utf-8"
+    );
+    (work / "npm_stub.js").write_text(
+        "export const useForm = () => null;\nexport const zodResolver = () => null;\n",
+        encoding="utf-8"
+    );
+    (work / "package.json").write_text('{"type": "module"}', encoding="utf-8");
+    core = work / f"{core_name}.js";
+    core.write_text(js, encoding="utf-8");
+    return core;
+}
+
+"""Write the early error handler a served page inlines to `work` and return its path."""
+def write_early_handler(work: Path) -> Path {
+    import re;
+    scripts = re.findall(r"<script>(.*?)</script>", render_stub_page(), re.S);
+    handlers = [
+        s
+        for s in scripts
+        if "/cl/__error__" in s
+    ];
+    assert len(handlers) == 1 , scripts;
+    script = work / "early_error_handler.js";
+    script.write_text(handlers[0], encoding="utf-8");
+    return script;
+}
+
+"""The budget every reporter holds a page to."""
+def assert_page_budget(results: dict[str, any]) {
+    for name in [
+        "extensionRejections",
+        "firefoxExtensionRejections",
+        "safariExtensionRejections",
+        "extensionStackWithEngineFrames",
+        "safariExtensionStackWithNativeFrame",
+        "extensionStackWithUrlMessage"
+    ] {
+        assert results[name]["sent"] == 0 , (name, results[name]);
+    }
+    # One report per distinct error, however often it is thrown.
+    assert results["identicalAppErrors"]["sent"] == 1 , results;
+    # A stack that passes through app code is ours to see, wherever that code
+    # was loaded from.
+    for name in [
+        "mixedStack",
+        "mixedStackWithBlobFrame",
+        "firefoxMixedStackWithBlobFrame"
+    ] {
+        assert results[name]["sent"] == 1 , (name, results[name]);
+    }
+    # At most 10 reports a minute, and the budget refills the next minute...
+    assert results["distinctAppErrors"]["sent"] == 10 , results;
+    assert results["distinctAppErrorsOverTwoMinutes"]["sent"] == 20 , results;
+    # The minute trails each report, so no burst straddles a window edge...
+    assert results["burstAcrossMinuteBoundary"]["sent"] == 11 , results;
+    # ...up to 200 for the page, after which nothing new or repeated is sent.
+    assert results["distinctAppErrorsOverHalfAnHour"]["sent"] == 200 , results;
+}
+
+test "runtime reporter drops extension errors and caps reports per page" {
+    import from jaclang.testing.requires { require_tool }
+    require_tool("node");
+    with TemporaryDirectory() as tmp {
+        core = write_runtime_core(Path(tmp), "client_runtime_core");
+        results = run_error_budget_harness("runtime", [core]);
+    }
+    assert_page_budget(results);
+    assert results["extensionScriptWithoutStack"]["sent"] == 0 , results;
+    assert results["appWindowError"]["sent"] == 1 , results;
+    first = results["identicalAppErrors"]["first"];
+    assert first["endpoint"] == "/cl/__error__";
+    assert first["message"] == "boom";
+    assert first["source"] == "unhandledrejection";
+}
+
+test "native runtime reporter holds the same per-page budget" {
+    import from jaclang.testing.requires { require_tool }
+    require_tool("node");
+    with TemporaryDirectory() as tmp {
+        core = write_runtime_core(Path(tmp), "client_react_core");
+        results = run_error_budget_harness("native", [core]);
+    }
+    assert_page_budget(results);
+    assert results["identicalAppErrors"]["first"]["source"] == "ErrorUtils";
+}
+
+test "prod early error handler holds the same per-page budget" {
+    import from jaclang.testing.requires { require_tool }
+    require_tool("node");
+    with TemporaryDirectory() as tmp {
+        results = run_error_budget_harness("inline", [write_early_handler(Path(tmp))]);
+    }
+    assert_page_budget(results);
+    assert results["extensionScriptWithoutStack"]["sent"] == 0 , results;
+    assert results["appWindowError"]["sent"] == 1 , results;
+    # Once the runtime has installed its own handlers, the early one stands down.
+    assert results["afterRuntimeHandlersInstalled"]["sent"] == 0 , results;
+}
+
+test "early handler and runtime share one budget across the handoff" {
+    import from jaclang.testing.requires { require_tool }
+    require_tool("node");
+    with TemporaryDirectory() as tmp {
+        work = Path(tmp);
+        core = write_runtime_core(work, "client_runtime_core");
+        results = run_error_budget_harness(
+            "handoff", [core, write_early_handler(work)]
+        );
+    }
+    # The early handler spends the first minute's 10 reports; the runtime takes
+    # over the same budget, so it sends nothing more until the next minute and
+    # never repeats an error the early handler already sent.
+    assert results["early"] == 10 , results;
+    assert results["sameMinute"] == 0 , results;
+    assert results["nextMinute"] == 10 , results;
 }

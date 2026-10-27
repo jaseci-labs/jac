@@ -188,6 +188,50 @@ impl _stop_embedded_store(home: str) -> None {
     }
 }
 
+impl legacy_database_name(base_path: str) -> str {
+    digest = hashlib.sha1(os.path.realpath(base_path).encode("utf-8")).hexdigest()[:8];
+    return f"jac_main_{digest}";
+}
+
+impl _migrate_legacy_database(base_path: str, entry_file: str) -> None {
+    if not entry_file or os.environ.get("JAC_DB_URL", "") {
+        return;
+    }
+    try {
+        import from jaclang.data.dbcatalog {
+            MAINTENANCE_DB,
+            connect_admin,
+            list_databases,
+            rename_database
+        }
+        import from jaclang.data.pgembed { PgRuntime }
+        import from jaclang.server.session { project_database, shared_pg_data_dir }
+    } except Exception as e {
+        sys.stderr.write("host_boot: database migration unavailable: " + str(e) + "\n");
+        return;
+    }
+    legacy = legacy_database_name(base_path);
+    current = project_database(base_path, entry_file).name;
+    if legacy == current {
+        return;
+    }
+    rt = PgRuntime(data_dir=shared_pg_data_dir(), database=MAINTENANCE_DB);
+    conn: any = connect_admin(rt.ensure());
+    try {
+        names = {r.database for r in list_databases(conn, with_size=False)};
+        if legacy in names
+            and current not in names
+            and not rename_database(conn, legacy, current) {
+            raise RuntimeError(
+                f"the app's data is in database {legacy} and could not be moved to {current}; "
+                "close any other running instance of this app and start it again"
+            );
+        }
+    } finally {
+        conn.close();
+    }
+}
+
 impl _apply_extra_deps {
     extra = os.environ.get("JAC_DESKTOP_DEPS", "");
     if not extra {
@@ -360,6 +404,11 @@ impl boot(config_json: str) -> HostContext {
         }
 
         entry_file = resolve_program(program, app_dir) if backend == EMBEDDED else "";
+        if entry_file {
+            _migrate_legacy_database(
+                os.path.join(data_dir, ".jac", "desktop", "graph"), entry_file
+            );
+        }
         store = SessionStore(os.path.join(data_dir, ".jac", "desktop", session_file));
         profiles = ProfileStore.load(
             os.path.join(data_dir, ".jac", "desktop", "profiles.json")

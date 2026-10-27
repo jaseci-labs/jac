@@ -319,6 +319,7 @@ A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bo
 | Code | Message |
 |------|---------|
 | `E1090` | Cannot raise {type} (not an exception type) |
+| `E1161` | Cannot use {type} as an exception cause (not an exception type or None) |
 | `E1091` | Type {type} cannot be used in 'with' statement (no \_\_enter\_\_ method) |
 | `E1092` | Type {type} cannot be used in 'with' statement (no \_\_exit\_\_ method) |
 | `E1093` | Cannot yield {actual}, expected {expected} |

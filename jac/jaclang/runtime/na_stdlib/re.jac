@@ -256,7 +256,7 @@ def _one(
 ) -> (Match | None);
 
 
-def _iter(re: _Re, st: _St, string: str, pos: int, endpos: int) -> list[Match];
+def _iter(re: _Re, string: str, pos: int, endpos: int) -> Iterator[Match];
 
 
 def _all(re: _Re, st: _St, string: str, pos: int, endpos: int) -> list[str];
@@ -326,7 +326,7 @@ obj:pub Pattern {
     def search(string: str, pos: int = 0, endpos: int = _MAXPOS) -> (Match | None);
     def `match(string: str, pos: int = 0, endpos: int = _MAXPOS) -> (Match | None);
     def fullmatch(string: str, pos: int = 0, endpos: int = _MAXPOS) -> (Match | None);
-    def finditer(string: str, pos: int = 0, endpos: int = _MAXPOS) -> list[Match];
+    def finditer(string: str, pos: int = 0, endpos: int = _MAXPOS) -> Iterator[Match];
     def findall(string: str, pos: int = 0, endpos: int = _MAXPOS) -> list[str];
     def split(string: str, maxsplit: int = 0) -> list[any];
     def _subn(repl: str, string: str, count: int) -> tuple[(str, int)];
@@ -367,7 +367,7 @@ def:pub fullmatch(pattern: str, string: str, flags: int = 0) -> (Match | None);
 def:pub findall(pattern: str, string: str, flags: int = 0) -> list[str];
 
 
-def:pub finditer(pattern: str, string: str, flags: int = 0) -> list[Match];
+def:pub finditer(pattern: str, string: str, flags: int = 0) -> Iterator[Match];
 
 
 def:pub split(

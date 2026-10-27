@@ -154,3 +154,10 @@ impl useSession -> Session {
         logout=logout
     );
 }
+
+impl stored_username -> str {
+    return __getLocalStorage("jacyac_username")
+        or __getLocalStorage("lx_username")
+        or __getLocalStorage("socialize_username")
+        or "";
+}

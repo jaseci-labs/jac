@@ -5491,7 +5491,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.DECOR_OP) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5500,21 +5500,21 @@ impl Parser.parse_archetype_member -> UniNode | None {
         if self.check_peek(TokenKind.KW_HAS) {
             has_stmt = self.parse_has_stmt();
             if doc {
-                _ = self._attach_doc(has_stmt, doc);
+                self._attach_doc(has_stmt, doc);
             }
             return has_stmt;
         }
 
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
     if self.check(TokenKind.KW_HAS) {
         has_stmt = self.parse_has_stmt();
         if doc {
-            _ = self._attach_doc(has_stmt, doc);
+            self._attach_doc(has_stmt, doc);
         }
         return has_stmt;
     }
@@ -5522,7 +5522,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_ASYNC) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5536,7 +5536,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ct_globals = self.parse_comptime_global();
         if doc {
-            _ = self._attach_doc(ct_globals, doc);
+            self._attach_doc(ct_globals, doc);
         }
         return ct_globals;
     }
@@ -5545,7 +5545,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5556,7 +5556,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5569,14 +5569,14 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         archetype = self.parse_archetype();
         if doc {
-            _ = self._attach_doc(archetype, doc);
+            self._attach_doc(archetype, doc);
         }
         return archetype;
     }
     if self.check(TokenKind.KW_ENUM) {
         enum_node = self.parse_enum();
         if doc {
-            _ = self._attach_doc(enum_node, doc);
+            self._attach_doc(enum_node, doc);
         }
         return enum_node;
     }
@@ -5584,7 +5584,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_IMPL) {
         impl_node = self.parse_impl_def();
         if doc {
-            _ = self._attach_doc(impl_node, doc);
+            self._attach_doc(impl_node, doc);
         }
         return impl_node;
     }
@@ -5612,7 +5612,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
             kid.append(rb_uni);
             module_code = ModuleCode(name=None, body=body, kid=kid, doc=None);
             if doc {
-                _ = self._attach_doc(module_code, doc);
+                self._attach_doc(module_code, doc);
             }
             return module_code;
         }
