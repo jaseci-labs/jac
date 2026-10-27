@@ -424,6 +424,74 @@ test "/graph/data still answers when one service is down (partial merge)" {
     }
 }
 
+test "GET /admin/schedules through the gateway route is admin-only and merges the fleet" {
+    listing = {
+        "ok": True,
+        "data": {
+            "namespace": "orders",
+            "schedules": [{"name": "nightly", "kind": "function", "last_run": None}]
+        }
+    };
+    (srv, port) = _serve_fragment(listing);
+    tmp = tempfile.mkdtemp(prefix="jac-gw-schedules-");
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/orders",
+            port=port,
+            url=f"http://127.0.0.1:{port}",
+            status=ServiceStatus.HEALTHY
+        )
+    );
+    gw = MicroserviceGateway(registry=reg, base_path=tmp);
+    gw.setup();
+    assert gw.server is not None , "the admin API must be installed for the route";
+    users = gw.user_manager;
+    tag = os.urandom(4).hex();
+    admin_id = str(
+        users.create_internal_user("root" + tag, "correct horse battery", "admin")[
+            "user_id"
+        ]
+    );
+    member_id = str(
+        users.create_internal_user("member" + tag, "correct horse battery")["user_id"]
+    );
+
+    import from jaclang.testing.testkit { ServingTestClient as TestClient }
+    client = TestClient(gw.app);
+    try {
+        for (who, headers, status) in [
+            ("anonymous", {}, 403),
+            (
+                "member",
+                {"Authorization": "Bearer " + users.create_jwt_token(member_id)},
+                403
+            ),
+            (
+                "admin",
+                {"Authorization": "Bearer " + users.create_jwt_token(admin_id)},
+                200
+            )
+        ] {
+            resp = client.get("/admin/schedules", headers=headers);
+            assert resp.status_code == status , (who, resp.status_code, resp.text);
+            body = resp.json();
+            if status == 200 {
+                rows = body["data"]["schedules"];
+                assert [(r["name"], r["service"], r["namespace"]) for r in rows]
+                    == [("nightly", "orders", "orders")] , body;
+                assert body["data"]["unanswered"] == [] , body;
+            } else {
+                assert body["ok"] is False , (who, body);
+            }
+        }
+    } finally {
+        srv.shutdown();
+    }
+}
+
 """Serves `payload` as JSON on every GET and records the Host header each
 request actually carried, so a test can verify the header genuinely reached
 the wire -- not just that a headers dict was built correctly in memory."""

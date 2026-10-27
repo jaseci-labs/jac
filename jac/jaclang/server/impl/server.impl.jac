@@ -1270,7 +1270,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
     }
 
     _self = self;
-    def _make_target(name: str, is_walker: bool) -> Callable[[], None] {
+    def _make_target(name: str, is_walker: bool) -> Callable[[], any] {
         async def _run -> any {
             intro = _self.introspector;
             registry: dict[str, any] = (
@@ -1301,15 +1301,8 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 );
             }
         }
-        def target {
-            outcome = asyncio.run(_run());
-            if (
-                isinstance(outcome, dict)
-                and 'error' in outcome
-                and outcome.get('error_code') != 'execution_error'
-            ) {
-                logger.error(f"scheduled {name} failed: {outcome.get('error')}");
-            }
+        def target -> any {
+            return asyncio.run(_run());
         }
         return target;
     }
@@ -1320,9 +1313,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         }
         self.scheduler.register(name, _make_target(name, is_walker), spec, is_walker);
     }
-    def _make_member_target(
-        label: str, member: any, is_walker: bool
-    ) -> Callable[[], None] {
+    def _make_member_target(member: any, is_walker: bool) -> Callable[[], any] {
         async def _run_member -> any {
             with _self.request_scope() {
                 if is_walker {
@@ -1335,15 +1326,8 @@ impl JacAPIServer._register_scheduled_tasks -> None {
                 );
             }
         }
-        def member_target {
-            outcome = asyncio.run(_run_member());
-            if (
-                isinstance(outcome, dict)
-                and 'error' in outcome
-                and outcome.get('error_code') != 'execution_error'
-            ) {
-                logger.error(f"scheduled {label} failed: {outcome.get('error')}");
-            }
+        def member_target -> any {
+            return asyncio.run(_run_member());
         }
         return member_target;
     }
@@ -1353,7 +1337,7 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         }
         label = f"{app}.{name}";
         self.scheduler.register(
-            label, _make_member_target(label, member, is_walker), spec, is_walker
+            label, _make_member_target(member, is_walker), spec, is_walker
         );
     }
     if self.scheduler.has_pending() {
@@ -1375,9 +1359,17 @@ impl JacAPIServer._register_scheduled_tasks -> None {
         def _release(key: str, owner: str) -> bool {
             return bool(_store.kv_release_lease(key, owner));
         }
+        def _record(key: str, value: str) {
+            _store.kv_put_record(key, value);
+        }
+        def _recall(key: str) -> (str | None) {
+            return _store.kv_get_record(key);
+        }
         self.scheduler.claim = _claim;
         self.scheduler.hold = _hold;
         self.scheduler.release = _release;
+        self.scheduler.record = _record;
+        self.scheduler.recall = _recall;
         self.scheduler.namespace = schedule_namespace(self.module_name);
     }
 }

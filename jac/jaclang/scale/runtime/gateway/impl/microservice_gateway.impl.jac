@@ -324,6 +324,92 @@ impl MicroserviceGateway.aggregate_graph_data(request: Request) -> Response | No
     );
 }
 
+impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | None {
+    import json;
+
+    fwd_headers = self.build_forward_headers(request);
+    service_auth = auth_headers();
+    if service_auth {
+        fwd_headers = {
+            key: value
+            for (key, value) in fwd_headers.items()
+            if key.lower() != "authorization"
+        };
+        fwd_headers.update(service_auth);
+    }
+    rows: list[dict[str, any]] = [];
+    services: list[str] = [];
+    unanswered: list[dict[str, any]] = [];
+    refused: Response | None = None;
+
+    for (svc_name, svc_entry) in self.eligible_services() {
+        per_svc_headers = dict(fwd_headers);
+        if svc_entry.host_override {
+            per_svc_headers["Host"] = svc_entry.host_override;
+        }
+        result = await raw_forward(
+            "GET",
+            f"{self.service_base_url(svc_entry)}/admin/schedules",
+            per_svc_headers,
+            b"",
+            timeout=int(http_forward_timeout(svc_name))
+        );
+        if result is None {
+            unanswered.append({"service": svc_name, "status": None});
+            continue;
+        }
+        (status, _headers, body) = result;
+        try {
+            frag = json.loads(body);
+        } except ValueError {
+            frag = None;
+        }
+        if status in (401, 403) {
+            if refused is None {
+                refused = JSONResponse(
+                    status_code=status,
+                    content=frag if isinstance(frag, dict) else {"ok": False}
+                );
+            }
+            unanswered.append({"service": svc_name, "status": status});
+            continue;
+        }
+        if status != 200 or not isinstance(frag, dict) {
+            unanswered.append({"service": svc_name, "status": status});
+            continue;
+        }
+        data = frag.get("data") or {};
+        namespace = str(data.get("namespace", ""));
+        services.append(svc_name);
+        for row in (data.get("schedules") or []) {
+            row["service"] = svc_name;
+            row["namespace"] = namespace;
+            rows.append(row);
+        }
+    }
+
+    if not services {
+        if refused is not None {
+            return refused;
+        }
+        return JSONResponse(
+            status_code=502,
+            content={
+                "ok": False,
+                "error": {"message": "no service answered /admin/schedules"},
+                "data": {"unanswered": unanswered}
+            }
+        );
+    }
+    return JSONResponse(
+        status_code=200,
+        content={
+            "ok": True,
+            "data": {"services": services, "unanswered": unanswered, "schedules": rows}
+        }
+    );
+}
+
 impl MicroserviceGateway.handle_builtin_passthrough(
     request: Request, path: str
 ) -> Response | None {
@@ -822,7 +908,20 @@ impl MicroserviceGateway.setup -> ServingApp {
                 svc_label = "__admin__";
                 admin_resp: Response | None = None;
                 if gw.server is not None {
-                    admin_resp = await next_fn(request);
+                    if request.method == "GET"
+                        and path.rstrip("/") == "/admin/schedules" {
+                        guard = gw.require_admin_json(
+                            request.headers.get("Authorization")
+                        );
+                        if guard is not None {
+                            admin_resp = guard;
+                        } else {
+                            admin_resp = await gw.aggregate_schedules(request);
+                        }
+                    }
+                    if admin_resp is None {
+                        admin_resp = await next_fn(request);
+                    }
                 } else {
                     admin_resp = gw.handle_admin(path);
                 }

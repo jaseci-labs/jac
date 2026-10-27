@@ -82,6 +82,12 @@ impl MetricsExtension.register(server: JacAPIServer) -> None {
     if not collector.is_enabled() {
         return;
     }
+    def _record_run(outcome: RunOutcome) {
+        collector.record_scheduled_run(
+            outcome.task, outcome.status, outcome.reason, outcome.duration
+        );
+    }
+    server.scheduler.on_run('metrics', _record_run);
     endpoint = str(cfg.get('endpoint', '/metrics'));
     server.metrics_path = endpoint;
     scrape_password = str(cfg.get('prometheus_admin_password', ''));
@@ -257,6 +263,7 @@ impl AdminExtension.register(server: JacAPIServer) -> None {
     self.server = server;
     self.user_manager = server.user_manager;
     self._metrics = server.metrics;
+    self.scheduler = server.scheduler;
     self.register_admin_endpoints();
     self.register_llm_telemetry_endpoints();
     self.register_workloads_endpoints();
@@ -266,6 +273,7 @@ impl AdminExtension.register(server: JacAPIServer) -> None {
     self.register_deploy_health_endpoints();
     self.register_network_endpoints();
     self.register_podenv_endpoints();
+    self.register_schedules_endpoints();
 }
 
 impl scale_extensions -> list[ServerExtension] {

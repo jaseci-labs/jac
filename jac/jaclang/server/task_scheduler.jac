@@ -2,6 +2,7 @@ import threading;
 import time;
 import heapq;
 import datetime;
+import json;
 import logging;
 import math;
 import os;
@@ -63,8 +64,17 @@ obj ScheduledTask {
         target: Callable,
         spec: ScheduleSpec,
         is_walker: bool,
-        next_run: (datetime.datetime | None) = None,
-        last_run: (datetime.datetime | None) = None;
+        next_run: (datetime.datetime | None) = None;
+}
+
+obj RunOutcome {
+    has task: str,
+        tick: datetime.datetime,
+        worker: str,
+        status: str,
+        duration: float = 0.0,
+        reason: str = "",
+        error: str = "";
 }
 
 obj Scheduler {
@@ -83,15 +93,22 @@ obj Scheduler {
         drain: (DrainState | None) = None,
         _in_flight: dict[int, tuple[str, threading.Thread]] = {},
         _flight_lock: threading.Lock = threading.Lock(),
-        _overlapping: set[str] = set();
+        _overlapping: set[str] = set(),
+        _listeners: dict[str, Callable[[RunOutcome], None]] = {},
+        record: (Callable[[str, str], None] | None) = None,
+        recall: (Callable[[str], (str | None)] | None) = None,
+        _last: dict[str, dict[str, any]] = {};
 
     static def instance -> Scheduler;
     def register(
         name: str, target: Callable, spec: ScheduleSpec, is_walker: bool
     ) -> None;
 
+    def on_run(name: str, listener: Callable[[RunOutcome], None]) -> None;
     def start -> None;
     def start_if_pending -> None;
+    def _tick(task: ScheduledTask, due: datetime.datetime) -> None;
+    def _claim_key(task: ScheduledTask) -> str;
     def _may_fire(task: ScheduledTask, due: datetime.datetime) -> bool;
     def _run_key(task: ScheduledTask) -> str;
     def _hold_owner -> str;
@@ -101,8 +118,15 @@ obj Scheduler {
     def _release_run(task: ScheduledTask) -> None;
     def _still_running(task: ScheduledTask) -> bool;
     def _start(thread: threading.Thread, task: ScheduledTask) -> bool;
-    def _launch(task: ScheduledTask) -> None;
-    def _run_tracked(task: ScheduledTask) -> None;
+    def _launch(task: ScheduledTask, due: datetime.datetime) -> None;
+    def _run_tracked(task: ScheduledTask, due: datetime.datetime) -> None;
+    def _worker -> str;
+    def _skip(task: ScheduledTask, due: datetime.datetime, reason: str) -> None;
+    def _report(outcome: RunOutcome) -> None;
+    def _last_key(name: str) -> str;
+    def _remember(outcome: RunOutcome) -> None;
+    def last_run_of(name: str) -> (dict[str, any] | None);
+    def schedules -> list[dict[str, any]];
     def stop(timeout: (float | None) = None) -> None;
     def `wait -> None;
     def has_pending -> bool;
@@ -116,5 +140,5 @@ obj Scheduler {
         date_str: str, now: datetime.datetime
     ) -> (datetime.datetime | None);
 
-    def _execute(task: ScheduledTask) -> None;
+    def _execute(task: ScheduledTask) -> str;
 }
