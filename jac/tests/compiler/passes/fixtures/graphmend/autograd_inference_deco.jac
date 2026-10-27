@@ -4,7 +4,7 @@ import torch;
 
 @torch.compile()
 @torch.inference_mode()
-def f(x: any, y: any) -> any {
+def f(x: torch.Tensor, y: any) -> any {
     if (x.sum() > 0) {
         z = x + y;
     } else {

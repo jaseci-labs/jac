@@ -3,7 +3,7 @@ autograd_xmod_entry.jac."""
 import torch;
 
 class Net(torch.nn.Module) {
-    def forward(self: any, x: any) -> any {
+    def forward(self: any, x: torch.Tensor) -> any {
         if (x.sum() == 0) {
             y = x * 2.0;
         } else {

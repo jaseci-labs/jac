@@ -35,18 +35,26 @@ glob _PURE_BUILTINS: set[str] = {
          'lt',
          'ne'
      },
-     _PY_VALUE_BUILTINS: set[str] = {
-         'all',
-         'any',
-         'bool',
-         'callable',
-         'float',
-         'hasattr',
-         'int',
-         'isinstance',
-         'issubclass',
-         'len'
+     _NON_TENSOR_FNS: set[str] = {
+         'allclose',
+         'dim',
+         'element_size',
+         'equal',
+         'get_device',
+         'is_complex',
+         'is_contiguous',
+         'is_floating_point',
+         'is_nonzero',
+         'is_tensor',
+         'item',
+         'ndimension',
+         'nelement',
+         'numel',
+         'size',
+         'stride',
+         'tolist'
      },
+     _TENSOR_VIEW_ATTRS: set[str] = {'H', 'T', 'data', 'imag', 'mH', 'mT', 'real'},
      _PURE_TORCH_FNS: set[str] = {
          'arange',
          'as_tensor',
@@ -115,8 +123,8 @@ walker PredicateCtrlFlowPass(TreePass) {
     def _non_tensor_container(e: uni.Expr) -> bool;
     def _same_lhs(a: uni.Assignment, b: uni.Assignment) -> (uni.Name | None);
     def _bool_tensor(e: uni.Expr, seen: set[str], depth: int) -> bool;
-    def _foreign_module_call(c: uni.FuncCall) -> bool;
-    def _python_valued(e: uni.Expr, seen: set[str], depth: int) -> bool;
+    def _tensor_valued(e: uni.Expr, seen: set[str], depth: int) -> bool;
+    def _tensor_annotation(param: uni.ParamVar) -> bool;
     def _assign(target: uni.Name, value: uni.Expr) -> uni.Assignment;
     def _hoist(
         at: uni.UniNode, cond: uni.Expr, t: uni.Expr, f: uni.Expr

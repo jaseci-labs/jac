@@ -330,7 +330,7 @@ impl PredicateCtrlFlowPass._bool_tensor(
             return False;
         }
         for side in [e.left] + list(e.rights) {
-            if not self._python_valued(side, set(), 0) {
+            if self._tensor_valued(side, set(), 0) {
                 return True;
             }
         }
@@ -348,11 +348,14 @@ impl PredicateCtrlFlowPass._bool_tensor(
     }
     if isinstance(e, uni.FuncCall) {
         t = e.target;
-        return isinstance(t, uni.AtomTrailer)
-            and t.is_attr
-            and isinstance(t.right, uni.Name)
-            and (t.right.value in _BOOL_TENSOR_FNS)
-            and not self._foreign_module_call(e);
+        if (not isinstance(t, uni.AtomTrailer))
+            or (not t.is_attr)
+            or (not isinstance(t.right, uni.Name))
+            or (t.right.value not in _BOOL_TENSOR_FNS) {
+            return False;
+        }
+        return is_torch_attr_target(t, t.right.value)
+            or self._tensor_valued(t.target, set(), 0);
     }
     if (not isinstance(e, uni.Name)) or (e.value in seen) {
         return False;
@@ -369,29 +372,7 @@ impl PredicateCtrlFlowPass._bool_tensor(
         and self._bool_tensor(assign.value, seen, depth + 1);
 }
 
-impl PredicateCtrlFlowPass._foreign_module_call(c: uni.FuncCall) -> bool {
-    base: uni.Expr = c.target;
-    while isinstance(base, uni.AtomTrailer) {
-        base = base.target;
-    }
-    if (not isinstance(base, uni.Name)) or (not base.sym_tab) {
-        return False;
-    }
-    sym = base.sym_tab.lookup(base.value, deep=True);
-    decl = sym.decl if (sym is not None) else None;
-    if decl is None {
-        return False;
-    }
-    imp = decl.find_parent_of_type(uni.Import);
-    if imp is None {
-        return False;
-    }
-    mp = decl.find_parent_of_type(uni.ModulePath) or imp.from_loc;
-    path = mp.dot_path_str if (mp is not None) else "";
-    return not ((path == 'torch') or path.startswith('torch.'));
-}
-
-impl PredicateCtrlFlowPass._python_valued(
+impl PredicateCtrlFlowPass._tensor_valued(
     e: uni.Expr, seen: set[str], depth: int
 ) -> bool {
     if depth > 10 {
@@ -400,46 +381,92 @@ impl PredicateCtrlFlowPass._python_valued(
     if isinstance(e, uni.AtomUnit) {
         inner = e.value;
         return isinstance(inner, uni.Expr)
-            and self._python_valued(inner, seen, depth + 1);
-    }
-    if isinstance(e, (uni.Literal, uni.BoolExpr)) {
-        return True;
-    }
-    if isinstance(e, uni.UnaryExpr) {
-        return (e.op.name == Tok.NOT)
-            or self._python_valued(e.operand, seen, depth + 1);
-    }
-    if isinstance(e, uni.CompareExpr) {
-        for side in [e.left] + list(e.rights) {
-            if not self._python_valued(side, seen, depth + 1) {
-                return False;
-            }
-        }
-        return True;
-    }
-    if isinstance(e, uni.BinaryExpr) {
-        return self._python_valued(e.left, seen, depth + 1)
-            and self._python_valued(e.right, seen, depth + 1);
+            and self._tensor_valued(inner, seen, depth + 1);
     }
     if isinstance(e, uni.FuncCall) {
-        return (
-            isinstance(e.target, uni.Name) and (e.target.value in _PY_VALUE_BUILTINS)
-        )
-            or self._foreign_module_call(e);
+        t = e.target;
+        if (not isinstance(t, uni.AtomTrailer))
+            or (not t.is_attr)
+            or (not isinstance(t.right, uni.Name))
+            or (t.right.value in _NON_TENSOR_FNS) {
+            return False;
+        }
+        return is_torch_attr_target(t, t.right.value)
+            or self._tensor_valued(t.target, seen, depth + 1);
     }
-    if (not isinstance(e, uni.Name)) or (e.value in seen) {
+    if isinstance(e, uni.AtomTrailer) {
+        if e.is_attr {
+            return isinstance(e.right, uni.Name)
+                and (e.right.value in _TENSOR_VIEW_ATTRS)
+                and self._tensor_valued(e.target, seen, depth + 1);
+        }
+        return self._tensor_valued(e.target, seen, depth + 1);
+    }
+    if isinstance(e, uni.BinaryExpr) {
+        return isinstance(e.op, uni.Token)
+            and (
+                self._tensor_valued(e.left, seen, depth + 1)
+                or self._tensor_valued(e.right, seen, depth + 1)
+            );
+    }
+    if isinstance(e, uni.UnaryExpr) {
+        return (e.op.name in [Tok.MINUS, Tok.PLUS, Tok.BW_NOT])
+            and self._tensor_valued(e.operand, seen, depth + 1);
+    }
+    if not isinstance(e, uni.Name) {
         return False;
     }
     st = e.sym_tab;
     sym = st.lookup(e.value, deep=True) if st else None;
-    if (sym is None) or symbol_is_builtin(sym) or (len(sym.defn) != 1) {
+    if (sym is None) or symbol_is_builtin(sym) or (not sym.defn) {
         return False;
     }
-    seen.add(e.value);
-    assign = defining_assignment(sym);
-    return (assign is not None)
-        and isinstance(assign.value, uni.Expr)
-        and self._python_valued(assign.value, seen, depth + 1);
+    key = str(id(sym));
+    if key in seen {
+        return True;
+    }
+    seen.add(key);
+    for d in sym.defn {
+        param = d.find_parent_of_type(uni.ParamVar);
+        if param is not None {
+            if not self._tensor_annotation(param) {
+                return False;
+            }
+            continue;
+        }
+        assign = d.find_parent_of_type(uni.Assignment);
+        if (assign is None)
+            or (not any(t is d for t in assign.target))
+            or (not isinstance(assign.value, uni.Expr)) {
+            return False;
+        }
+        if (assign.aug_op is None)
+            and (not self._tensor_valued(assign.value, seen, depth + 1)) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl PredicateCtrlFlowPass._tensor_annotation(param: uni.ParamVar) -> bool {
+    tag = param.type_tag;
+    ann = tag.tag if (tag is not None) else None;
+    if ann is None {
+        return False;
+    }
+    if is_torch_attr_target(ann, 'Tensor') {
+        return True;
+    }
+    if (not isinstance(ann, uni.Name))
+        or (ann.value != 'Tensor')
+        or (not ann.sym_tab) {
+        return False;
+    }
+    sym = ann.sym_tab.lookup('Tensor', deep=True);
+    decl = sym.decl if (sym is not None) else None;
+    imp = decl.find_parent_of_type(uni.Import) if (decl is not None) else None;
+    src = imp.from_loc if (imp is not None) else None;
+    return (src is not None) and (src.dot_path_str == 'torch');
 }
 
 impl PredicateCtrlFlowPass._assign(

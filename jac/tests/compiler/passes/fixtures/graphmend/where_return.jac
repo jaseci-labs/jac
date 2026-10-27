@@ -2,7 +2,7 @@
 import torch;
 
 @torch.compile()
-def with_breaks(a: any, b: any) -> any {
+def with_breaks(a: any, b: torch.Tensor) -> any {
     x = a / (torch.abs(a) + 1);
     b = x * 1.414;
     if (b.sum() < 0) {

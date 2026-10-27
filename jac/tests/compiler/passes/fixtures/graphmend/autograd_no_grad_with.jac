@@ -3,7 +3,7 @@ module trains elsewhere, the region is provably outside gradient tracking."""
 import torch;
 
 @torch.compile()
-def f(x: any, y: any) -> any {
+def f(x: torch.Tensor, y: any) -> any {
     with torch.no_grad() {
         if (x.sum() > 0) {
             z = x + y;

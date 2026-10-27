@@ -15,7 +15,7 @@ import torch
 
 
 class MyModel(torch.nn.Module):
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         x = torch.relu(x)
         if x.sum() > 0:
             return x * 2.0
@@ -293,7 +293,7 @@ from functools import wraps
 def dynamic_update(rope_forward):
 
     @wraps(rope_forward)
-    def wrapper(self, x):
+    def wrapper(self, x: torch.Tensor):
         if x.sum() > 0:
             y = x * 2.0
         else:
@@ -325,7 +325,7 @@ import torch
 
 def dynamic_update(rope_forward):
 
-    def frequency_update(self, x):
+    def frequency_update(self, x: torch.Tensor):
         if x.sum() > 0:
             y = x * 2.0
         else:
@@ -438,7 +438,7 @@ import torch
 
 def logging_wrap(fn):
 
-    def wrapper(x):
+    def wrapper(x: torch.Tensor):
         if x.sum() > 0:
             y = x * 2.0
         else:

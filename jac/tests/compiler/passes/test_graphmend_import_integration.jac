@@ -16,7 +16,7 @@ import torch
 
 
 class Net(torch.nn.Module):
-    def forward(self, x):
+    def forward(self, x: torch.Tensor):
         x = torch.relu(x)
         if x.sum() > 0:
             return x * 2.0
