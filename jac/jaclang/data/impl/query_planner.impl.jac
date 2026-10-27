@@ -1177,15 +1177,18 @@ impl resolve_query_type_counts(
     }
     found = mem.batch_get(_unique_nodes(wanted)) if wanted else {};
 
+    unresolved: list[bool] = [];
+
     def readable(anchor_id: any, checked: bool) -> bool {
         if not checked {
             return True;
         }
         a = found.get(UUID(str(anchor_id)));
-        return a is not None
-            and a.is_populated()
-            and a.archetype is not None
-            and acl_read_ok(a);
+        if a is None or not a.is_populated() or a.archetype is None {
+            unresolved.append(True);
+            return False;
+        }
+        return acl_read_ok(a);
     }
     seen: dict[str, str] = {};
     for r in rows {
@@ -1236,7 +1239,7 @@ impl resolve_query_type_counts(
     for name in seen.values() {
         counts[name] = counts.get(name, 0) + 1;
     }
-    return (counts, exact);
+    return (counts, exact and not unresolved);
 }
 
 

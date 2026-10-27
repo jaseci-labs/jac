@@ -539,6 +539,10 @@ test "a custom __jac_access__ decides visibility on every read path" {
             tags = attach(owner.archetype, "tags", Doc, owner);
             attach(tags.archetype, "t-drop", Doc, other, Tagged(label="drop"));
             attach(tags.archetype, "t-keep", Doc, other, Tagged(label="keep"));
+            # A neighbor this process cannot materialize (as with a class that
+            # lives in another service), so it cannot check it.
+            unloaded = attach(owner.archetype, "unloaded", Doc, owner);
+            lost = attach(unloaded.archetype, "lost", CustomDoc, other);
             # More hook-denied neighbors than one page may examine.
             walled = attach(owner.archetype, "walled", Doc, owner);
             for i in range(PAGE_SCAN_FLOOR + 50) {
@@ -550,6 +554,11 @@ test "a custom __jac_access__ decides visibility on every read path" {
                 "UPDATE anchors SET arch_type = 'gone.CustomDoc' WHERE id = CAST(:i AS uuid)",
                 {"i": str(renamed.id)}
             );
+            store.rows(
+                "UPDATE anchors SET props = props - '__type__' WHERE id = CAST(:i AS uuid)",
+                {"i": str(lost.id)}
+            );
+            _as_any(ctx.mem).__mem__.pop(lost.id, None);
 
             ctx.set_user_root(str(other.id));
             hub = _as_any(other.archetype);
@@ -569,6 +578,9 @@ test "a custom __jac_access__ decides visibility on every read path" {
             );
             (unknown_counts, _) = resolve_query_type_counts(
                 mem, GraphQuery(made[5], hops=[QHop(dir=2)])
+            );
+            (_, unloaded_exact) = resolve_query_type_counts(
+                mem, GraphQuery(unloaded.archetype, hops=[QHop(dir=2)])
             );
             (crowd_counts, crowd_exact) = resolve_query_type_counts(
                 mem, GraphQuery(crowd.archetype, hops=[QHop(dir=2)])
@@ -670,6 +682,11 @@ test "a custom __jac_access__ decides visibility on every read path" {
                     "the cursor resumes after the examined rows",
                     (len(walled_rest), walled_end),
                     (0, None)
+                ),
+                (
+                    "a neighbor nobody could check is not counted as exact",
+                    unloaded_exact,
+                    False
                 ),
                 (
                     "capped hook counts",
