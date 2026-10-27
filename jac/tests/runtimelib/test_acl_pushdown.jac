@@ -49,6 +49,10 @@ node CustomDoc {
     }
 }
 
+edge Tagged: any --> any {
+    has label: str = "";
+}
+
 edge CustomLink: any --> any {
     def __jac_access__ -> AccessLevel {
         return AccessLevel.READ;
@@ -411,11 +415,13 @@ test "a typed hop gives the access check's answer for every grant and override" 
 test "a custom __jac_access__ decides visibility on every read path" {
     import from jaclang.data.query_planner {
         COUNT_CHECK_CAP,
+        PAGE_SCAN_FLOOR,
+        resolve_query,
         resolve_query_edges,
         resolve_query_page,
         resolve_query_type_counts
     }
-    import from jaclang.runtime.graph_query { GraphQuery, QHop }
+    import from jaclang.runtime.graph_query { GraphQuery, QHop, QPred }
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         ctx = _ctx(td);
@@ -493,7 +499,9 @@ test "a custom __jac_access__ decides visibility on every read path" {
                 ctx.mem.put(e);
             }
 
-            def attach(src: any, label: str, kind: type, edge_owner: any) -> any {
+            def attach(
+                src: any, label: str, kind: type, edge_owner: any, via: any = None
+            ) -> any {
                 x = kind(label=label).__jac__;
                 x.persistent = True;
                 setattr(x, "root", owner.id);
@@ -502,7 +510,7 @@ test "a custom __jac_access__ decides visibility on every read path" {
                 }
                 ctx.mem.put(x);
                 link = EdgeAnchor(
-                    archetype=GenericEdge(),
+                    archetype=via if via is not None else GenericEdge(),
                     source=src.__jac__,
                     target=x,
                     is_undirected=False
@@ -525,6 +533,16 @@ test "a custom __jac_access__ decides visibility on every read path" {
             crowd = attach(owner.archetype, "crowd", Doc, owner);
             for i in range(COUNT_CHECK_CAP + 1) {
                 attach(crowd.archetype, f"c{i}", CustomDoc, other);
+            }
+            # Two tagged edges whose tag only Python can match; the node at the
+            # end of the kept one has no tag of its own.
+            tags = attach(owner.archetype, "tags", Doc, owner);
+            attach(tags.archetype, "t-drop", Doc, other, Tagged(label="drop"));
+            attach(tags.archetype, "t-keep", Doc, other, Tagged(label="keep"));
+            # More hook-denied neighbors than one page may examine.
+            walled = attach(owner.archetype, "walled", Doc, owner);
+            for i in range(PAGE_SCAN_FLOOR + 50) {
+                attach(walled.archetype, f"w{i}", CustomHidden, other);
             }
             ctx.mem.commit();
             store: any = ctx.mem.store;
@@ -554,6 +572,40 @@ test "a custom __jac_access__ decides visibility on every read path" {
             );
             (crowd_counts, crowd_exact) = resolve_query_type_counts(
                 mem, GraphQuery(crowd.archetype, hops=[QHop(dir=2)])
+            );
+            keep_tag = [QPred(field="label", op="in", value=frozenset({"keep"}))];
+            tagged_edges = resolve_query_edges(
+                mem,
+                GraphQuery(
+                    tags.archetype,
+                    hops=[QHop(dir=2, epreds=keep_tag)],
+                    edges_only=True,
+                    limit=5
+                )
+            );
+            tagged_nodes = resolve_query(
+                mem, GraphQuery(tags.archetype, hops=[QHop(dir=2, epreds=keep_tag)])
+            );
+            tagged_page = resolve_query(
+                mem,
+                GraphQuery(tags.archetype, hops=[QHop(dir=2, epreds=keep_tag)], limit=5)
+            );
+            visited = resolve_query_edges(
+                mem,
+                GraphQuery(
+                    hub, hops=[QHop(dir=2, nd=Doc)], edges_only=True, limit=1
+                ).visit()
+            );
+            mem.reset_fetch_count();
+            (walled_page, walled_next) = resolve_query_page(
+                mem, GraphQuery(walled.archetype, hops=[QHop(dir=2)], limit=5)
+            );
+            walled_cost = mem.get_fetch_count();
+            (walled_rest, walled_end) = resolve_query_page(
+                mem,
+                GraphQuery(
+                    walled.archetype, hops=[QHop(dir=2)], limit=5, after=walled_next
+                )
             );
             first_open = resolve_query_edges(
                 mem,
@@ -588,6 +640,36 @@ test "a custom __jac_access__ decides visibility on every read path" {
                     "bounded edge read past an unreadable edge",
                     [_as_any(e).target.archetype.label for e in first_open],
                     ["x-open"]
+                ),
+                (
+                    "edge tag on a bounded edge read",
+                    [_as_any(e).archetype.label for e in tagged_edges],
+                    ["keep"]
+                ),
+                (
+                    "edge tag on a node read",
+                    [_as_any(a).archetype.label for a in tagged_nodes],
+                    ["t-keep"]
+                ),
+                (
+                    "edge tag on a bounded node read",
+                    [_as_any(a).archetype.label for a in tagged_page],
+                    ["t-keep"]
+                ),
+                ("bounded visit keeps its bound", len(visited), 2),
+                (
+                    "a denied stretch ends the page early with a cursor",
+                    (
+                        len(walled_page),
+                        walled_next is not None,
+                        walled_cost <= PAGE_SCAN_FLOOR
+                    ),
+                    (0, True, True)
+                ),
+                (
+                    "the cursor resumes after the examined rows",
+                    (len(walled_rest), walled_end),
+                    (0, None)
                 ),
                 (
                     "capped hook counts",

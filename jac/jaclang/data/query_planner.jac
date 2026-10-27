@@ -3,6 +3,8 @@ import from uuid { UUID }
 
 glob logger = logging.getLogger(__name__),
      COUNT_CHECK_CAP: int = 200,
+     PAGE_SCAN_FLOOR: int = 200,
+     PAGE_SCAN_FACTOR: int = 4,
      __all__ = [
          'resolve_query',
          'resolve_query_edges',
@@ -17,7 +19,7 @@ glob logger = logging.getLogger(__name__),
 
 def _sql_pairs(
     mem: Session, origin_ids: list[UUID], q: GraphQuery, upto: int
-) -> tuple[list[tuple[(UUID | None), (UUID | None)]], list[QPred]];
+) -> tuple[list[tuple[(UUID | None), (UUID | None)]], list[QPred], list[QPred]];
 
 
 def resolve_query_prefix(mem: Session, q: GraphQuery, upto: int) -> list[UUID];

@@ -138,7 +138,7 @@ impl compile_query(
         for (j, p) in enumerate(hop.epreds) {
             cond = _pred_cond('e', p, params, f"{pfx_e}p{j}", edge_names, promotions);
             if cond is None {
-                out.residual.setdefault(i, []).append(p);
+                out.eresidual.setdefault(i, []).append(p);
             } else {
                 econds.append(cond);
             }

@@ -8,7 +8,8 @@ glob logger = logging.getLogger(__name__),
 obj CompiledQuery {
     has sql: str = '',
         params: dict[str, any] = {},
-        residual: dict[int, list[QPred]] = {};
+        residual: dict[int, list[QPred]] = {},
+        eresidual: dict[int, list[QPred]] = {};
 }
 
 

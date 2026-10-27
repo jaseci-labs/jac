@@ -22,14 +22,18 @@ def _acl_residual(q: GraphQuery, upto: int, store: any) -> dict[int, list[str]];
 
 
 def _scan(
-    mem: Session, q: GraphQuery, unique: str, lookahead: bool
+    mem: Session,
+    q: GraphQuery,
+    unique: str,
+    lookahead: bool,
+    budget: (int | None) = None
 ) -> tuple[
     list[tuple[Anchor, (Anchor | None), (tuple[int, (UUID | None)] | None)]],
     (tuple[int, (UUID | None)] | None)
 ];
 
 
-def _split_tail(cq: CompiledQuery, upto: int) -> list[QPred];
+def _split_tail(cq: CompiledQuery, upto: int, edges: bool = False) -> list[QPred];
 
 
 def _with_bound(q: GraphQuery, limit: (int | None), offset: int) -> GraphQuery;
@@ -40,21 +44,19 @@ def _with_edges(q: GraphQuery) -> GraphQuery;
 
 impl _sql_pairs(
     mem: Session, origin_ids: list[UUID], q: GraphQuery, upto: int
-) -> tuple[list[tuple[(UUID | None), (UUID | None)]], list[QPred]] {
+) -> tuple[list[tuple[(UUID | None), (UUID | None)]], list[QPred], list[QPred]] {
     store = mem.store;
     if store is None or not origin_ids {
-        return ([], []);
+        return ([], [], []);
     }
     mem.read_barrier();
     acl_root = _acl_pushdown_root(q, upto);
     residual = _acl_residual(q, upto, store) if acl_root is not None else {};
     bound = _effective_bound(q);
     push = bound is not None
+        and not q.edges_only
         and (
-            _bound_pushable()
-            or (
-                acl_root is not None and (upto - 1) not in residual and not q.edges_only
-            )
+            _bound_pushable() or (acl_root is not None and (upto - 1) not in residual)
         );
     eff = q;
     if bound is not None {
@@ -69,6 +71,7 @@ impl _sql_pairs(
         acl_residual=residual
     );
     tail = _split_tail(cq, upto);
+    etail = _split_tail(cq, upto, True);
     if upto > 0
         and len(origin_ids) == 1
         and eff.limit is None
@@ -77,7 +80,7 @@ impl _sql_pairs(
         key = (cq.sql, _param_key(cq.params));
         hit = mem.hop_cached(key, origin_ids[0]);
         if hit is not None {
-            return (hit, tail);
+            return (hit, tail, etail);
         }
         siblings = mem.hop_siblings(origin_ids[0]);
         if len(siblings) > 1 and origin_ids[0] in siblings {
@@ -88,7 +91,7 @@ impl _sql_pairs(
                 mem.batch_get(reached);
                 mem.note_siblings(reached);
             }
-            return (by_origin.get(origin_ids[0], []), tail);
+            return (by_origin.get(origin_ids[0], []), tail, etail);
         }
     }
     cq.params['origin'] = [str(i) for i in origin_ids];
@@ -98,7 +101,7 @@ impl _sql_pairs(
         eid = UUID(str(r[1])) if r[1] is not None else None;
         out.append((nid, eid));
     }
-    return (out, tail);
+    return (out, tail, etail);
 }
 
 
@@ -115,7 +118,7 @@ def _tail_ok(anchor: Anchor, tail: list[QPred]) -> bool;
 
 def _resolve_pairs(
     mem: Session, q: GraphQuery, upto: int
-) -> tuple[list[tuple[any, any]], dict[any, Anchor], list[QPred]];
+) -> tuple[list[tuple[any, any]], dict[any, Anchor], list[QPred], list[QPred]];
 
 
 def _materialize_ids(
@@ -127,7 +130,7 @@ def _unique_nodes(pairs: list[tuple[any, any]]) -> list[any];
 
 
 impl resolve_query_prefix(mem: Session, q: GraphQuery, upto: int) -> list[UUID] {
-    (pairs, _local, _tail) = _resolve_pairs(mem, q, upto);
+    (pairs, _local, _tail, _etail) = _resolve_pairs(mem, q, upto);
     return [
         k
         for k in _unique_nodes(pairs)
@@ -157,7 +160,30 @@ impl resolve_query(mem: Session, q: GraphQuery) -> list[Anchor] {
         mem.note_siblings([n.ensure_id() for n in page]);
         return page;
     }
-    (pairs, local, tail) = _resolve_pairs(mem, q, len(q.hops));
+    (pairs, local, tail, etail) = _resolve_pairs(mem, q, len(q.hops));
+    if etail {
+        reaching = _materialize_ids(
+            mem,
+            _unique_nodes(
+                [
+                    (e, None)
+                    for (_, e) in pairs
+                    if e is not None
+                ]
+            ),
+            local
+        );
+        passing = {
+            anchor_key(ea)
+            for ea in reaching
+            if _tail_ok(ea, etail)
+        };
+        pairs = [
+            (n, e)
+            for (n, e) in pairs
+            if e is not None and e in passing
+        ];
+    }
     ids = _unique_nodes(pairs);
     mem.note_siblings(
         [
@@ -217,17 +243,25 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
     if not needs_store(mem, origins) {
         return walk_edges(origins, q, gated);
     }
-    if not q.from_visit
-        and _effective_bound(q) is not None
+    bound = _effective_bound(q);
+    if bound is not None
         and all(o.persistent for o in origins)
         and (not gated or _acl_fully_pushed(mem, q)) {
-        return [
-            e
-            for (_, e, _) in _scan(mem, q, 'edge', False)[0]
-            if e is not None
-        ];
+        scanned: list[Anchor] = [];
+        reached: set = set();
+        for (a, e, _) in _scan(mem, q, 'edge', False)[0] {
+            if e is None {
+                continue;
+            }
+            scanned.append(e);
+            if q.from_visit and anchor_key(a) not in reached {
+                reached.add(anchor_key(a));
+                scanned.append(a);
+            }
+        }
+        return scanned;
     }
-    (pairs, local, tail) = _resolve_pairs(mem, q, len(q.hops));
+    (pairs, local, tail, etail) = _resolve_pairs(mem, q, len(q.hops));
     edge_ids: list[any] = [];
     node_of: dict[object, any] = {};
     seen: set = set();
@@ -242,6 +276,24 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
         }
     }
     edges = _materialize_ids(mem, edge_ids, local);
+    if etail {
+        edges = [
+            ea
+            for ea in edges
+            if _tail_ok(ea, etail)
+        ];
+    }
+    if tail {
+        kept_tail: list[Anchor] = [];
+        for ea in edges {
+            nid = node_of.get(anchor_key(ea));
+            ends = _materialize_ids(mem, [nid], local) if nid is not None else [];
+            if ends and _tail_ok(ends[0], tail) {
+                kept_tail.append(ea);
+            }
+        }
+        edges = kept_tail;
+    }
     if access_gated() {
         kept: list[Anchor] = [];
         for ea in edges {
@@ -259,9 +311,13 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
         }
         edges = kept;
     }
+    if bound is not None {
+        stop = None if bound[0] is None else bound[1] + bound[0];
+        edges = edges[bound[1]:stop];
+    }
     if not q.from_visit {
         out_e: list[Anchor] = list(edges);
-        if q.slc is not None {
+        if q.slc is not None and bound is None {
             out_e = out_e[q.slc];
         }
         return out_e;
@@ -280,7 +336,7 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
             out.append(nodes[0]);
         }
     }
-    if q.slc is not None {
+    if q.slc is not None and bound is None {
         out = out[q.slc];
     }
     return out;
@@ -320,7 +376,7 @@ impl resolve_query_count(mem: Session, q: GraphQuery) -> int {
         acl_root=acl_root,
         acl_residual=residual
     );
-    if cq.residual {
+    if cq.residual or cq.eresidual {
         return len(_resolve_for(mem, q));
     }
     cq.params['origin'] = [str(i) for i in ids];
@@ -699,15 +755,16 @@ impl _staged(mem: Session, q: GraphQuery) -> GraphQuery {
 }
 
 
-impl _split_tail(cq: CompiledQuery, upto: int) -> list[QPred] {
-    if not cq.residual {
+impl _split_tail(cq: CompiledQuery, upto: int, edges: bool = False) -> list[QPred] {
+    held = cq.eresidual if edges else cq.residual;
+    if not held {
         return [];
     }
     last = upto - 1;
     early = sorted(
         [
             h
-            for h in cq.residual.keys()
+            for h in held.keys()
             if h != last
         ]
     );
@@ -718,7 +775,7 @@ impl _split_tail(cq: CompiledQuery, upto: int) -> list[QPred] {
             f"predicates"
         );
     }
-    return list(cq.residual.get(last) or []);
+    return list(held.get(last) or []);
 }
 
 
@@ -747,7 +804,11 @@ impl _with_bound(q: GraphQuery, limit: (int | None), offset: int) -> GraphQuery 
 
 
 impl _scan(
-    mem: Session, q: GraphQuery, unique: str, lookahead: bool
+    mem: Session,
+    q: GraphQuery,
+    unique: str,
+    lookahead: bool,
+    budget: (int | None) = None
 ) -> tuple[
     list[tuple[Anchor, (Anchor | None), (tuple[int, (UUID | None)] | None)]],
     (tuple[int, (UUID | None)] | None)
@@ -766,19 +827,19 @@ impl _scan(
     edge_acl = acl_root is not None and not distinct;
     eres = _edge_residual(q.hops[upto - 1], store) if edge_acl else None;
     promos = store?.promotions;
-    tail = _split_tail(
-        compile_query(
-            q,
-            upto,
-            store,
-            promotions=promos,
-            acl_root=acl_root,
-            acl_residual=residual,
-            edge_residual=eres,
-            edge_acl=edge_acl
-        ),
-        upto
+    probe = compile_query(
+        q,
+        upto,
+        store,
+        promotions=promos,
+        acl_root=acl_root,
+        acl_residual=residual,
+        edge_residual=eres,
+        edge_acl=edge_acl
     );
+    tail = _split_tail(probe, upto);
+    etail = _split_tail(probe, upto, True);
+    want_edges = not distinct or bool(etail);
     (limit, offset) = _effective_bound(q) or (None, 0);
     if limit == 0 {
         return ([], None);
@@ -786,7 +847,11 @@ impl _scan(
     node_trust = residual.get(upto - 1);
     node_known = set(node_trust or []);
     edge_known = set(eres or []);
-    exact = not tail and node_trust is None and eres is None and unique == 'row';
+    exact = not tail
+        and not etail
+        and node_trust is None
+        and eres is None
+        and unique == 'row';
 
     def node_unknown(r: tuple[any, ...]) -> bool {
         return node_trust is not None and str(r[3]) not in node_known;
@@ -803,31 +868,39 @@ impl _scan(
     edges: dict[UUID, Anchor] = {};
     probing = False;
     more = False;
+    examined = 0;
+    resume: (tuple[int, (UUID | None)] | None) = None;
+    held: list[UUID] = [];
 
     def checked(r: tuple[any, ...]) -> bool {
-        return bool(tail) or node_unknown(r) or edge_unknown(r);
+        return bool(tail) or bool(etail) or node_unknown(r) or edge_unknown(r);
     }
 
     def load(rows: list[tuple[any, ...]], start: int) {
-        budget = None if limit is None else limit - len(out);
+        room = None if limit is None else limit - len(out);
+        stop = len(rows) if budget is None else start + max(0, budget - examined) + 1;
         want_n: list[UUID] = [];
         want_e: list[UUID] = [];
-        for r in rows[start:] {
+        for r in rows[start:stop] {
             if r[0] is None {
                 continue;
             }
-            keep = not probing and skip_left == 0 and (budget is None or budget > 0);
+            keep = not probing and skip_left == 0 and (room is None or room > 0);
             if not (keep or checked(r)) {
                 continue;
             }
-            if keep and budget is not None {
-                budget -= 1;
+            if keep and room is not None {
+                room -= 1;
             }
             nid = UUID(str(r[0]));
             if nid not in nodes {
                 want_n.append(nid);
             }
-            if not distinct and r[1] is not None {
+            if want_edges
+                and r[1] is not None
+                and (
+                    (keep and not node_unknown(r)) or edge_unknown(r) or bool(etail)
+                ) {
                 eid = UUID(str(r[1]));
                 if eid not in edges {
                     want_e.append(eid);
@@ -862,12 +935,27 @@ impl _scan(
         rows = store.rows(cq.sql, cq.params);
         done = False;
         for (idx, r) in enumerate(rows) {
+            for gone in held {
+                nodes.pop(gone, None);
+                edges.pop(gone, None);
+            }
+            held = [];
+            if budget is not None and examined >= budget {
+                more = True;
+                done = True;
+                break;
+            }
+            examined += 1;
             raw_off += 1;
             if r[0] is None {
                 continue;
             }
             nid = UUID(str(r[0]));
             eid = UUID(str(r[1])) if r[1] is not None else None;
+            held = [nid] if eid is None else [nid, eid];
+            if r[4] is not None {
+                resume = (int(str(r[4])), eid);
+            }
             mark = eid if unique == 'edge' else nid;
             if unique != 'row' and mark in seen {
                 continue;
@@ -876,8 +964,7 @@ impl _scan(
             a: any = None;
             ea: (Anchor | None) = None;
             if keep or checked(r) {
-                if nid not in nodes
-                    or (eid is not None and not distinct and eid not in edges) {
+                if nid not in nodes {
                     load(rows, idx);
                 }
                 a = nodes.get(nid);
@@ -890,9 +977,15 @@ impl _scan(
                 if node_unknown(r) and not acl_read_ok(a) {
                     continue;
                 }
-                if not distinct and eid is not None {
+                if want_edges and eid is not None {
+                    if eid not in edges {
+                        edges.update(mem.batch_get([eid]));
+                    }
                     ea = edges.get(eid);
                     if ea is None or not ea.is_populated() or ea.archetype is None {
+                        continue;
+                    }
+                    if etail and not _tail_ok(ea, etail) {
                         continue;
                     }
                     if edge_unknown(r) and not acl_read_ok(ea) {
@@ -924,7 +1017,13 @@ impl _scan(
             break;
         }
     }
-    return (out, out[-1][2] if more and out else None);
+    if not more {
+        return (out, None);
+    }
+    if out and (limit is None or len(out) >= limit or resume is None) {
+        return (out, out[-1][2]);
+    }
+    return (out, resume);
 }
 
 
@@ -941,7 +1040,13 @@ impl resolve_query_page(
     gated = access_gated();
     if needs_store(mem, origins) and origins[0].persistent {
         if not gated or _acl_fully_pushed(mem, q) {
-            return _scan(mem, q, 'row', True);
+            return _scan(
+                mem,
+                q,
+                'row',
+                True,
+                max(PAGE_SCAN_FLOOR, PAGE_SCAN_FACTOR * (q.limit or 0))
+            );
         }
     }
     (limit, offset) = _effective_bound(q) or (None, 0);
@@ -1012,7 +1117,7 @@ impl resolve_query_type_counts(
         edge_acl=edge_acl,
         group_by=per
     );
-    if cq.residual {
+    if cq.residual or cq.eresidual {
         raise ValueError('per-type counts need predicates the store can evaluate');
     }
     cq.params['origin'] = [str(i) for i in ids];
@@ -1175,7 +1280,7 @@ impl _tail_ok(anchor: Anchor, tail: list[QPred]) -> bool {
 
 impl _resolve_pairs(
     mem: Session, q: GraphQuery, upto: int
-) -> tuple[list[tuple[any, any]], dict[any, Anchor], list[QPred]] {
+) -> tuple[list[tuple[any, any]], dict[any, Anchor], list[QPred], list[QPred]] {
     origins = origin_anchors(q);
     local: dict[any, Anchor] = {};
     sql_ids: list[UUID] = [];
@@ -1188,7 +1293,7 @@ impl _resolve_pairs(
         }
         local[anchor_key(oanch)] = oanch;
     }
-    (pairs, tail) = _sql_pairs(mem, sql_ids, q, upto);
+    (pairs, tail, etail) = _sql_pairs(mem, sql_ids, q, upto);
     if upto == 0 {
         pairs = [(i, None) for i in sql_ids];
     }
@@ -1202,7 +1307,7 @@ impl _resolve_pairs(
         }
         pairs.append((akey, ekey));
     }
-    return (pairs, local, tail);
+    return (pairs, local, tail, etail);
 }
 
 
