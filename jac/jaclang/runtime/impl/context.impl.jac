@@ -192,6 +192,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                     try {
                         item = next(value);
                     } except StopIteration {
+                        context.mem.commit();
                         entered = False;
                         context.mem.unit_exit();
                         return;
@@ -236,6 +237,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                     try {
                         item = await value.__anext__();
                     } except StopAsyncIteration {
+                        await context.mem.acommit();
                         entered = False;
                         await context.mem.aunit_exit();
                         return;
