@@ -240,6 +240,7 @@ obj Session(Memory) {
     def wait_turn -> None;
     def _begin_txn(isolation: TxnIsolation) -> None;
     override async def acommit(anchor: (Anchor | None) = None) -> None;
+    override async def aunit_exit -> None;
     override async def aclose -> None;
     def _leave_queue -> None;
     def _commit_txn -> None;

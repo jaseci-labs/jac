@@ -98,6 +98,15 @@ glob _APP: str = (
          '    return chunks();\n'
          '}\n'
          '\n'
+         'def:protect sse_note_async(text: str = "") -> any {\n'
+         '    async def chunks -> any {\n'
+         '        root ++> Note(text=text);\n'
+         '        yield "written";\n'
+         '        yield "more";\n'
+         '    }\n'
+         '    return chunks();\n'
+         '}\n'
+         '\n'
          'def:protect sse_note_then_raise(text: str = "") -> any {\n'
          '    def chunks -> Generator[str, None, None] {\n'
          '        root ++> Note(text=text);\n'
@@ -379,6 +388,14 @@ test "an HTTP SSE stream commits its writes when delivered and rolls them back o
     rows: list[tuple[str, str, (int | None), bool, bool, str]] = [
         ("delivered to its end", "sse_note", None, False, True, "event: end"),
         (
+            "async producer delivered to its end",
+            "sse_note_async",
+            None,
+            False,
+            True,
+            "event: end"
+        ),
+        (
             "client gone after the first event",
             "sse_note",
             1,
@@ -408,28 +425,50 @@ test "an HTTP SSE stream commits its writes when delivered and rolls them back o
 
     ];
     prior = os.environ.get("JAC_SCALE_RUNTIME");
-    with TemporaryDirectory() as project {
-        runtime = _serve(project);
+    commits: list[bool] = [];
+    original_commit = Session.commit;
+
+    def tracking_commit(self: Session, anchor: (Anchor | None) = None) {
+        on_loop = True;
         try {
-            token = _register_and_login(runtime, "sse_user");
-            for (label, fn, events, cancel, committed, last) in rows {
-                (body, notes) = asyncio.run(
-                    _sse_call(runtime, token, fn, label, events, cancel)
-                );
-                frames = body.strip().split("\n\n");
-                assert frames and frames[-1].startswith(last) , (
-                    f"{label}: unexpected body {body!r}"
-                );
-                assert (label in notes) == committed , (
-                    f"{label}: the stream's write was "
-                    f"{'lost' if committed else 'committed'}"
-                );
-            }
-        } finally {
-            runtime.close();
-            _restore_env("JAC_SCALE_RUNTIME", prior);
+            asyncio.get_running_loop();
+        } except RuntimeError {
+            on_loop = False;
         }
+        commits.append(on_loop);
+        original_commit(self, anchor);
     }
+
+    Session.commit = tracking_commit;
+    try {
+        with TemporaryDirectory() as project {
+            runtime = _serve(project);
+            try {
+                token = _register_and_login(runtime, "sse_user");
+                for (label, fn, events, cancel, committed, last) in rows {
+                    (body, notes) = asyncio.run(
+                        _sse_call(runtime, token, fn, label, events, cancel)
+                    );
+                    frames = body.strip().split("\n\n");
+                    assert frames and frames[-1].startswith(last) , (
+                        f"{label}: unexpected body {body!r}"
+                    );
+                    assert (label in notes) == committed , (
+                        f"{label}: the stream's write was "
+                        f"{'lost' if committed else 'committed'}"
+                    );
+                }
+            } finally {
+                runtime.close();
+                _restore_env("JAC_SCALE_RUNTIME", prior);
+            }
+        }
+    } finally {
+        Session.commit = original_commit;
+    }
+    on_loop = commits.count(True);
+    assert commits , "nothing committed";
+    assert on_loop == 0 , f"{on_loop} of {len(commits)} commits ran on the event loop";
 }
 
 

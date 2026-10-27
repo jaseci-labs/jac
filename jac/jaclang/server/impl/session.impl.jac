@@ -1348,6 +1348,10 @@ impl Session.acommit(anchor: (Anchor | None) = None) -> None {
     await _off_loop(settle);
 }
 
+impl Session.aunit_exit -> None {
+    await _off_loop(self.unit_exit);
+}
+
 impl Session.aclose -> None {
     import asyncio;
     job = asyncio.ensure_future(_off_loop(self.close));

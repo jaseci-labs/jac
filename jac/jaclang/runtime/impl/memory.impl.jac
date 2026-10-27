@@ -197,6 +197,10 @@ impl Memory.unit_enter(key: (str | None) = None) {}
 
 impl Memory.unit_exit {}
 
+impl Memory.aunit_exit {
+    self.unit_exit();
+}
+
 impl Memory.unit_depth -> int {
     return 0;
 }

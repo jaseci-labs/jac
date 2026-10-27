@@ -233,7 +233,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                         item = await value.__anext__();
                     } except StopAsyncIteration {
                         entered = False;
-                        context.mem.unit_exit();
+                        await context.mem.aunit_exit();
                         return;
                     } finally {
                         JacRuntime.reset_request_context(token);
@@ -244,7 +244,7 @@ impl ExecutionContext.bind_stream(value: any) -> any {
                 context.mem.abort();
                 if entered {
                     entered = False;
-                    context.mem.unit_exit();
+                    await context.mem.aunit_exit();
                 }
                 raise;
             } finally {
