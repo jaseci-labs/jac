@@ -361,7 +361,7 @@ impl ServeSettings.load(
             else env_int('PORT', cfg.port)
     );
     host_override = given.get('host');
-    host = str(host_override) if host_override else (env_value('HOST') or cfg.host);
+    host = str(host_override) if host_override else serve_host(cfg.host);
 
     settings = ServeSettings(
         base_path=base_path,
@@ -598,6 +598,18 @@ impl ServeSettings.scheme -> str {
 
 impl in_cluster -> bool {
     return bool(os.environ.get('KUBERNETES_SERVICE_HOST', '').strip());
+}
+
+impl is_loopback_host(host: str) -> bool {
+    return host in ('localhost', '::1') or host.startswith('127.');
+}
+
+impl default_host -> str {
+    return '0.0.0.0' if in_cluster() else '127.0.0.1';
+}
+
+impl serve_host(configured: str = '') -> str {
+    return env_value('HOST') or configured or default_host();
 }
 
 impl env_value(name: str, environ: (dict[str, str] | None) = None) -> (str | None) {

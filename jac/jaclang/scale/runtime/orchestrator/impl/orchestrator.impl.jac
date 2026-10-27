@@ -10,7 +10,7 @@ impl FleetOrchestrator._gateway_port -> int {
 }
 
 impl FleetOrchestrator._gateway_host -> str {
-    return str(self.gateway_config.get("gateway_host", DEFAULT_GATEWAY_HOST));
+    return str(self.gateway_config.get("gateway_host") or serve_host());
 }
 
 impl FleetOrchestrator._port_pinned -> bool {

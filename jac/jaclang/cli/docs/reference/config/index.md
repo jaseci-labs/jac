@@ -315,7 +315,7 @@ the `jac.toml` list (`["*"]` by default); to allow no cross-origin requests, set
 
 ```toml
 [serve]
-host = "0.0.0.0"         # Interface to bind; 127.0.0.1 keeps a dev server off the network
+host = ""                # Interface to bind; unset = 127.0.0.1 (0.0.0.0 in a pod); "0.0.0.0" serves other devices
 port = 8000              # Server port
 session = ""             # Session name
 main = true              # Run as main module
@@ -890,7 +890,7 @@ github_signature_header = "X-Hub-Signature-256"
 [scale.gateway]
 colocate = true                  # false: `jac run <app>` runs service apps as separate local processes
 gateway_port = 8000
-gateway_host = "0.0.0.0"
+gateway_host = ""                 # unset: 127.0.0.1 locally, 0.0.0.0 in a pod
 http_forward_timeout = 10.0
 boot_health_timeout = 60.0
 boot_max_wait = 90

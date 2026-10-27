@@ -900,11 +900,19 @@ impl ManifestBuilder._worker_count_env(svc_cfg: dict[str, any]) -> str {
     return raw;
 }
 
+impl ManifestBuilder._pod_serve_host(pinned: str) -> str {
+    if not pinned or is_loopback_host(pinned) {
+        return "0.0.0.0";
+    }
+    return pinned;
+}
+
 impl ManifestBuilder._serve_env(
     svc_name: str, svc_cfg: dict[str, any]
 ) -> list[dict[str, any]] {
     serve = self._serve_config();
     env: list[dict[str, any]] = [
+        {"name": "JAC_SERVE_HOST", "value": self._pod_serve_host(serve.host)},
         {"name": "JAC_SERVE_WORKERS", "value": self._worker_count_env(svc_cfg)},
         {"name": "JAC_SERVE_ACCESS_LOG_FORMAT", "value": "json"},
         {"name": "JAC_SERVE_ACCESS_LOG_SUPPRESS_HEALTH", "value": "1"},

@@ -9,12 +9,15 @@ def _load_deploy_factories -> DeployFactories;
 
 def _print_local_fleet_banner(fleet: any);
 
+def fleet_gateway_host(cli_host: str, configured: str, serve_configured: str) -> str;
+
 def scale_local_serve(
     served: RunPlan,
     fleet: list[RunPlan],
     port: int = 8000,
     dev: bool = False,
-    no_client: bool = False
+    no_client: bool = False,
+    host: str = ''
 ) -> int | None;
 
 def scale_deploy(

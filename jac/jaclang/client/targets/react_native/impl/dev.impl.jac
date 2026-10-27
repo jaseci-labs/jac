@@ -1,3 +1,11 @@
+impl backend_bind_host(packager_host: str) -> str {
+    host = (packager_host or "").strip();
+    if not host or is_loopback_host(host) {
+        return "";
+    }
+    return "0.0.0.0";
+}
+
 impl resolve_metro_port(cli_port: int = DEFAULT_METRO_PORT) -> int {
     raw = os.environ.get(JAC_RN_METRO_PORT_ENV, "");
     if raw and str(raw).strip() {

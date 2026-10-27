@@ -729,8 +729,8 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                     },
                     "gateway_host": {
                         "type": "string",
-                        "default": "0.0.0.0",
-                        "description": "Gateway host"
+                        "default": "",
+                        "description": "Interface the gateway binds. Unset: 127.0.0.1 for a local run, 0.0.0.0 in a pod"
                     },
                     "http_forward_timeout": {
                         "type": "float",

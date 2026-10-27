@@ -11,6 +11,8 @@ glob JAC_RN_METRO_PORT_ENV: str = "JAC_RN_METRO_PORT",
      METRO_API_PREFIX: str = "/__jac_api",
      DEFAULT_METRO_PORT: int = 8081;
 
+def backend_bind_host(packager_host: str) -> str;
+
 def resolve_metro_port(cli_port: int = DEFAULT_METRO_PORT) -> int;
 
 def setup_android_port_reverse(metro_port: int, api_port: int);

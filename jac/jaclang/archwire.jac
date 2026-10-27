@@ -490,7 +490,11 @@ graph import {
     client.targets.web_target ++> dist.seal.ensure_client_dist { WebTarget }
     client.vite_bundler ++> dist.source.client.write_client { ViteBundler }
     client.vite_bundler --> [
-        cli.commands.execution._start_vite_dev_server { ViteBundler },
+        cli.commands.execution._start_vite_dev_server {
+            ViteBundler,
+            _vite_host_arg,
+            _vite_listen_host
+        },
         cli.commands.execution.serve._announce_ready { DEV_PROXY_PREFIXES },
     ]
     client.vite_client_bundle ++> compiler.driver.build_services.CompilerBuildServices.client_builder {
@@ -2204,6 +2208,7 @@ graph import {
             get_explicit_config,
             set_config
         },
+        scale.tests.deploy.test_pod_env { ServeConfig },
         scale.tests.misc.test_config_validation { JacConfig },
     ]
     type project.config ++> [
@@ -4254,7 +4259,13 @@ graph import {
             ServeConfigError,
             ServeSettings
         },
-        scale.deploy.target.kubernetes.manifest_builder { AuthSettings, resolve_count },
+        client.targets.react_native.dev { is_loopback_host },
+        scale.deploy.target.kubernetes.manifest_builder {
+            AuthSettings,
+            is_loopback_host,
+            resolve_count
+        },
+        scale.plugin | scale.runtime.orchestrator.orchestrator { serve_host },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.start
             | scale.server.inprocess
             | scale.tests.server.test_host_serving
@@ -4274,9 +4285,12 @@ graph import {
         },
     ]
     server.settings --> [
+        cli.commands.execution._network_urls_for { is_loopback_host },
+        cli.commands.execution._print_startup_message { is_loopback_host },
         runtime.source_app.main
             | scale.tests.microservices.test_drain
             | scale.tests.server.test_serve { ServeSettings },
+        scale.runtime.gateway.embedded_gateway.EmbeddedGateway.serve { serve_host },
         scale.tests.server.test_auth_policy_http { ServeConfigError },
         scale.tests.server.test_oauth_session {
             AuthSettings,
@@ -5311,6 +5325,7 @@ graph import client.targets {
         JAC_RN_DEV_HOST_ENV,
         JAC_RN_TUNNEL_ENV,
         METRO_API_PREFIX,
+        backend_bind_host,
         inject_dev_api_base_url,
         inject_metro_api_base,
         resolve_metro_port,
@@ -31412,6 +31427,7 @@ graph import scale {
     observability.standard_logger ++> tests.deploy.test_http_activation_microservices {
         StandardLogger
     }
+    plugin --> tests.apps.test_app_scale_overrides { fleet_gateway_host }
     runtime.cli.diagnostics ++> tests.deploy.test_pdb_budget { PlanValidator }
     runtime.cli.plan ++> tests.deploy.test_ops_rbac { Plan }
     runtime.context.auth_ctx ++> [
@@ -31685,7 +31701,10 @@ graph import scale {
         plugin.scale_cmd { ServiceRegistry, build_registry },
         tests.apps.test_fleet_from_apps { build_registry },
     ]
-    runtime.orchestrator.orchestrator --> plugin.scale_cmd { start_gateway_only }
+    runtime.orchestrator.orchestrator --> [
+        plugin.scale_cmd { start_gateway_only },
+        tests.apps.test_app_scale_overrides { FleetOrchestrator },
+    ]
     runtime.orchestrator.process_manager ++> [
         tests.microservices.test_boot_grace
             | tests.microservices.test_boot_order
@@ -32264,11 +32283,7 @@ graph import scale.runtime {
         cli.diagnostics | cli.plan { GATEWAY_NAME },
         gateway.embedded_gateway
             | gateway.microservice_gateway
-            | gateway.process_gateway {
-            DEFAULT_CLIENT_DIST_DIR,
-            DEFAULT_GATEWAY_HOST,
-            DEFAULT_GATEWAY_PORT
-        },
+            | gateway.process_gateway { DEFAULT_CLIENT_DIST_DIR, DEFAULT_GATEWAY_PORT },
         gateway.microservice_gateway.MicroserviceGateway.aggregate_graph_data {
             http_forward_timeout
         },
@@ -32281,7 +32296,7 @@ graph import scale.runtime {
         gateway.microservice_gateway.MicroserviceGateway.refresh_app_routes {
             route_refresh_seconds
         },
-        orchestrator.orchestrator { DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT },
+        orchestrator.orchestrator { DEFAULT_GATEWAY_PORT },
         orchestrator.process_manager.ServiceProcessManager._assign_free_port {
             pick_free_port
         },

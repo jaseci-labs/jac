@@ -20,7 +20,9 @@ def setup_android_port_reverse_common(ports: list[int], timeout: int = 5) -> Non
 
 def ensure_watchdog_common(target_name: str) -> bool;
 
-def start_backend_server_common(entry_file: Path, project_dir: Path, port: int) -> any;
+def start_backend_server_common(
+    entry_file: Path, project_dir: Path, port: int, bind_host: str = ""
+) -> any;
 
 def prepare_vite_dev_compilation(
     project_dir: Path, entry_file: Path

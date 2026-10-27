@@ -270,7 +270,9 @@ impl MobileTarget.dev(
         console.print(
             f"  Starting Jac API backend on port {api_eff}...", style="muted"
         );
-        backend_p = start_backend_server_common(entry_file, project_dir, api_eff);
+        backend_p = start_backend_server_common(
+            entry_file, project_dir, api_eff, bind_host=backend_bind_host(packager_host)
+        );
 
         if ensure_watchdog_common("the device") {
             import from jaclang.server.watcher { JacFileWatcher }

@@ -123,6 +123,7 @@ obj ManifestBuilder {
     def _drain_timeout -> int;
     def _signing_secret -> str;
     def _worker_count_env(svc_cfg: dict[str, any]) -> str;
+    def _pod_serve_host(pinned: str) -> str;
     def _serve_env(svc_name: str, svc_cfg: dict[str, any]) -> list[dict[str, any]];
     def _service_config(svc_name: str) -> dict[str, any];
     def _bundle_files -> dict[str, str];

@@ -175,7 +175,7 @@ obj AuthSettings {
 
 obj ServeSettings {
     has base_path: str = '',
-        host: str = '0.0.0.0',
+        host: str = '127.0.0.1',
         port: int = 8000,
         strict_port: bool = False,
         dev: bool = False,
@@ -223,6 +223,12 @@ def removed_table(config: (JacConfig | None)) -> list[str];
 
 
 def in_cluster -> bool;
+
+def is_loopback_host(host: str) -> bool;
+
+def default_host -> str;
+
+def serve_host(configured: str = '') -> str;
 
 def env_value(name: str, environ: (dict[str, str] | None) = None) -> (str | None);
 

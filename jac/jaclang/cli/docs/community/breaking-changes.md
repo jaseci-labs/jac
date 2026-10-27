@@ -7,6 +7,20 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### A local `jac run` listens on loopback, not every interface ([#9819](https://github.com/jaseci-labs/jac/pull/9819), unreleased)
+
+`jac run --serve` and `jac run --dev` used to bind `0.0.0.0` and print every LAN address as a "Network" URL, which published a development server (and anything reachable without a login) to every network the machine was on. The default is now `127.0.0.1`. A pod, the official Docker image and mobile dev against a LAN address keep binding every interface.
+
+| To reach the server from another device | Before | Now |
+|---|---|---|
+| a laptop on the LAN | nothing | `jac run --host 0.0.0.0`, `[serve] host = "0.0.0.0"` or `JAC_SERVE_HOST=0.0.0.0` |
+| your own `docker run -p` image | nothing | `ENV JAC_SERVE_HOST=0.0.0.0` (the official image sets it) |
+| a Kubernetes pod | nothing | nothing: the manifest sets `JAC_SERVE_HOST` |
+
+The startup banner lists "Network" URLs only for interfaces the server is bound to, and says when it is listening on this machine only. The dev Vite server and the local fleet gateway (`[scale.gateway] gateway_host`, now unset by default) follow the same default instead of always listening on every interface. A pod never inherits a loopback `[serve] host`: the manifest emits `0.0.0.0` unless the pinned host is a real address.
+
+---
+
 ### The Ops Console's Role is bound to its own `<app>-ops` ServiceAccount ([#10023](https://github.com/jaseci-labs/jac/pull/10023), unreleased)
 
 With `[scale.kubernetes] ops_console = true` and no `service_account_name`, the Ops Console's Role was bound to the namespace's `default` ServiceAccount, so every pod that names no account of its own (the app's other containers and any co-tenant workload) received the console's read rights, and its patch and delete rights when `ops_console_mutations` was set. The Role is now bound to a ServiceAccount named `<app>-ops` that jac-scale creates, and only the gateway pod runs as it.

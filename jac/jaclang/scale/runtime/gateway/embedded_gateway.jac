@@ -9,7 +9,7 @@ obj EmbeddedGateway(Gateway) {
     has registry: ServiceRegistry,
         transport: ServiceTransport,
         port: int = DEFAULT_GATEWAY_PORT,
-        host: str = DEFAULT_GATEWAY_HOST,
+        host: str = "",
         client_dist_dir: str = DEFAULT_CLIENT_DIST_DIR,
         port_pinned: bool = False,
         app: any = None;
