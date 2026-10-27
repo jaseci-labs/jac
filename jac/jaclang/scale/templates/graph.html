@@ -861,14 +861,14 @@
             }
         }
 
-        function renderCounts(parent, title, counts) {
+        function renderCounts(parent, title, counts, exact) {
             const rows = Object.entries(counts || {});
             if (!rows.length) return;
-            parent.appendChild(el("div", "panel-subtitle", title));
+            parent.appendChild(el("div", "panel-subtitle", exact === false ? title + " (at least)" : title));
             rows.forEach(([key, count]) => {
                 const row = el("div", "panel-row");
                 row.appendChild(el("span", "panel-key", key.split(".").pop()));
-                row.appendChild(el("span", "panel-value", String(count)));
+                row.appendChild(el("span", "panel-value", exact === false ? String(count) + "+" : String(count)));
                 parent.appendChild(row);
             });
         }
@@ -890,10 +890,12 @@
                 });
             }
             const counts = detail.counts || {};
-            renderCounts(body, "Outgoing nodes", (counts.out || {}).nodes);
-            renderCounts(body, "Outgoing edges", (counts.out || {}).edges);
-            renderCounts(body, "Incoming nodes", (counts.in || {}).nodes);
-            renderCounts(body, "Incoming edges", (counts.in || {}).edges);
+            const out = counts.out || {};
+            const inc = counts.in || {};
+            renderCounts(body, "Outgoing nodes", out.nodes, out.exact);
+            renderCounts(body, "Outgoing edges", out.edges, out.exact);
+            renderCounts(body, "Incoming nodes", inc.nodes, inc.exact);
+            renderCounts(body, "Incoming edges", inc.edges, inc.exact);
             panel.style.display = "block";
             refreshPanelButtons();
         }

@@ -141,6 +141,9 @@ test "the explorer leaves out what the caller cannot read" {
             assert sum(out_nodes.values()) == 2 , out_nodes;
             assert sum(in_nodes.values()) == 1 , in_nodes;
             assert sum(view["counts"]["out"]["edges"].values()) == 2 , view["counts"];
+            assert view["counts"]["in"]["exact"] and view["counts"]["out"]["exact"] , (
+                "a handful of hook-decided neighbors is counted exactly"
+            );
         } finally {
             JacRuntime.exec_ctx = old;
             ctx2.close();

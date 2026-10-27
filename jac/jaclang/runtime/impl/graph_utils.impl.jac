@@ -133,15 +133,18 @@ impl _graph_fields(arch: Archetype) -> dict[str, str] {
 
 impl graph_node_view(nd: NodeArchetype) -> dict[str, any] {
     mem: any = JacRuntimeInterface.get_context().mem;
-    counts: dict[str, dict[str, dict[str, int]]] = {};
+    counts: dict[str, dict[str, any]] = {};
     for (name, direction) in [('out', 2), ('in', 1)] {
+        (nodes, nodes_exact) = resolve_query_type_counts(
+            mem, GraphQuery(nd, hops=[QHop(dir=direction)]), 'node'
+        );
+        (edges, edges_exact) = resolve_query_type_counts(
+            mem, GraphQuery(nd, hops=[QHop(dir=direction)]), 'edge'
+        );
         counts[name] = {
-            'nodes': resolve_query_type_counts(
-                mem, GraphQuery(nd, hops=[QHop(dir=direction)]), 'node'
-            ),
-            'edges': resolve_query_type_counts(
-                mem, GraphQuery(nd, hops=[QHop(dir=direction)]), 'edge'
-            )
+            'nodes': nodes,
+            'edges': edges,
+            'exact': nodes_exact and edges_exact
         };
     }
     return {
