@@ -199,7 +199,7 @@ enum ast_field {
 }
 
 obj ast_node {
-    def kind -> ast_kind abst;
+    def node_kind -> ast_kind abst;
 }
 
 obj mod(ast_node) {}
@@ -208,26 +208,26 @@ obj Module(mod) {
     has body: list[stmt],
         type_ignores: list[type_ignore];
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Interactive(mod) {
     has body: list[stmt];
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Expression(mod) {
     has body: expr;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj FunctionType(mod) {
     has argtypes: list[expr],
         returns: expr;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj stmt(ast_node) {
@@ -250,7 +250,7 @@ obj FunctionDef(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj AsyncFunctionDef(stmt) {
@@ -266,7 +266,7 @@ obj AsyncFunctionDef(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj ClassDef(stmt) {
@@ -281,7 +281,7 @@ obj ClassDef(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Return(stmt) {
@@ -291,7 +291,7 @@ obj Return(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Delete(stmt) {
@@ -301,7 +301,7 @@ obj Delete(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Assign(stmt) {
@@ -313,7 +313,7 @@ obj Assign(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj TypeAlias(stmt) {
@@ -325,7 +325,7 @@ obj TypeAlias(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj AugAssign(stmt) {
@@ -337,7 +337,7 @@ obj AugAssign(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj AnnAssign(stmt) {
@@ -350,7 +350,7 @@ obj AnnAssign(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj For(stmt) {
@@ -364,7 +364,7 @@ obj For(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj AsyncFor(stmt) {
@@ -378,7 +378,7 @@ obj AsyncFor(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj While(stmt) {
@@ -390,7 +390,7 @@ obj While(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj If(stmt) {
@@ -402,7 +402,7 @@ obj If(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj With(stmt) {
@@ -414,7 +414,7 @@ obj With(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj AsyncWith(stmt) {
@@ -426,7 +426,7 @@ obj AsyncWith(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Match(stmt) {
@@ -437,7 +437,7 @@ obj Match(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Raise(stmt) {
@@ -448,7 +448,7 @@ obj Raise(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Try(stmt) {
@@ -461,7 +461,7 @@ obj Try(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj TryStar(stmt) {
@@ -474,7 +474,7 @@ obj TryStar(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Assert(stmt) {
@@ -485,7 +485,7 @@ obj Assert(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Import(stmt) {
@@ -495,7 +495,7 @@ obj Import(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj ImportFrom(stmt) {
@@ -507,7 +507,7 @@ obj ImportFrom(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Global(stmt) {
@@ -517,7 +517,7 @@ obj Global(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Nonlocal(stmt) {
@@ -527,7 +527,7 @@ obj Nonlocal(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Expr(stmt) {
@@ -537,7 +537,7 @@ obj Expr(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Pass(stmt) {
@@ -546,7 +546,7 @@ obj Pass(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Break(stmt) {
@@ -555,7 +555,7 @@ obj Break(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Continue(stmt) {
@@ -564,7 +564,7 @@ obj Continue(stmt) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj expr(ast_node) {
@@ -582,7 +582,7 @@ obj BoolOp(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj NamedExpr(expr) {
@@ -593,7 +593,7 @@ obj NamedExpr(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj BinOp(expr) {
@@ -605,7 +605,7 @@ obj BinOp(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj UnaryOp(expr) {
@@ -616,7 +616,7 @@ obj UnaryOp(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Lambda(expr) {
@@ -627,7 +627,7 @@ obj Lambda(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj IfExp(expr) {
@@ -639,7 +639,7 @@ obj IfExp(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Dict(expr) {
@@ -650,7 +650,7 @@ obj Dict(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Set(expr) {
@@ -660,7 +660,7 @@ obj Set(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj ListComp(expr) {
@@ -671,7 +671,7 @@ obj ListComp(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj SetComp(expr) {
@@ -682,7 +682,7 @@ obj SetComp(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj DictComp(expr) {
@@ -694,7 +694,7 @@ obj DictComp(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj GeneratorExp(expr) {
@@ -705,7 +705,7 @@ obj GeneratorExp(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Await(expr) {
@@ -715,7 +715,7 @@ obj Await(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Yield(expr) {
@@ -725,7 +725,7 @@ obj Yield(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj YieldFrom(expr) {
@@ -735,7 +735,7 @@ obj YieldFrom(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Compare(expr) {
@@ -747,7 +747,7 @@ obj Compare(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Call(expr) {
@@ -759,7 +759,7 @@ obj Call(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj FormattedValue(expr) {
@@ -771,7 +771,7 @@ obj FormattedValue(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Interpolation(expr) {
@@ -784,7 +784,7 @@ obj Interpolation(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj JoinedStr(expr) {
@@ -794,7 +794,7 @@ obj JoinedStr(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj TemplateStr(expr) {
@@ -804,7 +804,7 @@ obj TemplateStr(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Constant(expr) {
@@ -815,7 +815,7 @@ obj Constant(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind {
+    def node_kind -> ast_kind {
         return ast_kind.Constant;
     }
 }
@@ -829,7 +829,7 @@ obj Attribute(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Subscript(expr) {
@@ -841,7 +841,7 @@ obj Subscript(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Starred(expr) {
@@ -852,7 +852,7 @@ obj Starred(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Name(expr) {
@@ -863,7 +863,7 @@ obj Name(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj List(expr) {
@@ -874,7 +874,7 @@ obj List(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Tuple(expr) {
@@ -885,7 +885,7 @@ obj Tuple(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Slice(expr) {
@@ -897,145 +897,145 @@ obj Slice(expr) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj expr_context(ast_node) {}
 
 obj Load(expr_context) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Store(expr_context) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Del(expr_context) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj boolop(ast_node) {}
 
 obj And(boolop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Or(boolop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj operator(ast_node) {}
 
 obj Add(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Sub(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Mult(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj MatMult(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Div(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Mod(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Pow(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj LShift(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj RShift(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj BitOr(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj BitXor(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj BitAnd(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj FloorDiv(operator) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj unaryop(ast_node) {}
 
 obj Invert(unaryop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Not(unaryop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj UAdd(unaryop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj USub(unaryop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj cmpop(ast_node) {}
 
 obj Eq(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj NotEq(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Lt(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj LtE(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Gt(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj GtE(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj Is(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj IsNot(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj In(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj NotIn(cmpop) {
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj comprehension(ast_node) {
@@ -1044,7 +1044,7 @@ obj comprehension(ast_node) {
         ifs: list[expr],
         is_async: int;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj excepthandler(ast_node) {
@@ -1066,7 +1066,7 @@ obj ExceptHandler(excepthandler) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj arguments(ast_node) {
@@ -1078,7 +1078,7 @@ obj arguments(ast_node) {
         kwarg: arg | None,
         defaults: list[expr];
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj arg(ast_node) {
@@ -1090,7 +1090,7 @@ obj arg(ast_node) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj keyword(ast_node) {
@@ -1101,7 +1101,7 @@ obj keyword(ast_node) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj alias(ast_node) {
@@ -1112,14 +1112,14 @@ obj alias(ast_node) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj withitem(ast_node) {
     has context_expr: expr,
         optional_vars: expr | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj match_case(ast_node) {
@@ -1127,7 +1127,7 @@ obj match_case(ast_node) {
         guard: expr | None,
         body: list[stmt];
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj pattern(ast_node) {
@@ -1144,7 +1144,7 @@ obj MatchValue(pattern) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj MatchSingleton(pattern) {
@@ -1154,7 +1154,7 @@ obj MatchSingleton(pattern) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj MatchSequence(pattern) {
@@ -1164,7 +1164,7 @@ obj MatchSequence(pattern) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj MatchMapping(pattern) {
@@ -1176,7 +1176,7 @@ obj MatchMapping(pattern) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj MatchClass(pattern) {
@@ -1189,7 +1189,7 @@ obj MatchClass(pattern) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj MatchStar(pattern) {
@@ -1199,7 +1199,7 @@ obj MatchStar(pattern) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj MatchAs(pattern) {
@@ -1210,7 +1210,7 @@ obj MatchAs(pattern) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj MatchOr(pattern) {
@@ -1220,7 +1220,7 @@ obj MatchOr(pattern) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj type_ignore(ast_node) {}
@@ -1229,7 +1229,7 @@ obj TypeIgnore(type_ignore) {
     has lineno: int,
         tag: str;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj type_param(ast_node) {
@@ -1249,7 +1249,7 @@ obj TypeVar(type_param) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj ParamSpec(type_param) {
@@ -1260,7 +1260,7 @@ obj ParamSpec(type_param) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
 obj TypeVarTuple(type_param) {
@@ -1271,453 +1271,453 @@ obj TypeVarTuple(type_param) {
         end_lineno: int | None,
         end_col_offset: int | None;
 
-    def kind -> ast_kind;
+    def node_kind -> ast_kind;
 }
 
-impl Module.kind -> ast_kind {
+impl Module.node_kind -> ast_kind {
     return ast_kind.Module;
 }
 
-impl Interactive.kind -> ast_kind {
+impl Interactive.node_kind -> ast_kind {
     return ast_kind.Interactive;
 }
 
-impl Expression.kind -> ast_kind {
+impl Expression.node_kind -> ast_kind {
     return ast_kind.Expression;
 }
 
-impl FunctionType.kind -> ast_kind {
+impl FunctionType.node_kind -> ast_kind {
     return ast_kind.FunctionType;
 }
 
-impl FunctionDef.kind -> ast_kind {
+impl FunctionDef.node_kind -> ast_kind {
     return ast_kind.FunctionDef;
 }
 
-impl AsyncFunctionDef.kind -> ast_kind {
+impl AsyncFunctionDef.node_kind -> ast_kind {
     return ast_kind.AsyncFunctionDef;
 }
 
-impl ClassDef.kind -> ast_kind {
+impl ClassDef.node_kind -> ast_kind {
     return ast_kind.ClassDef;
 }
 
-impl Return.kind -> ast_kind {
+impl Return.node_kind -> ast_kind {
     return ast_kind.Return;
 }
 
-impl Delete.kind -> ast_kind {
+impl Delete.node_kind -> ast_kind {
     return ast_kind.Delete;
 }
 
-impl Assign.kind -> ast_kind {
+impl Assign.node_kind -> ast_kind {
     return ast_kind.Assign;
 }
 
-impl TypeAlias.kind -> ast_kind {
+impl TypeAlias.node_kind -> ast_kind {
     return ast_kind.TypeAlias;
 }
 
-impl AugAssign.kind -> ast_kind {
+impl AugAssign.node_kind -> ast_kind {
     return ast_kind.AugAssign;
 }
 
-impl AnnAssign.kind -> ast_kind {
+impl AnnAssign.node_kind -> ast_kind {
     return ast_kind.AnnAssign;
 }
 
-impl For.kind -> ast_kind {
+impl For.node_kind -> ast_kind {
     return ast_kind.For;
 }
 
-impl AsyncFor.kind -> ast_kind {
+impl AsyncFor.node_kind -> ast_kind {
     return ast_kind.AsyncFor;
 }
 
-impl While.kind -> ast_kind {
+impl While.node_kind -> ast_kind {
     return ast_kind.While;
 }
 
-impl If.kind -> ast_kind {
+impl If.node_kind -> ast_kind {
     return ast_kind.If;
 }
 
-impl With.kind -> ast_kind {
+impl With.node_kind -> ast_kind {
     return ast_kind.With;
 }
 
-impl AsyncWith.kind -> ast_kind {
+impl AsyncWith.node_kind -> ast_kind {
     return ast_kind.AsyncWith;
 }
 
-impl Match.kind -> ast_kind {
+impl Match.node_kind -> ast_kind {
     return ast_kind.Match;
 }
 
-impl Raise.kind -> ast_kind {
+impl Raise.node_kind -> ast_kind {
     return ast_kind.Raise;
 }
 
-impl Try.kind -> ast_kind {
+impl Try.node_kind -> ast_kind {
     return ast_kind.Try;
 }
 
-impl TryStar.kind -> ast_kind {
+impl TryStar.node_kind -> ast_kind {
     return ast_kind.TryStar;
 }
 
-impl Assert.kind -> ast_kind {
+impl Assert.node_kind -> ast_kind {
     return ast_kind.Assert;
 }
 
-impl Import.kind -> ast_kind {
+impl Import.node_kind -> ast_kind {
     return ast_kind.Import;
 }
 
-impl ImportFrom.kind -> ast_kind {
+impl ImportFrom.node_kind -> ast_kind {
     return ast_kind.ImportFrom;
 }
 
-impl Global.kind -> ast_kind {
+impl Global.node_kind -> ast_kind {
     return ast_kind.Global;
 }
 
-impl Nonlocal.kind -> ast_kind {
+impl Nonlocal.node_kind -> ast_kind {
     return ast_kind.Nonlocal;
 }
 
-impl Expr.kind -> ast_kind {
+impl Expr.node_kind -> ast_kind {
     return ast_kind.Expr;
 }
 
-impl Pass.kind -> ast_kind {
+impl Pass.node_kind -> ast_kind {
     return ast_kind.Pass;
 }
 
-impl Break.kind -> ast_kind {
+impl Break.node_kind -> ast_kind {
     return ast_kind.Break;
 }
 
-impl Continue.kind -> ast_kind {
+impl Continue.node_kind -> ast_kind {
     return ast_kind.Continue;
 }
 
-impl BoolOp.kind -> ast_kind {
+impl BoolOp.node_kind -> ast_kind {
     return ast_kind.BoolOp;
 }
 
-impl NamedExpr.kind -> ast_kind {
+impl NamedExpr.node_kind -> ast_kind {
     return ast_kind.NamedExpr;
 }
 
-impl BinOp.kind -> ast_kind {
+impl BinOp.node_kind -> ast_kind {
     return ast_kind.BinOp;
 }
 
-impl UnaryOp.kind -> ast_kind {
+impl UnaryOp.node_kind -> ast_kind {
     return ast_kind.UnaryOp;
 }
 
-impl Lambda.kind -> ast_kind {
+impl Lambda.node_kind -> ast_kind {
     return ast_kind.Lambda;
 }
 
-impl IfExp.kind -> ast_kind {
+impl IfExp.node_kind -> ast_kind {
     return ast_kind.IfExp;
 }
 
-impl Dict.kind -> ast_kind {
+impl Dict.node_kind -> ast_kind {
     return ast_kind.Dict;
 }
 
-impl Set.kind -> ast_kind {
+impl Set.node_kind -> ast_kind {
     return ast_kind.Set;
 }
 
-impl ListComp.kind -> ast_kind {
+impl ListComp.node_kind -> ast_kind {
     return ast_kind.ListComp;
 }
 
-impl SetComp.kind -> ast_kind {
+impl SetComp.node_kind -> ast_kind {
     return ast_kind.SetComp;
 }
 
-impl DictComp.kind -> ast_kind {
+impl DictComp.node_kind -> ast_kind {
     return ast_kind.DictComp;
 }
 
-impl GeneratorExp.kind -> ast_kind {
+impl GeneratorExp.node_kind -> ast_kind {
     return ast_kind.GeneratorExp;
 }
 
-impl Await.kind -> ast_kind {
+impl Await.node_kind -> ast_kind {
     return ast_kind.Await;
 }
 
-impl Yield.kind -> ast_kind {
+impl Yield.node_kind -> ast_kind {
     return ast_kind.Yield;
 }
 
-impl YieldFrom.kind -> ast_kind {
+impl YieldFrom.node_kind -> ast_kind {
     return ast_kind.YieldFrom;
 }
 
-impl Compare.kind -> ast_kind {
+impl Compare.node_kind -> ast_kind {
     return ast_kind.Compare;
 }
 
-impl Call.kind -> ast_kind {
+impl Call.node_kind -> ast_kind {
     return ast_kind.Call;
 }
 
-impl FormattedValue.kind -> ast_kind {
+impl FormattedValue.node_kind -> ast_kind {
     return ast_kind.FormattedValue;
 }
 
-impl Interpolation.kind -> ast_kind {
+impl Interpolation.node_kind -> ast_kind {
     return ast_kind.Interpolation;
 }
 
-impl JoinedStr.kind -> ast_kind {
+impl JoinedStr.node_kind -> ast_kind {
     return ast_kind.JoinedStr;
 }
 
-impl TemplateStr.kind -> ast_kind {
+impl TemplateStr.node_kind -> ast_kind {
     return ast_kind.TemplateStr;
 }
 
-impl Attribute.kind -> ast_kind {
+impl Attribute.node_kind -> ast_kind {
     return ast_kind.Attribute;
 }
 
-impl Subscript.kind -> ast_kind {
+impl Subscript.node_kind -> ast_kind {
     return ast_kind.Subscript;
 }
 
-impl Starred.kind -> ast_kind {
+impl Starred.node_kind -> ast_kind {
     return ast_kind.Starred;
 }
 
-impl Name.kind -> ast_kind {
+impl Name.node_kind -> ast_kind {
     return ast_kind.Name;
 }
 
-impl List.kind -> ast_kind {
+impl List.node_kind -> ast_kind {
     return ast_kind.List;
 }
 
-impl Tuple.kind -> ast_kind {
+impl Tuple.node_kind -> ast_kind {
     return ast_kind.Tuple;
 }
 
-impl Slice.kind -> ast_kind {
+impl Slice.node_kind -> ast_kind {
     return ast_kind.Slice;
 }
 
-impl Load.kind -> ast_kind {
+impl Load.node_kind -> ast_kind {
     return ast_kind.Load;
 }
 
-impl Store.kind -> ast_kind {
+impl Store.node_kind -> ast_kind {
     return ast_kind.Store;
 }
 
-impl Del.kind -> ast_kind {
+impl Del.node_kind -> ast_kind {
     return ast_kind.Del;
 }
 
-impl And.kind -> ast_kind {
+impl And.node_kind -> ast_kind {
     return ast_kind.And;
 }
 
-impl Or.kind -> ast_kind {
+impl Or.node_kind -> ast_kind {
     return ast_kind.Or;
 }
 
-impl Add.kind -> ast_kind {
+impl Add.node_kind -> ast_kind {
     return ast_kind.Add;
 }
 
-impl Sub.kind -> ast_kind {
+impl Sub.node_kind -> ast_kind {
     return ast_kind.Sub;
 }
 
-impl Mult.kind -> ast_kind {
+impl Mult.node_kind -> ast_kind {
     return ast_kind.Mult;
 }
 
-impl MatMult.kind -> ast_kind {
+impl MatMult.node_kind -> ast_kind {
     return ast_kind.MatMult;
 }
 
-impl Div.kind -> ast_kind {
+impl Div.node_kind -> ast_kind {
     return ast_kind.Div;
 }
 
-impl Mod.kind -> ast_kind {
+impl Mod.node_kind -> ast_kind {
     return ast_kind.Mod;
 }
 
-impl Pow.kind -> ast_kind {
+impl Pow.node_kind -> ast_kind {
     return ast_kind.Pow;
 }
 
-impl LShift.kind -> ast_kind {
+impl LShift.node_kind -> ast_kind {
     return ast_kind.LShift;
 }
 
-impl RShift.kind -> ast_kind {
+impl RShift.node_kind -> ast_kind {
     return ast_kind.RShift;
 }
 
-impl BitOr.kind -> ast_kind {
+impl BitOr.node_kind -> ast_kind {
     return ast_kind.BitOr;
 }
 
-impl BitXor.kind -> ast_kind {
+impl BitXor.node_kind -> ast_kind {
     return ast_kind.BitXor;
 }
 
-impl BitAnd.kind -> ast_kind {
+impl BitAnd.node_kind -> ast_kind {
     return ast_kind.BitAnd;
 }
 
-impl FloorDiv.kind -> ast_kind {
+impl FloorDiv.node_kind -> ast_kind {
     return ast_kind.FloorDiv;
 }
 
-impl Invert.kind -> ast_kind {
+impl Invert.node_kind -> ast_kind {
     return ast_kind.Invert;
 }
 
-impl Not.kind -> ast_kind {
+impl Not.node_kind -> ast_kind {
     return ast_kind.Not;
 }
 
-impl UAdd.kind -> ast_kind {
+impl UAdd.node_kind -> ast_kind {
     return ast_kind.UAdd;
 }
 
-impl USub.kind -> ast_kind {
+impl USub.node_kind -> ast_kind {
     return ast_kind.USub;
 }
 
-impl Eq.kind -> ast_kind {
+impl Eq.node_kind -> ast_kind {
     return ast_kind.Eq;
 }
 
-impl NotEq.kind -> ast_kind {
+impl NotEq.node_kind -> ast_kind {
     return ast_kind.NotEq;
 }
 
-impl Lt.kind -> ast_kind {
+impl Lt.node_kind -> ast_kind {
     return ast_kind.Lt;
 }
 
-impl LtE.kind -> ast_kind {
+impl LtE.node_kind -> ast_kind {
     return ast_kind.LtE;
 }
 
-impl Gt.kind -> ast_kind {
+impl Gt.node_kind -> ast_kind {
     return ast_kind.Gt;
 }
 
-impl GtE.kind -> ast_kind {
+impl GtE.node_kind -> ast_kind {
     return ast_kind.GtE;
 }
 
-impl Is.kind -> ast_kind {
+impl Is.node_kind -> ast_kind {
     return ast_kind.Is;
 }
 
-impl IsNot.kind -> ast_kind {
+impl IsNot.node_kind -> ast_kind {
     return ast_kind.IsNot;
 }
 
-impl In.kind -> ast_kind {
+impl In.node_kind -> ast_kind {
     return ast_kind.In;
 }
 
-impl NotIn.kind -> ast_kind {
+impl NotIn.node_kind -> ast_kind {
     return ast_kind.NotIn;
 }
 
-impl comprehension.kind -> ast_kind {
+impl comprehension.node_kind -> ast_kind {
     return ast_kind.comprehension;
 }
 
-impl ExceptHandler.kind -> ast_kind {
+impl ExceptHandler.node_kind -> ast_kind {
     return ast_kind.ExceptHandler;
 }
 
-impl arguments.kind -> ast_kind {
+impl arguments.node_kind -> ast_kind {
     return ast_kind.arguments;
 }
 
-impl arg.kind -> ast_kind {
+impl arg.node_kind -> ast_kind {
     return ast_kind.arg;
 }
 
-impl keyword.kind -> ast_kind {
+impl keyword.node_kind -> ast_kind {
     return ast_kind.keyword;
 }
 
-impl alias.kind -> ast_kind {
+impl alias.node_kind -> ast_kind {
     return ast_kind.alias;
 }
 
-impl withitem.kind -> ast_kind {
+impl withitem.node_kind -> ast_kind {
     return ast_kind.withitem;
 }
 
-impl match_case.kind -> ast_kind {
+impl match_case.node_kind -> ast_kind {
     return ast_kind.match_case;
 }
 
-impl MatchValue.kind -> ast_kind {
+impl MatchValue.node_kind -> ast_kind {
     return ast_kind.MatchValue;
 }
 
-impl MatchSingleton.kind -> ast_kind {
+impl MatchSingleton.node_kind -> ast_kind {
     return ast_kind.MatchSingleton;
 }
 
-impl MatchSequence.kind -> ast_kind {
+impl MatchSequence.node_kind -> ast_kind {
     return ast_kind.MatchSequence;
 }
 
-impl MatchMapping.kind -> ast_kind {
+impl MatchMapping.node_kind -> ast_kind {
     return ast_kind.MatchMapping;
 }
 
-impl MatchClass.kind -> ast_kind {
+impl MatchClass.node_kind -> ast_kind {
     return ast_kind.MatchClass;
 }
 
-impl MatchStar.kind -> ast_kind {
+impl MatchStar.node_kind -> ast_kind {
     return ast_kind.MatchStar;
 }
 
-impl MatchAs.kind -> ast_kind {
+impl MatchAs.node_kind -> ast_kind {
     return ast_kind.MatchAs;
 }
 
-impl MatchOr.kind -> ast_kind {
+impl MatchOr.node_kind -> ast_kind {
     return ast_kind.MatchOr;
 }
 
-impl TypeIgnore.kind -> ast_kind {
+impl TypeIgnore.node_kind -> ast_kind {
     return ast_kind.TypeIgnore;
 }
 
-impl TypeVar.kind -> ast_kind {
+impl TypeVar.node_kind -> ast_kind {
     return ast_kind.TypeVar;
 }
 
-impl ParamSpec.kind -> ast_kind {
+impl ParamSpec.node_kind -> ast_kind {
     return ast_kind.ParamSpec;
 }
 
-impl TypeVarTuple.kind -> ast_kind {
+impl TypeVarTuple.node_kind -> ast_kind {
     return ast_kind.TypeVarTuple;
 }

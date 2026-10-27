@@ -34,7 +34,7 @@ impl ast_child_buffer.collect(value: ast_node) -> int {
 }
 
 impl visit_ast_children(value: ast_node, visitor: ast_child_visitor) {
-    kind = value.kind();
+    kind = value.node_kind();
     if kind == ast_kind.Module and isinstance(value, Module) {
         for child in value.body {
             visitor.child("body", child);
@@ -622,7 +622,7 @@ impl ast_rewriter.visit_field(owner: ast_node, field: str) -> bool {
 }
 
 impl rewrite_ast_children(value: ast_node, visitor: ast_rewriter) {
-    kind = value.kind();
+    kind = value.node_kind();
     child: expr | None = None;
     if kind == ast_kind.Module and isinstance(value, Module) {
         if visitor.visit_field(value, "body") {
