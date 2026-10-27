@@ -770,7 +770,25 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                 and not right_type.is_any_instance()
             ) {
                 aug_magic = AUG_OPERATOR_MAP.get(aug_op.name);
-                if aug_magic is not None {
+                aug_base_op = AUG_TO_BINARY_MAP.get(aug_op.name);
+                aug_read_type = self.evaluator.get_type_of_expression(target);
+                aug_unsafe: (TypeBase | None) = None;
+                if aug_magic is not None
+                    and aug_base_op in NONE_UNSAFE_BINARY_OPERATORS {
+                    (aug_bin, aug_rbin) = BINARY_OPERATOR_MAP[aug_base_op];
+                    aug_unsafe = none_unsafe_operand(
+                        self.evaluator,
+                        aug_bin,
+                        aug_rbin,
+                        (aug_read_type, target),
+                        (right_type, here.value)
+                    );
+                }
+                if aug_unsafe is not None {
+                    self.ctx.emit(
+                        E1160, node_override=here, op=aug_op.value, type=str(aug_unsafe)
+                    );
+                } elif aug_magic is not None {
                     result = self.evaluator.get_type_of_magic_method_call(
                         left_type, aug_magic, [here.value], here.value
                     );

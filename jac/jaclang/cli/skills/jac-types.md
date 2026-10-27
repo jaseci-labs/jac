@@ -131,7 +131,7 @@ The width is a compile-time fact, not a runtime wrapper: a sized value is a plai
 - **Every `def` parameter needs a type** (E0052); a value-returning `def` needs a return type (E1003); `has name;` without a type is a parse error.
 - **Don't annotate `-> None`** on a no-return `def` - W3037. Write `def save(x: int) { ... }`.
 - `list`, `dict`, `set` (and ambient `Iterable` etc.) without type args are an error (E1036) - add element types. For genuinely heterogeneous values say so explicitly, e.g. `dict[str, any]`.
-- Use **`T | None`**, not `Optional[T]`. Always check `is None` before dereferencing.
+- Use **`T | None`**, not `Optional[T]`. Always check `is None` before dereferencing or using in an operator (`x + 1` on `int | None` is **E1160**, `x.attr` is **E1099**); `==` / `is None` against `None` are fine unguarded.
 - **Lowercase `any` is the gradual type** - Jac-native, no import. `import from typing { Any }` triggers W1104; bare `Any` warns W2001. Note: even legitimate explicit `any` annotations draw W1037 ("disables type checking here") - a nudge, not a failure.
 - **Event-handler params take the event type, not `any`** (`e: ChangeEvent`, `e: MouseEvent`) - see `jac-cl-components`.
 - **E1030** (`Type T has no attribute X`) - e.g. `.map()` on a list; use comprehensions.

@@ -219,12 +219,16 @@ Emitted by the type checker and type evaluator.
 | `E1128` | Operands of '{op}' have no common fixed-width type ({left} and {right}) |
 | `E1129` | Unary minus on unsigned type {type} |
 | `E1130` | Float literal {value} overflows {type} (largest finite magnitude {max}) |
+| `E1160` | Operator "{op}" has a possibly-None operand of type "{type}" |
 
 !!! tip "Fixing `E1126`-`E1130` (fixed-width numerics)"
     The ten sized types (`i8`..`u64`, `f32`, `f64`) convert implicitly only along the value-preserving lattice (widening, unsigned into a strictly wider signed type, exactly-representable ints into `f32`, any int-kind into `f64`, `f32 -> f64`). `int` and `float` are in that lattice rather than beside it: `int` is the signed 64-bit machine integer and behaves as `i64`, `float` is binary64 and behaves as `f64`, so `u64 -> int` needs the same cast `u64 -> i64` does. `E1126`: the literal is out of range -- use a wider type or spell the modular result with `T.wrap(x)`. `E1127`: cast at the boundary with the checked `T(x)` (raises `OverflowError` out of range) or widen the destination; extern `i32`/`u64` parameters need the cast from a plain `int`. `E1128`: neither operand widens into the other -- cast one side so the operation's width and sign are explicit. `E1129`: negate in a signed type (`-i64(x)`) or use `wrapping_neg(x)`. `E1130`: the literal is past what the target float can represent and would arrive as `inf` -- widen the type or write a value it can hold; precision loss inside the range is accepted. See `jac guide jac-types` and [Fixed-width semantics](language/types-and-values.md#fixed-width-semantics).
 
 !!! tip "Fixing `E1124` (membership over an untyped operand)"
     `E1124` fires on natively lowered code when the container operand of an `in` / `not in` comparison has no static type at all -- typed `any`, or left unannotated and never inferred. Every container answers `in` from its own layout, and native code has no dynamic-dispatch tier to fall back on, so the operand must carry a static type by the time the comparison is reached. Annotate the operand with the container it actually holds (`list[Tag]`, `dict[str, int]`, `set[str]`), or bind it to a directly-typed local first, so its layout reaches the comparison. The error blocks codegen.
+
+!!! tip "Fixing `E1160` (a possibly-None operand)"
+    `E1160` fires when an operand of an arithmetic, bitwise, or shift operator (`+`, `-`, `*`, `/`, `//`, `%`, `**`, `&`, `^`, `<<`, `>>`, `@`), in plain or augmented form, has type `T | None` and no guard has narrowed the `None` away. The None case has no such behavior and would raise `TypeError` at runtime, so the checker rejects it the same way it rejects attribute access on an un-narrowed optional (`E1099`). Guard the value first: `if x is not None { ... }`, an early `return` / `raise` on the None case, or a `x if x is not None else default` fallback. Equality (`==`, `!=`) and `is` / `is None` checks operate on the optional directly and are never flagged.
 
 ### Iterability / Callable
 

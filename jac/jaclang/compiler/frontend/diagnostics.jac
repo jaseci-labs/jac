@@ -1171,6 +1171,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " scalar's storage only to a C function, where the write lands.",
          blocks_codegen=True
      ),
+     E1160 = _err(
+         "E1160",
+         Category.TYPE,
+         "Operator \"{op}\" has a possibly-None operand of type \"{type}\"",
+         help="A `T | None` value has no arithmetic, bitwise, or shift behavior"
+         " on its None case, so the operator would crash at runtime. Guard the"
+         " value first, e.g. `if x is not None { ... }`. Equality (`==`, `!=`)"
+         " and `is None` checks work on the optional directly and need no guard."
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,
