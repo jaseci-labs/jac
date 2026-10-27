@@ -612,6 +612,34 @@ test "a stream delivered to its end has its write committed when its scope close
 }
 
 
+test "a stream that ends inside another open unit leaves its writes to that unit" {
+    written: list[UUID] = [];
+    def chunks -> Generator[str, None, None] {
+        written.append(_write_note("nested"));
+        yield 'only';
+    }
+
+    async def run_nested(project: str) {
+        scope = _open_scope(project);
+        with scope as context {
+            context.mem.unit_enter();
+            stream = await ExecutionContext(_parent=context).bind_stream(chunks());
+            for _ in stream {}
+            scope.abort();
+            context.mem.unit_exit();
+        }
+    }
+
+    with TemporaryDirectory() as project {
+        asyncio.run(run_nested(project));
+        assert len(written) == 1;
+        assert not _committed(project, written[0]) , (
+            "a stream inside an open unit saved that unit's work when it ended"
+        );
+    }
+}
+
+
 test "a websocket stream cut off mid-delivery does not have its write committed" {
     written: list[UUID] = [];
     def chunks -> Generator[str, None, None] {
