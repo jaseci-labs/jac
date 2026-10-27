@@ -15100,7 +15100,7 @@ graph import packages {
     api ++> [
         artifact.build_package { package_surface },
         artifact.package_manifest { surface_digest },
-        verify._verify_library { package_surface, surface_digest },
+        verify._verify_library { API_FORMAT, package_surface, surface_digest },
     ]
     apidiff ++> [
         publish { ApiChange, check_bump, diff_surfaces, minimum_next },
