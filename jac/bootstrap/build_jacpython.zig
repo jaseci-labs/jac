@@ -18,7 +18,8 @@ pub const Options = struct {
     zig: []const u8,
     /// bootstrap/python.
     recipe: []const u8,
-    /// The finished build-only host (its python/install and python/build).
+    /// The build output the build runs on: the bootstrap host, or a previous
+    /// JacPython runtime (its python/install, python/build and python/licenses).
     host: []const u8,
     /// The Jac root (jac/).
     root: []const u8,
@@ -150,6 +151,9 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     const build_dir = c.path(&.{ o.work, "python/build" });
     try Io.Dir.cwd().createDirPath(io, c.path(&.{ build_dir, "lib" }));
     try copyMatching(&c, c.path(&.{ c.deps, "lib" }), c.path(&.{ build_dir, "lib" }), ".a");
+    // The headers too: with the archives, they let this runtime be the next
+    // build's host without the bootstrap host that built them.
+    try copyTree(&c, c.path(&.{ c.deps, "include" }), c.path(&.{ build_dir, "include" }));
     try Io.Dir.copyFile(.cwd(), c.path(&.{ host_build, "cacert.pem" }), .cwd(), c.path(&.{ build_dir, "cacert.pem" }), io, .{});
     try Io.Dir.copyFile(.cwd(), c.path(&.{ native, "sha256" }), .cwd(), c.path(&.{ build_dir, "jacpython-native-sha256" }), io, .{});
     try Io.Dir.copyFile(.cwd(), c.path(&.{ native, "sources" }), .cwd(), c.path(&.{ build_dir, "jacpython-native-sources" }), io, .{});
