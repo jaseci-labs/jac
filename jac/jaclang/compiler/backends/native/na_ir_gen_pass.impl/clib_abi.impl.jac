@@ -331,21 +331,25 @@ impl NaIRGenPass._clib_abi_signature(decl: uni.Ability) -> str {
     if not isinstance(sig, uni.FuncSignature) {
         return "";
     }
+    i64 = ir.IntType(64);
     params: list[str] = [];
     for p in sig.get_parameters() {
         if p.is_vararg or p.is_kwargs {
             continue;
         }
         if p.type_tag is not None and is_borrow_kind(p.type_tag.ownership) {
-            params.append(str(ir.IntType(64)));
+            params.append(str(i64));
         } else {
-            params.append(str(self._clib_param_type(p)));
+            ptype = self._clib_param_type(p);
+            params.append(str(i64 if isinstance(ptype, ir.PointerType) else ptype));
         }
     }
     if sig.varargs is not None {
         params.append("...");
     }
-    return f"({', '.join(params)}) -> {self._resolve_clib_type(sig.return_type)}";
+    rtype = self._resolve_clib_type(sig.return_type);
+    returned = str(i64 if isinstance(rtype, ir.PointerType) else rtype);
+    return f"({', '.join(params)}) -> {returned}";
 }
 
 impl NaIRGenPass._declare_clib_definitions -> None {

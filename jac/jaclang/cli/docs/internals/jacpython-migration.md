@@ -246,7 +246,7 @@ specs' `Py_tp_methods` and `Py_tp_getset` slots once per process with
 `PropertyDefinition` lists, in the C tables' order; the clinic glue finds
 its defining class through the spec tokens. The running loop and task and
 the task lists live in `_PyThreadStateImpl` and `PyInterpreterState`, which
-`object_api.c` helpers reach (stopping the world to look at other threads).
+`object_api.jac` helpers reach (stopping the world to look at other threads).
 
 A module whose object layout other code reads keeps that layout: `_socket`'s
 `PySocketSockObject` and `PySocketModule_APIObject` are read from the pinned
@@ -353,21 +353,41 @@ headers. An exception object is read in place
 (`object_error(PyExc_ValueError, ...)`,
 `PyErr_ExceptionMatches(PyExc_KeyError)`); a static type or singleton is
 used by address (`addressof(PyCode_Type)`), and `Py_None`, `Py_NotImplemented`
-and `Py_Ellipsis` are declared as that address, as the C macros are. C remains
-only where Jac cannot express the operation:
+and `Py_Ellipsis` are declared as that address, as the C macros are.
+JacPython compiles no C of its own into libpython. What has no exported
+symbol, or reads a layout that differs between builds, is a `jacpy_*` helper
+defined in Jac under its C name:
 
-| C residue | Why | Where |
+| Operation | Why a helper | Where |
 |---|---|---|
-| macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | one-line `jacpy_*` helpers in `object_api.c` |
-| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) and of `struct dirent` | layout differs between builds (macOS x86_64 binds the `$INODE64` `readdir`, `stat`, `fstatat` and `statfs`) | helpers (`jacpy_typing_types` returns the interpreter's typing types); object ports read the fields gen_layouts generates and asserts instead (`interp->gc`, `interp->object_state.freelists`) |
-| CPU feature probes (CPUID) | an intrinsic | `jacpy_hacl_simd_features` |
-| the libm functions Zig's compiler-rt also defines (`log`, `sin`, `fma`, ...) | a Mach-O link binds compiler-rt's weak copies ahead of libSystem's | `jacpy_libm_*` look them up in libSystem |
+| macros and static inline functions with no exported form (`PyTuple_Check`, `PyList_GET_ITEM`) | no symbol to call | `object_model/object_api.jac` |
+| struct fields of object layouts and interpreter state (`tp_richcompare`, `ob_alloc`, weakref lists, `PyCFunctionObject.m_ml`, `interp->atexit`, `interp->cached_objects`) | read through the offsets gen_layouts generates and layouts_check.c asserts | `object_model/object_api.jac` |
+| the C library's spellings and records: `struct dirent`, the stat family (macOS x86_64 binds `$INODE64` variants, glibc before 2.33 exports no `stat`), errno, the stdio streams | differ between C libraries | the native floor (`compiler/backends/native/posix_floor.c`, compiled per target) |
+| CPU feature probes (CPUID), the macOS system log (`os_log`'s compile-time format builtins) | compiler intrinsics | the native floor (`__jac_cpuid`, `__jac_system_log`) |
+| the libm functions Zig's compiler-rt also defines (`log`, `sin`, `fma`, ...) | a Mach-O link binds compiler-rt's weak copies ahead of libSystem's | `jacpy_libm_*` look them up in libSystem (libm on Linux) |
+| `_PyRuntime` and its initializer | built by the C preprocessor from `pycore_runtime_init.h` | see below |
 | vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL) | external dependencies, not CPython | built and linked as before |
 
-`object_api.c`, `compiler_runtime.c` and `binding_api.c` hold only these. They
-take and return typed pointers (`PyObject *`, `Py_buffer *`,
-`PyUnicodeWriter *`), and `gen_capi.jac` derives their Jac declarations from
-the C, so the two sides cannot drift.
+The helpers take and return typed pointers (`PyObject *`, `Py_buffer *`,
+`PyUnicodeWriter *`); `gen_capi.jac` declares them to their callers from their
+C prototypes, with a Jac `str` for each C string.
+
+### `_PyRuntime`
+
+`_PyRuntimeState_INIT` is a tree of C preprocessor macros
+(`pycore_runtime_init.h` and its generated headers): debug offsets, the
+allocators and more than a thousand static strings. build_jacpython.zig's
+`runtime_image` step, after `pyconfig` and before `native`, runs
+`scripts/jacpython/gen_runtime_image.jac`. The script compiles only that
+initializer with the target's `zig cc` against the tree's own `pyconfig.h`
+and `Include/`. It then reads
+`_PyRuntime`'s bytes and relocations from the assembly and writes them as a
+Jac C-data `glob _PyRuntime: list[ptr]`. Data words stay plain values.
+Relocations become `addressof(T)`, `ptr(function)`, C-string literals, or
+`ptr(addressof(_PyRuntime) + n)` for the state's pointers into itself. The
+script refuses an image whose size differs from the platform's
+`_PyRuntimeState_SIZE`. The image is lowered into `jacpython.o` with the
+rest of the native object.
 
 ## Object handles
 
@@ -619,7 +639,7 @@ clinic files of the first five), as `object_model/complex.jac`, `method.jac`,
 - `PyStructSequence_NewType` builds its slots and spec in `PyMem` memory, and
   `PyStructSequence_UnnamedField` is C data. `PyFile_*` and the
   `open_code` hook read `_PyRuntime` through `jacpy_open_code_hook` /
-  `jacpy_open_code_userdata` in `object_api.c`.
+  `jacpy_open_code_userdata` in `object_api.jac`.
 - gen_layouts imports records from the C API declarations positionally
   (`Py_buffer`, `Py_complex`, `PyType_Slot`, `PyType_Spec`), asserts bool
   fields, renames Jac keywords among member names with a trailing `_`
@@ -730,11 +750,11 @@ ported.
 `bytesobject.c` (`object_model/bytes.jac`) reads the empty and one-byte
 bytes objects in place in `_PyRuntime`, like the small ints, and defines the
 `_PyBytesWriter` API that unicodeobject.c, `_pickle`, `_struct` and the int
-port write through. `PyBytes_FromFormatV` stays C (in object_api.c): a Jac
-definition cannot receive a `va_list`. `PyBytes_FromFormat`, which is
-variadic, is Jac. A Jac `bytes` value reaches `PyBytes_FromStringAndSize`'s
-callers through `jacpy_bytes_from_payload`, since the C definition takes a
-pointer.
+port write through. `PyBytes_FromFormat` (variadic) and `PyBytes_FromFormatV`
+(a `VaList` parameter: a C `va_list` argument is one pointer-sized word on
+every supported target) share one Jac formatter. A Jac `bytes` value
+reaches `PyBytes_FromStringAndSize`'s callers through
+`jacpy_bytes_from_payload`, since the C definition takes a pointer.
 
 `bytearrayobject.c` (`object_model/bytearray.jac`) keeps C's resize
 policy (1.125 overallocation and the `ob_start` offset that makes deleting
@@ -751,15 +771,17 @@ are used in place. Search on 1-byte strings runs on the byte stringlib;
 2- and 4-byte strings have width-specific copies of fastsearch.
 `unicodectype.c` is `object_model/unicodectype.jac` over
 `unicodetype_db.jac`, which `scripts/jacpython/gen_unicodetype.jac` writes
-from the pinned sources. `PyUnicode_FromFormatV` and its helpers, which
-consume a `va_list`, and the wrapper for the generated static-strings
-initializer stay C in object_api.c. Jac `str` values reach the C-string
+from the pinned sources. `PyUnicode_FromFormatV`, `PyUnicode_FromFormat` and
+`PyUnicodeWriter_Format` are `object_model/unicode_format.jac`; the generated
+static-strings initializer is a walk over `_PyRuntime`'s literal and
+identifier strings in `object_api.jac`. Jac `str` values reach the C-string
 API through `jacpy_unicode_from_text`/`_intern_text`/`_equal_text`.
 
 `object.c` (`object_model/object.jac`) holds attribute lookup, rich
 comparison, hashing, truth, repr/str and the None and NotImplemented
-singletons as C data. `_Py_Dealloc` stays C (in object_api.c): its trashcan
-test reads the machine stack pointer, and it runs on every deallocation.
+singletons as C data. `_Py_Dealloc` takes the machine stack pointer for its
+trashcan test from a stack slot (`__alloca`), as ceval.jac's recursion checks
+do, and reads the thread state from the initial-exec thread-local slot.
 The attribute C API takes `ptr[u8]` names; Jac `str` names go through
 `jacpy_object_getattr_text` / `_setattr_text` / `_getoptionalattr_text`.
 The port's static-type table leaves out the symtable and
@@ -769,8 +791,8 @@ instruction-sequence types itself.
 C's dispatch order: vectorcall before `tp_call`, the `nb_*` slots read at
 their `PyNumberMethods` offsets with the subtype-first rule. The functions
 that receive or forward a `va_list` (`PyObject_CallFunction`,
-`PyObject_CallMethod` and their variants) stay C in object_api.c; the
-`...ObjArgs` calls are Jac variadic definitions.
+`PyObject_CallMethod` and their variants) are Jac variadic definitions that
+hand their `VaList` to `_Py_VaBuildStack`, like the `...ObjArgs` calls.
 
 Order after these: `typeobject.c` (12,312 lines) last. The allocator (`obmalloc.c` and the mimalloc copy under
 `Objects/mimalloc/`) follows the object model.

@@ -867,7 +867,7 @@ impl stackref_close(bits: u64) {
         count = wrapping_sub(refcnt.view(1)[0], u32(1));
         refcnt.view(1)[0] = count;
         if count == u32(0) {
-            _Py_Dealloc(op);
+            object_dealloc(op);
         }
     }
 }

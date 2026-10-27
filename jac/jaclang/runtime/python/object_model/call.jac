@@ -19,11 +19,17 @@ import from c {
         method: ptr[u64]
     ) -> i32;  def _PyObject_GetMethod(
         obj_: ptr[PyObject], name: ptr[PyObject], method: &mut ptr[PyObject]
-    ) -> i32;  def _PyUnicode_FromId(id: ptr) -> ptr[PyObject];  def Py_EnterRecursiveCall(
-        where: ptr[u8]
-    ) -> i32;  def _Py_FatalErrorFormat(func: ptr[u8], format: ptr[u8], *args: any);  def memcpy(
-        target: ptr, source: ptr, size: u64
-    ) -> ptr;  obj ArgStack {
+    ) -> i32;  def _PyUnicode_FromId(id: ptr) -> ptr[PyObject];  def _Py_VaBuildStack(
+        small_stack: ptr[ptr[PyObject]],
+        small_stack_len: i64,
+        format: ptr[u8],
+        va: VaList,
+        p_nargs: ptr[i64]
+    ) -> ptr[ptr[PyObject]];  def _PyObject_GetAttrId(
+        v: ptr[PyObject], name: ptr
+    ) -> ptr[PyObject];  def Py_EnterRecursiveCall(where: ptr[u8]) -> i32;  def _Py_FatalErrorFormat(
+        func: ptr[u8], format: ptr[u8], *args: any
+    );  def memcpy(target: ptr, source: ptr, size: u64) -> ptr;  obj ArgStack {
         has s0: ptr[PyObject] = ptr[PyObject](),
             s1: ptr[PyObject] = ptr[PyObject](),
             s2: ptr[PyObject] = ptr[PyObject](),
@@ -937,5 +943,132 @@ impl grow_args(
 impl free_args(stack: ptr[ptr[PyObject]], small_stack: ptr[ptr[PyObject]]) {
     if stack != small_stack {
         PyMem_Free(ptr(stack));
+    }
+}
+
+def call_function_va(
+    tstate: ptr[PyThreadState], callable: ptr[PyObject], format: ptr[u8], va: VaList
+) -> ptr[PyObject] {
+    if not callable {
+        return null_error(tstate);
+    }
+    if not format or format.view(1)[0] == u8(0) {
+        return vectorcall_tstate(tstate, callable, ptr[ptr[PyObject]](), u64(0), NULL);
+    }
+    small: own ArgStack = ArgStack();
+    small_stack = arg_array(jacpy_stack_address(&mut small));
+    count = ptr[i64](__alloca(8));
+    count.view(1)[0] = 0;
+    stack = _Py_VaBuildStack(small_stack, _PY_FASTCALL_SMALL_STACK, format, va, count);
+    if not stack {
+        return NULL;
+    }
+    nargs = count.view(1)[0];
+    result = NULL;
+    if nargs == 1 and tuple_check(stack.view(1)[0]) {
+        args = stack.view(1)[0];
+        result = vectorcall_tstate(
+            tstate, callable, tuple_items(args), u64(object_size(args)), NULL
+        );
+    } else {
+        result = vectorcall_tstate(tstate, callable, stack, u64(nargs), NULL);
+    }
+    for i in range(nargs) {
+        object_decref((stack + i).view(1)[0]);
+    }
+    free_args(stack, small_stack);
+    return result;
+}
+
+def call_method_va(
+    tstate: ptr[PyThreadState], callable: ptr[PyObject], format: ptr[u8], va: VaList
+) -> ptr[PyObject] {
+    if PyCallable_Check(callable) == 0 {
+        PyErr_Format(
+            PyExc_TypeError,
+            ptr[u8]("attribute of type '%.200s' is not callable"),
+            object_type(callable).view(1)[0].tp_name
+        );
+        return NULL;
+    }
+    return call_function_va(tstate, callable, format, va);
+}
+
+def call_method_named(
+    obj_: ptr[PyObject], name: ptr[u8], format: ptr[u8], va: VaList
+) -> ptr[PyObject] {
+    tstate = thread_state();
+    if not obj_ or not name {
+        return null_error(tstate);
+    }
+    callable = PyObject_GetAttrString(obj_, name);
+    if not callable {
+        return NULL;
+    }
+    retval = call_method_va(tstate, callable, format, va);
+    object_decref(callable);
+    return retval;
+}
+
+import from c {
+    def PyObject_CallFunction(
+        callable: ptr[PyObject], format: ptr[u8], *vargs: VaList
+    ) -> ptr[PyObject] {
+        return call_function_va(thread_state(), callable, format, vargs);
+    }  def PyEval_CallFunction(
+        callable: ptr[PyObject], format: ptr[u8], *vargs: VaList
+    ) -> ptr[PyObject] {
+        return call_function_va(thread_state(), callable, format, vargs);
+    }  def _PyObject_CallFunction_SizeT(
+        callable: ptr[PyObject], format: ptr[u8], *vargs: VaList
+    ) -> ptr[PyObject] {
+        return call_function_va(thread_state(), callable, format, vargs);
+    }  def PyObject_CallMethod(
+        obj_: ptr[PyObject], name: ptr[u8], format: ptr[u8], *vargs: VaList
+    ) -> ptr[PyObject] {
+        return call_method_named(obj_, name, format, vargs);
+    }  def PyEval_CallMethod(
+        obj_: ptr[PyObject], name: ptr[u8], format: ptr[u8], *vargs: VaList
+    ) -> ptr[PyObject] {
+        return call_method_named(obj_, name, format, vargs);
+    }  def _PyObject_CallMethod(
+        obj_: ptr[PyObject], name: ptr[PyObject], format: ptr[u8], *vargs: VaList
+    ) -> ptr[PyObject] {
+        tstate = thread_state();
+        if not obj_ or not name {
+            return null_error(tstate);
+        }
+        callable = PyObject_GetAttr(obj_, name);
+        if not callable {
+            return NULL;
+        }
+        retval = call_method_va(tstate, callable, format, vargs);
+        object_decref(callable);
+        return retval;
+    }  def _PyObject_CallMethodId(
+        obj_: ptr[PyObject], name: ptr, format: ptr[u8], *vargs: VaList
+    ) -> ptr[PyObject] {
+        tstate = thread_state();
+        if not obj_ or not name {
+            return null_error(tstate);
+        }
+        callable = _PyObject_GetAttrId(obj_, name);
+        if not callable {
+            return NULL;
+        }
+        retval = call_method_va(tstate, callable, format, vargs);
+        object_decref(callable);
+        return retval;
+    }  def _PyObject_CallMethodFormat(
+        tstate: ptr[PyThreadState],
+        callable: ptr[PyObject],
+        format: ptr[u8],
+        *vargs: VaList
+    ) -> ptr[PyObject] {
+        return call_method_va(tstate, callable, format, vargs);
+    }  def _PyObject_CallMethod_SizeT(
+        obj_: ptr[PyObject], name: ptr[u8], format: ptr[u8], *vargs: VaList
+    ) -> ptr[PyObject] {
+        return call_method_named(obj_, name, format, vargs);
     }
 }

@@ -7,26 +7,25 @@ const builtin = @import("builtin");
 const seed = @import("seed.zig");
 const Io = std.Io;
 const inputs = [_][]const u8{
-    "bootstrap/build_python.zig",         "bootstrap/seed.zig",
-    "bootstrap/python/sources.json",      "bootstrap/python/cpython-sources.txt",
-    "bootstrap/python/build.sh",          "bootstrap/python/smoke.py",
-    "bootstrap/python/finalize.py",       "bootstrap/python/build-graph.patch",
-    "bootstrap/python/host-graph.patch",  "bootstrap/python/jacpython-clinic.txt",
+    "bootstrap/build_python.zig",             "bootstrap/seed.zig",
+    "bootstrap/python/sources.json",          "bootstrap/python/cpython-sources.txt",
+    "bootstrap/python/build.sh",              "bootstrap/python/smoke.py",
+    "bootstrap/python/finalize.py",           "bootstrap/python/build-graph.patch",
+    "bootstrap/python/host-graph.patch",      "bootstrap/python/jacpython-clinic.txt",
     // Only the JacPython build reads the inputs from here on.
-    "bootstrap/build_jacpython.zig",      "bootstrap/pyconfig.zig",
-    "bootstrap/pyconfig_probes.zig",      "bootstrap/python/compiler_runtime.c",
-    "bootstrap/python/compiler_bridge.c", "bootstrap/python/object_api.c",
-    "bootstrap/python/binding_api.c",     "bootstrap/python/layouts_check.c",
-    "bootstrap/python/features_check.c",  "bootstrap/python/compiler_bridge.h",
-    "bootstrap/python/prepare_native.py", "bootstrap/python/jacpython-modules.txt",
+    "bootstrap/build_jacpython.zig",          "bootstrap/pyconfig.zig",
+    "bootstrap/pyconfig_probes.zig",          "bootstrap/python/layouts_check.c",
+    "bootstrap/python/features_check.c",      "bootstrap/python/prepare_native.py",
+    "bootstrap/python/jacpython-modules.txt",
 };
 const first_jacpython_input = 10;
 // The Jac generators build_jacpython.zig runs with the build-time host (the
-// frozen modules, build-details.json), relative to the repository root, the
-// Jac root's parent. Only the JacPython build runs them.
+// frozen modules, _PyRuntime, build-details.json), relative to the repository
+// root, the Jac root's parent. Only the JacPython build runs them.
 const generator_inputs = [_][]const u8{
     "scripts/jacpython/common.jac",
     "scripts/jacpython/gen_frozen.jac",
+    "scripts/jacpython/gen_runtime_image.jac",
     "scripts/jacpython/gen_build_details.jac",
 };
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
@@ -276,15 +275,7 @@ fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
         if (mode != .jacpython and i >= first_jacpython_input) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
         hash.update(path);
-        // A C adapter that has moved into Jac is no longer in bootstrap/python.
-        const content = Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited) catch |err| switch (err) {
-            error.FileNotFound => if (i >= first_jacpython_input) {
-                hash.update("\x00missing");
-                continue;
-            } else return err,
-            else => return err,
-        };
-        hash.update(content);
+        hash.update(try Io.Dir.cwd().readFileAlloc(io, full, a, .unlimited));
     }
     // The checked-in copies staged in place of archive files.
     const list_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/cpython-sources.txt" });
@@ -640,7 +631,7 @@ test "invalid source manifests fail before pruning" {
     _ = try tmp.dir.statFile(io, "Include/Python.h", .{});
 }
 
-test "compiler modes isolate caches; native adapter edits invalidate only JacPython" {
+test "compiler modes isolate caches; native emitter edits invalidate only JacPython" {
     const io = std.testing.io;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -696,7 +687,7 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try dir.deleteFile(io, "jaclang/runtime/python/eval.jac");
     try std.testing.expectEqual(changed_runtime, try buildKey(io, a, hostPlatform(), root, host, .jacpython));
-    try dir.writeFile(io, .{ .sub_path = "bootstrap/python/compiler_runtime.c", .data = "changed native adapter" });
+    try dir.writeFile(io, .{ .sub_path = "bootstrap/python/prepare_native.py", .data = "changed native emitter" });
     try std.testing.expect(!std.mem.eql(u8, &changed_runtime, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
     try std.testing.expectEqual(before_host, try buildKey(io, a, hostPlatform(), root, host, .host));
     const before_generator = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
@@ -710,13 +701,6 @@ test "compiler modes isolate caches; native adapter edits invalidate only JacPyt
     const before_host_key = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
     try dir.writeFile(io, .{ .sub_path = "host/build-key", .data = "rebuilt host" });
     try std.testing.expect(!std.mem.eql(u8, &before_host_key, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
-    // An adapter that moves into Jac leaves bootstrap/python: the JacPython key
-    // moves and the host's does not.
-    const with_adapter = try buildKey(io, a, hostPlatform(), root, host, .jacpython);
-    const host_with_adapter = try buildKey(io, a, hostPlatform(), root, host, .host);
-    try dir.deleteFile(io, "bootstrap/python/object_api.c");
-    try std.testing.expect(!std.mem.eql(u8, &with_adapter, &(try buildKey(io, a, hostPlatform(), root, host, .jacpython))));
-    try std.testing.expectEqual(host_with_adapter, try buildKey(io, a, hostPlatform(), root, host, .host));
 }
 
 test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {

@@ -1144,11 +1144,36 @@ impl NaIRGenPass._c_const_address(expr: uni.Expr) -> (ir.Constant | None) {
             if literal is not None {
                 return literal;
             }
+            (base, count) = c_offset_address(arg);
+            if base is not None {
+                return self._c_const_offset_address(base, count);
+            }
             return self._c_const_address(arg);
         }
         return None;
     }
     return self._c_const_scalar(expr, i64);
+}
+
+impl NaIRGenPass._c_const_offset_address(
+    call: uni.UniNode, count: int
+) -> (ir.Constant | None) {
+    params = list(call.params or []) if isinstance(call, uni.FuncCall) else [];
+    symbol = params[0] if len(params) == 1 else None;
+    found = self.clib_globals.get(symbol.sym_name)
+        if isinstance(symbol, uni.Name) and clib_global_of_name(symbol) is not None
+        else None;
+    if found is None {
+        return None;
+    }
+    target = found[0];
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    pointee = target.type.pointee;
+    steps = [ir.Constant(i32, 0), ir.Constant(i64, count)]
+        if isinstance(pointee, ir.ArrayType)
+        else [ir.Constant(i64, count)];
+    return target.gep(steps).ptrtoint(i64) as ir.Constant;
 }
 
 impl NaIRGenPass._c_literal_address(arg: uni.UniNode) -> (ir.Constant | None) {

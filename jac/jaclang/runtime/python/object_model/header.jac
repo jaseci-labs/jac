@@ -99,7 +99,7 @@ impl object_decref(op: ptr[PyObject]) {
     count = wrapping_sub(count, u32(1));
     refcnt.view(1)[0] = count;
     if count == u32(0) {
-        _Py_Dealloc(op);
+        object_dealloc(op);
     }
 }
 

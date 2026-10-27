@@ -552,6 +552,23 @@ impl final_glob_value(nd: (UniNode | None)) -> (Expr | None) {
     return assign.value;
 }
 
+impl c_offset_address(expr: (UniNode | None)) -> tuple[(UniNode | None), int] {
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
+    if not isinstance(expr, BinaryExpr)
+        or not isinstance(expr.op, Token)
+        or expr.op.name != Tok.PLUS
+        or not is_builtin_addressof_call(expr.left) {
+        return (None, 0);
+    }
+    (ok, value) = c_scalar_constant(expr.right);
+    if not ok or not isinstance(value, int) or isinstance(value, bool) or value < 0 {
+        return (None, 0);
+    }
+    return (expr.left, value);
+}
+
 impl c_scalar_constant(expr: (UniNode | None), depth: int = 0) -> tuple[bool, any] {
     if depth > 32 {
         return (False, None);

@@ -121,17 +121,23 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     try copyMatching(&c, c.path(&.{ host_build, "lib" }), c.path(&.{ c.deps, "lib" }), ".a");
     try copyTree(&c, c.path(&.{ o.host, "python/licenses" }), c.path(&.{ o.work, "python/licenses" }));
 
+    try step(&c, "pyconfig", writePyconfig, .{&c});
+
     // The frozen modules (importlib's bootstrap, zipimport, getpath.py and the
     // startup stdlib), compiled and marshalled by the host as
-    // _freeze_module.py would and written as one Jac module the native object
-    // links; then the native object itself.
+    // _freeze_module.py would, with getpath's build inputs, and written as one
+    // Jac module the native object links. _PyRuntime's initializer, which
+    // only the C preprocessor builds from pycore_runtime_init.h, compiled for
+    // this target against this tree's pyconfig.h and written as the C data of
+    // another. Then the native object itself.
     const native = c.path(&.{ o.work, "native" });
     const frozen = c.path(&.{ native, "frozen_modules.jac" });
+    const runtime_image = c.path(&.{ native, "runtime_image.jac" });
     try Io.Dir.cwd().createDirPath(io, native);
-    try step(&c, "frozen", generate, .{ &c, &[_][]const u8{ "gen_frozen", "--source", c.src, "--output", frozen } });
-    try step(&c, "native", runArgv, .{ &c, &[_][]const u8{ hostPython(&c), "-I", c.path(&.{ o.recipe, "prepare_native.py" }), o.root, native, o.platform, frozen }, null });
+    try step(&c, "frozen", generate, .{ &c, try getpathArgs(&c, frozen) });
+    try step(&c, "runtime_image", generate, .{ &c, try runtimeImageArgs(&c, runtime_image) });
+    try step(&c, "native", runArgv, .{ &c, &[_][]const u8{ hostPython(&c), "-I", c.path(&.{ o.recipe, "prepare_native.py" }), o.root, native, o.platform, frozen, runtime_image }, null });
 
-    try step(&c, "pyconfig", writePyconfig, .{&c});
     try step(&c, "compile", compile, .{&c});
     try step(&c, "link", link, .{&c});
     try step(&c, "install", install, .{&c});
@@ -234,6 +240,28 @@ fn generate(c: *Ctx, args: []const []const u8) !void {
     });
     try argv.appendSlice(c.a, args);
     try runArgv(c, argv.items, null);
+}
+
+/// gen_frozen's arguments: the frozen modules and getpath's configured
+/// locations, the values CPython's makefile passes to Modules/getpath.c
+/// (makefileVars installs the same PLATLIBDIR; an in-tree build has an empty
+/// VPATH).
+fn getpathArgs(c: *Ctx, output: []const u8) ![]const []const u8 {
+    var argv: std.ArrayList([]const u8) = .empty;
+    try argv.appendSlice(c.a, &.{ "gen_frozen", "--source", c.src, "--output", output });
+    try argv.appendSlice(c.a, &.{ "--prefix", c.prefix, "--exec-prefix", c.prefix });
+    try argv.appendSlice(c.a, &.{ "--pythonpath", "", "--vpath", "", "--platlibdir", "lib" });
+    return argv.items;
+}
+
+/// gen_runtime_image's arguments: this tree's configured headers, then the
+/// target's C compiler.
+fn runtimeImageArgs(c: *Ctx, output: []const u8) ![]const []const u8 {
+    var argv: std.ArrayList([]const u8) = .empty;
+    try argv.appendSlice(c.a, &.{ "gen_runtime_image", "--include", c.src, "--include", c.path(&.{ c.src, "Include" }) });
+    try argv.appendSlice(c.a, &.{ "--platform", c.o.platform, "--output", output, "--" });
+    try argv.appendSlice(c.a, c.cc);
+    return argv.items;
 }
 
 // ---------------------------------------------------------------- pyconfig.h
@@ -391,55 +419,12 @@ fn haclArchives(c: *Ctx) ![]const Archive {
     });
 }
 
-/// The C adapters bootstrap/python may still keep, copied into Python/ under
-/// the names the native object and the headers expect. Each .c present is one
-/// object of libpython; one that has moved into Jac is simply absent.
-const Bridge = struct { from: []const u8, to: []const u8 };
-const bridge_sources = [_]Bridge{
-    .{ .from = "compiler_bridge.c", .to = "Python/jac_compile.c" },
-    .{ .from = "compiler_bridge.h", .to = "Python/jac_compile.h" },
-    .{ .from = "compiler_runtime.c", .to = "Python/jac_runtime.c" },
-    .{ .from = "object_api.c", .to = "Python/jac_objects.c" },
-    .{ .from = "binding_api.c", .to = "Python/jac_bindings.c" },
-};
-
 /// The object prepare_native.py lowers the Jac runtime into.
 const native_object = "Python/jacpython.o";
 
-/// The adapters bootstrap/python holds.
-fn presentBridges(c: *Ctx) ![]const Bridge {
-    var out: std.ArrayList(Bridge) = .empty;
-    for (bridge_sources) |b| {
-        if (fileExists(c.io, c.path(&.{ c.o.recipe, b.from }))) try out.append(c.a, b);
-    }
-    return out.items;
-}
-
-/// LIBRARY_OBJS, what libpython and the interpreter hold: the adapters'
-/// objects, then the native object.
+/// LIBRARY_OBJS, what libpython and the interpreter hold: the native object.
 fn libraryObjects(c: *Ctx) ![]const []const u8 {
-    const a = c.a;
-    var out: std.ArrayList([]const u8) = .empty;
-    for (try presentBridges(c)) |b| {
-        if (!std.mem.endsWith(u8, b.to, ".c")) continue;
-        try out.append(a, try std.fmt.allocPrint(a, "{s}.o", .{b.to[0 .. b.to.len - 2]}));
-    }
-    try out.append(a, native_object);
-    return out.items;
-}
-
-/// getpath's configured locations, which CPython's makefile passes to
-/// Modules/getpath.c and JacPython's to the adapter holding its C side.
-fn getpathDefines(c: *Ctx) ![]const []const u8 {
-    return c.a.dupe([]const u8, &.{
-        "-DPYTHONPATH=\"\"",
-        try std.fmt.allocPrint(c.a, "-DPREFIX=\"{s}\"", .{c.prefix}),
-        try std.fmt.allocPrint(c.a, "-DEXEC_PREFIX=\"{s}\"", .{c.prefix}),
-        "-DVERSION=\"" ++ version ++ "\"",
-        "-DVPATH=\"\"",
-        "-DPLATLIBDIR=\"lib\"",
-        "-DPYTHONFRAMEWORK=\"\"",
-    });
+    return c.a.dupe([]const u8, &.{native_object});
 }
 
 fn compile(c: *Ctx) !void {
@@ -447,25 +432,11 @@ fn compile(c: *Ctx) !void {
     var src_dir = try Io.Dir.cwd().openDir(c.io, c.src, .{});
     defer src_dir.close(c.io);
     try src_dir.createDirPath(c.io, "Python");
-    const bridges = try presentBridges(c);
-    for (bridges) |b| {
-        try Io.Dir.copyFile(.cwd(), c.path(&.{ c.o.recipe, b.from }), src_dir, b.to, c.io, .{});
-    }
     try Io.Dir.copyFile(.cwd(), c.path(&.{ c.o.work, "native/jacpython.o" }), src_dir, native_object, c.io, .{});
 
     const f = Flags.of(c.p);
     const stdmodule = try stdmoduleCflags(c, f);
     var objects: std.ArrayList(Object) = .empty;
-    for (bridges) |b| {
-        if (!std.mem.endsWith(u8, b.to, ".c")) continue;
-        const object = try std.fmt.allocPrint(a, "{s}.o", .{b.to[0 .. b.to.len - 2]});
-        // jac_objects.c holds the C side of Modules/getpath.c.
-        const after: []const []const u8 = if (std.mem.eql(u8, b.from, "object_api.c")) try getpathDefines(c) else &.{};
-        // The makefile names the getpath adapter by its srcdir path and the
-        // others through its implicit rule; __FILE__ keeps the difference.
-        const source = if (after.len > 0) try std.fmt.allocPrint(a, "./{s}", .{b.to}) else b.to;
-        try objects.append(a, .{ .source = source, .object = object, .after = after });
-    }
     try objects.append(a, .{ .source = "./Programs/python.c", .object = "Programs/python.o" });
     const simd = haclSimd(c);
     const hacl = [_][]const u8{ "Lib_Memzero0", "Hacl_Hash_MD5", "Hacl_Hash_SHA1", "Hacl_Hash_SHA2", "Hacl_Hash_SHA3", "Hacl_Hash_Blake2s", "Hacl_Hash_Blake2b", "Hacl_HMAC" };

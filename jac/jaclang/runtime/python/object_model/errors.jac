@@ -1,10 +1,5 @@
 import from c {
-    def PyUnicode_FromFormatV(format: ptr[u8], vargs: VaList) -> ptr[PyObject];  def _PyErr_FormatV(
-        tstate: ptr[PyThreadState],
-        exception: ptr[PyObject],
-        format: ptr[u8],
-        vargs: VaList
-    ) -> ptr[PyObject];  def PyThreadState_GetFrame(
+    def PyUnicode_FromFormatV(format: ptr[u8], vargs: VaList) -> ptr[PyObject];  def PyThreadState_GetFrame(
         tstate: ptr[PyThreadState]
     ) -> ptr[PyObject];  def _PySys_GetOptionalAttr(
         name: ptr[PyObject], value: &mut ptr[PyObject]
@@ -537,6 +532,23 @@ import from c {
         _PyErr_SetObject(tstate, exception_instance_class(exc), exc);
 
         object_decref(exc);
+    }  def _PyErr_FormatV(
+        tstate: ptr[PyThreadState],
+        exception: ptr[PyObject],
+        format: ptr[u8],
+        vargs: VaList
+    ) -> ptr[PyObject] {
+        _PyErr_Clear(tstate);
+        string = PyUnicode_FromFormatV(format, vargs);
+        if string {
+            _PyErr_SetObject(tstate, exception, string);
+            object_decref(string);
+        }
+        return NULL;
+    }  def PyErr_FormatV(
+        exception: ptr[PyObject], format: ptr[u8], vargs: VaList
+    ) -> ptr[PyObject] {
+        return _PyErr_FormatV(thread_state(), exception, format, vargs);
     }  def _PyErr_FormatFromCauseTstate(
         tstate: ptr[PyThreadState],
         exception: ptr[PyObject],

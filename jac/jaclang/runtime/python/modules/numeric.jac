@@ -2,7 +2,8 @@
 
 Zig's compiler-rt also defines log, log2, log10, exp, exp2, sin, cos, tan and
 fma. Those reach the platform libm through the jacpy_libm_* helpers in
-bootstrap/python/object_api.c, which says why; the rest are plain C calls.
+object_model/object_api.jac, which look them up by name in the platform
+libm; the rest are plain C calls.
 """
 import from c {
     def acos(value: f64) -> f64;  def acosh(value: f64) -> f64;  def asin(

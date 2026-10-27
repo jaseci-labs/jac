@@ -16,6 +16,9 @@ tables as Jac for the bytecode compiler and the runtime:
 - jac/bootstrap/python/generated/Include/internal/pycore_uop_metadata.h.in
 - jac/bootstrap/python/generated/Lib/_opcode_metadata.py.in
 - jac/jaclang/runtime/python/opcode_meta.jac
+- jac/jaclang/runtime/python/interpreter/opcode_tables.jac: the tables and
+  stack-effect functions NEED_OPCODE_METADATA instantiates from
+  pycore_opcode_metadata.h, as Jac C data and C definitions
 
 jac/bootstrap/python/cpython-sources.txt marks the first five paths
 `generated`: the build stages these copies (named without `.in`) where the
@@ -30,6 +33,7 @@ import sys;
 import from pathlib { Path }
 import from common {
     BOOTSTRAP,
+    bytes_literal,
     RUNTIME,
     Signature,
     format_jac,
@@ -53,6 +57,7 @@ import from instructions {
 glob COMMAND: str = "scripts/jacpython/gen_opcode_meta.jac",
      GENERATED: Path = BOOTSTRAP / "generated",
      OPCODE_META: Path = RUNTIME / "opcode_meta.jac",
+     OPCODE_TABLES: Path = RUNTIME / "interpreter" / "opcode_tables.jac",
      SOURCE: str = "Python/bytecodes.c",
      # The opcode flags in bit order (HAS_<NAME>_FLAG).
      FLAGS: list[str] = [
@@ -1697,6 +1702,171 @@ def opcode_meta_module(a: Analysis) -> str {
     return "\n".join([part.strip("\n") + "\n" for part in parts]);
 }
 
+# ---------------------------------------------------------------- C tables
+
+# The uop ids pycore_uop_ids.h assigns, by uop name.
+def uop_ids(a: Analysis) -> dict[str, int] {
+    ids: dict[str, int] = {"_EXIT_TRACE": 300, "_SET_IP": 301};
+    next_id = 302;
+    named = {uop.name: uop for uop in a.uops.values()};
+    for name in sorted(named) {
+        uop = named[name];
+        if name in ("_EXIT_TRACE", "_SET_IP") or uop.tier == 1 {
+            continue;
+        }
+        if uop.implicit and not uop.replicated {
+            ids[name] = a.opmap[name[1:]];
+        } else {
+            ids[name] = next_id;
+            next_id += 1;
+        }
+    }
+    return ids;
+}
+
+# A cflags() text as the number it names.
+def flag_value(text: str) -> int {
+    value = 0;
+    for (bit, flag) in enumerate(FLAGS) {
+        if f"HAS_{flag}_FLAG" in text.split(" | ") {
+            value |= 1 << bit;
+        }
+    }
+    return value;
+}
+
+def u8_rows(values: list[int]) -> str {
+    return bytes_literal(values, "u8").replace("\n", "\n             ");
+}
+
+# The opcode tables NEED_OPCODE_METADATA instantiates from
+# pycore_opcode_metadata.h, as Jac C data, and its stack-effect functions.
+def opcode_tables_module(a: Analysis) -> str {
+    size = 256 + len(a.pseudos);
+    caches = [0] * 256;
+    for (name, count) in cache_counts(a) {
+        caches[a.opmap[name]] = count;
+    }
+    deopt = [0] * 256;
+    defined = set(a.opmap.values());
+    for code in range(256) {
+        if code not in defined {
+            deopt[code] = code;
+        }
+    }
+    for (name, inst) in a.instructions.items() {
+        deopt[a.opmap[name]] = a.opmap[deopt_of(inst)];
+    }
+    names = ["ptr[u8]()"] * size;
+    for name in list(a.instructions) + list(a.pseudos) {
+        names[a.opmap[name]] = f'ptr[u8]("{name}")';
+    }
+    formats = sorted(set([instr_format(inst) for inst in a.instructions.values()]));
+    metadata = ["opcode_metadata()"] * size;
+    for (name, inst) in a.instructions.items() {
+        fmt = formats.index(instr_format(inst)) + 1;
+        flags = flag_value(cflags(instr_facts(inst)));
+        metadata[a.opmap[name]] = (
+            f"opcode_metadata(valid_entry=u8(1), instr_format=u8({fmt}), flags=u16({flags}))"
+        );
+    }
+    for (name, pseudo) in a.pseudos.items() {
+        flags = flag_value(cflags(pseudo_facts(pseudo, a)));
+        for flag in pseudo.flags {
+            flags |= flag_value(f"{flag}_FLAG");
+        }
+        metadata[a.opmap[name]] = (
+            f"opcode_metadata(valid_entry=u8(1), instr_format=u8(255), flags=u16({flags}))"
+        );
+    }
+    widest = max([len(pseudo.targets) for pseudo in a.pseudos.values()]);
+    pseudo_rows = ["pseudo_targets()"] * len(a.pseudos);
+    for pseudo in a.pseudos.values() {
+        cells = [a.opmap[target] for target in pseudo.targets]
+            + [0] * (widest + 1 - len(pseudo.targets));
+        fields = [f"as_sequence=u8({1 if pseudo.sequence else 0})"]
+            + [f"target{i}=u8({value})" for (i, value) in enumerate(cells)];
+        pseudo_rows[a.opmap[pseudo.name] - 256] = f"pseudo_targets({', '.join(fields)})";
+    }
+    ids = uop_ids(a);
+    kinds = {kind_name: kind_value for (kind_name, kind_value) in OPARG_KINDS};
+    table: list[tuple[str, list[tuple[str, str, int]]]] = [];
+    for name in sorted(a.instructions) {
+        inst = a.instructions[name];
+        if not is_super(inst, a) and not viable_expansion(inst) {
+            continue;
+        }
+        table.append((name, expansion(inst, a)));
+    }
+    width = max([len(uops) for (_, uops) in table]);
+    expansions = ["opcode_macro_expansion()"] * 256;
+    for (name, uops) in table {
+        fields = [f"nuops={len(uops)}"];
+        for (i, (uop, kind, offset)) in enumerate(uops) {
+            value = kinds[kind] if kind in kinds else int(kind);
+            fields.append(
+                f"uop{i}=macro_uop(uop=i16({ids[uop]}), size=i8({value}), offset=i8({offset}))"
+            );
+        }
+        expansions[a.opmap[name]] = f"opcode_macro_expansion({', '.join(fields)})";
+    }
+    effects = stack_effects(a);
+    lines = [
+        "import from c {",
+        "    obj opcode_metadata {",
+        "        has valid_entry: u8 = 0,",
+        "            instr_format: u8 = 0,",
+        "            flags: u16 = 0;",
+        "    }",
+        "    obj pseudo_targets {",
+        "        has as_sequence: u8 = 0,",
+        ",\n".join([f"            target{i}: u8 = 0" for i in range(widest + 1)]) + ";",
+        "    }",
+        "    obj macro_uop {",
+        "        has uop: i16 = 0,",
+        "            size: i8 = 0,",
+        "            offset: i8 = 0;",
+        "    }",
+        "    obj opcode_macro_expansion {",
+        "        has nuops: i32 = 0,",
+        ",\n".join([f"            uop{i}: macro_uop = macro_uop()" for i in range(width)])
+            + ";",
+        "    }",
+        "    glob _PyOpcode_Caches: list[u8] = " + u8_rows(caches) + ",",
+        "         _PyOpcode_Deopt: list[u8] = " + u8_rows(deopt) + ",",
+        "         _PyOpcode_OpName: list[ptr[u8]] = [\n             "
+            + ",\n             ".join(names)
+            + "\n         ],",
+        "         _PyOpcode_opcode_metadata: list[opcode_metadata] = [\n             "
+            + ",\n             ".join(metadata)
+            + "\n         ],",
+        "         _PyOpcode_PseudoTargets: list[pseudo_targets] = [\n             "
+            + ",\n             ".join(pseudo_rows)
+            + "\n         ],",
+        "         _PyOpcode_macro_expansion: list[opcode_macro_expansion] = [\n             "
+            + ",\n             ".join(expansions)
+            + "\n         ];",
+        "}",
+        ""
+    ];
+    for (index, direction) in enumerate(["popped", "pushed"]) {
+        lines.append("import from c {");
+        lines.append(f"    def _PyOpcode_num_{direction}(opcode: i32, oparg: i32) -> i32 {{");
+        lines.append("        arg = i64(oparg);");
+        for name in sorted(effects) {
+            expr = effects[name][index].replace("oparg", "arg");
+            lines.append(f"        if opcode == i32({a.opmap[name]}) {{");
+            lines.append(f"            return i32.wrap({expr});");
+            lines.append("        }");
+        }
+        lines.append("        return i32(-1);");
+        lines.append("    }");
+        lines.append("}");
+        lines.append("");
+    }
+    return "\n".join(lines);
+}
+
 with entry {
     parser = argparse.ArgumentParser(
         description="Generate CPython's opcode metadata from the instruction table."
@@ -1717,6 +1887,13 @@ with entry {
     }
     ok = write_or_check(
         OPCODE_META, format_jac(opcode_meta_module(a), OPCODE_META), args.check, COMMAND
+    )
+        and ok;
+    ok = write_or_check(
+        OPCODE_TABLES,
+        format_jac(opcode_tables_module(a), OPCODE_TABLES),
+        args.check,
+        COMMAND
     )
         and ok;
     if not ok {

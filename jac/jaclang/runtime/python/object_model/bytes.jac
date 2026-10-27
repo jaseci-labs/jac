@@ -1041,171 +1041,165 @@ import from c {
 
 def write_text(writer: ptr[BytesWriterHead], s: ptr[u8], text: ptr[u8]) -> ptr[u8];
 
+def bytes_from_format(format: ptr[u8], args: VaList) -> ptr[PyObject] {
+    writer = writer_new();
+    if not writer {
+        return NULL;
+    }
+    s = ptr[u8](_PyBytesWriter_Alloc(writer, i64(strlen(format))));
+    if not s {
+        writer_free(writer);
+        return NULL;
+    }
+    writer.view(1)[0].overallocate = i32(1);
+
+    buffer = writer_scratch(writer);
+    f = format;
+    while peek(f) != u8(0) {
+        if i64(peek(f)) != CH_PERCENT {
+            poke(s, peek(f));
+            s = s + 1;
+            f = f + 1;
+            continue;
+        }
+        p = f;
+        f = f + 1;
+
+        while py_isdigit(peek(f)) {
+            f = f + 1;
+        }
+
+        prec: i64 = 0;
+        if i64(peek(f)) == CH_DOT {
+            f = f + 1;
+            while py_isdigit(peek(f)) {
+                prec = prec * 10 + (i64(peek(f)) - CH_ZERO);
+                f = f + 1;
+            }
+        }
+        while peek(f) != u8(0)
+            and i64(peek(f)) != CH_PERCENT
+            and not py_isalpha(peek(f)) {
+            f = f + 1;
+        }
+
+        longflag = False;
+        if i64(peek(f)) == CH_LOWER_L
+            and (i64(peek(f + 1)) == CH_LOWER_D or i64(peek(f + 1)) == CH_LOWER_U) {
+            longflag = True;
+            f = f + 1;
+        }
+
+        size_tflag = False;
+        if i64(peek(f)) == CH_LOWER_Z
+            and (i64(peek(f + 1)) == CH_LOWER_D or i64(peek(f + 1)) == CH_LOWER_U) {
+            size_tflag = True;
+            f = f + 1;
+        }
+
+        writer.view(1)[0].min_size -= span(p, f) + 1;
+        c = i64(peek(f));
+        if c == CH_LOWER_C {
+            ch = args.arg(i32);
+            if ch < i32(0) or ch > i32(255) {
+                PyErr_SetString(
+                    PyExc_OverflowError,
+                    ptr[u8](
+                        "PyBytes_FromFormatV(): %c format expects an integer in range [0; 255]"
+                    )
+                );
+                return writer_fail(writer);
+            }
+            writer.view(1)[0].min_size += 1;
+            poke(s, u8(ch));
+            s = s + 1;
+        } elif c == CH_LOWER_D {
+            if longflag {
+                snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%ld"), args.arg(i64));
+            } elif size_tflag {
+                snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%zd"), args.arg(i64));
+            } else {
+                snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%d"), args.arg(i32));
+            }
+            s = write_text(writer, s, buffer);
+            if not s {
+                return writer_fail(writer);
+            }
+        } elif c == CH_LOWER_U {
+            if longflag {
+                snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%lu"), args.arg(u64));
+            } elif size_tflag {
+                snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%zu"), args.arg(u64));
+            } else {
+                snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%u"), args.arg(u32));
+            }
+            s = write_text(writer, s, buffer);
+            if not s {
+                return writer_fail(writer);
+            }
+        } elif c == CH_LOWER_I {
+            snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%i"), args.arg(i32));
+            s = write_text(writer, s, buffer);
+            if not s {
+                return writer_fail(writer);
+            }
+        } elif c == CH_LOWER_X {
+            snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%x"), args.arg(i32));
+            s = write_text(writer, s, buffer);
+            if not s {
+                return writer_fail(writer);
+            }
+        } elif c == CH_LOWER_S {
+            text = args.arg(ptr[u8]);
+            n: i64 = 0;
+            if prec <= 0 {
+                n = i64(strlen(text));
+            } else {
+                while n < prec and peek(text + n) != u8(0) {
+                    n += 1;
+                }
+            }
+            s = ptr[u8](_PyBytesWriter_WriteBytes(writer, ptr(s), ptr(text), n));
+            if not s {
+                return writer_fail(writer);
+            }
+        } elif c == CH_LOWER_P {
+            snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%p"), args.arg(ptr));
+            if i64(peek(buffer + 1)) == CH_UPPER_X {
+                poke(buffer + 1, u8(CH_LOWER_X));
+            } elif i64(peek(buffer + 1)) != CH_LOWER_X {
+                memmove(ptr(buffer + 2), ptr(buffer), strlen(buffer) + u64(1));
+                poke(buffer, u8(CH_ZERO));
+                poke(buffer + 1, u8(CH_LOWER_X));
+            }
+            s = write_text(writer, s, buffer);
+            if not s {
+                return writer_fail(writer);
+            }
+        } elif c == CH_PERCENT {
+            writer.view(1)[0].min_size += 1;
+            poke(s, u8(CH_PERCENT));
+            s = s + 1;
+        } else {
+            if c == CH_NUL {
+                writer.view(1)[0].min_size += 1;
+            }
+            s = write_text(writer, s, p);
+            if not s {
+                return writer_fail(writer);
+            }
+            return writer_finish(writer, s);
+        }
+        f = f + 1;
+    }
+    return writer_finish(writer, s);
+}
+
 import from c {
     def PyBytes_FromFormat(format: ptr[u8], *args: VaList) -> ptr[PyObject] {
-        writer = writer_new();
-        if not writer {
-            return NULL;
-        }
-        s = ptr[u8](_PyBytesWriter_Alloc(writer, i64(strlen(format))));
-        if not s {
-            writer_free(writer);
-            return NULL;
-        }
-        writer.view(1)[0].overallocate = i32(1);
-
-        buffer = writer_scratch(writer);
-        f = format;
-        while peek(f) != u8(0) {
-            if i64(peek(f)) != CH_PERCENT {
-                poke(s, peek(f));
-                s = s + 1;
-                f = f + 1;
-                continue;
-            }
-            p = f;
-            f = f + 1;
-
-            while py_isdigit(peek(f)) {
-                f = f + 1;
-            }
-
-            prec: i64 = 0;
-            if i64(peek(f)) == CH_DOT {
-                f = f + 1;
-                while py_isdigit(peek(f)) {
-                    prec = prec * 10 + (i64(peek(f)) - CH_ZERO);
-                    f = f + 1;
-                }
-            }
-            while peek(f) != u8(0)
-                and i64(peek(f)) != CH_PERCENT
-                and not py_isalpha(peek(f)) {
-                f = f + 1;
-            }
-
-            longflag = False;
-            if i64(peek(f)) == CH_LOWER_L
-                and (
-                    i64(peek(f + 1)) == CH_LOWER_D or i64(peek(f + 1)) == CH_LOWER_U
-                ) {
-                longflag = True;
-                f = f + 1;
-            }
-
-            size_tflag = False;
-            if i64(peek(f)) == CH_LOWER_Z
-                and (
-                    i64(peek(f + 1)) == CH_LOWER_D or i64(peek(f + 1)) == CH_LOWER_U
-                ) {
-                size_tflag = True;
-                f = f + 1;
-            }
-
-            writer.view(1)[0].min_size -= span(p, f) + 1;
-            c = i64(peek(f));
-            if c == CH_LOWER_C {
-                ch = args.arg(i32);
-                if ch < i32(0) or ch > i32(255) {
-                    PyErr_SetString(
-                        PyExc_OverflowError,
-                        ptr[u8](
-                            "PyBytes_FromFormatV(): %c format expects an integer in range [0; 255]"
-                        )
-                    );
-                    return writer_fail(writer);
-                }
-                writer.view(1)[0].min_size += 1;
-                poke(s, u8(ch));
-                s = s + 1;
-            } elif c == CH_LOWER_D {
-                if longflag {
-                    snprintf(
-                        buffer, u64(WRITER_SCRATCH), ptr[u8]("%ld"), args.arg(i64)
-                    );
-                } elif size_tflag {
-                    snprintf(
-                        buffer, u64(WRITER_SCRATCH), ptr[u8]("%zd"), args.arg(i64)
-                    );
-                } else {
-                    snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%d"), args.arg(i32));
-                }
-                s = write_text(writer, s, buffer);
-                if not s {
-                    return writer_fail(writer);
-                }
-            } elif c == CH_LOWER_U {
-                if longflag {
-                    snprintf(
-                        buffer, u64(WRITER_SCRATCH), ptr[u8]("%lu"), args.arg(u64)
-                    );
-                } elif size_tflag {
-                    snprintf(
-                        buffer, u64(WRITER_SCRATCH), ptr[u8]("%zu"), args.arg(u64)
-                    );
-                } else {
-                    snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%u"), args.arg(u32));
-                }
-                s = write_text(writer, s, buffer);
-                if not s {
-                    return writer_fail(writer);
-                }
-            } elif c == CH_LOWER_I {
-                snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%i"), args.arg(i32));
-                s = write_text(writer, s, buffer);
-                if not s {
-                    return writer_fail(writer);
-                }
-            } elif c == CH_LOWER_X {
-                snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%x"), args.arg(i32));
-                s = write_text(writer, s, buffer);
-                if not s {
-                    return writer_fail(writer);
-                }
-            } elif c == CH_LOWER_S {
-                text = args.arg(ptr[u8]);
-                n: i64 = 0;
-                if prec <= 0 {
-                    n = i64(strlen(text));
-                } else {
-                    while n < prec and peek(text + n) != u8(0) {
-                        n += 1;
-                    }
-                }
-                s = ptr[u8](_PyBytesWriter_WriteBytes(writer, ptr(s), ptr(text), n));
-                if not s {
-                    return writer_fail(writer);
-                }
-            } elif c == CH_LOWER_P {
-                snprintf(buffer, u64(WRITER_SCRATCH), ptr[u8]("%p"), args.arg(ptr));
-                if i64(peek(buffer + 1)) == CH_UPPER_X {
-                    poke(buffer + 1, u8(CH_LOWER_X));
-                } elif i64(peek(buffer + 1)) != CH_LOWER_X {
-                    memmove(ptr(buffer + 2), ptr(buffer), strlen(buffer) + u64(1));
-                    poke(buffer, u8(CH_ZERO));
-                    poke(buffer + 1, u8(CH_LOWER_X));
-                }
-                s = write_text(writer, s, buffer);
-                if not s {
-                    return writer_fail(writer);
-                }
-            } elif c == CH_PERCENT {
-                writer.view(1)[0].min_size += 1;
-                poke(s, u8(CH_PERCENT));
-                s = s + 1;
-            } else {
-                if c == CH_NUL {
-                    writer.view(1)[0].min_size += 1;
-                }
-                s = write_text(writer, s, p);
-                if not s {
-                    return writer_fail(writer);
-                }
-                return writer_finish(writer, s);
-            }
-            f = f + 1;
-        }
-        return writer_finish(writer, s);
+        return bytes_from_format(format, args);
+    }  def PyBytes_FromFormatV(format: ptr[u8], vargs: VaList) -> ptr[PyObject] {
+        return bytes_from_format(format, vargs);
     }
 }
 

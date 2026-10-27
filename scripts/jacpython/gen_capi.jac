@@ -26,7 +26,6 @@ import re;
 import sys;
 import from pathlib { Path }
 import from common {
-    BOOTSTRAP,
     REPO,
     RUNTIME,
     SOURCES,
@@ -37,11 +36,228 @@ import from common {
 }
 
 glob OUTPUT: Path = RUNTIME / "cpython_api.jac",
-     # C helpers for what has no exported function: macros, struct fields and
-     # errno. Their Jac declarations come from these files too.
-     HELPER_SOURCES: list[Path] = [
-         BOOTSTRAP / "object_api.c",
-         BOOTSTRAP / "compiler_runtime.c"
+     # The jacpy_* helpers for what has no exported function (macros, struct
+     # fields, errno): their C prototypes, a C string as `const char *`. The
+     # helpers are Jac definitions (runtime/python/object_model/object_api.jac
+     # and compiler_objects.jac); these declare them to their callers.
+     HELPER_PROTOTYPES: list[str] = [
+         "typedef struct {int64_t start, stop, step, count, valid;} SliceBounds;",
+         "void * jacpy_sequence_slot(PyObject *handle) {",
+         "int64_t jacpy_less(PyObject *left, PyObject *right) {",
+         "int64_t jacpy_recursion_enter(const char *context) {",
+         "int64_t jacpy_list_size(PyObject *handle) {",
+         "int64_t jacpy_list_delete(PyObject *handle, int64_t start, int64_t end) {",
+         "PyObject * jacpy_list_exchange(PyObject *handle, int64_t index, PyObject *value) {",
+         "void jacpy_list_swap(PyObject *handle, int64_t left, int64_t right) {",
+         "void * jacpy_comparison_slot(PyObject *handle) {",
+         "int64_t jacpy_same_type(PyObject *left, PyObject *right) {",
+         "int64_t jacpy_is_long(PyObject *handle) {",
+         "PyObject * jacpy_long_absolute(PyObject *handle) {",
+         "PyObject * jacpy_hash_unsigned(PyObject *handle) {",
+         "PyObject * jacpy_long_bytes(PyObject *handle, int64_t size) {",
+         "PyObject * jacpy_long_from_bytes(PyObject *handle) {",
+         "PyObject * jacpy_entropy(int64_t size) {",
+         "int64_t jacpy_wall_time(void) {",
+         "int64_t jacpy_monotonic_time(void) {",
+         "int64_t jacpy_process_id(void) {",
+         "int64_t jacpy_is_tuple(PyObject *handle) {",
+         "PyObject * jacpy_tuple_item(PyObject *handle, int64_t index) {",
+         "PyObject ** jacpy_tuple_items(PyObject *handle) {",
+         "int64_t jacpy_tuple_set_owned(PyObject *handle, int64_t index, PyObject *value) {",
+         "PyObject * jacpy_buffer_bytes(const Py_buffer *view) {",
+         "Py_buffer * jacpy_buffer_acquire(PyObject *value, int64_t kind) {",
+         "void jacpy_buffer_release(Py_buffer *value) {",
+         "int64_t jacpy_unicode_ascii(PyObject *value) {",
+         "void jacpy_set_exception(PyObject *type, const char *message, int64_t size) {",
+         "PyObject * jacpy_power(PyObject *a, PyObject *b, int64_t inplace) {",
+         "int64_t jacpy_is_unicode(PyObject *a) {",
+         "PyObject * jacpy_unicode_split(PyObject *a, PyObject *sep) {",
+         "int64_t jacpy_dict_size(PyObject *a) {",
+         "int64_t jacpy_crypto_compare(const void *a, const void *b, int64_t size) {",
+         "void * jacpy_lock_new(void) {",
+         "void jacpy_lock_free(void *handle) {",
+         "int64_t jacpy_lock_wait(void *handle, int64_t timeout_ns) {",
+         "int64_t jacpy_timeout_ns(PyObject *value) {",
+         "PyUnicodeWriter * jacpy_writer_new(void) {",
+         "int64_t jacpy_unicode_size(PyObject *text) {",
+         "int64_t jacpy_unicode_kind(PyObject *text) {",
+         "void * jacpy_unicode_data(PyObject *text) {",
+         "PyObject * jacpy_unicode_decode_bytes(PyObject *value, const char *encoding) {",
+         "PyObject * jacpy_dict_default(PyObject *dictionary, PyObject *key, PyObject *value) {",
+         "int64_t jacpy_is_bool(PyObject *value) {",
+         "int64_t jacpy_is_float(PyObject *value) {",
+         "int64_t jacpy_is_dict(PyObject *value) {",
+         "int64_t jacpy_is_exact_dict(PyObject *value) {",
+         "PyObject * jacpy_long_repr(PyObject *value) {",
+         "PyObject * jacpy_float_repr(PyObject *value) {",
+         "PyObject * jacpy_type_name(PyObject *value) {",
+         "PyObject * jacpy_qualified_type_name(PyObject *value) {",
+         "int64_t jacpy_fast_size(PyObject *value) {",
+         "PyObject * jacpy_fast_item(PyObject *value, int64_t index) {",
+         "int64_t jacpy_is_exact_long(PyObject *value) {",
+         "int64_t jacpy_type_check(PyObject *value, PyObject *type) {",
+         "PyObject * jacpy_dict_get(PyObject *dictionary, PyObject *key) {",
+         "int64_t jacpy_dict_pop_discard(PyObject *dictionary, PyObject *key) {",
+         "int64_t jacpy_native_size(int64_t kind, int64_t alignment) {",
+         "int64_t jacpy_native_little_endian(void) {",
+         "int64_t jacpy_char_max(void) {",
+         "void jacpy_memory_zero(void *address, int64_t size) {",
+         "void jacpy_memory_copy(void *target, void *source, int64_t size) {",
+         "void jacpy_memory_move(void *target, void *source, int64_t size) {",
+         "PyObject * jacpy_bytearray_new(int64_t size) {",
+         "int64_t jacpy_bytearray_memory(PyObject *value) {",
+         "uint64_t jacpy_float32_bits(double value) {",
+         "PyObject * jacpy_bytes_from_memory(const void *address, int64_t size) {",
+         "PyObject * jacpy_bytes_from_payload(const char *data, int64_t size) {",
+         "int64_t jacpy_is_bytes(PyObject *value) {",
+         "int64_t jacpy_is_bytearray(PyObject *value) {",
+         "void * jacpy_bytes_address(PyObject *value) {",
+         "int64_t jacpy_bytes_length(PyObject *value) {",
+         "void jacpy_bytes_copy_to(PyObject *value, char *target, int64_t size) {",
+         "PyObject * jacpy_complex_value(PyObject *value) {",
+         "int64_t jacpy_float_pack(double value, void *address, int64_t size, int64_t little) {",
+         "double jacpy_float_unpack(const void *address, int64_t size, int64_t little) {",
+         "void jacpy_native_float_store(double value, void *address, int64_t size) {",
+         "void jacpy_clear_errno(void) {",
+         "int64_t jacpy_math_errno(void) {",
+         "double jacpy_libm_log(double value) {",
+         "double jacpy_libm_log2(double value) {",
+         "double jacpy_libm_log10(double value) {",
+         "double jacpy_libm_exp(double value) {",
+         "double jacpy_libm_exp2(double value) {",
+         "double jacpy_libm_sin(double value) {",
+         "double jacpy_libm_cos(double value) {",
+         "double jacpy_libm_tan(double value) {",
+         "double jacpy_libm_fma(double x, double y, double z) {",
+         "PyObject * jacpy_dict_repr(PyObject *value) {",
+         "int64_t jacpy_long_sign(PyObject *value) {",
+         "PyObject * jacpy_long_shift(PyObject *value, int64_t count, int64_t left) {",
+         "PyObject * jacpy_special_noargs(PyObject *value, const char *name) {",
+         "uint64_t jacpy_float_bits(double value) {",
+         "double jacpy_float_from_bits(uint64_t bits) {",
+         "int64_t jacpy_is_exact_float(PyObject *value) {",
+         "int64_t jacpy_long_fits_i64(PyObject *value) {",
+         "PyObject * jacpy_call_two(PyObject *callable, PyObject *a, PyObject *b) {",
+         "PyObject * jacpy_object_type(PyObject *value) {",
+         "int64_t jacpy_is_exact_unicode(PyObject *value) {",
+         "int64_t jacpy_is_exact_tuple(PyObject *value) {",
+         "int64_t jacpy_is_exact_list(PyObject *value) {",
+         "int64_t jacpy_tuple_unique(PyObject *value) {",
+         "PyObject * jacpy_tuple_exchange(PyObject *value, int64_t index, PyObject *item) {",
+         "PyObject * jacpy_long_signed_bytes(PyObject *value, int64_t size) {",
+         "PyObject * jacpy_long_from_signed_bytes(PyObject *value) {",
+         "PyObject * jacpy_bytes_decode(PyObject *value, const char *encoding, const char *errors) {",
+         "PyObject * jacpy_optional_attr(PyObject *value, const char *name) {",
+         "PyObject * jacpy_type_new(PyObject *type, PyObject *args, PyObject *kwargs) {",
+         "PyObject * jacpy_set_new(PyObject *iterable, int64_t frozen) {",
+         "int64_t jacpy_is_type(PyObject *value) {",
+         "PyObject * jacpy_bytes_unescape(PyObject *value) {",
+         "PyObject * jacpy_mapping_optional_item(PyObject *mapping, PyObject *key) {",
+         "void jacpy_exception_context(PyObject *error, PyObject *cause) {",
+         "PyObject * jacpy_unicode_intern(PyObject *value) {",
+         "int64_t jacpy_is_slice(PyObject *value) {",
+         "int64_t jacpy_is_code(PyObject *value) {",
+         "SliceBounds jacpy_slice_unpack(PyObject *value) {",
+         "SliceBounds jacpy_slice_adjust(int64_t length, SliceBounds bounds) {",
+         "PyObject * jacpy_builtins(void) {",
+         "PyObject * jacpy_fs_text(const void *text) {",
+         "PyMethodDef * jacpy_cfunction_method(PyObject *function) {",
+         "PyObject * jacpy_cfunction_self(PyObject *function) {",
+         "PyObject * jacpy_cfunction_module(PyObject *function) {",
+         "PyObject * jacpy_struct_sequence_type(const char *name, const char *doc, const char *fields, int64_t visible) {",
+         "PyObject ** jacpy_typing_types(void) {",
+         "void ** jacpy_open_code_hook(void) {",
+         "void ** jacpy_open_code_userdata(void) {",
+         "int32_t jacpy_stdio_fileno(int32_t stream) {",
+         "PyObject * jacpy_weakref_list(PyObject *object) {",
+         "int64_t jacpy_remove_dead_weakref(PyObject *dictionary, PyObject *key) {",
+         "PyObject ** jacpy_asyncio_running_loop(void) {",
+         "PyObject ** jacpy_asyncio_running_task(void) {",
+         "void * jacpy_asyncio_tasks_head(void) {",
+         "PyObject * jacpy_asyncio_thread_task(PyObject *loop) {",
+         "int64_t jacpy_asyncio_add_tasks(PyObject *tasks, int64_t node_offset, int64_t all_threads) {",
+         "int64_t jacpy_errno(void) {",
+         "void jacpy_set_errno(int64_t value) {",
+         "void * jacpy_opendir(const char *path) {",
+         "const char * jacpy_readdir_name(void *directory) {",
+         "int32_t jacpy_dirfd(void *directory) {",
+         "int32_t jacpy_closedir(void *directory) {",
+         "void * jacpy_fdopendir(int32_t fd) {",
+         "void jacpy_rewinddir(void *directory) {",
+         "const char * jacpy_readdir_entry(void *directory, int64_t *type, uint64_t *inode) {",
+         "int32_t jacpy_stat(const char *path, struct _Py_stat_struct *status) {",
+         "int32_t jacpy_lstat(const char *path, struct _Py_stat_struct *status) {",
+         "int32_t jacpy_fstat(int32_t fd, struct _Py_stat_struct *status) {",
+         "int32_t jacpy_fstatat(int32_t dir_fd, const char *path, struct _Py_stat_struct *status, int32_t flags) {",
+         "int32_t jacpy_statfs(const char *path, void *buffer) {",
+         "int32_t jacpy_fstatfs(int32_t fd, void *buffer) {",
+         "PyObject ** jacpy_fork_callbacks(PyInterpreterState *interp, int64_t which) {",
+         "void jacpy_runtime_head_lock(void) {",
+         "void jacpy_runtime_head_unlock(void) {",
+         "void jacpy_thread_state_native_id(PyThreadState *tstate) {",
+         "void jacpy_thread_state_fork_reset(PyThreadState *tstate) {",
+         "int64_t jacpy_interpreter_finalizing(void) {",
+         "int64_t jacpy_long_u64_checked(PyObject *value, uint64_t *out) {",
+         "int64_t jacpy_unsigned_converter(PyObject *value, uint64_t *out, int64_t long_long) {",
+         "uint64_t jacpy_long_address(PyObject *value) {",
+         "int64_t jacpy_hacl_simd_features(void) {",
+         "void jacpy_unicode_init_static_strings(PyInterpreterState *interp) {",
+         "PyObject * jacpy_unicode_from_text(const char *text) {",
+         "PyObject * jacpy_unicode_intern_text(const char *text) {",
+         "int jacpy_unicode_equal_text(PyObject *op, const char *text) {",
+         "int jacpy_unicode_writer_write_text(PyUnicodeWriter *writer, const char *text, Py_ssize_t size) {",
+         "FILE * jacpy_stdio_stream(int32_t stream) {",
+         "PyObject * jacpy_object_getattr_text(PyObject *op, const char *name) {",
+         "int jacpy_object_setattr_text(PyObject *op, const char *name, PyObject *value) {",
+         "int jacpy_object_getoptionalattr_text(PyObject *op, const char *name, PyObject **result) {",
+         "int jacpy_module_add_object_ref_text(PyObject *mod, const char *name, PyObject *value) {",
+         "int jacpy_module_add_text(PyObject *mod, const char *name, PyObject *value) {",
+         "int jacpy_module_add_int_text(PyObject *mod, const char *name, long value) {",
+         "int jacpy_module_add_string_text(PyObject *mod, const char *name, const char *value) {",
+         "int jacpy_arg_parse_sized_text(PyObject *arg, const char *format, const char **data, Py_ssize_t *size) {",
+         "int jacpy_audit_tuple_text(const char *event, PyObject *args) {",
+         "intptr_t jacpy_stack_address(void *slots) {",
+         "void * jacpy_va_list(void *va) {",
+         "PyStatus jacpy_apple_streams(PyThreadState *tstate) {",
+         "const char * jacpy_getpath_macro(int64_t which) {",
+         "PyObject * jacpy_unicode_escape(const char *source, int64_t size) {",
+         "PyObject * jacpy_bytes_escape(const char *source, int64_t size) {",
+         "int64_t jacpy_buffer_size(PyObject *handle) {",
+         "int64_t jacpy_buffer_byte(PyObject *handle, int64_t index) {",
+         "void jacpy_release(PyObject *handle) {",
+         "PyObject * jacpy_parse_long(const char *source, int64_t size) {",
+         "PyObject * jacpy_parse_float(const char *source, int64_t size) {",
+         "double jacpy_float_value(PyObject *handle) {",
+         "int64_t jacpy_ast_kind(PyObject *handle) {",
+         "PyObject * jacpy_ast_new(int64_t kind) {",
+         "int64_t jacpy_set_owned(PyObject *target, int64_t field, PyObject *value) {",
+         "PyObject * jacpy_field(PyObject *handle, int64_t field) {",
+         "PyObject * jacpy_optional_field(PyObject *handle, int64_t field) {",
+         "PyObject * jacpy_list_new(void) {",
+         "int64_t jacpy_list_append_owned(PyObject *target, PyObject *value) {",
+         "PyObject * jacpy_text(const char *value, int64_t size) {",
+         "PyObject * jacpy_buffer_new(int64_t size) {",
+         "void jacpy_buffer_set(PyObject *handle, int64_t index, int64_t value) {",
+         "PyObject * jacpy_code_new(int64_t argcount, int64_t posonlyargcount, int64_t kwonlyargcount, int64_t stacksize, int64_t flags, PyObject *code, PyObject *consts, PyObject *names, PyObject *localsplusnames, PyObject *localspluskinds, PyObject *filename, PyObject *name, PyObject *qualname, int64_t firstlineno, PyObject *linetable, PyObject *exceptiontable) {",
+         "int64_t jacpy_value_kind(PyObject *handle) {",
+         "PyObject * jacpy_marshal(PyObject *handle) {",
+         "PyObject * jacpy_utf8(PyObject *handle) {",
+         "int64_t jacpy_sequence_size(PyObject *handle) {",
+         "PyObject * jacpy_sequence_item(PyObject *handle, int64_t index) {",
+         "int64_t jacpy_is_list(PyObject *handle) {",
+         "int64_t jacpy_error_pending(void) {",
+         "PyObject * jacpy_decode(PyObject *handle, const char *encoding) {",
+         "PyObject * jacpy_take_error_text(void) {",
+         "PyObject * jacpy_symtable_entry(PyObject *name, int64_t kind, int64_t lineno, int64_t nested, PyObject *symbols, PyObject *varnames, PyObject *children) {",
+         "int64_t jacpy_dict_set_owned(PyObject *dictionary, PyObject *key, PyObject *value) {",
+         "PyObject * jacpy_readline(PyObject *reader, const char *encoding, int64_t decode) {",
+         "PyObject * jacpy_source_bytes(PyObject *handle) {",
+         "int64_t jacpy_source_kind(PyObject *handle) {",
+         "int64_t jacpy_codec_valid(const char *name) {",
+         "PyObject * jacpy_fd_line(int64_t fd) {",
+         "PyObject ** jacpy_atexit_callbacks(PyInterpreterState *interp) {",
+         "int32_t jacpy_atexit_push(PyInterpreterState *interp, void *func, void *data) {",
+         "atexit_callback * jacpy_atexit_detach(PyInterpreterState *interp) {"
      ];
 
 # Opaque C types a declaration may point to. Each becomes `obj Name;` and is
@@ -424,7 +640,9 @@ glob OPAQUE: list[str] = [
      # Typedef structs of the C helpers whose fields are all scalars.
      STRUCT_NAMES: dict[str, list[tuple[str, str]]] = {},
      # Names the JacPython sources call, as opposed to only mention.
-     CALLED: set[str] = set();
+     CALLED: set[str] = set(),
+     # The jacpy_* helpers HELPER_PROTOTYPES declares.
+     HELPER_FUNCTIONS: dict[str, tuple[str, list[tuple[str, str]]]] = {};
 
 def normal(ctype: str) -> str {
     ctype = " ".join(ctype.replace("*", " * ").split());
@@ -643,8 +861,7 @@ def helpers -> tuple[
 ] {
     functions: dict[str, tuple[str, list[tuple[str, str]]]] = {};
     structs: dict[str, list[tuple[str, str]]] = {};
-    for path in HELPER_SOURCES {
-        text = re.sub(r"/\*.*?\*/", " ", path.read_text(), flags=re.S);
+    for text in ["\n".join(HELPER_PROTOTYPES)] {
         for hit in re.finditer(r"typedef struct \{([^{}]*)\}\s*(\w+);", text) {
             fields: list[tuple[str, str]] = [];
             scalar_only = True;
@@ -731,7 +948,9 @@ def used_names(known: set[str]) -> set[str] {
             );
         }
     }
-    provided = defined - imported;
+    # A jacpy_* helper is a Jac definition its callers still reach through a
+    # declaration here, with a Jac str for each C string.
+    provided = (defined - imported) - set(HELPER_FUNCTIONS);
     CALLED.difference_update(provided);
     return {
         name
@@ -859,6 +1078,7 @@ with entry:__main__ {
     variables = data_declarations(headers);
     found = helpers();
     defined = found[0];
+    HELPER_FUNCTIONS.update(defined);
     structs = found[1];
     STRUCT_NAMES.update(structs);
     functions.update(defined);

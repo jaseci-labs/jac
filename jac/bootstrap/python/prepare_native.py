@@ -19,7 +19,8 @@ triple = {
     "macos-aarch64": "arm64-apple-macosx11.0.0",
 }[sys.argv[3]]
 # Jac modules this build wrote for the object (the frozen modules that
-# scripts/jacpython/gen_frozen.jac writes). They are lowered with the runtime
+# scripts/jacpython/gen_frozen.jac writes and the _PyRuntime that
+# gen_runtime_image.jac writes). They are lowered with the runtime
 # but are not sources: the build key covers their generators and inputs.
 generated = [Path(path).resolve() for path in sys.argv[4:]]
 pin = json.loads((root / "bootstrap/python/sources.json").read_text())["cpython"]
@@ -42,12 +43,14 @@ import jaclang.compiler.backends.native.llvm.binding as llvm
 from jaclang.compiler.backends.native.llvm.binding.value import Linkage, Visibility
 
 program = JacProgram()
-# The roots of the native object: the compiler's entry points, the table of
+# The roots of the native object: the compiler's entry points and the C
+# entries the interpreter calls them through, the table of
 # built-in modules (its PyInit addresses root every native extension module)
 # and the object model and interpreter ports, which define interpreter types
 # and functions under their C names for C callers no Jac module imports.
 entries = [
     root / "jaclang/compiler/backends/py/jacpython/native_api.jac",
+    root / "jaclang/compiler/backends/py/jacpython/native_bridge.jac",
     root / "jaclang/runtime/python/inittab.jac",
     *sorted(
         path

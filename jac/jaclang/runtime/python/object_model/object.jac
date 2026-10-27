@@ -720,6 +720,17 @@ import from c {
     }
 }
 
+glob:priv STACK_MARGIN_SHIFT: Final[i64] = 14,
+     REFTRACER_DESTROY: Final[i32] = 1;
+
+def object_dealloc(op: ptr[PyObject]);
+
+import from c {
+    def _Py_Dealloc(op: ptr[PyObject]) {
+        object_dealloc(op);
+    }
+}
+
 def free_object(item: ptr);
 
 def clear_freelist(freelists: ptr[u8], offset: i64, is_finalization: bool, how: i64);
@@ -2013,12 +2024,36 @@ impl set_refcnt(op: ptr[PyObject], refcnt: i64) {
         | (refcnt & 0xFFFFFFFF);
 }
 
+impl object_dealloc(op: ptr[PyObject]) {
+    type = object_type(op);
+    gc_flag = type.view(1)[0].tp_flags & Py_TPFLAGS_HAVE_GC;
+    tstate = ptr[u8](current_tstate());
+    here = __alloca(8);
+    soft = ptr[i64](tstate + _PyThreadStateImpl_C_STACK_SOFT_LIMIT).view(1)[0];
+    margin = wrapping_sub(here, soft) >> STACK_MARGIN_SHIFT;
+    if margin < 2 and gc_flag != u64(0) {
+        _PyTrash_thread_deposit_object(tstate, op);
+        return;
+    }
+    if ptr[ptr](ptr[u8](addressof(_PyRuntime)) + _PyRuntimeState_REF_TRACER_FUNC).view(
+        1
+    )[0] {
+        reftracer_track(op, REFTRACER_DESTROY);
+    }
+    type.view(1)[0].tp_dealloc(op);
+    if delete_later_slot(tstate).view(1)[0] != 0
+        and margin >= 4
+        and gc_flag != u64(0) {
+        _PyTrash_thread_destroy_chain(tstate);
+    }
+}
+
 impl decref_mortal(op: ptr[PyObject]) {
     refcnt = ptr[u32](op);
     count = wrapping_sub(refcnt.view(1)[0], u32(1));
     refcnt.view(1)[0] = count;
     if count == u32(0) {
-        _Py_Dealloc(op);
+        object_dealloc(op);
     }
 }
 

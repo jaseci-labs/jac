@@ -12,13 +12,16 @@ tree, and prepare_native.py lowers the module it writes into jacpython.o:
   as _freeze_module.py does (so the bytes equal its headers'),
 - the bootstrap, stdlib and test tables, the alias table and
   PyImport_FrozenModules, as Python/frozen.c defines them,
-- _Py_Get_Getpath_CodeObject, as Modules/getpath.c defines it.
+- _Py_Get_Getpath_CodeObject, as Modules/getpath.c defines it, and
+  jacpy_getpath_macro(), the install locations CPython's makefile compiles
+  getpath.c with (PREFIX, EXEC_PREFIX, PYTHONPATH, VPATH, PLATLIBDIR).
 
 The output is never checked in: the Lib/ sources and the marshal format it
 depends on move with the CPython pin and the host build, so every build
 writes it again.
 
-    jac run scripts/jacpython/gen_frozen.jac --source <cpython tree> --output <module.jac>
+    jac run scripts/jacpython/gen_frozen.jac --source <cpython tree> --output <module.jac> \
+        --prefix <prefix> --exec-prefix <exec_prefix>
 
 build_jacpython.zig imports it and calls main() instead (the host has no
 `jac`). Either way the running interpreter must be the pinned CPython: marshal
@@ -168,9 +171,48 @@ def table(
     return lines;
 }
 
+# A C string literal of `text` in Jac source: printable ASCII as itself,
+# anything else (and quotes and backslashes) as a character escape, so the
+# literal's UTF-8 is the text's.
+def c_literal(text: str) -> str {
+    out: list[str] = [];
+    for ch in text {
+        code = ord(ch);
+        if 32 <= code < 127 and ch not in ('"', "\\") {
+            out.append(ch);
+        } elif code < 0x10000 {
+            out.append(f"\\u{code:04x}");
+        } else {
+            out.append(f"\\U{code:08x}");
+        }
+    }
+    return 'ptr[u8]("' + "".join(out) + '")';
+}
+
+# jacpy_getpath_macro(): Modules/getpath.c's build inputs, the install
+# locations CPython's makefile passes when it compiles getpath.c: 0 PREFIX,
+# 1 EXEC_PREFIX, 2 PYTHONPATH, 3 VPATH, 4 PLATLIBDIR.
+def getpath_config(values: list[str]) -> list[str] {
+    lines = [
+        "",
+        "import from c {",
+        "    def jacpy_getpath_macro(which: i64) -> ptr[u8] {"
+    ];
+    for (which, value) in enumerate(values) {
+        lines += [
+            f"        if which == {which} {{",
+            f"            return {c_literal(value)};",
+            "        }"
+        ];
+    }
+    lines += ["        return ptr[u8]();", "    }", "}"];
+    return lines;
+}
+
 # The generated module: every marshalled array and table as private C data,
-# the five names import.c reads, and _Py_Get_Getpath_CodeObject.
-def frozen_module(frozen: dict[str, bytes]) -> str {
+# the five names import.c reads, _Py_Get_Getpath_CodeObject and
+# jacpy_getpath_macro.
+def frozen_module(frozen: dict[str, bytes], config: list[str]) -> str {
     sizes = {frozen_id: len(data) for (frozen_id, data) in frozen.items()};
     lines = [
         '"""The frozen modules of this JacPython build, as Python/frozen.c and the',
@@ -231,6 +273,7 @@ def frozen_module(frozen: dict[str, bytes]) -> str {
         "    }",
         "}"
     ];
+    lines += getpath_config(config);
     return "\n".join(lines) + "\n";
 }
 
@@ -242,6 +285,14 @@ def main(argv: list[str]) {
         "--source", required=True, help="the extracted CPython source tree"
     );
     parser.add_argument("--output", required=True, help="the Jac module to write");
+    parser.add_argument("--prefix", required=True, help="the configured prefix");
+    parser.add_argument(
+        "--exec-prefix", required=True, help="the configured exec_prefix"
+    );
+    parser.add_argument("--pythonpath", help="getpath's PYTHONPATH");
+    parser.add_argument("--vpath", help="getpath's VPATH");
+    parser.add_argument("--platlibdir", help="getpath's PLATLIBDIR");
+    parser.set_defaults(pythonpath="", vpath="", platlibdir="lib");
     args = parser.parse_args(argv);
     version = pin()["version"];
     if ".".join(str(part) for part in sys.version_info[:3]) != version {
@@ -257,7 +308,14 @@ def main(argv: list[str]) {
     };
     output = Path(args.output);
     output.parent.mkdir(parents=True, exist_ok=True);
-    output.write_text(frozen_module(frozen));
+    config = [
+        args.prefix,
+        args.exec_prefix,
+        args.pythonpath,
+        args.vpath,
+        args.platlibdir
+    ];
+    output.write_text(frozen_module(frozen, config));
     size = sum(len(data) for data in frozen.values());
     print(f"{COMMAND}: {len(frozen)} modules, {size} bytes -> {output}");
 }
