@@ -1052,7 +1052,15 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
 
     injector = bundle.get("injector");
     if injector is not None {
-        injector.seed(k8s_safe_name(self.k8s_config.app_name), namespace);
+        retained: set[str] = set();
+        try {
+            retained = self.referenced_bundle_keys(self.k8s_config.app_name);
+        } except Exception as e {
+            self._emit(
+                "apply", "warn", f"skipping bundle prune, revisions unreadable: {e}"
+            );
+        }
+        injector.seed(k8s_safe_name(self.k8s_config.app_name), namespace, retained);
         if self.logger {
             self.logger.info(
                 "Seeded source bundle onto the bundle PVC",
@@ -1353,7 +1361,7 @@ impl KubernetesTarget.reap_superseded_deployments(
 }
 
 impl KubernetesTarget._fleet_deployment_names(
-    apps_v1: any, namespace: str
+    apps_v1: any, namespace: str, strict: bool = False
 ) -> list[str] {
     names: list[str] = [];
     try {
@@ -1369,6 +1377,9 @@ impl KubernetesTarget._fleet_deployment_names(
             }
         }
     } except Exception {
+        if strict {
+            raise;
+        }
         return [];
     }
     return fleet_revert_order(names);
@@ -1377,7 +1388,7 @@ impl KubernetesTarget._fleet_deployment_names(
 impl KubernetesTarget._owned_replica_sets(
     apps_v1: any, namespace: str, strict: bool = False
 ) -> list[any] {
-    owned: list[str] = self._fleet_deployment_names(apps_v1, namespace);
+    owned: list[str] = self._fleet_deployment_names(apps_v1, namespace, strict);
     try {
         listed = list(
             apps_v1.list_namespaced_replica_set(
@@ -1442,6 +1453,9 @@ impl KubernetesTarget._revision_entries(strict: bool = False) -> list[dict[str, 
                 }
             );
         } except Exception {
+            if strict {
+                raise;
+            }
             continue;
         }
     }
@@ -1471,6 +1485,13 @@ impl KubernetesTarget.referenced_bundle_keys(app_name: str) -> set[str] {
         for key in item.get("bundle_keys", []) {
             keys.add(str(key));
         }
+    }
+    serializer = client.ApiClient();
+    for dep in client.AppsV1Api().list_namespaced_deployment(
+        namespace=self.k8s_config.namespace, label_selector=FLEET_SELECTOR
+    ).items {
+        pod_spec = serializer.sanitize_for_serialization(dep.spec.template.spec);
+        keys.update(bundle_keys_from_pod_spec(dict(pod_spec)));
     }
     return keys;
 }

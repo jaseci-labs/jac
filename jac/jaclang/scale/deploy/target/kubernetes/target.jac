@@ -97,7 +97,9 @@ obj KubernetesTarget(KubernetesTargetBase) {
         apps_v1: any, namespace: str, bundle: dict[str, any]
     );
 
-    def _fleet_deployment_names(apps_v1: any, namespace: str) -> list[str];
+    def _fleet_deployment_names(
+        apps_v1: any, namespace: str, strict: bool = False
+    ) -> list[str];
     def _owned_replica_sets(
         apps_v1: any, namespace: str, strict: bool = False
     ) -> list[any];

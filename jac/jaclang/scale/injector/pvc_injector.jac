@@ -57,6 +57,9 @@ def pvc_unpack_script(
 ) -> str;
 
 
+def prune_unreferenced_script(app_name: str, keep: set[str]) -> str;
+
+
 def build_pvc_init_container(
     base_image: str,
     bundle_paths: list[str],
@@ -81,7 +84,9 @@ obj PvcInjector(Injector) {
     def _unpack_bundle_paths -> list[str];
     def _skip_when_image_binary -> dict[str, str];
     def prepare(app_name: str, namespace: str, project_dir: str);
-    def seed(app_name: str, namespace: str);
+    def seed(
+        app_name: str, namespace: str, retained: (set[str] | None) = None
+    );
     def unpack_script -> str;
     def mutate_pod_spec(
         pod_spec: dict[str, any], base_image: str, unpack_container: bool = True

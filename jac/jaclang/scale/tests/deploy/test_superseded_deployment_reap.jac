@@ -979,13 +979,33 @@ test "a compensating restore puts back the marker the live template carried" {
 }
 
 
-obj _UnreadableApps {
+obj _RetentionApps {
+    has broken: str = "";
+
     def list_namespaced_deployment(namespace: str, **kwargs: any) -> any {
-        return SimpleNamespace(items=[]);
+        if self.broken == "deployments" {
+            raise RuntimeError("deployments is forbidden: RBAC");
+        }
+        pending = {
+            "initContainers": [
+                {"name": "jac-bootstrap", "args": ["/jac-bundles/bundles/app/pending.jab"]}
+            ]
+        };
+        return SimpleNamespace(
+            items=[
+                SimpleNamespace(
+                    metadata=SimpleNamespace(name="app-deployment"),
+                    spec=SimpleNamespace(template=SimpleNamespace(spec=pending))
+                )
+            ]
+        );
     }
 
     def list_namespaced_replica_set(namespace: str, **kwargs: any) -> any {
-        raise RuntimeError("replicasets is forbidden: RBAC");
+        if self.broken == "replicasets" {
+            raise RuntimeError("replicasets is forbidden: RBAC");
+        }
+        return SimpleNamespace(items=[_rs_for("app-deployment", 1)]);
     }
 }
 
@@ -994,33 +1014,42 @@ obj _UnreadableApps {
 # deleted". An unreadable cluster returning an empty keep-set is that contract
 # inverted: a pruner reads it as "nothing is referenced" and deletes every
 # bundle the app owns, including the one its live pods mount. list_revisions
-# stays lenient -- an empty history costs a rollback, not the app.
-test "the retention keep-set refuses to answer from an unreadable cluster" {
-    api = _UnreadableApps();
-    raised = False;
+# stays lenient -- an empty history costs a rollback, not the app. A Deployment
+# template counts before the controller has cut its ReplicaSet.
+test "the retention keep-set covers every template and refuses an unreadable cluster" {
+    for (broken, expected) in [
+        ("replicasets", None),
+        ("deployments", None),
+        ("", {"bundles/app/old.jab", "bundles/app/pending.jab"})
+    ] {
+        api = _RetentionApps(broken=broken);
+        keys: (set[str] | None) = None;
 
-    with unittest.mock.patch.object(target_mod, "client", _FakeClient(apps=api)) {
-        with unittest.mock.patch.object(
-            target_mod.KubernetesTarget, "_load_cluster_config", return_value=None
-        ) {
-            t = target_mod.KubernetesTarget(
-                config=KubernetesConfig(app_name="shop", namespace="shop")
-            );
-            try {
-                t.referenced_bundle_keys("shop");
-            } except Exception {
-                raised = True;
+        with unittest.mock.patch.object(target_mod, "client", _FakeClient(apps=api)) {
+            with unittest.mock.patch.object(
+                target_mod.KubernetesTarget, "_load_cluster_config", return_value=None
+            ) {
+                t = target_mod.KubernetesTarget(
+                    config=KubernetesConfig(app_name="shop", namespace="shop")
+                );
+                try {
+                    keys = t.referenced_bundle_keys("shop");
+                } except Exception {
+                    keys = None;
+                }
+                if broken {
+                    assert t.list_revisions("shop") == [] , (
+                        f"{broken}: list_revisions stays lenient; only the keep-set is strict"
+                    );
+                }
             }
-            assert t.list_revisions("shop") == [] , (
-                "list_revisions stays lenient; only the keep-set is strict"
-            );
         }
-    }
 
-    assert raised , (
-        "an empty keep-set from an unreadable cluster tells a pruner to delete "
-        "every bundle the app references"
-    );
+        assert keys == expected , (
+            f"unlisted {broken or 'nothing'}: got {keys}; an empty keep-set tells a "
+            "pruner to delete every bundle the app references"
+        );
+    }
 }
 
 
