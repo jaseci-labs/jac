@@ -328,6 +328,15 @@ impl MicroserviceGateway.aggregate_schedules(request: Request) -> Response | Non
     import json;
 
     fwd_headers = self.build_forward_headers(request);
+    service_auth = auth_headers();
+    if service_auth {
+        fwd_headers = {
+            key: value
+            for (key, value) in fwd_headers.items()
+            if key.lower() != "authorization"
+        };
+        fwd_headers.update(service_auth);
+    }
     rows: list[dict[str, any]] = [];
     services: list[str] = [];
     unanswered: list[dict[str, any]] = [];

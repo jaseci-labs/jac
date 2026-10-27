@@ -4313,12 +4313,18 @@ graph import {
     server.shared_store as store_mod ++> scale.tests.misc.test_state_backend_selection;
     server.sv_client ++> [
         client.targets.client_dev_common { headless_start_args },
+        scale.admin.schedules { bridge_identity },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.aggregate_schedules {
+            auth_headers
+        },
         scale.runtime.orchestrator.process_manager.ServiceProcessManager.start_service {
             app_start_args,
             headless_start_args,
             peer_url_env_key
         },
         scale.tests.deploy.test_pod_env { peer_url_env_key },
+        scale.tests.microservices.test_schedules_agg
+            | scale.tests.server.test_scheduler_endpoints { BRIDGE_TOKEN_ENV },
     ]
     server.task_scheduler ++> [
         runtime.builtin.schedule { ScheduleSpec },

@@ -5,19 +5,36 @@ relays a refusal instead of hiding it behind a 404."""
 
 import asyncio;
 import json;
+import os;
 
-glob _ASKED: list[tuple[int, str]] = [];
+glob _ASKED: list[tuple[int, str]] = [],
+     _PRESENTED: list[str] = [];
 
 """Answer every GET with `status` and `payload`; (server, port). Each request
-records (port, path) in `_ASKED`."""
-def _serve(status: int, payload: dict[str, any]) -> tuple[any, ...] {
+records (port, path) in `_ASKED` and its Authorization in `_PRESENTED`. With
+`only_bearer`, any other Authorization is refused with a 403, as a service whose
+own user store has never seen the caller refuses a gateway admin's token."""
+def _serve(
+    status: int, payload: dict[str, any], only_bearer: str = ""
+) -> tuple[any, ...] {
     import http.server;
     import threading;
 
     body = json.dumps(payload).encode();
+    refusal = json.dumps({"ok": False, "error": {"code": "FORBIDDEN"}}).encode();
 
     def _do_get(handler_self: any) {
         _ASKED.append((handler_self.server.server_address[1], handler_self.path));
+        presented = str(handler_self.headers.get("Authorization") or "");
+        _PRESENTED.append(presented);
+        if only_bearer and presented != f"Bearer {only_bearer}" {
+            handler_self.send_response(403);
+            handler_self.send_header("Content-Type", "application/json");
+            handler_self.send_header("Content-Length", str(len(refusal)));
+            handler_self.end_headers();
+            handler_self.wfile.write(refusal);
+            return;
+        }
         handler_self.send_response(status);
         handler_self.send_header("Content-Type", "application/json");
         handler_self.send_header("Content-Length", str(len(body)));
@@ -51,12 +68,16 @@ def _entry(name: str, port: int) -> ServiceEntry {
 }
 
 
-def _ask(reg: ServiceRegistry) -> any {
+def _ask(reg: ServiceRegistry, authorization: str = "") -> any {
     gw = MicroserviceGateway(registry=reg);
+    headers = Headers();
+    if authorization {
+        headers.append("authorization", authorization);
+    }
     req = Request(
         method="GET",
         url=URL(path="/admin/schedules"),
-        headers=Headers(),
+        headers=headers,
         client_host="10.0.0.1"
     );
     return asyncio.run(gw.aggregate_schedules(req));
@@ -109,18 +130,48 @@ test "the gateway merges every service's schedules and names each row's service"
 }
 
 
-test "a service that refuses the listing is relayed, not hidden behind a 404" {
-    (srv, port) = _serve(403, {"ok": False, "error": {"code": "FORBIDDEN"}});
+"""A fleet service keeps its own user store, so it refuses the gateway admin's
+token. With the fleet's bridge secret set the gateway, which already checked the
+caller is an admin, asks with that secret instead and the service answers; with
+no secret the refusal is relayed, not hidden behind a 404."""
+test "a service that refuses the admin's token answers the gateway's fleet call" {
+    (srv, port) = _serve(
+        200, _listing("orders", "nightly", "function"), only_bearer="fleet-secret"
+    );
     reg = ServiceRegistry();
     reg.register(_entry("orders", port));
+    saved = os.environ.get(BRIDGE_TOKEN_ENV);
     try {
-        resp = _ask(reg);
+        for (bridge, status, presented) in [
+            ("", 403, "Bearer gateway-admin"),
+            ("fleet-secret", 200, "Bearer fleet-secret")
+        ] {
+            if bridge {
+                os.environ[BRIDGE_TOKEN_ENV] = bridge;
+            } else {
+                os.environ.pop(BRIDGE_TOKEN_ENV, None);
+            }
+            _PRESENTED.clear();
+            resp = _ask(reg, "Bearer gateway-admin");
+            assert resp is not None , "a refusal must reach the caller";
+            assert resp.status_code == status , (bridge, resp.status_code, resp.body);
+            assert _PRESENTED == [presented] , (bridge, _PRESENTED);
+            body = json.loads(resp.body);
+            if status == 403 {
+                assert body["error"]["code"] == "FORBIDDEN" , resp.body;
+            } else {
+                assert [r["name"] for r in body["data"]["schedules"]]
+                    == ["nightly"] , body;
+            }
+        }
     } finally {
+        if saved is None {
+            os.environ.pop(BRIDGE_TOKEN_ENV, None);
+        } else {
+            os.environ[BRIDGE_TOKEN_ENV] = saved;
+        }
         srv.shutdown();
     }
-    assert resp is not None , "a refusal must reach the caller";
-    assert resp.status_code == 403 , resp.status_code;
-    assert json.loads(resp.body)["error"]["code"] == "FORBIDDEN" , resp.body;
 }
 
 

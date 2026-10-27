@@ -5,7 +5,10 @@ glob logger = logging.getLogger(__name__);
 
 impl JacAPIServerSchedules.register_schedules_endpoints -> None {
     async def schedules_handler(request: Request) -> JSONResponse {
-        guard = self.require_admin_json(request.headers.get("Authorization"));
+        authorization = request.headers.get("Authorization");
+        guard = None
+            if bridge_identity(authorization)
+            else self.require_admin_json(authorization);
         if guard {
             return guard;
         }
