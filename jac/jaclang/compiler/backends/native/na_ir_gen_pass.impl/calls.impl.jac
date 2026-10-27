@@ -1297,11 +1297,16 @@ impl NaIRGenPass._native_getattr_alias_for_symbol(
     if owner is None {
         return None;
     }
-    if sym.storage == uni.SymbolStorage.MODULE_GLOBAL {
-        if not isinstance(owner, uni.ModuleCode) {
+    valid_scope = False;
+    match sym.storage {
+        case uni.SymbolStorage.MODULE_GLOBAL:
+            valid_scope = isinstance(owner, uni.ModuleCode);
+        case uni.SymbolStorage.LOCAL:
+            valid_scope = True;
+        case _:
             return None;
-        }
-    } elif sym.storage != uni.SymbolStorage.LOCAL {
+    }
+    if not valid_scope {
         return None;
     }
     for use in sym.uses {
