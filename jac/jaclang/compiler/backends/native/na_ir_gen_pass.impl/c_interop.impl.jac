@@ -1167,9 +1167,13 @@ impl NaIRGenPass._c_const_offset_address(
         return None;
     }
     target = found[0];
+    ptype = target.type;
+    if not isinstance(ptype, ir.PointerType) {
+        return None;
+    }
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
-    pointee = target.type.pointee;
+    pointee = ptype.pointee;
     steps = [ir.Constant(i32, 0), ir.Constant(i64, count)]
         if isinstance(pointee, ir.ArrayType)
         else [ir.Constant(i64, count)];
