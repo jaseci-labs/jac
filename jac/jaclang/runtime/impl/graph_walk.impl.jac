@@ -263,6 +263,9 @@ impl walk_edges(origins: list[Anchor], q: GraphQuery, gated: bool) -> list[Ancho
         edges.append(e);
         node_of[ekey] = a;
     }
+    if q.limit is not None {
+        edges = edges[q.offset:q.offset + q.limit];
+    }
     if not q.from_visit {
         return edges[q.slc] if q.slc is not None else edges;
     }

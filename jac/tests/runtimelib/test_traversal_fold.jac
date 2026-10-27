@@ -873,6 +873,7 @@ test "a keyset cursor walks a neighbourhood once, in edge order" {
 
 test "a page or a count from an in-memory node follows the store's semantics" {
     import from jaclang.data.query_planner {
+        resolve_query_edges,
         resolve_query_page,
         resolve_query_type_counts
     }
@@ -882,6 +883,12 @@ test "a page or a count from an in-memory node follows the store's semantics" {
         ctx = _ctx(td);
         JacRuntime.exec_ctx = ctx;
         try {
+            stored = FBoard(name="stored");
+            root ++> stored;
+            for i in range(6) {
+                stored +>:FNote(note=f"n{i}"):+> FItem(rank=i);
+            }
+            ctx.mem.commit();
             b = FBoard(name="transient");
             for i in range(6) {
                 b +>:FHas():+> FItem(rank=i);
@@ -890,10 +897,65 @@ test "a page or a count from an in-memory node follows the store's semantics" {
             b +>:FNote():+> twice;
             b +>:FNote():+> twice;
             mem: any = ctx.mem;
+            (head, resume) = resolve_query_page(
+                mem, GraphQuery(b, hops=[QHop(dir=2, nd=FItem)], limit=3)
+            );
             (page, _) = resolve_query_page(
-                mem, GraphQuery(b, hops=[QHop(dir=2, nd=FItem)], limit=2, offset=3)
+                mem, GraphQuery(b, hops=[QHop(dir=2, nd=FItem)], limit=2, after=resume)
             );
             assert [_as_any(a).archetype.rank for (a, _, _) in page] == [3, 4] , page;
+            # A page resumes from a cursor; an offset could not survive a page
+            # that stops early, so both graphs refuse it.
+            for origin in [b, stored] {
+                refused = False;
+                try {
+                    resolve_query_page(
+                        mem,
+                        GraphQuery(
+                            origin, hops=[QHop(dir=2, nd=FItem)], limit=2, offset=3
+                        )
+                    );
+                } except ValueError {
+                    refused = True;
+                }
+                assert refused , origin;
+            }
+
+            def shape(found: list[any]) -> list[tuple[str, any]] {
+                return [(type(x.archetype).__name__, x.archetype?.rank) for x in found];
+            }
+            # (graph, query): a sliced visit slices the edge-then-node list it
+            # returns, stored or not; a limit counts edges.
+            visits: dict[str, list[list[tuple[str, any]]]] = {};
+            for (name, origin) in [("stored", stored), ("in-memory", b)] {
+                visits[name] = [
+                    shape(
+                        resolve_query_edges(
+                            mem,
+                            GraphQuery(
+                                origin,
+                                hops=[QHop(dir=2, nd=FItem)],
+                                edges_only=True,
+                                slc=slice(0, 2)
+                            ).visit()
+                        )
+                    ),
+                    shape(
+                        resolve_query_edges(
+                            mem,
+                            GraphQuery(
+                                origin,
+                                hops=[QHop(dir=2, nd=FItem)],
+                                edges_only=True,
+                                limit=2
+                            ).visit()
+                        )
+                    )
+                ];
+            }
+            assert [len(v) for v in visits["stored"]] == [2, 4] , visits;
+            assert [[r[1] for r in v] for v in visits["stored"]]
+                == [[r[1] for r in v] for v in visits["in-memory"]] , visits;
             assert all(e is not None for (_, e, _) in page) , (
                 f"a fieldless edge between in-memory nodes is still an edge: {page}"
             );

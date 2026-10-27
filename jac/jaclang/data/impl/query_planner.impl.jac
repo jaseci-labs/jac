@@ -244,6 +244,9 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
         return walk_edges(origins, q, gated);
     }
     bound = _effective_bound(q);
+    if q.from_visit {
+        bound = None if q.limit is None else (q.limit, q.offset);
+    }
     if bound is not None
         and all(o.persistent for o in origins)
         and (not gated or _acl_fully_pushed(mem, q)) {
@@ -258,6 +261,9 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
                 reached.add(anchor_key(a));
                 scanned.append(a);
             }
+        }
+        if q.from_visit and q.slc is not None {
+            scanned = scanned[q.slc];
         }
         return scanned;
     }
@@ -336,7 +342,7 @@ impl resolve_query_edges(mem: Session, q: GraphQuery) -> list[Anchor] {
             out.append(nodes[0]);
         }
     }
-    if q.slc is not None and bound is None {
+    if q.slc is not None {
         out = out[q.slc];
     }
     return out;
@@ -1037,6 +1043,9 @@ impl resolve_query_page(
     if len(q.hops) != 1 or len(origins) != 1 or q.order or q.edges_only {
         raise ValueError('a page is one hop from one node in edge order');
     }
+    if q.offset or (q.slc is not None and q.slc.start) {
+        raise ValueError('a page resumes from a cursor, not an offset');
+    }
     gated = access_gated();
     if needs_store(mem, origins) and origins[0].persistent {
         if not gated or _acl_fully_pushed(mem, q) {
@@ -1049,13 +1058,13 @@ impl resolve_query_page(
             );
         }
     }
-    (limit, offset) = _effective_bound(q) or (None, 0);
+    limit = q.limit if q.limit is not None else (_effective_bound(q) or (None, 0))[0];
     pairs = [
         (a, e)
         for (a, e) in walk(origins, _with_edges(q), 1, gated)
         if not gated or e is None or acl_read_ok(e)
     ];
-    start = (int(q.after[0]) if q.after is not None else 0) + offset;
+    start = int(q.after[0]) if q.after is not None else 0;
     stop = None if limit is None else start + limit;
     page: list[tuple[Anchor, (Anchor | None), (tuple[int, (UUID | None)] | None)]] = [];
     for (i, (a, e)) in enumerate(pairs[start:stop]) {
