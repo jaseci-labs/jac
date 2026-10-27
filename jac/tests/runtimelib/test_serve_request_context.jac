@@ -384,13 +384,15 @@ async def _sse_call(
 
 test "an HTTP SSE stream commits its writes when delivered and rolls them back otherwise" {
     # (row, function, events read before the client goes away, cancel the
-    # next pull mid-production, committed, last frame)
-    rows: list[tuple[str, str, (int | None), bool, bool, str]] = [
-        ("delivered to its end", "sse_note", None, False, True, "event: end"),
+    # next pull mid-production, the save at the end fails, committed, last
+    # frame)
+    rows: list[tuple[str, str, (int | None), bool, bool, bool, str]] = [
+        ("delivered to its end", "sse_note", None, False, False, True, "event: end"),
         (
             "async producer delivered to its end",
             "sse_note_async",
             None,
+            False,
             False,
             True,
             "event: end"
@@ -401,12 +403,14 @@ test "an HTTP SSE stream commits its writes when delivered and rolls them back o
             1,
             False,
             False,
+            False,
             'data: "written"'
         ),
         (
             "producer raises mid-stream",
             "sse_note_then_raise",
             None,
+            False,
             False,
             False,
             "event: error"
@@ -419,13 +423,27 @@ test "an HTTP SSE stream commits its writes when delivered and rolls them back o
             "sse_note_after_pause",
             1,
             True,
+            False,
             True,
             'data: "started"'
+        ),
+        # The save at the end of the stream fails: the client is told, not
+        # sent `end` over writes that were never stored.
+        ("save fails at the end", "sse_note", None, False, True, False, "event: error"),
+        (
+            "async producer's save fails at the end",
+            "sse_note_async",
+            None,
+            False,
+            True,
+            False,
+            "event: error"
         ),
 
     ];
     prior = os.environ.get("JAC_SCALE_RUNTIME");
     commits: list[bool] = [];
+    fail_save: list[bool] = [False];
     original_commit = Session.commit;
 
     def tracking_commit(self: Session, anchor: (Anchor | None) = None) {
@@ -436,6 +454,10 @@ test "an HTTP SSE stream commits its writes when delivered and rolls them back o
             on_loop = False;
         }
         commits.append(on_loop);
+        if fail_save[0] and self._dirty {
+            fail_save[0] = False;
+            raise RuntimeError("the database went away");
+        }
         original_commit(self, anchor);
     }
 
@@ -445,10 +467,12 @@ test "an HTTP SSE stream commits its writes when delivered and rolls them back o
             runtime = _serve(project);
             try {
                 token = _register_and_login(runtime, "sse_user");
-                for (label, fn, events, cancel, committed, last) in rows {
+                for (label, fn, events, cancel, fails, committed, last) in rows {
+                    fail_save[0] = fails;
                     (body, notes) = asyncio.run(
                         _sse_call(runtime, token, fn, label, events, cancel)
                     );
+                    assert not fail_save[0] , f"{label}: the save never ran";
                     frames = body.strip().split("\n\n");
                     assert frames and frames[-1].startswith(last) , (
                         f"{label}: unexpected body {body!r}"
