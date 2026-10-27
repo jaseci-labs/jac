@@ -10206,9 +10206,6 @@ graph import compiler {
             classify_call,
             resolve_expr_symbol
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._native_getattr_alias_for_symbol {
-            imported_module_name
-        },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_module_call_target {
             imported_module_name
         },

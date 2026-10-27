@@ -1260,36 +1260,11 @@ impl NaIRGenPass._native_getattr_alias_for_symbol(
         or not isinstance(assignment.value, uni.FuncCall) {
         return None;
     }
-    _getattr_call = assignment.value;
-    if self._get_name(_getattr_call.target) != "getattr"
-        or _getattr_call.call_kind != "builtin"
-        or self._callee_ability_of(_getattr_call) is not None {
+    _module_member = self._native_module_call_target(assignment.value);
+    if _module_member is None {
         return None;
     }
-    args = _getattr_call.params or [];
-    if len(args) != 2
-        or isinstance(args[0], uni.KWPair)
-        or isinstance(args[1], uni.KWPair)
-        or not isinstance(args[1], (uni.String, uni.MultiString))
-        or not isinstance(args[1].lit_value, str) {
-        return None;
-    }
-    if isinstance(args[1], uni.MultiString) {
-        for part in args[1].strings {
-            if not isinstance(part, uni.String) {
-                return None;
-            }
-        }
-    }
-    module_name = imported_module_name(args[0]);
-    member_name = args[1].lit_value;
-    if module_name is None
-        or module_name not in self._native_module_imports
-        or not member_name
-        or (module_name == "os" and member_name in NATIVE_OS_FUNCS)
-        or (module_name == "os.path" and member_name in NATIVE_OSPATH_FUNCS) {
-        return None;
-    }
+    (module_name, member_name) = _module_member;
 
     owner = self._native_getattr_alias_scope(assignment);
     if owner is None {
@@ -1391,21 +1366,46 @@ impl NaIRGenPass._native_module_member_ability(
     if imported is None {
         return None;
     }
-    symbol = imported.lookup(member_name, deep=False);
-    if symbol is None or not symbol.defn {
+    declaration = NaIRGenPass._module_ability(imported, member_name);
+    if declaration is None
+        or not isinstance(declaration.signature, uni.FuncSignature) {
         return None;
     }
-    declaration = symbol.decl.name_of;
-    if isinstance(declaration, uni.Ability)
-        and isinstance(declaration.signature, uni.FuncSignature) {
-        return declaration;
-    }
-    return None;
+    return declaration;
 }
 
 impl NaIRGenPass._native_module_call_target(
     nd: uni.FuncCall
 ) -> tuple[str, str] | None {
+    if self._get_name(nd.target) == "getattr"
+        and nd.call_kind == "builtin"
+        and self._callee_ability_of(nd) is None {
+        args = nd.params or [];
+        if len(args) != 2
+            or isinstance(args[0], uni.KWPair)
+            or isinstance(args[1], uni.KWPair)
+            or not isinstance(args[1], (uni.String, uni.MultiString))
+            or not isinstance(args[1].lit_value, str) {
+            return None;
+        }
+        if isinstance(args[1], uni.MultiString) {
+            for part in args[1].strings {
+                if not isinstance(part, uni.String) {
+                    return None;
+                }
+            }
+        }
+        module_name = imported_module_name(args[0]);
+        member_name = args[1].lit_value;
+        if module_name is None
+            or module_name not in self._native_module_imports
+            or not member_name
+            or (module_name == "os" and member_name in NATIVE_OS_FUNCS)
+            or (module_name == "os.path" and member_name in NATIVE_OSPATH_FUNCS) {
+            return None;
+        }
+        return (module_name, member_name);
+    }
     if isinstance(nd.target, uni.Name) and nd.target.sym is not None {
         import from jaclang.compiler.frontend.codeinfo { NATIVE_STDLIB_EXTENSIONS }
         scope = nd.target.sym.parent_tab;
