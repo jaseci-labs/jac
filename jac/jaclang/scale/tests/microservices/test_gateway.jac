@@ -443,6 +443,33 @@ test "graph reads reach every service that can read the node, compressed or not"
                 assert body["next_cursor"] == cursor , (path, body);
             }
         }
+        # A routable service that does not answer must not let the others
+        # advance the shared cursor past rows it still holds.
+        down = ServiceRegistry();
+        down.register(
+            ServiceEntry(
+                name="analytics",
+                file="analytics.jac",
+                prefix="/analytics",
+                port=port_a,
+                url=f"http://127.0.0.1:{port_a}",
+                status=ServiceStatus.HEALTHY
+            )
+        );
+        down.register(
+            ServiceEntry(
+                name="silent",
+                file="silent.jac",
+                prefix="/silent",
+                port=1,
+                url="http://127.0.0.1:1",
+                status=ServiceStatus.HEALTHY
+            )
+        );
+        gw_down = MicroserviceGateway(registry=down);
+        gw_down.setup();
+        resp = TestClient(gw_down.app).get("/graph/neighbors?id=r&limit=2");
+        assert resp.status_code == 503 , (resp.status_code, resp.text);
     } finally {
         srv_a.shutdown();
         srv_b.shutdown();

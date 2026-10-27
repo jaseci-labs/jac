@@ -290,6 +290,9 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
     refused: list[tuple[int, bytes]] = [];
     for result in answers {
         if result is None {
+            refused.append(
+                (503, b'{"error": "a service did not answer; retry this page"}')
+            );
             continue;
         }
         (status, _headers, body) = result;
@@ -297,6 +300,9 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
             try {
                 page = json.loads(body);
             } except ValueError {
+                refused.append(
+                    (502, b'{"error": "a service sent an unreadable page; retry it"}')
+                );
                 continue;
             }
             if isinstance(page, dict) {
@@ -306,14 +312,14 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
             refused.append((status, body));
         }
     }
+    if refused {
+        return Response(
+            content=refused[0][1],
+            status_code=refused[0][0],
+            media_type="application/json"
+        );
+    }
     if not pages {
-        if refused {
-            return Response(
-                content=refused[0][1],
-                status_code=refused[0][0],
-                media_type="application/json"
-            );
-        }
         return not_found("/graph/neighbors", message="Not found on any service");
     }
 
