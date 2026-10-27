@@ -1381,7 +1381,45 @@ impl frozen_fields(anchor: Anchor) -> bool {
 
 
 impl runs_getters(arch: object) -> bool {
-    cls = type(arch);
+    return _reaches_getters(arch, set());
+}
+
+
+impl _reaches_getters(value: object, seen: set[int]) -> bool {
+    kind = type(value);
+    if kind in _PLAIN_LEAVES or isinstance(value, Enum) {
+        return False;
+    }
+    if isinstance(value, (list, tuple, dict)) {
+        items = list(cast(dict, value).values())
+            if isinstance(value, dict)
+            else cast(list, value);
+        return not set(map(type, items)) <= _PLAIN_LEAVES
+            and any(_reaches_getters(item, seen) for item in items);
+    }
+    if isinstance(value, Anchor) {
+        if not value.is_populated() {
+            return False;
+        }
+        value = value.archetype;
+    }
+    fields = value?.__dict__;
+    if not isinstance(fields, dict) or id(value) in seen {
+        return False;
+    }
+    seen.add(id(value));
+    if isinstance(value, Archetype) and _class_runs_getters(type(value)) {
+        return True;
+    }
+    return any(
+        _reaches_getters(item, seen)
+        for (name, item) in fields.items()
+        if not name.startswith('_') and not callable(item)
+    );
+}
+
+
+impl _class_runs_getters(cls: type) -> bool {
     found = _GETTER_CLASSES.get(cls);
     if found is None {
         found = any(

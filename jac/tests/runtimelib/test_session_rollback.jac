@@ -77,6 +77,23 @@ node RPeeker {
     }
 }
 
+obj RPeekLabel {
+    has name: str = "";
+    has peek: int {
+        getter {
+            for bag in PEEK_TARGETS {
+                bag.items.append(99);
+            }
+            return 0;
+        }
+    }
+}
+
+node RPeekHolder {
+    has items: list[int] = [],
+        label: (RPeekLabel | None) = None;
+}
+
 node RShelved {
     has shelf: RShelf = RShelf.FULL;
 }
@@ -1313,14 +1330,19 @@ test "request loop: a conflict re-run starts from the database, not from the rol
 }
 
 
-test "a scan that ran a node's own getters is never sealed" {
+test "a scan that ran getters, on a node or on an object it holds, is never sealed" {
     with TemporaryDirectory() as td {
         old = JacRuntime.exec_ctx;
         seed = _ctx(td);
         JacRuntime.exec_ctx = seed;
         bag_id = UUID(int=0);
         peek_id = UUID(int=0);
+        holder_id = UUID(int=0);
         try {
+            holder: NodeAnchor = _as_any(RPeekHolder(items=[1])).__jac__;
+            holder.persistent = True;
+            seed.mem.put(holder);
+            holder_id = holder.ensure_id();
             bag: NodeAnchor = _as_any(RBag(items=[1])).__jac__;
             bag.persistent = True;
             seed.mem.put(bag);
@@ -1400,6 +1422,33 @@ test "a scan that ran a node's own getters is never sealed" {
             PEEK_TARGETS.clear();
             JacRuntime.exec_ctx = old;
             final.close();
+        }
+        nested = _ctx(td);
+        JacRuntime.exec_ctx = nested;
+        try {
+            _ = nested.user_root;
+            holder_arch = _as_any(
+                nested.mem.batch_get([holder_id])[holder_id].archetype
+            );
+            holder_arch.label = RPeekLabel(name="a");
+            nested.mem.commit();
+            PEEK_TARGETS.append(holder_arch);
+            nested.mem.commit();
+            nested.mem.seal_scan();
+            nested.mem.commit();
+            PEEK_TARGETS.clear();
+            nested.mem.commit();
+            in_memory = holder_arch.items.count(99);
+            stored = _stored(nested, holder_id, "items") or "";
+            assert in_memory > 0 and stored.count("99") == in_memory , (
+                "a getter on an object the node holds appended to the node's own "
+                "list after the scan compared it; the scan must save it and stay "
+                f"unsealed: {in_memory} in memory, the row holds {stored}"
+            );
+        } finally {
+            PEEK_TARGETS.clear();
+            JacRuntime.exec_ctx = old;
+            nested.close();
         }
     }
 }
