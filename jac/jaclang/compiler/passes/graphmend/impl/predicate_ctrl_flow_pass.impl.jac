@@ -34,7 +34,7 @@ impl PredicateCtrlFlowPass.exit_if_stmt with uni.IfStmt exit {
     if cond_materializes_scalar(nd.condition) {
         return;
     }
-    if self._python_bool_cond(nd.condition) {
+    if not self._bool_tensor(nd.condition, set(), 0) {
         return;
     }
     if (len(tb) == 1) and (len(fb) == 1) {
@@ -311,28 +311,84 @@ impl PredicateCtrlFlowPass._same_lhs(
     return None;
 }
 
-impl PredicateCtrlFlowPass._python_bool_cond(cond: uni.Expr) -> bool {
-    nodes: list[uni.Expr] = [cond];
-    nodes.extend(cond.get_all_sub_nodes(uni.BoolExpr));
-    nodes.extend(cond.get_all_sub_nodes(uni.UnaryExpr));
-    nodes.extend(cond.get_all_sub_nodes(uni.CompareExpr));
-    for e in nodes {
-        if isinstance(e, uni.BoolExpr) {
-            return True;
-        }
-        if isinstance(e, uni.UnaryExpr) and (e.op.name == Tok.NOT) {
-            return True;
-        }
-        if isinstance(e, uni.CompareExpr) {
-            if len(e.ops) != 1 {
-                return True;
-            }
-            if e.ops[0].name in [Tok.KW_IS, Tok.KW_ISN, Tok.KW_IN, Tok.KW_NIN] {
-                return True;
-            }
-        }
+impl PredicateCtrlFlowPass._bool_tensor(
+    e: uni.Expr, seen: set[str], depth: int
+) -> bool {
+    if depth > 10 {
+        return False;
     }
-    return self._python_valued(cond, set(), 0);
+    if isinstance(e, uni.AtomUnit) {
+        inner = e.value;
+        return isinstance(inner, uni.Expr)
+            and self._bool_tensor(inner, seen, depth + 1);
+    }
+    if isinstance(e, uni.CompareExpr) {
+        if (len(e.ops) != 1)
+            or (
+                e.ops[0].name not in [Tok.LT, Tok.LTE, Tok.GT, Tok.GTE, Tok.EE, Tok.NE]
+            ) {
+            return False;
+        }
+        for side in [e.left] + list(e.rights) {
+            if not self._python_valued(side, set(), 0) {
+                return True;
+            }
+        }
+        return False;
+    }
+    if isinstance(e, uni.UnaryExpr) {
+        return (e.op.name == Tok.BW_NOT)
+            and self._bool_tensor(e.operand, seen, depth + 1);
+    }
+    if isinstance(e, uni.BinaryExpr) {
+        return isinstance(e.op, uni.Token)
+            and (e.op.name in [Tok.BW_AND, Tok.BW_OR, Tok.BW_XOR])
+            and self._bool_tensor(e.left, seen, depth + 1)
+            and self._bool_tensor(e.right, seen, depth + 1);
+    }
+    if isinstance(e, uni.FuncCall) {
+        t = e.target;
+        return isinstance(t, uni.AtomTrailer)
+            and t.is_attr
+            and isinstance(t.right, uni.Name)
+            and (t.right.value in _BOOL_TENSOR_FNS)
+            and not self._foreign_module_call(e);
+    }
+    if (not isinstance(e, uni.Name)) or (e.value in seen) {
+        return False;
+    }
+    st = e.sym_tab;
+    sym = st.lookup(e.value, deep=True) if st else None;
+    if (sym is None) or symbol_is_builtin(sym) or (len(sym.defn) != 1) {
+        return False;
+    }
+    seen.add(e.value);
+    assign = defining_assignment(sym);
+    return (assign is not None)
+        and isinstance(assign.value, uni.Expr)
+        and self._bool_tensor(assign.value, seen, depth + 1);
+}
+
+impl PredicateCtrlFlowPass._foreign_module_call(c: uni.FuncCall) -> bool {
+    base: uni.Expr = c.target;
+    while isinstance(base, uni.AtomTrailer) {
+        base = base.target;
+    }
+    if (not isinstance(base, uni.Name)) or (not base.sym_tab) {
+        return False;
+    }
+    sym = base.sym_tab.lookup(base.value, deep=True);
+    decl = sym.decl if (sym is not None) else None;
+    if decl is None {
+        return False;
+    }
+    imp = decl.find_parent_of_type(uni.Import);
+    if imp is None {
+        return False;
+    }
+    mp = decl.find_parent_of_type(uni.ModulePath) or imp.from_loc;
+    path = mp.dot_path_str if (mp is not None) else "";
+    return not ((path == 'torch') or path.startswith('torch.'));
 }
 
 impl PredicateCtrlFlowPass._python_valued(
@@ -366,8 +422,10 @@ impl PredicateCtrlFlowPass._python_valued(
             and self._python_valued(e.right, seen, depth + 1);
     }
     if isinstance(e, uni.FuncCall) {
-        return isinstance(e.target, uni.Name)
-            and (e.target.value in _PY_VALUE_BUILTINS);
+        return (
+            isinstance(e.target, uni.Name) and (e.target.value in _PY_VALUE_BUILTINS)
+        )
+            or self._foreign_module_call(e);
     }
     if (not isinstance(e, uni.Name)) or (e.value in seen) {
         return False;

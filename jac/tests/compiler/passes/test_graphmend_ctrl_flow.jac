@@ -189,6 +189,13 @@ test "augmented branch updates are declined" {
     assert "dyn_ctrl_fl" in _break_kinds("where_aug_assign.jac");
 }
 
+test "a condition that is not a boolean tensor is declined" {
+    src = _pysrc("where_nonbool_cond.jac", True);
+    assert "torch.where(" not in src;
+    assert "if np.sum(values) > 0:" in src;
+    assert "if x.sum():" in src;
+}
+
 test "a merged call with unpacked arguments is declined" {
     src = _pysrc("where_unpack_call.jac", True);
     assert "torch.where(" not in src;

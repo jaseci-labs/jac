@@ -15,6 +15,26 @@ glob _PURE_BUILTINS: set[str] = {
          'hasattr'
      },
      _PURE_TENSOR_METHODS: set[str] = {'to', 'float', 'double', 'clone', 'detach'},
+     _BOOL_TENSOR_FNS: set[str] = {
+         'all',
+         'any',
+         'bool',
+         'eq',
+         'ge',
+         'gt',
+         'isclose',
+         'isfinite',
+         'isin',
+         'isinf',
+         'isnan',
+         'le',
+         'logical_and',
+         'logical_not',
+         'logical_or',
+         'logical_xor',
+         'lt',
+         'ne'
+     },
      _PY_VALUE_BUILTINS: set[str] = {
          'all',
          'any',
@@ -94,7 +114,8 @@ walker PredicateCtrlFlowPass(TreePass) {
     def _scalar_literal(e: uni.Expr) -> bool;
     def _non_tensor_container(e: uni.Expr) -> bool;
     def _same_lhs(a: uni.Assignment, b: uni.Assignment) -> (uni.Name | None);
-    def _python_bool_cond(cond: uni.Expr) -> bool;
+    def _bool_tensor(e: uni.Expr, seen: set[str], depth: int) -> bool;
+    def _foreign_module_call(c: uni.FuncCall) -> bool;
     def _python_valued(e: uni.Expr, seen: set[str], depth: int) -> bool;
     def _assign(target: uni.Name, value: uni.Expr) -> uni.Assignment;
     def _hoist(
