@@ -894,8 +894,11 @@ impl _client_imports(file_path: str, src: str) -> dict[tuple[int, str], bool] {
     client: dict[tuple[int, str], bool] = {};
     read_by: dict[tuple[int, str], set[str]] = {};
     import_of: dict[tuple[int, str], list[tuple[int, str]]] = {};
+    own_path = os.path.normpath(mod.loc.mod_path);
     for stmt in mod.body {
-        if isinstance(stmt, uni.Import) and stmt.from_loc is not None {
+        if isinstance(stmt, uni.Import)
+            and stmt.from_loc is not None
+            and os.path.normpath(stmt.loc.mod_path) == own_path {
             key = (stmt.loc.first_line, stmt.from_loc.dot_path_str);
             client[key] = client.get(key, True)
                 and getattr(stmt?.code_context, 'value', '') == 'client'

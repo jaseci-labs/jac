@@ -3987,10 +3987,12 @@ graph import {
         scale.admin.ops._loki_recent_count { arequest },
         scale.admin.ops._tempo_recent_count { arequest },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.forward_to {
-            ClientReadTimeout
+            ClientReadTimeout,
+            ClientRequestNotSent
         },
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway.probe_services {
-            ClientReadTimeout
+            ClientReadTimeout,
+            ClientRequestNotSent
         },
         scale.runtime.middleware.ws_forward { ClientConnectionError, aws_connect },
         scale.runtime.rpc.rpc._rpc_with_retries {
@@ -4002,10 +4004,12 @@ graph import {
         scale.runtime.transport.http_forward {
             ClientConnectionError,
             ClientReadTimeout,
+            ClientRequestNotSent,
             arequest
         },
         scale.tests.server.test_serve | testing.testing { run_blocking },
-        scale.tests.server.test_sv_auth_forward._install_unreachable_transport {
+        scale.tests.server.test_stream_ws
+            | scale.tests.server.test_sv_auth_forward._install_unreachable_transport {
             ClientRequestNotSent
         },
         scale.tests.server.test_sv_auth_forward._install_unreachable_walker_transport {
@@ -5822,7 +5826,7 @@ graph import compiler {
             module_app
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._parsed_provider_of {
-            bridgeable_import_target
+            parsed_import_source
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._provider_module_of {
             bridgeable_import_target,
@@ -5836,6 +5840,7 @@ graph import compiler {
             ClientImportVerdict,
             classify_client_import_item,
             import_crosses_apps,
+            import_item_declaration,
             import_provider_app,
             import_provider_route,
             is_client_boundary_import
@@ -7286,6 +7291,7 @@ graph import compiler {
             E1157,
             E1158,
             E1159,
+            E1161,
             E2015,
             W1036,
             W1037,
@@ -8188,8 +8194,9 @@ graph import compiler {
     ]
     frontend.srcloc --> driver.compiler.assemble_jcir { Span }
     frontend.unitree ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable
-            | driver.program.JacProgram.stamp_boundary_facts { ability_of_symbol },
+        backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable {
+            ability_of_symbol
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._record_generic_definition {
             definition_qualname
         },
@@ -10834,6 +10841,7 @@ graph import compiler {
             ClassType,
             FunctionType,
             ModuleType,
+            NeverType,
             TypeBase,
             TypeVarType,
             UnionType,
@@ -11873,6 +11881,7 @@ graph import compiler.driver {
             _default_codespace_for,
             classify_client_import_item,
             import_declares_native_target,
+            import_item_declaration,
             is_client_boundary_import,
             is_client_native_edge_import
         },
@@ -15307,7 +15316,7 @@ graph import packages {
     api ++> [
         artifact.build_package { package_surface },
         artifact.package_manifest { surface_digest },
-        verify._verify_library { package_surface, surface_digest },
+        verify._verify_library { API_FORMAT, package_surface, surface_digest },
     ]
     apidiff ++> [
         publish { ApiChange, check_bump, diff_surfaces, minimum_next },
@@ -31174,6 +31183,9 @@ graph import scale {
     ]
     deploy.target.kubernetes.kubernetes_target ++> runtime.realizer.kubernetes_realizer.KubernetesRealizer.realize
         | tests.deploy.test_database_intent { KubernetesTargetBase }
+    deploy.target.kubernetes.kubernetes_target --> tests.microservices.test_pvc_injector {
+        KubernetesTargetBase
+    }
     deploy.target.kubernetes.manifest_builder ++> [
         runtime.cli.diagnostics | runtime.cli.plan { ScalingMode },
         tests.apps.test_app_scale_overrides
@@ -31209,6 +31221,9 @@ graph import scale {
             with_config_revision
         },
     ]
+    deploy.target.kubernetes.monitoring ++> tests.deploy.test_monitoring_switch {
+        MonitoringDeployer
+    }
     deploy.target.kubernetes.ops_rbac ++> tests.deploy.test_ops_rbac {
         build_ops_rbac,
         ops_role_name,
@@ -31266,6 +31281,7 @@ graph import scale {
     ]
     deploy.target.kubernetes.target as target_mod --> tests.deploy.test_superseded_deployment_reap;
     deploy.target.kubernetes.utils.kubernetes_utils ++> [
+        injector.injector | injector.pvc_injector { KubectlCluster },
         injector.pvc_injector.PvcInjector.seed {
             run_kubectl_command,
             wait_for_pod_deletion,
@@ -31282,6 +31298,9 @@ graph import scale {
             privileged_pss_labels
         },
     ]
+    deploy.target.kubernetes.utils.kubernetes_utils --> tests.deploy.test_dry_run_purity {
+        KubectlCluster
+    }
     deploy.target.registry ++> config.validation { DeploymentTargetRegistry }
     deploy.target.registry --> tests.misc.test_config_validation {
         BUILTIN_TARGET_TYPES
@@ -31880,6 +31899,7 @@ graph import scale {
             _owns_group,
             _signal_group
         },
+        tests.support.stop_server { _signal_group },
     ]
     runtime.planner.planner ++> tests.microservices.test_planner { plan_realization }
     runtime.provider ++> [
@@ -32285,12 +32305,17 @@ graph import scale.deploy.target.kubernetes {
     ]
     utils.kubernetes_utils ++> [
         database_provisioner { ensure_namespace_exists },
-        ingress { delete_if_exists },
+        ingress { KubectlCluster, delete_if_exists },
         kubernetes_target {
             COMPANION_DEFS,
+            KubectlCluster,
             create_k8s_secret,
             get_cluster_provider,
             resize_pvc_if_needed
+        },
+        kubernetes_target.KubernetesTargetBase._load_cluster_config {
+            in_cluster_kubectl,
+            kubectl_cluster
         },
         monitoring { delete_if_exists, delete_k8s_secret },
         target {
@@ -32748,6 +32773,7 @@ graph import scale.tests {
         microservices.test_gateway
             | microservices.test_k8s_health_probe
             | server.test_examples { get_free_port },
+        microservices.test_stop_signal_scope { stop_server },
         microservices.test_typed_boundary { get_free_port, start_server, stop_server },
         server.test_metrics_workers | server.test_serve {
             cleanup_db_files,

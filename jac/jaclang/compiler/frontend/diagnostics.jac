@@ -612,6 +612,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1090 = _err(
          "E1090", Category.TYPE, "Cannot raise {type} (not an exception type)"
      ),
+     E1161 = _err(
+         "E1161",
+         Category.TYPE,
+         "Cannot use {type} as an exception cause (not an exception type or None)"
+     ),
      E1091 = _err(
          "E1091",
          Category.TYPE,

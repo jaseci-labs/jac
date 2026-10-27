@@ -30,10 +30,14 @@ impl KubernetesTargetBase._load_cluster_config {
         kubeconfig_failed = True;
     }
     if not kubeconfig_failed {
+        self._kubectl = kubectl_cluster(
+            self.k8s_config.kube_context, getattr(self.k8s_config, "kubeconfig", "")
+        );
         return;
     }
     try {
         k8s_cluster_config.load_incluster_config();
+        self._kubectl = in_cluster_kubectl();
     } except ConfigException as e {
         raise ConfigException(
             "Could not load Kubernetes config from either kubeconfig "
@@ -341,7 +345,9 @@ impl KubernetesTargetBase.enable_tls(app_name: str) {
         core_v1 = client.CoreV1Api();
         apps_v1 = client.AppsV1Api();
 
-        ingress_deployer = IngressDeployer(self.k8s_config, self.logger);
+        ingress_deployer = IngressDeployer(
+            self.k8s_config, self.logger, kubectl=self._kubectl
+        );
         ingress_deployer.enable_tls(
             app_name, namespace, networking_v1, custom_api, core_v1, apps_v1
         );

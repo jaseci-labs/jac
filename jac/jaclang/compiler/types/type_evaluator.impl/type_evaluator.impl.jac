@@ -2057,10 +2057,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                             if arch := method.signature.arch_tag_info {
                                 if isinstance(arch, TupleVal) {
                                     member_insts: list[TypeBase] = [];
-                                    for member in self._annotation_args(arch) {
+                                    for arch_member in self._annotation_args(arch) {
                                         member_insts.append(
                                             self._convert_to_instance(
-                                                self.get_type_of_expression(member)
+                                                self.get_type_of_expression(arch_member)
                                             )
                                         );
                                     }
@@ -2960,6 +2960,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
 
             if isinstance(node_.parent, Except) and node_.parent.ex_type {
                 ex_type = self.get_type_of_expression(node_.parent.ex_type);
+                if caught := self._isinstance_class_alternatives(ex_type) {
+                    return self._union_narrowed_types(caught);
+                }
                 return self._convert_to_instance(ex_type);
             }
 
@@ -3378,12 +3381,23 @@ impl TypeEvaluator._protocol_signature_fits(
     return True;
 }
 
-impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool {
+impl TypeEvaluator.is_sub_class(
+    super_cls: ClassType, sub_cls: ClassType, ignore_unknown: bool = False
+) -> bool {
     self._heal_ancestry(sub_cls);
     ensure_mro_fresh(sub_cls);
     for cls in sub_cls.shared.mro {
         if cls.shared.same_class(super_cls.shared) {
             return True;
+        }
+    }
+    if ignore_unknown {
+        for cls in sub_cls.shared.mro or [sub_cls] {
+            for base in cls.shared.base_classes {
+                if not isinstance(base, ClassType) or self.is_any_type(base) {
+                    return True;
+                }
+            }
         }
     }
     return False;
@@ -4466,7 +4480,9 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
                     if source_mod is None {
                         continue;
                     }
-                    verdict = classify_client_import_item(source_mod, item);
+                    verdict = classify_client_import_item(
+                        source_mod, item, self.program
+                    );
                     if verdict != ClientImportVerdict.BRIDGED {
                         continue;
                     }
@@ -4499,6 +4515,7 @@ impl TypeEvaluator._prefetch_types {
     self.prefetch.none_type_class = get_types_class("NoneType");
     self.prefetch.object_class = get_builtin_class("object");
     self.prefetch.type_class = get_builtin_class("type");
+    self.prefetch.base_exception_class = get_builtin_class("BaseException");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
 
     self.prefetch.coroutine_class = get_typing_class("Coroutine");

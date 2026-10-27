@@ -989,7 +989,7 @@ impl NaIRGenPass._forward_declare_method(
         param_types.append(self._resolve_sig_type(p));
     }
 
-    ret_type = self._resolve_sig_type(sig.return_type)
+    ret_type = self._resolve_return_type(sig.return_type, method=True)
         if isinstance(sig, uni.FuncSignature)
         else ir.IntType(64);
     if isinstance(sig, uni.FuncSignature) and self._ability_is_generator(method) {
@@ -3349,10 +3349,6 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if self._arch_has_vtable(type_name) and not _is_mono_method and not _static_call {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
         if result is not None {
-            if isinstance(func.return_value.type, ir.VoidType) {
-                return ir.Constant(ir.IntType(64), 0);
-            }
-
             return self._erased_call_result(nd, func, result);
         }
     }
@@ -3374,10 +3370,6 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     self._emit_err_check(
         self._callee_ability_of(nd) or self._linked_callee_decl(func), site=nd
     );
-
-    if isinstance(func.return_value.type, ir.VoidType) {
-        return ir.Constant(ir.IntType(64), 0);
-    }
 
     return self._erased_call_result(nd, func, result);
 }

@@ -1052,7 +1052,9 @@ impl KubernetesTarget.apply_manifests(bundle: dict[str, any]) {
 
     injector = bundle.get("injector");
     if injector is not None {
-        injector.seed(k8s_safe_name(self.k8s_config.app_name), namespace);
+        injector.seed(
+            k8s_safe_name(self.k8s_config.app_name), namespace, self._kubectl
+        );
         if self.logger {
             self.logger.info(
                 "Seeded source bundle onto the bundle PVC",

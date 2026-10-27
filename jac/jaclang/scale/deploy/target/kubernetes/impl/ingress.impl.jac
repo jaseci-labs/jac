@@ -586,15 +586,17 @@ impl IngressDeployer._install_cert_manager(
                 self.logger.info("Installing cert-manager v1.14.5...");
             }
             result = subprocess.run(
-                [
-                    'kubectl',
-                    'apply',
-                    '-f',
-                    'https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml'
-                ],
+                self.kubectl.command(
+                    [
+                        'apply',
+                        '-f',
+                        'https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml'
+                    ]
+                ),
                 capture_output=True,
                 text=True,
-                timeout=120
+                timeout=120,
+                env=self.kubectl.environ()
             );
             if result.returncode != 0 {
                 raise Exception(f"cert-manager install failed: {result.stderr}");

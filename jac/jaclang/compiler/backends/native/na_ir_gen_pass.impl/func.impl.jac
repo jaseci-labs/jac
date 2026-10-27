@@ -82,7 +82,7 @@ impl NaIRGenPass._maybe_declare_ability(
         assert iterator_type is not None;
         ret_type = iterator_type.as_pointer();
     } else {
-        ret_type = self._resolve_jac_type(sig.return_type);
+        ret_type = self._resolve_return_type(sig.return_type);
     }
     self._sig_decl_kind = _saved_sig_kind;
 
@@ -827,8 +827,8 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         param_names.append(p_name);
     }
     ret_type: ir.Type = ir.IntType(64);
-    if sig is not None and sig.return_type is not None {
-        ret_type = self._resolve_jac_type(sig.return_type);
+    if isinstance(sig, uni.FuncSignature) {
+        ret_type = self._resolve_return_type(sig.return_type);
     }
     body = ModuleFacts.unwrap_body(nd);
 
@@ -1091,8 +1091,8 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
             _pnames.append(_pn);
         }
         _rt: ir.Type = ir.IntType(64);
-        if _ssig is not None and _ssig.return_type is not None {
-            _rt = self._resolve_jac_type(_ssig.return_type);
+        if _ssig is not None {
+            _rt = self._resolve_return_type(_ssig.return_type);
         }
         _caps: list[tuple[str, str, ir.Type]] = [];
         for _cn in _cap_order[s] {

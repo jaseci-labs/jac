@@ -503,6 +503,7 @@ impl MicroserviceGateway.probe_services(
             0 if pair[1].status == ServiceStatus.HEALTHY else 1
         ); }
     );
+    unreached: str = "";
     for (svc_name, svc_entry) in ordered {
         base: str = svc_entry.page_url
             if (svc_entry.owns_root() and svc_entry.page_url)
@@ -525,6 +526,10 @@ impl MicroserviceGateway.probe_services(
                 body,
                 timeout=int(http_forward_timeout(svc_name))
             );
+        } except ClientRequestNotSent as not_sent {
+            logger.info(f"Probe: {svc_name} unreachable, trying the next: {not_sent}");
+            unreached = unreached or svc_name;
+            continue;
         } except ClientReadTimeout as timed_out {
             import from jaclang.scale.runtime.context.errors { gateway_timeout }
             logger.info(f"Probe: {svc_name} timed out: {timed_out}");
@@ -541,6 +546,10 @@ impl MicroserviceGateway.probe_services(
         return fr.to_response();
     }
 
+    if unreached {
+        import from jaclang.scale.runtime.context.errors { service_unavailable }
+        return service_unavailable(unreached, "transport_error");
+    }
     return not_found(path, message="Not found on any service");
 }
 
@@ -576,6 +585,8 @@ impl MicroserviceGateway.forward_to(
         );
     } except ClientReadTimeout {
         return gateway_timeout(service_entry.name);
+    } except ClientRequestNotSent {
+        return bad_gateway(service_entry.name);
     }
     if fr is None {
         return bad_gateway(service_entry.name);
