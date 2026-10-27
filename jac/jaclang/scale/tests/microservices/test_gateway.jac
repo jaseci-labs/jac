@@ -348,7 +348,9 @@ def _json_body(resp: any) -> any {
 
 
 """One service's page of `r`'s neighbors: an edge per (seq, node) pair."""
-def _neighbors(rows: list[tuple[int, str]], more: bool) -> dict[str, any] {
+def _neighbors(
+    rows: list[tuple[int, str]], more: bool, resume: (str | None) = None
+) -> dict[str, any] {
     edges = [
         {"id": f"e{seq}", "from": "r", "to": nid, "cursor": f"{seq}.e{seq}"}
         for (seq, nid) in rows
@@ -358,7 +360,7 @@ def _neighbors(rows: list[tuple[int, str]], more: bool) -> dict[str, any] {
         "dir": "out",
         "nodes": [{"id": nid, "type": "Doc"} for (_, nid) in rows],
         "edges": edges,
-        "next_cursor": edges[-1]["cursor"] if more and edges else None
+        "next_cursor": resume or (edges[-1]["cursor"] if more and edges else None)
     };
 }
 
@@ -372,7 +374,8 @@ test "graph reads reach every service that can read the node, compressed or not"
             "/graph/node?id=a": {"id": "a"},
             "/graph/neighbors?id=r&limit=2": _neighbors([(1, "a"), (3, "c")], True),
             "/graph/neighbors?id=r&limit=5": _neighbors([(1, "a"), (3, "c")], False),
-            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(3, "c")], False)
+            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(3, "c")], False),
+            "/graph/neighbors?id=r&limit=3": _neighbors([], False, "5.e5")
         }
     );
     (srv_b, port_b) = _serve_owned(
@@ -380,7 +383,8 @@ test "graph reads reach every service that can read the node, compressed or not"
             "/graph/node?id=b": {"id": "b"},
             "/graph/neighbors?id=r&limit=2": _neighbors([(2, "b"), (4, "d")], False),
             "/graph/neighbors?id=r&limit=5": _neighbors([(2, "b"), (4, "d")], False),
-            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(4, "d")], False)
+            "/graph/neighbors?id=r&limit=2&cursor=2.e2": _neighbors([(4, "d")], False),
+            "/graph/neighbors?id=r&limit=3": _neighbors([(2, "b"), (7, "g")], False)
         }
     );
     reg = ServiceRegistry();
@@ -419,6 +423,8 @@ test "graph reads reach every service that can read the node, compressed or not"
         ("/graph/neighbors?id=r&limit=2", "gzip, deflate, br", 200, ["a", "b"], "2.e2"),
         ("/graph/neighbors?id=r&limit=2&cursor=2.e2", "gzip", 200, ["c", "d"], None),
         ("/graph/neighbors?id=r&limit=5", "identity", 200, ["a", "b", "c", "d"], None),
+        # A service that stopped early at 5 has not ruled out rows before 7.
+        ("/graph/neighbors?id=r&limit=3", "identity", 200, ["b"], "5.e5"),
         ("/graph/node?id=nobody", "gzip, deflate, br", 404, None, None),
         ("/graph/neighbors?id=nobody", "gzip, deflate, br", 404, None, None)
     ];

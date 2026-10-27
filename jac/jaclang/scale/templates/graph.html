@@ -800,6 +800,9 @@
                 page.edges.forEach((e) => addEdge(e, id));
                 state.cursor = page.next_cursor;
                 state.done = !page.next_cursor;
+                if (!page.nodes.length && page.next_cursor) {
+                    setStatus("Nothing readable in this stretch; Load more keeps looking.");
+                }
             } catch (err) {
                 if (gen !== generation) return;
                 state.done = true;

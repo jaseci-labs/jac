@@ -334,9 +334,27 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
             rows.setdefault(key, e);
         }
     }
-    ranked = sorted(rows.values(), key=order);
+    resumes = sorted(
+        [
+            {"cursor": page.get("next_cursor")}
+            for page in pages
+            if page.get("next_cursor")
+        ],
+        key=order
+    );
+    boundary = resumes[0] if resumes else None;
+    ranked = [
+        row
+        for row in sorted(rows.values(), key=order)
+        if boundary is None or order(row) <= order(boundary)
+    ];
     taken = ranked[:limit];
-    more = len(ranked) > limit or `any(page.get("next_cursor") for page in pages);
+    next_cursor: (str | None) = None;
+    if len(ranked) > limit {
+        next_cursor = taken[-1].get("cursor");
+    } elif boundary is not None {
+        next_cursor = boundary.get("cursor");
+    }
     shown: list[dict[str, any]] = [];
     listed: set = set();
     for e in taken {
@@ -355,7 +373,7 @@ impl MicroserviceGateway.merge_graph_pages(request: Request) -> Response {
             "dir": pages[0].get("dir"),
             "nodes": shown,
             "edges": taken,
-            "next_cursor": taken[-1].get("cursor") if more and taken else None
+            "next_cursor": next_cursor
         }
     );
 }
