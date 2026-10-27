@@ -4785,7 +4785,9 @@ impl TypeEvaluator.get_narrowed_type(
             key=symbol.sym_name, declared_type=symbol_type, symbol=symbol
         );
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            return self._readable_flow_type(
+                self._get_type_from_flow_node(narrowing_target, flow_node, set())
+            );
         }
         return None;
     } finally {
@@ -4842,12 +4844,21 @@ impl TypeEvaluator._narrowed_type_for_expr(
             deps=frozenset(reference_key_deps(expr)),
         );
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            return self._readable_flow_type(
+                self._get_type_from_flow_node(narrowing_target, flow_node, set())
+            );
         }
         return None;
     } finally {
         self._flow_pending_keys.discard(pending);
     }
+}
+
+impl TypeEvaluator._readable_flow_type(flow_type: TypeBase | None) -> TypeBase | None {
+    if isinstance(flow_type, NeverType) {
+        return flow_type.residual;
+    }
+    return flow_type;
 }
 
 impl TypeEvaluator._node_encloses(outer: UniNode, inner: UniNode) -> bool {
@@ -5155,6 +5166,17 @@ impl TypeEvaluator._get_type_from_flow_node(
         }
     }
 
+    residuals: list[TypeBase] = [];
+    bare_never: bool = False;
+    for t in incoming_types {
+        if isinstance(t, NeverType) {
+            if t.residual is not None {
+                residuals.append(t.residual);
+            } else {
+                bare_never = True;
+            }
+        }
+    }
     incoming_types = [
         t
         for t in incoming_types
@@ -5163,7 +5185,9 @@ impl TypeEvaluator._get_type_from_flow_node(
 
     result: TypeBase | None = None;
     if len(incoming_types) == 0 {
-        result = None;
+        if residuals and not bare_never and not has_unnarrowed_pred {
+            result = NeverType(residual=self._union_narrowed_types(residuals));
+        }
     } elif has_unnarrowed_pred {
         result = None;
     } elif len(incoming_types) == 1 {
@@ -5195,7 +5219,9 @@ impl TypeEvaluator._if_exit_type(
         if then_t is None {
             return None;
         }
-        arm_types.append(then_t);
+        if not isinstance(then_t, NeverType) {
+            arm_types.append(then_t);
+        }
     }
     eb = stmt.else_body;
     if eb is None {
@@ -5210,22 +5236,30 @@ impl TypeEvaluator._if_exit_type(
         if fall_t is None {
             return None;
         }
-        arm_types.append(fall_t);
+        if not isinstance(fall_t, NeverType) {
+            arm_types.append(fall_t);
+        }
     } elif isinstance(eb, ElseIf) {
         else_t = self._if_exit_type(target, eb, entry_type, visited);
         if else_t is None {
             return None;
         }
-        arm_types.append(else_t);
+        if not isinstance(else_t, NeverType) {
+            arm_types.append(else_t);
+        }
     } elif isinstance(eb, ElseStmt) {
         if eb.body {
             else_t = self._get_type_from_flow_node(target, eb.body[-1], visited);
             if else_t is None {
                 return None;
             }
-            arm_types.append(else_t);
+            if not isinstance(else_t, NeverType) {
+                arm_types.append(else_t);
+            }
         } elif entry_type is not None {
-            arm_types.append(entry_type);
+            if not isinstance(entry_type, NeverType) {
+                arm_types.append(entry_type);
+            }
         } else {
             return None;
         }
@@ -5819,6 +5853,18 @@ impl TypeEvaluator._apply_narrowing(
         NarrowingTarget
     }
 
+    if isinstance(incoming, NeverType) {
+        inner = self._apply_narrowing(
+            predicate, incoming.residual, is_true_branch, target
+        );
+        if inner is None {
+            return incoming;
+        }
+        if isinstance(inner, NeverType) {
+            return inner;
+        }
+        return NeverType(residual=inner);
+    }
     if is_true_branch and not predicate.narrows_on_true {
         return None;
     }
@@ -5873,6 +5919,14 @@ impl TypeEvaluator._apply_narrowing(
         result = self.exclude_type_from_union(base_type, predicate.narrow_type);
         if result is base_type {
             return incoming;
+        }
+        if isinstance(result, NeverType) and incoming is not None {
+            residual = self.exclude_type_from_union(
+                target.declared_type, predicate.narrow_type
+            );
+            if not isinstance(residual, NeverType) {
+                return NeverType(residual=residual);
+            }
         }
         return result;
     }

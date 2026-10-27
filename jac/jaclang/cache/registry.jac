@@ -80,6 +80,12 @@ glob RETIRED: tuple[str, ...] = (
              summary="optimized whole-program images for the in-process JIT, one per link plan"
          ),
          Bucket(
+             name="jir-nativeglue",
+             relpath="jir/nativeglue",
+             policy=Policy(ttl_days=14.0, depth=3, pattern="[0-9a-f]" * 64),
+             summary="glue-symbol scans of native unit bitcode, one per bitcode and compiler generation"
+         ),
+         Bucket(
              name="jir-digests",
              relpath="jir",
              policy=Policy(ttl_days=14.0, pattern="digests|compiler_digest.*.json"),

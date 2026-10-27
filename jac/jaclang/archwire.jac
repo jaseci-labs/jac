@@ -116,6 +116,7 @@ graph import {
             NATIVE_LOWERED_PATHS,
             is_native_lowered,
             is_roster_input,
+            is_staging_rewritten,
             read_input_rules
         },
         dist.payload.fsutil.skip_jaclang
@@ -198,6 +199,7 @@ graph import {
         },
     ]
     cache.registry --> [
+        compiler.backends.native.link_plan._write_glue_symbols { maybe_sweep },
         compiler.driver.jir._sweep_once { bucket, maybe_sweep },
         compiler.driver.jir._touch_generation
             | compiler.types.stubcat.locate.StubcatArtifact.probe_checkout { bucket },
@@ -927,7 +929,7 @@ graph import {
     compiler.driver.program ++> [
         cli.commands.analysis._annex_moves
             | cli.commands.architecture
-            | cli.commands.fix._format_source
+            | cli.commands.fix._client_imports
             | cli.commands.native_build.native_build
             | cli.commands.transform.jac2js
             | cli.mcp.compiler_bridge.CompilerBridge.get_ast_snippet._do_ast
@@ -950,12 +952,13 @@ graph import {
             | testing.cl_test_runner.compile_cl_module
             | testing.test_runner._fresh_jac_state { JacProgram },
         cli.commands.analysis._check_file_job
-            | cli.commands.fix._verify_claims
+            | cli.commands.fix._format_source
             | cli.commands.transform.jac2py
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_js._do_jac2js
             | dist.precompile_bytecode.prebuild_native_closure
             | testing.cl_test_runner.module_is_client { JacProgram },
         cli.commands.analysis._float_impls_to_annex
+            | cli.commands.fix._verify_claims
             | cli.commands.transform.py2jac
             | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py
             | dist.precompile_bytecode.precompile_native_unit { JacProgram },
@@ -1317,6 +1320,7 @@ graph import {
             | studio.gate
             | studio.intel_server
             | studio.model,
+        cli.commands.fix._client_imports,
         cli.commands.fix._imported_names,
         cli.commands.fix._module_has_jsx,
         cli.commands.fix._plain_top_decls,
@@ -5987,6 +5991,11 @@ graph import compiler {
         backends.native.link_plan { unit_source_digest },
         backends.native.link_plan.LinkPlan.plan_digest { native_producer_digest },
         backends.native.link_plan._build_link_plan.walk_unit { module_cache_key },
+        backends.native.link_plan._glue_symbols_store {
+            cache_mode,
+            compiler_generation,
+            get_jir_cache_dir
+        },
         backends.native.link_plan._jit_image_path { cache_mode, get_jir_cache_dir },
         backends.native.link_plan._reuse_artifact { cache_mode },
         backends.native.link_plan._write_sidecar { native_producer_digest },
@@ -7106,6 +7115,7 @@ graph import compiler {
             E0071,
             E0075,
             E0076,
+            E0078,
             E0082,
             E0083,
             E2019,
@@ -8489,6 +8499,7 @@ graph import compiler {
             DeleteStmt,
             ElseStmt,
             Enum,
+            EventSignature,
             ExprAsItem,
             ExprStmt,
             ForeverStmt,
@@ -12170,7 +12181,7 @@ graph import compiler.driver {
             | ifacecache.IfaceRegistry._ensure_in_context { require },
         compiler.JacCompiler.jac_file_linter { require },
         ifacecache.IfaceRegistry._prepare { product_facts },
-        nativecache.NativeBuildSession.lower { invalidate, require },
+        nativecache.NativeBuildSession.lower { invalidate, require, unavailable },
     ]
     pipeline_runner --> [
         application._prepare_revision { compile_application },
