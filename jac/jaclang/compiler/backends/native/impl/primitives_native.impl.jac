@@ -2720,12 +2720,16 @@ impl NativeListEmitter.emit_extend(
     target_cap = b.load(target_cap_ptr, name="ext.target.cap");
     max_i64 = 9223372036854775807;
     add_overflow = b.icmp_unsigned(
-        ">", src_len, b.sub(ir.Constant(i64, max_i64), target_len),
+        ">",
+        src_len,
+        b.sub(ir.Constant(i64, max_i64), target_len),
         name="ext.capacity.overflow"
     );
     p._emit_runtime_raise(add_overflow, "MemoryError", "list extension is too large");
     required_cap = b.add(target_len, src_len, name="ext.required.cap");
-    needs_reserve = b.icmp_unsigned(">", required_cap, target_cap, name="ext.needs.reserve");
+    needs_reserve = b.icmp_unsigned(
+        ">", required_cap, target_cap, name="ext.needs.reserve"
+    );
     allocate_bb = func.append_basic_block(name="ext.self.allocate");
     after_reserve_bb = func.append_basic_block(name="ext.self.ready");
     b.cbranch(needs_reserve, allocate_bb, after_reserve_bb);
@@ -2733,8 +2737,8 @@ impl NativeListEmitter.emit_extend(
     ext_aos_struct = p._aos_elem_struct(ctx.type_key);
     elem_size = (
         _aos_size_of(b, ext_aos_struct, "ext")
-        if ext_aos_struct is not None
-        else ir.Constant(i64, p._abi_sizeof(helpers["elem_type"]))
+            if ext_aos_struct is not None
+            else ir.Constant(i64, p._abi_sizeof(helpers["elem_type"]))
     );
     max_elems = b.udiv(ir.Constant(i64, max_i64), elem_size, name="ext.max.elems");
     size_overflow = b.icmp_unsigned(
@@ -2749,7 +2753,8 @@ impl NativeListEmitter.emit_extend(
     new_raw = b.call(malloc_fn, [alloc_size], name="ext.newbuf");
     p._emit_runtime_raise(
         b.icmp_unsigned("==", new_raw, ir.Constant(i8p, None)),
-        "MemoryError", "cannot allocate list extension"
+        "MemoryError",
+        "cannot allocate list extension"
     );
     old_data = b.load(target_data_ptr, name="ext.oldbuf");
     old_bytes = b.mul(target_len, elem_size, name="ext.oldbytes");
@@ -2928,16 +2933,16 @@ impl NativeListEmitter.emit_repeat_inplace(
         _sz = _aos_size_of(b, _aos_struct, "rep");
         _max_i64 = 9223372036854775807;
         _count_overflow = b.icmp_unsigned(
-            ">", orig_len,
-            b.udiv(ir.Constant(i64, _max_i64), cnt), name="rep.count.overflow"
+            ">",
+            orig_len,
+            b.udiv(ir.Constant(i64, _max_i64), cnt),
+            name="rep.count.overflow"
         );
         p._emit_runtime_raise(
             _count_overflow, "MemoryError", "list repeat is too large"
         );
         _total = b.mul(orig_len, cnt, name="rep.total");
-        _max_elems = b.udiv(
-            ir.Constant(i64, _max_i64), _sz, name="rep.max.elems"
-        );
+        _max_elems = b.udiv(ir.Constant(i64, _max_i64), _sz, name="rep.max.elems");
         _bytes_overflow = b.icmp_unsigned(
             ">", _total, _max_elems, name="rep.bytes.overflow"
         );
@@ -2963,7 +2968,8 @@ impl NativeListEmitter.emit_repeat_inplace(
         _new_raw = b.call(_malloc, [_total_bytes], name="rep.newbuf");
         p._emit_runtime_raise(
             b.icmp_unsigned("==", _new_raw, ir.Constant(i8p, None)),
-            "MemoryError", "cannot allocate repeated list"
+            "MemoryError",
+            "cannot allocate repeated list"
         );
         _old = b.load(_data_pp, name="rep.oldbuf");
         b.call(

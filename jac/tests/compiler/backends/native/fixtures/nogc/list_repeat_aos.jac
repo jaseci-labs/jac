@@ -19,30 +19,33 @@ def repeat_cells(n: int) -> int {
     return total;
 }
 
-def clear_cells() -> int {
+def clear_cells -> int {
     cells: list[own Cell] = [Cell(a=1, b=2), Cell(a=3, b=4)];
     cells *= 5;
     cells *= 0;
     return len(cells);
 }
 
-def reuse_after_clear() -> int {
+def reuse_after_clear -> int {
     cells: list[own Cell] = [Cell(a=9, b=9)];
     cells *= 0;
     cells.append(Cell(a=5, b=6));
     return cells[0].a * 100 + cells[0].b;
 }
 
-def repeat_empty() -> int {
+def repeat_empty -> int {
     cells: list[own Cell] = [];
     cells *= 1000000000;
     return len(cells);
 }
 
-def self_extend_cells() -> int {
+def self_extend_cells -> int {
     cells: list[own Cell] = [
-        Cell(a=1, b=1), Cell(a=2, b=1), Cell(a=3, b=1),
-        Cell(a=4, b=1), Cell(a=5, b=1)
+        Cell(a=1, b=1),
+        Cell(a=2, b=1),
+        Cell(a=3, b=1),
+        Cell(a=4, b=1),
+        Cell(a=5, b=1)
     ];
     cells += cells;
     total: int = 0;
@@ -52,7 +55,7 @@ def self_extend_cells() -> int {
     return total;
 }
 
-def overflow_repeat_raises() -> bool {
+def overflow_repeat_raises -> bool {
     cells: list[own Cell] = [Cell(a=1, b=1)];
     try {
         cells *= 1152921504606846976;

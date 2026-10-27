@@ -4454,12 +4454,10 @@ impl NaIRGenPass._codegen_field_aug_assign(
 
     _f_spec = (
         self._spec_from_list_slot_type(current.type)
-        if isinstance(current.type, ir.PointerType)
-        else None
+            if isinstance(current.type, ir.PointerType)
+            else None
     );
     if _f_spec is not None {
-        # list-typed field: += / *= mutate in place (CPython __iadd__/__imul__)
-        # so the field keeps pointing at the SAME object.
         _le = self._ensure_emitters().get("list");
         if isinstance(_le, NativeListEmitter) {
             _lctx = NativeEmitCtx(pass_ref=self, type_key=_f_spec);
