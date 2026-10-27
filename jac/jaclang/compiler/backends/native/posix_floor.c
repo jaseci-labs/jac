@@ -39,10 +39,6 @@
 #include <sys/statfs.h>
 #include <sys/syscall.h>
 #endif
-#if defined(__x86_64__)
-#include <cpuid.h>
-#endif
-
 #define JAC_FLOOR __attribute__((visibility("hidden")))
 
 /* ---- errno and the standard streams ---- */
@@ -308,7 +304,11 @@ JAC_FLOOR double __jac_fmadd(double a, double b, double c) {
  * zeros off x86-64. */
 JAC_FLOOR void __jac_cpuid(uint32_t leaf, uint32_t subleaf, uint32_t *out) {
 #if defined(__x86_64__)
-    __cpuid_count(leaf, subleaf, out[0], out[1], out[2], out[3]);
+    /* A plain cpuid statement rather than <cpuid.h>'s macro, whose dialect
+     * alternatives (xchg%(q%|%)) the C backend cannot hand to a C compiler. */
+    __asm__ volatile("cpuid"
+                     : "=a"(out[0]), "=b"(out[1]), "=c"(out[2]), "=d"(out[3])
+                     : "a"(leaf), "c"(subleaf));
 #else
     (void)leaf;
     (void)subleaf;
