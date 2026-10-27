@@ -2412,7 +2412,8 @@ test "bug_8580_numeric_container_covariance_rejected" {
         "list[int | None] into list[float | None]. "
         f"Got: {[str(e) for e in program.errors_had]}"
     );
-    assert "list[int]" in by_line.get(46, "") and "list[float]" in by_line.get(46, "") , (
+    assert "list[int]" in by_line.get(46, "")
+        and "list[float]" in by_line.get(46, "") , (
         "Bug #8580: line 46 must reject list[int] into list[float]. "
         f"Line 46 reported: {by_line.get(46)}"
     );
@@ -2420,7 +2421,8 @@ test "bug_8580_numeric_container_covariance_rejected" {
         "Bug #8580: line 48 must reject IntBox (a Box[int]) into Box[float]. "
         f"Line 48 reported: {by_line.get(48)}"
     );
-    assert "dict[str, int]" in by_line.get(50, "") and "dict[str, float]" in by_line.get(50, "") , (
+    assert "dict[str, int]" in by_line.get(50, "")
+        and "dict[str, float]" in by_line.get(50, "") , (
         "Bug #8580: line 50 must reject dict[str, int] into dict[str, float]. "
         f"Line 50 reported: {by_line.get(50)}"
     );
@@ -2429,7 +2431,8 @@ test "bug_8580_numeric_container_covariance_rejected" {
         "union destination stores any member, so the callee could append a "
         f"float the caller reads as int. Line 51 reported: {by_line.get(51)}"
     );
-    assert "list[int | NoneType]" in by_line.get(53, "") and "list[float | NoneType]" in by_line.get(53, "") , (
+    assert "list[int | NoneType]" in by_line.get(53, "")
+        and "list[float | NoneType]" in by_line.get(53, "") , (
         "Bug #8580: line 53 must reject list[int | None] into "
         "list[float | None]; both element unions must be mutually "
         "assignable, or the callee appends a float the caller reads as "
@@ -2440,9 +2443,13 @@ test "bug_8580_numeric_container_covariance_rejected" {
 # The numeric invariance guard skips non-numeric elements, literal elements
 # and TypeVar arguments, so idiomatic covariant uses still check.
 test "bug_8580_numeric_covariance_guard_keeps_covariant_uses" {
-    program = compile_and_check("checker_bug_numeric_container_invariance_positive.jac");
+    program = compile_and_check(
+        "checker_bug_numeric_container_invariance_positive.jac"
+    );
     assert program.errors_had == [] , (
         "Bug #8580: list[int] into list[object], generic inference and "
-        f"literal widening must keep checking. Got: {[str(e) for e in program.errors_had]}"
+        f"literal widening must keep checking. Got: {[
+            str(e) for e in program.errors_had
+        ]}"
     );
 }

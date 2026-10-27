@@ -405,7 +405,6 @@ walker TypeEvaluator {
     ) -> bool;
 
     def _has_numeric_member(u: TypeBase) -> bool;
-
     def _is_protocol_class(cls_type: ClassType) -> bool;
     def _solve_protocol_type_args(
         src_type: ClassType, proto_type: ClassType, bindings: dict[str, TypeBase]
