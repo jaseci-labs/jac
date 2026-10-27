@@ -13,6 +13,7 @@ import gc;
 import glob;
 import os;
 import shutil;
+import signal;
 import socket;
 import subprocess;
 import time;
@@ -150,13 +151,16 @@ def start_server(
         proc_env.update(env);
     }
     apply_fixture_policy(proc_env);
+    # Its own session makes the server lead a process group that holds its
+    # forked workers too, so stop_server can take them down together.
     server = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         cwd=str(fixtures_dir),
-        env=proc_env
+        env=proc_env,
+        start_new_session=True
     );
     base_url = f"http://localhost:{port}";
     # A subprocess that has to compile the tree cold takes minutes, and a
@@ -190,16 +194,24 @@ def start_server(
 
 """Terminate a server started by start_server, escalating to kill if it lingers.
 
+Each signal also goes to the server's process group when the server leads
+one, as `stop_service` does: a killed supervisor would otherwise leave its
+forked workers running, holding the stdout/stderr pipes open, and a later
+`communicate()` on the server would never return. A server the caller did
+not start in its own session is signalled alone.
+
 Tolerates None so a caller's `finally` needs no guard, and yields the port
 before returning: a terminated child can hold the listening socket briefly.
 """
 def stop_server(server: subprocess.Popen | None) {
     if server {
         server.terminate();
+        _signal_group(server.pid, int(signal.SIGTERM));
         try {
             server.`wait(timeout=5);
         } except subprocess.TimeoutExpired {
             server.kill();
+            _signal_group(server.pid, int(signal.SIGKILL));
             server.`wait();
         }
     }

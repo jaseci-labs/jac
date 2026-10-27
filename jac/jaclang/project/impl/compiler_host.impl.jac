@@ -187,7 +187,10 @@ impl ProjectHost.lint_settings(path: str) -> LintSettings {
     config = (get_config_for_path(Path(path)) if path else get_explicit_config())
         or JacConfig();
     if path {
-        app = context_app(str(Path(path).resolve()));
+        owner = (self.base_file(path) or path)
+            if self.path_facts(path).is_annex
+            else path;
+        app = context_app(str(Path(owner).resolve()));
         if app is not None and not app.implicit and app.name in config.apps {
             config = config.effective_for_app(app.name);
         }

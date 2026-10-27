@@ -717,3 +717,33 @@ test "lintfix keeps a module's bodies when its impl annex cannot be formatted" {
         f"untouched, got:\n{other_text!r}";
     }
 }
+
+test "lintfix moves an app entry's impls under the app's lint policy" {
+    for mode in ("fmt-0", "fmt-2", "lint") {
+        repo = make_project();
+        (Path(repo) / "jac.toml").write_text(
+            '[project]\nname = "fx"\nversion = "0.0.1"\n\n'
+                + '[apps.cli]\nkind = "cli"\nentry-point = "cli"\n\n'
+                + '[check.lint]\nselect = ["impls-in-annex", "no-print"]\n\n'
+                + '[apps.cli.check.lint]\nignore = ["no-print"]\n'
+        );
+        old = os.getcwd();
+        os.chdir(repo);
+        try {
+            proj = Path(repo);
+            (proj / "cli.jac").write_text(
+                "def greet;\n\nimpl greet {\n    print(\"hi\");\n}\n"
+            );
+            ret = run_lintfix(mode, [str(proj / "cli.jac")]);
+            annex = proj / "impl" / "cli.impl.jac";
+            annex_text = annex.read_text() if annex.exists() else "";
+            mod_text = (proj / "cli.jac").read_text();
+        } finally {
+            os.chdir(old);
+            shutil.rmtree(repo, ignore_errors=True);
+        }
+        assert ret == 0 , f"[{mode}] the annex is the cli app's code, got {ret}";
+        assert 'print("hi")' in annex_text , f"[{mode}] {annex_text!r}";
+        assert "impl greet" not in mod_text , f"[{mode}] {mod_text!r}";
+    }
+}

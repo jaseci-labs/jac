@@ -1339,8 +1339,8 @@ Use `jac guide <name> --sections` to list headings and
   relevant guide; follow the `-> run 'jac guide ...'` hints.
 - `jac run <file>` -- execute a Jac script.
 - `jac run --dev main.jac` -- serve a web-app or service in dev mode
-  (hot-reload for client files; restart for server changes). Use this instead
-  of `jac run` for apps.
+  (hot-reload for client and server files; restart only after editing
+  `jac.toml`). Use this instead of `jac run` for apps.
 - `jac browse <action>` -- QA a running app in a headless browser:
   `jac browse open localhost:8000`, then `snapshot` (accessibility tree with
   `@e1`-style refs), `click @e5`, `fill '#email' user@example.com`, `screenshot`, `close`.

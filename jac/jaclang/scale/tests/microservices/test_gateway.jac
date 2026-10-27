@@ -1705,7 +1705,12 @@ def _start_backend(
                 target = parts[1].split("?")[0] if len(parts) > 1 else "";
                 key = f"{method} {target}";
                 hits[key] = hits.get(key, 0) + 1;
-                (status, body) = routes.get(key, (404, '{"detail": "nope"}'));
+                reply = routes.get(key, (404, '{"detail": "nope"}'));
+                if reply is None {
+                    conn.close();
+                    continue;
+                }
+                (status, body) = reply;
                 conn.sendall(_http_response(status, body));
                 conn.close();
             } except OSError {}
@@ -1721,6 +1726,15 @@ def _stop_backend(srv: any) {
     try {
         srv.close();
     } except OSError {}
+}
+
+
+"""A bound port that never listens, so a connect is refused; the socket is
+returned so the port stays reserved until `_stop_backend` releases it."""
+def _refused_port -> tuple[any, ...] {
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+    s.bind(("127.0.0.1", 0));
+    return (s, s.getsockname()[1]);
 }
 
 
@@ -1865,28 +1879,52 @@ test "an unsafe miss probes only the services whose routes are unknown" {
 }
 
 
+# With docs disabled everywhere, ownership is unknowable, so the gateway probes
+# svc_a then svc_b. Only a request that provably never reached a service lets
+# the probe move on: one that was sent and lost may have run, so it is not
+# replayed on the next service.
 test "a fleet that publishes no specs keeps walker discovery by probing" {
-    hits_a: dict[str, any] = {};
-    hits_b: dict[str, any] = {};
-    (srv_a, port_a) = _start_backend(hits_a, {});
-    (srv_b, port_b) = _start_backend(
-        hits_b, {"POST /walker/create_user": (200, '{"ok": true}')}
-    );
-    try {
-        (gw, client) = _gateway(
-            [_entry("svc_a", "/api/a", port_a), _entry("svc_b", "/api/b", port_b)]
-        );
-        resp = client.post("/walker/create_user", json={"name": "x"});
-
-        assert resp.status_code == 200 , (
-            "with docs disabled everywhere, ownership is unknowable and the "
-            "walker must still be reachable through the gateway"
-        );
-        assert hits_b.get("POST /walker/create_user", 0) == 1;
-    } finally {
-        _stop_backend(srv_a);
-        _stop_backend(srv_b);
+    route = "POST /walker/create_user";
+    owns = {route: (200, '{"ok": true}')};
+    # (label, svc_a, svc_b routes, expected status, svc_b hits, 503 names)
+    # svc_a is "live" (404s the walker), "refused" or "drops" (reads, no reply)
+    cases: list[tuple[str, str, dict[str, any], int, int, str]] = [
+        ("svc_a does not own the walker", "live", owns, 200, 1, ""),
+        ("svc_a refuses the connection", "refused", owns, 200, 1, ""),
+        ("svc_a refuses and svc_b does not own it", "refused", {}, 503, 1, "svc_a"),
+        ("svc_a drops the request after reading it", "drops", owns, 503, 0, "svc_a")
+    ];
+    wrong: list[str] = [];
+    for (label, a_kind, b_routes, status, b_hits, named) in cases {
+        hits_a: dict[str, any] = {};
+        hits_b: dict[str, any] = {};
+        if a_kind == "refused" {
+            (srv_a, port_a) = _refused_port();
+        } else {
+            (srv_a, port_a) = _start_backend(
+                hits_a, {route: None} if a_kind == "drops" else {}
+            );
+        }
+        (srv_b, port_b) = _start_backend(hits_b, b_routes);
+        try {
+            (gw, client) = _gateway(
+                [_entry("svc_a", "/api/a", port_a), _entry("svc_b", "/api/b", port_b)]
+            );
+            resp = client.post("/walker/create_user", json={"name": "x"});
+            got = (
+                resp.status_code,
+                hits_b.get(route, 0),
+                resp.json()["error"]["service"] if resp.status_code == 503 else ""
+            );
+            if got != (status, b_hits, named) {
+                wrong.append(f"{label}: expected {(status, b_hits, named)}, got {got}");
+            }
+        } finally {
+            _stop_backend(srv_a);
+            _stop_backend(srv_b);
+        }
     }
+    assert wrong == [] , "\n".join(wrong);
 }
 
 

@@ -42,9 +42,9 @@ impl BoundaryAnalysisPass._signature_of_decl(
                 param_types.append('int');
             }
         }
-        if sig.return_type {
-            ret_type = self._extract_type_name(sig.return_type);
-        }
+        ret_type = self._extract_type_name(sig.return_type)
+            if sig.return_type
+            else 'None';
     }
     return (ret_type, param_types, param_names);
 }
@@ -551,9 +551,17 @@ impl BoundaryAnalysisPass._register_client_bridged_import(nd: Import) -> None {
         if ability is None {
             source_mod = self._provider_module_of(nd);
             if source_mod is not None
-                and classify_client_import_item(source_mod, item)
+                and classify_client_import_item(source_mod, item, self.prog)
                     != ClientImportVerdict.CLIENT {
-                self._register_type_import(nd, item, source_mod, InteropContext.CLIENT);
+                decl = import_item_declaration(source_mod, item, self.prog);
+                type_name = "";
+                if isinstance(decl, (Archetype, Enum)) {
+                    source_mod = decl.find_parent_of_type(Module) or source_mod;
+                    type_name = decl.name.value;
+                }
+                self._register_type_import(
+                    nd, item, source_mod, InteropContext.CLIENT, type_name
+                );
             }
             continue;
         }
@@ -580,9 +588,11 @@ impl BoundaryAnalysisPass._register_type_import(
     nd: Import,
     item: ModuleItem,
     source_mod: (Module | None),
-    caller_ctx: InteropContext
+    caller_ctx: InteropContext,
+    type_name: str = ""
 ) -> bool {
-    info = self._collect_boundary_type(item.name.value, source_mod);
+    type_name = type_name or item.name.value;
+    info = self._collect_boundary_type(type_name, source_mod);
     if info is None or info.kind not in ('obj', 'enum', 'node', 'edge') {
         return False;
     }
@@ -592,10 +602,10 @@ impl BoundaryAnalysisPass._register_type_import(
     }
     local_name = item.alias.sym_name if item.alias else item.name.value;
     self.module.gen.interop_manifest.bindings[local_name] = InteropBinding(
-        name=item.name.value,
+        name=type_name,
         source_context=InteropContext.SERVER,
         callers={caller_ctx},
-        ret_type=item.name.value,
+        ret_type=type_name,
         source_module=nd.from_loc.base_module_name if nd.from_loc else '',
         type_scope=(source_mod or self.module).loc.mod_path,
         kind='type',
@@ -709,12 +719,7 @@ impl BoundaryAnalysisPass._find_ability(mod: Module, target: str) -> (Ability | 
 }
 
 impl BoundaryAnalysisPass._parsed_provider_of(nd: Import) -> (Module | None) {
-    import os;
-    target = bridgeable_import_target(nd);
-    if not target or not os.path.isfile(str(target)) {
-        return None;
-    }
-    return self.prog.load_dependency_module(str(target), need_tree=True);
+    return parsed_import_source(nd, self.prog);
 }
 
 impl BoundaryAnalysisPass._reject_owned_type_import(
@@ -736,14 +741,8 @@ impl BoundaryAnalysisPass._check_provider_pub(nd: Import, item: ModuleItem) -> N
     if provider_mod is None {
         return;
     }
-    verdict = classify_client_import_item(provider_mod, item);
-    if verdict == ClientImportVerdict.UNKNOWN and provider_mod.stub_only {
-        parsed = self._parsed_provider_of(nd);
-        if parsed is not None {
-            verdict = classify_client_import_item(parsed, item);
-        }
-    }
-    if verdict != ClientImportVerdict.DEAD {
+    if classify_client_import_item(provider_mod, item, self.prog)
+        != ClientImportVerdict.DEAD {
         return;
     }
     consumer = module_app(self.module) or self.module.name;
@@ -1558,6 +1557,7 @@ impl BoundaryAnalysisPass.finish with exit {
 }
 
 impl BoundaryAnalysisPass._record_surface(manifest: InteropManifest) -> None {
+    import os;
     if not (self.module and self.module.body) {
         return;
     }
@@ -1572,7 +1572,7 @@ impl BoundaryAnalysisPass._record_surface(manifest: InteropManifest) -> None {
                 kind=item.surface_kind,
                 exposure=item.exposure.value,
                 placement=item.placement_name,
-                module=self.module.loc.mod_path,
+                module=os.path.abspath(self.module.loc.mod_path),
                 explicit_access=item.access is not None,
                 route=route,
                 scheduled=scheduled,

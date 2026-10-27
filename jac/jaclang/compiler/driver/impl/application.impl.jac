@@ -41,8 +41,8 @@ impl _inventory(
             result[path] = _stamp(path, previous.get(path));
         }
     }
-    for path in Path(`root).`glob('jac*.toml') {
-        result[str(path)] = _stamp(str(path), previous.get(str(path)));
+    for toml_path in Path(`root).`glob('jac*.toml') {
+        result[str(toml_path)] = _stamp(str(toml_path), previous.get(str(toml_path)));
     }
     return result;
 }
@@ -123,7 +123,7 @@ impl _context_sections(path: any) -> dict[int, bytes] {
     if not cache.exists() {
         return {};
     }
-    data = cache.read_bytes();
+    data = read_jir(cache);
     pos = data.find(SECTIONS_MAGIC, HEADER_SIZE);
     return read_sections(data, (pos + len(SECTIONS_MAGIC))) if (pos >= 0) else {};
 }
