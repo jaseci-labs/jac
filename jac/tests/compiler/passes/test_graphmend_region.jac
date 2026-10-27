@@ -243,6 +243,29 @@ test "an entry-less torch module shares its cache artifact with off" {
     }
 }
 
+test "a helper compiled before its caller is rebuilt once the caller reaches it" {
+    old_config = config_mod._config;
+    try {
+        with TemporaryDirectory() as tmpdir {
+            tmpdir = os.path.realpath(tmpdir);
+            (main_path, used_path, conf_path) = _mk_region_project(tmpdir);
+            config_mod._config = JacConfig.load(Path(tmpdir) / "jac.toml");
+            prog = JacProgram();
+            early = _bytecode(prog, used_path);
+            assert early is not None;
+            assert not _mentions_symbol(early, "__jac_se_emit__");
+            assert _bytecode(prog, main_path) is not None;
+            late = _bytecode(prog, used_path);
+            assert late is not None;
+            assert _mentions_symbol(late, "__jac_se_emit__") , (
+                "the build from before the caller was loaded was reused"
+            );
+        }
+    } finally {
+        config_mod._config = old_config;
+    }
+}
+
 test "a reached helper module keeps its own gm cache variant" {
     # The helper the entry reaches IS transformed, so its artifact must stay
     # variant-keyed: an off run may not reuse it and recompiles untransformed.

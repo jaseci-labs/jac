@@ -79,11 +79,12 @@ obj JacCompiler(SessionHooks) {
         target_program: JacProgram,
         skip_analysis: bool = False,
         gm_active: bool = False,
-        gm_disable: (list[str] | None) = None
+        gm_disable: (list[str] | None) = None,
+        gm_region: str = ""
     ) -> (types.CodeType | None);
 
     def _graphmend_hit_matches(
-        mod: uni.Module, gm_active: bool, gm_disable: list[str]
+        mod: uni.Module, gm_active: bool, gm_disable: list[str], gm_region: str
     ) -> bool;
 
     def _get_client_artifact(

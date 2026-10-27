@@ -4,6 +4,7 @@ obj GraphMendFacts {
         helpers: set[GraphMendHelper] = set(),
         noop: bool = False,
         disabled: (list[str] | None) = None,
+        region: (str | None) = None,
         wrapped_keys: set[str] = set(),
         covered_by: dict[(str, str)] = {},
         callers: dict[(int, list[tuple[(Ability, bool)]])] = {};

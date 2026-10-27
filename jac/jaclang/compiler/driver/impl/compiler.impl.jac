@@ -181,7 +181,7 @@ impl JacCompiler.get_bytecode(
     try {
         with compilation_scope(owner_scope_options(actual)) {
             return self._get_bytecode(
-                full_target, actual, skip_analysis, gm_active, gm_disable
+                full_target, actual, skip_analysis, gm_active, gm_disable, gm_region
             );
         }
     } finally {
@@ -190,12 +190,15 @@ impl JacCompiler.get_bytecode(
 }
 
 impl JacCompiler._graphmend_hit_matches(
-    mod: uni.Module, gm_active: bool, gm_disable: list[str]
+    mod: uni.Module, gm_active: bool, gm_disable: list[str], gm_region: str
 ) -> bool {
     facts = mod.gen.graphmend_facts;
     built = None if facts is None else facts.disabled;
     if built is None {
         return not gm_active;
+    }
+    if (facts.region is not None) and (facts.region != gm_region) {
+        return False;
     }
     if facts.noop {
         return True;
@@ -208,7 +211,8 @@ impl JacCompiler._get_bytecode(
     target_program: JacProgram,
     skip_analysis: bool = False,
     gm_active: bool = False,
-    gm_disable: (list[str] | None) = None
+    gm_disable: (list[str] | None) = None,
+    gm_region: str = ""
 ) -> (types.CodeType | None) {
     actual_program = self.selfhost.resolve(full_target, target_program, execution=True);
     (rebuild, no_precompile) = cache_mode();
@@ -226,7 +230,10 @@ impl JacCompiler._get_bytecode(
         and (full_target in actual_program.mod.hub)
         and actual_program.mod.hub[full_target].gen.py_bytecode
         and not self._graphmend_hit_matches(
-            actual_program.mod.hub[full_target], gm_active, list(gm_disable or [])
+            actual_program.mod.hub[full_target],
+            gm_active,
+            list(gm_disable or []),
+            gm_region
         )
     ) {
         actual_program.invalidate_module(full_target);
@@ -399,6 +406,11 @@ impl JacCompiler._get_bytecode(
         if result.gen.py_bytecode {
             actual_program.hub_cache_stamp(full_target);
             gm_facts = result.gen.graphmend_facts;
+            if gm_active
+                and (gm_facts is not None)
+                and (gm_facts.disabled is not None) {
+                gm_facts.region = gm_region;
+            }
             if gm_active and (gm_facts is not None) and gm_facts.noop {
                 gm_v = swap_graphmend_cache_variant("");
                 try {
