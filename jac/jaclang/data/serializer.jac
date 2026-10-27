@@ -152,6 +152,8 @@ def _type_shape(target_type: object) -> tuple[object, tuple[object, ...]];
 def _class_fields(cls: type) -> tuple[any, ...];
 def frozen_fields(anchor: Anchor) -> bool;
 def runs_getters(arch: object) -> bool;
+def _reaches_getters(value: object, seen: set[int]) -> bool;
+def _class_runs_getters(cls: type) -> bool;
 def _instance_only(cls: type) -> bool;
 def _plain_copy(value: object) -> tuple[bool, object];
 def _same_tree(live: object, snap: object) -> bool;
