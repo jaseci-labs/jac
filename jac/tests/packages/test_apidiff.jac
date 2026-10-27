@@ -190,7 +190,8 @@ test "an added parameter past every positional slot stays minor" {
     }
 }
 
-glob BASE_AND_CHILD: str = "obj Base {\n    has a: int = 1;\n}\n\nobj C(Base) {\n    has c: int = 3;\n}\n";
+glob BASE_AND_CHILD: str = "obj Base {\n    has a: int = 1;\n}\n\nobj C(Base) {\n    has c: int = 3;\n}\n",
+     PRIVATE_BASE_AND_CHILD: str = "obj _Base {\n    has a: int = 1;\n}\n\nobj C(_Base) {\n    has c: int = 3;\n}\n";
 
 test "a field that moves an existing constructor argument is major" {
     rows = [
@@ -212,6 +213,18 @@ test "a field that moves an existing constructor argument is major" {
             BASE_AND_CHILD.replace(
                 "has a: int = 1;", "has a: int = 1;\n    has b: int = 2;"
             ),
+            "kit.C"
+        ),
+        (
+            "a field removed from a private base class",
+            PRIVATE_BASE_AND_CHILD,
+            PRIVATE_BASE_AND_CHILD.replace("    has a: int = 1;\n", ""),
+            "kit.C"
+        ),
+        (
+            "a field added to a private base class",
+            PRIVATE_BASE_AND_CHILD.replace("    has a: int = 1;\n", ""),
+            PRIVATE_BASE_AND_CHILD,
             "kit.C"
         ),
         (

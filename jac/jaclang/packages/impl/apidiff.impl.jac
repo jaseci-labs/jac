@@ -250,15 +250,16 @@ impl _diff_positional_fields(
         );
     }
     for name in old_pos {
-        if name not in new_pos and name in new_members {
-            out.append(
-                ApiChange(
-                    path=path,
-                    level=MAJOR,
-                    reason=f"field '{name}' is no longer a positional constructor argument"
-                )
-            );
+        if name in new_pos or (name in old_members and name not in new_members) {
+            continue;
         }
+        out.append(
+            ApiChange(
+                path=path,
+                level=MAJOR,
+                reason=f"field '{name}' is no longer a positional constructor argument, shifting the positional arguments of existing constructions"
+            )
+        );
     }
     kept_old = [
         n
