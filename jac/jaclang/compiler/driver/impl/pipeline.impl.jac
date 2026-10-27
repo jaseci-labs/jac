@@ -18,6 +18,10 @@ impl no_drop(program: JacProgram, module: Module) {}
 
 impl no_precheck {}
 
+impl no_blocker -> str {
+    return '';
+}
+
 impl front_passes -> PassSchedule {
     return [
         AppContextPass,
@@ -117,6 +121,11 @@ impl native_ir_passes(request: ProductRequest) -> PassSchedule {
 
 impl native_lower_passes(request: ProductRequest) -> PassSchedule {
     return [RcFactsPass, NaIRGenPass];
+}
+
+impl native_toolchain_blocker -> str {
+    (available, why) = active_host().native_pipeline_available();
+    return '' if available else why;
 }
 
 impl native_object_passes(request: ProductRequest) -> PassSchedule {
@@ -295,6 +304,14 @@ impl resolve(
     if spec.tiered and (peer_fell_back or tier_reason(product)) {
         return (spec.bootstrap(req), False, False);
     }
+    if spec.blocker() {
+        return (spec.bootstrap(req), False, False);
+    }
+    if req.native and PRODUCTS[CompilationProduct.NATIVE_LOWER].blocker() {
+        req = ProductRequest(
+            gen_mtir=req.gen_mtir, native=False, endpoint_effects=req.endpoint_effects
+        );
+    }
     spec.precheck();
     token = _LOADING.set(_LOADING.get() + [product]);
     schedule: PassSchedule = [];
@@ -329,6 +346,10 @@ impl schedule_for(
 
 impl unavailable(product: CompilationProduct) -> str {
     spec = PRODUCTS[product];
+    blocked = spec.blocker();
+    if blocked {
+        return blocked;
+    }
     try {
         if spec.loads {
             active_host().load_modules(list(spec.loads));

@@ -1893,17 +1893,18 @@ impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
     }
     spv = self.string_path_value;
     if spv is not None {
-        return active_host().resolve_module(spv, self.importer_path, string_spec=True)[
+        return active_host().resolve_module(spv, self.loc.mod_path, string_spec=True)[
             0
         ];
     }
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
-    return active_host().resolve_module(target, self.importer_path)[0];
+    importer = self.importer_path if self.level > 0 else self.loc.mod_path;
+    return active_host().resolve_module(target, importer)[0];
 }
 
 impl ModulePath.native_bundled_path -> (str | None) {
     import os;
-    mod_path = self.importer_path or None;
+    mod_path = self.loc.mod_path if self.loc else None;
     if not self.in_native_context() {
         return None;
     }

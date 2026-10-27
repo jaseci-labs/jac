@@ -106,6 +106,7 @@ def list_databases(
 
 def load_record(conn: any, database: str) -> (DbRecord | None);
 def drop_database(conn: any, database: str, force: bool = False) -> bool;
+def rename_database(conn: any, database: str, new_name: str) -> bool;
 def drop_if_still_dead(conn: any, database: str) -> bool;
 def condemn_abandoned(conn: any, records: list[DbRecord]) -> list[str];
 def pardon_recovered(conn: any, records: list[DbRecord]) -> list[str];

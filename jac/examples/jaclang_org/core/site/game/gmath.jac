@@ -22,19 +22,3 @@ def rand01(r: &mut Rng) -> float;
 def rand_range(r: &mut Rng, lo: float, hi: float) -> float;
 
 def rand_sign(r: &mut Rng) -> float;
-
-impl jsin(a: float) -> float {
-    return jcos(a - HALF_PI);
-}
-
-impl lerp(a: float, b: float, t: float) -> float {
-    return a + (b - a) * t;
-}
-
-impl rand_range(r: &mut Rng, lo: float, hi: float) -> float {
-    return lo + rand01(r) * (hi - lo);
-}
-
-impl rand_sign(r: &mut Rng) -> float {
-    return 1.0 if rand01(r) < 0.5 else -1.0;
-}

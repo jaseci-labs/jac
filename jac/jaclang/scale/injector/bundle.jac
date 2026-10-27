@@ -173,6 +173,9 @@ def _legacy_sealer_script_for(
 def sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str;
 
 
+def require_serve_manifest(stage: Path, detail: str = "") -> Path;
+
+
 def _precompile_app(
     base: Path,
     seal_binary: bytes,
@@ -237,6 +240,9 @@ def _seed_precompiled(stage: Path, seed: (Path | None)) -> int;
 
 
 def _cached_seal(base: Path, key: str) -> (bytes | None);
+
+
+def _bundle_ships(raw: bytes, member: str) -> bool;
 
 
 def _remember_seal(base: Path, key: str, raw: bytes);

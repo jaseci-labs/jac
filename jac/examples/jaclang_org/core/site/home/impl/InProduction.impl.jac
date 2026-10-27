@@ -169,3 +169,7 @@ impl InProduction -> JsxElement {
             </Reveal>
         </HomeSection>;
 }
+
+impl pct(v: int) -> str {
+    return str(v * 100 / _AXIS_MAX) + "%";
+}

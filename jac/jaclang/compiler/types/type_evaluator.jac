@@ -746,6 +746,7 @@ walker TypeEvaluator {
         target: NarrowingTarget, flow_node: UniCFGNode, visited: set[int]
     ) -> TypeBase | None;
 
+    def _readable_flow_type(flow_type: TypeBase | None) -> TypeBase | None;
     def _node_encloses(outer: UniNode, inner: UniNode) -> bool;
     def _loop_body_writes_target(
         loop_node: UniCFGNode, target: NarrowingTarget

@@ -56,6 +56,7 @@ obj CompileOptions {
     def codegen_identity -> str;
     def codegen_fingerprint -> str;
     def analysis_identity -> str;
+    def artifact_identity -> str;
     def analysis_fingerprint -> str;
     def base_codegen_identity -> str;
     def unit_codegen_identity(path: str) -> str;
