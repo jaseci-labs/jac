@@ -805,8 +805,7 @@
                 }
             } catch (err) {
                 if (gen !== generation) return;
-                state.done = true;
-                setStatus("Could not expand: " + err.message);
+                setStatus("Could not load neighbors: " + err.message + " (Load more retries)");
             } finally {
                 state.busy = false;
             }
