@@ -7,7 +7,7 @@ scalar query giving up safely keeps `a11`, a Python bool, out of
 import torch;
 
 @torch.compile()
-def f(x: any, m: any, n: any) -> any {
+def f(x: torch.Tensor, m: any, n: any) -> any {
     a0 = x.item();
     a1 = a0 + 1;
     a2 = a1 + 1;

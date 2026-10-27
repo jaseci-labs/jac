@@ -3,7 +3,7 @@ into a single torch.where -- GraphMend must leave this control flow intact."""
 import torch;
 
 @torch.compile()
-def f(x: any, p: any, q: any) -> any {
+def f(x: torch.Tensor, p: any, q: any) -> any {
     if (x.sum() > 0) {
         foo(p);
     } else {

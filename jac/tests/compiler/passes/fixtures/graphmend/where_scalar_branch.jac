@@ -6,7 +6,7 @@ tensor expression is unaffected: `b * -1` is still a tensor."""
 import torch;
 
 @torch.compile()
-def f(x: any) -> any {
+def f(x: torch.Tensor) -> any {
     if (x.sum() > 0) {
         n = 1;
     } else {
@@ -16,7 +16,7 @@ def f(x: any) -> any {
 }
 
 @torch.compile()
-def g(x: any) -> any {
+def g(x: torch.Tensor) -> any {
     if (x.sum() > 0) {
         ok = True;
     } else {
@@ -26,7 +26,7 @@ def g(x: any) -> any {
 }
 
 @torch.compile()
-def h(x: any) -> any {
+def h(x: torch.Tensor) -> any {
     if (x.sum() > 0) {
         return -1;
     } else {

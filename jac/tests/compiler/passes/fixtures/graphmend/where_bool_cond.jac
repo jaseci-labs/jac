@@ -5,7 +5,7 @@ predicate, so predication must decline."""
 import torch;
 
 @torch.compile()
-def flag_gate(x: any, flag: bool) -> any {
+def flag_gate(x: torch.Tensor, flag: bool) -> any {
     if flag and (x.sum() > 0) {
         return x * 2;
     } else {
@@ -14,7 +14,7 @@ def flag_gate(x: any, flag: bool) -> any {
 }
 
 @torch.compile()
-def negated(x: any) -> any {
+def negated(x: torch.Tensor) -> any {
     if not (x.sum() > 0) {
         return x * 2;
     } else {
@@ -23,7 +23,7 @@ def negated(x: any) -> any {
 }
 
 @torch.compile()
-def chained(x: any) -> any {
+def chained(x: torch.Tensor) -> any {
     if 0 < x.sum() < 5 {
         return x * 2;
     } else {
@@ -32,7 +32,7 @@ def chained(x: any) -> any {
 }
 
 @torch.compile()
-def traced_flag(x: any, flag: bool) -> any {
+def traced_flag(x: torch.Tensor, flag: bool) -> any {
     ok = flag and (x.sum() > 0);
     if ok {
         return x * 2;
@@ -42,7 +42,7 @@ def traced_flag(x: any, flag: bool) -> any {
 }
 
 @torch.compile()
-def builtin_bool(x: any) -> any {
+def builtin_bool(x: torch.Tensor) -> any {
     if bool(x.sum() > 0) {
         return x * 2;
     } else {

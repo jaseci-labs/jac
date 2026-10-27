@@ -7,7 +7,7 @@ def sink(t: any, *rest: any, **opts: any) -> any {
 }
 
 @torch.compile()
-def keyed(x: any, y: any, opts: dict[str, any]) -> any {
+def keyed(x: torch.Tensor, y: any, opts: dict[str, any]) -> any {
     if (x.sum() > 0) {
         sink(x, **opts);
     } else {
@@ -17,7 +17,7 @@ def keyed(x: any, y: any, opts: dict[str, any]) -> any {
 }
 
 @torch.compile()
-def starred(x: any, y: any, rest: list[any]) -> any {
+def starred(x: torch.Tensor, y: any, rest: list[any]) -> any {
     if (x.sum() > 0) {
         sink(x, *rest);
     } else {

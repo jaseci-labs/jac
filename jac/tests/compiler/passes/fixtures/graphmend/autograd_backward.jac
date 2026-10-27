@@ -3,7 +3,7 @@ and torch.where would route the untaken operand into the backward pass."""
 import torch;
 
 @torch.compile()
-def f(x: any, y: any) -> any {
+def f(x: torch.Tensor, y: any) -> any {
     if (x.sum() > 0) {
         z = x + y;
     } else {

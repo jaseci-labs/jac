@@ -4,7 +4,7 @@ import torch;
 glob W = torch.ones(4, requires_grad=True);
 
 @torch.compile()
-def f(x: any) -> any {
+def f(x: torch.Tensor) -> any {
     if (x.sum() > 0) {
         z = x + W;
     } else {

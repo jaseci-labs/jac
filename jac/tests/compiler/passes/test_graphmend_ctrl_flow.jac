@@ -194,6 +194,8 @@ test "a condition that is not a boolean tensor is declined" {
     assert "torch.where(" not in src;
     assert "if np.sum(values) > 0:" in src;
     assert "if x.sum():" in src;
+    assert "if x.numpy().sum() > 0:" in src;
+    assert "if x.type() == 'torch.FloatTensor':" in src;
 }
 
 test "a merged call with unpacked arguments is declined" {

@@ -7,7 +7,7 @@ def _stub -> any {
 }
 
 @torch.compile()
-def f(x: any, y: any) -> any {
+def f(x: torch.Tensor, y: any) -> any {
     torch = _stub();
     with torch.no_grad() {
         if (x.sum() > 0) {

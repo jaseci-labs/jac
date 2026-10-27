@@ -16,7 +16,7 @@ def `entry(x: any, mask: torch.Tensor) -> any {
     return torch.sin(x);
 }
 
-def orphan(x: any, mask: torch.Tensor) -> any {
+def orphan(x: torch.Tensor, mask: torch.Tensor) -> any {
     x = torch.relu(x);
     if not mask.all() {
         raise ValueError("orphan mask must be all true");

@@ -9,7 +9,7 @@ alias."""
 import torch;
 
 @torch.compile()
-def direct(x: any, m: any, n: any) -> any {
+def direct(x: torch.Tensor, m: any, n: any) -> any {
     if (x.item() > 5) {
         return m;
     } else {
@@ -18,7 +18,7 @@ def direct(x: any, m: any, n: any) -> any {
 }
 
 @torch.compile()
-def traced(x: any, m: any, n: any) -> any {
+def traced(x: torch.Tensor, m: any, n: any) -> any {
     hits = x.sum().item();
     if (hits > 5) {
         return m;
@@ -28,7 +28,7 @@ def traced(x: any, m: any, n: any) -> any {
 }
 
 @torch.compile()
-def aliased(x: any, m: any, n: any) -> any {
+def aliased(x: torch.Tensor, m: any, n: any) -> any {
     hits = x.item();
     same = hits;
     if (x.sum() > 0) and (same > 5) {

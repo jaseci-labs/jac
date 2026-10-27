@@ -10,7 +10,7 @@ def read_scale -> float {
 }
 
 @torch.compile()
-def f(x: any, m: any) -> any {
+def f(x: torch.Tensor, m: any) -> any {
     if (x.sum() > 0) {
         scale = 2.0;
         m.register_buffer("s", x * scale, persistent=False);

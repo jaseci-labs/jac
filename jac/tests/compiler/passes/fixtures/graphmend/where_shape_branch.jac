@@ -3,7 +3,7 @@ would broadcast the taken one, so predication must decline."""
 import torch;
 
 @torch.compile()
-def first_row(x: any) -> any {
+def first_row(x: torch.Tensor) -> any {
     if (x.sum() > 0) {
         return x[0];
     } else {
@@ -12,7 +12,7 @@ def first_row(x: any) -> any {
 }
 
 @torch.compile()
-def last_row(h: any) -> any {
+def last_row(h: torch.Tensor) -> any {
     if (h.sum() > 0) {
         y = h[-1];
     } else {

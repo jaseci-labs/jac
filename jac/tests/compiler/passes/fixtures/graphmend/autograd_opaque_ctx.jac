@@ -3,7 +3,7 @@ could restore gradient mode on entry, so the proof fails closed."""
 import torch;
 
 @torch.compile()
-def f(x: any, y: any) -> any {
+def f(x: torch.Tensor, y: any) -> any {
     with torch.no_grad() {
         with torch.autocast('cpu') {
             if (x.sum() > 0) {

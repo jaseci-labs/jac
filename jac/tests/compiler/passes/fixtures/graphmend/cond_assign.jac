@@ -6,7 +6,7 @@ conditional must stay intact."""
 import torch;
 
 @torch.compile()
-def f(x: any, y: any) -> any {
+def f(x: torch.Tensor, y: any) -> any {
     if (x.sum() > 0) {
         z = torch.relu(x) + y;
     } else {

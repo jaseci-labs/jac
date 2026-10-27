@@ -387,12 +387,20 @@ impl PredicateCtrlFlowPass._tensor_valued(
         t = e.target;
         if (not isinstance(t, uni.AtomTrailer))
             or (not t.is_attr)
-            or (not isinstance(t.right, uni.Name))
-            or (t.right.value in _NON_TENSOR_FNS) {
+            or (not isinstance(t.right, uni.Name)) {
             return False;
         }
-        return is_torch_attr_target(t, t.right.value)
-            or self._tensor_valued(t.target, seen, depth + 1);
+        name = t.right.value;
+        torch_form = is_torch_attr_target(t, name);
+        if name in _TENSOR_REDUCE_FNS {
+            (pos, kws) = split_params(e.params);
+            if kws or (len(pos) != (1 if torch_form else 0)) {
+                return False;
+            }
+        } elif name not in _TENSOR_FNS {
+            return False;
+        }
+        return torch_form or self._tensor_valued(t.target, seen, depth + 1);
     }
     if isinstance(e, uni.AtomTrailer) {
         if e.is_attr {

@@ -7,13 +7,13 @@ an option either: its branches must return tensors, not a Python float. So the
 conditional must be left intact and the graph break kept."""
 import torch;
 
-def side_effecting(x: any) -> any {
+def side_effecting(x: torch.Tensor) -> any {
     print("RAN");
     return x * 2;
 }
 
 @torch.compile()
-def f(x: any) -> any {
+def f(x: torch.Tensor) -> any {
     if (x.sum() > 0) {
         y = side_effecting(x);
     } else {

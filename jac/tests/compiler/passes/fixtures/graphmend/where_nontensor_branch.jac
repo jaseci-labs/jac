@@ -4,7 +4,7 @@ conditional into a runtime TypeError; both shapes must decline."""
 import torch;
 
 @torch.compile()
-def f(x: any) -> any {
+def f(x: torch.Tensor) -> any {
     if (x.sum() > 0) {
         y = "big";
     } else {
@@ -14,7 +14,7 @@ def f(x: any) -> any {
 }
 
 @torch.compile()
-def g(x: any, name: str) -> any {
+def g(x: torch.Tensor, name: str) -> any {
     if (x.sum() > 0) {
         return [x, 1];
     } else {

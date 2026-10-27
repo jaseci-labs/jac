@@ -6,14 +6,14 @@ compile byte-identical to a graphmend-off run even though each function holds
 a transformable pattern."""
 import torch;
 
-def guard_fn(x: any, mask: torch.Tensor) -> any {
+def guard_fn(x: torch.Tensor, mask: torch.Tensor) -> any {
     if not mask.all() {
         raise ValueError("mask must be all true");
     }
     return torch.sin(x);
 }
 
-def branch_fn(x: any) -> any {
+def branch_fn(x: torch.Tensor) -> any {
     if x.sum() > 0 {
         return x * 2.0;
     } else {
