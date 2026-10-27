@@ -45,8 +45,22 @@ def archive_path -> Path {
     return path;
 }
 
+# The archive's headers are not an input: every header under Include/ is
+# generated from Jac definitions (gen_include.jac, gen_opcode_meta.jac) and
+# read from its checked-in copy.
+def no_archive_headers(prefixes: tuple[str, ...]) {
+    for prefix in prefixes {
+        if prefix.startswith("Include") or "Include/".startswith(prefix) {
+            sys.exit(
+                f"{prefix!r} reaches the archive's Include/; the headers are generated (bootstrap/python/generated/Include)"
+            );
+        }
+    }
+}
+
 # Files of the pinned archive whose relative path starts with one of `prefixes`.
 def archive_texts(prefixes: tuple[str, ...]) -> dict[str, str] {
+    no_archive_headers(prefixes);
     found: dict[str, str] = {};
     with tarfile.open(archive_path()) as bundle {
         for member in bundle.getmembers() {
@@ -82,21 +96,9 @@ def generated_copy(path: str) -> Path {
     return BOOTSTRAP / "generated" / f"{path}.in";
 }
 
-# Files of a build's CPython tree whose relative path starts with one of
-# `prefixes`, as the build stages them: a generated path is read from its
-# checked-in copy, every other path from the pinned archive.
-def source_texts(prefixes: tuple[str, ...]) -> dict[str, str] {
-    found = archive_texts(prefixes);
-    for path in generated_paths() {
-        if path.startswith(prefixes) {
-            found[path] = generated_copy(path).read_text(encoding="utf-8");
-        }
-    }
-    return found;
-}
-
 # Extract the archive members under `prefixes` into `target`; returns the tree root.
 def extract_tree(target: Path, prefixes: tuple[str, ...]) -> Path {
+    no_archive_headers(prefixes);
     with tarfile.open(archive_path()) as bundle {
         members = [
             m

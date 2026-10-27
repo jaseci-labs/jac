@@ -1,10 +1,11 @@
 """Generate jac/jaclang/runtime/python/cpython_api.jac from the C API headers.
 
 Native Jac modules call the CPython C API by its own names. This script reads
-every PyAPI_FUNC declaration from the Include/ tree a build stages (the public
-headers gen_include.jac writes, the internal ones of the checksum-pinned
-CPython archive) and emits a typed clib declaration for each function the
-JacPython sources use, so Jac code reads like the C it replaces:
+every declaration of the C API table (capi_table.jac: the PyAPI_FUNC and
+PyAPI_DATA declarations of the generated headers and the plain `extern` ones
+of the internal headers, which gen_include.jac writes into the headers) and
+emits a typed clib declaration for each function the JacPython sources use,
+so Jac code reads like the C it replaces:
 
     jac run scripts/jacpython/gen_capi.jac            # rewrite the file
     jac run scripts/jacpython/gen_capi.jac --check    # fail on drift
@@ -25,15 +26,8 @@ import argparse;
 import re;
 import sys;
 import from pathlib { Path }
-import from common {
-    REPO,
-    RUNTIME,
-    SOURCES,
-    format_jac,
-    pin,
-    source_texts,
-    write_or_check
-}
+import from common { REPO, RUNTIME, SOURCES, format_jac, pin, write_or_check }
+import from capi_table { DECLARATIONS }
 
 glob OUTPUT: Path = RUNTIME / "cpython_api.jac",
      # The jacpy_* helpers for what has no exported function (macros, struct
@@ -704,10 +698,9 @@ def declarations(
         text = plain(texts[path]);
         found = list(re.finditer(API_FUNC, text, re.S))
             + list(re.finditer(API_DATA_FUNC, text, re.S));
-        # Internal headers (and posixmodule.h) also declare plain `extern`
-        # functions. jacpython.o links into libpython itself, so they resolve
-        # like exported ones.
-        if path.startswith("Include/internal/") or path == "Modules/posixmodule.h" {
+        # Internal headers also declare plain `extern` functions. jacpython.o
+        # links into libpython itself, so they resolve like exported ones.
+        if path.startswith("Include/internal/") {
             for hit in re.finditer(INTERNAL_EXTERN, text, re.M | re.S) {
                 if '"' not in hit.group(0) {
                     found.append(hit);
@@ -1069,11 +1062,11 @@ with entry:__main__ {
     parser = argparse.ArgumentParser(description="Generate cpython_api.jac");
     parser.add_argument("--check", action="store_true");
     args = parser.parse_args();
-    headers = {
-        path: text
-        for (path, text) in source_texts(("Include/", )).items()
-        if path.endswith(".h")
-    };
+    # Each header's declarations, as the C API table lists them.
+    headers: dict[str, str] = {};
+    for (path, _, declaration) in DECLARATIONS {
+        headers[path] = headers.get(path, "") + declaration + "\n";
+    }
     functions = declarations(headers);
     variables = data_declarations(headers);
     found = helpers();

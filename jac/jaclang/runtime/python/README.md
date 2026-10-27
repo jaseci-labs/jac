@@ -69,13 +69,15 @@ these packages.
 `object_model/` is CPython's object model in Jac. `layouts.jac` declares the C
 layouts (`PyObject`'s header, `PyTypeObject`, `PyNumberMethods`,
 `PyLongObject`, ...) and the header constants their initializers use. It is
-the input of the public C API headers: `Include/*.h` and `Include/cpython/*.h`
-are staged from `bootstrap/python/generated/`, and
+the input of the C API headers: every header under `Include/` (public,
+`cpython/` and `internal/`) is staged from `bootstrap/python/generated/`, and
 `scripts/jacpython/gen_include.jac` writes their structs and integer constants
-from it. `scripts/jacpython/gen_layouts.jac` checks it against the headers a
-build stages (and takes a record from a header that is still the archive's
-with `--adopt`); `bootstrap/python/layouts_check.c` asserts every offset, size
-and constant against the configured headers of each build. A module defines
+from it, their declarations from `scripts/jacpython/capi_table.jac` and the
+static strings from `scripts/jacpython/global_strings.jac`. A build fails on
+a header the CPython archive would supply. `scripts/jacpython/gen_layouts.jac`
+reads only `layouts.jac`: it computes the offsets and writes
+`bootstrap/python/layouts_check.c`, which asserts every offset, size and
+constant against the staged headers of each build. A module defines
 its static type objects and singletons as C data under their C names
 (`object_model/bool.jac` defines `PyBool_Type`, `_Py_FalseStruct` and
 `_Py_TrueStruct`), so the interpreter's C code uses them unchanged. The ported

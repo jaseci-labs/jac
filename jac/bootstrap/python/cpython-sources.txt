@@ -32,11 +32,13 @@
 #   "# path  # generated: N source lines"
 #   Written by a Jac generator and checked in as
 #   bootstrap/python/generated/<path>.in: the opcode tables from the Jac
-#   instruction table (scripts/jacpython/gen_opcode_meta.jac), the public C API
-#   headers (Include/*.h, Include/cpython/*.h) from the Jac layouts and
-#   constants (scripts/jacpython/gen_include.jac). Neither tree keeps the
-#   archive's copy; both builds stage the checked-in one in its place.
-#   Total: 141 files / 23,324 source lines.
+#   instruction table (scripts/jacpython/gen_opcode_meta.jac), every C API
+#   header (Include/*.h, Include/cpython/*.h, Include/internal/) from the Jac
+#   layouts, constants, C API declarations and global strings
+#   (scripts/jacpython/gen_include.jac). Neither tree keeps the archive's
+#   copy; both builds stage the checked-in one in its place, and a header
+#   under Include/ that is not marked here fails the build.
+#   Total: 283 files / 53,699 source lines.
 #
 # After each build, build.sh (the host) and build_jacpython.zig check that no
 # removed or pruned path came back, reading the marker to decide which builds
@@ -166,146 +168,151 @@ Include/README.rst
 # Include/frameobject.h  # generated: 20 source lines
 # Include/genericaliasobject.h  # generated: 14 source lines
 # Include/import.h  # generated: 103 source lines
-Include/internal/mimalloc/
-Include/internal/pycore_abstract.h
-Include/internal/pycore_asdl.h
-Include/internal/pycore_ast.h
-Include/internal/pycore_ast_state.h
-Include/internal/pycore_atexit.h
-Include/internal/pycore_audit.h
-Include/internal/pycore_backoff.h
-Include/internal/pycore_bitutils.h
-Include/internal/pycore_blocks_output_buffer.h
-Include/internal/pycore_brc.h
-Include/internal/pycore_bytes_methods.h
-Include/internal/pycore_bytesobject.h
-Include/internal/pycore_c_array.h
-Include/internal/pycore_call.h
-Include/internal/pycore_capsule.h
-Include/internal/pycore_cell.h
-Include/internal/pycore_ceval.h
-Include/internal/pycore_ceval_state.h
-Include/internal/pycore_code.h
-Include/internal/pycore_codecs.h
-Include/internal/pycore_compile.h
-Include/internal/pycore_complexobject.h
-Include/internal/pycore_condvar.h
-Include/internal/pycore_context.h
-Include/internal/pycore_critical_section.h
-Include/internal/pycore_crossinterp.h
-Include/internal/pycore_crossinterp_data_registry.h
-Include/internal/pycore_debug_offsets.h
-Include/internal/pycore_descrobject.h
-Include/internal/pycore_dict.h
-Include/internal/pycore_dict_state.h
-Include/internal/pycore_dtoa.h
-Include/internal/pycore_emscripten_signal.h
-Include/internal/pycore_emscripten_trampoline.h
-Include/internal/pycore_exceptions.h
-Include/internal/pycore_faulthandler.h
-Include/internal/pycore_fileutils.h
-Include/internal/pycore_fileutils_windows.h
-Include/internal/pycore_floatobject.h
-Include/internal/pycore_flowgraph.h
-Include/internal/pycore_format.h
-Include/internal/pycore_frame.h
-Include/internal/pycore_freelist.h
-Include/internal/pycore_freelist_state.h
-Include/internal/pycore_function.h
-Include/internal/pycore_gc.h
-Include/internal/pycore_genobject.h
-Include/internal/pycore_getopt.h
-Include/internal/pycore_gil.h
-Include/internal/pycore_global_objects.h
-Include/internal/pycore_global_objects_fini_generated.h
-Include/internal/pycore_global_strings.h
-Include/internal/pycore_hamt.h
-Include/internal/pycore_hashtable.h
-Include/internal/pycore_import.h
-Include/internal/pycore_importdl.h
-Include/internal/pycore_index_pool.h
-Include/internal/pycore_initconfig.h
-Include/internal/pycore_instruction_sequence.h
-Include/internal/pycore_instruments.h
-Include/internal/pycore_interp.h
-Include/internal/pycore_interp_structs.h
-Include/internal/pycore_interpframe.h
-Include/internal/pycore_interpframe_structs.h
-Include/internal/pycore_interpolation.h
-Include/internal/pycore_intrinsics.h
-Include/internal/pycore_jit.h
-Include/internal/pycore_list.h
-Include/internal/pycore_llist.h
-Include/internal/pycore_lock.h
-Include/internal/pycore_long.h
-Include/internal/pycore_magic_number.h
-Include/internal/pycore_memoryobject.h
-Include/internal/pycore_mimalloc.h
-Include/internal/pycore_modsupport.h
-Include/internal/pycore_moduleobject.h
-Include/internal/pycore_namespace.h
-Include/internal/pycore_object.h
-Include/internal/pycore_object_alloc.h
-Include/internal/pycore_object_deferred.h
-Include/internal/pycore_object_stack.h
-Include/internal/pycore_object_state.h
-Include/internal/pycore_obmalloc.h
-Include/internal/pycore_obmalloc_init.h
+# Include/internal/mimalloc/mimalloc.h  # generated: 565 source lines
+# Include/internal/mimalloc/mimalloc/atomic.h  # generated: 392 source lines
+# Include/internal/mimalloc/mimalloc/internal.h  # generated: 969 source lines
+# Include/internal/mimalloc/mimalloc/prim.h  # generated: 329 source lines
+# Include/internal/mimalloc/mimalloc/track.h  # generated: 147 source lines
+# Include/internal/mimalloc/mimalloc/types.h  # generated: 721 source lines
+# Include/internal/pycore_abstract.h  # generated: 61 source lines
+# Include/internal/pycore_asdl.h  # generated: 112 source lines
+# Include/internal/pycore_ast.h  # generated: 945 source lines
+# Include/internal/pycore_ast_state.h  # generated: 271 source lines
+# Include/internal/pycore_atexit.h  # generated: 31 source lines
+# Include/internal/pycore_audit.h  # generated: 35 source lines
+# Include/internal/pycore_backoff.h  # generated: 133 source lines
+# Include/internal/pycore_bitutils.h  # generated: 186 source lines
+# Include/internal/pycore_blocks_output_buffer.h  # generated: 321 source lines
+# Include/internal/pycore_brc.h  # generated: 73 source lines
+# Include/internal/pycore_bytes_methods.h  # generated: 82 source lines
+# Include/internal/pycore_bytesobject.h  # generated: 149 source lines
+# Include/internal/pycore_c_array.h  # generated: 39 source lines
+# Include/internal/pycore_call.h  # generated: 214 source lines
+# Include/internal/pycore_capsule.h  # generated: 17 source lines
+# Include/internal/pycore_cell.h  # generated: 75 source lines
+# Include/internal/pycore_ceval.h  # generated: 394 source lines
+# Include/internal/pycore_ceval_state.h  # generated: 48 source lines
+# Include/internal/pycore_code.h  # generated: 671 source lines
+# Include/internal/pycore_codecs.h  # generated: 76 source lines
+# Include/internal/pycore_compile.h  # generated: 230 source lines
+# Include/internal/pycore_complexobject.h  # generated: 34 source lines
+# Include/internal/pycore_condvar.h  # generated: 93 source lines
+# Include/internal/pycore_context.h  # generated: 59 source lines
+# Include/internal/pycore_critical_section.h  # generated: 237 source lines
+# Include/internal/pycore_crossinterp.h  # generated: 406 source lines
+# Include/internal/pycore_crossinterp_data_registry.h  # generated: 41 source lines
+# Include/internal/pycore_debug_offsets.h  # generated: 379 source lines
+# Include/internal/pycore_descrobject.h  # generated: 28 source lines
+# Include/internal/pycore_dict.h  # generated: 412 source lines
+# Include/internal/pycore_dict_state.h  # generated: 30 source lines
+# Include/internal/pycore_dtoa.h  # generated: 40 source lines
+# Include/internal/pycore_emscripten_signal.h  # generated: 30 source lines
+# Include/internal/pycore_emscripten_trampoline.h  # generated: 67 source lines
+# Include/internal/pycore_exceptions.h  # generated: 40 source lines
+# Include/internal/pycore_faulthandler.h  # generated: 100 source lines
+# Include/internal/pycore_fileutils.h  # generated: 320 source lines
+# Include/internal/pycore_fileutils_windows.h  # generated: 98 source lines
+# Include/internal/pycore_floatobject.h  # generated: 49 source lines
+# Include/internal/pycore_flowgraph.h  # generated: 47 source lines
+# Include/internal/pycore_format.h  # generated: 27 source lines
+# Include/internal/pycore_frame.h  # generated: 61 source lines
+# Include/internal/pycore_freelist.h  # generated: 111 source lines
+# Include/internal/pycore_freelist_state.h  # generated: 70 source lines
+# Include/internal/pycore_function.h  # generated: 64 source lines
+# Include/internal/pycore_gc.h  # generated: 349 source lines
+# Include/internal/pycore_genobject.h  # generated: 43 source lines
+# Include/internal/pycore_getopt.h  # generated: 22 source lines
+# Include/internal/pycore_gil.h  # generated: 66 source lines
+# Include/internal/pycore_global_objects.h  # generated: 34 source lines
+# Include/internal/pycore_global_objects_fini_generated.h  # generated: 1,592 source lines
+# Include/internal/pycore_global_strings.h  # generated: 854 source lines
+# Include/internal/pycore_hamt.h  # generated: 113 source lines
+# Include/internal/pycore_hashtable.h  # generated: 150 source lines
+# Include/internal/pycore_import.h  # generated: 141 source lines
+# Include/internal/pycore_importdl.h  # generated: 139 source lines
+# Include/internal/pycore_index_pool.h  # generated: 36 source lines
+# Include/internal/pycore_initconfig.h  # generated: 197 source lines
+# Include/internal/pycore_instruction_sequence.h  # generated: 83 source lines
+# Include/internal/pycore_instruments.h  # generated: 126 source lines
+# Include/internal/pycore_interp.h  # generated: 109 source lines
+# Include/internal/pycore_interp_structs.h  # generated: 1,001 source lines
+# Include/internal/pycore_interpframe.h  # generated: 406 source lines
+# Include/internal/pycore_interpframe_structs.h  # generated: 95 source lines
+# Include/internal/pycore_interpolation.h  # generated: 26 source lines
+# Include/internal/pycore_intrinsics.h  # generated: 51 source lines
+# Include/internal/pycore_jit.h  # generated: 29 source lines
+# Include/internal/pycore_list.h  # generated: 81 source lines
+# Include/internal/pycore_llist.h  # generated: 106 source lines
+# Include/internal/pycore_lock.h  # generated: 236 source lines
+# Include/internal/pycore_long.h  # generated: 336 source lines
+# Include/internal/pycore_magic_number.h  # generated: 305 source lines
+# Include/internal/pycore_memoryobject.h  # generated: 20 source lines
+# Include/internal/pycore_mimalloc.h  # generated: 69 source lines
+# Include/internal/pycore_modsupport.h  # generated: 99 source lines
+# Include/internal/pycore_moduleobject.h  # generated: 62 source lines
+# Include/internal/pycore_namespace.h  # generated: 21 source lines
+# Include/internal/pycore_object.h  # generated: 1,032 source lines
+# Include/internal/pycore_object_alloc.h  # generated: 71 source lines
+# Include/internal/pycore_object_deferred.h  # generated: 32 source lines
+# Include/internal/pycore_object_stack.h  # generated: 95 source lines
+# Include/internal/pycore_object_state.h  # generated: 49 source lines
+# Include/internal/pycore_obmalloc.h  # generated: 702 source lines
+# Include/internal/pycore_obmalloc_init.h  # generated: 66 source lines
 # Include/internal/pycore_opcode_metadata.h  # generated: 2,117 source lines
-Include/internal/pycore_opcode_utils.h
-Include/internal/pycore_optimizer.h
-Include/internal/pycore_parking_lot.h
-Include/internal/pycore_parser.h
-Include/internal/pycore_pathconfig.h
-Include/internal/pycore_pyarena.h
-Include/internal/pycore_pyatomic_ft_wrappers.h
-Include/internal/pycore_pybuffer.h
-Include/internal/pycore_pyerrors.h
-Include/internal/pycore_pyhash.h
-Include/internal/pycore_pylifecycle.h
-Include/internal/pycore_pymath.h
-Include/internal/pycore_pymem.h
-Include/internal/pycore_pymem_init.h
-Include/internal/pycore_pystate.h
-Include/internal/pycore_pystats.h
-Include/internal/pycore_pythonrun.h
-Include/internal/pycore_pythread.h
-Include/internal/pycore_qsbr.h
-Include/internal/pycore_range.h
-Include/internal/pycore_runtime.h
-Include/internal/pycore_runtime_init.h
-Include/internal/pycore_runtime_init_generated.h
-Include/internal/pycore_runtime_structs.h
-Include/internal/pycore_semaphore.h
-Include/internal/pycore_setobject.h
-Include/internal/pycore_signal.h
-Include/internal/pycore_sliceobject.h
-Include/internal/pycore_stackref.h
-Include/internal/pycore_stats.h
-Include/internal/pycore_strhex.h
-Include/internal/pycore_structs.h
-Include/internal/pycore_structseq.h
-Include/internal/pycore_symtable.h
-Include/internal/pycore_sysmodule.h
-Include/internal/pycore_template.h
-Include/internal/pycore_time.h
-Include/internal/pycore_token.h
-Include/internal/pycore_traceback.h
-Include/internal/pycore_tracemalloc.h
-Include/internal/pycore_tstate.h
-Include/internal/pycore_tuple.h
-Include/internal/pycore_typedefs.h
-Include/internal/pycore_typeobject.h
-Include/internal/pycore_typevarobject.h
-Include/internal/pycore_ucnhash.h
-Include/internal/pycore_unicodeobject.h
-Include/internal/pycore_unicodeobject_generated.h
-Include/internal/pycore_unionobject.h
-Include/internal/pycore_uniqueid.h
+# Include/internal/pycore_opcode_utils.h  # generated: 90 source lines
+# Include/internal/pycore_optimizer.h  # generated: 318 source lines
+# Include/internal/pycore_parking_lot.h  # generated: 97 source lines
+# Include/internal/pycore_parser.h  # generated: 78 source lines
+# Include/internal/pycore_pathconfig.h  # generated: 26 source lines
+# Include/internal/pycore_pyarena.h  # generated: 68 source lines
+# Include/internal/pycore_pyatomic_ft_wrappers.h  # generated: 204 source lines
+# Include/internal/pycore_pybuffer.h  # generated: 21 source lines
+# Include/internal/pycore_pyerrors.h  # generated: 213 source lines
+# Include/internal/pycore_pyhash.h  # generated: 93 source lines
+# Include/internal/pycore_pylifecycle.h  # generated: 136 source lines
+# Include/internal/pycore_pymath.h  # generated: 205 source lines
+# Include/internal/pycore_pymem.h  # generated: 145 source lines
+# Include/internal/pycore_pymem_init.h  # generated: 103 source lines
+# Include/internal/pycore_pystate.h  # generated: 339 source lines
+# Include/internal/pycore_pystats.h  # generated: 21 source lines
+# Include/internal/pycore_pythonrun.h  # generated: 68 source lines
+# Include/internal/pycore_pythread.h  # generated: 172 source lines
+# Include/internal/pycore_qsbr.h  # generated: 173 source lines
+# Include/internal/pycore_range.h  # generated: 21 source lines
+# Include/internal/pycore_runtime.h  # generated: 63 source lines
+# Include/internal/pycore_runtime_init.h  # generated: 233 source lines
+# Include/internal/pycore_runtime_init_generated.h  # generated: 1,589 source lines
+# Include/internal/pycore_runtime_structs.h  # generated: 320 source lines
+# Include/internal/pycore_semaphore.h  # generated: 67 source lines
+# Include/internal/pycore_setobject.h  # generated: 41 source lines
+# Include/internal/pycore_signal.h  # generated: 108 source lines
+# Include/internal/pycore_sliceobject.h  # generated: 20 source lines
+# Include/internal/pycore_stackref.h  # generated: 838 source lines
+# Include/internal/pycore_stats.h  # generated: 97 source lines
+# Include/internal/pycore_strhex.h  # generated: 39 source lines
+# Include/internal/pycore_structs.h  # generated: 88 source lines
+# Include/internal/pycore_structseq.h  # generated: 40 source lines
+# Include/internal/pycore_symtable.h  # generated: 201 source lines
+# Include/internal/pycore_sysmodule.h  # generated: 32 source lines
+# Include/internal/pycore_template.h  # generated: 26 source lines
+# Include/internal/pycore_time.h  # generated: 334 source lines
+# Include/internal/pycore_token.h  # generated: 110 source lines
+# Include/internal/pycore_traceback.h  # generated: 111 source lines
+# Include/internal/pycore_tracemalloc.h  # generated: 167 source lines
+# Include/internal/pycore_tstate.h  # generated: 93 source lines
+# Include/internal/pycore_tuple.h  # generated: 75 source lines
+# Include/internal/pycore_typedefs.h  # generated: 18 source lines
+# Include/internal/pycore_typeobject.h  # generated: 160 source lines
+# Include/internal/pycore_typevarobject.h  # generated: 28 source lines
+# Include/internal/pycore_ucnhash.h  # generated: 36 source lines
+# Include/internal/pycore_unicodeobject.h  # generated: 308 source lines
+# Include/internal/pycore_unicodeobject_generated.h  # generated: 3,132 source lines
+# Include/internal/pycore_unionobject.h  # generated: 26 source lines
+# Include/internal/pycore_uniqueid.h  # generated: 57 source lines
 # Include/internal/pycore_uop_ids.h  # generated: 335 source lines
 # Include/internal/pycore_uop_metadata.h  # generated: 1,204 source lines
-Include/internal/pycore_warnings.h
-Include/internal/pycore_weakref.h
+# Include/internal/pycore_warnings.h  # generated: 21 source lines
+# Include/internal/pycore_weakref.h  # generated: 133 source lines
 # Include/intrcheck.h  # generated: 23 source lines
 # Include/iterobject.h  # generated: 24 source lines
 # Include/listobject.h  # generated: 55 source lines

@@ -1,15 +1,15 @@
-"""Check CPython's object layouts against their C-layout Jac declarations.
+"""Check the C layouts of the Jac object records against the generated headers.
 
 A native Jac object-model port defines and reads CPython objects in place, so
 their layouts are ABI: `PyObject`, `PyVarObject`, `PyTypeObject`, the slot
-tables and the concrete object structs must match the headers byte for byte.
-jaclang/runtime/python/layouts.jac declares them, and gen_include.jac writes
-the public headers' structs and constants from it. This script reads the
-headers a build stages and holds both sides of that contract:
+tables and the concrete object structs must match what C extensions compile
+against byte for byte. jaclang/runtime/python/layouts.jac declares them, and
+gen_include.jac writes the headers' structs and constants from it. This
+script's only input is layouts.jac (and the C-layout records of
+cpython_api.jac it shares); it reads no header:
 
     jac run scripts/jacpython/gen_layouts.jac            # rewrite the checks
     jac run scripts/jacpython/gen_layouts.jac --check    # fail on drift
-    jac run scripts/jacpython/gen_layouts.jac --adopt    # take layouts.jac from the headers
 
 The platform constants need `zig` (or `--zig`) to cross-compile their probe
 for each target.
@@ -18,35 +18,26 @@ for each target.
   (and the structs they embed by value), function-pointer slots as
   `Callable[...]` fields, pointers to layouts as `ptr[Layout]` and pointers to
   records no port reads as opaque types; plus the header constants in
-  CONSTANTS that object initializers need. It is the input: every run checks
-  it against what the headers declare, and only --adopt writes it, for a
-  record or constant of a header that is still the archive's (the internal
-  headers and the OBJECT_SOURCES), or one newly listed in LAYOUTS or
-  CONSTANTS.
+  CONSTANTS that object initializers need, with their values. It is written
+  by hand.
 - jaclang/runtime/python/layouts_platform.<os>.<arch>.jac: the constants in
   PLATFORM_CONSTANTS, whose values differ between the supported platforms
   (where a field sits in the interpreter state, past records sized by the C
-  library), each folded by `zig cc -target` for that platform. The plain
-  layouts_platform.jac names no platform, and a port reading one of these
-  constants refuses to start on a platform without a generated table.
-- bootstrap/python/layouts_check.c: `_Static_assert`s on the offset, size and
-  signedness of every generated field, each struct's size and alignment, and
-  each constant's value, the platform constants under an `#if` for their
-  platform. build_jacpython.zig compiles it against the staged headers of
-  every JacPython build, so a layout that drifts on any platform fails the
-  build instead of corrupting objects.
-
-Struct bodies are read from the headers a build stages (the public ones
-gen_include.jac writes, the internal ones of the pinned archive) through a
-small preprocessor that evaluates `#if` blocks for the release build every
-supported platform shares (64-bit, little-endian, GIL-enabled, 30-bit digits);
-the generated asserts are what make that assumption checked rather than
-trusted. An object struct a `.c` file keeps private (`rangeobject`,
-`PyCapsule`) is read from that file in OBJECT_SOURCES: its Jac module defines the
-layout from then on, and layouts_check.c repeats the upstream definition so the
-Jac layout is checked against it as a header's would be.
-Constant values are read back from the configured headers of a local JacPython
-build, as gen_constants.jac reads system headers.
+  library), each folded by `zig cc -target` for that platform against the
+  generated headers. The plain layouts_platform.jac names no platform, and a
+  port reading one of these constants refuses to start on a platform without
+  a generated table.
+- bootstrap/python/layouts_check.c: `_Static_assert`s on the offset, size,
+  kind and signedness of every record field, each record's size and
+  alignment, and each constant's value, the platform constants under an `#if`
+  for their platform. The offsets are computed here from the Jac records with
+  C's layout rules; C_ARRAYS and C_MEMBERS give the C spelling of the fields
+  that are arrays or renamed. build_jacpython.zig compiles it against the
+  staged headers of every JacPython build, so a header that drifts from the
+  Jac layouts (or a layout the native compiler would place differently) fails
+  the build instead of corrupting objects. A record no header defines (the
+  private structs of the Objects/ and Modules/ files the ports own,
+  PRIVATE_LAYOUTS) is declared in layouts_check.c from its Jac record.
 """
 import argparse;
 import re;
@@ -55,100 +46,21 @@ import subprocess;
 import sys;
 import tempfile;
 import from pathlib { Path }
-import from common { BOOTSTRAP, JAC, RUNTIME, format_jac, source_texts, write_or_check }
+import from common {
+    BOOTSTRAP,
+    JAC,
+    RUNTIME,
+    format_jac,
+    generated_copy,
+    generated_paths,
+    write_or_check
+}
 
-glob OUTPUT: Path = RUNTIME / "layouts.jac",
+glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
      CHECK: Path = BOOTSTRAP / "layouts_check.c",
      CAPI: Path = RUNTIME / "cpython_api.jac",
      PLATFORM_OUTPUT: str = "layouts_platform",
      COMMAND: str = "scripts/jacpython/gen_layouts.jac",
-     # Headers the layouts are read from, in inclusion order.
-     HEADERS: list[str] = [
-         "Include/pytypedefs.h",
-         "Include/object.h",
-         "Include/cpython/object.h",
-         "Include/cpython/longintrepr.h",
-         "Include/cpython/tupleobject.h",
-         "Include/cpython/listobject.h",
-         "Include/cpython/code.h",
-         "Include/cpython/bytesobject.h",
-         "Include/cpython/bytearrayobject.h",
-         "Include/cpython/initconfig.h",
-         "Include/pycapsule.h",
-         "Include/descrobject.h",
-         "Include/cpython/descrobject.h",
-         "Include/internal/pycore_descrobject.h",
-         "Include/cpython/cellobject.h",
-         "Include/sliceobject.h",
-         "Include/cpython/pyerrors.h",
-         "Include/internal/pycore_range.h",
-         "Include/internal/pycore_tuple.h",
-         "Include/internal/pycore_list.h",
-         "Include/cpython/setobject.h",
-         "Include/cpython/dictobject.h",
-         "Include/internal/pycore_dict.h",
-         "Include/cpython/methodobject.h",
-         "Include/cpython/weakrefobject.h",
-         "Include/moduleobject.h",
-         "Include/internal/pycore_moduleobject.h",
-         "Include/internal/pycore_freelist_state.h",
-         "Include/datetime.h",
-         "Include/pybuffer.h",
-         "Include/cpython/memoryobject.h",
-         "Include/cpython/floatobject.h",
-         "Include/cpython/complexobject.h",
-         "Include/cpython/classobject.h",
-         "Include/structseq.h",
-         "Include/cpython/pymem.h",
-         "Include/cpython/objimpl.h",
-         "Include/internal/pycore_llist.h",
-         "Include/internal/pycore_obmalloc.h",
-         "Include/internal/pycore_gc.h",
-         "Include/internal/pycore_interp_structs.h",
-         "Include/cpython/modsupport.h",
-         "Include/internal/pycore_structs.h",
-         "Include/internal/pycore_hamt.h",
-         "Include/cpython/context.h",
-         "Include/internal/pycore_context.h",
-         "Include/internal/pycore_hashtable.h",
-         "Include/internal/pycore_initconfig.h",
-         "Include/cpython/pylifecycle.h",
-         "Include/internal/pycore_crossinterp.h",
-         "Include/internal/pycore_asdl.h",
-         "Include/internal/pycore_ast_state.h",
-         "Include/cpython/import.h",
-         "Include/internal/pycore_import.h"
-     ],
-     # Object files whose private object structs are layouts: the ports of
-     # these files define the objects, so the structs are no header's.
-     OBJECT_SOURCES: list[str] = [
-         "Objects/namespaceobject.c",
-         "Objects/capsule.c",
-         "Objects/iterobject.c",
-         "Objects/enumobject.c",
-         "Objects/rangeobject.c",
-         "Objects/picklebufobject.c",
-         "Objects/interpolationobject.c",
-         "Objects/templateobject.c",
-         "Objects/unionobject.c",
-         "Objects/genericaliasobject.c",
-         "Objects/fileobject.c",
-         "Objects/dictobject.c",
-         "Objects/odictobject.c",
-         "Objects/descrobject.c",
-         "Objects/funcobject.c",
-         "Objects/typevarobject.c",
-         "Objects/memoryobject.c",
-         "Objects/bytesobject.c",
-         "Objects/bytearrayobject.c",
-         "Objects/genobject.c",
-         "Objects/codeobject.c",
-         # The socket object and the _socket.CAPI record: the _socket and
-         # _ssl ports define and read them; the header has no C user left.
-         "Modules/socketmodule.h",
-         "Python/bltinmodule.c",
-         "Python/hamt.c"
-     ],
      # Configuration macros a constant reads, folded to 0 or 1 for the probe
      # and layouts_check.c (a constant expression cannot use `defined`).
      PROBE_DEFINES: list[str] = [
@@ -4658,151 +4570,423 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("PyStructSequence_Field_SIZE", "sizeof(PyStructSequence_Field)", "i64"),
          ("PyStructSequence_Desc_SIZE", "sizeof(PyStructSequence_Desc)", "i64"),
          ("ast_state_Module_type", "offsetof(struct ast_state, Module_type)", "i64"),
-         ("ast_state_Interactive_type", "offsetof(struct ast_state, Interactive_type)", "i64"),
-         ("ast_state_Expression_type", "offsetof(struct ast_state, Expression_type)", "i64"),
-         ("ast_state_FunctionType_type", "offsetof(struct ast_state, FunctionType_type)", "i64"),
-         ("ast_state_FunctionDef_type", "offsetof(struct ast_state, FunctionDef_type)", "i64"),
-         ("ast_state_AsyncFunctionDef_type", "offsetof(struct ast_state, AsyncFunctionDef_type)", "i64"),
-         ("ast_state_ClassDef_type", "offsetof(struct ast_state, ClassDef_type)", "i64"),
+         (
+             "ast_state_Interactive_type",
+             "offsetof(struct ast_state, Interactive_type)",
+             "i64"
+         ),
+         (
+             "ast_state_Expression_type",
+             "offsetof(struct ast_state, Expression_type)",
+             "i64"
+         ),
+         (
+             "ast_state_FunctionType_type",
+             "offsetof(struct ast_state, FunctionType_type)",
+             "i64"
+         ),
+         (
+             "ast_state_FunctionDef_type",
+             "offsetof(struct ast_state, FunctionDef_type)",
+             "i64"
+         ),
+         (
+             "ast_state_AsyncFunctionDef_type",
+             "offsetof(struct ast_state, AsyncFunctionDef_type)",
+             "i64"
+         ),
+         (
+             "ast_state_ClassDef_type",
+             "offsetof(struct ast_state, ClassDef_type)",
+             "i64"
+         ),
          ("ast_state_Return_type", "offsetof(struct ast_state, Return_type)", "i64"),
          ("ast_state_Delete_type", "offsetof(struct ast_state, Delete_type)", "i64"),
          ("ast_state_Assign_type", "offsetof(struct ast_state, Assign_type)", "i64"),
-         ("ast_state_TypeAlias_type", "offsetof(struct ast_state, TypeAlias_type)", "i64"),
-         ("ast_state_AugAssign_type", "offsetof(struct ast_state, AugAssign_type)", "i64"),
-         ("ast_state_AnnAssign_type", "offsetof(struct ast_state, AnnAssign_type)", "i64"),
+         (
+             "ast_state_TypeAlias_type",
+             "offsetof(struct ast_state, TypeAlias_type)",
+             "i64"
+         ),
+         (
+             "ast_state_AugAssign_type",
+             "offsetof(struct ast_state, AugAssign_type)",
+             "i64"
+         ),
+         (
+             "ast_state_AnnAssign_type",
+             "offsetof(struct ast_state, AnnAssign_type)",
+             "i64"
+         ),
          ("ast_state_For_type", "offsetof(struct ast_state, For_type)", "i64"),
-         ("ast_state_AsyncFor_type", "offsetof(struct ast_state, AsyncFor_type)", "i64"),
+         (
+             "ast_state_AsyncFor_type",
+             "offsetof(struct ast_state, AsyncFor_type)",
+             "i64"
+         ),
          ("ast_state_While_type", "offsetof(struct ast_state, While_type)", "i64"),
          ("ast_state_If_type", "offsetof(struct ast_state, If_type)", "i64"),
          ("ast_state_With_type", "offsetof(struct ast_state, With_type)", "i64"),
-         ("ast_state_AsyncWith_type", "offsetof(struct ast_state, AsyncWith_type)", "i64"),
+         (
+             "ast_state_AsyncWith_type",
+             "offsetof(struct ast_state, AsyncWith_type)",
+             "i64"
+         ),
          ("ast_state_Match_type", "offsetof(struct ast_state, Match_type)", "i64"),
          ("ast_state_Raise_type", "offsetof(struct ast_state, Raise_type)", "i64"),
          ("ast_state_Try_type", "offsetof(struct ast_state, Try_type)", "i64"),
          ("ast_state_TryStar_type", "offsetof(struct ast_state, TryStar_type)", "i64"),
          ("ast_state_Assert_type", "offsetof(struct ast_state, Assert_type)", "i64"),
          ("ast_state_Import_type", "offsetof(struct ast_state, Import_type)", "i64"),
-         ("ast_state_ImportFrom_type", "offsetof(struct ast_state, ImportFrom_type)", "i64"),
+         (
+             "ast_state_ImportFrom_type",
+             "offsetof(struct ast_state, ImportFrom_type)",
+             "i64"
+         ),
          ("ast_state_Global_type", "offsetof(struct ast_state, Global_type)", "i64"),
-         ("ast_state_Nonlocal_type", "offsetof(struct ast_state, Nonlocal_type)", "i64"),
+         (
+             "ast_state_Nonlocal_type",
+             "offsetof(struct ast_state, Nonlocal_type)",
+             "i64"
+         ),
          ("ast_state_Expr_type", "offsetof(struct ast_state, Expr_type)", "i64"),
          ("ast_state_Pass_type", "offsetof(struct ast_state, Pass_type)", "i64"),
          ("ast_state_Break_type", "offsetof(struct ast_state, Break_type)", "i64"),
-         ("ast_state_Continue_type", "offsetof(struct ast_state, Continue_type)", "i64"),
+         (
+             "ast_state_Continue_type",
+             "offsetof(struct ast_state, Continue_type)",
+             "i64"
+         ),
          ("ast_state_BoolOp_type", "offsetof(struct ast_state, BoolOp_type)", "i64"),
-         ("ast_state_NamedExpr_type", "offsetof(struct ast_state, NamedExpr_type)", "i64"),
+         (
+             "ast_state_NamedExpr_type",
+             "offsetof(struct ast_state, NamedExpr_type)",
+             "i64"
+         ),
          ("ast_state_BinOp_type", "offsetof(struct ast_state, BinOp_type)", "i64"),
          ("ast_state_UnaryOp_type", "offsetof(struct ast_state, UnaryOp_type)", "i64"),
          ("ast_state_Lambda_type", "offsetof(struct ast_state, Lambda_type)", "i64"),
          ("ast_state_IfExp_type", "offsetof(struct ast_state, IfExp_type)", "i64"),
          ("ast_state_Dict_type", "offsetof(struct ast_state, Dict_type)", "i64"),
          ("ast_state_Set_type", "offsetof(struct ast_state, Set_type)", "i64"),
-         ("ast_state_ListComp_type", "offsetof(struct ast_state, ListComp_type)", "i64"),
+         (
+             "ast_state_ListComp_type",
+             "offsetof(struct ast_state, ListComp_type)",
+             "i64"
+         ),
          ("ast_state_SetComp_type", "offsetof(struct ast_state, SetComp_type)", "i64"),
-         ("ast_state_DictComp_type", "offsetof(struct ast_state, DictComp_type)", "i64"),
-         ("ast_state_GeneratorExp_type", "offsetof(struct ast_state, GeneratorExp_type)", "i64"),
+         (
+             "ast_state_DictComp_type",
+             "offsetof(struct ast_state, DictComp_type)",
+             "i64"
+         ),
+         (
+             "ast_state_GeneratorExp_type",
+             "offsetof(struct ast_state, GeneratorExp_type)",
+             "i64"
+         ),
          ("ast_state_Await_type", "offsetof(struct ast_state, Await_type)", "i64"),
          ("ast_state_Yield_type", "offsetof(struct ast_state, Yield_type)", "i64"),
-         ("ast_state_YieldFrom_type", "offsetof(struct ast_state, YieldFrom_type)", "i64"),
+         (
+             "ast_state_YieldFrom_type",
+             "offsetof(struct ast_state, YieldFrom_type)",
+             "i64"
+         ),
          ("ast_state_Compare_type", "offsetof(struct ast_state, Compare_type)", "i64"),
          ("ast_state_Call_type", "offsetof(struct ast_state, Call_type)", "i64"),
-         ("ast_state_FormattedValue_type", "offsetof(struct ast_state, FormattedValue_type)", "i64"),
-         ("ast_state_Interpolation_type", "offsetof(struct ast_state, Interpolation_type)", "i64"),
-         ("ast_state_JoinedStr_type", "offsetof(struct ast_state, JoinedStr_type)", "i64"),
-         ("ast_state_TemplateStr_type", "offsetof(struct ast_state, TemplateStr_type)", "i64"),
-         ("ast_state_Constant_type", "offsetof(struct ast_state, Constant_type)", "i64"),
-         ("ast_state_Attribute_type", "offsetof(struct ast_state, Attribute_type)", "i64"),
-         ("ast_state_Subscript_type", "offsetof(struct ast_state, Subscript_type)", "i64"),
+         (
+             "ast_state_FormattedValue_type",
+             "offsetof(struct ast_state, FormattedValue_type)",
+             "i64"
+         ),
+         (
+             "ast_state_Interpolation_type",
+             "offsetof(struct ast_state, Interpolation_type)",
+             "i64"
+         ),
+         (
+             "ast_state_JoinedStr_type",
+             "offsetof(struct ast_state, JoinedStr_type)",
+             "i64"
+         ),
+         (
+             "ast_state_TemplateStr_type",
+             "offsetof(struct ast_state, TemplateStr_type)",
+             "i64"
+         ),
+         (
+             "ast_state_Constant_type",
+             "offsetof(struct ast_state, Constant_type)",
+             "i64"
+         ),
+         (
+             "ast_state_Attribute_type",
+             "offsetof(struct ast_state, Attribute_type)",
+             "i64"
+         ),
+         (
+             "ast_state_Subscript_type",
+             "offsetof(struct ast_state, Subscript_type)",
+             "i64"
+         ),
          ("ast_state_Starred_type", "offsetof(struct ast_state, Starred_type)", "i64"),
          ("ast_state_Name_type", "offsetof(struct ast_state, Name_type)", "i64"),
          ("ast_state_List_type", "offsetof(struct ast_state, List_type)", "i64"),
          ("ast_state_Tuple_type", "offsetof(struct ast_state, Tuple_type)", "i64"),
          ("ast_state_Slice_type", "offsetof(struct ast_state, Slice_type)", "i64"),
          ("ast_state_Load_type", "offsetof(struct ast_state, Load_type)", "i64"),
-         ("ast_state_Load_singleton", "offsetof(struct ast_state, Load_singleton)", "i64"),
+         (
+             "ast_state_Load_singleton",
+             "offsetof(struct ast_state, Load_singleton)",
+             "i64"
+         ),
          ("ast_state_Store_type", "offsetof(struct ast_state, Store_type)", "i64"),
-         ("ast_state_Store_singleton", "offsetof(struct ast_state, Store_singleton)", "i64"),
+         (
+             "ast_state_Store_singleton",
+             "offsetof(struct ast_state, Store_singleton)",
+             "i64"
+         ),
          ("ast_state_Del_type", "offsetof(struct ast_state, Del_type)", "i64"),
-         ("ast_state_Del_singleton", "offsetof(struct ast_state, Del_singleton)", "i64"),
+         (
+             "ast_state_Del_singleton",
+             "offsetof(struct ast_state, Del_singleton)",
+             "i64"
+         ),
          ("ast_state_And_type", "offsetof(struct ast_state, And_type)", "i64"),
-         ("ast_state_And_singleton", "offsetof(struct ast_state, And_singleton)", "i64"),
+         (
+             "ast_state_And_singleton",
+             "offsetof(struct ast_state, And_singleton)",
+             "i64"
+         ),
          ("ast_state_Or_type", "offsetof(struct ast_state, Or_type)", "i64"),
          ("ast_state_Or_singleton", "offsetof(struct ast_state, Or_singleton)", "i64"),
          ("ast_state_Add_type", "offsetof(struct ast_state, Add_type)", "i64"),
-         ("ast_state_Add_singleton", "offsetof(struct ast_state, Add_singleton)", "i64"),
+         (
+             "ast_state_Add_singleton",
+             "offsetof(struct ast_state, Add_singleton)",
+             "i64"
+         ),
          ("ast_state_Sub_type", "offsetof(struct ast_state, Sub_type)", "i64"),
-         ("ast_state_Sub_singleton", "offsetof(struct ast_state, Sub_singleton)", "i64"),
+         (
+             "ast_state_Sub_singleton",
+             "offsetof(struct ast_state, Sub_singleton)",
+             "i64"
+         ),
          ("ast_state_Mult_type", "offsetof(struct ast_state, Mult_type)", "i64"),
-         ("ast_state_Mult_singleton", "offsetof(struct ast_state, Mult_singleton)", "i64"),
+         (
+             "ast_state_Mult_singleton",
+             "offsetof(struct ast_state, Mult_singleton)",
+             "i64"
+         ),
          ("ast_state_MatMult_type", "offsetof(struct ast_state, MatMult_type)", "i64"),
-         ("ast_state_MatMult_singleton", "offsetof(struct ast_state, MatMult_singleton)", "i64"),
+         (
+             "ast_state_MatMult_singleton",
+             "offsetof(struct ast_state, MatMult_singleton)",
+             "i64"
+         ),
          ("ast_state_Div_type", "offsetof(struct ast_state, Div_type)", "i64"),
-         ("ast_state_Div_singleton", "offsetof(struct ast_state, Div_singleton)", "i64"),
+         (
+             "ast_state_Div_singleton",
+             "offsetof(struct ast_state, Div_singleton)",
+             "i64"
+         ),
          ("ast_state_Mod_type", "offsetof(struct ast_state, Mod_type)", "i64"),
-         ("ast_state_Mod_singleton", "offsetof(struct ast_state, Mod_singleton)", "i64"),
+         (
+             "ast_state_Mod_singleton",
+             "offsetof(struct ast_state, Mod_singleton)",
+             "i64"
+         ),
          ("ast_state_Pow_type", "offsetof(struct ast_state, Pow_type)", "i64"),
-         ("ast_state_Pow_singleton", "offsetof(struct ast_state, Pow_singleton)", "i64"),
+         (
+             "ast_state_Pow_singleton",
+             "offsetof(struct ast_state, Pow_singleton)",
+             "i64"
+         ),
          ("ast_state_LShift_type", "offsetof(struct ast_state, LShift_type)", "i64"),
-         ("ast_state_LShift_singleton", "offsetof(struct ast_state, LShift_singleton)", "i64"),
+         (
+             "ast_state_LShift_singleton",
+             "offsetof(struct ast_state, LShift_singleton)",
+             "i64"
+         ),
          ("ast_state_RShift_type", "offsetof(struct ast_state, RShift_type)", "i64"),
-         ("ast_state_RShift_singleton", "offsetof(struct ast_state, RShift_singleton)", "i64"),
+         (
+             "ast_state_RShift_singleton",
+             "offsetof(struct ast_state, RShift_singleton)",
+             "i64"
+         ),
          ("ast_state_BitOr_type", "offsetof(struct ast_state, BitOr_type)", "i64"),
-         ("ast_state_BitOr_singleton", "offsetof(struct ast_state, BitOr_singleton)", "i64"),
+         (
+             "ast_state_BitOr_singleton",
+             "offsetof(struct ast_state, BitOr_singleton)",
+             "i64"
+         ),
          ("ast_state_BitXor_type", "offsetof(struct ast_state, BitXor_type)", "i64"),
-         ("ast_state_BitXor_singleton", "offsetof(struct ast_state, BitXor_singleton)", "i64"),
+         (
+             "ast_state_BitXor_singleton",
+             "offsetof(struct ast_state, BitXor_singleton)",
+             "i64"
+         ),
          ("ast_state_BitAnd_type", "offsetof(struct ast_state, BitAnd_type)", "i64"),
-         ("ast_state_BitAnd_singleton", "offsetof(struct ast_state, BitAnd_singleton)", "i64"),
-         ("ast_state_FloorDiv_type", "offsetof(struct ast_state, FloorDiv_type)", "i64"),
-         ("ast_state_FloorDiv_singleton", "offsetof(struct ast_state, FloorDiv_singleton)", "i64"),
+         (
+             "ast_state_BitAnd_singleton",
+             "offsetof(struct ast_state, BitAnd_singleton)",
+             "i64"
+         ),
+         (
+             "ast_state_FloorDiv_type",
+             "offsetof(struct ast_state, FloorDiv_type)",
+             "i64"
+         ),
+         (
+             "ast_state_FloorDiv_singleton",
+             "offsetof(struct ast_state, FloorDiv_singleton)",
+             "i64"
+         ),
          ("ast_state_Invert_type", "offsetof(struct ast_state, Invert_type)", "i64"),
-         ("ast_state_Invert_singleton", "offsetof(struct ast_state, Invert_singleton)", "i64"),
+         (
+             "ast_state_Invert_singleton",
+             "offsetof(struct ast_state, Invert_singleton)",
+             "i64"
+         ),
          ("ast_state_Not_type", "offsetof(struct ast_state, Not_type)", "i64"),
-         ("ast_state_Not_singleton", "offsetof(struct ast_state, Not_singleton)", "i64"),
+         (
+             "ast_state_Not_singleton",
+             "offsetof(struct ast_state, Not_singleton)",
+             "i64"
+         ),
          ("ast_state_UAdd_type", "offsetof(struct ast_state, UAdd_type)", "i64"),
-         ("ast_state_UAdd_singleton", "offsetof(struct ast_state, UAdd_singleton)", "i64"),
+         (
+             "ast_state_UAdd_singleton",
+             "offsetof(struct ast_state, UAdd_singleton)",
+             "i64"
+         ),
          ("ast_state_USub_type", "offsetof(struct ast_state, USub_type)", "i64"),
-         ("ast_state_USub_singleton", "offsetof(struct ast_state, USub_singleton)", "i64"),
+         (
+             "ast_state_USub_singleton",
+             "offsetof(struct ast_state, USub_singleton)",
+             "i64"
+         ),
          ("ast_state_Eq_type", "offsetof(struct ast_state, Eq_type)", "i64"),
          ("ast_state_Eq_singleton", "offsetof(struct ast_state, Eq_singleton)", "i64"),
          ("ast_state_NotEq_type", "offsetof(struct ast_state, NotEq_type)", "i64"),
-         ("ast_state_NotEq_singleton", "offsetof(struct ast_state, NotEq_singleton)", "i64"),
+         (
+             "ast_state_NotEq_singleton",
+             "offsetof(struct ast_state, NotEq_singleton)",
+             "i64"
+         ),
          ("ast_state_Lt_type", "offsetof(struct ast_state, Lt_type)", "i64"),
          ("ast_state_Lt_singleton", "offsetof(struct ast_state, Lt_singleton)", "i64"),
          ("ast_state_LtE_type", "offsetof(struct ast_state, LtE_type)", "i64"),
-         ("ast_state_LtE_singleton", "offsetof(struct ast_state, LtE_singleton)", "i64"),
+         (
+             "ast_state_LtE_singleton",
+             "offsetof(struct ast_state, LtE_singleton)",
+             "i64"
+         ),
          ("ast_state_Gt_type", "offsetof(struct ast_state, Gt_type)", "i64"),
          ("ast_state_Gt_singleton", "offsetof(struct ast_state, Gt_singleton)", "i64"),
          ("ast_state_GtE_type", "offsetof(struct ast_state, GtE_type)", "i64"),
-         ("ast_state_GtE_singleton", "offsetof(struct ast_state, GtE_singleton)", "i64"),
+         (
+             "ast_state_GtE_singleton",
+             "offsetof(struct ast_state, GtE_singleton)",
+             "i64"
+         ),
          ("ast_state_Is_type", "offsetof(struct ast_state, Is_type)", "i64"),
          ("ast_state_Is_singleton", "offsetof(struct ast_state, Is_singleton)", "i64"),
          ("ast_state_IsNot_type", "offsetof(struct ast_state, IsNot_type)", "i64"),
-         ("ast_state_IsNot_singleton", "offsetof(struct ast_state, IsNot_singleton)", "i64"),
+         (
+             "ast_state_IsNot_singleton",
+             "offsetof(struct ast_state, IsNot_singleton)",
+             "i64"
+         ),
          ("ast_state_In_type", "offsetof(struct ast_state, In_type)", "i64"),
          ("ast_state_In_singleton", "offsetof(struct ast_state, In_singleton)", "i64"),
          ("ast_state_NotIn_type", "offsetof(struct ast_state, NotIn_type)", "i64"),
-         ("ast_state_NotIn_singleton", "offsetof(struct ast_state, NotIn_singleton)", "i64"),
-         ("ast_state_comprehension_type", "offsetof(struct ast_state, comprehension_type)", "i64"),
-         ("ast_state_ExceptHandler_type", "offsetof(struct ast_state, ExceptHandler_type)", "i64"),
-         ("ast_state_arguments_type", "offsetof(struct ast_state, arguments_type)", "i64"),
+         (
+             "ast_state_NotIn_singleton",
+             "offsetof(struct ast_state, NotIn_singleton)",
+             "i64"
+         ),
+         (
+             "ast_state_comprehension_type",
+             "offsetof(struct ast_state, comprehension_type)",
+             "i64"
+         ),
+         (
+             "ast_state_ExceptHandler_type",
+             "offsetof(struct ast_state, ExceptHandler_type)",
+             "i64"
+         ),
+         (
+             "ast_state_arguments_type",
+             "offsetof(struct ast_state, arguments_type)",
+             "i64"
+         ),
          ("ast_state_arg_type", "offsetof(struct ast_state, arg_type)", "i64"),
          ("ast_state_keyword_type", "offsetof(struct ast_state, keyword_type)", "i64"),
          ("ast_state_alias_type", "offsetof(struct ast_state, alias_type)", "i64"),
-         ("ast_state_withitem_type", "offsetof(struct ast_state, withitem_type)", "i64"),
-         ("ast_state_match_case_type", "offsetof(struct ast_state, match_case_type)", "i64"),
-         ("ast_state_MatchValue_type", "offsetof(struct ast_state, MatchValue_type)", "i64"),
-         ("ast_state_MatchSingleton_type", "offsetof(struct ast_state, MatchSingleton_type)", "i64"),
-         ("ast_state_MatchSequence_type", "offsetof(struct ast_state, MatchSequence_type)", "i64"),
-         ("ast_state_MatchMapping_type", "offsetof(struct ast_state, MatchMapping_type)", "i64"),
-         ("ast_state_MatchClass_type", "offsetof(struct ast_state, MatchClass_type)", "i64"),
-         ("ast_state_MatchStar_type", "offsetof(struct ast_state, MatchStar_type)", "i64"),
+         (
+             "ast_state_withitem_type",
+             "offsetof(struct ast_state, withitem_type)",
+             "i64"
+         ),
+         (
+             "ast_state_match_case_type",
+             "offsetof(struct ast_state, match_case_type)",
+             "i64"
+         ),
+         (
+             "ast_state_MatchValue_type",
+             "offsetof(struct ast_state, MatchValue_type)",
+             "i64"
+         ),
+         (
+             "ast_state_MatchSingleton_type",
+             "offsetof(struct ast_state, MatchSingleton_type)",
+             "i64"
+         ),
+         (
+             "ast_state_MatchSequence_type",
+             "offsetof(struct ast_state, MatchSequence_type)",
+             "i64"
+         ),
+         (
+             "ast_state_MatchMapping_type",
+             "offsetof(struct ast_state, MatchMapping_type)",
+             "i64"
+         ),
+         (
+             "ast_state_MatchClass_type",
+             "offsetof(struct ast_state, MatchClass_type)",
+             "i64"
+         ),
+         (
+             "ast_state_MatchStar_type",
+             "offsetof(struct ast_state, MatchStar_type)",
+             "i64"
+         ),
          ("ast_state_MatchAs_type", "offsetof(struct ast_state, MatchAs_type)", "i64"),
          ("ast_state_MatchOr_type", "offsetof(struct ast_state, MatchOr_type)", "i64"),
-         ("ast_state_TypeIgnore_type", "offsetof(struct ast_state, TypeIgnore_type)", "i64"),
+         (
+             "ast_state_TypeIgnore_type",
+             "offsetof(struct ast_state, TypeIgnore_type)",
+             "i64"
+         ),
          ("ast_state_TypeVar_type", "offsetof(struct ast_state, TypeVar_type)", "i64"),
-         ("ast_state_ParamSpec_type", "offsetof(struct ast_state, ParamSpec_type)", "i64"),
-         ("ast_state_TypeVarTuple_type", "offsetof(struct ast_state, TypeVarTuple_type)", "i64"),
-         ("ast_state_field_annotation", "offsetof(struct ast_state, annotation)", "i64"),
+         (
+             "ast_state_ParamSpec_type",
+             "offsetof(struct ast_state, ParamSpec_type)",
+             "i64"
+         ),
+         (
+             "ast_state_TypeVarTuple_type",
+             "offsetof(struct ast_state, TypeVarTuple_type)",
+             "i64"
+         ),
+         (
+             "ast_state_field_annotation",
+             "offsetof(struct ast_state, annotation)",
+             "i64"
+         ),
          ("ast_state_field_arg", "offsetof(struct ast_state, arg)", "i64"),
          ("ast_state_field_args", "offsetof(struct ast_state, args)", "i64"),
          ("ast_state_field_argtypes", "offsetof(struct ast_state, argtypes)", "i64"),
@@ -4814,23 +4998,63 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("ast_state_field_cases", "offsetof(struct ast_state, cases)", "i64"),
          ("ast_state_field_cause", "offsetof(struct ast_state, cause)", "i64"),
          ("ast_state_field_cls", "offsetof(struct ast_state, cls)", "i64"),
-         ("ast_state_field_col_offset", "offsetof(struct ast_state, col_offset)", "i64"),
-         ("ast_state_field_comparators", "offsetof(struct ast_state, comparators)", "i64"),
-         ("ast_state_field_context_expr", "offsetof(struct ast_state, context_expr)", "i64"),
-         ("ast_state_field_conversion", "offsetof(struct ast_state, conversion)", "i64"),
+         (
+             "ast_state_field_col_offset",
+             "offsetof(struct ast_state, col_offset)",
+             "i64"
+         ),
+         (
+             "ast_state_field_comparators",
+             "offsetof(struct ast_state, comparators)",
+             "i64"
+         ),
+         (
+             "ast_state_field_context_expr",
+             "offsetof(struct ast_state, context_expr)",
+             "i64"
+         ),
+         (
+             "ast_state_field_conversion",
+             "offsetof(struct ast_state, conversion)",
+             "i64"
+         ),
          ("ast_state_field_ctx", "offsetof(struct ast_state, ctx)", "i64"),
-         ("ast_state_field_decorator_list", "offsetof(struct ast_state, decorator_list)", "i64"),
-         ("ast_state_field_default_value", "offsetof(struct ast_state, default_value)", "i64"),
+         (
+             "ast_state_field_decorator_list",
+             "offsetof(struct ast_state, decorator_list)",
+             "i64"
+         ),
+         (
+             "ast_state_field_default_value",
+             "offsetof(struct ast_state, default_value)",
+             "i64"
+         ),
          ("ast_state_field_defaults", "offsetof(struct ast_state, defaults)", "i64"),
          ("ast_state_field_elt", "offsetof(struct ast_state, elt)", "i64"),
          ("ast_state_field_elts", "offsetof(struct ast_state, elts)", "i64"),
-         ("ast_state_field_end_col_offset", "offsetof(struct ast_state, end_col_offset)", "i64"),
-         ("ast_state_field_end_lineno", "offsetof(struct ast_state, end_lineno)", "i64"),
+         (
+             "ast_state_field_end_col_offset",
+             "offsetof(struct ast_state, end_col_offset)",
+             "i64"
+         ),
+         (
+             "ast_state_field_end_lineno",
+             "offsetof(struct ast_state, end_lineno)",
+             "i64"
+         ),
          ("ast_state_field_exc", "offsetof(struct ast_state, exc)", "i64"),
          ("ast_state_field_finalbody", "offsetof(struct ast_state, finalbody)", "i64"),
-         ("ast_state_field_format_spec", "offsetof(struct ast_state, format_spec)", "i64"),
+         (
+             "ast_state_field_format_spec",
+             "offsetof(struct ast_state, format_spec)",
+             "i64"
+         ),
          ("ast_state_field_func", "offsetof(struct ast_state, func)", "i64"),
-         ("ast_state_field_generators", "offsetof(struct ast_state, generators)", "i64"),
+         (
+             "ast_state_field_generators",
+             "offsetof(struct ast_state, generators)",
+             "i64"
+         ),
          ("ast_state_field_guard", "offsetof(struct ast_state, guard)", "i64"),
          ("ast_state_field_handlers", "offsetof(struct ast_state, handlers)", "i64"),
          ("ast_state_field_id", "offsetof(struct ast_state, id)", "i64"),
@@ -4842,11 +5066,23 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("ast_state_field_keys", "offsetof(struct ast_state, keys)", "i64"),
          ("ast_state_field_keywords", "offsetof(struct ast_state, keywords)", "i64"),
          ("ast_state_field_kind", "offsetof(struct ast_state, kind)", "i64"),
-         ("ast_state_field_kw_defaults", "offsetof(struct ast_state, kw_defaults)", "i64"),
+         (
+             "ast_state_field_kw_defaults",
+             "offsetof(struct ast_state, kw_defaults)",
+             "i64"
+         ),
          ("ast_state_field_kwarg", "offsetof(struct ast_state, kwarg)", "i64"),
          ("ast_state_field_kwd_attrs", "offsetof(struct ast_state, kwd_attrs)", "i64"),
-         ("ast_state_field_kwd_patterns", "offsetof(struct ast_state, kwd_patterns)", "i64"),
-         ("ast_state_field_kwonlyargs", "offsetof(struct ast_state, kwonlyargs)", "i64"),
+         (
+             "ast_state_field_kwd_patterns",
+             "offsetof(struct ast_state, kwd_patterns)",
+             "i64"
+         ),
+         (
+             "ast_state_field_kwonlyargs",
+             "offsetof(struct ast_state, kwonlyargs)",
+             "i64"
+         ),
          ("ast_state_field_left", "offsetof(struct ast_state, left)", "i64"),
          ("ast_state_field_level", "offsetof(struct ast_state, level)", "i64"),
          ("ast_state_field_lineno", "offsetof(struct ast_state, lineno)", "i64"),
@@ -4858,11 +5094,19 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("ast_state_field_op", "offsetof(struct ast_state, op)", "i64"),
          ("ast_state_field_operand", "offsetof(struct ast_state, operand)", "i64"),
          ("ast_state_field_ops", "offsetof(struct ast_state, ops)", "i64"),
-         ("ast_state_field_optional_vars", "offsetof(struct ast_state, optional_vars)", "i64"),
+         (
+             "ast_state_field_optional_vars",
+             "offsetof(struct ast_state, optional_vars)",
+             "i64"
+         ),
          ("ast_state_field_orelse", "offsetof(struct ast_state, orelse)", "i64"),
          ("ast_state_field_pattern", "offsetof(struct ast_state, pattern)", "i64"),
          ("ast_state_field_patterns", "offsetof(struct ast_state, patterns)", "i64"),
-         ("ast_state_field_posonlyargs", "offsetof(struct ast_state, posonlyargs)", "i64"),
+         (
+             "ast_state_field_posonlyargs",
+             "offsetof(struct ast_state, posonlyargs)",
+             "i64"
+         ),
          ("ast_state_field_rest", "offsetof(struct ast_state, rest)", "i64"),
          ("ast_state_field_returns", "offsetof(struct ast_state, returns)", "i64"),
          ("ast_state_field_right", "offsetof(struct ast_state, right)", "i64"),
@@ -4876,9 +5120,21 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("ast_state_field_targets", "offsetof(struct ast_state, targets)", "i64"),
          ("ast_state_field_test", "offsetof(struct ast_state, test)", "i64"),
          ("ast_state_field_type", "offsetof(struct ast_state, type)", "i64"),
-         ("ast_state_field_type_comment", "offsetof(struct ast_state, type_comment)", "i64"),
-         ("ast_state_field_type_ignores", "offsetof(struct ast_state, type_ignores)", "i64"),
-         ("ast_state_field_type_params", "offsetof(struct ast_state, type_params)", "i64"),
+         (
+             "ast_state_field_type_comment",
+             "offsetof(struct ast_state, type_comment)",
+             "i64"
+         ),
+         (
+             "ast_state_field_type_ignores",
+             "offsetof(struct ast_state, type_ignores)",
+             "i64"
+         ),
+         (
+             "ast_state_field_type_params",
+             "offsetof(struct ast_state, type_params)",
+             "i64"
+         ),
          ("ast_state_field_upper", "offsetof(struct ast_state, upper)", "i64"),
          ("ast_state_field_value", "offsetof(struct ast_state, value)", "i64"),
          ("ast_state_field_values", "offsetof(struct ast_state, values)", "i64"),
@@ -6719,10 +6975,26 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          ("IO_WRITE_MAX", "_PY_WRITE_MAX", "i64"),
          ("IO_SMALLCHUNK", "(BUFSIZ < 8 * 1024 ? 8 * 1024 : BUFSIZ)", "i64"),
          ("IO_STAT_SIZE", "sizeof(struct stat)", "u64"),
-         ("PyThreadState_REMOTE_DEBUGGER_PENDING_CALL", "offsetof(PyThreadState, remote_debugger_support.debugger_pending_call)", "i64"),
-         ("PyThreadState_REMOTE_DEBUGGER_SCRIPT_PATH", "offsetof(PyThreadState, remote_debugger_support.debugger_script_path)", "i64"),
-         ("PyInterpreterState_ATEXIT_LL_CALLBACKS", "offsetof(PyInterpreterState, atexit.ll_callbacks)", "i64"),
-         ("PyInterpreterState_ATEXIT_CALLBACKS", "offsetof(PyInterpreterState, atexit.callbacks)", "i64"),
+         (
+             "PyThreadState_REMOTE_DEBUGGER_PENDING_CALL",
+             "offsetof(PyThreadState, remote_debugger_support.debugger_pending_call)",
+             "i64"
+         ),
+         (
+             "PyThreadState_REMOTE_DEBUGGER_SCRIPT_PATH",
+             "offsetof(PyThreadState, remote_debugger_support.debugger_script_path)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_ATEXIT_LL_CALLBACKS",
+             "offsetof(PyInterpreterState, atexit.ll_callbacks)",
+             "i64"
+         ),
+         (
+             "PyInterpreterState_ATEXIT_CALLBACKS",
+             "offsetof(PyInterpreterState, atexit.callbacks)",
+             "i64"
+         ),
          ("PyConfig_USE_SYSTEM_LOGGER", "JAC_CONFIG_USE_SYSTEM_LOGGER", "i64")
      ],
      # The supported platforms: variant module suffix, zig target and the C
@@ -6745,60 +7017,103 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
              "defined(__APPLE__) && defined(__aarch64__)"
          )
      ],
-     # The configuration pyconfig.h, pyport.h and the compiler give every
-     # supported release build (linux and darwin, x86_64 and aarch64).
-     CONFIG: dict[str, int] = {
-         "SIZEOF_VOID_P": 8,
-         "PY_BIG_ENDIAN": 0,
-         "PYLONG_BITS_IN_DIGIT": 30,
-         "__clang__": 1,
-         "__GNUC__": 4,
-         "__STDC_VERSION__": 201112
+     # The layouts no header defines: the struct of an Objects/ or Modules/
+     # file a Jac port now owns. layouts_check.c declares each from its Jac
+     # record, so its asserts check the offsets this script computes.
+     PRIVATE_LAYOUTS: list[str] = [
+         "dictiterobject",
+         "PyODictObject",
+         "_ODictNode",
+         "odictiterobject",
+         "memoryiterobject",
+         "striterobject",
+         "bytesiterobject",
+         "PyCoroWrapper",
+         "PyAsyncGenASend",
+         "PyAsyncGenAThrow",
+         "_PyAsyncGenWrappedValue",
+         "lineiterator",
+         "positionsiterator",
+         "_PyCodeObjectExtra",
+         "mappingproxyobject",
+         "wrapperobject",
+         "classmethod",
+         "staticmethod",
+         "typevarobject",
+         "typevartupleobject",
+         "paramspecobject",
+         "typealiasobject",
+         "paramspecattrobject",
+         "constevaluatorobject",
+         "_PyNamespaceObject",
+         "PyCapsule",
+         "seqiterobject",
+         "calliterobject",
+         "anextawaitableobject",
+         "enumobject",
+         "reversedobject",
+         "rangeobject",
+         "longrangeiterobject",
+         "PyPickleBufferObject",
+         "interpolationobject",
+         "templateiterobject",
+         "templateobject",
+         "unionobject",
+         "gaobject",
+         "gaiterobject",
+         "PyStdPrinter_Object",
+         "PySocketSockObject",
+         "PySocketModule_APIObject",
+         "filterobject",
+         "mapobject",
+         "zipobject",
+         "PyHamtNode_Array",
+         "PyHamtNode_Collision"
+     ],
+     # The C arrays among the record fields, `Record.field` to its element
+     # count: `T name[N]` is the Jac fields name, name_1 ... name_<N-1>, and a
+     # trailing `T name[1]` the one field name, whose further elements follow
+     # it in memory.
+     C_ARRAYS: dict[str, int] = {
+         "_PyLongValue.ob_digit": 1,
+         "PyTupleObject.ob_item": 1,
+         "PySetObject.smalltable": 8,
+         "PyMemoryViewObject.ob_array": 1,
+         "PyBytesObject.ob_sval": 1,
+         "_PyCodeObjectExtra.ce_extras": 1,
+         "_PyDateTime_BaseTime.data": 6,
+         "PyDateTime_Time.data": 6,
+         "PyDateTime_Date.data": 4,
+         "_PyDateTime_BaseDateTime.data": 10,
+         "PyDateTime_DateTime.data": 10,
+         "PyHamtNode_Bitmap.b_array": 1,
+         "PyHamtNode_Array.a_array": 32,
+         "PyHamtNode_Collision.c_array": 1,
+         "PyHamtIteratorState.i_nodes": 8,
+         "PyHamtIteratorState.i_pos": 8
      },
-     # C scalar types: Jac type and whether the C type is signed.
-     SCALARS: dict[str, tuple[str, bool]] = {
-         "char": ("i8", True),
-         "Py_uhash_t": ("u64", False),
-         "signed char": ("i8", True),
-         "unsigned char": ("u8", False),
-         "short": ("i16", True),
-         "unsigned short": ("u16", False),
-         "int": ("i32", True),
-         "unsigned int": ("u32", False),
-         "long": ("i64", True),
-         "unsigned long": ("u64", False),
-         "long long": ("i64", True),
-         "unsigned long long": ("u64", False),
-         "int8_t": ("i8", True),
-         "uint8_t": ("u8", False),
-         "int16_t": ("i16", True),
-         "uint16_t": ("u16", False),
-         "int32_t": ("i32", True),
-         "uint32_t": ("u32", False),
-         "int64_t": ("i64", True),
-         "uint64_t": ("u64", False),
-         "PY_INT64_T": ("i64", True),
-         "PY_UINT64_T": ("u64", False),
-         "PyTime_t": ("i64", True),
-         "size_t": ("u64", False),
-         "Py_ssize_t": ("i64", True),
-         "Py_hash_t": ("i64", True),
-         "uintptr_t": ("u64", False),
-         # pycore_obmalloc.h's `#define uint pymem_uint` (unsigned int).
-         "uint": ("u32", False),
-         "pymem_uint": ("u32", False),
-         "intptr_t": ("i64", True),
-         # wchar_t is 4 bytes on every supported platform; the runtime reads
-         # wide strings as i32 code units.
-         "wchar_t": ("i32", True),
-         "double": ("f64", True),
-         "float": ("f32", True),
-         # C's bool: one unsigned byte, which the asserts hold to kind 4.
-         "bool": ("u8", False),
-         "_Bool": ("u8", False),
-         # An enum with a negative enumerator is an int.
-         "PySendResult": ("i32", True),
-         "_PyXI_errcode": ("i32", True)
+     # The C designator of a record field whose C member has another name: a
+     # field cpython_api.jac renamed, or the member a named union is read
+     # through. A field named after a Jac keyword with a trailing underscore
+     # (`obj_`) is the keyword in C without needing an entry.
+     C_MEMBERS: dict[str, str] = {
+         "Py_buffer.owner": "obj",
+         "Py_buffer.length": "len",
+         "Py_buffer.format_": "format",
+         "pool_header.ref": "ref._padding"
+     },
+     # The C type of a private struct's integer and floating-point fields.
+     C_SCALARS: dict[str, str] = {
+         "i8": "int8_t",
+         "u8": "uint8_t",
+         "i16": "int16_t",
+         "u16": "uint16_t",
+         "i32": "int32_t",
+         "u32": "uint32_t",
+         "i64": "int64_t",
+         "u64": "uint64_t",
+         "f32": "float",
+         "f64": "double"
      },
      # Jac keywords a C member name may collide with.
      JAC_KEYWORDS: set[str] = set(
@@ -6823,32 +7138,24 @@ glob OUTPUT: Path = RUNTIME / "layouts.jac",
          "f64": 8
      };
 
-"""A header's function-pointer typedef: return and parameter C types."""
-obj FunctionType {
-    has returns: str,
-        params: list[str];
-}
 
-"""One generated field: Jac name and type, the C member it mirrors, its
-offset and size, and for integers whether the C type is signed. `member` is
-the C designator the asserts use: an element of a fixed array
-(`data[3]`) when that differs from the Jac name."""
+"""One asserted field: Jac name and type, its offset and size, and the C
+designator the asserts use when it differs from the Jac name (an element
+`data[3]` of a fixed array, a renamed or keyword member)."""
 obj Field {
     has name: str,
         jac: str,
         offset: int,
         size: int,
-        signed: (bool | None) = None,
         array: bool = False,
-        member: str = "",
-        boolean: bool = False;
+        member: str = "";
 
     def designator -> str {
         return self.member or self.name;
     }
 }
 
-"""One generated struct with its computed layout."""
+"""One record with its computed C layout."""
 obj Layout {
     has name: str,
         ctype: str,
@@ -6857,348 +7164,85 @@ obj Layout {
         align: int;
 }
 
-"""What the headers declare once their active `#if` branches are kept."""
-obj Headers {
-    has macros: dict[str, str] = {},
-        bodies: dict[str, str] = {},
-        private: dict[str, str] = {},
-        private_scalars: dict[str, str] = {},
-        aliases: dict[str, str] = {},
-        functions: dict[str, FunctionType] = {};
+# ----------------------------------------------------------------- Jac records
+# A Jac type with the formatter's line breaks taken out.
+def normal_type(text: str) -> str {
+    text = " ".join(text.split());
+    text = re.sub(r"\[\s+", "[", text);
+    text = re.sub(r",?\s*\]", "]", text);
+    return re.sub(r"\s*,\s*", ", ", text);
 }
 
-# ---------------------------------------------------------------- preprocessor
-def strip_comments(text: str) -> str {
-    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S);
-    text = re.sub(r"//[^\n]*", "", text);
-    # An attribute (PyBytesObject's ob_shash); it does not change the layout.
-    text = re.sub(r"\bPy_DEPRECATED\([^)]*\)", "", text);
-    return text.replace("\\\n", " ");
-}
-
-def condition(expression: str, defines: dict[str, str]) -> bool {
+# The pieces of `text` split at the commas outside brackets and parentheses.
+def split_top(text: str) -> list[str] {
     pieces: list[str] = [];
-    for token in re.findall(
-        r"defined\s*\(\s*\w+\s*\)|defined\s+\w+|\w+|&&|\|\||[!=<>]=|<<|>>|[!()<>+\-*&|^~]",
-        expression
-    ) {
-        if token.startswith("defined") and token != "defined" {
-            name = re.findall(r"\w+", token)[-1];
-            pieces.append("1" if name in CONFIG or name in defines else "0");
-        } elif token[0].isdigit() {
-            pieces.append(re.sub(r"[uUlL]+$", "", token));
-        } elif re.fullmatch(r"\w+", token) {
-            if token in CONFIG {
-                pieces.append(str(CONFIG[token]));
-            } else {
-                body = defines.get(token, "0").strip() or "1";
-                pieces.append(body if re.fullmatch(r"\d+", body) else "0");
-            }
-        } else {
-            words: dict[str, str] = {"&&": " and ", "||": " or ", "!": " not "};
-            pieces.append(words[token] if token in words else token);
-        }
-    }
-    try {
-        return bool(eval(" ".join(pieces), {"__builtins__": {}}, {}));
-    } except Exception {
-        sys.exit(f"gen_layouts cannot evaluate #if {expression!r}");
-    }
-}
-
-# The text of `texts` with inactive `#if` branches and directives removed, and
-# object-like macros defined along the way.
-def preprocess(texts: list[str], defines: dict[str, str]) -> str {
-    kept: list[str] = [];
-    # Each frame: (branch active, some branch already taken, parent active).
-    stack: list[tuple[bool, bool, bool]] = [];
-    for text in texts {
-        for line in strip_comments(text).splitlines() {
-            active = not stack or stack[-1][0];
-            directive = re.match(r"^\s*#\s*(\w+)\s*(.*)$", line);
-            if directive is None {
-                if active {
-                    kept.append(line);
-                }
-                continue;
-            }
-            (word, rest) = (directive.group(1), directive.group(2).strip());
-            if word in ("if", "ifdef", "ifndef") {
-                if word == "ifdef" {
-                    taken = rest in CONFIG or rest in defines;
-                } elif word == "ifndef" {
-                    taken = not (rest in CONFIG or rest in defines);
-                } else {
-                    taken = active and condition(rest, defines);
-                }
-                stack.append((active and taken, active and taken, active));
-            } elif word == "elif" {
-                (_, done, parent) = stack.pop();
-                taken = parent and not done and condition(rest, defines);
-                stack.append((taken, done or taken, parent));
-            } elif word == "else" {
-                (_, done, parent) = stack.pop();
-                stack.append((parent and not done, True, parent));
-            } elif word == "endif" {
-                stack.pop();
-            } elif word == "define" and active {
-                macro = re.match(r"^(\w+)(?!\()\s*(.*)$", rest);
-                if macro is not None {
-                    defines[macro.group(1)] = macro.group(2);
-                }
-            }
-        }
-    }
-    return "\n".join(kept);
-}
-
-# The index just past the brace that closes the one at `start`.
-def closing(text: str, start: int) -> int {
     depth = 0;
-    for index in range(start, len(text)) {
-        if text[index] == "{" {
+    current = "";
+    for ch in text {
+        if ch in "[(" {
             depth += 1;
-        } elif text[index] == "}" {
+        } elif ch in "])" {
             depth -= 1;
-            if depth == 0 {
-                return index + 1;
-            }
+        }
+        if ch == "," and depth == 0 {
+            pieces.append(current);
+            current = "";
+        } else {
+            current += ch;
         }
     }
-    sys.exit("gen_layouts: unbalanced braces in the headers");
+    if current.strip() {
+        pieces.append(current);
+    }
+    return pieces;
 }
 
-# The parameter C types of a function declarator's parameter list, with any
-# parameter names dropped.
-def parameter_types(raw: str) -> list[str] {
-    params: list[str] = [];
-    raw = " ".join(raw.split());
-    if raw and raw != "void" {
-        for piece in raw.split(",") {
-            piece = piece.strip();
-            # Drop a parameter name; keep the type.
-            named = re.match(r"^(.*?[\s\*])(\w+)$", piece);
-            if named is not None and named.group(2) not in SCALARS {
-                piece = named.group(1);
-            }
-            params.append(" ".join(piece.split()));
-        }
-    }
-    return params;
-}
-
-# `[NAME]` with NAME an integer macro (datetime.h's
-# `data[_PyDateTime_DATETIME_DATASIZE]`) as the literal it defines.
-def array_bounds(text: str, defines: dict[str, str]) -> str {
-    pieces: list[str] = [];
-    last = 0;
-    for hit in re.finditer(r"\[\s*([A-Za-z_]\w*)\s*\]", text) {
-        body = defines.get(hit.group(1), "").strip();
-        if re.fullmatch(r"\d+", body) {
-            pieces.append(text[last:hit.start()] + f"[{body}]");
-            last = hit.end();
-        }
-    }
-    pieces.append(text[last:]);
-    return "".join(pieces);
-}
-
-def read_headers(found: Headers) {
-    texts = source_texts(tuple(HEADERS + OBJECT_SOURCES));
-    missing = [
-        h
-        for h in HEADERS + OBJECT_SOURCES
-        if h not in texts
-    ];
-    if missing {
-        sys.exit(f"Not in the CPython sources: {', '.join(missing)}");
-    }
-    defines: dict[str, str] = {};
-    text = preprocess([texts[h] for h in HEADERS], defines);
-    found.macros = dict(defines);
-    # A source's own macros stay out of the headers' namespace; its typedef'd
-    # structs are kept verbatim for layouts_check.c.
-    for source in OBJECT_SOURCES {
-        local = dict(defines);
-        # An array bound a source defines itself (hamt.c's
-        # HAMT_ARRAY_NODE_SIZE) is folded here, as the headers' are below.
-        body = array_bounds(preprocess([texts[source]], local), local);
-        # Scalar typedefs a private struct names (socketmodule.h's SOCKET_T).
-        for hit in re.finditer(
-            r"\btypedef\s+((?:unsigned\s+|signed\s+)?(?:int|long|short|char))\s+(\w+)\s*;",
-            body
-        ) {
-            found.private_scalars[hit.group(2)] = hit.group(0);
-        }
-        # A source's own enum typedefs (genobject.c's AwaitableState) are ints.
-        for hit in re.finditer(r"\btypedef\s+enum\s*\{", body) {
-            end = closing(body, hit.end() - 1);
-            alias = re.match(r"\s*(\w+)\s*;", body[end:]);
-            if alias {
-                # Unsigned unless an enumerator is negative, as compilers lay
-                # out enum types.
-                negative = re.search(r"=\s*-", body[hit.end():end]) is not None;
-                found.aliases[alias.group(1)] = "int" if negative else "unsigned int";
-                found.private_scalars[alias.group(1)] = body[hit.start():end]
-                    + alias.group(0);
-            }
-        }
-        # Forward typedefs of a source's own structs (typedef struct
-        # _odictnode _ODictNode).
-        for hit in re.finditer(r"\btypedef\s+struct\s+(\w+)\s+(\w+)\s*;", body) {
-            found.private_scalars[hit.group(2)] = hit.group(0);
-        }
-        # Typedef'd structs, tagged or not (genobject.c's typedef struct
-        # PyAsyncGenASend {...} PyAsyncGenASend).
-        for hit in re.finditer(r"\btypedef\s+struct\s*(?:\w+\s*)?\{", body) {
-            end = closing(body, hit.end() - 1);
-            alias = re.match(r"\s*(\w+)\s*;", body[end:]);
-            if alias is not None {
-                found.private[alias.group(1)] = " ".join(
-                    body[hit.start():end + alias.end()].split()
-                );
-            }
-        }
-        # A tagged struct whose header typedef names it (odictobject.c's
-        # struct _odictobject behind PyODictObject), keyed by its C type.
-        for hit in re.finditer(r"(?m)^struct\s+(\w+)\s*\{", body) {
-            end = closing(body, hit.end() - 1);
-            if re.match(r"\s*;", body[end:]) is not None {
-                found.private[f"struct {hit.group(1)}"] = " ".join(
-                    body[hit.start():end].split()
-                )
-                    + ";";
-            }
-        }
-        text += "\n" + body;
-    }
-    # Expand the object-like macros struct bodies use (PyObject_HEAD), and the
-    # ones those expand to (datetime.h's _PyTZINFO_HEAD names PyObject_HEAD).
-    heads = head_macros(defines);
-    for _ in range(8) {
-        expanded = text;
-        for (name, body) in heads.items() {
-            expanded = re.sub(rf"\b{name}\b", body, expanded);
-        }
-        if expanded == text {
-            break;
-        }
-        text = expanded;
-    }
-    text = array_bounds(text, defines);
-    for hit in re.finditer(r"\b(typedef\s+)?struct\s*(\w*)\s*\{", text) {
-        start = hit.end() - 1;
-        end = closing(text, start);
-        body = text[start + 1:end - 1];
-        if hit.group(2) {
-            found.bodies[f"struct {hit.group(2)}"] = body;
-        }
-        if hit.group(1) {
-            alias = re.match(r"\s*(\w+)\s*;", text[end:]);
-            if alias is not None {
-                found.bodies[alias.group(1)] = body;
-            }
-        }
-    }
+# Every C-layout record of a Jac module: name -> [(field, Jac type)].
+def jac_records(path: Path) -> dict[str, list[tuple[str, str]]] {
+    found: dict[str, list[tuple[str, str]]] = {};
     for hit in re.finditer(
-        r"\btypedef\s+([\w\s\*]+?)\s*\(\s*\*\s*(\w+)\s*\)\s*\(([^;]*?)\)\s*;", text
+        r"\bobj (\w+)\s*\{\s*has\s+(.*?);\s*\}", path.read_text(), re.S
     ) {
-        found.functions[hit.group(2)] = FunctionType(
-            returns=" ".join(hit.group(1).split()), params=parameter_types(hit.group(3))
-        );
+        fields: list[tuple[str, str]] = [];
+        for piece in split_top(hit.group(2)) {
+            (name, declared) = piece.split(":", 1);
+            fields.append(
+                (
+                    name.strip(),
+                    normal_type(re.sub(r"\s*=.*$", "", declared, flags=re.S))
+                )
+            );
+        }
+        found[hit.group(1)] = fields;
     }
-    for hit in re.finditer(r"\btypedef\s+([\w\s]+?)\s+(\w+)\s*;", text) {
-        found.aliases[hit.group(2)] = " ".join(hit.group(1).split());
-    }
+    return found;
 }
 
-# The object-like macros that expand to member declarations (PyObject_HEAD).
-def head_macros(defines: dict[str, str]) -> dict[str, str] {
+# layouts.jac's constants: name -> (Jac type, value).
+def jac_constants(path: Path) -> dict[str, tuple[str, int]] {
     return {
-        name: body
-        for (name, body) in defines.items()
-        if body.strip().endswith(";")
+        hit.group(1): (hit.group(2), int(hit.group(3)))
+        for hit in re.finditer(r"\b(\w+): Final\[(\w+)\] = (-?\d+)\b", path.read_text())
     };
 }
 
-# ------------------------------------------------------------------ type model
-glob:priv opaque: list[str] = [],
+# The C member a record field is: a C_MEMBERS entry, or a Jac keyword field
+# (`obj_`) without its underscore.
+def c_member(record: str, field: str) -> str {
+    named = C_MEMBERS.get(f"{record}.{field}");
+    if named {
+        return named;
+    }
+    if field.endswith("_") and field[:-1] in JAC_KEYWORDS {
+        return field[:-1];
+    }
+    return field;
+}
+
+# ------------------------------------------------------------------ the layouts
+glob:priv records: dict[str, list[tuple[str, str]]] = {},
      emitted: dict[str, Layout] = {},
-     order: list[str] = [],
-     headers: Headers = Headers();
-
-def jac_name_of(ctype: str) -> (str | None) {
-    for (name, declared) in LAYOUTS {
-        if declared == ctype or name == ctype {
-            return name;
-        }
-    }
-    return None;
-}
-
-# The layout a C struct type resolves to, or None for a record no port reads.
-def struct_of(ctype: str) -> (str | None) {
-    resolved = headers.aliases.get(ctype, ctype);
-    return jac_name_of(resolved) or jac_name_of(ctype);
-}
-
-def scalar_of(ctype: str) -> (tuple[str, bool] | None) {
-    seen = 0;
-    while ctype not in SCALARS and ctype in headers.aliases and seen < 8 {
-        ctype = headers.aliases[ctype];
-        seen += 1;
-    }
-    return SCALARS.get(ctype);
-}
-
-def callable_of(function: FunctionType) -> str {
-    params = [jac_type(p) for p in function.params];
-    returns = "None" if function.returns == "void" else jac_type(function.returns);
-    return f"Callable[[{', '.join(params)}], {returns}]";
-}
-
-# The Jac type of C type `ctype` in a field or a callback signature.
-def jac_type(ctype: str) -> str {
-    text = re.sub(r"\b(const|volatile)\b", "", ctype);
-    depth = text.count("*");
-    base = " ".join(text.replace("*", " ").split());
-    if depth == 0 {
-        if base in headers.functions {
-            return callable_of(headers.functions[base]);
-        }
-        scalar = scalar_of(base);
-        if scalar is not None {
-            return scalar[0];
-        }
-        layout = struct_of(base);
-        if layout is not None {
-            require(layout);
-            return layout;
-        }
-        sys.exit(f"gen_layouts: no Jac type for C type {ctype!r}");
-    }
-    if base == "void" {
-        inner = "";
-    } elif base == "char" {
-        inner = "u8";
-    } elif base == "PyObject" {
-        inner = "PyObject";
-    } elif base in headers.functions {
-        inner = callable_of(headers.functions[base]);
-    } elif scalar_of(base) is not None {
-        inner = scalar_of(base)[0];
-    } else {
-        inner = struct_of(base) or re.sub(r"^struct\s+", "", base);
-        if inner not in opaque and struct_of(base) is None {
-            opaque.append(inner);
-        }
-    }
-    result = f"ptr[{inner}]" if inner else "ptr";
-    for _ in range(depth - 1) {
-        result = f"ptr[{result}]";
-    }
-    return result;
-}
+     order: list[str] = [];
 
 def size_align(jac: str) -> tuple[int, int] {
     if jac in SIZES {
@@ -7211,311 +7255,127 @@ def size_align(jac: str) -> tuple[int, int] {
     return (layout.size, layout.align);
 }
 
-# The array declarator of an element count ("" for a scalar member).
-def bounds(count: int) -> str {
-    return "[" + str(count) + "]" if count else "";
-}
-
-# The name a function-pointer member's signature is recorded under in
-# `headers.functions`, as if the header had a typedef for it.
-def member_function(returns: str, raw: str) -> str {
-    function = FunctionType(
-        returns=" ".join(returns.split()), params=parameter_types(raw)
-    );
-    signature = function.returns + "_" + "_".join(function.params);
-    name = "__member_fn_" + re.sub(r"\W+", "_", signature.replace("*", "P"));
-    headers.functions[name] = function;
-    return name;
-}
-
-# The member declarations of a struct body: (C type, member name, element
-# count), the count 0 for a member that is not an array. An anonymous union
-# contributes its first member, which the size asserts prove is its widest; an
-# array member `T name[N]` is N elements of T (see layouts.jac). A member of
-# an inline enum type (`PyStatus._type`) is the enum's integer type, unsigned
-# int for enumerators that are all non-negative, which the kind and signedness
-# asserts prove. A function-pointer member (`PyObject *(*f)(int)`) is typed as
-# its signature.
-glob union_designators: dict[str, str] = {};
-
-def members(body: str) -> list[tuple[str, str, int]] {
-    body = body.replace("__extension__", " ");
-    while True {
-        hit = re.search(r"\benum\s*\{", body);
-        if hit is None {
-            break;
-        }
-        end = closing(body, hit.end() - 1);
-        if re.search(r"=\s*-", body[hit.end():end - 1]) {
-            sys.exit("gen_layouts: only enums without negative values are supported");
-        }
-        body = body[:hit.start()] + "unsigned int" + body[end:];
-    }
-    while True {
-        hit = re.search(r"\b(union|struct)\s*\{", body);
-        if hit is None {
-            break;
-        }
-        end = closing(body, hit.end() - 1);
-        tail = re.match(r"\s*(\w*)\s*;", body[end:]);
-        if tail is None or (tail.group(1) and hit.group(1) != "union") {
-            sys.exit("gen_layouts: only anonymous nested structs are supported");
-        }
-        inner = members(body[hit.end():end - 1]);
-        replacement = f"{inner[0][0]} {inner[0][1]}{bounds(inner[0][2])};"
-            if hit.group(1) == "union"
-            else " ".join(f"{t} {n}{bounds(a)};" for (t, n, a) in inner);
-        if tail.group(1) {
-            # A named union (pool_header's `ref`) is likewise one field of its
-            # first member's type, under the union's name; the asserts reach
-            # it through that member.
-            union_designators[tail.group(1)] = f"{tail.group(1)}.{inner[0][1]}";
-            replacement = f"{inner[0][0]} {tail.group(1)}{bounds(inner[0][2])};";
-        }
-        body = body[:hit.start()] + replacement + body[end + len(tail.group(0)):];
-    }
-    found: list[tuple[str, str, int]] = [];
-    for statement in body.split(";") {
-        statement = " ".join(statement.split());
-        if not statement {
-            continue;
-        }
-        pointer = re.match(r"^(.*?)\(\s*\*\s*(\w+)\s*\)\s*\((.*)\)$", statement);
-        if pointer is not None {
-            found.append(
-                (
-                    member_function(pointer.group(1), pointer.group(3)),
-                    pointer.group(2),
-                    0
-                )
-            );
-            continue;
-        }
-        declared = re.match(
-            r"^(.*?[\s\*])(\w+(?:\s*\[\s*\d+\s*\])?(?:\s*,.*)?)$", statement
-        );
-        if declared is None {
-            sys.exit(f"gen_layouts: cannot read member {statement!r}");
-        }
-        # The stars before the first name are its declarator's, as the stars
-        # of every later name are (`PyObject *start, *stop, *step;`).
-        declared_type = declared.group(1).strip();
-        lead = "*" * (len(declared_type) - len(declared_type.rstrip("*")));
-        base = declared_type.rstrip("*").strip() + " ";
-        first = True;
-        for name in declared.group(2).split(",") {
-            name = (lead if first else "") + name.strip();
-            first = False;
-            array = re.match(r"^(\**\w+)\s*\[\s*(\d+)\s*\]$", name);
-            count = 0;
-            if array is not None {
-                count = int(array.group(2));
-                name = array.group(1);
-            }
-            stars = re.match(r"^(\**)(\w+)$", name);
-            if stars is None {
-                sys.exit(f"gen_layouts: cannot read member name {name!r}");
-            }
-            found.append((base + stars.group(1), stars.group(2), count));
-        }
-    }
-    return found;
-}
-
+# Lay out record `name` with C's rules (each field at the next multiple of its
+# alignment, the size rounded up to the widest alignment), after the records
+# it embeds by value.
 def require(name: str) -> None {
     if name in emitted {
         return;
+    }
+    if name not in records {
+        sys.exit(
+            f"gen_layouts: {name} is not a record of layouts.jac or cpython_api.jac"
+        );
     }
     ctype = next(
         c
         for (n, c) in LAYOUTS
         if n == name
     );
-    body = headers.bodies.get(ctype);
-    if body is None {
-        body = headers.bodies.get(headers.aliases.get(ctype, ""));
-    }
-    if body is None {
-        sys.exit(f"gen_layouts: no definition of {ctype} in {', '.join(HEADERS)}");
-    }
-    # Claim the name first so a pointer back to this struct does not recurse.
+    # Claim the name first so a pointer back to this record does not recurse.
     layout = Layout(name=name, ctype=ctype, fields=[], size=0, align=1);
     emitted[name] = layout;
+    fields = records[name];
     offset = 0;
-    union_designators.clear();
-    for (member_type, member, count) in members(body) {
-        jac = jac_type(member_type);
+    index = 0;
+    while index < len(fields) {
+        (field, jac) = fields[index];
+        if jac not in SIZES and not jac.startswith(("ptr", "Callable")) {
+            if jac not in [n for (n, _) in LAYOUTS] {
+                sys.exit(
+                    f"gen_layouts: {name}.{field} embeds {jac}, which LAYOUTS lacks"
+                );
+            }
+            require(jac);
+        }
         (size, align) = size_align(jac);
         offset = (offset + align - 1) // align * align;
-        bare = " ".join(re.sub(r"\b(const|volatile)\b", "", member_type).split());
-        scalar = scalar_of(bare) if "*" not in member_type else None;
-        # Plain `char` is signed on x86_64 and unsigned on aarch64 Linux, so
-        # its signedness is the platform's, not the layout's.
-        signed = scalar[1]
-            if scalar is not None
-                and jac in SIZES
-                and not jac.startswith("f")
-                and bare != "char"
-            else None;
-        # `T name[1]` is one T field; a fixed array `T name[N]` is N fields,
-        # `name` for element 0 and `name_<i>` for element i, so the members
-        # after it keep their offsets.
-        for index in range(max(count, 1)) {
-            # A C member named after a Jac keyword (`obj`) takes a trailing
-            # underscore in Jac, as cpython_api.jac's records do; the asserts
-            # keep the C name.
-            jac_member = f"{member}_" if member in JAC_KEYWORDS else member;
+        member = c_member(name, field);
+        count = C_ARRAYS.get(f"{name}.{field}", 0);
+        for element in range(max(count, 1)) {
+            if element and fields[index + element] != (f"{field}_{element}", jac) {
+                sys.exit(
+                    f"gen_layouts: {name}.{field} is a C array of {count}; its element {element} must be the field {field}_{element}: {jac}"
+                );
+            }
             layout.fields.append(
                 Field(
-                    name=jac_member if index == 0 else f"{jac_member}_{index}",
+                    name=field if element == 0 else f"{field}_{element}",
                     jac=jac,
                     offset=offset,
                     size=size,
-                    signed=signed,
                     array=count == 1,
-                    member=f"{member}[{index}]"
+                    member=f"{member}[{element}]"
                         if count > 1
-                        else (
-                            union_designators.get(member)
-                            or (member if jac_member != member else "")
-                        ),
-                    boolean=scalar is not None
-                        and " ".join(member_type.split()) in ("bool", "_Bool")
+                        else (member if member != field else "")
                 )
             );
             offset += size;
         }
+        index += max(count, 1);
         layout.align = max(layout.align, align);
     }
     layout.size = (offset + layout.align - 1) // layout.align * layout.align;
     order.append(name);
 }
 
-# The layouts the headers define, read as the generator reads them, and what
-# else the headers declare: what gen_include.jac compares with the Jac records.
-def header_layouts -> tuple[dict[str, Layout], Headers] {
-    if not emitted {
-        read_headers(headers);
-        for (name, _) in LAYOUTS {
-            require(name);
+# The records of layouts.jac and, for a layout cpython_api.jac declares
+# (Py_buffer, Py_complex), cpython_api.jac's, laid out in dependency order.
+def compute_layouts(layouts_jac: Path) {
+    shared = jac_records(CAPI);
+    records.update(jac_records(layouts_jac));
+    for (name, _) in LAYOUTS {
+        if name not in records and name in shared {
+            records[name] = shared[name];
         }
     }
-    return (emitted, headers);
+    for (name, _) in LAYOUTS {
+        require(name);
+    }
+}
+
+# The records' layouts computed from `layouts_jac`: what gen_include.jac
+# compares the headers' structs with.
+def jac_layouts(layouts_jac: Path) -> dict[str, Layout] {
+    if not emitted {
+        compute_layouts(layouts_jac);
+    }
+    return emitted;
 }
 
 # --------------------------------------------------------------------- output
-# The records cpython_api.jac declares, opaque (`obj PyObject;`) or C-layout
-# (`obj PyMethodDef { ... }`); layouts.jac imports them rather than
-# redeclaring a distinct type.
-def capi_records -> set[str] {
-    return set(re.findall(r"\bobj (\w+)\s*[;{]", CAPI.read_text()));
-}
-
-# A layout cpython_api.jac already declares as a C-layout record (Py_buffer,
-# Py_complex) is imported from it, so an object layout embedding it uses the
-# same type the C API functions take. Its fields must match the header's
-# layout position by position (the record may rename a field C names after a
-# Jac keyword); the asserts check the header's side.
-def check_capi_record(layout: Layout) {
-    body = re.search(
-        r"\bobj " + layout.name + r"\s*\{\s*has\s+(.*?);\s*\}", CAPI.read_text(), re.S
-    );
-    if body is None {
-        sys.exit(
-            f"gen_layouts: {layout.name} is not a C-layout record of cpython_api.jac"
-        );
-    }
-    declared = [
-        re.sub(r"\s*=.*$", "", piece.split(":", 1)[1]).strip()
-        for piece in re.split(r",\s*(?=\w+\s*:)", body.group(1))
-    ];
-    expected = [f.jac for f in layout.fields];
-    if [" ".join(t.split()) for t in declared] != expected {
-        sys.exit(
-            f"gen_layouts: cpython_api.jac's {layout.name} fields {declared} differ from the header's {expected}"
-        );
-    }
-}
-
-def c_type_name(layout: Layout) -> str {
-    return layout.ctype;
-}
-
-# layouts.jac, without a docstring (runtime modules carry none).
-# `PyObject` stays the opaque handle of cpython_api.jac; `_object` is the
-# layout behind it (C's `struct _object`), read by casting a handle to
-# `ptr[_object]`. Its reference count is an anonymous union whose widest
-# member, `ob_refcnt_full`, stands for it: the release build's 32-bit count,
-# overflow and flags are the low, middle and high parts of that i64 on every
-# supported (little-endian) target. A trailing C array `T name[1]`
-# (`_PyLongValue.ob_digit`, `PyTupleObject.ob_item`) is one T field with the
-# same offset, size and alignment: element 0 is that field, and the object's
-# further elements follow it in memory, reached by pointer arithmetic from the
-# field's offset exactly as C indexes past the declared bound. A fixed array
-# `T name[N]` (`PyDateTime_DateTime.data`) is N T fields, `name` for element 0
-# and `name_1` to `name_<N-1>` for the rest. Pointers to records no Jac module
-# reads yet are opaque.
-def render_jac(values: dict[str, int]) -> str {
-    records = capi_records();
-    shared = [
-        name
-        for name in order
-        if name in records
-    ];
-    for name in shared {
-        check_capi_record(emitted[name]);
-    }
-    from_capi = sorted({"PyObject"} | (set(opaque) & records) | set(shared));
-    local = sorted(set(opaque) - set(from_capi));
-    lines = ["import from c {"];
-    lines += [f"    obj {name};" for name in local];
-    for name in order {
-        if name in shared {
+# A private struct's C definition, declared from its Jac record: pointers of
+# any kind as `void *`, as the asserts only hold their size and kind.
+def private_definition(layout: Layout) -> str {
+    members: list[str] = [];
+    for field in layout.fields {
+        if re.search(r"\[[1-9]\d*\]$", field.member) {
             continue;
         }
-        layout = emitted[name];
-        fields = ", ".join(f"{f.name}: {f.jac}" for f in layout.fields);
-        lines.append(f"    obj {name} {{ has {fields}; }}");
-    }
-    lines += ["}", ""];
-    for (name, _, jac) in CONSTANTS {
-        # The probe reads every value as a signed long long.
-        value = values[name];
-        if jac.startswith("u") and value < 0 {
-            value += 1 << 64;
+        count = C_ARRAYS.get(f"{layout.name}.{field.name}", 0);
+        declarator = re.sub(r"\[0\]$", "", field.designator())
+            + (f"[{count}]" if count else "");
+        if field.jac.startswith(("ptr", "Callable")) {
+            members.append(f"void *{declarator};");
+        } elif field.jac in C_SCALARS {
+            members.append(f"{C_SCALARS[field.jac]} {declarator};");
+        } else {
+            members.append(f"{emitted[field.jac].ctype} {declarator};");
         }
-        lines.append(f"glob {name}: Final[{jac}] = {value};");
     }
-    return "\n".join(lines) + "\n";
+    body = " ".join(members);
+    if layout.ctype.startswith("struct ") {
+        return f"{layout.ctype} {{ {body} }};";
+    }
+    return f"typedef struct {{ {body} }} {layout.ctype};";
 }
 
-# One platform's table of PLATFORM_CONSTANTS, or with `suffix` empty the
-# table of a platform with none generated: LAYOUTS_PLATFORM is "" and every
-# value 0.
-def render_platform(suffix: str, values: dict[str, int]) -> str {
-    lines = [f'glob LAYOUTS_PLATFORM: str = "{suffix}";'];
-    for (name, _, jac) in PLATFORM_CONSTANTS {
-        lines.append(f"glob {name}: Final[{jac}] = {values.get(name, 0)};");
-    }
-    return "\n".join(lines) + "\n";
-}
-
-# The upstream definitions of the private structs among the layouts.
 def private_definitions -> list[str] {
-    c_types = {jac: c for (jac, c) in LAYOUTS};
-    structs = [
-        headers.private[name]
-            if name in headers.private
-            else headers.private[c_types[name]]
+    return [
+        private_definition(emitted[name])
         for name in order
-        if name in headers.private or c_types.get(name, "") in headers.private
+        if name in PRIVATE_LAYOUTS
     ];
-    scalars = [
-        text
-        for (name, text) in headers.private_scalars.items()
-        if any(re.search(rf"\b{name}\b", struct) is not None for struct in structs)
-    ];
-    return scalars + structs;
 }
 
 # GCC's and Clang's __builtin_classify_type class of a field's Jac type.
@@ -7529,13 +7389,19 @@ def type_class(jac: str) -> int {
     return 1 if jac in SIZES else 12;
 }
 
+# A constant as a C `long long` literal (an unsigned value past the signed
+# range wraps, as the cast in CONSTANT does).
+def signed_value(value: int) -> int {
+    return value - (1 << 64) if value >= (1 << 63) else value;
+}
+
 def render_check(
     values: dict[str, int], platform_values: dict[str, dict[str, int]]
 ) -> str {
     lines = [
         "/* Generated by scripts/jacpython/gen_layouts.jac; do not edit.",
         " * Every layout and constant jaclang/runtime/python/layouts.jac declares,",
-        " * asserted against the configured CPython headers. build_jacpython.zig",
+        " * asserted against the generated CPython headers. build_jacpython.zig",
         " * compiles this for every JacPython build, so a layout drift fails it. */",
         "#ifndef Py_BUILD_CORE",
         "#define Py_BUILD_CORE 1",
@@ -7549,8 +7415,8 @@ def render_check(
     private = private_definitions();
     if private {
         lines += [
-            "/* The private object structs of the ported Objects/ files, as the",
-            " * pinned sources define them. */"
+            "/* The private object structs of the ported Objects/ and Modules/ files,",
+            " * declared from their Jac records. */"
         ]
             + private
             + [""];
@@ -7562,8 +7428,16 @@ def render_check(
         "#define KIND(type, field, class) \\",
         "    _Static_assert(__builtin_classify_type(((type *)0)->field) == (class), \\",
         "                   #type \".\" #field \" kind\")",
+        "#define BYTE_KIND(type, field) \\",
+        "    _Static_assert(__builtin_classify_type(((type *)0)->field) == 1 || \\",
+        "                   __builtin_classify_type(((type *)0)->field) == 4, \\",
+        "                   #type \".\" #field \" kind\")",
         "#define SIGNED(type, field, is_signed) \\",
         "    _Static_assert(((__typeof__(((type *)0)->field))-1 < 0) == (is_signed), \\",
+        "                   #type \".\" #field \" signedness\")",
+        "#define BYTE_SIGNED(type, field, is_signed) \\",
+        "    _Static_assert(_Generic(((type *)0)->field, char: (is_signed), \\",
+        "                   default: ((__typeof__(((type *)0)->field))-1 < 0) == (is_signed)), \\",
         "                   #type \".\" #field \" signedness\")",
         "#define LAYOUT(type, size, align) \\",
         "    _Static_assert(sizeof(type) == (size), #type \" size\"); \\",
@@ -7574,22 +7448,30 @@ def render_check(
     ];
     for name in order {
         layout = emitted[name];
-        ctype = c_type_name(layout);
+        ctype = layout.ctype;
         lines.append(f"/* {name} */");
         for field in layout.fields {
             lines.append(
                 f"FIELD({ctype}, {field.designator()}, {field.offset}, {field.size});"
             );
-            lines.append(
-                f"KIND({ctype}, {field.designator()}{'[0]' if field.array else ''}, {4
-                    if field.boolean
-                    else type_class(field.jac)});"
-            );
-            if field.signed is not None {
+            element = f"{field.designator()}{'[0]' if field.array else ''}";
+            # A one-byte unsigned field may be C's bool (kind 4); a plain
+            # `char` is the signed byte on every platform, whatever C's
+            # signedness of char there.
+            if field.jac == "u8" {
+                lines.append(f"BYTE_KIND({ctype}, {element});");
+            } else {
+                lines.append(f"KIND({ctype}, {element}, {type_class(field.jac)});");
+            }
+            if field.jac in ("i8", "u8") {
                 lines.append(
-                    f"SIGNED({ctype}, {field.designator()}{'[0]'
-                        if field.array
-                        else ''}, {1 if field.signed else 0});"
+                    f"BYTE_SIGNED({ctype}, {element}, {1 if field.jac == 'i8' else 0});"
+                );
+            } elif field.jac in SIZES and not field.jac.startswith("f") {
+                lines.append(
+                    f"SIGNED({ctype}, {element}, {1
+                        if field.jac.startswith('i')
+                        else 0});"
                 );
             }
         }
@@ -7597,7 +7479,7 @@ def render_check(
         lines.append("");
     }
     for (name, expression, _) in CONSTANTS {
-        lines.append(f"CONSTANT({expression}, {values[name]}LL);");
+        lines.append(f"CONSTANT({expression}, {signed_value(values[name])}LL);");
     }
     lines += ["", "/* The platform constants of layouts_platform.<os>.<arch>.jac. */"];
     keyword = "#if";
@@ -7616,10 +7498,22 @@ def render_check(
     return "\n".join(lines) + "\n";
 }
 
+# One platform's table of PLATFORM_CONSTANTS, or with `suffix` empty the
+# table of a platform with none generated: LAYOUTS_PLATFORM is "" and every
+# value 0.
+def render_platform(suffix: str, values: dict[str, int]) -> str {
+    lines = [f'glob LAYOUTS_PLATFORM: str = "{suffix}";'];
+    for (name, _, jac) in PLATFORM_CONSTANTS {
+        lines.append(f"glob {name}: Final[{jac}] = {values.get(name, 0)};");
+    }
+    return "\n".join(lines) + "\n";
+}
+
 # --------------------------------------------------------------- C toolchain
-# The installed headers of a local JacPython build: any platform's will do,
-# since the asserts hold the constants to the same values on every build.
-def default_include -> Path {
+# The configured pyconfig.h of a local JacPython build: configure's output,
+# the one header the generated tree lacks. Any platform's will do, since the
+# asserts hold the constants to the same values on every build.
+def default_config -> Path {
     for config in sorted(
         (JAC / ".python-build/jacpython").glob(
             "*/python/install/include/python3.14/pyconfig.h"
@@ -7628,30 +7522,39 @@ def default_include -> Path {
         return config.parent;
     }
     sys.exit(
-        "No configured CPython headers under jac/.python-build; run a JacPython build or pass --headers"
+        "No configured pyconfig.h under jac/.python-build; run a JacPython build or pass --config"
     );
 }
 
-def probe_flags(headers_dir: Path) -> list[str] {
+# The generated headers as a build stages them, under `scratch`/Include.
+def stage_headers(scratch: Path) -> Path {
+    for path in generated_paths() {
+        if path.startswith("Include/") {
+            target = scratch / path;
+            target.parent.mkdir(parents=True, exist_ok=True);
+            target.write_bytes(generated_copy(path).read_bytes());
+        }
+    }
+    return scratch / "Include";
+}
+
+def probe_flags(headers: Path, config: Path) -> list[str] {
     return [
-        f"-I{headers_dir}",
-        f"-I{headers_dir}/internal/mimalloc",
+        f"-I{headers}",
+        f"-I{headers}/internal/mimalloc",
+        f"-I{config}",
         "-DPy_BUILD_CORE=1"
     ];
 }
 
-# Constant values as the compiler folds them against the configured headers.
-def extract(
-    headers_dir: Path,
-    compiler: list[str],
-    constants: list[tuple[str, str, str]] = CONSTANTS
-) -> dict[str, int] {
+# Platform constant values as the compiler folds them against the headers.
+def extract(flags: list[str], compiler: list[str]) -> dict[str, int] {
     lines = ["#define Py_BUILD_CORE 1", "#include \"Python.h\""]
         + [f"#include \"{header}\"" for header in INCLUDES]
         + ["#include <stddef.h>"]
         + PROBE_DEFINES
         + private_definitions();
-    for (name, expression, _) in constants {
+    for (name, expression, _) in PLATFORM_CONSTANTS {
         lines.append(
             f"const long long __jac_layout_{name} = (long long)({expression});"
         );
@@ -7662,9 +7565,7 @@ def extract(
         listing_path = Path(scratch) / "constants.s";
         probe.write_text("\n".join(lines) + "\n");
         result = subprocess.run(
-            compiler
-                + probe_flags(headers_dir)
-                + ["-S", "-O0", "-o", str(listing_path), str(probe)],
+            compiler + flags + ["-S", "-O0", "-o", str(listing_path), str(probe)],
             capture_output=True,
             text=True
         );
@@ -7697,7 +7598,7 @@ def extract(
     }
     missing = [
         n
-        for (n, _, _) in constants
+        for (n, _, _) in PLATFORM_CONSTANTS
         if n not in values
     ];
     if missing {
@@ -7706,65 +7607,62 @@ def extract(
     return values;
 }
 
-# Compile the generated asserts against the configured headers.
-def verify(check: str, headers_dir: Path, compiler: list[str]) {
+# Compile the generated asserts against the headers.
+def verify(check: str, flags: list[str], compiler: list[str]) {
     with tempfile.TemporaryDirectory() as scratch {
         probe = Path(scratch) / "layouts_check.c";
         probe.write_text(check);
         result = subprocess.run(
             compiler
-                + probe_flags(headers_dir)
+                + flags
                 + ["-c", "-o", str(Path(scratch) / "layouts_check.o"), str(probe)],
             capture_output=True,
             text=True
         );
     }
     if result.returncode != 0 {
-        sys.exit(f"Generated layouts do not match the headers:\n{result.stderr}");
+        sys.exit(
+            f"The Jac layouts do not match the generated headers:\n{result.stderr}"
+        );
     }
 }
 
 with entry:__main__ {
     parser = argparse.ArgumentParser(
-        description="Generate CPython object layouts for native Jac"
+        description="Check the Jac object layouts against the generated headers"
     );
     parser.add_argument("--cc", help="C compiler command");
     parser.add_argument(
-        "--headers", help="directory holding a configured CPython's Python.h"
+        "--config", help="directory holding a configured CPython's pyconfig.h"
     );
     parser.add_argument("--zig", help="zig, for the platform constants");
     parser.set_defaults(cc="cc", zig="zig");
     parser.add_argument("--check", action="store_true");
-    parser.add_argument(
-        "--adopt",
-        action="store_true",
-        help="rewrite layouts.jac from the headers (a record or constant a Jac-owned header lacks)"
-    );
     args = parser.parse_args();
-    read_headers(headers);
-    for (name, _) in LAYOUTS {
-        require(name);
+    compute_layouts(LAYOUTS_JAC);
+    declared = jac_constants(LAYOUTS_JAC);
+    missing = [
+        name
+        for (name, _, _) in CONSTANTS
+        if name not in declared
+    ];
+    if missing {
+        sys.exit(f"gen_layouts: layouts.jac does not declare {', '.join(missing)}");
     }
-    headers_dir = Path(args.headers) if args.headers else default_include();
-    compiler = shlex.split(args.cc);
-    values = extract(headers_dir, compiler);
-    platform_values: dict[str, dict[str, int]] = {};
-    for (suffix, target, _) in PLATFORMS {
-        platform_values[suffix] = extract(
-            headers_dir, [args.zig, "cc", "-target", target], PLATFORM_CONSTANTS
-        );
+    values = {name: declared[name][1] for (name, _, _) in CONSTANTS};
+    config = Path(args.config) if args.config else default_config();
+    current = True;
+    with tempfile.TemporaryDirectory() as scratch {
+        flags = probe_flags(stage_headers(Path(scratch)), config);
+        platform_values: dict[str, dict[str, int]] = {};
+        for (suffix, target, _) in PLATFORMS {
+            platform_values[suffix] = extract(
+                flags, [args.zig, "cc", "-target", target]
+            );
+        }
+        check = render_check(values, platform_values);
+        verify(check, flags, shlex.split(args.cc));
     }
-    check = render_check(values, platform_values);
-    verify(check, headers_dir, compiler);
-    # layouts.jac is the input of the public headers (gen_include.jac): it is
-    # only checked against the headers, unless --adopt takes a new record or
-    # constant from them.
-    current = write_or_check(
-        OUTPUT,
-        format_jac(render_jac(values), OUTPUT),
-        not args.adopt,
-        "scripts/jacpython/gen_include.jac, or this script with --adopt for a record of an archive header"
-    );
     current = write_or_check(CHECK, check, args.check, COMMAND) and current;
     for (suffix, _, _) in PLATFORMS + [("", "", "")] {
         table = RUNTIME

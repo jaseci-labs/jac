@@ -249,11 +249,11 @@ the task lists live in `_PyThreadStateImpl` and `PyInterpreterState`, which
 `object_api.jac` helpers reach (stopping the world to look at other threads).
 
 A module whose object layout other code reads keeps that layout: `_socket`'s
-`PySocketSockObject` and `PySocketModule_APIObject` are read from the pinned
-archive's `Modules/socketmodule.h` by `gen_layouts.jac` (an `OBJECT_SOURCES`
-entry, with the scalar typedefs its structs name), so the `_socket.CAPI`
-capsule the `_ssl` port imports is the C module's; the header itself left the
-build with `_ssl.c`, its last C user. `gen_constants.jac` can leave out names published
+`PySocketSockObject` and `PySocketModule_APIObject` are records of
+`layouts.jac` laid out as `Modules/socketmodule.h` declared them (a
+`PRIVATE_LAYOUTS` entry of `gen_layouts.jac`), so the `_socket.CAPI` capsule
+the `_ssl` port imports is the C module's; the header itself left the build
+with `_ssl.c`, its last C user. `gen_constants.jac` can leave out names published
 only under conditions no target meets (`UNSUPPORTED` blocks such as
 `USE_BLUETOOTH`), read enumerators under their header's presence (`GUARDS`) and
 supply values the C module defines itself (`DEFAULTS`).
@@ -346,10 +346,10 @@ them by hand.
 ## What stays C
 
 `jacpython.o` links into libpython, so any non-static CPython symbol is
-reachable from Jac. `gen_capi.jac` declares `PyAPI_FUNC` functions, the
-`extern` functions of `Include/internal/`, and the data symbols the sources
-use: `PyAPI_DATA` variables and the `extern` variables of the internal
-headers. An exception object is read in place
+reachable from Jac. `gen_capi.jac` declares, from the C API table
+`scripts/jacpython/capi_table.jac`, `PyAPI_FUNC` functions, the `extern`
+functions of `Include/internal/`, and the data symbols the sources use:
+`PyAPI_DATA` variables and the `extern` variables of the internal headers. An exception object is read in place
 (`object_error(PyExc_ValueError, ...)`,
 `PyErr_ExceptionMatches(PyExc_KeyError)`); a static type or singleton is
 used by address (`addressof(PyCode_Type)`), and `Py_None`, `Py_NotImplemented`
@@ -376,7 +376,10 @@ C prototypes, with a Jac `str` for each C string.
 
 `_PyRuntimeState_INIT` is a tree of C preprocessor macros
 (`pycore_runtime_init.h` and its generated headers): debug offsets, the
-allocators and more than a thousand static strings. build_jacpython.zig's
+allocators and more than a thousand static strings, whose names and literals
+are the tables of `scripts/jacpython/global_strings.jac` (`gen_include.jac`
+writes the string struct, the initializers, the interning and the debug
+refcount check from them). build_jacpython.zig's
 `runtime_image` step, after `pyconfig` and before `native`, runs
 `scripts/jacpython/gen_runtime_image.jac`. The script compiles only that
 initializer with the target's `zig cc` against the tree's own `pyconfig.h`
@@ -489,18 +492,19 @@ concrete layouts that macros read (`PyTupleObject.ob_item`,
 A Jac object model keeps these byte for byte. `Objects/boolobject.c` is the
 pilot port; it established the pieces below.
 
-**Layouts are generated and verified.** `scripts/jacpython/gen_layouts.jac`
-writes `runtime/python/layouts.jac`: one C-layout struct per layout it lists
-(`_object`, `PyVarObject`, `PyTypeObject`, the slot tables, `PyGetSetDef`,
-`PyLongObject`, `PyTupleObject`, `PyCellObject`, `PySliceObject`,
-`_PyRangeIterObject`, and datetime.h's `PyDateTime_DateTime` and
-`PyDateTime_CAPI`, ...), read from the pinned headers through
-a small preprocessor that keeps the `#if` branches of the release build
-(64-bit, little-endian, GIL-enabled, 30-bit digits). An object struct a `.c`
-file keeps private (`rangeobject`, `PyCapsule`, `enumobject`) is read from that
-file (`OBJECT_SOURCES`); the port owns it from then on, and the check below
-repeats the upstream definition so the Jac layout is still asserted against C.
-Function-pointer slots and members are `Callable[...]` fields, pointers to
+**Layouts are Jac definitions, and verified.** `runtime/python/layouts.jac`
+holds one C-layout struct per layout `scripts/jacpython/gen_layouts.jac`
+lists (`_object`, `PyVarObject`, `PyTypeObject`, the slot tables,
+`PyGetSetDef`, `PyLongObject`, `PyTupleObject`, `PyCellObject`,
+`PySliceObject`, `_PyRangeIterObject`, and datetime.h's
+`PyDateTime_DateTime` and `PyDateTime_CAPI`, ...) in the release build's
+form (64-bit, little-endian, GIL-enabled, 30-bit digits). The headers are
+written from it: `scripts/jacpython/gen_include.jac` gives each header struct
+of a record its members and each header constant its value, for every header
+under `Include/` (public and internal; the build stages these generated
+copies and fails on any header the CPython archive would supply). An object
+struct a `.c` file kept private (`rangeobject`, `PyCapsule`, `enumobject`;
+`PRIVATE_LAYOUTS`) exists only as its Jac record. Function-pointer slots and members are `Callable[...]` fields, pointers to
 listed layouts are `ptr[Layout]`, and
 pointers to records no port reads yet are opaque. `PyObject` stays the opaque
 handle of `cpython_api.jac`; its layout is `_object`, reached by casting a
@@ -508,19 +512,25 @@ handle (`ptr[_object](op).view(1)[0].ob_type`). The 3.14 refcount union is its
 widest member, `ob_refcnt_full: i64`; a trailing C array `T name[1]` is one
 `T` field, and further elements are reached by pointer arithmetic. A fixed
 array `T name[N]` is N fields, `name` and `name_1` to `name_<N-1>`, so
-`_zoneinfo` reads a datetime's year as `(data << 8) | data_1`. The same
-script writes the header constants initializers need (`Py_TPFLAGS_*`, the
-immortal refcount, `_PyLong_*_TAG`, `offsetof`/`sizeof` values) as `Final`
-globs, read back from a configured build's headers.
+`_zoneinfo` reads a datetime's year as `(data << 8) | data_1`. The header constants initializers need
+(`Py_TPFLAGS_*`, the immortal refcount, `_PyLong_*_TAG`, `offsetof`/`sizeof`
+values) are `Final` globs of the same file.
 
-It also writes `bootstrap/python/layouts_check.c`: `_Static_assert`s on the
-offset, size, kind (integer, pointer, record) and signedness of every
-generated field, each struct's size and alignment, and each constant's value.
-`build_jacpython.zig` compiles it against the probed `pyconfig.h` and staged
-headers of every JacPython build before compiling anything else, so a layout
-that differs on any platform fails the build.
-`gen_layouts.jac --check` fails when either file is stale. To add a layout or
-constant, extend `LAYOUTS` or `CONSTANTS` in the script and rerun it.
+`gen_layouts.jac` reads only `layouts.jac`. It computes each record's offsets
+with C's layout rules (`C_ARRAYS` and `C_MEMBERS` give the C spelling of
+array and renamed fields, which `gen_include.jac` holds to the headers') and
+writes `bootstrap/python/layouts_check.c`: `_Static_assert`s on the offset,
+size, kind (integer, pointer, record) and signedness of every field, each
+struct's size and alignment, and each constant's value, with the private
+structs declared from their records. `build_jacpython.zig` compiles it
+against the probed `pyconfig.h` and staged headers of every JacPython build
+before compiling anything else, so a header or a layout that differs on any
+platform fails the build. The platform constants (`layouts_platform.*.jac`)
+are folded by `zig cc` per target against the generated headers.
+`gen_layouts.jac --check` fails when a file it writes is stale. To add a
+layout or constant, add the record or `Final` glob to `layouts.jac`, list it
+in `LAYOUTS` or `CONSTANTS`, and rerun `gen_include.jac` (if a header
+declares it) and `gen_layouts.jac`.
 
 **Static objects are C data definitions.** A port defines each static type
 and singleton under its C name in an `import from c` block, with the
@@ -640,9 +650,10 @@ clinic files of the first five), as `object_model/complex.jac`, `method.jac`,
   `PyStructSequence_UnnamedField` is C data. `PyFile_*` and the
   `open_code` hook read `_PyRuntime` through `jacpy_open_code_hook` /
   `jacpy_open_code_userdata` in `object_api.jac`.
-- gen_layouts imports records from the C API declarations positionally
-  (`Py_buffer`, `Py_complex`, `PyType_Slot`, `PyType_Spec`), asserts bool
-  fields, renames Jac keywords among member names with a trailing `_`
+- gen_layouts takes records from the C API declarations positionally
+  (`Py_buffer`, `Py_complex`, `PyType_Slot`, `PyType_Spec`, with their C
+  member names in `C_MEMBERS`), accepts a one-byte unsigned field as C's
+  bool, renames Jac keywords among member names with a trailing `_`
   (`obj_`), and writes unsigned constants unsigned.
 
 Refcounting from most ports is still a call into C (`Py_IncRef`,

@@ -133,7 +133,9 @@ pub fn main(init: std.process.Init) !void {
         if (std.mem.eql(u8, name, "cpython")) {
             const list_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/cpython-sources.txt" });
             const list = try Io.Dir.cwd().readFileAlloc(io, list_path, a, .limited(128 * 1024));
-            try retainSources(io, a, dir, if (mode == .jacpython) list else try cSourceManifest(a, list));
+            const retained = if (mode == .jacpython) list else try cSourceManifest(a, list);
+            try generatedHeadersOnly(retained);
+            try retainSources(io, a, dir, retained);
             try stageGenerated(io, a, root, dir, list);
             // One parser owns the manifest. build.sh checks the finished tree
             // against this list rather than reading the markers again.
@@ -421,6 +423,21 @@ fn generatedCopy(a: std.mem.Allocator, path: []const u8) ![]const u8 {
     return std.fmt.allocPrint(a, "bootstrap/python/generated/{s}.in", .{path});
 }
 
+// Every header under Include/ is generated from the Jac definitions
+// (scripts/jacpython/gen_include.jac): a manifest that keeps one of the
+// archive's, or a directory of them, fails the build.
+fn generatedHeadersOnly(manifest: []const u8) !void {
+    var lines = std.mem.splitScalar(u8, manifest, '\n');
+    while (lines.next()) |raw| {
+        const entry = std.mem.trim(u8, raw, " \t\r");
+        if (entry.len == 0 or entry[0] == '#' or !std.mem.startsWith(u8, entry, "Include/")) continue;
+        if (std.mem.endsWith(u8, entry, ".h") or std.mem.endsWith(u8, entry, "/")) {
+            seed.log("build-python: {s} would come from the CPython archive; Include/ headers are generated", .{entry});
+            return error.ArchiveHeader;
+        }
+    }
+}
+
 // Put each generated path's checked-in copy into the extracted tree. The
 // manifest comments the path out, so the archive's copy is already gone and a
 // missing checked-in copy fails the build instead of falling back to it.
@@ -610,6 +627,9 @@ test "generated paths come from their checked-in copies" {
     var tree = try tmp.dir.openDir(io, "tree", .{ .iterate = true });
     defer tree.close(io);
     const manifest = "Include/Python.h\n# Include/internal/table.h  # generated: 1 source lines\n";
+    try std.testing.expectError(error.ArchiveHeader, generatedHeadersOnly(manifest));
+    try std.testing.expectError(error.ArchiveHeader, generatedHeadersOnly("Include/internal/mimalloc/\n"));
+    try generatedHeadersOnly("Include/README.rst\n# Include/Python.h  # generated: 1 source lines\n");
     try stageGenerated(io, a, root, tree, manifest);
     try std.testing.expectEqualStrings("from jac\n", try tree.readFileAlloc(io, "Include/internal/table.h", a, .unlimited));
     try std.testing.expectError(error.FileNotFound, stageGenerated(io, a, root, tree, "# Lib/missing.py  # generated: 1 source lines\n"));
