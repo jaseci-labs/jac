@@ -100,6 +100,10 @@ impl ASTValidationPass._imports_itself(mod: Module, stmt: Import) -> bool {
     if source is None {
         return False;
     }
+    stem = os.path.basename(mod.loc.mod_path).split(".")[0];
+    if source.level == 1 and source.dot_path_str == f".{stem}" {
+        return True;
+    }
     resolved = source.resolve_relative_path();
     return bool(resolved)
         and os.path.realpath(resolved) == os.path.realpath(mod.loc.mod_path);
