@@ -377,6 +377,31 @@ test "fix placement declares a service app only for a server-placed sv import" {
                 )
             },
             "services": []
+        },
+        {
+            "label": "an annex import on the line of a client sv import",
+            "files": {
+                "notes/store.jac": NOTES_STORE
+                    + "\ndef:pub create_note(title: str) -> bool {\n"
+                    + "    root ++> Note(title=title);\n    return True;\n}\n",
+                "notes/NotesShell.jac": NOTES_SHELL + "\ndef:pub seed_note -> bool;\n",
+                "notes/NotesShell.impl.jac": "import from .store { create_note }\n\n"
+                "impl seed_note -> bool {\n    return create_note(\"first\");\n}\n"
+            },
+            "services": []
+        },
+        {
+            "label": "an sv import read by server code in the annex",
+            "files": {
+                "notes/store.jac": NOTES_STORE
+                    + "\ndef:pub create_note(title: str) -> bool {\n"
+                    + "    root ++> Note(title=title);\n    return True;\n}\n",
+                "notes/NotesShell.jac": "sv import from .store { create_note }\n\n"
+                "def:pub seed_note -> bool;\n",
+                "notes/NotesShell.impl.jac": "impl seed_note -> bool {\n"
+                "    return create_note(\"first\");\n}\n"
+            },
+            "services": ["store"]
         }
     ];
     for row in rows {

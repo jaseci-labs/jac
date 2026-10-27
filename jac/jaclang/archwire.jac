@@ -5806,7 +5806,7 @@ graph import compiler {
             module_app
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._parsed_provider_of {
-            bridgeable_import_target
+            parsed_import_source
         },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._provider_module_of {
             bridgeable_import_target,
@@ -5820,6 +5820,7 @@ graph import compiler {
             ClientImportVerdict,
             classify_client_import_item,
             import_crosses_apps,
+            import_item_declaration,
             import_provider_app,
             import_provider_route,
             is_client_boundary_import
@@ -7234,6 +7235,7 @@ graph import compiler {
             E1157,
             E1158,
             E1159,
+            E1161,
             E2015,
             W1036,
             W1037,
@@ -8125,8 +8127,9 @@ graph import compiler {
     ]
     frontend.srcloc --> driver.compiler.assemble_jcir { Span }
     frontend.unitree ++> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable
-            | driver.program.JacProgram.stamp_boundary_facts { ability_of_symbol },
+        backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable {
+            ability_of_symbol
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._record_generic_definition {
             definition_qualname
         },
@@ -10742,6 +10745,7 @@ graph import compiler {
             ClassType,
             FunctionType,
             ModuleType,
+            NeverType,
             TypeBase,
             TypeVarType,
             UnionType,
@@ -11781,6 +11785,7 @@ graph import compiler.driver {
             _default_codespace_for,
             classify_client_import_item,
             import_declares_native_target,
+            import_item_declaration,
             is_client_boundary_import,
             is_client_native_edge_import
         },

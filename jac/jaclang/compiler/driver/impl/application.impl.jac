@@ -41,8 +41,8 @@ impl _inventory(
             result[path] = _stamp(path, previous.get(path));
         }
     }
-    for path in Path(`root).`glob('jac*.toml') {
-        result[str(path)] = _stamp(str(path), previous.get(str(path)));
+    for toml_path in Path(`root).`glob('jac*.toml') {
+        result[str(toml_path)] = _stamp(str(toml_path), previous.get(str(toml_path)));
     }
     return result;
 }

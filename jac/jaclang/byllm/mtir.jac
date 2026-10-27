@@ -24,7 +24,6 @@ obj MTRuntime {
         _conversation_list: (list[any] | None) = None,
         _final_output: object = None,
         _has_final_output: bool = False,
-        _stream_reset_count: int = 0,
         _tool_arg_deltas: list[dict[str, any]] = [],
         _usage_history: list[dict[str, any]] = [],
         _compactions: list[dict[str, any]] = [],

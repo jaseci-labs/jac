@@ -84,6 +84,12 @@ def _record_usage(
 );
 
 
+class _StreamReset(str) {}
+
+
+glob _STREAM_RESET: str = _StreamReset();
+
+
 def _usage_step_events(
     mt_run: MTRuntime, usage_base: int
 ) -> Generator[StreamEvent, None, None];
@@ -123,7 +129,7 @@ def _reasoning_events(
 
 
 def _answer_events(
-    mt_run: MTRuntime, token: str, iteration: int
+    mt_run: MTRuntime, tokens: Generator[str, None, None], iteration: int
 ) -> Generator[StreamEvent, None, None];
 
 
@@ -703,31 +709,19 @@ impl BaseLLM._invoke_with_handler(mt_run: MTRuntime, on_event: Callable) -> obje
         and mt_run.resp_type is not None
         and mt_run.resp_type is not str {
         accumulated = "";
-        _seen_resets = mt_run._stream_reset_count;
         try {
-            for token in self.dispatch_streaming(mt_run) {
-                if mt_run._stream_reset_count != _seen_resets {
-                    _seen_resets = mt_run._stream_reset_count;
+            for ev in _answer_events(
+                mt_run, self.dispatch_streaming(mt_run, retractable=True), 0
+            ) {
+                if ev.event_type == "stream_reset" {
                     accumulated = "";
-                    try {
-                        on_event(
-                            StreamEvent(
-                                event_type="stream_reset", data={"scope": "answer"}
-                            )
-                        );
-                    } except Exception as e {
-                        logger.debug(f"stream_handler raised: {e}");
-                    }
+                } elif ev.event_type == "chunk" {
+                    accumulated += ev.data["content"];
                 }
-                if token {
-                    accumulated += token;
-                    try {
-                        on_event(
-                            StreamEvent(event_type="chunk", data={"content": token})
-                        );
-                    } except Exception as e {
-                        logger.debug(f"stream_handler raised: {e}");
-                    }
+                try {
+                    on_event(ev);
+                } except Exception as e {
+                    logger.debug(f"stream_handler raised: {e}");
                 }
             }
         } finally {
@@ -1181,15 +1175,18 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
 }
 
 impl BaseLLM._should_retry_stream(
-    mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
+    mt_run: MTRuntime,
+    e: Exception,
+    attempt: int,
+    usage_base: int = -1,
+    restartable: bool = True
 ) -> bool {
-    if not self._may_retry(mt_run, e, attempt) {
+    if not (restartable and self._may_retry(mt_run, e, attempt)) {
         return False;
     }
     if usage_base >= 0 {
         mt_run._usage_history = mt_run._usage_history[:usage_base];
     }
-    mt_run._stream_reset_count += 1;
     self.log_info(
         f"Transient stream error ({type(e).__name__}); "
         f"retry {attempt + 1} on {self.model_name}"
@@ -1197,7 +1194,9 @@ impl BaseLLM._should_retry_stream(
     return True;
 }
 
-impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None] {
+impl BaseLLM.dispatch_streaming(
+    mt_run: MTRuntime, retractable: bool = False
+) -> Generator[str, None, None] {
     params = self.make_model_params(mt_run);
 
     log_params = self.format_prompt(params);
@@ -1212,6 +1211,7 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     while True {
         finish_reason = "";
         produced = False;
+        shown = False;
         mt_run._last_stream_chunks = [];
         reasoning_pending = "";
         self._arm_attempt(mt_run, params, True);
@@ -1249,9 +1249,10 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
                     );
                 }
                 if chunk?.choices and chunk?.choices?[0]?.delta {
-                    delta = chunk?.choices?[0]?.delta;
-                    produced = produced or bool(str(delta?.content or "").strip());
-                    yield delta?.content or "";
+                    content = str(chunk?.choices?[0]?.delta?.content or "");
+                    shown = shown or bool(content);
+                    produced = produced or bool(content.strip());
+                    yield content;
                 }
             }
             if reasoning_pending {
@@ -1260,8 +1261,13 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
             }
             break;
         } except Exception as e {
-            if self._should_retry_stream(mt_run, e, attempt, usage_base) {
+            if self._should_retry_stream(
+                mt_run, e, attempt, usage_base, retractable or not shown
+            ) {
                 attempt += 1;
+                if retractable {
+                    yield _STREAM_RESET;
+                }
                 _retry_sleep(attempt);
                 continue;
             }
@@ -1373,6 +1379,7 @@ impl BaseLLM.dispatch_streaming_with_tools(
         } except Exception as e {
             if self._should_retry_stream(mt_run, e, attempt) {
                 attempt += 1;
+                yield _STREAM_RESET;
                 _retry_sleep(attempt);
                 continue;
             }
@@ -1519,6 +1526,7 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncIterator[str] {
     while True {
         finish_reason = "";
         produced = False;
+        shown = False;
         self._arm_attempt(mt_run, params, True);
         response: any = None;
         try {
@@ -1538,14 +1546,15 @@ impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) -> AsyncIterator[str] {
                     );
                 }
                 if chunk?.choices and chunk?.choices?[0]?.delta {
-                    delta = chunk?.choices?[0]?.delta;
-                    produced = produced or bool(str(delta?.content or "").strip());
-                    yield str(delta?.content or "");
+                    content = str(chunk?.choices?[0]?.delta?.content or "");
+                    shown = shown or bool(content);
+                    produced = produced or bool(content.strip());
+                    yield content;
                 }
             }
             break;
         } except Exception as e {
-            if self._should_retry_stream(mt_run, e, attempt, usage_base) {
+            if self._should_retry_stream(mt_run, e, attempt, usage_base, not shown) {
                 attempt += 1;
                 await _aretry_sleep(attempt);
                 continue;
@@ -1708,7 +1717,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
 
 
 impl BaseLLM._stream_final_answer(
-    mt_run: MTRuntime, fallback: str | None = None
+    mt_run: MTRuntime, fallback: str | None = None, retractable: bool = False
 ) -> Generator[str, None, None] {
     final_instruction = Message(
         role=MessageRole.USER,
@@ -1724,8 +1733,12 @@ impl BaseLLM._stream_final_answer(
     mt_run.call_params["tool_choice"] = "none";
     accumulated: str = "";
     try {
-        for token in self.dispatch_streaming(mt_run) {
-            accumulated += token;
+        for token in self.dispatch_streaming(mt_run, retractable) {
+            if token is _STREAM_RESET {
+                accumulated = "";
+            } else {
+                accumulated += token;
+            }
             yield token;
         }
         if not accumulated and fallback is not None {
@@ -1738,6 +1751,9 @@ impl BaseLLM._stream_final_answer(
         }
         accumulated = fallback;
         yield fallback;
+    } except Exception {
+        accumulated = "";
+        raise;
     } finally {
         mt_run._call_kind = original_call_kind;
         mt_run.call_params.pop("tool_choice", None);
@@ -1819,9 +1835,11 @@ impl BaseLLM._yield_recovery_result(
     }
     yield StreamEvent(event_type="steps_done", data={"iterations": iter_count});
     if finish_found {
-        for token in self._stream_final_answer(mt_run, fallback=committed) {
-            yield from _answer_events(mt_run, token, iter_count);
-        }
+        yield from _answer_events(
+            mt_run,
+            self._stream_final_answer(mt_run, fallback=committed, retractable=True),
+            iter_count
+        );
     } elif recovery_resp.output {
         yield StreamEvent(
             event_type="chunk", data={"content": str(recovery_resp.output)}
@@ -1842,14 +1860,9 @@ impl BaseLLM._invoke_streaming(
 
 impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, None] {
     if len(mt_run.tools) == 0 {
-        _seen_resets = mt_run._stream_reset_count;
-        for token in self.dispatch_streaming(mt_run) {
-            if mt_run._stream_reset_count != _seen_resets {
-                _seen_resets = mt_run._stream_reset_count;
-                yield StreamEvent(event_type="stream_reset", data={"scope": "answer"});
-            }
-            yield from _answer_events(mt_run, token, 0);
-        }
+        yield from _answer_events(
+            mt_run, self.dispatch_streaming(mt_run, retractable=True), 0
+        );
     } else {
         max_iters = (
             mt_run.call_params.get("max_react_iterations")
@@ -1902,9 +1915,11 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                             "reason": "aborted_with_summary"
                         }
                     );
-                    for token in self._stream_final_answer(mt_run) {
-                        yield from _answer_events(mt_run, token, iter_count);
-                    }
+                    yield from _answer_events(
+                        mt_run,
+                        self._stream_final_answer(mt_run, retractable=True),
+                        iter_count
+                    );
                     yield from _usage_step_events(mt_run, _usage_base);
                     break;
                 }
@@ -1915,9 +1930,11 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     event_type="steps_done",
                     data={"iterations": iter_count - 1, "reason": "max_iterations"}
                 );
-                for token in self._stream_final_answer(mt_run) {
-                    yield from _answer_events(mt_run, token, iter_count);
-                }
+                yield from _answer_events(
+                    mt_run,
+                    self._stream_final_answer(mt_run, retractable=True),
+                    iter_count
+                );
                 yield from _usage_step_events(mt_run, _usage_base);
                 break;
             }
@@ -1927,14 +1944,13 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
             try {
                 _stream_out: list[CompletionResult] = [];
                 _emitted_deltas = False;
-                _seen_resets = mt_run._stream_reset_count;
                 for _tok in self.dispatch_streaming_with_tools(mt_run, _stream_out) {
-                    if mt_run._stream_reset_count != _seen_resets {
-                        _seen_resets = mt_run._stream_reset_count;
+                    if _tok is _STREAM_RESET {
                         yield StreamEvent(
                             event_type="stream_reset",
                             data={"scope": "thought", "iteration": iter_count}
                         );
+                        continue;
                     }
                     yield from _reasoning_events(mt_run, iter_count);
                     while mt_run._tool_arg_deltas {
@@ -1964,13 +1980,6 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     }
                 }
 
-                if mt_run._stream_reset_count != _seen_resets {
-                    _seen_resets = mt_run._stream_reset_count;
-                    yield StreamEvent(
-                        event_type="stream_reset",
-                        data={"scope": "thought", "iteration": iter_count}
-                    );
-                }
                 while mt_run._tool_arg_deltas {
                     _d = mt_run._tool_arg_deltas.pop(0);
                     _emitted_deltas = True;
@@ -2137,11 +2146,15 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
                     );
 
                     if mt_run.resp_type is None or mt_run.resp_type is str {
-                        for token in self._stream_final_answer(
-                            mt_run, fallback=str(final_output or "")
-                        ) {
-                            yield from _answer_events(mt_run, token, iter_count);
-                        }
+                        yield from _answer_events(
+                            mt_run,
+                            self._stream_final_answer(
+                                mt_run,
+                                fallback=str(final_output or ""),
+                                retractable=True
+                            ),
+                            iter_count
+                        );
                         yield from _usage_step_events(mt_run, _usage_base);
                     }
                     break;
@@ -2708,11 +2721,17 @@ impl _reasoning_events(
 
 
 impl _answer_events(
-    mt_run: MTRuntime, token: str, iteration: int
+    mt_run: MTRuntime, tokens: Generator[str, None, None], iteration: int
 ) -> Generator[StreamEvent, None, None] {
-    yield from _reasoning_events(mt_run, iteration);
-    if token {
-        yield StreamEvent(event_type="chunk", data={"content": token});
+    for token in tokens {
+        if token is _STREAM_RESET {
+            yield StreamEvent(event_type="stream_reset", data={"scope": "answer"});
+        } else {
+            yield from _reasoning_events(mt_run, iteration);
+            if token {
+                yield StreamEvent(event_type="chunk", data={"content": token});
+            }
+        }
     }
 }
 

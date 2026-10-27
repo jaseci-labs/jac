@@ -306,7 +306,12 @@ serving, building, sealed bundles, `--debug`, or `--entry`.
 Everything the server process reads, for a laptop and a pod alike. Every key
 has a `JAC_SERVE_*` environment mirror (listed with each table), and the
 deploy target sets those same variables on the pod, so one resolver answers
-both.
+both. A variable that is empty or only whitespace counts as unset, so the
+`jac.toml` value stands. A boolean variable takes `1/true/yes/on` or
+`0/false/no/off` (any case), and any other value stops the server with a
+message naming the variable. An empty `JAC_SERVE_CORS_ORIGINS` therefore keeps
+the `jac.toml` list (`["*"]` by default); to allow no cross-origin requests, set
+`cors_origins = []` in `jac.toml`.
 
 ```toml
 [serve]
