@@ -37702,11 +37702,8 @@ obj VM {
             } else {
                 frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = js_number(float(xi));
             }
-        } elif op >= 40 and op <= 46 {
-            # NEG (other operands) BNOT TYPEOF TONUM TOSTR dst, src
-            self._reg_op_unary(frame, st, w, op, pc);
         } elif op == 44 {
-            # VOID dst, src
+            # VOID dst, src (before the unary range below, which includes it)
             b = (w >> 24) & 65535;
             if (b & 32768) != 0 and js_is_tdz(frame.locals[wrapping_add(lb, (b & 32767))]) {
                 self._reg_tdz_throw(
@@ -37715,6 +37712,9 @@ obj VM {
             } else {
                 frame.locals[wrapping_add(lb, ((w >> 8) & 65535))] = js_undefined();
             }
+        } elif op >= 40 and op <= 46 {
+            # NEG (other operands) BNOT TYPEOF TONUM TOSTR dst, src
+            self._reg_op_unary(frame, st, w, op, pc);
         } elif op == 68 or op == 69 {
             # BEQ / BNE a, b -> target (abstract equality: the handler
             # of the original EQ / NEQ, whose polarity is accounted for)

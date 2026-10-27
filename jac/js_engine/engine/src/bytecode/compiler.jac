@@ -2117,8 +2117,15 @@ obj Compiler {
         # Can a super() run inside this function -- in its own code or in an
         # arrow it creates (those share its this binding)? When it cannot,
         # reading `this` has no effect and no order, and the register
-        # translator keeps it symbolic (CompiledFunction.this_lazy).
+        # translator keeps it symbolic (CompiledFunction.this_lazy). Where
+        # super() is allowed at all (a derived constructor, and the arrows and
+        # eval code that share its binding) `this` can still be uninitialized,
+        # and every read must throw where it stands, even when its value is
+        # unused: it stays a real LOAD_THIS there.
         fn.this_lazy = 1;
+        if self.super_call_allowed {
+            fn.this_lazy = 0;
+        }
         tl_i: int = 0;
         while tl_i < len(fn.code) {
             tl_op: Opcode = fn.code[tl_i].opcode;
