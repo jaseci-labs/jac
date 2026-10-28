@@ -881,9 +881,7 @@ obj Emitter {
         base = f.c_basename;
         impl_name = base + "_impl";
         self.impls.add(impl_name);
-        fname = (cls if cls else f.name)
-            if kind in ("METHOD_NEW", "METHOD_INIT")
-            else f.name;
+        fname = (cls or f.name) if kind in ("METHOD_NEW", "METHOD_INIT") else f.name;
         ret_kind = f.returns;
         # A module's own return converter (cmath's Py_complex_protected) is
         # return_<kind> in the module's Jac file, as its C one is in the module.
