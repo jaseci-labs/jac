@@ -207,6 +207,16 @@ impl ServingApp._route_and_call(request: Request) -> Response {
         }
         return JSONResponse(content={'detail': 'Not Found'}, status_code=404);
     }
+    if self.router.is_catchall(ep) {
+        alt = _slash_alternate(request.url.path);
+        if alt is not None
+            and self.router.resolve_declared(request.method, alt) is not None {
+            query = request.url.query;
+            return RedirectResponse(
+                url=alt + (f"?{query}" if query else ''), status_code=307
+            );
+        }
+    }
     request.path_params = path_params;
     spec = get_callback_spec(ep);
     body_json = _parse_request_body(request, ep, self.multipart_spool_bytes);
