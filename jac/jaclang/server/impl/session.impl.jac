@@ -233,10 +233,6 @@ impl takeover_project(base_path: str, target_path: (str | None) = None) -> int {
 def _ancestry_of(arch: (object | None)) -> list[str];
 
 
-glob _GETTER_CLASSES: dict[type, bool] = {};
-
-def _runs_getters(arch: object) -> bool;
-
 def _settle_written(anchor: Anchor, seen: int);
 
 
@@ -970,7 +966,7 @@ impl Session._flush_locked(full: bool) -> None {
     }
     if full and self._scan_sealed {
         full = any(
-            anchor is not None and _runs_getters(anchor.archetype)
+            anchor is not None and runs_getters(anchor.archetype)
             for anchor in (self.__mem__.get(id) for id in self._dirty)
         );
         if full {
@@ -1020,6 +1016,9 @@ impl Session._flush_locked(full: bool) -> None {
             );
             u.anchor.hash = u.hash;
             _settle_written(u.anchor, u.written);
+            u.anchor.__dict__['_field_baseline'] = field_baseline(u.anchor)
+                if self._scan_safe
+                else None;
         }
     }
     if self._deleted {
@@ -1063,11 +1062,11 @@ impl Session._unflushed(full: bool) -> list[UnflushedAnchor] {
             and id not in self._dirty
             and known is not None
             and known.hash != 0
-            and frozen_fields(anchor) {
+            and (frozen_fields(anchor) or baseline_holds(anchor)) {
             continue;
         }
         written = anchor.__dict__.get('_field_written', 0);
-        if safe and _runs_getters(anchor.archetype) {
+        if safe and runs_getters(anchor.archetype) {
             safe = False;
         }
         stored: (dict[str, object] | None) = None;
@@ -1542,21 +1541,6 @@ impl _ancestry_of(arch: (object | None)) -> list[str] {
     return out;
 }
 
-
-impl _runs_getters(arch: object) -> bool {
-    cls = type(arch);
-    found = _GETTER_CLASSES.get(cls);
-    if found is None {
-        found = any(
-            isinstance(member, property)
-            for klass in cls.__mro__
-            if klass is not object and not klass.__module__.startswith('jaclang.')
-            for member in vars(klass).values()
-        );
-        _GETTER_CLASSES[cls] = found;
-    }
-    return found;
-}
 
 impl _settle_written(anchor: Anchor, seen: int) {
     if seen and anchor.__dict__.get('_field_written', 0) == seen {
