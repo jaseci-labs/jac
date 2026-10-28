@@ -7006,6 +7006,7 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass._build_edge_ref { E5097 },
         backends.es.esast_gen_pass.EsastGenPass._build_osp_filter_pred { E5097 },
+        backends.es.esast_gen_pass.EsastGenPass._reject_dynamic_import { E5117 },
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
