@@ -74,11 +74,6 @@ glob _MUTATING_CONTAINER_METHODS: frozenset[str] = frozenset(
      );
 
 impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
-    """Run the ownership checks and stamps over the module.
-
-    Borrow inference only removes refcount work: if it cannot finish on a
-    module, that module keeps every local counted.
-    """;
     self.owned_decl = {};
     self.consumed_syms = set();
     self.borrow_meta = {};

@@ -92,11 +92,6 @@ glob _INFER_PLAIN_NAMES: frozenset[str] = frozenset(
      );
 
 impl OwnershipCheckPass._stamp_inferred_borrows -> None {
-    """Infer the borrows of every function in the module.
-
-    What each function may write is computed first, through the free functions
-    it calls (a fixpoint), and only then is any local inferred.
-    """;
     opts = self.prog?.options;
     if opts is not None and not opts.na_borrow_infer {
         return;
@@ -151,11 +146,6 @@ impl OwnershipCheckPass._stamp_inferred_borrows -> None {
 }
 
 impl OwnershipCheckPass._infer_nodes_of(ab: Ability) -> list[UniNode] {
-    """The nodes of `ab` that run in `ab` itself.
-
-    That is the declaration's subtree and its impl bodies, as
-    `element_sub_nodes` walks them, without the nodes of nested functions.
-    """;
     out: list[UniNode] = [];
     seen: set[int] = set();
     pending: list[UniNode] = [ab];
@@ -209,11 +199,6 @@ impl OwnershipCheckPass._infer_plain_type(t: (TypeBase | None)) -> bool {
 }
 
 impl OwnershipCheckPass._infer_expr_plain(e: object) -> bool {
-    """Whether `e` is a plain value, so that using it runs no user code.
-
-    A comparison or a boolean expression is a bool: its operands are checked
-    where they appear.
-    """;
     cur = e;
     while isinstance(cur, CfgExpr) {
         cur = cur.expr;
@@ -230,18 +215,6 @@ impl OwnershipCheckPass._infer_expr_plain(e: object) -> bool {
 impl OwnershipCheckPass._infer_region_effects(
     nds: list[UniNode], callees: list[Ability]
 ) -> set[str] {
-    """What running these nodes may write: field names, "[]" for list elements
-    and container contents, "*" for anything unknown. Free functions of this
-    module that they call are collected in `callees` for the caller's
-    fixpoint.
-
-    A type annotation or another type expression is never evaluated, and
-    storing a number or a bool releases nothing. Formatting a user object runs
-    its `__str__` or `__format__`, a property read runs its getter, and the
-    truthiness of a user object is its `__bool__` or `__len__` (an optional is
-    tested for None the same way): all of these count as code the pass cannot
-    see.
-    """;
     out: set[str] = set();
     for nd in nds {
         if nd.find_parent_of_type(SubTag) is not None or self._infer_is_type_expr(nd) {
@@ -314,8 +287,14 @@ impl OwnershipCheckPass._infer_region_effects(
             }
         } elif isinstance(nd, AtomTrailer) {
             if nd.is_attr {
-                decl = nd.right?.sym?.decl;
-                owner = decl?.name_of;
+                owner: (UniNode | None) = None;
+                at_right = nd.right;
+                if isinstance(at_right, Name) {
+                    at_sym = at_right.sym;
+                    if at_sym is not None {
+                        owner = at_sym.decl.name_of;
+                    }
+                }
                 parent = nd.parent;
                 called = isinstance(parent, FuncCall) and parent.target is nd;
                 if isinstance(owner, Ability) and not called {
@@ -343,7 +322,6 @@ impl OwnershipCheckPass._infer_region_effects(
 }
 
 impl OwnershipCheckPass._infer_indexable(target: object) -> bool {
-    """Whether indexing `target` runs no user code (a builtin container).""";
     if not isinstance(target, Expr) {
         return False;
     }
@@ -379,18 +357,6 @@ impl OwnershipCheckPass._infer_iterable(coll: object) -> bool {
 impl OwnershipCheckPass._infer_call_effects(
     call: FuncCall, callees: list[Ability]
 ) -> set[str] {
-    """What a call may write, for the caller's fixpoint.
-
-    A builtin does not resolve to a declaration, so known builtins are
-    recognised by name: methods of builtin containers and strings, builtin
-    exceptions (their constructor only stores its arguments), and the shallow
-    builtins such as `len`, which look at a container itself and not at what
-    it holds (only a user object argument can run its own `__len__` and the
-    like). Any other library call may compare, hash or format what it is
-    given, which runs a user object's dunder methods, so it is trusted with
-    plain values only. A method call can do anything, since an override in a
-    subclass, here or in another module, can.
-    """;
     callee = self._callee_ability(call);
     if callee is None {
         bname = call.target.sym_name if isinstance(call.target, Name) else "";
@@ -491,8 +457,6 @@ impl OwnershipCheckPass._infer_call_effects(
 }
 
 impl OwnershipCheckPass._infer_path(expr: object) -> (tuple[Name, set[str]] | None) {
-    """The root name and the fields along `expr` when it is a place: a name,
-    or `.field` and `list[index]` steps from one. None for anything else.""";
     fields: set[str] = set();
     cur = expr;
     while isinstance(cur, AtomTrailer) {
@@ -530,18 +494,6 @@ impl OwnershipCheckPass._infer_path(expr: object) -> (tuple[Name, set[str]] | No
 impl OwnershipCheckPass._infer_borrows_in(
     ab: Ability, nds: list[UniNode], effects: dict[int, set[str]]
 ) -> int {
-    """Stamp the binds of the locals of `ab` that can be borrows; the count.
-
-    It first collects every way a local is bound in `ab`, the locals copied
-    whole into another local (the copy at a local's last use takes its
-    reference through move lowering, so such a local may stop holding its
-    object before the function ends and is never a stable root), and the names
-    nested functions and lambdas capture. Candidates are the locals whose
-    every bind is None or a place. A candidate holds while its roots hold: the
-    fixpoint drops the ones whose root is neither a parameter, `self`, a
-    stable owner nor a surviving candidate, and the ones whose path, with its
-    roots' paths, the function may write.
-    """;
     fn_writes = effects.get(id(ab), {"*"});
 
     simple: dict[SymId, list[Assignment]] = {};
@@ -674,8 +626,10 @@ impl OwnershipCheckPass._infer_borrows_in(
                     continue;
                 }
                 if rsid in alive {
-                    if not fields_of[rsid].issubset(fields_of[sid]) {
-                        fields_of[sid] |= fields_of[rsid];
+                    root_fields = fields_of[rsid];
+                    own_fields = fields_of[sid];
+                    if not root_fields.issubset(own_fields) {
+                        own_fields.update(root_fields);
                         changed = True;
                     }
                     continue;
@@ -734,13 +688,6 @@ impl OwnershipCheckPass._infer_loop_borrows(
     captured: set[SymId],
     effects: dict[int, set[str]]
 ) -> int {
-    """`for x in <list>`: x borrows each element while the body runs, if the
-    body cannot change the list and x is not used outside the loop.
-
-    Every use of x must be inside the body, and the collection's root must not
-    be rebound elsewhere in the function, unless it is a local bound once
-    outside this loop.
-    """;
     count = 0;
     for st in nds {
         if not isinstance(st, InForStmt) or not isinstance(st.target, Name) {
@@ -861,7 +808,6 @@ impl OwnershipCheckPass._infer_owner_stable(
     other_binds: dict[SymId, int],
     simple: dict[SymId, list[Assignment]]
 ) -> bool {
-    """A local base_nm that owns what it names: bound once, outside any loop.""";
     if other_binds.get(sid, 0) {
         return False;
     }
@@ -880,7 +826,6 @@ impl OwnershipCheckPass._infer_owner_stable(
 }
 
 impl OwnershipCheckPass._infer_builtin_outer(e: object) -> bool {
-    """Whether `e` is a builtin container (its elements may be anything).""";
     if not isinstance(e, Expr) or e.type is None {
         return False;
     }
@@ -895,7 +840,6 @@ impl OwnershipCheckPass._infer_builtin_outer(e: object) -> bool {
 }
 
 impl OwnershipCheckPass._infer_scalar_slot(tgt: object) -> bool {
-    """Whether `tgt` is a field or element whose value is a number or a bool.""";
     if not isinstance(tgt, AtomTrailer) or tgt.type is None {
         return False;
     }
@@ -910,7 +854,6 @@ impl OwnershipCheckPass._infer_scalar_slot(tgt: object) -> bool {
 }
 
 impl OwnershipCheckPass._infer_is_type_expr(nd: object) -> bool {
-    """Whether `nd` denotes a type (`list[list[float]]` in a return annotation).""";
     if not isinstance(nd, Expr) or nd.type is None {
         return False;
     }
@@ -926,11 +869,6 @@ impl OwnershipCheckPass._infer_is_type_expr(nd: object) -> bool {
 impl OwnershipCheckPass._infer_mutator_effects(
     mname: str, call: FuncCall, args: list[Expr]
 ) -> set[str] {
-    """A container method's effect on borrows of its elements. Only removing
-    or overwriting an element releases it; adding or reordering releases
-    nothing (a borrow names the element, not its slot), unless the method
-    runs user code: hashing or ordering user objects, iterating a user
-    iterable.""";
     recv = call.target.target if isinstance(call.target, AtomTrailer) else None;
     if mname in ("clear", "popitem") or (mname == "pop" and not args) {
         return {"[]"};
