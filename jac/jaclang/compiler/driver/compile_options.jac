@@ -27,6 +27,7 @@ obj CompileOptions {
         memory_profile: (str | None) = None,
         na_gc_mode: (str | None) = None,
         nogc_enforce_all: (bool | None) = None,
+        na_borrow_infer: bool = True,
         memory_enforce: (list[str] | None) = None,
         memory_exempt: (list[str] | None) = None,
         native_threads: (int | None) = None,

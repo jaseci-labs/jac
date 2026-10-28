@@ -135,7 +135,7 @@ walker OwnershipCheckPass(CompilerPass) {
     def _stamp_inferred_borrows -> None;
     def _infer_nodes_of(ab: Ability) -> list[UniNode];
     def _infer_is_generator(nds: list[UniNode]) -> bool;
-    def _infer_plain_type(t: object) -> bool;
+    def _infer_plain_type(t: (TypeBase | None)) -> bool;
     def _infer_expr_plain(e: object) -> bool;
     def _infer_region_effects(nds: list[UniNode], callees: list[Ability]) -> set[str];
     def _infer_indexable(target: object) -> bool;

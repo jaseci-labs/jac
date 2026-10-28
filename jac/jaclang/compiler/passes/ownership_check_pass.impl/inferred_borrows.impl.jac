@@ -89,9 +89,6 @@ glob _INFER_PLAIN_NAMES: frozenset[str] = frozenset(
              "set",
              "sorted"
          }
-     ),
-     _INFER_UNSAFE_NODES: frozenset[str] = frozenset(
-         {"WithStmt", "AwaitExpr", "YieldExpr", "ConcurrentExpr", "IterForStmt"}
      );
 
 impl OwnershipCheckPass._stamp_inferred_borrows -> None {
@@ -100,8 +97,8 @@ impl OwnershipCheckPass._stamp_inferred_borrows -> None {
     What each function may write is computed first, through the free functions
     it calls (a fixpoint), and only then is any local inferred.
     """;
-    import os;
-    if os.environ.get("JAC_NO_BORROW_INFER") {
+    opts = self.prog?.options;
+    if opts is not None and not opts.na_borrow_infer {
         return;
     }
     abilities = [
@@ -145,18 +142,11 @@ impl OwnershipCheckPass._stamp_inferred_borrows -> None {
             }
         }
     }
-    inferred = 0;
     for ab in abilities {
-        if getattr(ab, "is_async", False) or self._infer_is_generator(nodes[id(ab)]) {
+        if ab.is_async or self._infer_is_generator(nodes[id(ab)]) {
             continue;
         }
-        inferred += self._infer_borrows_in(ab, nodes[id(ab)], effects);
-    }
-    if os.environ.get("JAC_BORROW_INFER_DEBUG") and inferred {
-        import sys;
-        sys.stderr.write(
-            f"borrow inference: {self.module.loc.mod_path}: {inferred} binds\n"
-        );
+        self._infer_borrows_in(ab, nodes[id(ab)], effects);
     }
 }
 
@@ -177,7 +167,7 @@ impl OwnershipCheckPass._infer_nodes_of(ab: Ability) -> list[UniNode] {
             }
             seen.add(id(nd));
             if nd is not ab
-                and type(nd).__name__ != "ImplDef"
+                and not isinstance(nd, ImplDef)
                 and nd.enclosing_decl(Ability) is ab {
                 out.append(nd);
             }
@@ -196,7 +186,7 @@ impl OwnershipCheckPass._infer_is_generator(nds: list[UniNode]) -> bool {
     return False;
 }
 
-impl OwnershipCheckPass._infer_plain_type(t: object) -> bool {
+impl OwnershipCheckPass._infer_plain_type(t: (TypeBase | None)) -> bool {
     if t is None {
         return False;
     }
@@ -224,16 +214,17 @@ impl OwnershipCheckPass._infer_expr_plain(e: object) -> bool {
     A comparison or a boolean expression is a bool: its operands are checked
     where they appear.
     """;
-    while type(e).__name__ == "CfgExpr" {
-        e = e.expr;
+    cur = e;
+    while isinstance(cur, CfgExpr) {
+        cur = cur.expr;
     }
-    if isinstance(e, Null) {
+    if isinstance(cur, Null) {
         return True;
     }
-    if type(e).__name__ in ("CompareExpr", "BoolExpr") {
+    if isinstance(cur, (CompareExpr, BoolExpr)) {
         return True;
     }
-    return isinstance(e, Expr) and self._infer_plain_type(e.type);
+    return isinstance(cur, Expr) and self._infer_plain_type(cur.type);
 }
 
 impl OwnershipCheckPass._infer_region_effects(
@@ -252,17 +243,26 @@ impl OwnershipCheckPass._infer_region_effects(
     see.
     """;
     out: set[str] = set();
-    import os;
-    _dbg = os.environ.get("JAC_BORROW_INFER_DEBUG") == "3";
     for nd in nds {
-        kind = type(nd).__name__;
-        _before = "*" in out;
         if nd.find_parent_of_type(SubTag) is not None or self._infer_is_type_expr(nd) {
             continue;
         }
-        if kind in _INFER_UNSAFE_NODES {
+        if isinstance(
+            nd, (WithStmt, AwaitExpr, YieldExpr, ConcurrentExpr, IterForStmt)
+        ) {
             out.add("*");
         } elif isinstance(nd, Assignment) {
+            if nd.aug_op is not None {
+                aug_plain = self._infer_expr_plain(nd.value);
+                for aug_tgt in nd.target {
+                    if not self._infer_expr_plain(aug_tgt) {
+                        aug_plain = False;
+                    }
+                }
+                if not aug_plain {
+                    out.add("*");
+                }
+            }
             for tgt in nd.target {
                 if self._infer_scalar_slot(tgt) {
                     continue;
@@ -275,22 +275,31 @@ impl OwnershipCheckPass._infer_region_effects(
             }
         } elif isinstance(nd, FuncCall) {
             out |= self._infer_call_effects(nd, callees);
-        } elif kind == "CompareExpr" {
-            ops = [str(getattr(op, "value", "")) for op in (nd.ops or [])];
-            if not all(op in ("is", "is not") for op in ops) {
-                operands = [nd.left] + list(nd.rights or []);
-                if not all(self._infer_expr_plain(o) for o in operands) {
-                    out.add("*");
+        } elif isinstance(nd, CompareExpr) {
+            identity_only = True;
+            for op in nd.ops {
+                if op.value not in ("is", "is not") {
+                    identity_only = False;
                 }
             }
-        } elif kind == "BinaryExpr" {
+            if not identity_only {
+                if not self._infer_expr_plain(nd.left) {
+                    out.add("*");
+                }
+                for right in nd.rights {
+                    if not self._infer_expr_plain(right) {
+                        out.add("*");
+                    }
+                }
+            }
+        } elif isinstance(nd, BinaryExpr) {
             if not (
                 self._infer_expr_plain(nd.left) and self._infer_expr_plain(nd.right)
             ) {
                 out.add("*");
             }
-        } elif kind == "BoolExpr" {
-            for v in (nd.values or []) {
+        } elif isinstance(nd, BoolExpr) {
+            for v in nd.values {
                 if not self._infer_expr_plain(v) {
                     out.add("*");
                 }
@@ -299,9 +308,8 @@ impl OwnershipCheckPass._infer_region_effects(
             if not self._infer_expr_plain(nd.operand) {
                 out.add("*");
             }
-        } elif kind == "FormattedValue" {
-            part = nd?.format_part;
-            if isinstance(part, Expr) and not self._infer_expr_plain(part) {
+        } elif isinstance(nd, FormattedValue) {
+            if not self._infer_expr_plain(nd.format_part) {
                 out.add("*");
             }
         } elif isinstance(nd, AtomTrailer) {
@@ -320,88 +328,15 @@ impl OwnershipCheckPass._infer_region_effects(
             if not self._infer_iterable(nd.collection) {
                 out.add("*");
             }
-        } elif kind in ("IfStmt", "ElseIf", "WhileStmt") {
-            cond = nd?.condition;
-            while type(cond).__name__ == "CfgExpr" {
+        } elif isinstance(nd, (IfStmt, WhileStmt)) {
+            cond: Expr = nd.condition;
+            while isinstance(cond, CfgExpr) {
                 cond = cond.expr;
             }
-            if isinstance(cond, Expr)
-                and not self._infer_expr_plain(cond)
-                and type(cond).__name__ not in ("CompareExpr", "BoolExpr") {
+            if not self._infer_expr_plain(cond)
+                and not isinstance(cond, (CompareExpr, BoolExpr)) {
                 out.add("*");
             }
-        }
-        if _dbg and "*" in out and not _before {
-            _ty = "";
-            for _attr in ("type", ) {
-                _t = getattr(nd, _attr, None);
-                try {
-                    _ty = _t.mangle() if _t is not None else "None";
-                } except Exception {
-                    _ty = "?";
-                }
-            }
-            _ops = "";
-            if kind in ("BinaryExpr", "CompareExpr", "UnaryExpr", "BoolExpr") {
-                _subs = [];
-                for _a in ("left", "right", "operand") {
-                    _v = getattr(nd, _a, None);
-                    if _v is not None {
-                        _vt = _v?.type;
-                        try {
-                            _subs.append(
-                                f"{_a}:{type(_v).__name__}:{_vt.mangle()
-                                    if _vt is not None
-                                    else None}"
-                            );
-                        } except Exception {
-                            _subs.append(f"{_a}:?");
-                        }
-                    }
-                }
-                _ops = " ".join(_subs);
-            }
-            if kind == "FuncCall" {
-                _ce = self._callee_ability(nd);
-                _cn = _ce.name_ref.sym_name
-                    if _ce is not None and _ce.name_ref is not None
-                    else None;
-                _cp = str(_ce.loc.mod_path)[-40:] if _ce is not None else None;
-                _cat = type(_ce.find_parent_of_type(Archetype)).__name__
-                    if _ce is not None
-                    else None;
-                _args = [];
-                for _p in (nd.params or []) {
-                    _pv = _p.value if isinstance(_p, KWPair) else _p;
-                    _pt = _pv?.type;
-                    try {
-                        _args.append(_pt.mangle() if _pt is not None else "None");
-                    } except Exception {
-                        _args.append("?");
-                    }
-                }
-                _tn = type(nd.target).__name__;
-                _ops = f"callee={_cn} path={_cp} arch={_cat} target={_tn} args={_args}";
-            }
-            if kind == "BoolExpr" {
-                _vs = [];
-                for _v in (nd.values or []) {
-                    _vt = _v?.type;
-                    try {
-                        _vs.append(
-                            f"{type(_v).__name__}:{_vt.mangle()
-                                if _vt is not None
-                                else None}"
-                        );
-                    } except Exception {
-                        _vs.append("?");
-                    }
-                }
-                _ops = " ".join(_vs);
-            }
-            _line = nd.loc.first_line if nd.loc else 0;
-            import sys;
-            sys.stderr.write(f"    * from {kind} type={_ty} {_ops} line={_line}\n");
         }
     }
     return out;
@@ -518,7 +453,7 @@ impl OwnershipCheckPass._infer_call_effects(
             return {"*"};
         }
         for a in args {
-            if type(a.type).__name__ == "FunctionType" or isinstance(a, LambdaExpr) {
+            if isinstance(a.type, FunctionType) or isinstance(a, LambdaExpr) {
                 return {"*"};
             }
         }
@@ -645,12 +580,13 @@ impl OwnershipCheckPass._infer_borrows_in(
                 other_binds[sid] = other_binds.get(sid, 0) + 1;
             }
         } else {
-            kind = type(nd).__name__;
             bound: object = None;
-            if kind in ("Except", "MatchAs", "MatchStar") {
-                bound = nd?.name;
-            } elif kind == "ExprAsItem" {
-                bound = nd?.alias;
+            if isinstance(nd, Except) {
+                bound = nd.name;
+            } elif isinstance(nd, (MatchAs, MatchStar)) {
+                bound = nd.name;
+            } elif isinstance(nd, ExprAsItem) {
+                bound = nd.alias;
             }
             for nm in self._infer_bound_names(bound) {
                 other_binds[self._name_sym_id(nm)] = 99;
@@ -661,9 +597,9 @@ impl OwnershipCheckPass._infer_borrows_in(
     captured: set[SymId] = set();
     for lam in ab.element_sub_nodes(LambdaExpr) {
         for nm in lam.get_all_sub_nodes(Name) {
-            sid = self._sym_id(nm);
-            if sid is not None {
-                captured.add(sid);
+            lam_sid = self._sym_id(nm);
+            if lam_sid is not None {
+                captured.add(lam_sid);
             }
         }
     }
@@ -672,9 +608,9 @@ impl OwnershipCheckPass._infer_borrows_in(
             continue;
         }
         for nm in inner.element_sub_nodes(Name) {
-            sid = self._sym_id(nm);
-            if sid is not None {
-                captured.add(sid);
+            inner_sid = self._sym_id(nm);
+            if inner_sid is not None {
+                captured.add(inner_sid);
             }
         }
     }
@@ -723,7 +659,12 @@ impl OwnershipCheckPass._infer_borrows_in(
                 if base_nm.sym_name == "self" {
                     continue;
                 }
-                if base_nm.sym.storage == SymbolStorage.PARAM {
+                base_sym = base_nm.sym;
+                if base_sym is None {
+                    drop = True;
+                    continue;
+                }
+                if base_sym.storage == SymbolStorage.PARAM {
                     if other_binds.get(rsid, 0) or simple.get(rsid) {
                         drop = True;
                     }
@@ -757,17 +698,6 @@ impl OwnershipCheckPass._infer_borrows_in(
             }
         }
     }
-    import os;
-    if os.environ.get("JAC_BORROW_INFER_DEBUG") == "2" {
-        _abn = ab.name_ref.sym_name if ab.name_ref is not None else "?";
-        import sys;
-        sys.stderr.write(
-            f"  {_abn}: writes={sorted(fn_writes)} "
-                + f"candidates={sorted(names[k].sym_name for k in cand)} "
-                + f"kept={sorted(names[k].sym_name for k in alive)} "
-                + f"simple={sorted(names[k].sym_name for k in simple)}\n"
-        );
-    }
     count = 0;
     for sid in alive {
         for nd in cand[sid][0] {
@@ -784,9 +714,13 @@ impl OwnershipCheckPass._infer_bound_names(tgt: object) -> list[Name] {
         return [tgt] if tgt.sym is not None else [];
     }
     out: list[Name] = [];
-    if type(tgt).__name__ in ("TupleVal", "ListVal") {
-        for v in (tgt?.values or []) {
-            out.extend(self._infer_bound_names(v));
+    if isinstance(tgt, TupleVal) {
+        for tv in tgt.values {
+            out.extend(self._infer_bound_names(tv));
+        }
+    } elif isinstance(tgt, ListVal) {
+        for lv in tgt.values {
+            out.extend(self._infer_bound_names(lv));
         }
     }
     return out;
@@ -866,13 +800,6 @@ impl OwnershipCheckPass._infer_loop_borrows(
         path = self._infer_path(st.collection);
         coll_fields: set[str] = path[1] if path is not None else set();
         if "*" in writes or "[]" in writes or coll_fields & writes {
-            import os;
-            if os.environ.get("JAC_BORROW_INFER_DEBUG") == "2" {
-                import sys;
-                sys.stderr.write(
-                    f"  loop {tgt.sym_name}: body writes {sorted(writes)}\n"
-                );
-            }
             continue;
         }
         if path is not None {
@@ -881,7 +808,7 @@ impl OwnershipCheckPass._infer_loop_borrows(
             if base_nm.sym_name != "self"
                 and (other_binds.get(rsid, 0) or simple.get(rsid)) {
                 if not (
-                    base_nm.sym.storage == SymbolStorage.LOCAL
+                    self._infer_is_local(base_nm)
                     and len(simple.get(rsid, [])) == 1
                     and not other_binds.get(rsid, 0)
                 ) {
@@ -944,7 +871,7 @@ impl OwnershipCheckPass._infer_owner_stable(
     }
     cur = binds[0].parent;
     while cur is not None and cur is not ab {
-        if type(cur).__name__ in ("WhileStmt", "InForStmt", "IterForStmt") {
+        if isinstance(cur, (WhileStmt, InForStmt, IterForStmt)) {
             return False;
         }
         cur = cur.parent;
@@ -984,15 +911,16 @@ impl OwnershipCheckPass._infer_scalar_slot(tgt: object) -> bool {
 
 impl OwnershipCheckPass._infer_is_type_expr(nd: object) -> bool {
     """Whether `nd` denotes a type (`list[list[float]]` in a return annotation).""";
-    t = nd?.type;
-    if t is None {
+    if not isinstance(nd, Expr) or nd.type is None {
         return False;
     }
+    tex = "";
     try {
-        return t.mangle().startswith("type[");
+        tex = nd.type.mangle();
     } except Exception {
         return False;
     }
+    return tex.startswith("type[");
 }
 
 impl OwnershipCheckPass._infer_mutator_effects(
@@ -1003,10 +931,18 @@ impl OwnershipCheckPass._infer_mutator_effects(
     nothing (a borrow names the element, not its slot), unless the method
     runs user code: hashing or ordering user objects, iterating a user
     iterable.""";
-    if mname in ("pop", "remove", "clear", "discard", "popitem", "update") {
+    recv = call.target.target if isinstance(call.target, AtomTrailer) else None;
+    if mname in ("clear", "popitem") or (mname == "pop" and not args) {
         return {"[]"};
     }
-    recv = call.target.target if isinstance(call.target, AtomTrailer) else None;
+    if mname in ("pop", "remove", "discard", "update") {
+        if recv is not None
+            and self._infer_expr_plain(recv)
+            and all(self._infer_expr_plain(a) for a in args) {
+            return {"[]"};
+        }
+        return {"*"};
+    }
     if mname in ("append", "insert", "reverse") {
         return set();
     }

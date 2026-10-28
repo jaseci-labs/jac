@@ -10,7 +10,12 @@ does for this walk.
 import ctypes;
 import from tests.support { native_address }
 import re;
-import from tests.support { compile_native, compile_native_ir, unit_symbol }
+import from tests.support {
+    compile_native,
+    compile_native_ir,
+    native_force_opts,
+    unit_symbol
+}
 
 """The body of `name` in `ir`, from its define line to its closing brace."""
 def function_body(ir: str, name: str) -> str {
@@ -37,13 +42,9 @@ test "a borrowed walk answers what the owning walk answers" {
 test "the borrowed walk emits no retain and no release" {
     # (with borrow inference off, so that the unannotated walk is the
     # counted control)
-    import os;
-    os.environ["JAC_NO_BORROW_INFER"] = "1";
-    try {
-        module = compile_native_ir("managed_borrow_walk.jac");
-    } finally {
-        del os.environ["JAC_NO_BORROW_INFER"];
-    }
+    opts = native_force_opts();
+    opts.na_borrow_infer = False;
+    module = compile_native_ir("managed_borrow_walk.jac", options=opts);
     ir = str(module.gen.llvm_ir);
     borrowed = function_body(ir, re.escape(unit_symbol(module, "borrowed_walk")));
     owning = function_body(ir, re.escape(unit_symbol(module, "owning_walk")));

@@ -104,7 +104,8 @@ impl CompileOptions.codegen_identity -> str {
             f"app={self.target_app}",
             f"app_kind={self.app_kind}"
         ]
-    );
+    )
+        + ("" if self.na_borrow_infer else ";borrow_infer=0");
 }
 
 impl CompileOptions.codegen_fingerprint -> str {
@@ -126,7 +127,8 @@ impl CompileOptions.analysis_identity -> str {
             f"app_kind={self.app_kind}"
         ]
     )
-        + (";strict_deps=1" if self.strict_dependencies else "");
+        + (";strict_deps=1" if self.strict_dependencies else "")
+        + ("" if self.na_borrow_infer else ";borrow_infer=0");
 }
 
 impl CompileOptions.analysis_fingerprint -> str {
@@ -217,6 +219,7 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         native_link_mode=self.native_link_mode,
         na_gc_mode=self.na_gc_mode,
         nogc_enforce_all=self.nogc_enforce_all,
+        na_borrow_infer=self.na_borrow_infer,
         memory_profile=self.memory_profile,
         native_threads=self.native_threads,
         memory_enforce=list(self.memory_enforce or []),

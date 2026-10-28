@@ -5,7 +5,10 @@ keeps alive, so the ownership pass infers it a borrow. Each `must_*`
 function would read a freed object if its local were a borrow: the element
 or field it names is replaced, or the list is emptied, while the local is
 still used afterwards. Building a fresh `Box` for the read after the change
-reuses the freed block, so a wrong borrow prints that box's value.
+reuses the freed block, so a wrong borrow prints that box's value. The
+`must_remove_eq` and `must_aug_op` changes happen in user code a list
+comparison or an augmented operator runs. `keep_owner_alive` borrows from a
+local whose last use is the bind: the local is released only at scope exit.
 """
 
 obj Box {
@@ -21,7 +24,26 @@ obj Holder {
     }
 }
 
-glob SHARED: list[Box] = [];
+glob SHARED: list[Box] = [],
+     SWAP: Holder = Holder(item=Box(v=11));
+
+obj Needle {
+    has k: int = 0;
+
+    def __eq__(other: object) -> bool {
+        SWAP.item = Box(v=-1);
+        return False;
+    }
+}
+
+obj Counter {
+    has n: int = 0;
+
+    def __add__(other: int) -> Counter {
+        SWAP.item = Box(v=-2);
+        return Counter(n=self.n + other);
+    }
+}
 
 def fresh(n: int) -> list[Box] {
     out: list[Box] = [];
@@ -110,6 +132,27 @@ def must_copied_root(hs: list[Holder]) -> int {
     return it.v;
 }
 
+def must_remove_eq(h: Holder, xs: list[Needle]) -> int {
+    b = h.item;
+    xs.remove(xs[1]);
+    filler = Box(v=-3);
+    return b.v + filler.v;
+}
+
+def must_aug_op(h: Holder, c: Counter) -> int {
+    b = h.item;
+    c += 1;
+    filler = Box(v=-4);
+    return b.v + c.n + filler.v;
+}
+
+def keep_owner_alive(n: int) -> int {
+    xs = [[n, n + 1, n + 2]];
+    b = xs[0];
+    pad = [[n * 1000, n * 1000, n * 1000]];
+    return len(b) + b[2] + len(pad);
+}
+
 with entry {
     print(keep_elem(fresh(4)), keep_loop(fresh(4)));
     print(keep_field(Holder(item=Box(v=5))));
@@ -121,4 +164,8 @@ with entry {
     SHARED.append(Box(v=42));
     print(must_global_root());
     print(must_copied_root([Holder(item=Box(v=8)), Holder(item=Box(v=9))]));
+    print(must_remove_eq(SWAP, [Needle(k=1), Needle(k=2)]));
+    SWAP.item = Box(v=12);
+    print(must_aug_op(SWAP, Counter(n=1)));
+    print(keep_owner_alive(10));
 }

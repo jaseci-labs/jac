@@ -114,17 +114,8 @@ impl OwnershipCheckPass._run_impl(ir_in: Module) -> Module {
     _inferred_before = set(ir_in.managed_borrow_binds);
     try {
         self._stamp_inferred_borrows();
-    } except Exception as exc {
-        import os;
-        import traceback;
+    } except Exception {
         ir_in.managed_borrow_binds = _inferred_before;
-        if os.environ.get("JAC_BORROW_INFER_DEBUG") {
-            import sys;
-            sys.stderr.write(
-                f"borrow inference failed in {ir_in.loc.mod_path}: {exc}\n"
-            );
-            traceback.print_exc();
-        }
     }
     self._stamp_loop_borrows();
     self._stamp_region_borrows();
