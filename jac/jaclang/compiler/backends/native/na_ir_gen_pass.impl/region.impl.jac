@@ -2,7 +2,7 @@ glob REGION_TLS_GLOBAL: str = "__jac_region_tls",
      REGION_TLS_GET: str = "__jac_region_tls_get",
      REGION_TLS_SET: str = "__jac_region_tls_set",
      REGION_GBL_GET: str = "__jac_region_gbl_get",
-     REGION_LIVE_GLOBAL: str = "__jac_region_live";
+     REGION_GBL_LIVE_SLOT: int = 2;
 
 impl NaIRGenPass._register_region_kernel -> None {
     if self._region_kernel_registered {
@@ -43,14 +43,13 @@ impl NaIRGenPass._emit_region_tls_slot -> None {
     self.extern_funcs[REGION_GBL_GET] = gbl_fn;
     gblb = ir.IRBuilder(gbl_fn.append_basic_block("entry"));
     gblb.ret(gblb.ptrtoint(gbl_gv, i64, name="gbl.i64"));
-    live_gv = ir.GlobalVariable(self.llvm_module, i64, name=REGION_LIVE_GLOBAL);
-    live_gv.linkage = "weak";
-    live_gv.initializer = ir.Constant(i64, 0);
 }
 
 impl NaIRGenPass._region_live_flag -> ir.Value {
     self._emit_region_tls_slot();
-    return self.llvm_module.get_global(REGION_LIVE_GLOBAL);
+    i32 = ir.IntType(32);
+    gbl_gv = self.llvm_module.get_global(f"{REGION_TLS_GLOBAL}_gbl");
+    return gbl_gv.gep([ir.Constant(i32, 0), ir.Constant(i32, REGION_GBL_LIVE_SLOT)]);
 }
 
 impl NaIRGenPass._region_i64(val: ir.Value, name: str = "rgn.i64") -> ir.Value {

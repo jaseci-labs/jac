@@ -1366,14 +1366,16 @@ impl sock_recvmsg_into(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     }
     while ok and nbufs < nitems {
         view = ptr[Py_buffer](bufs + nbufs * int(PY_BUFFER_SIZE));
-        if PyArg_Parse(
-            jacpy_fast_item(fast, i64(nbufs)),
+        item = jacpy_fast_item(fast, i64(nbufs));
+        parsed = PyArg_Parse(
+            item,
             ptr[u8](
                 "w*;recvmsg_into() argument 1 must be an iterable of single-segment read-write buffers"
             ),
             view
-        )
-            == 0 {
+        );
+        jacpy_release(item);
+        if parsed == 0 {
             ok = False;
             break;
         }
@@ -1564,14 +1566,16 @@ impl sock_sendmsg_iovec(
     while result and buffers.count < ndataparts {
         index = buffers.count;
         view = ptr[Py_buffer](buffers.views + index * int(PY_BUFFER_SIZE));
-        if PyArg_Parse(
-            jacpy_fast_item(data_fast, i64(index)),
+        item = jacpy_fast_item(data_fast, i64(index));
+        parsed = PyArg_Parse(
+            item,
             ptr[u8](
                 "y*;sendmsg() argument 1 must be an iterable of bytes-like objects"
             ),
             view
-        )
-            == 0 {
+        );
+        jacpy_release(item);
+        if parsed == 0 {
             result = False;
             break;
         }

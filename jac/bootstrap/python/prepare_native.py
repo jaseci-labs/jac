@@ -374,6 +374,33 @@ compiled.verify()
 machine = llvm.Target.from_triple(triple).create_target_machine(
     opt=2, reloc="pic", codemodel="small",
 )
+# Every unit carries private copies of the same runtime helpers (the raise
+# path, reference-count release, list append, UTF-8 cursors): merging the
+# identical bodies leaves one copy of each in the object. The option is
+# process-wide; this process builds nothing after the object.
+llvm.set_option("", "-enable-merge-functions=true")
+# The functions that only set or report an error mark their call sites as
+# unlikely, so the error paths are placed after the hot code that tests for
+# them instead of between its instructions.
+ERROR_PATHS = {
+    "PyErr_SetString", "PyErr_SetObject", "PyErr_SetNone", "PyErr_Format",
+    "PyErr_FormatV", "PyErr_NoMemory", "PyErr_BadInternalCall",
+    "PyErr_BadArgument", "PyErr_SetFromErrno", "PyErr_SetFromErrnoWithFilename",
+    "PyErr_SetFromErrnoWithFilenameObject", "PyErr_SetFromErrnoWithFilenameObjects",
+    "PyErr_FormatUnraisable", "PyErr_WriteUnraisable", "PyErr_SetImportError",
+    "_PyErr_SetString", "_PyErr_SetObject", "_PyErr_SetNone", "_PyErr_Format",
+    "_PyErr_FormatFromCause", "_PyErr_NoMemory", "_PyErr_BadInternalCall",
+    "_PyErr_SetKeyError", "_PyArg_BadArgument", "Py_FatalError",
+    "_Py_FatalErrorFunc", "_Py_FatalErrorFormat", "object_error",
+    "__jac_exception_context_slow",
+}
+for function in compiled.functions:
+    if function.is_declaration:
+        continue
+    name = function.name
+    base = name[:-4] if name.endswith(".jac") else name
+    if base in ERROR_PATHS or base.rsplit(".", 1)[-1] in ERROR_PATHS:
+        function.add_function_attribute("cold")
 # Units are optimized one at a time; the merged module is where bindings,
 # algorithms and object-API calls from different units can inline. The object
 # reaches the CPython link as machine code, so ThinLTO cannot do this later.

@@ -34,6 +34,9 @@ impl _stack_push(blk: int, hdl: int) {
     }
     __mem_store_i64(stk + depth * 8, hdl);
     __mem_store_i64(blk + TLS_DEPTH, depth + 1);
+    if depth == 0 {
+        __atomic_add_i64(__jac_region_gbl_get() + GBL_LIVE, 1, 5);
+    }
 }
 
 impl __jac_region_current -> int {
@@ -63,12 +66,16 @@ impl __jac_region_unwind(depth: int) {
     if depth < 0 {
         depth = 0;
     }
-    if depth > __mem_load_i64(blk + TLS_DEPTH) {
+    old = __mem_load_i64(blk + TLS_DEPTH);
+    if depth > old {
         return;
     }
     __mem_store_i64(blk + TLS_DEPTH, depth);
     if depth == 0 {
         __mem_store_i64(blk + TLS_CUR, 0);
+        if old > 0 {
+            __atomic_add_i64(__jac_region_gbl_get() + GBL_LIVE, -1, 5);
+        }
         return;
     }
     stk = __mem_load_i64(blk + TLS_STACK);
@@ -97,9 +104,19 @@ impl __jac_region_escape -> int {
 }
 
 impl __jac_region_restore(depth: int) {
-    if depth >= 0 {
-        __jac_region_unwind(depth);
+    if depth <= 0 {
+        if depth == 0 {
+            __jac_region_unwind(0);
+        }
+        return;
     }
+    blk = _tls_block();
+    if depth > __mem_load_i64(blk + TLS_DEPTH) {
+        return;
+    }
+    __mem_store_i64(blk + TLS_DEPTH, depth);
+    stk = __mem_load_i64(blk + TLS_STACK);
+    __mem_store_i64(blk + TLS_CUR, __mem_load_i64(stk + (depth - 1) * 8));
 }
 
 impl _lock(hdl: int) {

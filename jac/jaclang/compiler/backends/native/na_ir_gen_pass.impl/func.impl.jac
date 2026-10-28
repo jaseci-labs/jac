@@ -1459,6 +1459,9 @@ impl NaIRGenPass._emit_glob_init_func -> None {
         fnty
     );
     self.scope.bind_function("__jac_glob_init", func);
+    for attr in ("cold", "minsize", "optsize", "noinline") {
+        func.attributes.add(attr);
+    }
     state = self._enter_function(func);
     try {
         if self._global_init_nodes {

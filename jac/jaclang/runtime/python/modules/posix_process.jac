@@ -785,7 +785,7 @@ impl parse_file_actions(
     failed = False;
     i = i64(0);
     while i < jacpy_fast_size(seq) {
-        file_action = Py_NewRef(jacpy_fast_item(seq, i));
+        file_action = jacpy_fast_item(seq, i);
         if jacpy_is_tuple(file_action) == 0 or PyTuple_Size(file_action) == 0 {
             PyErr_SetString(
                 PyExc_TypeError,

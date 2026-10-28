@@ -176,6 +176,7 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     func = self._define_function("__jac_exc_raise", fnty);
     func.linkage = "private";
     func.attributes.add("noreturn");
+    func.attributes.add("cold");
     func.attributes.add_string("call-inline-cost", str(RAISE_SITE_INLINE_COST));
     func.args[0].name = "obj";
     func.args[1].name = "type_id";
@@ -1554,6 +1555,7 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     cleanup_ty = ir.FunctionType(ir.VoidType(), [i8p]);
     cleanup = ir.Function(self.llvm_module, cleanup_ty, name=f"{func.name}.__unwind");
     cleanup.linkage = "private";
+    cleanup.attributes.add("cold");
     env_ty = ir.ArrayType(i8p, len(slots));
     try {
         cb = ir.IRBuilder(cleanup.append_basic_block("entry"));
