@@ -23,10 +23,6 @@ obj MemorySource(PackageSource) {
         pinned = self.locked.get(name);
         return Version.parse(pinned) if pinned else None;
     }
-
-    override def allows_prerelease(name: str) -> bool {
-        return False;
-    }
 }
 
 def _solve(
@@ -167,4 +163,34 @@ test "a missing prerelease opt-in can backtrack to an older provider" {
     };
     assert _solve(registry, {"a/tool": "*", "a/lib": ">=1.4.0"})
         == {"a/tool": "1.0.0", "a/lib": "1.5.0-beta.1"};
+}
+
+test "a prerelease opt-in can come from a package an older version brings in" {
+    registry = {
+        "a/web": {"1.0.0": {"a/tool": "^1"}, "2.0.0": {}},
+        "a/tool": {"1.0.0": {"a/lib": ">=1.0.0-beta.1"}},
+        "a/lib": {"1.2.0": {}, "1.5.0-beta.1": {}}
+    };
+    assert _solve(registry, {"a/web": "*", "a/lib": ">=1.4.0"})
+        == {"a/web": "1.0.0", "a/tool": "1.0.0", "a/lib": "1.5.0-beta.1"};
+}
+
+test "a prerelease no package can opt into fails without trying every version" {
+    registry: dict[str, dict[str, dict[str, str]]] = {
+        "a/lib": {"1.2.0": {}, "1.5.0-beta.1": {}}
+    };
+    deps = {"a/lib": ">=1.4.0"};
+    for i in range(30) {
+        registry[f"a/u{i}"] = {"1.0.0": {}, "2.0.0": {}};
+        deps[f"a/u{i}"] = "*";
+    }
+    try {
+        _solve(registry, deps);
+        assert False , "expected a solve failure";
+    } except SolveFailure as e {
+        message = str(e);
+        assert "a/lib >=1.4.0" in message , message;
+        assert "only prereleases match" in message , message;
+        assert len(message.splitlines()) == 1 , message;
+    }
 }

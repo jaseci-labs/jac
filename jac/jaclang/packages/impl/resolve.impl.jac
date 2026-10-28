@@ -203,10 +203,6 @@ impl GraphSource.preferred(name: str) -> Version | None {
     }
 }
 
-impl GraphSource.allows_prerelease(name: str) -> bool {
-    return False;
-}
-
 impl GraphSource.locked_entry(name: str, version: Version) -> LockedPackage {
     if name in self.locals {
         pkg = self.locals[name];

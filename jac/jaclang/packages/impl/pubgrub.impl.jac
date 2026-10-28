@@ -1,9 +1,6 @@
 impl Term.negate -> Term {
     return Term(
-        package=self.package,
-        versions=self.versions,
-        positive=not self.positive,
-        names_prerelease=self.names_prerelease
+        package=self.package, versions=self.versions, positive=not self.positive
     );
 }
 
@@ -36,30 +33,23 @@ impl Term.is_disjoint(other: Term) -> bool {
 impl Term.intersect(other: Term) -> Term {
     if self.positive and other.positive {
         return Term(
-            package=self.package,
-            versions=self.versions.intersect(other.versions),
-            names_prerelease=self.names_prerelease or other.names_prerelease
+            package=self.package, versions=self.versions.intersect(other.versions)
         );
     }
     if self.positive {
         return Term(
-            package=self.package,
-            versions=self.versions.difference(other.versions),
-            names_prerelease=self.names_prerelease
+            package=self.package, versions=self.versions.difference(other.versions)
         );
     }
     if other.positive {
         return Term(
-            package=self.package,
-            versions=other.versions.difference(self.versions),
-            names_prerelease=other.names_prerelease
+            package=self.package, versions=other.versions.difference(self.versions)
         );
     }
     return Term(
         package=self.package,
         versions=self.versions.union(other.versions),
-        positive=False,
-        names_prerelease=self.names_prerelease or other.names_prerelease
+        positive=False
     );
 }
 
@@ -117,7 +107,8 @@ impl Incompatibility.describe(root_name: str) -> str {
         return f"{_subject(depender, root_name)} depends on {dependee.describe()}";
     }
     if self.kind == CauseKind.NO_VERSIONS and terms {
-        return f"no versions of {terms[0].describe()} are available";
+        reason = f" ({self.note})" if self.note else "";
+        return f"no versions of {terms[0].describe()} are available{reason}";
     }
     if self.kind == CauseKind.UNAVAILABLE and terms {
         return f"{terms[0].describe()} is unavailable ({self.note})";
@@ -217,9 +208,7 @@ impl Solver._relation(incompat: Incompatibility) -> tuple[str, Term | None] {
             continue;
         }
         if acc is not None and acc.is_disjoint(t) {
-            if t.positive or not t.names_prerelease or acc.names_prerelease {
-                return ("contradicted", None);
-            }
+            return ("contradicted", None);
         }
         if unresolved is not None {
             return ("inconclusive", None);
@@ -355,8 +344,26 @@ impl Solver._candidates_for(name: str) -> list[Version] {
     return self._candidates[name];
 }
 
+impl Solver._dependencies(name: str, version: Version) -> dict[str, Requirement] {
+    key = (name, str(version));
+    if key not in self._requirements {
+        self._requirements[key] = self.source.dependencies(name, version);
+    }
+    return self._requirements[key];
+}
+
+impl Solver._granted(name: str) -> bool {
+    for (decided, version) in self.decisions.items() {
+        req = self._dependencies(decided, version).get(name);
+        if req is not None and req.names_prerelease {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl Solver._allowed(name: str, term: Term) -> list[Version] {
-    pre = self.source.allows_prerelease(name) or term.names_prerelease;
+    pre = self._granted(name);
     return [
         v
         for v in self._candidates_for(name)
@@ -368,6 +375,45 @@ impl Solver._has_prerelease_candidate(name: str, term: Term) -> bool {
     return any(
         v.is_prerelease() and term.versions.contains(v)
         for v in self._candidates_for(name)
+    );
+}
+
+impl Solver._may_grant(owner: str, v: Version, name: str, present: set[str]) -> bool {
+    try {
+        deps = self._dependencies(owner, v);
+    } except Exception {
+        return True;
+    }
+    req = deps.get(name);
+    return (req is not None and req.names_prerelease)
+        or any(dep not in present for dep in deps);
+}
+
+impl Solver._prerelease_gap(
+    name: str, term: Term, present: set[str]
+) -> Incompatibility {
+    terms = [term];
+    for decided in self.decisions {
+        if decided == self.root_name {
+            continue;
+        }
+        others = VersionSet.none();
+        can_grant = False;
+        for v in self._candidates_for(decided) {
+            if self._may_grant(decided, v, name, present) {
+                can_grant = True;
+            } else {
+                others = others.union(VersionSet.exact(v));
+            }
+        }
+        if can_grant {
+            terms.append(Term(package=decided, versions=others));
+        }
+    }
+    return Incompatibility.of(
+        terms,
+        CauseKind.NO_VERSIONS,
+        note="only prereleases match, and no requirement names one"
     );
 }
 
@@ -405,17 +451,12 @@ impl Solver._decide -> str | None {
     }
     allowed = self._allowed(name, term);
     if not allowed {
-        terms = [term];
         if self._has_prerelease_candidate(name, term) {
-            for (decided, version) in self.decisions.items() {
-                if decided != self.root_name {
-                    terms.append(
-                        Term(package=decided, versions=VersionSet.exact(version))
-                    );
-                }
-            }
+            present = set(self.decisions) | {n for (_, n, _) in deferred};
+            self._add(self._prerelease_gap(name, term, present));
+        } else {
+            self._add(Incompatibility.of([term], CauseKind.NO_VERSIONS));
         }
-        self._add(Incompatibility.of(terms, CauseKind.NO_VERSIONS));
         return name;
     }
     preferred = self.source.preferred(name);
@@ -439,16 +480,11 @@ impl Solver._decide -> str | None {
 
 impl Solver._decide_version(name: str, version: Version) {
     conflict = False;
-    for (dep, req) in self.source.dependencies(name, version).items() {
+    for (dep, req) in self._dependencies(name, version).items() {
         incompat = Incompatibility.of(
             [
                 Term(package=name, versions=VersionSet.exact(version)),
-                Term(
-                    package=dep,
-                    versions=req.versions,
-                    positive=False,
-                    names_prerelease=req.names_prerelease
-                )
+                Term(package=dep, versions=req.versions, positive=False)
             ],
             CauseKind.DEPENDENCY
         );
@@ -555,8 +591,4 @@ impl _RootedSource.unavailable_reason(name: str, version: Version) -> str {
 
 impl _RootedSource.preferred(name: str) -> Version | None {
     return None if name == self.root_name else self.inner.preferred(name);
-}
-
-impl _RootedSource.allows_prerelease(name: str) -> bool {
-    return self.inner.allows_prerelease(name);
 }

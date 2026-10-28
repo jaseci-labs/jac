@@ -31,8 +31,7 @@ obj GraphSource(PackageSource) {
         jac_version: Version = Version.parse("0.0.0"),
         locals: dict[str, LocalPackage] = {},
         local_requesters: dict[str, Path] = {},
-        origin_registry: dict[str, str] = {},
-        prerelease: set[str] = set();
+        origin_registry: dict[str, str] = {};
 
     def registry_for(name: str) -> Registry;
     def add_local(dep: PackageDep, base: Path) -> LocalPackage;
@@ -41,7 +40,6 @@ obj GraphSource(PackageSource) {
     override def dependencies(name: str, version: Version) -> dict[str, Requirement];
     override def unavailable_reason(name: str, version: Version) -> str;
     override def preferred(name: str) -> Version | None;
-    override def allows_prerelease(name: str) -> bool;
     def locked_entry(name: str, version: Version) -> LockedPackage;
 }
 
