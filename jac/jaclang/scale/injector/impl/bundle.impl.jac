@@ -12,10 +12,7 @@ impl _is_bundle_required(rel: Path) -> bool {
     }
     parts = rel.parts;
 
-    if len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin" {
-        return True;
-    }
-    return len(parts) == 2 and parts[0] == ".jac" and parts[1] == "serve_manifest.json";
+    return len(parts) >= 2 and parts[0] == ".jac" and parts[1] == "admin";
 }
 
 impl BundleSourceFilter.parks(rel: Path) -> bool {
@@ -41,13 +38,7 @@ impl BundleSourceFilter.excludes(rel: Path) -> bool {
         return True;
     }
     name = rel.name;
-    if name in _EXCLUDE_FILES {
-        return True;
-    }
-    if name == ".env" or name.startswith(".env.") {
-        return True;
-    }
-    return name.endswith(_EXCLUDE_SUFFIXES);
+    return name == "jac.toml" or is_secret_file(name);
 }
 
 impl BundleSourceFilter.matching_ignore_pattern(rel: Path) -> str {
@@ -82,7 +73,7 @@ impl BundleSourceFilter.exclusion_reason(rel: Path) -> str {
             "[scale.secrets] or pod env"
         );
     }
-    if name in _EXCLUDE_FILES or name.endswith(_EXCLUDE_SUFFIXES) {
+    if is_secret_file(name) {
         return f"'{name}' is key material the deploy never ships";
     }
     return "excluded from the bundle";
@@ -553,6 +544,18 @@ impl sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str {
     return fleet.root_app;
 }
 
+impl require_serve_manifest(stage: Path, detail: str = "") -> Path {
+    serve_manifest = stage / SERVE_MANIFEST_REL;
+    if not serve_manifest.is_file() {
+        raise RuntimeError(
+            f"The app stage has no {serve_manifest}, so the deploy cannot "
+            f"produce a .jab a pod can boot from. {detail}".rstrip()
+        );
+    }
+    return serve_manifest;
+}
+
+
 impl _precompile_app(
     base: Path,
     seal_binary: bytes,
@@ -601,6 +604,7 @@ impl _precompile_app(
                     + (prepared.stderr or prepared.stdout).strip()[-4000:]
             );
         }
+        require_serve_manifest(stage, (prepared.stdout or "").strip()[-4000:]);
 
         result = subprocess.run(
             [str(jac_path), "precompile", str(stage_root)] + seal_flags,
@@ -958,6 +962,16 @@ impl _cached_seal(base: Path, key: str) -> (bytes | None) {
     return raw;
 }
 
+impl _bundle_ships(raw: bytes, member: str) -> bool {
+    try {
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as sealed {
+            return member in sealed.getnames();
+        }
+    } except (OSError, EOFError, tarfile.TarError) {
+        return False;
+    }
+}
+
 impl _remember_seal(base: Path, key: str, raw: bytes) {
     cache = _seal_cache_dir(base);
     partial = "";
@@ -1036,8 +1050,9 @@ impl pack_jab(
         if not _is_client_dist(path.relative_to(base))
     ];
     key = input_key(base, seal_sources);
+    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
     cached = _cached_seal(base, key);
-    if cached is not None {
+    if cached is not None and _bundle_ships(cached, SERVE_MANIFEST_REL) {
         logger.info(
             f"Reusing the sealed bundle for unchanged inputs ({key[:12]}); skipping the seal."
         );
@@ -1111,15 +1126,11 @@ impl pack_jab(
                 logger.info(
                     f"Sealed {count} precompiled app-module artifacts into the .jab."
                 );
-                import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
-                serve_manifest = staged / SERVE_MANIFEST_REL;
-                if serve_manifest.is_file() {
-                    tar.add(
-                        str(serve_manifest),
-                        arcname=SERVE_MANIFEST_REL,
-                        filter=det_tar_member
-                    );
-                }
+                tar.add(
+                    str(require_serve_manifest(staged)),
+                    arcname=SERVE_MANIFEST_REL,
+                    filter=det_tar_member
+                );
                 ven = staged / "_vendor";
                 if ven.is_dir() {
                     wheel_count = 0;

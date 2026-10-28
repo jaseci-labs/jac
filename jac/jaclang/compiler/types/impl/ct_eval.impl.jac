@@ -2381,9 +2381,9 @@ impl CtEvaluator._attr_get(base: CtValue, name: str) -> CtValue {
     if isinstance(base, CtType) {
         node_ = self._arch_node_of(self._class_type_of(base));
         if isinstance(node_, Enum) {
-            for m in self._enum_members(node_) {
-                if m.member == name {
-                    return m;
+            for member in self._enum_members(node_) {
+                if member.member == name {
+                    return member;
                 }
             }
             raise CtError(f"{base.name} has no member '{name}'");

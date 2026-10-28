@@ -7,10 +7,6 @@ impl kit_image -> (tuple[str, SealedImage] | None) {
 }
 
 impl pr_kit_omits(name: str) -> bool {
-    """Whether the build asked to leave `name` out of its kit. Only the CI kit
-    lanes ask, through `JAC_KIT_OMIT` (setup-jac sets it for a pull request
-    without the `native:<name>` label); a release, nightly or local build never
-    sets it, so it ships everything.""";
     return name in os.environ.get("JAC_KIT_OMIT", "").split(",");
 }
 
@@ -38,10 +34,6 @@ impl _find_kit -> tuple[str, (SealedImage | None)] {
 }
 
 impl _unsealed_runtime_site -> str {
-    """The running jaclang when it sits in a runtime tree that is not sealed
-    yet. mkpayload stages the C floor under `<root>/python/floor` before it
-    seals `<root>/site/jaclang`, so the seal links the kernel against the
-    floor the image will ship.""";
     import jaclang;
     site_pkg = os.path.dirname(str(jaclang.__file__));
     floor = os.path.join(os.path.dirname(os.path.dirname(site_pkg)), "python", "floor");
@@ -49,10 +41,6 @@ impl _unsealed_runtime_site -> str {
 }
 
 impl runtime_floor_root(sealed: bool) -> str {
-    """The `python/floor` directory of the runtime this process runs on: the
-    sealed image's own for a sealed process, the kit's for a rerouted
-    checkout, the tree's own for a runtime being sealed. Empty when there is
-    none.""";
     site_pkg = "";
     if sealed {
         import from jaclang.jac0core { sealed as sealed_mod }
@@ -69,8 +57,6 @@ impl runtime_floor_root(sealed: bool) -> str {
 }
 
 impl osarch(triple: str = "") -> str {
-    """`<os>-<arch>` as the build trees and floors name a platform
-    (linux-x86_64, macos-aarch64), for a target triple or this host.""";
     import platform;
     text = (triple or f"{sys.platform}-{platform.machine()}").lower();
     arch = "aarch64" if ("aarch64" in text or "arm64" in text) else "x86_64";

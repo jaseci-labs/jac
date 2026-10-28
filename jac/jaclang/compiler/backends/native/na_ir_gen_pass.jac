@@ -167,6 +167,7 @@ walker NaIRGenPass(CompilerPass) {
         native_tests: list[tuple[str, str, str, int]] = [],
         _fmt_strings: dict[str, ir.GlobalVariable] = {},
         _interned_strs: dict[str, ir.GlobalVariable] = {},
+        _str_literal_text: dict[int, str] = {},
         extern_funcs: dict[str, ir.Function] = {},
         clib_extern_names: set[str] = set(),
         clib_extern_fns: dict[str, ir.Function] = {},
@@ -276,6 +277,7 @@ walker NaIRGenPass(CompilerPass) {
         _isa_vtobj_fn: (ir.Function | None) = None,
         _vtable_nodes: list[ir.GlobalVariable] = [],
         _cstr_hash_fn: (ir.Function | None) = None,
+        _fmt_int_fn: (ir.Function | None) = None,
         _runtime_class_name_fn: (ir.Function | None) = None,
         _class_ctor_lookup_fn: (ir.Function | None) = None,
         _class_record_lookup_fn: (ir.Function | None) = None,
@@ -373,6 +375,8 @@ walker NaIRGenPass(CompilerPass) {
         malloc_fn: (ir.Function | None) = None,
         free_fn: (ir.Function | None) = None,
         rc_safe_free_fn: (ir.Function | None) = None,
+        rc_free_block_fn: (ir.Function | None) = None,
+        _list_anchors: dict[int, tuple[ir.Value, ir.Value]] = {},
         str_len_fn: (ir.Function | None) = None,
         str_truthy_fn: (ir.Function | None) = None,
         str_stamp_fn: (ir.Function | None) = None,
@@ -571,10 +575,20 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_multistring(nd: uni.MultiString) -> (ir.Value | None);
     def _codegen_string(nd: uni.String) -> (ir.Value | None);
     def _codegen_fstring(nd: uni.FString) -> (ir.Value | None);
+    def _fstr_none_select(val: ir.Value) -> ir.Value;
     def _fstring_spec_text(spec: uni.Expr) -> (str | None);
     def _fstring_spec_to_printf(spec: str, kind: str) -> (tuple[str, str] | None);
     def _bool_text(b: ir.IRBuilder, flag: ir.Value, name: str) -> ir.Value;
     def _int_text_arg(val: ir.Value, unsigned: bool) -> ir.Value;
+    def _get_fmt_int_fn -> ir.Function;
+    def _emit_fmt_int(
+        b: ir.IRBuilder, val: ir.Value, out: ir.Value, unsigned: bool
+    ) -> ir.Value;
+
+    def _fstring_direct(
+        fmt_parts: list[str], args: list[ir.Value]
+    ) -> (ir.Value | None);
+
     def _emit_value_repr(
         val: ir.Value, type_node: (uni.UniNode | None)
     ) -> (ir.Value | None);
@@ -1650,6 +1664,11 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     def _object_meet_type(nd: uni.Expr) -> (ir.Type | None);
     def _recast_object(value: ir.Value, target: ir.Type) -> ir.Value;
+    def _optional_tuple_meet_type(
+        nd: uni.Expr, then_val: ir.Value, else_val: ir.Value
+    ) -> (ir.Type | None);
+
+    def _meet_optional_tuple_side(value: ir.Value, target: ir.Type) -> ir.Value;
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_kernel_spawn(
         walker_name: str,
@@ -2587,6 +2606,8 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _emit_str_cmp_helper -> None;
+    def _one_byte_literal(val: ir.Value) -> (int | None);
+    def _emit_str_cmp_one_byte(val: ir.Value, byte: int) -> ir.Value;
     def _call_str_cmp(
         b: ir.IRBuilder, lhs: ir.Value, rhs: ir.Value, name: str = "s.cmp"
     ) -> ir.Value;
@@ -3004,6 +3025,8 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None);
     def _codegen_assignment(nd: uni.Assignment) -> None;
+    def _codegen_dict_counter_update(nd: uni.Assignment) -> bool;
+    def _same_pure_key(a: uni.UniNode, b: uni.UniNode) -> bool;
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;
     def _codegen_for(nd: uni.InForStmt) -> None;
     def _codegen_for_indexed(
@@ -3159,6 +3182,11 @@ walker NaIRGenPass(CompilerPass) {
         replaced: list[tuple[str, ir.Value]]
     ) -> bool;
 
+    def _value_kind(ty: ir.Type) -> str;
+    def _rebinds_slot(
+        slot_type: ir.Type, target_type: (ir.Type | None), value_type: ir.Type
+    ) -> bool;
+
     def _unpack_store_global(
         var_name: str,
         value: ir.Value,
@@ -3239,6 +3267,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStructType;
     def _resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_return_type(
+        type_expr: (uni.UniNode | None), method: bool = False
+    ) -> ir.Type;
+
     def _resolve_field_type(var: uni.UniNode) -> ir.Type;
     def _foreign_optional_field(tb: any) -> bool;
     def _typevar_optional_field(tb: any) -> bool;
@@ -3643,6 +3675,22 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_exc_push(b: ir.IRBuilder, state: ir.Value) -> None;
     def _emit_exc_pop(b: ir.IRBuilder) -> None;
     def _volatilize_setjmp_locals -> None;
+    def _apply_list_tbaa -> None;
+    def _body_keeps_list_headers(body: list[uni.UniNode]) -> bool;
+    def _anchor_plain(e: object) -> bool;
+    def _anchor_immutable(e: object) -> bool;
+    def _anchor_container(e: object) -> bool;
+    def _anchor_builtin_call(nd: uni.FuncCall) -> bool;
+    def _emit_list_anchors(body: list[uni.UniNode]) -> None;
+    def _list_anchor_of(
+        target_val: ir.Value, elem_type: ir.Type
+    ) -> (tuple[ir.Value, ir.Value] | None);
+
+    def _tbaa_tag(
+        tbaa_root: ir.MDValue, cache: dict[str, ir.MDValue], name: str
+    ) -> ir.MDValue;
+
+    def _tbaa_list_field(gep: ir.GEPInstr, list_tys: set[int]) -> (int | None);
     def _setjmp_local_base(value: ir.Value) -> (ir.Value | None);
     def _block_successors(block: ir.Block) -> list[ir.Block];
     def _push_exception_handler(
@@ -3687,12 +3735,4 @@ walker NaIRGenPass(CompilerPass) {
     def _decl_field_llvm_types(arch_name: str) -> (dict[str, ir.Type] | None);
     def _lower_view_container(t: any) -> (ir.Type | None);
     def _program_has_subclasses(arch_name: str) -> bool;
-}
-
-impl _restore_entry[V](table: dict[str, V], key: str, prior: (V | None)) {
-    if prior is None {
-        table.pop(key, None);
-    } else {
-        table[key] = prior;
-    }
 }

@@ -530,18 +530,6 @@ impl NaIRGenPass._emit_clib_export_thunk(name: str) -> None {
 }
 
 impl NaIRGenPass._thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -> bool {
-    """Emit an exported C symbol's thunk as one `musttail` jump into its body.
-
-    A C function defined in Jac is a thunk around the internal Jac body. When
-    each C parameter reaches the body unchanged or as the same 64-bit word (a
-    C pointer the body reads as `ptr[T]`, an i64), the thunk only adds a
-    frame; a C function pointer dispatch (`return tail
-    table.view(1)[0].step(...)`) jumps into the thunk, so an ordinary call here
-    grows the stack by a frame per step on an unoptimized build and breaks the
-    tail-call guarantee. The call goes through the body's address typed with
-    the thunk's own prototype, which `musttail` requires, and passes the same
-    registers the body reads.
-    """;
     cty = cfunc.function_type;
     jty = jac_fn.function_type;
     triple = str(self.llvm_module.triple or "");

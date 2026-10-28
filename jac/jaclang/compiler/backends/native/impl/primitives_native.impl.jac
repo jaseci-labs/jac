@@ -1287,9 +1287,9 @@ impl NativeStrEmitter.emit_rpartition(
     notfound_bb = func.append_basic_block(name="rpart.no");
     merge_bb = func.append_basic_block(name="rpart.merge");
 
-    last_match_alloca = b.alloca(i8p, name="rpart.last");
+    last_match_alloca = p._stack_entry_alloca(i8p, "rpart.last");
     b.store(ir.Constant(i8p, None), last_match_alloca);
-    cur_alloca = b.alloca(i8p, name="rpart.cur");
+    cur_alloca = p._stack_entry_alloca(i8p, "rpart.cur");
     b.store(target, cur_alloca);
     b.branch(loop_bb);
     b.position_at_start(loop_bb);
@@ -3208,25 +3208,43 @@ impl NativeListEmitter.emit_sort(
         );
         return None;
     }
-    key_fn: (ir.Function | None) = None;
+    key_fn: (ir.Value | None) = None;
+    key_signature: (ir.FunctionType | None) = None;
+    key_extra: list[ir.Value] = [];
+    key_owner: (ir.Value | None) = None;
     if _key_node is not None {
-        _key_val = p._codegen_expr(_key_node);
-        _key_caps = p._pending_lambda_captures;
         p._pending_lambda_captures = None;
-        if (
-            not isinstance(_key_val, ir.Function)
-            or _key_caps is not None
-            or len(_key_val.args) != 1
-        ) {
+        _key_val = p._codegen_expr(_key_node);
+        _key_caps = p._pending_lambda_captures
+            or p.scope.lambda_captures(p._get_name(_key_node) or "")
+            or [];
+        p._pending_lambda_captures = None;
+        _closure = p._closure_struct_of(_key_val.type)
+            if _key_val is not None
+            else None;
+        if _closure is not None {
+            (_struct, key_signature) = p.closure_sig_registry[_closure];
+            fn_slot = b.gep(_key_val, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
+            key_fn = b.inttoptr(b.load(fn_slot), key_signature.as_pointer());
+            env_slot = b.gep(_key_val, [ir.Constant(i32, 0), ir.Constant(i32, 1)]);
+            key_extra.append(b.load(env_slot));
+            key_owner = _key_val;
+        } elif isinstance(_key_val, ir.Function) {
+            key_fn = _key_val;
+            key_signature = _key_val.function_type;
+            for (capture_name, slot) in _key_caps {
+                key_extra.append(b.load(slot, name=f"sort.cap.{capture_name}"));
+            }
+        }
+        if key_signature is None or len(key_signature.args) != 1 + len(key_extra) {
             p.ctx.emit(
                 E5092,
                 node_override=_key_node,
                 kind="sort key",
-                name="key= (only a capture-free single-parameter lambda works)"
+                name="key= (expected a single-parameter callable with a native signature)"
             );
             return None;
         }
-        key_fn = _key_val;
     }
     rev_i1: (ir.Value | None) = None;
     if _rev_node is not None {
@@ -3235,129 +3253,304 @@ impl NativeListEmitter.emit_sort(
             rev_i1 = p._to_bool(_rev_val);
         }
     }
-    if key_fn is None {
+    if key_fn is None or key_signature is None or _key_node is None {
         return self._emit_value_sort(ctx, target, rev_i1);
     }
-    len_ptr = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="sort.len.ptr"
+    return self._emit_key_sort(
+        ctx, target, key_fn, key_signature, key_extra, key_owner, rev_i1, _key_node
     );
-    list_len = b.load(len_ptr, name="sort.len");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
+}
 
-    outer_bb = func.append_basic_block(name="sort.outer");
-    inner_start = func.append_basic_block(name="sort.inner.start");
-    inner_bb = func.append_basic_block(name="sort.inner");
-    inner_body = func.append_basic_block(name="sort.inner.body");
-    swap_bb = func.append_basic_block(name="sort.swap");
-    no_swap = func.append_basic_block(name="sort.noswap");
-    inner_next = func.append_basic_block(name="sort.inner.next");
-    outer_next = func.append_basic_block(name="sort.outer.next");
-    done_bb = func.append_basic_block(name="sort.done");
-    len_m1 = b.sub(list_len, one, name="sort.lenm1");
-    trivial = b.icmp_unsigned("<=", list_len, one, name="sort.trivial");
-    b.cbranch(trivial, done_bb, outer_bb);
-
-    b.position_at_start(outer_bb);
-    oi = b.phi(i64, name="sort.oi");
-    oi.add_incoming(zero, entry_bb);
-    outer_end = b.icmp_unsigned(">=", oi, len_m1, name="sort.oend");
-    b.cbranch(outer_end, done_bb, inner_start);
-
-    b.position_at_start(inner_start);
-    inner_limit = b.sub(len_m1, oi, name="sort.ilimit");
-    b.branch(inner_bb);
-
-    b.position_at_start(inner_bb);
-    ji = b.phi(i64, name="sort.ji");
-    ji.add_incoming(zero, inner_start);
-    inner_end = b.icmp_unsigned(">=", ji, inner_limit, name="sort.iend");
-    b.cbranch(inner_end, outer_next, inner_body);
-
-    b.position_at_start(inner_body);
-    j1 = b.add(ji, one, name="sort.j1");
-    ej = b.call(helpers["get"], [target, ji], name="sort.ej");
-    ej1 = b.call(helpers["get"], [target, j1], name="sort.ej1");
-
-    cj: ir.Value = ej;
-    cj1: ir.Value = ej1;
-    cmp_type = elem_type;
-    if key_fn is not None {
-        _kp_type = key_fn.args[0].type;
-        cj = b.call(key_fn, [p._coerce_type(ej, _kp_type)], name="sort.kj");
-        cj1 = b.call(key_fn, [p._coerce_type(ej1, _kp_type)], name="sort.kj1");
-        cmp_type = key_fn.function_type.return_type;
-
-        if cj.type != cmp_type {
-            cmp_type = cj.type;
-        }
-    }
-
-    cj = p._cast_to_list_elem(b, cj, cmp_type, "sort.cj");
-    cj1 = p._cast_to_list_elem(b, cj1, cmp_type, "sort.cj1");
-    _key_ret = p._sort_key_return_type(_key_node) if key_fn is not None else None;
-    _key_orderable = p._sort_key_orderable(_key_ret);
-    if (_key_orderable is not None and not _key_orderable)
-        or (_key_orderable is None and not p._sort_key_supported(cmp_type)) {
-        p.ctx.emit(E5092, node_override=_key_node, kind="sort key", name=SORT_KEY_MSG);
+impl NativeListEmitter._emit_key_sort(
+    self: NativeListEmitter,
+    ctx: NativeEmitCtx,
+    target: ir.Value,
+    key_fn: ir.Value,
+    key_signature: ir.FunctionType,
+    key_extra: list[ir.Value],
+    key_owner: (ir.Value | None),
+    reverse: (ir.Value | None),
+    key_node: UniNode
+) -> (ir.Value | None) {
+    p = ctx.pass_ref;
+    helpers = p.list_helpers.get(ctx.type_key);
+    b = get_builder(p);
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    i8p = ir.IntType(8).as_pointer();
+    zero = ir.Constant(i64, 0);
+    one = ir.Constant(i64, 1);
+    key_type = key_signature.return_type;
+    key_ret = p._sort_key_return_type(key_node);
+    key_orderable = p._sort_key_orderable(key_ret);
+    if (key_orderable is not None and not key_orderable)
+        or (key_orderable is None and not p._sort_key_supported(key_type)) {
+        p.ctx.emit(E5092, node_override=key_node, kind="sort key", name=SORT_KEY_MSG);
         return None;
     }
-    _cmp_float = isinstance(cmp_type, (ir.DoubleType, ir.FloatType));
-    _cmp_unsigned = key_fn is not None and p._sort_key_unsigned(_key_node);
-    if _cmp_float {
-        (cj, cj1) = p._promote_to_float(cj, cj1, unsigned=_cmp_unsigned);
+    owner_drop: list[ir.Value] = [];
+    if key_owner is not None and p._is_owned(key_owner) {
+        owner_drop.append(key_owner);
     }
-    _sort_errs = len(p.ctx.errors_had);
-    cmp_gt: (ir.Value | None) = p._emit_comparison(
-        Tok.GT, cj, cj1, _cmp_float, unsigned=_cmp_unsigned, key_ret=_key_ret
+    cmp_float = isinstance(key_type, (ir.DoubleType, ir.FloatType));
+    cmp_unsigned = p._sort_key_unsigned(key_node);
+    length = b.load(
+        b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 0)]), name="ksort.len"
     );
-    cmp_lt: (ir.Value | None) = None;
-    if cmp_gt is not None and rev_i1 is not None {
-        cmp_lt = p._emit_comparison(
-            Tok.LT, cj, cj1, _cmp_float, unsigned=_cmp_unsigned, key_ret=_key_ret
+    elem_type = helpers["elem_type"];
+    assert isinstance(elem_type, ir.Type);
+    data_type = elem_type.as_pointer();
+    itemsize = p._abi_sizeof(elem_type);
+    keysize = p._abi_sizeof(key_type);
+    fn = b.basic_block.function;
+    allocate = fn.append_basic_block("ksort.allocate");
+    key_loop = fn.append_basic_block("ksort.keys");
+    key_body = fn.append_basic_block("ksort.keys.body");
+    outer = fn.append_basic_block("ksort.merge.pass");
+    pass_start = fn.append_basic_block("ksort.merge.start");
+    pair = fn.append_basic_block("ksort.merge.pair");
+    pair_start = fn.append_basic_block("ksort.merge.pair.start");
+    merge = fn.append_basic_block("ksort.merge.item");
+    left_check = fn.append_basic_block("ksort.merge.left.check");
+    right_check = fn.append_basic_block("ksort.merge.right.check");
+    compare = fn.append_basic_block("ksort.merge.compare");
+    take_left = fn.append_basic_block("ksort.merge.left");
+    take_right = fn.append_basic_block("ksort.merge.right");
+    advance = fn.append_basic_block("ksort.merge.advance");
+    pair_done = fn.append_basic_block("ksort.merge.pair.done");
+    pass_done = fn.append_basic_block("ksort.merge.pass.done");
+    publish = fn.append_basic_block("ksort.publish");
+    place = fn.append_basic_block("ksort.place");
+    place_body = fn.append_basic_block("ksort.place.body");
+    drop_keys = fn.append_basic_block("ksort.drop");
+    drop_body = fn.append_basic_block("ksort.drop.body");
+    finish = fn.append_basic_block("ksort.finish");
+    done = fn.append_basic_block("ksort.done");
+    index_slot = p._entry_alloca(i64, "ksort.index");
+    width_slot = p._entry_alloca(i64, "ksort.width");
+    base_slot = p._entry_alloca(i64, "ksort.base");
+    left_slot = p._entry_alloca(i64, "ksort.left");
+    right_slot = p._entry_alloca(i64, "ksort.right");
+    output_slot = p._entry_alloca(i64, "ksort.output");
+    source_slot = p._entry_alloca(i64.as_pointer(), "ksort.source");
+    target_slot = p._entry_alloca(i64.as_pointer(), "ksort.target");
+    failed_slot = p._entry_alloca(ir.IntType(1), "ksort.failed");
+    b.cbranch(b.icmp_unsigned("<=", length, one), done, allocate);
+
+    b.position_at_start(allocate);
+    widest = max(keysize, itemsize, 16);
+    p._emit_runtime_raise(
+        b.icmp_unsigned(">", length, ir.Constant(i64, 9223372036854775807 // widest)),
+        "MemoryError",
+        "sort workspace is too large",
+        release_on_error=owner_drop
+    );
+    malloc = p._get_or_declare_extern("malloc", i8p, [i64]);
+    free = p._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    memcpy = p._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
+    keys_raw = b.call(
+        malloc, [b.mul(length, ir.Constant(i64, keysize))], name="ksort.keys.raw"
+    );
+    perm_raw = b.call(
+        malloc, [b.mul(length, ir.Constant(i64, 16))], name="ksort.perm.raw"
+    );
+    alloc_fail = fn.append_basic_block("ksort.alloc.fail");
+    alloc_ok = fn.append_basic_block("ksort.alloc.ok");
+    b.cbranch(
+        b.or_(
+            b.icmp_unsigned("==", keys_raw, ir.Constant(i8p, None)),
+            b.icmp_unsigned("==", perm_raw, ir.Constant(i8p, None)),
+            name="ksort.alloc.failed"
+        ),
+        alloc_fail,
+        alloc_ok
+    );
+    b.position_at_start(alloc_fail);
+    b.call(free, [keys_raw]);
+    b.call(free, [perm_raw]);
+    p._emit_runtime_raise(
+        ir.Constant(ir.IntType(1), 1),
+        "MemoryError",
+        "cannot allocate sort workspace",
+        release_on_error=owner_drop
+    );
+    b.branch(alloc_ok);
+    b.position_at_start(alloc_ok);
+    b.store(ir.Constant(ir.IntType(1), 0), failed_slot);
+    keys = b.bitcast(keys_raw, key_type.as_pointer(), name="ksort.keys");
+    first = b.bitcast(perm_raw, i64.as_pointer(), name="ksort.perm");
+    second = b.gep(first, [length], name="ksort.perm.second");
+    b.store(zero, index_slot);
+    b.branch(key_loop);
+
+    b.position_at_start(key_loop);
+    i = b.load(index_slot, name="ksort.i");
+    b.cbranch(b.icmp_unsigned("<", i, length), key_body, outer);
+    b.position_at_start(key_body);
+    elem = b.call(helpers["get"], [target, i], name="ksort.elem");
+
+    key = p._mark_reference_owned(
+        b.call(
+            key_fn,
+            [p._coerce_type(elem, key_signature.args[0])] + key_extra,
+            name="ksort.key"
+        )
+    );
+    key_owned = p._is_owned(key);
+    key_tuple_owned = key.na_tuple_owned;
+    b.store(key, b.gep(keys, [i]));
+    b.store(i, b.gep(first, [i]));
+    b.store(b.add(i, one), index_slot);
+    b.branch(key_loop);
+
+    b.position_at_start(outer);
+    b.store(first, source_slot);
+    b.store(second, target_slot);
+    b.store(one, width_slot);
+    merge_pass = fn.append_basic_block("ksort.merge.width");
+    b.branch(merge_pass);
+    b.position_at_start(merge_pass);
+    width = b.load(width_slot);
+    b.cbranch(b.icmp_unsigned("<", width, length), pass_start, publish);
+    b.position_at_start(pass_start);
+    b.store(zero, base_slot);
+    b.branch(pair);
+    b.position_at_start(pair);
+    base = b.load(base_slot);
+    b.cbranch(b.icmp_unsigned("<", base, length), pair_start, pass_done);
+    b.position_at_start(pair_start);
+    middle_raw = b.add(base, width);
+    middle = b.select(b.icmp_unsigned("<", middle_raw, length), middle_raw, length);
+    end_raw = b.add(middle, width);
+    end = b.select(b.icmp_unsigned("<", end_raw, length), end_raw, length);
+    source = b.load(source_slot);
+    destination = b.load(target_slot);
+    b.store(base, left_slot);
+    b.store(middle, right_slot);
+    b.store(base, output_slot);
+    b.branch(merge);
+    b.position_at_start(merge);
+    output = b.load(output_slot);
+    b.cbranch(b.icmp_unsigned("<", output, end), left_check, pair_done);
+    b.position_at_start(left_check);
+    left = b.load(left_slot);
+    right = b.load(right_slot);
+    b.cbranch(b.icmp_unsigned(">=", left, middle), take_right, right_check);
+    b.position_at_start(right_check);
+    b.cbranch(b.icmp_unsigned(">=", right, end), take_left, compare);
+    b.position_at_start(compare);
+    left_key = b.load(b.gep(keys, [b.load(b.gep(source, [left]))]), name="ksort.lk");
+    right_key = b.load(b.gep(keys, [b.load(b.gep(source, [right]))]), name="ksort.rk");
+    if cmp_float {
+        (left_key, right_key) = p._promote_to_float(
+            left_key, right_key, unsigned=cmp_unsigned
         );
     }
-    if cmp_gt is None or (rev_i1 is not None and cmp_lt is None) {
-        if key_fn is not None {
-            p._release_owned_operands(cj, cj1, op="sort_key");
-        }
-        if len(p.ctx.errors_had) == _sort_errs {
+    sort_errs = len(p.ctx.errors_had);
+    before = p._emit_comparison(
+        Tok.LT, right_key, left_key, cmp_float, unsigned=cmp_unsigned, key_ret=key_ret
+    );
+    after: (ir.Value | None) = None;
+    if before is not None and reverse is not None {
+        after = p._emit_comparison(
+            Tok.LT,
+            left_key,
+            right_key,
+            cmp_float,
+            unsigned=cmp_unsigned,
+            key_ret=key_ret
+        );
+    }
+    if before is None or (reverse is not None and after is None) {
+        if len(p.ctx.errors_had) == sort_errs {
             p.ctx.emit(
-                E5092, node_override=_key_node, kind="sort key", name=SORT_KEY_MSG
+                E5092, node_override=key_node, kind="sort key", name=SORT_KEY_MSG
             );
         }
         return None;
     }
-    needs_swap = cmp_gt
-        if rev_i1 is None
-        else b.select(rev_i1, cmp_lt, cmp_gt, name="sort.dir");
-    if key_fn is not None {
-        p._release_owned_operands(cj, cj1, op="sort_key");
-    }
-    b.cbranch(needs_swap, swap_bb, no_swap);
+    choose_right = before if reverse is None else b.select(reverse, after, before);
+    b.cbranch(choose_right, take_right, take_left);
+    b.position_at_start(take_left);
+    b.store(b.load(b.gep(source, [left])), b.gep(destination, [output]));
+    b.store(b.add(left, one), left_slot);
+    b.branch(advance);
+    b.position_at_start(take_right);
+    b.store(b.load(b.gep(source, [right])), b.gep(destination, [output]));
+    b.store(b.add(right, one), right_slot);
+    b.branch(advance);
+    b.position_at_start(advance);
+    b.store(b.add(output, one), output_slot);
+    b.branch(merge);
+    b.position_at_start(pair_done);
+    b.store(end, base_slot);
+    b.branch(pair);
+    b.position_at_start(pass_done);
+    previous = b.load(source_slot);
+    b.store(b.load(target_slot), source_slot);
+    b.store(previous, target_slot);
+    b.store(b.mul(width, ir.Constant(i64, 2)), width_slot);
+    b.branch(merge_pass);
 
-    b.position_at_start(swap_bb);
-
-    _sw_dpp = b.gep(
-        target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="sort.dpp"
+    b.position_at_start(publish);
+    data = b.load(
+        b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)]), name="ksort.data"
     );
-    _sw_da = b.load(_sw_dpp, name="sort.da");
-    b.store(ej1, b.gep(_sw_da, [ji], name="sort.slot.j"));
-    b.store(ej, b.gep(_sw_da, [j1], name="sort.slot.j1"));
-    b.branch(inner_next);
-    b.position_at_start(no_swap);
-    b.branch(inner_next);
+    data = b.bitcast(data, data_type, name="ksort.data.typed");
+    nbytes = b.mul(length, ir.Constant(i64, itemsize));
+    copy_raw = b.call(malloc, [nbytes], name="ksort.copy.raw");
+    copy_failed = b.icmp_unsigned(
+        "==", copy_raw, ir.Constant(i8p, None), name="ksort.copy.failed"
+    );
+    b.store(copy_failed, failed_slot);
+    copy_ok = fn.append_basic_block("ksort.copy.ok");
+    b.cbranch(copy_failed, drop_keys, copy_ok);
+    b.position_at_start(copy_ok);
+    b.call(memcpy, [copy_raw, b.bitcast(data, i8p), nbytes]);
+    copy = b.bitcast(copy_raw, data_type, name="ksort.copy");
+    order = b.load(source_slot, name="ksort.order");
+    b.store(zero, index_slot);
+    b.branch(place);
+    b.position_at_start(place);
+    j = b.load(index_slot, name="ksort.j");
+    b.cbranch(b.icmp_unsigned("<", j, length), place_body, drop_keys);
+    b.position_at_start(place_body);
+    b.store(b.load(b.gep(copy, [b.load(b.gep(order, [j]))])), b.gep(data, [j]));
+    b.store(b.add(j, one), index_slot);
+    b.branch(place);
 
-    b.position_at_start(inner_next);
-    next_ji = b.add(ji, one, name="sort.nji");
-    ji.add_incoming(next_ji, inner_next);
-    b.branch(inner_bb);
+    b.position_at_start(drop_keys);
+    b.call(free, [copy_raw]);
+    b.store(zero, index_slot);
+    drop_loop = fn.append_basic_block("ksort.drop.loop");
+    b.branch(drop_loop if key_owned or key_tuple_owned is not None else finish);
+    b.position_at_start(drop_loop);
+    k = b.load(index_slot, name="ksort.k");
+    b.cbranch(b.icmp_unsigned("<", k, length), drop_body, finish);
+    b.position_at_start(drop_body);
+    held = b.load(b.gep(keys, [k]), name="ksort.held");
+    if key_owned {
+        p._mark_owned(held);
+    }
+    held.na_tuple_owned = key_tuple_owned;
+    p._release_owned_args([held], op="sort_key");
+    b.store(b.add(k, one), index_slot);
+    b.branch(drop_loop);
 
-    b.position_at_start(outer_next);
-    next_oi = b.add(oi, one, name="sort.noi");
-    oi.add_incoming(next_oi, outer_next);
-    b.branch(outer_bb);
-    b.position_at_start(done_bb);
+    b.position_at_start(finish);
+    b.call(free, [keys_raw]);
+    b.call(free, [perm_raw]);
+    p._emit_runtime_raise(
+        b.load(failed_slot, name="ksort.failed.now"),
+        "MemoryError",
+        "cannot allocate sort workspace",
+        release_on_error=owner_drop
+    );
+    b.branch(done);
+    b.position_at_start(done);
+    for owner in owner_drop {
+        p._emit_rc_release_simple(owner, op="sort_key", loc="target");
+    }
     return ir.Constant(i64, 0);
 }
 
@@ -3367,19 +3560,6 @@ impl NativeListEmitter._emit_value_sort(
     target: ir.Value,
     reverse: (ir.Value | None)
 ) -> (ir.Value | None) {
-    """Stable merge sort of the list's own elements, compared in place.
-
-    Scalars compare as themselves. Every other element lives in an erased
-    `i8*` slot, whatever it holds, so the slot type cannot say how to order
-    it: only the checked element type can. A `str` compares through the
-    string helper; anything else -- a tuple, `bytes`, a nested list --
-    goes through the same `_emit_comparison` a `key=` result does, which
-    views the pointers through that type. Treating every pointer as a
-    string ordered a tuple by the bytes of its first field, so float and
-    string leads (and most ints) came back unsorted. An element type the
-    comparison cannot order (a class without the protocol) refuses rather
-    than guess; one whose shape is not fully known keeps the string compare.
-    """;
     p = ctx.pass_ref;
     b = get_builder(p);
     i32 = ir.IntType(32);
@@ -3681,7 +3861,8 @@ impl NativeDictEmitter.emit_get(
 
     val_type = helpers["val_type"];
 
-    wrap_optional = (len(args) < 2) and (not isinstance(val_type, ir.PointerType));
+    wrap_optional = (len(args) < 2 or p._is_null_ptr_const(args[1]))
+        and (not isinstance(val_type, ir.PointerType));
     result_type = p._jac_optional_type(val_type) if wrap_optional else val_type;
 
     b.position_at_start(found_bb);
@@ -3905,6 +4086,10 @@ impl NativeDictEmitter.emit_pop(
     key = p._coerce_type(args[0], helpers["key_type"]);
     val_type = helpers["val_type"];
     has_default = len(args) >= 2;
+    none_default = has_default
+        and p._is_null_ptr_const(args[1])
+        and not isinstance(val_type, ir.PointerType);
+    result_type = p._jac_optional_type(val_type) if none_default else val_type;
 
     func = b.basic_block.function;
     found_bb = func.append_basic_block(name="dpop.yes");
@@ -3915,12 +4100,23 @@ impl NativeDictEmitter.emit_pop(
     b.cbranch(found_i1, found_bb, notfound_bb);
 
     b.position_at_start(found_bb);
-    popped_val = b.call(helpers["pop"], [target, key], name="dpop.val");
+    popped_val: ir.Value = b.call(helpers["pop"], [target, key], name="dpop.val");
+    if none_default {
+        _tagged = b.insert_value(
+            ir.Constant(result_type, None),
+            ir.Constant(ir.IntType(8), 1),
+            0,
+            name="dpop.some.tag"
+        );
+        popped_val = b.insert_value(_tagged, popped_val, 1, name="dpop.some");
+    }
     _found_pred = b.basic_block;
     b.branch(done_bb);
 
     b.position_at_start(notfound_bb);
-    if has_default {
+    if none_default {
+        default_val: ir.Value = ir.Constant(result_type, None);
+    } elif has_default {
         default_val = p._coerce_type(args[1], val_type);
     } else {
         p._emit_runtime_raise(
@@ -3936,7 +4132,7 @@ impl NativeDictEmitter.emit_pop(
     b.branch(done_bb);
 
     b.position_at_start(done_bb);
-    result = b.phi(val_type, name="dpop.result");
+    result = b.phi(result_type, name="dpop.result");
     result.add_incoming(popped_val, _found_pred);
     result.add_incoming(default_val, _notfound_pred);
     p._release_owned_args([key], op="dict_method_key");
@@ -4243,7 +4439,7 @@ impl NativeSetEmitter._emit_set_elem_loop(
         }
     }
     n = b.call(src_helpers["len"], [src_set], name=f"{prefix}.len");
-    iv = b.alloca(i64, name=f"{prefix}.i");
+    iv = p._stack_entry_alloca(i64, f"{prefix}.i");
     b.store(ir.Constant(i64, 0), iv);
     func = b.basic_block.function;
     loop_bb = func.append_basic_block(name=f"{prefix}.loop");
@@ -4585,7 +4781,7 @@ impl NativeSetEmitter._emit_set_relation(
     }
     b = get_builder(p);
     i64 = ir.IntType(64);
-    res_a = b.alloca(i64, name=f"{prefix}.res");
+    res_a = p._stack_entry_alloca(i64, f"{prefix}.res");
     b.store(ir.Constant(i64, 1), res_a);
 
     def _probe(b2: ir.IRBuilder, ev: ir.Value) {
@@ -5800,6 +5996,10 @@ impl NativeBuiltinEmitter.emit_str(
             if unsigned
             else b.sext(arg_val, ir.IntType(64));
     }
+    if isinstance(arg_val.type, ir.IntType) and arg_val.type.width == 64 {
+        p._str_finish(b, buf_ptr, p._emit_fmt_int(b, arg_val, buf_ptr, unsigned));
+        return buf_ptr;
+    }
     fmt = p._get_snprintf_fmt("%llu" if unsigned else "%lld");
     fmt_ptr = b.bitcast(fmt, i8p, name="str.fmt.ptr");
     str_n32 = b.call(
@@ -5876,7 +6076,7 @@ impl NativeBuiltinEmitter._int_from_c_string(
         );
     }
     strtol_fn = p._get_or_declare_extern("strtol", i64, [i8p, i8p.as_pointer(), i32]);
-    endptr_alloca = b.alloca(i8p, name="endptr");
+    endptr_alloca = p._stack_entry_alloca(i8p, "endptr");
     result_val = b.call(
         strtol_fn,
         [text, endptr_alloca, base if base is not None else ir.Constant(i32, 10)],
@@ -5960,7 +6160,7 @@ impl NativeBuiltinEmitter.emit_float(
         strtod_fn = p._get_or_declare_extern(
             "strtod", ir.DoubleType(), [i8p, i8p.as_pointer()]
         );
-        endptr_alloca = b.alloca(i8p, name="float.endptr");
+        endptr_alloca = p._stack_entry_alloca(i8p, "float.endptr");
         result = b.call(strtod_fn, [arg_val, endptr_alloca], name="float.result");
         endptr_val = b.load(endptr_alloca, name="float.endptr.val");
         no_parse = b.icmp_unsigned("==", endptr_val, arg_val, name="float.noparse");
@@ -6357,8 +6557,20 @@ impl NativeBuiltinEmitter.emit_bytes(
     if _src is not None {
         return p._bytes_from_raw(_src[0], _src[1]);
     }
-    return _emit_bytes_from_int_list(p, val, "bytes must be in range(0, 256)", []);
+    listed = _emit_bytes_from_int_list(p, val, "bytes must be in range(0, 256)", []);
+    if listed is not None or not ctx.arg_nodes {
+        return listed;
+    }
+    return _emit_bytes_drained(self, ctx, args, "bytes must be in range(0, 256)", []);
 }
+
+def _emit_bytes_drained(
+    emitter: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    args: list[ir.Value],
+    message: str,
+    release_on_error: list[ir.Value]
+) -> (ir.Value | None);
 
 def _emit_zeroed_bytes(p: NaIRGenPass, count: ir.Value) -> ir.Value;
 
@@ -6410,7 +6622,13 @@ impl NativeBuiltinEmitter.emit_bytearray(
         return buf;
     }
 
+    p._mark_owned(buf);
     _bv = _emit_bytes_from_int_list(p, a0, "byte must be in range(0, 256)", [buf]);
+    if _bv is None and ctx.arg_nodes {
+        _bv = _emit_bytes_drained(
+            self, ctx, args, "byte must be in range(0, 256)", [buf]
+        );
+    }
     if _bv is not None and p._is_bytes_value(_bv) {
         _bsrc = p._bytearray_src_of(_bv);
         if _bsrc is not None {
@@ -7689,4 +7907,25 @@ impl _emit_affix_window_match(
     result.add_incoming(ir.Constant(ir.IntType(1), 1), match_bb);
     result.add_incoming(ir.Constant(ir.IntType(1), 0), miss);
     return result;
+}
+
+impl _emit_bytes_drained(
+    emitter: NativeBuiltinEmitter,
+    ctx: NativeEmitCtx,
+    args: list[ir.Value],
+    message: str,
+    release_on_error: list[ir.Value]
+) -> (ir.Value | None) {
+    p = ctx.pass_ref;
+    drained = emitter.emit_list(ctx, args);
+    if drained is None {
+        return None;
+    }
+    p._mark_owned(drained);
+    made = _emit_bytes_from_int_list(p, drained, message, [*release_on_error, *args]);
+    if made is None {
+        return None;
+    }
+    p._release_owned_args([drained]);
+    return made;
 }

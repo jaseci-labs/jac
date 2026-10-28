@@ -218,11 +218,16 @@ test "an edges-only count counts edges, not their endpoints" {
             one = FItem(rank=0);
             b +>:FHas():+> one;
             b +>:FHas():+> one;
+            b +>:FHas():+> FItem(rank=1);
             ctx.mem.commit();
-            assert len([edge b-->]) == 2 , (
+            second = [_as_any(x).rank for x in [b-->[?:FItem]][1:2]];
+            assert second == [1] , (
+                f"a node slice skips nodes, not the edges that reach them; got {second}"
+            );
+            assert len([edge b-->]) == 3 , (
                 f"two edges to one node is two edges; got {len([edge b-->])}"
             );
-            assert len([b-->[?:FItem]]) == 1 , (
+            assert len([b-->[?:FItem]]) == 2 , (
                 f"...but one distinct node; got {len([b-->[?:FItem]])}"
             );
             assert [edge b-->] , "an edges-only truthiness test must see them";
@@ -285,46 +290,61 @@ def _anchor_scans(ctx: ExecutionContext) -> int {
 
 
 test "hops from nodes one query returned run once for all of them" {
-    with TemporaryDirectory() as td {
-        old = JacRuntime.exec_ctx;
-        ctx = _ctx(td);
-        JacRuntime.exec_ctx = ctx;
-        try {
-            _seed_nested(12, 3);
-            ctx.mem.commit();
-        } finally {
-            JacRuntime.exec_ctx = old;
-            ctx.close();
-        }
-        ctx2 = _ctx(td);
-        JacRuntime.exec_ctx = ctx2;
-        try {
-            board = [root-->[?:FBoard]][0];
-            items = list([board->:FHas:->[?:FItem]]);
-            assert len(items) == 12;
-            first = sorted([_as_any(x).rank for x in [items[0]->:FSubOf:->[?:FSub]]]);
-            before = _anchor_scans(ctx2);
-            got: dict[int, list[int]] = {};
-            for it in items {
-                got[_as_any(it).rank] = sorted(
-                    [_as_any(x).rank for x in [it->:FSubOf:->[?:FSub]]]
-                );
+    # (gated, bounded): a bounded read batches its follow-up hops too.
+    for (gated, bounded) in [(False, False), (False, True), (True, True)] {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            ctx = _ctx(td);
+            JacRuntime.exec_ctx = ctx;
+            uid = "";
+            try {
+                if gated {
+                    uid = _gated_root(ctx);
+                    ctx.set_user_root(uid);
+                }
+                _seed_nested(12, 3);
+                ctx.mem.commit();
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx.close();
             }
-            scans = _anchor_scans(ctx2) - before;
-            for (rank, ranks) in got.items() {
-                assert ranks == [rank * 100, rank * 100 + 1, rank * 100 + 2] , (
-                    rank,
-                    ranks
+            ctx2 = _ctx(td);
+            JacRuntime.exec_ctx = ctx2;
+            try {
+                if gated {
+                    ctx2.set_user_root(uid);
+                }
+                board = [root-->[?:FBoard]][0];
+                items = list([board->:FHas:->[?:FItem]][:12])
+                    if bounded
+                    else list([board->:FHas:->[?:FItem]]);
+                assert len(items) == 12;
+                first = sorted(
+                    [_as_any(x).rank for x in [items[0]->:FSubOf:->[?:FSub]]]
                 );
+                before = _anchor_scans(ctx2);
+                got: dict[int, list[int]] = {};
+                for it in items {
+                    got[_as_any(it).rank] = sorted(
+                        [_as_any(x).rank for x in [it->:FSubOf:->[?:FSub]]]
+                    );
+                }
+                scans = _anchor_scans(ctx2) - before;
+                for (rank, ranks) in got.items() {
+                    assert ranks == [rank * 100, rank * 100 + 1, rank * 100 + 2] , (
+                        rank,
+                        ranks
+                    );
+                }
+                assert first == got[_as_any(items[0]).rank];
+                assert scans < 4 , (
+                    f"hops from 12 nodes one query returned scanned anchors {scans} times "
+                    f"after the first; they run as one batched hop ({gated}, {bounded})"
+                );
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx2.close();
             }
-            assert first == got[_as_any(items[0]).rank];
-            assert scans < 4 , (
-                f"hops from 12 nodes one query returned scanned anchors {scans} times "
-                f"after the first; they run as one batched hop"
-            );
-        } finally {
-            JacRuntime.exec_ctx = old;
-            ctx2.close();
         }
     }
 }
@@ -651,6 +671,324 @@ test "a node whose stored type changed is still reached by typed hops" {
         } finally {
             JacRuntime.exec_ctx = old;
             ctx3.close();
+        }
+    }
+}
+
+
+def _gated_root(ctx: ExecutionContext) -> str {
+    import from jaclang.runtime.archetype { Root }
+    anch: any = Root().__jac__;
+    anch.persistent = True;
+    setattr(anch, "root", anch.id);
+    ctx.mem.put(anch);
+    ctx.mem.commit();
+    return str(anch.id);
+}
+
+
+def _gated_probe(b: any, probe: str) -> int {
+    if probe == "typed count" {
+        return len([b->:FHas:->[?:FItem]]);
+    }
+    if probe == "typed page" {
+        return len([b->:FHas:->[?:FItem]][:5]);
+    }
+    if probe == "untyped count" {
+        return len([b-->]);
+    }
+    if probe == "untyped empty page" {
+        return len([b-->][:0]);
+    }
+    if probe == "bounded count" {
+        import from jaclang.data.query_planner { resolve_query_count }
+        import from jaclang.runtime.graph_query { GraphQuery, QHop }
+        mem: any = JacRuntime.get_context().mem;
+        return resolve_query_count(
+            mem, GraphQuery(b, hops=[QHop(dir=2)], limit=5, offset=3)
+        );
+    }
+    return len([b-->][:5]);
+}
+
+
+test "a gated caller's counts and pages stay bounded, typed or untyped" {
+    # (probe, expected result at size n, fetch ceiling): a count reads no rows,
+    # a page reads at most its own rows, at both sizes.
+    rows = [
+        ("typed count", -1, 0),
+        ("typed page", 5, 5),
+        ("untyped count", -1, 0),
+        ("untyped page", 5, 5),
+        ("untyped empty page", 0, 0),
+        ("bounded count", 5, 0)
+    ];
+    for n in [40, 400] {
+        with TemporaryDirectory() as td {
+            old = JacRuntime.exec_ctx;
+            ctx = _ctx(td);
+            JacRuntime.exec_ctx = ctx;
+            uid = "";
+            try {
+                uid = _gated_root(ctx);
+                ctx.set_user_root(uid);
+                _seed(n);
+                ctx.mem.commit();
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx.close();
+            }
+            for (probe, want, ceiling) in rows {
+                ctx2 = _ctx(td);
+                JacRuntime.exec_ctx = ctx2;
+                try {
+                    ctx2.set_user_root(uid);
+                    b2 = [root-->[?:FBoard]][0];
+                    ctx2.mem.reset_fetch_count();
+                    got = _gated_probe(b2, probe);
+                    fetched = ctx2.mem.get_fetch_count();
+                    expect = n if want < 0 else want;
+                    assert got == expect , (n, probe, got);
+                    assert fetched <= ceiling , (
+                        f"gated {probe} at n={n} materialised {fetched} anchors; "
+                        f"the bound is {ceiling}"
+                    );
+                } finally {
+                    JacRuntime.exec_ctx = old;
+                    ctx2.close();
+                }
+            }
+        }
+    }
+}
+
+
+test "a keyset cursor walks a neighbourhood once, in edge order" {
+    import from jaclang.data.query_planner {
+        resolve_query,
+        resolve_query_exists,
+        resolve_query_page
+    }
+    import from jaclang.runtime.graph_query { GraphQuery, QHop, QOrder }
+    import from jaclang.server.session { Session }
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        uid = "";
+        bid = "";
+        try {
+            uid = _gated_root(ctx);
+            ctx.set_user_root(uid);
+            bid = str(_as_any(_seed(23)).__jac__.id);
+            ctx.mem.commit();
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
+        }
+        # (gated, page size): the cursor visits every neighbour exactly once in
+        # insertion order, and a page never reads more than its own rows.
+        for (gated, size) in [(False, 5), (True, 5), (True, 23), (True, 50)] {
+            ctx2 = _ctx(td);
+            JacRuntime.exec_ctx = ctx2;
+            try {
+                if gated {
+                    ctx2.set_user_root(uid);
+                }
+                b2 = _as_any(ctx2.mem.get(UUID(bid))).archetype;
+                sess = ctx2.mem;
+                assert isinstance(sess, Session);
+                ranks: list[int] = [];
+                after: any = None;
+                pages = 0;
+                while True {
+                    sess.reset_fetch_count();
+                    (page, after) = resolve_query_page(
+                        sess,
+                        GraphQuery(
+                            b2, hops=[QHop(dir=2, nd=FItem)], limit=size, after=after
+                        )
+                    );
+                    assert sess.get_fetch_count() <= 2 * size , (
+                        gated,
+                        size,
+                        sess.get_fetch_count()
+                    );
+                    for (a, e, _) in page {
+                        assert e is not None and _as_any(e).archetype is not None;
+                        ranks.append(_as_any(a).archetype.rank);
+                    }
+                    pages += 1;
+                    if after is None {
+                        break;
+                    }
+                }
+                assert ranks == list(range(23)) , (gated, size, ranks);
+                assert pages == (23 + size - 1) // size , (gated, size, pages);
+                (tail_page, end) = resolve_query_page(
+                    sess, GraphQuery(b2, hops=[QHop(dir=2, nd=FItem)], limit=size)
+                );
+                last = tail_page[-1][2];
+                past = GraphQuery(b2, hops=[QHop(dir=2, nd=FItem)], after=last);
+                if size >= 23 {
+                    assert not resolve_query_exists(sess, past) , (
+                        "a query past its last row must stay past it"
+                    );
+                }
+                # (query, why it is refused): a cursor only means something in
+                # edge order from one node, and must name the edge it resumes after.
+                for (bad, why) in [
+                    (
+                        GraphQuery(
+                            b2,
+                            hops=[QHop(dir=2, nd=FItem)],
+                            order=[QOrder(field="rank")],
+                            after=last
+                        ),
+                        "custom order"
+                    ),
+                    (
+                        GraphQuery(
+                            b2, hops=[QHop(dir=2, nd=FItem)], after=(last[0], None)
+                        ),
+                        "no edge"
+                    )
+                ] {
+                    refused = False;
+                    try {
+                        resolve_query(sess, bad);
+                    } except ValueError {
+                        refused = True;
+                    }
+                    assert refused , why;
+                }
+            } finally {
+                JacRuntime.exec_ctx = old;
+                ctx2.close();
+            }
+        }
+    }
+}
+
+
+test "a page or a count from an in-memory node follows the store's semantics" {
+    import from jaclang.data.query_planner {
+        resolve_query,
+        resolve_query_edges,
+        resolve_query_page,
+        resolve_query_type_counts
+    }
+    import from jaclang.runtime.graph_query { GraphQuery, QHop }
+    with TemporaryDirectory() as td {
+        old = JacRuntime.exec_ctx;
+        ctx = _ctx(td);
+        JacRuntime.exec_ctx = ctx;
+        try {
+            stored = FBoard(name="stored");
+            root ++> stored;
+            for i in range(6) {
+                stored +>:FNote(note=f"n{i}"):+> FItem(rank=i);
+            }
+            ctx.mem.commit();
+            b = FBoard(name="transient");
+            for i in range(6) {
+                b +>:FHas():+> FItem(rank=i);
+            }
+            twice = FItem(rank=99);
+            b +>:FNote():+> twice;
+            b +>:FNote():+> twice;
+            mem: any = ctx.mem;
+            (head, resume) = resolve_query_page(
+                mem, GraphQuery(b, hops=[QHop(dir=2, nd=FItem)], limit=3)
+            );
+            (page, _) = resolve_query_page(
+                mem, GraphQuery(b, hops=[QHop(dir=2, nd=FItem)], limit=2, after=resume)
+            );
+            assert [_as_any(a).archetype.rank for (a, _, _) in page] == [3, 4] , page;
+            # A page resumes from a cursor; an offset could not survive a page
+            # that stops early, so both graphs refuse it.
+            for origin in [b, stored] {
+                refused = False;
+                try {
+                    resolve_query_page(
+                        mem,
+                        GraphQuery(
+                            origin, hops=[QHop(dir=2, nd=FItem)], limit=2, offset=3
+                        )
+                    );
+                } except ValueError {
+                    refused = True;
+                }
+                assert refused , origin;
+            }
+
+            def shape(found: list[any]) -> list[any] {
+                return [
+                    x.archetype?.rank
+                        if x.archetype?.rank is not None
+                        else x.archetype?.note for x in found
+                ];
+            }
+            parallel = FBoard(name="parallel");
+            for i in range(6) {
+                parallel +>:FNote(note=f"n{i}"):+> FItem(rank=i);
+            }
+            # (bound shape): every read, node or edge, plain or visit, bounds a
+            # stored graph exactly as it bounds the same graph in memory. An
+            # explicit limit wins over slc for plain reads; a visit's slc slices
+            # its final edge-then-node list after a limit counted edges.
+            shapes = [
+                {"limit": 2},
+                {"limit": 2, "offset": 1},
+                {"slc": slice(1, 3)},
+                {"limit": 2, "slc": slice(2, 3)},
+                {"slc": slice(0, 5, 2)},
+                {"limit": 4, "offset": 1, "slc": slice(1, 4)}
+            ];
+            for raw in shapes {
+                bound: dict[str, any] = raw;
+                for (edges_only, visiting) in [
+                    (False, False),
+                    (True, False),
+                    (True, True)
+                ] {
+                    got: list[list[any]] = [];
+                    for origin in [stored, parallel] {
+                        gq = GraphQuery(
+                            origin,
+                            hops=[QHop(dir=2, nd=FItem)],
+                            edges_only=edges_only,
+                            limit=bound.get("limit"),
+                            offset=bound.get("offset", 0),
+                            slc=bound.get("slc")
+                        );
+                        if visiting {
+                            gq = gq.visit();
+                        }
+                        got.append(
+                            shape(
+                                resolve_query_edges(mem, gq)
+                                    if edges_only
+                                    else resolve_query(mem, gq)
+                            )
+                        );
+                    }
+                    assert got[0] == got[1] , (bound, edges_only, visiting, got);
+                }
+            }
+            (per_edge, _) = resolve_query_type_counts(
+                mem, GraphQuery(b, hops=[QHop(dir=2)]), 'edge'
+            );
+            assert sum(per_edge.values()) == 8 , per_edge;
+            (counts, _) = resolve_query_type_counts(
+                mem, GraphQuery(b, hops=[QHop(dir=2)])
+            );
+            assert sum(counts.values()) == 7 , (
+                f"a node reached by two edges is one node; got {counts}"
+            );
+        } finally {
+            JacRuntime.exec_ctx = old;
+            ctx.close();
         }
     }
 }

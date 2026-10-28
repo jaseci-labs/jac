@@ -171,7 +171,7 @@ All three block code generation for the module that reports them.
 
 | Code | Message |
 |------|---------|
-| `W0060` | Docstrings in Jac go before the declaration, not inside the body |
+| `W0060` | A string on its own does nothing. Docstrings go before the declaration, not inside the body |
 | `W0063` | JSX spread `{...expr}` is JS-idiomatic. Prefer `{**expr}` in Jac. |
 
 ### Lexer Errors
@@ -319,6 +319,7 @@ A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bo
 | Code | Message |
 |------|---------|
 | `E1090` | Cannot raise {type} (not an exception type) |
+| `E1161` | Cannot use {type} as an exception cause (not an exception type or None) |
 | `E1091` | Type {type} cannot be used in 'with' statement (no \_\_enter\_\_ method) |
 | `E1092` | Type {type} cannot be used in 'with' statement (no \_\_exit\_\_ method) |
 | `E1093` | Cannot yield {actual}, expected {expected} |
@@ -633,8 +634,9 @@ Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/in
 | `W3053` | `remove-wired-import` | Import of '{name}' from '{module}' is already provided by archwire.jac (fix only: `jac check` reports it as `E1144`) | default |
 | `W3054` | `remove-dead-import` | Import of '{name}' from '{module}' is neither wired nor read | default |
 | `W3055` | `separate-impls` | Body of '{name}' belongs in a separate impl | all |
+| `W3056` | `impls-in-annex` | impl '{name}' belongs in an annex inside an impl folder (or: Annex '{file}' belongs inside an impl folder) | all |
 
-> **all group**: `strip-comments`, `strip-docstrings` and `separate-impls` are on under `select = ["all"]` and off under `["default"]`. The first two delete comments and docstrings; `separate-impls` moves bodies into `impl` blocks. Each can be named explicitly or listed in `ignore`; see the [config reference](config/index.md#checklint).
+> **all group**: `strip-comments`, `strip-docstrings`, `separate-impls` and `impls-in-annex` are on under `select = ["all"]` and off under `["default"]`. The first two delete comments and docstrings (`strip-docstrings` also deletes a string written as a statement inside a body); `separate-impls` moves bodies into `impl` blocks, and `impls-in-annex` moves those blocks into an annex inside an impl folder. Each can be named explicitly or listed in `ignore`; see the [config reference](config/index.md#checklint).
 
 ---
 

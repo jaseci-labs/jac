@@ -82,6 +82,12 @@ impl MetricsExtension.register(server: JacAPIServer) -> None {
     if not collector.is_enabled() {
         return;
     }
+    def _record_run(outcome: RunOutcome) {
+        collector.record_scheduled_run(
+            outcome.task, outcome.status, outcome.reason, outcome.duration
+        );
+    }
+    server.scheduler.on_run('metrics', _record_run);
     endpoint = str(cfg.get('endpoint', '/metrics'));
     server.metrics_path = endpoint;
     scrape_password = str(cfg.get('prometheus_admin_password', ''));
