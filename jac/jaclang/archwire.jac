@@ -13780,7 +13780,7 @@ graph import compiler.frontend.python {
             syntax_warning,
             validation_diagnostic
         },
-        peg_runtime.peg_fill_token { report_token_warnings },
+        peg_runtime.peg_scan_token { report_token_warnings },
     ]
     compiler_validate --> parser.finish_parse { validate_feature_version }
     parser_actions ++> parser {
@@ -13936,9 +13936,10 @@ graph import compiler.frontend.python {
     ]
     source_encoding ++> source_input { source_encoding }
     syntax_error ++> [
-        compiler_validate | source_encoding | source_input { syntax_failure },
+        compiler_validate | parser_actions | source_encoding | source_input {
+            syntax_failure
+        },
         parser { decode_source_lines, source_character_column, syntax_failure },
-        parser_actions { source_line_bytes, syntax_failure },
     ]
     token_model ++> [
         parser {
@@ -27500,6 +27501,7 @@ graph import runtime.python {
             PyLong_FromLongLong,
             PyObject,
             PyTuple_New,
+            Py_IncRef,
             jacpy_readline,
             jacpy_release,
             jacpy_tuple_set_owned
@@ -30268,6 +30270,7 @@ graph import runtime.python {
             _PyCodeConstructor_QUALNAME,
             _PyCodeConstructor_SIZE,
             _PyCodeConstructor_STACKSIZE,
+            _Py_ONCE_INITIALIZED,
             _object,
             ast_state_Add_singleton,
             ast_state_Add_type,
@@ -38417,7 +38420,7 @@ graph import runtime.python {
             PyStr,
             PyTuple
         },
-        native_services { PyObj },
+        native_services { PyInt, PyObj },
     ]
     objects --> symtable { PyObj, py_error }
     opcode_meta ++> [

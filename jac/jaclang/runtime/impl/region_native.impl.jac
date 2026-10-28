@@ -6,6 +6,8 @@ impl _tls_block -> int {
         __mem_store_i64(blk + TLS_STACK, 0);
         __mem_store_i64(blk + TLS_DEPTH, 0);
         __mem_store_i64(blk + TLS_CAP, 0);
+        __mem_store_i64(blk + TLS_SPARE, 0);
+        __mem_store_i64(blk + TLS_NSPARE, 0);
         __jac_region_tls_set(blk);
     }
     return blk;
@@ -198,6 +200,34 @@ impl _draw_page(parent: int) -> int {
     return run + RUN_HDR;
 }
 
+impl _spare_take -> int {
+    blk = __jac_region_tls_get();
+    if blk == 0 {
+        return 0;
+    }
+    chunk = __mem_load_i64(blk + TLS_SPARE);
+    if chunk != 0 {
+        __mem_store_i64(blk + TLS_SPARE, __mem_load_i64(chunk + CHUNK_PREV));
+        __mem_store_i64(blk + TLS_NSPARE, __mem_load_i64(blk + TLS_NSPARE) - 1);
+    }
+    return chunk;
+}
+
+impl _spare_keep(chunk: int) -> bool {
+    if __mem_load_i64(chunk + CHUNK_SIZE) != CHUNK_DEFAULT {
+        return False;
+    }
+    blk = _tls_block();
+    count = __mem_load_i64(blk + TLS_NSPARE);
+    if count >= SPARE_MAX {
+        return False;
+    }
+    __mem_store_i64(chunk + CHUNK_PREV, __mem_load_i64(blk + TLS_SPARE));
+    __mem_store_i64(blk + TLS_SPARE, chunk);
+    __mem_store_i64(blk + TLS_NSPARE, count + 1);
+    return True;
+}
+
 impl _region_grow(hdl: int, size: int) {
     want = ((size + CHUNK_HDR + 15) // 16) * 16;
     small = want < CHUNK_DEFAULT;
@@ -211,6 +241,9 @@ impl _region_grow(hdl: int, size: int) {
             from_run = 1;
             csize = CHUNK_DEFAULT;
         }
+    }
+    if chunk == 0 and small {
+        chunk = _spare_take();
     }
     if chunk == 0 {
         chunk = malloc(csize);
@@ -379,7 +412,7 @@ impl _teardown(hdl: int) {
     ck = __mem_load_i64(hdl + RGN_CHUNK);
     while ck != 0 {
         prev = __mem_load_i64(ck + CHUNK_PREV);
-        if (__mem_load_i64(ck + CHUNK_RGN) & 1) == 0 {
+        if (__mem_load_i64(ck + CHUNK_RGN) & 1) == 0 and not _spare_keep(ck) {
             free(ck);
         }
         ck = prev;

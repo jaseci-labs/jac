@@ -86,6 +86,21 @@ impl warn(message: str, filename: str, line: int, column: int = 0) {
 }
 
 impl parse_integer(value: str) -> PyObj {
+    size = len(value);
+    if size > 0
+        and size <= 18
+        and value.isascii()
+        and value.isdigit()
+        and (size == 1 or value[0] != "0") {
+        data = value.encode("utf-8");
+        total = 0;
+        index = 0;
+        while index < size {
+            total = total * 10 + (data[index] - 48);
+            index += 1;
+        }
+        return PyInt(t="int", val=total);
+    }
     handle = jacpy_parse_long(value, i64(len(value.encode("utf-8"))));
     if handle == 0 and PyErr_ExceptionMatches(PyExc_ValueError) != 0 {
         message = take_error_text();

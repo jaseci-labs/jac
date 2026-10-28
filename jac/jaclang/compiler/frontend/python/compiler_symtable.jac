@@ -195,10 +195,7 @@ def sym_set_scope(flags: int, scope: int) -> int {
 }
 
 def sym_dict_get(d: dict[str, int], key: str, fallback: int = 0) -> int {
-    if key in d {
-        return d[key];
-    }
-    return fallback;
+    return d.get(key, fallback);
 }
 
 def sym_set_add(s: dict[str, int], name: str) {
@@ -235,11 +232,16 @@ def sym_sorted_names(d: dict[str, int]) -> list[str] {
 }
 
 def sym_block_tuple_names(d: dict[str, int], pred_scope: int) -> list[str] {
-    return [
-        name
-        for name in sym_sorted_names(d)
-        if sym_scope_of(d[name]) == pred_scope
-    ];
+    names: list[str] = [];
+    for name in d.keys() {
+        if sym_scope_of(d[name]) == pred_scope {
+            names.append(name);
+        }
+    }
+    if len(names) > 1 {
+        names.sort();
+    }
+    return names;
 }
 
 def mangle_name(private: str | None, name: str) -> str {

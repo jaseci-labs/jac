@@ -44,7 +44,10 @@ glob RGN_CHUNK: int = 0,
      TLS_STACK: int = 8,
      TLS_DEPTH: int = 16,
      TLS_CAP: int = 24,
-     TLS_BLOCK: int = 32,
+     TLS_SPARE: int = 32,
+     TLS_NSPARE: int = 40,
+     TLS_BLOCK: int = 48,
+     SPARE_MAX: int = 8,
      FLAG_ZOMBIE: int = 1;
 
 def _tls_block -> int;
@@ -82,6 +85,10 @@ def _registry_holds(ptr: int) -> int;
 def:pub __jac_region_new -> int;
 
 def _draw_page(parent: int) -> int;
+
+def _spare_take -> int;
+
+def _spare_keep(chunk: int) -> bool;
 
 def _region_grow(hdl: int, size: int);
 

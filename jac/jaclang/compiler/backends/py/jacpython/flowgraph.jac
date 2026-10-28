@@ -64,6 +64,25 @@ def flatten_blocks(u: unverified_cfg) -> flatten_result {
     return flatten_result(flat=flat, block_starts=block_starts);
 }
 
+def layout_block_starts(u: unverified_cfg, sizes: list[int]) -> list[int] {
+    block_starts: list[int] = [];
+    cur = 0;
+    index = 0;
+    for b in u.blocks {
+        while len(block_starts) <= b.id {
+            block_starts.append(0);
+        }
+        block_starts[b.id] = cur;
+        count = len(b.instrs);
+        while count > 0 {
+            cur = cur + sizes[index];
+            index = index + 1;
+            count = count - 1;
+        }
+    }
+    return block_starts;
+}
+
 # Layout order (u.blocks list order) is authoritative, not block-id order.
 # With deferred block placement (CPython USE_LABEL), a block allocated early can
 # be laid out late, so "next block" and forward/backward jump direction must be
@@ -96,6 +115,21 @@ def layout_next_block(u: unverified_cfg, idx: int) -> basicblock | None {
 }
 
 def normalize_jumps(u: unverified_cfg) {
+    has_conditional = False;
+    for block in u.blocks {
+        for ins in block.instrs {
+            if is_conditional_jump(ins.opcode) {
+                has_conditional = True;
+                break;
+            }
+        }
+        if has_conditional {
+            break;
+        }
+    }
+    if not has_conditional {
+        return;
+    }
     pos = build_layout_pos(u);
     bi = 0;
     while bi < len(u.blocks) {
@@ -128,21 +162,17 @@ def normalize_jumps(u: unverified_cfg) {
 
 # POP_JUMP_* targets are forward code-unit offsets from the next instruction:
 #   ip += 2 * oparg. target_block ids map to block starts laid out in order.
-def resolve_jump_offsets(flat: list[cinstr], block_starts: list[int]) {
-    offsets: list[int] = [];
+def resolve_jump_offsets(
+    flat: list[cinstr], block_starts: list[int], sizes: list[int]
+) {
     cur = 0;
     i = 0;
     while i < len(flat) {
-        offsets.append(cur);
-        cur = cur + instr_size_codeunits(flat[i]);
-        i = i + 1;
-    }
-    i = 0;
-    while i < len(flat) {
         ins = flat[i];
+        cur = cur + sizes[i];
         if ins.target_block >= 0 {
             target = block_starts[ins.target_block];
-            next_ip = offsets[i] + instr_size_codeunits(ins);
+            next_ip = cur;
             # Cleanup and shared-tail layout can move an unconditional target
             # across its source. Resolve direction from the final layout.
             if is_unconditional_jump_opcode(ins.opcode) {
@@ -300,6 +330,13 @@ def walk_block_maxdepth(
     return (maxd, None);
 }
 
+def block_by_id(blocks: list[basicblock | None], bid: int) -> basicblock | None {
+    if bid < 0 or bid >= len(blocks) {
+        return None;
+    }
+    return blocks[bid];
+}
+
 # CPython flowgraph.c calculate_stackdepth: worklist over block edges with
 # generated stack_effect metadata (INTEGRATION_PLAN Phase 3).
 def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | None] {
@@ -307,7 +344,6 @@ def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | 
         return (0, None);
     }
     n = len(u.blocks);
-    blocks_by_id = {block.id: block for block in u.blocks};
     # startdepths is indexed by block id. Ids are sparse once the optimizer prunes
     # unreachable blocks, so size to the id space (next_block_id), not the block
     # count, or a surviving high-id block indexes out of range.
@@ -316,15 +352,27 @@ def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | 
         cap = n;
     }
     startdepths: list[int] = [];
+    blocks_by_id: list[basicblock | None] = [];
+    positions: list[int] = [];
     i = 0;
     while i < cap {
         startdepths.append(UNSET_STARTDEPTH);
+        blocks_by_id.append(None);
+        positions.append(-1);
+        i = i + 1;
+    }
+    i = 0;
+    while i < n {
+        block = u.blocks[i];
+        if block.id >= 0 and block.id < cap {
+            blocks_by_id[block.id] = block;
+            positions[block.id] = i;
+        }
         i = i + 1;
     }
     work: list[int] = [];
     maxdepth = 0;
     entry_blk = u.blocks[0];
-    pos = build_layout_pos(u);
 
     if not stackdepth_push(startdepths, work, entry_blk, 0) {
         return (
@@ -339,7 +387,7 @@ def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | 
         if reg.depth_from_block >= 0 {
             continue;
         }
-        handler = blocks_by_id.get(reg.handler_block);
+        handler = block_by_id(blocks_by_id, reg.handler_block);
         if handler is not None
             and not stackdepth_push(startdepths, work, handler, reg.stack_depth) {
             return (
@@ -353,7 +401,7 @@ def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | 
     }
     while len(work) > 0 {
         bid = work.pop();
-        b = blocks_by_id.get(bid);
+        b = block_by_id(blocks_by_id, bid);
         if b is None {
             return (
                 0,
@@ -364,7 +412,7 @@ def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | 
         for reg in u.except_regions {
             if reg.depth_from_block == bid {
                 reg.stack_depth = depth + reg.depth_offset;
-                handler = blocks_by_id.get(reg.handler_block);
+                handler = block_by_id(blocks_by_id, reg.handler_block);
                 if handler is not None
                     and not stackdepth_push(
                         startdepths, work, handler, reg.stack_depth
@@ -379,7 +427,7 @@ def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | 
                 }
             }
         }
-        next_blk = layout_next_block(u, layout_pos(pos, b.id));
+        next_blk = layout_next_block(u, positions[b.id]);
         ii = 0;
         while ii < len(b.instrs) {
             ins = b.instrs[ii];
@@ -430,7 +478,7 @@ def calculate_stackdepth(u: unverified_cfg) -> tuple[int, compiler_diagnostic | 
                         )
                     );
                 }
-                target = blocks_by_id.get(ins.target_block);
+                target = block_by_id(blocks_by_id, ins.target_block);
                 if target is None {
                     return (
                         0,
@@ -992,12 +1040,21 @@ def optimize_literal_iterables(u: unverified_cfg) {
             ins.opcode = OP_LOAD_CONST;
             ins.oparg = u.add_const(folded);
         }
-        opt_compact_block(block);
     }
 }
 
 def optimize_cfg(u: unverified_cfg) {
     optimize_literal_iterables(u);
+    inline_ok = False;
+    for block in u.blocks {
+        if block.exit_inline_ok {
+            inline_ok = True;
+            break;
+        }
+    }
+    if not inline_ok {
+        return;
+    }
     iterations = 0;
     while iterations < 100 {
         c1 = inline_small_exit_blocks(u);
@@ -1026,6 +1083,7 @@ def insert_superinstructions(u: unverified_cfg) {
     bi = 0;
     while bi < len(u.blocks) {
         b = u.blocks[bi];
+        fused = False;
         i = 0;
         while i < len(b.instrs) {
             inst = b.instrs[i];
@@ -1035,10 +1093,13 @@ def insert_superinstructions(u: unverified_cfg) {
             }
             if inst.opcode == OP_LOAD_FAST and nextop == OP_LOAD_FAST {
                 opt_make_super(inst, b.instrs[i + 1], OP_LOAD_FAST_LOAD_FAST);
+                fused = True;
             }
             i = i + 1;
         }
-        opt_compact_block(b);
+        if fused {
+            opt_compact_block(b);
+        }
         bi = bi + 1;
     }
 }
@@ -1719,6 +1780,9 @@ def remove_unused_consts(u: unverified_cfg, flat: list[cinstr]) {
 }
 
 def normalize_except_regions(u: unverified_cfg) {
+    if not u.except_regions {
+        return;
+    }
     # CPython's exception lookup requires disjoint, sorted ranges. A nested
     # cleanup can sit inside an enclosing handler's protected span: select the
     # innermost span at every boundary instead of serializing overlapping rows.
@@ -1835,11 +1899,9 @@ def verify_cfg(u: unverified_cfg) -> verified_cfg {
     block_starts: list[int] = fr.block_starts;
     changed = True;
     while changed {
-        fr = flatten_blocks(u);
-        flat = fr.flat;
-        block_starts = fr.block_starts;
         sizes = [instr_size_codeunits(ins) for ins in flat];
-        resolve_jump_offsets(flat, block_starts);
+        block_starts = layout_block_starts(u, sizes);
+        resolve_jump_offsets(flat, block_starts, sizes);
         changed = False;
         for (index, ins) in enumerate(flat) {
             if ins.oparg < 0 or ins.oparg > 0xFFFFFFFF {

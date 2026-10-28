@@ -107,7 +107,7 @@ import from jaclang.compiler.frontend.python.compiler_diagnostics {
 # folds constant branches. Traversal follows only AST fields, never Jac anchors.
 def check_ast_warnings(tree: ast_node, filename: str) {
     pending: list[tuple[ast_node, bool, bool]] = [(tree, False, False)];
-    children = ast_child_buffer();
+    children = ast_child_buffer(skip_leaves=True);
     while pending {
         (item_node, return_in_finally, loop_exit_in_finally) = pending.pop();
         exit_name = None;
@@ -161,17 +161,34 @@ def check_ast_warnings(tree: ast_node, filename: str) {
                 item_node.col_offset
             );
         }
-        for index in range(children.collect(item_node) - 1, -1, -1) {
+        count = children.collect(item_node);
+        if count == 0 {
+            continue;
+        }
+        if isinstance(item_node, expr) {
+            for index in range(count - 1, -1, -1) {
+                pending.append(
+                    (children.nodes[index], return_in_finally, loop_exit_in_finally)
+                );
+            }
+            continue;
+        }
+        is_definition = isinstance(
+            item_node, (FunctionDef, AsyncFunctionDef, ClassDef)
+        );
+        is_try = isinstance(item_node, (Try, TryStar));
+        is_loop = isinstance(item_node, (For, AsyncFor, While));
+        for index in range(count - 1, -1, -1) {
             key = children.fields[index];
             child_return = return_in_finally;
             child_loop_exit = loop_exit_in_finally;
-            if isinstance(item_node, (FunctionDef, AsyncFunctionDef, ClassDef)) {
+            if is_definition {
                 child_return = False;
                 child_loop_exit = False;
-            } elif isinstance(item_node, (Try, TryStar)) and key == "finalbody" {
+            } elif is_try and key == "finalbody" {
                 child_return = True;
                 child_loop_exit = True;
-            } elif isinstance(item_node, (For, AsyncFor, While)) and key == "body" {
+            } elif is_loop and key == "body" {
                 child_loop_exit = False;
             }
             pending.append((children.nodes[index], child_return, child_loop_exit));
@@ -780,7 +797,7 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
     pending: list[tuple[ast_node, bool, bool]] = [
         (item, False, False) for item in reversed(body)
     ];
-    children = ast_child_buffer();
+    children = ast_child_buffer(skip_leaves=True);
     while pending {
         (item, return_forbidden, loop_exit_forbidden) = pending.pop();
         if (isinstance(item, Return) and return_forbidden)
@@ -791,6 +808,9 @@ def validate_except_star_exits(body: list[stmt]) -> validation_result {
                 item.lineno,
                 item.col_offset
             );
+        }
+        if isinstance(item, expr) {
+            continue;
         }
         for index in range(children.collect(item) - 1, -1, -1) {
             key = children.fields[index];
@@ -819,7 +839,7 @@ def validate_suspensions(
     pending: list[tuple[ast_node, bool, bool, bool, bool]] = [
         (item, False, allow_top_await, False, False) for item in reversed(roots)
     ];
-    children = ast_child_buffer();
+    children = ast_child_buffer(skip_leaves=True);
     while pending {
         (item, in_function, in_async, in_comp, in_annotation) = pending.pop();
         message: str | None = None;
@@ -888,18 +908,37 @@ def validate_suspensions(
             }
             continue;
         }
-        for index in range(children.collect(item) - 1, -1, -1) {
+        count = children.collect(item);
+        if count == 0 {
+            continue;
+        }
+        if isinstance(item, expr) and not isinstance(item, Lambda) {
+            for index in range(count - 1, -1, -1) {
+                pending.append(
+                    (
+                        children.nodes[index],
+                        in_function,
+                        in_async,
+                        in_comp,
+                        in_annotation
+                    )
+                );
+            }
+            continue;
+        }
+        is_scope = isinstance(item, (FunctionDef, AsyncFunctionDef, Lambda, ClassDef));
+        for index in range(count - 1, -1, -1) {
             field = children.fields[index];
             fn = in_function;
             asynchronous = in_async;
             comp = in_comp;
-            annotation = in_annotation or field in ("annotation", "returns");
-            if field in ("annotation", "returns") {
+            annotation = in_annotation;
+            if field == "annotation" or field == "returns" {
+                annotation = True;
                 asynchronous = False;
                 comp = False;
             }
-            if isinstance(item, (FunctionDef, AsyncFunctionDef, Lambda, ClassDef))
-                and field == "body" {
+            if is_scope and field == "body" {
                 fn = not isinstance(item, ClassDef);
                 asynchronous = isinstance(item, AsyncFunctionDef);
                 comp = False;
@@ -990,7 +1029,7 @@ def future_features(
         return (flags, validation_ok());
     }
     pending: list[ast_node] = [item for item in reversed(body)];
-    children = ast_child_buffer();
+    children = ast_child_buffer(skip_leaves=True);
     while pending {
         item = pending.pop();
         if isinstance(item, ImportFrom)
@@ -1008,7 +1047,10 @@ def future_features(
             );
         }
         for index in range(children.collect(item) - 1, -1, -1) {
-            pending.append(children.nodes[index]);
+            child = children.nodes[index];
+            if not isinstance(child, expr) {
+                pending.append(child);
+            }
         }
     }
     return (flags, validation_ok());

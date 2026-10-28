@@ -871,10 +871,14 @@ impl bytes_data(op: ptr[PyObject]) -> ptr[u8] {
 }
 
 impl interp_ast_state -> ptr[u8] {
+    state = current_interp() + PyInterpreterState_AST;
+    if u8.wrap(__atomic_load_i8(int(state), 5)) == _Py_ONCE_INITIALIZED {
+        return state;
+    }
     if PyAST_Check(Py_None) < 0 {
         return ptr[u8]();
     }
-    return current_interp() + PyInterpreterState_AST;
+    return state;
 }
 
 impl ast_slot(state: ptr[u8], offset: i64) -> ptr[PyObject] {

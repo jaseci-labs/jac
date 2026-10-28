@@ -1593,6 +1593,16 @@ def glob_block(entries: list[str]) -> str {
     return "glob " + ",\n     ".join(entries) + ";\n";
 }
 
+def list_block(name: str, values: list[int]) -> str {
+    rows = [
+        ", ".join([str(value) for value in values[start:start + 16]])
+        for start in range(0, len(values), 16)
+    ];
+    return f"glob {name}: list[int] = [\n"
+        + ",\n".join([f"         {row}" for row in rows])
+        + "\n     ];\n";
+}
+
 def dict_block(name: str, kind: str, entries: list[str]) -> str {
     return f"glob {name}: {kind} = {{\n"
         + ",\n".join([f"         {row}" for row in entries])
@@ -1624,12 +1634,16 @@ def opcode_meta_module(a: Analysis) -> str {
     }
     effects = stack_effects(a);
     names = sorted(effects);
-    deopts = [
-        f"OP_{name}: {a.opmap[deopt_of(a.instructions[name])]}"
-        for (_, name) in by_code
-        if name in a.instructions and deopt_of(a.instructions[name]) != name
-    ];
+    deopt_table = list(range(256));
+    for (code, name) in by_code {
+        if code < 256
+            and name in a.instructions
+            and deopt_of(a.instructions[name]) != name {
+            deopt_table[code] = a.opmap[deopt_of(a.instructions[name])];
+        }
+    }
     caches = dict(cache_counts(a));
+    code_names = {code: name for (code, name) in by_code};
     classes: list[str] = [];
     for (_, name) in by_code {
         bits = [
@@ -1661,22 +1675,22 @@ def opcode_meta_module(a: Analysis) -> str {
         "# ---------------- instruction opcodes (opcode_ids.h) ----------------\n"
             + glob_block([f"OP_{name}: int = {code}" for (code, name) in by_code]),
         META_CONSTANTS,
-        "# Inline-cache unit counts (_PyOpcode_Caches).\n"
-            + dict_block(
+        "# Inline-cache unit counts (_PyOpcode_Caches), indexed by opcode.\n"
+            + list_block(
                 "_OPCODE_CACHE_COUNT",
-                "dict[int, int]",
                 [
-                    f"OP_{name}: {caches[name]}"
-                    for (_, name) in by_code
-                    if name in caches
+                    caches.get(name, 0)
+                    for name in [code_names.get(code, "") for code in range(256)]
                 ]
             ),
         "def opcode_cache_count(op: int) -> int {\n"
-            + "    return _OPCODE_CACHE_COUNT.get(op, 0);\n}\n",
-        dict_block("_OPCODE_DEOPT_MAP", "dict[int, int]", deopts),
+            + "    if op < 0 or op > 255 {\n        return 0;\n    }\n"
+            + "    return _OPCODE_CACHE_COUNT[op];\n}\n",
+        "# Deopt targets (_PyOpcode_Deopt), indexed by opcode.\n"
+            + list_block("_OPCODE_DEOPT_MAP", deopt_table),
         "def opcode_deopt_target(op: int) -> int {\n"
             + "    if op < 0 or op > 254 {\n        return op;\n    }\n"
-            + "    return _OPCODE_DEOPT_MAP.get(op, op);\n}\n",
+            + "    return _OPCODE_DEOPT_MAP[op];\n}\n",
         effect_function(
             "_opcode_num_popped", [(name, effects[name][0]) for name in names]
         ),
@@ -1786,7 +1800,9 @@ def opcode_tables_module(a: Analysis) -> str {
             + [0] * (widest + 1 - len(pseudo.targets));
         fields = [f"as_sequence=u8({1 if pseudo.sequence else 0})"]
             + [f"target{i}=u8({value})" for (i, value) in enumerate(cells)];
-        pseudo_rows[a.opmap[pseudo.name] - 256] = f"pseudo_targets({', '.join(fields)})";
+        pseudo_rows[a.opmap[pseudo.name] - 256] = f"pseudo_targets({', '.join(
+            fields
+        )})";
     }
     ids = uop_ids(a);
     kinds = {kind_name: kind_value for (kind_name, kind_value) in OPARG_KINDS};
@@ -1829,7 +1845,9 @@ def opcode_tables_module(a: Analysis) -> str {
         "    }",
         "    obj opcode_macro_expansion {",
         "        has nuops: i32 = 0,",
-        ",\n".join([f"            uop{i}: macro_uop = macro_uop()" for i in range(width)])
+        ",\n".join(
+            [f"            uop{i}: macro_uop = macro_uop()" for i in range(width)]
+        )
             + ";",
         "    }",
         "    glob _PyOpcode_Caches: list[u8] = " + u8_rows(caches) + ",",
@@ -1851,7 +1869,9 @@ def opcode_tables_module(a: Analysis) -> str {
     ];
     for (index, direction) in enumerate(["popped", "pushed"]) {
         lines.append("import from c {");
-        lines.append(f"    def _PyOpcode_num_{direction}(opcode: i32, oparg: i32) -> i32 {{");
+        lines.append(
+            f"    def _PyOpcode_num_{direction}(opcode: i32, oparg: i32) -> i32 {{"
+        );
         lines.append("        arg = i64(oparg);");
         for name in sorted(effects) {
             expr = effects[name][index].replace("oparg", "arg");

@@ -39,7 +39,9 @@ obj token_iterator_state(token_source) {
         finished: bool = False,
         input_finished: bool = False,
         last_line: str = "",
-        last_line_number: int = 0;
+        last_line_number: int = 0,
+        line_text: str = "",
+        line_handle: ptr[PyObject] = NULL;
 
     def __iter__ -> token_iterator_state {
         return self;
@@ -56,6 +58,14 @@ obj token_iterator_state(token_source) {
         if not line {
             self.input_finished = True;
             return False;
+        }
+        if line.endswith("\n")
+            and line.count("\n") == 1
+            and "\r" not in line
+            and "\x00" not in line {
+            self.lines.append(line);
+            self.scanner.data += line.encode("utf-8");
+            return True;
         }
         first = len(self.lines);
         parts = line.split("\n");
@@ -79,6 +89,23 @@ obj token_iterator_state(token_source) {
         }
         self.scanner.data += decoded.encode("utf-8");
         return True;
+    }
+
+    def line_object(line: str) -> ptr[PyObject] {
+        if self.line_handle == 0 or self.line_text != line {
+            handle = text_object(line);
+            jacpy_release(self.line_handle);
+            self.line_text = line;
+            self.line_handle = handle;
+        }
+        Py_IncRef(self.line_handle);
+        return self.line_handle;
+    }
+
+    def release_line {
+        jacpy_release(self.line_handle);
+        self.line_handle = NULL;
+        self.line_text = "";
     }
 
     def source_line(lineno: int) -> str {
@@ -246,6 +273,7 @@ def:pub token_iterator(
 def token_object(iterator: token_iterator_state) -> ptr[PyObject] {
     value = iterator.next_token();
     if value is None {
+        iterator.release_line();
         return NULL;
     }
     result = required(PyTuple_New(5));
@@ -260,7 +288,7 @@ def token_object(iterator: token_iterator_state) -> ptr[PyObject] {
             jacpy_tuple_set_owned(result, 2, position(value.start_line, value.start))
         );
         checked(jacpy_tuple_set_owned(result, 3, position(value.end_line, value.end)));
-        checked(jacpy_tuple_set_owned(result, 4, text_object(value.line)));
+        checked(jacpy_tuple_set_owned(result, 4, iterator.line_object(value.line)));
     } except Exception {
         jacpy_release(result);
         raise;
@@ -285,6 +313,7 @@ def position(line: int, column: int) -> ptr[PyObject] {
 }
 
 def:pub jacpy_token_close(iterator: token_iterator_state) {
+    iterator.release_line();
     iterator.scanner.input = None;
     iterator.finished = True;
 }

@@ -43,7 +43,7 @@ obj peg_parser {
         feature_version: int = 14,
         type_ignores: list[tuple[int, str]] = [],
         tokens: list[peg_token] = [],
-        source_lines: list[bytes] = [],
+        source_line_starts: list[int] = [],
         mark: int = 0,
         keywords: dict[str, int] = {},
         soft_keywords: list[str] = [],
@@ -149,16 +149,20 @@ def peg_has_error(p: peg_parser) -> bool {
 }
 
 def peg_fill_token(p: peg_parser) -> bool {
-    if peg_has_error(p) {
+    if p.error_indicator {
         return False;
     }
     if p.mark < len(p.tokens) {
         return True;
     }
+    return peg_scan_token(p);
+}
+
+def peg_scan_token(p: peg_parser) -> bool {
+    raw = tokenizer_next(p.tok);
     import from jaclang.compiler.frontend.python.compiler_diagnostics {
         report_token_warnings
     }
-    raw = tokenizer_next(p.tok);
     report_token_warnings(p.tok);
     while isinstance(raw, tok_token) and raw.tok_type == TYPE_IGNORE {
         p.type_ignores.append((raw.lineno, raw.spelling));

@@ -4,7 +4,8 @@ obj ast_child_visitor {
 
 obj ast_child_buffer(ast_child_visitor) {
     has fields: list[str] = [],
-        nodes: list[ast_node] = [];
+        nodes: list[ast_node] = [],
+        skip_leaves: bool = False;
 
     def child(field: str, value: ast_node);
     def collect(value: ast_node) -> int;
@@ -22,6 +23,12 @@ obj ast_rewriter(ast_visitor) {
 def rewrite_ast_children(value: ast_node, visitor: ast_rewriter);
 
 impl ast_child_buffer.child(field: str, value: ast_node) {
+    if self.skip_leaves {
+        kind = value.node_kind().value;
+        if kind >= ast_kind.Load.value and kind <= ast_kind.NotIn.value {
+            return;
+        }
+    }
     self.fields.append(field);
     self.nodes.append(value);
 }
