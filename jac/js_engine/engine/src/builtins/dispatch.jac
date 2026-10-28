@@ -2121,6 +2121,13 @@ import from engine.src.runtime.gc {
     gc_monitor_freed
 }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_byte,
+    str_nbytes
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Debug tracing
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2162,6 +2169,9 @@ def:pub call_native(
     }
     if kind >= 700 and kind <= 856 and is_native_val(native_fn) {
         temporal_set_callee(native_fn);
+    }
+    if kind >= 0 and kind < len(_DISPATCH_LIST) {
+        return _DISPATCH_LIST[kind](realm, this_val, args);
     }
     if kind not in _DISPATCH_TABLE {
         return js_undefined();
@@ -2468,7 +2478,7 @@ def _dn_native_kind_string(
             }
         }
         if str_is_fn {
-            if str_fn_name == "" or str_fn_name.find(" ") >= 0 {
+            if str_fn_name == "" or str_bfind(str_fn_name, " ") >= 0 {
                 return jsv_from_string_id(str_intern("function () { [native code] }"));
             }
             return jsv_from_string_id(
@@ -2518,7 +2528,7 @@ def _dn_native_kind_fn_tostring(
     nm: str = "";
     if is_native_val(this_val) {
         nm = get_native_name(this_val);
-        if nm == "" or nm.find(" ") >= 0 {
+        if nm == "" or str_bfind(nm, " ") >= 0 {
             return jsv_from_string_id(str_intern("function () { [native code] }"));
         }
         return jsv_from_string_id(
@@ -2533,7 +2543,7 @@ def _dn_native_kind_fn_tostring(
                 return jsv_from_string_id(str_intern(src_ts));
             }
             nm = realm.closures[cl_id].func.name;
-            if realm.closures[cl_id].func.is_bound or nm == "" or nm.find(" ") >= 0 {
+            if realm.closures[cl_id].func.is_bound or nm == "" or str_bfind(nm, " ") >= 0 {
                 return jsv_from_string_id(str_intern("function () { [native code] }"));
             }
             return jsv_from_string_id(
@@ -2552,7 +2562,7 @@ def _dn_native_kind_fn_tostring(
     if nm == "" {
         nm = "anonymous";
     }
-    if nm.find(" ") >= 0 {
+    if str_bfind(nm, " ") >= 0 {
         return jsv_from_string_id(str_intern("function () { [native code] }"));
     }
     return jsv_from_string_id(str_intern("function " + nm + "() { [native code] }"));
@@ -2859,34 +2869,57 @@ these paths were unreachable — `String.prototype.repeat.call(null)` could not 
 written when `repeat` was undefined — which is why this guard was not needed
 until the prototype was populated."""
 def _str_this_not_coercible(this_val: JSValue, method: str) -> bool {
+    # The string receiver (every String.prototype call) returns at once;
+    # the throwing and object cases, with their message strings and
+    # lookups, live in helpers so this function registers nothing for
+    # unwind.
+    if jsv_is_string_cell(this_val) {
+        return False;
+    }
     if jsv_is_undefined(this_val) or jsv_is_null(this_val) {
-        vm_throw_native(
-            make_type_error(
-                "String.prototype." + method + " called on null or undefined"
-            )
-        );
-        return True;
+        return _STR_THIS_THROW_NULLISH(method);
     }
     if jsv_is_symbol(this_val) {
-        vm_throw_native(make_type_error("Cannot convert a Symbol value to a string"));
-        return True;
+        return _STR_THIS_THROW_SYMBOL();
     }
-    # ES §7.1.1 ToPrimitive(hint string): an ordinary object converts via
-    # toString then valueOf. If neither is callable the conversion throws
-    # rather than falling back to "[object Object]".
     if jsv_is_object_cell(this_val) and not is_string_object(this_val) {
-        ts_fn: JSValue = js_object_get(this_val, str_intern("toString"));
-        vo_fn: JSValue = js_object_get(this_val, str_intern("valueOf"));
-        if not _dispatch_value_is_callable(ts_fn)
-            and not _dispatch_value_is_callable(vo_fn) {
-            vm_throw_native(
-                make_type_error("Cannot convert object to primitive value")
-            );
-            return True;
-        }
+        return _STR_THIS_OBJECT_NOT_COERCIBLE(this_val);
     }
     return False;
 }
+
+
+def _str_this_throw_nullish(method: str) -> bool {
+    vm_throw_native(
+        make_type_error("String.prototype." + method + " called on null or undefined")
+    );
+    return True;
+}
+
+def _str_this_throw_symbol -> bool {
+    vm_throw_native(make_type_error("Cannot convert a Symbol value to a string"));
+    return True;
+}
+
+"""ES §7.1.1 ToPrimitive(hint string): an ordinary object converts via
+toString then valueOf. If neither is callable the conversion throws rather
+than falling back to "[object Object]"."""
+def _str_this_object_not_coercible(this_val: JSValue) -> bool {
+    ts_fn: JSValue = js_object_get(this_val, str_intern("toString"));
+    vo_fn: JSValue = js_object_get(this_val, str_intern("valueOf"));
+    if not _dispatch_value_is_callable(ts_fn)
+        and not _dispatch_value_is_callable(vo_fn) {
+        vm_throw_native(make_type_error("Cannot convert object to primitive value"));
+        return True;
+    }
+    return False;
+}
+
+# The cold cases are called through function values: inlined, their string
+# temporaries registered every String.prototype call for unwind.
+glob _STR_THIS_THROW_NULLISH: Callable[[str], bool] = _str_this_throw_nullish,
+     _STR_THIS_THROW_SYMBOL: Callable[[], bool] = _str_this_throw_symbol,
+     _STR_THIS_OBJECT_NOT_COERCIBLE: Callable[[JSValue], bool] = _str_this_object_not_coercible;
 
 def _dn_native_kind_str_charat(
     realm: Realm, this_val: JSValue, args: list[JSValue]
@@ -3090,8 +3123,9 @@ def _str_regexp_requires_global(search_val: JSValue, method: str) -> bool {
         return True;
     }
     gi: int = 0;
-    while gi < len(flags_s) {
-        if flags_s[gi] == "g" {
+    _nb3126_flags_s: int = str_nbytes(flags_s);
+    while gi < _nb3126_flags_s {
+        if byte_chr(str_byte(flags_s, gi)) == "g" {
             return False;
         }
         gi = gi + 1;
@@ -10778,6 +10812,14 @@ def _dn_temporal_noop(realm: Realm, this_val: JSValue, args: list[JSValue]) -> J
 
 glob _DISPATCH_TABLE:
          dict[int, Callable[[Realm, JSValue, list[JSValue]], JSValue]] = {};
+# The same handlers by kind in a dense list (init_dispatch_table builds it from
+# the dict): one bounds check and a load per native call instead of two hash
+# probes. A kind with no handler maps to _dn_missing.
+glob _DISPATCH_LIST: list[Callable[[Realm, JSValue, list[JSValue]], JSValue]] = [];
+
+def _dn_missing(realm: Realm, this_val: JSValue, args: list[JSValue]) -> JSValue {
+    return js_undefined();
+}
 
 """Populate _DISPATCH_TABLE. Call once from global_context_create() before any JS runs."""
 def:pub init_dispatch_table {
@@ -11708,6 +11750,22 @@ def:pub init_dispatch_table {
     _DISPATCH_TABLE[NATIVE_KIND_TEMPORAL_NOW_PLAIN_DATETIME_ISO] = _dn_temporal_now_plain_datetime_iso;
     _DISPATCH_TABLE[NATIVE_KIND_TEMPORAL_NOW_TIMEZONE_ID] = _dn_temporal_now_timezone_id;
     _DISPATCH_TABLE[NATIVE_KIND_TEMPORAL_NOW_ZONED_DATETIME_ISO] = _dn_temporal_now_zoned_datetime_iso;
+    _DISPATCH_LIST = [];
+    dl_max: int = 0;
+    for dl_k in _DISPATCH_TABLE {
+        if dl_k > dl_max {
+            dl_max = dl_k;
+        }
+    }
+    dl_i: int = 0;
+    while dl_i <= dl_max {
+        if dl_i in _DISPATCH_TABLE {
+            _DISPATCH_LIST.append(_DISPATCH_TABLE[dl_i]);
+        } else {
+            _DISPATCH_LIST.append(_dn_missing);
+        }
+        dl_i = dl_i + 1;
+    }
 }
 
 """Create a Node-style timer handle object with .unref() / .ref() (Vite V-04)."""

@@ -684,14 +684,6 @@ impl NaIRGenPass._make_iter_from_value(
 }
 
 impl NaIRGenPass._iter_yield_llvm(storage: ir.Type, expr: uni.UniNode) -> ir.Type {
-    """The type a collection iterator yields, as the loop body reads it.
-
-    A `ptr`-spec list or set stores every boxed element (a tuple, an object)
-    as an erased `i8*`; the iterator's next function writes that word into
-    the out slot unchanged. The consumer must read it back as the element's
-    static layout, the same refinement the indexed for-loop applies through
-    `elem_cast`, or a tuple element reaches the body typed as a string.
-    """;
     if storage != ir.IntType(8).as_pointer() {
         return storage;
     }
@@ -1278,9 +1270,6 @@ impl NaIRGenPass._make_user_iter_from_obj(
 }
 
 impl NaIRGenPass._codegen_next(nd: uni.FuncCall) -> (ir.Value | None) {
-    """`next(it)` / `next(it, default)`. An argument that is not already an
-    iterator (a list, a generator expression, a user iterable) gets a
-    temporary iterator, released once the element is taken.""";
     params: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     if not params
         or len(params) > 2

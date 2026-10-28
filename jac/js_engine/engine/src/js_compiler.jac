@@ -29,6 +29,11 @@ import from engine.src.bytecode.jsbc {
 import from engine.src.runtime.jsstring { str_hash }
 import from engine.src.ffi.libc { fflush, _exit, stack_expand, fopen, fwrite, fclose }
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
+
 """Compile one builtin's source to its bytecode blob."""
 def compile_builtin(path: str) -> JSBCBlob {
     raw: str = open(path).read();
@@ -45,7 +50,7 @@ def build_pack(base: str, out_path: str, modules: list[str]) -> int {
     keys: list[str] = [];
     blobs: list[JSBCBlob] = [];
     for rel in sorted(modules) {
-        keys.append(rel[:len(rel) - 3]);
+        keys.append(str_bslice(rel, 0, str_nbytes(rel) - 3));
         blobs.append(compile_builtin(base + "/" + rel));
     }
     hdr: JSBCBlob = jsbc_pack_header(keys, [b.size for b in blobs]);

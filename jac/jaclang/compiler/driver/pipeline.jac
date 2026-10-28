@@ -16,6 +16,8 @@ def no_drop(program: JacProgram, module: Module);
 
 def no_precheck;
 
+def no_blocker -> str;
+
 obj ProductSpec {
     has needs: list[CompilationProduct] = [],
         passes: Callable[[ProductRequest], PassSchedule] = no_passes,
@@ -24,6 +26,7 @@ obj ProductSpec {
         action: Callable[[JacProgram, Module], bool] = no_action,
         drop: Callable[[JacProgram, Module], None] = no_drop,
         precheck: Callable[[], None] = no_precheck,
+        blocker: Callable[[], str] = no_blocker,
         loads: list[str] = [],
         tier_with: list[CompilationProduct] = [],
         tiered: bool = False,
@@ -62,6 +65,8 @@ def bytecode_passes(request: ProductRequest) -> PassSchedule;
 def native_ir_passes(request: ProductRequest) -> PassSchedule;
 
 def native_lower_passes(request: ProductRequest) -> PassSchedule;
+
+def native_toolchain_blocker -> str;
 
 def native_object_passes(request: ProductRequest) -> PassSchedule;
 
@@ -213,12 +218,14 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          CompilationProduct.NATIVE_IR: ProductSpec(
              needs=[CompilationProduct.FLOW, CompilationProduct.ANALYSIS],
              passes=native_ir_passes,
+             blocker=native_toolchain_blocker,
              loads=NATIVE_LOADS,
              cached=True
          ),
          CompilationProduct.NATIVE_LOWER: ProductSpec(
              needs=[CompilationProduct.ANALYSIS],
              passes=native_lower_passes,
+             blocker=native_toolchain_blocker,
              drop=drop_native_ir,
              loads=NATIVE_LOADS
          ),

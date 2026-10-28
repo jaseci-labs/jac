@@ -291,51 +291,51 @@ impl JacFormatPass._flat_tail_width(
     cap: int = 0
 ) -> int {
     work: deque[object] = deque();
-    i = len(parts) - 1;
-    while i >= start {
-        work.append(parts[i]);
-        i -= 1;
-    }
     width = 0;
-    while work {
-        if cap > 0 and width >= cap {
-            return width;
-        }
-        cur = work.pop();
-        if isinstance(cur, doc.Text) {
-            width += len(cur.text);
-        } elif isinstance(cur, doc.Line) {
-            if (cur.hard or cur.literal) {
+    i = start;
+    while i < len(parts) {
+        work.append(parts[i]);
+        i += 1;
+        while work {
+            if cap > 0 and width >= cap {
                 return width;
             }
-            if cur.tight {
-                if is_broken {
+            cur = work.pop();
+            if isinstance(cur, doc.Text) {
+                width += len(cur.text);
+            } elif isinstance(cur, doc.Line) {
+                if (cur.hard or cur.literal) {
                     return width;
                 }
-            } else {
-                if is_broken {
-                    return width;
+                if cur.tight {
+                    if is_broken {
+                        return width;
+                    }
+                } else {
+                    if is_broken {
+                        return width;
+                    }
+                    width += 1;
                 }
-                width += 1;
+            } elif isinstance(cur, doc.Concat) {
+                for p in reversed(cur.parts) {
+                    work.append(p);
+                }
+            } elif isinstance(cur, doc.Group) {
+                return width;
+            } elif isinstance(cur, doc.Indent) {
+                work.append(cur.contents);
+            } elif isinstance(cur, doc.Align) {
+                work.append(cur.contents);
+            } elif isinstance(cur, doc.IfBreak) {
+                if is_broken {
+                    work.append(cur.break_contents);
+                } else {
+                    work.append(cur.flat_contents);
+                }
+            } elif isinstance(cur, (doc.LineSuffix, doc.BreakParent)) {
+                continue;
             }
-        } elif isinstance(cur, doc.Concat) {
-            for p in reversed(cur.parts) {
-                work.append(p);
-            }
-        } elif isinstance(cur, doc.Group) {
-            return width;
-        } elif isinstance(cur, doc.Indent) {
-            work.append(cur.contents);
-        } elif isinstance(cur, doc.Align) {
-            work.append(cur.contents);
-        } elif isinstance(cur, doc.IfBreak) {
-            if is_broken {
-                work.append(cur.break_contents);
-            } else {
-                work.append(cur.flat_contents);
-            }
-        } elif isinstance(cur, (doc.LineSuffix, doc.BreakParent)) {
-            continue;
         }
     }
     return width + base;

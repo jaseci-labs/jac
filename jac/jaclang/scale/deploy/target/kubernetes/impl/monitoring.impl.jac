@@ -334,14 +334,64 @@ impl MonitoringDeployer._deploy_prometheus(
     }
 }
 
+impl MonitoringDeployer._kube_state_metrics_rbac(
+    app_name: str, namespace: str
+) -> dict[str, any] {
+    ksm_name = f"{app_name}-kube-state-metrics";
+    role_name = f"{namespace}-{ksm_name}";
+    rules: list[dict[str, any]] = [];
+    watched: list[str] = [];
+    for (group, resources) in KUBE_STATE_METRICS_RESOURCES.items() {
+        rules.append(
+            {
+                'apiGroups': [group],
+                'resources': list(resources),
+                'verbs': ['list', 'watch']
+            }
+        );
+        watched.extend(resources);
+    }
+    return {
+        'cluster_role': {
+            'apiVersion': 'rbac.authorization.k8s.io/v1',
+            'kind': 'ClusterRole',
+            'metadata': {
+                'name': role_name,
+                'labels': {'app': ksm_name, 'managed': 'jac-scale'}
+            },
+            'rules': rules
+        },
+        'cluster_role_binding': {
+            'apiVersion': 'rbac.authorization.k8s.io/v1',
+            'kind': 'ClusterRoleBinding',
+            'metadata': {
+                'name': role_name,
+                'labels': {'app': ksm_name, 'managed': 'jac-scale'}
+            },
+            'roleRef': {
+                'apiGroup': 'rbac.authorization.k8s.io',
+                'kind': 'ClusterRole',
+                'name': role_name
+            },
+            'subjects': [
+                {
+                    'kind': 'ServiceAccount',
+                    'name': f"{ksm_name}-sa",
+                    'namespace': namespace
+                }
+            ]
+        },
+        'args': [f"--resources={','.join(watched)}"]
+    };
+}
+
 impl MonitoringDeployer._deploy_kube_state_metrics(
     app_name: str, namespace: str, apps_v1: any, core_v1: any
 ) {
     ksm_name = f"{app_name}-kube-state-metrics";
     ksm_sa_name = f"{ksm_name}-sa";
 
-    cluster_role_name = f"{namespace}-{ksm_name}";
-    cluster_role_binding_name = f"{namespace}-{ksm_name}";
+    rbac = self._kube_state_metrics_rbac(app_name, namespace);
     rbac_v1 = client.RbacAuthorizationV1Api();
 
     sa_body = {
@@ -365,66 +415,9 @@ impl MonitoringDeployer._deploy_kube_state_metrics(
         }
     }
 
-    cluster_role_body = {
-        'apiVersion': 'rbac.authorization.k8s.io/v1',
-        'kind': 'ClusterRole',
-        'metadata': {
-            'name': cluster_role_name,
-            'labels': {'app': ksm_name, 'managed': 'jac-scale'}
-        },
-        'rules': [
-            {
-                'apiGroups': [''],
-                'resources': [
-                    'configmaps',
-                    'secrets',
-                    'nodes',
-                    'pods',
-                    'services',
-                    'resourcequotas',
-                    'replicationcontrollers',
-                    'limitranges',
-                    'persistentvolumeclaims',
-                    'persistentvolumes',
-                    'namespaces',
-                    'endpoints'
-                ],
-                'verbs': ['list', 'watch']
-            },
-            {
-                'apiGroups': ['apps'],
-                'resources': [
-                    'statefulsets',
-                    'daemonsets',
-                    'deployments',
-                    'replicasets'
-                ],
-                'verbs': ['list', 'watch']
-            },
-            {
-                'apiGroups': ['batch'],
-                'resources': ['cronjobs', 'jobs'],
-                'verbs': ['list', 'watch']
-            },
-            {
-                'apiGroups': ['autoscaling'],
-                'resources': ['horizontalpodautoscalers'],
-                'verbs': ['list', 'watch']
-            },
-            {
-                'apiGroups': ['policy'],
-                'resources': ['poddisruptionbudgets'],
-                'verbs': ['list', 'watch']
-            },
-            {
-                'apiGroups': ['storage.k8s.io'],
-                'resources': ['storageclasses', 'volumeattachments'],
-                'verbs': ['list', 'watch']
-            }
-        ]
-    };
+    cluster_role_body = rbac['cluster_role'];
     try {
-        rbac_v1.read_cluster_role(name=cluster_role_name);
+        rbac_v1.read_cluster_role(name=cluster_role_body['metadata']['name']);
     } except ApiException as e {
         if e.status == 404 {
             rbac_v1.create_cluster_role(body=cluster_role_body);
@@ -433,24 +426,9 @@ impl MonitoringDeployer._deploy_kube_state_metrics(
         }
     }
 
-    crb_body = {
-        'apiVersion': 'rbac.authorization.k8s.io/v1',
-        'kind': 'ClusterRoleBinding',
-        'metadata': {
-            'name': cluster_role_binding_name,
-            'labels': {'app': ksm_name, 'managed': 'jac-scale'}
-        },
-        'roleRef': {
-            'apiGroup': 'rbac.authorization.k8s.io',
-            'kind': 'ClusterRole',
-            'name': cluster_role_name
-        },
-        'subjects': [
-            {'kind': 'ServiceAccount', 'name': ksm_sa_name, 'namespace': namespace}
-        ]
-    };
+    crb_body = rbac['cluster_role_binding'];
     try {
-        rbac_v1.read_cluster_role_binding(name=cluster_role_binding_name);
+        rbac_v1.read_cluster_role_binding(name=crb_body['metadata']['name']);
     } except ApiException as e {
         if e.status == 404 {
             rbac_v1.create_cluster_role_binding(body=crb_body);
@@ -480,6 +458,7 @@ impl MonitoringDeployer._deploy_kube_state_metrics(
                         {
                             'name': 'kube-state-metrics',
                             'image': 'registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.10.1',
+                            'args': rbac['args'],
                             'securityContext': {
                                 'runAsNonRoot': True,
                                 'runAsUser': 65534,

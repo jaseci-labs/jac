@@ -31,6 +31,14 @@ impl NoOpMetricsCollector.record_read_tier_retry(
     self: NoOpMetricsCollector, unit_key: str
 ) {}
 
+impl NoOpMetricsCollector.record_scheduled_run(
+    self: NoOpMetricsCollector,
+    task: str,
+    status: str,
+    reason: str,
+    duration_seconds: float
+) {}
+
 impl NoOpMetricsCollector.worker_exited(self: NoOpMetricsCollector, pid: int) {}
 
 impl NoOpMetricsCollector.get_endpoint_handler(

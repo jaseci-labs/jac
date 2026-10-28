@@ -16,12 +16,18 @@ obj ApiChange {
 
 def _positional(sig: dict[str, any]) -> list[str];
 
+def _varargs(sig: dict[str, any]) -> str;
+
 def diff_signature(
     path: str, old: dict[str, any], new: dict[str, any]
 ) -> list[ApiChange];
 
 def _diff_members(
     path: str, kind: str, old: dict[str, any], new: dict[str, any]
+) -> list[ApiChange];
+
+def _diff_positional_fields(
+    path: str, old: dict[str, any], new: dict[str, any]
 ) -> list[ApiChange];
 
 def _diff_symbol(
