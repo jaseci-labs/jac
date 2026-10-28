@@ -380,31 +380,38 @@ impl Solver._has_prerelease_candidate(name: str, term: Term) -> bool {
 
 impl Solver._universe_edges -> dict[str, set[str]] {
     if self._universe is None {
-        edges: dict[str, set[str]] = {};
-        todo = [self.root_name];
+        edges: dict[str, set[str]] = {self.root_name: set()};
+        reachable: dict[str, VersionSet] = {};
+        walked: set[tuple[str, str]] = set();
+        todo: list[tuple[str, Version]] = [(self.root_name, self.root_version)];
         while todo {
-            owner = todo.pop();
-            if owner in edges {
-                continue;
-            }
-            edges[owner] = set();
+            (owner, version) = todo.pop();
             try {
-                versions = self._candidates_for(owner);
+                deps = self._dependencies(owner, version);
             } except Exception {
                 continue;
             }
-            for v in versions {
+            for (dep, req) in deps.items() {
+                edges[owner].add(dep);
+                edges.setdefault(dep, set());
+                self._ranges_on.setdefault(dep, []).append(req.versions);
+                if req.names_prerelease {
+                    self._namers.setdefault(dep, set()).add(owner);
+                }
+                reachable[dep] = req.versions
+                    if dep not in reachable
+                    else reachable[dep].union(req.versions);
                 try {
-                    deps = self._dependencies(owner, v);
+                    candidates = self._candidates_for(dep);
                 } except Exception {
                     continue;
                 }
-                for (dep, req) in deps.items() {
-                    edges[owner].add(dep);
-                    if req.names_prerelease {
-                        self._namers.setdefault(dep, set()).add(owner);
+                for v in candidates {
+                    key = (dep, str(v));
+                    if key not in walked and reachable[dep].contains(v) {
+                        walked.add(key);
+                        todo.append((dep, v));
                     }
-                    todo.append(dep);
                 }
             }
         }
@@ -428,7 +435,15 @@ impl Solver._downstream(starts: set[str]) -> set[str] {
     return out;
 }
 
-impl Solver._same_requirements(owner: str, v: Version, current: Version) -> bool {
+impl Solver._interchangeable(owner: str, v: Version, current: Version) -> bool {
+    if v.is_prerelease() != current.is_prerelease() {
+        return False;
+    }
+    if any(
+        r.contains(v) != r.contains(current) for r in self._ranges_on.get(owner, [])
+    ) {
+        return False;
+    }
     try {
         mine = self._dependencies(owner, v);
     } except Exception {
@@ -461,11 +476,7 @@ impl Solver._prerelease_gap(name: str, term: Term) -> Incompatibility {
         same = VersionSet.none();
         differs = False;
         for v in self._candidates_for(decided) {
-            if v == current
-                or (
-                    decided not in reach
-                    and self._same_requirements(decided, v, current)
-                ) {
+            if v == current or self._interchangeable(decided, v, current) {
                 same = same.union(VersionSet.exact(v));
             } else {
                 differs = True;

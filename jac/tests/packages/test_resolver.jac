@@ -25,6 +25,15 @@ obj MemorySource(PackageSource) {
     }
 }
 
+obj CountingSource(MemorySource) {
+    has fetched: list[str] = [];
+
+    override def versions(name: str) -> list[Version] {
+        self.fetched.append(name);
+        return super.versions(name);
+    }
+}
+
 def _solve(
     registry: dict[str, dict[str, dict[str, str]]],
     deps: dict[str, str],
@@ -236,4 +245,47 @@ test "packages unrelated to a prerelease opt-in are not retried" {
         assert "only prereleases match" in message , message;
         assert len(message.splitlines()) < 10 , message;
     }
+}
+
+test "a shared parent does not make unrelated siblings retried" {
+    bundle_deps = {"a/tool": "*"};
+    registry: dict[str, dict[str, dict[str, str]]] = {
+        "a/lib": {"1.2.0": {}, "1.5.0-beta.1": {}},
+        "a/tool": {"1.0.0": {}, "2.0.0": {"a/lib": ">=1.0.0-beta.1", "a/missing": "^1"}}
+    };
+    for i in range(30) {
+        registry[f"a/u{i}"] = {"1.0.0": {}, "2.0.0": {}};
+        bundle_deps[f"a/u{i}"] = "*";
+    }
+    registry["a/bundle"] = {"1.0.0": bundle_deps};
+    try {
+        _solve(registry, {"a/lib": ">=1.4.0", "a/bundle": "*"});
+        assert False , "expected a solve failure";
+    } except SolveFailure as e {
+        message = str(e);
+        assert "only prereleases match" in message , message;
+        assert len(message.splitlines()) < 10 , message;
+    }
+}
+
+test "a prerelease gap reads no index only an unselectable version needs" {
+    source = CountingSource(
+        registry={
+            "a/lib": {"1.2.0": {}, "1.5.0-beta.1": {}},
+            "a/old": {"1.0.0": {"a/ancient": "^1"}, "2.0.0": {}},
+            "a/ancient": {"1.0.0": {"a/lib": ">=1.0.0-beta.1"}}
+        }
+    );
+    try {
+        solve(
+            source,
+            "app/root",
+            Version.parse("0.1.0"),
+            {"a/lib": Requirement.parse(">=1.4.0"), "a/old": Requirement.parse("^2")}
+        );
+        assert False , "expected a solve failure";
+    } except SolveFailure as e {
+        assert "only prereleases match" in str(e) , str(e);
+    }
+    assert "a/ancient" not in source.fetched , source.fetched;
 }
