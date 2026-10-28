@@ -6,7 +6,9 @@ as long as neither `b` nor the copy sits in a `try` (the statement graph has
 no edge from a `try` body to its handlers), a lambda, a comprehension, a
 `flow` or a parallel loop, and `b` is never borrowed (`&b`). The
 copy then takes `b`'s reference and leaves `b` empty, whether `b`'s slot holds
-an object or an optional one; `JAC_NO_MOVE_FLOW=1` turns the wider rule off.
+an object or an optional one; `CompileOptions(na_move_flow=False)` turns the
+wider rule off. No copy moves in a function with a `break` the statement graph
+leaves without an edge (its loop ends an `if` or loop body).
 
 The fixture's walks and rotation lose refcount traffic, the copies whose
 source is read later keep theirs, the program prints what the Python backend
@@ -25,19 +27,11 @@ glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "move_last_use.jac");
 
 """The fixture's unoptimized IR under `gc_mode`, with or without the wider moves."""
 def fixture_ir(gc_mode: str, moves: bool) -> str {
-    if not moves {
-        os.environ["JAC_NO_MOVE_FLOW"] = "1";
-    }
-    try {
-        prog = JacProgram();
-        mod = prog.compile(
-            file_path=FIXTURE, options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode)
-        );
-    } finally {
-        if not moves {
-            del os.environ["JAC_NO_MOVE_FLOW"];
-        }
-    }
+    prog = JacProgram();
+    mod = prog.compile(
+        file_path=FIXTURE,
+        options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode, na_move_flow=moves)
+    );
     assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
     return str(mod.gen.llvm_ir);
 }
@@ -71,6 +65,12 @@ test "a copy at the source's last use moves the reference" {
 test "the program prints what the Python backend prints under rc and managed" {
     out = assert_native_identity(FIXTURE, profiles=["rc", "managed"]);
     assert out.strip().splitlines() == ["6634", "144"] , out;
+}
+
+test "a copy before a break with no edge keeps its source" {
+    fixture = os.path.join(NATIVE_FIXTURES, "move_last_use_breaks.jac");
+    out = assert_native_identity(fixture, profiles=["rc", "managed"]);
+    assert out.strip().splitlines() == ["7 7 8 9", "10 10"] , out;
 }
 
 test "moved references are released once" {

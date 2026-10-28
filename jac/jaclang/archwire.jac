@@ -8918,6 +8918,7 @@ graph import compiler {
             CompareExpr,
             ConcurrentExpr,
             ConnectOp,
+            CtrlStmt,
             DictCompr,
             DictVal,
             Expr,

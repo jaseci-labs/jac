@@ -823,12 +823,6 @@ impl NaIRGenPass._opt_result_owned(val: ir.Value, expr: object) -> bool {
 }
 
 impl NaIRGenPass._can_native_move_lower(nd: object) -> bool {
-    """Lower `a = b` as a move: `a` takes `b`'s reference and `b` is left empty.
-
-    A borrowed target keeps no reference, so it never takes one: what it took
-    would never be released. An optional slot moves too: the copy takes its
-    payload and the slot becomes None.
-    """;
     if not isinstance(nd, uni.Assignment) {
         return False;
     }

@@ -104,7 +104,8 @@ impl CompileOptions.codegen_identity -> str {
             f"app={self.target_app}",
             f"app_kind={self.app_kind}"
         ]
-    );
+    )
+        + ("" if self.na_move_flow else ";move_flow=0");
 }
 
 impl CompileOptions.codegen_fingerprint -> str {
@@ -130,7 +131,8 @@ impl CompileOptions.artifact_identity -> str {
             f"app={self.target_app}",
             f"app_kind={self.app_kind}"
         ]
-    );
+    )
+        + ("" if self.na_move_flow else ";move_flow=0");
 }
 
 impl CompileOptions.analysis_fingerprint -> str {
@@ -234,7 +236,8 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         app_kind=self.app_kind,
         target_app=self.target_app,
         ui=self.ui,
-        project_root=self.project_root
+        project_root=self.project_root,
+        na_move_flow=self.na_move_flow
     );
 }
 

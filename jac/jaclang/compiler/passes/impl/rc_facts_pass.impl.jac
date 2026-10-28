@@ -435,10 +435,26 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
             sites_by_sym[sid] = [nd];
         }
     }
-    import os;
-    flow_moves = not os.environ.get("JAC_NO_MOVE_FLOW");
+    mv_opts = self.prog?.options;
+    flow_moves = mv_opts is None or mv_opts.na_move_flow;
+    gap_fns: set[int] = set();
+    for cn in cfg_nodes {
+        if isinstance(cn, CtrlStmt)
+            and cn.ctrl.name == Tok.KW_BREAK
+            and not cn.bb_out {
+            gap_fn = self._enclosing_fn_scope(cn);
+            gap_fns.add(0 if gap_fn is None else id(gap_fn));
+        }
+    }
     qualified: set[SymId] = set();
     for sid in tracked {
+        sid_sites = sites_by_sym.get(sid, []);
+        if sid_sites {
+            sid_fn = self._enclosing_fn_scope(sid_sites[0]);
+            if (0 if sid_fn is None else id(sid_fn)) in gap_fns {
+                continue;
+            }
+        }
         ok = True;
         for u in uses_by_sym.get(sid, []) {
             if not self._is_alias_value(u) {
@@ -475,20 +491,6 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
 }
 
 impl RcFactsPass._move_flow_safe(uses: list[Name], sites: list[Assignment]) -> bool {
-    """Can liveness alone decide which copies of this local are its last use?
-
-    A copy after which no path reads the local moves its reference: the copy
-    is released no earlier than the local would have been, so the object
-    lives exactly as long and whatever else holds it (a callee, a field) is
-    unaffected. What liveness cannot see leaves the local to the alias-only
-    rule: the statement graph has no edge from inside a `try` to its
-    handlers, so a handler may read a local that looks dead; none from a
-    `raise` inside a `with` to the code after it, which runs when the
-    context manager suppresses the exception; and none to or from a C-style
-    `for`'s initializer and step, whose reads it never sees; a lambda, a
-    comprehension, a `flow` or a parallel loop reads it in a scope or at a
-    time of its own; and a borrow (`&local`) refers to the local's slot.
-    """;
     if not sites {
         return False;
     }
