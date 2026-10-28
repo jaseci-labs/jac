@@ -2110,7 +2110,7 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
             cur,
             rhs,
             unsigned=self._is_unsigned_node(val) or self._is_unsigned_node(val.left),
-            checked=self._is_sized_node(val)
+            sized=self._is_sized_node(val)
                 or self._is_sized_node(val.left)
                 or self._is_sized_node(val.right)
         )

@@ -1,12 +1,4 @@
 impl NaIRGenPass._emit_rc_roots_globals -> None {
-    """The cycle collector's root buffer: its globals and `__rc_push_root`.
-
-    A release build records each root's buffer slot in the low half of its
-    alloc-id word, which only debug builds read otherwise. Freeing a buffered
-    object (in `__rc_release_impl`) reads that slot and clears it directly,
-    in constant time, instead of searching the buffer; the backward search
-    stays only as a fallback when the recorded slot does not hold the object.
-    """;
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();
     i8_ptr_ptr = i8_ptr.as_pointer();
