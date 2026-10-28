@@ -2749,10 +2749,24 @@ test "py interop py function not defined in native ir" {
     );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
+    import re;
     # Must not have a define (body) for py_double -- it lives in Python
     assert 'define i64 @"py_double"' not in llvm_ir_str;
-    # Should have an external declare so the native code can call it
-    assert 'declare i64 @"py_double"' in llvm_ir_str;
+    # The extern is module-qualified, so the native code calls
+    # __jac_na_import_<module>_py_double instead of a bare name resolved
+    # against the process symbol table.
+    symbol = ir.gen.interop_manifest.bindings["py_double"].symbol;
+    assert re.search(r'declare i64 @"?' + symbol + r'"?\(', llvm_ir_str) is not None , (
+        f"expected a qualified interop declare for py_double; IR excerpt: "
+        f"{[
+            ln
+            for ln in llvm_ir_str.split(chr(10))
+            if 'py_double' in ln
+        ]}"
+    );
+    # py_note has no `-> T`: it returns None, so native declares it void
+    note = ir.gen.interop_manifest.bindings["py_note"].symbol;
+    assert re.search(r'declare void @"?' + note + r'"?\(', llvm_ir_str) is not None;
 }
 
 test "py interop py functions in python codegen" {
@@ -2814,7 +2828,9 @@ test "py interop native calls python function" {
     assert eng is not None;
     # Register the Python function in the interop callback table
     py_func_table = ir.gen.interop_py_funcs;
-    py_func_table["py_double"] = lambda (x: int) { x * 2; };
+    symbol = ir.gen.interop_manifest.bindings["py_double"].symbol;
+    assert symbol.startswith("__jac_na_import_na_py_interop_") , symbol;
+    py_func_table[symbol] = lambda (x: int) { x * 2; };
     # Now call the native function
     f = get_func(eng, "native_add_one_to_doubled", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 11;  # py_double(5) = 10, + 1 = 11
@@ -2844,11 +2860,17 @@ test "py interop full entry chain" {
         "__jac_interop_py_funcs__": ir.gen.interop_py_funcs
     };
     buf = io.StringIO();
+    err = io.StringIO();
     with contextlib.redirect_stdout(buf) {
-        exec(py_code, namespace);
+        with contextlib.redirect_stderr(err) {
+            exec(py_code, namespace);
+            # a None return crosses back from native, and py_note's None into native
+            assert namespace["native_note"](8) is None;
+        }
     }
     output = buf.getvalue().strip();
-    assert output == "11";
+    assert output.splitlines() == ["11", "7", "8"];
+    assert not err.getvalue() , err.getvalue();
 }
 
 # --- TestNativeMultiModuleInterop ---

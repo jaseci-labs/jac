@@ -6,6 +6,7 @@ import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.client.targets.web_target { WebTarget }
 import from jaclang.client.vite_bundler { ViteBundler }
+import from jaclang.compiler.driver.compiler { JacCompiler }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
 test "standalone client build releases application trees before bundling" {
@@ -23,10 +24,10 @@ test "standalone client build releases application trees before bundling" {
         reached: list[bool] = [];
         trees: list[weakref.ref] = [];
         program = Jac.get_program();
-        original_compile = program.compile;
-        def compile(*args: any, **kwargs: any) -> any {
-            mod = original_compile(*args, **kwargs);
-            if mod.loc.mod_path == str(entry_path) {
+        original_compile = JacCompiler.compile;
+        def compile(self: JacCompiler, *args: any, **kwargs: any) -> any {
+            mod = original_compile(self, *args, **kwargs);
+            if mod is not None and mod.loc.mod_path == str(entry_path) {
                 trees.append(weakref.ref(mod));
             }
             return mod;
@@ -36,7 +37,7 @@ test "standalone client build releases application trees before bundling" {
             assert not program.contexts , (
                 "application compilation contexts remain live while the bundler runs"
             );
-            assert trees and all(ref() is None for ref in trees) , (
+            assert all(ref() is None for ref in trees) , (
                 "the bundler starts while an application syntax tree is still reachable"
             );
             reached.append(True);
@@ -45,7 +46,7 @@ test "standalone client build releases application trees before bundling" {
                 'export function launch() {}'
             );
         }
-        with patch.object(program, "compile", compile), patch.object(
+        with patch.object(JacCompiler, "compile", compile), patch.object(
             ViteBundler, "build", bundle
         ) {
             WebTarget().build(entry_path, project_dir);

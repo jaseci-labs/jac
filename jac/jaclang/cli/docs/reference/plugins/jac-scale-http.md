@@ -2092,17 +2092,20 @@ When server is running:
 
 ## Graph Visualization
 
-Navigate to `http://localhost:8000/graph` to view an interactive visualization of your application's graph directly in the browser.
+Navigate to `http://localhost:8000/graph` to explore your application's graph directly in the browser.
 
-- **Without authentication** - displays the public graph (super root), useful for applications with public endpoints
-- **With authentication** - click the **Login** button in the header to sign in and view your user-specific graph
+- **Without authentication** - explores the public graph (the guest root), useful for applications with public endpoints
+- **With authentication** - click the **Login** button in the header to sign in and explore your user-specific graph
 
-The visualizer uses a force-directed layout with color-coded node types, edge labels, tooltips on hover, and controls for refresh, fit-to-view, and physics toggle. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
+The explorer opens on the root and its first page of neighbors. Click a node to see its type, a short summary of its fields and its neighbor counts per node and edge type, and to load its neighbors one page at a time (**Load more** while more remain, **Collapse** to fold them away). The header picks which edges an expansion follows (outgoing, incoming or both), and the canvas stops adding nodes at 1500 with a message, so a large graph never freezes the tab. Every request reads one page and only what the caller may read. If a user has previously logged in (via a jac-client app or the login modal), the existing `jac_token` in localStorage is picked up automatically.
 
 | Endpoint | Description |
 |---|---|
-| `GET /graph` | Serves the graph visualization UI |
-| `GET /graph/data` | Returns graph nodes and edges as JSON (optional `Authorization` header) |
+| `GET /graph` | Serves the graph explorer UI |
+| `GET /graph/node?id=` | One node the caller can read (`id` defaults to the caller's root): `id`, `type`, `root`, a truncated `fields` summary, and `counts` of neighbors per node and edge type, `out` and `in`. `404` if the caller cannot read it |
+| `GET /graph/neighbors?id=&dir=&type=&edge=&limit=&cursor=` | One page of neighbors (`dir` is `out`, `in` or `both`; `type` and `edge` filter by node and edge type; `limit` defaults to 50, at most 200) with the edges that reach them, and `next_cursor` for the following page (`null` on the last) |
+
+Both take an optional `Authorization` header. The whole-graph dump `GET /graph/data` was removed: its cost grew with everything stored, not with what is on screen.
 
 ---
 

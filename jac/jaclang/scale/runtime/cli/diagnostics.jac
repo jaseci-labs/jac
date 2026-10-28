@@ -21,7 +21,11 @@ obj PlanValidator {
     def _check_config_keys(out: list[Diagnostic]);
     def _check_routes(routes: dict[str, any], out: list[Diagnostic]);
     def _check_hpa(
-        svc_name: str, svc_cfg: any, deployment: any, out: list[Diagnostic]
+        svc_name: str,
+        svc_cfg: any,
+        scaling_entry: any,
+        deployment: any,
+        out: list[Diagnostic]
     );
 
     def _check_pdb(

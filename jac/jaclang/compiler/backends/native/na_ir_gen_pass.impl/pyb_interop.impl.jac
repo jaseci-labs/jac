@@ -1,30 +1,6 @@
 glob _PYB_BRIDGE_MODULE: str = "jaclang.runtime.interop_bridge";
 
 impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
-    """The first Python-side base on `arch_name`'s MRO, as (name, path).
-
-    A base counts as Python-side when its symbol resolves to a jac
-    archetype in a module the native import walk did not register, which
-    is exactly the cross-module-trust "layout only" case. Bases that are
-    native (same unit or linked import) recurse so a native class over a
-    Python-based native class classifies the same way.
-
-    A subscripted generic base (`PyGenBase[int]`) is unwrapped to its
-    target before resolution: the subscript is type-position information
-    the bridge does not need, and leaving it wrapped made the base
-    invisible, so stores to inherited fields demoted instead of
-    bridging. The shape was found on the compiler's own pass chain, back
-    when it spelled `Transform[Module, Module]`; the chain is
-    monomorphic now, and user code still writes it.
-
-    A base the native lane erases at compile time is never Python-side, even
-    when its declaration is reachable: `NATIVE_ERASED_BASES` names the
-    bases lowering drops outright, so they contribute no shadow and no
-    slots. The distinction only became observable once `PassRim` moved
-    from a `.py` to a `.jac`, which made its declaration resolvable while
-    the base claim -- an admission about the *base*, not about the unit --
-    stayed the same. Resolving one is not the same as inheriting one.
-    """;
     import os;
 
     if arch_name in self._pyb_base_memo {
@@ -89,20 +65,6 @@ impl NaIRGenPass._pyb_base_of(arch_name: str) -> (tuple[str, str] | None) {
 }
 
 impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
-    """The Python-side ancestor of `arch_name` that owns a `postinit`, if any.
-
-    Construction of a native class over a Python-side base runs that
-    base's initializer on the Python shadow, not on the native object.
-    When the base chain carries a `postinit`, whatever it stores or
-    dispatches lands on the shadow, where the subclass's native slots do
-    not exist and its overrides are not on the shadow's class. This walk
-    is what names that ancestor so the refusal can point at it.
-
-    Native ancestors are walked through rather than reported: their
-    `postinit` lowers (or is demoted with its own diagnostic), so it is
-    not a shadow-side initializer. A subscripted base is unwrapped the
-    same way `_pyb_base_of` unwraps it.
-    """;
     arch = self.arch_ast_map.get(arch_name);
     if not isinstance(arch, uni.Archetype) {
         return None;
@@ -144,13 +106,6 @@ impl NaIRGenPass._pyb_shadow_postinit_owner(arch_name: str) -> (str | None) {
 }
 
 impl NaIRGenPass._pyb_native_override_owner(arch_name: str, meth: str) -> (str | None) {
-    """The native class on `arch_name`'s MRO that owns a live `meth` body.
-
-    A name is a native override only while its body is still native: a
-    method already demoted to its Python implementation is served from the
-    same place the shadow would find it, so it is no longer a divergence
-    and must not be reported as one.
-    """;
     for _sc in self._mro_of(arch_name) {
         _k = f"{_sc}.{meth}";
         if _k in self.method_funcs and _k not in self._native_skipped_methods {
@@ -163,24 +118,6 @@ impl NaIRGenPass._pyb_native_override_owner(arch_name: str, meth: str) -> (str |
 impl NaIRGenPass._pyb_shadowed_dispatch(
     arch_name: str, method_name: str
 ) -> (tuple[str, str, str] | None) {
-    """`(base, dispatched, owner)` when a shadow call would run the wrong body.
-
-    The bridge builds the shadow as `type(name, (base,), {})` -- the
-    Python-side base chain and none of the native subclass's bodies. So a
-    base method invoked on the shadow resolves `self.X()` against that
-    hollow class: it finds the base's own `X`, never the override the
-    native subclass declares. The override is skipped and nothing says so
-    (#8310), which is the same wrongness class as the hollow construction
-    E5088 refuses one call shallower.
-
-    The walk is deliberately narrow. It reports only what it can SEE: a
-    Python-side ancestor that declares `method_name`, whose body contains a
-    literal `self.X(...)` call, where `X` has a live native override on
-    `arch_name`'s MRO. Reflective dispatch (`getattr(self, n)()`), a body
-    written inside an inline `::py::` block, and dispatch routed through a
-    Python-resident helper are all invisible here and stay unreported --
-    this closes the shapes the tree can prove, not every shape that exists.
-    """;
     arch = self.arch_ast_map.get(arch_name);
     if not isinstance(arch, uni.Archetype) {
         return None;
@@ -245,13 +182,6 @@ impl NaIRGenPass._pyb_cstr(text: str) -> ir.Value {
 }
 
 impl NaIRGenPass._pyb_helper(name: str) -> ir.Function {
-    """Get-or-emit one of the fixed `__jac_pyb_*` runtime helpers.
-
-    Each helper wraps a short libpython C-API sequence in its own
-    PyGILState_Ensure/Release pair, so native code stays correct no
-    matter whether its caller held the GIL. A failed call surfaces via
-    PyErr_Print (loud on stderr) and a zero value rather than a crash.
-    """;
     cached = self._pyb_helper_fns.get(name);
     if cached is not None {
         return cached;
@@ -790,11 +720,6 @@ impl NaIRGenPass._pyb_from_py(
 impl NaIRGenPass._pyb_build_args(
     params: list[uni.Expr | uni.KWPair], skip_kwargs: bool = False
 ) -> (tuple[ir.Value, ir.Value | None] | None) {
-    """Marshal call params into (PyTuple handle, PyDict handle | None).
-
-    Returns None when any argument's type cannot cross the boundary;
-    the caller reports the seam.
-    """;
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
     pos: list[uni.Expr] = [];
@@ -935,17 +860,6 @@ impl NaIRGenPass._codegen_pyb_field_assign(
 impl NaIRGenPass._codegen_pyb_method_call(
     nd: uni.FuncCall, type_name: str, method_name: str
 ) -> (ir.Value | None) {
-    """Invoke a Python-side base's method on the shadow beside the object.
-
-    The shadow carries the base chain and none of this class's bodies, so a
-    base method that dispatches `self.X()` resolves it against that hollow
-    class and finds the base's X rather than the override declared here. The
-    wrong body runs and nothing says so (#8310) -- the same wrongness E5088
-    refuses one call shallower, at construction. Per the class-tier doctrine
-    the answer is the refusal arm, not teaching the shadow to delegate back:
-    the call is refused before it is built and its owning callable demotes to
-    the Python lane, where the whole chain agrees again.
-    """;
     _shadowed = self._pyb_shadowed_dispatch(type_name, method_name);
     if _shadowed is not None {
         (_sh_base, _sh_disp, _sh_owner) = _shadowed;

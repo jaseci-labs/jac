@@ -2,9 +2,9 @@
   <img alt="Jac logo" src=".github/assets/logo.png" width="80px">
 
   <h1>The Jac Programming Language</h1>
-  <h3>One language, one compiler, the whole stack. No glue.</h3>
+  <h3>The ultimate language for agents to build everything.</h3>
 
-  <p>One self-contained binary. One Python-like language. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features, compiled to Python bytecode, JavaScript, and native machine code.</p>
+  <p>One self-contained binary. One Python-like language. One compiler that checks the whole program. AI, graphs, persistence, APIs, UIs, and cloud deployment as language features, compiled to Python bytecode, JavaScript, and native machine code. No glue for your agent to write, and none for you to review.</p>
 
   <p>
     <a href="https://github.com/jaseci-labs/jaseci/releases/latest">
@@ -44,13 +44,13 @@
   </picture>
 </div>
 
-Jac is a programming language designed for humans and AI to build together. It compiles one clean, Python-like syntax to Python bytecode, JavaScript, and native machine code, with the entire PyPI, npm, and C ecosystems available without wrappers or interop layers. The things every real application needs (an LLM call, a data model that persists, a REST API, a frontend, a deployment story) are compiler generated and abstracted by the language, not frameworks you assemble around it. The design rests on two properties, *synechic* and *topokinetic* (as described in "[the ninja book](https://zenodo.org/records/21498692)"), and defined further below ("Why Jac").
+Jac is a programming language built for coding agents and the humans who direct them. An agent writes one clean, Python-like language, and one compiler checks it end to end and compiles it to Python bytecode, JavaScript, and native machine code, with the entire PyPI, npm, and C ecosystems available without wrappers or interop layers. The things every real application needs (an LLM call, a data model that persists, a REST API, a frontend, a deployment story) are compiler generated and abstracted by the language, not frameworks you assemble around it. The design rests on two properties, *synechic* and *topokinetic* (as described in "[the ninja book](https://zenodo.org/records/21498692)"), and defined further below ("Why Jac").
 
 What you get:
 
-- **One binary, your whole toolchain** -- one download replaces the python interpreter, the JS runtime, the Rust/Zig/C compilers, and the package managers: nothing else to install
-- **One language for the whole stack, compiler-checked end to end** -- frontend, backend, and data model are one program under one type checker: humans and AI write correct code faster, and there is one codebase to maintain, not five
-- **~5x less code than a modern full-stack setup** -- the difference is glue the compiler now generates: API endpoints, route tables, ORM models, validation, serializers, and migrations you never write, review, or debug
+- **One binary, your whole toolchain** -- one download replaces the python interpreter, the JS runtime, the Rust/Zig/C compilers, and the package managers: nothing for you or your agent to install or configure, and the docs (`jac guide`) and an MCP server (`jac mcp`) ship inside it
+- **One language for the whole stack, compiler-checked end to end** -- frontend, backend, and data model are one program under one type checker: a cross-tier mistake your agent makes is a compile error it sees and fixes, not a production surprise, and there is one codebase to maintain, not five
+- **~5x less code than a modern full-stack setup** -- the difference is glue the compiler now generates: API endpoints, route tables, ORM models, validation, serializers, and migrations nobody writes, reviews, or debugs. A whole full-stack app fits in your agent's context window
 - **AI is a typed function call, not a framework** -- the compiler builds the prompt from your function signature and enforces the return type as the output schema
 - **Persistence built in** -- Objects just persist: no database, no ORM, no migrations
 - **Laptop to Kubernetes without changing a line** -- `jac scale deploy` builds the images and provisions the cluster: you write no Dockerfile and no YAML. The compiler runtime spools out multipod deployments with spliced out microservices.
@@ -78,6 +78,36 @@ One language spans all three codespaces in this single codebase: the pages and c
 For a smaller example, `jac create mysocial --awetiny` scaffolds [Tiny JacYac](jac/examples/tiny_jacyac): web, mobile, desktop, and CLI clients sharing feed and scoring services. Run it with `cd mysocial` then `jac run --serve --fleet web`.
 
 > Prebuilt binaries ship for **macOS and Linux**; on Windows, use WSL (a native PowerShell installer is coming soon). See the [installation guide](https://www.jaclang.org/docs/latest/quick-guide/install) for versions, upgrading, and IDE setup.
+
+## Give it to your agent
+
+Jac is built for agents to write, so the fastest way to start is to hand it to yours. The lowest-effort setup is no setup: point your agent at the `jac` CLI and tell it to figure it out. A first prompt like this is genuinely enough:
+
+```text
+Build me a <your app idea> in Jac. The `jac` binary is installed and self documenting with `jac guide`.
+```
+
+The binary is self-documenting -- `jac guide` prints curated reference guides on every corner of the language, and one command extracts them as Agent Skills your agent can load directly:
+
+```bash
+jac guide --export ~/.claude/skills
+```
+
+For a deeper integration, the `jac` binary also ships an MCP server with Jac validation, formatting, docs, and examples built in. Wire it into Claude Code with one command:
+
+```bash
+claude mcp add jac -- jac mcp
+```
+
+For Cursor, Windsurf, or any other MCP client, add this to your MCP config (use `jac mcp --mode lite` for smaller models):
+
+```json
+{ "mcpServers": { "jac": { "command": "jac", "args": ["mcp"] } } }
+```
+
+There's a structural reason agents do better in Jac than in a conventional stack. Glue code is most of what coding models emit (it dominates their training corpora), and glue is exactly the code no tool can verify without writing still more glue. It's cheap to generate but expensive to trust. In Jac, entire categories of glue are eliminated, and one compiler checks everything: a whole full-stack app fits in one file that fits in a context window, and a cross-tier mistake an agent makes is a compile error instead of a production surprise.
+
+As discussed in [the ninja book](https://zenodo.org/records/21498692), the key insight is that when authorship is abundant, the scarce resource is *jurisdiction*: the reach of the verifiers that can examine a change and say no, and Jac is built to leave no program point outside it. Even `sem` annotations do triple duty: prompt material for `by llm()`, documentation for humans, context for your agent.
 
 ## Why Jac exists
 
@@ -206,36 +236,6 @@ Mars, J. (2026). *A Synechic and Topokinetic Programming Language*. Zenodo. http
 
 </details>
 
-## For AI agents
-
-Jac is designed for humans and AI to build together, and that includes your coding agent. The lowest-effort setup is no setup: point your agent at the `jac` CLI and tell it to figure it out. A first prompt like this is genuinely enough:
-
-```text
-Build me a <your app idea> in Jac. The `jac` binary is installed and self documenting with `jac guide`.
-```
-
-The binary is self-documenting -- `jac guide` prints curated reference guides on every corner of the language, and one command extracts them as Agent Skills your agent can load directly:
-
-```bash
-jac guide --export ~/.claude/skills
-```
-
-For a deeper integration, the `jac` binary also ships an MCP server with Jac validation, formatting, docs, and examples built in. Wire it into Claude Code with one command:
-
-```bash
-claude mcp add jac -- jac mcp
-```
-
-For Cursor, Windsurf, or any other MCP client, add this to your MCP config (use `jac mcp --mode lite` for smaller models):
-
-```json
-{ "mcpServers": { "jac": { "command": "jac", "args": ["mcp"] } } }
-```
-
-There's a structural reason agents do better in Jac than in a conventional stack. Glue code is most of what coding models emit (it dominates their training corpora), and glue is exactly the code no tool can verify (or at least you have to add more Glue to verify :-P). It's cheap to generate but expensive to trust. In Jac, entire categories of glue are eliminated, and one compiler checks everything: a whole full-stack app fits in one file that fits in a context window, and a cross-tier mistake an agent makes is a compile error instead of a production surprise.
-
-As discussed in [the ninja book](https://zenodo.org/records/21498692), the key insight is that when authorship is abundant, the scarce resource is *jurisdiction*: the reach of the verifiers that can examine a change and say no, and Jac is built to leave no program point outside it. Even `sem` annotations do triple duty: prompt material for `by llm()`, documentation for humans, context for your agent.
-
 ## One binary, your whole toolchain
 
 One download replaces the interpreter, the JS runtime, the compilers and linker, the package managers, the server, and the deployer. At its center is a **polypiler**: a compiler whose unit of compilation is the whole polyglot application and whose targets are ecosystems rather than instruction sets:
@@ -302,9 +302,9 @@ The commands you'll use every day:
 | `jac check` / `jac fmt` / `jac test` | Type-check, format, test |
 | `jac mcp` / `jac guide` | MCP server for coding agents, curated docs |
 
-## Build anything
+## Build everything
 
-One language and one skill set produce every kind of software. Each row is one command away:
+One language, one skill your agent loads, every kind of software. Each row is one command away:
 
 | What you're building | The command | Guide |
 |---|---|---|

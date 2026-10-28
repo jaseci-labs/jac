@@ -51,6 +51,7 @@ obj GraphQuery {
         order: list[QOrder] = [],
         limit: (int | None) = None,
         offset: int = 0,
+        after: (tuple[int, (UUID | None)] | None) = None,
         level: str = 'default';
 
     def init(
@@ -61,7 +62,8 @@ obj GraphQuery {
         order: (list[QOrder] | None) = None,
         limit: (int | None) = None,
         offset: int = 0,
-        level: str = 'default'
+        level: str = 'default',
+        after: (tuple[int, (UUID | None)] | None) = None
     ) -> None;
 
     def `visit -> GraphQuery;

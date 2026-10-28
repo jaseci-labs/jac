@@ -386,6 +386,20 @@ impl NaIRGenPass._emit_spread_copy(
     _dest_elem = dest_helpers["elem_type"];
     if isinstance(_elem.type, ir.PointerType) and _dest_elem == i8p {
         _elem = self.builder.bitcast(_elem, i8p, name="spread.elem.cast");
+    } elif _elem.type == i8p
+        and _dest_elem == self?.jacval_type
+        and not self._nogc_headerless() {
+        _tag = self.builder.call(
+            self._heap_ref_jacval_tag_fn(), [_elem], name="spread.elem.jvtag"
+        );
+        _elem = self.builder.insert_value(
+            self.builder.insert_value(
+                ir.Constant(self.jacval_type, None), _tag, 0, name="spread.elem.jv.tag"
+            ),
+            self.builder.ptrtoint(_elem, i64, name="spread.elem.p2i"),
+            1,
+            name="spread.elem.jv"
+        );
     } else {
         _elem = self._coerce_type(_elem, _dest_elem);
     }

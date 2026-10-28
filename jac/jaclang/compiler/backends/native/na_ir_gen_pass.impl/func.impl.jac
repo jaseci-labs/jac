@@ -82,7 +82,7 @@ impl NaIRGenPass._maybe_declare_ability(
         assert iterator_type is not None;
         ret_type = iterator_type.as_pointer();
     } else {
-        ret_type = self._resolve_jac_type(sig.return_type);
+        ret_type = self._resolve_return_type(sig.return_type);
     }
     self._sig_decl_kind = _saved_sig_kind;
 
@@ -166,8 +166,6 @@ impl NaIRGenPass._maybe_declare_ability(
         self._module_functions[(real_path(_fdm.source.file_path), name)] = func;
         self._func_def_mod[name] = _fdm.name;
         if _fdm is not self.module {
-            """Two imported modules may each define a function of one name;
-            a module-qualified call finds the one its module defines.""";
             self.scope.bind_function(f"{_fdm.name}.{name}", func);
         }
     }
@@ -790,9 +788,6 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
 impl NaIRGenPass._demote_native_test(
     nd: uni.Test, func: ir.Function, local_mark: int
 ) -> None {
-    """A test that cannot run natively is a seam like any function: it leaves
-    the native test table and runs its Python body in the server codespace.""";
-
     line = nd.loc.first_line if nd.loc else 0;
     key = native_test_symbol(nd.name.sym_name, line);
     if not self._demote_method_if_unlowerable(key, func, local_mark, keep_func=True) {
@@ -832,8 +827,8 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         param_names.append(p_name);
     }
     ret_type: ir.Type = ir.IntType(64);
-    if sig is not None and sig.return_type is not None {
-        ret_type = self._resolve_jac_type(sig.return_type);
+    if isinstance(sig, uni.FuncSignature) {
+        ret_type = self._resolve_return_type(sig.return_type);
     }
     body = ModuleFacts.unwrap_body(nd);
 
@@ -1096,8 +1091,8 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
             _pnames.append(_pn);
         }
         _rt: ir.Type = ir.IntType(64);
-        if _ssig is not None and _ssig.return_type is not None {
-            _rt = self._resolve_jac_type(_ssig.return_type);
+        if _ssig is not None {
+            _rt = self._resolve_return_type(_ssig.return_type);
         }
         _caps: list[tuple[str, str, ir.Type]] = [];
         for _cn in _cap_order[s] {
@@ -1134,7 +1129,6 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._ability_is_generator(nd: uni.Ability) -> bool {
-    """Whether the ability's own body yields -- inline, or in its impl annex.""";
     for y in nd.element_sub_nodes(uni.YieldExpr) {
         if y.enclosing_frame is nd {
             return True;

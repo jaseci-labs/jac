@@ -1,0 +1,1 @@
+- A compile-time definition dependency digests the definition's own source text in files that hold characters wider than a byte: its span is read in the byte offsets the lexer records rather than as string indexes, so a comment added after or between definitions no longer changes a neighbouring definition's digest and rebuilds its importers.

@@ -61,18 +61,6 @@ impl NaIRGenPass._emit_rc_count_update(
     ordering: str,
     tag: str
 ) -> tuple[ir.IRBuilder, ir.Value] {
-    """Add or subtract 1 at `cnt_ptr` and return (builder, count before the update).
-
-    Until a program starts its first thread, `__jac_rc_threaded` is 0, only one
-    thread exists, and a plain load/add/store is enough; a `lock`-prefixed RMW
-    there costs roughly an order of magnitude more per retain/release. Every
-    thread spawn the compiler emits sets the flag before `pthread_create` (see
-    `_emit_rc_mark_threaded`) and nothing clears it, so from then on every unit
-    takes the atomic RMW with the ordering the caller passes. pthread_create
-    orders the flag store and all earlier plain updates before the new thread's
-    first instruction. `old_cnt`, when given, is the count the caller already
-    loaded on this path; the single-threaded branch reuses it.
-    """;
     i8 = ir.IntType(8);
     one = ir.Constant(ir.IntType(64), 1);
     st_bb = fn.append_basic_block(f"{tag}.st");
@@ -102,11 +90,6 @@ impl NaIRGenPass._emit_rc_count_update(
 }
 
 impl NaIRGenPass._emit_rc_mark_threaded -> None {
-    """Switch every refcount update to atomic RMW; call right before a thread spawn.
-
-    The store goes before `pthread_create` so the new thread starts with the
-    flag already set. It is sticky: joining the threads does not switch back.
-    """;
     if self.rc_threaded_gv is None {
         return;
     }
@@ -793,10 +776,46 @@ impl NaIRGenPass._emit_rc_helpers -> None {
         b = ir.IRBuilder(unbuf_pre);
         _ub_buf = b.load(self.rc_roots_buf_gv, name="ub.buf");
         _ub_count = b.load(self.rc_roots_count_gv, name="ub.count");
-        b.branch(unbuf_hdr);
+        if self._rc_debug_codegen {
+            b.branch(unbuf_hdr);
+        } else {
+            unbuf_direct = release_fn.append_basic_block("unbuf.direct");
+            (_ud_csp, _ud_cb) = self._emit_rc_color_load(b, release_fn.args[0]);
+            _ud_idx = b.and_(
+                b.load(_ud_csp, name="ud.word"),
+                ir.Constant(i64, 4294967295),
+                name="ud.idx"
+            );
+            b.cbranch(
+                b.icmp_unsigned("<", _ud_idx, _ub_count, name="ud.inrange"),
+                unbuf_direct,
+                unbuf_hdr
+            );
+            b = ir.IRBuilder(unbuf_direct);
+            _ud_pp = b.bitcast(
+                b.gep(
+                    _ub_buf,
+                    [b.mul(_ud_idx, ir.Constant(i64, 8), name="ud.off")],
+                    name="ud.slot"
+                ),
+                i8_ptr.as_pointer(),
+                name="ud.pp"
+            );
+            _ud_hit = b.icmp_unsigned(
+                "==", b.load(_ud_pp, name="ud.obj"), release_fn.args[0], name="ud.match"
+            );
+            unbuf_direct_hit = release_fn.append_basic_block("unbuf.direct.hit");
+            b.cbranch(_ud_hit, unbuf_direct_hit, unbuf_hdr);
+            b = ir.IRBuilder(unbuf_direct_hit);
+            b.store(ir.Constant(i8_ptr, None), _ud_pp);
+            b.branch(unbuf_clear);
+        }
         b = ir.IRBuilder(unbuf_hdr);
         _ub_i = b.phi(i64, name="ub.i");
         _ub_i.add_incoming(_ub_count, unbuf_pre);
+        if not self._rc_debug_codegen {
+            _ub_i.add_incoming(_ub_count, unbuf_direct);
+        }
         b.cbranch(
             b.icmp_unsigned("==", _ub_i, ir.Constant(i64, 0), name="ub.end"),
             unbuf_clear,
@@ -1674,6 +1693,65 @@ impl NaIRGenPass._emit_str_cmp_helper -> None {
     self.str_cmp_fn = cmp_fn;
 }
 
+impl NaIRGenPass._one_byte_literal(val: ir.Value) -> (int | None) {
+    cur: any = val;
+    if isinstance(cur, ir.CastInstr) and cur.opname == "bitcast" {
+        cur = cur.operands[0];
+    }
+    if not isinstance(cur, ir.GEPInstr) {
+        return None;
+    }
+    text = self._str_literal_text.get(id(cur.pointer));
+    if text is None {
+        return None;
+    }
+    raw = text.encode("utf8");
+    if len(raw) != 1 or raw[0] == 0 {
+        return None;
+    }
+    return raw[0];
+}
+
+impl NaIRGenPass._emit_str_cmp_one_byte(val: ir.Value, byte: int) -> ir.Value {
+    b = self.builder;
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    fn = b.function;
+    start = b.block;
+    first_bb = fn.append_basic_block("s1.first");
+    tie_bb = fn.append_basic_block("s1.tie");
+    done_bb = fn.append_basic_block("s1.done");
+    b.cbranch(
+        b.icmp_unsigned("==", val, ir.Constant(i8p, None), name="s1.null"),
+        done_bb,
+        first_bb
+    );
+    b.position_at_end(first_bb);
+    first = b.zext(b.load(val, name="s1.byte"), i32, name="s1.byte32");
+    diff = b.sub(first, ir.Constant(i32, byte), name="s1.diff");
+    b.cbranch(
+        b.icmp_signed("==", diff, ir.Constant(i32, 0), name="s1.same"), tie_bb, done_bb
+    );
+    b.position_at_end(tie_bb);
+    longer = b.zext(
+        b.icmp_signed(
+            ">",
+            self._call_str_len(b, val, name="s1.len"),
+            ir.Constant(ir.IntType(64), 1),
+            name="s1.longer"
+        ),
+        i32,
+        name="s1.tail"
+    );
+    b.branch(done_bb);
+    b.position_at_end(done_bb);
+    result = b.phi(i32, name="s1.cmp");
+    result.add_incoming(ir.Constant(i32, -1), start);
+    result.add_incoming(diff, first_bb);
+    result.add_incoming(longer, tie_bb);
+    return result;
+}
+
 impl NaIRGenPass._call_str_cmp(
     b: ir.IRBuilder, lhs: ir.Value, rhs: ir.Value, name: str = "s.cmp"
 ) -> ir.Value {
@@ -2324,12 +2402,6 @@ impl NaIRGenPass._emit_struct_drop_fn(type_name: str) -> (ir.Function | None) {
 }
 
 impl NaIRGenPass._emit_struct_drop_body_fn(type_name: str) -> (ir.Function | None) {
-    """Drop an object known to be exactly `type_name`: its fields, then itself.
-
-    This is the body a headerless build stores in the class's vtable drop
-    slot, so `__drop_T` for any ancestor `T` reaches it through the object's
-    own vtable and drops the subclass's extra fields and runs its `drop` hook.
-    """;
     if type_name in self.struct_drop_body_fns {
         return self.struct_drop_body_fns[type_name];
     }
@@ -2353,13 +2425,6 @@ impl NaIRGenPass._emit_struct_drop_body_fn(type_name: str) -> (ir.Function | Non
 }
 
 impl NaIRGenPass._drop_dispatches(type_name: str) -> bool {
-    """Must dropping a `type_name` reference read the object's own vtable?
-
-    A reference typed as a class may hold a subclass instance with its own
-    `drop` hook and owned fields, declared in a module this one never sees.
-    Only a class with a vtable can say which it holds, and only a private
-    class with no subclass in its own registry is provably final.
-    """;
     if not self._arch_has_vtable(type_name) or type_name in self.clib_struct_names {
         return False;
     }
@@ -2994,8 +3059,7 @@ impl NaIRGenPass._nogc_elem_prep(
     if isinstance(expr, uni.FString) or self._is_owned(val) {
         return val;
     }
-    """A slice of a string is fresh text; an index is a character from the
-    static per-byte cache, which an owner must copy.""";
+
     if isinstance(expr, uni.AtomTrailer)
         and isinstance(expr.right, uni.IndexSlice)
         and expr.right.is_range {
@@ -3016,13 +3080,6 @@ impl NaIRGenPass._nogc_elem_prep(
 }
 
 impl NaIRGenPass._nogc_text_field(type_name: str, fname: str) -> str {
-    """`str` or `bytes` when a headerless object owns this field's text.
-
-    Such a field holds a heap copy only its object frees: a store copies in
-    a borrowed or static value and moves an owned one, replacing the field
-    frees the value it held, and the class drop frees the last. Empty for
-    every other field and every other build.
-    """;
     if not self._nogc_headerless() or type_name in self.clib_struct_names {
         return "";
     }
@@ -3032,7 +3089,6 @@ impl NaIRGenPass._nogc_text_field(type_name: str, fname: str) -> str {
 impl NaIRGenPass._nogc_own_text(
     expr: (uni.UniNode | None), val: ir.Value, kind: str
 ) -> ir.Value {
-    """A text value an owner may keep: moved when owned, else a heap copy.""";
     if kind == "str" {
         _owned = self._nogc_elem_prep(expr, val);
         return _owned if _owned is not None else val;
@@ -3047,7 +3103,6 @@ impl NaIRGenPass._nogc_own_text(
 }
 
 impl NaIRGenPass._nogc_free_text(b: ir.IRBuilder, val: ir.Value, kind: str) -> None {
-    """Free the heap text an owned `str` or `bytes` slot holds.""";
     i8p = ir.IntType(8).as_pointer();
     data = val;
     if kind == "str"
@@ -3065,12 +3120,6 @@ impl NaIRGenPass._nogc_free_text(b: ir.IRBuilder, val: ir.Value, kind: str) -> N
 }
 
 impl NaIRGenPass._nogc_release_dict_key(key: ir.Value) -> None {
-    """Free an owned string key a headerless dictionary insert copied.
-
-    A headerless dictionary stores its own copy of a string key, so a key the
-    caller built for the insert (an f-string, a concatenation, a call result)
-    is the caller's to free once the insert returns.
-    """;
     if self._nogc_headerless()
         and key.type == ir.IntType(8).as_pointer()
         and self._is_owned(key) {

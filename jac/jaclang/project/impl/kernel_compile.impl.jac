@@ -23,9 +23,6 @@ impl kernel_compile(
     emit_cached: bool = True,
     seeds: (list[PythonInterface] | None) = None
 ) -> (CompileReport | None) {
-    """The kernel's answer is final. None means only that the program reaches
-    something the host alone can answer (`host_deferred`), so the host
-    compiles it; every other outcome, a crash included, is the kernel's.""";
     import time;
     started = time.monotonic();
     snapshot = kernel_snapshot(

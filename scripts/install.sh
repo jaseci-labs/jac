@@ -23,6 +23,8 @@ set -euo pipefail
 REPO="jaseci-labs/jaseci"
 GITHUB_API="https://api.github.com/repos/${REPO}"
 INSTALL_DIR="${HOME}/.local/bin"
+INSTALL_MARKER=".jac-install"
+INSTALL_MARKER_VALUE="installed-by-jaseci-labs-install-script"
 
 # --- Defaults ---
 VERSION=""
@@ -402,6 +404,7 @@ install_binary() {
     # Install binary
     mv "${tmpdir}/${asset}" "${INSTALL_DIR}/jac"
     chmod +x "${INSTALL_DIR}/jac"
+    printf '%s\n' "$INSTALL_MARKER_VALUE" > "${INSTALL_DIR}/${INSTALL_MARKER}"
 
     ensure_on_path
 
@@ -431,6 +434,9 @@ do_uninstall() {
         info "Removing ${INSTALL_DIR}/jac..."
         rm -f "${INSTALL_DIR}/jac"
         removed=true
+    fi
+    if [[ -f "${INSTALL_DIR}/${INSTALL_MARKER}" ]]; then
+        rm -f "${INSTALL_DIR}/${INSTALL_MARKER}"
     fi
 
     # Clean up any legacy uv-managed installs from older installer versions.

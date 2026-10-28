@@ -2057,10 +2057,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                             if arch := method.signature.arch_tag_info {
                                 if isinstance(arch, TupleVal) {
                                     member_insts: list[TypeBase] = [];
-                                    for member in self._annotation_args(arch) {
+                                    for arch_member in self._annotation_args(arch) {
                                         member_insts.append(
                                             self._convert_to_instance(
-                                                self.get_type_of_expression(member)
+                                                self.get_type_of_expression(arch_member)
                                             )
                                         );
                                     }
@@ -2960,6 +2960,9 @@ impl TypeEvaluator._get_type_of_symbol_decl(
 
             if isinstance(node_.parent, Except) and node_.parent.ex_type {
                 ex_type = self.get_type_of_expression(node_.parent.ex_type);
+                if caught := self._isinstance_class_alternatives(ex_type) {
+                    return self._union_narrowed_types(caught);
+                }
                 return self._convert_to_instance(ex_type);
             }
 
@@ -3310,14 +3313,6 @@ impl TypeEvaluator._solve_protocol_members(
 impl TypeEvaluator._protocol_member_impl(
     proto_func: FunctionType, member: ClassMember, src_type: ClassType
 ) -> (FunctionType | None) {
-    """Pick the implementation a protocol member binds to.
-
-    An overloaded member (e.g. `float.__round__`, which returns `int` without
-    `ndigits` and `float` with it) binds to its first overload whose signature
-    fits the protocol method, so `_SupportsRound2[_T]` solves `_T` to `float`
-    rather than to the first overload's `int`. Falls back to the first
-    overload when none fits.
-    """;
     first = self.get_type_of_symbol(member.symbol);
     if not isinstance(first, FunctionType) {
         return None;
@@ -3344,13 +3339,6 @@ impl TypeEvaluator._protocol_member_impl(
 impl TypeEvaluator._protocol_signature_fits(
     proto_func: FunctionType, impl_func: FunctionType
 ) -> bool {
-    """Does `impl_func` accept every positional call `proto_func` describes?
-
-    The same count of explicit positional parameters (extra impl parameters
-    need defaults, `*args` absorbs the rest), each protocol parameter type
-    assignable to the impl's. Parameters typed by a type variable always fit,
-    since they are what is being solved.
-    """;
     def positional(func: FunctionType) -> list[Parameter] {
         return [
             p
@@ -3393,12 +3381,23 @@ impl TypeEvaluator._protocol_signature_fits(
     return True;
 }
 
-impl TypeEvaluator.is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool {
+impl TypeEvaluator.is_sub_class(
+    super_cls: ClassType, sub_cls: ClassType, ignore_unknown: bool = False
+) -> bool {
     self._heal_ancestry(sub_cls);
     ensure_mro_fresh(sub_cls);
     for cls in sub_cls.shared.mro {
         if cls.shared.same_class(super_cls.shared) {
             return True;
+        }
+    }
+    if ignore_unknown {
+        for cls in sub_cls.shared.mro or [sub_cls] {
+            for base in cls.shared.base_classes {
+                if not isinstance(base, ClassType) or self.is_any_type(base) {
+                    return True;
+                }
+            }
         }
     }
     return False;
@@ -4481,7 +4480,9 @@ impl TypeEvaluator._is_sv_async_call(expr: FuncCall) -> bool {
                     if source_mod is None {
                         continue;
                     }
-                    verdict = classify_client_import_item(source_mod, item);
+                    verdict = classify_client_import_item(
+                        source_mod, item, self.program
+                    );
                     if verdict != ClientImportVerdict.BRIDGED {
                         continue;
                     }
@@ -4514,6 +4515,7 @@ impl TypeEvaluator._prefetch_types {
     self.prefetch.none_type_class = get_types_class("NoneType");
     self.prefetch.object_class = get_builtin_class("object");
     self.prefetch.type_class = get_builtin_class("type");
+    self.prefetch.base_exception_class = get_builtin_class("BaseException");
     self.prefetch.classmethod_class = get_builtin_class("classmethod");
 
     self.prefetch.coroutine_class = get_typing_class("Coroutine");
@@ -4781,12 +4783,7 @@ impl TypeEvaluator.get_narrowed_type(
     if sym_id in self._and_narrowing_overrides {
         return self._and_narrowing_overrides[sym_id];
     }
-    """A query is pending at one place: the same symbol asked about at
-    another flow node is a different question, and answering it with "not
-    narrowed" types a read by the declared type. That happens when resolving
-    an assignment's value forces the rest of its scope: a read of the symbol
-    elsewhere in the function is evaluated while the outer query is open.
-    Only the same symbol at the same node is the query asking itself.""";
+
     flow_node = _find_cfg_node_for(at_node);
     pending: tuple[int, int] = (sym_id, id(flow_node) if flow_node is not None else 0);
     if pending in self._flow_pending_symbols
@@ -4805,7 +4802,9 @@ impl TypeEvaluator.get_narrowed_type(
             key=symbol.sym_name, declared_type=symbol_type, symbol=symbol
         );
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            return self._readable_flow_type(
+                self._get_type_from_flow_node(narrowing_target, flow_node, set())
+            );
         }
         return None;
     } finally {
@@ -4862,12 +4861,21 @@ impl TypeEvaluator._narrowed_type_for_expr(
             deps=frozenset(reference_key_deps(expr)),
         );
         if flow_node is not None {
-            return self._get_type_from_flow_node(narrowing_target, flow_node, set());
+            return self._readable_flow_type(
+                self._get_type_from_flow_node(narrowing_target, flow_node, set())
+            );
         }
         return None;
     } finally {
         self._flow_pending_keys.discard(pending);
     }
+}
+
+impl TypeEvaluator._readable_flow_type(flow_type: TypeBase | None) -> TypeBase | None {
+    if isinstance(flow_type, NeverType) {
+        return flow_type.residual;
+    }
+    return flow_type;
 }
 
 impl TypeEvaluator._node_encloses(outer: UniNode, inner: UniNode) -> bool {
@@ -5175,6 +5183,17 @@ impl TypeEvaluator._get_type_from_flow_node(
         }
     }
 
+    residuals: list[TypeBase] = [];
+    bare_never: bool = False;
+    for t in incoming_types {
+        if isinstance(t, NeverType) {
+            if t.residual is not None {
+                residuals.append(t.residual);
+            } else {
+                bare_never = True;
+            }
+        }
+    }
     incoming_types = [
         t
         for t in incoming_types
@@ -5183,7 +5202,9 @@ impl TypeEvaluator._get_type_from_flow_node(
 
     result: TypeBase | None = None;
     if len(incoming_types) == 0 {
-        result = None;
+        if residuals and not bare_never and not has_unnarrowed_pred {
+            result = NeverType(residual=self._union_narrowed_types(residuals));
+        }
     } elif has_unnarrowed_pred {
         result = None;
     } elif len(incoming_types) == 1 {
@@ -5215,7 +5236,9 @@ impl TypeEvaluator._if_exit_type(
         if then_t is None {
             return None;
         }
-        arm_types.append(then_t);
+        if not isinstance(then_t, NeverType) {
+            arm_types.append(then_t);
+        }
     }
     eb = stmt.else_body;
     if eb is None {
@@ -5230,22 +5253,30 @@ impl TypeEvaluator._if_exit_type(
         if fall_t is None {
             return None;
         }
-        arm_types.append(fall_t);
+        if not isinstance(fall_t, NeverType) {
+            arm_types.append(fall_t);
+        }
     } elif isinstance(eb, ElseIf) {
         else_t = self._if_exit_type(target, eb, entry_type, visited);
         if else_t is None {
             return None;
         }
-        arm_types.append(else_t);
+        if not isinstance(else_t, NeverType) {
+            arm_types.append(else_t);
+        }
     } elif isinstance(eb, ElseStmt) {
         if eb.body {
             else_t = self._get_type_from_flow_node(target, eb.body[-1], visited);
             if else_t is None {
                 return None;
             }
-            arm_types.append(else_t);
+            if not isinstance(else_t, NeverType) {
+                arm_types.append(else_t);
+            }
         } elif entry_type is not None {
-            arm_types.append(entry_type);
+            if not isinstance(entry_type, NeverType) {
+                arm_types.append(entry_type);
+            }
         } else {
             return None;
         }
@@ -5804,13 +5835,6 @@ impl TypeEvaluator._find_predicate_for(
 impl TypeEvaluator._narrowing_equivalent(
     left: NarrowingPredicate, right: NarrowingPredicate
 ) -> bool {
-    """Report whether two predicates narrow a target identically.
-
-    A conjunction's false edge is `not A or not B`, so it may only narrow
-    when every conjunct negates to the same thing. Mutual `isinstance`
-    matching is the equivalence used: it holds for the same class and for two
-    references to it that were converted to instances separately.
-    """;
     if left is right {
         return True;
     }
@@ -5846,6 +5870,18 @@ impl TypeEvaluator._apply_narrowing(
         NarrowingTarget
     }
 
+    if isinstance(incoming, NeverType) {
+        inner = self._apply_narrowing(
+            predicate, incoming.residual, is_true_branch, target
+        );
+        if inner is None {
+            return incoming;
+        }
+        if isinstance(inner, NeverType) {
+            return inner;
+        }
+        return NeverType(residual=inner);
+    }
     if is_true_branch and not predicate.narrows_on_true {
         return None;
     }
@@ -5901,6 +5937,14 @@ impl TypeEvaluator._apply_narrowing(
         if result is base_type {
             return incoming;
         }
+        if isinstance(result, NeverType) and incoming is not None {
+            residual = self.exclude_type_from_union(
+                target.declared_type, predicate.narrow_type
+            );
+            if not isinstance(residual, NeverType) {
+                return NeverType(residual=residual);
+            }
+        }
         return result;
     }
 }
@@ -5925,16 +5969,6 @@ impl TypeEvaluator._never_holds_none(base_type: TypeBase) -> bool {
 impl TypeEvaluator._specialize_narrow_from_base(
     base_type: TypeBase, narrow_type: TypeBase
 ) -> TypeBase {
-    """Carry a member's type arguments onto the narrow target it sits above.
-
-    A member the target derives from is narrowed to the bare target class,
-    which loses the member's arguments -- `isinstance(x, list)` over an
-    `Expr | Sequence[T]` yields `list`, dropping `T`. The container protocols
-    are exactly that shape (`list` is a `Sequence`, `dict` a `Mapping`), and
-    a value that is both a `Sequence[T]` and a `list` is a `list[T]`, so the
-    member's arguments carry over when the target declares the same number of
-    parameters.
-    """;
     if not isinstance(narrow_type, ClassType)
         or (narrow_type.private.type_args or []) {
         return narrow_type;
@@ -5966,13 +6000,6 @@ impl TypeEvaluator._specialize_narrow_from_base(
 impl TypeEvaluator._narrow_type_to(
     base_type: TypeBase, narrow_type: TypeBase
 ) -> TypeBase | None {
-    """Narrow a declared type against an isinstance filter, member by member.
-
-    Narrowing the union as a whole threw the declared type away whenever no
-    member matched: `isinstance(x, Marker)` on an `x: Carrier | None` became
-    a bare `Marker` and every `Carrier` member went missing. Each member is
-    now narrowed on its own and the surviving results are re-joined.
-    """;
     members = (
         base_type.types
             if isinstance(base_type, UnionType) and base_type.types
@@ -5994,14 +6021,6 @@ impl TypeEvaluator._narrow_type_to(
 impl TypeEvaluator._narrow_member_to(
     member: TypeBase, narrow_type: TypeBase
 ) -> TypeBase | None {
-    """Narrow one declared member against the filter, or a tuple of filters.
-
-    A tuple filter is a disjunction, so the member is narrowed against every
-    alternative it is related to and the results joined. A member related to
-    none of them drops: the value cannot be that member and pass the guard,
-    unless it is an instance of a class deriving from both, which this
-    checker does not model.
-    """;
     if isinstance(narrow_type, UnionType) and narrow_type.types {
         related: list[TypeBase] = [];
         for t in narrow_type.types {
@@ -6371,14 +6390,6 @@ impl TypeEvaluator._isinstance_class_alternatives(
 impl TypeEvaluator._create_type_guard_type(
     name: str, guarded: TypeBase | None
 ) -> TypeBase {
-    """Model `TypeIs[T]`/`TypeGuard[T]` as a bool that carries the guarded type.
-
-    Both forms are `bool` at runtime and both PEPs require the predicate to
-    return one, so the synthesized class derives from `bool`: a predicate's
-    result stays usable anywhere a bool is, and a plain `bool` return
-    satisfies the annotation. `T` rides along in the type arguments, which is
-    where `_extract_type_guard_info` reads it back out at the call site.
-    """;
     if not self.prefetch or self.prefetch.bool_class is None {
         return UnknownType();
     }
@@ -6390,14 +6401,6 @@ impl TypeEvaluator._create_type_guard_type(
 }
 
 impl TypeEvaluator._unwrap_type_guard_return(ty: TypeBase) -> TypeBase {
-    """Give back the bool a `TypeIs[T]`/`TypeGuard[T]` annotation stands for.
-
-    Both PEPs say the predicate returns a bool; the guarded type is a claim
-    about the argument, not about the value handed back. Keeping the special
-    form out of every declared return type is what lets the rest of the
-    compiler -- assignability, the layout pass, the native lane -- go on
-    seeing an ordinary bool. `FunctionType.type_guard` carries the claim.
-    """;
     if self._type_guard_form_of(ty) is None {
         return ty;
     }
@@ -6423,13 +6426,6 @@ impl TypeEvaluator._type_guard_form_of(ty: TypeBase) -> str | None {
 impl TypeEvaluator._extract_type_guard_info(
     condition: Expr
 ) -> tuple[str, TypeBase, bool] | None {
-    """Read a user-defined type predicate off a call in a condition.
-
-    The guarded argument is the one that binds the callee's first parameter
-    after any implicit receiver, which is the parameter both PEPs narrow. A
-    call that spells the receiver out takes the same route the argument
-    matcher does, so `Cls.pred(inst, x)` narrows `x` and not `inst`.
-    """;
     if not isinstance(condition, FuncCall) or not condition.params {
         return None;
     }
