@@ -492,10 +492,10 @@ impl isqrt(n: int) -> int {
     if r > 3037000499 {
         r = 3037000499;
     }
-    while r * r > n {
+    while r > 0 and r > n // r {
         r -= 1;
     }
-    while r < 3037000499 and (r + 1) * (r + 1) <= n {
+    while r < 3037000499 and r + 1 <= n // (r + 1) {
         r += 1;
     }
     return r;
@@ -607,7 +607,7 @@ impl frexp(x: float) -> tuple[(float, int)] {
         return (f2, e2 - 64);
     }
     mant = mag & 4503599627370495;
-    nb = (b & (1 << 63)) | 4602678819172646912 | mant;
+    nb = (b & (-9223372036854775807 - 1)) | 4602678819172646912 | mant;
     return (__bits_float(nb), expo - 1022);
 }
 
@@ -640,7 +640,7 @@ impl ldexp(x: float, i: int) -> float {
     (mf, expo) = frexp(x);
     n = expo + i;
     b = __float_bits(mf);
-    sgn = b & (1 << 63);
+    sgn = b & (-9223372036854775807 - 1);
     mant = b & 4503599627370495;
     if n > 1024 {
         raise OverflowError("math range error");
@@ -680,7 +680,7 @@ impl nextafter(x: float, y: float, *, steps: int = 1) -> float {
     if isnan(y) {
         return y;
     }
-    sgn_mask = 1 << 63;
+    sgn_mask = -9223372036854775807 - 1;
     mag_mask = 9223372036854775807;
     first = __float_bits(x);
     last = __float_bits(y);

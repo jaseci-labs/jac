@@ -793,18 +793,19 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     result: (ir.Value | None);
     _unsigned = self._is_unsigned_node(nd) or self._is_unsigned_node(nd.left);
-    _checked = (
-        self._is_sized_node(nd)
-        or self._is_sized_node(nd.left)
-        or self._is_sized_node(nd.right)
-    );
     if op == Tok.STAR_POW {
-        result = self._codegen_pow(
-            left, right, nd.right, unsigned=_unsigned, checked=_checked
-        );
+        result = self._codegen_pow(left, right, nd.right, unsigned=_unsigned);
     } else {
         result = self._emit_binary_op(
-            op, left, right, unsigned=_unsigned, checked=_checked
+            op,
+            left,
+            right,
+            unsigned=_unsigned,
+            sized=(
+                self._is_sized_node(nd)
+                or self._is_sized_node(nd.left)
+                or self._is_sized_node(nd.right)
+            )
         );
     }
 
@@ -2099,14 +2100,12 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             if isinstance(operand, ir.Constant) and isinstance(operand.constant, int) {
                 width = operand.type.width;
                 negated = -operand.constant;
-                if -(1 << (width - 1)) <= negated < (1 << (width - 1)) {
+                if _int_min_bits(width) <= negated
+                    and negated <= _int_max_bits(width) {
                     return ir.Constant(operand.type, negated);
                 }
             }
-            if self._is_sized_node(nd) or self._is_sized_node(nd.operand) {
-                return self._emit_checked_neg(operand);
-            }
-            return self.builder.neg(operand, name="neg");
+            return self._emit_checked_neg(operand);
         } elif operand.type == self.complex_struct_type.as_pointer() {
             (r, im) = self._load_complex_parts(operand);
             nr = self.builder.fneg(r, name="cneg.nr");
@@ -3376,9 +3375,17 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
                             idx_val = self._codegen_expr(idx_node.start);
                         }
                         if idx_val is not None {
-                            return self._codegen_tuple_index(
+                            _tup_item = self._codegen_tuple_index(
                                 target_val, idx_val, tsub_struct
                             );
+
+                            if _tup_item is not None
+                                and isinstance(target_val.type, ir.PointerType) {
+                                return self._finish_borrowed_read(
+                                    target_val, _tup_item
+                                );
+                            }
+                            return _tup_item;
                         }
                     }
                 }
@@ -3528,11 +3535,7 @@ impl NaIRGenPass._final_scalar_value(
         and value_type.width > 1
         and isinstance(folded, int)
         and not isinstance(folded, bool) {
-        bits = folded & ((1 << value_type.width) - 1);
-        if bits >= (1 << (value_type.width - 1)) {
-            bits -= 1 << value_type.width;
-        }
-        return ir.Constant(value_type, bits);
+        return ir.Constant(value_type, _signed_repr(value_type.width, folded));
     }
     if isinstance(value_type, (ir.DoubleType, ir.FloatType)) {
         if isinstance(folded, float) {

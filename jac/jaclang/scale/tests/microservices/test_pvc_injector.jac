@@ -239,3 +239,147 @@ test "a pod spec with no bootstrap container references no bundles" {
     )
         == [];
 }
+
+
+# The loader pod lives on whichever cluster the Python client loaded. The fake
+# kubectl reaches that cluster only when its cluster flags and the kubeconfig
+# files it reads match $FAKE_KUBECTL_REACHES; anything else (an ambient
+# context, a kubeconfig the client did not load) answers NotFound. Like real
+# kubectl, it resolves a relative KUBECONFIG entry against its own working
+# directory and does not expand ~.
+glob _FAKE_KUBECTL: str = """#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+flags = []
+while args and args[0] in ("--kubeconfig", "--context"):
+    flags += args[:2]
+    args = args[2:]
+kubeconfig = os.pathsep.join(
+    os.path.join(os.getcwd(), p)
+    for p in os.environ.get("KUBECONFIG", "").split(os.pathsep) if p
+)
+seen = {"flags": flags, "kubeconfig": kubeconfig}
+with open(os.environ["FAKE_KUBECTL_LOG"], "a") as f:
+    f.write(json.dumps({"args": args, **seen}) + "\\n")
+if seen != json.loads(os.environ["FAKE_KUBECTL_REACHES"]):
+    sys.stderr.write("Error from server (NotFound): pods not found\\n")
+    sys.exit(1)
+if "test -f" in " ".join(args):
+    sys.exit(1)
+""";
+
+
+obj _OneClusterPods {
+    has pods: set[str] = set();
+
+    def create_namespaced_pod(namespace: str, body: dict[str, any]) {
+        self.pods.add(body["metadata"]["name"]);
+    }
+
+    def read_namespaced_pod(name: str, namespace: str) -> any {
+        import from types { SimpleNamespace }
+        import from kubernetes.client.exceptions { ApiException }
+        if name not in self.pods {
+            raise ApiException(status=404);
+        }
+        return SimpleNamespace(status=SimpleNamespace(phase="Running"));
+    }
+
+    def delete_namespaced_pod(name: str, namespace: str) {
+        self.pods.discard(name);
+    }
+}
+
+
+test "the bundle seed's kubectl reaches the cluster the client loaded" {
+    import json;
+    import unittest.mock;
+    import from kubernetes.config.config_exception { ConfigException }
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+        KubernetesConfig
+    }
+    import from jaclang.scale.deploy.target.kubernetes.kubernetes_target {
+        KubernetesTargetBase
+    }
+    def _loads(*args: any, **kwargs: any) {
+        return;
+    }
+    def _no_such_context(*args: any, **kwargs: any) {
+        raise ConfigException("context 'prod-eks' not found");
+    }
+    ambient = "/home/dev/.kube/config";
+    to_prod = ["--context", "prod-eks"];
+    # (configured kubeconfig, ambient KUBECONFIG, kubeconfig load, flags and
+    # kubeconfig files that reach the loaded cluster). The client expands ~,
+    # resolves relative paths against the deploy's cwd (the bundle cp runs
+    # elsewhere), and merges a path list, whether the files come from the
+    # config or the environment, so kubectl must be handed the same files.
+    # In the last row a builder pod's jac.toml names a laptop context: the
+    # client falls back to the in-cluster ServiceAccount, so kubectl must
+    # name no context and ignore the pod's own kubeconfig.
+    rows: list[tuple[str, str, any, list[str], str]] = [
+        ("/etc/jac/kubeconfig", ambient, _loads, to_prod, "/etc/jac/kubeconfig"),
+        ("", ambient, _loads, to_prod, ambient),
+        ("", "kube/prod.yaml", _loads, to_prod, os.path.abspath("kube/prod.yaml")),
+        (
+            "~/.kube/prod.yaml",
+            ambient,
+            _loads,
+            to_prod,
+            os.path.expanduser("~/.kube/prod.yaml")
+        ),
+        ("kube/prod.yaml", ambient, _loads, to_prod, os.path.abspath("kube/prod.yaml")),
+        (
+            f"/etc/jac/a.yaml{os.pathsep}kube/b.yaml",
+            ambient,
+            _loads,
+            to_prod,
+            f"/etc/jac/a.yaml{os.pathsep}{os.path.abspath('kube/b.yaml')}"
+        ),
+        ("/etc/jac/kubeconfig", ambient, _no_such_context, [], os.devnull),
+
+    ];
+    for (kubeconfig, ambient_kubeconfig, load_kube_config, flags, files) in rows {
+        reaches = {"flags": flags, "kubeconfig": files};
+        with tempfile.TemporaryDirectory() as tmp {
+            log = Path(tmp) / "kubectl.log";
+            kubectl = Path(tmp) / "kubectl";
+            kubectl.write_text(_FAKE_KUBECTL);
+            kubectl.chmod(0o755);
+            target = KubernetesTargetBase(
+                config=KubernetesConfig(kube_context="prod-eks", kubeconfig=kubeconfig)
+            );
+            cluster = _OneClusterPods();
+            injector = PvcInjector(_object_key="orders/abc.jab", _bundle_bytes=b"jab");
+            with unittest.mock.patch.dict(
+                os.environ,
+                {
+                    "PATH": f"{tmp}{os.pathsep}{os.environ['PATH']}",
+                    "KUBECONFIG": ambient_kubeconfig,
+                    "FAKE_KUBECTL_LOG": str(log),
+                    "FAKE_KUBECTL_REACHES": json.dumps(reaches)
+                }
+            ), unittest.mock.patch.multiple(
+                "kubernetes.config",
+                load_kube_config=load_kube_config,
+                load_incluster_config=_loads
+            ), unittest.mock.patch(
+                "kubernetes.client.CoreV1Api", return_value=cluster
+            ) {
+                target._load_cluster_config();
+                injector.seed("orders", "prod", target._kubectl);
+            }
+            calls = [json.loads(line) for line in log.read_text().splitlines()];
+            assert any(c["args"][0] == "cp" for c in calls) , (
+                f"the bundle was never copied: {calls}"
+            );
+            for c in calls {
+                assert {"flags": c["flags"], "kubeconfig": c["kubeconfig"]}
+                    == reaches , (
+                    f"kubectl left the loaded cluster: expected {reaches}, ran {c}"
+                );
+            }
+            assert not cluster.pods , "the loader pod outlived the seed";
+        }
+    }
+}

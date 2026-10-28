@@ -6,10 +6,16 @@ needed for Phase 6 HTTP server/client work.
 Bun reference: `bun/src/http/MimeType.zig`
 """
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_byte,
+    str_nbytes
+}
 def _mime_substr(s: str, start: int, end: int) -> str {
     out: str = "";
     i: int = start;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if i < 0 {
         i = 0;
     }
@@ -17,7 +23,7 @@ def _mime_substr(s: str, start: int, end: int) -> str {
         end = n;
     }
     while i < end {
-        out = out + s[i];
+        out = out + byte_chr(str_byte(s, i));
         i = i + 1;
     }
     return out;
@@ -28,7 +34,7 @@ def _mime_norm_ext(ext: str) -> str {
     if raw == "" {
         return "";
     }
-    if raw[0] == "." {
+    if byte_chr(str_byte(raw, 0)) == "." {
         return raw;
     }
     return "." + raw;
@@ -130,10 +136,10 @@ def:pub mime_from_extension(ext: str) -> str {
 }
 
 def:pub mime_from_path(path: str) -> str {
-    i: int = len(path) - 1;
+    i: int = str_nbytes(path) - 1;
     dot: int = -1;
     while i >= 0 {
-        ch: str = path[i];
+        ch: str = byte_chr(str_byte(path, i));
         if ch == "." {
             dot = i;
             break;
@@ -146,7 +152,7 @@ def:pub mime_from_path(path: str) -> str {
     if dot < 0 {
         return "application/octet-stream";
     }
-    return mime_from_extension(_mime_substr(path, dot, len(path)));
+    return mime_from_extension(_mime_substr(path, dot, str_nbytes(path)));
 }
 
 def:pub mime_is_text(mime: str) -> bool {
@@ -179,10 +185,10 @@ def:pub mime_charset(mime: str) -> str {
     norm: str = mime.strip();
     lower: str = norm.lower();
     needle: str = "; charset=";
-    idx: int = lower.find(needle);
+    idx: int = str_bfind(lower, needle);
     if idx < 0 {
         return "";
     }
-    start: int = idx + len(needle);
-    return _mime_substr(norm, start, len(norm)).strip();
+    start: int = idx + str_nbytes(needle);
+    return _mime_substr(norm, start, str_nbytes(norm)).strip();
 }

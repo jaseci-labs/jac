@@ -16,6 +16,12 @@ the Jac call stack; C-level libuv callbacks read _DEFAULT_REALM.
 import from engine.src.runtime.jsvalue { JSValue }
 import from engine.src.runtime.mem { write_byte }
 import from engine.src.ffi.libc { realloc, abort }
+import from engine.src.runtime.gc_barrier {
+    gc_young_add,
+    gc_gen_on,
+    gc_rem_gen,
+    FLAG_GEN_REMEMBERED
+}
 
 # GC collection-frequency floor (allocations between collections, before the
 # adaptive proportional-heap growth kicks in). Default 10000; override via the
@@ -227,6 +233,7 @@ obj:pub Realm {
         gc_young_closures: list[int] = [],
         gc_young_maps: list[int] = [],
         gc_young_sets: list[int] = [],
+        gc_young_gens: list[int] = [],
         gc_next_major: bool = True,
         gc_last_minor: bool = False,
         gc_major_live: int = 0;
@@ -420,13 +427,16 @@ requests a collection via `gc_pending`. The VM loop-top safepoint (where the
 full root set — operand stack + frame locals — is assemblable) services the
 flag; the interpreter loop then only branches on `safepoint_req` (one
 predictable branch per dispatch instead of a counter increment + two compares). No-op when
-GC is disabled, so it is inert on the default (no-`--gc`) path."""
-def:pub gc_note_alloc(realm: Realm) -> None {
+GC is disabled, so it is inert on the default (no-`--gc`) path. `nbytes`
+estimates the allocation for the generational young budget (gc_barrier); the
+default is one object row."""
+def:pub gc_note_alloc(realm: Realm, nbytes: int = 192) -> None {
     if not realm.gc_enabled {
         return;
     }
     realm.gc_alloc_count = realm.gc_alloc_count + 1;
-    if realm.gc_alloc_count >= realm.gc_threshold {
+    young_full: bool = gc_young_add(nbytes);
+    if young_full or realm.gc_alloc_count >= realm.gc_threshold {
         realm_request_gc(realm);
     }
 }
@@ -434,6 +444,34 @@ def:pub gc_note_alloc(realm: Realm) -> None {
 # ══════════════════════════════════════════════════════════════════════════════
 # Factory
 # ══════════════════════════════════════════════════════════════════════════════
+
+"""Generational write barrier for generator states (docs/GENERATIONAL_GC.md
+§4.4): called when state `idx` is written back after a suspend. An old state
+(marked by the last collection) is remembered once per cycle so the next minor
+collection traces what it now holds; a young one is traced as young."""
+def:pub gc_note_gen_write(realm: Realm, idx: int) -> None {
+    if not gc_gen_on() or idx < 0 or idx >= len(realm.generators_mark_epoch) {
+        return;
+    }
+    if realm.generators_mark_epoch[idx] != realm.gc_epoch {
+        return;
+    }
+    gw_flags: int = realm.generators[idx].cell_flags;
+    if gw_flags == 255 or (gw_flags & FLAG_GEN_REMEMBERED) != 0 {
+        return;
+    }
+    realm.generators[idx].cell_flags = gw_flags | FLAG_GEN_REMEMBERED;
+    gc_rem_gen(idx);
+}
+
+"""Record a generator state slot allocated since the last collection, so a
+minor collection roots it (young states may be referenced by nothing the
+trace sees: an async frame's state is held by its index alone)."""
+def:pub gc_note_gen_young(realm: Realm, idx: int) -> None {
+    if gc_gen_on() {
+        realm.gc_young_gens.append(idx);
+    }
+}
 
 """Allocate and fully initialise a fresh, empty Realm.
    Multiple calls return independent objects — no shared state."""
@@ -511,6 +549,7 @@ def:pub realm_new -> Realm {
     r.gc_young_alloc = [];
     r.gc_young_closures = [];
     r.gc_young_maps = [];
+    r.gc_young_gens = [];
     r.gc_young_sets = [];  # objects marked for the first time (per cycle)
     r.gc_ab_rows = {};  # object rows holding an ArrayBuffer (lazy sweep)
     r.heap_strings_mark_epoch = [];  # G1.4: heap-string mark epochs (0=unmarked,-1=dead)

@@ -48,6 +48,8 @@ Packed encodings (attrs occupy one nibble):
   - chain index value:    slot_idx * 16 + attrs
 """
 
+import from engine.src.ffi.libc { calloc, abort }
+
 # Attribute bits. Low three intentionally equal PROP_WRITABLE / PROP_ENUMERABLE
 # / PROP_CONFIGURABLE in jsobj_type.na.jac (do not renumber independently).
 glob:pub SHAPE_ATTR_WRITABLE: int = 1,
@@ -242,37 +244,58 @@ def _shape_group(sid: int) -> int {
 # shape_lookup ran ~470M times (~9.7% of the instructions) in a jac_client
 # build.
 glob _SLC_MASK: int = 16383,
-     _SLC_SID: list[int] = [],
-     _SLC_KEY: list[int] = [],
-     _SLC_VAL: list[int] = [];
+     # The cache itself, raw: four words per entry (shape id, key, packed
+     # result, unused), entry h at _SLC_P + h * 32; 0 until the first lookup.
+     # (As three lists every hit paid three bounds-checked element reads.)
+     _SLC_P: int = 0;
 
 def _slc_init {
+    _SLC_P = calloc(_SLC_MASK + 1, 32);
+    if _SLC_P == 0 {
+        abort();
+    }
     sci: int = 0;
     while sci <= _SLC_MASK {
-        _SLC_SID.append(-2);
-        _SLC_KEY.append(0);
-        _SLC_VAL.append(-1);
+        __mem_store_i64(wrapping_add(_SLC_P, wrapping_mul(sci, 32)), -2);
         sci = sci + 1;
     }
 }
+
+"""The cache miss (and the cache's first use): the uncached lookup, recorded
+in the key's entry."""
+def _slc_fill(sid: int, key: int) -> int {
+    if _SLC_P == 0 {
+        _slc_init();
+    }
+    sf_e: int = wrapping_add(
+        _SLC_P, wrapping_mul((wrapping_mul(sid, 40503) ^ key) & _SLC_MASK, 32)
+    );
+    sf_r: int = _shape_lookup_uncached(sid, key);
+    __mem_store_i64(sf_e, sid);
+    __mem_store_i64(wrapping_add(sf_e, 8), key);
+    __mem_store_i64(wrapping_add(sf_e, 16), sf_r);
+    return sf_r;
+}
+
+# (called through a function value: LLVM inlines a direct call back into
+# shape_lookup, and then every hit pays the miss path's register saves)
+glob _SLC_FILL: Callable[[int, int], int] = _slc_fill;
 
 """
 Look up `key` on shape `sid`.
 Returns packed `slot_idx * 16 + attrs`, or -1 if the shape has no such key.
 """
 def:pub shape_lookup(sid: int, key: int) -> int {
-    if len(_SLC_SID) == 0 {
-        _slc_init();
+    if _SLC_P != 0 {
+        slc_e: int = wrapping_add(
+            _SLC_P, wrapping_mul((wrapping_mul(sid, 40503) ^ key) & _SLC_MASK, 32)
+        );
+        if __mem_load_i64(slc_e) == sid
+            and __mem_load_i64(wrapping_add(slc_e, 8)) == key {
+            return __mem_load_i64(wrapping_add(slc_e, 16));
+        }
     }
-    slc_h: int = ((sid * 40503) ^ key) & _SLC_MASK;
-    if _SLC_SID[slc_h] == sid and _SLC_KEY[slc_h] == key {
-        return _SLC_VAL[slc_h];
-    }
-    slc_r: int = _shape_lookup_uncached(sid, key);
-    _SLC_SID[slc_h] = sid;
-    _SLC_KEY[slc_h] = key;
-    _SLC_VAL[slc_h] = slc_r;
-    return slc_r;
+    return _SLC_FILL(sid, key);
 }
 
 def _shape_lookup_uncached(sid: int, key: int) -> int {

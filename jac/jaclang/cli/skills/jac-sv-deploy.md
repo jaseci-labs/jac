@@ -12,7 +12,7 @@ Production serving is the built-in `scale` subsystem's job. Scale ships inside `
 ```toml
 [serve]
 docs_enabled = false          # disables /docs, /openapi.json
-graph_enabled = false         # disables /graph, /graph/data
+graph_enabled = false         # disables /graph, /graph/node, /graph/neighbors
 
 [serve.workers]
 count = "auto"                # one worker per core of the CPU quota; "1" for I/O-bound apps

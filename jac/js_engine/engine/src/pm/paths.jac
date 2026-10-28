@@ -1,5 +1,14 @@
 """Path helpers for the package manager (POSIX, pure string work)."""
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_brfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
 """Normalise a path: collapse "//", drop "." segments, resolve ".." (an
 absolute path never climbs above "/"; a relative one keeps leading "..")."""
 def:pub pm_path_normalize(path: str) -> str {
@@ -79,30 +88,30 @@ def:pub pm_path_relative(from_dir: str, to_path: str) -> str {
 }
 
 def:pub pm_path_dirname(path: str) -> str {
-    cut: int = path.rfind("/");
+    cut: int = str_brfind(path, "/");
     if cut < 0 {
         return ".";
     }
     if cut == 0 {
         return "/";
     }
-    return path[0:cut];
+    return str_bslice(path, 0, cut);
 }
 
 def:pub pm_path_basename(path: str) -> str {
-    cut: int = path.rfind("/");
+    cut: int = str_brfind(path, "/");
     if cut < 0 {
         return path;
     }
-    return path[cut + 1:];
+    return str_bslice_from(path, cut + 1);
 }
 
 """Package name without its scope: "@scope/name" → "name"."""
 def:pub pm_unscoped_name(name: str) -> str {
     if name.startswith("@") {
-        slash: int = name.find("/");
+        slash: int = str_bfind(name, "/");
         if slash >= 0 {
-            return name[slash + 1:];
+            return str_bslice_from(name, slash + 1);
         }
     }
     return name;
@@ -110,11 +119,11 @@ def:pub pm_unscoped_name(name: str) -> str {
 
 """bun's `normalizedBinName`: the part after the last '/', '\\' or ':'."""
 def:pub pm_normalized_bin_name(name: str) -> str {
-    i: int = len(name) - 1;
+    i: int = str_nbytes(name) - 1;
     while i >= 0 {
-        c: str = name[i];
+        c: str = byte_chr(str_byte(name, i));
         if c == "/" or c == "\\" or c == ":" {
-            return name[i + 1:];
+            return str_bslice_from(name, i + 1);
         }
         i = i - 1;
     }

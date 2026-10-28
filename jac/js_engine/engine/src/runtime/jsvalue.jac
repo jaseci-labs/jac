@@ -336,6 +336,33 @@ def:pub js_abstract_equal(a: JSValue, b: JSValue) -> bool {
 # typeof
 # ============================================================
 
+"""js_typeof's answer as an index into the eight typeof names: 0 undefined,
+1 object, 2 boolean, 3 number, 4 string, 5 function, 6 symbol, 7 bigint."""
+def:pub js_typeof_code(v: JSValue) -> int {
+    if jsv_is_undefined(v) or jsv_is_htmldda(v) {
+        return 0;
+    }
+    if jsv_is_null(v) {
+        return 1;
+    }
+    if jsv_is_bool(v) {
+        return 2;
+    }
+    if jsv_is_number(v) {
+        return 3;
+    }
+    if jsv_is_string_cell(v) {
+        return 4;
+    }
+    if jsv_is_symbol(v) {
+        return 6;
+    }
+    if jsv_is_bigint_cell(v) {
+        return 7;
+    }
+    return 1;
+}
+
 """
 typeof operator — ECMAScript §13.5.3
 

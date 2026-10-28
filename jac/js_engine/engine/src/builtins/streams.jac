@@ -84,6 +84,10 @@ import from engine.src.builtins.stdin {
 }
 import from engine.src.runtime.gc_pin { gc_pin_live_list }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  Constants
 # ══════════════════════════════════════════════════════════════════════════════
@@ -569,19 +573,19 @@ def:pub stream_write(this_val: JSValue, args: list[JSValue]) -> JSValue {
 def _do_write_chunk(se_w: StreamEntry, chunk: JSValue) {
     if jsv_is_string_cell(chunk) {
         s: str = str_from_id(jsv_to_table_id(chunk));
-        slen: int = len(s);
+        slen: int = str_nbytes(s);
         if se_w.fd >= 0 {
             write(se_w.fd, s, slen);
         }
     } elif jsv_is_int32(chunk) {
         s2: str = str(jsv_to_int32(chunk));
         if se_w.fd >= 0 {
-            write(se_w.fd, s2, len(s2));
+            write(se_w.fd, s2, str_nbytes(s2));
         }
     } elif jsv_is_double(chunk) {
         s3: str = str(jsv_to_double(chunk));
         if se_w.fd >= 0 {
-            write(se_w.fd, s3, len(s3));
+            write(se_w.fd, s3, str_nbytes(s3));
         }
     }
     # Fire drain listeners
