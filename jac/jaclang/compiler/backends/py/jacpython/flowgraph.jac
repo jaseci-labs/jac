@@ -1498,6 +1498,40 @@ def ac_maybe_push(
     }
 }
 
+def ac_bit(index: int) -> int {
+    if index < 63 {
+        return 1 << index;
+    }
+    return -9223372036854775807 - 1;
+}
+
+def fast_scan_many_locals(u: unverified_cfg, nlocals: int) {
+    states: list[int] = [0] * (nlocals - 64);
+    blocknum = 0;
+    for b in u.blocks {
+        blocknum = blocknum + 1;
+        for ins in b.instrs {
+            arg = ins.oparg;
+            if arg < 64 {
+                continue;
+            }
+            op = ins.opcode;
+            if op == OP_DELETE_FAST
+                or op == OP_LOAD_FAST_AND_CLEAR
+                or op == OP_STORE_FAST_MAYBE_NULL {
+                states[arg - 64] = blocknum - 1;
+            } elif op == OP_STORE_FAST {
+                states[arg - 64] = blocknum;
+            } elif op == OP_LOAD_FAST {
+                if states[arg - 64] != blocknum {
+                    ins.opcode = OP_LOAD_FAST_CHECK;
+                }
+                states[arg - 64] = blocknum;
+            }
+        }
+    }
+}
+
 def ac_scan_block(
     u: unverified_cfg,
     b: basicblock,
@@ -1588,7 +1622,7 @@ def ac_scan_block(
             continue;
         }
         if oparg >= 0 and oparg < nlocals {
-            bit = 1 << oparg;
+            bit = ac_bit(oparg);
             op = ins.opcode;
             if op == OP_DELETE_FAST
                 or op == OP_LOAD_FAST_AND_CLEAR
@@ -1634,6 +1668,10 @@ def add_checks_for_uninitialized(u: unverified_cfg) {
     if nlocals == 0 {
         return;
     }
+    if nlocals > 64 {
+        fast_scan_many_locals(u, nlocals);
+        nlocals = 64;
+    }
     # Layout position per block id (ids are dense 0..next_block_id-1).
     nblocks = u.next_block_id;
     pos: list[int] = [];
@@ -1673,7 +1711,7 @@ def add_checks_for_uninitialized(u: unverified_cfg) {
     start_mask = 0;
     i = u.param_count;
     while i < nlocals {
-        start_mask = start_mask | (1 << i);
+        start_mask = start_mask | ac_bit(i);
         i = i + 1;
     }
     entry_blk = u.blocks[0];
