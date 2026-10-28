@@ -33,7 +33,7 @@ import from engine.src.runtime.jscell {
     FLAG_OLD,
     FLAG_REMEMBERED
 }
-import from engine.src.runtime.gc_barrier { gc_rem_obj }
+import from engine.src.runtime.gc_barrier { gc_rem_obj, gc_young_note }
 import from engine.src.builtins.markers {
     _KEY_IS_ARRAY,
     _KEY_IS_MAP,
@@ -46,7 +46,11 @@ import from engine.src.builtins.markers {
     _KEY_IS_ENV_OBJ,
     _KEY_IS_REGEXP_MARK
 }
-import from engine.src.runtime.mem { read_u64, write_i64 }
+import from engine.src.runtime.mem {
+    read_u64,
+    write_i64,
+    str_nbytes
+}
 import from engine.src.ffi.libc { realloc, free, write, abort, getenv, memmove }
 
 # JAC_SLOT_CHECK=1: bounds-check every JSObject slot read/write and abort on a
@@ -71,7 +75,7 @@ def _slot_check(sc_n: int, i: int, what: str) -> None {
             + ", object has "
             + str(sc_n)
             + " slots\n";
-        write(2, sc_msg, len(sc_msg));
+        write(2, sc_msg, str_nbytes(sc_msg));
         abort();
     }
 }
@@ -79,7 +83,7 @@ def _slot_check(sc_n: int, i: int, what: str) -> None {
 """Out of memory while growing a slot buffer."""
 def _slot_oom(size: int) -> None {
     so_msg: str = "FATAL: slot buffer OOM (size=" + str(size) + ")\n";
-    write(2, so_msg, len(so_msg));
+    write(2, so_msg, str_nbytes(so_msg));
     abort();
 }
 
@@ -536,6 +540,7 @@ obj:pub JSObject {
             if sp_new == 0 {
                 _slot_oom(16 + sp_nc * 8);
             }
+            gc_young_note((sp_nc - sp_c) * 8 + (16 if sp_c == 0 else 0));
             write_i64(sp_new, 8, sp_nc);
             self.sp = sp_new;
             if sp_nc > 4 {
@@ -603,22 +608,23 @@ obj:pub JSObject {
     # ── Extension record (rare per-object state) ───────────────────────────
     """The extension record, created on first use."""
     def:pub ext_rw -> JSObjectExt {
-        er_x: JSObjectExt | None = self.ext;
-        if er_x is not None {
-            return er_x;
+        if self.ext is None {
+            return self._ext_new();
         }
+        return self.ext;
+    }
+
+    def _ext_new -> JSObjectExt {
         er_n: JSObjectExt = JSObjectExt();
         self.ext = er_n;
         return er_n;
     }
 
-    """True when the object has an accessor table."""
+    """True when the object has an accessor table. (Written without an owned
+    local: one adds the unwind registration and two refcount operations to
+    a method called ~18M times per build.)"""
     def:pub has_acc -> bool {
-        ha_x: JSObjectExt | None = self.ext;
-        if ha_x is None {
-            return False;
-        }
-        return ha_x.accessors is not None;
+        return self.ext is not None and self.ext.accessors is not None;
     }
 
     """Binary kind (BINARY_KIND_*), 0 for an ordinary object."""
@@ -643,23 +649,15 @@ obj:pub JSObject {
     """Dict `entries` for READ access: the object's own dict, or the shared empty
     one when it has none yet. Result must not be mutated (see ent_rw)."""
     def:pub ent_ro -> dict[int, JSProperty] {
-        eo_x: JSObjectExt | None = self.ext;
-        if eo_x is not None {
-            eo_e: dict[int, JSProperty] | None = eo_x.entries;
-            if eo_e is not None {
-                return eo_e;
-            }
+        if self.ext is not None and self.ext.entries is not None {
+            return self.ext.entries;
         }
         return _ENT_EMPTY;
     }
 
     """True when the object has its own dict-mode `entries`."""
     def:pub has_ent -> bool {
-        he_x: JSObjectExt | None = self.ext;
-        if he_x is None {
-            return False;
-        }
-        return he_x.entries is not None;
+        return self.ext is not None and self.ext.entries is not None;
     }
 
     """Dict `entries` for WRITE access, materializing it on first dict-mode store."""
@@ -676,12 +674,8 @@ obj:pub JSObject {
 
     """`key_order` for READ access; shared empty list when the object has none."""
     def:pub ko_ro -> list[int] {
-        ko_x: JSObjectExt | None = self.ext;
-        if ko_x is not None {
-            ko_k: list[int] | None = ko_x.key_order;
-            if ko_k is not None {
-                return ko_k;
-            }
+        if self.ext is not None and self.ext.key_order is not None {
+            return self.ext.key_order;
         }
         return _KO_EMPTY;
     }
@@ -833,6 +827,7 @@ obj:pub JSObject {
             if ep_new == 0 {
                 _slot_oom(16 + ep_nc * 8);
             }
+            gc_young_note((ep_nc - ep_c) * 8 + (16 if ep_c == 0 else 0));
             write_i64(ep_new, 0, ep_n);
             write_i64(ep_new, 8, ep_nc);
             self.ep = ep_new;
@@ -854,6 +849,7 @@ obj:pub JSObject {
         if ei_p == 0 {
             _slot_oom(16 + ei_n * 8);
         }
+        gc_young_note(16 + ei_n * 8);
         write_i64(ei_p, 0, ei_n);
         write_i64(ei_p, 8, ei_n);
         ei_kind: int = ELEMS_DENSE;
@@ -880,6 +876,7 @@ obj:pub JSObject {
         if er_p == 0 {
             _slot_oom(16 + n * 8);
         }
+        gc_young_note(16 + n * 8);
         write_i64(er_p, 0, n);
         write_i64(er_p, 8, n);
         er_kind: int = ELEMS_DENSE;
@@ -1085,6 +1082,12 @@ obj:pub JSObject {
             }
             return self.sget(packed_o // 16);
         }
+        return self._own_data_dict(key);
+    }
+
+    """get_own_data_or_hole's dict-mode half, kept out of the shape-mode
+    path: its owned map local would register the whole method for unwind."""
+    def _own_data_dict(key: int) -> JSValue {
         ent_o: dict[int, JSProperty] = self.ent_ro();
         if key in ent_o {
             return ent_o[key].value;
@@ -1166,6 +1169,12 @@ obj:pub JSObject {
             }
             return -1;
         }
+        return self._set_dict(key, value, flags);
+    }
+
+    """set's dict-mode half (its map and list locals would register the
+    shape-mode path for unwind too)."""
+    def _set_dict(key: int, value: JSValue, flags: int) -> int {
         w: bool = (flags & PROP_WRITABLE) != 0;
         e: bool = (flags & PROP_ENUMERABLE) != 0;
         c: bool = (flags & PROP_CONFIGURABLE) != 0;

@@ -116,20 +116,20 @@ import from "@jac/runtime" { Router, Routes, Route }  # npm (quoted)
 
 **`main.jac` mixes both sides.** Server imports go at the top (server is the default placement). The client section - CSS import, top-level component, `def:pub app` (no-arg for manual routing; `app(children)` that renders `children` for file-based routing - see `jac-cl-routing`) - is inferred client from its JSX and string-path imports; no wrapper syntax exists or is needed.
 
-**No-dot imports are project-root absolute.** In server/native code, `import from engine.math.vec3 { Vec3 }` resolves against the **project root** (the nearest `jac.toml` dir) from *anywhere* in the project - the importing file may sit at the root, under `tests/`, or any depth, and the import is identical. This is the idiomatic form; prefer it over dot-counting. A test in `tests/` imports the modules it exercises with the same no-dot path it would use at the root.
+**No-dot imports are project-root absolute.** In server/native code, `import from engine.math.vec3 { Vec3 }` resolves against the **project root** (the nearest `jac.toml` dir) from *anywhere* in the project - the importing file may sit at the root, under `tests/`, or any depth, and the import is identical. This is the idiomatic form; prefer it over dot-counting. A test in `tests/` imports the modules it exercises with the same no-dot path it would use at the root. One catch, in server and client code alike: the importing file's own folder is checked before the project root, so a same-named module next to the file wins - with both `shared/utils.jac` and `pages/shared/utils.jac`, `import from shared.utils { ... }` in `pages/index.jac` gets the `pages/` one. Don't reuse a root package name in a subfolder.
 
-**Relative (dotted) imports** walk up from the importing file's own directory - each leading `.` is one folder. They are mainly needed in **client** code (inferred client from JSX or npm imports), where the bundler resolves them. Imports of server modules from client code carry the same dot semantics.
+**Relative (dotted) imports** walk up from the importing file's own directory - each leading `.` is one folder. They mean the same in server, native and client code; the sibling form `.store` is their common use. No-dot imports work in client code too: `import from notes.NotesShell { NotesShell }` in `pages/index.jac` compiles to `../notes/NotesShell.js` in the bundle.
 
 | Dots | Meaning | Use when |
 |---|---|---|
-| `shared.X`     | project-root absolute  | **default** - resolves from any depth in the project (server/native) |
+| `shared.X`     | project root (own folder first) | **default** - resolves from any depth in the project (server, native and client) |
 | `.store`       | same folder            | `store` is a sibling module in this same folder |
 | `..shared.X`   | one folder up          | importing file is one level deep (`recipes/X.jac`) |
 | `...shared.X`  | two folders up         | importing file is two levels deep (`recipes/parts/X.jac`) |
 
-A no-dot import is depth-independent: moving a file between directories never changes it. Dot-counted forms (`..`, `...`) DO break when a file moves to a different depth - wrong dot count = silent resolution failure = imported names become `<Unknown>` → cascading type errors.
+A no-dot import is depth-independent: moving a file between directories never changes its text (only a same-named module in the new folder changes what it resolves to). Dot-counted forms (`..`, `...`) DO break when a file moves to a different depth - wrong dot count = silent resolution failure = imported names become `<Unknown>` → cascading type errors.
 
-**Server modules should prefer the no-dot form, and a `..` that climbs out of a package is a bug waiting to happen.** `import from ..shared.github { fetch }` resolves fine under `jac run` but fails `jac test <file>` with `attempted relative import beyond top-level package`, because the test runner roots the package at the target file's own directory. `import from shared.github { fetch }` works in both. Client modules keep the dotted form - that is what the bundler resolves.
+**Server modules should prefer the no-dot form, and a `..` that climbs out of a package is a bug waiting to happen.** `import from ..shared.github { fetch }` resolves fine under `jac run` but fails `jac test <file>` with `attempted relative import beyond top-level package`, because the test runner roots the package at the target file's own directory. `import from shared.github { fetch }` works in both. Client modules can use the no-dot form as well; the compiler turns it into the relative path the bundler needs.
 
 ## Compile-time values (comptime)
 

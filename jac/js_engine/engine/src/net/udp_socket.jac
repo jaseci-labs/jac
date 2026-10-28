@@ -43,7 +43,8 @@ import from engine.src.runtime.mem {
     read_u16,
     read_ptr,
     write_i32,
-    io_alloc
+    io_alloc,
+    str_nbytes
 }
 import from engine.src.runtime.syscall { is_c_error }
 import from engine.src.net.constants {
@@ -307,7 +308,7 @@ def:pub udp_send(sock: UDPSocket, data: str, host: str, port: int) -> int {
     alen: int = read_u32(first, _AI_ADDRLEN);
     addr: int = read_ptr(first, _AI_ADDR);
 
-    n: int = len(data);
+    n: int = str_nbytes(data);
     sent: int = sendto(sock.fd, data, n, 0, addr, alen);
     freeaddrinfo(first);
     return sent;

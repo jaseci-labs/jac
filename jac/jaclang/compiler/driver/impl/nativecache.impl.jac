@@ -937,7 +937,11 @@ impl NativeBuildSession.lower(
         opts.no_cgen = False;
         self.prog.options = opts;
         set_effective_default_codespace("native");
-        import from jaclang.compiler.driver.pipeline { invalidate, require }
+        import from jaclang.compiler.driver.pipeline {
+            invalidate,
+            require,
+            unavailable
+        }
         import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
         discover = True;
         attempted: set[str] = set();
@@ -978,8 +982,10 @@ impl NativeBuildSession.lower(
         self.registry._event("native_unit_lower");
         self.registry.note_slow_step("lowering", resolved, started);
         if len(self.prog.errors_had) > errors_before or mod.gen.native_iface is None {
-            if mod.gen.native_refusal {
-                self.registry.failures[resolved] = mod.gen.native_refusal;
+            refusal = mod.gen.native_refusal
+                or unavailable(CompilationProduct.NATIVE_LOWER);
+            if refusal {
+                self.registry.failures[resolved] = refusal;
             } elif mod.gen.native_iface is None {
                 self.registry.failures[resolved] = (
                     "lowering produced no native interface: the module has "

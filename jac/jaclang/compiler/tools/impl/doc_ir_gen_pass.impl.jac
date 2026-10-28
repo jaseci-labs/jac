@@ -1742,6 +1742,13 @@ impl DocIRGenPass.exit_binary_expr with uni.BinaryExpr exit {
         self._assign_space_group(here);
         return;
     }
+    if (
+        isinstance(here.parent, uni.BinaryExpr)
+        and isinstance(here.parent.op, uni.Token)
+        and (here.parent.op.name == here.op.name)
+    ) {
+        return;
+    }
     operands: list[uni.UniNode] = [];
     ops: list[uni.UniNode] = [];
     def __flatten(expr: uni.UniNode) {

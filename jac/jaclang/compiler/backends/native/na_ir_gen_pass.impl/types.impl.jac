@@ -1180,6 +1180,18 @@ impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     return _sig_out;
 }
 
+impl NaIRGenPass._resolve_return_type(
+    type_expr: (uni.UniNode | None), method: bool = False
+) -> ir.Type {
+    if type_expr is None {
+        return ir.VoidType();
+    }
+    if method {
+        return self._resolve_sig_type(type_expr);
+    }
+    return self._resolve_jac_type(type_expr);
+}
+
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
@@ -2963,7 +2975,11 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             }
             if isinstance(val, ir.Constant) and isinstance(val.constant, int) {
                 _w = target_type.width;
-                if -(1 << (_w - 1)) <= val.constant < (1 << _w) {
+                _fits = _int_min_bits(_w) <= val.constant;
+                if _fits and _w < 64 {
+                    _fits = val.constant <= (1 << _w) - 1;
+                }
+                if _fits {
                     return ir.Constant(target_type, val.constant);
                 }
             }
@@ -3302,7 +3318,13 @@ impl NaIRGenPass._emit_str_concat_inplace(
         name="ip.guc"
     );
     _gst = self.builder.or_(
-        self.builder.and_(aw, ir.Constant(i64, 0x000FFFFFFFFFFFFF), name="ip.nawkeep"),
+        self.builder.and_(
+            aw,
+            ir.Constant(
+                i64, 0x000FFFFFFFFFFFFF & ~(POOL_CLASS_MASK << POOL_CLASS_SHIFT)
+            ),
+            name="ip.nawkeep"
+        ),
         self.builder.shl(_gclamped, ir.Constant(i64, 52), name="ip.gushift"),
         name="ip.gstamp"
     );
@@ -3419,8 +3441,8 @@ impl NaIRGenPass._emit_binary_op(
     left: ir.Value,
     right: ir.Value,
     unsigned: bool = False,
-    checked: bool = False,
-    inplace_slot: (ir.Value | None) = None
+    inplace_slot: (ir.Value | None) = None,
+    sized: bool = True
 ) -> (ir.Value | None) {
     if op == Tok.PLUS and inplace_slot is not None {
         _ipr = self._emit_str_concat_inplace(left, right, inplace_slot);
@@ -3802,15 +3824,13 @@ impl NaIRGenPass._emit_binary_op(
         }
         (left, right) = self._unify_int_widths(left, right);
         if op == Tok.LSHIFT {
-            if checked {
-                return self._emit_checked_shl(left, right, unsigned);
-            }
-            return self.builder.shl(left, right, name="shl");
+            return self._emit_checked_shl(left, right, unsigned)
+                if sized
+                else self._emit_plain_int_shl(left, right);
         } elif op == Tok.RSHIFT {
-            if checked {
-                return self._emit_shr(left, right, unsigned);
-            }
-            return self.builder.ashr(left, right, name="ashr");
+            return self._emit_shr(left, right, unsigned)
+                if sized
+                else self._emit_plain_int_shr(left, right);
         }
         if left.type != right.type {
             self.emit(
@@ -4969,7 +4989,21 @@ impl NaIRGenPass._emit_comparison(
         }
 
         if left.type == i8_ptr and right.type == i8_ptr {
-            cmp_result = self._call_str_cmp(self.builder, left, right, name="strcmp");
+            _lit_r = self._one_byte_literal(right);
+            _lit_l = self._one_byte_literal(left) if _lit_r is None else None;
+            if _lit_r is not None {
+                cmp_result = self._emit_str_cmp_one_byte(left, _lit_r);
+            } elif _lit_l is not None {
+                cmp_result = self.builder.sub(
+                    ir.Constant(ir.IntType(32), 0),
+                    self._emit_str_cmp_one_byte(right, _lit_l),
+                    name="s1.flip"
+                );
+            } else {
+                cmp_result = self._call_str_cmp(
+                    self.builder, left, right, name="strcmp"
+                );
+            }
             zero = ir.Constant(ir.IntType(32), 0);
             if op == Tok.EE or op == Tok.NE {
                 _sym = "==" if op == Tok.EE else "!=";

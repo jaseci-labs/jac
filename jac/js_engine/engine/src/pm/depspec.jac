@@ -17,6 +17,15 @@ bit4 peer, bit5 workspace, bit6 bundled) so the sort order can be ported 1:1.
 
 import from engine.src.pm.semver { SemGroup, semver_parse_range }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 glob:pub SPEC_NPM: int = 1,
      SPEC_DIST_TAG: int = 2,
      SPEC_WORKSPACE: int = 3,
@@ -54,9 +63,9 @@ obj:pub DepSpec {
 # github: repo (".git" stripped); git: the URL without "git+" and "#ref"
 # git / github: the ref after '#'
 def _last_index(s: str, ch: str) -> int {
-    i: int = len(s) - 1;
+    i: int = str_nbytes(s) - 1;
     while i >= 0 {
-        if s[i] == ch {
+        if byte_chr(str_byte(s, i)) == ch {
             return i;
         }
         i = i - 1;
@@ -70,9 +79,9 @@ def _last_index(s: str, ch: str) -> int {
 def _github_parts(dep: str) -> tuple[str, str, str] {
     s: str = dep;
     if s.startswith("github:") {
-        s = s[7:];
+        s = str_bslice_from(s, 7);
     } elif s.startswith("git+") {
-        s = s[4:];
+        s = str_bslice_from(s, 4);
     }
     for prefix in [
         "https://github.com/",
@@ -83,27 +92,27 @@ def _github_parts(dep: str) -> tuple[str, str, str] {
         "github.com/"
     ] {
         if s.startswith(prefix) {
-            s = s[len(prefix):];
+            s = str_bslice_from(s, str_nbytes(prefix));
             break;
         }
     }
     committish: str = "";
     h: int = _last_index(s, "#");
     if h >= 0 {
-        committish = s[h + 1:];
-        s = s[0:h];
+        committish = str_bslice_from(s, h + 1);
+        s = str_bslice(s, 0, h);
     }
     if s.endswith(".git") {
-        s = s[0:len(s) - 4];
+        s = str_bslice(s, 0, str_nbytes(s) - 4);
     }
     if s.endswith("/") {
-        s = s[0:len(s) - 1];
+        s = str_bslice(s, 0, str_nbytes(s) - 1);
     }
-    slash: int = s.find("/");
+    slash: int = str_bfind(s, "/");
     if slash < 0 {
         return ("", s, committish);
     }
-    return (s[0:slash], s[slash + 1:], committish);
+    return (str_bslice(s, 0, slash), str_bslice_from(s, slash + 1), committish);
 }
 
 def _is_tarball(s: str) -> bool {
@@ -112,13 +121,13 @@ def _is_tarball(s: str) -> bool {
 
 """GitHub shorthand `user/repo[#ref]`: two path segments, no scheme/space."""
 def _is_github_shorthand(s: str) -> bool {
-    if s == "" or s.find("://") >= 0 or s.find(" ") >= 0 {
+    if s == "" or str_bfind(s, "://") >= 0 or str_bfind(s, " ") >= 0 {
         return False;
     }
     body: str = s;
-    hash_i: int = body.find("#");
+    hash_i: int = str_bfind(body, "#");
     if hash_i >= 0 {
-        body = body[0:hash_i];
+        body = str_bslice(body, 0, hash_i);
     }
     parts: list[str] = body.split("/");
     if len(parts) != 2 {
@@ -141,7 +150,7 @@ def:pub depspec_infer(dep: str) -> int {
     if dep == "" {
         return SPEC_DIST_TAG;
     }
-    c: str = dep[0];
+    c: str = byte_chr(str_byte(dep, 0));
     if c == "=" or c == ">" or c == "<" or c == "^" or c == "*" or c == "|" {
         return SPEC_NPM;
     }
@@ -152,7 +161,7 @@ def:pub depspec_infer(dep: str) -> int {
         return SPEC_FOLDER;
     }
     if c == "~" {
-        if len(dep) > 1 and dep[1] == "/" {
+        if str_nbytes(dep) > 1 and byte_chr(str_byte(dep, 1)) == "/" {
             if _is_tarball(dep) {
                 return SPEC_TARBALL;
             }
@@ -176,10 +185,10 @@ def:pub depspec_infer(dep: str) -> int {
         return SPEC_CATALOG;
     }
     if dep.startswith("git") {
-        rest: str = dep[3:];
+        rest: str = str_bslice_from(dep, 3);
         if rest.startswith("://") {
-            body: str = rest[3:];
-            if body.startswith("github.com/") and _is_github_shorthand(body[11:]) {
+            body: str = str_bslice_from(rest, 3);
+            if body.startswith("github.com/") and _is_github_shorthand(str_bslice_from(body, 11)) {
                 return SPEC_GITHUB;
             }
             return SPEC_GIT;
@@ -188,33 +197,33 @@ def:pub depspec_infer(dep: str) -> int {
             return SPEC_GIT;
         }
         if rest.startswith("+http") {
-            body2: str = rest[5:];
+            body2: str = str_bslice_from(rest, 5);
             if body2.startswith("://") {
-                body2 = body2[3:];
+                body2 = str_bslice_from(body2, 3);
             } elif body2.startswith("s://") {
-                body2 = body2[4:];
+                body2 = str_bslice_from(body2, 4);
             }
-            if body2.startswith("github.com/") and _is_github_shorthand(body2[11:]) {
+            if body2.startswith("github.com/") and _is_github_shorthand(str_bslice_from(body2, 11)) {
                 return SPEC_GITHUB;
             }
             return SPEC_GIT;
         }
         if rest.startswith("hub:") {
-            if _is_github_shorthand(rest[4:]) {
+            if _is_github_shorthand(str_bslice_from(rest, 4)) {
                 return SPEC_GITHUB;
             }
         }
     }
     if dep.startswith("http") {
-        u: str = dep[4:];
+        u: str = str_bslice_from(dep, 4);
         if u.startswith("://") {
-            u = u[3:];
+            u = str_bslice_from(u, 3);
         } elif u.startswith("s://") {
-            u = u[4:];
+            u = str_bslice_from(u, 4);
         }
         if u.startswith("github.com/") {
-            p: str = u[11:];
-            if p.find("/tarball/") >= 0 or p.find("/archive/") >= 0 {
+            p: str = str_bslice_from(u, 11);
+            if str_bfind(p, "/tarball/") >= 0 or str_bfind(p, "/archive/") >= 0 {
                 return SPEC_TARBALL;
             }
             if _is_github_shorthand(p) {
@@ -229,14 +238,14 @@ def:pub depspec_infer(dep: str) -> int {
     if dep.startswith("link:") {
         return SPEC_SYMLINK;
     }
-    if dep.startswith("npm:") and len(dep) > 4 {
-        remain: str = dep[4:];
+    if dep.startswith("npm:") and str_nbytes(dep) > 4 {
+        remain: str = str_bslice_from(dep, 4);
         if remain.startswith("@") {
-            remain = remain[1:];
+            remain = str_bslice_from(remain, 1);
         }
-        at: int = remain.find("@");
+        at: int = str_bfind(remain, "@");
         if at >= 0 {
-            return depspec_infer(remain[at + 1:]);
+            return depspec_infer(str_bslice_from(remain, at + 1));
         }
         return SPEC_NPM;
     }
@@ -247,7 +256,7 @@ def:pub depspec_infer(dep: str) -> int {
         if _is_github_shorthand(dep) {
             return SPEC_GITHUB;
         }
-        if len(dep) == 1 {
+        if str_nbytes(dep) == 1 {
             return SPEC_DIST_TAG;
         }
         return SPEC_NPM;
@@ -256,11 +265,11 @@ def:pub depspec_infer(dep: str) -> int {
         return SPEC_WORKSPACE;
     }
     if c == "x" or c == "X" {
-        if len(dep) == 1 {
+        if str_nbytes(dep) == 1 {
             return SPEC_NPM;
         }
-        if len(dep) > 1
-            and (dep[1] == "." or dep[1] == "x" or dep[1] == "X" or dep[1] == "*") {
+        if str_nbytes(dep) > 1
+            and (byte_chr(str_byte(dep, 1)) == "." or byte_chr(str_byte(dep, 1)) == "x" or byte_chr(str_byte(dep, 1)) == "X" or byte_chr(str_byte(dep, 1)) == "*") {
             return SPEC_NPM;
         }
     }
@@ -275,16 +284,16 @@ def:pub depspec_infer(dep: str) -> int {
 
 """Split "npm:<name>@<rest>" → (name, rest); rest "" when absent."""
 def _split_alias(dep: str) -> tuple[str, str] {
-    s: str = dep[4:];
+    s: str = str_bslice_from(dep, 4);
     start: int = 0;
     if s.startswith("@") {
         start = 1;
     }
-    at: int = s.find("@", start);
+    at: int = str_bfind(s, "@", start);
     if at < 0 {
         return (s, "");
     }
-    return (s[0:at], s[at + 1:]);
+    return (str_bslice(s, 0, at), str_bslice_from(s, at + 1));
 }
 
 """Parse a specifier written for dependency `alias` (the key in package.json)."""
@@ -299,15 +308,15 @@ def:pub depspec_parse(alias: str, dep: str) -> DepSpec {
             spec.is_alias = True;
             input = a[1];
         }
-        if len(input) > 1 and input[0] == "v" {
-            input = input[1:];
+        if str_nbytes(input) > 1 and byte_chr(str_byte(input, 0)) == "v" {
+            input = str_bslice_from(input, 1);
         }
         spec.range = semver_parse_range(input);
         return spec;
     }
     if spec.tag == SPEC_DIST_TAG {
         tag: str = dep;
-        if dep.startswith("npm:") and len(dep) > 4 {
+        if dep.startswith("npm:") and str_nbytes(dep) > 4 {
             a2: tuple[str, str] = _split_alias(dep);
             spec.name = a2[0];
             spec.is_alias = True;
@@ -320,19 +329,19 @@ def:pub depspec_parse(alias: str, dep: str) -> DepSpec {
         return spec;
     }
     if spec.tag == SPEC_WORKSPACE {
-        spec.path = dep[10:];
+        spec.path = str_bslice_from(dep, 10);
         return spec;
     }
     if spec.tag == SPEC_FOLDER {
         p: str = dep;
         if p.startswith("file:") {
-            p = p[5:];
+            p = str_bslice_from(p, 5);
         }
         spec.path = p;
         return spec;
     }
     if spec.tag == SPEC_SYMLINK {
-        spec.path = dep[5:];
+        spec.path = str_bslice_from(dep, 5);
         return spec;
     }
     if spec.tag == SPEC_GITHUB {
@@ -346,12 +355,12 @@ def:pub depspec_parse(alias: str, dep: str) -> DepSpec {
     if spec.tag == SPEC_GIT {
         u: str = dep;
         if u.startswith("git+") {
-            u = u[4:];
+            u = str_bslice_from(u, 4);
         }
         h2: int = _last_index(u, "#");
         if h2 >= 0 {
-            spec.committish = u[h2 + 1:];
-            u = u[0:h2];
+            spec.committish = str_bslice_from(u, h2 + 1);
+            u = str_bslice(u, 0, h2);
         }
         spec.repo = u;
         spec.path = u;

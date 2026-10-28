@@ -160,25 +160,32 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     b.cbranch(is_null, no_handler_bb, has_handler_bb);
 
     b.position_at_end(no_handler_bb);
-    printf_fn = self._get_printf();
-    err_fmt_str = "Uncaught exception: %s\n\0";
-    err_fmt_bytes = bytearray(err_fmt_str.encode("utf8"));
-    err_fmt_const = ir.Constant(
-        ir.ArrayType(ir.IntType(8), len(err_fmt_bytes)), err_fmt_bytes
-    );
-    err_fmt_global = ir.GlobalVariable(
-        self.llvm_module, err_fmt_const.type, name=".exc.uncaught.fmt"
-    );
-    err_fmt_global.linkage = "private";
-    err_fmt_global.global_constant = True;
-    err_fmt_global.initializer = err_fmt_const;
-    err_fmt_ptr = b.bitcast(err_fmt_global, i8p);
-    b.call(printf_fn, [err_fmt_ptr, msg_val]);
-
-    _fflush = self._get_or_declare_extern("fflush", ir.IntType(32), [i8p]);
-    b.call(_fflush, [ir.Constant(i8p, None)]);
-    abort_fn = self.extern_funcs["abort"];
-    b.call(abort_fn, []);
+    if self._target_is_wasm() {
+        report_fn = self._get_or_declare_extern(
+            "__jac_uncaught_exception", ir.VoidType(), [i8p]
+        );
+        b.call(report_fn, [msg_val]);
+    } else {
+        stderr_val = self._emit_stdio_handle(2, "stderr", b);
+        fprintf_fn = self._get_or_declare_extern(
+            "fprintf", ir.IntType(32), [i8p, i8p], var_arg=True
+        );
+        err_fmt_str = "Uncaught exception: %s\n\0";
+        err_fmt_bytes = bytearray(err_fmt_str.encode("utf8"));
+        err_fmt_const = ir.Constant(
+            ir.ArrayType(ir.IntType(8), len(err_fmt_bytes)), err_fmt_bytes
+        );
+        err_fmt_global = ir.GlobalVariable(
+            self.llvm_module, err_fmt_const.type, name=".exc.uncaught.fmt"
+        );
+        err_fmt_global.linkage = "private";
+        err_fmt_global.global_constant = True;
+        err_fmt_global.initializer = err_fmt_const;
+        err_fmt_ptr = b.bitcast(err_fmt_global, i8p);
+        b.call(fprintf_fn, [stderr_val, err_fmt_ptr, msg_val]);
+    }
+    exit_fn = self._get_or_declare_extern("exit", ir.VoidType(), [i32]);
+    b.call(exit_fn, [ir.Constant(i32, 1)]);
     b.unreachable();
 
     b.position_at_end(has_handler_bb);

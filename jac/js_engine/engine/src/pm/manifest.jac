@@ -55,7 +55,14 @@ import from engine.src.pm.fsx {
     fsx_mkdir_p,
     fsx_is_file
 }
-import from engine.src.runtime.mem { io_free }
+import from engine.src.runtime.mem {
+    io_free,
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
 
 glob:pub NPM_ACCEPT: str = "Accept: application/vnd.npm.install-v1+json; q=1.0, application/json; q=0.8, */*";
 
@@ -97,9 +104,10 @@ def _hex_to_b64(hex: str) -> str {
     digits: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     vals: list[int] = [];
     i: int = 0;
-    while i + 1 < len(hex) {
+    _nb107_hex: int = str_nbytes(hex);
+    while i + 1 < _nb107_hex {
         try {
-            vals.append(int(hex[i:i + 2], 16));
+            vals.append(int(str_bslice(hex, i, i + 2), 16));
         } except Exception {
             return "";
         }
@@ -112,25 +120,25 @@ def _hex_to_b64(hex: str) -> str {
         b0: int = vals[j];
         b1: int = vals[j + 1];
         b2: int = vals[j + 2];
-        out.append(digits[b0 >> 2]);
-        out.append(digits[((b0 & 3) << 4) | (b1 >> 4)]);
-        out.append(digits[((b1 & 15) << 2) | (b2 >> 6)]);
-        out.append(digits[b2 & 63]);
+        out.append(byte_chr(str_byte(digits, b0 >> 2)));
+        out.append(byte_chr(str_byte(digits, ((b0 & 3) << 4) | (b1 >> 4))));
+        out.append(byte_chr(str_byte(digits, ((b1 & 15) << 2) | (b2 >> 6))));
+        out.append(byte_chr(str_byte(digits, b2 & 63)));
         j = j + 3;
     }
     rem: int = n - j;
     if rem == 1 {
         b0: int = vals[j];
-        out.append(digits[b0 >> 2]);
-        out.append(digits[(b0 & 3) << 4]);
+        out.append(byte_chr(str_byte(digits, b0 >> 2)));
+        out.append(byte_chr(str_byte(digits, (b0 & 3) << 4)));
         out.append("=");
         out.append("=");
     } elif rem == 2 {
         b0: int = vals[j];
         b1: int = vals[j + 1];
-        out.append(digits[b0 >> 2]);
-        out.append(digits[((b0 & 3) << 4) | (b1 >> 4)]);
-        out.append(digits[(b1 & 15) << 2]);
+        out.append(byte_chr(str_byte(digits, b0 >> 2)));
+        out.append(byte_chr(str_byte(digits, ((b0 & 3) << 4) | (b1 >> 4))));
+        out.append(byte_chr(str_byte(digits, (b1 & 15) << 2)));
         out.append("=");
     }
     return "".join(out);
@@ -246,9 +254,9 @@ def _parse_version(vs: str, v: JVal) -> MVersion {
         mv.tarball = jv_get_str(dist, "tarball", "");
         integ: str = jv_get_str(dist, "integrity", "");
         algo: str = "";
-        dash: int = integ.find("-");
+        dash: int = str_bfind(integ, "-");
         if dash > 0 {
-            algo = integ[0:dash].lower();
+            algo = str_bslice(integ, 0, dash).lower();
         }
         if algo == "sha512" or algo == "sha384" or algo == "sha256" or algo == "sha1" {
             mv.integrity = integ;
@@ -391,7 +399,7 @@ def:pub manifest_find_best(m: Manifest, g: SemGroup) -> MVersion {
 
 def _strip_slash(u: str) -> str {
     if u.endswith("/") {
-        return u[0:len(u) - 1];
+        return str_bslice(u, 0, str_nbytes(u) - 1);
     }
     return u;
 }
@@ -399,9 +407,9 @@ def _strip_slash(u: str) -> str {
 """Registry URL for a package name (scope registries first)."""
 def:pub pm_registry_url_for(cfg: PmConfig, name: str) -> str {
     if name.startswith("@") {
-        slash: int = name.find("/");
+        slash: int = str_bfind(name, "/");
         if slash > 0 {
-            scope: str = name[0:slash];
+            scope: str = str_bslice(name, 0, slash);
             if scope in cfg.scopes and cfg.scopes[scope].url != "" {
                 return cfg.scopes[scope].url;
             }

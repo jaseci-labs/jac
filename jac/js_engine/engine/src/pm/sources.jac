@@ -45,6 +45,15 @@ import from engine.src.pm.json { JVal, jv_get, jv_is_obj, jv_get_str }
 import from engine.src.pm.project { PkgJson, pm_read_package_json }
 import from engine.src.pm.lockfile { LockPkg }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 """Where a package's files are, plus the integrity of a fetched tarball."""
 obj:pub SourceResult {
     has ok: bool = False,
@@ -75,7 +84,7 @@ def:pub pm_is_remote_url(s: str) -> bool {
 (bun keeps `./vendor/x.tgz`), URLs untouched."""
 def:pub pm_tarball_value(spec_literal: str) -> str {
     if spec_literal.startswith("file:") {
-        return spec_literal[5:];
+        return str_bslice_from(spec_literal, 5);
     }
     return spec_literal;
 }
@@ -85,13 +94,13 @@ def:pub pm_tarball_value(spec_literal: str) -> str {
 def:pub pm_folder_value(spec_literal: str) -> str {
     p: str = spec_literal;
     if p.startswith("file:") {
-        p = p[5:];
+        p = str_bslice_from(p, 5);
     }
     return pm_path_normalize(p);
 }
 
 def _sha256_hex(s: str) -> str {
-    buf: ByteBuf = bytebuf_new(len(s) + 1);
+    buf: ByteBuf = bytebuf_new(str_nbytes(s) + 1);
     bytebuf_append_str(buf, s);
     d: tuple[int, int] = digest_raw("sha256", buf.ptr, buf.len);
     hex: str = bytes_hex(d[0], d[1]);
@@ -229,17 +238,17 @@ def _github_api -> str {
         return "https://api.github.com";
     }
     if u.endswith("/") {
-        u = u[0:len(u) - 1];
+        u = str_bslice(u, 0, str_nbytes(u) - 1);
     }
     return u;
 }
 
 """Last '-'-separated part of a GitHub tarball folder (`owner-repo-<sha>` → sha)."""
 def:pub pm_after_last_dash(s: str) -> str {
-    i: int = len(s) - 1;
+    i: int = str_nbytes(s) - 1;
     while i >= 0 {
-        if s[i] == "-" {
-            return s[i + 1:];
+        if byte_chr(str_byte(s, i)) == "-" {
+            return str_bslice_from(s, i + 1);
         }
         i = i - 1;
     }
@@ -250,35 +259,35 @@ def:pub pm_after_last_dash(s: str) -> str {
 def:pub pm_github_version_parts(version: str) -> tuple[str, str, str] {
     s: str = version;
     if s.startswith("github:") {
-        s = s[7:];
+        s = str_bslice_from(s, 7);
     }
     committish: str = "";
-    h: int = len(s) - 1;
+    h: int = str_nbytes(s) - 1;
     while h >= 0 {
-        if s[h] == "#" {
-            committish = s[h + 1:];
-            s = s[0:h];
+        if byte_chr(str_byte(s, h)) == "#" {
+            committish = str_bslice_from(s, h + 1);
+            s = str_bslice(s, 0, h);
             break;
         }
         h = h - 1;
     }
-    slash: int = s.find("/");
+    slash: int = str_bfind(s, "/");
     if slash < 0 {
         return ("", s, committish);
     }
-    return (s[0:slash], s[slash + 1:], committish);
+    return (str_bslice(s, 0, slash), str_bslice_from(s, slash + 1), committish);
 }
 
 """`git+<url>#<ref>` → (url, ref)."""
 def:pub pm_git_version_parts(version: str) -> tuple[str, str] {
     s: str = version;
     if s.startswith("git+") {
-        s = s[4:];
+        s = str_bslice_from(s, 4);
     }
-    h: int = len(s) - 1;
+    h: int = str_nbytes(s) - 1;
     while h >= 0 {
-        if s[h] == "#" {
-            return (s[0:h], s[h + 1:]);
+        if byte_chr(str_byte(s, h)) == "#" {
+            return (str_bslice(s, 0, h), str_bslice_from(s, h + 1));
         }
         h = h - 1;
     }
@@ -292,9 +301,9 @@ def _tar_top_dir(ptr: int, n: int) -> str {
             continue;
         }
         p: str = e.path;
-        slash: int = p.find("/");
+        slash: int = str_bfind(p, "/");
         if slash > 0 {
-            return p[0:slash];
+            return str_bslice(p, 0, slash);
         }
         if p != "" {
             return p;

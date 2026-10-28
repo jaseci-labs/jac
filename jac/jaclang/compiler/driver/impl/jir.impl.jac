@@ -404,6 +404,9 @@ impl resolve_compiler_input(pkg_dir: str, rel: str, recorded: dict[str, str]) ->
     if is_roster_input(rel, roster) {
         return COMPILER_DIGEST_ROSTER_MARK;
     }
+    if rel in recorded and is_staging_rewritten(rel) {
+        return recorded[rel];
+    }
     full = os.path.join(str(pkg_dir), rel.replace("/", os.sep));
     if os.path.isfile(full) {
         return compute_content_sha256(full);
@@ -474,7 +477,8 @@ impl _manifest_compiler_digest(pkg_dir: str) -> str {
             continue;
         }
         full = os.path.join(base, rel.replace("/", os.sep));
-        if os.path.isfile(full) {
+        if os.path.isfile(full)
+            and not (rel in recorded and is_staging_rewritten(rel)) {
             rows.append((rel, compute_content_sha256(full)));
         } else {
             rows.append((rel, resolve_compiler_input(base, rel, recorded)));
@@ -1029,13 +1033,15 @@ impl module_ct_deps_section(mod: any) -> (bytes | None) {
 
 impl _texts_of_spans(real: str, text: str, rows: list[str]) -> dict[str, list[str]] {
     texts: dict[str, list[str]] = {};
+    data = text.encode("utf-8");
     for row in rows {
         parts = row.split(DEF_DEP_SEP);
         if len(parts) != 3 or parts[0] != real or not parts[1] {
             continue;
         }
         (start, _, stop) = parts[2].partition(",");
-        texts.setdefault(parts[1], []).append(text[int(start):int(stop)]);
+        piece = data[int(start):int(stop)];
+        texts.setdefault(parts[1], []).append(piece.decode("utf-8", errors="replace"));
     }
     return texts;
 }

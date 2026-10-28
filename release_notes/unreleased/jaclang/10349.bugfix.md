@@ -1,0 +1,1 @@
+- Native `dict.pop(key, None)` and `dict.get(key, None)` on a dict of floats, ints or bools give an optional value instead of emitting invalid LLVM IR that failed the whole native build.

@@ -32,6 +32,9 @@ walker ASTValidationPass(TreePass) {
     can enter_global_vars with GlobalVars entry;
     can enter_func_call with FuncCall entry;
     can enter_archetype with Archetype entry;
+    can enter_impl_def with ImplDef entry;
+    def _member_attr_name(nref: Name) -> str;
+    def _check_field_method_clash(owner_node: UniNode, members: list[UniNode]) -> None;
     can enter_jsx_slot with JsxSlot entry;
     can enter_expr_stmt with ExprStmt entry;
     def _check_slot_body(stmts: list[UniNode], in_loop: bool, loop_kw: str) -> None;

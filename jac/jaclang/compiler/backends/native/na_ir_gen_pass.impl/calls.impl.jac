@@ -2623,10 +2623,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             for p in sig.get_parameters() {
                 param_ir_types.append(self._resolve_jac_type(p));
             }
-            ret_ir_type = self._resolve_jac_type(sig.return_type);
-            if sig.return_type is None and clib_import_of(sig) is not None {
-                ret_ir_type = ir.VoidType();
-            }
+            ret_ir_type = self._resolve_return_type(sig.return_type);
             _extern_sym = binding.symbol if binding.native_callable else func_name;
             if binding.source_context.value == "native" and _src_ab is not None {
                 _extern_sym = self._symbol_for(

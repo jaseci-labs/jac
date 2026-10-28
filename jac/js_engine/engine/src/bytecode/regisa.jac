@@ -51,6 +51,13 @@ import from engine.src.bytecode.op {
 import from engine.src.bytecode.optimizer { _bcopt_small_int_const, _BCOPT_NO_INT }
 import from engine.src.ffi.libc { calloc, abort }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_byte,
+    str_nbytes
+}
+
 # ── Gate / diagnostics (JS_REG_ISA=0, JS_REG_DEBUG=1; wired by init_global) ──
 glob _REG_GATE: int = 1,
      _REG_DEBUG: int = 0;
@@ -73,7 +80,8 @@ def:pub reg_isa_debug_on -> bool {
 }
 
 # ── Encoding ──────────────────────────────────────────────────────────────
-glob REG_TDZ_FLAG: int = 32768,
+glob REG_THIS_MARK: int = 65536,  # a CALLM receiver word: the frame's this, slot to fill
+     REG_TDZ_FLAG: int = 32768,
      REG_MASK: int = 32767,
      REG_C_MAX: int = 8388607,
      REG_IBIAS: int = 4194304;
@@ -126,6 +134,7 @@ glob R_NOP: int = 0,
      R_REQCOERCE: int = 16,
      R_TOPROPKEY: int = 17,
      R_INC: int = 18,
+     R_LOADIMMN: int = 19,
      R_ADD: int = 20,
      R_SUB: int = 21,
      R_MUL: int = 22,
@@ -140,6 +149,12 @@ glob R_NOP: int = 0,
      R_USHR: int = 31,
      R_ADDI: int = 32,
      R_SUBI: int = 33,
+     R_BANDI: int = 34,
+     R_BORI: int = 35,
+     R_BXORI: int = 36,
+     R_SHLI: int = 37,
+     R_SHRI: int = 38,
+     R_USHRI: int = 39,
      R_NEG: int = 40,
      R_NOT: int = 41,
      R_BNOT: int = 42,
@@ -181,6 +196,9 @@ glob R_NOP: int = 0,
      R_GETITER: int = 86,
      R_ITERNEXTVAL: int = 88,
      R_SETINDEX: int = 83,
+     R_GETINDEXI: int = 98,  # (82 ^ 98, 80 ^ 99, 81 ^ 108: no single bit, so the
+     R_GETFIELD_THIS: int = 99,  # loop's `op == a or op == b` stays two switch cases)
+     R_SETFIELD_THIS: int = 108,
      R_CALL: int = 90,
      R_CALLM: int = 91,
      R_RETURN: int = 92,
@@ -765,7 +783,8 @@ def _is_pure_shuffle(op: Opcode) -> bool {
 # Virtual-stack entry kinds
 glob VS_REG: int = 0,
      VS_CONST: int = 1,
-     VS_IMM: int = 2;  # val = register (may carry REG_TDZ_FLAG)
+     VS_IMM: int = 2,
+     VS_THIS: int = 3;  # val = register (may carry REG_TDZ_FLAG)
 
 # val = index of the LOAD_CONST instruction
 # val = RI_* kind
@@ -776,6 +795,9 @@ obj RegTranslator {
         scratch: int = 0,
         max_depth: int = 0,
         defer_ok: bool = True,
+        this_lazy: bool = False,
+        blk_start: int = 0,
+        last_e_pc: int = -1,
         bail: str = "",
         din: list[int] = [],
         reach: list[int] = [],
@@ -1143,11 +1165,15 @@ obj RegTranslator {
         # Any emission after a producer may read its temporary: the producer
         # can no longer be retargeted (push_result re-arms it right after).
         self.last_pos = -1;
+        self.last_e_pc = len(self.rcode) - 1;
     }
 
+    """A raw word (a CALL's argument register): its value is not an opcode,
+    so nothing may read it back as an instruction (emit_imm)."""
     def e_raw(w: int) {
         self.rcode.append(w);
         self.rorig.append(self.cur);
+        self.last_e_pc = -1;
     }
 
     def temp(k: int) -> int {
@@ -1177,6 +1203,68 @@ obj RegTranslator {
         }
     }
 
+    """Emit `dst = immediate v`. When the word just emitted fills the
+    register below `dst` with the same immediate (or is already a run of
+    them), that word grows into one R_LOADIMMN base, kind, count instead --
+    `let a, b, c;` and padded calls fill their registers in one dispatch.
+    Only within one basic block: the previous word must come after the last
+    label (a jump landing between them would skip the merged fill), and the
+    current stack instruction must not be a target itself. And only when the
+    previous word is an instruction: a CALL's argument word is a bare
+    register number that can look like a LOADIMM."""
+    def emit_imm(dst: int, v: int) {
+        ei_n: int = len(self.rcode);
+        if ei_n > self.blk_start
+            and self.last_e_pc == ei_n - 1
+            and self.is_tgt[self.cur] == 0 {
+            ei_w: int = self.rcode[ei_n - 1];
+            ei_op: int = ei_w & 255;
+            if ei_op == R_LOADIMM and reg_b(ei_w) == v and reg_a(ei_w) + 1 == dst {
+                self.rcode[ei_n - 1] = reg_word(R_LOADIMMN, reg_a(ei_w), v, 2);
+                self.last_pos = -1;
+                return;
+            }
+            if ei_op == R_LOADIMMN
+                and reg_b(ei_w) == v
+                and reg_a(ei_w) + reg_c(ei_w) == dst {
+                self.rcode[ei_n - 1] = reg_word(
+                    R_LOADIMMN, reg_a(ei_w), v, reg_c(ei_w) + 1
+                );
+                self.last_pos = -1;
+                return;
+            }
+        }
+        self.e(R_LOADIMM, dst, v, 0);
+    }
+
+    """True when position k is the result of a LOADTHIS that is the last
+    word emitted and nothing else reads its register: a following field
+    access can take `this` from the frame instead."""
+    def this_just_loaded(k: int) -> bool {
+        if self.vs_kind[k] != VS_REG or self.last_pos != k {
+            return False;
+        }
+        tj_pc: int = self.last_pc;
+        if tj_pc < 0 or tj_pc != len(self.rcode) - 1 {
+            return False;
+        }
+        tj_w: int = self.rcode[tj_pc];
+        return (tj_w & 255) == R_LOADTHIS
+            and reg_a(tj_w) == self.vs_val[k]
+            and self.refs_reg(self.vs_val[k]) == 1;
+    }
+
+    """Drop the word just emitted (folded into the instruction about to be
+    emitted for stack instruction `i`, whose register pc moves back onto it)."""
+    def drop_last_word(i: int) {
+        dl_n: int = len(self.rcode) - 1;
+        del self.rcode[dl_n];
+        del self.rorig[dl_n];
+        self.rpc_of[i] = dl_n;
+        self.last_pos = -1;
+        self.last_pc = -1;
+    }
+
     """Emit the move of position k's symbolic value into register `dst`."""
     def emit_sym_to(dst: int, k: int) {
         kd: int = self.vs_kind[k];
@@ -1187,8 +1275,10 @@ obj RegTranslator {
             }
         } elif kd == VS_CONST {
             self.emit_const(dst, v);
+        } elif kd == VS_THIS {
+            self.e(R_LOADTHIS, dst, 0, v);
         } else {
-            self.e(R_LOADIMM, dst, v, 0);
+            self.emit_imm(dst, v);
         }
     }
 
@@ -1423,8 +1513,10 @@ obj RegTranslator {
                 }
             } elif kd == VS_CONST {
                 self.emit_const(s, v);
+            } elif kd == VS_THIS {
+                self.e(R_LOADTHIS, s, 0, v);
             } else {
-                self.e(R_LOADIMM, s, v, 0);
+                self.emit_imm(s, v);
             }
         }
         self.last_pos = -1;
@@ -1731,6 +1823,13 @@ obj RegTranslator {
         }
         if op == Opcode.LOAD_THIS {
             self.flush_checks(0);
+            if self.this_lazy {
+                # `this` stays symbolic: the field access or call that uses it
+                # takes it from the frame (no super() can run in between).
+                self.vpush(VS_THIS, i);
+                self.last_pos = -1;
+                return True;
+            }
             self.e(R_LOADTHIS, self.dest(d, -1), 0, i);
             self.push_result(len(self.rcode) - 1);
             return True;
@@ -1755,7 +1854,10 @@ obj RegTranslator {
             or op == Opcode.USHR {
             self.flush_checks(2);
             immv: int = _BCOPT_NO_INT;
-            if (op == Opcode.ADD or op == Opcode.SUB)
+            if op != Opcode.MUL
+                and op != Opcode.DIV
+                and op != Opcode.MOD
+                and op != Opcode.POW
                 and self.vs_kind[d - 1] == VS_CONST {
                 immv = _bcopt_small_int_const(self.fn, code[self.vs_val[d - 1]].arg);
                 if not (immv > 0 - REG_IBIAS and immv < REG_IBIAS) {
@@ -1771,6 +1873,18 @@ obj RegTranslator {
                 iop: int = R_SUBI;
                 if op == Opcode.ADD {
                     iop = R_ADDI;
+                } elif op == Opcode.BAND {
+                    iop = R_BANDI;
+                } elif op == Opcode.BOR {
+                    iop = R_BORI;
+                } elif op == Opcode.BXOR {
+                    iop = R_BXORI;
+                } elif op == Opcode.SHL {
+                    iop = R_SHLI;
+                } elif op == Opcode.SHR {
+                    iop = R_SHRI;
+                } elif op == Opcode.USHR {
+                    iop = R_USHRI;
                 }
                 self.e(iop, dst, ra, immv + REG_IBIAS);
             } else {
@@ -1930,6 +2044,24 @@ obj RegTranslator {
         }
         if op == Opcode.GET_PROP {
             self.flush_checks(1);
+            if self.vs_kind[d - 1] == VS_THIS {
+                # `this.key` on the symbolic this
+                self.vpop();
+                gl_dst: int = self.dest(d - 1, -1);
+                self.e(R_GETFIELD_THIS, gl_dst, 0, i);
+                self.push_result(len(self.rcode) - 1);
+                return True;
+            }
+            if self.this_just_loaded(d - 1) and self.is_tgt[i] == 0 {
+                # `this.key`: the LOADTHIS just emitted folds into the read
+                # (R_GETFIELD_THIS takes `this` from the frame itself).
+                self.drop_last_word(i);
+                self.vpop();
+                gt_dst: int = self.dest(d - 1, -1);
+                self.e(R_GETFIELD_THIS, gt_dst, 0, i);
+                self.push_result(len(self.rcode) - 1);
+                return True;
+            }
             self.prep(d - 1, d);
             dst: int = self.dest(d - 1, d - 1);
             r: int = self.vs_val[d - 1];
@@ -1940,6 +2072,30 @@ obj RegTranslator {
         }
         if op == Opcode.SET_PROP {
             self.flush_checks(2);
+            if self.vs_kind[d - 2] == VS_THIS {
+                # `this.key = v` on the symbolic this
+                self.prep(d - 1, d);
+                sl_rv: int = self.vs_val[d - 1];
+                self.vpop();
+                self.vpop();
+                self.e(R_SETFIELD_THIS, 0, sl_rv, i);
+                self.vpush(VS_REG, sl_rv & REG_MASK);
+                self.last_pos = -1;
+                return True;
+            }
+            if self.this_just_loaded(d - 2) and self.is_tgt[i] == 0 {
+                # `this.key = v` where v needed no code of its own (a local, a
+                # constant): the LOADTHIS folds into the write.
+                self.drop_last_word(i);
+                self.prep(d - 1, d);
+                st_rv: int = self.vs_val[d - 1];
+                self.vpop();
+                self.vpop();
+                self.e(R_SETFIELD_THIS, 0, st_rv, i);
+                self.vpush(VS_REG, st_rv & REG_MASK);
+                self.last_pos = -1;
+                return True;
+            }
             self.prep(d - 2, d);
             ro: int = self.vs_val[d - 2];
             rv: int = self.vs_val[d - 1];
@@ -1952,6 +2108,24 @@ obj RegTranslator {
         }
         if op == Opcode.GET_INDEX {
             self.flush_checks(2);
+            gi_imm: int = _BCOPT_NO_INT;
+            if self.vs_kind[d - 1] == VS_CONST {
+                gi_imm = _bcopt_small_int_const(self.fn, code[self.vs_val[d - 1]].arg);
+                if gi_imm < 0 or gi_imm >= REG_IBIAS {
+                    gi_imm = _BCOPT_NO_INT;
+                }
+            }
+            if gi_imm != _BCOPT_NO_INT {
+                # `o[3]`: the index is the instruction's immediate.
+                self.prep(d - 2, d - 1);
+                gi_dst: int = self.dest(d - 2, d - 2);
+                gi_ro: int = self.vs_val[d - 2];
+                self.vpop();
+                self.vpop();
+                self.e(R_GETINDEXI, gi_dst, gi_ro, gi_imm + REG_IBIAS);
+                self.push_result(len(self.rcode) - 1);
+                return True;
+            }
             self.prep(d - 2, d);
             dst: int = self.dest(d - 2, d - 2);
             ro: int = self.vs_val[d - 2];
@@ -2006,6 +2180,16 @@ obj RegTranslator {
             nop: int = nargs + below;
             self.flush_checks(nop);
             base: int = d - nop;
+            cm_this: bool = False;
+            if op == Opcode.CALL_METHOD and self.vs_kind[base + 1] == VS_THIS {
+                # The receiver is the frame's this: no LOADTHIS; its word
+                # carries REG_THIS_MARK and names the slot the loop fills with
+                # the resolved this for the slow paths.
+                cm_this = True;
+                self.claim(self.temp(base + 1), -1);
+                self.vs_kind[base + 1] = VS_REG;
+                self.vs_val[base + 1] = self.temp(base + 1);
+            }
             # Operand registers, left to right (constants land in their temps).
             self.prep(base, d);
             dst: int = self.dest(base, base);
@@ -2025,7 +2209,11 @@ obj RegTranslator {
             self.e(cop, dst, cr, nargs);
             k = 1;
             while k < nop {
-                self.e_raw(self.vs_val[base + k]);
+                if cm_this and k == 1 {
+                    self.e_raw(self.vs_val[base + 1] + REG_THIS_MARK);
+                } else {
+                    self.e_raw(self.vs_val[base + k]);
+                }
                 k = k + 1;
             }
             k = 0;
@@ -2161,6 +2349,7 @@ obj RegTranslator {
                     self.mat_range(0, self.din[i]);
                 }
                 self.rpc_of[i] = len(self.rcode);
+                self.blk_start = len(self.rcode);
                 # Canonical state at a join: position k in temp k.
                 while len(self.vs_kind) > 0 {
                     self.vpop();
@@ -2369,12 +2558,12 @@ obj RegTranslator {
 eval: a call callee (`eval(` / `eval /*c*/ (`) that is not a member name
 (`x.eval(`) — the compiler's `_aa_collect` rule."""
 def _src_has_direct_eval(src: str) -> bool {
-    sn: int = len(src);
-    at: int = src.find("eval", 0);
+    sn: int = str_nbytes(src);
+    at: int = str_bfind(src, "eval", 0);
     while at >= 0 {
         ok: bool = True;
         if at > 0 {
-            pc: int = ord(src[at - 1]);
+            pc: int = str_byte(src, at - 1);
             if (pc >= 97 and pc <= 122)
                 or (pc >= 65 and pc <= 90)
                 or (pc >= 48 and pc <= 57)
@@ -2384,7 +2573,7 @@ def _src_has_direct_eval(src: str) -> bool {
             }
         }
         if ok and at + 4 < sn {
-            nc: int = ord(src[at + 4]);
+            nc: int = str_byte(src, at + 4);
             if (nc >= 97 and nc <= 122)
                 or (nc >= 65 and nc <= 90)
                 or (nc >= 48 and nc <= 57)
@@ -2397,14 +2586,14 @@ def _src_has_direct_eval(src: str) -> bool {
             pj: int = at - 1;
             while pj >= 0
                 and (
-                    src[pj] == " "
-                    or src[pj] == "\t"
-                    or src[pj] == "\n"
-                    or src[pj] == "\r"
+                    byte_chr(str_byte(src, pj)) == " "
+                    or byte_chr(str_byte(src, pj)) == "\t"
+                    or byte_chr(str_byte(src, pj)) == "\n"
+                    or byte_chr(str_byte(src, pj)) == "\r"
                 ) {
                 pj = pj - 1;
             }
-            if pj >= 0 and src[pj] == "." {
+            if pj >= 0 and byte_chr(str_byte(src, pj)) == "." {
                 ok = False;
             }
         }
@@ -2412,14 +2601,14 @@ def _src_has_direct_eval(src: str) -> bool {
             nj: int = at + 4;
             while nj < sn
                 and (
-                    src[nj] == " "
-                    or src[nj] == "\t"
-                    or src[nj] == "\n"
-                    or src[nj] == "\r"
+                    byte_chr(str_byte(src, nj)) == " "
+                    or byte_chr(str_byte(src, nj)) == "\t"
+                    or byte_chr(str_byte(src, nj)) == "\n"
+                    or byte_chr(str_byte(src, nj)) == "\r"
                 ) {
                 nj = nj + 1;
             }
-            if nj >= sn or (src[nj] != "(" and src[nj] != "/") {
+            if nj >= sn or (byte_chr(str_byte(src, nj)) != "(" and byte_chr(str_byte(src, nj)) != "/") {
                 ok = False;
             }
         }
@@ -2430,7 +2619,7 @@ def _src_has_direct_eval(src: str) -> bool {
         if ok {
             return True;
         }
-        at = src.find("eval", at + 4);
+        at = str_bfind(src, "eval", at + 4);
     }
     return False;
 }
@@ -2468,6 +2657,16 @@ def _reg_defer_ok(fn: CompiledFunction) -> bool {
         i = i + 1;
     }
     return True;
+}
+
+"""The flat own-slot IC of a function with `n` stack instructions: two
+zeroed words per instruction (VM._exec_reg_resume's GETFIELD / SETFIELD)."""
+def _ric_raw(n: int) -> int {
+    ri_p: int = calloc(n + 1, 16);
+    if ri_p == 0 {
+        abort();
+    }
+    return ri_p;
 }
 
 """A raw copy of the register words: the register loop fetches from it with no
@@ -2510,6 +2709,8 @@ def:pub reg_translate_fn(fn: CompiledFunction) -> None {
     t: RegTranslator = RegTranslator(fn=fn);
     t.nl = fn.num_locals;
     t.defer_ok = _reg_defer_ok(fn);
+    # (a direct eval could run super() by name: keep this eager then)
+    t.this_lazy = fn.this_lazy == 1 and not _src_has_direct_eval(fn.source);
     ok: bool = t.analyze();
     if ok {
         ok = t.emit_all();
@@ -2528,11 +2729,14 @@ def:pub reg_translate_fn(fn: CompiledFunction) -> None {
     fn.rcode.append(R_RETUNDEF);
     fn.rorig.append(len(fn.code) - 1);
     fn.rcode_ptr = _rcode_raw(fn.rcode);
+    fn.ric_ptr = _ric_raw(len(fn.code));
     fn.rhandler = t.rhandler;
     fn.reg_gen_start = t.reg_gen_start;
     fn.reg_tmp_base = fn.num_locals;
     fn.num_locals = fn.num_locals + t.max_depth + 1;
     fn.risa = 1;
+    fn.reg_simple = not (fn.is_generator or fn.is_async or fn.is_bound)
+        and (fn.arguments_slot < 0 or fn.is_strict);
     if _REG_DEBUG == 1 {
         dmsg: str = "";
         if not t.defer_ok {
@@ -2612,6 +2816,36 @@ def _rname(op: int) -> str {
     }
     if op == R_INC {
         return "INC";
+    }
+    if op == R_LOADIMMN {
+        return "LOADIMMN";
+    }
+    if op == R_BANDI {
+        return "BANDI";
+    }
+    if op == R_BORI {
+        return "BORI";
+    }
+    if op == R_BXORI {
+        return "BXORI";
+    }
+    if op == R_SHLI {
+        return "SHLI";
+    }
+    if op == R_SHRI {
+        return "SHRI";
+    }
+    if op == R_USHRI {
+        return "USHRI";
+    }
+    if op == R_GETFIELD_THIS {
+        return "GETFIELD_THIS";
+    }
+    if op == R_SETFIELD_THIS {
+        return "SETFIELD_THIS";
+    }
+    if op == R_GETINDEXI {
+        return "GETINDEXI";
     }
     if op == R_ADD {
         return "ADD";
@@ -2935,7 +3169,7 @@ def:pub reg_disassemble(fn: CompiledFunction) -> str {
                 + _rreg(fn, b)
                 + ", "
                 + _rreg(fn, c);
-        } elif op == R_ADDI or op == R_SUBI {
+        } elif op == R_ADDI or op == R_SUBI or op == R_GETINDEXI or (op >= R_BANDI and op <= R_USHRI) {
             line = line
                 + " "
                 + _rreg(fn, a)
@@ -3039,15 +3273,15 @@ walking back to `start`, only spaces, `*` and the keywords function / async
 def _src_eval_own_name(src: str, start: int, at: int) -> bool {
     i: int = at - 1;
     while i >= start {
-        ch: str = src[i];
+        ch: str = byte_chr(str_byte(src, i));
         if ch == " " or ch == "\t" or ch == "\n" or ch == "\r" or ch == "*" {
             i = i - 1;
         } else {
             we: int = i;
             while i >= start
                 and (
-                    (src[i] >= "a" and src[i] <= "z")
-                    or (src[i] >= "A" and src[i] <= "Z")
+                    (byte_chr(str_byte(src, i)) >= "a" and byte_chr(str_byte(src, i)) <= "z")
+                    or (byte_chr(str_byte(src, i)) >= "A" and byte_chr(str_byte(src, i)) <= "Z")
                 ) {
                 i = i - 1;
             }
@@ -3070,12 +3304,12 @@ def _src_eval_own_name(src: str, start: int, at: int) -> bool {
 }
 
 def _src_word_at(src: str, pos: int, wl: int, word: str) -> bool {
-    if wl != len(word) {
+    if wl != str_nbytes(word) {
         return False;
     }
     j: int = 0;
     while j < wl {
-        if src[pos + j] != word[j] {
+        if byte_chr(str_byte(src, pos + j)) != byte_chr(str_byte(word, j)) {
             return False;
         }
         j = j + 1;

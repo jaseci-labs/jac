@@ -344,8 +344,8 @@ impl sweep_dir(
     if policy.max_entries > 0 and len(live) > policy.max_entries {
         live.sort();
         overflow = len(live) - policy.max_entries;
-        for item in live[:overflow] {
-            doomed.append(item[1]);
+        for (_stamp, stale) in live[:overflow] {
+            doomed.append(stale);
         }
         live = live[overflow:];
     }
