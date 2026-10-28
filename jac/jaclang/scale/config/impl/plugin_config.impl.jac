@@ -1,12 +1,4 @@
 impl _http_activation_nested_schema(cluster_scoped: bool = False) -> dict[str, any] {
-    """The `nested` fields shared verbatim by [scale.kubernetes.http_activation]
-    and [apps.NAME.scale.http_activation] -- factored out so
-    the two call sites (top-level default, per-app override) can't drift
-    out of sync on a field's type/default the way two independent copies
-    would.
-
-    `cluster_scoped` adds the keys that only the top-level block honors.
-    """;
     fields = {
         "enabled": {
             "type": "bool",

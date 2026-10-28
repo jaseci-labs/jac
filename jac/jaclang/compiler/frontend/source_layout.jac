@@ -20,6 +20,8 @@ def list_directory(directory: str) -> (list[str] | None);
 
 def style_annex_of(source_path: str) -> (str | None);
 
+def owner_stem_of(tables: LayoutTables, stem: str, names: set[str]) -> (str | None);
+
 def annex_files_of(
     tables: LayoutTables,
     source_path: str,

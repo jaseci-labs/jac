@@ -477,6 +477,65 @@ impl ASTValidationPass.enter_archetype with Archetype entry {
         }
         seen_methods.add(dedup_name);
     }
+
+    if isinstance(here.body, list) {
+        self._check_field_method_clash(here, here.body);
+    }
+}
+
+impl ASTValidationPass.enter_impl_def with ImplDef entry {
+    if isinstance(here.body, list) {
+        self._check_field_method_clash(here, here.body);
+    }
+}
+
+impl ASTValidationPass._member_attr_name(nref: Name) -> str {
+    if nref.name == Tok.KW_INIT {
+        return "__init__";
+    }
+    if nref.name == Tok.KW_POST_INIT {
+        return "__post_init__";
+    }
+    return nref.value;
+}
+
+impl ASTValidationPass._check_field_method_clash(
+    owner_node: UniNode, members: list[UniNode]
+) -> None {
+    owner = owner_node.find_parent_of_type(Module);
+    if owner is not None and (owner.is_raised_from_py or owner.stub_only) {
+        return;
+    }
+    field_lines: dict[str, int] = {};
+    for item in members {
+        if isinstance(item, ArchHas) {
+            for var in item.vars {
+                if var.name.value not in field_lines {
+                    field_lines[var.name.value] = var.name.loc.first_line;
+                }
+            }
+        }
+    }
+    if len(field_lines) == 0 {
+        return;
+    }
+    for item in members {
+        if not isinstance(item, Ability) {
+            continue;
+        }
+        aref = item.name_ref;
+        if not isinstance(aref, Name) {
+            continue;
+        }
+        attr = self._member_attr_name(aref);
+        if attr not in field_lines {
+            continue;
+        }
+        kind = "ability" if isinstance(item.signature, EventSignature) else "method";
+        self.ctx.emit(
+            E0078, node_override=aref, name=attr, kind=kind, line=field_lines[attr]
+        );
+    }
 }
 
 impl ASTValidationPass.enter_try_stmt with TryStmt entry {

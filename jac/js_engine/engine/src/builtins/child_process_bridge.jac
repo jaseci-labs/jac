@@ -57,7 +57,10 @@ import from engine.src.runtime.mem {
     read_i32,
     read_u64,
     write_i64,
-    str_from_raw
+    str_from_raw,
+    str_bslice,
+    str_byte,
+    str_nbytes
 }
 import from engine.src.runtime.jsvalue {
     JSValue,
@@ -153,7 +156,7 @@ def _cp_b64_val(c: int) -> int {
 """Decode base64 str `b64` into a freshly io_alloc'd byte buffer. Returns the
 buffer pointer; writes the decoded byte count into out_len[0]."""
 def _cp_b64_to_buf(b64: str, out_len: list[int]) -> int {
-    slen: int = len(b64);
+    slen: int = str_nbytes(b64);
     # Upper bound: 3 bytes per 4 chars. The decoded bytes start 32 bytes into
     # the block (a zeroed JacStr-header-sized prefix): _cp_write_all passes
     # `ptr + off` to write() as a `str`, and the refcount guards on that
@@ -166,7 +169,7 @@ def _cp_b64_to_buf(b64: str, out_len: list[int]) -> int {
     di: int = 0;
     si: int = 0;
     while si < slen {
-        v: int = _cp_b64_val(ord(b64[si]));
+        v: int = _cp_b64_val(str_byte(b64, si));
         si = si + 1;
         if v >= 0 {
             acc = (acc << 6) | v;
@@ -212,15 +215,15 @@ def _cp_buf_to_b64(buf: int, n: int) -> str {
             b2 = read_byte(buf, si + 2);
         }
         triple: int = (b0 << 16) | (b1 << 8) | b2;
-        write_byte(out, di, ord(alpha[(triple >> 18) & 63]));
-        write_byte(out, di + 1, ord(alpha[(triple >> 12) & 63]));
+        write_byte(out, di, str_byte(alpha, (triple >> 18) & 63));
+        write_byte(out, di + 1, str_byte(alpha, (triple >> 12) & 63));
         if have1 {
-            write_byte(out, di + 2, ord(alpha[(triple >> 6) & 63]));
+            write_byte(out, di + 2, str_byte(alpha, (triple >> 6) & 63));
         } else {
             write_byte(out, di + 2, ord("="));
         }
         if have2 {
-            write_byte(out, di + 3, ord(alpha[triple & 63]));
+            write_byte(out, di + 3, str_byte(alpha, triple & 63));
         } else {
             write_byte(out, di + 3, ord("="));
         }
@@ -283,11 +286,11 @@ def _cp_drain_available_fd_b64(fd: int) -> str {
 
 """Copy string s to heap null-terminated buffer; returns pointer."""
 def _cp_strdup(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     p: int = io_alloc(n + 1);
     i: int = 0;
     while i < n {
-        write_byte(p, i, ord(s[i]));
+        write_byte(p, i, str_byte(s, i));
         i = i + 1;
     }
     write_byte(p, n, 0);
@@ -324,10 +327,10 @@ def _cp_build_envp(env_block: str) -> int {
         return 0;
     }
     lines: int = 1;
-    n: int = len(env_block);
+    n: int = str_nbytes(env_block);
     li: int = 0;
     while li < n {
-        if ord(env_block[li]) == 10 {
+        if str_byte(env_block, li) == 10 {
             lines = lines + 1;
         }
         li = li + 1;
@@ -339,11 +342,11 @@ def _cp_build_envp(env_block: str) -> int {
     while li <= n {
         ch: int = 10;
         if li < n {
-            ch = ord(env_block[li]);
+            ch = str_byte(env_block, li);
         }
         if ch == 10 or li == n {
             if li > start {
-                line: str = env_block[start:li];
+                line: str = str_bslice(env_block, start, li);
                 if len(line) > 0 {
                     ep: int = _cp_strdup(line);
                     write_i64(envp, ei * 8, ep);
@@ -786,7 +789,7 @@ def:pub cp_spawn_sync(args: list[JSValue]) -> JSValue {
     close(err_w);
 
     if len(inp) > 0 and in_w >= 0 {
-        write(in_w, inp, len(inp));
+        write(in_w, inp, str_nbytes(inp));
     }
     close(in_w);
 
@@ -1253,7 +1256,7 @@ def:pub cp_spawn_write_stdin(args: list[JSValue]) -> JSValue {
     if len(data) == 0 {
         return js_true();
     }
-    write(fd, data, len(data));
+    write(fd, data, str_nbytes(data));
     return js_true();
 }
 

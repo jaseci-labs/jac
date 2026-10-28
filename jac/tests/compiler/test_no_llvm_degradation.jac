@@ -25,7 +25,9 @@ glob PROG = (
      );
 
 
-def _run_no_llvm(argv: list[str], work: str) -> tuple[int, str] {
+def _run_no_llvm(
+    argv: list[str], work: str, probe: str = "Probe.missing()"
+) -> tuple[int, str] {
     argv_repr = repr(["jac"] + argv);
     script = f"""
 import sys, runpy
@@ -34,7 +36,7 @@ from unittest.mock import patch
 from jaclang.artifacts.model import Probe
 from jaclang.compiler.backends.native.llvm.shim_path import ShimArtifact
 for probe in ('probe_sealed', 'probe_checkout', 'probe_kit'):
-    patch.object(ShimArtifact, probe, return_value=Probe.missing()).start()
+    patch.object(ShimArtifact, probe, return_value={probe}).start()
 sys.argv = {argv_repr}
 try:
     runpy.run_module('jaclang', run_name='__main__', alter_sys=True)
@@ -100,6 +102,71 @@ for probe, expected in [(Probe.missing(), False), (Probe.hit(Source.CHECKOUT, '/
 }
 
 
+glob STALE = "Probe.stale(['the shim predates its sources'])";
+
+
+test "the LLVM binding imports with a stale shim and only its calls raise" {
+    script = f"""
+import sys
+sys.path.insert(0, {JAC_ROOT!r})
+from unittest.mock import patch
+from jaclang.artifacts.model import ArtifactUnavailable, Probe
+from jaclang.compiler.backends.native.llvm.shim_path import ShimArtifact
+for probe in ('probe_sealed', 'probe_checkout', 'probe_kit'):
+    patch.object(ShimArtifact, probe, return_value={STALE}).start()
+from jaclang.compiler.backends.native.llvm.binding import initfini, targets, executionengine
+try:
+    targets.get_default_triple()
+except ArtifactUnavailable:
+    pass
+else:
+    raise AssertionError('a binding call succeeded with no usable shim')
+""";
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
+    );
+    assert proc.returncode == 0 , proc.stdout + proc.stderr;
+}
+
+
+test "jac native status reports a stale shim instead of crashing" {
+    with tempfile.TemporaryDirectory() as work {
+        (rc, out) = _run_no_llvm(["native", "status", "llvm-shim"], work, STALE);
+        assert rc == 0 , out;
+        assert "Traceback" not in out , out;
+        assert "the shim predates its sources" in out , out;
+    }
+}
+
+
+test "native lowering products take the native toolchain verdict from the host" {
+    script = f"""
+import sys
+sys.path.insert(0, {JAC_ROOT!r})
+from jaclang.compiler.frontend.host import NeutralHost, active_host, install_host
+from jaclang.compiler.driver.pipeline import resolve, unavailable
+from jaclang.compiler.driver.pipeline_types import CompilationProduct
+
+class StaleShimHost(NeutralHost):
+    def native_pipeline_available(self):
+        return (False, 'native pipeline unavailable: the LLVM shim is stale')
+
+previous = active_host()
+install_host(StaleShimHost())
+try:
+    for product in (CompilationProduct.NATIVE_LOWER, CompilationProduct.NATIVE_IR):
+        assert unavailable(product) == 'native pipeline unavailable: the LLVM shim is stale', product
+        assert resolve(product)[0] is None, product
+finally:
+    install_host(previous)
+""";
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
+    );
+    assert proc.returncode == 0 , proc.stdout + proc.stderr;
+}
+
+
 """Importing the LLVM bindings must not call into the shim. `initfini` used to
 ask the shim for its version at import time, so a stale or missing shim broke
 every import of the `native` command, including `jac native build llvm-shim`,
@@ -140,4 +207,40 @@ print("IMPORTED")
         out = proc.stdout + proc.stderr;
         assert proc.returncode == 0 and "IMPORTED" in out , out;
     }
+}
+
+
+"""A module that asks codegen for native lowering may be the first to need the
+native verdict, for example a module pinned native in a project that places
+nothing native by inference, so no placement probe has consulted the shim yet.
+That verdict must come from the shim before the codegen schedule starts
+loading: inside the loading window the host defers to an optimistic answer and
+`NaIRGenPass` would be scheduled against a stale shim."""
+test "a native codegen request in a fresh process takes the shim's verdict" {
+    script = f"""
+import sys
+sys.path.insert(0, {JAC_ROOT!r})
+from unittest.mock import patch
+from jaclang.artifacts.model import Probe
+from jaclang.compiler.backends.native.llvm.shim_path import ShimArtifact
+for probe in ('probe_sealed', 'probe_checkout', 'probe_kit'):
+    patch.object(ShimArtifact, probe, return_value={STALE}).start()
+import jaclang
+from jaclang.compiler.driver.pipeline import resolve
+from jaclang.compiler.driver.pipeline_types import CompilationProduct, ProductRequest
+from jaclang.compiler.driver.toolchain import _native_env_memo
+assert not _native_env_memo, _native_env_memo
+schedule = resolve(CompilationProduct.CODEGEN, ProductRequest(native=True))[0]
+names = [p.__name__ for p in schedule or []]
+assert 'NaIRGenPass' not in names, names
+assert 'EsastGenPass' in names, names
+""";
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=JAC_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=900
+    );
+    assert proc.returncode == 0 , proc.stdout + proc.stderr;
 }

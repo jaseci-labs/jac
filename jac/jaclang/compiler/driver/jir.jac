@@ -33,6 +33,7 @@ glob MAGIC = b"JIR\x00",
      SEC_NCTDEPS: int = 0x14,
      SEC_PATH_ROOT: int = 0x15,
      SEC_EMITKEY: int = 0x16,
+     SEC_PYSRC: int = 0x17,
      SEC_TERMINATOR: int = 0xFF,
      FLAG_PRECOMPILED: int = 0x02,
      FLAG_CARRIED: int = 0x08,
@@ -57,7 +58,8 @@ glob STALE_CODE_SECTIONS: tuple[int, ...] = (
          SEC_BYTECODE,
          SEC_INTEROP,
          SEC_MTIR,
-         SEC_CLIENT
+         SEC_CLIENT,
+         SEC_PYSRC
      );
 
 obj NativeStamp {
@@ -165,8 +167,6 @@ glob _COMPILER_DIGEST_CACHE: list[str] = [],
 glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
      PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
      DEV_NATIVE_PRODUCER: str = "abi:";
-
-def _digest_manifest_path(pkg_dir: str) -> Path;
 
 def _manifest_compiler_digest(pkg_dir: str) -> str;
 
@@ -388,6 +388,18 @@ def write_sections(sections: (dict[int, bytes] | None)) -> bytes;
 def read_sections_blob(data: bytes) -> dict[int, bytes];
 
 def read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes];
+
+def _decode_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes];
+
+def read_jir(cache_path: Path) -> bytes;
+
+glob JIR_READ_CACHE_CAP: int = 256,
+     JIR_READ_CACHE_BYTES: int = 128 * 1024 * 1024,
+     SECTION_TABLE_CAP: int = 512,
+     _JIR_READS: dict[str, tuple[tuple[int, int, int, int], bytes]] = {},
+     _JIR_READ_TOTAL: list[int] = [0],
+     _SECTION_TABLES: dict[int, tuple[bytes, int, dict[int, bytes]]] = {},
+     _SECTION_TABLE_TOTAL: list[int] = [0];
 
 def read_bytecode_only(data: bytes) -> (bytes | None);
 

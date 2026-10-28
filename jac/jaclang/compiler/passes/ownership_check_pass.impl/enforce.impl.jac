@@ -192,10 +192,6 @@ impl OwnershipCheckPass._nogc_infer_locals -> None {
 }
 
 impl OwnershipCheckPass._nogc_entry_confined_str(tgt: Name) -> bool {
-    """A module-level str binding that no function, lambda or `glob`
-    declaration can reach lives and dies inside the module's entry code, so
-    it infers ownership exactly like a function local: a rebind drops the
-    value it replaces.""";
     _sym = tgt.sym;
     if _sym is None or tgt.type is None {
         return False;

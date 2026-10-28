@@ -127,6 +127,10 @@ impl _compile_runtime_module(
         return compile_jac(jac_source, str(path), impl_sources=impl_sources or None);
     }
 
+    recorded = module_record(str(path), prog);
+    if native is None or (recorded is not None and recorded.decided != 'native') {
+        return python_text(str(path), prog);
+    }
     (py_out, ir) = python_source(str(path), prog);
     if native is not None and ir is not None and ir.gen.native_engine is not None {
         import from jaclang.dist.native_product { write_native_product }
@@ -148,13 +152,6 @@ impl _compile_runtime_module(
 }
 
 impl _runtime_module_options(path: Path) -> CompileOptions {
-    """A vendored runtime module takes the codespace the running compiler gives
-    its own package: the server codespace, unless the module is native by policy
-    (a bundled native library or a shared runtime module), which keeps the
-    placement an application gives it. Placement inference over the rest of the
-    package would try to lower every runtime module the application reaches, and
-    almost none of them can.""";
-
     source = str(path);
     if is_native_by_location(source) or is_shared_runtime_module(source) {
         return CompileOptions();
@@ -196,11 +193,7 @@ impl build_runtime_closure(
     );
     processed: set[str] = {'jaclang'};
     modules: list[dict[str, any]] = [];
-    """One program serves the whole closure: a fresh program per module
-    re-hydrates the type catalog and evaluator for every runtime module, which
-    turned a ten-minute export into an hour. The program's options change per
-    module (server codespace unless native by policy) and the compile state
-    is released once the closure is complete.""";
+
     program = JacProgram();
     while pending {
         module = min(pending);
@@ -299,9 +292,9 @@ impl build_runtime_closure(
         for name in closure
         if name.endswith('.py')
     ] {
-        for parent in Path(relative).parents {
-            if str(parent) != '.' {
-                closure.setdefault((parent / '__init__.py').as_posix(), b'');
+        for ancestor in Path(relative).parents {
+            if str(ancestor) != '.' {
+                closure.setdefault((ancestor / '__init__.py').as_posix(), b'');
             }
         }
     }

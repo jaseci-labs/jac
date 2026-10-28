@@ -713,3 +713,12 @@ def same_lines(sv_text: str, na_text: str, what: str) {
         ]!r}";
     }
 }
+
+"""A module's source together with its impl annexes, the unit the compiler
+weaves, so a source-contract check reads a body wherever it lives."""
+def unit_source(path: Path | str) -> str {
+    import from jaclang.compiler.driver.bccache { discover_annex_files }
+
+    files = [str(path)] + discover_annex_files(str(path), ".impl.jac");
+    return "\n".join(Path(f).read_text() for f in files);
+}

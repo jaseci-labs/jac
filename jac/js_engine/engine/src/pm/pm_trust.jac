@@ -61,11 +61,15 @@ import from engine.src.pm.lifecycle {
 }
 import from engine.src.pm.install { pm_fmt_elapsed }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 def _out(s: str) {
-    write(1, s, len(s));
+    write(1, s, str_nbytes(s));
 }
 def _err(s: str) {
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 """An installed, untrusted dependency with install scripts."""

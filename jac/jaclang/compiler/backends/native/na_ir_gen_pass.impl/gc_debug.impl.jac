@@ -166,7 +166,7 @@ impl NaIRGenPass._emit_retain_log_bb(
     _aid_slot = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="ret.aid.slot");
     _aid_ptr = b.bitcast(_aid_slot, i64_ptr, name="ret.aid.ptr");
     _aid_raw = b.load(_aid_ptr, name="ret.aid.raw");
-    _aid = b.and_(_aid_raw, ir.Constant(i64, 4294967295), name="ret.aid");
+    _aid = b.and_(_aid_raw, ir.Constant(i64, ALLOC_ID_MASK), name="ret.aid");
 
     _tag_slot = b.gep(ptr, [ir.Constant(i64, HDR_TAG_OFF)], name="ret.tag.slot");
     _tag_ptr = b.bitcast(_tag_slot, i8_ptr.as_pointer(), name="ret.tag.ptr");
@@ -234,7 +234,7 @@ impl NaIRGenPass._emit_dbl_free_log_bb(
     _aid_slot = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="dbl.aid.slot");
     _aid_ptr = b.bitcast(_aid_slot, i64_ptr, name="dbl.aid.ptr");
     _aid_raw = b.load(_aid_ptr, name="dbl.aid.raw");
-    _aid = b.and_(_aid_raw, ir.Constant(i64, 4294967295), name="dbl.aid");
+    _aid = b.and_(_aid_raw, ir.Constant(i64, ALLOC_ID_MASK), name="dbl.aid");
     _tag_slot = b.gep(ptr, [ir.Constant(i64, HDR_TAG_OFF)], name="dbl.tag.slot");
     _tag_ptr = b.bitcast(_tag_slot, i8_ptr.as_pointer(), name="dbl.tag.ptr");
     _tag = b.load(_tag_ptr, name="dbl.tag");
@@ -278,7 +278,7 @@ impl NaIRGenPass._emit_release_log_bb(
     _aid_slot = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="rel.aid.slot");
     _aid_ptr = b.bitcast(_aid_slot, i64_ptr, name="rel.aid.ptr");
     _aid_raw = b.load(_aid_ptr, name="rel.aid.raw");
-    _aid = b.and_(_aid_raw, ir.Constant(i64, 4294967295), name="rel.aid");
+    _aid = b.and_(_aid_raw, ir.Constant(i64, ALLOC_ID_MASK), name="rel.aid");
     _tag_slot = b.gep(ptr, [ir.Constant(i64, HDR_TAG_OFF)], name="rel.tag.slot");
     _tag_ptr = b.bitcast(_tag_slot, i8_ptr.as_pointer(), name="rel.tag.ptr");
     _tag = b.load(_tag_ptr, name="rel.tag");
@@ -328,7 +328,7 @@ impl NaIRGenPass._emit_raw_free_bbs(
         );
         _aid_ptr = b.bitcast(_aid_slot, i64_ptr, name="fr.aid.ptr");
         _aid_raw = b.load(_aid_ptr, name="fr.aid.raw");
-        _aid = b.and_(_aid_raw, ir.Constant(i64, 4294967295), name="fr.aid");
+        _aid = b.and_(_aid_raw, ir.Constant(i64, ALLOC_ID_MASK), name="fr.aid");
         _tag_slot = b.gep(ptr, [ir.Constant(i64, HDR_TAG_OFF)], name="fr.tag.slot");
         _tag_ptr = b.bitcast(_tag_slot, i8_ptr.as_pointer(), name="fr.tag.ptr");
         _tag = b.load(_tag_ptr, name="fr.tag");
@@ -353,7 +353,7 @@ impl NaIRGenPass._emit_raw_free_bbs(
     _raw_for_free = b.gep(
         ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.for.free"
     );
-    b.call(self.rc_safe_free_fn, [_raw_for_free]);
+    b.call(self.rc_free_block_fn, [_raw_for_free]);
     b.branch(done_bb);
     return log_free_bb;
 }

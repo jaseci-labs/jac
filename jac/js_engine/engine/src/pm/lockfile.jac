@@ -59,6 +59,12 @@ import from engine.src.pm.platform {
     pm_platform_to_json
 }
 
+import from engine.src.runtime.mem {
+    str_bfind,
+    str_bslice,
+    str_bslice_from
+}
+
 glob:pub LOCK_GROUPS: list[str] = [
          "dependencies",
          "devDependencies",
@@ -161,11 +167,11 @@ def:pub lockfile_split_resolution(res: str) -> tuple[str, str] {
     if res.startswith("@") {
         start = 1;
     }
-    at: int = res.find("@", start);
+    at: int = str_bfind(res, "@", start);
     if at < 0 {
         return (res, "");
     }
-    return (res[0:at], res[at + 1:]);
+    return (str_bslice(res, 0, at), str_bslice_from(res, at + 1));
 }
 
 def _kind_of(version: str) -> str {
@@ -251,11 +257,11 @@ def _read_package(key: str, arr: JVal) -> LockPkg {
     p.kind = _kind_of(nv[1]);
     p.version = nv[1];
     if p.kind == "workspace" {
-        p.version = nv[1][10:];
+        p.version = str_bslice_from(nv[1], 10);
     } elif p.kind == "folder" {
-        p.version = nv[1][5:];
+        p.version = str_bslice_from(nv[1], 5);
     } elif p.kind == "symlink" {
-        p.version = nv[1][5:];
+        p.version = str_bslice_from(nv[1], 5);
     } elif p.kind == "root" {
         p.version = "";
     }

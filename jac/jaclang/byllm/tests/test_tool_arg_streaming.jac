@@ -252,8 +252,8 @@ test "an abandoned stream is always announced alongside its deltas" {
     short = '{"path": "a.jac"}';
     big = '{"path": "a.jac", "content": "' + ("a" * 200) + '"}';
 
-    # Compaction discards a stream WITHOUT incrementing _stream_reset_count, so
-    # no counter-based guard sees it. Not transient, so byllm does not retry.
+    # Compaction discards a stream without a retry, so no retry-time reset covers
+    # it. Not transient, so byllm does not retry.
     overflow = litellm.exceptions.ContextWindowExceededError(
         message="too long", model="gpt-4o", llm_provider="openai"
     );
