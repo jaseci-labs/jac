@@ -1609,9 +1609,33 @@ def dict_block(name: str, kind: str, entries: list[str]) -> str {
         + "\n     };\n";
 }
 
-def effect_function(name: str, data: list[tuple[str, str]]) -> str {
-    lines = [f"def {name}(op: int, oparg: int) -> int {{"];
+def effect_function(
+    name: str, data: list[tuple[str, str]], codes: dict[str, int]
+) -> str {
+    size = max(codes.values()) + 1;
+    table = [-1 for _ in range(size)];
+    varying: list[tuple[str, str]] = [];
     for (opname, effect) in data {
+        if effect.isdigit() {
+            table[codes[opname]] = int(effect);
+        } else {
+            table[codes[opname]] = -2;
+            varying.append((opname, effect));
+        }
+    }
+    lines = [
+        list_block(f"_{name.upper()}", table).rstrip("\n"),
+        "",
+        f"def {name}(op: int, oparg: int) -> int {{",
+        f"    if op < 0 or op >= {size} {{",
+        "        return -1;",
+        "    }",
+        f"    effect = _{name.upper()}[op];",
+        "    if effect != -2 {",
+        "        return effect;",
+        "    }"
+    ];
+    for (opname, effect) in varying {
         lines += [f"    if op == OP_{opname} {{", f"        return {effect};", "    }"];
     }
     lines += ["    return -1;", "}"];
@@ -1692,10 +1716,10 @@ def opcode_meta_module(a: Analysis) -> str {
             + "    if op < 0 or op > 254 {\n        return op;\n    }\n"
             + "    return _OPCODE_DEOPT_MAP[op];\n}\n",
         effect_function(
-            "_opcode_num_popped", [(name, effects[name][0]) for name in names]
+            "_opcode_num_popped", [(name, effects[name][0]) for name in names], a.opmap
         ),
         effect_function(
-            "_opcode_num_pushed", [(name, effects[name][1]) for name in names]
+            "_opcode_num_pushed", [(name, effects[name][1]) for name in names], a.opmap
         ),
         META_STACK_EFFECT,
         "def has_target(op: int) -> bool {\n    if "

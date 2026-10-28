@@ -86,7 +86,12 @@ impl __jac_region_escape -> int {
         return -1;
     }
     depth = __mem_load_i64(blk + TLS_DEPTH);
-    _stack_push(blk, 0);
+    if depth < __mem_load_i64(blk + TLS_CAP) {
+        __mem_store_i64(__mem_load_i64(blk + TLS_STACK) + depth * 8, 0);
+        __mem_store_i64(blk + TLS_DEPTH, depth + 1);
+    } else {
+        _stack_push(blk, 0);
+    }
     __mem_store_i64(blk + TLS_CUR, 0);
     return depth;
 }

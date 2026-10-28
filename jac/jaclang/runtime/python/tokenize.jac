@@ -133,18 +133,20 @@ obj token_iterator_state(token_source) {
             return None;
         }
         self.scanner.discard_consumed();
-        item = tokenizer_next(self.scanner);
+        raw = tokenizer_next(self.scanner);
         report_token_warnings(self.scanner);
-        if isinstance(item, tok_diag) {
-            line = self.source_line(item.loc.lineno);
-            column = _character_column(line, item.loc.col_offset);
-            if item.kind in ("IndentationError", "TabError") {
+        if raw is self.scanner.error {
+            diag = raw as tok_diag;
+            line = self.source_line(diag.loc.lineno);
+            column = _character_column(line, diag.loc.col_offset);
+            if diag.kind in ("IndentationError", "TabError") {
                 column = _character_column(
                     line, len(line.rstrip("\r\n").encode("utf-8"))
                 );
             }
-            self.syntax_error(item.message, item.loc.lineno, column + 1, item.kind);
+            self.syntax_error(diag.message, diag.loc.lineno, column + 1, diag.kind);
         }
+        item = raw as tok_token;
         kind = item.tok_type;
         start_line = item.lineno;
         end_line = item.end_lineno;
