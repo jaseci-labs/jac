@@ -35,7 +35,8 @@ myapp/
 ├── AGENTS.md          # Agent guide for the project
 ├── components/        # Reusable components
 │   └── Button.jac     # Example component (client-side by inference)
-└── assets/            # Static assets (images, fonts)
+├── assets/            # Static assets (images, fonts)
+└── public/            # Files served at the site root (robots.txt, favicon.ico)
 ```
 
 TypeScript/TSX and CSS files are also supported -- drop a `.tsx` component or
@@ -51,6 +52,47 @@ default; when several apps share one UI, point them at the shared directory
 dir = "core/site/assets"
 custom_extensions = [".pdf"]
 ```
+
+Files under `public/` are served at the site root: `public/robots.txt` at
+`/robots.txt`, `public/img/logo.png` at `/img/logo.png`. `jac build` copies them
+into `dist/` unchanged, so a deployment that serves only `dist/` answers the same
+URLs as `jac run --serve`. In a workspace, the app's own `public/` is read first and
+the project root's second; for a path in both, the app's file wins. Links are
+followed when they point inside the same `public/`, as when serving, and links
+that leave it are skipped. A file whose path matches one the build writes, such as
+`index.html`, or a path that would need a folder where a file already is, fails
+the build before anything is copied.
+
+### robots.txt and sitemap.xml
+
+Set the site's public URL and `jac build` writes both files into `dist/`:
+
+```toml
+[client.seo]
+site_url = "https://example.org"   # required: nothing is generated without it
+
+[client.seo.sitemap]
+exclude = ["/preview-auth"]        # paths to leave out
+extra = ["/blog/launch"]           # paths the route scanner can't see
+
+[client.seo.robots]
+disallow = ["/internal"]           # paths to block, on top of the (auth) routes
+```
+
+- The sitemap lists the routes under `pages/`, except routes in an `(auth)` group,
+  catch-all routes and routes with a dynamic segment (`[id].jac`), which can't be
+  listed. An app without `pages/` lists `/`. It has no `<lastmod>`.
+- `robots.txt` disallows the `(auth)` routes and everything in `disallow`, always
+  allows the client bundle and stylesheet so crawlers can render the app, and
+  points at the sitemap.
+- A file of the same name in `public/` wins: the build uses it instead and says so.
+
+`jac run --serve` and the jac-scale gateways compare the host of a `/robots.txt`
+request (`X-Forwarded-Host`, then `Host`) with `site_url`. On any other host, such
+as a preview or staging deployment, they answer `User-agent: *` / `Disallow: /`,
+whether the file was generated or hand-written, so previews are not indexed. Both
+files are served with `Cache-Control: no-cache`. In a workspace, `[client.seo]`
+applies to every app; `[apps.<name>.client.seo]` overrides it for one app.
 
 ### Client Code Is Inferred
 

@@ -196,3 +196,24 @@ impl sibling_app_names(config: any, base_path: str) -> list[str] {
         if sibling_app_dist(config, name, base_path) is not None
     ];
 }
+
+impl site_url_for(base_path: str) -> str {
+    config = get_config_for_dir(str(resolve_static_base(base_path)));
+    return str(client_seo_config(config).get('site_url') or '').strip();
+}
+
+impl robots_override(
+    site_url: str, host: str, forwarded_host: str = ''
+) -> (str | None) {
+    import from urllib.parse { urlparse }
+    canonical = (urlparse(site_url.strip()).hostname or '') if site_url else '';
+    if not canonical {
+        return None;
+    }
+    served = forwarded_host.split(',')[0].strip() or host.strip();
+    served_host = urlparse(f'//{served}').hostname or '';
+    if served_host == canonical.lower() {
+        return None;
+    }
+    return DISALLOW_ALL_ROBOTS;
+}

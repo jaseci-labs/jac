@@ -230,10 +230,24 @@ impl register_page_endpoints(server: JacAPIServer) {
         if file_path.startswith(API_PREFIXES) or file_path.startswith(CL_PREFIX) {
             return JSONResponse(content={'error': 'Not found'}, status_code=404);
         }
+        if file_path == ROBOTS_PATH {
+            blocked = robots_override(
+                site_url_for(_static_base(server)),
+                str(request.headers.get('host') or ''),
+                str(request.headers.get('x-forwarded-host') or '')
+            );
+            if blocked is not None {
+                return Response(content=blocked);
+            }
+        }
         candidate = find_root_asset(_static_base(server), file_path, asset_dist);
         if candidate is not None {
             return file_response(
-                request, str(candidate), cache_control=ASSET_CACHE_CONTROL
+                request,
+                str(candidate),
+                cache_control='no-cache'
+                    if file_path in (ROBOTS_PATH, SITEMAP_PATH)
+                    else ASSET_CACHE_CONTROL
             );
         }
         index = client_dist_index(asset_dist);

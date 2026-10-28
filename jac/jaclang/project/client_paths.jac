@@ -16,6 +16,11 @@ def client_assets_config(
 ) -> dict[str, any];
 
 
+def client_seo_config(
+    config: JacConfig | None, entry_path: str = ""
+) -> dict[str, any];
+
+
 def client_input_dirs(
     config: JacConfig | None, project_dir: Path, entry_path: str = ""
 ) -> list[str];

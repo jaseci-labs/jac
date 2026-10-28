@@ -112,6 +112,16 @@ impl EmbeddedGateway.dispatch(request: Request) -> Response {
         }
     }
     accept: str = str(request.headers.get("accept") or "");
+    if request.method == "GET" and path.lstrip("/") == ROBOTS_PATH {
+        blocked = robots_override(
+            site_url_for(self.base_path),
+            str(request.headers.get("host") or ""),
+            str(request.headers.get("x-forwarded-host") or "")
+        );
+        if blocked is not None {
+            return Response(content=blocked, media_type="text/plain; charset=utf-8");
+        }
+    }
     return self._serve_static(path, accept);
 }
 

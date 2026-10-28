@@ -210,6 +210,35 @@ impl JacClientConfig.get_assets_dir(
     );
 }
 
+impl JacClientConfig.get_app_root(self: JacClientConfig, entry_path: str = "") -> Path {
+    return client_app_root(
+        self.get_jac_config(),
+        self.project_dir or Path.cwd(),
+        entry_path or self.entry_path
+    );
+}
+
+impl JacClientConfig.get_public_dirs(
+    self: JacClientConfig, entry_path: str = ""
+) -> list[Path] {
+    project_dir = self.project_dir or Path.cwd();
+    app_root = self.get_app_root(entry_path);
+    dirs: list[Path] = [];
+    for candidate in (app_root / 'public', project_dir / 'public') {
+        if candidate.is_dir()
+            and candidate.resolve() not in [d.resolve() for d in dirs] {
+            dirs.append(candidate);
+        }
+    }
+    return dirs;
+}
+
+impl JacClientConfig.get_seo_config(
+    self: JacClientConfig, entry_path: str = ""
+) -> dict[str, any] {
+    return client_seo_config(self.get_jac_config(), entry_path or self.entry_path);
+}
+
 impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {
     pwa_config = self.get_pwa_config();
 

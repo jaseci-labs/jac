@@ -45,7 +45,16 @@ def find_static_candidate(
 ) -> (Path | None);
 
 glob ROOT_ASSET_EXTENSIONS: set[str] = DEFAULT_ASSET_EXTENSIONS
-         | {'.pdf', '.txt', '.xml'};
+         | {'.pdf', '.txt', '.xml'},
+     ROBOTS_PATH: str = 'robots.txt',
+     SITEMAP_PATH: str = 'sitemap.xml',
+     DISALLOW_ALL_ROBOTS: str = 'User-agent: *\nDisallow: /\n';
+
+def site_url_for(base_path: str) -> str;
+
+def robots_override(
+    site_url: str, host: str, forwarded_host: str = ''
+) -> (str | None);
 
 
 def find_root_asset(
