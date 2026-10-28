@@ -2297,6 +2297,9 @@ graph import {
             | testing.cl_test_runner._compile_runtime {
             resolve_jac_virtual_module_path
         },
+        compiler.backends.es.esast_gen_pass.EsastGenPass._resolve_dynamic_import_spec {
+            resolve_relative_path
+        },
         compiler.backends.py.artifact_imports.resolve_imports
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
         dist.publish.py_imports { resolve_module },
@@ -7006,6 +7009,7 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass._build_edge_ref { E5097 },
         backends.es.esast_gen_pass.EsastGenPass._build_osp_filter_pred { E5097 },
+        backends.es.esast_gen_pass.EsastGenPass._reject_dynamic_import { E5117 },
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
