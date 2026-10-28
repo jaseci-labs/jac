@@ -87,7 +87,7 @@ def:priv pysleep(timeout: i64) -> bool;
 
 def time_sleep(module: ptr[PyObject], timeout_obj: ptr[PyObject]) -> ptr[PyObject];
 
-def:priv tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject];
+def:priv tmtotuple(module: ptr[PyObject], p: &tm) -> ptr[PyObject];
 
 def:priv tm_fields(args: ptr[PyObject], values: ptr[i64]) -> bool;
 
@@ -414,7 +414,7 @@ impl time_sleep(module: ptr[PyObject], timeout_obj: ptr[PyObject]) -> ptr[PyObje
     return Py_NewRef(borrowed_none());
 }
 
-impl tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject] {
+impl tmtotuple(module: ptr[PyObject], p: &tm) -> ptr[PyObject] {
     v = PyStructSequence_New(struct_time_type(module));
     if not v {
         return NULL;
@@ -484,7 +484,7 @@ impl time_gmtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if _PyTime_gmtime(when, &mut buf) != 0 {
         return NULL;
     }
-    return tmtotuple(module, buf);
+    return tmtotuple(module, &buf);
 }
 
 impl time_localtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
@@ -496,7 +496,7 @@ impl time_localtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     if _PyTime_localtime(when, &mut buf) != 0 {
         return NULL;
     }
-    return tmtotuple(module, buf);
+    return tmtotuple(module, &buf);
 }
 
 impl tm_fields(args: ptr[PyObject], values: ptr[i64]) -> bool {

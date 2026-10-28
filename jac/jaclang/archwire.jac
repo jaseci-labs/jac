@@ -16590,7 +16590,6 @@ graph import runtime.python {
             jacpy_binding_native_set
         },
         modules.pyexpat { jacpy_binding_untrack },
-        modules.random { jacpy_binding_native_get },
         modules.ssl_core { jacpy_binding_native_get, jacpy_binding_native_present },
     ]
     bindings.pickle ++> inittab { PyInit__pickle }
@@ -16644,7 +16643,6 @@ graph import runtime.python {
         | modules.posix_stat
         | modules.pyexpat
         | modules.queue
-        | modules.random
         | modules.select
         | modules.sha1
         | modules.sha2
@@ -16700,10 +16698,7 @@ graph import runtime.python {
         },
         modules.io { PropertyDefinition, getset_table },
         modules.lsprof { descriptor_get },
-        modules.multibytecodec | modules.struct {
-            jacpy_binding_allocate,
-            jacpy_binding_owner
-        },
+        modules.multibytecodec { jacpy_binding_allocate, jacpy_binding_owner },
         modules.pickle {
             jacpy_binding_allocate,
             jacpy_binding_basicsize,
@@ -16724,13 +16719,14 @@ graph import runtime.python {
             jacpy_binding_free,
             jacpy_binding_record
         },
+        modules.random { jacpy_binding_record },
         modules.select {
             jacpy_binding_allocate,
             jacpy_binding_matches,
             jacpy_binding_owner,
             jacpy_binding_record
         },
-        modules.sqlite3 {
+        modules.sqlite3 | modules.struct {
             jacpy_binding_allocate,
             jacpy_binding_owner,
             jacpy_binding_record
@@ -17174,6 +17170,7 @@ graph import runtime.python {
             | bindings.imp
             | bindings.marshal
             | bindings.posixshmem
+            | bindings.random
             | bindings.statistics
             | bindings.suggestions
             | bindings.sysconfig
@@ -17731,7 +17728,6 @@ graph import runtime.python {
             PyUnicode_InternFromString,
             jacpy_module_add_int_text
         },
-        bindings.random { NULL, PyObject, jacpy_release },
         bindings.references {
             NULL,
             PyObject,
@@ -17895,6 +17891,7 @@ graph import runtime.python {
         },
         bindings.struct {
             NULL,
+            PyBytes_Type,
             PyDict_New,
             PyExc_IndexError,
             PyExc_TypeError,
@@ -17906,6 +17903,7 @@ graph import runtime.python {
             jacpy_buffer_new,
             jacpy_bytes_address,
             jacpy_bytes_decode,
+            jacpy_bytes_length,
             jacpy_error_pending,
             jacpy_release
         },
@@ -20143,6 +20141,8 @@ graph import runtime.python {
             PyObject_GenericSetAttr,
             PyObject_GetIter,
             PyObject_IsTrue,
+            PyTuple_GetItem,
+            PyTuple_Size,
             PyType_GetModule,
             PyUnicode_CompareWithASCIIString,
             PyUnicode_FromFormat,
@@ -21573,6 +21573,7 @@ graph import runtime.python {
         modules.math {
             NULL,
             PyErr_Clear,
+            PyErr_SetString,
             PyExc_MemoryError,
             PyExc_OverflowError,
             PyExc_TypeError,
@@ -21588,6 +21589,7 @@ graph import runtime.python {
             PyLong_FromDouble,
             PyLong_FromLongLong,
             PyLong_FromUnsignedLongLong,
+            PyLong_Type,
             PyMem_Free,
             PyMem_Malloc,
             PyMem_Realloc,
@@ -22617,6 +22619,7 @@ graph import runtime.python {
         modules.random {
             NULL,
             PyErr_Clear,
+            PyErr_NoMemory,
             PyExc_MemoryError,
             PyExc_SystemError,
             PyExc_TypeError,
@@ -22625,15 +22628,16 @@ graph import runtime.python {
             PyLong_AsLongLong,
             PyLong_AsUnsignedLong,
             PyLong_FromLongLong,
+            PyMem_Free,
+            PyMem_Malloc,
             PyObject,
             PyTuple_New,
             PyTuple_Size,
             Py_NewRef,
             Py_None,
+            _PyLong_FromByteArray,
             _PyLong_NumBits,
             jacpy_buffer_byte,
-            jacpy_buffer_new,
-            jacpy_buffer_set,
             jacpy_buffer_size,
             jacpy_entropy,
             jacpy_error_pending,
@@ -22642,7 +22646,6 @@ graph import runtime.python {
             jacpy_is_tuple,
             jacpy_long_absolute,
             jacpy_long_bytes,
-            jacpy_long_from_bytes,
             jacpy_monotonic_time,
             jacpy_process_id,
             jacpy_release,
@@ -23420,6 +23423,7 @@ graph import runtime.python {
         modules.struct {
             NULL,
             PyBytes_FromStringAndSize,
+            PyBytes_Type,
             PyDict_Clear,
             PyDict_SetItem,
             PyErr_Clear,
@@ -23429,17 +23433,19 @@ graph import runtime.python {
             PyExc_TypeError,
             PyFloat_AsDouble,
             PyFloat_FromDouble,
+            PyFloat_Type,
             PyIndex_Check,
             PyLong_AsLongLong,
+            PyLong_AsLongLongAndOverflow,
             PyLong_AsUnsignedLongLong,
             PyLong_FromLongLong,
             PyLong_FromUnsignedLongLong,
+            PyLong_Type,
             PyNumber_Index,
             PyObject,
             PyObject_CallOneArg,
             PyObject_IsTrue,
             PyTuple_New,
-            PyTuple_SetItem,
             PyUnicode_AsEncodedString,
             Py_NewRef,
             Py_None,
@@ -24994,6 +25000,7 @@ graph import runtime.python {
             _PyArg_CheckPositional,
             _PyObject_GC_New,
             _PyObject_LookupSpecial,
+            _PyRuntime,
             jacpy_memory_copy,
             jacpy_memory_zero,
             jacpy_unicode_data,
@@ -25033,7 +25040,6 @@ graph import runtime.python {
             PyUnicode_InternFromString,
             PyVectorcall_NARGS,
             Py_BuildValue,
-            Py_IncRef,
             Py_NewRef,
             Py_None,
             _PyArg_CheckPositional,
@@ -25205,7 +25211,7 @@ graph import runtime.python {
             PyObject_CallOneArg,
             PyObject_Free,
             PyObject_GenericGetAttr,
-            PyObject_GetAttrString,
+            PyObject_GetAttr,
             PyObject_GetOptionalAttrString,
             PyObject_Repr,
             PyObject_Str,
@@ -25222,6 +25228,7 @@ graph import runtime.python {
             Py_None,
             _PyBytes_Resize,
             _PyObject_New,
+            _PyRuntime,
             _PyUnicode_AsUTF8String,
             _Py_write,
             jacpy_bytes_address,
@@ -25468,9 +25475,9 @@ graph import runtime.python {
             PyTuple_Type,
             PyType_GenericAlloc,
             PyUnicode_FromFormat,
-            PyUnicode_FromString,
             PyUnicode_InternFromString,
             PyVectorcall_Call,
+            Py_GetConstant,
             Py_None,
             _PyArg_CheckPositional,
             _PyArg_NoKeywords,
@@ -27607,7 +27614,6 @@ graph import runtime.python {
             _PyNone_Type,
             jacpy_audit_tuple_text,
             jacpy_bytes_copy_to,
-            jacpy_bytes_from_memory,
             jacpy_bytes_from_payload,
             jacpy_bytes_length,
             jacpy_qualified_type_name,
@@ -27616,7 +27622,6 @@ graph import runtime.python {
             jacpy_text,
             jacpy_tuple_set_owned,
             jacpy_type_name,
-            jacpy_unicode_decode_bytes,
             jacpy_unicode_intern_text,
             jacpy_utf8,
             jacpy_writer_new
@@ -29685,6 +29690,7 @@ graph import runtime.python {
         modules.socket_object { PY_BUFFER_SIZE, PySocketSockObject, PyTypeObject },
         modules.sre { PyBUF_SIMPLE, PyTypeObject, PyVarObject, Py_EQ, Py_NE, _object },
         modules.ssl_core { PySocketSockObject, _PyTime_ROUND_CEILING },
+        modules.struct { PyBytesObject_OB_SVAL, PyTupleObject_ITEMS },
         modules.thread {
             METH_KEYWORDS,
             METH_NOARGS,
@@ -30767,6 +30773,7 @@ graph import runtime.python {
             Py_dicts_MAXFREELIST,
             _PyDictViewObject,
             _PyDictViewObject_SIZE,
+            _Py_ID___builtins__,
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _Py_TPFLAGS_MATCH_SELF,
             _Py_TYPE_VERSION_DICT,
@@ -30922,6 +30929,7 @@ graph import runtime.python {
             Py_PRINT_RAW,
             Py_TPFLAGS_DEFAULT,
             Py_TPFLAGS_DISALLOW_INSTANTIATION,
+            _Py_ID_write,
             _Py_STATIC_IMMORTAL_INITIAL_REFCNT,
             _object
         },
@@ -31090,6 +31098,7 @@ graph import runtime.python {
             PyGetSetDef,
             PyTypeObject,
             PyVarObject,
+            Py_CONSTANT_EMPTY_STR,
             Py_READONLY,
             Py_TPFLAGS_BASETYPE,
             Py_TPFLAGS_DEFAULT,
@@ -33459,7 +33468,7 @@ graph import runtime.python {
             SEEK_END,
             _PyRuntimeState_PRECONFIG_UTF8_MODE
         },
-        modules.marshal { _PyRuntimeState_GLOBAL_STRINGS },
+        modules.marshal | object_model.file { _PyRuntimeState_GLOBAL_STRINGS },
         modules.signal {
             Py_NSIG,
             _PyRuntimeState_SIGNALS_DEFAULT_HANDLER,
@@ -33554,7 +33563,8 @@ graph import runtime.python {
         },
         object_model.dict {
             PyInterpreterState_DICT_NEXT_KEYS_VERSION,
-            PyInterpreterState_DICT_WATCHERS
+            PyInterpreterState_DICT_WATCHERS,
+            _PyRuntimeState_GLOBAL_STRINGS
         },
         object_model.dtoa {
             PyInterpreterState_DTOA_FREELIST,
@@ -36403,7 +36413,7 @@ graph import runtime.python {
             _random_Random_setstate_impl,
             random_init_impl
         },
-        bindings.random { Random_token, jacpy_random_new },
+        bindings.random { RANDOM_RECORD_SIZE, Random_token },
     ]
     modules.resource ++> bindings.clinic.resource {
         resource_getpagesize_impl,
@@ -37133,8 +37143,10 @@ graph import runtime.python {
             unpack_impl
         },
         bindings.struct {
+            STRUCT_RECORD_SIZE,
             StructState,
             Struct_token,
+            Struct_unpack_impl,
             iterator_state,
             jacpy_struct_cached,
             jacpy_struct_items,
@@ -37142,12 +37154,15 @@ graph import runtime.python {
             jacpy_struct_next,
             jacpy_struct_offset,
             jacpy_struct_pack,
+            jacpy_struct_pack_record,
             jacpy_struct_remaining,
             jacpy_struct_size,
+            jacpy_struct_unpack_record,
             module_error,
             module_for,
             state_for,
             struct_module_token,
+            struct_record_of,
             unpack_iterator_token
         },
     ]
@@ -38561,7 +38576,8 @@ graph import runtime.python.bindings {
             | clinic.unicodedata
             | clinic.weakref
             | math
-            | operator { check_positional },
+            | operator
+            | struct { check_positional },
         clinic.array | clinic.hmac | clinic.multibytecodec | clinic.sre | clinic.zlib {
             CallSignature,
             PARSE_KEYWORDS,
@@ -39880,7 +39896,6 @@ graph import runtime.python.bindings {
             jacpy_binding_untrack,
             traverse_payload
         },
-        random { jacpy_binding_native_clear, jacpy_binding_native_set },
         select { dispose_payload, jacpy_binding_native_present },
         sqlite3 {
             clear_payload,
@@ -44382,7 +44397,9 @@ graph import runtime.python.object_model {
         dtoa { current_interp },
         enumerate {
             PyType_Type,
+            object_decref,
             object_gc_untrack,
+            object_incref,
             object_refcount,
             object_size,
             object_type,

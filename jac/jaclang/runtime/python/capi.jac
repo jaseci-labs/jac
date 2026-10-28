@@ -21,7 +21,6 @@ import from jaclang.runtime.python.cpython_api {
     PyUnicode_DecodeUTF8Stateful,
     jacpy_unicode_intern_text,
     jacpy_bytes_copy_to,
-    jacpy_bytes_from_memory,
     jacpy_bytes_from_payload,
     jacpy_bytes_length,
     jacpy_qualified_type_name,
@@ -30,7 +29,6 @@ import from jaclang.runtime.python.cpython_api {
     jacpy_text,
     jacpy_tuple_set_owned,
     jacpy_type_name,
-    jacpy_unicode_decode_bytes,
     jacpy_utf8,
     jacpy_writer_new,
     Py_NewRef,
@@ -366,15 +364,7 @@ impl c_string_length(address: ptr[u8], limit: int = -1) -> int {
 }
 
 impl c_string_text(address: ptr[u8], limit: int = -1) -> ptr[PyObject] {
-    payload = jacpy_bytes_from_memory(
-        ptr(address), i64(c_string_length(address, limit))
-    );
-    if not payload {
-        return payload;
-    }
-    text = jacpy_unicode_decode_bytes(payload, "utf-8");
-    jacpy_release(payload);
-    return text;
+    return c_text(ptr(address), i64(c_string_length(address, limit)));
 }
 
 impl c_text(address: ptr, size: i64) -> ptr[PyObject] {

@@ -868,15 +868,24 @@ impl ctx_unary(context: ptr[PyObject], v: ptr[PyObject], op: int) -> ptr[PyObjec
 
 impl context_operands(context: ptr[PyObject], args: ptr[PyObject]) -> ContextOperands {
     operands = ContextOperands();
-    values = parse_tuple(args, "OO");
-    if values is None {
-        return operands;
+    first: ptr[PyObject] = NULL;
+    second: ptr[PyObject] = NULL;
+    if PyTuple_Size(args) == 2 {
+        first = PyTuple_GetItem(args, 0);
+        second = PyTuple_GetItem(args, 1);
+    } else {
+        values = parse_tuple(args, "OO");
+        if values is None {
+            return operands;
+        }
+        first = values[0].object;
+        second = values[1].object;
     }
-    a = convert_op(True, values[0].object, context);
+    a = convert_op(True, first, context);
     if not a {
         return operands;
     }
-    b = convert_op(True, values[1].object, context);
+    b = convert_op(True, second, context);
     if not b {
         jacpy_release(a);
         return operands;

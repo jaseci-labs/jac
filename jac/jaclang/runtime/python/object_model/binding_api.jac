@@ -976,7 +976,8 @@ impl heap_token(type: ptr[PyTypeObject]) -> ptr {
 impl native_payload(object_: ptr[PyObject], definition: ptr) -> ptr[ptr] {
     type = object_type(object_);
     if heap_token(type) == definition {
-        return ptr[ptr](PyObject_GetTypeData(object_, type));
+        base_size = type.view(1)[0].tp_base.view(1)[0].tp_basicsize;
+        return ptr[ptr](ptr[u8](object_) + ((base_size + 15) & ~i64(15)));
     }
     base = ptr[PyTypeObject](jacpy_binding_base(ptr[PyObject](type), definition));
     if not base {

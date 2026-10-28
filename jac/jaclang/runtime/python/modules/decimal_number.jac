@@ -237,6 +237,13 @@ def dec_mpd_qquantize(
     v: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject];
 
+def quantize_with(
+    v: ptr[PyObject],
+    exp: ptr[PyObject],
+    rounding: ptr[PyObject],
+    context_arg: ptr[PyObject]
+) -> ptr[PyObject];
+
 def dec_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject];
 
 def dec_ceil(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
@@ -1549,12 +1556,26 @@ impl dec_mpd_same_quantum(
 impl dec_mpd_qquantize(
     v: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
+    if (not kwds or PyDict_Size(kwds) == 0) and PyTuple_Size(args) == 1 {
+        return quantize_with(v, PyTuple_GetItem(args, 0), Py_None, Py_None);
+    }
     values = parse_keywords(args, kwds, "O|OO", ["exp", "rounding", "context"]);
     if values is None {
         return NULL;
     }
+    return quantize_with(
+        v, values[0].object, given_or(values[1], Py_None), given_or(values[2], Py_None)
+    );
+}
+
+impl quantize_with(
+    v: ptr[PyObject],
+    exp: ptr[PyObject],
+    rounding: ptr[PyObject],
+    context_arg: ptr[PyObject]
+) -> ptr[PyObject] {
     module = module_of(v);
-    context = context_or_current(module, given_or(values[2], Py_None));
+    context = context_or_current(module, context_arg);
     if not context {
         return NULL;
     }
@@ -1562,7 +1583,6 @@ impl dec_mpd_qquantize(
     if not workctx {
         return NULL;
     }
-    rounding = given_or(values[1], Py_None);
     if rounding != Py_None {
         round = getround(module, rounding);
         if round < 0 {
@@ -1579,7 +1599,7 @@ impl dec_mpd_qquantize(
         free_work_context(workctx);
         return NULL;
     }
-    b = convert_op(True, values[0].object, context);
+    b = convert_op(True, exp, context);
     if not b {
         jacpy_release(a);
         free_work_context(workctx);

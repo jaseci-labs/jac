@@ -81,10 +81,8 @@ impl sr_refcount_on_object(ref: u64) -> bool {
 }
 
 impl sr_incref_mortal(op: ptr[PyObject]) {
-    header = ptr[_object](op);
-    header.view(1)[0].ob_refcnt_full = wrapping_add(
-        header.view(1)[0].ob_refcnt_full, 1
-    );
+    refcnt = ptr[u32](op);
+    refcnt.view(1)[0] = wrapping_add(refcnt.view(1)[0], u32(1));
 }
 
 impl sr_decref_mortal(op: ptr[PyObject]) {
@@ -155,7 +153,7 @@ impl sr_immortal(op: ptr[PyObject]) -> u64 {
 }
 
 impl sr_steal(op: ptr[PyObject]) -> u64 {
-    flags = u64.wrap(ptr[_object](op).view(1)[0].ob_refcnt_full) >> u64(48);
+    flags = u64(ptr[u16](ptr[u8](op) + 6).view(1)[0]);
     return u64.wrap(int(op)) | (flags & SR_TAG_REFCNT);
 }
 
@@ -164,11 +162,12 @@ impl sr_steal_mortal(op: ptr[PyObject]) -> u64 {
 }
 
 impl sr_new(op: ptr[PyObject]) -> u64 {
-    full = ptr[_object](op).view(1)[0].ob_refcnt_full;
-    if (full & 0x80000000) != 0 {
+    refcnt = ptr[u32](op);
+    count = refcnt.view(1)[0];
+    if (count & u32(0x80000000)) != u32(0) {
         return u64.wrap(int(op)) | SR_TAG_REFCNT;
     }
-    ptr[_object](op).view(1)[0].ob_refcnt_full = wrapping_add(full, 1);
+    refcnt.view(1)[0] = wrapping_add(count, u32(1));
     return u64.wrap(int(op));
 }
 
@@ -228,8 +227,8 @@ impl sr_is_heap_safe(ref: u64) -> bool {
     if (ref & SR_TAG_BITS) != SR_TAG_REFCNT or ref == SR_NULL {
         return True;
     }
-    full = ptr[_object](sr_borrow(ref)).view(1)[0].ob_refcnt_full;
-    return (full & 0x80000000) != 0;
+    count = ptr[u32](sr_borrow(ref)).view(1)[0];
+    return (count & u32(0x80000000)) != u32(0);
 }
 
 impl sr_make_heap_safe(ref: u64) -> u64 {

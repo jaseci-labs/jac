@@ -851,8 +851,8 @@ impl stackref_new(op: ptr[PyObject]) -> u64 {
     if object_is_immortal(op) {
         return u64.wrap(int(op)) | STACKREF_REFCNT_TAG;
     }
-    header = ptr[_object](op);
-    header.view(1)[0].ob_refcnt_full = header.view(1)[0].ob_refcnt_full + 1;
+    refcnt = ptr[u32](op);
+    refcnt.view(1)[0] = wrapping_add(refcnt.view(1)[0], u32(1));
     return u64.wrap(int(op));
 }
 

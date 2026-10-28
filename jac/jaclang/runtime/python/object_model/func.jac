@@ -1500,24 +1500,21 @@ impl func_new(
 
 impl func_clear(self: ptr[PyObject]) -> i32 {
     func_clear_version(current_interp(), self);
-    for offset in [
-        PyFunctionObject_GLOBALS,
-        PyFunctionObject_BUILTINS,
-        PyFunctionObject_MODULE,
-        PyFunctionObject_DEFAULTS,
-        PyFunctionObject_KWDEFAULTS,
-        PyFunctionObject_DOC,
-        PyFunctionObject_DICT,
-        PyFunctionObject_CLOSURE,
-        PyFunctionObject_ANNOTATIONS,
-        PyFunctionObject_ANNOTATE,
-        PyFunctionObject_TYPEPARAMS
-    ] {
-        replace_field(self, offset, NULL);
-    }
-
-    replace_field(self, PyFunctionObject_NAME, PyUnicode_FromString(ptr[u8]("")));
-    replace_field(self, PyFunctionObject_QUALNAME, PyUnicode_FromString(ptr[u8]("")));
+    replace_field(self, PyFunctionObject_GLOBALS, NULL);
+    replace_field(self, PyFunctionObject_BUILTINS, NULL);
+    replace_field(self, PyFunctionObject_MODULE, NULL);
+    replace_field(self, PyFunctionObject_DEFAULTS, NULL);
+    replace_field(self, PyFunctionObject_KWDEFAULTS, NULL);
+    replace_field(self, PyFunctionObject_DOC, NULL);
+    replace_field(self, PyFunctionObject_DICT, NULL);
+    replace_field(self, PyFunctionObject_CLOSURE, NULL);
+    replace_field(self, PyFunctionObject_ANNOTATIONS, NULL);
+    replace_field(self, PyFunctionObject_ANNOTATE, NULL);
+    replace_field(self, PyFunctionObject_TYPEPARAMS, NULL);
+    replace_field(self, PyFunctionObject_NAME, Py_GetConstant(Py_CONSTANT_EMPTY_STR));
+    replace_field(
+        self, PyFunctionObject_QUALNAME, Py_GetConstant(Py_CONSTANT_EMPTY_STR)
+    );
     return i32(0);
 }
 
@@ -1554,26 +1551,61 @@ impl func_repr(self: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl func_traverse(self: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
-    for offset in [
-        PyFunctionObject_CODE,
-        PyFunctionObject_GLOBALS,
-        PyFunctionObject_BUILTINS,
-        PyFunctionObject_MODULE,
-        PyFunctionObject_DEFAULTS,
-        PyFunctionObject_KWDEFAULTS,
-        PyFunctionObject_DOC,
-        PyFunctionObject_NAME,
-        PyFunctionObject_DICT,
-        PyFunctionObject_CLOSURE,
-        PyFunctionObject_ANNOTATIONS,
-        PyFunctionObject_ANNOTATE,
-        PyFunctionObject_TYPEPARAMS,
-        PyFunctionObject_QUALNAME
-    ] {
-        status = visit_reference(field(self, offset), visitor, arg);
-        if status != 0 {
-            return status;
-        }
+    status = visit_reference(field(self, PyFunctionObject_CODE), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_GLOBALS), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_BUILTINS), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_MODULE), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_DEFAULTS), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_KWDEFAULTS), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_DOC), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_NAME), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_DICT), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_CLOSURE), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_ANNOTATIONS), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_ANNOTATE), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_TYPEPARAMS), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(field(self, PyFunctionObject_QUALNAME), visitor, arg);
+    if status != 0 {
+        return status;
     }
     return i32(0);
 }

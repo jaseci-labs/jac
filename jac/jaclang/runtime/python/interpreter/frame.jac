@@ -395,8 +395,8 @@ impl stackref_clear(slot: ptr[u64]) {
 
 impl stackref_dup(bits: u64) -> u64 {
     if (bits & STACKREF_TAG_REFCNT) == u64(0) {
-        header = ptr[_object](ptr[PyObject](i64.wrap(bits)));
-        header.view(1)[0].ob_refcnt_full = header.view(1)[0].ob_refcnt_full + 1;
+        refcnt = ptr[u32](ptr[PyObject](i64.wrap(bits)));
+        refcnt.view(1)[0] = wrapping_add(refcnt.view(1)[0], u32(1));
     }
     return bits;
 }

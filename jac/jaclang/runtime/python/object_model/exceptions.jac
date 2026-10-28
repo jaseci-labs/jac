@@ -2927,9 +2927,12 @@ impl BaseException_vectorcall(
 }
 
 impl BaseException_clear(op: ptr[PyObject]) -> i32 {
-    for which in [0, 1, 2, 3, 5, 4] {
-        base_store(op, which, NULL);
-    }
+    base_store(op, 0, NULL);
+    base_store(op, 1, NULL);
+    base_store(op, 2, NULL);
+    base_store(op, 3, NULL);
+    base_store(op, 5, NULL);
+    base_store(op, 4, NULL);
     return i32(0);
 }
 
@@ -2941,11 +2944,29 @@ impl BaseException_dealloc(op: ptr[PyObject]) {
 }
 
 impl BaseException_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
-    for which in [0, 1, 2, 3, 5, 4] {
-        status = visit_reference(base_field(op, which), visitor, arg);
-        if status != 0 {
-            return status;
-        }
+    status = visit_reference(base_field(op, 0), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(base_field(op, 1), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(base_field(op, 2), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(base_field(op, 3), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(base_field(op, 5), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(base_field(op, 4), visitor, arg);
+    if status != 0 {
+        return status;
     }
     return i32(0);
 }
@@ -4086,11 +4107,21 @@ impl OSError_dealloc(op: ptr[PyObject]) {
 }
 
 impl OSError_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
-    for which in [0, 1, 2, 3] {
-        status = visit_reference(os_field(op, which), visitor, arg);
-        if status != 0 {
-            return status;
-        }
+    status = visit_reference(os_field(op, 0), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(os_field(op, 1), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(os_field(op, 2), visitor, arg);
+    if status != 0 {
+        return status;
+    }
+    status = visit_reference(os_field(op, 3), visitor, arg);
+    if status != 0 {
+        return status;
     }
     return BaseException_traverse(op, visitor, arg);
 }

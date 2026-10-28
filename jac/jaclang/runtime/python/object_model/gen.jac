@@ -1373,13 +1373,13 @@ impl gen_send_ex2(
     if not arg_obj {
         arg_obj = Py_None;
     }
-    header = ptr[_object](arg_obj);
-    full = header.view(1)[0].ob_refcnt_full;
+    refcnt = ptr[u32](arg_obj);
+    count = refcnt.view(1)[0];
     bits = u64.wrap(int(arg_obj));
-    if (full & 0x80000000) != 0 {
+    if (count & u32(0x80000000)) != u32(0) {
         bits = bits | STACKREF_TAG_REFCNT;
     } else {
-        header.view(1)[0].ob_refcnt_full = full + 1;
+        refcnt.view(1)[0] = wrapping_add(count, u32(1));
     }
     sp_slot = ptr[ptr[u64]](frame + _PyInterpreterFrame_STACKPOINTER);
     sp = sp_slot.view(1)[0];

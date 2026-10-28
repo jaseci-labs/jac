@@ -1,3 +1,18 @@
+import from c {
+    obj struct_record {
+        has table: ptr[i64],
+            items: i64,
+            size: i64,
+            little: i64,
+            direct: i64,
+            dense: i64,
+            module: ptr[PyObject];
+    }
+}
+
+glob STRUCT_RECORD_SIZE: Final[int] = 56,
+     FLOAT_VALUE_OFFSET: Final[i64] = 16;
+
 obj format_field {
     has code: int,
         offset: int,
@@ -62,10 +77,51 @@ def:pub jacpy_struct_pack(
 ) -> i64;
 
 def:priv unpack_field(
-    plan: struct_plan, code: int, size: int, signed: bool, address: ptr
+    little: bool, code: int, size: int, signed: bool, address: ptr
 ) -> ptr[PyObject];
 
 def:pub jacpy_struct_unpack(plan: struct_plan, address: ptr) -> ptr[PyObject];
+
+def:priv integer_code(code: i64) -> bool;
+
+def:priv load_bits(at: ptr[u8], size: i64, direct: bool, little: bool) -> u64;
+
+def:priv store_bits(at: ptr[u8], size: i64, direct: bool, little: bool, bits: u64);
+
+def:priv unpack_fast(
+    code: i64, size: i64, signed: bool, little: bool, direct: bool, at: ptr[u8]
+) -> ptr[PyObject];
+
+def:priv unpack_table(
+    table: ptr[i64], count: i64, little: bool, direct: bool, address: ptr[u8]
+) -> ptr[PyObject];
+
+def:priv pack_fast(
+    code: i64,
+    size: i64,
+    signed: bool,
+    little: bool,
+    direct: bool,
+    at: ptr[u8],
+    value: ptr[PyObject]
+) -> i32;
+
+def:priv pack_slow(
+    instance: ptr[PyObject], row: ptr[i64], address: ptr[u8], value: ptr[PyObject]
+) -> i32;
+
+def:pub struct_record_of(instance: ptr[PyObject]) -> ptr[struct_record];
+
+def:pub jacpy_struct_pack_record(
+    instance: ptr[PyObject],
+    record: ptr[struct_record],
+    items: ptr[ptr[PyObject]],
+    address: ptr[u8]
+) -> i32;
+
+def:pub jacpy_struct_unpack_record(
+    record: ptr[struct_record], address: ptr[u8]
+) -> ptr[PyObject];
 
 def:pub jacpy_struct_offset(
     plan: struct_plan, length: i64, offset: i64, packing: i64, error: ptr[PyObject]
@@ -531,7 +587,7 @@ impl jacpy_struct_pack(
 }
 
 impl unpack_field(
-    plan: struct_plan, code: int, size: int, signed: bool, address: ptr
+    little: bool, code: int, size: int, signed: bool, address: ptr
 ) -> ptr[PyObject] {
     if code == 115 or code == 99 {
         return jacpy_bytes_from_memory(address, i64(size));
@@ -547,7 +603,7 @@ impl unpack_field(
         return PyBool_FromLong(i64(memory_byte(address, 0) != 0));
     }
     if code == 101 or code == 102 or code == 100 {
-        number = jacpy_float_unpack(address, i64(size), i64(plan.little));
+        number = jacpy_float_unpack(address, i64(size), i64(little));
         if number == -1.0 and jacpy_error_pending() != 0 {
             return NULL;
         }
@@ -555,19 +611,19 @@ impl unpack_field(
     }
     if code == 70 or code == 68 {
         component_size = size // 2;
-        real = jacpy_float_unpack(address, i64(component_size), i64(plan.little));
+        real = jacpy_float_unpack(address, i64(component_size), i64(little));
         if real == -1.0 and jacpy_error_pending() != 0 {
             return NULL;
         }
         imaginary = jacpy_float_unpack(
-            address + component_size, i64(component_size), i64(plan.little)
+            address + component_size, i64(component_size), i64(little)
         );
         if imaginary == -1.0 and jacpy_error_pending() != 0 {
             return NULL;
         }
         return PyComplex_FromDoubles(real, imaginary);
     }
-    bits = read_bits(address, size, plan.little);
+    bits = read_bits(address, size, little);
     if not signed {
         return PyLong_FromUnsignedLongLong(bits);
     }
@@ -580,23 +636,256 @@ impl unpack_field(
 }
 
 impl jacpy_struct_unpack(plan: struct_plan, address: ptr) -> ptr[PyObject] {
-    result = PyTuple_New(i64(plan.items));
+    return unpack_table(
+        plan.table,
+        i64(plan.items),
+        plan.little,
+        plan.little == (jacpy_native_little_endian() != 0),
+        ptr[u8](address)
+    );
+}
+
+impl integer_code(code: i64) -> bool {
+    return code == 98
+        or code == 66
+        or code == 104
+        or code == 72
+        or code == 105
+        or code == 73
+        or code == 108
+        or code == 76
+        or code == 113
+        or code == 81
+        or code == 110
+        or code == 78;
+}
+
+impl load_bits(at: ptr[u8], size: i64, direct: bool, little: bool) -> u64 {
+    if direct {
+        if size == 1 {
+            return u64(at.view(1)[0]);
+        }
+        if size == 2 {
+            return u64(ptr[u16](at).view(1)[0]);
+        }
+        if size == 4 {
+            return u64(ptr[u32](at).view(1)[0]);
+        }
+        if size == 8 {
+            return ptr[u64](at).view(1)[0];
+        }
+    }
+    return read_bits(ptr(at), int(size), little);
+}
+
+impl store_bits(at: ptr[u8], size: i64, direct: bool, little: bool, bits: u64) {
+    if direct {
+        if size == 1 {
+            at.view(1)[0] = u8(bits & u64(255));
+            return;
+        }
+        if size == 2 {
+            ptr[u16](at).view(1)[0] = u16(bits & u64(65535));
+            return;
+        }
+        if size == 4 {
+            ptr[u32](at).view(1)[0] = u32(bits & u64(4294967295));
+            return;
+        }
+        if size == 8 {
+            ptr[u64](at).view(1)[0] = bits;
+            return;
+        }
+    }
+    write_bits(ptr(at), int(size), little, bits);
+}
+
+impl unpack_fast(
+    code: i64, size: i64, signed: bool, little: bool, direct: bool, at: ptr[u8]
+) -> ptr[PyObject] {
+    if integer_code(code) {
+        bits = load_bits(at, size, direct, little);
+        if not signed {
+            return PyLong_FromUnsignedLongLong(bits);
+        }
+        if size < 8 and (bits & (u64(1) << u64(size * 8 - 1))) != u64(0) {
+            bits |= wrapping_shl(~u64(0), u64(size * 8));
+        }
+        return PyLong_FromLongLong(i64.wrap(bits));
+    }
+    if code == 100 and direct {
+        return PyFloat_FromDouble(ptr[f64](at).view(1)[0]);
+    }
+    return unpack_field(little, int(code), int(size), signed, ptr(at));
+}
+
+impl unpack_table(
+    table: ptr[i64], count: i64, little: bool, direct: bool, address: ptr[u8]
+) -> ptr[PyObject] {
+    result = PyTuple_New(count);
     if result == NULL {
         return NULL;
     }
-    table = plan.table;
-    for index in range(plan.items) {
-        row = (table + index * 4).view(4);
-        value = unpack_field(
-            plan, int(row[0]), int(row[2]), row[3] != 0, address + row[1]
+    slots = ptr[ptr[PyObject]](ptr[u8](result) + PyTupleObject_ITEMS);
+    index: i64 = 0;
+    while index < count {
+        row = table + index * 4;
+        value = unpack_fast(
+            row.view(1)[0],
+            (row + 2).view(1)[0],
+            (row + 3).view(1)[0] != 0,
+            little,
+            direct,
+            address + (row + 1).view(1)[0]
         );
         if value == NULL {
             jacpy_release(result);
             return NULL;
         }
-        PyTuple_SetItem(result, i64(index), value);
+        (slots + index).view(1)[0] = value;
+        index += 1;
     }
     return result;
+}
+
+impl pack_fast(
+    code: i64,
+    size: i64,
+    signed: bool,
+    little: bool,
+    direct: bool,
+    at: ptr[u8],
+    value: ptr[PyObject]
+) -> i32 {
+    type = ptr[ptr[PyObject]](ptr[u8](value) + 8).view(1)[0];
+    if type == ptr[PyObject](addressof(PyLong_Type)) and integer_code(code) {
+        overflow: i32 = 0;
+        number = PyLong_AsLongLongAndOverflow(value, &mut overflow);
+        if overflow != 0 {
+            return 0;
+        }
+        if signed {
+            if size < 8 {
+                limit = i64(1) << (size * 8 - 1);
+                if number < -limit or number >= limit {
+                    return 0;
+                }
+            }
+        } else {
+            if number < 0 {
+                return 0;
+            }
+            if size < 8 and number >= (i64(1) << (size * 8)) {
+                return 0;
+            }
+        }
+        store_bits(at, size, direct, little, u64.wrap(number));
+        return 1;
+    }
+    if type == ptr[PyObject](addressof(PyFloat_Type))
+        and (code == 100 or code == 102 or code == 101) {
+        real = ptr[f64](ptr[u8](value) + FLOAT_VALUE_OFFSET).view(1)[0];
+        if code == 100 and direct {
+            ptr[f64](at).view(1)[0] = real;
+            return 1;
+        }
+        if jacpy_float_pack(real, ptr(at), size, i64(little)) < 0 {
+            return -1;
+        }
+        return 1;
+    }
+    if code == 115 and type == ptr[PyObject](addressof(PyBytes_Type)) {
+        length = jacpy_bytes_length(value);
+        if length > size {
+            length = size;
+        }
+        jacpy_memory_copy(ptr(at), ptr(ptr[u8](value) + PyBytesObject_OB_SVAL), length);
+        if length < size {
+            zero_memory(ptr(at + length), int(size - length));
+        }
+        return 1;
+    }
+    return 0;
+}
+
+impl pack_slow(
+    instance: ptr[PyObject], row: ptr[i64], address: ptr[u8], value: ptr[PyObject]
+) -> i32 {
+    state = state_for(instance);
+    if state is None {
+        return i32(-1);
+    }
+    module = module_for(instance);
+    if module == 0 {
+        return i32(-1);
+    }
+    try {
+        pack_field(
+            state.plan,
+            int(row.view(1)[0]),
+            int((row + 2).view(1)[0]),
+            (row + 3).view(1)[0] != 0,
+            ptr(address + (row + 1).view(1)[0]),
+            value,
+            jacpy_binding_state_get(module, 0)
+        );
+        return i32(0);
+    } except boundary_failure {
+        return i32(-1);
+    }
+}
+
+impl struct_record_of(instance: ptr[PyObject]) -> ptr[struct_record] {
+    return ptr[struct_record](jacpy_binding_record(instance, Struct_token.handle));
+}
+
+impl jacpy_struct_pack_record(
+    instance: ptr[PyObject],
+    record: ptr[struct_record],
+    items: ptr[ptr[PyObject]],
+    address: ptr[u8]
+) -> i32 {
+    table = record.view(1)[0].table;
+    count = record.view(1)[0].items;
+    little = record.view(1)[0].little != 0;
+    direct = record.view(1)[0].direct != 0;
+    if record.view(1)[0].dense == 0 {
+        zero_memory(ptr(address), int(record.view(1)[0].size));
+    }
+    index: i64 = 0;
+    while index < count {
+        row = table + index * 4;
+        value = (items + index).view(1)[0];
+        status = pack_fast(
+            row.view(1)[0],
+            (row + 2).view(1)[0],
+            (row + 3).view(1)[0] != 0,
+            little,
+            direct,
+            address + (row + 1).view(1)[0],
+            value
+        );
+        if status < 0 {
+            return i32(-1);
+        }
+        if status == 0 and pack_slow(instance, row, address, value) < 0 {
+            return i32(-1);
+        }
+        index += 1;
+    }
+    return i32(0);
+}
+
+impl jacpy_struct_unpack_record(
+    record: ptr[struct_record], address: ptr[u8]
+) -> ptr[PyObject] {
+    return unpack_table(
+        record.view(1)[0].table,
+        record.view(1)[0].items,
+        record.view(1)[0].little != 0,
+        record.view(1)[0].direct != 0,
+        address
+    );
 }
 
 impl build_table(plan: struct_plan) -> bool {
@@ -817,6 +1106,19 @@ impl Struct___init___impl(instance: ptr[PyObject], format_: ptr[PyObject]) -> i3
     state.references.append(state.plan.table_object);
     if jacpy_binding_native_set(instance, Struct_token.handle, state) < 0 {
         return i32(-1);
+    }
+    record = struct_record_of(instance);
+    if record {
+        plan = state.plan;
+        record.view(1)[0].table = plan.table;
+        record.view(1)[0].items = i64(plan.items);
+        record.view(1)[0].size = i64(plan.size);
+        record.view(1)[0].little = i64(plan.little);
+        record.view(1)[0].direct = i64(
+            plan.little == (jacpy_native_little_endian() != 0)
+        );
+        record.view(1)[0].dense = i64(plan.dense);
+        record.view(1)[0].module = module;
     }
     return i32(0);
 }

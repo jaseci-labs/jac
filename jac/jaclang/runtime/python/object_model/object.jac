@@ -2070,7 +2070,7 @@ impl stackref_new(op: ptr[PyObject]) -> u64 {
 }
 
 impl stackref_steal(op: ptr[PyObject]) -> u64 {
-    flags = u64.wrap(ptr[_object](op).view(1)[0].ob_refcnt_full) >> u64(48);
+    flags = u64(ptr[u16](ptr[u8](op) + 6).view(1)[0]);
     return u64.wrap(int(op)) | (flags & u64(1));
 }
 

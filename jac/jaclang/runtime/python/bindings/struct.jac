@@ -68,6 +68,24 @@ def:priv count_error(module: ptr[PyObject], into: bool, expected: i64, count: i6
 def:priv pack(
     instance: ptr[PyObject], items: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
+    record = struct_record_of(instance);
+    if record and record.view(1)[0].table {
+        expected = record.view(1)[0].items;
+        if count != expected {
+            count_error(record.view(1)[0].module, False, expected, count);
+            return NULL;
+        }
+        result = jacpy_buffer_new(record.view(1)[0].size);
+        if result != 0
+            and jacpy_struct_pack_record(
+                instance, record, items, ptr[u8](jacpy_bytes_address(result))
+            )
+                < 0 {
+            jacpy_release(result);
+            return NULL;
+        }
+        return result;
+    }
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -139,6 +157,47 @@ def:priv pack_into(
     return Py_NewRef(Py_None);
 }
 
+def:priv unpack_slow(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    buffer = BufferArgument();
+    if not buffer.acquire(value) {
+        return NULL;
+    }
+    result = Struct_unpack_impl(instance, buffer);
+    buffer.close();
+    return result;
+}
+
+def:priv unpack_call(instance: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
+    record = struct_record_of(instance);
+    if record
+        and record.view(1)[0].table
+        and ptr[ptr[PyObject]](ptr[u8](value) + 8).view(1)[0]
+            == ptr[PyObject](addressof(PyBytes_Type))
+        and jacpy_bytes_length(value) == record.view(1)[0].size {
+        return jacpy_struct_unpack_record(record, ptr[u8](jacpy_bytes_address(value)));
+    }
+    return unpack_slow(instance, value);
+}
+
+def:priv struct_methods -> list[MethodDefinition] {
+    methods: list[MethodDefinition] = [];
+    for method in Struct_methods {
+        if method.name == "unpack" {
+            methods.append(
+                MethodDefinition(
+                    "unpack",
+                    MethodCallbacks(positional=unpack_call),
+                    method.doc,
+                    flags=8
+                )
+            );
+        } else {
+            methods.append(method);
+        }
+    }
+    return methods;
+}
+
 def:priv iterator_next(instance: ptr[PyObject]) -> ptr[PyObject] {
     state = iterator_state(instance);
     if state is None {
@@ -191,6 +250,10 @@ def:priv deallocate(instance: ptr[PyObject]) {
 }
 
 def:priv clear(instance: ptr[PyObject]) -> i32 {
+    record = struct_record_of(instance);
+    if record {
+        record.view(1)[0].table = ptr[i64]();
+    }
     return clear_payload(instance, Struct_token.handle);
 }
 
@@ -217,7 +280,7 @@ def:priv iterator_traverse(
 glob:priv struct_type = TypeDefinition(
          "_struct.Struct",
          s__doc__,
-         Struct_methods
+         struct_methods()
              + [
                  MethodDefinition(
                      "pack", MethodCallbacks(fast=pack_call), s_pack__doc__, flags=128
@@ -256,6 +319,7 @@ glob:priv struct_type = TypeDefinition(
                  doc=s_getsetlist_size_doc
              )
          ],
+         record_size=STRUCT_RECORD_SIZE,
          weaklist=True,
          generic_getattr=True,
          generic_setattr=True
@@ -313,6 +377,37 @@ def:priv module_pack_values(
     return result;
 }
 
+def:priv module_unpack(
+    module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
+) -> ptr[PyObject] {
+    if not check_positional("unpack", int(nargs), 2, 2) {
+        return NULL;
+    }
+    instance = cached_struct(module, args.view(1)[0]);
+    if instance == 0 {
+        return NULL;
+    }
+    result = unpack_call(instance, (args + 1).view(1)[0]);
+    jacpy_release(instance);
+    return result;
+}
+
+def:priv module_function_list -> list[MethodDefinition] {
+    methods: list[MethodDefinition] = [];
+    for method in module_methods {
+        if method.name == "unpack" {
+            methods.append(
+                MethodDefinition(
+                    "unpack", MethodCallbacks(fast=module_unpack), method.doc, flags=128
+                )
+            );
+        } else {
+            methods.append(method);
+        }
+    }
+    return methods;
+}
+
 def:priv module_pack(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
@@ -357,7 +452,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
 glob:priv definition = ModuleDefinition(
          "_struct",
          module_doc,
-         module_methods
+         module_function_list()
              + [
                  MethodDefinition(
                      "pack", MethodCallbacks(fast=module_pack), pack_doc, flags=128

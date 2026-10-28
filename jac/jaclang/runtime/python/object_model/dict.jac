@@ -593,12 +593,12 @@ import from c {
             PyErr_BadInternalCall();
             return NULL;
         }
-        key = PyUnicode_InternFromString(ptr[u8]("__builtins__"));
-        if not key {
-            return NULL;
-        }
+        key = ptr[PyObject](
+            ptr[u8](addressof(_PyRuntime))
+                + _PyRuntimeState_GLOBAL_STRINGS
+                + _Py_ID___builtins__
+        );
         (ix, builtins) = dict_lookup(globals, key, unicode_get_hash(key));
-        object_decref(key);
         if ix == DKIX_ERROR {
             return NULL;
         }
@@ -4033,29 +4033,42 @@ impl dict_popitem(self: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] 
 impl dict_traverse(op: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     k = dict_keys_of(op);
     n = dk_nentries(k);
+    entries = k + PyDictKeysObject_INDICES + wrapping_shl(1, dk_log2_index_bytes(k));
     status = i32(0);
+    i: i64 = 0;
     if dk_is_unicode(k) {
-        split = has_split_table(op);
-        for i in range(n) {
-            value = value_at(dict_values_of(op), i) if split else entry_value(k, i);
+        values = dict_values_of(op);
+        slot = ptr[ptr[PyObject]](entries) + 1;
+        stride: i64 = 2;
+        if values {
+            slot = ptr[ptr[PyObject]](values + PyDictValues_VALUES);
+            stride = 1;
+        }
+        while i < n {
+            status = visit_reference(slot.view(1)[0], visitor, arg);
+            if status != 0 {
+                return status;
+            }
+            slot = slot + stride;
+            i += 1;
+        }
+        return i32(0);
+    }
+    cursor = ptr[ptr[PyObject]](entries);
+    while i < n {
+        value = (cursor + 2).view(1)[0];
+        if value {
             status = visit_reference(value, visitor, arg);
             if status != 0 {
                 return status;
             }
-        }
-        return i32(0);
-    }
-    for i in range(n) {
-        if entry_value(k, i) {
-            status = visit_reference(entry_value(k, i), visitor, arg);
-            if status != 0 {
-                return status;
-            }
-            status = visit_reference(entry_key(k, i), visitor, arg);
+            status = visit_reference((cursor + 1).view(1)[0], visitor, arg);
             if status != 0 {
                 return status;
             }
         }
+        cursor = cursor + 3;
+        i += 1;
     }
     return i32(0);
 }

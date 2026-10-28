@@ -329,13 +329,13 @@ impl enum_pair(
 ) -> ptr[PyObject] {
     result = en.view(1)[0].en_result;
     if object_refcount(result) == 1 {
-        Py_IncRef(result);
+        object_incref(result);
         old_index = tuple_get_item(result, 0);
         old_item = tuple_get_item(result, 1);
         tuple_set_item(result, 0, next_index);
         tuple_set_item(result, 1, next_item);
-        jacpy_release(old_index);
-        jacpy_release(old_item);
+        object_decref(old_index);
+        object_decref(old_item);
         tuple_recycle(result);
         return result;
     }

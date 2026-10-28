@@ -726,7 +726,8 @@ impl decompose(
 ) -> (Ucs4Buffer | None) {
     old = old_version(self);
 
-    stack: list[int] = [];
+    stack = ptr[i64](__alloca(256));
+    depth: i64 = 0;
     isize = int(jacpy_unicode_size(input));
     space = isize;
 
@@ -747,10 +748,12 @@ impl decompose(
     kind = int(jacpy_unicode_kind(input));
     data = jacpy_unicode_data(input);
     while i < isize {
-        stack.append(read_char(kind, data, i));
+        (stack + depth).view(1)[0] = i64(read_char(kind, data, i));
+        depth += 1;
         i += 1;
-        while stack {
-            code = stack.pop();
+        while depth > 0 {
+            depth -= 1;
+            code = int((stack + depth).view(1)[0]);
 
             if space < 3 {
                 osize += 10;
@@ -780,7 +783,8 @@ impl decompose(
             if not old.is_null() {
                 value = int(old.view(1)[0].normalization(u32(code)));
                 if value != 0 {
-                    stack.append(value);
+                    (stack + depth).view(1)[0] = i64(value);
+                    depth += 1;
                     continue;
                 }
             }
@@ -806,7 +810,8 @@ impl decompose(
 
             while count > 0 {
                 count -= 1;
-                stack.append(decomp_word(index + count));
+                (stack + depth).view(1)[0] = i64(decomp_word(index + count));
+                depth += 1;
             }
         }
     }

@@ -104,9 +104,8 @@ impl object_decref(op: ptr[PyObject]) {
 }
 
 impl refcnt_add(op: ptr[PyObject], n: i64) {
-    header = ptr[_object](op);
-    full = header.view(1)[0].ob_refcnt_full;
-    count = full & 0xFFFFFFFF;
+    refcnt = ptr[u32](op);
+    count = i64(refcnt.view(1)[0]);
     if (count & 0x80000000) != 0 {
         return;
     }
@@ -114,7 +113,7 @@ impl refcnt_add(op: ptr[PyObject], n: i64) {
     if added >= IMMORTAL_MINIMUM_REFCNT {
         added = _Py_IMMORTAL_INITIAL_REFCNT;
     }
-    header.view(1)[0].ob_refcnt_full = (full - count) | (added & 0xFFFFFFFF);
+    refcnt.view(1)[0] = u32.wrap(added & 0xFFFFFFFF);
 }
 
 impl object_xdecref(op: ptr[PyObject]) {

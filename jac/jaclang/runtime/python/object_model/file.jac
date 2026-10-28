@@ -157,7 +157,14 @@ import from c {
             PyErr_SetString(PyExc_TypeError, ptr[u8]("writeobject with NULL file"));
             return i32(-1);
         }
-        writer = PyObject_GetAttrString(f, ptr[u8]("write"));
+        writer = PyObject_GetAttr(
+            f,
+            ptr[PyObject](
+                ptr[u8](addressof(_PyRuntime))
+                    + _PyRuntimeState_GLOBAL_STRINGS
+                    + _Py_ID_write
+            )
+        );
         if not writer {
             return i32(-1);
         }

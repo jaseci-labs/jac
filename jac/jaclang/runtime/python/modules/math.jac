@@ -474,10 +474,208 @@ import from c {
              u64(0x15),
              u64(0x14),
              u64(0x14)
+         ],
+         approximate_isqrt_tab: list[u8] = [
+             u8(128),
+             u8(129),
+             u8(130),
+             u8(131),
+             u8(132),
+             u8(133),
+             u8(134),
+             u8(135),
+             u8(136),
+             u8(137),
+             u8(138),
+             u8(139),
+             u8(140),
+             u8(141),
+             u8(142),
+             u8(143),
+             u8(144),
+             u8(144),
+             u8(145),
+             u8(146),
+             u8(147),
+             u8(148),
+             u8(149),
+             u8(150),
+             u8(151),
+             u8(151),
+             u8(152),
+             u8(153),
+             u8(154),
+             u8(155),
+             u8(156),
+             u8(156),
+             u8(157),
+             u8(158),
+             u8(159),
+             u8(160),
+             u8(160),
+             u8(161),
+             u8(162),
+             u8(163),
+             u8(164),
+             u8(164),
+             u8(165),
+             u8(166),
+             u8(167),
+             u8(167),
+             u8(168),
+             u8(169),
+             u8(170),
+             u8(170),
+             u8(171),
+             u8(172),
+             u8(173),
+             u8(173),
+             u8(174),
+             u8(175),
+             u8(176),
+             u8(176),
+             u8(177),
+             u8(178),
+             u8(179),
+             u8(179),
+             u8(180),
+             u8(181),
+             u8(181),
+             u8(182),
+             u8(183),
+             u8(183),
+             u8(184),
+             u8(185),
+             u8(186),
+             u8(186),
+             u8(187),
+             u8(188),
+             u8(188),
+             u8(189),
+             u8(190),
+             u8(190),
+             u8(191),
+             u8(192),
+             u8(192),
+             u8(193),
+             u8(194),
+             u8(194),
+             u8(195),
+             u8(196),
+             u8(196),
+             u8(197),
+             u8(198),
+             u8(198),
+             u8(199),
+             u8(200),
+             u8(200),
+             u8(201),
+             u8(201),
+             u8(202),
+             u8(203),
+             u8(203),
+             u8(204),
+             u8(205),
+             u8(205),
+             u8(206),
+             u8(206),
+             u8(207),
+             u8(208),
+             u8(208),
+             u8(209),
+             u8(210),
+             u8(210),
+             u8(211),
+             u8(211),
+             u8(212),
+             u8(213),
+             u8(213),
+             u8(214),
+             u8(214),
+             u8(215),
+             u8(216),
+             u8(216),
+             u8(217),
+             u8(217),
+             u8(218),
+             u8(219),
+             u8(219),
+             u8(220),
+             u8(220),
+             u8(221),
+             u8(221),
+             u8(222),
+             u8(223),
+             u8(223),
+             u8(224),
+             u8(224),
+             u8(225),
+             u8(225),
+             u8(226),
+             u8(227),
+             u8(227),
+             u8(228),
+             u8(228),
+             u8(229),
+             u8(229),
+             u8(230),
+             u8(230),
+             u8(231),
+             u8(232),
+             u8(232),
+             u8(233),
+             u8(233),
+             u8(234),
+             u8(234),
+             u8(235),
+             u8(235),
+             u8(236),
+             u8(237),
+             u8(237),
+             u8(238),
+             u8(238),
+             u8(239),
+             u8(239),
+             u8(240),
+             u8(240),
+             u8(241),
+             u8(241),
+             u8(242),
+             u8(242),
+             u8(243),
+             u8(243),
+             u8(244),
+             u8(244),
+             u8(245),
+             u8(246),
+             u8(246),
+             u8(247),
+             u8(247),
+             u8(248),
+             u8(248),
+             u8(249),
+             u8(249),
+             u8(250),
+             u8(250),
+             u8(251),
+             u8(251),
+             u8(252),
+             u8(252),
+             u8(253),
+             u8(253),
+             u8(254),
+             u8(254),
+             u8(255),
+             u8(255),
+             u8(255)
          ];
 }
 
 def:priv table_u64(table: ptr[u64], index: u64) -> u64;
+
+def:priv approximate_isqrt(n: u64) -> u32;
+
+def:priv isqrt_slow(n: ptr[PyObject], c: i64) -> ptr[PyObject];
 
 def:priv table_u8(table: ptr[u8], index: u64) -> u64;
 
@@ -841,63 +1039,120 @@ impl jacpy_math_factorial(argument: ptr[PyObject]) -> ptr[PyObject] {
     }
 }
 
+impl approximate_isqrt(n: u64) -> u32 {
+    u = u32(table_u8(addressof(approximate_isqrt_tab), (n >> u64(56)) - u64(64)));
+    u = wrapping_shl(u, 7) + u32.wrap(n >> u64(41)) // u;
+    return wrapping_shl(u, 15) + u32.wrap((n >> u64(17)) // u64(u));
+}
+
 impl jacpy_math_isqrt(argument: ptr[PyObject]) -> ptr[PyObject] {
-    n: ptr[PyObject] = NULL;
-    approximation: ptr[PyObject] = NULL;
-    square: ptr[PyObject] = NULL;
-    try {
-        n = required(PyNumber_Index(argument));
-        sign = jacpy_long_sign(n);
-        if sign < 0 {
-            object_error(PyExc_ValueError, "isqrt() argument must be nonnegative");
-            return NULL;
-        }
-        if sign == 0 {
-            return required(PyLong_FromLongLong(0));
-        }
-        c = (_PyLong_NumBits(n) - 1) // 2;
-        approximation = required(PyLong_FromLongLong(1));
-        d: i64 = 0;
-        for s in range(bits(c) - 1, -1, -1) {
-            e = d;
-            d = c >> i64(s);
-            shifted: ptr[PyObject] = NULL;
-            quotient: ptr[PyObject] = NULL;
-            prefix: ptr[PyObject] = NULL;
-            try {
-                shifted = required(jacpy_long_shift(n, 2 * c - e - d + 1, 0));
-                quotient = required(PyNumber_FloorDivide(shifted, approximation));
-                prefix = required(jacpy_long_shift(approximation, d - e - 1, 1));
-                replacement = required(PyNumber_Add(prefix, quotient));
-                jacpy_release(approximation);
-                approximation = replacement;
-            } finally {
-                jacpy_release(shifted);
-                jacpy_release(quotient);
-                jacpy_release(prefix);
-            }
-        }
-        square = required(PyNumber_Multiply(approximation, approximation));
-        too_large = PyObject_RichCompareBool(square, n, 4);
-        if too_large < 0 {
-            return NULL;
-        }
-        if too_large != 0 {
-            one = required(PyLong_FromLongLong(1));
-            try {
-                return required(PyNumber_Subtract(approximation, one));
-            } finally {
-                jacpy_release(one);
-            }
-        }
-        return Py_NewRef(approximation);
-    } except boundary_failure {
+    n = PyNumber_Index(argument);
+    if n == NULL {
         return NULL;
-    } finally {
-        jacpy_release(n);
-        jacpy_release(approximation);
-        jacpy_release(square);
     }
+    sign = jacpy_long_sign(n);
+    if sign < 0 {
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("isqrt() argument must be nonnegative")
+        );
+        jacpy_release(n);
+        return NULL;
+    }
+    if sign == 0 {
+        jacpy_release(n);
+        return PyLong_FromLongLong(0);
+    }
+    c = (_PyLong_NumBits(n) - 1) // 2;
+    if c <= 31 {
+        shift = 31 - c;
+        m = PyLong_AsUnsignedLongLong(n);
+        jacpy_release(n);
+        if m == u64(18446744073709551615) and jacpy_error_pending() != 0 {
+            return NULL;
+        }
+        u = approximate_isqrt(wrapping_shl(m, u64(2 * shift))) >> u32(shift);
+        if u64(u) * u64(u) > m {
+            u -= u32(1);
+        }
+        return PyLong_FromUnsignedLongLong(u64(u));
+    }
+    result = isqrt_slow(n, c);
+    jacpy_release(n);
+    return result;
+}
+
+impl isqrt_slow(n: ptr[PyObject], c: i64) -> ptr[PyObject] {
+    c_bit_length = 6;
+    while (c >> i64(c_bit_length)) > 0 {
+        c_bit_length += 1;
+    }
+    d = c >> i64(c_bit_length - 5);
+    b = jacpy_long_shift(n, 2 * c - 62, 0);
+    if b == NULL {
+        return NULL;
+    }
+    m = PyLong_AsUnsignedLongLong(b);
+    jacpy_release(b);
+    if m == u64(18446744073709551615) and jacpy_error_pending() != 0 {
+        return NULL;
+    }
+    u = approximate_isqrt(m) >> u32(31 - d);
+    a = PyLong_FromUnsignedLongLong(u64(u));
+    if a == NULL {
+        return NULL;
+    }
+    s = c_bit_length - 6;
+    while s >= 0 {
+        e = d;
+        d = c >> i64(s);
+        q = jacpy_long_shift(n, 2 * c - d - e + 1, 0);
+        if q == NULL {
+            jacpy_release(a);
+            return NULL;
+        }
+        quotient = PyNumber_FloorDivide(q, a);
+        jacpy_release(q);
+        if quotient == NULL {
+            jacpy_release(a);
+            return NULL;
+        }
+        shifted = jacpy_long_shift(a, d - 1 - e, 1);
+        jacpy_release(a);
+        if shifted == NULL {
+            jacpy_release(quotient);
+            return NULL;
+        }
+        a = PyNumber_Add(shifted, quotient);
+        jacpy_release(shifted);
+        jacpy_release(quotient);
+        if a == NULL {
+            return NULL;
+        }
+        s -= 1;
+    }
+    square = PyNumber_Multiply(a, a);
+    if square == NULL {
+        jacpy_release(a);
+        return NULL;
+    }
+    too_large = PyObject_RichCompareBool(n, square, 0);
+    jacpy_release(square);
+    if too_large < 0 {
+        jacpy_release(a);
+        return NULL;
+    }
+    if too_large != 0 {
+        one = PyLong_FromLongLong(1);
+        if one == NULL {
+            jacpy_release(a);
+            return NULL;
+        }
+        smaller = PyNumber_Subtract(a, one);
+        jacpy_release(one);
+        jacpy_release(a);
+        return smaller;
+    }
+    return a;
 }
 
 impl table_u64(table: ptr[u64], index: u64) -> u64 {
@@ -2247,6 +2502,15 @@ impl binary_float(operation: int, x: f64, y: f64) -> ptr[PyObject] {
 impl math_gcd_impl(
     module: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
+    if nargs == 2 {
+        long_type = ptr[PyObject](addressof(PyLong_Type));
+        first = args.view(1)[0];
+        second = (args + 1).view(1)[0];
+        if ptr[ptr[PyObject]](ptr[u8](first) + 8).view(1)[0] == long_type
+            and ptr[ptr[PyObject]](ptr[u8](second) + 8).view(1)[0] == long_type {
+            return _PyLong_GCD(first, second);
+        }
+    }
     arguments = vector_tuple(args, nargs);
     if arguments == 0 {
         return NULL;
