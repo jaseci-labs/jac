@@ -467,14 +467,32 @@ impl TypeCheckPass._check_immutable_write(
 impl TypeCheckPass._flush_immutable_writes -> None {
     pending = self._deferred_writes;
     self._deferred_writes = [];
+    writes: list[tuple[Expr, Name, Symbol]] = [];
     for (target, rebind_scope) in pending {
-        self._judge_immutable_write(target, rebind_scope);
+        writes.extend(self._immutable_write_leaves(target, rebind_scope));
+    }
+    first_writes = self._first_init_writes(writes);
+    for (leaf, name, decl_sym) in writes {
+        if id(leaf) in first_writes {
+            continue;
+        }
+        kind = "read-only"
+            if decl_sym.immutability == ImmutabilityKind.READONLY
+            else "Final";
+        self.ctx.emit(
+            E1135,
+            node_override=leaf,
+            name=name.value,
+            kind=kind,
+            related=[(f"'{name.value}' declared {kind} here", decl_sym.decl)]
+        );
     }
 }
 
-impl TypeCheckPass._judge_immutable_write(
+impl TypeCheckPass._immutable_write_leaves(
     target: (Expr | None), rebind_scope: (UniNode | None) = None
-) -> None {
+) -> list[tuple[Expr, Name, Symbol]] {
+    found: list[tuple[Expr, Name, Symbol]] = [];
     for leaf in self._write_leaves(target) {
         self._check_borrowed_scalar_write(leaf);
         if isinstance(leaf, AtomTrailer)
@@ -496,21 +514,11 @@ impl TypeCheckPass._judge_immutable_write(
         }
         decl_sym = self.evaluator.resolve_imported_symbols(sym);
         self.evaluator.get_type_of_symbol(decl_sym);
-        if decl_sym.immutability == ImmutabilityKind.NONE
-            or self._is_initializer_write(leaf, decl_sym) {
-            continue;
+        if decl_sym.immutability != ImmutabilityKind.NONE {
+            found.append((leaf, name, decl_sym));
         }
-        kind = "read-only"
-            if decl_sym.immutability == ImmutabilityKind.READONLY
-            else "Final";
-        self.ctx.emit(
-            E1135,
-            node_override=leaf,
-            name=name.value,
-            kind=kind,
-            related=[(f"'{name.value}' declared {kind} here", decl_sym.decl)]
-        );
     }
+    return found;
 }
 
 impl TypeCheckPass._rebound_enclosing_symbol(
@@ -520,7 +528,7 @@ impl TypeCheckPass._rebound_enclosing_symbol(
     return py_scope.names_in_scope.get(leaf.value) if py_scope is not None else None;
 }
 
-impl TypeCheckPass._is_initializer_write(target: Expr, decl_sym: Symbol) -> bool {
+impl TypeCheckPass._initializer_of(target: Expr, decl_sym: Symbol) -> (Ability | None) {
     field = decl_sym.decl.name_of;
     if not (
         isinstance(field, HasVar)
@@ -528,15 +536,141 @@ impl TypeCheckPass._is_initializer_write(target: Expr, decl_sym: Symbol) -> bool
         and isinstance(target, AtomTrailer)
         and isinstance(target.target, Name)
     ) {
-        return False;
+        return None;
     }
     method = self.evaluator._get_enclosing_function(target);
-    return method is not None
+    if method is not None
         and method.is_method
         and not method.is_static
-        and method.sym_name in ("init", "__init__", "postinit", "__post_init__")
+        and method.sym_name in CTOR_METHODS + POSTINIT_METHODS
         and method.method_owner is field.enclosing_decl(Archetype)
-        and self._is_self_ref(target.target, method);
+        and self._is_self_ref(target.target, method) {
+        return method;
+    }
+    return None;
+}
+
+impl TypeCheckPass._first_init_writes(
+    writes: list[tuple[Expr, Name, Symbol]]
+) -> set[int] {
+    by_method: dict[int, tuple[Ability, list[tuple[Expr, Symbol]]]] = {};
+    for (leaf, _, decl_sym) in writes {
+        if (method := self._initializer_of(leaf, decl_sym)) {
+            by_method.setdefault(id(method), (method, []))[1].append((leaf, decl_sym));
+        }
+    }
+    flows: dict[int, InitFlow] = {};
+    ctor_writes: dict[int, set[SymId]] = {};
+    for (key, (method, inits)) in by_method.items() {
+        flows[key] = self._init_flow(method, inits);
+        if method.sym_name in CTOR_METHODS {
+            ctor_writes[id(method.method_owner)] = flows[key].set_at_exit();
+        }
+    }
+    first: set[int] = set();
+    for (key, (method, inits)) in by_method.items() {
+        set_before = self._set_before_initializer(method, ctor_writes);
+        seen: set[tuple[int, SymId]] = set();
+        for (leaf, sym) in inits {
+            anchor = leaf.find_parent_of_type(UniCFGNode);
+            site = (id(anchor), id(sym));
+            if site not in seen
+                and id(sym) not in set_before
+                and id(sym) not in flows[key].set_before(anchor) {
+                first.add(id(leaf));
+            }
+            seen.add(site);
+        }
+    }
+    return first;
+}
+
+impl TypeCheckPass._init_flow(
+    method: Ability, inits: list[tuple[Expr, Symbol]]
+) -> InitFlow {
+    gen: dict[int, set[SymId]] = {};
+    for (leaf, sym) in inits {
+        gen.setdefault(id(leaf.find_parent_of_type(UniCFGNode)), set()).add(id(sym));
+    }
+    parts: list[UniNode] = [method];
+    parts.extend(method.linked_impls());
+    nodes: list[UniCFGNode] = [];
+    for part in parts {
+        for n in part.flatten() {
+            if isinstance(n, UniCFGNode) and n.enclosing_decl(Ability) is method {
+                nodes.append(n);
+            }
+        }
+    }
+    flow_in = solve_forward(
+        nodes,
+        lambda (nd: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return in_set
+            | gen.get(id(nd), set()); },
+        catch_edges=True
+    );
+    return InitFlow(method=method, gen=gen, flow_in=flow_in, nodes=nodes);
+}
+
+impl InitFlow.set_before(anchor: (UniCFGNode | None)) -> set[SymId] {
+    if anchor is None {
+        return set();
+    }
+    found = set(self.flow_in.get(id(anchor), set()));
+    fin = anchor.find_parent_of_type(FinallyStmt);
+    while fin is not None and fin.enclosing_decl(Ability) is self.method {
+        guarded = fin.find_parent_of_type(TryStmt);
+        for n in self.nodes {
+            if guarded is not None and n.is_within(guarded) and not n.is_within(fin) {
+                found |= self.flow_in.get(id(n), set());
+            }
+        }
+        fin = fin.find_parent_of_type(FinallyStmt);
+    }
+    return found;
+}
+
+impl InitFlow.set_at_exit -> set[SymId] {
+    found: set[SymId] = set();
+    for n in self.nodes {
+        if isinstance(n, CodeBlockStmt)
+            and not isinstance(n, RaiseStmt)
+            and is_scope_exit(n) {
+            found |= self.flow_in.get(id(n), set()) | self.gen.get(id(n), set());
+        }
+    }
+    return found;
+}
+
+impl TypeCheckPass._set_before_initializer(
+    method: Ability, ctor_writes: dict[int, set[SymId]]
+) -> set[SymId] {
+    owner = method.method_owner;
+    if method.sym_name not in POSTINIT_METHODS or not isinstance(owner, Archetype) {
+        return set();
+    }
+    if any(m.sym_name in CTOR_METHODS for m in owner.get_methods()) {
+        return ctor_writes.get(id(owner), set());
+    }
+    if not self.evaluator.get_type_of_class(owner).is_data_class() {
+        return set();
+    }
+    return {
+        id(hv.name.sym)
+        for hv in owner.get_has_vars()
+        if hv.value is None and not hv.defer and hv.name.sym is not None
+    };
+}
+
+impl TypeCheckPass._check_bare_final(ann_node: Expr, value: (Expr | None)) -> None {
+    if value is not None {
+        return;
+    }
+    final_form = self.evaluator._as_final_form(
+        self.evaluator.get_type_of_expression(ann_node)
+    );
+    if final_form is not None and not final_form.private.type_args {
+        self.ctx.emit(E1161, node_override=ann_node);
+    }
 }
 
 impl TypeCheckPass._is_self_ref(base: Name, method: Ability) -> bool {
@@ -568,6 +702,9 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
     }
     for write_target in here.target {
         self._check_immutable_write(write_target);
+    }
+    if here.type_tag and here.type_tag.tag {
+        self._check_bare_final(here.type_tag.tag, here.value);
     }
     if ((len(here.target) == 1) and (here.value is not None)) {
         target = here.target[0];
@@ -1580,6 +1717,7 @@ impl TypeCheckPass.exit_has_var with HasVar exit {
 
         if here.type_tag and here.type_tag.tag {
             self._check_bare_generic(here.type_tag.tag, declared_type);
+            self._check_bare_final(here.type_tag.tag, here.value);
             self._check_explicit_any(here.type_tag.tag);
             self._check_c_type_use(here.type_tag.tag);
         }

@@ -717,7 +717,7 @@ impl OwnershipCheckPass._emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) ->
             continue;
         }
         for n in cfg_nodes {
-            if n is scope or not n.is_within(scope) or not self._is_scope_exit(n) {
+            if n is scope or not n.is_within(scope) or not is_scope_exit(n) {
                 continue;
             }
             if sid not in self._transfer(n, must_in.get(id(n), set())) {
@@ -726,21 +726,6 @@ impl OwnershipCheckPass._emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) ->
             }
         }
     }
-}
-
-impl OwnershipCheckPass._is_scope_exit(nd: UniCFGNode) -> bool {
-    if not nd.bb_out {
-        return bool(nd.bb_in);
-    }
-    if isinstance(nd, AstElseBodyNode) and nd.else_body is not None {
-        return False;
-    }
-    for succ in nd.bb_out {
-        if succ is nd or not succ.is_within(nd) {
-            return False;
-        }
-    }
-    return True;
 }
 
 impl OwnershipCheckPass._raise_type_name(nd: RaiseStmt) -> (str | None) {

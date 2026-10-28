@@ -5719,6 +5719,44 @@ test "final_reassignment_errors" {
     }
 }
 
+test "final_bare_field_without_initializer" {
+    # A bare `Final` with no value has no type to infer, so the declaration is
+    # E1161; a bare `Final` with a value stays valid.
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_final_bare_field.jac"), options=NO_TC
+    );
+    all_errors = "\n---\n".join([e.pretty_print() for e in program.errors_had]);
+    got = sorted(
+        [
+            e.loc.first_line
+            for e in program.errors_had
+            if e.loc and e.code and e.code.code == "E1161"
+        ]
+    );
+    assert got == [3, 6, 14] , f"expected E1161 on lines 3, 6, 14, got {got}:\n{all_errors}";
+    assert len(program.errors_had) == 3 , all_errors;
+}
+
+test "final_field_initialized_once" {
+    # A `Final` field is set once per object: a second write, a write a loop repeats,
+    # or a postinit write after the constructor set it is E1135; one write per branch is fine.
+    program = JacProgram();
+    program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_final_init_writes.jac"), options=NO_TC
+    );
+    all_errors = "\n---\n".join([e.pretty_print() for e in program.errors_had]);
+    got = sorted(
+        [
+            e.loc.first_line
+            for e in program.errors_had
+            if e.loc and e.code and e.code.code == "E1135" and "'x'" in e.msg
+        ]
+    );
+    assert got == [42, 54, 63, 72, 96, 126] , f"expected E1135 on lines 42, 54, 63, 72, 96, 126, got {got}:\n{all_errors}";
+    assert len(program.errors_had) == 6 , all_errors;
+}
+
 test "none_equality_not_flagged" {
     # `==` / `!=` never fail to resolve in Python (object.__eq__ is the
     # universal identity fallback), so None-equality must not raise E1110.

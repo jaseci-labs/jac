@@ -94,35 +94,39 @@ impl CFGBuildPass._connect_tails(parent: UniNode, target: UniCFGNode) -> None {
                 continue;
             }
         }
-        if isinstance(k, (Ability, Archetype, ImplDef, Test)) {
-            continue;
+        self._connect_tail(k, target);
+    }
+}
+
+impl CFGBuildPass._connect_tail(k: UniNode, target: UniCFGNode) -> None {
+    if isinstance(k, (Ability, Archetype, ImplDef, Test)) {
+        return;
+    }
+    if isinstance(k, (WhileStmt, ForeverStmt, InForStmt, IterForStmt)) {
+        body_entry = k.body[0] if k.body else None;
+        exit_wired = any([o is not body_entry for o in k.bb_out]);
+        if not exit_wired
+            and not self._is_terminal(k)
+            and not isinstance(k, ForeverStmt) {
+            self.link_bbs(k, target);
         }
-        if isinstance(k, (WhileStmt, ForeverStmt, InForStmt, IterForStmt)) {
-            body_entry = k.body[0] if k.body else None;
-            exit_wired = any([o is not body_entry for o in k.bb_out]);
-            if not exit_wired
-                and not self._is_terminal(k)
-                and not isinstance(k, ForeverStmt) {
+        return;
+    }
+    if isinstance(k, UniCFGNode) {
+        if not self._exit_wired(k) and not self._is_terminal(k) {
+            self.link_bbs(k, target);
+        } elif isinstance(k, IfStmt) and not k.else_body {
+            first_body = k.body[0] if k.body else None;
+            has_false_branch = any(o is not first_body for o in k.bb_out);
+            if not has_false_branch {
                 self.link_bbs(k, target);
             }
-            continue;
-        }
-        if isinstance(k, UniCFGNode) {
-            if not self._exit_wired(k) and not self._is_terminal(k) {
-                self.link_bbs(k, target);
-            } elif isinstance(k, IfStmt) and not k.else_body {
-                first_body = k.body[0] if k.body else None;
-                has_false_branch = any(o is not first_body for o in k.bb_out);
-                if not has_false_branch {
-                    self.link_bbs(k, target);
-                }
-                self._connect_tails(k, target);
-            } else {
-                self._connect_tails(k, target);
-            }
+            self._connect_tails(k, target);
         } else {
             self._connect_tails(k, target);
         }
+    } else {
+        self._connect_tails(k, target);
     }
 }
 
@@ -615,28 +619,67 @@ impl CFGBuildPass.exit_try_stmt with TryStmt exit {
         self._link_sequential(here.body);
     }
 
+    raising = self._raising_stmts(here.body) if here.excepts else [];
     for exc in here.excepts {
         self.link_bbs(here, exc);
+        for stmt in raising {
+            stmt.cfg_catch_link(exc);
+        }
     }
 
-    if here.else_body
-        and isinstance(here.else_body, ElseStmt)
-        and here.else_body.body {
-        if here.body and not self._is_terminal(here.body[-1]) {
-            self.link_bbs(here.body[-1], here.else_body.body[0]);
+    else_stmt = here.else_body
+        if isinstance(here.else_body, ElseStmt) and here.else_body.body
+        else None;
+    if else_stmt is not None and here.body {
+        if not self._is_terminal(here.body[-1]) {
+            self.link_bbs(here.body[-1], else_stmt.body[0]);
         }
+        self._connect_tail(here.body[-1], else_stmt.body[0]);
     }
 
     if here.finally_body {
         if here.body {
             self.link_bbs(here.body[-1], here.finally_body);
+            if else_stmt is None {
+                self._connect_tail(here.body[-1], here.finally_body);
+            }
         }
         for exc in here.excepts {
             if exc.body {
                 self.link_bbs(exc.body[-1], here.finally_body);
             }
+            self._connect_tails(exc, here.finally_body);
+        }
+        if else_stmt is not None {
+            self._connect_tails(else_stmt, here.finally_body);
         }
     }
+}
+
+impl CFGBuildPass._can_raise(nd: CodeBlockStmt) -> bool {
+    if isinstance(nd, (CtrlStmt, TryStmt, ElseStmt, FinallyStmt)) {
+        return False;
+    }
+    if isinstance(nd, ReturnStmt) {
+        return nd.expr is not None;
+    }
+    return True;
+}
+
+impl CFGBuildPass._raising_stmts(stmts: Sequence[UniNode]) -> list[CodeBlockStmt] {
+    found: list[CodeBlockStmt] = [];
+    pending: list[UniNode] = list(stmts);
+    while pending {
+        nd = pending.pop();
+        if not nd or isinstance(nd, (Expr, Semi, Ability, Archetype, ImplDef, Test)) {
+            continue;
+        }
+        if isinstance(nd, CodeBlockStmt) and self._can_raise(nd) {
+            found.append(nd);
+        }
+        pending.extend([nd->:Kid:->]);
+    }
+    return found;
 }
 
 impl CFGBuildPass.exit_except with Except exit {

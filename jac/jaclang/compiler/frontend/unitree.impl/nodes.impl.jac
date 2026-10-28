@@ -1371,6 +1371,20 @@ impl UniCFGNode.cfg_link(target: UniCFGNode) -> None {
     }
 }
 
+impl UniCFGNode.bb_catch_out.getter -> list[UniCFGNode] {
+    return [self->:CfgCatch:->];
+}
+
+impl UniCFGNode.bb_catch_in.getter -> list[UniCFGNode] {
+    return [self<-:CfgCatch:<-];
+}
+
+impl UniCFGNode.cfg_catch_link(target: UniCFGNode) -> None {
+    if target not in [self->:CfgCatch:->] {
+        self +>:CfgCatch:+> target;
+    }
+}
+
 impl ConditionalNode.sc_true_target.getter -> (UniCFGNode | None) {
     found = [self->:CfgTrue:->];
     return found[0] if found else None;

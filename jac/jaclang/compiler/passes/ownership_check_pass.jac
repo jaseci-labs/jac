@@ -155,7 +155,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _callee_own_param_names(call: FuncCall) -> (set[str] | None);
     def _emit_place_move_diagnostics -> None;
     def _emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) -> None;
-    def _is_scope_exit(nd: UniCFGNode) -> bool;
     def _call_consumes_args(call: FuncCall) -> bool;
     def _grow_arg_moves(call: FuncCall, arg: Expr | None) -> bool;
     def _nogc_moved_arch_elem(expr: Expr | None) -> bool;

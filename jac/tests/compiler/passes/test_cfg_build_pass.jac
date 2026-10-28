@@ -4,6 +4,8 @@ import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
 import from jaclang.compiler.tools.cfg_dot { cfg_dot_from_file }
+import from jaclang.compiler.driver.program { JacProgram }
+import jaclang.compiler.frontend.unitree as uni;
 
 glob FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "fixtures");
 
@@ -532,4 +534,24 @@ test "cfg comprehension in ternary branch" {
         + "}\n"
     );
     assert dot == expected_dot;
+}
+
+test "cfg try tails run finally" {
+    dot = cfg_dot_from_file(file_name=os.path.join(FIXTURES, "cfg_try_tails.jac"));
+    assert "  2 -> 3;\n" in dot and "  2 -> 4;\n" not in dot , dot;
+    assert "  8 -> 9;\n" in dot and "  8 -> 10;\n" not in dot , dot;
+}
+
+test "cfg try body statements may raise into except" {
+    program = JacProgram();
+    mod = program.compile(os.path.join(FIXTURES, "cfg_try_catch.jac"));
+    handler = mod.get_all_sub_nodes(uni.Except)[0];
+    sources = sorted([nd.loc.first_line for nd in handler.bb_catch_in]);
+    assert sources == [4, 5, 6] , sources;
+    for nd in handler.bb_catch_in {
+        assert handler not in nd.bb_out , nd.loc.first_line;
+    }
+    bare_return_handler = mod.get_all_sub_nodes(uni.Except)[1];
+    sources = [nd.loc.first_line for nd in bare_return_handler.bb_catch_in];
+    assert sources == [16] , sources;
 }
