@@ -175,19 +175,37 @@ impl ASTValidationPass.enter_in_for_stmt with InForStmt entry {
 }
 
 impl ASTValidationPass._check_render_phase_state_write(nd: Assignment) -> None {
-    targets = nd.target if isinstance(nd.target, (list, tuple)) else [nd.target];
-    if len(targets) != 1 or not isinstance(targets[0], Name) {
+    pending = list(nd.target) if isinstance(nd.target, (list, tuple)) else [nd.target];
+    names: list[str] = [];
+    while pending {
+        target = pending.pop(0);
+        if isinstance(target, Name) {
+            names.append(target.sym_name);
+        } elif isinstance(target, (TupleVal, ListVal)) {
+            pending.extend(
+                v
+                for v in target.values
+                if v is not None
+            );
+        } elif isinstance(target, UnaryExpr) and target.op.name == Tok.STAR_MUL {
+            pending.append(target.operand);
+        }
+    }
+    if not names {
         return;
     }
-    name = targets[0].sym_name;
     scope = nd.parent;
     while scope is not None {
         if isinstance(scope, LambdaExpr) {
             return;
         }
         if isinstance(scope, (Ability, ImplDef)) {
-            if self._scope_declares_state(scope, name) and self._returns_jsx(scope) {
-                self.ctx.emit(E0082, node_override=nd, name=name);
+            if self._returns_jsx(scope) {
+                for name in names {
+                    if self._scope_declares_state(scope, name) {
+                        self.ctx.emit(E0082, node_override=nd, name=name);
+                    }
+                }
             }
             return;
         }
