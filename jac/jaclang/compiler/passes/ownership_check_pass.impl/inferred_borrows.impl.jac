@@ -26,23 +26,6 @@ glob _INFER_PLAIN_NAMES: frozenset[str] = frozenset(
          "random",
          "struct"
      ),
-     _INFER_NUMERIC_NAMES: frozenset[str] = frozenset(
-         {
-             "i8",
-             "i16",
-             "i32",
-             "i64",
-             "u8",
-             "u16",
-             "u32",
-             "u64",
-             "f32",
-             "f64",
-             "isize",
-             "usize",
-             "byte"
-         }
-     ),
      _INFER_SHALLOW_BUILTINS: frozenset[str] = frozenset(
          {
              "len",
@@ -191,7 +174,7 @@ impl OwnershipCheckPass._infer_plain_type(t: (TypeBase | None)) -> bool {
     }
     words = "".join(c if c.isalnum() or c == "_" else " " for c in mangled).split();
     for word in words {
-        if word not in _INFER_PLAIN_NAMES and word not in _INFER_NUMERIC_NAMES {
+        if word not in _INFER_PLAIN_NAMES and not JAC_TYPE_REGISTRY.is_sized(word) {
             return False;
         }
     }
@@ -412,7 +395,7 @@ impl OwnershipCheckPass._infer_call_effects(
         return self._infer_mutator_effects(mname, call, args);
     }
     path = str(callee.loc.mod_path);
-    arch = callee.find_parent_of_type(Archetype);
+    arch = callee.enclosing_decl(Archetype);
     if path.endswith(".pyi") {
         name = callee.name_ref.sym_name if callee.name_ref is not None else "";
         if name in ("setattr", "delattr") {
@@ -567,10 +550,29 @@ impl OwnershipCheckPass._infer_borrows_in(
         }
     }
 
+    excluded: set[SymId] = set(captured);
+    excluded.update(self.owned_decl.keys());
+    syms_by_name: dict[str, set[SymId]] = {};
+    for nm in nds {
+        if not isinstance(nm, Name) or nm.sym is None {
+            continue;
+        }
+        if nm.sym.storage != SymbolStorage.LOCAL
+            and nm.sym.storage != SymbolStorage.PARAM {
+            continue;
+        }
+        syms_by_name.setdefault(nm.sym_name, set()).add(self._name_sym_id(nm));
+    }
+    for name_syms in syms_by_name.values() {
+        if len(name_syms) > 1 {
+            excluded.update(name_syms);
+        }
+    }
+
     cand: dict[SymId, tuple[list[Assignment], list[tuple[Name, set[str]]]]] = {};
     for (sid, binds) in simple.items() {
         nm = names[sid];
-        if not self._infer_is_local(nm) or other_binds.get(sid, 0) or sid in captured {
+        if not self._infer_is_local(nm) or other_binds.get(sid, 0) or sid in excluded {
             continue;
         }
         paths: list[tuple[Name, set[str]]] = [];
@@ -609,6 +611,13 @@ impl OwnershipCheckPass._infer_borrows_in(
             for (base_nm, _pf) in paths {
                 rsid = self._name_sym_id(base_nm);
                 if base_nm.sym_name == "self" {
+                    if rsid in self.owned_decl {
+                        drop = True;
+                    }
+                    continue;
+                }
+                if rsid in excluded {
+                    drop = True;
                     continue;
                 }
                 base_sym = base_nm.sym;
@@ -638,7 +647,6 @@ impl OwnershipCheckPass._infer_borrows_in(
                     self._infer_is_local(base_nm)
                     and self._infer_owner_stable(ab, rsid, other_binds, simple)
                     and rsid not in copied
-                    and rsid not in captured
                 ) {
                     drop = True;
                 }
@@ -659,7 +667,7 @@ impl OwnershipCheckPass._infer_borrows_in(
             count += 1;
         }
     }
-    count += self._infer_loop_borrows(ab, nds, other_binds, simple, captured, effects);
+    count += self._infer_loop_borrows(ab, nds, other_binds, simple, excluded, effects);
     return count;
 }
 
@@ -685,7 +693,7 @@ impl OwnershipCheckPass._infer_loop_borrows(
     nds: list[UniNode],
     other_binds: dict[SymId, int],
     simple: dict[SymId, list[Assignment]],
-    captured: set[SymId],
+    excluded: set[SymId],
     effects: dict[int, set[str]]
 ) -> int {
     count = 0;
@@ -698,7 +706,7 @@ impl OwnershipCheckPass._infer_loop_borrows(
             continue;
         }
         sid = self._name_sym_id(tgt);
-        if other_binds.get(sid, 0) != 1 or simple.get(sid) or sid in captured {
+        if other_binds.get(sid, 0) != 1 or simple.get(sid) or sid in excluded {
             continue;
         }
         coll_type = "";
@@ -752,6 +760,12 @@ impl OwnershipCheckPass._infer_loop_borrows(
         if path is not None {
             base_nm = path[0];
             rsid = self._name_sym_id(base_nm);
+            if base_nm.sym_name == "self" and rsid in self.owned_decl {
+                continue;
+            }
+            if base_nm.sym_name != "self" and rsid in excluded {
+                continue;
+            }
             if base_nm.sym_name != "self"
                 and (other_binds.get(rsid, 0) or simple.get(rsid)) {
                 if not (
@@ -850,7 +864,7 @@ impl OwnershipCheckPass._infer_scalar_slot(tgt: object) -> bool {
         return False;
     }
     return mangled in ("int", "float", "bool", "complex")
-        or mangled in _INFER_NUMERIC_NAMES;
+        or JAC_TYPE_REGISTRY.is_sized(mangled);
 }
 
 impl OwnershipCheckPass._infer_is_type_expr(nd: object) -> bool {

@@ -57,9 +57,19 @@ test "locals whose source can be released before their last use stay counted" {
         "must_global_root",
         "must_copied_root",
         "must_remove_eq",
-        "must_aug_op"
+        "must_aug_op",
+        "must_reused_loop_name",
+        "must_own_root"
     ] {
         assert retains_in(text, name) >= 1 , f"{name} lost its retain";
+    }
+}
+
+test "two loop variables of one name both stay counted" {
+    # they share a slot, so the second loop releases what the first left there
+    for gc_mode in ["cycles", "rc"] {
+        got = retains_in(fixture_ir(gc_mode), "must_reused_loop_name");
+        assert got >= 2 , f"{gc_mode}: {got} retains";
     }
 }
 

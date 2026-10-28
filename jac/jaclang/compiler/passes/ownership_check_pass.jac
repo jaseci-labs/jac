@@ -152,7 +152,7 @@ walker OwnershipCheckPass(CompilerPass) {
         nds: list[UniNode],
         other_binds: dict[SymId, int],
         simple: dict[SymId, list[Assignment]],
-        captured: set[SymId],
+        excluded: set[SymId],
         effects: dict[int, set[str]]
     ) -> int;
 

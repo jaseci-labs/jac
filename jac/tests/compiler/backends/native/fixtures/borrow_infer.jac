@@ -9,6 +9,8 @@ reuses the freed block, so a wrong borrow prints that box's value. The
 `must_remove_eq` and `must_aug_op` changes happen in user code a list
 comparison or an augmented operator runs. `keep_owner_alive` borrows from a
 local whose last use is the bind: the local is released only at scope exit.
+`must_reused_loop_name` binds two loop variables of one name, which share a
+slot, and `must_own_root` moves its root into an `own` parameter.
 """
 
 obj Box {
@@ -153,6 +155,29 @@ def keep_owner_alive(n: int) -> int {
     return len(b) + b[2] + len(pad);
 }
 
+def must_reused_loop_name(xs: list[Box]) -> int {
+    total = 0;
+    for b in xs {
+        total += b.v;
+    }
+    for b in xs {
+        SWAP.reset();
+        total += b.v * 10;
+    }
+    SWAP.items.append(Box(v=-5));
+    return total + xs[-1].v;
+}
+
+def consume(h: own Holder) -> int {
+    return h.item.v;
+}
+
+def must_own_root(h: own Holder) -> int {
+    b = h.item;
+    got = consume(h);
+    return b.v + got;
+}
+
 with entry {
     print(keep_elem(fresh(4)), keep_loop(fresh(4)));
     print(keep_field(Holder(item=Box(v=5))));
@@ -168,4 +193,6 @@ with entry {
     SWAP.item = Box(v=12);
     print(must_aug_op(SWAP, Counter(n=1)));
     print(keep_owner_alive(10));
+    print(must_reused_loop_name(fresh(3)));
+    print(must_own_root(Holder(item=Box(v=13))));
 }
