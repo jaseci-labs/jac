@@ -57,6 +57,64 @@ impl JacAccessValidation._is_shared_root(to: Anchor) -> bool {
     return isinstance(shared_id, UUID) and to.id == shared_id;
 }
 
+impl JacAccessValidation._is_org_owned(to: Anchor) -> bool {
+    resolver = _org_root_resolver[0];
+    rid = to.id if isinstance(to.archetype, Root) else to.root;
+    if resolver is None or rid is None {
+        return False;
+    }
+    known: dict[str, bool] = _org_root_resolver[1];
+    key = str(rid);
+    if key not in known {
+        known[key] = bool(resolver(key));
+    }
+    return known[key];
+}
+
+impl JacAccessValidation._check_acl_write(to: Anchor) -> bool {
+    if not JacAccessValidation.check_write_access(to, op_hint="acl_write") {
+        return False;
+    }
+    jctx = JacRuntimeInterface.get_context();
+    if jctx.user_root == jctx.system_root
+        or not JacAccessValidation._is_org_owned(to) {
+        return True;
+    }
+    diag = JacAccessValidation._org_acl_denied(to, to.root);
+    if JacRuntime.strict_permissions {
+        raise PermissionError(diag.message());
+    }
+    logger.warning(diag.message());
+    return False;
+}
+
+impl JacAccessValidation._carries_acl(to: Anchor) -> bool {
+    access = to.access;
+    return access is not None
+        and (
+            access.all.value > AccessLevel.NO_ACCESS.value
+            or bool(access.roots.anchors)
+            or bool(access.groups.anchors)
+        );
+}
+
+impl JacAccessValidation._org_acl_denied(
+    to: Anchor, owner: (UUID | None)
+) -> PermissionDenied {
+    diag = PermissionDenied(
+        operation="org_acl_write",
+        target_id=str(to.id),
+        target_type=to.archetype.__class__.__name__,
+        target_owner=str(owner) if owner else None,
+        required=AccessLevel.WRITE,
+        actual=JacRuntimeInterface.check_access_level(to)
+    );
+    try {
+        JacRuntimeInterface.get_context().diagnostics.append(diag);
+    } except Exception {}
+    return diag;
+}
+
 impl JacAccessValidation.allow_root(
     archetype: Archetype, root_id: UUID, level: (AccessLevel | int | str | None) = None
 ) -> None {
@@ -65,7 +123,7 @@ impl JacAccessValidation.allow_root(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     access = anchor.own_access().roots;
@@ -84,7 +142,7 @@ impl JacAccessValidation.allow_group(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     access = anchor.own_access().groups;
@@ -97,7 +155,7 @@ impl JacAccessValidation.allow_group(
 
 impl JacAccessValidation.disallow_group(archetype: Archetype, group_id: UUID) -> None {
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     anchor.own_access().groups.anchors.pop(str(group_id), None);
@@ -112,7 +170,7 @@ impl JacAccessValidation.disallow_root(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     access = anchor.own_access().roots;
@@ -128,7 +186,7 @@ impl JacAccessValidation.perm_grant(
     }
     level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     if (level != _all_grant(anchor)) {
@@ -139,7 +197,7 @@ impl JacAccessValidation.perm_grant(
 
 impl JacAccessValidation.perm_revoke(archetype: Archetype) -> None {
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if not JacAccessValidation.check_write_access(anchor, op_hint="acl_write") {
+    if not JacAccessValidation._check_acl_write(anchor) {
         return;
     }
     if (_all_grant(anchor).value > AccessLevel.NO_ACCESS.value) {
@@ -1276,6 +1334,9 @@ impl JacGraph.heavy_edge(
     eanch = `edge.__jac__=EdgeAnchor(
         archetype=`edge, source=source, target=target, is_undirected=is_undirected
     );
+    plan = JacPersistence._save_plan(eanch, None)
+        if (source.persistent or target.persistent)
+        else None;
     source.edges.append(eanch);
     target.edges.append(eanch);
     if is_light_edge_type(`type(`edge)) {
@@ -1295,8 +1356,8 @@ impl JacGraph.heavy_edge(
             }
         }
     }
-    if (source.persistent or target.persistent) {
-        JacRuntimeInterface.save(eanch);
+    if plan is not None {
+        JacPersistence._apply_save(plan);
     }
     return `edge;
 }
@@ -1305,55 +1366,92 @@ impl JacPersistence.save(
     `obj: (Archetype | Anchor), owner: (UUID | None) = None
 ) -> None {
     anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
+    JacPersistence._apply_save(JacPersistence._save_plan(anchor, owner));
+}
+
+impl JacPersistence._save_plan(
+    anchor: Anchor, owner: (UUID | None)
+) -> list[tuple[(Anchor, (UUID | None))]] {
     jctx = JacRuntimeInterface.get_context();
-    anchor.ensure_id();
-    if (owner is not None and anchor.persistent and anchor.`root != owner) {
-        current_owner = anchor.`root;
-        raise ValueError(
-            f"anchor {anchor.id} is already owned by root {current_owner} and "
-            'cannot be re-owned'
-        );
-    }
-    if (not anchor.persistent and not anchor.root) {
-        if (owner is not None and owner != jctx.user_root.id) {
-            target = jctx.mem.get(owner);
-            if not isinstance(target, NodeAnchor) or not target.is_populated() {
-                raise ValueError(f"owner root {owner} does not exist");
-            }
-            if not isinstance(target.archetype, Root) {
-                raise ValueError(f"owner {owner} is not a root");
-            }
-            if JacRuntimeInterface.check_access_level(target).value
-                < AccessLevel.WRITE.value {
-                raise PermissionError(
-                    f"caller root may not create content owned by root {owner}: "
-                    'requires WRITE on that root'
-                );
-            }
+    plan: list[tuple[(Anchor, (UUID | None))]] = [];
+    seen: set[int] = set();
+    pending: list[tuple[(Anchor, (UUID | None))]] = [(anchor, owner)];
+    while pending {
+        (cur, want) = pending.pop();
+        if id(cur) in seen {
+            continue;
         }
-        anchor.persistent = True;
-        anchor.`root = owner if owner is not None else jctx.user_root.id;
-    }
-    jctx.mem.put(anchor);
-    match anchor {
-        case NodeAnchor():
-            for ed in anchor.all_edges() {
-                if (ed.is_populated() and not ed.persistent) {
-                    JacRuntimeInterface.save(ed);
+        seen.add(id(cur));
+        cur.ensure_id();
+        if (want is not None and cur.persistent and cur.`root != want) {
+            current_owner = cur.`root;
+            raise ValueError(
+                f"anchor {cur.id} is already owned by root {current_owner} and "
+                'cannot be re-owned'
+            );
+        }
+        new_owner: (UUID | None) = None;
+        if (not cur.persistent and not cur.root) {
+            if want is None {
+                want = jctx.default_owner;
+            }
+            if (want is not None and want != jctx.user_root.id) {
+                target = jctx.mem.get(want);
+                if not isinstance(target, NodeAnchor) or not target.is_populated() {
+                    raise ValueError(f"owner root {want} does not exist");
+                }
+                if not isinstance(target.archetype, Root) {
+                    raise ValueError(f"owner {want} is not a root");
+                }
+                if JacRuntimeInterface.check_access_level(target).value
+                    < AccessLevel.WRITE.value {
+                    raise PermissionError(
+                        f"caller root may not create content owned by root {want}: "
+                        'requires WRITE on that root'
+                    );
+                }
+                if jctx.user_root != jctx.system_root
+                    and JacAccessValidation._carries_acl(cur)
+                    and JacAccessValidation._is_org_owned(target) {
+                    raise PermissionError(
+                        JacAccessValidation._org_acl_denied(cur, want).message()
+                    );
                 }
             }
+            new_owner = want if want is not None else jctx.user_root.id;
+        }
+        plan.append((cur, new_owner));
+        match cur {
+            case NodeAnchor():
+                for ed in cur.all_edges() {
+                    if (ed.is_populated() and not ed.persistent) {
+                        pending.append((ed, None));
+                    }
+                }
 
-        case EdgeAnchor():
-            if ((src := anchor.source) and src.is_populated() and not src.persistent) {
-                JacRuntimeInterface.save(src);
-            }
-            if ((trg := anchor.target) and trg.is_populated() and not trg.persistent) {
-                JacRuntimeInterface.save(trg);
-            }
+            case EdgeAnchor():
+                for end in (cur.source, cur.target) {
+                    if (end and end.is_populated() and not end.persistent) {
+                        pending.append((end, None));
+                    }
+                }
 
-        case _:
-            ;
+            case _:
+                ;
 
+        }
+    }
+    return plan;
+}
+
+impl JacPersistence._apply_save(plan: list[tuple[(Anchor, (UUID | None))]]) -> None {
+    jctx = JacRuntimeInterface.get_context();
+    for (anchor, new_owner) in plan {
+        if new_owner is not None {
+            anchor.persistent = True;
+            anchor.`root = new_owner;
+        }
+        jctx.mem.put(anchor);
     }
 }
 
@@ -2099,6 +2197,13 @@ impl JacRuntime.set_shared_root_resolver(
 ) -> None {
     _shared_root_resolver[0] = resolver;
     _shared_root_resolver[1] = None;
+}
+
+impl JacRuntime.set_org_root_resolver(
+    resolver: (Callable[([str], bool)] | None)
+) -> None {
+    _org_root_resolver[0] = resolver;
+    _org_root_resolver[1] = {};
 }
 
 impl JacRuntime.get_base_path_dir -> (str | None) {
