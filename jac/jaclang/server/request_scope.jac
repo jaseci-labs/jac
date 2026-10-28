@@ -7,7 +7,7 @@ glob logger: logging.Logger = logging.getLogger('jaclang.serve');
 
 obj RequestScope {
     has context: ExecutionContext,
-        _token: Token[(ExecutionContext | None)],
+        _token: (Token[(ExecutionContext | None)] | None),
         _aborted: bool = False;
 
     static def open(
@@ -19,6 +19,7 @@ obj RequestScope {
     def _discard;
     def close;
     async def aclose;
+    def lease(body: any) -> ScopedStream;
     def __enter__ -> ExecutionContext;
     def __exit__(
         exc_type: (type[BaseException] | None),
@@ -32,4 +33,17 @@ obj RequestScope {
         exc: (BaseException | None),
         tb: (TracebackType | None)
     ) -> bool;
+}
+
+
+obj ScopedStream {
+    has scope: RequestScope,
+        body: any,
+        _source: (AsyncIterator[any] | None) = None,
+        _done: bool = False;
+
+    def __aiter__ -> ScopedStream;
+    async def __anext__ -> any;
+    async def aclose;
+    async def _finish(delivered: bool);
 }

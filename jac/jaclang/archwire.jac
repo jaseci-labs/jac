@@ -32855,6 +32855,7 @@ graph import server {
         server { JEndPoint, WSEndPoint },
         server.restspec_fields { HTTPMethod },
     ]
+    serving.executor ++> request_scope { close_stream, iterate_sync }
     serving.files ++> endpoints.pages | endpoints.walkers { file_response }
     serving.health ++> server.JacAPIServer.register_endpoints {
         register_health_endpoints
@@ -33053,8 +33054,9 @@ graph import server.serving {
         router { HTTPMethod, JEndPoint, WSEndPoint },
     ]
     executor ++> [
-        compression | sse { iterate_sync },
-        server { SyncExecutor, iterate_sync },
+        compression { iterate_sync },
+        server { SyncExecutor, close_stream, iterate_sync },
+        sse { close_stream, iterate_sync },
     ]
     multipart ++> app { parse_multipart, parse_urlencoded_form }
     openapi ++> app.ServingApp.openapi { build_openapi }
