@@ -116,6 +116,10 @@ obj CgWideInt(CgItem) {
         magnitude: bytes;
 }
 
+glob TASK_VALUE: int = 0,
+     TASK_NODE: int = 1,
+     TASK_LIST: int = 2;
+
 def write_ir_value(w: CodegenIrWriter, v: object);
 
 def module_container_bytes(mod_path: str, root_node: CgNode) -> bytes;

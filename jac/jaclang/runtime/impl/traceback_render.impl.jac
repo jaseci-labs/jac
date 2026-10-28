@@ -25,7 +25,7 @@ impl dump_traceback(e: Exception) -> str {
         );
     }
     seen_runtime_marker: bool = False;
-    collapse_internal: bool = True;
+    collapse_internal: bool = not show_tracebacks();
     source_displayed = False;
     for frame in tb.stack {
         is_internal: bool = is_internal_runtime_frame(frame.filename);

@@ -625,12 +625,16 @@ impl Module.declares_codespace(ctx: CodeContext, path_hint: str = '') -> bool {
 }
 
 impl UniNode.flatten -> list[UniNode] {
-    ret: list[UniNode] = [self];
-    for k in [self->:Kid:->] {
-        if k.ct_pruned {
-            continue;
+    ret: list[UniNode] = [];
+    stack: list[UniNode] = [self];
+    while stack {
+        nd = stack.pop();
+        ret.append(nd);
+        for k in reversed([nd->:Kid:->]) {
+            if not k.ct_pruned {
+                stack.append(k);
+            }
         }
-        ret += k.flatten();
     }
     return ret;
 }

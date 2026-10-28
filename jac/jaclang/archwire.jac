@@ -297,6 +297,7 @@ graph import {
             | project.template_registry._register_builtin_shadcn_template { console },
     ]
     type cli.console ++> runtime.runtime { JacConsole as ConsoleImpl }
+    cli.errmap ++> runtime.traceback_render.dump_traceback { show_tracebacks }
     cli.errmap --> scale.tests.server.test_serve { humanize_error }
     cli.manifest_route ++> [
         scale.injector.binary.deploy_generation_refusal
