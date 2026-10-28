@@ -20798,7 +20798,12 @@ obj VM {
             return;
         }
         self._push(
-            js_int(to_int32(shl32(int(js_to_num(a_sl)), int(js_to_num(b_sl)) & 31)))
+            js_int(
+                to_int32(
+                    _vm_f64_to_int32(js_to_num(a_sl))
+                        << (_vm_f64_to_int32(js_to_num(b_sl)) & 31)
+                )
+            )
         );
     }
 
