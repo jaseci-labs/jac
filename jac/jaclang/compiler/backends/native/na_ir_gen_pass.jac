@@ -814,6 +814,13 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _native_module_call_target(nd: uni.FuncCall) -> tuple[str, str] | None;
+    def _native_getattr_alias_for_symbol(sym: uni.Symbol) -> tuple[str, str] | None;
+    def _native_getattr_alias_target(nd: uni.FuncCall) -> tuple[str, str] | None;
+    def _native_module_member_ability(
+        module_name: str, member_name: str, nd: uni.FuncCall
+    ) -> (uni.Ability | None);
+
+    def _native_getattr_alias_scope(nd: uni.UniNode) -> (uni.UniNode | None);
     def _stdlib_intercept_covers(module_name: str, func_name: str) -> bool;
     def _emit_stdlib_intercept(
         module_name: str, func_name: str, nd: uni.FuncCall

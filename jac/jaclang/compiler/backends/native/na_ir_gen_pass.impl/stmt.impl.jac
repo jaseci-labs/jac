@@ -2141,6 +2141,24 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
 }
 
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
+    if nd.target and isinstance(nd.target[0], uni.Name) {
+        alias_sym = nd.target[0].sym;
+        if alias_sym is not None
+            and self._native_getattr_alias_for_symbol(alias_sym) is not None {
+            _slot = self.local_vars.get(nd.target[0].sym_name);
+            if _slot is None {
+                _slot = self.global_vars.get(nd.target[0].sym_name);
+            }
+
+            if _slot is not None and isinstance(_slot.type, ir.PointerType) {
+                _pointee = _slot.type.pointee;
+                if _pointee is not None {
+                    self.builder.store(ir.Constant(_pointee, None), _slot);
+                }
+            }
+            return;
+        }
+    }
     _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
         return;

@@ -6474,6 +6474,9 @@ graph import compiler {
             is_bundled_native_module,
             resolve_native_module
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._native_module_member_ability {
+            resolve_native_module
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._native_variant_decl {
             native_variant_of
         },

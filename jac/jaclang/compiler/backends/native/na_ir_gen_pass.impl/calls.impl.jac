@@ -1244,9 +1244,168 @@ impl NaIRGenPass._skip_is_other_module(
     return callee_path != own_path and callee_path not in origins;
 }
 
+impl NaIRGenPass._native_getattr_alias_for_symbol(
+    sym: uni.Symbol
+) -> tuple[str, str] | None {
+    if len(sym.defn) != 1 or not sym.uses {
+        return None;
+    }
+    definition = sym.defn[0];
+    assignment = definition.find_parent_of_type(uni.Assignment);
+    if assignment is None
+        or assignment.aug_op is not None
+        or len(assignment.target) != 1
+        or not isinstance(assignment.target[0], uni.Name)
+        or assignment.target[0].sym is not sym
+        or not isinstance(assignment.value, uni.FuncCall) {
+        return None;
+    }
+    _module_member = self._native_module_call_target(assignment.value);
+    if _module_member is None {
+        return None;
+    }
+    (module_name, member_name) = _module_member;
+
+    owner = self._native_getattr_alias_scope(assignment);
+    if owner is None {
+        return None;
+    }
+    valid_scope = False;
+    match sym.storage {
+        case uni.SymbolStorage.MODULE_GLOBAL:
+            valid_scope = isinstance(owner, uni.ModuleCode);
+
+        case uni.SymbolStorage.LOCAL:
+            valid_scope = True;
+
+        case _:
+            return None;
+
+    }
+    if not valid_scope {
+        return None;
+    }
+    for use in sym.uses {
+        call = use.find_parent_of_type(uni.FuncCall);
+        if call is None
+            or use is not call.target
+            or not isinstance(call.target, uni.Name)
+            or call.target.sym is not sym
+            or self._native_getattr_alias_scope(call) is not owner
+            or call.loc.first_line <= assignment.loc.first_line {
+            return None;
+        }
+    }
+
+    return (module_name, member_name);
+}
+
+impl NaIRGenPass._native_getattr_alias_scope(nd: uni.UniNode) -> (uni.UniNode | None) {
+    current = nd.parent;
+    while current is not None {
+        if isinstance(
+            current,
+            (
+                uni.IfStmt,
+                uni.IfElseExpr,
+                uni.WhileStmt,
+                uni.ForeverStmt,
+                uni.InForStmt,
+                uni.IterForStmt,
+                uni.MatchStmt,
+                uni.SwitchStmt,
+                uni.TryStmt
+            )
+        ) {
+            return None;
+        }
+        if isinstance(
+            current, (uni.WithStmt, uni.Ability, uni.ModuleCode, uni.Module)
+        ) {
+            return current;
+        }
+        current = current.parent;
+    }
+    return None;
+}
+
+impl NaIRGenPass._native_getattr_alias_target(
+    nd: uni.FuncCall
+) -> tuple[str, str] | None {
+    if not isinstance(nd.target, uni.Name) or nd.target.sym is None {
+        return None;
+    }
+    alias = self._native_getattr_alias_for_symbol(nd.target.sym);
+    if alias is None {
+        return None;
+    }
+    return alias;
+}
+
+impl NaIRGenPass._native_module_member_ability(
+    module_name: str, member_name: str, nd: uni.FuncCall
+) -> (uni.Ability | None) {
+    import os;
+    (_, source) = resolve_native_module(module_name, os.path.dirname(nd.loc.mod_path));
+    if source is None {
+        return None;
+    }
+    imported = self.prog.mod.hub.get(source);
+    if imported is None {
+        imported = self.prog.mod.hub.get(real_path(source));
+    }
+    if imported is None {
+        for candidate in self._foreign_modules {
+            if candidate.loc is not None
+                and real_path(candidate.loc.mod_path) == real_path(source) {
+                imported = candidate;
+                break;
+            }
+        }
+    }
+    if imported is None {
+        return None;
+    }
+    declaration = NaIRGenPass._module_ability(imported, member_name);
+    if declaration is None
+        or not isinstance(declaration.signature, uni.FuncSignature) {
+        return None;
+    }
+    return declaration;
+}
+
 impl NaIRGenPass._native_module_call_target(
     nd: uni.FuncCall
 ) -> tuple[str, str] | None {
+    if self._get_name(nd.target) == "getattr"
+        and nd.call_kind == "builtin"
+        and self._callee_ability_of(nd) is None {
+        args = nd.params or [];
+        if len(args) != 2
+            or isinstance(args[0], uni.KWPair)
+            or isinstance(args[1], uni.KWPair)
+            or not isinstance(args[1], (uni.String, uni.MultiString))
+            or not isinstance(args[1].lit_value, str) {
+            return None;
+        }
+        if isinstance(args[1], uni.MultiString) {
+            for part in args[1].strings {
+                if not isinstance(part, uni.String) {
+                    return None;
+                }
+            }
+        }
+        module_name = imported_module_name(args[0]);
+        member_name = args[1].lit_value;
+        if module_name is None
+            or module_name not in self._native_module_imports
+            or not member_name
+            or (module_name == "os" and member_name in NATIVE_OS_FUNCS)
+            or (module_name == "os.path" and member_name in NATIVE_OSPATH_FUNCS) {
+            return None;
+        }
+        return (module_name, member_name);
+    }
     if isinstance(nd.target, uni.Name) and nd.target.sym is not None {
         import from jaclang.compiler.frontend.codeinfo { NATIVE_STDLIB_EXTENSIONS }
         scope = nd.target.sym.parent_tab;
@@ -1754,8 +1913,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
 
     func_name: str | None = None;
     _mod_qual: (str | None) = None;
+    _getattr_alias = self._native_getattr_alias_target(nd);
     _mod_fn = self._native_module_call_target(nd);
-    if _mod_fn is not None {
+    if _getattr_alias is not None {
+        (_mod_qual, func_name) = _getattr_alias;
+    } elif _mod_fn is not None {
         (_mod_qual, func_name) = _mod_fn;
     } elif _call_kind == "method" {
         return self._codegen_method_call(nd);
@@ -2505,7 +2667,16 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     _skipped_key = f"{_mod_qual}.{func_name}" if _mod_qual is not None else func_name;
     declaration = self._callee_ability_of(nd);
-    _var_callee = declaration is None and self._binds_variable(nd.target);
+    if declaration is None and _getattr_alias is not None {
+        declaration = self._native_module_member_ability(
+            _getattr_alias[0], _getattr_alias[1], nd
+        );
+    }
+    _var_callee = (
+        declaration is None
+        and self._binds_variable(nd.target)
+        and _getattr_alias is None
+    );
     if (
         _skipped_key in self._native_skipped_methods
         and func_name not in self.generic_fns
