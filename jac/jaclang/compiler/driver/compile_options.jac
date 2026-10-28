@@ -50,6 +50,7 @@ obj CompileOptions {
         native_module_walk_order: (str | None) = None,
         strict_dependencies: bool = False,
         package_canonical: bool = False,
+        na_move_flow: bool = True,
         cancel_token: (CancelToken | None) = None;
 
     def postinit;
