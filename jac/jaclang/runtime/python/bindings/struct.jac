@@ -53,7 +53,21 @@ def:priv memory_size(instance: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyOb
     );
 }
 
-def:priv pack(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+def:priv count_error(module: ptr[PyObject], into: bool, expected: i64, count: i64) {
+    if into {
+        module_error(
+            module, f"pack_into expected {expected} items for packing (got {count})"
+        );
+    } else {
+        module_error(
+            module, f"pack expected {expected} items for packing (got {count})"
+        );
+    }
+}
+
+def:priv pack(
+    instance: ptr[PyObject], items: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -63,22 +77,15 @@ def:priv pack(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if module == 0 {
         return NULL;
     }
-    count = PyTuple_Size(args);
     expected = jacpy_struct_items(plan);
     if count != expected {
-        module_error(
-            module, f"pack expected {expected} items for packing (got {count})"
-        );
+        count_error(module, False, expected, count);
         return NULL;
     }
     result = jacpy_buffer_new(jacpy_struct_size(plan));
     if result != 0
         and jacpy_struct_pack(
-            plan,
-            args,
-            0,
-            jacpy_bytes_address(result),
-            jacpy_binding_state_get(module, 0)
+            plan, items, jacpy_bytes_address(result), jacpy_binding_state_get(module, 0)
         )
             < 0 {
         jacpy_release(result);
@@ -87,7 +94,9 @@ def:priv pack(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+def:priv pack_into(
+    instance: ptr[PyObject], items: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
     state = state_for(instance);
     if state is None {
         return NULL;
@@ -97,7 +106,6 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     if module == 0 {
         return NULL;
     }
-    count = PyTuple_Size(args);
     expected = jacpy_struct_items(plan);
     if count < 2 {
         module_error(
@@ -109,21 +117,14 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
         return NULL;
     }
     if count - 2 != expected {
-        module_error(
-            module, f"pack_into expected {expected} items for packing (got {count - 2})"
-        );
+        count_error(module, True, expected, count - 2);
         return NULL;
     }
     buffer = BufferArgument();
-    source = jacpy_tuple_item(args, 0);
-    acquired = buffer.acquire_writable(source);
-    jacpy_release(source);
-    if not acquired {
+    if not buffer.acquire_writable(items.view(1)[0]) {
         return NULL;
     }
-    offset_object = jacpy_tuple_item(args, 1);
-    offset = PyNumber_AsSsize_t(offset_object, PyExc_IndexError);
-    jacpy_release(offset_object);
+    offset = PyNumber_AsSsize_t((items + 1).view(1)[0], PyExc_IndexError);
     if jacpy_error_pending() != 0 {
         return NULL;
     }
@@ -132,7 +133,7 @@ def:priv pack_into(instance: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
     if offset < 0 {
         return NULL;
     }
-    if jacpy_struct_pack(plan, args, 2, buffer.address() + offset, error) < 0 {
+    if jacpy_struct_pack(plan, items + 2, buffer.address() + offset, error) < 0 {
         return NULL;
     }
     return Py_NewRef(Py_None);
@@ -176,25 +177,13 @@ def:priv iterator_hint(
 def:priv pack_call(
     instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    values = vector_tuple(args, nargs);
-    if values == 0 {
-        return NULL;
-    }
-    result = pack(instance, values);
-    jacpy_release(values);
-    return result;
+    return pack(instance, args, nargs);
 }
 
 def:priv pack_into_call(
     instance: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
-    values = vector_tuple(args, nargs);
-    if values == 0 {
-        return NULL;
-    }
-    result = pack_into(instance, values);
-    jacpy_release(values);
-    return result;
+    return pack_into(instance, args, nargs);
 }
 
 def:priv deallocate(instance: ptr[PyObject]) {
@@ -317,12 +306,9 @@ def:priv module_pack_values(
     if instance == 0 {
         return NULL;
     }
-    values = vector_tuple(args + 1, nargs - 1);
-    result: ptr[PyObject] = NULL;
-    if values != 0 {
-        result = pack_into(instance, values) if into else pack(instance, values);
-        jacpy_release(values);
-    }
+    result = pack_into(instance, args + 1, nargs - 1)
+        if into
+        else pack(instance, args + 1, nargs - 1);
     jacpy_release(instance);
     return result;
 }

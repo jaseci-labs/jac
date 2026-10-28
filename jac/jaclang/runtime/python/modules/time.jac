@@ -89,6 +89,12 @@ def time_sleep(module: ptr[PyObject], timeout_obj: ptr[PyObject]) -> ptr[PyObjec
 
 def:priv tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject];
 
+def:priv tm_fields(args: ptr[PyObject], values: ptr[i64]) -> bool;
+
+def:priv tm_fields_slow(args: ptr[PyObject], values: ptr[i64], message: str);
+
+def:priv time_t_args(args: ptr[PyObject], name: str) -> tuple[bool, i64];
+
 def:priv parse_time_t_args(args: ptr[PyObject], name: str) -> i64;
 
 def time_gmtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
@@ -413,32 +419,47 @@ impl tmtotuple(module: ptr[PyObject], p: tm) -> ptr[PyObject] {
     if not v {
         return NULL;
     }
-    items = [
-        PyLong_FromLong(i64(p.tm_year) + 1900),
-        PyLong_FromLong(i64(p.tm_mon) + 1),
-        PyLong_FromLong(i64(p.tm_mday)),
-        PyLong_FromLong(i64(p.tm_hour)),
-        PyLong_FromLong(i64(p.tm_min)),
-        PyLong_FromLong(i64(p.tm_sec)),
-        PyLong_FromLong(c_remainder(int(p.tm_wday) + 6, 7)),
-        PyLong_FromLong(i64(p.tm_yday) + 1),
-        PyLong_FromLong(i64(p.tm_isdst)),
-        PyUnicode_DecodeLocale(ptr(p.tm_zone), ptr[u8]("surrogateescape")),
-        PyLong_FromLong(p.tm_gmtoff)
-    ];
-    failed = False;
-    for index in range(len(items)) {
-        if items[index] {
-            PyStructSequence_SetItem(v, i64(index), items[index]);
-        } else {
-            failed = True;
-        }
-    }
-    if failed {
+    PyStructSequence_SetItem(v, 0, PyLong_FromLong(i64(p.tm_year) + 1900));
+    PyStructSequence_SetItem(v, 1, PyLong_FromLong(i64(p.tm_mon) + 1));
+    PyStructSequence_SetItem(v, 2, PyLong_FromLong(i64(p.tm_mday)));
+    PyStructSequence_SetItem(v, 3, PyLong_FromLong(i64(p.tm_hour)));
+    PyStructSequence_SetItem(v, 4, PyLong_FromLong(i64(p.tm_min)));
+    PyStructSequence_SetItem(v, 5, PyLong_FromLong(i64(p.tm_sec)));
+    PyStructSequence_SetItem(v, 6, PyLong_FromLong(c_remainder(int(p.tm_wday) + 6, 7)));
+    PyStructSequence_SetItem(v, 7, PyLong_FromLong(i64(p.tm_yday) + 1));
+    PyStructSequence_SetItem(v, 8, PyLong_FromLong(i64(p.tm_isdst)));
+    PyStructSequence_SetItem(
+        v, 9, PyUnicode_DecodeLocale(ptr(p.tm_zone), ptr[u8]("surrogateescape"))
+    );
+    PyStructSequence_SetItem(v, 10, PyLong_FromLong(p.tm_gmtoff));
+    if PyErr_Occurred() {
         jacpy_release(v);
         return NULL;
     }
     return v;
+}
+
+impl time_t_args(args: ptr[PyObject], name: str) -> tuple[bool, i64] {
+    count = PyTuple_Size(args);
+    if count == 0 {
+        return (True, time(ptr()));
+    }
+    if count == 1 {
+        ot = PyTuple_GetItem(args, 0);
+        if ot == Py_None {
+            return (True, time(ptr()));
+        }
+        whent: i64 = 0;
+        if _PyTime_ObjectToTime_t(ot, &mut whent, ROUND_FLOOR) == -1 {
+            return (False, 0);
+        }
+        return (True, whent);
+    }
+    try {
+        return (True, parse_time_t_args(args, name));
+    } except boundary_failure {
+        return (False, 0);
+    }
 }
 
 impl parse_time_t_args(args: ptr[PyObject], name: str) -> i64 {
@@ -454,29 +475,58 @@ impl parse_time_t_args(args: ptr[PyObject], name: str) -> i64 {
 }
 
 impl time_gmtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    try {
-        when = parse_time_t_args(args, "gmtime");
-        buf = tm();
-        jacpy_clear_errno();
-        if _PyTime_gmtime(when, &mut buf) != 0 {
-            return NULL;
-        }
-        return tmtotuple(module, buf);
-    } except boundary_failure {
+    (ok, when) = time_t_args(args, "gmtime");
+    if not ok {
         return NULL;
     }
+    buf = tm();
+    jacpy_clear_errno();
+    if _PyTime_gmtime(when, &mut buf) != 0 {
+        return NULL;
+    }
+    return tmtotuple(module, buf);
 }
 
 impl time_localtime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
-    try {
-        when = parse_time_t_args(args, "localtime");
-        buf = tm();
-        if _PyTime_localtime(when, &mut buf) != 0 {
-            return NULL;
-        }
-        return tmtotuple(module, buf);
-    } except boundary_failure {
+    (ok, when) = time_t_args(args, "localtime");
+    if not ok {
         return NULL;
+    }
+    buf = tm();
+    if _PyTime_localtime(when, &mut buf) != 0 {
+        return NULL;
+    }
+    return tmtotuple(module, buf);
+}
+
+impl tm_fields(args: ptr[PyObject], values: ptr[i64]) -> bool {
+    if PyTuple_Size(args) != 9 {
+        return False;
+    }
+    fields = values.view(9);
+    for i in range(9) {
+        item = PyTuple_GetItem(args, i64(i));
+        if jacpy_is_exact_long(item) == 0 {
+            return False;
+        }
+        value = PyLong_AsLong(item);
+        if value == -1 and PyErr_Occurred() {
+            PyErr_Clear();
+            return False;
+        }
+        if value > 2147483647 or value < -2147483648 {
+            return False;
+        }
+        fields[i] = value;
+    }
+    return True;
+}
+
+impl tm_fields_slow(args: ptr[PyObject], values: ptr[i64], message: str) {
+    parsed = ArgumentFormat(message=message).parse(args, "iiiiiiiii");
+    fields = values.view(9);
+    for i in range(9) {
+        fields[i] = parsed[i].signed;
     }
 }
 
@@ -485,23 +535,25 @@ impl gettmarg(module: ptr[PyObject], args: ptr[PyObject], p: &mut tm, message: s
         object_error(PyExc_TypeError, "Tuple or struct_time argument required");
         raise boundary_failure();
     }
-    values = [
-        v.signed for v in ArgumentFormat(message=message).parse(args, "iiiiiiiii")
-    ];
-    y = int(values[0]);
+    values = ptr[i64](__alloca(72));
+    if not tm_fields(args, values) {
+        tm_fields_slow(args, values, message);
+    }
+    y = int(values.view(9)[0]);
     if y < INT_MIN + 1900 {
         object_error(PyExc_OverflowError, "year out of range");
         raise boundary_failure();
     }
     p.tm_year = i32(y - 1900);
-    p.tm_mon = i32.wrap(int(values[1]) - 1);
-    p.tm_mday = i32(values[2]);
-    p.tm_hour = i32(values[3]);
-    p.tm_min = i32(values[4]);
-    p.tm_sec = i32(values[5]);
-    p.tm_wday = i32(c_remainder(int(i32.wrap(int(values[6]) + 1)), 7));
-    p.tm_yday = i32.wrap(int(values[7]) - 1);
-    p.tm_isdst = i32(values[8]);
+    fields = values.view(9);
+    p.tm_mon = i32.wrap(int(fields[1]) - 1);
+    p.tm_mday = i32(fields[2]);
+    p.tm_hour = i32(fields[3]);
+    p.tm_min = i32(fields[4]);
+    p.tm_sec = i32(fields[5]);
+    p.tm_wday = i32(c_remainder(int(i32.wrap(int(fields[6]) + 1)), 7));
+    p.tm_yday = i32.wrap(int(fields[7]) - 1);
+    p.tm_isdst = i32(fields[8]);
     if Py_TYPE(args) == struct_time_type(module) {
         item = PyStructSequence_GetItem(args, 9);
         if item != Py_None {
@@ -521,40 +573,38 @@ impl gettmarg(module: ptr[PyObject], args: ptr[PyObject], p: &mut tm, message: s
 }
 
 impl checktm(buf: &mut tm) {
-    failure = "";
     if buf.tm_mon == -1 {
         buf.tm_mon = 0;
     } elif buf.tm_mon < 0 or buf.tm_mon > 11 {
-        failure = "month out of range";
+        object_error(PyExc_ValueError, "month out of range");
+        raise boundary_failure();
     }
-    if not failure {
-        if buf.tm_mday == 0 {
-            buf.tm_mday = 1;
-        } elif buf.tm_mday < 0 or buf.tm_mday > 31 {
-            failure = "day of month out of range";
-        }
+    if buf.tm_mday == 0 {
+        buf.tm_mday = 1;
+    } elif buf.tm_mday < 0 or buf.tm_mday > 31 {
+        object_error(PyExc_ValueError, "day of month out of range");
+        raise boundary_failure();
     }
-    if not failure and (buf.tm_hour < 0 or buf.tm_hour > 23) {
-        failure = "hour out of range";
+    if buf.tm_hour < 0 or buf.tm_hour > 23 {
+        object_error(PyExc_ValueError, "hour out of range");
+        raise boundary_failure();
     }
-    if not failure and (buf.tm_min < 0 or buf.tm_min > 59) {
-        failure = "minute out of range";
+    if buf.tm_min < 0 or buf.tm_min > 59 {
+        object_error(PyExc_ValueError, "minute out of range");
+        raise boundary_failure();
     }
-    if not failure and (buf.tm_sec < 0 or buf.tm_sec > 61) {
-        failure = "seconds out of range";
+    if buf.tm_sec < 0 or buf.tm_sec > 61 {
+        object_error(PyExc_ValueError, "seconds out of range");
+        raise boundary_failure();
     }
-    if not failure and buf.tm_wday < 0 {
-        failure = "day of week out of range";
+    if buf.tm_wday < 0 {
+        object_error(PyExc_ValueError, "day of week out of range");
+        raise boundary_failure();
     }
-    if not failure {
-        if buf.tm_yday == -1 {
-            buf.tm_yday = 0;
-        } elif buf.tm_yday < 0 or buf.tm_yday > 365 {
-            failure = "day of year out of range";
-        }
-    }
-    if failure {
-        object_error(PyExc_ValueError, failure);
+    if buf.tm_yday == -1 {
+        buf.tm_yday = 0;
+    } elif buf.tm_yday < 0 or buf.tm_yday > 365 {
+        object_error(PyExc_ValueError, "day of year out of range");
         raise boundary_failure();
     }
 }
@@ -587,18 +637,26 @@ impl time_strftime(module: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] 
     buf = tm();
     format_arg = NULL;
     try {
-        values = ArgumentFormat(name="strftime").parse(args, "U|O");
-        format_arg = values[0].object;
-        if not values[1].given {
+        count = PyTuple_Size(args);
+        time_arg: ptr[PyObject] = NULL;
+        if (count == 1 or count == 2)
+            and jacpy_is_unicode(PyTuple_GetItem(args, 0)) != 0 {
+            format_arg = PyTuple_GetItem(args, 0);
+            if count == 2 {
+                time_arg = PyTuple_GetItem(args, 1);
+            }
+        } else {
+            values = ArgumentFormat(name="strftime").parse(args, "U|O");
+            format_arg = values[0].object;
+            time_arg = values[1].object if values[1].given else NULL;
+        }
+        if time_arg == NULL {
             if _PyTime_localtime(time(ptr()), &mut buf) != 0 {
                 return NULL;
             }
         } else {
             gettmarg(
-                module,
-                values[1].object,
-                &mut buf,
-                "strftime(): illegal time tuple argument"
+                module, time_arg, &mut buf, "strftime(): illegal time tuple argument"
             );
             checktm(&mut buf);
         }

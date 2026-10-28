@@ -301,9 +301,11 @@ obj ArgumentValue {
 
 obj FormatPlan {
     has kinds: list[str],
+        codes: list[int],
         minimum: int,
         maximum: int,
-        optional: bool;
+        optional: bool,
+        typed: bool;
 }
 
 glob FORMAT_PLANS: dict[str, FormatPlan] = {},
@@ -324,10 +326,10 @@ obj ArgumentFormat {
     def failed -> bool;
     def signed_range(value: i64, low: i64, high: i64, kind: str) -> i64;
     def convert(
-        unit: str, value: ptr[PyObject], position: int, type: ptr[PyObject] = NULL
+        code: int, value: ptr[PyObject], position: int, type: ptr[PyObject] = NULL
     ) -> ArgumentValue;
 
-    def unpack(args: ptr[PyObject], minimum: int, maximum: int) -> list[ptr[PyObject]];
+    def arity(args: ptr[PyObject], minimum: int, maximum: int) -> int;
     def parse(args: ptr[PyObject], units: str) -> list[ArgumentValue];
     def parse_keywords(
         args: ptr[PyObject], kwargs: ptr[PyObject], units: str, keywords: list[str]
@@ -338,6 +340,9 @@ obj ArgumentFormat {
     );
 
     def unexpected_keyword(key: ptr[PyObject], keywords: list[str]);
+    def too_many_arguments(count: int, nargs: int, given: int);
+    def too_many_positional(maximum: int, nargs: int, optional: bool);
+    def missing_keyword(keyword: str, position: int);
 }
 
 impl BoundArguments.fail_at(index: int, message: str) {
@@ -1391,11 +1396,17 @@ impl format_plan(units: str) -> FormatPlan {
         for unit in format
         if unit != "|"
     ];
+    codes: list[int] = [];
+    for unit in kinds {
+        codes.append(256 if unit == "O!" else ord(unit));
+    }
     plan = FormatPlan(
         kinds=kinds,
+        codes=codes,
         minimum=optional.index("|") if "|" in optional else len(kinds),
         maximum=positional.index("$") if "$" in positional else len(kinds),
-        optional="|" in format
+        optional="|" in format,
+        typed="O!" in kinds
     );
     FORMAT_PLANS[units] = plan;
     return plan;
@@ -1463,19 +1474,37 @@ impl ArgumentFormat.signed_range(value: i64, low: i64, high: i64, kind: str) -> 
 }
 
 impl ArgumentFormat.convert(
-    unit: str, value: ptr[PyObject], position: int, type: ptr[PyObject] = NULL
+    code: int, value: ptr[PyObject], position: int, type: ptr[PyObject] = NULL
 ) -> ArgumentValue {
     result = ArgumentValue(given=True, object=value);
-    if unit == "O" {
+    if code == 79 {
         return result;
     }
-    if unit == "S" {
+    if code == 105 or code == 108 or code == 104 {
+        wide = PyLong_AsLong(value);
+        if wide == -1 and self.failed() {
+            raise boundary_failure();
+        }
+        if code == 105 {
+            result.signed = self.signed_range(
+                wide, -2147483648, 2147483647, "signed integer"
+            );
+        } elif code == 104 {
+            result.signed = self.signed_range(
+                wide, -32768, 32767, "signed short integer"
+            );
+        } else {
+            result.signed = wide;
+        }
+        return result;
+    }
+    if code == 83 {
         if jacpy_is_bytes(value) == 0 {
             self.mismatch(position, "bytes", value);
         }
         return result;
     }
-    if unit == "O!" {
+    if code == 256 {
         if PyType_IsSubtype(Py_TYPE(value), type) == 0 {
             expected = required(
                 c_string_text(ptr[PyTypeObject](type).view(1)[0].tp_name)
@@ -1488,7 +1517,7 @@ impl ArgumentFormat.convert(
         }
         return result;
     }
-    if unit == "C" {
+    if code == 67 {
         if jacpy_is_unicode(value) == 0 {
             self.mismatch(position, "a unicode character", value);
         }
@@ -1502,11 +1531,11 @@ impl ArgumentFormat.convert(
         result.signed = PyUnicode_ReadChar(value, 0);
         return result;
     }
-    if unit == "U" or unit == "s" {
+    if code == 85 or code == 115 {
         if jacpy_is_unicode(value) == 0 {
             self.mismatch(position, "str", value);
         }
-        if unit == "s" {
+        if code == 115 {
             size: i64 = 0;
             if PyUnicode_AsUTF8AndSize(value, &mut size).is_null() {
                 raise boundary_failure();
@@ -1519,7 +1548,7 @@ impl ArgumentFormat.convert(
         }
         return result;
     }
-    if unit == "p" {
+    if code == 112 {
         truth = PyObject_IsTrue(value);
         if truth < 0 {
             raise boundary_failure();
@@ -1527,7 +1556,7 @@ impl ArgumentFormat.convert(
         result.flag = truth != 0;
         return result;
     }
-    if unit == "n" {
+    if code == 110 {
         index = PyNumber_Index(value);
         if not index {
             raise boundary_failure();
@@ -1539,26 +1568,29 @@ impl ArgumentFormat.convert(
         }
         return result;
     }
-    if unit == "L" {
+    if code == 76 {
         result.signed = PyLong_AsLongLong(value);
         if result.signed == -1 and self.failed() {
             raise boundary_failure();
         }
         return result;
     }
-    if unit == "B" or unit == "H" or unit == "I" or unit == "k" or unit == "K" {
-        if (unit == "k" or unit == "K") and PyIndex_Check(value) == 0 {
+    if code == 66 or code == 72 or code == 73 or code == 107 or code == 75 {
+        if (code == 107 or code == 75) and PyIndex_Check(value) == 0 {
             self.mismatch(position, "int", value);
         }
         result.unsigned = PyLong_AsUnsignedLongLongMask(value)
-            if unit == "K"
+            if code == 75
             else PyLong_AsUnsignedLongMask(value);
         if result.unsigned == u64(0xFFFFFFFFFFFFFFFF) and self.failed() {
             raise boundary_failure();
         }
-        mask = {"B": 0xFF, "H": 0xFFFF, "I": 0xFFFFFFFF}.get(unit, -1);
-        if mask >= 0 {
-            result.unsigned = result.unsigned & u64(mask);
+        if code == 66 {
+            result.unsigned = result.unsigned & u64(0xFF);
+        } elif code == 72 {
+            result.unsigned = result.unsigned & u64(0xFFFF);
+        } elif code == 73 {
+            result.unsigned = result.unsigned & u64(0xFFFFFFFF);
         }
         return result;
     }
@@ -1566,21 +1598,11 @@ impl ArgumentFormat.convert(
     if wide == -1 and self.failed() {
         raise boundary_failure();
     }
-    if unit == "i" {
-        result.signed = self.signed_range(
-            wide, -2147483648, 2147483647, "signed integer"
-        );
-    } elif unit == "h" {
-        result.signed = self.signed_range(wide, -32768, 32767, "signed short integer");
-    } else {
-        result.signed = wide;
-    }
+    result.signed = wide;
     return result;
 }
 
-impl ArgumentFormat.unpack(
-    args: ptr[PyObject], minimum: int, maximum: int
-) -> list[ptr[PyObject]] {
+impl ArgumentFormat.arity(args: ptr[PyObject], minimum: int, maximum: int) -> int {
     count = int(PyTuple_Size(args));
     if count < 0 {
         raise boundary_failure();
@@ -1601,98 +1623,126 @@ impl ArgumentFormat.unpack(
         }
         raise boundary_failure();
     }
-    return [PyTuple_GetItem(args, i64(i)) for i in range(count)];
+    return count;
 }
 
 impl ArgumentFormat.parse(args: ptr[PyObject], units: str) -> list[ArgumentValue] {
     plan = format_plan(units);
-    kinds = plan.kinds;
-    expected = self.expected_types(kinds);
-    items = self.unpack(args, plan.minimum, len(kinds));
+    codes = plan.codes;
+    total = len(codes);
+    count = self.arity(args, plan.minimum, total);
     values: list[ArgumentValue] = [];
-    for i in range(len(kinds)) {
+    if plan.typed {
+        expected = self.expected_types(plan.kinds);
+        for i in range(total) {
+            values.append(
+                self.convert(
+                    codes[i], PyTuple_GetItem(args, i64(i)), i + 1, expected[i]
+                )
+                    if i < count
+                    else ABSENT
+            );
+        }
+        return values;
+    }
+    for i in range(total) {
         values.append(
-            self.convert(kinds[i], items[i], i + 1, expected[i])
-                if i < len(items)
+            self.convert(codes[i], PyTuple_GetItem(args, i64(i)), i + 1)
+                if i < count
                 else ABSENT
         );
     }
     return values;
 }
 
+impl ArgumentFormat.too_many_arguments(count: int, nargs: int, given: int) {
+    shown = self.name or "function";
+    called = "()" if self.name else "";
+    object_error(
+        PyExc_TypeError,
+        f"{shown}{called} takes at most {count} {'keyword '
+            if nargs == 0
+            else ''}argument{'' if count == 1 else 's'} ({given} given)"
+    );
+    raise boundary_failure();
+}
+
+impl ArgumentFormat.too_many_positional(maximum: int, nargs: int, optional: bool) {
+    shown = self.name or "function";
+    called = "()" if self.name else "";
+    if maximum == 0 {
+        object_error(PyExc_TypeError, f"{shown}{called} takes no positional arguments");
+    } else {
+        quantity = "at most" if optional else "exactly";
+        object_error(
+            PyExc_TypeError,
+            f"{shown}{called} takes {quantity} {maximum} positional argument{''
+                if maximum == 1
+                else 's'} ({nargs} given)"
+        );
+    }
+    raise boundary_failure();
+}
+
+impl ArgumentFormat.missing_keyword(keyword: str, position: int) {
+    shown = self.name or "function";
+    called = "()" if self.name else "";
+    object_error(
+        PyExc_TypeError,
+        f"{shown}{called} missing required argument '{keyword}' (pos {position})"
+    );
+    raise boundary_failure();
+}
+
 impl ArgumentFormat.parse_keywords(
     args: ptr[PyObject], kwargs: ptr[PyObject], units: str, keywords: list[str]
 ) -> list[ArgumentValue] {
     plan = format_plan(units);
-    kinds = plan.kinds;
-    expected = self.expected_types(kinds);
+    codes = plan.codes;
+    typed = plan.typed;
+    expected = self.expected_types(plan.kinds) if typed else [];
     count = len(keywords);
     minimum = plan.minimum;
     maximum = plan.maximum;
     nargs = int(PyTuple_Size(args));
     nkwargs = int(PyDict_Size(kwargs)) if kwargs else 0;
-    shown = self.name or "function";
-    called = "()" if self.name else "";
     if nargs + nkwargs > count {
-        object_error(
-            PyExc_TypeError,
-            f"{shown}{called} takes at most {count} {'keyword '
-                if nargs == 0
-                else ''}argument{'' if count == 1 else 's'} ({nargs + nkwargs} given)"
-        );
-        raise boundary_failure();
+        self.too_many_arguments(count, nargs, nargs + nkwargs);
     }
     values = [ABSENT for _ in range(count)];
     remaining = nkwargs;
     for i in range(count) {
         if i == maximum and maximum < nargs {
-            if maximum == 0 {
-                object_error(
-                    PyExc_TypeError, f"{shown}{called} takes no positional arguments"
-                );
-            } else {
-                quantity = "at most" if plan.optional else "exactly";
-                object_error(
-                    PyExc_TypeError,
-                    f"{shown}{called} takes {quantity} {maximum} positional argument{''
-                        if maximum == 1
-                        else 's'} ({nargs} given)"
-                );
-            }
-            raise boundary_failure();
+            self.too_many_positional(maximum, nargs, plan.optional);
         }
-        current = NULL;
-        owned = False;
         if i < nargs {
-            current = PyTuple_GetItem(args, i64(i));
-        } elif remaining > 0 {
+            values[i] = self.convert(
+                codes[i],
+                PyTuple_GetItem(args, i64(i)),
+                i + 1,
+                expected[i] if typed else NULL
+            );
+            continue;
+        }
+        if remaining > 0 {
             (status, found) = dict_get_text(kwargs, keywords[i]);
             if status < 0 {
                 raise boundary_failure();
             }
             if found {
-                current = found;
-                owned = True;
                 remaining -= 1;
-            }
-        }
-        if current {
-            try {
-                values[i] = self.convert(kinds[i], current, i + 1, expected[i]);
-            } finally {
-                if owned {
-                    jacpy_release(current);
+                try {
+                    values[i] = self.convert(
+                        codes[i], found, i + 1, expected[i] if typed else NULL
+                    );
+                } finally {
+                    jacpy_release(found);
                 }
+                continue;
             }
-            continue;
         }
         if i < minimum {
-            object_error(
-                PyExc_TypeError,
-                f"{shown}{called} missing required argument '{keywords[i]}' (pos {i
-                    + 1})"
-            );
-            raise boundary_failure();
+            self.missing_keyword(keywords[i], i + 1);
         }
         if remaining == 0 {
             return values;

@@ -4,11 +4,6 @@ Recovered algorithms are checked against pinned CPython 3.14.6, with real
 transcendentals supplied by libm. See ../LICENSE.cpython.
 """
 
-obj complex_parts {
-    has real: float,
-        imag: float;
-}
-
 glob e: float = 2.718281828459045,
      _DBL_MAX: float = 1.7976931348623157e308,
      _DBL_MIN: float = 2.2250738585072014e-308,
@@ -49,9 +44,9 @@ def:priv _special_type(d: float) -> int {
 # Finite-only cells are unreachable; special tables are consulted only
 # when at least one component is non-finite.
 def:priv _sv_entry(
-    table: list[list[tuple[float, float]]], z: complex_parts
+    table: list[list[tuple[float, float]]], z: tuple[float, float]
 ) -> tuple[float, float] {
-    cell: tuple[float, float] = table[_special_type(z.real)][_special_type(z.imag)];
+    cell: tuple[float, float] = table[_special_type(z[0])][_special_type(z[1])];
     return cell;
 }
 
@@ -824,16 +819,16 @@ def:priv _check_errno(err: int) {
 
 # ---------------- core algorithms (c_* functions) ----------------
 
-def:priv _c_sqrt(z: complex_parts) -> tuple[float, float, int] {
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        (re, im) = _sv_entry(_SQRT_SV, z);
+def:priv _c_sqrt(zr: float, zi: float) -> tuple[float, float, int] {
+    if not (isfinite(zr) and isfinite(zi)) {
+        (re, im) = _sv_entry(_SQRT_SV, (zr, zi));
         return (re, im, 0);
     }
-    if z.real == 0.0 and z.imag == 0.0 {
-        return (0.0, z.imag, 0);
+    if zr == 0.0 and zi == 0.0 {
+        return (0.0, zi, 0);
     }
-    ax = fabs(z.real);
-    ay = fabs(z.imag);
+    ax = fabs(zr);
+    ay = fabs(zi);
     if ax < _DBL_MIN and ay < _DBL_MIN {
         # catch cases where hypot(ax, ay) is subnormal
         ax = scaled(ax, _CM_SCALE_UP);
@@ -844,19 +839,19 @@ def:priv _c_sqrt(z: complex_parts) -> tuple[float, float, int] {
         s = 2.0 * sqrt(ax + hypot(ax, ay / 8.0));
     }
     d = ay / (2.0 * s);
-    if z.real >= 0.0 {
-        return (s, copysign(d, z.imag), 0);
+    if zr >= 0.0 {
+        return (s, copysign(d, zi), 0);
     }
-    return (d, copysign(s, z.imag), 0);
+    return (d, copysign(s, zi), 0);
 }
 
-def:priv _c_log(z: complex_parts) -> tuple[float, float, int] {
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        (re, im) = _sv_entry(_LOG_SV, z);
+def:priv _c_log(zr: float, zi: float) -> tuple[float, float, int] {
+    if not (isfinite(zr) and isfinite(zi)) {
+        (re, im) = _sv_entry(_LOG_SV, (zr, zi));
         return (re, im, 0);
     }
-    ax = fabs(z.real);
-    ay = fabs(z.imag);
+    ax = fabs(zr);
+    ay = fabs(zi);
     if ax > _CM_LARGE_DOUBLE or ay > _CM_LARGE_DOUBLE {
         re = log(hypot(ax / 2.0, ay / 2.0)) + _M_LN2;
     } elif ax < _DBL_MIN and ay < _DBL_MIN {
@@ -868,7 +863,7 @@ def:priv _c_log(z: complex_parts) -> tuple[float, float, int] {
             );
         } else {
             # log(+/-0. +/- 0i)
-            return (-_INF, atan2(z.imag, z.real), _EDOM);
+            return (-_INF, atan2(zi, zr), _EDOM);
         }
     } else {
         h = hypot(ax, ay);
@@ -880,100 +875,96 @@ def:priv _c_log(z: complex_parts) -> tuple[float, float, int] {
             re = log(h);
         }
     }
-    return (re, atan2(z.imag, z.real), 0);
+    return (re, atan2(zi, zr), 0);
 }
 
-def:priv _c_acos(z: complex_parts) -> tuple[float, float, int] {
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        (re, im) = _sv_entry(_ACOS_SV, z);
+def:priv _c_acos(zr: float, zi: float) -> tuple[float, float, int] {
+    if not (isfinite(zr) and isfinite(zi)) {
+        (re, im) = _sv_entry(_ACOS_SV, (zr, zi));
         return (re, im, 0);
     }
-    if fabs(z.real) > _CM_LARGE_DOUBLE or fabs(z.imag) > _CM_LARGE_DOUBLE {
+    if fabs(zr) > _CM_LARGE_DOUBLE or fabs(zi) > _CM_LARGE_DOUBLE {
         # avoid unnecessary overflow for large arguments
-        re = atan2(fabs(z.imag), z.real);
-        im = -copysign(log(hypot(z.real / 2.0, z.imag / 2.0)) + _M_LN2 * 2.0, z.imag,);
+        re = atan2(fabs(zi), zr);
+        im = -copysign(log(hypot(zr / 2.0, zi / 2.0)) + _M_LN2 * 2.0, zi,);
     } else {
-        s1 = _c_sqrt(complex_parts(1.0 - z.real, -z.imag));
-        s2 = _c_sqrt(complex_parts(1.0 + z.real, z.imag));
+        s1 = _c_sqrt(1.0 - zr, -zi);
+        s2 = _c_sqrt(1.0 + zr, zi);
         re = 2.0 * atan2(s1[0], s2[0]);
         im = asinh(s2[0] * s1[1] - s2[1] * s1[0]);
     }
     return (re, im, 0);
 }
 
-def:priv _c_acosh(z: complex_parts) -> tuple[float, float, int] {
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        (re, im) = _sv_entry(_ACOSH_SV, z);
+def:priv _c_acosh(zr: float, zi: float) -> tuple[float, float, int] {
+    if not (isfinite(zr) and isfinite(zi)) {
+        (re, im) = _sv_entry(_ACOSH_SV, (zr, zi));
         return (re, im, 0);
     }
-    if fabs(z.real) > _CM_LARGE_DOUBLE or fabs(z.imag) > _CM_LARGE_DOUBLE {
+    if fabs(zr) > _CM_LARGE_DOUBLE or fabs(zi) > _CM_LARGE_DOUBLE {
         # avoid unnecessary overflow for large arguments
-        re = log(hypot(z.real / 2.0, z.imag / 2.0)) + _M_LN2 * 2.0;
-        im = atan2(z.imag, z.real);
+        re = log(hypot(zr / 2.0, zi / 2.0)) + _M_LN2 * 2.0;
+        im = atan2(zi, zr);
     } else {
-        s1 = _c_sqrt(complex_parts(z.real - 1.0, z.imag));
-        s2 = _c_sqrt(complex_parts(z.real + 1.0, z.imag));
+        s1 = _c_sqrt(zr - 1.0, zi);
+        s2 = _c_sqrt(zr + 1.0, zi);
         re = asinh(s1[0] * s2[0] + s1[1] * s2[1]);
         im = 2.0 * atan2(s1[1], s2[0]);
     }
     return (re, im, 0);
 }
 
-def:priv _c_asinh(z: complex_parts) -> tuple[float, float, int] {
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        (re, im) = _sv_entry(_ASINH_SV, z);
+def:priv _c_asinh(zr: float, zi: float) -> tuple[float, float, int] {
+    if not (isfinite(zr) and isfinite(zi)) {
+        (re, im) = _sv_entry(_ASINH_SV, (zr, zi));
         return (re, im, 0);
     }
-    if fabs(z.real) > _CM_LARGE_DOUBLE or fabs(z.imag) > _CM_LARGE_DOUBLE {
-        if z.imag >= 0.0 {
-            re = copysign(
-                log(hypot(z.real / 2.0, z.imag / 2.0)) + _M_LN2 * 2.0, z.real,
-            );
+    if fabs(zr) > _CM_LARGE_DOUBLE or fabs(zi) > _CM_LARGE_DOUBLE {
+        if zi >= 0.0 {
+            re = copysign(log(hypot(zr / 2.0, zi / 2.0)) + _M_LN2 * 2.0, zr,);
         } else {
-            re = -copysign(
-                log(hypot(z.real / 2.0, z.imag / 2.0)) + _M_LN2 * 2.0, -z.real,
-            );
+            re = -copysign(log(hypot(zr / 2.0, zi / 2.0)) + _M_LN2 * 2.0, -zr,);
         }
-        im = atan2(z.imag, fabs(z.real));
+        im = atan2(zi, fabs(zr));
     } else {
-        s1 = _c_sqrt(complex_parts(1.0 + z.imag, -z.real));
-        s2 = _c_sqrt(complex_parts(1.0 - z.imag, z.real));
+        s1 = _c_sqrt(1.0 + zi, -zr);
+        s2 = _c_sqrt(1.0 - zi, zr);
         re = asinh(s1[0] * s2[1] - s2[0] * s1[1]);
-        im = atan2(z.imag, s1[0] * s2[0] - s1[1] * s2[1]);
+        im = atan2(zi, s1[0] * s2[0] - s1[1] * s2[1]);
     }
     return (re, im, 0);
 }
 
-def:priv _c_atanh(z: complex_parts) -> tuple[float, float, int] {
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        (re, im) = _sv_entry(_ATANH_SV, z);
+def:priv _c_atanh(zr: float, zi: float) -> tuple[float, float, int] {
+    if not (isfinite(zr) and isfinite(zi)) {
+        (re, im) = _sv_entry(_ATANH_SV, (zr, zi));
         return (re, im, 0);
     }
-    # Reduce to case where z.real >= 0., using atanh(z) = -atanh(-z).
-    negate = z.real < 0.0;
-    zz = complex_parts(-z.real, -z.imag) if negate else z;
-    ay = fabs(zz.imag);
-    if zz.real > _CM_SQRT_LARGE_DOUBLE or ay > _CM_SQRT_LARGE_DOUBLE {
+    # Reduce to case where zr >= 0., using atanh(z) = -atanh(-z).
+    negate = zr < 0.0;
+    zzr = -zr if negate else zr;
+    zzi = -zi if negate else zi;
+    ay = fabs(zzi);
+    if zzr > _CM_SQRT_LARGE_DOUBLE or ay > _CM_SQRT_LARGE_DOUBLE {
         # abs(z) large: atanh(z) ~ 1/z +/- i*pi/2 (+/- depending on sign of imag)
-        h = hypot(zz.real / 2.0, zz.imag / 2.0);  # safe from overflow
-        re = zz.real / 4.0 / h / h;
-        im = copysign(_PI / 2.0, zz.imag);
+        h = hypot(zzr / 2.0, zzi / 2.0);  # safe from overflow
+        re = zzr / 4.0 / h / h;
+        im = copysign(_PI / 2.0, zzi);
         err = 0;
-    } elif zz.real == 1.0 and ay < _CM_SQRT_DBL_MIN {
+    } elif zzr == 1.0 and ay < _CM_SQRT_DBL_MIN {
         # C99 standard says: atanh(1+/-0.) should be inf +/- 0i
         if ay == 0.0 {
             re = _INF;
-            im = zz.imag;
+            im = zzi;
             err = _EDOM;
         } else {
             re = -log(sqrt(ay) / sqrt(hypot(ay, 2.0)));
-            im = copysign(atan2(2.0, -ay) / 2, zz.imag);
+            im = copysign(atan2(2.0, -ay) / 2, zzi);
             err = 0;
         }
     } else {
-        re = _Py_log1p(4.0 * zz.real / ((1.0 - zz.real) * (1.0 - zz.real) + ay * ay))
-            / 4.0;
-        im = -atan2(-2.0 * zz.imag, (1.0 - zz.real) * (1.0 + zz.real) - ay * ay) / 2.0;
+        re = _Py_log1p(4.0 * zzr / ((1.0 - zzr) * (1.0 - zzr) + ay * ay)) / 4.0;
+        im = -atan2(-2.0 * zzi, (1.0 - zzr) * (1.0 + zzr) - ay * ay) / 2.0;
         err = 0;
     }
     if negate {
@@ -982,35 +973,35 @@ def:priv _c_atanh(z: complex_parts) -> tuple[float, float, int] {
     return (re, im, err);
 }
 
-def:priv _c_cosh(z: complex_parts) -> tuple[float, float, int] {
+def:priv _c_cosh(zr: float, zi: float) -> tuple[float, float, int] {
     # special treatment for cosh(+/-inf + iy) if y is not a NaN
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        if (isinf(z.real) and isfinite(z.imag) and z.imag != 0.0) {
-            if z.real > 0 {
-                re = copysign(_INF, cos(z.imag));
-                im = copysign(_INF, sin(z.imag));
+    if not (isfinite(zr) and isfinite(zi)) {
+        if (isinf(zr) and isfinite(zi) and zi != 0.0) {
+            if zr > 0 {
+                re = copysign(_INF, cos(zi));
+                im = copysign(_INF, sin(zi));
             } else {
-                re = copysign(_INF, cos(z.imag));
-                im = -copysign(_INF, sin(z.imag));
+                re = copysign(_INF, cos(zi));
+                im = -copysign(_INF, sin(zi));
             }
         } else {
-            (re, im) = _sv_entry(_COSH_SV, z);
+            (re, im) = _sv_entry(_COSH_SV, (zr, zi));
         }
         # errno = EDOM if y is +/- infinity and x is not a NaN
-        if isinf(z.imag) and not isnan(z.real) {
+        if isinf(zi) and not isnan(zr) {
             return (re, im, _EDOM);
         }
         return (re, im, 0);
     }
-    if fabs(z.real) > _CM_LOG_LARGE_DOUBLE {
-        # deal correctly with cases where cosh(z.real) overflows but
+    if fabs(zr) > _CM_LOG_LARGE_DOUBLE {
+        # deal correctly with cases where cosh(zr) overflows but
         # cosh(z) does not
-        x_minus_one = z.real - copysign(1.0, z.real);
-        re = cos(z.imag) * cosh(x_minus_one) * e;
-        im = sin(z.imag) * sinh(x_minus_one) * e;
+        x_minus_one = zr - copysign(1.0, zr);
+        re = cos(zi) * cosh(x_minus_one) * e;
+        im = sin(zi) * sinh(x_minus_one) * e;
     } else {
-        re = cos(z.imag) * cosh(z.real);
-        im = sin(z.imag) * sinh(z.real);
+        re = cos(zi) * cosh(zr);
+        im = sin(zi) * sinh(zr);
     }
     if isinf(re) or isinf(im) {
         return (re, im, _ERANGE);
@@ -1018,33 +1009,33 @@ def:priv _c_cosh(z: complex_parts) -> tuple[float, float, int] {
     return (re, im, 0);
 }
 
-def:priv _c_sinh(z: complex_parts) -> tuple[float, float, int] {
+def:priv _c_sinh(zr: float, zi: float) -> tuple[float, float, int] {
     # special treatment for sinh(+/-inf + iy) if y is finite and nonzero
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        if (isinf(z.real) and isfinite(z.imag) and z.imag != 0.0) {
-            if z.real > 0 {
-                re = copysign(_INF, cos(z.imag));
-                im = copysign(_INF, sin(z.imag));
+    if not (isfinite(zr) and isfinite(zi)) {
+        if (isinf(zr) and isfinite(zi) and zi != 0.0) {
+            if zr > 0 {
+                re = copysign(_INF, cos(zi));
+                im = copysign(_INF, sin(zi));
             } else {
-                re = -copysign(_INF, cos(z.imag));
-                im = copysign(_INF, sin(z.imag));
+                re = -copysign(_INF, cos(zi));
+                im = copysign(_INF, sin(zi));
             }
         } else {
-            (re, im) = _sv_entry(_SINH_SV, z);
+            (re, im) = _sv_entry(_SINH_SV, (zr, zi));
         }
         # errno = EDOM if y is +/- infinity and x is not a NaN
-        if isinf(z.imag) and not isnan(z.real) {
+        if isinf(zi) and not isnan(zr) {
             return (re, im, _EDOM);
         }
         return (re, im, 0);
     }
-    if fabs(z.real) > _CM_LOG_LARGE_DOUBLE {
-        x_minus_one = z.real - copysign(1.0, z.real);
-        re = cos(z.imag) * sinh(x_minus_one) * e;
-        im = sin(z.imag) * cosh(x_minus_one) * e;
+    if fabs(zr) > _CM_LOG_LARGE_DOUBLE {
+        x_minus_one = zr - copysign(1.0, zr);
+        re = cos(zi) * sinh(x_minus_one) * e;
+        im = sin(zi) * cosh(x_minus_one) * e;
     } else {
-        re = cos(z.imag) * sinh(z.real);
-        im = sin(z.imag) * cosh(z.real);
+        re = cos(zi) * sinh(zr);
+        im = sin(zi) * cosh(zr);
     }
     if isinf(re) or isinf(im) {
         return (re, im, _ERANGE);
@@ -1052,33 +1043,33 @@ def:priv _c_sinh(z: complex_parts) -> tuple[float, float, int] {
     return (re, im, 0);
 }
 
-def:priv _c_exp(z: complex_parts) -> tuple[float, float, int] {
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        if (isinf(z.real) and isfinite(z.imag) and z.imag != 0.0) {
-            if z.real > 0 {
-                re = copysign(_INF, cos(z.imag));
-                im = copysign(_INF, sin(z.imag));
+def:priv _c_exp(zr: float, zi: float) -> tuple[float, float, int] {
+    if not (isfinite(zr) and isfinite(zi)) {
+        if (isinf(zr) and isfinite(zi) and zi != 0.0) {
+            if zr > 0 {
+                re = copysign(_INF, cos(zi));
+                im = copysign(_INF, sin(zi));
             } else {
-                re = copysign(0.0, cos(z.imag));
-                im = copysign(0.0, sin(z.imag));
+                re = copysign(0.0, cos(zi));
+                im = copysign(0.0, sin(zi));
             }
         } else {
-            (re, im) = _sv_entry(_EXP_SV, z);
+            (re, im) = _sv_entry(_EXP_SV, (zr, zi));
         }
         # errno = EDOM if y is +/- infinity and x is not a NaN/-infinity
-        if isinf(z.imag) and (isfinite(z.real) or (isinf(z.real) and z.real > 0)) {
+        if isinf(zi) and (isfinite(zr) or (isinf(zr) and zr > 0)) {
             return (re, im, _EDOM);
         }
         return (re, im, 0);
     }
-    if z.real > _CM_LOG_LARGE_DOUBLE {
-        l = exp(z.real - 1.0);
-        re = l * cos(z.imag) * e;
-        im = l * sin(z.imag) * e;
+    if zr > _CM_LOG_LARGE_DOUBLE {
+        l = exp(zr - 1.0);
+        re = l * cos(zi) * e;
+        im = l * sin(zi) * e;
     } else {
-        l = exp(z.real);
-        re = l * cos(z.imag);
-        im = l * sin(z.imag);
+        l = exp(zr);
+        re = l * cos(zi);
+        im = l * sin(zi);
     }
     if isinf(re) or isinf(im) {
         return (re, im, _ERANGE);
@@ -1086,36 +1077,36 @@ def:priv _c_exp(z: complex_parts) -> tuple[float, float, int] {
     return (re, im, 0);
 }
 
-def:priv _c_tanh(z: complex_parts) -> tuple[float, float, int] {
+def:priv _c_tanh(zr: float, zi: float) -> tuple[float, float, int] {
     # tanh(x+iy) = (tanh(x)(1+tan(y)^2) + i tan(y)(1-tanh(x))^2) /
     #              (1+tan(y)^2 tanh(x)^2)
     # special treatment for tanh(+/-inf + iy) if y is finite and nonzero
-    if not (isfinite(z.real) and isfinite(z.imag)) {
-        if (isinf(z.real) and isfinite(z.imag) and z.imag != 0.0) {
-            if z.real > 0 {
+    if not (isfinite(zr) and isfinite(zi)) {
+        if (isinf(zr) and isfinite(zi) and zi != 0.0) {
+            if zr > 0 {
                 re = 1.0;
             } else {
                 re = -1.0;
             }
-            im = copysign(0.0, 2.0 * sin(z.imag) * cos(z.imag));
+            im = copysign(0.0, 2.0 * sin(zi) * cos(zi));
         } else {
-            (re, im) = _sv_entry(_TANH_SV, z);
+            (re, im) = _sv_entry(_TANH_SV, (zr, zi));
         }
-        # errno = EDOM if z.imag is +/- infinity and z.real is finite
-        if isinf(z.imag) and isfinite(z.real) {
+        # errno = EDOM if zi is +/- infinity and zr is finite
+        if isinf(zi) and isfinite(zr) {
             return (re, im, _EDOM);
         }
         return (re, im, 0);
     }
-    # danger of overflow in 2.*z.imag!
-    if fabs(z.real) > _CM_LOG_LARGE_DOUBLE {
-        re = copysign(1.0, z.real);
-        im = 4.0 * sin(z.imag) * cos(z.imag) * exp(-2.0 * fabs(z.real));
+    # danger of overflow in 2.*zi!
+    if fabs(zr) > _CM_LOG_LARGE_DOUBLE {
+        re = copysign(1.0, zr);
+        im = 4.0 * sin(zi) * cos(zi) * exp(-2.0 * fabs(zr));
         return (re, im, 0);
     }
-    tx = tanh(z.real);
-    ty = tan(z.imag);
-    cx = 1.0 / cosh(z.real);
+    tx = tanh(zr);
+    ty = tan(zi);
+    cx = 1.0 / cosh(zr);
     txty = tx * ty;
     denom = 1.0 + txty * txty;
     re = tx * (1.0 + ty * ty) / denom;
@@ -1133,29 +1124,32 @@ def:priv _c_abs(re: float, im: float) -> tuple[float, int] {
 }
 
 def:priv close(
-    a: complex_parts, b: complex_parts, rel_tol: float = 1e-09, abs_tol: float = 0.0
+    a: tuple[float, float],
+    b: tuple[float, float],
+    rel_tol: float = 1e-09,
+    abs_tol: float = 0.0
 ) -> bool {
     if rel_tol < 0.0 or abs_tol < 0.0 {
         object_error(PyExc_ValueError, "tolerances must be non-negative");
         raise boundary_failure();
     }
-    if a.real == b.real and a.imag == b.imag {
+    if a[0] == b[0] and a[1] == b[1] {
         # short circuit exact equality -- needed to catch two infinities of
         # the same sign
         return True;
     }
     # catches opposite infinities, or one infinity and one finite number
-    if (isinf(a.real) or isinf(a.imag) or isinf(b.real) or isinf(b.imag)) {
+    if (isinf(a[0]) or isinf(a[1]) or isinf(b[0]) or isinf(b[1])) {
         return False;
     }
     # the "weak" test from the Boost library
-    (diff, _) = _c_abs(a.real - b.real, a.imag - b.imag);
-    (abs_a, _) = _c_abs(a.real, a.imag);
-    (abs_b, _) = _c_abs(b.real, b.imag);
+    (diff, _) = _c_abs(a[0] - b[0], a[1] - b[1]);
+    (abs_a, _) = _c_abs(a[0], a[1]);
+    (abs_b, _) = _c_abs(b[0], b[1]);
     return (diff <= rel_tol * abs_b or diff <= rel_tol * abs_a or diff <= abs_tol);
 }
 
-def:priv rectangular(r: float, phi: float) -> complex_parts {
+def:priv rectangular(r: float, phi: float) -> tuple[float, float] {
     if not (isfinite(r) and isfinite(phi)) {
         if isinf(r) and isfinite(phi) and phi != 0.0 {
             # (+-INF +-INF i): signs come from cos(phi)/sin(phi)
@@ -1167,7 +1161,7 @@ def:priv rectangular(r: float, phi: float) -> complex_parts {
                 im = -copysign(_INF, sin(phi));
             }
         } else {
-            (re, im) = _sv_entry(_RECT_SV, complex_parts(r, phi));
+            (re, im) = _sv_entry(_RECT_SV, (r, phi));
         }
         # errno = EDOM if r is a nonzero number and phi is infinite
         if r != 0.0 and not isnan(r) and isinf(phi) {
@@ -1182,18 +1176,28 @@ def:priv rectangular(r: float, phi: float) -> complex_parts {
         re = r * cos(phi);
         im = r * sin(phi);
     }
-    return complex_parts(re, im);
+    return (re, im);
 }
 
-def:priv input_complex(value: ptr[PyObject]) -> complex_parts {
-    handle = required(jacpy_complex_value(value));
-    try {
-        return complex_parts(
-            PyComplex_RealAsDouble(handle), PyComplex_ImagAsDouble(handle)
-        );
-    } finally {
-        jacpy_release(handle);
+def:priv complex_slow(value: ptr[PyObject]) -> tuple[float, float] {
+    c = PyComplex_AsCComplex(value);
+    return (c.real, c.imag);
+}
+
+def:priv complex_of(value: ptr[PyObject]) -> tuple[float, float] {
+    if object_type(value) == ptr[PyTypeObject](addressof(PyComplex_Type)) {
+        record = ptr[PyComplexObject](value).view(1);
+        return (record[0].cval.real, record[0].cval.imag);
     }
+    return complex_slow(value);
+}
+
+def:priv input_complex(value: ptr[PyObject]) -> tuple[float, float] {
+    c = complex_of(value);
+    if c[0] == -1.0 and PyErr_Occurred() {
+        raise boundary_failure();
+    }
+    return c;
 }
 
 def:priv input_float(value: ptr[PyObject]) -> float {
@@ -1204,199 +1208,254 @@ def:priv input_float(value: ptr[PyObject]) -> float {
     return result;
 }
 
-def:priv unary(operation: int, z: complex_parts) -> tuple[float, float, int] {
+def:priv unary(operation: int, zr: float, zi: float) -> tuple[float, float, int] {
     if operation == 0 {
-        return _c_acos(z);
+        return _c_acos(zr, zi);
     }
     if operation == 1 {
-        return _c_acosh(z);
+        return _c_acosh(zr, zi);
     }
     if operation == 2 {
-        result = _c_asinh(complex_parts(-z.imag, z.real));
+        result = _c_asinh(-zi, zr);
         return (result[1], -result[0], result[2]);
     }
     if operation == 3 {
-        return _c_asinh(z);
+        return _c_asinh(zr, zi);
     }
     if operation == 4 {
-        result = _c_atanh(complex_parts(-z.imag, z.real));
+        result = _c_atanh(-zi, zr);
         return (result[1], -result[0], result[2]);
     }
     if operation == 5 {
-        return _c_atanh(z);
+        return _c_atanh(zr, zi);
     }
     if operation == 6 {
-        return _c_cosh(complex_parts(-z.imag, z.real));
+        return _c_cosh(-zi, zr);
     }
     if operation == 7 {
-        return _c_cosh(z);
+        return _c_cosh(zr, zi);
     }
     if operation == 8 {
-        return _c_exp(z);
+        return _c_exp(zr, zi);
     }
     if operation == 9 {
-        result = _c_sinh(complex_parts(-z.imag, z.real));
+        result = _c_sinh(-zi, zr);
         return (result[1], -result[0], result[2]);
     }
     if operation == 10 {
-        return _c_sinh(z);
+        return _c_sinh(zr, zi);
     }
     if operation == 11 {
-        return _c_sqrt(z);
+        return _c_sqrt(zr, zi);
     }
     if operation == 12 {
-        result = _c_tanh(complex_parts(-z.imag, z.real));
+        result = _c_tanh(-zi, zr);
         return (result[1], -result[0], result[2]);
     }
     if operation == 13 {
-        return _c_tanh(z);
+        return _c_tanh(zr, zi);
     }
-    result = _c_log(z);
+    result = _c_log(zr, zi);
     return (result[0] / _M_LN10, result[1] / _M_LN10, result[2]);
 }
 
-# phase, polar, isfinite, isinf and isnan (15-19) and the complex
-# functions, as Python objects.
-def:pub jacpy_cmath_unary(operation: int, z: complex_parts) -> ptr[PyObject] {
-    try {
-        if operation == 15 {
-            jacpy_clear_errno();
-            angle_value = atan2(z.imag, z.real);
-            _check_errno(int(jacpy_math_errno()));
-            return PyFloat_FromDouble(angle_value);
-        }
-        if operation == 16 {
-            (radius, error) = _c_abs(z.real, z.imag);
-            _check_errno(error);
-            angle: ptr[PyObject] = NULL;
-            radius_object = required(PyFloat_FromDouble(radius));
-            try {
-                angle = required(PyFloat_FromDouble(atan2(z.imag, z.real)));
-                return object_tuple([radius_object, angle]);
-            } finally {
-                jacpy_release(radius_object);
-                jacpy_release(angle);
-            }
-        }
-        if operation == 17 {
-            return PyBool_FromLong(i64(isfinite(z.real) and isfinite(z.imag)));
-        }
-        if operation == 18 {
-            return PyBool_FromLong(i64(isinf(z.real) or isinf(z.imag)));
-        }
-        if operation == 19 {
-            return PyBool_FromLong(i64(isnan(z.real) or isnan(z.imag)));
-        }
-        result = unary(int(operation), z);
-        _check_errno(result[2]);
-        return PyComplex_FromDoubles(result[0], result[1]);
-    } except boundary_failure {
-        return NULL;
+def:priv set_errno_error(error: i64) -> ptr[PyObject] {
+    if error == _EDOM {
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("math domain error"));
+    } else {
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("math range error"));
     }
+    return NULL;
 }
 
-# Clinic's Py_complex converter (PyComplex_AsCComplex) and cmath's
-# Py_complex_protected one, which clears errno for the call.
-def convert_Py_complex(value: ptr[PyObject], fname: str, label: str) -> complex_parts {
-    return input_complex(value);
+def:pub jacpy_cmath_unary(operation: int, zr: float, zi: float) -> ptr[PyObject] {
+    if operation == 15 {
+        jacpy_clear_errno();
+        angle_value = atan2(zi, zr);
+        error = i64(jacpy_math_errno());
+        if error == _EDOM or error == _ERANGE {
+            return set_errno_error(error);
+        }
+        return PyFloat_FromDouble(angle_value);
+    }
+    if operation == 16 {
+        (radius, abs_error) = _c_abs(zr, zi);
+        if abs_error != 0 {
+            return set_errno_error(i64(abs_error));
+        }
+        radius_object = PyFloat_FromDouble(radius);
+        if radius_object == NULL {
+            return NULL;
+        }
+        angle = PyFloat_FromDouble(atan2(zi, zr));
+        if angle == NULL {
+            jacpy_release(radius_object);
+            return NULL;
+        }
+        result_tuple = PyTuple_New(2);
+        if result_tuple == NULL {
+            jacpy_release(radius_object);
+            jacpy_release(angle);
+            return NULL;
+        }
+        PyTuple_SetItem(result_tuple, 0, radius_object);
+        PyTuple_SetItem(result_tuple, 1, angle);
+        return result_tuple;
+    }
+    if operation == 17 {
+        return PyBool_FromLong(i64(isfinite(zr) and isfinite(zi)));
+    }
+    if operation == 18 {
+        return PyBool_FromLong(i64(isinf(zr) or isinf(zi)));
+    }
+    if operation == 19 {
+        return PyBool_FromLong(i64(isnan(zr) or isnan(zi)));
+    }
+    result = unary(int(operation), zr, zi);
+    if result[2] == _EDOM or result[2] == _ERANGE {
+        return set_errno_error(i64(result[2]));
+    }
+    return PyComplex_FromDoubles(result[0], result[1]);
+}
+
+def:pub jacpy_cmath_call(operation: int, value: ptr[PyObject]) -> ptr[PyObject] {
+    if object_type(value) == ptr[PyTypeObject](addressof(PyComplex_Type)) {
+        record = ptr[PyComplexObject](value).view(1);
+        return jacpy_cmath_unary(operation, record[0].cval.real, record[0].cval.imag);
+    }
+    c = complex_slow(value);
+    if PyErr_Occurred() {
+        return NULL;
+    }
+    return jacpy_cmath_unary(operation, c[0], c[1]);
+}
+
+def convert_Py_complex(
+    value: ptr[PyObject], fname: str, label: str
+) -> tuple[float, float] {
+    return complex_of(value);
 }
 
 def convert_Py_complex_protected(
     value: ptr[PyObject], fname: str, label: str
-) -> complex_parts {
-    return input_complex(value);
+) -> tuple[float, float] {
+    return complex_of(value);
 }
 
-# A Py_complex result and the errno the computation left.
-obj complex_result {
-    has real: float = 0.0,
-        imag: float = 0.0,
-        error: int = 0;
-}
-
-# cmath's Py_complex_protected return converter: EDOM is "math domain error",
-# ERANGE "math range error".
-def return_Py_complex_protected(result: complex_result) -> ptr[PyObject] {
-    try {
-        _check_errno(result.error);
-    } except boundary_failure {
-        return NULL;
+def return_Py_complex_protected(result: tuple[float, float, int]) -> ptr[PyObject] {
+    if result[2] == _EDOM or result[2] == _ERANGE {
+        return set_errno_error(result[2]);
     }
-    return PyComplex_FromDoubles(result.real, result.imag);
+    return PyComplex_FromDoubles(result[0], result[1]);
 }
 
-def:priv unary_result(operation: int, z: complex_parts) -> complex_result {
-    result = unary(operation, z);
-    return complex_result(real=result[0], imag=result[1], error=result[2]);
+def:priv as_result(result: tuple[float, float, int]) -> tuple[float, float, int] {
+    return (result[0], result[1], i64(result[2]));
 }
 
-def cmath_acos_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(0, z);
+def:priv swapped(result: tuple[float, float, int]) -> tuple[float, float, int] {
+    return (result[1], -result[0], i64(result[2]));
 }
 
-def cmath_acosh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(1, z);
+def cmath_acos_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_acos(z[0], z[1]));
 }
 
-def cmath_asin_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(2, z);
+def cmath_acosh_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_acosh(z[0], z[1]));
 }
 
-def cmath_asinh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(3, z);
+def cmath_asin_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return swapped(_c_asinh(-z[1], z[0]));
 }
 
-def cmath_atan_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(4, z);
+def cmath_asinh_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_asinh(z[0], z[1]));
 }
 
-def cmath_atanh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(5, z);
+def cmath_atan_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return swapped(_c_atanh(-z[1], z[0]));
 }
 
-def cmath_cos_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(6, z);
+def cmath_atanh_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_atanh(z[0], z[1]));
 }
 
-def cmath_cosh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(7, z);
+def cmath_cos_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_cosh(-z[1], z[0]));
 }
 
-def cmath_exp_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(8, z);
+def cmath_cosh_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_cosh(z[0], z[1]));
 }
 
-def cmath_sin_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(9, z);
+def cmath_exp_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_exp(z[0], z[1]));
 }
 
-def cmath_sinh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(10, z);
+def cmath_sin_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return swapped(_c_sinh(-z[1], z[0]));
 }
 
-def cmath_sqrt_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(11, z);
+def cmath_sinh_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_sinh(z[0], z[1]));
 }
 
-def cmath_tan_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(12, z);
+def cmath_sqrt_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_sqrt(z[0], z[1]));
 }
 
-def cmath_tanh_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(13, z);
+def cmath_tan_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return swapped(_c_tanh(-z[1], z[0]));
 }
 
-def cmath_log10_impl(module: ptr[PyObject], z: complex_parts) -> complex_result {
-    return unary_result(14, z);
+def cmath_tanh_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    return as_result(_c_tanh(z[0], z[1]));
+}
+
+def cmath_log10_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> tuple[float, float, int] {
+    result = _c_log(z[0], z[1]);
+    return (result[0] / _M_LN10, result[1] / _M_LN10, i64(result[2]));
 }
 
 def cmath_log_impl(
-    module: ptr[PyObject], z: complex_parts, base: ptr[PyObject]
+    module: ptr[PyObject], z: tuple[float, float], base: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
-        result = _c_log(z);
+        result = _c_log(z[0], z[1]);
         if base != 0 {
-            divisor = _c_log(input_complex(base));
+            base_value = input_complex(base);
+            divisor = _c_log(base_value[0], base_value[1]);
             _check_errno(divisor[2]);
             numerator = required(PyComplex_FromDoubles(result[0], result[1]));
             denominator: ptr[PyObject] = NULL;
@@ -1420,36 +1479,42 @@ def cmath_log_impl(
     }
 }
 
-def cmath_phase_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
-    return jacpy_cmath_unary(15, z);
+def cmath_phase_impl(module: ptr[PyObject], z: tuple[float, float]) -> ptr[PyObject] {
+    return jacpy_cmath_unary(15, z[0], z[1]);
 }
 
-def cmath_polar_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
-    return jacpy_cmath_unary(16, z);
+def cmath_polar_impl(module: ptr[PyObject], z: tuple[float, float]) -> ptr[PyObject] {
+    return jacpy_cmath_unary(16, z[0], z[1]);
 }
 
-def cmath_isfinite_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
-    return jacpy_cmath_unary(17, z);
+def cmath_isfinite_impl(
+    module: ptr[PyObject], z: tuple[float, float]
+) -> ptr[PyObject] {
+    return jacpy_cmath_unary(17, z[0], z[1]);
 }
 
-def cmath_isinf_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
-    return jacpy_cmath_unary(18, z);
+def cmath_isinf_impl(module: ptr[PyObject], z: tuple[float, float]) -> ptr[PyObject] {
+    return jacpy_cmath_unary(18, z[0], z[1]);
 }
 
-def cmath_isnan_impl(module: ptr[PyObject], z: complex_parts) -> ptr[PyObject] {
-    return jacpy_cmath_unary(19, z);
+def cmath_isnan_impl(module: ptr[PyObject], z: tuple[float, float]) -> ptr[PyObject] {
+    return jacpy_cmath_unary(19, z[0], z[1]);
 }
 
 def cmath_rect_impl(module: ptr[PyObject], r: f64, phi: f64) -> ptr[PyObject] {
-    result = rectangular(r, phi);
-    return PyComplex_FromDoubles(result.real, result.imag);
+    try {
+        result = rectangular(r, phi);
+        return PyComplex_FromDoubles(result[0], result[1]);
+    } except boundary_failure {
+        return NULL;
+    }
 }
 
 # cmath.isclose returns clinic's bool: -1 with the error set on failure.
 def cmath_isclose_impl(
     module: ptr[PyObject],
-    a: complex_parts,
-    b: complex_parts,
+    a: tuple[float, float],
+    b: tuple[float, float],
     rel_tol: f64,
     abs_tol: f64
 ) -> i32 {

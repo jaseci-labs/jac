@@ -569,6 +569,10 @@ def:pub jacpy_math_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObjec
 
 def:pub jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject];
 
+def:priv unary_slow(operation: i64, value: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv libm_1(operation: i64, x: f64) -> f64;
+
 def:pub jacpy_math_binary(
     operation: i64, a: ptr[PyObject], b: ptr[PyObject]
 ) -> ptr[PyObject];
@@ -590,6 +594,8 @@ def:pub jacpy_math_isclose(
 def:pub jacpy_math_nextafter(
     a: ptr[PyObject], b: ptr[PyObject], steps: ptr[PyObject]
 ) -> ptr[PyObject];
+
+def:priv fsum_grow(p: ptr[f64], ps: ptr[f64], n: i64, m: i64) -> ptr[f64];
 
 def:pub jacpy_math_fsum(iterable: ptr[PyObject]) -> ptr[PyObject];
 
@@ -1280,6 +1286,12 @@ impl m_lgamma(x: float) -> tuple[float, int] {
 }
 
 impl jacpy_math_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObject] {
+    if base == 0 and jacpy_is_exact_float(value) != 0 {
+        x = ptr[PyFloatObject](value).view(1)[0].ob_fval;
+        if x > 0.0 {
+            return PyFloat_FromDouble(log(x));
+        }
+    }
     try {
         numerator = logarithm(value, 0);
         if base == 0 {
@@ -1296,7 +1308,95 @@ impl jacpy_math_log(value: ptr[PyObject], base: ptr[PyObject]) -> ptr[PyObject] 
     }
 }
 
+impl libm_1(operation: i64, x: f64) -> f64 {
+    if operation == 20 {
+        return sqrt(x);
+    }
+    if operation == 18 {
+        return sin(x);
+    }
+    if operation == 7 {
+        return cos(x);
+    }
+    if operation == 11 {
+        return exp(x);
+    }
+    if operation == 21 {
+        return tan(x);
+    }
+    if operation == 14 {
+        return fabs(x);
+    }
+    if operation == 0 {
+        return acos(x);
+    }
+    if operation == 1 {
+        return acosh(x);
+    }
+    if operation == 2 {
+        return asin(x);
+    }
+    if operation == 3 {
+        return asinh(x);
+    }
+    if operation == 4 {
+        return atan(x);
+    }
+    if operation == 5 {
+        return atanh(x);
+    }
+    if operation == 6 {
+        return cbrt(x);
+    }
+    if operation == 8 {
+        return cosh(x);
+    }
+    if operation == 9 {
+        return erf(x);
+    }
+    if operation == 10 {
+        return erfc(x);
+    }
+    if operation == 12 {
+        return exp2(x);
+    }
+    if operation == 13 {
+        return expm1(x);
+    }
+    if operation == 17 {
+        return _Py_log1p(x);
+    }
+    if operation == 19 {
+        return sinh(x);
+    }
+    return tanh(x);
+}
+
 impl jacpy_math_unary(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
+    if jacpy_is_exact_float(value) == 0 {
+        return unary_slow(operation, value);
+    }
+    x = ptr[PyFloatObject](value).view(1)[0].ob_fval;
+    if operation == 29 {
+        return PyLong_FromDouble(floor(x));
+    }
+    if operation == 28 {
+        return PyLong_FromDouble(ceil(x));
+    }
+    if operation > 22 or operation == 15 or operation == 16 {
+        return unary_slow(operation, value);
+    }
+    jacpy_clear_errno();
+    r = libm_1(operation, x);
+    if (isnan(r) and not isnan(x))
+        or (isinf(r) and isfinite(x))
+        or jacpy_math_errno() != 0 {
+        return unary_slow(operation, value);
+    }
+    return PyFloat_FromDouble(r);
+}
+
+impl unary_slow(operation: i64, value: ptr[PyObject]) -> ptr[PyObject] {
     try {
         if operation >= 28 and operation <= 30 {
             name = "__ceil__"
@@ -1676,106 +1776,148 @@ impl jacpy_math_nextafter(
     }
 }
 
+impl fsum_grow(p: ptr[f64], ps: ptr[f64], n: i64, m: i64) -> ptr[f64] {
+    size = u64(m + m) * u64(8);
+    if p != ps {
+        return ptr[f64](PyMem_Realloc(ptr(p), size));
+    }
+    grown = ptr[f64](PyMem_Malloc(size));
+    if grown != NULL {
+        for k in range(n) {
+            (grown + k).view(1)[0] = (ps + k).view(1)[0];
+        }
+    }
+    return grown;
+}
+
 impl jacpy_math_fsum(iterable: ptr[PyObject]) -> ptr[PyObject] {
-    iterator: ptr[PyObject] = NULL;
-    try {
-        iterator = required(PyObject_GetIter(iterable));
-        partials: list[float] = [];
-        special: float = 0.0;
-        infinities: float = 0.0;
-        low: float = 0.0;
-        while True {
-            item = PyIter_Next(iterator);
-            if item == 0 {
+    iterator = PyObject_GetIter(iterable);
+    if iterator == NULL {
+        return NULL;
+    }
+    ps = ptr[f64](__alloca(256));
+    p = ps;
+    n: i64 = 0;
+    m: i64 = 32;
+    special_sum = 0.0;
+    inf_sum = 0.0;
+    lo = 0.0;
+    sum: ptr[PyObject] = NULL;
+    failed = False;
+    while True {
+        item = PyIter_Next(iterator);
+        if item == NULL {
+            failed = jacpy_error_pending() != 0;
+            break;
+        }
+        x = 0.0;
+        if jacpy_is_exact_float(item) != 0 {
+            x = ptr[PyFloatObject](item).view(1)[0].ob_fval;
+        } else {
+            if jacpy_is_exact_long(item) != 0 {
+                x = PyLong_AsDouble(item);
+            } else {
+                x = PyFloat_AsDouble(item);
+            }
+            if x == -1.0 and jacpy_error_pending() != 0 {
+                jacpy_release(item);
+                failed = True;
                 break;
             }
-            x: float = 0.0;
-            try {
-                x = input_float(item);
-            } finally {
-                jacpy_release(item);
-            }
-            original = x;
-            count = 0;
-            for j in range(len(partials)) {
-                y = partials[j];
-                if fabs(x) < fabs(y) {
-                    temporary = x;
-                    x = y;
-                    y = temporary;
-                }
-                high = x + y;
-                rounded = high - x;
-                low = y - rounded;
-                if low != 0.0 {
-                    partials[count] = low;
-                    count += 1;
-                }
-                x = high;
-            }
-            while len(partials) > count {
-                partials.pop();
-            }
-            if x != 0.0 {
-                if not isfinite(x) {
-                    if isfinite(original) {
-                        object_error(
-                            PyExc_OverflowError, "intermediate overflow in fsum"
-                        );
-                        return NULL;
-                    }
-                    if isinf(original) {
-                        infinities += original;
-                    }
-                    special += original;
-                    partials.clear();
-                } else {
-                    partials.append(x);
-                }
-            }
         }
-        if jacpy_error_pending() != 0 {
-            return NULL;
-        }
-        if special != 0.0 {
-            if isnan(infinities) {
-                object_error(PyExc_ValueError, "-inf + inf in fsum");
-                return NULL;
+        jacpy_release(item);
+        xsave = x;
+        i: i64 = 0;
+        j: i64 = 0;
+        while j < n {
+            y = (p + j).view(1)[0];
+            if fabs(x) < fabs(y) {
+                t = x;
+                x = y;
+                y = t;
             }
-            return required(PyFloat_FromDouble(special));
+            hi = x + y;
+            yr = hi - x;
+            lo = y - yr;
+            if lo != 0.0 {
+                (p + i).view(1)[0] = lo;
+                i += 1;
+            }
+            x = hi;
+            j += 1;
         }
-        high: float = 0.0;
-        if partials {
-            high = partials.pop();
-            while partials {
-                x = high;
-                y = partials.pop();
-                high = x + y;
-                rounded = high - x;
-                low = y - rounded;
-                if low != 0.0 {
+        n = i;
+        if x != 0.0 {
+            if not isfinite(x) {
+                if isfinite(xsave) {
+                    object_error(PyExc_OverflowError, "intermediate overflow in fsum");
+                    failed = True;
                     break;
                 }
-            }
-            if partials
-                and (
-                    (low < 0.0 and partials[-1] < 0.0)
-                    or (low > 0.0 and partials[-1] > 0.0)
-                ) {
-                y = low * 2.0;
-                x = high + y;
-                rounded = x - high;
-                if y == rounded {
-                    high = x;
+                if isinf(xsave) {
+                    inf_sum += xsave;
                 }
+                special_sum += xsave;
+                n = 0;
+            } else {
+                if n >= m {
+                    grown = fsum_grow(p, ps, n, m);
+                    if grown == NULL {
+                        object_error(PyExc_MemoryError, "math.fsum partials");
+                        failed = True;
+                        break;
+                    }
+                    p = grown;
+                    m = m + m;
+                }
+                (p + n).view(1)[0] = x;
+                n += 1;
             }
         }
-        return required(PyFloat_FromDouble(high));
-    } except boundary_failure {
-        return NULL;
-    } finally {
-        jacpy_release(iterator);
     }
+    if not failed {
+        if special_sum != 0.0 {
+            if isnan(inf_sum) {
+                object_error(PyExc_ValueError, "-inf + inf in fsum");
+            } else {
+                sum = PyFloat_FromDouble(special_sum);
+            }
+        } else {
+            total = 0.0;
+            if n > 0 {
+                n -= 1;
+                total = (p + n).view(1)[0];
+                while n > 0 {
+                    x = total;
+                    n -= 1;
+                    y = (p + n).view(1)[0];
+                    total = x + y;
+                    yr = total - x;
+                    lo = y - yr;
+                    if lo != 0.0 {
+                        break;
+                    }
+                }
+                if n > 0 {
+                    last = (p + (n - 1)).view(1)[0];
+                    if (lo < 0.0 and last < 0.0) or (lo > 0.0 and last > 0.0) {
+                        y = lo * 2.0;
+                        x = total + y;
+                        yr = x - total;
+                        if y == yr {
+                            total = x;
+                        }
+                    }
+                }
+            }
+            sum = PyFloat_FromDouble(total);
+        }
+    }
+    jacpy_release(iterator);
+    if p != ps {
+        PyMem_Free(ptr(p));
+    }
+    return sum;
 }
 
 impl double_sum(a: float, b: float) -> tuple[float, float] {

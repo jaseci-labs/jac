@@ -16564,10 +16564,8 @@ graph import runtime.python {
             jacpy_binding_native_set
         },
         modules.pyexpat { jacpy_binding_untrack },
-        modules.random | modules.ssl_core {
-            jacpy_binding_native_get,
-            jacpy_binding_native_present
-        },
+        modules.random { jacpy_binding_native_get },
+        modules.ssl_core { jacpy_binding_native_get, jacpy_binding_native_present },
     ]
     bindings.pickle ++> inittab { PyInit__pickle }
     bindings.posix ++> inittab { PyInit_posix }
@@ -16878,8 +16876,8 @@ graph import runtime.python {
         bindings.zstd | modules.decimal_context { c_string_text },
         constant_input { boundary_failure, read_buffer },
         constant_output { checked, required, text_object, write_buffer },
-        modules.binary_scalars { memory_byte, memory_set, required },
-        modules.cmath { boundary_failure, object_error, object_tuple, required },
+        modules.binary_scalars { required },
+        modules.cmath { boundary_failure, object_error, required },
         modules.collections {
             boundary_failure,
             object_error,
@@ -17179,7 +17177,6 @@ graph import runtime.python {
             | bindings.clinic.array
             | bindings.clinic.binascii
             | bindings.clinic.bisect
-            | bindings.clinic.cmath
             | bindings.clinic.csv
             | bindings.clinic.fcntl
             | bindings.clinic.functools
@@ -17189,7 +17186,6 @@ graph import runtime.python {
             | bindings.clinic.imp
             | bindings.clinic.locale
             | bindings.clinic.marshal
-            | bindings.clinic.math
             | bindings.clinic.md5
             | bindings.clinic.mmap
             | bindings.clinic.opcode
@@ -17241,6 +17237,11 @@ graph import runtime.python {
             PyTuple_Size,
             jacpy_dict_size,
             jacpy_tuple_items
+        },
+        bindings.clinic.cmath | bindings.clinic.math {
+            NULL,
+            PyFloat_AsDouble,
+            PyObject
         },
         bindings.clinic.codecs { NULL, PyObject, jacpy_is_bytes },
         bindings.clinic.collections | bindings.clinic.io {
@@ -17874,15 +17875,13 @@ graph import runtime.python {
             PyLong_FromLongLong,
             PyNumber_AsSsize_t,
             PyObject,
-            PyTuple_Size,
             Py_NewRef,
             Py_None,
             jacpy_buffer_new,
             jacpy_bytes_address,
             jacpy_bytes_decode,
             jacpy_error_pending,
-            jacpy_release,
-            jacpy_tuple_item
+            jacpy_release
         },
         bindings.syslog {
             NULL,
@@ -19258,17 +19257,14 @@ graph import runtime.python {
             PyObject_CallMethod,
             PyObject_CallOneArg,
             PyObject_IsTrue,
+            PyObject_RichCompareBool,
             PySequence_Size,
             Py_LeaveRecursiveCall,
             Py_NewRef,
             Py_None,
             Py_NotImplemented,
-            jacpy_comparison_slot,
             jacpy_is_exact_list,
-            jacpy_less,
-            jacpy_recursion_enter,
             jacpy_release,
-            jacpy_same_type,
             jacpy_sequence_slot
         },
         modules.blake2 {
@@ -19338,7 +19334,10 @@ graph import runtime.python {
         },
         modules.cmath {
             NULL,
+            PyComplex_Type,
             PyErr_ExceptionMatches,
+            PyErr_Occurred,
+            PyErr_SetString,
             PyExc_OverflowError,
             PyExc_ValueError,
             PyExc_ZeroDivisionError,
@@ -19346,8 +19345,9 @@ graph import runtime.python {
             PyFloat_FromDouble,
             PyNumber_TrueDivide,
             PyObject,
+            PyTuple_New,
+            PyTuple_SetItem,
             jacpy_clear_errno,
-            jacpy_complex_value,
             jacpy_error_pending,
             jacpy_math_errno,
             jacpy_release
@@ -19864,6 +19864,8 @@ graph import runtime.python {
         modules.datetime_datetime {
             NULL,
             PyBytes_Size,
+            PyDict_Size,
+            PyErr_Clear,
             PyErr_ExceptionMatches,
             PyErr_Format,
             PyErr_NoMemory,
@@ -19875,6 +19877,7 @@ graph import runtime.python {
             PyExc_UnicodeEncodeError,
             PyExc_ValueError,
             PyFloat_FromDouble,
+            PyLong_AsLong,
             PyLong_FromLong,
             PyObject,
             PyObject_CallMethod,
@@ -19906,11 +19909,13 @@ graph import runtime.python {
             _PyUnicode_Copy,
             jacpy_bytes_address,
             jacpy_is_bytes,
+            jacpy_is_exact_long,
             jacpy_is_unicode,
             jacpy_release
         },
         modules.datetime_delta {
             NULL,
+            PyDict_Next,
             PyErr_Format,
             PyErr_Occurred,
             PyErr_SetString,
@@ -19935,6 +19940,7 @@ graph import runtime.python {
             PyTuple_GetItem,
             PyTuple_Pack,
             PyTuple_Size,
+            PyUnicode_EqualToUTF8,
             PyUnicode_FromFormat,
             PyUnicode_FromString,
             PyUnicode_GetLength,
@@ -19946,6 +19952,7 @@ graph import runtime.python {
             jacpy_is_float,
             jacpy_is_long,
             jacpy_is_tuple,
+            jacpy_is_unicode,
             jacpy_release
         },
         modules.datetime_format {
@@ -21540,6 +21547,7 @@ graph import runtime.python {
         modules.math {
             NULL,
             PyErr_Clear,
+            PyExc_MemoryError,
             PyExc_OverflowError,
             PyExc_TypeError,
             PyExc_ValueError,
@@ -21554,6 +21562,9 @@ graph import runtime.python {
             PyLong_FromDouble,
             PyLong_FromLongLong,
             PyLong_FromUnsignedLongLong,
+            PyMem_Free,
+            PyMem_Malloc,
+            PyMem_Realloc,
             PyNumber_Absolute,
             PyNumber_Add,
             PyNumber_FloorDivide,
@@ -23382,6 +23393,7 @@ graph import runtime.python {
         modules.statistics { PyExc_ValueError, PyObject },
         modules.struct {
             NULL,
+            PyBytes_FromStringAndSize,
             PyDict_Clear,
             PyDict_SetItem,
             PyErr_Clear,
@@ -23394,11 +23406,14 @@ graph import runtime.python {
             PyIndex_Check,
             PyLong_AsLongLong,
             PyLong_AsUnsignedLongLong,
+            PyLong_FromLongLong,
+            PyLong_FromUnsignedLongLong,
             PyNumber_Index,
             PyObject,
             PyObject_CallOneArg,
             PyObject_IsTrue,
             PyTuple_New,
+            PyTuple_SetItem,
             PyUnicode_AsEncodedString,
             Py_NewRef,
             Py_None,
@@ -23418,7 +23433,6 @@ graph import runtime.python {
             jacpy_is_unicode,
             jacpy_long_address,
             jacpy_memory_copy,
-            jacpy_memory_zero,
             jacpy_native_float_store,
             jacpy_native_little_endian,
             jacpy_native_size,
@@ -23596,6 +23610,7 @@ graph import runtime.python {
             NULL,
             PyDict_New,
             PyErr_CheckSignals,
+            PyErr_Clear,
             PyErr_NoMemory,
             PyErr_Occurred,
             PyErr_SetFromErrno,
@@ -23662,7 +23677,9 @@ graph import runtime.python {
             jacpy_audit_tuple_text,
             jacpy_clear_errno,
             jacpy_errno,
+            jacpy_is_exact_long,
             jacpy_is_tuple,
+            jacpy_is_unicode,
             jacpy_release,
             jacpy_set_errno,
             jacpy_unicode_from_text
@@ -28883,6 +28900,7 @@ graph import runtime.python {
         },
         modules.asyncio_core { _object },
         modules.atexit { PyStatus, _PyStatus_TYPE_ERROR, _PyStatus_TYPE_OK },
+        modules.cmath { PyComplexObject, PyTypeObject },
         modules.ctypes {
             PyBUF_SIMPLE,
             PyBytesObject_OB_SVAL,
@@ -29586,6 +29604,7 @@ graph import runtime.python {
             _Py_hashtable_t,
             _object
         },
+        modules.math { PyFloatObject },
         modules.pickle_decode {
             PyByteArrayObject,
             PyListObject,
@@ -34258,34 +34277,37 @@ graph import runtime.python {
             _bz2_BZ2Decompressor_impl
         },
     ]
-    modules.cmath ++> bindings.clinic.cmath {
-        cmath_acos_impl,
-        cmath_acosh_impl,
-        cmath_asin_impl,
-        cmath_asinh_impl,
-        cmath_atan_impl,
-        cmath_atanh_impl,
-        cmath_cos_impl,
-        cmath_cosh_impl,
-        cmath_exp_impl,
-        cmath_isclose_impl,
-        cmath_isfinite_impl,
-        cmath_isinf_impl,
-        cmath_isnan_impl,
-        cmath_log10_impl,
-        cmath_log_impl,
-        cmath_phase_impl,
-        cmath_polar_impl,
-        cmath_rect_impl,
-        cmath_sin_impl,
-        cmath_sinh_impl,
-        cmath_sqrt_impl,
-        cmath_tan_impl,
-        cmath_tanh_impl,
-        convert_Py_complex,
-        convert_Py_complex_protected,
-        return_Py_complex_protected
-    }
+    modules.cmath ++> [
+        bindings.clinic.cmath {
+            cmath_acos_impl,
+            cmath_acosh_impl,
+            cmath_asin_impl,
+            cmath_asinh_impl,
+            cmath_atan_impl,
+            cmath_atanh_impl,
+            cmath_cos_impl,
+            cmath_cosh_impl,
+            cmath_exp_impl,
+            cmath_isclose_impl,
+            cmath_isfinite_impl,
+            cmath_isinf_impl,
+            cmath_isnan_impl,
+            cmath_log10_impl,
+            cmath_log_impl,
+            cmath_phase_impl,
+            cmath_polar_impl,
+            cmath_rect_impl,
+            cmath_sin_impl,
+            cmath_sinh_impl,
+            cmath_sqrt_impl,
+            cmath_tan_impl,
+            cmath_tanh_impl,
+            convert_Py_complex,
+            convert_Py_complex_protected,
+            return_Py_complex_protected
+        },
+        bindings.cmath { jacpy_cmath_call },
+    ]
     modules.codecs ++> bindings.clinic.codecs {
         _codecs__unregister_error_impl,
         _codecs_ascii_decode_impl,
@@ -37560,12 +37582,13 @@ graph import runtime.python {
     object_model.complex ++> [
         bindings.cmath | modules.decimal_number { PyComplex_FromDoubles },
         constant_input { PyComplex_ImagAsDouble, PyComplex_RealAsDouble },
-        modules.cmath | modules.struct {
+        modules.cmath { PyComplex_AsCComplex, PyComplex_FromDoubles },
+        modules.decimal_convert { PyComplex_AsCComplex },
+        modules.struct {
             PyComplex_FromDoubles,
             PyComplex_ImagAsDouble,
             PyComplex_RealAsDouble
         },
-        modules.decimal_convert { PyComplex_AsCComplex },
     ]
     object_model.context ++> bindings.contextvars {
         PyContextToken_Type,
@@ -37672,6 +37695,7 @@ graph import runtime.python {
     object_model.header ++> [
         bindings.arguments { current_interp },
         bindings.ctypes
+            | modules.cmath
             | modules.decimal_context
             | modules.decimal_convert
             | modules.decimal_number
@@ -37914,6 +37938,7 @@ graph import runtime.python {
             tuple_set_item
         },
         modules.asyncio { freelist_pop, freelist_push },
+        modules.bisect { _Py_FalseStruct, _Py_TrueStruct, object_decref, object_type },
         modules.ctypes {
             PyType_Type,
             object_decref,
@@ -38153,7 +38178,6 @@ graph import runtime.python {
             tuple_set_item
         },
         modules.sre { object_size, object_type, tuple_get_item, tuple_set_item },
-        modules.struct { tuple_get_item, tuple_set_item },
         modules.thread {
             current_interp,
             current_tstate,
@@ -38685,7 +38709,6 @@ graph import runtime.python.bindings {
             invoke,
             invoke_one
         },
-        struct { vector_tuple },
     ]
     buffer ++> clinic.array
         | clinic.binascii
@@ -39090,7 +39113,7 @@ graph import runtime.python.bindings {
             convert_unsigned_long_long
         },
         clinic.bz2 { convert_buffer, convert_int, convert_ssize, new_checks_arguments },
-        clinic.cmath { convert_double, return_bool },
+        clinic.cmath { convert_double, failed, return_bool },
         clinic.codecs {
             bad_argument,
             borrowed_none,
@@ -39523,7 +39546,9 @@ graph import runtime.python.bindings {
             | clinic.zlib
             | clinic.zoneinfo
             | clinic.zstd { MethodCallbacks, MethodDefinition },
-        cmath | heapq | multiprocessing | remote_debugging {
+        cmath | json | math | operator {
+            MethodCallbacks,
+            MethodDefinition,
             ModuleDefinition,
             ModuleHooks,
             add_owned
@@ -39620,14 +39645,12 @@ graph import runtime.python.bindings {
             jacpy_binding_state_get,
             jacpy_binding_state_set
         },
-        io { method_table },
-        json | math | operator {
-            MethodCallbacks,
-            MethodDefinition,
+        heapq | multiprocessing | remote_debugging {
             ModuleDefinition,
             ModuleHooks,
             add_owned
         },
+        io { method_table },
         locale {
             MethodDefinition,
             ModuleDefinition,
@@ -40664,7 +40687,7 @@ graph import runtime.python.modules {
         asyncio.call_with_context { CallStack },
         asyncio.future_clear { clear_future_fields },
     ]
-    binary_scalars ++> struct { integer_from_bits, read_bits, write_bits }
+    binary_scalars ++> struct { read_bits, write_bits }
     blake2_simd ++> blake2 {
         Hacl_Hash_Blake2b_blake2_params,
         simd128_copy,

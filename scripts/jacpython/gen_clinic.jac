@@ -388,6 +388,7 @@ obj Emitter {
         c_docs: dict[str, str] = {},
         slow_only: bool = False,
         raise_free: bool = False,
+        checked_converters: bool = False,
         function_docs: dict[str, str] = {},
         classes: dict[str, str] = {};
 
@@ -1083,7 +1084,11 @@ obj Emitter {
         direct_ok = direct_ok
             and not stepwise
             and not self.slow_only
-            and (not wrap or wrap in RETURNS.values())
+            and (
+                not wrap
+                or wrap in RETURNS.values()
+                or (self.checked_converters and wrap in self.module_names)
+            )
             and kind not in ("METHOD_NEW", "METHOD_INIT");
         if direct_ok
             and not (meth_o or flags & METHOD_FLAGS["METH_NOARGS"])
@@ -1345,6 +1350,38 @@ obj Emitter {
                 );
                 direct += [f"if {present} {{", f"    {var} = {slot};", "}"];
             }
+            return True;
+        }
+        if jtype == "f64" and expr == "convert_double(value)" {
+            self.api.add("PyFloat_AsDouble");
+            if meth_o or not p.is_optional() {
+                direct += [
+                    f"{var}: f64 = PyFloat_AsDouble({slot});",
+                    f"if {var} == -1.0 and {self.use('failed')}() {{",
+                    "    return NULL;",
+                    "}"
+                ];
+                return True;
+            }
+            return False;
+        }
+        # A module whose converters report failure as C's do (the error
+        # indicator, never boundary_failure) converts a required argument
+        # in place and checks the indicator, as clinic's glue does.
+        if self.checked_converters
+            and expr.startswith("convert_")
+            and expr.split("(")[0] in self.module_names
+            and not converted[2]
+            and (meth_o or not p.is_optional()) {
+            if not meth_o {
+                direct.append(f"value = {slot};");
+            }
+            direct += [
+                f"{var} = {expr};",
+                f"if {self.use('failed')}() {{",
+                "    return NULL;",
+                "}"
+            ];
             return True;
         }
         if jtype == "i64" and expr == "convert_ssize(value)" and not meth_o {
@@ -1614,6 +1651,7 @@ def generate(module: str) -> tuple[str, str] {
         module=module,
         name=name,
         raise_free="raise-free" in registry_options().get(module, []),
+        checked_converters="checked-converters" in registry_options().get(module, []),
         classes=dict(clinic.classes)
     );
     # A function C defines once per system (#ifdef __APPLE__ ... #else): the

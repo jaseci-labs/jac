@@ -68,6 +68,8 @@ def datetime_from_pickle(
     type: ptr[PyTypeObject], state: ptr[PyObject], tzinfo: ptr[PyObject]
 ) -> ptr[PyObject];
 
+def:priv int_fields(args: ptr[PyObject], count: i64, values: ptr[i64]) -> bool;
+
 def datetime_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject];
@@ -126,6 +128,8 @@ def datetime_subtract(left: ptr[PyObject], right: ptr[PyObject]) -> ptr[PyObject
 def datetime_repr(op: ptr[PyObject]) -> ptr[PyObject];
 
 def datetime_str(op: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv isoformat_text(op: ptr[PyObject], sep: i64, given_spec: int) -> ptr[PyObject];
 
 def datetime_isoformat(
     op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
@@ -246,6 +250,29 @@ impl datetime_from_pickle(
     return me;
 }
 
+impl int_fields(args: ptr[PyObject], count: i64, values: ptr[i64]) -> bool {
+    fields = values.view(7);
+    for i in range(7) {
+        fields[i] = 0;
+    }
+    for i in range(int(count)) {
+        item = PyTuple_GetItem(args, i64(i));
+        if jacpy_is_exact_long(item) == 0 {
+            return False;
+        }
+        value = PyLong_AsLong(item);
+        if value == -1 and PyErr_Occurred() {
+            PyErr_Clear();
+            return False;
+        }
+        if value > 2147483647 or value < -2147483648 {
+            return False;
+        }
+        fields[i] = value;
+    }
+    return True;
+}
+
 impl datetime_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
@@ -279,6 +306,15 @@ impl datetime_new(
                 jacpy_release(latin1);
                 return self;
             }
+        }
+    }
+    if (kw == NULL or PyDict_Size(kw) == 0) and count >= 3 and count <= 7 {
+        fields = ptr[i64](__alloca(56));
+        if int_fields(args, count, fields) {
+            v = fields.view(7);
+            return new_datetime_ex2(
+                v[0], v[1], v[2], v[3], v[4], v[5], v[6], Py_None, 0, type
+            );
         }
     }
     try {
@@ -808,6 +844,11 @@ impl datetime_str(op: ptr[PyObject]) -> ptr[PyObject] {
 impl datetime_isoformat(
     op: ptr[PyObject], args: ptr[PyObject], kw: ptr[PyObject]
 ) -> ptr[PyObject] {
+    if PyTuple_Size(args) == 0 and (kw == NULL or PyDict_Size(kw) == 0) {
+        return isoformat_text(
+            op, 84, timespec_index("", False, date_get_microsecond(op))
+        );
+    }
     try {
         values = ArgumentFormat(name="isoformat").parse_keywords(
             args, kw, "|Cs", ["sep", "timespec"]
@@ -815,9 +856,15 @@ impl datetime_isoformat(
     } except boundary_failure {
         return NULL;
     }
-    sep = values[0].signed if values[0].given else 84;
+    return isoformat_text(
+        op,
+        values[0].signed if values[0].given else 84,
+        timespec_index(values[1].text, values[1].given, date_get_microsecond(op))
+    );
+}
+
+impl isoformat_text(op: ptr[PyObject], sep: i64, given_spec: int) -> ptr[PyObject] {
     us = date_get_microsecond(op);
-    given_spec = timespec_index(values[1].text, values[1].given, us);
     y = get_year(op);
     mo = get_month(op);
     d = get_day(op);

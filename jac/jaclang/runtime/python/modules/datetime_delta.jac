@@ -137,6 +137,16 @@ glob:priv COMPONENTS: list[tuple[int, str, int]] = [
          (6, "weeks", STATE_US_PER_WEEK)
      ];
 
+def:priv delta_keyword_slot(key: ptr[PyObject]) -> int;
+
+def:priv delta_bind(
+    args: ptr[PyObject], kw: ptr[PyObject], slots: ptr[ptr[PyObject]]
+) -> bool;
+
+def:priv delta_bind_slow(
+    args: ptr[PyObject], kw: ptr[PyObject], slots: ptr[ptr[PyObject]]
+) -> bool;
+
 def:priv delta_new_in(
     module: ptr[PyObject],
     type: ptr[PyTypeObject],
@@ -506,12 +516,67 @@ impl delta_new(
     return self;
 }
 
-impl delta_new_in(
-    module: ptr[PyObject],
-    type: ptr[PyTypeObject],
-    args: ptr[PyObject],
-    kw: ptr[PyObject]
-) -> ptr[PyObject] {
+impl delta_keyword_slot(key: ptr[PyObject]) -> int {
+    if PyUnicode_EqualToUTF8(key, ptr[u8]("days")) != 0 {
+        return 0;
+    }
+    if PyUnicode_EqualToUTF8(key, ptr[u8]("seconds")) != 0 {
+        return 1;
+    }
+    if PyUnicode_EqualToUTF8(key, ptr[u8]("microseconds")) != 0 {
+        return 2;
+    }
+    if PyUnicode_EqualToUTF8(key, ptr[u8]("milliseconds")) != 0 {
+        return 3;
+    }
+    if PyUnicode_EqualToUTF8(key, ptr[u8]("minutes")) != 0 {
+        return 4;
+    }
+    if PyUnicode_EqualToUTF8(key, ptr[u8]("hours")) != 0 {
+        return 5;
+    }
+    if PyUnicode_EqualToUTF8(key, ptr[u8]("weeks")) != 0 {
+        return 6;
+    }
+    return -1;
+}
+
+impl delta_bind(
+    args: ptr[PyObject], kw: ptr[PyObject], slots: ptr[ptr[PyObject]]
+) -> bool {
+    objects = slots.view(7);
+    for i in range(7) {
+        objects[i] = NULL;
+    }
+    count = PyTuple_Size(args);
+    if count > 7 {
+        return False;
+    }
+    for i in range(int(count)) {
+        objects[i] = PyTuple_GetItem(args, i64(i));
+    }
+    if kw == NULL {
+        return True;
+    }
+    pos: i64 = 0;
+    key: ptr[PyObject] = NULL;
+    value: ptr[PyObject] = NULL;
+    while PyDict_Next(kw, &mut pos, &mut key, &mut value) != 0 {
+        if jacpy_is_unicode(key) == 0 {
+            return False;
+        }
+        slot = delta_keyword_slot(key);
+        if slot < 0 or objects[slot] != NULL {
+            return False;
+        }
+        objects[slot] = value;
+    }
+    return True;
+}
+
+impl delta_bind_slow(
+    args: ptr[PyObject], kw: ptr[PyObject], slots: ptr[ptr[PyObject]]
+) -> bool {
     try {
         values = ArgumentFormat(name="__new__").parse_keywords(
             args,
@@ -528,8 +593,26 @@ impl delta_new_in(
             ]
         );
     } except boundary_failure {
+        return False;
+    }
+    objects = slots.view(7);
+    for i in range(7) {
+        objects[i] = values[i].object if values[i].given else NULL;
+    }
+    return True;
+}
+
+impl delta_new_in(
+    module: ptr[PyObject],
+    type: ptr[PyTypeObject],
+    args: ptr[PyObject],
+    kw: ptr[PyObject]
+) -> ptr[PyObject] {
+    slots = ptr[ptr[PyObject]](__alloca(56));
+    if not delta_bind(args, kw, slots) and not delta_bind_slow(args, kw, slots) {
         return NULL;
     }
+    objects = slots.view(7);
 
     x = PyLong_FromLong(0);
     if not x {
@@ -537,13 +620,13 @@ impl delta_new_in(
     }
     leftover_us = 0.0;
     for (index, tag, unit) in COMPONENTS {
-        if not values[index].given {
+        if objects[index] == NULL {
             continue;
         }
         factor = Py_GetConstantBorrowed(Py_CONSTANT_ONE)
             if unit < 0
             else state_value(module, unit);
-        (y, leftover_us) = accum(tag, x, values[index].object, factor, leftover_us);
+        (y, leftover_us) = accum(tag, x, objects[index], factor, leftover_us);
         jacpy_release(x);
         x = y;
         if not x {

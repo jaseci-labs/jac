@@ -246,11 +246,11 @@ def:pub jacpy_random_bits(state: mt19937, bits: u64) -> ptr[PyObject] {
 glob Random_token = ClassToken();
 
 def:priv random_state(instance: ptr[PyObject]) -> (mt19937 | None) {
-    if jacpy_binding_native_present(instance, Random_token.handle) != 0 {
-        state = jacpy_binding_native_get(instance, Random_token.handle);
-        if isinstance(state, mt19937) {
-            return state;
-        }
+    state: (NativeState | None) = jacpy_binding_native_get(
+        instance, Random_token.handle
+    );
+    if state is not None and isinstance(state, mt19937) {
+        return state;
     }
     object_error(PyExc_SystemError, "native Random state is unavailable");
     return None;
