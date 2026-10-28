@@ -47,9 +47,7 @@ impl ProjectHost.check_settings(target_app: str) -> CheckSettings {
     return check_settings_of(cfg.check);
 }
 
-def package_name_of(name: str) -> str {
-    return name if is_scoped_package_name(name) else "";
-}
+def package_name_of(name: str) -> str;
 
 impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
     import from pathlib { Path }
@@ -189,7 +187,10 @@ impl ProjectHost.lint_settings(path: str) -> LintSettings {
     config = (get_config_for_path(Path(path)) if path else get_explicit_config())
         or JacConfig();
     if path {
-        app = context_app(str(Path(path).resolve()));
+        owner = (self.base_file(path) or path)
+            if self.path_facts(path).is_annex
+            else path;
+        app = context_app(str(Path(owner).resolve()));
         if app is not None and not app.implicit and app.name in config.apps {
             config = config.effective_for_app(app.name);
         }
@@ -336,30 +337,7 @@ impl ProjectHost.native_fact(kind: str, key: str) -> str {
     return host_native_fact(kind, key);
 }
 
-def _git_ignored_under(root_dir: str) -> list[str] {
-    import os;
-    paths: list[str] = [];
-    for (directory, dirs, files) in os.walk(root_dir) {
-        dirs[:] = [
-            d
-            for d in dirs
-            if not d.startswith(".") and d not in ("node_modules", "__pycache__")
-        ];
-        for name in files {
-            if name.endswith(".jac") {
-                paths.append(os.path.realpath(os.path.join(directory, name)));
-            }
-        }
-    }
-    kept = set(drop_git_ignored(paths, cwd=root_dir));
-    return sorted(
-        [
-            p
-            for p in paths
-            if p not in kept
-        ]
-    );
-}
+def _git_ignored_under(root_dir: str) -> list[str];
 
 impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
     if program._natives is None {
@@ -433,16 +411,7 @@ impl ProjectHost.wiring_file(path: str) -> (str | None) {
     return arch_file_for(path);
 }
 
-def _wiring_records_path(digest: str) -> str {
-    import hashlib;
-    import os;
-    name = hashlib.sha256(
-        (digest + "\x00" + running_compiler_digest()).encode()
-    ).hexdigest();
-    return os.path.join(
-        str(get_jir_cache_dir()), "wiring-spec", name[:2], name + ".txt"
-    );
-}
+def _wiring_records_path(digest: str) -> str;
 
 impl ProjectHost.wiring_records(digest: str) -> str {
     try {
@@ -486,8 +455,8 @@ impl ProjectHost.native_parse(
     load_kernel: bool = True
 ) -> (tuple[Module, bool] | None) {
     natives = program._natives if program is not None else None;
-    if natives is not None and natives.progress is not None {
-        natives.note_step("parse", file_path);
+    if natives is not None {
+        natives.begin_parse(file_path);
     }
     kernel = _jc.ensure_loaded()
         if load_kernel
@@ -596,6 +565,31 @@ impl ProjectHost.host_platform -> HostPlatform {
 impl ProjectHost.ct_environment -> CtEnvironment {
     import sys;
     import platform;
+
+    triple = effective_native_target().lower();
+    if triple {
+        arch = "";
+        if "aarch64" in triple or "arm64" in triple {
+            arch = "aarch64";
+        } elif "x86_64" in triple or "amd64" in triple {
+            arch = "x86_64";
+        }
+        if arch {
+            if "darwin" in triple or "apple" in triple or "macos" in triple {
+                return CtEnvironment(
+                    os="darwin", arch=("arm64" if arch == "aarch64" else arch)
+                );
+            }
+            if "windows" in triple or "msvc" in triple or "mingw" in triple {
+                return CtEnvironment(
+                    os="windows", arch=("AMD64" if arch == "x86_64" else arch)
+                );
+            }
+            if "linux" in triple {
+                return CtEnvironment(os="linux", arch=arch);
+            }
+        }
+    }
     host_os = "linux";
     if sys.platform.startswith("win") {
         host_os = "windows";
@@ -640,6 +634,15 @@ impl UnitCollectBudget.due -> bool {
         }
     }
     def peak_rss_mb -> int {
+        try {
+            with open("/proc/self/status", encoding="utf-8") as status {
+                for line in status {
+                    if line.startswith("VmHWM:") {
+                        return int(line.split()[1]) // 1024;
+                    }
+                }
+            }
+        } except (OSError, ValueError, IndexError) {}
         try {
             import resource;
         } except ImportError {
@@ -740,7 +743,7 @@ impl ProjectHost.prepare_interface(
     return bool(self.iface_registry_for(program).prepare_interface(path, module));
 }
 
-impl ProjectHost.collect_released_memory{
+impl ProjectHost.collect_released_memory {
     if self._collect_budget.due() {
         import gc;
         gc.collect();
@@ -805,4 +808,116 @@ impl ProjectHost.default_target_triple -> str {
     } except Exception {
         return "";
     }
+}
+
+impl package_name_of(name: str) -> str {
+    return name if is_scoped_package_name(name) else "";
+}
+
+impl _git_ignored_under(root_dir: str) -> list[str] {
+    import os;
+    paths: list[str] = [];
+    for (directory, dirs, files) in os.walk(root_dir) {
+        dirs[:] = [
+            d
+            for d in dirs
+            if not d.startswith(".") and d not in ("node_modules", "__pycache__")
+        ];
+        for name in files {
+            if name.endswith(".jac") {
+                paths.append(os.path.realpath(os.path.join(directory, name)));
+            }
+        }
+    }
+    kept = set(drop_git_ignored(paths, cwd=root_dir));
+    return sorted(
+        [
+            p
+            for p in paths
+            if p not in kept
+        ]
+    );
+}
+
+impl _wiring_records_path(digest: str) -> str {
+    import hashlib;
+    import os;
+    name = hashlib.sha256(
+        (digest + "\x00" + running_compiler_digest()).encode()
+    ).hexdigest();
+    return os.path.join(
+        str(get_jir_cache_dir()), "wiring-spec", name[:2], name + ".txt"
+    );
+}
+
+impl check_settings_of(check: any) -> CheckSettings {
+    if check is None {
+        return CheckSettings();
+    }
+    lint = check.lint;
+    return CheckSettings(
+        suppress=list(check.suppress or []),
+        suppress_categories=list(check.suppress_categories or []),
+        lint_active=bool(lint),
+        lint_select=list(lint.select) if lint else [],
+        lint_ignore=list(lint.ignore) if lint else [],
+        enforce_access=bool(check.enforce_access),
+        untyped_external_error=check.untyped_external == "error",
+        warn_native_seams=bool(check.warn_native_seams)
+    );
+}
+
+impl project_defaults_of(cfg: any) -> ProjectDefaults {
+    native = cfg.native;
+    memory = cfg.memory;
+    return ProjectDefaults(
+        default_codespace=cfg.placement.default_codespace,
+        native_require=list(native.require),
+        native_target=native.target,
+        native_debug=native.debug,
+        native_opt=native.opt,
+        native_threads=native.threads,
+        native_link_mode=native.link_mode,
+        memory_profile=memory.profile,
+        memory_enforce=list(memory.enforce),
+        memory_exempt=list(memory.exempt),
+        check=check_settings_of(cfg.check),
+        client_framework=cfg.client.framework if cfg.client else "react"
+    );
+}
+
+impl client_stub_names(path: str) -> set[str] {
+    import ast;
+    out: set[str] = set();
+    try {
+        with open(path, encoding="utf-8") as handle {
+            tree = ast.parse(handle.read());
+        }
+    } except Exception {
+        return out;
+    }
+    for node in tree.body {
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) {
+            out.add(node.name);
+        } elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) {
+            out.add(node.target.id);
+        } elif isinstance(node, ast.Assign) {
+            for tgt in node.targets {
+                if not isinstance(tgt, ast.Name) {
+                    continue;
+                }
+                out.add(tgt.id);
+                if tgt.id != "__all__"
+                    or not isinstance(node.value, (ast.List, ast.Tuple)) {
+                    continue;
+                }
+                for elt in node.value.elts {
+                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str) {
+                        out.add(elt.value);
+                    }
+                }
+            }
+        }
+    }
+    return out;
 }

@@ -60,102 +60,32 @@ glob UF_SETTABLE: int = 0x0000ffff,
      SF_FIRMLINK: int = 0x00800000,
      SF_DATALESS: int = 0x40000000;
 
-def:pub S_IMODE(mode: int) -> int {
-    return mode & 0o7777;
-}
+def:pub S_IMODE(mode: int) -> int;
 
-def:pub S_IFMT(mode: int) -> int {
-    return mode & 0o170000;
-}
+def:pub S_IFMT(mode: int) -> int;
 
-def:pub S_ISDIR(mode: int) -> bool {
-    return mode & 0o170000 == S_IFDIR;
-}
+def:pub S_ISDIR(mode: int) -> bool;
 
-def:pub S_ISCHR(mode: int) -> bool {
-    return mode & 0o170000 == S_IFCHR;
-}
+def:pub S_ISCHR(mode: int) -> bool;
 
-def:pub S_ISBLK(mode: int) -> bool {
-    return mode & 0o170000 == S_IFBLK;
-}
+def:pub S_ISBLK(mode: int) -> bool;
 
-def:pub S_ISREG(mode: int) -> bool {
-    return mode & 0o170000 == S_IFREG;
-}
+def:pub S_ISREG(mode: int) -> bool;
 
-def:pub S_ISFIFO(mode: int) -> bool {
-    return mode & 0o170000 == S_IFIFO;
-}
+def:pub S_ISFIFO(mode: int) -> bool;
 
-def:pub S_ISLNK(mode: int) -> bool {
-    return mode & 0o170000 == S_IFLNK;
-}
+def:pub S_ISLNK(mode: int) -> bool;
 
-def:pub S_ISSOCK(mode: int) -> bool {
-    return mode & 0o170000 == S_IFSOCK;
-}
+def:pub S_ISSOCK(mode: int) -> bool;
 
-def:pub S_ISDOOR(mode: int) -> bool {
-    return False;
-}
+def:pub S_ISDOOR(mode: int) -> bool;
 
-def:pub S_ISPORT(mode: int) -> bool {
-    return False;
-}
+def:pub S_ISPORT(mode: int) -> bool;
 
-def:pub S_ISWHT(mode: int) -> bool {
-    return False;
-}
+def:pub S_ISWHT(mode: int) -> bool;
 
 def _rwx_triplet(
     mode: int, r: int, w: int, x: int, special: int, sx: str, snx: str
-) -> str {
-    out: str = "";
-    if mode & r == r {
-        out += "r";
-    } else {
-        out += "-";
-    }
-    if mode & w == w {
-        out += "w";
-    } else {
-        out += "-";
-    }
-    if mode & (x | special) == (x | special) {
-        out += sx;
-    } elif mode & special == special {
-        out += snx;
-    } elif mode & x == x {
-        out += "x";
-    } else {
-        out += "-";
-    }
-    return out;
-}
+) -> str;
 
-def:pub filemode(mode: int) -> str {
-    dtype: int = mode & 0o170000;
-    head: str = "?";
-    if dtype == S_IFLNK {
-        head = "l";
-    } elif dtype == S_IFSOCK {
-        head = "s";
-    } elif dtype == S_IFREG {
-        head = "-";
-    } elif dtype == S_IFBLK {
-        head = "b";
-    } elif dtype == S_IFDIR {
-        head = "d";
-    } elif dtype == S_IFCHR {
-        head = "c";
-    } elif dtype == S_IFIFO {
-        head = "p";
-    }
-    return (
-        head
-        + _rwx_triplet(mode, 0o0400, 0o0200, 0o0100, S_ISUID, "s", "S")
-        + _rwx_triplet(mode, 0o0040, 0o0020, 0o0010, S_ISGID, "s", "S")
-        + _rwx_triplet(mode, 0o0004, 0o0002, 0o0001, S_ISVTX, "t", "T")
-    );
-}
+def:pub filemode(mode: int) -> str;

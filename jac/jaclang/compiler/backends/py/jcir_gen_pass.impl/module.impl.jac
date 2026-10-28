@@ -307,7 +307,7 @@ impl JcirGenPass.exit_test with Test exit {
     } else {
         body_stmts = self.resolve_stmt_block(here.body, doc=here.doc);
     }
-    test_directives = self.scope_directive_stmts([here]);
+    test_directives = self.scope_directive_stmts(here);
     if test_directives {
         insert_at = self._docstring_offset(body_stmts);
         body_stmts = [

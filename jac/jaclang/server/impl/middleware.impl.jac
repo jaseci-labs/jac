@@ -1,0 +1,164 @@
+impl bearer_token(request: Request) -> (str | None) {
+    authorization = request.headers.get('Authorization');
+    if authorization and authorization.startswith('Bearer ') {
+        return authorization[7:];
+    }
+    return None;
+}
+
+impl presented_token(request: Request) -> tuple[(str | None), bool] {
+    if request.headers.get('Authorization') is not None {
+        return (bearer_token(request), False);
+    }
+    token = cookie_session_token(request);
+    return (token, token is not None);
+}
+
+impl jwt_middleware(user_manager: UserManager) -> Callable[..., any] {
+    async def _middleware(request: Request, call_next: any) -> Response {
+        username: (str | None) = None;
+        user_root_id: (str | None) = None;
+        assurance: (dict[str, any] | None) = None;
+        (token, from_cookie) = presented_token(request);
+        if token {
+            username = user_manager.validate_jwt_token(token);
+            if username {
+                user_root_id = user_manager.get_root_id(username);
+                assurance = token_assurance(token);
+            }
+        }
+        setattr(request.state, 'user_root_id', user_root_id);
+        setattr(request.state, 'username', username);
+        next_fn: any = call_next;
+        binding = bind_caller_assurance(assurance);
+        try {
+            response: Response = await next_fn(request);
+            if from_cookie and username {
+                keep_out_of_shared_caches(response);
+            }
+            apply_session_change(request, response);
+            return response;
+        } finally {
+            release_caller_assurance(binding);
+        }
+    }
+    return _middleware;
+}
+
+impl _service_unavailable(detail: str) -> JSONResponse {
+    resp = JSONResponse(
+        status_code=503,
+        content={
+            'ok': False,
+            'error': {'code': 'SERVICE_UNAVAILABLE', 'message': detail}
+        }
+    );
+    resp.headers.set('Retry-After', '1');
+    return resp;
+}
+
+impl request_context_middleware(
+    open_scope: Callable[[], RequestScope], public_origin: str = ''
+) -> Callable[..., any] {
+    async def _middleware(request: Request, call_next: any) -> Response {
+        next_fn: any = call_next;
+        if request.url.path in LIVENESS_PATHS {
+            return await next_fn(request);
+        }
+        try {
+            scope = open_scope();
+        } except Exception as ctx_err {
+            logger.error(
+                f"request context unavailable for {request.url.path}: "
+                f"{type(ctx_err).__name__}: {ctx_err}",
+                exc_info=True
+            );
+            return _service_unavailable('unable to reach the database');
+        }
+        ctx = scope.context;
+        exchange_token = open_exchange(request, public_origin);
+        user_id = request.state?.user_root_id;
+        bind_error: any = None;
+        if user_id {
+            ctx.mem.read_scope_enter();
+            try {
+                await ctx.aset_user_root(str(user_id));
+            } except MissingAnchorError as missing {
+                bind_error = RuntimeError(
+                    f"Root anchor {missing.anchor_id} for the authenticated user "
+                    "does not exist in the anchor store. The data store was likely "
+                    "reset or migrated out from under the identity store; restore "
+                    "it or re-register the user."
+                );
+            } except (ValueError, RuntimeError) as err {
+                bind_error = err;
+            } finally {
+                ctx.mem.read_scope_exit();
+            }
+        }
+        try {
+            if bind_error is not None {
+                logger.error(
+                    f"refusing request for user_root_id {user_id}: "
+                    f"{type(bind_error).__name__}: {bind_error}"
+                );
+                resp = JSONResponse(
+                    status_code=401,
+                    content={
+                        'ok': False,
+                        'error': {
+                            'code': 'IDENTITY_UNRESOLVABLE',
+                            'message': str(bind_error)
+                        }
+                    }
+                );
+                return resp;
+            }
+            return await next_fn(request);
+        } finally {
+            try {
+                await scope.aclose();
+            } finally {
+                close_exchange(exchange_token);
+            }
+        }
+    }
+    return _middleware;
+}
+
+impl metrics_middleware(metrics: any, exempt_path: str = '') -> Callable[..., any] {
+    async def _middleware(request: Request, call_next: any) -> Response {
+        next_fn: any = call_next;
+        if exempt_path and request.url.path == exempt_path {
+            return await next_fn(request);
+        }
+        metrics.request_started();
+        started = time.perf_counter();
+        status = 500;
+        try {
+            response = await next_fn(request);
+            status = response.status_code;
+            return response;
+        } finally {
+            metrics.record_request(
+                request.method, request.url.path, status, time.perf_counter() - started
+            );
+            metrics.request_finished();
+        }
+    }
+    return _middleware;
+}
+
+impl unauthorized(message: str = 'Unauthorized') -> TransportResponse {
+    return TransportResponse.fail(
+        code='UNAUTHORIZED', message=message, meta=Meta(extra={'http_status': 401})
+    );
+}
+
+impl require_user(request: Request) -> tuple[(str | None), (TransportResponse | None)] {
+    username = request.state?.username;
+    if not username {
+        return (None, unauthorized('Invalid or expired token'));
+    }
+    return (str(username), None);
+}

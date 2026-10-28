@@ -9,72 +9,28 @@ import from c { def gnu_get_libc_version -> str;  }
 
 glob _PLAT_UTS: int = malloc(512);
 
-def:pub plat_uname_ok -> bool {
-    return uname(_PLAT_UTS) == 0;
-}
+def:pub plat_uname_ok -> bool;
 
-def _uts_str(offset: int) -> str {
-    address = _PLAT_UTS + offset;
-    length = strlen(address);
-    copied = b"\x00" * int(length);
-    memcpy(copied, address, length);
-    return copied.decode();
-}
+def _uts_str(offset: int) -> str;
 
-def:pub plat_sysname -> str {
-    return _uts_str(0);
-}
+def:pub plat_sysname -> str;
 
-def:pub plat_nodename -> str {
-    return _uts_str(65);
-}
+def:pub plat_nodename -> str;
 
-def:pub plat_release -> str {
-    return _uts_str(130);
-}
+def:pub plat_release -> str;
 
-def:pub plat_version -> str {
-    return _uts_str(195);
-}
+def:pub plat_version -> str;
 
-def:pub plat_machine -> str {
-    return _uts_str(260);
-}
+def:pub plat_machine -> str;
 
-def:pub plat_uname_p -> str {
-    stream = popen("uname -p", "r");
-    if stream == 0 {
-        return "";
-    }
-    buf = b"\x00" * 128;
-    n = int(fread(buf, u64(1), u64(127), stream));
-    pclose(stream);
-    if n <= 0 {
-        return "";
-    }
-    out = buf[0:n].decode().strip();
-    if out == "unknown" {
-        return "";
-    }
-    return out;
-}
+def:pub plat_uname_p -> str;
 
-def:pub plat_libc_name -> str {
-    return "glibc";
-}
+def:pub plat_libc_name -> str;
 
-def:pub plat_libc_version -> str {
-    return gnu_get_libc_version();
-}
+def:pub plat_libc_version -> str;
 
-def:pub plat_arch_bits -> str {
-    return "64bit";
-}
+def:pub plat_arch_bits -> str;
 
-def:pub plat_arch_linkage -> str {
-    return "ELF";
-}
+def:pub plat_arch_linkage -> str;
 
-def:pub plat_macos_release -> str {
-    return "";
-}
+def:pub plat_macos_release -> str;

@@ -5,6 +5,8 @@ import from ctypes {
     c_bool,
     create_string_buffer,
     c_size_t,
+    c_uint,
+    c_void_p,
     string_at
 }
 
@@ -113,6 +115,30 @@ class ModuleRef(ffi.ObjectRef) {
         } finally {
             ffi.lib.LLVMPY_DisposeString(ptr);
         }
+    }
+
+    """
+        Split the module into `parts` linkable partitions and return each as
+        bitcode, for code generation on separate threads. The module is
+        consumed: its local symbols are renamed and made hidden globals.
+        """
+    def split_bitcode(self: ModuleRef, parts: int) -> list[bytes] {
+        buffers = (c_void_p * parts)();
+        sizes = (c_size_t * parts)();
+        ffi.lib.LLVMPY_SplitModuleBitcode(self, parts, buffers, sizes);
+        out: list[bytes] = [];
+        for index in range(parts) {
+            address = buffers[index];
+            if not address {
+                raise MemoryError;
+            }
+            try {
+                out.append(string_at(address, sizes[index]));
+            } finally {
+                ffi.lib.LLVMPY_DisposeString(c_void_p(address));
+            }
+        }
+        return out;
     }
 
     def _dispose(self: ModuleRef) -> object {
@@ -326,6 +352,12 @@ with entry {
     ffi.lib.LLVMPY_WriteBitcodeToString.argtypes = [
         ffi.LLVMModuleRef,
         POINTER(c_char_p),
+        POINTER(c_size_t)
+    ];
+    ffi.lib.LLVMPY_SplitModuleBitcode.argtypes = [
+        ffi.LLVMModuleRef,
+        c_uint,
+        POINTER(c_void_p),
         POINTER(c_size_t)
     ];
     ffi.lib.LLVMPY_GetNamedFunction.argtypes = [ffi.LLVMModuleRef, c_char_p];

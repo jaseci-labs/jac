@@ -329,22 +329,13 @@ glob BROWSER_SEED_GLOBALS: frozenset[str] = frozenset(
          }
      );
 
-def client_state_setter_name(var_name: str) -> str {
-    if not var_name {
-        return "";
-    }
-    return f"set{var_name[0].upper()}{var_name[1:]}";
-}
+def client_state_setter_name(var_name: str) -> str;
 
 enum ImmutabilityKind { NONE = 0, FINAL = 1, READONLY = 2 }
 
-def is_borrow_kind(k: OwnershipKind) -> bool {
-    return k == OwnershipKind.BORROW or k == OwnershipKind.MUT_BORROW;
-}
+def is_borrow_kind(k: OwnershipKind) -> bool;
 
-def is_mut_kind(k: OwnershipKind) -> bool {
-    return k == OwnershipKind.MUT_BORROW;
-}
+def is_mut_kind(k: OwnershipKind) -> bool;
 
 enum SymbolAccess {
     PRIVATE = 'private',

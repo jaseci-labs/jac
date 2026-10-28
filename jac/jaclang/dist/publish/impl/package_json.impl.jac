@@ -57,27 +57,9 @@ impl npm_peer_dependencies(config: JacConfig) -> dict[str, str] {
     return result;
 }
 
-def _author_header(persons: list[PersonConfig]) -> str {
-    for p in persons {
-        if p.name and p.email {
-            return f"{p.name} <{p.email}>";
-        } elif p.name {
-            return p.name;
-        } elif p.email {
-            return p.email;
-        }
-    }
-    return "";
-}
+def _author_header(persons: list[PersonConfig]) -> str;
 
-def _repository_url(urls: dict[str, str]) -> str {
-    for key in ["repository", "repo", "source", "homepage"] {
-        if urls.get(key) {
-            return urls[key];
-        }
-    }
-    return "";
-}
+def _repository_url(urls: dict[str, str]) -> str;
 
 impl generate_package_json(
     config: JacConfig,
@@ -148,4 +130,26 @@ impl generate_package_json(
     }
 
     return json.dumps(doc, indent=2) + "\n";
+}
+
+impl _author_header(persons: list[PersonConfig]) -> str {
+    for p in persons {
+        if p.name and p.email {
+            return f"{p.name} <{p.email}>";
+        } elif p.name {
+            return p.name;
+        } elif p.email {
+            return p.email;
+        }
+    }
+    return "";
+}
+
+impl _repository_url(urls: dict[str, str]) -> str {
+    for key in ["repository", "repo", "source", "homepage"] {
+        if urls.get(key) {
+            return urls[key];
+        }
+    }
+    return "";
 }

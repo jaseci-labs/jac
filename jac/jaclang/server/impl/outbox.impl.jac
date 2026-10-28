@@ -695,3 +695,7 @@ impl remember_response(key: str, response: any, committed: bool = False) -> any 
     }
     return response;
 }
+
+impl DeliveryReceipt._from_wire(payload: dict[str, any]) -> DeliveryReceipt {
+    return DeliveryReceipt();
+}

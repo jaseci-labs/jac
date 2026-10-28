@@ -1,6 +1,7 @@
 impl JacProgram.init(
     self: JacProgram, main_mod: (uni.ProgramModule | None) = None
 ) -> None {
+    forget_real_paths();
     self.hub: ModuleHub = ModuleHub(mod=main_mod or uni.ProgramModule());
     self.deps: DepGraph = DepGraph();
     self.diags: DiagLedger = DiagLedger();
@@ -251,7 +252,42 @@ impl JacProgram.has_failed_parse(self: JacProgram, path: str) -> bool {
 }
 
 impl JacProgram.drop_module_alerts(self: JacProgram, resolved_path: str) -> None {
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.drop_module_alerts(resolved_path);
+            }
+        }
+    }
     self.diags.drop_module(resolved_path);
+}
+
+impl JacProgram.forget_failed_modules(self: JacProgram) -> None {
+    if self.context_root is not None {
+        self.context_root.forget_failed_modules();
+        return;
+    }
+    programs = {id(prog): prog for prog in [self, *self.contexts.values()]};
+    failed: set[str] = set();
+    for prog in programs.values() {
+        for alert in prog.errors_had {
+            if alert.owner {
+                failed.add(alert.owner);
+            }
+        }
+    }
+    stale = set(failed);
+    for prog in programs.values() {
+        for path in failed {
+            stale.update(prog.transitive_dependents(path));
+        }
+    }
+    for path in stale {
+        self.invalidate_module(path);
+    }
+    for path in failed {
+        self.drop_module_alerts(path);
+    }
 }
 
 impl JacProgram.reset_module_root(
@@ -398,8 +434,6 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
 }
 
 impl JacProgram.execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]] {
-    """Enumerate loaded runtime metadata; source analysis uses only its own hub.""";
-    import from jaclang.compiler.frontend.host { active_host }
     hubs: list[dict[str, uni.Module]] = [self.mod.hub];
     internal = active_host().internal_program(self);
     if internal is not None and internal is not self {
@@ -433,8 +467,6 @@ impl JacProgram.compile(
     options: (CompileOptions | None) = None
 ) -> uni.Module {
     if (options is None) {
-        """A compile inside a native unit build parses for that build: whether
-        a native-scope module is a native unit is fixed when it is parsed.""";
         import from jaclang.compiler.frontend.codeinfo { native_unit_compile_active }
         options = CompileOptions(
             symtab_ir_only=symtab_ir_only,
@@ -968,14 +1000,15 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                             if not isinstance(item, uni.ModuleItem) {
                                 continue;
                             }
-                            verdict = classify_client_import_item(linked_mod, item);
+                            verdict = classify_client_import_item(
+                                linked_mod, item, self
+                            );
                             if verdict != ClientImportVerdict.BRIDGED {
                                 continue;
                             }
-                            sym_name = item.name.value;
-                            decl = ability_of_symbol(linked_mod.lookup(sym_name));
-                            if decl is not None {
-                                facts.bridged_decls[sym_name] = decl;
+                            decl = import_item_declaration(linked_mod, item, self);
+                            if isinstance(decl, uni.Ability) {
+                                facts.bridged_decls[item.name.value] = decl;
                             }
                         }
                     }
@@ -1124,4 +1157,20 @@ impl JacProgram.note_stub_tree_served(self: JacProgram, path: str) -> None {
     if host.in_typeshed_tree(path) {
         self._stub_trees_served = True;
     }
+}
+
+impl JacProgram.jac_file_formatter(
+    file_path: str, auto_lint: bool = False
+) -> JacProgram {
+    return active_host().format_file(file_path, auto_lint);
+}
+
+impl JacProgram.jac_str_formatter(
+    source_str: str, file_path: str, auto_lint: bool = False
+) -> JacProgram {
+    return active_host().format_source(source_str, file_path, auto_lint);
+}
+
+impl JacProgram.jac_file_linter(file_path: str) -> JacProgram {
+    return active_host().lint_file(file_path);
 }

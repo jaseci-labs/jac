@@ -217,54 +217,10 @@ impl _rewrite_named(sql: str, names: frozenset[str]) -> tuple[str, tuple[str, ..
 
 def _scram_proofs(
     password: str, server_first: str, client_first_bare: str
-) -> tuple[str, str, str] {
-    fields: dict[str, str] = {};
-    for part in server_first.split(',') {
-        if '=' in part {
-            (k, v) = part.split('=', 1);
-            fields[k] = v;
-        }
-    }
-    server_nonce = fields.get('r', '');
-    salt = base64.b64decode(fields.get('s', ''));
-    iterations = int(fields.get('i', '4096'));
-    salted = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations);
-    client_key = hmac.new(salted, b'Client Key', hashlib.sha256).digest();
-    stored_key = hashlib.sha256(client_key).digest();
-    client_final_wo = f"c=biws,r={server_nonce}";
-    auth_message = (
-        client_first_bare + ',' + server_first + ',' + client_final_wo
-    ).encode(
-        'utf-8'
-    );
-    client_sig = hmac.new(stored_key, auth_message, hashlib.sha256).digest();
-    proof = bytes((a ^ b) for (a, b) in zip(client_key, client_sig, strict=True));
-    server_key = hmac.new(salted, b'Server Key', hashlib.sha256).digest();
-    server_sig = hmac.new(server_key, auth_message, hashlib.sha256).digest();
-    return (
-        client_final_wo,
-        base64.b64encode(proof).decode('ascii'),
-        base64.b64encode(server_sig).decode('ascii')
-    );
-}
+) -> tuple[str, str, str];
 
 
-def _parse_error_fields(payload: bytes) -> dict[str, str] {
-    fields: dict[str, str] = {};
-    i = 0;
-    while i < len(payload) {
-        code = payload[i:i + 1];
-        if code == b'\x00' {
-            break;
-        }
-        end = payload.index(b'\x00', i + 1);
-        fields[code.decode('ascii')] = payload[i + 1:end].decode(
-            'utf-8', errors='replace'
-        );
-        i = end + 1;
-    }
-    return fields;
-}
+def _parse_error_fields(payload: bytes) -> dict[str, str];
 
 
 impl PgWireConnection.postinit -> None {
@@ -404,9 +360,7 @@ impl PgWireConnection._scram_auth(payload: bytes) -> None {
 }
 
 
-def _frame(msg_type: str, payload: bytes) -> bytes {
-    return msg_type.encode('ascii') + struct.pack(_INT32, len(payload) + 4) + payload;
-}
+def _frame(msg_type: str, payload: bytes) -> bytes;
 
 
 impl PgWireConnection._send(msg_type: str, payload: bytes) -> None {
@@ -662,4 +616,60 @@ impl PgWireConnection.close -> None {
         sock: any = self._sock;
         sock.close();
     } except Exception {}
+}
+
+impl _scram_proofs(
+    password: str, server_first: str, client_first_bare: str
+) -> tuple[str, str, str] {
+    fields: dict[str, str] = {};
+    for part in server_first.split(',') {
+        if '=' in part {
+            (k, v) = part.split('=', 1);
+            fields[k] = v;
+        }
+    }
+    server_nonce = fields.get('r', '');
+    salt = base64.b64decode(fields.get('s', ''));
+    iterations = int(fields.get('i', '4096'));
+    salted = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations);
+    client_key = hmac.new(salted, b'Client Key', hashlib.sha256).digest();
+    stored_key = hashlib.sha256(client_key).digest();
+    client_final_wo = f"c=biws,r={server_nonce}";
+    auth_message = (
+        client_first_bare + ',' + server_first + ',' + client_final_wo
+    ).encode(
+        'utf-8'
+    );
+    client_sig = hmac.new(stored_key, auth_message, hashlib.sha256).digest();
+    proof = bytes((a ^ b) for (a, b) in zip(client_key, client_sig, strict=True));
+    server_key = hmac.new(salted, b'Server Key', hashlib.sha256).digest();
+    server_sig = hmac.new(server_key, auth_message, hashlib.sha256).digest();
+    return (
+        client_final_wo,
+        base64.b64encode(proof).decode('ascii'),
+        base64.b64encode(server_sig).decode('ascii')
+    );
+}
+
+
+impl _parse_error_fields(payload: bytes) -> dict[str, str] {
+    fields: dict[str, str] = {};
+    i = 0;
+    while i < len(payload) {
+        code = payload[i:i + 1];
+        if code == b'\x00' {
+            break;
+        }
+        end = payload.index(b'\x00', i + 1);
+        fields[code.decode('ascii')] = payload[i + 1:end].decode(
+            'utf-8', errors='replace'
+        );
+        i = end + 1;
+    }
+    return fields;
+}
+
+
+impl _frame(msg_type: str, payload: bytes) -> bytes {
+    return msg_type.encode('ascii') + struct.pack(_INT32, len(payload) + 4) + payload;
 }

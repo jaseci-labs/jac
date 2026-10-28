@@ -1,30 +1,6 @@
-def ensure_deploy_tooling(dry_run: bool = False) {
-    if dry_run {
-        return;
-    }
-    missing = missing_capability_dists("deploy.k8s");
-    if not missing {
-        return;
-    }
+def ensure_deploy_tooling(dry_run: bool = False);
 
-    console.print(
-        f"Deploy tooling missing; installing {', '.join(missing)} "
-        f"(capability 'deploy.k8s') into the jac global site."
-    );
-    if not ensure_global_capability("deploy.k8s") {
-        console.warning(
-            "Automatic install of the deploy tooling failed; run "
-            "'jac install --scale' to see the full pip output."
-        );
-    }
-}
-
-def require_deploy_tooling(dry_run: bool = False) {
-    if dry_run {
-        return;
-    }
-    require_optional("kubernetes", "deploy.k8s");
-}
+def require_deploy_tooling(dry_run: bool = False);
 
 class DeploymentTargetFactory(DeploymentTargetRegistry) {
     static def create(
@@ -32,29 +8,5 @@ class DeploymentTargetFactory(DeploymentTargetRegistry) {
         config: dict[str, any],
         logger: (Logger | None) = None,
         dry_run: bool = False
-    ) -> DeploymentTarget {
-        if target_type in DeploymentTargetFactory._registry {
-            factory = DeploymentTargetFactory._registry[target_type];
-            return factory(config, logger);
-        }
-
-        if target_type in ('kubernetes', 'kubernetes-microservice') {
-            ensure_deploy_tooling(dry_run);
-            require_deploy_tooling(dry_run);
-            import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
-                KubernetesConfig
-            }
-            import from jaclang.scale.deploy.target.kubernetes.target {
-                KubernetesTarget
-            }
-            k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
-            return KubernetesTarget(config=k8s_config, logger=logger, dry_run=dry_run);
-        } elif target_type == 'aws' {
-            raise NotImplementedError("AWS target not yet implemented");
-        } elif target_type == 'gcp' {
-            raise NotImplementedError("GCP target not yet implemented");
-        } else {
-            raise ValueError(f"Unsupported deployment target type: {target_type}");
-        }
-    }
+    ) -> DeploymentTarget;
 }

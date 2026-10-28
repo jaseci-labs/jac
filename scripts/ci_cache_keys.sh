@@ -57,6 +57,8 @@ python_tree cpython | emit python_cpython
     jac/native jac/build.zig jac/build.zig.zon jac/bootstrap/pins.json
 } | emit python_jacpython
 tree jac/jaclang | emit payload
+tree jac/jaclang jac/native jac/build.zig jac/build.zig.zon \
+  jac/bootstrap/pins.json jac/_jac_finder.py jac.toml | emit kernel
 tree jac/jaclang jac/build.zig jac/build.zig.zon jac/launcher jac/bootstrap \
   jac/native jac/_jac_finder.py jac/sitecustomize.py jac/examples/jaclang_org \
   jac/examples/tiny_jacyac \

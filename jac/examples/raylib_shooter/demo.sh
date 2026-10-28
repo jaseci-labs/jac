@@ -2,10 +2,11 @@
 #
 # Build & run the raylib cube shooter.
 #
-#   default   benchmark BOTH builds: run each for a fixed number of seconds,
-#             then print the average and max FPS side by side
+#   default   benchmark ALL THREE builds (Jac, Zig, Rust): run each for a fixed
+#             number of seconds, then print the average and max FPS side by side
 #   --jac     build & run only the Jac-native shooter (shooter.jac), interactive
 #   --zig     build & run only the Zig shooter (shooter.zig), interactive
+#   --rust    build & run only the Rust shooter (shooter.rs), interactive
 #
 # Either way the script:
 #   1. detects the platform / architecture
@@ -24,7 +25,9 @@
 # shooter.zig is a faithful Zig twin of the same demo: it declares the same
 # raylib entry points as `extern fn` (the moral equivalent of Jac's import
 # block) and renders through the same scalar rlgl API, so the two builds can be
-# compared side by side.
+# compared side by side. shooter.rs is the matching Rust twin: an
+# `unsafe extern "C"` block in place of the import block, built with plain
+# `rustc` (no cargo, no crates).
 #
 # Benchmark switch: this script writes the requested duration into a sibling
 # `.bench_seconds` file before launching and deletes it afterwards. Each binary
@@ -35,18 +38,20 @@
 set -euo pipefail
 
 # ── 0. Parse args ───────────────────────────────────────────────────────────
-MODE="bench"   # bench | jac | zig | headless
+MODE="bench"   # bench | jac | zig | rust | headless
 for arg in "$@"; do
   case "$arg" in
     --jac)        MODE="jac" ;;
     --zig)        MODE="zig" ;;
+    --rust)       MODE="rust" ;;
     --bench)      MODE="bench" ;;
     --headless)   MODE="headless" ;;
     -h|--help)
-      echo "Usage: ${0##*/} [--jac | --zig | --bench | --headless]"
-      echo "  (default)   benchmark both builds for ${BENCH_SECONDS:-8}s each and print avg/max FPS"
+      echo "Usage: ${0##*/} [--jac | --zig | --rust | --bench | --headless]"
+      echo "  (default)   benchmark all three builds for ${BENCH_SECONDS:-8}s each and print avg/max FPS"
       echo "  --jac       build & run only the Jac-native shooter, interactively"
       echo "  --zig       build & run only the Zig shooter, interactively"
+      echo "  --rust      build & run only the Rust shooter, interactively"
       echo "  --bench     explicit form of the default benchmark mode"
       echo "  --headless  benchmark the borrow-checked headless sim under all three"
       echo "              gc modes (no window, no GPU, no raylib download needed);"
@@ -59,6 +64,7 @@ done
 
 RAYLIB_VERSION="6.0"
 ZIG_VERSION="0.13.0"
+RUST_MIN_MINOR=85   # shooter.rs uses edition 2024 (rustc >= 1.85)
 BENCH_SECONDS=8
 BASE_URL="https://github.com/raysan5/raylib/releases/download/${RAYLIB_VERSION}"
 
@@ -280,6 +286,60 @@ build_zig() {
   rm -f "$HERE/shooter_zig.o"   # zig leaves the intermediate object behind
 }
 
+# Locate a rustc new enough for edition 2024, installing a minimal stable
+# toolchain into .build/ (RUSTUP_HOME / CARGO_HOME, no PATH or profile edits)
+# if one is not already on PATH. Echoes the resolved rustc path. The echoed
+# path is the toolchain's real rustc, not the rustup proxy, so it runs without
+# RUSTUP_HOME in the environment.
+ensure_rust() {
+  local minor rust_root rustc_bin
+  if command -v rustc >/dev/null 2>&1; then
+    minor="$(rustc --version | sed -n 's/^rustc 1\.\([0-9]*\).*/\1/p')"
+    if [ -n "$minor" ] && [ "$minor" -ge "$RUST_MIN_MINOR" ]; then
+      echo "rustc"
+      return 0
+    fi
+    echo ">> rustc on PATH is older than 1.${RUST_MIN_MINOR}; using a local toolchain" >&2
+  fi
+
+  rust_root="$BUILD_DIR/rust"
+  rustc_bin="$(find "$rust_root/rustup/toolchains" -path '*/bin/rustc' -type f 2>/dev/null | sort | tail -1)"
+  if [ -z "$rustc_bin" ]; then
+    echo ">> fetching a minimal stable Rust toolchain into .build/rust (via rustup)" >&2
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | RUSTUP_HOME="$rust_root/rustup" CARGO_HOME="$rust_root/cargo" \
+        sh -s -- -y --no-modify-path --profile minimal --default-toolchain stable >&2
+    rustc_bin="$(find "$rust_root/rustup/toolchains" -path '*/bin/rustc' -type f 2>/dev/null | sort | tail -1)"
+  fi
+  if [ -z "$rustc_bin" ]; then
+    echo "rustc not found under $rust_root after rustup install." >&2
+    exit 1
+  fi
+  echo "$rustc_bin"
+}
+
+# Compile shooter.rs -> ./shooter_rust against the staged sibling library.
+build_rust() {
+  local RUSTC rpath_value
+  RUSTC="$(ensure_rust)"
+  echo ">> rustc    : $RUSTC"
+
+  if [ "$os" = "Darwin" ]; then
+    rpath_value="@loader_path"
+  else
+    rpath_value="\$ORIGIN"
+  fi
+
+  # Single-file build, no cargo: shooter.rs declares raylib's symbols in an
+  # `unsafe extern "C"` block, so no bindings crate or headers are needed.
+  echo ">> compiling: rustc shooter.rs -> ./shooter_rust"
+  "$RUSTC" --edition 2024 \
+    -C opt-level=3 -C codegen-units=1 -C panic=abort \
+    -L "$HERE" -l raylib \
+    -C "link-arg=-Wl,-rpath,$rpath_value" \
+    shooter.rs -o shooter_rust
+}
+
 # Run one binary in benchmark mode for $BENCH_SECONDS and echo its result line
 # ("BENCH_RESULT avg max frames seconds") to stdout, or nothing on failure.
 # $1 = binary (e.g. ./shooter), $2 = label (for diagnostics).
@@ -338,18 +398,27 @@ case "$MODE" in
     echo ">> launching ./shooter_zig   -   arrows = aim, WASD = move, space = fire, Esc = quit"
     exec ./shooter_zig
     ;;
+  rust)
+    build_rust
+    rm -f "$HERE/.bench_seconds"
+    echo ">> launching ./shooter_rust   -   arrows = aim, WASD = move, space = fire, Esc = quit"
+    exec ./shooter_rust
+    ;;
   bench)
     build_jac
     build_zig
+    build_rust
     echo ">> benchmarking each build for ${BENCH_SECONDS}s (a window opens for each) ..."
     jac_line="$(run_bench ./shooter Jac || true)"
     zig_line="$(run_bench ./shooter_zig Zig || true)"
+    rust_line="$(run_bench ./shooter_rust Rust || true)"
 
     printf '\n'
     printf '====== raylib cube shooter benchmark (%ss each, uncapped) ======\n' "$BENCH_SECONDS"
     printf '  %-5s %14s %14s %12s\n' "build" "avg FPS" "max FPS" "frames"
     print_bench_row "Jac" "$jac_line"
     print_bench_row "Zig" "$zig_line"
+    print_bench_row "Rust" "$rust_line"
     printf '===============================================================\n'
     ;;
 esac

@@ -71,21 +71,4 @@ def retheme(
     radius: str | None = None,
     menuAccent: str | None = None,
     menuColor: str | None = None
-) -> int {
-    config = get_config();
-    overrides: dict[str, str | None] = {
-        "style": style,
-        "baseColor": baseColor,
-        "theme": theme,
-        "font": font,
-        "radius": radius,
-        "menuAccent": menuAccent,
-        "menuColor": menuColor
-    };
-    try {
-        return 0 if retheme_project(config, overrides) else 1;
-    } except Exception as e {
-        console.error("Retheme failed: " + str(e));
-        return 1;
-    }
-}
+) -> int;

@@ -177,7 +177,7 @@ impl AccessCheckPass._check_app_laws(
 impl AccessCheckPass._check_member(
     use_node: AstSymbolNode, sym: Symbol, owner: Archetype
 ) -> None {
-    user = use_node.find_parent_of_type(Archetype);
+    user = use_node.enclosing_decl(Archetype);
     if (sym.access == SymbolAccess.PRIVATE) {
         if (user is not owner) {
             self.ctx.emit(

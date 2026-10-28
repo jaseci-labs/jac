@@ -4,12 +4,7 @@ import from uuid { UUID }
 obj MissingAnchorError(ValueError) {
     has anchor_id: str;
 
-    def __str__ -> str {
-        return (
-            f"Anchor {self.anchor_id} does not exist in the anchor store "
-            "(was the data store reset or migrated?)"
-        );
-    }
+    def __str__ -> str;
 }
 
 
@@ -19,36 +14,18 @@ obj WriteConflict(Exception) {
         actual_version: int = -1,
         siblings: (list[any] | None) = None;
 
-    def postinit {
-        super.init(self.message());
-    }
-
-    def message -> str {
-        return (
-            f"WriteConflict: anchor {self.anchor_id} changed concurrently "
-            f"(expected v{self.expected_version}, found v{self.actual_version})"
-        );
-    }
+    def postinit;
+    def message -> str;
 }
 
 
 obj ReadOnlyRetry(WriteConflict) {
     has unit_key: str = '';
 
-    def message -> str {
-        return (
-            f"ReadOnlyRetry: unit {self.unit_key or '<anonymous>'} wrote inside "
-            'a read-only snapshot; re-run it at SERIALIZABLE'
-        );
-    }
+    def message -> str;
 }
 
 
 obj TransactionLost(WriteConflict) {
-    def message -> str {
-        return (
-            'TransactionLost: the transaction was rolled back and its writes '
-            'cannot be replayed; re-run the unit'
-        );
-    }
+    def message -> str;
 }

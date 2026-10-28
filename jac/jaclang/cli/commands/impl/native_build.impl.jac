@@ -2,37 +2,10 @@ import os;
 import sys;
 
 
-def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
-    import re;
-    syms: set[str] = set();
-    for m in re.finditer(r"__rc_[A-Za-z0-9_]*", llvm_ir_str) {
-        syms.add(m.group(0));
-    }
-    probes: list[str] = [];
-    for probe in ["JAC_GC"] {
-        if probe in llvm_ir_str {
-            probes.append(probe);
-        }
-    }
-    return (sorted(syms), probes);
-}
+def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]];
 
 
-def _application_ir(plan: LinkPlan) -> str {
-    registry = plan.prog.native_units();
-    parts: list[str] = [];
-    for u in plan.units {
-        if is_toolchain_unit(u.path) {
-            continue;
-        }
-        bc = registry.bitcode_for(u.path, plan.options);
-        if bc is None {
-            continue;
-        }
-        parts.append(str(llvm.parse_bitcode(bc)));
-    }
-    return "\n".join(parts);
-}
+def _application_ir(plan: LinkPlan) -> str;
 
 
 impl native_build(
@@ -315,6 +288,41 @@ impl native_build(
 }
 
 
-def _restore_target(prev_target: (str | None)) {
+def _restore_target(prev_target: (str | None));
+
+impl _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
+    import re;
+    syms: set[str] = set();
+    for m in re.finditer(r"__rc_[A-Za-z0-9_]*", llvm_ir_str) {
+        syms.add(m.group(0));
+    }
+    probes: list[str] = [];
+    for probe in ["JAC_GC"] {
+        if probe in llvm_ir_str {
+            probes.append(probe);
+        }
+    }
+    return (sorted(syms), probes);
+}
+
+
+impl _application_ir(plan: LinkPlan) -> str {
+    registry = plan.prog.native_units();
+    parts: list[str] = [];
+    for u in plan.units {
+        if is_toolchain_unit(u.path) {
+            continue;
+        }
+        bc = registry.bitcode_for(u.path, plan.options);
+        if bc is None {
+            continue;
+        }
+        parts.append(str(llvm.parse_bitcode(bc)));
+    }
+    return "\n".join(parts);
+}
+
+
+impl _restore_target(prev_target: (str | None)) {
     pop_native_target(prev_target);
 }

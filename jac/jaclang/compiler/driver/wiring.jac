@@ -1,4 +1,3 @@
-import copy;
 import hashlib;
 import os;
 import from collections.abc { Iterator }
@@ -16,17 +15,9 @@ obj WireBinding {
         alias: str = "",
         injected: bool = True;
 
-    def key -> tuple[str, str, str, str] {
-        return (self.provider, self.form, self.name, self.alias);
-    }
-
-    def is_module_form -> bool {
-        return "from" not in self.form.split(" ");
-    }
-
-    def bound_name -> str {
-        return self.alias or self.name;
-    }
+    def key -> tuple[str, str, str, str];
+    def is_module_form -> bool;
+    def bound_name -> str;
 }
 
 obj PatternRec {
@@ -73,6 +64,7 @@ obj WiringSpec {
         wires: list[WireRec] = [],
         rules: list[RuleRec] = [],
         _raw: dict[str, list[WireRec]] = {},
+        _raw_by_prefix: dict[str, list[str]] = {},
         _by_consumer: dict[str, list[WireRec]] = {},
         _splits: dict[str, (tuple[str, list[str]] | None)] = {},
         _annex_cache: dict[str, str] = {},
@@ -80,7 +72,7 @@ obj WiringSpec {
         _project_modules: (list[str] | None) = None,
         _prefix: (str | None) = None,
         _owned_dirs: dict[str, bool] = {},
-        _scopes: dict[tuple[str, int], list[str]] = {},
+        _scopes: dict[tuple[str, int], list[list[str]]] = {},
         _wire_lines: dict[int, list[WireRec]] = {},
         package_prefix: str = "";
 
@@ -93,10 +85,12 @@ obj WiringSpec {
     def owns(path: str) -> bool;
     def split_consumer(path: str) -> (tuple[str, list[str]] | None);
     def consumer_scope(consumer: str, wire: WireRec) -> list[str];
+    def consumer_scopes(consumer: str, wire: WireRec) -> list[list[str]];
     def wire_for_import(
         stmt: Import, consumer: str, taken: set[int]
     ) -> (WireRec | None);
 
+    def wire_import(wire: WireRec) -> (Import | None);
     def is_package_dir(name: str) -> bool;
     def project_modules -> list[str];
     def _scan_modules(directory: str, found: list[str], seen: set[str]) -> None;
@@ -129,18 +123,7 @@ glob _spec_cache: dict[str, tuple[tuple[float, int], WiringSpec]] = {},
      _STDLIB_NAMES: list[set[str]] = [];
 
 @contextmanager
-def wiring_scope -> Iterator[None] {
-    if _resolution.get() is not None {
-        yield ;
-        return;
-    }
-    token = _resolution.set({});
-    try {
-        yield ;
-    } finally {
-        _resolution.reset(token);
-    }
-}
+def wiring_scope -> Iterator[None];
 
 def is_arch_file(path: str) -> bool;
 def arch_file_for(path: str) -> (str | None);

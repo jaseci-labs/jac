@@ -1,11 +1,19 @@
 import base64;
+
 import json;
+
 import re;
+
 import time;
+
 import from functools { partial }
+
 import from urllib.parse { urlsplit }
+
 import from jaclang.packages.index { DEFAULT_REGISTRY_NAME, registry_urls }
+
 import from jaclang.packages.semver { SemverError, Version }
+
 import from jaclang.project.package_scope { is_package_name }
 
 glob HTML_LINE: re.Pattern = re.compile(r"^[\s>]*<[A-Za-z!/]"),
@@ -31,13 +39,7 @@ impl install_command(name: str, role: str) -> str {
     return f"jac install {name}";
 }
 
-def _parsed(e: IndexEntry) -> Version | None {
-    try {
-        return Version.parse(e.version);
-    } except SemverError {
-        return None;
-    }
-}
+def _parsed(e: IndexEntry) -> Version | None;
 
 impl latest_entry(entries: list[IndexEntry]) -> IndexEntry | None {
     live: list[tuple[Version, IndexEntry]] = [];
@@ -154,36 +156,9 @@ impl api_modules(surface: dict[str, any] | None) -> list[ApiModule] {
     return out;
 }
 
-def _absolute(target: str, base: str) -> str {
-    if target.startswith("#") {
-        return target;
-    }
-    scheme = urlsplit(target).scheme.lower();
-    if scheme in SAFE_SCHEMES {
-        return target;
-    }
-    if scheme or target.startswith("//") {
-        return "";
-    }
-    return base + target.removeprefix("./").lstrip("/");
-}
+def _absolute(target: str, base: str) -> str;
 
-def _rewrite_targets(line: str, blob: str, raw: str) -> str {
-    def swap(m: re.Match) -> str {
-        image = m.group(1) == "!";
-        target = _absolute(m.group(3), raw if image else blob);
-        if not target {
-            return m.group(2) if not image else "";
-        }
-        return f"{m.group(1)}[{m.group(2)}]({target}{m.group(4)})";
-    }
-    return ANY_TARGET.sub(
-        lambda (m: re.Match) -> str { return m.group(0)
-            if m.group(1).lower() in SAFE_SCHEMES
-            else "](#"; },
-        MD_TARGET.sub(swap, line)
-    );
-}
+def _rewrite_targets(line: str, blob: str, raw: str) -> str;
 
 impl safe_readme(text: str, owner: str, repo: str, branch: str) -> list[str] {
     blob = f"https://github.com/{owner}/{repo}/blob/{branch}/";
@@ -219,14 +194,7 @@ impl safe_readme(text: str, owner: str, repo: str, branch: str) -> list[str] {
     return out;
 }
 
-def _github_json(path: str) -> dict[str, any] | None {
-    body = fetch(API_ROOT + path, USER_AGENT, accept_json=True);
-    if body is None {
-        return None;
-    }
-    data = json.loads(body);
-    return data if isinstance(data, dict) else None;
-}
+def _github_json(path: str) -> dict[str, any] | None;
 
 impl repo_readme(source: str) -> RepoReadme {
     parsed = parse_repo_url(source);
@@ -306,7 +274,71 @@ impl package_catalog -> PackageCatalog {
     }
 }
 
-def _detail(name: str, version: str) -> PackageDetail {
+def _detail(name: str, version: str) -> PackageDetail;
+
+impl package_detail(name: str, version: str = "") -> PackageDetail {
+    if not is_package_name(name) {
+        return PackageDetail(error=f"'{name}' is not a package name (org/name).");
+    }
+    try {
+        return cached(
+            f"detail:{name}@{version}", CATALOG_TTL_S, partial(_detail, name, version)
+        );
+    } except Exception as e {
+        log.error(f"packages: {name}: {e}");
+        return PackageDetail(error="The package index is unavailable right now.");
+    }
+}
+
+impl _parsed(e: IndexEntry) -> Version | None {
+    try {
+        return Version.parse(e.version);
+    } except SemverError {
+        return None;
+    }
+}
+
+impl _absolute(target: str, base: str) -> str {
+    if target.startswith("#") {
+        return target;
+    }
+    scheme = urlsplit(target).scheme.lower();
+    if scheme in SAFE_SCHEMES {
+        return target;
+    }
+    if scheme or target.startswith("//") {
+        return "";
+    }
+    return base + target.removeprefix("./").lstrip("/");
+}
+
+impl _rewrite_targets(line: str, blob: str, raw: str) -> str {
+    def swap(m: re.Match) -> str {
+        image = m.group(1) == "!";
+        target = _absolute(m.group(3), raw if image else blob);
+        if not target {
+            return m.group(2) if not image else "";
+        }
+        return f"{m.group(1)}[{m.group(2)}]({target}{m.group(4)})";
+    }
+    return ANY_TARGET.sub(
+        lambda (m: re.Match) -> str { return m.group(0)
+            if m.group(1).lower() in SAFE_SCHEMES
+            else "](#"; },
+        MD_TARGET.sub(swap, line)
+    );
+}
+
+impl _github_json(path: str) -> dict[str, any] | None {
+    body = fetch(API_ROOT + path, USER_AGENT, accept_json=True);
+    if body is None {
+        return None;
+    }
+    data = json.loads(body);
+    return data if isinstance(data, dict) else None;
+}
+
+impl _detail(name: str, version: str) -> PackageDetail {
     registry = open_registry();
     entries = registry.entries(name);
     if not entries {
@@ -352,18 +384,4 @@ def _detail(name: str, version: str) -> PackageDetail {
         stars=readme.stars,
         topics=readme.topics
     );
-}
-
-impl package_detail(name: str, version: str = "") -> PackageDetail {
-    if not is_package_name(name) {
-        return PackageDetail(error=f"'{name}' is not a package name (org/name).");
-    }
-    try {
-        return cached(
-            f"detail:{name}@{version}", CATALOG_TTL_S, partial(_detail, name, version)
-        );
-    } except Exception as e {
-        log.error(f"packages: {name}: {e}");
-        return PackageDetail(error="The package index is unavailable right now.");
-    }
 }

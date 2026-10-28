@@ -427,7 +427,9 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     return self._mark_owned(file_obj);
 }
 
-def _open_encoding_is_utf8(value: uni.Expr) -> bool {
+def _open_encoding_is_utf8(value: uni.Expr) -> bool;
+
+impl _open_encoding_is_utf8(value: uni.Expr) -> bool {
     literal: uni.UniNode = value;
     if isinstance(literal, uni.MultiString) and len(literal.strings) == 1 {
         literal = literal.strings[0];

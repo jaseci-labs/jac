@@ -65,37 +65,23 @@ node UniNode {
     def set_parent(parent: UniNode) -> UniNode;
     def resolve_tok_range -> tuple[(Token, Token)];
     def gen_token(name: Tok, value: (str | None) = None) -> Token;
-    def get_all_sub_nodes[T](typ: type[T]) -> list[T] {
-        result: list[T] = [];
-        if typ in self._sub_node_tab {
-            for i in self._sub_node_tab[typ] {
-                if isinstance(i, typ) {
-                    result.append(i);
-                }
-            }
-        }
-        return result;
-    }
+    def get_all_sub_nodes[T](typ: type[T]) -> list[T];
+    def find_parent_of_type[T](typ: type[T]) -> (T | None);
+    def parent_of_type[T](typ: type[T]) -> T;
 
-    def find_parent_of_type[T](typ: type[T]) -> (T | None) {
-        nd: (UniNode | None) = self.parent;
-        while nd is not None {
-            if isinstance(nd, typ) {
-                return nd;
-            }
-            nd = nd.parent;
-        }
-        return None;
-    }
+    has decl_parent: (UniNode | None) { getter; }
+    has top_element: (UniNode | None) { getter; }
+    has enclosing_frame: (UniNode | None) { getter; }
+    has in_impl_spec: bool { getter; }
 
-    def parent_of_type[T](typ: type[T]) -> T {
-        ret = self.find_parent_of_type(typ);
-        if isinstance(ret, typ) {
-            return ret;
-        }
-        raise ValueError(f"Parent of type {typ} not found from{type(self)}.");
-    }
+    def is_within(outer: UniNode) -> bool;
+    def element_in(mod: Module) -> (UniNode | None);
+    def enclosing_decl[T](typ: type[T]) -> (T | None);
 
+    has own_impls: list[ImplDef] { getter; }
+
+    def linked_impls -> list[ImplDef];
+    def element_sub_nodes[T](typ: type[T]) -> list[T];
     def codespace -> CodeContext;
     def in_client_context -> bool;
     def in_native_context -> bool;
@@ -177,12 +163,7 @@ node UniScopeNode(UniNode) {
     has names_in_scope_overload: dict[(str, list[Symbol])] { getter; }
 
     def _init_scope(name: str, parent_scope: (UniScopeNode | None) = None) -> None;
-    static def is_python_scoping(nd: (UniNode | None)) -> bool {
-        return isinstance(
-            nd, (Module, Enum, Archetype, Ability, ImplDef, Test, LambdaExpr)
-        );
-    }
-
+    static def is_python_scoping(nd: (UniNode | None)) -> bool;
     def lookup(
         name: str, deep: bool = True, incl_inner_scope: bool = False
     ) -> (Symbol | None);
@@ -197,6 +178,11 @@ node UniScopeNode(UniNode) {
     ) -> (UniNode | None);
 
     def find_scope(name: str) -> (UniScopeNode | None);
+
+    has folded: bool { getter; }
+    has owning_scope: UniScopeNode { getter; }
+
+    def fold_scope(impl_scope: UniScopeNode) -> None;
     def set_primary_names(syms: dict[(str, Symbol)]) -> None;
     def adopt_primary(sym: Symbol, alias: str = "") -> None;
     def _drop_primary(sym: Symbol) -> None;
@@ -524,6 +510,7 @@ node Module(AstDocNode, UniScopeNode) {
         managed_borrow_binds: set[int] postinit;
 
     has body: Sequence[ElementStmt | String | EmptyToken] { getter; }
+    has elements: list[UniNode] { getter; }
 
     def init(
         *,
@@ -557,17 +544,7 @@ node Module(AstDocNode, UniScopeNode) {
     def record_comptime_definition(path: str, qualname: str) -> None;
     static def make_stub(
         inject_name: (str | None) = None, inject_src: (Source | None) = None
-    ) -> Module {
-        return Module(
-            name=(inject_name or ''),
-            source=(inject_src or Source('', '')),
-            doc=None,
-            body=[],
-            terminals=[],
-            stub_only=True,
-            kid=[EmptyToken()]
-        );
-    }
+    ) -> Module;
 
     def __repr__ -> str;
 }
@@ -776,6 +753,7 @@ node ModulePath(UniNode) {
     def postinit -> None;
 
     has is_import_from: bool { getter; }
+    has importer_path: str { getter; }
     has dot_path_str: str { getter; }
     has base_module_name: str { getter; }
     has string_path_value: (str | None) { getter; }
@@ -975,6 +953,7 @@ node Archetype(ContextAwareNode, ArchSpec, AstAccessNode, ArchBlockStmt, AstImpl
 node ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSymbolNode, UniScopeNode) {
     has decorators: (Sequence[Expr] | None) { getter; }
     has target: Sequence[NameAtom] { getter; }
+    has type_params: list[TypeParam] { getter; }
     has spec: (Sequence[Expr] | FuncSignature | EventSignature | None) { getter; }
     has body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr { getter; }
     has decl_link: (UniNode | None) { getter; }
@@ -985,6 +964,7 @@ node ImplDef(ContextAwareNode, CodeBlockStmt, ElementStmt, ArchBlockStmt, AstSym
         codespace_dual: bool = False,
         decorators: (Sequence[Expr] | None),
         target: Sequence[NameAtom],
+        type_params: (Sequence[TypeParam] | None) = None,
         spec: (Sequence[Expr] | FuncSignature | EventSignature | None),
         body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr,
         kid: Sequence[UniNode] = []
@@ -2349,24 +2329,7 @@ node Name(Token, NameAtom) {
 
     static def gen_stub_from_node(
         nd: AstSymbolNode, name_str: str, set_name_of: (AstSymbolNode | None) = None
-    ) -> Name {
-        ret = Name(
-            orig_src=nd.loc.orig_src,
-            name=Tok.NAME.value,
-            value=name_str,
-            col_start=nd.loc.col_start,
-            col_end=nd.loc.col_end,
-            line=nd.loc.first_line,
-            end_line=nd.loc.last_line,
-            pos_start=nd.loc.pos_start,
-            pos_end=nd.loc.pos_end
-        );
-        if nd.parent is not None {
-            ret.set_parent(nd.parent);
-        }
-        ret.name_of = set_name_of or ret;
-        return ret;
-    }
+    ) -> Name;
 
     def __repr__ -> str;
 }
@@ -2562,241 +2525,39 @@ glob _HEX_DIGITS: str = '0123456789abcdefABCDEF',
          'v': '\x0b'
      };
 
-def _lit_prefix_len(text: str) -> int {
-    n = len(text);
-    i = 0;
-    while (i < n and i < 2) {
-        ch = text[i];
-        if (ch == '"' or ch == "'") {
-            return i;
-        }
-        if (ch not in _LIT_PREFIX_CHARS) {
-            return -1;
-        }
-        i += 1;
-    }
-    if (i < n and (text[i] == '"' or text[i] == "'")) {
-        return i;
-    }
-    return -1;
-}
+def _lit_prefix_len(text: str) -> int;
 
-def _lit_quote_len(text: str, start: int) -> int {
-    if ((len(text) - start) >= 6) {
-        opener = text[start:start + 3];
-        if (opener == '"""' or opener == "'''") {
-            return 3;
-        }
-    }
-    return 1;
-}
+def _lit_quote_len(text: str, start: int) -> int;
 
-def radix_int(digits: str, base: int) -> int {
-    value = 0;
-    seen = False;
-    for c in digits.lower() {
-        if c == "_" and seen {
-            continue;
-        }
-        digit = _RADIX_DIGITS.find(c);
-        if digit < 0 or digit >= base {
-            raise ValueError(f"invalid literal for int() with base {base}: '{digits}'");
-        }
-        value = value * base + digit;
-        seen = True;
-    }
-    if not seen {
-        raise ValueError(f"invalid literal for int() with base {base}: '{digits}'");
-    }
-    return value;
-}
+def radix_int(digits: str, base: int) -> int;
 
-def int_literal_value(text: str) -> int {
-    lowered = text.lower();
-    for (prefix, base) in (("0x", 16), ("0o", 8), ("0b", 2)) {
-        if lowered.startswith(prefix) {
-            body = text[2:];
-            if body.startswith("_") {
-                body = body[1:];
-            }
-            return radix_int(body, base);
-        }
-    }
-    digits = text.replace("_", "");
-    if len(digits) > 1 and digits.startswith("0") and digits.strip("0") {
-        raise ValueError(f"invalid literal for int() with base 0: '{text}'");
-    }
-    return radix_int(text, 10);
-}
+def int_literal_digits(text: str) -> tuple[str, int];
 
-def _hex_escape_value(text: str, at: int, width: int, kind: str) -> int {
-    digits = text[at + 2:at + 2 + width];
-    bad = len(digits) != width;
-    if not bad {
-        for c in digits {
-            if (c not in _HEX_DIGITS) {
-                bad = True;
-                break;
-            }
-        }
-    }
-    if bad {
-        raise ValueError(
-            f"truncated \\{kind} escape: expected {width} hex digits, got '{digits}'"
-        );
-    }
-    code = radix_int(digits, 16);
-    if (code > _MAX_CODE_POINT) {
-        raise ValueError(f"illegal Unicode character in \\{kind}{digits} escape");
-    }
-    return code;
-}
+def int_literal_value(text: str) -> int;
 
-def _decode_str_escapes(text: str) -> str {
-    if ('\\' not in text) {
-        return text;
-    }
-    out: list[str] = [];
-    i = 0;
-    n = len(text);
-    while (i < n) {
-        ch = text[i];
-        if (ch != '\\' or (i + 1) >= n) {
-            out.append(ch);
-            i += 1;
-            continue;
-        }
-        nxt = text[i + 1];
-        if (nxt in _SIMPLE_ESCAPES) {
-            out.append(_SIMPLE_ESCAPES[nxt]);
-            i += 2;
-            continue;
-        }
-        if (nxt == '\n') {
-            i += 2;
-            continue;
-        }
-        if (nxt == '\r') {
-            i += 3 if ((i + 2) < n and text[i + 2] == '\n') else 2;
-            continue;
-        }
-        if (nxt in _OCT_DIGITS) {
-            j = i + 1;
-            end = min(n, i + 4);
-            while (j < end and text[j] in _OCT_DIGITS) {
-                j += 1;
-            }
-            out.append(chr(radix_int(text[i + 1:j], 8)));
-            i = j;
-            continue;
-        }
-        if (nxt == 'x' or nxt == 'u' or nxt == 'U') {
-            width = 2 if (nxt == 'x') else (4 if (nxt == 'u') else 8);
-            out.append(chr(_hex_escape_value(text, i, width, nxt)));
-            i += 2 + width;
-            continue;
-        }
-        if (nxt == 'N') {
-            raise ValueError(
-                "the \\N{name} escape is not supported: the Unicode name "
-                "database is not available to the compiler, so write the "
-                "code point as \\uXXXX or \\UXXXXXXXX instead"
-            );
-        }
-        out.append('\\');
-        out.append(nxt);
-        i += 2;
-    }
-    return ''.join(out);
-}
+def int_literal_limbs(text: str) -> (tuple[int, int] | None);
 
-def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes {
-    out: list[int] = [];
-    i = 0;
-    n = len(text);
-    while (i < n) {
-        ch = text[i];
-        code = ord(ch);
-        if (code > 127) {
-            raise ValueError('bytes can only contain ASCII literal characters');
-        }
-        if (is_raw or ch != '\\' or (i + 1) >= n) {
-            out.append(code);
-            i += 1;
-            continue;
-        }
-        nxt = text[i + 1];
-        if (nxt in _SIMPLE_ESCAPES) {
-            out.append(ord(_SIMPLE_ESCAPES[nxt]));
-            i += 2;
-            continue;
-        }
-        if (nxt == '\n') {
-            i += 2;
-            continue;
-        }
-        if (nxt == '\r') {
-            i += 3 if ((i + 2) < n and text[i + 2] == '\n') else 2;
-            continue;
-        }
-        if (nxt in _OCT_DIGITS) {
-            j = i + 1;
-            end = min(n, i + 4);
-            while (j < end and text[j] in _OCT_DIGITS) {
-                j += 1;
-            }
-            out.append(radix_int(text[i + 1:j], 8) % 256);
-            i = j;
-            continue;
-        }
-        if (nxt == 'x') {
-            out.append(_hex_escape_value(text, i, 2, 'x'));
-            i += 4;
-            continue;
-        }
-        if (ord(nxt) > 127) {
-            raise ValueError('bytes can only contain ASCII literal characters');
-        }
-        out.append(92);
-        out.append(ord(nxt));
-        i += 2;
-    }
-    return bytes(out);
-}
+def int_literal_i64(text: str) -> (int | None);
 
-def literal_string_value(expr: UniNode) -> str | None {
-    if isinstance(expr, (String, MultiString)) {
-        value = expr.lit_value;
-        if isinstance(value, str) {
-            return value;
-        }
-    }
-    return None;
-}
+def int_literal_u64_bits(text: str) -> (int | None);
 
-def decode_string_literal(text: str) -> str | bytes {
-    start = _lit_prefix_len(text);
-    if (start < 0) {
-        return text;
-    }
-    prefix = text[:start].lower();
-    quote_len = _lit_quote_len(text, start);
-    body = text[start + quote_len:len(text) - quote_len];
-    is_raw = 'r' in prefix;
-    if ('b' in prefix) {
-        return _decode_bytes_escapes(body, is_raw);
-    }
-    if is_raw {
-        return body;
-    }
-    return _decode_str_escapes(body);
-}
+def int_literal_float(text: str) -> float;
+
+def _hex_escape_value(text: str, at: int, width: int, kind: str) -> int;
+
+def _decode_str_escapes(text: str) -> str;
+
+def _decode_bytes_escapes(text: str, is_raw: bool) -> bytes;
+
+def literal_string_value(expr: UniNode) -> str | None;
+
+def decode_string_literal(text: str) -> str | bytes;
 
 def is_identifier_slot(nd: UniNode) -> bool;
 
 def find_python_scope_node_of(nd: UniNode) -> (UniScopeNode | None);
 
-def same_lexical_scope(left: UniNode | None, right: UniNode | None) -> bool;
+def is_frame(nd: UniNode) -> bool;
 
 def find_typed_decl_scope_of(nd: AstSymbolNode) -> UniScopeNode;
 
@@ -2805,6 +2566,10 @@ def def_insert_unpacking(
 ) -> None;
 
 def bind_assignment_targets(nd: Assignment) -> None;
+def bind_walrus_target(nd: BinaryExpr) -> None;
+def is_walrus(nd: UniNode) -> bool;
+def binding_sites_in(scope_root: UniNode) -> list[UniNode];
+def typed_rebind_names(nd: Assignment) -> list[Name];
 def definition_qualname(decl: UniNode) -> str;
 
 def lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | None);

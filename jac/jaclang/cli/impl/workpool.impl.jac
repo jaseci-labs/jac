@@ -1,6 +1,4 @@
-def stops_command(exc: BaseException) -> bool {
-    return isinstance(exc, SystemExit) and bool(getattr(exc, "stops_command", False));
-}
+def stops_command(exc: BaseException) -> bool;
 
 impl WorkPool.postinit -> None {
     self.kids = [];
@@ -719,4 +717,8 @@ impl forced_serial(requested: (str | int | None) = None) -> bool {
         return False;
     }
     return str(requested).strip() == "0";
+}
+
+impl stops_command(exc: BaseException) -> bool {
+    return isinstance(exc, SystemExit) and bool(getattr(exc, "stops_command", False));
 }

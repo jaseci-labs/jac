@@ -17,19 +17,7 @@ impl normalize_package_name(name: str) -> str {
     return "".join(result).lower();
 }
 
-def build_person_header(persons: list[PersonConfig]) -> str {
-    parts: list[str] = [];
-    for p in persons {
-        if p.name and p.email {
-            parts.append(f"{p.name} <{p.email}>");
-        } elif p.email {
-            parts.append(p.email);
-        } elif p.name {
-            parts.append(p.name);
-        }
-    }
-    return ", ".join(parts);
-}
+def build_person_header(persons: list[PersonConfig]) -> str;
 
 impl normalize_constraint(raw: str) -> str {
     raw = raw.strip();
@@ -94,15 +82,7 @@ impl build_requires_dist(name: str, raw_ver: str, extra: str | None = None) -> s
     return dep;
 }
 
-def readme_content_type(ext: str) -> str {
-    if ext == ".md" {
-        return "text/markdown";
-    } elif ext == ".rst" {
-        return "text/x-rst";
-    } else {
-        return "text/plain";
-    }
-}
+def readme_content_type(ext: str) -> str;
 
 impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> str {
     if not config.project.name {
@@ -181,15 +161,7 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
     return "\n".join(lines);
 }
 
-def _toml_str(s: str) -> str {
-    return (
-        s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace(
-            "\r", "\\r"
-        ).replace(
-            "\t", "\\t"
-        )
-    );
-}
+def _toml_str(s: str) -> str;
 
 impl generate_pyproject_toml(config: JacConfig) -> str {
     if not config.project.name {
@@ -276,4 +248,38 @@ impl generate_pyproject_toml(config: JacConfig) -> str {
     }
 
     return "\n".join(lines) + "\n";
+}
+
+impl build_person_header(persons: list[PersonConfig]) -> str {
+    parts: list[str] = [];
+    for p in persons {
+        if p.name and p.email {
+            parts.append(f"{p.name} <{p.email}>");
+        } elif p.email {
+            parts.append(p.email);
+        } elif p.name {
+            parts.append(p.name);
+        }
+    }
+    return ", ".join(parts);
+}
+
+impl readme_content_type(ext: str) -> str {
+    if ext == ".md" {
+        return "text/markdown";
+    } elif ext == ".rst" {
+        return "text/x-rst";
+    } else {
+        return "text/plain";
+    }
+}
+
+impl _toml_str(s: str) -> str {
+    return (
+        s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace(
+            "\r", "\\r"
+        ).replace(
+            "\t", "\\t"
+        )
+    );
 }

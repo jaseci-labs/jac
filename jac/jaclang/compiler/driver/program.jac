@@ -57,6 +57,7 @@ class JacProgram {
 
     def toolchain_dependency(self: JacProgram, resolved_path: str) -> bool;
     def drop_module_alerts(self: JacProgram, resolved_path: str) -> None;
+    def forget_failed_modules(self: JacProgram) -> None;
     def reset_module_root(self: JacProgram, module_root: uni.ProgramModule) -> None;
     static def hub_key(path: str) -> str;
     def has_failed_parse(self: JacProgram, path: str) -> bool;
@@ -107,17 +108,11 @@ class JacProgram {
 
     static def jac_file_formatter(
         file_path: str, auto_lint: bool = False
-    ) -> JacProgram {
-        return active_host().format_file(file_path, auto_lint);
-    }
+    ) -> JacProgram;
 
     static def jac_str_formatter(
         source_str: str, file_path: str, auto_lint: bool = False
-    ) -> JacProgram {
-        return active_host().format_source(source_str, file_path, auto_lint);
-    }
+    ) -> JacProgram;
 
-    static def jac_file_linter(file_path: str) -> JacProgram {
-        return active_host().lint_file(file_path);
-    }
+    static def jac_file_linter(file_path: str) -> JacProgram;
 }

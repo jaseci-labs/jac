@@ -168,7 +168,8 @@ def run_js_module_fixture(fixture: str, func_name: str) -> dict[str, any] {
 
     def compile_module(path: Path) -> ClientArtifact {
         artifact = prog._get_compiler().get_client_artifact(str(path), prog);
-        assert artifact is not None , "\n".join(str(e) for e in prog.errors_had);
+        assert artifact is not None , f"no client artifact for {path}: "
+            + "\n".join(str(e) for e in prog.errors_had);
         return artifact;
     }
 

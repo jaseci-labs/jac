@@ -9,12 +9,43 @@ import from typing { BinaryIO }
 
 glob BUILD_DATA_FILE: str = "_jac_build.json";
 
-def record_hash(data: bytes) -> str {
+def record_hash(data: bytes) -> str;
+
+def record_text(rows: list[tuple[str, str, int]], record_path: str) -> str;
+
+def write_wheel(
+    out: BinaryIO,
+    files: Iterable[tuple[str, bytes]],
+    dist_info: str,
+    dist_info_files: list[tuple[str, str]],
+    timestamp: tuple[int, ...]
+);
+
+def wheel_bytes(
+    files: Iterable[tuple[str, bytes]],
+    dist_info: str,
+    dist_info_files: list[tuple[str, str]],
+    timestamp: tuple[int, ...]
+) -> bytes;
+
+def _read_file(path: str) -> bytes;
+
+def get_requires_for_build_wheel(
+    config_settings: dict[str, str] | None = None  # jac:ignore[W2003]
+) -> list[str];
+
+def build_wheel(
+    wheel_directory: str,
+    config_settings: dict[str, str] | None = None,  # jac:ignore[W2003]
+    metadata_directory: str | None = None  # jac:ignore[W2003]
+) -> str;
+
+impl record_hash(data: bytes) -> str {
     digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode("ascii");
     return "sha256=" + digest.rstrip("=");
 }
 
-def record_text(rows: list[tuple[str, str, int]], record_path: str) -> str {
+impl record_text(rows: list[tuple[str, str, int]], record_path: str) -> str {
     buf = io.StringIO();
     writer = csv.writer(buf, lineterminator="\n");
     for (path, digest, size) in rows {
@@ -24,7 +55,7 @@ def record_text(rows: list[tuple[str, str, int]], record_path: str) -> str {
     return buf.getvalue();
 }
 
-def write_wheel(
+impl write_wheel(
     out: BinaryIO,
     files: Iterable[tuple[str, bytes]],
     dist_info: str,
@@ -51,7 +82,7 @@ def write_wheel(
     }
 }
 
-def wheel_bytes(
+impl wheel_bytes(
     files: Iterable[tuple[str, bytes]],
     dist_info: str,
     dist_info_files: list[tuple[str, str]],
@@ -62,22 +93,22 @@ def wheel_bytes(
     return buf.getvalue();
 }
 
-def _read_file(path: str) -> bytes {
+impl _read_file(path: str) -> bytes {
     with open(path, "rb") as source {
         return source.read();
     }
 }
 
-def get_requires_for_build_wheel(
-    config_settings: dict[str, str] | None = None  # jac:ignore[W2003]
+impl get_requires_for_build_wheel(
+    config_settings: dict[str, str] | None = None
 ) -> list[str] {
     return [];
 }
 
-def build_wheel(
+impl build_wheel(
     wheel_directory: str,
-    config_settings: dict[str, str] | None = None,  # jac:ignore[W2003]
-    metadata_directory: str | None = None  # jac:ignore[W2003]
+    config_settings: dict[str, str] | None = None,
+    metadata_directory: str | None = None
 ) -> str {
     with open(BUILD_DATA_FILE, encoding="utf-8") as spec_file {
         spec = json.load(spec_file);

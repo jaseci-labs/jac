@@ -345,23 +345,9 @@ impl rd_u32(b: bytes, off: int) -> int {
     return int.from_bytes(b[off:off + 4], "little");
 }
 
-def _default_modes -> tuple[int, int] {
-    um = os.umask(0);
-    os.umask(um);
-    return (0o666 & ~um, 0o777 & ~um);
-}
+def _default_modes -> tuple[int, int];
 
-def _stripped_name(name: str, strip_components: int) -> str | None {
-    parts = [
-        part
-        for part in name.split("/")
-        if part not in ("", ".")
-    ];
-    if len(parts) <= strip_components {
-        return None;
-    }
-    return "/".join(parts[strip_components:]);
-}
+def _stripped_name(name: str, strip_components: int) -> str | None;
 
 impl extract_tar(
     tar_bytes: bytes, dest: str, strip_components: int, exec_bit_only: bool
@@ -408,4 +394,22 @@ impl extract_tar(
         }
     }
     os.chmod(dest, dir_default | 0o700);
+}
+
+impl _default_modes -> tuple[int, int] {
+    um = os.umask(0);
+    os.umask(um);
+    return (0o666 & ~um, 0o777 & ~um);
+}
+
+impl _stripped_name(name: str, strip_components: int) -> str | None {
+    parts = [
+        part
+        for part in name.split("/")
+        if part not in ("", ".")
+    ];
+    if len(parts) <= strip_components {
+        return None;
+    }
+    return "/".join(parts[strip_components:]);
 }

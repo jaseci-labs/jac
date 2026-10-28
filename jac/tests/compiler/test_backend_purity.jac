@@ -109,7 +109,7 @@ glob FORBIDDEN: dict[str, str] = {
              "exact declaration-IS-the-fact category; tags derive from "
              "stable_osp_tag(name), no analysis re-run"
          ),
-         ("native/foreign.jac", "type_tag.tag"): (
+         ("native/impl/foreign.impl.jac", "type_tag.tag"): (
              4,
              "declared-annotation name reads for the foreign (clib) ABI "
              "surface: declared_type_name over field and param annotations "
@@ -261,7 +261,7 @@ glob FORBIDDEN: dict[str, str] = {
              "which needs the declared Callable annotation itself (the "
              "template is uninstantiated, so no resolved type exists)"
          ),
-         ("native/host_facts.jac", ".lookup("): (
+         ("native/impl/host_facts.impl.jac", ".lookup("): (
              1,
              "codecs.lookup on a literal bytes.decode encoding name, asked "
              "of the host because the generator runs in the kernel: it "

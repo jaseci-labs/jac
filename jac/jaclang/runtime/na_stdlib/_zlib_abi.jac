@@ -6,6 +6,4 @@ glob:pub ZS_NEXT_IN: int = 0,
      ZS_TOTAL_OUT: int = 40,
      Z_STREAM_SIZE: int = 112;
 
-def:pub zs_load_total(addr: int) -> int {
-    return __mem_load_i64(addr);
-}
+def:pub zs_load_total(addr: int) -> int;

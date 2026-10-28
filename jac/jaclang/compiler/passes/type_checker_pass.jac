@@ -11,9 +11,11 @@ walker TypeCheckPass(TreePass) {
         _lambda_depth: int = 0,
         _restores_evaluator: bool = False,
         _outer_pass: (CompileContext | None) = None,
-        _outer_ct_quiet: bool = False;
+        _outer_ct_quiet: bool = False,
+        _generator_bodies: dict[int, bool] = {};
 
     def postinit -> None;
+    def _is_generator(scope: Ability) -> bool;
     can initialize with entry;
     override def release -> None;
     can prepare with entry;
@@ -67,6 +69,7 @@ walker TypeCheckPass(TreePass) {
     can exit_has_var with HasVar exit;
     can exit_in_for_stmt with InForStmt exit;
     can exit_raise_stmt with RaiseStmt exit;
+    def _is_exception_operand(ty: TypeBase, allow_none: bool) -> bool;
     can exit_except with Except exit;
     can exit_match_as with MatchAs exit;
     can exit_match_arch with MatchArch exit;
@@ -90,6 +93,9 @@ walker TypeCheckPass(TreePass) {
     can exit_sub_tag with SubTag exit;
     def _eval_unpacking_names(container: Expr) -> None;
     def _write_leaves(target: (Expr | None)) -> list[Expr];
+    def _is_unannotated_rebind(prior: Symbol, target: Name) -> bool;
+    def _is_exempt_rebind(prior: Symbol, target: Name, declared: TypeBase) -> bool;
+    def _check_for_target_rebinds(nd: InForStmt) -> None;
     def _check_immutable_write(
         target: (Expr | None), rebind_scope: (UniNode | None) = None
     ) -> None;

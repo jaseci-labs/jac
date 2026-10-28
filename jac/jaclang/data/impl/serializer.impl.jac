@@ -801,15 +801,10 @@ impl Serializer._resolve_class_by_import(
     return cast(type, found);
 }
 
-def _import_retry_window(attempts: int) -> float {
-    doublings = min(max(attempts - 1, 0), _IMPORT_RETRY_MAX_DOUBLINGS);
-    return min(_IMPORT_RETRY_SECONDS * (2 ** doublings), _IMPORT_RETRY_CEILING_SECONDS);
-}
+def _import_retry_window(attempts: int) -> float;
 
 
-def _import_retry_due(failure: ImportFailure) -> bool {
-    return monotonic() - failure.failed_at >= _import_retry_window(failure.attempts);
-}
+def _import_retry_due(failure: ImportFailure) -> bool;
 
 
 impl Serializer._import_allowed(module_name: str) -> bool {
@@ -934,27 +929,10 @@ impl Serializer._id_to_stub(anchor_cls: type[Anchor], id_str: str) -> (Anchor | 
     }
 }
 
-def _new_anchor(type_name: object) -> Anchor {
-    if type_name == 'NodeAnchor' {
-        return NodeAnchor.__new__(NodeAnchor);
-    }
-    if type_name == 'EdgeAnchor' {
-        return EdgeAnchor.__new__(EdgeAnchor);
-    }
-    return Anchor.__new__(Anchor);
-}
+def _new_anchor(type_name: object) -> Anchor;
 
 
-def _node_stub(raw_id: object, role: str) -> NodeAnchor {
-    if not isinstance(raw_id, str) or not raw_id {
-        raise TypeError(f"anchor payload '{role}' is not a string id");
-    }
-    stub = Serializer._id_to_stub(NodeAnchor, raw_id);
-    if not isinstance(stub, NodeAnchor) {
-        raise ValueError(f"anchor payload '{role}' is not a usable id: {raw_id}");
-    }
-    return stub;
-}
+def _node_stub(raw_id: object, role: str) -> NodeAnchor;
 
 
 impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) {
@@ -1423,4 +1401,37 @@ impl _type_shape(target_type: object) -> tuple[object, tuple[object, ...]] {
     }
     _TYPE_SHAPES[id(target_type)] = (target_type, origin, args);
     return (origin, args);
+}
+
+impl _import_retry_window(attempts: int) -> float {
+    doublings = min(max(attempts - 1, 0), _IMPORT_RETRY_MAX_DOUBLINGS);
+    return min(_IMPORT_RETRY_SECONDS * (2 ** doublings), _IMPORT_RETRY_CEILING_SECONDS);
+}
+
+
+impl _import_retry_due(failure: ImportFailure) -> bool {
+    return monotonic() - failure.failed_at >= _import_retry_window(failure.attempts);
+}
+
+
+impl _new_anchor(type_name: object) -> Anchor {
+    if type_name == 'NodeAnchor' {
+        return NodeAnchor.__new__(NodeAnchor);
+    }
+    if type_name == 'EdgeAnchor' {
+        return EdgeAnchor.__new__(EdgeAnchor);
+    }
+    return Anchor.__new__(Anchor);
+}
+
+
+impl _node_stub(raw_id: object, role: str) -> NodeAnchor {
+    if not isinstance(raw_id, str) or not raw_id {
+        raise TypeError(f"anchor payload '{role}' is not a string id");
+    }
+    stub = Serializer._id_to_stub(NodeAnchor, raw_id);
+    if not isinstance(stub, NodeAnchor) {
+        raise ValueError(f"anchor payload '{role}' is not a usable id: {raw_id}");
+    }
+    return stub;
 }

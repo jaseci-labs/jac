@@ -2694,3 +2694,16 @@ impl GrammarExtractPass.emit_ebnf -> str {
     }
     return "\n\n".join(lines);
 }
+
+impl is_nil_expr(nd: object) -> bool {
+    if isinstance(nd, uni.CfgExpr) {
+        return is_nil_expr(nd.expr);
+    }
+    if isinstance(nd, uni.Null) {
+        return True;
+    }
+    if isinstance(nd, uni.Name) {
+        return nd.value == "NIL";
+    }
+    return False;
+}

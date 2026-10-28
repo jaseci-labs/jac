@@ -1,86 +1,37 @@
 graph import {
-    edge AppOverCore: core.* --> cli.* | desktop.* | mobile.* | web.*;
-    edge BridgeFunnel: jaclang.server.bridge --> cli.commands.*;
-    edge CliInternal: cli.* --> cli.*;
+    edge AppOverCore: core.* --> cli | desktop | mobile.* | pages.* | web;
+    edge BridgeFunnel: jaclang.server.bridge --> cli | core.docs.sync;
     edge CoreInternal: core.* --> core.*;
-    edge DesktopInternal: desktop.* --> desktop.*;
-    edge MobileInternal: mobile.* --> mobile.*;
     edge SsoFunnel: jaclang.scale.sso.* --> core.jacyac.github.auth;
-    edge WebInternal: web.* --> web.*;
 
-    core.ai ++> cli.commands.score { optional_review }
     core.docs.graph ++> [
-        cli.commands.docs { DocsStatus, docs_status },
-        web.main,
+        cli { DocsStatus, docs_status },
+        web,
     ]
     core.docs.sync ++> [
-        cli.commands.docs { docs_sync_tick },
-        web.main,
+        cli { docs_sync_tick },
+        web,
     ]
-    core.github ++> cli.commands.score {
-        RepoMeta,
-        code_breakdown,
-        download_tarball,
-        head_sha,
-        mb_of,
-        repo_meta,
-        text_of,
-        untar
-    }
-    core.install ++> web.main;
-    core.jacyac.github.auth ++> desktop.main | web.main;
-    core.jacyac.github.repos ++> desktop.main | web.main;
-    core.jacyac.limits ++> cli.commands.feed { PostingDenied }
+    core.install ++> web;
+    core.jacyac.github.auth ++> desktop | web;
+    core.jacyac.limits ++> cli { PostingDenied }
     core.jacyac.native.JacYacMobile ++> mobile.main { JacYacMobile }
-    core.leaderboard.scoring ++> cli.commands.score {
-        RepoAnalysis,
-        ScoreBreakdown,
-        analyze,
-        score
-    }
-    core.packages.catalog ++> web.main;
-    core.site.docs.DocsShell ++> desktop.pages.docs.index | web.pages.docs.index {
-        DocsShell
-    }
-    core.site.jacyac.GithubCallback ++> desktop.pages.jacyac.github.callback
-        | web.pages.jacyac.github.callback { GithubCallback }
-    core.site.jacyac.JacYac ++> desktop.pages.jacyac
-        | desktop.pages.jacyac.scores
-        | desktop.pages.socialize
-        | web.pages.jacyac
-        | web.pages.jacyac.scores
-        | web.pages.socialize { JacYac }
-    core.site.landing.Home ++> desktop.pages.index | web.pages.index { Home }
-    core.site.leaderboard.Methodology ++> desktop.pages.methodology
-        | web.pages.methodology { Methodology }
-    core.site.packages.PackagesShell ++> desktop.pages.packages.index
-        | web.pages.packages.index { PackagesShell }
-    core.site.ui.SiteShell ++> desktop.pages.layout | web.pages.layout { SiteShell }
-    core.social_graph ++> cli.commands.feed { create_tweet, load_feed }
-    core.source.files ++> web.main;
-}
-
-graph import cli {
-    commands.common ++> main { EXIT_USAGE, warn }
-    commands.docs ++> main { run_docs }
-    commands.feed ++> main { run_feed, run_post }
-    commands.score ++> main { run_score }
-}
-
-graph import cli.commands {
-    common ++> [
-        docs { EXIT_OK, explain_bridge_error },
-        feed { EXIT_OK, EXIT_REJECTED, EXIT_USAGE, explain_bridge_error, warn },
-        score { EXIT_FAILURE, EXIT_OK, EXIT_USAGE, warn },
-    ]
+    core.packages.catalog ++> web;
+    core.site.docs.DocsShell ++> pages.docs.index { DocsShell }
+    core.site.home.Home ++> pages.index { Home }
+    core.site.jacyac.GithubCallback ++> pages.jacyac.github.callback { GithubCallback }
+    core.site.jacyac.JacYac ++> pages.jacyac
+        | pages.jacyac.ninjaclaw
+        | pages.jacyac.tutorials
+        | pages.socialize { JacYac }
+    core.site.packages.PackagesShell ++> pages.packages.index { PackagesShell }
+    core.site.ui.SiteShell ++> pages.layout { SiteShell }
+    core.social_graph ++> cli { create_tweet, load_feed }
+    core.source.files ++> web;
 }
 
 graph import core {
-    ai ++> [
-        leaderboard.scoring { CodeReview },
-        scoring_service { optional_review },
-    ]
-    async_utils ++> jacyac.registration | site.docs.DocsShell { sleep }
+    async_utils ++> site.docs.DocsShell { sleep }
     brand.font ++> jacyac.native.JacYacMobile { useBrandFont }
     brand.theme ++> jacyac.native.JacYacMobile
         | jacyac.native.components.Avatar
@@ -91,12 +42,13 @@ graph import core {
         | jacyac.native.components.TweetCard
         | jacyac.native.screens.AuthScreen
         | jacyac.native.screens.ChannelsScreen
+        | jacyac.native.screens.ClawScreen
         | jacyac.native.screens.ExploreScreen
         | jacyac.native.screens.FeedScreen
         | jacyac.native.screens.ProfileScreen
-        | jacyac.native.screens.ScoresScreen
         | site.ui.Navbar { useTheme }
     brand.tokens ++> jacyac.native.theme { Colors, font_family, fonts, radii, spacing }
+    docs.corpus ++> knowledge_service { DocBundle, bundle_from, label_of }
     docs.graph ++> [
         site.docs.DocsArticle { DocPageView },
         site.docs.DocsGraphFloat { TreeNode },
@@ -112,69 +64,142 @@ graph import core {
         site.docs.DocsTocRail { TocEntry },
     ]
     github ++> [
-        install | jacyac.github.repos { fetch },
-        leaderboard.board | social_graph { parse_repo_url },
-        leaderboard.scoring { RepoMeta },
+        install { fetch },
         packages.catalog { API_ROOT, fetch, parse_repo_url },
-        scoring_service {
-            RepoMeta,
-            code_breakdown,
-            download_tarball,
-            head_sha,
-            repo_meta,
-            text_of,
-            untar
-        },
-    ]
-    github_contracts ++> [
-        github { GithubCommit, GithubRepository },
-        jacyac.github.repos { GithubRepository, GithubUser },
     ]
     install ++> site.ui.Navbar { ensure_install }
     jac_tokenizer ++> site.ui.CodeBlock { Token, tokenize_lines }
+    jacyac.claw ++> [
+        site.jacyac.JacYac { useClaw },
+        site.jacyac.components.NinjaclawTab | site.jacyac.components.TutorialsTab {
+            ClawModel
+        },
+    ]
     jacyac.format ++> [
         site.jacyac.components.ExploreTab
             | site.jacyac.components.ProfileHeader
-            | site.jacyac.components.ProjectCard
             | site.jacyac.components.RightSidebar
             | site.jacyac.components.TweetCard { handle_of, initial_of },
-        site.jacyac.components.Sidebar { handle_of },
+        site.jacyac.components.NinjaclawTab | site.jacyac.components.Sidebar {
+            handle_of
+        },
+        site.jacyac.components.RichText { text_segments },
+        site.jacyac.components.TutorialsTab { count_label },
     ]
-    jacyac.genius ++> social_graph { GuideSample, optional_fact, random_guide }
-    jacyac.github.auth ++> [
-        site.jacyac.GithubCallback { complete_native_github, github_callback_mode },
-        social_graph { users },
-    ]
+    jacyac.github.auth ++> site.jacyac.GithubCallback {
+        complete_native_github,
+        github_callback_mode
+    }
     jacyac.github.login ++> site.jacyac.GithubCallback { complete_web_login }
-    jacyac.github.repos ++> social_graph { verified_owner }
     jacyac.identity ++> [
         site.jacyac.JacYac
             | site.jacyac.components.ExploreTab
             | site.jacyac.components.ProfileHeader
             | site.jacyac.components.RightSidebar { avatar_of, name_of },
-        site.jacyac.components.ProjectCard { avatar_of, project_error_message },
         site.jacyac.components.TweetCard { avatar_of },
     ]
     jacyac.limits ++> social_graph { PostingDenied, posting_limit }
     jacyac.native.JacYacMobile ++> site.landing.MobileShowcase { JacYacMobile }
-    jacyac.scores ++> site.jacyac.components.NinjaScores { useScores }
-    jacyac.state ++> [
-        site.jacyac.JacYac { useJacYac },
-        site.jacyac.components.NinjaScores { JacYacState },
-    ]
+    jacyac.state ++> site.jacyac.JacYac { useJacYac }
     jacyac.validation ++> [
         site.jacyac.components.Composer { chars_left, post_limit, valid_post },
         social_graph { valid_post },
     ]
-    leaderboard.board ++> social_graph { BoardHub, OnBoard, RepoEntry }
-    leaderboard.format ++> [
-        site.jacyac.components.ProjectCard { belt_class, belt_label, time_ago },
-        site.leaderboard.Methodology { belt_class, belt_label },
+    knowledge.repo ++> [
+        knowledge_service {
+            DOCS_PATH,
+            ReleaseLine,
+            RepoStatus,
+            checkout_root,
+            ensure_repo,
+            export_docs,
+            read_status
+        },
+        ninjaclaw.secret | ninjaclaw.verify { knowledge_dir },
     ]
-    leaderboard.scoring ++> [
-        scoring_service { RepoAnalysis, ScoreBreakdown, analyze, score },
-        social_graph { ScoreBreakdown },
+    knowledge_service ++> [
+        docs.sync { release_doc_lines, release_docs },
+        jacyac.claw {
+            ninjaclaw_activity,
+            ninjaclaw_job,
+            ninjaclaw_tutorial,
+            ninjaclaw_tutorials
+        },
+        social_graph {
+            ninjaclaw_forget,
+            ninjaclaw_results,
+            ninjaclaw_retained,
+            ninjaclaw_submit
+        },
     ]
+    ninjaclaw.graph ++> knowledge_service {
+        ClawHub,
+        ClawJob,
+        JOB_RETENTION,
+        RECENT_LIMIT,
+        apply_pr,
+        apply_pr_state,
+        apply_sweep,
+        claim_chore,
+        claim_job,
+        claw_gaps,
+        claw_hub,
+        claw_jobs,
+        claw_tutorials,
+        enqueue_asks,
+        find_hub,
+        forget_jobs,
+        job_view,
+        next_queued,
+        pr_cooling,
+        pr_due,
+        promote_candidates,
+        prune_jobs,
+        record_outcome,
+        release_chore,
+        renew_chore,
+        renew_job,
+        replies_for,
+        requeue_stale,
+        sweep_inputs,
+        take_budget,
+        tutorial_by_slug,
+        tutorial_card
+    }
+    ninjaclaw.index ++> knowledge_service { IndexDoc, docs_from_tree, index_doc }
+    ninjaclaw.model ++> [
+        jacyac.claw { Activity, JobView, TutorialCard, TutorialView },
+        jacyac.native.screens.ClawScreen { JobView },
+        knowledge_service {
+            Activity,
+            AskInput,
+            BlockView,
+            JobReply,
+            JobView,
+            StepView,
+            TutorialCard,
+            TutorialView,
+            UpkeepView
+        },
+        site.jacyac.components.NinjaclawTab { JobView, StepView },
+        site.jacyac.components.TutorialsTab { TutorialCard, TutorialView },
+        social_graph { AskInput },
+    ]
+    ninjaclaw.promote ++> knowledge_service {
+        PrResult,
+        eligible,
+        github,
+        open_docs_pr,
+        pr_state,
+        promote_config,
+        promote_ready
+    }
+    ninjaclaw.runner ++> knowledge_service { JobSpec, Outcome, RUNNER, run_pipeline }
+    ninjaclaw.secret ++> [
+        knowledge_service { secret_ok },
+        social_graph { service_secret },
+    ]
+    ninjaclaw.upkeep ++> knowledge_service { CHORE, sweep, sweep_items }
     packages.catalog ++> [
         site.packages.ApiDocs { ApiMember, ApiModule, ApiParam, ApiSymbol },
         site.packages.PackagePage { PackageDetail, PackageVersion },
@@ -186,7 +211,6 @@ graph import core {
             package_detail
         },
     ]
-    scoring_service ++> social_graph { ScoredPayload, fetch_and_score }
     social_graph ++> [
         jacyac.native.components.TweetCard
             | jacyac.native.screens.FeedScreen
@@ -203,18 +227,13 @@ graph import core {
         jacyac.native.screens.ProfileScreen | site.jacyac.components.ProfileHeader {
             ProfileBundle
         },
-        jacyac.scores
-            | site.jacyac.components.ProjectCard
-            | site.jacyac.components.ProjectsPanel { Project },
         jacyac.state {
             ChannelBundle,
             Profile,
             ProfileBundle,
-            Project,
             TrendingTag,
             Tweet,
             add_comment,
-            add_project,
             clear_avatar,
             create_channel,
             create_channel_tweet,
@@ -222,7 +241,6 @@ graph import core {
             delete_tweet,
             follow_user,
             get_all_profiles,
-            get_all_projects,
             get_avatars,
             get_channel_detail,
             get_channels,
@@ -233,31 +251,29 @@ graph import core {
             leave_channel,
             like_tweet,
             load_feed,
-            remove_project,
-            rescore_project,
             set_avatar,
             setup_profile,
             unfollow_user,
             update_profile
         },
-        site.jacyac.components.ExploreTab { Profile, Project },
-        site.jacyac.components.ProfileEditor { Profile },
+        site.jacyac.components.ExploreTab | site.jacyac.components.ProfileEditor {
+            Profile
+        },
     ]
     source.files ++> [
-        site.landing.Showcase { SourceView, example_sources },
         site.source.CodeSpotlight { SourceSpan, source_span },
         site.source.SourceBrowser { SourceFile, SourceView, source_file, source_tree },
     ]
     timefmt ++> [
-        docs.sync | progress { now_iso },
-        install | social_graph { now_iso, seconds_since },
-        leaderboard.scoring { days_since },
+        docs.sync | progress | social_graph { now_iso },
+        install { now_iso, seconds_since },
     ]
     utils ++> site.docs.DocsSidebar
         | site.docs.DocsTocRail
-        | site.jacyac.components.ExploreTab
+        | site.home.NoGlue
+        | site.home.OneLanguage
+        | site.home.kit
         | site.jacyac.components.MobileNav
-        | site.jacyac.components.ProjectCard
         | site.jacyac.components.Sidebar
         | site.jacyac.components.TweetCard
         | site.landing.CopyCommand
@@ -296,14 +312,17 @@ graph import core.brand {
 }
 
 graph import core.docs {
+    corpus ++> sync { DocBundle, bundle_from, label_of }
     graph ++> sync {
         DocVersion,
         DocsHub,
         HasHub,
         HasVersion,
         NextPage,
+        _get_hub,
         _pretty,
         _sweep_stale,
+        _teardown_version,
         _version,
         place_page,
         rewrite_href,
@@ -312,6 +331,7 @@ graph import core.docs {
 }
 
 graph import core.jacyac {
+    claw ++> native.screens.ClawScreen { useClaw }
     format ++> [
         identity
             | native.components.TweetCard
@@ -319,22 +339,16 @@ graph import core.jacyac {
             | native.screens.ProfileScreen { handle_of },
         native.components.Avatar { handle_of, initial_of },
         native.screens.ChannelsScreen { count_label },
+        native.screens.ClawScreen { count_label, handle_of },
     ]
     github.auth ++> session { github_enabled }
     github.login ++> session { github_login }
-    github.repos ++> scores { GithubRepo, github_repositories }
     identity ++> [
         native.components.Avatar { avatar_of },
         native.screens.ExploreScreen | native.screens.ProfileScreen { name_of },
-        state { project_error_message },
     ]
-    registration ++> session { register_with_challenge }
-    scores ++> native.screens.ScoresScreen { useScores }
     session ++> state { Session, stored_username, useSession }
-    state ++> [
-        native.JacYacMobile { useJacYac },
-        native.screens.ScoresScreen | scores { JacYacState },
-    ]
+    state ++> native.JacYacMobile { useJacYac }
     validation ++> [
         native.components.Composer { chars_left },
         state { valid_post },
@@ -342,10 +356,7 @@ graph import core.jacyac {
 }
 
 graph import core.jacyac.github {
-    auth ++> [
-        login { begin_github, finish_github },
-        repos { github_id },
-    ]
+    auth ++> login { begin_github, finish_github }
 }
 
 graph import core.jacyac.native {
@@ -354,10 +365,10 @@ graph import core.jacyac.native {
     components.BridgeBanner ++> JacYacMobile { BridgeBanner }
     components.Composer ++> screens.ChannelsScreen | screens.FeedScreen { Composer }
     components.StatusView ++> [
-        screens.ChannelsScreen | screens.ExploreScreen | screens.FeedScreen {
-            EmptyState,
-            LoadingRows
-        },
+        screens.ChannelsScreen
+            | screens.ClawScreen
+            | screens.ExploreScreen
+            | screens.FeedScreen { EmptyState, LoadingRows },
         screens.ProfileScreen { EmptyState },
     ]
     components.TabBar ++> JacYacMobile { TabBar }
@@ -370,15 +381,16 @@ graph import core.jacyac.native {
         | components.TweetCard
         | screens.AuthScreen
         | screens.ChannelsScreen
+        | screens.ClawScreen
         | screens.ExploreScreen
         | screens.FeedScreen
         | screens.ProfileScreen { Icon }
     screens.AuthScreen ++> JacYacMobile { AuthScreen }
     screens.ChannelsScreen ++> JacYacMobile { ChannelsScreen }
+    screens.ClawScreen ++> JacYacMobile { ClawScreen }
     screens.ExploreScreen ++> JacYacMobile { ExploreScreen }
     screens.FeedScreen ++> JacYacMobile { FeedScreen }
     screens.ProfileScreen ++> JacYacMobile { ProfileScreen }
-    screens.ScoresScreen ++> JacYacMobile { ScoresScreen }
     theme ++> JacYacMobile
         | components.Avatar
         | components.BridgeBanner
@@ -388,44 +400,85 @@ graph import core.jacyac.native {
         | components.TweetCard
         | screens.AuthScreen
         | screens.ChannelsScreen
+        | screens.ClawScreen
         | screens.ExploreScreen
         | screens.FeedScreen
-        | screens.ProfileScreen
-        | screens.ScoresScreen { makeStyles }
+        | screens.ProfileScreen { makeStyles }
 }
 
 graph import core.jacyac.native.components {
     Avatar ++> Composer | TweetCard { Avatar }
 }
 
-graph import core.leaderboard {
-    scoring ++> board { RepoFeatures, ScoreBreakdown }
+graph import core.ninjaclaw {
+    brain ++> runner {
+        AskKind,
+        CALL_MAX_S,
+        Candidate,
+        DEADLINE,
+        classify_ask,
+        pick_answer,
+        repair_tutorial,
+        write_tutorial
+    }
+    index ++> [
+        runner { IndexDoc, excerpt, search },
+        tools { IndexDoc, docs_from_tree, excerpt, index_doc, search },
+    ]
+    model ++> [
+        graph {
+            AskInput,
+            BlockView,
+            JobReply,
+            JobView,
+            LinkView,
+            StepView,
+            TutorialCard
+        },
+        runner { BlockView, LinkView, StepView },
+        upkeep | verify { BlockView },
+    ]
+    promote ++> graph { PrResult, PromoteCandidate }
+    runner ++> graph { JOB_LEASE_S, Outcome, WORKER_ID, stamp }
+    tools ++> [
+        brain { list_jac_guides, read_jac_file, read_jac_guide, search_jac },
+        runner { agent_catalog, open_toolbox },
+    ]
+    upkeep ++> graph { sweep_passed }
+    verify ++> runner | upkeep { verify_markdown }
 }
 
 graph import core.site {
-    docs.Markdown ++> packages.PackagePage { Markdown }
+    docs.Markdown ++> [
+        jacyac.components.TutorialsTab { MDSpans, Markdown },
+        packages.PackagePage { Markdown },
+    ]
     game.webgl_host ++> landing.WasmGame { run_game }
-    landing.CopyCommand ++> packages.PackagePage | packages.PackagesIndex {
-        CopyCommand
-    }
-    leaderboard.Methodology ++> jacyac.components.NinjaScores { Methodology }
+    landing.CopyCommand ++> home.HomeClose
+        | home.HomeHero
+        | packages.PackagePage
+        | packages.PackagesIndex { CopyCommand }
+    landing.Reveal ++> home.AgentNative
+        | home.HomeClose
+        | home.InProduction
+        | home.NativeBench
+        | home.NoGlue
+        | home.OneLanguage
+        | home.ReadableTiers
+        | home.kit { Reveal }
     source.CodeSpotlight ++> landing.MobileShowcase | landing.WaitWuuut {
         CodeSpotlight
     }
-    source.FloatingSource ++> landing.Hero | landing.WaitWuuut { FloatingSource }
+    source.FloatingSource ++> landing.WaitWuuut { FloatingSource }
     source.SourceBrowser ++> landing.ExplorerFinale { SourceBrowser }
-    ui.CodeBlock ++> [
-        docs.Markdown
-            | docs.MermaidDiagram
-            | source.CodeSpotlight
-            | source.SourceBrowser { CodeLines },
-        landing.Showcase { CodeBlock },
-    ]
-    ui.GraphBackdrop ++> docs.DocsShell | landing.Hero | leaderboard.Methodology {
-        GraphBackdrop
-    }
-    ui.SectionRail ++> landing.Home | landing.WaitWuuut { SectionRail }
-    ui.alert_dialog ++> jacyac.components.ProjectCard | jacyac.components.TweetCard {
+    ui.CodeBlock ++> docs.Markdown
+        | docs.MermaidDiagram
+        | home.kit
+        | source.CodeSpotlight
+        | source.SourceBrowser { CodeLines }
+    ui.GraphBackdrop ++> docs.DocsShell { GraphBackdrop }
+    ui.SectionRail ++> home.Home | landing.TechDemo | landing.WaitWuuut { SectionRail }
+    ui.alert_dialog ++> jacyac.components.TweetCard {
         AlertDialog,
         AlertDialogAction,
         AlertDialogCancel,
@@ -439,25 +492,20 @@ graph import core.site {
     ui.avatar ++> jacyac.components.Composer
         | jacyac.components.ExploreTab
         | jacyac.components.ProfileHeader
-        | jacyac.components.ProjectCard
         | jacyac.components.RightSidebar
         | jacyac.components.Sidebar
         | jacyac.components.TweetCard { Avatar, AvatarFallback, AvatarImage }
     ui.badge ++> jacyac.components.ChannelsTab
-        | jacyac.components.ProjectCard
+        | jacyac.components.NinjaclawTab
         | jacyac.components.RightSidebar
         | jacyac.components.Sidebar
+        | jacyac.components.TutorialsTab
         | landing.Agents
         | landing.BookSection
         | landing.ExplorerFinale
-        | landing.Hero
         | landing.MobileShowcase
-        | landing.OneBinary
-        | landing.Showcase
         | landing.WaitWuuut
         | landing.WasmGame
-        | landing.WhyJac
-        | leaderboard.Methodology
         | packages.PackagePage
         | packages.PackagesIndex { Badge }
     ui.button ++> [
@@ -466,17 +514,14 @@ graph import core.site {
             | jacyac.components.ChannelsTab
             | jacyac.components.Composer
             | jacyac.components.ExploreTab
-            | jacyac.components.NinjaScores
             | jacyac.components.ProfileEditor
             | jacyac.components.ProfileHeader
-            | jacyac.components.ProjectCard
-            | jacyac.components.ProjectsPanel
             | jacyac.components.RightSidebar
             | jacyac.components.Sidebar
             | jacyac.components.TweetCard
             | jacyac.components.WelcomeBanner
             | landing.WasmGame { Button },
-        landing.BookSection | landing.ExplorerFinale | landing.Hero { buttonVariants },
+        landing.BookSection | landing.ExplorerFinale { buttonVariants },
     ]
     ui.card ++> [
         jacyac.components.AuthForm {
@@ -486,21 +531,8 @@ graph import core.site {
             CardHeader,
             CardTitle
         },
-        jacyac.components.RightSidebar | landing.Capabilities {
-            Card,
-            CardContent,
-            CardHeader,
-            CardTitle
-        },
+        jacyac.components.RightSidebar { Card, CardContent, CardHeader, CardTitle },
     ]
-    ui.carousel ++> landing.Capabilities | landing.WhyJac {
-        Carousel,
-        CarouselContent,
-        CarouselDots,
-        CarouselItem,
-        CarouselNext,
-        CarouselPrevious
-    }
     ui.dialog ++> jacyac.components.ChannelsTab {
         Dialog,
         DialogContent,
@@ -518,7 +550,8 @@ graph import core.site {
     }
     ui.empty ++> jacyac.components.ChannelsTab
         | jacyac.components.ExploreTab
-        | jacyac.components.FeedTab {
+        | jacyac.components.FeedTab
+        | jacyac.components.TutorialsTab {
         Empty,
         EmptyDescription,
         EmptyHeader,
@@ -536,9 +569,7 @@ graph import core.site {
     ui.input ++> docs.DocsSidebar
         | jacyac.components.AuthForm
         | jacyac.components.ChannelsTab
-        | jacyac.components.NinjaScores
         | jacyac.components.ProfileEditor
-        | jacyac.components.ProjectsPanel
         | jacyac.components.RightSidebar
         | jacyac.components.TweetCard
         | packages.PackagesIndex { Input }
@@ -555,12 +586,7 @@ graph import core.site {
         | jacyac.components.ChannelsTab
         | jacyac.components.ExploreTab
         | jacyac.components.FeedTab { Skeleton }
-    ui.tabs ++> docs.Markdown | landing.Showcase {
-        Tabs,
-        TabsContent,
-        TabsList,
-        TabsTrigger
-    }
+    ui.tabs ++> docs.Markdown { Tabs, TabsContent, TabsList, TabsTrigger }
     ui.textarea ++> jacyac.components.ChannelsTab
         | jacyac.components.Composer
         | jacyac.components.ProfileEditor { Textarea }
@@ -644,69 +670,73 @@ graph import core.site.game {
     type sim ++> webgl_host { Game }
 }
 
+graph import core.site.home {
+    AgentNative ++> Home { AgentNative }
+    HomeClose ++> Home { HomeClose }
+    HomeHero ++> Home { HomeHero }
+    InProduction ++> Home { InProduction }
+    NativeBench ++> Home { NativeBench }
+    NoGlue ++> Home { NoGlue }
+    OneLanguage ++> Home { OneLanguage }
+    ReadableTiers ++> Home { ReadableTiers }
+    kit ++> [
+        AgentNative { CodeWindow, Figure, HomeSection, Prose, SectionHead },
+        HomeClose { HomeSection, Prose },
+        InProduction | NativeBench | OneLanguage {
+            Fact,
+            Figure,
+            HomeSection,
+            SectionHead
+        },
+        NoGlue | ReadableTiers {
+            CodeWindow,
+            Fact,
+            Figure,
+            HomeSection,
+            Prose,
+            SectionHead
+        },
+    ]
+}
+
 graph import core.site.jacyac {
     components.AuthForm ++> JacYac { AuthForm }
     components.ChannelsTab ++> JacYac { ChannelsTab }
     components.ExploreTab ++> JacYac { ExploreTab }
     components.FeedTab ++> JacYac { FeedTab }
     components.MobileNav ++> JacYac { MobileNav }
-    components.NinjaScores ++> JacYac { NinjaScores }
+    components.NinjaclawTab ++> JacYac { NinjaclawTab }
     components.ProfileEditor ++> JacYac { ProfileEditor }
     components.ProfileHeader ++> JacYac { ProfileHeader }
-    components.ProjectsPanel ++> JacYac { ProjectsPanel }
     components.RightSidebar ++> JacYac { RightSidebar }
     components.Sidebar ++> JacYac { Sidebar }
+    components.TutorialsTab ++> JacYac { TutorialsTab }
     components.TweetCard ++> JacYac { TweetCard }
 }
 
 graph import core.site.jacyac.components {
     Composer ++> ChannelsTab | FeedTab { Composer }
-    ProjectCard ++> ExploreTab | NinjaScores | ProjectsPanel { ProjectCard }
+    RichText ++> NinjaclawTab | TweetCard { RichText }
     TweetCard ++> ChannelsTab | FeedTab { TweetCard }
     WelcomeBanner ++> FeedTab { WelcomeBanner }
 }
 
 graph import core.site.landing {
-    Agents ++> Home { Agents }
-    BookSection ++> Home { BookSection }
-    Capabilities ++> Home { Capabilities }
+    Agents ++> TechDemo { Agents }
+    BookSection ++> TechDemo { BookSection }
     CopyCommand ++> [
-        Agents | Hero { CopyCommand },
+        Agents { CopyCommand },
         ExplorerFinale { CopyCommandBlock },
     ]
-    ExplorerFinale ++> Home { ExplorerFinale }
-    Hero ++> Home { Hero }
-    MobileShowcase ++> Home { MobileShowcase }
-    OneBinary ++> Home { OneBinary }
+    ExplorerFinale ++> TechDemo { ExplorerFinale }
+    MobileShowcase ++> TechDemo { MobileShowcase }
     Reveal ++> Agents
         | BookSection
-        | Capabilities
         | ExplorerFinale
         | MobileShowcase
-        | OneBinary
-        | Showcase
-        | StatsBand
         | WaitWuuut
-        | WasmGame
-        | WhyJac { Reveal }
-    Showcase ++> Home { Showcase }
-    StatsBand ++> Home { StatsBand }
-    WasmGame ++> Home { WasmGame }
-    WhyJac ++> [
-        Capabilities { WhySlide },
-        Home { WhyJac },
-    ]
-    diagrams.GradualBorrowDiagram ++> WaitWuuut | WhyJac { GradualBorrowDiagram }
-    diagrams.PolypilerDiagram ++> OneBinary | WaitWuuut { PolypilerDiagram }
-    diagrams.SynechicDiagram ++> WaitWuuut | WhyJac { SynechicDiagram }
-    diagrams.TopokineticDiagram ++> WaitWuuut | WhyJac { TopokineticDiagram }
-}
-
-graph import core.site.landing.diagrams {
-    motion ++> GradualBorrowDiagram
-        | PolypilerDiagram
-        | SynechicDiagram
-        | TopokineticDiagram { view_once }
+        | WasmGame { Reveal }
+    WasmGame ++> TechDemo { WasmGame }
 }
 
 graph import core.site.packages {
@@ -727,6 +757,12 @@ graph import core.site.ui {
         Navbar | NotFound | dialog { buttonVariants },
         alert_dialog | carousel { Button },
     ]
+    dropdown_menu ++> Navbar {
+        DropdownMenu,
+        DropdownMenuContent,
+        DropdownMenuItem,
+        DropdownMenuTrigger
+    }
     label ++> field { Label }
     separator ++> field { Separator }
 }

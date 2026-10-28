@@ -1,24 +1,18 @@
 import os;
+
 import types;
+
 import from pathlib { Path }
+
 import from typing { Optional, cast }
 
 glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
      JAC_LANG_ID = "jac";
 
-def _parse_entry_file(entry_file: Path) -> tuple[str, str] {
-    (base, mod) = os.path.split(str(entry_file));
-    base = base or "./";
-    if mod.endswith(JAC_FILE_EXTENSION) {
-        mod = mod[:-len(JAC_FILE_EXTENSION)];
-    }
-    return (base, mod);
-}
+def _parse_entry_file(entry_file: Path) -> tuple[str, str];
 
-def _pwa_enabled(project_dir: Path) -> bool {
-    return JacClientConfig(project_dir).is_pwa_enabled();
-}
+def _pwa_enabled(project_dir: Path) -> bool;
 
 impl WebTarget.setup(project_dir: Path) -> None {
     if _pwa_enabled(project_dir) {
@@ -83,15 +77,10 @@ impl WebTarget.start(
 impl WebTarget.build(
     entry_file: Path, project_dir: Path, platform: Optional[str] = None
 ) -> Path {
-    import shutil;
-
     bundler = ViteBundler(project_dir=project_dir);
 
     dist_dir = bundler.output_dir;
     if dist_dir {
-        if dist_dir.exists() {
-            shutil.rmtree(dist_dir);
-        }
         dist_dir.mkdir(parents=True, exist_ok=True);
     }
 
@@ -101,13 +90,16 @@ impl WebTarget.build(
     builder = make_client_bundle_builder(project_dir);
     try {
         before = len(program.errors_had);
-        program.compile(str(entry_file.resolve()));
+        artifact = program._get_compiler().get_client_artifact(
+            str(entry_file.resolve()), program
+        );
         if len(program.errors_had) > before {
             errors = '\n'.join(str(e) for e in program.errors_had[before:]);
             raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
         }
         inputs = builder.prepare(loaded_mod);
-        function_name = _get_client_function_name(loaded_mod);
+        exports = list(artifact.manifest.exports or []) if artifact is not None else [];
+        function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
     } finally {
         program._get_compiler().release_compile_state(program);
     }
@@ -130,34 +122,32 @@ impl WebTarget.build(
     return bundle_path;
 }
 
-def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
-    mod_path = loaded_mod?.__file__;
-    if not mod_path {
-        return DEFAULT_FUNCTION_NAME;
-    }
+def _build_css_link(bundler: ViteBundler) -> str;
 
-    mod = Jac.get_program().find_module(mod_path);
-    if not mod {
-        return DEFAULT_FUNCTION_NAME;
-    }
-    gen = mod?.gen;
-    if not gen {
-        return DEFAULT_FUNCTION_NAME;
-    }
+def _get_app_meta_data -> dict[str, any];
 
-    client_manifest = gen?.client_manifest;
-    if not client_manifest {
-        return DEFAULT_FUNCTION_NAME;
-    }
+def _generate_index_html(
+    bundle_path: Path,
+    bundler: ViteBundler,
+    loaded_mod: types.ModuleType,
+    function_name: str,
+    project_dir: Path
+);
 
-    client_exports = client_manifest?.exports;
-    if client_exports and len(client_exports) > 0 {
-        return client_exports[0];
+impl _parse_entry_file(entry_file: Path) -> tuple[str, str] {
+    (base, mod) = os.path.split(str(entry_file));
+    base = base or "./";
+    if mod.endswith(JAC_FILE_EXTENSION) {
+        mod = mod[:-len(JAC_FILE_EXTENSION)];
     }
-    return DEFAULT_FUNCTION_NAME;
+    return (base, mod);
 }
 
-def _build_css_link(bundler: ViteBundler) -> str {
+impl _pwa_enabled(project_dir: Path) -> bool {
+    return JacClientConfig(project_dir).is_pwa_enabled();
+}
+
+impl _build_css_link(bundler: ViteBundler) -> str {
     import hashlib;
 
     css_file = bundler.find_css();
@@ -172,7 +162,7 @@ def _build_css_link(bundler: ViteBundler) -> str {
     return '';
 }
 
-def _get_app_meta_data -> dict[str, any] {
+impl _get_app_meta_data -> dict[str, any] {
     config = get_config();
     if not config {
         return {};
@@ -184,8 +174,7 @@ def _get_app_meta_data -> dict[str, any] {
     return client_cfg.get("app_meta_data", {});
 }
 
-
-def _generate_index_html(
+impl _generate_index_html(
     bundle_path: Path,
     bundler: ViteBundler,
     loaded_mod: types.ModuleType,

@@ -137,7 +137,11 @@ impl completions(shell: str = "bash", install: bool = False) -> int {
     return 0;
 }
 
-def _extract_commands(specs: list[CommandSpec]) -> list[dict[str, any]] {
+def _extract_commands(specs: list[CommandSpec]) -> list[dict[str, any]];
+
+def _install_completion(shell: str, code: str) -> int;
+
+impl _extract_commands(specs: list[CommandSpec]) -> list[dict[str, any]] {
     commands = [];
     for spec in sorted(specs, key=lambda (s: any) { s.name; }) {
         name = spec.name;
@@ -178,7 +182,7 @@ def _extract_commands(specs: list[CommandSpec]) -> list[dict[str, any]] {
     return commands;
 }
 
-def _install_completion(shell: str, code: str) -> int {
+impl _install_completion(shell: str, code: str) -> int {
     import re;
     home = os.path.expanduser("~");
     jac_dir = os.path.join(home, ".jac");

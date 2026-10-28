@@ -111,6 +111,8 @@ libjac_compiler.so
 libjac_compiler.dylib
 libjac_compiler.so.layout.json
 libjac_compiler.dylib.layout.json
+jaclang/compiler/kernels/
+jaclang/compiler/.kernel-build.*
 # Any other `nacompile --shared` unit that lands in-tree with its layout
 # sidecar (a stray libjac_npy.so was committed once).
 libjac_*.so

@@ -19,56 +19,11 @@ impl wheel_module_name(wheel_path: str) -> str {
     return ".".join(parts);
 }
 
-def _lookup(target: str, base_path: str, module_map: dict[str, str]) -> str | None {
-    try {
-        (resolved, _lang) = resolve_module(target, base_path);
-    } except Exception {
-        return None;
-    }
-    return module_map.get(os.path.normpath(os.path.abspath(str(resolved))));
-}
+def _lookup(target: str, base_path: str, module_map: dict[str, str]) -> str | None;
 
-def _parent_and_leaf(dotted: str) -> tuple[str, str] {
-    if "." in dotted {
-        (parent, leaf) = dotted.rsplit(".", 1);
-        return (parent, leaf);
-    }
-    return ("", dotted);
-}
+def _parent_and_leaf(dotted: str) -> tuple[str, str];
 
-def _rewrite_plain_import(alias: py_ast.alias, dotted: str) -> list[py_ast.stmt] {
-    if alias.asname {
-        return [py_ast.Import(names=[py_ast.alias(name=dotted, asname=alias.asname)])];
-    }
-    if "." not in alias.name {
-        (parent, leaf) = _parent_and_leaf(dotted);
-        if not parent {
-            return [py_ast.Import(names=[py_ast.alias(name=dotted)])];
-        }
-        return [
-            py_ast.ImportFrom(module=parent, names=[py_ast.alias(name=leaf)], level=0)
-        ];
-    }
-
-    top = alias.name.split(".")[0];
-    depth = len(alias.name.split("."));
-    dotted_parts = dotted.split(".");
-    bind_dotted = ".".join(dotted_parts[:len(dotted_parts) - depth + 1]);
-    (bind_parent, bind_leaf) = _parent_and_leaf(bind_dotted);
-    stmts: list[py_ast.stmt] = [
-        py_ast.Import(names=[py_ast.alias(name=dotted, asname=f"_jac_sub_{top}")])
-    ];
-    if bind_parent {
-        stmts.append(
-            py_ast.ImportFrom(
-                module=bind_parent,
-                names=[py_ast.alias(name=bind_leaf, asname=top)],
-                level=0
-            )
-        );
-    }
-    return stmts;
-}
+def _rewrite_plain_import(alias: py_ast.alias, dotted: str) -> list[py_ast.stmt];
 
 impl rewrite_imports(
     py_source: str, source_path: Path, module_map: dict[str, str],
@@ -130,4 +85,55 @@ impl rewrite_imports(
         out += "\n";
     }
     return out;
+}
+
+impl _lookup(target: str, base_path: str, module_map: dict[str, str]) -> str | None {
+    try {
+        (resolved, _lang) = resolve_module(target, base_path);
+    } except Exception {
+        return None;
+    }
+    return module_map.get(os.path.normpath(os.path.abspath(str(resolved))));
+}
+
+impl _parent_and_leaf(dotted: str) -> tuple[str, str] {
+    if "." in dotted {
+        (parent, leaf) = dotted.rsplit(".", 1);
+        return (parent, leaf);
+    }
+    return ("", dotted);
+}
+
+impl _rewrite_plain_import(alias: py_ast.alias, dotted: str) -> list[py_ast.stmt] {
+    if alias.asname {
+        return [py_ast.Import(names=[py_ast.alias(name=dotted, asname=alias.asname)])];
+    }
+    if "." not in alias.name {
+        (parent, leaf) = _parent_and_leaf(dotted);
+        if not parent {
+            return [py_ast.Import(names=[py_ast.alias(name=dotted)])];
+        }
+        return [
+            py_ast.ImportFrom(module=parent, names=[py_ast.alias(name=leaf)], level=0)
+        ];
+    }
+
+    top = alias.name.split(".")[0];
+    depth = len(alias.name.split("."));
+    dotted_parts = dotted.split(".");
+    bind_dotted = ".".join(dotted_parts[:len(dotted_parts) - depth + 1]);
+    (bind_parent, bind_leaf) = _parent_and_leaf(bind_dotted);
+    stmts: list[py_ast.stmt] = [
+        py_ast.Import(names=[py_ast.alias(name=dotted, asname=f"_jac_sub_{top}")])
+    ];
+    if bind_parent {
+        stmts.append(
+            py_ast.ImportFrom(
+                module=bind_parent,
+                names=[py_ast.alias(name=bind_leaf, asname=top)],
+                level=0
+            )
+        );
+    }
+    return stmts;
 }

@@ -118,23 +118,13 @@ impl ConnInfo.dsn -> str {
 }
 
 
-def _jsonable(o: object) -> str {
-    return str(o);
-}
+def _jsonable(o: object) -> str;
 
 
-def _sanitize_ident(name: str) -> str {
-    out = '';
-    for ch in name.lower() {
-        out += ch if (ch.isalnum() or ch == '_') else '_';
-    }
-    return out;
-}
+def _sanitize_ident(name: str) -> str;
 
 
-def _store_ns(info: ConnInfo) -> str {
-    return f"{info.unix_socket_dir or info.host}:{info.port}/{info.database}";
-}
+def _store_ns(info: ConnInfo) -> str;
 
 
 glob _PG_CHANNEL_LIMIT = 63,
@@ -145,60 +135,19 @@ glob _PG_CHANNEL_LIMIT = 63,
      _LISTEN_JOIN_SECONDS = 5.0;
 
 
-def _channel_travels_verbatim(channel: str) -> bool {
-    return (
-        bool(channel)
-        and '\x00' not in channel
-        and len(channel.encode('utf-8')) <= _PG_CHANNEL_LIMIT
-    );
-}
+def _channel_travels_verbatim(channel: str) -> bool;
 
 
-def _channel_ident(channel: str) -> str {
-    if _channel_travels_verbatim(channel) {
-        return channel;
-    }
-    import hashlib;
-    digest = hashlib.sha256(channel.encode('utf-8')).hexdigest()[:_CHANNEL_DIGEST_LEN];
-    stem = _sanitize_ident(channel)[:_PG_CHANNEL_LIMIT - _CHANNEL_DIGEST_LEN - 1];
-    return f"{stem}_{digest}";
-}
+def _channel_ident(channel: str) -> str;
 
 
-def _quote_channel(ident: str) -> str {
-    escaped = ident.replace('"', '""');
-    return f'"{escaped}"';
-}
+def _quote_channel(ident: str) -> str;
 
 
-def _channel_wire_payload(channel: str, ident: str, payload: str) -> str {
-    if ident == channel {
-        return payload;
-    }
-    return json.dumps(
-        {
-            _CHANNEL_ENVELOPE_KEY: _CHANNEL_ENVELOPE_VERSION,
-            'channel': channel,
-            'payload': payload
-        }
-    );
-}
+def _channel_wire_payload(channel: str, ident: str, payload: str) -> str;
 
 
-def _channel_envelope(payload: str) -> (ChannelMessage | None) {
-    try {
-        data = json.loads(payload);
-    } except Exception {
-        return None;
-    }
-    if not isinstance(data, dict)
-        or data.get(_CHANNEL_ENVELOPE_KEY) != _CHANNEL_ENVELOPE_VERSION {
-        return None;
-    }
-    return ChannelMessage(
-        channel=str(data.get('channel', '')), payload=str(data.get('payload', ''))
-    );
-}
+def _channel_envelope(payload: str) -> (ChannelMessage | None);
 
 
 impl PgStore.postinit -> None {
@@ -284,25 +233,7 @@ impl SessionConflictError.init(
 }
 
 
-def _app_identity -> str {
-    import sys;
-    cmd = 'embedded';
-    try {
-        argv = list(sys?.argv or []);
-        if argv {
-            cmd = os.path.basename(str(argv[0]) or '') or 'embedded';
-            if cmd.startswith('jac') and len(argv) > 1 {
-                sub = str(argv[1]);
-                if sub and not sub.startswith('-') {
-                    cmd = sub;
-                }
-            }
-        }
-    } except Exception {
-        cmd = 'unknown';
-    }
-    return f"jac:{os.getpid()}:{cmd}"[:63];
-}
+def _app_identity -> str;
 
 
 glob _SCHEMA_LOCK_TAG = 'jac:ensure_schema',
@@ -315,45 +246,16 @@ glob _SCHEMA_LOCK_TAG = 'jac:ensure_schema',
      _QUEUE_WAIT_SECONDS = 30;
 
 
-def _schema_lock_key -> int {
-    import hashlib;
-    digest = hashlib.sha256(_SCHEMA_LOCK_TAG.encode('utf-8')).digest()[:8];
-    return int.from_bytes(digest, 'big', signed=True);
-}
+def _schema_lock_key -> int;
 
 
-def _sqlstate(e: Exception) -> str {
-    for arg in getattr(e, 'args', ()) {
-        if isinstance(arg, dict) and 'C' in arg {
-            return str(arg.get('C') or '');
-        }
-    }
-    return '';
-}
+def _sqlstate(e: Exception) -> str;
 
 
-def _parse_pid(raw: str) -> (int | None) {
-    try {
-        return int(raw);
-    } except ValueError {
-        return None;
-    }
-}
+def _parse_pid(raw: str) -> (int | None);
 
 
-def _owner_alive(pid: (int | None)) -> bool {
-    if pid is None or pid <= 0 {
-        return True;
-    }
-    try {
-        os.kill(pid, 0);
-        return True;
-    } except ProcessLookupError {
-        return False;
-    } except Exception {
-        return True;
-    }
-}
+def _owner_alive(pid: (int | None)) -> bool;
 
 
 impl PgStore._connect -> any {
@@ -374,35 +276,7 @@ impl PgStore._connect -> any {
 }
 
 
-def _park_conn(info: any, conn: any, in_txn: bool, listened: bool) -> None {
-    if conn is None {
-        return;
-    }
-    if not pool_enabled() or getattr(conn, '_closed', False) {
-        try {
-            conn.close();
-        } except Exception {}
-        return;
-    }
-    try {
-        if in_txn {
-            conn.run('ROLLBACK');
-        }
-        conn.run(
-            "DO $$ BEGIN PERFORM pg_advisory_unlock_all(); EXECUTE 'RESET ALL'; "
-                + "EXECUTE 'UNLISTEN *'; EXECUTE 'DISCARD TEMP'; EXECUTE 'DISCARD SEQUENCES'; END $$"
-        );
-        if listened {
-            conn.notifications.clear();
-        }
-    } except Exception {
-        try {
-            conn.close();
-        } except Exception {}
-        return;
-    }
-    release(info, conn);
-}
+def _park_conn(info: any, conn: any, in_txn: bool, listened: bool) -> None;
 
 
 impl PgStore._main -> any {
@@ -449,18 +323,7 @@ impl PgStore._side_run(sql: str, params: dict[str, any]) -> list[any] {
 }
 
 
-def _conn_dead(e: Exception) -> bool {
-    if isinstance(e, (ConnectionError, BrokenPipeError, EOFError, OSError)) {
-        return True;
-    }
-    for arg in getattr(e, 'args', ()) {
-        if isinstance(arg, dict)
-            and arg.get('C') in ('08006', '08003', '57P01', '57P03', '25P03') {
-            return True;
-        }
-    }
-    return False;
-}
+def _conn_dead(e: Exception) -> bool;
 
 
 impl PgStore._run(sql: str, params: dict[str, any]) -> list[any] {
@@ -1715,4 +1578,194 @@ impl PgStore.lock_wait(timeout: str) -> None {
             self._run(f"SET LOCAL lock_timeout = '{timeout}'", {});
         }
     }
+}
+
+impl _jsonable(o: object) -> str {
+    return str(o);
+}
+
+
+impl _sanitize_ident(name: str) -> str {
+    out = '';
+    for ch in name.lower() {
+        out += ch if (ch.isalnum() or ch == '_') else '_';
+    }
+    return out;
+}
+
+
+impl _store_ns(info: ConnInfo) -> str {
+    return f"{info.unix_socket_dir or info.host}:{info.port}/{info.database}";
+}
+
+
+impl _channel_travels_verbatim(channel: str) -> bool {
+    return (
+        bool(channel)
+        and '\x00' not in channel
+        and len(channel.encode('utf-8')) <= _PG_CHANNEL_LIMIT
+    );
+}
+
+
+impl _channel_ident(channel: str) -> str {
+    if _channel_travels_verbatim(channel) {
+        return channel;
+    }
+    import hashlib;
+    digest = hashlib.sha256(channel.encode('utf-8')).hexdigest()[:_CHANNEL_DIGEST_LEN];
+    stem = _sanitize_ident(channel)[:_PG_CHANNEL_LIMIT - _CHANNEL_DIGEST_LEN - 1];
+    return f"{stem}_{digest}";
+}
+
+
+impl _quote_channel(ident: str) -> str {
+    escaped = ident.replace('"', '""');
+    return f'"{escaped}"';
+}
+
+
+impl _channel_wire_payload(channel: str, ident: str, payload: str) -> str {
+    if ident == channel {
+        return payload;
+    }
+    return json.dumps(
+        {
+            _CHANNEL_ENVELOPE_KEY: _CHANNEL_ENVELOPE_VERSION,
+            'channel': channel,
+            'payload': payload
+        }
+    );
+}
+
+
+impl _channel_envelope(payload: str) -> (ChannelMessage | None) {
+    try {
+        data = json.loads(payload);
+    } except Exception {
+        return None;
+    }
+    if not isinstance(data, dict)
+        or data.get(_CHANNEL_ENVELOPE_KEY) != _CHANNEL_ENVELOPE_VERSION {
+        return None;
+    }
+    return ChannelMessage(
+        channel=str(data.get('channel', '')), payload=str(data.get('payload', ''))
+    );
+}
+
+
+impl _app_identity -> str {
+    import sys;
+    cmd = 'embedded';
+    try {
+        argv = list(sys?.argv or []);
+        if argv {
+            cmd = os.path.basename(str(argv[0]) or '') or 'embedded';
+            if cmd.startswith('jac') and len(argv) > 1 {
+                sub = str(argv[1]);
+                if sub and not sub.startswith('-') {
+                    cmd = sub;
+                }
+            }
+        }
+    } except Exception {
+        cmd = 'unknown';
+    }
+    return f"jac:{os.getpid()}:{cmd}"[:63];
+}
+
+
+impl _schema_lock_key -> int {
+    import hashlib;
+    digest = hashlib.sha256(_SCHEMA_LOCK_TAG.encode('utf-8')).digest()[:8];
+    return int.from_bytes(digest, 'big', signed=True);
+}
+
+
+impl _sqlstate(e: Exception) -> str {
+    for arg in getattr(e, 'args', ()) {
+        if isinstance(arg, dict) and 'C' in arg {
+            return str(arg.get('C') or '');
+        }
+    }
+    return '';
+}
+
+
+impl _parse_pid(raw: str) -> (int | None) {
+    try {
+        return int(raw);
+    } except ValueError {
+        return None;
+    }
+}
+
+
+impl _owner_alive(pid: (int | None)) -> bool {
+    if pid is None or pid <= 0 {
+        return True;
+    }
+    try {
+        os.kill(pid, 0);
+        return True;
+    } except ProcessLookupError {
+        return False;
+    } except Exception {
+        return True;
+    }
+}
+
+
+impl _park_conn(info: any, conn: any, in_txn: bool, listened: bool) -> None {
+    if conn is None {
+        return;
+    }
+    if not pool_enabled() or getattr(conn, '_closed', False) {
+        try {
+            conn.close();
+        } except Exception {}
+        return;
+    }
+    try {
+        if in_txn {
+            conn.run('ROLLBACK');
+        }
+        conn.run(
+            "DO $$ BEGIN PERFORM pg_advisory_unlock_all(); EXECUTE 'RESET ALL'; "
+                + "EXECUTE 'UNLISTEN *'; EXECUTE 'DISCARD TEMP'; EXECUTE 'DISCARD SEQUENCES'; END $$"
+        );
+        if listened {
+            conn.notifications.clear();
+        }
+    } except Exception {
+        try {
+            conn.close();
+        } except Exception {}
+        return;
+    }
+    release(info, conn);
+}
+
+
+impl _conn_dead(e: Exception) -> bool {
+    if isinstance(e, (ConnectionError, BrokenPipeError, EOFError, OSError)) {
+        return True;
+    }
+    for arg in getattr(e, 'args', ()) {
+        if isinstance(arg, dict)
+            and arg.get('C') in ('08006', '08003', '57P01', '57P03', '25P03') {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl PgStore.new_session -> PgStore {
+    return PgStore(
+        conninfo=self.conninfo,
+        ensure_cb=self.ensure_cb,
+        promotions=dict(self.promotions),
+        auto_schema=self.auto_schema
+    );
 }

@@ -27,7 +27,14 @@ impl TestPlan.is_empty -> bool {
 }
 
 impl NameFilter.postinit -> None {
-    self.tree = _parse_filter_expr(self.expr);
+    if not self.literal {
+        self.tree = _parse_filter_expr(self.expr);
+        return;
+    }
+    for word in self.expr.split() {
+        term = ("word", word.lower());
+        self.tree = term if self.tree is None else ("and", self.tree, term);
+    }
 }
 
 impl NameFilter.matches(name: str) -> bool {
@@ -142,17 +149,13 @@ impl _eval_filter(expr_node: any, name: str) -> bool {
 }
 
 impl _build_selector(test_name: str, filter: str) -> (NameFilter | None) {
-    expr = "";
-    if test_name {
-        parts = test_name.split();
-        expr = " and ".join(parts) if parts else test_name;
-    } elif filter {
-        expr = filter;
+    if test_name.strip() {
+        return NameFilter(expr=test_name, literal=True);
     }
-    if not expr {
-        return None;
+    if filter.strip() {
+        return NameFilter(expr=filter);
     }
-    return NameFilter(expr=expr);
+    return None;
 }
 
 impl _should_ignore(path: str, ignore: list[str]) -> bool {
@@ -356,6 +359,14 @@ impl _fresh_jac_state(clear_modules: bool = True) -> None {
     } else {
         set_config(_CONFIG_PIN_BASELINE[0]);
     }
+
+    carried_mtir: dict[str, any] = {};
+    if not clear_modules and JacRuntime.program is not None {
+        owner = JacRuntime.program.context_root or JacRuntime.program;
+        for prog in [owner, *owner.contexts.values()] {
+            carried_mtir.update(prog.mtir_map);
+        }
+    }
     JacRuntime.reset_process_state(clear_modules=clear_modules);
     fresh_base = tempfile.mkdtemp(prefix="jac-test-base-");
     _TEST_BASES.append(fresh_base);
@@ -363,6 +374,7 @@ impl _fresh_jac_state(clear_modules: bool = True) -> None {
     JacRuntime.set_base_path(fresh_base);
     JacRuntime.set_full_target_path(None);
     JacRuntime.program = JacProgram();
+    JacRuntime.program.mtir_map.update(carried_mtir);
     JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(
         user_root=None, base_path_dir=fresh_base, full_target_path=None
     );
@@ -1096,9 +1108,7 @@ impl resolve_jobs(requested: (str | int | None) = None) -> int {
     return _resolve_pool_jobs(requested, env_var="JAC_TEST_JOBS");
 }
 
-def _test_rss_cap_mb -> int {
-    return env_int("JAC_TEST_RECYCLE_MB", 8192);
-}
+def _test_rss_cap_mb -> int;
 
 impl _test_retire(served: int, rss_mb: int) -> bool {
     return _should_retire(
@@ -1181,4 +1191,8 @@ impl _run_plan(
     } else {
         pool.run();
     }
+}
+
+impl _test_rss_cap_mb -> int {
+    return env_int("JAC_TEST_RECYCLE_MB", 8192);
 }

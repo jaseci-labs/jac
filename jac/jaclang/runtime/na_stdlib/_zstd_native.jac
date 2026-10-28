@@ -38,65 +38,39 @@ glob:pub ZSTD_C_COMPRESSION_LEVEL: int = 100,
      ZSTD_D_WINDOW_LOG_MAX: int = 100;
 
 
-def:pub zstd_version_number -> int {
-    return ZSTD_versionNumber();
-}
+def:pub zstd_version_number -> int;
 
 
-def:pub zstd_is_error(code: int) -> bool {
-    return ZSTD_isError(u64(code)) != 0;
-}
+def:pub zstd_is_error(code: int) -> bool;
 
 
-def:pub zstd_error_name(code: int) -> str {
-    return ZSTD_getErrorName(u64(code));
-}
+def:pub zstd_error_name(code: int) -> str;
 
 
-def:pub zstd_compress_bound(src_size: int) -> int {
-    return int(ZSTD_compressBound(u64(src_size)));
-}
+def:pub zstd_compress_bound(src_size: int) -> int;
 
 
-def:pub zstd_cctx_new -> int {
-    return ZSTD_createCCtx();
-}
+def:pub zstd_cctx_new -> int;
 
 
-def:pub zstd_cctx_free(cctx: int) {
-    if cctx != 0 {
-        ZSTD_freeCCtx(cctx);
-    }
-}
+def:pub zstd_cctx_free(cctx: int);
 
 
-def:pub zstd_cctx_set(cctx: int, param: int, value: int) -> int {
-    return int(ZSTD_CCtx_setParameter(cctx, i32(param), i32(value)));
-}
+def:pub zstd_cctx_set(cctx: int, param: int, value: int) -> int;
 
 
 def:pub zstd_compress2(
     cctx: int, dst: bytes, dst_capacity: int, src: bytes, src_size: int
-) -> int {
-    return int(ZSTD_compress2(cctx, dst, u64(dst_capacity), src, u64(src_size)));
-}
+) -> int;
 
 
-def:pub zstd_dctx_new -> int {
-    return ZSTD_createDCtx();
-}
+def:pub zstd_dctx_new -> int;
 
 
-def:pub zstd_dctx_free(dctx: int) {
-    if dctx != 0 {
-        ZSTD_freeDCtx(dctx);
-    }
-}
+def:pub zstd_dctx_free(dctx: int);
 
 
-def:pub zstd_dctx_set(dctx: int, param: int, value: int) -> int {
-    return int(ZSTD_DCtx_setParameter(dctx, i32(param), i32(value)));
-}
+def:pub zstd_dctx_set(dctx: int, param: int, value: int) -> int;
 
 
 def:pub zstd_decompress_stream(
@@ -107,52 +81,30 @@ def:pub zstd_decompress_stream(
     src: bytes,
     src_size: int,
     src_pos: bytes
-) -> int {
-    return int(
-        ZSTD_decompressStream_simpleArgs(
-            dctx, dst, u64(dst_capacity), dst_pos, src, u64(src_size), src_pos
-        )
-    );
-}
+) -> int;
 
 
-def:pub zstd_frame_content_size(src: bytes) -> int {
-    return int(ZSTD_getFrameContentSize(src, u64(len(src))));
-}
+def:pub zstd_frame_content_size(src: bytes) -> int;
 
 
-def:pub zstd_frame_dict_id(src: bytes) -> int {
-    return ZSTD_getDictID_fromFrame(src, u64(len(src)));
-}
+def:pub zstd_frame_dict_id(src: bytes) -> int;
 
 
-def:pub zstd_dstream_out_size -> int {
-    return int(ZSTD_DStreamOutSize());
-}
+def:pub zstd_dstream_out_size -> int;
 
 
-def:pub ZSTD_trace_compress_begin(cctx: int) -> u64 {
-    return 0;
-}
+def:pub ZSTD_trace_compress_begin(cctx: int) -> u64;
 
 
-def:pub ZSTD_trace_compress_end(ctx: u64, trace: int) -> None {
-    return;
-}
+def:pub ZSTD_trace_compress_end(ctx: u64, trace: int) -> None;
 
 
-def:pub ZSTD_trace_decompress_begin(dctx: int) -> u64 {
-    return 0;
-}
+def:pub ZSTD_trace_decompress_begin(dctx: int) -> u64;
 
 
-def:pub ZSTD_trace_decompress_end(ctx: u64, trace: int) -> None {
-    return;
-}
+def:pub ZSTD_trace_decompress_end(ctx: u64, trace: int) -> None;
 
 
-def _trace_anchor -> int {
-    return int(ZSTD_trace_compress_begin(0) + ZSTD_trace_decompress_begin(0));
-}
+def _trace_anchor -> int;
 
 glob _zstd_trace_anchor: int = _trace_anchor();

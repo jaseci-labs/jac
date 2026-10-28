@@ -289,3 +289,22 @@ test "sign-up types a bare identifier from the server's auth policy" {
         assert "/user/auth-policy" in fetched , fetched;
     }
 }
+
+test "sign-up solves the registration challenge on every core" {
+    # With `[serve.auth.registration] challenge = true` the server refuses a
+    # registration that carries no solved challenge. Both cores must read the
+    # policy's `registration.challenge` and send the shared solver's proof; the
+    # web core's behavior is run in `test_client_signup_challenge.jac`.
+    for (target, path) in _RUNTIME_CORES.items() {
+        signup = _compiled_body(path, ReactBackend(), "jacSignup");
+        for needle in [
+            '["registration"]',
+            '["challenge"]',
+            "__solveRegistrationChallenge("
+        ] {
+            assert needle in signup , (
+                f"{target}'s compiled jacSignup lost `{needle}`:\n{signup}"
+            );
+        }
+    }
+}

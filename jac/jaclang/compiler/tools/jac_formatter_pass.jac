@@ -19,8 +19,12 @@ walker JacFormatPass(CompilerPass) {
         max_steps: int = 2000
     ) -> bool;
 
-    def _flat_first_line_width(
-        nd: doc.DocType, base: int = 0, is_broken: bool = False
+    def _flat_tail_width(
+        parts: list[doc.DocType],
+        start: int,
+        base: int = 0,
+        is_broken: bool = False,
+        cap: int = 0
     ) -> int;
 
     def _run_impl(ir_in: uni.Module) -> uni.Module;
@@ -35,51 +39,6 @@ walker JacFormatPass(CompilerPass) {
     ) -> str;
 }
 
-def format_module(mod: uni.Module) -> str {
-    return run_utility(
-        CompilationProduct.FORMAT_TEXT,
-        run_utility(CompilationProduct.DOC, mod, JacProgram()).module,
-        JacProgram()
-    ).module.gen.jac;
-}
+def format_module(mod: uni.Module) -> str;
 
-def unparse_module(mod: uni.Module, requires_format: bool = True) -> str {
-    own_path = mod.loc.mod_path;
-    saved_body = mod.body;
-    saved_kid = [mod->:Kid:->];
-    head_kid = [
-        k
-        for k in saved_kid
-        if (not k.loc.mod_path) or (k.loc.mod_path == own_path)
-    ];
-    filtered = len(head_kid) != len(saved_kid);
-
-    with mod.structure_thawed() {
-        if filtered {
-            mod._role_set(
-                BodyRole,
-                [
-                    st
-                    for st in saved_body
-                    if (not st.loc.mod_path) or (st.loc.mod_path == own_path)
-                ]
-            );
-            mod.set_kids(nodes=head_kid or [uni.EmptyToken()]);
-        }
-        try {
-            import from jaclang.compiler.driver.pipeline { run_utility }
-            import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
-            run_utility(CompilationProduct.NORMALIZE, mod, JacProgram());
-            if requires_format {
-                return format_module(mod);
-            }
-            run_utility(CompilationProduct.UNPARSE, mod, JacProgram());
-            return mod.gen.jac;
-        } finally {
-            if filtered {
-                mod._role_set(BodyRole, saved_body);
-                mod.set_kids(nodes=saved_kid);
-            }
-        }
-    }
-}
+def unparse_module(mod: uni.Module, requires_format: bool = True) -> str;

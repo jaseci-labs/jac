@@ -1,26 +1,28 @@
-"""Clock IDs follow the target libc even when cross compiling.
+"""Clock IDs come from the target's floor, not from a per-target unit.
 
-The bundled `time` module reads its clocks through a per-platform
-`_time_native` unit; the variant is chosen by the native target, not the host,
-so a cross build links the target libc's clock IDs.
+The bundled `time` module is one unit on every target: `_time_native` asks the
+runtime floor (posix_floor.c, win_floor.c) for the target libc's clock IDs at
+run time, so a build for any target lowers the same unit and still reads the
+clocks CPython names on that target.
 """
 import os;
-import re;
+import from pathlib { Path }
 import from jaclang.compiler.frontend.codeinfo {
     native_stdlib_root,
     set_native_target_override,
     _native_variant_path
 }
+import from tests.support { assert_native_identity }
 
-test "native clocks use the target libc clock IDs" {
+test "the clock unit is the same file for every target" {
     stdlib = native_stdlib_root();
     assert stdlib is not None;
     base = os.path.join(stdlib, "_time_native");
-    for (target, variant, monotonic) in [
-        ("x86_64-unknown-linux-gnu", "_time_native.linux.jac", "1"),
-        ("aarch64-unknown-linux-gnu", "_time_native.linux.jac", "1"),
-        ("x86_64-apple-darwin", "_time_native.darwin.jac", "6"),
-        ("arm64-apple-darwin", "_time_native.darwin.jac", "6")
+    for target in [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-macosx10.15.0",
+        "arm64-apple-macosx11.0.0"
     ] {
         prev = set_native_target_override(target);
         try {
@@ -28,15 +30,14 @@ test "native clocks use the target libc clock IDs" {
         } finally {
             set_native_target_override(prev);
         }
-        assert chosen is not None and os.path.basename(chosen) == variant , (
+        assert chosen is not None and os.path.basename(chosen) == "_time_native.jac" , (
             f"{target}: {chosen}"
         );
-        with open(chosen) as handle {
-            text = handle.read();
-        }
-        found = re.search(r"CLK_MONOTONIC: int = (\d+)", text);
-        assert found is not None and found.group(1) == monotonic , (
-            f"{target}: CLK_MONOTONIC in {variant}"
-        );
     }
+}
+
+test "native clock IDs are the ones CPython names on this host" {
+    source = str(Path(__file__).resolve().parent / "fixtures" / "time_clock_ids.jac");
+    out = assert_native_identity(source, profiles=["managed"]);
+    assert out.splitlines()[-1] == "True" , out;
 }

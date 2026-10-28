@@ -501,7 +501,8 @@ global_var_assignment ::=
     (NAME | KWESC_NAME) (":" ownership_prefix pipe)? ("=" expression ("=" expression)*)?
 
 impl_def ::=
-    ("@" atomic_chain)* "impl" impl_target_name ("." impl_target_name)* (
+    ("@" atomic_chain)* "impl" impl_target_name ("." impl_target_name)*
+    ("[" type_params "]")? (
         func_signature
         | "(" (atomic_chain ("," atomic_chain)*)? ")"
         | "with" expression? ("entry" | "exit")

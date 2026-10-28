@@ -7,27 +7,21 @@ glob GEN_PENDING_FLAG_OFF: int = 8,
      GEN_PENDING_MSG_OFF: int = 32,
      GEN_FRAME_HEADER: int = 40;
 
-def _jc_optional_payload(semantic: (TypeBase | None)) -> (TypeBase | None) {
-    if not isinstance(semantic, UnionType) {
-        return semantic;
-    }
-    present = [
-        member
-        for member in semantic.types
-        if not (
-            isinstance(member, ClassType) and member.shared.class_name == "NoneType"
-        )
-    ];
-    return present[0] if len(present) == 1 else None;
-}
+glob UTF8_CURSOR_MIN_BYTES: int = 64,
+     UTF8_CURSOR_WAYS: int = 4,
+     UTF8_CURSOR_WORDS: int = 8,
+     UTF8_CURSOR_BASE: int = 0,
+     UTF8_CURSOR_DATA: int = 1,
+     UTF8_CURSOR_LEN: int = 2,
+     UTF8_CURSOR_EPOCH: int = 3,
+     UTF8_CURSOR_TOTAL: int = 4,
+     UTF8_CURSOR_K: int = 5,
+     UTF8_CURSOR_OFF: int = 6,
+     UTF8_CURSOR_USED: int = 7;
 
-def _restore_entry[V](table: dict[str, V], key: str, prior: (V | None)) {
-    if prior is None {
-        table.pop(key, None);
-    } else {
-        table[key] = prior;
-    }
-}
+def _jc_optional_payload(semantic: (TypeBase | None)) -> (TypeBase | None);
+
+def _restore_entry[V](table: dict[str, V], key: str, prior: (V | None));
 
 obj NativeFinalizer {
     has body: uni.FinallyStmt | None,
@@ -137,27 +131,9 @@ obj ImportedFunctions(FunctionSource) {
         by_name: dict[str, PendingImport] = {},
         by_key: dict[tuple[str, str], PendingImport] = {};
 
-    override def provides(name: str) -> bool {
-        return name in self.by_name;
-    }
-
-    override def resolve(name: str) -> (ir.Function | None) {
-        pending = self.by_name.get(name);
-        if pending is None {
-            return None;
-        }
-        return self.lowering._declare_import(pending);
-    }
-
-    def forget(pending: PendingImport, owner_name: str) {
-        name = pending.module_key[1];
-        for key in [name, f"{owner_name}.{name}"] {
-            if self.by_name.get(key) is pending {
-                del self.by_name[key];
-            }
-        }
-        self.by_key.pop(pending.module_key, None);
-    }
+    override def provides(name: str) -> bool;
+    override def resolve(name: str) -> (ir.Function | None);
+    def forget(pending: PendingImport, owner_name: str);
 }
 
 walker NaIRGenPass(CompilerPass) {
@@ -411,7 +387,19 @@ walker NaIRGenPass(CompilerPass) {
         str_import_fn: (ir.Function | None) = None,
         str_unwrap_fn: (ir.Function | None) = None,
         str_materialize_fn: (ir.Function | None) = None,
+        str_isascii_fn: (ir.Function | None) = None,
+        utf8_cplen_fn: (ir.Function | None) = None,
+        utf8_cp_off_fn: (ir.Function | None) = None,
+        utf8_cp_count_fn: (ir.Function | None) = None,
+        utf8_cp_len_at_fn: (ir.Function | None) = None,
+        utf8_char_at_fn: (ir.Function | None) = None,
+        utf8_advance_fn: (ir.Function | None) = None,
+        utf8_prev_fn: (ir.Function | None) = None,
+        utf8_decode_fn: (ir.Function | None) = None,
+        utf8_unit_in_fn: (ir.Function | None) = None,
+        utf8_gather_fn: (ir.Function | None) = None,
         _str_desc_ty: (ir.IdentifiedStructType | None) = None,
+        _last_inplace_handled: bool = False,
         rc_roots_buf_gv: (ir.GlobalVariable | None) = None,
         rc_roots_cap_gv: (ir.GlobalVariable | None) = None,
         rc_roots_count_gv: (ir.GlobalVariable | None) = None,
@@ -602,13 +590,25 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _codegen_string_index(
-        target_val: ir.Value, index_val: ir.Value, len_val: (ir.Value | None) = None
+        target_val: ir.Value,
+        index_val: ir.Value,
+        len_val: (ir.Value | None) = None,
+        root_val: (ir.Value | None) = None
     ) -> (ir.Value | None);
 
+    def _fstring_str_fit(val: ir.Value, directive: str) -> tuple[str, list[ir.Value]];
     def _emit_is_strip_char(ch: ir.Value, charset: (ir.Value | None)) -> ir.Value;
     def _codegen_str_strip_chars(
         str_val: ir.Value, charset: (ir.Value | None), do_left: bool, do_right: bool
     ) -> (ir.Value | None);
+
+    def _codegen_str_strip_units(
+        str_val: ir.Value,
+        slen: ir.Value,
+        charset: ir.Value,
+        do_left: bool,
+        do_right: bool
+    ) -> ir.Value;
 
     def _emit_whitespace_width(
         text: ir.Value, cursor: ir.Value, length: ir.Value, reverse: bool
@@ -779,7 +779,23 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
+    def _emit_intrinsic_buffer_data(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _emit_intrinsic_str_data(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _emit_intrinsic_ref_addr(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
     def _emit_intrinsic_alloca(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _emit_intrinsic_list_data(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
@@ -956,8 +972,6 @@ walker NaIRGenPass(CompilerPass) {
     def _c_lent_address(arg: uni.UnaryExpr, elem: any) -> (ir.Value | None);
     def _final_variant_value(nd: uni.Name, value: uni.Expr) -> (uni.Expr | None);
     def _final_scalar_value(nd: uni.Name, value_type: ir.Type) -> (ir.Value | None);
-    def _va_abi -> str;
-    def _va_storage_type(abi: str) -> ir.Type;
     def _c_va_start(nd: uni.UniNode) -> (ir.Value | None);
     def _c_va_arg(nd: uni.FuncCall, recv: uni.Expr) -> (ir.Value | None);
     def _c_vararg_value(val: ir.Value, arg: uni.Expr) -> (ir.Value | None);
@@ -987,6 +1001,8 @@ walker NaIRGenPass(CompilerPass) {
     def _c_abi_same(have: ir.FunctionType, want: ir.FunctionType) -> bool;
     def _c_calls_directly(target: ir.Function) -> bool;
     def _c_address_of_value(value: (ir.Value | None)) -> (ir.Value | None);
+    def _c_literal_address(arg: uni.UniNode) -> (ir.Constant | None);
+    def _literal_destination(nd: uni.Int) -> (str | None);
     def _reads_c_callback(nd: uni.Expr) -> bool;
     def _c_const_scalar(expr: uni.Expr, llt: ir.Type) -> (ir.Constant | None);
     def _clib_global_of(nd: uni.Name) -> (tuple[ir.GlobalVariable, any] | None);
@@ -1634,6 +1650,11 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None);
     def _object_meet_type(nd: uni.Expr) -> (ir.Type | None);
     def _recast_object(value: ir.Value, target: ir.Type) -> ir.Value;
+    def _optional_tuple_meet_type(
+        nd: uni.Expr, then_val: ir.Value, else_val: ir.Value
+    ) -> (ir.Type | None);
+
+    def _meet_optional_tuple_side(value: ir.Value, target: ir.Type) -> ir.Value;
     def _codegen_spawn(nd: uni.BinaryExpr) -> (ir.Value | None);
     def _codegen_kernel_spawn(
         walker_name: str,
@@ -1989,7 +2010,24 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.FuncCall, func_name: str, mod_qual: (str | None)
     ) -> bool;
 
-    def _target_fuses_fp -> bool;
+    def _target_is_wasm -> bool;
+    def _floor_call(
+        name: str,
+        ret: ir.Type,
+        args: list[ir.Value],
+        call_name: str = "",
+        builder: (ir.IRBuilder | None) = None
+    ) -> ir.Value;
+
+    def _emit_stdio_handle(
+        fd: int, name: str, builder: (ir.IRBuilder | None) = None
+    ) -> ir.Value;
+
+    def _emit_platform_name -> ir.Value;
+    def _emit_stat_fields(
+        path: ir.Value, prefix: str
+    ) -> tuple[ir.Value, ir.Value, ir.Value, ir.Value, ir.Value];
+
     def _emit_fmadd(a: ir.Value, b: ir.Value, c: ir.Value) -> ir.Value;
     def _fp_fabs(v: ir.Value) -> ir.Value;
     def _fp_copysign(mag: ir.Value, sgn: ir.Value) -> ir.Value;
@@ -2546,7 +2584,13 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, ptr: ir.Value, name: str = "s.truthy"
     ) -> ir.Value;
 
-    def _stamp_str_len(b: ir.IRBuilder, ptr: ir.Value, len_val: ir.Value) -> None;
+    def _stamp_str_len(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        len_val: ir.Value,
+        ascii: (ir.Value | None) = None
+    ) -> None;
+
     def _emit_str_cmp_helper -> None;
     def _call_str_cmp(
         b: ir.IRBuilder, lhs: ir.Value, rhs: ir.Value, name: str = "s.cmp"
@@ -2575,6 +2619,135 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, ptr: ir.Value, name: str = "s.rlen"
     ) -> ir.Value;
 
+    def _call_str_isascii(
+        b: ir.IRBuilder,
+        base: ir.Value,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        name: str = "s.isascii"
+    ) -> ir.Value;
+
+    def _emit_utf8_helpers -> None;
+    def _call_utf8_cplen(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        ascii: ir.Value,
+        name: str = "u8.cplen",
+        base: (ir.Value | None) = None
+    ) -> ir.Value;
+
+    def _call_utf8_cp_off(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        cp_index: ir.Value,
+        ascii: ir.Value,
+        name: str = "u8.cpoff",
+        base: (ir.Value | None) = None
+    ) -> ir.Value;
+
+    def _call_utf8_cp_count(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        upto: ir.Value,
+        ascii: ir.Value,
+        name: str = "u8.cpcount",
+        base: (ir.Value | None) = None
+    ) -> ir.Value;
+
+    def _utf8_base_arg(b: ir.IRBuilder, base: (ir.Value | None)) -> ir.Value;
+    def _utf8_cursor_state -> tuple[ir.Function, ir.Function, ir.GlobalVariable];
+    def _utf8_cursor_keyed(b: ir.IRBuilder, base: ir.Value) -> ir.Value;
+    def _utf8_cursor_tag_keyed(b: ir.IRBuilder, tag: ir.Value, name: str) -> ir.Value;
+    def _utf8_cursor_fn -> ir.Function;
+    def _utf8_forget_fn -> ir.Function;
+    def _utf8_forget_on_free(b: ir.IRBuilder, ptr: ir.Value) -> ir.IRBuilder;
+    def _utf8_pick_anchor(
+        b: ir.IRBuilder,
+        want: ir.Value,
+        spots: tuple[ir.Value, ir.Value],
+        cursor: tuple[ir.Value, ir.Value],
+        tail: tuple[ir.Value, ir.Value],
+        known: ir.Value,
+        name: str
+    ) -> tuple[ir.Value, ir.Value, ir.Value];
+
+    def _call_utf8_cp_len_at(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        off: ir.Value,
+        name: str = "u8.cplenat"
+    ) -> ir.Value;
+
+    def _call_utf8_char_at(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        off: ir.Value,
+        name: str = "u8.char"
+    ) -> ir.Value;
+
+    def _call_utf8_prev(
+        b: ir.IRBuilder, ptr: ir.Value, off: ir.Value, name: str = "u8.prev"
+    ) -> ir.Value;
+
+    def _call_utf8_advance(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        off: ir.Value,
+        delta: ir.Value,
+        ascii: ir.Value,
+        name: str = "u8.adv"
+    ) -> ir.Value;
+
+    def _call_utf8_decode(
+        b: ir.IRBuilder, ptr: ir.Value, nbytes: ir.Value, name: str = "u8.decode"
+    ) -> ir.Value;
+
+    def _call_utf8_gather(
+        b: ir.IRBuilder,
+        ptr: ir.Value,
+        nbytes: ir.Value,
+        start: ir.Value,
+        stop: ir.Value,
+        step: ir.Value,
+        ascii: ir.Value,
+        out: ir.Value,
+        cap: ir.Value,
+        name: str = "u8.gather"
+    ) -> ir.Value;
+
+    def _call_utf8_unit_in(
+        b: ir.IRBuilder,
+        charset: ir.Value,
+        charset_len: ir.Value,
+        unit: ir.Value,
+        width: ir.Value,
+        name: str = "u8.unitin"
+    ) -> ir.Value;
+
+    def _emit_u8_lone_ascii(
+        b: ir.IRBuilder,
+        s: ir.Value,
+        n: ir.Value,
+        off: ir.Value,
+        byte: ir.Value,
+        name: str = "u8.lone"
+    ) -> ir.Value;
+
+    def _emit_wrap_clamp(
+        b: ir.IRBuilder,
+        value: ir.Value,
+        length: ir.Value,
+        lo: ir.Value,
+        hi: ir.Value,
+        name: str = "wc"
+    ) -> ir.Value;
+
     def _str_desc_type -> ir.IdentifiedStructType;
     def _str_desc_kind -> str;
     def _str_norm(val: ir.Value) -> ir.Value;
@@ -2588,7 +2761,13 @@ walker NaIRGenPass(CompilerPass) {
     def _membrane_str_out(b: ir.IRBuilder, val: ir.Value) -> ir.Value;
     def _membrane_str_in(b: ir.IRBuilder, val: ir.Value) -> ir.Value;
     def _str_alloc(b: ir.IRBuilder, size: ir.Value, name: str = "s.buf") -> ir.Value;
-    def _str_finish(b: ir.IRBuilder, buf: ir.Value, len_val: ir.Value) -> None;
+    def _str_finish(
+        b: ir.IRBuilder,
+        buf: ir.Value,
+        len_val: ir.Value,
+        ascii: (ir.Value | None) = None
+    ) -> None;
+
     def _rc_alloc(size: ir.Value, name: str = "rc.alloc") -> ir.Value;
     def _emit_rc_count_update(
         fn: ir.Function,
@@ -2734,6 +2913,7 @@ walker NaIRGenPass(CompilerPass) {
     def _lower_coercion(nd: uni.Expr, val: ir.Value) -> ir.Value;
     def _convert_scalar(val: ir.Value, src: ScalarShape, dst: ScalarShape) -> ir.Value;
     def _codegen_sized_cast(nd: uni.FuncCall, name: str) -> (ir.Value | None);
+    def _names_user_symbol(target: uni.UniNode) -> bool;
     def _codegen_sized_wrap(nd: uni.FuncCall, name: str) -> (ir.Value | None);
     def _codegen_sized_bound(name: str, attr: str) -> (ir.Value | None);
     def _codegen_wrapping(nd: uni.FuncCall, name: str) -> (ir.Value | None);
@@ -2774,8 +2954,28 @@ walker NaIRGenPass(CompilerPass) {
         end_bb: ir.Block
     ) -> None;
 
+    def _release_iter_end(
+        spill: (ir.Value | None),
+        slot_var: (str | None),
+        owns_iter: bool,
+        iter_val: ir.Value,
+        loc: str
+    ) -> None;
+
+    def _release_for_coll(
+        spill: (ir.Value | None),
+        slot_var: (str | None),
+        release_op: str,
+        collection_val: ir.Value,
+        loc: str
+    ) -> None;
+
     def _codegen_stmt(nd: uni.UniNode) -> None;
     def _codegen_return(nd: uni.ReturnStmt) -> None;
+    def _codegen_assert_computed(
+        nd: uni.AssertStmt, is_false: ir.Value, where: str
+    ) -> None;
+
     def _exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value;
     def _unwind_top_slot(
         b: ir.IRBuilder, context: (ir.Value | None) = None
@@ -2783,6 +2983,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _unwind_node_type -> ir.Type;
     def _register_unwind_cleanup -> None;
+    def _unwind_shadow_slots(
+        func: ir.Function, slots: list[tuple[str, ir.Value]]
+    ) -> dict[int, ir.Value];
+
     def _hoist_entry_allocas(entry_blk: ir.Block) -> None;
     def _codegen_tail_return(nd: uni.ReturnStmt) -> None;
     def _thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -> bool;
@@ -2960,6 +3164,11 @@ walker NaIRGenPass(CompilerPass) {
         replaced: list[tuple[str, ir.Value]]
     ) -> bool;
 
+    def _value_kind(ty: ir.Type) -> str;
+    def _rebinds_slot(
+        slot_type: ir.Type, target_type: (ir.Type | None), value_type: ir.Type
+    ) -> bool;
+
     def _unpack_store_global(
         var_name: str,
         value: ir.Value,
@@ -3040,6 +3249,10 @@ walker NaIRGenPass(CompilerPass) {
 
     def _tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStructType;
     def _resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_return_type(
+        type_expr: (uni.UniNode | None), method: bool = False
+    ) -> ir.Type;
+
     def _resolve_field_type(var: uni.UniNode) -> ir.Type;
     def _foreign_optional_field(tb: any) -> bool;
     def _typevar_optional_field(tb: any) -> bool;
@@ -3131,7 +3344,16 @@ walker NaIRGenPass(CompilerPass) {
         left: ir.Value,
         right: ir.Value,
         unsigned: bool = False,
-        checked: bool = False
+        checked: bool = False,
+        inplace_slot: (ir.Value | None) = None
+    ) -> (ir.Value | None);
+
+    def _str_concat_fresh(
+        left: ir.Value, right: ir.Value, len1: ir.Value, len2: ir.Value, total: ir.Value
+    ) -> ir.Value;
+
+    def _emit_str_concat_inplace(
+        left: ir.Value, right: ir.Value, slot: ir.Value
     ) -> (ir.Value | None);
 
     def _unify_int_widths(

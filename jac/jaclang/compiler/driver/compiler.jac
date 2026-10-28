@@ -7,170 +7,27 @@ import types;
 glob COMPILE_GC_THRESHOLDS: tuple[int, int, int] = (5000000, 50, 100),
      CHECK_GC_THRESHOLDS: tuple[int, int, int] = (300000, 10, 10);
 
-def client_dep_digests(manifest: ClientManifest) -> dict[str, str] {
-    digests: dict[str, str] = {};
-    for dep_path in manifest.imports.values() {
-        dep = str(dep_path);
-        if not os.path.isfile(dep) {
-            continue;
-        }
-        try {
-            digests[dep] = compute_content_sha256(dep);
-        } except OSError {
-            continue;
-        }
-    }
-    return digests;
-}
+def client_dep_digests(manifest: ClientManifest) -> dict[str, str];
 
-def stamp_client_artifact(artifact: ClientArtifact) -> ClientArtifact {
-    artifact.dep_digests = client_dep_digests(artifact.manifest);
-    return artifact;
-}
+def stamp_client_artifact(artifact: ClientArtifact) -> ClientArtifact;
 
-def built_client_artifact(module: uni.Module) -> (ClientArtifact | None) {
-    artifact = client_artifact_of(module);
-    return stamp_client_artifact(artifact) if artifact is not None else None;
-}
+def built_client_artifact(module: uni.Module) -> (ClientArtifact | None);
 
-def client_artifact_bytes(artifact: ClientArtifact) -> bytes {
-    return client_artifact_json(artifact).encode("utf-8");
-}
+def client_artifact_bytes(artifact: ClientArtifact) -> bytes;
 
-def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None) {
-    try {
-        text = raw.decode("utf-8");
-    } except UnicodeDecodeError {
-        return None;
-    }
-    return client_artifact_from_json(text);
-}
+def client_artifact_from_bytes(raw: bytes) -> (ClientArtifact | None);
 
-def cached_client_artifact(full_target: str) -> (ClientArtifact | None) {
-    (rebuild, _no_precompile) = cache_mode();
-    if rebuild {
-        return None;
-    }
-    try {
-        cache_path = get_module_cache_path(full_target);
-        if not is_module_cache_valid(full_target, cache_path) {
-            return None;
-        }
-        raw = read_section_bytes(cache_path.read_bytes(), SEC_CLIENT);
-    } except Exception {
-        return None;
-    }
-    if raw is None {
-        return None;
-    }
-    return client_artifact_from_bytes(raw);
-}
+def cached_client_artifact(full_target: str) -> (ClientArtifact | None);
 
-def cached_client_pulls(full_target: str) -> str {
-    held = cached_client_artifact(full_target);
-    if held is None or not held.pulled {
-        return "";
-    }
-    import from jaclang.compiler.backends.es.backends.registry {
-        resolve_active_backend
-    }
-    if held.framework != resolve_active_backend().name()
-        or not JacCompiler._client_deps_fresh(held) {
-        return "";
-    }
-    return ",".join([str(index) for index in held.pulled]);
-}
+def cached_client_pulls(full_target: str) -> str;
 
-def native_first(units: list[UnitProducts]) -> list[UnitProducts] {
-    by_path: dict[str, UnitProducts] = {os.path.realpath(u.path): u for u in units};
-    ordered: list[UnitProducts] = [];
-    placed: set[str] = set();
-    def place(unit: UnitProducts) {
-        real = os.path.realpath(unit.path);
-        if real in placed {
-            return;
-        }
-        placed.add(real);
-        for dep in unit.native_deps {
-            needed = by_path.get(os.path.realpath(dep));
-            if needed is not None {
-                place(needed);
-            }
-        }
-        ordered.append(unit);
-    }
-    for unit in units {
-        place(unit);
-    }
-    return ordered;
-}
+def native_first(units: list[UnitProducts]) -> list[UnitProducts];
 
-def assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]] {
-    if not jcir {
-        return (None, []);
-    }
-    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
-    result = compile_ir(jcir);
-    if result.modules and not result.diags {
-        return (result.modules[0].bytecode, []);
-    }
-    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-    import from jaclang.compiler.frontend.diagnostics { E5043 }
-    import from jaclang.compiler.frontend.srcloc { Span }
-    import from jaclang.compiler.passes.context { Alert }
-    return (
-        None,
-        [
-            Alert(
-                msg=E5043.format_message(error=d.message),
-                loc=Span(
-                    mod_path=d.mod_path or path,
-                    first_line=d.first_line,
-                    last_line=d.last_line,
-                    col_start=d.col_start,
-                    col_end=d.col_end
-                ),
-                from_pass=JcirBytecodeGenPass,
-                code=E5043
-            ) for d in result.diags
-        ]
-    );
-}
+def assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]];
 
 def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
-) -> dict[int, bytes] {
-    sections: dict[int, bytes] = {};
-    if bytecode is not None {
-        sections[SEC_BYTECODE] = bytecode;
-    }
-    if products.mtir {
-        sections[SEC_MTIR] = products.mtir.encode("utf-8");
-    }
-    if products.interop {
-        sections[SEC_INTEROP] = products.interop.encode("utf-8");
-    }
-    if products.client {
-        artifact = client_artifact_from_json(products.client);
-        if artifact is not None {
-            sections[SEC_CLIENT] = client_artifact_bytes(
-                stamp_client_artifact(artifact)
-            );
-        }
-    }
-    if products.placement {
-        sections[SEC_PLACEMENT] = products.placement.encode("utf-8");
-    }
-    if products.ct_file_deps or products.ct_body_deps or products.ct_def_deps {
-        seed_definition_texts(products.def_spans);
-        sections[SEC_CTDEPS] = ct_deps_section(
-            products.ct_file_deps,
-            products.ct_body_deps,
-            definitions=definition_deps(products)
-        );
-    }
-    return sections;
-}
+) -> dict[int, bytes];
 
 obj HostCompileFrame(CompileFrame) {
     has depth_prev: int = 0,

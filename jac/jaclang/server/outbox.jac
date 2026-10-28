@@ -9,9 +9,7 @@ import uuid;
 import from collections { OrderedDict }
 
 obj DeliveryReceipt {
-    static def _from_wire(payload: dict[str, any]) -> DeliveryReceipt {
-        return DeliveryReceipt();
-    }
+    static def _from_wire(payload: dict[str, any]) -> DeliveryReceipt;
 }
 
 glob logger = logging.getLogger(__name__),

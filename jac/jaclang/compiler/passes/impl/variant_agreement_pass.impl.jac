@@ -59,8 +59,8 @@ impl public_surface(mod: Module) -> dict[str, tuple[str, str, UniNode]] {
                 continue;
             }
             fields: list[str] = [];
-            for hv in stmt.get_all_sub_nodes(typ=HasVar) {
-                if hv.find_parent_of_type(Archetype) is not stmt {
+            for hv in stmt.element_sub_nodes(HasVar) {
+                if hv.enclosing_decl(Archetype) is not stmt {
                     continue;
                 }
                 tag = hv.type_tag.tag if hv.type_tag is not None else None;

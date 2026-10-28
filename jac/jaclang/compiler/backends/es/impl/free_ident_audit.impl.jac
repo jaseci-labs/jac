@@ -140,24 +140,11 @@ impl client_ambient_globals -> set[str] {
     return _AMBIENT_CACHE;
 }
 
-def _loc_of(nd: es.Node) -> tuple[int, int] {
-    loc = nd.loc;
-    if loc is None or loc.start is None {
-        return (0, 0);
-    }
-    return (loc.start.line, loc.start.column);
-}
+def _loc_of(nd: es.Node) -> tuple[int, int];
 
-def _js_ident_start(ch: str) -> bool {
-    return (ch >= "a" and ch <= "z")
-        or (ch >= "A" and ch <= "Z")
-        or ch == "_"
-        or ch == "$";
-}
+def _js_ident_start(ch: str) -> bool;
 
-def _js_ident_part(ch: str) -> bool {
-    return _js_ident_start(ch) or (ch >= "0" and ch <= "9");
-}
+def _js_ident_part(ch: str) -> bool;
 
 impl js_identifiers(text: str) -> list[str] {
     out: list[str] = [];
@@ -186,21 +173,9 @@ glob _TOP_LEVEL_DECL_KEYWORDS: set[str] = {
          "class"
      };
 
-def _leading_word(line: str, start: int) -> tuple[str, int] {
-    end = start;
-    while end < len(line) and _js_ident_part(line[end]) {
-        end += 1;
-    }
-    return (line[start:end], end);
-}
+def _leading_word(line: str, start: int) -> tuple[str, int];
 
-def _skip_spaces(line: str, start: int) -> int {
-    at = start;
-    while at < len(line) and line[at].isspace() {
-        at += 1;
-    }
-    return at;
-}
+def _skip_spaces(line: str, start: int) -> int;
 
 impl js_top_level_declarations(code: str) -> set[str] {
     names: set[str] = set();
@@ -225,15 +200,80 @@ impl js_top_level_declarations(code: str) -> set[str] {
     return names;
 }
 
-def _word_char(ch: str) -> bool {
+def _word_char(ch: str) -> bool;
+
+def _js_ident_char(ch: str) -> bool;
+
+def _harvest_raw(source: str, decls: set[str]);
+
+def _walk_value(
+    value: any, binding: bool, decls: set[str], refs: list[FreeIdentifier]
+);
+
+def _walk(
+    nd: es.Node, binding: bool, decls: set[str], refs: list[FreeIdentifier]
+) -> None;
+
+impl free_identifiers(program: es.Program, allowed: set[str]) -> list[FreeIdentifier] {
+    decls: set[str] = set();
+    refs: list[FreeIdentifier] = [];
+    _walk(program, False, decls, refs);
+    out: list[FreeIdentifier] = [];
+    seen: set[str] = set();
+    for ref in refs {
+        if (ref.name in decls) or (ref.name in allowed) or (ref.name in seen) {
+            continue;
+        }
+        seen.add(ref.name);
+        out.append(ref);
+    }
+    return out;
+}
+
+impl _loc_of(nd: es.Node) -> tuple[int, int] {
+    loc = nd.loc;
+    if loc is None or loc.start is None {
+        return (0, 0);
+    }
+    return (loc.start.line, loc.start.column);
+}
+
+impl _js_ident_start(ch: str) -> bool {
+    return (ch >= "a" and ch <= "z")
+        or (ch >= "A" and ch <= "Z")
+        or ch == "_"
+        or ch == "$";
+}
+
+impl _js_ident_part(ch: str) -> bool {
+    return _js_ident_start(ch) or (ch >= "0" and ch <= "9");
+}
+
+impl _leading_word(line: str, start: int) -> tuple[str, int] {
+    end = start;
+    while end < len(line) and _js_ident_part(line[end]) {
+        end += 1;
+    }
+    return (line[start:end], end);
+}
+
+impl _skip_spaces(line: str, start: int) -> int {
+    at = start;
+    while at < len(line) and line[at].isspace() {
+        at += 1;
+    }
+    return at;
+}
+
+impl _word_char(ch: str) -> bool {
     return ch.isalnum() or ch == "_";
 }
 
-def _js_ident_char(ch: str) -> bool {
+impl _js_ident_char(ch: str) -> bool {
     return ch.isalnum() or ch == "_" or ch == "$";
 }
 
-def _harvest_raw(source: str, decls: set[str]) {
+impl _harvest_raw(source: str, decls: set[str]) {
     n = len(source);
     i = 0;
     while i < n {
@@ -269,7 +309,7 @@ def _harvest_raw(source: str, decls: set[str]) {
     }
 }
 
-def _walk_value(
+impl _walk_value(
     value: any, binding: bool, decls: set[str], refs: list[FreeIdentifier]
 ) {
     if isinstance(value, es.Node) {
@@ -281,7 +321,7 @@ def _walk_value(
     }
 }
 
-def _walk(
+impl _walk(
     nd: es.Node, binding: bool, decls: set[str], refs: list[FreeIdentifier]
 ) -> None {
     if isinstance(nd, es.RawCode) {
@@ -320,20 +360,4 @@ def _walk(
         }
         _walk_value(value, sub, decls, refs);
     }
-}
-
-impl free_identifiers(program: es.Program, allowed: set[str]) -> list[FreeIdentifier] {
-    decls: set[str] = set();
-    refs: list[FreeIdentifier] = [];
-    _walk(program, False, decls, refs);
-    out: list[FreeIdentifier] = [];
-    seen: set[str] = set();
-    for ref in refs {
-        if (ref.name in decls) or (ref.name in allowed) or (ref.name in seen) {
-            continue;
-        }
-        seen.add(ref.name);
-        out.append(ref);
-    }
-    return out;
 }

@@ -981,16 +981,7 @@ impl OverloadedType.__str__ -> str {
     return f"<overload {count} overloads>";
 }
 
-def _class_scope_category(scope: any) -> any {
-    if isinstance(scope, Archetype) {
-        return scope.sym_category;
-    }
-
-    if isinstance(scope, CatScope) and scope.cat_owner_sym is not None {
-        return scope.cat_owner_sym.sym_type;
-    }
-    return None;
-}
+def _class_scope_category(scope: any) -> any;
 
 impl ClassType.is_node_type -> bool {
     if self.shared.is_root_class or self.is_builtin("Node") {
@@ -1388,4 +1379,46 @@ impl FunctionType.is_gradual_callable_form -> bool {
 
 impl FunctionType.is_from_callable_annotation -> bool {
     return self.func_name == "";
+}
+
+impl _class_scope_category(scope: any) -> any {
+    if isinstance(scope, Archetype) {
+        return scope.sym_category;
+    }
+
+    if isinstance(scope, CatScope) and scope.cat_owner_sym is not None {
+        return scope.cat_owner_sym.sym_type;
+    }
+    return None;
+}
+
+impl create_callable_type(
+    param_types: list[TypeBase], return_type: TypeBase, is_gradual: bool = False
+) -> FunctionType {
+    parameters: list[Parameter] = [];
+
+    for (idx, param_type) in enumerate(param_types) {
+        parameters.append(
+            Parameter(
+                name=f"__p{idx}",
+                category=ParameterCategory.Positional,
+                param_type=param_type,
+                default_value=None,
+                is_self=False,
+                is_cls=False,
+                param_kind=ParamKind.POSONLY
+            )
+        );
+    }
+
+    flags: int = FunctionTypeFlags.GradualCallableForm
+        if is_gradual
+        else FunctionTypeFlags.Null;
+
+    return FunctionType(
+        func_name="",
+        return_type=return_type,
+        parameters=parameters,
+        function_flags=flags
+    );
 }

@@ -1,0 +1,115 @@
+impl DeploySpec.from_config(
+    path: str, config: (dict[str, any] | None) = None
+) -> DeploySpec {
+    cfg = dict(config or {});
+    cfg.setdefault('source', path);
+
+    known = {field.name for field in fields(DeploySpec)};
+    unknown = sorted(set(cfg.keys()) - known);
+    if unknown {
+        raise ValueError(
+            f"Unknown deploy option(s) {', '.join(unknown)}; valid keys: "
+            f"{', '.join(sorted(known))}."
+        );
+    }
+    if not cfg.get('app_name') {
+        import from jaclang.scale.deploy.target.kubernetes.kubernetes_config {
+            k8s_safe_slug
+        }
+        base = Path(str(cfg['source']));
+        name_source = base.name if base.suffix != '.jac' else base.parent.name;
+        cfg['app_name'] = k8s_safe_slug(name_source);
+    }
+    return DeploySpec(**cfg);
+}
+
+impl DeploySpec.resolved_target -> str {
+    if self.target == 'auto' {
+        return 'kubernetes';
+    }
+    if self.target in ('kubernetes', 'kubernetes-microservice') {
+        return self.target;
+    }
+    raise ValueError(
+        f"DeploySpec.target must be 'auto', 'kubernetes' or "
+        f"'kubernetes-microservice', got {self.target!r}."
+    );
+}
+
+impl DeploySpec.resolve_entry -> tuple[str, str] {
+    if not self.source {
+        raise ValueError(
+            "DeploySpec.source is required: the app's entry .jac file, "
+            "or a folder containing main.jac."
+        );
+    }
+    path = Path(self.source);
+    if path.is_dir() {
+        `entry = path / 'main.jac';
+        if not `entry.is_file() {
+            raise FileNotFoundError(
+                f"DeploySpec.source folder '{path}' has no main.jac; "
+                f"point source at the entry .jac file instead."
+            );
+        }
+        return (str(path), 'main.jac');
+    }
+    if path.suffix != '.jac' {
+        raise ValueError(
+            f"DeploySpec.source must be a .jac file or a folder, "
+            f"got '{self.source}'."
+        );
+    }
+    if not path.is_file() {
+        raise FileNotFoundError(f"DeploySpec.source not found: '{self.source}'");
+    }
+    return (str(path.parent) or '.', path.name);
+}
+
+impl DeploySpec.to_target_config -> dict[str, any] {
+    config: dict[str, any] = {
+        'app_name': self.app_name,
+        'namespace': self.namespace,
+        'domain': self.domain,
+        'kube_context': self.kube_context,
+        'labels': dict(self.labels)
+    };
+
+    unknown = sorted(set(self.resources.keys()) - set(_RESOURCE_KEYS));
+    if unknown {
+        raise ValueError(
+            f"DeploySpec.resources has unsupported key(s) "
+            f"{', '.join(unknown)}; allowed: {', '.join(_RESOURCE_KEYS)}."
+        );
+    }
+    config.update(dict(self.resources));
+
+    if self.replicas < 1 {
+        raise ValueError(f"DeploySpec.replicas must be >= 1, got {self.replicas}.");
+    }
+    config['min_replicas'] = self.replicas;
+
+    default_max = KubernetesConfig(app_name=self.app_name).max_replicas;
+    if self.replicas > default_max {
+        config['max_replicas'] = self.replicas;
+    }
+    config.update(dict(self.autoscaler));
+    config.update(dict(self.extra));
+    return config;
+}
+
+impl DeploySpec.to_gateway_config -> dict[str, any] {
+    gw = dict(self.gateway);
+    if self.replicas != 1 {
+        gw.setdefault('replicas', self.replicas);
+    }
+    return gw;
+}
+
+impl DeploySpec.app_overrides -> dict[str, dict[str, any]] {
+    return {
+        str(name): dict[str, any](cfg)
+        for (name, cfg) in self.apps.items()
+        if isinstance(cfg, dict)
+    };
+}

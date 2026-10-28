@@ -45,19 +45,52 @@ impl object_emit_jobs -> int {
     return min(os.cpu_count() or 1, 8);
 }
 
-impl emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes] {
-    workers = min(len(bitcodes), object_emit_jobs());
-    if workers < 2 {
-        return [emit_unit_object(bitcode, options) for bitcode in bitcodes];
-    }
+impl codegen_footprint(blob: bytes) -> int {
+    return CODEGEN_BASE_BYTES + CODEGEN_BYTES_PER_BITCODE_BYTE * len(blob);
+}
+
+impl codegen_map(work: Callable[..., bytes], blobs: list[bytes]) -> list[bytes] {
+    import threading;
     import from concurrent.futures { ThreadPoolExecutor }
-    create_unit_target_machine(options);
-    def emit_one(bitcode: bytes) -> bytes {
-        return emit_unit_object(bitcode, options);
+    workers = min(len(blobs), object_emit_jobs());
+    if workers < 2 {
+        return [work(blob) for blob in blobs];
     }
+    budget = int(memory_headroom_bytes() * MEM_HEADROOM);
+    room = threading.Condition();
+    held: list[int] = [0];
+    def run(blob: bytes) -> bytes {
+        need = codegen_footprint(blob);
+        with room {
+            while held[0] > 0 and held[0] + need > budget {
+                room.wait();
+            }
+            held[0] += need;
+        }
+        try {
+            return work(blob);
+        } finally {
+            with room {
+                held[0] -= need;
+                room.notify_all();
+            }
+        }
+    }
+    order = sorted(range(len(blobs)), key=lambda (index: int) { -len(blobs[index]); });
+    results: list[bytes] = [b""] * len(blobs);
     with ThreadPoolExecutor(max_workers=workers) as pool {
-        return list(pool.map(emit_one, bitcodes));
+        pending = [(index, pool.submit(run, blobs[index])) for index in order];
+        for (index, future) in pending {
+            results[index] = future.result();
+        }
     }
+    return results;
+}
+
+impl emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes] {
+    import functools;
+    create_unit_target_machine(options);
+    return codegen_map(functools.partial(emit_unit_object, options=options), bitcodes);
 }
 
 impl unit_bitcode(unit_ir: any) -> bytes {
@@ -88,23 +121,23 @@ impl optimize_unit_ir(unit_ir: any, options: CompileOptions, opt_level: int) -> 
     );
 }
 
+impl optimize_unit_bitcode(
+    bitcode: bytes, options: CompileOptions, opt_level: int
+) -> bytes {
+    return optimized_bitcode(
+        llvm.parse_bitcode(bitcode, llvm.create_context()), options, opt_level
+    );
+}
+
 impl optimize_unit_bitcodes(
     bitcodes: list[bytes], options: CompileOptions, opt_level: int
 ) -> list[bytes] {
-    def optimize_one(bitcode: bytes) -> bytes {
-        return optimized_bitcode(
-            llvm.parse_bitcode(bitcode, llvm.create_context()), options, opt_level
-        );
-    }
-    workers = min(len(bitcodes), object_emit_jobs());
-    if workers < 2 {
-        return [optimize_one(bitcode) for bitcode in bitcodes];
-    }
-    import from concurrent.futures { ThreadPoolExecutor }
+    import functools;
     create_unit_target_machine(options);
-    with ThreadPoolExecutor(max_workers=workers) as pool {
-        return list(pool.map(optimize_one, bitcodes));
-    }
+    return codegen_map(
+        functools.partial(optimize_unit_bitcode, options=options, opt_level=opt_level),
+        bitcodes
+    );
 }
 
 impl create_unit_target_machine(
@@ -268,10 +301,6 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
 }
 
 impl NativeCompilePass._share_engine(module: uni.Module, engine: any) -> None {
-    """The plan may have recompiled this module as a unit while settling,
-    which evicts the module the importer will ask about and leaves its
-    products on the program's artifact carrier; the engine and the interop
-    tables go on that carrier too, so the lookup finds them either way.""";
     import os;
     if not (module.loc and module.loc.mod_path) {
         return;

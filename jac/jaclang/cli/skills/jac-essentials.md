@@ -54,4 +54,4 @@ Section output includes its subsections. A code fragment may still depend on dec
 
 ## Verify
 
-Run `jac check <file-or-app>` after editing. Run the relevant `jac test` tests and exercise changed behavior. Parser success alone does not check types or runtime results. For a new project, inspect its generated files and `jac run --show` before choosing run options. Diagnose persisted-data failures before any reset; use `jac-debugging`.
+Run `jac check <file-or-app>` after editing. Run the relevant `jac test` tests and exercise changed behavior. Parser success alone does not check types or runtime results. For a served app, exercise UI changes in the rendered page with `jac browse` (`open localhost:8000`, `snapshot`, `click @e5`, `fill`, `console`, `screenshot`); a server that starts is not a working flow. For a new project, inspect its generated files and `jac run --show` before choosing run options. Diagnose persisted-data failures before any reset; use `jac-debugging`.

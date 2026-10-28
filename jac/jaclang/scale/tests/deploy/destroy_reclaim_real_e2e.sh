@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Real-cluster e2e for destroy reclamation (#7968).
 #
-# Five properties, each one a bug this change fixes:
+# Six properties, each one a bug this change fixes:
 #
 #   A  owned namespace     the namespace jac-scale created is reclaimed whole
 #   B  adopted namespace   a namespace it did not create survives, foreign
@@ -13,6 +13,10 @@
 #                          is still reclaimed
 #   E  sibling app         a PVC belonging to an app sharing a name prefix is
 #                          never deleted
+#   F  application only    destroying just the application leaves the database
+#                          and its Service in place, still clears the Service
+#                          and PDB of an app deployed before roles, and never
+#                          touches an object jac-scale does not manage
 #
 # Requires a reachable cluster (kind/minikube/microk8s/EKS) on the current
 # kubeconfig context and the scale deploy deps installed for `jac`.
@@ -194,11 +198,18 @@ wait_ns_gone() {
     return 1
 }
 
-# Ops RBAC for one app. The sweep must delete only the rows carrying this
-# app's label, so a co-tenant's Role and RoleBinding survive.
+# Ops RBAC for one app, with the console's own ServiceAccount. The sweep must
+# delete only the rows carrying this app's label, so a co-tenant's Role,
+# RoleBinding and account survive.
 seed_ops_rbac() {
     ns="$1"; app="$2"
     kubectl apply -n "${ns}" -f - >/dev/null <<YAML
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${app}-ops
+  labels: { managed: jac-scale, app: ${app} }
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -218,6 +229,14 @@ roleRef: { apiGroup: rbac.authorization.k8s.io, kind: Role, name: ${app}-ops }
 subjects:
   - { kind: ServiceAccount, name: default, namespace: ${ns} }
 YAML
+}
+
+# An <app>-ops account the user made, without jac-scale's labels, the way one is
+# pre-created to carry a cloud identity. It has the name destroy looks up, so
+# only the ownership check keeps it.
+seed_user_ops_account() {
+    ns="$1"; app="$2"
+    kubectl create serviceaccount "${app}-ops" -n "${ns}" >/dev/null
 }
 
 # A shared volume is named straight from user config, with no app prefix. It is
@@ -345,8 +364,47 @@ require_absent "${ADOPTED_NS}" role "${APP}-ops"
 require_absent "${ADOPTED_NS}" rolebinding "${APP}-ops"
 require_present "${ADOPTED_NS}" role "${SIBLING}-ops"
 require_present "${ADOPTED_NS}" rolebinding "${SIBLING}-ops"
-echo "  ops RBAC reclaimed for '${APP}', left alone for '${SIBLING}'"
+require_absent "${ADOPTED_NS}" serviceaccount "${APP}-ops"
+require_present "${ADOPTED_NS}" serviceaccount "${SIBLING}-ops"
+echo "  ops RBAC and account reclaimed for '${APP}', left alone for '${SIBLING}'"
 _t "B+D+E PASSED"
+
+# F: destroying only the application. The database and monitoring Services share
+# the namespace and the managed=jac-scale label, so only the fleet roles may
+# select what goes. The Service and PDB are stripped of their role first, the
+# shape an app deployed before roles existed has, which destroy must still clear.
+echo "=== F: destroy --component application spares the database's Service ==="
+deploy_app "${APP}" "${ADOPTED_NS}"
+kubectl label service "${APP}-service" -n "${ADOPTED_NS}" jac-scale.role- >/dev/null \
+    || fail "${ADOPTED_NS}" "service/${APP}-service was not there to relabel as pre-role"
+# The app deploys without a PodDisruptionBudget (a floor of one replica that may
+# lose one makes the builder return none), so seed one in the pre-role shape.
+kubectl delete pdb "${APP}-pdb" -n "${ADOPTED_NS}" --ignore-not-found >/dev/null
+kubectl create pdb "${APP}-pdb" -n "${ADOPTED_NS}" --selector="app=${APP}" --max-unavailable=1 >/dev/null \
+    || fail "${ADOPTED_NS}" "could not seed a pre-role pdb/${APP}-pdb"
+kubectl label pdb "${APP}-pdb" -n "${ADOPTED_NS}" managed=jac-scale "app=${APP}" >/dev/null
+require_present "${ADOPTED_NS}" pdb "${APP}-pdb"
+require_present "${ADOPTED_NS}" service "${APP}-postgres-service"
+kubectl create service clusterip "${APP}-operator" -n "${ADOPTED_NS}" --tcp=80:80 >/dev/null \
+    || fail "${ADOPTED_NS}" "could not seed the operator's own service/${APP}-operator"
+kubectl label service "${APP}-operator" -n "${ADOPTED_NS}" "app=${APP}" --overwrite >/dev/null
+
+SDK_DEPLOY_COMPONENT=application destroy_app "${APP}" "${ADOPTED_NS}"
+
+require_absent  "${ADOPTED_NS}" deployment "${APP}-deployment"
+require_absent  "${ADOPTED_NS}" service "${APP}-service"
+require_absent  "${ADOPTED_NS}" pdb "${APP}-pdb"
+require_absent  "${ADOPTED_NS}" service gateway-service
+require_present "${ADOPTED_NS}" statefulset "${APP}-postgres"
+require_present "${ADOPTED_NS}" service "${APP}-postgres-service"
+require_present "${ADOPTED_NS}" service "${APP}-operator"
+echo "  application and its pre-role Service removed, database and an unmanaged Service kept"
+kubectl delete service "${APP}-operator" -n "${ADOPTED_NS}" >/dev/null
+
+# The database is still deployed; a full destroy clears it before C starts.
+destroy_app "${APP}" "${ADOPTED_NS}"
+require_absent "${ADOPTED_NS}" statefulset "${APP}-postgres"
+_t "F PASSED"
 
 ########################## scenario C: co-tenant apps ##########################
 echo "=== C: two apps in one namespace, destroying one must not delete the other ==="
@@ -365,6 +423,8 @@ STILL_OWNER="$(ns_owner "${COTENANT_NS}")"
     || fail "${COTENANT_NS}" "adopting app '${COTENANT}' rewrote the owner label to '${STILL_OWNER}'"
 echo "  namespace owned by '${APP}', co-tenant '${COTENANT}' adopted it"
 
+seed_user_ops_account "${COTENANT_NS}" "${COTENANT}"
+
 _t "C deployed"
 # Destroying the co-tenant must take the adopted path and spare the namespace.
 destroy_app "${COTENANT}" "${COTENANT_NS}"
@@ -378,6 +438,10 @@ require_present "${COTENANT_NS}" statefulset "${APP}-postgres"
 require_present "${COTENANT_NS}" pvc "${APP}-bundles"
 require_absent "${COTENANT_NS}" statefulset "${COTENANT}-postgres"
 echo "  '${APP}' database and volumes survived the co-tenant's destroy"
+# The account destroy looks up for the co-tenant exists, but jac-scale did not
+# make it, so it stays.
+require_present "${COTENANT_NS}" serviceaccount "${COTENANT}-ops"
+echo "  user-made '${COTENANT}-ops' account left in place"
 _t "C adopted-app destroy PASSED"
 
 # The other direction: the owner label names the app that created the
@@ -400,4 +464,4 @@ echo "  '${COTENANT}' database and volumes survived the owner's destroy"
 _t "C PASSED"
 
 print_timing_report
-echo "=== destroy reclamation REAL e2e PASSED (A B C D E) ==="
+echo "=== destroy reclamation REAL e2e PASSED (A B C D E F) ==="

@@ -56,13 +56,4 @@ def target_for_app(app: AppConfig, project_dir: Path) -> ClientTarget;
 
 glob _registry: TargetRegistry | None = None;
 
-def get_target_registry -> TargetRegistry {
-    import from jaclang.client.targets.registry { TargetRegistry }
-    if _registry is None {
-        _registry = TargetRegistry();
-
-        import from jaclang.client.targets.register { register_targets }
-        register_targets();
-    }
-    return _registry;
-}
+def get_target_registry -> TargetRegistry;

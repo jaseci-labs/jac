@@ -117,6 +117,14 @@ impl SubTag.__repr__ -> str {
     return f"{type(self).__name__}";
 }
 
+impl Module.elements.getter -> list[UniNode] {
+    return [
+        stmt
+        for stmt in self.body
+        if stmt.top_element is stmt
+    ];
+}
+
 impl Module.body.getter -> Sequence[ElementStmt | String | EmptyToken] {
     return ([self->:BodyRole:->]) as Sequence[ElementStmt | String | EmptyToken];
 }
@@ -392,6 +400,10 @@ impl ImplDef.decl_link.getter -> (UniNode | None) {
 
 impl ImplDef.decorators.getter -> (Sequence[Expr] | None) {
     return [self->:DecoratorsRole:->];
+}
+
+impl ImplDef.type_params.getter -> list[TypeParam] {
+    return [self->:TypeParamsRole:->][?:TypeParam];
 }
 
 impl ImplDef.target.getter -> Sequence[NameAtom] {
@@ -2003,6 +2015,7 @@ impl ImplDef.init(
     codespace_dual: bool = False,
     decorators: (Sequence[Expr] | None),
     target: Sequence[NameAtom],
+    type_params: (Sequence[TypeParam] | None) = None,
     spec: (Sequence[Expr] | FuncSignature | EventSignature | None),
     body: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | Expr,
     kid: Sequence[UniNode] = []
@@ -2014,6 +2027,7 @@ impl ImplDef.init(
             DocRole: doc,
             DecoratorsRole: decorators,
             TargetRole: target,
+            TypeParamsRole: type_params,
             SpecRole: spec,
             BodyRole: body
         }

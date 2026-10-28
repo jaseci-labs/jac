@@ -63,9 +63,7 @@ obj MemoryConfig {
         enforce: list[str] = [],
         exempt: list[str] = [];
 
-    def gc_mode -> str {
-        return {"managed": "cycles", "rc": "rc", "nogc": "none"}[self.profile];
-    }
+    def gc_mode -> str;
 }
 
 obj PlacementConfig {
@@ -435,14 +433,8 @@ def get_config_for_path(
 
 def get_config_for_dir(start_dir: str) -> JacConfig | None;
 
-def offline_mode -> bool {
-    config = get_config();
-    return config is not None and config.network.offline;
-}
+def offline_mode -> bool;
 
-def use_system_toolchains -> bool {
-    config = get_config();
-    return config is None or config.toolchains.system;
-}
+def use_system_toolchains -> bool;
 
 def active_profile_name(config: JacConfig | None) -> str;

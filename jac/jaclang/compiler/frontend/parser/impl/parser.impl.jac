@@ -48,7 +48,7 @@ impl Parser.check_peek_any(*kinds: TokenKind) -> bool {
     return self.peek().kind in kinds;
 }
 
-impl Parser.postinit{
+impl Parser.postinit {
     self.source = Source(self.source_code, self.file_path);
     self._tokens_len = len(self.tokens);
 }
@@ -363,7 +363,7 @@ impl Parser.make_semi -> Semi {
     );
 }
 
-impl Parser.synchronize{
+impl Parser.synchronize {
     self.advance();
     while not self.at_end() {
         if self.check_any(
@@ -2721,6 +2721,7 @@ impl Parser.parse_lambda_expr -> Expr {
     rbrace_uni: Token | None = None;
     if self.match_tok(TokenKind.LBRACE) {
         lbrace_uni = self.make_uni_token(self.previous());
+        self._lambda_block = True;
         body_stmts2 = self._apply_implicit_return(self.parse_code_block_stmts());
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
@@ -3482,15 +3483,17 @@ impl Parser.parse_module_code -> ModuleCode {
 
 impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
     stmts: list[CodeBlockStmt] = [];
-    checked_first = False;
+    lambda_block = self._lambda_block;
+    self._lambda_block = False;
+    flagged: list[SourceLoc] = [];
+    flagged_at: list[int] = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         before = self.pos;
         stmt = self.parse_statement();
         if stmt is not None {
             is_docstring = False;
             if (
-                not checked_first
-                and self._view_body_depth == 0
+                self._view_body_depth == 0
                 and isinstance(stmt, ExprStmt)
                 and not stmt.in_fstring
                 and stmt.has_semi
@@ -3506,14 +3509,8 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
                 }
             }
             if is_docstring {
-                self.emit_warn(
-                    "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc.",
-                    "W0060",
-                    loc=self.tokens[before].loc
-                );
-            }
-            if not isinstance(stmt, Semi) {
-                checked_first = True;
+                flagged.append(self.tokens[before].loc);
+                flagged_at.append(len(stmts));
             }
             stmts.append(stmt);
 
@@ -3538,6 +3535,34 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
         if self.pos == before {
             self.advance();
         }
+    }
+    if lambda_block {
+        real = [
+            i
+            for i in range(len(stmts))
+            if not isinstance(stmts[i], Semi)
+        ];
+        rest = [
+            i
+            for i in real
+            if i not in flagged_at
+        ];
+        if len(real) == 1 {
+            return stmts;
+        }
+        if len(rest) == 1 {
+            lone = stmts[rest[0]];
+            if isinstance(lone, ExprStmt) and lone.has_semi {
+                return stmts;
+            }
+        }
+    }
+    for loc in flagged {
+        self.emit_warn(
+            "A string on its own does nothing. Docstrings go before the declaration, not inside the body; write a note inside a body as a # comment.",
+            "W0060",
+            loc=loc
+        );
     }
     return stmts;
 }
@@ -4733,13 +4758,6 @@ impl Parser.parse_class_pattern_args(
 }
 
 impl Parser.parse_return_stmt -> ReturnStmt {
-    """`return expr;`, or `return tail call(...);` for a guaranteed tail call.
-
-    `tail` is contextual: it marks a tail call only directly after `return`
-    and before a name that starts the call, so `return tail;`,
-    `return tail(x);` and `return tail.next;` still read a variable named
-    `tail`. The operand of `return tail` must be a call.
-    """;
     ret_uni = self.consume_uni(TokenKind.KW_RETURN);
     expr = None;
     tail_uni: Token | None = None;
@@ -5472,7 +5490,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.DECOR_OP) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5481,21 +5499,21 @@ impl Parser.parse_archetype_member -> UniNode | None {
         if self.check_peek(TokenKind.KW_HAS) {
             has_stmt = self.parse_has_stmt();
             if doc {
-                _ = self._attach_doc(has_stmt, doc);
+                self._attach_doc(has_stmt, doc);
             }
             return has_stmt;
         }
 
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
     if self.check(TokenKind.KW_HAS) {
         has_stmt = self.parse_has_stmt();
         if doc {
-            _ = self._attach_doc(has_stmt, doc);
+            self._attach_doc(has_stmt, doc);
         }
         return has_stmt;
     }
@@ -5503,7 +5521,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_ASYNC) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5517,7 +5535,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ct_globals = self.parse_comptime_global();
         if doc {
-            _ = self._attach_doc(ct_globals, doc);
+            self._attach_doc(ct_globals, doc);
         }
         return ct_globals;
     }
@@ -5526,7 +5544,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5537,7 +5555,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5550,14 +5568,14 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         archetype = self.parse_archetype();
         if doc {
-            _ = self._attach_doc(archetype, doc);
+            self._attach_doc(archetype, doc);
         }
         return archetype;
     }
     if self.check(TokenKind.KW_ENUM) {
         enum_node = self.parse_enum();
         if doc {
-            _ = self._attach_doc(enum_node, doc);
+            self._attach_doc(enum_node, doc);
         }
         return enum_node;
     }
@@ -5565,7 +5583,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_IMPL) {
         impl_node = self.parse_impl_def();
         if doc {
-            _ = self._attach_doc(impl_node, doc);
+            self._attach_doc(impl_node, doc);
         }
         return impl_node;
     }
@@ -5593,7 +5611,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
             kid.append(rb_uni);
             module_code = ModuleCode(name=None, body=body, kid=kid, doc=None);
             if doc {
-                _ = self._attach_doc(module_code, doc);
+                self._attach_doc(module_code, doc);
             }
             return module_code;
         }
@@ -5607,13 +5625,13 @@ impl Parser.parse_archetype_member -> UniNode | None {
     return EmptyToken();
 }
 
-impl Parser._skip_semicolons{
+impl Parser._skip_semicolons {
     while self.match_tok(TokenKind.SEMI) {
         continue;
     }
 }
 
-impl Parser._error_unexpected_member{
+impl Parser._error_unexpected_member {
     self.emit_diag("Unexpected token in archetype body", "E0046");
     self.advance();
 }
@@ -6634,6 +6652,16 @@ impl Parser.parse_impl_def -> ImplDef {
         target_names.append(self.parse_impl_target_name());
     }
 
+    impl_tp_list: (list[TypeParam] | None) = None;
+    impl_tp_lb_uni: Token | None = None;
+    impl_tp_rb_uni: Token | None = None;
+    impl_tp_comma_unis: list[Token] = [];
+    if self.match_tok(TokenKind.LSQUARE) {
+        impl_tp_lb_uni = self.make_uni_token(self.previous());
+        (impl_tp_list, impl_tp_comma_unis) = self.parse_type_params();
+        impl_tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
+    }
+
     spec_sig: UniNode | None = None;
     spec_is_inh = False;
     base_classes: list[Expr] = [];
@@ -6718,6 +6746,18 @@ impl Parser.parse_impl_def -> ImplDef {
             kid.append(dot_unis[i]);
         }
     }
+    if impl_tp_list is not None
+        and impl_tp_lb_uni is not None
+        and impl_tp_rb_uni is not None {
+        kid.append(impl_tp_lb_uni);
+        for (i, tp) in enumerate(impl_tp_list) {
+            if i > 0 {
+                kid.append(impl_tp_comma_unis[i - 1]);
+            }
+            kid.append(tp);
+        }
+        kid.append(impl_tp_rb_uni);
+    }
     if spec_sig is not None {
         kid.append(spec_sig);
     } elif spec_is_inh and len(base_classes) > 0 and impl_inh_lp_tok is not None {
@@ -6763,6 +6803,7 @@ impl Parser.parse_impl_def -> ImplDef {
     return ImplDef(
         decorators=decorators,
         target=target_names,
+        type_params=impl_tp_list,
         spec=spec_arg,
         body=impl_body_arg,
         kid=kid,
@@ -7605,4 +7646,79 @@ impl Parser._skip_wiring_stmt(open_lists: int = 0) -> None {
             return;
         }
     }
+}
+
+impl _string_lit_text(raw: str) -> str {
+    v = raw;
+    while v and v[0] in "rbfRBF" {
+        v = v[1:];
+    }
+    if len(v) >= 6 and v.startswith('"""') and v.endswith('"""') {
+        return v[3:-3];
+    }
+    if len(v) >= 6 and v.startswith("'''") and v.endswith("'''") {
+        return v[3:-3];
+    }
+    if len(v) >= 2 and (v[0] == "'" or v[0] == '"') and v[-1] == v[0] {
+        return v[1:-1];
+    }
+    return v;
+}
+
+impl _test_ident_from_desc(desc_text: str) -> str {
+    ident_chars: list[str] = [];
+    prev_sep = False;
+    for ch in desc_text {
+        is_word = ("a" <= ch and ch <= "z")
+            or ("A" <= ch and ch <= "Z")
+            or ("0" <= ch and ch <= "9");
+        if is_word {
+            ident_chars.append(ch);
+            prev_sep = False;
+        } elif not prev_sep {
+            ident_chars.append("_");
+            prev_sep = True;
+        }
+    }
+    ident: str = str("".join(ident_chars));
+    if ident.startswith("_") {
+        ident = ident[1:];
+    }
+    if ident.endswith("_") {
+        ident = ident[:-1];
+    }
+    return ident.lower();
+}
+
+impl parse_program(
+    source: str, file_path: str
+) -> tuple[(Module, int, list[SrcDiag], list[CommentData], list[SrcDiag], int)] {
+    (tokens, comments, lex_diags, lex_error_count) = tokenize_full(source, file_path);
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
+    mod = parser.parse();
+    return (
+        mod,
+        parser.error_count,
+        parser.diags,
+        comments,
+        lex_diags,
+        lex_error_count
+    );
+}
+
+impl parse_expression(
+    source: str, file_path: str = "<input>"
+) -> tuple[Expr, bool, list[SrcDiag], list[SrcDiag]] {
+    (tokens, _comments, lex_diags, lex_errors) = tokenize_full(source, file_path);
+    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
+    expression = parser.parse_expression();
+    if not parser.at_end() {
+        parser.error("Unexpected token after expression");
+    }
+    return (
+        expression,
+        lex_errors > 0 or parser.error_count > 0,
+        parser.diags,
+        lex_diags
+    );
 }

@@ -1,3 +1,4 @@
+import re;
 import from pathlib { Path }
 
 impl JacDesktopConfig.get_plugin_name(self: JacDesktopConfig) -> str {
@@ -81,6 +82,101 @@ impl JacDesktopConfig.get_backend(self: JacDesktopConfig) -> str {
     );
 }
 
+impl JacDesktopConfig.get_backends(self: JacDesktopConfig) -> dict[str, str] {
+    config = self.load();
+    raw = config.get('backends', {});
+    if 'backends' not in config {
+        if 'default_backend' in config {
+            raise ValueError(
+                "Desktop configuration error: default_backend needs a [desktop] backends table"
+            );
+        }
+        return {};
+    }
+    if not isinstance(raw, dict) or not raw {
+        raise ValueError(
+            "Desktop configuration error: backends must be a table of at least two name = 'embedded' or http(s) URL entries"
+        );
+    }
+    if 'backend' in config {
+        raise ValueError(
+            "Desktop configuration error: set either backend (one backend) or backends (a choice), not both"
+        );
+    }
+    backends: dict[str, str] = {};
+    for (key, raw_value) in raw.items() {
+        name = str(key).strip();
+        value = str(raw_value or '').strip();
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', name) or name == 'ask' {
+            raise ValueError(
+                f"Desktop configuration error: backend name '{name}' must be letters, digits, '-' or '_', and not 'ask'"
+            );
+        }
+        if value == 'embedded' {
+            if 'embedded' in backends.values() {
+                raise ValueError(
+                    "Desktop configuration error: backends may name 'embedded' only once; the app has one local store"
+                );
+            }
+        } elif value.startswith('http://') or value.startswith('https://') {
+            value = value.rstrip('/');
+        } else {
+            raise ValueError(
+                f"Desktop configuration error: backends.{name} must be 'embedded' or an http(s) URL, got '{value}'"
+            );
+        }
+        backends[name] = value;
+    }
+    if len(backends) < 2 {
+        raise ValueError(
+            "Desktop configuration error: backends needs at least two entries; use backend = ... for a single one"
+        );
+    }
+    return backends;
+}
+
+impl JacDesktopConfig.get_default_backend(self: JacDesktopConfig) -> str {
+    backends = self.get_backends();
+    if not backends {
+        return "";
+    }
+    config = self.load();
+    chosen = str(config.get('default_backend', 'ask') or 'ask').strip();
+    if chosen != 'ask' and chosen not in backends {
+        names = ", ".join(backends.keys());
+        raise ValueError(
+            f"Desktop configuration error: default_backend must be 'ask' or one of {names}, got '{chosen}'"
+        );
+    }
+    return chosen;
+}
+
+impl JacDesktopConfig.get_build_backend(self: JacDesktopConfig) -> str {
+    backends = self.get_backends();
+    if not backends {
+        return self.get_backend();
+    }
+    if 'embedded' in backends.values() {
+        return 'embedded';
+    }
+    return list(backends.values())[0];
+}
+
+impl JacDesktopConfig.get_profiles(self: JacDesktopConfig) -> bool {
+    raw = self.load().get('profiles', False);
+    if not isinstance(raw, bool) {
+        raise ValueError(
+            f"Desktop configuration error: profiles must be true or false, got '{raw}'"
+        );
+    }
+    if raw and self.get_build_backend() != 'embedded' {
+        raise ValueError(
+            "Desktop configuration error: profiles needs an embedded backend; a remote server keeps its own accounts"
+        );
+    }
+    return raw;
+}
+
 impl JacDesktopConfig.get_plugin_configs(self: JacDesktopConfig) -> dict[str, any] {
     config = self.load();
     plugins = config.get('plugins', {});
@@ -159,9 +255,32 @@ impl JacDesktopConfig.validate(self: JacDesktopConfig) -> None {
     if isinstance(plugins, dict) {
         _validate_plugin_keys(plugins);
     }
+    self.get_default_backend();
+    self.get_profiles();
 }
 
-def _validate_plugin_keys(plugins: dict[str, any]) -> None {
+def _validate_plugin_keys(plugins: dict[str, any]) -> None;
+
+impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
+    if (
+        _desktop_config_instance is not None
+        and project_dir != _desktop_config_instance.project_dir
+    ) {
+        _desktop_config_instance = None;
+    }
+    if _desktop_config_instance is None {
+        _desktop_config_instance = JacDesktopConfig(project_dir=project_dir);
+    }
+    return _desktop_config_instance;
+}
+
+impl reset_desktop_config -> None {
+    _desktop_config_instance = None;
+}
+
+def _generate_identifier(name: str) -> str;
+
+impl _validate_plugin_keys(plugins: dict[str, any]) -> None {
     plugins_spec = _desktop_config_schema().options.get('plugins', None);
     if plugins_spec is None {
         return;
@@ -191,24 +310,7 @@ def _validate_plugin_keys(plugins: dict[str, any]) -> None {
     }
 }
 
-impl get_desktop_config(project_dir: Path | None = None) -> JacDesktopConfig {
-    if (
-        _desktop_config_instance is not None
-        and project_dir != _desktop_config_instance.project_dir
-    ) {
-        _desktop_config_instance = None;
-    }
-    if _desktop_config_instance is None {
-        _desktop_config_instance = JacDesktopConfig(project_dir=project_dir);
-    }
-    return _desktop_config_instance;
-}
-
-impl reset_desktop_config -> None {
-    _desktop_config_instance = None;
-}
-
-def _generate_identifier(name: str) -> str {
+impl _generate_identifier(name: str) -> str {
     import re;
     cleaned = re.sub(r'[^a-zA-Z0-9.\-]', '', name.lower());
     cleaned = re.sub(r'[.\-]+', '.', cleaned);
@@ -217,4 +319,40 @@ def _generate_identifier(name: str) -> str {
         cleaned = f"com.{cleaned}" if cleaned else "com.myapp";
     }
     return cleaned;
+}
+
+impl WindowConfig.from_dict(
+    data: dict[str, any], title_fallback: str = ""
+) -> WindowConfig {
+    kw: dict[str, any] = {
+        "title": str(data.get("title", title_fallback) or title_fallback)
+    };
+    comptime for f in fields(WindowConfig) {
+        comptime if f.name != "title" {
+            kw[f.name] = f.`type(data.get(f.name, f.`default));
+        }
+    }
+    return WindowConfig(**kw);
+}
+
+impl DispatchConfig.from_dict(data: dict[str, any]) -> DispatchConfig {
+    kw: dict[str, any] = {};
+    comptime for f in fields(DispatchConfig) {
+        kw[f.name] = f.`type(data.get(f.name, f.`default));
+    }
+    return DispatchConfig(**kw);
+}
+
+impl DesktopDefaultConfig.to_dict -> dict[str, any] {
+    window: dict[str, any] = {};
+    comptime for f in fields(WindowConfig) {
+        window[f.name] = get_field(self.window, f.name);
+    }
+    window['fullscreen'] = False;
+    return {
+        'name': self.name,
+        'identifier': self.identifier,
+        'version': self.version,
+        'window': window
+    };
 }

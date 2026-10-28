@@ -43,36 +43,14 @@ obj Fonts {
         huge: int = 34;
 }
 
-def:pub dark_palette -> Colors {
-    return Colors();
-}
+def:pub dark_palette -> Colors;
 
-def:pub light_palette -> Colors {
-    return Colors(
-        bg="#ffffff",
-        surface="#ffffff",
-        elevated="#f5f5f5",
-        border="#e5e5e5",
-        text="#171717",
-        muted="#737373",
-        accent="#ea580c",
-        field="#fafafa",
-        accentSoft="rgba(234,88,12,0.12)"
-    );
-}
+def:pub light_palette -> Colors;
 
-def:pub spacing -> Spacing {
-    return Spacing();
-}
+def:pub spacing -> Spacing;
 
-def:pub radii -> Radii {
-    return Radii();
-}
+def:pub radii -> Radii;
 
-def:pub fonts -> Fonts {
-    return Fonts();
-}
+def:pub fonts -> Fonts;
 
-def:pub font_family -> str {
-    return "Geist";
-}
+def:pub font_family -> str;

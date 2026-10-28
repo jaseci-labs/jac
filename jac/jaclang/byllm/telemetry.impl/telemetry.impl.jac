@@ -4,6 +4,52 @@ impl register_agent_callback(callback: Callable[[dict[str, any]], None]) -> None
     }
 }
 
+impl register_llm_call_hook(hook: Callable[[dict[str, any]], None]) -> None {
+    if hook not in _llm_call_hooks {
+        _llm_call_hooks.append(hook);
+    }
+}
+
+impl unregister_llm_call_hook(hook: Callable[[dict[str, any]], None]) -> None {
+    if hook in _llm_call_hooks {
+        _llm_call_hooks.remove(hook);
+    }
+}
+
+def _plain_message(msg: any) -> dict[str, any];
+
+impl _notify_llm_call(mt_run: MTRuntime) -> None {
+    if not _llm_call_hooks or not mt_run.messages {
+        return;
+    }
+    sent = list(mt_run.messages[mt_run._llm_hook_cursor:-1]);
+
+    if mt_run._llm_hook_cursor == 0 and sent and mt_run._sent_system is not None {
+        sent[0] = mt_run._sent_system;
+    }
+    mt_run._llm_hook_cursor = len(mt_run.messages);
+    caller = mt_run.mtir.caller if mt_run.mtir else None;
+    usage = dict(mt_run._usage_history[-1]) if mt_run._usage_history else {};
+    record: dict[str, any] = {
+        "invocation_id": mt_run._invocation_id,
+        "parent_invocation_id": mt_run._parent_invocation_id,
+        "caller": caller?.__name__,
+        "call_kind": usage.get("call_kind") or mt_run._call_kind,
+        "new_messages": [_plain_message(m) for m in sent],
+        "reply": _plain_message(mt_run.messages[-1]),
+        "usage": usage,
+        "after_compaction": mt_run._llm_hook_compacted
+    };
+    mt_run._llm_hook_compacted = False;
+    for hook in list(_llm_call_hooks) {
+        try {
+            hook(record);
+        } except Exception as e {
+            logger.warning(f"byLLM llm call hook {hook!r} raised: {e}");
+        }
+    }
+}
+
 impl _aggregate_usage(usage_history: list[dict[str, any]]) -> dict[str, object] {
     totals: dict[str, any] = {};
     by_kind: dict[str, any] = {};
@@ -99,7 +145,8 @@ impl _emit_agent_telemetry(
         "latency_ms": latency_ms,
         "status": status,
         "error": str(error)[:1000] if error else None,
-        "tokens": tokens
+        "tokens": tokens,
+        "compactions": list(mt_run._compactions)
     };
 
     for callback in _agent_callbacks {
@@ -109,4 +156,16 @@ impl _emit_agent_telemetry(
             logger.debug(f"Agent telemetry callback error: {e}");
         }
     }
+}
+
+impl _plain_message(msg: any) -> dict[str, any] {
+    if isinstance(msg, dict) {
+        return dict(msg);
+    }
+    to_dict = msg?.to_dict;
+    if callable(to_dict) {
+        return to_dict();
+    }
+    dump = msg?.model_dump;
+    return dump(exclude_none=True) if callable(dump) else {"raw": str(msg)};
 }

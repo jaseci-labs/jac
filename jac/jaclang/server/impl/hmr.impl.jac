@@ -8,10 +8,7 @@ import from pathlib { Path }
 
 glob logger = logging.getLogger(__name__);
 
-def _syntax_error_line(file_path: str, err: SyntaxError) -> str {
-    where = f":{err.lineno}" if err?.lineno and err.lineno else "";
-    return f"Syntax error in {file_path}{where}: {err?.msg or str(err)}";
-}
+def _syntax_error_line(file_path: str, err: SyntaxError) -> str;
 
 impl HotReloader.start -> None {
     if self._running {
@@ -780,4 +777,9 @@ impl HotReloader._copy_frontend_files(file_path: str) -> None {
         console.error(f"Copy error in {file_path}: {e}");
         self.record_error(file_path, f"Copy error: {e}");
     }
+}
+
+impl _syntax_error_line(file_path: str, err: SyntaxError) -> str {
+    where = f":{err.lineno}" if err?.lineno and err.lineno else "";
+    return f"Syntax error in {file_path}{where}: {err?.msg or str(err)}";
 }

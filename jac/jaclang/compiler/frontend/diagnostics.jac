@@ -20,66 +20,13 @@ obj DiagnosticInfo {
         url_slug: str | None = None,
         blocks_codegen: bool = False;
 
-    def format_message(**kwargs: object) -> str {
-        filled = _fill_template(self.message_template, kwargs);
-        if filled is None {
-            return f"{self.message_template} (missing key)";
-        }
-        return filled;
-    }
-
-    def format_help(**kwargs: object) -> (str | None) {
-        if self.help_text is None {
-            return None;
-        }
-        filled = _fill_template(self.help_text, kwargs);
-        if filled is None {
-            return self.help_text;
-        }
-        return filled;
-    }
+    def format_message(**kwargs: object) -> str;
+    def format_help(**kwargs: object) -> (str | None);
 }
 
-def _placeholder_name(text: str) -> bool {
-    if not text {
-        return False;
-    }
-    for ch in text {
-        if not (ch.isalnum() or ch == "_") {
-            return False;
-        }
-    }
-    return True;
-}
+def _placeholder_name(text: str) -> bool;
 
-def _fill_template(template: str, kwargs: dict[str, object]) -> (str | None) {
-    out: list[str] = [];
-    i = 0;
-    n = len(template);
-    while i < n {
-        ch = template[i];
-        if (ch == "{" or ch == "}") and i + 1 < n and template[i + 1] == ch {
-            out.append(ch);
-            i += 2;
-            continue;
-        }
-        if ch == "{" {
-            close = template.find("}", i + 1);
-            if close > i and _placeholder_name(template[i + 1:close]) {
-                key = template[i + 1:close];
-                if key not in kwargs {
-                    return None;
-                }
-                out.append(str(kwargs[key]));
-                i = close + 1;
-                continue;
-            }
-        }
-        out.append(ch);
-        i += 1;
-    }
-    return "".join(out);
-}
+def _fill_template(template: str, kwargs: dict[str, object]) -> (str | None);
 
 glob DIAGNOSTICS: dict[str, DiagnosticInfo] = {};
 
@@ -90,32 +37,7 @@ def _reg(
     template: str,
     help_text: str | None = None,
     blocks_codegen: bool = False
-) -> DiagnosticInfo {
-    sitting = DIAGNOSTICS.get(code);
-    if sitting is not None {
-        raise ValueError(
-            f"diagnostic code {code} is claimed twice. It is already "
-            f"registered as {sitting.severity.value}/{sitting.category.value} "
-            f"'{sitting.message_template}' and is registered again as "
-            f"{severity.value}/{category.value} '{template}'. A code names "
-            "exactly one diagnostic: the second registration would shadow "
-            "the first everywhere it is referenced, and the native link "
-            "refuses this module on the duplicate symbol. Give the later "
-            "claimant a code of its own and move its pins."
-        );
-    }
-    info = DiagnosticInfo(
-        code=code,
-        severity=severity,
-        category=category,
-        message_template=template,
-        help_text=help_text,
-        url_slug=code.lower(),
-        blocks_codegen=blocks_codegen
-    );
-    DIAGNOSTICS[code] = info;
-    return info;
-}
+) -> DiagnosticInfo;
 
 def _err(
     code: str,
@@ -123,15 +45,11 @@ def _err(
     tmpl: str,
     help: str | None = None,
     blocks_codegen: bool = False
-) -> DiagnosticInfo {
-    return _reg(code, Severity.ERROR, cat, tmpl, help, blocks_codegen);
-}
+) -> DiagnosticInfo;
 
 def _warn(
     code: str, cat: Category, tmpl: str, help: str | None = None
-) -> DiagnosticInfo {
-    return _reg(code, Severity.WARNING, cat, tmpl, help);
-}
+) -> DiagnosticInfo;
 
 glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"),
      E0002 = _err("E0002", Category.SYNTAX, "Missing '{token}'"),
@@ -317,6 +235,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Duplicate declaration of '{name}' (already declared as {kind})",
          help="Jac supports decl/impl separation, not decl/decl. Either inline the body into the first `obj/node/edge/walker/enum` block, or split into a body-less declaration plus an `impl` block."
      ),
+     E0078 = _err(
+         "E0078",
+         Category.SYNTAX,
+         "The {kind} '{name}' has the name of the field declared on line {line}",
+         help="A field and a method or ability of one archetype share one attribute name, so the {kind} replaces the field and `self.{name}` reads the function. Rename one of them."
+     ),
      E0080 = _err(
          "E0080",
          Category.SYNTAX,
@@ -449,7 +373,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,
-         "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc."
+         "A string on its own does nothing. Docstrings go before the declaration, not inside the body; write a note inside a body as a # comment."
      ),
      W0063 = _warn(
          "W0063",
@@ -687,6 +611,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E1090 = _err(
          "E1090", Category.TYPE, "Cannot raise {type} (not an exception type)"
+     ),
+     E1161 = _err(
+         "E1161",
+         Category.TYPE,
+         "Cannot use {type} as an exception cause (not an exception type or None)"
      ),
      E1091 = _err(
          "E1091",
@@ -1688,6 +1617,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Parameter name mismatch: declaration has '{decl_name}' but implementation has '{impl_name}'.",
          help="An `impl` must use the same parameter names as its declaration: callers bind keyword arguments by the declared names, and the server, bridge stubs and tool schemas are generated from the declaration."
      ),
+     E2030 = _err(
+         "E2030",
+         Category.SEMANTIC,
+         "Type parameter mismatch: declaration has [{decl_params}] but implementation has [{impl_params}].",
+         help="An `impl` that restates type parameters must restate the declaration's, in order: `def first[T](items: list[T]) -> T;` is implemented by `impl first[T](items: list[T]) -> T { ... }`. Leave the brackets off to inherit them."
+     ),
      W2014 = _warn(
          "W2014",
          Category.SEMANTIC,
@@ -2178,17 +2113,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W3050",
          Category.LINT,
          "Comment can be removed [strip-comments]",
-         help="Opt-in 'deslop' rule. Enable by adding \"strip-comments\" to "
-         "[check.lint] select in jac.toml. `jac fmt --lintfix` then removes "
-         "all comments; it never fires under select = [\"all\"] or [\"default\"]."
+         help="'Deslop' rule, on under select = [\"all\"] (not [\"default\"]) or "
+         "when \"strip-comments\" is named in [check.lint] select. "
+         "`jac fmt --lintfix` then removes all comments."
      ),
      W3051 = _warn(
          "W3051",
          Category.LINT,
          "Docstring can be removed [strip-docstrings]",
-         help="Opt-in 'deslop' rule. Enable by adding \"strip-docstrings\" to "
-         "[check.lint] select in jac.toml. `jac fmt --lintfix` then removes "
-         "all docstrings; it never fires under select = [\"all\"] or [\"default\"]."
+         help="'Deslop' rule, on under select = [\"all\"] (not [\"default\"]) or "
+         "when \"strip-docstrings\" is named in [check.lint] select. "
+         "`jac fmt --lintfix` then removes all docstrings, and every string "
+         "written as a statement inside a body."
      ),
      W3053 = _warn(
          "W3053",
@@ -2207,6 +2143,25 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          help="Under archwire.jac a written import of a module below it is a wire;"
          " this one has no wire and nothing reads it, so it is dead."
          " `jac fmt --lintfix` removes it, and so does `jac arch sync --prune`."
+     ),
+     W3055 = _warn(
+         "W3055",
+         Category.LINT,
+         "Body of '{name}' belongs in a separate impl [separate-impls]",
+         help="On under select = [\"all\"] (not [\"default\"]) or when "
+         "\"separate-impls\" is named in [check.lint] select. "
+         "`jac fmt --lintfix` leaves the declaration in place and moves its body"
+         " into an `impl` at the bottom of the module."
+     ),
+     W3056 = _warn(
+         "W3056",
+         Category.LINT,
+         "{what} [impls-in-annex]",
+         help="On under select = [\"all\"] (not [\"default\"]) or when "
+         "\"impls-in-annex\" is named in [check.lint] select. Every impl lives in"
+         " its module's `impl/<module>.impl.jac` annex (or `<module>.impl/` for a"
+         " dotted stem such as a platform variant), never in the module itself or"
+         " beside it. `jac fmt --lintfix` moves the impls and relocates the annex."
      ),
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -2240,7 +2195,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "strip-comments": "W3050",
          "strip-docstrings": "W3051",
          "remove-wired-import": "W3053",
-         "remove-dead-import": "W3054"
+         "remove-dead-import": "W3054",
+         "separate-impls": "W3055",
+         "impls-in-annex": "W3056"
      },
      E5001 = _err(
          "E5001",
@@ -2449,7 +2406,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5093",
          Category.CODEGEN,
          "Type '{type}' on {what} of '{name}' cannot cross the native->Python call boundary",
-         help="Native code calling a Python-context function marshals through a fixed ctypes callback table: int (c_int64), float (c_double), bool (c_bool), str (c_char_p), sized ints, plus None returns. Any other type would be reinterpreted as a raw c_int64 and produce garbage values at runtime. Use a supported primitive at the boundary, or move the callee into the native context. (Python calling INTO native code is unaffected: that direction goes through the native marshal bridge, which handles lists, structs, and enums.)"
+         help="Native code calling a Python-context function passes its arguments as C values: int (c_int64), float (c_double), bool (c_bool), str (c_char_p), the sized scalars at their own width and sign (i8 to u64, f32, f64), plus None returns. No other type has a C form at this boundary, bytes included. Use a supported primitive at the boundary, or move the callee into the native context. (Python calling INTO native code is unaffected: that direction goes through the native marshal bridge, which handles lists, structs, and enums.)"
      ),
      E5080 = _err(
          "E5080",
@@ -2669,6 +2626,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "ICE: missing semantic annotation -- {details}",
          help="Codegen required a fact the central analysis pipeline never recorded on the unitree. This is a compiler bug, not an error in your program."
      ),
+     E9003 = _err(
+         "E9003",
+         Category.ICE,
+         "ICE: the native backend crashed lowering {kind} '{name}': {details}",
+         help="This is a compiler bug, not an error in your program -- please report it. A crash is never treated as a construct the backend declined, so the module does not run until it is fixed. Pin the module to the server codespace under [placement.pins] in jac.toml to keep working meanwhile.",
+         blocks_codegen=True
+     ),
      E7001 = _err(
          "E7001",
          Category.RUNTIME,
@@ -2704,13 +2668,4 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.RUNTIME,
          "Client error could not be traced to Jac source: {message}",
          help="The dev loop kept the raw location it was given, but nothing under .jac/client/compiled claims it -- a browser extension, a dependency with no source map, or an artifact from a build that has since been replaced. Reload after a clean build if the location should be yours."
-     ),
-     E0059 = _err(
-         "E0059",
-         Category.SYNTAX,
-         "'continue' is not valid inside a loop's else block",
-         help="the else block runs after the loop has already exhausted, so there"
-         " is no next iteration for 'continue' to skip to (Python would re-enter"
-         " the loop test here, usually re-running the else forever). Use 'break'"
-         " to leave the loop from the else block, or restructure the condition."
      );

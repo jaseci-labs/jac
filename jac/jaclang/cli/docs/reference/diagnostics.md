@@ -171,7 +171,7 @@ All three block code generation for the module that reports them.
 
 | Code | Message |
 |------|---------|
-| `W0060` | Docstrings in Jac go before the declaration, not inside the body |
+| `W0060` | A string on its own does nothing. Docstrings go before the declaration, not inside the body |
 | `W0063` | JSX spread `{...expr}` is JS-idiomatic. Prefer `{**expr}` in Jac. |
 
 ### Lexer Errors
@@ -319,6 +319,7 @@ A foreign struct field must be C plain data: a sized scalar, `int`, `float`, `bo
 | Code | Message |
 |------|---------|
 | `E1090` | Cannot raise {type} (not an exception type) |
+| `E1161` | Cannot use {type} as an exception cause (not an exception type or None) |
 | `E1091` | Type {type} cannot be used in 'with' statement (no \_\_enter\_\_ method) |
 | `E1092` | Type {type} cannot be used in 'with' statement (no \_\_exit\_\_ method) |
 | `E1093` | Cannot yield {actual}, expected {expected} |
@@ -553,6 +554,7 @@ An app's walkers and `def:pub` functions form its public boundary. Other declara
 | `E2011` | Parameter count mismatch for ability {name} |
 | `E2012` | From the declaration of {name} |
 | `E2013` | Parameter name mismatch: declaration has {decl_name} but implementation has {impl_name} |
+| `E2030` | Type parameter mismatch: declaration has [{decl_params}] but implementation has [{impl_params}] |
 | `E2087` | '{name}' is declared but never implemented |
 
 ### Project Wiring (archwire.jac)
@@ -627,12 +629,14 @@ Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/in
 | `W3040` | `filter-compare-tautology` | Filter comparison '{name} == {name}' is always true | default |
 | `W3041` | `stale-has-read` | Reactive `has` field '{name}' is read after being assigned in the same `can with entry` block | default |
 | `W3042` | `map-lambda-to-comprehension` | `.map(lambda x -> any { return <jsx>; })` can be replaced with comprehension syntax | default |
-| `W3050` | `strip-comments` | Comment can be removed | opt-in |
-| `W3051` | `strip-docstrings` | Docstring can be removed | opt-in |
+| `W3050` | `strip-comments` | Comment can be removed | all |
+| `W3051` | `strip-docstrings` | Docstring can be removed | all |
 | `W3053` | `remove-wired-import` | Import of '{name}' from '{module}' is already provided by archwire.jac (fix only: `jac check` reports it as `E1144`) | default |
 | `W3054` | `remove-dead-import` | Import of '{name}' from '{module}' is neither wired nor read | default |
+| `W3055` | `separate-impls` | Body of '{name}' belongs in a separate impl | all |
+| `W3056` | `impls-in-annex` | impl '{name}' belongs in an annex inside an impl folder (or: Annex '{file}' belongs inside an impl folder) | all |
 
-> **opt-in group**: `strip-comments` and `strip-docstrings` are destructive "deslop" rules. They are **never** activated by `select = ["all"]` or `["default"]`; they fire only when named explicitly in [`[check.lint]`](config/index.md#checklint). See the config reference for details.
+> **all group**: `strip-comments`, `strip-docstrings`, `separate-impls` and `impls-in-annex` are on under `select = ["all"]` and off under `["default"]`. The first two delete comments and docstrings (`strip-docstrings` also deletes a string written as a statement inside a body); `separate-impls` moves bodies into `impl` blocks, and `impls-in-annex` moves those blocks into an annex inside an impl folder. Each can be named explicitly or listed in `ignore`; see the [config reference](config/index.md#checklint).
 
 ---
 

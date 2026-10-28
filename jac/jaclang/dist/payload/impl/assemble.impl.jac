@@ -145,7 +145,7 @@ impl assemble_site(repo_root: str, site: str, opts: MkPayloadOpts) {
     copy_into(repo_root, "_jac_finder.py", site);
     copy_into(repo_root, "sitecustomize.py", site);
     if opts.link_source is not None {
-        write_text(os.path.join(site, "jac_linked_source"), opts.link_source);
+        write_text(os.path.join(site, LINKED_SOURCE_FILE), opts.link_source);
     }
 
     write_dist_info(repo_root, site);
@@ -235,7 +235,7 @@ impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOp
 
     delete_file(os.path.join(site_pre, "MANIFEST.json"));
     run_stubcat_stage(py, python_dir, site, opts);
-    precompile(py, python_dir, site, opts.seal, opts.debug_src);
+    precompile(py, python_dir, site, opts.seal, opts.debug_src, opts.kernel_dir);
     if pc is not None {
         delete_tree(pc);
         copy_tree(site_pre, pc, skip_none);
@@ -319,7 +319,14 @@ impl precompile_env(python_dir: str, site: str) -> dict[str, str] {
     return env;
 }
 
-impl precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool) {
+impl precompile(
+    py: str,
+    python_dir: str,
+    site: str,
+    seal: bool,
+    debug_src: bool,
+    kernel_dir: (str | None) = None
+) {
     import time;
     compile_start = time.monotonic();
     pc = os.path.join(site, "jaclang", "dist", "precompile_bytecode.jac");
@@ -343,6 +350,10 @@ impl precompile(py: str, python_dir: str, site: str, seal: bool, debug_src: bool
     }
 
     env: dict[str, str] = precompile_env(python_dir, site);
+    if kernel_dir {
+        env["JAC_SEAL_KERNEL_DIR"] = os.path.abspath(kernel_dir);
+        log(f"   the seal adopts the prebuilt kernel in {kernel_dir}");
+    }
     run_child(argv, env, True);
 
     pre_dir = os.path.join(site, "jaclang", "_precompiled");
@@ -654,18 +665,7 @@ impl collect_stage_entries(stage: str) -> list[TarEntry] {
     return entries;
 }
 
-def _tar_info(path: str, is_dir: bool, mode: int, size: int) -> tarfile.TarInfo {
-    ti = tarfile.TarInfo(path);
-    ti.type = TAR_DIRTYPE if is_dir else TAR_REGTYPE;
-    ti.mode = mode;
-    ti.size = size;
-    ti.mtime = 0;
-    ti.uid = 0;
-    ti.gid = 0;
-    ti.uname = "";
-    ti.gname = "";
-    return ti;
-}
+def _tar_info(path: str, is_dir: bool, mode: int, size: int) -> tarfile.TarInfo;
 
 impl tar_stage(stage: str) -> tuple[bytes, bytes] {
     deps_buf = io.BytesIO();
@@ -824,4 +824,17 @@ impl strip_kernel_best_effort(site: str) {
     with open(manifest_path, "w", encoding="utf-8") as f {
         f.write(json.dumps(manifest, sort_keys=True, indent=1) + "\n");
     }
+}
+
+impl _tar_info(path: str, is_dir: bool, mode: int, size: int) -> tarfile.TarInfo {
+    ti = tarfile.TarInfo(path);
+    ti.type = TAR_DIRTYPE if is_dir else TAR_REGTYPE;
+    ti.mode = mode;
+    ti.size = size;
+    ti.mtime = 0;
+    ti.uid = 0;
+    ti.gid = 0;
+    ti.uname = "";
+    ti.gname = "";
+    return ti;
 }

@@ -8,205 +8,51 @@ glob _TRACE_PREFIX_RE: any = re.compile(r"^\[trace=([0-9a-fA-F-]+)\]\s*"),
      logger = logging.getLogger(__name__);
 
 
-def _loki_base_url -> str {
-    return service_base_url("LOKI_URL", "loki-service", 3100);
-}
+def _loki_base_url -> str;
 
 
-def _app_namespace -> str {
-    try {
-        return get_scale_config().get_kubernetes_config().get("namespace", "");
-    } except Exception {
-        return "";
-    }
-}
+def _app_namespace -> str;
 
 
-def _app_name -> str {
-    try {
-        return get_scale_config().get_kubernetes_config().get("app_name", "");
-    } except Exception {
-        return "";
-    }
-}
+def _app_name -> str;
 
 
-def _fleet_names -> list[str] {
-    try {
-        import from jaclang.scale.runtime.fleet { fleet_member_names }
-        return fleet_member_names();
-    } except Exception {
-        return [];
-    }
-}
+def _fleet_names -> list[str];
 
 
-def _is_microservice_mode -> bool {
-    return bool(_fleet_names());
-}
+def _is_microservice_mode -> bool;
 
 
 def _services_for_mode(
     microservice: bool, names: list[str], app_name: str
-) -> list[str] {
-    if microservice {
-        return ["gateway"] + sorted(names);
-    }
-    return [app_name] if app_name else [];
-}
+) -> list[str];
 
 
-def _microservice_services -> list[str] {
-    names = _fleet_names();
-    return _services_for_mode(bool(names), names, _app_name());
-}
+def _microservice_services -> list[str];
 
 
-def _service_to_pod_regex_for_mode(service: str, microservice: bool) -> str {
-    safe = service.lower().replace("_", "-");
-    if microservice {
-        return f"{safe}-deployment-.*";
-    }
-    return f"{safe}-.*";
-}
+def _service_to_pod_regex_for_mode(service: str, microservice: bool) -> str;
 
 
-def _service_to_pod_regex(service: str) -> str {
-    return _service_to_pod_regex_for_mode(service, _is_microservice_mode());
-}
+def _service_to_pod_regex(service: str) -> str;
 
 
 def _parse_log_body(
     body: str, pod_labels: dict[str, str], ts_nanos: str
-) -> dict[str, any] {
-    try {
-        ns = int(ts_nanos);
-        ts_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ns / 1_000_000_000))
-            + f".{(ns % 1_000_000_000):09d}Z";
-    } except (ValueError, TypeError) {
-        ts_iso = "";
-    }
-
-    out: dict[str, any] = {
-        "ts": ts_iso,
-        "ts_ns": ts_nanos,
-        "level": pod_labels.get("level") or "INFO",
-        "service": (
-            pod_labels.get("service")
-            or pod_labels.get("container")
-            or pod_labels.get("pod", "")
-        ),
-        "trace_id": None,
-        "pod": pod_labels.get("pod", ""),
-        "msg": body,
-        "extras": {}
-    };
-
-    stripped = body.lstrip();
-    if stripped.startswith("{") and stripped.endswith("}") {
-        parse_ok: bool = False;
-        parsed: any = None;
-        try {
-            parsed = json_module.loads(stripped);
-            parse_ok = isinstance(parsed, dict);
-        } except (ValueError, TypeError) {
-            parse_ok = False;
-        }
-        if parse_ok {
-            out["ts"] = parsed.get("ts") or ts_iso;
-            out["level"] = parsed.get("level") or out["level"];
-            out["service"] = parsed.get("service") or out["service"];
-            out["trace_id"] = parsed.get("trace_id");
-            out["msg"] = parsed.get("msg") or body;
-            out["extras"] = parsed.get("extras") or {};
-            if parsed.get("exc") {
-                out["extras"]["exc"] = parsed["exc"];
-            }
-            return out;
-        }
-    }
-
-    trace_match = _TRACE_PREFIX_RE.`match(body);
-    if trace_match {
-        out["trace_id"] = trace_match.group(1);
-    }
-    return out;
-}
+) -> dict[str, any];
 
 
 def _build_logql(
     namespace: str, service: str, level: str, search: str, trace_id: str
-) -> str {
-    parts: list[str] = [];
-    if namespace {
-        parts.append(f'namespace="{namespace}"');
-    }
-    if service {
-        parts.append(f'pod=~"{_service_to_pod_regex(service)}"');
-    }
-    selector = "{" + ",".join(parts) + "}" if parts else "{namespace=~\".+\"}";
-
-    pipeline: list[str] = [];
-    if level {
-        escaped = level.upper().replace('"', '\\"');
-        pipeline.append(f'|~ "\\"level\\":\\"{escaped}\\"|{escaped}"');
-    }
-    if trace_id {
-        escaped_tid = trace_id.replace("\\", "\\\\").replace('"', '\\"');
-        pipeline.append(
-            f'|~ "trace_id\\":\\"{escaped_tid}|\\\\[trace={escaped_tid[:8]}\\\\]"'
-        );
-    }
-    if search {
-        escaped_search = search.replace("\\", "\\\\").replace('"', '\\"');
-        pipeline.append(f'|= "{escaped_search}"');
-    }
-
-    if pipeline {
-        return selector + " " + " ".join(pipeline);
-    }
-    return selector;
-}
+) -> str;
 
 
-async def _loki_request(path: str, params: dict[str, str]) -> dict[str, any] {
-    base = _loki_base_url();
-    url = f"{base}{path}";
-    try {
-        response = await arequest("GET", url, params=params, timeout=8.0);
-    } except ClientConnectionError as e {
-        raise ConnectionError(f"Loki request failed at {url}: {e}");
-    }
-    if not response.ok() {
-        body = response.text()[:200];
-        raise ConnectionError(
-            f"Loki returned HTTP {response.status_code} at {url}: {body}"
-        );
-    }
-    return response.json();
-}
+async def _loki_request(path: str, params: dict[str, str]) -> dict[str, any];
 
 
 def _flatten_loki_response(
     payload: dict[str, any], ascending: bool = True
-) -> list[dict[str, any]] {
-    out: list[dict[str, any]] = [];
-    data: any = payload.get("data") or {};
-    for stream in (data.get("result") or []) {
-        labels: any = stream.get("stream") or {};
-        for `entry in (stream.get("values") or []) {
-            if len(`entry) < 2 {
-                continue;
-            }
-            ts_nanos = str(`entry[0]);
-            body = str(`entry[1]);
-            out.append(_parse_log_body(body, labels, ts_nanos));
-        }
-    }
-
-    out.sort(key=lambda (line) { line.get("ts_ns", ""); }, reverse=not ascending);
-    return out;
-}
+) -> list[dict[str, any]];
 
 
 impl JacAPIServerLogs.register_logs_endpoints -> None {
@@ -433,4 +279,204 @@ impl JacAPIServerLogs.register_logs_endpoints -> None {
     );
 
     logger.info("Log query endpoints registered: /admin/logs/{,services,trace/{id}}");
+}
+
+impl _loki_base_url -> str {
+    return service_base_url("LOKI_URL", "loki-service", 3100);
+}
+
+
+impl _app_namespace -> str {
+    try {
+        return get_scale_config().get_kubernetes_config().get("namespace", "");
+    } except Exception {
+        return "";
+    }
+}
+
+
+impl _app_name -> str {
+    try {
+        return get_scale_config().get_kubernetes_config().get("app_name", "");
+    } except Exception {
+        return "";
+    }
+}
+
+
+impl _fleet_names -> list[str] {
+    try {
+        import from jaclang.scale.runtime.fleet { fleet_member_names }
+        return fleet_member_names();
+    } except Exception {
+        return [];
+    }
+}
+
+
+impl _is_microservice_mode -> bool {
+    return bool(_fleet_names());
+}
+
+
+impl _services_for_mode(
+    microservice: bool, names: list[str], app_name: str
+) -> list[str] {
+    if microservice {
+        return ["gateway"] + sorted(names);
+    }
+    return [app_name] if app_name else [];
+}
+
+
+impl _microservice_services -> list[str] {
+    names = _fleet_names();
+    return _services_for_mode(bool(names), names, _app_name());
+}
+
+
+impl _service_to_pod_regex_for_mode(service: str, microservice: bool) -> str {
+    safe = service.lower().replace("_", "-");
+    if microservice {
+        return f"{safe}-deployment-.*";
+    }
+    return f"{safe}-.*";
+}
+
+
+impl _service_to_pod_regex(service: str) -> str {
+    return _service_to_pod_regex_for_mode(service, _is_microservice_mode());
+}
+
+
+impl _parse_log_body(
+    body: str, pod_labels: dict[str, str], ts_nanos: str
+) -> dict[str, any] {
+    try {
+        ns = int(ts_nanos);
+        ts_iso = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ns / 1_000_000_000))
+            + f".{(ns % 1_000_000_000):09d}Z";
+    } except (ValueError, TypeError) {
+        ts_iso = "";
+    }
+
+    out: dict[str, any] = {
+        "ts": ts_iso,
+        "ts_ns": ts_nanos,
+        "level": pod_labels.get("level") or "INFO",
+        "service": (
+            pod_labels.get("service")
+            or pod_labels.get("container")
+            or pod_labels.get("pod", "")
+        ),
+        "trace_id": None,
+        "pod": pod_labels.get("pod", ""),
+        "msg": body,
+        "extras": {}
+    };
+
+    stripped = body.lstrip();
+    if stripped.startswith("{") and stripped.endswith("}") {
+        parse_ok: bool = False;
+        parsed: any = None;
+        try {
+            parsed = json_module.loads(stripped);
+            parse_ok = isinstance(parsed, dict);
+        } except (ValueError, TypeError) {
+            parse_ok = False;
+        }
+        if parse_ok {
+            out["ts"] = parsed.get("ts") or ts_iso;
+            out["level"] = parsed.get("level") or out["level"];
+            out["service"] = parsed.get("service") or out["service"];
+            out["trace_id"] = parsed.get("trace_id");
+            out["msg"] = parsed.get("msg") or body;
+            out["extras"] = parsed.get("extras") or {};
+            if parsed.get("exc") {
+                out["extras"]["exc"] = parsed["exc"];
+            }
+            return out;
+        }
+    }
+
+    trace_match = _TRACE_PREFIX_RE.`match(body);
+    if trace_match {
+        out["trace_id"] = trace_match.group(1);
+    }
+    return out;
+}
+
+
+impl _build_logql(
+    namespace: str, service: str, level: str, search: str, trace_id: str
+) -> str {
+    parts: list[str] = [];
+    if namespace {
+        parts.append(f'namespace="{namespace}"');
+    }
+    if service {
+        parts.append(f'pod=~"{_service_to_pod_regex(service)}"');
+    }
+    selector = "{" + ",".join(parts) + "}" if parts else "{namespace=~\".+\"}";
+
+    pipeline: list[str] = [];
+    if level {
+        escaped = level.upper().replace('"', '\\"');
+        pipeline.append(f'|~ "\\"level\\":\\"{escaped}\\"|{escaped}"');
+    }
+    if trace_id {
+        escaped_tid = trace_id.replace("\\", "\\\\").replace('"', '\\"');
+        pipeline.append(
+            f'|~ "trace_id\\":\\"{escaped_tid}|\\\\[trace={escaped_tid[:8]}\\\\]"'
+        );
+    }
+    if search {
+        escaped_search = search.replace("\\", "\\\\").replace('"', '\\"');
+        pipeline.append(f'|= "{escaped_search}"');
+    }
+
+    if pipeline {
+        return selector + " " + " ".join(pipeline);
+    }
+    return selector;
+}
+
+
+impl _loki_request(path: str, params: dict[str, str]) -> dict[str, any] {
+    base = _loki_base_url();
+    url = f"{base}{path}";
+    try {
+        response = await arequest("GET", url, params=params, timeout=8.0);
+    } except ClientConnectionError as e {
+        raise ConnectionError(f"Loki request failed at {url}: {e}");
+    }
+    if not response.ok() {
+        body = response.text()[:200];
+        raise ConnectionError(
+            f"Loki returned HTTP {response.status_code} at {url}: {body}"
+        );
+    }
+    return response.json();
+}
+
+
+impl _flatten_loki_response(
+    payload: dict[str, any], ascending: bool = True
+) -> list[dict[str, any]] {
+    out: list[dict[str, any]] = [];
+    data: any = payload.get("data") or {};
+    for stream in (data.get("result") or []) {
+        labels: any = stream.get("stream") or {};
+        for `entry in (stream.get("values") or []) {
+            if len(`entry) < 2 {
+                continue;
+            }
+            ts_nanos = str(`entry[0]);
+            body = str(`entry[1]);
+            out.append(_parse_log_body(body, labels, ts_nanos));
+        }
+    }
+
+    out.sort(key=lambda (line) { line.get("ts_ns", ""); }, reverse=not ascending);
+    return out;
 }

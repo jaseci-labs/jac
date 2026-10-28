@@ -1,33 +1,3 @@
-def is_record(value: object) -> bool {
-    if is_jac_object(value) {
-        return True;
-    }
-    import dataclasses;
-    return dataclasses.is_dataclass(value);
-}
+def is_record(value: object) -> bool;
 
-def fields(value: object) -> tuple[ObjectField, ...] {
-    if is_jac_object(value) {
-        return jac_fields(value);
-    }
-    import dataclasses;
-    out: list[ObjectField] = [];
-    for f in dataclasses.fields(value) {
-        out.append(
-            ObjectField(
-                name=f.name,
-                annotation=f.`type,
-                `default=f.`default
-                    if f.`default is not dataclasses.MISSING
-                    else MISSING,
-                default_factory=f.default_factory
-                    if f.default_factory is not dataclasses.MISSING
-                    else None,
-                `init=f.`init,
-                repr=f.repr,
-                kw_only=f.kw_only
-            )
-        );
-    }
-    return tuple(out);
-}
+def fields(value: object) -> tuple[ObjectField, ...];

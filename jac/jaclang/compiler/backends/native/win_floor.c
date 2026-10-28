@@ -749,6 +749,110 @@ size_t __jac_win_executable_path(char *buffer, size_t size) {
     return (size_t)bytes;
 }
 
+/* ---- the runtime floor (#10219) ---- */
+
+/* The __jac_* functions posix_floor.c defines for ELF and Mach-O targets,
+   over this file's Linux-ABI names, so generated code calls the same functions
+   on every target. */
+
+size_t _msize(void *block);
+
+int *__jac_errno(void) { return _errno(); }
+
+void *__jac_stdio(int fd) {
+    if (fd == 0) return stdin;
+    if (fd == 1) return stdout;
+    return stderr;
+}
+
+int __jac_platform_id(void) { return 2; }
+
+int __jac_stat(const char *path, i64 *out) {
+    struct linux_stat st;
+    if (stat(path, &st) != 0) return -1;
+    out[0] = (i64)st.mode;
+    out[1] = st.size;
+    out[2] = st.mtim.sec;
+    out[3] = st.mtim.nsec;
+    return 0;
+}
+
+void *__jac_opendir(const char *path) { return opendir(path); }
+
+void *__jac_readdir(void *dir) { return readdir(dir); }
+
+int __jac_closedir(void *dir) { return closedir(dir); }
+
+const char *__jac_dirent_name(void *entry) { return ((struct linux_dirent *)entry)->name; }
+
+int __jac_at_fdcwd(void) { return -100; }
+
+i64 __jac_executable_path(char *buf, i64 cap) {
+    i64 n = (i64)__jac_win_executable_path(buf, (size_t)cap);
+    return n > 0 ? n : -1;
+}
+
+/* struct addrinfo of ws2_32: four ints, then ai_addrlen as a size_t at 16,
+   ai_canonname at 24, ai_addr at 32 and ai_next at 40; AF_INET6 is 23. */
+i64 __jac_addrinfo_layout(int which) {
+    switch (which) {
+    case 0: return 16;
+    case 1: return 32;
+    case 2: return 40;
+    case 3: return 48;
+    case 4: return 23;
+    default: return -1;
+    }
+}
+
+int __jac_sockaddr_family(const void *address) {
+    const u8 *raw = (const u8 *)address;
+    return raw[0] | (raw[1] << 8);
+}
+
+i64 __jac_home_dir(const char *name, char *buf, i64 cap) {
+    struct linux_passwd pw;
+    struct linux_passwd *found = NULL;
+    char scratch[1024];
+    int rc = name[0] ? getpwnam_r(name, &pw, scratch, sizeof scratch, &found)
+                     : getpwuid_r(0, &pw, scratch, sizeof scratch, &found);
+    if (rc != 0 || found == NULL) return -1;
+    if (pw.dir == NULL) return -2;
+    size_t n = strlen(pw.dir);
+    if ((i64)n < cap) memcpy(buf, pw.dir, n + 1);
+    return (i64)n;
+}
+
+/* This file's clock_gettime takes Linux clock ids. */
+i64 __jac_clock_id(int jac_clock) {
+    switch (jac_clock) {
+    case 0: return 0;
+    case 1: return 1;
+    case 2: return 2;
+    case 3: return 3;
+    case 4: return 4;
+    case 5: return 1;
+    default: return -1;
+    }
+}
+
+int __jac_sleep_ns(i64 ns) {
+    sleep_ns(ns);
+    return 0;
+}
+
+size_t __jac_malloc_size(void *p) { return _msize(p); }
+
+#pragma STDC FP_CONTRACT OFF
+double __jac_fmadd(double a, double b, double c) { return a * b + c; }
+
+/* A Win64 va_list is a char* cursor: the VaList variable holds it. */
+void *__jac_va_list(void *state) { return *(void **)state; }
+
+i64 __jac_va_i64(void **slot) { return __builtin_va_arg(*(va_list *)slot, i64); }
+
+double __jac_va_f64(void **slot) { return __builtin_va_arg(*(va_list *)slot, double); }
+
 /* ---- startup ---- */
 
 /* Run before any Jac code. Binds the standard streams, and makes UTF-8 the

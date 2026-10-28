@@ -7,20 +7,7 @@ impl NaIRGenPass._int_width_of(val: ir.Value) -> int {
 glob OVERFLOW_MSG: str = "integer overflow",
      SHIFT_MSG: str = "shift count out of range";
 
-def _signed_repr(width: int, value: int) -> int {
-    if width >= 64 {
-        if value > 0x7FFFFFFFFFFFFFFF {
-            return value - 0x7FFFFFFFFFFFFFFF - 0x7FFFFFFFFFFFFFFF - 2;
-        }
-        return value;
-    }
-    mask = (1 << width) - 1;
-    out = value & mask;
-    if out >= (1 << (width - 1)) {
-        out -= 1 << width;
-    }
-    return out;
-}
+def _signed_repr(width: int, value: int) -> int;
 
 impl NaIRGenPass._scalar_shape_named(name: (str | None)) -> (ScalarShape | None) {
     if name is None {
@@ -470,4 +457,19 @@ impl NaIRGenPass._emit_int_divmod(
     }
     safe = self.builder.select(bad, ir.Constant(int_ty, 1), right, name="mod.safe");
     return self._codegen_int_floor_divmod(left, safe);
+}
+
+impl _signed_repr(width: int, value: int) -> int {
+    if width >= 64 {
+        if value > 0x7FFFFFFFFFFFFFFF {
+            return value - 0x7FFFFFFFFFFFFFFF - 0x7FFFFFFFFFFFFFFF - 2;
+        }
+        return value;
+    }
+    mask = (1 << width) - 1;
+    out = value & mask;
+    if out >= (1 << (width - 1)) {
+        out -= 1 << width;
+    }
+    return out;
 }

@@ -38,3 +38,22 @@ test "application source discovery does not generate artifacts" {
         assert read_section_bytes(artifact, SEC_BYTECODE);
     }
 }
+
+test "an app's client-only entry is sealed while its client modules are not" {
+    with TemporaryDirectory() as td {
+        base = Path(td).resolve();
+        (base / 'jac.toml').write_text(
+            '[project]\nname = "client_entry"\ndefault-app = "web"\n'
+                + '[apps.web]\nkind = "web-app"\nentry-point = "main"\n'
+        );
+        (base / 'main.jac').write_text(
+            'import from .page { Page }\ndef:pub app -> JsxElement {\n    <Page/>\n}\n'
+        );
+        (base / 'page.jac').write_text(
+            'def:pub Page -> JsxElement {\n    <div>sealed</div>\n}\n'
+        );
+        sources = {Path(p).name for p in sealable_sources(str(base))};
+        assert 'main.jac' in sources , sources;
+        assert 'page.jac' not in sources , sources;
+    }
+}

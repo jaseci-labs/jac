@@ -6,16 +6,7 @@ import from datetime { datetime, UTC }
 obj IdentityTakenError(Exception) {}
 
 
-def primary_username(user: dict[str, any]) -> str {
-    for identity in (user.get('identities') or []) {
-        if isinstance(identity, dict) and identity.get('type') == 'username' {
-            return str(
-                identity.get('value_raw') or identity.get('value_normalized') or ''
-            );
-        }
-    }
-    return '';
-}
+def primary_username(user: dict[str, any]) -> str;
 
 obj IdentityStorage {
     static def hash_password(password: str) -> str;

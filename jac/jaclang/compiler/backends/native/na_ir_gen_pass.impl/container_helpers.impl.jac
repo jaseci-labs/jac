@@ -1,17 +1,8 @@
-def _layout_data_fields(layout: dict[str, any]) -> list[tuple[int, ir.Type]] {
-    fields: list[tuple[int, ir.Type]] = layout["data_fields"];
-    return fields;
-}
+def _layout_data_fields(layout: dict[str, any]) -> list[tuple[int, ir.Type]];
 
-def _layout_elem_kinds(layout: dict[str, any]) -> list[str] {
-    kinds: list[str] = layout["elem_kinds"];
-    return kinds;
-}
+def _layout_elem_kinds(layout: dict[str, any]) -> list[str];
 
-def _layout_index(layout: dict[str, any], key: str) -> int {
-    index: int = layout[key];
-    return index;
-}
+def _layout_index(layout: dict[str, any], key: str) -> int;
 
 impl NaIRGenPass._elem_kind(elem_type: ir.Type) -> str {
     if self._str_desc_ty is not None and elem_type == self._str_desc_ty {
@@ -1301,4 +1292,19 @@ impl NaIRGenPass._coerce_container_element(
         return self._coerce_type(nullable, element_type);
     }
     return self._coerce_type(value, element_type);
+}
+
+impl _layout_data_fields(layout: dict[str, any]) -> list[tuple[int, ir.Type]] {
+    fields: list[tuple[int, ir.Type]] = layout["data_fields"];
+    return fields;
+}
+
+impl _layout_elem_kinds(layout: dict[str, any]) -> list[str] {
+    kinds: list[str] = layout["elem_kinds"];
+    return kinds;
+}
+
+impl _layout_index(layout: dict[str, any], key: str) -> int {
+    index: int = layout[key];
+    return index;
 }

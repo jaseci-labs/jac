@@ -5,16 +5,8 @@ import from core.social_graph { setup_profile, create_tweet, follow_user, load_f
 obj TestClient {
     has token: str = "";
 
-    async def signup(username: str, password: str) {
-        __setLocalStorage("jac_token", "");
-        assert await register_with_challenge(username, password) == "";
-        await jacLogin(username, password);
-        self.token = __getLocalStorage("jac_token") or "";
-    }
-
-    def activate {
-        __setLocalStorage("jac_token", self.token);
-    }
+    async def signup(username: str, password: str);
+    def activate;
 }
 
 test "two users: signup, post, follow, and feed propagation" {
@@ -57,4 +49,15 @@ test "two users: signup, post, follow, and feed propagation" {
     alice.activate();
     alice_feed = (root spawn load_feed(search_query="")).reports[0];
     assert any(t["content"] == "hello world" for t in alice_feed);
+}
+
+impl TestClient.signup(username: str, password: str) {
+    __setLocalStorage("jac_token", "");
+    assert await register_with_challenge(username, password) == "";
+    await jacLogin(username, password);
+    self.token = __getLocalStorage("jac_token") or "";
+}
+
+impl TestClient.activate {
+    __setLocalStorage("jac_token", self.token);
 }

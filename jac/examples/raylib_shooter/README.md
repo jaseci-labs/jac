@@ -36,9 +36,10 @@ resolves no matter where the binary is launched from.
 ## Run it
 
 ```bash
-./demo.sh            # default: benchmark BOTH builds (8s each), print avg/max FPS
+./demo.sh            # default: benchmark all three builds (8s each), print avg/max FPS
 ./demo.sh --jac      # build & play only the Jac-native shooter, interactively
 ./demo.sh --zig      # build & play only the Zig shooter, interactively
+./demo.sh --rust     # build & play only the Rust shooter, interactively
 ./demo.sh --headless # benchmark the borrow-checked headless sim (no window/GPU)
 ```
 
@@ -60,8 +61,12 @@ resolves no matter where the binary is launched from.
      `./shooter_zig`. If `zig` is not already on your `PATH`, the script
      downloads the matching single-archive Zig distribution into `.build/` and
      uses it from there - nothing is installed system-wide;
-5. run them: the default **benchmarks** both (see below); `--jac` / `--zig` launch
-   one interactively.
+   - `shooter.rs` with a single-file `rustc` build (no cargo, no crates) against
+     the staged library, producing `./shooter_rust`. If a `rustc` >= 1.85 is not
+     already on your `PATH`, the script installs a minimal stable toolchain via
+     rustup into `.build/rust/` (no `PATH` or shell-profile edits);
+5. run them: the default **benchmarks** all three (see below); `--jac` / `--zig` /
+   `--rust` launch one interactively.
 
 ### Benchmark mode (default)
 
@@ -70,14 +75,19 @@ With no flag, `demo.sh` runs each build for 8 seconds and prints a table:
 ```
 ====== raylib cube shooter benchmark (8s each, uncapped) ======
   build        avg FPS        max FPS       frames
-  Jac            461.7          719.9         3694
-  Zig            470.5          719.1         3764
+  Jac           2843.4         4960.7        22748
+  Zig           3027.4         5190.3        24220
+  Rust          3050.3         5096.6        24403
 ===============================================================
 ```
 
-(Numbers above are from a WSLg + Mesa `llvmpipe` software-rendering box; yours
-will differ. The two builds track each other closely - they link the same
-precompiled raylib and do identical per-frame work.)
+(Numbers above are from an Apple Silicon Mac; yours will differ. The three
+builds track each other closely - they link the same precompiled raylib and do
+identical per-frame work, so the frame time is dominated by raylib and the GPU
+driver. A single 8s run moves by several percent from run to run; over repeated
+interleaved runs the three averages land within about 3% of each other, with
+the ordering changing between runs. Max FPS is the single fastest frame and is
+mostly noise.)
 
 How it works without changing how the demos _play_: a binary can't report FPS to
 the shell on its own (raylib paints the counter onto the framebuffer, not
@@ -88,11 +98,11 @@ launching; each binary reads that file with raylib's own cross-platform helpers
 itself with raylib's `GetTime`, then writes a `BENCH_RESULT avg max frames
 seconds` line to a sibling `.bench_result` file (via raylib's `SaveFileText`) and
 exits; `demo.sh` reads that back and cleans both files up. When `.bench_seconds`
-is absent - every `--jac` / `--zig` run, or a bare `./shooter` - that path is
+is absent - every `--jac` / `--zig` / `--rust` run, or a bare `./shooter` - that path is
 skipped entirely and the game loop runs until you close the window, exactly as
 before. (The result travels through a file rather than stdout because the demos
-go through raylib's own I/O - no `print`, no libc - so the Jac and Zig twins stay
-byte-for-byte parallel.)
+go through raylib's own I/O - no `print`, no libc - so the Jac, Zig, and Rust
+twins stay parallel.)
 
 ### The borrow-checked headless twin
 
@@ -162,6 +172,33 @@ wrinkle the Jac backend sidesteps: a conventional linker records raylib's
 **SONAME** (`libraylib.so.600`) rather than the plain `libraylib.so`, so the
 `--zig` path stages the release's full versioned symlink set beside the binary.
 
+### The Rust twin
+
+`shooter.rs` is the same port again in Rust, kept line-for-line with
+`shooter.zig`. It binds raylib the same way, with no bindings crate and no
+headers: the entry points are declared in an `unsafe extern "C"` block linked
+against the staged library, so the symbols resolve straight out of the
+precompiled raylib:
+
+```rust
+#[link(name = "raylib")]
+unsafe extern "C" {
+    fn InitWindow(width: c_int, height: c_int, title: *const c_char);
+    fn rlVertex3f(x: f32, y: f32, z: f32);
+    fn rlColor4ub(r: u8, g: u8, b: u8, a: u8);
+    // ...
+}
+```
+
+It renders through the same scalar `rlgl` calls and speaks the same
+`.bench_seconds` / `.bench_result` protocol, so `demo.sh` benchmarks it exactly
+like the other two. The one structural difference is idiomatic: the player and
+world state that the Jac and Zig twins keep as module globals live in a single
+`Game` struct passed by `&mut`, rather than `static mut`. It is built with plain
+`rustc` (`-C opt-level=3 -C codegen-units=1 -C panic=abort`) and an
+`@loader_path` / `$ORIGIN` runpath, so like the Zig build it records raylib's
+versioned install name and relies on the staged symlink set.
+
 ### Controls
 
 | Key / device   | Action                     |
@@ -187,6 +224,7 @@ The current frame rate is shown top-left. The loop runs **uncapped** (no
 | ---------------- | ---------------------------------------------------------------------- |
 | `shooter.jac` | the whole demo: raylib FFI bindings, wrappers, and the game + render loop |
 | `shooter.zig`    | faithful Zig twin of the demo, built with `./demo.sh --zig`            |
+| `shooter.rs`     | faithful Rust twin of the demo, built with `./demo.sh --rust`          |
 | `demo.sh`        | platform detection, download, build, benchmark (default) or run one    |
 
 ## Requirements
@@ -196,6 +234,11 @@ The current frame rate is shown top-left. The loop runs **uncapped** (no
 - A `zig` toolchain - for the Zig build (the default benchmark and `--zig`).
   `demo.sh` downloads one into `.build/` automatically if you don't already have
   it on your `PATH` (nothing system-wide).
+- A Rust toolchain (`rustc` >= 1.85) - for the Rust build (the default
+  benchmark and `--rust`). `demo.sh` installs a minimal stable toolchain into
+  `.build/rust/` via rustup if you don't already have one. Unlike the Jac side,
+  `rustc` links through the platform linker (Xcode command-line tools on macOS,
+  `cc` on Linux).
 - `curl` and `tar` (used by `demo.sh`; the Zig archive is `.tar.xz`).
 - A GPU/desktop with OpenGL 3.3+ and a window system. On Linux that means
   `libGL`/`libX11` (raylib's own transitive dependencies); software rendering
@@ -215,9 +258,9 @@ the by-value API.
 This demo nonetheless builds its 3D pipeline on raylib's lower-level **`rlgl`
 immediate-mode API**, which is entirely scalar (`rlVertex3f`, `rlColor4ub`,
 `rlTranslatef`, `rlRotatef`, `rlFrustum`, …) - a deliberate choice, not a
-workaround. Two reasons: the `shooter.zig` twin binds the same scalar `rlgl`
-entry points, so the Jac and Zig builds stay line-for-line comparable and
-pixel-identical; and the WebGL/DOM `raylib_shim` behind the `web/` build emulates
+workaround. Two reasons: the `shooter.zig` and `shooter.rs` twins bind the same
+scalar `rlgl` entry points, so the Jac, Zig, and Rust builds stay line-for-line
+comparable and pixel-identical; and the WebGL/DOM `raylib_shim` behind the `web/` build emulates
 exactly this scalar `rlgl` surface, so one unchanged game source targets native
 _and_ the browser. The camera is a hand-built `rlFrustum` projection plus an
 `rlRotatef`/`rlTranslatef` view transform; cubes are drawn the same way raylib

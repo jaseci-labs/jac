@@ -163,74 +163,8 @@ obj ProjectHost(HostServices) {
     def default_target_triple -> str;
 }
 
-def check_settings_of(check: any) -> CheckSettings {
-    if check is None {
-        return CheckSettings();
-    }
-    lint = check.lint;
-    return CheckSettings(
-        suppress=list(check.suppress or []),
-        suppress_categories=list(check.suppress_categories or []),
-        lint_active=bool(lint),
-        lint_select=list(lint.select) if lint else [],
-        lint_ignore=list(lint.ignore) if lint else [],
-        enforce_access=bool(check.enforce_access),
-        untyped_external_error=check.untyped_external == "error",
-        warn_native_seams=bool(check.warn_native_seams)
-    );
-}
+def check_settings_of(check: any) -> CheckSettings;
 
-def project_defaults_of(cfg: any) -> ProjectDefaults {
-    native = cfg.native;
-    memory = cfg.memory;
-    return ProjectDefaults(
-        default_codespace=cfg.placement.default_codespace,
-        native_require=list(native.require),
-        native_target=native.target,
-        native_debug=native.debug,
-        native_opt=native.opt,
-        native_threads=native.threads,
-        native_link_mode=native.link_mode,
-        memory_profile=memory.profile,
-        memory_enforce=list(memory.enforce),
-        memory_exempt=list(memory.exempt),
-        check=check_settings_of(cfg.check),
-        client_framework=cfg.client.framework if cfg.client else "react"
-    );
-}
+def project_defaults_of(cfg: any) -> ProjectDefaults;
 
-def client_stub_names(path: str) -> set[str] {
-    import ast;
-    out: set[str] = set();
-    try {
-        with open(path, encoding="utf-8") as handle {
-            tree = ast.parse(handle.read());
-        }
-    } except Exception {
-        return out;
-    }
-    for node in tree.body {
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) {
-            out.add(node.name);
-        } elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) {
-            out.add(node.target.id);
-        } elif isinstance(node, ast.Assign) {
-            for tgt in node.targets {
-                if not isinstance(tgt, ast.Name) {
-                    continue;
-                }
-                out.add(tgt.id);
-                if tgt.id != "__all__"
-                    or not isinstance(node.value, (ast.List, ast.Tuple)) {
-                    continue;
-                }
-                for elt in node.value.elts {
-                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str) {
-                        out.add(elt.value);
-                    }
-                }
-            }
-        }
-    }
-    return out;
-}
+def client_stub_names(path: str) -> set[str];

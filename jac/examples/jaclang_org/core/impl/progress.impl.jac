@@ -29,7 +29,7 @@ impl JobProgress.mark(label: str, state: str, detail: str) {
     self.updated_at = now_iso();
 }
 
-impl JobProgress.finish{
+impl JobProgress.finish {
     self.phase = "done";
     self.active = False;
     self.updated_at = now_iso();

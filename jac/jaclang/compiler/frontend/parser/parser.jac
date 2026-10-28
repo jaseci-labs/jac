@@ -185,47 +185,9 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.EOF: "EOF"
      };
 
-def _string_lit_text(raw: str) -> str {
-    v = raw;
-    while v and v[0] in "rbfRBF" {
-        v = v[1:];
-    }
-    if len(v) >= 6 and v.startswith('"""') and v.endswith('"""') {
-        return v[3:-3];
-    }
-    if len(v) >= 6 and v.startswith("'''") and v.endswith("'''") {
-        return v[3:-3];
-    }
-    if len(v) >= 2 and (v[0] == "'" or v[0] == '"') and v[-1] == v[0] {
-        return v[1:-1];
-    }
-    return v;
-}
+def _string_lit_text(raw: str) -> str;
 
-def _test_ident_from_desc(desc_text: str) -> str {
-    ident_chars: list[str] = [];
-    prev_sep = False;
-    for ch in desc_text {
-        is_word = ("a" <= ch and ch <= "z")
-            or ("A" <= ch and ch <= "Z")
-            or ("0" <= ch and ch <= "9");
-        if is_word {
-            ident_chars.append(ch);
-            prev_sep = False;
-        } elif not prev_sep {
-            ident_chars.append("_");
-            prev_sep = True;
-        }
-    }
-    ident: str = str("".join(ident_chars));
-    if ident.startswith("_") {
-        ident = ident[1:];
-    }
-    if ident.endswith("_") {
-        ident = ident[:-1];
-    }
-    return ident.lower();
-}
+def _test_ident_from_desc(desc_text: str) -> str;
 
 obj Parser {
     has tokens: list[LexToken],
@@ -237,6 +199,7 @@ obj Parser {
         source: Source postinit,
         diags: list[SrcDiag] = [],
         _view_body_depth: int = 0,
+        _lambda_block: bool = False,
         _no_connect_op_depth: int = 0,
         _gen_test_idx: int = 0;
 
@@ -464,34 +427,9 @@ obj Parser {
 
 def parse_program(
     source: str, file_path: str
-) -> tuple[(Module, int, list[SrcDiag], list[CommentData], list[SrcDiag], int)] {
-    (tokens, comments, lex_diags, lex_error_count) = tokenize_full(source, file_path);
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
-    mod = parser.parse();
-    return (
-        mod,
-        parser.error_count,
-        parser.diags,
-        comments,
-        lex_diags,
-        lex_error_count
-    );
-}
+) -> tuple[(Module, int, list[SrcDiag], list[CommentData], list[SrcDiag], int)];
 
 
 def parse_expression(
     source: str, file_path: str = "<input>"
-) -> tuple[Expr, bool, list[SrcDiag], list[SrcDiag]] {
-    (tokens, _comments, lex_diags, lex_errors) = tokenize_full(source, file_path);
-    parser = Parser(tokens=tokens, file_path=file_path, source_code=source);
-    expression = parser.parse_expression();
-    if not parser.at_end() {
-        parser.error("Unexpected token after expression");
-    }
-    return (
-        expression,
-        lex_errors > 0 or parser.error_count > 0,
-        parser.diags,
-        lex_diags
-    );
-}
+) -> tuple[Expr, bool, list[SrcDiag], list[SrcDiag]];

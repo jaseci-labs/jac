@@ -8,6 +8,7 @@ import random;
 import time;
 
 import from typing { AsyncGenerator, Generator, cast }
+
 import type from litellm { Router }
 import type from llama_cpp { Llama }
 
@@ -18,9 +19,7 @@ glob _byllm_config = get_byllm_config(),
      _streaming_config = _byllm_config.get_streaming_config(),
      _CACHE_CONTROL_EPHEMERAL: dict[str, any] = {"type": "ephemeral"};
 
-def _apply_litellm_debug_setting(module: any) {
-    module.suppress_debug_info = not _litellm_config.get("debug", False);
-}
+def _apply_litellm_debug_setting(module: any);
 
 with entry {
     if _litellm_config['local_cost_map'] {
@@ -36,31 +35,12 @@ glob _TOOL_DELTA_MIN_CHARS = 48,
 glob DEFAULT_BASE_URL = "http://localhost:4000",
      MODEL_MOCK = "mockllm";
 
-def _stream_chunk_builder_accepts_logging_obj -> bool {
-    import inspect;
-    try {
-        builder: any = litellm.stream_chunk_builder;
-        return "logging_obj" in inspect.signature(builder).parameters;
-    } except Exception as e {
-        logger.debug(
-            f"could not inspect stream_chunk_builder, omitting logging_obj: {e}"
-        );
-        return False;
-    }
-}
+def _stream_chunk_builder_accepts_logging_obj -> bool;
 
 glob _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ: bool | None = None,
      _stream_builder_probe_cache: dict[str, bool] = {};
 
-def _stream_builder_accepts_logging_obj -> bool {
-    if _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ is not None {
-        return _STREAM_CHUNK_BUILDER_ACCEPTS_LOGGING_OBJ;
-    }
-    if "accepts" not in _stream_builder_probe_cache {
-        _stream_builder_probe_cache["accepts"] = _stream_chunk_builder_accepts_logging_obj();
-    }
-    return _stream_builder_probe_cache["accepts"];
-}
+def _stream_builder_accepts_logging_obj -> bool;
 
 obj BaseLLM {
     has model_name: str,
@@ -78,8 +58,15 @@ obj BaseLLM {
     def _resolve_output_attempts(mt_run: MTRuntime) -> int;
     def _resolve_stream_retries(mt_run: MTRuntime) -> int;
     def _resolve_timeout(mt_run: MTRuntime) -> float | None;
+    def _call_deadline(mt_run: MTRuntime) -> CallDeadline;
+    def _arm_attempt(mt_run: MTRuntime, params: dict[str, any], stream: bool) -> None;
+    def _may_retry(mt_run: MTRuntime, e: Exception, attempt: int) -> bool;
     def _should_retry_stream(
-        mt_run: MTRuntime, e: Exception, attempt: int, usage_base: int = -1
+        mt_run: MTRuntime,
+        e: Exception,
+        attempt: int,
+        usage_base: int = -1,
+        restartable: bool = True,
     ) -> bool;
 
     def _invoke_typed_retry(mt_run: MTRuntime) -> object;
@@ -119,7 +106,10 @@ obj BaseLLM {
     def format_prompt(params: dict[str, any]) -> str;
     def dispatch_image(mt_run: MTRuntime) -> object;
     def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
-    def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
+    def dispatch_streaming(
+        mt_run: MTRuntime, retractable: bool = False
+    ) -> Generator[str, None, None];
+
     def dispatch_streaming_with_tools(
         mt_run: MTRuntime, out: list[CompletionResult]
     ) -> Generator[str, None, None];
@@ -135,7 +125,7 @@ obj BaseLLM {
     ) -> AsyncIterator[object];
 
     def _stream_final_answer(
-        mt_run: MTRuntime, fallback: str | None = None
+        mt_run: MTRuntime, fallback: str | None = None, retractable: bool = False
     ) -> Generator[str, None, None];
 
     def _force_final_answer(mt_run: MTRuntime) -> object;
@@ -157,11 +147,11 @@ obj BaseLLM {
         mt_run: MTRuntime, usage: object, just_compacted: bool, cp: dict[str, any]
     ) -> bool;
 
-    def _emergency_compact_retry(
+    def _emergency_compact(
         mt_run: MTRuntime, just_compacted: bool, cp: dict[str, any]
-    ) -> CompletionResult;
+    ) -> None;
 
-    def _compact_messages(mt_run: MTRuntime, cp: dict[str, any]) -> bool;
+    def _compact_messages(mt_run: MTRuntime, cp: dict[str, any], reason: str) -> bool;
 }
 
 obj MockLLM(BaseLLM) {

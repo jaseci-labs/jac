@@ -25,14 +25,7 @@ def rate_window_ok(
 ) -> bool;
 
 
-def _create_api_key_db -> any | None {
-    try {
-        return shared_store();
-    } except Exception as e {
-        logger.warning(f"webhook api-key store unavailable: {e}");
-        return None;
-    }
-}
+def _create_api_key_db -> any | None;
 
 obj ApiKeyManager {
     has _db: any | None = _create_api_key_db(),

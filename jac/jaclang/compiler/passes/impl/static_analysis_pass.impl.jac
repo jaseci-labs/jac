@@ -21,6 +21,9 @@ impl StaticAnalysisPass._check_placement_warnings(mod: Module) -> None {
 }
 
 impl StaticAnalysisPass._check_unused_symbols(scope: UniScopeNode) -> None {
+    if scope.folded {
+        return;
+    }
     for (name, sym) in scope.names_in_scope.items() {
         if sym.imported {
             continue;
@@ -203,17 +206,11 @@ impl StaticAnalysisPass._check_undefined_names(mod: Module) -> None {
 
 impl StaticAnalysisPass._enclosing_class_member(name_nd: Name) -> (str | None) {
     method: (Ability | None) = None;
-    cur = name_nd.parent;
+    cur = name_nd.decl_parent;
     while cur is not None {
-        owner: (UniNode | None) = cur;
+        owner = cur;
         if isinstance(cur, Ability) and method is None {
             method = cur;
-        }
-        if isinstance(cur, ImplDef) and cur.decl_link is not None {
-            if method is None and isinstance(cur.decl_link, Ability) {
-                method = cur.decl_link;
-            }
-            owner = cur.decl_link.find_parent_of_type(Archetype);
         }
         if isinstance(owner, Archetype) and name_nd.value in owner.names_in_scope {
             receiver = "self";
@@ -231,7 +228,7 @@ impl StaticAnalysisPass._enclosing_class_member(name_nd: Name) -> (str | None) {
             }
             return f"`{name_nd.value}` is a member of `{owner.sym_name}`, and a method body does not see its class's names; refer to it as `{receiver}.{name_nd.value}`.";
         }
-        cur = cur.parent;
+        cur = cur.decl_parent;
     }
     return None;
 }
@@ -412,7 +409,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
 
     for nd in mod.get_all_sub_nodes(typ=DisengageStmt) {
         in_walker = False;
-        parent = nd.parent;
+        parent = nd.decl_parent;
         while parent is not None {
             if isinstance(parent, Ability)
                 and isinstance(parent.signature, EventSignature) {
@@ -425,22 +422,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
                 }
                 break;
             }
-            if isinstance(parent, ImplDef) {
-                _dl = parent.decl_link;
-                if isinstance(_dl, Ability) {
-                    if isinstance(_dl.signature, EventSignature) {
-                        in_walker = True;
-                    } else {
-                        _owner = _dl.method_owner;
-                        if isinstance(_owner, Archetype)
-                            and _owner.arch_kind == "walker" {
-                            in_walker = True;
-                        }
-                    }
-                }
-                break;
-            }
-            parent = parent.parent;
+            parent = parent.decl_parent;
         }
         if not in_walker {
             self.ctx.emit(E2083, node_override=nd);
@@ -449,7 +431,7 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
 
     for nd in mod.get_all_sub_nodes(typ=AwaitExpr) {
         in_async = False;
-        parent = nd.parent;
+        parent = nd.decl_parent;
         while parent is not None {
             if isinstance(parent, LambdaExpr) {
                 break;
@@ -462,17 +444,10 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: Module) -> None {
                 in_async = parent.is_async;
                 break;
             }
-            if isinstance(parent, ImplDef) {
-                _dl = parent.decl_link;
-                if isinstance(_dl, Ability) {
-                    in_async = _dl.is_async;
-                }
-                break;
-            }
             if isinstance(parent, Archetype) {
                 break;
             }
-            parent = parent.parent;
+            parent = parent.decl_parent;
         }
         if not in_async {
             self.ctx.emit(E2085, node_override=nd);
@@ -569,7 +544,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             if not isinstance(item, ModuleItem) {
                 continue;
             }
-            verdict = classify_client_import_item(source_mod, item);
+            verdict = classify_client_import_item(source_mod, item, self.prog);
             if verdict == ClientImportVerdict.DEAD {
                 report_dead_client_import(self, nd, item);
             }
@@ -660,4 +635,26 @@ impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
 
 impl StaticAnalysisPass.run_walk with Module entry {
     self.module = self._run_impl(here);
+}
+
+impl is_bootstrap_compiled_module(mod_path: str) -> bool {
+    norm = mod_path.replace("\\", "/");
+    if norm.startswith("jaclang/") {
+        return active_host().is_seed_source(norm[len("jaclang/"):]);
+    }
+    marker = "/jaclang/";
+    idx = norm.rfind(marker);
+    if idx < 0 {
+        return False;
+    }
+    return active_host().is_seed_source(norm[idx + len(marker):]);
+}
+
+impl is_ambient_provider_module(mod_path: str) -> bool {
+    return (mod_path.endswith("builtin.jac") or mod_path.endswith("builtin.py"))
+        and "runtime" in mod_path;
+}
+
+impl UnusedSymbolWalker.check_scope with UniScopeNode entry {
+    self.analysis._check_unused_symbols(here);
 }

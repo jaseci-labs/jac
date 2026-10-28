@@ -24,10 +24,7 @@ obj BorrowMeta {
         managed: bool = False,
         path_fields: set[str] postinit;
 
-    def postinit {
-        self.extra_owners = [];
-        self.path_fields = set();
-    }
+    def postinit;
 }
 
 walker OwnershipCheckPass(CompilerPass) {
@@ -132,7 +129,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _stamp_raises_effects -> None;
     def _stamp_write_effects -> None;
     def _local_writes(ab: Ability) -> set[str];
-    def _owning_ability(nd: UniNode) -> (Ability | None);
     def _store_fields(tgt: Expr, out: set[str]) -> None;
     def _call_writes(call: FuncCall) -> set[str];
     def _stamp_managed_borrows -> None;
@@ -159,7 +155,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _callee_own_param_names(call: FuncCall) -> (set[str] | None);
     def _emit_place_move_diagnostics -> None;
     def _emit_linear_diagnostics(cfg_nodes: list[UniCFGNode]) -> None;
-    def _node_within(nd: UniNode, scope: UniNode) -> bool;
     def _is_scope_exit(nd: UniCFGNode) -> bool;
     def _call_consumes_args(call: FuncCall) -> bool;
     def _grow_arg_moves(call: FuncCall, arg: Expr | None) -> bool;
@@ -231,7 +226,6 @@ walker OwnershipCheckPass(CompilerPass) {
     def _run_borrow_liveness(cfg_nodes: list[UniCFGNode]) -> None;
     def _run_reaching_borrows(cfg_nodes: list[UniCFGNode]) -> None;
     def _active_borrows_at(cfg: UniCFGNode) -> set[SymId];
-    def _is_ancestor(ancestor: UniNode, nd: UniNode) -> bool;
     def _emit_diagnostics -> None;
     def _earlier_move_in_node(nd: Name, sid: SymId) -> (Name | None);
     def _emit_borrow_diagnostics -> None;

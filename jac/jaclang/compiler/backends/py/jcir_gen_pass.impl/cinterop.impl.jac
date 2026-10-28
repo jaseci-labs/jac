@@ -497,7 +497,7 @@ impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
     if clib_global_of_name(nd) is None
         or (
             nd.find_parent_of_type(Import) is not None
-            and nd.find_parent_of_type(Ability) is None
+            and nd.enclosing_decl(Ability) is None
         ) {
         return False;
     }

@@ -54,21 +54,394 @@ obj MarkerClaim {
 }
 
 
+obj SvImport {
+    has target: str = '',
+        line: int = 0;
+}
+
+
 obj StripResult {
     has text: str = '',
         changed: bool = False,
         claims: list[MarkerClaim] = [],
-        sv_imports: list[str] = [],
+        sv_imports: list[SvImport] = [],
         note: str = '';
 }
 
 
-def _is_string_kind(kind_str: str) -> bool {
+def _is_string_kind(kind_str: str) -> bool;
+
+
+def _dotted_target(tokens: list[LexToken], start: int) -> str;
+
+
+def _first_name_after(tokens: list[LexToken], start: int) -> str;
+
+
+def _collect_block_claims(
+    tokens: list[LexToken], body_start: int, body_end: int, space: str, res: StripResult
+);
+
+
+def _strip_markers(src: str, file_path: str) -> StripResult;
+
+
+def _iter_migration_files(paths: list[str]) -> list[str];
+
+
+def _read_text_if_exists(path: str) -> str;
+
+
+def _append_toml_entries(
+    toml_path: str, header: str, entries: dict[str, str], dry_run: bool
+) -> list[str];
+
+
+def _append_app_table(
+    toml_path: str, name: str, table: dict[str, str], dry_run: bool
+) -> list[str];
+
+
+def _ensure_workspace(toml_path: str, dry_run: bool) -> str;
+
+
+def _service_file_for(
+    target: str, importer: str, root_dir: str, scanned: list[str]
+) -> str;
+
+
+def _project_entry_stem(toml_path: str) -> str;
+
+
+def _parses_clean(src: str, file_path: str) -> bool;
+
+
+def _format_source(src: str, file_path: str) -> (str | None);
+
+
+def _client_imports(file_path: str, src: str) -> dict[tuple[int, str], bool];
+
+
+def _verify_claims(
+    file_path: str,
+    claims: list[MarkerClaim],
+    pins: dict[str, str],
+    unverified: list[str]
+);
+
+
+obj AccessRewrite {
+    has path: str,
+        line: int,
+        kind: str,
+        name: str,
+        reason: str;
+}
+
+def _module_has_jsx(decl: any) -> bool;
+
+def _returns_jsx(decl: any) -> bool;
+
+def _parse_module(path: str) -> any;
+
+def _plain_top_decls(mod: any) -> dict[str, any];
+
+def _priv_top_decls(mod: any) -> dict[str, any];
+
+def _resolve_project_import(module_path: any, importer: str, proj_root: str) -> str;
+
+def _imported_names(imp: any) -> list[str];
+
+def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]];
+
+def _apply_access_rewrites(
+    path: str, rewrites: list[AccessRewrite]
+) -> tuple[str, int];
+
+def _fix_access(paths: list[str], dry_run: bool) -> int;
+
+def _fix_dependencies(paths: list[str], dry_run: bool) -> int;
+
+def _report_invalid_manifest(paths: list[str]) -> bool;
+
+impl fix(
+    target: str, paths: list[str], dry_run: bool = False, strip_only: bool = False
+) -> int {
+    if isinstance(paths, str) {
+        paths = [paths];
+    }
+    if target == 'access' {
+        if _report_invalid_manifest(paths) {
+            return 2;
+        }
+        return _fix_access(paths, dry_run);
+    }
+    if target == 'dependencies' {
+        return _fix_dependencies(paths, dry_run);
+    }
+    if target != 'placement' {
+        console.error(
+            f"Unknown fix target '{target}'. Available: placement, access, dependencies"
+        );
+        return 1;
+    }
+    if isinstance(paths, str) {
+        paths = [paths];
+    }
+    files = _iter_migration_files(paths);
+    if not files {
+        console.error("No .jac files found to migrate.");
+        return 1;
+    }
+    if _report_invalid_manifest(files) {
+        return 2;
+    }
+    changed_files: list[str] = [];
+    renamed: list[tuple[str, str]] = [];
+    claims_by_file: dict[str, list[MarkerClaim]] = {};
+    sv_imports_by_file: dict[str, list[SvImport]] = {};
+    migrated_text: dict[str, str] = {};
+    scanned: list[str] = [];
+    skipped: list[str] = [];
+    for path in files {
+        try {
+            with open(path, 'r') as f {
+                src = f.read();
+            }
+        } except Exception as e {
+            skipped.append(f"{path} (unreadable: {e})");
+            continue;
+        }
+        res = _strip_markers(src, path);
+        if res.note {
+            skipped.append(f"{path} ({res.note})");
+            continue;
+        }
+        final_path = path;
+        rename_suffix = '';
+        if path.endswith('.sv.jac') {
+            rename_suffix = '.sv.jac';
+        } elif path.endswith('.native.cl.jac') {
+            rename_suffix = '.native.cl.jac';
+        } elif path.endswith('.cl.jac') {
+            rename_suffix = '.cl.jac';
+        } elif path.endswith('.na.jac') {
+            rename_suffix = '.na.jac';
+        }
+        if rename_suffix {
+            tail = '.native.jac' if rename_suffix == '.native.cl.jac' else '.jac';
+            candidate = path[:-len(rename_suffix)] + tail;
+            if os.path.exists(candidate) {
+                skipped.append(f"{path} (rename target {candidate} exists)");
+            } else {
+                final_path = candidate;
+                renamed.append((path, candidate));
+            }
+        }
+        scanned.append(final_path);
+        if not res.changed and final_path == path {
+            continue;
+        }
+        out_text = res.text;
+        if res.changed {
+            formatted = _format_source(out_text, final_path);
+            if formatted is not None {
+                out_text = formatted;
+            } elif _parses_clean(out_text, final_path) {
+                skipped.append(f"{path} (stripped but not reformatted)");
+            } else {
+                skipped.append(
+                    f"{path} (stripped source does not parse; migrate manually)"
+                );
+                continue;
+            }
+        }
+        if not dry_run {
+            if final_path != path {
+                os.rename(path, final_path);
+            }
+            with open(final_path, 'w') as f {
+                f.write(out_text);
+            }
+        }
+        if res.changed {
+            changed_files.append(final_path);
+        }
+        if res.claims {
+            claims_by_file[final_path] = res.claims;
+        }
+        if res.sv_imports {
+            sv_imports_by_file[final_path] = res.sv_imports;
+            migrated_text[final_path] = res.text;
+        }
+    }
+
+    pins_by_root: dict[str, dict[str, str]] = {};
+    unverified: list[str] = [];
+    if strip_only {
+        claims_by_file = {};
+        sv_imports_by_file = {};
+    }
+    if not dry_run {
+        for (path, claims) in claims_by_file.items() {
+            claim_root = find_jac_project_root(path);
+            if not claim_root {
+                unverified.append(f"{path} (no jac.toml found)");
+                continue;
+            }
+            pins = pins_by_root.setdefault(claim_root, {});
+            _verify_claims(path, claims, pins, unverified);
+        }
+    }
+    pins_added: list[str] = [];
+    for (pin_root, pins) in sorted(pins_by_root.items()) {
+        if pins {
+            added = _append_toml_entries(
+                os.path.join(pin_root, 'jac.toml'), '[placement.pins]', pins, dry_run
+            );
+            pins_added.extend([f"{pin_root}: {a}" for a in added]);
+        }
+    }
+    apps_by_root: dict[str, dict[str, dict[str, str]]] = {};
+    causes_by_root: dict[str, dict[str, str]] = {};
+    orphaned: list[str] = [];
+    for (path, imports) in sv_imports_by_file.items() {
+        app_root = find_jac_project_root(path);
+        if not app_root {
+            orphaned.append(path);
+            continue;
+        }
+        entry_stem = _project_entry_stem(os.path.join(app_root, 'jac.toml'));
+        tables = apps_by_root.setdefault(app_root, {});
+        causes = causes_by_root.setdefault(app_root, {});
+        client = _client_imports(path, migrated_text.get(path, ''));
+        for imp in imports {
+            tgt = imp.target;
+            client_only = client.get((imp.line, tgt));
+            if client_only {
+                continue;
+            }
+            cause = f"{path}:{imp.line}";
+            if client_only is None {
+                unverified.append(
+                    f"{cause} 'sv import from {tgt}' (placement not inferred; "
+                    "treated as a server-to-server import)"
+                );
+            } elif dry_run and path in claims_by_file {
+                unverified.append(
+                    f"{cause} 'sv import from {tgt}' (the preview does not apply the "
+                    "[placement.pins] this file's markers may add, which can make "
+                    "the import client-side)"
+                );
+            }
+            stem = tgt.strip('.').rsplit('.', 1)[-1];
+            if not stem or stem == entry_stem or stem in tables {
+                continue;
+            }
+            service_file = _service_file_for(tgt, path, app_root, scanned);
+            if not service_file {
+                skipped.append(
+                    f"[apps.{stem}] (service module '{tgt}' imported by {path} "
+                    "was not found; declare the app by hand)"
+                );
+                continue;
+            }
+            table: dict[str, str] = {
+                'kind': 'service',
+                'entry-point': os.path.relpath(service_file, app_root)[:-4].replace(
+                    os.sep, '.'
+                )
+            };
+            slug = stem[:-4] if stem.endswith('_app') else stem;
+            old_route = f"/{slug}";
+            if old_route != f"/api/{stem}" {
+                table['route'] = old_route;
+            }
+            tables[stem] = table;
+            causes[stem] = cause;
+        }
+    }
+
+    apps_added: list[str] = [];
+    for (app_root, tables) in sorted(apps_by_root.items()) {
+        if not tables {
+            continue;
+        }
+        toml_path = os.path.join(app_root, 'jac.toml');
+        try {
+            base_name = _ensure_workspace(toml_path, dry_run);
+        } except Exception as e {
+            skipped.append(
+                f"{toml_path} ([project] could not be migrated into [apps]: {e}; "
+                "declare the service apps by hand)"
+            );
+            continue;
+        }
+        if base_name {
+            apps_added.append(
+                f"{app_root}: [apps.{base_name}] migrated from [project] "
+                f"kind/entry-point (default-app = \"{base_name}\")"
+            );
+        }
+        for (name, table) in sorted(tables.items()) {
+            if name == base_name {
+                skipped.append(
+                    f"[apps.{name}] (service module shares the project app's name; "
+                    "declare it by hand)"
+                );
+                continue;
+            }
+            added = _append_app_table(toml_path, name, table, dry_run);
+            if added {
+                cause = causes_by_root[app_root][name];
+                apps_added.append(
+                    f"{app_root}: [apps.{name}] "
+                        + " ".join(added)
+                        + f" (from the sv import at {cause})"
+                );
+            }
+        }
+    }
+    if orphaned {
+        console.warning(
+            "No jac.toml found for the service apps imported by: " + ", ".join(orphaned)
+        );
+    }
+
+    verb = "Would migrate" if dry_run else "Migrated";
+    console.print(f"{verb} {len(changed_files)} file(s).");
+    for (old, new) in renamed {
+        console.print(f"  rename: {old} -> {new}");
+    }
+    for `entry in pins_added {
+        console.print(f"  [placement.pins] {`entry}");
+    }
+    for `entry in apps_added {
+        console.print(f"  {`entry}");
+    }
+    for msg in skipped {
+        console.warning(f"  skipped: {msg}");
+    }
+    for msg in unverified {
+        console.warning(f"  unverified: {msg}");
+    }
+    if pins_added {
+        console.print(
+            "Pinned elements whose inferred placement differs from their old "
+            "marker; review the [placement.pins] entries and delete any you "
+            "trust inference to own.",
+            style="muted"
+        );
+    }
+    return 0;
+}
+
+impl _is_string_kind(kind_str: str) -> bool {
     return 'STRING' in kind_str or 'FSTR' in kind_str or 'JSX' in kind_str;
 }
 
 
-def _dotted_target(tokens: list[LexToken], start: int) -> str {
+impl _dotted_target(tokens: list[LexToken], start: int) -> str {
     parts: list[str] = [];
     j = start;
     while j < len(tokens) {
@@ -83,7 +456,7 @@ def _dotted_target(tokens: list[LexToken], start: int) -> str {
 }
 
 
-def _first_name_after(tokens: list[LexToken], start: int) -> str {
+impl _first_name_after(tokens: list[LexToken], start: int) -> str {
     j = start;
     while j < len(tokens) and j < start + 8 {
         tok = tokens[j];
@@ -103,7 +476,7 @@ def _first_name_after(tokens: list[LexToken], start: int) -> str {
 }
 
 
-def _collect_block_claims(
+impl _collect_block_claims(
     tokens: list[LexToken], body_start: int, body_end: int, space: str, res: StripResult
 ) {
     depth = 0;
@@ -120,7 +493,7 @@ def _collect_block_claims(
                 if k < body_end and tokens[k].value == 'from' {
                     tgt = _dotted_target(tokens, k + 1);
                     if tgt {
-                        res.sv_imports.append(tgt);
+                        res.sv_imports.append(SvImport(target=tgt, line=tok.loc.line));
                     }
                 }
             } elif tok.value in _NAMED_ELEMENT_KEYWORDS {
@@ -143,7 +516,7 @@ def _collect_block_claims(
 }
 
 
-def _strip_markers(src: str, file_path: str) -> StripResult {
+impl _strip_markers(src: str, file_path: str) -> StripResult {
     res = StripResult(text=src);
     try {
         (tokens, err_count) = tokenize(src, file_path);
@@ -232,7 +605,9 @@ def _strip_markers(src: str, file_path: str) -> StripResult {
                         and tokens[i + 2].value == 'from' {
                         tgt = _dotted_target(tokens, i + 3);
                         if tgt {
-                            res.sv_imports.append(tgt);
+                            res.sv_imports.append(
+                                SvImport(target=tgt, line=nxt.loc.line)
+                            );
                         }
                     }
                 } elif nxt.value in _NAMED_ELEMENT_KEYWORDS {
@@ -262,6 +637,7 @@ def _strip_markers(src: str, file_path: str) -> StripResult {
     for (start, end, repl) in edits {
         out.append(src_bytes[cursor:start]);
         out.append(repl.encode('utf-8'));
+        out.append(b'\n' * src_bytes[start:end].count(b'\n'));
         cursor = end;
     }
     out.append(src_bytes[cursor:]);
@@ -271,7 +647,7 @@ def _strip_markers(src: str, file_path: str) -> StripResult {
 }
 
 
-def _iter_migration_files(paths: list[str]) -> list[str] {
+impl _iter_migration_files(paths: list[str]) -> list[str] {
     files: list[str] = [];
     for p in paths {
         if os.path.isfile(p) {
@@ -303,7 +679,7 @@ def _iter_migration_files(paths: list[str]) -> list[str] {
 }
 
 
-def _read_text_if_exists(path: str) -> str {
+impl _read_text_if_exists(path: str) -> str {
     if os.path.exists(path) {
         with open(path, 'r') as f {
             return f.read();
@@ -313,7 +689,7 @@ def _read_text_if_exists(path: str) -> str {
 }
 
 
-def _append_toml_entries(
+impl _append_toml_entries(
     toml_path: str, header: str, entries: dict[str, str], dry_run: bool
 ) -> list[str] {
     import tomllib;
@@ -367,7 +743,7 @@ def _append_toml_entries(
 }
 
 
-def _append_app_table(
+impl _append_app_table(
     toml_path: str, name: str, table: dict[str, str], dry_run: bool
 ) -> list[str] {
     import tomllib;
@@ -400,7 +776,7 @@ def _append_app_table(
 }
 
 
-def _ensure_workspace(toml_path: str, dry_run: bool) -> str {
+impl _ensure_workspace(toml_path: str, dry_run: bool) -> str {
     import tomllib;
     import from pathlib { Path }
 
@@ -422,7 +798,7 @@ def _ensure_workspace(toml_path: str, dry_run: bool) -> str {
 }
 
 
-def _service_file_for(
+impl _service_file_for(
     target: str, importer: str, root_dir: str, scanned: list[str]
 ) -> str {
     dots = len(target) - len(target.lstrip('.'));
@@ -462,7 +838,7 @@ def _service_file_for(
 }
 
 
-def _project_entry_stem(toml_path: str) -> str {
+impl _project_entry_stem(toml_path: str) -> str {
     try {
         import tomllib;
         with open(toml_path, 'rb') as f {
@@ -479,7 +855,7 @@ def _project_entry_stem(toml_path: str) -> str {
 }
 
 
-def _parses_clean(src: str, file_path: str) -> bool {
+impl _parses_clean(src: str, file_path: str) -> bool {
     try {
         (_mod, had_error) = rd_parse(src, file_path);
         return not had_error;
@@ -489,7 +865,7 @@ def _parses_clean(src: str, file_path: str) -> bool {
 }
 
 
-def _format_source(src: str, file_path: str) -> (str | None) {
+impl _format_source(src: str, file_path: str) -> (str | None) {
     try {
         prog = JacProgram.jac_str_formatter(
             source_str=src, file_path=file_path, auto_lint=False
@@ -505,7 +881,68 @@ def _format_source(src: str, file_path: str) -> (str | None) {
 }
 
 
-def _verify_claims(
+impl _client_imports(file_path: str, src: str) -> dict[tuple[int, str], bool] {
+    prog = JacProgram();
+    try {
+        mod = prog.compile(file_path, use_str=src, no_cgen=True);
+    } except Exception {
+        return {};
+    }
+    if prog.count_module_errors(os.path.normpath(mod.loc.mod_path)) {
+        return {};
+    }
+    client: dict[tuple[int, str], bool] = {};
+    read_by: dict[tuple[int, str], set[str]] = {};
+    import_of: dict[tuple[int, str], list[tuple[int, str]]] = {};
+    own_path = os.path.normpath(mod.loc.mod_path);
+    for stmt in mod.body {
+        if isinstance(stmt, uni.Import)
+            and stmt.from_loc is not None
+            and os.path.normpath(stmt.loc.mod_path) == own_path {
+            key = (stmt.loc.first_line, stmt.from_loc.dot_path_str);
+            client[key] = client.get(key, True)
+                and getattr(stmt?.code_context, 'value', '') == 'client'
+                and not getattr(stmt, 'codespace_dual', False);
+            read_by.setdefault(key, set());
+            for item in (stmt.items or []) {
+                if isinstance(item, uni.ModuleItem) {
+                    bound: any = item.alias or item.name;
+                    if bound.sym is not None {
+                        import_of.setdefault((id(bound.sym), bound.value), []).append(
+                            key
+                        );
+                    }
+                }
+            }
+        }
+    }
+    for stmt in mod.body {
+        if isinstance(stmt, uni.Import) {
+            continue;
+        }
+        spaces = {getattr(stmt?.code_context, 'value', '')};
+        if getattr(stmt, 'codespace_dual', False) {
+            spaces.add('server');
+        }
+        for nm in stmt.get_all_sub_nodes(uni.Name) {
+            owners = import_of.get((id(nm.sym), nm.value), [])
+                if nm.sym is not None
+                else [];
+            for owner in owners {
+                read_by[owner].update(spaces);
+            }
+        }
+    }
+    for (key, spaces) in read_by.items() {
+        if spaces == {'client'} {
+            client[key] = True;
+        }
+    }
+    return client;
+}
+
+
+impl _verify_claims(
     file_path: str,
     claims: list[MarkerClaim],
     pins: dict[str, str],
@@ -558,15 +995,7 @@ def _verify_claims(
 }
 
 
-obj AccessRewrite {
-    has path: str,
-        line: int,
-        kind: str,
-        name: str,
-        reason: str;
-}
-
-def _module_has_jsx(decl: any) -> bool {
+impl _module_has_jsx(decl: any) -> bool {
     for sub in decl.get_all_sub_nodes(uni.UniNode) {
         if type(sub).__name__.startswith('Jsx') {
             return True;
@@ -575,7 +1004,7 @@ def _module_has_jsx(decl: any) -> bool {
     return False;
 }
 
-def _returns_jsx(decl: any) -> bool {
+impl _returns_jsx(decl: any) -> bool {
     sig = decl?.signature;
     ret = sig?.return_type if sig is not None else None;
     text = '';
@@ -587,7 +1016,7 @@ def _returns_jsx(decl: any) -> bool {
     return 'Jsx' in text;
 }
 
-def _parse_module(path: str) -> any {
+impl _parse_module(path: str) -> any {
     try {
         with open(path, 'r') as f {
             src = f.read();
@@ -599,7 +1028,7 @@ def _parse_module(path: str) -> any {
     }
 }
 
-def _plain_top_decls(mod: any) -> dict[str, any] {
+impl _plain_top_decls(mod: any) -> dict[str, any] {
     out: dict[str, any] = {};
     for item in (mod.body or []) {
         if (
@@ -613,7 +1042,7 @@ def _plain_top_decls(mod: any) -> dict[str, any] {
     return out;
 }
 
-def _priv_top_decls(mod: any) -> dict[str, any] {
+impl _priv_top_decls(mod: any) -> dict[str, any] {
     out: dict[str, any] = {};
     for item in (mod.body or []) {
         if (
@@ -628,7 +1057,7 @@ def _priv_top_decls(mod: any) -> dict[str, any] {
     return out;
 }
 
-def _resolve_project_import(module_path: any, importer: str, proj_root: str) -> str {
+impl _resolve_project_import(module_path: any, importer: str, proj_root: str) -> str {
     try {
         resolved = module_path.resolve_relative_path();
         if isinstance(resolved, str)
@@ -660,7 +1089,7 @@ def _resolve_project_import(module_path: any, importer: str, proj_root: str) -> 
     return os.path.realpath(candidate) if os.path.isfile(candidate) else '';
 }
 
-def _imported_names(imp: any) -> list[str] {
+impl _imported_names(imp: any) -> list[str] {
     names: list[str] = [];
     for item in (imp.items or []) {
         if isinstance(item, uni.ModuleItem) and isinstance(item.name, uni.Name) {
@@ -670,7 +1099,7 @@ def _imported_names(imp: any) -> list[str] {
     return names;
 }
 
-def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
+impl _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
     ws = workspace_for_path(proj_root);
     notes: list[str] = [];
     plan: list[AccessRewrite] = [];
@@ -813,7 +1242,7 @@ def _access_plan(proj_root: str) -> tuple[list[AccessRewrite], list[str]] {
     return (plan, notes);
 }
 
-def _apply_access_rewrites(
+impl _apply_access_rewrites(
     path: str, rewrites: list[AccessRewrite]
 ) -> tuple[str, int] {
     import re;
@@ -837,7 +1266,7 @@ def _apply_access_rewrites(
     return ('\n'.join(lines), changed);
 }
 
-def _fix_access(paths: list[str], dry_run: bool) -> int {
+impl _fix_access(paths: list[str], dry_run: bool) -> int {
     proj_roots: list[str] = [];
     for p in paths {
         cand = os.path.realpath(p if os.path.isdir(p) else os.path.dirname(p));
@@ -899,7 +1328,7 @@ def _fix_access(paths: list[str], dry_run: bool) -> int {
     return 0;
 }
 
-def _fix_dependencies(paths: list[str], dry_run: bool) -> int {
+impl _fix_dependencies(paths: list[str], dry_run: bool) -> int {
     manifests = find_manifests(paths);
     if not manifests {
         console.error("No jac.toml found to migrate.");
@@ -938,236 +1367,25 @@ def _fix_dependencies(paths: list[str], dry_run: bool) -> int {
     return 0;
 }
 
-impl fix(
-    target: str, paths: list[str], dry_run: bool = False, strip_only: bool = False
-) -> int {
-    if isinstance(paths, str) {
-        paths = [paths];
-    }
-    if target == 'access' {
-        return _fix_access(paths, dry_run);
-    }
-    if target == 'dependencies' {
-        return _fix_dependencies(paths, dry_run);
-    }
-    if target != 'placement' {
-        console.error(
-            f"Unknown fix target '{target}'. Available: placement, access, dependencies"
-        );
-        return 1;
-    }
-    if isinstance(paths, str) {
-        paths = [paths];
-    }
-    files = _iter_migration_files(paths);
-    if not files {
-        console.error("No .jac files found to migrate.");
-        return 1;
-    }
-    changed_files: list[str] = [];
-    renamed: list[tuple[str, str]] = [];
-    claims_by_file: dict[str, list[MarkerClaim]] = {};
-    sv_imports_by_file: dict[str, list[str]] = {};
-    scanned: list[str] = [];
-    skipped: list[str] = [];
-    for path in files {
+impl _report_invalid_manifest(paths: list[str]) -> bool {
+    import from pathlib { Path }
+    checked: set[str] = set();
+    for path in paths {
+        proj = find_jac_project_root(path);
+        if not proj or proj in checked {
+            continue;
+        }
+        checked.add(proj);
+        manifest = Path(proj) / "jac.toml";
+        if not manifest.is_file() {
+            continue;
+        }
         try {
-            with open(path, 'r') as f {
-                src = f.read();
-            }
-        } except Exception as e {
-            skipped.append(f"{path} (unreadable: {e})");
-            continue;
-        }
-        res = _strip_markers(src, path);
-        if res.note {
-            skipped.append(f"{path} ({res.note})");
-            continue;
-        }
-        final_path = path;
-        rename_suffix = '';
-        if path.endswith('.sv.jac') {
-            rename_suffix = '.sv.jac';
-        } elif path.endswith('.native.cl.jac') {
-            rename_suffix = '.native.cl.jac';
-        } elif path.endswith('.cl.jac') {
-            rename_suffix = '.cl.jac';
-        } elif path.endswith('.na.jac') {
-            rename_suffix = '.na.jac';
-        }
-        if rename_suffix {
-            tail = '.native.jac' if rename_suffix == '.native.cl.jac' else '.jac';
-            candidate = path[:-len(rename_suffix)] + tail;
-            if os.path.exists(candidate) {
-                skipped.append(f"{path} (rename target {candidate} exists)");
-            } else {
-                final_path = candidate;
-                renamed.append((path, candidate));
-            }
-        }
-        scanned.append(final_path);
-        if not res.changed and final_path == path {
-            continue;
-        }
-        out_text = res.text;
-        if res.changed {
-            formatted = _format_source(out_text, final_path);
-            if formatted is not None {
-                out_text = formatted;
-            } elif _parses_clean(out_text, final_path) {
-                skipped.append(f"{path} (stripped but not reformatted)");
-            } else {
-                skipped.append(
-                    f"{path} (stripped source does not parse; migrate manually)"
-                );
-                continue;
-            }
-        }
-        if not dry_run {
-            if final_path != path {
-                os.rename(path, final_path);
-            }
-            with open(final_path, 'w') as f {
-                f.write(out_text);
-            }
-        }
-        if res.changed {
-            changed_files.append(final_path);
-        }
-        if res.claims {
-            claims_by_file[final_path] = res.claims;
-        }
-        if res.sv_imports {
-            sv_imports_by_file[final_path] = res.sv_imports;
+            JacConfig.load(manifest);
+        } except ValueError as exc {
+            console.error(f"jac.toml is invalid: {exc}", hint=f"File: {manifest}");
+            return True;
         }
     }
-
-    pins_by_root: dict[str, dict[str, str]] = {};
-    unverified: list[str] = [];
-    if strip_only {
-        claims_by_file = {};
-        sv_imports_by_file = {};
-    }
-    if not dry_run {
-        for (path, claims) in claims_by_file.items() {
-            claim_root = find_jac_project_root(path);
-            if not claim_root {
-                unverified.append(f"{path} (no jac.toml found)");
-                continue;
-            }
-            pins = pins_by_root.setdefault(claim_root, {});
-            _verify_claims(path, claims, pins, unverified);
-        }
-    }
-    apps_by_root: dict[str, dict[str, dict[str, str]]] = {};
-    orphaned: list[str] = [];
-    for (path, targets) in sv_imports_by_file.items() {
-        app_root = find_jac_project_root(path);
-        if not app_root {
-            orphaned.append(path);
-            continue;
-        }
-        entry_stem = _project_entry_stem(os.path.join(app_root, 'jac.toml'));
-        tables = apps_by_root.setdefault(app_root, {});
-        for tgt in targets {
-            stem = tgt.strip('.').rsplit('.', 1)[-1];
-            if not stem or stem == entry_stem or stem in tables {
-                continue;
-            }
-            service_file = _service_file_for(tgt, path, app_root, scanned);
-            if not service_file {
-                skipped.append(
-                    f"[apps.{stem}] (service module '{tgt}' imported by {path} "
-                    "was not found; declare the app by hand)"
-                );
-                continue;
-            }
-            table: dict[str, str] = {
-                'kind': 'service',
-                'entry-point': os.path.relpath(service_file, app_root)[:-4].replace(
-                    os.sep, '.'
-                )
-            };
-            slug = stem[:-4] if stem.endswith('_app') else stem;
-            old_route = f"/{slug}";
-            if old_route != f"/api/{stem}" {
-                table['route'] = old_route;
-            }
-            tables[stem] = table;
-        }
-    }
-
-    pins_added: list[str] = [];
-    apps_added: list[str] = [];
-    for (pin_root, pins) in sorted(pins_by_root.items()) {
-        if pins {
-            added = _append_toml_entries(
-                os.path.join(pin_root, 'jac.toml'), '[placement.pins]', pins, dry_run
-            );
-            pins_added.extend([f"{pin_root}: {a}" for a in added]);
-        }
-    }
-    for (app_root, tables) in sorted(apps_by_root.items()) {
-        toml_path = os.path.join(app_root, 'jac.toml');
-        try {
-            base_name = _ensure_workspace(toml_path, dry_run);
-        } except Exception as e {
-            skipped.append(
-                f"{toml_path} ([project] could not be migrated into [apps]: {e}; "
-                "declare the service apps by hand)"
-            );
-            continue;
-        }
-        if base_name {
-            apps_added.append(
-                f"{app_root}: [apps.{base_name}] migrated from [project] "
-                f"kind/entry-point (default-app = \"{base_name}\")"
-            );
-        }
-        for (name, table) in sorted(tables.items()) {
-            if name == base_name {
-                skipped.append(
-                    f"[apps.{name}] (service module shares the project app's name; "
-                    "declare it by hand)"
-                );
-                continue;
-            }
-            added = _append_app_table(toml_path, name, table, dry_run);
-            if added {
-                apps_added.append(f"{app_root}: [apps.{name}] " + " ".join(added));
-            }
-        }
-    }
-    if orphaned {
-        console.warning(
-            "No jac.toml found for the service apps imported by: " + ", ".join(orphaned)
-        );
-    }
-
-    verb = "Would migrate" if dry_run else "Migrated";
-    console.print(f"{verb} {len(changed_files)} file(s).");
-    for (old, new) in renamed {
-        console.print(f"  rename: {old} -> {new}");
-    }
-    for `entry in pins_added {
-        console.print(f"  [placement.pins] {`entry}");
-    }
-    for `entry in apps_added {
-        console.print(f"  {`entry}");
-    }
-    for msg in skipped {
-        console.warning(f"  skipped: {msg}");
-    }
-    for msg in unverified {
-        console.warning(f"  unverified: {msg}");
-    }
-    if pins_added {
-        console.print(
-            "Pinned elements whose inferred placement differs from their old "
-            "marker; review the [placement.pins] entries and delete any you "
-            "trust inference to own.",
-            style="muted"
-        );
-    }
-    return 0;
+    return False;
 }

@@ -279,8 +279,8 @@ impl NaIRGenPass._copy_refusal(
 
 impl NaIRGenPass._copy_candidates(arch: str) -> list[str] {
     out: list[str] = [arch];
-    for cand in get_layout_registry(self.module, self.prog).mro_order {
-        if cand != arch and cand in self.struct_types and arch in self._mro_of(cand) {
+    for cand in get_layout_registry(self.module, self.prog).descendants_of([arch]) {
+        if cand != arch and cand in self.struct_types {
             out.append(cand);
         }
     }
@@ -350,7 +350,7 @@ impl NaIRGenPass._copy_class_refusal(
         if not deep {
             continue;
         }
-        if "wasm" in str(self.llvm_module.triple or "") {
+        if self._target_is_wasm() {
             return f"{_label} on a wasm target, where the class dispatch of a deep copy cannot raise";
         }
         for (fname, ftype) in self.struct_field_types[cand].items() {

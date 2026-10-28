@@ -162,7 +162,9 @@ impl GcsStorage.get_url(
     }
 }
 
-def _gcs_signed_url_via_iam(blob: any, expiration: any) -> str {
+def _gcs_signed_url_via_iam(blob: any, expiration: any) -> str;
+
+impl _gcs_signed_url_via_iam(blob: any, expiration: any) -> str {
     import google.auth;
     import from google.auth.transport.requests { Request as GoogleAuthRequest }
     credentials: any = google.auth.`default()[0];

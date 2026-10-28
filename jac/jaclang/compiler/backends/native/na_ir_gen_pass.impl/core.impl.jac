@@ -1,61 +1,8 @@
-def scalar_llvm_type(`entry: JacTypeEntry) -> ir.Type {
-    if `entry.is_float {
-        return ir.FloatType() if `entry.width == 32 else ir.DoubleType();
-    }
-    return ir.IntType(`entry.width);
-}
+def scalar_llvm_type(`entry: JacTypeEntry) -> ir.Type;
 
-def _source_param_names(func: ir.Function) -> list[str] {
-    names: list[str] = [];
-    for arg in func.args {
-        (stem, _, suffix) = arg.name.rpartition(".");
-        names.append(stem if stem and suffix.isdigit() else arg.name);
-    }
-    return names;
-}
+def _source_param_names(func: ir.Function) -> list[str];
 
-def _native_emitter_of(suffix: str) -> (object | None) {
-    if suffix == "IntEmitter" {
-        return _pn.NativeIntEmitter();
-    }
-    if suffix == "FloatEmitter" {
-        return _pn.NativeFloatEmitter();
-    }
-    if suffix == "BoolEmitter" {
-        return _pn.NativeBoolEmitter();
-    }
-    if suffix == "ComplexEmitter" {
-        return _pn.NativeComplexEmitter();
-    }
-    if suffix == "StrEmitter" {
-        return _pn.NativeStrEmitter();
-    }
-    if suffix == "BytesEmitter" {
-        return _pn.NativeBytesEmitter();
-    }
-    if suffix == "ListEmitter" {
-        return _pn.NativeListEmitter();
-    }
-    if suffix == "DictEmitter" {
-        return _pn.NativeDictEmitter();
-    }
-    if suffix == "SetEmitter" {
-        return _pn.NativeSetEmitter();
-    }
-    if suffix == "FrozensetEmitter" {
-        return _pn.NativeFrozensetEmitter();
-    }
-    if suffix == "TupleEmitter" {
-        return _pn.NativeTupleEmitter();
-    }
-    if suffix == "RangeEmitter" {
-        return _pn.NativeRangeEmitter();
-    }
-    if suffix == "BuiltinEmitter" {
-        return _pn.NativeBuiltinEmitter();
-    }
-    return None;
-}
+def _native_emitter_of(suffix: str) -> (object | None);
 
 impl NaIRGenPass.postinit -> None {
     import os as _ni_os;
@@ -115,9 +62,7 @@ impl NaIRGenPass.postinit -> None {
         self.type_map[_scalar.name] = scalar_llvm_type(_scalar);
     }
     self.type_map["str"] = (
-        _byte_ptr
-            if "wasm" in str(self.llvm_module.triple or "")
-            else self._str_desc_type()
+        _byte_ptr if self._target_is_wasm() else self._str_desc_type()
     );
     self.type_map["LiteralString"] = self.type_map["str"];
     self.type_map["Region"] = _byte_ptr;
@@ -167,13 +112,6 @@ impl NaIRGenPass._static_refusals(owner: uni.UniNode) -> (list[NativeRefusal] | 
 }
 
 impl NaIRGenPass._settle_module -> None {
-    """Decide the module once its lowering has run. Diagnostics still pending
-    here belong to no unit: on a module whose native placement is a preference
-    they are a refusal the static legality rules did not predict, recorded on
-    the legality table for the driver to place the module in the server
-    codespace. On a module that must be native they stay errors. A backend
-    crash is never a refusal.""";
-
     if self._internal_errors {
         self.ctx.errors_had.extend(self._internal_errors);
         self._internal_errors = [];
@@ -190,13 +128,6 @@ impl NaIRGenPass._settle_module -> None {
 impl NaIRGenPass._internal_error(
     nd: uni.UniNode, kind: str, name: str, exc: Exception, mark: int = 0
 ) -> None {
-    """A backend exception is a compiler defect, reported as one. It is held
-    apart from the pending refusals so no unit or module can absorb it. Two
-    exceptions are not defects. `NativeRefused` is how a deep helper refuses:
-    it joins the pending refusals like any diagnostic. And an exception raised
-    after the unit already recorded a refusal since `mark` says nothing new:
-    the unit is being given up, and what its lowering does past the construct
-    it could not lower is not evidence about the backend.""";
     if isinstance(exc, NativeRefused) {
         self.emit(E5092, node_override=nd, kind=kind, name=f"{name} ({exc})");
         return;
@@ -210,14 +141,11 @@ impl NaIRGenPass._internal_error(
     }
     mark = len(self.ctx.errors_had);
     self.emit(
-        E5092,
+        E9003,
         node_override=nd,
-        kind=f"{kind} (native emitter error in)",
+        kind=kind,
         name=name,
-        help_text=f"The native backend raised {type(exc).__name__} while lowering "
-        f"this {kind}: {exc}. This is a compiler bug -- please report it. Pin the "
-        f"module to the server codespace under [placement.pins] in jac.toml to "
-        f"keep working until it is fixed."
+        details=f"{type(exc).__name__}: {exc}"
     );
     self._internal_errors.extend(self.ctx.errors_had[mark:]);
     del self.ctx.errors_had[mark:];
@@ -519,7 +447,7 @@ impl NaIRGenPass._prefix_of_path(path: str) -> str {
     if found is None {
         import os as _pp_os;
         import from jaclang.compiler.frontend.codeinfo { native_unit_prefix }
-        found = native_unit_prefix(_pp_os.path.realpath(path));
+        found = native_unit_prefix(real_path(path));
         self._unit_prefixes[path] = found;
     }
     return found;
@@ -559,10 +487,8 @@ impl NaIRGenPass._record_export(
 
 impl NaIRGenPass._note_native_dep(path: str) -> None {
     import os as _nd_os;
-    real = _nd_os.path.realpath(path);
-    own_path = _nd_os.path.realpath(self.module.loc.mod_path)
-        if self.module?.loc
-        else "";
+    real = real_path(path);
+    own_path = real_path(self.module.loc.mod_path) if self.module?.loc else "";
     if real == own_path or real in self._native_dep_paths {
         return;
     }
@@ -575,7 +501,7 @@ impl NaIRGenPass._is_catalog_module(mod: uni.Module) -> bool {
 
 impl NaIRGenPass._full_ast_of(full_path: str) -> (uni.Module | None) {
     import os as _fa_os;
-    key = _fa_os.path.realpath(full_path);
+    key = real_path(full_path);
     found = self._full_ast_cache.get(key);
     if found is not None {
         return found;
@@ -636,10 +562,6 @@ impl NaIRGenPass._defer_missing_deps -> bool {
 }
 
 impl NaIRGenPass._settle_dep_ifaces -> None {
-    """Read the interface of every unit the imports reach before this unit
-    builds any IR. A unit an import cycle kept from being discovered is lowered
-    now, while this pass holds nothing but its import walk, instead of halfway
-    through registering the imported types.""";
     for (_, imported_mod) in self._native_imports() {
         self._dep_iface(imported_mod);
     }
@@ -648,11 +570,6 @@ impl NaIRGenPass._settle_dep_ifaces -> None {
 impl NaIRGenPass._discover_kernel_deps(
     imported_mods: list[tuple[str, uni.Module]]
 ) -> None {
-    """The kernel units a lowering consults on demand, the formatting kernel
-    from an f-string format spec, `int(...)` or a bytes method and the OSP
-    kernels from an archetype, are asked for while dependencies are still
-    being discovered, so a missing one is lowered before this unit instead
-    of inside it. Only the kernels this unit can reach are asked for.""";
     rels: list[str] = [];
     wants_fmt = any(
         fv.format_spec is not None
@@ -701,10 +618,10 @@ impl NaIRGenPass._discover_kernel_deps(
     if uses_osp {
         rels.extend([OSP_KERNEL_REL, OSP_GRAPH_REL]);
     }
-    this_path = os.path.realpath(self.module.loc.mod_path or "");
+    this_path = real_path(self.module.loc.mod_path or "");
     for rel in rels {
         path = kernel_unit_path(rel);
-        if os.path.realpath(path) == this_path {
+        if real_path(path) == this_path {
             continue;
         }
         unit = self._load_native_unit_module(path);
@@ -715,17 +632,10 @@ impl NaIRGenPass._discover_kernel_deps(
 }
 
 impl NaIRGenPass._dep_is_native_unit(imported_mod: uni.Module, path: str) -> bool {
-    """Only a dependency that is a native unit has products to consult:
-    one placement makes native, or one this module links against, which the
-    link plan builds as a unit whatever the program placed it as. Lowering
-    against that unit's interface is what makes this lowering the only one:
-    its demotions and layouts are the ones the link plan checks the recorded
-    digests against. Lowering any other import on a cache miss would compile
-    the Python lane's modules as native units, once per consumer.""";
     import os;
     if imported_mod.gen.native_iface is not None
         or imported_mod.decided_codespace == 'native'
-        or os.path.realpath(path) in self._native_dep_paths {
+        or real_path(path) in self._native_dep_paths {
         return True;
     }
 
@@ -734,7 +644,7 @@ impl NaIRGenPass._dep_is_native_unit(imported_mod: uni.Module, path: str) -> boo
 
 impl NaIRGenPass._load_native_unit_module(path: str) -> (uni.Module | None) {
     import os as _lu_os;
-    real = _lu_os.path.realpath(path);
+    real = real_path(path);
     found = self.prog.mod.hub.get(real);
     if found is not None and found.decided_codespace == 'native' {
         return found;
@@ -771,13 +681,6 @@ impl NaIRGenPass._stub_refused_unit(
     refusals: list[NativeRefusal],
     keep_func: bool = False
 ) -> bool {
-    """Place a unit the legality analysis already refused on its Python-only
-    implementation without lowering its body. Where the module requires native,
-    the refusals are reported as the errors they are. A unit of a native
-    element in a mixed module has no Python implementation to be placed on,
-    so its refusals are reported too and the module settles on the server as
-    a whole; an element that must be native had its refusals reported by
-    placement.""";
     if not refusals {
         return False;
     }
@@ -813,11 +716,6 @@ impl NaIRGenPass._rename_demoted_symbol(name: str, func: ir.Function) -> None {
 }
 
 impl NaIRGenPass._propagate_seam_demotions -> None {
-    """Demote every lowered function, method, and test that still reaches a seam
-    stub. A caller lowered before its callee demoted holds a direct call to the
-    callee's abort stub: the call-site check only sees demotions that already
-    happened. Demoting such a caller can strand its own earlier callers, so this
-    runs to a fixpoint after the module's bodies are lowered.""";
     if not self._seam_stub_ids {
         return;
     }
@@ -897,8 +795,6 @@ impl NaIRGenPass._propagate_seam_demotions -> None {
 }
 
 impl NaIRGenPass._reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None) {
-    """The name of a seam stub `func` calls or references, directly or through the
-    private helpers (lambdas, closure bodies) it lowered, or None.""";
     seen.add(id(func));
     for blk in func.blocks {
         for instr in blk.instructions {
@@ -1317,21 +1213,19 @@ impl NaIRGenPass._native_imports(
         wq.append(
             (mod_name, entry_base, None, bool(imp.is_typed), bool(imp.is_comptime))
         );
-        """A name this module imports from a module is bound to that module:
-        another imported module defining a global of the same name (two
-        generated constant tables both named CONSTANTS) must not supply it.""";
+
         if imp.from_loc and imp.items {
             _bound_path = resolve_native_module(mod_name, entry_base)[1];
             if _bound_path is not None {
                 for _it in imp.items {
                     if isinstance(_it, uni.ModuleItem) and _it.alias is None {
-                        self._glob_import_sources[_it.name.value] = os.path.realpath(
+                        self._glob_import_sources[_it.name.value] = real_path(
                             _bound_path
                         );
                     }
                     if isinstance(_it, uni.ModuleItem) {
                         self._native_import_items.append(
-                            (_it, os.path.realpath(_bound_path), mod_name)
+                            (_it, real_path(_bound_path), mod_name)
                         );
                     }
                 }
@@ -1339,11 +1233,10 @@ impl NaIRGenPass._native_imports(
         }
     }
 
-    _self_key = (
-        os.path.realpath(self.module.loc.mod_path) if (self.module?.loc) else None
-    );
+    _self_key = real_path(self.module.loc.mod_path) if (self.module?.loc) else None;
 
     _canon_src: dict[str, any] = {};
+    walked: dict[str, uni.Module] = {};
     dep_edges: dict[str, list[str]] = {};
     typed_only: dict[str, bool] = {};
     runtime_edges: dict[str, list[str]] = {};
@@ -1356,7 +1249,7 @@ impl NaIRGenPass._native_imports(
         if src_mod_str is None or full_path is None {
             continue;
         }
-        if _self_key is not None and os.path.realpath(full_path) == _self_key {
+        if _self_key is not None and real_path(full_path) == _self_key {
             continue;
         }
         abs_key = os.path.abspath(full_path);
@@ -1405,6 +1298,7 @@ impl NaIRGenPass._native_imports(
             continue;
         }
         processed_modules.add(abs_key);
+        walked[abs_key] = imported_mod;
         _canon_src[abs_key] = src_mod_str;
         imported_mods.append((src_mod_str, imported_mod));
         import from jaclang.compiler.driver.compile_options { env_na_debug as _ti_dbg }
@@ -1423,8 +1317,6 @@ impl NaIRGenPass._native_imports(
             );
         }
 
-        """Only the full walk follows a module that has code of its own: its
-        dependencies are its own to discover when it is lowered.""";
         if not transitive and self._has_own_code(imported_mod) {
             continue;
         }
@@ -1453,10 +1345,6 @@ impl NaIRGenPass._native_imports(
         if v
     };
 
-    """A module reached only through comptime imports is read while this
-    module compiles and binds nothing at run time. Runtime reach is settled on
-    the whole import graph, since the walk visits each module's imports once
-    and a comptime path may reach a module before a runtime one does.""";
     runtime_reached: set[str] = set();
     _rt_todo: list[str] = list(runtime_edges.get("", []));
     while _rt_todo {
@@ -1478,6 +1366,13 @@ impl NaIRGenPass._native_imports(
         if _direct not in runtime_reached {
             continue;
         }
+
+        if not self._has_own_code(
+            walked.get(_direct) or self.prog.mod.hub.get(_direct)
+        ) {
+            _dep_todo.extend(dep_edges.get(_direct, []));
+            continue;
+        }
         if typed_only.get(_direct, False) {
             import from jaclang.compiler.placement.placement_facts {
                 native_unit as _typed_native_unit
@@ -1490,13 +1385,7 @@ impl NaIRGenPass._native_imports(
             }
             continue;
         }
-        if self._has_own_code(self.prog.mod.hub.get(_direct)) {
-            self._note_native_dep(_direct);
-        } else {
-            """A module made only of imports and includes is a re-export
-            surface: the units behind it are what this module links to.""";
-            _dep_todo.extend(dep_edges.get(_direct, []));
-        }
+        self._note_native_dep(_direct);
     }
 
     walk = self._permuted_walk_order(imported_mods);
@@ -1517,8 +1406,6 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         }
     }
 
-    """Keep a name's binding only where the named module defines that global
-    itself; a name it re-exports resolves by walk order as before.""";
     _defined: dict[str, set[str]] = {};
     for (_, _gmod) in imported_mods {
         if _gmod?.loc and _gmod.loc.mod_path {
@@ -1539,7 +1426,7 @@ impl NaIRGenPass._register_imported_struct_types -> None {
                     }
                 }
             }
-            _defined[os.path.realpath(_gmod.loc.mod_path)] = _names;
+            _defined[real_path(_gmod.loc.mod_path)] = _names;
         }
     }
     self._glob_import_sources = {
@@ -1701,11 +1588,7 @@ impl NaIRGenPass._walk_imported_module_abilities(
     if _imp_layout is None and imported_mod?.loc and imported_mod.loc.mod_path {
         import os as _wl_os;
         _wl_raw = imported_mod.loc.mod_path;
-        for _wl_key in (
-            _wl_raw,
-            _wl_os.path.abspath(_wl_raw),
-            _wl_os.path.realpath(_wl_raw)
-        ) {
+        for _wl_key in (_wl_raw, _wl_os.path.abspath(_wl_raw), real_path(_wl_raw)) {
             _wl_slim = self.prog.hub.artifacts.get(_wl_key);
             if _wl_slim is not None and _wl_slim.native_layout is not None {
                 _imp_layout = _wl_slim.native_layout;
@@ -1722,7 +1605,9 @@ impl NaIRGenPass._walk_imported_module_abilities(
         _wl_jac_internal = not self.prog.options.native_required_for(_wl_abs)
             and imported_mod.decided_codespace != 'native'
             and (_wl_os2.sep + "jaclang" + _wl_os2.sep) in _wl_abs
-            and (_wl_os2.sep + "na_stdlib" + _wl_os2.sep) not in _wl_abs;
+            and (_wl_os2.sep + "na_stdlib" + _wl_os2.sep) not in _wl_abs
+            and (_wl_os2.sep + "jaclang" + _wl_os2.sep + "osprey" + _wl_os2.sep)
+                not in _wl_abs;
         if _wl_jac_internal {
             _wl_internal = bool(active_host().native_fact(FACT_SEALED_RUNTIME, ""));
         }
@@ -1820,15 +1705,6 @@ impl NaIRGenPass._forward_declare_archetype_methods(arch: uni.Archetype) -> None
 }
 
 impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None {
-    """An imported module's registry also holds the layouts it took from its
-    own imports, and those can be older objects than the ones their defining
-    module holds now: a unit's tree is laid out afresh whenever the link plan
-    reloads it, while a sibling lowered earlier keeps the layouts it adopted
-    then. `_codegen_archetype` reads an archetype's slots from its defining
-    module and `adopt_imported_bases` rewrites the object this registry holds,
-    so the two must be one object: the defining module's layout replaces any
-    copy that reached this registry first.""";
-
     _imp_reg = get_layout_registry(imported_mod, self.prog);
     _cons_reg = get_layout_registry(self.module, self.prog);
     _owned = set(_imp_reg.local_names) - set(_cons_reg.local_names);
@@ -1850,7 +1726,7 @@ impl NaIRGenPass._register_imported_hierarchy(imported_mod: uni.Module) -> None 
             or _have is None
             or (_name in _imp_reg.layouts and _name not in _cons_reg.layouts)
             or len(_mro) > len(_have) {
-            _cons_reg.mro_order[_name] = _mro;
+            _cons_reg.set_mro(_name, _mro);
         }
     }
     for (_name, _lay) in _imp_reg.layouts.items() {
@@ -1882,7 +1758,7 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
         return;
     }
 
-    _arch_src = os.path.realpath(arch.loc.mod_path) if arch.loc.mod_path else "";
+    _arch_src = real_path(arch.loc.mod_path) if arch.loc.mod_path else "";
     _seen_src = self._struct_source_mod.get(aname);
     if _seen_src is not None and _arch_src and _seen_src != _arch_src {
         import from jaclang.compiler.frontend.host { active_host }
@@ -1934,7 +1810,7 @@ impl NaIRGenPass._register_imported_globals(
         return;
     }
     import os;
-    real_source = os.path.realpath(source_path) if source_path else "";
+    real_source = real_path(source_path) if source_path else "";
     aliases: dict[str, list[str]] = {};
     for (item, path, _) in self._native_import_items {
         alias = self._get_name(item.alias) if item.alias is not None else None;
@@ -2011,18 +1887,12 @@ impl NaIRGenPass._forward_declare_imported_ability(
     }
     _owner = nd.find_parent_of_type(uni.Module);
     _owner_name = _owner.name if _owner is not None else "";
-    _owner_path = os.path.realpath(_owner.source.file_path)
-        if _owner is not None
-        else "";
+    _owner_path = real_path(_owner.source.file_path) if _owner is not None else "";
     if _owner is not None and self._module_function_known((_owner_path, name)) {
         return;
     }
     _bound = self.scope.binds_function(name);
     if _bound {
-        """A second imported module defining the same name declares its
-        function under the module-qualified key; the bare name keeps the
-        binding it already has. Two `:pub` definitions share one bare
-        symbol, which the link plan reports as a collision.""";
         if not _owner_name
             or self.scope.binds_function(f"{_owner_name}.{name}")
             or self._func_def_mod.get(name) == _owner_name
@@ -2038,8 +1908,6 @@ impl NaIRGenPass._forward_declare_imported_ability(
         return;
     }
     if bool(nd.access and nd.access.tag.name == Tok.KW_PRIV) {
-        """A private function of another module is not callable from here;
-        it neither declares nor marks its name as demoted.""";
         return;
     }
     _layout = imp_layout if isinstance(imp_layout, NativeModuleLayout) else None;
@@ -2074,9 +1942,6 @@ impl NaIRGenPass._forward_declare_imported_ability(
 }
 
 impl NaIRGenPass._declares_lazily(nd: uni.Ability) -> bool {
-    """Whether an imported function is declared on first reference: one whose
-    declaration only binds its symbol. Generic, compile-time, decorated and
-    generator functions register state the moment they are declared.""";
     return isinstance(nd.signature, uni.FuncSignature)
         and not nd.type_params
         and not nd.is_comptime
@@ -2102,9 +1967,6 @@ impl NaIRGenPass._defer_import(pending: PendingImport, owner_name: str) -> None 
 }
 
 impl NaIRGenPass._declare_import(pending: PendingImport) -> (ir.Function | None) {
-    """Declare an imported function into the module's outermost scope, whatever
-    scope is lowering when it is first named: under its module-qualified name, and
-    under its bare name only where this module binds that name to it.""";
     nd = pending.decl;
     name = pending.module_key[1];
     _owner = nd.find_parent_of_type(uni.Module);
@@ -2114,8 +1976,7 @@ impl NaIRGenPass._declare_import(pending: PendingImport) -> (ir.Function | None)
     imports.forget(pending, _owner_name);
     scope = self.scope;
     self.scope = scope.outermost();
-    """The module's own definition of the name, declared since the import was
-    registered, keeps the bare name.""";
+
     binds_bare = pending.binds_bare and self.scope.functions.get(name) is None;
     try {
         _is_pub = bool(nd.access and nd.access.tag.name == Tok.KW_PUB);
@@ -2123,9 +1984,6 @@ impl NaIRGenPass._declare_import(pending: PendingImport) -> (ir.Function | None)
             self._symbol_for(name, _owner, _is_pub)
         );
         if isinstance(_already, ir.Function) {
-            """The module already declares this symbol (a kernel walk bound it
-            under its bare name without recording the owner): bind it, never
-            declare it twice.""";
             if _owner_name {
                 self.scope.bind_function(f"{_owner_name}.{name}", _already);
             }
@@ -2141,9 +1999,7 @@ impl NaIRGenPass._declare_import(pending: PendingImport) -> (ir.Function | None)
             self._record_linked_decl(_already, nd);
             return _already;
         }
-        """Declaring records the function under its bare name: its binding, its
-        defining module and its return facts. An import that does not own the
-        bare name hands all of them back to whatever held the name.""";
+
         _prev = self.scope.functions.get(name);
         _prev_def_mod = self._func_def_mod.get(name);
         _prev_ret_type = self.func_ret_type_key.get(name);
@@ -2220,23 +2076,12 @@ impl NaIRGenPass._imported_function_demotions(
 impl NaIRGenPass._check_native_import_names(
     imported_mods: list[tuple[str, uni.Module]]
 ) -> None {
-    """Refuse a name imported from a Jac module that does not define it.
-
-    A use of an imported global lowers to a load of the defining unit's
-    symbol. A name the module never defines has no symbol, and every use of
-    it used to lower to nothing: a call argument or a glob initializer took a
-    NULL in its place and the binary crashed wherever that value was read.
-    The module's own scope is the whole answer (its globals, functions,
-    archetypes, enums and the names it imports); a module that absorbs
-    another (`include`, `*`) is left to the checker, and a stdlib function
-    the compiler intercepts (`os.getpid`) needs no definition.
-    """;
     import os;
 
     by_path: dict[str, uni.Module] = {};
     for (_, _mod) in imported_mods {
         if _mod?.loc and _mod.loc.mod_path {
-            by_path[os.path.realpath(_mod.loc.mod_path)] = _mod;
+            by_path[real_path(_mod.loc.mod_path)] = _mod;
         }
     }
     for (item, path, mod_name) in self._native_import_items {
@@ -2360,7 +2205,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
 
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {
-                fn_name = decl.name_ref.sym_name if decl.name_ref else None;
+                fn_name: str = decl.name_ref.sym_name if decl.name_ref else "";
                 if fn_name and module is not self.module {
                     self._foreign_clib_abilities.setdefault(fn_name, decl);
                 }
@@ -2735,4 +2580,63 @@ impl NaIRGenPass._publish_lowering_failure(here: uni.Module) -> None {
         "Native module lowering failed:\n"
             + "\n".join(alert.pretty_print() for alert in self.ctx.errors_had)
     );
+}
+
+impl scalar_llvm_type(`entry: JacTypeEntry) -> ir.Type {
+    if `entry.is_float {
+        return ir.FloatType() if `entry.width == 32 else ir.DoubleType();
+    }
+    return ir.IntType(`entry.width);
+}
+
+impl _source_param_names(func: ir.Function) -> list[str] {
+    names: list[str] = [];
+    for arg in func.args {
+        (stem, _, suffix) = arg.name.rpartition(".");
+        names.append(stem if stem and suffix.isdigit() else arg.name);
+    }
+    return names;
+}
+
+impl _native_emitter_of(suffix: str) -> (object | None) {
+    if suffix == "IntEmitter" {
+        return _pn.NativeIntEmitter();
+    }
+    if suffix == "FloatEmitter" {
+        return _pn.NativeFloatEmitter();
+    }
+    if suffix == "BoolEmitter" {
+        return _pn.NativeBoolEmitter();
+    }
+    if suffix == "ComplexEmitter" {
+        return _pn.NativeComplexEmitter();
+    }
+    if suffix == "StrEmitter" {
+        return _pn.NativeStrEmitter();
+    }
+    if suffix == "BytesEmitter" {
+        return _pn.NativeBytesEmitter();
+    }
+    if suffix == "ListEmitter" {
+        return _pn.NativeListEmitter();
+    }
+    if suffix == "DictEmitter" {
+        return _pn.NativeDictEmitter();
+    }
+    if suffix == "SetEmitter" {
+        return _pn.NativeSetEmitter();
+    }
+    if suffix == "FrozensetEmitter" {
+        return _pn.NativeFrozensetEmitter();
+    }
+    if suffix == "TupleEmitter" {
+        return _pn.NativeTupleEmitter();
+    }
+    if suffix == "RangeEmitter" {
+        return _pn.NativeRangeEmitter();
+    }
+    if suffix == "BuiltinEmitter" {
+        return _pn.NativeBuiltinEmitter();
+    }
+    return None;
 }

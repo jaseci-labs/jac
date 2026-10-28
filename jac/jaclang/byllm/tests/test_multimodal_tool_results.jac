@@ -15,10 +15,14 @@ import from jaclang.byllm.types {
 }
 
 
-test "normalize_tool_result preserves list[Media]" {
-    items = [Text(text="ok"), Image(url="https://example.com/x.png")];
-    out = normalize_tool_result(items);
-    assert out == items;
+test "normalize_tool_result keeps a Media or a list of only Media, and stringifies the rest" {
+    image = Image(url="https://example.com/x.png");
+    items = [Text(text="ok"), image];
+    assert normalize_tool_result(items) == items;
+    assert normalize_tool_result(image) == [image];
+    assert normalize_tool_result([]) == "[]";
+    assert normalize_tool_result([image, "caption"]) == str([image, "caption"]);
+    assert normalize_tool_result(3) == "3";
 }
 
 

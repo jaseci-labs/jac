@@ -311,7 +311,7 @@ impl MTIRGenPass._extract_method_info(
     nd: Ability, by_call: bool = False
 ) -> MethodInfo {
     func_info = self._extract_function_info(nd=nd);
-    parent_arch = nd.find_parent_of_type(Archetype);
+    parent_arch = nd.enclosing_decl(Archetype);
     parent_sym = parent_arch.name.sym if parent_arch else None;
     parent_class_info: (ClassInfo | None) = None;
     if parent_sym is not None and by_call {
@@ -458,12 +458,12 @@ impl MTIRGenPass._collect_routing_archetypes(ir_in: Module) -> list[Archetype] {
             continue;
         }
         saw_routing = True;
-        scope_node = vs.find_parent_of_type(Ability) or ir_in;
-        walker_arch = vs.find_parent_of_type(Archetype);
+        scope_node = vs.enclosing_decl(Ability) or ir_in;
+        walker_arch = vs.enclosing_decl(Archetype);
         if walker_arch is not None {
             scoped[id(walker_arch)] = walker_arch;
         }
-        here_arch = self._archetype_from_event(vs.find_parent_of_type(Ability));
+        here_arch = self._archetype_from_event(vs.enclosing_decl(Ability));
         if here_arch is not None {
             scoped[id(here_arch)] = here_arch;
         }

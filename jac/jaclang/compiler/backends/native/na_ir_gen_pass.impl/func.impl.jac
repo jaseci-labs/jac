@@ -82,7 +82,7 @@ impl NaIRGenPass._maybe_declare_ability(
         assert iterator_type is not None;
         ret_type = iterator_type.as_pointer();
     } else {
-        ret_type = self._resolve_jac_type(sig.return_type);
+        ret_type = self._resolve_return_type(sig.return_type);
     }
     self._sig_decl_kind = _saved_sig_kind;
 
@@ -117,8 +117,8 @@ impl NaIRGenPass._maybe_declare_ability(
 
     _dec_names: list[str] = [];
     if nd.decorators
-        and not isinstance(nd.parent, uni.Archetype)
-        and nd.find_parent_of_type(uni.Ability) is None
+        and nd.method_owner is None
+        and nd.enclosing_decl(uni.Ability) is None
         and name not in self.generator_fns {
         for _dx in nd.decorators {
             if isinstance(_dx, uni.Name) {
@@ -163,11 +163,9 @@ impl NaIRGenPass._maybe_declare_ability(
     self.scope.bind_function(name, func);
     _fdm = nd.find_parent_of_type(uni.Module);
     if _fdm is not None {
-        self._module_functions[(os.path.realpath(_fdm.source.file_path), name)] = func;
+        self._module_functions[(real_path(_fdm.source.file_path), name)] = func;
         self._func_def_mod[name] = _fdm.name;
         if _fdm is not self.module {
-            """Two imported modules may each define a function of one name;
-            a module-qualified call finds the one its module defines.""";
             self.scope.bind_function(f"{_fdm.name}.{name}", func);
         }
     }
@@ -386,11 +384,7 @@ glob RETURNS_TWICE_EXTERNS: frozenset[str] = frozenset(
          }
      );
 
-def _mark_returns_twice(name: str, func: ir.Function) {
-    if name in RETURNS_TWICE_EXTERNS {
-        func.attributes.add("returns_twice");
-    }
-}
+def _mark_returns_twice(name: str, func: ir.Function);
 
 impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     if not isinstance(nd, uni.Ability) {
@@ -640,8 +634,7 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
 
         body = ModuleFacts.unwrap_body(nd);
         if body is not None {
-            _scan_owner = nd.body if isinstance(nd.body, uni.ImplDef) else nd;
-            self._scan_closure_escapes(_scan_owner, body);
+            self._scan_closure_escapes(nd, body);
         }
 
         sig = nd.signature;
@@ -795,9 +788,6 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
 impl NaIRGenPass._demote_native_test(
     nd: uni.Test, func: ir.Function, local_mark: int
 ) -> None {
-    """A test that cannot run natively is a seam like any function: it leaves
-    the native test table and runs its Python body in the server codespace.""";
-
     line = nd.loc.first_line if nd.loc else 0;
     key = native_test_symbol(nd.name.sym_name, line);
     if not self._demote_method_if_unlowerable(key, func, local_mark, keep_func=True) {
@@ -837,8 +827,8 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         param_names.append(p_name);
     }
     ret_type: ir.Type = ir.IntType(64);
-    if sig is not None and sig.return_type is not None {
-        ret_type = self._resolve_jac_type(sig.return_type);
+    if isinstance(sig, uni.FuncSignature) {
+        ret_type = self._resolve_return_type(sig.return_type);
     }
     body = ModuleFacts.unwrap_body(nd);
 
@@ -857,7 +847,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
             if s.sym_name in self.local_vars
         ];
         rebound: set = set();
-        for _scope in ([nd] + nd.get_all_sub_nodes(typ=uni.UniScopeNode)) {
+        for _scope in ([nd] + nd.element_sub_nodes(uni.UniScopeNode)) {
             for _rn in _scope.implicit_rebinds {
                 rebound.add(_rn);
             }
@@ -961,26 +951,8 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
-    _p = nd.parent;
-    _frame: (uni.UniNode | None) = None;
-    while _p is not None {
-        if isinstance(
-            _p,
-            (
-                uni.Ability,
-                uni.ImplDef,
-                uni.LambdaExpr,
-                uni.Test,
-                uni.ModuleCode,
-                uni.Module
-            )
-        ) {
-            _frame = _p;
-            break;
-        }
-        _p = _p.parent;
-    }
-    if not isinstance(_frame, (uni.Ability, uni.ImplDef)) {
+    _frame = nd.enclosing_frame;
+    if not isinstance(_frame, uni.Ability) {
         return;
     }
     _fbody = ModuleFacts.unwrap_body(_frame);
@@ -1021,7 +993,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
     _cap_syms: dict[str, uni.Symbol] = {};
     for s in sibs {
         _reb: set = set();
-        for _scope in ([s] + s.get_all_sub_nodes(typ=uni.UniScopeNode)) {
+        for _scope in ([s] + s.element_sub_nodes(uni.UniScopeNode)) {
             for _rn in _scope.implicit_rebinds {
                 _reb.add(_rn);
             }
@@ -1035,8 +1007,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
             if _sym.sym_type in (SymbolType.ABILITY, SymbolType.TEST) {
                 continue;
             }
-            if _sym.sym_name in self.local_vars
-                or uni.same_lexical_scope(_sym.parent_tab, _frame) {
+            if _sym.sym_name in self.local_vars or _sym.parent_tab is _frame {
                 _ord.append(_sym.sym_name);
                 _md[_sym.sym_name] = "ptr" if _sym.sym_name in _reb else "val";
                 if _sym.sym_name not in _cap_syms {
@@ -1120,8 +1091,8 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
             _pnames.append(_pn);
         }
         _rt: ir.Type = ir.IntType(64);
-        if _ssig is not None and _ssig.return_type is not None {
-            _rt = self._resolve_jac_type(_ssig.return_type);
+        if _ssig is not None {
+            _rt = self._resolve_return_type(_ssig.return_type);
         }
         _caps: list[tuple[str, str, ir.Type]] = [];
         for _cn in _cap_order[s] {
@@ -1158,16 +1129,8 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
 }
 
 impl NaIRGenPass._ability_is_generator(nd: uni.Ability) -> bool {
-    """Whether the ability's own body yields -- inline, or in its impl annex.""";
-    owner: uni.UniNode = nd.body if isinstance(nd.body, uni.ImplDef) else nd;
-    for y in owner.get_all_sub_nodes(typ=uni.YieldExpr) {
-        _cur = y.parent;
-        while _cur is not None
-            and _cur is not owner
-            and not isinstance(_cur, (uni.Ability, uni.ImplDef, uni.LambdaExpr)) {
-            _cur = _cur.parent;
-        }
-        if _cur is owner {
+    for y in nd.element_sub_nodes(uni.YieldExpr) {
+        if y.enclosing_frame is nd {
             return True;
         }
     }
@@ -1258,8 +1221,7 @@ impl NaIRGenPass._codegen_generator(
 
         _gen_scan_body = ModuleFacts.unwrap_body(nd);
         if _gen_scan_body is not None {
-            _gen_scan_owner = nd.body if isinstance(nd.body, uni.ImplDef) else nd;
-            self._scan_closure_escapes(_gen_scan_owner, _gen_scan_body);
+            self._scan_closure_escapes(nd, _gen_scan_body);
         }
 
         param_slots: list[tuple[str, int, ir.Type, int]] = [];
@@ -1801,4 +1763,10 @@ impl NaIRGenPass._emit_rc_gc_env_off_fn -> ir.Function {
     );
     b_chk.ret(_is_off);
     return fn;
+}
+
+impl _mark_returns_twice(name: str, func: ir.Function) {
+    if name in RETURNS_TWICE_EXTERNS {
+        func.attributes.add("returns_twice");
+    }
 }

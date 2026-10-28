@@ -10,6 +10,9 @@ libraylib*.dylib
 /shooter
 /shooter_zig
 /shooter_zig.o
+/shooter_rust
+# native-build layout sidecars written next to each Jac binary
+*.layout.json
 /shooter_headless_none
 /shooter_headless_rc
 /shooter_headless_cycles

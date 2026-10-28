@@ -336,21 +336,35 @@ test "E0058: break inside loop is valid" {
     assert not has_err;
 }
 
-test "E0059: continue inside loop else block" {
+test "E0058: continue in a loop's else with no outer loop" {
     (has_err, prog) = parse_and_validate(
         'with entry { for i in [1,2] { } else { continue; } }'
     );
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0059"));
+    assert has_err and prog is not None and has_diagnostic_code(prog, "E0058");
 }
 
-test "E0059: break inside loop else block is valid" {
-    (has_err, _) = parse_and_validate(
+test "E0058: break in a loop's else with no outer loop" {
+    (has_err, prog) = parse_and_validate(
         'with entry { for i in [1,2] { } else { break; } }'
+    );
+    assert has_err and prog is not None and has_diagnostic_code(prog, "E0058");
+}
+
+test "E0058: continue in an inner loop's else continues the outer loop" {
+    (has_err, _) = parse_and_validate(
+        'with entry { for r in [1] { for i in [1,2] { } else { continue; } } }'
     );
     assert not has_err;
 }
 
-test "E0059: continue inside if-else inside loop is valid" {
+test "E0058: break in an inner loop's else breaks the outer loop" {
+    (has_err, _) = parse_and_validate(
+        'with entry { while True { for i in [1,2] { } else { break; } } }'
+    );
+    assert not has_err;
+}
+
+test "E0058: continue inside if-else inside loop is valid" {
     (has_err, _) = parse_and_validate(
         'with entry { for i in [1,2] { if i == 1 { } else { continue; } } }'
     );
@@ -390,6 +404,27 @@ test "E0076: Python __init__ and init are distinct methods" {
     # `__init__` to Jac's `init` constructor must not collide with it.
     (prog, _) = compile_only("parser_E0076_py_init_distinct.py");
     assert not has_diagnostic_code(prog, "E0076");
+}
+
+test "E0078: a method or ability with a field's name is rejected" {
+    # The later class attribute replaced the field, so `self.rise` read the
+    # ability's function and `jac check` passed it silently.
+    (prog, _) = compile_and_check("parser_E0078_field_method_clash.jac");
+    assert count_diagnostic_code(prog, "E0078") == 3 , "the method 'grow', the ability 'rise' and the impl-block 'grow'";
+}
+
+test "E0078: distinct names, property accessors and init/postinit beside same-named fields are not clashes" {
+    (prog, _) = compile_and_check("parser_E0078_distinct_members.jac");
+    assert not has_diagnostic_code(prog, "E0078");
+}
+
+test "E0078: a Python class is not checked" {
+    prog = JacProgram();
+    prog.compile(
+        use_str="class Box:\n    grow: int = 3\n\n    def grow(self) -> int:\n        return 7\n",
+        file_path="clash.py"
+    );
+    assert not has_diagnostic_code(prog, "E0078");
 }
 
 test "E2036: a second module-level definition of a name is rejected" {

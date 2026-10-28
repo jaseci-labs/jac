@@ -11,85 +11,22 @@ glob _REACT_RUNTIME_SURFACE: list[RuntimeSymbol] = [
          RuntimeSymbol(name="forwardRef", source="react")
      ];
 
-def runtime_symbol(name: str) -> (RuntimeSymbol | None) {
-    for sym in _REACT_RUNTIME_SURFACE {
-        if sym.name == name {
-            return sym;
-        }
-    }
-    return None;
-}
+def runtime_symbol(name: str) -> (RuntimeSymbol | None);
 
 glob WASM_HOST_MODULE: str = "@jac/wasm_host";
 
-def injected_virtual_modules(backend: FrameworkBackend) -> list[str] {
-    return [backend.runtime_module(), WASM_HOST_MODULE];
-}
+def injected_virtual_modules(backend: FrameworkBackend) -> list[str];
 
-def runtime_import_source(name: str, backend: (FrameworkBackend | None) = None) -> str {
-    if backend is not None {
-        src = backend.import_source(name);
-        if isinstance(src, str) and src {
-            return src;
-        }
-    }
-    sym = runtime_symbol(name);
-    if sym is not None {
-        return sym.source;
-    }
-    return "@jac/runtime";
-}
+def runtime_import_source(name: str, backend: (FrameworkBackend | None) = None) -> str;
 
-def backend_jsx_factory_name(backend: (FrameworkBackend | None) = None) -> str {
-    if backend is not None {
-        name = backend.jsx_factory_name();
-        if isinstance(name, str) and name {
-            return name;
-        }
-    }
-    return "__jacJsx";
-}
+def backend_jsx_factory_name(backend: (FrameworkBackend | None) = None) -> str;
 
 def _required_runtime_globals(
     backend: (FrameworkBackend | None) = None
-) -> tuple[list[str], str] {
-    if backend is not None {
-        names = backend.required_globals();
-        src = backend.runtime_module();
-        if isinstance(names, list) and names and isinstance(src, str) and src {
-            return (names, src);
-        }
-    }
-    default_names = [
-        sym.name
-        for sym in _REACT_RUNTIME_SURFACE
-        if sym.prepend
-    ];
-    return (default_names, "@jac/runtime");
-}
+) -> tuple[list[str], str];
 
 def with_runtime_globals(
     js_code: str, backend: (FrameworkBackend | None) = None
-) -> str {
-    (names, src) = _required_runtime_globals(backend);
-    referenced = set(js_identifiers(js_code));
-    declared = js_top_level_declarations(js_code);
-    missing: list[str] = [];
-    for name in names {
-        if name in referenced and name not in declared {
-            missing.append(name);
-        }
-    }
-    if not missing {
-        return js_code;
-    }
-    line = 'import {' + ", ".join(missing) + '} from "' + src + '";';
-    if line in js_code {
-        return js_code;
-    }
-    return line + '\n' + js_code;
-}
+) -> str;
 
-def prepend_active_runtime_globals(js_code: str) -> str {
-    return with_runtime_globals(js_code, resolve_active_backend());
-}
+def prepend_active_runtime_globals(js_code: str) -> str;

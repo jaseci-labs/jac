@@ -76,43 +76,10 @@ impl instructions_of(mt_run: MTRuntime) -> str {
 }
 
 
-def _state_value(value: object) -> object {
-    if value is None or isinstance(value, (str, int, float, bool)) {
-        return value;
-    }
-    if isinstance(value, Enum) {
-        return value.name;
-    }
-    if isinstance(value, dict) {
-        return {str(k): _state_value(v) for (k, v) in value.items()};
-    }
-    if isinstance(value, (list, tuple, set)) {
-        return [_state_value(v) for v in value];
-    }
-    if not isinstance(value, type) and is_record(value) {
-        out: dict[str, any] = {};
-        for f in record_fields(value) {
-            name = str(f.name);
-            if not name.startswith("_") {
-                out[name] = _state_value(getattr(value, name, None));
-            }
-        }
-        return out;
-    }
-    return repr(value);
-}
+def _state_value(value: object) -> object;
 
 
-def _messages_text(mt_run: MTRuntime) -> str {
-    parts: list[str] = [];
-    for msg in mt_run.get_msg_list() {
-        content = msg.get("content") if isinstance(msg, dict) else None;
-        if isinstance(content, str) and content {
-            parts.append(content);
-        }
-    }
-    return "\n\n".join(parts);
-}
+def _messages_text(mt_run: MTRuntime) -> str;
 
 
 impl build_state(mt_run: MTRuntime) -> (dict[str, any] | None) {
@@ -128,7 +95,7 @@ impl build_state(mt_run: MTRuntime) -> (dict[str, any] | None) {
     state: dict[str, any] = {};
     for (idx, key) in enumerate(list(owner.args.keys())) {
         value = owner.args[key];
-        if isinstance(value, Media) {
+        if as_media_list(value) is not None {
             return None;
         }
         if isinstance(key, str) {
@@ -148,7 +115,7 @@ impl build_state(mt_run: MTRuntime) -> (dict[str, any] | None) {
     incl_info = (owner.call_params or {}).get("incl_info");
     if isinstance(incl_info, dict) {
         for (key, value) in incl_info.items() {
-            if isinstance(value, Media) {
+            if as_media_list(value) is not None {
                 return None;
             }
             state[str(key)] = _state_value(value);
@@ -158,13 +125,7 @@ impl build_state(mt_run: MTRuntime) -> (dict[str, any] | None) {
 }
 
 
-def _canonical_names(enum_type: object) -> list[str] {
-    try {
-        return [str(getattr(m, "name", m)) for m in list(enum_type)];
-    } except Exception {
-        return list(getattr(enum_type, "__members__", {}).keys());
-    }
-}
+def _canonical_names(enum_type: object) -> list[str];
 
 
 def _lower_enum(
@@ -172,180 +133,35 @@ def _lower_enum(
     enum_info: (EnumInfo | None),
     instructions: str,
     caps: ProviderCaps
-) -> (Question | None) {
-    described: dict[str, any] = {};
-    for member in ((enum_info.members if enum_info else None) or []) {
-        described[member.name] = member.semstr or None;
-    }
-    criteria: dict[str, any] = {};
-    for name in _canonical_names(resp_type) {
-        criteria[name] = described.get(name);
-    }
-    if len(criteria) < 2 or len(criteria) > caps.max_choice_options {
-        return None;
-    }
-    return Question(kind=CHOICE, instructions=instructions, criteria=criteria);
-}
+) -> (Question | None);
 
 
-def _lower_bool(instructions: str) -> Question {
-    return Question(kind=NOUL, instructions=instructions, criteria=None);
-}
+def _lower_bool(instructions: str) -> Question;
 
 
-def _list_enum_inner(resp_type: object) -> (type | None) {
-    import from typing { get_args, get_origin }
-
-    if get_origin(resp_type) is not list {
-        return None;
-    }
-    args = get_args(resp_type);
-    if len(args) != 1 {
-        return None;
-    }
-    inner = args[0];
-    if isinstance(inner, type) and issubclass(inner, Enum) {
-        return inner;
-    }
-    return None;
-}
+def _list_enum_inner(resp_type: object) -> (type | None);
 
 
-def _list_inner_info(info: object) -> object {
-    if isinstance(info, TypeForm) and info.head == "list" and info.args {
-        return info.args[0];
-    }
-    return None;
-}
+def _list_inner_info(info: object) -> object;
 
 
 def _lower_enum_list(
     inner: type, enum_info: (EnumInfo | None), instructions: str, caps: ProviderCaps
-) -> dict[str, Question] {
-    described: dict[str, any] = {};
-    for member in ((enum_info.members if enum_info else None) or []) {
-        described[member.name] = member.semstr or None;
-    }
-    names = _canonical_names(inner);
-    if not names or len(names) > caps.max_choice_options or not caps.supports_batch {
-        return {};
-    }
-    listed = ", ".join(names);
-    out: dict[str, Question] = {};
-    for name in names {
-        text = described.get(name);
-        yes = f"{name}: {text}" if text else name;
-        out[name] = Question(
-            kind=NOUL,
-            instructions=(
-                f"{instructions} The possible values are: {listed}. "
-                f"Does {name} apply?"
-            ),
-            criteria={"true": yes, "false": None}
-        );
-    }
-    return out;
-}
+) -> dict[str, Question];
 
 
-def _unwrap_decision_info(info: object) -> object {
-    if isinstance(info, TypeForm) and info.head == "Decision" and info.args {
-        return info.args[0];
-    }
-    return info;
-}
+def _unwrap_decision_info(info: object) -> object;
 
 
-def _record_fields(t: object) -> dict[str, any] {
-    import sys;
-    import from typing { get_type_hints }
-
-    if not isinstance(t, type) {
-        return {};
-    }
-    declared: dict[str, any] = {};
-    try {
-        if is_record(t) {
-            for f in record_fields(t) {
-                declared[str(f.name)] = f?.type;
-            }
-        }
-    } except Exception {
-        declared = {};
-    }
-    resolved: dict[str, any] = {};
-    try {
-        resolved = dict(get_type_hints(t));
-    } except Exception {
-        resolved = {};
-    }
-    module_ns: dict[str, any] = {};
-    mod = sys.modules.get(str(getattr(t, "__module__", "")));
-    if mod is not None {
-        module_ns = dict(vars(mod));
-    }
-    out: dict[str, any] = {};
-    for (k, v) in (declared or resolved).items() {
-        if str(k).startswith("_") {
-            continue;
-        }
-        hint = resolved.get(k);
-        if hint is None and isinstance(v, str) {
-            hint = module_ns.get(v)
-                or {"bool": bool, "int": int, "str": str, "float": float}.get(v);
-        }
-        out[str(k)] = hint if hint is not None else v;
-    }
-    return out;
-}
+def _record_fields(t: object) -> dict[str, any];
 
 
-def _is_record_type(t: object) -> bool {
-    if not isinstance(t, type) {
-        return False;
-    }
-    if issubclass(t, (Enum, Decision, str, int, float, bool, list, dict, tuple, set)) {
-        return False;
-    }
-    return bool(_record_fields(t));
-}
+def _is_record_type(t: object) -> bool;
 
 
 def _lower_record(
     t: type, info: object, instructions: str, caps: ProviderCaps
-) -> dict[str, Question] {
-    hints = _record_fields(t);
-    if not hints or not caps.supports_batch {
-        return {};
-    }
-    described: dict[str, any] = {};
-    if isinstance(info, ClassInfo) {
-        for f in (info.fields or []) {
-            described[f.name] = f;
-        }
-    }
-    out: dict[str, Question] = {};
-    for (fname, ftype) in hints.items() {
-        fi = described.get(fname);
-        f_sem = fi.semstr if fi is not None else None;
-        f_instr = f_sem or f"{instructions} What is {fname}?";
-        if ftype is bool {
-            out[fname] = Question(kind=NOUL, instructions=f_instr, criteria=None);
-        } elif isinstance(ftype, type) and issubclass(ftype, Enum) {
-            einfo = fi.type_info if fi is not None else None;
-            q = _lower_enum(
-                ftype, einfo if isinstance(einfo, EnumInfo) else None, f_instr, caps
-            );
-            if q is None {
-                return {};
-            }
-            out[fname] = q;
-        } else {
-            return {};
-        }
-    }
-    return out;
-}
+) -> dict[str, Question];
 
 
 impl lower(
@@ -660,4 +476,243 @@ impl distribution(spec: SystemOneSpec, answers: dict[str, any]) -> dict[str, any
         }
     }
     return out;
+}
+
+impl _state_value(value: object) -> object {
+    if value is None or isinstance(value, (str, int, float, bool)) {
+        return value;
+    }
+    if isinstance(value, Enum) {
+        return value.name;
+    }
+    if isinstance(value, dict) {
+        return {str(k): _state_value(v) for (k, v) in value.items()};
+    }
+    if isinstance(value, (list, tuple, set)) {
+        return [_state_value(v) for v in value];
+    }
+    if not isinstance(value, type) and is_record(value) {
+        out: dict[str, any] = {};
+        for f in record_fields(value) {
+            name = str(f.name);
+            if not name.startswith("_") {
+                out[name] = _state_value(getattr(value, name, None));
+            }
+        }
+        return out;
+    }
+    return repr(value);
+}
+
+
+impl _messages_text(mt_run: MTRuntime) -> str {
+    parts: list[str] = [];
+    for msg in mt_run.get_msg_list() {
+        content = msg.get("content") if isinstance(msg, dict) else None;
+        if isinstance(content, str) and content {
+            parts.append(content);
+        }
+    }
+    return "\n\n".join(parts);
+}
+
+
+impl _canonical_names(enum_type: object) -> list[str] {
+    try {
+        return [str(getattr(m, "name", m)) for m in list(enum_type)];
+    } except Exception {
+        return list(getattr(enum_type, "__members__", {}).keys());
+    }
+}
+
+
+impl _lower_enum(
+    resp_type: object,
+    enum_info: (EnumInfo | None),
+    instructions: str,
+    caps: ProviderCaps
+) -> (Question | None) {
+    described: dict[str, any] = {};
+    for member in ((enum_info.members if enum_info else None) or []) {
+        described[member.name] = member.semstr or None;
+    }
+    criteria: dict[str, any] = {};
+    for name in _canonical_names(resp_type) {
+        criteria[name] = described.get(name);
+    }
+    if len(criteria) < 2 or len(criteria) > caps.max_choice_options {
+        return None;
+    }
+    return Question(kind=CHOICE, instructions=instructions, criteria=criteria);
+}
+
+
+impl _lower_bool(instructions: str) -> Question {
+    return Question(kind=NOUL, instructions=instructions, criteria=None);
+}
+
+
+impl _list_enum_inner(resp_type: object) -> (type | None) {
+    import from typing { get_args, get_origin }
+
+    if get_origin(resp_type) is not list {
+        return None;
+    }
+    args = get_args(resp_type);
+    if len(args) != 1 {
+        return None;
+    }
+    inner = args[0];
+    if isinstance(inner, type) and issubclass(inner, Enum) {
+        return inner;
+    }
+    return None;
+}
+
+
+impl _list_inner_info(info: object) -> object {
+    if isinstance(info, TypeForm) and info.head == "list" and info.args {
+        return info.args[0];
+    }
+    return None;
+}
+
+
+impl _lower_enum_list(
+    inner: type, enum_info: (EnumInfo | None), instructions: str, caps: ProviderCaps
+) -> dict[str, Question] {
+    described: dict[str, any] = {};
+    for member in ((enum_info.members if enum_info else None) or []) {
+        described[member.name] = member.semstr or None;
+    }
+    names = _canonical_names(inner);
+    if not names or len(names) > caps.max_choice_options or not caps.supports_batch {
+        return {};
+    }
+    listed = ", ".join(names);
+    out: dict[str, Question] = {};
+    for name in names {
+        text = described.get(name);
+        yes = f"{name}: {text}" if text else name;
+        out[name] = Question(
+            kind=NOUL,
+            instructions=(
+                f"{instructions} The possible values are: {listed}. "
+                f"Does {name} apply?"
+            ),
+            criteria={"true": yes, "false": None}
+        );
+    }
+    return out;
+}
+
+
+impl _unwrap_decision_info(info: object) -> object {
+    if isinstance(info, TypeForm) and info.head == "Decision" and info.args {
+        return info.args[0];
+    }
+    return info;
+}
+
+
+impl _record_fields(t: object) -> dict[str, any] {
+    import sys;
+    import from typing { get_type_hints }
+
+    if not isinstance(t, type) {
+        return {};
+    }
+    declared: dict[str, any] = {};
+    try {
+        if is_record(t) {
+            for f in record_fields(t) {
+                declared[str(f.name)] = f?.type;
+            }
+        }
+    } except Exception {
+        declared = {};
+    }
+    resolved: dict[str, any] = {};
+    try {
+        resolved = dict(get_type_hints(t));
+    } except Exception {
+        resolved = {};
+    }
+    module_ns: dict[str, any] = {};
+    mod = sys.modules.get(str(getattr(t, "__module__", "")));
+    if mod is not None {
+        module_ns = dict(vars(mod));
+    }
+    out: dict[str, any] = {};
+    for (k, v) in (declared or resolved).items() {
+        if str(k).startswith("_") {
+            continue;
+        }
+        hint = resolved.get(k);
+        if hint is None and isinstance(v, str) {
+            hint = module_ns.get(v)
+                or {"bool": bool, "int": int, "str": str, "float": float}.get(v);
+        }
+        out[str(k)] = hint if hint is not None else v;
+    }
+    return out;
+}
+
+
+impl _is_record_type(t: object) -> bool {
+    if not isinstance(t, type) {
+        return False;
+    }
+    if issubclass(t, (Enum, Decision, str, int, float, bool, list, dict, tuple, set)) {
+        return False;
+    }
+    return bool(_record_fields(t));
+}
+
+
+impl _lower_record(
+    t: type, info: object, instructions: str, caps: ProviderCaps
+) -> dict[str, Question] {
+    hints = _record_fields(t);
+    if not hints or not caps.supports_batch {
+        return {};
+    }
+    described: dict[str, any] = {};
+    if isinstance(info, ClassInfo) {
+        for f in (info.fields or []) {
+            described[f.name] = f;
+        }
+    }
+    out: dict[str, Question] = {};
+    for (fname, ftype) in hints.items() {
+        fi = described.get(fname);
+        f_sem = fi.semstr if fi is not None else None;
+        f_instr = f_sem or f"{instructions} What is {fname}?";
+        if ftype is bool {
+            out[fname] = Question(kind=NOUL, instructions=f_instr, criteria=None);
+        } elif isinstance(ftype, type) and issubclass(ftype, Enum) {
+            einfo = fi.type_info if fi is not None else None;
+            q = _lower_enum(
+                ftype, einfo if isinstance(einfo, EnumInfo) else None, f_instr, caps
+            );
+            if q is None {
+                return {};
+            }
+            out[fname] = q;
+        } else {
+            return {};
+        }
+    }
+    return out;
+}
+
+impl Decision.__class_getitem__(cls: type, elem: any) -> type {
+    key = id(elem);
+    cached = Decision._views.get(key);
+    if cached is None {
+        name = getattr(elem, "__name__", str(elem));
+        cached = `type(f"Decision[{name}]", (Decision, ), {"_jac_inner": elem});
+        Decision._views[key] = cached;
+    }
+    return cached;
 }

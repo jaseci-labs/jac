@@ -299,12 +299,19 @@ impl JacWalker.async_spawn_call(
     `walker: WalkerAnchor, nd: (NodeAnchor | EdgeAnchor)
 ) -> WalkerArchetype {
     warch = `walker.archetype;
+    top_level = _current_scope() is None;
     await osp_spawn_async(
-        make_sv_runtime(),
+        make_sv_runtime(commit=False),
         warch,
         desc_for(`type(warch)),
         [a.archetype for a in `walker.next]
     );
+    ctx = JacRuntimeInterface.peek_context();
+    if top_level and ctx is not None {
+        try {
+            await ctx.mem.acommit();
+        } except Exception {}
+    }
     return warch;
 }
 
@@ -398,7 +405,7 @@ impl JacBuiltin.printgraph(
     node_depths: dict[(NodeArchetype, int)] = {nd: 0};
     queue: list[tuple[NodeArchetype, int]] = [(nd, 0)];
     connections: list[tuple[(NodeArchetype, NodeArchetype, EdgeArchetype)]] = [];
-    """Depth first search.""";
+
     def dfs(nd: NodeArchetype, cur_depth: int) {
         if (nd not in visited_nodes) {
             visited_nodes.append(nd);
@@ -2133,4 +2140,87 @@ impl JacRuntime.after_fork_in_child -> None {
     }
     _shared_root_resolver[1] = None;
     JacRuntime.pool = ThreadPoolExecutor();
+}
+
+impl _scale_provider -> any {
+    if _scale_provider_cache {
+        return _scale_provider_cache[0];
+    }
+    result: any = None;
+    try {
+        import from jaclang.scale.runtime.provider { JacScaleRuntime }
+        result = JacScaleRuntime;
+    } except ImportError as e {
+        _scale_provider_error[0] = e;
+    }
+    _scale_provider_cache.append(result);
+    return result;
+}
+
+impl scale_provider_error -> Exception | None {
+    return _scale_provider_error[0];
+}
+
+impl _all_grant(anchor: Anchor) -> AccessLevel {
+    perm = anchor.access;
+    return AccessLevel.NO_ACCESS if perm is None else perm.all;
+}
+
+impl _light_disconnect_between(
+    a: NodeAnchor, b: NodeAnchor, dirv: int, filter: (Callable | None)
+) -> bool {
+    occurred = False;
+    if dirv != 1 and a.out_light {
+        for cls in `list(a.out_light.keys()) {
+            if filter and not filter(light_edge_view(cls, a, b)) {
+                continue;
+            }
+            while light_disconnect(a, cls, b) {
+                occurred = True;
+            }
+        }
+    }
+    if dirv != 2 and a.in_light {
+        for cls in `list(a.in_light.keys()) {
+            if filter and not filter(light_edge_view(cls, b, a)) {
+                continue;
+            }
+            while light_disconnect(b, cls, a) {
+                occurred = True;
+            }
+        }
+    }
+    return occurred;
+}
+
+impl resolve_ref(
+    stub: (Anchor | None), referrer: (Anchor | None) = None
+) -> (Anchor | None) {
+    if stub is None {
+        return None;
+    }
+    if stub.is_populated() {
+        return stub;
+    }
+    stub.populate();
+    if stub.is_populated() {
+        return stub;
+    }
+    ctx = JacRuntimeInterface.get_context();
+
+    if ctx.mem.preserve_unresolved_ref(stub.ensure_id()) {
+        return None;
+    }
+
+    ref_repr = referrer.id if referrer is not None else '?';
+    logger.error(
+        f"dangling reference: {type(stub).__name__} [{stub.id}] cited by "
+        f"{ref_repr} does not resolve; quarantining and pruning"
+    );
+    try {
+        ctx.mem.quarantine_ref(referrer, stub);
+    } except Exception as e {
+        logger.debug(f"heal of dangling ref {stub.id} failed: {e}");
+    }
+    return None;
 }

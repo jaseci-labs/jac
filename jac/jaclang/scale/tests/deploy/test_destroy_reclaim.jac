@@ -31,7 +31,9 @@ def _run_destroy(
     component: str = "",
     monitoring: any = None,
     owned: bool = True,
-    logger: any = None
+    logger: any = None,
+    policy_v1: any = None,
+    networking_v1: any = None
 ) {
     monitoring_deployer = unittest.mock.MagicMock();
     if monitoring is not None {
@@ -40,18 +42,33 @@ def _run_destroy(
     fake_client = SimpleNamespace(
         AppsV1Api=lambda { apps_v1; },
         CoreV1Api=lambda { core_v1; },
-        PolicyV1Api=lambda { unittest.mock.MagicMock(); },
-        NetworkingV1Api=lambda { unittest.mock.MagicMock(); },
+        PolicyV1Api=lambda { policy_v1 or unittest.mock.MagicMock(); },
+        NetworkingV1Api=lambda { networking_v1 or unittest.mock.MagicMock(); },
         RbacAuthorizationV1Api=lambda { unittest.mock.MagicMock(); }
     );
+    stubs: dict[str, any] = {
+        "client": fake_client,
+        "namespace_is_owned": unittest.mock.MagicMock(return_value=owned),
+        "KEDAAutoscaler": unittest.mock.MagicMock(),
+        "MonitoringDeployer": monitoring_deployer
+    };
+    if on_delete_namespace is not None {
+        stubs["delete_namespace"] = on_delete_namespace;
+    }
+    # The cluster config is loaded once, before destroy reads anything. A load
+    # inside destroy repoints the process-wide client at whatever cluster the
+    # ambient kubeconfig names, so destroy would act on two clusters. The
+    # patch is on the kubernetes.config module because the code under test
+    # calls config.load_kube_config through it; a name imported straight from
+    # kubernetes.config would not be seen here.
+    def _second_load(*args: any, **kwargs: any) {
+        raise AssertionError("destroy reloaded the cluster config");
+    }
     with unittest.mock.patch.multiple(
-        target_mod,
-        client=fake_client,
-        namespace_is_owned=unittest.mock.MagicMock(return_value=owned),
-        delete_namespace=on_delete_namespace,
-        KEDAAutoscaler=unittest.mock.MagicMock(),
-        MonitoringDeployer=monitoring_deployer
-    ) {
+        "kubernetes.config",
+        load_kube_config=_second_load,
+        load_incluster_config=_second_load
+    ), unittest.mock.patch.multiple(target_mod, **stubs) {
         with unittest.mock.patch.object(
             target_mod.KubernetesTarget,
             "_load_cluster_config",
@@ -71,6 +88,14 @@ def _run_destroy(
             }
         }
     }
+}
+
+
+def _recording(deleted: list[str]) -> any {
+    def record(core_v1: any, namespace: str) {
+        deleted.append(namespace);
+    }
+    return record;
 }
 
 
@@ -161,7 +186,7 @@ test "a failed monitoring teardown keeps the namespace" {
     _run_destroy(
         unittest.mock.MagicMock(),
         core_v1,
-        deleted_namespaces.append,
+        _recording(deleted_namespaces),
         monitoring=monitoring
     );
 
@@ -185,7 +210,7 @@ test "a namespace this app created but no longer holds alone is kept" {
         items=[_pvc(bundle_pvc_name(CO_TENANT), "bundle-store")]
     );
 
-    _run_destroy(apps_v1, core_v1, deleted_namespaces.append);
+    _run_destroy(apps_v1, core_v1, _recording(deleted_namespaces));
 
     assert not deleted_namespaces , (
         f"the namespace was deleted whole while '{CO_TENANT}' was still "
@@ -199,7 +224,6 @@ test "a namespace this app created but no longer holds alone is kept" {
 
 
 test "a namespace this app created and holds alone is still reclaimed" {
-    deleted_namespaces: list[str] = [];
     apps_v1 = unittest.mock.MagicMock();
     apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(
         items=[SimpleNamespace(metadata=SimpleNamespace(name=f"{APP}-postgres"))]
@@ -214,11 +238,16 @@ test "a namespace this app created and holds alone is still reclaimed" {
         ]
     );
 
-    _run_destroy(apps_v1, core_v1, deleted_namespaces.append);
+    # The real delete: it must go through the client destroy loaded for the
+    # configured cluster, not one of its own.
+    _run_destroy(apps_v1, core_v1, None);
 
-    assert deleted_namespaces == [NS] , (
+    deletes = [
+        str(c.kwargs.get("name", "")) for c in core_v1.delete_namespace.call_args_list
+    ];
+    assert deletes == [NS] , (
         "this app's own resources read as a co-tenant's, so the namespace it "
-        "created leaks with everything in it (#7968)"
+        f"created leaks with everything in it (#7968); deleted {deletes}"
     );
 }
 
@@ -288,6 +317,147 @@ test "removing the application names the co-tenant whose workloads went too" {
 }
 
 
+test "removing the application spares the database and monitoring beside it" {
+    builder = ManifestBuilder(
+        k8s_config=KubernetesConfig(app_name=APP, namespace=NS),
+        app_overrides={"orders_app": {"replicas": 3, "hpa": {"enabled": False}}}
+    );
+    gateway_ingress: dict[str, str] = builder._build_ingress_manifest(
+        {"enabled": True, "host": "shop.example.com"}
+    )["metadata"]["labels"];
+    fleet_objects: dict[str, dict[str, str]] = {
+        "Service": builder._build_service_manifest("orders_app")["metadata"]["labels"],
+        "gateway Service": builder._build_service_manifest(GATEWAY_NAME)["metadata"][
+            "labels"
+        ],
+        "PodDisruptionBudget": builder._build_pdb_manifest("orders_app")["metadata"][
+            "labels"
+        ],
+        "Ingress": gateway_ingress
+    };
+    for (kind, labels) in fleet_objects.items() {
+        assert labels.get("jac-scale.role") in ("microservice", "gateway") , (
+            f"the {kind} is built without a fleet role, so the application-only "
+            "sweep cannot tell it from the database's or monitoring's objects"
+        );
+    }
+
+    (apps_v1, core_v1) = _co_tenant_apis();
+    policy_v1 = unittest.mock.MagicMock();
+    networking_v1 = unittest.mock.MagicMock();
+
+    _run_destroy(
+        apps_v1,
+        core_v1,
+        unittest.mock.MagicMock(),
+        component="application",
+        policy_v1=policy_v1,
+        networking_v1=networking_v1
+    );
+
+    # Which objects a selector matches is the API server's call and is asserted
+    # against real objects in destroy_reclaim_real_e2e.sh; here the sweeps must
+    # ask for the fleet roles and nothing broader.
+    for (kind, selectors) in [
+        (
+            "Deployment",
+            [apps_v1.delete_collection_namespaced_deployment.call_args.kwargs]
+        ),
+        (
+            "PodDisruptionBudget",
+            [
+                policy_v1.delete_collection_namespaced_pod_disruption_budget.call_args.kwargs
+            ]
+        ),
+        (
+            "Ingress",
+            [networking_v1.delete_collection_namespaced_ingress.call_args.kwargs]
+        ),
+        ("Service", [core_v1.list_namespaced_service.call_args_list[0].kwargs])
+    ] {
+        for kwargs in selectors {
+            assert kwargs["label_selector"] == target_mod.FLEET_SELECTOR , (
+                f"the {kind} sweep selects '{kwargs['label_selector']}', which "
+                "reaches objects that are not the application's"
+            );
+        }
+    }
+}
+
+
+test "removing the application also removes the fleet's Services and PDBs built before they carried a role" {
+    legacy: str = "managed=jac-scale,!jac-scale.role,app in (orders-app,gateway)";
+    apps_v1 = unittest.mock.MagicMock();
+    apps_v1.list_namespaced_deployment.return_value = SimpleNamespace(
+        items=[
+            SimpleNamespace(metadata=SimpleNamespace(labels={"app": "orders-app"})),
+            SimpleNamespace(metadata=SimpleNamespace(labels={"app": "gateway"})),
+            SimpleNamespace(metadata=SimpleNamespace(labels={"app": "orders-app"}))
+        ]
+    );
+
+    for component in ["application", ""] {
+        events: list[tuple[str, str]] = [];
+        def list_services(namespace: str, label_selector: str) -> any {
+            events.append(("list services", label_selector));
+            names: list[str] = [];
+            if label_selector == legacy {
+                names = ["orders-app-service", "gateway-service"];
+            }
+            return SimpleNamespace(
+                items=[SimpleNamespace(metadata=SimpleNamespace(name=n)) for n in names]
+            );
+        }
+        def delete_budgets(namespace: str, label_selector: str) {
+            events.append(("delete budgets", label_selector));
+            if label_selector == target_mod.FLEET_SELECTOR {
+                raise ApiException(status=403);
+            }
+        }
+        def delete_deployments(namespace: str, label_selector: str) {
+            events.append(("delete deployments", label_selector));
+        }
+        apps_v1.delete_collection_namespaced_deployment.side_effect = delete_deployments;
+        core_v1 = unittest.mock.MagicMock();
+        core_v1.list_namespaced_service.side_effect = list_services;
+        core_v1.list_namespaced_persistent_volume_claim.return_value = SimpleNamespace(
+            items=[]
+        );
+        policy_v1 = unittest.mock.MagicMock();
+        policy_v1.delete_collection_namespaced_pod_disruption_budget.side_effect = delete_budgets;
+
+        failed = False;
+        try {
+            _run_destroy(
+                apps_v1,
+                core_v1,
+                unittest.mock.MagicMock(),
+                component=component,
+                policy_v1=policy_v1
+            );
+        } except ApiException {
+            failed = True;
+        }
+        assert failed , f"the 403 on the PDB sweep (component '{component}') was swallowed";
+
+        swept_first = events.index(("delete deployments", target_mod.FLEET_SELECTOR));
+        assert ("delete budgets", legacy) in events[:swept_first]
+            and ("list services", legacy) in events[:swept_first] , (
+            f"destroy (component '{component}') swept the pre-role objects after "
+            f"the Deployments they are named from were gone: {events}"
+        );
+        services = sorted(
+            call.kwargs["name"]
+            for call in core_v1.delete_namespaced_service.call_args_list
+        );
+        assert services == ["gateway-service", "orders-app-service"] , (
+            f"destroy (component '{component}') left a pre-role fleet Service "
+            f"behind, or removed another: {services}"
+        );
+    }
+}
+
+
 test "a namespace holding no other app warns about no co-tenant" {
     apps_v1 = unittest.mock.MagicMock();
     apps_v1.list_namespaced_stateful_set.return_value = SimpleNamespace(
@@ -341,7 +511,7 @@ test "a refused monitoring teardown fails its own component destroy" {
 }
 
 
-def _refuse_namespace_delete(name: str) {
+def _refuse_namespace_delete(core_v1: any, name: str) {
     raise ApiException(status=403);
 }
 
@@ -362,5 +532,28 @@ test "a namespace this app may not delete still gives up its database" {
     assert apps_v1.delete_namespaced_stateful_set.called , (
         "the namespace delete was refused and destroy gave up there, so the "
         "database and its volume stay with no way to reclaim them by re-running"
+    );
+}
+
+
+test "only the target's cluster loader reads a kubeconfig under deploy" {
+    import from pathlib { Path }
+    deploy = Path(__file__).resolve().parent.parent.parent / "deploy";
+    offenders: list[str] = [];
+    for path in sorted(deploy.rglob("*.jac")) {
+        # The loader's declaration and its impl body are one element.
+        if path.name in ("kubernetes_target.jac", "kubernetes_target.impl.jac") {
+            continue;
+        }
+        text = path.read_text();
+        for name in ("load_kube_config", "load_incluster_config") {
+            if name in text {
+                offenders.append(f"{path.relative_to(deploy)}: {name}");
+            }
+        }
+    }
+    assert not offenders , (
+        "a kubeconfig load outside _load_cluster_config repoints the process-wide "
+        f"client at whatever the ambient context names: {offenders}"
     );
 }

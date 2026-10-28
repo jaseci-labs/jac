@@ -151,3 +151,44 @@ impl get_db_path(base_path: str, target_path: (str | None) = None) -> (str | Non
 
     return str(data_dir / "main.db");
 }
+
+impl storage_key(id: UUID) -> str {
+    return f"anchor:{str(id)}";
+}
+
+impl to_uuid(id: (UUID | str)) -> UUID {
+    if isinstance(id, UUID) {
+        return id;
+    }
+    return UUID(str(id));
+}
+
+impl release_arch(raw: str) -> str {
+    m = raw.strip().lower();
+    if m in ("arm64", "aarch64") {
+        return "aarch64";
+    }
+    if m in ("amd64", "x86_64") {
+        return "x86_64";
+    }
+    return m;
+}
+
+impl host_arch -> str {
+    return release_arch(platform.machine());
+}
+
+impl host_os -> str {
+    sysname = platform.system().strip().lower();
+    if sysname == "darwin" {
+        return "macos";
+    }
+    return sysname;
+}
+
+impl triple_arch(triple: str) -> str {
+    if "aarch64" in triple.lower() or "arm64" in triple.lower() {
+        return "aarch64";
+    }
+    return "x86_64";
+}

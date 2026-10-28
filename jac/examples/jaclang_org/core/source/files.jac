@@ -1,6 +1,5 @@
 glob EXCLUDE_DIRS: set = {".git", ".jac", "node_modules", "__pycache__", "assets"},
-     ALLOW_EXT: set = {".jac", ".toml", ".css", ".md"},
-     EXAMPLES_DIR: str = "core/site/examples";
+     ALLOW_EXT: set = {".jac", ".toml", ".css", ".md"};
 
 obj SourceFile {
     has path: str,
@@ -44,5 +43,3 @@ def:pub source_file(path: str) -> SourceView | None;
 def:pub source_span(
     path: str, needle: str, hl_lines: int = 1, before: int = 3, after: int = 12
 ) -> SourceSpan | None;
-
-def:pub example_sources -> list[SourceView];

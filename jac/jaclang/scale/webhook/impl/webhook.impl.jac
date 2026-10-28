@@ -136,15 +136,7 @@ impl ApiKeyManager.create_api_key(
     );
 }
 
-def _key_summary(api_key_id: str, doc: dict[str, any]) -> dict[str, any] {
-    return {
-        'api_key_id': api_key_id,
-        'name': doc.get('name', ''),
-        'created_at': doc.get('created_at'),
-        'expires_at': doc.get('expires_at'),
-        'active': True
-    };
-}
+def _key_summary(api_key_id: str, doc: dict[str, any]) -> dict[str, any];
 
 impl ApiKeyManager.list_api_keys(user_id: str) -> TransportResponse {
     keys: list[dict[str, any]] = [];
@@ -257,4 +249,23 @@ impl rate_window_ok(
 
 impl ApiKeyManager.check_rate_limit(api_key_id: str, limit_per_minute: int) -> bool {
     return rate_window_ok(self._rate_window, api_key_id, limit_per_minute);
+}
+
+impl _key_summary(api_key_id: str, doc: dict[str, any]) -> dict[str, any] {
+    return {
+        'api_key_id': api_key_id,
+        'name': doc.get('name', ''),
+        'created_at': doc.get('created_at'),
+        'expires_at': doc.get('expires_at'),
+        'active': True
+    };
+}
+
+impl _create_api_key_db -> any | None {
+    try {
+        return shared_store();
+    } except Exception as e {
+        logger.warning(f"webhook api-key store unavailable: {e}");
+        return None;
+    }
 }

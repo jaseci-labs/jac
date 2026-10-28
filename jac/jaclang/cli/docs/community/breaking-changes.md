@@ -7,6 +7,22 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### The Ops Console's Role is bound to its own `<app>-ops` ServiceAccount ([#10023](https://github.com/jaseci-labs/jac/pull/10023), unreleased)
+
+With `[scale.kubernetes] ops_console = true` and no `service_account_name`, the Ops Console's Role was bound to the namespace's `default` ServiceAccount, so every pod that names no account of its own (the app's other containers and any co-tenant workload) received the console's read rights, and its patch and delete rights when `ops_console_mutations` was set. The Role is now bound to a ServiceAccount named `<app>-ops` that jac-scale creates, and only the gateway pod runs as it.
+
+With the console on, three things change for an app that is already deployed:
+
+| Before | Now | What to do |
+|---|---|---|
+| The gateway ran as `service_account_name` | The gateway runs as `<app>-ops`; microservice pods still run as `service_account_name` | If the gateway got a cloud identity (IRSA, Workload Identity) from `service_account_name`, create `<app>-ops` with the same annotations before the next deploy. jac-scale uses an existing account as is and never overwrites it. |
+| `service_account_name = "<app>-ops"` was accepted | The deploy fails, since every pod would run as the account the Role is bound to | Choose a different `service_account_name`, or leave it empty. |
+| Creating ServiceAccounts was needed only for the in-cluster database or monitoring | Every deploy with the console on creates `<app>-ops` | Grant the identity that runs `jac scale deploy` `create` on `serviceaccounts` in the namespace. |
+
+The next deploy rolls the gateway pods once and replaces the old RoleBinding in place, which revokes the grant to `default`. A deployment that has already switched the console off keeps that old binding until it is deleted by hand (`kubectl delete rolebinding <app>-ops-console -n <namespace>`). See [Ops Console ServiceAccount](../reference/plugins/jac-scale-kubernetes.md#ops-console-serviceaccount).
+
+---
+
 ### A closure created in a loop body keeps its own iteration's values (unreleased)
 
 A `lambda` or nested `def` created in a loop body used to share every name with the rest of the function, so a closure kept past its iteration saw whatever the last iteration assigned: in a JSX `for` slot every per-item handler acted on the last item, and on the server a list of callbacks built in a loop all read the final value. A name whose every assignment is inside the loop (the loop target, or a local the body introduces) is now shared with such a closure only while its pass through the body lasts; when the pass ends, the closure keeps that pass's value. This holds in every codespace.

@@ -1,103 +1,16 @@
 glob _RPC_MAX_ATTEMPTS: int = 3,
      _RPC_INITIAL_BACKOFF_SECONDS: float = 0.1;
 
-def _rpc_with_retries(module_name: str, label: str, send: any) -> any {
-    import time;
-
-    backoff: float = _RPC_INITIAL_BACKOFF_SECONDS;
-    last_err: Exception | None = None;
-    attempts: int = 0;
-    tripped: bool = False;
-
-    for attempt in range(_RPC_MAX_ATTEMPTS) {
-        attempts = attempt + 1;
-        try {
-            payload = send();
-            breaker_record_success(module_name);
-            return payload;
-        } except ClientRequestNotSent as e {
-            err_ref: any = e;
-            last_err = err_ref;
-            breaker_record_failure(module_name);
-            if breaker_should_skip(module_name) {
-                tripped = True;
-                break;
-            }
-            if attempt < _RPC_MAX_ATTEMPTS - 1 {
-                time.sleep(backoff);
-                backoff = backoff * 2.0;
-            }
-        } except (ClientConnectionError, OSError) as e {
-            sent_ref: any = e;
-            last_err = sent_ref;
-            breaker_record_failure(module_name);
-            break;
-        }
-    }
-
-    stopped_by = " (stopped by open circuit breaker)" if tripped else "";
-    raise RuntimeError(
-        f"sv-to-sv {label} failed after {attempts} attempts{stopped_by}: {last_err}"
-    );
-}
+def _rpc_with_retries(module_name: str, label: str, send: any) -> any;
 
 
-def _rpc_headers(extra: dict[str, str] | None = None) -> dict[str, str] {
-    import from jaclang.server { sv_client }
-
-    headers: dict[str, str] = dict(sv_client.auth_headers());
-    for (key, value) in (extra or {}).items() {
-        headers[str(key)] = str(value);
-    }
-    auth = get_current_auth();
-    if auth {
-        headers["Authorization"] = auth;
-    }
-    trace = get_current_trace();
-    if trace {
-        headers["X-Trace-Id"] = trace;
-    }
-    tp = current_traceparent(trace);
-    if tp {
-        headers["traceparent"] = tp;
-    }
-    return headers;
-}
+def _rpc_headers(extra: dict[str, str] | None = None) -> dict[str, str];
 
 
-def _provider_url(app_name: str) -> str {
-    import jaclang;
-    import from jaclang.server { sv_client }
-    registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
-    base: str = str(registry.get(app_name, "") or "").rstrip("/");
-    if not base {
-        return sv_client.resolve_url(app_name);
-    }
-    route: str = sv_client.registered_route(app_name);
-    if route and not base.endswith(route) {
-        return base + route;
-    }
-    return base;
-}
+def _provider_url(app_name: str) -> str;
 
 
-def _resolve_call_target(module_name: str) -> tuple[str, str | None] {
-    """One bundled lookup for (url, interceptor Host-header override), so
-    the two are never resolved independently and can't disagree.
-    Primary source: the live K8s dynamic registry (JacScaleRuntime's
-    get_sv_service_routes, K8s-mode only) -- it already fails open to {}
-    and warns (once per underlying cause) at its own failure sites, so
-    there is nothing to catch or re-warn about here. Fallback:
-    _provider_url's registry/env-var resolution -- the K8s path never
-    reaches here, so no separate host-override table is needed for it.""";
-
-    routes: dict[str, any] = JacScaleRuntime.get_sv_service_routes();
-    route = routes.get(module_name);
-    if route is not None and route.url {
-        return (route.url, route.host_header);
-    }
-    return (_provider_url(module_name), None);
-}
+def _resolve_call_target(module_name: str) -> tuple[str, str | None];
 
 
 def service_call(
@@ -105,57 +18,7 @@ def service_call(
     func_name: str,
     args: dict[str, any],
     headers: dict[str, str] | None = None
-) -> any {
-    import from jaclang.server { sv_client }
-
-    func_label = f"{module_name}.{func_name}";
-
-    if module_name in sv_client._test_clients {
-        tc = sv_client._test_clients[module_name];
-        resp = tc.post(
-            f"/function/{func_name}", json=args, headers=_rpc_headers(headers)
-        );
-        ct = str(resp.headers.get("Content-Type") or "");
-        if ct.startswith("text/event-stream") {
-            return _iter_sse_text(str(resp.text), func_label);
-        }
-        data = resp.json();
-        return sv_client.function_result(data, module_name, func_name);
-    }
-
-    if breaker_should_skip(module_name) {
-        raise RuntimeError(
-            f"sv-to-sv RPC '{module_name}.{func_name}' blocked by "
-                + f"open circuit breaker (cooldown {int(_BREAKER_COOLDOWN_SECONDS)}s)"
-        );
-    }
-
-    (url, host_override) = _resolve_call_target(module_name);
-
-    send_headers: dict[str, str] = _rpc_headers(headers);
-
-    if host_override {
-        send_headers["Host"] = host_override;
-    }
-
-    rpc_timeout: float = _sv_rpc_timeout(module_name);
-
-    def send -> any {
-        return post_stream_aware_sync(
-            f"{url}/function/{func_name}",
-            json_body=args,
-            headers=send_headers,
-            timeout=rpc_timeout,
-            label=func_label
-        );
-    }
-
-    (kind, payload) = _rpc_with_retries(module_name, f"RPC '{func_label}'", send);
-    if kind == 'sse' {
-        return payload;
-    }
-    return sv_client.function_result(payload, module_name, func_name);
-}
+) -> any;
 
 
 def walker_call(
@@ -164,78 +27,12 @@ def walker_call(
     args: dict[str, any],
     stub_cls: any = None,
     headers: dict[str, str] | None = None
-) -> any {
-    import from jaclang.server { sv_client }
-
-    label = f"{module_name}.{walker_name}";
-
-    if module_name in sv_client._test_clients {
-        tc = sv_client._test_clients[module_name];
-        resp = tc.post(
-            f"/walker/{walker_name}", json=args, headers=_rpc_headers(headers)
-        );
-        data = resp.json();
-        return sv_client.hydrate_walker_envelope(
-            data, module_name, walker_name, stub_cls
-        );
-    }
-
-    if breaker_should_skip(module_name) {
-        raise RuntimeError(
-            f"sv-to-sv walker spawn '{label}' blocked by "
-                + f"open circuit breaker (cooldown {int(_BREAKER_COOLDOWN_SECONDS)}s)"
-        );
-    }
-
-    (url, host_override) = _resolve_call_target(module_name);
-
-    send_headers: dict[str, str] = _rpc_headers(headers);
-
-    if host_override {
-        send_headers["Host"] = host_override;
-    }
-
-    rpc_timeout: float = _sv_rpc_timeout(module_name);
-
-    def send -> any {
-        resp = request_sync(
-            'POST',
-            f"{url}/walker/{walker_name}",
-            json_body=args,
-            headers=send_headers,
-            timeout=rpc_timeout
-        );
-        return resp.json();
-    }
-
-    data = _rpc_with_retries(module_name, f"walker spawn '{label}'", send);
-    return sv_client.hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
-}
+) -> any;
 
 
-def _iter_sse_text(text: str, func_label: str) -> any {
-    for ev in consume_sse_events(text.splitlines(), func_label) {
-        yield ev;
-    }
-}
+def _iter_sse_text(text: str, func_label: str) -> any;
 
 glob _SV_DEFAULT_RPC_TIMEOUT: float = 10.0;
 
 
-def _sv_rpc_timeout(app_name: str) -> float {
-    try {
-        import from jaclang.scale.config.config_loader { get_scale_config }
-        app_cfg = get_scale_config().get_app_scale_config(app_name);
-        if "rpc_timeout" in app_cfg {
-            return float(app_cfg["rpc_timeout"]);
-        }
-        import from jaclang.scale.runtime.context.service_routing {
-            HTTP_ACTIVATED_WAKE_TIMEOUT,
-            is_http_activated
-        }
-        if is_http_activated(app_name) {
-            return HTTP_ACTIVATED_WAKE_TIMEOUT;
-        }
-    } except Exception {}
-    return _SV_DEFAULT_RPC_TIMEOUT;
-}
+def _sv_rpc_timeout(app_name: str) -> float;

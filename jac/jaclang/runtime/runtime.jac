@@ -37,88 +37,19 @@ glob _scale_provider_cache: list[type | None] = [],
 
 glob _persistent_memory_provider: list[Callable | None] = [None];
 
-def _scale_provider -> any {
-    if _scale_provider_cache {
-        return _scale_provider_cache[0];
-    }
-    result: any = None;
-    try {
-        import from jaclang.scale.runtime.provider { JacScaleRuntime }
-        result = JacScaleRuntime;
-    } except ImportError as e {
-        _scale_provider_error[0] = e;
-    }
-    _scale_provider_cache.append(result);
-    return result;
-}
+def _scale_provider -> any;
 
-def scale_provider_error -> Exception | None {
-    return _scale_provider_error[0];
-}
+def scale_provider_error -> Exception | None;
 
-def _all_grant(anchor: Anchor) -> AccessLevel {
-    perm = anchor.access;
-    return AccessLevel.NO_ACCESS if perm is None else perm.all;
-}
+def _all_grant(anchor: Anchor) -> AccessLevel;
 
 def _light_disconnect_between(
     a: NodeAnchor, b: NodeAnchor, dirv: int, filter: (Callable | None)
-) -> bool {
-    occurred = False;
-    if dirv != 1 and a.out_light {
-        for cls in `list(a.out_light.keys()) {
-            if filter and not filter(light_edge_view(cls, a, b)) {
-                continue;
-            }
-            while light_disconnect(a, cls, b) {
-                occurred = True;
-            }
-        }
-    }
-    if dirv != 2 and a.in_light {
-        for cls in `list(a.in_light.keys()) {
-            if filter and not filter(light_edge_view(cls, b, a)) {
-                continue;
-            }
-            while light_disconnect(b, cls, a) {
-                occurred = True;
-            }
-        }
-    }
-    return occurred;
-}
+) -> bool;
 
 def resolve_ref(
     stub: (Anchor | None), referrer: (Anchor | None) = None
-) -> (Anchor | None) {
-    if stub is None {
-        return None;
-    }
-    if stub.is_populated() {
-        return stub;
-    }
-    stub.populate();
-    if stub.is_populated() {
-        return stub;
-    }
-    ctx = JacRuntimeInterface.get_context();
-
-    if ctx.mem.preserve_unresolved_ref(stub.ensure_id()) {
-        return None;
-    }
-
-    ref_repr = referrer.id if referrer is not None else '?';
-    logger.error(
-        f"dangling reference: {type(stub).__name__} [{stub.id}] cited by "
-        f"{ref_repr} does not resolve; quarantining and pruning"
-    );
-    try {
-        ctx.mem.quarantine_ref(referrer, stub);
-    } except Exception as e {
-        logger.debug(f"heal of dangling ref {stub.id} failed: {e}");
-    }
-    return None;
-}
+) -> (Anchor | None);
 
 class JacClassReferences {
     with entry {

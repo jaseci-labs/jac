@@ -77,6 +77,11 @@ impl JacByllmConfig.get_call_params_config(self: JacByllmConfig) -> dict[str, an
     if max_tokens > 0 {
         result['max_tokens'] = max_tokens;
     }
+    for key in ('reasoning_effort', 'thinking', 'extra_body') {
+        if key in call_params {
+            result[key] = call_params[key];
+        }
+    }
     return result;
 }
 

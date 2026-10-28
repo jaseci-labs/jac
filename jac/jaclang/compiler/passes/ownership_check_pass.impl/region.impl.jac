@@ -181,7 +181,7 @@ impl OwnershipCheckPass._is_region_local(nd: Name, region: OpenStmt) -> bool {
     if nd.sym is None or nd.sym.decl is None {
         return False;
     }
-    return self._is_ancestor(region, nd.sym.decl);
+    return nd.sym.decl.is_within(region);
 }
 
 impl OwnershipCheckPass._seal_connect_handle(bx: BinaryExpr) -> (Name | None) {
@@ -226,7 +226,7 @@ impl OwnershipCheckPass._seal_arch_ctor(fc: FuncCall) -> bool {
         return False;
     }
     decl = sym.decl;
-    arch = decl if isinstance(decl, Archetype) else decl.find_parent_of_type(Archetype);
+    arch = decl if isinstance(decl, Archetype) else decl.enclosing_decl(Archetype);
     return arch is not None and arch.name.value == fc.target.sym_name;
 }
 
@@ -361,13 +361,13 @@ impl OwnershipCheckPass._region_handle_kind(region: OpenStmt) -> str {
 }
 
 impl OwnershipCheckPass._region_param_count(region: OpenStmt) -> int {
-    _ab = region.find_parent_of_type(Ability);
+    _ab = region.enclosing_decl(Ability);
     if _ab is None {
         return 0;
     }
     n = 0;
     for p in self.idx_params {
-        if p.find_parent_of_type(Ability) is _ab and self._param_is_region_borrow(p) {
+        if p.enclosing_decl(Ability) is _ab and self._param_is_region_borrow(p) {
             n += 1;
         }
     }
@@ -761,11 +761,11 @@ impl OwnershipCheckPass._emit_region_escape_diagnostics -> None {
         if _hsid is None {
             continue;
         }
-        _ab = region.find_parent_of_type(Ability);
+        _ab = region.enclosing_decl(Ability);
         if _ab is None {
             continue;
         }
-        for call in _ab.get_all_sub_nodes(FuncCall) {
+        for call in _ab.element_sub_nodes(FuncCall) {
             if self._region_callee_is_safe(call, region)
                 or self._call_borrows_handle(call, _hsid) {
                 continue;

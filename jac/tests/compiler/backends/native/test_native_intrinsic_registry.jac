@@ -93,7 +93,11 @@ glob RAW_MEM_IMPORTS = "import from c { def malloc(n: int) -> int; def free(p: i
          IntrinsicDispatch.MEM_STORE: "mem.p",
          IntrinsicDispatch.ATOMIC_XCHG: "atomicrmw xchg",
          IntrinsicDispatch.CALL_DTOR: "dtor.fn",
-         IntrinsicDispatch.ALLOCA: "alloca.buf"
+         IntrinsicDispatch.ALLOCA: "alloca.buf",
+         IntrinsicDispatch.LIST_DATA: "list.data.p",
+         IntrinsicDispatch.BUFFER_DATA: "buf.data.i64",
+         IntrinsicDispatch.REF_ADDR: "ref.addr",
+         IntrinsicDispatch.STR_DATA: "str.data.i64"
      };
 
 """Probe source per dispatch kind; a new dispatch kind must add one here."""
@@ -141,6 +145,34 @@ def _probe_source(intr: any) -> str {
         return (
             "def probe(x: int) -> int { p = __alloca(8); "
             "__mem_store_i64(p, x + 7); return int(__mem_load_i64(p)); }\n"
+        );
+    }
+    if intr.dispatch == IntrinsicDispatch.LIST_DATA {
+        return (
+            "def probe(x: int) -> int { l: list[int] = [0, 0]; "
+            "__mem_store_i64(__list_data_ptr(l) + 8, x + 7); return l[1]; }\n"
+        );
+    }
+    if intr.dispatch == IntrinsicDispatch.BUFFER_DATA {
+        arg = "b\"jac\"" if intr.name == "__bytes_data" else "bytearray(4)";
+        return (
+            "def probe(x: int) -> int { p = "
+            + intr.name
+            + "("
+            + arg
+            + "); " "return x + 7 if p != 0 else 0; }\n"
+        );
+    }
+    if intr.dispatch == IntrinsicDispatch.REF_ADDR {
+        return (
+            "def probe(x: int) -> int { l = [x, 2]; "
+            "return x + 7 if __ref_addr(l) != 0 else 0; }\n"
+        );
+    }
+    if intr.dispatch == IntrinsicDispatch.STR_DATA {
+        return (
+            "def probe(x: int) -> int { s = str(x) + \"jac\"; "
+            "return x + 7 if __str_data(s) != 0 else 0; }\n"
         );
     }
     if intr.dispatch == IntrinsicDispatch.REGION_TLS {

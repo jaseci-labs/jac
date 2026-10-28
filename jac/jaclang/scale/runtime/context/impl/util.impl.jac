@@ -1,0 +1,165 @@
+impl pick_free_port(
+    name: str, base: int = 18000, retries: int = 100, avoid: set[int] | None = None
+) -> int {
+    blocked: set[int] = set(avoid) if avoid else set();
+    start: int = base + (hash(name) % 1000);
+    port: int = start;
+    for _ in range(retries) {
+        if port in blocked {
+            port = port + 1;
+            continue;
+        }
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+        try {
+            s.bind(('127.0.0.1', port));
+            s.close();
+            return port;
+        } except OSError {
+            s.close();
+            port = port + 1;
+        }
+    }
+    raise RuntimeError(f"Could not find free port near {start}");
+}
+
+impl jac_executable -> str {
+    return jac_binary() or shutil.which("jac") or "jac";
+}
+
+impl k8s_service_dns_host(service_name: str, namespace: str) -> str {
+    return f"{service_name}.{namespace}.{K8S_CLUSTER_DNS_SUFFIX}";
+}
+
+impl k8s_service_dns_url(safe_name: str, namespace: str, port: int) -> str {
+    return f"http://{k8s_service_dns_host(f'{safe_name}-service', namespace)}:{port}";
+}
+
+impl in_cluster_namespace -> str {
+    import os;
+    ns: str = os.environ.get("POD_NAMESPACE", "");
+    if ns {
+        return ns;
+    }
+    try {
+        ns_file = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
+        with open(ns_file) as f {
+            return f.read().strip() or "default";
+        }
+    } except Exception {
+        return "default";
+    }
+}
+
+impl http_forward_timeout(app_name: str | None = None) -> float {
+    try {
+        import from jaclang.scale.config.config_loader { get_scale_config }
+        scale_cfg = get_scale_config();
+        if app_name {
+            app_cfg = scale_cfg.get_app_scale_config(app_name);
+            if "http_forward_timeout" in app_cfg {
+                return float(app_cfg["http_forward_timeout"]);
+            }
+        }
+        timeout = float(
+            scale_cfg.get_gateway_config().get(
+                "http_forward_timeout", _DEFAULT_HTTP_FORWARD_TIMEOUT
+            )
+        );
+        import from jaclang.scale.runtime.context.service_routing {
+            HTTP_ACTIVATED_WAKE_TIMEOUT,
+            is_http_activated
+        }
+        if app_name and is_http_activated(app_name) {
+            return max(timeout, HTTP_ACTIVATED_WAKE_TIMEOUT);
+        }
+        return timeout;
+    } except Exception {}
+    return _DEFAULT_HTTP_FORWARD_TIMEOUT;
+}
+
+impl route_refresh_seconds -> float {
+    try {
+        import from jaclang.scale.config.config_loader { get_scale_config }
+        gw_cfg = get_scale_config().get_gateway_config();
+        if "route_refresh_seconds" in gw_cfg {
+            return float(gw_cfg["route_refresh_seconds"]);
+        }
+    } except Exception {}
+    return _DEFAULT_ROUTE_REFRESH_SECONDS;
+}
+
+impl boot_health_timeout -> float {
+    try {
+        import from jaclang.scale.config.config_loader { get_scale_config }
+        gw_cfg = get_scale_config().get_gateway_config();
+        if "boot_health_timeout" in gw_cfg {
+            return float(gw_cfg["boot_health_timeout"]);
+        }
+    } except Exception {}
+    return _DEFAULT_BOOT_HEALTH_TIMEOUT;
+}
+
+impl wait_for_health(
+    base_url: str,
+    proc_alive: any,
+    timeout: float = 15.0,
+    poll_interval: float = 0.1,
+    progress: any = None
+) -> bool {
+    import time;
+    import urllib.request;
+    import from http.client { HTTPResponse }
+
+    last_marker: any = progress() if progress is not None else None;
+    deadline: float = time.time() + timeout;
+    while time.time() < deadline {
+        if not proc_alive() {
+            return False;
+        }
+        try {
+            opened: HTTPResponse = urllib.request.urlopen(
+                f"{base_url}/healthz", timeout=1
+            );
+            with opened as resp {
+                if resp.status < 500 {
+                    return True;
+                }
+            }
+        } except Exception {
+            time.sleep(poll_interval);
+        }
+        if progress is not None {
+            marker = progress();
+            if marker != last_marker {
+                last_marker = marker;
+                deadline = time.time() + timeout;
+            }
+        }
+    }
+    return False;
+}
+
+impl k8s_safe_name(svc_name: str) -> str {
+    if svc_name == GATEWAY_NAME {
+        return "gateway";
+    }
+    import re;
+    if "${" in svc_name {
+        raise ValueError(
+            f"'{svc_name}' still contains an unresolved ${{...}} placeholder, so "
+            f"the environment variable it names was not set where this deploy "
+            f"ran. Export it, or replace it with a literal name."
+        );
+    }
+    safe = re.sub(r"[^a-z0-9.-]", "-", svc_name.lower().replace("_", "-"));
+    safe = re.sub(r"^[^a-z0-9]+|[^a-z0-9]+$", "", safe)[:_RFC1123_MAX_LEN];
+    safe = re.sub(r"[^a-z0-9]+$", "", safe);
+    if not safe {
+        raise ValueError(
+            f"'{svc_name}' has no characters usable in a Kubernetes name; names "
+            f"must contain at least one letter or digit."
+        );
+    }
+    return safe;
+}

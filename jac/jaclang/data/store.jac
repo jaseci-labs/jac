@@ -127,14 +127,7 @@ obj Store {
 
 
 obj PgStore(Store) {
-    override def new_session -> PgStore {
-        return PgStore(
-            conninfo=self.conninfo,
-            ensure_cb=self.ensure_cb,
-            promotions=dict(self.promotions),
-            auto_schema=self.auto_schema
-        );
-    }
+    override def new_session -> PgStore;
 
     has conninfo: ConnInfo,
         ensure_cb: (any | None) = None,

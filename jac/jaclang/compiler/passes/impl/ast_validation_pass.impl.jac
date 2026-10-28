@@ -301,7 +301,7 @@ impl ASTValidationPass.enter_import with Import entry {
 }
 
 impl ASTValidationPass.enter_yield_expr with YieldExpr entry {
-    if here.find_parent_of_type(Ability) is None
+    if here.enclosing_decl(Ability) is None
         and here.find_parent_of_type(ImplDef) is None {
         self.ctx.emit(E0055, node_override=here);
     }
@@ -318,22 +318,16 @@ impl ASTValidationPass.enter_ctrl_stmt with CtrlStmt entry {
 
     parent = here.parent;
     while parent is not None {
-        if isinstance(parent, (InForStmt, IterForStmt, WhileStmt, ForeverStmt)) {
-            return;
-        }
-
-        if kw == "break" and isinstance(parent, (SwitchStmt, MatchStmt)) {
-            return;
-        }
-        if kw == "continue" and isinstance(parent, ElseStmt) {
-            if isinstance(parent.parent, (InForStmt, IterForStmt, WhileStmt)) {
-                self.ctx.emit(E0059, node_override=here);
+        if not in_loop_else(here, parent) {
+            if isinstance(parent, (InForStmt, IterForStmt, WhileStmt, ForeverStmt)) {
                 return;
             }
-        }
-
-        if isinstance(parent, (Ability, ImplDef, Module)) {
-            break;
+            if kw == "break" and isinstance(parent, (SwitchStmt, MatchStmt)) {
+                return;
+            }
+            if isinstance(parent, (Ability, ImplDef, Module)) {
+                break;
+            }
         }
         parent = parent.parent;
     }
@@ -482,6 +476,65 @@ impl ASTValidationPass.enter_archetype with Archetype entry {
             self.ctx.emit(E0076, node_override=nref, name=mname);
         }
         seen_methods.add(dedup_name);
+    }
+
+    if isinstance(here.body, list) {
+        self._check_field_method_clash(here, here.body);
+    }
+}
+
+impl ASTValidationPass.enter_impl_def with ImplDef entry {
+    if isinstance(here.body, list) {
+        self._check_field_method_clash(here, here.body);
+    }
+}
+
+impl ASTValidationPass._member_attr_name(nref: Name) -> str {
+    if nref.name == Tok.KW_INIT {
+        return "__init__";
+    }
+    if nref.name == Tok.KW_POST_INIT {
+        return "__post_init__";
+    }
+    return nref.value;
+}
+
+impl ASTValidationPass._check_field_method_clash(
+    owner_node: UniNode, members: list[UniNode]
+) -> None {
+    owner = owner_node.find_parent_of_type(Module);
+    if owner is not None and (owner.is_raised_from_py or owner.stub_only) {
+        return;
+    }
+    field_lines: dict[str, int] = {};
+    for item in members {
+        if isinstance(item, ArchHas) {
+            for var in item.vars {
+                if var.name.value not in field_lines {
+                    field_lines[var.name.value] = var.name.loc.first_line;
+                }
+            }
+        }
+    }
+    if len(field_lines) == 0 {
+        return;
+    }
+    for item in members {
+        if not isinstance(item, Ability) {
+            continue;
+        }
+        aref = item.name_ref;
+        if not isinstance(aref, Name) {
+            continue;
+        }
+        attr = self._member_attr_name(aref);
+        if attr not in field_lines {
+            continue;
+        }
+        kind = "ability" if isinstance(item.signature, EventSignature) else "method";
+        self.ctx.emit(
+            E0078, node_override=aref, name=attr, kind=kind, line=field_lines[attr]
+        );
     }
 }
 

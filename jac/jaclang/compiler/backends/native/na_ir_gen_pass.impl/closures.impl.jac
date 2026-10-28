@@ -1,37 +1,17 @@
 impl NaIRGenPass._scan_closure_escapes(
     nd: uni.UniNode, body: Sequence[uni.UniNode]
 ) -> None {
-    def nearest_scope(n: uni.UniNode) -> (uni.UniNode | None) {
-        p = n.parent;
-        while p is not None {
-            if isinstance(
-                p,
-                (
-                    uni.Ability,
-                    uni.ImplDef,
-                    uni.LambdaExpr,
-                    uni.Test,
-                    uni.ModuleCode,
-                    uni.Module
-                )
-            ) {
-                return p;
-            }
-            p = p.parent;
-        }
-        return None;
-    }
     if not body {
         return;
     }
     direct_names: list[uni.Name] = [];
-    for nm in nd.get_all_sub_nodes(typ=uni.Name) {
-        if nearest_scope(nm) is nd {
+    for nm in nd.element_sub_nodes(uni.Name) {
+        if nm.enclosing_frame is nd {
             direct_names.append(nm);
         }
     }
-    for sub in nd.get_all_sub_nodes(typ=uni.Ability) {
-        if nearest_scope(sub) is not nd or self._ability_is_generator(sub) {
+    for sub in nd.element_sub_nodes(uni.Ability) {
+        if sub.enclosing_frame is not nd or self._ability_is_generator(sub) {
             continue;
         }
         sname = sub.name_ref.sym_name if sub.name_ref else None;
@@ -58,8 +38,8 @@ impl NaIRGenPass._scan_closure_escapes(
             }
         }
     }
-    for lam in nd.get_all_sub_nodes(typ=uni.LambdaExpr) {
-        if nearest_scope(lam) is not nd {
+    for lam in nd.element_sub_nodes(uni.LambdaExpr) {
+        if lam.enclosing_frame is not nd {
             continue;
         }
         for cap_sym in lam.captures {
@@ -92,9 +72,6 @@ impl NaIRGenPass._closure_sig_struct(
 }
 
 impl NaIRGenPass._wrap_fn_as_closure_value(val: ir.Value) -> ir.Value {
-    """A bare function stored into a container slot becomes an owned
-    {fn, env=null} closure box, because a Callable is read and called back
-    as a closure pair. Any other value is returned unchanged.""";
     fnty: (ir.FunctionType | None) = None;
     if isinstance(val.type, ir.FunctionType) {
         fnty = val.type;

@@ -88,7 +88,7 @@ impl OwnershipCheckPass._collect_flow_reductions(lp: InForStmt) -> dict[SymId, s
     }
     _cands: dict[SymId, str] = {};
     _sites: dict[SymId, list[Assignment]] = {};
-    _lp_fn = lp.find_parent_of_type(Ability);
+    _lp_fn = lp.enclosing_decl(Ability);
     _lp_mc = lp.find_parent_of_type(ModuleCode);
     for a in _asgns {
         if len(a.target) != 1 or not isinstance(a.target[0], Name) {
@@ -99,10 +99,10 @@ impl OwnershipCheckPass._collect_flow_reductions(lp: InForStmt) -> dict[SymId, s
         if sid is None or tgt.sym is None or tgt.sym.decl is None {
             continue;
         }
-        if self._is_ancestor(lp, tgt.sym.decl) {
+        if tgt.sym.decl.is_within(lp) {
             continue;
         }
-        if tgt.sym.decl.find_parent_of_type(Ability) is not _lp_fn
+        if tgt.sym.decl.enclosing_decl(Ability) is not _lp_fn
             or tgt.sym.decl.find_parent_of_type(ModuleCode) is not _lp_mc {
             continue;
         }
@@ -148,7 +148,7 @@ impl OwnershipCheckPass._collect_flow_reductions(lp: InForStmt) -> dict[SymId, s
                 }
                 _inside = False;
                 for a in _sites[sid] {
-                    if nm is a or self._is_ancestor(a, nm) {
+                    if nm is a or nm.is_within(a) {
                         _inside = True;
                         break;
                     }
@@ -255,13 +255,13 @@ impl OwnershipCheckPass._emit_flow_for_diagnostics -> None {
                 if sym.in_stub_scope() {
                     continue;
                 }
-                if self._is_ancestor(lp, sym.decl) {
+                if sym.decl.is_within(lp) {
                     continue;
                 }
                 if isinstance(nm.parent, FuncCall) and nm.parent.target is nm {
                     continue;
                 }
-                _ab = sym.decl.find_parent_of_type(Ability);
+                _ab = sym.decl.enclosing_decl(Ability);
                 if _ab is not None and _ab.name_ref is sym.decl {
                     continue;
                 }
@@ -420,7 +420,7 @@ impl OwnershipCheckPass._flow_lend_joined(
         for ex in _exits {
             _joins_first = False;
             for w in _wait_nodes {
-                if ex is w or self._is_ancestor(ex, w) {
+                if ex is w or w.is_within(ex) {
                     _joins_first = True;
                 }
             }

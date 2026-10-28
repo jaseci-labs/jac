@@ -173,7 +173,7 @@ with entry {
 `jac build --native` is incremental per module: the build says `Recompiled N unit(s); reused M`, and a rebuild with nothing changed costs only the link. How long an edit takes depends on what it invalidates:
 
 - **Check before building.** `jac check <file>` reports type errors, reserved words and unknown types for the files you changed in seconds to a minute; a full native build of a large program takes minutes and stops at the first module that fails.
-- **Keep the cache.** It is keyed by the compiler that built it: pointing `JAC_DEV_SOURCE` at another compiler tree, or `jac clean --cache`, recompiles every module. Stay on one compiler while iterating, and clean only for genuinely stale behaviour.
+- **Keep the cache.** It is keyed by the compiler that built it: switching to another compiler tree (`[dev] jaclang_source` in `jac.toml`), or `jac clean --cache`, recompiles every module. Stay on one compiler while iterating, and clean only for genuinely stale behaviour.
 - **Mind the import graph.** An edit to a module many others import (a shared base type, a host interface) recompiles all of them; one to a leaf recompiles little.
 - **Probe small.** To try a construct or time a function, build a ten-line program that imports just what it needs rather than the whole application.
 - **One heavy job at a time.** Native builds and `jac test` runs each compile their own closure; running several at once makes each slower.

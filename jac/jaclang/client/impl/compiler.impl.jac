@@ -87,16 +87,65 @@ impl ViteCompiler._emit_wasm_module(self: ViteCompiler, module_path: Path) -> bo
 impl ViteCompiler._compile_wasm_module(
     self: ViteCompiler, module_path: Path
 ) -> dict[str, bytes] {
+    import json;
+    stem = native_wasm_stem(str(module_path));
+    cache = self.project_dir / ".jac" / "cache" / "wasm" / stem;
+    inputs_file = cache / "inputs.json";
     try {
-        wasm = build_wasm(client_program(self.program), str(module_path), []);
+        recorded = json.loads(inputs_file.read_text());
+        units = recorded.get("units", []);
+        if recorded.get("key") == self._wasm_input_key(units)
+            and all(ct_dep_text_fresh(unit[1]) for unit in units) {
+            held = {
+                p.name: p.read_bytes()
+                for p in cache.iterdir()
+                if p.is_file() and p.name != inputs_file.name
+            };
+            if held {
+                return held;
+            }
+        }
+    } except (OSError, ValueError, AttributeError) {}
+    stat_note("wasm_emit");
+    try {
+        (wasm, units) = wasm_artifact_inputs(
+            client_program(self.program), str(module_path), []
+        );
     } except Exception as e {
         console.error(f"na->wasm failed for '{module_path.name}': {e}");
         return {};
     }
-    stem = native_wasm_stem(str(module_path));
-
     console.print(f"  Native wasm module: /static/{stem}.wasm ({len(wasm)} bytes)");
-    return wasm_assets(stem, wasm);
+    assets = wasm_assets(stem, wasm);
+    try {
+        import shutil;
+        shutil.rmtree(cache, ignore_errors=True);
+        cache.mkdir(parents=True, exist_ok=True);
+        for (name, content) in assets.items() {
+            (cache / name).write_bytes(content);
+        }
+        inputs_file.write_text(
+            json.dumps({"units": units, "key": self._wasm_input_key(units)})
+        );
+    } except OSError {}
+    return assets;
+}
+
+impl ViteCompiler._wasm_input_key(self: ViteCompiler, units: list[list[str]]) -> str {
+    import hashlib;
+    import os;
+    h = hashlib.sha256(running_compiler_digest().encode("utf-8"));
+    config = self.project_dir / "jac.toml";
+    if config.is_file() {
+        h.update(file_sha256(str(config)).encode("utf-8"));
+    }
+    for path in sorted(unit[0] for unit in units) {
+        if not os.path.isfile(path) {
+            return "";
+        }
+        h.update(f"{path}:{ct_dep_digest(path, with_annexes=True)}\n".encode("utf-8"));
+    }
+    return h.hexdigest();
 }
 
 impl ViteCompiler.create_entry_file(self: ViteCompiler, module_path: Path) -> None {
@@ -162,7 +211,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
         raise ClientBundleError('Runtime path not set');
     }
 
-    runtime_utils_path = Path(resolve_client_runtime_cl_path());
+    runtime_utils_path = Path(resolve_client_runtime_cl_path()).resolve();
     runtime = self.jac_compiler.compile_module(runtime_utils_path);
     runtimeutils_js = runtime.js;
     runtimeutils_exports_list = self.jac_compiler.extract_exports(runtime.manifest);
@@ -176,7 +225,7 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
     );
     self.compiled_dir.mkdir(parents=True, exist_ok=True);
 
-    visited: set[Path] = {runtime_utils_path.resolve()};
+    visited: set[Path] = {runtime_utils_path};
     for (name, dependency) in runtime.manifest.imports.items() {
         if name in self.jac_client_compiler.SELF_COMPILED_VIRTUAL_MODULES {
             continue;
@@ -188,10 +237,11 @@ impl ViteCompiler.compile_runtime_utils(self: ViteCompiler) -> tuple[str, list[s
             );
         }
     }
-    runtime_out = self.compiled_dir / 'client_runtime.js';
-    runtime_out.write_text(runtimeutils_js, encoding='utf-8');
-    self.jac_client_compiler._write_source_map(
-        runtime, str(runtime_utils_path), runtime_out, runtimeutils_js
+    self.jac_client_compiler._write_js(
+        runtime,
+        str(runtime_utils_path),
+        self.compiled_dir / 'client_runtime.js',
+        self.jac_client_compiler._module_text(runtime_utils_path, runtime)
     );
 
     self.jac_client_compiler.compile_mobui_utils();
@@ -226,8 +276,7 @@ impl ViteCompiler.compile_desktop_sdk(self: ViteCompiler) {
         desktop_js = desktop_js + '\n' + export_line + '\n';
     }
     desktop_out = self.compiled_dir / 'desktop_api.js';
-    desktop_out.write_text(desktop_js, encoding='utf-8');
-    self.jac_client_compiler._write_source_map(
+    self.jac_client_compiler._write_js(
         desktop, str(desktop_path), desktop_out, desktop_js
     );
 }

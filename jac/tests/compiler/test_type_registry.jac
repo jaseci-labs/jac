@@ -260,6 +260,7 @@ test "the sized names, widths and signedness are defined in one table only" {
     # test pins it to the checker stub and the emitter registry.
     owners = {
         "runtime/scalars.jac",
+        "runtime/impl/scalars.impl.jac",
         "runtime/builtin.jac",
         "compiler/frontend/constant.jac",
         "compiler/frontend/parser/tokens.jac",

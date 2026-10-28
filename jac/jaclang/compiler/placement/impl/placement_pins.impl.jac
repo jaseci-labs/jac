@@ -1,0 +1,214 @@
+impl validate_pins(pins: dict[str, str], toml_path: str) -> dict[str, str] {
+    for (key, space) in pins.items() {
+        if space not in PIN_SPACES {
+            raise ValueError(
+                f"[placement.pins] in {toml_path}: '{key}' pins to '{space}', "
+                    + f"expected one of {list(PIN_SPACES)}."
+            );
+        }
+    }
+    return pins;
+}
+
+impl module_dot_path(source_path: str, root_dir: str) -> str {
+    path = os.path.realpath(source_path);
+    relative = os.path.relpath(os.path.dirname(path), os.path.realpath(root_dir));
+    parent = relative.replace(os.sep, '.')
+        if relative != '.' and not relative.startswith('..')
+        else '';
+    stem = active_host().path_facts(path).module_stem;
+    if parent and stem {
+        return parent + '.' + stem;
+    }
+    return parent or stem;
+}
+
+impl match_pin(
+    source_path: str, root_dir: str, pins: dict[str, str], element_name: str = ''
+) -> str {
+    module = module_dot_path(source_path, root_dir);
+    for (pattern, space) in pins.items() {
+        if element_name and fnmatch.fnmatchcase(f'{module}.{element_name}', pattern) {
+            return space;
+        }
+        if fnmatch.fnmatchcase(module, pattern) {
+            return space;
+        }
+    }
+    return '';
+}
+
+impl config_pins_for(source_path: str) -> dict[str, str] {
+    if not source_path {
+        return {};
+    }
+    ws = active_host().workspace(source_path);
+    if ws is None {
+        return {};
+    }
+    app = context_app(source_path);
+    pins = app.pins if app is not None else ws.base_pins;
+    return validate_pins(pins, ws.toml_path);
+}
+
+impl config_pin_for(source_path: str, element_name: str) -> str {
+    if not source_path {
+        return '';
+    }
+    ws = active_host().workspace(source_path);
+    if ws is None {
+        return '';
+    }
+    pins = config_pins_for(source_path);
+    if not pins {
+        return '';
+    }
+    return match_pin(source_path, ws.project_root, pins, element_name);
+}
+
+impl config_element_pin(source_path: str, element_name: str) -> str {
+    if not source_path or not element_name {
+        return '';
+    }
+    ws = active_host().workspace(source_path);
+    if ws is None {
+        return '';
+    }
+    module = module_dot_path(source_path, ws.project_root);
+    for (pattern, space) in config_pins_for(source_path).items() {
+        if fnmatch.fnmatchcase(f'{module}.{element_name}', pattern)
+            and not fnmatch.fnmatchcase(module, pattern) {
+            return space;
+        }
+    }
+    return '';
+}
+
+impl config_module_pin(source_path: str) -> str {
+    return config_pin_for(source_path, '');
+}
+
+impl effective_pin_for(
+    source_path: str, element_name: str, prog: (JacProgram | None) = None
+) -> str {
+    return config_pin_for(source_path, element_name);
+}
+
+impl effective_module_pin(source_path: str, prog: (JacProgram | None) = None) -> str {
+    return effective_pin_for(source_path, '', prog);
+}
+
+impl config_project_kind(source_path: str) -> str {
+    if not source_path {
+        return '';
+    }
+    app = context_app(source_path);
+    return app.kind if app is not None else '';
+}
+
+impl config_kind_space(source_path: str, fallback_kind: str = '') -> str {
+    kind = config_project_kind(source_path) or fallback_kind;
+    return kind_codespace(kind) if kind else '';
+}
+
+impl pins_digest(source_path: str) -> str {
+    pins = config_pins_for(source_path);
+    app = context_app(source_path) if source_path else None;
+    facts = app.fact_digest if app is not None else '';
+    if not pins and not facts {
+        return '';
+    }
+    return ";".join([f"{name}={pins[name]}" for name in sorted(pins.keys())]) + facts;
+}
+
+impl npm_dependency_names(source_path: str) -> set[str] {
+    if not source_path {
+        return set();
+    }
+    ws = active_host().workspace(source_path);
+    if ws is None {
+        return set();
+    }
+    app = context_app(source_path);
+    return set(app.npm_names) if app is not None else set(ws.base_npm_names);
+}
+
+impl client_framework(source_path: str) -> str {
+    facts = active_host().project_facts(source_path) if source_path else None;
+    return facts.client_framework if facts is not None else "react";
+}
+
+impl npm_package_root(spec: str) -> str {
+    parts = [
+        p
+        for p in spec.split('/')
+        if p
+    ];
+    if not parts {
+        return spec;
+    }
+    if (spec.startswith('@') and len(parts) >= 2) {
+        return parts[0] + '/' + parts[1];
+    }
+    return parts[0];
+}
+
+impl _declared_npm_rule(spec: str, source_path: str) -> str {
+    pkg_root = npm_package_root(spec);
+    if pkg_root in npm_dependency_names(source_path) {
+        return 'npm dependency ([dependencies.npm])';
+    }
+    fw = client_framework(source_path);
+    if pkg_root in _FRAMEWORK_PACKAGES.get(fw, set()) {
+        return f"npm dependency ({fw} framework package)";
+    }
+    return '';
+}
+
+impl _installed_npm_rule(spec: str, source_path: str) -> str {
+    if active_host().has_npm_package(spec, source_path) {
+        return 'npm dependency (installed under .jac/client/node_modules)';
+    }
+    return '';
+}
+
+impl in_client_npm_world(spec: str, source_path: str) -> bool {
+    if not spec {
+        return False;
+    }
+    return bool(
+        _declared_npm_rule(spec, source_path) or _installed_npm_rule(spec, source_path)
+    );
+}
+
+impl classify_bare_import(spec: str, source_path: str) -> BareImportVerdict {
+    if not spec {
+        return BareImportVerdict();
+    }
+    path = '';
+    lang = '';
+    try {
+        (path, lang) = active_host().resolve_module(spec, source_path);
+    } except Exception {
+        path = '';
+    }
+    found = bool(path) and os.path.isfile(path);
+    if found and lang == 'jac' {
+        return BareImportVerdict(world='jac', rule='jac module', path=path);
+    }
+    declared = _declared_npm_rule(spec, source_path);
+    if declared {
+        return BareImportVerdict(world='npm', rule=declared);
+    }
+    installed = _installed_npm_rule(spec, source_path);
+    if found and lang in ('py', 'pyi') {
+        rule = 'python import (python module shadows the undeclared npm package)'
+            if installed
+            else 'python import';
+        return BareImportVerdict(world='py', rule=rule, path=path);
+    }
+    if installed {
+        return BareImportVerdict(world='npm', rule=installed);
+    }
+    return BareImportVerdict(path=path if found else '');
+}

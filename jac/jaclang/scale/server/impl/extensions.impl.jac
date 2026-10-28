@@ -1,0 +1,285 @@
+impl validate_events_url(url: (str | None)) {
+    if url and not str(url).startswith(('postgres://', 'postgresql://')) {
+        raise ValueError(
+            f"Unknown [scale.events].url scheme: {url!r}. The event stream rides "
+            "Postgres; expected a postgresql:// URL (or unset, to fall back to "
+            "[scale.database].url / JAC_DB_URL)."
+        );
+    }
+}
+
+impl fleet_provisions_unknown_users(sv_name: str) -> bool {
+    if not sv_name or sv_name == '__gateway__' {
+        return False;
+    }
+    identity_cfg = dict(get_scale_config().get_gateway_config().get('identity', {}));
+    return bool(identity_cfg.get('gateway_owned', True));
+}
+
+impl FleetIdentityExtension.register(server: JacAPIServer) {
+    import os;
+    server.user_manager.provision_unknown_users = fleet_provisions_unknown_users(
+        os.environ.get('JAC_SV_NAME', '').strip()
+    );
+}
+
+impl ObservabilityExtension.register(server: JacAPIServer) {
+    install_structured_logging();
+    if not tracing_installed() {
+        trc = get_scale_config().get_gateway_config().get('tracing', {});
+        install_tracing(
+            enabled=trc.get('enabled', False),
+            endpoint=trc.get('endpoint'),
+            sample_ratio=float(trc.get('sample_ratio', 1.0))
+        );
+    }
+
+    async def observability_middleware(request: Request, call_next: any) -> Response {
+        next_fn: any = call_next;
+        if request.url.path in HEALTH_PATHS {
+            return await next_fn(request);
+        }
+        auth_token = set_current_auth(request.headers.get('Authorization'));
+        trace_id = ensure_trace_id(
+            request.headers.get('X-Trace-Id') or request.request_id
+        );
+        trace_token = set_current_trace(trace_id);
+        span = start_server_span(
+            f"{request.method} {request.url.path}",
+            trace_id,
+            request.headers.get('traceparent'),
+            {'http.method': request.method, 'http.target': request.url.path}
+        );
+        try {
+            response = await next_fn(request);
+            if trace_id {
+                response.headers.set('X-Trace-Id', trace_id);
+            }
+            if span is not None {
+                span.set_attribute('http.status_code', response.status_code);
+            }
+            return response;
+        } finally {
+            try {
+                end_span(span);
+            } except Exception as e {
+                logger.debug(f"failed to end span: {e}");
+            }
+            reset_current_trace(trace_token);
+            reset_current_auth(auth_token);
+        }
+    }
+    server.add_middleware(observability_middleware);
+}
+
+impl MetricsExtension.register(server: JacAPIServer) -> None {
+    cfg = get_scale_config().get_monitoring_config();
+    collector: MetricsCollector = UtilityFactory.create_metrics(
+        'prometheus', cfg, server.resolved_settings().workers.count
+    );
+    server.metrics = collector;
+    server.execution_manager.metrics = collector;
+    if not collector.is_enabled() {
+        return;
+    }
+    endpoint = str(cfg.get('endpoint', '/metrics'));
+    server.metrics_path = endpoint;
+    scrape_password = str(cfg.get('prometheus_admin_password', ''));
+    admin_username = str(
+        get_scale_config().get_admin_config().get('username', 'admin')
+    );
+    users = server.user_manager;
+    expose: any = collector.get_endpoint_handler();
+
+    def _authorized(request: Request) -> bool {
+        authorization = request.headers.get('Authorization') or '';
+        if authorization.startswith('Bearer ') {
+            user_id = users.validate_jwt_token(authorization[7:]);
+            return bool(user_id) and users.is_admin(str(user_id));
+        }
+        if authorization.startswith('Basic ') and scrape_password {
+            try {
+                decoded = base64.b64decode(authorization[6:]).decode('utf-8');
+            } except Exception {
+                return False;
+            }
+            parts: list[str] = decoded.split(':', 1);
+            name: str = parts[0];
+            secret: str = parts[1] if len(parts) > 1 else '';
+            return bool(
+                hmac.compare_digest(
+                    name.encode('utf-8'), admin_username.encode('utf-8')
+                )
+            )
+                and bool(
+                    hmac.compare_digest(
+                        secret.encode('utf-8'), scrape_password.encode('utf-8')
+                    )
+                );
+        }
+        return False;
+    }
+
+    async def metrics_handler(request: Request) -> Response {
+        if not _authorized(request) {
+            return JSONResponse(
+                status_code=403,
+                content={
+                    'ok': False,
+                    'error': {'code': 'FORBIDDEN', 'message': 'Admin access required'}
+                }
+            );
+        }
+        return expose();
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path=endpoint,
+            callback=metrics_handler,
+            parameters=[],
+            tags=['Monitoring'],
+            summary='Prometheus metrics (admin only)',
+            description='Application metrics in Prometheus exposition format. Requires an admin token or the scrape credential.',
+            requires_auth=True
+        )
+    );
+    logger.info(f"Prometheus metrics enabled at {endpoint} (admin-only)");
+}
+
+impl MetricsExtension.on_worker_exit(server: JacAPIServer, pid: int) {
+    server.metrics.worker_exited(pid);
+}
+
+impl MailExtension.transport -> Emailer | None {
+    if not self.resolved {
+        self.emailer = configured_emailer();
+        self.resolved = True;
+    }
+    return self.emailer;
+}
+
+impl MailExtension.mail_transport -> any {
+    return self.transport();
+}
+
+impl MailExtension.register(server: JacAPIServer) {
+    server.emailer = self.transport();
+    register_mail_endpoints(server);
+}
+
+impl EventsExtension.register(server: JacAPIServer) -> None {
+    cfg = get_scale_config().get_events_config();
+    if not cfg.get('enabled', False) {
+        return;
+    }
+    url = cfg.get('url') or scale_db_url();
+    validate_events_url(url);
+    if url {
+        import from jaclang.scale.events.streams.postgres { PgEventStream }
+        broker_cfg = dict(cfg);
+        broker_cfg['url'] = url;
+        self.broker = PgEventStream(config=broker_cfg);
+    } else {
+        import from jaclang.scale.events.streams.local { LocalEventStream }
+        self.broker = LocalEventStream(config=cfg);
+        logger.warning(
+            "events enabled with no database url; using LocalEventStream "
+            "(in-memory, single process). Set events.url or JAC_DB_URL for "
+            "cross-process streaming via Postgres."
+        );
+    }
+    set_broker(self.broker);
+    for `entry in get_subscriptions() {
+        try {
+            self.broker.register_handler(
+                `entry.topic,
+                `entry.handler,
+                group=`entry.group,
+                retry=`entry.retry,
+                start_from=`entry.start_from
+            );
+        } except Exception as e {
+            logger.error(f"Failed to register handler for '{`entry.topic}': {e}");
+        }
+    }
+    broker = self.broker;
+    async def _stop {
+        broker.stop();
+    }
+    server.add_shutdown_hook(_stop);
+}
+
+impl EventsExtension.validate(server: JacAPIServer) -> list[str] {
+    cfg = get_scale_config().get_events_config();
+    settings = server.resolved_settings();
+    if cfg.get('enabled', False)
+        and settings.workers.multi_process()
+        and not (cfg.get('url') or scale_db_url()) {
+        return [
+            "[scale.events] is enabled with no database url, which keeps events "
+            f"inside one process; with {settings.workers.count} workers a "
+            "subscriber only sees what its own worker publishes. Set "
+            "[scale.events] url or JAC_DB_URL, or run with workers = 1."
+        ];
+    }
+    return [];
+}
+
+impl EventsExtension.on_worker_start(server: JacAPIServer) {
+    if self.broker is not None {
+        self.broker.start();
+    }
+}
+
+impl AdminExtension.validate(server: JacAPIServer) -> list[str] {
+    admin = get_scale_config().get_admin_config();
+    password = str(admin.get('default_password') or '');
+    username = str(admin.get('username') or '');
+    if not admin.get('enabled', True)
+        or not password
+        or server.user_manager.find_user_by_identity(username) is not None {
+        return [];
+    }
+    violations = check_password(password, [username]);
+    return [
+        f"The bootstrap admin password ([scale.admin] default_password or {ADMIN_PASSWORD_ENV}) does not meet [serve.auth.password]: "
+            + ', '.join([v.value for v in violations])
+    ]
+        if violations
+        else [];
+}
+
+impl AdminExtension.register(server: JacAPIServer) -> None {
+    if not get_scale_config().get_admin_config().get('enabled', True) {
+        return;
+    }
+    self.server = server;
+    self.user_manager = server.user_manager;
+    self._metrics = server.metrics;
+    self.register_admin_endpoints();
+    self.register_llm_telemetry_endpoints();
+    self.register_workloads_endpoints();
+    self.register_logs_endpoints();
+    self.register_traces_endpoints();
+    self.register_ops_endpoints();
+    self.register_deploy_health_endpoints();
+    self.register_network_endpoints();
+    self.register_podenv_endpoints();
+}
+
+impl scale_extensions -> list[ServerExtension] {
+    return [
+        FleetIdentityExtension(),
+        ObservabilityExtension(),
+        MetricsExtension(),
+        MailExtension(),
+        SSOExtension(),
+        ApiKeyExtension(),
+        WebhookExtension(),
+        WebSocketExtension(),
+        JobsExtension(),
+        EventsExtension(),
+        AdminExtension()
+    ];
+}

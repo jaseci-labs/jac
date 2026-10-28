@@ -335,32 +335,7 @@ impl wasm_floor_unit_stale(
     return now != was;
 }
 
-def _wasm_cc_argv(zig_exe: str, src_root: str, out_path: str, src: str) -> list[str] {
-    return [
-        zig_exe,
-        "cc",
-        "-target",
-        "wasm32-wasi",
-        "-O2",
-        "-g0",
-        "-w",
-        "-c",
-        "-emit-llvm",
-        "-fno-builtin",
-        "-include",
-        os.path.join(src_root, "prelude.h"),
-        f"-I{src_root}/vendor/include",
-        f"-I{src_root}/vendor/internal",
-        f"-I{src_root}/vendor/arch/wasm32",
-        f"-I{src_root}/vendor/private",
-        f"-I{src_root}/vendor/math",
-        "-D__wasilibc_printscan_no_long_double",
-        "-D__wasilibc_printscan_full_support_option=\"long double support disabled\"",
-        "-o",
-        out_path,
-        src
-    ];
-}
+def _wasm_cc_argv(zig_exe: str, src_root: str, out_path: str, src: str) -> list[str];
 
 impl build_wasm_libc(src_root: str, dest: str, zig_exe: str) {
     ws = collect_wasm_sources(src_root);
@@ -425,4 +400,31 @@ impl build_wasm_libc(src_root: str, dest: str, zig_exe: str) {
 
     write_source_manifest(manifest_path, all_rels, digest_of);
     log(f"==> compiled {built} wasm libc bitcode file(s) -> {dest}");
+}
+
+impl _wasm_cc_argv(zig_exe: str, src_root: str, out_path: str, src: str) -> list[str] {
+    return [
+        zig_exe,
+        "cc",
+        "-target",
+        "wasm32-wasi",
+        "-O2",
+        "-g0",
+        "-w",
+        "-c",
+        "-emit-llvm",
+        "-fno-builtin",
+        "-include",
+        os.path.join(src_root, "prelude.h"),
+        f"-I{src_root}/vendor/include",
+        f"-I{src_root}/vendor/internal",
+        f"-I{src_root}/vendor/arch/wasm32",
+        f"-I{src_root}/vendor/private",
+        f"-I{src_root}/vendor/math",
+        "-D__wasilibc_printscan_no_long_double",
+        "-D__wasilibc_printscan_full_support_option=\"long double support disabled\"",
+        "-o",
+        out_path,
+        src
+    ];
 }

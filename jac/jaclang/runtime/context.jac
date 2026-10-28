@@ -1,3 +1,4 @@
+import asyncio;
 import from contextvars { ContextVar }
 
 import from logging { getLogger }
@@ -32,25 +33,7 @@ obj ExecutionContext {
     def postinit -> None;
     static async def for_target(
         target: object, parent: ExecutionContext, user_root_id: str
-    ) -> ExecutionContext {
-        application = application_of(target);
-        caller = application_for(parent.full_target_path or '');
-        if application is None or caller is None or application is caller {
-            context = ExecutionContext(_parent=parent);
-        } else {
-            context = ExecutionContext(
-                _parent=parent, _own_session=True, full_target_path=application.entry
-            );
-        }
-        try {
-            await context.aset_user_root(user_root_id);
-        } except BaseException {
-            context.mem.abort();
-            context.close();
-            raise;
-        }
-        return context;
-    }
+    ) -> ExecutionContext;
 
     has system_root: NodeAnchor { getter; }
     has user_root: NodeAnchor { getter; }
@@ -61,6 +44,7 @@ obj ExecutionContext {
     def set_user_root(root_id: str) -> None;
     def set_entry_node(entry_node: (str | None)) -> None;
     def close -> None;
+    async def aclose -> None;
     async def bind_stream(value: any) -> any;
     def on_commit(callback: Callable) -> None;
     def run_pending_effects -> None;

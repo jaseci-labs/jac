@@ -1,12 +1,4 @@
-def _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
-    return sep.join(
-        [
-            k.gen.jac
-            for k in [nd->:Kid:->]
-            if k and k.gen.jac
-        ]
-    );
-}
+def _join_kids(nd: uni.UniNode, sep: str = " ") -> str;
 
 impl UnparsePass._comma_sep(nodes: Sequence[uni.UniNode]) -> str {
     return ", ".join(
@@ -1285,4 +1277,14 @@ impl UnparsePass.exit_wire_item with uni.WireItem exit {
         result = result + " as " + here.alias.gen.jac;
     }
     here.gen.jac = result;
+}
+
+impl _join_kids(nd: uni.UniNode, sep: str = " ") -> str {
+    return sep.join(
+        [
+            k.gen.jac
+            for k in [nd->:Kid:->]
+            if k and k.gen.jac
+        ]
+    );
 }

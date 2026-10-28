@@ -26,15 +26,7 @@ glob IDENTITY_KEY_SPEC: str = "oref",
      HASH_FNV_PRIME: int = 1099511628211,
      HASH_MUL_K: int = -7046029254386353131;
 
-def _ir_member_types(t: (ir.Type | None)) -> list[ir.Type] {
-    if isinstance(t, ir.Aggregate) {
-        return t.elements or [];
-    }
-    if isinstance(t, ir.VectorType) {
-        return t.elements;
-    }
-    return [];
-}
+def _ir_member_types(t: (ir.Type | None)) -> list[ir.Type];
 
 impl NaIRGenPass._emit_hash_core_helpers(
     family: str,
@@ -1115,14 +1107,6 @@ impl NaIRGenPass._emit_hash_core_helpers(
 }
 
 impl NaIRGenPass._emit_cstr_hash_fn -> ir.Function {
-    """`__jac_cstr_hash(s)`: FNV-1a over the bytes of a NUL-terminated string.
-
-    The runtime twin of `_static_str_hash`, with the same basis and prime, so a
-    hash folded at compile time matches the one computed here for the same
-    bytes. It serves every consumer that hashes a C string: dict keys stored as
-    NUL-terminated `str`, and the class-name identity `isinstance` reads out of
-    an allocation header.
-    """;
     if self._cstr_hash_fn is not None {
         return self._cstr_hash_fn;
     }
@@ -1378,4 +1362,14 @@ impl NaIRGenPass._tuple_spec_name(struct_type: ir.LiteralStructType) -> str {
         }
     }
     return f"tuple{size}_{sig}";
+}
+
+impl _ir_member_types(t: (ir.Type | None)) -> list[ir.Type] {
+    if isinstance(t, ir.Aggregate) {
+        return t.elements or [];
+    }
+    if isinstance(t, ir.VectorType) {
+        return t.elements;
+    }
+    return [];
 }

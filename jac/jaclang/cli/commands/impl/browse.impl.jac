@@ -2,11 +2,7 @@ import os;
 import sys;
 import json;
 
-def _need(args: list[str], n: int, usage: str) {
-    if len(args) < n {
-        raise ValueError(f"usage: jac browse {usage}");
-    }
-}
+def _need(args: list[str], n: int, usage: str);
 
 impl browse(
     action: str,
@@ -72,4 +68,10 @@ impl browse(
     }
     sys.stdout.write((out if isinstance(out, str) else json.dumps(out)) + "\n");
     return 0;
+}
+
+impl _need(args: list[str], n: int, usage: str) {
+    if len(args) < n {
+        raise ValueError(f"usage: jac browse {usage}");
+    }
 }

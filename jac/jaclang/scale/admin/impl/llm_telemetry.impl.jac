@@ -23,34 +23,7 @@ obj LLMCallRecord {
         response: any = None,
         timestamp: float = 0;
 
-    def to_dict -> dict[str, any] {
-        safe_messages = self.messages;
-        try {
-            json_module.dumps(safe_messages);
-        } except (TypeError, ValueError) {
-            safe_messages = str(self.messages);
-        }
-        safe_response = self.response;
-        try {
-            json_module.dumps(safe_response);
-        } except (TypeError, ValueError) {
-            safe_response = str(self.response);
-        }
-        return {
-            "call_id": self.call_id,
-            "model": self.model,
-            "prompt_tokens": self.prompt_tokens,
-            "completion_tokens": self.completion_tokens,
-            "total_tokens": self.total_tokens,
-            "response_cost": self.response_cost,
-            "latency_ms": self.latency_ms,
-            "status": self.status,
-            "error": self.error,
-            "messages": safe_messages,
-            "response": safe_response,
-            "timestamp": self.timestamp
-        };
-    }
+    def to_dict -> dict[str, any];
 }
 
 
@@ -73,40 +46,7 @@ obj Trace {
         completed: bool = False,
         timestamp: float = 0;
 
-    def to_dict(include_detail: bool = False) -> dict[str, JsonValue] {
-        result: dict[str, JsonValue] = {
-            "invocation_id": self.invocation_id,
-            "parent_invocation_id": self.parent_invocation_id,
-            "caller_name": self.caller_name,
-            "caller_args": self.caller_args,
-            "model": self.model,
-            "user_prompt": self.user_prompt[:500]
-                if not include_detail
-                else self.user_prompt,
-            "agent_response": self.agent_response[:500]
-                if not include_detail
-                else self.agent_response,
-            "total_latency_ms": round(self.total_latency_ms, 2),
-            "total_tokens": self.total_tokens,
-            "total_cost": round(self.total_cost, 6),
-            "llm_call_count": self.llm_call_count,
-            "status": self.status,
-            "error": self.error,
-            "completed": self.completed,
-            "timestamp": self.timestamp
-        };
-        if include_detail {
-            safe_history: (list[JsonValue] | str) = self.conversation_history;
-            try {
-                json_module.dumps(safe_history);
-            } except (TypeError, ValueError) {
-                safe_history = str(self.conversation_history);
-            }
-            result["conversation_history"] = safe_history;
-            result["llm_calls"] = [c.to_dict() for c in self.llm_calls];
-        }
-        return result;
-    }
+    def to_dict(include_detail: bool = False) -> dict[str, JsonValue];
 }
 
 
@@ -115,175 +55,13 @@ obj TelemetryStore {
         _lock: threading.Lock postinit,
         _traces: OrderedDict[str, Trace] postinit;
 
-    def postinit {
-        self._lock = threading.Lock();
-        self._traces = OrderedDict();
-    }
-
-    def record_llm_event(event: dict[str, any]) {
-        with self._lock {
-            metadata: dict[str, any] = event.get("metadata", {}) or {};
-            inv_id = metadata.get("jac_invocation_id") or str(uuid.uuid4());
-            if inv_id not in self._traces {
-                self._traces[inv_id] = Trace(
-                    invocation_id=inv_id,
-                    parent_invocation_id=metadata.get("jac_parent_invocation_id"),
-                    caller_name=metadata.get("jac_caller_name") or "unknown",
-                    model=event.get("model") or "unknown",
-                    timestamp=event.get("startTime") or time.time()
-                );
-            }
-            trace = self._traces[inv_id];
-            _raw_msgs = event.get("messages");
-            if isinstance(_raw_msgs, list) and len(_raw_msgs) > 20 {
-                _raw_msgs = _raw_msgs[-20:];
-            }
-            _raw_resp = event.get("response");
-            try {
-                _resp_str = json_module.dumps(_raw_resp);
-                if len(_resp_str) > 10240 {
-                    _raw_resp = _resp_str[:10240] + "...[truncated]";
-                }
-            } except (TypeError, ValueError) {
-                _raw_resp = str(_raw_resp)[:10240];
-            }
-            call_record = LLMCallRecord(
-                call_id=event.get("id") or str(uuid.uuid4()),
-                model=event.get("model"),
-                prompt_tokens=event.get("prompt_tokens") or 0,
-                completion_tokens=event.get("completion_tokens") or 0,
-                total_tokens=event.get("total_tokens") or 0,
-                response_cost=event.get("response_cost") or 0.0,
-                latency_ms=(event.get("response_time") or 0) * 1000,
-                status=event.get("status") or "success",
-                error=event.get("error_str"),
-                messages=_raw_msgs,
-                response=_raw_resp,
-                timestamp=event.get("startTime") or time.time()
-            );
-            trace.llm_calls.append(call_record);
-            trace.total_tokens += call_record.total_tokens;
-            trace.total_cost += call_record.response_cost;
-            trace.llm_call_count += 1;
-            while len(self._traces) > self.max_traces {
-                self._traces.popitem(last=False);
-            }
-        }
-    }
-
-    def record_agent_completion(record: dict[str, any]) {
-        with self._lock {
-            inv_id = record.get("invocation_id");
-            if inv_id and inv_id in self._traces {
-                trace = self._traces[inv_id];
-                trace.parent_invocation_id = record.get("parent_invocation_id")
-                    or trace.parent_invocation_id;
-                trace.caller_name = record.get("caller_name") or trace.caller_name;
-                trace.caller_args = record.get("caller_args") or trace.caller_args;
-                trace.user_prompt = record.get("user_prompt") or "";
-                trace.agent_response = record.get("agent_response") or "";
-                trace.conversation_history = record.get("conversation_history") or [];
-
-                if isinstance(trace.conversation_history, list)
-                    and len(trace.conversation_history) > 40 {
-                    trace.conversation_history = trace.conversation_history[-40:];
-                }
-                trace.total_latency_ms = record.get("latency_ms") or 0;
-                trace.status = record.get("status") or "success";
-                trace.error = record.get("error");
-                trace.model = record.get("model") or trace.model;
-                trace.completed = True;
-            } elif inv_id {
-                self._traces[inv_id] = Trace(
-                    invocation_id=inv_id,
-                    parent_invocation_id=record.get("parent_invocation_id"),
-                    caller_name=record.get("caller_name") or "unknown",
-                    caller_args=record.get("caller_args") or {},
-                    model=record.get("model") or "unknown",
-                    user_prompt=record.get("user_prompt") or "",
-                    agent_response=record.get("agent_response") or "",
-                    conversation_history=(record.get("conversation_history") or [])[-40:],
-                    total_latency_ms=record.get("latency_ms") or 0,
-                    status=record.get("status") or "success",
-                    error=record.get("error"),
-                    completed=True,
-                    timestamp=time.time()
-                );
-                while len(self._traces) > self.max_traces {
-                    self._traces.popitem(last=False);
-                }
-            }
-        }
-    }
-
-    def _backfill_streaming_response(trace: Trace) -> None {
-        if trace.agent_response != "[streaming]" or not trace.llm_calls {
-            return;
-        }
-        _last = trace.llm_calls[-1].response;
-        if hasattr(_last, "get") {
-            _ch = _last.get("choices", []);
-            if _ch and len(_ch) > 0 {
-                _msg = _ch[0];
-                if hasattr(_msg, "get") {
-                    _msg = _msg.get("message", {});
-                }
-                if hasattr(_msg, "get") {
-                    if _msg.get("content") {
-                        trace.agent_response = str(_msg.get("content"))[:2000];
-                    } elif _msg.get("tool_calls") {
-                        for _tc in _msg.get("tool_calls", []) {
-                            if _tc?.get
-                                and hasattr(_tc.get("function", {}), "get")
-                                and _tc.get("function", {}).get("name")
-                                    == "finish_tool" {
-                                _args = _tc.get("function", {}).get("arguments", "");
-                                if hasattr(_args, "strip") {
-                                    try {
-                                        _args = json_module.loads(_args);
-                                    } except (ValueError, TypeError) {
-                                        _ = 0;
-                                    }
-                                }
-                                if hasattr(_args, "get") {
-                                    trace.agent_response = str(
-                                        _args.get("final_output", _args)
-                                    )[:2000];
-                                } else {
-                                    trace.agent_response = str(_args)[:2000];
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        } elif _last {
-            trace.agent_response = str(_last)[:2000];
-        }
-    }
-
+    def postinit;
+    def record_llm_event(event: dict[str, any]);
+    def record_agent_completion(record: dict[str, any]);
+    def _backfill_streaming_response(trace: Trace) -> None;
     def _aggregate_descendants(
         trace_id: str, children_lookup: dict[str, list[Trace]]
-    ) -> dict[str, float] {
-        agg_tokens = 0;
-        agg_cost = 0.0;
-        agg_calls = 0;
-        worklist = list(children_lookup.get(trace_id, []));
-        visited = set();
-        while worklist {
-            desc = worklist.pop();
-            if desc.invocation_id in visited {
-                continue;
-            }
-            visited.add(desc.invocation_id);
-            agg_tokens += desc.total_tokens;
-            agg_cost += desc.total_cost;
-            agg_calls += desc.llm_call_count;
-            worklist.extend(children_lookup.get(desc.invocation_id, []));
-        }
-        return {"tokens": agg_tokens, "cost": agg_cost, "calls": agg_calls};
-    }
+    ) -> dict[str, float];
 
     def get_traces(
         limit: int = 50,
@@ -292,240 +70,11 @@ obj TelemetryStore {
         status: str | None = None,
         caller: str | None = None,
         root_only: bool = False
-    ) -> dict[str, any] {
-        with self._lock {
-            all_traces: list[Trace] = list(reversed(self._traces.values()));
-            for t in all_traces {
-                self._backfill_streaming_response(t);
-            }
-            if root_only {
-                all_traces = [
-                    t
-                    for t in all_traces
-                    if t.parent_invocation_id is None
-                ];
-            }
-            if model {
-                all_traces = [
-                    t
-                    for t in all_traces
-                    if t.model == model
-                ];
-            }
-            if status {
-                all_traces = [
-                    t
-                    for t in all_traces
-                    if t.status == status
-                ];
-            }
-            if caller {
-                all_traces = [
-                    t
-                    for t in all_traces
-                    if t.caller_name == caller
-                ];
-            }
-            total = len(all_traces);
-            page = all_traces[offset:offset + limit];
-            all_trace_values = list(self._traces.values());
-            children_lookup: dict[str, list[Trace]] = {};
-            for tv in all_trace_values {
-                pid = tv.parent_invocation_id;
-                if pid is not None {
-                    if pid not in children_lookup {
-                        children_lookup[pid] = [];
-                    }
-                    children_lookup[pid].append(tv);
-                }
-            }
-            enriched = [];
-            for t in page {
-                d = t.to_dict();
-                direct_children = children_lookup.get(t.invocation_id, []);
-                d["child_count"] = len(direct_children);
+    ) -> dict[str, any];
 
-                _agg = self._aggregate_descendants(t.invocation_id, children_lookup);
-                d["aggregated_total_tokens"] = t.total_tokens + _agg["tokens"];
-                d["aggregated_total_cost"] = round(t.total_cost + _agg["cost"], 6);
-                d["aggregated_llm_call_count"] = t.llm_call_count + _agg["calls"];
-                enriched.append(d);
-            }
-            return {
-                "traces": enriched,
-                "total": total,
-                "has_more": (offset + limit) < total
-            };
-        }
-    }
-
-    def get_trace(invocation_id: str) -> dict[str, any] | None {
-        with self._lock {
-            trace = self._traces.get(invocation_id);
-            if trace {
-                self._backfill_streaming_response(trace);
-                result = trace.to_dict(include_detail=True);
-
-                all_vals = list(self._traces.values());
-                children_lookup: dict[str, list[Trace]] = {};
-                for tv in all_vals {
-                    pid = tv.parent_invocation_id;
-                    if pid is not None {
-                        if pid not in children_lookup {
-                            children_lookup[pid] = [];
-                        }
-                        children_lookup[pid].append(tv);
-                    }
-                }
-
-                child_traces = children_lookup.get(invocation_id, []);
-                enriched_children: list[dict[str, any]] = [];
-                for ct in child_traces {
-                    self._backfill_streaming_response(ct);
-                    cd = ct.to_dict(include_detail=True);
-
-                    gc = children_lookup.get(ct.invocation_id, []);
-                    cd["child_count"] = len(gc);
-                    _ct_agg = self._aggregate_descendants(
-                        ct.invocation_id, children_lookup
-                    );
-                    cd["aggregated_total_tokens"] = ct.total_tokens + _ct_agg["tokens"];
-                    cd["aggregated_total_cost"] = round(
-                        ct.total_cost + _ct_agg["cost"], 6
-                    );
-                    cd["aggregated_llm_call_count"] = ct.llm_call_count
-                        + _ct_agg["calls"];
-                    enriched_children.append(cd);
-                }
-                result["child_traces"] = enriched_children;
-                result["child_count"] = len(child_traces);
-
-                _top_agg = self._aggregate_descendants(invocation_id, children_lookup);
-                result["aggregated_total_tokens"] = result["total_tokens"]
-                    + _top_agg["tokens"];
-                result["aggregated_total_cost"] = round(
-                    result["total_cost"] + _top_agg["cost"], 6
-                );
-                result["aggregated_llm_call_count"] = result["llm_call_count"]
-                    + _top_agg["calls"];
-                return result;
-            }
-            return None;
-        }
-    }
-
-    def get_summary -> dict[str, any] {
-        with self._lock {
-            traces_list = list(self._traces.values());
-            if not traces_list {
-                return {
-                    "total_invocations": 0,
-                    "root_invocations": 0,
-                    "total_llm_calls": 0,
-                    "total_tokens": 0,
-                    "total_cost": 0.0,
-                    "avg_latency_ms": 0.0,
-                    "error_count": 0,
-                    "per_model": {},
-                    "per_caller": {}
-                };
-            }
-            total_invocations = len(traces_list);
-            root_invocations = sum(
-                1
-                for t in traces_list
-                if t.parent_invocation_id is None
-            );
-            total_llm_calls = sum(t.llm_call_count for t in traces_list);
-            total_tokens = sum(t.total_tokens for t in traces_list);
-            total_cost = sum(t.total_cost for t in traces_list);
-            latencies = [
-                t.total_latency_ms
-                for t in traces_list
-                if t.total_latency_ms > 0
-            ];
-            avg_latency = sum(latencies) / len(latencies) if latencies else 0.0;
-            error_count = sum(
-                1
-                for t in traces_list
-                if t.status == "error"
-            );
-            per_model: dict[str, dict[str, float]] = {};
-            for t in traces_list {
-                m = t.model or "unknown";
-                if m not in per_model {
-                    per_model[m] = {"calls": 0, "tokens": 0, "cost": 0.0, "errors": 0};
-                }
-                per_model[m]["calls"] += 1;
-                per_model[m]["tokens"] += t.total_tokens;
-                per_model[m]["cost"] += t.total_cost;
-                if t.status == "error" {
-                    per_model[m]["errors"] += 1;
-                }
-            }
-            per_caller: dict[str, dict[str, float]] = {};
-            for t in traces_list {
-                c = t.caller_name or "unknown";
-                if c not in per_caller {
-                    per_caller[c] = {"calls": 0, "tokens": 0, "cost": 0.0, "errors": 0};
-                }
-                per_caller[c]["calls"] += 1;
-                per_caller[c]["tokens"] += t.total_tokens;
-                per_caller[c]["cost"] += t.total_cost;
-                if t.status == "error" {
-                    per_caller[c]["errors"] += 1;
-                }
-            }
-            for m_stats in per_model.values() {
-                m_stats["cost"] = round(m_stats["cost"], 6);
-            }
-            for c_stats in per_caller.values() {
-                c_stats["cost"] = round(c_stats["cost"], 6);
-            }
-            return {
-                "total_invocations": total_invocations,
-                "root_invocations": root_invocations,
-                "total_llm_calls": total_llm_calls,
-                "total_tokens": total_tokens,
-                "total_cost": round(total_cost, 6),
-                "avg_latency_ms": round(avg_latency, 2),
-                "error_count": error_count,
-                "per_model": per_model,
-                "per_caller": per_caller
-            };
-        }
-    }
-
-    def get_available_filters -> dict[str, any] {
-        with self._lock {
-            models = list(
-                set(
-                    t.model
-                    for t in self._traces.values()
-                    if t.model
-                )
-            );
-            callers = list(
-                set(
-                    t.caller_name
-                    for t in self._traces.values()
-                    if t.caller_name
-                )
-            );
-            statuses = list(
-                set(
-                    t.status
-                    for t in self._traces.values()
-                    if t.status
-                )
-            );
-            return {
-                "models": sorted(models),
-                "callers": sorted(callers),
-                "statuses": sorted(statuses)
-            };
-        }
-    }
+    def get_trace(invocation_id: str) -> dict[str, any] | None;
+    def get_summary -> dict[str, any];
+    def get_available_filters -> dict[str, any];
 }
 
 
@@ -653,7 +202,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         return;
     }
 
-    async def summary_handler(request: Request) -> JSONResponse {
+    def summary_handler(request: Request) -> JSONResponse {
         guard = self.require_admin_json(request.headers.get("Authorization"));
         if guard {
             return guard;
@@ -675,7 +224,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         )
     );
 
-    async def traces_handler(request: Request) -> JSONResponse {
+    def traces_handler(request: Request) -> JSONResponse {
         guard = self.require_admin_json(request.headers.get("Authorization"));
         if guard {
             return guard;
@@ -720,9 +269,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         )
     );
 
-    async def trace_detail_handler(
-        request: Request, invocation_id: str
-    ) -> JSONResponse {
+    def trace_detail_handler(request: Request, invocation_id: str) -> JSONResponse {
         guard = self.require_admin_json(request.headers.get("Authorization"));
         if guard {
             return guard;
@@ -759,7 +306,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         )
     );
 
-    async def filters_handler(request: Request) -> JSONResponse {
+    def filters_handler(request: Request) -> JSONResponse {
         guard = self.require_admin_json(request.headers.get("Authorization"));
         if guard {
             return guard;
@@ -784,4 +331,478 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     logger.info(
         "LLM telemetry endpoints registered: /admin/llm/telemetry/{summary,traces,traces/{id},filters}"
     );
+}
+
+impl LLMCallRecord.to_dict -> dict[str, any] {
+    safe_messages = self.messages;
+    try {
+        json_module.dumps(safe_messages);
+    } except (TypeError, ValueError) {
+        safe_messages = str(self.messages);
+    }
+    safe_response = self.response;
+    try {
+        json_module.dumps(safe_response);
+    } except (TypeError, ValueError) {
+        safe_response = str(self.response);
+    }
+    return {
+        "call_id": self.call_id,
+        "model": self.model,
+        "prompt_tokens": self.prompt_tokens,
+        "completion_tokens": self.completion_tokens,
+        "total_tokens": self.total_tokens,
+        "response_cost": self.response_cost,
+        "latency_ms": self.latency_ms,
+        "status": self.status,
+        "error": self.error,
+        "messages": safe_messages,
+        "response": safe_response,
+        "timestamp": self.timestamp
+    };
+}
+
+
+impl Trace.to_dict(include_detail: bool = False) -> dict[str, JsonValue] {
+    result: dict[str, JsonValue] = {
+        "invocation_id": self.invocation_id,
+        "parent_invocation_id": self.parent_invocation_id,
+        "caller_name": self.caller_name,
+        "caller_args": self.caller_args,
+        "model": self.model,
+        "user_prompt": self.user_prompt[:500]
+            if not include_detail
+            else self.user_prompt,
+        "agent_response": self.agent_response[:500]
+            if not include_detail
+            else self.agent_response,
+        "total_latency_ms": round(self.total_latency_ms, 2),
+        "total_tokens": self.total_tokens,
+        "total_cost": round(self.total_cost, 6),
+        "llm_call_count": self.llm_call_count,
+        "status": self.status,
+        "error": self.error,
+        "completed": self.completed,
+        "timestamp": self.timestamp
+    };
+    if include_detail {
+        safe_history: (list[JsonValue] | str) = self.conversation_history;
+        try {
+            json_module.dumps(safe_history);
+        } except (TypeError, ValueError) {
+            safe_history = str(self.conversation_history);
+        }
+        result["conversation_history"] = safe_history;
+        result["llm_calls"] = [c.to_dict() for c in self.llm_calls];
+    }
+    return result;
+}
+
+
+impl TelemetryStore.postinit {
+    self._lock = threading.Lock();
+    self._traces = OrderedDict();
+}
+
+impl TelemetryStore.record_llm_event(event: dict[str, any]) {
+    with self._lock {
+        metadata: dict[str, any] = event.get("metadata", {}) or {};
+        inv_id = metadata.get("jac_invocation_id") or str(uuid.uuid4());
+        if inv_id not in self._traces {
+            self._traces[inv_id] = Trace(
+                invocation_id=inv_id,
+                parent_invocation_id=metadata.get("jac_parent_invocation_id"),
+                caller_name=metadata.get("jac_caller_name") or "unknown",
+                model=event.get("model") or "unknown",
+                timestamp=event.get("startTime") or time.time()
+            );
+        }
+        trace = self._traces[inv_id];
+        _raw_msgs = event.get("messages");
+        if isinstance(_raw_msgs, list) and len(_raw_msgs) > 20 {
+            _raw_msgs = _raw_msgs[-20:];
+        }
+        _raw_resp = event.get("response");
+        try {
+            _resp_str = json_module.dumps(_raw_resp);
+            if len(_resp_str) > 10240 {
+                _raw_resp = _resp_str[:10240] + "...[truncated]";
+            }
+        } except (TypeError, ValueError) {
+            _raw_resp = str(_raw_resp)[:10240];
+        }
+        call_record = LLMCallRecord(
+            call_id=event.get("id") or str(uuid.uuid4()),
+            model=event.get("model"),
+            prompt_tokens=event.get("prompt_tokens") or 0,
+            completion_tokens=event.get("completion_tokens") or 0,
+            total_tokens=event.get("total_tokens") or 0,
+            response_cost=event.get("response_cost") or 0.0,
+            latency_ms=(event.get("response_time") or 0) * 1000,
+            status=event.get("status") or "success",
+            error=event.get("error_str"),
+            messages=_raw_msgs,
+            response=_raw_resp,
+            timestamp=event.get("startTime") or time.time()
+        );
+        trace.llm_calls.append(call_record);
+        trace.total_tokens += call_record.total_tokens;
+        trace.total_cost += call_record.response_cost;
+        trace.llm_call_count += 1;
+        while len(self._traces) > self.max_traces {
+            self._traces.popitem(last=False);
+        }
+    }
+}
+
+impl TelemetryStore.record_agent_completion(record: dict[str, any]) {
+    with self._lock {
+        inv_id = record.get("invocation_id");
+        if inv_id and inv_id in self._traces {
+            trace = self._traces[inv_id];
+            trace.parent_invocation_id = record.get("parent_invocation_id")
+                or trace.parent_invocation_id;
+            trace.caller_name = record.get("caller_name") or trace.caller_name;
+            trace.caller_args = record.get("caller_args") or trace.caller_args;
+            trace.user_prompt = record.get("user_prompt") or "";
+            trace.agent_response = record.get("agent_response") or "";
+            trace.conversation_history = record.get("conversation_history") or [];
+
+            if isinstance(trace.conversation_history, list)
+                and len(trace.conversation_history) > 40 {
+                trace.conversation_history = trace.conversation_history[-40:];
+            }
+            trace.total_latency_ms = record.get("latency_ms") or 0;
+            trace.status = record.get("status") or "success";
+            trace.error = record.get("error");
+            trace.model = record.get("model") or trace.model;
+            trace.completed = True;
+        } elif inv_id {
+            self._traces[inv_id] = Trace(
+                invocation_id=inv_id,
+                parent_invocation_id=record.get("parent_invocation_id"),
+                caller_name=record.get("caller_name") or "unknown",
+                caller_args=record.get("caller_args") or {},
+                model=record.get("model") or "unknown",
+                user_prompt=record.get("user_prompt") or "",
+                agent_response=record.get("agent_response") or "",
+                conversation_history=(record.get("conversation_history") or [])[-40:],
+                total_latency_ms=record.get("latency_ms") or 0,
+                status=record.get("status") or "success",
+                error=record.get("error"),
+                completed=True,
+                timestamp=time.time()
+            );
+            while len(self._traces) > self.max_traces {
+                self._traces.popitem(last=False);
+            }
+        }
+    }
+}
+
+impl TelemetryStore._backfill_streaming_response(trace: Trace) -> None {
+    if trace.agent_response != "[streaming]" or not trace.llm_calls {
+        return;
+    }
+    _last = trace.llm_calls[-1].response;
+    if hasattr(_last, "get") {
+        _ch = _last.get("choices", []);
+        if _ch and len(_ch) > 0 {
+            _msg = _ch[0];
+            if hasattr(_msg, "get") {
+                _msg = _msg.get("message", {});
+            }
+            if hasattr(_msg, "get") {
+                if _msg.get("content") {
+                    trace.agent_response = str(_msg.get("content"))[:2000];
+                } elif _msg.get("tool_calls") {
+                    for _tc in _msg.get("tool_calls", []) {
+                        if _tc?.get
+                            and hasattr(_tc.get("function", {}), "get")
+                            and _tc.get("function", {}).get("name") == "finish_tool" {
+                            _args = _tc.get("function", {}).get("arguments", "");
+                            if hasattr(_args, "strip") {
+                                try {
+                                    _args = json_module.loads(_args);
+                                } except (ValueError, TypeError) {
+                                    _ = 0;
+                                }
+                            }
+                            if hasattr(_args, "get") {
+                                trace.agent_response = str(
+                                    _args.get("final_output", _args)
+                                )[:2000];
+                            } else {
+                                trace.agent_response = str(_args)[:2000];
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    } elif _last {
+        trace.agent_response = str(_last)[:2000];
+    }
+}
+
+impl TelemetryStore._aggregate_descendants(
+    trace_id: str, children_lookup: dict[str, list[Trace]]
+) -> dict[str, float] {
+    agg_tokens = 0;
+    agg_cost = 0.0;
+    agg_calls = 0;
+    worklist = list(children_lookup.get(trace_id, []));
+    visited = set();
+    while worklist {
+        desc = worklist.pop();
+        if desc.invocation_id in visited {
+            continue;
+        }
+        visited.add(desc.invocation_id);
+        agg_tokens += desc.total_tokens;
+        agg_cost += desc.total_cost;
+        agg_calls += desc.llm_call_count;
+        worklist.extend(children_lookup.get(desc.invocation_id, []));
+    }
+    return {"tokens": agg_tokens, "cost": agg_cost, "calls": agg_calls};
+}
+
+impl TelemetryStore.get_traces(
+    limit: int = 50,
+    offset: int = 0,
+    model: str | None = None,
+    status: str | None = None,
+    caller: str | None = None,
+    root_only: bool = False
+) -> dict[str, any] {
+    with self._lock {
+        all_traces: list[Trace] = list(reversed(self._traces.values()));
+        for t in all_traces {
+            self._backfill_streaming_response(t);
+        }
+        if root_only {
+            all_traces = [
+                t
+                for t in all_traces
+                if t.parent_invocation_id is None
+            ];
+        }
+        if model {
+            all_traces = [
+                t
+                for t in all_traces
+                if t.model == model
+            ];
+        }
+        if status {
+            all_traces = [
+                t
+                for t in all_traces
+                if t.status == status
+            ];
+        }
+        if caller {
+            all_traces = [
+                t
+                for t in all_traces
+                if t.caller_name == caller
+            ];
+        }
+        total = len(all_traces);
+        page = all_traces[offset:offset + limit];
+        all_trace_values = list(self._traces.values());
+        children_lookup: dict[str, list[Trace]] = {};
+        for tv in all_trace_values {
+            pid = tv.parent_invocation_id;
+            if pid is not None {
+                if pid not in children_lookup {
+                    children_lookup[pid] = [];
+                }
+                children_lookup[pid].append(tv);
+            }
+        }
+        enriched = [];
+        for t in page {
+            d = t.to_dict();
+            direct_children = children_lookup.get(t.invocation_id, []);
+            d["child_count"] = len(direct_children);
+
+            _agg = self._aggregate_descendants(t.invocation_id, children_lookup);
+            d["aggregated_total_tokens"] = t.total_tokens + _agg["tokens"];
+            d["aggregated_total_cost"] = round(t.total_cost + _agg["cost"], 6);
+            d["aggregated_llm_call_count"] = t.llm_call_count + _agg["calls"];
+            enriched.append(d);
+        }
+        return {
+            "traces": enriched,
+            "total": total,
+            "has_more": (offset + limit) < total
+        };
+    }
+}
+
+impl TelemetryStore.get_trace(invocation_id: str) -> dict[str, any] | None {
+    with self._lock {
+        trace = self._traces.get(invocation_id);
+        if trace {
+            self._backfill_streaming_response(trace);
+            result = trace.to_dict(include_detail=True);
+
+            all_vals = list(self._traces.values());
+            children_lookup: dict[str, list[Trace]] = {};
+            for tv in all_vals {
+                pid = tv.parent_invocation_id;
+                if pid is not None {
+                    if pid not in children_lookup {
+                        children_lookup[pid] = [];
+                    }
+                    children_lookup[pid].append(tv);
+                }
+            }
+
+            child_traces = children_lookup.get(invocation_id, []);
+            enriched_children: list[dict[str, any]] = [];
+            for ct in child_traces {
+                self._backfill_streaming_response(ct);
+                cd = ct.to_dict(include_detail=True);
+
+                gc = children_lookup.get(ct.invocation_id, []);
+                cd["child_count"] = len(gc);
+                _ct_agg = self._aggregate_descendants(
+                    ct.invocation_id, children_lookup
+                );
+                cd["aggregated_total_tokens"] = ct.total_tokens + _ct_agg["tokens"];
+                cd["aggregated_total_cost"] = round(ct.total_cost + _ct_agg["cost"], 6);
+                cd["aggregated_llm_call_count"] = ct.llm_call_count + _ct_agg["calls"];
+                enriched_children.append(cd);
+            }
+            result["child_traces"] = enriched_children;
+            result["child_count"] = len(child_traces);
+
+            _top_agg = self._aggregate_descendants(invocation_id, children_lookup);
+            result["aggregated_total_tokens"] = result["total_tokens"]
+                + _top_agg["tokens"];
+            result["aggregated_total_cost"] = round(
+                result["total_cost"] + _top_agg["cost"], 6
+            );
+            result["aggregated_llm_call_count"] = result["llm_call_count"]
+                + _top_agg["calls"];
+            return result;
+        }
+        return None;
+    }
+}
+
+impl TelemetryStore.get_summary -> dict[str, any] {
+    with self._lock {
+        traces_list = list(self._traces.values());
+        if not traces_list {
+            return {
+                "total_invocations": 0,
+                "root_invocations": 0,
+                "total_llm_calls": 0,
+                "total_tokens": 0,
+                "total_cost": 0.0,
+                "avg_latency_ms": 0.0,
+                "error_count": 0,
+                "per_model": {},
+                "per_caller": {}
+            };
+        }
+        total_invocations = len(traces_list);
+        root_invocations = sum(
+            1
+            for t in traces_list
+            if t.parent_invocation_id is None
+        );
+        total_llm_calls = sum(t.llm_call_count for t in traces_list);
+        total_tokens = sum(t.total_tokens for t in traces_list);
+        total_cost = sum(t.total_cost for t in traces_list);
+        latencies = [
+            t.total_latency_ms
+            for t in traces_list
+            if t.total_latency_ms > 0
+        ];
+        avg_latency = sum(latencies) / len(latencies) if latencies else 0.0;
+        error_count = sum(
+            1
+            for t in traces_list
+            if t.status == "error"
+        );
+        per_model: dict[str, dict[str, float]] = {};
+        for t in traces_list {
+            m = t.model or "unknown";
+            if m not in per_model {
+                per_model[m] = {"calls": 0, "tokens": 0, "cost": 0.0, "errors": 0};
+            }
+            per_model[m]["calls"] += 1;
+            per_model[m]["tokens"] += t.total_tokens;
+            per_model[m]["cost"] += t.total_cost;
+            if t.status == "error" {
+                per_model[m]["errors"] += 1;
+            }
+        }
+        per_caller: dict[str, dict[str, float]] = {};
+        for t in traces_list {
+            c = t.caller_name or "unknown";
+            if c not in per_caller {
+                per_caller[c] = {"calls": 0, "tokens": 0, "cost": 0.0, "errors": 0};
+            }
+            per_caller[c]["calls"] += 1;
+            per_caller[c]["tokens"] += t.total_tokens;
+            per_caller[c]["cost"] += t.total_cost;
+            if t.status == "error" {
+                per_caller[c]["errors"] += 1;
+            }
+        }
+        for m_stats in per_model.values() {
+            m_stats["cost"] = round(m_stats["cost"], 6);
+        }
+        for c_stats in per_caller.values() {
+            c_stats["cost"] = round(c_stats["cost"], 6);
+        }
+        return {
+            "total_invocations": total_invocations,
+            "root_invocations": root_invocations,
+            "total_llm_calls": total_llm_calls,
+            "total_tokens": total_tokens,
+            "total_cost": round(total_cost, 6),
+            "avg_latency_ms": round(avg_latency, 2),
+            "error_count": error_count,
+            "per_model": per_model,
+            "per_caller": per_caller
+        };
+    }
+}
+
+impl TelemetryStore.get_available_filters -> dict[str, any] {
+    with self._lock {
+        models = list(
+            set(
+                t.model
+                for t in self._traces.values()
+                if t.model
+            )
+        );
+        callers = list(
+            set(
+                t.caller_name
+                for t in self._traces.values()
+                if t.caller_name
+            )
+        );
+        statuses = list(
+            set(
+                t.status
+                for t in self._traces.values()
+                if t.status
+            )
+        );
+        return {
+            "models": sorted(models),
+            "callers": sorted(callers),
+            "statuses": sorted(statuses)
+        };
+    }
 }
