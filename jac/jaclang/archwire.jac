@@ -492,6 +492,10 @@ graph import {
     client.vite_bundler --> [
         cli.commands.execution._start_vite_dev_server { ViteBundler },
         cli.commands.execution.serve._announce_ready { DEV_PROXY_PREFIXES },
+        scale.tests.server.test_admin {
+            DEV_CLIENT_YIELDING_PREFIXES,
+            DEV_PROXY_PREFIXES
+        },
     ]
     client.vite_client_bundle ++> compiler.driver.build_services.CompilerBuildServices.client_builder {
         make_client_bundle_builder
@@ -3901,7 +3905,13 @@ graph import {
         scale.tests.server.test_auth_policy_startup { EndpointHost, ServerExtension },
     ]
     server.server --> [
+        cli.commands.execution.serve._announce_ready | scale.tests.server.test_admin {
+            yielding_client_prefixes
+        },
         client.targets.client_dev_common.dev_proxy_paths { ModuleIntrospector },
+        client.vite_bundler.ViteBundler._generate_vite_config_content {
+            route_pattern_under_prefix
+        },
         runtime.source_app.main | scale.tests.data.test_identity_fail_loud {
             JacAPIServer
         },
@@ -5226,7 +5236,10 @@ graph import client {
             | targets.static_target
             | targets.web_target
             | vite_client_bundle.make_client_bundle_builder { ViteBundler },
-        targets.client_dev_common.dev_proxy_paths { DEV_PROXY_PREFIXES },
+        targets.client_dev_common.dev_proxy_paths {
+            DEV_CLIENT_YIELDING_PREFIXES,
+            DEV_PROXY_PREFIXES
+        },
         targets.desktop.desktop_target.DesktopTarget.build { API_BASE_URL_ENV_VAR },
     ]
     type vite_bundler ++> targets.client_dev_common { ViteBundler }

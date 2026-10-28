@@ -34,7 +34,7 @@ obj Router {
     def add_ws(endpoint: WSEndPoint);
     def clear;
     def resolve(
-        method: str, path: str
+        method: str, path: str, exclude: (list[JEndPoint] | None) = None
     ) -> tuple[(JEndPoint | None), dict[(str, str)], list[str]];
 
     def resolve_ws(path: str) -> tuple[(WSEndPoint | None), dict[(str, str)]];

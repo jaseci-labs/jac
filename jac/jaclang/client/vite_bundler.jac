@@ -29,7 +29,8 @@ glob logger = logging.getLogger(__name__),
          '/graph',
          '/redoc',
          '/assets'
-     ];
+     ],
+     DEV_CLIENT_YIELDING_PREFIXES: list[str] = ['/admin'];
 
 def client_deps_stale(build_dir: Path) -> bool;
 
@@ -80,7 +81,8 @@ class ViteBundler {
         for_desktop_dev: bool = False,
         desktop_broker_port: int = 0,
         api_paths: (list[str] | None) = None,
-        client_paths: (list[str] | None) = None
+        client_paths: (list[str] | None) = None,
+        yielding_prefixes: (list[str] | None) = None
     ) -> Path;
 
     def _format_config_object(
@@ -116,7 +118,8 @@ class ViteBundler {
         for_desktop_dev: bool = False,
         desktop_broker_port: int = 0,
         api_paths: (list[str] | None) = None,
-        client_paths: (list[str] | None) = None
+        client_paths: (list[str] | None) = None,
+        yielding_prefixes: (list[str] | None) = None
     ) -> str;
 
     def create_package_json(

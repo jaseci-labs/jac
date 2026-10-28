@@ -613,17 +613,27 @@ impl serve(
                 );
                 declared_paths: list[str] = [];
                 claimed_paths: list[str] = [];
+                yielding: (list[str] | None) = None;
                 try {
                     import from jaclang.client.vite_bundler { DEV_PROXY_PREFIXES }
+                    import from jaclang.server.server { yielding_client_prefixes }
                     declared_paths = server.introspector.declared_api_paths();
+                    yielding = yielding_client_prefixes(
+                        server.app.router.all_endpoints()
+                    );
                     claimed_paths = server.introspector.client_claimed_paths(
-                        DEV_PROXY_PREFIXES
+                        DEV_PROXY_PREFIXES, yielding
                     );
                 } except Exception as e {
                     console.warning(f"Could not read declared API paths: {e}");
                 }
                 (started_vite, bound_port, client_error) = _start_vite_dev_server(
-                    base, free_vite_port, actual_port, declared_paths, claimed_paths
+                    base,
+                    free_vite_port,
+                    actual_port,
+                    declared_paths,
+                    claimed_paths,
+                    yielding
                 );
                 if started_vite {
                     vite_holder.append(started_vite);
@@ -714,7 +724,8 @@ def _start_vite_dev_server(
     vite_port: int,
     api_port: int,
     api_paths: (list[str] | None) = None,
-    client_paths: (list[str] | None) = None
+    client_paths: (list[str] | None) = None,
+    yielding_prefixes: (list[str] | None) = None
 ) -> tuple[any, int, str];
 
 impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
@@ -1973,7 +1984,8 @@ impl _start_vite_dev_server(
     vite_port: int,
     api_port: int,
     api_paths: (list[str] | None) = None,
-    client_paths: (list[str] | None) = None
+    client_paths: (list[str] | None) = None,
+    yielding_prefixes: (list[str] | None) = None
 ) -> tuple[any, int, str] {
     import from pathlib { Path }
 
@@ -1991,7 +2003,8 @@ impl _start_vite_dev_server(
             is_dev=True,
             api_port=api_port,
             api_paths=api_paths,
-            client_paths=client_paths
+            client_paths=client_paths,
+            yielding_prefixes=yielding_prefixes
         );
 
         if not (client_dir / 'configs' / 'package.json').exists() {

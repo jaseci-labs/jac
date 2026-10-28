@@ -27,7 +27,8 @@ obj ServingApp {
         openapi_security: dict[str, any] = {},
         openapi_cache: (dict[str, any] | None) = None,
         state: dict[str, any] = {},
-        multipart_spool_bytes: int = 1048576;
+        multipart_spool_bytes: int = 1048576,
+        client_route_probe: (Callable[[str], bool] | None) = None;
 
     def add_endpoint(ep: JEndPoint);
     def add_ws_endpoint(ep: WSEndPoint);
