@@ -231,9 +231,18 @@ impl ViteBundler.install_packages(
     try {
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
-        (returncode, error_output) = run_pm(
-            ['install'], str(build_dir), capture=capture_output
-        );
+        for attempt in range(1, INSTALL_ATTEMPTS + 1) {
+            (returncode, error_output) = run_pm(
+                ['install'], str(build_dir), capture=capture_output
+            );
+            if returncode == 0 or attempt == INSTALL_ATTEMPTS {
+                break;
+            }
+            console.warning(
+                f"Dependency installation failed (attempt {attempt} of {INSTALL_ATTEMPTS}); retrying"
+            );
+            time.sleep(INSTALL_RETRY_PAUSE_SECONDS);
+        }
         elapsed = time.time() - start_time;
         if returncode != 0 {
             if capture_output {
