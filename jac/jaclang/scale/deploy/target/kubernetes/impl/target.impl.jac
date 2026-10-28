@@ -726,19 +726,26 @@ impl KubernetesTarget._observability_requested -> bool {
 }
 
 impl KubernetesTarget._deploy_observability(app_name: str) -> None {
-    if not self._observability_requested() {
+    requested = self._observability_requested();
+    self._load_cluster_config();
+    core_v1 = client.CoreV1Api();
+    apps_v1 = client.AppsV1Api();
+    obs_config = self._build_observability_config();
+    monitoring = MonitoringDeployer(obs_config, self.logger);
+    monitoring.retire_unwanted_node_daemonsets(
+        app_name, obs_config.namespace, apps_v1, core_v1
+    );
+    if not requested {
+        self._release_privileged_namespace(core_v1, obs_config.namespace);
         return;
     }
 
-    self._load_cluster_config();
-    apps_v1 = client.AppsV1Api();
-    core_v1 = client.CoreV1Api();
-
     provider = get_cluster_provider();
+    needs_privileged = monitoring.needs_privileged_namespace();
 
-    obs_config = self._build_observability_config();
-
-    self._ensure_privileged_namespace(core_v1, obs_config.namespace);
+    if needs_privileged {
+        self._ensure_privileged_namespace(core_v1, obs_config.namespace);
+    }
     if self.logger {
         self.logger.info(
             f"Deploying observability stack (Prometheus + Grafana + "
@@ -746,7 +753,6 @@ impl KubernetesTarget._deploy_observability(app_name: str) -> None {
             {"namespace": obs_config.namespace, "provider": type(provider).__name__}
         );
     }
-    monitoring = MonitoringDeployer(obs_config, self.logger);
     monitoring.deploy(
         app_name,
         obs_config.namespace,
@@ -755,6 +761,9 @@ impl KubernetesTarget._deploy_observability(app_name: str) -> None {
         provider,
         scrape_target_service="gateway-service"
     );
+    if not needs_privileged {
+        self._release_privileged_namespace(core_v1, obs_config.namespace);
+    }
 }
 
 impl KubernetesTarget.ensure_alb_readiness_gates(core_v1: any, namespace: str) -> None {
@@ -797,6 +806,16 @@ impl KubernetesTarget.ensure_alb_readiness_gates(core_v1: any, namespace: str) -
 impl KubernetesTarget._ensure_privileged_namespace(
     core_v1: any, namespace: str
 ) -> None {
+    if namespace == "default" {
+        if self.logger {
+            self.logger.warn(
+                "jac-scale does not relabel the 'default' namespace for Pod "
+                "Security; if it enforces baseline or restricted, node-exporter "
+                "and Alloy's log collection (hostPath DaemonSets) will be rejected."
+            );
+        }
+        return;
+    }
     try {
         ns = core_v1.read_namespace(name=namespace);
         labels: dict[str, any] = dict(getattr(ns.metadata, "labels", {}) or {});
@@ -822,10 +841,12 @@ impl KubernetesTarget._ensure_privileged_namespace(
         patch = {"metadata": {"labels": new_labels}};
         core_v1.patch_namespace(name=namespace, body=patch);
         if self.logger {
-            self.logger.info(
+            self.logger.warn(
                 f"Labeled namespace '{namespace}' with "
-                "pod-security.kubernetes.io/enforce=privileged "
-                "(required for hostPath DaemonSets)"
+                f"{PSS_ENFORCE_LABEL}=privileged so node-exporter and Alloy's "
+                "log collection can mount host paths. This lifts the Pod "
+                "Security sandbox for every pod in the namespace; turning off "
+                "k8s metrics and logs restores baseline on the next deploy."
             );
         }
     } except Exception as e {
@@ -839,6 +860,102 @@ impl KubernetesTarget._ensure_privileged_namespace(
             );
         }
     }
+}
+
+impl KubernetesTarget._release_privileged_namespace(
+    core_v1: any, namespace: str
+) -> None {
+    try {
+        ns = core_v1.read_namespace(name=namespace);
+        labels: dict[str, any] = dict(getattr(ns.metadata, "labels", {}) or {});
+        new_labels = released_pss_labels(namespace, labels);
+        if not new_labels {
+            return;
+        }
+        holders = self._workloads_escaping_baseline(namespace);
+        if holders {
+            if self.logger {
+                self.logger.warn(
+                    f"namespace '{namespace}' stays at {PSS_ENFORCE_LABEL}="
+                    f"privileged, which jac-scale set for observability: "
+                    f"{', '.join(holders)} still need host access. Remove them "
+                    f"and redeploy to restore the Pod Security sandbox."
+                );
+            }
+            return;
+        }
+        core_v1.patch_namespace(
+            name=namespace, body={"metadata": {"labels": new_labels}}
+        );
+        if self.logger {
+            self.logger.info(
+                f"Restored namespace '{namespace}' Pod Security enforcement: "
+                f"no observability component needs host access any more."
+            );
+        }
+    } except Exception as e {
+        if self.logger {
+            self.logger.warn(
+                f"Could not restore Pod Security enforcement on namespace "
+                f"'{namespace}'; it stays {PSS_ENFORCE_LABEL}=privileged. "
+                f"Cause: {e}"
+            );
+        }
+    }
+}
+
+impl KubernetesTarget._workloads_escaping_baseline(namespace: str) -> list[str] {
+    apps_v1 = client.AppsV1Api();
+    batch_v1 = client.BatchV1Api();
+    core_v1 = client.CoreV1Api();
+    listings: list[tuple[str, any, any]] = [
+        (
+            "DaemonSet",
+            apps_v1.list_namespaced_daemon_set,
+            lambda (w: any) { w.spec.template.spec; }
+        ),
+        (
+            "Deployment",
+            apps_v1.list_namespaced_deployment,
+            lambda (w: any) { w.spec.template.spec; }
+        ),
+        (
+            "StatefulSet",
+            apps_v1.list_namespaced_stateful_set,
+            lambda (w: any) { w.spec.template.spec; }
+        ),
+        (
+            "ReplicaSet",
+            apps_v1.list_namespaced_replica_set,
+            lambda (w: any) { None
+                if w.metadata.owner_references
+                else w.spec.template.spec; }
+        ),
+        (
+            "ReplicationController",
+            core_v1.list_namespaced_replication_controller,
+            lambda (w: any) { w.spec.template?.spec; }
+        ),
+        (
+            "CronJob",
+            batch_v1.list_namespaced_cron_job,
+            lambda (w: any) { w.spec.job_template.spec.template.spec; }
+        ),
+        (
+            "Job",
+            batch_v1.list_namespaced_job,
+            lambda (w: any) { None if job_finished(w) else w.spec.template.spec; }
+        )
+    ];
+    holders: list[str] = [];
+    for (kind, list_fn, pod_spec) in listings {
+        for workload in list_fn(namespace=namespace).items or [] {
+            if pod_spec_escapes_baseline(pod_spec(workload)) {
+                holders.append(f"{kind}/{workload.metadata.name}");
+            }
+        }
+    }
+    return holders;
 }
 
 impl KubernetesTarget._build_observability_config -> KubernetesConfig {

@@ -48,6 +48,13 @@ obj MonitoringDeployer {
     def _deploy_tempo(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def _deploy_loki(app_name: str, namespace: str, apps_v1: any, core_v1: any);
     def _deploy_alloy(app_name: str, namespace: str, apps_v1: any, core_v1: any);
+    def _node_exporter_wanted -> bool;
+    def _alloy_wanted -> bool;
+    def needs_privileged_namespace -> bool;
+    def retire_unwanted_node_daemonsets(
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
+    );
+
     def deploy(
         app_name: str,
         namespace: str,
