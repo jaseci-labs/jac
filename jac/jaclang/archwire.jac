@@ -777,7 +777,7 @@ graph import {
         },
         client.jac_client_compiler.JacClientCompiler.emit_dependencies {
             compute_content_sha256,
-            source_digests
+            ct_dep_digest
         },
         client.targets.desktop._dev_launch._dev_roots_from_env { dev_source },
         dist.precompile_bytecode {

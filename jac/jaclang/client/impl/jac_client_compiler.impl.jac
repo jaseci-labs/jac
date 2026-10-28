@@ -79,6 +79,7 @@ impl JacClientCompiler.compile(
     native: bool = False
 ) -> tuple[list[str], list[str]] {
     self.input_files = {};
+    self.client_modules = {};
     self.emit_prelude();
     artifact = self.jac_compiler.compile_module(module_path);
     self._collect_na_modules(artifact);
@@ -244,7 +245,9 @@ impl JacClientCompiler.emit_dependencies(
         module_path = unit.path;
         artifact = unit.artifact;
         if module_path.suffix == '.jac' and module_path.is_file() {
-            self.input_files.update(source_digests(str(module_path)));
+            self.client_modules[str(module_path.resolve())] = ct_dep_digest(
+                str(module_path), with_annexes=True
+            );
         }
         self._collect_na_modules(artifact);
         manifest = artifact.manifest;

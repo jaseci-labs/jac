@@ -173,6 +173,10 @@ test "an edit to a client module the entry imports re-prepares the application" 
         assert _restored(path, tmp);
         path.write_text(path.read_text().replace('class="root"', 'class="app"'));
         assert not _restored(path, tmp) , "an edit to the entry was restored from the old record";
+        assert _restored(path, tmp);
+        (base / 'shared' / 'widget.style.css').write_text('b { color: red; }\n');
+        assert not _restored(path, tmp) , "a new annex beside an imported module was restored from the old record";
+        assert _restored(path, tmp);
         widget.write_text(
             'def label -> str;\n\n'
             'def:pub Widget -> JsxElement {\n    <b>{label()}</b>\n}\n'
