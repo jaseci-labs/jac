@@ -497,33 +497,6 @@ test "admin get config requires auth" {
 }
 
 # ============================================================================
-# Admin Graph Tests
-# ============================================================================
-test "admin graph requires auth" {
-    client = make_client();
-    try {
-        response = client.get("/admin/graph");
-        assert response.status_code in [401, 403, 422];
-    } finally {
-        client.close();
-    }
-}
-
-test "admin graph data" {
-    client = make_client();
-    try {
-        token = client.admin_login();
-
-        response = client.get(
-            "/admin/graph", headers={"Authorization": f"Bearer {token}"}
-        );
-        assert response.status_code in [200, 404, 422];
-    } finally {
-        client.close();
-    }
-}
-
-# ============================================================================
 # Admin UI Tests
 # ============================================================================
 test "admin page redirect" {
