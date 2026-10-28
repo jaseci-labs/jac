@@ -3701,6 +3701,26 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_exc_push(b: ir.IRBuilder, state: ir.Value) -> None;
     def _emit_exc_pop(b: ir.IRBuilder) -> None;
     def _volatilize_setjmp_locals -> None;
+    def _setjmp_reachable_writes(func: ir.Function, setjmp_name: str) -> set[int];
+    def _setjmp_volatile_allocas(
+        func: ir.Function, setjmp_name: str
+    ) -> (set[int] | None);
+
+    def _setjmp_landing(block: ir.Block, index: int) -> (ir.Block | None);
+    def _setjmp_value_allocas(
+        value: ir.Value, memo: dict[int, list[ir.AllocaInstr]]
+    ) -> list[ir.AllocaInstr];
+
+    def _setjmp_operands(inst: ir.Instruction) -> list[ir.Value];
+    def _setjmp_region_writes(
+        block: ir.Block, index: int, memo: dict[int, list[ir.AllocaInstr]]
+    ) -> (set[int] | None);
+
+    def _setjmp_call_may_raise(inst: ir.CallInstr) -> bool;
+    def _setjmp_live_in(
+        func: ir.Function, candidates: set[int], memo: dict[int, list[ir.AllocaInstr]]
+    ) -> dict[int, set[int]];
+
     def _setjmp_local_base(value: ir.Value) -> (ir.Value | None);
     def _block_successors(block: ir.Block) -> list[ir.Block];
     def _push_exception_handler(

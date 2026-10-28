@@ -2347,44 +2347,11 @@ impl NaIRGenPass._volatilize_setjmp_locals -> None {
     }
     setjmp_name = self._exc_jmp_symbols()[0];
     for func in self._setjmp_functions {
-        after: list[any] = [];
-        pending: list[ir.Block] = [];
-        for block in func.blocks {
-            armed = False;
-            for inst in block.instructions {
-                if armed {
-                    after.append(inst);
-                } elif isinstance(inst, ir.CallInstr) {
-                    callee = inst.callee;
-                    if isinstance(callee, ir.Function) and callee.name == setjmp_name {
-                        armed = True;
-                    }
-                }
-            }
-            if armed {
-                pending.extend(self._block_successors(block));
-            }
+        targets = self._setjmp_volatile_allocas(func, setjmp_name);
+        if targets is None {
+            targets = self._setjmp_reachable_writes(func, setjmp_name);
         }
-        seen: set[int] = set();
-        while pending {
-            block = pending.pop();
-            if id(block) in seen {
-                continue;
-            }
-            seen.add(id(block));
-            after.extend(block.instructions);
-            pending.extend(self._block_successors(block));
-        }
-        written: set[int] = set();
-        for inst in after {
-            if isinstance(inst, ir.StoreInstr) {
-                base = self._setjmp_local_base(inst.operands[1]);
-                if base is not None {
-                    written.add(id(base));
-                }
-            }
-        }
-        if not written {
+        if not targets {
             continue;
         }
         for block in func.blocks {
@@ -2398,7 +2365,7 @@ impl NaIRGenPass._volatilize_setjmp_locals -> None {
                 }
                 if target is not None {
                     base = self._setjmp_local_base(target);
-                    if base is not None and id(base) in written {
+                    if base is not None and id(base) in targets {
                         setattr(inst, "volatile", True);
                     }
                 }
@@ -2406,6 +2373,360 @@ impl NaIRGenPass._volatilize_setjmp_locals -> None {
         }
     }
     self._setjmp_functions = [];
+}
+
+impl NaIRGenPass._setjmp_reachable_writes(
+    func: ir.Function, setjmp_name: str
+) -> set[int] {
+    after: list[any] = [];
+    pending: list[ir.Block] = [];
+    for block in func.blocks {
+        armed = False;
+        for inst in block.instructions {
+            if armed {
+                after.append(inst);
+            } elif isinstance(inst, ir.CallInstr) {
+                callee = inst.callee;
+                if isinstance(callee, ir.Function) and callee.name == setjmp_name {
+                    armed = True;
+                }
+            }
+        }
+        if armed {
+            pending.extend(self._block_successors(block));
+        }
+    }
+    seen: set[int] = set();
+    while pending {
+        block = pending.pop();
+        if id(block) in seen {
+            continue;
+        }
+        seen.add(id(block));
+        after.extend(block.instructions);
+        pending.extend(self._block_successors(block));
+    }
+    written: set[int] = set();
+    for inst in after {
+        if isinstance(inst, ir.StoreInstr) {
+            base = self._setjmp_local_base(inst.operands[1]);
+            if base is not None {
+                written.add(id(base));
+            }
+        }
+    }
+    return written;
+}
+
+impl NaIRGenPass._setjmp_volatile_allocas(
+    func: ir.Function, setjmp_name: str
+) -> (set[int] | None) {
+    memo: dict[int, list[ir.AllocaInstr]] = {};
+    sites: list[tuple[set[int], ir.Block]] = [];
+    candidates: set[int] = set();
+    for block in func.blocks {
+        for (index, inst) in enumerate(block.instructions) {
+            if not isinstance(inst, ir.CallInstr) {
+                continue;
+            }
+            callee = inst.callee;
+            if not isinstance(callee, ir.Function) or callee.name != setjmp_name {
+                continue;
+            }
+            landing = self._setjmp_landing(block, index);
+            if landing is None {
+                return None;
+            }
+            written = self._setjmp_region_writes(block, index, memo);
+            if written is None {
+                return None;
+            }
+            sites.append((written, landing));
+            candidates.update(written);
+        }
+    }
+    targets: set[int] = set();
+    if not candidates {
+        return targets;
+    }
+    live_in = self._setjmp_live_in(func, candidates, memo);
+    for (written, landing) in sites {
+        live = live_in.get(id(landing));
+        if live is None {
+            return None;
+        }
+        targets.update(written & live);
+    }
+    return targets;
+}
+
+impl NaIRGenPass._setjmp_landing(block: ir.Block, index: int) -> (ir.Block | None) {
+    insts = block.instructions;
+    if len(insts) != index + 3 {
+        return None;
+    }
+    call = insts[index];
+    cond = insts[index + 1];
+    term = insts[index + 2];
+    if not isinstance(cond, ir.ICMPInstr)
+        or cond.op != "ne"
+        or cond.operands[0] is not call {
+        return None;
+    }
+    zero = cond.operands[1];
+    if not isinstance(zero, ir.Constant) or zero.constant != 0 {
+        return None;
+    }
+    if not isinstance(term, ir.ConditionalBranch) or term.operands[0] is not cond {
+        return None;
+    }
+    landing = term.operands[1];
+    if not isinstance(landing, ir.Block) {
+        return None;
+    }
+    return landing;
+}
+
+impl NaIRGenPass._setjmp_value_allocas(
+    value: ir.Value, memo: dict[int, list[ir.AllocaInstr]]
+) -> list[ir.AllocaInstr] {
+    found: list[ir.AllocaInstr] = [];
+    if not isinstance(value, ir.Instruction) {
+        return found;
+    }
+    known = memo.get(id(value));
+    if known is not None {
+        return known;
+    }
+    seen: set[int] = set();
+    pending: list[ir.Value] = [value];
+    while pending {
+        current = pending.pop();
+        if id(current) in seen {
+            continue;
+        }
+        seen.add(id(current));
+        if isinstance(current, ir.AllocaInstr) {
+            found.append(current);
+        } elif isinstance(current, ir.GEPInstr) or isinstance(current, ir.CastInstr) {
+            pending.append(current.operands[0]);
+        } elif isinstance(current, ir.SelectInstr) {
+            pending.append(current.operands[1]);
+            pending.append(current.operands[2]);
+        } elif isinstance(current, ir.PhiInstr) {
+            for (incoming, _) in current.incomings {
+                pending.append(incoming);
+            }
+        }
+    }
+    memo[id(value)] = found;
+    return found;
+}
+
+impl NaIRGenPass._setjmp_operands(inst: ir.Instruction) -> list[ir.Value] {
+    if isinstance(inst, ir.PhiInstr) {
+        return [incoming for (incoming, _) in inst.incomings];
+    }
+    return list(inst.operands);
+}
+
+impl NaIRGenPass._setjmp_region_writes(
+    block: ir.Block, index: int, memo: dict[int, list[ir.AllocaInstr]]
+) -> (set[int] | None) {
+    push_fn = self._exc_push_fn;
+    pop_fn = self._exc_pop_fn;
+    blocks: list[ir.Block] = [block];
+    starts: list[int] = [index + 1];
+    ends: list[int] = [];
+    raising: list[bool] = [];
+    successors: list[list[int]] = [];
+    nodes: dict[tuple[int, int], int] = {};
+    depths: list[int] = [0];
+    position = 0;
+    while position < len(blocks) {
+        current = blocks[position];
+        depth = depths[position];
+        insts = current.instructions;
+        stop = len(insts);
+        open = True;
+        raises = False;
+        for at in range(starts[position], len(insts)) {
+            inst = insts[at];
+            if not isinstance(inst, ir.CallInstr) {
+                continue;
+            }
+            callee = inst.callee;
+            if push_fn is not None and callee is push_fn {
+                depth += 1;
+            } elif pop_fn is not None and callee is pop_fn {
+                if depth == 0 {
+                    stop = at;
+                    open = False;
+                    break;
+                }
+                depth -= 1;
+            } elif self._setjmp_call_may_raise(inst) {
+                raises = True;
+            }
+        }
+        ends.append(stop);
+        raising.append(raises);
+        targets: list[int] = [];
+        if open {
+            if depth > 64 {
+                return None;
+            }
+            for successor in self._block_successors(current) {
+                key = (id(successor), depth);
+                found = nodes.get(key, -1);
+                if found < 0 {
+                    found = len(blocks);
+                    nodes[key] = found;
+                    blocks.append(successor);
+                    starts.append(0);
+                    depths.append(depth);
+                }
+                targets.append(found);
+            }
+        }
+        successors.append(targets);
+        position += 1;
+    }
+    reach: list[bool] = list(raising);
+    changed = True;
+    while changed {
+        changed = False;
+        for node in range(len(blocks)) {
+            if reach[node] {
+                continue;
+            }
+            for target in successors[node] {
+                if reach[target] {
+                    reach[node] = True;
+                    changed = True;
+                    break;
+                }
+            }
+        }
+    }
+    written: set[int] = set();
+    for node in range(len(blocks)) {
+        if not reach[node] {
+            continue;
+        }
+        follows = False;
+        for target in successors[node] {
+            if reach[target] {
+                follows = True;
+            }
+        }
+        insts = blocks[node].instructions;
+        at = ends[node] - 1;
+        while at >= starts[node] {
+            inst = insts[at];
+            at -= 1;
+            if not isinstance(inst, ir.Instruction) {
+                continue;
+            }
+            if isinstance(inst, ir.CallInstr) and self._setjmp_call_may_raise(inst) {
+                follows = True;
+            }
+            if not follows {
+                continue;
+            }
+            if isinstance(inst, ir.LoadInstr) or isinstance(inst, ir.GEPInstr) {
+                continue;
+            }
+            if isinstance(inst, ir.CastInstr)
+                and inst.opname in ("bitcast", "addrspacecast") {
+                continue;
+            }
+            for operand in self._setjmp_operands(inst) {
+                for alloca in self._setjmp_value_allocas(operand, memo) {
+                    written.add(id(alloca));
+                }
+            }
+        }
+    }
+    return written;
+}
+
+impl NaIRGenPass._setjmp_call_may_raise(inst: ir.CallInstr) -> bool {
+    callee = inst.callee;
+    if not isinstance(callee, ir.Function) {
+        return True;
+    }
+    if callee is self._exc_push_fn or callee is self._exc_pop_fn {
+        return False;
+    }
+    return not callee.name.startswith("llvm.");
+}
+
+impl NaIRGenPass._setjmp_live_in(
+    func: ir.Function, candidates: set[int], memo: dict[int, list[ir.AllocaInstr]]
+) -> dict[int, set[int]] {
+    blocks: list[ir.Block] = list(func.blocks);
+    gens: dict[int, set[int]] = {};
+    kills: dict[int, set[int]] = {};
+    successors: dict[int, list[ir.Block]] = {};
+    for block in blocks {
+        gen: set[int] = set();
+        kill: set[int] = set();
+        for inst in block.instructions {
+            if not isinstance(inst, ir.Instruction) {
+                continue;
+            }
+            operands = self._setjmp_operands(inst);
+            killed = -1;
+            if isinstance(inst, ir.StoreInstr) {
+                dest = inst.operands[1];
+                if isinstance(dest, ir.AllocaInstr)
+                    and not dest.operands
+                    and id(dest) in candidates {
+                    killed = id(dest);
+                    operands = [inst.operands[0]];
+                }
+            }
+            for operand in operands {
+                for alloca in self._setjmp_value_allocas(operand, memo) {
+                    key = id(alloca);
+                    if key in candidates and key not in kill {
+                        gen.add(key);
+                    }
+                }
+            }
+            if killed >= 0 {
+                kill.add(killed);
+            }
+        }
+        gens[id(block)] = gen;
+        kills[id(block)] = kill;
+        successors[id(block)] = self._block_successors(block);
+    }
+    live_in: dict[int, set[int]] = {};
+    for block in blocks {
+        live_in[id(block)] = set(gens[id(block)]);
+    }
+    changed = True;
+    while changed {
+        changed = False;
+        for block in reversed(blocks) {
+            out: set[int] = set();
+            for successor in successors[id(block)] {
+                found = live_in.get(id(successor));
+                if found is not None {
+                    out.update(found);
+                }
+            }
+            current = live_in[id(block)];
+            grown = gens[id(block)] | (out - kills[id(block)]);
+            if len(grown) != len(current) {
+                live_in[id(block)] = grown;
+                changed = True;
+            }
+        }
+    }
+    return live_in;
 }
 
 impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
