@@ -194,3 +194,46 @@ test "a prerelease no package can opt into fails without trying every version" {
         assert len(message.splitlines()) == 1 , message;
     }
 }
+
+test "a prerelease opt-in can pass along a chain of prereleases" {
+    registry = {
+        "a/tool": {"1.0.0": {"a/mid": ">=1.4.0-beta.1"}, "2.0.0": {}},
+        "a/mid": {"1.5.0-beta.1": {"a/lib": ">=1.4.0-beta.1"}},
+        "a/lib": {"1.5.0-beta.1": {}}
+    };
+    assert _solve(registry, {"a/lib": ">=1.4.0", "a/mid": ">=1.4.0", "a/tool": "*"})
+        == {"a/tool": "1.0.0", "a/mid": "1.5.0-beta.1", "a/lib": "1.5.0-beta.1"};
+}
+
+test "a shared dependency's version can decide a prerelease opt-in" {
+    with_x = {"a/n": "^1", "a/x": "*"};
+    registry = {
+        "a/n": {"1.0.0": {}, "2.0.0": {}},
+        "a/y": {"1.0.0": with_x, "1.1.0": with_x, "1.2.0": with_x, "1.5.0-beta.1": {}},
+        "a/x": {"1.0.0": {"a/lib": ">=1.0.0-beta.1"}},
+        "a/lib": {"1.5.0-beta.1": {}}
+    };
+    assert _solve(registry, {"a/n": "*", "a/y": "*", "a/lib": ">=1.4.0"})
+        == {"a/n": "1.0.0", "a/y": "1.2.0", "a/x": "1.0.0", "a/lib": "1.5.0-beta.1"};
+}
+
+test "packages unrelated to a prerelease opt-in are not retried" {
+    registry: dict[str, dict[str, dict[str, str]]] = {
+        "a/lib": {"1.2.0": {}, "1.5.0-beta.1": {}},
+        "a/tool": {"1.0.0": {}, "2.0.0": {"a/lib": ">=1.0.0-beta.1", "a/missing": "^1"}}
+    };
+    deps = {"a/lib": ">=1.4.0", "a/tool": "*"};
+    for i in range(30) {
+        registry[f"a/u{i}"] = {"1.0.0": {}, "2.0.0": {f"a/w{i}": "*"}};
+        registry[f"a/w{i}"] = {"1.0.0": {}};
+        deps[f"a/u{i}"] = "*";
+    }
+    try {
+        _solve(registry, deps);
+        assert False , "expected a solve failure";
+    } except SolveFailure as e {
+        message = str(e);
+        assert "only prereleases match" in message , message;
+        assert len(message.splitlines()) < 10 , message;
+    }
+}
