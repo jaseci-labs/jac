@@ -2828,7 +2828,6 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
     ) -> ir.Value;
 
-    def _target_little_endian -> bool;
     def _emit_rc_retain_fast(retain_fn: ir.Function) -> None;
     def _emit_rc_release_fast(
         fn: ir.Function, release_fn: ir.Function, may_cycle: bool

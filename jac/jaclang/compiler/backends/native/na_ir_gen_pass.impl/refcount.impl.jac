@@ -1134,83 +1134,24 @@ impl NaIRGenPass._release_owned_args(
 impl NaIRGenPass._emit_magic_check(
     b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
 ) -> ir.Value {
-    """Whether `ptr` carries a counted object's header.
-
-    The magic sits in bits 32..47 of the alloc-id word. A pointer without it
-    is one the native code did not allocate, such as a buffer a host passed in
-    through ctypes, whose header slots belong to someone else and must not be
-    written. On a little-endian target the magic is the halfword four bytes
-    into the word: one 16-bit load and compare.
-
-    The halfword is compared as a signed 16-bit constant, since the magic is
-    above 0x7FFF.
-    """;
-    i64 = ir.IntType(64);
-    i64_ptr = i64.as_pointer();
-    if self._target_little_endian() {
-        i16 = ir.IntType(16);
-        _slot16 = b.gep(
-            ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF + 4)], name=f"{name_prefix}.slot"
-        );
-        _val16 = b.load(
-            b.bitcast(_slot16, i16.as_pointer(), name=f"{name_prefix}.ptr"),
-            name=f"{name_prefix}.val"
-        );
-
-        _magic16 = HDR_MAGIC - 65536 if HDR_MAGIC >= 32768 else HDR_MAGIC;
-        return b.icmp_unsigned(
-            "==", _val16, ir.Constant(i16, _magic16), name=f"{name_prefix}.ok"
-        );
-    }
-    _slot = b.gep(
-        ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name=f"{name_prefix}.slot"
+    i16 = ir.IntType(16);
+    _slot16 = b.gep(
+        ptr,
+        [ir.Constant(ir.IntType(64), HDR_ALLOC_ID_OFF + 4)],
+        name=f"{name_prefix}.slot"
     );
-    _ptr = b.bitcast(_slot, i64_ptr, name=f"{name_prefix}.ptr");
-    _val = b.load(_ptr, name=f"{name_prefix}.val");
-    _hi = b.lshr(_val, ir.Constant(i64, 32), name=f"{name_prefix}.hi");
-    _hi = b.and_(_hi, ir.Constant(i64, 0xFFFF), name=f"{name_prefix}.hi.magic");
+    _val16 = b.load(
+        b.bitcast(_slot16, i16.as_pointer(), name=f"{name_prefix}.ptr"),
+        name=f"{name_prefix}.val"
+    );
+
+    _magic16 = HDR_MAGIC - 65536 if HDR_MAGIC >= 32768 else HDR_MAGIC;
     return b.icmp_unsigned(
-        "==", _hi, ir.Constant(i64, HDR_MAGIC), name=f"{name_prefix}.ok"
+        "==", _val16, ir.Constant(i16, _magic16), name=f"{name_prefix}.ok"
     );
-}
-
-impl NaIRGenPass._target_little_endian -> bool {
-    _arch = str(self.llvm_module.triple or "").split("-")[0];
-    if _arch.endswith("eb") or _arch.endswith("_be") {
-        return False;
-    }
-    return _arch
-        not in (
-            "s390x",
-            "powerpc",
-            "powerpc64",
-            "mips",
-            "mips64",
-            "sparc",
-            "sparcv9",
-            "m68k"
-        );
 }
 
 impl NaIRGenPass._emit_rc_retain_fast(retain_fn: ir.Function) -> None {
-    """The retain every owned copy goes through, inlined at each one.
-
-    A pointer without a counted header (null, or a buffer a host passed in) is
-    left alone, and so is an immortal object (a literal, a stack or a region
-    object), whose count is RC_SENTINEL: adding one to the count overflows
-    exactly there, so one checked add is both the test and the new count.
-    `__rc_gc_disabled` is not read: it stops frees, and the release that would
-    free checks it.
-
-    It is a few instructions, inlined at every retain, as LLVM does on its own
-    except in very large functions. The count is tested first: a static
-    object, such as a string literal, has only the count and dtor words before
-    it, so the alloc-id word that carries the magic lies outside it, and LLVM
-    treats reading it as undefined behavior once it sees the global. Each rare
-    exit carries branch weights, so LLVM lays the common path out straight and
-    keeps a caller's registers for it: unweighted, the inlined exits made hot
-    loops that do no refcounting spill.
-    """;
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1286,34 +1227,6 @@ impl NaIRGenPass._emit_rc_retain_fast(retain_fn: ir.Function) -> None {
 impl NaIRGenPass._emit_rc_release_fast(
     fn: ir.Function, release_fn: ir.Function, may_cycle: bool
 ) -> None {
-    """A release inlined at each call: the decrement of a count above one.
-
-    Null, a pointer without a counted header and an immortal object return at
-    once. A count of one (the last reference) or zero (a double free), and any
-    release once a thread has started, go to `release_fn`, which checks
-    everything again. Under the cycle collector, a release that leaves a
-    possibly cyclic object alive makes it a candidate root unless it already
-    is one (purple) or cannot be one (untraced): that rare step is out of
-    line in `__rc_possible_root`.
-
-    The common release only decrements, a count above one with no thread
-    started, and only that part is inlined at every release. The rest (the
-    last reference's destructor and free, a double free's log, the atomic
-    update once threads run) stays in `__rc_release_impl`, which checks
-    everything again. Left whole, the helper inlined the destructor call and
-    the free with it, too big for LLVM to inline into a large function such as
-    an interpreter loop, so every release there became a call. Under the cycle
-    collector, a release of an acyclic type has its own entry, which never
-    buffers a root.
-
-    The count is tested first, as in the retain: a static object has no
-    alloc-id word, so its magic must not be read. An immortal count,
-    RC_SENTINEL, is the only one whose top byte is 0x7F, so one byte compare
-    tests it with no 64-bit immediate; a compare against the sentinel needs
-    one, which LLVM hoists into a register for the whole function, and loops
-    that do no refcounting then spill. Each rare exit carries branch weights,
-    as in the retain.
-    """;
     i8 = ir.IntType(8);
     i8_ptr = i8.as_pointer();
     i64 = ir.IntType(64);
@@ -1342,22 +1255,13 @@ impl NaIRGenPass._emit_rc_release_fast(
         i64.as_pointer(),
         name="rc.ptr"
     );
-    if self._target_little_endian() {
-        _top = b.load(
-            b.gep(ptr, [ir.Constant(i64, HDR_RC_OFF + 7)], name="rc.top.slot"),
-            name="rc.top"
-        );
-        _is_static = b.icmp_unsigned(
-            "==", _top, ir.Constant(i8, RC_SENTINEL >> 56), name="is.static"
-        );
-    } else {
-        _is_static = b.icmp_unsigned(
-            "==",
-            b.load(rc_ptr, name="rc.full"),
-            ir.Constant(i64, RC_SENTINEL),
-            name="is.static"
-        );
-    }
+    _top = b.load(
+        b.gep(ptr, [ir.Constant(i64, HDR_RC_OFF + 7)], name="rc.top.slot"),
+        name="rc.top"
+    );
+    _is_static = b.icmp_unsigned(
+        "==", _top, ir.Constant(i8, RC_SENTINEL >> 56), name="is.static"
+    );
     b.cbranch(_is_static, done_bb, header_bb).set_weights([1, 64]);
     b = ir.IRBuilder(header_bb);
     b.cbranch(
@@ -1428,14 +1332,6 @@ impl NaIRGenPass._emit_rc_release_fast(
 }
 
 impl NaIRGenPass._emit_rc_possible_root_fn -> ir.Function {
-    """Make a possibly cyclic object that a release left alive a candidate root.
-
-    The same step `__rc_release_impl` takes after such a decrement: nothing
-    while RC is disabled, while a collection runs or before the collector is
-    enabled; otherwise color the object purple, mark it buffered and push it
-    (`__rc_push_root` marks it untraced instead when its type has nothing to
-    trace).
-    """;
     if self.rc_possible_root_fn is not None {
         return self.rc_possible_root_fn;
     }
@@ -2577,11 +2473,6 @@ impl NaIRGenPass._emit_rc_release_simple(
 impl NaIRGenPass._emit_rc_release_typed(
     val: ir.Value, op: str = "", loc: str = ""
 ) -> None {
-    """Release `val` through the fast path that fits its type.
-
-    `may_cycle` only matters to the cycle collector: an acyclic type's release
-    never buffers a root, so it has its own inlined fast path.
-    """;
     _rlt_owned = self._is_owned(val);
     if self._str_desc_ty is not None and val.type == self._str_desc_ty {
         val = self.builder.extract_value(val, 0, name="rc.desc.root");
