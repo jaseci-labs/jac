@@ -398,7 +398,7 @@ impl bind_shared_callbacks(
 }
 
 impl inject_heap_accounting(
-    llvm_ir_str: str, managed: bool = False
+    llvm_ir_str: str, managed: bool = False, heap: str = ""
 ) -> tuple[str, list[str]] {
     import re;
 
@@ -419,6 +419,9 @@ impl inject_heap_accounting(
     apple = re.search(r'target triple = "[^"\n]*(?:apple|darwin)', llvm_ir_str)
         is not None;
     allocator_size = "malloc_size" if apple else "malloc_usable_size";
+    if heap {
+        allocator_size = heap + "_usable_size";
+    }
     definitions: list[str] = [];
     if not re.search(
         r'(?:declare|define)[^\n]*@"?' + allocator_size + r'"?\(', llvm_ir_str

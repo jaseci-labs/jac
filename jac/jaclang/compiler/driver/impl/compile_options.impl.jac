@@ -91,7 +91,8 @@ impl CompileOptions.native_options_identity -> str {
     return ("tls=1;" if self.native_tls else "")
         + ("sjlj=1;" if self.native_sjlj else "")
         + ("rawview=1;" if self.native_unchecked_views else "")
-        + ("directc=1;" if self.native_direct_c_entries else "");
+        + ("directc=1;" if self.native_direct_c_entries else "")
+        + (f"heap={self.native_heap};" if self.native_heap else "");
 }
 
 impl CompileOptions.codegen_identity -> str {
@@ -237,6 +238,7 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         native_sjlj=self.native_sjlj,
         native_unchecked_views=self.native_unchecked_views,
         native_direct_c_entries=self.native_direct_c_entries,
+        native_heap=self.native_heap,
         native_debug=self.native_debug,
         opt_level=self.opt_level,
         dump_ir_path=self.dump_ir_path,

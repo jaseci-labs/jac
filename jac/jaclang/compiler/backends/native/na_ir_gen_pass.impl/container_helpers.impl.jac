@@ -960,7 +960,7 @@ impl NaIRGenPass._emit_rc_alloc_container(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
-    malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
+    malloc_fn = self._heap_extern("malloc");
 
     null_ptr = ir.Constant(container_ptr_type, None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="sizeof");
@@ -1007,7 +1007,7 @@ impl NaIRGenPass._emit_rc_alloc_container(
     if layout["kind"] == "hash" {
         _ctrl0: ir.Value = ir.Constant(i8_ptr, None);
         if initial_cap != 0 {
-            calloc_fn = self._get_or_declare_extern("calloc", i8_ptr, [i64, i64]);
+            calloc_fn = self._heap_extern("calloc");
             _ctrl0 = b.call(
                 calloc_fn,
                 [ir.Constant(i64, initial_cap), ir.Constant(i64, 1)],
@@ -1057,8 +1057,8 @@ impl NaIRGenPass._emit_grow_array(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
-    malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
+    malloc_fn = self._heap_extern("malloc");
+    free_fn = self._heap_extern("free");
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
     _dbl_cap = b.mul(cur_cap, ir.Constant(i64, 2), name="cap.dbl");
     _was_zero = b.icmp_unsigned("==", cur_cap, ir.Constant(i64, 0), name="cap.was0");
@@ -1084,7 +1084,7 @@ impl NaIRGenPass._emit_grow_array(
     b.position_at_end(_gr_copy_bb);
     b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
     if self._nogc_headerless() {
-        _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
+        _free_fn = self._heap_extern("free");
         b.call(_free_fn, [old_i8]);
     } else {
         if self.rc_safe_free_fn is None {

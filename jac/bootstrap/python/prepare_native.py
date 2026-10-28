@@ -73,6 +73,13 @@ options = CompileOptions(
     # manages, so they jump straight into their bodies; other C entries still
     # escape the region a compile request runs in.
     native_unchecked_views=True, native_direct_c_entries=True,
+    # The runtime's own heap (reference-counted objects and the storage of
+    # their lists, dicts and sets) is the mimalloc this object links, not libc
+    # malloc: one compile request allocates and frees hundreds of them, and
+    # mimalloc's thread-local heaps take frees from any thread. Memory the Jac
+    # sources allocate through their C imports (malloc, PyMem_RawMalloc) stays
+    # libc's.
+    native_heap="mi",
 )
 plan = build_link_plan(program, [str(entry) for entry in entries], options)
 if program.errors_had:

@@ -3193,7 +3193,7 @@ impl NaIRGenPass._emit_str_concat_inplace(
         return None;
     }
     memcpy_cc = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    realloc_fn = self._get_or_declare_extern("realloc", i8p, [i8p, i64]);
+    realloc_fn = self._heap_extern("realloc");
 
     _root_ok: ir.Value = ir.Constant(i1, 1);
     if _desc_slot {
@@ -3292,7 +3292,7 @@ impl NaIRGenPass._emit_str_concat_inplace(
     if self._target_is_wasm() {
         self.builder.branch(grow_bb);
     } else {
-        usable = self._floor_call("__jac_malloc_size", i64, [base], "ip.usable");
+        usable = self._heap_usable_size(self.builder, base, "ip.usable");
         cap = self.builder.sub(usable, ir.Constant(i64, HDR_TOTAL), name="ip.cap");
         _units = self.builder.lshr(cap, ir.Constant(i64, 8), name="ip.units");
         _clamped = self.builder.select(

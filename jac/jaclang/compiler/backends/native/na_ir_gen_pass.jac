@@ -1564,6 +1564,8 @@ walker NaIRGenPass(CompilerPass) {
     def _native_tls_on -> bool;
     def _native_sjlj_on -> bool;
     def _unchecked_views_on -> bool;
+    def _heap_extern(kind: str) -> ir.Function;
+    def _heap_usable_size(b: ir.IRBuilder, block: ir.Value, name: str) -> ir.Value;
     def _direct_c_entry(fn: ir.Function) -> bool;
     def _fold_direct_c_entries -> None;
     def _region_live_flag -> ir.Value;
