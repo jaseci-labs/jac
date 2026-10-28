@@ -35,8 +35,6 @@ impl check_prefix_collisions(units: list[LinkUnit]) {
 }
 
 impl LinkInputs.digest(plan_digest: str, kind: str, soname: str) -> str {
-    """Hash a build action from code inputs and runtime contents.
-        Code inputs may be bitcode before whole-program optimization.""";
     payload = {
         "plan": plan_digest,
         "kind": kind,
@@ -132,6 +130,9 @@ impl LinkPlan.demoted_symbols -> list[str] {
     out: list[str] = [];
     for u in self.units {
         for name in u.iface.demoted {
+            if "__jac_test_" in name {
+                continue;
+            }
             out.append(f"{os.path.basename(u.path)}:{name}");
         }
     }
@@ -161,10 +162,6 @@ impl LinkPlan.clib_symbol_lib -> dict[str, str] {
 }
 
 impl LinkPlan.pub_exports -> list[str] {
-    """The C ABI of a shared artifact. A library's is its root module's
-        `:pub` surface: in the modules it imports `:pub` is how Jac modules see
-        each other, and keeping those internal lets the whole-program optimizer
-        specialize and drop them as it does for an executable.""";
     out: list[str] = [];
     for u in ([self.root_unit()] if self.library_api else self.units) {
         for sym in u.iface.pub_symbols() {
@@ -355,6 +352,8 @@ impl build_link_plan(
     registry.session = session;
 
     target_token = push_native_target(opts.native_target or "");
+    import from jaclang.compiler.driver.jir { begin_prepare_memo, end_prepare_memo }
+    memo = begin_prepare_memo();
     try {
         plan = _build_link_plan(prog, roots, opts, mode, native_unit);
         session.finish([unit.path for unit in plan.units]);
@@ -362,6 +361,7 @@ impl build_link_plan(
     } finally {
         registry.session = None;
         session.close();
+        end_prepare_memo(memo);
         pop_native_target(target_token);
     }
 }
@@ -397,19 +397,12 @@ impl _build_link_plan(
             return;
         }
         for dep in registry.known_native_deps(path, opts) {
-            """A dependency the cached unit recorded may since have been deleted
-            or renamed (a platform variant folded into one unit, say). The
-            unit's own check below then finds it stale and lowers it again, and
-            the dependencies it has now are walked after it.""";
             if os.path.isfile(dep) {
                 walk_unit(dep, stack + [path]);
             }
         }
         errs_before = len(prog.errors_had);
-        """The unit's dependencies are walked first, so a cached unit is
-        checked against the interfaces they have now: one a compiler change
-        left stale lowers here, before any consumer reads it, instead of being
-        adopted and rebuilt by settlement after its consumers.""";
+
         ent = registry.ensure(
             path, compile_on_miss=False, options=opts, check_deps=True
         );
@@ -436,8 +429,6 @@ impl _build_link_plan(
         try {
             modkey = module_cache_key(path);
         } except OSError {
-            """A root compiled from a string has no file; its interface
-            digest is the only identity the plan can give it.""";
             modkey = ent.digest;
         }
         units[path] = LinkUnit(
@@ -572,8 +563,6 @@ impl _build_link_plan(
             }
             rebuilt = True;
             if changed_edges {
-                """Recompute reachability and group order before compiling another
-                consumer. A lowering can add or remove native dependencies.""";
                 break;
             }
         }
@@ -620,12 +609,147 @@ impl _target_machine(plan: LinkPlan, kind: ArtifactKind) -> TargetMachine {
     return tm;
 }
 
+impl unit_glue_symbols(
+    bitcode: bytes, wanted: list[str], options: CompileOptions
+) -> UnitGlueSymbols {
+    names = sorted(set(wanted));
+    h = hashlib.sha256();
+    h.update(b"glue-symbols-1");
+    for name in names {
+        h.update(b"\x1f");
+        h.update(name.encode("utf-8"));
+    }
+    h.update(b"\x1e");
+    h.update(bitcode);
+    key = h.hexdigest();
+    known = _glue_symbol_memo.get(key);
+    if known is not None {
+        return known;
+    }
+    store = _glue_symbols_store(key, options);
+    found = _read_glue_symbols(store);
+    if found is None {
+        scanned = UnitGlueSymbols();
+        module = llvm.parse_bitcode(bitcode);
+        for function in module.functions {
+            name = function.name;
+            if name in names {
+                if function.is_declaration {
+                    scanned.declared[name] = str(function);
+                } elif name not in scanned.defined {
+                    scanned.defined.append(name);
+                }
+            }
+        }
+        _write_glue_symbols(store, scanned);
+        found = scanned;
+    }
+    _glue_symbol_memo[key] = found;
+    return found;
+}
+
+impl _glue_symbols_store(key: str, options: CompileOptions) -> str {
+    (rebuild, _) = cache_mode();
+    if rebuild or options.no_ir_cache {
+        return "";
+    }
+    return os.path.join(
+        str(get_jir_cache_dir()), "nativeglue", compiler_generation(), key[:2], key
+    );
+}
+
+impl _read_glue_symbols(store: str) -> (UnitGlueSymbols | None) {
+    if not store {
+        return None;
+    }
+    raw: any = None;
+    try {
+        with open(store, "r", encoding="utf-8") as handle {
+            raw = json.load(handle);
+        }
+    } except Exception {
+        return None;
+    }
+    if not isinstance(raw, dict) {
+        return None;
+    }
+    declared = raw.get("declared");
+    defined = raw.get("defined");
+    if not isinstance(declared, dict) or not isinstance(defined, list) {
+        return None;
+    }
+    out = UnitGlueSymbols();
+    for (name, text) in declared.items() {
+        if not isinstance(name, str) or not isinstance(text, str) {
+            return None;
+        }
+        out.declared[name] = text;
+    }
+    for name in defined {
+        if not isinstance(name, str) {
+            return None;
+        }
+        out.defined.append(name);
+    }
+    try {
+        os.utime(store, None);
+    } except OSError {}
+    return out;
+}
+
+impl _write_glue_symbols(store: str, symbols: UnitGlueSymbols) {
+    if not store {
+        return;
+    }
+    try {
+        os.makedirs(os.path.dirname(store), exist_ok=True);
+        scratch = f"{store}.{os.getpid()}.tmp";
+        with open(scratch, "w", encoding="utf-8") as handle {
+            json.dump(
+                {"declared": dict(symbols.declared), "defined": list(symbols.defined)},
+                handle
+            );
+        }
+        os.replace(scratch, store);
+    } except OSError {
+        return;
+    }
+    try {
+        import from jaclang.cache.registry { maybe_sweep }
+        maybe_sweep("jir-nativeglue");
+    } except Exception {}
+}
+
+impl glue_symbol_memo_clear {
+    _glue_symbol_memo.clear();
+}
+
+impl unique_callbacks(bindings: list[InteropBinding]) -> list[InteropBinding] {
+    seen: set[str] = set();
+    unique: list[InteropBinding] = [];
+    for binding in bindings {
+        if binding.symbol not in seen {
+            seen.add(binding.symbol);
+            unique.append(binding);
+        }
+    }
+    return unique;
+}
+
+impl callback_bind_exports(plan: LinkPlan) -> list[str] {
+    return [
+        '__jac_bind_' + binding.symbol
+        for binding in unique_callbacks(plan.callback_bindings)
+    ];
+}
+
 impl callback_glue_ir(plan: LinkPlan) -> str {
     if not plan.callback_bindings {
         return "";
     }
+    callbacks = unique_callbacks(plan.callback_bindings);
 
-    wanted = {binding.name for binding in plan.callback_bindings};
+    wanted = sorted({binding.symbol for binding in callbacks});
     declarations: dict[str, str] = {};
     defined: set[str] = set();
     registry = plan.prog.native_units();
@@ -634,30 +758,27 @@ impl callback_glue_ir(plan: LinkPlan) -> str {
         if bitcode is None {
             raise LinkPlanError(f"No bitcode for {unit.path}");
         }
-        module = llvm.parse_bitcode(bitcode);
-        for function in module.functions {
-            if function.name in wanted {
-                if function.is_declaration {
-                    declarations[function.name] = str(function);
-                } else {
-                    defined.add(function.name);
-                }
-            }
+        symbols = unit_glue_symbols(bitcode, wanted, plan.options);
+        for (name, text) in symbols.declared.items() {
+            declarations[name] = text;
+        }
+        for name in symbols.defined {
+            defined.add(name);
         }
     }
     bindings = [
         b
-        for b in plan.callback_bindings
-        if b.name not in defined
+        for b in callbacks
+        if b.symbol not in defined
     ];
-    missing = {b.name for b in bindings} - set(declarations);
+    missing = {b.symbol for b in bindings} - set(declarations);
     if missing {
         raise LinkPlanError(
             "Missing callback declarations: " + ", ".join(sorted(missing))
         );
     }
     (text, _) = bind_shared_callbacks(
-        "\n".join(declarations[b.name] for b in bindings), bindings
+        "\n".join(declarations[b.symbol] for b in bindings), bindings
     );
     return text;
 }
@@ -666,8 +787,6 @@ impl heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
     declarations: dict[str, str] = {};
     defined: set[str] = set();
 
-    """Heap accounting reads the allocation header, which only a headerless
-    (nogc-enforced, `gc=none`) unit lacks.""";
     managed = not any(unit.iface.headerless for unit in plan.units);
     registry = plan.prog.native_units();
     for unit in plan.units {
@@ -675,16 +794,12 @@ impl heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
         if bitcode is None {
             raise LinkPlanError(f"No bitcode for {unit.path}");
         }
-        module = llvm.parse_bitcode(bitcode);
-        for function in module.functions {
-            name = function.name;
-            if name in ("jac_heap_size", "jac_list_heap_size") {
-                if function.is_declaration {
-                    declarations[name] = str(function);
-                } else {
-                    defined.add(name);
-                }
-            }
+        symbols = unit_glue_symbols(bitcode, HEAP_GLUE_SYMBOLS, plan.options);
+        for (name, text) in symbols.declared.items() {
+            declarations[name] = text;
+        }
+        for name in symbols.defined {
+            defined.add(name);
         }
     }
     text = '\n'.join(
@@ -715,7 +830,7 @@ impl _glue_module(
     callback_ir = callback_glue_ir(plan);
     if callback_ir {
         mod.link_in(llvm.parse_assembly(callback_ir));
-        exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
+        exports.extend(callback_bind_exports(plan));
     }
     mod.verify();
     return (mod, exports);
@@ -765,9 +880,6 @@ impl unit_objects(
     (glue_mod, exports) = _glue_module(plan, spec, tm);
     dump_path = plan.options.dump_ir_path or "";
     if dump_path {
-        """In objects mode the program is its units' objects plus the glue;
-        the dump is the glue module after every unit's own text, which is
-        what a reader of the finalized program expects to find.""";
         with open(dump_path, "w") as df {
             for u in ordered {
                 bc = registry.bitcode_for(u.path, plan.options);
@@ -786,13 +898,6 @@ impl unit_objects(
 }
 
 impl name_private_functions(merged: ModuleRef) {
-    """Give `private` functions a symbol (`internal` linkage) so the JAC_SYMMAP
-    symbol map names them. Both linkages are module-local, but a private
-    function gets no symbol-table entry, so a profile charged its cost to the
-    preceding named function (the refcount, dict and list helpers showed up
-    under whatever user function the linker placed before them). Only for the
-    merged whole-program module, where names are unique; per-unit objects
-    share helper names across units.""";
     for fn in merged.functions {
         if not fn.is_declaration and fn.linkage == llvm.Linkage.private {
             fn.linkage = llvm.Linkage.internal;
@@ -824,24 +929,16 @@ impl optimize_whole_program(
                 "jac_heap_size",
                 "jac_list_heap_size"
             ];
-        exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
+        exports.extend(callback_bind_exports(plan));
         internalize_native_implementation(merged, exports);
     }
     if kind == ArtifactKind.EXECUTABLE {
-        """The entry points stay external: the linker resolves the C runtime's
-        `main` and the image's entry symbol by name across objects.""";
         internalize_native_implementation(merged, EXECUTABLE_ENTRY_SYMBOLS);
     }
     mpm.run(merged, pb);
 }
 
 impl optimize_merged_program(plan: LinkPlan, merged: ModuleRef, kind: ArtifactKind) {
-    """Internalize and optimize a merged whole program that is emitted as
-    source rather than linked here, so the C backend translates the
-    functions the roots reach instead of every unit of the runtime closure.
-    An executable keeps only its entry external before the pipeline runs,
-    where a system linker would otherwise drop what the internalize pass
-    appended after the pipeline leaves behind.""";
     if kind == ArtifactKind.EXECUTABLE {
         internalize_native_implementation(merged, ["main"]);
     }
@@ -899,9 +996,7 @@ impl plan_objects(
     if env_symmap_requested() {
         name_private_functions(merged);
     }
-    """Code generation works function by function, so a large program is
-    split into up to one partition per emit job and the partitions are
-    emitted the way units are.""";
+
     (_, defined) = unit_function_counts(merged);
     jobs = min(object_emit_jobs(), defined // PARTITION_FUNCTIONS);
     if jobs < 2 {
@@ -1062,9 +1157,7 @@ impl link_artifact(
         host_elf=platform == "elf" and _links_for_host(plan.triple)
     );
     is_linux_exec = (not shared) and platform == "elf";
-    """The runtime units declare their libc calls as C imports, and musl's
-    libc.a satisfies every one of them: only a library beyond libc and libm
-    keeps a Linux executable off the static path.""";
+
     libc_only = all(lib in LIBC_SHARED_NAMES for lib in needed_libs);
     static_musl = is_linux_exec and libc_only;
     if static_musl {
@@ -1083,7 +1176,7 @@ impl link_artifact(
     callback_ir = callback_glue_ir(plan);
     glue_ir += callback_ir;
     if callback_ir {
-        glue_exports.extend('__jac_bind_' + b.name for b in plan.callback_bindings);
+        glue_exports.extend(callback_bind_exports(plan));
     }
     registry = plan.prog.native_units();
     code_inputs: list[bytes] = [];
@@ -1278,10 +1371,6 @@ impl unresolved_unit_symbols(plan: LinkPlan, objects: list[bytes]) -> list[str] 
 }
 
 impl expose_root_exports(plan: LinkPlan, merged: ModuleRef) -> list[str] {
-    """A wasm host calls the entry module's functions by the names the
-    source gives them: the root unit's module-level functions and globals
-    take their bare names in the merged module, the way `:pub` symbols
-    already do, and a name another symbol already holds stays qualified.""";
     exposed: list[str] = [];
     root_u = plan.root_unit();
     mod_any: any = merged;
@@ -1415,12 +1504,6 @@ impl load_jit_library(lib_path: str) -> ctypes.CDLL {
 }
 
 impl _jit_image_path(plan: LinkPlan) -> (str | None) {
-    """Where the optimized whole-program image for this plan lives. The plan
-    digest covers the units (content and interface), the mode, the triple,
-    the codegen identity and the compiler, which is everything the merged
-    and optimized module depends on. Debug builds, IR dumps and cache
-    bypasses never reuse an image.""";
-
     (rebuild, _) = cache_mode();
     if rebuild
         or plan.options.no_ir_cache

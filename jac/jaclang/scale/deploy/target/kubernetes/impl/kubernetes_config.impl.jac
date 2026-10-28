@@ -53,9 +53,6 @@ impl KubernetesConfig.to_dict -> dict[str, any] {
 }
 
 impl KubernetesConfig.from_dict(cls: type, config: dict[str, any]) -> KubernetesConfig {
-    """A key absent from config is not passed, so the has-declaration above
-        is the only place a default for it exists. The three assignments after
-        the loop are the only fields whose value is not the config's verbatim.""";
     kw: dict[str, any] = {};
     comptime for f in fields(KubernetesConfig) {
         if f.name in config {

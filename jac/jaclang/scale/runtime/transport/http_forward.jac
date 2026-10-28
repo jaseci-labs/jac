@@ -27,30 +27,6 @@ obj ForwardResult {
 }
 
 
-impl ForwardResult.to_response -> StreamingResponse {
-    resp = self._resp;
-
-    async def body_iter {
-        try {
-            async for chunk in resp.aiter_raw() {
-                yield chunk;
-            }
-        } finally {
-            await resp.aclose();
-        }
-    }
-
-    return StreamingResponse(
-        body_iter(), status_code=self.status, headers=self.headers
-    );
-}
-
-
-impl ForwardResult.cleanup -> None {
-    await self._resp.aclose();
-}
-
-
 async def stream_forward(
     method: str, url: str, headers: dict[str, str], body: bytes, timeout: int = 30
 ) -> ForwardResult | None;

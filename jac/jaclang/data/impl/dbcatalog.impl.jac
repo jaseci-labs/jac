@@ -239,6 +239,30 @@ impl drop_database(conn: any, database: str, force: bool = False) -> bool {
 }
 
 
+impl rename_database(conn: any, database: str, new_name: str) -> bool {
+    assert is_jac_database(database) and is_jac_database(new_name) , (
+        f"refusing to rename {database!r} to {new_name!r}: only jac-owned databases "
+        f"(named {DB_PREFIX}*) are renamed"
+    );
+    try {
+        conn.run(f'ALTER DATABASE "{database}" RENAME TO "{new_name}"');
+    } except Exception as e {
+        logger.warning(f"could not rename {database} to {new_name}: {e}");
+        return False;
+    }
+    try {
+        conn.run(
+            f"UPDATE {REGISTRY_TABLE} SET database = :new WHERE database = :old",
+            new=new_name,
+            old=database
+        );
+    } except Exception as e {
+        logger.debug(f"could not move the registry row of {database}: {e}");
+    }
+    return True;
+}
+
+
 impl process_alive(host: str, pid: int) -> bool {
     if pid <= 0 {
         return False;

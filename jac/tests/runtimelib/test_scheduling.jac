@@ -1,6 +1,8 @@
 """Tests for the built-in scheduler engine."""
 
 import datetime;
+import os;
+import socket;
 import threading;
 import time;
 import from pathlib { Path }
@@ -8,6 +10,7 @@ import from jaclang { JacRuntime as Jac }
 import logging;
 import from jaclang.server.task_scheduler {
     CronSchedule,
+    RunOutcome,
     Scheduler,
     ScheduleSpec,
     ScheduledTask,
@@ -183,7 +186,7 @@ test "compute next run and schedule decorator" {
     assert module.static_fn.schedule_spec.trigger == ScheduleTrigger.STATIC;
     assert module.str_trigger_fn.schedule_spec.trigger == ScheduleTrigger.STATIC;
 
-    # _execute catches exceptions gracefully
+    # _execute catches exceptions and returns them as the run's error
     def bad_fn {
         raise RuntimeError("boom");
     }
@@ -192,10 +195,9 @@ test "compute next run and schedule decorator" {
         target=bad_fn,
         spec=ScheduleSpec(interval=60),
         is_walker=False,
-        next_run=datetime.datetime.now(),
-        last_run=None
+        next_run=datetime.datetime.now()
     );
-    sched._execute(task);
+    assert sched._execute(task) == "RuntimeError: boom";
 }
 
 test "fixture loading registration and api exclusion" {
@@ -359,13 +361,13 @@ test "a colocated service's static schedules are registered under its app" {
             names = {task.name for task in server.scheduler._tasks};
             assert "colo.svc_tick" in names , f"not registered: {sorted(names)}";
             assert "IntervalWalker" in names;
-            task = [
-                t
-                for t in server.scheduler._tasks
-                if t.name == "colo.svc_tick"
-            ][0];
-            server.scheduler._execute(task);
+            tasks = {t.name: t for t in server.scheduler._tasks};
+            assert server.scheduler._execute(tasks["colo.svc_tick"]) == "";
             assert svc.TICKS == [1] , "the colocated schedule must run its own target";
+            assert server.scheduler._execute(tasks["colo.svc_boom"])
+                == "execution_error" , (
+                "a failing colocated run must report its error, not ok"
+            );
         } finally {
             sv_client.unregister_local("colo");
             client.close();
@@ -537,8 +539,8 @@ test "a served scheduled walker runs each tick without an error record" {
             import from contextlib { redirect_stdout }
             printed = io.StringIO();
             with redirect_stdout(printed) {
-                server.scheduler._execute(task);
-                server.scheduler._execute(task);
+                assert server.scheduler._execute(task) == "";
+                assert server.scheduler._execute(task) == "";
             }
             assert served_log.count("interval-walker") == before + 2 , served_log;
             assert "interval-walker-report" not in printed.getvalue() , (
@@ -697,12 +699,13 @@ test "a worker recomputes inherited fire times when it starts" {
     sched.register("beat", lambda { None; }, ScheduleSpec(interval=600), False);
     stale = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1);
     sched._tasks[0].next_run = stale;
+    outcomes: list[RunOutcome] = [];
+    sched.on_run("probe", outcomes.append);
     sched.start();
     try {
-        # The loop stamps last_run the moment it pops a task, so an inherited
-        # past fire time is caught whichever thread gets there first.
+        # A run of the inherited past fire time would report an outcome.
         task = sched._tasks[0];
-        assert task.last_run is None , task.last_run;
+        assert outcomes == [] , outcomes;
         assert task.next_run is not None;
         assert task.next_run > datetime.datetime.now(datetime.timezone.utc) , task.next_run;
     } finally {
@@ -909,12 +912,15 @@ test "a run whose thread cannot start gives its hold back and skips the run" {
         );
         task = sched._tasks[0];
         sched._running = True;
+        outcomes: list[RunOutcome] = [];
+        sched.on_run("probe", outcomes.append);
+        tick = datetime.datetime(2026, 5, 1, 9, 0, tzinfo=datetime.timezone.utc);
         records = _Records();
         log = logging.getLogger("jaclang.server.task_scheduler");
         log.addHandler(records);
         threading.Thread.start = _start_refusing(refused, real_start);
         try {
-            sched._launch(task);
+            sched._launch(task, tick);
             with sched._flight_lock {
                 flights = list(sched._in_flight.values());
             }
@@ -934,6 +940,8 @@ test "a run whose thread cannot start gives its hold back and skips the run" {
             if m.startswith("WARNING") and "could not start a thread for 'mailer'" in m
         ];
         assert len(refusals) == 1 , (refused, records.messages);
+        assert [(o.status, o.reason, o.tick) for o in outcomes]
+            == [("skipped", "start_failed", tick)] , (refused, outcomes);
     }
 }
 
@@ -974,6 +982,8 @@ test "a static task never runs alongside an earlier run of itself" {
     sched.register(
         "slow_fn", lambda { probe.slow(0.7); }, ScheduleSpec(interval=0.2), False
     );
+    outcomes: list[RunOutcome] = [];
+    sched.on_run("probe", outcomes.append);
     records = _Records();
     log = logging.getLogger("jaclang.server.task_scheduler");
     log.addHandler(records);
@@ -994,6 +1004,151 @@ test "a static task never runs alongside an earlier run of itself" {
         if "still running" in m
     ];
     assert 1 <= len(overlaps) <= probe.started , records.messages;
+    statuses = [(o.status, o.reason) for o in outcomes];
+    assert statuses.count(("ok", "")) == probe.finished , statuses;
+    assert ("skipped", "still_running") in statuses , statuses;
+}
+
+
+test "each tick reports one outcome naming its task, tick and worker" {
+    (claim, last) = _shared_claims();
+    def broken(key: str, tick: int) -> bool {
+        raise ConnectionError("database is restarting");
+    }
+    def raising {
+        raise RuntimeError("boom");
+    }
+    def unregistered -> dict[str, str] {
+        return {"error": "'gone_fn' is no longer registered"};
+    }
+    def silent_envelope -> dict[str, str] {
+        return {"error": "", "error_code": "execution_error"};
+    }
+    def bare_raise {
+        raise AssertionError();
+    }
+    tick = datetime.datetime(2026, 9, 15, 12, 0, tzinfo=datetime.timezone.utc);
+    claim(f"sched:orders:taken_fn", tick_of(tick));
+    later = (datetime.datetime.now() + datetime.timedelta(hours=1)).isoformat();
+    worker = f"{socket.gethostname()}:{os.getpid()}";
+    records = _Records();
+    log = logging.getLogger("jaclang.server.task_scheduler");
+    (level, disabled) = (log.level, log.disabled);
+    log.setLevel(logging.INFO);
+    log.disabled = False;
+    log.addHandler(records);
+    try {
+        for (name, target, claim_fn, status, reason, error, line) in [
+            (
+                "ok_fn",
+                lambda { None; },
+                claim,
+                "ok",
+                "",
+                "",
+                "INFO scheduled ok_fn ok in"
+            ),
+            (
+                "gone_fn",
+                unregistered,
+                claim,
+                "failed",
+                "",
+                "'gone_fn' is no longer registered",
+                "ERROR scheduled gone_fn failed in"
+            ),
+            (
+                "raising_fn",
+                raising,
+                claim,
+                "failed",
+                "",
+                "RuntimeError: boom",
+                "ERROR scheduled raising_fn failed in"
+            ),
+            (
+                "silent_fn",
+                silent_envelope,
+                claim,
+                "failed",
+                "",
+                "execution_error",
+                "ERROR scheduled silent_fn failed in"
+            ),
+            (
+                "bare_fn",
+                bare_raise,
+                claim,
+                "failed",
+                "",
+                "AssertionError",
+                "ERROR scheduled bare_fn failed in"
+            ),
+            (
+                "taken_fn",
+                lambda { None; },
+                claim,
+                "skipped",
+                "claimed_elsewhere",
+                "",
+                ""
+            ),
+            ("broken_fn", lambda { None; }, broken, "skipped", "claim_failed", "", "")
+        ] {
+            outcomes: list[RunOutcome] = [];
+            sched = fresh_scheduler();
+            sched.claim = claim_fn;
+            sched.namespace = "orders";
+            sched.on_run("probe", outcomes.append);
+            sched.register(name, target, ScheduleSpec(date=later), False);
+            task = sched._tasks[0];
+            records.messages.clear();
+            sched.start();
+            try {
+                sched._tick(task, tick);
+                deadline = time.monotonic() + 5.0;
+                while not outcomes and time.monotonic() < deadline {
+                    time.sleep(0.02);
+                }
+            } finally {
+                sched.stop(timeout=2.0);
+            }
+            assert len(outcomes) == 1 , (name, outcomes);
+            got = outcomes[0];
+            assert (got.task, got.tick, got.worker) == (name, tick, worker) , got;
+            assert (got.status, got.reason, got.error) == (status, reason, error) , got;
+            if line {
+                assert any(
+                    m.startswith(line) and worker in m for m in records.messages
+                ) , (name, records.messages);
+            }
+        }
+    } finally {
+        log.removeHandler(records);
+        log.setLevel(level);
+        log.disabled = disabled;
+    }
+}
+
+
+test "a tick stop() refuses is reported as a skip, not spent in silence" {
+    # The tick is claimed before the launch, so without this every other
+    # replica logs claimed_elsewhere for a tick nobody ran and nobody named.
+    (claim_fn, claims) = _shared_claims();
+    outcomes: list[RunOutcome] = [];
+    sched = fresh_scheduler();
+    sched.claim = claim_fn;
+    sched.namespace = "orders";
+    sched.on_run("probe", outcomes.append);
+    sched.register("beat", lambda { None; }, ScheduleSpec(interval=600), False);
+    sched.start();
+    sched.stop(timeout=2.0);
+    tick = datetime.datetime(2026, 5, 1, 9, 0, tzinfo=datetime.timezone.utc);
+    sched._tick(sched._tasks[0], tick);
+    assert len(outcomes) == 1 , outcomes;
+    got = outcomes[0];
+    assert (got.status, got.reason) == ("skipped", "stopping") , got;
+    assert claims["sched:orders:beat"] == tick_of(tick) , claims;
 }
 
 

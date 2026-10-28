@@ -61,7 +61,14 @@ import from engine.src.runtime.jsstring {
 
 import from engine.src.runtime.jssymbol { js_symbol, js_symbol_for }
 import from engine.src.runtime.realm { Realm }
-import from engine.src.runtime.mem { read_byte, write_byte, read_u16, byte_chr }
+import from engine.src.runtime.mem {
+    read_byte,
+    write_byte,
+    read_u16,
+    byte_chr,
+    str_byte,
+    str_nbytes
+}
 
 import from napi.src.napi_ops {
     NAPI_OP_CREATE_STRING_UTF8,
@@ -132,7 +139,7 @@ def _write_utf8(s: str, buf: int, bufsize: int) -> int {
     # positions past the module and MagicString threw "range out of bounds").
     # The wire helpers convert both; the usual string needs no conversion and
     # is copied verbatim in one call.
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if s.isascii() or not wire_utf8_needs_convert(s) {
         if buf == 0 or bufsize == 0 {
             return n;
@@ -158,55 +165,79 @@ def _write_utf8(s: str, buf: int, bufsize: int) -> int {
 
 """Read a Latin-1 byte buffer into a Jac Unicode string.
 
-Latin-1 maps bytes 0x00–0xFF directly to Unicode U+0000–U+00FF.
+Latin-1 maps bytes 0x00–0xFF directly to Unicode U+0000–U+00FF: a byte from
+0x80 is the two UTF-8 bytes of its code point, and 0x00 the C0 80 sentinel.
 If len < 0 (NAPI_AUTO_LENGTH), scans until a null byte.
 """
 def _read_latin1(ptr: int, len: int) -> str {
     if ptr == 0 {
         return "";
     }
-    out: str = "";
+    rl_parts: list[str] = [];
     i: int = 0;
     if len < 0 {
         while i < _MAX_STR_SCAN {
             b: int = read_byte(ptr, i);
             if b == 0 {
-                return out;
+                return "".join(rl_parts);
             }
-            out = out + byte_chr(b);
+            rl_parts.append(chr(b));
             i = i + 1;
         }
-        return out;
+        return "".join(rl_parts);
     }
     while i < len {
-        out = out + byte_chr(read_byte(ptr, i));
+        rl_b: int = read_byte(ptr, i);
+        if rl_b == 0 {
+            rl_parts.append(nul_sentinel());
+        } else {
+            rl_parts.append(chr(rl_b));
+        }
         i = i + 1;
     }
-    return out;
+    return "".join(rl_parts);
 }
 
 """Write a Jac Unicode string as Latin-1 bytes to a C char* buffer.
 
-Code points > 255 are truncated to their low byte.
+One byte per UTF-16 code unit, its low byte (units > 255 are truncated), as
+napi_get_value_string_latin1 does: an ASCII string is copied byte for byte.
 Copies at most bufsize-1 bytes then appends a null terminator.
-Returns the number of bytes in the full string (without null).
+Returns the number of units in the full string (without null).
 """
 def _write_latin1(s: str, buf: int, bufsize: int) -> int {
-    n: int = len(s);
-    if buf != 0 and bufsize > 0 {
-        copy: int = n;
-        limit: int = bufsize - 1;
-        if copy > limit {
-            copy = limit;
+    if s.isascii() {
+        n: int = str_nbytes(s);
+        if buf != 0 and bufsize > 0 {
+            copy: int = n;
+            limit: int = bufsize - 1;
+            if copy > limit {
+                copy = limit;
+            }
+            i: int = 0;
+            while i < copy {
+                write_byte(buf, i, str_byte(s, i));
+                i = i + 1;
+            }
+            write_byte(buf, copy, 0);
         }
-        i: int = 0;
-        while i < copy {
-            write_byte(buf, i, ord(s[i]) & 255);
-            i = i + 1;
-        }
-        write_byte(buf, copy, 0);
+        return n;
     }
-    return n;
+    wl_units: list[int] = js_string_utf16_units(s);
+    wl_n: int = len(wl_units);
+    if buf != 0 and bufsize > 0 {
+        wl_copy: int = wl_n;
+        if wl_copy > bufsize - 1 {
+            wl_copy = bufsize - 1;
+        }
+        wl_i: int = 0;
+        while wl_i < wl_copy {
+            write_byte(buf, wl_i, wl_units[wl_i] & 255);
+            wl_i = wl_i + 1;
+        }
+        write_byte(buf, wl_copy, 0);
+    }
+    return wl_n;
 }
 
 """Read a UTF-16LE encoded C string into a list of code units.

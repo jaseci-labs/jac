@@ -10,7 +10,16 @@ speed. Concurrency (bun opens up to 48 sockets) is a P2 item.
 """
 
 import from engine.src.ffi.libc { recv, close, getenv, poll }
-import from engine.src.runtime.mem { io_alloc, io_free, read_byte }
+import from engine.src.runtime.mem {
+    io_alloc,
+    io_free,
+    read_byte,
+    str_bfind,
+    str_brfind,
+    str_bslice,
+    str_bslice_from,
+    str_nbytes
+}
 import from engine.src.net.tcp_socket {
     TCPSocket,
     tcp_connect,
@@ -67,44 +76,44 @@ def:pub http_parse_url(url: str) -> HttpUrl {
     if rest.startswith("https://") {
         u.scheme = "https";
         u.port = 443;
-        rest = rest[8:];
+        rest = str_bslice_from(rest, 8);
     } elif rest.startswith("http://") {
         u.scheme = "http";
         u.port = 80;
-        rest = rest[7:];
+        rest = str_bslice_from(rest, 7);
     } else {
         return u;
     }
-    slash: int = rest.find("/");
+    slash: int = str_bfind(rest, "/");
     hostport: str = rest;
     if slash >= 0 {
-        hostport = rest[0:slash];
-        u.path = rest[slash:];
+        hostport = str_bslice(rest, 0, slash);
+        u.path = str_bslice_from(rest, slash);
     } else {
         u.path = "/";
     }
-    at: int = hostport.rfind("@");
+    at: int = str_brfind(hostport, "@");
     if at >= 0 {
-        hostport = hostport[at + 1:];
+        hostport = str_bslice_from(hostport, at + 1);
     }  # userinfo is not sent (auth goes in headers)
     if hostport.startswith("[") {
-        close_b: int = hostport.find("]");
+        close_b: int = str_bfind(hostport, "]");
         if close_b < 0 {
             return u;
         }
-        u.host = hostport[1:close_b];
-        tail: str = hostport[close_b + 1:];
-        if tail.startswith(":") and len(tail) > 1 {
-            u.port = int(tail[1:]);
+        u.host = str_bslice(hostport, 1, close_b);
+        tail: str = str_bslice_from(hostport, close_b + 1);
+        if tail.startswith(":") and str_nbytes(tail) > 1 {
+            u.port = int(str_bslice_from(tail, 1));
         }
     } else {
-        colon: int = hostport.rfind(":");
+        colon: int = str_brfind(hostport, ":");
         if colon >= 0 {
-            ps: str = hostport[colon + 1:];
+            ps: str = str_bslice_from(hostport, colon + 1);
             if ps != "" and ps.isdigit() {
                 u.port = int(ps);
             }
-            u.host = hostport[0:colon];
+            u.host = str_bslice(hostport, 0, colon);
         } else {
             u.host = hostport;
         }
@@ -212,9 +221,9 @@ def:pub http_get(
                 cur = http_origin(u) + loc;
             } else {
                 base: str = u.path;
-                cut: int = base.rfind("/");
+                cut: int = str_brfind(base, "/");
                 if cut >= 0 {
-                    base = base[0:cut + 1];
+                    base = str_bslice(base, 0, cut + 1);
                 } else {
                     base = "/";
                 }
@@ -364,12 +373,12 @@ def _http_parse_response(r: HttpResponse, raw: ByteBuf) -> None {
     while i < len(hlines) {
         line: str = hlines[i];
         i = i + 1;
-        c: int = line.find(":");
+        c: int = str_bfind(line, ":");
         if c <= 0 {
             continue;
         }
-        name: str = line[0:c].strip().lower();
-        value: str = line[c + 1:].strip();
+        name: str = str_bslice(line, 0, c).strip().lower();
+        value: str = str_bslice_from(line, c + 1).strip();
         if name in r.headers {
             r.headers[name] = r.headers[name] + ", " + value;
         } else {
@@ -388,7 +397,7 @@ def _http_parse_response(r: HttpResponse, raw: ByteBuf) -> None {
         te = r.headers["transfer-encoding"].lower();
     }
     decoded: ByteBuf = bytebuf_new(body_len);
-    if te.find("chunked") >= 0 {
+    if str_bfind(te, "chunked") >= 0 {
         pos: int = body_off;
         end: int = raw.len;
         while pos < end {
@@ -397,9 +406,9 @@ def _http_parse_response(r: HttpResponse, raw: ByteBuf) -> None {
                 break;
             }
             size_s: str = bytes_to_str(raw.ptr, pos, eol - pos).strip();
-            semi: int = size_s.find(";");
+            semi: int = str_bfind(size_s, ";");
             if semi >= 0 {
-                size_s = size_s[0:semi].strip();
+                size_s = str_bslice(size_s, 0, semi).strip();
             }
             if size_s == "" {
                 break;

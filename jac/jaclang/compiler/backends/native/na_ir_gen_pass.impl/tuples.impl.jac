@@ -195,16 +195,25 @@ impl NaIRGenPass._unpack_into(
             }
             continue;
         }
-        if var_name in self.local_vars {
+        fresh = var_name not in self.local_vars;
+        if not fresh {
             alloca = self.local_vars[var_name];
             if not isinstance(alloca.type, ir.PointerType) {
                 return False;
             }
             slot_type = alloca.pointee_type;
-            stored = self._coerce_container_element(elem_val, slot_type)
-                if slot_type == self.jacval_type
-                else self._coerce_type(elem_val, slot_type);
-        } else {
+            _target_ty = self._lower_type(target.type)
+                if isinstance(target, uni.Expr)
+                else None;
+            fresh = self._rebinds_slot(slot_type, _target_ty, elem_val.type);
+            if not fresh {
+                stored = self._coerce_container_element(elem_val, slot_type)
+                    if slot_type == self.jacval_type
+                    else self._coerce_type(elem_val, slot_type);
+                fresh = stored.type != slot_type;
+            }
+        }
+        if fresh {
             _i8p = ir.IntType(8).as_pointer();
             _want = self._lower_type(target.type)
                 if isinstance(target, uni.Expr)
@@ -240,6 +249,41 @@ impl NaIRGenPass._unpack_into(
         self._emit_rc_release_simple(_orig_tv, op="unpack_box", loc="");
     }
     return True;
+}
+
+impl NaIRGenPass._value_kind(ty: ir.Type) -> str {
+    if isinstance(ty, ir.IntType) {
+        return "int";
+    }
+    if isinstance(ty, (ir.DoubleType, ir.FloatType)) {
+        return "float";
+    }
+    if isinstance(
+        ty, (ir.PointerType, ir.IdentifiedStructType, ir.LiteralStructType)
+    ) {
+        return "reference";
+    }
+    return "other";
+}
+
+impl NaIRGenPass._rebinds_slot(
+    slot_type: ir.Type, target_type: (ir.Type | None), value_type: ir.Type
+) -> bool {
+    if target_type is None
+        or slot_type == self.jacval_type
+        or target_type == self.jacval_type
+        or value_type == self.jacval_type
+        or target_type == slot_type
+        or value_type == slot_type
+        or self._opt_payload_of(slot_type) is not None {
+        return False;
+    }
+    slot_kind = self._value_kind(slot_type);
+    if slot_kind == "other" {
+        return False;
+    }
+    return slot_kind != self._value_kind(target_type)
+        and self._value_kind(target_type) != "other";
 }
 
 impl NaIRGenPass._unpack_store_global(
@@ -547,15 +591,6 @@ impl NaIRGenPass._codegen_tuple_index(
 impl NaIRGenPass._variadic_tuple_seq_type(
     type_args: list[TypeBase]
 ) -> (ir.Type | None) {
-    """The native shape of a tuple annotation that withholds its arity.
-
-    `tuple[T, ...]` describes any number of `T`, and a native tuple carries its
-    arity in its type, so no tuple struct can stand for it. The one native shape
-    that holds N-of-T with N only known at runtime is the sequence `list[T]`
-    already lowers to, and that is what such an annotation means here. The type
-    system marks the variadic form by parking an `UnknownType` among the type
-    arguments, which is the same signal `_tuple_has_variadic_arg` reads.
-    """;
     try {
         import from jaclang.compiler.types.types { UnknownType as _VtUnknown }
     } except ImportError {
@@ -592,13 +627,6 @@ impl NaIRGenPass._variadic_tuple_seq_type(
 impl NaIRGenPass._tuple_seq_coerce(
     val: ir.Value, target_type: ir.Type
 ) -> (ir.Value | None) {
-    """Materialize a tuple value into the sequence a variadic tuple lowers to.
-
-    Fires when the target is exactly the sequence type the value's own element
-    flavor would build, or when it is the boxed `jacval` sequence an erased
-    `tuple[Any, ...]` lowers to, which holds any element flavor by boxing each
-    one. It never reinterprets one unboxed element flavor as another.
-    """;
     if not isinstance(target_type, ir.PointerType) {
         return None;
     }
@@ -631,17 +659,6 @@ impl NaIRGenPass._tuple_seq_coerce(
 impl NaIRGenPass._variadic_elem_coerce(
     val: ir.Value, container: (uni.UniNode | None)
 ) -> ir.Value {
-    """Give a fixed-arity tuple the shape a `list[tuple[T, ...]]` slot holds.
-
-    A variadic tuple lowers to the sequence `list[T]` does (see
-    `_variadic_tuple_seq_type`), and every read out of such a list views its
-    erased slot through that sequence type. A tuple display stored into the
-    list is built with its own fixed arity, though, and the erased `i8*` slot
-    took the tuple box as it was, so the next read walked a tuple struct as a
-    list header. Every element store into a list whose checked element type
-    is variadic comes through here and is materialized as that sequence; any
-    other value, or a list of anything else, passes through untouched.
-    """;
     if self._tuple_struct_of_value(val) is None {
         return val;
     }

@@ -5,6 +5,10 @@ Days-since-epoch, balancing, ISO week/day-of-year calculations.
 Uses Howard-Hinnant civil date algorithms (same as date.na.jac).
 """
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
 glob ISO_MIN_YEAR: int = -999999,
      ISO_MAX_YEAR: int = 999999,
      ISO_REL_MIN_Y: int = -271821,
@@ -348,18 +352,18 @@ def:pub iso_format_date(y: int, m: int, d: int) -> str {
     # outside that range use a mandatory sign (+/-) and 6 digits (expanded year).
     ys: str = str(y);
     if y >= 0 and y < 10000 {
-        while len(ys) < 4 {
+        while str_nbytes(ys) < 4 {
             ys = "0" + ys;
         }
     } elif y >= 10000 {
         # Expanded positive year: mandatory "+" and SIX digits (10000 → "+010000").
-        while len(ys) < 6 {
+        while str_nbytes(ys) < 6 {
             ys = "0" + ys;
         }
         ys = "+" + ys;
     } else {
         neg_ys: str = str(-y);
-        while len(neg_ys) < 6 {
+        while str_nbytes(neg_ys) < 6 {
             neg_ys = "0" + neg_ys;
         }
         ys = "-" + neg_ys;
@@ -407,12 +411,12 @@ def:pub iso_format_time_precision(
         return out;
     }
     ns_s: str = str(ns);
-    while len(ns_s) < 9 {
+    while str_nbytes(ns_s) < 9 {
         ns_s = "0" + ns_s;
     }
     if frac_digits < 0 {
-        while len(ns_s) > 0 and ns_s[len(ns_s) - 1:len(ns_s)] == "0" {
-            ns_s = ns_s[0:len(ns_s) - 1];
+        while len(ns_s) > 0 and str_bslice(ns_s, str_nbytes(ns_s) - 1, str_nbytes(ns_s)) == "0" {
+            ns_s = str_bslice(ns_s, 0, str_nbytes(ns_s) - 1);
         }
         if len(ns_s) > 0 {
             out = out + "." + ns_s;
@@ -422,13 +426,13 @@ def:pub iso_format_time_precision(
     if frac_digits > 9 {
         frac_digits = 9;
     }
-    if frac_digits > len(ns_s) {
-        while len(ns_s) < frac_digits {
+    if frac_digits > str_nbytes(ns_s) {
+        while str_nbytes(ns_s) < frac_digits {
             ns_s = ns_s + "0";
         }
     }
-    if frac_digits < len(ns_s) {
-        ns_s = ns_s[0:frac_digits];
+    if frac_digits < str_nbytes(ns_s) {
+        ns_s = str_bslice(ns_s, 0, frac_digits);
     }
     out = out + "." + ns_s;
     return out;

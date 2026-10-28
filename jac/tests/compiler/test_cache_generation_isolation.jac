@@ -164,6 +164,74 @@ test "JacPython sources participate in the producing compiler identity" {
     }
 }
 
+test "the wiring file is part of the producing compiler identity" {
+    # Every module under jaclang/ takes its imports from archwire.jac, so the
+    # same sources wired differently are a different compiler.
+    import from jaclang.compiler.driver.jir {
+        compiler_source_digest,
+        _manifest_compiler_digest
+    }
+    with tempfile.TemporaryDirectory() as pkg {
+        src = Path(pkg) / "compiler" / "module.jac";
+        src.parent.mkdir(parents=True, exist_ok=True);
+        src.write_text("def f() -> int { return 1; }\n");
+        wiring = Path(pkg) / "archwire.jac";
+        wiring.write_text("graph import compiler {}\n");
+        before = compiler_source_digest(pkg);
+        wiring.write_text("graph import compiler {\n    module --> other { f }\n}\n");
+        assert compiler_source_digest(pkg) != before;
+        assert _manifest_compiler_digest(pkg) != before;
+    }
+}
+
+test "a staging that ships the wiring rewritten keeps the checkout's identity" {
+    # The payload ships archwire.jac with its edges to natively lowered
+    # providers blanked, so the staged file hashes differently from the
+    # source. The staging must still report the checkout's identity, or every
+    # unit it precompiles is keyed to a compiler the checkout never is and a
+    # rerouted checkout reuses none of them.
+    import from jaclang.compiler.driver.jir {
+        _manifest_compiler_digest,
+        compiler_source_digest,
+        write_compiler_identity
+    }
+    import from jaclang.compiler.driver.wiring { ARCH_FILE_NAME }
+    import from jaclang.bootstrap_manifest { is_staging_rewritten }
+    import shutil;
+    assert is_staging_rewritten(ARCH_FILE_NAME);
+    with tempfile.TemporaryDirectory() as tmp {
+        full = Path(tmp) / "full";
+        full.mkdir();
+        (full / "compiler_inputs.txt").write_text("archwire.jac\ncompiler\nruntime\n");
+        for rel in (
+            "compiler/pass.jac",
+            "compiler/frontend/python/ast_input.jac",
+            "compiler/backends/py/jacpython/assembler.jac",
+            "runtime/python/bindings/heapq.jac"
+        ) {
+            f = full / rel;
+            f.parent.mkdir(parents=True, exist_ok=True);
+            f.write_text("def f -> int { return 1; }\n");
+        }
+        (full / ARCH_FILE_NAME).write_text(
+            "graph import compiler {\n    module --> other { f }\n}\n"
+        );
+        expected = compiler_source_digest(str(full));
+        staged = Path(tmp) / "staged";
+        shutil.copytree(full, staged);
+        (staged / ARCH_FILE_NAME).write_text(
+            "graph import compiler {\n                              \n}\n"
+        );
+        assert compiler_source_digest(str(staged)) != expected;
+        write_compiler_identity(str(full), str(staged));
+        assert compiler_source_digest(str(staged)) == expected;
+        assert _manifest_compiler_digest(str(staged)) == expected;
+        # Only the rewritten inputs take the record over the staged file.
+        (staged / "compiler" / "pass.jac").write_text("def f -> int { return 2; }\n");
+        assert compiler_source_digest(str(staged)) != expected;
+    }
+}
+
 test "a pruned staging resolves compiler identity from its recorded hashes" {
     # The payload drops the natively lowered trees (they live in JacPython's
     # native object, not as source), so a staged jaclang holds fewer files than

@@ -26,6 +26,9 @@ glob FIXTURES_DIR: Path = Path(__file__).parent.parent
      REQUESTS_TOTAL: str = "metrics_workers_http_requests_total",
      IN_PROGRESS: str = "metrics_workers_http_requests_in_progress",
      APP_PINGS: str = "app_pings_total",
+     APP_BEATS: str = "app_beats_total",
+     SCHEDULED_RUNS: str = "metrics_workers_scheduled_runs_total",
+     BEAT_OK: str = 'metrics_workers_scheduled_runs_total{status="ok",task="beat"}',
      PING_SERIES: str = 'metrics_workers_http_requests_total{method="POST",path="/walker/Ping",status_code="200"}';
 
 def _samples(body: str, name: str) -> dict[str, float] {
@@ -115,6 +118,35 @@ def _worker_pids(supervisor: int) -> list[int] {
     ];
 }
 
+"""Pause every other worker until `pid` has run `beat` at least once, so each
+worker's runs land in the scrape whichever worker the shared tick claims would
+have favoured. A paused worker claims no ticks, and one paused while holding the
+run hold blocks the others only until the hold expires."""
+def _beat_on_each(base: str, workers: list[int]) {
+    for pid in workers {
+        series = f'{APP_BEATS}{{pid="{pid}"}}';
+        others = [
+            w
+            for w in workers
+            if w != pid
+        ];
+        for other in others {
+            os.kill(other, signal.SIGSTOP);
+        }
+        try {
+            def _ran(text: str) -> bool {
+                return series in _samples(text, APP_BEATS);
+            }
+            body = _scrape_until(base, _ran, 45.0);
+        } finally {
+            for other in others {
+                os.kill(other, signal.SIGCONT);
+            }
+        }
+        assert series in _samples(body, APP_BEATS) , f"worker {pid} never ran beat: {body}";
+    }
+}
+
 def _stop_fleet(server: subprocess.Popen) {
     table = _process_table();
     (_parent, command) = table.get(server.pid, (0, ""));
@@ -136,17 +168,26 @@ test "a two-worker scrape merges every worker into one series per metric" {
     base = f"http://localhost:{port}";
     server = start_server(FIXTURES_DIR, FIXTURES_DIR / "app.jac", port);
     try {
-        assert len(_worker_pids(server.pid)) == 2;
+        workers = _worker_pids(server.pid);
+        assert len(workers) == 2;
         (sent, pids) = _load_until_shared(base);
         assert len(pids) > 1 , f"one worker answered all {sent} pings: {pids}";
+        _beat_on_each(base, workers);
         def _all_counted(text: str) -> bool {
-            return _samples(text, REQUESTS_TOTAL).get(PING_SERIES) == float(sent);
+            beats = _samples(text, APP_BEATS);
+            return _samples(text, REQUESTS_TOTAL).get(PING_SERIES) == float(sent)
+                and len(beats) > 1
+                and _samples(text, SCHEDULED_RUNS).get(BEAT_OK) == sum(beats.values());
         }
         body = _scrape_until(base, _all_counted, 15.0);
         assert _samples(body, REQUESTS_TOTAL).get(PING_SERIES) == float(sent) , body;
         assert _samples(body, APP_PINGS).get(APP_PINGS) == float(sent) , body;
         assert list(_samples(body, IN_PROGRESS).keys()) == [IN_PROGRESS] , body;
         assert len(_samples(body, "jac_info")) == 1 , body;
+        beats = _samples(body, APP_BEATS);
+        assert len(beats) > 1 , f"one worker ran every beat: {beats}";
+        assert _samples(body, SCHEDULED_RUNS).get(BEAT_OK)
+            == sum(beats.values()) , body;
     } finally {
         _stop_fleet(server);
         cleanup_db_files(FIXTURES_DIR);
