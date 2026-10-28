@@ -50,7 +50,7 @@ math
 _operator
 array
 _struct
-_collections
+_collections raise-free
 itertools
 _pickle
 _lzma

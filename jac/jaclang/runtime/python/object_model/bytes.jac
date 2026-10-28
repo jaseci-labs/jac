@@ -1,14 +1,14 @@
 import from c {
     glob PyType_Type: PyTypeObject,
-         PyExc_BytesWarning: ptr[PyObject]; def memcpy(
+         PyExc_BytesWarning: ptr[PyObject]; def _PyUnicode_EqualToASCIIString(
+        unicode: ptr[PyObject], s: ptr[u8]
+    ) -> i32;  def memcpy(target: ptr, source: ptr, size: u64) -> ptr;  def memmove(
         target: ptr, source: ptr, size: u64
-    ) -> ptr;  def memmove(target: ptr, source: ptr, size: u64) -> ptr;  def memset(
-        target: ptr, value: i32, size: u64
-    ) -> ptr;  def memchr(source: ptr, value: i32, size: u64) -> ptr;  def memcmp(
-        left: ptr, right: ptr, size: u64
-    ) -> i32;  def strlen(s: ptr[u8]) -> u64;  def strcmp(
-        s1: ptr[u8], s2: ptr[u8]
-    ) -> i32;  def snprintf(
+    ) -> ptr;  def memset(target: ptr, value: i32, size: u64) -> ptr;  def memchr(
+        source: ptr, value: i32, size: u64
+    ) -> ptr;  def memcmp(left: ptr, right: ptr, size: u64) -> i32;  def strlen(
+        s: ptr[u8]
+    ) -> u64;  def strcmp(s1: ptr[u8], s2: ptr[u8]) -> i32;  def snprintf(
         target: ptr[u8], size: u64, format: ptr[u8], *args: any
     ) -> i32;  def PyObject_Calloc(nelem: u64, elsize: u64) -> ptr;  def PyObject_Realloc(
         p: ptr, size: u64
@@ -2309,6 +2309,8 @@ def translate_with(
     del_table_view: ptr[Py_buffer]
 ) -> ptr[PyObject];
 
+def release_view(view: ptr[Py_buffer]);
+
 def bytes_translate_impl(
     op: ptr[PyObject], table: ptr[PyObject], deletechars: ptr[PyObject]
 ) -> ptr[PyObject];
@@ -3942,7 +3944,7 @@ impl translate_with(
         PyErr_SetString(
             PyExc_ValueError, ptr[u8]("translation table must be 256 characters long")
         );
-        PyBuffer_Release(table_view);
+        release_view(table_view);
         return NULL;
     }
     del_table_chars = ptr[u8]();
@@ -3954,7 +3956,7 @@ impl translate_with(
         } else {
             if PyObject_GetBuffer(deletechars, del_table_view, PyBUF_SIMPLE)
                 != i32(0) {
-                PyBuffer_Release(table_view);
+                release_view(table_view);
                 return NULL;
             }
             del_table_chars = ptr[u8](del_table_view.view(1)[0].buf);
@@ -3964,8 +3966,8 @@ impl translate_with(
     inlen = object_size(op);
     result = PyBytes_FromStringAndSize(ptr[u8](), inlen);
     if not result {
-        PyBuffer_Release(del_table_view);
-        PyBuffer_Release(table_view);
+        release_view(del_table_view);
+        release_view(table_view);
         return NULL;
     }
     output_start = bytes_sval(result);
@@ -3973,45 +3975,50 @@ impl translate_with(
     input = bytes_sval(op);
     changed = False;
     if dellen == 0 and table_chars {
-        for i in range(inlen) {
+        i: i64 = 0;
+        while i < inlen {
             c = peek(input + i);
             mapped = peek(table_chars + i64(c));
             poke(output + i, mapped);
             if mapped != c {
                 changed = True;
             }
+            i += 1;
         }
         if not changed and bytes_check_exact(op) {
             object_decref(result);
             result = object_new_ref(op);
         }
-        PyBuffer_Release(del_table_view);
-        PyBuffer_Release(table_view);
+        release_view(del_table_view);
+        release_view(table_view);
         return result;
     }
 
-    trans_table = ptr[i64](PyMem_Malloc(u64(256 * 8)));
-    if not trans_table {
-        object_decref(result);
-        PyBuffer_Release(del_table_view);
-        PyBuffer_Release(table_view);
-        return PyErr_NoMemory();
-    }
-    for i in range(256) {
-        if table_chars {
-            (trans_table + i).view(1)[0] = i64(peek(table_chars + i));
-        } else {
-            (trans_table + i).view(1)[0] = i;
+    trans_table = ptr[i64](__alloca(2048));
+    j: i64 = 0;
+    if table_chars {
+        while j < 256 {
+            (trans_table + j).view(1)[0] = i64(peek(table_chars + j));
+            j += 1;
+        }
+    } else {
+        while j < 256 {
+            (trans_table + j).view(1)[0] = j;
+            j += 1;
         }
     }
-    PyBuffer_Release(table_view);
-    for i in range(dellen) {
-        (trans_table + i64(peek(del_table_chars + i))).view(1)[0] = -1;
+    release_view(table_view);
+    j = 0;
+    while j < dellen {
+        (trans_table + i64(peek(del_table_chars + j))).view(1)[0] = -1;
+        j += 1;
     }
-    PyBuffer_Release(del_table_view);
-    for i in range(inlen) {
-        code = i64(peek(input + i));
+    release_view(del_table_view);
+    k: i64 = 0;
+    while k < inlen {
+        code = i64(peek(input + k));
         translated = (trans_table + code).view(1)[0];
+        k += 1;
         if translated != -1 {
             poke(output, u8(translated));
             output = output + 1;
@@ -4021,7 +4028,6 @@ impl translate_with(
         }
         changed = True;
     }
-    PyMem_Free(ptr(trans_table));
     if not changed and bytes_check_exact(op) {
         object_decref(result);
         return object_new_ref(op);
@@ -4033,21 +4039,39 @@ impl translate_with(
     return result;
 }
 
+impl release_view(view: ptr[Py_buffer]) {
+    if view {
+        PyBuffer_Release(view);
+    }
+}
+
 impl bytes_translate_impl(
     op: ptr[PyObject], table: ptr[PyObject], deletechars: ptr[PyObject]
 ) -> ptr[PyObject] {
-    table_view = buffer_slot();
-    if not table_view {
-        return NULL;
+    table_view = ptr[Py_buffer]();
+    del_table_view = ptr[Py_buffer]();
+    if not bytes_check(table) and table != Py_None {
+        table_view = buffer_slot();
+        if not table_view {
+            return NULL;
+        }
     }
-    del_table_view = buffer_slot();
-    if not del_table_view {
-        PyMem_Free(ptr(table_view));
-        return NULL;
+    if deletechars and not bytes_check(deletechars) {
+        del_table_view = buffer_slot();
+        if not del_table_view {
+            if table_view {
+                PyMem_Free(ptr(table_view));
+            }
+            return NULL;
+        }
     }
     result = translate_with(op, table, deletechars, table_view, del_table_view);
-    PyMem_Free(ptr(del_table_view));
-    PyMem_Free(ptr(table_view));
+    if del_table_view {
+        PyMem_Free(ptr(del_table_view));
+    }
+    if table_view {
+        PyMem_Free(ptr(table_view));
+    }
     return result;
 }
 
@@ -4062,6 +4086,15 @@ impl bytes_translate(
         return bytes_translate_impl(
             op, args.view(1)[0], (args + 1).view(1)[0] if nargs >= 2 else NULL
         );
+    }
+    if kwnames
+        and nargs == 1
+        and object_size(kwnames) == 1
+        and _PyUnicode_EqualToASCIIString(
+            PyTuple_GetItem(kwnames, 0), ptr[u8]("delete")
+        )
+            != 0 {
+        return bytes_translate_impl(op, args.view(1)[0], (args + 1).view(1)[0]);
     }
     return invoke_vector(
         translate_signature, args, nargs, kwnames, bytes_translate_bound, op

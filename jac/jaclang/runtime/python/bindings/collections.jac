@@ -217,6 +217,7 @@ glob:priv flags = u64(TypeFlags.GC.value | TypeFlags.IMMUTABLE.value),
                  doc=deque_getset_maxlen_doc
              )
          ],
+         record_size=48,
          unhashable=True,
          weaklist=True,
          generic_getattr=True
@@ -326,24 +327,22 @@ impl reference_value(
 impl deque_create(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
-    return allocate(type, deque_token.handle, DequeState(native=deque_state()));
+    return deque_allocate(type);
 }
 
 impl deque_length(instance: ptr[PyObject]) -> i64 {
-    state = deque_value(instance);
-    return jacpy_deque_size(state.native) if state is not None else i64(-1);
+    d = deque_of(instance);
+    return jacpy_deque_size(d) if not d.is_null() else i64(-1);
 }
 
 impl deque_item(instance: ptr[PyObject], index: i64) -> ptr[PyObject] {
-    state = deque_value(instance);
-    return jacpy_deque_item(state.native, index) if state is not None else NULL;
+    d = deque_of(instance);
+    return jacpy_deque_item(d, index) if not d.is_null() else NULL;
 }
 
 impl deque_assign(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) -> i32 {
-    state = deque_value(instance);
-    return i32(jacpy_deque_assign(state.native, index, value))
-        if state is not None
-        else i32(-1);
+    d = deque_of(instance);
+    return i32(jacpy_deque_assign(d, index, value)) if not d.is_null() else i32(-1);
 }
 
 impl deque_contains(instance: ptr[PyObject], value: ptr[PyObject]) -> i32 {
@@ -351,17 +350,17 @@ impl deque_contains(instance: ptr[PyObject], value: ptr[PyObject]) -> i32 {
 }
 
 impl deque_maxlen(instance: ptr[PyObject], unused: u64) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() {
         return NULL;
     }
-    limit = jacpy_deque_limit(state.native);
+    limit = jacpy_deque_limit(d);
     return Py_NewRef(Py_None) if limit < 0 else PyLong_FromLongLong(limit);
 }
 
 impl deque_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
-    state = deque_value(instance);
-    return jacpy_deque_repr(state.native, instance) if state is not None else NULL;
+    d = deque_of(instance);
+    return jacpy_deque_repr(d, instance) if not d.is_null() else NULL;
 }
 
 impl deque_compare(
@@ -374,14 +373,12 @@ impl deque_compare(
     if jacpy_type_check(other, jacpy_binding_state_get(module, 0)) == 0 {
         return Py_NewRef(Py_NotImplemented);
     }
-    left = deque_value(instance);
-    right = deque_value(other);
-    if left is None or right is None {
+    left = deque_of(instance);
+    right = deque_of(other);
+    if left.is_null() or right.is_null() {
         return NULL;
     }
-    return jacpy_deque_compare(
-        left.native, right.native, instance, other, i64(operation)
-    );
+    return jacpy_deque_compare(left, right, instance, other, i64(operation));
 }
 
 impl deque_concat(instance: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
@@ -396,8 +393,8 @@ impl deque_concat(instance: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject
     if result == 0 {
         return NULL;
     }
-    state = deque_value(result);
-    if state is None or jacpy_deque_extend(state.native, result, other, 0) < 0 {
+    d = deque_of(result);
+    if d.is_null() or jacpy_deque_extend(d, result, other, False) < 0 {
         jacpy_release(result);
         return NULL;
     }
@@ -405,23 +402,21 @@ impl deque_concat(instance: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject
 }
 
 impl deque_iconcat(instance: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() {
         return NULL;
     }
     return Py_NewRef(instance)
-        if jacpy_deque_extend(state.native, instance, other, 0) == 0
+        if jacpy_deque_extend(d, instance, other, False) == 0
         else NULL;
 }
 
 impl deque_irepeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
-    state = deque_value(instance);
-    if state is None {
+    d = deque_of(instance);
+    if d.is_null() {
         return NULL;
     }
-    return Py_NewRef(instance)
-        if jacpy_deque_repeat(state.native, count) == 0
-        else NULL;
+    return Py_NewRef(instance) if jacpy_deque_repeat(d, count) == 0 else NULL;
 }
 
 impl deque_repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
@@ -429,8 +424,8 @@ impl deque_repeat(instance: ptr[PyObject], count: i64) -> ptr[PyObject] {
     if result == 0 {
         return NULL;
     }
-    state = deque_value(result);
-    if state is None or jacpy_deque_repeat(state.native, count) < 0 {
+    d = deque_of(result);
+    if d.is_null() or jacpy_deque_repeat(d, count) < 0 {
         jacpy_release(result);
         return NULL;
     }

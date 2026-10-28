@@ -44,7 +44,13 @@ def:priv setting(options: ptr[PyObject], index: int) -> int;
 
 def:priv settings(options: ptr[PyObject]) -> csv_dialect;
 
-def:priv unicode_field(characters: list[int]) -> ptr[PyObject];
+def:priv unicode_field(characters: list[int], maxchar: i64) -> ptr[PyObject];
+
+def:priv read_failure(error: ptr[PyObject], message: str) -> i32;
+
+def:priv reader_dialect(reader: csv_reader, options: ptr[PyObject]) -> i32;
+
+def:priv buffer_field(buffer: ptr[u32], count: i64, maxchar: i64) -> ptr[PyObject];
 
 enum parse_state {
     START_RECORD = 0,
@@ -60,17 +66,22 @@ enum parse_state {
 
 obj csv_reader {
     has fields: ptr[PyObject] = NULL,
-        field: list[int] = [],
+        buffer: ptr[u32] = ptr[u32](),
+        field_len: i64 = 0,
+        field_size: i64 = 0,
+        field_max: i64 = 0,
         state: parse_state = parse_state.START_RECORD,
         unquoted: bool = False,
-        line_num: int = 0;
+        line_num: int = 0,
+        options: ptr[PyObject] = NULL,
+        dialect: (csv_dialect | None) = None;
 
-    def reset;
-    def save(dialect: csv_dialect);
-    def append(character: int, module: CsvConfig, error: ptr[PyObject]);
+    def reset -> i32;
+    def save(dialect: csv_dialect) -> i32;
+    def append(character: i64, module: CsvConfig, error: ptr[PyObject]) -> i32;
     def feed(
-        character: int, dialect: csv_dialect, module: CsvConfig, error: ptr[PyObject]
-    );
+        character: i64, dialect: csv_dialect, module: CsvConfig, error: ptr[PyObject]
+    ) -> i32;
 }
 
 def:pub jacpy_csv_reader_new -> csv_reader;
@@ -363,126 +374,233 @@ impl settings(options: ptr[PyObject]) -> csv_dialect {
     );
 }
 
-impl unicode_field(characters: list[int]) -> ptr[PyObject] {
-    writer = new_writer();
-    try {
-        for character in characters {
-            checked(PyUnicodeWriter_WriteChar(writer, u32(character)));
+impl unicode_field(characters: list[int], maxchar: i64) -> ptr[PyObject] {
+    count = len(characters);
+    result = PyUnicode_New(i64(count), u32(maxchar));
+    if result == 0 {
+        return NULL;
+    }
+    kind = jacpy_unicode_kind(result);
+    data = jacpy_unicode_data(result);
+    i = 0;
+    if kind == 1 {
+        out = ptr[u8](data);
+        while i < count {
+            (out + i).view(1)[0] = u8(characters[i]);
+            i += 1;
         }
-        result = PyUnicodeWriter_Finish(writer);
-        writer = ptr[PyUnicodeWriter]();
-        return required(result);
-    } finally {
-        if writer != 0 {
-            PyUnicodeWriter_Discard(writer);
+    } elif kind == 2 {
+        out2 = ptr[u16](data);
+        while i < count {
+            (out2 + i).view(1)[0] = u16(characters[i]);
+            i += 1;
+        }
+    } else {
+        out4 = ptr[u32](data);
+        while i < count {
+            (out4 + i).view(1)[0] = u32(characters[i]);
+            i += 1;
         }
     }
+    return result;
 }
 
-impl csv_reader.reset {
-    fields = required(jacpy_list_new());
+impl reader_dialect(reader: csv_reader, options: ptr[PyObject]) -> i32 {
+    try {
+        reader.dialect = settings(options);
+    } except boundary_failure {
+        return i32(-1);
+    }
+    reader.options = options;
+    return i32(0);
+}
+
+impl buffer_field(buffer: ptr[u32], count: i64, maxchar: i64) -> ptr[PyObject] {
+    result = PyUnicode_New(count, u32(maxchar));
+    if result == 0 {
+        return NULL;
+    }
+    kind = jacpy_unicode_kind(result);
+    data = jacpy_unicode_data(result);
+    i: i64 = 0;
+    if kind == 1 {
+        out = ptr[u8](data);
+        while i < count {
+            (out + i).view(1)[0] = u8((buffer + i).view(1)[0]);
+            i += 1;
+        }
+    } elif kind == 2 {
+        out2 = ptr[u16](data);
+        while i < count {
+            (out2 + i).view(1)[0] = u16((buffer + i).view(1)[0]);
+            i += 1;
+        }
+    } else {
+        out4 = ptr[u32](data);
+        while i < count {
+            (out4 + i).view(1)[0] = (buffer + i).view(1)[0];
+            i += 1;
+        }
+    }
+    return result;
+}
+
+impl read_failure(error: ptr[PyObject], message: str) -> i32 {
+    jacpy_set_exception(error, message, i64(len(message.encode("utf-8"))));
+    return i32(-1);
+}
+
+impl csv_reader.reset -> i32 {
+    fields = jacpy_list_new();
+    if fields == 0 {
+        return i32(-1);
+    }
     old = self.fields;
     self.fields = fields;
     jacpy_release(old);
-    self.field.clear();
+    self.field_len = 0;
+    self.field_max = 0;
     self.state = parse_state.START_RECORD;
     self.unquoted = False;
+    return i32(0);
 }
 
-impl csv_reader.save(dialect: csv_dialect) {
+impl csv_reader.save(dialect: csv_dialect) -> i32 {
     value: ptr[PyObject] = NULL;
-    try {
-        if self.unquoted
-            and len(self.field) == 0
-            and (dialect.quoting == 4 or dialect.quoting == 5) {
-            value = Py_NewRef(Py_None);
-        } else {
-            value = unicode_field(self.field);
-            if self.unquoted
-                and len(self.field) != 0
-                and (dialect.quoting == 2 or dialect.quoting == 4) {
-                numeric = required(PyNumber_Float(value));
-                jacpy_release(value);
-                value = numeric;
-            }
-            self.field.clear();
+    count = self.field_len;
+    if self.unquoted
+        and count == 0
+        and (dialect.quoting == 4 or dialect.quoting == 5) {
+        value = Py_NewRef(Py_None);
+    } else {
+        value = buffer_field(self.buffer, count, self.field_max);
+        if value == 0 {
+            return i32(-1);
         }
-        checked(PyList_Append(self.fields, value));
-    } finally {
-        jacpy_release(value);
+        if self.unquoted
+            and count != 0
+            and (dialect.quoting == 2 or dialect.quoting == 4) {
+            numeric = PyNumber_Float(value);
+            jacpy_release(value);
+            if numeric == 0 {
+                return i32(-1);
+            }
+            value = numeric;
+        }
+        self.field_len = 0;
+        self.field_max = 0;
     }
+    status = PyList_Append(self.fields, value);
+    jacpy_release(value);
+    return status;
 }
 
-impl csv_reader.append(character: int, module: CsvConfig, error: ptr[PyObject]) {
-    limit = int(module.limit);
-    if len(self.field) >= limit {
-        csv_error(error, "field larger than field limit (" + str(limit) + ")");
+impl csv_reader.append(character: i64, module: CsvConfig, error: ptr[PyObject]) -> i32 {
+    limit = module.limit;
+    count = self.field_len;
+    if count >= limit {
+        return read_failure(
+            error, "field larger than field limit (" + str(limit) + ")"
+        );
     }
-    self.field.append(character);
+    if count == self.field_size {
+        size = 64 if count == 0 else count * 2;
+        grown = ptr[u32](PyMem_Realloc(ptr(self.buffer), u64(size * 4)));
+        if grown.is_null() {
+            PyErr_NoMemory();
+            return i32(-1);
+        }
+        self.buffer = grown;
+        self.field_size = size;
+    }
+    (self.buffer + count).view(1)[0] = u32(character);
+    self.field_len = count + 1;
+    if character > self.field_max {
+        self.field_max = character;
+    }
+    return i32(0);
 }
 
 impl csv_reader.feed(
-    character: int, dialect: csv_dialect, module: CsvConfig, error: ptr[PyObject]
-) {
-    if self.state == parse_state.START_RECORD {
-        if character == -2 {
-            return;
-        }
-        if character == 10 or character == 13 {
-            self.state = parse_state.EAT_CRNL;
-            return;
-        }
-        self.state = parse_state.START_FIELD;
-    }
-    if self.state == parse_state.START_FIELD {
-        self.unquoted = True;
+    character: i64, dialect: csv_dialect, module: CsvConfig, error: ptr[PyObject]
+) -> i32 {
+    state = self.state;
+    if state == parse_state.IN_FIELD {
         if character == 10 or character == 13 or character == -2 {
-            self.save(dialect);
             self.state = parse_state.START_RECORD
                 if character == -2
                 else parse_state.EAT_CRNL;
+            return self.save(dialect);
+        }
+        if character == dialect.escapechar {
+            self.state = parse_state.ESCAPED_CHAR;
+            return i32(0);
+        }
+        if character == dialect.delimiter {
+            self.state = parse_state.START_FIELD;
+            return self.save(dialect);
+        }
+        return self.append(character, module, error);
+    }
+    if state == parse_state.START_RECORD {
+        if character == -2 {
+            return i32(0);
+        }
+        if character == 10 or character == 13 {
+            self.state = parse_state.EAT_CRNL;
+            return i32(0);
+        }
+        state = parse_state.START_FIELD;
+        self.state = state;
+    }
+    if state == parse_state.START_FIELD {
+        self.unquoted = True;
+        if character == 10 or character == 13 or character == -2 {
+            self.state = parse_state.START_RECORD
+                if character == -2
+                else parse_state.EAT_CRNL;
+            return self.save(dialect);
         } elif character == dialect.quotechar and dialect.quoting != 3 {
             self.unquoted = False;
             self.state = parse_state.IN_QUOTED_FIELD;
         } elif character == dialect.escapechar {
             self.state = parse_state.ESCAPED_CHAR;
         } elif character == 32 and dialect.skipspace {
-            return;
+            return i32(0);
         } elif character == dialect.delimiter {
-            self.save(dialect);
+            return self.save(dialect);
         } else {
-            self.append(character, module, error);
             self.state = parse_state.IN_FIELD;
+            return self.append(character, module, error);
         }
-    } elif self.state == parse_state.ESCAPED_CHAR {
+    } elif state == parse_state.ESCAPED_CHAR {
         if character == 10 or character == 13 {
-            self.append(character, module, error);
             self.state = parse_state.AFTER_ESCAPED_CRNL;
-            return;
+            return self.append(character, module, error);
         }
-        self.append(10 if character == -2 else character, module, error);
         self.state = parse_state.IN_FIELD;
-    } elif self.state == parse_state.IN_FIELD
-        or self.state == parse_state.AFTER_ESCAPED_CRNL {
-        if self.state == parse_state.AFTER_ESCAPED_CRNL and character == -2 {
-            return;
+        return self.append(10 if character == -2 else character, module, error);
+    } elif state == parse_state.AFTER_ESCAPED_CRNL {
+        if character == -2 {
+            return i32(0);
         }
-        if character == 10 or character == 13 or character == -2 {
-            self.save(dialect);
+        if character == 10 or character == 13 {
             self.state = parse_state.START_RECORD
                 if character == -2
                 else parse_state.EAT_CRNL;
+            return self.save(dialect);
         } elif character == dialect.escapechar {
             self.state = parse_state.ESCAPED_CHAR;
         } elif character == dialect.delimiter {
-            self.save(dialect);
             self.state = parse_state.START_FIELD;
+            return self.save(dialect);
         } else {
-            self.append(character, module, error);
+            self.state = parse_state.IN_FIELD;
+            return self.append(character, module, error);
         }
-    } elif self.state == parse_state.IN_QUOTED_FIELD {
+    } elif state == parse_state.IN_QUOTED_FIELD {
         if character == -2 {
-            return;
+            return i32(0);
         }
         if character == dialect.escapechar {
             self.state = parse_state.ESCAPE_IN_QUOTED_FIELD;
@@ -491,28 +609,28 @@ impl csv_reader.feed(
                 if dialect.doublequote
                 else parse_state.IN_FIELD;
         } else {
-            self.append(character, module, error);
+            return self.append(character, module, error);
         }
-    } elif self.state == parse_state.ESCAPE_IN_QUOTED_FIELD {
-        self.append(10 if character == -2 else character, module, error);
+    } elif state == parse_state.ESCAPE_IN_QUOTED_FIELD {
         self.state = parse_state.IN_QUOTED_FIELD;
-    } elif self.state == parse_state.QUOTE_IN_QUOTED_FIELD {
+        return self.append(10 if character == -2 else character, module, error);
+    } elif state == parse_state.QUOTE_IN_QUOTED_FIELD {
         if dialect.quoting != 3 and character == dialect.quotechar {
-            self.append(character, module, error);
             self.state = parse_state.IN_QUOTED_FIELD;
+            return self.append(character, module, error);
         } elif character == dialect.delimiter {
-            self.save(dialect);
             self.state = parse_state.START_FIELD;
+            return self.save(dialect);
         } elif character == 10 or character == 13 or character == -2 {
-            self.save(dialect);
             self.state = parse_state.START_RECORD
                 if character == -2
                 else parse_state.EAT_CRNL;
+            return self.save(dialect);
         } elif not dialect.strict {
-            self.append(character, module, error);
             self.state = parse_state.IN_FIELD;
+            return self.append(character, module, error);
         } else {
-            csv_error(
+            return read_failure(
                 error,
                 "'"
                     + chr(dialect.delimiter)
@@ -521,19 +639,20 @@ impl csv_reader.feed(
                     + "'"
             );
         }
-    } elif self.state == parse_state.EAT_CRNL {
+    } elif state == parse_state.EAT_CRNL {
         if character == 10 or character == 13 {
-            return;
+            return i32(0);
         }
         if character == -2 {
             self.state = parse_state.START_RECORD;
         } else {
-            csv_error(
+            return read_failure(
                 error,
                 "new-line character seen in unquoted field - do you need to open the file with newline=''?"
             );
         }
     }
+    return i32(0);
 }
 
 impl jacpy_csv_reader_new -> csv_reader {
@@ -541,6 +660,11 @@ impl jacpy_csv_reader_new -> csv_reader {
 }
 
 impl jacpy_csv_reader_clear(reader: csv_reader) {
+    buffer = reader.buffer;
+    reader.buffer = ptr[u32]();
+    reader.field_size = 0;
+    reader.field_len = 0;
+    PyMem_Free(ptr(buffer));
     old = reader.fields;
     reader.fields = NULL;
     jacpy_release(old);
@@ -561,55 +685,111 @@ impl jacpy_csv_read(
     module: CsvConfig,
     error: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        reader.reset();
-        dialect = settings(options);
-        while True {
-            line = PyIter_Next(iterator);
-            if line == 0 {
-                pending();
-                if len(reader.field) != 0
-                    or reader.state == parse_state.IN_QUOTED_FIELD {
-                    if dialect.strict {
-                        csv_error(error, "unexpected end of data");
-                    }
-                    reader.save(dialect);
-                    break;
-                }
+    if reader.reset() < 0 {
+        return NULL;
+    }
+    if reader.dialect is None or reader.options != options {
+        if reader_dialect(reader, options) < 0 {
+            return NULL;
+        }
+    }
+    dialect = reader.dialect;
+    if not isinstance(dialect, csv_dialect) {
+        return NULL;
+    }
+    while True {
+        line = PyIter_Next(iterator);
+        if line == 0 {
+            if jacpy_error_pending() != 0 {
                 return NULL;
             }
-            try {
-                if jacpy_is_unicode(line) == 0 {
-                    csv_error(
-                        error,
-                        "iterator should return strings, not "
-                            + type_name(line)[:200]
-                            + " (the file should be opened in text mode)"
-                    );
+            if reader.field_len != 0 or reader.state == parse_state.IN_QUOTED_FIELD {
+                if dialect.strict {
+                    read_failure(error, "unexpected end of data");
+                    return NULL;
                 }
-                if reader.fields == 0 {
-                    csv_error(error, "iterator has already advanced the reader");
+                if reader.save(dialect) < 0 {
+                    return NULL;
                 }
-                reader.line_num += 1;
-                for i in range(int(jacpy_unicode_size(line))) {
-                    reader.feed(
-                        int(PyUnicode_ReadChar(line, i64(i))), dialect, module, error
-                    );
-                }
-            } finally {
-                jacpy_release(line);
+                break;
             }
-            reader.feed(-2, dialect, module, error);
-            if reader.state == parse_state.START_RECORD {
+            return NULL;
+        }
+        if jacpy_is_unicode(line) == 0 {
+            read_failure(
+                error,
+                "iterator should return strings, not "
+                    + type_name(line)[:200]
+                    + " (the file should be opened in text mode)"
+            );
+            jacpy_release(line);
+            return NULL;
+        }
+        if reader.fields == 0 {
+            read_failure(error, "iterator has already advanced the reader");
+            jacpy_release(line);
+            return NULL;
+        }
+        reader.line_num += 1;
+        kind = jacpy_unicode_kind(line);
+        data = jacpy_unicode_data(line);
+        size = jacpy_unicode_size(line);
+        text = ptr[u8](data);
+        text2 = ptr[u16](data);
+        text4 = ptr[u32](data);
+        limit = module.limit;
+        delimiter = dialect.delimiter;
+        escape = dialect.escapechar;
+        quote = -1 if dialect.quoting == 3 else dialect.quotechar;
+        i: i64 = 0;
+        status: i32 = 0;
+        while i < size {
+            c: i64 = 0;
+            if kind == 1 {
+                c = i64((text + i).view(1)[0]);
+            } elif kind == 2 {
+                c = i64((text2 + i).view(1)[0]);
+            } else {
+                c = i64((text4 + i).view(1)[0]);
+            }
+            i += 1;
+            state = reader.state;
+            if c != escape
+                and (
+                    (
+                        state == parse_state.IN_FIELD
+                        and c != delimiter
+                        and c != 10
+                        and c != 13
+                    )
+                    or (state == parse_state.IN_QUOTED_FIELD and c != quote)
+                ) {
+                count = reader.field_len;
+                if count < limit and count < reader.field_size {
+                    (reader.buffer + count).view(1)[0] = u32(c);
+                    reader.field_len = count + 1;
+                    if c > reader.field_max {
+                        reader.field_max = c;
+                    }
+                    continue;
+                }
+            }
+            status = reader.feed(c, dialect, module, error);
+            if status < 0 {
                 break;
             }
         }
-        fields = reader.fields;
-        reader.fields = NULL;
-        return fields;
-    } except boundary_failure {
-        return NULL;
+        jacpy_release(line);
+        if status < 0 or reader.feed(-2, dialect, module, error) < 0 {
+            return NULL;
+        }
+        if reader.state == parse_state.START_RECORD {
+            break;
+        }
     }
+    fields = reader.fields;
+    reader.fields = NULL;
+    return fields;
 }
 
 impl csv_writer.append(
@@ -739,7 +919,13 @@ impl csv_writer.row(
         for i in range(int(jacpy_unicode_size(dialect.terminator))) {
             self.record.append(int(PyUnicode_ReadChar(dialect.terminator, i64(i))));
         }
-        line = unicode_field(self.record);
+        maxchar = 0;
+        for character in self.record {
+            if character > maxchar {
+                maxchar = character;
+            }
+        }
+        line = required(unicode_field(self.record, i64(maxchar)));
         try {
             return required(PyObject_CallOneArg(output, line));
         } finally {

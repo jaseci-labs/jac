@@ -489,6 +489,23 @@ def:priv extend_text_or_tail(
 
 def:priv treebuilder_flush_data(builder: ptr[PyObject]) -> i32;
 
+def:priv treebuilder_flush_state(
+    state: ElementTreeState, builder: ptr[PyObject], tb: ptr[treebuilder_record]
+) -> i32;
+
+def:priv tb_slot(tb: ptr[treebuilder_record], offset: int) -> ptr[ptr[PyObject]];
+
+def:priv treebuilder_start_state(
+    state: ElementTreeState,
+    builder: ptr[PyObject],
+    tag: ptr[PyObject],
+    attrib: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv treebuilder_end_state(
+    state: ElementTreeState, builder: ptr[PyObject]
+) -> ptr[PyObject];
+
 def:priv treebuilder_add_subelement(
     state: ElementTreeState, parent: ptr[PyObject], child: ptr[PyObject]
 ) -> i32;
@@ -562,6 +579,8 @@ glob:priv CAPI_SET_HASH_SALT: int = 21,
 def:priv decode_utf8(text: ptr[u8], size: i64) -> ptr[PyObject];
 
 def:priv makeuniversal(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject];
+
+def:priv makeuniversal_in(names: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject];
 
 def:priv expat_set_error(
     state: ElementTreeState, code: i32, line: i64, column: i64, message: ptr[u8]
@@ -922,12 +941,14 @@ impl set_child(instance: ptr[PyObject], index: i64, value: ptr[PyObject]) {
 }
 
 impl element_resize(instance: ptr[PyObject], more: i64) -> i32 {
-    if not extra_of(instance) {
+    record = element(instance);
+    extra = record.view(1)[0].extra;
+    if not extra {
         if create_extra(instance, NULL) < 0 {
             return i32(-1);
         }
+        extra = record.view(1)[0].extra;
     }
-    extra = extra_of(instance);
     block = extra.view(1);
     size = block[0].length + more;
     if size > block[0].allocated {
@@ -973,7 +994,7 @@ impl element_add_subelement(
     if element_resize(instance, 1) < 0 {
         return i32(-1);
     }
-    block = extra_of(instance).view(1);
+    block = element(instance).view(1)[0].extra.view(1);
     (block[0].children + block[0].length).view(1)[0] = Py_NewRef(child);
     block[0].length = block[0].length + 1;
     return i32(0);
@@ -1212,20 +1233,25 @@ impl element_gc_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) ->
 }
 
 impl element_gc_clear(instance: ptr[PyObject]) -> i32 {
-    record = element(instance).view(1);
-    tag = record[0].tag;
-    record[0].tag = NULL;
+    rec = element(instance);
+    tag = rec.view(1)[0].tag;
+    rec.view(1)[0].tag = NULL;
     jacpy_release(tag);
-    record = element(instance).view(1);
-    if record[0].text {
-        set_joined_text(instance, NULL, False);
+    text = rec.view(1)[0].text;
+    if text {
+        rec.view(1)[0].text = NULL;
+        jacpy_release(join_obj(text));
     }
-    record = element(instance).view(1);
-    if record[0].tail {
-        set_joined_text(instance, NULL, True);
+    tail = rec.view(1)[0].tail;
+    if tail {
+        rec.view(1)[0].tail = NULL;
+        jacpy_release(join_obj(tail));
     }
-
-    clear_extra(instance);
+    extra = rec.view(1)[0].extra;
+    if extra {
+        rec.view(1)[0].extra = ptr[element_extra]();
+        dealloc_extra(extra);
+    }
     return i32(0);
 }
 
@@ -2704,7 +2730,7 @@ impl extend_text_or_tail(
     if not previous {
         return i32(-1);
     }
-    joined = list_join(builder_field(builder, TB_DATA).view(1)[0]);
+    joined = list_join(data_slot.view(1)[0]);
     if not joined {
         jacpy_release(previous);
         return i32(-1);
@@ -2725,20 +2751,32 @@ impl extend_text_or_tail(
     if status < 0 {
         return i32(-1);
     }
-    replace_field(builder_field(builder, TB_DATA), NULL);
+    replace_field(data_slot, NULL);
     return i32(0);
 }
 
 impl treebuilder_flush_data(builder: ptr[PyObject]) -> i32 {
-    record = treebuilder(builder).view(1);
-    if not record[0].data {
+    tb = treebuilder(builder);
+    if not tb.view(1)[0].data {
         return i32(0);
     }
-    state = builder_state(builder);
-    if not record[0].last_for_tail {
-        return extend_text_or_tail(state, builder, record[0].last, False);
+    return treebuilder_flush_state(builder_state(builder), builder, tb);
+}
+
+impl treebuilder_flush_state(
+    state: ElementTreeState, builder: ptr[PyObject], tb: ptr[treebuilder_record]
+) -> i32 {
+    if not tb.view(1)[0].data {
+        return i32(0);
     }
-    return extend_text_or_tail(state, builder, record[0].last_for_tail, True);
+    if not tb.view(1)[0].last_for_tail {
+        return extend_text_or_tail(state, builder, tb.view(1)[0].last, False);
+    }
+    return extend_text_or_tail(state, builder, tb.view(1)[0].last_for_tail, True);
+}
+
+impl tb_slot(tb: ptr[treebuilder_record], offset: int) -> ptr[ptr[PyObject]] {
+    return ptr[ptr[PyObject]](int(tb) + offset);
 }
 
 impl treebuilder_add_subelement(
@@ -2778,11 +2816,20 @@ impl treebuilder_append_event(
 impl treebuilder_handle_start(
     builder: ptr[PyObject], tag: ptr[PyObject], attrib: ptr[PyObject]
 ) -> ptr[PyObject] {
-    state = builder_state(builder);
-    if treebuilder_flush_data(builder) < 0 {
+    return treebuilder_start_state(builder_state(builder), builder, tag, attrib);
+}
+
+impl treebuilder_start_state(
+    state: ElementTreeState,
+    builder: ptr[PyObject],
+    tag: ptr[PyObject],
+    attrib: ptr[PyObject]
+) -> ptr[PyObject] {
+    tb = treebuilder(builder);
+    if treebuilder_flush_state(state, builder, tb) < 0 {
         return NULL;
     }
-    factory = treebuilder(builder).view(1)[0].element_factory;
+    factory = tb.view(1)[0].element_factory;
     created: ptr[PyObject] = NULL;
     if not factory {
         created = create_new_element(state, tag, attrib);
@@ -2799,39 +2846,37 @@ impl treebuilder_handle_start(
     if not created {
         return NULL;
     }
-    current = treebuilder(builder).view(1)[0].current;
-    replace_field(builder_field(builder, TB_LAST_FOR_TAIL), NULL);
+    current = tb.view(1)[0].current;
+    replace_field(tb_slot(tb, TB_LAST_FOR_TAIL), NULL);
     if current != Py_None {
         if treebuilder_add_subelement(state, current, created) < 0 {
             jacpy_release(created);
             return NULL;
         }
     } else {
-        if treebuilder(builder).view(1)[0].root_node {
+        if tb.view(1)[0].root_node {
             object_error(state.parseerror_obj, "multiple elements on top level");
             jacpy_release(created);
             return NULL;
         }
-        treebuilder(builder).view(1)[0].root_node = Py_NewRef(created);
+        tb.view(1)[0].root_node = Py_NewRef(created);
     }
-    record = treebuilder(builder).view(1);
-    if record[0].index < PyList_Size(record[0].stack) {
-        if PyList_SetItem(record[0].stack, record[0].index, Py_NewRef(current)) < 0 {
+    stack = tb.view(1)[0].stack;
+    index = tb.view(1)[0].index;
+    if index < PyList_Size(stack) {
+        if PyList_SetItem(stack, index, Py_NewRef(current)) < 0 {
             jacpy_release(created);
             return NULL;
         }
-    } elif PyList_Append(record[0].stack, current) < 0 {
+    } elif PyList_Append(stack, current) < 0 {
         jacpy_release(created);
         return NULL;
     }
-    record = treebuilder(builder).view(1);
-    record[0].index = record[0].index + 1;
-    replace_field(builder_field(builder, TB_THIS), Py_NewRef(created));
-    replace_field(builder_field(builder, TB_LAST), Py_NewRef(created));
-    if treebuilder_append_event(
-        builder, treebuilder(builder).view(1)[0].start_event_obj, created
-    )
-        < 0 {
+    tb.view(1)[0].index = index + 1;
+    replace_field(tb_slot(tb, TB_THIS), Py_NewRef(created));
+    replace_field(tb_slot(tb, TB_LAST), Py_NewRef(created));
+    action = tb.view(1)[0].start_event_obj;
+    if action and treebuilder_append_event(builder, action, created) < 0 {
         jacpy_release(created);
         return NULL;
     }
@@ -2879,26 +2924,34 @@ impl treebuilder_handle_data(
 impl treebuilder_handle_end(
     builder: ptr[PyObject], tag: ptr[PyObject]
 ) -> ptr[PyObject] {
-    if treebuilder_flush_data(builder) < 0 {
+    return treebuilder_end_state(builder_state(builder), builder);
+}
+
+impl treebuilder_end_state(
+    state: ElementTreeState, builder: ptr[PyObject]
+) -> ptr[PyObject] {
+    tb = treebuilder(builder);
+    if treebuilder_flush_state(state, builder, tb) < 0 {
         return NULL;
     }
-    record = treebuilder(builder).view(1);
-    if record[0].index == 0 {
+    index = tb.view(1)[0].index;
+    if index == 0 {
         object_error(PyExc_IndexError, "pop from empty stack");
         return NULL;
     }
-    item = record[0].last;
-    record[0].last = Py_NewRef(record[0].current);
-    replace_field(builder_field(builder, TB_LAST_FOR_TAIL), record[0].last);
-    record = treebuilder(builder).view(1);
-    record[0].index = record[0].index - 1;
-    record[0].current = Py_NewRef(PyList_GetItem(record[0].stack, record[0].index));
+    item = tb.view(1)[0].last;
+    last = Py_NewRef(tb.view(1)[0].current);
+    tb.view(1)[0].last = last;
+    replace_field(tb_slot(tb, TB_LAST_FOR_TAIL), last);
+    index -= 1;
+    tb.view(1)[0].index = index;
+    tb.view(1)[0].current = Py_NewRef(PyList_GetItem(tb.view(1)[0].stack, index));
     jacpy_release(item);
-    record = treebuilder(builder).view(1);
-    if treebuilder_append_event(builder, record[0].end_event_obj, record[0].last) < 0 {
+    action = tb.view(1)[0].end_event_obj;
+    if action and treebuilder_append_event(builder, action, tb.view(1)[0].last) < 0 {
         return NULL;
     }
-    return Py_NewRef(treebuilder(builder).view(1)[0].last);
+    return Py_NewRef(tb.view(1)[0].last);
 }
 
 impl treebuilder_handle_comment(
@@ -3063,12 +3116,15 @@ impl decode_utf8(text: ptr[u8], size: i64) -> ptr[PyObject] {
 }
 
 impl makeuniversal(instance: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] {
+    return makeuniversal_in(xmlparser(instance).view(1)[0].names, text);
+}
+
+impl makeuniversal_in(names: ptr[PyObject], text: ptr[u8]) -> ptr[PyObject] {
     size = i64(strlen(text));
     key = jacpy_bytes_from_memory(ptr(text), size);
     if not key {
         return NULL;
     }
-    names = xmlparser(instance).view(1)[0].names;
     found = PyDict_GetItemWithError(names, key);
     value = Py_NewRef(found) if found else NULL;
     if not value and not PyErr_Occurred() {
@@ -3225,7 +3281,9 @@ impl expat_start_handler(op: ptr, tag_in: ptr[u8], attrib_in: ptr[ptr[u8]]) {
     if PyErr_Occurred() {
         return;
     }
-    tag = makeuniversal(instance, tag_in);
+    parser = xmlparser(instance);
+    names = parser.view(1)[0].names;
+    tag = makeuniversal_in(names, tag_in);
     if not tag {
         return;
     }
@@ -3238,7 +3296,7 @@ impl expat_start_handler(op: ptr, tag_in: ptr[u8], attrib_in: ptr[ptr[u8]]) {
         }
         pair = attrib_in;
         while pair.view(1)[0] and (pair + 1).view(1)[0] {
-            key = makeuniversal(instance, pair.view(1)[0]);
+            key = makeuniversal_in(names, pair.view(1)[0]);
             if not key {
                 jacpy_release(attrib);
                 jacpy_release(tag);
@@ -3263,11 +3321,11 @@ impl expat_start_handler(op: ptr, tag_in: ptr[u8], attrib_in: ptr[ptr[u8]]) {
             pair = pair + 2;
         }
     }
-    state = parser_state(instance);
-    record = xmlparser(instance).view(1);
+    state = module_state(parser.view(1)[0].elementtree_module);
+    record = parser.view(1);
     result: ptr[PyObject] = NULL;
     if is_treebuilder(state, record[0].target) {
-        result = treebuilder_handle_start(record[0].target, tag, attrib);
+        result = treebuilder_start_state(state, record[0].target, tag, attrib);
     } elif record[0].handle_start {
         if not attrib {
             attrib = PyDict_New();
@@ -3294,8 +3352,8 @@ impl expat_data_handler(op: ptr, data_in: ptr[u8], data_len: i32) {
     if not data {
         return;
     }
-    state = parser_state(instance);
     record = xmlparser(instance).view(1);
+    state = module_state(record[0].elementtree_module);
     result: ptr[PyObject] = NULL;
     if is_treebuilder(state, record[0].target) {
         result = treebuilder_handle_data(record[0].target, data);
@@ -3311,11 +3369,11 @@ impl expat_end_handler(op: ptr, tag_in: ptr[u8]) {
     if PyErr_Occurred() {
         return;
     }
-    state = parser_state(instance);
     record = xmlparser(instance).view(1);
+    state = module_state(record[0].elementtree_module);
     result: ptr[PyObject] = NULL;
     if is_treebuilder(state, record[0].target) {
-        result = treebuilder_handle_end(record[0].target, Py_None);
+        result = treebuilder_end_state(state, record[0].target);
     } elif record[0].handle_end {
         tag = makeuniversal(instance, tag_in);
         if tag {

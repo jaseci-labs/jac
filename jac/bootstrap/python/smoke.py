@@ -357,7 +357,7 @@ assert _heapq.heappop([1, 2, 3]) == 1
         def __ceil__(self):
             return "custom ceiling"
     assert math.ceil(CustomCeil()) == "custom ceiling"
-    assert ctypes.pythonapi.jacpy_deque_append
+    assert ctypes.pythonapi.jacpy_deque_push
     deque = _collections.deque
     sequence = deque(range(1024))
     full_size = sequence.__sizeof__()
@@ -530,11 +530,24 @@ assert _heapq.heappop([1, 2, 3]) == 1
     del owner
     gc.collect()
     assert owner_ref() is None, "Native JSON bindings hid a Python reference cycle"
-    try:
-        json.loads("[" * 100_000 + "0" + "]" * 100_000)
-    except RecursionError:
-        pass
-    else:
+    # The C stack bounds recursion, so parse on a thread with a fixed stack:
+    # the build's own stack limit may be large enough for the whole document.
+    import threading
+    nested_outcome = []
+
+    def parse_nested():
+        try:
+            json.loads("[" * 100_000 + "0" + "]" * 100_000)
+            nested_outcome.append("parsed")
+        except RecursionError:
+            nested_outcome.append("guarded")
+
+    previous_stack_size = threading.stack_size(8 << 20)
+    nested_thread = threading.Thread(target=parse_nested)
+    nested_thread.start()
+    nested_thread.join()
+    threading.stack_size(previous_stack_size)
+    if nested_outcome != ["guarded"]:
         raise AssertionError("Native JSON did not guard recursive parsing")
     assert ctypes.pythonapi.jacpy_queue_get
     import threading

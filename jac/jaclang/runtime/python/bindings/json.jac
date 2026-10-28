@@ -73,6 +73,8 @@ glob:priv encoder_init_signature = CallSignature(
          9
      );
 
+def:priv fast_encoder(type: ptr[PyObject], encoder: ptr[PyObject]) -> i64;
+
 def:priv encoder_create_bound(args: BoundArguments) -> ptr[PyObject];
 
 def:priv encoder_create(
@@ -297,6 +299,29 @@ impl scanner_create(
     return invoke(scanner_init_signature, args, kwargs, scanner_create_bound, type);
 }
 
+impl fast_encoder(type: ptr[PyObject], encoder: ptr[PyObject]) -> i64 {
+    module = jacpy_binding_owner(type, definition.handle);
+    if module == 0 {
+        PyErr_Clear();
+        return 0;
+    }
+    result: i64 = 0;
+    ascii = PyObject_GetAttrString(module, ptr[u8]("encode_basestring_ascii"));
+    if ascii != 0 and ascii == encoder {
+        result = 2;
+    }
+    jacpy_release(ascii);
+    if result == 0 {
+        plain = PyObject_GetAttrString(module, ptr[u8]("encode_basestring"));
+        if plain != 0 and plain == encoder {
+            result = 1;
+        }
+        jacpy_release(plain);
+    }
+    PyErr_Clear();
+    return result;
+}
+
 impl encoder_create_bound(args: BoundArguments) -> ptr[PyObject] {
     for i in [4, 5] {
         if jacpy_is_unicode(args.values[i]) == 0 {
@@ -317,6 +342,7 @@ impl encoder_create_bound(args: BoundArguments) -> ptr[PyObject] {
         }
         flags |= flag << i64(i);
     }
+    flags |= fast_encoder(args.context, args.values[2]) << 3;
     if args.values[0] != Py_None and jacpy_is_dict(args.values[0]) == 0 {
         object_error(
             PyExc_TypeError,

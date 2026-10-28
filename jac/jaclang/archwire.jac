@@ -16553,14 +16553,10 @@ graph import runtime.python {
             jacpy_binding_native_present,
             jacpy_binding_native_set
         },
-        modules.collections {
-            clear_payload,
-            jacpy_binding_native_get,
-            jacpy_binding_native_present,
+        modules.collections | modules.functools | modules.ssl | modules.ssl_cert {
             jacpy_binding_native_set
         },
         modules.elementtree { jacpy_binding_clear_weakrefs, jacpy_binding_untrack },
-        modules.functools | modules.ssl | modules.ssl_cert { jacpy_binding_native_set },
         modules.posix_stat {
             dispose_payload,
             jacpy_binding_native_get,
@@ -16886,9 +16882,6 @@ graph import runtime.python {
         modules.cmath { boundary_failure, object_error, object_tuple, required },
         modules.collections {
             boundary_failure,
-            checked,
-            jac_heap_size,
-            jac_list_heap_size,
             object_error,
             repr_value,
             required,
@@ -16899,7 +16892,6 @@ graph import runtime.python {
         modules.csv {
             boundary_failure,
             checked,
-            new_writer,
             object_error,
             object_tuple,
             required,
@@ -16939,7 +16931,6 @@ graph import runtime.python {
             new_writer,
             object_error,
             object_tuple,
-            pair,
             required,
             text_object
         },
@@ -17222,7 +17213,6 @@ graph import runtime.python {
             | bindings.queue
             | modules.object_ring { NULL, PyObject },
         bindings.clinic.asyncio
-            | bindings.clinic.collections
             | bindings.clinic.lsprof
             | bindings.clinic.pickle
             | bindings.clinic.posix
@@ -17253,6 +17243,15 @@ graph import runtime.python {
             jacpy_tuple_items
         },
         bindings.clinic.codecs { NULL, PyObject, jacpy_is_bytes },
+        bindings.clinic.collections | bindings.clinic.io {
+            NULL,
+            PyLong_AsSsize_t,
+            PyObject,
+            PyTuple_Size,
+            jacpy_dict_size,
+            jacpy_release,
+            jacpy_tuple_items
+        },
         bindings.clinic.ctypes | bindings.clinic.posixshmem | bindings.clinic.pwd {
             NULL,
             PyObject,
@@ -17268,15 +17267,6 @@ graph import runtime.python {
             jacpy_tuple_items
         },
         bindings.clinic.heapq { NULL, PyObject, jacpy_is_list },
-        bindings.clinic.io {
-            NULL,
-            PyLong_AsSsize_t,
-            PyObject,
-            PyTuple_Size,
-            jacpy_dict_size,
-            jacpy_release,
-            jacpy_tuple_items
-        },
         bindings.clinic.itertools {
             NULL,
             PyObject,
@@ -17589,6 +17579,7 @@ graph import runtime.python {
         },
         bindings.json {
             NULL,
+            PyErr_Clear,
             PyExc_SystemError,
             PyExc_TypeError,
             PyObject,
@@ -19410,6 +19401,8 @@ graph import runtime.python {
         modules.codecs_iso2022 { PyErr_NoMemory, PyMem_Free, PyMem_Malloc, PyObject },
         modules.collections {
             NULL,
+            PyDict_Type,
+            PyErr_NoMemory,
             PyErr_SetObject,
             PyExc_IndexError,
             PyExc_KeyError,
@@ -19421,27 +19414,34 @@ graph import runtime.python {
             PyIter_Next,
             PyLong_AsSsize_t,
             PyLong_FromLongLong,
+            PyMem_Free,
+            PyMem_Malloc,
             PyNumber_Add,
             PyObject,
             PyObject_Call,
+            PyObject_CallFunctionObjArgs,
             PyObject_GetAttr,
             PyObject_GetIter,
+            PyObject_Hash,
             PyObject_RichCompareBool,
             PyObject_SetItem,
             PySequence_List,
             PyTuple_New,
             PyTuple_Pack,
+            PyUnicode_FromString,
+            PyUnicode_InternFromString,
             Py_NewRef,
             Py_None,
             Py_ReprEnter,
             Py_ReprLeave,
             Py_TYPE,
             _PyObject_GetState,
+            _PyType_LookupRef,
             jacpy_dict_default,
             jacpy_dict_repr,
             jacpy_error_pending,
-            jacpy_release,
-            jacpy_tuple_set_owned
+            jacpy_is_dict,
+            jacpy_release
         },
         modules.contextvars { PyContext_CopyCurrent, PyObject },
         modules.csv {
@@ -19450,6 +19450,7 @@ graph import runtime.python {
             PyDict_SetItem,
             PyErr_Clear,
             PyErr_ExceptionMatches,
+            PyErr_NoMemory,
             PyExc_SystemError,
             PyExc_TypeError,
             PyExc_ValueError,
@@ -19459,6 +19460,8 @@ graph import runtime.python {
             PyLong_AsLong,
             PyLong_AsLongLong,
             PyLong_FromLongLong,
+            PyMem_Free,
+            PyMem_Realloc,
             PyNumber_Check,
             PyNumber_Float,
             PyObject,
@@ -19466,10 +19469,7 @@ graph import runtime.python {
             PyObject_GetIter,
             PyObject_IsTrue,
             PyObject_Str,
-            PyUnicodeWriter,
-            PyUnicodeWriter_Discard,
-            PyUnicodeWriter_Finish,
-            PyUnicodeWriter_WriteChar,
+            PyUnicode_New,
             PyUnicode_ReadChar,
             Py_NewRef,
             Py_None,
@@ -19484,6 +19484,8 @@ graph import runtime.python {
             jacpy_set_exception,
             jacpy_tuple_item,
             jacpy_type_check,
+            jacpy_unicode_data,
+            jacpy_unicode_kind,
             jacpy_unicode_size
         },
         modules.ctypes {
@@ -21263,6 +21265,9 @@ graph import runtime.python {
         },
         modules.json {
             NULL,
+            PyBytes_AsString,
+            PyBytes_FromStringAndSize,
+            PyDict_Contains,
             PyDict_DelItem,
             PyDict_New,
             PyDict_Next,
@@ -21271,40 +21276,46 @@ graph import runtime.python {
             PyExc_StopIteration,
             PyExc_TypeError,
             PyExc_ValueError,
+            PyFloat_FromString,
+            PyFloat_Type,
             PyImport_ImportModuleAttrString,
             PyList_Append,
             PyList_GetItemRef,
             PyList_Sort,
             PyLong_FromLongLong,
             PyLong_FromVoidPtr,
+            PyLong_Type,
             PyMapping_Items,
             PyObject,
             PyObject_Call,
             PyObject_CallOneArg,
-            PyObject_IsTrue,
-            PySequence_Contains,
             PySequence_Fast,
             PySequence_Repeat,
+            PyTuple_New,
             PyTuple_Size,
             PyUnicodeWriter,
+            PyUnicodeWriter_Create,
             PyUnicodeWriter_Discard,
             PyUnicodeWriter_Finish,
+            PyUnicodeWriter_WriteASCII,
             PyUnicodeWriter_WriteChar,
             PyUnicodeWriter_WriteStr,
             PyUnicodeWriter_WriteSubstring,
             PyUnicode_Concat,
+            PyUnicode_FromString,
             PyUnicode_ReadChar,
             PyUnicode_Substring,
             Py_LeaveRecursiveCall,
             Py_NewRef,
             Py_None,
+            _Py_FalseStruct,
+            _Py_TrueStruct,
             jacpy_dict_default,
             jacpy_dict_size,
             jacpy_fast_item,
             jacpy_fast_size,
             jacpy_float_repr,
             jacpy_float_value,
-            jacpy_is_bool,
             jacpy_is_dict,
             jacpy_is_exact_dict,
             jacpy_is_float,
@@ -21318,6 +21329,7 @@ graph import runtime.python {
             jacpy_recursion_enter,
             jacpy_release,
             jacpy_tuple_item,
+            jacpy_tuple_set_owned,
             jacpy_unicode_data,
             jacpy_unicode_kind,
             jacpy_unicode_size,
@@ -34352,16 +34364,14 @@ graph import runtime.python {
         },
         bindings.collections {
             DequeIteratorState,
-            DequeState,
             TupleGetterState,
             _tuplegetter_token,
-            allocate,
             collections_module_token,
             defdict_token,
+            deque_allocate,
             deque_copy_impl,
-            deque_state,
+            deque_of,
             deque_token,
-            deque_value,
             dequeiter_token,
             dequereviter_token,
             iterator_create,
@@ -37497,7 +37507,6 @@ graph import runtime.python {
             | modules.decimal_number
             | modules.decimal_objects
             | modules.hashlib
-            | modules.json
             | modules.lzma
             | modules.math
             | modules.multiprocessing
@@ -39097,6 +39106,8 @@ graph import runtime.python.bindings {
         clinic.collections {
             convert_slice_index_not_none,
             convert_ssize,
+            exact_int_at,
+            failed,
             new_checks_arguments,
             return_int
         },
@@ -39919,6 +39930,7 @@ graph import runtime.python.bindings {
             TypeFlags,
             TypeHooks,
             jacpy_binding_allocate,
+            jacpy_binding_owner,
             jacpy_binding_record
         },
         multibytecodec | sqlite3 | zlib {
@@ -42249,7 +42261,7 @@ graph import runtime.python.modules {
         },
         statistics { fabs, log, sqrt },
     ]
-    object_ring ++> collections | queue { object_ring }
+    object_ring ++> queue { object_ring }
     openssl ++> [
         hashopenssl {
             ERR_clear_error,
