@@ -11930,7 +11930,8 @@ graph import compiler.driver {
             read_sections
         },
         application._identity { compiler_generation },
-        application._prepare_revision { ct_dep_digest },
+        application._kernel_units { hold_compiled_content },
+        application._prepare_revision { content_on_disk, ct_dep_digest },
         application._prepare_sealed {
             HEADER_SIZE,
             PRECOMPILE_SENTINEL,

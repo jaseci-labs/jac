@@ -1,3 +1,4 @@
+import hashlib;
 import json;
 import os;
 import sys;
@@ -103,6 +104,7 @@ obj KernelHost(HostServices) {
         kernel_asker: bool = False,
         _asked: set[str] = set(),
         grown: set[str] = set(),
+        source_reads: dict[str, str] = {},
         _native_ifaces: dict[str, NativeIface] = {},
         _lowering: set[str] = set(),
         _lowered: dict[str, Module] = {},
@@ -261,7 +263,7 @@ obj KernelHost(HostServices) {
     def default_target_triple -> str;
 }
 
-def read_utf8_source(path: str) -> (str | None);
+def read_utf8_source(path: str, reads: (dict[str, str] | None) = None) -> (str | None);
 
 def replay_event_rows(target: HostServices, rows: list[list[str]]);
 
