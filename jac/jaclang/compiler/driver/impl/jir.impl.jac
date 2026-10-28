@@ -962,6 +962,15 @@ impl ct_dep_digest(path: str, with_annexes: bool = False) -> str {
     }
 }
 
+impl source_digests(path: str) -> dict[str, str] {
+    src = Path(path).resolve();
+    digests = {str(src): compute_content_sha256(str(src))};
+    for (rel, digest) in _related_files(str(src)) {
+        digests[str((src.parent / rel).resolve())] = digest;
+    }
+    return digests;
+}
+
 impl _ct_pkg_ref(path: str) -> str {
     rel = target_package_rel(path);
     if rel is None {

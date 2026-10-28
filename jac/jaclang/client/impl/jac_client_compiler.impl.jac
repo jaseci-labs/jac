@@ -243,6 +243,9 @@ impl JacClientCompiler.emit_dependencies(
     for unit in closure.modules + closure.refreshed {
         module_path = unit.path;
         artifact = unit.artifact;
+        if module_path.suffix == '.jac' and module_path.is_file() {
+            self.input_files.update(source_digests(str(module_path)));
+        }
         self._collect_na_modules(artifact);
         manifest = artifact.manifest;
         exports_list = self.jac_compiler.extract_exports(manifest);

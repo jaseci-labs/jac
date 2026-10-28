@@ -143,3 +143,49 @@ test "files a web app writes at runtime do not invalidate its prepared record" {
         }
     }
 }
+
+test "an edit to a client module the entry imports re-prepares the application" {
+    import from jaclang.testing.requires { require_tool }
+    require_tool('bun');
+    with TemporaryDirectory(prefix='jac-prepared-imports-') as tmp {
+        base = Path(tmp);
+        path = base / 'main.jac';
+        path.write_text(
+            'import from "@jac/runtime" { renderJsxTree, }\n\n'
+            'def:pub app(children: any) -> JsxElement {\n    <div class="root">{children}</div>\n}\n'
+        );
+        (base / 'jac.toml').write_text('[project]\nname = "prepared-imports"\n');
+        page = base / 'pages' / 'index.jac';
+        page.parent.mkdir();
+        page.write_text(
+            'import from shared.widget { Widget }\n\n'
+            'def:pub page -> JsxPage {\n    return <Widget/>;\n}\n'
+        );
+        widget = base / 'shared' / 'widget.jac';
+        widget.parent.mkdir();
+        widget.write_text(
+            'def label -> str;\n\n'
+            'def:pub Widget -> JsxElement {\n    <span>{label()}</span>\n}\n'
+        );
+        annex = base / 'shared' / 'widget.impl.jac';
+        annex.write_text('impl label -> str {\n    return "one";\n}\n');
+        assert not _restored(path, tmp);
+        assert _restored(path, tmp);
+        path.write_text(path.read_text().replace('class="root"', 'class="app"'));
+        assert not _restored(path, tmp) , "an edit to the entry was restored from the old record";
+        widget.write_text(
+            'def label -> str;\n\n'
+            'def:pub Widget -> JsxElement {\n    <b>{label()}</b>\n}\n'
+        );
+        assert not _restored(path, tmp) , "an edit to an imported client module was restored from the old record";
+        assert _restored(path, tmp);
+        annex.write_text('impl label -> str {\n    return "two";\n}\n');
+        assert not _restored(path, tmp) , "an edit to an imported module's impl annex was restored from the old record";
+        compiled = [
+            p
+            for p in base.rglob('widget.js')
+            if '.jac' in p.parts
+        ];
+        assert compiled and '"two"' in compiled[0].read_text() , "the client bundle kept the old annex";
+    }
+}

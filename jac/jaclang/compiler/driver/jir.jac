@@ -259,6 +259,8 @@ def read_ct_deps(data: bytes) -> list[tuple[(str, str, str)]];
 
 def ct_dep_digest(path: str, with_annexes: bool = False) -> str;
 
+def source_digests(path: str) -> dict[str, str];
+
 def _ct_pkg_ref(path: str) -> str;
 
 def _ct_row_path(stored: str, base: str) -> str;
