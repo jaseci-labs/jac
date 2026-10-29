@@ -21,12 +21,17 @@ obj FleetOrchestrator {
     def _dev_mode -> bool;
     def _app_serves_client -> bool;
     def _build_registry -> ServiceRegistry;
+    def _client_dist_dir -> str;
+    def _parse_static_mounts -> list[dict[str, str]];
     def _wait_for_health(
         pm: ServiceProcessManager, registry: ServiceRegistry, max_wait: int
     ) -> bool;
 
     def _print_startup_banner(
-        registry: ServiceRegistry, gateway_host: str, gateway_port: int
+        registry: ServiceRegistry,
+        gateway_host: str,
+        gateway_port: int,
+        static_mounts: list[dict[str, str]] = []
     );
 }
 

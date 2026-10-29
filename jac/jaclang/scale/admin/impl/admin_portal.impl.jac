@@ -482,7 +482,7 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
     );
 
     def serve_admin_catchall_handler(request: Request, path: str) -> Response {
-        return self.serve_admin_asset(path);
+        return self.serve_admin_asset(request, path);
     }
     server.add_endpoint(
         JEndPoint(
@@ -1474,7 +1474,7 @@ impl JacAPIServerAdmin.serve_admin_index -> Response {
     return FileResponse(path=str(dist_dir / "index.html"), media_type="text/html");
 }
 
-impl JacAPIServerAdmin.serve_admin_asset(path: str) -> Response {
+impl JacAPIServerAdmin.serve_admin_asset(request: Request, path: str) -> Response {
     dist_dir = resolve_console(self.get_admin_dist_dir(), self.admin_console);
     if isinstance(dist_dir, Response) {
         return dist_dir;
