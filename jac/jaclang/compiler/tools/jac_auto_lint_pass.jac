@@ -207,3 +207,4 @@ walker JacLintCheckPass(JacAutoLintPass) {
     static has contract: PassContract = PassContract();
     has report_only: bool = True;
 }
+
