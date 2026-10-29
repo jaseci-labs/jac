@@ -6723,8 +6723,10 @@ graph import compiler {
         },
         passes.capability_check_pass.native_capability_violations {
             bundled_native_module_names,
+            importer_variant_os,
             is_bundled_native_module,
-            resolve_native_module
+            resolve_native_module,
+            set_native_variant_os
         },
         passes.layout_pass._recorded_native_name { bundled_stdlib_module_of },
         passes.layout_pass.archetype_native_name { bundled_stdlib_module_of },
@@ -12262,13 +12264,19 @@ graph import compiler.frontend {
         source_layout { real_path },
         unitree.ModulePath.native_bundled_path {
             NATIVE_STDLIB_EXTENSIONS,
+            importer_variant_os,
             is_bundled_native_module,
-            resolve_native_module
+            resolve_native_module,
+            set_native_variant_os
         },
     ]
     codeinfo --> [
         kernel_host.KernelHost.compile_module { native_stdlib_root },
-        unitree.ModulePath.native_variant_path { _native_variant_path },
+        unitree.ModulePath.native_variant_path {
+            _native_variant_path,
+            importer_variant_os,
+            set_native_variant_os
+        },
         unitree.UniNode.gen.getter { CodeGenTarget as _CGT },
     ]
     type codeinfo ++> unitree { CodeGenTarget }
