@@ -1394,14 +1394,6 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
 }
 
 impl NaIRGenPass._get_exception_context_inl_fn -> ir.Function {
-    """The lookup a frame inlines: the single-thread fast path, else the shared lookup.
-
-    `__jac_exception_context` is weak, so no caller can inline it, and every
-    frame that links an unwind record or arms a `try` paid a call, three
-    register saves and the tests. This private copy of its fast path (no
-    thread started yet and the main context exists) is always inlined; any
-    other case calls the shared lookup.
-    """;
     if self._exc_context_inl_fn is not None {
         return self._exc_context_inl_fn;
     }
@@ -1659,7 +1651,6 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
 }
 
 impl NaIRGenPass._unwind_nothrow_callee(name: str) -> bool {
-    """A callee known never to raise: refcount and allocation helpers, libc.""";
     if name.startswith("__rc_") or name.startswith("llvm.") {
         return True;
     }
@@ -1682,25 +1673,6 @@ impl NaIRGenPass._unwind_nothrow_callee(name: str) -> bool {
 impl NaIRGenPass._unwind_raise_sites(
     func: ir.Function, slots: list[tuple[str, ir.Value]]
 ) -> (list[tuple[ir.Instruction, set[int]]] | None) {
-    """The frame's own raise sites, when only those can raise past a held local.
-
-    A frame links an unwind record so that a raise crossing it releases its
-    owned locals. When every call that can raise runs while all of them are
-    still null (a lookup before anything is bound, say) and the frame arms no
-    handler of its own, the only raises that can find a local holding a
-    reference are the frame's own: its `raise` statements and its index and
-    arithmetic checks. Those can release the locals themselves just before
-    raising, which is what the chain walk would do, and the frame then needs
-    no record at all. A forward pass over the finished body tracks which
-    slots may hold a reference. Returns each own raise site with the slots
-    that may hold one there, or None when the frame needs its record.
-
-    A slot whose address goes anywhere but a load or a store's target can
-    change behind the pass's back, so the frame keeps its record. On entry to
-    the function every slot may hold anything until its null store. A raise
-    must end its block, followed by `unreachable`, since the release goes
-    between the raise and what precedes it.
-    """;
     if os.environ.get("JAC_NO_UNWIND_SKIP") {
         return None;
     }
@@ -1837,12 +1809,6 @@ impl NaIRGenPass._unwind_release_at_raises(
     slots: list[tuple[str, ir.Value]],
     sites: list[tuple[ir.Instruction, set[int]]]
 ) -> None {
-    """Release the locals a frame without an unwind record holds at its own raises.
-
-    Each site's block is split at the raise: the release of the slots that
-    may hold a reference there goes in between, built by the same scope
-    cleanup a return runs.
-    """;
     saved_builder = self._builder;
     saved_locals = self.local_vars;
     saved_regions = self.region_open_stack;

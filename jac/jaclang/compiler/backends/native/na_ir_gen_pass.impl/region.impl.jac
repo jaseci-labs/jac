@@ -25,13 +25,6 @@ impl NaIRGenPass._region_kernel_fn(name: str) -> ir.Function {
 }
 
 impl NaIRGenPass._emit_region_tls_slot -> None {
-    """The thread-local slot for the region block, and its `_used` flag.
-
-    A thread sets its block only when it first enters a region, and the setter
-    stores the flag first: while the flag is clear no thread has a block, so a
-    `try` takes its region depth as 0 and an allocation its current region as
-    null, without a call.
-    """;
     if REGION_GBL_GET in self.extern_funcs {
         return;
     }
@@ -95,13 +88,6 @@ impl NaIRGenPass._region_new_handle -> ir.Value {
 }
 
 impl NaIRGenPass._region_current -> ir.Value {
-    """The thread's current region, or null, read only once a thread entered one.
-
-    Every allocation asks, and the answer took a call into the region kernel,
-    its TLS lookup and `pthread_getspecific`. A thread with a current region
-    has a region block, and making one sets `__jac_region_tls_used`; while the
-    flag is clear the answer is null without the call.
-    """;
     raw_fn = self._region_kernel_fn("__jac_region_current");
     b = self.builder;
     i64 = ir.IntType(64);
@@ -165,14 +151,6 @@ impl NaIRGenPass._region_depth -> ir.Value {
 }
 
 impl NaIRGenPass._region_depth_if_used -> ir.Value {
-    """The thread's region depth, read only once some thread entered a region.
-
-    A thread's region block exists only after it entered a region, and making
-    it sets `__jac_region_tls_used` first. While the flag is clear this thread
-    has no block, so its depth is 0: a `try` arming in a program that never
-    opens a region then pays one load instead of the depth call, the TLS
-    lookup and `pthread_getspecific`.
-    """;
     self._register_region_kernel();
     b = self.builder;
     i64 = ir.IntType(64);
