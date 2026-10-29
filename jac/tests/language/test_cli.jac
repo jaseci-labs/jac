@@ -2346,6 +2346,52 @@ test "jac check native-coverage flag maps to check arg" {
     assert getattr(args, "native_coverage", False) == True , (
         "kebab flag should map to native_coverage dest"
     );
+    (args, _) = parser.parse_known_args(
+        [fixture_path("warnings_only.jac"), "--native-checks", "only"]
+    );
+    assert getattr(args, "native_checks", "") == "only";
+}
+
+test "jac check native-checks splits native lowering between skip and only" {
+    td = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    try {
+        with open(os.path.join(td, "jac.toml"), "w") as f {
+            f.write('[project]\nname = "split"\n\n[native]\nrequire = ["bad"]\n');
+        }
+        with open(os.path.join(td, "bad.jac"), "w") as f {
+            f.write(
+                "obj Widget {\n    has size: int = 0;\n\n    def render -> str {\n"
+                    + "        return \"ok\";\n    }\n}\n\ndef build -> str {\n"
+                    + "    w: any = Widget();\n    return w.render();\n}\n"
+            );
+        }
+        with open(os.path.join(td, "good.jac"), "w") as f {
+            f.write("def add(a: int, b: int) -> int {\n    return a + b;\n}\n");
+        }
+        os.chdir(td);
+        outcomes: dict[str, tuple[int, str]] = {};
+        for mode in ["", "skip", "only"] {
+            (captured_stdout, captured_stderr, old_stdout, old_stderr) = _capture_output();
+            _reset_config();
+            try {
+                rc = analysis.check([td], jobs="0", native_checks=mode);
+                out = captured_stdout.getvalue() + captured_stderr.getvalue();
+            } finally {
+                _restore_output(old_stdout, old_stderr);
+                set_config(None);
+                _reset_config();
+            }
+            outcomes[mode] = (rc, out);
+        }
+        assert outcomes[""][0] == 1 , "a plain check must report the native lowering error";
+        assert outcomes["skip"][0] == 0 , "the skip leg must not lower native modules";
+        assert outcomes["only"][0] == 1 , "the only leg must report the native lowering error";
+        assert "bad.jac" in outcomes["only"][1];
+    } finally {
+        os.chdir(original_cwd);
+        shutil.rmtree(td, ignore_errors=True);
+    }
 }
 
 test "jac check native coverage ranks module outcomes" {

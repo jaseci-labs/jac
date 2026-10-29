@@ -347,6 +347,14 @@ jobs:
     needs: [changes, build-kit]
     if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.core == 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Native lowering is about a quarter of a whole-repo check, so it runs as
+    # its own leg: `skip` analyses every file without lowering native modules,
+    # `only` analyses and lowers just the native modules. Together the legs
+    # report what one `jac check .` reports.
+    strategy:
+      fail-fast: false
+      matrix:
+        native: [skip, only]
     env:
       # Leave memory for the driver and self-hosted compiler on the 16 GB runner.
       JAC_CHECK_JOBS: "2"
@@ -408,9 +416,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
+          key: jac-check-cache-v3-${{ matrix.native }}-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
           restore-keys: |
-            jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-
+            jac-check-cache-v3-${{ matrix.native }}-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-
 
       - uses: ./.github/actions/jac-kit
 
@@ -434,6 +442,7 @@ jobs:
 
       - name: Run jac fmt (check formatting)
         id: fmt
+        if: matrix.native == 'skip'
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -524,17 +533,17 @@ jobs:
       # ServingApp"). Check the tree with its own compiler instead: this is a
       # reroute lane, as the equivalence chunk is.
       - name: Run jac check (exclusions from jac.toml [check] exclude)
-        run: jac check . --nowarn
+        run: jac check . --nowarn --native-checks ${{ matrix.native }}
 
       - name: Save JIR analysis cache
         if: success()
         uses: actions/cache/save@v4
         with:
           path: ${{ runner.temp }}/.cache/jac
-          key: jac-check-cache-v3-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
+          key: jac-check-cache-v3-${{ matrix.native }}-${{ runner.os }}-${{ steps.inputs.outputs.compiler }}-${{ github.sha }}
 
       - name: Error-code breakdown (label "type-error-report")
-        if: contains(github.event.pull_request.labels.*.name, 'type-error-report')
+        if: matrix.native == 'skip' && contains(github.event.pull_request.labels.*.name, 'type-error-report')
         run: |
           set +e
           jac check . --nowarn > jac-check-full.log 2>&1

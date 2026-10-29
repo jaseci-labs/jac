@@ -773,22 +773,24 @@ impl IfaceRegistry.analysis_profile(options: any) -> str {
         active_host().check_settings(getattr(options, 'target_app', '') or ''),
         list(options.suppress_codes or [])
     );
-    ident = json.dumps(
-        {
-            "no_cgen": bool(options.no_cgen),
-            "options": options.analysis_identity(),
-            "symtab": bool(options.symtab_ir_only),
-            "native_parity": bool(options.native_parity),
-            "suppress": sorted(pol.suppress_codes),
-            "categories": sorted(pol.suppress_categories),
-            "lint": [
-                bool(pol.lint_active),
-                sorted(pol.lint_select),
-                sorted(pol.lint_ignore)
-            ]
-        },
-        sort_keys=True
-    );
+    fields: dict[str, any] = {
+        "no_cgen": bool(options.no_cgen),
+        "options": options.analysis_identity(),
+        "symtab": bool(options.symtab_ir_only),
+        "native_parity": bool(options.native_parity),
+        "suppress": sorted(pol.suppress_codes),
+        "categories": sorted(pol.suppress_categories),
+        "lint": [
+            bool(pol.lint_active),
+            sorted(pol.lint_select),
+            sorted(pol.lint_ignore)
+        ]
+    };
+    native_checks = getattr(options, 'native_checks', '') or '';
+    if native_checks {
+        fields["native_checks"] = native_checks;
+    }
+    ident = json.dumps(fields, sort_keys=True);
     return hashlib.sha256(ident.encode()).hexdigest()[:16];
 }
 

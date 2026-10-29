@@ -54,7 +54,8 @@ impl check(
     placements: bool = False,
     jobs: str = "",
     app: str = "",
-    kernel_parity: bool = False
+    kernel_parity: bool = False,
+    native_checks: str = ""
 ) -> int {
     import from time { time }
     if lint_only {
@@ -194,6 +195,7 @@ impl check(
         'native_coverage': native_coverage,
         'placements': placements,
         'kernel_parity': kernel_parity,
+        'native_checks': native_checks,
         'suppress_codes': list(suppressed_codes),
         'ignore': list(ignore_list)
     };
@@ -1862,6 +1864,7 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             compile_options = CompileOptions(
                 no_cgen=not bool(opts.get("native_coverage")),
                 native_parity=True,
+                native_checks=str(opts.get("native_checks") or ""),
                 iface_ok=True,
                 strict_dependencies=True,
                 suppress_codes=list(opts.get("suppress_codes") or []),
@@ -1879,7 +1882,9 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 compile_application(prog, file_path, compile_options);
             } else {
                 kernel_view: any = None;
-                if not opts.get("placements") and not opts.get("native_coverage") {
+                if not opts.get("placements")
+                    and not opts.get("native_coverage")
+                    and not opts.get("native_checks") {
                     import from jaclang.project.kernel_check { kernel_check }
                     kernel_view = kernel_check(
                         prog,

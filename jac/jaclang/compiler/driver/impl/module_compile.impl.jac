@@ -10,6 +10,7 @@ impl admits_native_checks(task: ModuleAnalysis) -> bool {
     options = task.options;
     return variant_selected(task.path) is not False
         and options.no_cgen
+        and options.native_checks != "skip"
         and (options.native_parity or options.native_required_for(task.path))
         and not options.symtab_ir_only
         and not task.parse_failed

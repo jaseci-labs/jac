@@ -131,6 +131,13 @@ comptime SPEC_EXPLAIN: CommandSpec = CommandSpec(
                  short="",
                  help="Compiler development: check with both the host and the native kernel and report every diagnostic they disagree on"
              ),
+             Arg.create(
+                 "native-checks",
+                 `default="",
+                 short="",
+                 choices=["skip", "only"],
+                 help="Split the native lowering a check does: 'skip' type-checks every file without lowering native modules, 'only' checks just the modules a check lowers natively"
+             ),
 
          ],
          examples=[
@@ -183,7 +190,8 @@ def check(
     placements: bool = False,
     jobs: str = "",
     app: str = "",
-    kernel_parity: bool = False
+    kernel_parity: bool = False,
+    native_checks: str = ""
 ) -> int;
 
 def lint(

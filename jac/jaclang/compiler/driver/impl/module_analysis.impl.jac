@@ -109,9 +109,13 @@ impl run_analysis(task: ModuleAnalysis) {
     _client = module is not None
         and not task.parse_failed
         and module.declares_codespace(_CodeCtx.CLIENT, path_hint=task.path);
+    _native_only_skip = task.options.native_checks == "only"
+        and not candidate
+        and not (module is not None and ModuleFacts.has_native_context_stmts(module));
     _analyze = task.has_full_ir()
         and not _is_decl_stub
         and not _annex_of_base
+        and not _native_only_skip
         and (candidate or _client or not _unasked);
     task.placement_only = _analyze and _unasked and not task.native and not _client;
     errors_mark = len(program.errors_had);

@@ -10,6 +10,7 @@ obj CompileOptions {
     has symtab_ir_only: bool = False,
         no_cgen: bool = False,
         native_parity: bool = False,
+        native_checks: str = "",
         native_required: bool = False,
         native_require: (list[str] | None) = None,
         iface_ok: bool = False,

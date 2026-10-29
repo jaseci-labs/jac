@@ -7585,6 +7585,7 @@ graph import compiler {
             | backends.native.na_ir_gen_pass
             | backends.py.jcir_gen_pass
             | driver.boundary_classify.is_server_anchored_module
+            | driver.module_analysis.run_analysis
             | driver.module_compile
             | driver.program.JacProgram.stamp_native_import_facts
             | native_bindings
