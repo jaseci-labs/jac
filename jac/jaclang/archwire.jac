@@ -10425,16 +10425,18 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass.exit_archetype
             | backends.native.na_ir_gen_pass.NaIRGenPass._c_scalar_llvm
             | passes.type_checker_pass.TypeCheckPass.exit_archetype
-            | types.type_evaluator.TypeEvaluator._is_typed_c_declaration {
+            | types.type_evaluator.TypeEvaluator._has_numeric_member {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass.EsastGenPass.exit_raise_stmt
             | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
-            | passes.type_checker_pass.TypeCheckPass.exit_type_alias {
+            | passes.type_checker_pass.TypeCheckPass.exit_type_alias
+            | types.type_evaluator.TypeEvaluator._is_typed_c_declaration {
             JAC_TYPE_REGISTRY
         },
         backends.es.esast_gen_pass._raised_exc_identity
-            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_sized_builtin_call {
+            | backends.native.na_ir_gen_pass.NaIRGenPass._codegen_sized_builtin_call
+            | types.type_evaluator.TypeEvaluator._numeric_args_invariant {
             JAC_TYPE_REGISTRY
         },
         backends.native.na_ir_gen_pass { JacTypeEntry },

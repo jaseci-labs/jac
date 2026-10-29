@@ -2390,3 +2390,66 @@ test "bug_ctor_init_args_dict_call_misuse_is_reported" {
         f"Line 24 reported: {by_line.get(24)}"
     );
 }
+
+# Bug #8580: container argument compatibility was plain covariant subtyping,
+# and int widens to float, so list[int] flowed into list[float]. The native
+# backend stored the appended float in an int-typed element slot and reading
+# it back printed raw float bits as an integer. The same-class branch of
+# _assign_class now also requires the element relation to hold in reverse
+# when both element types are numeric class instances, and the derived-class
+# branch does the same, so a Box[int] subclass does not flow into Box[float].
+test "bug_8580_numeric_container_covariance_rejected" {
+    program = compile_and_check("checker_bug_numeric_container_invariance.jac");
+    by_line = {
+        e.loc.first_line: str(e)
+        for e in program.errors_had
+        if e.loc
+    };
+    assert len(program.errors_had) == 5 , (
+        "Bug #8580: numeric widening must not carry list[int] into "
+        "list[float], an IntBox into Box[float], dict[str, int] into "
+        "dict[str, float], list[int] into list[float | None], or "
+        "list[int | None] into list[float | None]. "
+        f"Got: {[str(e) for e in program.errors_had]}"
+    );
+    assert "list[int]" in by_line.get(46, "")
+        and "list[float]" in by_line.get(46, "") , (
+        "Bug #8580: line 46 must reject list[int] into list[float]. "
+        f"Line 46 reported: {by_line.get(46)}"
+    );
+    assert "IntBox" in by_line.get(48, "") and "Box[float]" in by_line.get(48, "") , (
+        "Bug #8580: line 48 must reject IntBox (a Box[int]) into Box[float]. "
+        f"Line 48 reported: {by_line.get(48)}"
+    );
+    assert "dict[str, int]" in by_line.get(50, "")
+        and "dict[str, float]" in by_line.get(50, "") , (
+        "Bug #8580: line 50 must reject dict[str, int] into dict[str, float]. "
+        f"Line 50 reported: {by_line.get(50)}"
+    );
+    assert "list[int]" in by_line.get(51, "") and "NoneType" in by_line.get(51, "") , (
+        "Bug #8580: line 51 must reject list[int] into list[float | None]; a "
+        "union destination stores any member, so the callee could append a "
+        f"float the caller reads as int. Line 51 reported: {by_line.get(51)}"
+    );
+    assert "list[int | NoneType]" in by_line.get(53, "")
+        and "list[float | NoneType]" in by_line.get(53, "") , (
+        "Bug #8580: line 53 must reject list[int | None] into "
+        "list[float | None]; both element unions must be mutually "
+        "assignable, or the callee appends a float the caller reads as "
+        f"int | None. Line 53 reported: {by_line.get(53)}"
+    );
+}
+
+# The numeric invariance guard skips non-numeric elements, literal elements
+# and TypeVar arguments, so idiomatic covariant uses still check.
+test "bug_8580_numeric_covariance_guard_keeps_covariant_uses" {
+    program = compile_and_check(
+        "checker_bug_numeric_container_invariance_positive.jac"
+    );
+    assert program.errors_had == [] , (
+        "Bug #8580: list[int] into list[object], generic inference and "
+        f"literal widening must keep checking. Got: {[
+            str(e) for e in program.errors_had
+        ]}"
+    );
+}
