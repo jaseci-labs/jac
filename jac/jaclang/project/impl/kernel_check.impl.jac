@@ -131,7 +131,7 @@ impl kernel_check(
         }
         return KernelCheck(outcome=outcome, parity=True, failure=failure);
     }
-    entry_module = outcome.module(path);
+    entry_module = outcome.entry_module();
     if entry_module is None {
         raise KernelCheckError(
             f"the native compiler kernel analyzed {path} but reported no module for it"
