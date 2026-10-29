@@ -172,7 +172,7 @@ def _cp_b64_to_buf(b64: str, out_len: list[int]) -> int {
         v: int = _cp_b64_val(str_byte(b64, si));
         si = si + 1;
         if v >= 0 {
-            acc = (acc << 6) | v;
+            acc = ((acc << 6) | v) & 16777215;
             nbits = nbits + 6;
             if nbits >= 8 {
                 nbits = nbits - 8;

@@ -1063,19 +1063,20 @@ def:priv _f32_from_bits(fb: int) -> float {
     exp: int = (fb >> 23) & 0xFF;
     man: int = fb & 0x7F_FFFF;
     db: int = 0;
-    if exp == 0 {
-        db = sign << 63;  # zero (subnormals → zero)
-    } elif exp == 0xFF {
+    if sign != 0 {
+        db = -9223372036854775807 - 1;  # the sign bit; `1 << 63` overflows int
+    }
+    if exp == 0xFF {
         de: int = 0x7FF;
         dm: int = 0;
         if man != 0 {
             dm = 1 << 51;
         }
-        db = (sign << 63) | (de << 52) | dm;
-    } else {
+        db = db | (de << 52) | dm;
+    } elif exp != 0 {
         e: int = exp - 127 + 1023;
-        db = (sign << 63) | (e << 52) | (man << 29);
-    }
+        db = db | (e << 52) | (man << 29);
+    }  # exp == 0: signed zero (subnormals → zero)
     return jsv_double_from_bits(db);
 }
 
