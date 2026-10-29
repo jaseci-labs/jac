@@ -629,10 +629,20 @@ jobs:
             paths: tests/compiler/test_*.jac
             sealed: "1"
             jobs: "2"
-          - chunk: passes-native
-            paths: tests/compiler/backends/native tests/compiler/tools
+          # Split in three by measured runtime; together the globs cover every
+          # top-level test_*.jac in backends/native exactly once.
+          - chunk: passes-native-1
+            paths: "tests/compiler/backends/native/test_[!n]*.jac tests/compiler/backends/native/test_n[!a]*.jac tests/compiler/backends/native/test_na_*.jac tests/compiler/tools"
             sealed: "1"
             # Native workers retain LLVM state; keep headroom on the 16 GB runner.
+            jobs: "2"
+          - chunk: passes-native-2
+            paths: "tests/compiler/backends/native/test_native_[a-h]*.jac"
+            sealed: "1"
+            jobs: "2"
+          - chunk: passes-native-3
+            paths: "tests/compiler/backends/native/test_native_[i-z]*.jac"
+            sealed: "1"
             jobs: "2"
           # The equivalence suite builds fixture paths from jaclang.__file__,
           # which only resolve in the checkout: it runs through the reroute,
@@ -656,7 +666,7 @@ jobs:
         with:
           node-version: "20"
       - name: Set up Zig for compiler runtime and ELF fixtures
-        if: matrix.chunk == 'passes-native'
+        if: startsWith(matrix.chunk, 'passes-native')
         uses: mlugg/setup-zig@v2
         with:
           version: "0.16.0"
@@ -671,10 +681,10 @@ jobs:
           WORK="$(mktemp -d)"
           HOME="$WORK" JAC_TEST_RSS_LOG=1 JAC_TEST_JOBS=${{ matrix.jobs || 'auto' }} JAC_TEST_STRICT=1 jac test ${{ matrix.paths }}
       - name: Preserve failed native executables
-        if: failure() && matrix.chunk == 'passes-native'
+        if: failure() && startsWith(matrix.chunk, 'passes-native')
         uses: actions/upload-artifact@v4
         with:
-          name: native-test-failures
+          name: native-test-failures-${{ matrix.chunk }}
           path: ${{ runner.temp }}/native-test-artifacts
           if-no-files-found: ignore
 
