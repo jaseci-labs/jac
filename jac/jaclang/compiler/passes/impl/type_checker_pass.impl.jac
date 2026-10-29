@@ -2014,6 +2014,9 @@ impl TypeCheckPass.exit_except with Except exit {
             if isinstance(here.ex_type, TupleVal)
             else [here.ex_type];
         for member in members {
+            if not isinstance(member, Expr) {
+                continue;
+            }
             if isinstance(member, UnaryExpr) and member.op.name == Tok.STAR_MUL {
                 continue;
             }
