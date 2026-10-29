@@ -1125,9 +1125,6 @@ impl ESListEmitter.emit_count(
 impl ESListEmitter.emit_sort(
     self: ESListEmitter, ctx: ESEmitCtx, target: str, args: list[str]
 ) -> (str | None) {
-    if len(args) == 0 {
-        return _mcall(target, "sort", []);
-    }
     return _rt("list", "sort", [target] + args);
 }
 
