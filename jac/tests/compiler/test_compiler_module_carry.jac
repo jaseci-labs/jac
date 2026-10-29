@@ -37,6 +37,9 @@ import from jaclang.compiler.driver.jir {
     ct_deps_section,
     get_module_cache_path,
     is_module_cache_valid,
+    KIT_CARRY_ENV,
+    KIT_NATIVE_PRODUCER,
+    kit_carry_digest,
     merge_native_sections,
     module_cache_invalid_reason,
     native_producer_digest,
@@ -459,4 +462,119 @@ test "a kernel linked before a compiler edit is still accepted after it" {
             "an exact build accepted a kernel stamped by its ABI"
         );
     }
+}
+
+"""A CI kit's seal carries kernel units across compiler builds by the kernel's
+carry contract: the parser, the type system, the native backend and the ABI
+files. Anything else in the compiler may move without re-lowering a unit whose
+own source is unchanged; a move inside the contract carries nothing."""
+def with_kit_carry(body: any) {
+    saved = os.environ.get(KIT_CARRY_ENV);
+    os.environ[KIT_CARRY_ENV] = "1";
+    try {
+        body();
+    } finally {
+        if saved is None {
+            os.environ.pop(KIT_CARRY_ENV, None);
+        } else {
+            os.environ[KIT_CARRY_ENV] = saved;
+        }
+    }
+}
+
+def write_kit_native(payload: bytes) -> jir.NativeStamp {
+    stamp = current_native_stamp("gc=cycles", "host", kit_carry_digest());
+    write_module_cache(
+        MODULE,
+        None,
+        extra_sections={SEC_NIFACE: stamp.pack(payload), SEC_NOBJ: stamp.pack(payload)}
+    );
+    return stamp;
+}
+
+test "a kit carries a kernel unit's products to the next compiler build, exact or not" {
+    def body {
+        with checkout() as tree {
+            tree.build("a");
+            update_handoff(exact=True);
+            kit = kit_carry_digest();
+            assert kit.startswith(KIT_NATIVE_PRODUCER);
+            stamp = write_kit_native(b"lowered-by-a");
+            tree.build("b", native="n1");
+            assert kit_carry_digest() == kit , "an edit outside the contract moved it";
+            carried = carried_native_sections(MODULE, kit);
+            assert sorted(carried) == [SEC_NIFACE, SEC_NOBJ];
+            assert native_section_payload(carried[SEC_NIFACE], stamp)
+                == b"lowered-by-a";
+        }
+    }
+    with_kit_carry(body);
+}
+
+test "a kit carries products from the same compiler build when the entry went stale" {
+    def body {
+        with checkout() as tree {
+            tree.build("a");
+            kit = kit_carry_digest();
+            write_kit_native(b"lowered-by-a");
+            assert sorted(carried_native_sections(MODULE, kit))
+                == [SEC_NIFACE, SEC_NOBJ];
+            assert carried_native_sections(MODULE, native_producer_digest(True))
+                == {} , ("the ABI carry reached into its own generation");
+        }
+    }
+    with_kit_carry(body);
+}
+
+test "the kit's carry contract moves with the parser, types and native backend only" {
+    with tempfile.TemporaryDirectory() as scratch {
+        tree_dir = Path(scratch);
+        files = {
+            "compiler/frontend/parser/parser.jac": "def p -> int {\n    return 1;\n}\n",
+            "compiler/types/type_evaluator.jac": "def t -> int {\n    return 2;\n}\n",
+            "compiler/backends/native/lowering.jac": "def l -> int {\n    return 3;\n}\n",
+            "compiler/backends/es/esast_gen_pass.jac": "def e -> int {\n    return 4;\n}\n",
+            "compiler/tools/jac_auto_lint_pass.jac": "def a -> int {\n    return 5;\n}\n"
+        };
+        for (rel, text) in files.items() {
+            (tree_dir / rel).parent.mkdir(parents=True, exist_ok=True);
+            (tree_dir / rel).write_text(text);
+        }
+        base = jir.carry_contract_digest(scratch);
+        for rel in (
+            "compiler/backends/es/esast_gen_pass.jac",
+            "compiler/tools/jac_auto_lint_pass.jac"
+        ) {
+            (tree_dir / rel).write_text(files[rel] + "\n");
+            assert jir.carry_contract_digest(scratch) == base , f"{rel} moved the contract";
+        }
+        moved: list[str] = [];
+        for rel in (
+            "compiler/frontend/parser/parser.jac",
+            "compiler/types/type_evaluator.jac",
+            "compiler/backends/native/lowering.jac"
+        ) {
+            (tree_dir / rel).write_text(files[rel] + "\n");
+            now = jir.carry_contract_digest(scratch);
+            assert now not in [base] + moved , f"{rel} left the contract unchanged";
+            moved.append(now);
+        }
+    }
+}
+
+test "only the kit's kernel plan is stamped by the carry contract" {
+    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    import from jaclang.compiler.driver.program { JacProgram }
+    def body {
+        registry = JacProgram().native_units();
+        kit = registry.stamp_for(
+            CompileOptions(native_unit=True, kit_carry=True), MODULE
+        );
+        user = registry.stamp_for(CompileOptions(native_unit=True), MODULE);
+        assert kit.compiler_digest == kit_carry_digest();
+        assert user.compiler_digest == running_compiler_digest() , (
+            "a user program's products lost the compiler that built them"
+        );
+    }
+    with_kit_carry(body);
 }

@@ -830,6 +830,7 @@ graph import {
         },
         dist.precompile_bytecode.run_precompile { read_debug_source },
         dist.precompile_bytecode.seal_native {
+            kit_carry_enabled,
             native_section_payload,
             read_section_bytes as _rsb
         },
@@ -6707,6 +6708,11 @@ graph import compiler {
             get_effective_default_codespace_override
         },
         driver.jir._module_codespace_mode { effective_default_codespace },
+        driver.jir.get_module_cache_path
+            | placement.placement_solver._import_source_module {
+            is_compiler_source_path
+        },
+        driver.jir.kit_carry_digest { NATIVE_ABI_VERSION },
         driver.jir.native_producer_digest { NATIVE_ABI_VERSION },
         driver.nativecache.NativeBuildSession.lower {
             get_effective_default_codespace_override,
@@ -6743,7 +6749,6 @@ graph import compiler {
             is_kernel_unit_path,
             native_unit_compile_active
         },
-        placement.placement_solver._import_source_module { is_compiler_source_path },
         tests.xbackend_equiv {
             JAC_ENTRY_SYMBOL,
             native_symbol_name,
@@ -9728,6 +9733,7 @@ graph import compiler {
             is_target_package_path,
             kernel_target_active
         },
+        driver.jir.kit_carry_digest { target_pkg_root },
         driver.jir.native_producer_digest { target_pkg_root },
         placement.placement_facts.native_lowered { active_kernel_target },
         placement.placement_facts.native_only { active_kernel_target },
@@ -9758,6 +9764,10 @@ graph import compiler {
             NATIVE_SCOPE
         },
         driver.jir.abi_contract_digest { KERNEL_ABI_CONTRACT_REL },
+        driver.jir.carry_contract_digest {
+            KERNEL_ABI_CONTRACT_REL,
+            KIT_CARRY_CONTRACT_REL
+        },
         driver.program.JacProgram.declared_codespace { package_host_edge },
         placement.placement_solver._native_deps_ok { in_native_scope_path },
         placement.placement_solver.native_closure_blocker { in_native_scope_path },
@@ -12034,6 +12044,7 @@ graph import compiler.driver {
             current_native_stamp,
             get_module_cache_path,
             jir_cacheable_source_path,
+            kit_carry_digest,
             module_cache_invalid_reason,
             module_cache_key,
             module_ct_deps_section,
