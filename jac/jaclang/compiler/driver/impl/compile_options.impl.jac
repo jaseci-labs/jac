@@ -105,6 +105,7 @@ impl CompileOptions.codegen_identity -> str {
             f"app_kind={self.app_kind}"
         ]
     )
+        + ("" if self.na_borrow_infer else ";borrow_infer=0")
         + ("" if self.na_move_flow else ";move_flow=0");
 }
 
@@ -132,6 +133,7 @@ impl CompileOptions.artifact_identity -> str {
             f"app_kind={self.app_kind}"
         ]
     )
+        + ("" if self.na_borrow_infer else ";borrow_infer=0")
         + ("" if self.na_move_flow else ";move_flow=0");
 }
 
@@ -220,6 +222,7 @@ impl CompileOptions.clone_for_native_import -> CompileOptions {
         native_link_mode=self.native_link_mode,
         na_gc_mode=self.na_gc_mode,
         nogc_enforce_all=self.nogc_enforce_all,
+        na_borrow_infer=self.na_borrow_infer,
         memory_profile=self.memory_profile,
         native_threads=self.native_threads,
         memory_enforce=list(self.memory_enforce or []),
