@@ -199,3 +199,16 @@ test "shortcoming_34_never_calls_end_control_flow" {
     assert any("'conditional'" in message for message in implicit);
     assert any("'ordinary'" in message for message in implicit);
 }
+
+test "a bare type parameter cannot be raised or used as a cause" {
+    program = compile_and_check("checker_bug_raise_type_param.jac");
+    found = {
+        (e.code.code, e.loc.first_line)
+        for e in program.errors_had
+        if e.code
+    };
+    expected = {("E1090", 24), ("E1161", 28), ("E1090", 33)};
+    assert found == expected , f"expected {sorted(expected)}, got {sorted(found)}";
+    messages = [str(e) for e in program.errors_had];
+    assert any("Cannot raise type parameter T" in m for m in messages) , messages;
+}

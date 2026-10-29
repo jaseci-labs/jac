@@ -1776,16 +1776,33 @@ impl TypeCheckPass.exit_in_for_stmt with InForStmt exit {
 impl TypeCheckPass.exit_raise_stmt with RaiseStmt exit {
     if here.cause {
         cause_type = self.evaluator.get_type_of_expression(here.cause);
-        if not self._is_exception_operand(cause_type, allow_none=False) {
-            self.ctx.emit(E1090, node_override=here, type=str(cause_type));
+        param = self._type_param_label(here.cause);
+        if param is not None
+            or not self._is_exception_operand(cause_type, allow_none=False) {
+            self.ctx.emit(E1090, node_override=here, type=param or str(cause_type));
         }
     }
     if here.from_target {
         from_type = self.evaluator.get_type_of_expression(here.from_target);
-        if not self._is_exception_operand(from_type, allow_none=True) {
-            self.ctx.emit(E1161, node_override=here.from_target, type=str(from_type));
+        param = self._type_param_label(here.from_target);
+        if param is not None
+            or not self._is_exception_operand(from_type, allow_none=True) {
+            self.ctx.emit(
+                E1161, node_override=here.from_target, type=param or str(from_type)
+            );
         }
     }
+}
+
+impl TypeCheckPass._type_param_label(expr: Expr) -> (str | None) {
+    if not isinstance(expr, Name) or expr.sym is None {
+        return None;
+    }
+    owner = expr.sym.decl.name_of;
+    if isinstance(owner, TypeParam) and not owner.is_comptime {
+        return f"type parameter {expr.value}";
+    }
+    return None;
 }
 
 impl TypeCheckPass._is_exception_operand(ty: TypeBase, allow_none: bool) -> bool {
