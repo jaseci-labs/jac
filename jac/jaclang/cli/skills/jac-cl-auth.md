@@ -164,6 +164,10 @@ client_secret = "..."
 
 The server then exposes `/sso/{platform}/login`, `/sso/{platform}/register`, and the OAuth callback. Client side, `await jacSsoLogin("google")` (async, returns `bool`) hands off to the provider and resolves once the token lands; `jacSetToken(token)` stores a token directly (used by SSO callback pages).
 
+### Connecting a provider for API access
+
+To call a provider's APIs for the user (a calendar, a mailbox), add `scopes = [...]` to `[scale.sso.<platform>]` and set `[scale.sso] client_auth_callback_url` to a page of the app. A **signed-in** user then runs `await jacSsoConnect("google")` (optionally with a list of the configured scopes), which leaves the page for the provider; the callback page runs `await jacSsoFinish()` and gets `{"ok", "connected", "platform", "error"}`. `await jacSsoConnections()` lists connected accounts (never tokens) and `await jacSsoDisconnect("google")` disconnects. Server code reads the token with `await sso_access_token("google")` from `jaclang.scale.sso.grants` (see `jac-sv-auth`); the client never holds provider tokens.
+
 ## Email verification (`verification = "required"`)
 
 When the project sets `[serve.auth.email] verification = "required"` (see `jac-sv-auth`), a new account cannot sign in until the emailed link is used, and the helpers do not report that state:
@@ -177,7 +181,7 @@ The link points at `verify_url_template` (for example `https://app.example.com/v
 
 ## Auth-relevant `@jac/runtime` exports
 
-`jacLogin`, `jacSignup`, `jacLogout`, `jacIsLoggedIn`, `jacSsoLogin`, `jacSetToken`, `AuthGuard`, plus `Navigate` / `useNavigate` for post-auth redirects. For the full client export list, see `jac-cl-components`.
+`jacLogin`, `jacSignup`, `jacLogout`, `jacIsLoggedIn`, `jacSsoLogin`, `jacSsoConnect`, `jacSsoFinish`, `jacSsoConnections`, `jacSsoDisconnect`, `jacSetToken`, `AuthGuard`, plus `Navigate` / `useNavigate` for post-auth redirects. For the full client export list, see `jac-cl-components`.
 
 ## Pitfalls
 
