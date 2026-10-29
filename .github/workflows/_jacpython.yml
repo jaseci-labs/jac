@@ -16,7 +16,7 @@ on:
       runners:
         description: JSON list of runners to build and test on.
         type: string
-        default: '["blacksmith-8vcpu-ubuntu-2404"]'
+        default: '["ubuntu-24.04"]'
 
 permissions:
   contents: read

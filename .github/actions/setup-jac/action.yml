@@ -326,6 +326,15 @@ runs:
         # deterministic, though, so it exits on the first attempt rather
         # than burning two more full builds to reprint itself.
         set -o pipefail
+        (
+          set +e +o pipefail
+          while sleep 15; do
+            echo "[res] $(date -u +%T) $(free -m | awk '/^Mem/{printf "mem_used=%sM avail=%sM", $3, $7} /^Swap/{printf " swap_used=%sM", $3}') disk_avail=$(df -BG --output=avail "$GITHUB_WORKSPACE" | tail -1 | tr -d ' ') load=$(cut -d' ' -f1 /proc/loadavg)"
+            ps -eo rss=,comm= --sort=-rss | head -3 | awk '{printf "[res]   %6dM %s\n", $1/1024, $2}'
+            sudo dmesg 2>/dev/null | grep -iE 'out of memory|oom-kill|killed process' | tail -2 | sed 's/^/[res]   dmesg: /'
+          done
+        ) &
+        trap 'kill $! 2>/dev/null' EXIT
         LOG="$(mktemp)"
         for attempt in 1 2 3; do
           if zig build "${PY[@]}" "${TARGET_ARG[@]}" "${KERNEL_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
