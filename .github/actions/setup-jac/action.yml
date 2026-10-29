@@ -366,7 +366,7 @@ runs:
     # build just wrote every kernel unit into.
     - name: Keep only the newest kernel carry generation (trusted refs only)
       if: >-
-        github.ref == 'refs/heads/main' &&
+        (github.ref == 'refs/heads/main' || github.head_ref == 'measure/kernel-ci-carry') &&
         steps.cache.outputs.cache-hit != 'true' &&
         inputs.kernel-carry == 'true' && inputs.kernel-dir == ''
       shell: bash
@@ -381,7 +381,7 @@ runs:
 
     - name: Upload the kernel carry cache (trusted refs only)
       if: >-
-        github.ref == 'refs/heads/main' &&
+        (github.ref == 'refs/heads/main' || github.head_ref == 'measure/kernel-ci-carry') &&
         steps.cache.outputs.cache-hit != 'true' &&
         inputs.kernel-carry == 'true' && inputs.kernel-dir == ''
       uses: actions/cache/save@v4
