@@ -458,6 +458,14 @@ through another declared app entry use its public functions and walkers;
 `E2039` diagnoses access outside that surface. File location does not establish
 ownership. Declaration and implementation annexes work within every app context.
 
+Client components may also import Jac modules outside the project directory.
+For example, `myapp/frontend.jac` can import `..shared.Card` from a sibling
+`shared/Card.jac`. The client build assigns external modules distinct paths
+under its compiled output and generates imports relative
+to those output paths. External modules can import their own dependencies or
+modules inside the app; two external modules with the same filename remain
+distinct. Generated source maps continue to reference the original Jac files.
+
 ---
 
 ## Packages and `__init__.jac`

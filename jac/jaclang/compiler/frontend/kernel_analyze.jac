@@ -60,7 +60,8 @@ obj AnalysisReport {
         errors: list[AnalysisDiag] = [],
         warnings: list[AnalysisDiag] = [],
         misses: list[str] = [],
-        events: list[list[str]] = [];
+        events: list[list[str]] = [],
+        reads: list[list[str]] = [];
 
     def module(path: str) -> (ModuleReport | None);
     def to_dict -> dict[str, any];

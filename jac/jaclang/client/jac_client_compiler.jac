@@ -29,8 +29,6 @@ class JacClientCompiler {
             'JacClientErrorBoundary'
         ];
 
-        COMPOUND_EXTENSIONS = ['.native.jac'] + list(ANNEX_SUFFIXES);
-
         NATIVE_RUNTIME_FILE = "client_runtime_native.jac";
 
         SELF_COMPILED_VIRTUAL_MODULES = {"@jac/mobui", "@jac/pwa"};
@@ -40,7 +38,7 @@ class JacClientCompiler {
         self: JacClientCompiler,
         project_dir: Path,
         runtime_path: (Path | None),
-        compile_to_js_func: Callable[[Path], ClientArtifact],
+        compile_to_js_func: Callable[[Path, Path | None], ClientArtifact],
         extract_exports_func: Callable[[ClientManifest | None], list[str]],
         extract_globals_func:
             Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
