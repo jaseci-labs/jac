@@ -21,7 +21,8 @@ import from tests.support { assert_native_identity, jac_command, NATIVE_FIXTURES
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
-glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "unwind_leaf.jac");
+glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "unwind_leaf.jac"),
+     DROP_RAISE: str = os.path.join(NATIVE_FIXTURES, "unwind_drop_raise.jac");
 
 """The fixture's unoptimized IR under `gc_mode`."""
 def fixture_ir(gc_mode: str) -> str {
@@ -71,6 +72,13 @@ test "frames and handlers fetch the context through the inlined fast path" {
 test "the program prints what the Python backend prints under rc and managed" {
     out = assert_native_identity(FIXTURE, profiles=["rc", "managed"]);
     assert out.splitlines()[0] == "24080 280" , out;
+}
+
+test "an exception a drop raises is ignored, as Python ignores it" {
+    # releases are calls that cannot raise, so a frame keeps no record across
+    # them; the drop's exception must not cross the frame that released it
+    out = assert_native_identity(DROP_RAISE, profiles=["rc", "managed"]);
+    assert out == "18 ['kept 0', 'kept 1', 'kept 2']\n" , out;
 }
 
 test "raises from frames without a record leak nothing" {

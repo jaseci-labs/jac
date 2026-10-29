@@ -3546,7 +3546,10 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
 
     _hook = self._drop_hook_for(arch_name);
     if _hook is not None {
-        b.call(_hook, [b.bitcast(release_fn.args[0], _hook.args[0].type)]);
+        b.call(
+            self._drop_guard_fn(_hook, arch_name),
+            [b.bitcast(release_fn.args[0], _hook.args[0].type)]
+        );
     }
 
     _node_lay = self._arch_layout(arch_name);

@@ -3008,6 +3008,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> dict[int, ir.Value];
 
     def _unwind_nothrow_callee(name: str) -> bool;
+    def _drop_guard_fn(hook: ir.Function, owner: str) -> ir.Function;
     def _unwind_raise_sites(
         func: ir.Function, slots: list[tuple[str, ir.Value]]
     ) -> (list[tuple[ir.Instruction, set[int]]] | None);

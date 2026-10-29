@@ -1659,7 +1659,9 @@ impl NaIRGenPass._unwind_nothrow_callee(name: str) -> bool {
             "__jac_exception_context",
             "__jac_exception_context.inl",
             "__jac_str_stamp",
+            "__jac_fmt_i64",
             "snprintf",
+            "strlen",
             "malloc",
             "calloc",
             "realloc",
@@ -1668,6 +1670,85 @@ impl NaIRGenPass._unwind_nothrow_callee(name: str) -> bool {
             "memmove",
             "memset"
         );
+}
+
+impl NaIRGenPass._drop_guard_fn(hook: ir.Function, owner: str) -> ir.Function {
+    name = f"{hook.name}.guarded";
+    if name in self.llvm_module.globals {
+        found = self.llvm_module.get_global(name);
+        if isinstance(found, ir.Function) {
+            return found;
+        }
+    }
+    if self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    fn = ir.Function(
+        self.llvm_module, ir.FunctionType(ir.VoidType(), [hook.args[0].type]), name=name
+    );
+    fn.linkage = "private";
+    fn.attributes.add("noinline");
+    fn.args[0].name = "self";
+    entry_bb = fn.append_basic_block("entry");
+    call_bb = fn.append_basic_block("drop.call");
+    raised_bb = fn.append_basic_block("drop.raised");
+    done_bb = fn.append_basic_block("done");
+    saved_builder = self._builder;
+    try {
+        b = ir.IRBuilder(entry_bb);
+        self._builder = b;
+        (state, depth) = self._push_exception_handler(raised_bb, call_bb);
+        b.position_at_end(call_bb);
+        b.call(hook, [fn.args[0]]);
+        self._emit_exc_pop(b);
+        b.branch(done_bb);
+        b.position_at_end(raised_bb);
+        self._emit_exc_pop(b);
+        self._region_unwind(b.load(depth, name="rgn.depth"));
+        (_exc_type, exc_obj, exc_msg) = self._exception_values(state);
+        if not self._target_is_wasm() {
+            shown = owner.split("$")[0];
+            text = f"Exception ignored in: {shown}.drop: %s\n\0";
+            data = bytearray(text.encode("utf8"));
+            fmt = ir.GlobalVariable(
+                self.llvm_module,
+                ir.ArrayType(ir.IntType(8), len(data)),
+                name=f".drop.guard.fmt.{hook.name}"
+            );
+            fmt.linkage = "private";
+            fmt.global_constant = True;
+            fmt.initializer = ir.Constant(ir.ArrayType(ir.IntType(8), len(data)), data);
+            empty = b.bitcast(fmt, i8p);
+            empty = b.gep(empty, [ir.Constant(i32, len(data) - 1)], name="drop.no.msg");
+            msg = b.select(
+                b.icmp_unsigned(
+                    "==", exc_msg, ir.Constant(i8p, None), name="drop.msg.null"
+                ),
+                empty,
+                exc_msg,
+                name="drop.msg"
+            );
+            fprintf_fn = self._get_or_declare_extern(
+                "fprintf", i32, [i8p, i8p], var_arg=True
+            );
+            b.call(
+                fprintf_fn,
+                [self._emit_stdio_handle(2, "stderr", b), b.bitcast(fmt, i8p), msg]
+            );
+        }
+        release_fn = self.rc_release_simple_fn;
+        if release_fn is not None {
+            b.call(release_fn, [b.bitcast(exc_obj, i8p)]);
+        }
+        b.branch(done_bb);
+        b.position_at_end(done_bb);
+        b.ret_void();
+    } finally {
+        self._builder = saved_builder;
+    }
+    return fn;
 }
 
 impl NaIRGenPass._unwind_raise_sites(
