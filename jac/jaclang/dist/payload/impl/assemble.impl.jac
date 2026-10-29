@@ -359,13 +359,15 @@ impl precompile(
     }
 
     env: dict[str, str] = precompile_env(python_dir, site);
+    fin_env: dict[str, str] = dict(env);
     if kernel_dir {
         env["JAC_SEAL_KERNEL_DIR"] = os.path.abspath(kernel_dir);
+        fin_env["JAC_SEAL_KERNEL_DIR"] = env["JAC_SEAL_KERNEL_DIR"];
         log(f"   the seal adopts the prebuilt kernel in {kernel_dir}");
     } elif kernel_carry {
         make_dirs(kernel_carry);
-        env["JAC_SEAL_KERNEL_CARRY"] = "1";
-        env["JAC_CACHE_HOME"] = os.path.abspath(kernel_carry);
+        fin_env["JAC_SEAL_KERNEL_CARRY"] = "1";
+        fin_env["JAC_CACHE_HOME"] = os.path.abspath(kernel_carry);
         log(f"   the seal carries unchanged kernel units from {kernel_carry}");
     }
     run_child(argv, env, True);
@@ -392,7 +394,7 @@ impl precompile(
     }
     log("==> sealing (finalize): completeness check + manifest + freeze bootstrap");
     finalize_start = time.monotonic();
-    if not run_child(fin, env, True) {
+    if not run_child(fin, fin_env, True) {
         die("mkpayload: seal-finalize failed (see log above).");
     }
     if not file_exists(os.path.join(pre_dir, "MANIFEST.json")) {
