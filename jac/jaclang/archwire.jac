@@ -1961,6 +1961,7 @@ graph import {
             | scale.runtime.fleet._has_client
             | server.static_files { kind_has_client },
         client.cli.setup { kind_has_client },
+        client.targets.desktop.desktop_build { kind_has_server },
         compiler.placement.placement.project_has_server
             | compiler.placement.placement_pins { kind_codespace },
         dist.source.project.export_project { kind_has_client, kind_has_server },
