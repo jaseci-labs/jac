@@ -356,9 +356,10 @@ graph import {
     client as _client_pkg ++> client.runtime_source.resolve_client_runtime_cl_path;
     client as _client_pkg --> project.modresolver._resolve_jac_virtual_module;
     client.artifact ++> server.server { ClientBundleError }
-    client.artifact --> server.server.ModuleIntrospector.ensure_bundle {
-        prebuilt_bundle
-    }
+    client.artifact --> [
+        server.endpoints.pages.register_page_endpoints { client_output_dir },
+        server.server.ModuleIntrospector.ensure_bundle { prebuilt_bundle },
+    ]
     client.cli --> [
         cli.commands.build._build_app { run_client_build },
         cli.commands.execution.serve { run_client_start },
@@ -1996,15 +1997,10 @@ graph import {
             | dist.seal.ensure_client_dist
             | server.server.JacAPIServer._ensure_client_bundle { client_app_dir_for },
         client.config_loader.JacClientConfig.get_assets_config { client_assets_config },
-        client.config_loader.JacClientConfig.get_assets_dir { client_assets_dir },
+        client.config_loader.JacClientConfig.get_assets_dir
+            | server.serving.static_assets._assets_dir { client_assets_dir },
         client.targets.react_native.scaffold._project_native_deps {
             client_workspace_app
-        },
-        server.static_files {
-            client_app_dir_for,
-            client_app_root,
-            client_assets_config,
-            client_assets_dir
         },
     ]
     project.client_paths --> [
@@ -2042,7 +2038,7 @@ graph import {
             | scale.plugin._resolve_deploy_target
             | scale.storage.factory
             | server.endpoints.colocated
-            | server.endpoints.pages
+            | server.endpoints.pages.register_diagnostics_endpoints.client_error
             | server.server.JacAPIServer._ensure_client_bundle
             | server.sv_client._read_cache_enabled { get_config },
         cli.commands.analysis._is_project_wide_run
@@ -2051,7 +2047,6 @@ graph import {
             | cli.shadcn.cli.run_shadcn_add
             | data.pg_dist._database_config
             | scale.plugin.scale_local_serve
-            | server.endpoints.pages.register_diagnostics_endpoints.client_error
             | server.server.print_endpoint_docs { get_config },
         cli.commands.analysis.check
             | cli.commands.execution._load_cwd_config
@@ -2156,6 +2151,7 @@ graph import {
             | scale.config.app_config
             | scale.runtime.realizer.kubernetes_realizer.KubernetesRealizer._resolve_fleet
             | server.endpoints.colocated.served_app_route
+            | server.serving.static_assets._assets_dir
             | studio.app { get_config_for_dir },
         dist.publish.metadata | dist.publish.package_json { JacConfig, PersonConfig },
         packages.migrate { serialize_toml, toml_minimal_update },
@@ -2174,10 +2170,13 @@ graph import {
         },
         scale.injector.binary.resolve_pinned_version { JacConfig, find_project_root },
         scale.injector.bundle.unresolved_toml_references { resolve_env_refs },
+        scale.runtime.gateway.process_gateway.ProcessGateway._resolve_base_path {
+            resolve_base_path
+        },
         scale.tests.server.test_host_serving
             | scale.tests.server.test_served_app_route { set_config },
+        server.endpoints.pages { get_config, resolve_base_path },
         server.session._database_config { DatabaseConfig, get_config_for_dir },
-        server.static_files { find_project_root, get_config, get_config_for_dir },
         testing.test_runner._fresh_jac_state { get_explicit_config, set_config },
         toolchains.host.use_system_tools { use_system_toolchains },
     ]
@@ -3508,6 +3507,8 @@ graph import {
             | client.targets.mobile_target
             | client.targets.web_target.WebTarget.build
             | dist.seal.bake_serve_payloads
+            | project.config.resolve_base_path
+            | scale.tests.microservices.test_gateway
             | server.endpoints.pages
             | server.hmr.HotReloader._recompile_client_code
             | server.server.ModuleIntrospector._check_module_freshness
@@ -3932,6 +3933,7 @@ graph import {
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
             | scale.tests.server.test_serving_tail
+            | scale.tests.server.test_static_fallback
             | scale.tests.server.test_stream_ws._spawn_upstream
             | testing.testkit { ServingApp },
         scale.tests.server.test_auth_policy_startup
@@ -4040,8 +4042,7 @@ graph import {
             | scale.server.webhook_ext
             | scale.tests.server.test_firebase_auth_sso
             | scale.tests.server.test_oauth_providers
-            | scale.tests.server.test_registration_limits
-            | scale.tests.server.test_static_fallback { Request },
+            | scale.tests.server.test_registration_limits { Request },
         scale.admin.console_build { HTMLResponse, Response },
         scale.admin.deploy_health
             | scale.admin.llm_telemetry
@@ -4073,10 +4074,9 @@ graph import {
             Response
         },
         scale.server.websocket_ext | scale.websocket.websocket { WebSocketDisconnect },
-        scale.sso.firebase | scale.tests.server.test_stream_ws._spawn_upstream {
-            Request,
-            Response
-        },
+        scale.sso.firebase
+            | scale.tests.server.test_static_fallback
+            | scale.tests.server.test_stream_ws._spawn_upstream { Request, Response },
         scale.tests.microservices.test_drain { JSONResponse, Request, URL },
         scale.tests.microservices.test_gateway
             | scale.tests.microservices.test_rate_limit
@@ -4107,6 +4107,7 @@ graph import {
         },
         scale.tests.data.test_gateway_owned_identity { Request, Response },
         scale.tests.server.test_build_status_endpoint { Request },
+        scale.tests.server.test_static_fallback { URL },
         scale.tests.server.test_stream_ws { WebSocketDisconnect },
         scale.tests.server.test_stream_ws._spawn_upstream.big { StreamingResponse },
         scale.tests.server.test_stream_ws._spawn_upstream.sse { StreamingResponse },
@@ -4162,6 +4163,17 @@ graph import {
         scale.tests.server.test_admin_logs { HTTPMethod },
         scale.tests.support { JEndPoint },
     ]
+    server.serving.files ++> scale.runtime.gateway.embedded_gateway.EmbeddedGateway._serve_static {
+        file_response
+    }
+    server.serving.files --> [
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.handle_static {
+            file_response
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.serve_admin_asset {
+            file_response
+        },
+    ]
     server.serving.middleware --> scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup {
         cors_middleware
     }
@@ -4188,6 +4200,7 @@ graph import {
             | scale.tests.microservices.test_sse_framing
             | scale.tests.server.test_bodiless_status
             | scale.tests.server.test_serving_tail
+            | scale.tests.server.test_static_fallback
             | scale.tests.server.test_stream_ws._spawn_upstream
             | scale.tests.server.test_sv_outbox_endpoints
             | testing.testkit { ServingServer },
@@ -4204,6 +4217,32 @@ graph import {
         scale.tests.server.test_sv_streaming {
             consume_sse_events as consume_sse_stream,
             parse_sse as _parse_sse
+        },
+    ]
+    server.serving.static_assets ++> [
+        scale.runtime.gateway.embedded_gateway
+            | scale.runtime.gateway.microservice_gateway { AssetRoot },
+        scale.runtime.gateway.embedded_gateway.EmbeddedGateway._serve_static {
+            asset_cache_policy,
+            mount_claims,
+            resolve_asset
+        },
+    ]
+    server.serving.static_assets --> [
+        scale.runtime.gateway.embedded_gateway.EmbeddedGateway._get_asset_table
+            | scale.runtime.gateway.microservice_gateway.MicroserviceGateway._get_asset_table {
+            asset_root_table
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.handle_static {
+            asset_cache_policy,
+            mount_claims,
+            resolve_asset
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.serve_admin_asset {
+            asset_cache_policy
+        },
+        scale.runtime.gateway.microservice_gateway.MicroserviceGateway.setup.dispatcher {
+            mount_claims
         },
     ]
     server.serving.supervisor ++> cli.commands.execution.serve { worker_metrics_dir }
@@ -4403,6 +4442,7 @@ graph import {
         scale.tests.apps.test_fleet_from_apps
             | scale.tests.microservices.test_app_routes
             | scale.tests.microservices.test_gateway
+            | scale.tests.server.test_static_fallback
             | scale.tests.server.test_stream_ws { ServingTestClient as TestClient },
         scale.tests.microservices.test_gateway._gateway {
             ServingTestClient as TestClient
@@ -31655,6 +31695,9 @@ graph import scale {
         aggregate_openapi
     }
     runtime.gateway.openapi_agg --> tests.microservices.test_gateway { _prefixed_paths }
+    runtime.gateway.process_gateway ++> tests.microservices.test_gateway {
+        ProcessGateway
+    }
     runtime.gateway.route_table ++> [
         tests.microservices.test_app_routes { ServiceRouteTable, literal_prefix },
         tests.microservices.test_gateway.gw_route_table_for_poison_test
@@ -31677,13 +31720,13 @@ graph import scale {
             | tests.microservices.test_gateway_webapp
             | tests.microservices.test_k8s_health_probe
             | tests.microservices.test_microservices_registry
-            | tests.microservices.test_openapi_agg {
+            | tests.microservices.test_openapi_agg
+            | tests.server.test_static_fallback {
             ServiceEntry,
             ServiceRegistry,
             ServiceStatus
         },
-        tests.microservices.test_gateway_docs_precedence
-            | tests.server.test_static_fallback { ServiceRegistry },
+        tests.microservices.test_gateway_docs_precedence { ServiceRegistry },
         tests.microservices.test_route_learning { ServiceEntry, ServiceStatus },
     ]
     runtime.gateway.service_registry --> tests.server.test_stream_ws {
@@ -32259,6 +32302,7 @@ graph import scale.runtime {
         gateway.microservice_gateway.MicroserviceGateway.handle_builtin_passthrough {
             not_found
         },
+        gateway.microservice_gateway.MicroserviceGateway.handle_static { not_found },
         gateway.microservice_gateway.MicroserviceGateway.probe_services {
             gateway_timeout,
             service_unavailable
@@ -32297,7 +32341,8 @@ graph import scale.runtime {
         cli.diagnostics | cli.plan { GATEWAY_NAME },
         gateway.embedded_gateway
             | gateway.microservice_gateway
-            | gateway.process_gateway {
+            | gateway.process_gateway
+            | orchestrator.orchestrator {
             DEFAULT_CLIENT_DIST_DIR,
             DEFAULT_GATEWAY_HOST,
             DEFAULT_GATEWAY_PORT
@@ -32314,7 +32359,6 @@ graph import scale.runtime {
         gateway.microservice_gateway.MicroserviceGateway.refresh_app_routes {
             route_refresh_seconds
         },
-        orchestrator.orchestrator { DEFAULT_GATEWAY_HOST, DEFAULT_GATEWAY_PORT },
         orchestrator.process_manager.ServiceProcessManager._assign_free_port {
             pick_free_port
         },
@@ -32804,7 +32848,6 @@ graph import server {
         server.ModuleIntrospector._load_spa_routes { serve_manifest_for },
         server.ModuleIntrospector._load_surface { serve_manifest_for },
     ]
-    sealed_serve --> endpoints.pages.register_page_endpoints { client_dist_for }
     server ++> [
         endpoints.auth | endpoints.second_factor { EndpointHost, JsonValue },
         endpoints.colocated { JacAPIServer, JsonValue, ModuleIntrospector },
@@ -32890,6 +32933,12 @@ graph import server {
         endpoints.walkers { sse_frame_stream },
         sv_client._http_call { consume_sse_events },
     ]
+    serving.static_assets ++> endpoints.pages {
+        AssetRoot,
+        asset_cache_policy,
+        asset_root_table,
+        resolve_asset
+    }
     serving.supervisor ++> [
         server { WorkerHandle },
         server.JacAPIServer.start { WorkerSupervisor },
@@ -32921,13 +32970,7 @@ graph import server {
     ]
     shared_store --> identity.auth_tokens.AuthTokenStore.__post_init__ { shared_store }
     static_files ++> [
-        endpoints.pages {
-            client_dist_index,
-            find_root_asset,
-            find_static_candidate,
-            sibling_app_dist,
-            sibling_app_file
-        },
+        endpoints.pages { client_dist_index, sibling_app_dist, sibling_app_file },
         server.print_endpoint_docs { sibling_app_names },
     ]
     sv_client ++> [

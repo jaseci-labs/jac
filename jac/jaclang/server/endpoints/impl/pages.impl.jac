@@ -14,9 +14,8 @@ impl _static_base(server: JacAPIServer) -> str {
     if image_root is not None {
         return image_root;
     }
-    ctx = Jac.get_context();
-    bp = (ctx.base_path_dir if ctx else '') or Jac.get_base_path_dir();
-    return bp or server.base_path;
+    fallback = Path(server.base_path) if server.base_path else None;
+    return str(resolve_base_path(fallback=fallback));
 }
 
 impl _render(
@@ -48,13 +47,24 @@ impl register_page_endpoints(server: JacAPIServer) {
     root_app = "" if settings.static_only else server.introspector.resolve_root_app();
     asset_dist = settings.client_dist;
     if not asset_dist {
-        import from jaclang.server.sealed_serve { client_dist_for }
-        source_path = getattr(server.module, '__file__', '') or '';
-        sealed_dist = client_dist_for(source_path) if source_path else None;
-        if sealed_dist is not None {
-            asset_dist = str(sealed_dist);
+        import from jaclang.client.artifact { client_output_dir }
+        source_path = getattr(server.module, '__file__', '')
+            or Jac.get_full_target_path()
+            or '';
+        built_dist = client_output_dir(Path(source_path)) if source_path else None;
+        if built_dist is not None and built_dist.is_dir() {
+            asset_dist = str(built_dist);
         }
     }
+    if not asset_dist {
+        default_dist = Path(_static_base(server)) / '.jac' / 'client' / 'dist';
+        if default_dist.is_dir() {
+            asset_dist = str(default_dist);
+        }
+    }
+    asset_table: list[AssetRoot] = asset_root_table(
+        Path(_static_base(server)), Path(asset_dist), []
+    );
 
     def render_page(
         request: Request, /, page_name: str, **kwargs: JsonValue
@@ -197,13 +207,16 @@ impl register_page_endpoints(server: JacAPIServer) {
     );
 
     def static_file(request: Request, file_path: str) -> Response {
-        candidate = find_static_candidate(_static_base(server), file_path, asset_dist);
-        if candidate is None {
+        hit = resolve_asset(asset_table, '/static/' + file_path);
+        if hit is None {
             return JSONResponse(
                 content={'error': 'Static file not found'}, status_code=404
             );
         }
-        return file_response(request, str(candidate));
+        (target, _) = hit;
+        return file_response(
+            request, str(target), cache_control=asset_cache_policy(target)
+        );
     }
     server.add_endpoint(
         JEndPoint(
@@ -230,10 +243,11 @@ impl register_page_endpoints(server: JacAPIServer) {
         if file_path.startswith(API_PREFIXES) or file_path.startswith(CL_PREFIX) {
             return JSONResponse(content={'error': 'Not found'}, status_code=404);
         }
-        candidate = find_root_asset(_static_base(server), file_path, asset_dist);
-        if candidate is not None {
+        hit = resolve_asset(asset_table, '/' + file_path);
+        if hit is not None {
+            (target, _) = hit;
             return file_response(
-                request, str(candidate), cache_control=ASSET_CACHE_CONTROL
+                request, str(target), cache_control=asset_cache_policy(target)
             );
         }
         index = client_dist_index(asset_dist);

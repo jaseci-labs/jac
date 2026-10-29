@@ -12,7 +12,7 @@ import from jaclang.runtime.runtime { JacRuntime as Jac }
 import from jaclang.server.endpoints.pages { register_page_endpoints }
 import from jaclang.server.serving.app { ServingApp }
 import from jaclang.server.serving.server { ServingServer }
-import from jaclang.server.static_files { find_root_asset, find_static_candidate }
+import from jaclang.server.serving.static_assets { asset_root_table, resolve_asset }
 
 
 def _project(base: Path, assets_dir: str) {
@@ -52,22 +52,25 @@ test "static requests find shared assets from source, nested paths intact" {
         (shared / "media").mkdir(parents=True);
         (shared / "logo.svg").write_text("<svg/>");
         (shared / "media" / "diagram.png").write_bytes(b"png");
-        assert find_static_candidate(str(base), "assets/logo.svg")
-            == shared / "logo.svg";
+        table = asset_root_table(base, base / ".jac" / "client" / "dist", []);
+        static_hit = resolve_asset(table, "/static/assets/logo.svg");
+        assert static_hit is not None and static_hit[0] == shared / "logo.svg";
+        nested_hit = resolve_asset(table, "/static/assets/media/diagram.png");
         assert (
-            find_static_candidate(str(base), "assets/media/diagram.png")
-            == shared / "media" / "diagram.png"
+            nested_hit is not None and nested_hit[0] == shared / "media" / "diagram.png"
         );
-        assert find_root_asset(str(base), "logo.svg") == shared / "logo.svg";
-        assert find_static_candidate(str(base), "assets/missing.svg") is None;
+        root_hit = resolve_asset(table, "/logo.svg");
+        assert root_hit is not None and root_hit[0] == shared / "logo.svg";
+        assert resolve_asset(table, "/static/assets/missing.svg") is None;
     }
 }
 
 
 def _served_project(tmp: str) -> Path {
-    # A built project: dist/ exists, which is what lets `dist/..` resolve, and
-    # the signing secret sits where the server keeps it. outside.txt is a
-    # sibling of the project, one level above anything a request may reach.
+    # A built project: the client bundle sits in .jac/client/dist, the signing
+    # secret sits where the server keeps it, and a project-root dist/ exists so
+    # a request can try to climb out of it. outside.txt is a sibling of the
+    # project, one level above anything a request may reach.
     base = Path(tmp) / "site";
     base.mkdir();
     _project(base, "");
@@ -79,39 +82,6 @@ def _served_project(tmp: str) -> Path {
     (base / ".jac" / "client" / "dist" / "bundle.js").write_text("bundle");
     (Path(tmp) / "outside.txt").write_text("outside the project");
     return base;
-}
-
-
-test "a static request cannot climb out of the directory it is joined onto" {
-    with TemporaryDirectory() as tmp {
-        base = _served_project(tmp);
-        climbing = [
-            "../jac.toml",
-            "../.jac/data/jwt_secret",
-            "../main.jac",
-            "assets/../../jac.toml",
-            "a/b/../../../jac.toml",
-            "../../outside.txt",
-            ".."
-        ];
-        for rel in climbing {
-            assert find_static_candidate(str(base), rel) is None , rel;
-            assert find_root_asset(str(base), rel) is None , rel;
-        }
-        # The same files are found when asked for from where they live.
-        assert find_static_candidate(str(base), "app.js") == base / "dist" / "app.js";
-        assert find_static_candidate(str(base), "bundle.js")
-            == base / ".jac" / "client" / "dist" / "bundle.js";
-        # A link inside dist/ that points above it resolves outside dist/, so it
-        # has to be refused by where the file is, not by how the path was
-        # spelled. Containment is checked against dist/, not the project root.
-        try {
-            (base / "dist" / "leak.txt").symlink_to(base / "jac.toml");
-        } except OSError {
-            return;
-        }
-        assert find_static_candidate(str(base), "leak.txt") is None;
-    }
 }
 
 
@@ -142,49 +112,97 @@ def _raw_get(port: int, target: str) -> tuple[int, bytes] {
 }
 
 
+# Serves `base` through the real transport, router and page handler, with the
+# Jac context pointed at it the way `jac start` points it at the project.
+def _serve_project(base: Path, module_file: str) -> tuple[int, any] {
+    app = ServingApp();
+    stub: any = SimpleNamespace(
+        add_endpoint=app.add_endpoint,
+        resolved_settings=_static_only_settings,
+        module=SimpleNamespace(__file__=module_file),
+        base_path=str(base),
+        introspector=None
+    );
+    ctx = Jac.get_context();
+    previous = ctx.base_path_dir;
+    ctx.base_path_dir = str(base);
+    server = ServingServer(app=app, host="127.0.0.1", port=0);
+    try {
+        register_page_endpoints(stub);
+        stop = server.serve_background();
+    } except Exception as e {
+        ctx.base_path_dir = previous;
+        raise e;
+    }
+    def _stop {
+        stop();
+        ctx.base_path_dir = previous;
+    }
+    return (server.bound_port, _stop);
+}
+
+
 test "GET /static/ with dot segments, literal or percent-encoded, cannot read the project tree" {
     # The path reaches the handler decoded and unnormalized, so this goes
     # through the real transport, router and handler rather than the finder.
     with TemporaryDirectory() as tmp {
         base = _served_project(tmp);
-        app = ServingApp();
-        stub: any = SimpleNamespace(
-            add_endpoint=app.add_endpoint,
-            resolved_settings=_static_only_settings,
-            module=SimpleNamespace(__file__=""),
-            base_path=str(base),
-            introspector=None
-        );
-        ctx = Jac.get_context();
-        previous = ctx.base_path_dir;
-        ctx.base_path_dir = str(base);
-        server = ServingServer(app=app, host="127.0.0.1", port=0);
-        stop = None;
+        (port, stop) = _serve_project(base, "");
         try {
-            register_page_endpoints(stub);
-            stop = server.serve_background();
             # The control is what makes the refusals mean something: if the
             # handler were not serving this project, it would fail first.
-            (status, body) = _raw_get(server.bound_port, "/static/app.js");
-            assert status == 200 and b"console.log" in body , (status, body);
+            (status, body) = _raw_get(port, "/static/bundle.js");
+            assert status == 200 and body == b"bundle" , (status, body);
 
+            # The bundle is served from .jac/client/dist, three levels below
+            # the project root, so the deeper probes are the ones that would
+            # land on a real file if the handler did not contain them.
             probes = [
                 "/static/../jac.toml",
                 "/static/..%2Fjac.toml",
                 "/static/..%2f.jac%2fdata%2fjwt_secret",
                 "/static/%2e%2e/jac.toml",
-                "/static/%2e%2e%2f%2e%2e%2foutside.txt"
+                "/static/%2e%2e%2f%2e%2e%2foutside.txt",
+                "/static/../../../jac.toml",
+                "/static/..%2F..%2Fdata%2Fjwt_secret",
+                "/static/%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2foutside.txt",
+                "/static/app.js"
             ];
             for target in probes {
-                (status, body) = _raw_get(server.bound_port, target);
+                (status, body) = _raw_get(port, target);
                 assert status == 404 , (target, status);
-                assert b"TOP-SECRET" not in body and b"[project]" not in body , target;
+                for leaked in (
+                    b"TOP-SECRET",
+                    b"[project]",
+                    b"outside the project",
+                    b"console.log"
+                ) {
+                    assert leaked not in body , (target, leaked);
+                }
             }
         } finally {
-            if stop is not None {
-                stop();
-            }
-            ctx.base_path_dir = previous;
+            stop();
+        }
+        # A project with a custom [build] dir builds its client bundle there,
+        # not under .jac; the handler must serve that bundle, not a stale one.
+        custom = Path(tmp) / "custom";
+        custom.mkdir();
+        _project(custom, "");
+        with open(custom / "jac.toml", "a") as f {
+            f.write("\n[build]\ndir = \".custom-build\"\n");
+        }
+        (custom / ".custom-build" / "client" / "dist").mkdir(parents=True);
+        (custom / ".custom-build" / "client" / "dist" / "bundle.js").write_text(
+            "custom-bundle"
+        );
+        (custom / ".jac" / "client" / "dist").mkdir(parents=True);
+        (custom / ".jac" / "client" / "dist" / "bundle.js").write_text("stale");
+        (port, stop) = _serve_project(custom, str(custom / "main.jac"));
+        try {
+            (status, body) = _raw_get(port, "/static/bundle.js");
+            assert status == 200 and body == b"custom-bundle" , (status, body);
+        } finally {
+            stop();
         }
     }
 }
