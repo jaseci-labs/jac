@@ -50,6 +50,7 @@ walker RcFactsPass(CompilerPass) {
     def _cfg_owner(sub: UniNode) -> (UniCFGNode | None);
     def _is_def_name(nm: NameAtom) -> bool;
     def _is_alias_value(nm: Name) -> bool;
+    def _move_flow_safe(uses: list[Name], sites: list[Assignment]) -> bool;
     def _move_candidate_source(nd: Assignment) -> (Name | None);
     def _solve_liveness(
         cfg_nodes: list[UniCFGNode], tracked: set[SymId]

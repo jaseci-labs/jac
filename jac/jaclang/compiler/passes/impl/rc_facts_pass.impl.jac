@@ -427,8 +427,34 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
         return;
     }
 
+    sites_by_sym: dict[SymId, list[Assignment]] = {};
+    for (nd, sid) in candidates {
+        if sid in sites_by_sym {
+            sites_by_sym[sid].append(nd);
+        } else {
+            sites_by_sym[sid] = [nd];
+        }
+    }
+    mv_opts = self.prog?.options;
+    flow_moves = mv_opts is None or mv_opts.na_move_flow;
+    gap_fns: set[int] = set();
+    for cn in cfg_nodes {
+        if isinstance(cn, CtrlStmt)
+            and cn.ctrl.name == Tok.KW_BREAK
+            and not cn.bb_out {
+            gap_fn = self._enclosing_fn_scope(cn);
+            gap_fns.add(0 if gap_fn is None else id(gap_fn));
+        }
+    }
     qualified: set[SymId] = set();
     for sid in tracked {
+        sid_sites = sites_by_sym.get(sid, []);
+        if sid_sites {
+            sid_fn = self._enclosing_fn_scope(sid_sites[0]);
+            if (0 if sid_fn is None else id(sid_fn)) in gap_fns {
+                continue;
+            }
+        }
         ok = True;
         for u in uses_by_sym.get(sid, []) {
             if not self._is_alias_value(u) {
@@ -436,7 +462,13 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
                 break;
             }
         }
-        if ok {
+        if ok
+            or (
+                flow_moves
+                and self._move_flow_safe(
+                    uses_by_sym.get(sid, []), sites_by_sym.get(sid, [])
+                )
+            ) {
             qualified.add(sid);
         }
     }
@@ -456,6 +488,48 @@ impl RcFactsPass._stamp_move_lowerable(ir_in: Module) -> None {
             nd.na_move_lowerable = True;
         }
     }
+}
+
+impl RcFactsPass._move_flow_safe(uses: list[Name], sites: list[Assignment]) -> bool {
+    if not sites {
+        return False;
+    }
+    owner = self._enclosing_fn_scope(sites[0]);
+    nodes: list[UniNode] = [];
+    for u in uses {
+        nodes.append(u);
+    }
+    for nd in sites {
+        nodes.append(nd);
+    }
+    for nd in nodes {
+        if self._enclosing_fn_scope(nd) is not owner {
+            return False;
+        }
+        if isinstance(nd.parent, UnaryExpr) and is_borrow_kind(nd.parent.ownership) {
+            return False;
+        }
+        cur = nd.parent;
+        prev: UniNode = nd;
+        while cur is not None and cur is not owner {
+            if isinstance(cur, IterForStmt)
+                and (prev is cur.iter or prev is cur.count_by) {
+                return False;
+            }
+            if isinstance(
+                cur,
+                (TryStmt, WithStmt, LambdaExpr, ListCompr, DictCompr, ConcurrentExpr)
+            ) {
+                return False;
+            }
+            if isinstance(cur, AstAsyncNode) and cur.is_async {
+                return False;
+            }
+            prev = cur;
+            cur = cur.parent;
+        }
+    }
+    return True;
 }
 
 impl RcFactsPass._cfg_owner(sub: UniNode) -> (UniCFGNode | None) {
