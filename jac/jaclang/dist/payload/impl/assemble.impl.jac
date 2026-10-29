@@ -235,7 +235,15 @@ impl run_precompile_stage(py: str, python_dir: str, site: str, opts: MkPayloadOp
 
     delete_file(os.path.join(site_pre, "MANIFEST.json"));
     run_stubcat_stage(py, python_dir, site, opts);
-    precompile(py, python_dir, site, opts.seal, opts.debug_src, opts.kernel_dir);
+    precompile(
+        py,
+        python_dir,
+        site,
+        opts.seal,
+        opts.debug_src,
+        opts.kernel_dir,
+        opts.kernel_carry
+    );
     if pc is not None {
         delete_tree(pc);
         copy_tree(site_pre, pc, skip_none);
@@ -325,7 +333,8 @@ impl precompile(
     site: str,
     seal: bool,
     debug_src: bool,
-    kernel_dir: (str | None) = None
+    kernel_dir: (str | None) = None,
+    kernel_carry: (str | None) = None
 ) {
     import time;
     compile_start = time.monotonic();
@@ -353,6 +362,11 @@ impl precompile(
     if kernel_dir {
         env["JAC_SEAL_KERNEL_DIR"] = os.path.abspath(kernel_dir);
         log(f"   the seal adopts the prebuilt kernel in {kernel_dir}");
+    } elif kernel_carry {
+        make_dirs(kernel_carry);
+        env["JAC_SEAL_KERNEL_CARRY"] = "1";
+        env["JAC_CACHE_HOME"] = os.path.abspath(kernel_carry);
+        log(f"   the seal carries unchanged kernel units from {kernel_carry}");
     }
     run_child(argv, env, True);
 

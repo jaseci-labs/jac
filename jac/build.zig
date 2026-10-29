@@ -427,6 +427,16 @@ pub fn build(b: *std.Build) void {
                 mk.addPrefixedDirectoryArg("--kernel=", .{ .cwd_relative = if (std.fs.path.isAbsolute(kdir)) kdir else b.pathFromRoot(kdir) });
             }
         }
+        // A kit (not a release) may carry kernel units unchanged since the
+        // build that last filled this cache directory, as long as nothing in
+        // the kernel's carry contract (parser, types, native backend, ABI)
+        // moved. A plain string arg: the directory is mutable state, not an
+        // input whose contents should key this step.
+        if (b.option([]const u8, "kernel-carry", "Carry unchanged kernel units through this cache directory (CI kits only)")) |cdir| {
+            if (link_dir == null) {
+                mk.addArg(b.fmt("--kernel-carry={s}", .{if (std.fs.path.isAbsolute(cdir)) cdir else b.pathFromRoot(cdir)}));
+            }
+        }
 
         // Contained bun runtime: fetch the pinned bun for the target and bundle
         // it inside the client package via --bun. In linked-source/dev mode

@@ -46,6 +46,16 @@ inputs:
       touches a path the kernel is lowered from.
     required: false
     default: "false"
+  kernel-carry:
+    description: >
+      Carry kernel units whose source is unchanged from the last main kit,
+      through a cache main saves and every other ref only restores. A carried
+      unit keeps the native products an earlier compiler lowered, so this is
+      for CI kits only: the seal carries nothing once the kernel's carry
+      contract (parser, type system, native backend, ABI files) moves, and
+      releases (build-binaries.yml) never pass it.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -290,6 +300,16 @@ runs:
       # the stubs otherwise.
       run: zig build fetch-typeshed --summary all
 
+    - name: Restore the kernel carry cache
+      id: carry-cache
+      if: steps.cache.outputs.cache-hit != 'true' && inputs.kernel-carry == 'true' && inputs.kernel-dir == ''
+      uses: actions/cache/restore@v4
+      with:
+        path: .kernel-carry
+        key: kernel-carry-v1-${{ steps.py.outputs.variant }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+        restore-keys: |
+          kernel-carry-v1-${{ steps.py.outputs.variant }}-${{ runner.os }}-${{ runner.arch }}-
+
     - name: Build the jac binary
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
@@ -310,12 +330,14 @@ runs:
         PYTHON: ${{ steps.py.outputs.variant }}
         PR_BUILD: ${{ github.event_name == 'pull_request' }}
         KERNEL_DIR: ${{ inputs.kernel-dir }}
+        KERNEL_CARRY: ${{ inputs.kernel-carry == 'true' && inputs.kernel-dir == '' && format('{0}/.kernel-carry', github.workspace) || '' }}
         JAC_KIT_OMIT: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'native:kernel') && inputs.native-kernel != 'true' && 'kernel' || '' }}
       run: |
         PY=(-Dpython="$PYTHON")
         if [ "$PYTHON" = jacpython ]; then PY+=(-Dreuse-python="$PR_BUILD"); fi
         KERNEL_ARG=()
         if [ -n "$KERNEL_DIR" ]; then KERNEL_ARG=(-Dkernel="$KERNEL_DIR"); fi
+        if [ -n "$KERNEL_CARRY" ]; then KERNEL_ARG+=(-Dkernel-carry="$KERNEL_CARRY"); fi
         TARGET_ARG=()
         case "$RUNNER_OS/$RUNNER_ARCH" in
           Linux/X64) TARGET_ARG=(-Dtarget=x86_64-linux-gnu.2.17) ;;
@@ -339,6 +361,33 @@ runs:
           sleep 30
         done
         exit 1
+
+    # Only the newest compiler generation is worth carrying: it is the one the
+    # build just wrote every kernel unit into.
+    - name: Keep only the newest kernel carry generation (trusted refs only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        inputs.kernel-carry == 'true' && inputs.kernel-dir == ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        MODS=.kernel-carry/jir/modules
+        if [ -d "$MODS" ]; then
+          NEWEST=$(ls -1t "$MODS" | head -1)
+          find "$MODS" -mindepth 1 -maxdepth 1 ! -name "$NEWEST" -exec rm -rf {} +
+          du -sh .kernel-carry
+        fi
+
+    - name: Upload the kernel carry cache (trusted refs only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.cache.outputs.cache-hit != 'true' &&
+        inputs.kernel-carry == 'true' && inputs.kernel-dir == ''
+      uses: actions/cache/save@v4
+      with:
+        path: .kernel-carry
+        key: kernel-carry-v1-${{ steps.py.outputs.variant }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
 
     # Seed the shared binary cache from trusted refs only (see the note by the
     # restore step). Saved after the build so both the binary and the materialized
