@@ -51,6 +51,10 @@ import from engine.src.runtime.dtoa { number_to_string_radix10 }
 import from engine.src.runtime.jsobject { KEY_LENGTH, js_object_get, js_object_keys }
 import from engine.src.ffi.libc { write, isatty, fflush }
 
+import from engine.src.runtime.mem {
+    str_nbytes
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  Constants
 # ══════════════════════════════════════════════════════════════════════════════
@@ -273,7 +277,7 @@ def:pub js_format_args(args: list[JSValue]) -> str {
         result: str = "";
         arg_idx: int = 1;
         i: int = 0;
-        n: int = len(fmt);
+        n: int = str_nbytes(fmt);
         while i < n {
             c: str = str_char_at(fmt, i);
             if c == "%" and i + 1 < n {
@@ -397,7 +401,7 @@ WHATWG Console §2.3.4
 def:pub js_console_error(args: list[JSValue]) -> JSValue {
     prefix: str = _indent_str(_INDENT);
     msg: str = prefix + js_format_args(args) + "\n";
-    write(STDERR_FD, msg, len(msg));
+    write(STDERR_FD, msg, str_nbytes(msg));
     return js_undefined();
 }
 
@@ -409,7 +413,7 @@ def:pub js_console_warn(args: list[JSValue]) -> JSValue {
     prefix: str = _indent_str(_INDENT);
     # Node prints warnings as-is (no prefix) — Vite's warnings must read the same.
     msg: str = prefix + js_format_args(args) + "\n";
-    write(STDERR_FD, msg, len(msg));
+    write(STDERR_FD, msg, str_nbytes(msg));
     return js_undefined();
 }
 

@@ -56,7 +56,19 @@ import from engine.src.ffi.libuv { uvhrtime }
 import from engine.src.pm.fsx { fsx_readlink }
 import from engine.src.builtins.env_file { env_file_pending_vars }
 
-import from engine.src.runtime.mem { Ptr, io_alloc, read_byte, write_byte, read_u64 }
+import from engine.src.runtime.mem {
+    Ptr,
+    io_alloc,
+    read_byte,
+    write_byte,
+    read_u64,
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
 
 import from engine.src.runtime.jsvalue {
     JSValue,
@@ -156,9 +168,9 @@ def:pub process_add_env(key: str, val: str) {
 """Populate process.env with every variable of the live environment."""
 def:pub process_populate_env -> None {
     for env_entry in environ_entries() {
-        eq: int = env_entry.find("=");
+        eq: int = str_bfind(env_entry, "=");
         if eq > 0 {
-            process_add_env(env_entry[0:eq], env_entry[eq + 1:]);
+            process_add_env(str_bslice(env_entry, 0, eq), str_bslice_from(env_entry, eq + 1));
         }
     }
 }
@@ -294,7 +306,7 @@ def:pub process_do_exit(code: int) {
 def:pub process_stdout_write(args: list[JSValue]) -> JSValue {
     if len(args) > 0 and jsv_is_string_cell(args[0]) {
         s: str = str_from_id(jsv_to_table_id(args[0]));
-        slen: int = len(s);
+        slen: int = str_nbytes(s);
         write(1, s, slen);
         return js_true();
     }
@@ -305,7 +317,7 @@ def:pub process_stdout_write(args: list[JSValue]) -> JSValue {
 def:pub process_stderr_write(args: list[JSValue]) -> JSValue {
     if len(args) > 0 and jsv_is_string_cell(args[0]) {
         s: str = str_from_id(jsv_to_table_id(args[0]));
-        slen: int = len(s);
+        slen: int = str_nbytes(s);
         write(2, s, slen);
         return js_true();
     }
@@ -481,13 +493,13 @@ def:pub process_get_builtin_module(
     }
     spec: str = str_from_id(jsv_to_table_id(args[0]));
     bare: str = spec;
-    if len(spec) > 5
-        and spec[0] == "n"
-        and spec[1] == "o"
-        and spec[2] == "d"
-        and spec[3] == "e"
-        and spec[4] == ":" {
-        bare = spec[5:];
+    if str_nbytes(spec) > 5
+        and byte_chr(str_byte(spec, 0)) == "n"
+        and byte_chr(str_byte(spec, 1)) == "o"
+        and byte_chr(str_byte(spec, 2)) == "d"
+        and byte_chr(str_byte(spec, 3)) == "e"
+        and byte_chr(str_byte(spec, 4)) == ":" {
+        bare = str_bslice_from(spec, 5);
     }
     check_name: str = bare;
     if not is_builtin_module(check_name) {
@@ -1258,7 +1270,7 @@ def:pub process_set_bootstrap_paths(argv0: str) -> None {
         return;
     }
     _PROC_BOOTSTRAP_ARGV0 = argv0;
-    if argv0.find("/") < 0 {
+    if str_bfind(argv0, "/") < 0 {
         # Exec'd through PATH (a bare argv0, e.g. when a lifecycle script runs us
         # as `node` via the package manager's shim): the cwd says nothing about
         # where the binary lives, so resolve the real executable — like node's

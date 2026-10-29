@@ -89,4 +89,18 @@ def wait_for_pod_deletion(
     core_v1: client.CoreV1Api, namespace: str, pod_name: str, timeout: int = 120
 ) -> None;
 
-def run_kubectl_command(args: list[str], cwd: str | Path | None = None) -> None;
+obj KubectlCluster {
+    has args: list[str] = [],
+        env: dict[str, str] = {};
+
+    def command(args: list[str]) -> list[str];
+    def environ -> dict[str, str];
+}
+
+def kubectl_cluster(kube_context: str = "", kubeconfig: str = "") -> KubectlCluster;
+
+def in_cluster_kubectl -> KubectlCluster;
+
+def run_kubectl_command(
+    args: list[str], kubectl: KubectlCluster, cwd: str | Path | None = None
+) -> None;

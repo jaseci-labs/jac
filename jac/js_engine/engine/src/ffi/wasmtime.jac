@@ -219,7 +219,8 @@ import from engine.src.runtime.mem {
     read_i32,
     write_byte,
     write_i32,
-    write_i64
+    write_i64,
+    str_nbytes
 }
 import from engine.src.runtime.jsstring { str_substr, str_char_at }
 import from engine.src.runtime.jsvalue { jsv_double_bits, jsv_double_from_bits }
@@ -440,7 +441,7 @@ def:pub wasm_export_func(store_handle: int, instance_ptr: int, name: str) -> int
 
     item_out: int = io_alloc(_SIZEOF_EXTERN);
     found: bool = wasmtime_instance_export_get(
-        ctx, instance_ptr, name, len(name), item_out
+        ctx, instance_ptr, name, str_nbytes(name), item_out
     );
     if not found {
         _WASM_LAST_ERR = "export not found: " + name;
@@ -1194,7 +1195,7 @@ def:pub wasm_export_global(inst_handle: int, name: str) -> int {
     }
 
     item_out: int = io_alloc(_SIZEOF_EXTERN);
-    found: bool = wasmtime_instance_export_get(ctx, inst, name, len(name), item_out);
+    found: bool = wasmtime_instance_export_get(ctx, inst, name, str_nbytes(name), item_out);
     if not found {
         _WASM_LAST_ERR = "export not found: " + name;
         io_free(item_out);
@@ -1306,7 +1307,7 @@ def:pub wasm_export_memory(store_handle: int, instance_ptr: int, name: str) -> i
 
     item_out: int = io_alloc(_SIZEOF_EXTERN);
     found: bool = wasmtime_instance_export_get(
-        ctx, instance_ptr, name, len(name), item_out
+        ctx, instance_ptr, name, str_nbytes(name), item_out
     );
     if not found {
         _WASM_LAST_ERR = "export not found: " + name;
@@ -1628,7 +1629,7 @@ def:pub wasm_set_host_throw(msg: str) {
 ignores overflow beyond 64 bits (WASM i64 wraps mod 2^64 anyway). Empty/invalid
 → 0."""
 def:pub wasm_i64_from_decimal(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n == 0 {
         return 0;
     }
@@ -1846,7 +1847,7 @@ def:pub wasm_export_table(inst_handle: int, name: str) -> int {
         return 0;
     }
     item_out: int = io_alloc(_SIZEOF_EXTERN);
-    found: bool = wasmtime_instance_export_get(ctx, inst, name, len(name), item_out);
+    found: bool = wasmtime_instance_export_get(ctx, inst, name, str_nbytes(name), item_out);
     if not found {
         _set_err("export not found: " + name, WASM_ERRCLASS_LINK);
         io_free(item_out);
@@ -2391,7 +2392,7 @@ def:pub _wasm_host_trampoline(
         if len(tmsg) == 0 {
             tmsg = "wasm host import threw";
         }
-        return wasmtime_trap_new(tmsg, len(tmsg));
+        return wasmtime_trap_new(tmsg, str_nbytes(tmsg));
     }
     if rc == 2 {
         return wasmtime_trap_new("wasm host import: no active VM", 30);

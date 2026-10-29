@@ -852,10 +852,10 @@ test "walker calls" {
             f"Expected 401 for deleted/non-existent user, got {response.status_code}"
         );
 
-        response = client.get("/graph/data");
+        response = client.get("/graph/node");
         assert response.status_code == 200;
-        data = response.json();
-        assert "nodes" in data and "edges" in data;
+        guest_root = response.json();
+        assert guest_root["root"] is True and "counts" in guest_root , guest_root;
 
         g_user = f"guser_{uuid.uuid4().hex[:8]}";
         response = client.post(
@@ -865,17 +865,48 @@ test "walker calls" {
         assert "user_id" in reg;
         response = client.post("/user/login", json=login_payload(g_user, "gpass"));
         reg_login = extract_data(response.json());
-        response = client.post(
-            "/walker/CreateTask",
-            json={"title": "T1", "priority": 1},
-            headers={"Authorization": f"Bearer {reg_login['token']}"}
-        );
-        auth_resp = client.get(
-            "/graph/data", headers={"Authorization": f"Bearer {reg_login['token']}"}
-        );
-        auth_data = auth_resp.json();
-        assert len(auth_data["nodes"]) == 2;
-        assert len(auth_data["edges"]) == 1;
+        hdr = {"Authorization": f"Bearer {reg_login['token']}"};
+        for title in ["T1", "T2", "T3"] {
+            client.post(
+                "/walker/CreateTask", json={"title": title, "priority": 1}, headers=hdr
+            );
+        }
+        user_root = client.get("/graph/node", headers=hdr).json();
+        rid = user_root["id"];
+        assert sum(user_root["counts"]["out"]["nodes"].values()) == 3 , user_root;
+        first = client.get(f"/graph/neighbors?id={rid}&limit=2", headers=hdr).json();
+        assert len(first["nodes"]) == 2 and first["next_cursor"] , first;
+        second = client.get(
+            f"/graph/neighbors?id={rid}&limit=2&cursor={first['next_cursor']}",
+            headers=hdr
+        ).json();
+        assert len(second["nodes"]) == 1 and second["next_cursor"] is None , second;
+        seen = {n["id"] for n in first["nodes"] + second["nodes"]};
+        assert len(seen) == 3 , "the cursor must walk the neighborhood exactly once";
+        assert len(first["edges"]) == 2
+            and all(e["from"] == rid for e in first["edges"]);
+        assert first["edges"][-1]["cursor"] == first["next_cursor"] , first;
+        typed = client.get(f"/graph/neighbors?id={rid}&type=Task", headers=hdr).json();
+        assert [n["type"] for n in typed["nodes"]] == ["Task", "Task", "Task"] , typed;
+        task_id = first["nodes"][0]["id"];
+        # (path, bearer, status): a guest reads nothing of the user's graph, and
+        # malformed requests are refused rather than guessed at.
+        for (path, bearer, status) in [
+            (f"/graph/node?id={task_id}", False, 404),
+            (f"/graph/neighbors?id={rid}", False, 404),
+            (f"/graph/node?id={task_id}", True, 200),
+            ("/graph/node?id=not-a-node", True, 404),
+            (f"/graph/neighbors?id={rid}&dir=sideways", True, 400),
+            (f"/graph/neighbors?id={rid}&type=NoSuchType", True, 400),
+            (f"/graph/neighbors?id={rid}&cursor=bogus", True, 400),
+            (f"/graph/neighbors?id={rid}&cursor=5.", True, 400),
+            (f"/graph/neighbors?id={rid}&cursor=5", True, 400),
+            (f"/graph/neighbors?id={rid}&cursor=99999999999999999999.{rid}", True, 400),
+            (f"/graph/neighbors?id={rid}&cursor=-1.{rid}", True, 400)
+        ] {
+            got = client.get(path, headers=hdr if bearer else {});
+            assert got.status_code == status , (path, bearer, got.status_code);
+        }
     } finally {
         client.close();
     }

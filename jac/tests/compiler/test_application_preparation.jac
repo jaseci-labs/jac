@@ -76,10 +76,14 @@ test "sealing retains each colocated service's access metadata" {
                 + '[apps.scoring]\nkind="service"\nentry-point="scoring"\n'
         );
         path = base / 'main.jac';
-        path.write_text('def:pub ping -> int { return 1; }\n');
+        path.write_text(
+            'import from scoring { top_score }\n'
+                + 'def:pub ping -> int { return 1; }\n'
+        );
         (base / 'scoring.jac').write_text(
             'walker:pub Score { can run with Root entry { report 42; } }\n'
                 + 'def private_score -> int { return 42; }\n'
+                + 'def:pub top_score -> int { return 42; }\n'
         );
         try {
             manifest = build_serve_manifest(path, base);
@@ -98,6 +102,12 @@ test "sealing retains each colocated service's access metadata" {
             assert modules['scoring.jac']['surface']['Score']['exposure'] == 'public';
             assert 'private_score' not in modules['scoring.jac']['surface'] , (
                 "the served surface lists only exposed declarations"
+            );
+            assert modules['scoring.jac']['surface']['top_score']['exposure']
+                == 'public';
+            assert 'ping' in manifest['surface'];
+            assert 'top_score' not in manifest['surface'] , (
+                "an app importing a colocated service's function must not serve it"
             );
             for entry_manifest in [manifest, *modules.values()] {
                 assert 'root' not in entry_manifest , (

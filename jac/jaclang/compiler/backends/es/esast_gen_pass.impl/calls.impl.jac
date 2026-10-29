@@ -1033,10 +1033,6 @@ impl EsastGenPass._build_server_forwarder(
 }
 
 impl EsastGenPass._bind_client_value_refs(nd: uni.Module) -> list[es.Statement] {
-    """A boundary type this module declares is emitted into the bundle as a
-    stub under its own name (`_emit_boundary_type_stubs`), so client code that
-    reads it (`Color.RED`) has a binding. Only the name is emitted: the type's
-    own body stays server code and is not audited as client code.""";
     forwarders: list[es.Statement] = [];
     bound: set[str] = set();
     stubbed: set[str] = set();

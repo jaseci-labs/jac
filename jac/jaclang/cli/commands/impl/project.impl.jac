@@ -519,8 +519,32 @@ impl update(
     packages: list[str] = [],
     pypi: bool = False,
     dev: bool = False,
+    self_update: bool = False,
+    release: str = "",
     verbose: bool = False
 ) -> int {
+    if release and not self_update {
+        console.error(
+            "--release pins a jac binary release; it needs --self.",
+            hint="jac update --self --release 2.3.1"
+        );
+        return 1;
+    }
+    if self_update {
+        if packages {
+            console.error(
+                "--self updates the jac binary itself; it takes no package names.",
+                hint=(
+                    "Run 'jac update --self' without packages, or "
+                    "'jac update' for project dependencies."
+                )
+            );
+            return 1;
+        }
+        import from jaclang.dist.self_update { update_self }
+        import from jaclang.cli.manifest_route { resolve_cli_version }
+        return update_self(release, resolve_cli_version(), verbose);
+    }
     config = get_config();
     if config is None {
         console.error(
@@ -1315,8 +1339,8 @@ Use `jac guide <name> --sections` to list headings and
   relevant guide; follow the `-> run 'jac guide ...'` hints.
 - `jac run <file>` -- execute a Jac script.
 - `jac run --dev main.jac` -- serve a web-app or service in dev mode
-  (hot-reload for client files; restart for server changes). Use this instead
-  of `jac run` for apps.
+  (hot-reload for client and server files; restart only after editing
+  `jac.toml`). Use this instead of `jac run` for apps.
 - `jac browse <action>` -- QA a running app in a headless browser:
   `jac browse open localhost:8000`, then `snapshot` (accessibility tree with
   `@e1`-style refs), `click @e5`, `fill '#email' user@example.com`, `screenshot`, `close`.

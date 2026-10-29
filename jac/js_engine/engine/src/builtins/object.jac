@@ -192,6 +192,11 @@ import from engine.src.runtime.spec_ops {
     spec_validate_and_apply_descriptor
 }
 
+import from engine.src.runtime.mem {
+    str_byte,
+    str_nbytes
+}
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  Internal helpers
 # ══════════════════════════════════════════════════════════════════════════════
@@ -361,11 +366,11 @@ def _array_index_sort_key(kid: int) -> int {
     s: str = str_from_id(kid);
     np: int = 0;
     pi: int = 0;
-    sn: int = len(s);
+    sn: int = str_nbytes(s);
     while pi < sn {
         ch: str = str_substr(s, pi, pi + 1);
         if ch >= "0" and ch <= "9" {
-            np = np * 10 + (ord(ch) - 48);
+            np = np * 10 + (str_byte(ch, 0) - 48);
         }
         pi = pi + 1;
     }
@@ -1058,7 +1063,8 @@ def:pub js_Object_keys(jsobj: JSValue) -> JSValue {
         raw_k: str = str_from_id(jsv_to_table_id(jsobj));
         items_s: list[JSValue] = [];
         ki: int = 0;
-        while ki < len(raw_k) {
+        _nb1066_raw_k: int = str_nbytes(raw_k);
+        while ki < _nb1066_raw_k {
             items_s.append(_obj_js_str(str(ki)));
             ki = ki + 1;
         }
@@ -1213,7 +1219,8 @@ def:pub js_Object_assign(target: JSValue, sources: list[JSValue]) -> JSValue {
             s_obj: JSValue = js_String_new([s]);
             raw: str = str_from_id(jsv_to_table_id(s));
             si: int = 0;
-            while si < len(raw) {
+            _nb1221_raw: int = str_nbytes(raw);
+            while si < _nb1221_raw {
                 js_object_set(
                     s_obj,
                     str_intern_index(si),

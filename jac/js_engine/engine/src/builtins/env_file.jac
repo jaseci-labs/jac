@@ -15,6 +15,15 @@ both leave existing variables alone). A missing file is an error (Node:
 
 import from engine.src.ffi.libc { setenv, getenv }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 """Variables applied from --env-file that were not already in the environment,
 as a flat [key, value, …] list. process.env is built from /proc/self/environ
 (the startup block, which setenv does not touch), so process.jac adds these
@@ -28,38 +37,38 @@ def:pub env_file_pending_vars -> list[str] {
 """Parse dotenv text into a flat [key, value, key, value, …] list."""
 def:pub env_file_parse(text: str) -> list[str] {
     out: list[str] = [];
-    n: int = len(text);
+    n: int = str_nbytes(text);
     i: int = 0;
     while i < n {
         # skip blank space at the start of a line
         while i < n
             and (
-                text[i] == " " or text[i] == "\t" or text[i] == "\r" or text[i] == "\n"
+                byte_chr(str_byte(text, i)) == " " or byte_chr(str_byte(text, i)) == "\t" or byte_chr(str_byte(text, i)) == "\r" or byte_chr(str_byte(text, i)) == "\n"
             ) {
             i = i + 1;
         }
         if i >= n {
             break;
         }
-        if text[i] == "#" {
-            while i < n and text[i] != "\n" {
+        if byte_chr(str_byte(text, i)) == "#" {
+            while i < n and byte_chr(str_byte(text, i)) != "\n" {
                 i = i + 1;
             }
             continue;
         }
         # key (optionally `export `)
-        line_end: int = text.find("\n", i);
+        line_end: int = str_bfind(text, "\n", i);
         if line_end < 0 {
             line_end = n;
         }
-        eq: int = text.find("=", i);
+        eq: int = str_bfind(text, "=", i);
         if eq < 0 or eq > line_end {
             i = line_end;
             continue;
         }
-        key: str = text[i:eq].strip();
+        key: str = str_bslice(text, i, eq).strip();
         if key.startswith("export ") {
-            key = key[7:].strip();
+            key = str_bslice_from(key, 7).strip();
         }
         if key == "" {
             i = line_end;
@@ -67,32 +76,32 @@ def:pub env_file_parse(text: str) -> list[str] {
         }
         # value
         j: int = eq + 1;
-        while j < line_end and (text[j] == " " or text[j] == "\t") {
+        while j < line_end and (byte_chr(str_byte(text, j)) == " " or byte_chr(str_byte(text, j)) == "\t") {
             j = j + 1;
         }
         val: str = "";
-        if j < n and (text[j] == "\"" or text[j] == "'" or text[j] == "`") {
-            q: str = text[j];
-            close: int = text.find(q, j + 1);
+        if j < n and (byte_chr(str_byte(text, j)) == "\"" or byte_chr(str_byte(text, j)) == "'" or byte_chr(str_byte(text, j)) == "`") {
+            q: str = byte_chr(str_byte(text, j));
+            close: int = str_bfind(text, q, j + 1);
             if close < 0 {
                 # unterminated: Node takes the rest of the line
-                val = text[j + 1:line_end].rstrip();
+                val = str_bslice(text, j + 1, line_end).rstrip();
                 i = line_end;
             } else {
-                val = text[j + 1:close];
+                val = str_bslice(text, j + 1, close);
                 if q == "\"" {
                     val = val.replace("\\n", "\n");
                 }
-                i = text.find("\n", close);
+                i = str_bfind(text, "\n", close);
                 if i < 0 {
                     i = n;
                 }
             }
         } else {
-            raw: str = text[j:line_end];
-            hash: int = raw.find(" #");
+            raw: str = str_bslice(text, j, line_end);
+            hash: int = str_bfind(raw, " #");
             if hash >= 0 {
-                raw = raw[0:hash];
+                raw = str_bslice(raw, 0, hash);
             }
             if raw.startswith("#") {
                 raw = "";

@@ -434,8 +434,6 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
 }
 
 impl JacProgram.execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]] {
-    """Enumerate loaded runtime metadata; source analysis uses only its own hub.""";
-    import from jaclang.compiler.frontend.host { active_host }
     hubs: list[dict[str, uni.Module]] = [self.mod.hub];
     internal = active_host().internal_program(self);
     if internal is not None and internal is not self {
@@ -469,8 +467,6 @@ impl JacProgram.compile(
     options: (CompileOptions | None) = None
 ) -> uni.Module {
     if (options is None) {
-        """A compile inside a native unit build parses for that build: whether
-        a native-scope module is a native unit is fixed when it is parsed.""";
         import from jaclang.compiler.frontend.codeinfo { native_unit_compile_active }
         options = CompileOptions(
             symtab_ir_only=symtab_ir_only,
@@ -1004,14 +1000,15 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                             if not isinstance(item, uni.ModuleItem) {
                                 continue;
                             }
-                            verdict = classify_client_import_item(linked_mod, item);
+                            verdict = classify_client_import_item(
+                                linked_mod, item, self
+                            );
                             if verdict != ClientImportVerdict.BRIDGED {
                                 continue;
                             }
-                            sym_name = item.name.value;
-                            decl = ability_of_symbol(linked_mod.lookup(sym_name));
-                            if decl is not None {
-                                facts.bridged_decls[sym_name] = decl;
+                            decl = import_item_declaration(linked_mod, item, self);
+                            if isinstance(decl, uni.Ability) {
+                                facts.bridged_decls[item.name.value] = decl;
                             }
                         }
                     }

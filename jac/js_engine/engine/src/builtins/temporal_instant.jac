@@ -120,6 +120,11 @@ import from engine.src.runtime.js_bigint { js_bigint_from_primitive }
 import from engine.src.builtins.string { js_coerce_to_string }
 import from engine.src.vm.vm_obs { js_object_get_observable }
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
+
 def _epoch_ns_from_parts(
     y: int, m: int, d: int, h: int, mi: int, s: int, ns: int, offset_s: int
 ) -> list[int] {
@@ -177,18 +182,18 @@ def:pub js_Temporal_Instant(this_val: JSValue, args: list[JSValue]) -> JSValue {
 def:priv _instant_calendar_annotation_count(s: str) -> int {
     cnt: int = 0;
     i: int = 0;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     while i < n {
-        if s[i:i + 1] == "[" {
+        if str_bslice(s, i, i + 1) == "[" {
             j: int = i + 1;
-            while j < n and s[j:j + 1] != "]" {
+            while j < n and str_bslice(s, j, j + 1) != "]" {
                 j = j + 1;
             }
-            inner: str = s[i + 1:j];
-            if len(inner) > 0 and inner[0:1] == "!" {
-                inner = inner[1:len(inner)];
+            inner: str = str_bslice(s, i + 1, j);
+            if len(inner) > 0 and str_bslice(inner, 0, 1) == "!" {
+                inner = str_bslice(inner, 1, str_nbytes(inner));
             }
-            if len(inner) >= 5 and inner[0:5] == "u-ca=" {
+            if str_nbytes(inner) >= 5 and str_bslice(inner, 0, 5) == "u-ca=" {
                 cnt = cnt + 1;
             }
             i = j + 1;
@@ -202,25 +207,25 @@ def:priv _instant_calendar_annotation_count(s: str) -> int {
 def:priv _instant_strip_calendar(s: str) -> str {
     out: str = "";
     i: int = 0;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     while i < n {
-        if s[i:i + 1] == "[" {
+        if str_bslice(s, i, i + 1) == "[" {
             j: int = i + 1;
-            while j < n and s[j:j + 1] != "]" {
+            while j < n and str_bslice(s, j, j + 1) != "]" {
                 j = j + 1;
             }
-            inner: str = s[i + 1:j];
+            inner: str = str_bslice(s, i + 1, j);
             body: str = inner;
-            if len(body) > 0 and body[0:1] == "!" {
-                body = body[1:len(body)];
+            if len(body) > 0 and str_bslice(body, 0, 1) == "!" {
+                body = str_bslice(body, 1, str_nbytes(body));
             }
-            is_cal: bool = len(body) >= 5 and body[0:5] == "u-ca=";
+            is_cal: bool = str_nbytes(body) >= 5 and str_bslice(body, 0, 5) == "u-ca=";
             if not is_cal {
-                out = out + s[i:j + 1];
+                out = out + str_bslice(s, i, j + 1);
             }
             i = j + 1;
         } else {
-            out = out + s[i:i + 1];
+            out = out + str_bslice(s, i, i + 1);
             i = i + 1;
         }
     }

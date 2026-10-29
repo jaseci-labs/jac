@@ -21,7 +21,7 @@ import from engine.src.runtime.realm {
     gc_floor_pct_set,
     gc_nursery_set
 }
-import from engine.src.runtime.gc_barrier { gc_gen_set }
+import from engine.src.runtime.gc_barrier { gc_gen_set, gc_young_range_set }
 import from engine.src.vm.vm { vm_ic_enable, vm_dump_pair_stats }
 import from engine.src.builtins.process {
     process_do_exit,
@@ -51,8 +51,11 @@ import from engine.src.ffi.libc {
     getenv,
     fflush,
     chdir,
-    write
+    write,
+    memchr,
+    free
 }
+import from engine.src.builtins.fs { _read_file_bytes, FileBytes }
 import from engine.src.pm.cli { pm_try_dispatch }
 import from engine.src.runtime.global {
     GlobalContext,
@@ -66,10 +69,10 @@ import from engine.src.runtime.global {
 
 """True if `arg` is a CLI option token (starts with '-' but is not '-')."""
 def _cli_is_option(arg: str) -> bool {
-    if len(arg) < 2 {
+    if str_nbytes(arg) < 2 {
         return False;
     }
-    if arg[0] != "-" {
+    if byte_chr(str_byte(arg, 0)) != "-" {
         return False;
     }
     # Bare "-" means read script from stdin (Node) — treat as positional.
@@ -81,7 +84,7 @@ def _cli_is_option(arg: str) -> bool {
 
 """Unbuffered stderr line (print() is block-buffered on a pipe and _exit skips the flush)."""
 def _cli_err(s: str) {
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 def _cli_is_uint(s: str) -> bool {
@@ -89,8 +92,9 @@ def _cli_is_uint(s: str) -> bool {
         return False;
     }
     i: int = 0;
-    while i < len(s) {
-        o: int = ord(s[i]);
+    _nb92_s: int = str_nbytes(s);
+    while i < _nb92_s {
+        o: int = str_byte(s, i);
         if o < 48 or o > 57 {
             return False;
         }
@@ -150,13 +154,13 @@ def _cli_takes_value(opt: str) -> bool {
 def _cli_split_eq(arg: str) -> list[str] {
     out: list[str] = [];
     i: int = 0;
-    n: int = len(arg);
+    n: int = str_nbytes(arg);
     # Long options only: --name=value (not -e=... which Node treats differently)
-    if n >= 3 and arg[0] == "-" and arg[1] == "-" {
+    if n >= 3 and byte_chr(str_byte(arg, 0)) == "-" and byte_chr(str_byte(arg, 1)) == "-" {
         while i < n {
-            if arg[i] == "=" {
-                out.append(arg[0:i]);
-                out.append(arg[i + 1:]);
+            if byte_chr(str_byte(arg, i)) == "=" {
+                out.append(str_bslice(arg, 0, i));
+                out.append(str_bslice_from(arg, i + 1));
                 return out;
             }
             i = i + 1;
@@ -527,6 +531,53 @@ def print_bytecode(fns: list[CompiledFunction]) {
 
 import sys;
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes,
+    io_alloc,
+    io_free,
+    read_byte,
+    write_byte,
+    str_from_raw
+}
+
+"""The script at `path` as text. A raw 0x00 byte in it becomes the engine's
+U+0000 sentinel C0 80, as in every other engine string: the byte length of a
+non-ASCII str is its strlen, so a NUL inside a string literal would otherwise
+end the source there. A file without one is read as before."""
+def _read_script(path: str) -> str {
+    rs_fb: FileBytes = _read_file_bytes(path);
+    if not rs_fb.ok {
+        return open(path).read();
+    }
+    if memchr(rs_fb.ptr, 0, rs_fb.size) == 0 {
+        free(rs_fb.ptr - 32);
+        return open(path).read();
+    }
+    rs_buf: int = io_alloc(2 * rs_fb.size + 1);
+    rs_j: int = 0;
+    rs_i: int = 0;
+    while rs_i < rs_fb.size {
+        rs_b: int = read_byte(rs_fb.ptr, rs_i);
+        if rs_b == 0 {
+            write_byte(rs_buf, rs_j, 192);
+            write_byte(rs_buf, rs_j + 1, 128);
+            rs_j = rs_j + 2;
+        } else {
+            write_byte(rs_buf, rs_j, rs_b);
+            rs_j = rs_j + 1;
+        }
+        rs_i = rs_i + 1;
+    }
+    free(rs_fb.ptr - 32);
+    rs_out: str = str_from_raw(rs_buf);
+    io_free(rs_buf);
+    return rs_out;
+}
+
 with entry {
     stack_expand();
     ignore_sigpipe();
@@ -638,7 +689,7 @@ with entry {
         opt: str = parts[0];
         inline_val: str = parts[1];
         has_inline: bool = inline_val != ""
-            or (len(arg) > len(opt) and arg[len(opt)] == "=");
+            or (str_nbytes(arg) > str_nbytes(opt) and byte_chr(str_byte(arg, str_nbytes(opt))) == "=");
 
         # Engine-debug flags (js_engine specific; also recorded in execArgv)
         if opt == "--ast" {
@@ -906,6 +957,15 @@ with entry {
     if gc_nur_env != None {
         gc_nursery_set(int(gc_nur_env));
     }
+    # The young budget in bytes adapts between these (MB; default 8 and 1024).
+    gc_ymin_env: str = getenv("JAC_GC_YOUNG_MIN_MB");
+    gc_ymax_env: str = getenv("JAC_GC_YOUNG_MAX_MB");
+    if gc_ymin_env != None or gc_ymax_env != None {
+        gc_young_range_set(
+            int(gc_ymin_env) * 1048576 if gc_ymin_env != None else 0,
+            int(gc_ymax_env) * 1048576 if gc_ymax_env != None else 0
+        );
+    }
     gc_str_env: str = getenv("JAC_GC_STR_MB");
     if gc_str_env != None {
         gc_str_min_limit_set_mb(int(gc_str_env));
@@ -931,7 +991,7 @@ with entry {
             _exit(1);
         }
         try {
-            source = open(js_file).read();
+            source = _read_script(js_file);
         } except Exception {
             if flag_if_present {
                 _exit(0);
@@ -941,7 +1001,7 @@ with entry {
         }
     }
     if flag_debug {
-        print("Running: " + js_file + "  (" + str(len(source)) + " bytes)");
+        print("Running: " + js_file + "  (" + str(str_nbytes(source)) + " bytes)");
     }
 
     # preload_requires / preload_imports / loaders are recorded for later waves

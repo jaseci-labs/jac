@@ -339,16 +339,6 @@ impl NaIRGenPass._emit_yield_suspend(v: ir.Value) -> None {
 }
 
 impl NaIRGenPass._emit_gen_pending_raise -> None {
-    """Raise an exception thrown into the generator at its suspension point.
-
-    A caller throws by filling the frame's pending-exception record and
-    resuming. The raise happens after the resume point has re-armed the
-    handlers of every `try` (and `with`) the suspension sits inside, so it
-    lands in the innermost one exactly as a raise from the `yield` would --
-    its `except` can catch it, its `finally` runs -- and escapes to the
-    caller when none handles it. The resume index is retired first, so a
-    generator the exception leaves reads as finished.
-    """;
     gc = self._gen_ctx;
     if gc is None
         or self.builder.function is not gc.resume_fn
@@ -528,9 +518,6 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
         } else {
             body_value = self._codegen_expr(tail);
             if isinstance(ret_type, ir.VoidType) {
-                """A void lambda evaluates its tail expression for effect
-                only; the expression's value (a call's placeholder, say)
-                is never the function's result.""";
                 self.builder.ret_void();
             } elif body_value is not None {
                 self.builder.ret(self._coerce_type(body_value, ret_type));
@@ -806,18 +793,19 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
     }
     result: (ir.Value | None);
     _unsigned = self._is_unsigned_node(nd) or self._is_unsigned_node(nd.left);
-    _checked = (
-        self._is_sized_node(nd)
-        or self._is_sized_node(nd.left)
-        or self._is_sized_node(nd.right)
-    );
     if op == Tok.STAR_POW {
-        result = self._codegen_pow(
-            left, right, nd.right, unsigned=_unsigned, checked=_checked
-        );
+        result = self._codegen_pow(left, right, nd.right, unsigned=_unsigned);
     } else {
         result = self._emit_binary_op(
-            op, left, right, unsigned=_unsigned, checked=_checked
+            op,
+            left,
+            right,
+            unsigned=_unsigned,
+            sized=(
+                self._is_sized_node(nd)
+                or self._is_sized_node(nd.left)
+                or self._is_sized_node(nd.right)
+            )
         );
     }
 
@@ -1087,6 +1075,22 @@ impl NaIRGenPass._codegen_compare_link(
 ) -> (ir.Value | None) {
     _cmp_left_orig = left;
     _cmp_right_orig = right;
+    if op in (Tok.KW_IS, Tok.KW_ISN, Tok.EE, Tok.NE)
+        and (
+            isinstance(left.type, ir.VoidType) or isinstance(right.type, ir.VoidType)
+        ) {
+        _void_left = isinstance(left.type, ir.VoidType);
+        _other = right if _void_left else left;
+        _other_node = right_node if _void_left else left_node;
+        if isinstance(_other_node, uni.CfgExpr) {
+            _other_node = _other_node.expr;
+        }
+        if not isinstance(_other_node, uni.Null)
+            and not isinstance(_other.type, ir.VoidType) {
+            return None;
+        }
+        return ir.Constant(ir.IntType(64), 1 if op in (Tok.KW_IS, Tok.EE) else 0);
+    }
     if op in (Tok.EE, Tok.NE) {
         left = _class_typed_operand(self, left, left_node);
         right = _class_typed_operand(self, right, right_node);
@@ -1798,18 +1802,6 @@ impl NaIRGenPass._codegen_compare_link(
 impl NaIRGenPass._identity_over_optional(
     left: ir.Value, right: ir.Value, negate: bool
 ) -> (ir.Value | None) {
-    """`x is y` where at least one operand is an option and neither is `None`.
-
-    A `T | None` value lowers to a `JacOpt` -- a presence tag beside the
-    payload -- which is not a pointer, so the pointer path cannot answer this
-    and the fallback below answers a different question entirely: the
-    truthiness of the left operand, with the right operand discarded. Two
-    options are identical when both are absent, or both present with the same
-    payload; an option against a plain reference or value is identical when
-    the option is present and the payloads match. A reference payload matches
-    by address, a by-value payload by its bits. A comparison against a literal `None`
-    never reaches here -- it is answered as a tag test further up.
-    """;
     _lp = self._opt_payload_of(left.type);
     _rp = self._opt_payload_of(right.type);
     if _lp is None and _rp is None {
@@ -2092,14 +2084,12 @@ impl NaIRGenPass._codegen_unary(nd: uni.UnaryExpr) -> (ir.Value | None) {
             if isinstance(operand, ir.Constant) and isinstance(operand.constant, int) {
                 width = operand.type.width;
                 negated = -operand.constant;
-                if -(1 << (width - 1)) <= negated < (1 << (width - 1)) {
+                if _int_min_bits(width) <= negated
+                    and negated <= _int_max_bits(width) {
                     return ir.Constant(operand.type, negated);
                 }
             }
-            if self._is_sized_node(nd) or self._is_sized_node(nd.operand) {
-                return self._emit_checked_neg(operand);
-            }
-            return self.builder.neg(operand, name="neg");
+            return self._emit_checked_neg(operand);
         } elif operand.type == self.complex_struct_type.as_pointer() {
             (r, im) = self._load_complex_parts(operand);
             nr = self.builder.fneg(r, name="cneg.nr");
@@ -2146,9 +2136,6 @@ impl NaIRGenPass._bool_expr_unify_type(a: ir.Type, b: ir.Type) -> (ir.Type | Non
     _b_ptrish = isinstance(b, ir.PointerType)
         or (_pb is not None and isinstance(_pb, ir.PointerType));
     if _a_ptrish and _b_ptrish and self?.jacval_type {
-        """A container met with a different kind of pointer keeps its tag:
-        as a bare pointer the pair would test true whenever it is non-null,
-        so `obj and items` held for an empty `items`.""";
         _ka = self._ptr_box_kind(a if _pa is None else _pa);
         _kb = self._ptr_box_kind(b if _pb is None else _pb);
         if _ka != _kb and (_ka in (3, 4, 5) or _kb in (3, 4, 5)) {
@@ -2424,6 +2411,21 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
             }
         }
         if then_val.type != else_val.type {
+            _opt_tup = self._optional_tuple_meet_type(nd, then_val, else_val);
+            if _opt_tup is not None {
+                if then_open {
+                    self.builder.position_at_end(then_end_bb);
+                    then_val = self._meet_optional_tuple_side(then_val, _opt_tup);
+                    then_end_bb = self.builder.block;
+                }
+                if else_open {
+                    self.builder.position_at_end(else_end_bb);
+                    else_val = self._meet_optional_tuple_side(else_val, _opt_tup);
+                    else_end_bb = self.builder.block;
+                }
+            }
+        }
+        if then_val.type != else_val.type {
             _uni_ty = self._unify_repr_lowering([then_val.type, else_val.type]);
             if _uni_ty is not None and then_val.type != _uni_ty and then_open {
                 self.builder.position_at_end(then_end_bb);
@@ -2459,6 +2461,10 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
     if then_val is None or else_val is None {
         return None;
     }
+    if isinstance(then_val.type, ir.VoidType)
+        and isinstance(else_val.type, ir.VoidType) {
+        return then_val;
+    }
     phi = self.builder.phi(then_val.type, name="ternary.result");
     phi.add_incoming(then_val, then_end_bb);
     phi.add_incoming(else_val, else_end_bb);
@@ -2466,9 +2472,6 @@ impl NaIRGenPass._codegen_if_else_expr(nd: uni.IfElseExpr) -> (ir.Value | None) 
 }
 
 impl NaIRGenPass._ternary_keep(value: ir.Value) -> ir.Value {
-    """One arm of a conditional expression whose other arm owns its value:
-    the result is owned, so a borrowed arm takes a reference, or, where
-    nothing is counted (headerless nogc), a copy of its text or bytes.""";
     if self._is_owned(value) {
         return value;
     }
@@ -2505,18 +2508,6 @@ impl NaIRGenPass._ternary_keep(value: ir.Value) -> ir.Value {
 }
 
 impl NaIRGenPass._object_meet_type(nd: uni.Expr) -> (ir.Type | None) {
-    """The pointer type an expression's branch values meet at when the
-    expression is an object.
-
-    A value whose static type is an archetype, or a union of archetypes,
-    is one object pointer however its slot is typed: a field of a declared
-    class reads as that class's struct pointer, while an element of a list
-    of a union reads as an untyped pointer. Boxing the pair into an `any`
-    would tag the untyped one as a string, and a later `isinstance` on the
-    result would never match; they meet as the pointer they both are. The
-    type is an object when it lowers to a named struct that is not a
-    container or a closure, whether or not this unit registered the class.
-    """;
     if nd.type is None {
         return None;
     }
@@ -2527,6 +2518,45 @@ impl NaIRGenPass._object_meet_type(nd: uni.Expr) -> (ir.Type | None) {
         return None;
     }
     return _lowered;
+}
+
+impl NaIRGenPass._optional_tuple_meet_type(
+    nd: uni.Expr, then_val: ir.Value, else_val: ir.Value
+) -> (ir.Type | None) {
+    _tuple_and_none = (
+        isinstance(then_val.type, ir.LiteralStructType)
+        and self._is_null_ptr_const(else_val)
+    )
+        or (
+            isinstance(else_val.type, ir.LiteralStructType)
+            and self._is_null_ptr_const(then_val)
+        );
+    if not _tuple_and_none or nd.type is None {
+        return None;
+    }
+    _lowered = self._lower_type(nd.type);
+    _payload = self._opt_payload_of(_lowered) if _lowered is not None else None;
+    if isinstance(_payload, ir.PointerType)
+        and isinstance(_payload.pointee, ir.LiteralStructType) {
+        return _payload;
+    }
+    return None;
+}
+
+impl NaIRGenPass._meet_optional_tuple_side(
+    value: ir.Value, target: ir.Type
+) -> ir.Value {
+    if self._is_null_ptr_const(value) {
+        return ir.Constant(target, None);
+    }
+    if isinstance(value.type, ir.LiteralStructType)
+        and isinstance(target, ir.PointerType)
+        and isinstance(target.pointee, ir.LiteralStructType) {
+        return self._box_value_tuple(
+            self._coerce_tuple_to_struct(value, target.pointee)
+        );
+    }
+    return value;
 }
 
 impl NaIRGenPass._recast_object(value: ir.Value, target: ir.Type) -> ir.Value {
@@ -3329,9 +3359,17 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
                             idx_val = self._codegen_expr(idx_node.start);
                         }
                         if idx_val is not None {
-                            return self._codegen_tuple_index(
+                            _tup_item = self._codegen_tuple_index(
                                 target_val, idx_val, tsub_struct
                             );
+
+                            if _tup_item is not None
+                                and isinstance(target_val.type, ir.PointerType) {
+                                return self._finish_borrowed_read(
+                                    target_val, _tup_item
+                                );
+                            }
+                            return _tup_item;
                         }
                     }
                 }
@@ -3437,11 +3475,6 @@ impl NaIRGenPass._ct_type_param_owner(nd: uni.Name) -> (str | None) {
 impl NaIRGenPass._final_variant_value(
     nd: uni.Name, value: uni.Expr
 ) -> (uni.Expr | None) {
-    """The value a Final glob has on the native target: a module with a
-    platform variant (`<name>.<os>.<arch>.jac`) is lowered as that variant,
-    so its glob is folded from the variant's declaration of the same name,
-    never from the portable module's placeholder. None when the variant
-    declares no such Final glob, which leaves the read a load.""";
     import os;
 
     mod = value.find_parent_of_type(uni.Module);
@@ -3486,11 +3519,7 @@ impl NaIRGenPass._final_scalar_value(
         and value_type.width > 1
         and isinstance(folded, int)
         and not isinstance(folded, bool) {
-        bits = folded & ((1 << value_type.width) - 1);
-        if bits >= (1 << (value_type.width - 1)) {
-            bits -= 1 << value_type.width;
-        }
-        return ir.Constant(value_type, bits);
+        return ir.Constant(value_type, _signed_repr(value_type.width, folded));
     }
     if isinstance(value_type, (ir.DoubleType, ir.FloatType)) {
         if isinstance(folded, float) {
@@ -3522,11 +3551,6 @@ impl _class_typed_operand(
 }
 
 impl NaIRGenPass._literal_destination(nd: uni.Int) -> (str | None) {
-    """The fixed-width type a literal is converted to. The checker records it on
-    the outermost expression that is only the literal, so `(x)`, `+x` and `-x`
-    carry it on the wrapper. A negated literal reaches here only for a float
-    destination: the checker refuses one past 64 bits for an integer type, and
-    `-2**63` lowers as a constant before its operand.""";
     dest = nd.coerce_to;
     up: (uni.UniNode | None) = nd.parent;
     while dest is None
