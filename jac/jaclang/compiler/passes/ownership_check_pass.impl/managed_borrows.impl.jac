@@ -4,14 +4,24 @@ impl OwnershipCheckPass._stamp_write_effects -> None {
         for ab in self.module.get_all_sub_nodes(Ability)
         if ab.body is not None
     ];
+    sources = [self._write_sources(ab) for ab in abilities];
     for ab in abilities {
         ab.writes = [];
     }
     changed = True;
     while changed {
         changed = False;
-        for ab in abilities {
-            new = sorted(self._local_writes(ab));
+        for (ab, (local, live)) in zip(abilities, sources) {
+            out = set(local);
+            for callee in live {
+                writes = callee.writes;
+                if writes is None {
+                    out.add("*");
+                } else {
+                    out.update(writes);
+                }
+            }
+            new = sorted(out);
             if new != ab.writes {
                 ab.writes = new;
                 changed = True;
@@ -20,8 +30,9 @@ impl OwnershipCheckPass._stamp_write_effects -> None {
     }
 }
 
-impl OwnershipCheckPass._local_writes(ab: Ability) -> set[str] {
+impl OwnershipCheckPass._write_sources(ab: Ability) -> tuple[set[str], list[Ability]] {
     out: set[str] = set();
+    live: list[Ability] = [];
     for asgn in ab.element_sub_nodes(Assignment) {
         if asgn.enclosing_decl(Ability) is ab {
             for tgt in asgn.target {
@@ -38,10 +49,14 @@ impl OwnershipCheckPass._local_writes(ab: Ability) -> set[str] {
     }
     for call in ab.element_sub_nodes(FuncCall) {
         if call.enclosing_decl(Ability) is ab {
-            out |= self._call_writes(call);
+            (fixed, callee) = self._call_write_source(call);
+            out |= fixed;
+            if callee is not None {
+                live.append(callee);
+            }
         }
     }
-    return out;
+    return (out, live);
 }
 
 
@@ -59,12 +74,23 @@ impl OwnershipCheckPass._store_fields(tgt: Expr, out: set[str]) -> None {
 }
 
 impl OwnershipCheckPass._call_writes(call: FuncCall) -> set[str] {
+    (fixed, callee) = self._call_write_source(call);
+    if callee is None {
+        return fixed;
+    }
+    writes = callee.writes;
+    return {"*"} if writes is None else set(writes);
+}
+
+impl OwnershipCheckPass._call_write_source(
+    call: FuncCall
+) -> tuple[set[str], (Ability | None)] {
     callee = self._callee_ability(call);
     if callee is None {
-        return {"*"};
+        return ({"*"}, None);
     }
     if self._is_builtin_mutator(callee) {
-        return {"[]"};
+        return ({"[]"}, None);
     }
     if str(callee.loc.mod_path).endswith(".pyi") {
         name = callee.name_ref.sym_name if callee.name_ref is not None else "";
@@ -73,10 +99,12 @@ impl OwnershipCheckPass._call_writes(call: FuncCall) -> set[str] {
                 or (isinstance(arg, Expr) and isinstance(arg.type, FunctionType))
             for arg in self._call_params(call)
         );
-        return {"*"} if takes_callable or name in ("setattr", "delattr") else set();
+        return (
+            {"*"} if takes_callable or name in ("setattr", "delattr") else set(),
+            None
+        );
     }
-    writes = callee.writes;
-    return {"*"} if writes is None else set(writes);
+    return (set(), callee);
 }
 
 impl OwnershipCheckPass._stamp_managed_borrows -> None {

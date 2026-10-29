@@ -209,6 +209,9 @@ impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {
             verifying = True;
             mod.verify();
             verifying = False;
+            if options.no_cgen and options.aot_mode {
+                return ir_in;
+            }
             opt_level = 0 if native_debug else int(options.opt_level or 0);
             optimize_unit(mod, target_machine, opt_level);
             module.gen.native_bitcode = module_bitcode(mod);
