@@ -16,6 +16,16 @@ impl PermissionDenied.to_dict -> dict[(str, any)] {
 
 impl PermissionDenied.message -> str {
     owner = self.target_owner or "<system>";
+    if self.operation == "org_acl_write" {
+        return (
+            f"Permission denied: {self.operation} on "
+            f"{self.target_type}[{self.target_id}] owned by root[{owner}]; "
+            f"access rules on organization data change only through the "
+            f"organization service, which runs as the system root. Hint: "
+            f"manage members and sharing with the /org endpoints instead of "
+            f"calling `allow_root`, `allow_group` or `grant` from a walker."
+        );
+    }
     return (
         f"Permission denied: {self.operation} on "
         f"{self.target_type}[{self.target_id}] owned by root[{owner}]; "
