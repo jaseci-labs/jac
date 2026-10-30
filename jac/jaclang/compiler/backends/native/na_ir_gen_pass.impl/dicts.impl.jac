@@ -247,10 +247,10 @@ impl NaIRGenPass._unbox_from_jacval(jv: ir.Value, target_type: ir.Type) -> ir.Va
         return b.trunc(payload, target_type, name="jv.unbox.itrunc");
     }
     if isinstance(target_type, ir.DoubleType) {
-        return b.bitcast(payload, target_type, name="jv.unbox.f");
+        return self._jacval_numeric_parts(jv, "jv.unbox")[3];
     }
     if isinstance(target_type, ir.FloatType) {
-        _d = b.bitcast(payload, ir.DoubleType(), name="jv.unbox.f64");
+        _d = self._jacval_numeric_parts(jv, "jv.unbox")[3];
         return b.fptrunc(_d, target_type, name="jv.unbox.f32");
     }
     if isinstance(target_type, ir.PointerType) {

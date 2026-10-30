@@ -174,6 +174,26 @@ test "mono: generic method on an archetype stamps per call site" {
     g = get_func(eng, "pick_str_len", ctypes.c_int64, ctypes.c_int64);
     assert g(1) == 2 , "picks 'xx'";
     assert g(0) == 3 , "picks 'yyy'";
+    # On a generic archetype the method keeps the archetype's `V` boxed:
+    # solving it from an argument returned `self.val`'s box address.
+    for (name, restype, x, want) in [
+        ("holder_first_int", ctypes.c_int64, 5, 5),
+        ("holder_echo_int", ctypes.c_int64, 9, 9),
+        ("holder_get_int", ctypes.c_int64, 11, 11),
+        ("holder_first_float", ctypes.c_double, 2, 2.5),
+        ("holder_first_str_len", ctypes.c_int64, 4, 4),
+        ("holder_echo_beside_spread", ctypes.c_int64, 7, 7),
+        ("holder_echo_from_spread", ctypes.c_int64, 9, 9),
+        ("holder_float_echo_from_int_spread", ctypes.c_double, 3, 3.0),
+        ("holder_optional_echo_from_spread", ctypes.c_int64, 7, 7),
+        ("holder_optional_echo_from_spread", ctypes.c_int64, 0, -1),
+        ("holder_float_echo_from_optional_int_spread", ctypes.c_double, 3, 3.0),
+        ("holder_str_echo_rejects_int_spread", ctypes.c_int64, 65, -1),
+        ("holder_int_echo_rejects_str_spread", ctypes.c_int64, 2, -1)
+    ] {
+        got = get_func(eng, name, restype, ctypes.c_int64)(x);
+        assert got == want , f"{name}({x}) = {got}, want {want}";
+    }
 }
 
 test "iter flow: generator through a monomorphized Iterator[T] param" {

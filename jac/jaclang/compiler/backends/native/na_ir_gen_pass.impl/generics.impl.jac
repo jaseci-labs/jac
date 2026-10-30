@@ -581,6 +581,17 @@ impl NaIRGenPass._instantiate_generic_method(
         );
         return None;
     }
+    _erased_tvs = set(self.arch_type_params.get(owner_arch) or []);
+    for tp in (ability.type_params or []) {
+        if tp?.name is not None {
+            _erased_tvs.discard(tp.name.value);
+        }
+    }
+    solution = {
+        k: v
+        for (k, v) in solution.items()
+        if k not in _erased_tvs
+    };
     _mangles: dict[str, str] = {};
     for (k, v) in solution.items() {
         _mangles[k] = native_type_key(v) if v?.mangle else "any";
@@ -631,9 +642,9 @@ impl NaIRGenPass._stamp_mono_method(
     }
     param_types: list[ir.Type] = [struct_type.as_pointer()];
     for p in sig.get_parameters() {
-        param_types.append(self._resolve_jac_type(p));
+        param_types.append(self._resolve_sig_type(p));
     }
-    ret_type = self._resolve_return_type(sig.return_type);
+    ret_type = self._resolve_return_type(sig.return_type, method=True);
     fnty = ir.FunctionType(ret_type, param_types);
     fn = ir.Function(self.llvm_module, fnty, name=spec_name);
     fn.linkage = "private";

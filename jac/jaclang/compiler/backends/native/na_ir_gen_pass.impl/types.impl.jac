@@ -1576,6 +1576,29 @@ impl NaIRGenPass._erased_want(tv_names: list[str], owner: any) -> (ir.Type | Non
     return None;
 }
 
+impl NaIRGenPass._erased_slot(sp: uni.ParamVar, slot_type: ir.Type) -> bool {
+    return isinstance(slot_type, ir.PointerType) and self._erased_decl(sp.type);
+}
+
+impl NaIRGenPass._erased_arg_want(
+    nd: uni.FuncCall, sp: uni.ParamVar
+) -> (ir.Type | None) {
+    _owner_t = nd.type;
+    if isinstance(nd.target, uni.AtomTrailer) and nd.target.is_attr {
+        _owner_t = nd.target.target.type;
+    }
+    return self._erased_want(self._erased_decl_names(sp.type), _owner_t);
+}
+
+impl NaIRGenPass._box_erased_arg(
+    nd: uni.FuncCall, sp: uni.ParamVar, val: ir.Value, slot_type: ir.Type
+) -> ir.Value {
+    if isinstance(val.type, ir.PointerType) or not self._erased_slot(sp, slot_type) {
+        return val;
+    }
+    return self._erased_box(val, self._erased_arg_want(nd, sp));
+}
+
 impl NaIRGenPass._erased_box(val: ir.Value, want: (ir.Type | None) = None) -> ir.Value {
     b = self.builder;
     i8 = ir.IntType(8);
