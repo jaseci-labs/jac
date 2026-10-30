@@ -2558,14 +2558,15 @@ test "agentvisitor_connect_no_errors" {
 test "inferred_local_type_frozen" {
     # An unannotated local is frozen to the type inferred at its first
     # binding; reassigning an incompatible type is an error, and so is a
-    # `for` target that reuses the name, unannotated or annotated (#9972).
+    # `for` target that reuses the name, unannotated or annotated (#9972),
+    # or any other binder that writes it (#10405).
     # The `None`-sentinel pattern is the one exception (the type evolves).
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac"),
         options=NO_TC
     );
-    assert len(program.errors_had) == 5 , f"Expected 5 type errors, but got {len(
+    assert len(program.errors_had) == 13 , f"Expected 13 type errors, but got {len(
         program.errors_had
     )}: "
         + "\n".join([err.pretty_print() for err in program.errors_had]);
@@ -2602,6 +2603,62 @@ test "inferred_local_type_frozen" {
             """
         for x in ["bad"] {  # <-- Error
         Cannot assign str to int
+    """
+        ),
+        (
+            5,
+            """
+        (kind, title) = ("k", "x");  # <-- Error
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            6,
+            """
+        [kind, title] = ["k", "x"];  # <-- Error
+        Cannot assign str to Label
+    """
+        ),
+        (
+            7,
+            """
+        other = title="x";  # <-- Error
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            8,
+            """
+        if (title := "x") {  # <-- Error
+        Cannot assign Literal["x"] to Label
+    """
+        ),
+        (
+            9,
+            """
+        with open("x.txt") as title {  # <-- Error
+        Cannot assign TextIOWrapper to Label
+    """
+        ),
+        (
+            10,
+            """
+        } except ValueError as title {  # <-- Error
+        Cannot assign ValueError to Label
+    """
+        ),
+        (
+            11,
+            """
+        for [kind, title] in [["k", "x"]] {  # <-- Error
+        Cannot assign str to Label
+    """
+        ),
+        (
+            12,
+            """
+        for (key, count) in {"ab": 1} {  # <-- Error
+        Cannot assign LiteralString to int
     """
         )
     ] {

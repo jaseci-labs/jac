@@ -5150,10 +5150,10 @@ impl NaIRGenPass._emit_comparison(
                     );
                     self.builder.cbranch(lcmp_lend, lcmp_lex_after, lcmp_lex_body);
                     self.builder.position_at_start(lcmp_lex_body);
-                    lcmp_lea = self.builder.call(
+                    lcmp_lea: ir.Value = self.builder.call(
                         lcmp_h["get"], [left, lcmp_li], name="lcmp.lex.ea"
                     );
-                    lcmp_leb = self.builder.call(
+                    lcmp_leb: ir.Value = self.builder.call(
                         lcmp_h["get"], [right, lcmp_li], name="lcmp.lex.eb"
                     );
                     _largs: list[TypeBase] = self._agg_key_args(key_ret, "list") or [];
