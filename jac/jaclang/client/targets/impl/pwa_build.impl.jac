@@ -150,7 +150,7 @@ impl _get_precache_files(dist_dir: Path) -> list[str] {
     }
     for f in dist_dir.iterdir() {
         if f.is_file() and f.suffix in PWA_CACHEABLE_EXTENSIONS {
-            precache_files.append(f"'./{f.name}'");
+            precache_files.append(json.dumps("./" + quote(f.name)));
         }
     }
     return precache_files;
@@ -570,4 +570,9 @@ impl apply_pwa(dist_dir: Path, project_dir: Path) {
     _generate_service_worker(dist_dir, pwa_config);
     _update_html_for_pwa(dist_dir, pwa_config);
     console.print("  ✔ PWA manifest and service worker written", style="success");
+}
+
+impl refresh_pwa_precache(dist_dir: Path) -> None {
+    (pwa_config, _) = _load_pwa_context();
+    _generate_service_worker(dist_dir, pwa_config);
 }
