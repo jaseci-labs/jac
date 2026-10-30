@@ -107,7 +107,8 @@ impl Incompatibility.describe(root_name: str) -> str {
         return f"{_subject(depender, root_name)} depends on {dependee.describe()}";
     }
     if self.kind == CauseKind.NO_VERSIONS and terms {
-        return f"no versions of {terms[0].describe()} are available";
+        reason = f" ({self.note})" if self.note else "";
+        return f"no versions of {terms[0].describe()} are available{reason}";
     }
     if self.kind == CauseKind.UNAVAILABLE and terms {
         return f"{terms[0].describe()} is unavailable ({self.note})";
@@ -343,8 +344,26 @@ impl Solver._candidates_for(name: str) -> list[Version] {
     return self._candidates[name];
 }
 
+impl Solver._dependencies(name: str, version: Version) -> dict[str, Requirement] {
+    key = (name, str(version));
+    if key not in self._requirements {
+        self._requirements[key] = self.source.dependencies(name, version);
+    }
+    return self._requirements[key];
+}
+
+impl Solver._granted(name: str) -> bool {
+    for (decided, version) in self.decisions.items() {
+        req = self._dependencies(decided, version).get(name);
+        if req is not None and req.names_prerelease {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl Solver._allowed(name: str, term: Term) -> list[Version] {
-    pre = self.source.allows_prerelease(name);
+    pre = self._granted(name);
     return [
         v
         for v in self._candidates_for(name)
@@ -352,8 +371,131 @@ impl Solver._allowed(name: str, term: Term) -> list[Version] {
     ];
 }
 
+impl Solver._has_prerelease_candidate(name: str, term: Term) -> bool {
+    return any(
+        v.is_prerelease() and term.versions.contains(v)
+        for v in self._candidates_for(name)
+    );
+}
+
+impl Solver._universe_edges -> dict[str, set[str]] {
+    if self._universe is None {
+        edges: dict[str, set[str]] = {self.root_name: set()};
+        reachable: dict[str, VersionSet] = {};
+        walked: set[tuple[str, str]] = set();
+        todo: list[tuple[str, Version]] = [(self.root_name, self.root_version)];
+        while todo {
+            (owner, version) = todo.pop();
+            try {
+                deps = self._dependencies(owner, version);
+            } except Exception {
+                continue;
+            }
+            for (dep, req) in deps.items() {
+                edges[owner].add(dep);
+                edges.setdefault(dep, set());
+                self._ranges_on.setdefault(dep, []).append(req.versions);
+                if req.names_prerelease {
+                    self._namers.setdefault(dep, set()).add(owner);
+                }
+                reachable[dep] = req.versions
+                    if dep not in reachable
+                    else reachable[dep].union(req.versions);
+                try {
+                    candidates = self._candidates_for(dep);
+                } except Exception {
+                    continue;
+                }
+                for v in candidates {
+                    key = (dep, str(v));
+                    if key not in walked and reachable[dep].contains(v) {
+                        walked.add(key);
+                        todo.append((dep, v));
+                    }
+                }
+            }
+        }
+        self._universe = edges;
+    }
+    return self._universe;
+}
+
+impl Solver._downstream(starts: set[str]) -> set[str] {
+    edges = self._universe_edges();
+    out = set(starts);
+    todo = list(starts);
+    while todo {
+        for dep in edges.get(todo.pop(), set()) {
+            if dep not in out {
+                out.add(dep);
+                todo.append(dep);
+            }
+        }
+    }
+    return out;
+}
+
+impl Solver._interchangeable(owner: str, v: Version, current: Version) -> bool {
+    if v.is_prerelease() != current.is_prerelease() {
+        return False;
+    }
+    if any(
+        r.contains(v) != r.contains(current) for r in self._ranges_on.get(owner, [])
+    ) {
+        return False;
+    }
+    try {
+        mine = self._dependencies(owner, v);
+    } except Exception {
+        return False;
+    }
+    theirs = self._dependencies(owner, current);
+    return {n: r.text for (n, r) in mine.items()}
+        == {n: r.text for (n, r) in theirs.items()};
+}
+
+impl Solver._prerelease_gap(name: str, term: Term) -> Incompatibility {
+    edges = self._universe_edges();
+    sources = self._namers.get(name, set()) - {self.root_name};
+    todo = list(sources);
+    while todo {
+        target = todo.pop();
+        for (owner, deps) in edges.items() {
+            if target in deps and owner != self.root_name and owner not in sources {
+                sources.add(owner);
+                todo.append(owner);
+            }
+        }
+    }
+    reach = self._downstream(sources);
+    terms = [term];
+    for (decided, current) in self.decisions.items() {
+        if decided == self.root_name or not (self._downstream({decided}) & reach) {
+            continue;
+        }
+        same = VersionSet.none();
+        differs = False;
+        for v in self._candidates_for(decided) {
+            if v == current or self._interchangeable(decided, v, current) {
+                same = same.union(VersionSet.exact(v));
+            } else {
+                differs = True;
+            }
+        }
+        if differs {
+            terms.append(Term(package=decided, versions=same));
+        }
+    }
+    return Incompatibility.of(
+        terms,
+        CauseKind.NO_VERSIONS,
+        note="only prereleases match, and no requirement names one"
+    );
+}
+
 impl Solver._decide -> str | None {
     pending: list[tuple[int, str, Term]] = [];
+    deferred: list[tuple[int, str, Term]] = [];
     seen: set[str] = set();
     for a in self.assignments {
         name = a.term.package;
@@ -363,8 +505,16 @@ impl Solver._decide -> str | None {
         seen.add(name);
         acc = self._accumulated(name);
         if acc is not None and acc.positive {
-            pending.append((len(self._allowed(name, acc)), name, acc));
+            item = (len(self._allowed(name, acc)), name, acc);
+            if item[0] == 0 and self._has_prerelease_candidate(name, acc) {
+                deferred.append(item);
+            } else {
+                pending.append(item);
+            }
         }
+    }
+    if not pending {
+        pending = deferred;
     }
     if not pending {
         return None;
@@ -377,7 +527,11 @@ impl Solver._decide -> str | None {
     }
     allowed = self._allowed(name, term);
     if not allowed {
-        self._add(Incompatibility.of([term], CauseKind.NO_VERSIONS));
+        if self._has_prerelease_candidate(name, term) {
+            self._add(self._prerelease_gap(name, term));
+        } else {
+            self._add(Incompatibility.of([term], CauseKind.NO_VERSIONS));
+        }
         return name;
     }
     preferred = self.source.preferred(name);
@@ -401,7 +555,7 @@ impl Solver._decide -> str | None {
 
 impl Solver._decide_version(name: str, version: Version) {
     conflict = False;
-    for (dep, req) in self.source.dependencies(name, version).items() {
+    for (dep, req) in self._dependencies(name, version).items() {
         incompat = Incompatibility.of(
             [
                 Term(package=name, versions=VersionSet.exact(version)),
@@ -512,8 +666,4 @@ impl _RootedSource.unavailable_reason(name: str, version: Version) -> str {
 
 impl _RootedSource.preferred(name: str) -> Version | None {
     return None if name == self.root_name else self.inner.preferred(name);
-}
-
-impl _RootedSource.allows_prerelease(name: str) -> bool {
-    return self.inner.allows_prerelease(name);
 }

@@ -63,7 +63,6 @@ obj PackageSource {
     def dependencies(name: str, version: Version) -> dict[str, Requirement] abst;
     def unavailable_reason(name: str, version: Version) -> str abst;
     def preferred(name: str) -> Version | None abst;
-    def allows_prerelease(name: str) -> bool abst;
 }
 
 obj Solver {
@@ -74,7 +73,11 @@ obj Solver {
         assignments: list[Assignment] = [],
         decisions: dict[str, Version] = {},
         level: int = 0,
-        _candidates: dict[str, list[Version]] = {};
+        _candidates: dict[str, list[Version]] = {},
+        _requirements: dict[tuple[str, str], dict[str, Requirement]] = {},
+        _universe: dict[str, set[str]] | None = None,
+        _namers: dict[str, set[str]] = {},
+        _ranges_on: dict[str, list[VersionSet]] = {};
 
     def solve -> dict[str, Version];
     def _add(incompat: Incompatibility);
@@ -87,7 +90,14 @@ obj Solver {
     def _resolve_conflict(incompat: Incompatibility) -> Incompatibility;
     def _backtrack(level: int);
     def _candidates_for(name: str) -> list[Version];
+    def _dependencies(name: str, version: Version) -> dict[str, Requirement];
+    def _granted(name: str) -> bool;
     def _allowed(name: str, term: Term) -> list[Version];
+    def _has_prerelease_candidate(name: str, term: Term) -> bool;
+    def _universe_edges -> dict[str, set[str]];
+    def _downstream(starts: set[str]) -> set[str];
+    def _interchangeable(owner: str, v: Version, current: Version) -> bool;
+    def _prerelease_gap(name: str, term: Term) -> Incompatibility;
     def _decide -> str | None;
     def _decide_version(name: str, version: Version);
     def _would_satisfy(incompat: Incompatibility, name: str, version: Version) -> bool;
@@ -112,5 +122,4 @@ obj _RootedSource(PackageSource) {
     override def dependencies(name: str, version: Version) -> dict[str, Requirement];
     override def unavailable_reason(name: str, version: Version) -> str;
     override def preferred(name: str) -> Version | None;
-    override def allows_prerelease(name: str) -> bool;
 }
