@@ -2010,9 +2010,11 @@ impl TypeCheckPass.exit_with_stmt with WithStmt exit {
 impl TypeCheckPass.exit_except with Except exit {
     if here.ex_type is not None {
         self.evaluator.get_type_of_expression(here.ex_type);
-        members = list(here.ex_type.values)
-            if isinstance(here.ex_type, TupleVal)
-            else [here.ex_type];
+        handler: Expr = here.ex_type;
+        while isinstance(handler, AtomUnit) and isinstance(handler.value, Expr) {
+            handler = handler.value;
+        }
+        members = list(handler.values) if isinstance(handler, TupleVal) else [handler];
         for member in members {
             if not isinstance(member, Expr) {
                 continue;
@@ -2021,7 +2023,8 @@ impl TypeCheckPass.exit_except with Except exit {
                 continue;
             }
             member_type = self.evaluator.get_type_of_expression(member);
-            if not self._is_exception_class_operand(member_type) {
+            allow_tuple = not isinstance(handler, TupleVal);
+            if not self._is_exception_class_operand(member_type, allow_tuple) {
                 self.ctx.emit(E1162, node_override=member, type=str(member_type));
             }
         }
@@ -2029,15 +2032,22 @@ impl TypeCheckPass.exit_except with Except exit {
     self._check_immutable_write(here.name, rebind_scope=here);
 }
 
-impl TypeCheckPass._is_exception_class_operand(ty: TypeBase) -> bool {
+impl TypeCheckPass._is_exception_class_operand(
+    ty: TypeBase, allow_tuple: bool = True
+) -> bool {
     if isinstance(ty, UnionType) {
-        return all(self._is_exception_class_operand(m) for m in ty.types);
+        return all(self._is_exception_class_operand(m, allow_tuple) for m in ty.types);
     }
     if isinstance(ty, TypeVarType) {
         if ty.bound is not None {
-            return self._is_exception_class_operand(ty.bound);
+            return self._is_exception_class_operand(ty.bound, allow_tuple);
         }
-        return all(self._is_exception_class_operand(c) for c in ty.constraints);
+        return all(
+            self._is_exception_class_operand(c, allow_tuple) for c in ty.constraints
+        );
+    }
+    if isinstance(ty, (FunctionType, OverloadedType, ModuleType)) {
+        return False;
     }
     if self.evaluator.is_any_type(ty) or not isinstance(ty, ClassType) {
         return True;
@@ -2054,7 +2064,8 @@ impl TypeCheckPass._is_exception_class_operand(ty: TypeBase) -> bool {
         if self.evaluator._tuple_has_variadic_arg(ty) {
             elements = elements[:1];
         }
-        return all(self._is_exception_class_operand(e) for e in elements);
+        return allow_tuple
+            and all(self._is_exception_class_operand(e, False) for e in elements);
     }
     return False;
 }

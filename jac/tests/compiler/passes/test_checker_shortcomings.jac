@@ -130,7 +130,10 @@ test "shortcoming_30_try_except_no_narrowing" {
         ("E1162", 148),
         ("E1162", 154),
         ("E2001", 160),
-        ("E2001", 166)
+        ("E2001", 166),
+        ("E2001", 180),
+        ("E1162", 186),
+        ("E1162", 192)
     };
     assert found == expected , f"#30: expected {sorted(expected)}, got {sorted(found)}";
 }

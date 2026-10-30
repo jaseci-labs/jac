@@ -165,3 +165,29 @@ def catch_misspelled_class {
         raise OverflowError("o");
     } except (ValueError, OverflwoError) {}  # <-- E2001
 }
+
+def catch_parenthesized_class {
+    try {
+        raise ValueError("g");
+    } except (ValueError) {}
+}
+
+def not_a_handler {}
+
+def catch_parenthesized_undefined {
+    try {
+        raise ValueError("h");
+    } except (ValueEror) {}  # <-- E2001
+}
+
+def catch_function {
+    try {
+        raise ValueError("f");
+    } except not_a_handler {}  # <-- E1162
+}
+
+def catch_nested_tuple {
+    try {
+        raise ValueError("n");
+    } except (ValueError, (TypeError, )) {}  # <-- E1162
+}

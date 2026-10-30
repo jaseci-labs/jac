@@ -240,8 +240,14 @@ impl StaticAnalysisPass._enclosing_class_member(name_nd: Name) -> (str | None) {
 
 impl StaticAnalysisPass._names_except_type(name_nd: Name) -> bool {
     site: UniNode = name_nd;
+    while isinstance(site.parent, AtomUnit) {
+        site = site.parent;
+    }
     if isinstance(site.parent, TupleVal) {
         site = site.parent;
+        while isinstance(site.parent, AtomUnit) {
+            site = site.parent;
+        }
     }
     return isinstance(site.parent, Except) and site.parent.ex_type is site;
 }
