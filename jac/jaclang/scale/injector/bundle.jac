@@ -173,6 +173,9 @@ def _legacy_sealer_script_for(
 def sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str;
 
 
+def sealed_entry_module(project_dir: str, fleet: (FleetSpec | None)) -> str;
+
+
 def require_serve_manifest(stage: Path, detail: str = "") -> Path;
 
 
@@ -184,7 +187,8 @@ def _precompile_app(
     app: str = "",
     sources: (list[Path] | None) = None,
     tomls: (dict[str, str] | None) = None,
-    seed: (Path | None) = None
+    seed: (Path | None) = None,
+    entry_module: str = ""
 ) -> Path;
 
 
@@ -221,6 +225,7 @@ def seal_input_digest(
     seal_binary: bytes,
     pod_arch: str,
     app_name: str,
+    entry_module: str,
     sanitized: (str | None),
     fat: bool,
     tomls: dict[str, str]

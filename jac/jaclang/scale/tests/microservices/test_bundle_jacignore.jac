@@ -106,6 +106,14 @@ test "parking the entry module fails the pack, not the fleet" {
     }
     assert "entry module" in caught , caught;
     assert ".jacignore" in caught , caught;
+    # A single-app deploy of another file never boots the parked entry.
+    caught = "";
+    try {
+        pack_jab(str(base), b"binary", fleet=solo_fleet("mini", "svc.jac"));
+    } except Exception as e {
+        caught = str(e);
+    }
+    assert "entry module" not in caught , caught;
     # An entry module the bundle ships is not flagged.
     ok = _app(_PARKED);
     (ok / "main.jac").write_text("with entry { print(\"hi\"); }\n");

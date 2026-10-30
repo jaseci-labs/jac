@@ -544,6 +544,38 @@ impl sealed_app_name(project_dir: str, fleet: (FleetSpec | None)) -> str {
     return fleet.root_app;
 }
 
+impl sealed_entry_module(project_dir: str, fleet: (FleetSpec | None)) -> str {
+    served = fleet.root_member() if fleet is not None else None;
+    if served is None or not served.file {
+        return "";
+    }
+    config = _project_config(project_dir);
+    if config is not None and config.is_workspace {
+        return "";
+    }
+    base = Path(project_dir).resolve();
+    rel = Path(_fleet_entry_rel(base, served.app, served.file));
+    parts = [*rel.parent.parts, rel.stem];
+    if not all(part.isidentifier() for part in parts) {
+        raise ValueError(
+            f"App '{served.app}' boots '{rel.as_posix()}', which is not an "
+            "importable module name, so the deploy cannot seal it. Rename it "
+            "so every part of its path is a plain identifier, such as "
+            "'my_app.jac'."
+        );
+    }
+    module = ".".join(parts);
+    resolved = Path(resolve_entry_path(module, str(base))).resolve();
+    if resolved != (base / rel).resolve() {
+        raise ValueError(
+            f"App '{served.app}' boots '{rel.as_posix()}', but its module name "
+            f"'{module}' resolves to '{resolved.relative_to(base).as_posix()}', "
+            "so the deploy would seal the wrong file. Rename one of the two."
+        );
+    }
+    return module;
+}
+
 impl require_serve_manifest(stage: Path, detail: str = "") -> Path {
     serve_manifest = stage / SERVE_MANIFEST_REL;
     if not serve_manifest.is_file() {
@@ -564,7 +596,8 @@ impl _precompile_app(
     app: str = "",
     sources: (list[Path] | None) = None,
     tomls: (dict[str, str] | None) = None,
-    seed: (Path | None) = None
+    seed: (Path | None) = None,
+    entry_module: str = ""
 ) -> Path {
     stage_root = _stage_app(base, sanitized_toml, sources, tomls);
     stage = stage_root / "app";
@@ -586,6 +619,13 @@ impl _precompile_app(
             + "from jaclang.dist.seal import bake_serve_payloads\n"
             + "project = Path('app').resolve()\n"
             + "config = get_config_for_path(project)\n"
+            + (
+                f"config.project.entry_point = {repr(entry_module)}\n"
+                    + "for served in getattr(config, 'apps', {}).values():\n"
+                    + f"    served.entry_point = {repr(entry_module)}\n"
+                    if entry_module
+                    else ""
+            )
             + "if not bake_serve_payloads(\n"
             + f"    config, project, app={repr(app)}, bake_client=False\n"
             + "):\n"
@@ -860,6 +900,7 @@ impl seal_input_digest(
     seal_binary: bytes,
     pod_arch: str,
     app_name: str,
+    entry_module: str,
     sanitized: (str | None),
     fat: bool,
     tomls: dict[str, str]
@@ -869,6 +910,7 @@ impl seal_input_digest(
     for part in (
         pod_arch,
         app_name,
+        entry_module,
         "fat" if fat else "thin",
         os.environ.get("JAC_SEAL_SKIP_VENV", ""),
         sanitized or ""
@@ -1018,7 +1060,10 @@ impl pack_jab(
         );
     }
     excluded = source_filter_for(base);
-    assert_entry_module_ships(base, excluded);
+    entry_module = sealed_entry_module(project_dir, fleet);
+    if not entry_module {
+        assert_entry_module_ships(base, excluded);
+    }
     sources = bundle_source_files(base);
     check_fleet_entries(
         base, [path.relative_to(base).as_posix() for path in sources], excluded, fleet
@@ -1039,6 +1084,7 @@ impl pack_jab(
             seal_binary,
             pod_arch,
             app_name,
+            entry_module,
             sanitized,
             fat_bundle_setting(project_dir)[0],
             tomls
@@ -1069,7 +1115,8 @@ impl pack_jab(
         app_name,
         seal_sources,
         tomls,
-        _latest_seal(base)
+        _latest_seal(base),
+        entry_module
     );
 
     try {
