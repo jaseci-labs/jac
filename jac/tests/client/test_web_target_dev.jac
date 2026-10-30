@@ -313,8 +313,10 @@ test "single app dev keeps the unscoped compiled entry and aliases" {
             bundler._ensure_dev_index_html(build_dir);
             page = (build_dir / "index.html").read_text();
             assert page.count('import("/compiled/_entry.js")') == 2;
-            assert 'path.resolve(buildDir, "compiled/client_runtime.js")'
-                in config_path.read_text();
+            dev_config = config_path.read_text();
+            assert 'path.resolve(buildDir, "compiled/client_runtime.js")' in dev_config;
+            # dev serves the project public/ at the web root, like the runtime
+            assert 'publicDir: path.resolve(projectRoot, "public")' in dev_config;
         } finally {
             set_config(previous);
         }
