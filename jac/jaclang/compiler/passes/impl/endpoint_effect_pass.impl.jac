@@ -19,6 +19,18 @@ impl _literal_names(value: (Expr | None)) -> (list[str] | None) {
     return names;
 }
 
+impl _is_effects_decorator(sym: (Symbol | None)) -> bool {
+    if sym is None {
+        return False;
+    }
+    for defn in sym.defn {
+        if defn.loc.mod_path.replace("\\", "/").endswith("/jaclang/lib/effects.jac") {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl callable_key(sym: Symbol) -> CallableKey {
     parts: list[str] = [sym.sym_name];
     cur: (UniScopeNode | None) = sym.parent_tab;
@@ -373,14 +385,8 @@ impl EndpointEffectPass._declaration_effects(
     decl: Ability
 ) -> dict[str, list[str]] | None {
     for decorator in decl.decorators or [] {
-        if not isinstance(decorator, FuncCall) {
-            continue;
-        }
-        target = ability_of_symbol(self._call_target_symbol(decorator));
-        if target is None
-            or not target.loc.mod_path.replace("\\", "/").endswith(
-                "/jaclang/lib/effects.jac"
-            ) {
+        if not isinstance(decorator, FuncCall)
+            or not _is_effects_decorator(self._call_target_symbol(decorator)) {
             continue;
         }
         result: dict[str, list[str]] = {"reads": [], "writes": []};
