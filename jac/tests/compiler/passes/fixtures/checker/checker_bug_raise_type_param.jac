@@ -33,3 +33,11 @@ obj Box[T: Exception] {
         raise T;  # <-- E1090
     }
 }
+
+def raise_parenthesized_type_param[T: Exception](e: T) {
+    raise (T);  # <-- E1090
+}
+
+def raise_from_parenthesized_type_param[T: Exception](e: T) {
+    raise ValueError("p") from (T);  # <-- E1161
+}

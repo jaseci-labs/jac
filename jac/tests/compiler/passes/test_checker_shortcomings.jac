@@ -207,7 +207,13 @@ test "a bare type parameter cannot be raised or used as a cause" {
         for e in program.errors_had
         if e.code
     };
-    expected = {("E1090", 24), ("E1161", 28), ("E1090", 33)};
+    expected = {
+        ("E1090", 24),
+        ("E1161", 28),
+        ("E1090", 33),
+        ("E1090", 38),
+        ("E1161", 42)
+    };
     assert found == expected , f"expected {sorted(expected)}, got {sorted(found)}";
     messages = [str(e) for e in program.errors_had];
     assert any("Cannot raise type parameter T" in m for m in messages) , messages;

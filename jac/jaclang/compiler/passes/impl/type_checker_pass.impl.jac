@@ -1795,6 +1795,9 @@ impl TypeCheckPass.exit_raise_stmt with RaiseStmt exit {
 }
 
 impl TypeCheckPass._type_param_label(expr: Expr) -> (str | None) {
+    while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
+        expr = expr.value;
+    }
     if not isinstance(expr, Name) or expr.sym is None {
         return None;
     }
