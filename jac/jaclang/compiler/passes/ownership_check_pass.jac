@@ -128,9 +128,10 @@ walker OwnershipCheckPass(CompilerPass) {
     def _stamp_receiver_modes -> None;
     def _stamp_raises_effects -> None;
     def _stamp_write_effects -> None;
-    def _local_writes(ab: Ability) -> set[str];
+    def _write_sources(ab: Ability) -> tuple[set[str], list[Ability]];
     def _store_fields(tgt: Expr, out: set[str]) -> None;
     def _call_writes(call: FuncCall) -> set[str];
+    def _call_write_source(call: FuncCall) -> tuple[set[str], (Ability | None)];
     def _stamp_managed_borrows -> None;
     def _is_place_borrow(nd: Assignment) -> bool;
     def _is_null_bind(nd: Assignment) -> bool;
@@ -143,6 +144,14 @@ walker OwnershipCheckPass(CompilerPass) {
     def _raised_class_names(site: UniNode, exc: str, seen: set[int]) -> set[str];
     def _callee_ability(call: FuncCall) -> (Ability | None);
     def _local_raises(ab: UniNode) -> set[str];
+    def _raise_sources(ab: UniNode) -> tuple[set[str], list[tuple[FuncCall, Ability]]];
+    def _raises_through(
+        ab: UniNode,
+        local: set[str],
+        calls: list[tuple[FuncCall, Ability]],
+        handled: dict[tuple[int, str], bool]
+    ) -> set[str];
+
     def _emit_raises_diagnostics -> None;
     def _is_consuming_receiver(nd: Name) -> bool;
     def _method_call_receiver(call: FuncCall) -> (Name | None);

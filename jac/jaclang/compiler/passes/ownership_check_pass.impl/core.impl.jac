@@ -862,7 +862,14 @@ impl OwnershipCheckPass._callee_ability(call: FuncCall) -> (Ability | None) {
 }
 
 impl OwnershipCheckPass._local_raises(ab: UniNode) -> set[str] {
-    out: set[str] = set();
+    (local, calls) = self._raise_sources(ab);
+    return self._raises_through(ab, local, calls, {});
+}
+
+impl OwnershipCheckPass._raise_sources(
+    ab: UniNode
+) -> tuple[set[str], list[tuple[FuncCall, Ability]]] {
+    local: set[str] = set();
     for rs in ab.element_sub_nodes(RaiseStmt) {
         owner = rs.enclosing_decl(Ability);
         if isinstance(ab, Ability) {
@@ -876,8 +883,9 @@ impl OwnershipCheckPass._local_raises(ab: UniNode) -> set[str] {
         if exc is None or self._handled_by_enclosing_try(rs, exc, ab) {
             continue;
         }
-        out.add(exc);
+        local.add(exc);
     }
+    calls: list[tuple[FuncCall, Ability]] = [];
     for call in ab.element_sub_nodes(FuncCall) {
         owner = call.enclosing_decl(Ability);
         if isinstance(ab, Ability) and owner is not ab {
@@ -890,8 +898,27 @@ impl OwnershipCheckPass._local_raises(ab: UniNode) -> set[str] {
         if callee is None or callee is ab {
             continue;
         }
+        calls.append((call, callee));
+    }
+    return (local, calls);
+}
+
+impl OwnershipCheckPass._raises_through(
+    ab: UniNode,
+    local: set[str],
+    calls: list[tuple[FuncCall, Ability]],
+    handled: dict[tuple[int, str], bool]
+) -> set[str] {
+    out = set(local);
+    for (call, callee) in calls {
         for exc in callee.raises {
-            if not self._handled_by_enclosing_try(call, exc, ab) {
+            key = (id(call), exc);
+            caught = handled.get(key);
+            if caught is None {
+                caught = self._handled_by_enclosing_try(call, exc, ab);
+                handled[key] = caught;
+            }
+            if not caught {
                 out.add(exc);
             }
         }
@@ -908,14 +935,16 @@ impl OwnershipCheckPass._stamp_raises_effects -> None {
     if not abilities {
         return;
     }
+    sources = [self._raise_sources(ab) for ab in abilities];
     for ab in abilities {
         ab.raises = [];
     }
+    handled: dict[tuple[int, str], bool] = {};
     changed = True;
     while changed {
         changed = False;
-        for ab in abilities {
-            new = sorted(self._local_raises(ab));
+        for (ab, (local, calls)) in zip(abilities, sources) {
+            new = sorted(self._raises_through(ab, local, calls, handled));
             if new != ab.raises {
                 ab.raises = new;
                 changed = True;
