@@ -280,6 +280,46 @@ declare i64 @llvm.ctlz.i64(i64, i1 immarg)
 attributes #0 = { nounwind }
 """
 
+
+def registered_exports(root):
+    """The PyInit_* entry points the build links as static built-ins.
+
+    jacpython-modules.txt is the one list of replaced modules; inittab.jac
+    holds each listed PyInit and build_jacpython.zig fails when it does not.
+    The link succeeds only when the merged object defines every entry point,
+    so the registry is also the export contract this build checks against
+    the compiled plan.
+    """
+    registry = root / "bootstrap/python/jacpython-modules.txt"
+    exports = []
+    for line in registry.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        exports.append("PyInit_" + line.split()[0])
+    return exports
+
+
+def missing_exports(expected, exported):
+    """The expected entry points absent from a collection of symbol names."""
+    present = set(exported)
+    return [name for name in expected if name not in present]
+
+
+def undefined_exports(module, expected):
+    """The expected entry points the merged module does not define itself."""
+    missing = []
+    for name in expected:
+        try:
+            value = module.get_function(name)
+        except NameError:
+            missing.append(name)
+            continue
+        if value.is_declaration:
+            missing.append(name)
+    return missing
+
+
 program = JacProgram()
 # The roots of the native object: the compiler's entry points and the C
 # entries the interpreter calls them through, the table of
@@ -324,6 +364,18 @@ if program.errors_had:
     for error in program.errors_had:
         print(error.pretty_print(), file=sys.stderr)
     raise RuntimeError("JacPython native compilation failed")
+# jacpython-modules.txt registers every static built-in this object must
+# define. Check the compiled plan's public exports so the build names the
+# actual defect instead of a later linker error.
+expected = registered_exports(root)
+missing = missing_exports(expected, plan.pub_exports())
+if missing:
+    raise RuntimeError(
+        "JacPython export contract is broken: bootstrap/python/"
+        "jacpython-modules.txt registers modules whose PyInit_* symbols the "
+        "compilation closure does not export: "
+        + ", ".join(missing)
+    )
 init_object_codegen()
 spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
 compiled, runtime_exports = whole_program_module(plan, spec)
@@ -357,6 +409,15 @@ for symbol, option in (("@pthread_getspecific", "native_tls"), ("@_setjmp", "nat
 internalize_native_implementation(
     compiled, plan.pub_exports() + runtime_exports + ["__jac_shared_init"],
 )
+# The plan promises the symbols; the merged module must define them, not
+# merely declare them. This is the last point before code generation where a
+# dropped binding is still a readable error.
+missing = undefined_exports(compiled, expected)
+if missing:
+    raise RuntimeError(
+        "JacPython export contract is broken: the merged native module does "
+        "not define: " + ", ".join(missing)
+    )
 # CPython compiles with -fno-semantic-interposition: libpython's own references
 # to its exported functions and data bind inside the library. Protected
 # visibility keeps a definition exported and makes it dso_local, so Jac code
@@ -410,6 +471,12 @@ builder = llvm.create_pass_builder(
     machine, llvm.create_pipeline_tuning_options(speed_level=2),
 )
 builder.getModulePassManager().run(compiled, builder)
+missing = undefined_exports(compiled, expected)
+if missing:
+    raise RuntimeError(
+        "JacPython export contract is broken after optimization: "
+        + ", ".join(missing)
+    )
 compiled.verify()
 object_bytes = machine.emit_object(compiled)
 (output / "jacpython.o").write_bytes(object_bytes)
