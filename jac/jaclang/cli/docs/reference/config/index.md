@@ -313,6 +313,16 @@ message naming the variable. An empty `JAC_SERVE_CORS_ORIGINS` therefore keeps
 the `jac.toml` list (`["*"]` by default); to allow no cross-origin requests, set
 `cors_origins = []` in `jac.toml`.
 
+The `[serve]` tables are checked when the configuration loads, in every layer
+(`jac.toml`, `[environments.<profile>.serve]`, `jac.<profile>.toml` and
+`jac.local.toml`). An unknown key, or a value of the wrong type such as a quoted
+`"false"` or `true` for a number, stops the load with a message naming the key.
+A layer's sub-table merges into the one below it instead of replacing it.
+`${VAR}` interpolation always gives text, so it can't set a `[serve]` number
+or switch; set those from the environment with their `JAC_SERVE_*` variable.
+`main`, `conflict_max_attempts` and `conflict_backoff_ms` have no such variable,
+so write them as plain values.
+
 ```toml
 [serve]
 host = "0.0.0.0"         # Interface to bind; 127.0.0.1 keeps a dev server off the network
