@@ -282,8 +282,18 @@ test "scheduler executes walkers and functions correctly" {
     }
     sched.register("bad", bad_fn, ScheduleSpec(interval=0.2), False);
 
+    log = module.execution_log;
     sched.start();
-    time.sleep(1.5);
+    deadline = time.monotonic() + 15.0;
+    while (
+        log.count("interval-walker") < 2
+        or log.count("interval-function") < 2
+        or "date-walker" not in log
+        or "date-function" not in log
+    )
+        and time.monotonic() < deadline {
+        time.sleep(0.05);
+    }
     sched.stop();
 
     # Date tasks fire exactly once
