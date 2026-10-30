@@ -58,17 +58,24 @@ impl _plan_for(
     return plan;
 }
 
+impl _ignore_key(target: any) -> int {
+    if isinstance(target, int) {
+        return target;
+    }
+    return id(target);
+}
+
 impl _dequeue(scope: OspWalkScope) -> (int | None) {
     while scope.front {
         candidate = scope.front.pop();
-        if (not scope.ignores) or (candidate not in scope.ignores) {
+        if (not scope.ignores) or (_ignore_key(candidate) not in scope.ignores) {
             return candidate;
         }
     }
     while scope.next_head < len(scope.next) {
         candidate = scope.next[scope.next_head];
         scope.next_head += 1;
-        if (not scope.ignores) or (candidate not in scope.ignores) {
+        if (not scope.ignores) or (_ignore_key(candidate) not in scope.ignores) {
             return candidate;
         }
     }
@@ -108,7 +115,7 @@ impl OspEngine.`visit(targets: list[int], insert_loc: int = -1) -> bool {
     if scope.ignores {
         kept: list[int] = [];
         for t in targets {
-            if t not in scope.ignores {
+            if _ignore_key(t) not in scope.ignores {
                 kept.append(t);
             }
         }
@@ -156,7 +163,7 @@ impl OspEngine.`visit(targets: list[int], insert_loc: int = -1) -> bool {
 
 impl OspEngine.forget(target: int) {
     for scope in self.stack {
-        scope.ignores.add(target);
+        scope.ignores[_ignore_key(target)] = target;
     }
 }
 
@@ -187,7 +194,7 @@ impl OspEngine.begin(wlk: any, starts: list[int]) -> OspWalkScope {
         path=[],
         next=`list(starts),
         front=[],
-        ignores=set(),
+        ignores={},
         reports=[],
         nested=(len(self.stack) > 0),
         held=[]
@@ -386,7 +393,7 @@ impl OspEngine.next_slot(
                             candidate = scope.front.pop();
                             budget -= 1;
                             if (not scope.ignores)
-                                or (candidate not in scope.ignores) {
+                                or (_ignore_key(candidate) not in scope.ignores) {
                                 child = candidate;
                                 found = True;
                             }
