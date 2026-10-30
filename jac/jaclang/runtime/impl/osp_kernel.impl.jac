@@ -156,9 +156,7 @@ impl OspEngine.`visit(targets: list[int], insert_loc: int = -1) -> bool {
 
 impl OspEngine.forget(target: int) {
     for scope in self.stack {
-        if target not in scope.ignores {
-            scope.ignores.append(target);
-        }
+        scope.ignores.add(target);
     }
 }
 
@@ -189,7 +187,7 @@ impl OspEngine.begin(wlk: any, starts: list[int]) -> OspWalkScope {
         path=[],
         next=`list(starts),
         front=[],
-        ignores=[],
+        ignores=set(),
         reports=[],
         nested=(len(self.stack) > 0),
         held=[]

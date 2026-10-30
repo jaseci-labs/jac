@@ -42,7 +42,7 @@ obj OspWalkScope {
         path: list[int],
         next: list[int],
         front: list[int],
-        ignores: list[int],
+        ignores: set[int],
         reports: list[any],
         disengaged: bool = False,
         next_head: int = 0,
