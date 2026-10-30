@@ -42,7 +42,16 @@ import from c {
          ];
 }
 
-glob:priv HOST_BUFFER_SIZE: int = 16384,
+# Installed by bindings.socket's module exec; one process-wide lock, as
+# the C module's netdb_lock is.
+def set_netdb_lock(lock: ptr) {
+    netdb_lock = lock;
+}
+
+glob:priv
+     # The gethostbyname_r() buffer: its size, and the size of the struct
+     # hostent it fills.
+     HOST_BUFFER_SIZE: int = 16384,
      HOSTENT_SIZE: int = 32;
 
 def convert__PyLong_NetIfindex_Converter(
@@ -551,9 +560,10 @@ impl socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject
         error = jacpy_errno();
         if sock_cloexec_works == -1 {
             if ret >= 0 {
-                sock_cloexec_works = i32(1);
+                set_sock_cloexec_works(i32(1));
             } elif error == EINVAL {
-                sock_cloexec_works = i32(0);
+                # Linux older than 2.6.27 does not support SOCK_CLOEXEC.
+                set_sock_cloexec_works(i32(0));
                 ret = socketpair(family, type, proto, sv);
                 error = jacpy_errno();
             }
