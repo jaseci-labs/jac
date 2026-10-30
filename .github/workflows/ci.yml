@@ -816,6 +816,10 @@ jobs:
         uses: oven-sh/setup-bun@v2
       - name: Install the scale dep the in-process dispatch tests import
         run: jac install "python-dotenv>=1.2.1,<2.0.0" --global
+      - name: Install the browser runtime for client integration tests
+        run: |
+          jac install "playwright==1.60.0" --global
+          jac -m playwright install --with-deps chromium
       - name: Run all client tests
         # Serial: parallel workers intermittently disagreed on collection of
         # test_mobile_target.jac (then test_react_native_target.jac) under the
@@ -825,6 +829,12 @@ jobs:
           JAC_TEST_JOBS: "0"
           JAC_TEST_STRICT: "1"
         run: jac test jac/tests/client
+      - name: Show HMR browser hang traceback
+        if: failure()
+        run: |
+          if [ -s "${RUNNER_TEMP}/jac-hmr-startup-hang.log" ]; then
+            cat "${RUNNER_TEMP}/jac-hmr-startup-hang.log"
+          fi
 
   # The jsdom suites gate on bun being on PATH and run in test-runtime under
   # JAC_TEST_STRICT=1; the desktop tests live in tests/client (test-client).
