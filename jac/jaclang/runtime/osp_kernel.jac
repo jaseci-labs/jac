@@ -45,6 +45,7 @@ obj OspWalkScope {
         ignores: dict[int, any],
         reports: list[any],
         disengaged: bool = False,
+        ignored_count: int = 0,
         next_head: int = 0,
         nested: bool = False,
         fenced: bool = False,

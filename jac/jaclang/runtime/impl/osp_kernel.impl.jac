@@ -68,14 +68,16 @@ impl _ignore_key(target: any) -> int {
 impl _dequeue(scope: OspWalkScope) -> (int | None) {
     while scope.front {
         candidate = scope.front.pop();
-        if (not scope.ignores) or (_ignore_key(candidate) not in scope.ignores) {
+        if (scope.ignored_count == 0)
+            or (_ignore_key(candidate) not in scope.ignores) {
             return candidate;
         }
     }
     while scope.next_head < len(scope.next) {
         candidate = scope.next[scope.next_head];
         scope.next_head += 1;
-        if (not scope.ignores) or (_ignore_key(candidate) not in scope.ignores) {
+        if (scope.ignored_count == 0)
+            or (_ignore_key(candidate) not in scope.ignores) {
             return candidate;
         }
     }
@@ -112,7 +114,7 @@ impl OspEngine.`visit(targets: list[int], insert_loc: int = -1) -> bool {
         return False;
     }
     filtered = targets;
-    if scope.ignores {
+    if scope.ignored_count > 0 {
         kept: list[int] = [];
         for t in targets {
             if _ignore_key(t) not in scope.ignores {
@@ -163,7 +165,11 @@ impl OspEngine.`visit(targets: list[int], insert_loc: int = -1) -> bool {
 
 impl OspEngine.forget(target: int) {
     for scope in self.stack {
-        scope.ignores[_ignore_key(target)] = target;
+        key = _ignore_key(target);
+        if key not in scope.ignores {
+            scope.ignores[key] = target;
+            scope.ignored_count += 1;
+        }
     }
 }
 
@@ -392,7 +398,7 @@ impl OspEngine.next_slot(
                         if scope.front {
                             candidate = scope.front.pop();
                             budget -= 1;
-                            if (not scope.ignores)
+                            if (scope.ignored_count == 0)
                                 or (_ignore_key(candidate) not in scope.ignores) {
                                 child = candidate;
                                 found = True;
