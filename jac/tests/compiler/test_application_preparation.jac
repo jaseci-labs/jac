@@ -1925,39 +1925,9 @@ test "a retried prepare fails again on a module whose earlier analysis failed" {
     }
 }
 
-glob DECLARED_EFFECTS_APP: str = '''import from jaclang.lib.effects { effects }
-
-node Thing { has name: str; }
-
-@effects(reads=["Thing"], writes=[])
-def read_things(holder: Root) -> list[str] {
-    rows: list[str] = [];
-    for t in [holder-->[?:Thing]] {
-        rows.append(t.name);
-    }
-    return rows;
-}
-
-def read_things_undeclared(holder: Root) -> list[str] {
-    rows: list[str] = [];
-    for t in [holder-->[?:Thing]] {
-        rows.append(t.name);
-    }
-    return rows;
-}
-
-walker:protect ListThings {
-    can start with Root entry {
-        report read_things(here);
-    }
-}
-
-walker:protect ListThingsUndeclared {
-    can start with Root entry {
-        report read_things_undeclared(here);
-    }
-}
-''';
+glob DECLARED_EFFECTS_APP = Path(__file__).parent
+         / 'fixtures'
+         / 'declared_effects_app.jac';
 
 def endpoint_effect(prepared: any, path: Path, name: str) -> dict[str, any] {
     effects = prepared.manifests[str(path)]['endpoint_effects'];
@@ -1974,7 +1944,7 @@ test "an @effects declaration keeps its endpoint cacheable on the kernel and hos
         tmp = os.path.realpath(tempfile.mkdtemp(prefix="jac-prepared-effects-"));
         path = Path(tmp) / 'main.jac';
         try {
-            path.write_text(DECLARED_EFFECTS_APP);
+            shutil.copyfile(DECLARED_EFFECTS_APP, path);
             prepared = kernel_prepare(path, tmp, [])
                 if through_kernel
                 else prepare_application(str(path), JacProgram(), tmp);
