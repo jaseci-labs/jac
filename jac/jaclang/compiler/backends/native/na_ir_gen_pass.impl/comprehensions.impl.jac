@@ -485,7 +485,7 @@ impl NaIRGenPass._codegen_compr_step(
 ) -> None {
     func = self.builder.function;
     for cond in (compr.comprs[idx].conditional or []) {
-        cond_val = self._codegen_expr(cond);
+        cond_val = self._codegen_required(cond);
         if cond_val is None {
             continue;
         }

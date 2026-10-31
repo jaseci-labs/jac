@@ -17,6 +17,7 @@ enum AnalysisFact(StrEnum) {
     CLIENT_CAPABILITY = 'client_capability',
     CODESPACE_PULL = 'codespace-pull',
     COMPTIME = 'comptime',
+    FLOW_CHECKS = 'flow-checks',
     FROZEN = 'frozen',
     OWNERSHIP = 'ownership',
     PORTABILITY = 'portability',

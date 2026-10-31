@@ -938,6 +938,23 @@ test "implicit return participates in return-type checking" {
     );
 }
 
+test "E1006: every path must assign a local before it is read" {
+    fixture = "semantic_E1006_definite_assignment.jac";
+    (program, _) = compile_and_check(fixture);
+    with open(os.path.join(NEW_DIAG_FIXTURES, fixture)) as f {
+        lines = f.read().splitlines();
+    }
+    expected = {i + 1 for i in range(len(lines)) if "# E1006" in lines[i]};
+    reported = [
+        e.loc.first_line
+        for e in program.errors_had
+        if e.code is not None and e.code.code == "E1006"
+    ];
+    assert sorted(reported) == sorted(expected) , (
+        f"E1006 lines {sorted(reported)}, expected {sorted(expected)}"
+    );
+}
+
 test "redundant `{expr}` slot wrapping inside slot body raises E2028 (issue #6733)" {
     # `RedundantExprSlotWrap` re-wraps three *expression* bodies — a string
     # literal `{"none"}`, an arithmetic expr `{n + 1}` and a JSX element

@@ -435,6 +435,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot assign to read-only property '{name}' (no setter defined)"
      ),
+     E1006 = _err(
+         "E1006",
+         Category.SEMANTIC,
+         "'{name}' might not be assigned before this read",
+         help="Every path that reaches this read must assign the variable first. Assign"
+         " it before the branch, loop or try block that sets it.",
+         blocks_codegen=True
+     ),
      E1010 = _err(
          "E1010", Category.TYPE, "Operator \"{op}\" not supported for type \"{type}\""
      ),

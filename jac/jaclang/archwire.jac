@@ -6824,7 +6824,8 @@ graph import compiler {
             OwnershipKind,
             is_borrow_kind
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._ct_fold
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
+            | backends.native.na_ir_gen_pass.NaIRGenPass._ct_fold
             | passes.capability_check_pass.PortabilityWarnPass._check_js_globals
             | passes.import_wiring_pass
             | tools.reactive_use_walk { ExprCtx },
@@ -7578,7 +7579,7 @@ graph import compiler {
         },
         backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
         passes.ast_validation_pass { in_loop_else },
-        passes.cfg_build_pass { enclosing_loop },
+        passes.cfg_build_pass { enclosing_loop, in_loop_else },
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
@@ -8589,6 +8590,7 @@ graph import compiler {
             AstElseBodyNode,
             AtomUnit,
             AwaitingClause,
+            Bool,
             BoolExpr,
             CfgExpr,
             CodeBlockStmt,
@@ -8597,6 +8599,7 @@ graph import compiler {
             DisengageStmt,
             ElseIf,
             ElseStmt,
+            Enum,
             Except,
             Expr,
             FinallyStmt,
@@ -8612,8 +8615,13 @@ graph import compiler {
             JsxSlot,
             LambdaExpr,
             ListCompr,
+            MatchAs,
             MatchCase,
+            MatchOr,
+            MatchPattern,
             MatchStmt,
+            MatchWild,
+            Module,
             ModuleCode,
             Name,
             OpenStmt,
@@ -8631,6 +8639,7 @@ graph import compiler {
             TypedCtxBlock,
             UniCFGNode,
             UniNode,
+            VisitStmt,
             WhileStmt,
             WithStmt
         },
@@ -10933,6 +10942,73 @@ graph import compiler {
         },
         passes.layout_pass { ClassDetailsShared, ClassType, TypeBase },
     ]
+    driver.pipeline_types ++> passes.flow_check_pass { AnalysisFact, PassContract }
+    frontend.constant ++> passes.flow_check_pass { ExprCtx, SymbolStorage, Tokens as Tok }
+    frontend.diagnostics ++> passes.flow_check_pass { E1006 }
+    frontend.loop_links ++> passes.flow_check_pass { frame_owns }
+    frontend.roles ++> passes.flow_check_pass { Kid }
+    frontend.unitree ++> passes.flow_check_pass {
+        Ability,
+        Archetype,
+        Assignment,
+        AtomUnit,
+        AwaitingClause,
+        BinaryExpr,
+        BoolExpr,
+        CfgExpr,
+        CodeBlockStmt,
+        CtrlStmt,
+        DeleteStmt,
+        DictCompr,
+        ElseStmt,
+        Enum,
+        EventSignature,
+        Except,
+        FinallyStmt,
+        ForeverStmt,
+        FuncSignature,
+        IfElseExpr,
+        IfStmt,
+        ImplDef,
+        InForStmt,
+        InnerCompr,
+        IterForStmt,
+        LambdaExpr,
+        ListCompr,
+        ListVal,
+        MatchArch,
+        MatchAs,
+        MatchCase,
+        MatchKVPair,
+        MatchMapping,
+        MatchOr,
+        MatchPattern,
+        MatchSequence,
+        MatchStar,
+        MatchStmt,
+        MatchValue,
+        Module,
+        ModuleCode,
+        Name,
+        NameAtom,
+        Semi,
+        SubTag,
+        SwitchCase,
+        SwitchStmt,
+        Test,
+        Token,
+        TryStmt,
+        TupleVal,
+        UnaryExpr,
+        UniCFGNode,
+        UniNode,
+        UniScopeNode,
+        WhileStmt,
+        WithStmt,
+        find_python_scope_node_of,
+        is_identifier_slot
+    }
+    passes.flow_check_pass ++> driver.pipeline.analysis_passes { FlowCheckPass }
 }
 
 graph import compiler.backends {
@@ -14042,6 +14118,9 @@ graph import compiler.passes {
             result_ownership
         },
     ]
+    cfg_build_pass ++> flow_check_pass { _bool_is_and }
+    dataflow ++> flow_check_pass { SymId, solve_forward_must_edges }
+    execution ++> flow_check_pass { CompilerPass }
     scope_walk ++> static_analysis_pass { ScopeWalker }
     type_checker_pass ++> comptime_resolve_pass { TypeCheckPass }
     wasm_contract --> [
