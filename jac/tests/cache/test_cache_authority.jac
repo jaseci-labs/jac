@@ -9,6 +9,7 @@ run through. These tests exercise that contract on private roots only; the
 real user cache is never touched.
 """
 
+import json;
 import os;
 import shutil;
 import stat;
@@ -20,7 +21,15 @@ import from unittest.mock { patch }
 import from tests.support { cache_env }
 import from jaclang.cache.locking { FileLock }
 import from jaclang.jac0core.cache_paths { FileLock as InstallLock }
-import from jaclang.jac0core.cache_paths { get_cache_home, get_jir_cache_dir }
+import from jaclang.jac0core.cache_paths {
+    file_sha256,
+    flush_file_digests,
+    forget_file_digests,
+    get_cache_home,
+    get_jir_cache_dir,
+    stats_snapshot
+}
+import jaclang.jac0core.cache_paths as cache_paths;
 import from jaclang.cache.home {
     CACHEDIR_TAG,
     CACHEDIR_TAG_TEXT,
@@ -646,5 +655,59 @@ test "temporary claims hold sibling locks and release them after a partial acqui
             assert len(purge([b.name]).kept) == 1;
             assert item.exists();
         }
+    }
+}
+
+"""Replace a tree with a copy of itself, as unpacking an image layer does: the
+same paths, bytes and mtimes, on new inodes with new ctimes."""
+def recopy(tree: Path) {
+    aside = tree.with_name(tree.name + ".orig");
+    tree.rename(aside);
+    shutil.copytree(aside, tree, symlinks=True);
+    shutil.rmtree(aside);
+}
+
+"""How many of `files` file_sha256 read instead of taking from the ledger."""
+def hashes_read(files: list[Path]) -> int {
+    before = stats_snapshot().get("content_hash", 0);
+    for f in files {
+        file_sha256(f);
+    }
+    return stats_snapshot().get("content_hash", 0) - before;
+}
+
+test "a copied cache home keeps the runtime's digests and re-reads a project's" {
+    (base, env) = private_root();
+    home = Path(env["JAC_CACHE_HOME"]);
+    site = home / "rt" / "0123456789abcdef" / "site" / "jaclang";
+    site.mkdir(parents=True);
+    project = Path(tempfile.mkdtemp(prefix="jac-digest-project-"));
+    runtime = [site / "a.jac", site / "b.jac"];
+    app = project / "app.jac";
+    for (n, f) in enumerate(runtime + [app]) {
+        f.write_text(f"glob x{n}: int = {n};\n");
+        os.utime(f, ns=(0, 0));
+    }
+    # No racy window, so the warm pass records every file it reads.
+    with patch.dict(os.environ, env), patch.multiple(
+        cache_paths,
+        _DIGEST_RACY_NS=-1,
+        _digest_memo={},
+        _digest_shards={},
+        _digest_dirty=set()
+    ) {
+        assert hashes_read(runtime + [app]) == 3;
+        flush_file_digests();
+        recorded = sum(
+            len(json.loads(p.read_text()))
+            for p in (home / "jir" / "digests").glob("*.json")
+        );
+        assert recorded == 3 , f"the warm ledger holds {recorded} of 3 files";
+        forget_file_digests();
+        recopy(home);
+        recopy(project);
+        rehashed = hashes_read(runtime);
+        assert rehashed == 0 , f"{rehashed} runtime file(s) re-hashed after the cache home was copied";
+        assert hashes_read([app]) == 1 , "a project file on a new inode must be read again";
     }
 }
