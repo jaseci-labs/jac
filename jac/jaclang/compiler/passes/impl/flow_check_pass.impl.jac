@@ -120,12 +120,12 @@ impl FlowCheckPass._successors(fr: FrameFlow, nd: UniCFGNode) -> list[UniCFGNode
     }
     found: list[UniCFGNode] = [];
     evaluator = self.prog.type_evaluator;
-    if evaluator is not None and evaluator.flow_pred_never_returns(nd) {
-        fr.succ_memo[id(nd)] = found;
-        return found;
-    }
     seen: set[int] = {id(nd)};
-    pending: list[UniCFGNode] = list(nd.bb_out);
+    pending: list[UniCFGNode] = [
+        nxt
+        for nxt in nd.bb_out
+        if evaluator is None or evaluator.flow_edge_live(nd, nxt)
+    ];
     while pending {
         nxt = pending.pop(0);
         if id(nxt) in seen {
@@ -145,6 +145,9 @@ impl FlowCheckPass._successors(fr: FrameFlow, nd: UniCFGNode) -> list[UniCFGNode
 impl FlowCheckPass._transfer(
     fr: FrameFlow, pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]
 ) -> set[SymId] {
+    if is_abrupt_entry(pred, succ) {
+        return set(fr.tracked);
+    }
     eff = fr.effects[id(pred)];
     out = in_set | eff.always;
     if eff.branch {
@@ -191,9 +194,41 @@ impl FlowCheckPass._check_frame(fr: FrameFlow) -> None {
         ); },
         fr.tracked
     );
+    self._solve_finally_bodies(fr);
     for nd in fr.nodes {
         self._effect(fr, nd, self._read_state(fr, nd), True);
     }
+}
+
+impl FlowCheckPass._solve_finally_bodies(fr: FrameFlow) -> None {
+    for fin in fr.nodes {
+        if not isinstance(fin, FinallyStmt) {
+            continue;
+        }
+        inner = [nd for nd in fr.nodes if self._encloses(fin, nd)];
+        fr.finally_state[id(fin)] = solve_forward_must_edges(
+            inner,
+            lambda (nd: UniCFGNode) -> list[UniCFGNode] {
+                return self._successors(fr, nd);
+            },
+            [fin],
+            lambda (pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]) -> set[SymId] {
+                return self._transfer(fr, pred, succ, in_set);
+            },
+            fr.tracked
+        );
+    }
+}
+
+impl FlowCheckPass._encloses(outer: UniNode, nd: UniNode) -> bool {
+    cur: (UniNode | None) = nd;
+    while cur is not None {
+        if cur is outer {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
 }
 
 impl FlowCheckPass._read_state(fr: FrameFlow, nd: UniCFGNode) -> set[SymId] {
@@ -202,8 +237,8 @@ impl FlowCheckPass._read_state(fr: FrameFlow, nd: UniCFGNode) -> set[SymId] {
     while cur is not None and cur is not fr.owner {
         if isinstance(cur, FinallyStmt) and isinstance(cur.parent, TryStmt) {
             at_try = fr.state.get(id(cur.parent), fr.tracked);
-            at_finally = fr.state.get(id(cur), fr.tracked);
-            state = (state & at_try) | (state - at_finally);
+            within = fr.finally_state.get(id(cur), {}).get(id(nd), fr.tracked);
+            state = state & (at_try | within);
         }
         cur = cur.parent;
     }

@@ -504,8 +504,7 @@ walker NaIRGenPass(CompilerPass) {
         _helper_structs: set[str] = set(),
         closure_thunks: dict[str, ir.Function] = {},
         _closure_uid: int = 0,
-        _opt_struct_types: dict[str, ir.IdentifiedStructType] = {},
-        _loop_rebind_memo: dict[tuple[int, str], bool] = {};
+        _opt_struct_types: dict[str, ir.IdentifiedStructType] = {};
 
     has builder: ir.IRBuilder { getter; }
     has llvm_module: ir.Module { getter; }
@@ -3238,14 +3237,6 @@ walker NaIRGenPass(CompilerPass) {
     def _flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (TypeBase | None);
     def _narrowed_flow_type(nd: uni.UniNode) -> (TypeBase | None);
     def _narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool;
-    def _narrowing_stable_in_loops(nd: uni.UniNode, name: str) -> bool;
-    def _loop_rebinds_name(loop: uni.UniNode, name: str) -> bool;
-    def _target_bound_names(target: uni.UniNode) -> list[uni.Name];
-    def _body_assigns_before(
-        loop: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt,
-        child: (uni.UniNode | None),
-        name: str
-    ) -> bool;
 
     def _apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Value;
     def _unbox_narrowed_member(nd: uni.AtomTrailer, val: ir.Value) -> ir.Value;
@@ -3256,7 +3247,6 @@ walker NaIRGenPass(CompilerPass) {
     def _abi_sizeof(t: ir.Type) -> int;
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
     def _lower_type_by_name(name: (str | None)) -> (ir.Type | None);
-    def _lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None);
     def _lower_list_for_elem(elem_llvm: ir.Type) -> ir.Type;
     def _resolve_decl_type(
         type_expr: (uni.UniNode | None), value: (uni.UniNode | None)

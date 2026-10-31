@@ -3487,7 +3487,10 @@ impl TypeEvaluator.get_type_of_magic_method_call(
             result = self.get_type_of_magic_method_call(
                 member_type, method_name, arg_nodes, node_for_error
             );
-            if result is not None and not self._type_in_list(result, result_types) {
+            if result is None {
+                return None;
+            }
+            if not self._type_in_list(result, result_types) {
                 result_types.append(result);
             }
         }
@@ -4774,6 +4777,60 @@ impl TypeEvaluator.flow_pred_never_returns(pred: UniCFGNode) -> bool {
     return False;
 }
 
+impl TypeEvaluator.flow_edge_live(pred: UniCFGNode, succ: UniCFGNode) -> bool {
+    if self.flow_pred_never_returns(pred) {
+        return False;
+    }
+    return not (
+        isinstance(pred, MatchStmt)
+        and not isinstance(succ, MatchCase)
+        and self.match_is_exhaustive(pred)
+    );
+}
+
+impl TypeEvaluator.match_is_exhaustive(stmt: MatchStmt) -> bool {
+    remaining: list[TypeBase] = [];
+    subject = self.get_type_of_expression(stmt.target);
+    remaining = list(subject.types) if isinstance(subject, UnionType) else [subject];
+    for mc in stmt.cases {
+        if mc.guard is not None {
+            continue;
+        }
+        if is_irrefutable_pattern(mc.pattern) {
+            return True;
+        }
+        covered = self._get_type_from_match_pattern(mc.pattern);
+        if covered is None or not self._pattern_covers_its_type(mc.pattern) {
+            continue;
+        }
+        remaining = [
+            member
+            for member in remaining
+            if not self.assign_type(covered, member)
+        ];
+        if not remaining {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl TypeEvaluator._pattern_covers_its_type(pat: MatchPattern) -> bool {
+    if isinstance(pat, MatchArch) {
+        return all(is_irrefutable_pattern(arg) for arg in (pat.arg_patterns or []))
+            and all(
+                is_irrefutable_pattern(kw.value) for kw in (pat.kw_patterns or [])
+            );
+    }
+    if isinstance(pat, MatchAs) and pat.pattern is not None {
+        return self._pattern_covers_its_type(pat.pattern);
+    }
+    if isinstance(pat, MatchOr) {
+        return all(self._pattern_covers_its_type(alt) for alt in pat.patterns);
+    }
+    return False;
+}
+
 impl TypeEvaluator.get_narrowed_type(
     symbol: Symbol, at_node: UniNode
 ) -> TypeBase | None {
@@ -5315,6 +5372,12 @@ impl TypeEvaluator._loop_body_writes_target(
                 if kw.key is not None {
                     keys.update(collect_assignment_target_keys(kw.key));
                 }
+            }
+        }
+        for nm in loop_node.get_all_sub_nodes(Name) {
+            if nm.expr_ctx != ExprCtx.LOAD
+                or (is_walrus(nm.parent) and nm.parent.left is nm) {
+                keys.add(nm.value);
             }
         }
         written = keys;

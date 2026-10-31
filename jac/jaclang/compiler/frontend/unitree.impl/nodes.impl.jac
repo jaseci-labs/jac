@@ -4033,6 +4033,19 @@ impl bind_walrus_target(nd: BinaryExpr) -> None {
     }
 }
 
+impl is_irrefutable_pattern(pat: MatchPattern) -> bool {
+    if isinstance(pat, MatchWild) {
+        return True;
+    }
+    if isinstance(pat, MatchAs) {
+        return pat.pattern is None or is_irrefutable_pattern(pat.pattern);
+    }
+    if isinstance(pat, MatchOr) {
+        return any(is_irrefutable_pattern(alt) for alt in pat.patterns);
+    }
+    return False;
+}
+
 impl is_walrus(nd: UniNode) -> bool {
     return isinstance(nd, BinaryExpr)
         and isinstance(nd.op, Token)

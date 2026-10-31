@@ -99,7 +99,11 @@ def is_structural_child(nd: UniNode) -> bool;
 
 def is_constant_true(expr: Expr) -> bool;
 
-def falls_off_end(frame: UniCFGNode, ends_flow: Callable[[UniCFGNode], bool]) -> bool;
+def is_abrupt_entry(pred: UniCFGNode, succ: UniCFGNode) -> bool;
+
+def falls_off_end(
+    frame: UniCFGNode, live: Callable[[UniCFGNode, UniCFGNode], bool]
+) -> bool;
 
 def _unwrap_parens(expr: Expr) -> Expr;
 

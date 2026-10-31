@@ -7321,6 +7321,7 @@ graph import compiler {
         types.fixed_width { E1126, E1127, E1128, E1130 },
         types.operations {
             E1010,
+            E1011,
             E1033,
             E1035,
             E1055,
@@ -8622,12 +8623,8 @@ graph import compiler {
             JsxSlot,
             LambdaExpr,
             ListCompr,
-            MatchAs,
             MatchCase,
-            MatchOr,
-            MatchPattern,
             MatchStmt,
-            MatchWild,
             Module,
             ModuleCode,
             Name,
@@ -8648,7 +8645,8 @@ graph import compiler {
             UniNode,
             VisitStmt,
             WhileStmt,
-            WithStmt
+            WithStmt,
+            is_irrefutable_pattern
         },
         passes.comptime_resolve_pass {
             Ability,
@@ -9575,6 +9573,7 @@ graph import compiler {
             ExprStmt,
             FString,
             FilterCompr,
+            FinallyStmt,
             Float,
             ForeverStmt,
             FormattedValue,
@@ -9644,6 +9643,8 @@ graph import compiler {
             WithStmt,
             YieldExpr,
             is_client_destined,
+            is_irrefutable_pattern,
+            is_walrus,
             kind_has_runtime_binding,
             literal_string_value,
             resolved_decl_of
@@ -14064,7 +14065,7 @@ graph import compiler.passes {
         native_capability_violations
     }
     cfg_build_pass ++> [
-        flow_check_pass { _bool_is_and },
+        flow_check_pass { _bool_is_and, is_abrupt_entry },
         type_checker_pass { falls_off_end },
     ]
     context ++> [

@@ -408,7 +408,10 @@ impl collect_member_syms(
 
     s: UniScopeNode | None = scope;
     while s is not None {
-        if (found := descend(s)) {
+        found = descend(s)
+            if UniScopeNode.is_python_scoping(s)
+            else list(s.lookup_all(name, deep=False) or []);
+        if found {
             return found;
         }
         s = s.parent_scope;

@@ -1188,7 +1188,7 @@ impl TypeCheckPass._check_return_paths(
         }
     }
     if self._is_generator(decl)
-        or not falls_off_end(frame, self.evaluator.flow_pred_never_returns) {
+        or not falls_off_end(frame, self.evaluator.flow_edge_live) {
         return;
     }
     ret_type = self.evaluator.get_type_of_expression(sig.return_type);

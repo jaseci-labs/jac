@@ -256,25 +256,7 @@ impl CFGBuildPass._is_compound(nd: UniNode) -> bool {
 }
 
 impl CFGBuildPass._is_irrefutable_case(nd: MatchCase) -> bool {
-    if nd.guard is not None {
-        return False;
-    }
-    pending: list[MatchPattern] = [nd.pattern];
-    while pending {
-        pat = pending.pop();
-        if isinstance(pat, MatchWild) {
-            return True;
-        }
-        if isinstance(pat, MatchAs) {
-            if pat.pattern is None {
-                return True;
-            }
-            pending.append(pat.pattern);
-        } elif isinstance(pat, MatchOr) {
-            pending.extend(pat.patterns);
-        }
-    }
-    return False;
+    return nd.guard is None and is_irrefutable_pattern(nd.pattern);
 }
 
 impl CFGBuildPass._wire_branch(
@@ -364,6 +346,9 @@ impl CFGBuildPass.exit_try_stmt with TryStmt exit {
     self._link_to(here, self._body_entry(here.body, None));
     for exc in here.excepts {
         self.link_bbs(here, exc);
+    }
+    if here.finally_body is not None {
+        self.link_bbs(here, here.finally_body);
     }
 }
 
@@ -719,7 +704,13 @@ impl _bool_is_and(expr: BoolExpr) -> bool {
     return isinstance(expr.op, Token) and expr.op.name == Tok.KW_AND;
 }
 
-impl falls_off_end(frame: UniCFGNode, ends_flow: Callable[[UniCFGNode], bool]) -> bool {
+impl is_abrupt_entry(pred: UniCFGNode, succ: UniCFGNode) -> bool {
+    return isinstance(pred, TryStmt) and pred.finally_body is succ;
+}
+
+impl falls_off_end(
+    frame: UniCFGNode, live: Callable[[UniCFGNode, UniCFGNode], bool]
+) -> bool {
     exits = frame.cfg_exits;
     if not exits {
         return False;
@@ -729,20 +720,21 @@ impl falls_off_end(frame: UniCFGNode, ends_flow: Callable[[UniCFGNode], bool]) -
         return True;
     }
     seen: set[int] = {id(frame)};
-    pending: list[UniCFGNode] = list(frame.bb_out);
+    pending: list[UniCFGNode] = [s for s in frame.bb_out if live(frame, s)];
     while pending {
         nd = pending.pop();
         if id(nd) in seen {
             continue;
         }
         seen.add(id(nd));
-        if ends_flow(nd) {
-            continue;
-        }
-        if id(nd) in exit_ids {
+        if id(nd) in exit_ids and live(nd, frame) {
             return True;
         }
-        pending.extend(nd.bb_out);
+        for succ in nd.bb_out {
+            if not is_abrupt_entry(nd, succ) and live(nd, succ) {
+                pending.append(succ);
+            }
+        }
     }
     return False;
 }

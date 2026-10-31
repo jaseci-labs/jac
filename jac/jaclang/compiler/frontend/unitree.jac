@@ -2570,6 +2570,8 @@ def def_insert_unpacking(
 def bind_assignment_targets(nd: Assignment) -> None;
 def bind_walrus_target(nd: BinaryExpr) -> None;
 def is_walrus(nd: UniNode) -> bool;
+
+def is_irrefutable_pattern(pat: MatchPattern) -> bool;
 def binding_sites_in(scope_root: UniNode) -> list[UniNode];
 def typed_rebind_names(nd: Assignment) -> list[Name];
 def definition_qualname(decl: UniNode) -> str;

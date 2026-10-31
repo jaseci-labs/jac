@@ -737,6 +737,9 @@ walker TypeEvaluator {
     def _find_symbol_by_key(key: str, condition: Expr) -> Symbol | None;
     def classify_condition(condition: Expr) -> ConditionInfo | None;
     def flow_pred_never_returns(pred: UniCFGNode) -> bool;
+    def flow_edge_live(pred: UniCFGNode, succ: UniCFGNode) -> bool;
+    def match_is_exhaustive(stmt: MatchStmt) -> bool;
+    def _pattern_covers_its_type(pat: MatchPattern) -> bool;
     def get_narrowed_type(symbol: Symbol, at_node: UniNode) -> TypeBase | None;
     def get_narrowed_type_for_expr(
         expr: Expr, declared_type: TypeBase, at_node: UniNode

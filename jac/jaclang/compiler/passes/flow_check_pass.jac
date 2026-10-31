@@ -20,6 +20,7 @@ obj FrameFlow {
         tracked: set[SymId] = set(),
         effects: dict[int, NodeEffect] = {},
         state: dict[int, set[SymId]] = {},
+        finally_state: dict[int, dict[int, set[SymId]]] = {},
         succ_memo: dict[int, list[UniCFGNode]] = {};
 }
 
@@ -45,6 +46,8 @@ walker FlowCheckPass(CompilerPass) {
     ) -> set[SymId];
 
     def _check_frame(fr: FrameFlow) -> None;
+    def _solve_finally_bodies(fr: FrameFlow) -> None;
+    def _encloses(outer: UniNode, nd: UniNode) -> bool;
     def _effect(
         fr: FrameFlow, nd: UniCFGNode, da: set[SymId], check: bool
     ) -> NodeEffect;
