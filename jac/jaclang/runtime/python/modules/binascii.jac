@@ -1,747 +1,880 @@
-"""Native binary/text codecs and checksums derived from CPython 3.14.6.
-
-The algorithm kernels use typed native buffers. Python buffer validation,
-argument binding, and module exception identities remain at the object ABI.
-See ../LICENSE.cpython.
-"""
-
-def _binascii_error(message: str) {
-    raise module_failure(message=message);
+import from c {
+    def crc32(crc: u64, buf: ptr, length: u32) -> u64;  def memchr(
+        source: ptr, value: i32, n: u64
+    ) -> ptr;  def _Py_strhex_bytes_with_sep(
+        argbuf: ptr[u8], arglen: i64, sep: ptr[PyObject], bytes_per_group: i32
+    ) -> ptr[PyObject];  glob:priv table_a2b_base64: list[u8] = [
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(62),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(63),
+             u8(52),
+             u8(53),
+             u8(54),
+             u8(55),
+             u8(56),
+             u8(57),
+             u8(58),
+             u8(59),
+             u8(60),
+             u8(61),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(0),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(0),
+             u8(1),
+             u8(2),
+             u8(3),
+             u8(4),
+             u8(5),
+             u8(6),
+             u8(7),
+             u8(8),
+             u8(9),
+             u8(10),
+             u8(11),
+             u8(12),
+             u8(13),
+             u8(14),
+             u8(15),
+             u8(16),
+             u8(17),
+             u8(18),
+             u8(19),
+             u8(20),
+             u8(21),
+             u8(22),
+             u8(23),
+             u8(24),
+             u8(25),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(26),
+             u8(27),
+             u8(28),
+             u8(29),
+             u8(30),
+             u8(31),
+             u8(32),
+             u8(33),
+             u8(34),
+             u8(35),
+             u8(36),
+             u8(37),
+             u8(38),
+             u8(39),
+             u8(40),
+             u8(41),
+             u8(42),
+             u8(43),
+             u8(44),
+             u8(45),
+             u8(46),
+             u8(47),
+             u8(48),
+             u8(49),
+             u8(50),
+             u8(51),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255),
+             u8(255)
+         ]; glob:priv digit_values: list[u8] = [
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(0),
+             u8(1),
+             u8(2),
+             u8(3),
+             u8(4),
+             u8(5),
+             u8(6),
+             u8(7),
+             u8(8),
+             u8(9),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(10),
+             u8(11),
+             u8(12),
+             u8(13),
+             u8(14),
+             u8(15),
+             u8(16),
+             u8(17),
+             u8(18),
+             u8(19),
+             u8(20),
+             u8(21),
+             u8(22),
+             u8(23),
+             u8(24),
+             u8(25),
+             u8(26),
+             u8(27),
+             u8(28),
+             u8(29),
+             u8(30),
+             u8(31),
+             u8(32),
+             u8(33),
+             u8(34),
+             u8(35),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(10),
+             u8(11),
+             u8(12),
+             u8(13),
+             u8(14),
+             u8(15),
+             u8(16),
+             u8(17),
+             u8(18),
+             u8(19),
+             u8(20),
+             u8(21),
+             u8(22),
+             u8(23),
+             u8(24),
+             u8(25),
+             u8(26),
+             u8(27),
+             u8(28),
+             u8(29),
+             u8(30),
+             u8(31),
+             u8(32),
+             u8(33),
+             u8(34),
+             u8(35),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37),
+             u8(37)
+         ]; glob:priv crctab_hqx: list[u16] = [
+             u16(0x0000),
+             u16(0x1021),
+             u16(0x2042),
+             u16(0x3063),
+             u16(0x4084),
+             u16(0x50A5),
+             u16(0x60C6),
+             u16(0x70E7),
+             u16(0x8108),
+             u16(0x9129),
+             u16(0xA14A),
+             u16(0xB16B),
+             u16(0xC18C),
+             u16(0xD1AD),
+             u16(0xE1CE),
+             u16(0xF1EF),
+             u16(0x1231),
+             u16(0x0210),
+             u16(0x3273),
+             u16(0x2252),
+             u16(0x52B5),
+             u16(0x4294),
+             u16(0x72F7),
+             u16(0x62D6),
+             u16(0x9339),
+             u16(0x8318),
+             u16(0xB37B),
+             u16(0xA35A),
+             u16(0xD3BD),
+             u16(0xC39C),
+             u16(0xF3FF),
+             u16(0xE3DE),
+             u16(0x2462),
+             u16(0x3443),
+             u16(0x0420),
+             u16(0x1401),
+             u16(0x64E6),
+             u16(0x74C7),
+             u16(0x44A4),
+             u16(0x5485),
+             u16(0xA56A),
+             u16(0xB54B),
+             u16(0x8528),
+             u16(0x9509),
+             u16(0xE5EE),
+             u16(0xF5CF),
+             u16(0xC5AC),
+             u16(0xD58D),
+             u16(0x3653),
+             u16(0x2672),
+             u16(0x1611),
+             u16(0x0630),
+             u16(0x76D7),
+             u16(0x66F6),
+             u16(0x5695),
+             u16(0x46B4),
+             u16(0xB75B),
+             u16(0xA77A),
+             u16(0x9719),
+             u16(0x8738),
+             u16(0xF7DF),
+             u16(0xE7FE),
+             u16(0xD79D),
+             u16(0xC7BC),
+             u16(0x48C4),
+             u16(0x58E5),
+             u16(0x6886),
+             u16(0x78A7),
+             u16(0x0840),
+             u16(0x1861),
+             u16(0x2802),
+             u16(0x3823),
+             u16(0xC9CC),
+             u16(0xD9ED),
+             u16(0xE98E),
+             u16(0xF9AF),
+             u16(0x8948),
+             u16(0x9969),
+             u16(0xA90A),
+             u16(0xB92B),
+             u16(0x5AF5),
+             u16(0x4AD4),
+             u16(0x7AB7),
+             u16(0x6A96),
+             u16(0x1A71),
+             u16(0x0A50),
+             u16(0x3A33),
+             u16(0x2A12),
+             u16(0xDBFD),
+             u16(0xCBDC),
+             u16(0xFBBF),
+             u16(0xEB9E),
+             u16(0x9B79),
+             u16(0x8B58),
+             u16(0xBB3B),
+             u16(0xAB1A),
+             u16(0x6CA6),
+             u16(0x7C87),
+             u16(0x4CE4),
+             u16(0x5CC5),
+             u16(0x2C22),
+             u16(0x3C03),
+             u16(0x0C60),
+             u16(0x1C41),
+             u16(0xEDAE),
+             u16(0xFD8F),
+             u16(0xCDEC),
+             u16(0xDDCD),
+             u16(0xAD2A),
+             u16(0xBD0B),
+             u16(0x8D68),
+             u16(0x9D49),
+             u16(0x7E97),
+             u16(0x6EB6),
+             u16(0x5ED5),
+             u16(0x4EF4),
+             u16(0x3E13),
+             u16(0x2E32),
+             u16(0x1E51),
+             u16(0x0E70),
+             u16(0xFF9F),
+             u16(0xEFBE),
+             u16(0xDFDD),
+             u16(0xCFFC),
+             u16(0xBF1B),
+             u16(0xAF3A),
+             u16(0x9F59),
+             u16(0x8F78),
+             u16(0x9188),
+             u16(0x81A9),
+             u16(0xB1CA),
+             u16(0xA1EB),
+             u16(0xD10C),
+             u16(0xC12D),
+             u16(0xF14E),
+             u16(0xE16F),
+             u16(0x1080),
+             u16(0x00A1),
+             u16(0x30C2),
+             u16(0x20E3),
+             u16(0x5004),
+             u16(0x4025),
+             u16(0x7046),
+             u16(0x6067),
+             u16(0x83B9),
+             u16(0x9398),
+             u16(0xA3FB),
+             u16(0xB3DA),
+             u16(0xC33D),
+             u16(0xD31C),
+             u16(0xE37F),
+             u16(0xF35E),
+             u16(0x02B1),
+             u16(0x1290),
+             u16(0x22F3),
+             u16(0x32D2),
+             u16(0x4235),
+             u16(0x5214),
+             u16(0x6277),
+             u16(0x7256),
+             u16(0xB5EA),
+             u16(0xA5CB),
+             u16(0x95A8),
+             u16(0x8589),
+             u16(0xF56E),
+             u16(0xE54F),
+             u16(0xD52C),
+             u16(0xC50D),
+             u16(0x34E2),
+             u16(0x24C3),
+             u16(0x14A0),
+             u16(0x0481),
+             u16(0x7466),
+             u16(0x6447),
+             u16(0x5424),
+             u16(0x4405),
+             u16(0xA7DB),
+             u16(0xB7FA),
+             u16(0x8799),
+             u16(0x97B8),
+             u16(0xE75F),
+             u16(0xF77E),
+             u16(0xC71D),
+             u16(0xD73C),
+             u16(0x26D3),
+             u16(0x36F2),
+             u16(0x0691),
+             u16(0x16B0),
+             u16(0x6657),
+             u16(0x7676),
+             u16(0x4615),
+             u16(0x5634),
+             u16(0xD94C),
+             u16(0xC96D),
+             u16(0xF90E),
+             u16(0xE92F),
+             u16(0x99C8),
+             u16(0x89E9),
+             u16(0xB98A),
+             u16(0xA9AB),
+             u16(0x5844),
+             u16(0x4865),
+             u16(0x7806),
+             u16(0x6827),
+             u16(0x18C0),
+             u16(0x08E1),
+             u16(0x3882),
+             u16(0x28A3),
+             u16(0xCB7D),
+             u16(0xDB5C),
+             u16(0xEB3F),
+             u16(0xFB1E),
+             u16(0x8BF9),
+             u16(0x9BD8),
+             u16(0xABBB),
+             u16(0xBB9A),
+             u16(0x4A75),
+             u16(0x5A54),
+             u16(0x6A37),
+             u16(0x7A16),
+             u16(0x0AF1),
+             u16(0x1AD0),
+             u16(0x2AB3),
+             u16(0x3A92),
+             u16(0xFD2E),
+             u16(0xED0F),
+             u16(0xDD6C),
+             u16(0xCD4D),
+             u16(0xBDAA),
+             u16(0xAD8B),
+             u16(0x9DE8),
+             u16(0x8DC9),
+             u16(0x7C26),
+             u16(0x6C07),
+             u16(0x5C64),
+             u16(0x4C45),
+             u16(0x3CA2),
+             u16(0x2C83),
+             u16(0x1CE0),
+             u16(0x0CC1),
+             u16(0xEF1F),
+             u16(0xFF3E),
+             u16(0xCF5D),
+             u16(0xDF7C),
+             u16(0xAF9B),
+             u16(0xBFBA),
+             u16(0x8FD9),
+             u16(0x9FF8),
+             u16(0x6E17),
+             u16(0x7E36),
+             u16(0x4E55),
+             u16(0x5E74),
+             u16(0x2E93),
+             u16(0x3EB2),
+             u16(0x0ED1),
+             u16(0x1EF0)
+         ];
 }
 
-def _hex_digits -> str {
-    return "0123456789abcdef";
-}
+glob:priv BYTES_SVAL: Final[i64] = 32,
+     PY_SSIZE_T_MAX: Final[i64] = 9223372036854775807,
+     BASE64_MAXBIN: Final[i64] = (9223372036854775807 - 3) // 2,
+     MAXLINESIZE: Final[i64] = 76,
+     CRC_CHUNK: Final[i64] = 0x40000000;
 
-# Digit valuation mirroring _PyLong_DigitValue: 0..15 for hex digits,
-# >= 16 otherwise.
-def _digit_value(c: int) -> int {
-    if c >= 48 and c <= 57 {  # '0'..'9'
-        return c - 48;
-    }
-    if c >= 97 and c <= 102 {  # 'a'..'f'
-        return c - 87;
-    }
-    if c >= 65 and c <= 70 {  # 'A'..'F'
-        return c - 55;
-    }
-    return 16;
-}
+def:priv binascii_error(module: ptr[PyObject]) -> ptr[PyObject];
 
-def _append_hex_pair(out: list[int], digits: str, b: int) {
-    out.append(ord(digits[b >> 4]));
-    out.append(ord(digits[b & 0x0F]));
-}
+def:priv bytes_buffer(op: ptr[PyObject]) -> ptr[u8];
 
-# Shared body of b2a_hex/hexlify (_Py_strhex_bytes_with_sep).
-def _strhex_impl(data: list[int], sep: int, bytes_per_sep: int) -> list[int] {
-    buf = data;
-    arglen = len(buf);
-    digits = _hex_digits();
-    sc = sep;
-    bps = bytes_per_sep;
-    if sc < 0 {
-        bps = 0;
-    }
-    abps = bps if bps > 0 else -bps;
-    if abps >= arglen {
-        # C disables grouping when abs(bytes_per_sep) >= arglen.
-        bps = 0;
-        abps = 0;
-    }
-    out: list[int] = [];
+def:priv finish_bytes(rv: ptr[PyObject], allocated: i64, used: i64) -> ptr[PyObject];
 
-    if bps == 0 {
-        for i in range(arglen) {
-            _append_hex_pair(out, digits, buf[i]);
-        }
-        return out;
-    }
-    chunks = 0 if arglen == 0 else (arglen - 1) // abps;
-    if bps < 0 {
-        # Separators count from the left.
-        i = 0;
-        for _ in range(chunks) {
-            for _ in range(abps) {
-                _append_hex_pair(out, digits, buf[i]);
-                i += 1;
-            }
-            out.append(sc);
-        }
-        while i < arglen {
-            _append_hex_pair(out, digits, buf[i]);
-            i += 1;
-        }
-    } else {
-        # Separators count from the right: fill the output backwards.
-        total = arglen * 2 + chunks;
-        j = total - 1;
-        i = arglen - 1;
-        while j >= 0 {
-            out.append(0);
-            j -= 1;
-        }
-        j = total - 1;
-        for _ in range(chunks) {
-            for _ in range(abps) {
-                b = buf[i];
-                out[j] = ord(digits[b & 0x0F]);
-                out[j - 1] = ord(digits[b >> 4]);
-                j -= 2;
-                i -= 1;
-            }
-            out[j] = sc;
-            j -= 1;
-        }
-        while i >= 0 {
-            b = buf[i];
-            out[j] = ord(digits[b & 0x0F]);
-            out[j - 1] = ord(digits[b >> 4]);
-            j -= 2;
-            i -= 1;
-        }
-    }
-    return out;
-}
+def convert_ascii_buffer_converter(
+    value: ptr[PyObject], fname: str, label: str
+) -> BufferArgument;
 
-# ---------------------------------------------------------------------------
-# base64: a2b_base64/b2a_base64
-#
-# Decode mirrors the RFC 3548/4648 strict-mode state machine of
-# binascii_a2b_base64_impl verbatim; encode mirrors b2a_base64_impl's
-# 6-bit drain plus partial-group tail.
-#
+def binascii_a2b_uu_impl(module: ptr[PyObject], data: BufferArgument) -> ptr[PyObject];
 
-def _b64_alphabet -> str {
-    return "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-}
+def binascii_b2a_uu_impl(
+    module: ptr[PyObject], data: BufferArgument, backtick: bool
+) -> ptr[PyObject];
 
-# table_a2b_base64 semantics: value 0..63 for alphabet characters, 255
-# (unsigned-char wrap of -1) for anything else.
-def _b64_value(raw: int) -> int {
-    o = raw;
-    if o >= 65 and o <= 90 {  # 'A'..'Z' -> 0..25
-        return o - 65;
-    }
-    if o >= 97 and o <= 122 {  # 'a'..'z' -> 26..51
-        return o - 71;
-    }
-    if o >= 48 and o <= 57 {  # '0'..'9' -> 52..61
-        return o + 4;
-    }
-    if o == 43 {  # '+' -> 62
-        return 62;
-    }
-    if o == 47 {  # '/' -> 63
-        return 63;
-    }
-    return 255;
-}
+def binascii_a2b_base64_impl(
+    module: ptr[PyObject], data: BufferArgument, strict_mode: bool
+) -> ptr[PyObject];
 
-# ---------------------------------------------------------------------------
-# uuencode: a2b_uu/b2a_uu
-#
+def binascii_b2a_base64_impl(
+    module: ptr[PyObject], data: BufferArgument, newline: bool
+) -> ptr[PyObject];
 
-def _b64_len1_error(nbytes_emitted: int) {
-    _binascii_error(
-        "Invalid base64-encoded string: number of data characters ("
-            + str(nbytes_emitted // 3 * 4 + 1)
-            + ") cannot be 1 more than a multiple of 4"
-    );
-}
+def binascii_crc_hqx_impl(
+    module: ptr[PyObject], data: BufferArgument, crc: u32
+) -> ptr[PyObject];
 
-def a2b_base64(data: list[int], strict_mode: bool = False) -> list[int] {
-    buf = data;
-    ascii_len = len(buf);
-    out: list[int] = [];
-    quad_pos = 0;
-    leftchar = 0;
-    pads = 0;
+def binascii_crc32_impl(module: ptr[PyObject], data: BufferArgument, crc: u32) -> u32;
 
-    i = 0;
-    while i < ascii_len {
-        raw = buf[i];
-        stop = False;
-        if raw == 61 {  # '=' (BASE64_PAD)
-            pads += 1;
-            if quad_pos >= 2 and quad_pos + pads <= 4 {
-                i += 1;
-                continue;  # valid trailing pad
-            }
-            # RFC 4648 section 3.3: excess pad MAY be ignored.
-            if not strict_mode {
-                i += 1;
-                continue;
-            }
-            if quad_pos == 1 {
-                # C breaks here; the final validation reports the error.
-                stop = True;
-            } else {
-                _binascii_error(
-                    "Leading padding not allowed"
-                        if (quad_pos == 0 and i == 0)
-                        else "Excess padding not allowed"
-                );
-            }
-        } else {
-            this_ch = _b64_value(raw);
-            if this_ch >= 64 {
-                if strict_mode {
-                    _binascii_error("Only base64 data is allowed");
-                }
-                i += 1;
-                continue;  # ignore non-alphabet byte
-            }
-            if pads > 0 and strict_mode {
-                _binascii_error(
-                    "Excess data after padding"
-                        if quad_pos + pads == 4
-                        else "Discontinuous padding not allowed"
-                );
-            }
-            pads = 0;
-            if quad_pos == 0 {
-                quad_pos = 1;
-                leftchar = this_ch;
-            } elif quad_pos == 1 {
-                quad_pos = 2;
-                out.append(((leftchar << 2) | (this_ch >> 4)) & 0xFF);
-                leftchar = this_ch & 0x0F;
-            } elif quad_pos == 2 {
-                quad_pos = 3;
-                out.append(((leftchar << 4) | (this_ch >> 2)) & 0xFF);
-                leftchar = this_ch & 0x03;
-            } else {
-                quad_pos = 0;
-                out.append(((leftchar << 6) | this_ch) & 0xFF);
-                leftchar = 0;
-            }
-        }
-        if stop {
-            break;
-        }
-        i += 1;
-    }
+def binascii_b2a_hex_impl(
+    module: ptr[PyObject], data: BufferArgument, sep: ptr[PyObject], bytes_per_sep: i32
+) -> ptr[PyObject];
 
-    if quad_pos == 1 {
-        _b64_len1_error(len(out));
-    }
-    if quad_pos != 0 and quad_pos + pads < 4 {
-        _binascii_error("Incorrect padding");
-    }
-    return out;
-}
+def binascii_hexlify_impl(
+    module: ptr[PyObject], data: BufferArgument, sep: ptr[PyObject], bytes_per_sep: i32
+) -> ptr[PyObject];
 
-# BASE64_MAXBIN: ((PY_SSIZE_T_MAX - 3) / 2) on LP64.
-glob _BASE64_MAXBIN: int = (9223372036854775807 - 3) // 2;
+def binascii_a2b_hex_impl(
+    module: ptr[PyObject], hexstr: BufferArgument
+) -> ptr[PyObject];
 
-def b2a_base64(data: list[int], newline: bool = True) -> list[int] {
-    buf = data;
-    bin_len = len(buf);
-    if bin_len > _BASE64_MAXBIN {
-        _binascii_error("Too much data for base64 line");
-    }
-    table = _b64_alphabet();
-    out: list[int] = [];
-    leftchar = 0;
-    leftbits = 0;
-    for k in range(bin_len) {
-        leftchar = ((leftchar << 8) | buf[k]) & 0xFFFFFFFF;
-        leftbits += 8;
-        while leftbits >= 6 {
-            this_ch = (leftchar >> (leftbits - 6)) & 0x3F;
-            leftbits -= 6;
-            out.append(ord(table[this_ch]));
-        }
-    }
-    if leftbits == 2 {
-        out.append(ord(table[(leftchar & 3) << 4]));
-        out.append(61);  # '='
-        out.append(61);
-    } elif leftbits == 4 {
-        out.append(ord(table[(leftchar & 0x0F) << 2]));
-        out.append(61);
-    }
-    if newline {
-        out.append(10);  # courtesy newline
-    }
-    return out;
-}
+def binascii_unhexlify_impl(
+    module: ptr[PyObject], hexstr: BufferArgument
+) -> ptr[PyObject];
 
-def hexlify(data: list[int], sep: int = -1, bytes_per_sep: int = 1) -> list[int] {
-    return _strhex_impl(data, sep, bytes_per_sep);
-}
+def:priv is_hex_char(c: u8) -> bool;
 
-def b2a_hex(data: list[int], sep: int = -1, bytes_per_sep: int = 1) -> list[int] {
-    return _strhex_impl(data, sep, bytes_per_sep);
-}
+def binascii_a2b_qp_impl(
+    module: ptr[PyObject], data: BufferArgument, header: bool
+) -> ptr[PyObject];
 
-def a2b_hex(hexstr: list[int]) -> list[int] {
-    buf = hexstr;
-    arglen = len(buf);
-    if arglen % 2 {
-        _binascii_error("Odd-length string");
-    }
-    out: list[int] = [];
-    i = 0;
-    while i < arglen {
-        top = _digit_value(buf[i]);
-        bot = _digit_value(buf[i + 1]);
-        if top >= 16 or bot >= 16 {
-            _binascii_error("Non-hexadecimal digit found");
-        }
-        out.append(((top << 4) + bot) & 0xFF);
-        i += 2;
-    }
-    return out;
-}
+def:priv to_hex(ch: u8, s: ptr[u8]);
 
-def unhexlify(hexstr: list[int]) -> list[int] {
-    return a2b_hex(hexstr);
-}
-
-# ---------------------------------------------------------------------------
-# uuencode: a2b_uu/b2a_uu
-#
-
-def a2b_uu(data: list[int]) -> list[int] {
-    buf = data;
-    ascii_len = len(buf);
-    if ascii_len == 0 {
-        _binascii_error("Missing length byte");
-    }
-    # First byte: binary data length (in bytes). C's unsigned-char
-    # arithmetic makes negative differences wrap within & 077.
-    bin_len = (buf[0] - 32) % 64;
-    if bin_len < 0 {
-        bin_len += 64;
-    }
-    out: list[int] = [];
-    leftchar = 0;
-    leftbits = 0;
-    i = 1;  # ascii_data cursor (after length byte)
-    while bin_len > 0 {
-        this_ch = buf[i] if i < ascii_len else 0;
-        if this_ch == 10 or this_ch == 13 or i >= ascii_len {
-            # Whitespace: some spaces got eaten at end-of-line.
-            this_ch = 0;
-        } elif this_ch < 32 or this_ch > 96 {  # ' ' .. ' '+64
-            _binascii_error("Illegal char");
-        } else {
-            this_ch = (this_ch - 32) % 64;
-        }
-        leftchar = ((leftchar << 6) | this_ch) & 0xFFFF;
-        leftbits += 6;
-        if leftbits >= 8 {
-            leftbits -= 8;
-            out.append((leftchar >> leftbits) & 0xFF);
-            leftchar &= (1 << leftbits) - 1;
-            bin_len -= 1;
-        }
-        i += 1;
-    }
-    # Trailing bytes must be whitespace-only (' ' or '`' padding, CR/LF).
-    j = i;
-    while j < ascii_len {
-        ch = buf[j];
-        if ch != 32 and ch != 96 and ch != 10 and ch != 13 {
-            _binascii_error("Trailing garbage");
-        }
-        j += 1;
-    }
-    return out;
-}
-
-def b2a_uu(data: list[int], backtick: bool = False) -> list[int] {
-    buf = data;
-    bin_len = len(buf);
-    if bin_len > 45 {
-        # The 45 is a limit that appears in all uuencodes.
-        _binascii_error("At most 45 bytes at once");
-    }
-    out: list[int] = [];
-    # Length byte ('`' encodes empty data in backtick mode).
-    if backtick and not bin_len {
-        out.append(96);  # '`'
-    } else {
-        out.append(32 + bin_len);
-    }
-    leftchar = 0;
-    leftbits = 0;
-    k = 0;
-    while bin_len > 0 or leftbits != 0 {
-        if bin_len > 0 {
-            leftchar = (leftchar << 8) | buf[k];
-        } else {
-            leftchar <<= 8;  # padding
-        }
-        leftbits += 8;
-        while leftbits >= 6 {
-            this_ch = (leftchar >> (leftbits - 6)) & 0x3F;
-            leftbits -= 6;
-            if backtick and not this_ch {
-                out.append(96);
-            } else {
-                out.append(this_ch + 32);
-            }
-        }
-        bin_len -= 1;
-        k += 1;
-    }
-    out.append(10);  # courtesy newline
-    return out;
-}
-
-# ---------------------------------------------------------------------------
-# quoted-printable: a2b_qp/b2a_qp
-#
-
-glob _QP_MAXLINESIZE: int = 76;
-
-def _qp_hexdigit(v: int) -> int {
-    digits = "0123456789ABCDEF";
-    return ord(digits[v]);
-}
-
-def a2b_qp(data: list[int], header: bool = False) -> list[int] {
-    buf = data;
-    datalen = len(buf);
-    out: list[int] = [];
-    i = 0;
-    while i < datalen {
-        if buf[i] == 61 {  # '='
-            i += 1;
-            if i >= datalen {
-                break;
-            }
-            if buf[i] == 10 or buf[i] == 13 {  # soft line break
-                if buf[i] != 10 {
-                    while i < datalen and buf[i] != 10 {
-                        i += 1;
-                    }
-                }
-                if i < datalen {
-                    i += 1;
-                }
-            } elif buf[i] == 61 {  # broken case from broken python qp
-                out.append(61);
-                i += 1;
-            } elif (
-                i + 1 < datalen and _is_hex_digit(buf[i]) and _is_hex_digit(buf[i + 1])
-            ) {
-                out.append(((_hex_val(buf[i]) << 4) + _hex_val(buf[i + 1])) & 0xFF);
-                i += 2;
-            } else {
-                out.append(61);
-            }
-        } elif header and buf[i] == 95 {  # '_' -> ' '
-            out.append(32);
-            i += 1;
-        } else {
-            out.append(buf[i]);
-            i += 1;
-        }
-    }
-    return out;
-}
-
-def _is_hex_digit(c: int) -> bool {
-    return (c >= 48 and c <= 57) or (c >= 65 and c <= 70) or (c >= 97 and c <= 102);
-}
-
-def _hex_val(c: int) -> int {
-    if c <= 57 {
-        return c - 48;
-    }
-    if c <= 70 {
-        return c - 55;
-    }
-    return c - 87;
-}
-
-def b2a_qp(
-    data: list[int], quotetabs: bool = False, istext: bool = True, header: bool = False
-) -> list[int] {
-    buf = data;
-    datalen = len(buf);
-
-    # CRLF detection: a '\n' whose predecessor is '\r'.
-    crlf = False;
-    nl = _memchr(buf, 10);
-    if nl > 0 and buf[nl - 1] == 13 {
-        crlf = True;
-    }
-
-    # Sizing pass (verbatim predicates/order from binascii_b2a_qp_impl).
-    odatalen = 0;
-    linelen = 0;
-    i = 0;
-    while i < datalen {
-        delta = 0;
-        if _qp_needs_encode(buf, datalen, i, linelen, quotetabs, istext, header) {
-            if linelen + 3 >= _QP_MAXLINESIZE {
-                linelen = 0;
-                delta += 3 if crlf else 2;
-            }
-            linelen += 3;
-            delta += 3;
-            i += 1;
-        } elif istext
-            and (
-                buf[i] == 10 or (i + 1 < datalen and buf[i] == 13 and buf[i + 1] == 10)
-            ) {
-            linelen = 0;
-            # Protect against whitespace on end of line.
-            if i > 0 and (buf[i - 1] == 32 or buf[i - 1] == 9) {
-                delta += 2;
-            }
-            delta += 2 if crlf else 1;
-            if buf[i] == 13 {
-                i += 2;
-            } else {
-                i += 1;
-            }
-        } else {
-            if i + 1 != datalen
-                and buf[i + 1] != 10
-                and linelen + 1 >= _QP_MAXLINESIZE {
-                linelen = 0;
-                delta += 3 if crlf else 2;
-            }
-            linelen += 1;
-            delta += 1;
-            i += 1;
-        }
-        odatalen += delta;
-    }
-
-    out: list[int] = [0] * odatalen;
-    o = 0;
-    linelen = 0;
-    i = 0;
-    while i < datalen {
-        ch = buf[i];
-        if _qp_needs_encode(buf, datalen, i, linelen, quotetabs, istext, header) {
-            if linelen + 3 >= _QP_MAXLINESIZE {
-                out[o] = 61;
-                o += 1;
-                if crlf {
-                    out[o] = 13;
-                    o += 1;
-                }
-                out[o] = 10;
-                o += 1;
-                linelen = 0;
-            }
-            out[o] = 61;
-            out[o + 1] = _qp_hexdigit(ch // 16);
-            out[o + 2] = _qp_hexdigit(ch % 16);
-            o += 3;
-            i += 1;
-            linelen += 3;
-        } elif istext
-            and (ch == 10 or (i + 1 < datalen and ch == 13 and buf[i + 1] == 10)) {
-            linelen = 0;
-            if o > 0 and (out[o - 1] == 32 or out[o - 1] == 9) {
-                prev = out[o - 1];
-                out[o - 1] = 61;
-                out[o] = _qp_hexdigit(prev // 16);
-                out[o + 1] = _qp_hexdigit(prev % 16);
-                o += 2;
-            }
-            if crlf {
-                out[o] = 13;
-                o += 1;
-            }
-            out[o] = 10;
-            o += 1;
-            if ch == 13 {
-                i += 2;
-            } else {
-                i += 1;
-            }
-        } else {
-            if i + 1 != datalen
-                and buf[i + 1] != 10
-                and linelen + 1 >= _QP_MAXLINESIZE {
-                out[o] = 61;
-                o += 1;
-                if crlf {
-                    out[o] = 13;
-                    o += 1;
-                }
-                out[o] = 10;
-                o += 1;
-                linelen = 0;
-            }
-            linelen += 1;
-            if header and ch == 32 {
-                out[o] = 95;  # '_' encodes space in header mode
-                o += 1;
-            } else {
-                out[o] = ch;
-                o += 1;
-            }
-            i += 1;
-        }
-    }
-    return out[:o];
-}
-
-# First index of byte `v` in buf, or -1. (memchr stand-in)
-def _memchr(buf: list[int], v: int) -> int {
-    for k in range(len(buf)) {
-        if buf[k] == v {
-            return k;
-        }
-    }
-    return -1;
-}
-
-# Shared need-encode predicate of both b2a_qp passes; order matches the C
-# disjunction exactly so boundary behavior stays identical.
-def _qp_needs_encode(
-    buf: list[int],
-    datalen: int,
-    i: int,
-    linelen: int,
+def:priv qp_needs_quoting(
+    databuf: ptr[u8],
+    datalen: i64,
+    inpos: i64,
+    linelen: i64,
     quotetabs: bool,
     istext: bool,
     header: bool
-) -> bool {
-    c = buf[i];
-    if c > 126 {
-        return True;
-    }
-    if c == 61 {  # '='
-        return True;
-    }
-    if header and c == 95 {  # '_'
-        return True;
-    }
-    if c == 46
-        and linelen == 0
-        and (
-            i + 1 == datalen or buf[i + 1] == 10 or buf[i + 1] == 13 or buf[i + 1] == 0
-        ) {
-        return True;
-    }
-    if not istext and (c == 13 or c == 10) {
-        return True;
-    }
-    if (c == 9 or c == 32) and i + 1 == datalen {
-        return True;
-    }
-    if c < 33 and c != 13 and c != 10 and (quotetabs or (c != 9 and c != 32)) {
-        return True;
-    }
-    return False;
+) -> bool;
+
+def binascii_b2a_qp_impl(
+    module: ptr[PyObject],
+    data: BufferArgument,
+    quotetabs: bool,
+    istext: bool,
+    header: bool
+) -> ptr[PyObject];
+
+impl binascii_error(module: ptr[PyObject]) -> ptr[PyObject] {
+    return jacpy_binding_state_get(module, 0);
 }
 
-# ---------------------------------------------------------------------------
-# CRC: crc_hqx/crc32
-#
-
-# CRC-CCITT table (crctab_hqx in Modules/binascii.c).
-def _crctab_hqx(i: int) -> int {
-    # Generated per-entry to avoid a 256-literal glob; polynomial 0x1021,
-    # MSB-first -- identical values to the C table.
-    v = i << 8;
-    for _ in range(8) {
-        if v & 0x8000 {
-            v = ((v << 1) ^ 0x1021) & 0xFFFF;
-        } else {
-            v = (v << 1) & 0xFFFF;
-        }
-    }
-    return v;
+impl bytes_buffer(op: ptr[PyObject]) -> ptr[u8] {
+    return ptr[u8](op) + BYTES_SVAL;
 }
 
-glob _CRC_HQX_TABLE: list[int] = [_crctab_hqx(i) for i in range(256)];
-
-def crc_hqx(data: ptr[PyObject], crc: int) -> int {
-    c = crc & 0xFFFF;
-    for k in range(int(jacpy_buffer_size(data))) {
-        byte = int(jacpy_buffer_byte(data, i64(k)));
-        c = ((c << 8) & 0xFF00) ^ _CRC_HQX_TABLE[(c >> 8) ^ byte];
+impl finish_bytes(rv: ptr[PyObject], allocated: i64, used: i64) -> ptr[PyObject] {
+    if used == allocated {
+        return rv;
     }
-    return c;
-}
-
-# CRC-32 table walk (internal_crc32 / crc_32_tab). Entry i is the CRC of
-# byte i starting from ~0; generated per-entry with polynomial 0xEDB88320.
-def _crctab32(i: int) -> int {
-    v = i;
-    for _ in range(8) {
-        if v & 1 {
-            v = (v >> 1) ^ 0xEDB88320;
-        } else {
-            v >>= 1;
-        }
-    }
-    return v & 0xFFFFFFFF;
-}
-
-glob _CRC32_TABLE: list[int] = [_crctab32(i) for i in range(256)];
-
-def crc32(data: ptr[PyObject], crc: int = 0) -> int {
-    # unsigned_int(bitwise=True) converter: mask like the C unsigned int.
-    c = (~crc) & 0xFFFFFFFF;
-    for k in range(int(jacpy_buffer_size(data))) {
-        byte = int(jacpy_buffer_byte(data, i64(k)));
-        c = (_CRC32_TABLE[(c ^ byte) & 0xFF] ^ (c >> 8)) & 0xFFFFFFFF;
-    }
-    return (c ^ 0xFFFFFFFF) & 0xFFFFFFFF;
-}
-
-def:pub jacpy_binascii_convert(
-    source: ptr[PyObject],
-    error_type: ptr[PyObject],
-    operation: i64,
-    option: i64,
-    second: i64,
-    third: i64
-) -> ptr[PyObject] {
-    try {
-        if operation == 8 {
-            return PyLong_FromLongLong(i64(crc_hqx(source, int(option))));
-        }
-        if operation == 9 {
-            return PyLong_FromLongLong(i64(crc32(source, int(option))));
-        }
-        data = list(read_buffer(source));
-        result: list[int] = [];
-        if operation == 0 {
-            result = a2b_uu(data);
-        } elif operation == 1 {
-            result = b2a_uu(data, option != 0);
-        } elif operation == 2 {
-            result = a2b_base64(data, option != 0);
-        } elif operation == 3 {
-            result = b2a_base64(data, option != 0);
-        } elif operation == 4 {
-            result = a2b_hex(data);
-        } elif operation == 5 {
-            result = hexlify(data, int(option), int(second));
-        } elif operation == 6 {
-            result = a2b_qp(data, option != 0);
-        } elif operation == 7 {
-            result = b2a_qp(data, option != 0, second != 0, third != 0);
-        } else {
-            object_error(PyExc_SystemError, "unknown binary codec operation");
-            return NULL;
-        }
-        return write_buffer(bytes(result));
-    } except module_failure as error {
-        message = error.message;
-        jacpy_set_exception(error_type, message, i64(len(message.encode("utf-8"))));
+    result = rv;
+    if _PyBytes_Resize(&mut result, used) < 0 {
         return NULL;
     }
+    return result;
 }
 
-# ascii_buffer_converter(): a bytes-like object or an ASCII str, as a buffer
-# over its bytes.
-def convert_ascii_buffer_converter(
+impl convert_ascii_buffer_converter(
     value: ptr[PyObject], fname: str, label: str
 ) -> BufferArgument {
     view = BufferArgument();
@@ -751,137 +884,707 @@ def convert_ascii_buffer_converter(
     return view;
 }
 
-# One codec over the buffer's bytes, raising binascii.Error (the module's
-# first state slot) for bad data.
-def:priv convert(
-    module: ptr[PyObject],
-    data: BufferArgument,
-    operation: int,
-    option: i64 = 0,
-    second: i64 = 0,
-    third: i64 = 0
+impl binascii_a2b_uu_impl(
+    module: ptr[PyObject], data: BufferArgument
 ) -> ptr[PyObject] {
-    source = data.bytes();
-    if source == 0 {
+    ascii_data = ptr[u8](data.address());
+    ascii_len = data.size();
+    leftbits: i64 = 0;
+    leftchar: i64 = 0;
+
+    if ascii_len == 0 {
+        PyErr_SetString(binascii_error(module), ptr[u8]("Missing length byte"));
         return NULL;
     }
-    result = jacpy_binascii_convert(
-        source,
-        jacpy_binding_state_get(module, 0),
-        i64(operation),
-        option,
-        second,
-        third
-    );
-    jacpy_release(source);
-    return result;
-}
+    bin_len = (i64(ascii_data.view(1)[0]) - 32) & 0x3F;
+    ascii_data += 1;
+    ascii_len -= 1;
 
-def binascii_a2b_uu_impl(module: ptr[PyObject], data: BufferArgument) -> ptr[PyObject] {
-    return convert(module, data, 0);
-}
+    rv = PyBytes_FromStringAndSize(ptr[u8](), bin_len);
+    if not rv {
+        return NULL;
+    }
+    bin_data = bytes_buffer(rv);
 
-def binascii_b2a_uu_impl(
-    module: ptr[PyObject], data: BufferArgument, backtick: bool
-) -> ptr[PyObject] {
-    return convert(module, data, 1, i64(backtick));
-}
-
-def binascii_a2b_base64_impl(
-    module: ptr[PyObject], data: BufferArgument, strict_mode: bool
-) -> ptr[PyObject] {
-    return convert(module, data, 2, i64(strict_mode));
-}
-
-def binascii_b2a_base64_impl(
-    module: ptr[PyObject], data: BufferArgument, newline: bool
-) -> ptr[PyObject] {
-    return convert(module, data, 3, i64(newline));
-}
-
-def binascii_a2b_hex_impl(
-    module: ptr[PyObject], hexstr: BufferArgument
-) -> ptr[PyObject] {
-    return convert(module, hexstr, 4);
-}
-
-def binascii_unhexlify_impl(
-    module: ptr[PyObject], hexstr: BufferArgument
-) -> ptr[PyObject] {
-    return convert(module, hexstr, 4);
-}
-
-# _Py_strhex_bytes_with_sep()'s separator checks, then the hex codec.
-def:priv hex_with_separator(
-    module: ptr[PyObject], data: BufferArgument, sep: ptr[PyObject], bytes_per_sep: i32
-) -> ptr[PyObject] {
-    option: i64 = -1;
-    if sep != 0 {
-        size = PySequence_Size(sep);
-        if size < 0 {
-            return NULL;
+    while bin_len > 0 {
+        this_ch: i64 = 0;
+        if ascii_len > 0 {
+            this_ch = i64(ascii_data.view(1)[0]);
         }
-        if size != 1 {
-            object_error(PyExc_ValueError, "sep must be length 1.");
-            return NULL;
-        }
-        if jacpy_is_unicode(sep) != 0 {
-            option = PyUnicode_ReadChar(sep, 0);
-            if option > 255 {
-                object_error(PyExc_ValueError, "sep must be ASCII.");
+        if this_ch == 10 or this_ch == 13 or ascii_len <= 0 {
+            this_ch = 0;
+        } else {
+            if this_ch < 32 or this_ch > 96 {
+                PyErr_SetString(binascii_error(module), ptr[u8]("Illegal char"));
+                jacpy_release(rv);
                 return NULL;
             }
-        } elif jacpy_is_bytes(sep) != 0 {
-            option = jacpy_buffer_byte(sep, 0);
-        } else {
-            object_error(PyExc_TypeError, "sep must be str or bytes.");
+            this_ch = (this_ch - 32) & 0x3F;
+        }
+
+        leftchar = (leftchar << 6) | this_ch;
+        leftbits += 6;
+        if leftbits >= 8 {
+            leftbits -= 8;
+            bin_data.view(1)[0] = u8((leftchar >> leftbits) & 0xFF);
+            bin_data += 1;
+            leftchar &= (i64(1) << leftbits) - 1;
+            bin_len -= 1;
+        }
+        ascii_len -= 1;
+        ascii_data += 1;
+    }
+
+    while ascii_len > 0 {
+        ascii_len -= 1;
+        trailing = ascii_data.view(1)[0];
+        ascii_data += 1;
+
+        if trailing != u8(32)
+            and trailing != u8(96)
+            and trailing != u8(10)
+            and trailing != u8(13) {
+            PyErr_SetString(binascii_error(module), ptr[u8]("Trailing garbage"));
+            jacpy_release(rv);
             return NULL;
         }
     }
-    return convert(module, data, 5, option, i64(bytes_per_sep));
+    return rv;
 }
 
-def binascii_b2a_hex_impl(
+impl binascii_b2a_uu_impl(
+    module: ptr[PyObject], data: BufferArgument, backtick: bool
+) -> ptr[PyObject] {
+    bin_data = ptr[u8](data.address());
+    bin_len = data.size();
+    leftbits: i64 = 0;
+    leftchar: i64 = 0;
+    if bin_len > 45 {
+        PyErr_SetString(binascii_error(module), ptr[u8]("At most 45 bytes at once"));
+        return NULL;
+    }
+
+    out_len = 2 + (bin_len + 2) // 3 * 4;
+    rv = PyBytes_FromStringAndSize(ptr[u8](), out_len);
+    if not rv {
+        return NULL;
+    }
+    start = bytes_buffer(rv);
+    ascii_data = start;
+
+    if backtick and bin_len == 0 {
+        ascii_data.view(1)[0] = u8(96);
+    } else {
+        ascii_data.view(1)[0] = u8(32 + bin_len);
+    }
+    ascii_data += 1;
+
+    while bin_len > 0 or leftbits != 0 {
+        if bin_len > 0 {
+            leftchar = ((leftchar << 8) | i64(bin_data.view(1)[0])) & 0xFFFFFF;
+        } else {
+            leftchar = (leftchar << 8) & 0xFFFFFF;
+        }
+        leftbits += 8;
+
+        while leftbits >= 6 {
+            this_ch = (leftchar >> (leftbits - 6)) & 0x3F;
+            leftbits -= 6;
+            if backtick and this_ch == 0 {
+                ascii_data.view(1)[0] = u8(96);
+            } else {
+                ascii_data.view(1)[0] = u8(this_ch + 32);
+            }
+            ascii_data += 1;
+        }
+        bin_len -= 1;
+        bin_data += 1;
+    }
+
+    ascii_data.view(1)[0] = u8(10);
+    ascii_data += 1;
+    return finish_bytes(rv, out_len, i64(int(ascii_data) - int(start)));
+}
+
+impl binascii_a2b_base64_impl(
+    module: ptr[PyObject], data: BufferArgument, strict_mode: bool
+) -> ptr[PyObject] {
+    ascii_data = ptr[u8](data.address());
+    ascii_len = data.size();
+
+    bin_len = ((ascii_len + 3) // 4) * 3;
+    rv = PyBytes_FromStringAndSize(ptr[u8](), bin_len);
+    if not rv {
+        return NULL;
+    }
+    bin_data_start = bytes_buffer(rv);
+    bin_data = bin_data_start;
+    table = ptr[u8](addressof(table_a2b_base64));
+
+    quad_pos: i64 = 0;
+    leftchar: i64 = 0;
+    pads: i64 = 0;
+    i: i64 = 0;
+    while i < ascii_len {
+        if quad_pos == 0 and (pads == 0 or not strict_mode) and i + 4 <= ascii_len {
+            c0 = (ascii_data + i).view(1)[0];
+            c1 = (ascii_data + i + 1).view(1)[0];
+            c2 = (ascii_data + i + 2).view(1)[0];
+            c3 = (ascii_data + i + 3).view(1)[0];
+            if c0 != u8(61) and c1 != u8(61) and c2 != u8(61) and c3 != u8(61) {
+                v0 = (table + i64(c0)).view(1)[0];
+                v1 = (table + i64(c1)).view(1)[0];
+                v2 = (table + i64(c2)).view(1)[0];
+                v3 = (table + i64(c3)).view(1)[0];
+                if (v0 | v1 | v2 | v3) < u8(64) {
+                    bin_data.view(3)[0] = (v0 << u8(2)) | (v1 >> u8(4));
+                    bin_data.view(3)[1] = ((v1 & u8(0x0F)) << u8(4)) | (v2 >> u8(2));
+                    bin_data.view(3)[2] = ((v2 & u8(0x03)) << u8(6)) | v3;
+                    bin_data += 3;
+                    i += 4;
+                    pads = 0;
+                    continue;
+                }
+            }
+        }
+        this_ch = (ascii_data + i).view(1)[0];
+        i += 1;
+
+        if this_ch == u8(61) {
+            pads += 1;
+            if quad_pos >= 2 and quad_pos + pads <= 4 {
+                continue;
+            }
+
+            if not strict_mode {
+                continue;
+            }
+            if quad_pos == 1 {
+                break;
+            }
+            if quad_pos == 0 and i == 1 {
+                PyErr_SetString(
+                    binascii_error(module), ptr[u8]("Leading padding not allowed")
+                );
+            } else {
+                PyErr_SetString(
+                    binascii_error(module), ptr[u8]("Excess padding not allowed")
+                );
+            }
+            jacpy_release(rv);
+            return NULL;
+        }
+
+        value = (table + i64(this_ch)).view(1)[0];
+        if value >= u8(64) {
+            if strict_mode {
+                PyErr_SetString(
+                    binascii_error(module), ptr[u8]("Only base64 data is allowed")
+                );
+                jacpy_release(rv);
+                return NULL;
+            }
+            continue;
+        }
+
+        if pads != 0 and strict_mode {
+            if quad_pos + pads == 4 {
+                PyErr_SetString(
+                    binascii_error(module), ptr[u8]("Excess data after padding")
+                );
+            } else {
+                PyErr_SetString(
+                    binascii_error(module), ptr[u8]("Discontinuous padding not allowed")
+                );
+            }
+            jacpy_release(rv);
+            return NULL;
+        }
+        pads = 0;
+
+        sextet = i64(value);
+        if quad_pos == 0 {
+            quad_pos = 1;
+            leftchar = sextet;
+        } elif quad_pos == 1 {
+            quad_pos = 2;
+            bin_data.view(1)[0] = u8(((leftchar << 2) | (sextet >> 4)) & 0xFF);
+            bin_data += 1;
+            leftchar = sextet & 0x0F;
+        } elif quad_pos == 2 {
+            quad_pos = 3;
+            bin_data.view(1)[0] = u8(((leftchar << 4) | (sextet >> 2)) & 0xFF);
+            bin_data += 1;
+            leftchar = sextet & 0x03;
+        } else {
+            quad_pos = 0;
+            bin_data.view(1)[0] = u8(((leftchar << 6) | sextet) & 0xFF);
+            bin_data += 1;
+            leftchar = 0;
+        }
+    }
+
+    written = i64(int(bin_data) - int(bin_data_start));
+    if quad_pos == 1 {
+        characters: i64 = written // 3 * 4 + 1;
+        PyErr_Format(
+            binascii_error(module),
+            ptr[u8](
+                "Invalid base64-encoded string: number of data characters (%zd) cannot be 1 more than a multiple of 4"
+            ),
+            characters
+        );
+        jacpy_release(rv);
+        return NULL;
+    }
+
+    if quad_pos != 0 and quad_pos + pads < 4 {
+        PyErr_SetString(binascii_error(module), ptr[u8]("Incorrect padding"));
+        jacpy_release(rv);
+        return NULL;
+    }
+
+    return finish_bytes(rv, bin_len, written);
+}
+
+impl binascii_b2a_base64_impl(
+    module: ptr[PyObject], data: BufferArgument, newline: bool
+) -> ptr[PyObject] {
+    bin_data = ptr[u8](data.address());
+    bin_len = data.size();
+    if bin_len > BASE64_MAXBIN {
+        PyErr_SetString(
+            binascii_error(module), ptr[u8]("Too much data for base64 line")
+        );
+        return NULL;
+    }
+
+    out_len = ((bin_len + 2) // 3) * 4;
+    if newline {
+        out_len += 1;
+    }
+    rv = PyBytes_FromStringAndSize(ptr[u8](), out_len);
+    if not rv {
+        return NULL;
+    }
+    ascii_data = bytes_buffer(rv);
+    table = ptr[u8]("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/");
+    i: i64 = 0;
+    o: i64 = 0;
+    while i + 2 < bin_len {
+        b0 = i64((bin_data + i).view(1)[0]);
+        b1 = i64((bin_data + i + 1).view(1)[0]);
+        b2 = i64((bin_data + i + 2).view(1)[0]);
+        (ascii_data + o).view(1)[0] = (table + (b0 >> 2)).view(1)[0];
+        (ascii_data + o + 1).view(1)[0] = (table + (((b0 & 3) << 4) | (b1 >> 4))).view(
+            1
+        )[0];
+        (ascii_data + o + 2).view(1)[0] = (table + (((b1 & 15) << 2) | (b2 >> 6))).view(
+            1
+        )[0];
+        (ascii_data + o + 3).view(1)[0] = (table + (b2 & 63)).view(1)[0];
+        i += 3;
+        o += 4;
+    }
+    left = bin_len - i;
+    if left == 1 {
+        b0 = i64((bin_data + i).view(1)[0]);
+        (ascii_data + o).view(1)[0] = (table + (b0 >> 2)).view(1)[0];
+        (ascii_data + o + 1).view(1)[0] = (table + ((b0 & 3) << 4)).view(1)[0];
+        (ascii_data + o + 2).view(1)[0] = u8(61);
+        (ascii_data + o + 3).view(1)[0] = u8(61);
+        o += 4;
+    } elif left == 2 {
+        b0 = i64((bin_data + i).view(1)[0]);
+        b1 = i64((bin_data + i + 1).view(1)[0]);
+        (ascii_data + o).view(1)[0] = (table + (b0 >> 2)).view(1)[0];
+        (ascii_data + o + 1).view(1)[0] = (table + (((b0 & 3) << 4) | (b1 >> 4))).view(
+            1
+        )[0];
+        (ascii_data + o + 2).view(1)[0] = (table + ((b1 & 15) << 2)).view(1)[0];
+        (ascii_data + o + 3).view(1)[0] = u8(61);
+        o += 4;
+    }
+    if newline {
+        (ascii_data + o).view(1)[0] = u8(10);
+    }
+    return rv;
+}
+
+impl binascii_crc_hqx_impl(
+    module: ptr[PyObject], data: BufferArgument, crc: u32
+) -> ptr[PyObject] {
+    value = i64(crc) & 0xFFFF;
+    bin_data = ptr[u8](data.address());
+    length = data.size();
+    table = ptr[u16](addressof(crctab_hqx));
+    i: i64 = 0;
+    while i < length {
+        value = ((value << 8) & 0xFF00)
+            ^ i64((table + ((value >> 8) ^ i64((bin_data + i).view(1)[0]))).view(1)[0]);
+        i += 1;
+    }
+    return PyLong_FromUnsignedLong(u64(value));
+}
+
+impl binascii_crc32_impl(module: ptr[PyObject], data: BufferArgument, crc: u32) -> u32 {
+    checksum = u64(crc);
+    position = data.address();
+    remains = data.size();
+    while remains > CRC_CHUNK {
+        checksum = crc32(checksum, position, u32(CRC_CHUNK));
+        position += CRC_CHUNK;
+        remains -= CRC_CHUNK;
+    }
+    checksum = crc32(checksum, position, u32(remains));
+    return u32(checksum & u64(0xFFFFFFFF));
+}
+
+impl binascii_b2a_hex_impl(
     module: ptr[PyObject], data: BufferArgument, sep: ptr[PyObject], bytes_per_sep: i32
 ) -> ptr[PyObject] {
-    return hex_with_separator(module, data, sep, bytes_per_sep);
+    return _Py_strhex_bytes_with_sep(
+        ptr[u8](data.address()), data.size(), sep, bytes_per_sep
+    );
 }
 
-def binascii_hexlify_impl(
+impl binascii_hexlify_impl(
     module: ptr[PyObject], data: BufferArgument, sep: ptr[PyObject], bytes_per_sep: i32
 ) -> ptr[PyObject] {
-    return hex_with_separator(module, data, sep, bytes_per_sep);
+    return _Py_strhex_bytes_with_sep(
+        ptr[u8](data.address()), data.size(), sep, bytes_per_sep
+    );
 }
 
-def binascii_a2b_qp_impl(
+impl binascii_a2b_hex_impl(
+    module: ptr[PyObject], hexstr: BufferArgument
+) -> ptr[PyObject] {
+    argbuf = ptr[u8](hexstr.address());
+    arglen = hexstr.size();
+
+    if arglen % 2 != 0 {
+        PyErr_SetString(binascii_error(module), ptr[u8]("Odd-length string"));
+        return NULL;
+    }
+
+    retval = PyBytes_FromStringAndSize(ptr[u8](), arglen // 2);
+    if not retval {
+        return NULL;
+    }
+    retbuf = bytes_buffer(retval);
+    digits = ptr[u8](addressof(digit_values));
+
+    i: i64 = 0;
+    j: i64 = 0;
+    while i < arglen {
+        top = (digits + i64((argbuf + i).view(1)[0])).view(1)[0];
+        bot = (digits + i64((argbuf + i + 1).view(1)[0])).view(1)[0];
+        if top >= u8(16) or bot >= u8(16) {
+            PyErr_SetString(
+                binascii_error(module), ptr[u8]("Non-hexadecimal digit found")
+            );
+            jacpy_release(retval);
+            return NULL;
+        }
+        (retbuf + j).view(1)[0] = (top << u8(4)) | bot;
+        j += 1;
+        i += 2;
+    }
+    return retval;
+}
+
+impl binascii_unhexlify_impl(
+    module: ptr[PyObject], hexstr: BufferArgument
+) -> ptr[PyObject] {
+    return binascii_a2b_hex_impl(module, hexstr);
+}
+
+impl is_hex_char(c: u8) -> bool {
+    return (c >= u8(65) and c <= u8(70))
+        or (c >= u8(97) and c <= u8(102))
+        or (c >= u8(48) and c <= u8(57));
+}
+
+impl binascii_a2b_qp_impl(
     module: ptr[PyObject], data: BufferArgument, header: bool
 ) -> ptr[PyObject] {
-    return convert(module, data, 6, i64(header));
+    ascii_data = ptr[u8](data.address());
+    datalen = data.size();
+    digits = ptr[u8](addressof(digit_values));
+
+    odata = ptr[u8](PyMem_Calloc(u64(1), u64(datalen)));
+    if not odata {
+        PyErr_NoMemory();
+        return NULL;
+    }
+    inpos: i64 = 0;
+    out: i64 = 0;
+    while inpos < datalen {
+        if (ascii_data + inpos).view(1)[0] == u8(61) {
+            inpos += 1;
+            if inpos >= datalen {
+                break;
+            }
+            ch = (ascii_data + inpos).view(1)[0];
+
+            if ch == u8(10) or ch == u8(13) {
+                if ch != u8(10) {
+                    while inpos < datalen
+                        and (ascii_data + inpos).view(1)[0] != u8(10) {
+                        inpos += 1;
+                    }
+                }
+                if inpos < datalen {
+                    inpos += 1;
+                }
+            } elif ch == u8(61) {
+                (odata + out).view(1)[0] = u8(61);
+                out += 1;
+                inpos += 1;
+            } elif inpos + 1 < datalen
+                and is_hex_char(ch)
+                and is_hex_char((ascii_data + inpos + 1).view(1)[0]) {
+                high = (digits + i64(ch)).view(1)[0];
+                low = (digits + i64((ascii_data + inpos + 1).view(1)[0])).view(1)[0];
+                inpos += 2;
+                (odata + out).view(1)[0] = (high << u8(4)) | low;
+                out += 1;
+            } else {
+                (odata + out).view(1)[0] = u8(61);
+                out += 1;
+            }
+        } elif header and (ascii_data + inpos).view(1)[0] == u8(95) {
+            (odata + out).view(1)[0] = u8(32);
+            out += 1;
+            inpos += 1;
+        } else {
+            (odata + out).view(1)[0] = (ascii_data + inpos).view(1)[0];
+            inpos += 1;
+            out += 1;
+        }
+    }
+    rv = PyBytes_FromStringAndSize(odata, out);
+    PyMem_Free(odata);
+    return rv;
 }
 
-def binascii_b2a_qp_impl(
+impl to_hex(ch: u8, s: ptr[u8]) {
+    hexdigits = ptr[u8]("0123456789ABCDEF");
+    s.view(2)[1] = (hexdigits + i64(ch & u8(15))).view(1)[0];
+    s.view(2)[0] = (hexdigits + i64(ch >> u8(4))).view(1)[0];
+}
+
+impl qp_needs_quoting(
+    databuf: ptr[u8],
+    datalen: i64,
+    inpos: i64,
+    linelen: i64,
+    quotetabs: bool,
+    istext: bool,
+    header: bool
+) -> bool {
+    c = (databuf + inpos).view(1)[0];
+    if c > u8(126) or c == u8(61) or (header and c == u8(95)) {
+        return True;
+    }
+    if c == u8(46) and linelen == 0 {
+        if inpos + 1 == datalen {
+            return True;
+        }
+        following = (databuf + inpos + 1).view(1)[0];
+        if following == u8(10) or following == u8(13) or following == u8(0) {
+            return True;
+        }
+    }
+    if not istext and (c == u8(13) or c == u8(10)) {
+        return True;
+    }
+    if (c == u8(9) or c == u8(32)) and inpos + 1 == datalen {
+        return True;
+    }
+    return c < u8(33)
+        and c != u8(13)
+        and c != u8(10)
+        and (quotetabs or (c != u8(9) and c != u8(32)));
+}
+
+impl binascii_b2a_qp_impl(
     module: ptr[PyObject],
     data: BufferArgument,
     quotetabs: bool,
     istext: bool,
     header: bool
 ) -> ptr[PyObject] {
-    return convert(module, data, 7, i64(quotetabs), i64(istext), i64(header));
-}
+    databuf = ptr[u8](data.address());
+    datalen = data.size();
+    crlf = False;
 
-def binascii_crc_hqx_impl(
-    module: ptr[PyObject], data: BufferArgument, crc: u32
-) -> ptr[PyObject] {
-    return convert(module, data, 8, i64(crc));
-}
-
-# crc32 returns clinic's unsigned int: (unsigned)-1 with an error on failure.
-def binascii_crc32_impl(module: ptr[PyObject], data: BufferArgument, crc: u32) -> u32 {
-    result = convert(module, data, 9, i64(crc));
-    if result == 0 {
-        return u32(0xFFFFFFFF);
+    p = ptr[u8](memchr(databuf, i32(10), u64(datalen)));
+    if p {
+        newline_at = i64(int(p) - int(databuf));
+        if newline_at > 0 and (databuf + newline_at - 1).view(1)[0] == u8(13) {
+            crlf = True;
+        }
     }
-    value = u32(PyLong_AsUnsignedLongMask(result));
-    jacpy_release(result);
-    return value;
+
+    inpos: i64 = 0;
+    linelen: i64 = 0;
+    odatalen: i64 = 0;
+    while inpos < datalen {
+        delta: i64 = 0;
+        if qp_needs_quoting(
+            databuf, datalen, inpos, linelen, quotetabs, istext, header
+        ) {
+            if linelen + 3 >= MAXLINESIZE {
+                linelen = 0;
+                if crlf {
+                    delta += 3;
+                } else {
+                    delta += 2;
+                }
+            }
+            linelen += 3;
+            delta += 3;
+            inpos += 1;
+        } else {
+            c = (databuf + inpos).view(1)[0];
+            if istext
+                and (
+                    c == u8(10)
+                    or (
+                        inpos + 1 < datalen
+                        and c == u8(13)
+                        and (databuf + inpos + 1).view(1)[0] == u8(10)
+                    )
+                ) {
+                linelen = 0;
+
+                if inpos != 0 {
+                    previous = (databuf + inpos - 1).view(1)[0];
+                    if previous == u8(32) or previous == u8(9) {
+                        delta += 2;
+                    }
+                }
+                if crlf {
+                    delta += 2;
+                } else {
+                    delta += 1;
+                }
+                if c == u8(13) {
+                    inpos += 2;
+                } else {
+                    inpos += 1;
+                }
+            } else {
+                if inpos + 1 != datalen
+                    and (databuf + inpos + 1).view(1)[0] != u8(10)
+                    and linelen + 1 >= MAXLINESIZE {
+                    linelen = 0;
+                    if crlf {
+                        delta += 3;
+                    } else {
+                        delta += 2;
+                    }
+                }
+                linelen += 1;
+                delta += 1;
+                inpos += 1;
+            }
+        }
+        if PY_SSIZE_T_MAX - delta < odatalen {
+            PyErr_NoMemory();
+            return NULL;
+        }
+        odatalen += delta;
+    }
+
+    odata = ptr[u8](PyMem_Calloc(u64(1), u64(odatalen)));
+    if not odata {
+        PyErr_NoMemory();
+        return NULL;
+    }
+    inpos = 0;
+    out: i64 = 0;
+    linelen = 0;
+    while inpos < datalen {
+        if qp_needs_quoting(
+            databuf, datalen, inpos, linelen, quotetabs, istext, header
+        ) {
+            if linelen + 3 >= MAXLINESIZE {
+                (odata + out).view(1)[0] = u8(61);
+                out += 1;
+                if crlf {
+                    (odata + out).view(1)[0] = u8(13);
+                    out += 1;
+                }
+                (odata + out).view(1)[0] = u8(10);
+                out += 1;
+                linelen = 0;
+            }
+            (odata + out).view(1)[0] = u8(61);
+            out += 1;
+            to_hex((databuf + inpos).view(1)[0], odata + out);
+            out += 2;
+            inpos += 1;
+            linelen += 3;
+        } else {
+            c = (databuf + inpos).view(1)[0];
+            if istext
+                and (
+                    c == u8(10)
+                    or (
+                        inpos + 1 < datalen
+                        and c == u8(13)
+                        and (databuf + inpos + 1).view(1)[0] == u8(10)
+                    )
+                ) {
+                linelen = 0;
+
+                if out != 0 {
+                    last = (odata + out - 1).view(1)[0];
+                    if last == u8(32) or last == u8(9) {
+                        (odata + out - 1).view(1)[0] = u8(61);
+                        to_hex(last, odata + out);
+                        out += 2;
+                    }
+                }
+                if crlf {
+                    (odata + out).view(1)[0] = u8(13);
+                    out += 1;
+                }
+                (odata + out).view(1)[0] = u8(10);
+                out += 1;
+                if c == u8(13) {
+                    inpos += 2;
+                } else {
+                    inpos += 1;
+                }
+            } else {
+                if inpos + 1 != datalen
+                    and (databuf + inpos + 1).view(1)[0] != u8(10)
+                    and linelen + 1 >= MAXLINESIZE {
+                    (odata + out).view(1)[0] = u8(61);
+                    out += 1;
+                    if crlf {
+                        (odata + out).view(1)[0] = u8(13);
+                        out += 1;
+                    }
+                    (odata + out).view(1)[0] = u8(10);
+                    out += 1;
+                    linelen = 0;
+                }
+                linelen += 1;
+                if header and c == u8(32) {
+                    (odata + out).view(1)[0] = u8(95);
+                } else {
+                    (odata + out).view(1)[0] = c;
+                }
+                out += 1;
+                inpos += 1;
+            }
+        }
+    }
+    rv = PyBytes_FromStringAndSize(odata, out);
+    PyMem_Free(odata);
+    return rv;
 }

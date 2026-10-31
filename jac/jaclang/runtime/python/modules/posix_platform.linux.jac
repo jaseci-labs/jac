@@ -5,7 +5,7 @@ dev_t is an unsigned 64-bit integer.
 """
 
 import from c {
-    glob environ: ptr[ptr[u8]]; def dlsym(handle: ptr, symbol: str) -> ptr;  def fsync(
+    glob environ: ptr[ptr[u8]]; def dlsym(handle: ptr, symbol: ptr[u8]) -> ptr;  def fsync(
         fd: i32
     ) -> i32;  def fdatasync(fd: i32) -> i32;  def fchdir(fd: i32) -> i32;
 }
@@ -28,6 +28,6 @@ def fildes_call(fd: i32, operation: int) -> i32 {
 }
 
 # A C library function looked up at run time; RTLD_DEFAULT is NULL.
-def runtime_function(name: str) -> ptr {
+def runtime_function(name: ptr[u8]) -> ptr {
     return dlsym(ptr(), name);
 }
