@@ -1024,7 +1024,11 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
         _cap_modes[s] = _md;
         _rf: set = set();
         for _nm in s.get_all_sub_nodes(typ=uni.Name) {
-            if _nm.value in _sib_by_name and _sib_by_name[_nm.value] is not s {
+            _sib = _sib_by_name.get(_nm.value);
+            if _sib is not None
+                and _sib is not s
+                and _nm.sym is not None
+                and _nm.sym is _sib.name_spec.sym {
                 _rf.add(_nm.value);
             }
         }

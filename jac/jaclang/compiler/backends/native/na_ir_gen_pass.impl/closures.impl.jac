@@ -14,13 +14,13 @@ impl NaIRGenPass._scan_closure_escapes(
         if sub.enclosing_frame is not nd or self._ability_is_generator(sub) {
             continue;
         }
-        sname = sub.name_ref.sym_name if sub.name_ref else None;
-        if sname is None {
+        sub_sym = sub.name_spec.sym;
+        if sub_sym is None {
             continue;
         }
         escapes = False;
         for nm in direct_names {
-            if nm.value != sname {
+            if nm.sym is not sub_sym {
                 continue;
             }
             _np = nm.parent;
