@@ -673,6 +673,8 @@ impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
             ) {
             call = last;
         }
+    } elif last is val {
+        call = self._retype_tail_call(blk, func);
     }
     if call is None {
         self.emit(
@@ -693,6 +695,52 @@ impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
     } else {
         self.builder.ret(call);
     }
+}
+
+impl NaIRGenPass._retype_tail_call(
+    blk: ir.Block, func: ir.Function
+) -> (ir.CallInstr | None) {
+    if len(blk.instructions) < 2 {
+        return None;
+    }
+    last = blk.instructions[-1];
+    prev = blk.instructions[-2];
+    if not isinstance(last, ir.CastInstr)
+        or not isinstance(prev, ir.CallInstr)
+        or last.operands[0] is not prev {
+        return None;
+    }
+    fnty = func.function_type;
+    if last.type != fnty.return_type {
+        return None;
+    }
+    try {
+        callee_ty = prev.callee.function_type;
+    } except TypeError {
+        return None;
+    }
+    if callee_ty.var_arg or len(callee_ty.args) != len(fnty.args) {
+        return None;
+    }
+    word = ir.IntType(64);
+    for i in range(len(fnty.args)) {
+        have = callee_ty.args[i];
+        want = fnty.args[i];
+        if have != want
+            and not (isinstance(have, ir.PointerType) and want == word)
+            and not (have == word and isinstance(want, ir.PointerType)) {
+            return None;
+        }
+    }
+    blk.instructions.remove(last);
+    blk.instructions.remove(prev);
+    self.builder.position_at_end(blk);
+    callee = self.builder.bitcast(prev.callee, fnty.as_pointer(), name="tail.callee");
+    args: list[ir.Value] = [];
+    for (i, arg) in enumerate(prev.args) {
+        args.append(self._clib_reinterpret(arg, fnty.args[i], name=f"tail.arg.{i}"));
+    }
+    return self.builder.call(callee, args, name="tail.call", cconv=prev.cconv);
 }
 
 impl NaIRGenPass._tail_frame_blocker -> (str | None) {

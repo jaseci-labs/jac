@@ -1,19 +1,4 @@
-"""A POSIX helper for the subprocess module: fork_exec().
-
-Derived from CPython 3.14.6 Modules/_posixsubprocess.c; see ../LICENSE.cpython.
-The parent converts every argument into C memory before forking: argv, envp
-and the executable list as NULL-terminated char* arrays, the descriptors to
-keep, the group list, the child's messages and its scratch buffers, all
-reached from one child_context record. Between fork() (or vfork() on Linux)
-and exec() the child runs only child_exec(): scalar and pointer arithmetic
-over that record and async-signal-safe C calls, so it allocates nothing. The
-one exception is the user's preexec_fn, which calls back into Python exactly
-as the C module does. Platform differences are in
-posixsubprocess_platform.<os>.jac.
-"""
-
 import from c {
-    # One 8-byte word per field: CONTEXT_WORDS below must match.
     obj child_context {
         has exec_array: ptr = ptr(),
             argv: ptr = ptr(),
@@ -67,21 +52,108 @@ import from c {
 }
 
 glob:priv CONTEXT_WORDS: i64 = 38,
-     # sizeof(int) * 2 + 1: room for errno in hex.
      HEX_ERRNO_SIZE: i64 = 9,
      NO_ID: i64 = 0xFFFFFFFF,
      PY_SSIZE_T_MAX: i64 = 0x7FFFFFFFFFFFFFFF;
 
-# The error message for each way child_prepare() can fail.
 glob:priv NOEXEC: i64 = 0,
      NOEXEC_CHDIR: i64 = 1,
      PREEXEC_FAILED: i64 = 2,
-     # Setup finished; the exec attempts follow.
      PREPARED: i64 = 3;
 
-# make_inheritable(): every descriptor to keep becomes inheritable, except
-# errpipe_write, which stays open only until exec().
-def:priv make_inheritable(record: ptr[child_context]) -> bool {
+def:priv make_inheritable(record: ptr[child_context]) -> bool;
+
+def:priv child_prepare(record: ptr[child_context]) -> i64;
+
+def:priv child_execute(record: ptr[child_context]);
+
+def:priv child_write(fd: i32, text: ptr[u8]);
+
+def:priv child_exec(record: ptr[child_context]);
+
+def:priv do_fork_exec(record: ptr[child_context]) -> i32;
+
+def:priv fd_sequence_valid(fd_sequence: ptr[PyObject]) -> bool;
+
+def:priv free_charp_array(array: ptr);
+
+def:priv bytes_to_charp_array(sequence: ptr[PyObject]) -> ptr;
+
+obj:priv ForkState {
+    has exec_array: ptr = ptr(),
+        argv: ptr = ptr(),
+        envp: ptr = ptr(),
+        fast_args: ptr[PyObject] = NULL,
+        converted_args: ptr[PyObject] = NULL,
+        cwd_obj2: ptr[PyObject] = NULL,
+        extra_groups: ptr = ptr(),
+        c_fds_to_keep: ptr = ptr(),
+        preexec_fn_args_tuple: ptr[PyObject] = NULL,
+        text: ptr[PyObject] = NULL,
+        scratch: ptr = ptr(),
+        context: ptr = ptr(),
+        need_to_reenable_gc: bool = False;
+
+    def release;
+}
+
+def:priv convert_args(state: ForkState, process_args: ptr[PyObject]) -> bool;
+
+def:priv convert_extra_groups(state: ForkState, packed: ptr[PyObject]) -> i64;
+
+def:priv child_text(state: ForkState, context: ptr[child_context]) -> bool;
+
+def:priv child_scratch(
+    state: ForkState, context: ptr[child_context]
+) -> tuple[ptr, ptr];
+
+obj:priv ForkRequest {
+    has process_args: ptr[PyObject],
+        executable_list: ptr[PyObject],
+        close_fds: bool,
+        py_fds_to_keep: ptr[PyObject],
+        cwd_obj: ptr[PyObject],
+        env_list: ptr[PyObject],
+        pipes: list[i32],
+        restore_signals: bool,
+        call_setsid: bool,
+        pgid_to_set: i32,
+        gid_object: ptr[PyObject],
+        extra_groups_packed: ptr[PyObject],
+        uid_object: ptr[PyObject],
+        child_umask: i32,
+        preexec_fn: ptr[PyObject];
+}
+
+def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32;
+
+def subprocess_fork_exec_impl(
+    module: ptr[PyObject],
+    process_args: ptr[PyObject],
+    executable_list: ptr[PyObject],
+    close_fds: bool,
+    py_fds_to_keep: ptr[PyObject],
+    cwd_obj: ptr[PyObject],
+    env_list: ptr[PyObject],
+    p2cread: i32,
+    p2cwrite: i32,
+    c2pread: i32,
+    c2pwrite: i32,
+    errread: i32,
+    errwrite: i32,
+    errpipe_read: i32,
+    errpipe_write: i32,
+    restore_signals: bool,
+    call_setsid: bool,
+    pgid_to_set: i32,
+    gid_object: ptr[PyObject],
+    extra_groups_packed: ptr[PyObject],
+    uid_object: ptr[PyObject],
+    child_umask: i32,
+    preexec_fn: ptr[PyObject]
+) -> ptr[PyObject];
+
+impl make_inheritable(record: ptr[child_context]) -> bool {
     context = record.view(1);
     index = i64(0);
     while index < context[0].fds_to_keep_len {
@@ -97,14 +169,12 @@ def:priv make_inheritable(record: ptr[child_context]) -> bool {
     return True;
 }
 
-# The child's setup before exec(): which message reports a failure, or
-# PREPARED. errno describes the failure.
-def:priv child_prepare(record: ptr[child_context]) -> i64 {
+impl child_prepare(record: ptr[child_context]) -> i64 {
     context = record.view(1);
     if not make_inheritable(record) {
         return NOEXEC;
     }
-    # Close the parent's pipe ends.
+
     if context[0].p2cwrite != -1 and close(i32(context[0].p2cwrite)) == -1 {
         return NOEXEC;
     }
@@ -117,7 +187,7 @@ def:priv child_prepare(record: ptr[child_context]) -> i64 {
     if close(i32(context[0].errpipe_read)) == -1 {
         return NOEXEC;
     }
-    # A pipe end dup'ed onto 0, 1 or 2 must not be overwritten (#12607).
+
     c2pwrite = i32(context[0].c2pwrite);
     errwrite = i32(context[0].errwrite);
     if c2pwrite == 0 {
@@ -125,7 +195,7 @@ def:priv child_prepare(record: ptr[child_context]) -> i64 {
         if c2pwrite == -1 {
             return NOEXEC;
         }
-        # issue32270
+
         if _Py_set_inheritable_async_safe(c2pwrite, 0, ptr()) < 0 {
             return NOEXEC;
         }
@@ -139,7 +209,7 @@ def:priv child_prepare(record: ptr[child_context]) -> i64 {
             return NOEXEC;
         }
     }
-    # dup2() clears FD_CLOEXEC; a no-op dup2() must be done by hand (#10806).
+
     p2cread = i32(context[0].p2cread);
     if p2cread == 0 {
         if _Py_set_inheritable_async_safe(p2cread, 1, ptr()) < 0 {
@@ -203,13 +273,10 @@ def:priv child_prepare(record: ptr[child_context]) -> i64 {
     }
     if not context[0].preexec_fn.is_null()
         and not context[0].preexec_fn_args_tuple.is_null() {
-        # This is where the user has asked us to deadlock their program. The
-        # result is not released: exec() follows.
         result = PyObject_Call(
             context[0].preexec_fn, context[0].preexec_fn_args_tuple, NULL
         );
         if not result {
-            # Stringifying the exception would allocate; report no OSError.
             jacpy_set_errno(0);
             return PREEXEC_FAILED;
         }
@@ -217,9 +284,7 @@ def:priv child_prepare(record: ptr[child_context]) -> i64 {
     return PREPARED;
 }
 
-# Try each executable in turn, as Lib/os.py _execvpe() searches PATH; errno
-# is the first error that is not ENOENT or ENOTDIR, else the last one.
-def:priv child_execute(record: ptr[child_context]) {
+impl child_execute(record: ptr[child_context]) {
     context = record.view(1);
     saved_errno = i64(0);
     executables = ptr[ptr[u8]](context[0].exec_array);
@@ -245,17 +310,11 @@ def:priv child_execute(record: ptr[child_context]) {
     }
 }
 
-def:priv child_write(fd: i32, text: ptr[u8]) {
+impl child_write(fd: i32, text: ptr[u8]) {
     _Py_write_noraise(fd, text, strlen(text));
 }
 
-# child_exec(): runs after fork() or vfork(). Everything it reaches is in the
-# child_context record, and it makes only async-signal-safe calls (plus the
-# user's preexec_fn); it must not allocate. A failure before exec() is
-# reported on errpipe_write as "OSError:<hex errno>:<message>" or
-# "SubprocessError:0:<message>"; strerror() is not async-signal-safe, so the
-# parent looks the message up.
-def:priv child_exec(record: ptr[child_context]) {
+impl child_exec(record: ptr[child_context]) {
     stage = child_prepare(record);
     context = record.view(1);
     message = context[0].noexec;
@@ -265,7 +324,6 @@ def:priv child_exec(record: ptr[child_context]) {
         message = context[0].preexec_failed;
     } elif stage == PREPARED {
         message = context[0].empty;
-        # Close descriptors after preexec_fn, which might open some.
         if context[0].close_fds != 0 {
             close_open_fds(
                 i32(3),
@@ -297,22 +355,16 @@ def:priv child_exec(record: ptr[child_context]) {
     child_write(errpipe_write, message);
 }
 
-# do_fork_exec(): the parent gets the child's pid (or -1). A vfork() child
-# runs on this stack while the parent is suspended, so the child never
-# returns from here: it execs or exits.
-def:priv do_fork_exec(record: ptr[child_context]) -> i32 {
+impl do_fork_exec(record: ptr[child_context]) -> i32 {
     context = record.view(1);
     pid = i32(0);
     if VFORK_USABLE and not context[0].child_sigmask.is_null() {
-        # Other threads keep running while this one waits for the child's
-        # exec(); the child must not take the GIL (GH-104372).
         thread = PyEval_SaveThread();
         pid = vfork();
         if pid != 0 {
             PyEval_RestoreThread(thread);
         }
         if pid == -1 {
-            # vfork() may be refused (EINVAL); fall back to fork().
             pid = fork();
         }
     } else {
@@ -322,7 +374,6 @@ def:priv do_fork_exec(record: ptr[child_context]) -> i32 {
         return pid;
     }
     if not context[0].preexec_fn.is_null() {
-        # preexec_fn calls back into Python, which needs this.
         PyOS_AfterFork_Child();
     }
     child_exec(record);
@@ -330,8 +381,7 @@ def:priv do_fork_exec(record: ptr[child_context]) -> i32 {
     return i32(0);
 }
 
-# _sanity_check_python_fd_sequence(): sorted, non-negative ints below INT_MAX.
-def:priv fd_sequence_valid(fd_sequence: ptr[PyObject]) -> bool {
+impl fd_sequence_valid(fd_sequence: ptr[PyObject]) -> bool {
     previous = i64(-1);
     for index in range(int(PyTuple_Size(fd_sequence))) {
         item = PyTuple_GetItem(fd_sequence, i64(index));
@@ -347,7 +397,7 @@ def:priv fd_sequence_valid(fd_sequence: ptr[PyObject]) -> bool {
     return True;
 }
 
-def:priv free_charp_array(array: ptr) {
+impl free_charp_array(array: ptr) {
     if array.is_null() {
         return;
     }
@@ -364,9 +414,7 @@ def:priv free_charp_array(array: ptr) {
     PyMem_Free(array);
 }
 
-# _PySequence_BytesToCharpArray(): a NULL-terminated array of copies of the
-# sequence's bytes items, for argv, envp and the executable list.
-def:priv bytes_to_charp_array(sequence: ptr[PyObject]) -> ptr {
+impl bytes_to_charp_array(sequence: ptr[PyObject]) -> ptr {
     argc = PySequence_Size(sequence);
     if argc == -1 {
         return ptr();
@@ -383,7 +431,7 @@ def:priv bytes_to_charp_array(sequence: ptr[PyObject]) -> ptr {
     entries = ptr[ptr[u8]](array);
     for index in range(int(argc)) {
         slot = entries + i64(index);
-        # NULL-terminate before any failure so the array can be freed.
+
         slot.view(1)[0] = ptr[u8]();
         item = PySequence_GetItem(sequence, i64(index));
         if not item {
@@ -419,44 +467,26 @@ def:priv bytes_to_charp_array(sequence: ptr[PyObject]) -> ptr {
     return array;
 }
 
-# Everything fork_exec() holds until it returns.
-obj:priv ForkState {
-    has exec_array: ptr = ptr(),
-        argv: ptr = ptr(),
-        envp: ptr = ptr(),
-        fast_args: ptr[PyObject] = NULL,
-        converted_args: ptr[PyObject] = NULL,
-        cwd_obj2: ptr[PyObject] = NULL,
-        extra_groups: ptr = ptr(),
-        c_fds_to_keep: ptr = ptr(),
-        preexec_fn_args_tuple: ptr[PyObject] = NULL,
-        text: ptr[PyObject] = NULL,
-        scratch: ptr = ptr(),
-        context: ptr = ptr(),
-        need_to_reenable_gc: bool = False;
-
-    def release {
-        PyMem_Free(self.c_fds_to_keep);
-        jacpy_release(self.preexec_fn_args_tuple);
-        PyMem_RawFree(self.extra_groups);
-        jacpy_release(self.cwd_obj2);
-        free_charp_array(self.envp);
-        jacpy_release(self.converted_args);
-        jacpy_release(self.fast_args);
-        free_charp_array(self.argv);
-        free_charp_array(self.exec_array);
-        jacpy_release(self.text);
-        PyMem_RawFree(self.scratch);
-        PyMem_RawFree(self.context);
-        if self.need_to_reenable_gc {
-            PyGC_Enable();
-        }
+impl ForkState.release {
+    PyMem_Free(self.c_fds_to_keep);
+    jacpy_release(self.preexec_fn_args_tuple);
+    PyMem_RawFree(self.extra_groups);
+    jacpy_release(self.cwd_obj2);
+    free_charp_array(self.envp);
+    jacpy_release(self.converted_args);
+    jacpy_release(self.fast_args);
+    free_charp_array(self.argv);
+    free_charp_array(self.exec_array);
+    jacpy_release(self.text);
+    PyMem_RawFree(self.scratch);
+    PyMem_RawFree(self.context);
+    if self.need_to_reenable_gc {
+        PyGC_Enable();
     }
 }
 
-# tuple(PyUnicode_FSConverter(arg) for arg in process_args) as a char* array.
-def:priv convert_args(state: ForkState, process_args: ptr[PyObject]) -> bool {
-    state.fast_args = PySequence_Fast(process_args, "argv must be a tuple");
+impl convert_args(state: ForkState, process_args: ptr[PyObject]) -> bool {
+    state.fast_args = PySequence_Fast(process_args, ptr[u8]("argv must be a tuple"));
     if not state.fast_args {
         return False;
     }
@@ -487,8 +517,7 @@ def:priv convert_args(state: ForkState, process_args: ptr[PyObject]) -> bool {
     return not state.argv.is_null();
 }
 
-# The setgroups() list; -2 (no setgroups() call) for None, -1 on error.
-def:priv convert_extra_groups(state: ForkState, packed: ptr[PyObject]) -> i64 {
+impl convert_extra_groups(state: ForkState, packed: ptr[PyObject]) -> i64 {
     if packed == borrowed_none() {
         return -2;
     }
@@ -504,7 +533,7 @@ def:priv convert_extra_groups(state: ForkState, packed: ptr[PyObject]) -> i64 {
         object_error(PyExc_ValueError, "too many extra_groups");
         return -1;
     }
-    # extra_groups stays NULL for an empty list.
+
     if size > 0 {
         state.extra_groups = PyMem_RawMalloc(u64(size * 4));
         if not state.extra_groups {
@@ -535,9 +564,7 @@ def:priv convert_extra_groups(state: ForkState, packed: ptr[PyObject]) -> i64 {
     return size;
 }
 
-# The messages the child writes (the last one empty), and FD_DIR, as C
-# strings in one bytes object.
-def:priv child_text(state: ForkState, context: ptr[child_context]) -> bool {
+impl child_text(state: ForkState, context: ptr[child_context]) -> bool {
     messages = [
         "noexec",
         "noexec:chdir",
@@ -549,7 +576,7 @@ def:priv child_text(state: ForkState, context: ptr[child_context]) -> bool {
         FD_DIR
     ];
     data = ("\x00".join(messages) + "\x00").encode("utf-8");
-    state.text = PyBytes_FromStringAndSize(data, i64(len(data)));
+    state.text = jacpy_bytes_from_payload(data, i64(len(data)));
     if not state.text {
         return False;
     }
@@ -572,12 +599,7 @@ def:priv child_text(state: ForkState, context: ptr[child_context]) -> bool {
     return True;
 }
 
-# The child's scratch memory: the errno digits, two struct sigaction (the
-# second zeroed: SIG_DFL), the parent's two signal sets and the directory
-# buffer. Returns the two signal sets.
-def:priv child_scratch(
-    state: ForkState, context: ptr[child_context]
-) -> tuple[ptr, ptr] {
+impl child_scratch(state: ForkState, context: ptr[child_context]) -> tuple[ptr, ptr] {
     size = 16 + 2 * SIGACTION_SIZE + 2 * SIGSET_SIZE + DIRENT_BUFFER_SIZE;
     state.scratch = PyMem_RawCalloc(u64(1), u64(size));
     if not state.scratch {
@@ -595,28 +617,7 @@ def:priv child_scratch(
     return (all_signals, old_signals);
 }
 
-# fork_exec()'s arguments as the clinic converted them; pipes holds p2cread,
-# p2cwrite, c2pread, c2pwrite, errread, errwrite, errpipe_read and
-# errpipe_write in that order.
-obj:priv ForkRequest {
-    has process_args: ptr[PyObject],
-        executable_list: ptr[PyObject],
-        close_fds: bool,
-        py_fds_to_keep: ptr[PyObject],
-        cwd_obj: ptr[PyObject],
-        env_list: ptr[PyObject],
-        pipes: list[i32],
-        restore_signals: bool,
-        call_setsid: bool,
-        pgid_to_set: i32,
-        gid_object: ptr[PyObject],
-        extra_groups_packed: ptr[PyObject],
-        uid_object: ptr[PyObject],
-        child_umask: i32,
-        preexec_fn: ptr[PyObject];
-}
-
-def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
+impl fork_exec(state: ForkState, request: ForkRequest) -> i32 {
     none = borrowed_none();
     fds_to_keep_len = PyTuple_Size(request.py_fds_to_keep);
     has_preexec = request.preexec_fn != none;
@@ -642,7 +643,7 @@ def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
         object_error(PyExc_ValueError, "bad value(s) in fds_to_keep");
         return i32(-1);
     }
-    # gc must stay disabled while preexec_fn runs in the child.
+
     if has_preexec {
         state.need_to_reenable_gc = PyGC_Disable() != 0;
     }
@@ -650,7 +651,7 @@ def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
     if state.exec_array.is_null() {
         return i32(-1);
     }
-    # Converted here: the child must not allocate.
+
     if request.process_args != none and not convert_args(state, request.process_args) {
         return i32(-1);
     }
@@ -713,8 +714,7 @@ def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
     if all_signals.is_null() {
         return i32(-1);
     }
-    # The hook sees the original objects even if user classes present
-    # different lists to exec().
+
     if not audit_event(
         "_posixsubprocess.fork_exec",
         [
@@ -749,8 +749,7 @@ def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
     record[0].gid = i64(gid);
     record[0].uid = i64(uid);
     record[0].child_umask = i64(request.child_umask);
-    # The last step before fork(): PyOS_BeforeFork() must be matched by
-    # PyOS_AfterFork_Parent() on every path from here.
+
     need_after_fork = False;
     if has_preexec {
         state.preexec_fn_args_tuple = PyTuple_New(0);
@@ -763,8 +762,7 @@ def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
         need_after_fork = True;
     }
     saved_errno = i64(0);
-    # vfork() only when no credentials change and no preexec_fn runs; all
-    # signals stay blocked so no handler runs in the child sharing memory.
+
     if VFORK_USABLE
         and not has_preexec
         and i64(uid) == NO_ID
@@ -784,8 +782,6 @@ def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
             saved_errno = jacpy_errno();
         }
         if not record[0].child_sigmask.is_null() {
-            # vfork() suspended this thread until the child's exec() or
-            # exit, so the signals can be unblocked now.
             set_signal_mask(old_signals);
         }
     }
@@ -793,7 +789,6 @@ def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
         PyOS_AfterFork_Parent();
     }
     if saved_errno != 0 {
-        # Raised only now: PyOS_AfterFork_Parent() runs Python code.
         jacpy_set_errno(saved_errno);
         PyErr_SetFromErrno(PyExc_OSError);
         return i32(-1);
@@ -801,7 +796,7 @@ def:priv fork_exec(state: ForkState, request: ForkRequest) -> i32 {
     return pid;
 }
 
-def subprocess_fork_exec_impl(
+impl subprocess_fork_exec_impl(
     module: ptr[PyObject],
     process_args: ptr[PyObject],
     executable_list: ptr[PyObject],

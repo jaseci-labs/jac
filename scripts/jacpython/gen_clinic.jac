@@ -2,9 +2,9 @@
 
 CPython describes each extension function once, in a `/*[clinic input]` block,
 and Tools/clinic generates the argument parsing that calls the handwritten
-`<name>_impl` C function. This script runs that same parser (Tools/clinic from
-the checksum-pinned CPython archive) and writes the Jac equivalent of the
-generated `Modules/clinic/<file>.c.h`:
+`<name>_impl` C function. JacPython keeps those signatures as Jac data,
+scripts/jacpython/clinic/<name>.jac (see clinic_schema.jac), and this script
+writes the Jac equivalent of the generated `Modules/clinic/<file>.c.h` from it:
 
     jac run scripts/jacpython/gen_clinic.jac _zoneinfo     # one module
     jac run scripts/jacpython/gen_clinic.jac --check       # all, fail on drift
@@ -17,6 +17,9 @@ porting its `_impl` bodies. A module's type hooks and state stay in the
 handwritten jaclang/runtime/python/bindings/<name>.jac, as they do in C. A
 class whose methods take defining_class reads it through `<Class>_token`, a
 ClassToken the module file defines and the binding points at the created type.
+The glue names everything it uses from other modules (the `_impl` functions,
+the shared machinery of bindings/arguments.jac and bindings/converters.jac)
+without imports: jaclang/archwire.jac wires each name into the module.
 
 Converters without a generic Jac equivalent (posix's path_t, a module's own
 converter functions) are called as convert_<name>(value, fname, label) and
@@ -26,22 +29,21 @@ and a default read from the module state or the receiver
 (`clinic_state()->ConnectionType`, `((pysqlite_Cursor *)self)->arraysize`)
 is a module function over the receiver (`clinic_state_ConnectionType(receiver)`,
 `self_arraysize(receiver)`). A parameter deprecated with `[from X.Y]` warns
-as Tools/clinic's parser does. A clinic block whose `_impl` the C source never
-defines (a clone kept for its docstring and PyMethodDef, like
+as Tools/clinic's parser does. A clinic function whose `_impl` the C source
+never defined (a clone kept for its docstring and PyMethodDef, like
 `_sqlite3.connect`) contributes only `<c_basename>_doc`; the module binds it.
 """
 import argparse;
-import ast;
-import codecs;
 import importlib;
-import json;
 import re;
 import sys;
-import tempfile;
 import from pathlib { Path }
-import from common { BOOTSTRAP, REPO, RUNTIME, extract_tree, format_jac_many, pin }
+import from common { BOOTSTRAP, REPO, RUNTIME, format_jac_many }
+import from clinic_schema { Clinic, Function, Parameter }
 
 glob OUTPUT: Path = RUNTIME / "bindings/clinic",
+     # The signatures, one Clinic record per module.
+     DATA: Path = Path(__file__).resolve().parent / "clinic",
      MODULES: str = "jaclang.runtime.python.modules",
      REGISTRY: Path = BOOTSTRAP / "jacpython-clinic.txt",
      # PyMethodDef flags by name. METH_METHOD is left out: a method taking
@@ -120,7 +122,7 @@ glob OUTPUT: Path = RUNTIME / "bindings/clinic",
          "uint64": ("u64", 0xFFFFFFFFFFFFFFFF, "Python int too large for C uint64_t")
      },
      RETURNS: dict[str, str] = {
-         "CReturnConverter": "",
+         "": "",
          "int": "return_int",
          "bool": "return_bool",
          "long": "return_long",
@@ -216,8 +218,15 @@ def condition_platforms(condition: str) -> list[str] {
         set(re.findall(r"\b[A-Za-z_]\w*\b", expression))
             - {"True", "False", "and", "or", "not"}
     );
-    fixed = WINDOWS_SYMBOLS | DEBUG_SYMBOLS | OTHER_SYSTEM_SYMBOLS | set(PLATFORM_SYMBOLS);
-    features = [name for name in symbols if name not in fixed];
+    fixed = WINDOWS_SYMBOLS
+        | DEBUG_SYMBOLS
+        | OTHER_SYSTEM_SYMBOLS
+        | set(PLATFORM_SYMBOLS);
+    features = [
+        name
+        for name in symbols
+        if name not in fixed
+    ];
     if len(features) > 12 or re.search(r"[<>=]", condition) {
         return list(PLATFORMS);
     }
@@ -325,357 +334,10 @@ def nest_releases(body: list[str], indent: str) -> list[str] {
     return lines;
 }
 
-def class_name(value: any) -> str {
-    return value.__class__.__name__;
-}
-
-def accepted(conv: any) -> set[str] {
-    return {
-        getattr(a, "__name__", str(a)) for a in (getattr(conv, "accept", ()) or ())
-    };
-}
-
-# A module's C sources: those Setup lists, each followed by the local `.c`
-# files it textually includes (_ssl.c's `#include "_ssl/cert.c"`), whose clinic
-# blocks belong to the same module.
-def module_sources(tree: Path, module: str) -> list[Path] {
-    for setup in ("Modules/Setup.stdlib.in", "Modules/Setup.bootstrap.in") {
-        for line in (tree / setup).read_text().splitlines() {
-            parts = re.sub(r"^@[A-Z0-9_]+@", "", line.strip()).split();
-            if parts and parts[0] == module {
-                sources: list[Path] = [];
-                pending = [
-                    tree / "Modules" / p
-                    for p in parts[1:]
-                    if p.endswith(".c")
-                ];
-                while pending {
-                    source = pending.pop(0);
-                    sources.append(source);
-                    included = re.findall(
-                        r'^#\s*include\s+"([^"]+\.c)"', source.read_text(), re.M
-                    );
-                    pending = [source.parent / name for name in included] + pending;
-                }
-                return sources;
-            }
-        }
-    }
-    sys.exit(f"{module} is not built by Modules/Setup.stdlib.in or Setup.bootstrap.in");
-}
-
-# The preprocessor condition each clinic function is compiled under, as
-# Tools/clinic sees it while rendering the block ("" when none). Keyed by the
-# Function's id: a function defined once per platform branch (semaphore.c's
-# SemLock.acquire) has one full name for several definitions.
-glob CONDITIONS: dict[int, str] = {};
-
 # JacPython builds only POSIX targets, where a function compiled only under a
 # Windows condition does not exist.
 def windows_only(condition: str) -> bool {
     return not posix_condition(condition);
-}
-
-# How Tools/clinic parses each function's arguments, by Function id: its
-# ParseArgsCodeGen (flags, pos_only, min_pos, max_pos, min_kw_only) and the
-# generated C parser, which names the getargs routine it calls.
-glob PARSERS: dict[int, tuple[any, str]] = {};
-
-# A C string literal's body as a Python bytes literal's: characters outside
-# ASCII become the \x escapes of their UTF-8 bytes.
-def c_bytes_literal(piece: str) -> str {
-    return "".join(
-        c if ord(c) < 128 else "".join(f"\\x{byte:02x}" for byte in c.encode("utf-8"))
-        for c in piece
-    );
-}
-
-# The PyDoc_STRVAR docstrings of `sources` outside clinic blocks, by C
-# identifier, in source order: the docs of a module's hand-written method
-# tables, types and the module itself. A name defined under several #if
-# branches keeps the first one a POSIX target compiles.
-def c_docstrings(tree: Path, sources: list[Path]) -> dict[str, str] {
-    sys.path.insert(0, str(tree / "Tools/clinic"));
-    cpp = importlib.import_module("libclinic.cpp");
-    found: dict[str, str] = {};
-    for source in sources {
-        lines = source.read_text().splitlines();
-        monitor = cpp.Monitor(str(source));
-        index = 0;
-        generated = False;
-        while index < len(lines) {
-            line = lines[index];
-            monitor.writeline(line);
-            # Clinic's own output (a block written into the .c file) is
-            # generated separately.
-            if "[clinic start generated code]" in line {
-                generated = True;
-            }
-            if "[clinic end generated code" in line {
-                generated = False;
-            }
-            start = None
-                if generated
-                else re.match(r"\s*PyDoc_STRVAR\((\w+),(.*)$", line);
-            if not start {
-                index += 1;
-                continue;
-            }
-            name = start.group(1);
-            condition = monitor.condition();
-            body = start.group(2);
-            while not re.search(r"\);\s*$", body) and index + 1 < len(lines) {
-                index += 1;
-                monitor.writeline(lines[index]);
-                body += "\n" + lines[index];
-            }
-            index += 1;
-            # C line splices, then the adjacent string literals as the bytes
-            # C compiles them to (\xNN escapes are bytes), read as UTF-8.
-            body = body.replace("\\\n", "");
-            text = b"".join(
-                ast.literal_eval('b"' + c_bytes_literal(piece) + '"')
-                for piece in re.findall(r'"((?:[^"\\\n]|\\.)*)"', body)
-            ).decode(
-                "utf-8"
-            );
-            if name not in found and posix_condition(condition) {
-                found[name] = text;
-            }
-        }
-    }
-    return found;
-}
-
-# Splits a C macro argument list at its top-level commas, keeping string
-# literals and nested parentheses whole.
-def split_c_arguments(text: str) -> list[str] {
-    pieces: list[str] = [];
-    depth = 0;
-    current = "";
-    quoted = False;
-    index = 0;
-    while index < len(text) {
-        c = text[index];
-        if quoted {
-            current += c;
-            if c == "\\" and index + 1 < len(text) {
-                current += text[index + 1];
-                index += 2;
-                continue;
-            }
-            if c == '"' {
-                quoted = False;
-            }
-        } elif c == '"' {
-            quoted = True;
-            current += c;
-        } elif c == "(" {
-            depth += 1;
-            current += c;
-        } elif c == ")" {
-            depth -= 1;
-            current += c;
-        } elif c == "," and depth == 0 {
-            pieces.append(current.strip());
-            current = "";
-        } else {
-            current += c;
-        }
-        index += 1;
-    }
-    pieces.append(current.strip());
-    return pieces;
-}
-
-# Docstrings defined through a function-like macro whose body is a
-# PyDoc_STRVAR (math's FUNC1(name, func, overflow, "doc")): each invocation's
-# expanded name and doc text.
-def c_macro_docstrings(sources: list[Path]) -> dict[str, str] {
-    found: dict[str, str] = {};
-    for source in sources {
-        text = source.read_text().replace("\\\n", " ");
-        macros: dict[str, tuple[list[str], str, str]] = {};
-        for hit in re.finditer(r"#define\s+(\w+)\(([^)]*)\)(.*)", text) {
-            doc = re.search(
-                r"PyDoc_STRVAR\(\s*([\w#\s]+?)\s*,\s*(\w+)\s*\)", hit.group(3)
-            );
-            if doc {
-                params = [p.strip() for p in hit.group(2).split(",")];
-                macros[hit.group(1)] = (params, doc.group(1), doc.group(2));
-            }
-        }
-        for (macro, (params, name_pattern, doc_param)) in macros.items() {
-            for call in re.finditer(r"(?m)^" + macro + r"\(", text) {
-                depth = 1;
-                end = call.end();
-                quoted = False;
-                while end < len(text) and depth > 0 {
-                    c = text[end];
-                    if quoted {
-                        if c == "\\" {
-                            end += 1;
-                        } elif c == '"' {
-                            quoted = False;
-                        }
-                    } elif c == '"' {
-                        quoted = True;
-                    } elif c == "(" {
-                        depth += 1;
-                    } elif c == ")" {
-                        depth -= 1;
-                    }
-                    end += 1;
-                }
-                values = split_c_arguments(text[call.end():end - 1]);
-                if len(values) != len(params) {
-                    continue;
-                }
-                binding = dict(zip(params, values));
-                name = "".join(
-                    binding.get(part.strip(), part.strip())
-                    for part in name_pattern.split("##")
-                );
-                literals = re.findall(
-                    r'"((?:[^"\\\n]|\\.)*)"', binding.get(doc_param, "")
-                );
-                if literals and name not in found {
-                    found[name] = b"".join(
-                        ast.literal_eval('b"' + c_bytes_literal(piece) + '"')
-                        for piece in literals
-                    ).decode(
-                        "utf-8"
-                    );
-                }
-            }
-        }
-    }
-    return found;
-}
-
-# The docs a C source writes inline into its PyMethodDef, PyMemberDef and
-# PyGetSetDef tables (PyDoc_STR("...") or a literal), as
-# <table>_<entry>_doc. Entries a POSIX target does not compile are left out.
-def c_table_docs(tree: Path, sources: list[Path]) -> dict[str, str] {
-    sys.path.insert(0, str(tree / "Tools/clinic"));
-    cpp = importlib.import_module("libclinic.cpp");
-    found: dict[str, str] = {};
-    for source in sources {
-        lines = source.read_text().splitlines();
-        monitor = cpp.Monitor(str(source));
-        table = "";
-        pending = "";
-        condition = "";
-        for line in lines {
-            monitor.writeline(line);
-            start = re.match(
-                r"\s*(?:static\s+)?(?:struct\s+)?(?:PyMethodDef|PyMemberDef|PyGetSetDef)\s+(\w+)\s*\[\]\s*=",
-                line
-            );
-            if start {
-                table = start.group(1);
-                continue;
-            }
-            if not table {
-                continue;
-            }
-            if re.match(r"\s*};", line) {
-                table = "";
-                continue;
-            }
-            if not pending {
-                if not re.match(r'\s*\{\s*"', line) {
-                    continue;
-                }
-                condition = monitor.condition();
-            }
-            pending += line.replace("\\\n", "") + "\n";
-            if not re.search(r"\}\s*,?\s*(/\*.*)?$", pending.rstrip()) {
-                continue;
-            }
-            record = pending;
-            pending = "";
-            name = re.match(r'\s*\{\s*"(\w+)"', record);
-            literals = re.findall(r'"((?:[^"\\\n]|\\.)*)"', record);
-            if not name or len(literals) < 2 or not posix_condition(condition) {
-                continue;
-            }
-            # The first literal is the pending's name; the rest are its doc.
-            text = b"".join(
-                ast.literal_eval('b"' + c_bytes_literal(piece) + '"')
-                for piece in literals[1:]
-            ).decode(
-                "utf-8"
-            );
-            found[f"{table}_{name.group(1)}_doc"] = text;
-        }
-    }
-    return found;
-}
-
-# (class or None, clinic function) for every clinic input block of `sources`.
-def clinic_functions(tree: Path, sources: list[Path]) -> list[tuple[any, any]] {
-    sys.path.insert(0, str(tree / "Tools/clinic"));
-    app = importlib.import_module("libclinic.app");
-    clanguage = importlib.import_module("libclinic.clanguage");
-    parse_args = importlib.import_module("libclinic.parse_args");
-    # Tools/clinic/libclinic/cli.py: a file defining Py_LIMITED_API gets the
-    # limited C API's parsers and messages.
-    limited = importlib.import_module("libclinic.cli").LIMITED_CAPI_REGEX;
-    function_type = importlib.import_module("libclinic.function").Function;
-    found: list[tuple[any, any]] = [];
-    for source in sources {
-        text = source.read_text();
-        if "[clinic input]" not in text {
-            continue;
-        }
-        language = clanguage.CLanguage(str(source));
-        render = language.render;
-        def record_conditions(clinic: any, signatures: any) -> any {
-            for signature in signatures {
-                if isinstance(signature, function_type) {
-                    CONDITIONS[id(signature)] = language.cpp.condition();
-                }
-            }
-            return render(clinic, signatures);
-        }
-        def record_parser(f: any, codegen: any) -> dict[str, str] {
-            generator = parse_args.ParseArgsCodeGen(f, codegen);
-            templates = generator.parse_args(language);
-            PARSERS[id(f)] = (generator, templates["parser_definition"]);
-            return templates;
-        }
-        language.render = record_conditions;
-        language.output_templates = record_parser;
-        clinic = app.Clinic(
-            language,
-            filename=str(source),
-            verify=False,
-            limited_capi=bool(limited.search(text))
-        );
-        clinic.parse(text);
-        # Classes declared without a module prefix (md5's `class MD5Type`)
-        # belong to the clinic itself rather than to one of its modules.
-        for module in [clinic] + list(clinic.modules.values()) {
-            found += [(None, f) for f in module.functions];
-            stack = list(module.classes.values());
-            while stack {
-                cls = stack.pop(0);
-                found += [(cls, f) for f in cls.functions];
-                stack += list(cls.classes.values());
-            }
-        }
-    }
-    return found;
-}
-
-# The C a converter's parse_arg renders ("" when it renders none).
-def custom_parse_source(conv: any) -> str {
-    try {
-        return conv.parse_arg("__argument", "__argument", limited_capi=False) or "";
-    } except Exception {
-        return "";
-    }
 }
 
 def jac_ctype(ctype: str) -> str {
@@ -699,11 +361,6 @@ def jac_ctype(ctype: str) -> str {
     # A C typedef (SEM_HANDLE) names nothing in Jac: the converter's own
     # return type types the variable.
     return "";
-}
-
-# Whether a clinic parser body calls the `_impl` function of `base`.
-def expected_impl_call(base: str, body: str) -> bool {
-    return bool(re.search(r"_impl\(", body.replace("{c_basename}", base)));
 }
 
 obj Emitter {
@@ -731,8 +388,9 @@ obj Emitter {
         c_docs: dict[str, str] = {},
         slow_only: bool = False,
         raise_free: bool = False,
+        checked_converters: bool = False,
         function_docs: dict[str, str] = {},
-        source_text: str = "";
+        classes: dict[str, str] = {};
 
     def use(name: str) -> str {
         self.converters.add(name);
@@ -743,23 +401,24 @@ obj Emitter {
         return f"{cls_name}_token";
     }
 
-    def table_name(cls: any) -> str {
-        return (f"{cls.name}_methods" if cls else "module_methods") + self.table_suffix;
+    def table_name(cls: str) -> str {
+        return (f"{cls}_methods" if cls else "module_methods") + self.table_suffix;
     }
 
     # The Jac expression for a parameter's default.
-    def default_value(p: any, jtype: str) -> str {
-        initial = self.initializer(p.converter);
+    def default_value(p: Parameter, jtype: str) -> str {
+        initial = self.initializer(p);
         if initial {
             return initial;
         }
-        c_default = getattr(p.converter, "c_default", "");
-        py_default = p.default;
-        if jtype == "ptr[u8]" and (c_default == "NULL" or py_default is None) {
+        c_default = p.c_default;
+        py_default = p.py_default;
+        none_default = p.default_kind == "value" and py_default is None;
+        if jtype == "ptr[u8]" and (c_default == "NULL" or none_default) {
             return "ptr[u8]()";
         }
-        if c_default in (None, "") {
-            if py_default is None {
+        if not c_default {
+            if none_default {
                 return "NULL" if jtype == "ptr[PyObject]" else "None";
             }
             if isinstance(py_default, bool) {
@@ -771,7 +430,10 @@ obj Emitter {
             if isinstance(py_default, str) {
                 return jac_string(py_default);
             }
-            raise Unsupported(f"default {py_default!r}");
+            shown = repr(py_default)
+                if p.default_kind == "value"
+                else f"<{(p.default_kind or 'unspecified').capitalize()}>";
+            raise Unsupported(f"default {shown}");
         }
         text = str(c_default).strip();
         if jtype == "BufferArgument"
@@ -841,41 +503,42 @@ obj Emitter {
 
     # (Jac type, expression over `value`, extra statements) for one parameter.
     def convert(
-        fname: str, p: any, position: int, numbered: bool = False
+        fname: str, p: Parameter, position: int, numbered: bool = False
     ) -> tuple[str, str, list[str]] {
-        conv = p.converter;
-        kind = class_name(conv).removesuffix("_converter");
+        kind = p.converter;
         # getargs' own conversions (a format parser) number every argument.
-        shown = p.name if p.kind.name != "POSITIONAL_ONLY" and not numbered else "";
-        # Position 0 is clinic's METH_O argument, named only "argument".
-        label = jac_string("argument")
-            if position == 0
-            else self.use("argument_label") + f"({jac_string(shown)}, {position})";
+        shown = p.name if p.kind != "POSITIONAL_ONLY" and not numbered else "";
+        # Position 0 is clinic's METH_O argument, named only "argument". The
+        # label is argument_label()'s text as a literal, so a call formats
+        # nothing unless an argument fails to convert.
+        label = jac_string(
+            "argument"
+                if position == 0
+                else (f"argument '{shown}'" if shown else f"argument {position}")
+        );
         where = f"{jac_string(fname)}, {label}";
-        accept_names = accepted(conv);
+        accept_names = set(p.accept);
         # The limited C API reports a mismatch with the type's %T name.
         qualified = ", True" if self.qualified else "";
         # Clinic records bitwise=True only as the mask format unit it selects.
-        bitwise = getattr(conv, "format_unit", "") in ("B", "H", "I", "k", "K");
+        bitwise = p.format_unit in ("B", "H", "I", "k", "K");
         # object(converter=..., type=...): the named function converts into
         # the declared C type.
-        through = getattr(conv, "converter", None);
-        if kind == "object" and isinstance(through, str) and through {
+        through = p.convert_with;
+        if kind == "object" and through {
             if through in SHARED_CONVERTERS {
                 return (
-                    jac_ctype(conv.type),
+                    jac_ctype(p.type),
                     self.use(SHARED_CONVERTERS[through]) + f"(value, {where})",
                     []
                 );
             }
             custom = "convert_" + re.sub(r"\W", "_", through);
             self.module_names.add(custom);
-            return (jac_ctype(conv.type), f"{custom}(value, {where})", []);
+            return (jac_ctype(p.type), f"{custom}(value, {where})", []);
         }
         if kind == "object" or kind in TYPED_OBJECTS {
-            subclass = TYPED_OBJECTS[kind]
-                if kind in TYPED_OBJECTS
-                else getattr(conv, "subclass_of", "");
+            subclass = TYPED_OBJECTS[kind] if kind in TYPED_OBJECTS else p.subclass_of;
             if not subclass {
                 return ("ptr[PyObject]", "value", []);
             }
@@ -911,7 +574,7 @@ obj Emitter {
         # int(accept={str}) keeps its accepted types only as the "C" unit.
         if kind == "int" {
             # int(accept={str}) is clinic's "C" unit: one unicode character.
-            if "str" in accept_names or getattr(conv, "format_unit", "") == "C" {
+            if "str" in accept_names or p.format_unit == "C" {
                 return (
                     "i32",
                     f"i32({self.use('convert_unicode_char')}(value, {where}))",
@@ -923,7 +586,7 @@ obj Emitter {
         if kind == "bool" {
             # An int default other than 0 or 1 (posix.link's -1, "not
             # given") keeps C's int variable.
-            c_int_default = str(getattr(conv, "c_default", "") or "").strip();
+            c_int_default = p.c_default.strip();
             if re.fullmatch(r"-?\d+", c_int_default)
                 and c_int_default not in ("0", "1") {
                 return ("i32", "i32(" + self.use("convert_bool") + "(value))", []);
@@ -981,24 +644,24 @@ obj Emitter {
         }
         # Tools/clinic keeps a str or Py_buffer converter's accepted types only
         # as the getargs format unit it selects.
-        unit = getattr(conv, "format_unit", "");
+        unit = p.format_unit;
         if kind == "str" {
             # "s#" as clinic parses it for a METH_O function, with PyArg_Parse;
             # the _impl takes the C string and its size.
-            if unit == "s#" and position == 0 and not getattr(conv, "encoding", "") {
+            if unit == "s#" and position == 0 and not p.encoding {
                 return (
                     self.use("SizedText"),
                     self.use("convert_sized_str") + f"(value, {where})",
                     []
                 );
             }
-            if unit not in ("s", "z") or getattr(conv, "encoding", "") {
+            if unit not in ("s", "z") or p.encoding {
                 raise Unsupported(f"str converter '{unit}'");
             }
             accepts_none = unit == "z";
             # A str that may be NULL (None accepted, or a NULL C default) stays
             # C's `const char *`: the argument's UTF-8, NULL when absent.
-            if accepts_none or getattr(conv, "c_default", "") == "NULL" {
+            if accepts_none or p.c_default == "NULL" {
                 return (
                     "ptr[u8]",
                     self.use("convert_cstr") + f"(value, {where}, {accepts_none})",
@@ -1038,12 +701,12 @@ obj Emitter {
             }
             return ("BufferArgument", self.use(converter) + f"(value, {where})", []);
         }
-        named = getattr(conv, "converter", "");
+        named = p.convert_with;
         # Converters the interpreter itself provides (ceval.c), shared by
         # every module that names them.
         if isinstance(named, str) and named in SHARED_CONVERTERS {
             return (
-                jac_ctype(conv.type),
+                jac_ctype(p.type),
                 self.use(SHARED_CONVERTERS[named]) + f"(value, {where})",
                 []
             );
@@ -1056,41 +719,31 @@ obj Emitter {
         );
         if custom in API_CONVERTERS {
             self.use(custom);
-            return (jac_ctype(conv.type), f"{custom}(value, {where})", []);
+            return (jac_ctype(p.type), f"{custom}(value, {where})", []);
         }
         self.module_names.add(custom);
         # A converter that fills a C struct its initializer macro sets up
         # (posix's path_t and PATH_T_INITIALIZE_P) is handed that initializer,
         # which also stands for the omitted argument.
-        initial = self.initializer(conv);
+        initial = self.initializer(p);
         if initial {
-            return (jac_ctype(conv.type), f"{custom}(value, {initial})", []);
+            return (jac_ctype(p.type), f"{custom}(value, {initial})", []);
         }
         # Keyword options the converter keeps (confname's `table`, the name
         # of a module attribute) follow the error context; a custom parse
         # that hands the converter the module gets the receiver first.
-        options = "".join(f", {name}" for name in self.converter_options(conv));
-        parsed = custom_parse_source(conv);
-        module = "receiver, "
-            if "(module, " in parsed
-                or (isinstance(named, str) and named and f"{named}(module," in parsed)
-            else "";
-        return (
-            jac_ctype(conv.type),
-            f"{custom}({module}value, {where}{options})",
-            []
-        );
+        options = "".join(f", {name}" for name in self.converter_options(p));
+        module = "receiver, " if p.takes_module else "";
+        return (jac_ctype(p.type), f"{custom}({module}value, {where}{options})", []);
     }
 
     # The C initializer macro call a by-reference converter defaults to, in
     # Jac, or "" when it has none.
-    def initializer(conv: any) -> str {
-        if not getattr(conv, "impl_by_reference", False)
-            or not hasattr(conv, "pre_render") {
+    def initializer(p: Parameter) -> str {
+        if not p.by_reference {
             return "";
         }
-        conv.pre_render();
-        text = str(getattr(conv, "c_default", "") or "").strip();
+        text = p.c_default.strip();
         call = re.fullmatch(r"([A-Za-z_]\w*)\((.*)\)", text);
         if call is None {
             return "";
@@ -1107,44 +760,25 @@ obj Emitter {
         return f"{call.group(1)}({', '.join(arguments)})";
     }
 
-    # The values of a module converter's own keyword options that name C
-    # objects of the module.
-    def converter_options(conv: any) -> list[str] {
-        init = getattr(type(conv), "converter_init", None);
-        if init is None {
-            return [];
-        }
-        import inspect;
-        names: list[str] = [];
-        for (name, parameter) in inspect.signature(init).parameters.items() {
-            if parameter.kind != parameter.KEYWORD_ONLY {
-                continue;
-            }
-            value = getattr(conv, name, None);
-            if not isinstance(value, str) {
-                continue;
-            }
-            # An option the parse spells as a C string literal stays one.
-            if f'"{value}"' in custom_parse_source(conv) {
-                names.append(json.dumps(value));
-            } elif re.fullmatch(r"[A-Za-z_]\w*", value) {
-                self.module_names.add(value);
-                names.append(value);
+    # A module converter's own keyword options: the names of C objects of
+    # the module, and string literals as they are.
+    def converter_options(p: Parameter) -> list[str] {
+        for option in p.options {
+            if re.fullmatch(r"[A-Za-z_]\w*", option) {
+                self.module_names.add(option);
             }
         }
-        return names;
+        return list(p.options);
     }
 
     # The PyMethodDef flags and getargs parser clinic generates for `f`.
     # tp_new and tp_init keep the flags clinic chose internally; they only
     # select the parser.
-    def calling_convention(f: any) -> tuple[int, str] {
-        if id(f) not in PARSERS {
+    def calling_convention(f: Function) -> tuple[int, str] {
+        if not f.flags {
             raise Unsupported("no clinic parser");
         }
-        generator = PARSERS[id(f)][0];
-        body = PARSERS[id(f)][1];
-        names = [name.strip() for name in generator.flags.split("|")];
+        names = [name.strip() for name in f.flags.split("|")];
         flags = 0;
         for name in names {
             if name not in METHOD_FLAGS {
@@ -1152,78 +786,38 @@ obj Emitter {
             }
             flags = flags | METHOD_FLAGS[name];
         }
-        if "switch (" in body {
-            raise Unsupported("optional groups");
+        # A parse no arguments.jac parser does (optional groups, getargs'
+        # keyword format parsing) names why instead.
+        if not f.parser.startswith("PARSE_") {
+            raise Unsupported(f.parser);
         }
-        if "_PyArg_ParseStackAndKeywords(" in body
-            or "_PyArg_ParseTupleAndKeywordsFast(" in body {
-            raise Unsupported("keyword format parsing");
-        }
-        if "PyArg_ParseTupleAndKeywords(" in body {
-            parser = "PARSE_FORMAT_KEYWORDS";
-        } elif "METH_NOARGS" in names {
-            parser = "PARSE_NOTHING"
-                if "_PyArg_NoPositional(" in body
-                else "PARSE_GIVEN";
-        } elif "METH_O" in names {
-            parser = "PARSE_GIVEN";
-        } elif "_PyArg_UnpackKeywords(" in body {
-            parser = "PARSE_KEYWORDS";
-        } elif "takes no arguments" in body {
-            parser = "PARSE_NO_ARGUMENTS";
-        } elif "_PyArg_ParseStack(" in body or "PyArg_ParseTuple(" in body {
-            parser = "PARSE_FORMAT";
-        } elif "_PyArg_CheckPositional(" in body
-            or (generator.limited_capi and "expected" in body) {
-            # The limited C API spells _PyArg_CheckPositional() out inline.
-            parser = "PARSE_POSITIONAL";
-        } else {
-            raise Unsupported(f"parser for {generator.flags}");
-        }
-        return (flags, parser);
+        return (flags, f.parser);
     }
 
     # The deprecation warnings Tools/clinic's parser emits for `f`: CallSignature
     # options for the positional and keyword `[from X.Y]` rules, with the
-    # messages taken from the generated parser.
-    def deprecations(f: any, params: list[any]) -> list[str] {
-        body = PARSERS[id(f)][1];
-        messages: list[str] = [];
-        for hit in re.finditer(
-            r'PyErr_WarnEx\(PyExc_DeprecationWarning,((?:\s*"(?:[^"\\]|\\.)*")+)\s*,\s*1\)',
-            body
-        ) {
-            pieces = re.findall(r'"((?:[^"\\]|\\.)*)"', hit.group(1));
-            messages.append(codecs.decode("".join(pieces), "unicode_escape"));
-        }
+    # messages its generated parser has.
+    def deprecations(f: Function, params: list[Parameter]) -> list[str] {
         options: list[str] = [];
         positional = [
             i
             for (i, p) in enumerate(params)
-            if getattr(p, "deprecated_positional", None)
+            if p.deprecated_positional
         ];
         keyword = [
             i
             for (i, p) in enumerate(params)
-            if getattr(p, "deprecated_keyword", None)
+            if p.deprecated_keyword
         ];
         if positional {
-            message = next(
-                m
-                for m in messages
-                if "positional argument" in m
-            );
+            message = f.positional_warning;
             options.append(f"positional_warning={jac_string(message)}");
             options.append(
                 f"positional_warn_range=({positional[0]}, {positional[-1] + 1})"
             );
         }
         if keyword {
-            message = next(
-                m
-                for m in messages
-                if m.startswith("Passing keyword")
-            );
+            message = f.keyword_warning;
             # deprecate_keyword_use(): a required parameter passed by keyword
             # warns alone; an optional one after it only when given.
             required = -1;
@@ -1243,21 +837,12 @@ obj Emitter {
         return options;
     }
 
-    def function(cls: any, f: any) {
-        kind = f.kind.name;
+    def function(cls: str, f: Function) {
+        kind = f.kind;
         self.slow_only = False;
         # A clone kept only for its docstring and method table entry: the C
-        # module binds it by hand. A parser calls `<c_basename>_impl`; without
-        # one (a METH_O object argument) the C function is the impl itself.
-        # A per-target definition is looked up in C by its unsuffixed name.
-        source_base = f.c_basename.removesuffix(self.table_suffix)
-            if self.table_suffix
-            else f.c_basename;
-        expected = source_base + "_impl"
-            if id(f) in PARSERS and expected_impl_call(source_base, PARSERS[id(f)][1])
-            else source_base;
-        if kind not in ("METHOD_NEW", "METHOD_INIT")
-            and not re.search(rf"\b{expected}\s*\(", self.source_text) {
+        # module binds it by hand.
+        if kind not in ("METHOD_NEW", "METHOD_INIT") and f.bound_by_hand {
             doc = f.docstring or "";
             if doc.split("\n")[-1] == "--" {
                 doc += "\n\n";
@@ -1265,13 +850,12 @@ obj Emitter {
             self.function_docs[f.c_basename] = doc;
             return;
         }
-        params = list(f.parameters.values());
+        params = list(f.params);
         params.pop(0);
-        uses_class = bool(params)
-            and class_name(params[0].converter) == "defining_class_converter";
+        uses_class = bool(params) and params[0].converter == "defining_class";
         if uses_class {
             params.pop(0);
-            self.tokens.add(cls.name);
+            self.tokens.add(cls);
         }
         if any(p.group for p in params) {
             raise Unsupported("optional groups");
@@ -1279,8 +863,7 @@ obj Emitter {
         varpos = [
             p
             for p in params
-            if class_name(p.converter)
-                in ("varpos_tuple_converter", "varpos_array_converter")
+            if p.converter in ("varpos_tuple", "varpos_array")
         ];
         if varpos {
             self.varargs_function(cls, f, params, varpos[0]);
@@ -1289,21 +872,17 @@ obj Emitter {
         convention = self.calling_convention(f);
         flags = convention[0];
         parser = convention[1];
-        generator = PARSERS[id(f)][0];
         # The limited C API's clinic converters name a mismatched argument's
         # type with %T; getargs' format conversions use tp_name.
-        self.qualified = bool(generator.limited_capi)
-            and parser != "PARSE_FORMAT_KEYWORDS";
+        self.qualified = f.limited_capi and parser != "PARSE_FORMAT_KEYWORDS";
         # getargs converts as it binds: a binding error waits for the
         # arguments before it to convert.
         stepwise = parser == "PARSE_FORMAT_KEYWORDS";
         base = f.c_basename;
         impl_name = base + "_impl";
         self.impls.add(impl_name);
-        fname = (cls.name if cls else f.name)
-            if kind in ("METHOD_NEW", "METHOD_INIT")
-            else f.name;
-        ret_kind = class_name(f.return_converter).removesuffix("_return_converter");
+        fname = (cls or f.name) if kind in ("METHOD_NEW", "METHOD_INIT") else f.name;
+        ret_kind = f.returns;
         # A module's own return converter (cmath's Py_complex_protected) is
         # return_<kind> in the module's Jac file, as its C one is in the module.
         wrap = "";
@@ -1333,13 +912,11 @@ obj Emitter {
                 if kind == "CLASS_METHOD"
                 else "defining_class";
             # Borrowed, as METH_METHOD's defining class is.
-            body.append(
-                f"cls = {self.use(finder)}(receiver, {self.token_name(cls.name)});"
-            );
+            body.append(f"cls = {self.use(finder)}(receiver, {self.token_name(cls)});");
             if direct_ok {
                 direct += [
                     f"cls = {self.use(finder + '_or_null')}(receiver, {self.token_name(
-                        cls.name
+                        cls
                     )});",
                     "if cls == NULL {",
                     "    return NULL;",
@@ -1370,12 +947,8 @@ obj Emitter {
             }
             # Py_ssize_t(accept={int, NoneType}) and an object parsed by
             # _Py_convert_optional_to_ssize_t (mmap's read(n)) are one converter.
-            optional_ssize = (
-                class_name(p.converter) == "Py_ssize_t_converter"
-                and "NoneType" in accepted(p.converter)
-            )
-                or getattr(p.converter, "converter", "")
-                    == "_Py_convert_optional_to_ssize_t";
+            optional_ssize = (p.converter == "Py_ssize_t" and "NoneType" in p.accept)
+                or p.convert_with == "_Py_convert_optional_to_ssize_t";
             if optional_ssize {
                 direct_ok = False;
                 fallback = self.default_value(p, "i64") if p.is_optional() else "0";
@@ -1442,8 +1015,7 @@ obj Emitter {
             }
             # A converter whose cleanup drops the reference it produced
             # (_struct's cache_struct) hands the impl a new reference.
-            if jtype != "BufferArgument"
-                and re.search(r"Py_X?DECREF\(", p.converter.cleanup() or "") {
+            if jtype != "BufferArgument" and p.releases {
                 direct_ok = False;
                 self.api.add("jacpy_release");
                 body.append(RELEASE + f"jacpy_release({var});");
@@ -1467,12 +1039,12 @@ obj Emitter {
             options = [
                 f"{jac_string(fname)}",
                 f"[{names}]",
-                str(generator.min_pos),
-                str(generator.max_pos),
-                str(generator.pos_only)
+                str(f.min_pos),
+                str(f.max_pos),
+                str(f.pos_only)
             ];
-            if generator.min_kw_only {
-                options.append(f"keyword_required={generator.min_kw_only}");
+            if f.min_kw_only {
+                options.append(f"keyword_required={f.min_kw_only}");
             }
             warnings = self.deprecations(f, params);
             # Tools/clinic's deprecation checks run in its parser, so a
@@ -1510,7 +1082,11 @@ obj Emitter {
         direct_ok = direct_ok
             and not stepwise
             and not self.slow_only
-            and (not wrap or wrap in RETURNS.values())
+            and (
+                not wrap
+                or wrap in RETURNS.values()
+                or (self.checked_converters and wrap in self.module_names)
+            )
             and kind not in ("METHOD_NEW", "METHOD_INIT");
         if direct_ok
             and not (meth_o or flags & METHOD_FLAGS["METH_NOARGS"])
@@ -1530,40 +1106,34 @@ obj Emitter {
         if doc.split("\n")[-1] == "--" {
             doc += "\n\n";
         }
-        if kind in ("METHOD_NEW", "METHOD_INIT") and cls is not None {
-            self.class_docs[cls.name] = doc;
+        if kind in ("METHOD_NEW", "METHOD_INIT") and cls {
+            self.class_docs[cls] = doc;
         }
         # Clinic's self_type_check: a tp_new/tp_init that refuses arguments
         # does so only for the class or a subclass keeping the other slot.
         type_check = "";
-        if "{self_type_check}" in PARSERS[id(f)][1]
-            and cls is not None
-            and cls.typedef {
-            self.tokens.add(cls.name);
+        if f.self_type_check and cls and self.classes.get(cls) {
+            self.tokens.add(cls);
             finder = "new_checks_arguments"
                 if kind == "METHOD_NEW"
                 else "init_checks_arguments";
             subject = "type" if kind == "METHOD_NEW" else "receiver";
             type_check = f", checked={self.use(finder)}({subject}, {self.token_name(
-                cls.name
+                cls
             )})";
         }
         invoke_args = "invoke" if stepwise else "invoke_tuple";
+        # A keyword-capable parser binds a call with keywords into argsbuf on
+        # the C stack, as clinic's _PyArg_UnpackKeywords does.
+        if not stepwise and not self.slow_only and parser == "PARSE_KEYWORDS" {
+            invoke_args = "invoke_mapping";
+        }
         if kind == "METHOD_NEW" {
             self.lines.append(
                 f"def:pub {base}_new(type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]) -> ptr[PyObject] {{"
             );
             if not stepwise {
-                self.lines += self.tuple_fast_path(parser, generator, base, "type");
-                if parser == "PARSE_KEYWORDS" {
-                    self.lines += self.unpacked(
-                        f"{self.invoker('unpack_mapping')}({sig}, args, kwargs)",
-                        base,
-                        "type",
-                        len(params),
-                        "    return "
-                    );
-                }
+                self.lines += self.tuple_fast_path(parser, f, base, "type");
             }
             self.lines.append(
                 f"    return {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, type{type_check});"
@@ -1576,7 +1146,7 @@ obj Emitter {
             self.lines.append(
                 f"def:pub {base}_init(receiver: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]) -> i32 {{"
             );
-            arity = [] if stepwise else self.tuple_arity(parser, generator);
+            arity = [] if stepwise else self.tuple_arity(parser, f);
             if arity {
                 self.api.add("jacpy_dict_size");
                 self.api.add("jacpy_tuple_items");
@@ -1593,20 +1163,6 @@ obj Emitter {
                     "    }",
                     "    if not bound {"
                 ];
-                if parser == "PARSE_KEYWORDS" {
-                    self.lines += [
-                        "        " + line
-                        for line in self.unpacked(
-                            f"{self.invoker('unpack_mapping')}({sig}, args, kwargs)",
-                            base,
-                            "receiver",
-                            len(params),
-                            "    bound = True;\n    result = "
-                        )
-                    ];
-                    self.lines.append("    }");
-                    self.lines.append("    if not bound {");
-                }
                 self.lines += [
                     f"        result = {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, receiver{type_check});",
                     "    }"
@@ -1664,20 +1220,20 @@ obj Emitter {
             if parser == "PARSE_POSITIONAL" and not self.slow_only {
                 # The count is checked inline; only a bad one calls out to
                 # say so.
-                outside = f"nargs > {generator.max_pos}";
-                if generator.min_pos > 0 {
-                    outside = f"nargs < {generator.min_pos} or " + outside;
+                outside = f"nargs > {f.max_pos}";
+                if f.min_pos > 0 {
+                    outside = f"nargs < {f.min_pos} or " + outside;
                 }
                 self.lines.append(
                     f"    if ({outside}) and not {self.invoker('check_positional')}({jac_string(
                         fname
-                    )}, int(nargs), {generator.min_pos}, {generator.max_pos}) {{"
+                    )}, int(nargs), {f.min_pos}, {f.max_pos}) {{"
                 );
                 self.lines.append("        return NULL;");
                 self.lines.append("    }");
                 self.lines += self.bind_stack(base, direct_ok, direct_ints, "    ");
             } else {
-                fast_path = self.stack_fast_path(parser, generator, keywords);
+                fast_path = self.stack_fast_path(parser, f, keywords);
                 if fast_path {
                     self.lines.append(f"    if {fast_path} {{");
                     self.lines += self.bind_stack(
@@ -1685,17 +1241,15 @@ obj Emitter {
                     );
                     self.lines.append("    }");
                 }
-                if parser == "PARSE_KEYWORDS" and keywords {
-                    self.lines += self.unpacked(
-                        f"{self.invoker('unpack_stack')}({sig}, args, nargs, kwnames)",
-                        base,
-                        "receiver",
-                        len(params),
-                        "    return "
-                    );
+                # A call with keywords binds into argsbuf on the C stack, as
+                # clinic's _PyArg_UnpackKeywords does; the parser reports one
+                # that does not bind.
+                invoke_stack = "invoke_stack";
+                if parser == "PARSE_KEYWORDS" and keywords and not self.slow_only {
+                    invoke_stack = "invoke_keywords";
                 }
                 self.lines.append(
-                    f"    return {self.invoker('invoke_stack')}({sig}, args, nargs, {'kwnames'
+                    f"    return {self.invoker(invoke_stack)}({sig}, args, nargs, {'kwnames'
                         if keywords
                         else 'NULL'}, {base}_bound, receiver);"
                 );
@@ -1705,25 +1259,15 @@ obj Emitter {
             self.lines.append(
                 head + "args: ptr[PyObject], kwargs: ptr[PyObject]) -> ptr[PyObject] {"
             );
-            invoke_args = "invoke" if stepwise else "invoke_tuple";
             if not stepwise {
-                self.lines += self.tuple_fast_path(parser, generator, base, "receiver");
-                if parser == "PARSE_KEYWORDS" {
-                    self.lines += self.unpacked(
-                        f"{self.invoker('unpack_mapping')}({sig}, args, kwargs)",
-                        base,
-                        "receiver",
-                        len(params),
-                        "    return "
-                    );
-                }
+                self.lines += self.tuple_fast_path(parser, f, base, "receiver");
             }
             self.lines.append(
                 f"    return {self.invoker(invoke_args)}({sig}, args, kwargs, {base}_bound, receiver);"
             );
             callback = "keywords";
         } else {
-            raise Unsupported(f"calling convention {generator.flags}");
+            raise Unsupported(f"calling convention {f.flags}");
         }
         self.lines.append("}");
         self.tables.setdefault(self.table_name(cls), []).append(
@@ -1736,12 +1280,14 @@ obj Emitter {
     # A function of only *args (math.gcd): METH_FASTCALL with no arity check,
     # the impl taking the argument array and its length (or, for a tuple
     # converter, the arguments as a tuple).
-    def varargs_function(cls: any, f: any, params: list[any], varpos: any) {
-        if len(params) != 1 or f.kind.name != "CALLABLE" {
+    def varargs_function(
+        cls: str, f: Function, params: list[Parameter], varpos: Parameter
+    ) {
+        if len(params) != 1 or f.kind != "CALLABLE" {
             raise Unsupported("*args with other parameters");
         }
         flags = 0;
-        for name in PARSERS[id(f)][0].flags.split("|") {
+        for name in f.flags.split("|") {
             flags = flags | METHOD_FLAGS[name.strip()];
         }
         if flags != METHOD_FLAGS["METH_FASTCALL"] {
@@ -1753,7 +1299,7 @@ obj Emitter {
         self.lines.append(
             f"def:priv {base}_call(receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64) -> ptr[PyObject] {{"
         );
-        if class_name(varpos.converter) == "varpos_tuple_converter" {
+        if varpos.converter == "varpos_tuple" {
             tuple_of = self.invoker("vector_tuple");
             self.api.add("jacpy_release");
             self.lines.append(f"    values = {tuple_of}(args, nargs);");
@@ -1802,6 +1348,38 @@ obj Emitter {
                 );
                 direct += [f"if {present} {{", f"    {var} = {slot};", "}"];
             }
+            return True;
+        }
+        if jtype == "f64" and expr == "convert_double(value)" {
+            self.api.add("PyFloat_AsDouble");
+            if meth_o or not p.is_optional() {
+                direct += [
+                    f"{var}: f64 = PyFloat_AsDouble({slot});",
+                    f"if {var} == -1.0 and {self.use('failed')}() {{",
+                    "    return NULL;",
+                    "}"
+                ];
+                return True;
+            }
+            return False;
+        }
+        # A module whose converters report failure as C's do (the error
+        # indicator, never boundary_failure) converts a required argument
+        # in place and checks the indicator, as clinic's glue does.
+        if self.checked_converters
+            and expr.startswith("convert_")
+            and expr.split("(")[0] in self.module_names
+            and not converted[2]
+            and (meth_o or not p.is_optional()) {
+            if not meth_o {
+                direct.append(f"value = {slot};");
+            }
+            direct += [
+                f"{var} = {expr};",
+                f"if {self.use('failed')}() {{",
+                "    return NULL;",
+                "}"
+            ];
             return True;
         }
         if jtype == "i64" and expr == "convert_ssize(value)" and not meth_o {
@@ -1863,13 +1441,13 @@ obj Emitter {
     # `kwnames == NULL && minpos <= nargs && nargs <= maxpos` for
     # _PyArg_UnpackKeywords, no arguments at all for a parameterless
     # defining-class method.
-    def stack_fast_path(parser: str, generator: any, keywords: bool) -> str {
+    def stack_fast_path(parser: str, f: Function, keywords: bool) -> str {
         if self.slow_only {
             return "";
         }
         no_keywords = "kwnames == NULL and " if keywords else "";
-        if parser == "PARSE_KEYWORDS" and not generator.min_kw_only {
-            return f"{no_keywords}nargs >= {generator.min_pos} and nargs <= {generator.max_pos}";
+        if parser == "PARSE_KEYWORDS" and not f.min_kw_only {
+            return f"{no_keywords}nargs >= {f.min_pos} and nargs <= {f.max_pos}";
         }
         if parser == "PARSE_NO_ARGUMENTS" {
             return f"{no_keywords}nargs == 0";
@@ -1877,37 +1455,15 @@ obj Emitter {
         return "";
     }
 
-    # The glue's keyword path: `unpack` binds into a new array, which the
-    # _bound function reads and the glue frees; `finish` receives the result
-    # ("    return " or an assignment). A NULL array falls through to the
-    # parser, which reports the call as CPython does.
-    def unpacked(
-        unpack: str, base: str, receiver: str, count: int, finish: str
-    ) -> list[str] {
-        if self.slow_only {
-            return [];
-        }
-        self.api.add("PyMem_Free");
-        lines = [
-            f"    values = {unpack};",
-            "    if values {",
-            f"        unpacked = {base}_bound({receiver}, values, {count});",
-            "        PyMem_Free(values);"
-        ];
-        lines += ["    " + part for part in (finish + "unpacked;").split("\n")];
-        lines.append("    }");
-        return lines;
-    }
-
     # The positional counts a tuple-and-dict call without keywords binds as
     # its tuple's items: the parser's own arity, when it has one to check.
-    def tuple_arity(parser: str, generator: any) -> list[int] {
+    def tuple_arity(parser: str, f: Function) -> list[int] {
         if self.slow_only {
             return [];
         }
         if parser in ("PARSE_KEYWORDS", "PARSE_POSITIONAL", "PARSE_FORMAT")
-            and not generator.min_kw_only {
-            return [generator.min_pos, generator.max_pos];
+            and not f.min_kw_only {
+            return [f.min_pos, f.max_pos];
         }
         if parser == "PARSE_NOTHING" {
             return [0, 0];
@@ -1916,9 +1472,9 @@ obj Emitter {
     }
 
     def tuple_fast_path(
-        parser: str, generator: any, base: str, receiver: str
+        parser: str, f: Function, base: str, receiver: str
     ) -> list[str] {
-        arity = self.tuple_arity(parser, generator);
+        arity = self.tuple_arity(parser, f);
         if not arity {
             return [];
         }
@@ -1945,15 +1501,15 @@ obj Emitter {
         return name;
     }
 
-    def accessor(cls: any, f: any) {
+    def accessor(cls: str, f: Function) {
         base = f.c_basename;
         # Clinic names accessor impls <c_basename>_get_impl / _set_impl.
-        impl_name = base + ("_get_impl" if f.kind.name == "GETTER" else "_set_impl");
+        impl_name = base + ("_get_impl" if f.kind == "GETTER" else "_set_impl");
         self.impls.add(impl_name);
         record = self.getsets.setdefault(self.table_name(cls), {}).setdefault(
             f.name, {"doc": ""}
         );
-        if f.kind.name == "GETTER" {
+        if f.kind == "GETTER" {
             self.lines.append(
                 f"def:priv {base}_get(receiver: ptr[PyObject], context: u64) -> ptr[PyObject] {{"
             );
@@ -2026,47 +1582,6 @@ obj Emitter {
             head += [f"    {item}" for item in self.debug];
         }
         head.append('"""');
-        imports = [
-            f"import from jaclang.runtime.python.cpython_api {{ {', '.join(
-                sorted(self.api)
-            )} }}",
-            "import from jaclang.runtime.python.bindings.module { MethodDefinition, MethodCallbacks }",
-            "import from jaclang.runtime.python.bindings.type { PropertyDefinition, PropertyCallbacks }",
-            "import from jaclang.runtime.python.bindings.buffer { BufferArgument }"
-        ];
-        if self.invokers {
-            imports.insert(
-                3,
-                f"import from jaclang.runtime.python.bindings.arguments {{ {', '.join(
-                    sorted(self.invokers)
-                )} }}"
-            );
-        }
-        if self.capi {
-            imports.append(
-                f"import from jaclang.runtime.python.capi {{ {', '.join(
-                    sorted(self.capi)
-                )} }}"
-            );
-        }
-        converters = sorted(self.converters);
-        if converters {
-            imports.append(
-                f"import from jaclang.runtime.python.bindings.converters {{ {', '.join(
-                    converters
-                )} }}"
-            );
-        }
-        # A class's ClassToken lives in the module file with its impls, which
-        # also read the instance state through it; the binding fills it in.
-        provided = sorted(
-            self.impls | self.module_names | {self.token_name(c) for c in self.tokens}
-        );
-        if provided {
-            imports.append(
-                f"import from {MODULES}.{self.name} {{ {', '.join(provided)} }}"
-            );
-        }
         tables: list[str] = [];
         for (cls_name, doc) in sorted(self.class_docs.items()) {
             tables.append(f"glob {cls_name}_doc: str = {jac_string(doc)};");
@@ -2110,36 +1625,45 @@ obj Emitter {
             }
             tables.append("];");
         }
-        return "\n".join(head + imports + [""] + self.lines + [""] + tables) + "\n";
+        return "\n".join(head + [""] + self.lines + [""] + tables) + "\n";
     }
 }
 
+# A module's signatures: the Clinic record of scripts/jacpython/clinic/<name>.jac.
+def signatures(module: str) -> Clinic {
+    name = data_name(module);
+    if not (DATA / f"{name}.jac").is_file() {
+        sys.exit(f"{module} has no clinic data: {DATA / name}.jac");
+    }
+    if str(DATA.parent) not in sys.path {
+        sys.path.insert(0, str(DATA.parent));
+    }
+    return importlib.import_module(f"clinic.{name}").CLINIC;
+}
+
 # The module's short name and its formatted clinic glue.
-def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
-    sources = module_sources(tree, module);
-    name = jac_names().get(module, module.lstrip("_"));
+def generate(module: str) -> tuple[str, str] {
+    clinic = signatures(module);
+    name = data_name(module);
     emitter = Emitter(
         module=module,
         name=name,
         raise_free="raise-free" in registry_options().get(module, []),
-        source_text="\n".join(s.read_text() for s in sources)
+        checked_converters="checked-converters" in registry_options().get(module, []),
+        classes=dict(clinic.classes)
     );
-    functions = clinic_functions(tree, sources);
     # A function C defines once per system (#ifdef __APPLE__ ... #else): the
-    # definitions that can exist on a JacPython target, by full name and kind
-    # (a getter and its setter share a name).
-    defined: dict[str, list[any]] = {};
-    for pair in functions {
-        f = pair[1];
-        condition = CONDITIONS.get(id(f), "");
-        if not windows_only(condition) and condition_platforms(condition) {
-            defined.setdefault(f"{f.full_name}:{f.kind.name}", []).append(f);
+    # definitions that can exist on a JacPython target, by full name, kind
+    # (a getter and its setter share a name) and C name (a clone under
+    # another C name, like _io's _Buffered.flush, is a function of its own).
+    defined: dict[str, list[Function]] = {};
+    for f in clinic.functions {
+        if not windows_only(f.condition) and condition_platforms(f.condition) {
+            defined.setdefault(f"{f.full_name}:{f.kind}:{f.c_basename}", []).append(f);
         }
     }
-    for pair in functions {
-        cls = pair[0];
-        f = pair[1];
-        condition = CONDITIONS.get(id(f), "");
+    for f in clinic.functions {
+        condition = f.condition;
         if windows_only(condition) {
             if posix_condition(condition, WINDOWS_SYMBOLS) {
                 emitter.debug.append(f.full_name);
@@ -2154,7 +1678,7 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
             continue;
         }
         emitter.table_suffix = "";
-        if len(defined.get(f"{f.full_name}:{f.kind.name}", [])) > 1 {
+        if len(defined.get(f"{f.full_name}:{f.kind}:{f.c_basename}", [])) > 1 {
             if len(targets) != 1 {
                 sys.exit(f"{f.full_name} has definitions for more than one target");
             }
@@ -2163,22 +1687,17 @@ def generate(tree: Path, module: str, version: str) -> tuple[str, str] {
             f.c_basename = f.c_basename + emitter.table_suffix;
         }
         try {
-            if f.kind.name in ("GETTER", "SETTER") {
-                emitter.accessor(cls, f);
+            if f.kind in ("GETTER", "SETTER") {
+                emitter.accessor(f.cls, f);
             } else {
-                emitter.function(cls, f);
+                emitter.function(f.cls, f);
             }
         } except Unsupported as reason {
             emitter.skipped.append(f"{f.full_name}: {reason}");
         }
     }
-    emitter.c_docs = {
-        ** c_docstrings(tree, sources),
-        ** c_macro_docstrings(sources),
-        ** c_table_docs(tree, sources)
-    };
-    relative = [str(s.relative_to(tree)) for s in sources];
-    return (name, emitter.render(relative, version));
+    emitter.c_docs = dict(clinic.docs);
+    return (name, emitter.render(clinic.sources, clinic.version));
 }
 
 # A registry line may name the module's Jac files after its module name
@@ -2199,6 +1718,11 @@ def jac_names -> dict[str, str] {
         }
     }
     return names;
+}
+
+# The name of a module's Jac files: its clinic data, glue and module.
+def data_name(module: str) -> str {
+    return jac_names().get(module, module.lstrip("_"));
 }
 
 def registered -> list[str] {
@@ -2227,28 +1751,22 @@ with entry:__main__ {
         "--out", type=Path, help="write here instead of the bindings tree"
     );
     args = parser.parse_args();
-    version = pin()["version"];
     stale: list[str] = [];
-    with tempfile.TemporaryDirectory() as scratch {
-        tree = extract_tree(Path(scratch), ("Tools/clinic/", "Modules/"));
-        rendered = [
-            generate(tree, module, version) for module in args.modules or registered()
-        ];
-        targets = [(args.out or OUTPUT) / f"{name}.jac" for (name, _) in rendered];
-        formatted = format_jac_many(
-            [(text, target) for ((_, text), target) in zip(rendered, targets)]
-        );
-        for (target, text) in zip(targets, formatted) {
-            if args.check {
-                if not target.is_file() or target.read_text() != text {
-                    stale.append(str(target.relative_to(REPO)));
-                }
-                continue;
+    rendered = [generate(module) for module in args.modules or registered()];
+    targets = [(args.out or OUTPUT) / f"{name}.jac" for (name, _) in rendered];
+    formatted = format_jac_many(
+        [(text, target) for ((_, text), target) in zip(rendered, targets)]
+    );
+    for (target, text) in zip(targets, formatted) {
+        if args.check {
+            if not target.is_file() or target.read_text() != text {
+                stale.append(str(target.relative_to(REPO)));
             }
-            target.parent.mkdir(parents=True, exist_ok=True);
-            target.write_text(text);
-            print(f"wrote {target}");
+            continue;
         }
+        target.parent.mkdir(parents=True, exist_ok=True);
+        target.write_text(text);
+        print(f"wrote {target}");
     }
     if stale {
         sys.exit(

@@ -127,6 +127,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.backends.py.codegen_ir"),
          NativeScopeEntry(module="jaclang.compiler.backends.py.jcir_facts"),
          NativeScopeEntry(module="jaclang.compiler.backends.py.jcir_gen_pass"),
+         NativeScopeEntry(module="jaclang.compiler.backends.es.client_paths"),
          NativeScopeEntry(module="jaclang.compiler.backends.es.estree"),
          NativeScopeEntry(module="jaclang.compiler.backends.es.es_unparse"),
          NativeScopeEntry(module="jaclang.compiler.backends.es.esast_gen_pass"),

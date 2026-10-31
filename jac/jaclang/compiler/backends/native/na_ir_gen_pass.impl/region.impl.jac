@@ -1,7 +1,8 @@
 glob REGION_TLS_GLOBAL: str = "__jac_region_tls",
      REGION_TLS_GET: str = "__jac_region_tls_get",
      REGION_TLS_SET: str = "__jac_region_tls_set",
-     REGION_GBL_GET: str = "__jac_region_gbl_get";
+     REGION_GBL_GET: str = "__jac_region_gbl_get",
+     REGION_GBL_LIVE_SLOT: int = 2;
 
 impl NaIRGenPass._register_region_kernel -> None {
     if self._region_kernel_registered {
@@ -42,6 +43,13 @@ impl NaIRGenPass._emit_region_tls_slot -> None {
     self.extern_funcs[REGION_GBL_GET] = gbl_fn;
     gblb = ir.IRBuilder(gbl_fn.append_basic_block("entry"));
     gblb.ret(gblb.ptrtoint(gbl_gv, i64, name="gbl.i64"));
+}
+
+impl NaIRGenPass._region_live_flag -> ir.Value {
+    self._emit_region_tls_slot();
+    i32 = ir.IntType(32);
+    gbl_gv = self.llvm_module.get_global(f"{REGION_TLS_GLOBAL}_gbl");
+    return gbl_gv.gep([ir.Constant(i32, 0), ir.Constant(i32, REGION_GBL_LIVE_SLOT)]);
 }
 
 impl NaIRGenPass._region_i64(val: ir.Value, name: str = "rgn.i64") -> ir.Value {
@@ -131,11 +139,16 @@ impl NaIRGenPass._region_open_test -> ir.Value {
     i64 = ir.IntType(64);
     zero = ir.Constant(i64, 0);
     fn = b.function;
-    blk = b.call(self.extern_funcs[REGION_TLS_GET], [], name="region.tls");
-    has_block = b.icmp_unsigned("!=", blk, zero, name="region.tls.set");
+    live = b.load(self._region_live_flag(), name="region.live");
+    any_live = b.icmp_unsigned("!=", live, zero, name="region.any");
     start = b.block;
+    tls_bb = fn.append_basic_block("region.tls.read");
     read_bb = fn.append_basic_block("region.cur.read");
     done_bb = fn.append_basic_block("region.cur.done");
+    b.cbranch(any_live, tls_bb, done_bb).set_weights([1, 2000]);
+    b.position_at_end(tls_bb);
+    blk = b.call(self.extern_funcs[REGION_TLS_GET], [], name="region.tls");
+    has_block = b.icmp_unsigned("!=", blk, zero, name="region.tls.set");
     b.cbranch(has_block, read_bb, done_bb);
     b.position_at_end(read_bb);
     cur = b.load(
@@ -146,12 +159,13 @@ impl NaIRGenPass._region_open_test -> ir.Value {
     b.position_at_end(done_bb);
     opened = b.phi(ir.IntType(1), name="region.open");
     opened.add_incoming(ir.Constant(ir.IntType(1), 0), start);
+    opened.add_incoming(ir.Constant(ir.IntType(1), 0), tls_bb);
     opened.add_incoming(is_open, read_bb);
     return opened;
 }
 
 impl NaIRGenPass._region_c_entry_escape -> (ir.Value | None) {
-    if self._is_kernel_unit() {
+    if self._direct_c_entry(self.builder.function) {
         return None;
     }
     b = self.builder;

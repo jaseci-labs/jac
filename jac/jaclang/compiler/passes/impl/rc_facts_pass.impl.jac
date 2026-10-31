@@ -242,6 +242,7 @@ impl RcFactsPass._collect_last_use(
     owner: UniNode, body: Sequence[UniNode], out: dict[int, list[str]]
 ) -> None {
     sym_last: dict[int, tuple[int, str]] = {};
+    lent: dict[int, bool] = {};
     for (idx, stmt) in enumerate(body) {
         for nm in stmt.get_all_sub_nodes(Name) {
             sym = nm.sym;
@@ -250,6 +251,12 @@ impl RcFactsPass._collect_last_use(
                 or (nm.sym_name == "self" and sym.ownership != OwnershipKind.OWN)
                 or not self._last_use_tracked(sym)
                 or id(sym) in self._last_use_pinned {
+                continue;
+            }
+            if id(sym) not in lent {
+                lent[id(sym)] = self._lent_to_c(sym);
+            }
+            if lent[id(sym)] {
                 continue;
             }
             if self._enclosing_fn_scope(nm) is not owner {
@@ -304,6 +311,32 @@ impl RcFactsPass._add_borrow_root(e: Expr, roots: set[int]) -> None {
     if isinstance(cur, Name) and cur.sym is not None {
         roots.add(id(cur.sym));
     }
+}
+
+impl RcFactsPass._lent_to_c(sym: Symbol) -> bool {
+    for u in sym.uses {
+        p = u.parent;
+        if not isinstance(p, UnaryExpr) or not is_borrow_kind(p.ownership) {
+            continue;
+        }
+        call = p.find_parent_of_type(FuncCall);
+        if call is None {
+            continue;
+        }
+        callee = call.callee_decl;
+        if callee is None {
+            return True;
+        }
+        owner = self._c_import_of(callee);
+        if owner is not None and owner.has_clib_decls {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl RcFactsPass._c_import_of(decl: UniNode) -> (Import | None) {
+    return decl.find_parent_of_type(Import);
 }
 
 impl RcFactsPass._last_use_tracked(sym: Symbol) -> bool {

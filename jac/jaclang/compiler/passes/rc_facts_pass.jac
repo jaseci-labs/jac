@@ -38,6 +38,8 @@ walker RcFactsPass(CompilerPass) {
 
     def _is_param_sym(sym: Symbol) -> bool;
     def _last_use_tracked(sym: Symbol) -> bool;
+    def _lent_to_c(sym: Symbol) -> bool;
+    def _c_import_of(decl: UniNode) -> (Import | None);
     def _stamp_last_use(ir_in: Module) -> None;
     def _borrow_roots(ir_in: Module) -> set[int];
     def _add_borrow_root(e: Expr, roots: set[int]) -> None;

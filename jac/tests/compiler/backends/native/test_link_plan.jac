@@ -458,6 +458,7 @@ test "a whole program splits into partitions that link as one" {
     import from jaclang.compiler.backends.native.na_compile_pass { emit_unit_objects }
     llvm.initialize_native_target();
     llvm.initialize_native_asmprinter();
+    llvm.initialize_native_asmparser();
     ir = """
 @msg = private constant [3 x i8] c"hi\\00"
 define internal i64 @helper(i64 %x) {
@@ -782,6 +783,7 @@ def _target_object(triple: str, text: str) -> bytes {
     import jaclang.compiler.backends.native.llvm.binding as llvm;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     tm = llvm.Target.from_triple(triple).create_target_machine(reloc="pic");
     mod = llvm.parse_assembly(text);
     mod.triple = triple;

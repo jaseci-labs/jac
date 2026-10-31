@@ -1,14 +1,8 @@
-"""The _multiprocessing module: SemLock, sem_unlink() and the flags dict."""
-
 glob:priv INT_MAX: i64 = 0x7FFFFFFF;
 
-def:priv semlock_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, SemLock_token.handle);
-}
+def:priv semlock_dealloc(instance: ptr[PyObject]);
 
-def:priv semlock_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, SemLock_token.handle, visitor, context);
-}
+def:priv semlock_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
 glob:priv semlock_type = TypeDefinition(
          "_multiprocessing.SemLock",
@@ -26,9 +20,27 @@ glob:priv semlock_type = TypeDefinition(
          generic_setattr=True
      );
 
-# SemLock, with SEM_VALUE_MAX in its dict; a value that is negative as a C
-# int is published as INT_MAX.
-def:priv add_semlock(module: ptr[PyObject]) -> bool {
+def:priv add_semlock(module: ptr[PyObject]) -> bool;
+
+def:priv add_flags(module: ptr[PyObject]) -> bool;
+
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "_multiprocessing", "", module_methods, ModuleHooks(execute=execute)
+     );
+
+def:pub PyInit__multiprocessing -> ptr[PyObject];
+
+impl semlock_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, SemLock_token.handle);
+}
+
+impl semlock_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, SemLock_token.handle, visitor, context);
+}
+
+impl add_semlock(module: ptr[PyObject]) -> bool {
     SemLock_token.handle = semlock_type.handle;
     semlock = semlock_type.create(module);
     if not semlock {
@@ -42,7 +54,7 @@ def:priv add_semlock(module: ptr[PyObject]) -> bool {
     value = PyLong_FromLong(limit);
     stored = bool(namespace)
         and bool(value)
-        and PyDict_SetItemString(namespace, "SEM_VALUE_MAX", value) == 0;
+        and PyDict_SetItemString(namespace, ptr[u8]("SEM_VALUE_MAX"), value) == 0;
     jacpy_release(value);
     jacpy_release(namespace);
     if not stored {
@@ -52,8 +64,7 @@ def:priv add_semlock(module: ptr[PyObject]) -> bool {
     return add_owned(module, "SemLock", semlock);
 }
 
-# The configuration macros multiprocessing reads from _multiprocessing.flags.
-def:priv add_flags(module: ptr[PyObject]) -> bool {
+impl add_flags(module: ptr[PyObject]) -> bool {
     flags = PyDict_New();
     if not flags {
         return False;
@@ -68,7 +79,7 @@ def:priv add_flags(module: ptr[PyObject]) -> bool {
             continue;
         }
         value = PyLong_FromLong(1);
-        if not value or PyDict_SetItemString(flags, name, value) < 0 {
+        if not value or dict_set_text(flags, name, value) < 0 {
             jacpy_release(value);
             jacpy_release(flags);
             return False;
@@ -78,17 +89,13 @@ def:priv add_flags(module: ptr[PyObject]) -> bool {
     return add_owned(module, "flags", flags);
 }
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+impl execute(module: ptr[PyObject]) -> i32 {
     if HAVE_SEM_OPEN and not add_semlock(module) {
         return i32(-1);
     }
     return i32(0) if add_flags(module) else i32(-1);
 }
 
-glob:priv definition = ModuleDefinition(
-         "_multiprocessing", "", module_methods, ModuleHooks(execute=execute)
-     );
-
-def:pub PyInit__multiprocessing -> ptr[PyObject] {
+impl PyInit__multiprocessing -> ptr[PyObject] {
     return definition.initialize();
 }
