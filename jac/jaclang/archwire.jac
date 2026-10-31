@@ -11333,6 +11333,7 @@ graph import compiler.backends.native {
     primitives_native ++> na_ir_gen_pass {
         NativeDictEmitter,
         NativeEmitCtx,
+        NativeListEmitter,
         NativeSetEmitter
     }
     primitives_native as _pm_pn ++> na_ir_gen_pass.NaIRGenPass._dispatch_primitive_method;

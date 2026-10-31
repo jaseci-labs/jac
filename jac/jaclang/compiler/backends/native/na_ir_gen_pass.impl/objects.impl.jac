@@ -4383,6 +4383,26 @@ impl NaIRGenPass._codegen_field_aug_assign(
 
     coerced = self._coerce_type(rhs, current.type);
 
+    _f_spec = (
+        self._spec_from_list_slot_type(current.type)
+            if isinstance(current.type, ir.PointerType)
+            else None
+    );
+    if _f_spec is not None {
+        _le = self._ensure_emitters().get("list");
+        if isinstance(_le, NativeListEmitter) {
+            _lctx = NativeEmitCtx(pass_ref=self, type_key=_f_spec);
+            if aug_op == "+=" and coerced.type == current.type {
+                _le.emit_extend(_lctx, current, [coerced]);
+                return current;
+            }
+            if aug_op == "*=" {
+                _le.emit_repeat_inplace(_lctx, current, rhs);
+                return current;
+            }
+        }
+    }
+
     if aug_op == "+=" and isinstance(current.type, ir.PointerType) {
         result = self._emit_binary_op(Tok.PLUS, current, coerced);
         return result if result is not None else current;
