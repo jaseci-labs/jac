@@ -32,6 +32,11 @@ obj CompileOptions {
         native_threads: (int | None) = None,
         rc_debug_codegen: (bool | None) = None,
         native_target: (str | None) = None,
+        native_tls: bool = False,
+        native_sjlj: bool = False,
+        native_unchecked_views: bool = False,
+        native_direct_c_entries: bool = False,
+        native_heap: str = "",
         native_debug: (bool | None) = None,
         opt_level: (int | None) = None,
         dump_ir_path: (str | None) = None,
@@ -55,6 +60,7 @@ obj CompileOptions {
 
     def postinit;
     def effective_triple -> str;
+    def native_options_identity -> str;
     def codegen_identity -> str;
     def codegen_fingerprint -> str;
     def analysis_identity -> str;

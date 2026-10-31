@@ -36,6 +36,7 @@ model `jac build --native` emits."""
 def _emit_object(ir_txt: str, triple: str) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     mod = llvm.parse_assembly(ir_txt);
     mod.verify();
     tm = llvm.Target.from_triple(triple).create_target_machine(

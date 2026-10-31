@@ -128,8 +128,8 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     i64_ptr = i64.as_pointer();
     _cycles_on = self._gc_mode() == "cycles";
 
-    self.malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
-    self.free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
+    self.malloc_fn = self._heap_extern("malloc");
+    self.free_fn = self._heap_extern("free");
 
     self._emit_rc_debug_globals();
     if _cycles_on {
@@ -2431,7 +2431,7 @@ impl NaIRGenPass._emit_struct_drop_body_fn(type_name: str) -> (ir.Function | Non
     b = ir.IRBuilder(fn.append_basic_block("entry"));
     _dobj = b.bitcast(fn.args[0], struct_type.as_pointer(), name="drop.obj");
     self._emit_nogc_field_drops(b, type_name, _dobj);
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    free_fn = self._heap_extern("free");
     b.call(free_fn, [fn.args[0]]);
     b.ret_void();
     return fn;
@@ -2632,7 +2632,7 @@ impl NaIRGenPass._emit_container_drop_fn(cont_name: str) -> (ir.Function | None)
 
     b = ir.IRBuilder(body_bb);
     cont = b.bitcast(fn.args[0], _struct.as_pointer(), name="drop.cont");
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    free_fn = self._heap_extern("free");
     _elems = list(_struct.elements);
     _drop_base = _layout_index(layout, "drop_base");
     _has_slots = _drop_base < len(_elems);
@@ -2799,7 +2799,7 @@ impl NaIRGenPass._drop_fn_for(mangle: str) -> (ir.Function | None) {
         return None;
     }
     if mangle == "str" {
-        _fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+        _fn = self._heap_extern("free");
     } elif "|" in mangle or mangle in ("any", "Any") {
         _fn = self._emit_jacval_slot_drop_fn(mangle);
     } elif mangle in self.struct_types {
@@ -2935,7 +2935,7 @@ impl NaIRGenPass._emit_jacval_slot_drop_fn(elem_mangle: str) -> (ir.Function | N
         done_bb
     );
     b = ir.IRBuilder(live_bb);
-    free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    free_fn = self._heap_extern("free");
     str_bb = fn.append_basic_block("str");
     chk_list_bb = fn.append_basic_block("chk.list");
     b.cbranch(
@@ -3126,10 +3126,7 @@ impl NaIRGenPass._nogc_free_text(b: ir.IRBuilder, val: ir.Value, kind: str) -> N
     if not isinstance(data.type, ir.PointerType) {
         return;
     }
-    b.call(
-        self._get_or_declare_extern("free", ir.VoidType(), [i8p]),
-        [b.bitcast(data, i8p, name="text.free")]
-    );
+    b.call(self._heap_extern("free"), [b.bitcast(data, i8p, name="text.free")]);
 }
 
 impl NaIRGenPass._nogc_release_dict_key(key: ir.Value) -> None {
@@ -3188,7 +3185,7 @@ impl NaIRGenPass._nogc_free_scratch(val: ir.Value, op: str) -> None {
         return;
     }
     i8p = ir.IntType(8).as_pointer();
-    _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    _free_fn = self._heap_extern("free");
     _v_i8 = self.builder.bitcast(val, i8p, name="scratch.free.cast");
     self.builder.call(_free_fn, [_v_i8]);
 }
@@ -3849,7 +3846,7 @@ impl NaIRGenPass._nogc_str_free_owned(val: ir.Value) -> None {
         return;
     }
     i8p = ir.IntType(8).as_pointer();
-    _free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8p]);
+    _free_fn = self._heap_extern("free");
     self.builder.call(_free_fn, [self.builder.bitcast(_d, i8p, name="osf.cast")]);
 }
 

@@ -15,6 +15,6 @@ def fildes_call(fd: i32, operation: int) -> i32 {
 
 # The address of a C library function the target may lack at run time,
 # NULL when it does.
-def runtime_function(name: str) -> ptr {
+def runtime_function(name: ptr[u8]) -> ptr {
     return ptr();
 }

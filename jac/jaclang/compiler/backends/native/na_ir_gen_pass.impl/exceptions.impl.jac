@@ -1,3 +1,5 @@
+glob RAISE_SITE_INLINE_COST: int = 5;
+
 impl NaIRGenPass._get_exception_state_type -> ir.Type {
     if self._exc_state_type is not None {
         return self._exc_state_type;
@@ -28,7 +30,8 @@ impl NaIRGenPass._declare_exception_runtime -> None {
     setjmp_fn = self._get_or_declare_extern(setjmp_name, i32, [i8p]);
     setjmp_fn.attributes.add("returns_twice");
 
-    longjmp_fn = self._get_or_declare_extern(longjmp_name, ir.VoidType(), [i8p, i32]);
+    longjmp_args = [i8p] if self._exc_builtin_sjlj() else [i8p, i32];
+    longjmp_fn = self._get_or_declare_extern(longjmp_name, ir.VoidType(), longjmp_args);
     longjmp_fn.attributes.add("noreturn");
 
     self._get_or_declare_extern("abort", ir.VoidType(), []);
@@ -50,7 +53,37 @@ impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
             return ("__jac_setjmp", "__jac_longjmp");
         }
     }
+    if self._native_sjlj_on() and triple.startswith("x86_64") {
+        return ("llvm.eh.sjlj.setjmp", "llvm.eh.sjlj.longjmp");
+    }
     return ("_setjmp", "_longjmp");
+}
+
+impl NaIRGenPass._exc_builtin_sjlj -> bool {
+    return self._exc_jmp_symbols()[0] == "llvm.eh.sjlj.setjmp";
+}
+
+impl NaIRGenPass._emit_exc_arm(
+    b: ir.IRBuilder, env: ir.Value, name: str = ""
+) -> ir.Value {
+    if self._exc_builtin_sjlj() {
+        b.function.attributes.add("noinline");
+        i8p = ir.IntType(8).as_pointer();
+        i32 = ir.IntType(32);
+        words = b.bitcast(env, i8p.as_pointer());
+        frame = b.call(
+            self._get_or_declare_extern("llvm.frameaddress.p0", i8p, [i32]),
+            [ir.Constant(i32, 0)]
+        );
+        b.store(frame, words);
+        stack = b.call(self._get_or_declare_extern("llvm.stacksave.p0", i8p, []), []);
+        b.store(stack, b.gep(words, [ir.Constant(i32, 2)]));
+    }
+    armed = b.call(self._exc_setjmp_fn(), [env], name=name);
+    if self._exc_builtin_sjlj() {
+        armed.attributes.add("returns_twice");
+    }
+    return armed;
 }
 
 impl NaIRGenPass._exc_setjmp_fn -> ir.Function {
@@ -142,6 +175,9 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     fnty = ir.FunctionType(ir.VoidType(), [i8p, i32, i8p]);
     func = self._define_function("__jac_exc_raise", fnty);
     func.linkage = "private";
+    func.attributes.add("noreturn");
+    func.attributes.add("cold");
+    func.attributes.add_string("call-inline-cost", str(RAISE_SITE_INLINE_COST));
     func.args[0].name = "obj";
     func.args[1].name = "type_id";
     func.args[2].name = "msg";
@@ -240,7 +276,12 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
         cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
     );
     env_i8p = b.bitcast(env_ptr, i8p, name="env.i8p");
-    b.call(self._exc_longjmp_fn(), [env_i8p, ir.Constant(i32, 1)]);
+    if self._exc_builtin_sjlj() {
+        func.attributes.add("noinline");
+        b.call(self._exc_longjmp_fn(), [env_i8p]);
+    } else {
+        b.call(self._exc_longjmp_fn(), [env_i8p, ir.Constant(i32, 1)]);
+    }
     b.unreachable();
     self._exc_raise_fn = func;
 }
@@ -1328,7 +1369,17 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     fast_ret = func.append_basic_block("fast.ret");
     miss_bb = func.append_basic_block("miss");
     b = ir.IRBuilder(entry_bb);
-    if self.rc_threaded_gv is not None {
+    if self._native_tls_on() {
+        held = b.call(get_fn, [], name="exc.tl");
+        b.cbranch(
+            b.icmp_unsigned("!=", held, ir.Constant(i64, 0), name="exc.tl.set"),
+            fast_bb,
+            miss_bb
+        );
+        b = ir.IRBuilder(fast_bb);
+        b.ret(b.inttoptr(held, context_ptr));
+        func.blocks.remove(fast_ret);
+    } elif self.rc_threaded_gv is not None {
         mt_flag = b.load_atomic(self.rc_threaded_gv, "monotonic", 1, name="exc.mt");
         b.cbranch(
             b.icmp_unsigned(
@@ -1340,15 +1391,19 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     } else {
         b.branch(miss_bb);
     }
-    b = ir.IRBuilder(fast_bb);
-    main_ctx = b.load(main_gv, name="exc.main");
-    b.cbranch(
-        b.icmp_unsigned("==", main_ctx, ir.Constant(i8p, None), name="exc.main.none"),
-        miss_bb,
-        fast_ret
-    );
-    b = ir.IRBuilder(fast_ret);
-    b.ret(b.bitcast(main_ctx, context_ptr));
+    if not self._native_tls_on() {
+        b = ir.IRBuilder(fast_bb);
+        main_ctx = b.load(main_gv, name="exc.main");
+        b.cbranch(
+            b.icmp_unsigned(
+                "==", main_ctx, ir.Constant(i8p, None), name="exc.main.none"
+            ),
+            miss_bb,
+            fast_ret
+        );
+        b = ir.IRBuilder(fast_ret);
+        b.ret(b.bitcast(main_ctx, context_ptr));
+    }
     b = ir.IRBuilder(miss_bb);
     b.ret(b.call(slow_fn, [], name="exc.slow"));
 
@@ -1372,7 +1427,7 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     found.add_incoming(value, slow_entry);
     found.add_incoming(created, create);
     context = b.inttoptr(found, context_ptr);
-    if self.rc_threaded_gv is None {
+    if self.rc_threaded_gv is None or self._native_tls_on() {
         b.ret(context);
         return func;
     }
@@ -1500,6 +1555,7 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     cleanup_ty = ir.FunctionType(ir.VoidType(), [i8p]);
     cleanup = ir.Function(self.llvm_module, cleanup_ty, name=f"{func.name}.__unwind");
     cleanup.linkage = "private";
+    cleanup.attributes.add("cold");
     env_ty = ir.ArrayType(i8p, len(slots));
     try {
         cb = ir.IRBuilder(cleanup.append_basic_block("entry"));
@@ -1552,19 +1608,20 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     } else {
         b.position_at_end(entry_blk);
     }
+
+    env_slot = b.alloca(env_ty, name="unwind.env");
+    node_ty = self._unwind_node_type();
+    link = b.alloca(node_ty, name="unwind.node");
     if cached is not None {
         entry_blk.instructions.insert(b._anchor, cached);
         b._anchor += 1;
     }
-    env_slot = b.alloca(env_ty, name="unwind.env");
     for (k, (_name, slot)) in enumerate(slots) {
         b.store(
             b.bitcast(shadows.get(id(slot), slot), i8p),
             b.gep(env_slot, [ir.Constant(i32, 0), ir.Constant(i32, k)])
         );
     }
-    node_ty = self._unwind_node_type();
-    link = b.alloca(node_ty, name="unwind.node");
     top_slot = self._unwind_top_slot(b, cached);
     prev = b.load(top_slot, name="unwind.prev");
     b.store(prev, b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));
@@ -2155,7 +2212,7 @@ impl NaIRGenPass._push_exception_handler(
     self._emit_exc_push(self.builder, state);
     self.builder.store(self._region_depth(), depth);
     env = self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
-    result = self.builder.call(self._exc_setjmp_fn(), [self.builder.bitcast(env, i8p)]);
+    result = self._emit_exc_arm(self.builder, self.builder.bitcast(env, i8p));
     self.builder.cbranch(
         self.builder.icmp_signed("!=", result, ir.Constant(i32, 0)), dispatch, body
     );
@@ -2299,44 +2356,11 @@ impl NaIRGenPass._volatilize_setjmp_locals -> None {
     }
     setjmp_name = self._exc_jmp_symbols()[0];
     for func in self._setjmp_functions {
-        after: list[any] = [];
-        pending: list[ir.Block] = [];
-        for block in func.blocks {
-            armed = False;
-            for inst in block.instructions {
-                if armed {
-                    after.append(inst);
-                } elif isinstance(inst, ir.CallInstr) {
-                    callee = inst.callee;
-                    if isinstance(callee, ir.Function) and callee.name == setjmp_name {
-                        armed = True;
-                    }
-                }
-            }
-            if armed {
-                pending.extend(self._block_successors(block));
-            }
+        targets = self._setjmp_volatile_allocas(func, setjmp_name);
+        if targets is None {
+            targets = self._setjmp_reachable_writes(func, setjmp_name);
         }
-        seen: set[int] = set();
-        while pending {
-            block = pending.pop();
-            if id(block) in seen {
-                continue;
-            }
-            seen.add(id(block));
-            after.extend(block.instructions);
-            pending.extend(self._block_successors(block));
-        }
-        written: set[int] = set();
-        for inst in after {
-            if isinstance(inst, ir.StoreInstr) {
-                base = self._setjmp_local_base(inst.operands[1]);
-                if base is not None {
-                    written.add(id(base));
-                }
-            }
-        }
-        if not written {
+        if not targets {
             continue;
         }
         for block in func.blocks {
@@ -2350,7 +2374,7 @@ impl NaIRGenPass._volatilize_setjmp_locals -> None {
                 }
                 if target is not None {
                     base = self._setjmp_local_base(target);
-                    if base is not None and id(base) in written {
+                    if base is not None and id(base) in targets {
                         setattr(inst, "volatile", True);
                     }
                 }
@@ -2358,6 +2382,360 @@ impl NaIRGenPass._volatilize_setjmp_locals -> None {
         }
     }
     self._setjmp_functions = [];
+}
+
+impl NaIRGenPass._setjmp_reachable_writes(
+    func: ir.Function, setjmp_name: str
+) -> set[int] {
+    after: list[any] = [];
+    pending: list[ir.Block] = [];
+    for block in func.blocks {
+        armed = False;
+        for inst in block.instructions {
+            if armed {
+                after.append(inst);
+            } elif isinstance(inst, ir.CallInstr) {
+                callee = inst.callee;
+                if isinstance(callee, ir.Function) and callee.name == setjmp_name {
+                    armed = True;
+                }
+            }
+        }
+        if armed {
+            pending.extend(self._block_successors(block));
+        }
+    }
+    seen: set[int] = set();
+    while pending {
+        block = pending.pop();
+        if id(block) in seen {
+            continue;
+        }
+        seen.add(id(block));
+        after.extend(block.instructions);
+        pending.extend(self._block_successors(block));
+    }
+    written: set[int] = set();
+    for inst in after {
+        if isinstance(inst, ir.StoreInstr) {
+            base = self._setjmp_local_base(inst.operands[1]);
+            if base is not None {
+                written.add(id(base));
+            }
+        }
+    }
+    return written;
+}
+
+impl NaIRGenPass._setjmp_volatile_allocas(
+    func: ir.Function, setjmp_name: str
+) -> (set[int] | None) {
+    memo: dict[int, list[ir.AllocaInstr]] = {};
+    sites: list[tuple[set[int], ir.Block]] = [];
+    candidates: set[int] = set();
+    for block in func.blocks {
+        for (index, inst) in enumerate(block.instructions) {
+            if not isinstance(inst, ir.CallInstr) {
+                continue;
+            }
+            callee = inst.callee;
+            if not isinstance(callee, ir.Function) or callee.name != setjmp_name {
+                continue;
+            }
+            landing = self._setjmp_landing(block, index);
+            if landing is None {
+                return None;
+            }
+            written = self._setjmp_region_writes(block, index, memo);
+            if written is None {
+                return None;
+            }
+            sites.append((written, landing));
+            candidates.update(written);
+        }
+    }
+    targets: set[int] = set();
+    if not candidates {
+        return targets;
+    }
+    live_in = self._setjmp_live_in(func, candidates, memo);
+    for (written, landing) in sites {
+        live = live_in.get(id(landing));
+        if live is None {
+            return None;
+        }
+        targets.update(written & live);
+    }
+    return targets;
+}
+
+impl NaIRGenPass._setjmp_landing(block: ir.Block, index: int) -> (ir.Block | None) {
+    insts = block.instructions;
+    if len(insts) != index + 3 {
+        return None;
+    }
+    call = insts[index];
+    cond = insts[index + 1];
+    term = insts[index + 2];
+    if not isinstance(cond, ir.ICMPInstr)
+        or cond.op != "ne"
+        or cond.operands[0] is not call {
+        return None;
+    }
+    zero = cond.operands[1];
+    if not isinstance(zero, ir.Constant) or zero.constant != 0 {
+        return None;
+    }
+    if not isinstance(term, ir.ConditionalBranch) or term.operands[0] is not cond {
+        return None;
+    }
+    landing = term.operands[1];
+    if not isinstance(landing, ir.Block) {
+        return None;
+    }
+    return landing;
+}
+
+impl NaIRGenPass._setjmp_value_allocas(
+    value: ir.Value, memo: dict[int, list[ir.AllocaInstr]]
+) -> list[ir.AllocaInstr] {
+    found: list[ir.AllocaInstr] = [];
+    if not isinstance(value, ir.Instruction) {
+        return found;
+    }
+    known = memo.get(id(value));
+    if known is not None {
+        return known;
+    }
+    seen: set[int] = set();
+    pending: list[ir.Value] = [value];
+    while pending {
+        current = pending.pop();
+        if id(current) in seen {
+            continue;
+        }
+        seen.add(id(current));
+        if isinstance(current, ir.AllocaInstr) {
+            found.append(current);
+        } elif isinstance(current, ir.GEPInstr) or isinstance(current, ir.CastInstr) {
+            pending.append(current.operands[0]);
+        } elif isinstance(current, ir.SelectInstr) {
+            pending.append(current.operands[1]);
+            pending.append(current.operands[2]);
+        } elif isinstance(current, ir.PhiInstr) {
+            for (incoming, _) in current.incomings {
+                pending.append(incoming);
+            }
+        }
+    }
+    memo[id(value)] = found;
+    return found;
+}
+
+impl NaIRGenPass._setjmp_operands(inst: ir.Instruction) -> list[ir.Value] {
+    if isinstance(inst, ir.PhiInstr) {
+        return [incoming for (incoming, _) in inst.incomings];
+    }
+    return list(inst.operands);
+}
+
+impl NaIRGenPass._setjmp_region_writes(
+    block: ir.Block, index: int, memo: dict[int, list[ir.AllocaInstr]]
+) -> (set[int] | None) {
+    push_fn = self._exc_push_fn;
+    pop_fn = self._exc_pop_fn;
+    blocks: list[ir.Block] = [block];
+    starts: list[int] = [index + 1];
+    ends: list[int] = [];
+    raising: list[bool] = [];
+    successors: list[list[int]] = [];
+    nodes: dict[tuple[int, int], int] = {};
+    depths: list[int] = [0];
+    position = 0;
+    while position < len(blocks) {
+        current = blocks[position];
+        depth = depths[position];
+        insts = current.instructions;
+        stop = len(insts);
+        open = True;
+        raises = False;
+        for at in range(starts[position], len(insts)) {
+            inst = insts[at];
+            if not isinstance(inst, ir.CallInstr) {
+                continue;
+            }
+            callee = inst.callee;
+            if push_fn is not None and callee is push_fn {
+                depth += 1;
+            } elif pop_fn is not None and callee is pop_fn {
+                if depth == 0 {
+                    stop = at;
+                    open = False;
+                    break;
+                }
+                depth -= 1;
+            } elif self._setjmp_call_may_raise(inst) {
+                raises = True;
+            }
+        }
+        ends.append(stop);
+        raising.append(raises);
+        targets: list[int] = [];
+        if open {
+            if depth > 64 {
+                return None;
+            }
+            for successor in self._block_successors(current) {
+                key = (id(successor), depth);
+                found = nodes.get(key, -1);
+                if found < 0 {
+                    found = len(blocks);
+                    nodes[key] = found;
+                    blocks.append(successor);
+                    starts.append(0);
+                    depths.append(depth);
+                }
+                targets.append(found);
+            }
+        }
+        successors.append(targets);
+        position += 1;
+    }
+    reach: list[bool] = list(raising);
+    changed = True;
+    while changed {
+        changed = False;
+        for node in range(len(blocks)) {
+            if reach[node] {
+                continue;
+            }
+            for target in successors[node] {
+                if reach[target] {
+                    reach[node] = True;
+                    changed = True;
+                    break;
+                }
+            }
+        }
+    }
+    written: set[int] = set();
+    for node in range(len(blocks)) {
+        if not reach[node] {
+            continue;
+        }
+        follows = False;
+        for target in successors[node] {
+            if reach[target] {
+                follows = True;
+            }
+        }
+        insts = blocks[node].instructions;
+        at = ends[node] - 1;
+        while at >= starts[node] {
+            inst = insts[at];
+            at -= 1;
+            if not isinstance(inst, ir.Instruction) {
+                continue;
+            }
+            if isinstance(inst, ir.CallInstr) and self._setjmp_call_may_raise(inst) {
+                follows = True;
+            }
+            if not follows {
+                continue;
+            }
+            if isinstance(inst, ir.LoadInstr) or isinstance(inst, ir.GEPInstr) {
+                continue;
+            }
+            if isinstance(inst, ir.CastInstr)
+                and inst.opname in ("bitcast", "addrspacecast") {
+                continue;
+            }
+            for operand in self._setjmp_operands(inst) {
+                for alloca in self._setjmp_value_allocas(operand, memo) {
+                    written.add(id(alloca));
+                }
+            }
+        }
+    }
+    return written;
+}
+
+impl NaIRGenPass._setjmp_call_may_raise(inst: ir.CallInstr) -> bool {
+    callee = inst.callee;
+    if not isinstance(callee, ir.Function) {
+        return True;
+    }
+    if callee is self._exc_push_fn or callee is self._exc_pop_fn {
+        return False;
+    }
+    return not callee.name.startswith("llvm.");
+}
+
+impl NaIRGenPass._setjmp_live_in(
+    func: ir.Function, candidates: set[int], memo: dict[int, list[ir.AllocaInstr]]
+) -> dict[int, set[int]] {
+    blocks: list[ir.Block] = list(func.blocks);
+    gens: dict[int, set[int]] = {};
+    kills: dict[int, set[int]] = {};
+    successors: dict[int, list[ir.Block]] = {};
+    for block in blocks {
+        gen: set[int] = set();
+        kill: set[int] = set();
+        for inst in block.instructions {
+            if not isinstance(inst, ir.Instruction) {
+                continue;
+            }
+            operands = self._setjmp_operands(inst);
+            killed = -1;
+            if isinstance(inst, ir.StoreInstr) {
+                dest = inst.operands[1];
+                if isinstance(dest, ir.AllocaInstr)
+                    and not dest.operands
+                    and id(dest) in candidates {
+                    killed = id(dest);
+                    operands = [inst.operands[0]];
+                }
+            }
+            for operand in operands {
+                for alloca in self._setjmp_value_allocas(operand, memo) {
+                    key = id(alloca);
+                    if key in candidates and key not in kill {
+                        gen.add(key);
+                    }
+                }
+            }
+            if killed >= 0 {
+                kill.add(killed);
+            }
+        }
+        gens[id(block)] = gen;
+        kills[id(block)] = kill;
+        successors[id(block)] = self._block_successors(block);
+    }
+    live_in: dict[int, set[int]] = {};
+    for block in blocks {
+        live_in[id(block)] = set(gens[id(block)]);
+    }
+    changed = True;
+    while changed {
+        changed = False;
+        for block in reversed(blocks) {
+            out: set[int] = set();
+            for successor in successors[id(block)] {
+                found = live_in.get(id(successor));
+                if found is not None {
+                    out.update(found);
+                }
+            }
+            current = live_in[id(block)];
+            grown = gens[id(block)] | (out - kills[id(block)]);
+            if len(grown) != len(current) {
+                live_in[id(block)] = grown;
+                changed = True;
+            }
+        }
+    }
+    return live_in;
 }
 
 impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {

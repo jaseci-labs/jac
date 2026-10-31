@@ -811,7 +811,7 @@ impl heap_glue_ir(plan: LinkPlan) -> tuple[str, list[str]] {
         return ("", []);
     }
     text = 'target triple = "' + plan.triple + '"\n' + text;
-    return inject_heap_accounting(text, managed);
+    return inject_heap_accounting(text, managed, plan.options.native_heap);
 }
 
 impl _glue_module(

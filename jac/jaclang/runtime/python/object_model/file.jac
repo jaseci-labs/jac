@@ -1,14 +1,3 @@
-"""File helpers and the bootstrap std printer: Objects/fileobject.c in native Jac.
-
-The file C API (`PyFile_FromFd`, `PyFile_GetLine`, `PyFile_WriteObject`,
-`PyFile_WriteString`, `PyObject_AsFileDescriptor`, the open_code hook,
-`Py_UniversalNewlineFgets`, `_PyFile_Flush`, ...) is defined as C functions
-under their C names, and `PyStdPrinter_Type` as C data. The open_code hook
-lives in `_PyRuntime`, whose layout differs between builds, so it is reached
-through object_api.c's `jacpy_open_code_hook`. See ../LICENSE.cpython.
-"""
-
-# The newline and EOF characters the universal-newline reader compares.
 glob:priv CR: i32 = 13,
      LF: i32 = 10,
      EOF: i32 = -1;
@@ -20,8 +9,7 @@ import from c {
         stream: ptr[FILE]
     ) -> i32;  def ungetc(c: i32, stream: ptr[FILE]) -> i32;  def isatty(
         fd: i32
-    ) -> i32;  glob:priv open_code_call: OpenCodeHook = OpenCodeHook(),
-         stdprinter_methods: list[PyMethodDef] = [
+    ) -> i32;  glob:priv stdprinter_methods: list[PyMethodDef] = [
              PyMethodDef(
                  ml_name=ptr[u8]("close"),
                  ml_meth=ptr(stdprinter_noop),
@@ -91,11 +79,7 @@ import from c {
          );
 }
 
-def py_bool(value: bool) -> ptr[PyObject] {
-    return ptr[PyObject](addressof(_Py_TrueStruct))
-        if value
-        else ptr[PyObject](addressof(_Py_FalseStruct));
-}
+def py_bool(value: bool) -> ptr[PyObject];
 
 import from c {
     def PyFile_FromFd(
@@ -108,7 +92,7 @@ import from c {
         newline: ptr[u8],
         closefd: i32
     ) -> ptr[PyObject] {
-        open = PyImport_ImportModuleAttrString("_io", "open");
+        open = PyImport_ImportModuleAttrString(ptr[u8]("_io"), ptr[u8]("open"));
         if not open {
             return NULL;
         }
@@ -124,8 +108,7 @@ import from c {
             py_bool(closefd != 0)
         );
         jacpy_release(open);
-        # The name is not set: the name attribute of FileIO is read-only, and
-        # the stream's name comes from the fd.
+
         return stream;
     }  def PyFile_GetLine(f: ptr[PyObject], n: i32) -> ptr[PyObject] {
         if not f {
@@ -141,14 +124,16 @@ import from c {
         if result and jacpy_is_bytes(result) == 0 and jacpy_is_unicode(result) == 0 {
             jacpy_release(result);
             result = NULL;
-            PyErr_SetString(PyExc_TypeError, "object.readline() returned non-string");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("object.readline() returned non-string")
+            );
         }
         if n < 0 and result and jacpy_is_bytes(result) != 0 {
             length = PyBytes_Size(result);
             if length == 0 {
                 jacpy_release(result);
                 result = NULL;
-                PyErr_SetString(PyExc_EOFError, "EOF when reading a line");
+                PyErr_SetString(PyExc_EOFError, ptr[u8]("EOF when reading a line"));
             } elif (ptr[u8](jacpy_bytes_address(result)) + (length - 1)).view(1)[0]
                 == u8(10) {
                 _PyBytes_Resize(&mut result, length - 1);
@@ -159,7 +144,7 @@ import from c {
             if length == 0 {
                 jacpy_release(result);
                 result = NULL;
-                PyErr_SetString(PyExc_EOFError, "EOF when reading a line");
+                PyErr_SetString(PyExc_EOFError, ptr[u8]("EOF when reading a line"));
             } elif PyUnicode_ReadChar(result, length - 1) == u32(10) {
                 stripped = PyUnicode_Substring(result, 0, length - 1);
                 jacpy_release(result);
@@ -169,10 +154,17 @@ import from c {
         return result;
     }  def PyFile_WriteObject(v: ptr[PyObject], f: ptr[PyObject], flags: i32) -> i32 {
         if not f {
-            PyErr_SetString(PyExc_TypeError, "writeobject with NULL file");
+            PyErr_SetString(PyExc_TypeError, ptr[u8]("writeobject with NULL file"));
             return i32(-1);
         }
-        writer = PyObject_GetAttrString(f, "write");
+        writer = PyObject_GetAttr(
+            f,
+            ptr[PyObject](
+                ptr[u8](addressof(_PyRuntime))
+                    + _PyRuntimeState_GLOBAL_STRINGS
+                    + _Py_ID_write
+            )
+        );
         if not writer {
             return i32(-1);
         }
@@ -192,7 +184,9 @@ import from c {
     }  def PyFile_WriteString(s: ptr[u8], f: ptr[PyObject]) -> i32 {
         if not f {
             if not PyErr_Occurred() {
-                PyErr_SetString(PyExc_SystemError, "null file for PyFile_WriteString");
+                PyErr_SetString(
+                    PyExc_SystemError, ptr[u8]("null file for PyFile_WriteString")
+                );
             }
             return i32(-1);
         }
@@ -206,17 +200,14 @@ import from c {
         err = PyFile_WriteObject(v, f, Py_PRINT_RAW);
         jacpy_release(v);
         return err;
-    }
-    # Try to get a file-descriptor from a Python object. If the object is an
-    # integer, its value is returned. If not, the object's fileno() method is
-    # called if it exists; the method must return an integer, which is
-    # returned as the file descriptor value. -1 is returned on failure.
-    def PyObject_AsFileDescriptor(o: ptr[PyObject]) -> i32 {
+    }  def PyObject_AsFileDescriptor(o: ptr[PyObject]) -> i32 {
         fd = i32(0);
         if jacpy_is_long(o) != 0 {
             if bool_check(o)
                 and PyErr_WarnEx(
-                    PyExc_RuntimeWarning, "bool is used as a file descriptor", 1
+                    PyExc_RuntimeWarning,
+                    ptr[u8]("bool is used as a file descriptor"),
+                    1
                 )
                     != 0 {
                 return i32(-1);
@@ -224,13 +215,13 @@ import from c {
             fd = PyLong_AsInt(o);
         } else {
             meth = NULL;
-            if PyObject_GetOptionalAttrString(o, "fileno", &mut meth) < 0 {
+            if PyObject_GetOptionalAttrString(o, ptr[u8]("fileno"), &mut meth) < 0 {
                 return i32(-1);
             }
             if not meth {
                 PyErr_SetString(
                     PyExc_TypeError,
-                    "argument must be an int, or have a fileno() method."
+                    ptr[u8]("argument must be an int, or have a fileno() method.")
                 );
                 return i32(-1);
             }
@@ -240,7 +231,9 @@ import from c {
                 return i32(-1);
             }
             if jacpy_is_long(fno) == 0 {
-                PyErr_SetString(PyExc_TypeError, "fileno() returned a non-integer");
+                PyErr_SetString(
+                    PyExc_TypeError, ptr[u8]("fileno() returned a non-integer")
+                );
                 jacpy_release(fno);
                 return i32(-1);
             }
@@ -253,7 +246,7 @@ import from c {
         if fd < 0 {
             PyErr_Format(
                 PyExc_ValueError,
-                "file descriptor cannot be a negative integer (%i)",
+                ptr[u8]("file descriptor cannot be a negative integer (%i)"),
                 fd
             );
             return i32(-1);
@@ -284,13 +277,15 @@ import from c {
         }
         return op;
     }  def PyFile_SetOpenCodeHook(hook: ptr, user_data: ptr) -> i32 {
-        if Py_IsInitialized() != 0 and PySys_AuditTuple("setopencodehook", NULL) < 0 {
+        if Py_IsInitialized() != 0
+            and PySys_AuditTuple(ptr[u8]("setopencodehook"), NULL) < 0 {
             return i32(-1);
         }
         if jacpy_open_code_hook().view(1)[0] {
             if Py_IsInitialized() != 0 {
                 PyErr_SetString(
-                    PyExc_SystemError, "failed to change existing open_code hook"
+                    PyExc_SystemError,
+                    ptr[u8]("failed to change existing open_code hook")
                 );
             }
             return i32(-1);
@@ -302,19 +297,21 @@ import from c {
         if jacpy_is_unicode(path) == 0 {
             PyErr_Format(
                 PyExc_TypeError,
-                "'path' must be 'str', not '%.200s'",
+                ptr[u8]("'path' must be 'str', not '%.200s'"),
                 ptr[_object](path).view(1)[0].ob_type.view(1)[0].tp_name
             );
             return NULL;
         }
         hook = jacpy_open_code_hook().view(1)[0];
         if hook {
-            call = addressof(open_code_call);
+            call = ptr[OpenCodeHook](
+                __thread_local_block("jac_object_model_file_open_code_call", 8)
+            );
             call.view(1)[0].call = int(hook);
             return call.view(1)[0].call(path, jacpy_open_code_userdata().view(1)[0]);
         }
         f = NULL;
-        open = PyImport_ImportModuleAttrString("_io", "open");
+        open = PyImport_ImportModuleAttrString(ptr[u8]("_io"), ptr[u8]("open"));
         if open {
             f = PyObject_CallFunction(open, "Os", path, ptr[u8]("rb"));
             jacpy_release(open);
@@ -338,11 +335,35 @@ import from c {
     }
 }
 
-# Py_UniversalNewlineFgets: an fgets() variation that understands all of \r,
-# \n and \r\n. A \r is translated into a \n, and an adjacent \n after it is
-# skipped. The stream should be opened in binary mode; fobj exists for legacy
-# reasons and must be NULL. The line (NULL at EOF or error) and its length.
 def universal_newline_fgets(
+    buf: ptr[u8], n: i32, stream: ptr[FILE], fobj: ptr[PyObject]
+) -> tuple[ptr[u8], u64];
+
+def printer_of(op: ptr[PyObject]) -> ptr[PyStdPrinter_Object];
+
+def stdprinter_write(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def stdprinter_fileno(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def stdprinter_repr(op: ptr[PyObject]) -> ptr[PyObject];
+
+def stdprinter_noop(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def stdprinter_isatty(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject];
+
+def get_closed(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def get_mode(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+def get_encoding(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject];
+
+impl py_bool(value: bool) -> ptr[PyObject] {
+    return ptr[PyObject](addressof(_Py_TrueStruct))
+        if value
+        else ptr[PyObject](addressof(_Py_FalseStruct));
+}
+
+impl universal_newline_fgets(
     buf: ptr[u8], n: i32, stream: ptr[FILE], fobj: ptr[PyObject]
 ) -> tuple[ptr[u8], u64] {
     p = buf;
@@ -379,21 +400,17 @@ def universal_newline_fgets(
     return (buf, u64(p - buf));
 }
 
-# ---------------------------------------------------------------- std printer
-# The stdprinter is used during the bootstrapping phase as a preliminary
-# file-like object for sys.stderr.
-
-def printer_of(op: ptr[PyObject]) -> ptr[PyStdPrinter_Object] {
+impl printer_of(op: ptr[PyObject]) -> ptr[PyStdPrinter_Object] {
     return ptr[PyStdPrinter_Object](op);
 }
 
-def stdprinter_write(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_write(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     fd = printer_of(op).view(1)[0].fd;
     if fd < 0 {
         return Py_NewRef(Py_None);
     }
     unicode = NULL;
-    if PyArg_ParseTuple(args, "U", &mut unicode) == 0 {
+    if PyArg_ParseTuple(args, ptr[u8]("U"), &mut unicode) == 0 {
         return NULL;
     }
     size = i64(0);
@@ -422,21 +439,21 @@ def stdprinter_write(op: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(written);
 }
 
-def stdprinter_fileno(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_fileno(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(printer_of(op).view(1)[0].fd));
 }
 
-def stdprinter_repr(op: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_repr(op: ptr[PyObject]) -> ptr[PyObject] {
     return PyUnicode_FromFormat(
         "<stdprinter(fd=%d) object at %p>", printer_of(op).view(1)[0].fd, op
     );
 }
 
-def stdprinter_noop(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_noop(_op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def stdprinter_isatty(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
+impl stdprinter_isatty(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject] {
     fd = printer_of(op).view(1)[0].fd;
     if fd < 0 {
         return py_bool(False);
@@ -447,14 +464,14 @@ def stdprinter_isatty(op: ptr[PyObject], _unused: ptr[PyObject]) -> ptr[PyObject
     return PyBool_FromLong(i64(result));
 }
 
-def get_closed(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl get_closed(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     return py_bool(False);
 }
 
-def get_mode(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
-    return PyUnicode_FromString("w");
+impl get_mode(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+    return PyUnicode_FromString(ptr[u8]("w"));
 }
 
-def get_encoding(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
+impl get_encoding(_op: ptr[PyObject], _closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
