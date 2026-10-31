@@ -1664,6 +1664,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
                 if result is None and isinstance(base_type, UnionType) {
                     for member in base_type.types {
+                        if isinstance(member, (UnknownType, AnyType))
+                            or member.is_any_instance() {
+                            return UnknownType();
+                        }
+                    }
+                    for member in base_type.types {
                         if self.get_type_of_magic_method_call(
                             member, "__getitem__", [subscript_arg], None
                         )
@@ -4818,7 +4824,7 @@ impl TypeEvaluator.match_is_exhaustive(stmt: MatchStmt) -> bool {
         remaining = [
             member
             for member in remaining
-            if not any(self.assign_type(alt, member) for alt in alternatives)
+            if not any(self.assign_type(member, alt) for alt in alternatives)
         ];
         if not remaining {
             return True;

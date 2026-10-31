@@ -4409,7 +4409,10 @@ impl NaIRGenPass._call_default_thunk(
         return None;
     }
     thunk = self._default_thunk(func, slot, param.name.value);
-    return self.builder.call(thunk, prior, name=f"default.{param.name.value}");
+    coerced = [
+        self._coerce_type(value, want.type) for (value, want) in zip(prior, thunk.args)
+    ];
+    return self.builder.call(thunk, coerced, name=f"default.{param.name.value}");
 }
 
 impl NaIRGenPass._emit_default_thunks(

@@ -3095,9 +3095,13 @@ impl TypeCheckPass._check_overrides(arch: Archetype, cls_type: ClassType) -> Non
             }
             base_t = self.evaluator.get_type_of_symbol(inherited);
             own_t = self.evaluator.get_type_of_symbol(method.name_spec.sym);
-            if isinstance(base_t, FunctionType)
+            is_protocol = name.startswith("__") and name.endswith("__");
+            if not is_protocol
+                and isinstance(base_t, FunctionType)
                 and isinstance(own_t, FunctionType)
-                and not self.evaluator.assign_type(base_t, own_t) {
+                and not self.evaluator.assign_type(
+                    self._unbound_signature(own_t), self._unbound_signature(base_t)
+                ) {
                 self.ctx.emit(
                     E1013,
                     node_override=method.name_ref,
@@ -3148,19 +3152,33 @@ impl TypeCheckPass._check_overrides(arch: Archetype, cls_type: ClassType) -> Non
             }
             base_t = self.evaluator.get_type_of_symbol(inherited);
             own_t = self.evaluator.get_type_of_symbol(field.name.sym);
-            if not (
-                self.evaluator.assign_type(base_t, own_t)
-                and self.evaluator.assign_type(own_t, base_t)
-            ) {
+            if not self.evaluator.assign_type(own_t, base_t) {
                 self.ctx.emit(
                     E1013,
                     node_override=field.name,
                     name=name,
                     base=base.shared.class_name,
-                    detail=f"field type {own_t} differs from {base_t}"
+                    detail=f"field type {own_t} is not assignable to {base_t}"
                 );
             }
             break;
         }
     }
+}
+
+impl TypeCheckPass._unbound_signature(fn: FunctionType) -> FunctionType {
+    params = list(fn.parameters);
+    if params
+        and (
+            params[0].is_self or params[0].is_cls or params[0].name in ("self", "cls")
+        ) {
+        params = params[1:];
+    }
+    return FunctionType(
+        func_name=fn.func_name,
+        return_type=fn.return_type,
+        parameters=params,
+        function_flags=fn.function_flags,
+        is_async=fn.is_async
+    );
 }
