@@ -890,6 +890,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         fn_type = ir.FunctionType(ret_type, param_types);
         fn = ir.Function(self.llvm_module, fn_type, name=mangled);
         fn.linkage = "private";
+        self._fresh_fn_values.add(mangled);
         for (i, arg) in enumerate(fn.args) {
             if i < len(param_names) {
                 arg.name = param_names[i];
@@ -1110,6 +1111,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
             self.llvm_module, ir.FunctionType(_rt, _ptypes), name=_mangled
         );
         _fn.linkage = "private";
+        self._fresh_fn_values.add(_mangled);
         for (i, _arg) in enumerate(_fn.args) {
             if i < len(_pnames) {
                 _arg.name = _pnames[i];

@@ -4317,12 +4317,53 @@ impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
 impl NaIRGenPass._codegen_callable_value(
     nd: uni.FuncCall, value: ir.Value, captures: list[tuple[str, ir.Value]]
 ) -> (ir.Value | None) {
-    if self._opt_payload_of(value.type) is not None {
-        _callee = self._opt_unwrap_guarded(
+    _opt_pl = self._opt_payload_of(value.type);
+    if _opt_pl is not None and self._callable_signature_of(_opt_pl) is not None {
+        _ct = nd.target.type if isinstance(nd.target, uni.Expr) else None;
+        _members = _ct.types if isinstance(_ct, UnionType) else [_ct];
+        if not any(
+            isinstance(_m, SemanticFunctionType) and not _m.is_gradual_callable_form()
+            for _m in _members
+        ) {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="call",
+                name="Optional callable without a parameter list",
+                help_text="Only a parameterized `Callable[[...], R] | None` is called natively; annotate the parameter types."
+            );
+            return None;
+        }
+        _owned = self._is_owned(value);
+        _opt_closure = self._closure_struct_of(_opt_pl);
+        if _opt_closure is not None {
+            _none = self.builder.icmp_signed(
+                "==",
+                self.builder.extract_value(value, 0, name="call.opt.tag"),
+                ir.Constant(ir.IntType(8), 0),
+                name="call.opt.none"
+            );
+            _callee = self.builder.select(
+                _none,
+                ir.Constant(_opt_pl, None),
+                self.builder.extract_value(value, 1, name="call.opt.val"),
+                name="call.opt.callee"
+            );
+            if not _owned {
+                self._emit_rc_retain(_callee, op="opt_callee", loc="");
+            }
+            self._mark_owned(_callee);
+            return self._codegen_closure_call(nd, _callee, _opt_closure, _none);
+        }
+        _unwrapped = self._opt_unwrap_guarded(
             value, "call", "'NoneType' object is not callable"
         );
-        if _callee is not None {
-            return self._codegen_callable_value(nd, _callee, captures);
+        if _unwrapped is None {
+            return None;
+        }
+        value = _unwrapped;
+        if _owned {
+            self._mark_owned(value);
         }
     }
     closure_name = self._closure_struct_of(value.type);
