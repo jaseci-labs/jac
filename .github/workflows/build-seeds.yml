@@ -1,0 +1,155 @@
+name: Build JacPython bootstrap seeds
+
+# Builds the JacPython runtime for every release platform and attaches it to
+# the rolling `deps` prerelease as the bootstrap seed a JacPython build runs
+# on when no earlier runtime exists:
+#
+#   jacpython-seed-<platform>-<commit>.tar.gz (+ .sha256)
+#
+# A seed is the part of a finished `zig build build-python -Dpython=jacpython`
+# output that `-Djacpython-host=<path>` accepts (build_python.zig host_parts):
+# the installed interpreter, the vendored libraries' archives, headers and
+# notices, the CA bundle, and the build key. The commit in the name is the tree
+# it was built from. Builds pin a seed by URL and sha256, so publishing one
+# changes nothing until a pull request moves the pin.
+#
+# Pull requests touching this workflow build and verify the seeds without
+# publishing them; only main pushes and manual runs write to the release.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-seeds.yml
+  pull_request:
+    paths:
+      - .github/workflows/build-seeds.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: blacksmith-8vcpu-ubuntu-2404
+            platform: linux-x86_64
+          - os: blacksmith-8vcpu-ubuntu-2404-arm
+            platform: linux-aarch64
+          - os: macos-14
+            platform: macos-aarch64
+          - os: macos-15-intel
+            platform: macos-x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    steps:
+      # SHA-pinned: this job holds contents:write and publishes the runtime
+      # every later build runs on.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Compute asset name; skip if already published
+        id: asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          ASSET="jacpython-seed-${PLATFORM}-${GITHUB_SHA::12}.tar.gz"
+          echo "name=$ASSET" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] && gh release view deps --repo "$GITHUB_REPOSITORY" --json assets \
+               --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; then
+            echo "Asset $ASSET already published; nothing to do."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore cached LLVM
+        if: steps.asset.outputs.exists != 'true'
+        id: llvm-cache
+        uses: actions/cache@v4
+        with:
+          path: jac/.llvm-build
+          key: llvm-build-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+
+      - name: Cache the Zig package store
+        if: steps.asset.outputs.exists != 'true'
+        uses: actions/cache@v4
+        with:
+          path: .zig-cache/p
+          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+          restore-keys: |
+            zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Set up Zig 0.16.0
+        if: steps.asset.outputs.exists != 'true'
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      - name: Fetch LLVM
+        if: steps.asset.outputs.exists != 'true' && steps.llvm-cache.outputs.cache-hit != 'true'
+        working-directory: jac
+        run: zig build fetch-llvm --summary all
+
+      # A fresh runner has no earlier JacPython, so the build runs on the
+      # bootstrap host it builds first.
+      - name: Build the JacPython runtime
+        if: steps.asset.outputs.exists != 'true'
+        working-directory: jac
+        run: zig build build-python -Dpython=jacpython -Djacpython-host=stock --summary all
+
+      - name: Pack the seed
+        if: steps.asset.outputs.exists != 'true'
+        env:
+          ASSET: ${{ steps.asset.outputs.name }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          tar -C "jac/.python-build/jacpython/$PLATFORM" -czf "dist/$ASSET" \
+            build-key python/install python/licenses \
+            python/build/include python/build/lib python/build/cacert.pem python/build/vendored-key
+          ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+          ls -l dist
+
+      # The seed must run from wherever a build extracts it, and must be
+      # JacPython: the native compiler bridge answers, the vendored libraries load.
+      - name: Verify the seed from another path
+        if: steps.asset.outputs.exists != 'true'
+        env:
+          ASSET: ${{ steps.asset.outputs.name }}
+        run: |
+          set -euo pipefail
+          CHECK="$RUNNER_TEMP/seed-check"
+          rm -rf "$CHECK" && mkdir -p "$CHECK"
+          tar -C "$CHECK" -xzf "dist/$ASSET"
+          "$CHECK/python/install/bin/python3.14" -I -c '
+          import ctypes, sys
+          import bz2, ctypes.util, decimal, hashlib, lzma, pyexpat, sqlite3, ssl, zlib, _zstd
+          assert ctypes.pythonapi._PyJac_CompilerRequired() == 1
+          assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
+          assert sys.prefix.startswith(sys.argv[1]), sys.prefix
+          print(sys.version, ssl.OPENSSL_VERSION, sqlite3.sqlite_version)
+          ' "$CHECK"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.asset.outputs.exists != 'true'
+        with:
+          name: jacpython-seed-${{ matrix.platform }}
+          path: dist/
+          retention-days: 14
+
+      - name: Publish to the deps prerelease
+        if: steps.asset.outputs.exists != 'true' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ASSET: ${{ steps.asset.outputs.name }}
+        run: |
+          set -euo pipefail
+          gh release upload deps --repo "$GITHUB_REPOSITORY" \
+            "dist/$ASSET" "dist/$ASSET.sha256" --clobber
