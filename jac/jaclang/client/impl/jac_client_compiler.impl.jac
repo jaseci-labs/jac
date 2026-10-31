@@ -43,14 +43,7 @@ impl JacClientCompiler._app_root(self: JacClientCompiler) -> Path {
 }
 
 impl JacClientCompiler._jac_path_to_js(self: JacClientCompiler, rel_str: str) -> str {
-    rel_str = rel_str.replace('\\', '/');
-    for compound_ext in self.COMPOUND_EXTENSIONS {
-        if rel_str.endswith(compound_ext) {
-            return rel_str[:-len(compound_ext)] + '.js';
-        }
-    }
-    result = str(Path(rel_str).with_suffix('.js'));
-    return result.replace('\\', '/');
+    return jac_js_path(rel_str);
 }
 
 impl JacClientCompiler._native_variant(self: JacClientCompiler, path: Path) -> Path {
@@ -79,6 +72,12 @@ impl JacClientCompiler.compile(
     native: bool = False
 ) -> tuple[list[str], list[str]] {
     self.input_files = {};
+    project_root = self.project_dir.resolve();
+    entry_root = module_path.resolve().parent;
+    source_root = (
+        project_root if entry_root.is_relative_to(project_root) else entry_root
+    );
+    self.jac_compiler.source_root = source_root;
     self.emit_prelude();
     artifact = self.jac_compiler.compile_module(module_path);
     self._collect_na_modules(artifact);
@@ -88,11 +87,6 @@ impl JacClientCompiler.compile(
     client_globals_map = self.jac_compiler.extract_globals(artifact.manifest, module);
     collected_globals: dict[(str, any)] = dict(client_globals_map);
     visited: set[Path] = set();
-    project_root = self.project_dir.resolve();
-    entry_root = module_path.resolve().parent;
-    source_root = (
-        project_root if entry_root.is_relative_to(project_root) else entry_root
-    );
     self.emit_dependencies(
         module_path,
         visited=visited,
@@ -141,12 +135,7 @@ impl JacClientCompiler._copy_asset_file(
     if not asset_path.exists() {
         return;
     }
-    try {
-        relative_path = asset_path.relative_to(source_root);
-        output_path = self.compiled_dir / relative_path;
-    } except ValueError {
-        output_path = self.compiled_dir / asset_path.name;
-    }
+    output_path = self._output_path_for(asset_path, source_root);
     output_path.parent.mkdir(parents=True, exist_ok=True);
     try {
         _atomic_write_text(output_path, asset_path.read_text(encoding='utf-8'));
@@ -163,12 +152,7 @@ impl JacClientCompiler._copy_ts_file(
     }
     try {
         ts_code = ts_path.read_text(encoding='utf-8');
-        try {
-            relative_path = ts_path.relative_to(source_root);
-            output_path = self.compiled_dir / relative_path;
-        } except ValueError {
-            output_path = self.compiled_dir / ts_path.name;
-        }
+        output_path = self._output_path_for(ts_path, source_root);
         output_path.parent.mkdir(parents=True, exist_ok=True);
         _atomic_write_text(output_path, ts_code);
     } except (FileNotFoundError, OSError) as e {
@@ -181,12 +165,7 @@ impl JacClientCompiler._copy_js_file(
 ) -> None {
     try {
         js_code = js_path.read_text(encoding='utf-8');
-        try {
-            relative_path = js_path.relative_to(source_root);
-            output_path = self.compiled_dir / relative_path;
-        } except ValueError {
-            output_path = self.compiled_dir / js_path.name;
-        }
+        output_path = self._output_path_for(js_path, source_root);
         output_path.parent.mkdir(parents=True, exist_ok=True);
         _atomic_write_text(output_path, js_code);
     } except (FileNotFoundError, OSError) as e {
@@ -197,12 +176,7 @@ impl JacClientCompiler._copy_js_file(
 impl JacClientCompiler._output_path_for(
     self: JacClientCompiler, module_path: Path, source_root: Path
 ) -> Path {
-    try {
-        relative_path = module_path.resolve().relative_to(source_root.resolve());
-        return self.compiled_dir / self._jac_path_to_js(str(relative_path));
-    } except ValueError {
-        return self.compiled_dir / self._jac_path_to_js(module_path.name);
-    }
+    return self.compiled_dir / client_output_path(str(module_path), str(source_root));
 }
 
 impl JacClientCompiler.emit_dependencies(
@@ -232,14 +206,20 @@ impl JacClientCompiler.emit_dependencies(
         return self._native_variant(path) if native else path;
     }
     self.emit_prelude();
-    closure = collect_client_graph(
-        [module_path],
-        self.jac_compiler.compile_module,
-        variant,
-        self.SELF_COMPILED_VIRTUAL_MODULES,
-        visited,
-        self.link_demand
-    );
+    previous_root = self.jac_compiler.source_root;
+    self.jac_compiler.source_root = source_root;
+    try {
+        closure = collect_client_graph(
+            [module_path],
+            self.jac_compiler.compile_module,
+            variant,
+            self.SELF_COMPILED_VIRTUAL_MODULES,
+            visited,
+            self.link_demand
+        );
+    } finally {
+        self.jac_compiler.source_root = previous_root;
+    }
     for unit in closure.modules + closure.refreshed {
         module_path = unit.path;
         artifact = unit.artifact;
@@ -252,14 +232,7 @@ impl JacClientCompiler.emit_dependencies(
             non_root_globals[name] = manifest.globals_values.get(name);
         }
         collected_globals.update(non_root_globals);
-        try {
-            relative_path = module_path.relative_to(source_root);
-            rel_str = self._jac_path_to_js(str(relative_path));
-            output_path = self.compiled_dir / rel_str;
-        } except ValueError {
-            name = self._jac_path_to_js(module_path.name);
-            output_path = self.compiled_dir / name;
-        }
+        output_path = self._output_path_for(module_path, source_root);
         output_path.parent.mkdir(parents=True, exist_ok=True);
         fresh = self._module_text(
             module_path, artifact, closure.links.get(module_path)
@@ -474,7 +447,7 @@ impl JacClientCompiler._scan_and_compile_pages(
     self._check_entry_renders_routes(entry_manifest);
     self._route_scanner = scanner;
     self._warn_unrouted_pages(scanner);
-    source_root = self.project_dir;
+    source_root = self.jac_compiler.source_root or self.project_dir;
     for page_file in scanner.get_page_files() {
         self.emit_dependencies(
             page_file,
@@ -559,24 +532,22 @@ impl JacClientCompiler._generate_routes_manifest(self: JacClientCompiler) -> boo
         if route.is_layout {
             continue;
         }
-        try {
-            rel_path = route.file_path.relative_to(self.project_dir);
-        } except ValueError {
-            rel_path = route.file_path.relative_to(scanner.pages_dir.parent);
-        }
-        rel_str = self._jac_path_to_js(str(rel_path));
+        rel_str = self._output_path_for(
+            route.file_path, self.jac_compiler.source_root or self.project_dir
+        ).relative_to(
+            self.compiled_dir
+        ).as_posix();
         lines.append(
             f'import {{ {route.source_export} as {route.component_import} }} '
             f'from "./{rel_str}";'
         );
     }
     for (prefix, layout) in layouts.items() {
-        try {
-            rel_path = layout.file_path.relative_to(self.project_dir);
-        } except ValueError {
-            rel_path = layout.file_path.relative_to(scanner.pages_dir.parent);
-        }
-        rel_str = self._jac_path_to_js(str(rel_path));
+        rel_str = self._output_path_for(
+            layout.file_path, self.jac_compiler.source_root or self.project_dir
+        ).relative_to(
+            self.compiled_dir
+        ).as_posix();
         lines.append(
             f'import {{ {layout.source_export} as {layout.component_import} }} '
             f'from "./{rel_str}";'
@@ -625,7 +596,7 @@ impl JacClientCompiler.init(
     self: JacClientCompiler,
     project_dir: Path,
     runtime_path: (Path | None),
-    compile_to_js_func: Callable[[Path], ClientArtifact],
+    compile_to_js_func: Callable[[Path, Path | None], ClientArtifact],
     extract_exports_func: Callable[[ClientManifest | None], list[str]],
     extract_globals_func:
         Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],

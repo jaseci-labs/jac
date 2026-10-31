@@ -91,11 +91,19 @@ impl EsastGenPass.exit_import with uni.Import exit {
 
         import_path = here.from_loc.dot_path_str;
         is_jac_runtime = here.is_virtual_jac;
-        if resolved_path.endswith('.jac')
-            and not import_path.startswith('.')
-            and not is_jac_runtime {
+        if not is_jac_runtime
+            and (
+                resolved_path.endswith('.jac')
+                or (
+                    self.prog.options.client_source_root
+                    and import_path.startswith('.')
+                    and os.path.isfile(resolved_path)
+                )
+            ) {
             js_import_path = relative_js_specifier(
-                resolved_path, self.module.loc.mod_path or here.loc.mod_path
+                resolved_path,
+                self.module.loc.mod_path or here.loc.mod_path,
+                self.prog.options.client_source_root
             );
         } else {
             js_import_path = convert_to_js_import_path(import_path);
@@ -119,9 +127,19 @@ impl EsastGenPass.exit_import with uni.Import exit {
         );
         self.client_manifest.imports[import_key] = resolved_path;
         import_path = import_key;
-        if resolved_path.endswith('.jac') and not import_path.startswith('.') {
+        if not here.is_virtual_jac
+            and (
+                resolved_path.endswith('.jac')
+                or (
+                    self.prog.options.client_source_root
+                    and import_path.startswith('.')
+                    and os.path.isfile(resolved_path)
+                )
+            ) {
             js_import_path = relative_js_specifier(
-                resolved_path, self.module.loc.mod_path or here.loc.mod_path
+                resolved_path,
+                self.module.loc.mod_path or here.loc.mod_path,
+                self.prog.options.client_source_root
             );
         } else {
             js_import_path = convert_to_js_import_path(import_path);
