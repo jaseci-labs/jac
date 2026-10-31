@@ -477,7 +477,9 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype, imported: bool = False) -
             self.struct_field_borrow[arch_name].add(fname);
         }
         if isinstance(var, uni.TypeParam) {
-            ftype = self._resolve_jac_type(var.bound);
+            ftype = self._resolve_jac_type(var.bound)
+                if var.bound is not None
+                else self._emit_unlowerable_type(var, None);
         } elif isinstance(var, uni.HasVar) and var.type_tag is not None {
             _ftag = var.type_tag.tag;
             if finfo.owner in self.clib_struct_names {

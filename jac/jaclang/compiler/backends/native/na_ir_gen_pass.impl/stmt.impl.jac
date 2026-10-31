@@ -2163,8 +2163,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     if pending_value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);
         if func_name == "set" and nd.type_tag is not None {
-            _set_t0 = nd.target[0] if nd.target else None;
-            set_type = self._resolve_jac_type(_set_t0);
+            set_target = nd.target[0];
+            set_type = self._resolve_jac_type(set_target);
             if isinstance(set_type, ir.PointerType) {
                 for (elem_name, stype) in self.set_types.items() {
                     if set_type == stype.as_pointer() {
@@ -2174,7 +2174,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 helpers["new"], [], name="set.new"
                             );
                             self._nogc_stamp_elem_drops(
-                                pending_value, self._nogc_type_arg_mangles(_set_t0)
+                                pending_value, self._nogc_type_arg_mangles(set_target)
                             );
 
                             self._mark_owned(pending_value);

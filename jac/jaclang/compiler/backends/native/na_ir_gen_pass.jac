@@ -3252,11 +3252,11 @@ walker NaIRGenPass(CompilerPass) {
     def _lower_function_type_raw(t: SemanticFunctionType) -> ir.PointerType;
     def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _abi_sizeof(t: ir.Type) -> int;
-    def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_jac_type(type_expr: uni.UniNode) -> ir.Type;
     def _lower_type_by_name(name: (str | None)) -> (ir.Type | None);
     def _lower_list_for_elem(elem_llvm: ir.Type) -> ir.Type;
     def _resolve_decl_type(
-        type_expr: (uni.UniNode | None), value: (uni.UniNode | None)
+        type_expr: uni.UniNode, value: (uni.UniNode | None)
     ) -> ir.Type;
 
     def _widened_tuple_decl_type(
@@ -3264,7 +3264,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Type | None);
 
     def _tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStructType;
-    def _resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_sig_type(type_expr: uni.UniNode) -> ir.Type;
     def _resolve_return_type(
         type_expr: (uni.UniNode | None), method: bool = False
     ) -> ir.Type;

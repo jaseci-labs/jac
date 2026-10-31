@@ -1148,7 +1148,7 @@ impl NaIRGenPass._program_has_subclasses(arch_name: str) -> bool {
     return arch_name in self._subclassed_arch_names;
 }
 
-impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
+impl NaIRGenPass._resolve_sig_type(type_expr: uni.UniNode) -> ir.Type {
     _ptb = _node_sem_type(type_expr);
     if _ptb is not None {
         lowered = self._lower_type(_ptb);
@@ -1196,11 +1196,7 @@ impl NaIRGenPass._resolve_return_type(
     return self._resolve_jac_type(type_expr);
 }
 
-impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
-    if type_expr is None {
-        return ir.IntType(64);
-    }
-
+impl NaIRGenPass._resolve_jac_type(type_expr: uni.UniNode) -> ir.Type {
     if isinstance(type_expr, uni.SubTag) and type_expr?.tag is not None {
         return self._resolve_jac_type(type_expr.tag);
     }
@@ -1238,7 +1234,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
 }
 
 impl NaIRGenPass._resolve_decl_type(
-    type_expr: (uni.UniNode | None), value: (uni.UniNode | None)
+    type_expr: uni.UniNode, value: (uni.UniNode | None)
 ) -> ir.Type {
     if self._quiet_glob_type(type_expr) is None {
         widened = self._widened_tuple_decl_type(type_expr, value);
