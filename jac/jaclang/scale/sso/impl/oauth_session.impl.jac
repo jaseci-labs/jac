@@ -145,11 +145,16 @@ impl OAuthSession.begin(
     mode: str = "web",
     link_user: str = "",
     client_callback: str = "",
-    client_managed: bool = False
+    client_managed: bool = False,
+    scopes: (list[str] | None) = None
 ) -> OAuthStart {
+    scopes = scopes or [];
     if mode not in ["web", "native"]
         or re.fullmatch(r"[A-Za-z0-9_-]{43}", challenge) is None {
         return OAuthStart(error="Invalid sign-in request.");
+    }
+    if scopes and not link_user {
+        return OAuthStart(error="Sign in before connecting an account.");
     }
     user_id = link_user;
     poll = secrets.token_urlsafe(32) if mode == "native" else "";
@@ -167,7 +172,8 @@ impl OAuthSession.begin(
                 "client_callback": client_callback,
                 "client_managed": client_managed,
                 "oauth_verifier": oauth_verifier,
-                "poll_hash": AuthTokenStore.hash_token(poll) if poll else ""
+                "poll_hash": AuthTokenStore.hash_token(poll) if poll else "",
+                "scopes": list(scopes)
             }
         )
     );
@@ -179,11 +185,14 @@ impl OAuthSession.begin(
         "code_challenge": challenge_of(oauth_verifier) if oauth_verifier else challenge,
         "code_challenge_method": "S256"
     };
-    scope = self.provider.scope();
+    scope = " ".join(self.provider.scope().split() + list(scopes));
     if scope {
         params["scope"] = scope;
     }
     params.update(self.provider.extra_authorize_params());
+    if scopes {
+        params.update(self.provider.connect_params());
+    }
     return OAuthStart(
         ok=True,
         state=state,
@@ -235,10 +244,18 @@ impl OAuthSession.finish(code: str, state: str, verifier: str) -> OAuthLogin {
     if not record {
         return OAuthLogin(error="This sign-in has already been used.");
     }
-    return await self.exchange(code, verifier, str(record.get("user_id") or ""));
+    return await self.exchange(
+        code,
+        verifier,
+        str(record.get("user_id") or ""),
+        list(json.loads(record["identity_value"]).get("scopes") or [])
+    );
 }
 
-impl OAuthSession.exchange(code: str, verifier: str, link_user: str) -> OAuthLogin {
+impl OAuthSession.exchange(
+    code: str, verifier: str, link_user: str, scopes: (list[str] | None) = None
+) -> OAuthLogin {
+    scopes = scopes or [];
     try {
         payload = await self.provider._exchange_code(code, verifier);
         access = str(payload.get("access_token") or "");
@@ -246,7 +263,21 @@ impl OAuthSession.exchange(code: str, verifier: str, link_user: str) -> OAuthLog
             return OAuthLogin(error="Sign-in was not completed. Please try again.");
         }
         info = await self.provider.fetch_user(access, payload);
-        return complete_identity(self.users, info, self.platform, link_user);
+        result = complete_identity(self.users, info, self.platform, link_user);
+        if result.ok and scopes and link_user {
+            self.users.save_oauth_grant(
+                link_user,
+                grant_from_tokens(
+                    self.platform,
+                    info.external_id,
+                    payload,
+                    scopes,
+                    previous=self.users.oauth_grant(link_user, self.platform)
+                )
+            );
+            result.connected = True;
+        }
+        return result;
     } except Exception {
         return OAuthLogin(error="Could not complete SSO sign-in. Please try again.");
     }
@@ -267,7 +298,10 @@ impl OAuthSession.complete_native(code: str, state: str) -> str {
         return "This sign-in has already been used.";
     }
     result = await self.exchange(
-        code, str(data["oauth_verifier"]), str(record.get("user_id") or "")
+        code,
+        str(data["oauth_verifier"]),
+        str(record.get("user_id") or ""),
+        list(data.get("scopes") or [])
     );
 
     db = shared_store();

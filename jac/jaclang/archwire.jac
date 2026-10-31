@@ -3697,7 +3697,9 @@ graph import {
         | testing.testing { HotReloader }
     server.identity.assurance ++> [
         scale.admin.admin_portal { METHOD_PASSWORD, second_factor_claims },
+        scale.sso.grants { caller_user_id },
         scale.sso.oauth_session { METHOD_FEDERATED },
+        scale.tests.server.test_sso_grants { bind_caller_user, release_caller_user },
     ]
     server.identity.assurance --> scale.tests.data.test_gateway_owned_identity {
         caller_assurance_level,
@@ -3715,7 +3717,8 @@ graph import {
             | scale.sso.sso_auth
             | scale.tests.server.test_oauth_session
             | scale.tests.server.test_registration_challenge
-            | scale.tests.server.test_sso { AuthTokenStore },
+            | scale.tests.server.test_sso
+            | scale.tests.server.test_sso_grants { AuthTokenStore },
         scale.tests.data.test_auth_tokens_fail_closed
             | scale.tests.server.test_emailer_factory {
             AuthTokenStore,
@@ -3724,13 +3727,14 @@ graph import {
     ]
     server.identity.config ++> [
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
-            | scale.tests.server.test_auth_policy_startup { configure_identity },
+            | scale.tests.server.test_auth_policy_startup
+            | scale.tests.server.test_sso_grants { configure_identity },
         scale.sso.github | scale.sso.oauth_session { auth_settings },
+        scale.sso.grants | scale.tests.server.test_admin { signing_secret },
         scale.tests.data.test_gateway_owned_identity {
             signing_algorithm as jwt_algorithm,
             signing_secret as jwt_secret
         },
-        scale.tests.server.test_admin { signing_secret },
         scale.tests.server.test_serve { signing_secret as jwt_secret },
         scale.webhook.webhook.WebhookUtils.create_api_key_token {
             signing_algorithm,
@@ -3789,6 +3793,7 @@ graph import {
             | scale.tests.server.test_auth_policy_startup
             | scale.tests.server.test_firebase_auth_sso
             | scale.tests.server.test_sso
+            | scale.tests.server.test_sso_grants
             | scale.tests.server.test_ws_hardening { UserManager },
         scale.server.jobs_ext { SYSTEM_USER, UserRole },
         scale.server.webhook_ext { SYSTEM_USER },
@@ -4291,6 +4296,7 @@ graph import {
             AuthSettings,
             RegistrationSettings
         },
+        scale.tests.server.test_sso_grants { AuthSettings, PasswordSettings },
     ]
     server.settings --> [
         runtime.source_app.main
@@ -4349,13 +4355,12 @@ graph import {
         scale.admin.admin_portal
             | scale.admin.workloads
             | scale.server.jobs_ext
+            | scale.server.sso_ext
             | scale.server.webhook_ext
             | scale.shared.utils
             | scale.sso.sso_auth
             | scale.webhook.webhook { Meta, TransportResponse },
-        scale.server.sso_ext | scale.tests.server.test_firebase_auth_sso {
-            TransportResponse
-        },
+        scale.tests.server.test_firebase_auth_sso { TransportResponse },
     ]
     server.watcher ++> [
         client.targets.client_dev_common
@@ -5091,6 +5096,10 @@ graph import client {
         jacSetToken as _jacSetToken,
         jacSignup as _jacSignup,
         jacSpawn as _jacSpawn,
+        jacSsoConnect as _jacSsoConnect,
+        jacSsoConnections as _jacSsoConnections,
+        jacSsoDisconnect as _jacSsoDisconnect,
+        jacSsoFinish as _jacSsoFinish,
         jacSsoLogin as _jacSsoLogin,
         navigate as _navigate
     }
@@ -31861,9 +31870,22 @@ graph import scale {
         | tests.server.test_oauth_providers
         | tests.server.test_oauth_session
         | tests.server.test_sso { GithubSSOProvider }
-    sso.google ++> tests.server.test_oauth_providers | tests.server.test_sso {
-        GoogleSSOProvider
-    }
+    sso.google ++> tests.server.test_oauth_providers
+        | tests.server.test_sso
+        | tests.server.test_sso_grants { GoogleSSOProvider }
+    sso.grants ++> [
+        server.sso_ext { connections_for, disconnect_for, register_sso },
+        tests.server.test_sso_grants {
+            access_token_for,
+            connections_for,
+            disconnect_for,
+            grant_from_tokens,
+            register_sso,
+            seal_secret,
+            sso_access_token,
+            unseal_secret
+        },
+    ]
     sso.oauth_session ++> [
         server.sso_ext { OAuthSession },
         tests.server.test_oauth_session {
@@ -31872,6 +31894,7 @@ graph import scale {
             complete_identity
         },
         tests.server.test_registration_challenge { complete_identity },
+        tests.server.test_sso_grants { OAuthSession, challenge_of },
     ]
     sso.provider ++> [
         server.sso_ext { OAuth2CodeProvider },
@@ -31879,10 +31902,12 @@ graph import scale {
             | tests.server.test_oauth_session
             | tests.server.test_registration_challenge
             | tests.server.test_sso { SSOUserInfo },
+        tests.server.test_sso_grants { GrantRefused, SSOUserInfo },
     ]
     sso.sso_auth ++> server.sso_ext
         | tests.server.test_firebase_auth_sso
-        | tests.server.test_sso { SSOAuth }
+        | tests.server.test_sso
+        | tests.server.test_sso_grants { SSOAuth }
     state.factory ++> [
         runtime.middleware.rate_limit { get_state_backend },
         tests.microservices.test_rate_limit._reset_state { _backend_holder },
@@ -32512,6 +32537,7 @@ graph import scale.sso {
     firebase --> sso_auth.SSOAuth.get_sso { FirebaseSSOProvider }
     github --> sso_auth.SSOAuth.get_sso { GithubSSOProvider }
     google --> sso_auth.SSOAuth.get_sso { GoogleSSOProvider }
+    grants ++> oauth_session { grant_from_tokens }
     oauth_session ++> sso_auth {
         OAuthLogin,
         OAuthSession,
@@ -32522,8 +32548,10 @@ graph import scale.sso {
         apple { OAuth2CodeProvider, SSOUserInfo, decode_jwt_payload_unverified },
         firebase { SSOProvider, SSOUserInfo },
         github | google | oauth_session { OAuth2CodeProvider, SSOUserInfo },
+        grants { GrantRefused, OAuth2CodeProvider },
         sso_auth { OAuth2CodeProvider, SSOProvider, SSOUserInfo },
     ]
+    type sso_auth ++> grants { SSOAuth }
 }
 
 graph import scale.state {
@@ -32645,7 +32673,7 @@ graph import scale.tests.deploy {
 graph import scale.tests.server {
     oauth_fixtures ++> [
         test_oauth_session { FakeTokens, fake_users, provider },
-        test_sso { FakeTokens, fake_users },
+        test_sso | test_sso_grants { FakeTokens, fake_users },
     ]
 }
 
@@ -32718,7 +32746,13 @@ graph import server {
             second_factor_claims,
             token_assurance
         },
-        middleware { bind_caller_assurance, release_caller_assurance, token_assurance },
+        middleware {
+            bind_caller_assurance,
+            bind_caller_user,
+            release_caller_assurance,
+            release_caller_user,
+            token_assurance
+        },
     ]
     identity.audit ++> endpoints.auth | endpoints.second_factor {
         client_ip,

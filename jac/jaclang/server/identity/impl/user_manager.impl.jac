@@ -482,6 +482,58 @@ impl UserManager.get_sso_accounts(user_id: str) -> list[dict[str, str]] {
     return self._identity_storage.get_sso_accounts(user_id);
 }
 
+impl UserManager.oauth_grants(user_id: str) -> list[dict[str, any]] {
+    return [
+        c
+        for c in self._identity_storage._get_credentials(user_id)
+        if c.get('type') == OAUTH_GRANT_CREDENTIAL
+    ];
+}
+
+impl UserManager.oauth_grant(user_id: str, platform: str) -> dict[str, any] | None {
+    for grant in self.oauth_grants(user_id) {
+        if grant.get('platform') == platform {
+            return grant;
+        }
+    }
+    return None;
+}
+
+impl UserManager.save_oauth_grant(user_id: str, grant: dict[str, any]) -> bool {
+    if not self._identity_storage.user_exists_by_id(user_id) {
+        return False;
+    }
+    platform = grant.get('platform');
+    kept = [
+        c
+        for c in self._identity_storage._get_credentials(user_id)
+        if not (
+            c.get('type') == OAUTH_GRANT_CREDENTIAL and c.get('platform') == platform
+        )
+    ];
+    kept.append({** grant, 'type': OAUTH_GRANT_CREDENTIAL});
+    self._identity_storage._update_credentials(user_id, kept);
+    return True;
+}
+
+impl UserManager.drop_oauth_grant(
+    user_id: str, platform: str
+) -> dict[str, any] | None {
+    dropped: dict[str, any] | None = None;
+    kept: list[dict[str, any]] = [];
+    for c in self._identity_storage._get_credentials(user_id) {
+        if c.get('type') == OAUTH_GRANT_CREDENTIAL and c.get('platform') == platform {
+            dropped = c;
+        } else {
+            kept.append(c);
+        }
+    }
+    if dropped is not None {
+        self._identity_storage._update_credentials(user_id, kept);
+    }
+    return dropped;
+}
+
 impl UserManager.get_user_by_sso(
     platform: str, external_id: str
 ) -> dict[str, str] | None {
