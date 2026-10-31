@@ -5520,7 +5520,8 @@ graph import compiler {
         driver.nativecache.NativeUnitRegistry.compile_unit { build_link_plan },
         driver.pipeline_runner.wasm_ir_units { build_link_plan, wasm_program_ir },
     ]
-    backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache;
+    backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache
+        | driver.nativecache.NativeBuildSession.unbound_symbols;
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
@@ -5542,6 +5543,10 @@ graph import compiler {
         driver.pipeline.native_object_passes { NativeCompilePass },
     ]
     backends.native.na_compile_pass --> [
+        driver.nativecache.NativeBuildSession.compact_ir {
+            unit_bitcode,
+            unit_fallbacks
+        },
         driver.nativecache.NativeBuildSession.lower {
             settle_unit_ir,
             unit_function_counts

@@ -107,6 +107,52 @@ test "the plan holds every unit of the diamond, dependencies first" {
     assert "diamond_abi_version" in plan.pub_exports();
 }
 
+test "the plan drops lowered LLVM modules before optimizing bitcode" {
+    import from jaclang.compiler.driver.nativecache { NativeBuildSession }
+    root_dir = _diamond_copy();
+    original_lower = NativeBuildSession.lower;
+    original_optimize = NativeBuildSession._optimize_in_parallel;
+    lowered_count: list[int] = [];
+    optimized_count: list[int] = [];
+
+    def inspect_lower(
+        self: NativeBuildSession, path: str, use_str: (str | None) = None
+    ) -> any {
+        result = original_lower(self, path, use_str);
+        if result is not None and self.compact_on_lower {
+            module = self.lowered.get(os.path.realpath(path));
+            assert module is not None;
+            assert module.gen.llvm_ir is None and module.gen.ir_module is None , (
+                "a lowered module must release LLVM IR before the next unit"
+            );
+            assert os.path.realpath(path) in self.ir_snapshots;
+            lowered_count.append(len(self.lowered));
+        }
+        return result;
+    }
+
+    def inspect_then_optimize(self: NativeBuildSession, paths: list[str]) -> set[str] {
+        assert all(
+            module.gen.llvm_ir is None and module.gen.ir_module is None
+            for module in self.lowered.values()
+        ) , "native LLVM modules must be released before optimization";
+        assert self.ir_snapshots , "bitcode and symbol snapshots must be retained";
+        optimized_count.append(len(self.lowered));
+        return original_optimize(self, paths);
+    }
+
+    NativeBuildSession.lower = inspect_lower;
+    NativeBuildSession._optimize_in_parallel = inspect_then_optimize;
+    try {
+        (prog, plan) = _plan_for(root_dir);
+    } finally {
+        NativeBuildSession.lower = original_lower;
+        NativeBuildSession._optimize_in_parallel = original_optimize;
+    }
+    assert lowered_count and lowered_count[-1] >= len(UNITS);
+    assert optimized_count and optimized_count[0] >= len(UNITS);
+}
+
 test "a body edit rewrites one object and keeps every interface" {
     root_dir = _diamond_copy();
     (prog, plan) = _plan_for(root_dir);
