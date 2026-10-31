@@ -467,6 +467,10 @@ impl precompile_native_unit(jac_path: str, collect: bool = True) -> str {
     return ent.digest if ent is not None else "";
 }
 
+impl _served_codespace(pkg_root: str) -> str {
+    return 'server' if (Path(pkg_root) / SERVE_MANIFEST_REL).is_file() else '';
+}
+
 impl precompile_context(
     jac_path: str, pkg_root: str, program: JacProgram, app: str = ""
 ) -> JacProgram {
@@ -487,7 +491,10 @@ impl precompile_context(
         entry_path,
         program,
         CompileOptions(
-            entry_point=entry_path, project_root=pkg_root, skip_native_engine=True
+            entry_point=entry_path,
+            project_root=pkg_root,
+            skip_native_engine=True,
+            default_codespace=_served_codespace(pkg_root)
         )
     );
     options = bind_options(jac_path, program, options);
@@ -506,22 +513,31 @@ impl precompile_unit_context(
     source_app = _source_apps.get((os.path.abspath(pkg_root), app), {}).get(
         os.path.realpath(jac_path), app
     );
-    selected = precompile_context(jac_path, pkg_root, program, source_app);
-    compiler.unit_collect = collect;
-    owner_options = owner_scope_options(selected);
-    with cache_scope(owner_options) {
-        try {
-            yield selected;
-        } finally {
-            owner = selected.context_root
-                if selected.context_root is not None
-                else selected;
-            owner.release_compile_closure(collect=collect);
-            if owner is not compiler.selfhost.program {
-                compiler.selfhost.program.release_compile_closure(collect=collect);
+    previous = get_effective_default_codespace_override();
+    codespace = _served_codespace(pkg_root);
+    if codespace {
+        set_effective_default_codespace(codespace);
+    }
+    try {
+        selected = precompile_context(jac_path, pkg_root, program, source_app);
+        compiler.unit_collect = collect;
+        owner_options = owner_scope_options(selected);
+        with cache_scope(owner_options) {
+            try {
+                yield selected;
+            } finally {
+                owner = selected.context_root
+                    if selected.context_root is not None
+                    else selected;
+                owner.release_compile_closure(collect=collect);
+                if owner is not compiler.selfhost.program {
+                    compiler.selfhost.program.release_compile_closure(collect=collect);
+                }
+                maybe_malloc_trim();
             }
-            maybe_malloc_trim();
         }
+    } finally {
+        set_effective_default_codespace(previous);
     }
 }
 

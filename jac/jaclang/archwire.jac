@@ -1072,7 +1072,8 @@ graph import {
             | project.kernel_compile.kernel_route
             | project.kernel_snapshot
             | server.watcher.JacFileWatcher._on_change { is_compiler_source_path },
-        cli.commands.execution._exec_file {
+        cli.commands.execution._exec_file
+            | dist.precompile_bytecode.precompile_unit_context {
             get_effective_default_codespace_override,
             set_effective_default_codespace
         },
@@ -3863,7 +3864,8 @@ graph import {
             NATIVE_DIR_REL,
             SERVE_MANIFEST_REL
         },
-        dist.precompile_bytecode.seal_runtime_closure
+        dist.precompile_bytecode._served_codespace
+            | dist.precompile_bytecode.seal_runtime_closure
             | scale.injector.bundle.require_serve_manifest { SERVE_MANIFEST_REL },
         dist.seal.bake_serve_payloads { CLIENT_DIST_REL, SERVE_MANIFEST_REL },
         dist.seal.build_serve_manifest { serve_manifest_stamp },

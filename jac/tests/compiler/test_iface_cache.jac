@@ -502,14 +502,24 @@ test "a validated disk interface seeds the encoding memo for tree consumers" {
 }
 
 """A native build compiles every module it imports with options under which
-no interface is persisted (`aot_mode`, a default codespace), so encoding one
+no interface is persisted (`aot_mode`, a native default codespace), so encoding one
 for each of them is work nothing reads: forcing every symbol's type cost a
 large one-file rebuild about as much as type checking its imports."""
 test "a compile that keeps no interface encodes none" {
     (main, dep) = _project();
     prog = JacProgram();
     options = CompileOptions(no_cgen=True, aot_mode=True, default_codespace="native");
-    assert not options.keeps_interfaces();
+    for (candidate, keeps) in [
+        (options, False),
+        (CompileOptions(force_codespace="server"), False),
+        (CompileOptions(default_codespace="native"), False),
+        (CompileOptions(default_codespace="server"), True),
+        (_check_opts(), True)
+    ] {
+        assert candidate.keeps_interfaces() == keeps , (
+            f"keeps_interfaces() for {candidate.module_projection()} should be {keeps}"
+        );
+    }
     prog.compile(main, options=options);
     assert prog.analysis.pass_runs , "the native-style compile ran no passes";
     events = prog.analysis.cache_events;
@@ -517,7 +527,6 @@ test "a compile that keeps no interface encodes none" {
         f"an interface no one persists was encoded (events: {events})"
     );
     (checked, _diags) = _check(main);
-    assert _check_opts().keeps_interfaces();
     assert checked.analysis.cache_events.get("iface_encode", 0) >= 1 , (
         f"a check stopped encoding interfaces (events: {checked.analysis.cache_events})"
     );
