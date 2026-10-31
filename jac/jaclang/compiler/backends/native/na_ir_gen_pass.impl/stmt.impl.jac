@@ -969,11 +969,8 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
     _i8p = ir.IntType(8).as_pointer();
-    _hdl = self._codegen_expr(nd.target);
+    _hdl = self._codegen_required(nd.target);
     if _hdl is None {
-        if isinstance(nd.body, (list, tuple)) {
-            self._codegen_body(nd.body);
-        }
         return;
     }
     _hdl = self._region_ptr(_hdl, name="region.hdl");
@@ -1099,7 +1096,7 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
 }
 
 impl NaIRGenPass._codegen_match(nd: uni.MatchStmt) -> None {
-    subj = self._codegen_expr(nd.target);
+    subj = self._codegen_required(nd.target);
     if subj is None {
         return;
     }
@@ -4029,12 +4026,12 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         step_val: (ir.Value | None) = None;
         if len(params) == 1 {
             start_val = ir.Constant(ir.IntType(64), 0);
-            stop_val = self._codegen_expr(params[0]);
+            stop_val = self._codegen_required(params[0]);
         } elif len(params) >= 2 {
-            start_val = self._codegen_expr(params[0]);
-            stop_val = self._codegen_expr(params[1]);
+            start_val = self._codegen_required(params[0]);
+            stop_val = self._codegen_required(params[1]);
             if len(params) >= 3 {
-                step_val = self._codegen_expr(params[2]);
+                step_val = self._codegen_required(params[2]);
                 if step_val is None {
                     return;
                 }
@@ -4049,6 +4046,9 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                     _step_is_zero, "ValueError", "range() arg 3 must not be zero"
                 );
             }
+        }
+        if start_val is None or stop_val is None {
+            return;
         }
         if start_val is not None and stop_val is not None {
             self._codegen_for_indexed(

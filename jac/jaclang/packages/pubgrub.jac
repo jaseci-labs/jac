@@ -55,7 +55,7 @@ obj SolveFailure(Exception) {
     has incompatibility: Incompatibility,
         root_name: str;
 
-    def postinit;
+    def init(incompatibility: Incompatibility, root_name: str);
 }
 
 obj PackageSource {

@@ -122,9 +122,11 @@ impl export_project(
     program = JacProgram();
     application: PreparedApplication | None = None;
     native_module = None;
+    native_memory = "";
     if kind in ('native-binary', 'native-lib', 'cli-native') {
         import from jaclang.compiler.driver.pipeline_runner { native_application }
         (native_module, native_options) = native_application(program, entry_path);
+        native_memory = native_options.memory_profile or "";
         if program.errors_had {
             raise RuntimeError(
                 '\n'.join(error.pretty_print() for error in program.errors_had)
@@ -171,7 +173,7 @@ impl export_project(
                 directory,
                 Path('main'),
                 shared=kind == 'native-lib',
-                memory=native_options.memory_profile or "",
+                memory=native_memory,
                 program=program
             );
             records.append(

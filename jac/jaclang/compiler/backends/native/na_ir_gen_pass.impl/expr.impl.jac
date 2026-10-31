@@ -702,7 +702,14 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
     if JAC_TYPE_REGISTRY.is_sized(var_name) and not _is_call_target {
         return self._codegen_type_name_str(var_name);
     }
-    return self._codegen_class_ref(nd);
+    _ref = self._codegen_class_ref(nd);
+    if _ref is None
+        and nd.expr_ctx == ExprCtx.LOAD
+        and self._binds_variable(nd)
+        and not self._reads_unlowered_local(nd) {
+        self.emit(E5092, node_override=nd, kind="variable read", name=var_name);
+    }
+    return _ref;
 }
 
 impl NaIRGenPass._codegen_pipe_fwd(nd: uni.BinaryExpr) -> (ir.Value | None) {
@@ -2717,6 +2724,8 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
     if _c_handled {
         return _c_val;
     }
+    target_name: (str | None) = None;
+    right_name: (str | None) = None;
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);

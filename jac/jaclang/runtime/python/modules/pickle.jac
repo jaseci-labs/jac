@@ -344,7 +344,7 @@ obj CodecState(ReferenceState) {
 obj PicklerState(CodecState) {
     has native: pickle_state;
 
-    override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    override def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         result = super.traverse_refs(visitor, context);
         if result != 0 {
             return result;
@@ -373,7 +373,7 @@ obj PicklerState(CodecState) {
 obj UnpicklerState(CodecState) {
     has native: unpickle_state;
 
-    override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    override def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         result = super.traverse_refs(visitor, context);
         if result != 0 {
             return result;

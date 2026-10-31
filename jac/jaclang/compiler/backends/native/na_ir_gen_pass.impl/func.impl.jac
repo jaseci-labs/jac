@@ -410,9 +410,11 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
 
     is_variadic = sig.varargs is not None;
     plan: (dict[str, any] | None) = None;
+    ret_is_str = False;
     if _abi_supported {
         _fdecl = self._foreign_fns().get(name);
         if _fdecl is not None {
+            ret_is_str = _fdecl["ret"] == "str";
             plan = classify_foreign_fn(
                 self._foreign_model(),
                 _fdecl["params"],
@@ -527,7 +529,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
                 }
             }
         }
-        sysv_ret_plan["is_str"] = _fdecl["ret"] == "str";
+        sysv_ret_plan["is_str"] = ret_is_str;
         self.clib_fn_abi[name] = {
             "params": param_plan,
             "ret": sysv_ret_plan,
@@ -676,6 +678,8 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             ret_type = func.return_value.type;
             if isinstance(ret_type, ir.VoidType) {
                 self.builder.ret_void();
+            } elif isinstance(ret_type, (ir.IntType, ir.DoubleType)) {
+                self.builder.unreachable();
             } else {
                 self.builder.ret(self._zero_const(ret_type));
             }
@@ -688,6 +692,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         self._internal_error(nd, "function", name, _codegen_exc, _local_mark);
     } finally {
         self._leave_function(state);
+    }
+    if isinstance(nd.signature, uni.FuncSignature) {
+        self._emit_default_thunks(func, nd.signature.get_parameters(), 0);
     }
     if self._demote_method_if_unlowerable(name, func, _local_mark) {
         self._rename_demoted_symbol(name, func);
@@ -1019,7 +1026,11 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
         _cap_modes[s] = _md;
         _rf: set = set();
         for _nm in s.get_all_sub_nodes(typ=uni.Name) {
-            if _nm.value in _sib_by_name and _sib_by_name[_nm.value] is not s {
+            _sib = _sib_by_name.get(_nm.value);
+            if _sib is not None
+                and _sib is not s
+                and _nm.sym is not None
+                and _nm.sym is _sib.name_spec.sym {
                 _rf.add(_nm.value);
             }
         }

@@ -15,7 +15,7 @@ def _mock_tool_calls(turn: MockRawResponse) -> list[tuple[str, str, str]];
 def _mock_finish_reason(turn: MockRawResponse) -> str;
 
 
-def _mock_response(turn: MockRawResponse, model: str) -> object;
+def _mock_response(turn: MockRawResponse, model: str) -> dict[str, any];
 
 
 def _mock_chunk(
@@ -109,7 +109,7 @@ impl MockLLM.model_call_image(params: dict[str, any]) -> dict[str, any] {
     return _mock_image_response(queue.pop(0), params.get("model") or self.model_name);
 }
 
-impl MockLLM.model_call_no_stream(params: dict[str, any]) -> object {
+impl MockLLM.model_call_no_stream(params: dict[str, any]) -> dict[str, any] {
     require_optional("litellm", "llm");
     turn = self._next_reply(params);
     if isinstance(turn, MockError) {
@@ -304,7 +304,7 @@ impl _mock_finish_reason(turn: MockRawResponse) -> str {
 }
 
 
-impl _mock_response(turn: MockRawResponse, model: str) -> object {
+impl _mock_response(turn: MockRawResponse, model: str) -> dict[str, any] {
     tool_calls = [
         {
             "id": call_id,

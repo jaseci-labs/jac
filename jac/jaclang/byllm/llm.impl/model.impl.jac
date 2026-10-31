@@ -222,7 +222,7 @@ def _stream_with_telemetry(
 def _is_timeout_error(e: Exception) -> bool;
 
 
-impl Model._raise_mapped_provider_error(e: Exception) -> None {
+impl Model._raise_mapped_provider_error(e: Exception) -> NoReturn {
     if isinstance(e, ByLLMError) {
         raise;
     }

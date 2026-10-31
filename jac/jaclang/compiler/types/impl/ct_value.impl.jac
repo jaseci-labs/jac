@@ -2,6 +2,11 @@ impl CtValue.__repr__ -> str {
     return ct_repr(self);
 }
 
+impl CtRaise.init(exc: CtExc, user: bool = False) {
+    self.exc = exc;
+    self.user = user;
+}
+
 impl CtRaise.__str__ -> str {
     return ct_str(self.exc);
 }

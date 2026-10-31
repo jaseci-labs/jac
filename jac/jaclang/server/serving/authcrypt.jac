@@ -54,6 +54,7 @@ def _warn_once(key_material: str, message: str) -> None;
 obj JWTError(Exception) {
     has reason: str = 'invalid token';
 
+    def init(reason: str = 'invalid token');
     def __str__ -> str;
 }
 

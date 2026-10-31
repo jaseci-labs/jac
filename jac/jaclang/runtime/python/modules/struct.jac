@@ -566,7 +566,7 @@ obj UnpackState(NativeState) {
         jacpy_release(previous_owner);
     }
 
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         status = visit_reference(self.owner, visitor, context);
         if status != 0 {
             return status;

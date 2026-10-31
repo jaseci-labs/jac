@@ -157,6 +157,10 @@ def write_buffer(data: bytes) -> ptr[PyObject] {
 
 obj module_failure(Exception) {
     has message: str;
+
+    def init(message: str) {
+        self.message = message;
+    }
 }
 
 obj boundary_failure(Exception) {}

@@ -1920,23 +1920,6 @@ impl JacAutoLintPass._collect_reactive_has_names(
     return names;
 }
 
-impl JacAutoLintPass._check_mutable_default(nd: uni.ParamVar) -> None {
-    if self.ctx._is_suppressed(W3036) {
-        return;
-    }
-    if nd.value is None {
-        return;
-    }
-    `default = nd.value;
-    if isinstance(`default, uni.ListVal) {
-        self.ctx.emit(W3036, node_override=nd, type="list");
-    } elif isinstance(`default, uni.DictVal) {
-        self.ctx.emit(W3036, node_override=nd, type="dict");
-    } elif isinstance(`default, uni.SetVal) {
-        self.ctx.emit(W3036, node_override=nd, type="set");
-    }
-}
-
 impl JacAutoLintPass.exit_if_stmt with uni.IfStmt exit {
     if here.__class__ is not uni.IfStmt {
         return;
@@ -1972,13 +1955,6 @@ impl JacAutoLintPass.exit_func_signature with uni.FuncSignature exit {
         return;
     }
     self._check_too_many_params(here);
-}
-
-impl JacAutoLintPass.enter_param_var with uni.ParamVar entry {
-    if not self.lint_enabled or self._in_floated_spec(here) {
-        return;
-    }
-    self._check_mutable_default(here);
 }
 
 impl JacAutoLintPass.exit_archetype with uni.Archetype exit {

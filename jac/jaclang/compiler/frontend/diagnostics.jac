@@ -435,6 +435,64 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot assign to read-only property '{name}' (no setter defined)"
      ),
+     E1013 = _err(
+         "E1013",
+         Category.TYPE,
+         "'{name}' overrides '{base}.{name}' incompatibly: {detail}",
+         help="An override must accept every call the inherited member accepts and"
+         " return something the inherited member's callers can use; a redeclared"
+         " field must keep the inherited field's type.",
+         blocks_codegen=True
+     ),
+     E1014 = _err(
+         "E1014",
+         Category.SEMANTIC,
+         "'{name}' overrides '{base}.{name}' but changes the default of '{param}'",
+         help="Defaults are evaluated by the method the call is checked against, so an"
+         " override keeps the inherited default for every parameter that has one.",
+         blocks_codegen=True
+     ),
+     E1009 = _err(
+         "E1009",
+         Category.SEMANTIC,
+         "'{name}' inherits the init of '{owner}', which does not set {fields}; define an init",
+         help="A class without its own init uses the first hand-written init in its"
+         " method resolution order. That init only knows the fields of its own class"
+         " and its bases, so the fields listed here would never be set.",
+         blocks_codegen=True
+     ),
+     E1012 = _err(
+         "E1012",
+         Category.SEMANTIC,
+         "'{name}' defines postinit, but the init it inherits from '{owner}' never calls it; define an init",
+         help="Only a generated init calls postinit. A class that inherits a"
+         " hand-written init has to define its own init to run postinit.",
+         blocks_codegen=True
+     ),
+     E1008 = _err(
+         "E1008",
+         Category.SEMANTIC,
+         "Cannot create a consistent method resolution order for '{name}'",
+         help="The base classes list an ancestor before one of its own subclasses, so"
+         " no order keeps every class ahead of its bases. Reorder the bases.",
+         blocks_codegen=True
+     ),
+     E1007 = _err(
+         "E1007",
+         Category.SEMANTIC,
+         "Default for '{param}' reads parameter '{name}', which is bound at or after it",
+         help="A default is evaluated on each call, left to right, in the function's"
+         " own scope, so it can read only the parameters declared before it.",
+         blocks_codegen=True
+     ),
+     E1006 = _err(
+         "E1006",
+         Category.SEMANTIC,
+         "'{name}' might not be assigned before this read",
+         help="Every path that reaches this read must assign the variable first. Assign"
+         " it before the branch, loop or try block that sets it.",
+         blocks_codegen=True
+     ),
      E1010 = _err(
          "E1010", Category.TYPE, "Operator \"{op}\" not supported for type \"{type}\""
      ),
@@ -1053,11 +1111,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1145",
          Category.IMPORT,
          "Cannot import name '{name}' from Jac module '{module}': it defines no such name",
-         help="The module declares no global, function, archetype, enum or import"
-         " named '{name}'. Native lowering binds an imported name to the symbol"
-         " its defining unit exports, and there is none, so the build stops here"
-         " rather than lowering every use of the name to a null value. Import a"
-         " name the module defines, or add the definition to it."
+         help="The module declares no global, function, archetype, enum or import with"
+         " that name. Import a name the module defines, or add the definition to it.",
+         blocks_codegen=True
      ),
      E1150 = _err(
          "E1150",
@@ -2056,11 +2112,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.LINT,
          "Use '==' instead of 'is' when comparing to a literal [is-with-literal]"
      ),
-     W3036 = _warn(
-         "W3036",
-         Category.LINT,
-         "Mutable default argument '{type}' — use None and assign inside the function [mutable-default]"
-     ),
      W3037 = _warn(
          "W3037",
          Category.LINT,
@@ -2185,7 +2236,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "too-many-params": "W3030",
          "is-with-literal": "W3035",
          "usestate-to-has": "W3038",
-         "mutable-default": "W3036",
          "unnecessary-none-return": "W3037",
          "getattr-to-null-ok": "W3039",
          "filter-compare-tautology": "W3040",
@@ -2284,11 +2334,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Symbol collision during native link: '{symbol}' is defined in both "
          "'{existing_module}' and '{new_module}'. "
          "Mark one as :priv or rename to avoid a runtime crash."
-     ),
-     E5030 = _err(
-         "E5030",
-         Category.CODEGEN,
-         "Cannot compute C3 MRO for {name}: inconsistent hierarchy"
      ),
      W5031 = _warn(
          "W5031",

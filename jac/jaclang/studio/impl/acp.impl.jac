@@ -1,5 +1,11 @@
-impl AcpError.postinit -> None {
-    Exception.__init__(self, f"{self.method}: {self.message} (code {self.code})");
+impl AcpError.init(
+    method: str = "", code: int = 0, message: str = "", data: any = None
+) -> None {
+    self.method = method;
+    self.code = code;
+    self.message = message;
+    self.data = data;
+    Exception.__init__(self, f"{method}: {message} (code {code})");
 }
 
 impl PendingCall.postinit -> None {

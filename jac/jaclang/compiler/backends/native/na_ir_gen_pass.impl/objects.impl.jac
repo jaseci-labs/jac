@@ -373,16 +373,12 @@ impl NaIRGenPass._visit_nonprimary_ancestor_methods(
         return;
     }
     provided_methods = collect_method_names(arch);
-    for anc in mro[1:] {
-        if layout_reg.is_primary_ancestor(arch_name, anc) {
-            anc_arch = self.arch_ast_map.get(anc);
-            if anc_arch is not None {
-                provided_methods.update(collect_method_names(anc_arch));
-            }
-        }
-    }
     for ancestor_name in mro[1:] {
         if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
+            primary_arch = self.arch_ast_map.get(ancestor_name);
+            if primary_arch is not None {
+                provided_methods.update(collect_method_names(primary_arch));
+            }
             continue;
         }
         ancestor_arch = self.arch_ast_map.get(ancestor_name);
@@ -1185,6 +1181,7 @@ impl NaIRGenPass._codegen_method(
     } finally {
         self._leave_function(state);
     }
+    self._emit_default_thunks(func, _body_params, _base);
 
     self._demote_method_if_unlowerable(
         full_name, func, _local_mark, keep_func=_is_virtual
@@ -2436,7 +2433,7 @@ impl NaIRGenPass._codegen_instantiation(
                     init_args.append(
                         _given
                             if _given is not None
-                            else self._default_arg_fallback(_expected)
+                            else self._missing_argument(nd, _expected)
                     );
                     continue;
                 }
@@ -2453,7 +2450,7 @@ impl NaIRGenPass._codegen_instantiation(
                 if _val is not None {
                     init_args.append(_val);
                 } else {
-                    init_args.append(self._default_arg_fallback(_expected));
+                    init_args.append(self._missing_argument(nd, _expected));
                 }
             }
             for pix in range(len(_sig_params), len(_init_pos)) {
@@ -2473,7 +2470,7 @@ impl NaIRGenPass._codegen_instantiation(
             }
             _fill = len(init_args);
             while _fill < len(init_fn.args) {
-                init_args.append(self._default_arg_fallback(init_fn.args[_fill].type));
+                init_args.append(self._missing_argument(nd, init_fn.args[_fill].type));
                 _fill += 1;
             }
         }
@@ -3343,7 +3340,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     args: list[ir.Value] = (
         self._codegen_bound_args(nd, func, self_offset=0)
             if _static_call
-            else [obj_val] + self._codegen_bound_args(nd, func, self_offset=1)
+            else [obj_val]
+                + self._codegen_bound_args(nd, func, self_offset=1, receiver=obj_val)
     );
 
     if self._arch_has_vtable(type_name) and not _is_mono_method and not _static_call {
@@ -3818,7 +3816,7 @@ impl NaIRGenPass._codegen_union_member(
         "AttributeError",
         f"object has no attribute '{field_name}'"
     );
-    incoming.append((self._default_arg_fallback(result_type), b.block));
+    incoming.append((self._zero_const(result_type), b.block));
     b.branch(done);
     b.position_at_end(done);
     result = b.phi(result_type, name="union.property.value");
@@ -4100,7 +4098,7 @@ impl NaIRGenPass._codegen_class_const_read(
             "AttributeError",
             f"class has no attribute '{field_name}'"
         );
-        _cc_incoming.append((self._default_arg_fallback(_ty), b.block));
+        _cc_incoming.append((self._zero_const(_ty), b.block));
     }
     b.branch(_cc_done);
     b.position_at_end(_cc_done);
@@ -4974,14 +4972,14 @@ impl NaIRGenPass._emit_class_routed_call(
         } elif _an in _sdefaults {
             _pv = self._codegen_expr(_sdefaults[_an]);
             if _pv is None {
-                _pv = self._default_arg_fallback(_sfunc.args[_ai].type);
+                _pv = self._missing_argument(nd, _sfunc.args[_ai].type);
             }
             _sargs.append(_pv);
         } else {
             if _an == "" and _skw {
                 _bad_arg = True;
             }
-            _sargs.append(self._default_arg_fallback(_sfunc.args[_ai].type));
+            _sargs.append(self._missing_argument(nd, _sfunc.args[_ai].type));
         }
     }
     if _bad_arg or (len(_used_kw) < len(_skw)) {

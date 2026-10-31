@@ -4,6 +4,9 @@ impl TypeEvaluator.validate_arg_types(
     mismatches: list[ArgTypeMismatch] | None = None,
     solved_type_vars: (dict[str, TypeBase] | None) = None
 ) -> bool {
+    if not checking_overload {
+        self._record_call_binding(args);
+    }
     has_errors: bool = False;
     binding_failures: set[Expr | KWPair] = set();
     trial: list[tuple[UniNode, str, str, bool]] = [];
@@ -847,7 +850,10 @@ impl TypeEvaluator.match_args_to_params(
         }
     }
     return MatchArgsToParamsResult(
-        arg_params=arg_params, argument_errors=argument_errors
+        arg_params=arg_params,
+        argument_errors=argument_errors,
+        func_type=func_type,
+        call=node_for_error if isinstance(node_for_error, FuncCall) else None
     );
 }
 
@@ -1271,7 +1277,7 @@ impl TypeEvaluator._type_args_from_init_overload(
             }
         }
         if spread is not None and spread.param_type is not None {
-            for arg in expr.params {
+            for arg in (expr.params or []) {
                 if isinstance(arg, KWPair)
                     and isinstance(arg.key, Name)
                     and arg.key.value not in named {
@@ -1634,7 +1640,7 @@ impl TypeEvaluator._collect_type_var_bindings(
     }
 
     param_idx = 0;
-    for arg in expr.params {
+    for arg in (expr.params or []) {
         if isinstance(arg, KWPair) {
             if isinstance(arg.key, Name) {
                 for param in params {
@@ -1776,4 +1782,30 @@ impl _literal_kwargs_spread(arg: KWPair) -> (list[tuple[str, Expr]] | None) {
         last[name] = kv.value;
     }
     return list(last.items());
+}
+
+impl TypeEvaluator._record_call_binding(args: MatchArgsToParamsResult) -> None {
+    call = args.call;
+    func_type = args.func_type;
+    if call is None or func_type is None or args.argument_errors {
+        return;
+    }
+    binding: list[tuple[int, UniNode]] = [];
+    for (arg, param) in args.arg_params.items() {
+        if param is None {
+            continue;
+        }
+        slot = -1;
+        for (index, declared) in enumerate(func_type.parameters) {
+            if declared is param {
+                slot = index;
+                break;
+            }
+        }
+        if slot < 0 {
+            continue;
+        }
+        binding.append((slot, arg.value if isinstance(arg, KWPair) else arg));
+    }
+    call.arg_binding = binding;
 }

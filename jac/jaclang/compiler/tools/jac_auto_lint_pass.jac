@@ -109,7 +109,6 @@ walker JacAutoLintPass(TreePass) {
     def _check_too_many_params(nd: uni.FuncSignature) -> None;
     def _check_is_with_literal(nd: uni.CompareExpr) -> None;
     def _check_filter_compare_tautology(nd: uni.CompareExpr) -> None;
-    def _check_mutable_default(nd: uni.ParamVar) -> None;
     def _check_unnecessary_none_return(
         nd: (uni.Ability | uni.LambdaExpr),
         body: (uni.UniNode | Sequence[uni.UniNode] | None),
@@ -122,7 +121,6 @@ walker JacAutoLintPass(TreePass) {
     can enter_else_stmt with uni.ElseStmt entry;
     can exit_compare_expr with uni.CompareExpr exit;
     can exit_func_signature with uni.FuncSignature exit;
-    can enter_param_var with uni.ParamVar entry;
     can exit_archetype with uni.Archetype exit;
     can exit_lambda_expr with uni.LambdaExpr exit;
     def _is_usestate_assignment(

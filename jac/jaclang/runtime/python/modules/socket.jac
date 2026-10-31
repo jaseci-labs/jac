@@ -45,7 +45,11 @@ import from c {
     ) -> ptr[u8];
     # Serializes the non-reentrant netdb lookups where the C library has no
     # gethostbyname_r(); process-wide, as the C module's netdb_lock is.
-    glob netdb_lock: ptr = ptr(); glob:priv getaddrinfo_keywords: list[ptr[u8]] = [
+    glob netdb_lock: ptr = ptr(); def netdb_lock_handle -> ptr {
+        return netdb_lock;
+    }  def set_netdb_lock(lock: ptr) {
+        netdb_lock = lock;
+    }  glob:priv getaddrinfo_keywords: list[ptr[u8]] = [
              ptr[u8]("host"),
              ptr[u8]("port"),
              ptr[u8]("family"),
@@ -494,15 +498,15 @@ def socket_socketpair(self: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject]
     thread = PyEval_SaveThread();
     ret = i32(0);
     error = i64(0);
-    if HAS_SOCK_CLOEXEC and sock_cloexec_works != 0 {
+    if HAS_SOCK_CLOEXEC and sock_cloexec_flag() != 0 {
         ret = socketpair(family, i32(int(type) | SOCK_CLOEXEC), proto, sv);
         error = jacpy_errno();
-        if sock_cloexec_works == -1 {
+        if sock_cloexec_flag() == -1 {
             if ret >= 0 {
-                sock_cloexec_works = i32(1);
+                set_sock_cloexec_flag(i32(1));
             } elif error == EINVAL {
                 # Linux older than 2.6.27 does not support SOCK_CLOEXEC.
-                sock_cloexec_works = i32(0);
+                set_sock_cloexec_flag(i32(0));
                 ret = socketpair(family, type, proto, sv);
                 error = jacpy_errno();
             }

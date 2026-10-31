@@ -999,49 +999,8 @@ impl TypeCheckPass.exit_ability with Ability exit {
         self._check_c_type_use(here.signature.return_type);
     }
 
-    if (
-        isinstance(here.signature, FuncSignature)
-        and here.signature.return_type is not None
-        and not isinstance(here.body, ImplDef)
-        and isinstance(here.body, list)
-        and len(here.body) > 0
-        and not here.is_abstract
-    ) {
-        is_overload = False;
-        for decor in (here.decorators or []) {
-            if isinstance(decor, Name) and decor.value == "overload" {
-                is_overload = True;
-                break;
-            }
-        }
-
-        is_generator = self._is_generator(here);
-
-        body_stmts: list[CodeBlockStmt] = [
-            stmt
-            for stmt in here.body
-            if isinstance(stmt, CodeBlockStmt)
-        ];
-        is_stub = self.evaluator._is_ellipsis_only_body(body_stmts);
-        if not is_overload and not is_generator and not is_stub {
-            ret_type = self.evaluator.get_type_of_expression(
-                here.signature.return_type
-            );
-            ret_inst = self.evaluator._convert_to_instance(ret_type);
-            none_type = self.evaluator._convert_to_instance(
-                self.evaluator.get_none_type()
-            );
-            if not self.evaluator.assign_type(none_type, ret_inst) {
-                if not self._body_always_returns(body_stmts) {
-                    self.ctx.emit(
-                        E1004,
-                        node_override=here,
-                        name=here.name_spec.sym_name,
-                        ret_type=str(ret_type)
-                    );
-                }
-            }
-        }
+    if isinstance(here.body, Sequence) {
+        self._check_return_paths(here, here, here.body);
     }
 
     if (
@@ -1206,8 +1165,43 @@ impl TypeCheckPass._check_event_trigger_archetype(nd: Ability) -> None {
     nd.event_triggers = resolved;
 }
 
-impl TypeCheckPass._body_always_returns(body: list[CodeBlockStmt]) -> bool {
-    return self.evaluator._collect_return_types(body, []);
+impl TypeCheckPass._check_return_paths(
+    decl: Ability, frame: UniCFGNode, body: Sequence[UniNode]
+) -> None {
+    sig = decl.signature;
+    if not isinstance(sig, FuncSignature)
+        or sig.return_type is None
+        or decl.is_abstract {
+        return;
+    }
+    body_stmts: list[CodeBlockStmt] = [
+        stmt
+        for stmt in body
+        if isinstance(stmt, CodeBlockStmt)
+    ];
+    if not body_stmts or self.evaluator._is_ellipsis_only_body(body_stmts) {
+        return;
+    }
+    for decor in (decl.decorators or []) {
+        if isinstance(decor, Name) and decor.value == "overload" {
+            return;
+        }
+    }
+    if self._is_generator(decl)
+        or not falls_off_end(frame, self.evaluator.flow_edge_live) {
+        return;
+    }
+    ret_type = self.evaluator.get_type_of_expression(sig.return_type);
+    ret_inst = self.evaluator._convert_to_instance(ret_type);
+    none_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
+    if not self.evaluator.assign_type(none_type, ret_inst) {
+        self.ctx.emit(
+            E1004,
+            node_override=frame,
+            name=decl.name_spec.sym_name,
+            ret_type=str(ret_type)
+        );
+    }
 }
 
 impl TypeCheckPass._check_bare_generic(
@@ -1388,6 +1382,33 @@ impl TypeCheckPass.exit_type_alias with TypeAlias exit {
 
 impl TypeCheckPass.exit_archetype with Archetype exit {
     cls_type = self.evaluator.get_type_of_class(here);
+    if isinstance(cls_type, ClassType) and not mro_is_consistent(cls_type) {
+        self.ctx.emit(E1008, node_override=here.name, name=here.name.value);
+    }
+    if isinstance(cls_type, ClassType) {
+        self._check_overrides(here, cls_type);
+    }
+    if isinstance(cls_type, ClassType) and here.arch_type.name != Tok.KW_CLASS {
+        shape = self.evaluator.constructor_shape(cls_type);
+        if shape.kind == "inherited" and shape.owner is not None {
+            if shape.unset_fields {
+                self.ctx.emit(
+                    E1009,
+                    node_override=here.name,
+                    name=here.name.value,
+                    owner=shape.owner.shared.class_name,
+                    fields=", ".join(f"'{f}'" for f in shape.unset_fields)
+                );
+            } elif shape.postinit_unreachable {
+                self.ctx.emit(
+                    E1012,
+                    node_override=here.name,
+                    name=here.name.value,
+                    owner=shape.owner.shared.class_name
+                );
+            }
+        }
+    }
     if isinstance(cls_type, ClassType)
         and here.arch_type.name == Tok.KW_OBJECT
         and not cls_type.shared.is_from_stdlib_stub
@@ -1554,6 +1575,46 @@ impl TypeCheckPass.exit_param_var with ParamVar exit {
                 here.value, expected_type=declared_type
             );
             self.evaluator.assign_expr(here.value, default_type, declared_type);
+        }
+    }
+    if here.value is not None and isinstance(here.parent, FuncSignature) {
+        self._check_default_order(here.parent, here, here.value);
+    }
+}
+
+impl TypeCheckPass._check_default_order(
+    sig: FuncSignature, param: ParamVar, default_expr: Expr
+) -> None {
+    ordered: list[ParamVar] = list(sig.posonly_params) + list(sig.params or []);
+    if sig.varargs is not None {
+        ordered.append(sig.varargs);
+    }
+    ordered.extend(sig.kwonlyargs);
+    if sig.kwargs is not None {
+        ordered.append(sig.kwargs);
+    }
+    later_syms: set[int] = set();
+    later_names: set[str] = set();
+    seen_self = False;
+    for pv in ordered {
+        if pv is param {
+            seen_self = True;
+        }
+        if seen_self {
+            later_names.add(pv.name.value);
+            if pv.name.sym is not None {
+                later_syms.add(id(pv.name.sym));
+            }
+        }
+    }
+    reads: list[Name] = [default_expr] if isinstance(default_expr, Name) else [];
+    reads.extend(default_expr.get_all_sub_nodes(Name));
+    for nm in reads {
+        if (nm.sym is not None and id(nm.sym) in later_syms)
+            or (nm.sym is None and nm.value in later_names) {
+            self.ctx.emit(
+                E1007, node_override=nm, param=param.name.value, name=nm.value
+            );
         }
     }
 }
@@ -2172,6 +2233,9 @@ impl TypeCheckPass.exit_report_stmt with ReportStmt exit {
 }
 
 impl TypeCheckPass.exit_impl_def with ImplDef exit {
+    if isinstance(here.decl_link, Ability) and isinstance(here.body, Sequence) {
+        self._check_return_paths(here.decl_link, here, here.body);
+    }
     if not (
         here.decl_link
         and isinstance(here.decl_link, Ability)
@@ -3006,4 +3070,119 @@ impl _chunks_receiver_type(nd: FuncCall) -> (str | None) {
     } except Exception {
         return None;
     }
+}
+
+impl TypeCheckPass._check_overrides(arch: Archetype, cls_type: ClassType) -> None {
+    ancestors = [
+        c
+        for c in cls_type.shared.mro[1:]
+        if isinstance(c, ClassType)
+    ];
+    if not ancestors {
+        return;
+    }
+    for method in arch.get_methods() {
+        if method.name_ref is None or method.name_spec.sym is None {
+            continue;
+        }
+        name = method.name_ref.sym_name;
+        if name in ("init", "postinit", "__init__", "__post_init__", "__new__") {
+            continue;
+        }
+        for base in ancestors {
+            table = base.shared.symbol_table;
+            inherited = table.names_in_scope.get(name) if table is not None else None;
+            if inherited is None {
+                continue;
+            }
+            base_t = self.evaluator.get_type_of_symbol(inherited);
+            own_t = self.evaluator.get_type_of_symbol(method.name_spec.sym);
+            is_protocol = name.startswith("__") and name.endswith("__");
+            if not is_protocol
+                and isinstance(base_t, FunctionType)
+                and isinstance(own_t, FunctionType)
+                and not self.evaluator.assign_type(
+                    self._unbound_signature(own_t), self._unbound_signature(base_t)
+                ) {
+                self.ctx.emit(
+                    E1013,
+                    node_override=method.name_ref,
+                    name=name,
+                    base=base.shared.class_name,
+                    detail=f"{own_t} is not assignable to {base_t}"
+                );
+            }
+            base_decl = inherited.decl.name_of if inherited.decl else None;
+            if isinstance(base_decl, Ability)
+                and isinstance(base_decl.signature, FuncSignature)
+                and isinstance(method.signature, FuncSignature) {
+                own_params = {
+                    p.name.value: p for p in method.signature.get_parameters()
+                };
+                for bp in base_decl.signature.get_parameters() {
+                    op = own_params.get(bp.name.value);
+                    if bp.value is None
+                        or op is None
+                        or isinstance(bp.value, Ellipsis) {
+                        continue;
+                    }
+                    if op.value is None
+                        or unparse_node(op.value) != unparse_node(bp.value) {
+                        self.ctx.emit(
+                            E1014,
+                            node_override=op.name,
+                            name=name,
+                            base=base.shared.class_name,
+                            param=bp.name.value
+                        );
+                    }
+                }
+            }
+            break;
+        }
+    }
+    for field in arch.get_has_vars() {
+        if field.name.sym is None {
+            continue;
+        }
+        name = field.name.value;
+        for base in ancestors {
+            table = base.shared.symbol_table;
+            inherited = table.names_in_scope.get(name) if table is not None else None;
+            if inherited is None
+                or inherited.decl is None
+                or not isinstance(inherited.decl.name_of, HasVar) {
+                continue;
+            }
+            base_t = self.evaluator.get_type_of_symbol(inherited);
+            own_t = self.evaluator.get_type_of_symbol(field.name.sym);
+            if not self.evaluator.assign_type(own_t, base_t) {
+                self.ctx.emit(
+                    E1013,
+                    node_override=field.name,
+                    name=name,
+                    base=base.shared.class_name,
+                    detail=f"field type {own_t} is not assignable to {base_t}"
+                );
+            }
+            break;
+        }
+    }
+}
+
+impl TypeCheckPass._unbound_signature(fn: FunctionType) -> FunctionType {
+    params = list(fn.parameters);
+    if params
+        and (
+            params[0].is_self or params[0].is_cls or params[0].name in ("self", "cls")
+        ) {
+        params = params[1:];
+    }
+    return FunctionType(
+        func_name=fn.func_name,
+        return_type=fn.return_type,
+        parameters=params,
+        function_flags=fn.function_flags,
+        is_async=fn.is_async
+    );
 }

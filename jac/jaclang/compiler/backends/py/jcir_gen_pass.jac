@@ -235,6 +235,8 @@ walker JcirGenPass(TreePass) {
     def name_load(name_id: str, jac_node: (UniNode | None) = None) -> CgNode;
     def _with_ctx(cgn: CgNode, ctx_cls: str) -> CgNode;
     def jaclib_obj(obj_name: str) -> CgNode;
+    def _default_slot(value: Expr) -> CgNode;
+    def _per_call_default_prologue(sig: FuncSignature) -> list[CgNode];
     def builtin_name(name: str) -> CgNode;
     def _add_preamble_once(key: str, cgn: CgNode) -> None;
     def needs_enum_kind(kind: str) -> None;

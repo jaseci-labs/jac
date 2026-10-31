@@ -44,10 +44,19 @@ obj PrefetchedTypes {
         set_class: ClassType | None = None;
 }
 
+obj CtorShape {
+    has kind: str = "generated",
+        owner: ClassType | None = None,
+        unset_fields: list[str] = [],
+        postinit_unreachable: bool = False;
+}
+
 obj MatchArgsToParamsResult {
     has arg_params: dict[(Expr | KWPair, Parameter | None)],
         overload: FunctionType | None = None,
-        argument_errors: bool = False;
+        argument_errors: bool = False,
+        func_type: FunctionType | None = None,
+        call: FuncCall | None = None;
 }
 
 glob MAX_LISTED_OVERLOADS: int = 4,
@@ -649,6 +658,10 @@ walker TypeEvaluator {
     ) -> OverloadedType | None;
 
     def _create_object_init_method(class_type: ClassType) -> FunctionType;
+    def constructor_shape(cls: ClassType) -> CtorShape;
+    def _own_member_names(cls: ClassType) -> set[str];
+    def _own_field_names(cls: ClassType) -> list[str];
+    def _has_handwritten_init(cls: ClassType) -> bool;
     def _scope_has_fields(tab: UniScopeNode | None) -> bool;
     def _dataclass_shadows_base_init(class_type: ClassType) -> bool;
     def _create_namedtuple_new_method(class_type: ClassType) -> FunctionType;
@@ -737,6 +750,12 @@ walker TypeEvaluator {
     def _find_symbol_by_key(key: str, condition: Expr) -> Symbol | None;
     def classify_condition(condition: Expr) -> ConditionInfo | None;
     def flow_pred_never_returns(pred: UniCFGNode) -> bool;
+    def _record_call_binding(args: MatchArgsToParamsResult) -> None;
+    def _missing_import_diag(source: (UniNode | None)) -> DiagnosticInfo;
+    def _module_getattr_type(source: (UniNode | None)) -> (TypeBase | None);
+    def flow_edge_live(pred: UniCFGNode, succ: UniCFGNode) -> bool;
+    def match_is_exhaustive(stmt: MatchStmt) -> bool;
+    def _pattern_covers_its_type(pat: MatchPattern) -> bool;
     def get_narrowed_type(symbol: Symbol, at_node: UniNode) -> TypeBase | None;
     def get_narrowed_type_for_expr(
         expr: Expr, declared_type: TypeBase, at_node: UniNode

@@ -1043,7 +1043,7 @@ obj ArrayState(NativeState) {
         }
     }
 
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         return visit_reference(jacpy_array_field(self.native), visitor, context);
     }
 
@@ -1059,7 +1059,7 @@ obj ArrayIteratorState(NativeState) {
         jacpy_array_cursor_clear(self.native);
     }
 
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         return visit_reference(jacpy_array_cursor_owner(self.native), visitor, context);
     }
 

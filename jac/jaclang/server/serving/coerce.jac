@@ -9,6 +9,7 @@ import from typing { Union, get_args, get_origin, get_type_hints }
 obj RequestValidationError(Exception) {
     has errors: list[dict[str, any]] = [];
 
+    def init(errors: list[dict[str, any]] = []);
     def __str__ -> str;
 }
 

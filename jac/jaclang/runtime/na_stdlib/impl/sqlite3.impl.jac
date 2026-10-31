@@ -955,8 +955,16 @@ impl Binary(`obj: any) -> bytes {
     );
 }
 
+impl Warning.init(message: str = "") {
+    self.message = message;
+}
+
 impl Warning.__str__ -> str {
     return self.message;
+}
+
+impl Error.init(message: str = "") {
+    self.message = message;
 }
 
 impl Error.__str__ -> str {

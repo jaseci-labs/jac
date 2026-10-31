@@ -9,7 +9,7 @@ obj mt19937(NativeState) {
     has words: list[u32] = [u32(0) for i in range(624)],
         index: int = 0;
 
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         return i32(0);
     }
 

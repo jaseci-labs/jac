@@ -243,6 +243,13 @@ impl JcirGenPass.exit_ability with Ability exit {
     if (here.is_abstract and here.body) {
         self.ctx.emit(E5004, node_override=here, name=str(here.sym_name));
     }
+    if not here.is_abstract and isinstance(here.signature, FuncSignature) {
+        prologue = self._per_call_default_prologue(here.signature);
+        if prologue {
+            at = 1 if (here.doc and body) else 0;
+            body = body[:at] + prologue + body[at:];
+        }
+    }
     decorator_list = [self.val(i) for i in here.decorators] if here.decorators else [];
     if (sem_decorator := self._get_sem_decorator(here)) {
         decorator_list.append(sem_decorator);
@@ -521,14 +528,14 @@ impl JcirGenPass.exit_func_signature with FuncSignature exit {
     all_params: list[UniNode] = list(here.posonly_params) + list(here.params);
     for i in all_params {
         if (isinstance(i, ParamVar) and i.value) {
-            defaults.append(self.val(i.value));
+            defaults.append(self._default_slot(i.value));
         }
     }
     kwonly_args = [self.val(i) for i in here.kwonlyargs];
     kw_defaults: list[CgNode | None] = [];
     for i in here.kwonlyargs {
         if isinstance(i, ParamVar) and i.value {
-            kw_defaults.append(self.val(i.value));
+            kw_defaults.append(self._default_slot(i.value));
         } else {
             kw_defaults.append(None);
         }
@@ -877,4 +884,61 @@ impl JcirGenPass.gen_llm_body(nd: Ability) -> list[CgNode] {
     }
     statements.append(self.nod('Return', ['value'], [llm_call]));
     return statements;
+}
+
+impl JcirGenPass._default_slot(value: Expr) -> CgNode {
+    return self.val(value)
+        if is_constant_default(value)
+        else self.jaclib_obj("CALL_DEFAULT");
+}
+
+impl JcirGenPass._per_call_default_prologue(sig: FuncSignature) -> list[CgNode] {
+    ordered: list[ParamVar] = list(sig.posonly_params) + list(sig.params or []);
+    ordered.extend(sig.kwonlyargs);
+    prologue: list[CgNode] = [];
+    for param in ordered {
+        if param.value is None or is_constant_default(param.value) {
+            continue;
+        }
+        name = param.name.value;
+        prologue.append(
+            self.nod(
+                'If',
+                ['test', 'body', 'orelse'],
+                [
+                    self.nod(
+                        'Compare',
+                        ['left', 'ops', 'comparators'],
+                        [
+                            self.name_load(name),
+                            [self.nod('Is', [], [])],
+                            [self.jaclib_obj("CALL_DEFAULT")]
+                        ],
+                        jac_node=param
+                    ),
+                    [
+                        self.nod(
+                            'Assign',
+                            ['targets', 'value'],
+                            [
+                                [
+                                    self.nod(
+                                        'Name',
+                                        ['id', 'ctx'],
+                                        [name, self.nod('Store', [], [])],
+                                        jac_node=param
+                                    )
+                                ],
+                                self.val(param.value)
+                            ],
+                            jac_node=param
+                        )
+                    ],
+                    []
+                ],
+                jac_node=param
+            )
+        );
+    }
+    return prologue;
 }

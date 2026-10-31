@@ -1,4 +1,8 @@
 impl CFGBuildPass.link_bbs(source: UniCFGNode, target: UniCFGNode) -> None {
+    if source and target and self._is_exit_target(source, target) {
+        source.cfg_exit_to(target);
+        return;
+    }
     if source and target {
         source.cfg_link(target);
         new_symbols = source.affected_symbols - target.affected_symbols;
@@ -23,59 +27,13 @@ impl CFGBuildPass.link_bbs(source: UniCFGNode, target: UniCFGNode) -> None {
     }
 }
 
-impl CFGBuildPass._link_sequential(body: Sequence[CodeBlockStmt]) -> None {
-    for i in range(1, len(body)) {
-        prev = body[i - 1];
-        next = body[i];
-        if self._is_terminal(prev) {
-            continue;
-        }
-        has_else = isinstance(prev, AstElseBodyNode) and prev.else_body is not None;
-
-        has_bool_sc = False;
-        if isinstance(prev, (IfStmt, ElseIf, WhileStmt)) {
-            has_bool_sc = isinstance(_unwrap_parens(prev.condition), BoolExpr);
-        }
-        if has_else and isinstance(prev, (IfStmt, WhileStmt, InForStmt, IterForStmt)) {
-            self._connect_tails(prev, next);
-            if isinstance(prev, IfStmt) {
-                empty_true = not prev.body;
-                eb = prev.else_body;
-                empty_else = isinstance(eb, ElseStmt) and not eb.body;
-                if empty_true or empty_else {
-                    self.link_bbs(prev, next);
-                }
-            }
-        } elif has_bool_sc {
-            self._connect_tails(prev, next);
-        } else {
-            self.link_bbs(prev, next);
-            self._connect_tails(prev, next);
-        }
+impl CFGBuildPass._is_exit_target(source: UniCFGNode, target: UniCFGNode) -> bool {
+    if not isinstance(target, (Ability, ImplDef, Test)) {
+        return False;
     }
-}
-
-impl CFGBuildPass._exit_wired(nd: UniCFGNode) -> bool {
-    if isinstance(nd, IfStmt) {
-        return bool(nd.bb_out);
-    }
-    for succ in nd.bb_out {
-        if isinstance(succ, InnerCompr) or self._in_nested_lambda(succ, nd) {
-            continue;
-        }
-        if not isinstance(succ, CfgExpr)
-            or succ.find_parent_of_type(UniCFGNode) is not nd {
-            return True;
-        }
-    }
-    return False;
-}
-
-impl CFGBuildPass._in_nested_lambda(succ: UniCFGNode, nd: UniCFGNode) -> bool {
-    lam = succ.find_parent_of_type(LambdaExpr);
-    cur: UniNode | None = lam;
+    cur: (UniNode | None) = source;
     while cur is not None {
-        if cur is nd {
+        if cur is target {
             return True;
         }
         cur = cur.parent;
@@ -83,47 +41,432 @@ impl CFGBuildPass._in_nested_lambda(succ: UniCFGNode, nd: UniCFGNode) -> bool {
     return False;
 }
 
-impl CFGBuildPass._connect_tails(parent: UniNode, target: UniCFGNode) -> None {
-    for k in [parent->:Kid:->] {
-        if not k or isinstance(k, Expr) or isinstance(k, Semi) {
-            continue;
-        }
+impl CFGBuildPass._link_to(source: UniCFGNode, target: (UniCFGNode | None)) -> None {
+    if target is not None and not any(o is target for o in source.bb_out) {
+        self.link_bbs(source, target);
+    }
+}
 
-        if isinstance(parent, IterForStmt) {
-            if k is parent.iter or k is parent.count_by {
-                continue;
-            }
+impl CFGBuildPass._is_terminal(nd: UniNode) -> bool {
+    return isinstance(nd, (ReturnStmt, RaiseStmt, CtrlStmt, DisengageStmt));
+}
+
+impl CFGBuildPass._stmt_body(parent: UniNode) -> (Sequence[UniNode] | None) {
+    if isinstance(
+        parent,
+        (
+            IfStmt,
+            ElseStmt,
+            WhileStmt,
+            ForeverStmt,
+            InForStmt,
+            IterForStmt,
+            TryStmt,
+            Except,
+            FinallyStmt,
+            AwaitingClause,
+            WithStmt,
+            TypedCtxBlock,
+            OpenStmt,
+            MatchCase,
+            SwitchCase,
+            ModuleCode,
+            Test
+        )
+    ) {
+        return parent.body;
+    }
+    if isinstance(parent, (Ability, ImplDef, LambdaExpr, JsxSlot))
+        and isinstance(parent.body, Sequence) {
+        return cast(Sequence[UniNode], parent.body);
+    }
+    return None;
+}
+
+impl CFGBuildPass._is_flow_frame(nd: UniNode) -> bool {
+    return isinstance(
+        nd,
+        (
+            Ability,
+            ImplDef,
+            LambdaExpr,
+            Test,
+            ModuleCode,
+            JsxSlot,
+            Archetype,
+            Enum,
+            Module
+        )
+    );
+}
+
+impl CFGBuildPass._in_stmt_body(nd: UniNode) -> bool {
+    parent = nd.parent;
+    if parent is None {
+        return False;
+    }
+    body = self._stmt_body(parent);
+    return body is not None and any(s is nd for s in body);
+}
+
+impl CFGBuildPass._next_in_body(
+    body: Sequence[UniNode], child: UniNode
+) -> (UniCFGNode | None) {
+    found = False;
+    for stmt in body {
+        if found and isinstance(stmt, UniCFGNode) {
+            return stmt;
         }
-        if isinstance(k, (Ability, Archetype, ImplDef, Test)) {
-            continue;
-        }
-        if isinstance(k, (WhileStmt, ForeverStmt, InForStmt, IterForStmt)) {
-            body_entry = k.body[0] if k.body else None;
-            exit_wired = any([o is not body_entry for o in k.bb_out]);
-            if not exit_wired
-                and not self._is_terminal(k)
-                and not isinstance(k, ForeverStmt) {
-                self.link_bbs(k, target);
-            }
-            continue;
-        }
-        if isinstance(k, UniCFGNode) {
-            if not self._exit_wired(k) and not self._is_terminal(k) {
-                self.link_bbs(k, target);
-            } elif isinstance(k, IfStmt) and not k.else_body {
-                first_body = k.body[0] if k.body else None;
-                has_false_branch = any(o is not first_body for o in k.bb_out);
-                if not has_false_branch {
-                    self.link_bbs(k, target);
-                }
-                self._connect_tails(k, target);
-            } else {
-                self._connect_tails(k, target);
-            }
-        } else {
-            self._connect_tails(k, target);
+        if stmt is child {
+            found = True;
         }
     }
+    return None;
+}
+
+impl CFGBuildPass._body_entry(
+    body: Sequence[UniNode], fallback: (UniCFGNode | None)
+) -> (UniCFGNode | None) {
+    for stmt in body {
+        if isinstance(stmt, UniCFGNode) {
+            return stmt;
+        }
+    }
+    return fallback;
+}
+
+impl CFGBuildPass._follow(nd: UniNode) -> (UniCFGNode | None) {
+    child: UniNode = nd;
+    parent = nd.parent;
+    while parent is not None {
+        body = self._stmt_body(parent);
+        if body is not None and any(s is child for s in body) {
+            nxt = self._next_in_body(body, child);
+            if nxt is not None {
+                return nxt;
+            }
+            if isinstance(parent, (WhileStmt, ForeverStmt, InForStmt, IterForStmt)) {
+                return parent;
+            }
+            if isinstance(parent, TryStmt) {
+                else_entry = self._else_entry(parent);
+                if else_entry is not None {
+                    return else_entry;
+                }
+                if parent.finally_body is not None {
+                    return parent.finally_body;
+                }
+            } elif isinstance(parent, (Except, AwaitingClause))
+                or (
+                    isinstance(parent, ElseStmt) and isinstance(parent.parent, TryStmt)
+                ) {
+                owner = parent.parent;
+                if isinstance(owner, TryStmt) and owner.finally_body is not None {
+                    return owner.finally_body;
+                }
+                child = owner;
+                parent = owner.parent;
+                continue;
+            } elif isinstance(parent, FinallyStmt) {
+                child = parent.parent;
+                parent = child.parent;
+                continue;
+            } elif isinstance(parent, SwitchCase) {
+                owner = parent.parent;
+                if isinstance(owner, SwitchStmt) {
+                    later = False;
+                    for sc in owner.cases {
+                        if later {
+                            fallthrough = self._body_entry(sc.body, None);
+                            if fallthrough is not None {
+                                return fallthrough;
+                            }
+                        }
+                        if sc is parent {
+                            later = True;
+                        }
+                    }
+                }
+                child = owner;
+                parent = owner.parent;
+                continue;
+            } elif isinstance(parent, MatchCase) {
+                child = parent.parent;
+                parent = child.parent;
+                continue;
+            } elif self._is_flow_frame(parent) {
+                return parent if isinstance(parent, (Ability, ImplDef, Test)) else None;
+            }
+        } elif self._is_flow_frame(parent) {
+            return None;
+        }
+        child = parent;
+        parent = parent.parent;
+    }
+    return None;
+}
+
+impl CFGBuildPass._else_entry(nd: UniNode) -> (UniCFGNode | None) {
+    if not isinstance(nd, AstElseBodyNode) {
+        return None;
+    }
+    eb = nd.else_body;
+    if isinstance(eb, ElseIf) {
+        return eb;
+    }
+    if isinstance(eb, ElseStmt) {
+        return self._body_entry(eb.body, None);
+    }
+    return None;
+}
+
+impl CFGBuildPass._break_target(nd: CtrlStmt) -> (UniCFGNode | None) {
+    cur = nd.parent;
+    while cur is not None and not self._is_flow_frame(cur) {
+        if isinstance(cur, SwitchStmt) {
+            return self._follow(cur);
+        }
+        if isinstance(cur, (InForStmt, IterForStmt, WhileStmt, ForeverStmt))
+            and not in_loop_else(nd, cur) {
+            return self._follow(cur);
+        }
+        cur = cur.parent;
+    }
+    return None;
+}
+
+impl CFGBuildPass._is_compound(nd: UniNode) -> bool {
+    return isinstance(
+        nd,
+        (
+            IfStmt,
+            WhileStmt,
+            ForeverStmt,
+            InForStmt,
+            IterForStmt,
+            TryStmt,
+            WithStmt,
+            TypedCtxBlock,
+            OpenStmt,
+            MatchStmt,
+            SwitchStmt,
+            VisitStmt
+        )
+    );
+}
+
+impl CFGBuildPass._is_irrefutable_case(nd: MatchCase) -> bool {
+    return nd.guard is None and is_irrefutable_pattern(nd.pattern);
+}
+
+impl CFGBuildPass._wire_branch(
+    nd: UniCFGNode,
+    condition: Expr,
+    true_target: (UniCFGNode | None),
+    false_target: (UniCFGNode | None)
+) -> None {
+    unwrapped = _unwrap_parens(condition);
+    if isinstance(unwrapped, BoolExpr) and len(unwrapped.values) >= 2 {
+        `entry = self._wire_bool_operands(
+            unwrapped.values, _bool_is_and(unwrapped), true_target, false_target
+        );
+        self._link_to(nd, `entry);
+        return;
+    }
+    self._link_to(nd, true_target);
+    self._link_to(nd, false_target);
+}
+
+impl CFGBuildPass.exit_simple_stmt with UniCFGNode exit {
+    if self._is_compound(here) or self._is_terminal(here) {
+        return;
+    }
+    if isinstance(here, (Except, FinallyStmt, AwaitingClause, MatchCase, SwitchCase)) {
+        return;
+    }
+    if not self._in_stmt_body(here) {
+        return;
+    }
+    self._link_to(here, self._follow(here));
+}
+
+impl CFGBuildPass.exit_if_stmt with IfStmt exit {
+    after = self._follow(here);
+    true_target = self._body_entry(here.body, after);
+    false_target = self._else_entry(here);
+    if false_target is None {
+        false_target = after;
+    }
+    self._wire_branch(here, here.condition, true_target, false_target);
+}
+
+impl CFGBuildPass.exit_while_stmt with WhileStmt exit {
+    true_target = self._body_entry(here.body, here);
+    false_target: (UniCFGNode | None) = None;
+    if not is_constant_true(here.condition) {
+        false_target = self._else_entry(here);
+        if false_target is None {
+            false_target = self._follow(here);
+        }
+    }
+    self._wire_branch(here, here.condition, true_target, false_target);
+}
+
+impl CFGBuildPass.exit_forever_stmt with ForeverStmt exit {
+    self._link_to(here, self._body_entry(here.body, here));
+}
+
+impl CFGBuildPass.exit_in_for_stmt with InForStmt exit {
+    self._link_to(here, self._body_entry(here.body, here));
+    exhausted = self._else_entry(here);
+    self._link_to(here, exhausted if exhausted is not None else self._follow(here));
+}
+
+impl CFGBuildPass.exit_iter_for_stmt with IterForStmt exit {
+    true_target = self._body_entry(here.body, here);
+    false_target = self._else_entry(here);
+    if false_target is None {
+        false_target = self._follow(here);
+    }
+    self._wire_branch(here, here.condition, true_target, false_target);
+}
+
+impl CFGBuildPass.exit_ctrl_stmt with CtrlStmt exit {
+    if here.ctrl.name == Tok.KW_CONTINUE {
+        loop = enclosing_loop(here);
+        if loop is not None {
+            self.link_bbs(here, loop);
+        }
+    } elif here.ctrl.name == Tok.KW_BREAK {
+        self._link_to(here, self._break_target(here));
+    }
+}
+
+impl CFGBuildPass.exit_try_stmt with TryStmt exit {
+    self._link_to(here, self._body_entry(here.body, None));
+    for exc in here.excepts {
+        self.link_bbs(here, exc);
+    }
+    if here.finally_body is not None {
+        self.link_bbs(here, here.finally_body);
+    }
+}
+
+impl CFGBuildPass.exit_except with Except exit {
+    self._link_to(here, self._body_entry(here.body, None));
+}
+
+impl CFGBuildPass.exit_finally_stmt with FinallyStmt exit {
+    owner = here.parent;
+    after = self._follow(owner) if owner is not None else None;
+    self._link_to(here, self._body_entry(here.body, after));
+}
+
+impl CFGBuildPass.exit_match_stmt with MatchStmt exit {
+    exhaustive = False;
+    for `case in here.cases {
+        self.link_bbs(here, `case);
+        if self._is_irrefutable_case(`case) {
+            exhaustive = True;
+        }
+    }
+    if not exhaustive {
+        self._link_to(here, self._follow(here));
+    }
+}
+
+impl CFGBuildPass.exit_match_case with MatchCase exit {
+    owner = here.parent;
+    after = self._follow(owner) if owner is not None else None;
+    self._link_to(here, self._body_entry(here.body, after));
+}
+
+impl CFGBuildPass.exit_switch_stmt with SwitchStmt exit {
+    has_default = False;
+    for `case in here.cases {
+        self.link_bbs(here, `case);
+        if `case.pattern is None {
+            has_default = True;
+        }
+    }
+    if not has_default {
+        self._link_to(here, self._follow(here));
+    }
+}
+
+impl CFGBuildPass.exit_switch_case with SwitchCase exit {
+    owner = here.parent;
+    after = self._follow(owner) if owner is not None else None;
+    self._link_to(here, self._body_entry(here.body, after));
+}
+
+impl CFGBuildPass.exit_with_stmt with WithStmt exit {
+    self._link_to(here, self._body_entry(here.body, self._follow(here)));
+}
+
+impl CFGBuildPass.exit_typed_ctx_block with TypedCtxBlock exit {
+    self._link_to(here, self._body_entry(here.body, self._follow(here)));
+}
+
+impl CFGBuildPass.exit_open_stmt with OpenStmt exit {
+    self._link_to(here, self._body_entry(here.body, self._follow(here)));
+}
+
+impl CFGBuildPass.exit_visit_stmt with VisitStmt exit {
+    after = self._follow(here);
+    self._link_to(here, after);
+    self._link_to(here, self._else_entry(here));
+}
+
+impl CFGBuildPass.exit_jsx_slot with JsxSlot exit {
+    if here.body and isinstance(here.body, Sequence) {
+        enclosing = here.find_parent_of_type(CodeBlockStmt);
+        if enclosing is not None {
+            self._link_to(enclosing, self._body_entry(here.body, None));
+        }
+    }
+}
+
+impl CFGBuildPass.exit_lambda_expr with LambdaExpr exit {
+    if isinstance(here.body, Sequence) {
+        enclosing = here.find_parent_of_type(CodeBlockStmt);
+        if enclosing is not None {
+            self._link_to(enclosing, self._body_entry(here.body, None));
+        }
+    }
+}
+
+impl CFGBuildPass.exit_ability with Ability exit {
+    if isinstance(here.body, Sequence) {
+        self._link_to(here, self._body_entry(here.body, here));
+    }
+}
+
+impl CFGBuildPass.exit_archetype with Archetype exit {
+    if here.body and isinstance(here.body, Sequence) {
+        for s in here.body {
+            if isinstance(s, CodeBlockStmt) {
+                self.link_bbs(here, s);
+            }
+        }
+    }
+}
+
+impl CFGBuildPass.exit_impl_def with ImplDef exit {
+    if isinstance(here.body, Sequence) {
+        self._link_to(here, self._body_entry(here.body, here));
+    }
+}
+
+impl CFGBuildPass.exit_test with Test exit {
+    if isinstance(here.body, Sequence) {
+        self._link_to(here, self._body_entry(here.body, here));
+    }
+}
+
+impl is_constant_true(expr: Expr) -> bool {
+    inner = _unwrap_parens(expr);
+    return isinstance(inner, Bool) and inner.value == "True";
 }
 
 impl CFGBuildPass._wire_bool_operands(
@@ -141,8 +484,12 @@ impl CFGBuildPass._wire_bool_operands(
 impl CFGBuildPass._set_and_link(
     cfg: CfgExpr, true_target: (UniCFGNode | None), false_target: (UniCFGNode | None)
 ) -> None {
-    cfg.sc_true_target = true_target;
-    cfg.sc_false_target = false_target;
+    cfg.sc_true_target = None
+        if true_target is None or self._is_exit_target(cfg, true_target)
+        else true_target;
+    cfg.sc_false_target = None
+        if false_target is None or self._is_exit_target(cfg, false_target)
+        else false_target;
     if true_target {
         self.link_bbs(cfg, true_target);
     }
@@ -236,297 +583,6 @@ impl CFGBuildPass.exit_if_else_expr with IfElseExpr exit {
     }
 }
 
-impl CFGBuildPass._is_terminal(nd: UniNode) -> bool {
-    return isinstance(nd, (ReturnStmt, RaiseStmt, CtrlStmt, DisengageStmt));
-}
-
-impl CFGBuildPass._find_parent_of_types(
-    nd: UniNode, types: tuple[type[UniCFGNode], ...]
-) -> (UniCFGNode | None) {
-    cur = nd.parent;
-    while cur {
-        if isinstance(cur, types) {
-            return cast(UniCFGNode, cur);
-        }
-        cur = cur?.parent;
-    }
-    return None;
-}
-
-impl CFGBuildPass._next_in_body(
-    body: Sequence[CodeBlockStmt], child: UniNode
-) -> (UniCFGNode | None) {
-    found = False;
-    for stmt in body {
-        if found and isinstance(stmt, CodeBlockStmt) {
-            return stmt;
-        }
-        if stmt is child {
-            found = True;
-        }
-    }
-    return None;
-}
-
-impl CFGBuildPass._find_next_cfg_stmt_after(
-    parent: UniNode, child: UniNode
-) -> (UniCFGNode | None) {
-    if isinstance(parent, IfStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, ElseStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, TryStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, Except) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, FinallyStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, InForStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, IterForStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, WhileStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, ForeverStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, WithStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, MatchCase) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, SwitchCase) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, ModuleCode) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, Test) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, TypedCtxBlock) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, OpenStmt) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, AwaitingClause) {
-        return self._next_in_body(parent.body, child);
-    }
-    if isinstance(parent, Ability) and isinstance(parent.body, list) {
-        return self._next_in_body(cast(Sequence[CodeBlockStmt], parent.body), child);
-    }
-    if isinstance(parent, ImplDef) and isinstance(parent.body, list) {
-        return self._next_in_body(cast(Sequence[CodeBlockStmt], parent.body), child);
-    }
-    if isinstance(parent, LambdaExpr) and isinstance(parent.body, list) {
-        return self._next_in_body(cast(Sequence[CodeBlockStmt], parent.body), child);
-    }
-    return None;
-}
-
-impl CFGBuildPass._find_next_cfg_stmt_after_branch(nd: UniNode) -> (UniCFGNode | None) {
-    cur: UniNode = nd;
-    while cur.parent is not None {
-        if (nxt := self._find_next_cfg_stmt_after(cur.parent, cur)) is not None {
-            return nxt;
-        }
-        if not isinstance(cur.parent, (IfStmt, ElseStmt)) {
-            return None;
-        }
-        cur = cur.parent;
-    }
-    return None;
-}
-
-impl is_structural_child(nd: UniNode) -> bool {
-    if isinstance(nd.parent, IterForStmt) {
-        p: IterForStmt = nd.parent;
-        if nd is p.iter or nd is p.count_by {
-            return True;
-        }
-    }
-    return False;
-}
-
-impl CFGBuildPass.cfg_collect_affected with UniNode entry {
-    if isinstance(here, (CodeBlockStmt, Archetype))
-        and not isinstance(here, (Semi, ModuleCode, GlobalVars, SemDef, TypeAlias))
-        and not is_structural_child(here) {
-        here.affected_symbols.update(collect_assigned_symbols(here));
-    }
-}
-
-impl CFGBuildPass.enter_if_stmt with IfStmt entry {
-    if here.__class__ is not IfStmt {
-        return;
-    }
-
-    here.affected_symbols.update(collect_narrowing_symbols(here.condition));
-}
-
-impl CFGBuildPass.enter_else_if with ElseIf entry {
-    here.affected_symbols.update(collect_narrowing_symbols(here.condition));
-}
-
-impl CFGBuildPass.enter_assert_stmt with AssertStmt entry {
-    here.affected_symbols.update(collect_narrowing_symbols(here.condition));
-}
-
-impl CFGBuildPass.enter_match_stmt with MatchStmt entry {
-    if isinstance(here.target, Name) {
-        here.affected_symbols.add(here.target.value);
-    }
-}
-
-impl CFGBuildPass.exit_if_stmt with IfStmt exit {
-    if here.__class__ is not IfStmt {
-        return;
-    }
-    self._exit_if_stmt_impl(here);
-}
-
-impl CFGBuildPass._exit_if_stmt_impl(nd: IfStmt) -> None {
-    true_target: (UniCFGNode | None) = nd.body[0] if nd.body else None;
-
-    false_target: (UniCFGNode | None) = None;
-    if nd.else_body {
-        if isinstance(nd.else_body, ElseIf) {
-            false_target = nd.else_body;
-        } elif isinstance(nd.else_body, ElseStmt) and nd.else_body.body {
-            false_target = nd.else_body.body[0];
-        }
-    }
-
-    unwrapped = _unwrap_parens(nd.condition);
-    cond_bool = unwrapped if isinstance(unwrapped, BoolExpr) else None;
-
-    if cond_bool is not None and true_target {
-        if not false_target and not nd.else_body and nd.parent {
-            false_target = self._find_next_cfg_stmt_after_branch(nd);
-        }
-        op_is_and = _bool_is_and(cond_bool);
-        `entry = self._wire_bool_operands(
-            cond_bool.values, op_is_and, true_target, false_target
-        );
-        if `entry {
-            self.link_bbs(nd, `entry);
-        }
-    } else {
-        if true_target is not None {
-            self.link_bbs(nd, true_target);
-        }
-        if false_target is not None {
-            self.link_bbs(nd, false_target);
-        }
-    }
-
-    if nd.body {
-        self._link_sequential(nd.body);
-    }
-}
-
-impl CFGBuildPass.exit_else_if with ElseIf exit {
-    self._exit_if_stmt_impl(here);
-}
-
-impl CFGBuildPass.exit_else_stmt with ElseStmt exit {
-    if here.body {
-        self._link_sequential(here.body);
-    }
-}
-
-impl CFGBuildPass.exit_while_stmt with WhileStmt exit {
-    true_target: (UniCFGNode | None) = here.body[0] if here.body else None;
-
-    false_target: (UniCFGNode | None) = None;
-    if here.else_body
-        and isinstance(here.else_body, ElseStmt)
-        and here.else_body.body {
-        false_target = here.else_body.body[0];
-    } elif here.parent {
-        false_target = self._find_next_cfg_stmt_after(here.parent, here);
-    }
-
-    unwrapped = _unwrap_parens(here.condition);
-    cond_bool = unwrapped if isinstance(unwrapped, BoolExpr) else None;
-
-    if cond_bool is not None and true_target {
-        op_is_and = _bool_is_and(cond_bool);
-        `entry = self._wire_bool_operands(
-            cond_bool.values, op_is_and, true_target, false_target
-        );
-        if `entry {
-            self.link_bbs(here, `entry);
-        }
-    } else {
-        if true_target {
-            self.link_bbs(here, true_target);
-        }
-        if false_target and cond_bool is None {
-            self.link_bbs(here, false_target);
-        }
-    }
-
-    self._link_body_tails_to_header(here);
-}
-
-impl CFGBuildPass.exit_forever_stmt with ForeverStmt exit {
-    self._link_body_tails_to_header(here);
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-    }
-}
-
-impl CFGBuildPass._link_body_tails_to_header(
-    nd: WhileStmt | ForeverStmt | InForStmt | IterForStmt
-) -> None {
-    if not nd.body {
-        return;
-    }
-    self._link_sequential(nd.body);
-    if not self._is_terminal(nd.body[-1]) {
-        self.link_bbs(nd.body[-1], nd);
-    }
-
-    for stmt in nd.body {
-        self._connect_tails(stmt, nd);
-    }
-}
-
-impl CFGBuildPass.exit_in_for_stmt with InForStmt exit {
-    self._link_body_tails_to_header(here);
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-    }
-    if here.else_body
-        and isinstance(here.else_body, ElseStmt)
-        and here.else_body.body {
-        self.link_bbs(here, here.else_body.body[0]);
-    }
-}
-
-impl CFGBuildPass.exit_iter_for_stmt with IterForStmt exit {
-    self._link_body_tails_to_header(here);
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-    }
-    if here.else_body
-        and isinstance(here.else_body, ElseStmt)
-        and here.else_body.body {
-        self.link_bbs(here, here.else_body.body[0]);
-    }
-}
-
 impl CFGBuildPass.exit_list_compr with ListCompr exit {
     if here.__class__ is not ListCompr {
         return;
@@ -591,207 +647,46 @@ impl CFGBuildPass._link_on_pass(step: UniCFGNode, nxt: UniCFGNode) -> None {
     }
 }
 
-impl CFGBuildPass.exit_ctrl_stmt with CtrlStmt exit {
-    loop = enclosing_loop(here);
-    if not loop {
+impl is_structural_child(nd: UniNode) -> bool {
+    if isinstance(nd.parent, IterForStmt) {
+        p: IterForStmt = nd.parent;
+        if nd is p.iter or nd is p.count_by {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl CFGBuildPass.cfg_collect_affected with UniNode entry {
+    if isinstance(here, (CodeBlockStmt, Archetype))
+        and not isinstance(here, (Semi, ModuleCode, GlobalVars, SemDef, TypeAlias))
+        and not is_structural_child(here) {
+        here.affected_symbols.update(collect_assigned_symbols(here));
+    }
+}
+
+impl CFGBuildPass.enter_if_stmt with IfStmt entry {
+    if here.__class__ is not IfStmt {
         return;
     }
 
-    if here.ctrl.name == Tok.KW_CONTINUE {
-        self.link_bbs(here, loop);
-    } elif here.ctrl.name == Tok.KW_BREAK {
-        if loop.parent {
-            next_node = self._find_next_cfg_stmt_after(loop.parent, loop);
-            if next_node {
-                self.link_bbs(here, next_node);
-            }
-        }
+    here.affected_symbols.update(collect_narrowing_symbols(here.condition));
+}
+
+impl CFGBuildPass.enter_else_if with ElseIf entry {
+    here.affected_symbols.update(collect_narrowing_symbols(here.condition));
+}
+
+impl CFGBuildPass.enter_assert_stmt with AssertStmt entry {
+    here.affected_symbols.update(collect_narrowing_symbols(here.condition));
+}
+
+impl CFGBuildPass.enter_match_stmt with MatchStmt entry {
+    if isinstance(here.target, Name) {
+        here.affected_symbols.add(here.target.value);
     }
 }
 
-impl CFGBuildPass.exit_try_stmt with TryStmt exit {
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-        self._link_sequential(here.body);
-    }
-
-    for exc in here.excepts {
-        self.link_bbs(here, exc);
-    }
-
-    if here.else_body
-        and isinstance(here.else_body, ElseStmt)
-        and here.else_body.body {
-        if here.body and not self._is_terminal(here.body[-1]) {
-            self.link_bbs(here.body[-1], here.else_body.body[0]);
-        }
-    }
-
-    if here.finally_body {
-        if here.body {
-            self.link_bbs(here.body[-1], here.finally_body);
-        }
-        for exc in here.excepts {
-            if exc.body {
-                self.link_bbs(exc.body[-1], here.finally_body);
-            }
-        }
-    }
-}
-
-impl CFGBuildPass.exit_except with Except exit {
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-        self._link_sequential(here.body);
-    }
-}
-
-impl CFGBuildPass.exit_finally_stmt with FinallyStmt exit {
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-        self._link_sequential(here.body);
-    }
-}
-
-impl CFGBuildPass.exit_match_stmt with MatchStmt exit {
-    for `case in here.cases {
-        self.link_bbs(here, `case);
-    }
-}
-
-impl CFGBuildPass.exit_match_case with MatchCase exit {
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-        self._link_sequential(here.body);
-    }
-}
-
-impl CFGBuildPass.exit_switch_stmt with SwitchStmt exit {
-    for `case in here.cases {
-        self.link_bbs(here, `case);
-    }
-}
-
-impl CFGBuildPass.exit_switch_case with SwitchCase exit {
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-        self._link_sequential(here.body);
-    }
-}
-
-impl CFGBuildPass.exit_with_stmt with WithStmt exit {
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-        self._link_sequential(here.body);
-    }
-}
-
-impl CFGBuildPass.exit_typed_ctx_block with TypedCtxBlock exit {
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-        self._link_sequential(here.body);
-    }
-}
-
-impl CFGBuildPass.exit_open_stmt with OpenStmt exit {
-    if here.body {
-        self.link_bbs(here, here.body[0]);
-        self._link_sequential(here.body);
-    }
-}
-
-impl CFGBuildPass.exit_jsx_slot with JsxSlot exit {
-    if here.body and isinstance(here.body, Sequence) {
-        body = [
-            s
-            for s in here.body
-            if isinstance(s, CodeBlockStmt)
-        ];
-        if body {
-            enclosing = here.find_parent_of_type(CodeBlockStmt);
-            if enclosing is not None {
-                self.link_bbs(enclosing, body[0]);
-            }
-            self._link_sequential(body);
-        }
-    }
-}
-
-impl CFGBuildPass.exit_lambda_expr with LambdaExpr exit {
-    if not isinstance(here.body, Sequence) {
-        return;
-    }
-    body = [
-        s
-        for s in here.body
-        if isinstance(s, CodeBlockStmt)
-    ];
-    if body {
-        enclosing = here.find_parent_of_type(CodeBlockStmt);
-        if enclosing is not None {
-            self.link_bbs(enclosing, body[0]);
-        }
-        self._link_sequential(body);
-    }
-}
-
-impl CFGBuildPass.exit_ability with Ability exit {
-    if here.body and isinstance(here.body, Sequence) {
-        body = [
-            s
-            for s in here.body
-            if isinstance(s, CodeBlockStmt)
-        ];
-        if body {
-            self.link_bbs(here, body[0]);
-            self._link_sequential(body);
-        }
-    }
-}
-
-impl CFGBuildPass.exit_archetype with Archetype exit {
-    if here.body and isinstance(here.body, Sequence) {
-        for s in here.body {
-            if isinstance(s, CodeBlockStmt) {
-                self.link_bbs(here, s);
-            }
-        }
-    }
-}
-
-impl CFGBuildPass.exit_impl_def with ImplDef exit {
-    if here.body and isinstance(here.body, Sequence) {
-        body = [
-            s
-            for s in here.body
-            if isinstance(s, CodeBlockStmt)
-        ];
-        if body {
-            self.link_bbs(here, body[0]);
-            self._link_sequential(body);
-        }
-    }
-}
-
-impl CFGBuildPass.exit_module_code with ModuleCode exit {
-    if here.body {
-        self._link_sequential(here.body);
-    }
-}
-
-impl CFGBuildPass.exit_test with Test exit {
-    if here.body and isinstance(here.body, Sequence) {
-        body = [
-            s
-            for s in here.body
-            if isinstance(s, CodeBlockStmt)
-        ];
-        if body {
-            self.link_bbs(here, body[0]);
-            self._link_sequential(body);
-        }
-    }
-}
 
 impl _unwrap_parens(expr: Expr) -> Expr {
     while isinstance(expr, AtomUnit) and isinstance(expr.value, Expr) {
@@ -807,4 +702,43 @@ impl unwrap_to_bool(cfg: CfgExpr) -> BoolExpr | None {
 
 impl _bool_is_and(expr: BoolExpr) -> bool {
     return isinstance(expr.op, Token) and expr.op.name == Tok.KW_AND;
+}
+
+impl is_abrupt_entry(pred: UniCFGNode, succ: UniCFGNode) -> bool {
+    return isinstance(pred, TryStmt) and pred.finally_body is succ;
+}
+
+impl falls_off_end(
+    frame: UniCFGNode, live: Callable[[UniCFGNode, UniCFGNode], bool]
+) -> bool {
+    exits = frame.cfg_exits;
+    if not exits {
+        return False;
+    }
+    exit_ids = {id(e) for e in exits};
+    if id(frame) in exit_ids {
+        return True;
+    }
+    seen: set[int] = {id(frame)};
+    pending: list[UniCFGNode] = [
+        s
+        for s in frame.bb_out
+        if live(frame, s)
+    ];
+    while pending {
+        nd = pending.pop();
+        if id(nd) in seen {
+            continue;
+        }
+        seen.add(id(nd));
+        if id(nd) in exit_ids and live(nd, frame) {
+            return True;
+        }
+        for succ in nd.bb_out {
+            if not is_abrupt_entry(nd, succ) and live(nd, succ) {
+                pending.append(succ);
+            }
+        }
+    }
+    return False;
 }

@@ -401,7 +401,7 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              "subscript_guard_assignment",
              "checker",
              "checker_subscript_guard_assignment.jac",
-             3,
+             4,
              True,
              []
          ),
@@ -3542,9 +3542,10 @@ test "tuple iterable inference includes every position" {
     path = os.path.join(CHECKER_FIXTURES, "checker_tuple_iterable_inference.jac");
     program.compile(path, options=NO_TC);
     errors = "\n".join(error.pretty_print() for error in program.errors_had);
-    assert len(program.errors_had) == 2 , errors;
+    assert len(program.errors_had) == 3 , errors;
     assert "bad_forward" in errors , errors;
     assert "bad_reverse" in errors , errors;
+    assert "bad_union" in errors , errors;
 }
 
 """Test bidirectional type inference for container literals and type[X] covariance."""

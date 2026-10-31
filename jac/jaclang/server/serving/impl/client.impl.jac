@@ -1,3 +1,13 @@
+impl ClientConnectionError.init(
+    detail: str = 'connection failed',
+    status_code: (int | None) = None,
+    response: any = None
+) {
+    self.detail = detail;
+    self.status_code = status_code;
+    self.response = response;
+}
+
 impl ClientConnectionError.__str__ -> str {
     return self.detail;
 }

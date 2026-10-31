@@ -256,21 +256,22 @@ impl NaIRGenPass._arch_init_params_of(type_name: str) -> (list[uni.ParamVar] | N
     return params;
 }
 
-impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
-    if isinstance(t, ir.PointerType) {
-        if t.pointee == self._get_bytes_struct_type() {
-            return self._make_global_bytes(b"");
-        }
-        return ir.Constant(t, None);
-    }
-    if isinstance(t, (ir.IntType, ir.DoubleType)) {
-        return ir.Constant(t, 0);
-    }
-    return ir.Constant(t, None);
+impl NaIRGenPass._missing_argument(nd: uni.UniNode, t: ir.Type) -> ir.Value {
+    self.emit(
+        E5092,
+        node_override=nd,
+        kind="call argument",
+        name=type(nd).__name__,
+        help_text="The type checker binds every parameter of a call; a parameter left unbound here means native lowering lost an argument, so the call is refused rather than passed a zero."
+    );
+    return self._zero_const(t);
 }
 
 impl NaIRGenPass._codegen_bound_args(
-    nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
+    nd: uni.FuncCall,
+    func: ir.Function,
+    self_offset: int = 0,
+    receiver: (ir.Value | None) = None
 ) -> list[ir.Value] {
     raw: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     positional: list[uni.Expr | NativeSpreadArg] = [];
@@ -399,7 +400,7 @@ impl NaIRGenPass._codegen_bound_args(
         }
         slot = self_offset + len(args);
         while slot < len(func.args) {
-            args.append(self._default_arg_fallback(func.args[slot].type));
+            args.append(self._missing_argument(nd, func.args[slot].type));
             slot += 1;
         }
         return args;
@@ -501,7 +502,12 @@ impl NaIRGenPass._codegen_bound_args(
                 }
             }
             val: (ir.Value | None) = None;
-            if isinstance(chosen, NativeSpreadArg) and not chosen.is_list {
+            if chosen is sp.value
+                and chosen is not None
+                and not is_constant_default(chosen) {
+                prior = ([receiver] if receiver is not None else []) + list(args);
+                val = self._call_default_thunk(func, sp, slot, prior);
+            } elif isinstance(chosen, NativeSpreadArg) and not chosen.is_list {
                 val = chosen.value;
             } elif isinstance(chosen, NativeSpreadArg) {
                 self.emit(
@@ -532,7 +538,7 @@ impl NaIRGenPass._codegen_bound_args(
                 }
                 args.append(val);
             } else {
-                args.append(self._default_arg_fallback(expected_type));
+                args.append(self._missing_argument(nd, expected_type));
             }
         }
 
@@ -599,7 +605,7 @@ impl NaIRGenPass._codegen_bound_args(
             if val is not None {
                 args.append(val);
             } else {
-                args.append(self._default_arg_fallback(expected_type));
+                args.append(self._missing_argument(nd, expected_type));
             }
             if kw_spreads and pix >= _n_posonly {
                 _bind_records.append(
@@ -621,7 +627,7 @@ impl NaIRGenPass._codegen_bound_args(
             if _lv is not None {
                 args.append(_lv);
             } elif _pack_t is not None {
-                args.append(self._default_arg_fallback(_pack_t));
+                args.append(self._missing_argument(nd, _pack_t));
             }
             _slot += 1;
         }
@@ -661,7 +667,7 @@ impl NaIRGenPass._codegen_bound_args(
             if val is not None {
                 args.append(val);
             } else {
-                args.append(self._default_arg_fallback(expected_type));
+                args.append(self._missing_argument(nd, expected_type));
             }
             if kw_spreads {
                 _bind_records.append(
@@ -683,7 +689,7 @@ impl NaIRGenPass._codegen_bound_args(
             if _dv is not None {
                 args.append(_dv);
             } elif _kw_t is not None {
-                args.append(self._default_arg_fallback(_kw_t));
+                args.append(self._missing_argument(nd, _kw_t));
             }
         } elif kw_spreads {
             self._consume_kw_spreads(nd, kw_order, _bind_records);
@@ -723,7 +729,7 @@ impl NaIRGenPass._codegen_bound_args(
                 );
 
                 while len(args) < len(func.args) {
-                    args.append(self._default_arg_fallback(func.args[len(args)].type));
+                    args.append(self._missing_argument(nd, func.args[len(args)].type));
                 }
                 return args;
             }
@@ -755,7 +761,7 @@ impl NaIRGenPass._codegen_bound_args(
     }
     while len(args) < expected_argc {
         slot = self_offset + len(args);
-        args.append(self._default_arg_fallback(func.args[slot].type));
+        args.append(self._missing_argument(nd, func.args[slot].type));
     }
     return args;
 }
@@ -937,7 +943,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
                 [
                     _skip_dv,
                     self._make_global_string(_br["name"], name_prefix=".kwname"),
-                    self._default_arg_fallback(helpers["val_type"]),
+                    self._zero_const(helpers["val_type"]),
                     ir.Constant(ir.IntType(64), self._static_str_hash(_br["name"]))
                 ],
                 op="dict_init",
@@ -4375,4 +4381,72 @@ impl NaIRGenPass._folded_ord(nd: uni.FuncCall) -> (ir.Constant | None) {
         return None;
     }
     return ir.Constant(ir.IntType(64), ord(value));
+}
+
+impl NaIRGenPass._default_thunk(
+    func: ir.Function, slot: int, name: str
+) -> ir.Function {
+    thunk_name = f"{func.name}.default.{name}";
+    found = self.llvm_module.globals.get(thunk_name);
+    if isinstance(found, ir.Function) {
+        return found;
+    }
+    fnty = ir.FunctionType(func.args[slot].type, [a.type for a in func.args[:slot]]);
+    return ir.Function(self.llvm_module, fnty, name=thunk_name);
+}
+
+impl NaIRGenPass._call_default_thunk(
+    func: ir.Function, param: uni.ParamVar, slot: int, prior: list[ir.Value]
+) -> (ir.Value | None) {
+    if slot >= len(func.args) or len(prior) != slot {
+        self.emit(
+            E5092,
+            node_override=param,
+            kind="default argument",
+            name=param.name.value,
+            help_text="A default is evaluated in the callee on each call; this call does not bind every parameter before it, so native code cannot call the default."
+        );
+        return None;
+    }
+    thunk = self._default_thunk(func, slot, param.name.value);
+    coerced = [
+        self._coerce_type(value, want.type) for (value, want) in zip(prior, thunk.args)
+    ];
+    return self.builder.call(thunk, coerced, name=f"default.{param.name.value}");
+}
+
+impl NaIRGenPass._emit_default_thunks(
+    func: ir.Function, params: list[uni.ParamVar], base: int
+) -> None {
+    for (i, p) in enumerate(params) {
+        if p.value is None or is_constant_default(p.value) {
+            continue;
+        }
+        slot = base + i;
+        if slot >= len(func.args) {
+            continue;
+        }
+        thunk = self._default_thunk(func, slot, p.name.value);
+        if thunk.blocks {
+            continue;
+        }
+        thunk.linkage = func.linkage;
+        state = self._enter_function(thunk);
+        try {
+            if base {
+                self._bind_function_parameter("self", thunk.args[0]);
+            }
+            for (j, earlier) in enumerate(params[:i]) {
+                self._bind_function_parameter(earlier.name.value, thunk.args[base + j]);
+            }
+            value = self._codegen_required(p.value);
+            if value is None {
+                self.builder.unreachable();
+            } else {
+                self.builder.ret(self._coerce_type(value, thunk.return_value.type));
+            }
+        } finally {
+            self._leave_function(state);
+        }
+    }
 }

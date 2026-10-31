@@ -5394,13 +5394,13 @@ impl NativeBuiltinEmitter._emit_extreme(
     loop = fn.append_basic_block(name + ".loop");
     body = fn.append_basic_block(name + ".body");
     done = fn.append_basic_block(name + ".done");
+    empty_block = b.basic_block;
     if fallback is None {
         p._emit_runtime_raise(
             empty, "ValueError", name + "() arg is an empty sequence"
         );
         b.branch(start);
     } else {
-        empty_block = b.basic_block;
         b.cbranch(empty, done, start);
     }
     b.position_at_end(start);

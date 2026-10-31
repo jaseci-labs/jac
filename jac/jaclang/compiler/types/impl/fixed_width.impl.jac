@@ -444,6 +444,11 @@ impl both_numeric(left_type: TypeBase, right_type: TypeBase) -> bool {
         and numeric_name_of(right_type) is not None;
 }
 
+impl all_numeric(t: TypeBase) -> bool {
+    members = t.types if isinstance(t, UnionType) else [t];
+    return all(numeric_name_of(member) is not None for member in members);
+}
+
 impl is_unsigned_type(t: TypeBase | None) -> bool {
     name = numeric_name_of(t);
     if name is None {

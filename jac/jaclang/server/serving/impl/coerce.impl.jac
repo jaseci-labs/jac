@@ -1,3 +1,7 @@
+impl RequestValidationError.init(errors: list[dict[str, any]] = []) {
+    self.errors = errors;
+}
+
 impl RequestValidationError.__str__ -> str {
     return f"{len(self.errors)} validation error(s)";
 }

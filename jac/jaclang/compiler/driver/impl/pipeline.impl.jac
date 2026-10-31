@@ -71,6 +71,7 @@ impl analysis_passes(request: ProductRequest) -> PassSchedule {
         VariantAgreementPass,
         TypeCheckPass,
         StaticAnalysisPass,
+        FlowCheckPass,
         AccessCheckPass,
         OwnershipCheckPass,
         PlacementPass,

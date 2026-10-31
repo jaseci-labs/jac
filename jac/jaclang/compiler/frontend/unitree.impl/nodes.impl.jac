@@ -355,14 +355,11 @@ impl UniNode._construct_sub_node_tab -> None {
         pending.extend([nd->:Kid:->]);
     }
 
+    table: dict[type, list[UniNode]] = {};
     for nd in reversed(ordered) {
-        kind = type(nd);
-        if kind in self.__sub_node_tab {
-            self.__sub_node_tab[kind].append(nd);
-        } else {
-            self.__sub_node_tab[kind] = [nd];
-        }
+        table.setdefault(type(nd), []).append(nd);
     }
+    self.__sub_node_tab = table;
 }
 
 impl UniNode._invalidate_sub_node_tab -> None {
@@ -1363,6 +1360,16 @@ impl UniCFGNode.bb_out.getter -> list[UniCFGNode] {
 
 impl UniCFGNode.bb_in.getter -> list[UniCFGNode] {
     return [self<-:CfgSucc:<-];
+}
+
+impl UniCFGNode.cfg_exits.getter -> list[UniCFGNode] {
+    return [self<-:CfgExit:<-];
+}
+
+impl UniCFGNode.cfg_exit_to(frame: UniCFGNode) -> None {
+    if frame not in [self->:CfgExit:->] {
+        self +>:CfgExit:+> frame;
+    }
 }
 
 impl UniCFGNode.cfg_link(target: UniCFGNode) -> None {
@@ -3652,6 +3659,19 @@ impl FuncCall.callee_signature.setter(callee_signature: (TypeBase | None)) {
     }
 }
 
+impl FuncCall.arg_binding.getter -> list[tuple[int, UniNode]] {
+    binds = [edge self->:BindsArg:->];
+    args = [self->:BindsArg:->];
+    return [(bind.slot, arg) for (bind, arg) in zip(binds, args)];
+}
+
+impl FuncCall.arg_binding.setter(arg_binding: list[tuple[int, UniNode]]) {
+    del [edge self->:BindsArg:->];
+    for (slot, arg) in arg_binding {
+        self +>:BindsArg(slot=slot):+> arg;
+    }
+}
+
 impl Import.absorbed_mod.getter -> (Module | None) {
     found = [self->:Absorbs:->];
     return found[0] if found else None;
@@ -3753,6 +3773,21 @@ impl lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | 
     return None;
 }
 
+impl lookup_block_binding(scope: UniScopeNode, name: str) -> (Symbol | None) {
+    cur: (UniScopeNode | None) = scope;
+    while cur is not None {
+        sym = cur.lookup(name, deep=False);
+        if sym is not None {
+            return sym;
+        }
+        if UniScopeNode.is_python_scoping(cur) {
+            return None;
+        }
+        cur = cur.parent_scope;
+    }
+    return None;
+}
+
 impl record_cross_scope_rebind(py_scope: UniScopeNode, name: str, sym: Symbol) -> None {
     outer_tab = sym.parent_tab;
     if outer_tab is None or outer_tab is py_scope {
@@ -3792,7 +3827,7 @@ impl def_insert_unpacking(
 ) -> None {
     if isinstance(nd, Name) {
         if rebind_in_python_scope {
-            if ((existing := sym_tab.lookup(nd.sym_name, deep=False)) is not None) {
+            if ((existing := lookup_block_binding(sym_tab, nd.sym_name)) is not None) {
                 existing.add_use(nd.name_spec);
                 return;
             }
@@ -4014,13 +4049,28 @@ impl bind_walrus_target(nd: BinaryExpr) -> None {
     if owner is not None {
         target_scope = owner.sym_tab;
     }
-    sym = target_scope.lookup(nd.left.sym_name, deep=False);
+    sym = lookup_block_binding(nd.left.sym_tab, nd.left.sym_name)
+        if find_python_scope_node_of(nd.left) is target_scope
+        else target_scope.lookup(nd.left.sym_name, deep=False);
     if sym is None {
         rebind_or_def_insert(nd.left, target_scope, single_decl='walrus var');
     } else {
         sym.add_use(nd.left.name_spec);
         record_cross_scope_rebind(target_scope, nd.left.sym_name, sym);
     }
+}
+
+impl is_irrefutable_pattern(pat: MatchPattern) -> bool {
+    if isinstance(pat, MatchWild) {
+        return True;
+    }
+    if isinstance(pat, MatchAs) {
+        return pat.pattern is None or is_irrefutable_pattern(pat.pattern);
+    }
+    if isinstance(pat, MatchOr) {
+        return any(is_irrefutable_pattern(alt) for alt in pat.patterns);
+    }
+    return False;
 }
 
 impl is_walrus(nd: UniNode) -> bool {
@@ -4069,10 +4119,7 @@ impl bind_assignment_targets(nd: Assignment) -> None {
         if isinstance(i, AstSymbolNode) {
             if isinstance(i, (ListVal, TupleVal)) {
                 def_insert_unpacking(i, i.sym_tab, rebind_in_python_scope=True);
-            } elif (
-                (i.sym_name in i.sym_tab.names_in_scope)
-                and ((sym := i.sym_tab.names_in_scope[i.sym_name]) is not None)
-            ) {
+            } elif ((sym := lookup_block_binding(i.sym_tab, i.sym_name)) is not None) {
                 if sym.imported and isinstance(nd.value, Null) {
                     sym.add_defn(i.name_spec);
                 }

@@ -305,7 +305,7 @@ graph import {
             | server.sealed_serve.serve_manifest_stamp { resolve_cli_version },
         scale.injector.binary.host_toolchain_path { resolve_cli_version },
     ]
-    cli.manifest_route --> scale.observability.prometheus_metrics.PrometheusMetricsCollector.__post_init__
+    cli.manifest_route --> scale.observability.prometheus_metrics.PrometheusMetricsCollector.init
         | scale.tests.deploy.test_memory_trigger_guard
         | scale.tests.misc.test_metrics { resolve_cli_version }
     cli.shadcn.cli --> project.template_registry._register_builtin_shadcn_template {
@@ -352,7 +352,6 @@ graph import {
         testing.test_runner._test_rss_cap_mb { env_int },
         testing.test_runner.resolve_jobs { resolve_jobs as _resolve_pool_jobs },
     ]
-    client ++> client.vite_bundler.ViteBundler.build { ensure_client_deps }
     client as _client_pkg ++> client.runtime_source.resolve_client_runtime_cl_path;
     client as _client_pkg --> project.modresolver._resolve_jac_virtual_module;
     client.artifact ++> server.server { ClientBundleError }
@@ -1955,8 +1954,6 @@ graph import {
         load_template_jab
     }
     packages.verify --> cli.commands.project.publish { run_verify }
-    project ++> cli.commands.native_build.native_build { get_config }
-    project --> compiler.backends.native.wasm_build._project_gc_settings { get_config }
     project.app_kinds ++> [
         cli.commands.execution._app_serves { kind_spec },
         cli.commands.project._create_app { is_valid_kind },
@@ -2036,6 +2033,7 @@ graph import {
             | cli.commands.config.config
             | cli.commands.execution._ensure_watchdog_installed
             | cli.commands.mcp.mcp_cmd
+            | cli.commands.native_build.native_build
             | cli.commands.project.bundle
             | cli.shadcn.cli.retheme
             | client.targets.desktop._dev_launch
@@ -2201,6 +2199,7 @@ graph import {
             | client.client_deps._resolve_client_framework
             | client.jac_client_compiler.JacClientCompiler._app_root
             | client.vite_bundler.ViteBundler._client_app_dir
+            | compiler.backends.native.wasm_build._project_gc_settings
             | server.server._occ_policy { get_config },
         cli.dispatch._discover_project_config
             | client.jac_client_compiler.JacClientCompiler._client_app_dir
@@ -2712,6 +2711,7 @@ graph import {
             | data.serializer
             | scale.memory.context { MISSING },
         comptime { MISSING as _MISSING, ObjectField as _field },
+        lib.jaclib | server.server { CALL_DEFAULT },
         scale.sdk.spec.DeploySpec.from_config { fields },
         scale.server.sso_ext | scale.sso.oauth_session { asdict },
     ]
@@ -5040,6 +5040,7 @@ graph import client {
             emitted_tree_digest
         },
     ]
+    client_deps ++> vite_bundler.ViteBundler.build { ensure_client_deps }
     client_diagnostics ++> cli.run_client_start { is_debug_mode }
     client_react_core ++> client_runtime_native {
         __createJacSchema,
@@ -6141,6 +6142,7 @@ graph import compiler {
             | passes.cfg_build_pass
             | passes.comptime_resolve_pass
             | passes.decl_impl_match_pass
+            | passes.flow_check_pass
             | passes.freeze_structure_pass
             | passes.import_wiring_pass
             | passes.ownership_check_pass
@@ -6266,6 +6268,7 @@ graph import compiler {
             wiring_for_path
         },
         types.stubcat.writer.CatalogWriter.encode_symbol { is_arch_file },
+        types.type_evaluator.TypeEvaluator._missing_import_diag { is_stdlib_module },
     ]
     driver.wiring --> frontend.parser.frontend.annex_sources { wiring_annex_for }
     erased_imports ++> [
@@ -6343,6 +6346,7 @@ graph import compiler {
             is_field_marker
         },
         backends.py.jcir_gen_pass.JcirGenPass.exit_has_var { is_field_marker },
+        types.type_evaluator.TypeEvaluator._own_field_names { field_initialization },
     ]
     frontend.codeinfo ++> [
         backends.es.client_kernel_cache._es_backend_fingerprint
@@ -6762,13 +6766,15 @@ graph import compiler {
         driver.progstate { ClientArtifact, CodeGenTarget },
     ]
     frontend.const_fold ++> [
-        backends.native.na_ir_gen_pass
-            | backends.py.jcir_gen_pass
+        backends.native.na_ir_gen_pass | backends.py.jcir_gen_pass {
+            fold_const,
+            is_constant_default
+        },
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_const_expr
             | c_interop.c_scalar_constant
             | passes.layout_pass
             | types.enum_utils
             | types.operations.get_pow_result_type { fold_const },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_const_expr { fold_const },
         backends.native.na_ir_gen_pass.NaIRGenPass._folded_ord { fold_const },
     ]
     frontend.constant ++> [
@@ -6820,14 +6826,18 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
             SymbolStorage
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
+            | passes.capability_check_pass.PortabilityWarnPass._check_js_globals
+            | passes.import_wiring_pass
+            | tools.reactive_use_walk { ExprCtx },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_unary {
             OwnershipKind,
             is_borrow_kind
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._ct_fold
-            | passes.capability_check_pass.PortabilityWarnPass._check_js_globals
-            | passes.import_wiring_pass
-            | tools.reactive_use_walk { ExprCtx },
+            | passes.capability_check_pass.PortabilityWarnPass._check_js_keywords {
+            ExprCtx
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._flow_future_licensed
             | backends.native.primitives_native
             | driver.wiring
@@ -6902,13 +6912,13 @@ graph import compiler {
             | passes.variant_agreement_pass { SymbolAccess },
         passes.ast_validation_pass { CodeContext, DeleteTargetError, Tokens as Tok },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._get_context { CodeContext },
-        passes.capability_check_pass.PortabilityWarnPass._check_js_keywords { ExprCtx },
         passes.capability_check_pass.native_capability_violations {
             CodeContext,
             ExprCtx,
             Tokens as Tok
         },
         passes.endpoint_effect_pass { SymbolType, Tokens as Tok },
+        passes.flow_check_pass { ExprCtx, SymbolStorage, Tokens as Tok },
         passes.layout_pass | types.ct_eval { OwnershipKind, Tokens as Tok },
         passes.osp_analysis { CodeContext, Tokens as Tok },
         passes.ownership_check_pass {
@@ -7018,7 +7028,6 @@ graph import compiler {
         backends.native.na_compile_pass { E5020, E5026 },
         backends.native.na_ir_gen_pass {
             DiagnosticInfo,
-            E1145,
             E1158,
             E5026,
             E5088,
@@ -7129,6 +7138,7 @@ graph import compiler {
         passes.decl_impl_match_pass.DeclImplMatchPass._populate_self_member_symbols {
             W2080
         },
+        passes.flow_check_pass { E1006 },
         passes.graph_lowering_pass { E0084, E0085 },
         passes.import_wiring_pass {
             E1141,
@@ -7150,7 +7160,7 @@ graph import compiler {
             E2100
         },
         passes.jsx_intrinsic_guard_pass { E1105 },
-        passes.layout_pass { E5030, W5031, W5032 },
+        passes.layout_pass { W5031, W5032 },
         passes.ownership_check_pass {
             E1301,
             E1302,
@@ -7222,8 +7232,14 @@ graph import compiler {
             E1003,
             E1004,
             E1005,
+            E1007,
+            E1008,
+            E1009,
             E1010,
             E1011,
+            E1012,
+            E1013,
+            E1014,
             E1020,
             E1021,
             E1022,
@@ -7292,7 +7308,6 @@ graph import compiler {
             W3025,
             W3030,
             W3035,
-            W3036,
             W3037,
             W3038,
             W3039,
@@ -7315,6 +7330,7 @@ graph import compiler {
         types.fixed_width { E1126, E1127, E1128, E1130 },
         types.operations {
             E1010,
+            E1011,
             E1033,
             E1035,
             E1055,
@@ -7379,6 +7395,7 @@ graph import compiler {
             E1137,
             E1138,
             E1139,
+            E1145,
             E5094,
             W1050,
             W1051,
@@ -7578,7 +7595,8 @@ graph import compiler {
         },
         backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
         passes.ast_validation_pass { in_loop_else },
-        passes.cfg_build_pass { enclosing_loop },
+        passes.cfg_build_pass { enclosing_loop, in_loop_else },
+        passes.flow_check_pass { frame_owns },
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
@@ -8091,9 +8109,9 @@ graph import compiler {
             | passes.ast_validation_pass
             | passes.boundary_analysis_pass
             | passes.capability_check_pass
-            | passes.cfg_build_pass
             | passes.comptime_resolve_pass
             | passes.endpoint_effect_pass
+            | passes.flow_check_pass
             | passes.osp_analysis
             | passes.type_checker_pass
             | tools.cfg_dot
@@ -8589,6 +8607,7 @@ graph import compiler {
             AstElseBodyNode,
             AtomUnit,
             AwaitingClause,
+            Bool,
             BoolExpr,
             CfgExpr,
             CodeBlockStmt,
@@ -8597,6 +8616,7 @@ graph import compiler {
             DisengageStmt,
             ElseIf,
             ElseStmt,
+            Enum,
             Except,
             Expr,
             FinallyStmt,
@@ -8614,6 +8634,7 @@ graph import compiler {
             ListCompr,
             MatchCase,
             MatchStmt,
+            Module,
             ModuleCode,
             Name,
             OpenStmt,
@@ -8631,8 +8652,10 @@ graph import compiler {
             TypedCtxBlock,
             UniCFGNode,
             UniNode,
+            VisitStmt,
             WhileStmt,
-            WithStmt
+            WithStmt,
+            is_irrefutable_pattern
         },
         passes.comptime_resolve_pass {
             Ability,
@@ -8700,6 +8723,68 @@ graph import compiler {
             UniNode,
             UniScopeNode,
             ability_of_symbol
+        },
+        passes.flow_check_pass {
+            Ability,
+            Archetype,
+            Assignment,
+            AtomUnit,
+            AwaitingClause,
+            BinaryExpr,
+            BoolExpr,
+            CfgExpr,
+            CodeBlockStmt,
+            CtrlStmt,
+            DeleteStmt,
+            DictCompr,
+            ElseStmt,
+            Enum,
+            EventSignature,
+            Except,
+            FinallyStmt,
+            ForeverStmt,
+            FuncSignature,
+            IfElseExpr,
+            IfStmt,
+            ImplDef,
+            Import,
+            InForStmt,
+            InnerCompr,
+            IterForStmt,
+            LambdaExpr,
+            ListCompr,
+            ListVal,
+            MatchArch,
+            MatchAs,
+            MatchCase,
+            MatchKVPair,
+            MatchMapping,
+            MatchOr,
+            MatchPattern,
+            MatchSequence,
+            MatchStar,
+            MatchStmt,
+            MatchValue,
+            Module,
+            ModuleCode,
+            Name,
+            NameAtom,
+            Semi,
+            SubTag,
+            SwitchCase,
+            SwitchStmt,
+            Test,
+            Token,
+            TryStmt,
+            TupleVal,
+            UnaryExpr,
+            UniCFGNode,
+            UniNode,
+            UniScopeNode,
+            WhileStmt,
+            WithStmt,
+            find_python_scope_node_of,
+            is_identifier_slot
         },
         passes.import_wiring_pass {
             Ability,
@@ -9214,6 +9299,7 @@ graph import compiler {
             TupleVal,
             TypeAlias,
             UnaryExpr,
+            UniCFGNode,
             UniNode,
             VisitStmt,
             WhileStmt,
@@ -9224,6 +9310,7 @@ graph import compiler {
             in_type_position,
             type_only_import_of
         },
+        passes.type_checker_pass.TypeCheckPass._check_overrides { Ellipsis },
         passes.variant_agreement_pass {
             Ability,
             Archetype,
@@ -9566,6 +9653,8 @@ graph import compiler {
             WithStmt,
             YieldExpr,
             is_client_destined,
+            is_irrefutable_pattern,
+            is_walrus,
             kind_has_runtime_binding,
             literal_string_value,
             resolved_decl_of
@@ -9664,6 +9753,7 @@ graph import compiler {
             | boundary_rules.json_refusal
             | passes.layout_pass
             | passes.mtir_gen_pass
+            | passes.type_checker_pass.TypeCheckPass._check_overrides
             | passes.variant_agreement_pass.annotation_text
             | passes.wasm_contract.value_contract
             | tools.cfg_dot.CoalesceBBPass._node_label
@@ -9840,6 +9930,7 @@ graph import compiler {
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
+    passes.flow_check_pass ++> driver.pipeline.analysis_passes { FlowCheckPass }
     passes.freeze_structure_pass ++> driver.pipeline.frozen_passes {
         FreezeStructurePass
     }
@@ -10003,9 +10094,6 @@ graph import compiler {
             adopt_imported_bases
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._report_unreachable_overrides {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._resolve_method {
             get_layout_registry
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._resolve_method_owner {
@@ -10631,9 +10719,6 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._try_primitive_op {
             expr_primitive_name
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._check_native_import_names {
-            lookup_symtab
-        },
         backends.native.na_ir_gen_pass.NaIRGenPass._is_boolean_result_expr {
             primitive_type_name_of
         },
@@ -10665,7 +10750,8 @@ graph import compiler {
             PropertyWriteKind,
             get_declared_generator_return_type,
             get_generator_yield_type,
-            is_generator_family_type
+            is_generator_family_type,
+            mro_is_consistent
         },
         tests.test_property_write_kind { PropertyWriteKind },
     ]
@@ -10692,13 +10778,13 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._arch_kind_of_type
             | backends.native.na_ir_gen_pass.NaIRGenPass._agg_key_args
             | passes.capability_check_pass
-            | passes.layout_pass.class_form_enum_scalar
+            | passes.layout_pass.LayoutPass._build_hierarchy
             | passes.ownership_check_pass.OwnershipCheckPass._raised_class_names {
             ClassType
         },
         backends.es.esast_gen_pass.EsastGenPass._build_spawn_runtime_call
             | backends.native.na_ir_gen_pass.NaIRGenPass._container_class_name
-            | passes.layout_pass.class_type_native_name
+            | passes.layout_pass.LayoutPass._layout_mro
             | passes.ownership_check_pass.OwnershipCheckPass._view_arch_of_call {
             ClassType
         },
@@ -10711,11 +10797,11 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass._field_constructor_args
             | backends.native.na_ir_gen_pass.NaIRGenPass._exception_member_name
-            | passes.layout_pass.declaring_module_path
+            | passes.layout_pass.class_form_enum_scalar
             | passes.ownership_check_pass._is_class_object { ClassType },
         backends.es.esast_gen_pass.EsastGenPass._osp_expr_arch_name
             | backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_orderable
-            | passes.layout_pass.enum_class_of { ClassType },
+            | passes.layout_pass.class_type_native_name { ClassType },
         backends.native.na_ir_gen_pass {
             ClassType,
             FunctionType as SemanticFunctionType,
@@ -10763,6 +10849,8 @@ graph import compiler {
         native_bindings { ClassType, FunctionType, OverloadedType, TypeBase },
         passes.capability_check_pass._class_bounded_typevar { ClassType, TypeVarType },
         passes.layout_pass.class_form_enum_member { EnumMemberType },
+        passes.layout_pass.declaring_module_path { ClassType },
+        passes.layout_pass.enum_class_of { ClassType },
         passes.layout_pass.native_type_key {
             ClassType,
             FunctionType,
@@ -12386,8 +12474,10 @@ graph import compiler.frontend {
     module_facts ++> kernel_analyze { ModuleFacts }
     relations ++> unitree {
         Absorbs,
+        BindsArg,
         CalleeDecl,
         CalleeSignature,
+        CfgExit,
         CfgFalse,
         CfgSucc,
         CfgTrue,
@@ -12545,8 +12635,10 @@ graph import compiler.frontend {
             Float,
             Int,
             MultiString,
+            Null,
             String,
             Token,
+            TupleVal,
             UnaryExpr,
             UniNode
         },
@@ -13983,6 +14075,10 @@ graph import compiler.passes {
         native_capability_demotion_owner,
         native_capability_violations
     }
+    cfg_build_pass ++> [
+        flow_check_pass { _bool_is_and, is_abrupt_entry },
+        type_checker_pass { falls_off_end },
+    ]
     context ++> [
         access_check_pass
             | capability_check_pass
@@ -14012,6 +14108,7 @@ graph import compiler.passes {
         type_checker_pass { CompileContext, TreePass },
     ]
     dataflow ++> [
+        flow_check_pass { SymId, solve_forward_must_edges },
         ownership_check_pass {
             DataflowTransfer,
             SymId,
@@ -14021,7 +14118,10 @@ graph import compiler.passes {
         },
         rc_facts_pass { SymId, solve_backward_gen_kill },
     ]
-    execution ++> pyast_load_pass.build_python_module { new_context, walk_pass }
+    execution ++> [
+        flow_check_pass { CompilerPass },
+        pyast_load_pass.build_python_module { new_context, walk_pass },
+    ]
     import_wiring_pass ++> static_analysis_pass { report_unused_wires }
     layout_pass ++> osp_analysis.OspAnalysis.native_slot_triggers {
         native_type_key,
@@ -14491,6 +14591,7 @@ graph import compiler.types {
         },
         type_evaluator {
             AssignVerdict,
+            all_numeric,
             arithmetic_result_type,
             assign_numeric_expr,
             both_numeric,
@@ -14526,11 +14627,12 @@ graph import compiler.types {
         ct_eval { CatModule },
         type_evaluator.TypeEvaluator._build_field_params
             | types.ClassType.get_class_symbol { CatScope },
+        type_evaluator.TypeEvaluator._has_handwritten_init
+            | types._class_scope_category { CatScope },
         type_evaluator.TypeEvaluator._is_instance_method_member { CatProvider },
         type_evaluator.TypeEvaluator._merge_catalog_field_params { CatProvider },
-        type_evaluator.TypeEvaluator._metaclass_of | types._class_scope_category {
-            CatScope
-        },
+        type_evaluator.TypeEvaluator._metaclass_of { CatScope },
+        type_evaluator.TypeEvaluator._own_field_names { CatScope },
         type_evaluator.TypeEvaluator._scope_has_fields { CatScope },
     ]
     type stubcat.reader ++> type_evaluator { CatScope, StubCatalog }
@@ -15496,7 +15598,6 @@ graph import runtime {
         runtime.JacRuntime.get_program { build_services },
         runtime.JacRuntime.get_selfhost { build_services },
     ]
-    builtin --> archetype.Archetype.__init_subclass__ { _jac_region_instrument }
     cinterop ++> interop_bridge.callback_ctype { shape_ctype }
     cinterop as _cinterop_mod --> builtin.__getattr__;
     constants ++> [
@@ -15618,7 +15719,7 @@ graph import runtime {
     prepared_loader --> prepared.ensure_namespace { PreparedLoader }
     region ++> cinterop { escape_regions, restore_regions }
     region --> [
-        archetype.Archetype.__init_subclass__ { is_drop_hook },
+        archetype.Archetype.__init_subclass__ { instrument_drops, is_drop_hook },
         runtime.JacPersistence.destroy { run_drop },
     ]
     region as _region_mod --> builtin.__getattr__;
@@ -25154,7 +25255,8 @@ graph import runtime.python {
             sock_initobj_impl
         },
         bindings.socket {
-            netdb_lock,
+            netdb_lock_handle,
+            set_netdb_lock,
             socket_CMSG_LEN,
             socket_CMSG_SPACE,
             socket_close,
@@ -29936,7 +30038,8 @@ graph import runtime.python.modules {
             ntohs,
             set_gaierror,
             set_herror,
-            sock_cloexec_works,
+            set_sock_cloexec_flag,
+            sock_cloexec_flag,
             socket_error,
             socket_parse_timeout,
             socket_state,
@@ -29967,18 +30070,20 @@ graph import runtime.python.modules {
             SOCK_ADDR_SIZE,
             SocketCall,
             TIMEOUT_ERROR,
-            accept4_works,
+            accept4_flag,
             close,
             get_sock_fd,
             init_sockobject,
             internal_setblocking,
             module_of_type,
+            set_accept4_flag,
             set_error,
+            set_sock_cloexec_flag,
             set_sock_fd,
             set_sock_timeout,
             sock_call,
             sock_call_ex,
-            sock_cloexec_works,
+            sock_cloexec_flag,
             sock_family,
             sock_of,
             sock_proto,
@@ -32257,6 +32362,9 @@ graph import scale.runtime {
             not_found
         },
         gateway.microservice_gateway.MicroserviceGateway.probe_services { not_found },
+        gateway.microservice_gateway.MicroserviceGateway.serve_admin_asset {
+            not_found
+        },
     ]
     context.errors --> [
         gateway.microservice_gateway.MicroserviceGateway.deliver_once { not_found },

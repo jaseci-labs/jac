@@ -682,7 +682,7 @@ obj LruState(NativeState) {
         jacpy_lru_destroy(self.native);
     }
 
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         for i in range(7) {
             status = visit_reference(
                 jacpy_lru_field(self.native, i64(i)), visitor, context

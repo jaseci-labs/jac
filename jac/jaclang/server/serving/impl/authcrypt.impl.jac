@@ -101,6 +101,10 @@ impl _warn_once(key_material: str, message: str) -> None {
     logger.warning(message);
 }
 
+impl JWTError.init(reason: str = 'invalid token') {
+    self.reason = reason;
+}
+
 impl JWTError.__str__ -> str {
     return self.reason;
 }

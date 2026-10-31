@@ -203,6 +203,22 @@ Emitted by the type checker and type evaluator.
 | `E1003` | Return type annotation required when function returns a value |
 | `E1004` | Function '{name}' declared return type {ret_type} but may implicitly return None |
 
+`E1004` follows the control-flow graph: a path that reaches the end of the function body is reported, including in `impl` bodies, while a path that ends in `raise`, `return`, a call to a `Never` function, a `while True` loop left only by `return`, or a `match` whose cases cover the subject's type is not.
+
+### Definite Assignment, Defaults and Class Rules
+
+| Code | Message |
+|------|---------|
+| `E1006` | '{name}' might not be assigned before this read |
+| `E1007` | Default for '{param}' reads parameter '{name}', which is bound at or after it |
+| `E1008` | Cannot create a consistent method resolution order for '{name}' |
+| `E1009` | '{name}' inherits the init of '{owner}', which does not set {fields}; define an init |
+| `E1012` | '{name}' defines postinit, but the init it inherits from '{owner}' never calls it; define an init |
+| `E1013` | '{name}' overrides '{base}.{name}' incompatibly: {detail} |
+| `E1014` | '{name}' overrides '{base}.{name}' but changes the default of '{param}' |
+
+A local must be assigned on every path that reaches a read (`E1006`). Assign it before the branch, loop or `try` that sets it. A default is evaluated on each call, left to right, in the function's own scope, so it can read the parameters declared before it but not its own or a later one (`E1007`). An `obj` without its own `init` uses the first hand-written `init` in its method resolution order, or a generated one over every field when there is none; inheriting a hand-written `init` that would leave a field unset (`E1009`) or never run the class's `postinit` (`E1012`) needs an `init` of its own. An override must accept every call the inherited method accepts, return something its callers can use, keep a redeclared field's type (`E1013`) and keep every inherited default (`E1014`).
+
 !!! tip "`E1001`/`E1002` with `any` on the right-hand side"
     A common trigger for `E1001` and `E1002` is Jac's strict gradual-typing rule: in `.jac` source, an `any` value cannot silently flow into a declared non-`any`, non-`object` destination. Ways to clear it -- type the source (e.g. `has reports: list[T]` on a walker, `.pyi` stub on a Python utility), drop the annotation (`x = src()` makes `x` inferred-`any`), annotate `any` explicitly (`x: any = src()`) and narrow before downstream use, or re-type at the use site with the [`as` cast](language/operators.md#10-the-as-cast-operator) (`src() as list[T]`) when you know more than the checker. See [The `any` Type and Gradual Typing](language/types-and-values.md#the-any-type-and-gradual-typing).
 
@@ -491,7 +507,7 @@ See [Project Wiring](wiring.md).
 |------|---------|
 | `E1145` | Cannot import name '{name}' from Jac module '{module}': it defines no such name |
 
-Native lowering reports `E1145` when a module imports a name that the Jac module it binds to does not define. There is no symbol to bind the name to, and every use of it used to lower to a null value (a glob initializer received NULL and the binary crashed at load). The checker reports the same import as the `W1101` warning: its lazy resolution can miss a name that exists (an import cycle still being analyzed, or a sibling module shadowing a standard-library one), so only native lowering, which reads the bound module's complete symbol table, makes it an error.
+The checker reports `E1145` when a module imports a name that the Jac module it binds to does not define, on every backend: there is no symbol to bind the name to. An import from a Python module that lacks the name stays the `W1101` warning.
 
 ## Semantic Errors (E2xxx / W2xxx)
 
@@ -622,7 +638,6 @@ Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/in
 | `W3025` | `identical-branches` | Identical if/else branches -- the else is redundant | default |
 | `W3030` | `too-many-params` | Function has {count} parameters (threshold is {threshold}) | default |
 | `W3035` | `is-with-literal` | Use '==' instead of 'is' when comparing to a literal | default |
-| `W3036` | `mutable-default` | Mutable default argument '{type}' -- use None and assign inside the function | default |
 | `W3037` | `unnecessary-none-return` | Unnecessary '-> None' return type annotation on '{name}'; functions without a return statement implicitly return None | default |
 | `W3038` | `usestate-to-has` | useState hook for '{name}' can be replaced with `has {name}: {type} = {init}` | default |
 | `W3039` | `getattr-to-null-ok` | getattr(obj, 'attr', None) should use null-safe access | default |
@@ -677,7 +692,6 @@ Emitted while lowering the unitree into the compact codegen IR container (`JcirG
 
 | Code | Message |
 |------|---------|
-| `E5030` | Cannot compute C3 MRO for {name}: inconsistent hierarchy |
 | `W5031` | obj '{arch}' field '{field}' has no type annotation |
 | `W5032` | obj '{arch}' field '{field}' has type '{type}' which is not layout-compatible |
 

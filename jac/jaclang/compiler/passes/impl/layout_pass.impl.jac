@@ -152,79 +152,56 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, Archetype]) -> None {
         }
     }
 
-    for aname in archetypes {
-        if aname not in reg.mro_order {
-            reg.set_mro(aname, self._compute_c3_mro(aname));
+    evaluator = self.prog.type_evaluator;
+    for (aname, arch) in archetypes.items() {
+        cls = evaluator.get_type_of_class(arch) if evaluator is not None else None;
+        if not isinstance(cls, ClassType) {
+            reg.set_mro(aname, [aname]);
+            continue;
+        }
+        reachable = self._layout_ancestors(aname);
+        reg.set_mro(aname, self._layout_mro(aname, cls, reachable));
+        for anc in cls.shared.mro[1:] {
+            if not isinstance(anc, ClassType) {
+                continue;
+            }
+            anc_name = class_type_native_name(anc) or anc.shared.class_name;
+            if anc_name in reachable and anc_name not in reg.mro_order {
+                reg.set_mro(anc_name, self._layout_mro(anc_name, anc, reachable));
+            }
         }
     }
 }
 
-impl LayoutPass._compute_c3_mro(class_name: str) -> list[str] {
+impl LayoutPass._layout_ancestors(class_name: str) -> set[str] {
     reg = self.registry;
-
-    parents = reg.class_parents.get(class_name);
-    if parents is None or not parents {
-        return [class_name];
+    seen: set[str] = {class_name};
+    pending: list[str] = [class_name];
+    while pending {
+        for parent in reg.class_parents.get(pending.pop(), []) {
+            if parent not in seen {
+                seen.add(parent);
+                pending.append(parent);
+            }
+        }
     }
+    return seen;
+}
 
-    parent_mros: list[list[str]] = [];
-    for p in parents {
-        if p not in reg.mro_order {
-            reg.set_mro(p, self._compute_c3_mro(p));
+impl LayoutPass._layout_mro(
+    class_name: str, cls: ClassType, reachable: set[str]
+) -> list[str] {
+    order: list[str] = [class_name];
+    for anc in cls.shared.mro[1:] {
+        if not isinstance(anc, ClassType) {
+            continue;
         }
-        parent_mros.append(list(reg.mro_order[p]));
+        anc_name = class_type_native_name(anc) or anc.shared.class_name;
+        if anc_name in reachable and anc_name not in order {
+            order.append(anc_name);
+        }
     }
-
-    parent_mros.append(list(parents));
-
-    result: list[str] = [class_name];
-    while True {
-        any_remaining = False;
-        for mro_list in parent_mros {
-            if len(mro_list) > 0 {
-                any_remaining = True;
-                break;
-            }
-        }
-        if not any_remaining {
-            break;
-        }
-
-        candidate: (str | None) = None;
-        for mro_list in parent_mros {
-            if len(mro_list) == 0 {
-                continue;
-            }
-            head = mro_list[0];
-
-            in_tail = False;
-            for other_list in parent_mros {
-                if len(other_list) > 1 and head in other_list[1:] {
-                    in_tail = True;
-                    break;
-                }
-            }
-            if not in_tail {
-                candidate = head;
-                break;
-            }
-        }
-        if candidate is None {
-            self.ctx.emit(E5030, name=class_name);
-            return result;
-        }
-        result.append(candidate);
-
-        new_parent_mros: list[list[str]] = [];
-        for mro_list in parent_mros {
-            if len(mro_list) > 0 and mro_list[0] == candidate {
-                mro_list.pop(0);
-            }
-            new_parent_mros.append(mro_list);
-        }
-        parent_mros = new_parent_mros;
-    }
-    return result;
+    return order;
 }
 
 impl LayoutPass._topo_sort(arch_map: dict[str, Archetype]) -> list[str] {
@@ -487,10 +464,14 @@ impl LayoutPass._build_enum_layouts(module: Module) -> None {
                 )
             );
         }
+        homogeneous = all(
+            isinstance(mval, str) if is_string_enum else isinstance(mval, int)
+            for mval in member_values
+        );
         self.registry.enums[ename] = EnumLayout(
             name=ename,
             is_string_enum=is_string_enum,
-            all_values_known=all(mval is not None for mval in member_values),
+            all_values_known=homogeneous,
             members=members
         );
     }

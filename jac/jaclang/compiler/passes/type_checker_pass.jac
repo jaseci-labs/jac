@@ -66,6 +66,12 @@ walker TypeCheckPass(TreePass) {
     can exit_special_var_ref with SpecialVarRef exit;
     can exit_name with Name exit;
     can exit_param_var with ParamVar exit;
+    def _check_default_order(
+        sig: FuncSignature, param: ParamVar, default_expr: Expr
+    ) -> None;
+
+    def _check_overrides(arch: Archetype, cls_type: ClassType) -> None;
+    def _unbound_signature(fn: FunctionType) -> FunctionType;
     can exit_has_var with HasVar exit;
     can exit_in_for_stmt with InForStmt exit;
     can exit_raise_stmt with RaiseStmt exit;
@@ -108,7 +114,10 @@ walker TypeCheckPass(TreePass) {
     def _rebound_enclosing_symbol(scope: UniNode, leaf: Name) -> (Symbol | None);
     def _is_initializer_write(target: Expr, decl_sym: Symbol) -> bool;
     def _is_self_ref(base: Name, method: Ability) -> bool;
-    def _body_always_returns(body: list[CodeBlockStmt]) -> bool;
+    def _check_return_paths(
+        decl: Ability, frame: UniCFGNode, body: Sequence[UniNode]
+    ) -> None;
+
     def _check_bare_generic(
         ann_node: UniNode,
         ty: object,

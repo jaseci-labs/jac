@@ -1435,7 +1435,6 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         for (_gname, _gpath) in self._glob_import_sources.items()
         if _gname in _defined.get(_gpath, set())
     };
-    self._check_native_import_names(imported_mods);
 
     for (_, imported_mod) in imported_mods {
         self._process_clib_imports(imported_mod);
@@ -2072,42 +2071,6 @@ impl NaIRGenPass._imported_function_demotions(
         return set(iface.demoted);
     }
     return None;
-}
-
-impl NaIRGenPass._check_native_import_names(
-    imported_mods: list[tuple[str, uni.Module]]
-) -> None {
-    import os;
-
-    by_path: dict[str, uni.Module] = {};
-    for (_, _mod) in imported_mods {
-        if _mod?.loc and _mod.loc.mod_path {
-            by_path[real_path(_mod.loc.mod_path)] = _mod;
-        }
-    }
-    for (item, path, mod_name) in self._native_import_items {
-        name = item.name.value if item.name else None;
-        src = by_path.get(path);
-        if name is None
-            or name == "*"
-            or src is None
-            or not path.endswith(".jac")
-            or stdlib_intercepted(mod_name, name) {
-            continue;
-        }
-        if any(
-            _imp.is_absorb
-                or any(
-                    isinstance(_i, uni.ModuleItem) and _i.name.value == "*"
-                    for _i in (_imp.items or [])
-                ) for _imp in src.get_all_sub_nodes(uni.Import)
-        ) {
-            continue;
-        }
-        if lookup_symtab(src, name, None) is None {
-            self.emit(E1145, node_override=item, name=name, module=mod_name);
-        }
-    }
 }
 
 impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {

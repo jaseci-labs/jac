@@ -4,6 +4,8 @@ import logging;
 
 obj AttemptsExhausted(Exception) {
     has retry_after: int = 1;
+
+    def init(retry_after: int = 1);
 }
 
 def limit_key(scope: str, actor: str) -> str;

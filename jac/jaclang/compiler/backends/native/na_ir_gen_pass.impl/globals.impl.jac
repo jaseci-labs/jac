@@ -141,9 +141,11 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 var_type = self._resolve_decl_type(assign.type_tag, assign.value);
             } elif assign.value is not None {
                 inferred = self._infer_global_init_type(assign.value);
-                if inferred is not None {
-                    var_type = inferred;
+                if inferred is None {
+                    self._emit_unlowerable_type(assign.value, assign.value.type);
+                    continue;
                 }
+                var_type = inferred;
             }
 
             _is_priv = bool(nd.access and nd.access.tag.name == Tok.KW_PRIV);
@@ -202,36 +204,7 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
 
 impl NaIRGenPass._infer_global_init_type(value_node: uni.UniNode) -> (ir.Type | None) {
     if isinstance(value_node, uni.Expr) and value_node?.type is not None {
-        lowered = self._lower_type(value_node.type);
-        if lowered is not None {
-            return lowered;
-        }
-    }
-
-    if isinstance(value_node, uni.FuncCall) {
-        call_name = self._arch_ref_key(value_node.target)
-            or self._get_name(value_node.target);
-        if call_name is not None and call_name in self.struct_types {
-            return self.struct_types[call_name].as_pointer();
-        }
-    }
-
-    if isinstance(value_node, uni.AtomTrailer) {
-        target_name = self._arch_ref_key(value_node.target)
-            or self._get_name(value_node.target);
-        if target_name is not None and target_name in self.struct_types {
-            return self.struct_types[target_name].as_pointer();
-        }
-
-        right_name = self._get_name(value_node.right);
-        if target_name == "sys" and right_name == "argv" {
-            i8p = ir.IntType(8).as_pointer();
-            self._emit_list_helpers("ptr", i8p);
-            list_type = self.list_types.get("ptr");
-            if list_type is not None {
-                return list_type.as_pointer();
-            }
-        }
+        return self._lower_type(value_node.type);
     }
     return None;
 }

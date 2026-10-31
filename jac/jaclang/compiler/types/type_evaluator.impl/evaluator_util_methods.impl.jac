@@ -2616,3 +2616,81 @@ impl TypeEvaluator._collect_if_else_returns(
     }
     return False;
 }
+
+impl TypeEvaluator._own_member_names(cls: ClassType) -> set[str] {
+    table = cls.shared.symbol_table;
+    if table is None {
+        return set();
+    }
+    return set(table.names_in_scope.keys());
+}
+
+impl TypeEvaluator._own_field_names(cls: ClassType) -> list[str] {
+    table = cls.shared.symbol_table;
+    if isinstance(table, Archetype) {
+        return [
+            hv.name.value
+            for hv in table.get_has_vars()
+            if not hv.defer
+                and not hv.accessors
+                and field_initialization(hv).participates_in_init
+        ];
+    }
+    if isinstance(table, CatScope) {
+        return [
+            name
+            for (name, sym) in table.names_in_scope.items()
+            if sym.sym_type == SymbolType.HAS_VAR
+        ];
+    }
+    return [];
+}
+
+impl TypeEvaluator._has_handwritten_init(cls: ClassType) -> bool {
+    if cls.shared.class_name == "object" {
+        return False;
+    }
+    names = self._own_member_names(cls);
+    if isinstance(cls.shared.symbol_table, (Archetype, CatScope)) {
+        return "init" in names or "__init__" in names;
+    }
+    return "__init__" in names and not cls.is_data_class();
+}
+
+impl TypeEvaluator.constructor_shape(cls: ClassType) -> CtorShape {
+    shape = CtorShape();
+    mro = [
+        c
+        for c in cls.shared.mro
+        if isinstance(c, ClassType)
+    ];
+
+    for c in mro {
+        if self._has_handwritten_init(c) {
+            shape.kind = "own" if c.shared.same_class(cls.shared) else "inherited";
+            shape.owner = c;
+            break;
+        }
+    }
+    if shape.kind != "inherited" or shape.owner is None {
+        return shape;
+    }
+    covered = {
+        id(c.shared)
+        for c in shape.owner.shared.mro
+        if isinstance(c, ClassType)
+    };
+    for c in mro {
+        if id(c.shared) not in covered {
+            shape.unset_fields.extend(self._own_field_names(c));
+        }
+    }
+    for c in mro {
+        names = self._own_member_names(c);
+        if "postinit" in names or "__post_init__" in names {
+            shape.postinit_unreachable = id(c.shared) not in covered;
+            break;
+        }
+    }
+    return shape;
+}

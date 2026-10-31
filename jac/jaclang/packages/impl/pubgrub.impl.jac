@@ -154,8 +154,10 @@ impl Assignment.is_decision -> bool {
     return self.cause is None;
 }
 
-impl SolveFailure.postinit {
-    Exception.__init__(self, explain(self.incompatibility, self.root_name));
+impl SolveFailure.init(incompatibility: Incompatibility, root_name: str) {
+    self.incompatibility = incompatibility;
+    self.root_name = root_name;
+    Exception.__init__(self, explain(incompatibility, root_name));
 }
 
 impl Solver.solve -> dict[str, Version] {

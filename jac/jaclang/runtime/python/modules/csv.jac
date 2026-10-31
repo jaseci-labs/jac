@@ -8,7 +8,7 @@ obj CsvConfig(NativeState) {
     has limit: i64 = 128 * 1024;
 
     def clear {}
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         return i32(0);
     }
 }

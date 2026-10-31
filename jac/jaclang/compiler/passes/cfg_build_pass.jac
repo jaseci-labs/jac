@@ -6,34 +6,36 @@ walker CFGBuildPass(TreePass) {
             AnalysisFact.CFG_SUCC,
             AnalysisFact.CFG_TRUE,
             AnalysisFact.CFG_FALSE,
+            AnalysisFact.CFG_EXIT,
 
         ),
         kernel_safe=True
     );
 
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
-    def _link_sequential(body: Sequence[CodeBlockStmt]) -> None;
-    def _exit_wired(nd: UniCFGNode) -> bool;
-    def _in_nested_lambda(succ: UniCFGNode, nd: UniCFGNode) -> bool;
-    def _connect_tails(parent: UniNode, target: UniCFGNode) -> None;
-    def _link_body_tails_to_header(
-        nd: WhileStmt | ForeverStmt | InForStmt | IterForStmt
+    def _is_exit_target(source: UniCFGNode, target: UniCFGNode) -> bool;
+    def _link_to(source: UniCFGNode, target: (UniCFGNode | None)) -> None;
+    def _is_terminal(nd: UniNode) -> bool;
+    def _stmt_body(parent: UniNode) -> (Sequence[UniNode] | None);
+    def _is_flow_frame(nd: UniNode) -> bool;
+    def _in_stmt_body(nd: UniNode) -> bool;
+    def _next_in_body(body: Sequence[UniNode], child: UniNode) -> (UniCFGNode | None);
+    def _follow(nd: UniNode) -> (UniCFGNode | None);
+    def _body_entry(
+        body: Sequence[UniNode], fallback: (UniCFGNode | None)
+    ) -> (UniCFGNode | None);
+
+    def _else_entry(nd: UniNode) -> (UniCFGNode | None);
+    def _break_target(nd: CtrlStmt) -> (UniCFGNode | None);
+    def _is_compound(nd: UniNode) -> bool;
+    def _is_irrefutable_case(nd: MatchCase) -> bool;
+    def _wire_branch(
+        nd: UniCFGNode,
+        condition: Expr,
+        true_target: (UniCFGNode | None),
+        false_target: (UniCFGNode | None)
     ) -> None;
 
-    def _is_terminal(nd: UniNode) -> bool;
-    def _find_parent_of_types(
-        nd: UniNode, types: tuple[type[UniCFGNode], ...]
-    ) -> (UniCFGNode | None);
-
-    def _next_in_body(
-        body: Sequence[CodeBlockStmt], child: UniNode
-    ) -> (UniCFGNode | None);
-
-    def _find_next_cfg_stmt_after(
-        parent: UniNode, child: UniNode
-    ) -> (UniCFGNode | None);
-
-    def _find_next_cfg_stmt_after_branch(nd: UniNode) -> (UniCFGNode | None);
     def _wire_bool_operands(
         values: list[CfgExpr],
         op_is_and: bool,
@@ -59,12 +61,10 @@ walker CFGBuildPass(TreePass) {
     can enter_else_if with ElseIf entry;
     can enter_assert_stmt with AssertStmt entry;
     can enter_match_stmt with MatchStmt entry;
+    can exit_simple_stmt with UniCFGNode exit;
     can exit_bool_expr with BoolExpr exit;
     can exit_if_else_expr with IfElseExpr exit;
     can exit_if_stmt with IfStmt exit;
-    def _exit_if_stmt_impl(nd: IfStmt) -> None;
-    can exit_else_if with ElseIf exit;
-    can exit_else_stmt with ElseStmt exit;
     can exit_while_stmt with WhileStmt exit;
     can exit_forever_stmt with ForeverStmt exit;
     can exit_in_for_stmt with InForStmt exit;
@@ -86,16 +86,24 @@ walker CFGBuildPass(TreePass) {
     can exit_with_stmt with WithStmt exit;
     can exit_typed_ctx_block with TypedCtxBlock exit;
     can exit_open_stmt with OpenStmt exit;
+    can exit_visit_stmt with VisitStmt exit;
     can exit_jsx_slot with JsxSlot exit;
     can exit_lambda_expr with LambdaExpr exit;
     can exit_ability with Ability exit;
     can exit_archetype with Archetype exit;
     can exit_impl_def with ImplDef exit;
-    can exit_module_code with ModuleCode exit;
     can exit_test with Test exit;
 }
 
 def is_structural_child(nd: UniNode) -> bool;
+
+def is_constant_true(expr: Expr) -> bool;
+
+def is_abrupt_entry(pred: UniCFGNode, succ: UniCFGNode) -> bool;
+
+def falls_off_end(
+    frame: UniCFGNode, live: Callable[[UniCFGNode, UniCFGNode], bool]
+) -> bool;
 
 def _unwrap_parens(expr: Expr) -> Expr;
 

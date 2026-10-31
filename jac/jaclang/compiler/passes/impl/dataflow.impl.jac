@@ -37,24 +37,62 @@ impl solve_forward(
 impl solve_forward_must(
     cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer, universe: set[SymId]
 ) -> dict[int, set[SymId]] {
-    state: dict[int, set[SymId]] = {};
-    for n in cfg_nodes {
-        state[id(n)] = set() if not n.bb_in else set(universe);
+    return solve_forward_must_edges(
+        cfg_nodes,
+        lambda (nd: UniCFGNode) -> list[UniCFGNode] { return nd.bb_out; },
+        [
+            n
+            for n in cfg_nodes
+            if not n.bb_in
+        ],
+        lambda (pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return transfer(
+            pred, in_set
+        ); },
+        universe
+    );
+}
+
+impl solve_forward_must_edges(
+    nodes: list[UniCFGNode],
+    successors: CfgSuccessors,
+    entries: list[UniCFGNode],
+    transfer: EdgeTransfer,
+    universe: set[SymId]
+) -> dict[int, set[SymId]] {
+    members: dict[int, UniCFGNode] = {id(n): n for n in nodes};
+    succs: dict[int, list[UniCFGNode]] = {};
+    preds: dict[int, list[UniCFGNode]] = {id(n): [] for n in nodes};
+    for n in nodes {
+        inside = [
+            s
+            for s in successors(n)
+            if id(s) in members
+        ];
+        succs[id(n)] = inside;
+        for s in inside {
+            preds[id(s)].append(n);
+        }
     }
-    worklist = list(cfg_nodes);
+    entry_ids = {id(n) for n in entries};
+    state: dict[int, set[SymId]] = {};
+    for n in nodes {
+        state[id(n)] = set() if id(n) in entry_ids else set(universe);
+    }
+    worklist = list(nodes);
     while worklist {
         n = worklist.pop();
-        if not n.bb_in {
+        key = id(n);
+        if key in entry_ids or not preds[key] {
             continue;
         }
         new_state: set[SymId] | None = None;
-        for pred in n.bb_in {
-            pred_out = transfer(pred, _state_at(state, id(pred)));
+        for pred in preds[key] {
+            pred_out = transfer(pred, n, _state_at(state, id(pred)));
             new_state = set(pred_out) if new_state is None else new_state & pred_out;
         }
-        if new_state is not None and new_state != _state_at(state, id(n)) {
-            state[id(n)] = new_state;
-            for nb in n.bb_out {
+        if new_state is not None and new_state != _state_at(state, key) {
+            state[key] = new_state;
+            for nb in succs[key] {
                 worklist.append(nb);
             }
         }

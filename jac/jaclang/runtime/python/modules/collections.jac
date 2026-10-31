@@ -557,7 +557,7 @@ obj DequeState(NativeState) {
         jacpy_deque_clear(self.native);
     }
 
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         for i in range(int(jacpy_deque_size(self.native))) {
             status = visit_reference(
                 jacpy_deque_borrow(self.native, i64(i)), visitor, context

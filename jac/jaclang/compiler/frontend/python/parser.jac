@@ -4,6 +4,8 @@ Originally generated from CPython 3.14.6 Grammar/python.gram (starts: eval, file
 Maintained directly in Jac.
 """
 
+import type from typing { Never }
+
 glob RULE__gather_101: int = NT_OFFSET + 0,
      RULE__gather_104: int = NT_OFFSET + 1,
      RULE__gather_106: int = NT_OFFSET + 2,
@@ -20652,7 +20654,7 @@ def source_column(lines: list[str], line: int, column: int) -> int {
     return column;
 }
 
-def raise_source_error(p: peg_parser, error: syntax_failure) {
+def raise_source_error(p: peg_parser, error: syntax_failure) -> Never {
     token = p.tokens[-1] if p.tokens else None;
     if p.flags & 0x4000
         and p.tok.eof_reached

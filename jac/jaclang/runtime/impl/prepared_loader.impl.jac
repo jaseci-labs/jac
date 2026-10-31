@@ -13,7 +13,7 @@ impl PreparedLoader.exec_module(module: ModuleType) {
 }
 
 impl PreparedFinder.find_spec(
-    fullname: str, path: list[str] | None = None, target: ModuleType | None = None
+    fullname: str, path: Sequence[str] | None = None, target: ModuleType | None = None
 ) -> ModuleSpec | None {
     if not any(
         fullname == application_namespace(application)

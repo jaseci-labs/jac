@@ -404,8 +404,8 @@ impl ensure_namespace_exists(namespace: str, owner: str) -> None {
     if (namespace == 'default') {
         return;
     }
+    core_v1 = client.CoreV1Api();
     try {
-        core_v1 = client.CoreV1Api();
         existing_ns = core_v1.read_namespace(name=namespace);
         console.print(f"Namespace '{namespace}' already exists.");
 
