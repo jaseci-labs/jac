@@ -2437,7 +2437,7 @@ impl NaIRGenPass._codegen_instantiation(
                     init_args.append(
                         _given
                             if _given is not None
-                            else self._default_arg_fallback(_expected)
+                            else self._missing_argument(nd, _expected)
                     );
                     continue;
                 }
@@ -2454,7 +2454,7 @@ impl NaIRGenPass._codegen_instantiation(
                 if _val is not None {
                     init_args.append(_val);
                 } else {
-                    init_args.append(self._default_arg_fallback(_expected));
+                    init_args.append(self._missing_argument(nd, _expected));
                 }
             }
             for pix in range(len(_sig_params), len(_init_pos)) {
@@ -2474,7 +2474,7 @@ impl NaIRGenPass._codegen_instantiation(
             }
             _fill = len(init_args);
             while _fill < len(init_fn.args) {
-                init_args.append(self._default_arg_fallback(init_fn.args[_fill].type));
+                init_args.append(self._missing_argument(nd, init_fn.args[_fill].type));
                 _fill += 1;
             }
         }
@@ -3820,7 +3820,7 @@ impl NaIRGenPass._codegen_union_member(
         "AttributeError",
         f"object has no attribute '{field_name}'"
     );
-    incoming.append((self._default_arg_fallback(result_type), b.block));
+    incoming.append((self._zero_const(result_type), b.block));
     b.branch(done);
     b.position_at_end(done);
     result = b.phi(result_type, name="union.property.value");
@@ -4102,7 +4102,7 @@ impl NaIRGenPass._codegen_class_const_read(
             "AttributeError",
             f"class has no attribute '{field_name}'"
         );
-        _cc_incoming.append((self._default_arg_fallback(_ty), b.block));
+        _cc_incoming.append((self._zero_const(_ty), b.block));
     }
     b.branch(_cc_done);
     b.position_at_end(_cc_done);
@@ -4976,14 +4976,14 @@ impl NaIRGenPass._emit_class_routed_call(
         } elif _an in _sdefaults {
             _pv = self._codegen_expr(_sdefaults[_an]);
             if _pv is None {
-                _pv = self._default_arg_fallback(_sfunc.args[_ai].type);
+                _pv = self._missing_argument(nd, _sfunc.args[_ai].type);
             }
             _sargs.append(_pv);
         } else {
             if _an == "" and _skw {
                 _bad_arg = True;
             }
-            _sargs.append(self._default_arg_fallback(_sfunc.args[_ai].type));
+            _sargs.append(self._missing_argument(nd, _sfunc.args[_ai].type));
         }
     }
     if _bad_arg or (len(_used_kw) < len(_skw)) {

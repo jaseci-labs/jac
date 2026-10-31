@@ -256,17 +256,15 @@ impl NaIRGenPass._arch_init_params_of(type_name: str) -> (list[uni.ParamVar] | N
     return params;
 }
 
-impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
-    if isinstance(t, ir.PointerType) {
-        if t.pointee == self._get_bytes_struct_type() {
-            return self._make_global_bytes(b"");
-        }
-        return ir.Constant(t, None);
-    }
-    if isinstance(t, (ir.IntType, ir.DoubleType)) {
-        return ir.Constant(t, 0);
-    }
-    return ir.Constant(t, None);
+impl NaIRGenPass._missing_argument(nd: uni.UniNode, t: ir.Type) -> ir.Value {
+    self.emit(
+        E5092,
+        node_override=nd,
+        kind="call argument",
+        name=type(nd).__name__,
+        help_text="The type checker binds every parameter of a call; a parameter left unbound here means native lowering lost an argument, so the call is refused rather than passed a zero."
+    );
+    return self._zero_const(t);
 }
 
 impl NaIRGenPass._codegen_bound_args(
@@ -402,7 +400,7 @@ impl NaIRGenPass._codegen_bound_args(
         }
         slot = self_offset + len(args);
         while slot < len(func.args) {
-            args.append(self._default_arg_fallback(func.args[slot].type));
+            args.append(self._missing_argument(nd, func.args[slot].type));
             slot += 1;
         }
         return args;
@@ -540,7 +538,7 @@ impl NaIRGenPass._codegen_bound_args(
                 }
                 args.append(val);
             } else {
-                args.append(self._default_arg_fallback(expected_type));
+                args.append(self._missing_argument(nd, expected_type));
             }
         }
 
@@ -607,7 +605,7 @@ impl NaIRGenPass._codegen_bound_args(
             if val is not None {
                 args.append(val);
             } else {
-                args.append(self._default_arg_fallback(expected_type));
+                args.append(self._missing_argument(nd, expected_type));
             }
             if kw_spreads and pix >= _n_posonly {
                 _bind_records.append(
@@ -629,7 +627,7 @@ impl NaIRGenPass._codegen_bound_args(
             if _lv is not None {
                 args.append(_lv);
             } elif _pack_t is not None {
-                args.append(self._default_arg_fallback(_pack_t));
+                args.append(self._missing_argument(nd, _pack_t));
             }
             _slot += 1;
         }
@@ -669,7 +667,7 @@ impl NaIRGenPass._codegen_bound_args(
             if val is not None {
                 args.append(val);
             } else {
-                args.append(self._default_arg_fallback(expected_type));
+                args.append(self._missing_argument(nd, expected_type));
             }
             if kw_spreads {
                 _bind_records.append(
@@ -691,7 +689,7 @@ impl NaIRGenPass._codegen_bound_args(
             if _dv is not None {
                 args.append(_dv);
             } elif _kw_t is not None {
-                args.append(self._default_arg_fallback(_kw_t));
+                args.append(self._missing_argument(nd, _kw_t));
             }
         } elif kw_spreads {
             self._consume_kw_spreads(nd, kw_order, _bind_records);
@@ -731,7 +729,7 @@ impl NaIRGenPass._codegen_bound_args(
                 );
 
                 while len(args) < len(func.args) {
-                    args.append(self._default_arg_fallback(func.args[len(args)].type));
+                    args.append(self._missing_argument(nd, func.args[len(args)].type));
                 }
                 return args;
             }
@@ -763,7 +761,7 @@ impl NaIRGenPass._codegen_bound_args(
     }
     while len(args) < expected_argc {
         slot = self_offset + len(args);
-        args.append(self._default_arg_fallback(func.args[slot].type));
+        args.append(self._missing_argument(nd, func.args[slot].type));
     }
     return args;
 }
@@ -945,7 +943,7 @@ impl NaIRGenPass._codegen_kwargs_dict(
                 [
                     _skip_dv,
                     self._make_global_string(_br["name"], name_prefix=".kwname"),
-                    self._default_arg_fallback(helpers["val_type"]),
+                    self._zero_const(helpers["val_type"]),
                     ir.Constant(ir.IntType(64), self._static_str_hash(_br["name"]))
                 ],
                 op="dict_init",

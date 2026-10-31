@@ -937,7 +937,7 @@ walker NaIRGenPass(CompilerPass) {
         bind_records: list[dict[str, any]]
     ) -> None;
 
-    def _default_arg_fallback(t: ir.Type) -> ir.Value;
+    def _missing_argument(nd: uni.UniNode, t: ir.Type) -> ir.Value;
     def _default_thunk(func: ir.Function, slot: int, name: str) -> ir.Function;
     def _call_default_thunk(
         func: ir.Function, param: uni.ParamVar, slot: int, prior: list[ir.Value]

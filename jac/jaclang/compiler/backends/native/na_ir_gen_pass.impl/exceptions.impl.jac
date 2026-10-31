@@ -1867,7 +1867,7 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
     if isinstance(rt, ir.VoidType) {
         self.builder.ret_void();
     } else {
-        self.builder.ret(self._default_arg_fallback(rt));
+        self.builder.ret(self._zero_const(rt));
     }
 }
 
