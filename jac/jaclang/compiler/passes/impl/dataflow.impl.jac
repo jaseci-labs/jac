@@ -40,10 +40,14 @@ impl solve_forward_must(
     return solve_forward_must_edges(
         cfg_nodes,
         lambda (nd: UniCFGNode) -> list[UniCFGNode] { return nd.bb_out; },
-        [n for n in cfg_nodes if not n.bb_in],
-        lambda (pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]) -> set[SymId] {
-            return transfer(pred, in_set);
-        },
+        [
+            n
+            for n in cfg_nodes
+            if not n.bb_in
+        ],
+        lambda (pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return transfer(
+            pred, in_set
+        ); },
         universe
     );
 }
@@ -59,7 +63,11 @@ impl solve_forward_must_edges(
     succs: dict[int, list[UniCFGNode]] = {};
     preds: dict[int, list[UniCFGNode]] = {id(n): [] for n in nodes};
     for n in nodes {
-        inside = [s for s in successors(n) if id(s) in members];
+        inside = [
+            s
+            for s in successors(n)
+            if id(s) in members
+        ];
         succs[id(n)] = inside;
         for s in inside {
             preds[id(s)].append(n);

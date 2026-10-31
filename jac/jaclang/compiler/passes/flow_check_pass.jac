@@ -25,8 +25,7 @@ obj FrameFlow {
 
 walker FlowCheckPass(CompilerPass) {
     static has contract: PassContract = PassContract(
-        requires=(AnalysisFact.CFG_SUCC, ),
-        provides=(AnalysisFact.FLOW_CHECKS, )
+        requires=(AnalysisFact.CFG_SUCC, ), provides=(AnalysisFact.FLOW_CHECKS, )
     );
 
     def _run_impl(ir_in: Module) -> Module;
@@ -39,6 +38,7 @@ walker FlowCheckPass(CompilerPass) {
     def _build_frame(
         start: UniCFGNode, by_owner: dict[int, list[UniCFGNode]]
     ) -> (FrameFlow | None);
+
     def _successors(fr: FrameFlow, nd: UniCFGNode) -> list[UniCFGNode];
     def _transfer(
         fr: FrameFlow, pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]
@@ -67,7 +67,11 @@ walker FlowCheckPass(CompilerPass) {
     ) -> tuple[set[SymId], set[SymId]];
 
     def _eval_compr(
-        fr: FrameFlow, nd: UniNode, comprs: list[InnerCompr], da: set[SymId], check: bool
+        fr: FrameFlow,
+        nd: UniNode,
+        comprs: list[InnerCompr],
+        da: set[SymId],
+        check: bool
     ) -> set[SymId];
 
     def _bind_target(

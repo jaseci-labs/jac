@@ -108,7 +108,10 @@ walker TypeCheckPass(TreePass) {
     def _rebound_enclosing_symbol(scope: UniNode, leaf: Name) -> (Symbol | None);
     def _is_initializer_write(target: Expr, decl_sym: Symbol) -> bool;
     def _is_self_ref(base: Name, method: Ability) -> bool;
-    def _body_always_returns(body: list[CodeBlockStmt]) -> bool;
+    def _check_return_paths(
+        decl: Ability, frame: UniCFGNode, body: Sequence[UniNode]
+    ) -> None;
+
     def _check_bare_generic(
         ann_node: UniNode,
         ty: object,

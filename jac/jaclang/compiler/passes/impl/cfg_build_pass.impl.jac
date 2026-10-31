@@ -1,4 +1,8 @@
 impl CFGBuildPass.link_bbs(source: UniCFGNode, target: UniCFGNode) -> None {
+    if source and target and self._is_exit_target(source, target) {
+        source.cfg_exit_to(target);
+        return;
+    }
     if source and target {
         source.cfg_link(target);
         new_symbols = source.affected_symbols - target.affected_symbols;
@@ -21,6 +25,20 @@ impl CFGBuildPass.link_bbs(source: UniCFGNode, target: UniCFGNode) -> None {
             }
         }
     }
+}
+
+impl CFGBuildPass._is_exit_target(source: UniCFGNode, target: UniCFGNode) -> bool {
+    if not isinstance(target, (Ability, ImplDef, Test)) {
+        return False;
+    }
+    cur: (UniNode | None) = source;
+    while cur is not None {
+        if cur is target {
+            return True;
+        }
+        cur = cur.parent;
+    }
+    return False;
 }
 
 impl CFGBuildPass._link_to(source: UniCFGNode, target: (UniCFGNode | None)) -> None {
@@ -59,7 +77,7 @@ impl CFGBuildPass._stmt_body(parent: UniNode) -> (Sequence[UniNode] | None) {
         return parent.body;
     }
     if isinstance(parent, (Ability, ImplDef, LambdaExpr, JsxSlot))
-        and isinstance(parent.body, list) {
+        and isinstance(parent.body, Sequence) {
         return cast(Sequence[UniNode], parent.body);
     }
     return None;
@@ -91,9 +109,9 @@ impl CFGBuildPass._in_stmt_body(nd: UniNode) -> bool {
     return body is not None and any(s is nd for s in body);
 }
 
-impl CFGBuildPass._next_in_body(body: Sequence[UniNode], child: UniNode) -> (
-    UniCFGNode | None
-) {
+impl CFGBuildPass._next_in_body(
+    body: Sequence[UniNode], child: UniNode
+) -> (UniCFGNode | None) {
     found = False;
     for stmt in body {
         if found and isinstance(stmt, UniCFGNode) {
@@ -139,7 +157,9 @@ impl CFGBuildPass._follow(nd: UniNode) -> (UniCFGNode | None) {
                     return parent.finally_body;
                 }
             } elif isinstance(parent, (Except, AwaitingClause))
-                or (isinstance(parent, ElseStmt) and isinstance(parent.parent, TryStmt)) {
+                or (
+                    isinstance(parent, ElseStmt) and isinstance(parent.parent, TryStmt)
+                ) {
                 owner = parent.parent;
                 if isinstance(owner, TryStmt) and owner.finally_body is not None {
                     return owner.finally_body;
@@ -175,7 +195,7 @@ impl CFGBuildPass._follow(nd: UniNode) -> (UniCFGNode | None) {
                 parent = child.parent;
                 continue;
             } elif self._is_flow_frame(parent) {
-                return None;
+                return parent if isinstance(parent, (Ability, ImplDef, Test)) else None;
             }
         } elif self._is_flow_frame(parent) {
             return None;
@@ -433,7 +453,7 @@ impl CFGBuildPass.exit_lambda_expr with LambdaExpr exit {
 
 impl CFGBuildPass.exit_ability with Ability exit {
     if isinstance(here.body, Sequence) {
-        self._link_to(here, self._body_entry(here.body, None));
+        self._link_to(here, self._body_entry(here.body, here));
     }
 }
 
@@ -449,13 +469,13 @@ impl CFGBuildPass.exit_archetype with Archetype exit {
 
 impl CFGBuildPass.exit_impl_def with ImplDef exit {
     if isinstance(here.body, Sequence) {
-        self._link_to(here, self._body_entry(here.body, None));
+        self._link_to(here, self._body_entry(here.body, here));
     }
 }
 
 impl CFGBuildPass.exit_test with Test exit {
     if isinstance(here.body, Sequence) {
-        self._link_to(here, self._body_entry(here.body, None));
+        self._link_to(here, self._body_entry(here.body, here));
     }
 }
 
@@ -479,8 +499,12 @@ impl CFGBuildPass._wire_bool_operands(
 impl CFGBuildPass._set_and_link(
     cfg: CfgExpr, true_target: (UniCFGNode | None), false_target: (UniCFGNode | None)
 ) -> None {
-    cfg.sc_true_target = true_target;
-    cfg.sc_false_target = false_target;
+    cfg.sc_true_target = None
+        if true_target is None or self._is_exit_target(cfg, true_target)
+        else true_target;
+    cfg.sc_false_target = None
+        if false_target is None or self._is_exit_target(cfg, false_target)
+        else false_target;
     if true_target {
         self.link_bbs(cfg, true_target);
     }
@@ -693,4 +717,32 @@ impl unwrap_to_bool(cfg: CfgExpr) -> BoolExpr | None {
 
 impl _bool_is_and(expr: BoolExpr) -> bool {
     return isinstance(expr.op, Token) and expr.op.name == Tok.KW_AND;
+}
+
+impl falls_off_end(frame: UniCFGNode, ends_flow: Callable[[UniCFGNode], bool]) -> bool {
+    exits = frame.cfg_exits;
+    if not exits {
+        return False;
+    }
+    exit_ids = {id(e) for e in exits};
+    if id(frame) in exit_ids {
+        return True;
+    }
+    seen: set[int] = {id(frame)};
+    pending: list[UniCFGNode] = list(frame.bb_out);
+    while pending {
+        nd = pending.pop();
+        if id(nd) in seen {
+            continue;
+        }
+        seen.add(id(nd));
+        if ends_flow(nd) {
+            continue;
+        }
+        if id(nd) in exit_ids {
+            return True;
+        }
+        pending.extend(nd.bb_out);
+    }
+    return False;
 }

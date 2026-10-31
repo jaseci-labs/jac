@@ -1365,6 +1365,16 @@ impl UniCFGNode.bb_in.getter -> list[UniCFGNode] {
     return [self<-:CfgSucc:<-];
 }
 
+impl UniCFGNode.cfg_exits.getter -> list[UniCFGNode] {
+    return [self<-:CfgExit:<-];
+}
+
+impl UniCFGNode.cfg_exit_to(frame: UniCFGNode) -> None {
+    if frame not in [self->:CfgExit:->] {
+        self +>:CfgExit:+> frame;
+    }
+}
+
 impl UniCFGNode.cfg_link(target: UniCFGNode) -> None {
     if target not in [self->:CfgSucc:->] {
         self +>:CfgSucc:+> target;

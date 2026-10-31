@@ -944,7 +944,11 @@ test "E1006: every path must assign a local before it is read" {
     with open(os.path.join(NEW_DIAG_FIXTURES, fixture)) as f {
         lines = f.read().splitlines();
     }
-    expected = {i + 1 for i in range(len(lines)) if "# E1006" in lines[i]};
+    expected = {
+        i + 1
+        for i in range(len(lines))
+        if "# E1006" in lines[i]
+    };
     reported = [
         e.loc.first_line
         for e in program.errors_had

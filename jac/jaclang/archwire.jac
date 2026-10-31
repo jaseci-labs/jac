@@ -6141,6 +6141,7 @@ graph import compiler {
             | passes.cfg_build_pass
             | passes.comptime_resolve_pass
             | passes.decl_impl_match_pass
+            | passes.flow_check_pass
             | passes.freeze_structure_pass
             | passes.import_wiring_pass
             | passes.ownership_check_pass
@@ -6820,15 +6821,18 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
             SymbolStorage
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
+            | passes.capability_check_pass.PortabilityWarnPass._check_js_globals
+            | passes.import_wiring_pass
+            | tools.reactive_use_walk { ExprCtx },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_unary {
             OwnershipKind,
             is_borrow_kind
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name
-            | backends.native.na_ir_gen_pass.NaIRGenPass._ct_fold
-            | passes.capability_check_pass.PortabilityWarnPass._check_js_globals
-            | passes.import_wiring_pass
-            | tools.reactive_use_walk { ExprCtx },
+        backends.native.na_ir_gen_pass.NaIRGenPass._ct_fold
+            | passes.capability_check_pass.PortabilityWarnPass._check_js_keywords {
+            ExprCtx
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._flow_future_licensed
             | backends.native.primitives_native
             | driver.wiring
@@ -6903,13 +6907,13 @@ graph import compiler {
             | passes.variant_agreement_pass { SymbolAccess },
         passes.ast_validation_pass { CodeContext, DeleteTargetError, Tokens as Tok },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._get_context { CodeContext },
-        passes.capability_check_pass.PortabilityWarnPass._check_js_keywords { ExprCtx },
         passes.capability_check_pass.native_capability_violations {
             CodeContext,
             ExprCtx,
             Tokens as Tok
         },
         passes.endpoint_effect_pass { SymbolType, Tokens as Tok },
+        passes.flow_check_pass { ExprCtx, SymbolStorage, Tokens as Tok },
         passes.layout_pass | types.ct_eval { OwnershipKind, Tokens as Tok },
         passes.osp_analysis { CodeContext, Tokens as Tok },
         passes.ownership_check_pass {
@@ -7130,6 +7134,7 @@ graph import compiler {
         passes.decl_impl_match_pass.DeclImplMatchPass._populate_self_member_symbols {
             W2080
         },
+        passes.flow_check_pass { E1006 },
         passes.graph_lowering_pass { E0084, E0085 },
         passes.import_wiring_pass {
             E1141,
@@ -7580,6 +7585,7 @@ graph import compiler {
         backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
         passes.ast_validation_pass { in_loop_else },
         passes.cfg_build_pass { enclosing_loop, in_loop_else },
+        passes.flow_check_pass { frame_owns },
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
@@ -8095,6 +8101,7 @@ graph import compiler {
             | passes.cfg_build_pass
             | passes.comptime_resolve_pass
             | passes.endpoint_effect_pass
+            | passes.flow_check_pass
             | passes.osp_analysis
             | passes.type_checker_pass
             | tools.cfg_dot
@@ -8710,6 +8717,67 @@ graph import compiler {
             UniScopeNode,
             ability_of_symbol
         },
+        passes.flow_check_pass {
+            Ability,
+            Archetype,
+            Assignment,
+            AtomUnit,
+            AwaitingClause,
+            BinaryExpr,
+            BoolExpr,
+            CfgExpr,
+            CodeBlockStmt,
+            CtrlStmt,
+            DeleteStmt,
+            DictCompr,
+            ElseStmt,
+            Enum,
+            EventSignature,
+            Except,
+            FinallyStmt,
+            ForeverStmt,
+            FuncSignature,
+            IfElseExpr,
+            IfStmt,
+            ImplDef,
+            InForStmt,
+            InnerCompr,
+            IterForStmt,
+            LambdaExpr,
+            ListCompr,
+            ListVal,
+            MatchArch,
+            MatchAs,
+            MatchCase,
+            MatchKVPair,
+            MatchMapping,
+            MatchOr,
+            MatchPattern,
+            MatchSequence,
+            MatchStar,
+            MatchStmt,
+            MatchValue,
+            Module,
+            ModuleCode,
+            Name,
+            NameAtom,
+            Semi,
+            SubTag,
+            SwitchCase,
+            SwitchStmt,
+            Test,
+            Token,
+            TryStmt,
+            TupleVal,
+            UnaryExpr,
+            UniCFGNode,
+            UniNode,
+            UniScopeNode,
+            WhileStmt,
+            WithStmt,
+            find_python_scope_node_of,
+            is_identifier_slot
+        },
         passes.import_wiring_pass {
             Ability,
             AtomTrailer,
@@ -9223,6 +9291,7 @@ graph import compiler {
             TupleVal,
             TypeAlias,
             UnaryExpr,
+            UniCFGNode,
             UniNode,
             VisitStmt,
             WhileStmt,
@@ -9849,6 +9918,7 @@ graph import compiler {
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
+    passes.flow_check_pass ++> driver.pipeline.analysis_passes { FlowCheckPass }
     passes.freeze_structure_pass ++> driver.pipeline.frozen_passes {
         FreezeStructurePass
     }
@@ -10942,73 +11012,6 @@ graph import compiler {
         },
         passes.layout_pass { ClassDetailsShared, ClassType, TypeBase },
     ]
-    driver.pipeline_types ++> passes.flow_check_pass { AnalysisFact, PassContract }
-    frontend.constant ++> passes.flow_check_pass { ExprCtx, SymbolStorage, Tokens as Tok }
-    frontend.diagnostics ++> passes.flow_check_pass { E1006 }
-    frontend.loop_links ++> passes.flow_check_pass { frame_owns }
-    frontend.roles ++> passes.flow_check_pass { Kid }
-    frontend.unitree ++> passes.flow_check_pass {
-        Ability,
-        Archetype,
-        Assignment,
-        AtomUnit,
-        AwaitingClause,
-        BinaryExpr,
-        BoolExpr,
-        CfgExpr,
-        CodeBlockStmt,
-        CtrlStmt,
-        DeleteStmt,
-        DictCompr,
-        ElseStmt,
-        Enum,
-        EventSignature,
-        Except,
-        FinallyStmt,
-        ForeverStmt,
-        FuncSignature,
-        IfElseExpr,
-        IfStmt,
-        ImplDef,
-        InForStmt,
-        InnerCompr,
-        IterForStmt,
-        LambdaExpr,
-        ListCompr,
-        ListVal,
-        MatchArch,
-        MatchAs,
-        MatchCase,
-        MatchKVPair,
-        MatchMapping,
-        MatchOr,
-        MatchPattern,
-        MatchSequence,
-        MatchStar,
-        MatchStmt,
-        MatchValue,
-        Module,
-        ModuleCode,
-        Name,
-        NameAtom,
-        Semi,
-        SubTag,
-        SwitchCase,
-        SwitchStmt,
-        Test,
-        Token,
-        TryStmt,
-        TupleVal,
-        UnaryExpr,
-        UniCFGNode,
-        UniNode,
-        UniScopeNode,
-        WhileStmt,
-        WithStmt,
-        find_python_scope_node_of,
-        is_identifier_slot
-    }
-    passes.flow_check_pass ++> driver.pipeline.analysis_passes { FlowCheckPass }
 }
 
 graph import compiler.backends {
@@ -12464,6 +12467,7 @@ graph import compiler.frontend {
         Absorbs,
         CalleeDecl,
         CalleeSignature,
+        CfgExit,
         CfgFalse,
         CfgSucc,
         CfgTrue,
@@ -14059,6 +14063,10 @@ graph import compiler.passes {
         native_capability_demotion_owner,
         native_capability_violations
     }
+    cfg_build_pass ++> [
+        flow_check_pass { _bool_is_and },
+        type_checker_pass { falls_off_end },
+    ]
     context ++> [
         access_check_pass
             | capability_check_pass
@@ -14088,6 +14096,7 @@ graph import compiler.passes {
         type_checker_pass { CompileContext, TreePass },
     ]
     dataflow ++> [
+        flow_check_pass { SymId, solve_forward_must_edges },
         ownership_check_pass {
             DataflowTransfer,
             SymId,
@@ -14097,7 +14106,10 @@ graph import compiler.passes {
         },
         rc_facts_pass { SymId, solve_backward_gen_kill },
     ]
-    execution ++> pyast_load_pass.build_python_module { new_context, walk_pass }
+    execution ++> [
+        flow_check_pass { CompilerPass },
+        pyast_load_pass.build_python_module { new_context, walk_pass },
+    ]
     import_wiring_pass ++> static_analysis_pass { report_unused_wires }
     layout_pass ++> osp_analysis.OspAnalysis.native_slot_triggers {
         native_type_key,
@@ -14118,9 +14130,6 @@ graph import compiler.passes {
             result_ownership
         },
     ]
-    cfg_build_pass ++> flow_check_pass { _bool_is_and }
-    dataflow ++> flow_check_pass { SymId, solve_forward_must_edges }
-    execution ++> flow_check_pass { CompilerPass }
     scope_walk ++> static_analysis_pass { ScopeWalker }
     type_checker_pass ++> comptime_resolve_pass { TypeCheckPass }
     wasm_contract --> [

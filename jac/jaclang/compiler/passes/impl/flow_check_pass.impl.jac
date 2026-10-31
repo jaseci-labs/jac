@@ -52,7 +52,7 @@ impl FlowCheckPass._frame_body(owner: UniNode) -> (Sequence[UniNode] | None) {
         return None;
     }
     if isinstance(owner, (Ability, ImplDef, Test, LambdaExpr))
-        and isinstance(owner.body, list) {
+        and isinstance(owner.body, Sequence) {
         return cast(Sequence[UniNode], owner.body);
     }
     return None;
@@ -80,7 +80,9 @@ impl FlowCheckPass._is_flow_node(nd: UniCFGNode) -> bool {
 impl FlowCheckPass._build_frame(
     start: UniCFGNode, by_owner: dict[int, list[UniCFGNode]]
 ) -> (FrameFlow | None) {
-    owner: UniNode = start if isinstance(start, (Ability, ImplDef, Test)) else start.parent;
+    owner: UniNode = start
+        if isinstance(start, (Ability, ImplDef, Test))
+        else start.parent;
     body = self._frame_body(owner);
     if not body {
         return None;
@@ -117,6 +119,11 @@ impl FlowCheckPass._successors(fr: FrameFlow, nd: UniCFGNode) -> list[UniCFGNode
         return known;
     }
     found: list[UniCFGNode] = [];
+    evaluator = self.prog.type_evaluator;
+    if evaluator is not None and evaluator.flow_pred_never_returns(nd) {
+        fr.succ_memo[id(nd)] = found;
+        return found;
+    }
     seen: set[int] = {id(nd)};
     pending: list[UniCFGNode] = list(nd.bb_out);
     while pending {
@@ -155,7 +162,9 @@ impl FlowCheckPass._transfer(
     out -= eff.kills;
     cur: (UniNode | None) = pred;
     while cur is not None and cur is not fr.owner {
-        if isinstance(cur, Except) and cur.name is not None and not succ.is_within(cur) {
+        if isinstance(cur, Except)
+            and cur.name is not None
+            and not succ.is_within(cur) {
             sid = self._sym_of(fr, cur.name);
             if sid is not None {
                 out.discard(sid);
@@ -173,13 +182,13 @@ impl FlowCheckPass._check_frame(fr: FrameFlow) -> None {
     }
     fr.state = solve_forward_must_edges(
         fr.nodes,
-        lambda (nd: UniCFGNode) -> list[UniCFGNode] {
-            return self._successors(fr, nd);
-        },
+        lambda (nd: UniCFGNode) -> list[UniCFGNode] { return self._successors(
+            fr, nd
+        ); },
         [fr.start],
-        lambda (pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]) -> set[SymId] {
-            return self._transfer(fr, pred, succ, in_set);
-        },
+        lambda (pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]) -> set[SymId] { return self._transfer(
+            fr, pred, succ, in_set
+        ); },
         fr.tracked
     );
     for nd in fr.nodes {
@@ -270,8 +279,7 @@ impl FlowCheckPass._effect(
         }
         eff.always = cur;
     } elif isinstance(
-        nd,
-        (TryStmt, FinallyStmt, ForeverStmt, AwaitingClause, CtrlStmt, Semi)
+        nd, (TryStmt, FinallyStmt, ForeverStmt, AwaitingClause, CtrlStmt, Semi)
     ) {
         eff.always = set(da);
     } else {
@@ -280,9 +288,9 @@ impl FlowCheckPass._effect(
     return eff;
 }
 
-impl FlowCheckPass._first_flow(fr: FrameFlow, body: Sequence[UniNode]) -> (
-    UniCFGNode | None
-) {
+impl FlowCheckPass._first_flow(
+    fr: FrameFlow, body: Sequence[UniNode]
+) -> (UniCFGNode | None) {
     for stmt in body {
         if isinstance(stmt, UniCFGNode) and id(stmt) in fr.members {
             return stmt;
@@ -312,8 +320,7 @@ impl FlowCheckPass._eval(
         return (da, da);
     }
     if isinstance(
-        nd,
-        (LambdaExpr, Ability, Archetype, Enum, ImplDef, Test, FuncSignature, SubTag)
+        nd, (LambdaExpr, Ability, Archetype, Enum, ImplDef, Test, FuncSignature, SubTag)
     ) {
         return (da, da);
     }
@@ -509,7 +516,9 @@ impl FlowCheckPass._eval_assignment(
                 self._eval_all(fr, target, da, check);
             }
         }
-        cur = self._eval_all(fr, nd.value, da, check) if nd.value is not None else set(da);
+        cur = self._eval_all(fr, nd.value, da, check)
+            if nd.value is not None
+            else set(da);
         for target in nd.target {
             cur = self._bind_target(fr, target, cur, False)
                 if isinstance(target, NameAtom)
@@ -535,7 +544,9 @@ impl FlowCheckPass._sym_of(fr: FrameFlow, nd: UniNode) -> (SymId | None) {
     return sid if sid in fr.tracked else None;
 }
 
-impl FlowCheckPass._read(fr: FrameFlow, nm: NameAtom, da: set[SymId], check: bool) -> None {
+impl FlowCheckPass._read(
+    fr: FrameFlow, nm: NameAtom, da: set[SymId], check: bool
+) -> None {
     if not check {
         return;
     }

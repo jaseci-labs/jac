@@ -6,12 +6,14 @@ walker CFGBuildPass(TreePass) {
             AnalysisFact.CFG_SUCC,
             AnalysisFact.CFG_TRUE,
             AnalysisFact.CFG_FALSE,
+            AnalysisFact.CFG_EXIT,
 
         ),
         kernel_safe=True
     );
 
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
+    def _is_exit_target(source: UniCFGNode, target: UniCFGNode) -> bool;
     def _link_to(source: UniCFGNode, target: (UniCFGNode | None)) -> None;
     def _is_terminal(nd: UniNode) -> bool;
     def _stmt_body(parent: UniNode) -> (Sequence[UniNode] | None);
@@ -96,6 +98,8 @@ walker CFGBuildPass(TreePass) {
 def is_structural_child(nd: UniNode) -> bool;
 
 def is_constant_true(expr: Expr) -> bool;
+
+def falls_off_end(frame: UniCFGNode, ends_flow: Callable[[UniCFGNode], bool]) -> bool;
 
 def _unwrap_parens(expr: Expr) -> Expr;
 

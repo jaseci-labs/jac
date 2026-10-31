@@ -20,6 +20,8 @@ edge CfgTrue: ConditionalNode --> UniCFGNode {}
 
 edge CfgFalse: ConditionalNode --> UniCFGNode {}
 
+edge CfgExit: UniCFGNode --> UniCFGNode {}
+
 edge PlacedIn: ContextAwareNode --> Codespace {}
 
 edge DecidedCodespace: Module --> Codespace {}

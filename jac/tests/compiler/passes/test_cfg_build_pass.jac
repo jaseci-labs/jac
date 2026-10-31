@@ -203,6 +203,7 @@ test "cfg forever loop at branch tail gets no fall-through" {
         + "  1 -> 2;\n"
         + '  2 -> 3 [label="T"];\n'
         + "  2 -> 1;\n"
+        + "  3 -> 4;\n"
         + "}\n"
     );
     assert dot == expected_dot;
@@ -237,14 +238,11 @@ test "cfg try except finally" {
         + '  0 [label="BB0\\ndef risky( x : int ) -> int\\ntry", shape=box];\n'
         + '  1 [label="BB1\\ny = 10 / x ;", shape=box];\n'
         + '  2 [label="BB2\\nexcept Exception\\ny = 0 ;", shape=box];\n'
-        + '  3 [label="BB3\\nfinally\\nprint ( y ) ;", shape=box];\n'
-        + '  4 [label="BB4\\nreturn y ;", shape=box];\n'
+        + '  3 [label="BB3\\nfinally\\nprint ( y ) ;\\nreturn y ;", shape=box];\n'
         + "  0 -> 1;\n"
         + "  0 -> 2;\n"
-        + "  0 -> 4;\n"
         + "  1 -> 3;\n"
         + "  2 -> 3;\n"
-        + "  3 -> 4;\n"
         + "}\n"
     );
     assert dot == expected_dot;

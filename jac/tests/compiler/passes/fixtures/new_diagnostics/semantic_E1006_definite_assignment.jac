@@ -3,6 +3,8 @@
 Every read marked `E1006` must be reported, and nothing else.
 """
 
+import from typing { Never }
+
 obj Box {
     has n: int = 0;
 }
@@ -11,7 +13,7 @@ def count(boxes: list[Box]) -> int {
     return len(boxes);
 }
 
-def read_before_assign() -> int {
+def read_before_assign -> int {
     first = [Box(n=1)];
     total = count(first + later);  # E1006
     later = [Box(n=2)];
@@ -36,7 +38,7 @@ def loop_carried(n: int) -> int {
     return seen;
 }
 
-def for_target_after_empty_loop() -> int {
+def for_target_after_empty_loop -> int {
     for i in range(0) {
         i;
     }
@@ -61,7 +63,7 @@ def read_in_finally(text: str) -> int {
     return v;
 }
 
-def except_alias_after_handler() -> str {
+def except_alias_after_handler -> str {
     try {
         raise ValueError("x");
     } except ValueError as e {
@@ -77,7 +79,7 @@ def walrus_on_short_circuit(a: bool, f: int) -> int {
     return 0;
 }
 
-def read_after_del() -> int {
+def read_after_del -> int {
     z = 1;
     del z;
     return z;  # E1006
@@ -129,7 +131,7 @@ def handler_returns(text: str) -> int {
     return v;
 }
 
-def while_true_break() -> int {
+def while_true_break -> int {
     while True {
         got = 5;
         if got > 1 {
@@ -153,8 +155,10 @@ def exhaustive_match(v: int) -> str {
     match v {
         case 1:
             s = "one";
+
         case _:
             s = "other";
+
     }
     return s;
 }
@@ -201,13 +205,26 @@ def raising_branch(c: bool) -> int {
     return y;
 }
 
-def lambda_reads_later_local() -> int {
+def lambda_reads_later_local -> int {
     f = lambda (a: int) -> int { return a + later; };
     later = 3;
     return f(1);
 }
 
-def unpacking() -> int {
+def stop -> Never {
+    raise SystemExit(1);
+}
+
+def never_returning_branch(c: bool) -> int {
+    if c {
+        y = 1;
+    } else {
+        stop();
+    }
+    return y;
+}
+
+def unpacking -> int {
     (a, b) = (1, 2);
     [c, *rest] = [3, 4, 5];
     return a + b + c + len(rest);

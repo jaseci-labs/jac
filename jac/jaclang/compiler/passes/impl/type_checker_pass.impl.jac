@@ -999,49 +999,8 @@ impl TypeCheckPass.exit_ability with Ability exit {
         self._check_c_type_use(here.signature.return_type);
     }
 
-    if (
-        isinstance(here.signature, FuncSignature)
-        and here.signature.return_type is not None
-        and not isinstance(here.body, ImplDef)
-        and isinstance(here.body, list)
-        and len(here.body) > 0
-        and not here.is_abstract
-    ) {
-        is_overload = False;
-        for decor in (here.decorators or []) {
-            if isinstance(decor, Name) and decor.value == "overload" {
-                is_overload = True;
-                break;
-            }
-        }
-
-        is_generator = self._is_generator(here);
-
-        body_stmts: list[CodeBlockStmt] = [
-            stmt
-            for stmt in here.body
-            if isinstance(stmt, CodeBlockStmt)
-        ];
-        is_stub = self.evaluator._is_ellipsis_only_body(body_stmts);
-        if not is_overload and not is_generator and not is_stub {
-            ret_type = self.evaluator.get_type_of_expression(
-                here.signature.return_type
-            );
-            ret_inst = self.evaluator._convert_to_instance(ret_type);
-            none_type = self.evaluator._convert_to_instance(
-                self.evaluator.get_none_type()
-            );
-            if not self.evaluator.assign_type(none_type, ret_inst) {
-                if not self._body_always_returns(body_stmts) {
-                    self.ctx.emit(
-                        E1004,
-                        node_override=here,
-                        name=here.name_spec.sym_name,
-                        ret_type=str(ret_type)
-                    );
-                }
-            }
-        }
+    if isinstance(here.body, Sequence) {
+        self._check_return_paths(here, here, here.body);
     }
 
     if (
@@ -1206,8 +1165,43 @@ impl TypeCheckPass._check_event_trigger_archetype(nd: Ability) -> None {
     nd.event_triggers = resolved;
 }
 
-impl TypeCheckPass._body_always_returns(body: list[CodeBlockStmt]) -> bool {
-    return self.evaluator._collect_return_types(body, []);
+impl TypeCheckPass._check_return_paths(
+    decl: Ability, frame: UniCFGNode, body: Sequence[UniNode]
+) -> None {
+    sig = decl.signature;
+    if not isinstance(sig, FuncSignature)
+        or sig.return_type is None
+        or decl.is_abstract {
+        return;
+    }
+    body_stmts: list[CodeBlockStmt] = [
+        stmt
+        for stmt in body
+        if isinstance(stmt, CodeBlockStmt)
+    ];
+    if not body_stmts or self.evaluator._is_ellipsis_only_body(body_stmts) {
+        return;
+    }
+    for decor in (decl.decorators or []) {
+        if isinstance(decor, Name) and decor.value == "overload" {
+            return;
+        }
+    }
+    if self._is_generator(decl)
+        or not falls_off_end(frame, self.evaluator.flow_pred_never_returns) {
+        return;
+    }
+    ret_type = self.evaluator.get_type_of_expression(sig.return_type);
+    ret_inst = self.evaluator._convert_to_instance(ret_type);
+    none_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
+    if not self.evaluator.assign_type(none_type, ret_inst) {
+        self.ctx.emit(
+            E1004,
+            node_override=frame,
+            name=decl.name_spec.sym_name,
+            ret_type=str(ret_type)
+        );
+    }
 }
 
 impl TypeCheckPass._check_bare_generic(
@@ -2172,6 +2166,9 @@ impl TypeCheckPass.exit_report_stmt with ReportStmt exit {
 }
 
 impl TypeCheckPass.exit_impl_def with ImplDef exit {
+    if isinstance(here.decl_link, Ability) and isinstance(here.body, Sequence) {
+        self._check_return_paths(here.decl_link, here, here.body);
+    }
     if not (
         here.decl_link
         and isinstance(here.decl_link, Ability)
