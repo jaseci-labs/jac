@@ -938,6 +938,26 @@ test "implicit return participates in return-type checking" {
     );
 }
 
+test "E1007-E1014: default, MRO, constructor and override rules" {
+    fixture = "semantic_class_and_default_rules.jac";
+    (program, _) = compile_and_check(fixture);
+    with open(os.path.join(NEW_DIAG_FIXTURES, fixture)) as f {
+        lines = f.read().splitlines();
+    }
+    codes = ["E1007", "E1008", "E1009", "E1012", "E1013", "E1014"];
+    for code in codes {
+        expected = sorted(
+            i + 1 for i in range(len(lines)) if f"# {code}" in lines[i]
+        );
+        reported = sorted(
+            e.loc.first_line
+            for e in program.errors_had
+            if e.code is not None and e.code.code == code
+        );
+        assert reported == expected , f"{code} lines {reported}, expected {expected}";
+    }
+}
+
 test "E1006: every path must assign a local before it is read" {
     fixture = "semantic_E1006_definite_assignment.jac";
     (program, _) = compile_and_check(fixture);
