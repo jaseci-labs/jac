@@ -2583,6 +2583,8 @@ def definition_qualname(decl: UniNode) -> str;
 
 def lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | None);
 
+def lookup_block_binding(scope: UniScopeNode, name: str) -> (Symbol | None);
+
 def rebind_or_def_insert(
     target: AstSymbolNode, py_scope: UniScopeNode, single_decl: str
 ) -> None;

@@ -3773,6 +3773,21 @@ impl lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | 
     return None;
 }
 
+impl lookup_block_binding(scope: UniScopeNode, name: str) -> (Symbol | None) {
+    cur: (UniScopeNode | None) = scope;
+    while cur is not None {
+        sym = cur.lookup(name, deep=False);
+        if sym is not None {
+            return sym;
+        }
+        if UniScopeNode.is_python_scoping(cur) {
+            return None;
+        }
+        cur = cur.parent_scope;
+    }
+    return None;
+}
+
 impl record_cross_scope_rebind(py_scope: UniScopeNode, name: str, sym: Symbol) -> None {
     outer_tab = sym.parent_tab;
     if outer_tab is None or outer_tab is py_scope {
@@ -3812,7 +3827,7 @@ impl def_insert_unpacking(
 ) -> None {
     if isinstance(nd, Name) {
         if rebind_in_python_scope {
-            if ((existing := sym_tab.lookup(nd.sym_name, deep=False)) is not None) {
+            if ((existing := lookup_block_binding(sym_tab, nd.sym_name)) is not None) {
                 existing.add_use(nd.name_spec);
                 return;
             }
@@ -4034,7 +4049,9 @@ impl bind_walrus_target(nd: BinaryExpr) -> None {
     if owner is not None {
         target_scope = owner.sym_tab;
     }
-    sym = target_scope.lookup(nd.left.sym_name, deep=False);
+    sym = lookup_block_binding(nd.left.sym_tab, nd.left.sym_name)
+        if find_python_scope_node_of(nd.left) is target_scope
+        else target_scope.lookup(nd.left.sym_name, deep=False);
     if sym is None {
         rebind_or_def_insert(nd.left, target_scope, single_decl='walrus var');
     } else {
@@ -4102,10 +4119,7 @@ impl bind_assignment_targets(nd: Assignment) -> None {
         if isinstance(i, AstSymbolNode) {
             if isinstance(i, (ListVal, TupleVal)) {
                 def_insert_unpacking(i, i.sym_tab, rebind_in_python_scope=True);
-            } elif (
-                (i.sym_name in i.sym_tab.names_in_scope)
-                and ((sym := i.sym_tab.names_in_scope[i.sym_name]) is not None)
-            ) {
+            } elif ((sym := lookup_block_binding(i.sym_tab, i.sym_name)) is not None) {
                 if sym.imported and isinstance(nd.value, Null) {
                     sym.add_defn(i.name_spec);
                 }

@@ -215,11 +215,14 @@ test "impl has var type not shadowed" {
     assert len(impl_defs) == 1 , f"Expected 1 add_task ImplDef, got {len(impl_defs)}";
     add_task_impl = impl_defs[0];
 
-    # Find all Name nodes referencing "tasks" in the impl body.
+    # Find the bare Name nodes referencing "tasks" in the impl body; the
+    # `tasks` of `self.tasks` is an attribute and resolves to the HasVar.
     task_names = [
         n
         for n in add_task_impl.get_all_sub_nodes(uni.Name)
-        if isinstance(n, uni.Name) and n.value == "tasks"
+        if isinstance(n, uni.Name)
+            and n.value == "tasks"
+            and not (isinstance(n.parent, uni.AtomTrailer) and n.parent.right is n)
     ];
     assert len(task_names) > 0 , "Expected Name nodes for 'tasks'";
 

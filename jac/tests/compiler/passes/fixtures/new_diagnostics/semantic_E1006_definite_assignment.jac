@@ -229,3 +229,14 @@ def unpacking -> int {
     [c, *rest] = [3, 4, 5];
     return a + b + c + len(rest);
 }
+
+def rebind_loop_target_in_nested_block(pairs: list[tuple[str, str]]) -> list[str] {
+    out: list[str] = [];
+    for (cond, other) in pairs {
+        if other {
+            cond += other;
+        }
+        out.append(cond);
+    }
+    return out;
+}
