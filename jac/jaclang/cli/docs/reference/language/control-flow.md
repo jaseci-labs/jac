@@ -265,6 +265,21 @@ def example(data: any) {
 }
 ```
 
+**Catching any exception:**
+
+```jac
+def parse_or_zero(text: str) -> int {
+    try {
+        return int(text);
+    } except Exception as e {
+        print(f"Could not parse '{text}': {e}");
+        return 0;
+    }
+}
+```
+
+The expression after `except` always names the exception classes to catch; only the name after `as` binds the caught exception. So `except e { ... }` does not catch everything into `e`: it names a class called `e`. An undefined name there is error E2001, and a value that is not an exception class (an instance, an `int`, an `obj` that does not inherit from `Exception`) is error E1162.
+
 **Full try/except/else/finally:**
 
 ```jac

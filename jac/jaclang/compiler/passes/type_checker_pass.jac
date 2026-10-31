@@ -71,6 +71,7 @@ walker TypeCheckPass(TreePass) {
     can exit_raise_stmt with RaiseStmt exit;
     def _is_exception_operand(ty: TypeBase, allow_none: bool) -> bool;
     can exit_except with Except exit;
+    def _is_exception_class_operand(ty: TypeBase, allow_tuple: bool = True) -> bool;
     can exit_match_as with MatchAs exit;
     can exit_match_arch with MatchArch exit;
     can enter_with_stmt with WithStmt entry;

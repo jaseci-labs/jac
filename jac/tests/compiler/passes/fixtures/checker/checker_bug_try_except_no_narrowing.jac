@@ -107,3 +107,87 @@ def raise_from_int {
 def raise_from_nonetype_class {
     raise ValueError("y") from NoneType;  # <-- E1161
 }
+
+# Accepted: each handler names exception classes, or a value that may be one.
+glob CAUGHT = (KeyError, ValueError);
+
+def catch_class_param(t: type[ValueError]) {
+    try {
+        raise ValueError("p");
+    } except t {}
+}
+
+def catch_any_param(t: any) {
+    try {
+        raise ValueError("q");
+    } except t {}
+}
+
+def catch_tuple_glob {
+    try {
+        raise KeyError("k");
+    } except CAUGHT {}
+}
+
+def catch_starred_tuple {
+    try {
+        raise KeyError("s");
+    } except (*CAUGHT, TypeError) {}
+}
+
+# Rejected: each handler below is an error.
+def catch_non_exception_class {
+    try {
+        raise ValueError("x");
+    } except NotAnError {}  # <-- E1162
+}
+
+def catch_exception_instance(e: ValueError) {
+    try {
+        raise ValueError("y");
+    } except e {}  # <-- E1162
+}
+
+def catch_int_in_tuple {
+    try {
+        raise ValueError("z");
+    } except (ValueError, 5) {}  # <-- E1162
+}
+
+def catch_undefined_name {
+    try {
+        raise ValueError("u");
+    } except err {}  # <-- E2001
+}
+
+def catch_misspelled_class {
+    try {
+        raise OverflowError("o");
+    } except (ValueError, OverflwoError) {}  # <-- E2001
+}
+
+def catch_parenthesized_class {
+    try {
+        raise ValueError("g");
+    } except (ValueError) {}
+}
+
+def not_a_handler {}
+
+def catch_parenthesized_undefined {
+    try {
+        raise ValueError("h");
+    } except (ValueEror) {}  # <-- E2001
+}
+
+def catch_function {
+    try {
+        raise ValueError("f");
+    } except not_a_handler {}  # <-- E1162
+}
+
+def catch_nested_tuple {
+    try {
+        raise ValueError("n");
+    } except (ValueError, (TypeError, )) {}  # <-- E1162
+}
