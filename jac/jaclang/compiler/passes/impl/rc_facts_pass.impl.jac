@@ -223,6 +223,7 @@ impl RcFactsPass._stamp_region_handles(ir_in: Module) -> None {
 
 impl RcFactsPass._stamp_last_use(ir_in: Module) -> None {
     out: dict[int, list[str]] = {};
+    self._last_use_pinned = self._borrow_roots(ir_in);
     for ab in ir_in.get_all_sub_nodes(Ability) {
         stmts = ModuleFacts.unwrap_body(ab);
         if isinstance(ab.signature, FuncSignature) and stmts is not None {
@@ -248,7 +249,8 @@ impl RcFactsPass._collect_last_use(
             if sym is None
                 or sym.na_escapes
                 or (nm.sym_name == "self" and sym.ownership != OwnershipKind.OWN)
-                or not self._last_use_tracked(sym) {
+                or not self._last_use_tracked(sym)
+                or id(sym) in self._last_use_pinned {
                 continue;
             }
             if id(sym) not in lent {
@@ -279,6 +281,35 @@ impl RcFactsPass._collect_last_use(
         if _name not in out[key] {
             out[key].append(_name);
         }
+    }
+}
+
+impl RcFactsPass._borrow_roots(ir_in: Module) -> set[int] {
+    roots: set[int] = set();
+    binds = ir_in.managed_borrow_binds;
+    if not binds {
+        return roots;
+    }
+    for nd in ir_in.get_all_sub_nodes(Assignment) {
+        if id(nd) in binds and nd.value is not None {
+            self._add_borrow_root(nd.value, roots);
+        }
+    }
+    for st in ir_in.get_all_sub_nodes(InForStmt) {
+        if id(st) in binds {
+            self._add_borrow_root(st.collection, roots);
+        }
+    }
+    return roots;
+}
+
+impl RcFactsPass._add_borrow_root(e: Expr, roots: set[int]) -> None {
+    cur: Expr = e;
+    while isinstance(cur, AtomTrailer) {
+        cur = cur.target;
+    }
+    if isinstance(cur, Name) and cur.sym is not None {
+        roots.add(id(cur.sym));
     }
 }
 
