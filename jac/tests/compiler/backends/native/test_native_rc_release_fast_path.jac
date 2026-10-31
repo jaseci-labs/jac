@@ -1,18 +1,19 @@
-"""Under the rc profile, a release that only decrements is inlined; the rest stays out of line.
+"""A release that only decrements is inlined; the rest stays out of line.
 
 `__rc_release_simple`, the release every owned reference goes through, used
 to wrap `__rc_release_impl`, which holds the destructor call, the free and the
 live-list unlink. Inlined whole, that was too big for LLVM to inline into a
-large function, and every release there became a call. In an `rc` build
-without refcount debug codegen the wrapper is now the checks and a plain
-decrement, `alwaysinline`, and it calls `__rc_release_impl` (`noinline`) only
-for the last reference or once a thread has started. Cycle-collector and
-debug builds keep the old wrapper: under the collector a release whose count
-stays above zero may still have to buffer the object as a cycle root. These
-tests pin the helpers' shape in the IR (the threaded-flag test reads only
-`__rc_release_impl`, so it would pass with the old wrapper) and run the
-fixture as an `rc` executable, where every release that is not the last one
-takes the inlined decrement.
+large function, and every release there became a call. Without refcount debug
+codegen the wrapper is now the checks and a plain decrement, `alwaysinline`,
+and it calls `__rc_release_impl` (`noinline`) only for the last reference or
+once a thread has started. Under the cycle collector, a release that leaves a
+possibly cyclic object alive then tests its color inline and calls
+`__rc_possible_root` (`noinline`) only for a new candidate root, and an
+acyclic object releases through `__rc_release_acyclic`, which has no root
+test. Debug builds keep the old wrapper. These tests pin the helpers' shape in
+the IR (the threaded-flag test reads only `__rc_release_impl`, so it would
+pass with the old wrapper) and run the fixture as an `rc` executable, where
+every release that is not the last one takes the inlined decrement.
 """
 
 import os;
@@ -71,9 +72,38 @@ def churn_calls(text: str) -> list[tuple[str, str]] {
     found = re.search(r'define [^\n]*\.churn"?\(.*?\n}\n', text, re.S);
     assert found is not None , "churn not found in the IR";
     return re.findall(
-        r'call void @"(__rc_release_simple|__rc_release_impl|__rc_retain)"\([^,)]*(?:, i1 (\d))?\)',
+        r'call void @"(__rc_release_simple|__rc_release_acyclic|__rc_release_impl|__rc_retain)"\([^,)]*(?:, i1 (\d))?\)',
         found.group(0)
     );
+}
+
+"""The block of a release helper that stores count - 1 and calls nothing."""
+def decrement_block(blocks: dict[str, list[str]]) -> list[str] {
+    dec = [
+        label
+        for (label, block) in blocks.items()
+        if any(re.search(r' = sub i64 %"?[\w.]+"?, 1$', line) for line in block)
+    ];
+    assert len(dec) == 1 , f"no single decrement block: {blocks}";
+    dec_block = blocks[dec[0]];
+    subs = [
+        line
+        for line in dec_block
+        if " = sub i64 " in line
+    ];
+    new_rc = subs[0].split(" = ")[0];
+    assert any(line.startswith(f"store i64 {new_rc},") for line in dec_block) , f"the decrement is not stored: {dec_block}";
+    assert not any("call " in line for line in dec_block) , f"the decrement block calls: {dec_block}";
+    return dec_block;
+}
+
+"""The calls of `callee` in a helper's blocks."""
+def calls_of(blocks: dict[str, list[str]], callee: str) -> list[str] {
+    return [
+        line for block in blocks.values()
+        for line in block
+        if f'@"{callee}"' in line
+    ];
 }
 
 """Whether the wrapper is the old one: one call of the full release, then return."""
@@ -95,30 +125,12 @@ test "an rc build inlines the plain decrement and keeps the full release out of 
     );
     blocks = blocks_of(text, "__rc_release_simple");
     lines = [line for block in blocks.values() for line in block];
-    # the decrement: count - 1 stored back, in a block that calls nothing
-    dec = [
-        label
-        for (label, block) in blocks.items()
-        if any(re.search(r' = sub i64 %"?[\w.]+"?, 1$', line) for line in block)
-    ];
-    assert len(dec) == 1 , f"no single decrement block: {blocks}";
-    dec_block = blocks[dec[0]];
-    subs = [
-        line
-        for line in dec_block
-        if " = sub i64 " in line
-    ];
-    new_rc = subs[0].split(" = ")[0];
-    assert any(line.startswith(f"store i64 {new_rc},") for line in dec_block) , f"the decrement is not stored: {dec_block}";
-    assert not any("call " in line for line in dec_block) , f"the decrement block calls: {dec_block}";
+    decrement_block(blocks);
     # the full release is called once, and the choice reads the threaded flag
-    impl_calls = [
-        line
-        for line in lines
-        if '@"__rc_release_impl"' in line
-    ];
-    assert impl_calls
-        == ['call void @"__rc_release_impl"(i8* %"ptr", i1 1)'] , impl_calls;
+    assert calls_of(blocks, "__rc_release_impl")
+        == ['call void @"__rc_release_impl"(i8* %"ptr", i1 1)'] , calls_of(
+        blocks, "__rc_release_impl"
+    );
     assert any('@"__jac_rc_threaded"' in line for line in lines) , "the fast path does not test the threaded flag";
 }
 
@@ -128,15 +140,39 @@ test "an rc build releases an acyclic object through the inlined fast path" {
     assert not any(callee == "__rc_release_impl" for (callee, _) in calls) , calls;
 }
 
-test "a cycle-collector build keeps the old release" {
+test "a cycle-collector build inlines the release and tests a root inline" {
     text = fixture_ir("cycles");
-    assert is_old_wrapper(text) , blocks_of(text, "__rc_release_simple");
-    assert "alwaysinline" not in signature(text, "__rc_release_simple");
-    assert "noinline" not in signature(text, "__rc_release_impl");
-    # an acyclic object's release tells the collector it cannot be a cycle root
+    for name in ("__rc_release_simple", "__rc_release_acyclic", "__rc_retain") {
+        assert "alwaysinline" in signature(text, name) , signature(text, name);
+    }
+    for name in ("__rc_release_impl", "__rc_possible_root") {
+        assert "noinline" in signature(text, name) , signature(text, name);
+    }
+    # a possibly cyclic object: after the decrement the color test runs
+    # inline, and only a new candidate root calls out
+    blocks = blocks_of(text, "__rc_release_simple");
+    dec_block = decrement_block(blocks);
+    assert any('"cy.not.root"' in line for line in dec_block) , f"the decrement does not test the color: {dec_block}";
+    roots = calls_of(blocks, "__rc_possible_root");
+    assert roots == ['call void @"__rc_possible_root"(i8* %"ptr")'] , roots;
+    assert calls_of(blocks, "__rc_release_impl")
+        == ['call void @"__rc_release_impl"(i8* %"ptr", i1 1)'] , calls_of(
+        blocks, "__rc_release_impl"
+    );
+    # an acyclic object: the same decrement with no root test, and a full
+    # release that tells the collector it cannot be a cycle root
+    acyclic = blocks_of(text, "__rc_release_acyclic");
+    decrement_block(acyclic);
+    assert not calls_of(acyclic, "__rc_possible_root") , acyclic;
+    assert calls_of(acyclic, "__rc_release_impl")
+        == ['call void @"__rc_release_impl"(i8* %"ptr", i1 0)'] , calls_of(
+        acyclic, "__rc_release_impl"
+    );
     calls = churn_calls(text);
-    assert ("__rc_release_impl", "0") in calls , calls;
-    assert not any(callee == "__rc_release_simple" for (callee, _) in calls) , calls;
+    assert ("__rc_release_acyclic", "") in calls , calls;
+    assert not any(
+        callee in ("__rc_release_impl", "__rc_release_simple") for (callee, _) in calls
+    ) , calls;
 }
 
 test "an rc build with refcount debug codegen keeps the old release and retain" {
