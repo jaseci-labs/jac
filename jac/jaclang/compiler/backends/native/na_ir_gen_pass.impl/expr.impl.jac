@@ -2724,6 +2724,8 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
     if _c_handled {
         return _c_val;
     }
+    target_name: (str | None) = None;
+    right_name: (str | None) = None;
     if nd.is_attr {
         target_name = self._get_name(nd.target);
         right_name = self._get_name(nd.right);

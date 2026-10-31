@@ -1942,9 +1942,9 @@ impl BaseLLM._stream_steps(mt_run: MTRuntime) -> Generator[StreamEvent, None, No
 
             import time as _time;
             _llm_t0 = _time.time();
+            _emitted_deltas = False;
             try {
                 _stream_out: list[CompletionResult] = [];
-                _emitted_deltas = False;
                 for _tok in self.dispatch_streaming_with_tools(mt_run, _stream_out) {
                     if _tok is _STREAM_RESET {
                         yield StreamEvent(

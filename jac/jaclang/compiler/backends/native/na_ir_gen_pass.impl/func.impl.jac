@@ -410,9 +410,11 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
 
     is_variadic = sig.varargs is not None;
     plan: (dict[str, any] | None) = None;
+    ret_is_str = False;
     if _abi_supported {
         _fdecl = self._foreign_fns().get(name);
         if _fdecl is not None {
+            ret_is_str = _fdecl["ret"] == "str";
             plan = classify_foreign_fn(
                 self._foreign_model(),
                 _fdecl["params"],
@@ -527,7 +529,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
                 }
             }
         }
-        sysv_ret_plan["is_str"] = _fdecl["ret"] == "str";
+        sysv_ret_plan["is_str"] = ret_is_str;
         self.clib_fn_abi[name] = {
             "params": param_plan,
             "ret": sysv_ret_plan,

@@ -7,7 +7,7 @@ import json;
 import random;
 import time;
 
-import from typing { AsyncGenerator, Generator, cast }
+import from typing { AsyncGenerator, Generator, NoReturn, cast }
 
 import type from litellm { Router }
 import type from llama_cpp { Llama }
@@ -213,7 +213,7 @@ obj Model(BaseLLM) {
     def postinit -> None;
     override def invoke(mt_run: MTRuntime) -> any;
     override async def ainvoke(mt_run: MTRuntime) -> object;
-    def _raise_mapped_provider_error(e: Exception) -> None;
+    def _raise_mapped_provider_error(e: Exception) -> NoReturn;
     override def model_call_image(params: dict[str, any]) -> dict[str, any];
     def model_call_no_stream(params: dict[str, any]) -> dict[str, any];
     async def model_call_no_stream_async(params: dict[str, any]) -> dict[str, any];
