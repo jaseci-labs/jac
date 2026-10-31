@@ -720,7 +720,11 @@ impl falls_off_end(
         return True;
     }
     seen: set[int] = {id(frame)};
-    pending: list[UniCFGNode] = [s for s in frame.bb_out if live(frame, s)];
+    pending: list[UniCFGNode] = [
+        s
+        for s in frame.bb_out
+        if live(frame, s)
+    ];
     while pending {
         nd = pending.pop();
         if id(nd) in seen {

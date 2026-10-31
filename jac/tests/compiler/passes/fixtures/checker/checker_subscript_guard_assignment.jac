@@ -29,4 +29,3 @@ def maybe_container(box: dict[str, int | None] | None) {
         box["k"] = 3;  # <-- Error
     }
 }
-

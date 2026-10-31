@@ -208,7 +208,9 @@ impl FlowCheckPass._check_defaults(fr: FrameFlow) -> None {
     }
     sig = decl.signature;
     empty: set[SymId] = set();
-    for param in list(sig.posonly_params) + list(sig.params or []) + list(sig.kwonlyargs) {
+    for param in list(sig.posonly_params)
+        + list(sig.params or [])
+        + list(sig.kwonlyargs) {
         if param.value is not None {
             self._eval_all(fr, param.value, empty, True);
         }
@@ -220,16 +222,20 @@ impl FlowCheckPass._solve_finally_bodies(fr: FrameFlow) -> None {
         if not isinstance(fin, FinallyStmt) {
             continue;
         }
-        inner = [nd for nd in fr.nodes if self._encloses(fin, nd)];
+        inner = [
+            nd
+            for nd in fr.nodes
+            if self._encloses(fin, nd)
+        ];
         fr.finally_state[id(fin)] = solve_forward_must_edges(
             inner,
-            lambda (nd: UniCFGNode) -> list[UniCFGNode] {
-                return self._successors(fr, nd);
-            },
+            lambda (nd: UniCFGNode) -> list[UniCFGNode] { return self._successors(
+                fr, nd
+            ); },
             [fin],
-            lambda (pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]) -> set[SymId] {
-                return self._transfer(fr, pred, succ, in_set);
-            },
+            lambda (
+                pred: UniCFGNode, succ: UniCFGNode, in_set: set[SymId]
+            ) -> set[SymId] { return self._transfer(fr, pred, succ, in_set); },
             fr.tracked
         );
     }

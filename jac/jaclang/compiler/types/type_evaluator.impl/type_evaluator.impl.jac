@@ -4830,9 +4830,7 @@ impl TypeEvaluator.match_is_exhaustive(stmt: MatchStmt) -> bool {
 impl TypeEvaluator._pattern_covers_its_type(pat: MatchPattern) -> bool {
     if isinstance(pat, MatchArch) {
         return all(is_irrefutable_pattern(arg) for arg in (pat.arg_patterns or []))
-            and all(
-                is_irrefutable_pattern(kw.value) for kw in (pat.kw_patterns or [])
-            );
+            and all(is_irrefutable_pattern(kw.value) for kw in (pat.kw_patterns or []));
     }
     if isinstance(pat, MatchAs) and pat.pattern is not None {
         return self._pattern_covers_its_type(pat.pattern);

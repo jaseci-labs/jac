@@ -3237,7 +3237,6 @@ walker NaIRGenPass(CompilerPass) {
     def _flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (TypeBase | None);
     def _narrowed_flow_type(nd: uni.UniNode) -> (TypeBase | None);
     def _narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool;
-
     def _apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Value;
     def _unbox_narrowed_member(nd: uni.AtomTrailer, val: ir.Value) -> ir.Value;
     def _bare_any_container_type(nt: ClassType) -> (ir.Type | None);
