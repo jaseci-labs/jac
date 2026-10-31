@@ -1616,18 +1616,25 @@ test "dev mode named endpoints and HMR refresh" {
             f.write(greet_walker);
         }
 
-        time.sleep(3);
-
-        requests.get(f"{dm_base_url}/healthz", timeout=10);
-        time.sleep(1);
-
-        response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
-        assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} after the HMR edit: {response.text[:300]!r}";
-        paths = response.json().get("paths", {});
-
-        assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
-            paths.keys()
-        )}";
+        deadline = time.monotonic() + 20;
+        paths: dict[str, any] = {};
+        while time.monotonic() < deadline {
+            response = requests.get(f"{dm_base_url}/openapi.json", timeout=5);
+            if response.status_code == 200 {
+                paths = response.json().get("paths", {});
+                if "/walker/Greet" in paths {
+                    break;
+                }
+            }
+            time.sleep(0.5);
+        }
+        if "/walker/Greet" not in paths {
+            stop_server(sp);
+            (server_stdout, server_stderr) = sp.communicate();
+            assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
+                paths.keys()
+            )}\nServer stdout:\n{server_stdout}\nServer stderr:\n{server_stderr}";
+        }
 
         response = requests.post(
             f"{dm_base_url}/walker/Greet", json={"name": "Jaseci"}, timeout=10

@@ -482,15 +482,16 @@ impl prepare_application(
     `root: (str | None) = None,
     services: any = (),
     client: bool = False,
-    dev: bool = True,
+    dev: (bool | None) = None,
     force_codespace: str = ''
 ) -> PreparedApplication {
+    dev_mode = True if dev is None else dev;
     `entry = os.path.realpath(`entry);
     `root = os.path.realpath((`root or os.path.dirname(`entry)));
     entries = `list(`dict.fromkeys([`entry, *(os.path.realpath(p) for p in services)]));
     import from jaclang.server.sealed_serve { sealed_root_for, unlisted_image_root }
     image_root = sealed_root_for(`entry);
-    if image_root is not None and not dev {
+    if image_root is not None and dev is not True {
         console.print('  Loading sealed application artifacts', file=sys.stderr);
         return _prepare_sealed(`entry, program, image_root, entries);
     }
@@ -579,7 +580,7 @@ impl prepare_application(
                                 `root,
                                 [path],
                                 client and path == `entry,
-                                dev,
+                                dev_mode,
                                 console
                             )
                         );
