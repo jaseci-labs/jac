@@ -1,13 +1,22 @@
 """Unwind-record shapes: which locals a frame registers, and through what.
 
-Each function owns a reference, so it registers an unwind record; the test
-reads the generated IR to see what the record holds."""
+Each function owns a reference across a call that may raise (`checked`), so
+it registers an unwind record; the test reads the generated IR to see what
+the record holds. A frame whose only raises are its own needs no record."""
 
 """Its list field keeps a Box on the heap: a record of scalars alone would
 live on the stack and register nothing."""
 obj Box {
     has v: int = 0,
         tags: list[int] = [];
+}
+
+"""Raises on a negative argument, so a call to it may raise."""
+def checked(k: int) -> int {
+    if k < 0 {
+        raise ValueError("negative");
+    }
+    return k;
 }
 
 """One owned local among scalars: only `box` is registered, through its
@@ -20,7 +29,7 @@ def scalars_and_one_owner(k: int) -> int {
     box: Box = Box(v=k);
     i: int = 0;
     while i < 4 {
-        b = b + a * i;
+        b = b + a * checked(i);
         i = i + 1;
     }
     flag = b > 10;
@@ -34,7 +43,7 @@ def reassigned(k: int) -> int {
     if k > 0 {
         box = Box(v=k);
     }
-    return box.v;
+    return checked(box.v);
 }
 
 """A store inside an exception handler is mirrored too."""
@@ -53,7 +62,7 @@ def in_handler(k: int) -> int {
 """An owned tuple: its cleanup releases it field by field."""
 def owned_tuple(k: int) -> int {
     t: tuple[Box, int] = (Box(v=k), k);
-    return t[1] + t[0].v;
+    return checked(t[1]) + t[0].v;
 }
 
 with entry {

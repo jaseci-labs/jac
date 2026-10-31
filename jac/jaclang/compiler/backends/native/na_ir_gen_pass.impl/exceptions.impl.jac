@@ -1448,6 +1448,55 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     return func;
 }
 
+impl NaIRGenPass._get_exception_context_inl_fn -> ir.Function {
+    if self._exc_context_inl_fn is not None {
+        return self._exc_context_inl_fn;
+    }
+    shared = self._get_exception_context_fn();
+    context_ptr = shared.function_type.return_type;
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    func = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(context_ptr, []),
+        name="__jac_exception_context.inl"
+    );
+    func.linkage = "private";
+    func.attributes.add("alwaysinline");
+    self._exc_context_inl_fn = func;
+    entry_bb = func.append_basic_block("entry");
+    fast_bb = func.append_basic_block("fast");
+    slow_bb = func.append_basic_block("slow");
+    b = ir.IRBuilder(entry_bb);
+    main_gv = self.llvm_module.get_global("__jac_exception_main_ctx");
+    if self.rc_threaded_gv is None {
+        b.branch(slow_bb);
+    } else {
+        mt_flag = b.load_atomic(self.rc_threaded_gv, "monotonic", 1, name="exc.mt");
+        main_ctx = b.load(main_gv, name="exc.main");
+        br = b.cbranch(
+            b.and_(
+                b.icmp_unsigned("==", mt_flag, ir.Constant(i8, 0), name="exc.st"),
+                b.icmp_unsigned(
+                    "!=", main_ctx, ir.Constant(i8p, None), name="exc.main.set"
+                ),
+                name="exc.fast"
+            ),
+            fast_bb,
+            slow_bb
+        );
+        br.set_weights([2000, 1]);
+        fb = ir.IRBuilder(fast_bb);
+        fb.ret(fb.bitcast(main_ctx, context_ptr));
+    }
+    if not fast_bb.is_terminated {
+        ir.IRBuilder(fast_bb).unreachable();
+    }
+    sb = ir.IRBuilder(slow_bb);
+    sb.ret(sb.call(shared, [], name="exc.shared"));
+    return func;
+}
+
 impl NaIRGenPass._exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value {
     existing = self.local_vars.get(var_name);
     if not self._nogc_headerless()
@@ -1464,7 +1513,7 @@ impl NaIRGenPass._unwind_top_slot(
     b: ir.IRBuilder, context: (ir.Value | None) = None
 ) -> ir.Value {
     if context is None {
-        context = b.call(self._get_exception_context_fn(), []);
+        context = b.call(self._get_exception_context_inl_fn(), []);
     }
     return b.gep(
         context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 4)]
@@ -1552,6 +1601,11 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     if not pending or not slots {
         return;
     }
+    sites = self._unwind_raise_sites(func, slots);
+    if sites is not None {
+        self._unwind_release_at_raises(func, slots, sites);
+        return;
+    }
     cleanup_ty = ir.FunctionType(ir.VoidType(), [i8p]);
     cleanup = ir.Function(self.llvm_module, cleanup_ty, name=f"{func.name}.__unwind");
     cleanup.linkage = "private";
@@ -1587,6 +1641,12 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     if cached is not None {
         entry_blk.instructions.remove(cached);
     }
+
+    node_ty = self._unwind_node_type();
+    ab = ir.IRBuilder(entry_blk);
+    ab.position_at_start(entry_blk);
+    env_slot = ab.alloca(env_ty, name="unwind.env");
+    link = ab.alloca(node_ty, name="unwind.node");
     self._hoist_entry_allocas(entry_blk);
     shadows = self._unwind_shadow_slots(func, slots);
     anchor: any = None;
@@ -1647,6 +1707,300 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
         }
         b.position_before(at);
         b.store(prev, top_slot);
+    }
+}
+
+impl NaIRGenPass._unwind_nothrow_callee(name: str) -> bool {
+    if name.startswith("__rc_") or name.startswith("llvm.") {
+        return True;
+    }
+    return name
+        in (
+            "__jac_exception_context",
+            "__jac_exception_context.inl",
+            "__jac_str_stamp",
+            "__jac_fmt_i64",
+            "snprintf",
+            "strlen",
+            "malloc",
+            "calloc",
+            "realloc",
+            "free",
+            "memcpy",
+            "memmove",
+            "memset"
+        );
+}
+
+impl NaIRGenPass._drop_guard_fn(hook: ir.Function, owner: str) -> ir.Function {
+    name = f"{hook.name}.guarded";
+    if name in self.llvm_module.globals {
+        found = self.llvm_module.get_global(name);
+        if isinstance(found, ir.Function) {
+            return found;
+        }
+    }
+    if self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    fn = ir.Function(
+        self.llvm_module, ir.FunctionType(ir.VoidType(), [hook.args[0].type]), name=name
+    );
+    fn.linkage = "private";
+    fn.attributes.add("noinline");
+    fn.args[0].name = "self";
+    entry_bb = fn.append_basic_block("entry");
+    call_bb = fn.append_basic_block("drop.call");
+    raised_bb = fn.append_basic_block("drop.raised");
+    done_bb = fn.append_basic_block("done");
+    saved_builder = self._builder;
+    try {
+        b = ir.IRBuilder(entry_bb);
+        self._builder = b;
+        (state, depth) = self._push_exception_handler(raised_bb, call_bb);
+        b.position_at_end(call_bb);
+        b.call(hook, [fn.args[0]]);
+        self._emit_exc_pop(b);
+        b.branch(done_bb);
+        b.position_at_end(raised_bb);
+        self._emit_exc_pop(b);
+        self._region_unwind(b.load(depth, name="rgn.depth"));
+        (_exc_type, exc_obj, exc_msg) = self._exception_values(state);
+        if not self._target_is_wasm() {
+            shown = owner.split("$")[0];
+            text = f"Exception ignored in: {shown}.drop: %s\n\0";
+            data = bytearray(text.encode("utf8"));
+            fmt = ir.GlobalVariable(
+                self.llvm_module,
+                ir.ArrayType(ir.IntType(8), len(data)),
+                name=f".drop.guard.fmt.{hook.name}"
+            );
+            fmt.linkage = "private";
+            fmt.global_constant = True;
+            fmt.initializer = ir.Constant(ir.ArrayType(ir.IntType(8), len(data)), data);
+            empty = b.bitcast(fmt, i8p);
+            empty = b.gep(empty, [ir.Constant(i32, len(data) - 1)], name="drop.no.msg");
+            msg = b.select(
+                b.icmp_unsigned(
+                    "==", exc_msg, ir.Constant(i8p, None), name="drop.msg.null"
+                ),
+                empty,
+                exc_msg,
+                name="drop.msg"
+            );
+            fprintf_fn = self._get_or_declare_extern(
+                "fprintf", i32, [i8p, i8p], var_arg=True
+            );
+            b.call(
+                fprintf_fn,
+                [self._emit_stdio_handle(2, "stderr", b), b.bitcast(fmt, i8p), msg]
+            );
+        }
+        release_fn = self.rc_release_simple_fn;
+        if release_fn is not None {
+            b.call(release_fn, [b.bitcast(exc_obj, i8p)]);
+        }
+        b.branch(done_bb);
+        b.position_at_end(done_bb);
+        b.ret_void();
+    } finally {
+        self._builder = saved_builder;
+    }
+    return fn;
+}
+
+impl NaIRGenPass._unwind_raise_sites(
+    func: ir.Function, slots: list[tuple[str, ir.Value]]
+) -> (list[tuple[ir.Instruction, set[int]]] | None) {
+    if os.environ.get("JAC_NO_UNWIND_SKIP") {
+        return None;
+    }
+    for known in self._setjmp_functions {
+        if known is func {
+            return None;
+        }
+    }
+    tracked: dict[int, ir.Value] = {};
+    for (_name, slot) in slots {
+        tracked[id(slot)] = slot;
+    }
+
+    for blk in func.blocks {
+        for inst in blk.instructions {
+            if isinstance(inst, ir.LoadInstr) {
+                continue;
+            }
+            if isinstance(inst, ir.StoreInstr) {
+                if id(inst.operands[0]) in tracked {
+                    return None;
+                }
+                continue;
+            }
+            if not isinstance(inst, ir.Instruction) {
+                continue;
+            }
+            for operand in inst.operands {
+                if id(operand) in tracked {
+                    return None;
+                }
+            }
+        }
+    }
+    succs: dict[int, list[ir.Block]] = {};
+    for blk in func.blocks {
+        if not blk.instructions {
+            return None;
+        }
+        term = blk.instructions[-1];
+        dests: list[ir.Block] = [];
+        if isinstance(term, ir.SwitchInstr) {
+            dests.append(term.default_bb);
+            for (_val, dest) in term.cases {
+                dests.append(dest);
+            }
+        } elif isinstance(term, ir.Instruction)
+            and term.opname in ("br", "ret", "ret void", "unreachable") {
+            for op in term.operands {
+                if isinstance(op, ir.Block) {
+                    dests.append(op);
+                }
+            }
+        } else {
+            return None;
+        }
+        succs[id(blk)] = dests;
+    }
+
+    held_in: dict[int, set[int]] = {};
+    for blk in func.blocks {
+        held_in[id(blk)] = set();
+    }
+    held_in[id(func.entry_basic_block)] = set(tracked.keys());
+    changed = True;
+    while changed {
+        changed = False;
+        for blk in func.blocks {
+            held = set(held_in[id(blk)]);
+            for inst_value in blk.instructions {
+                if isinstance(inst_value, ir.StoreInstr)
+                    and id(inst_value.operands[1]) in tracked {
+                    stored = inst_value.operands[0];
+                    if isinstance(stored, ir.Constant) and stored.constant is None {
+                        held.discard(id(inst_value.operands[1]));
+                    } else {
+                        held.add(id(inst_value.operands[1]));
+                    }
+                }
+            }
+            for dest in succs[id(blk)] {
+                into = held_in[id(dest)];
+                if not held.issubset(into) {
+                    into.update(held);
+                    changed = True;
+                }
+            }
+        }
+    }
+    sites: list[tuple[ir.Instruction, set[int]]] = [];
+    for blk in func.blocks {
+        held = set(held_in[id(blk)]);
+        for inst in blk.instructions {
+            if isinstance(inst, ir.StoreInstr) and id(inst.operands[1]) in tracked {
+                stored = inst.operands[0];
+                if isinstance(stored, ir.Constant) and stored.constant is None {
+                    held.discard(id(inst.operands[1]));
+                } else {
+                    held.add(id(inst.operands[1]));
+                }
+                continue;
+            }
+            if not isinstance(inst, ir.CallInstr) {
+                continue;
+            }
+            callee = inst.callee;
+            name: (str | None) = callee.name
+                if isinstance(callee, ir.Function)
+                else None;
+            if name == "__jac_exc_raise" {
+                if len(blk.instructions) < 2
+                    or blk.instructions[-2] is not inst
+                    or not isinstance(blk.instructions[-1], ir.Unreachable) {
+                    return None;
+                }
+                if held {
+                    sites.append((inst, set(held)));
+                }
+                continue;
+            }
+            if name is not None and self._unwind_nothrow_callee(name) {
+                continue;
+            }
+            if held {
+                return None;
+            }
+        }
+    }
+    return sites;
+}
+
+impl NaIRGenPass._unwind_release_at_raises(
+    func: ir.Function,
+    slots: list[tuple[str, ir.Value]],
+    sites: list[tuple[ir.Instruction, set[int]]]
+) -> None {
+    saved_builder = self._builder;
+    saved_locals = self.local_vars;
+    saved_regions = self.region_open_stack;
+    saved_cells = self.closure_cell_handles;
+    try {
+        for (site, held) in sites {
+            blk = site.parent;
+            insts = list(blk.instructions);
+            kept: list[ir.NamedValue] = [];
+            tail: list[ir.NamedValue] = [];
+            i = 0;
+            while i < len(insts) and insts[i] is not site {
+                kept.append(insts[i]);
+                i += 1;
+            }
+            while i < len(insts) {
+                tail.append(insts[i]);
+                i += 1;
+            }
+            blk.instructions.clear();
+            blk.instructions.extend(kept);
+            raise_blk = func.append_basic_block(name="raise.at");
+            for moved in tail {
+                if isinstance(moved, ir.Instruction) {
+                    moved.parent = raise_blk;
+                }
+                raise_blk.instructions.append(moved);
+            }
+            raise_blk.terminator = blk.terminator;
+            blk.terminator = None;
+            self._builder = ir.IRBuilder(blk);
+            self._builder.position_at_end(blk);
+            site_locals: dict[str, ir.Value] = {};
+            for (name, slot) in slots {
+                if id(slot) in held {
+                    site_locals[name] = slot;
+                }
+            }
+            self.local_vars = site_locals;
+            self.region_open_stack = [];
+            self.closure_cell_handles = {};
+            self._emit_scope_cleanup(skip_var=None, loc="unwind");
+            if not self._builder.block.is_terminated {
+                self._builder.branch(raise_blk);
+            }
+        }
+    } finally {
+        self._builder = saved_builder;
+        self.local_vars = saved_locals;
+        self.region_open_stack = saved_regions;
+        self.closure_cell_handles = saved_cells;
     }
 }
 
@@ -1765,7 +2119,7 @@ impl NaIRGenPass._exception_handler_slot(
     b: ir.IRBuilder, context: (ir.Value | None) = None
 ) -> ir.Value {
     if context is None {
-        context = b.call(self._get_exception_context_fn(), []);
+        context = b.call(self._get_exception_context_inl_fn(), []);
     }
     slot = b.gep(
         context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 3)]
@@ -1775,7 +2129,7 @@ impl NaIRGenPass._exception_handler_slot(
 
 impl NaIRGenPass._nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value] {
     i32 = ir.IntType(32);
-    context = self.builder.call(self._get_exception_context_fn(), []);
+    context = self.builder.call(self._get_exception_context_inl_fn(), []);
     fields = [
         self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, i)])
         for i in range(3)
@@ -1785,7 +2139,7 @@ impl NaIRGenPass._nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value] {
 
 impl NaIRGenPass._nogc_err_drop_slot -> ir.Value {
     i32 = ir.IntType(32);
-    context = self.builder.call(self._get_exception_context_fn(), []);
+    context = self.builder.call(self._get_exception_context_inl_fn(), []);
     return self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, 4)]);
 }
 
@@ -2210,7 +2564,7 @@ impl NaIRGenPass._push_exception_handler(
     state = self._stack_entry_alloca(self._get_exception_state_type(), "exc.state");
     depth = self._stack_entry_alloca(ir.IntType(64), "rgn.depth.slot");
     self._emit_exc_push(self.builder, state);
-    self.builder.store(self._region_depth(), depth);
+    self.builder.store(self._region_depth_if_used(), depth);
     env = self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
     result = self._emit_exc_arm(self.builder, self.builder.bitcast(env, i8p));
     self.builder.cbranch(
@@ -2742,7 +3096,7 @@ impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
     func = b.function;
     gc = self._gen_ctx;
     if gc is not None and func is gc.resume_fn {
-        return b.call(self._get_exception_context_fn(), [], name="exc.context");
+        return b.call(self._get_exception_context_inl_fn(), [], name="exc.context");
     }
     cached = self._exc_context_cache.get(id(func));
     if cached is not None {
@@ -2761,7 +3115,7 @@ impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
     saved_anchor: int = b._anchor;
     b.position_at_start(first_block);
     b._anchor = index;
-    context = b.call(self._get_exception_context_fn(), [], name="exc.context");
+    context = b.call(self._get_exception_context_inl_fn(), [], name="exc.context");
     b._block = saved_block;
     b._anchor = saved_anchor + 1
         if saved_block is first_block and saved_anchor >= index
