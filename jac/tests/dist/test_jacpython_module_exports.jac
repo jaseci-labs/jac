@@ -90,4 +90,11 @@ test "the registered PyInit_* exports are all reachable from native_api.jac" {
         "native_api.jac does not export registered PyInit_* symbols: "
         + ", ".join(missing)
     );
+    missing = prepare.missing_exports(prepare.STATIC_TYPE_EXPORTS, exports);
+    assert not missing , (
+        "native_api.jac does not define the static type objects the patched C"
+        " static_types table references (wire their object_model units into"
+        " this closure): "
+        + ", ".join(missing)
+    );
 }

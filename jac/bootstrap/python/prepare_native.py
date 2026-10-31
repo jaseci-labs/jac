@@ -300,6 +300,25 @@ def registered_exports(root):
     return exports
 
 
+STATIC_TYPE_EXPORTS = [
+    # Type objects of the object-model units whose C sources the build excludes
+    # (range, cell, enumerate, picklebuffer, interpolation, template). The
+    # compiler-bridge patch points object.c's static_types table at these
+    # symbols, so the merged object must define them or the interpreter link
+    # fails; the PyInit_* registry alone does not cover them.
+    "PyCell_Type",
+    "PyEnum_Type",
+    "_PyInterpolation_Type",
+    "PyPickleBuffer_Type",
+    "PyRange_Type",
+    "PyRangeIter_Type",
+    "PyLongRangeIter_Type",
+    "PyReversed_Type",
+    "_PyTemplate_Type",
+    "_PyTemplateIter_Type",
+]
+
+
 def missing_exports(expected, exported):
     """The expected entry points absent from a collection of symbol names."""
     present = set(exported)
@@ -318,6 +337,26 @@ def undefined_exports(module, expected):
         if value.is_declaration:
             missing.append(name)
     return missing
+
+
+
+STATIC_TYPE_EXPORTS = [
+    # Type objects of the object-model units whose C sources the build excludes
+    # (range, cell, enumerate, picklebuffer, interpolation, template). The
+    # compiler-bridge patch points object.c's static_types table at these
+    # symbols, so the merged object must define them or the interpreter link
+    # fails; the PyInit_* registry alone does not cover them.
+    "PyCell_Type",
+    "PyEnum_Type",
+    "_PyInterpolation_Type",
+    "PyPickleBuffer_Type",
+    "PyRange_Type",
+    "PyRangeIter_Type",
+    "PyLongRangeIter_Type",
+    "PyReversed_Type",
+    "_PyTemplate_Type",
+    "_PyTemplateIter_Type",
+]
 
 
 def native_plan(root, triple, generated=()):
@@ -388,6 +427,16 @@ if missing:
         "compilation closure does not export: "
         + ", ".join(missing)
     )
+missing = missing_exports(STATIC_TYPE_EXPORTS, plan.pub_exports())
+if missing:
+    raise RuntimeError(
+        "JacPython export contract is broken: object.c's static_types "
+        "table references static type objects the native_api.jac "
+        "compilation closure does not define: " + ", ".join(missing)
+        + ". Wire their object_model units into "
+        "jaclang/compiler/backends/py/jacpython/native_api.jac in "
+        "jaclang/archwire.jac."
+    )
 init_object_codegen()
 spec = plan.glue_spec(ArtifactKind.SHARED, _platform_of(plan.triple), False)
 compiled, runtime_exports = whole_program_module(plan, spec)
@@ -424,7 +473,7 @@ internalize_native_implementation(
 # The plan promises the symbols; the merged module must define them, not
 # merely declare them. This is the last point before code generation where a
 # dropped binding is still a readable error.
-missing = undefined_exports(compiled, expected)
+missing = undefined_exports(compiled, expected + STATIC_TYPE_EXPORTS)
 if missing:
     raise RuntimeError(
         "JacPython export contract is broken: the merged native module does "
@@ -483,7 +532,7 @@ builder = llvm.create_pass_builder(
     machine, llvm.create_pipeline_tuning_options(speed_level=2),
 )
 builder.getModulePassManager().run(compiled, builder)
-missing = undefined_exports(compiled, expected)
+missing = undefined_exports(compiled, expected + STATIC_TYPE_EXPORTS)
 if missing:
     raise RuntimeError(
         "JacPython export contract is broken after optimization: "
