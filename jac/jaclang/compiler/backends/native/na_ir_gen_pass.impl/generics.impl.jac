@@ -721,30 +721,14 @@ impl NaIRGenPass._module_ability(
 }
 
 impl NaIRGenPass._ct_only_name(nd: uni.Name) -> bool {
-    sym = nd.sym;
-    if sym is None {
-        return False;
-    }
-    decl = sym.decl;
-    imp = decl.find_parent_of_type(uni.Import) if isinstance(decl, uni.Name) else None;
-    if imp is not None and imp.is_comptime {
-        return True;
-    }
-    mod = nd.find_parent_of_type(uni.Module);
-    if mod is None {
-        return False;
-    }
-    for imp2 in mod.get_all_sub_nodes(uni.Import) {
-        if not imp2.is_comptime {
-            continue;
-        }
-        for item in imp2.items {
-            bound = item.alias
-                if item.alias is not None
-                else (item.name if isinstance(item, uni.ModuleItem) else None);
-            if isinstance(bound, uni.Name) and bound.sym_name == nd.sym_name {
-                return True;
-            }
+    bound = nd.sym_tab.lookup(nd.sym_name) if nd.sym_tab is not None else None;
+    for sym in (nd.sym, bound) {
+        decl = sym.decl if sym is not None else None;
+        imp = decl.find_parent_of_type(uni.Import)
+            if isinstance(decl, uni.Name)
+            else None;
+        if imp is not None and imp.is_comptime {
+            return True;
         }
     }
     return False;
