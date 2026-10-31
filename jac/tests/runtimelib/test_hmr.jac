@@ -994,25 +994,30 @@ test "watcher survives ignored generated tree creation" {
         watcher.start();
         time.sleep(0.2);
         generated = app_dir / ".jac" / "client" / "node_modules";
-        for name in [
-            "@types/react-dom",
-            "@types/react",
-            "vite",
-            "react-dom",
-            "react"
-        ] {
-            (generated / name / "nested" / "package").mkdir(parents=True);
+        for i in range(100) {
+            (generated / f"package-{i}" / "node_modules" / "nested" / "package").mkdir(
+                parents=True
+            );
         }
         source.write_text("with entry { print(2); }\n");
+        nested = app_dir / "modules";
+        nested.mkdir();
+        time.sleep(1.2);
+        nested_source = nested / "child.jac";
+        nested_source.write_text("glob child = 1;\n");
         time.sleep(0.5);
         watcher.stop();
-        assert any(
-            os.path.realpath(event.path) == os.path.realpath(str(source))
-            for event in events
-        ) , (
+        observed = {os.path.realpath(event.path) for event in events};
+        assert os.path.realpath(str(source)) in observed , (
             f"app source changes must still be delivered after generated files appear: {events}"
         );
-        assert not any("/.jac/" in event.path for event in events) , str(events);
+        assert os.path.realpath(str(nested_source)) in observed , (
+            f"new app directories must be watched without recursive observers: {events}"
+        );
+        generated_root = os.path.realpath(str(app_dir / ".jac")) + os.sep;
+        assert not any(path.startswith(generated_root) for path in observed) , str(
+            events
+        );
     }
 }
 

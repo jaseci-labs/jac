@@ -111,6 +111,26 @@ impl JacFileWatcher.start -> None {
         }
     }
 
+    def schedule_new_children(path: str, handler: any) {
+        if ignored_directory(path) or not os.path.isdir(path) {
+            return;
+        }
+        try {
+            children = os.listdir(path);
+        } except OSError {
+            return;
+        }
+        for name in children {
+            child = os.path.join(path, name);
+            if os.path.isdir(child) and not ignored_directory(child) {
+                resolved = os.path.realpath(child);
+                if resolved not in scheduled {
+                    schedule_tree(child, handler);
+                }
+            }
+        }
+    }
+
     def unschedule_tree(path: str) {
         resolved = os.path.realpath(path);
         with schedule_lock {
@@ -127,8 +147,12 @@ impl JacFileWatcher.start -> None {
 
     class JacEventHandler(FileSystemEventHandler) {
         def on_modified(inner_self: JacEventHandler, event: FileSystemEvent) {
-            if not event.is_directory {
-                watcher._on_change(os.fsdecode(event.src_path), ChangeType.MODIFIED);
+            path = os.fsdecode(event.src_path);
+            if event.is_directory {
+                schedule_directory(path, inner_self);
+                schedule_new_children(path, inner_self);
+            } else {
+                watcher._on_change(path, ChangeType.MODIFIED);
             }
         }
 
