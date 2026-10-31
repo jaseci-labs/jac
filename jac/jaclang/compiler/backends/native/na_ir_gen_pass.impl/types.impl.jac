@@ -1006,7 +1006,7 @@ impl NaIRGenPass._lower_function_signature(t: SemanticFunctionType) -> ir.Functi
     if t.return_type is not None {
         _r = self._lower_type(t.return_type);
         if _r is not None {
-            ret_type = _r;
+            ret_type = self._byvalue_ret_type(_r);
         }
     }
     param_types: list[ir.Type] = [];
@@ -1288,6 +1288,25 @@ impl NaIRGenPass._tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStruct
         self.tuple_types[tuple_key] = ir.LiteralStructType(elem_types);
     }
     return self.tuple_types[tuple_key];
+}
+
+impl NaIRGenPass._byvalue_ret_type(ret_type: ir.Type) -> ir.Type {
+    if not isinstance(ret_type, ir.PointerType) {
+        return ret_type;
+    }
+    shape = ret_type.pointee;
+    if not isinstance(shape, ir.LiteralStructType) or not shape.elements {
+        return ret_type;
+    }
+    for element in shape.elements {
+        if not isinstance(element, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+            return ret_type;
+        }
+    }
+    if shape not in self.tuple_types.values() {
+        return ret_type;
+    }
+    return shape;
 }
 
 impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
@@ -2599,6 +2618,10 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _wi64 = ir.IntType(64);
             _wi8p = ir.IntType(8).as_pointer();
             _wfn = val;
+
+            if isinstance(val, ir.Function) {
+                return self._static_fn_closure(_clos_tgt, val);
+            }
             if isinstance(_wfn.type, ir.FunctionType) {
                 _wfn = self.builder.bitcast(
                     _wfn, _wfn.type.as_pointer(), name="clos.wrap.fnp"
@@ -2707,6 +2730,18 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
         and isinstance(val.type.pointee, ir.FunctionType)
         and isinstance(target_type, ir.IntType) {
         return self.builder.ptrtoint(val, target_type, name="fn.ptrtoint");
+    }
+
+    if isinstance(target_type, ir.LiteralStructType)
+        and isinstance(val.type, ir.PointerType)
+        and isinstance(val.type.pointee, ir.LiteralStructType)
+        and len(val.type.pointee.members()) == len(target_type.members())
+        and not self._tuple_managed_fields(val.type.pointee) {
+        held = self.builder.load(val, name="tuple.unbox");
+        if self._is_owned(val) {
+            self._emit_rc_release_simple(val, op="tuple_unbox", loc="");
+        }
+        return self._coerce_tuple_to_struct(held, target_type);
     }
 
     if isinstance(val.type, ir.PointerType)
@@ -3010,7 +3045,7 @@ impl NaIRGenPass._emit_str_concat_inplace(
         return None;
     }
     memcpy_cc = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    realloc_fn = self._get_or_declare_extern("realloc", i8p, [i8p, i64]);
+    realloc_fn = self._heap_extern("realloc");
 
     _root_ok: ir.Value = ir.Constant(i1, 1);
     if _desc_slot {
@@ -3109,7 +3144,7 @@ impl NaIRGenPass._emit_str_concat_inplace(
     if self._target_is_wasm() {
         self.builder.branch(grow_bb);
     } else {
-        usable = self._floor_call("__jac_malloc_size", i64, [base], "ip.usable");
+        usable = self._heap_usable_size(self.builder, base, "ip.usable");
         cap = self.builder.sub(usable, ir.Constant(i64, HDR_TOTAL), name="ip.cap");
         _units = self.builder.lshr(cap, ir.Constant(i64, 8), name="ip.units");
         _clamped = self.builder.select(

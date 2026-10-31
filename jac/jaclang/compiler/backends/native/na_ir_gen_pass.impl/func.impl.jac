@@ -83,6 +83,9 @@ impl NaIRGenPass._maybe_declare_ability(
         ret_type = iterator_type.as_pointer();
     } else {
         ret_type = self._resolve_return_type(sig.return_type);
+        if symbol is None {
+            ret_type = self._byvalue_ret_type(ret_type);
+        }
     }
     self._sig_decl_kind = _saved_sig_kind;
 
@@ -120,12 +123,17 @@ impl NaIRGenPass._maybe_declare_ability(
         and nd.method_owner is None
         and nd.enclosing_decl(uni.Ability) is None
         and name not in self.generator_fns {
-        for _dx in nd.decorators {
+        runtime_decorators = [
+            dx
+            for dx in nd.decorators
+            if not (isinstance(dx, uni.Name) and dx.value in CALLING_CONVENTIONS)
+        ];
+        for _dx in runtime_decorators {
             if isinstance(_dx, uni.Name) {
                 _dec_names.append(_dx.value);
             }
         }
-        if len(_dec_names) != len(nd.decorators) {
+        if len(_dec_names) != len(runtime_decorators) {
             _dec_names = [];
         }
     }
@@ -149,6 +157,7 @@ impl NaIRGenPass._maybe_declare_ability(
                 if symbol is not None
                 else self._symbol_for(name, _def_m, _is_pub)
         );
+        func.calling_convention = self._calling_convention_of(nd.decorators);
     }
 
     for (i, p) in enumerate(c_params) {
@@ -496,6 +505,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
         } else {
             sysv_func = ir.Function(self.llvm_module, sysv_fnty, name=name);
         }
+        sysv_func.calling_convention = self._calling_convention_of(nd.decorators);
         if sysv_sret and len(sysv_func.args) > 0 {
             sysv_func.args[0].add_attribute("sret");
             _sal: int = sysv_ret_plan["align"];
@@ -561,6 +571,7 @@ impl NaIRGenPass._declare_clib_ability(nd: uni.Ability) -> None {
     for (i, p) in enumerate(fixed_params) {
         func.args[i].name = p.name.value if p.name else f"arg{i}";
     }
+    func.calling_convention = self._calling_convention_of(nd.decorators);
     _mark_returns_twice(name, func);
     self.scope.bind_function(name, func);
     self.clib_extern_fns[name] = func;
@@ -749,8 +760,7 @@ impl NaIRGenPass._codegen_test(nd: uni.Test) -> None {
             exc_state, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
         );
         env_i8p = self.builder.bitcast(env_ptr, i8p, name="env.i8p");
-        setjmp_fn = self._exc_setjmp_fn();
-        setjmp_result = self.builder.call(setjmp_fn, [env_i8p], name="setjmp.result");
+        setjmp_result = self._emit_exc_arm(self.builder, env_i8p, "setjmp.result");
         is_exception = self.builder.icmp_signed(
             "!=", setjmp_result, ir.Constant(i32, 0), name="is.exception"
         );
@@ -835,7 +845,7 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
     }
     ret_type: ir.Type = ir.IntType(64);
     if isinstance(sig, uni.FuncSignature) {
-        ret_type = self._resolve_return_type(sig.return_type);
+        ret_type = self._byvalue_ret_type(self._resolve_return_type(sig.return_type));
     }
     body = ModuleFacts.unwrap_body(nd);
 
@@ -1103,7 +1113,7 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
         }
         _rt: ir.Type = ir.IntType(64);
         if _ssig is not None {
-            _rt = self._resolve_return_type(_ssig.return_type);
+            _rt = self._byvalue_ret_type(self._resolve_return_type(_ssig.return_type));
         }
         _caps: list[tuple[str, str, ir.Type]] = [];
         for _cn in _cap_order[s] {
@@ -1460,6 +1470,9 @@ impl NaIRGenPass._emit_glob_init_func -> None {
         fnty
     );
     self.scope.bind_function("__jac_glob_init", func);
+    for attr in ("cold", "minsize", "optsize", "noinline") {
+        func.attributes.add(attr);
+    }
     state = self._enter_function(func);
     try {
         if self._global_init_nodes {
@@ -1780,4 +1793,15 @@ impl _mark_returns_twice(name: str, func: ir.Function) {
     if name in RETURNS_TWICE_EXTERNS {
         func.attributes.add("returns_twice");
     }
+}
+
+impl NaIRGenPass._calling_convention_of(
+    decorators: (Sequence[uni.Expr] | None)
+) -> str {
+    for dx in decorators or [] {
+        if isinstance(dx, uni.Name) and dx.value in CALLING_CONVENTIONS {
+            return CALLING_CONVENTIONS[dx.value];
+        }
+    }
+    return "";
 }

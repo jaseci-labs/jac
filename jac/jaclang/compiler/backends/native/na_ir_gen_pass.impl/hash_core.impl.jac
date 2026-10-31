@@ -72,15 +72,13 @@ impl NaIRGenPass._emit_hash_core_helpers(
         f"{_pre}_order_remove_{_safe}", cont_ptr_type, layout
     );
 
-    malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
-    calloc_fn = self._get_or_declare_extern("calloc", i8p, [i64, i64]);
+    malloc_fn = self._heap_extern("malloc");
+    calloc_fn = self._heap_extern("calloc");
     if self.rc_safe_free_fn is None or self.rc_retain_fn is None {
         self._emit_rc_helpers();
     }
     _hl = self._nogc_headerless();
-    _free_hl = self._get_or_declare_extern("free", ir.VoidType(), [i8p])
-        if _hl
-        else None;
+    _free_hl = self._heap_extern("free") if _hl else None;
 
     hash_fnty = ir.FunctionType(i64, [key_type]);
     hash_fn: ir.Function = ir.Function(

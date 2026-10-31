@@ -248,6 +248,7 @@ impl NaIRGenPass._lower_module -> None {
         }
         self._apply_list_tbaa();
         self._volatilize_setjmp_locals();
+        self._fold_direct_c_entries();
         self._exc_context_cache = {};
         self.module.gen.ir_module = self.llvm_module;
         self.module.gen.llvm_ir = self.llvm_module;
@@ -801,7 +802,12 @@ impl NaIRGenPass._reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str |
             if not isinstance(instr, ir.Instruction) {
                 continue;
             }
-            for op in instr.operands {
+            for operand in instr.operands {
+                op = operand;
+                if isinstance(op, ir.GlobalVariable)
+                    and op.name in self._static_closure_fns {
+                    op = self._static_closure_fns[op.name];
+                }
                 if not isinstance(op, ir.Function) or id(op) in seen {
                     continue;
                 }
@@ -978,12 +984,17 @@ impl NaIRGenPass._export_native_layout -> None {
         ret_type = self._llvm_type_str(func.function_type.return_type, pointee_names);
         ret_struct: (str | None) = None;
         ret_tuple: (NativeTupleLayout | None) = None;
-        if isinstance(func.function_type.return_type, ir.PointerType) {
-            ret_struct = struct_names.get(
-                str(func.function_type.return_type.pointee_type)
-            );
-
-            tkey = tuple_keys.get(str(func.function_type.return_type.pointee_type))
+        ret_ir = func.function_type.return_type;
+        ret_shape: (ir.Type | None) = None;
+        if isinstance(ret_ir, ir.LiteralStructType) {
+            ret_type = "Tuple";
+            ret_shape = ret_ir;
+        } elif isinstance(ret_ir, ir.PointerType) {
+            ret_shape = ret_ir.pointee_type;
+            ret_struct = struct_names.get(str(ret_shape));
+        }
+        if ret_shape is not None {
+            tkey = tuple_keys.get(str(ret_shape))
                 if ret_type.startswith("Tuple")
                 else None;
             if tkey is not None {
@@ -2272,7 +2283,21 @@ impl NaIRGenPass._ensure_clib_struct(t: any) -> (str | None) {
 impl NaIRGenPass._declare_pending_clib_abilities -> None {
     pending = self._pending_clib_abilities;
     self._pending_clib_abilities = [];
-    for ability in pending {
+    own_ids = {
+        id(a)
+        for a in pending
+        if a.find_parent_of_type(uni.Module) is self.module
+    };
+    for ability in [
+        a
+        for a in pending
+        if id(a) not in own_ids
+    ]
+        + [
+            a
+            for a in pending
+            if id(a) in own_ids
+        ] {
         self._declare_clib_ability(ability);
     }
 }

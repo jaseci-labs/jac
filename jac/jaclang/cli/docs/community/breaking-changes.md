@@ -530,7 +530,7 @@ Use the braced block form instead. It compiles to the same node and is now the c
 | `to sv:` <br> `<server stmts>` | `sv { <server stmts> }` (or leave at module top level -- server is the default context) |
 | `to na:` <br> `<native stmts>` | `na { <native stmts> }` |
 
-**Impact:** rewrite any `to cl:` / `to sv:` / `to na:` section into the matching braced block, wrapping exactly the statements that belonged to that section. Single-statement prefixes (`cl def:pub foo() {...}`, `sv ...`, `na ...`) and file-extension contexts (`.jac`, `.na.jac`) are unaffected. (At the time, `to` still drove the iter-for loop; `to` has since been removed as a keyword entirely -- see [the clean-break entry above](#legacy-syntax-removed-in-one-clean-break-7514).)
+**Impact:** rewrite any `to cl:` / `to sv:` / `to na:` section into the matching braced block, wrapping exactly the statements that belonged to that section. Single-statement prefixes (`cl def:pub foo() {...}`, `sv ...`, `na ...`) and file-extension contexts were unaffected by this removal but are gone too: the later placement clean break removed every `sv`/`cl`/`na` spelling ([#7772](https://github.com/jaseci-labs/jac/issues/7772), see [the entry above](#all-placement-spellings-removed-svclna-markers-the-svjaccljac-suffixes-and-the-variant-directive-7772-jaclang-035)). (At the time, `to` still drove the iter-for loop; `to` has since been removed as a keyword entirely -- see [the clean-break entry above](#legacy-syntax-removed-in-one-clean-break-7514).)
 
 ---
 

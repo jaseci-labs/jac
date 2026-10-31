@@ -5,7 +5,8 @@ glob GEN_PENDING_FLAG_OFF: int = 8,
      GEN_PENDING_TYPE_OFF: int = 16,
      GEN_PENDING_OBJ_OFF: int = 24,
      GEN_PENDING_MSG_OFF: int = 32,
-     GEN_FRAME_HEADER: int = 40;
+     GEN_FRAME_HEADER: int = 40,
+     CALLING_CONVENTIONS: dict[str, str] = {"__preserve_none": "preserve_nonecc"};
 
 glob UTF8_CURSOR_MIN_BYTES: int = 64,
      UTF8_CURSOR_WAYS: int = 4,
@@ -180,6 +181,8 @@ walker NaIRGenPass(CompilerPass) {
         _foreign_clib_abilities: dict[str, uni.Ability] = {},
         _shared_raise_blocks: dict[str, ir.Block] = {},
         _clib_exports: dict[str, ir.Function] = {},
+        _direct_c_entries: list[tuple[ir.Function, ir.Function]] = [],
+        _static_closure_fns: dict[str, ir.Function] = {},
         _clib_data_inits: list[tuple[ir.GlobalVariable, uni.Expr, any]] = [],
         _c_strings: dict[str, ir.GlobalVariable] = {},
         _foreign_modules: list[uni.Module] = [],
@@ -239,6 +242,7 @@ walker NaIRGenPass(CompilerPass) {
         _slot_caught_drops: dict[int, tuple[ir.Value, ir.Value]] = {},
         _unbound_caught_slots: dict[int, ir.Value] = {},
         _exc_context_fn: (ir.Function | None) = None,
+        _exc_context_inl_fn: (ir.Function | None) = None,
         method_funcs: dict[str, ir.Function] = {},
         static_methods: dict[str, bool] = {},
         static_fields: dict[str, ir.GlobalVariable] = {},
@@ -274,6 +278,7 @@ walker NaIRGenPass(CompilerPass) {
         _isa_h_fn: (ir.Function | None) = None,
         _isa_vt_fn: (ir.Function | None) = None,
         _isa_mro_fn: (ir.Function | None) = None,
+        _isa_miss_sites: int = 0,
         _isa_vtobj_fn: (ir.Function | None) = None,
         _vtable_nodes: list[ir.GlobalVariable] = [],
         _cstr_hash_fn: (ir.Function | None) = None,
@@ -359,6 +364,8 @@ walker NaIRGenPass(CompilerPass) {
         rc_retain_fn: (ir.Function | None) = None,
         rc_release_simple_fn: (ir.Function | None) = None,
         rc_release_impl_fn: (ir.Function | None) = None,
+        rc_release_acyclic_fn: (ir.Function | None) = None,
+        rc_possible_root_fn: (ir.Function | None) = None,
         rc_set_type_fn: (ir.Function | None) = None,
         rc_gc_disable_fn: (ir.Function | None) = None,
         rc_gc_enable_fn: (ir.Function | None) = None,
@@ -532,6 +539,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> ir.Value;
 
     def _get_exception_context_fn -> ir.Function;
+    def _get_exception_context_inl_fn -> ir.Function;
     def _exception_handler_slot(
         b: ir.IRBuilder, context: (ir.Value | None) = None
     ) -> ir.Value;
@@ -545,6 +553,7 @@ walker NaIRGenPass(CompilerPass) {
     def _region_leave -> None;
     def _emit_region_leaves(count: int) -> None;
     def _region_depth -> ir.Value;
+    def _region_depth_if_used -> ir.Value;
     def _region_unwind(depth: ir.Value) -> None;
     def _region_open_test -> ir.Value;
     def _region_c_entry_escape -> (ir.Value | None);
@@ -781,6 +790,20 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Value | None);
 
     def _emit_intrinsic_atomic_xchg(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _calling_convention_of(decorators: (Sequence[uni.Expr] | None)) -> str;
+    def _field_call_convention(nd: uni.FuncCall) -> str;
+    def _emit_intrinsic_c_thread_local(
+        nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+    ) -> (ir.Value | None);
+
+    def _intrinsic_memory_order(
+        nd: uni.FuncCall, intr: IntrinsicEntry, arg: uni.Expr, kind: str
+    ) -> (str | None);
+
+    def _emit_intrinsic_atomic(
         nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
     ) -> (ir.Value | None);
 
@@ -1026,6 +1049,7 @@ walker NaIRGenPass(CompilerPass) {
     def _c_abi_same(have: ir.FunctionType, want: ir.FunctionType) -> bool;
     def _c_calls_directly(target: ir.Function) -> bool;
     def _c_address_of_value(value: (ir.Value | None)) -> (ir.Value | None);
+    def _c_const_offset_address(call: uni.UniNode, count: int) -> (ir.Constant | None);
     def _c_literal_address(arg: uni.UniNode) -> (ir.Constant | None);
     def _literal_destination(nd: uni.Int) -> (str | None);
     def _reads_c_callback(nd: uni.Expr) -> bool;
@@ -1054,9 +1078,14 @@ walker NaIRGenPass(CompilerPass) {
     def _clib_detect_vtable_structs -> None;
     def _clib_coerce_callback(val: ir.Value, c_fn_ty: ir.PointerType) -> ir.Value;
     def _clib_cb_coerce_scalar(val: ir.Value, target_type: ir.Type) -> ir.Value;
+    def _c_abi_key(sig: ir.FunctionType) -> str;
     def _emit_clib_c_trampoline(
         jac_fn: ir.Function, c_fn_ty: ir.PointerType
     ) -> ir.Function;
+
+    def _emit_clib_trampoline_call(
+        tramp: ir.Function, jac_fn: ir.Function, bracket: bool
+    ) -> None;
 
     def _lower_clib_function_type(arch_name: str, fname: str, t: any) -> ir.Type;
     def _clib_fnptr_arg(val: ir.Value, target: ir.Type) -> ir.Value;
@@ -1067,6 +1096,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> tuple[str, ir.IdentifiedStructType, ir.FunctionType];
 
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
+    def _static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Value;
     def _wrap_fn_as_closure_value(val: ir.Value) -> ir.Value;
     def _is_bare_function_value(val: ir.Value) -> bool;
     def _closure_like_type(val_type: ir.Type) -> bool;
@@ -1556,6 +1586,18 @@ walker NaIRGenPass(CompilerPass) {
     def _exc_jmp_symbols -> tuple[str, str];
     def _exc_setjmp_fn -> ir.Function;
     def _exc_longjmp_fn -> ir.Function;
+    def _exc_builtin_sjlj -> bool;
+    def _native_tls_on -> bool;
+    def _native_sjlj_on -> bool;
+    def _unchecked_views_on -> bool;
+    def _heap_extern(kind: str) -> ir.Function;
+    def _heap_usable_size(b: ir.IRBuilder, block: ir.Value, name: str) -> ir.Value;
+    def _direct_c_entry(fn: ir.Function) -> bool;
+    def _fold_direct_c_entries -> None;
+    def _region_live_flag -> ir.Value;
+    def _is_address_word(value: ir.Value) -> bool;
+    def _address_sum(left: ir.Value, right: ir.Value, op: str) -> bool;
+    def _emit_exc_arm(b: ir.IRBuilder, env: ir.Value, name: str = "") -> ir.Value;
     def _emit_exc_push_helper -> None;
     def _emit_exc_pop_helper -> None;
     def _emit_exc_raise_helper -> None;
@@ -2305,6 +2347,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _stack_alloc_target_ok(nd: uni.UniNode) -> bool;
+    def _stack_only_bound(sym: uni.Symbol, type_name: str) -> bool;
     def _emit_os_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
     def _emit_os_const(name: str) -> (ir.Value | None);
     def _emit_os_environ_call(name: str, nd: uni.FuncCall) -> (ir.Value | None);
@@ -2833,6 +2876,12 @@ walker NaIRGenPass(CompilerPass) {
         b: ir.IRBuilder, ptr: ir.Value, name_prefix: str = "mc"
     ) -> ir.Value;
 
+    def _emit_rc_retain_fast(retain_fn: ir.Function) -> None;
+    def _emit_rc_release_fast(
+        fn: ir.Function, release_fn: ir.Function, may_cycle: bool
+    ) -> None;
+
+    def _emit_rc_possible_root_fn -> ir.Function;
     def _mark_owned(val: ir.Value) -> ir.Value;
     def _is_owned(val: ir.Value) -> bool;
     def _is_null_ptr_const(val: ir.Value) -> bool;
@@ -3011,12 +3060,27 @@ walker NaIRGenPass(CompilerPass) {
         func: ir.Function, slots: list[tuple[str, ir.Value]]
     ) -> dict[int, ir.Value];
 
+    def _unwind_nothrow_callee(name: str) -> bool;
+    def _drop_guard_fn(hook: ir.Function, owner: str) -> ir.Function;
+    def _unwind_raise_sites(
+        func: ir.Function, slots: list[tuple[str, ir.Value]]
+    ) -> (list[tuple[ir.Instruction, set[int]]] | None);
+
+    def _unwind_release_at_raises(
+        func: ir.Function,
+        slots: list[tuple[str, ir.Value]],
+        sites: list[tuple[ir.Instruction, set[int]]]
+    ) -> None;
+
     def _hoist_entry_allocas(entry_blk: ir.Block) -> None;
     def _codegen_tail_return(nd: uni.ReturnStmt) -> None;
     def _thunk_tail_callable(cfunc: ir.Function, jac_fn: ir.Function) -> bool;
     def _thunk_tail_call(cfunc: ir.Function, jac_fn: ir.Function) -> None;
     def _c_entry_tail_or_escape(c_entry: ir.Function, jac_fn: ir.Function) -> bool;
+    def _c_entry_escape_fn(c_entry: ir.Function, jac_fn: ir.Function) -> ir.Function;
+    def _c_entry_escape_shell(c_entry: ir.Function) -> ir.Function;
     def _tail_frame_blocker -> (str | None);
+    def _retype_tail_call(blk: ir.Block, func: ir.Function) -> (ir.CallInstr | None);
     def _tail_call_mismatch(call: ir.CallInstr, func: ir.Function) -> (str | None);
     def _codegen_delete(nd: uni.DeleteStmt) -> None;
     def _codegen_destroy_target(target: uni.Expr, nd: uni.DeleteStmt) -> None;
@@ -3264,6 +3328,7 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (ir.Type | None);
 
     def _tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStructType;
+    def _byvalue_ret_type(ret_type: ir.Type) -> ir.Type;
     def _resolve_sig_type(type_expr: uni.UniNode) -> ir.Type;
     def _resolve_return_type(
         type_expr: (uni.UniNode | None), method: bool = False
@@ -3587,6 +3652,10 @@ walker NaIRGenPass(CompilerPass) {
     ) -> ir.Value;
 
     def _isinstance_vtable_hit(vptr: ir.Value, names: list[str]) -> ir.Value;
+    def _isinstance_vtable_walk(
+        vptr: ir.Value, names: list[str], prefix: str
+    ) -> ir.Value;
+
     def _vtable_slot_certain(ty: (TypeBase | None)) -> bool;
     def _isinstance_vtable_fallback(
         hit: (ir.Value | None), vptr: ir.Value, names: list[str], prefix: str
@@ -3673,6 +3742,26 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_exc_push(b: ir.IRBuilder, state: ir.Value) -> None;
     def _emit_exc_pop(b: ir.IRBuilder) -> None;
     def _volatilize_setjmp_locals -> None;
+    def _setjmp_reachable_writes(func: ir.Function, setjmp_name: str) -> set[int];
+    def _setjmp_volatile_allocas(
+        func: ir.Function, setjmp_name: str
+    ) -> (set[int] | None);
+
+    def _setjmp_landing(block: ir.Block, index: int) -> (ir.Block | None);
+    def _setjmp_value_allocas(
+        value: ir.Value, memo: dict[int, list[ir.AllocaInstr]]
+    ) -> list[ir.AllocaInstr];
+
+    def _setjmp_operands(inst: ir.Instruction) -> list[ir.Value];
+    def _setjmp_region_writes(
+        block: ir.Block, index: int, memo: dict[int, list[ir.AllocaInstr]]
+    ) -> (set[int] | None);
+
+    def _setjmp_call_may_raise(inst: ir.CallInstr) -> bool;
+    def _setjmp_live_in(
+        func: ir.Function, candidates: set[int], memo: dict[int, list[ir.AllocaInstr]]
+    ) -> dict[int, set[int]];
+
     def _apply_list_tbaa -> None;
     def _body_keeps_list_headers(body: list[uni.UniNode]) -> bool;
     def _anchor_plain(e: object) -> bool;
