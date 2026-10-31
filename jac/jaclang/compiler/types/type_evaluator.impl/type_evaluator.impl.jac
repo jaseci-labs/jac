@@ -1824,6 +1824,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                         );
                         continue;
                     }
+                    if all_numeric(left_type) and all_numeric(right_type) {
+                        continue;
+                    }
                     (magic, rmagic) = BINARY_OPERATOR_MAP[op.name];
                     result = self.get_type_of_magic_method_call(
                         left_type, magic, [expr.rights[i]], None

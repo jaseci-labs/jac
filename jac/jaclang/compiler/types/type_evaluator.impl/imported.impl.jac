@@ -114,13 +114,16 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                 }
             }
 
+            source = from_mod_type.symbol_table
+                if isinstance(from_mod_type, ModuleType)
+                else None;
+            if (lazy := self._module_getattr_type(source)) is not None {
+                binding.type = lazy;
+                return binding.type;
+            }
             binding.type = UnknownType(is_diagnosed=True);
             self.emit_diag(
-                self._missing_import_diag(
-                    from_mod_type.symbol_table
-                        if isinstance(from_mod_type, ModuleType)
-                        else None
-                ),
+                self._missing_import_diag(source),
                 binding,
                 name=item_name,
                 module=from_mod_name
@@ -191,6 +194,11 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                     ) {
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
+            }
+            if (lazy := self._module_getattr_type(from_mod_type.symbol_table))
+                is not None {
+                binding.type = lazy;
+                return binding.type;
             }
             binding.type = UnknownType(is_diagnosed=True);
             self.emit_diag(
@@ -720,6 +728,21 @@ impl TypeEvaluator._import_error_is_handled(imp: Import) -> bool {
         cur = cur.parent;
     }
     return False;
+}
+
+impl TypeEvaluator._module_getattr_type(source: (UniNode | None)) -> (TypeBase | None) {
+    if not isinstance(source, Module) {
+        return None;
+    }
+    hook = source.names_in_scope.get("__getattr__");
+    if hook is None {
+        return None;
+    }
+    hook_type = self.get_type_of_symbol(hook);
+    if isinstance(hook_type, FunctionType) and hook_type.return_type is not None {
+        return self._convert_to_instance(hook_type.return_type);
+    }
+    return UnknownType();
 }
 
 impl TypeEvaluator._missing_import_diag(source: (UniNode | None)) -> DiagnosticInfo {

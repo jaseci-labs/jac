@@ -352,7 +352,6 @@ graph import {
         testing.test_runner._test_rss_cap_mb { env_int },
         testing.test_runner.resolve_jobs { resolve_jobs as _resolve_pool_jobs },
     ]
-    client ++> client.vite_bundler.ViteBundler.build { ensure_client_deps }
     client as _client_pkg ++> client.runtime_source.resolve_client_runtime_cl_path;
     client as _client_pkg --> project.modresolver._resolve_jac_virtual_module;
     client.artifact ++> server.server { ClientBundleError }
@@ -1955,8 +1954,6 @@ graph import {
         load_template_jab
     }
     packages.verify --> cli.commands.project.publish { run_verify }
-    project ++> cli.commands.native_build.native_build { get_config }
-    project --> compiler.backends.native.wasm_build._project_gc_settings { get_config }
     project.app_kinds ++> [
         cli.commands.execution._app_serves { kind_spec },
         cli.commands.project._create_app { is_valid_kind },
@@ -2036,6 +2033,7 @@ graph import {
             | cli.commands.config.config
             | cli.commands.execution._ensure_watchdog_installed
             | cli.commands.mcp.mcp_cmd
+            | cli.commands.native_build.native_build
             | cli.commands.project.bundle
             | cli.shadcn.cli.retheme
             | client.targets.desktop._dev_launch
@@ -2201,6 +2199,7 @@ graph import {
             | client.client_deps._resolve_client_framework
             | client.jac_client_compiler.JacClientCompiler._app_root
             | client.vite_bundler.ViteBundler._client_app_dir
+            | compiler.backends.native.wasm_build._project_gc_settings
             | server.server._occ_policy { get_config },
         cli.dispatch._discover_project_config
             | client.jac_client_compiler.JacClientCompiler._client_app_dir
@@ -5041,6 +5040,7 @@ graph import client {
             emitted_tree_digest
         },
     ]
+    client_deps ++> vite_bundler.ViteBundler.build { ensure_client_deps }
     client_diagnostics ++> cli.run_client_start { is_debug_mode }
     client_react_core ++> client_runtime_native {
         __createJacSchema,
@@ -8109,7 +8109,6 @@ graph import compiler {
             | passes.ast_validation_pass
             | passes.boundary_analysis_pass
             | passes.capability_check_pass
-            | passes.cfg_build_pass
             | passes.comptime_resolve_pass
             | passes.endpoint_effect_pass
             | passes.flow_check_pass
@@ -10095,9 +10094,6 @@ graph import compiler {
             adopt_imported_bases
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._report_unreachable_overrides {
-            get_layout_registry
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._resolve_method {
             get_layout_registry
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._resolve_method_owner {
@@ -14595,6 +14591,7 @@ graph import compiler.types {
         },
         type_evaluator {
             AssignVerdict,
+            all_numeric,
             arithmetic_result_type,
             assign_numeric_expr,
             both_numeric,
@@ -15601,7 +15598,6 @@ graph import runtime {
         runtime.JacRuntime.get_program { build_services },
         runtime.JacRuntime.get_selfhost { build_services },
     ]
-    builtin --> archetype.Archetype.__init_subclass__ { _jac_region_instrument }
     cinterop ++> interop_bridge.callback_ctype { shape_ctype }
     cinterop as _cinterop_mod --> builtin.__getattr__;
     constants ++> [
@@ -15723,7 +15719,7 @@ graph import runtime {
     prepared_loader --> prepared.ensure_namespace { PreparedLoader }
     region ++> cinterop { escape_regions, restore_regions }
     region --> [
-        archetype.Archetype.__init_subclass__ { is_drop_hook },
+        archetype.Archetype.__init_subclass__ { instrument_drops, is_drop_hook },
         runtime.JacPersistence.destroy { run_drop },
     ]
     region as _region_mod --> builtin.__getattr__;
