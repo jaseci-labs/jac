@@ -616,7 +616,10 @@ impl ModuleIntrospector.introspect_callable(
             ),
             'required': (param.`default == inspect.Parameter.empty),
             'default': None
-                if (param.`default == inspect.Parameter.empty)
+                if (
+                    param.`default == inspect.Parameter.empty
+                    or param.`default is CALL_DEFAULT
+                )
                 else str(param.`default)
         } for (name, param) in sig.parameters.items()
     };
@@ -673,7 +676,7 @@ impl ModuleIntrospector.introspect_walker(
             }
         }
         is_required = param.`default == inspect.Parameter.empty;
-        if is_required {
+        if is_required or param.`default is CALL_DEFAULT {
             default_val = None;
         } elif name in factory_defaults {
             default_val = factory_defaults[name];

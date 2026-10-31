@@ -2712,7 +2712,7 @@ graph import {
             | data.serializer
             | scale.memory.context { MISSING },
         comptime { MISSING as _MISSING, ObjectField as _field },
-        lib.jaclib { CALL_DEFAULT },
+        lib.jaclib | server.server { CALL_DEFAULT },
         scale.sdk.spec.DeploySpec.from_config { fields },
         scale.server.sso_ext | scale.sso.oauth_session { asdict },
     ]
