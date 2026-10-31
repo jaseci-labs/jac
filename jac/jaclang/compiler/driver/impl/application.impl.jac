@@ -490,7 +490,7 @@ impl prepare_application(
     entries = `list(`dict.fromkeys([`entry, *(os.path.realpath(p) for p in services)]));
     import from jaclang.server.sealed_serve { sealed_root_for, unlisted_image_root }
     image_root = sealed_root_for(`entry);
-    if image_root is not None {
+    if image_root is not None and not dev {
         console.print('  Loading sealed application artifacts', file=sys.stderr);
         return _prepare_sealed(`entry, program, image_root, entries);
     }
