@@ -219,15 +219,16 @@ impl JacFileWatcher._on_change(
     }
 
     changed = os.path.realpath(path);
-    watched_roots = [os.path.realpath(watch_path) for watch_path in self.watch_paths];
-    inside_watch_root = any(
-        changed == watched
-            or (os.path.isdir(watched) and changed.startswith(watched + os.sep))
-        for watched in watched_roots
+    compiler_roots = [
+        os.path.realpath(compiler_root) for compiler_root in self.compiler_source_roots
+    ];
+    inside_compiler_app = any(
+        changed == compiler_root or changed.startswith(compiler_root + os.sep)
+        for compiler_root in compiler_roots
     );
     if self._beside_watched_file(path)
         or self._foreign_shared_annex(path)
-        or (is_compiler_source_path(path) and not inside_watch_root) {
+        or (is_compiler_source_path(path) and not inside_compiler_app) {
         return;
     }
 
