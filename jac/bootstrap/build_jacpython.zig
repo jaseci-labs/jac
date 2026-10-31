@@ -739,8 +739,12 @@ fn installTools(c: *Ctx) !void {
     const l = layout(c);
     // libainstall: pkg-config files, python-config, idle and pydoc.
     const subst = try substitutions(c);
-    try writeTemplate(c, c.path(&.{ c.src, "Misc/python.pc.in" }), c.path(&.{ l.libpc, "python-" ++ version ++ ".pc" }), subst, mode_data);
-    try writeTemplate(c, c.path(&.{ c.src, "Misc/python-embed.pc.in" }), c.path(&.{ l.libpc, "python-" ++ version ++ "-embed.pc" }), subst, mode_data);
+    // The pkg-config files name their prefix relative to themselves
+    // (<prefix>/lib/pkgconfig), so a relocated output tree stays usable.
+    var pc_subst = try subst.clone(c.a);
+    try pc_subst.put(c.a, "prefix", "${pcfiledir}/../..");
+    try writeTemplate(c, c.path(&.{ c.src, "Misc/python.pc.in" }), c.path(&.{ l.libpc, "python-" ++ version ++ ".pc" }), pc_subst, mode_data);
+    try writeTemplate(c, c.path(&.{ c.src, "Misc/python-embed.pc.in" }), c.path(&.{ l.libpc, "python-" ++ version ++ "-embed.pc" }), pc_subst, mode_data);
     const config_py = try std.mem.replaceOwned(u8, c.a, try readFile(c, c.path(&.{ c.src, "Misc/python-config.in" })), "@EXENAME@", l.exename);
     try writeFile(c, c.path(&.{ l.libpl, "python-config.py" }), config_py, mode_exec);
     // The shell python-config; on Darwin the Python one, which applies
