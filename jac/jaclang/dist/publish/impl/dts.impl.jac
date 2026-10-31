@@ -105,18 +105,12 @@ impl _class_decl(arch: Archetype) -> str {
         return "";
     }
     lines: list[str] = [f"export declare class {name} {{"];
-    body = arch?.body or [];
-    for member in body {
-        if type(member).__name__ != "ArchHas" {
+    for v in arch.get_has_vars() {
+        fname = v.sym_name;
+        if not fname {
             continue;
         }
-        for v in member?.vars or [] {
-            fname = v?.sym_name;
-            if not fname {
-                continue;
-            }
-            lines.append(f"  {fname}: {_param_type_str(v)};");
-        }
+        lines.append(f"  {fname}: {_param_type_str(v)};");
     }
     lines.append("}");
     return "\n".join(lines);

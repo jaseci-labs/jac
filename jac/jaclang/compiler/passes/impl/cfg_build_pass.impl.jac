@@ -161,18 +161,28 @@ impl CFGBuildPass._follow(nd: UniNode) -> (UniCFGNode | None) {
                     isinstance(parent, ElseStmt) and isinstance(parent.parent, TryStmt)
                 ) {
                 owner = parent.parent;
+                if owner is None {
+                    return None;
+                }
                 if isinstance(owner, TryStmt) and owner.finally_body is not None {
                     return owner.finally_body;
                 }
                 child = owner;
                 parent = owner.parent;
                 continue;
-            } elif isinstance(parent, FinallyStmt) {
-                child = parent.parent;
-                parent = child.parent;
+            } elif isinstance(parent, (FinallyStmt, MatchCase)) {
+                owner = parent.parent;
+                if owner is None {
+                    return None;
+                }
+                child = owner;
+                parent = owner.parent;
                 continue;
             } elif isinstance(parent, SwitchCase) {
                 owner = parent.parent;
+                if owner is None {
+                    return None;
+                }
                 if isinstance(owner, SwitchStmt) {
                     later = False;
                     for sc in owner.cases {
@@ -189,10 +199,6 @@ impl CFGBuildPass._follow(nd: UniNode) -> (UniCFGNode | None) {
                 }
                 child = owner;
                 parent = owner.parent;
-                continue;
-            } elif isinstance(parent, MatchCase) {
-                child = parent.parent;
-                parent = child.parent;
                 continue;
             } elif self._is_flow_frame(parent) {
                 return parent if isinstance(parent, (Ability, ImplDef, Test)) else None;

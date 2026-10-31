@@ -390,8 +390,7 @@ impl PythonProvider.add_packages(
     plan: list[tuple[str, str]] = [];
     for (name, version) in specs {
         declared = _declared_constraint(config, name, dev);
-        keep_typed_name = declared is None or "[" in name;
-        record_name = name if keep_typed_name else declared[0];
+        record_name = name if declared is None or "[" in name else declared[0];
         if version {
             if declared and declared[1] != version {
                 console.warning(

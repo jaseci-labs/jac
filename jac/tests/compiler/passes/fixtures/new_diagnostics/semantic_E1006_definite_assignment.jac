@@ -240,3 +240,11 @@ def rebind_loop_target_in_nested_block(pairs: list[tuple[str, str]]) -> list[str
     }
     return out;
 }
+
+def walrus_in_comprehension_filter(lines: list[str]) -> list[str] {
+    return [
+        m.upper()
+        for line in lines
+        if (m := line.strip())
+    ];
+}

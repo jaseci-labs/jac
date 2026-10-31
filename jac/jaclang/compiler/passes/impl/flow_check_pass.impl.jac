@@ -80,9 +80,10 @@ impl FlowCheckPass._is_flow_node(nd: UniCFGNode) -> bool {
 impl FlowCheckPass._build_frame(
     start: UniCFGNode, by_owner: dict[int, list[UniCFGNode]]
 ) -> (FrameFlow | None) {
-    owner: UniNode = start
-        if isinstance(start, (Ability, ImplDef, Test))
-        else start.parent;
+    owner = start if isinstance(start, (Ability, ImplDef, Test)) else start.parent;
+    if owner is None {
+        return None;
+    }
     body = self._frame_body(owner);
     if not body {
         return None;
@@ -334,8 +335,8 @@ impl FlowCheckPass._effect(
     } elif isinstance(nd, DeleteStmt) {
         cur = set(da);
         for target in nd.targets {
-            sid = self._sym_of(fr, target) if isinstance(target, NameAtom) else None;
-            if sid is not None {
+            if isinstance(target, NameAtom)
+                and (sid := self._sym_of(fr, target)) is not None {
                 self._read(fr, target, cur, check);
                 eff.kills.add(sid);
             } else {
@@ -368,9 +369,10 @@ impl FlowCheckPass._eval(
     fr: FrameFlow, nd: UniNode, da: set[SymId], check: bool
 ) -> tuple[set[SymId], set[SymId]] {
     if isinstance(nd, NameAtom) {
+        sym = nd.sym;
         sid = self._sym_of(fr, nd);
-        if sid is not None {
-            if nd.expr_ctx == ExprCtx.LOAD and not any(d is nd for d in nd.sym.defn) {
+        if sid is not None and sym is not None {
+            if nd.expr_ctx == ExprCtx.LOAD and not any(d is nd for d in sym.defn) {
                 if not is_identifier_slot(nd) {
                     self._read(fr, nd, da, check);
                 }
@@ -479,15 +481,16 @@ impl FlowCheckPass._eval_compr(
         return self._eval_all(fr, nd, da, check);
     }
     done = self._eval_all(fr, comprs[0].collection, da, check);
+    inner = set(done);
     for compr in comprs {
         if compr is not comprs[0] {
-            self._eval_all(fr, compr.collection, done, check);
+            inner = self._eval_all(fr, compr.collection, inner, check);
         }
         for cond in (compr.conditional or []) {
-            self._eval_all(fr, cond, done, check);
+            (inner, _) = self._eval(fr, cond, inner, check);
         }
     }
-    self._eval_all(fr, nd, done, check);
+    self._eval_all(fr, nd, inner, check);
     return done;
 }
 

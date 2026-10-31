@@ -3121,9 +3121,9 @@ impl paint_tray(app: Studio) -> None {
             label = "map of "
                 + (scope_ or "the project")
                 + (f" ({filter_label(spec_)})" if spec_ else "");
-        } elif parse_deps_key(k) is not None {
+        } elif (deps := parse_deps_key(k)) is not None {
             kind = "wire";
-            (src, dst) = parse_deps_key(k);
+            (src, dst) = deps;
             spec_ = split_spec(k)[1];
             label = f"wires {src} → {dst}"
                 + (f" ({filter_label(spec_)})" if spec_ else "");

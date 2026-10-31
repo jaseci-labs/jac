@@ -51,7 +51,7 @@ obj AdminConsole {
         build_fn: Callable[[Path], Path] = build_with_jac,
         retry_after: float = RETRY_AFTER_FAILURE_SECONDS,
         _key: str = "",
-        _mutex: (threading.Lock | None) = None,
+        _mutex: threading.Lock postinit,
         _worker: (threading.Thread | None) = None,
         _failed_at: float = 0.0,
         _error: str = "",

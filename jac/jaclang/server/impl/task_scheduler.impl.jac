@@ -524,11 +524,12 @@ impl Scheduler.`wait -> None {
     if not self._running {
         return;
     }
-    if self._done_event is None {
+    done = self._done_event;
+    if done is None {
         return;
     }
     try {
-        while not self._done_event.`wait(timeout=0.5) {}
+        while not done.`wait(timeout=0.5) {}
     } except KeyboardInterrupt {
         logger.info("Scheduler interrupted, shutting down...");
     }

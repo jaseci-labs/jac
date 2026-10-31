@@ -1478,7 +1478,7 @@ impl BoundaryAnalysisPass.finish with exit {
                         self._collect_boundary_type(tn, cl_src_mod);
                     }
                 }
-                for p in sig.params {
+                for p in sig.get_parameters() {
                     if isinstance(p, ParamVar) and p.type_tag {
                         for tn in self._extract_all_type_names(p.type_tag.tag) {
                             self._collect_boundary_type(tn, cl_src_mod);
@@ -1508,7 +1508,7 @@ impl BoundaryAnalysisPass.finish with exit {
                         self._collect_boundary_type(tn, source_mod_obj);
                     }
                 }
-                for p in sig.params {
+                for p in sig.get_parameters() {
                     if isinstance(p, ParamVar) and p.type_tag {
                         for tn in self._extract_all_type_names(p.type_tag.tag) {
                             self._collect_boundary_type(tn, source_mod_obj);

@@ -5015,7 +5015,9 @@ impl TypeEvaluator._get_type_from_flow_node(
     has_unnarrowed_pred: bool = False;
     for pred in flow_node.bb_in {
         if pred is flow_node {
-            has_unnarrowed_pred = True;
+            if not is_loop_header or self._loop_body_writes_target(flow_node, target) {
+                has_unnarrowed_pred = True;
+            }
             continue;
         }
 

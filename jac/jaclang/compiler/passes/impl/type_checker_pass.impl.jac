@@ -806,16 +806,27 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
 
         aug_op = here.aug_op;
         if aug_op is not None {
+            operand_type = left_type;
+            if isinstance(target, Name)
+                and (
+                    narrowed
+                    := self.evaluator.get_narrowed_type_for_expr(
+                        target, left_type, here
+                    )
+                )
+                    is not None {
+                operand_type = narrowed;
+            }
             if (
-                not isinstance(left_type, (UnknownType, AnyType))
+                not isinstance(operand_type, (UnknownType, AnyType))
                 and not isinstance(right_type, (UnknownType, AnyType))
-                and not left_type.is_any_instance()
+                and not operand_type.is_any_instance()
                 and not right_type.is_any_instance()
             ) {
                 aug_magic = AUG_OPERATOR_MAP.get(aug_op.name);
                 if aug_magic is not None {
                     result = self.evaluator.get_type_of_magic_method_call(
-                        left_type, aug_magic, [here.value], here.value
+                        operand_type, aug_magic, [here.value], here.value
                     );
                     if result is None {
                         base_op = AUG_TO_BINARY_MAP.get(aug_op.name);
@@ -826,7 +837,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                                 if aug_op.value == "**=" {
                                     promoted = get_pow_result_type(
                                         self.evaluator,
-                                        left_type,
+                                        operand_type,
                                         right_type,
                                         here.value,
                                         target,
@@ -835,7 +846,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                                 } else {
                                     promoted = get_numeric_promotion_type(
                                         self.evaluator,
-                                        left_type,
+                                        operand_type,
                                         right_type,
                                         base_op,
                                         target,
@@ -847,7 +858,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                                     result = promoted;
                                 } elif base_op in COMPLEX_ARITH_OPS {
                                     complex_result = get_complex_arith_result_type(
-                                        left_type, right_type
+                                        operand_type, right_type
                                     );
                                     if complex_result is not None {
                                         result = complex_result;
@@ -859,7 +870,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                                 if binary_methods is not None {
                                     (magic, rmagic) = binary_methods;
                                     result = self.evaluator.get_type_of_magic_method_call(
-                                        left_type, magic, [here.value], here.value
+                                        operand_type, magic, [here.value], here.value
                                     );
                                     if result is None {
                                         result = self.evaluator.get_type_of_magic_method_call(
@@ -877,7 +888,7 @@ impl TypeCheckPass.exit_assignment with Assignment exit {
                                 E1011,
                                 node_override=here,
                                 op=aug_op.value,
-                                left=str(left_type),
+                                left=str(operand_type),
                                 right=str(right_type)
                             );
                         }
