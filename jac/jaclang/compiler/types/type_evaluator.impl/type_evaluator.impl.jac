@@ -3501,9 +3501,17 @@ impl TypeEvaluator.get_type_of_magic_method_call(
     if isinstance(obj_type, UnionType) {
         result_types: list[TypeBase] = [];
         for member_type in obj_type.types {
-            result = self.get_type_of_magic_method_call(
-                member_type, method_name, arg_nodes, node_for_error
-            );
+            result: TypeBase | None = None;
+            if isinstance(member_type, TypeVarType) {
+                result = UnknownType();
+            } elif isinstance(member_type, UnknownType)
+                or self.is_any_type(member_type) {
+                result = member_type;
+            } else {
+                result = self.get_type_of_magic_method_call(
+                    member_type, method_name, arg_nodes, node_for_error
+                );
+            }
             if result is None {
                 return None;
             }

@@ -35,11 +35,12 @@ impl SymTabBuildPass.enter_module with Module entry {
     self.push_scope_and_link(here);
 
     for stmt in here.body {
-        if isinstance(stmt, Import) and stmt.clib_decls {
-            for decl in stmt.clib_decls {
-                if isinstance(decl, GlobalVars) {
-                    self._declare_global_vars(decl);
-                }
+        decls = stmt.clib_decls
+            if isinstance(stmt, Import) and stmt.clib_decls
+            else [stmt];
+        for decl in decls {
+            if isinstance(decl, GlobalVars) {
+                self._declare_global_vars(decl);
             }
         }
     }
