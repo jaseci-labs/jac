@@ -531,12 +531,24 @@ impl ParamAssignmentTracker.postinit -> None {
 impl linearize_mro(
     cls: ClassType, _visiting: (set[int] | None) = None
 ) -> list[ClassType] {
+    (order, _) = c3_merge(cls, _visiting);
+    return order;
+}
+
+impl mro_is_consistent(cls: ClassType) -> bool {
+    (_, consistent) = c3_merge(cls, None);
+    return consistent;
+}
+
+impl c3_merge(
+    cls: ClassType, _visiting: (set[int] | None) = None
+) -> tuple[list[ClassType], bool] {
     if _visiting is None {
         _visiting = set();
     }
     key = id(cls.shared);
     if key in _visiting {
-        return [];
+        return ([], False);
     }
     _visiting.add(key);
     try {
@@ -582,7 +594,7 @@ impl linearize_mro(
                 }
             }
             if candidate is None {
-                break;
+                return (result, False);
             }
             result.append(candidate);
 
@@ -599,7 +611,7 @@ impl linearize_mro(
             }
             linearizations = new_linearizations;
         }
-        return result;
+        return (result, True);
     } finally {
         _visiting.discard(key);
     }

@@ -7159,7 +7159,7 @@ graph import compiler {
             E2100
         },
         passes.jsx_intrinsic_guard_pass { E1105 },
-        passes.layout_pass { E5030, W5031, W5032 },
+        passes.layout_pass { W5031, W5032 },
         passes.ownership_check_pass {
             E1301,
             E1302,
@@ -7232,6 +7232,7 @@ graph import compiler {
             E1004,
             E1005,
             E1007,
+            E1008,
             E1010,
             E1011,
             E1020,
@@ -10749,7 +10750,8 @@ graph import compiler {
             PropertyWriteKind,
             get_declared_generator_return_type,
             get_generator_yield_type,
-            is_generator_family_type
+            is_generator_family_type,
+            mro_is_consistent
         },
         tests.test_property_write_kind { PropertyWriteKind },
     ]
@@ -10853,6 +10855,8 @@ graph import compiler {
             OverloadedType,
             UnionType
         },
+        passes.layout_pass.LayoutPass._build_hierarchy
+            | passes.layout_pass.LayoutPass._layout_mro { ClassType },
         passes.layout_pass.record_interface_twins { ClassType },
         passes.layout_pass.referenced_archetype { ClassType },
         passes.layout_pass.referenced_native_name { ClassType },

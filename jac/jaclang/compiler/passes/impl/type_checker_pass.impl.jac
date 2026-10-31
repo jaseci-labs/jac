@@ -1382,6 +1382,9 @@ impl TypeCheckPass.exit_type_alias with TypeAlias exit {
 
 impl TypeCheckPass.exit_archetype with Archetype exit {
     cls_type = self.evaluator.get_type_of_class(here);
+    if isinstance(cls_type, ClassType) and not mro_is_consistent(cls_type) {
+        self.ctx.emit(E1008, node_override=here.name, name=here.name.value);
+    }
     if isinstance(cls_type, ClassType)
         and here.arch_type.name == Tok.KW_OBJECT
         and not cls_type.shared.is_from_stdlib_stub

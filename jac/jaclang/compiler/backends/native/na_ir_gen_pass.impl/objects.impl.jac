@@ -373,16 +373,12 @@ impl NaIRGenPass._visit_nonprimary_ancestor_methods(
         return;
     }
     provided_methods = collect_method_names(arch);
-    for anc in mro[1:] {
-        if layout_reg.is_primary_ancestor(arch_name, anc) {
-            anc_arch = self.arch_ast_map.get(anc);
-            if anc_arch is not None {
-                provided_methods.update(collect_method_names(anc_arch));
-            }
-        }
-    }
     for ancestor_name in mro[1:] {
         if layout_reg.is_primary_ancestor(arch_name, ancestor_name) {
+            primary_arch = self.arch_ast_map.get(ancestor_name);
+            if primary_arch is not None {
+                provided_methods.update(collect_method_names(primary_arch));
+            }
             continue;
         }
         ancestor_arch = self.arch_ast_map.get(ancestor_name);

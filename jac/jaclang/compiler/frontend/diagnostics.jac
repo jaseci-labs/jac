@@ -435,6 +435,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot assign to read-only property '{name}' (no setter defined)"
      ),
+     E1008 = _err(
+         "E1008",
+         Category.SEMANTIC,
+         "Cannot create a consistent method resolution order for '{name}'",
+         help="The base classes list an ancestor before one of its own subclasses, so"
+         " no order keeps every class ahead of its bases. Reorder the bases.",
+         blocks_codegen=True
+     ),
      E1007 = _err(
          "E1007",
          Category.SEMANTIC,
@@ -2300,11 +2308,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Symbol collision during native link: '{symbol}' is defined in both "
          "'{existing_module}' and '{new_module}'. "
          "Mark one as :priv or rename to avoid a runtime crash."
-     ),
-     E5030 = _err(
-         "E5030",
-         Category.CODEGEN,
-         "Cannot compute C3 MRO for {name}: inconsistent hierarchy"
      ),
      W5031 = _warn(
          "W5031",
