@@ -688,9 +688,8 @@ impl TypeEvaluator._validate_call_type(
         }
 
         init_method = self._lookup_class_member(caller_type, "init");
-        init_is_own = init_method is not None
-            and init_method.class_type.shared.class_name != "object";
-        if init_is_own {
+        if init_method is not None
+            and init_method.class_type.shared.class_name != "object" {
             method_ty = self._get_method_with_overloads(init_method, caller_type);
             init_match = self._validate_constructor_method(expr, method_ty);
             if init_match is None and expr.params {
