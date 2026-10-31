@@ -9213,6 +9213,7 @@ graph import compiler {
             Token,
             TupleVal,
             TypeAlias,
+            TypeParam,
             UnaryExpr,
             UniNode,
             VisitStmt,
