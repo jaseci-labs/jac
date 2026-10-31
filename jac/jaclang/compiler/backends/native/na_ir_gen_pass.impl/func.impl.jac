@@ -691,6 +691,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     } finally {
         self._leave_function(state);
     }
+    if isinstance(nd.signature, uni.FuncSignature) {
+        self._emit_default_thunks(func, nd.signature.get_parameters(), 0);
+    }
     if self._demote_method_if_unlowerable(name, func, _local_mark) {
         self._rename_demoted_symbol(name, func);
         return;

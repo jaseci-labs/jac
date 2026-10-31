@@ -882,7 +882,10 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_receiver(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None;
     def _codegen_bound_args(
-        nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
+        nd: uni.FuncCall,
+        func: ir.Function,
+        self_offset: int = 0,
+        receiver: (ir.Value | None) = None
     ) -> list[ir.Value];
 
     def _emit_pack_slot_refusal(nd: uni.FuncCall, star: str) -> None;
@@ -935,6 +938,15 @@ walker NaIRGenPass(CompilerPass) {
     ) -> None;
 
     def _default_arg_fallback(t: ir.Type) -> ir.Value;
+    def _default_thunk(func: ir.Function, slot: int, name: str) -> ir.Function;
+    def _call_default_thunk(
+        func: ir.Function, param: uni.ParamVar, slot: int, prior: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def _emit_default_thunks(
+        func: ir.Function, params: list[uni.ParamVar], base: int
+    ) -> None;
+
     def _try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None);
     def _flow_future_licensed(nd: uni.ConcurrentExpr) -> (uni.Name | None);
     def _clib_struct_layout(name: str) -> tuple[int, int, list[tuple[int, bool, int]]];

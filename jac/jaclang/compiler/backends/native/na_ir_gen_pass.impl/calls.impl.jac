@@ -270,7 +270,10 @@ impl NaIRGenPass._default_arg_fallback(t: ir.Type) -> ir.Value {
 }
 
 impl NaIRGenPass._codegen_bound_args(
-    nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
+    nd: uni.FuncCall,
+    func: ir.Function,
+    self_offset: int = 0,
+    receiver: (ir.Value | None) = None
 ) -> list[ir.Value] {
     raw: list[uni.Expr | uni.KWPair] = list(nd.params or []);
     positional: list[uni.Expr | NativeSpreadArg] = [];
@@ -501,7 +504,12 @@ impl NaIRGenPass._codegen_bound_args(
                 }
             }
             val: (ir.Value | None) = None;
-            if isinstance(chosen, NativeSpreadArg) and not chosen.is_list {
+            if chosen is sp.value
+                and chosen is not None
+                and not is_constant_default(chosen) {
+                prior = ([receiver] if receiver is not None else []) + list(args);
+                val = self._call_default_thunk(func, sp, slot, prior);
+            } elif isinstance(chosen, NativeSpreadArg) and not chosen.is_list {
                 val = chosen.value;
             } elif isinstance(chosen, NativeSpreadArg) {
                 self.emit(
@@ -4375,4 +4383,69 @@ impl NaIRGenPass._folded_ord(nd: uni.FuncCall) -> (ir.Constant | None) {
         return None;
     }
     return ir.Constant(ir.IntType(64), ord(value));
+}
+
+impl NaIRGenPass._default_thunk(
+    func: ir.Function, slot: int, name: str
+) -> ir.Function {
+    thunk_name = f"{func.name}.default.{name}";
+    found = self.llvm_module.globals.get(thunk_name);
+    if isinstance(found, ir.Function) {
+        return found;
+    }
+    fnty = ir.FunctionType(func.args[slot].type, [a.type for a in func.args[:slot]]);
+    return ir.Function(self.llvm_module, fnty, name=thunk_name);
+}
+
+impl NaIRGenPass._call_default_thunk(
+    func: ir.Function, param: uni.ParamVar, slot: int, prior: list[ir.Value]
+) -> (ir.Value | None) {
+    if slot >= len(func.args) or len(prior) != slot {
+        self.emit(
+            E5092,
+            node_override=param,
+            kind="default argument",
+            name=param.name.value,
+            help_text="A default is evaluated in the callee on each call; this call does not bind every parameter before it, so native code cannot call the default."
+        );
+        return None;
+    }
+    thunk = self._default_thunk(func, slot, param.name.value);
+    return self.builder.call(thunk, prior, name=f"default.{param.name.value}");
+}
+
+impl NaIRGenPass._emit_default_thunks(
+    func: ir.Function, params: list[uni.ParamVar], base: int
+) -> None {
+    for (i, p) in enumerate(params) {
+        if p.value is None or is_constant_default(p.value) {
+            continue;
+        }
+        slot = base + i;
+        if slot >= len(func.args) {
+            continue;
+        }
+        thunk = self._default_thunk(func, slot, p.name.value);
+        if thunk.blocks {
+            continue;
+        }
+        thunk.linkage = func.linkage;
+        state = self._enter_function(thunk);
+        try {
+            if base {
+                self._bind_function_parameter("self", thunk.args[0]);
+            }
+            for (j, earlier) in enumerate(params[:i]) {
+                self._bind_function_parameter(earlier.name.value, thunk.args[base + j]);
+            }
+            value = self._codegen_required(p.value);
+            if value is None {
+                self.builder.unreachable();
+            } else {
+                self.builder.ret(self._coerce_type(value, thunk.return_value.type));
+            }
+        } finally {
+            self._leave_function(state);
+        }
+    }
 }

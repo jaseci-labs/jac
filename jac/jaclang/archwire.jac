@@ -6764,14 +6764,16 @@ graph import compiler {
         driver.progstate { ClientArtifact, CodeGenTarget },
     ]
     frontend.const_fold ++> [
-        backends.native.na_ir_gen_pass
+        backends.native.na_ir_gen_pass | backends.py.jcir_gen_pass {
+            fold_const,
+            is_constant_default
+        },
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_const_expr
             | c_interop.c_scalar_constant
             | passes.layout_pass
             | types.enum_utils
             | types.operations.get_pow_result_type { fold_const },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_const_expr { fold_const },
         backends.native.na_ir_gen_pass.NaIRGenPass._folded_ord { fold_const },
-        backends.py.jcir_gen_pass { fold_const, is_constant_default },
     ]
     frontend.constant ++> [
         backends.es.esast_gen_pass | symbol_utils {

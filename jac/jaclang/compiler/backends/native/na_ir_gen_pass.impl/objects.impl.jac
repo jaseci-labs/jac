@@ -1185,6 +1185,7 @@ impl NaIRGenPass._codegen_method(
     } finally {
         self._leave_function(state);
     }
+    self._emit_default_thunks(func, _body_params, _base);
 
     self._demote_method_if_unlowerable(
         full_name, func, _local_mark, keep_func=_is_virtual
@@ -3343,7 +3344,8 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     args: list[ir.Value] = (
         self._codegen_bound_args(nd, func, self_offset=0)
             if _static_call
-            else [obj_val] + self._codegen_bound_args(nd, func, self_offset=1)
+            else [obj_val]
+                + self._codegen_bound_args(nd, func, self_offset=1, receiver=obj_val)
     );
 
     if self._arch_has_vtable(type_name) and not _is_mono_method and not _static_call {
