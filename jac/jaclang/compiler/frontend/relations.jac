@@ -48,6 +48,10 @@ edge NarrowedTypeOf: Expr --> TypeBase {}
 
 edge CalleeSignature: FuncCall --> TypeBase {}
 
+edge BindsArg: FuncCall --> UniNode {
+    has slot: int = 0;
+}
+
 edge EventTriggerOf: Ability --> TypeBase {}
 
 edge SharedOf: ClassType --> ClassDetailsShared {}

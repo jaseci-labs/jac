@@ -2712,6 +2712,7 @@ graph import {
             | data.serializer
             | scale.memory.context { MISSING },
         comptime { MISSING as _MISSING, ObjectField as _field },
+        lib.jaclib { CALL_DEFAULT },
         scale.sdk.spec.DeploySpec.from_config { fields },
         scale.server.sso_ext | scale.sso.oauth_session { asdict },
     ]
@@ -6771,6 +6772,7 @@ graph import compiler {
             | types.operations.get_pow_result_type { fold_const },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_const_expr { fold_const },
         backends.native.na_ir_gen_pass.NaIRGenPass._folded_ord { fold_const },
+        backends.py.jcir_gen_pass { is_constant_default },
     ]
     frontend.constant ++> [
         backends.es.esast_gen_pass | symbol_utils {
@@ -7228,6 +7230,7 @@ graph import compiler {
             E1003,
             E1004,
             E1005,
+            E1007,
             E1010,
             E1011,
             E1020,
@@ -12466,6 +12469,7 @@ graph import compiler.frontend {
     module_facts ++> kernel_analyze { ModuleFacts }
     relations ++> unitree {
         Absorbs,
+        BindsArg,
         CalleeDecl,
         CalleeSignature,
         CfgExit,
@@ -12626,8 +12630,10 @@ graph import compiler.frontend {
             Float,
             Int,
             MultiString,
+            Null,
             String,
             Token,
+            TupleVal,
             UnaryExpr,
             UniNode
         },

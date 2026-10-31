@@ -1550,6 +1550,44 @@ impl TypeCheckPass.exit_param_var with ParamVar exit {
             self.evaluator.assign_expr(here.value, default_type, declared_type);
         }
     }
+    if here.value is not None and isinstance(here.parent, FuncSignature) {
+        self._check_default_order(here.parent, here);
+    }
+}
+
+impl TypeCheckPass._check_default_order(sig: FuncSignature, param: ParamVar) -> None {
+    ordered: list[ParamVar] = list(sig.posonly_params) + list(sig.params or []);
+    if sig.varargs is not None {
+        ordered.append(sig.varargs);
+    }
+    ordered.extend(sig.kwonlyargs);
+    if sig.kwargs is not None {
+        ordered.append(sig.kwargs);
+    }
+    later_syms: set[int] = set();
+    later_names: set[str] = set();
+    seen_self = False;
+    for pv in ordered {
+        if pv is param {
+            seen_self = True;
+        }
+        if seen_self {
+            later_names.add(pv.name.value);
+            if pv.name.sym is not None {
+                later_syms.add(id(pv.name.sym));
+            }
+        }
+    }
+    reads: list[Name] = [param.value] if isinstance(param.value, Name) else [];
+    reads.extend(param.value.get_all_sub_nodes(Name));
+    for nm in reads {
+        if (nm.sym is not None and id(nm.sym) in later_syms)
+            or (nm.sym is None and nm.value in later_names) {
+            self.ctx.emit(
+                E1007, node_override=nm, param=param.name.value, name=nm.value
+            );
+        }
+    }
 }
 
 impl TypeCheckPass.exit_has_var with HasVar exit {

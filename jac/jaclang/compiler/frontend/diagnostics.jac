@@ -435,6 +435,14 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot assign to read-only property '{name}' (no setter defined)"
      ),
+     E1007 = _err(
+         "E1007",
+         Category.SEMANTIC,
+         "Default for '{param}' reads parameter '{name}', which is bound at or after it",
+         help="A default is evaluated on each call, left to right, in the function's"
+         " own scope, so it can read only the parameters declared before it.",
+         blocks_codegen=True
+     ),
      E1006 = _err(
          "E1006",
          Category.SEMANTIC,

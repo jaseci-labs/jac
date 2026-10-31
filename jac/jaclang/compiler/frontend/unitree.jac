@@ -1897,6 +1897,11 @@ node FuncCall(Expr) {
         setter(callee_signature: (TypeBase | None));
     }
 
+    has arg_binding: list[tuple[int, UniNode]] {
+        getter;
+        setter(arg_binding: list[tuple[int, UniNode]]);
+    }
+
     has target: Expr { getter; }
     has params: (Sequence[(Expr | KWPair)] | None) { getter; }
 

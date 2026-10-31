@@ -47,7 +47,9 @@ obj PrefetchedTypes {
 obj MatchArgsToParamsResult {
     has arg_params: dict[(Expr | KWPair, Parameter | None)],
         overload: FunctionType | None = None,
-        argument_errors: bool = False;
+        argument_errors: bool = False,
+        func_type: FunctionType | None = None,
+        call: FuncCall | None = None;
 }
 
 glob MAX_LISTED_OVERLOADS: int = 4,
@@ -737,6 +739,7 @@ walker TypeEvaluator {
     def _find_symbol_by_key(key: str, condition: Expr) -> Symbol | None;
     def classify_condition(condition: Expr) -> ConditionInfo | None;
     def flow_pred_never_returns(pred: UniCFGNode) -> bool;
+    def _record_call_binding(args: MatchArgsToParamsResult) -> None;
     def flow_edge_live(pred: UniCFGNode, succ: UniCFGNode) -> bool;
     def match_is_exhaustive(stmt: MatchStmt) -> bool;
     def _pattern_covers_its_type(pat: MatchPattern) -> bool;

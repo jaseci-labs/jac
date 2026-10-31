@@ -676,6 +676,8 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
             ret_type = func.return_value.type;
             if isinstance(ret_type, ir.VoidType) {
                 self.builder.ret_void();
+            } elif isinstance(ret_type, (ir.IntType, ir.DoubleType)) {
+                self.builder.unreachable();
             } else {
                 self.builder.ret(self._zero_const(ret_type));
             }

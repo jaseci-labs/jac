@@ -47,6 +47,7 @@ walker FlowCheckPass(CompilerPass) {
 
     def _check_frame(fr: FrameFlow) -> None;
     def _solve_finally_bodies(fr: FrameFlow) -> None;
+    def _check_defaults(fr: FrameFlow) -> None;
     def _encloses(outer: UniNode, nd: UniNode) -> bool;
     def _effect(
         fr: FrameFlow, nd: UniCFGNode, da: set[SymId], check: bool

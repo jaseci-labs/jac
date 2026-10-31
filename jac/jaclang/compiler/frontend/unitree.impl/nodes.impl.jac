@@ -3662,6 +3662,19 @@ impl FuncCall.callee_signature.setter(callee_signature: (TypeBase | None)) {
     }
 }
 
+impl FuncCall.arg_binding.getter -> list[tuple[int, UniNode]] {
+    binds = [edge self->:BindsArg:->];
+    args = [self->:BindsArg:->];
+    return [(bind.slot, arg) for (bind, arg) in zip(binds, args)];
+}
+
+impl FuncCall.arg_binding.setter(arg_binding: list[tuple[int, UniNode]]) {
+    del [edge self->:BindsArg:->];
+    for (slot, arg) in arg_binding {
+        self +>:BindsArg(slot=slot):+> arg;
+    }
+}
+
 impl Import.absorbed_mod.getter -> (Module | None) {
     found = [self->:Absorbs:->];
     return found[0] if found else None;

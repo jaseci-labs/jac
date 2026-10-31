@@ -195,8 +195,23 @@ impl FlowCheckPass._check_frame(fr: FrameFlow) -> None {
         fr.tracked
     );
     self._solve_finally_bodies(fr);
+    self._check_defaults(fr);
     for nd in fr.nodes {
         self._effect(fr, nd, self._read_state(fr, nd), True);
+    }
+}
+
+impl FlowCheckPass._check_defaults(fr: FrameFlow) -> None {
+    decl = fr.owner.decl_link if isinstance(fr.owner, ImplDef) else fr.owner;
+    if not isinstance(decl, Ability) or not isinstance(decl.signature, FuncSignature) {
+        return;
+    }
+    sig = decl.signature;
+    empty: set[SymId] = set();
+    for param in list(sig.posonly_params) + list(sig.params or []) + list(sig.kwonlyargs) {
+        if param.value is not None {
+            self._eval_all(fr, param.value, empty, True);
+        }
     }
 }
 
