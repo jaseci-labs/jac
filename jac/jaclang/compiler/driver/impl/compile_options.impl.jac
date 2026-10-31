@@ -105,7 +105,10 @@ impl CompileOptions.codegen_identity -> str {
             f"app_kind={self.app_kind}"
         ]
     )
-        + ("" if self.na_move_flow else ";move_flow=0");
+        + ("" if self.na_move_flow else ";move_flow=0")
+        + (
+            f";client_root={self.client_source_root}" if self.client_source_root else ""
+        );
 }
 
 impl CompileOptions.codegen_fingerprint -> str {
@@ -171,7 +174,10 @@ impl CompileOptions.dependency_projection(path: str) -> str {
             f"default_cs={self.default_codespace}",
             f"ui={self.ui}"
         ]
-    );
+    )
+        + (
+            f";client_root={self.client_source_root}" if self.client_source_root else ""
+        );
 }
 
 impl CompileOptions.module_projection -> str {

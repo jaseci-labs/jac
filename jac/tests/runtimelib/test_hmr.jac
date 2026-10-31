@@ -885,6 +885,9 @@ obj _FakeJcc {
         compiled_dir: str;
 
     def _output_path_for(source_path: any, base_dir: any) -> Path {
+        if not str(source_path).endswith('.jac') {
+            return Path(self.compiled_dir) / Path(source_path).name;
+        }
         return self.out_path;
     }
 

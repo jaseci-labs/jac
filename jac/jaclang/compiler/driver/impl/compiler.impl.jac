@@ -1210,7 +1210,12 @@ impl JacCompiler._get_client_artifact(
     mark = len(actual_program.errors_had);
     if not has_live_tree and not actual_program.internal {
         (handled, _) = self._adopt_kernel_compile(
-            full_target, actual_program, CompileOptions(skip_native_engine=True)
+            full_target,
+            actual_program,
+            CompileOptions(
+                skip_native_engine=True,
+                client_source_root=actual_program.options.client_source_root
+            )
         );
         if len(actual_program.errors_had) > mark {
             return None;

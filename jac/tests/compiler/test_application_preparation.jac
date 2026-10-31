@@ -387,6 +387,125 @@ test "an edit prepare analyses only the edited module and matches a cold prepare
     }
 }
 
+test "a source saved while the kernel compiles is rebuilt by the next prepare" {
+    import jaclang.compiler.frontend.kernel_host as kernel_host;
+    import jaclang.project.kernel_compile as kernel_compile;
+    import from jaclang.compiler.driver.pass_driver { compile_progress }
+    real_read = kernel_host.read_utf8_source;
+    real_compile = kernel_compile.kernel_compile_application;
+    # The native kernel runs its own runtime, so prepare's progress listener
+    # never hears its compiles; the in-process kernel must not either.
+    def unheard_compile(*args: any, **kwargs: any) -> any {
+        listeners = compile_progress._listeners;
+        compile_progress._listeners = [];
+        try {
+            return real_compile(*args, **kwargs);
+        } finally {
+            compile_progress._listeners = listeners;
+        }
+    }
+    def parent(tag: str) -> str {
+        return "import from .Child { Child }\n\ndef:pub Parent() -> JsxElement {\n"
+            + f'    return <div><h1>{{"parent {tag}"}}</h1><Child/></div>;\n}}\n';
+    }
+    web_app = {
+        'jac.toml': '[project]\nname="midsave"\nkind="web-app"\nentry-point="main"\n',
+        'main.jac': "import from .components.Parent { Parent }\n\n"
+            + "def:pub app -> JsxElement {\n    <Parent/>\n}\n",
+        'components/Parent.jac': parent('v0'),
+        'components/Child.jac': 'def:pub Child() -> JsxElement {\n    return <span>{"child"}</span>;\n}\n'
+    };
+    server_app = {
+        'main.jac': "import from mods.b { b_value }\n"
+            + "walker:pub Total { can go with Root entry { report b_value(); } }\n",
+        'mods/a.jac': "def:pub a_value(x: int) -> int { return x; }\n",
+        'mods/b.jac': "import from mods.a { a_value }\nnode Item { has n: int = 0; }\n"
+            + "def:pub b_value -> int { return a_value(1) + Item(n=2).n; }\n"
+    };
+    # (case, client app, files, edit before the racing prepare, file whose read
+    # triggers the save, the save)
+    cases = [
+        (
+            "a client module the kernel read",
+            True,
+            web_app,
+            ('components/Parent.jac', parent('v1')),
+            'Parent.jac',
+            ('components/Parent.jac', parent('v2'))
+        ),
+        (
+            "a module served from the last prepare",
+            False,
+            server_app,
+            ('mods/b.jac', server_app['mods/b.jac'].replace("n=2", "n=3")),
+            'b.jac',
+            (
+                'mods/a.jac',
+                "def:pub a_value(x: int) -> int { return x + 7; }\n"
+                    + "walker:pub Extra { can go with Root entry { report 7; } }\n"
+            )
+        )
+    ];
+    for (label, client, files, edit, trigger, save) in cases {
+        tmp = tempfile.mkdtemp(prefix="jac-prepared-kernel-midsave-");
+        base = Path(tmp);
+        path = base / 'main.jac';
+        saved: list[bool] = [];
+        def saving_read(source: str, *rest: any) -> (str | None) {
+            text = real_read(source, *rest);
+            if not saved and os.path.basename(source) == trigger {
+                saved.append(True);
+                (base / save[0]).write_text(save[1]);
+            }
+            return text;
+        }
+        def prepare -> any {
+            try {
+                return prepare_application(str(path), JacProgram(), tmp, client=client);
+            } finally {
+                forget(str(path));
+            }
+        }
+        try {
+            for (rel, text) in files.items() {
+                (base / rel).parent.mkdir(parents=True, exist_ok=True);
+                (base / rel).write_text(text);
+            }
+            with patch("jaclang.project.kernel_compile._IN_PROCESS", [True]) {
+                prepare();
+                (base / edit[0]).write_text(edit[1]);
+                raised = False;
+                try {
+                    with patch.object(kernel_host, 'read_utf8_source', saving_read), patch.object(
+                        kernel_compile, 'kernel_compile_application', unheard_compile
+                    ) {
+                        prepare();
+                    }
+                } except RuntimeError as error {
+                    raised = 'Sources changed during preparation' in str(error);
+                }
+                assert saved , f"{label}: the kernel never read {trigger}";
+                assert raised , f"{label}: a save during the compile did not fail the prepare";
+                followup = prepare();
+                built = base / '.jac/client/compiled/components/Parent.js';
+                rebuilt = 'parent v2' in built.read_text() if client else True;
+                shutil.rmtree(base / '.jac' / 'cache' / 'applications');
+                cold = prepare();
+            }
+            assert rebuilt , f"{label}: Parent.js was not rebuilt from the saved Parent.jac";
+            assert followup.manifests == cold.manifests , (
+                f"{label}: the next prepare kept metadata from before the save"
+            );
+            assert followup.code == cold.code , (
+                f"{label}: the next prepare kept code from before the save"
+            );
+        } finally {
+            forget(str(path));
+            shutil.rmtree(tmp, ignore_errors=True);
+        }
+    }
+}
+
 test "an edit reached through a plain import and an empty helper match a cold prepare" {
     tmp = tempfile.mkdtemp(prefix="jac-prepared-kernel-plain-");
     base = Path(tmp);

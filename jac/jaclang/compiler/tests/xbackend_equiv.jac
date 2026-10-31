@@ -166,7 +166,7 @@ def run_js_module_fixture(fixture: str, func_name: str) -> dict[str, any] {
     prog.compile(str(source), no_cgen=True);
     assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
 
-    def compile_module(path: Path) -> ClientArtifact {
+    def compile_module(path: Path, source_root: Path | None = None) -> ClientArtifact {
         artifact = prog._get_compiler().get_client_artifact(str(path), prog);
         assert artifact is not None , f"no client artifact for {path}: "
             + "\n".join(str(e) for e in prog.errors_had);

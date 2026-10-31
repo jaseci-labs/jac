@@ -514,6 +514,10 @@ graph import {
     compiler.backends.es.client_kernel_cache ++> project.compiler_host.ProjectHost.client_osp_core_js {
         osp_core_js
     }
+    compiler.backends.es.client_paths ++> [
+        client.jac_client_compiler { client_output_path, jac_js_path },
+        client.targets.react_native.build { jac_js_path },
+    ]
     type compiler.backends.es.framework_backend ++> client.client_surface {
         FrameworkBackend
     }
@@ -712,6 +716,9 @@ graph import {
         packages.api.package_surface { compilation_scope },
         project.compiler_host.ProjectHost.lint_settings { context_app },
     ]
+    compiler.driver.compilation_context --> client.client_bundle.ClientBundleBuilder._compile_to_js {
+        context_program
+    }
     compiler.driver.compile_options ++> [
         cli.commands.analysis._check_file_job
             | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck
@@ -1806,7 +1813,6 @@ graph import {
             is_jac,
             is_retired_native_marker
         },
-        client.jac_client_compiler { ANNEX_SUFFIXES },
         compiler.driver.bccache { ANNEX_FOLDER, MODULE_SUFFIXES },
         compiler.tools.code_intel {
             ANNEX_FOLDER,
@@ -4641,6 +4647,7 @@ graph import byllm {
             StreamEvent,
             Tool,
             ToolCall,
+            ToolCallResultMsg,
             content_preview,
             image_resp_kind,
             reroute_tool_images_to_user_message,
@@ -4653,7 +4660,6 @@ graph import byllm {
             MessageType,
             Text,
             Tool,
-            ToolCallResultMsg,
             as_media_list,
             image_resp_kind
         },
@@ -5158,7 +5164,7 @@ graph import client {
             __overlaps as cache___overlaps
         },
     ]
-    jac_client_compiler ++> compiler | targets.react_native.build { JacClientCompiler }
+    jac_client_compiler ++> compiler { JacClientCompiler }
     jac_to_js ++> jac_client_compiler { JacToJSCompiler }
     js_engine --> js_runtime.js_runtime_path { node_executable }
     js_runtime ++> [
@@ -7499,7 +7505,8 @@ graph import compiler {
         types.type_evaluator.TypeEvaluator.get_type_of_module { active_host },
     ]
     frontend.host --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable
+        backends.es.client_paths.client_output_path
+            | backends.native.na_ir_gen_pass.NaIRGenPass._opaque_field_if_unlowerable
             | driver.compilation_context.context_program
             | driver.compile_options.CompileOptions.effective_triple
             | driver.jir._memoized
@@ -7515,7 +7522,8 @@ graph import compiler {
             | types.type_evaluator.TypeEvaluator.get_type_of_module_item {
             active_host
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._place_unit_python
+        backends.es.client_paths.jac_js_path
+            | backends.native.na_ir_gen_pass.NaIRGenPass._place_unit_python
             | driver.jir._project_env_fingerprint_uncached
             | driver.program.JacProgram.compile
             | passes.ownership_check_pass.OwnershipCheckPass._nogc_resolve_provenance {
@@ -10980,6 +10988,7 @@ graph import compiler.backends.es {
         active_framework,
         resolve_framework_backend
     }
+    client_paths ++> esast_gen_pass { relative_js_specifier }
     es_unparse ++> [
         client_kernel_cache._lower { es_to_js },
         esast_gen_pass { JSCodeGenerator, es_to_js },
@@ -11016,7 +11025,7 @@ graph import compiler.backends.es {
         build_osp_core_js,
         build_osp_driver_js
     }
-    js_paths ++> esast_gen_pass { convert_to_js_import_path, relative_js_specifier }
+    js_paths ++> esast_gen_pass { convert_to_js_import_path }
     jsx_processor ++> esast_gen_pass { EsJsxProcessor }
     primitives_es ++> [
         esast_gen_pass | jac_runtime_js._build_types_runtime_js {
@@ -11945,7 +11954,8 @@ graph import compiler.driver {
             read_sections
         },
         application._identity { compiler_generation },
-        application._prepare_revision { ct_dep_digest },
+        application._kernel_units { hold_compiled_content },
+        application._prepare_revision { content_on_disk, ct_dep_digest },
         application._prepare_sealed {
             HEADER_SIZE,
             PRECOMPILE_SENTINEL,
