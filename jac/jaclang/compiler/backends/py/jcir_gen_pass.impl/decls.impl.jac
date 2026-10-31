@@ -520,9 +520,9 @@ impl JcirGenPass.exit_func_signature with FuncSignature exit {
             else [];
     if posonlyargs {
         posonlyargs = params + posonlyargs;
-        params = [self.val(i) for i in here.params];
+        params = [self.val(i) for i in (here.params or [])];
     } else {
-        params = params + [self.val(i) for i in here.params];
+        params = params + [self.val(i) for i in (here.params or [])];
     }
     defaults: list[CgNode] = [];
     all_params: list[UniNode] = list(here.posonly_params) + list(here.params);

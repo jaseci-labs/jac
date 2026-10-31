@@ -476,7 +476,9 @@ impl JcirGenPass._function_expr_from_def(
         parent = jac_node.parent;
         immediate = isinstance(parent, FuncCall) and parent.target is jac_node;
         has_defaults = jac_node.signature is not None
-            and any(param.value is not None for param in jac_node.signature.params);
+            and any(
+                param.value is not None for param in (jac_node.signature.params or [])
+            );
         if not immediate or has_defaults {
             factory_name = self._next_lambda_name();
             args = self.nod(

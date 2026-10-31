@@ -3041,7 +3041,7 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.InForStmt,
         kind: str,
         collection_val: ir.Value,
-        helpers: (dict[str, any] | None),
+        helpers: dict[str, any],
         var_names: list[str],
         var_types: list[ir.Type],
         rc_vars: bool,
@@ -3607,7 +3607,7 @@ walker NaIRGenPass(CompilerPass) {
     def _runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value | None);
     def _runtime_class_arms(
         expr: (uni.UniNode | None)
-    ) -> tuple[list[ir.Value] | None, ir.Value | None];
+    ) -> tuple[list[ir.Value], ir.Value | None];
 
     def _isinstance_operand_arch(nd: uni.FuncCall, operand: ir.Value) -> (str | None);
     def _emit_isinstance_runtime(

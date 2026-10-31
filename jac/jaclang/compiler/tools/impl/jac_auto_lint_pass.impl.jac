@@ -641,7 +641,7 @@ impl JacAutoLintPass._convert_hasattr_to_null_ok(
     if nd.params is None or len(nd.params) != 2 {
         return None;
     }
-    return self._funccall_to_null_safe(nd, False);
+    return self._funccall_to_null_safe(nd.params, False);
 }
 
 impl JacAutoLintPass._is_matching_attr_access(
@@ -717,14 +717,14 @@ impl JacAutoLintPass._convert_getattr_to_null_ok(
     if not isinstance(default_expr, uni.Null) {
         return None;
     }
-    return self._funccall_to_null_safe(nd, True);
+    return self._funccall_to_null_safe(nd.params, True);
 }
 
 impl JacAutoLintPass._funccall_to_null_safe(
-    fc: uni.FuncCall, require_valid_identifier: bool
+    args: Sequence[(uni.Expr | uni.KWPair)], require_valid_identifier: bool
 ) -> (uni.AtomTrailer | None) {
-    obj_expr = fc.params[0];
-    attr_expr = fc.params[1];
+    obj_expr = args[0];
+    attr_expr = args[1];
     if isinstance(obj_expr, uni.KWPair) {
         return None;
     }
@@ -1207,14 +1207,15 @@ impl JacAutoLintPass._fix_impl_signature_mismatch(impl_node: uni.ImplDef) -> Non
         decl = impl_node.decl_link;
     } else {
         arch_node = self._impl_owner_archetype(impl_node);
-        if arch_node is None {
+        if arch_node is None or not isinstance(arch_node.body, list) {
             return;
         }
+        arch_members = arch_node.body;
         ability_name = impl_node.target[-1].sym_name if impl_node.target[-1] else None;
         if not ability_name {
             return;
         }
-        for member in arch_node.body {
+        for member in arch_members {
             if isinstance(member, uni.Ability) {
                 if member.name_ref and member.name_ref.sym_name == ability_name {
                     decl = member;
@@ -1345,8 +1346,11 @@ impl JacAutoLintPass._impl_owner_archetype(
             return None;
         }
         nested: uni.Archetype | None = None;
-
-        for member in arch_node.body {
+        arch_members = arch_node.body;
+        if not isinstance(arch_members, list) {
+            return None;
+        }
+        for member in arch_members {
             if isinstance(member, uni.Archetype) {
                 if member.name_spec and member.name_spec.sym_name == nested_name {
                     nested = member;
@@ -3497,8 +3501,11 @@ impl JacAutoLintPass._property_impl_roles(
     arch: uni.Archetype, prop_name: str
 ) -> dict[str, list[uni.Ability]] {
     roles: dict[str, list[uni.Ability]] = {};
-
-    for member in arch.body {
+    arch_members = arch.body;
+    if not isinstance(arch_members, list) {
+        return roles;
+    }
+    for member in arch_members {
         if not isinstance(member, uni.ArchHas) {
             continue;
         }
@@ -3514,7 +3521,7 @@ impl JacAutoLintPass._property_impl_roles(
     if roles {
         return roles;
     }
-    for member in arch.body {
+    for member in arch_members {
         if not isinstance(member, uni.Ability) {
             continue;
         }

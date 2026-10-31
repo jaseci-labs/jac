@@ -687,21 +687,23 @@ impl TypeEvaluator._validate_call_type(
             }
         }
 
-        if matched_method is None {
-            init_method = self._lookup_class_member(caller_type, "init");
-            is_from_object = init_method is not None
-                and init_method.class_type.shared.class_name == "object";
-
-            if init_method and not is_from_object {
-                method_ty = self._get_method_with_overloads(init_method, caller_type);
-                matched_method = self._validate_constructor_method(expr, method_ty);
-                if matched_method is None and expr.params {
-                    init_sym_type = self.get_type_of_symbol(init_method.symbol);
-                    if isinstance(init_sym_type, FunctionType) {
-                        self.match_args_to_params(expr.params, expr, init_sym_type);
-                    }
+        init_method = self._lookup_class_member(caller_type, "init");
+        init_is_own = init_method is not None
+            and init_method.class_type.shared.class_name != "object";
+        if init_is_own {
+            method_ty = self._get_method_with_overloads(init_method, caller_type);
+            init_match = self._validate_constructor_method(expr, method_ty);
+            if init_match is None and expr.params {
+                init_sym_type = self.get_type_of_symbol(init_method.symbol);
+                if isinstance(init_sym_type, FunctionType) {
+                    self.match_args_to_params(expr.params, expr, init_sym_type);
                 }
-            } elif caller_type.is_data_class() {
+            }
+            if init_match is not None {
+                matched_method = init_match;
+            }
+        } elif matched_method is None {
+            if caller_type.is_data_class() {
                 expr.callee_signature = self._validate_constructor_method(
                     expr, self._create_object_init_method(caller_type)
                 );

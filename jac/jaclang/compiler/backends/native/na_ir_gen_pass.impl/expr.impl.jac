@@ -936,7 +936,7 @@ impl NaIRGenPass._codegen_kernel_spawn(
     }
     _argtys = osp_spawn_fn.function_type.args;
 
-    _h = self.list_helpers.get("i64");
+    _h = self.list_helpers["i64"];
     _starts = self._rc_call_with_ctx(
         _h["new"], [], op="new", loc="", name="spawn.starts"
     );

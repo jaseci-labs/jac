@@ -388,7 +388,7 @@ impl NaIRGenPass._list_get_of_value(value: ir.Value) -> (ir.Function | None) {
 
 impl NaIRGenPass._get_struct_size(struct_type: ir.LiteralStructType) -> int {
     total: int = 0;
-    for elem in struct_type.elements {
+    for elem in struct_type.members() {
         if isinstance(elem, ir.IntType) {
             total += elem.width // 8;
         } elif isinstance(elem, ir.DoubleType) {
@@ -554,7 +554,7 @@ impl NaIRGenPass._coerce_tuple_to_struct(
     out: ir.Value = ir.Constant(target_struct, ir.Undefined);
     for i in range(len(target_struct.members())) {
         fld = self.builder.extract_value(val, i, name=f"tcoerce.{i}");
-        tgt_ty = target_struct.elements[i];
+        tgt_ty = target_struct.members()[i];
         if fld.type != tgt_ty {
             fld = self._coerce_type(fld, tgt_ty);
         }

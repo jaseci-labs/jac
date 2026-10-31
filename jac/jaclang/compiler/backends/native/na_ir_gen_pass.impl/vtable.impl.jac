@@ -1592,8 +1592,8 @@ impl NaIRGenPass._is_runtime_class_tuple(t: any) -> bool {
 
 impl NaIRGenPass._runtime_class_arms(
     expr: (uni.UniNode | None)
-) -> tuple[list[ir.Value] | None, ir.Value | None] {
-    none_pair: tuple[list[ir.Value] | None, ir.Value | None] = (None, None, );
+) -> tuple[list[ir.Value], ir.Value | None] {
+    none_pair: tuple[list[ir.Value], ir.Value | None] = ([], None, );
     one = self._runtime_class_value(expr);
     if one is not None {
         return ([one], None, );
@@ -1607,7 +1607,7 @@ impl NaIRGenPass._runtime_class_arms(
     }
     i8p = ir.IntType(8).as_pointer();
     if "ptr" in self.list_types and val.type == self.list_types["ptr"].as_pointer() {
-        return (None, val, );
+        return ([], val, );
     }
     st = self._tuple_struct_of_value(val);
     if st is None {
@@ -1618,7 +1618,7 @@ impl NaIRGenPass._runtime_class_arms(
     }
     out: list[ir.Value] = [];
     for i in range(len(st.members())) {
-        if st.elements[i] != i8p {
+        if st.members()[i] != i8p {
             return none_pair;
         }
         out.append(self.builder.extract_value(val, i, name="isa.tgt"));

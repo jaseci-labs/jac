@@ -5956,18 +5956,15 @@ test "cross-pathway: glob scoping is identical in the na and sv pathways" {
     ];
 
     # --- sv pathway: identical source, entry block prints the same sequence ---
-    sv_src = base_src.replace(
-        "with entry {}",
-        "with entry {\n"
-            + "    print(bump_local());\n"
-            + "    print(read_global());\n"
-            + "    print(bump_global());\n"
-            + "    print(read_global());\n"
-            + "    print(bump_early());\n"
-            + "    print(read_global());\n"
-            + "}"
-    );
-    assert "with entry {\n" in sv_src , "fixture entry block not substituted";
+    sv_src = base_src
+        + "\nwith entry {\n"
+        + "    print(bump_local());\n"
+        + "    print(read_global());\n"
+        + "    print(bump_global());\n"
+        + "    print(read_global());\n"
+        + "    print(bump_early());\n"
+        + "    print(read_global());\n"
+        + "}\n";
     sv_out = run_sv_source(sv_src);
     sv_results = [int(tok) for tok in sv_out.split()];
 

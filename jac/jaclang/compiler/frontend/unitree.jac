@@ -2585,6 +2585,10 @@ def lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | N
 
 def lookup_block_binding(scope: UniScopeNode, name: str) -> (Symbol | None);
 
+def declare_global_vars(nd: GlobalVars) -> bool;
+
+def forward_glob_binding(mod: Module, name: str) -> (Symbol | None);
+
 def rebind_or_def_insert(
     target: AstSymbolNode, py_scope: UniScopeNode, single_decl: str
 ) -> None;

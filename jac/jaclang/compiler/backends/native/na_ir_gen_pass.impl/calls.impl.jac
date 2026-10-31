@@ -504,7 +504,7 @@ impl NaIRGenPass._codegen_bound_args(
             val: (ir.Value | None) = None;
             if chosen is sp.value
                 and chosen is not None
-                and not is_constant_default(chosen) {
+                and not is_constant_default(sp.value) {
                 prior = ([receiver] if receiver is not None else []) + list(args);
                 val = self._call_default_thunk(func, sp, slot, prior);
             } elif isinstance(chosen, NativeSpreadArg) and not chosen.is_list {

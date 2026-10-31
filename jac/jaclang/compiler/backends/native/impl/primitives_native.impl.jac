@@ -3273,7 +3273,7 @@ impl NativeListEmitter._emit_key_sort(
     key_node: UniNode
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
-    helpers = p.list_helpers.get(ctx.type_key);
+    helpers = p.list_helpers[ctx.type_key];
     b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);

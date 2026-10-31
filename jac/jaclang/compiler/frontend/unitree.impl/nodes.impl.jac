@@ -3756,7 +3756,7 @@ impl lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | 
     scope = find_python_scope_node_of(from_scope);
     while scope is not None {
         if isinstance(scope, Module) {
-            sym = scope.names_in_scope.get(name);
+            sym = scope.names_in_scope.get(name) or forward_glob_binding(scope, name);
             if sym is not None and sym.sym_type == SymbolType.MOD_VAR {
                 return sym;
             }
@@ -3769,6 +3769,33 @@ impl lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | 
             }
         }
         scope = find_python_scope_node_of(scope);
+    }
+    return None;
+}
+
+impl declare_global_vars(nd: GlobalVars) -> bool {
+    for assign in nd.assignments {
+        for target in assign.target {
+            if not isinstance(target, AstSymbolNode) {
+                return False;
+            }
+            target.name_spec._sym_category = SymbolType.MOD_VAR;
+            target.sym_tab.def_insert(target, access_spec=nd, single_decl='global var');
+        }
+    }
+    return True;
+}
+
+impl forward_glob_binding(mod: Module, name: str) -> (Symbol | None) {
+    for stmt in mod.body {
+        if isinstance(stmt, GlobalVars)
+            and any(
+                isinstance(target, AstSymbolNode) and target.sym_name == name
+                for assign in stmt.assignments for target in assign.target
+            ) {
+            declare_global_vars(stmt);
+            return mod.names_in_scope.get(name);
+        }
     }
     return None;
 }

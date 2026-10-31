@@ -45,7 +45,7 @@ walker JacAutoLintPass(TreePass) {
     def _convert_hasattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
     def _convert_getattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
     def _funccall_to_null_safe(
-        fc: uni.FuncCall, require_valid_identifier: bool
+        args: Sequence[(uni.Expr | uni.KWPair)], require_valid_identifier: bool
     ) -> (uni.AtomTrailer | None);
 
     def _replace_child_in_parent(

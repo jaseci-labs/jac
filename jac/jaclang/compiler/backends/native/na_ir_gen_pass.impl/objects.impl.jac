@@ -4549,7 +4549,7 @@ impl NaIRGenPass._emit_field_store(
         }
         return;
     }
-    field_types = self.struct_field_types.get(type_name);
+    field_types = self.struct_field_types[type_name];
     idx = field_indices[field_name];
     ftype = field_types[field_name];
 

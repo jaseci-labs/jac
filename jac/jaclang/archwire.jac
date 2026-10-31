@@ -6808,7 +6808,6 @@ graph import compiler {
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable
             | passes.capability_check_pass
-            | passes.sym_tab_build_pass.SymTabBuildPass._declare_global_vars
             | types.type_evaluator.TypeEvaluator._merge_catalog_field_params
             | types.types.ClassType.is_edge_type { SymbolType },
         backends.native.na_ir_gen_pass.NaIRGenPass._c_vararg_value
@@ -9235,6 +9234,7 @@ graph import compiler {
             WithStmt,
             bind_assignment_targets,
             bind_walrus_target,
+            declare_global_vars,
             def_insert_unpacking,
             find_python_scope_node_of,
             is_walrus,

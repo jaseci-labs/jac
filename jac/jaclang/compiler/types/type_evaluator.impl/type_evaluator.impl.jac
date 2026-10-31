@@ -349,10 +349,26 @@ impl TypeEvaluator._get_type_of_expression_core(
                 tuple_inst = self._convert_to_instance(self.prefetch.tuple_class);
                 if isinstance(tuple_inst, ClassType) and expr.values {
                     elem_types_t: list[TypeBase] = [];
-                    for _val in expr.values {
+                    expected_elems: list[TypeBase] = expected_type.private.type_args
+                        if isinstance(expected_type, ClassType)
+                            and expected_type.shared.same_class(
+                                self.prefetch.tuple_class.shared
+                            )
+                            and expected_type.private.type_args
+                        else [];
+                    for (pos, _val) in enumerate(expr.values) {
+                        expected_elem: TypeBase | None = None;
+                        if expected_elems {
+                            expected_elem = self._convert_to_instance(
+                                expected_elems[pos]
+                                    if pos < len(expected_elems)
+                                    else expected_elems[-1]
+                            );
+                        }
                         et = self._container_value_type(
                             self.get_type_of_expression(
-                                _val.value if isinstance(_val, KWPair) else _val
+                                _val.value if isinstance(_val, KWPair) else _val,
+                                expected_type=expected_elem
                             ),
                             expr
                         );

@@ -467,7 +467,7 @@ impl JcirGenPass._emit_lambda_expr_body(nd: LambdaExpr, body_node: Expr) -> None
 }
 
 impl JcirGenPass._remove_lambda_param_annotations(signature: FuncSignature) -> None {
-    for param in signature.params {
+    for param in (signature.params or []) {
         if (self.outs(param) and self.val(param).cls == 'arg') {
             self.val(param).setf('annotation', None);
         }
@@ -692,7 +692,7 @@ impl JcirGenPass.exit_list_val with ListVal exit {
 
 impl JcirGenPass.exit_set_val with SetVal exit {
     self.set_out(
-        here, [self.nod('Set', ['elts'], [[self.val(i) for i in here.values]])]
+        here, [self.nod('Set', ['elts'], [[self.val(i) for i in (here.values or [])]])]
     );
 }
 

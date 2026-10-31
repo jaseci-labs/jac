@@ -660,7 +660,6 @@ impl NaIRGenPass._load_native_unit_module(path: str) -> (uni.Module | None) {
             real,
             options=_UnitOpts(
                 no_cgen=True,
-                symtab_ir_only=True,
                 aot_mode=True,
                 default_codespace='native',
                 force_codespace='native',
@@ -951,7 +950,7 @@ impl NaIRGenPass._export_native_layout -> None {
     }
 
     for (tkey, ttype) in self.tuple_types.items() {
-        elem_types = [self._llvm_type_str(e, pointee_names) for e in ttype.elements];
+        elem_types = [self._llvm_type_str(e, pointee_names) for e in ttype.members()];
         _no_hints: list[str | None] = [];
         for _ in elem_types {
             _no_hints.append(None);
@@ -1276,9 +1275,7 @@ impl NaIRGenPass._native_imports(
         if imported_mod is None and os.path.isfile(full_path) {
             _saved_opts = self.prog.options;
             try {
-                imported_mod = self.prog.compile(
-                    full_path, no_cgen=True, symtab_ir_only=True
-                );
+                imported_mod = self.prog.compile(full_path, no_cgen=True);
             } except Exception {
                 imported_mod = None;
             } finally {

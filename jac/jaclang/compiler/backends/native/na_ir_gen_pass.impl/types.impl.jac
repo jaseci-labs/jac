@@ -5902,7 +5902,7 @@ impl NaIRGenPass._sort_key_supported_d(ty: ir.Type, depth: int) -> bool {
     if isinstance(ty, ir.LiteralStructType) {
         for tt in self.tuple_types.values() {
             if ty == tt {
-                for et in tt.elements {
+                for et in tt.members() {
                     if not self._sort_key_supported_d(et, depth + 1) {
                         return False;
                     }

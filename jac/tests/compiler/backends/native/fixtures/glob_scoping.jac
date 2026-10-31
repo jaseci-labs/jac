@@ -9,8 +9,8 @@ The native pathway must follow the identical rule so that any `.jac` program
 runs with the same observable semantics in the sv pathway (the na ⊆ sv
 guarantee).
 
-This file is pathway-neutral Jac: the cross-pathway test reads it, swaps the
-empty entry block for a printing one, and runs the exact same source through
+This file is pathway-neutral Jac: the cross-pathway test reads it, appends a
+printing entry block, and runs the exact same source through
 the sv pathway, asserting both pathways agree.
 """
 

@@ -1077,7 +1077,7 @@ impl NaIRGenPass._c_const_struct(expr: uni.Expr, sname: str) -> (ir.Constant | N
     struct_type = self.struct_types[sname];
     values: list[ir.Constant] = [];
     for (i, field) in enumerate(fields) {
-        elem = struct_type.elements[i];
+        elem = struct_type.members()[i];
         arg = given.get(field.name.sym_name);
         if arg is None {
             values.append(ir.Constant(elem, None));

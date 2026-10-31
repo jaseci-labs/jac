@@ -910,7 +910,7 @@ Cannot return int, expected bool
              ]
          ),
          (
-             "exception_obj_constructs_through_field_init",
+             "exception_obj_constructs_through_its_init",
              "checker",
              "checker_exception_fields_init.jac",
              2,

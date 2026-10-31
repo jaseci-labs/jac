@@ -136,7 +136,7 @@ impl DocIRGenPass.exit_jsx_element with uni.JsxElement exit {
             if isinstance(kid, uni.JsxElementName)
         ];
         name_node = name_kids[0] if name_kids else None;
-        attr_docs = [attr.gen.doc_ir for attr in here.attributes];
+        attr_docs = [attr.gen.doc_ir for attr in (here.attributes or [])];
         parts: list[doc.DocType] = [start_token.gen.doc_ir];
         if name_node {
             parts.append(name_node.gen.doc_ir);
@@ -2300,7 +2300,7 @@ impl DocIRGenPass._rescue_lost_comments(
     if self._emitted_comment_ids is None {
         self._emitted_comment_ids = set();
     }
-    if self._rescue_nd is not nd {
+    if self._rescue_nd is not nd or self._rescue_own_ids is None {
         self._rescue_nd = nd;
         self._rescue_idx = 0;
         mod_dc = nd.gen.doc_comments;

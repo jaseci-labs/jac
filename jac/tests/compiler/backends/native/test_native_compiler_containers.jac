@@ -29,6 +29,8 @@ test "optional empty constructors keep their declared element types" {
     assert make_set(0) == 2;
     assert make_set(1) == 2;
     assert make_list() == 7;
+    in_tuple = get_func(engine, "empty_dict_in_tuple", ctypes.c_int64);
+    assert in_tuple() == 95;
 }
 
 test "dictionary comprehensions preserve key types and iteration order" {
