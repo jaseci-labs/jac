@@ -1,0 +1,165 @@
+name: JacPython compatibility
+
+# Manual only. Runs the whole upstream CPython regression suite -- every
+# regrtest module of the release pinned in jac/bootstrap/python/sources.json --
+# on JacPython and on stock CPython built from the same pin, on the same
+# runner type, and compares the two. A module or test counts against JacPython
+# only when stock CPython passes it and JacPython fails or skips it, so
+# failures the runner's environment causes on both do not. No test corpus is
+# checked in: scripts/cpython_compat.jac fetches the pinned tests into each
+# interpreter's standard library inside the job.
+#
+# The _jacpython.yml lane runs a pinned list of upstream modules as a gate on
+# pull requests; this is the full suite, for a compatibility verdict.
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner for both suites
+        type: string
+        default: blacksmith-8vcpu-ubuntu-2404
+      modules:
+        description: Space-separated regrtest modules (empty runs the full suite)
+        type: string
+        default: ""
+      resources:
+        description: regrtest -u resources
+        type: string
+        default: all,-network,-urlfetch,-gui,-audio,-largefile
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: suite (${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        python: [cpython, jacpython]
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build jac and the interpreter (cached)
+        uses: ./.github/actions/setup-jac
+        with:
+          python: ${{ matrix.python }}
+          need-build-inputs: "true"
+
+      - name: Set up Zig 0.16.0
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+          use-cache: false
+
+      # JacPython's runtime is lowered through the shim; its cache can miss
+      # even when the binary cache hits.
+      - name: Ensure the LLVMPY shim is present
+        if: matrix.python == 'jacpython'
+        working-directory: jac
+        run: |
+          set -euo pipefail
+          if ls jaclang/compiler/backends/native/llvm/libjacllvm.* >/dev/null 2>&1; then
+            exit 0
+          fi
+          zig build fetch-llvm --summary all
+          zig build jacllvm --summary all
+
+      # A binary-cache hit restores the interpreter tree by prefix; this checks
+      # its inputs against the checkout and rebuilds it only when they differ.
+      - name: Build the interpreter under test
+        working-directory: jac
+        run: zig build build-python -Dpython=${{ matrix.python }} --summary all
+
+      # Tested where it was built: build-details.json and getpath record the
+      # install prefix, and their tests check it. The caches above were saved
+      # before the suite adds its test package to this tree.
+      - name: Locate the interpreter under test
+        id: python
+        env:
+          VARIANT: ${{ matrix.python }}
+        run: |
+          set -euo pipefail
+          case "$RUNNER_OS/$RUNNER_ARCH" in
+            Linux/X64) osarch=linux-x86_64 ;;
+            Linux/ARM64) osarch=linux-aarch64 ;;
+            macOS/ARM64) osarch=macos-aarch64 ;;
+            macOS/X64) osarch=macos-x86_64 ;;
+            *) echo "::error::unsupported runner $RUNNER_OS/$RUNNER_ARCH"; exit 1 ;;
+          esac
+          prefix="$GITHUB_WORKSPACE/jac/.python-build/$VARIANT/$osarch/python/install"
+          bin=$(find "$prefix/bin" -name 'python3.*' ! -name '*-config' | head -1)
+          "$bin" -VV
+          echo "bin=$bin" >> "$GITHUB_OUTPUT"
+
+      # The orchestrator runs on the binary's own compiler, not the checkout's.
+      - uses: ./.github/actions/seal-checkout
+
+      - name: Run the CPython regression suite
+        env:
+          PYTHON: ${{ steps.python.outputs.bin }}
+          LABEL: ${{ matrix.python }}
+          RESOURCES: ${{ inputs.resources }}
+          MODULES: ${{ inputs.modules }}
+        run: |
+          set -euo pipefail -f
+          # $MODULES is split into module names on purpose.
+          jac run scripts/cpython_compat.jac run --python "$PYTHON" --label "$LABEL" \
+            --out "$RUNNER_TEMP/results" --cache "$RUNNER_TEMP/cpython-source" \
+            --resources "$RESOURCES" $MODULES
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpython-suite-${{ matrix.python }}
+          path: ${{ runner.temp }}/results
+          if-no-files-found: ignore
+
+      # The compare job runs the stock kit's binary instead of building one.
+      - name: Upload the jac binary for the comparison
+        if: matrix.python == 'cpython'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpython-compat-kit
+          path: |
+            jac/zig-out/bin/jac
+            jac/jaclang/vendor/typeshed/stdlib
+          retention-days: 1
+          if-no-files-found: error
+
+  compare:
+    needs: suite
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/jac-kit
+        with:
+          name: cpython-compat-kit
+          sealed: "true"
+
+      - name: Test the result parser and comparison
+        run: jac test scripts/cpython_compat.test.jac
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cpython-suite-*
+          path: ${{ runner.temp }}/suites
+
+      - name: Compare JacPython with stock CPython
+        run: |
+          jac run scripts/cpython_compat.jac compare \
+            "$RUNNER_TEMP/suites/cpython-suite-cpython" \
+            "$RUNNER_TEMP/suites/cpython-suite-jacpython" \
+            --summary "$GITHUB_STEP_SUMMARY" --report "$RUNNER_TEMP/report.json"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cpython-compat-report
+          path: ${{ runner.temp }}/report.json
+          if-no-files-found: ignore
