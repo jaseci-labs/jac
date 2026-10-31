@@ -384,6 +384,21 @@ test "a watch around the jac checkout reports no compiler source events" {
     assert _count_jac_files(package) == 0;
 }
 
+test "compiler-source app files can be watched under an explicit app root" {
+    import os;
+    import from jaclang.compiler.frontend.codeinfo {
+        is_compiler_source_path,
+        jaclang_pkg_root
+    }
+    package = os.path.realpath(jaclang_pkg_root());
+    app_root = os.path.join(package, "scale", "tests", "fixtures");
+    app_file = os.path.join(app_root, "test_api.jac");
+    assert is_compiler_source_path(app_file);
+    watcher = JacFileWatcher(watch_paths=[app_root], application_roots=[app_root]);
+    watcher._on_change(app_file, ChangeType.MODIFIED);
+    assert list(watcher._pending_events) == [app_file];
+}
+
 test "nothing under site-packages or a hidden directory becomes a watch root" {
     import os;
     with tempfile.TemporaryDirectory() as tmp {

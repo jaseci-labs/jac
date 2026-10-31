@@ -32,7 +32,8 @@ obj JacFileWatcher {
         _debounce_ms: int = 100,
         _running: bool = False,
         _pending_events: dict[str, FileChangeEvent] = {},
-        _last_flush: float = 0.0;
+        _last_flush: float = 0.0,
+        application_roots: list[str] = [];
 
     static has _events_lock: threading.Lock = threading.Lock();
 

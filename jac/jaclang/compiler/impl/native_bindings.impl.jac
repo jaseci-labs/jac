@@ -168,13 +168,7 @@ impl merge_sigs(
 }
 
 impl declared_symbols(scope: UniScopeNode, name: str) -> list[Symbol] {
-    found: list[Symbol] = scope.lookup_all(name, deep=False);
-    for kid in scope.kid_scope {
-        if not UniScopeNode.is_python_scoping(kid) {
-            found.extend(declared_symbols(kid, name));
-        }
-    }
-    return found;
+    return collect_member_syms(scope, name);
 }
 
 impl overload_symbols(sym: Symbol) -> list[Symbol] {

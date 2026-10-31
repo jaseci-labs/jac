@@ -570,7 +570,12 @@ impl serve(
                 watch_paths = application_watch_roots(
                     base, prepared, Jac.get_program()
                 );
-                watcher = JacFileWatcher(watch_paths=watch_paths);
+                watcher = JacFileWatcher(
+                    watch_paths=watch_paths,
+                    application_roots=[
+                        part.root for part in [prepared, *prepared.applications]
+                    ]
+                );
                 client_compiler = None;
                 if not no_client {
                     try {
