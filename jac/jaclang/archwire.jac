@@ -8749,6 +8749,7 @@ graph import compiler {
             IfElseExpr,
             IfStmt,
             ImplDef,
+            Import,
             InForStmt,
             InnerCompr,
             IterForStmt,

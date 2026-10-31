@@ -322,6 +322,15 @@ impl FlowCheckPass._effect(
         eff.always = self._eval_pattern(fr, nd.pattern, da, check)
             if nd.pattern is not None
             else set(da);
+    } elif isinstance(nd, Import) {
+        bound = set(da);
+        for nm in nd.get_all_sub_nodes(Name) {
+            sid = self._sym_of(fr, nm);
+            if sid is not None {
+                bound.add(sid);
+            }
+        }
+        eff.always = bound;
     } elif isinstance(nd, DeleteStmt) {
         cur = set(da);
         for target in nd.targets {
