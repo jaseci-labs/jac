@@ -167,10 +167,6 @@ impl _element_reqs(stmt: uni.UniNode) -> list[list[str]] {
         }
         return reqs;
     }
-    if isinstance(stmt, uni.PyInlineCode) {
-        reqs.append(['PY', 'inline ::py:: block']);
-        return reqs;
-    }
     if stmt.element_sub_nodes(uni.JsxElement) {
         reqs.append(['DOM', 'jsx construction']);
     }
@@ -406,12 +402,6 @@ impl module_anchor_reasons(module: uni.Module) -> list[str] {
     for ab in module.get_all_sub_nodes(uni.Ability) {
         if ability_delegates_to_model(ab) and not ModuleFacts.is_test_code(ab) {
             reasons.append(f"by llm ability '{ab.py_resolve_name()}'");
-            break;
-        }
-    }
-    for inline_py in module.get_all_sub_nodes(uni.PyInlineCode) {
-        if not ModuleFacts.is_test_code(inline_py) {
-            reasons.append('inline ::py:: block');
             break;
         }
     }

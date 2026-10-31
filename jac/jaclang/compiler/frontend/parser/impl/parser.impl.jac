@@ -3227,12 +3227,6 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
         return self.parse_sem_def();
     }
 
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
-    }
-
     if self.check(TokenKind.KW_WITH) {
         return self.parse_module_code();
     }
@@ -3846,12 +3840,6 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
     if self.check(TokenKind.KW_HAS)
         or (self.check(TokenKind.KW_STATIC) and self.check_peek(TokenKind.KW_HAS)) {
         return self.parse_has_stmt();
-    }
-
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
     }
 
     if self.check_any(
@@ -5588,12 +5576,6 @@ impl Parser.parse_archetype_member -> UniNode | None {
         return impl_node;
     }
 
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
-    }
-
     if self.check(TokenKind.KW_WITH) {
         self.expect(TokenKind.KW_WITH);
         with_tok = self.previous();
@@ -6335,13 +6317,6 @@ impl Parser.parse_enum -> Enum {
                 if self.match_tok(TokenKind.COMMA) {
                     body_kid.append(self.make_uni_token(self.previous()));
                 }
-            } elif self.check(TokenKind.PYNLINE) {
-                py_tok = self.expect(TokenKind.PYNLINE);
-                py_code = self.make_uni_token(py_tok);
-                pynline = PyInlineCode(code=py_code, kid=[py_code]);
-                pynline.is_enum_stmt = True;
-                body_l.append(pynline);
-                body_kid.append(pynline);
             } elif self.check(TokenKind.KW_WITH) {
                 mc = self.parse_module_code();
                 mc.is_enum_stmt = True;

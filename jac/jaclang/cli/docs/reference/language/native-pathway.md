@@ -1277,7 +1277,6 @@ The following Jac features are **not yet available** in the native codespace:
 | Async / await | No async runtime in native code |
 | Generators (`yield`) | Not yet implemented |
 | Lambda expressions | Not yet implemented |
-| Inline Python (`::py::`) | No Python interpreter in native binaries |
 | Decorators | Not yet implemented |
 | Multiple inheritance | Single inheritance only |
 | `by llm()` | Requires Python runtime for LLM calls |

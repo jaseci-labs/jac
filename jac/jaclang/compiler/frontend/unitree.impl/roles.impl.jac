@@ -217,14 +217,6 @@ impl ModuleCode.__repr__ -> str {
     return f"{type(self).__name__}";
 }
 
-impl PyInlineCode.code.getter -> Token {
-    return [self->:CodeRole:->][0];
-}
-
-impl PyInlineCode.__repr__ -> str {
-    return f"{type(self).__name__}";
-}
-
 impl Import.from_loc.getter -> (ModulePath | None) {
     found = [self->:FromLocRole:->];
     return found[0] if found else None;
@@ -1838,18 +1830,6 @@ impl ModuleCode.init(
     self.is_enum_stmt = is_enum_stmt;
     self.codespace_dual = codespace_dual;
     self._link(kid, {DocRole: doc, NameRole: name, BodyRole: body});
-    self.postinit();
-}
-
-impl PyInlineCode.init(
-    *,
-    is_enum_stmt: bool = False,
-    doc: (String | None) = None,
-    code: Token,
-    kid: Sequence[UniNode] = []
-) -> None {
-    self.is_enum_stmt = is_enum_stmt;
-    self._link(kid, {DocRole: doc, CodeRole: code});
     self.postinit();
 }
 

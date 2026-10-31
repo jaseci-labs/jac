@@ -1,5 +1,3 @@
-glob NATIVE_REJECT_NODES: tuple[type[PyInlineCode]] = (PyInlineCode, );
-
 def classify_native_import(item: UniNode) -> tuple[((str | None), bool)];
 
 def import_bound_name(item: UniNode) -> (str | None);
