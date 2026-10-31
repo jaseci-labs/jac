@@ -320,46 +320,58 @@ def undefined_exports(module, expected):
     return missing
 
 
-program = JacProgram()
-# The roots of the native object: the compiler's entry points and the C
-# entries the interpreter calls them through, the table of
-# built-in modules (its PyInit addresses root every native extension module)
-# and the object model and interpreter ports, which define interpreter types
-# and functions under their C names for C callers no Jac module imports.
-entries = [
-    root / "jaclang/compiler/backends/py/jacpython/native_api.jac",
-    root / "jaclang/compiler/backends/py/jacpython/native_bridge.jac",
-    root / "jaclang/runtime/python/inittab.jac",
-    *sorted(
-        path
-        for package in ("object_model", "interpreter")
-        for path in (root / "jaclang/runtime/python" / package).glob("*.jac")
-        if path.name != "__init__.jac"
-    ),
-    *generated,
-]
-options = CompileOptions(
-    aot_mode=True, default_codespace="native", skip_native_engine=True,
-    native_required=True,
-    memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
-    # libpython is linked by the system linker, which takes TLS relocations,
-    # and every frame arms through LLVM's builtin setjmp.
-    native_tls=True, native_sjlj=True,
-    # The runtime reads C memory through pointer views on every path, so views
-    # are not null-checked. The instruction handlers (preserve_none C entries)
-    # tail-call each other once per instruction and allocate nothing Jac
-    # manages, so they jump straight into their bodies; other C entries still
-    # escape the region a compile request runs in.
-    native_unchecked_views=True, native_direct_c_entries=True,
-    # The runtime's own heap (reference-counted objects and the storage of
-    # their lists, dicts and sets) is the mimalloc this object links, not libc
-    # malloc: one compile request allocates and frees hundreds of them, and
-    # mimalloc's thread-local heaps take frees from any thread. Memory the Jac
-    # sources allocate through their C imports (malloc, PyMem_RawMalloc) stays
-    # libc's.
-    native_heap="mi",
-)
-plan = build_link_plan(program, [str(entry) for entry in entries], options)
+def native_plan(root, triple, generated=()):
+    """The compile program, link plan and options for the native object.
+
+    Both the build and the test suite compile the same entries with the same
+    options, so the export contract the build checks is exactly what the
+    regression test exercises. Plan construction is pure Jac lowering: it
+    needs no LLVM shim and no CPython source tree.
+    """
+    program = JacProgram()
+    # The roots of the native object: the compiler's entry points and the C
+    # entries the interpreter calls them through, the table of
+    # built-in modules (its PyInit addresses root every native extension module)
+    # and the object model and interpreter ports, which define interpreter types
+    # and functions under their C names for C callers no Jac module imports.
+    entries = [
+        root / "jaclang/compiler/backends/py/jacpython/native_api.jac",
+        root / "jaclang/compiler/backends/py/jacpython/native_bridge.jac",
+        root / "jaclang/runtime/python/inittab.jac",
+        *sorted(
+            path
+            for package in ("object_model", "interpreter")
+            for path in (root / "jaclang/runtime/python" / package).glob("*.jac")
+            if path.name != "__init__.jac"
+        ),
+        *generated,
+    ]
+    options = CompileOptions(
+        aot_mode=True, default_codespace="native", skip_native_engine=True,
+        native_required=True,
+        memory_profile="rc", no_ir_cache=False, opt_level=2, native_target=triple,
+        # libpython is linked by the system linker, which takes TLS relocations,
+        # and every frame arms through LLVM's builtin setjmp.
+        native_tls=True, native_sjlj=True,
+        # The runtime reads C memory through pointer views on every path, so views
+        # are not null-checked. The instruction handlers (preserve_none C entries)
+        # tail-call each other once per instruction and allocate nothing Jac
+        # manages, so they jump straight into their bodies; other C entries still
+        # escape the region a compile request runs in.
+        native_unchecked_views=True, native_direct_c_entries=True,
+        # The runtime's own heap (reference-counted objects and the storage of
+        # their lists, dicts and sets) is the mimalloc this object links, not libc
+        # malloc: one compile request allocates and frees hundreds of them, and
+        # mimalloc's thread-local heaps take frees from any thread. Memory the Jac
+        # sources allocate through their C imports (malloc, PyMem_RawMalloc) stays
+        # libc's.
+        native_heap="mi",
+    )
+    plan = build_link_plan(program, [str(entry) for entry in entries], options) 
+    return program, plan, options
+
+
+program, plan, options = native_plan(root, triple, generated)
 if program.errors_had:
     for error in program.errors_had:
         print(error.pretty_print(), file=sys.stderr)

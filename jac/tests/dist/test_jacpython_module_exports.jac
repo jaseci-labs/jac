@@ -69,3 +69,25 @@ test "a declared-only export is not accepted as a defined entry point" {
     )
         == ["PyInit_math", "PyInit__json"];
 }
+
+test "the registered PyInit_* exports are all reachable from native_api.jac" {
+    # Compiles the real native_api.jac closure the build lowers and asserts the
+    # exact contract prepare_native checks before emitting jacpython.o. Deleting
+    # a binding wire from archwire.jac fails here, in the normal test suite,
+    # instead of only in the native build. Runs the plan construction only: pure
+    # Jac lowering, no LLVM shim and no CPython source tree needed.
+    prepare = _load_prepare();
+    built = prepare.native_plan(JAC_ROOT, "x86_64-unknown-linux-gnu");
+    program = built[0];
+    plan = built[1];
+    assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
+    assert plan.units , "native_api.jac lowered to an empty plan";
+    exports = plan.pub_exports();
+    missing = prepare.missing_exports(
+        prepare.registered_exports(Path(JAC_ROOT)), exports
+    );
+    assert not missing , (
+        "native_api.jac does not export registered PyInit_* symbols: "
+        + ", ".join(missing)
+    );
+}
