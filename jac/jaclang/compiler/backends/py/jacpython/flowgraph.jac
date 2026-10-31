@@ -1419,21 +1419,61 @@ def ac_innermost_handler(u: unverified_cfg, pos: list[int], bid: int) -> int {
     return handler;
 }
 
+# One signed native int carries 63 positive bits. Split local masks into these
+# words so the sign bit never participates in local-slot tracking.
+def ac_mask_has(mask: list[int], slot: int) -> bool {
+    if slot < 0 {
+        return False;
+    }
+    word = slot // 63;
+    if word >= len(mask) {
+        return False;
+    }
+    return (mask[word] & (1 << (slot % 63))) != 0;
+}
+
+def ac_mask_set(mask: list[int], slot: int) {
+    if slot < 0 {
+        return;
+    }
+    word = slot // 63;
+    if word < len(mask) {
+        mask[word] = mask[word] | (1 << (slot % 63));
+    }
+}
+
+def ac_mask_clear(mask: list[int], slot: int) {
+    if slot < 0 {
+        return;
+    }
+    word = slot // 63;
+    if word < len(mask) {
+        mask[word] = mask[word] & ~(1 << (slot % 63));
+    }
+}
+
 def ac_maybe_push(
     nbids: int,
-    unsafe: int,
-    masks: list[int],
+    unsafe: list[int],
+    masks: list[list[int]],
     onstack: list[bool],
-    blocks_by_id: list[basicblock | None],
+    u: unverified_cfg,
+    pos: list[int],
     worklist: list[basicblock]
 ) {
-    both = masks[nbids] | unsafe;
-    if masks[nbids] != both {
-        masks[nbids] = both;
-        if not onstack[nbids] and blocks_by_id[nbids] is not None {
-            worklist.append(blocks_by_id[nbids] as basicblock);
-            onstack[nbids] = True;
+    changed = False;
+    wi = 0;
+    while wi < len(unsafe) {
+        both = masks[nbids][wi] | unsafe[wi];
+        if masks[nbids][wi] != both {
+            masks[nbids][wi] = both;
+            changed = True;
         }
+        wi = wi + 1;
+    }
+    if changed and not onstack[nbids] and pos[nbids] >= 0 {
+        worklist.append(u.blocks[pos[nbids]]);
+        onstack[nbids] = True;
     }
 }
 
@@ -1441,20 +1481,13 @@ def ac_scan_block(
     u: unverified_cfg,
     b: basicblock,
     pos: list[int],
-    mask_in: int,
-    masks: list[int],
+    mask_in: list[int],
+    masks: list[list[int]],
     onstack: list[bool],
-    blocks_by_id: list[basicblock | None],
-    worklist: list[basicblock],
-    nlocals: int
+    worklist: list[basicblock]
 ) {
-    all_mask = 0;
-    if nlocals < 63 {
-        all_mask = (1 << nlocals) - 1;
-    } else {
-        all_mask = -1;
-    }
-    mask = mask_in & all_mask;
+    nlocals = len(u.varnames);
+    mask: list[int] = list(mask_in);
     h = ac_innermost_handler(u, pos, b.id);
     i = 0;
     n = len(b.instrs);
@@ -1462,12 +1495,10 @@ def ac_scan_block(
         ins = b.instrs[i];
         # Exception edge: the handler can start at any point of this block.
         if h >= 0 and h < len(masks) {
-            ac_maybe_push(h, mask, masks, onstack, blocks_by_id, worklist);
+            ac_maybe_push(h, mask, masks, onstack, u, pos, worklist);
         }
         if ins.target_block >= 0 and ins.opcode != OP_END_ASYNC_FOR {
-            ac_maybe_push(
-                ins.target_block, mask, masks, onstack, blocks_by_id, worklist
-            );
+            ac_maybe_push(ins.target_block, mask, masks, onstack, u, pos, worklist);
         }
         oparg = ins.oparg;
         # Fused superinstructions carry packed nibble pairs, so they are not
@@ -1481,10 +1512,11 @@ def ac_scan_block(
             f_lo = oparg & 15;
             f_hi = (oparg >> 4) & 15;
             if op == OP_STORE_FAST_STORE_FAST {
-                mask = mask & ~((1 << f_lo) | (1 << f_hi));
+                ac_mask_clear(mask, f_lo);
+                ac_mask_clear(mask, f_hi);
             } elif op == OP_STORE_FAST_LOAD_FAST {
-                mask = mask & ~(1 << f_hi);
-                if mask & (1 << f_lo) {
+                ac_mask_clear(mask, f_hi);
+                if ac_mask_has(mask, f_lo) {
                     # CHECK cannot be encoded in the fused form: split.
                     ins.opcode = OP_STORE_FAST;
                     ins.oparg = f_hi;
@@ -1499,11 +1531,11 @@ def ac_scan_block(
                     );
                     n = n + 1;
                 }
-                mask = mask & ~(1 << f_lo);
+                ac_mask_clear(mask, f_lo);
             } else {
-                if mask & ((1 << f_lo) | (1 << f_hi)) {
+                if ac_mask_has(mask, f_lo) or ac_mask_has(mask, f_hi) {
                     ins.opcode = (
-                        OP_LOAD_FAST_CHECK if mask & (1 << f_hi) else OP_LOAD_FAST
+                        OP_LOAD_FAST_CHECK if ac_mask_has(mask, f_hi) else OP_LOAD_FAST
                     );
                     ins.oparg = f_hi;
                     b.instrs.insert(
@@ -1511,7 +1543,7 @@ def ac_scan_block(
                         cinstr(
                             opcode=(
                                 OP_LOAD_FAST_CHECK
-                                    if mask & (1 << f_lo)
+                                    if ac_mask_has(mask, f_lo)
                                     else OP_LOAD_FAST
                             ),
                             oparg=f_lo,
@@ -1521,25 +1553,25 @@ def ac_scan_block(
                     );
                     n = n + 1;
                 }
-                mask = mask & ~((1 << f_lo) | (1 << f_hi));
+                ac_mask_clear(mask, f_lo);
+                ac_mask_clear(mask, f_hi);
             }
             i = i + 1;
             continue;
         }
         if oparg >= 0 and oparg < nlocals {
-            bit = 1 << oparg;
             op = ins.opcode;
             if op == OP_DELETE_FAST
                 or op == OP_LOAD_FAST_AND_CLEAR
                 or op == OP_STORE_FAST_MAYBE_NULL {
-                mask = mask | bit;
+                ac_mask_set(mask, oparg);
             } elif op == OP_STORE_FAST or op == OP_LOAD_FAST_CHECK {
-                mask = mask & ~bit;
+                ac_mask_clear(mask, oparg);
             } elif op == OP_LOAD_FAST {
-                if mask & bit {
+                if ac_mask_has(mask, oparg) {
                     ins.opcode = OP_LOAD_FAST_CHECK;
                 }
-                mask = mask & ~bit;
+                ac_mask_clear(mask, oparg);
             }
         }
         i = i + 1;
@@ -1549,7 +1581,7 @@ def ac_scan_block(
         index = pos[b.id];
         if index >= 0 and index + 1 < len(u.blocks) {
             nb = u.blocks[index + 1];
-            ac_maybe_push(nb.id, mask, masks, onstack, blocks_by_id, worklist);
+            ac_maybe_push(nb.id, mask, masks, onstack, u, pos, worklist);
         }
     }
     last = block_last_instr(b);
@@ -1559,11 +1591,8 @@ def ac_scan_block(
             is_conditional_jump(last.opcode)
             or is_unconditional_jump_opcode(last.opcode)
         ) {
-        tb = blocks_by_id[last.target_block]
-            if last.target_block < len(blocks_by_id)
-            else None;
-        if tb is not None {
-            ac_maybe_push(tb.id, mask, masks, onstack, blocks_by_id, worklist);
+        if last.target_block < len(pos) and pos[last.target_block] >= 0 {
+            ac_maybe_push(last.target_block, mask, masks, onstack, u, pos, worklist);
         }
     }
 }
@@ -1588,31 +1617,27 @@ def add_checks_for_uninitialized(u: unverified_cfg) {
         }
         bi = bi + 1;
     }
-    blocks_by_id: list[basicblock | None] = [];
-    i = 0;
-    while i < nblocks {
-        blocks_by_id.append(None);
-        i = i + 1;
+    word_count = (nlocals + 62) // 63;
+    empty_mask: list[int] = [];
+    wi = 0;
+    while wi < word_count {
+        empty_mask.append(0);
+        wi = wi + 1;
     }
-    for b in u.blocks {
-        if b.id < nblocks {
-            blocks_by_id[b.id] = b;
-        }
-    }
-    masks: list[int] = [];
+    masks: list[list[int]] = [];
     onstack: list[bool] = [];
     i = 0;
     while i < nblocks {
-        masks.append(0);
+        masks.append(list(empty_mask));
         onstack.append(False);
         i = i + 1;
     }
     worklist: list[basicblock] = [];
     # Seed 1: non-parameter locals are uninitialized at function entry.
-    start_mask = 0;
+    start_mask: list[int] = list(empty_mask);
     i = u.param_count;
     while i < nlocals {
-        start_mask = start_mask | (1 << i);
+        ac_mask_set(start_mask, i);
         i = i + 1;
     }
     entry_blk = u.blocks[0];
@@ -1623,15 +1648,7 @@ def add_checks_for_uninitialized(u: unverified_cfg) {
     bi = 0;
     while bi < len(u.blocks) {
         ac_scan_block(
-            u,
-            u.blocks[bi],
-            pos,
-            masks[u.blocks[bi].id],
-            masks,
-            onstack,
-            blocks_by_id,
-            worklist,
-            nlocals
+            u, u.blocks[bi], pos, masks[u.blocks[bi].id], masks, onstack, worklist
         );
         bi = bi + 1;
     }
@@ -1639,9 +1656,7 @@ def add_checks_for_uninitialized(u: unverified_cfg) {
         b = worklist[len(worklist) - 1];
         worklist.pop();
         onstack[b.id] = False;
-        ac_scan_block(
-            u, b, pos, masks[b.id], masks, onstack, blocks_by_id, worklist, nlocals
-        );
+        ac_scan_block(u, b, pos, masks[b.id], masks, onstack, worklist);
     }
 }
 
