@@ -1,6 +1,8 @@
 name: JacPython compatibility
 
-# Manual only. Runs the whole upstream CPython regression suite -- every
+# On request: a manual run, or a pull request carrying the
+# `native:jacpython-compat` label (each push re-runs it while the label stays).
+# Runs the whole upstream CPython regression suite -- every
 # regrtest module of the release pinned in jac/bootstrap/python/sources.json --
 # on JacPython and on stock CPython built from the same pin, on the same
 # runner type, and compares the two. A module or test counts against JacPython
@@ -24,21 +26,39 @@ on:
         type: string
         default: ""
       resources:
-        description: regrtest -u resources
+        description: regrtest -u resources (empty uses this default)
         type: string
         default: all,-network,-urlfetch,-gui,-audio,-largefile
+  pull_request:
+    branches: [main, 'release/**']
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   contents: read
 
+# A push cancels the run in flight; adding some other label must not, so that
+# (job-less) run gets a group of its own.
+concurrency:
+  group: >-
+    jacpython-compat-${{ github.event.pull_request.number || github.ref }}${{
+    github.event.action == 'labeled' && github.event.label.name != 'native:jacpython-compat'
+    && format('-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# A pull request run has no inputs; each `inputs.x || default` below falls
+# back to the dispatch default.
 jobs:
   suite:
     name: suite (${{ matrix.python }})
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'native:jacpython-compat') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'native:jacpython-compat'))
     strategy:
       fail-fast: false
       matrix:
         python: [cpython, jacpython]
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'blacksmith-8vcpu-ubuntu-2404' }}
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v5
@@ -102,7 +122,7 @@ jobs:
         env:
           PYTHON: ${{ steps.python.outputs.bin }}
           LABEL: ${{ matrix.python }}
-          RESOURCES: ${{ inputs.resources }}
+          RESOURCES: ${{ inputs.resources || 'all,-network,-urlfetch,-gui,-audio,-largefile' }}
           MODULES: ${{ inputs.modules }}
         run: |
           set -euo pipefail -f
@@ -132,7 +152,7 @@ jobs:
 
   compare:
     needs: suite
-    runs-on: ${{ inputs.runner }}
+    runs-on: ${{ inputs.runner || 'blacksmith-8vcpu-ubuntu-2404' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
