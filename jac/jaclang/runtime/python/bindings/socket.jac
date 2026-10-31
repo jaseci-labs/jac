@@ -312,7 +312,7 @@ def:priv socket_exec(module: ptr[PyObject]) -> i32 {
     }
     # The gethostbyname lock of a C library without gethostbyname_r().
     if not HAS_GETHOSTBYNAME_R and not netdb_lock {
-        netdb_lock = PyThread_allocate_lock();
+        set_netdb_lock(PyThread_allocate_lock());
         if not netdb_lock {
             return i32(-1);
         }

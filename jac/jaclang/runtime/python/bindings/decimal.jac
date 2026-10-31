@@ -1692,11 +1692,8 @@ def:priv c_string_equals(text: ptr[u8], name: str) -> bool {
 """Install libmpdec's hooks and the process-wide constants the module uses."""
 def:priv init_libmpdec -> bool {
     hooks = ptr[ptr](addressof(mpd_hooks)).view(5);
-    mpd_mallocfunc = hooks[0];
-    mpd_reallocfunc = hooks[1];
-    mpd_callocfunc = hooks[2];
-    mpd_free = hooks[3];
-    mpd_traphandler = hooks[4];
+    set_mpd_memory_hooks(hooks[0], hooks[1], hooks[2], hooks[3]);
+    set_mpd_trap_handler(hooks[4]);
     # Suppress the warning caused by multi-phase initialization
     if minalloc_is_set == 0 {
         mpd_setminalloc(i64(PY_DEC_MINALLOC));

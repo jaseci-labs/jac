@@ -42,6 +42,12 @@ import from c {
          accept4_works: i32 = -1;
 }
 
+# Publishes the SOCK_CLOEXEC probe result consumers discover while
+# socketpair()-ing; process-wide, as the C module's static is.
+def set_sock_cloexec_works(value: i32) {
+    sock_cloexec_works = value;
+}
+
 glob INVALID_SOCKET: i32 = -1,
      # SOCKLEN_T_LIMIT: the smaller of (2**31)-1 and INT_MAX.
      SOCKLEN_T_LIMIT: int = 0x7FFFFFFF,

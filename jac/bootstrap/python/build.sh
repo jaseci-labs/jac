@@ -229,16 +229,13 @@ SETUP
     if [ -n "$host" ]; then
         # Setup.local is read first and its first rule wins, so a registered
         # module's PyInit resolves from jacpython.o even when Setup.bootstrap
-        # or Setup.stdlib still names the replaced C source.
+        # or Setup.stdlib still names the replaced C source. prepare_native.py
+        # checks that every registered PyInit is exported by the compiled plan;
+        # an absent binding fails there before this link.
         registry=$recipe/jacpython-modules.txt
-        native_api=$root/jaclang/compiler/backends/py/jacpython/native_api.jac
         echo '*static*' >> Modules/Setup.local
         while read -r module tests flags; do
             case "$module" in ''|'#'*) continue ;; esac
-            grep -qw "PyInit_$module" "$native_api" || {
-                echo "native_api.jac does not import PyInit_$module" >&2
-                exit 1
-            }
             # A flag prefixed with an OS (linux:-lrt) applies only there.
             selected=
             for flag in $flags; do
