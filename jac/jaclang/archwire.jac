@@ -3384,6 +3384,7 @@ graph import {
             OP_STORE_NAME,
             OP_SWAP,
             OP_TO_BOOL,
+            OP_UNARY_NOT,
             OP_UNPACK_SEQUENCE,
             OP_YIELD_VALUE,
             compare_filter_oparg,
