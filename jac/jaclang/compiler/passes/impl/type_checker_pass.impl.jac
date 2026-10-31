@@ -3071,7 +3071,11 @@ impl _chunks_receiver_type(nd: FuncCall) -> (str | None) {
 }
 
 impl TypeCheckPass._check_overrides(arch: Archetype, cls_type: ClassType) -> None {
-    ancestors = [c for c in cls_type.shared.mro[1:] if isinstance(c, ClassType)];
+    ancestors = [
+        c
+        for c in cls_type.shared.mro[1:]
+        if isinstance(c, ClassType)
+    ];
     if not ancestors {
         return;
     }
@@ -3106,7 +3110,9 @@ impl TypeCheckPass._check_overrides(arch: Archetype, cls_type: ClassType) -> Non
             if isinstance(base_decl, Ability)
                 and isinstance(base_decl.signature, FuncSignature)
                 and isinstance(method.signature, FuncSignature) {
-                own_params = {p.name.value: p for p in method.signature.get_parameters()};
+                own_params = {
+                    p.name.value: p for p in method.signature.get_parameters()
+                };
                 for bp in base_decl.signature.get_parameters() {
                     op = own_params.get(bp.name.value);
                     if bp.value is None or op is None {

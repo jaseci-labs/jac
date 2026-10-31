@@ -393,8 +393,8 @@ impl NaIRGenPass._codegen_closure_call(
     callee_sig = nd.callee_signature;
     shift = 1
         if isinstance(callee_sig, SemanticFunctionType)
-        and callee_sig.parameters
-        and callee_sig.parameters[0].is_self
+            and callee_sig.parameters
+            and callee_sig.parameters[0].is_self
         else 0;
     for (slot, arg) in nd.arg_binding {
         by_slot[slot - shift] = arg;

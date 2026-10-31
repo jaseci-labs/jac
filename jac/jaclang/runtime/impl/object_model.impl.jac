@@ -123,7 +123,7 @@ impl _handwritten_init_owner(cls: type) -> (type | None) {
         if getattr(init, "__jac_generated_init__", False) {
             return None;
         }
-        params = getattr(base, "__dataclass_params__", None);
+        params = base?.__dataclass_params__;
         if params is not None and getattr(params, "init", False) {
             return None;
         }

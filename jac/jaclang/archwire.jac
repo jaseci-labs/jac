@@ -9752,13 +9752,13 @@ graph import compiler {
             | boundary_rules.json_refusal
             | passes.layout_pass
             | passes.mtir_gen_pass
+            | passes.type_checker_pass.TypeCheckPass._check_overrides
             | passes.variant_agreement_pass.annotation_text
             | passes.wasm_contract.value_contract
             | tools.cfg_dot.CoalesceBBPass._node_label
             | tools.code_intel
             | tools.jac_auto_lint_pass { unparse_node },
-        boundary_rules.signature_refusals
-            | passes.type_checker_pass.TypeCheckPass._check_overrides { unparse_node },
+        boundary_rules.signature_refusals { unparse_node },
     ]
     frontend.unparse --> [
         backends.native.na_ir_gen_pass.NaIRGenPass._emit_unlowerable_type
@@ -10780,13 +10780,13 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._arch_kind_of_type
             | backends.native.na_ir_gen_pass.NaIRGenPass._agg_key_args
             | passes.capability_check_pass
-            | passes.layout_pass.class_form_enum_scalar
+            | passes.layout_pass.LayoutPass._build_hierarchy
             | passes.ownership_check_pass.OwnershipCheckPass._raised_class_names {
             ClassType
         },
         backends.es.esast_gen_pass.EsastGenPass._build_spawn_runtime_call
             | backends.native.na_ir_gen_pass.NaIRGenPass._container_class_name
-            | passes.layout_pass.class_type_native_name
+            | passes.layout_pass.LayoutPass._layout_mro
             | passes.ownership_check_pass.OwnershipCheckPass._view_arch_of_call {
             ClassType
         },
@@ -10799,11 +10799,11 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass._field_constructor_args
             | backends.native.na_ir_gen_pass.NaIRGenPass._exception_member_name
-            | passes.layout_pass.declaring_module_path
+            | passes.layout_pass.class_form_enum_scalar
             | passes.ownership_check_pass._is_class_object { ClassType },
         backends.es.esast_gen_pass.EsastGenPass._osp_expr_arch_name
             | backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_orderable
-            | passes.layout_pass.enum_class_of { ClassType },
+            | passes.layout_pass.class_type_native_name { ClassType },
         backends.native.na_ir_gen_pass {
             ClassType,
             FunctionType as SemanticFunctionType,
@@ -10851,14 +10851,14 @@ graph import compiler {
         native_bindings { ClassType, FunctionType, OverloadedType, TypeBase },
         passes.capability_check_pass._class_bounded_typevar { ClassType, TypeVarType },
         passes.layout_pass.class_form_enum_member { EnumMemberType },
+        passes.layout_pass.declaring_module_path { ClassType },
+        passes.layout_pass.enum_class_of { ClassType },
         passes.layout_pass.native_type_key {
             ClassType,
             FunctionType,
             OverloadedType,
             UnionType
         },
-        passes.layout_pass.LayoutPass._build_hierarchy
-            | passes.layout_pass.LayoutPass._layout_mro { ClassType },
         passes.layout_pass.record_interface_twins { ClassType },
         passes.layout_pass.referenced_archetype { ClassType },
         passes.layout_pass.referenced_native_name { ClassType },
@@ -14628,14 +14628,13 @@ graph import compiler.types {
         ct_eval { CatModule },
         type_evaluator.TypeEvaluator._build_field_params
             | types.ClassType.get_class_symbol { CatScope },
+        type_evaluator.TypeEvaluator._has_handwritten_init
+            | types._class_scope_category { CatScope },
         type_evaluator.TypeEvaluator._is_instance_method_member { CatProvider },
         type_evaluator.TypeEvaluator._merge_catalog_field_params { CatProvider },
-        type_evaluator.TypeEvaluator._metaclass_of | types._class_scope_category {
-            CatScope
-        },
-        type_evaluator.TypeEvaluator._has_handwritten_init
-            | type_evaluator.TypeEvaluator._own_field_names
-            | type_evaluator.TypeEvaluator._scope_has_fields { CatScope },
+        type_evaluator.TypeEvaluator._metaclass_of { CatScope },
+        type_evaluator.TypeEvaluator._own_field_names { CatScope },
+        type_evaluator.TypeEvaluator._scope_has_fields { CatScope },
     ]
     type stubcat.reader ++> type_evaluator { CatScope, StubCatalog }
     ts_decl_parser ++> [

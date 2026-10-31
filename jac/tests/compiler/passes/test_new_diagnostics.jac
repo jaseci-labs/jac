@@ -947,7 +947,9 @@ test "E1007-E1014: default, MRO, constructor and override rules" {
     codes = ["E1007", "E1008", "E1009", "E1012", "E1013", "E1014"];
     for code in codes {
         expected = sorted(
-            i + 1 for i in range(len(lines)) if f"# {code}" in lines[i]
+            i + 1
+            for i in range(len(lines))
+            if f"# {code}" in lines[i]
         );
         reported = sorted(
             e.loc.first_line

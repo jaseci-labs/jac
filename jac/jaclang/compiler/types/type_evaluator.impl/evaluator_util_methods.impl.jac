@@ -2653,7 +2653,11 @@ impl TypeEvaluator._has_handwritten_init(cls: ClassType) -> bool {
 
 impl TypeEvaluator.constructor_shape(cls: ClassType) -> CtorShape {
     shape = CtorShape();
-    mro = [c for c in cls.shared.mro if isinstance(c, ClassType)];
+    mro = [
+        c
+        for c in cls.shared.mro
+        if isinstance(c, ClassType)
+    ];
 
     for c in mro {
         if self._has_handwritten_init(c) {
@@ -2665,7 +2669,11 @@ impl TypeEvaluator.constructor_shape(cls: ClassType) -> CtorShape {
     if shape.kind != "inherited" or shape.owner is None {
         return shape;
     }
-    covered = {id(c.shared) for c in shape.owner.shared.mro if isinstance(c, ClassType)};
+    covered = {
+        id(c.shared)
+        for c in shape.owner.shared.mro
+        if isinstance(c, ClassType)
+    };
     for c in mro {
         if id(c.shared) not in covered {
             shape.unset_fields.extend(self._own_field_names(c));
