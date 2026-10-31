@@ -305,7 +305,7 @@ graph import {
             | server.sealed_serve.serve_manifest_stamp { resolve_cli_version },
         scale.injector.binary.host_toolchain_path { resolve_cli_version },
     ]
-    cli.manifest_route --> scale.observability.prometheus_metrics.PrometheusMetricsCollector.__post_init__
+    cli.manifest_route --> scale.observability.prometheus_metrics.PrometheusMetricsCollector.init
         | scale.tests.deploy.test_memory_trigger_guard
         | scale.tests.misc.test_metrics { resolve_cli_version }
     cli.shadcn.cli --> project.template_registry._register_builtin_shadcn_template {
@@ -7308,7 +7308,6 @@ graph import compiler {
             W3025,
             W3030,
             W3035,
-            W3036,
             W3037,
             W3038,
             W3039,
@@ -9312,6 +9311,7 @@ graph import compiler {
             in_type_position,
             type_only_import_of
         },
+        passes.type_checker_pass.TypeCheckPass._check_overrides { Ellipsis },
         passes.variant_agreement_pass {
             Ability,
             Archetype,

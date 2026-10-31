@@ -34,7 +34,7 @@ enum Kind {
 obj PipelineState(NativeState) {
     has native: pipeline_state;
 
-    override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    override def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         for index in range(7) {
             status = visit_reference(
                 jacpy_pipeline_field(self.native, i64(index)), visitor, context
@@ -58,7 +58,7 @@ obj PipelineState(NativeState) {
 obj CombinationState(NativeState) {
     has native: combinatorial_state;
 
-    override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    override def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         for index in range(2) {
             status = visit_reference(
                 jacpy_combinatorial_field(self.native, i64(index)), visitor, context
@@ -82,7 +82,7 @@ obj CombinationState(NativeState) {
 obj GroupState(NativeState) {
     has native: group_state;
 
-    override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    override def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         for index in range(5) {
             status = visit_reference(
                 jacpy_group_field(self.native, i64(index)), visitor, context
@@ -106,7 +106,7 @@ obj GroupState(NativeState) {
 obj BlockState(NativeState) {
     has native: tee_block;
 
-    override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    override def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         for index in range(int(jacpy_tee_block_count(self.native))) {
             status = visit_reference(
                 jacpy_tee_block_field(self.native, i64(index)), visitor, context
@@ -130,7 +130,7 @@ obj BlockState(NativeState) {
 obj CursorState(NativeState) {
     has native: tee_cursor;
 
-    override def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    override def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         return visit_reference(jacpy_tee_cursor_field(self.native), visitor, context);
     }
 

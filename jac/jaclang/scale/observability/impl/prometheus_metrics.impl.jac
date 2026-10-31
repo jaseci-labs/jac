@@ -7,7 +7,11 @@ impl _merges_across_workers -> bool {
     return values.ValueClass is not values.MutexValue;
 }
 
-impl PrometheusMetricsCollector.postinit {
+impl PrometheusMetricsCollector.init(
+    config: dict[str, any] = {}, worker_count: int = 1
+) -> None {
+    self.config = config;
+    self.worker_count = worker_count;
     self._enabled = bool(self.config.get("enabled", True));
     self._namespace = str(self.config.get("namespace", "jaclang_scale"));
     self._include_walker_metrics = bool(self.config.get("walker_metrics", False));

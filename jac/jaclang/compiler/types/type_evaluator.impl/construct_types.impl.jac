@@ -254,6 +254,20 @@ impl TypeEvaluator._get_iterable_element_type(
             is_incomplete=iterable_type.is_incomplete
         );
     }
+    if isinstance(iterable_type, UnionType) {
+        elements: list[TypeBase] = [];
+        for member in iterable_type.types {
+            element = self._get_iterable_element_type(member, node_for_error, is_async);
+            if element is None {
+                return None;
+            }
+            self._collect_unique_types(element, elements);
+        }
+        if not elements {
+            return None;
+        }
+        return elements[0] if len(elements) == 1 else UnionType(types=elements);
+    }
     if isinstance(iterable_type, ClassType) and not is_async {
         members: list[TypeBase] = [];
         if iterable_type.is_namedtuple() {

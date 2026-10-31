@@ -1,7 +1,7 @@
 obj ByLLMError(Exception) {
     has message: str = "";
 
-    def postinit -> None;
+    def init(message: str = "") -> None;
 }
 
 obj AuthenticationError(ByLLMError) {}
@@ -17,7 +17,15 @@ obj LLMTimeout(ByLLMError) {
         max_retries: int | None = None,
         status_code: int = 408;
 
-    def postinit -> None;
+    def init(
+        message: str = "",
+        model: str = "",
+        llm_provider: str = "",
+        num_retries: int | None = None,
+        max_retries: int | None = None,
+        status_code: int = 408
+    ) -> None;
+
     def __str__ -> str;
 }
 

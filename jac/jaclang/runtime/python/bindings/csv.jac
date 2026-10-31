@@ -8,7 +8,7 @@ obj CsvReaderState(ReferenceState) {
         jacpy_csv_reader_clear(self.native);
     }
 
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         status = super.traverse_refs(visitor, context);
         if status != 0 {
             return status;

@@ -2112,11 +2112,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.LINT,
          "Use '==' instead of 'is' when comparing to a literal [is-with-literal]"
      ),
-     W3036 = _warn(
-         "W3036",
-         Category.LINT,
-         "Mutable default argument '{type}' — use None and assign inside the function [mutable-default]"
-     ),
      W3037 = _warn(
          "W3037",
          Category.LINT,
@@ -2241,7 +2236,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "too-many-params": "W3030",
          "is-with-literal": "W3035",
          "usestate-to-has": "W3038",
-         "mutable-default": "W3036",
          "unnecessary-none-return": "W3037",
          "getattr-to-null-ok": "W3039",
          "filter-compare-tautology": "W3040",

@@ -1,5 +1,14 @@
+impl HTTPError.init(status_code: int, detail: str = '') {
+    self.status_code = status_code;
+    self.detail = detail;
+}
+
 impl HTTPError.__str__ -> str {
     return self.detail or f"HTTP {self.status_code}";
+}
+
+impl WebSocketDisconnect.init(code: int = 1000) {
+    self.code = code;
 }
 
 impl WebSocketDisconnect.__str__ -> str {

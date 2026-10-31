@@ -3014,7 +3014,10 @@ impl _image_prompt(mt_run: MTRuntime) -> str {
             keep(content);
             continue;
         }
-        for block in content or [] {
+        if not isinstance(content, list) {
+            continue;
+        }
+        for block in content {
             if not isinstance(block, dict) {
                 continue;
             }

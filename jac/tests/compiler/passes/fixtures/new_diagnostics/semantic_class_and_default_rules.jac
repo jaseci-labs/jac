@@ -4,6 +4,11 @@ Each line marked `# E10xx` must report exactly that code, and nothing else
 may report these codes.
 """
 
+import from collections.abc { Sequence }
+import from importlib.abc { MetaPathFinder }
+import from importlib.machinery { ModuleSpec }
+import from types { ModuleType }
+
 def default_reads_later(a: int = b, b: int = 1) -> int {  # E1007
     return a + b;
 }
@@ -74,4 +79,12 @@ obj BadDefault(Base) {
 
 obj BadField(Base) {
     has n: str = "";  # E1013
+}
+
+obj StubDefaultFinder(MetaPathFinder) {
+    def find_spec(
+        fullname: str, path: Sequence[str] | None, target: ModuleType | None = None
+    ) -> ModuleSpec | None {
+        return None;
+    }
 }

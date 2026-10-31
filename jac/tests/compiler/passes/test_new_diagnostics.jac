@@ -685,12 +685,6 @@ test "W3035: is with literal" {
     assert has_diagnostic_code(prog, "W3035", in_warnings=True);
 }
 
-test "W3036: mutable default argument" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3036_mutable_default.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3036", in_warnings=True);
-}
-
 test "W3040: filter comparison tautology on shadowed name" {
     path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3040_filter_tautology.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);

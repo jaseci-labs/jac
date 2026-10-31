@@ -638,7 +638,6 @@ Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/in
 | `W3025` | `identical-branches` | Identical if/else branches -- the else is redundant | default |
 | `W3030` | `too-many-params` | Function has {count} parameters (threshold is {threshold}) | default |
 | `W3035` | `is-with-literal` | Use '==' instead of 'is' when comparing to a literal | default |
-| `W3036` | `mutable-default` | Mutable default argument '{type}' -- use None and assign inside the function | default |
 | `W3037` | `unnecessary-none-return` | Unnecessary '-> None' return type annotation on '{name}'; functions without a return statement implicitly return None | default |
 | `W3038` | `usestate-to-has` | useState hook for '{name}' can be replaced with `has {name}: {type} = {init}` | default |
 | `W3039` | `getattr-to-null-ok` | getattr(obj, 'attr', None) should use null-safe access | default |

@@ -1578,11 +1578,13 @@ impl TypeCheckPass.exit_param_var with ParamVar exit {
         }
     }
     if here.value is not None and isinstance(here.parent, FuncSignature) {
-        self._check_default_order(here.parent, here);
+        self._check_default_order(here.parent, here, here.value);
     }
 }
 
-impl TypeCheckPass._check_default_order(sig: FuncSignature, param: ParamVar) -> None {
+impl TypeCheckPass._check_default_order(
+    sig: FuncSignature, param: ParamVar, default_expr: Expr
+) -> None {
     ordered: list[ParamVar] = list(sig.posonly_params) + list(sig.params or []);
     if sig.varargs is not None {
         ordered.append(sig.varargs);
@@ -1605,8 +1607,8 @@ impl TypeCheckPass._check_default_order(sig: FuncSignature, param: ParamVar) -> 
             }
         }
     }
-    reads: list[Name] = [param.value] if isinstance(param.value, Name) else [];
-    reads.extend(param.value.get_all_sub_nodes(Name));
+    reads: list[Name] = [default_expr] if isinstance(default_expr, Name) else [];
+    reads.extend(default_expr.get_all_sub_nodes(Name));
     for nm in reads {
         if (nm.sym is not None and id(nm.sym) in later_syms)
             or (nm.sym is None and nm.value in later_names) {
@@ -3119,7 +3121,9 @@ impl TypeCheckPass._check_overrides(arch: Archetype, cls_type: ClassType) -> Non
                 };
                 for bp in base_decl.signature.get_parameters() {
                     op = own_params.get(bp.name.value);
-                    if bp.value is None or op is None {
+                    if bp.value is None
+                        or op is None
+                        or isinstance(bp.value, Ellipsis) {
                         continue;
                     }
                     if op.value is None

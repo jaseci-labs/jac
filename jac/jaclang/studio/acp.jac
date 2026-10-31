@@ -33,7 +33,9 @@ obj AcpError(Exception) {
         message: str = "",
         data: any = None;
 
-    def postinit -> None;
+    def init(
+        method: str = "", code: int = 0, message: str = "", data: any = None
+    ) -> None;
 }
 
 obj PendingCall {

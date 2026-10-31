@@ -7,7 +7,7 @@ obj PartialState(NativeState) {
         jacpy_partial_clear(self.native);
     }
 
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         for i in range(4) {
             status = visit_reference(
                 jacpy_partial_field(self.native, i64(i)), visitor, context
