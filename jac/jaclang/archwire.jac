@@ -7026,7 +7026,6 @@ graph import compiler {
         backends.native.na_compile_pass { E5020, E5026 },
         backends.native.na_ir_gen_pass {
             DiagnosticInfo,
-            E1145,
             E1158,
             E5026,
             E5088,
@@ -7395,6 +7394,7 @@ graph import compiler {
             E1137,
             E1138,
             E1139,
+            E1145,
             E5094,
             W1050,
             W1051,
@@ -10720,9 +10720,6 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass._try_primitive_op {
             expr_primitive_name
-        },
-        backends.native.na_ir_gen_pass.NaIRGenPass._check_native_import_names {
-            lookup_symtab
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._is_boolean_result_expr {
             primitive_type_name_of

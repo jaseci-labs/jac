@@ -115,7 +115,12 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
             }
 
             binding.type = UnknownType(is_diagnosed=True);
-            self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+            self.emit_diag(
+                self._missing_import_diag(mod),
+                binding,
+                name=item_name,
+                module=from_mod_name
+            );
             return binding.type;
         } else {
             if not isinstance(from_mod_type, ModuleType) {
@@ -184,7 +189,12 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
                 }
             }
             binding.type = UnknownType(is_diagnosed=True);
-            self.emit_diag(W1101, binding, name=item_name, module=from_mod_name);
+            self.emit_diag(
+                self._missing_import_diag(from_mod_type.symbol_table),
+                binding,
+                name=item_name,
+                module=from_mod_name
+            );
             return binding.type;
         }
     }
@@ -706,4 +716,13 @@ impl TypeEvaluator._import_error_is_handled(imp: Import) -> bool {
         cur = cur.parent;
     }
     return False;
+}
+
+impl TypeEvaluator._missing_import_diag(source: (UniNode | None)) -> DiagnosticInfo {
+    if isinstance(source, Module)
+        and not source.is_raised_from_py
+        and source.loc.mod_path.endswith(".jac") {
+        return E1145;
+    }
+    return W1101;
 }

@@ -464,10 +464,14 @@ impl LayoutPass._build_enum_layouts(module: Module) -> None {
                 )
             );
         }
+        homogeneous = all(
+            isinstance(mval, str) if is_string_enum else isinstance(mval, int)
+            for mval in member_values
+        );
         self.registry.enums[ename] = EnumLayout(
             name=ename,
             is_string_enum=is_string_enum,
-            all_values_known=all(mval is not None for mval in member_values),
+            all_values_known=homogeneous,
             members=members
         );
     }

@@ -1111,11 +1111,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1145",
          Category.IMPORT,
          "Cannot import name '{name}' from Jac module '{module}': it defines no such name",
-         help="The module declares no global, function, archetype, enum or import"
-         " named '{name}'. Native lowering binds an imported name to the symbol"
-         " its defining unit exports, and there is none, so the build stops here"
-         " rather than lowering every use of the name to a null value. Import a"
-         " name the module defines, or add the definition to it."
+         help="The module declares no global, function, archetype, enum or import with"
+         " that name. Import a name the module defines, or add the definition to it.",
+         blocks_codegen=True
      ),
      E1150 = _err(
          "E1150",
