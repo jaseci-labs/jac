@@ -17,6 +17,7 @@ import from jaclang.compiler.frontend.kernel_analyze {
     ANALYSIS_OK,
     AnalysisDiag,
     AnalysisReport,
+    ModuleReport,
     run_kernel_analysis
 }
 import from jaclang.compiler.driver.program { JacProgram }
@@ -309,6 +310,58 @@ test "jac check adopts a kernel's diagnostics and they match the host's" {
                 == rendered(host_program.errors_had) , entry_name;
             assert rendered(kernel_program.warnings_had)
                 == rendered(host_program.warnings_had) , entry_name;
+        }
+    }
+}
+
+test "the entry module is the one the kernel named, whatever spelling the caller used" {
+    util = ModuleReport(path="/work/Proj/util.jac");
+    main = ModuleReport(path="/work/Proj/main.jac");
+    named = AnalysisReport(entry_path="/work/Proj/main.jac", modules=[util, main]);
+    assert named.entry_module() is main;
+    unresolved = ModuleReport(path="main.jac");
+    relative = AnalysisReport(entry_path="main.jac", modules=[unresolved]);
+    assert relative.entry_module() is unresolved;
+    missing = AnalysisReport(entry_path="/work/Proj/main.jac", modules=[util]);
+    assert missing.entry_module() is None;
+}
+
+def write_entry(directory: Path, name: str) -> str {
+    (directory / f"{name}.jac").write_text(
+        'with entry {\n    print("' + name + '");\n}\n'
+    );
+    return f"{name}.jac";
+}
+
+test "jac check adopts the kernel's analysis however the entry path is spelled" {
+    kernel = loaded_kernel();
+    if kernel is None {
+        return;
+    }
+    import from jaclang.project.kernel_check { kernel_check }
+    with TemporaryDirectory() as td {
+        base = Path(os.path.realpath(td));
+        inner = base / "locked" / "inner";
+        inner.mkdir(parents=True);
+        spellings = [str(inner / write_entry(inner, "absolute"))];
+        swapped = base / "LOCKED" / "inner" / write_entry(inner, "swapped");
+        if swapped.exists() {
+            spellings.append(str(swapped));
+        }
+        for spelling in spellings {
+            view = kernel_check(JacProgram(), spelling, check_options());
+            assert view.adopted , view.failure or spelling;
+        }
+        relative = write_entry(inner, "relative");
+        cwd = os.getcwd();
+        os.chdir(inner);
+        os.chmod(base / "locked", 0o311);
+        try {
+            view = kernel_check(JacProgram(), relative, check_options());
+            assert view.adopted , view.failure or relative;
+        } finally {
+            os.chmod(base / "locked", 0o755);
+            os.chdir(cwd);
         }
     }
 }
