@@ -983,6 +983,39 @@ test "reloading a broken module reports its errors once per reload" {
 }
 
 # --- TestHMRIntegration ---
+test "watcher survives ignored generated tree creation" {
+    with tempfile.TemporaryDirectory() as tmp {
+        app_dir = Path(tmp);
+        source = app_dir / "app.jac";
+        source.write_text("with entry { print(1); }\n");
+        watcher = JacFileWatcher(watch_paths=[str(app_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        generated = app_dir / ".jac" / "client" / "node_modules";
+        for name in [
+            "@types/react-dom",
+            "@types/react",
+            "vite",
+            "react-dom",
+            "react"
+        ] {
+            (generated / name / "nested" / "package").mkdir(parents=True);
+        }
+        source.write_text("with entry { print(2); }\n");
+        time.sleep(0.5);
+        watcher.stop();
+        assert any(
+            os.path.realpath(event.path) == os.path.realpath(str(source))
+            for event in events
+        ) , (
+            f"app source changes must still be delivered after generated files appear: {events}"
+        );
+        assert not any("/.jac/" in event.path for event in events) , str(events);
+    }
+}
+
 test "file change triggers callback" {
     with tempfile.TemporaryDirectory() as tmp {
         temp_dir = Path(tmp);

@@ -68,6 +68,63 @@ impl JacFileWatcher.start -> None {
     import from watchdog.observers { Observer }
     import from watchdog.events { FileSystemEventHandler, FileSystemEvent }
     watcher = self;
+    observer = Observer();
+    self._observer = observer;
+    scheduled: dict[str, any] = {};
+    schedule_lock = threading.Lock();
+
+    def ignored_directory(path: str) -> bool {
+        name = Path(path).name;
+        return name.startswith('.') or name in {'node_modules', '__pycache__', 'venv'};
+    }
+
+    def schedule_directory(path: str, handler: any) {
+        resolved = os.path.realpath(path);
+        if ignored_directory(resolved) {
+            return;
+        }
+        with schedule_lock {
+            if resolved in scheduled {
+                return;
+            }
+            try {
+                scheduled[resolved] = observer.schedule(
+                    handler, resolved, recursive=False
+                );
+            } except (OSError, RuntimeError) {
+                return;
+            }
+        }
+    }
+
+    def schedule_tree(path: str, handler: any) {
+        if ignored_directory(path) or not os.path.isdir(path) {
+            return;
+        }
+        for (current, dirs, _) in os.walk(path) {
+            dirs[:] = sorted(
+                d
+                for d in dirs
+                if not ignored_directory(d)
+            );
+            schedule_directory(current, handler);
+        }
+    }
+
+    def unschedule_tree(path: str) {
+        resolved = os.path.realpath(path);
+        with schedule_lock {
+            for watched in list(scheduled) {
+                if watched == resolved or watched.startswith(resolved + os.sep) {
+                    watch = scheduled.pop(watched);
+                    try {
+                        observer.unschedule(watch);
+                    } except (KeyError, RuntimeError) {}
+                }
+            }
+        }
+    }
+
     class JacEventHandler(FileSystemEventHandler) {
         def on_modified(inner_self: JacEventHandler, event: FileSystemEvent) {
             if not event.is_directory {
@@ -76,38 +133,46 @@ impl JacFileWatcher.start -> None {
         }
 
         def on_created(inner_self: JacEventHandler, event: FileSystemEvent) {
-            watcher._on_change(
-                os.fsdecode(event.src_path), ChangeType.CREATED, event.is_directory
-            );
+            path = os.fsdecode(event.src_path);
+            if event.is_directory {
+                schedule_tree(path, inner_self);
+            }
+            watcher._on_change(path, ChangeType.CREATED, event.is_directory);
         }
 
         def on_deleted(inner_self: JacEventHandler, event: FileSystemEvent) {
-            watcher._on_change(
-                os.fsdecode(event.src_path), ChangeType.DELETED, event.is_directory
-            );
+            path = os.fsdecode(event.src_path);
+            if event.is_directory {
+                unschedule_tree(path);
+            }
+            watcher._on_change(path, ChangeType.DELETED, event.is_directory);
         }
 
         def on_moved(inner_self: JacEventHandler, event: FileSystemEvent) {
-            watcher._on_change(
-                os.fsdecode(event.src_path), ChangeType.DELETED, event.is_directory
-            );
-            dest = str(getattr(event, 'dest_path', '') or '');
+            path = os.fsdecode(event.src_path);
+            if event.is_directory {
+                unschedule_tree(path);
+            }
+            watcher._on_change(path, ChangeType.DELETED, event.is_directory);
+            dest = os.fsdecode(getattr(event, 'dest_path', '') or '');
             if dest {
+                if event.is_directory {
+                    schedule_tree(dest, inner_self);
+                }
                 watcher._on_change(dest, ChangeType.CREATED, event.is_directory);
             }
         }
     }
-    self._observer = Observer();
     handler = JacEventHandler();
     for watch_path in self.watch_paths {
         path = Path(watch_path);
         if path.is_dir() {
-            self._observer.schedule(handler, str(path), recursive=True);
+            schedule_tree(str(path), handler);
         } elif path.is_file() {
-            self._observer.schedule(handler, str(path.parent), recursive=False);
+            schedule_directory(str(path.parent), handler);
         }
     }
-    self._observer.start();
+    observer.start();
     self._running = True;
     self._last_flush = time.time();
 
