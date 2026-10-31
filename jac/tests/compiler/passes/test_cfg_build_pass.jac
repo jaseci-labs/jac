@@ -241,6 +241,7 @@ test "cfg try except finally" {
         + '  3 [label="BB3\\nfinally\\nprint ( y ) ;\\nreturn y ;", shape=box];\n'
         + "  0 -> 1;\n"
         + "  0 -> 2;\n"
+        + "  0 -> 3;\n"
         + "  1 -> 3;\n"
         + "  2 -> 3;\n"
         + "}\n"

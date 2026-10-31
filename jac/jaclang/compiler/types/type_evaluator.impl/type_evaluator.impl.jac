@@ -1662,6 +1662,17 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return UnknownType(is_diagnosed=True);
                     }
                 }
+                if result is None and isinstance(base_type, UnionType) {
+                    for member in base_type.types {
+                        if self.get_type_of_magic_method_call(
+                            member, "__getitem__", [subscript_arg], None
+                        )
+                            is None {
+                            self.emit_diag(E1040, expr, type=str(member));
+                            return UnknownType(is_diagnosed=True);
+                        }
+                    }
+                }
                 return result or UnknownType();
             }
 
@@ -4803,10 +4814,11 @@ impl TypeEvaluator.match_is_exhaustive(stmt: MatchStmt) -> bool {
         if covered is None or not self._pattern_covers_its_type(mc.pattern) {
             continue;
         }
+        alternatives = covered.types if isinstance(covered, UnionType) else [covered];
         remaining = [
             member
             for member in remaining
-            if not self.assign_type(covered, member)
+            if not any(self.assign_type(alt, member) for alt in alternatives)
         ];
         if not remaining {
             return True;

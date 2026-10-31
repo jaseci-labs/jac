@@ -401,7 +401,7 @@ glob CHECKER_DIRS: dict[(str, str)] = {
              "subscript_guard_assignment",
              "checker",
              "checker_subscript_guard_assignment.jac",
-             3,
+             4,
              True,
              []
          ),
