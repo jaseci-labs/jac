@@ -29,6 +29,12 @@ on:
 permissions:
   contents: write
 
+# A published seed is never replaced: a pin names its bytes. Runs for the same
+# commit publish one at a time, and each checks what is already there first.
+concurrency:
+  group: build-seeds-${{ github.sha }}
+  cancel-in-progress: false
+
 jobs:
   build:
     strategy:
@@ -39,7 +45,7 @@ jobs:
             platform: linux-x86_64
           - os: blacksmith-8vcpu-ubuntu-2404-arm
             platform: linux-aarch64
-          - os: macos-14
+          - os: macos-15
             platform: macos-aarch64
           - os: macos-15-intel
             platform: macos-x86_64
@@ -50,6 +56,9 @@ jobs:
       # every later build runs on.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
+      # exists: the archive is published, so nothing is rebuilt. An archive
+      # published without its checksum (an interrupted upload) gets the
+      # checksum of the published bytes, never a rebuilt archive.
       - name: Compute asset name; skip if already published
         id: asset
         env:
@@ -59,13 +68,25 @@ jobs:
           set -euo pipefail
           ASSET="jacpython-seed-${PLATFORM}-${GITHUB_SHA::12}.tar.gz"
           echo "name=$ASSET" >> "$GITHUB_OUTPUT"
-          if [ "$GITHUB_EVENT_NAME" != pull_request ] && gh release view deps --repo "$GITHUB_REPOSITORY" --json assets \
-               --jq '.assets[].name' 2>/dev/null | grep -qx "$ASSET"; then
-            echo "Asset $ASSET already published; nothing to do."
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          PUBLISHED="$(gh release view deps --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null || true)"
+          if ! grep -qx "$ASSET" <<< "$PUBLISHED"; then
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          if grep -qx "$ASSET.sha256" <<< "$PUBLISHED"; then
+            echo "Asset $ASSET already published; nothing to do."
+            exit 0
+          fi
+          echo "Asset $ASSET is published without its checksum; adding it."
+          mkdir -p dist
+          gh release download deps --repo "$GITHUB_REPOSITORY" --pattern "$ASSET" --dir dist
+          ( cd dist && shasum -a 256 "$ASSET" > "$ASSET.sha256" )
+          gh release upload deps --repo "$GITHUB_REPOSITORY" "dist/$ASSET.sha256"
 
       - name: Restore cached LLVM
         if: steps.asset.outputs.exists != 'true'
@@ -151,5 +172,7 @@ jobs:
           ASSET: ${{ steps.asset.outputs.name }}
         run: |
           set -euo pipefail
-          gh release upload deps --repo "$GITHUB_REPOSITORY" \
-            "dist/$ASSET" "dist/$ASSET.sha256" --clobber
+          # The archive first: a run interrupted between the two uploads is
+          # repaired by the next run's existence check above.
+          gh release upload deps --repo "$GITHUB_REPOSITORY" "dist/$ASSET"
+          gh release upload deps --repo "$GITHUB_REPOSITORY" "dist/$ASSET.sha256"
