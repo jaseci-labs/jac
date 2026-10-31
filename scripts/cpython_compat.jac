@@ -40,11 +40,13 @@ glob REPO: Path = Path(__file__).resolve().parents[1],
      CASE_OK: set[str] = {"passed", "xfail"},
      CASE_BAD: set[str] = {"failed", "error", "xpass"},
      REPORT_LIMIT: int = 150,
-     # What JacPython leaves out by decision: reported, never counted.
+     # What JacPython leaves out by decision, by module, class or test:
+     # reported, never counted.
      INTENDED: dict[str, str] = {
          "test_external_inspection": "remote debugging is not built",
          "test_remote_pdb": "remote debugging is not built",
          "test.test_audit.AuditTest.test_sys_remote_exec": "remote debugging is not built",
+         "test.test_sys.TestRemoteExec": "remote debugging is not built",
          "test_perf_profiler": "perf trampolines are not built"
      },
      DETAIL_LIMIT: int = 240;
@@ -93,7 +95,8 @@ def install_tests(python: str, cache: Path) -> str {
         return version;
     }
     archive = cache / f"Python-{pin['version']}-{pin['sha256']}.tgz";
-    if not archive.is_file() {
+    data = archive.read_bytes() if archive.is_file() else b"";
+    if hashlib.sha256(data).hexdigest() != pin["sha256"] {
         cache.mkdir(parents=True, exist_ok=True);
         with urllib.request.urlopen(pin["url"], timeout=300) as response {
             data = response.read();
@@ -352,6 +355,17 @@ def run(args: any) -> int {
     return 0;
 }
 
+def intended(name: str) -> str {
+    parts = name.split(".");
+    for size in range(len(parts), 0, -1) {
+        reason = INTENDED.get(".".join(parts[:size]));
+        if reason {
+            return reason;
+        }
+    }
+    return "";
+}
+
 def compare_results(
     stock: dict[str, any], jac: dict[str, any]
 ) -> dict[str, list[list[str]]] {
@@ -363,11 +377,13 @@ def compare_results(
         "broken_on_both": [],
         "flaky_on_jacpython": [],
         "fixed_on_jacpython": [],
-        "intended": []
+        "intended": [],
+        "not_comparable": []
     };
     def gap(key: str, row: list[str]) {
-        if row[0] in INTENDED {
-            found["intended"].append([row[0], row[1], INTENDED[row[0]], row[3]]);
+        reason = intended(row[0]);
+        if reason {
+            found["intended"].append([row[0], row[1], reason, row[3]]);
         } else {
             found[key].append(row);
         }
@@ -378,12 +394,17 @@ def compare_results(
         base = stock_modules.get(name, {"state": "missing", "detail": "", "cases": {}});
         ours = jac_modules.get(name, {"state": "missing", "detail": "", "cases": {}});
         (was, now) = (base["state"], ours["state"]);
-        if now in BROKEN and was not in BROKEN {
-            gap("module_regressions", [name, now, ours["detail"], was]);
-        } elif was in RAN and now not in RAN and now not in BROKEN {
-            gap("modules_not_run", [name, now, ours["detail"], was]);
+        # A gating or intended module row stands for the tests JacPython did
+        # not run in it; a failure on both runtimes does not.
+        covered = False;
+        if was in RAN and now not in RAN {
+            key = "module_regressions" if now in BROKEN else "modules_not_run";
+            gap(key, [name, now, ours["detail"], was]);
+            covered = True;
         } elif now in BROKEN and was in BROKEN {
             found["broken_on_both"].append([name, now, ours["detail"], was]);
+        } elif now in BROKEN {
+            found["not_comparable"].append([name, now, ours["detail"], was]);
         } elif was in BROKEN {
             found["fixed_on_jacpython"].append([name, now, ours["detail"], was]);
         }
@@ -399,7 +420,7 @@ def compare_results(
             (result, detail) = jac_cases.get(case_id, ("missing", ""));
             if result in CASE_BAD {
                 gap("case_regressions", [case_id, result, detail, outcome]);
-            } elif (result == "skipped" or result == "missing") and now in RAN {
+            } elif (result == "skipped" or result == "missing") and not covered {
                 gap("cases_not_run", [case_id, result, detail, outcome]);
             }
         }
@@ -419,7 +440,12 @@ glob SECTIONS: list[tuple[str, str, bool]] = [
          ),
          ("broken_on_both", "Modules that fail on both runtimes", False),
          ("fixed_on_jacpython", "Modules that fail only on stock CPython", False),
-         ("intended", "Differences JacPython makes by decision", False)
+         ("intended", "Differences JacPython makes by decision", False),
+         (
+             "not_comparable",
+             "Modules JacPython fails and stock CPython does not run",
+             False
+         )
      ];
 
 def tally(results: dict[str, any]) -> tuple[dict[str, int], dict[str, int]] {

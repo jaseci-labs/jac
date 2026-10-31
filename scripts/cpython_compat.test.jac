@@ -1,5 +1,7 @@
 """Exercise the regrtest result parsing and the stock-vs-JacPython comparison."""
 
+import from unittest.mock { patch }
+
 glob PASSED_LOG: str = """0:00:00 load avg: 2.0 [1/1] test_bool passed
 
 == Tests result: SUCCESS ==
@@ -173,4 +175,88 @@ test "a difference JacPython makes by decision is reported, not counted" {
     assert found["intended"]
         == [["test_remote_pdb", "skipped", "remote debugging is not built", "passed"]];
     assert "**compatible" in render(stock, jac, found);
+    assert intended("test.test_sys.TestRemoteExec.test_remote_exec")
+        == "remote debugging is not built";
+    assert intended("test.test_sys.TestSysJIT.test_jit_is_active") == "";
+}
+
+test "a module stock CPython does not run is not a JacPython regression" {
+    stock = results(
+        False,
+        {
+            "test_s": {
+                "state": "skipped",
+                "detail": "No module named '_x'",
+                "cases": {}
+            },
+            "test_r": {"state": "denied", "detail": "", "cases": {}},
+            "test_n": {"state": "no_tests", "detail": "", "cases": {}}
+        }
+    );
+    jac = results(
+        True,
+        {
+            "test_s": {"state": "failed", "detail": "failed (1 error)", "cases": {}},
+            "test_r": {"state": "crashed", "detail": "", "cases": {}},
+            "test_n": {"state": "timeout", "detail": "", "cases": {}},
+            "test_m": {"state": "failed", "detail": "", "cases": {}}
+        }
+    );
+    found = compare_results(stock, jac);
+    assert not found["module_regressions"];
+    assert [row[0] for row in found["not_comparable"]]
+        == ["test_m", "test_n", "test_r", "test_s"];
+    assert "**compatible" in render(stock, jac, found);
+}
+
+test "a failure on both runtimes does not hide a test only JacPython skips" {
+    stock = results(
+        False,
+        {
+            "test_b": {
+                "state": "failed",
+                "detail": "",
+                "cases": {"b.shared": ["failed", ""], "b.ran": ["passed", ""]}
+            }
+        }
+    );
+    jac = results(
+        True,
+        {
+            "test_b": {
+                "state": "failed",
+                "detail": "",
+                "cases": {"b.shared": ["failed", ""], "b.ran": ["skipped", "no _x"]}
+            }
+        }
+    );
+    found = compare_results(stock, jac);
+    assert [row[0] for row in found["broken_on_both"]] == ["test_b"];
+    assert found["cases_not_run"] == [["b.ran", "skipped", "no _x", "passed"]];
+}
+
+test "a cached archive that does not match the pin is fetched again" {
+    pin = pinned_cpython();
+    with tempfile.TemporaryDirectory() as scratch {
+        cache = Path(scratch);
+        archive = cache / f"Python-{pin['version']}-{pin['sha256']}.tgz";
+        archive.write_bytes(b"damaged");
+        fetched: list[str] = [];
+        def refuse(url: str, timeout: int) -> any {
+            fetched.append(url);
+            raise OSError("offline");
+        }
+        with patch("subprocess.run") as ran {
+            ran.return_value.stdout = pin["version"];
+            with patch("urllib.request.urlopen", refuse) {
+                try {
+                    install_tests("python3", cache);
+                    assert False , "a damaged archive was extracted";
+                } except OSError {
+                    fetched.append("refused");
+                }
+            }
+        }
+        assert fetched == [pin["url"], "refused"];
+    }
 }
