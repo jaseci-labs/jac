@@ -44,6 +44,13 @@ obj PrefetchedTypes {
         set_class: ClassType | None = None;
 }
 
+obj CtorShape {
+    has kind: str = "generated",
+        owner: ClassType | None = None,
+        unset_fields: list[str] = [],
+        postinit_unreachable: bool = False;
+}
+
 obj MatchArgsToParamsResult {
     has arg_params: dict[(Expr | KWPair, Parameter | None)],
         overload: FunctionType | None = None,
@@ -651,6 +658,10 @@ walker TypeEvaluator {
     ) -> OverloadedType | None;
 
     def _create_object_init_method(class_type: ClassType) -> FunctionType;
+    def constructor_shape(cls: ClassType) -> CtorShape;
+    def _own_member_names(cls: ClassType) -> set[str];
+    def _own_field_names(cls: ClassType) -> list[str];
+    def _has_handwritten_init(cls: ClassType) -> bool;
     def _scope_has_fields(tab: UniScopeNode | None) -> bool;
     def _dataclass_shadows_base_init(class_type: ClassType) -> bool;
     def _create_namedtuple_new_method(class_type: ClassType) -> FunctionType;

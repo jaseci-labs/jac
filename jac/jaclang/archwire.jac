@@ -7233,8 +7233,10 @@ graph import compiler {
             E1005,
             E1007,
             E1008,
+            E1009,
             E1010,
             E1011,
+            E1012,
             E1020,
             E1021,
             E1022,
@@ -14631,7 +14633,9 @@ graph import compiler.types {
         type_evaluator.TypeEvaluator._metaclass_of | types._class_scope_category {
             CatScope
         },
-        type_evaluator.TypeEvaluator._scope_has_fields { CatScope },
+        type_evaluator.TypeEvaluator._has_handwritten_init
+            | type_evaluator.TypeEvaluator._own_field_names
+            | type_evaluator.TypeEvaluator._scope_has_fields { CatScope },
     ]
     type stubcat.reader ++> type_evaluator { CatScope, StubCatalog }
     ts_decl_parser ++> [

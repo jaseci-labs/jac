@@ -53,6 +53,8 @@ def _is_class_var(annotation: object) -> bool;
 
 def _install_init(cls: type, declared: list[ObjectField]);
 
+def _handwritten_init_owner(cls: type) -> (type | None);
+
 def make_object(cls: type) -> type;
 
 def _pydantic_schema(cls: type, source: object, handler: any) -> object;

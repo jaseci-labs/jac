@@ -435,6 +435,23 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot assign to read-only property '{name}' (no setter defined)"
      ),
+     E1009 = _err(
+         "E1009",
+         Category.SEMANTIC,
+         "'{name}' inherits the init of '{owner}', which does not set {fields}; define an init",
+         help="A class without its own init uses the first hand-written init in its"
+         " method resolution order. That init only knows the fields of its own class"
+         " and its bases, so the fields listed here would never be set.",
+         blocks_codegen=True
+     ),
+     E1012 = _err(
+         "E1012",
+         Category.SEMANTIC,
+         "'{name}' defines postinit, but the init it inherits from '{owner}' never calls it; define an init",
+         help="Only a generated init calls postinit. A class that inherits a"
+         " hand-written init has to define its own init to run postinit.",
+         blocks_codegen=True
+     ),
      E1008 = _err(
          "E1008",
          Category.SEMANTIC,

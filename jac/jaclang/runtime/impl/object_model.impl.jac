@@ -110,7 +110,26 @@ impl _install_init(cls: type, declared: list[ObjectField]) {
         }
             | {"return": None}
     );
+    setattr(initializer, "__jac_generated_init__", True);
     setattr(cls, "__init__", initializer);
+}
+
+impl _handwritten_init_owner(cls: type) -> (type | None) {
+    for base in cls.__mro__ {
+        if base is object or "__init__" not in base.__dict__ {
+            continue;
+        }
+        init = base.__dict__["__init__"];
+        if getattr(init, "__jac_generated_init__", False) {
+            return None;
+        }
+        params = getattr(base, "__dataclass_params__", None);
+        if params is not None and getattr(params, "init", False) {
+            return None;
+        }
+        return base;
+    }
+    return None;
 }
 
 impl make_object(cls: type) -> type {
@@ -141,7 +160,7 @@ impl make_object(cls: type) -> type {
         }
     }
     setattr(cls, "__jac_fields__", declared);
-    if annotations and "__init__" not in cls.__dict__ {
+    if "__init__" not in cls.__dict__ and _handwritten_init_owner(cls) is None {
         _install_init(cls, list(declared.values()));
     }
     if "__repr__" not in cls.__dict__ {

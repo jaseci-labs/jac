@@ -1385,6 +1385,27 @@ impl TypeCheckPass.exit_archetype with Archetype exit {
     if isinstance(cls_type, ClassType) and not mro_is_consistent(cls_type) {
         self.ctx.emit(E1008, node_override=here.name, name=here.name.value);
     }
+    if isinstance(cls_type, ClassType) and here.arch_type.name != Tok.KW_CLASS {
+        shape = self.evaluator.constructor_shape(cls_type);
+        if shape.kind == "inherited" and shape.owner is not None {
+            if shape.unset_fields {
+                self.ctx.emit(
+                    E1009,
+                    node_override=here.name,
+                    name=here.name.value,
+                    owner=shape.owner.shared.class_name,
+                    fields=", ".join(f"'{f}'" for f in shape.unset_fields)
+                );
+            } elif shape.postinit_unreachable {
+                self.ctx.emit(
+                    E1012,
+                    node_override=here.name,
+                    name=here.name.value,
+                    owner=shape.owner.shared.class_name
+                );
+            }
+        }
+    }
     if isinstance(cls_type, ClassType)
         and here.arch_type.name == Tok.KW_OBJECT
         and not cls_type.shared.is_from_stdlib_stub
