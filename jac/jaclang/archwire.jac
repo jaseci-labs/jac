@@ -32366,6 +32366,9 @@ graph import scale.runtime {
             not_found
         },
         gateway.microservice_gateway.MicroserviceGateway.probe_services { not_found },
+        gateway.microservice_gateway.MicroserviceGateway.serve_admin_asset {
+            not_found
+        },
     ]
     context.errors --> [
         gateway.microservice_gateway.MicroserviceGateway.deliver_once { not_found },

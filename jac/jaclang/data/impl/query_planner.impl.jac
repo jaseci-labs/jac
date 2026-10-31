@@ -581,7 +581,7 @@ impl LazyRefs.extend(self: LazyRefs, items: any) -> None {
 }
 
 
-impl LazyRefs.insert(self: LazyRefs, i: int, item: any) -> None {
+impl LazyRefs.insert(self: LazyRefs, i: SupportsIndex, item: any) -> None {
     self._realize();
     list.insert(self, i, item);
 }
@@ -593,7 +593,7 @@ impl LazyRefs.remove(self: LazyRefs, item: any) -> None {
 }
 
 
-impl LazyRefs.pop(self: LazyRefs, i: int = -1) -> any {
+impl LazyRefs.pop(self: LazyRefs, i: SupportsIndex = -1) -> any {
     self._realize();
     return list.pop(self, i);
 }

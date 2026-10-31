@@ -4,7 +4,6 @@ Each line marked `# E10xx` must report exactly that code, and nothing else
 may report these codes.
 """
 
-import from collections.abc { Sequence }
 import from importlib.abc { MetaPathFinder }
 import from importlib.machinery { ModuleSpec }
 import from types { ModuleType }

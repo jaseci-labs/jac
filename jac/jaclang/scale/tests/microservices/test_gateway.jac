@@ -1314,7 +1314,7 @@ test "serve admin asset blocks path traversal" {
     gw = MicroserviceGateway(registry=reg, admin_dist_dir=str(admin_dir));
 
     resp = gw.serve_admin_asset("../../etc/passwd");
-    assert resp is None;
+    assert resp.status_code == 404;
 
     import shutil;
     shutil.rmtree(tmp);
