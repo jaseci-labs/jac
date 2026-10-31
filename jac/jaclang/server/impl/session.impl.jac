@@ -571,15 +571,9 @@ impl Session.commit(anchor: (Anchor | None) = None) -> None {
             while True {
                 try {
                     self.flush(full=True);
-                    # Read from the ledger, not `_dirty`: a read barrier may
-                    # already have flushed this transaction's writes.
                     wrote = self._rows.in_flight();
                     self._commit_txn();
                     self._leave_queue();
-                    # A read-only unit whose write is committed part-way can no
-                    # longer be re-run from the start: the re-run would repeat
-                    # it. Record it as a writer, so a later write in it runs at
-                    # SERIALIZABLE instead of raising `ReadOnlyRetry`.
                     if wrote and self._active_units > 0 and self._ro_units > 0 {
                         self._register_ro_writers();
                     }
