@@ -330,6 +330,9 @@ impl TypeEvaluator._native_iter_next_result(expr: FuncCall) -> TypeBase | None {
     if sym is None or sym.parent_tab is not self.na_builtins_module {
         return None;
     }
+    if not expr.params {
+        return None;
+    }
     arg = expr.params[0];
 
     if isinstance(arg, KWPair) {
@@ -895,7 +898,7 @@ impl TypeEvaluator._check_extern_ctor_args(expr: FuncCall, arch: Archetype) -> N
         by_name[hv.name.sym_name] = hv;
     }
     pos = 0;
-    for param in expr.params {
+    for param in (expr.params or []) {
         field: HasVar | None = None;
         arg: Expr;
         if isinstance(param, KWPair) {

@@ -1277,7 +1277,7 @@ impl TypeEvaluator._type_args_from_init_overload(
             }
         }
         if spread is not None and spread.param_type is not None {
-            for arg in expr.params {
+            for arg in (expr.params or []) {
                 if isinstance(arg, KWPair)
                     and isinstance(arg.key, Name)
                     and arg.key.value not in named {
@@ -1640,7 +1640,7 @@ impl TypeEvaluator._collect_type_var_bindings(
     }
 
     param_idx = 0;
-    for arg in expr.params {
+    for arg in (expr.params or []) {
         if isinstance(arg, KWPair) {
             if isinstance(arg.key, Name) {
                 for param in params {

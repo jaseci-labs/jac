@@ -355,14 +355,11 @@ impl UniNode._construct_sub_node_tab -> None {
         pending.extend([nd->:Kid:->]);
     }
 
+    table: dict[type, list[UniNode]] = {};
     for nd in reversed(ordered) {
-        kind = type(nd);
-        if kind in self.__sub_node_tab {
-            self.__sub_node_tab[kind].append(nd);
-        } else {
-            self.__sub_node_tab[kind] = [nd];
-        }
+        table.setdefault(type(nd), []).append(nd);
     }
+    self.__sub_node_tab = table;
 }
 
 impl UniNode._invalidate_sub_node_tab -> None {

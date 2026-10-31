@@ -6268,6 +6268,7 @@ graph import compiler {
             wiring_for_path
         },
         types.stubcat.writer.CatalogWriter.encode_symbol { is_arch_file },
+        types.type_evaluator.TypeEvaluator._missing_import_diag { is_stdlib_module },
     ]
     driver.wiring --> frontend.parser.frontend.annex_sources { wiring_annex_for }
     erased_imports ++> [
@@ -6345,6 +6346,7 @@ graph import compiler {
             is_field_marker
         },
         backends.py.jcir_gen_pass.JcirGenPass.exit_has_var { is_field_marker },
+        types.type_evaluator.TypeEvaluator._own_field_names { field_initialization },
     ]
     frontend.codeinfo ++> [
         backends.es.client_kernel_cache._es_backend_fingerprint
@@ -9582,7 +9584,6 @@ graph import compiler {
             ExprStmt,
             FString,
             FilterCompr,
-            FinallyStmt,
             Float,
             ForeverStmt,
             FormattedValue,

@@ -116,7 +116,11 @@ impl TypeEvaluator.get_type_of_module_item(node_: ModuleItem) -> TypeBase {
 
             binding.type = UnknownType(is_diagnosed=True);
             self.emit_diag(
-                self._missing_import_diag(mod),
+                self._missing_import_diag(
+                    from_mod_type.symbol_table
+                        if isinstance(from_mod_type, ModuleType)
+                        else None
+                ),
                 binding,
                 name=item_name,
                 module=from_mod_name
@@ -719,10 +723,14 @@ impl TypeEvaluator._import_error_is_handled(imp: Import) -> bool {
 }
 
 impl TypeEvaluator._missing_import_diag(source: (UniNode | None)) -> DiagnosticInfo {
-    if isinstance(source, Module)
-        and not source.is_raised_from_py
-        and source.loc.mod_path.endswith(".jac") {
-        return E1145;
+    if not isinstance(source, Module)
+        or source.is_raised_from_py
+        or not source.loc.mod_path.endswith(".jac") {
+        return W1101;
     }
-    return W1101;
+    top = source.name.split(".")[0] if source.name else "";
+    if top and is_stdlib_module(top) {
+        return W1101;
+    }
+    return E1145;
 }

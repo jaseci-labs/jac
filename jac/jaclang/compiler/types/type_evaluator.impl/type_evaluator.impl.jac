@@ -1663,18 +1663,18 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
                 if result is None and isinstance(base_type, UnionType) {
-                    for member in base_type.types {
-                        if isinstance(member, (UnknownType, AnyType))
-                            or member.is_any_instance() {
+                    for union_part in base_type.types {
+                        if isinstance(union_part, (UnknownType, AnyType))
+                            or union_part.is_any_instance() {
                             return UnknownType();
                         }
                     }
-                    for member in base_type.types {
+                    for union_part in base_type.types {
                         if self.get_type_of_magic_method_call(
-                            member, "__getitem__", [subscript_arg], None
+                            union_part, "__getitem__", [subscript_arg], None
                         )
                             is None {
-                            self.emit_diag(E1040, expr, type=str(member));
+                            self.emit_diag(E1040, expr, type=str(union_part));
                             return UnknownType(is_diagnosed=True);
                         }
                     }
@@ -5391,8 +5391,13 @@ impl TypeEvaluator._loop_body_writes_target(
             }
         }
         for nm in loop_node.get_all_sub_nodes(Name) {
+            holder = nm.parent;
             if nm.expr_ctx != ExprCtx.LOAD
-                or (is_walrus(nm.parent) and nm.parent.left is nm) {
+                or (
+                    isinstance(holder, BinaryExpr)
+                    and is_walrus(holder)
+                    and holder.left is nm
+                ) {
                 keys.add(nm.value);
             }
         }

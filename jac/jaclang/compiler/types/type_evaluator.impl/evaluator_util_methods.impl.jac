@@ -2628,7 +2628,13 @@ impl TypeEvaluator._own_member_names(cls: ClassType) -> set[str] {
 impl TypeEvaluator._own_field_names(cls: ClassType) -> list[str] {
     table = cls.shared.symbol_table;
     if isinstance(table, Archetype) {
-        return [hv.name.value for hv in table.get_has_vars()];
+        return [
+            hv.name.value
+            for hv in table.get_has_vars()
+            if not hv.defer
+                and not hv.accessors
+                and field_initialization(hv).participates_in_init
+        ];
     }
     if isinstance(table, CatScope) {
         return [
