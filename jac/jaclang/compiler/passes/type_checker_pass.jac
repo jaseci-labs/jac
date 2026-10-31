@@ -67,6 +67,7 @@ walker TypeCheckPass(TreePass) {
     can exit_name with Name exit;
     can exit_param_var with ParamVar exit;
     def _check_default_order(sig: FuncSignature, param: ParamVar) -> None;
+    def _check_overrides(arch: Archetype, cls_type: ClassType) -> None;
     can exit_has_var with HasVar exit;
     can exit_in_for_stmt with InForStmt exit;
     can exit_raise_stmt with RaiseStmt exit;

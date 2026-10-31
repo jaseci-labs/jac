@@ -1385,6 +1385,9 @@ impl TypeCheckPass.exit_archetype with Archetype exit {
     if isinstance(cls_type, ClassType) and not mro_is_consistent(cls_type) {
         self.ctx.emit(E1008, node_override=here.name, name=here.name.value);
     }
+    if isinstance(cls_type, ClassType) {
+        self._check_overrides(here, cls_type);
+    }
     if isinstance(cls_type, ClassType) and here.arch_type.name != Tok.KW_CLASS {
         shape = self.evaluator.constructor_shape(cls_type);
         if shape.kind == "inherited" and shape.owner is not None {
@@ -3064,5 +3067,94 @@ impl _chunks_receiver_type(nd: FuncCall) -> (str | None) {
         return recv.mangle();
     } except Exception {
         return None;
+    }
+}
+
+impl TypeCheckPass._check_overrides(arch: Archetype, cls_type: ClassType) -> None {
+    ancestors = [c for c in cls_type.shared.mro[1:] if isinstance(c, ClassType)];
+    if not ancestors {
+        return;
+    }
+    for method in arch.get_methods() {
+        if method.name_ref is None or method.name_spec.sym is None {
+            continue;
+        }
+        name = method.name_ref.sym_name;
+        if name in ("init", "postinit", "__init__", "__post_init__", "__new__") {
+            continue;
+        }
+        for base in ancestors {
+            table = base.shared.symbol_table;
+            inherited = table.names_in_scope.get(name) if table is not None else None;
+            if inherited is None {
+                continue;
+            }
+            base_t = self.evaluator.get_type_of_symbol(inherited);
+            own_t = self.evaluator.get_type_of_symbol(method.name_spec.sym);
+            if isinstance(base_t, FunctionType)
+                and isinstance(own_t, FunctionType)
+                and not self.evaluator.assign_type(base_t, own_t) {
+                self.ctx.emit(
+                    E1013,
+                    node_override=method.name_ref,
+                    name=name,
+                    base=base.shared.class_name,
+                    detail=f"{own_t} is not assignable to {base_t}"
+                );
+            }
+            base_decl = inherited.decl.name_of if inherited.decl else None;
+            if isinstance(base_decl, Ability)
+                and isinstance(base_decl.signature, FuncSignature)
+                and isinstance(method.signature, FuncSignature) {
+                own_params = {p.name.value: p for p in method.signature.get_parameters()};
+                for bp in base_decl.signature.get_parameters() {
+                    op = own_params.get(bp.name.value);
+                    if bp.value is None or op is None {
+                        continue;
+                    }
+                    if op.value is None
+                        or unparse_node(op.value) != unparse_node(bp.value) {
+                        self.ctx.emit(
+                            E1014,
+                            node_override=op.name,
+                            name=name,
+                            base=base.shared.class_name,
+                            param=bp.name.value
+                        );
+                    }
+                }
+            }
+            break;
+        }
+    }
+    for field in arch.get_has_vars() {
+        if field.name.sym is None {
+            continue;
+        }
+        name = field.name.value;
+        for base in ancestors {
+            table = base.shared.symbol_table;
+            inherited = table.names_in_scope.get(name) if table is not None else None;
+            if inherited is None
+                or inherited.decl is None
+                or not isinstance(inherited.decl.name_of, HasVar) {
+                continue;
+            }
+            base_t = self.evaluator.get_type_of_symbol(inherited);
+            own_t = self.evaluator.get_type_of_symbol(field.name.sym);
+            if not (
+                self.evaluator.assign_type(base_t, own_t)
+                and self.evaluator.assign_type(own_t, base_t)
+            ) {
+                self.ctx.emit(
+                    E1013,
+                    node_override=field.name,
+                    name=name,
+                    base=base.shared.class_name,
+                    detail=f"field type {own_t} differs from {base_t}"
+                );
+            }
+            break;
+        }
     }
 }

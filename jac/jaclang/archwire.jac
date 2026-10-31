@@ -7237,6 +7237,8 @@ graph import compiler {
             E1010,
             E1011,
             E1012,
+            E1013,
+            E1014,
             E1020,
             E1021,
             E1022,
@@ -9755,7 +9757,8 @@ graph import compiler {
             | tools.cfg_dot.CoalesceBBPass._node_label
             | tools.code_intel
             | tools.jac_auto_lint_pass { unparse_node },
-        boundary_rules.signature_refusals { unparse_node },
+        boundary_rules.signature_refusals
+            | passes.type_checker_pass.TypeCheckPass._check_overrides { unparse_node },
     ]
     frontend.unparse --> [
         backends.native.na_ir_gen_pass.NaIRGenPass._emit_unlowerable_type

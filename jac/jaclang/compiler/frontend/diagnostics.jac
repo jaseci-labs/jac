@@ -435,6 +435,23 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot assign to read-only property '{name}' (no setter defined)"
      ),
+     E1013 = _err(
+         "E1013",
+         Category.TYPE,
+         "'{name}' overrides '{base}.{name}' incompatibly: {detail}",
+         help="An override must accept every call the inherited member accepts and"
+         " return something the inherited member's callers can use; a redeclared"
+         " field must keep the inherited field's type.",
+         blocks_codegen=True
+     ),
+     E1014 = _err(
+         "E1014",
+         Category.SEMANTIC,
+         "'{name}' overrides '{base}.{name}' but changes the default of '{param}'",
+         help="Defaults are evaluated by the method the call is checked against, so an"
+         " override keeps the inherited default for every parameter that has one.",
+         blocks_codegen=True
+     ),
      E1009 = _err(
          "E1009",
          Category.SEMANTIC,
