@@ -27,9 +27,6 @@ glob ENV_PREFIX: str = 'JAC_SERVE_',
      logger: logging.Logger = logging.getLogger(__name__);
 
 
-obj ServeConfigError(Exception) {}
-
-
 obj WorkerSettings {
     has count: int = 1,
         threads: int = 8,
