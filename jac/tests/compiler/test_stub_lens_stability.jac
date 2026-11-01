@@ -7,6 +7,7 @@ file-order-dependent narrowing and generic binding across compiler and
 application checks.
 """
 import os;
+import jaclang;
 import subprocess;
 import sys;
 import tempfile;
@@ -67,7 +68,7 @@ def _errors_in(prog: JacProgram, mod_path: str) -> list[str] {
 
 obj LensState {
     has compiler: any,
-        internal: any,
+        program: any,
         saved: tuple[any, ...] postinit,
         stubs_before: set[str] postinit;
 
@@ -79,7 +80,7 @@ obj LensState {
             active(),
 
         );
-        self.stubs_before = _stub_keys(self.internal.mod.hub);
+        self.stubs_before = _stub_keys(self.program.mod.hub);
     }
 
     def deactivate_catalog {
@@ -89,7 +90,7 @@ obj LensState {
     }
 
     def new_stub_trees -> set[str] {
-        return _stub_keys(self.internal.mod.hub) - self.stubs_before;
+        return _stub_keys(self.program.mod.hub) - self.stubs_before;
     }
 
     def restore {
@@ -102,7 +103,7 @@ obj LensState {
         ) = self.saved;
         set_active(cat);
         for key in self.new_stub_trees() {
-            self.internal.invalidate_module(key);
+            self.program.invalidate_module(key);
         }
     }
 }
@@ -110,16 +111,19 @@ obj LensState {
 test "a compiler-tree compile activates the catalog instead of parsing stub trees" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    state = LensState(compiler=compiler, internal=prog);
+    state = LensState(compiler=compiler, program=prog);
     try {
         state.deactivate_catalog();
         target = os.path.join(
-            compiler.selfhost.jaclang_root(), "compiler", "driver", "log.jac"
+            os.path.dirname(os.path.realpath(str(jaclang.__file__))),
+            "compiler",
+            "driver",
+            "log.jac"
         );
         assert os.path.isfile(target) , f"missing fixture {target}";
         prog.compile(file_path=target, options=CompileOptions(no_cgen=True));
         assert compiler.stub_catalog() is not None , (
-            "a non-selfhost compile of a compiler-tree file left the catalog inactive"
+            "a compile of a compiler-tree file left the catalog inactive"
         );
         assert not state.new_stub_trees() , (
             f"typeshed was parsed as trees with the catalog available: {sorted(
@@ -135,7 +139,7 @@ test "a compiler-tree compile activates the catalog instead of parsing stub tree
 test "stub representation stays fixed for a session without disabling other sessions" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    state = LensState(compiler=compiler, internal=prog);
+    state = LensState(compiler=compiler, program=prog);
     opts = CompileOptions(no_cgen=True, native_parity=True);
     try {
         with tempfile.TemporaryDirectory() as d {
@@ -172,7 +176,7 @@ test "stub representation stays fixed for a session without disabling other sess
 test "None recognition survives a forced lens flip" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    state = LensState(compiler=compiler, internal=prog);
+    state = LensState(compiler=compiler, program=prog);
     opts = CompileOptions(no_cgen=True, native_parity=True);
     try {
         with tempfile.TemporaryDirectory() as d {
@@ -206,8 +210,7 @@ test "None recognition survives a forced lens flip" {
 }
 
 test "a serial jac check over compiler-tree then client files stays clean" {
-    prog = JacProgram();
-    pkg = prog._get_compiler().selfhost.jaclang_root();
+    pkg = os.path.dirname(os.path.realpath(str(jaclang.__file__)));
     files = [
         os.path.join(pkg, "compiler", "driver", "ifacecache.jac"),
         os.path.join(pkg, "client", "targets", "pwa_build.jac")

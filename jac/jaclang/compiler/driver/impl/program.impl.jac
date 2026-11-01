@@ -21,7 +21,6 @@ impl JacProgram.init(
     self.context_root = None;
     self.context_key = "";
     self.contexts = {};
-    self.internal = False;
 }
 
 impl JacProgram.iface_registry(self: JacProgram) -> IfaceRegistry {
@@ -235,9 +234,7 @@ impl JacProgram.load_dependency_module(
 }
 
 impl JacProgram.toolchain_dependency(self: JacProgram, resolved_path: str) -> bool {
-    if self.internal
-        or not resolved_path
-        or not is_compiler_source_path(resolved_path) {
+    if not resolved_path or not is_compiler_source_path(resolved_path) {
         return False;
     }
     entry_path = self.options.entry_point;
@@ -435,15 +432,6 @@ impl JacProgram.find_module(self: JacProgram, path: str) -> (uni.Module | None) 
     return None;
 }
 
-impl JacProgram.execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]] {
-    hubs: list[dict[str, uni.Module]] = [self.mod.hub];
-    internal = active_host().internal_program(self);
-    if internal is not None and internal is not self {
-        hubs.append(internal.mod.hub);
-    }
-    return hubs;
-}
-
 impl JacProgram.parse_str(
     self: JacProgram,
     source_str: str,
@@ -490,6 +478,7 @@ impl JacProgram.compile(
 impl JacProgram.build(
     self: JacProgram, file_path: str, use_str: (str | None) = None
 ) -> uni.Module {
+    guard_host_compile(f"building {file_path}");
     return active_host().build_module(self, file_path, use_str);
 }
 
@@ -512,7 +501,7 @@ impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
     if native_unit(file_path, unit_compile, self) {
         return 'native';
     }
-    if self.internal or (unit_compile and package_host_edge(file_path)) {
+    if unit_compile and package_host_edge(file_path) {
         return '';
     }
     forced = opts.force_codespace if opts is not None else '';
@@ -532,8 +521,7 @@ impl JacProgram.declared_codespace(self: JacProgram, file_path: str) -> str {
 }
 
 impl JacProgram.prefers_native_codespace(self: JacProgram, file_path: str) -> bool {
-    if self.internal
-        or native_only(file_path)
+    if native_only(file_path)
         or is_kernel_unit_path(file_path)
         or native_placement_hard(self, file_path) {
         return False;
@@ -566,7 +554,7 @@ impl JacProgram.infers_native_codespace(self: JacProgram, file_path: str) -> boo
             return False;
         }
     }
-    return not self.internal and _default_codespace_for(self) == 'native';
+    return _default_codespace_for(self) == 'native';
 }
 
 impl JacProgram.parse_source(
@@ -575,6 +563,7 @@ impl JacProgram.parse_source(
     file_path: str,
     cancel_token: (CancelToken | None) = None
 ) -> uni.Module {
+    guard_host_compile(f"parsing {file_path}");
     had_error = False;
     if (file_path.endswith('.py') or file_path.endswith('.pyi')) {
         import from jaclang.compiler.passes.pyast_load_pass { parse_python_source }
@@ -816,7 +805,6 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
             or (
                 _sb_opts is not None
                 and _sb_opts.aot_mode
-                and not self.internal
                 and _default_codespace_for(self) == 'native'
             )
         );
@@ -1040,7 +1028,7 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
 impl JacProgram.ingest_comptime_producers(
     self: JacProgram, mod_targ: uni.Module, file_path: str
 ) -> None {
-    if mod_targ is None or self.internal {
+    if mod_targ is None {
         return;
     }
     saved_opts = self.options;

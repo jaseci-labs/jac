@@ -2,8 +2,8 @@
 
 `PyInit_jac_kernel` is the module's init function: `jac native build kernel`
 links it into the development extension module, and a release links it into
-the interpreter's table of built-in modules. The module has three functions,
-`compile(request)`, `check(request)` and
+the interpreter's table of built-in modules. The module has four functions,
+`compile(request)`, `check(request)`, `build_kernel(request)` and
 `open_session(project_root, search_paths, package_root)`, the
 `Session` type whose methods are `KernelSession`'s, and the `KernelError`
 exception. `tests()` lists the test cases compiled into the kernel and
@@ -78,6 +78,10 @@ def:priv check_request_of(value: ptr[PyObject]) -> CheckRequest;
 
 def:priv test_request_of(value: ptr[PyObject]) -> KernelTestRequest;
 
+def:priv kernel_target_of(value: ptr[PyObject]) -> KernelTarget;
+
+def:priv kernel_build_request_of(value: ptr[PyObject]) -> KernelBuildRequest;
+
 def:priv put(record: ptr[PyObject], key: str, value: ptr[PyObject]);
 
 def:priv append(items: ptr[PyObject], value: ptr[PyObject]);
@@ -116,6 +120,8 @@ def:priv compile_result_object(result: CompileResult) -> ptr[PyObject];
 
 def:priv check_result_object(result: CheckResult) -> ptr[PyObject];
 
+def:priv kernel_build_result_object(result: KernelBuildResult) -> ptr[PyObject];
+
 def:priv completions_object(items: list[CompletionItem]) -> ptr[PyObject];
 
 def:priv hints_object(hints: list[InlayHint]) -> ptr[PyObject];
@@ -133,6 +139,8 @@ def:priv test_outcomes_object(outcomes: list[KernelTestOutcome]) -> ptr[PyObject
 def:priv compile_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv check_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv build_kernel_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv open_session_call(
     module: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
@@ -352,6 +360,12 @@ glob:priv session_methods: list[MethodDefinition] = [
              "check",
              MethodCallbacks(positional=check_call),
              "check(request)\n--\n\nCheck a CheckRequest dict; returns a CheckResult dict.",
+             METH_O
+         ),
+         MethodDefinition(
+             "build_kernel",
+             MethodCallbacks(positional=build_kernel_call),
+             "build_kernel(request)\n--\n\nBuild the kernel a KernelBuildRequest dict describes; returns a KernelBuildResult dict.",
              METH_O
          ),
          MethodDefinition(

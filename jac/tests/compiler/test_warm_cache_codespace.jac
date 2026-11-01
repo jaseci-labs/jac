@@ -320,13 +320,6 @@ test "a silent internal compile failure names the dependency mid-import" {
 
 
 test "every scheduled pass and loader import is a declared schedule dependency" {
-    import from jaclang.bootstrap_manifest { is_seed_source }
-    `root = os.path.dirname(str(jaclang.__file__));
-
-    def seed(mod_name: str) -> bool {
-        rel = mod_name.removeprefix("jaclang.").replace(".", os.sep) + ".jac";
-        return is_seed_source(rel);
-    }
     codegen = (schedule_for(CompilationProduct.CODEGEN) or [])
         + (schedule_for(CompilationProduct.PY_IR) or [])
         + (schedule_for(CompilationProduct.FROZEN) or []);
@@ -345,12 +338,11 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
         }
         for p in passes {
             owner = p.__module__;
-            covered = seed(owner)
-                or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
+            covered = any(owner == dep or owner.startswith(dep + ".") for dep in deps);
             assert covered , (
-                f"{origin}: pass {p.__name__} lives in {owner}, which is neither a "
-                "seed module nor in the schedule's dependency list; a compile "
-                "reached from its import would run the schedule that needs it"
+                f"{origin}: pass {p.__name__} lives in {owner}, which is not in "
+                "the schedule's dependency list; a compile reached from its "
+                "import would run the schedule that needs it"
             );
         }
     }

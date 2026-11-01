@@ -14,7 +14,7 @@ obj PrecompiledArtifact(Artifact) {
         kind: ArtifactKind = ArtifactKind.ACCELERATOR,
         release: ReleasePolicy = ReleasePolicy.REQUIRED,
         summary: str = "the precompiled compiler bundle (JIR)",
-        floor: str = "compiling the compiler from source";
+        floor: str = "the kernel compiling each module as it is imported";
 
     override def probe_sealed -> (Probe | None);
     override def probe_checkout -> Probe;

@@ -95,19 +95,18 @@ runs:
         # reachable path.
         rm -f "$BUNDLE/MANIFEST.json"
 
+    # A reroute lane runs this checkout's source, so it boots on the
+    # checkout's kernel slot: the one build-kit built from these sources by
+    # stage 0, restored from the kernel cache.
+    - name: Give the reroute its kernel
+      if: steps.mode.outputs.reroute == 'true'
+      uses: ./.github/actions/stage0-kernel
+
     # First use unpacks the payload (sealed lanes) or binds the seeded bundle
     # (reroute lanes). Both are seconds now; this step exists to pay it once,
     # serially, and to fail the lane here rather than inside the first worker of
     # a parallel pool. `jac --version` is not enough: it touches a tenth of the
     # modules a real compile does, so it would not exercise the bundle.
-    #
-    # On a reroute lane this is also the dev loop's first run: the checkout
-    # has no kernel (libjac_* is gitignored) and nothing ever builds one
-    # implicitly, so the run must load the kit's kernel where the kit keeps
-    # it (the kit was built from these sources), print no bytecode notice,
-    # and leave nothing beside the loader. A pull request's kit carries no
-    # kernel (ci.yml build-kit): there the lane runs from bytecode by design,
-    # still quietly. See cli/docs/internals/native-units.md.
     - name: Warm the runtime cache
       shell: bash
       env:
@@ -123,14 +122,9 @@ runs:
           exit 0
         fi
         # The reroute runs this checkout on the kit, which was built from it:
-        # every artifact a kit carries must resolve -- the kernel, shim and
-        # floors from the kit, loaded in place; every compiler module from the
-        # seeded bundle, or it would be a silent recompile in every lane --
-        # except what the kit's manifest declares it leaves out (a pull
-        # request's kit omits the kernel and runs the bytecode compiler).
+        # every artifact a kit carries must resolve -- the kernel from the
+        # checkout's slot, the shim and floors from the kit, every compiler
+        # module from the seeded bundle, or it would be a silent recompile in
+        # every lane.
         jac native status
         jac native status --require kit
-        if compgen -G "$GITHUB_WORKSPACE/jac/jaclang/compiler/_kernel/jac_kernel.*" >/dev/null; then
-          echo "::error::resolving the kernel wrote one beside the loader"
-          exit 1
-        fi

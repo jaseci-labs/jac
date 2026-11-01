@@ -193,9 +193,6 @@ impl compile_application(
             (context, dependency)
             for dependency in sorted(dependencies)
             if dependency.startswith(project_root + os.sep)
-                and not program._get_compiler().selfhost.is_selfhost(
-                    program._get_compiler().selfhost.resolve(dependency, context)
-                )
                 and os.path.isfile(dependency)
                 and holds_application_code(os.path.relpath(dependency, project_root))
         );

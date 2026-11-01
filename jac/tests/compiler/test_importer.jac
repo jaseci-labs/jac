@@ -198,62 +198,6 @@ test "python dash m jac package" {
     }
 }
 
-test "compiler separates internal from user modules" {
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir
-    ) as tmp_file {
-        tmp_file.write('with entry { "hello" :> print; }\n');
-        user_file = tmp_file.name;
-    }
-
-    old_compiler = Jac.compiler;
-    old_program = Jac.program;
-    old_selfhost = Jac.selfhost;
-    Jac.compiler = None;
-    Jac.program = None;
-    # The self-host cache is process-wide; the separation assertions below
-    # inspect its hub, so this test scopes a fresh one and restores the
-    # shared cache afterward.
-    Jac.selfhost = None;
-
-    try {
-        captured_output = io.StringIO();
-        sys.stdout = captured_output;
-        execution.run(user_file);
-        sys.stdout = sys.__stdout__;
-
-        assert "hello" in captured_output.getvalue();
-
-        compiler = Jac.get_compiler();
-        user_program = Jac.get_program();
-        jaclang_root = compiler.selfhost.jaclang_root();
-
-        internal_hub_paths = list(compiler.selfhost.program.mod.hub.keys());
-        user_hub_paths = list(user_program.mod.hub.keys());
-
-        assert not any(path.startswith(user_file) for path in internal_hub_paths) , (
-            "the user module was compiled in the compiler's internal program"
-        );
-
-        for path in internal_hub_paths {
-            assert path.startswith(jaclang_root) , (
-                f"Non-jaclang path {path} found in compiler's internal hub"
-            );
-        }
-
-        for path in user_hub_paths {
-            assert not path.startswith(jaclang_root) , (
-                f"Jaclang internal path {path} found in user's program hub"
-            );
-        }
-    } finally {
-        os.unlink(user_file);
-        Jac.compiler = old_compiler;
-        Jac.program = old_program;
-        Jac.selfhost = old_selfhost;
-    }
-}
-
 test "a program's view of the compiler's own modules carries none of their warnings" {
     import from jaclang.compiler.driver.compile_options { CompileOptions }
     import from jaclang.compiler.driver.jir { set_cache_mode }
@@ -986,43 +930,3 @@ test "release compile closure keeps synthesized types with their catalog until a
     );
 }
 
-test "internal get_bytecode evicts unit AST after compile" {
-    # Cold bootstrap used to retain every jaclang module AST in
-    # the self-host program hub. After the outermost successful compile+cache
-    # write, non-stub ASTs must leave the hub so peak RSS stays near one import
-    # closure (+ warm typeshed), not the union of every module ever compiled.
-    compiler = JacCompiler();
-    prog = JacProgram();
-    # Two small, already-shipped jaclang modules (always under jaclang_root →
-    # resolve to the self-host program). Force a fresh compile so we exercise the
-    # post-compile eviction path rather than a disk-cache hit.
-    samples = [
-        os.path.join(compiler.selfhost.jaclang_root(), "compiler", "driver", "log.jac"),
-        os.path.join(
-            compiler.selfhost.jaclang_root(), "compiler", "frontend", "constant.jac"
-        )
-    ];
-    for p in samples {
-        assert os.path.isfile(p) , f"missing fixture {p}";
-    }
-    import from jaclang.compiler.driver.jir { set_cache_mode }
-    set_cache_mode(rebuild=True);
-    try {
-        for p in samples {
-            code = compiler.get_bytecode(p, prog);
-            assert code is not None , f"compile failed for {p}";
-            hub = compiler.selfhost.program.mod.hub;
-            leftover_jac = [
-                k
-                for k in hub.keys()
-                if not k.endswith(".pyi")
-            ];
-            assert len(leftover_jac) == 0 , (
-                f"expected non-stub ASTs cleared after outermost get_bytecode of {p}; "
-                f"hub still has {leftover_jac[:8]}"
-            );
-        }
-    } finally {
-        set_cache_mode(rebuild=False);
-    }
-}

@@ -130,14 +130,9 @@ impl _context_sections(path: any) -> dict[int, bytes] {
 
 impl _project_modules(program: any, `root: any) -> dict[str, uni.Module] {
     result: dict[str, uni.Module] = {};
-    selfhost = program._get_compiler().selfhost;
-    for hub in program.execution_hubs() {
-        for (path, module) in `list(hub.items()) {
-            if module
-                and os.path.realpath(path).startswith((`root + os.sep))
-                and not selfhost.is_selfhost(selfhost.resolve(path, program)) {
-                result[os.path.realpath(path)] = module;
-            }
+    for (path, module) in `list(program.mod.hub.items()) {
+        if module and os.path.realpath(path).startswith((`root + os.sep)) {
+            result[os.path.realpath(path)] = module;
         }
     }
     return result;
@@ -208,11 +203,7 @@ impl _manifest(program: any, path: any, `root: any, mod: any = None) -> dict[str
     if (mod is None) {
         raise RuntimeError(f'Preparation did not produce metadata for {path}');
     }
-    selfhost = program._get_compiler().selfhost;
     def lookup(source: str) -> (ManifestSource | None) {
-        if selfhost.is_selfhost(selfhost.resolve(source, program)) {
-            return None;
-        }
         imported = program.find_module(source);
         return _tree_source(program, imported) if imported is not None else None;
     }
@@ -451,9 +442,7 @@ impl _prepare_sealed(
         pos = data.find(SECTIONS_MAGIC, HEADER_SIZE);
         if pos >= 0 {
             compiler._restore_sections(
-                path,
-                compiler.selfhost.resolve(path, program),
-                read_sections(data, pos + len(SECTIONS_MAGIC))
+                path, program, read_sections(data, pos + len(SECTIONS_MAGIC))
             );
         }
         revision.native[path] = compiler.get_native_interop_setup(path, program);
@@ -634,11 +623,8 @@ impl _prepare(
 ) -> PreparedApplication {
     program.forget_failed_modules();
     inputs: dict[str, str] = {};
-    selfhost = program._get_compiler().selfhost;
     def capture(path: str) {
-        if not selfhost.is_selfhost(selfhost.resolve(path, program)) {
-            _capture_input(path, inputs);
-        }
+        _capture_input(path, inputs);
     }
     _capture_input(str(Path(`root) / 'jac.toml'), inputs);
     for config in Path(`root).`glob('jac*.toml') {
@@ -1000,13 +986,7 @@ impl _prepare_revision(
     }
     while pending {
         path = pending.pop();
-        if path in revision.code
-            or (
-                path not in entries
-                and compiler.selfhost.is_selfhost(
-                    compiler.selfhost.resolve(path, program)
-                )
-            ) {
+        if path in revision.code {
             continue;
         }
         _capture_input(path, inputs);
@@ -1017,8 +997,7 @@ impl _prepare_revision(
                 module_scoped_failure_details,
                 bootstrap_tier_failure_details
             }
-            actual = compiler.selfhost.resolve(path, program);
-            details = module_scoped_failure_details(path, actual)
+            details = module_scoped_failure_details(path, program)
                 or bootstrap_tier_failure_details(path);
             if details {
                 raise RuntimeError(details);

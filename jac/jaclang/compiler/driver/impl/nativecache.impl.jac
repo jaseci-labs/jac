@@ -1214,8 +1214,36 @@ impl NativeBuildSession._finish(paths: list[str]) {
         }
         self.registry.record_module(mod, self.prog.options);
         self.registry._stash_products(path, mod.gen);
-        self.prog._get_compiler()._persist_native_unit(path, mod, self.prog);
+        self._persist_unit(path, mod);
     }
+}
+
+impl NativeBuildSession._persist_unit(path: str, mod: any) {
+    if self.prog.iface_registry().verifying
+        or mod.parse_failed
+        or mod.gen.native_iface is None {
+        return;
+    }
+    import json;
+    import from jaclang.compiler.driver.jir {
+        SEC_INTEROP,
+        SEC_PLACEMENT,
+        write_module_cache
+    }
+    import from jaclang.compiler.driver.unit_products {
+        interop_record,
+        placement_record
+    }
+    sections = self.registry.product_sections(path);
+    interop = interop_record(mod);
+    if interop {
+        sections[SEC_INTEROP] = json.dumps(interop).encode('utf-8');
+    }
+    placement = placement_record(mod, self.prog);
+    if placement {
+        sections[SEC_PLACEMENT] = placement.encode('utf-8');
+    }
+    write_module_cache(path, None, extra_sections=sections);
 }
 
 impl NativeBuildSession.close {

@@ -402,7 +402,6 @@ class JacRuntime(JacRuntimeInterface) {
     with entry {
         compiler: (JacCompiler | None) = None;
         program: (JacProgram | None) = None;
-        selfhost: (SelfHostCache | None) = None;
         pool: ThreadPoolExecutor = ThreadPoolExecutor();
         exec_ctx: (ExecutionContext | None) = None;
         loaded_modules: dict[(str, types.ModuleType)] = {};
@@ -421,9 +420,6 @@ class JacRuntime(JacRuntimeInterface) {
 
     @classmethod
     def get_program(cls: any) -> JacProgram;
-
-    @classmethod
-    def get_selfhost(cls: any) -> SelfHostCache;
 
     static def get_base_path_dir -> (str | None);
     static def get_full_target_path -> (str | None);

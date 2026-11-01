@@ -44,7 +44,57 @@ impl running_kernel_target(pkg_root: str = "") -> KernelTarget {
         root_module=KERNEL_ROOT_MODULE,
         kernel_unit_rel=list(KERNEL_UNIT_REL),
         native_lowered_rel=list(NATIVE_LOWERED_PATHS),
-        native_only_rel=list(NATIVE_ONLY_REL) + list(NATIVE_ONLY_DIR_REL)
+        native_only_rel=list(NATIVE_ONLY_REL) + list(NATIVE_ONLY_DIR_REL),
+        native_host_rel=list(NATIVE_HOST_REL)
+    );
+}
+
+impl kernel_options(spec: (TargetSpec | None) = None) -> CompileOptions {
+    return CompileOptions(
+        aot_mode=True,
+        native_required=True,
+        native_require=[],
+        native_link_mode=KERNEL_LINK_MODE,
+        na_debug=False,
+        default_codespace="native",
+        native_unit=True,
+        kernel_build=True,
+        skip_native_engine=True,
+        native_target=(spec or host_target_spec()).triple,
+        na_gc_mode="cycles",
+        memory_profile="managed",
+        nogc_enforce_all=False,
+        memory_enforce=[],
+        memory_exempt=[],
+        native_threads=4,
+        rc_debug_codegen=False,
+        native_debug=False,
+        opt_level=2,
+        dump_ir_path="",
+        debug_ir=False,
+        rc_stats=False,
+        nogc_debug=False
+    );
+}
+
+impl kernel_plan(
+    prog: (JacProgram | None) = None,
+    mode: str = "",
+    target: (KernelTarget | None) = None,
+    spec: (TargetSpec | None) = None
+) -> LinkPlan {
+    program = prog if prog is not None else JacProgram();
+    options = kernel_options(spec);
+    root_path = target.root_module_path() if target is not None else kernel_root_path();
+    return build_link_plan(program, [root_path], options, mode=mode, native_unit=True);
+}
+
+impl kernel_llvm_runpath(lib_path: str, pkg_root: str = "") -> str {
+    llvm_dir = os.path.join(
+        pkg_root or jaclang_pkg_root(), "compiler", "backends", "native", "llvm"
+    );
+    return os.path.relpath(llvm_dir, os.path.dirname(os.path.abspath(lib_path))).replace(
+        os.sep, "/"
     );
 }
 
@@ -127,111 +177,4 @@ impl link_kernel_object(
     os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
     atomic_write(dst, data);
     return dst;
-}
-
-impl GcPauses.observe(phase: str, info: dict[str, int]) {
-    if info.get("generation") != 2 {
-        return;
-    }
-    if phase == "start" {
-        self._started = time.perf_counter();
-        return;
-    }
-    pause = time.perf_counter() - self._started;
-    self.collections += 1;
-    self.total_seconds += pause;
-    self.longest_seconds = max(self.longest_seconds, pause);
-    if pause > 1.0 {
-        self.long_pauses.append(
-            (self._started - self.origin, pause, info.get("collected", 0))
-        );
-    }
-}
-
-impl unit_line_count(path: str) -> int {
-    total = 0;
-    for source in [path] + discover_annex_files(path, ".impl.jac") {
-        try {
-            with open(source, "rb") as f {
-                total += f.read().count(b"\n");
-            }
-        } except OSError {}
-    }
-    return total;
-}
-
-impl peak_rss_gb -> float {
-    import resource;
-    import sys;
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
-    return peak / (1 << 30) if sys.platform == "darwin" else peak / (1 << 20);
-}
-
-impl plan_kernel_prefix(stop_after: int, log: Callable[[str], None]) -> int {
-    import gc;
-    import from operator { itemgetter }
-    program = JacProgram();
-    registry = program.native_units();
-    started = time.perf_counter();
-
-    def stamped(line: str) {
-        log(f"[{time.perf_counter() - started:7.1f}s {peak_rss_gb():5.1f}G] {line}");
-    }
-
-    registry.progress = stamped;
-    registry.cold = True;
-    program.iface_registry().cold = True;
-    registry.stop_after = stop_after;
-    pauses = GcPauses(origin=started);
-    gc.callbacks.append(pauses.observe);
-    log(f"  Planning the kernel uncached until {stop_after} units are lowered");
-    try {
-        kernel_plan(program, mode=KERNEL_LINK_MODE);
-        log("  The whole kernel was planned before the stop");
-    } except NativeBuildStopped {} finally {
-        registry.progress = None;
-        gc.callbacks.remove(pauses.observe);
-    }
-    log(
-        f"  Kernel prefix: {registry.lowered_units} units lowered in "
-        f"{time.perf_counter() - started:.1f}s (nothing linked), "
-        f"peak RSS {peak_rss_gb():.1f} GB"
-    );
-    log(registry.phase_summary());
-    log(
-        f"  GC: {pauses.collections} gen-2 collections, "
-        f"{pauses.total_seconds:.1f}s paused, longest {pauses.longest_seconds:.2f}s"
-    );
-    for (at, seconds, collected) in pauses.long_pauses {
-        log(f"    gen-2 pause of {seconds:.2f}s at {at:.1f}s, {collected} collected");
-    }
-    for (path, why) in sorted(registry.failures.items()) {
-        reason = why.strip().splitlines()[-1] if why.strip() else "no reason recorded";
-        log(f"  Failed to lower {native_unit_identity(path)}: {reason}");
-    }
-    log(
-        "  Lowering time per unit (lines include annexes; functions declared/defined):"
-    );
-    for (path, seconds) in sorted(
-        registry.unit_lower_seconds.items(), key=itemgetter(1), reverse=True
-    ) {
-        (declared, defined) = registry.unit_functions.get(path, (0, 0));
-        log(
-            f"    {seconds:7.2f}s {unit_line_count(path):7d} lines "
-            f"{declared:6d}/{defined:<6d} {native_unit_identity(path)}"
-        );
-    }
-    return registry.lowered_units;
-}
-
-impl build_target_kernel(
-    spec_path: str, dst: str, log: (Callable[[str], None] | None) = None
-) -> int {
-    spec = read_kernel_target(spec_path);
-    if spec is None {
-        return STAGE0_UNKNOWN_FORMAT;
-    }
-    set_kernel_target(spec);
-    link_kernel(dst, target=spec, log=log);
-    return 0;
 }

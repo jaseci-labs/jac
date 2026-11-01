@@ -490,17 +490,6 @@ test "native-only policy is retained in dependency and cache identities" {
     assert not scoped.native_required_for("/checkout/jaclang/runtime/runtime.jac");
 }
 
-test "native-only dependencies stay in the target rather than the compiler host" {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    program = JacProgram();
-    program.options = _pinned_opts(native_require=["jaclang.runtime.python.*"]);
-    host = SelfHostCache(_jaclang_root="/checkout/jaclang");
-    assert host.resolve("/checkout/jaclang/runtime/python/capi.jac", program)
-        is program;
-    assert host.peek_program() is None;
-}
-
 test "native dependency caches use the running compiler identity" {
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.jir { current_native_stamp }

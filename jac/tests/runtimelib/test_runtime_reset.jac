@@ -31,8 +31,7 @@ glob PER_RUN_SLOTS: set = {
          "program",
          "pool",
          "exec_ctx",
-         "loaded_modules",
-         "selfhost"
+         "loaded_modules"
      },
      CONFIG_SLOTS: set = {"strict_permissions"};
 

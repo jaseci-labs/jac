@@ -360,7 +360,6 @@ impl tier_reason(product: CompilationProduct) -> str {
 impl resolve(
     product: CompilationProduct,
     request: (ProductRequest | None) = None,
-    internal: bool = False,
     peer_fell_back: bool = False
 ) -> tuple[(PassSchedule | None), bool, bool] {
     spec = PRODUCTS[product];
@@ -386,8 +385,7 @@ impl resolve(
         schedule = spec.passes(req);
     } except ImportError as e {
         fallback = spec.on_import_error;
-        if fallback == ImportFallback.RAISE
-            or (fallback == ImportFallback.BOOTSTRAP_INTERNAL and not internal) {
+        if fallback == ImportFallback.RAISE {
             raise;
         }
         if fallback == ImportFallback.REPORT {
@@ -401,11 +399,9 @@ impl resolve(
 }
 
 impl schedule_for(
-    product: CompilationProduct,
-    request: (ProductRequest | None) = None,
-    internal: bool = False
+    product: CompilationProduct, request: (ProductRequest | None) = None
 ) -> (PassSchedule | None) {
-    return resolve(product, request, internal)[0];
+    return resolve(product, request)[0];
 }
 
 impl unavailable(product: CompilationProduct) -> str {
@@ -500,9 +496,7 @@ impl produce(
             peer_fell_back = True;
         }
     }
-    (schedule, fell_back, full) = resolve(
-        product, request, program.internal, peer_fell_back
-    );
+    (schedule, fell_back, full) = resolve(product, request, peer_fell_back);
     if task is not None {
         task.import_fallback = fell_back;
     }

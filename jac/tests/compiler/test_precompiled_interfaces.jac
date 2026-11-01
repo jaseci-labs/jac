@@ -310,69 +310,23 @@ test "relocation changes path fields without rewriting diagnostic messages" {
     }
 }
 
-test "freezing bootstrap bytecode initializes and preserves its interface" {
-    import os;
-    import subprocess;
-    import sys;
-    # Finalization is a fresh process. A selfhost symbol-only compile does not
-    # initialize the interface codec implicitly, unlike an application compile.
-    script = """
-from jaclang.jac0core.artifact_registry import begin
-begin(['stubcat'])
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from unittest.mock import patch
-from jaclang.dist.precompile_bytecode import seal_bootstrap, _unit_program
-from jaclang.compiler.driver.compiler import JacCompiler
-from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.driver.selfhost import SelfHostCache
-from jaclang.compiler.driver.jir import SEC_IFACE, read_section_bytes
-from jaclang.jac0core import sealed
-with TemporaryDirectory() as directory:
-    package = Path(directory) / 'jaclang'
-    driver = package / 'compiler' / 'driver'
-    driver.mkdir(parents=True)
-    (package / '__init__.jac').write_text('')
-    source = driver / 'example.jac'
-    source.write_text('def answer() -> int { return 42; }\\n')
-    program = JacProgram()
-    program._compiler = JacCompiler(_selfhost=SelfHostCache(
-        _program=program, _jaclang_root=str(package)))
-    _unit_program.append(program)
-    out = package / '_precompiled' / sealed.python_tag()
-    with patch('jaclang.bootstrap_manifest.seed_abs_entries',
-               return_value=([], [str(source)])):
-        assert seal_bootstrap(package, out, False) == 0
-    data = (out / 'compiler' / 'driver' / 'example.jir').read_bytes()
-    assert read_section_bytes(data, SEC_IFACE) is not None, (
-        'fresh bootstrap sealing lost the dependency interface')
-""";
-    result = subprocess.run(
-        [sys.executable, "-c", script], capture_output=True, text=True, timeout=600
-    );
-    assert result.returncode == 0 , result.stdout + result.stderr;
-}
-
-test "selfhost sealing resolves conditional stub classes before application analysis" {
+test "sealing resolves conditional stub classes before application analysis" {
     import os;
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.compiler { JacCompiler }
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
     import from jaclang.compiler.types.stubcat.locate { jaclang_pkg_dir }
     import from jaclang.compiler.types.stubcat.writer { module_of }
     import jaclang.dist.precompile_bytecode as precompile;
     import jaclang.jac0core.stubcat_hook as hook;
     package = jaclang_pkg_dir();
-    compiler = JacCompiler();
-    internal = JacProgram();
-    internal._compiler = compiler;
-    compiler._selfhost = SelfHostCache(_program=internal);
+    unit = JacProgram();
+    unit._compiler = JacCompiler();
     source = os.path.join(package, "compiler", "driver", "compile_options.jac");
     stub = os.path.join(package, "vendor", "typeshed", "stdlib", "types.pyi");
-    # A fresh finalizer has no active catalog. Symbol-only selfhost work
+    # A fresh finalizer has no active catalog. Symbol-only sealing work
     # must prepare its own stub authority before resolving interface xrefs.
-    with patch.object(precompile, "_unit_program", [internal]), patch.object(
+    with patch.object(precompile, "_unit_program", [unit]), patch.object(
         hook, "active", return_value=None
     ) {
         with precompile.precompile_unit_context(

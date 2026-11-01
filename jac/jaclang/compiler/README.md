@@ -187,8 +187,7 @@ Payload assembly builds this catalog from staged sources before precompilation
 and bootstrap finalization. Its recursion guard belongs only to catalog
 construction; interface encoding must be able to open the completed catalog.
 Sealing preserves the interface, dependency hashes,
-diagnostic profiles, and placement facts, including for bootstrap modules
-whose executable bytecode is produced by jac0. A bytecode-only cache is
+diagnostic profiles, and placement facts. A bytecode-only cache is
 upgraded through `IfaceRegistry` instead of introducing a second analyzer.
 Normal code generation keeps its existing interface policy.
 Bytecode loads establish their own compilation request, including when a
@@ -260,12 +259,14 @@ no redeclared signatures.
 `impl/<module>.impl.jac`. A declaration with several keeps them in
 `<module>.impl/<part>.impl.jac`. Nothing else.
 
-**The bootstrap tier constrains imports.** `jaclang/bootstrap_manifest.py`
-lists the modules the seed transpiler (`jac0`) compiles: the frontend, the
-driver, placement, the Python backend and the pass bases. A seed module may
-import a non-seed module only inside a function body, because a hoisted
-import deadlocks bootstrap. That is why many imports in this tree are local
-to the function that uses them; `scripts/check_seed_manifest.py` enforces it.
+**The kernel is the only compiler.** Every `.jac` module, this tree's
+included, is compiled by the compiler kernel; the host imports the code
+objects it makes and never parses or runs a pass itself (that is an internal
+compiler error, `guard_host_compile`). The parse, analysis and codegen modules
+are native-only (`compiler/native_scope.jac`): they exist only inside the
+kernel, and importing one as bytecode is an error. A checkout's kernel is built
+by `jac native build kernel` from the previous release pinned in
+`bootstrap/pins.json` (`jaclang/jac0core/stage0.py`).
 
 **Type checking.** `jac check .` runs in CI over the whole repository. It
 reads its exclusions from `[check] exclude` in the root `jac.toml`, so CI, the

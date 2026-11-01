@@ -96,7 +96,6 @@ obj HostServices {
     def is_annex_path_of(candidate: str, base: str) -> bool;
     def package_init(directory: str) -> (str | None);
     def wiring_file(path: str) -> (str | None);
-    def is_seed_source(rel_path: str) -> bool;
     def wiring_records(digest: str) -> str;
     def keep_wiring_records(digest: str, text: str);
     def native_scan_record(path: str, digest: str) -> str;
@@ -121,7 +120,6 @@ obj HostServices {
     def save_native_debug_ir(path: str, text: str);
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
-    def in_compiler_tree(path: str) -> bool;
     def schedule_import_failed(err: ImportError);
     def client_osp_core_js -> str;
     def client_stub_globals -> list[str];
@@ -156,7 +154,6 @@ obj HostServices {
         options: CompileOptions
     ) -> Module;
 
-    def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);
     def note_program_dependency(program: JacProgram, resolved_path: str);
     def forget_program_products(program: JacProgram, resolved_path: str);
@@ -165,7 +162,6 @@ obj HostServices {
     def collect_released_memory;
     def load_modules(names: list[str]);
     def module_in_flight(names: list[str]) -> str;
-    def import_in_flight(path: str) -> bool;
     def has_active_stub_catalog -> bool;
     def typeshed_unavailable_reason -> str;
     def is_native_only_source(rel: str) -> bool;
@@ -197,3 +193,7 @@ def install_host(host: (HostServices | None));
 def mark_kernel_resident;
 
 def kernel_resident -> bool;
+
+class HostCompileError(RuntimeError) {}
+
+def guard_host_compile(what: str);

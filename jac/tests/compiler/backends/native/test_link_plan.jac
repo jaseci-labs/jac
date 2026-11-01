@@ -212,7 +212,7 @@ test "a no-op build lowers no units and preserves the linked artifact" {
 
 test "the layout sidecar records the inputs a kernel is accepted by" {
     if _can_link_host() {
-        import from jaclang.compiler.backends.native.kernel_resolve { read_sidecar }
+        import json;
         import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
         import from jaclang.compiler.driver.jir { running_compiler_digest }
         import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
@@ -220,8 +220,9 @@ test "the layout sidecar records the inputs a kernel is accepted by" {
         (prog, plan) = _plan_for(root_dir);
         output = os.path.join(root_dir, "program");
         link_artifact(plan, output, ArtifactKind.EXECUTABLE);
-        sidecar = read_sidecar(output);
-        assert sidecar is not None;
+        with open(output + ".layout.json", encoding="utf-8") as handle {
+            sidecar = json.load(handle);
+        }
         assert sidecar["compiler_digest"] == running_compiler_digest();
         assert sidecar["codegen_identity"] == _opts().base_codegen_identity();
         assert sidecar["triple"] == plan.triple;
@@ -1353,7 +1354,7 @@ glob CASCADE_SOURCES: dict[str, str] = {
 import json, os, sys
 import jaclang
 from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.backends.native.kernel_resolve import kernel_options
+from jaclang.compiler.backends.native.kernel_stage0 import kernel_options
 from jaclang.compiler.backends.native.link_plan import build_link_plan
 prog = JacProgram()
 plan = build_link_plan(prog, [os.path.join(sys.argv[1], 'pkg', 'user.jac')], kernel_options(), native_unit=True)

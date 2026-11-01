@@ -31,6 +31,13 @@ impl resolve(name: str) -> Resolution {
     }
 
     if resolution_in_flight() {
+        made = _ENTRIES.get(name);
+        if made is None or not made.floor {
+            raise ArtifactUnavailable(
+                f"{name} was asked for while the artifact router was still loading; "
+                f"it has no floor to run on meanwhile. Run `jac native build {name}`."
+            );
+        }
         return Resolution(name=name, reason="still loading", quiet=True, deferred=True);
     }
     resolution = _decide(artifact_named(name));
@@ -242,11 +249,8 @@ impl unmet(required: list[str]) -> list[str] {
 
 impl _decide(artifact: Artifact) -> Resolution {
     if artifact.disabled() {
-        return Resolution(name=artifact.name, reason="being built", quiet=True);
-    }
-    if artifact.name in _omitted(sealed_image=True) {
         return Resolution(
-            name=artifact.name, reason="this image leaves it out", quiet=True
+            name=artifact.name, reason="being built", quiet=bool(artifact.floor)
         );
     }
     sealed = artifact.probe_sealed();
@@ -268,11 +272,6 @@ impl _decide(artifact: Artifact) -> Resolution {
     if tree.found is not None {
         return Resolution(name=artifact.name, found=tree.found);
     }
-    if artifact.name in _omitted(sealed_image=False) {
-        return Resolution(
-            name=artifact.name, reason="the kit leaves it out", quiet=True
-        );
-    }
     kit = artifact.probe_kit();
     if kit.found is not None {
         return Resolution(name=artifact.name, found=kit.found);
@@ -283,21 +282,6 @@ impl _decide(artifact: Artifact) -> Resolution {
         );
     }
     return Resolution(name=artifact.name, reason=tree.describe());
-}
-
-impl omitted_by_image -> frozenset[str] {
-    return _omitted(sealed_image=True) | _omitted(sealed_image=False);
-}
-
-impl _omitted(sealed_image: bool) -> frozenset[str] {
-    if sealed_image {
-        import from jaclang.jac0core { sealed }
-        image = sealed._jaclang_image();
-        return image.omits if image is not None else frozenset();
-    }
-
-    found = kit_image();
-    return found[1].omits if found is not None else frozenset();
 }
 
 impl _provision(artifact: Artifact, resolution: Resolution) -> Resolution {

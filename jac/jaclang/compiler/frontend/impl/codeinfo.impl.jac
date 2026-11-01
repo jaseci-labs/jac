@@ -399,7 +399,7 @@ impl native_unit_root(directory: str) -> (str | None) {
         if os.path.isdir(os.path.join(d, "_precompiled"))
             or os.path.isfile(os.path.join(d, "jac.toml"))
             or (
-                os.path.isfile(os.path.join(d, "jac0.py"))
+                os.path.isfile(os.path.join(d, "meta_importer.py"))
                 and os.path.isfile(os.path.join(d, "__init__.py"))
             ) {
             return d;

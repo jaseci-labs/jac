@@ -92,10 +92,9 @@ test "the host runs a native module from its kernel record without analysing it"
         entry_file = str(base / 'main.jac');
         program = JacProgram();
         builder = program._get_compiler();
-        (in_kernel, engine) = builder.kernel_native_entry(
+        engine = builder.kernel_native_entry(
             entry_file, program, CompileOptions(default_codespace="native")
         );
-        assert in_kernel;
         assert not program.errors_had , [str(e) for e in program.errors_had];
         assert engine is not None , "the adopted unit produced no engine";
         assert engine.get_function_address("jac_entry") != 0;

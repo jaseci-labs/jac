@@ -1,0 +1,101 @@
+name: Build the compiler kernel from stage 0
+description: >
+  Give the checkout its compiler kernel before anything else runs jac. The
+  kernel slot (jac/jaclang/compiler/_kernel) is restored from a cache keyed on
+  the kernel's inputs, or built by `jac native build kernel`: the previous
+  release pinned in jac/bootstrap/pins.json (stage 0) compiles this checkout's
+  kernel, which then rebuilds itself, and the stage-2 and stage-3 digests must
+  match. The boot re-verifies a restored kernel and refuses a stale one, so a
+  bad restore can only fail, never run stale.
+inputs:
+  bin:
+    description: The jac binary built from this checkout (zig-out/bin/jac).
+    required: false
+    default: jac/zig-out/bin/jac
+  python:
+    description: >
+      The interpreter that binary bundles (`cpython` or `jacpython`). The
+      kernel is an extension module for it, so its cache is keyed on it.
+    required: false
+    default: cpython
+outputs:
+  dir:
+    description: Absolute path of the kernel slot, for `zig build -Dkernel=`.
+    value: ${{ steps.paths.outputs.kernel }}
+runs:
+  using: composite
+  steps:
+    - name: Fingerprint the kernel inputs
+      id: inputs
+      shell: bash
+      run: bash scripts/ci_cache_keys.sh | grep '^kernel=' >> "$GITHUB_OUTPUT"
+
+    # The stage-0 binary lands in <jac cache home>/stage0, the same root rule
+    # as the runtime's get_cache_home (JAC_CACHE_HOME, XDG_CACHE_HOME, OS default).
+    - name: Resolve the kernel and stage-0 paths
+      id: paths
+      shell: bash
+      run: |
+        if [ -n "${JAC_CACHE_HOME:-}" ]; then root="${JAC_CACHE_HOME/#\~/$HOME}"
+        elif [ -n "${XDG_CACHE_HOME:-}" ]; then root="$XDG_CACHE_HOME/jac"
+        elif [ "$RUNNER_OS" = macOS ]; then root="$HOME/Library/Caches/jac"
+        else root="$HOME/.cache/jac"; fi
+        echo "stage0=$root/stage0" >> "$GITHUB_OUTPUT"
+        echo "kernel=$GITHUB_WORKSPACE/jac/jaclang/compiler/_kernel" >> "$GITHUB_OUTPUT"
+
+    - name: Restore a kernel built from this tree
+      id: kernel-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: jac/jaclang/compiler/_kernel
+        key: jac-kernel-v1-${{ inputs.python }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.kernel }}
+
+    # Verified by sha256 against the pin and never re-downloaded once it is.
+    - name: Restore the stage-0 binary
+      id: stage0-cache
+      if: steps.kernel-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ steps.paths.outputs.stage0 }}
+        key: jac-stage0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}
+
+    - name: Build the kernel from stage 0
+      if: steps.kernel-cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: jac
+      env:
+        BIN: ${{ github.workspace }}/${{ inputs.bin }}
+        PYTHONUNBUFFERED: "1"
+        PYTHONFAULTHANDLER: "1"
+      run: |
+        set -euo pipefail
+        "$BIN" native build kernel
+
+    - name: Check the kernel
+      shell: bash
+      working-directory: jac
+      env:
+        BIN: ${{ github.workspace }}/${{ inputs.bin }}
+      run: |
+        set -euo pipefail
+        "$BIN" native status kernel
+
+    # Not gated to main: the kernel key moves with every jaclang edit, and a
+    # pull request rerunning its own tree should not pay stage 0 again.
+    - name: Save the kernel cache
+      if: steps.kernel-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: jac/jaclang/compiler/_kernel
+        key: jac-kernel-v1-${{ inputs.python }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.kernel }}
+
+    # The stage-0 key moves only with the pin, so main seeds it.
+    - name: Save the stage-0 cache (trusted refs only)
+      if: >-
+        github.ref == 'refs/heads/main' &&
+        steps.kernel-cache.outputs.cache-hit != 'true' &&
+        steps.stage0-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ steps.paths.outputs.stage0 }}
+        key: jac-stage0-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/bootstrap/pins.json') }}

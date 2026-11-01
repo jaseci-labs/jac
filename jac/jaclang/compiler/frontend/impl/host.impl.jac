@@ -128,10 +128,6 @@ impl HostServices.wiring_file(path: str) -> (str | None) {
     return None;
 }
 
-impl HostServices.is_seed_source(rel_path: str) -> bool {
-    return False;
-}
-
 impl HostServices.wiring_records(digest: str) -> str {
     return "";
 }
@@ -202,10 +198,6 @@ impl HostServices.client_boundary_facts(
     return None;
 }
 
-impl HostServices.in_compiler_tree(path: str) -> bool {
-    return False;
-}
-
 impl HostServices.schedule_import_failed(err: ImportError) {}
 
 impl HostServices.client_osp_core_js -> str {
@@ -262,10 +254,6 @@ impl HostServices.run_module_pipeline(
     raise RuntimeError("no compiler host is installed");
 }
 
-impl HostServices.internal_program(program: JacProgram) -> (JacProgram | None) {
-    return None;
-}
-
 impl HostServices.bind_context_program(
     context_root: JacProgram, program: JacProgram
 ) {}
@@ -288,10 +276,6 @@ impl HostServices.load_modules(names: list[str]) {}
 
 impl HostServices.module_in_flight(names: list[str]) -> str {
     return "";
-}
-
-impl HostServices.import_in_flight(path: str) -> bool {
-    return False;
 }
 
 impl HostServices.has_active_stub_catalog -> bool {
@@ -360,4 +344,15 @@ impl mark_kernel_resident {
 
 impl kernel_resident -> bool {
     return bool(_KERNEL_RESIDENT);
+}
+
+impl guard_host_compile(what: str) {
+    if kernel_resident() {
+        return;
+    }
+    raise HostCompileError(
+        f"internal compiler error: {what} ran on the host. The kernel is the only "
+        "compiler: host code reaches the parser and the pass driver only through "
+        "a kernel request (compile, check, a session query or a kernel build)."
+    );
 }

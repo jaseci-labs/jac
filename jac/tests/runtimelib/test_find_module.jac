@@ -32,10 +32,6 @@ test "explicit compilation owns bundled modules in the caller program" {
         assert mod is not None;
         assert prog.mod.hub[key] is mod;
         assert prog.find_module(key) is mod;
-        internal = prog._get_compiler().selfhost.peek_program();
-        if internal is not None and internal is not prog {
-            assert key not in internal.mod.hub;
-        }
     } finally {
         shutil.rmtree(d, ignore_errors=True);
     }

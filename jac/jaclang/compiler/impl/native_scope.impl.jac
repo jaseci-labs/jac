@@ -86,3 +86,37 @@ impl native_scope_paths -> list[str] {
 impl kernel_root_path -> str {
     return scope_module_path(kernel_root_module());
 }
+
+impl is_native_only(rel_path: str) -> bool {
+    posix = rel_path.replace("\\", "/");
+    if posix in NATIVE_ONLY_REL {
+        return True;
+    }
+    if posix in NATIVE_HOST_REL {
+        return False;
+    }
+    for directory in NATIVE_ONLY_DIR_REL {
+        if posix.startswith(directory + "/") {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl is_native_lowered(rel: str) -> bool {
+    posix = rel.replace("\\", "/");
+    for prefix in NATIVE_LOWERED_PATHS {
+        if posix == prefix or posix.startswith(prefix + "/") {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl native_only_module(module: str) -> bool {
+    if not module.startswith("jaclang.") {
+        return False;
+    }
+    rel = module.split(".", 1)[1].replace(".", "/");
+    return is_native_only(rel + ".jac") or is_native_only(rel + "/__init__.jac");
+}

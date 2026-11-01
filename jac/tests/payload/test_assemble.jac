@@ -189,21 +189,15 @@ test "a linked-source payload publishes an empty catalog region" {
     }
 }
 
-test "the precompile child keeps the cache home and the kit omissions while HOME moves" {
+test "the precompile child keeps the cache home while HOME moves" {
     with tempfile.TemporaryDirectory() as tmp {
         site = os.path.join(tmp, "site");
         os.makedirs(site);
-        outer = {
-            "JAC_CACHE_HOME": os.path.join(tmp, "cache"),
-            "JAC_KIT_OMIT": "kernel"
-        };
+        outer = {"JAC_CACHE_HOME": os.path.join(tmp, "cache")};
         with patch.dict(os.environ, outer) {
             env = precompile_env(os.path.join(tmp, "python"), site);
         }
         assert env["JAC_CACHE_HOME"] == outer["JAC_CACHE_HOME"];
-        assert env["JAC_KIT_OMIT"] == "kernel" , (
-            "the seal reads what the kit build asked it to leave out"
-        );
         assert env["HOME"] == site + ".home";
     }
 }

@@ -52,7 +52,7 @@ glob DAY: float = 86400.0,
      EXPECTED_BUCKETS: set[str] = {
          "rt",
          "jir-modules",
-         "jir-bootstrap",
+         "stage0",
          "jir-stubcat",
          "jir-digests",
          "jir-nativeglue",

@@ -1,5 +1,5 @@
 impl SessionContext.merge_alerts {
-    if self.target is self.caller or self.target.internal {
+    if self.target is self.caller {
         return;
     }
     self.caller.errors_had.extend(self.target.errors_had[self.errors_mark:]);
@@ -51,11 +51,9 @@ impl select_context(
     file_path: str, program: JacProgram, options: CompileOptions
 ) -> SessionContext {
     target = program;
-    if not program.internal {
-        options = bind_options(file_path, program, options);
-        if not active_host().native_session_active(program) {
-            target = context_program(program, options);
-        }
+    options = bind_options(file_path, program, options);
+    if not active_host().native_session_active(program) {
+        target = context_program(program, options);
     }
     return SessionContext(
         caller=program,

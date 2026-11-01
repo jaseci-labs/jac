@@ -1,4 +1,3 @@
-import json;
 import marshal;
 import os;
 import sys;
@@ -27,30 +26,15 @@ def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
 ) -> dict[int, bytes];
 
-obj HostCompileFrame(CompileFrame) {
-    has depth_prev: int = 0,
-        gc_prev: (tuple[int, int, int] | None) = None,
-        retain_selfhost: bool = False;
-}
-
-obj JacCompiler(SessionHooks) {
-    has _selfhost: (SelfHostCache | None) = None,
-        _reentrant_depth: int = 0,
-        _closure_opts: (CompileOptions | None) = None,
-        _stub_catalog: StubCatalog | None = None,
+obj JacCompiler {
+    has _stub_catalog: StubCatalog | None = None,
         _stub_catalog_tried: bool = False,
-        stub_catalog_disabled: bool = False,
-        unit_collect: bool = True;
-
-    has selfhost: SelfHostCache { getter; }
+        stub_catalog_disabled: bool = False;
 
     def release_compile_state(target_program: JacProgram) -> None;
     def stub_catalog -> StubCatalog | None;
     def ensure_stub_catalog -> StubCatalog | None;
-    def product_program(
-        full_target: str, target_program: JacProgram, execution: bool = False
-    ) -> JacProgram;
-
+    def product_program(full_target: str, target_program: JacProgram) -> JacProgram;
     def get_native_interop_setup(
         full_target: str, target_program: JacProgram
     ) -> tuple[((object | None), (dict[(str, object)] | None))];
@@ -132,42 +116,6 @@ obj JacCompiler(SessionHooks) {
     def _persist_module_cache(
         full_target: str, result: uni.Module, actual_program: JacProgram
     ) -> None;
-
-    def _persist_native_unit(
-        full_target: str, result: uni.Module, actual_program: JacProgram
-    ) -> None;
-
-    def _release_compile_scratch(target_program: JacProgram) -> None;
-    def compile(
-        file_path: str,
-        target_program: JacProgram,
-        use_str: (str | None) = None,
-        options: CompileOptions = CompileOptions()
-    ) -> uni.Module;
-
-    def enter_compile(ctx: SessionContext) -> CompileFrame;
-    def assemble_native(program: JacProgram, module: uni.Module, checking: bool);
-    def leave_compile(ctx: SessionContext, frame: CompileFrame);
-    def finish_compile(frame: CompileFrame);
-    def check_crash(crash: Exception, file_path: str);
-    def closure_options -> (CompileOptions | None);
-    def run_module(
-        file_path: str,
-        target_program: JacProgram,
-        use_str: (str | None),
-        options: CompileOptions
-    ) -> uni.Module;
-
-    def _compile_pipeline(
-        file_path: str,
-        actual_program: JacProgram,
-        use_str: (str | None) = None,
-        options: CompileOptions = CompileOptions()
-    ) -> uni.Module;
-
-    def build(
-        file_path: str, target_program: JacProgram, use_str: (str | None) = None
-    ) -> uni.Module;
 
     static def _prepare_tool_program(
         source_str: str, file_path: str

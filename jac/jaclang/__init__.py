@@ -36,8 +36,13 @@ def _install_importer() -> None:
         _install_compiler_host(package_dir)
         return
 
-    # Source loading is an optional build service. Exported packages install
-    # their prepared importer from the same initialization entry point.
+    # `jac native build kernel` is stage 0: it runs before any .jac module
+    # loads, since loading one needs the kernel it builds.
+    import_module("jaclang.jac0core.stage0").run_requested_bootstrap(sys.argv)
+
+    # Every .jac import is compiled code from the kernel; importing the meta
+    # importer loads the kernel. Exported packages install their prepared
+    # importer from the same initialization entry point.
     importer = import_module("jaclang.meta_importer").JacMetaImporter
     if not any(isinstance(f, importer) for f in sys.meta_path):
         sys.meta_path.insert(0, importer())
@@ -59,10 +64,10 @@ def _install_importer() -> None:
 # `import jaclang` stays cheap while `from jaclang import JacRuntime`,
 # `import jaclang.compiler`, etc. keep working unchanged.
 def _load_jac_runtime() -> None:
-    # The runtime does not require the compiler to be pre-imported (it loads via
-    # the jac0 bootstrap tier, not the full compiler), so we don't pull in
-    # `jaclang.compiler` here -- doing so would re-introduce a heavy import on
-    # the fast paths. `jaclang.compiler` stays available lazily via __getattr__.
+    # The runtime does not require the compiler package to be pre-imported, so
+    # we don't pull in `jaclang.compiler` here -- doing so would re-introduce a
+    # heavy import on the fast paths. `jaclang.compiler` stays available lazily
+    # via __getattr__.
     from jaclang.runtime.runtime import JacRuntime, JacRuntimeInterface
 
     globals().update(

@@ -1,7 +1,7 @@
 """Jac Parser - Hand-written recursive descent parser.
 
 This package provides the lexer, parser, and token definitions for Jac.
-All modules are compiled by jac0 during bootstrap.
+These modules are native-only: they are compiled into the kernel.
 """
 
 from jaclang.compiler.frontend.parser.frontend import parse

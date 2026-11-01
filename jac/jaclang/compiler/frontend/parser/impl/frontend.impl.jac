@@ -138,6 +138,7 @@ impl parse_woven(
     prog: (JacProgram | None),
     annexes: list[WovenAnnex]
 ) -> tuple[Module, bool] {
+    guard_host_compile(f"parsing {file_path}");
     (module, had_error) = parse(source_str, file_path, prog=prog);
     if had_error or not annexes {
         return (module, had_error);

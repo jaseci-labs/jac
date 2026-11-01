@@ -1,9 +1,9 @@
 """Single source of truth for jac's global on-disk cache root.
 
-Pure Python with no jac dependencies, so it is importable during bootstrap,
-before the jac0core ``.jac`` modules have been transpiled. Everything that
+Pure Python with no jac dependencies, so it is importable during boot, before
+the kernel is loaded and any ``.jac`` module can import. Everything that
 writes under the machine-wide cache derives its directory from here: the
-bootstrap bytecode cache (``meta_importer``) and the JIR module cache
+stage-0 release and the kernel record (``stage0``) and the JIR module cache
 (``jaclang.compiler.driver.jir``) directly, every other bucket through the
 ``jaclang.cache`` authority, which wraps this rule rather than restating it.
 The fused launcher (``jaclang/dist/fused/materialize.jac``) runs before
@@ -60,11 +60,6 @@ def get_cache_home() -> Path:
 def get_jir_cache_dir() -> Path:
     """Return the global cache directory for JIR files."""
     return get_cache_home() / "jir"
-
-
-def get_bootstrap_cache_dir() -> Path:
-    """Global cache dir for marshalled jac0core bootstrap bytecode."""
-    return get_jir_cache_dir() / "bootstrap"
 
 
 def get_app_cache_dir() -> Path:

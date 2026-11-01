@@ -125,6 +125,9 @@ impl run_pass[W: CompilerPass](
     cancel_token: (CancelToken | None) = None,
     policy: (DiagnosticPolicy | None) = None
 ) -> W {
+    if not kernel_resident() {
+        guard_host_compile(f"the pass {pass_cls.__name__}");
+    }
     pol = policy if policy is not None else build_diagnostic_policy(prog);
     errors: list[Alert] = [];
     warnings: list[Alert] = [];

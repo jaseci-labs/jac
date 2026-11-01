@@ -105,9 +105,7 @@ impl build_catalog(
 
     prog = JacProgram();
 
-    prog._compiler = JacCompiler(
-        stub_catalog_disabled=True, _selfhost=SelfHostCache(_program=prog)
-    );
+    prog._compiler = JacCompiler(stub_catalog_disabled=True);
 
     try {
         with building(["stubcat"]) {

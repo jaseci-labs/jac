@@ -14,7 +14,7 @@ comptime SPEC_PRECOMPILE: CommandSpec = CommandSpec(
                  `default=False,
                  short="",
                  help=(
-                     "Precompile, freeze the bootstrap seed tier, and emit "
+                     "Precompile, adopt the compiler kernel, and emit "
                      "MANIFEST.json (JIR-authoritative image; .jac sources stay "
                      "on disk for tracebacks, never compiled at runtime)"
                  )
@@ -25,7 +25,7 @@ comptime SPEC_PRECOMPILE: CommandSpec = CommandSpec(
                  `default=False,
                  short="",
                  help=(
-                     "Compile only (exclude the seed tier), no finalize -- the "
+                     "Compile only, no finalize -- the "
                      "payload build's crash-tolerant first pass"
                  )
              ),

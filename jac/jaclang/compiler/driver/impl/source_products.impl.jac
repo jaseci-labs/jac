@@ -4,8 +4,7 @@ impl python_source(path: str, program: JacProgram) -> tuple[str, Module | None] 
     }
     import from jaclang.compiler.driver.compilation_context { program_for }
 
-    owner = program._get_compiler().selfhost.resolve(path, program);
-    actual = program_for(path, owner);
+    actual = program_for(path, program);
     options = copy.copy(actual.options);
     options.need_full_ast = True;
     options.no_cgen = False;
@@ -39,8 +38,7 @@ impl python_text(path: str, program: JacProgram) -> str {
         return Path(path).read_text(encoding='utf-8');
     }
     real = os.path.realpath(path);
-    owner = program._get_compiler().selfhost.resolve(path, program);
-    scope = owner_scope_options(program_for(path, owner));
+    scope = owner_scope_options(program_for(path, program));
     with cache_scope(scope) {
         cache_path = get_module_cache_path(real);
         if is_module_cache_valid(real, cache_path) {

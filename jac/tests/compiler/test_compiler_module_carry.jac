@@ -319,7 +319,7 @@ def write_native(kernel: bool, payload: bytes) -> jir.NativeStamp {
 that were lowered to do it. `cached` off lowers every unit whatever the cache
 holds, which loads the native backend before a test moves the cache."""
 def lowered_kernel_units(cached: bool = True) -> list[str] {
-    import from jaclang.compiler.backends.native.kernel_resolve { kernel_options }
+    import from jaclang.compiler.backends.native.kernel_stage0 { kernel_options }
     import from jaclang.compiler.backends.native.link_plan { build_link_plan }
     import from jaclang.compiler.driver.program { JacProgram }
     program = JacProgram();
@@ -427,36 +427,3 @@ test "an unrelated compiler edit lowers no kernel unit again" {
     }
 }
 
-test "a kernel linked before a compiler edit is still accepted after it" {
-    import sys;
-    import from jaclang.compiler.backends.native.kernel_resolve {
-        kernel_options,
-        unit_drift
-    }
-    import from jaclang.compiler.driver.jir { unit_source_digest }
-    import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
-    with checkout() as tree {
-        tree.build("a");
-        options = kernel_options();
-        ident = native_unit_identity(MODULE);
-        sidecar: dict[str, any] = {
-            "compiler_digest": native_producer_digest(True),
-            "codegen_identity": options.base_codegen_identity(),
-            "triple": options.effective_triple(),
-            "python": f"{sys.version_info.major}.{sys.version_info.minor}",
-            "unit_ids": [ident],
-            "unit_policy": {ident: int(options.native_required_for(MODULE))}
-        };
-        recorded = {ident: unit_source_digest(MODULE)};
-        assert unit_drift(sidecar, recorded, [MODULE]) == [];
-        tree.build("b", native="n1");
-        assert unit_drift(sidecar, recorded, [MODULE]) == [] , (
-            "a compiler edit outside the kernel's units retired the kernel"
-        );
-        assert unit_drift(sidecar, {ident: "an earlier revision"}, [MODULE]);
-        update_handoff(exact=True);
-        assert unit_drift(sidecar, recorded, [MODULE]) , (
-            "an exact build accepted a kernel stamped by its ABI"
-        );
-    }
-}
