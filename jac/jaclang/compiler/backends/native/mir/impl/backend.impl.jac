@@ -16,9 +16,11 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     mir = MirModule(path=path, prefix=native_unit_prefix(path));
     lowering = MirLowering(prog=self.prog, module=ir_in, mir=mir);
     lowered = lowering.lower();
-    self.report_refusals(lowering);
-    if self.ctx.errors_had {
-        return ir_in;
+    if self.prog.options.native_required_for(path) {
+        self.report_refusals(lowering);
+        if self.ctx.errors_had {
+            return ir_in;
+        }
     }
     for fn in lowered.functions {
         mir_insert_rc(fn);
@@ -69,6 +71,13 @@ impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
         module=native_module_key(mir.path),
         prefix=mir.prefix,
         exports=exports,
-        deps=list(deps)
+        deps=list(deps),
+        demoted=sorted(mir.demoted),
+        init_symbol=native_glob_init_name(mir.path)
+            if mir.function(native_glob_init_name(mir.path)) is not None
+            else "",
+        entry_symbol=native_entry_name(mir.path)
+            if mir.function(native_entry_name(mir.path)) is not None
+            else ""
     );
 }

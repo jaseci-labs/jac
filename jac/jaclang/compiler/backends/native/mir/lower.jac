@@ -83,6 +83,8 @@ obj MirLowering {
         state: (MirFnState | None) = None;
 
     def lower -> MirModule;
+    def settle;
+    def callees_of(fn: MirFunction) -> list[str];
     def module_abilities -> list[uni.Ability];
     def declare(ab: uni.Ability);
     def symbol_of(ab: uni.Ability) -> str;

@@ -6511,6 +6511,8 @@ graph import compiler {
         backends.native.link_plan._write_sidecar { native_unit_identity },
         backends.native.mir.backend {
             jaclang_pkg_root,
+            native_entry_name,
+            native_glob_init_name,
             native_module_key,
             native_unit_prefix
         },

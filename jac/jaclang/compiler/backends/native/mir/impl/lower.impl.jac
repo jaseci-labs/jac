@@ -38,7 +38,63 @@ impl MirLowering.lower -> MirModule {
             self.mir.functions.append(extra);
         }
     }
+    self.settle();
     return self.mir;
+}
+
+impl MirLowering.callees_of(fn: MirFunction) -> list[str] {
+    found: list[str] = [];
+    for blk in fn.blocks {
+        for instr in blk.instrs {
+            if instr.op in (MirOp.CALL, MirOp.FN_ADDR) and instr.callee {
+                found.append(instr.callee);
+            } elif instr.op == MirOp.VTABLE_ADDR {
+                obj_def = self.mir.objects.get(instr.str_value);
+                if obj_def is not None {
+                    found.extend(obj_def.vtable_methods);
+                }
+            }
+        }
+    }
+    return found;
+}
+
+impl MirLowering.settle {
+    symbols: dict[str, str] = {};
+    for decl in self.decls.values() {
+        symbols[self.name_of(decl.ability)] = decl.symbol;
+    }
+    for (name, reasons) in self.refusals.items() {
+        symbol = symbols.get(name, name);
+        first = reasons[0];
+        self.mir.demoted[symbol] = f"{first.kind} '{first.name}'";
+    }
+    for obj_def in self.mir.objects.values() {
+        if any(method in self.mir.demoted for method in obj_def.vtable_methods) {
+            for method in obj_def.vtable_methods {
+                if method not in self.mir.demoted {
+                    self.mir.demoted[method] = "an override in its vtable is not native";
+                }
+            }
+        }
+    }
+    changed = True;
+    while changed {
+        changed = False;
+        for fn in self.mir.functions {
+            if fn.symbol in self.mir.demoted {
+                continue;
+            }
+            for callee in self.callees_of(fn) {
+                if callee in self.mir.demoted {
+                    self.mir.demoted[fn.symbol] = f"calls {callee}, which is not native";
+                    changed = True;
+                    break;
+                }
+            }
+        }
+    }
+    self.mir.functions = [fn for fn in self.mir.functions if fn.symbol not in self.mir.demoted];
 }
 
 impl MirLowering.module_abilities -> list[uni.Ability] {

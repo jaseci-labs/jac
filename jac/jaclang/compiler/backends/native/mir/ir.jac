@@ -180,6 +180,7 @@ obj MirModule {
         tls_blocks: dict[str, int] = {},
         global_blocks: dict[str, int] = {},
         objects: dict[str, MirObjectDef] = {},
+        demoted: dict[str, str] = {},
         deps: list[str] = [];
 
     def function(symbol: str) -> (MirFunction | None);
