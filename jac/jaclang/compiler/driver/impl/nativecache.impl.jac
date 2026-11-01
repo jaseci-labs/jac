@@ -898,7 +898,7 @@ impl NativeBuildSession.lower(
     path: str, use_str: (str | None) = None
 ) -> (NativeUnitEntry | None) {
     resolved = os.path.realpath(path);
-    if resolved in self.registry.building {
+    if resolved in self.registry.building or resolved in self.registry.failures {
         return None;
     }
     self.heap.take();

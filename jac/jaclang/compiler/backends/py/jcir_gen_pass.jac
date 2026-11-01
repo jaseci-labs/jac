@@ -52,7 +52,9 @@ glob TOKEN_CLS_BY_NAME: dict[(str, str)] = {
          'MINUS': 'USub'
      };
 
-glob FW_ELIDABLE_OPS: frozenset = frozenset({Tok.PLUS, Tok.MINUS, Tok.STAR_MUL}),
+glob FW_ELIDABLE_OPS: frozenset[Tok] = frozenset(
+         {Tok.PLUS, Tok.MINUS, Tok.STAR_MUL}
+     ),
      FW_AUG_TO_BIN: dict[str, str] = {
          "ADD_EQ": "PLUS",
          "SUB_EQ": "MINUS",

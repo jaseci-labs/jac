@@ -1309,6 +1309,7 @@ impl NaIRGenPass._place_unit_python(
         b.call(self.extern_funcs["abort"], []);
         b.unreachable();
         self._seam_stub_ids.add(id(func));
+        self._demoted_stubs[full_name] = func;
     }
     if not keep_func {
         self.method_funcs.pop(full_name, None);

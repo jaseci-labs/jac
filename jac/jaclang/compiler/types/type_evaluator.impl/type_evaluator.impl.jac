@@ -1900,7 +1900,9 @@ impl TypeEvaluator._get_type_of_expression_core(
 
             and_override_keys: list[int] = [];
             for i in range(num_values) {
-                op_type = self.get_type_of_expression(expr.values[i].expr);
+                op_type = self.get_type_of_expression(
+                    expr.values[i].expr, expected_type=expected_type
+                );
 
                 if is_and and i < num_values - 1 {
                     import from jaclang.compiler.types.type_evaluator {

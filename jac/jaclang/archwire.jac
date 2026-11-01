@@ -12941,6 +12941,7 @@ graph import compiler.frontend {
             NameAtom,
             Symbol,
             UniCFGNode,
+            UniNode,
             UniScopeNode
         },
         roles {

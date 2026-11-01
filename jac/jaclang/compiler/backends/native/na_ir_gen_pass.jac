@@ -315,6 +315,7 @@ walker NaIRGenPass(CompilerPass) {
         _pub_symbols: set[str] = set(),
         _unit_exports: dict[str, NativeExport] = {},
         _demoted_names: set[str] = set(),
+        _demoted_stubs: dict[str, ir.Function] = {},
         _seam_stub_ids: set[int] = set(),
         _native_test_nodes: dict[str, uni.Test] = {},
         _lowering_issues: list[NativeLoweringIssue] = [],

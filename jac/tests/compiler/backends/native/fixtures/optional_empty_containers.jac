@@ -35,3 +35,22 @@ def empty_dict_in_tuple -> int {
     table["x"] = 9;
     return table["x"] * 10 + k + len(table);
 }
+
+obj IndexStore {
+    has index: dict[str, int] = {};
+}
+
+obj Indexed {
+    has owner: IndexStore | None = None;
+    has names: dict[str, int] { getter; }
+}
+
+impl Indexed.names.getter -> dict[str, int] {
+    return self.owner?.index or {};
+}
+
+def empty_dict_from_or -> int {
+    table = Indexed().names;
+    table["x"] = 4;
+    return table["x"] * 10 + len(table);
+}
