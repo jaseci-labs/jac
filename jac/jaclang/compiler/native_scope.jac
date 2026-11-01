@@ -180,6 +180,20 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          "compiler/backends/native/region_abi.jac",
          "compiler/native_compiler.jac"
      ),
+     KIT_CARRY_CONTRACT_REL: tuple[str, ...] = (
+         "compiler/frontend/parser",
+         "compiler/frontend/unitree.jac",
+         "compiler/frontend/codeinfo.jac",
+         "compiler/types",
+         "compiler/passes/type_checker_pass.jac",
+         "compiler/passes/layout_pass.jac",
+         "compiler/passes/placement_pass.jac",
+         "compiler/placement",
+         "compiler/backends/native",
+         "compiler/backends/common",
+         "compiler/native_compiler.jac",
+         "compiler/native_scope.jac"
+     ),
      _SCOPE_SUFFIX_CACHE: list[str] = [],
      _SCOPE_SUFFIX_GEN: list[int] = [-1];
 

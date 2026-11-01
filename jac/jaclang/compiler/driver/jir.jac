@@ -167,7 +167,10 @@ glob _COMPILER_DIGEST_CACHE: list[str] = [],
 
 glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
      PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
-     DEV_NATIVE_PRODUCER: str = "abi:";
+     DEV_NATIVE_PRODUCER: str = "abi:",
+     KIT_NATIVE_PRODUCER: str = "kit:",
+     KIT_CARRY_ENV: str = "JAC_SEAL_KERNEL_CARRY",
+     _KIT_CARRY_DIGESTS: dict[str, str] = {};
 
 def _manifest_compiler_digest(pkg_dir: str) -> str;
 
@@ -188,6 +191,12 @@ def dev_carry_enabled -> bool;
 def abi_contract_digest(pkg_root: str) -> str;
 
 def native_producer_digest(kernel_build: bool = False) -> str;
+
+def kit_carry_enabled -> bool;
+
+def kit_carry_digest -> str;
+
+def carry_contract_digest(pkg_root: str) -> str;
 
 def _producer_kind(digest: str) -> str;
 

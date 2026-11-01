@@ -183,7 +183,9 @@ impl NativeUnitRegistry.stamp_for(
     return current_native_stamp(
         opts.unit_codegen_identity(path),
         opts.effective_triple(),
-        native_producer_digest(opts.kernel_build)
+        kit_carry_digest()
+            if opts.kit_carry
+            else native_producer_digest(opts.kernel_build)
     );
 }
 
