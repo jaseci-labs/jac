@@ -1023,10 +1023,16 @@ test "watcher survives ignored generated tree creation" {
         nested_source.write_text("glob child = 1;\n");
         time.sleep(0.5);
         generated_root = os.path.realpath(str(app_dir / ".jac"));
-        watched_dirs = {
-            os.path.realpath(os.fsdecode(emitter.watch.path))
-            for emitter in watcher._observer.emitters
-        };
+        if hasattr(watcher._observer, 'watched_paths') {
+            watched_dirs = {
+                os.path.realpath(path) for path in watcher._observer.watched_paths
+            };
+        } else {
+            watched_dirs = {
+                os.path.realpath(os.fsdecode(emitter.watch.path))
+                for emitter in watcher._observer.emitters
+            };
+        }
         assert not any(
             path == generated_root or path.startswith(generated_root + os.sep)
             for path in watched_dirs
@@ -1146,6 +1152,117 @@ test "moves emit delete plus create; directories flagged, noise filtered" {
             if d and n in {"node_modules", ".git"}
         };
         assert not noise , f"tooling directories must never reach callbacks, got {noise}";
+    }
+}
+
+test "an explicitly selected hidden app root still reports source changes" {
+    with tempfile.TemporaryDirectory() as tmp {
+        app_dir = Path(tmp) / ".myapp";
+        app_dir.mkdir();
+        source = app_dir / "main.jac";
+        source.write_text("glob value = 1;\n");
+        hidden = app_dir / ".generated";
+        hidden.mkdir();
+        watcher = JacFileWatcher(watch_paths=[str(app_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        source.write_text("glob value = 2;\n");
+        (hidden / "ignored.jac").write_text("glob ignored = 1;\n");
+        time.sleep(0.5);
+        watcher.stop();
+        observed = {os.path.realpath(event.path) for event in events};
+        assert os.path.realpath(str(source)) in observed , (
+            f"changes under an explicitly selected hidden app root must be watched: {events}"
+        );
+        assert os.path.realpath(str(hidden / "ignored.jac")) not in observed , (
+            f"hidden descendants must remain pruned: {events}"
+        );
+    }
+}
+
+test "moving a populated directory reports its matching files" {
+    import os;
+    with tempfile.TemporaryDirectory() as tmp {
+        app_root = Path(tmp) / "app";
+        incoming = Path(tmp) / "incoming";
+        app_root.mkdir();
+        incoming.mkdir();
+        source = incoming / "page.jac";
+        source.write_text("glob page = 1;\n");
+        (incoming / "style.css").write_text(".page { color: red; }\n");
+        (incoming / "readme.txt").write_text("not watched\n");
+        (incoming / ".generated").mkdir();
+        (incoming / ".generated" / "ignored.jac").write_text("glob ignored = 1;\n");
+        watcher = JacFileWatcher(watch_paths=[str(app_root)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        destination = app_root / "imported";
+        os.rename(str(incoming), str(destination));
+        time.sleep(0.6);
+        watcher.stop();
+        observed = {
+            (os.path.realpath(event.path), event.change_type) for event in events
+        };
+        assert (os.path.realpath(str(destination / "page.jac")), ChangeType.CREATED)
+            in observed , f"moved Jac sources must be reported: {events}";
+        assert (os.path.realpath(str(destination / "style.css")), ChangeType.CREATED)
+            in observed , f"moved client assets must be reported: {events}";
+        assert not any(
+            path == os.path.realpath(str(destination / "readme.txt"))
+                or path
+                    == os.path.realpath(
+                        str(destination / ".generated" / "ignored.jac")
+                    ) for (path, _) in observed
+        ) , f"non-matching and ignored files must stay filtered: {events}";
+    }
+}
+
+test "moving a watched directory keeps watching its descendants" {
+    import os;
+    with tempfile.TemporaryDirectory() as tmp {
+        app_dir = Path(tmp);
+        original = app_dir / "original";
+        original.mkdir();
+        source = original / "inside.jac";
+        source.write_text("glob value = 1;\n");
+        watcher = JacFileWatcher(watch_paths=[str(app_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        moved = app_dir / "moved";
+        os.rename(str(original), str(moved));
+        time.sleep(0.4);
+        moved_source = moved / "inside.jac";
+        moved_source.write_text("glob value = 2;\n");
+        time.sleep(0.4);
+        watcher.stop();
+        observed = {
+            (os.path.realpath(event.path), event.change_type) for event in events
+        };
+        assert (os.path.realpath(str(moved_source)), ChangeType.CREATED) in observed , f"moved source must be reported: {events}";
+        assert (os.path.realpath(str(moved_source)), ChangeType.MODIFIED) in observed , f"source edits after a move must remain watched: {events}";
+    }
+}
+
+test "a large source tree uses one filesystem watcher emitter" {
+    with tempfile.TemporaryDirectory() as tmp {
+        app_dir = Path(tmp);
+        for i in range(160) {
+            (app_dir / f"source-{i}").mkdir();
+        }
+        watcher = JacFileWatcher(watch_paths=[str(app_dir)]);
+        watcher.start();
+        time.sleep(0.1);
+        emitter_count = len(watcher._observer.emitters);
+        watcher.stop();
+        assert emitter_count == 1 , (
+            f"directory count must not create one emitter per directory: {emitter_count}"
+        );
     }
 }
 

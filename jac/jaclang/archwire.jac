@@ -47435,6 +47435,7 @@ graph import server {
         server.JacAPIServer._ensure_internal_users { SYSTEM_USER, UserRole },
         server.JacAPIServer._register_scheduled_tasks { SYSTEM_USER },
     ]
+    impl.pruned_inotify --> watcher.JacFileWatcher.start { SharedPrunedInotifyObserver }
     middleware ++> [
         endpoints.auth | endpoints.second_factor { bearer_token, require_user },
         endpoints.introspection { unauthorized },
