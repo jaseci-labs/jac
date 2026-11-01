@@ -40,6 +40,11 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_dict_copy": ["ref", "ref", "int", "int"],
          "__jac_rt_dict_update": ["none", "ref", "ref", "int", "int"],
          "__jac_rt_dict_eq": ["bool", "ref", "ref", "int", "int"],
+         "__jac_rt_alloc": ["ref", "int"],
+         "__jac_rt_set_type": ["none", "ref", "ptr"],
+         "__jac_rt_free_block": ["none", "int"],
+         "__jac_rt_release": ["none", "ref"],
+         "__jac_rt_trace_register": ["none", "int", "int"],
          "__jac_rt_write": ["none", "int", "ptr", "int"],
          "__jac_rt_write_int": ["none", "int", "int"]
      };

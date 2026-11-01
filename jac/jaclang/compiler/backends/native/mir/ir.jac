@@ -42,6 +42,8 @@ enum MirOp {
     FIELD_ADDR = "field.addr",
     TLS_BLOCK = "tls.block",
     GLOBAL_BLOCK = "global.block",
+    SIZEOF = "sizeof",
+    VTABLE_ADDR = "vtable.addr",
     FN_ADDR = "fn.addr",
     CALL_DTOR = "call.dtor",
     GLOBAL_ADDR = "global.addr",
@@ -98,6 +100,7 @@ obj MirFunction {
         params: list[MirParam] = [],
         blocks: list[MirBlock] = [],
         linkage: str = "external",
+        manual_rc: bool = False,
         next_id: int = 0,
         next_label: int = 0;
 
@@ -134,6 +137,34 @@ obj MirStructDef {
     def index_of(field: str) -> int;
 }
 
+obj MirObjectField {
+    has name: str,
+        type: MirType,
+        index: int;
+}
+
+"""A Jac archetype's native layout, read from the layout registry: the header
+slots (vtable pointer, OSP type tag, walker reports), then the fields at
+their layout indices. `local` objects get their vtable, drop and trace
+functions emitted in this module."""
+obj MirObjectDef {
+    has name: str,
+        slot_count: int,
+        fields: list[MirObjectField] = [],
+        vtable_slot: int = -1,
+        tag_slot: int = -1,
+        reports_slot: int = -1,
+        vtable_symbol: str = "",
+        vtable_methods: list[str] = [],
+        ancestry: list[str] = [],
+        drop_symbol: str = "",
+        trace_symbol: str = "",
+        is_acyclic: bool = False,
+        local: bool = False;
+
+    def field(name: str) -> (MirObjectField | None);
+}
+
 obj MirModule {
     has path: str,
         prefix: str,
@@ -143,6 +174,7 @@ obj MirModule {
         globals: dict[str, MirGlobal] = {},
         tls_blocks: dict[str, int] = {},
         global_blocks: dict[str, int] = {},
+        objects: dict[str, MirObjectDef] = {},
         deps: list[str] = [];
 
     def function(symbol: str) -> (MirFunction | None);

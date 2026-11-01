@@ -7,10 +7,35 @@ impl MirLowering.lower -> MirModule {
             self.refusals.setdefault(name, []).append(refusal_of(err));
         }
     }
+    archetypes = self.module_archetypes();
+    for arch in archetypes {
+        try {
+            self.declare_archetype(arch);
+        } except MirRefused as err {
+            self.refusals.setdefault(arch.name.value, []).append(refusal_of(err));
+        }
+    }
     for key in self.order {
         made = self.lower_function(self.decls[key]);
         if made is not None {
             self.mir.functions.append(made);
+        }
+    }
+    for arch in archetypes {
+        if archetype_native_name(arch) not in self.mir.objects {
+            continue;
+        }
+        made = self.lower_constructor(arch);
+        if made is not None {
+            self.mir.functions.append(made);
+        }
+        obj_def = self.object_def(arch);
+        self.mir.functions.append(self.lower_drop(obj_def));
+        self.mir.functions.append(self.lower_trace(obj_def));
+    }
+    for extra in (self.lower_module_init(), self.lower_module_entry()) {
+        if extra is not None {
+            self.mir.functions.append(extra);
         }
     }
     return self.mir;
@@ -93,12 +118,25 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
         if not isinstance(body, (list, tuple)) {
             raise MirRefused(mir_refusal("function", "expression body", ab));
         }
-        nodes = list(sig.posonly_params) + list(sig.params or []);
+        nodes = [
+            pv
+            for pv in list(sig.posonly_params) + list(sig.params or [])
+            if decl.self_type is None or pv.name.value != "self"
+        ];
+        if decl.self_type is not None {
+            receiver = fn.new_value(decl.self_type, "self");
+            fn.params.append(MirParam(name="self", value=receiver));
+            self.st().self_value = receiver;
+        }
         if len(nodes) != len(decl.params) {
             raise MirRefused(mir_refusal("function", "impl parameters differ", ab));
         }
         declared = ab.signature;
-        twins = list(declared.posonly_params) + list(declared.params or [])
+        twins = [
+            pv
+            for pv in list(declared.posonly_params) + list(declared.params or [])
+            if decl.self_type is None or pv.name.value != "self"
+        ]
             if isinstance(declared, uni.FuncSignature) and declared is not sig
             else [];
         for (index, (pv, ptype)) in enumerate(zip(nodes, decl.params)) {
@@ -416,6 +454,10 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
 }
 
 impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
+    receiver = self.st().self_value;
+    if nd.value == "self" and receiver is not None {
+        return receiver;
+    }
     if nd.sym is None or id(nd.sym) not in self.st().locals {
         folded = nd.ct_value;
         whole = int_host(folded) if isinstance(folded, CtInt) else None;
@@ -758,6 +800,9 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         }
         return result;
     }
+    if isinstance(callee, uni.Archetype) {
+        return self.object_call(nd, callee);
+    }
     if isinstance(callee, uni.Ability) and clib_import_of(callee) is not None {
         return self.c_call(nd, callee);
     }
@@ -1054,6 +1099,18 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         }
         raise MirRefused(mir_refusal("call", f"len of {value.type.render()}", nd));
     }
+    if name == "isinstance" and len(args) == 2 {
+        wanted = self.arch_of_type(args[1].type) if isinstance(args[1], uni.Expr) else None;
+        if wanted is None and isinstance(args[1], uni.Name) and isinstance(args[1].sym, uni.Symbol) {
+            decl = args[1].sym.decl;
+            holder = decl.parent if decl is not None else None;
+            wanted = holder if isinstance(holder, uni.Archetype) else None;
+        }
+        if wanted is not None {
+            return self.isinstance_check(self.lower_expr(args[0]), wanted);
+        }
+        raise MirRefused(mir_refusal("call", "isinstance of a non-archetype", nd));
+    }
     if name == "str" and len(args) == 1 {
         return self.to_str(self.lower_expr(args[0]), nd);
     }
@@ -1307,6 +1364,11 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
         right = nd.right;
         if not isinstance(right, uni.Name) {
             raise MirRefused(mir_refusal("attribute", type(right).__name__, nd));
+        }
+        target_type = nd.target.type if isinstance(nd.target, uni.Expr) else None;
+        arch = self.arch_of_type(target_type);
+        if arch is not None {
+            return self.field_place(self.lower_expr(nd.target), arch, right.value, nd);
         }
         base = self.lower_place(nd.target);
         holder = self.place_elem(base);
@@ -1663,6 +1725,12 @@ impl MirLowering.method_call(
     if mir_is_container(receiver_type) {
         return self.container_method(self.lower_expr(target.target), right.value, nd);
     }
+    owner_arch = self.arch_of_type(target.target.type)
+        if isinstance(target.target, uni.Expr)
+        else None;
+    if owner_arch is not None {
+        return self.object_method(nd, self.lower_expr(target.target), owner_arch, right.value);
+    }
     if receiver_type.kind == MirKind.C_PTR {
         receiver = self.lower_expr(target.target);
         args = self.call_args(nd);
@@ -1757,15 +1825,10 @@ impl MirLowering.global_place(nd: uni.Name) -> (MirValue | None) {
             made.float_value = folded.value;
         } elif isinstance(folded, CtBool) and value_type.kind == MirKind.BOOL {
             made.int_value = 1 if folded.value else 0;
+        } elif isinstance(initial, uni.Expr) {
+            self.deferred_globals.append((made, initial));
         } else {
-            raise MirRefused(
-                mir_refusal(
-                    "global initializer",
-                    sym.sym_name,
-                    declaration,
-                    "Only global initializers that fold to a constant lower so far."
-                )
-            );
+            raise MirRefused(mir_refusal("global initializer", sym.sym_name, declaration));
         }
         self.mir.globals[sym.sym_name] = made;
         found = made;

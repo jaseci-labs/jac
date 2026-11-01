@@ -134,3 +134,5 @@ def mir_set(elem: MirType) -> MirType;
 def mir_ref -> MirType;
 
 def mir_is_container(t: MirType) -> bool;
+
+def mir_obj(name: str) -> MirType;

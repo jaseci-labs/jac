@@ -230,3 +230,7 @@ impl mir_ref -> MirType {
 impl mir_is_container(t: MirType) -> bool {
     return t.kind in (MirKind.LIST, MirKind.DICT, MirKind.SET);
 }
+
+impl mir_obj(name: str) -> MirType {
+    return mir_type(MirKind.OBJ, name=name);
+}

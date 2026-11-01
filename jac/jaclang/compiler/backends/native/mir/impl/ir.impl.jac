@@ -297,3 +297,12 @@ impl MirStructDef.index_of(field: str) -> int {
     }
     raise KeyError(f"C struct {self.name} has no field {field}");
 }
+
+impl MirObjectDef.field(name: str) -> (MirObjectField | None) {
+    for found in self.fields {
+        if found.name == name {
+            return found;
+        }
+    }
+    return None;
+}

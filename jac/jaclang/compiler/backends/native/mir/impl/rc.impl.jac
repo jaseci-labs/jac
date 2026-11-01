@@ -1,5 +1,7 @@
 impl mir_insert_rc(fn: MirFunction) {
-    MirRcState(fn=fn).run();
+    if not fn.manual_rc {
+        MirRcState(fn=fn).run();
+    }
 }
 
 impl MirRcState.run {
@@ -61,6 +63,20 @@ impl MirRcState.rewrite(blk: MirBlock) {
             held = self.consume(instr.operands[1]);
             self.out.append(MirInstr(op=MirOp.STORE, operands=[slot, held]));
             self.release(previous);
+        } elif instr.op == MirOp.STORE and mir_holds_ref(instr.operands[1].type) {
+            place = instr.operands[0];
+            previous = self.fn.new_value(instr.operands[1].type);
+            self.out.append(MirInstr(op=MirOp.LOAD, result=previous, operands=[place]));
+            held = self.consume(instr.operands[1]);
+            self.out.append(MirInstr(op=MirOp.STORE, operands=[place, held]));
+            self.release(previous);
+        } elif instr.op == MirOp.LOAD
+            and not instr.operands[0].is_slot
+            and instr.result is not None
+            and mir_holds_ref(instr.result.type) {
+            self.out.append(instr);
+            self.out.append(MirInstr(op=MirOp.RETAIN, operands=[instr.result]));
+            instr.result.owned = True;
         } elif instr.op == MirOp.RET {
             if instr.operands and mir_holds_ref(instr.operands[0].type) {
                 returned = self.consume(instr.operands[0]);

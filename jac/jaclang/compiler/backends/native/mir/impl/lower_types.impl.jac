@@ -72,6 +72,12 @@ impl mir_class_type(
     if arch is not None {
         return mir_c_struct(arch.name.value);
     }
+    if isinstance(t.shared.symbol_table, uni.Archetype) {
+        native = class_type_native_name(t);
+        if native {
+            return mir_obj(native);
+        }
+    }
     name = t.shared.class_name;
     if name in ("NoneType", "None") {
         return mir_none();

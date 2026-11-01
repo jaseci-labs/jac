@@ -6517,6 +6517,8 @@ graph import compiler {
         backends.native.mir.emit { RC_SENTINEL, str_len_tag },
         backends.native.mir.lower {
             native_def_symbol,
+            native_entry_name,
+            native_glob_init_name,
             native_symbol_name,
             native_unit_identity,
             native_unit_prefix,
@@ -7717,6 +7719,7 @@ graph import compiler {
         passes.cfg_build_pass { enclosing_loop },
     ]
     frontend.module_facts ++> [
+        backends.native.mir.lower { ModuleFacts },
         backends.es.esast_gen_pass
             | backends.native.na_ir_gen_pass
             | backends.py.jcir_gen_pass
@@ -10008,6 +10011,15 @@ graph import compiler {
         JsxIntrinsicGuardPass
     }
     passes.layout_pass ++> [
+        backends.native.mir.emit { VTABLE_HEADER_SLOTS },
+        backends.native.mir.lower {
+            NON_DISPATCHED_METHODS,
+            VTABLE_HEADER_SLOTS,
+            archetype_native_name,
+            get_layout_registry,
+            layout_slot_count
+        },
+        backends.native.mir.lower_types { class_type_native_name },
         backends.es.esast_gen_pass.EsastGenPass._field_constructor_args {
             archetype_native_name,
             get_layout_registry
@@ -10880,6 +10892,7 @@ graph import compiler {
             | backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_return_type
             | c_interop.c_param_type { FunctionType },
         backends.native.mir.lower_types { AnyType, ClassType, FunctionType },
+        backends.native.mir.lower { ClassType },
         backends.native.na_ir_gen_pass {
             ClassType,
             FunctionType as SemanticFunctionType,
@@ -11622,7 +11635,15 @@ graph import compiler.backends.native.mir {
     ir ++> [
         backend { MirModule },
         rc { MirBlock, MirFunction, MirInstr, MirOp, MirValue },
-        emit { MirFunction, MirGlobal, MirInstr, MirModule, MirOp, MirValue },
+        emit {
+            MirFunction,
+            MirGlobal,
+            MirInstr,
+            MirModule,
+            MirObjectDef,
+            MirOp,
+            MirValue
+        },
         lower {
             MirBlock,
             MirBuilder,
@@ -11631,6 +11652,8 @@ graph import compiler.backends.native.mir {
             MirGlobal,
             MirInstr,
             MirModule,
+            MirObjectDef,
+            MirObjectField,
             MirOp,
             MirParam,
             MirStructDef,
@@ -11678,6 +11701,7 @@ graph import compiler.backends.native.mir {
             mir_holds_ref,
             mir_is_container,
             mir_list,
+            mir_obj,
             mir_ref,
             mir_str_ref,
             mir_c_ptr,
@@ -11693,6 +11717,7 @@ graph import compiler.backends.native.mir {
             mir_bool,
             mir_dict,
             mir_list,
+            mir_obj,
             mir_set,
             mir_c_fn,
             mir_c_ptr,

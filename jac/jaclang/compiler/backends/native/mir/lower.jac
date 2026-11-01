@@ -52,6 +52,7 @@ obj MirLoopTarget {
 obj MirFnState {
     has fn: MirFunction,
         b: MirBuilder,
+        self_value: (MirValue | None) = None,
         locals: dict[int, MirValue] = {},
         loops: list[MirLoopTarget] = [];
 }
@@ -60,7 +61,9 @@ obj MirDecl {
     has ability: uni.Ability,
         symbol: str,
         ret: MirType,
-        params: list[MirType] = [];
+        params: list[MirType] = [],
+        self_type: (MirType | None) = None,
+        owner: (uni.Archetype | None) = None;
 }
 
 obj MirLowering {
@@ -69,6 +72,9 @@ obj MirLowering {
         mir: MirModule,
         decls: dict[int, MirDecl] = {},
         decl_syms: dict[int, int] = {},
+        archetypes: dict[str, uni.Archetype] = {},
+        trace_pairs: list[tuple[str, str]] = [],
+        deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
         state: (MirFnState | None) = None;
@@ -182,6 +188,26 @@ obj MirLowering {
     def container_eq(left: MirValue, right: MirValue) -> MirValue;
     def lower_for_container(nd: uni.InForStmt, holder: MirValue);
     def lower_delete(nd: uni.DeleteStmt);
+    def module_archetypes -> list[uni.Archetype];
+    def arch_of_type(t: (TypeBase | None)) -> (uni.Archetype | None);
+    def object_def(arch: uni.Archetype) -> MirObjectDef;
+    def object_type(arch: uni.Archetype) -> MirType;
+    def arch_methods(arch: uni.Archetype) -> list[uni.Ability];
+    def find_method(arch: uni.Archetype, name: str) -> (uni.Ability | None);
+    def method_symbol(arch: uni.Archetype, name: str) -> str;
+    def declare_archetype(arch: uni.Archetype);
+    def lower_constructor(arch: uni.Archetype) -> (MirFunction | None);
+    def lower_drop(obj_def: MirObjectDef) -> MirFunction;
+    def lower_trace(obj_def: MirObjectDef) -> MirFunction;
+    def constructor_params(arch: uni.Archetype) -> list[tuple[str, MirType, (uni.Expr | None)]];
+    def object_call(nd: uni.FuncCall, arch: uni.Archetype) -> MirValue;
+    def object_method(
+        nd: uni.FuncCall, receiver: MirValue, arch: uni.Archetype, name: str
+    ) -> (MirValue | None);
+    def field_place(holder: MirValue, arch: uni.Archetype, name: str, site: uni.UniNode) -> MirValue;
+    def isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue;
+    def lower_module_init -> (MirFunction | None);
+    def lower_module_entry -> (MirFunction | None);
     def emit_value(
         op: MirOp,
         type: MirType,

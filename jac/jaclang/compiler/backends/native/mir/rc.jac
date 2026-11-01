@@ -9,7 +9,11 @@ slot's previous value and a return releases every slot. An owned value
 nothing consumes is released right after its last use in its block, where a
 use of a part taken from a value (a string's data pointer) counts as a use of
 the value, so the parts never outlive it.
-String literals are immortal, so they are neither retained nor released."""
+String literals are immortal, so they are neither retained nor released.
+A store into heap memory (a field) releases what it overwrites, and a load
+of a reference from heap memory is retained, because the heap can change
+under a borrowed copy. Functions marked `manual_rc` (generated drop and
+trace functions) manage counts themselves and are left alone."""
 glob RC_CONSUMING_OPS: list[MirOp] = [MirOp.STORE, MirOp.RET];
 
 class MirRcError(Exception) {}
