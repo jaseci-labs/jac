@@ -76,7 +76,10 @@ test "after optimization the function's locals live in registers" {
     assert body , "scalars_and_one_owner not found in the optimized IR";
     # every local was promoted: the only stack slots left are the shadow, the
     # record and its chain node (an escaped scalar would keep an alloca)
-    slots = sorted(re.findall(r'%"?([\w.]+)"? = alloca', body));
+    slots = sorted(
+        re.sub(r"\.\d+$", "", name)
+        for name in re.findall(r'%"?([\w.]+)"? = alloca', body)
+    );
     assert slots == ["box.unwind", "unwind.env", "unwind.node"] , f"stack slots after optimization: {slots}";
 }
 
