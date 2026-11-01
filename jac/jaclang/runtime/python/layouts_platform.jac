@@ -1,4 +1,5 @@
 glob LAYOUTS_PLATFORM: str = "",
+     PYCONFIG_ALIGNOF_MAX_ALIGN_T: Final[i64] = 0,
      PyConfig_VERBOSE: Final[i64] = 0,
      PyConfig_DEV_MODE: Final[i64] = 0,
      PyConfig_FILESYSTEM_ENCODING: Final[i64] = 0,

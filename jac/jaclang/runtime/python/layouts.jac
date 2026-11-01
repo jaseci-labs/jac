@@ -1824,6 +1824,8 @@ glob _Py_STATIC_IMMORTAL_INITIAL_REFCNT: Final[i64] = 1407378104778752,
      _Py_MAX_MANAGED_STATIC_BUILTIN_TYPES: Final[i64] = 200,
      _Py_MAX_MANAGED_STATIC_EXT_TYPES: Final[i64] = 10,
      _Py_ATTR_CACHE_UNUSED: Final[u16] = 30000,
+     # Conservative alignment for Jac-managed allocations; pyconfig's value is
+     # checked per target through layouts_platform.
      ALIGNOF_MAX_ALIGN_T: Final[i64] = 16,
      Py_T_ULONG: Final[i32] = 12,
      Py_tp_base: Final[i32] = 48,
