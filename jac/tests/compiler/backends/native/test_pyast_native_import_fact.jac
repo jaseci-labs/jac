@@ -1,6 +1,6 @@
 """The emitter's last driver read becomes a stamped fact (#8288 M1 rung 1).
 
-`JcirGenPass.exit_import` was the one place a sealed pass still reached
+`PyastGenPass.exit_import` was the one place a sealed pass still reached
 for `self.prog`: it asked `native_only_import_target` whether the import
 resolved to a module the native lane owns, then asked the filesystem
 whether that module lived inside jaclang's own tree. Both are
@@ -453,13 +453,13 @@ test "a python-side C binding finds a system library by its bare name" {
 }
 
 test "the emitter unit no longer names the driver" {
-    impl_dir = PKG_PATH / "compiler" / "backends" / "py" / "jcir_gen_pass.impl";
+    impl_dir = PKG_PATH / "compiler" / "backends" / "py" / "pyast_gen_pass.impl";
     text = "\n".join(
         f.read_text(encoding="utf-8") for f in sorted(impl_dir.glob("*.impl.jac"))
     );
     assert text , f"no emitter bodies under {impl_dir}";
     assert "self.prog" not in text , (
-        "the JCIR emitter reaches for the compile driver again; a sealed "
+        "the Python code generator reaches for the compile driver again; a sealed "
         "pass cannot, and the driver-seam coverage forbids the name"
     );
     assert "native_only_import_target" not in text , (

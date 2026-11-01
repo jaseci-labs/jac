@@ -269,7 +269,7 @@ A helper the passes and two backends all import belongs in `frontend/` or
 `backends/common/`, not in the backend that happened to write it first.
 
 **Every generator has the same shape.** One walker declaration
-(`jcir_gen_pass.jac`, `esast_gen_pass.jac`, `na_ir_gen_pass.jac`) holds the
+(`pyast_gen_pass.jac`, `esast_gen_pass.jac`, `na_ir_gen_pass.jac`) holds the
 state fields and every method signature; the bodies live in
 `<name>.impl/<concern>.impl.jac`, one file per concern (expressions,
 statements, calls, declarations, module, and so on). There are no mixins and

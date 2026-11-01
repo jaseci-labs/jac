@@ -118,7 +118,7 @@ graph TD
     FRONTEND --> FE1 --> FE2 --> FE3 --> FE4 --> FE5 --> FE6 --> FE7 --> FE8 --> FE9 --> FE10
     FE10 --> TYPECK["Analysis (unconditional)<br/>TypeCheckPass / StaticAnalysisPass / AccessCheckPass / OwnershipCheckPass /<br/>PlacementPass / PortabilityWarnPass / JacLintCheckPass"]
     TYPECK --> INTEROP["BoundaryAnalysisPass<br/>(boundary discovery)"]
-    INTEROP --> SV[JcirGenPass + JcirBytecodeGenPass]
+    INTEROP --> SV[PyastGenPass + assemble_bytecode]
     INTEROP --> CL[EsastGenPass]
     INTEROP --> NA[NaIRGenPass + NativeCompilePass]
 
@@ -322,8 +322,8 @@ interfaces is checked (`E5116`). A refusal only the backend can see places
 the module on the server in place (`settle_native_module`): the tree was
 typed for no codespace, so the Python backend, which runs after the native
 one in the same schedule, emits it as it is. A backend exception is a
-compiler error (E9003, which blocks the module: neither its bytecode nor the
-JCIR the kernel hands the host survives it) and is never absorbed as a
+compiler error (E9003, which blocks the module: neither its Python recipe nor
+the code object the kernel makes from it survives it) and is never absorbed as a
 refusal, and so is a native unit the host fails to link after the kernel
 lowered it. Once the kernel is loaded its answer is final: the host compiles a
 program itself only when the program reaches something only the host can
@@ -575,21 +575,21 @@ invisible to the Python codegen and vice versa.
 
 | Pass | Source | Output |
 |------|--------|--------|
-| `JcirGenPass` | [`compiler/passes/jcir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/jcir_gen_pass.jac) (+ [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/impl/jcir_gen_pass.impl.jac)) | The compact codegen IR container (`module.gen.jcir`) |
-| `JcirBytecodeGenPass` | [`compiler/passes/jcir_bc_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/jcir_bc_gen_pass.jac) (+ [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/impl/jcir_bc_gen_pass.impl.jac)) | Python `ast.Module`, unparsed source, and `types.CodeType` via `compile()` |
+| `PyastGenPass` | [`compiler/backends/py/pyast_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/pyast_gen_pass.jac) | The module's Python codegen recipe (`module.gen.py_recipe`) |
+| `assemble_bytecode` | [`compiler/backends/py/kernel_bytecode.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/kernel_bytecode.jac) | The module's code object (`module.gen.py_code`) and its marshalled bytes (`module.gen.py_bytecode`) |
 
-`JcirGenPass` makes every lowering decision -- it just writes container
-opcodes instead of building `ast` objects directly. The container format is
-declared in [`compiler/driver/codegen_ir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/codegen_ir.jac);
-`JcirBytecodeGenPass` is a thin seat over `transcribe` and `compile_ir` in
-[`compiler/driver/codegen_shim.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/codegen_shim.jac),
-which rebuild the Python AST, source, and code object from the container
-bytes.
+`PyastGenPass` makes every lowering decision and records it as a recipe: nodes
+named by their `ast` class, fields, and source spans. Inside the kernel,
+[`compiler/backends/py/pyast_recipe.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/pyast_recipe.jac) builds the
+recipe into JacPython's own AST objects (`compiler/frontend/python/ast_nodes.jac`)
+and `kernel_code_object` hands that tree to JacPython's compiler
+(`compiler/backends/py/jacpython/`) in-process. Caches store the code object
+marshalled by JacPython's marshal. Tools that print the generated Python ask
+for it as an `ast.Module` (`kernel_python_ast`) and unparse it on the host
+(`compiler/backends/py/python_text.jac`).
 
-There are no longer any back-references from the Python AST to the Jac tree.
-The Python AST is reconstructed from the container inside
-`JcirBytecodeGenPass` and dies there, so nothing downstream holds a handle
-back to the originating nodes.
+There are no back-references from the Python AST to the Jac tree, so nothing
+downstream holds a handle back to the originating nodes.
 
 Archetype `has` fields use Jac object descriptors. Nonconstant defaults
 lower to internal `ObjectField(default_factory=lambda: …)` calls; constant
@@ -631,7 +631,7 @@ The primitive type contract for this backend lives in
 |------|--------|--------|
 | `EsastGenPass` | [`compiler/backends/es/esast_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/esast_gen_pass.jac) (+ [impl by concern](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/jaclang/compiler/backends/es/esast_gen_pass.impl)) | ESTree AST + serialised JS (`module.gen.js`) |
 
-`EsastGenPass` derives from `BaseAstGenPass` (shared with `JcirGenPass`)
+`EsastGenPass` derives from `BaseAstGenPass` (shared with `PyastGenPass`)
 so the same traversal infrastructure visits the tree but emits ESTree
 nodes from [`compiler/backends/es/estree.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/estree.jac).
 Key components of the client backend:
@@ -746,11 +746,11 @@ user-facing reference, [Primitives & Codespace Semantics](../reference/language/
 | Direction | Bridge | Generated by |
 |-----------|--------|--------------|
 | `cl → sv` | HTTP `POST` to the walker / function endpoint exposed by `jac run` | `EsastGenPass` emits `fetch(...)` against the URL recorded in the binding |
-| `sv → cl` | None at runtime -- the client mounts its own DOM. The server only ships the bootstrap payload | `JcirGenPass` emits the static-file route for the bundle |
-| `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--lib` build is loaded across the process boundary instead | `JcirGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
+| `sv → cl` | None at runtime -- the client mounts its own DOM. The server only ships the bootstrap payload | `PyastGenPass` emits the static-file route for the bundle |
+| `sv → na` | In-process `ctypes.CFUNCTYPE` over the JIT'd function address (MCJIT); an AOT `--lib` build is loaded across the process boundary instead | `PyastGenPass` emits the ctypes stub; `NaIRGenPass` exposes the function with C ABI |
 | `na → sv` | Python callback wrapped in a `ctypes.CFUNCTYPE` and registered as a JIT symbol (`llvm.add_symbol`), so MCJIT resolves the native call back into CPython | `interop_bridge.register_py_callbacks`, alongside the `sv → na` stub |
 | `na → na` | Direct symbol reference resolved by the bundled LLD | `BoundaryAnalysisPass` records the import; `NativeCompilePass` emits the relocation |
-| `sv → sv` (cross-app) | A typed-async stub keyed by the provider **app name** when an import's target is compiled in a different app context; in-process when the provider app is colocated, HTTP `POST` when it runs as its own process | `JcirGenPass` emits a generated `async` `__jac_sv_client` stub (`call` / `spawn_walker`; un-awaited statement spawns become `_deferred`, the outbox); the manifest's app edges drive the built-in `scale` subsystem's boot order |
+| `sv → sv` (cross-app) | A typed-async stub keyed by the provider **app name** when an import's target is compiled in a different app context; in-process when the provider app is colocated, HTTP `POST` when it runs as its own process | `PyastGenPass` emits a generated `async` `__jac_sv_client` stub (`call` / `spawn_walker`; un-awaited statement spawns become `_deferred`, the outbox); the manifest's app edges drive the built-in `scale` subsystem's boot order |
 
 Boundary types are serialised through the schemas in
 [`codeinfo.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/codeinfo.jac).
@@ -896,14 +896,12 @@ A short index, organised by the role each file plays in the pipeline.
 
 **Server backend**
 
-- [`compiler/passes/jcir_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/jcir_gen_pass.jac)
-  / [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/impl/jcir_gen_pass.impl.jac)
-- [`compiler/passes/jcir_bc_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/jcir_bc_gen_pass.jac)
-  / [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/passes/impl/jcir_bc_gen_pass.impl.jac)
-- [`compiler/driver/codegen_ir.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/codegen_ir.jac)
-  -- the container format
-- [`compiler/driver/codegen_shim.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/driver/codegen_shim.jac)
-  -- `transcribe` / `compile_ir`
+- [`compiler/backends/py/pyast_gen_pass.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/pyast_gen_pass.jac)
+  / [impl](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/pyast_gen_pass.impl/)
+- [`compiler/backends/py/pyast_recipe.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/pyast_recipe.jac)
+  -- the recipe and its lowering into JacPython's AST
+- [`compiler/backends/py/kernel_bytecode.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/py/kernel_bytecode.jac)
+  -- `kernel_code_object` / `kernel_python_ast` / the `BYTECODE` action
 - [`compiler/backends/es/primitives_es.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/es/primitives_es.jac) and [`compiler/backends/native/primitives_native.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/backends/native/primitives_native.jac)
 - [`runtime/runtime.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/runtime/runtime.jac)
   -- `JacRuntimeInterface`

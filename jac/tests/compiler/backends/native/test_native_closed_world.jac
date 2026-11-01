@@ -20,7 +20,7 @@ import tempfile;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { InteropContext }
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import from jaclang.compiler.passes.placement_pass { build_native_legality }
 import from tests.support { get_func }
 
@@ -193,7 +193,7 @@ test "one name imported from two modules dispatches to each module's function" {
     sym_g = bindings["g"].symbol;
     assert sym_f.startswith("__jac_na_import_helper_a_") , sym_f;
     assert sym_g.startswith("__jac_na_import_helper_b_") , sym_g;
-    py_src = generated_python(mod.gen);
+    py_src = generated_python(mod);
     assert f"__jac_interop_py_funcs__['{sym_f}'] = f" in py_src , py_src;
     assert f"__jac_interop_py_funcs__['{sym_g}'] = g" in py_src , py_src;
     def from_a -> int {
@@ -231,7 +231,7 @@ test "a native function calls a server function declared after it" {
     assert binding is not None and binding.native_callable , (
         f"a later server function must still get a provider: {binding}"
     );
-    py_src = generated_python(mod.gen);
+    py_src = generated_python(mod);
     assert f"__jac_interop_py_funcs__['{binding.symbol}'] = later" in py_src , py_src;
     def later -> int {
         return 41;
@@ -271,7 +271,7 @@ test "a native element of a mixed module calls a server function it imports" {
     assert binding is not None and binding.native_callable , (
         f"the native call to f must have a provider: {binding}"
     );
-    py_src = generated_python(mod.gen);
+    py_src = generated_python(mod);
     assert "get_function_address" in py_src , "both must stay native";
     assert f"__jac_interop_py_funcs__['{binding.symbol}'] = f" in py_src , py_src;
 }

@@ -7,7 +7,7 @@ default_codespace-driven whole-module native inference (native by default,
 server signals and closure poison opt modules back out).
 """
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
@@ -636,8 +636,7 @@ test "client import pulls a pure markerless module cross-module" {
 
 test "cross-module pulled elements dual-emit for the server side" {
     import from jaclang.client.client_bundle { _ensure_js_generated }
-    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-    import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
+    import from jaclang.compiler.backends.py.pyast_gen_pass { PyastGenPass }
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
     util = hub_module(prog, "infer_xmod_util.jac");
@@ -662,9 +661,8 @@ test "cross-module pulled elements dual-emit for the server side" {
         "pulled glob must be exportable to its client importers"
     );
     assert util_js.strip() , "pulled module must produce client JS";
-    run_pass(JcirGenPass, util, prog);
-    run_pass(JcirBytecodeGenPass, util, prog);
-    py_src = generated_python(util.gen);
+    run_pass(PyastGenPass, util, prog);
+    py_src = generated_python(util);
     assert 'def register' in py_src , (
         "pulled element must still exist in the python module (dual emit)"
     );

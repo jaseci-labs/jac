@@ -54,7 +54,7 @@ import from tests.support { cache_env }
 
 glob PKG: Path = Path(str(jir.__file__)).resolve().parent.parent.parent,
      MODULE: str = str(PKG / "cache" / "policy.jac"),
-     EMITTER_ROW: str = "compiler/backends/py/jcir_gen_pass.jac",
+     EMITTER_ROW: str = "compiler/backends/py/pyast_gen_pass.jac",
      NATIVE_ROW: str = "compiler/backends/native/link_plan.jac",
      INTERPRETER_ROW: str = "compiler/backends/py/jacpython/runtime.jac";
 

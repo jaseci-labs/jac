@@ -1,27 +1,18 @@
-"""Construct-by-construct harness for the JCIR emitter (epic #8201).
+"""Construct-by-construct harness for the Python code generator (epic #8201).
 
 Every fixture is emitted twice over the same module. The first emission
-is the pipeline's own: `JcirGenPass` writes the container and
-`JcirBytecodeGenPass` transcribes it, leaving the tree on
-`mod.gen.py_ast`. The second is a fresh `JcirGenPass` run over the
-already-compiled module, transcribed through `codegen_shim`.
+is the pipeline's own: `PyastGenPass` leaves the module's recipe on
+`mod.gen.py_recipe` and the kernel lowers it into JacPython's AST and code.
+The second is a fresh `PyastGenPass` run over the already-compiled module.
 
 Two things are asserted of every fixture. Exact
 `ast.dump(include_attributes=True)` equality between the two trees says
-the emitter is deterministic and carries no state across a module that
+the generator is deterministic and carries no state across a module that
 has already been through the whole pipeline, native lane included --
 the leak class this pass is most exposed to. Executing both code objects
 and comparing selected globals says the lowering is not merely stable
-but correct. Any mismatch is a bug in the emitter, the shim, or the
-design doc, never in the fixture.
-
-Cross-lane parity against the retired Python-AST emitter is not measured
-here: that lane is gone. Its evidence is the corpus comparison recorded
-in the cutover, plus `test_jcir_bound_emitter_bytes.jac`, which pins
-that binding the emitter's artifact does not change the bytes it emits.
-That file used to be named for a sealed-versus-source comparison it
-cannot make: the binder retains no function pointer, so both sides of it
-are the source lane until #8288 M1 rung 3.
+but correct. Any mismatch is a bug in the generator or the recipe
+builder, never in the fixture.
 """
 
 import from jaclang.compiler.passes.execution { run_walker }
@@ -54,11 +45,13 @@ def codegen_lane(native: bool) -> list[type] {
     return lane;
 }
 
-import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
-import from jaclang.compiler.backends.py.codegen_shim { compile_ir, transcribe }
+import from jaclang.compiler.backends.py.pyast_gen_pass { PyastGenPass }
+import from jaclang.compiler.backends.py.kernel_bytecode {
+    kernel_code_object,
+    kernel_python_ast
+}
 
-"""Compile a source string, then re-emit it: (pipeline tree, fresh tree, bytes)."""
+"""Compile a source string, then re-emit it: (pipeline tree, fresh tree, fresh code bytes)."""
 def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(
@@ -72,14 +65,11 @@ def dual_compile(src: str, path: str, *, codespace: str = "server") -> tuple[any
         )
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    ref_tree = mod.gen.py_ast[0];
-    emitter = run_walker(JcirGenPass, module=mod);
-    blob = emitter.ir_bytes();
-    (mods, diags) = transcribe(blob);
-    assert diags == [];
-    assert len(mods) == 1;
-    assert mods[0][0] == path;
-    return (ref_tree, mods[0][1], blob);
+    ref_tree = kernel_python_ast(mod);
+    run_walker(PyastGenPass, module=mod);
+    got_tree = kernel_python_ast(mod);
+    kernel_code_object(mod);
+    return (ref_tree, got_tree, mod.gen.py_bytecode);
 }
 
 """The same double emission, for a fixture that must be compiled from disk."""
@@ -87,13 +77,11 @@ def dual_compile_file(path: str) -> tuple[any, ...] {
     prog = JacProgram();
     mod = prog.compile(path, options=CompileOptions());
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    ref_tree = mod.gen.py_ast[0];
-    emitter = run_walker(JcirGenPass, module=mod);
-    blob = emitter.ir_bytes();
-    (mods, diags) = transcribe(blob);
-    assert diags == [];
-    assert len(mods) == 1;
-    return (ref_tree, mods[0][1], blob);
+    ref_tree = kernel_python_ast(mod);
+    run_walker(PyastGenPass, module=mod);
+    got_tree = kernel_python_ast(mod);
+    kernel_code_object(mod);
+    return (ref_tree, got_tree, mod.gen.py_bytecode);
 }
 
 def assert_dump_equal(ref_tree: any, got_tree: any) {
@@ -140,7 +128,7 @@ def code_diffs(a: any, b: any, path: str, out: list[any]) -> list[any] {
         av = getattr(a, attr, None);
         bv = getattr(b, attr, None);
         if av != bv {
-            out.append(f"{path}.{attr}: pyast {av!r} vs jcir {bv!r}");
+            out.append(f"{path}.{attr}: pyast {av!r} vs fresh {bv!r}");
         }
     }
     if len(a.co_consts) != len(b.co_consts) {
@@ -151,7 +139,7 @@ def code_diffs(a: any, b: any, path: str, out: list[any]) -> list[any] {
         if (isinstance(x, types.CodeType) and isinstance(y, types.CodeType)) {
             code_diffs(x, y, f"{path}.consts[{i}]", out);
         } elif (x != y or type(x) is not type(y)) {
-            out.append(f"{path}.consts[{i}]: pyast {x!r} vs jcir {y!r}");
+            out.append(f"{path}.consts[{i}]: pyast {x!r} vs fresh {y!r}");
         }
     }
     return out;
@@ -159,8 +147,8 @@ def code_diffs(a: any, b: any, path: str, out: list[any]) -> list[any] {
 
 def assert_bytecode_equal(ref_tree: any, mod_path: str, bytecode: bytes) {
     ref_code = pycompile(ref_tree, mod_path, "exec");
-    jcir_code = marshal.loads(bytecode);
-    diffs = code_diffs(ref_code, jcir_code, "module", []);
+    fresh_code = marshal.loads(bytecode);
+    diffs = code_diffs(ref_code, fresh_code, "module", []);
     assert diffs == [] , "\n".join(diffs);
 }
 
@@ -171,9 +159,9 @@ def exec_both(ref_tree: any, got_tree: any, path: str, names: list[any]) {
     pyexec(pycompile(got_tree, path, "exec"), got_ns);
     for name in names {
         assert name in ref_ns , f"{name} missing from pyast lane";
-        assert name in got_ns , f"{name} missing from jcir lane";
+        assert name in got_ns , f"{name} missing from the fresh emission";
         assert ref_ns[name] == got_ns[name] , (
-            f"{name}: pyast lane {ref_ns[name]!r} != jcir lane {got_ns[name]!r}"
+            f"{name}: pyast lane {ref_ns[name]!r} != fresh emission {got_ns[name]!r}"
         );
     }
 }
@@ -208,11 +196,8 @@ with entry {
 test "the round trip fixture re-emits identically" {
     (ref_tree, got_tree, blob) = dual_compile(ROUND_TRIP_FIXTURE, "rt_fixture.jac");
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert len(result.modules) == 1;
-    assert len(result.modules[0].bytecode) > 0;
-    assert_bytecode_equal(ref_tree, "rt_fixture.jac", result.modules[0].bytecode);
+    assert blob;
+    assert_bytecode_equal(ref_tree, "rt_fixture.jac", blob);
     exec_both(ref_tree, got_tree, "rt_fixture.jac", ["result", "count"]);
 }
 
@@ -675,10 +660,9 @@ test "doubles correctly" {
         src, "testblock_fixture.jac", codespace="native"
     );
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
+    assert blob;
     assert_bytecode_equal(
-        ref_tree, "testblock_fixture.jac", result.modules[0].bytecode
+        ref_tree, "testblock_fixture.jac", blob
     );
     dumped = pyast.dump(got_tree);
     assert "invoke_native_test" in dumped;
@@ -730,20 +714,17 @@ obj Helper {
     dumped = pyast.dump(got_tree);
     assert "call_llm" in dumped;
     assert "get_mtir" in dumped;
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert_bytecode_equal(ref_tree, "llm_fixture.jac", result.modules[0].bytecode);
+    assert blob;
+    assert_bytecode_equal(ref_tree, "llm_fixture.jac", blob);
 }
 
 test "real repo file srcloc lowers identically end to end" {
     path = os.path.join(JAC_ROOT, "jaclang", "compiler", "frontend", "srcloc.jac");
     (ref_tree, got_tree, blob) = dual_compile_file(path);
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert len(result.modules) == 1;
+    assert blob;
     assert_bytecode_equal(
-        ref_tree, result.modules[0].mod_path, result.modules[0].bytecode
+        ref_tree, path, blob
     );
 }
 
@@ -800,9 +781,8 @@ def launch -> Traveler {
 """;
     (ref_tree, got_tree, blob) = dual_compile(src, "walker_fixture.jac");
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert_bytecode_equal(ref_tree, "walker_fixture.jac", result.modules[0].bytecode);
+    assert blob;
+    assert_bytecode_equal(ref_tree, "walker_fixture.jac", blob);
 }
 
 test "match statements lower identically" {
@@ -894,17 +874,16 @@ test "real repo walker file social_graph lowers identically" {
     );
     (ref_tree, got_tree, blob) = dual_compile_file(path);
     assert_dump_equal(ref_tree, got_tree);
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
+    assert blob;
     assert_bytecode_equal(
-        ref_tree, result.modules[0].mod_path, result.modules[0].bytecode
+        ref_tree, path, blob
     );
 }
 
-test "the pipeline's codegen tail is jcir, with nothing to select" {
-    # The container is not an option the pipeline can be talked out of:
-    # a plain compile leaves JCIR bytes on the module, and the bytecode
-    # the driver hands the runtime is the one the container produced.
+test "the pipeline's codegen tail is the Python code generator" {
+    # The recipe is not an option the pipeline can be talked out of:
+    # a plain compile leaves it on the module, and the bytecode the driver
+    # hands the runtime is the one the kernel compiled from it.
     src = """
 \"\"\"Tail fixture.\"\"\"
 def double(x: int) -> int {
@@ -924,18 +903,12 @@ with entry {
         )
     );
     assert len(prog.errors_had) == 0 , str([str(e) for e in prog.errors_had]);
-    assert mod.gen.jcir , "a compiled module must carry its codegen container";
+    assert mod.gen.py_recipe is not None , "a compiled module must carry its codegen recipe";
     assert mod.gen.py_bytecode;
     sched = codegen_lane(False);
-    assert JcirGenPass in sched , f"jcir is not in the codegen schedule: {sched}";
-    assert JcirBytecodeGenPass not in sched;
-    for `entry in sched {
-        assert "Pyast" not in `entry.__name__ and "PyBytecode" not in `entry.__name__ , (
-            f"a legacy emitter is back in the codegen schedule: {`entry.__name__}"
-        );
-    }
+    assert PyastGenPass in sched , f"the Python code generator is not in the codegen schedule: {sched}";
     piped_code = marshal.loads(mod.gen.py_bytecode);
-    round_tripped = pycompile(mod.gen.py_ast[0], "tail_fixture.jac", "exec");
+    round_tripped = pycompile(kernel_python_ast(mod), "tail_fixture.jac", "exec");
     diffs = code_diffs(round_tripped, piped_code, "module", []);
     assert diffs == [] , "\n".join(diffs);
 }
@@ -957,7 +930,7 @@ with entry {
     rendered = page("srv", ["s1", "s2"], {"id": "x"});
 }
 """;
-    tdir = tempfile.mkdtemp(prefix="jcir_jsx_");
+    tdir = tempfile.mkdtemp(prefix="pyast_jsx_");
     with open(os.path.join(tdir, "jac.toml"), "w") as f {
         f.write('[placement.pins]\n"*" = "server"\n');
     }
@@ -970,9 +943,8 @@ with entry {
     dumped = pyast.dump(got_tree);
     assert "'jsx'" in dumped;
     assert "Hello & " in dumped;
-    result = compile_ir(blob);
-    assert len(result.diags) == 0;
-    assert_bytecode_equal(ref_tree, comp_path, result.modules[0].bytecode);
+    assert blob;
+    assert_bytecode_equal(ref_tree, comp_path, blob);
 }
 
 test "a genai call refuses deliberately rather than lowering wrong" {
@@ -990,13 +962,13 @@ def f -> int {
     calls = mod.get_all_sub_nodes(uni.FuncCall);
     assert calls;
     calls[0].genai_call = calls[0].target;
-    caught_jcir = "";
+    caught_fresh = "";
     try {
-        run_walker(JcirGenPass, module=mod);
+        run_walker(PyastGenPass, module=mod);
     } except NotImplementedError as e {
-        caught_jcir = str(e);
+        caught_fresh = str(e);
     }
-    assert "genai call expression" in caught_jcir , (
+    assert "genai call expression" in caught_fresh , (
         "a genai call must refuse by name, not lower to something else"
     );
 }
