@@ -58,6 +58,15 @@ def:priv _collections__count_elements_bound(
     }
 }
 
+def:priv _collections__count_elements_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    mapping: ptr[PyObject] = clinic_args[0];
+    iterable: ptr[PyObject] = clinic_args[1];
+    return _collections__count_elements_impl(receiver, mapping, iterable);
+}
+
 def:priv _collections__count_elements_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
@@ -65,101 +74,65 @@ def:priv _collections__count_elements_call(
         and not check_positional("_count_elements", int(nargs), 2, 2) {
         return NULL;
     }
-    return _collections__count_elements_bound(receiver, args, nargs);
+    return _collections__count_elements_direct(receiver, args, nargs);
 }
 
 def:priv deque_pop_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return deque_pop_impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return deque_pop_impl(receiver);
 }
 
 def:priv deque_popleft_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return deque_popleft_impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return deque_popleft_impl(receiver);
 }
 
 def:priv deque_append_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        item: ptr[PyObject] = value;
-        return deque_append_impl(receiver, item);
-    } except boundary_failure {
-        return NULL;
-    }
+    item: ptr[PyObject] = value;
+    return deque_append_impl(receiver, item);
 }
 
 def:priv deque_appendleft_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        item: ptr[PyObject] = value;
-        return deque_appendleft_impl(receiver, item);
-    } except boundary_failure {
-        return NULL;
-    }
+    item: ptr[PyObject] = value;
+    return deque_appendleft_impl(receiver, item);
 }
 
 def:priv deque_extend_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        iterable: ptr[PyObject] = value;
-        return deque_extend_impl(receiver, iterable);
-    } except boundary_failure {
-        return NULL;
-    }
+    iterable: ptr[PyObject] = value;
+    return deque_extend_impl(receiver, iterable);
 }
 
 def:priv deque_extendleft_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        iterable: ptr[PyObject] = value;
-        return deque_extendleft_impl(receiver, iterable);
-    } except boundary_failure {
-        return NULL;
-    }
+    iterable: ptr[PyObject] = value;
+    return deque_extendleft_impl(receiver, iterable);
 }
 
 def:priv deque_copy_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return deque_copy_impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return deque_copy_impl(receiver);
 }
 
 def:priv deque___copy___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return deque___copy___impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return deque___copy___impl(receiver);
 }
 
 def:priv deque_clearmethod_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return deque_clearmethod_impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return deque_clearmethod_impl(receiver);
 }
 
 def:priv deque_rotate_bound(
@@ -178,11 +151,28 @@ def:priv deque_rotate_bound(
     }
 }
 
+def:priv deque_rotate_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    n: i64 = 1;
+    if count > 0 {
+        n = PyLong_AsSsize_t(clinic_args[0]);
+        if n == -1 and failed() {
+            return NULL;
+        }
+    }
+    return deque_rotate_impl(receiver, n);
+}
+
 def:priv deque_rotate_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs > 1) and not check_positional("rotate", int(nargs), 0, 1) {
         return NULL;
+    }
+    if exact_int_at(args, nargs, 0) {
+        return deque_rotate_direct(receiver, args, nargs);
     }
     return deque_rotate_bound(receiver, args, nargs);
 }
@@ -190,22 +180,14 @@ def:priv deque_rotate_call(
 def:priv deque_reverse_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return deque_reverse_impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return deque_reverse_impl(receiver);
 }
 
 def:priv deque_count_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        value_: ptr[PyObject] = value;
-        return deque_count_impl(receiver, value_);
-    } except boundary_failure {
-        return NULL;
-    }
+    value_: ptr[PyObject] = value;
+    return deque_count_impl(receiver, value_);
 }
 
 def:priv deque_index_bound(
@@ -218,12 +200,12 @@ def:priv deque_index_bound(
         start: i64 = 0;
         if count > 1 and clinic_args[1] != NULL {
             value = clinic_args[1];
-            start = convert_slice_index_not_none(value, "index", argument_label("", 2));
+            start = convert_slice_index_not_none(value, "index", "argument 2");
         }
         stop: i64 = 9223372036854775807;
         if count > 2 and clinic_args[2] != NULL {
             value = clinic_args[2];
-            stop = convert_slice_index_not_none(value, "index", argument_label("", 3));
+            stop = convert_slice_index_not_none(value, "index", "argument 3");
         }
         return deque_index_impl(receiver, value_, start, stop);
     } except boundary_failure {
@@ -255,11 +237,29 @@ def:priv deque_insert_bound(
     }
 }
 
+def:priv deque_insert_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    index: i64 = 0;
+    if count > 0 {
+        index = PyLong_AsSsize_t(clinic_args[0]);
+        if index == -1 and failed() {
+            return NULL;
+        }
+    }
+    value_: ptr[PyObject] = clinic_args[1];
+    return deque_insert_impl(receiver, index, value_);
+}
+
 def:priv deque_insert_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 2 or nargs > 2) and not check_positional("insert", int(nargs), 2, 2) {
         return NULL;
+    }
+    if exact_int_at(args, nargs, 0) {
+        return deque_insert_direct(receiver, args, nargs);
     }
     return deque_insert_bound(receiver, args, nargs);
 }
@@ -267,22 +267,14 @@ def:priv deque_insert_call(
 def:priv deque_remove_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        value_: ptr[PyObject] = value;
-        return deque_remove_impl(receiver, value_);
-    } except boundary_failure {
-        return NULL;
-    }
+    value_: ptr[PyObject] = value;
+    return deque_remove_impl(receiver, value_);
 }
 
 def:priv deque___reduce___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return deque___reduce___impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return deque___reduce___impl(receiver);
 }
 
 glob:priv deque_init_signature = CallSignature(
@@ -323,16 +315,7 @@ def:pub deque_init_init(
         }
     }
     if not bound {
-        values = unpack_mapping(deque_init_signature, args, kwargs);
-        if values {
-            unpacked = deque_init_bound(receiver, values, 2);
-            PyMem_Free(values);
-            bound = True;
-            result = unpacked;
-        }
-    }
-    if not bound {
-        result = invoke_tuple(
+        result = invoke_mapping(
             deque_init_signature, args, kwargs, deque_init_bound, receiver
         );
     }
@@ -346,21 +329,13 @@ def:pub deque_init_init(
 def:priv deque___sizeof___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return deque___sizeof___impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return deque___sizeof___impl(receiver);
 }
 
 def:priv deque___reversed___call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return deque___reversed___impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return deque___reversed___impl(receiver);
 }
 
 glob _tuplegetter_doc: str = "",

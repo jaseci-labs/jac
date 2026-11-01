@@ -360,6 +360,12 @@ impl NaIRGenPass._emit_overflow_op(
 ) -> ir.Value {
     int_ty = left.type;
     assert isinstance(int_ty, ir.IntType) , "an overflow-checked op needs an integer";
+    if not unsigned and op in ("add", "sub") and self._address_sum(left, right, op) {
+        if op == "add" {
+            return self.builder.add(left, right, name="addr.add");
+        }
+        return self.builder.sub(left, right, name="addr.sub");
+    }
     prefix = "u" if unsigned else "s";
     overflow_ret = ir.LiteralStructType([int_ty, ir.IntType(1)]);
     intrinsic = self._get_or_declare_extern(
@@ -522,6 +528,39 @@ impl _signed_repr(width: int, value: int) -> int {
         out -= 1 << width;
     }
     return out;
+}
+
+impl NaIRGenPass._is_address_word(value: ir.Value) -> bool {
+    if isinstance(value, ir.CastInstr) {
+        return value.opname == "ptrtoint";
+    }
+    if isinstance(value, ir.Instruction) and value.name.startswith("addr.") {
+        return value.opname == "add";
+    }
+    return isinstance(value, ir.FormattedConstant)
+        and value.get_reference().startswith("ptrtoint (");
+}
+
+impl NaIRGenPass._address_sum(left: ir.Value, right: ir.Value, op: str) -> bool {
+    if not isinstance(left.type, ir.IntType) or left.type.width != 64 {
+        return False;
+    }
+    limit = 1 << 56;
+    if self._is_address_word(left) {
+        if isinstance(right, ir.Constant)
+            and isinstance(right.constant, int)
+            and -limit < right.constant
+            and right.constant < limit {
+            return True;
+        }
+        return op == "sub" and self._is_address_word(right);
+    }
+    return op == "add"
+        and self._is_address_word(right)
+        and isinstance(left, ir.Constant)
+        and isinstance(left.constant, int)
+        and -limit < left.constant
+        and left.constant < limit;
 }
 
 impl _int_min_bits(width: int) -> int {

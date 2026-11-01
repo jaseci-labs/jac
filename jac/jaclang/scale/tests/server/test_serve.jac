@@ -1616,10 +1616,17 @@ test "dev mode named endpoints and HMR refresh" {
             f.write(greet_walker);
         }
 
-        deadline = time.monotonic() + 20;
+        hmr_deadline = time.monotonic() + 20;
         paths: dict[str, any] = {};
-        while time.monotonic() < deadline {
-            response = requests.get(f"{dm_base_url}/openapi.json", timeout=5);
+        last_response = "no successful OpenAPI response";
+        while time.monotonic() < hmr_deadline {
+            try {
+                response = requests.get(f"{dm_base_url}/openapi.json", timeout=5);
+            } except (requests.ConnectionError, requests.Timeout) {
+                time.sleep(0.5);
+                continue;
+            }
+            last_response = f"HTTP {response.status_code}: {response.text[:300]!r}";
             if response.status_code == 200 {
                 paths = response.json().get("paths", {});
                 if "/walker/Greet" in paths {
@@ -1633,7 +1640,7 @@ test "dev mode named endpoints and HMR refresh" {
             (server_stdout, server_stderr) = sp.communicate();
             assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
                 paths.keys()
-            )}\nServer stdout:\n{server_stdout}\nServer stderr:\n{server_stderr}";
+            )}\nLast response: {last_response}\nServer stdout:\n{server_stdout}\nServer stderr:\n{server_stderr}";
         }
 
         response = requests.post(

@@ -384,7 +384,7 @@ test "a watch around the jac checkout reports no compiler source events" {
     assert _count_jac_files(package) == 0;
 }
 
-test "compiler-source app files can be watched under an explicit app root" {
+test "compiler-source app files can be watched under an explicit compiler root" {
     import os;
     import from jaclang.compiler.frontend.codeinfo {
         is_compiler_source_path,
@@ -394,9 +394,25 @@ test "compiler-source app files can be watched under an explicit app root" {
     app_root = os.path.join(package, "scale", "tests", "fixtures");
     app_file = os.path.join(app_root, "test_api.jac");
     assert is_compiler_source_path(app_file);
-    watcher = JacFileWatcher(watch_paths=[app_root], application_roots=[app_root]);
+    watcher = JacFileWatcher(watch_paths=[app_root], compiler_source_roots=[app_root]);
     watcher._on_change(app_file, ChangeType.MODIFIED);
     assert list(watcher._pending_events) == [app_file];
+}
+
+test "explicit compiler roots admit only their compiler source events" {
+    import os;
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    package = os.path.realpath(jaclang_pkg_root());
+    checkout = os.path.dirname(package);
+    app_root = os.path.join(package, "runtime");
+    app_source = os.path.join(app_root, "prepared.jac");
+    other_source = os.path.join(package, "server", "server.jac");
+    watcher = JacFileWatcher(watch_paths=[checkout], compiler_source_roots=[app_root]);
+
+    watcher._on_change(app_source, ChangeType.MODIFIED);
+    watcher._on_change(other_source, ChangeType.MODIFIED);
+
+    assert sorted(watcher._pending_events) == [app_source];
 }
 
 test "nothing under site-packages or a hidden directory becomes a watch root" {

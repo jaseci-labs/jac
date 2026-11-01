@@ -17,6 +17,7 @@ obj FileChangeEvent {
 
 obj JacFileWatcher {
     has watch_paths: list[str],
+        compiler_source_roots: list[str] = [],
         pattern: str = "*.jac",
         additional_patterns: list[str] = [
             "*.tsx",
@@ -32,8 +33,7 @@ obj JacFileWatcher {
         _debounce_ms: int = 100,
         _running: bool = False,
         _pending_events: dict[str, FileChangeEvent] = {},
-        _last_flush: float = 0.0,
-        application_roots: list[str] = [];
+        _last_flush: float = 0.0;
 
     static has _events_lock: threading.Lock = threading.Lock();
 

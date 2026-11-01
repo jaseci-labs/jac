@@ -24,6 +24,7 @@
 //!   zig build stub                # just the launcher
 //!   zig build                     # complete binary -> zig-out/bin/jac
 //!   zig build -Dpython=jacpython  # opt in to the native Python compiler
+//!   zig build -Dpython=jacpython -Djacpython-host=stock  # ...built on stock CPython
 //!   zig build -Ddev               # link compiler sources from this checkout
 //!   zig build -Djaclang-dir=PATH   # link another compiler source tree
 //!   zig build -Dpayload=PATH       # pack an existing payload
@@ -141,6 +142,10 @@ pub fn build(b: *std.Build) void {
         std.debug.panic("-Dpython must be cpython or jacpython, not {s}", .{python_variant});
     const jacpython = std.mem.eql(u8, python_variant, "jacpython");
     const reuse_python = b.option(bool, "reuse-python", "Reuse a JacPython runtime whose lowered sources are unchanged (pull-request builds)") orelse false;
+    // The interpreter a JacPython build runs on (bootstrap/build_python.zig
+    // selectHost). The default builds on the previous JacPython runtime; stock
+    // CPython is built from the pinned archive only when there is none.
+    const jacpython_host = b.option([]const u8, "jacpython-host", "Interpreter a JacPython build runs on: auto (the previous runtime, else stock), stock (bootstrap CPython from the pinned archive), or an installed JacPython's prefix") orelse "auto";
 
     // --- LLVMPY_* shim: compile jac/native/*.cpp + statically link host LLVM ---
     // Replaces the bundled libllvmlite.so (llvmlite wheel). Gated on -Dllvm-dir
@@ -175,6 +180,10 @@ pub fn build(b: *std.Build) void {
     fetch_host.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe });
     if (!jacpython) fetch_host.addArg("--host");
     if (reuse_python) fetch_host.addArg("--reuse-lowered");
+    if (jacpython) {
+        const choice = if (std.mem.eql(u8, jacpython_host, "auto") or std.mem.eql(u8, jacpython_host, "stock")) jacpython_host else b.pathFromRoot(jacpython_host);
+        fetch_host.addArg(b.fmt("--jacpython-host={s}", .{choice}));
+    }
     fetch_host.has_side_effects = true;
     b.step("build-python", "Build the source-pinned Python runtime and native libraries").dependOn(&fetch_host.step);
     const root = b.pathFromRoot(".");
