@@ -1,21 +1,20 @@
 """A JIT unit learns its linked units' demotion verdicts before it emits.
 
-A free function that demotes to its Python fallback is renamed
-`f.__jac_demoted`, so a native caller must refuse the call (E5092) and demote
-with it instead of referencing `f`. The aot lane has learned the verdict
-before emission since #8272; the JIT lane -- `jac run`, `jac test`, any module
-that gets its own engine -- answered "no verdict" and forward-declared every
-imported function as live. With a cold cache the importer emitted `call f`,
-the link brought in only `f.__jac_demoted`, and MCJIT resolved the dangling
-reference (and the rest of that relocation batch) to null: the first native
-call segfaulted with no diagnostic. A warm cache hid it, because the
-dependency's cached metadata carries the verdict.
+A free function that demotes to its Python fallback has no native body, so a
+native caller must refuse the call and demote with it instead of referencing
+the function. The aot lane has learned the verdict before emission since
+#8272; the JIT lane -- `jac run`, `jac test`, any module that gets its own
+engine -- once answered "no verdict" and forward-declared every imported
+function as live. With a cold cache the importer emitted `call f`, the link
+brought in no `f`, and MCJIT resolved the dangling reference (and the rest of
+that relocation batch) to null: the first native call segfaulted with no
+diagnostic. A warm cache hid it, because the dependency's cached metadata
+carries the verdict.
 
-The importer now takes each native dependency's verdict from that unit's
-interface before it emits, whichever lane it runs in: the unit is ensured
-(compiled on a miss) in its own session, and the link then consumes the same
-unit. An importer that fails and falls back to the server codespace leaves
-its dependencies' units intact, so their own imports stay native.
+The decision step now settles each native dependency's verdict before the
+importer emits, whichever lane it runs in, and the link then consumes the
+same unit. An importer that fails and falls back to the server codespace
+leaves its dependencies' units intact, so their own imports stay native.
 """
 
 import os;
@@ -23,50 +22,33 @@ import shutil;
 import subprocess;
 import tempfile;
 import ctypes;
-import from tests.support { get_func, jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.lowering { native_fallbacks_in_ir }
+import from tests.support {
+    compile_native,
+    compile_native_ir,
+    get_func,
+    jac_command,
+    names_function,
+    source_spelled,
+    TESTS_DIR
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-"""The JIT lane with nothing cached: the importer gets an engine and must
-learn each linked unit's verdict before it emits."""
-def cold_jit_opts -> CompileOptions {
-    return CompileOptions(force_codespace='native', no_ir_cache=True);
-}
-
-"""Every `declare` line in the IR that names `symbol` as a callee."""
-def dangling_declares(llvm_ir_text: str, symbol: str) -> list[str] {
+"""Every `declare` line in the IR that names `name` as a callee."""
+def dangling_declares(llvm_ir_text: str, name: str) -> list[str] {
     return [
         line.strip()
         for line in llvm_ir_text.splitlines()
-        if line.lstrip().startswith("declare")
-            and (f"@{symbol}(" in line or f'@"{symbol}"(' in line)
+        if line.lstrip().startswith("declare") and names_function(line, name)
     ];
 }
 
-"""Compile a fixture on the cold JIT lane; return (program, module, linked IR)."""
-def compile_cold(fixture: str) -> tuple[JacProgram, any, str] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, fixture), options=cold_jit_opts()
-    );
-    assert not prog.errors_had , f"{[e.pretty_print() for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir is not None , f"no native IR for {fixture}";
-    assert ir.gen.native_engine is not None , f"no JIT engine for {fixture}";
-    return (prog, ir, str(ir.gen.llvm_ir));
-}
-
-"""The functions a linked unit's own compile demoted, from its interface."""
-def unit_demotions(prog: JacProgram, fixture: str) -> list[str] {
-    ent = prog.native_units().entries.get(
-        os.path.realpath(os.path.join(FIXTURES, fixture))
-    );
-    assert ent is not None , f"{fixture} was not compiled as a linked unit";
-    return list(ent.iface.demoted);
+"""The functions a linked unit's own compile demoted, by source spelling."""
+def unit_demotions(fx: any, fixture: str) -> list[str] {
+    unit = fx.result.unit(os.path.join(FIXTURES, fixture));
+    return [source_spelled(demotion.symbol) for demotion in unit.demoted];
 }
 
 """Copy fixtures into a fresh directory and `jac run` the first one there, so
@@ -98,36 +80,36 @@ def stdout_lines(proc: subprocess.CompletedProcess) -> list[str] {
 }
 
 test "a cold JIT importer demotes a caller of a demoted linked function" {
-    (prog, ir, text) = compile_cold("xmod_demote_main.jac");
-    assert not dangling_declares(text, "pyonly_len") , (
+    fx = compile_native_ir("xmod_demote_main.jac");
+    assert not dangling_declares(fx.llvm_ir(), "pyonly_len") , (
         "the importer emitted a call to 'pyonly_len' before learning that "
-        f"xmod_demote_lib demotes it: {dangling_declares(text, 'pyonly_len')}"
+        f"xmod_demote_lib demotes it: {dangling_declares(fx.llvm_ir(), 'pyonly_len')}"
     );
-    lib_demoted = unit_demotions(prog, "xmod_demote_lib.jac");
-    assert "pyonly_len" in lib_demoted , f"the callee lowered after all: {lib_demoted}";
-    demoted = native_fallbacks_in_ir(text).symbols;
-    assert "call_seam" in demoted , (
-        f"the caller of the demoted function stayed native: {demoted}"
+    lib_demoted = unit_demotions(fx, "xmod_demote_lib.jac");
+    assert any(sym.endswith(".pyonly_len") for sym in lib_demoted) , (
+        f"the callee lowered after all: {lib_demoted}"
     );
-    assert "call_clean" not in demoted , f"the clean caller demoted: {demoted}";
-    call_clean = get_func(
-        ir.gen.native_engine, "call_clean", ctypes.c_int64, ctypes.c_int64
+    assert fx.is_demoted("call_seam") , (
+        f"the caller of the demoted function stayed native: {fx.demoted()}"
     );
+    assert not fx.is_demoted("call_clean") , f"the clean caller demoted: {fx.demoted()}";
+    (eng, _) = compile_native("xmod_demote_main.jac");
+    call_clean = get_func(eng, "call_clean", ctypes.c_int64, ctypes.c_int64);
     assert call_clean(2) == 4;
 }
 
-test "a cold JIT importer sees a demotion only the callee's emitter discovers" {
-    (prog, ir, text) = compile_cold("xmod_demote_dyn_main.jac");
-    assert not dangling_declares(text, "from_code") , (
+test "a cold JIT importer sees a demotion only the callee's body reveals" {
+    fx = compile_native_ir("xmod_demote_dyn_main.jac");
+    assert not dangling_declares(fx.llvm_ir(), "from_code") , (
         "the importer emitted a call to 'from_code' before its unit refused it: "
-        f"{dangling_declares(text, 'from_code')}"
+        f"{dangling_declares(fx.llvm_ir(), 'from_code')}"
     );
-    demoted = native_fallbacks_in_ir(text).symbols;
-    assert "call_dyn" in demoted , f"the caller of 'from_code' stayed native: {demoted}";
-    assert "call_double" not in demoted , f"the clean caller demoted: {demoted}";
-    call_double = get_func(
-        ir.gen.native_engine, "call_double", ctypes.c_int64, ctypes.c_int64
+    assert fx.is_demoted("call_dyn") , (
+        f"the caller of 'from_code' stayed native: {fx.demoted()}"
     );
+    assert not fx.is_demoted("call_double") , f"the clean caller demoted: {fx.demoted()}";
+    (eng, _) = compile_native("xmod_demote_dyn_main.jac");
+    call_double = get_func(eng, "call_double", ctypes.c_int64, ctypes.c_int64);
     assert call_double(2) == 5;
 }
 

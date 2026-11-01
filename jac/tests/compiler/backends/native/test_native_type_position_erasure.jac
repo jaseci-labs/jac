@@ -43,7 +43,14 @@ import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.parser { parse as rd_parse }
 import from jaclang.compiler.placement.placement { scan_native_blockers }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR, by_source_name, native_address }
+import from tests.support {
+    TESTS_DIR,
+    by_source_name,
+    compile_mir,
+    compile_native,
+    native_address,
+    source_spelled
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -93,13 +100,23 @@ def _module_with(import_line: str) -> str {
 }
 
 
-"""A JIT-resolved `int()` function from a compiled fixture."""
-def _native_int_fn(ir: any, name: str) -> any {
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"no native engine for '{name}'";
+"""A JIT-resolved `int()` function from a fixture compiled by the kernel."""
+def _native_int_fn(fixture: str, name: str) -> any {
+    (eng, _fx) = compile_native(fixture);
     addr = native_address(eng, name);
     assert addr != 0 , f"'{name}' is absent from the JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
+}
+
+
+"""Whether the decision step lowered `name` (a function or `Arch.method`) in a
+compiled fixture rather than demoting it."""
+def _lowered(fx: any, name: str) -> bool {
+    demoted = [source_spelled(symbol) for symbol in fx.demoted()];
+    if any(symbol.endswith("." + name) for symbol in demoted) {
+        return False;
+    }
+    return f".{name}(" in source_spelled(fx.mir());
 }
 
 
@@ -132,23 +149,18 @@ test "a typing.cast import no longer blocks native placement" {
 
 
 test "typing.cast lowers with no seam" {
-    (prog, ir) = _compile_native("typing_cast_identity.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
+    fx = compile_mir("typing_cast_identity.jac");
     for fn in ["run", "widen"] {
-        assert fn in layout.functions , (
+        assert _lowered(fx, fn) , (
             f"'{fn}' was demoted to a Python seam rather than erasing the "
-            f"cast: {sorted(layout.functions)}"
+            f"cast: {fx.demoted()}"
         );
     }
 }
 
 
 test "typing.cast is the identity on both lanes" {
-    (prog, ir) = _compile_native("typing_cast_identity.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    native = _native_int_fn(ir, "run")();
+    native = _native_int_fn("typing_cast_identity.jac", "run")();
     assert native == 21 , f"native cast chain returned {native}, expected 21";
     assert _run_py_lane("typing_cast_identity", "run") == native , (
         "the native erasure and `typing.cast` disagree; `cast` returns its "
@@ -158,19 +170,14 @@ test "typing.cast is the identity on both lanes" {
 
 
 test "the cast erasure reaches an annexed impl body" {
-    (prog, ir) = _compile_native("typing_cast_annex.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "run" in layout.functions , (
-        f"the annexed function demoted rather than erasing its cast: "
-        f"{sorted(layout.functions)}"
+    fx = compile_mir("typing_cast_annex.jac");
+    assert _lowered(fx, "run") , (
+        f"the annexed function demoted rather than erasing its cast: {fx.demoted()}"
     );
-    assert "Box.doubled" in by_source_name(layout.methods) , (
-        f"the annexed method demoted rather than erasing its cast: "
-        f"{sorted(layout.methods)}"
+    assert _lowered(fx, "Box.doubled") , (
+        f"the annexed method demoted rather than erasing its cast: {fx.demoted()}"
     );
-    assert _native_int_fn(ir, "run")() == 12 , (
+    assert _native_int_fn("typing_cast_annex.jac", "run")() == 12 , (
         "the annexed bodies stopped computing what they compute in Python"
     );
 }
@@ -185,10 +192,10 @@ test "a TypeVar import no longer blocks native placement" {
 
 
 test "a module-scope TypeVar glob produces native IR" {
-    (prog, ir) = _compile_native("typing_typevar_glob.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the TypeVar glob";
-    assert _native_int_fn(ir, "run")() == 9 , (
+    fx = compile_mir("typing_typevar_glob.jac");
+    assert fx.llvm_ir() , "no native IR for the TypeVar glob";
+    assert not fx.demoted() , str(fx.demoted());
+    assert _native_int_fn("typing_typevar_glob.jac", "run")() == 9 , (
         "the TypeVar glob changed what the rest of the module computes"
     );
 }
@@ -262,7 +269,7 @@ test "a marker-only base costs the archetype no vtable slot" {
         "the marker base forced a vtable pointer onto every instance of "
         "Marked; an erased base leaves nothing to dispatch through"
     );
-    assert _native_int_fn(ir, "run")() == 7 , (
+    assert _native_int_fn("type_position_base_marker.jac", "run")() == 7 , (
         "the archetype stopped reading its own field once the base erased"
     );
 }

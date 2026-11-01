@@ -1,12 +1,11 @@
 """Chained and temporary receivers use the same union-property dispatch."""
 import ctypes;
-import from tests.support { compile_native, get_func }
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+import from tests.support { compile_mir, compile_native, get_func }
 
 test "iterate properties through chained, named and temporary union receivers" {
-    (engine, module) = compile_native("union_property_iterable.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , str(issues);
+    demoted = compile_mir("union_property_iterable.jac").demoted();
+    assert not demoted , str(demoted);
+    (engine, _fx) = compile_native("union_property_iterable.jac");
     assert get_func(engine, "probe", ctypes.c_int64)() == 8;
     calls = get_func(engine, "calls", ctypes.c_int64);
     drops = get_func(engine, "drops", ctypes.c_int64);

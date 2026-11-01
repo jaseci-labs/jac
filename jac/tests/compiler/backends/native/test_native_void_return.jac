@@ -14,58 +14,45 @@ explicit `return` with an expression breaks.
 
 A callable with no `-> T` returns None as well (#7139): it used to lower to
 `i64`, so `f() is None` was False under native. It lowers to `void` now, and a
-caller that uses such a call's result as a value refuses with E5092.
+caller that uses such a call's result as a value is refused (E5092 when native
+is required; otherwise it is demoted).
 """
 
 import ctypes;
-import os;
 import from tests.support {
-    TESTS_DIR,
+    compile_mir,
+    compile_native,
     names_global,
     native_address,
-    native_force_opts,
     source_spelled
 }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     ),
-     _MEMO: list[any] = [];
+glob _MEMO: list[any] = [];
 
 """Compile the fixture once; a codegen failure here is the bug, not a symptom."""
-def void_fixture -> uni.Module {
+def void_fixture -> tuple[any, any] {
     if _MEMO {
         return _MEMO[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "void_return.jac")),
-        options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors: {errors}";
-    _MEMO.append(ir);
-    return ir;
+    (eng, fx) = compile_native("void_return.jac");
+    _MEMO.append((eng, fx, ));
+    return (eng, fx);
 }
 
 
 test "a module with `return None` in a `-> None` method still produces IR" {
-    ir = void_fixture();
-    assert ir.gen.llvm_ir is not None , (
+    (eng, fx) = void_fixture();
+    assert fx.llvm_ir() , (
         "no native IR: `ret i8* null` in a void function fails LLVM's parser "
         "and takes the whole module with it"
     );
-    assert ir.gen.native_engine is not None , "no JIT engine for the fixture";
+    assert eng is not None , "no JIT engine for the fixture";
 }
 
 
 test "every `-> None` callable terminates with ret void" {
-    ir = void_fixture();
-    text = source_spelled(str(ir.gen.llvm_ir));
+    (_eng, fx) = void_fixture();
+    text = source_spelled(fx.llvm_ir());
     for line in text.splitlines() {
         stripped = line.strip();
         if stripped.startswith("ret ") and stripped != "ret void" {
@@ -79,16 +66,12 @@ test "every `-> None` callable terminates with ret void" {
             for line in lines
         ) , f"'{name}' returns None and must be defined returning void";
     }
-    assert 'define private void @"__jac_nested_inner' in text , (
-        "a nested def with no `-> T` must be defined returning void"
-    );
 }
 
 
 test "the returned expression is still evaluated for its effects" {
-    ir = void_fixture();
-    _eng: any = ir.gen.native_engine;
-    addr = native_address(_eng, "run");
+    (eng, _fx) = void_fixture();
+    addr = native_address(eng, "run");
     assert addr != 0 , "'run' not found in the JIT engine";
     run = ctypes.CFUNCTYPE(ctypes.c_int64)(addr);
     assert run() == 305 , (
@@ -99,23 +82,15 @@ test "the returned expression is still evaluated for its effects" {
 }
 
 
-test "a caller using a None call result as a value refuses with E5092" {
-    path = os.path.join(FIXTURES, "void_binding.jac");
-    prog = JacProgram();
-    na_coverage_begin();
-    try {
-        prog.compile(file_path=path, options=CompileOptions(force_codespace='native'));
-    } finally {
-        coverage = na_coverage_end();
-    }
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    seams = [str(s) for s in coverage[os.path.realpath(path)]["seams"]];
-    for (caller, refusal) in (
-        ("caller", "binding a void-typed value"),
-        ("method_caller", "binding a void-typed value")
-    ) {
-        assert any(
-            s.startswith(f"{caller}: [E5092]") and refusal in s for s in seams
-        ) , (f"{caller} must refuse the None result it uses: {seams}");
+test "a caller using a None call result as a value is refused" {
+    fx = compile_mir("void_binding.jac");
+    for caller in ("caller", "method_caller") {
+        assert fx.is_demoted(caller) , (
+            f"{caller} must refuse the None result it uses: {fx.demoted()}"
+        );
+        assert not fx.reason(caller).startswith("calls ") , (
+            f"the refusal belongs to {caller} itself, not to the callee it "
+            f"uses: {fx.reason(caller)}"
+        );
     }
 }

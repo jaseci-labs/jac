@@ -21,12 +21,9 @@ call, and a nested loop with `break`/`continue` over the tuple.
 Mixed tuples use the union of their element types and the shared tagged-value
 representation, so narrowing in the loop observes the current member.
 """
-import from tests.support { unit_symbol }
-
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { TESTS_DIR, compile_native, native_address, unit_symbol }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
     get_effective_default_codespace_override,
@@ -60,14 +57,7 @@ def _engine -> any {
     if _MEMO {
         return _MEMO[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, FIXTURE)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {FIXTURE}";
+    (eng, _) = compile_native(FIXTURE);
     _MEMO.append(eng);
     return eng;
 }
@@ -146,23 +136,16 @@ test "the mixed list twin still iterates boxed and reads the right member" {
 
 
 test "mixed tuple iteration retains values and narrowing" {
-    prog = JacProgram();
-    mod = prog.compile(
-        file_path=str(os.path.join(FIXTURES, MIXED_FIXTURE)),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , str(prog.errors_had);
-    eng = mod.gen.native_engine;
-    assert eng is not None;
+    (eng, fx) = compile_native(MIXED_FIXTURE);
     for name in ["mixed_tuple", "mixed_list"] {
-        address = eng.get_function_address(unit_symbol(mod, name));
+        address = eng.get_function_address(unit_symbol(fx, name));
         assert address != 0 , name;
         fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
         for seed in SEEDS {
             assert fn(seed) == seed * 125 + 38 , name;
         }
     }
-    address = eng.get_function_address(unit_symbol(mod, "optional_tuple"));
+    address = eng.get_function_address(unit_symbol(fx, "optional_tuple"));
     assert address != 0;
     fn = ctypes.CFUNCTYPE(ctypes.c_int64, ctypes.c_int64)(address);
     assert fn(11) == 22;

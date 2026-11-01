@@ -8,26 +8,21 @@ typed rebind.
 
 Every behavioral test here compares the native result against the sv result
 for the same fixture, so the assertions are a real congruence gate rather than
-hardcoded constants. `narrowing removes the tag check` pins the payoff: with
-narrowing disabled the same fixture emits checked unwraps, and with it on the
-proven uses emit none.
+hardcoded constants. `narrowing removes the tag check` pins the payoff in the
+decision step's MIR: a proven use reads the payload with no checked unwrap
+(no `TypeError` path), while a use a rebind can reach keeps one.
 """
 
 import ctypes;
 import os;
 import from tests.support {
+    KernelFixture,
     TESTS_DIR,
+    compile_mir,
     compile_native,
-    names_function,
-    native_address,
-    compile_native_ir,
-    native_force_opts
+    native_address
 }
-import jaclang;
-
 import from jaclang.runtime.runtime { JacRuntime }
-
-import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -62,28 +57,19 @@ def congruent(eng: any, sv: object, name: str, inputs: list[int]) -> list[int] {
     return out;
 }
 
-"""Slice one function's body out of a printed LLVM module."""
-def func_ir(llvm_ir: str, name: str) -> str {
-    out: list[str] = [];
-    inside = False;
-    for line in str(llvm_ir).split("\n") {
-        if not inside and line.startswith("define ") and names_function(line, name) {
-            inside = True;
-        }
-        if inside {
-            out.append(line);
-            if line.startswith("}") {
-                break;
-            }
-        }
-    }
-    assert out , f"function '{name}' not found in the emitted module";
-    return "\n".join(out);
+"""The MIR of function `name` in `fx`, as `MirFunction.render` prints it."""
+def func_mir(fx: KernelFixture, name: str) -> str {
+    text = fx.mir();
+    head = f"fn @{fx.symbol(name)}(";
+    assert head in text , f"function '{name}' has no MIR in {fx.path}";
+    body = text[text.index(head):];
+    return body[:body.index("\n}") + 2];
 }
 
-"""Stand-in for `_narrowed_flow_type` that disables narrowing (baseline)."""
-def _no_narrowing(pass_self: any, nd: any) -> any {
-    return None;
+"""Whether a function's MIR unwraps an optional with a check: reading the
+payload of an absent optional raises TypeError."""
+def checked_unwrap(body: str) -> bool {
+    return "raise @TypeError" in body;
 }
 
 test "pointer optional: `is None` early-return guard narrows the fall-through" {
@@ -206,12 +192,11 @@ test "a callee that rebinds the attribute keeps the checked unwrap" {
     # routes through `drop_slot`, which the checker's intra-procedural walk
     # cannot see: sv raises TypeError there, so native must not read a payload.
     (eng, _) = compile_native(FIXTURE);
-    ir = compile_native_ir(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "callee_rebinds_attr", [0]);
     assert vals == [1] , f"unexpected callee_rebinds_attr results: {vals}";
-    body = func_ir(str(ir.gen.llvm_ir), "callee_rebinds_attr");
-    assert "opt.isnone" in body , (
+    body = func_mir(compile_mir(FIXTURE), "callee_rebinds_attr");
+    assert checked_unwrap(body) , (
         "an attribute a callee can rebind must keep its checked unwrap"
     );
 }
@@ -221,12 +206,11 @@ test "a value live across a loop back edge keeps the checked unwrap" {
     # backends agree. n=2 puts None on the back edge and sv raises TypeError,
     # so the in-loop use must not have been narrowed away.
     (eng, _) = compile_native(FIXTURE);
-    ir = compile_native_ir(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "back_edge_rewiden", [0, 6]);
     assert vals == [-1, 21] , f"unexpected back_edge_rewiden results: {vals}";
-    body = func_ir(str(ir.gen.llvm_ir), "back_edge_rewiden");
-    assert "opt.isnone" in body , (
+    body = func_mir(compile_mir(FIXTURE), "back_edge_rewiden");
+    assert checked_unwrap(body) , (
         "a use the loop body rebinds after must keep its checked unwrap"
     );
 }
@@ -240,12 +224,11 @@ test "a subscript store inside a loop keeps the narrow at the loop head" {
 
 test "a tuple-target rebind inside a loop keeps the checked unwrap" {
     (eng, _) = compile_native(FIXTURE);
-    ir = compile_native_ir(FIXTURE);
     sv = sv_module();
     vals = congruent(eng, sv, "loop_unpack_rebind", [0, 6]);
     assert vals == [-1, 21] , f"unexpected loop_unpack_rebind results: {vals}";
-    body = func_ir(str(ir.gen.llvm_ir), "loop_unpack_rebind");
-    assert "opt.isnone" in body , (
+    body = func_mir(compile_mir(FIXTURE), "loop_unpack_rebind");
+    assert checked_unwrap(body) , (
         "a use the loop body rebinds through a tuple target must keep its checked unwrap"
     );
 }
@@ -260,45 +243,25 @@ test "`case None` over a narrowed subject folds instead of comparing to null" {
 test "the narrowed in-loop use keeps its tag check elided" {
     # `scalar_continue_guard` assigns at the top of the body, so the guard's
     # proof is fresh every iteration and the loop rule must still allow it.
-    ir = compile_native_ir(FIXTURE);
-    body = func_ir(str(ir.gen.llvm_ir), "scalar_continue_guard");
-    assert "opt.isnone" not in body , (
+    body = func_mir(compile_mir(FIXTURE), "scalar_continue_guard");
+    assert not checked_unwrap(body) , (
         "assign-then-guard inside a loop must still narrow"
     );
 }
 
 test "narrowing removes the tag check from the proven use" {
-    # optional_scalar.jac lowers with and without narrowing, so the checked
-    # unwrap the guard makes unnecessary is directly measurable as an A/B.
-    orig = NaIRGenPass._narrowed_flow_type;
-    _napatch: any = NaIRGenPass;
-    _napatch._narrowed_flow_type = _no_narrowing;
-    try {
-        base_ir = compile_native_ir("optional_scalar.jac");
-        base = str(base_ir.gen.llvm_ir);
-    } finally {
-        NaIRGenPass._narrowed_flow_type = orig;
-    }
-    narrowed_ir = compile_native_ir("optional_scalar.jac");
-    narrowed = str(narrowed_ir.gen.llvm_ir);
-
+    fx = compile_mir("optional_scalar.jac");
     for name in ["use_pick", "opt_local", "opt_param"] {
-        assert "opt.isnone" in func_ir(base, name) , (
-            f"baseline {name} should pay a checked unwrap without narrowing"
-        );
-        assert "opt.isnone" not in func_ir(narrowed, name) , (
+        assert not checked_unwrap(func_mir(fx, name)) , (
             f"narrowed {name} must read the payload with no tag check"
         );
     }
 }
 
 test "a proven pointer-optional use emits no unwrap branch" {
-    narrowed_ir = compile_native_ir(FIXTURE);
-    body = func_ir(str(narrowed_ir.gen.llvm_ir), "ptr_guard_is_none");
-    assert "opt.isnone" not in body , (
-        "the guarded len(ids) must read the payload with no tag check"
-    );
-    assert "raise.TypeError" not in body , (
-        "the guarded len(ids) must not branch to a runtime raise"
+    body = func_mir(compile_mir(FIXTURE), "ptr_guard_is_none");
+    assert not checked_unwrap(body) , (
+        "the guarded len(ids) must read the payload with no tag check and "
+        "must not branch to a runtime raise"
     );
 }

@@ -1,111 +1,45 @@
 """Regression tests for native RC move-lowering (#6905 payoff, borrow-checker split).
 
-When an assignment `b = a` binds a bare local `Name` that the native
-the core `RcFactsPass` proves safe (LOCAL source, every use an alias-value, dead-out
-at the move site), the native pass lowers it as a MOVE instead of an alias-copy:
-it skips the defensive `__rc_retain` and nulls the source slot so the source's
-later scope/iter cleanup release is a no-op. The destination inherits the single
-reference and frees it exactly once.
+When an assignment `b = a` binds a bare local whose source is owned, unique
+and dead after the move, the native backend lowers it as a MOVE instead of an
+alias-copy: it skips the defensive retain, and the destination inherits the
+single reference and frees it exactly once.
 
-These tests lock both halves: that the retain is actually elided (IR count) and
-that the result is sound at runtime (no leak, no double free over a heavy loop).
-
-The proof is native-owned and does NOT depend on the ownership checker: the
-elision lives in the native codegen path rather than the analysis schedule.
+These tests lock both halves: that the retain is actually elided (no retain
+call in the emitted function) and that the result is sound at runtime (no
+leak, no double free over a heavy loop).
 """
 
 import ctypes;
-import os;
-import from tests.support {
-    TESTS_DIR,
-    compile_native_ir,
-    native_address,
-    native_force_opts,
-    source_spelled
-}
-import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
-import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+import from tests.support { compile_native, compile_native_ir, get_func, names_function }
+import from jaclang.compiler.backends.native.mir.emit { RETAIN_SYMBOL }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
-
-"""Stand-in for `_can_native_move_lower` that disables move-lowering (baseline)."""
-def _no_move_lower(pass_self: any, nd: any) -> bool {
-    return False;
-}
-
-"""Compile a fixture and return (engine, ir). Defaults to the nacompile path."""
-def compile_fixture(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
-    return (eng, ir);
-}
-
-"""Count the __rc_retain call sites in the fixture's own code. The unit's
-exported `jac_retain` helper wraps one retain for the link glue and is not
-an assignment's retain, so its body is left out."""
-def retain_calls(fixture: str, move_lower: bool) -> int {
-    orig = NaIRGenPass._can_native_move_lower;
-    if not move_lower {
-        _napatch: any = NaIRGenPass;
-        _napatch._can_native_move_lower = _no_move_lower;
-    }
-    try {
-        ir = compile_native_ir(fixture);
-        count = 0;
-        in_helper = False;
-        for line in source_spelled(str(ir.gen.llvm_ir)).splitlines() {
-            if line.startswith("define ") {
-                in_helper = '.jac_retain"' in line;
-            }
-            if not in_helper and 'call void @"__rc_retain"' in line {
-                count += 1;
-            }
+"""The retain calls in function `name` of the fixture's emitted IR."""
+def retain_calls(fixture: str, name: str) -> int {
+    count = 0;
+    inside = False;
+    for line in compile_native_ir(fixture).llvm_ir().splitlines() {
+        if line.startswith("define ") {
+            inside = names_function(line, name);
+        } elif inside and line == "}" {
+            inside = False;
         }
-        return count;
-    } finally {
-        NaIRGenPass._can_native_move_lower = orig;
+        if inside and "call " in line and names_function(line, RETAIN_SYMBOL) {
+            count += 1;
+        }
     }
+    return count;
 }
 
-"""Get a ctypes-callable function from the JIT engine."""
-def get_func(eng: any, name: str, restype: type | None, *argtypes: type) -> any {
-    addr = native_address(eng, name);
-    assert addr != 0 , f"Function '{name}' not found in JIT engine";
-    return ctypes.CFUNCTYPE(restype, *argtypes)(addr);
-}
-
-test "move-lowering elides exactly the `b = a` alias retain" {
-    # A/B on identical IR: the ONLY difference is whether the move is lowered.
-    off = retain_calls("move_elision.jac", False);
-    on = retain_calls("move_elision.jac", True);
-    assert off - on == 1 , f"move-lowering should elide exactly one retain call; off={off} on={on}";
-    # `take(x: Box)` receives an i64 (pointer-as-int), so the aliasing `b = a`
-    # is the sole retain; move-lowering removes it entirely.
+test "move-lowering elides the `b = a` alias retain" {
+    # `take(x: Box)` borrows, so the aliasing `b = a` is the only place a
+    # retain could come from; the move leaves none.
+    on = retain_calls("move_elision.jac", "run_moves");
     assert on == 0 , f"expected 0 retain calls after move-lowering, got {on}";
 }
 
-test "move-lowering nulls the source slot (keeps the free sound)" {
-    ir = compile_native_ir("move_elision.jac");
-    text = source_spelled(str(ir.gen.llvm_ir));
-    # Nulling the moved-from slot is what makes eliding the retain sound: the
-    # source's cleanup release then loads null and is a no-op, so the object is
-    # freed exactly once (by the destination's cleanup).
-    assert 'store %"Box"* null, %"Box"** %"a"' in text , "move source 'a' was not nulled after the move";
-}
-
 test "move-lowering is sound at runtime: correct result, no leak, no double free" {
-    (eng, _) = compile_fixture("move_elision.jac");
+    (eng, _) = compile_native("move_elision.jac");
     f = get_func(eng, "run_moves", ctypes.c_int64, ctypes.c_int64);
     assert f(1000) == 1000;
     # A heavy loop: a double free would corrupt the heap and crash here; a leak

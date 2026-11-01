@@ -16,24 +16,12 @@ assert os.path.realpath(jaclang.__file__) == os.path.realpath(sys.argv[3]), (
     "JIT subprocess selected a different compiler package", jaclang.__file__, sys.argv[3]
 )
 
-from jaclang.compiler.driver.compile_options import CompileOptions
-from jaclang.compiler.driver.program import JacProgram
+from tests.support import compile_native, native_address
 
-prog = JacProgram()
-ir = prog.compile(
-    file_path=sys.argv[1],
-    options=CompileOptions(
-        force_codespace='native',
-        no_ir_cache=True,
-    ),
+engine, fixture = compile_native(
+    os.path.basename(sys.argv[1]), os.path.dirname(sys.argv[1])
 )
-if prog.errors_had:
-    raise SystemExit('compile errors: %r' % [str(e) for e in prog.errors_had])
-engine = ir.gen.native_engine
-if engine is None:
-    raise SystemExit('no native engine')
-symbol = ir.gen.native_iface.symbol_of(sys.argv[2])
-addr = engine.get_function_address(symbol or sys.argv[2])
+addr = native_address(engine, sys.argv[2])
 if addr == 0:
     raise SystemExit('symbol absent from the JIT engine: %s' % sys.argv[2])
 print(ctypes.CFUNCTYPE(ctypes.c_int64)(addr)())

@@ -14,53 +14,49 @@ silently mis-bound value.
 """
 
 import ctypes;
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
-import os;
+import from pathlib { Path }
 import from tests.support {
-    TESTS_DIR,
+    compile_mir,
     compile_native,
+    diagnostics_text,
     get_func,
-    has_error_code,
+    kernel_compile_source,
     native_force_opts,
-    native_str_func
+    native_str_func,
+    source_spelled,
+    unit_symbol,
+    write_case
 }
-import jaclang;
 
 test "lambda parameters remain borrowed across explicit returns" {
-    (engine, module) = compile_native("lambda_borrowed_params.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
+    (engine, fx) = compile_native("lambda_borrowed_params.jac");
+    assert not fx.iface().demoted , fx.iface().demoted;
     call = get_func(engine, "call_lambda", ctypes.c_int64);
     drops = get_func(engine, "drop_count", ctypes.c_int64);
     assert call() == 770;
     assert drops() == 1;
 }
 
-import from jaclang.compiler.driver.program { JacProgram }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
-
-"""Compile a snippet through the native pipeline and return the program."""
-def compile_na_inline(label: str, code: str) -> JacProgram {
-    path = os.path.join(FIXTURES, f"_closure_{label}.jac");
-    prog = JacProgram();
-    prog.compile(file_path=path, use_str=code, options=native_force_opts());
-    return prog;
+"""Compile a snippet through the native pipeline; return the kernel's result."""
+def compile_na_inline(label: str, code: str) -> any {
+    return kernel_compile_source(code, f"closure_{label}.jac", native_force_opts());
 }
 
-"""Like `compile_na_inline`, but also hand back the compiled module so a
-granular demotion (epic #8201) is observable through the native layout."""
+"""Compile a snippet natively and JIT it; return (engine, fixture)."""
 def compile_na_inline_ir(label: str, code: str) -> tuple[any, ...] {
-    path = os.path.join(FIXTURES, f"_closure_{label}.jac");
-    prog = JacProgram();
-    ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());
-    return (prog, ir, );
+    path = Path(write_case(code, f"closure_{label}.jac"));
+    return compile_native(path.name, str(path.parent));
+}
+
+"""The decision step's verdict on a snippet, so a granular demotion (epic
+#8201) is observable through the demoted set."""
+def decide_inline(label: str, code: str) -> any {
+    path = Path(write_case(code, f"closure_{label}.jac"));
+    return compile_mir(path.name, str(path.parent));
 }
 
 test "closure: callable fields preserve captured environments through parameters" {
-    (prog, module) = compile_na_inline_ir(
+    (eng, fx) = compile_na_inline_ir(
         "callable_field",
         """
 obj Callback { has call: Callable[([], int)]; }
@@ -74,11 +70,7 @@ def compute(value: int) -> int {
 }
 """
     );
-    assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
-    assert module.gen.native_engine is not None;
-    call = get_func(
-        module.gen.native_engine, "compute", ctypes.c_int64, ctypes.c_int64
-    );
+    call = get_func(eng, "compute", ctypes.c_int64, ctypes.c_int64);
     assert call(35) == 42;
     assert call(93) == 100;
 }
@@ -91,7 +83,7 @@ test "closure: nested def reads an enclosing param" {
 }
 
 test "closure: immediately invoked lambdas infer reference returns" {
-    (prog, module) = compile_na_inline_ir(
+    (eng, fx) = compile_na_inline_ir(
         "immediate_reference",
         """
 obj Box { has value: int; }
@@ -101,16 +93,12 @@ def compute(value: int) -> int {
 }
 """
     );
-    assert not prog.errors_had , "\n".join(str(e) for e in prog.errors_had);
-    assert module.gen.native_engine is not None;
-    call = get_func(
-        module.gen.native_engine, "compute", ctypes.c_int64, ctypes.c_int64
-    );
+    call = get_func(eng, "compute", ctypes.c_int64, ctypes.c_int64);
     assert call(37) == 37;
 }
 
 test "closure: nested method helpers retain the receiver and outer parameters" {
-    (prog, module) = compile_na_inline_ir(
+    (eng, fx) = compile_na_inline_ir(
         "method_receiver",
         """
 obj Counter {
@@ -143,15 +131,13 @@ def probe -> int {
 }
 """
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
-    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    assert not fx.iface().demoted , fx.iface().demoted;
+    call = get_func(eng, "probe", ctypes.c_int64);
     assert call() == 50;
 }
 
 test "closure: an escaped receiver stays alive until the closure is released" {
-    (prog, module) = compile_na_inline_ir(
+    (eng, fx) = compile_na_inline_ir(
         "receiver_escape",
         """
 glob dropped: int = 0;
@@ -171,18 +157,16 @@ def probe -> int {
 def drops -> int { return dropped; }
 """
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
-    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
-    drops = get_func(module.gen.native_engine, "drops", ctypes.c_int64);
+    assert not fx.iface().demoted , fx.iface().demoted;
+    call = get_func(eng, "probe", ctypes.c_int64);
+    drops = get_func(eng, "drops", ctypes.c_int64);
     before = drops();
     assert call() == 21;
     assert drops() - before == 1;
 }
 
 test "closure: split method implementations capture their declaration scope" {
-    (prog, module) = compile_na_inline_ir(
+    (eng, fx) = compile_na_inline_ir(
         "impl_receiver",
         """
 obj Factory {
@@ -199,10 +183,8 @@ def probe -> int {
 }
 """
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , "\n".join(issue.detail for issue in issues);
-    call = get_func(module.gen.native_engine, "probe", ctypes.c_int64);
+    assert not fx.iface().demoted , fx.iface().demoted;
+    call = get_func(eng, "probe", ctypes.c_int64);
     assert call() == 35;
 }
 
@@ -284,7 +266,7 @@ test "closure escape: capturing lambda escapes as a value" {
 }
 
 test "closure escape: capture borrowed from an outer frame stays rejected" {
-    (prog, ir) = compile_na_inline_ir(
+    fx = decide_inline(
         "transitive_escape",
         "def outer(y: int) -> Callable[[], int] {\n"
         "    def mid -> Callable[[], int] {\n"
@@ -294,19 +276,14 @@ test "closure escape: capture borrowed from an outer frame stays rejected" {
         "    return mid();\n"
         "}\n"
     );
-    assert not prog.errors_had , (
-        f"the outer-frame capture refusal is owned by outer(), which must "
-        f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "outer" not in ir.gen.native_layout.functions , (
+    assert fx.is_demoted("outer") , (
         "a closure escaping with an outer-frame capture must demote its "
-        "function out of the native layout, never lower wrongly"
+        f"function, never lower wrongly: {fx.demoted()}"
     );
 }
 
 test "closure escape: calling a closure through an any-typed value stays rejected" {
-    (prog, ir) = compile_na_inline_ir(
+    fx = decide_inline(
         "any_closure_call",
         "def outer(y: int) -> int {\n"
         "    def inner(x: int) -> int { return x * y; }\n"
@@ -314,19 +291,14 @@ test "closure escape: calling a closure through an any-typed value stays rejecte
         "    return f(3);\n"
         "}\n"
     );
-    assert not prog.errors_had , (
-        f"the any-typed closure call refusal is owned by outer(), which must "
-        f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "outer" not in ir.gen.native_layout.functions , (
-        "an any-typed closure call site must demote its function out of the "
-        "native layout, never lower wrongly"
+    assert fx.is_demoted("outer") , (
+        "an any-typed closure call site must demote its function, never "
+        f"lower wrongly: {fx.demoted()}"
     );
 }
 
 test "closure: a void lambda over a statement call returns void" {
-    (prog, ir) = compile_na_inline_ir(
+    (eng, fx) = compile_na_inline_ir(
         "void_lambda_stmt_call",
         "def apply(f: Callable[[int], None], x: int) {\n"
         "    f(x);\n"
@@ -337,17 +309,16 @@ test "closure: a void lambda over a statement call returns void" {
         "    return len(seen);\n"
         "}\n"
     );
-    assert not prog.errors_had , (
+    assert unit_symbol(fx, "seen_count") not in fx.iface().demoted , (
         f"a void lambda's tail call is evaluated for effect, never returned: "
-        f"{[str(e) for e in prog.errors_had]}"
+        f"{fx.iface().demoted}"
     );
-    assert "seen_count" in ir.gen.native_layout.functions;
-    f = get_func(ir.gen.native_engine, "seen_count", ctypes.c_int64);
+    f = get_func(eng, "seen_count", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "closure escape: a statement call through an any-typed field stays rejected" {
-    (prog, ir) = compile_na_inline_ir(
+    fx = decide_inline(
         "any_field_stmt_call",
         "obj Probe {\n"
         "    has f: any = None;\n"
@@ -361,14 +332,9 @@ test "closure escape: a statement call through an any-typed field stays rejected
         "    return 1;\n"
         "}\n"
     );
-    assert not prog.errors_had , (
-        f"the any-typed call refusal is owned by fire(), which must demote "
-        f"to a seam, got: {[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert not any(name.endswith("fire") for name in ir.gen.native_layout.functions) , (
+    assert any(source_spelled(sym).endswith(".Probe.fire") for sym in fx.demoted()) , (
         "a statement call through an any-typed value must demote its method, "
-        "never lower to nothing"
+        f"never lower to nothing: {fx.demoted()}"
     );
 }
 
@@ -440,7 +406,7 @@ test "entry lambda reading an entry-assigned name lowers as a global read" {
     # (#7626 A1), so a lambda there reads them like any `glob` -- no more
     # frame-local E5092. Behavioral parity is pinned in
     # test_native_entry_globals.jac.
-    prog = compile_na_inline(
+    result = compile_na_inline(
         "entry_local_lambda",
         "glob acc: list[int] = [];\n"
         "with entry {\n"
@@ -450,8 +416,8 @@ test "entry lambda reading an entry-assigned name lowers as a global read" {
         "    acc.append(f(1));\n"
         "}\n"
     );
-    assert not prog.errors_had , (
-        f"entry lambda over an entry-assigned name should lower natively, got: "
-        f"{[str(e) for e in prog.errors_had]}"
+    assert result.ok() , (
+        f"entry lambda over an entry-assigned name should lower natively, got:\n"
+        f"{diagnostics_text(result)}"
     );
 }

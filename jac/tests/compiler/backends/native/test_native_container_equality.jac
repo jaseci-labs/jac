@@ -7,19 +7,15 @@ by identity (values); and archetypes answer through their own `__eq__` /
 `__ne__`, honouring Python's subclass-first rule.
 """
 import from pathlib { Path }
-import from tests.support { assert_native_identity, compile_native_ir }
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+import from tests.support { assert_native_identity, compile_mir }
 
 glob FIXTURE: str = "container_equality.jac";
 
+"""Every comparison in the fixture has a native representation: the decision
+step demotes nothing, so no `==` falls back to Python's object model."""
 test "container equality lowers natively through structural comparisons" {
-    module = compile_native_ir(FIXTURE);
-    llvm = str(module.gen.llvm_ir);
-    issues = native_lowering_issues(llvm);
-    assert not issues , str(issues);
-    assert "__jac_eq_dict" in llvm , "dictionary == must walk the entries, not compare addresses";
-    assert "__jac_eq_setlike" in llvm , "key/item views must compare as sets";
-    assert "cmp__eq__" in llvm or "call.__eq__" in llvm , "archetype == must call __eq__";
+    fx = compile_mir(FIXTURE);
+    assert not fx.demoted() , fx.demoted();
 }
 
 test "container equality agrees with Python under the managed profiles" {

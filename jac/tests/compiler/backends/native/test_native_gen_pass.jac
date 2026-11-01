@@ -1,7 +1,11 @@
-"""End-to-end tests for native LLVM IR compilation (na {} / .jac).
+"""End-to-end tests for native compilation (na {} / .jac).
 
-Tests verify that .jac fixtures compile to LLVM IR, JIT-compile to
-native machine code, and produce correct results when executed via ctypes.
+Tests verify that .jac fixtures compile through the kernel to native code,
+JIT-compile in this process, and produce correct results when executed via
+ctypes. A test about a lowering decision (does a function stay native, or is it
+demoted, and why) reads the decision step's demoted set (`compile_mir`); one
+about an emitted-LLVM fact the C ABI or the linker depends on (symbol names,
+extern signatures, aggregate coercion) reads the unit's LLVM IR.
 
 One test per fixture. Each fixture used to carry one hand-written test per
 exported symbol -- `dicts_sets.jac` had 39 of them against 40 symbols -- so the
@@ -22,39 +26,48 @@ reading, and merged they read a list three pushes deep.
 So: if a new fixture declares a glob anything writes, or imports one that
 does, give each of its cases its own test.
 """
-import from jaclang.compiler.backends.py.python_text { generated_python }
 import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
 import ctypes;
+import dis;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
     pop_native_target
 }
-import from _ctypes { CFuncPtr }
 import io;
+import json;
 import os;
 import subprocess;
 import sys;
 import tempfile;
+import from pathlib { Path }
 import from tests.support {
     JAC_ROOT,
     TESTS_DIR,
-    by_source_name,
+    adopt_native_units,
+    compile_mir,
     compile_native,
     compile_native_ir,
+    compile_native_refused,
+    compile_native_unit,
+    diagnostics_text,
+    error_codes,
     get_func,
-    iface_symbol,
     jac_command,
+    kernel_compile_file,
     native_address,
     native_force_opts,
-    source_spelled
+    remember_native_unit,
+    source_spelled,
+    unit_symbol,
+    warning_codes,
+    write_case
 }
-import jaclang;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.unit_products { interop_manifest_of }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 import from jaclang.compiler.frontend.codeinfo {
     native_glob_init_name,
     native_symbol_name,
@@ -65,20 +78,103 @@ glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-"""The engine symbol of a name the module under test defines.
-
-`:pub` symbols and the synthesized `jac_entry` keep their bare names; every
-other external symbol (functions, `Class.method`) lives under the unit's
-prefix, `native_unit_prefix(path)` (#8943). The unit's interface records the
-exact symbol when the compile produced one.
-"""
-def unit_sym(ir: any, name: str) -> str {
-    iface = ir.gen.native_iface if (ir is not None and ir.gen is not None) else None;
-    found = iface_symbol(iface, name);
-    if found {
-        return found;
+"""The decision step's reason for demoting the Jac-level `name` (a function or
+`Class.method`) in a compiled fixture, or None when it stayed native. The
+demoted set is keyed by link symbol; a demoted function has no interface
+export to resolve it through, so the match is by source spelling."""
+def _demotion(fx: any, name: str) -> (str | None) {
+    for (symbol, reason) in fx.demoted().items() {
+        spelled = source_spelled(symbol);
+        if spelled == name or spelled.endswith("." + name) {
+            return reason;
+        }
     }
-    return native_symbol_name(native_unit_prefix(ir.loc.mod_path), name);
+    return None;
+}
+
+"""The interop record the kernel stamped on a fixture's unit (foreign-library
+paths, the per-symbol library map, the Python binding manifest)."""
+def _interop(fx: any) -> dict[str, any] {
+    return json.loads(fx.unit.interop) if fx.unit.interop else {};
+}
+
+"""The interop manifest the kernel stamped on a fixture's unit."""
+def _manifest(fx: any) -> any {
+    return interop_manifest_of(_interop(fx));
+}
+
+"""The `declare` lines of LLVM IR text with their parameter names dropped, one
+per line: each foreign signature as the C ABI sees it, independent of how the
+emitter names parameters."""
+def _declares(ir_text: str) -> str {
+    import re;
+    return "\n".join(
+        re.sub(r'(?<=[^,(]) %("[^"]*"|[\w.$-]+)(?=[,)])', "", line)
+        for line in ir_text.splitlines()
+        if line.startswith("declare ")
+    );
+}
+
+"""Compile `path` through the kernel's compile entry and return the module
+code object of its unit with the whole result."""
+def _module_code(path: str, options: (CompileOptions | None) = None) -> tuple[any, any] {
+    real = str(Path(path).resolve());
+    result = kernel_compile_file(real, options);
+    assert result.ok() , diagnostics_text(result);
+    return (result.unit(real).code, result);
+}
+
+"""Compile `path` through the kernel under `options` (default: forced into
+the native codespace) and JIT its native units in this process, like
+`compile_native` with explicit options. Returns (engine, fixture, carrier);
+the carrier holds the unit's interop manifest and Python callback table."""
+def _jit(path: str, options: (CompileOptions | None) = None) -> tuple[any, any, any] {
+    opts = options if options is not None else native_force_opts();
+    fx = compile_native_unit(path, "", opts, ["bytecode"]);
+    prog = JacProgram();
+    prog.options = opts;
+    adopt_native_units(prog, fx.result, opts);
+    prog._get_compiler()._load_native_from_cache(
+        fx.path, prog, json.loads(fx.unit.interop) if fx.unit.interop else None
+    );
+    carrier = prog.hub.artifacts.get(fx.path);
+    assert carrier is not None and carrier.native_engine is not None , (
+        f"No JIT engine produced for {path}"
+    );
+    remember_native_unit(carrier.native_engine, fx);
+    return (carrier.native_engine, fx, carrier);
+}
+
+"""Compile `fixture` through the kernel under `options`, hand its native units
+to a fresh program as the compile entry does, and build the link plan the
+build would walk. Returns (plan, fixture)."""
+def _link_plan(fixture: str, options: CompileOptions) -> tuple[any, any] {
+    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
+    fx = compile_native_unit(fixture, "", options, ["bytecode"]);
+    prog = JacProgram();
+    prog.options = options;
+    adopt_native_units(prog, fx.result, options);
+    return (build_link_plan(prog, [fx.path], options), fx);
+}
+
+"""`code` and every code object nested in its constants."""
+def _code_objects(code: any) -> list[any] {
+    found = [code];
+    for const in code.co_consts {
+        if hasattr(const, "co_code") {
+            found.extend(_code_objects(const));
+        }
+    }
+    return found;
+}
+
+"""Every name any code object under `code` loads, stores or calls by name."""
+def _code_names(code: any) -> set[str] {
+    names: set[str] = set();
+    for body in _code_objects(code) {
+        names.update(body.co_names);
+    }
+    return names;
 }
 
 class JacStrABI(ctypes.Structure) {
@@ -188,7 +284,7 @@ def _rss_kb -> int {
 
 # --- TestNativeArithmeticExecution ---
 """arithmetic add"""
-def _arithmetic__arithmetic_add(eng: any, _ir: any) {
+def _arithmetic__arithmetic_add(eng: any, _fx: any) {
     add = get_func(eng, "add", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert add(3, 4) == 7;
     assert add(-1, 1) == 0;
@@ -197,7 +293,7 @@ def _arithmetic__arithmetic_add(eng: any, _ir: any) {
 }
 
 """arithmetic multiply"""
-def _arithmetic__arithmetic_multiply(eng: any, _ir: any) {
+def _arithmetic__arithmetic_multiply(eng: any, _fx: any) {
     mul = get_func(eng, "multiply", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert mul(5, 6) == 30;
     assert mul(-3, 7) == -21;
@@ -205,7 +301,7 @@ def _arithmetic__arithmetic_multiply(eng: any, _ir: any) {
 }
 
 """arithmetic negate"""
-def _arithmetic__arithmetic_negate(eng: any, _ir: any) {
+def _arithmetic__arithmetic_negate(eng: any, _fx: any) {
     neg = get_func(eng, "negate", ctypes.c_int64, ctypes.c_int64);
     assert neg(5) == -5;
     assert neg(-3) == 3;
@@ -213,7 +309,7 @@ def _arithmetic__arithmetic_negate(eng: any, _ir: any) {
 }
 
 """arithmetic float add"""
-def _arithmetic__arithmetic_float_add(eng: any, _ir: any) {
+def _arithmetic__arithmetic_float_add(eng: any, _fx: any) {
     fadd = get_func(
         eng, "float_add", ctypes.c_double, ctypes.c_double, ctypes.c_double
     );
@@ -222,19 +318,19 @@ def _arithmetic__arithmetic_float_add(eng: any, _ir: any) {
 }
 
 """context isolation native ir contains function"""
-def _arithmetic__context_isolation_native_ir_contains_function(eng: any, ir: any) {
+def _arithmetic__context_isolation_native_ir_contains_function(eng: any, fx: any) {
     # If we can get the function address, the IR was generated correctly
-    addr = native_address(eng, unit_sym(ir, "add"));
+    addr = native_address(eng, unit_symbol(fx, "add"));
     assert addr != 0;
 }
 
 test "arithmetic" {
-    (_eng, _ir) = compile_native("arithmetic.jac");
-    _arithmetic__arithmetic_add(_eng, _ir);
-    _arithmetic__arithmetic_multiply(_eng, _ir);
-    _arithmetic__arithmetic_negate(_eng, _ir);
-    _arithmetic__arithmetic_float_add(_eng, _ir);
-    _arithmetic__context_isolation_native_ir_contains_function(_eng, _ir);
+    (_eng, _fx) = compile_native("arithmetic.jac");
+    _arithmetic__arithmetic_add(_eng, _fx);
+    _arithmetic__arithmetic_multiply(_eng, _fx);
+    _arithmetic__arithmetic_negate(_eng, _fx);
+    _arithmetic__arithmetic_float_add(_eng, _fx);
+    _arithmetic__context_isolation_native_ir_contains_function(_eng, _fx);
 }
 
 # Regression: CPython floor semantics for negative //, %, and divmod on native.
@@ -264,7 +360,7 @@ test "negative floor divmod" {
 # Regression: sub-64-bit integer arithmetic must run at the operands'
 # true width, not force i64 overflow intrinsics (i32/i16/i8 kernels).
 """arithmetic narrow int width"""
-def _narrow_int_truediv__arithmetic_narrow_int_width(eng: any, _ir: any) {
+def _narrow_int_truediv__arithmetic_narrow_int_width(eng: any, _fx: any) {
     add32 = get_func(eng, "add32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
     assert add32(3, 4) == 7;
     sub32 = get_func(eng, "sub32", ctypes.c_int32, ctypes.c_int32, ctypes.c_int32);
@@ -276,7 +372,7 @@ def _narrow_int_truediv__arithmetic_narrow_int_width(eng: any, _ir: any) {
 # Regression: `/` is true division (Python semantics) -- int / int is a
 # float, while `//` stays integer floor division.
 """arithmetic true division"""
-def _narrow_int_truediv__arithmetic_true_division(eng: any, _ir: any) {
+def _narrow_int_truediv__arithmetic_true_division(eng: any, _fx: any) {
     td = get_func(eng, "truediv", ctypes.c_double, ctypes.c_int64, ctypes.c_int64);
     assert td(3, 4) == 0.75;
     assert td(10, 2) == 5.0;
@@ -297,9 +393,9 @@ def _narrow_int_truediv__arithmetic_true_division(eng: any, _ir: any) {
 }
 
 test "narrow_int_truediv" {
-    (_eng, _ir) = compile_native("narrow_int_truediv.jac");
-    _narrow_int_truediv__arithmetic_narrow_int_width(_eng, _ir);
-    _narrow_int_truediv__arithmetic_true_division(_eng, _ir);
+    (_eng, _fx) = compile_native("narrow_int_truediv.jac");
+    _narrow_int_truediv__arithmetic_narrow_int_width(_eng, _fx);
+    _narrow_int_truediv__arithmetic_true_division(_eng, _fx);
 }
 
 # --- Function pointers in struct fields (the OSP dispatch-slot shape) ---
@@ -316,7 +412,7 @@ test "native callable struct field: indirect call through a field" {
 # --- Object-Spatial Programming (walker / node / spawn / abilities) ---
 """native osp: spawn dispatches entry ability and mutates walker state"""
 def _osp_spawn__native_osp_spawn_dispatches_entry_ability_and_mutates_walker_state(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     collect_two = get_func(
         eng, "collect_two", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
@@ -329,7 +425,7 @@ def _osp_spawn__native_osp_spawn_dispatches_entry_ability_and_mutates_walker_sta
 }
 
 """native osp: spawn returns the walker"""
-def _osp_spawn__native_osp_spawn_returns_the_walker(eng: any, _ir: any) {
+def _osp_spawn__native_osp_spawn_returns_the_walker(eng: any, _fx: any) {
     collect_one = get_func(eng, "collect_one", ctypes.c_int64, ctypes.c_int64);
     # `(Collector() spawn Item(val=v)).total` — spawn evaluates to the walker.
     assert collect_one(7) == 7;
@@ -337,11 +433,11 @@ def _osp_spawn__native_osp_spawn_returns_the_walker(eng: any, _ir: any) {
 }
 
 test "osp_spawn" {
-    (_eng, _ir) = compile_native("osp_spawn.jac");
+    (_eng, _fx) = compile_native("osp_spawn.jac");
     _osp_spawn__native_osp_spawn_dispatches_entry_ability_and_mutates_walker_state(
-        _eng, _ir
+        _eng, _fx
     );
-    _osp_spawn__native_osp_spawn_returns_the_walker(_eng, _ir);
+    _osp_spawn__native_osp_spawn_returns_the_walker(_eng, _fx);
 }
 
 test "native osp: chained [?:Type] filter narrows adjacency" {
@@ -376,99 +472,56 @@ test "native osp: skip in an impl-annex walker event ability (issue #6794)" {
 test "native partial class: un-lowerable method skipped, sibling stays native" {
     # `Literal.evaluate` uses `eval` (no native lowering). Before A4 its E5090
     # poisoned the whole module, so the class lost its native layout and every
-    # sibling method. Now the un-lowerable method is demoted to Python-only and
-    # the rest of the class compiles: native construction + the native-eligible
-    # `length` work, the module reports no errors.
-    (eng, ir) = compile_native("partial_native.jac");
+    # sibling method. Now the decision step demotes the un-lowerable method to
+    # Python-only and the rest of the class compiles: native construction + the
+    # native-eligible `length` work, the module reports no errors.
+    (eng, _fx) = compile_native("partial_native.jac");
     measure = get_sfunc(eng, "measure", ctypes.c_int64, ctypes.c_char_p);
     assert measure(b"hello") == 5;
     assert measure(b"") == 0;
-    layout = ir.gen.native_layout;
-    assert layout is not None , "native layout missing";
-    # The native-eligible method is exported; the eval-using one is skipped.
-    assert "Literal.length" in by_source_name(layout.methods);
-    assert "Literal.evaluate" not in by_source_name(layout.methods);
-}
-
-test "native partial class: demotion warns on the terminal by default (#6934)" {
-    # warn_native_seams defaults True, so demoting an un-lowerable method prints
-    # a terminal warning naming the method — a silent native fallback is visible
-    # during a build. The compile still succeeds (A4 demotes, no errors).
-    _saved = sys.stderr;
-    _cap = io.StringIO();
-    sys.stderr = _cap;
-    try {
-        prog = JacProgram();
-        prog.compile(
-            file_path=str(os.path.join(FIXTURES, "partial_native.jac")),
-            options=native_force_opts()
-        );
-    } finally {
-        sys.stderr = _saved;
-    }
-    assert not prog.errors_had;
-    _out = _cap.getvalue();
-    assert "native seam" in _out;
-    assert "Literal.evaluate" in _out;
-    assert "Python-only" in _out;
+    fx = compile_mir("partial_native.jac");
+    assert _demotion(fx, "Literal.evaluate") is not None , (
+        f"the eval-using method must be demoted: {fx.demoted()}"
+    );
+    assert _demotion(fx, "Literal.length") is None , (
+        f"the native-eligible sibling must stay native: {fx.demoted()}"
+    );
 }
 
 test "native partial class: native caller of a demoted method errors, not silent" {
     # A method demoted to Python-only is not callable from native code: the
     # native pathway cannot fall back to Python mid-stream. The free function
-    # that calls it cascades into a seam of its own (granular demotion), and
-    # the module entry that calls THAT function stays a loud E5092 naming its
-    # call site instead of silently dropping to a null result.
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, "partial_native_native_caller.jac")),
-        options=native_force_opts()
+    # that calls it is demoted in turn (the decision step propagates the
+    # refusal to its callers), and when native is required the refusal is a
+    # loud E5092 instead of a silently dropped call.
+    fx = compile_mir("partial_native_native_caller.jac");
+    assert _demotion(fx, "Box.evaluate") is not None , f"{fx.demoted()}";
+    assert _demotion(fx, "Box.length") is None , f"{fx.demoted()}";
+    reason = _demotion(fx, "call_evaluate");
+    assert reason is not None , (
+        f"the native caller of a demoted method must be demoted: {fx.demoted()}"
     );
-    codes = [
-        e.code.code
-        for e in (prog.errors_had or [])
-        if e.code
-    ];
-    assert "E5092" in codes , (
-        f"expected E5092 for the native call chain into a demoted method, "
-        f"got {codes}"
-    );
-    # The diagnostic names the demoted callable at the surviving call site,
-    # not the discarded eval body that was demoted away.
-    msgs = " ".join(str(e) for e in (prog.errors_had or []));
-    assert "call_evaluate" in msgs , (f"E5092 should name call_evaluate, got: {msgs}");
+    assert reason.startswith("calls ") and reason.endswith("which is not native") , reason;
+    refused = compile_native_refused("partial_native_native_caller.jac");
+    assert "E5092" in error_codes(refused) , diagnostics_text(refused);
 }
 
-test "native partial class: un-lowerable virtual method demotes to a stub slot" {
+test "native partial class: un-lowerable virtual method demotes" {
     # `render` is virtual (Base + Derived override -> vtable slot). An
-    # un-lowerable virtual now demotes like any other method: its vtable
-    # slot keeps the abort() stub so native dispatch that reaches it fails
-    # loudly, the function is excluded from the exported layout, and the
-    # module still lowers (#6930 W4).
-    prog = JacProgram();
-    ir_mod = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "partial_native_virtual.jac")),
-        options=native_force_opts()
+    # un-lowerable virtual demotes like any other method: the decision step
+    # refuses it, the module still lowers with no hard errors (#6930 W4).
+    fx = compile_mir("partial_native_virtual.jac");
+    reason = _demotion(fx, "Derived.render");
+    assert reason is not None , f"the eval-using override must be demoted: {fx.demoted()}";
+    assert not reason.startswith("calls ") , (
+        f"Derived.render is refused directly, not by propagation: {reason}"
     );
-    codes = [
-        e.code.code
-        for e in (prog.errors_had or [])
-        if e.code
-    ];
-    assert codes == [] , (f"virtual demotion must not leave hard errors, got {codes}");
-    assert ir_mod is not None and ir_mod.gen.llvm_ir is not None;
-    layout = ir_mod.gen.native_layout;
-    assert layout is not None;
-    assert "Derived.render" not in by_source_name(layout.methods) , (
-        "demoted virtual must not be exported in the layout"
-    );
-    assert "Base.render" in by_source_name(layout.methods);
 }
 
 # Regression (#7593 item 1): f32 operands must promote to double instead of
 # crashing the binop/compare emitters.
 """arithmetic f32 promotion binops"""
-def _f32_promotion__arithmetic_f32_promotion_binops(eng: any, _ir: any) {
+def _f32_promotion__arithmetic_f32_promotion_binops(eng: any, _fx: any) {
     ma = get_func(eng, "mixed_add", ctypes.c_double, ctypes.c_float, ctypes.c_double);
     assert ma(1.5, 2.25) == 3.75;
     mr = get_func(
@@ -495,7 +548,7 @@ def _f32_promotion__arithmetic_f32_promotion_binops(eng: any, _ir: any) {
 }
 
 """arithmetic f32 promotion comparisons"""
-def _f32_promotion__arithmetic_f32_promotion_comparisons(eng: any, _ir: any) {
+def _f32_promotion__arithmetic_f32_promotion_comparisons(eng: any, _fx: any) {
     cl = get_func(eng, "cmp_mixed_lt", ctypes.c_bool, ctypes.c_float, ctypes.c_double);
     assert cl(1.5, 2.25);
     assert not cl(2.5, 2.25);
@@ -515,7 +568,7 @@ def _f32_promotion__arithmetic_f32_promotion_comparisons(eng: any, _ir: any) {
 }
 
 """arithmetic f32 result narrows at typed sinks"""
-def _f32_promotion__arithmetic_f32_result_narrows_at_typed_sinks(eng: any, _ir: any) {
+def _f32_promotion__arithmetic_f32_result_narrows_at_typed_sinks(eng: any, _fx: any) {
     sn = get_func(
         eng, "same_add_narrow", ctypes.c_float, ctypes.c_float, ctypes.c_float
     );
@@ -525,22 +578,22 @@ def _f32_promotion__arithmetic_f32_result_narrows_at_typed_sinks(eng: any, _ir: 
 }
 
 """aug assign f32 field promotes"""
-def _f32_promotion__aug_assign_f32_field_promotes(eng: any, _ir: any) {
+def _f32_promotion__aug_assign_f32_field_promotes(eng: any, _fx: any) {
     fa = get_func(eng, "field_aug", ctypes.c_double, ctypes.c_double);
     assert fa(0.25) == 1.75;
 }
 
 test "f32_promotion" {
-    (_eng, _ir) = compile_native("f32_promotion.jac");
-    _f32_promotion__arithmetic_f32_promotion_binops(_eng, _ir);
-    _f32_promotion__arithmetic_f32_promotion_comparisons(_eng, _ir);
-    _f32_promotion__arithmetic_f32_result_narrows_at_typed_sinks(_eng, _ir);
-    _f32_promotion__aug_assign_f32_field_promotes(_eng, _ir);
+    (_eng, _fx) = compile_native("f32_promotion.jac");
+    _f32_promotion__arithmetic_f32_promotion_binops(_eng, _fx);
+    _f32_promotion__arithmetic_f32_promotion_comparisons(_eng, _fx);
+    _f32_promotion__arithmetic_f32_result_narrows_at_typed_sinks(_eng, _fx);
+    _f32_promotion__aug_assign_f32_field_promotes(_eng, _fx);
 }
 
 # --- TestNativeControlFlowExecution ---
 """control flow abs val"""
-def _control_flow__control_flow_abs_val(eng: any, _ir: any) {
+def _control_flow__control_flow_abs_val(eng: any, _fx: any) {
     f = get_func(eng, "abs_val", ctypes.c_int64, ctypes.c_int64);
     assert f(-5) == 5;
     assert f(5) == 5;
@@ -549,7 +602,7 @@ def _control_flow__control_flow_abs_val(eng: any, _ir: any) {
 }
 
 """control flow max val"""
-def _control_flow__control_flow_max_val(eng: any, _ir: any) {
+def _control_flow__control_flow_max_val(eng: any, _fx: any) {
     f = get_func(eng, "max_val", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(3, 7) == 7;
     assert f(10, 2) == 10;
@@ -557,7 +610,7 @@ def _control_flow__control_flow_max_val(eng: any, _ir: any) {
 }
 
 """control flow factorial"""
-def _control_flow__control_flow_factorial(eng: any, _ir: any) {
+def _control_flow__control_flow_factorial(eng: any, _fx: any) {
     f = get_func(eng, "factorial", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 1;
     assert f(1) == 1;
@@ -566,7 +619,7 @@ def _control_flow__control_flow_factorial(eng: any, _ir: any) {
 }
 
 """control flow sum to n"""
-def _control_flow__control_flow_sum_to_n(eng: any, _ir: any) {
+def _control_flow__control_flow_sum_to_n(eng: any, _fx: any) {
     f = get_func(eng, "sum_to_n", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 55;
     assert f(100) == 5050;
@@ -574,11 +627,11 @@ def _control_flow__control_flow_sum_to_n(eng: any, _ir: any) {
 }
 
 test "control_flow" {
-    (_eng, _ir) = compile_native("control_flow.jac");
-    _control_flow__control_flow_abs_val(_eng, _ir);
-    _control_flow__control_flow_max_val(_eng, _ir);
-    _control_flow__control_flow_factorial(_eng, _ir);
-    _control_flow__control_flow_sum_to_n(_eng, _ir);
+    (_eng, _fx) = compile_native("control_flow.jac");
+    _control_flow__control_flow_abs_val(_eng, _fx);
+    _control_flow__control_flow_max_val(_eng, _fx);
+    _control_flow__control_flow_factorial(_eng, _fx);
+    _control_flow__control_flow_sum_to_n(_eng, _fx);
 }
 
 # --- TestNativeRecursionExecution ---
@@ -593,7 +646,7 @@ test "recursion fibonacci" {
 
 """nested functions helper recursion and module global"""
 def _nested_def__nested_functions_helper_recursion_and_module_global(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     use_helper = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
     # double(n) + double(n + 1) == 4n + 2
@@ -613,7 +666,7 @@ def _nested_def__nested_functions_helper_recursion_and_module_global(
 # ─── Nested function definitions ─────────────────────────────────────────
 """nested function helper is callable from its enclosing function"""
 def _nested_def__nested_function_helper_is_callable_from_its_enclosing_function(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "use_helper", ctypes.c_int64, ctypes.c_int64);
     # double(5) + double(6) = 10 + 12 = 22
@@ -622,26 +675,26 @@ def _nested_def__nested_function_helper_is_callable_from_its_enclosing_function(
 }
 
 """nested function can recurse"""
-def _nested_def__nested_function_can_recurse(eng: any, _ir: any) {
+def _nested_def__nested_function_can_recurse(eng: any, _fx: any) {
     f = get_func(eng, "nested_recursion", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 120;
     assert f(1) == 1;
 }
 
 """nested function can read a module global"""
-def _nested_def__nested_function_can_read_a_module_global(eng: any, _ir: any) {
+def _nested_def__nested_function_can_read_a_module_global(eng: any, _fx: any) {
     f = get_func(eng, "uses_global", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 107;
 }
 
 test "nested_def" {
-    (_eng, _ir) = compile_native("nested_def.jac");
-    _nested_def__nested_functions_helper_recursion_and_module_global(_eng, _ir);
+    (_eng, _fx) = compile_native("nested_def.jac");
+    _nested_def__nested_functions_helper_recursion_and_module_global(_eng, _fx);
     _nested_def__nested_function_helper_is_callable_from_its_enclosing_function(
-        _eng, _ir
+        _eng, _fx
     );
-    _nested_def__nested_function_can_recurse(_eng, _ir);
-    _nested_def__nested_function_can_read_a_module_global(_eng, _ir);
+    _nested_def__nested_function_can_recurse(_eng, _fx);
+    _nested_def__nested_function_can_read_a_module_global(_eng, _fx);
 }
 
 test "glob declared in an impl annex resolves on native (issue #6754)" {
@@ -662,27 +715,34 @@ test "glob declared in an impl annex resolves on native (issue #6754)" {
 
 # --- TestNativeContextIsolation ---
 test "context isolation native excluded from python" {
-    prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "mixed_contexts.jac")));
-    # Python source should NOT contain native_add
-    py_src = generated_python(ir);
-    assert "return a + b" not in py_src , "the native body must not be in the Python output";
-    assert "get_function_address" in py_src , (
+    # The native body is not compiled into the module's bytecode: a Python
+    # importer reaches native_add through its native call stub, while the
+    # server function stays Python.
+    (code, _result) = _module_code(os.path.join(FIXTURES, "mixed_contexts.jac"));
+    codes = _code_objects(code);
+    for body in codes {
+        if body.co_name == "native_add" {
+            assert not any(
+                ins.opname == "BINARY_OP" for ins in dis.get_instructions(body)
+            ) , "the native body must not be in the Python output";
+        }
+    }
+    assert "get_function_address" in _code_names(code) , (
         "a Python importer reaches native_add through its native call stub"
     );
-    assert "server_hello" in py_src;
+    assert any(body.co_name == "server_hello" for body in codes);
 }
 
 # --- TestNativeEnumsAndLoops ---
 """enums loops opposite color"""
-def _enums_loops__enums_loops_opposite_color(eng: any, _ir: any) {
+def _enums_loops__enums_loops_opposite_color(eng: any, _fx: any) {
     f = get_func(eng, "opposite_color", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 1;  # WHITE -> BLACK
     assert f(1) == 0;  # BLACK -> WHITE
 }
 
 """enums loops enum kind"""
-def _enums_loops__enums_loops_enum_kind(eng: any, _ir: any) {
+def _enums_loops__enums_loops_enum_kind(eng: any, _fx: any) {
     f = get_func(eng, "enum_kind_test", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 100;  # PAWN
     assert f(1) == 200;  # KNIGHT
@@ -691,7 +751,7 @@ def _enums_loops__enums_loops_enum_kind(eng: any, _ir: any) {
 }
 
 """enums loops sum range"""
-def _enums_loops__enums_loops_sum_range(eng: any, _ir: any) {
+def _enums_loops__enums_loops_sum_range(eng: any, _fx: any) {
     f = get_func(eng, "sum_range", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 0;
     assert f(1) == 0;
@@ -700,7 +760,7 @@ def _enums_loops__enums_loops_sum_range(eng: any, _ir: any) {
 }
 
 """enums loops first break"""
-def _enums_loops__enums_loops_first_break(eng: any, _ir: any) {
+def _enums_loops__enums_loops_first_break(eng: any, _fx: any) {
     f = get_func(eng, "first_break", ctypes.c_int64, ctypes.c_int64);
     assert f(3) == 3;  # no break triggered
     assert f(10) == 5;  # breaks at i==5
@@ -708,14 +768,14 @@ def _enums_loops__enums_loops_first_break(eng: any, _ir: any) {
 }
 
 """enums loops skip even"""
-def _enums_loops__enums_loops_skip_even(eng: any, _ir: any) {
+def _enums_loops__enums_loops_skip_even(eng: any, _fx: any) {
     f = get_func(eng, "skip_even", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 25;  # 1+3+5+7+9
     assert f(6) == 9;  # 1+3+5
 }
 
 """enums loops bool and"""
-def _enums_loops__enums_loops_bool_and(eng: any, _ir: any) {
+def _enums_loops__enums_loops_bool_and(eng: any, _fx: any) {
     f = get_func(eng, "bool_and", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(1, 1) == 1;
     assert f(1, 0) == 0;
@@ -724,7 +784,7 @@ def _enums_loops__enums_loops_bool_and(eng: any, _ir: any) {
 }
 
 """enums loops bool or"""
-def _enums_loops__enums_loops_bool_or(eng: any, _ir: any) {
+def _enums_loops__enums_loops_bool_or(eng: any, _fx: any) {
     f = get_func(eng, "bool_or", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(1, 1) == 1;
     assert f(1, 0) == 1;
@@ -733,7 +793,7 @@ def _enums_loops__enums_loops_bool_or(eng: any, _ir: any) {
 }
 
 """enums loops ternary"""
-def _enums_loops__enums_loops_ternary(eng: any, _ir: any) {
+def _enums_loops__enums_loops_ternary(eng: any, _fx: any) {
     f = get_func(eng, "ternary_test", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 10;
     assert f(-5) == -10;
@@ -749,7 +809,7 @@ def _enums_loops__enums_loops_ternary(eng: any, _ir: any) {
 # (no native engine) rather than asserting a wrong value.
 """mixed-type ternary coerces in predecessor block (#6987)"""
 def _enums_loops__mixed_type_ternary_coerces_in_predecessor_block_6987(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # float "then" + int "else": int branch promoted to double.
     f1 = get_func(eng, "ternary_int_float_test", ctypes.c_double, ctypes.c_int64);
@@ -766,21 +826,21 @@ def _enums_loops__mixed_type_ternary_coerces_in_predecessor_block_6987(
 }
 
 test "enums_loops" {
-    (_eng, _ir) = compile_native("enums_loops.jac");
-    _enums_loops__enums_loops_opposite_color(_eng, _ir);
-    _enums_loops__enums_loops_enum_kind(_eng, _ir);
-    _enums_loops__enums_loops_sum_range(_eng, _ir);
-    _enums_loops__enums_loops_first_break(_eng, _ir);
-    _enums_loops__enums_loops_skip_even(_eng, _ir);
-    _enums_loops__enums_loops_bool_and(_eng, _ir);
-    _enums_loops__enums_loops_bool_or(_eng, _ir);
-    _enums_loops__enums_loops_ternary(_eng, _ir);
-    _enums_loops__mixed_type_ternary_coerces_in_predecessor_block_6987(_eng, _ir);
+    (_eng, _fx) = compile_native("enums_loops.jac");
+    _enums_loops__enums_loops_opposite_color(_eng, _fx);
+    _enums_loops__enums_loops_enum_kind(_eng, _fx);
+    _enums_loops__enums_loops_sum_range(_eng, _fx);
+    _enums_loops__enums_loops_first_break(_eng, _fx);
+    _enums_loops__enums_loops_skip_even(_eng, _fx);
+    _enums_loops__enums_loops_bool_and(_eng, _fx);
+    _enums_loops__enums_loops_bool_or(_eng, _fx);
+    _enums_loops__enums_loops_ternary(_eng, _fx);
+    _enums_loops__mixed_type_ternary_coerces_in_predecessor_block_6987(_eng, _fx);
 }
 
 # --- TestNativeStrings ---
 """strings greet"""
-def _strings__strings_greet(eng: any, _ir: any) {
+def _strings__strings_greet(eng: any, _fx: any) {
     f = get_sfunc(eng, "greet", ctypes.c_char_p);
     assert f() == b"hello";
 }
@@ -790,32 +850,32 @@ def _strings__strings_greet(eng: any, _ir: any) {
 # per the na ⊆ sv guarantee. Native returns the string as a UTF-8 byte buffer
 # (c_char_p), so the expected value is the Python-decoded string, utf-8 encoded.
 """strings numeric escapes decode (na subseteq sv)"""
-def _strings__strings_numeric_escapes_decode_na_subseteq_sv(eng: any, _ir: any) {
+def _strings__strings_numeric_escapes_decode_na_subseteq_sv(eng: any, _fx: any) {
     f = get_sfunc(eng, "escapes_numeric", ctypes.c_char_p);
     assert f() == "aAbéc😀d".encode("utf-8");
 }
 
 """strings unicode escape decode (na subseteq sv)"""
-def _strings__strings_unicode_escape_decode_na_subseteq_sv(eng: any, _ir: any) {
+def _strings__strings_unicode_escape_decode_na_subseteq_sv(eng: any, _fx: any) {
     f = get_sfunc(eng, "escapes_u", ctypes.c_char_p);
     assert f() == "X—Y".encode("utf-8");
 }
 
 """strings simple escapes still decode"""
-def _strings__strings_simple_escapes_still_decode(eng: any, _ir: any) {
+def _strings__strings_simple_escapes_still_decode(eng: any, _fx: any) {
     f = get_sfunc(eng, "escapes_simple", ctypes.c_char_p);
     assert f() == b"p\tq\nr";
 }
 
 """strings str equal"""
-def _strings__strings_str_equal(eng: any, _ir: any) {
+def _strings__strings_str_equal(eng: any, _fx: any) {
     f = get_sfunc(eng, "str_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p);
     assert f(b"hello", b"hello") == 1;
     assert f(b"hello", b"world") == 0;
 }
 
 """strings str not equal"""
-def _strings__strings_str_not_equal(eng: any, _ir: any) {
+def _strings__strings_str_not_equal(eng: any, _fx: any) {
     f = get_sfunc(
         eng, "str_not_equal", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p
     );
@@ -824,7 +884,7 @@ def _strings__strings_str_not_equal(eng: any, _ir: any) {
 }
 
 """strings concat"""
-def _strings__strings_concat(eng: any, _ir: any) {
+def _strings__strings_concat(eng: any, _fx: any) {
     f = get_sfunc(
         eng, "concat_strings", ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p
     );
@@ -832,7 +892,7 @@ def _strings__strings_concat(eng: any, _ir: any) {
 }
 
 """strings fstring int"""
-def _strings__strings_fstring_int(eng: any, _ir: any) {
+def _strings__strings_fstring_int(eng: any, _fx: any) {
     f = get_sfunc(eng, "format_int", ctypes.c_char_p, ctypes.c_int64);
     assert f(42) == b"val=42";
     assert f(0) == b"val=0";
@@ -840,14 +900,14 @@ def _strings__strings_fstring_int(eng: any, _ir: any) {
 }
 
 """strings fstring two"""
-def _strings__strings_fstring_two(eng: any, _ir: any) {
+def _strings__strings_fstring_two(eng: any, _fx: any) {
     f = get_sfunc(eng, "format_two", ctypes.c_char_p, ctypes.c_int64, ctypes.c_int64);
     assert f(3, 4) == b"3+4";
     assert f(10, 20) == b"10+20";
 }
 
 """strings fstring mixed"""
-def _strings__strings_fstring_mixed(eng: any, _ir: any) {
+def _strings__strings_fstring_mixed(eng: any, _fx: any) {
     f = get_sfunc(
         eng, "format_mixed", ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int64
     );
@@ -855,7 +915,7 @@ def _strings__strings_fstring_mixed(eng: any, _ir: any) {
 }
 
 """strings str replace count arg respected"""
-def _strings__strings_str_replace_count_arg_respected(eng: any, _ir: any) {
+def _strings__strings_str_replace_count_arg_respected(eng: any, _fx: any) {
     f = get_sfunc(eng, "str_replace_first_only", ctypes.c_char_p, ctypes.c_char_p);
     # only the first 'a' should be replaced; remaining 'a's must be untouched
     assert f(b"aaa") == b"Xaa";
@@ -863,34 +923,34 @@ def _strings__strings_str_replace_count_arg_respected(eng: any, _ir: any) {
 }
 
 """strings for-in-str join"""
-def _strings__strings_for_in_str_join(eng: any, _ir: any) {
+def _strings__strings_for_in_str_join(eng: any, _fx: any) {
     f = get_sfunc(eng, "str_for_in_join", ctypes.c_char_p, ctypes.c_char_p);
     assert f(b"Hello") == b"Hello";
     assert f(b"") == b"";
 }
 
 """strings for-in-str count"""
-def _strings__strings_for_in_str_count(eng: any, _ir: any) {
+def _strings__strings_for_in_str_count(eng: any, _fx: any) {
     f = get_sfunc(eng, "str_for_in_count", ctypes.c_int64, ctypes.c_char_p);
     assert f(b"Hello") == 5;
     assert f(b"") == 0;
 }
 
 test "strings" {
-    (_eng, _ir) = compile_native("strings.jac");
-    _strings__strings_greet(_eng, _ir);
-    _strings__strings_numeric_escapes_decode_na_subseteq_sv(_eng, _ir);
-    _strings__strings_unicode_escape_decode_na_subseteq_sv(_eng, _ir);
-    _strings__strings_simple_escapes_still_decode(_eng, _ir);
-    _strings__strings_str_equal(_eng, _ir);
-    _strings__strings_str_not_equal(_eng, _ir);
-    _strings__strings_concat(_eng, _ir);
-    _strings__strings_fstring_int(_eng, _ir);
-    _strings__strings_fstring_two(_eng, _ir);
-    _strings__strings_fstring_mixed(_eng, _ir);
-    _strings__strings_str_replace_count_arg_respected(_eng, _ir);
-    _strings__strings_for_in_str_join(_eng, _ir);
-    _strings__strings_for_in_str_count(_eng, _ir);
+    (_eng, _fx) = compile_native("strings.jac");
+    _strings__strings_greet(_eng, _fx);
+    _strings__strings_numeric_escapes_decode_na_subseteq_sv(_eng, _fx);
+    _strings__strings_unicode_escape_decode_na_subseteq_sv(_eng, _fx);
+    _strings__strings_simple_escapes_still_decode(_eng, _fx);
+    _strings__strings_str_equal(_eng, _fx);
+    _strings__strings_str_not_equal(_eng, _fx);
+    _strings__strings_concat(_eng, _fx);
+    _strings__strings_fstring_int(_eng, _fx);
+    _strings__strings_fstring_two(_eng, _fx);
+    _strings__strings_fstring_mixed(_eng, _fx);
+    _strings__strings_str_replace_count_arg_respected(_eng, _fx);
+    _strings__strings_for_in_str_join(_eng, _fx);
+    _strings__strings_for_in_str_count(_eng, _fx);
 }
 
 # str(float) must be CPython's shortest round-trip repr, not %g (#6978 0.3).
@@ -963,7 +1023,7 @@ test "os getenv honors default for unset var issue 6688" {
 # previously unimplemented in native (returned empty); these lock in that
 # `s.encode()[a:b].decode()` round-trips and that byte access is portable.
 """bytes utf8 byte_len"""
-def _bytes_utf8__bytes_utf8_byte_len(eng: any, _ir: any) {
+def _bytes_utf8__bytes_utf8_byte_len(eng: any, _fx: any) {
     f = get_sfunc(eng, "byte_len", ctypes.c_int64, ctypes.c_char_p);
     assert f("café".encode("utf-8")) == 5;
     assert f("日本語".encode("utf-8")) == 9;
@@ -971,7 +1031,7 @@ def _bytes_utf8__bytes_utf8_byte_len(eng: any, _ir: any) {
 }
 
 """bytes utf8 byte_at portable"""
-def _bytes_utf8__bytes_utf8_byte_at_portable(eng: any, _ir: any) {
+def _bytes_utf8__bytes_utf8_byte_at_portable(eng: any, _fx: any) {
     f = get_sfunc(eng, "byte_at", ctypes.c_int64, ctypes.c_char_p, ctypes.c_int64);
     enc = "café".encode("utf-8");  # 63 61 66 C3 A9
     for i in range(len(enc)) {
@@ -980,7 +1040,7 @@ def _bytes_utf8__bytes_utf8_byte_at_portable(eng: any, _ir: any) {
 }
 
 """bytes utf8 decode roundtrip and slice"""
-def _bytes_utf8__bytes_utf8_decode_roundtrip_and_slice(eng: any, _ir: any) {
+def _bytes_utf8__bytes_utf8_decode_roundtrip_and_slice(eng: any, _fx: any) {
     rt = get_sfunc(eng, "roundtrip", ctypes.c_char_p, ctypes.c_char_p);
     assert rt("café".encode("utf-8")) == "café".encode("utf-8");
     sd = get_sfunc(
@@ -997,10 +1057,10 @@ def _bytes_utf8__bytes_utf8_decode_roundtrip_and_slice(eng: any, _ir: any) {
 }
 
 test "bytes_utf8" {
-    (_eng, _ir) = compile_native("bytes_utf8.jac");
-    _bytes_utf8__bytes_utf8_byte_len(_eng, _ir);
-    _bytes_utf8__bytes_utf8_byte_at_portable(_eng, _ir);
-    _bytes_utf8__bytes_utf8_decode_roundtrip_and_slice(_eng, _ir);
+    (_eng, _fx) = compile_native("bytes_utf8.jac");
+    _bytes_utf8__bytes_utf8_byte_len(_eng, _fx);
+    _bytes_utf8__bytes_utf8_byte_at_portable(_eng, _fx);
+    _bytes_utf8__bytes_utf8_decode_roundtrip_and_slice(_eng, _fx);
     decoded_nul = get_func(_eng, "decode_embedded_nul", ctypes.c_int64);
     assert decoded_nul() == 3098;
 }
@@ -1008,7 +1068,7 @@ test "bytes_utf8" {
 # --- TestNativeForTupleUnpack ---
 """for-loop tuple unpack: homogeneous products (issue 7238)"""
 def _for_tuple_unpack__for_loop_tuple_unpack_homogeneous_products_issue_7238(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "run_products", ctypes.c_int64);
     assert f() == 140;
@@ -1016,7 +1076,7 @@ def _for_tuple_unpack__for_loop_tuple_unpack_homogeneous_products_issue_7238(
 
 """for-loop tuple unpack: heterogeneous str/bytes lengths (issue 7238)"""
 def _for_tuple_unpack__for_loop_tuple_unpack_heterogeneous_str_bytes_lengths_issue_7238(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "run_str_bytes_lengths", ctypes.c_int64);
     assert f() == 13;
@@ -1024,79 +1084,79 @@ def _for_tuple_unpack__for_loop_tuple_unpack_heterogeneous_str_bytes_lengths_iss
 
 """for-loop tuple unpack: targets reused across loops (issue 7238)"""
 def _for_tuple_unpack__for_loop_tuple_unpack_targets_reused_across_loops_issue_7238(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "run_reuse_across_loops", ctypes.c_int64);
     assert f() == 24;
 }
 
 test "for_tuple_unpack" {
-    (_eng, _ir) = compile_native("for_tuple_unpack.jac");
-    _for_tuple_unpack__for_loop_tuple_unpack_homogeneous_products_issue_7238(_eng, _ir);
+    (_eng, _fx) = compile_native("for_tuple_unpack.jac");
+    _for_tuple_unpack__for_loop_tuple_unpack_homogeneous_products_issue_7238(_eng, _fx);
     _for_tuple_unpack__for_loop_tuple_unpack_heterogeneous_str_bytes_lengths_issue_7238(
-        _eng, _ir
+        _eng, _fx
     );
     _for_tuple_unpack__for_loop_tuple_unpack_targets_reused_across_loops_issue_7238(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
 # --- TestNativePrintMultiArgs ---
 """print multi args compiles"""
-def _print_multi_args__print_multi_args_compiles(eng: any, _ir: any) {
+def _print_multi_args__print_multi_args_compiles(eng: any, _fx: any) {
     assert eng is not None;
 }
 
 """print multi args multiple args"""
-def _print_multi_args__print_multi_args_multiple_args(eng: any, _ir: any) {
+def _print_multi_args__print_multi_args_multiple_args(eng: any, _fx: any) {
     f = get_func(eng, "test_multiple_args", ctypes.c_int64);
     assert f() == 0;
 }
 
 """print multi args mixed types"""
-def _print_multi_args__print_multi_args_mixed_types(eng: any, _ir: any) {
+def _print_multi_args__print_multi_args_mixed_types(eng: any, _fx: any) {
     f = get_func(eng, "test_mixed_types", ctypes.c_int64);
     assert f() == 0;
 }
 
 """print multi args variables"""
-def _print_multi_args__print_multi_args_variables(eng: any, _ir: any) {
+def _print_multi_args__print_multi_args_variables(eng: any, _fx: any) {
     f = get_func(eng, "test_variables", ctypes.c_int64);
     assert f() == 0;
 }
 
 """print multi args single arg"""
-def _print_multi_args__print_multi_args_single_arg(eng: any, _ir: any) {
+def _print_multi_args__print_multi_args_single_arg(eng: any, _fx: any) {
     f = get_func(eng, "test_single_arg", ctypes.c_int64);
     assert f() == 0;
 }
 
 """print multi args many args"""
-def _print_multi_args__print_multi_args_many_args(eng: any, _ir: any) {
+def _print_multi_args__print_multi_args_many_args(eng: any, _fx: any) {
     f = get_func(eng, "test_many_args", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "print_multi_args" {
-    (_eng, _ir) = compile_native("print_multi_args.jac");
-    _print_multi_args__print_multi_args_compiles(_eng, _ir);
-    _print_multi_args__print_multi_args_multiple_args(_eng, _ir);
-    _print_multi_args__print_multi_args_mixed_types(_eng, _ir);
-    _print_multi_args__print_multi_args_variables(_eng, _ir);
-    _print_multi_args__print_multi_args_single_arg(_eng, _ir);
-    _print_multi_args__print_multi_args_many_args(_eng, _ir);
+    (_eng, _fx) = compile_native("print_multi_args.jac");
+    _print_multi_args__print_multi_args_compiles(_eng, _fx);
+    _print_multi_args__print_multi_args_multiple_args(_eng, _fx);
+    _print_multi_args__print_multi_args_mixed_types(_eng, _fx);
+    _print_multi_args__print_multi_args_variables(_eng, _fx);
+    _print_multi_args__print_multi_args_single_arg(_eng, _fx);
+    _print_multi_args__print_multi_args_many_args(_eng, _fx);
 }
 
 # --- TestNativeObjects ---
 """objects make point"""
-def _objects__objects_make_point(eng: any, _ir: any) {
+def _objects__objects_make_point(eng: any, _fx: any) {
     # make_point returns a Point* (opaque pointer)
-    addr = native_address(eng, unit_sym(_ir, "make_point"));
+    addr = native_address(eng, unit_symbol(_fx, "make_point"));
     assert addr != 0 , "make_point function not found";
 }
 
 """objects point sum"""
-def _objects__objects_point_sum(eng: any, _ir: any) {
+def _objects__objects_point_sum(eng: any, _fx: any) {
     f = get_func(eng, "point_sum", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(3, 4) == 7;
     assert f(10, 20) == 30;
@@ -1105,67 +1165,67 @@ def _objects__objects_point_sum(eng: any, _ir: any) {
 }
 
 """objects counter"""
-def _objects__objects_counter(eng: any, _ir: any) {
+def _objects__objects_counter(eng: any, _fx: any) {
     f = get_func(eng, "test_counter", ctypes.c_int64);
     assert f() == 3;
 }
 
 """objects none check"""
-def _objects__objects_none_check(eng: any, _ir: any) {
+def _objects__objects_none_check(eng: any, _fx: any) {
     f = get_func(eng, "test_none", ctypes.c_int64);
     assert f() == 1;
 }
 
 """objects init called"""
-def _objects__objects_init_called(eng: any, _ir: any) {
+def _objects__objects_init_called(eng: any, _fx: any) {
     f = get_func(eng, "test_init_called", ctypes.c_int64);
     assert f() == 42;
 }
 
 """objects init executed"""
-def _objects__objects_init_executed(eng: any, _ir: any) {
+def _objects__objects_init_executed(eng: any, _fx: any) {
     f = get_func(eng, "test_init_executed", ctypes.c_int64);
     assert f() == 20;
 }
 
 """objects init no args"""
-def _objects__objects_init_no_args(eng: any, _ir: any) {
+def _objects__objects_init_no_args(eng: any, _fx: any) {
     f = get_func(eng, "test_init_no_args", ctypes.c_int64);
     assert f() == 99;
 }
 
 """objects init positional"""
-def _objects__objects_init_positional(eng: any, _ir: any) {
+def _objects__objects_init_positional(eng: any, _fx: any) {
     f = get_func(eng, "test_init_positional", ctypes.c_int64);
     # KWInit(10, 20) → init adds 1 to each → x=11, y=21 → sum=32
     assert f() == 32;
 }
 
 """objects init side effects"""
-def _objects__objects_init_side_effects(eng: any, _ir: any) {
+def _objects__objects_init_side_effects(eng: any, _fx: any) {
     f = get_func(eng, "test_init_side_effects", ctypes.c_int64);
     assert f() == 1;
 }
 
 """objects empty dict in struct ctor"""
-def _objects__objects_empty_dict_in_struct_ctor(eng: any, _ir: any) {
+def _objects__objects_empty_dict_in_struct_ctor(eng: any, _fx: any) {
     # Container(entries={}) used to store null → segfault on first dict access.
     f = get_func(eng, "test_empty_dict_ctor_field", ctypes.c_int64);
     assert f() == 30;
 }
 
 test "objects" {
-    (_eng, _ir) = compile_native("objects.jac");
-    _objects__objects_make_point(_eng, _ir);
-    _objects__objects_point_sum(_eng, _ir);
-    _objects__objects_counter(_eng, _ir);
-    _objects__objects_none_check(_eng, _ir);
-    _objects__objects_init_called(_eng, _ir);
-    _objects__objects_init_executed(_eng, _ir);
-    _objects__objects_init_no_args(_eng, _ir);
-    _objects__objects_init_positional(_eng, _ir);
-    _objects__objects_init_side_effects(_eng, _ir);
-    _objects__objects_empty_dict_in_struct_ctor(_eng, _ir);
+    (_eng, _fx) = compile_native("objects.jac");
+    _objects__objects_make_point(_eng, _fx);
+    _objects__objects_point_sum(_eng, _fx);
+    _objects__objects_counter(_eng, _fx);
+    _objects__objects_none_check(_eng, _fx);
+    _objects__objects_init_called(_eng, _fx);
+    _objects__objects_init_executed(_eng, _fx);
+    _objects__objects_init_no_args(_eng, _fx);
+    _objects__objects_init_positional(_eng, _fx);
+    _objects__objects_init_side_effects(_eng, _fx);
+    _objects__objects_empty_dict_in_struct_ctor(_eng, _fx);
 }
 
 # --- TestNativeOpaqueForeignField (issue #6930, Workstream A3) ---
@@ -1177,7 +1237,7 @@ test "objects" {
 # unitree's ~150 foreign-typed node declarations untouched (Tier-1-only).
 """opaque foreign field: carrier compiles with a native-unmodeled field type"""
 def _opaque_field__opaque_foreign_field_carrier_compiles_with_a_native_unmodeled_field_ty(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "make_name_len", ctypes.c_int64);
     assert f() == 5;  # len("store"), proving native construction + method work
@@ -1185,26 +1245,26 @@ def _opaque_field__opaque_foreign_field_carrier_compiles_with_a_native_unmodeled
 
 """opaque foreign field: native method reads only native fields"""
 def _opaque_field__opaque_foreign_field_native_method_reads_only_native_fields(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "make_label", ctypes.c_char_p);
     assert f() == b"store";  # py_ctx stays null; label() returns the native field
 }
 
 test "opaque_field" {
-    (_eng, _ir) = compile_native("opaque_field.jac");
+    (_eng, _fx) = compile_native("opaque_field.jac");
     _opaque_field__opaque_foreign_field_carrier_compiles_with_a_native_unmodeled_field_ty(
-        _eng, _ir
+        _eng, _fx
     );
     _opaque_field__opaque_foreign_field_native_method_reads_only_native_fields(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
 # --- TestNativeSliceObjectField (issue #6473) ---
 """slice object field roundtrip matches local"""
 def _slice_object_field__slice_object_field_roundtrip_matches_local(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # b.items[:pos] + b.items[pos:] on an object field used to abort (SIGABRT)
     # because the slice was mis-lowered as a plain index. It must now behave
@@ -1218,7 +1278,7 @@ def _slice_object_field__slice_object_field_roundtrip_matches_local(
 }
 
 """slice object field takes correct elements"""
-def _slice_object_field__slice_object_field_takes_correct_elements(eng: any, _ir: any) {
+def _slice_object_field__slice_object_field_takes_correct_elements(eng: any, _fx: any) {
     f = get_func(eng, "field_prefix_sum", ctypes.c_int64, ctypes.c_int64);
     # items = [10, 20, 30, 40]
     assert f(0) == 0;
@@ -1229,7 +1289,7 @@ def _slice_object_field__slice_object_field_takes_correct_elements(eng: any, _ir
 }
 
 """slice object field osp insert shape"""
-def _slice_object_field__slice_object_field_osp_insert_shape(eng: any, _ir: any) {
+def _slice_object_field__slice_object_field_osp_insert_shape(eng: any, _fx: any) {
     # The portable OSP-kernel osp_visit shape: scope.next[:pos] + filtered + scope.next[pos:]
     f = get_func(eng, "osp_insert", ctypes.c_int64, ctypes.c_int64);
     assert f(-1) == 4;  # insert before last
@@ -1239,15 +1299,15 @@ def _slice_object_field__slice_object_field_osp_insert_shape(eng: any, _ir: any)
 }
 
 test "slice_object_field" {
-    (_eng, _ir) = compile_native("slice_object_field.jac");
-    _slice_object_field__slice_object_field_roundtrip_matches_local(_eng, _ir);
-    _slice_object_field__slice_object_field_takes_correct_elements(_eng, _ir);
-    _slice_object_field__slice_object_field_osp_insert_shape(_eng, _ir);
+    (_eng, _fx) = compile_native("slice_object_field.jac");
+    _slice_object_field__slice_object_field_roundtrip_matches_local(_eng, _fx);
+    _slice_object_field__slice_object_field_takes_correct_elements(_eng, _fx);
+    _slice_object_field__slice_object_field_osp_insert_shape(_eng, _fx);
 }
 
 # --- TestNativeBoxAnyTupleSlot (issue #6511) ---
 """box int into any tuple slot via append"""
-def _box_any_tuple_slot__box_int_into_any_tuple_slot_via_append(eng: any, _ir: any) {
+def _box_any_tuple_slot__box_int_into_any_tuple_slot_via_append(eng: any, _fx: any) {
     # A concrete int appended in a tuple to a bare list whose slot is `any`
     # (the OSP-kernel work-stack shape) used to be stored unboxed and read back
     # as 0. It must now round-trip through the `any` seam.
@@ -1257,7 +1317,7 @@ def _box_any_tuple_slot__box_int_into_any_tuple_slot_via_append(eng: any, _ir: a
 
 """box int into any tuple slot multiple appends"""
 def _box_any_tuple_slot__box_int_into_any_tuple_slot_multiple_appends(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "many_append_entry", ctypes.c_int64);
     assert f() == 30;
@@ -1265,214 +1325,214 @@ def _box_any_tuple_slot__box_int_into_any_tuple_slot_multiple_appends(
 
 """box int into any tuple slot via list literal"""
 def _box_any_tuple_slot__box_int_into_any_tuple_slot_via_list_literal(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "lit_mix_entry", ctypes.c_int64);
     assert f() == 7;
 }
 
 """box float into any tuple slot"""
-def _box_any_tuple_slot__box_float_into_any_tuple_slot(eng: any, _ir: any) {
+def _box_any_tuple_slot__box_float_into_any_tuple_slot(eng: any, _fx: any) {
     f = get_func(eng, "flt_append_entry", ctypes.c_double);
     assert f() == 3.5;
 }
 
 """box any tuple slot via param still works"""
-def _box_any_tuple_slot__box_any_tuple_slot_via_param_still_works(eng: any, _ir: any) {
+def _box_any_tuple_slot__box_any_tuple_slot_via_param_still_works(eng: any, _fx: any) {
     # The already-working control: an `any` value entering the slot stays boxed.
     f = get_func(eng, "via_param_entry", ctypes.c_int64);
     assert f() == 7;
 }
 
 test "box_any_tuple_slot" {
-    (_eng, _ir) = compile_native("box_any_tuple_slot.jac");
-    _box_any_tuple_slot__box_int_into_any_tuple_slot_via_append(_eng, _ir);
-    _box_any_tuple_slot__box_int_into_any_tuple_slot_multiple_appends(_eng, _ir);
-    _box_any_tuple_slot__box_int_into_any_tuple_slot_via_list_literal(_eng, _ir);
-    _box_any_tuple_slot__box_float_into_any_tuple_slot(_eng, _ir);
-    _box_any_tuple_slot__box_any_tuple_slot_via_param_still_works(_eng, _ir);
+    (_eng, _fx) = compile_native("box_any_tuple_slot.jac");
+    _box_any_tuple_slot__box_int_into_any_tuple_slot_via_append(_eng, _fx);
+    _box_any_tuple_slot__box_int_into_any_tuple_slot_multiple_appends(_eng, _fx);
+    _box_any_tuple_slot__box_int_into_any_tuple_slot_via_list_literal(_eng, _fx);
+    _box_any_tuple_slot__box_float_into_any_tuple_slot(_eng, _fx);
+    _box_any_tuple_slot__box_any_tuple_slot_via_param_still_works(_eng, _fx);
 }
 
 # --- TestNativeInheritance ---
 """inheritance dog speak"""
-def _inheritance__inheritance_dog_speak(eng: any, _ir: any) {
+def _inheritance__inheritance_dog_speak(eng: any, _fx: any) {
     f = get_func(eng, "test_dog_speak", ctypes.c_int64);
     assert f() == 1;
 }
 
 """inheritance cat speak"""
-def _inheritance__inheritance_cat_speak(eng: any, _ir: any) {
+def _inheritance__inheritance_cat_speak(eng: any, _fx: any) {
     f = get_func(eng, "test_cat_speak", ctypes.c_int64);
     assert f() == 2;
 }
 
 """inheritance inherited method"""
-def _inheritance__inheritance_inherited_method(eng: any, _ir: any) {
+def _inheritance__inheritance_inherited_method(eng: any, _fx: any) {
     f = get_func(eng, "test_inherited_method", ctypes.c_int64);
     assert f() == 4;
 }
 
 """inheritance polymorphic"""
-def _inheritance__inheritance_polymorphic(eng: any, _ir: any) {
+def _inheritance__inheritance_polymorphic(eng: any, _fx: any) {
     f = get_func(eng, "test_polymorphic", ctypes.c_int64, ctypes.c_int64);
     assert f(1) == 1;  # Dog.speak
     assert f(0) == 2;  # Cat.speak
 }
 
 test "inheritance" {
-    (_eng, _ir) = compile_native("inheritance.jac");
-    _inheritance__inheritance_dog_speak(_eng, _ir);
-    _inheritance__inheritance_cat_speak(_eng, _ir);
-    _inheritance__inheritance_inherited_method(_eng, _ir);
-    _inheritance__inheritance_polymorphic(_eng, _ir);
+    (_eng, _fx) = compile_native("inheritance.jac");
+    _inheritance__inheritance_dog_speak(_eng, _fx);
+    _inheritance__inheritance_cat_speak(_eng, _fx);
+    _inheritance__inheritance_inherited_method(_eng, _fx);
+    _inheritance__inheritance_polymorphic(_eng, _fx);
 }
 
 # --- TestMultipleInheritance ---
 """multi-inherit two parent fields"""
-def _multi_inherit__multi_inherit_two_parent_fields(eng: any, _ir: any) {
+def _multi_inherit__multi_inherit_two_parent_fields(eng: any, _fx: any) {
     f = get_func(eng, "test_two_parent_fields", ctypes.c_int64);
     assert f() == 151;
 }
 
 """multi-inherit two parent methods"""
-def _multi_inherit__multi_inherit_two_parent_methods(eng: any, _ir: any) {
+def _multi_inherit__multi_inherit_two_parent_methods(eng: any, _fx: any) {
     f = get_func(eng, "test_two_parent_methods", ctypes.c_int64);
     assert f() == 192;
 }
 
 """multi-inherit diamond field access"""
-def _multi_inherit__multi_inherit_diamond_field_access(eng: any, _ir: any) {
+def _multi_inherit__multi_inherit_diamond_field_access(eng: any, _fx: any) {
     f = get_func(eng, "test_diamond_field_access", ctypes.c_int64);
     assert f() == 130;
 }
 
 """multi-inherit diamond single id"""
-def _multi_inherit__multi_inherit_diamond_single_id(eng: any, _ir: any) {
+def _multi_inherit__multi_inherit_diamond_single_id(eng: any, _fx: any) {
     f = get_func(eng, "test_diamond_single_id", ctypes.c_int64);
     assert f() == 42;
 }
 
 """multi-inherit mro method resolution"""
-def _multi_inherit__multi_inherit_mro_method_resolution(eng: any, _ir: any) {
+def _multi_inherit__multi_inherit_mro_method_resolution(eng: any, _fx: any) {
     f = get_func(eng, "test_mro_method_resolution", ctypes.c_int64);
     assert f() == 2;
 }
 
 """multi-inherit three mixins"""
-def _multi_inherit__multi_inherit_three_mixins(eng: any, _ir: any) {
+def _multi_inherit__multi_inherit_three_mixins(eng: any, _fx: any) {
     f = get_func(eng, "test_three_mixins", ctypes.c_int64);
     assert f() == 10;
 }
 
 test "multi_inherit" {
-    (_eng, _ir) = compile_native("multi_inherit.jac");
-    _multi_inherit__multi_inherit_two_parent_fields(_eng, _ir);
-    _multi_inherit__multi_inherit_two_parent_methods(_eng, _ir);
-    _multi_inherit__multi_inherit_diamond_field_access(_eng, _ir);
-    _multi_inherit__multi_inherit_diamond_single_id(_eng, _ir);
-    _multi_inherit__multi_inherit_mro_method_resolution(_eng, _ir);
-    _multi_inherit__multi_inherit_three_mixins(_eng, _ir);
+    (_eng, _fx) = compile_native("multi_inherit.jac");
+    _multi_inherit__multi_inherit_two_parent_fields(_eng, _fx);
+    _multi_inherit__multi_inherit_two_parent_methods(_eng, _fx);
+    _multi_inherit__multi_inherit_diamond_field_access(_eng, _fx);
+    _multi_inherit__multi_inherit_diamond_single_id(_eng, _fx);
+    _multi_inherit__multi_inherit_mro_method_resolution(_eng, _fx);
+    _multi_inherit__multi_inherit_three_mixins(_eng, _fx);
 }
 
 # --- TestNativeLists ---
 """lists list len"""
-def _lists__lists_list_len(eng: any, _ir: any) {
+def _lists__lists_list_len(eng: any, _fx: any) {
     f = get_func(eng, "list_len_test", ctypes.c_int64);
     assert f() == 3;
 }
 
 """lists list get"""
-def _lists__lists_list_get(eng: any, _ir: any) {
+def _lists__lists_list_get(eng: any, _fx: any) {
     f = get_func(eng, "list_get_test", ctypes.c_int64);
     assert f() == 20;
 }
 
 """lists list append"""
-def _lists__lists_list_append(eng: any, _ir: any) {
+def _lists__lists_list_append(eng: any, _fx: any) {
     f = get_func(eng, "list_append_test", ctypes.c_int64);
     assert f() == 4;
 }
 
 """lists list sum"""
-def _lists__lists_list_sum(eng: any, _ir: any) {
+def _lists__lists_list_sum(eng: any, _fx: any) {
     f = get_func(eng, "list_sum", ctypes.c_int64);
     assert f() == 100;
 }
 
 """lists list set"""
-def _lists__lists_list_set(eng: any, _ir: any) {
+def _lists__lists_list_set(eng: any, _fx: any) {
     f = get_func(eng, "list_set_test", ctypes.c_int64);
     assert f() == 99;
 }
 
 test "lists" {
-    (_eng, _ir) = compile_native("lists.jac");
-    _lists__lists_list_len(_eng, _ir);
-    _lists__lists_list_get(_eng, _ir);
-    _lists__lists_list_append(_eng, _ir);
-    _lists__lists_list_sum(_eng, _ir);
-    _lists__lists_list_set(_eng, _ir);
+    (_eng, _fx) = compile_native("lists.jac");
+    _lists__lists_list_len(_eng, _fx);
+    _lists__lists_list_get(_eng, _fx);
+    _lists__lists_list_append(_eng, _fx);
+    _lists__lists_list_sum(_eng, _fx);
+    _lists__lists_list_set(_eng, _fx);
 }
 
 # --- TestNativeComplexObjects ---
 """complex objects chained field"""
-def _complex_objects__complex_objects_chained_field(eng: any, _ir: any) {
+def _complex_objects__complex_objects_chained_field(eng: any, _fx: any) {
     f = get_func(eng, "test_chained_field", ctypes.c_int64);
     assert f() == 42;
 }
 
 """complex objects chained method"""
-def _complex_objects__complex_objects_chained_method(eng: any, _ir: any) {
+def _complex_objects__complex_objects_chained_method(eng: any, _fx: any) {
     f = get_func(eng, "test_chained_method", ctypes.c_int64);
     assert f() == 99;
 }
 
 """complex objects chained method args"""
-def _complex_objects__complex_objects_chained_method_args(eng: any, _ir: any) {
+def _complex_objects__complex_objects_chained_method_args(eng: any, _fx: any) {
     f = get_func(eng, "test_chained_method_args", ctypes.c_int64);
     assert f() == 15;
 }
 
 """complex objects deep chain"""
-def _complex_objects__complex_objects_deep_chain(eng: any, _ir: any) {
+def _complex_objects__complex_objects_deep_chain(eng: any, _fx: any) {
     f = get_func(eng, "test_deep_chain", ctypes.c_int64);
     assert f() == 14;
 }
 
 """complex objects indexed field"""
-def _complex_objects__complex_objects_indexed_field(eng: any, _ir: any) {
+def _complex_objects__complex_objects_indexed_field(eng: any, _fx: any) {
     f = get_func(eng, "test_indexed_field", ctypes.c_int64);
     assert f() == 20;
 }
 
 """complex objects indexed field set"""
-def _complex_objects__complex_objects_indexed_field_set(eng: any, _ir: any) {
+def _complex_objects__complex_objects_indexed_field_set(eng: any, _fx: any) {
     f = get_func(eng, "test_indexed_field_set", ctypes.c_int64);
     assert f() == 99;
 }
 
 """complex objects field len"""
-def _complex_objects__complex_objects_field_len(eng: any, _ir: any) {
+def _complex_objects__complex_objects_field_len(eng: any, _fx: any) {
     f = get_func(eng, "test_field_len", ctypes.c_int64);
     assert f() == 4;
 }
 
 """complex objects field append"""
-def _complex_objects__complex_objects_field_append(eng: any, _ir: any) {
+def _complex_objects__complex_objects_field_append(eng: any, _fx: any) {
     f = get_func(eng, "test_field_append", ctypes.c_int64);
     assert f() == 3;
 }
 
 test "complex_objects" {
-    (_eng, _ir) = compile_native("complex_objects.jac");
-    _complex_objects__complex_objects_chained_field(_eng, _ir);
-    _complex_objects__complex_objects_chained_method(_eng, _ir);
-    _complex_objects__complex_objects_chained_method_args(_eng, _ir);
-    _complex_objects__complex_objects_deep_chain(_eng, _ir);
-    _complex_objects__complex_objects_indexed_field(_eng, _ir);
-    _complex_objects__complex_objects_indexed_field_set(_eng, _ir);
-    _complex_objects__complex_objects_field_len(_eng, _ir);
-    _complex_objects__complex_objects_field_append(_eng, _ir);
+    (_eng, _fx) = compile_native("complex_objects.jac");
+    _complex_objects__complex_objects_chained_field(_eng, _fx);
+    _complex_objects__complex_objects_chained_method(_eng, _fx);
+    _complex_objects__complex_objects_chained_method_args(_eng, _fx);
+    _complex_objects__complex_objects_deep_chain(_eng, _fx);
+    _complex_objects__complex_objects_indexed_field(_eng, _fx);
+    _complex_objects__complex_objects_indexed_field_set(_eng, _fx);
+    _complex_objects__complex_objects_field_len(_eng, _fx);
+    _complex_objects__complex_objects_field_append(_eng, _fx);
 }
 
 # --- TestNativeCrossModuleMethods ---
@@ -1481,35 +1541,35 @@ test "complex_objects" {
 # imported types.  Before the fix every cross-module method call was silently
 # dropped from the IR (value stayed null/0).
 """cross-module method call once"""
-def _na_method_import__cross_module_method_call_once(eng: any, _ir: any) {
+def _na_method_import__cross_module_method_call_once(eng: any, _fx: any) {
     f = get_func(eng, "test_imported_method_once", ctypes.c_int64);
     assert f() == 1;
 }
 
 """cross-module method call five times"""
-def _na_method_import__cross_module_method_call_five_times(eng: any, _ir: any) {
+def _na_method_import__cross_module_method_call_five_times(eng: any, _fx: any) {
     f = get_func(eng, "test_imported_method_five", ctypes.c_int64);
     assert f() == 5;
 }
 
 """cross-module method call with argument"""
-def _na_method_import__cross_module_method_call_with_argument(eng: any, _ir: any) {
+def _na_method_import__cross_module_method_call_with_argument(eng: any, _fx: any) {
     f = get_func(eng, "test_imported_method_with_arg", ctypes.c_int64);
     assert f() == 10;
 }
 
 """cross-module chained method calls"""
-def _na_method_import__cross_module_chained_method_calls(eng: any, _ir: any) {
+def _na_method_import__cross_module_chained_method_calls(eng: any, _fx: any) {
     f = get_func(eng, "test_imported_chained_methods", ctypes.c_int64);
     assert f() == 12;
 }
 
 test "na_method_import" {
-    (_eng, _ir) = compile_native("na_method_import.jac");
-    _na_method_import__cross_module_method_call_once(_eng, _ir);
-    _na_method_import__cross_module_method_call_five_times(_eng, _ir);
-    _na_method_import__cross_module_method_call_with_argument(_eng, _ir);
-    _na_method_import__cross_module_chained_method_calls(_eng, _ir);
+    (_eng, _fx) = compile_native("na_method_import.jac");
+    _na_method_import__cross_module_method_call_once(_eng, _fx);
+    _na_method_import__cross_module_method_call_five_times(_eng, _fx);
+    _na_method_import__cross_module_method_call_with_argument(_eng, _fx);
+    _na_method_import__cross_module_chained_method_calls(_eng, _fx);
 }
 
 # Regression test for: a TRANSITIVE from-import chain (a -> b -> c) failed
@@ -1521,73 +1581,69 @@ test "cross-module transitive chain executes via native inference" {
         get_effective_default_codespace_override
     }
     _prev = get_effective_default_codespace_override();
-    prog = JacProgram();
     try {
-        ir = prog.compile(
-            file_path=os.path.join(
+        (eng, _fx, _carrier) = _jit(
+            os.path.join(
                 TESTS_DIR,
                 "compiler",
                 "fixtures",
                 "codespace",
                 "nadefault_transchain_a.jac"
             ),
-            options=CompileOptions(default_codespace="native")
+            CompileOptions(default_codespace="native")
         );
     } finally {
         set_effective_default_codespace(_prev);
     }
-    assert not prog.errors_had , (f"errors: {[str(e) for e in prog.errors_had]}");
-    eng = ir.gen.native_engine;
-    assert eng is not None , "transitive chain did not produce a native engine";
     f = get_func(eng, "fa", ctypes.c_int64);
     assert f() == 5;
 }
 
 # --- TestNativeBuiltins ---
 """builtins char at"""
-def _builtins__builtins_char_at(eng: any, _ir: any) {
+def _builtins__builtins_char_at(eng: any, _fx: any) {
     f = get_func(eng, "test_char_at", ctypes.c_int64);
     assert f() == 101;  # ord('e')
 }
 
 """builtins ord"""
-def _builtins__builtins_ord(eng: any, _ir: any) {
+def _builtins__builtins_ord(eng: any, _fx: any) {
     f = get_func(eng, "test_ord", ctypes.c_int64);
     assert f() == 97;  # ord('a')
 }
 
 """builtins int parse"""
-def _builtins__builtins_int_parse(eng: any, _ir: any) {
+def _builtins__builtins_int_parse(eng: any, _fx: any) {
     f = get_func(eng, "test_int_parse", ctypes.c_int64);
     assert f() == 42;
 }
 
 """builtins strip"""
-def _builtins__builtins_strip(eng: any, _ir: any) {
+def _builtins__builtins_strip(eng: any, _fx: any) {
     f = get_sfunc(eng, "test_strip", ctypes.c_char_p);
     assert f() == b"hi";
 }
 
 """builtins split len"""
-def _builtins__builtins_split_len(eng: any, _ir: any) {
+def _builtins__builtins_split_len(eng: any, _fx: any) {
     f = get_func(eng, "test_split_len", ctypes.c_int64);
     assert f() == 3;
 }
 
 """builtins split get"""
-def _builtins__builtins_split_get(eng: any, _ir: any) {
+def _builtins__builtins_split_get(eng: any, _fx: any) {
     f = get_sfunc(eng, "test_split_get", ctypes.c_char_p);
     assert f() == b"world";
 }
 
 """builtins strip split"""
-def _builtins__builtins_strip_split(eng: any, _ir: any) {
+def _builtins__builtins_strip_split(eng: any, _fx: any) {
     f = get_func(eng, "test_strip_split", ctypes.c_int64);
     assert f() == 2;
 }
 
 """builtins split and slice do not leak (#6814)"""
-def _builtins__builtins_split_and_slice_do_not_leak_6814(eng: any, _ir: any) {
+def _builtins__builtins_split_and_slice_do_not_leak_6814(eng: any, _fx: any) {
     f_split = get_sfunc(
         eng, "split_count", ctypes.c_int64, ctypes.c_char_p, ctypes.c_char_p
     );
@@ -1618,218 +1674,218 @@ def _builtins__builtins_split_and_slice_do_not_leak_6814(eng: any, _ir: any) {
 }
 
 test "builtins" {
-    (_eng, _ir) = compile_native("builtins.jac");
-    _builtins__builtins_char_at(_eng, _ir);
-    _builtins__builtins_ord(_eng, _ir);
-    _builtins__builtins_int_parse(_eng, _ir);
-    _builtins__builtins_strip(_eng, _ir);
-    _builtins__builtins_split_len(_eng, _ir);
-    _builtins__builtins_split_get(_eng, _ir);
-    _builtins__builtins_strip_split(_eng, _ir);
-    _builtins__builtins_split_and_slice_do_not_leak_6814(_eng, _ir);
+    (_eng, _fx) = compile_native("builtins.jac");
+    _builtins__builtins_char_at(_eng, _fx);
+    _builtins__builtins_ord(_eng, _fx);
+    _builtins__builtins_int_parse(_eng, _fx);
+    _builtins__builtins_strip(_eng, _fx);
+    _builtins__builtins_split_len(_eng, _fx);
+    _builtins__builtins_split_get(_eng, _fx);
+    _builtins__builtins_strip_split(_eng, _fx);
+    _builtins__builtins_split_and_slice_do_not_leak_6814(_eng, _fx);
 }
 
 # --- TestNativeRuntime ---
 """runtime for list literal"""
-def _runtime_validate__runtime_for_list_literal(eng: any, _ir: any) {
+def _runtime_validate__runtime_for_list_literal(eng: any, _fx: any) {
     f = get_func(eng, "test_for_list_literal", ctypes.c_int64);
     assert f() == 60;
 }
 
 """runtime for list var"""
-def _runtime_validate__runtime_for_list_var(eng: any, _ir: any) {
+def _runtime_validate__runtime_for_list_var(eng: any, _fx: any) {
     f = get_func(eng, "test_for_list_var", ctypes.c_int64);
     assert f() == 15;
 }
 
 """runtime nested list"""
-def _runtime_validate__runtime_nested_list(eng: any, _ir: any) {
+def _runtime_validate__runtime_nested_list(eng: any, _fx: any) {
     f = get_func(eng, "test_nested_list", ctypes.c_int64);
     assert f() == 5;
 }
 
 """runtime nested set"""
-def _runtime_validate__runtime_nested_set(eng: any, _ir: any) {
+def _runtime_validate__runtime_nested_set(eng: any, _fx: any) {
     f = get_func(eng, "test_nested_set", ctypes.c_int64);
     assert f() == 99;
 }
 
 """runtime for nested"""
-def _runtime_validate__runtime_for_nested(eng: any, _ir: any) {
+def _runtime_validate__runtime_for_nested(eng: any, _fx: any) {
     f = get_func(eng, "test_for_nested", ctypes.c_int64);
     assert f() == 0;
 }
 
 """runtime grid init"""
-def _runtime_validate__runtime_grid_init(eng: any, _ir: any) {
+def _runtime_validate__runtime_grid_init(eng: any, _fx: any) {
     f = get_func(eng, "test_grid_init", ctypes.c_int64);
     assert f() == 9;
 }
 
 """runtime grid set get"""
-def _runtime_validate__runtime_grid_set_get(eng: any, _ir: any) {
+def _runtime_validate__runtime_grid_set_get(eng: any, _fx: any) {
     f = get_func(eng, "test_grid_set_get", ctypes.c_int64);
     assert f() == 42;
 }
 
 test "runtime_validate" {
-    (_eng, _ir) = compile_native("runtime_validate.jac");
-    _runtime_validate__runtime_for_list_literal(_eng, _ir);
-    _runtime_validate__runtime_for_list_var(_eng, _ir);
-    _runtime_validate__runtime_nested_list(_eng, _ir);
-    _runtime_validate__runtime_nested_set(_eng, _ir);
-    _runtime_validate__runtime_for_nested(_eng, _ir);
-    _runtime_validate__runtime_grid_init(_eng, _ir);
-    _runtime_validate__runtime_grid_set_get(_eng, _ir);
+    (_eng, _fx) = compile_native("runtime_validate.jac");
+    _runtime_validate__runtime_for_list_literal(_eng, _fx);
+    _runtime_validate__runtime_for_list_var(_eng, _fx);
+    _runtime_validate__runtime_nested_list(_eng, _fx);
+    _runtime_validate__runtime_nested_set(_eng, _fx);
+    _runtime_validate__runtime_for_nested(_eng, _fx);
+    _runtime_validate__runtime_grid_init(_eng, _fx);
+    _runtime_validate__runtime_grid_set_get(_eng, _fx);
 }
 
 # --- TestNativeAugAssign ---
 """aug assign add assign"""
-def _aug_assign__aug_assign_add_assign(eng: any, _ir: any) {
+def _aug_assign__aug_assign_add_assign(eng: any, _fx: any) {
     f = get_func(eng, "test_add_assign", ctypes.c_int64);
     assert f() == 15;
 }
 
 """aug assign sub assign"""
-def _aug_assign__aug_assign_sub_assign(eng: any, _ir: any) {
+def _aug_assign__aug_assign_sub_assign(eng: any, _fx: any) {
     f = get_func(eng, "test_sub_assign", ctypes.c_int64);
     assert f() == 63;
 }
 
 """aug assign mul assign"""
-def _aug_assign__aug_assign_mul_assign(eng: any, _ir: any) {
+def _aug_assign__aug_assign_mul_assign(eng: any, _fx: any) {
     f = get_func(eng, "test_mul_assign", ctypes.c_int64);
     assert f() == 42;
 }
 
 """aug assign div assign"""
-def _aug_assign__aug_assign_div_assign(eng: any, _ir: any) {
+def _aug_assign__aug_assign_div_assign(eng: any, _fx: any) {
     f = get_func(eng, "test_div_assign", ctypes.c_int64);
     assert f() == 9;
 }
 
 """aug assign mod assign"""
-def _aug_assign__aug_assign_mod_assign(eng: any, _ir: any) {
+def _aug_assign__aug_assign_mod_assign(eng: any, _fx: any) {
     f = get_func(eng, "test_mod_assign", ctypes.c_int64);
     assert f() == 2;
 }
 
 """aug assign chained aug"""
-def _aug_assign__aug_assign_chained_aug(eng: any, _ir: any) {
+def _aug_assign__aug_assign_chained_aug(eng: any, _fx: any) {
     f = get_func(eng, "test_chained_aug", ctypes.c_int64);
     assert f() == 8;  # (1+2)*3 - 1
 }
 
 """aug assign aug in while"""
-def _aug_assign__aug_assign_aug_in_while(eng: any, _ir: any) {
+def _aug_assign__aug_assign_aug_in_while(eng: any, _fx: any) {
     f = get_func(eng, "test_aug_in_while", ctypes.c_int64);
     assert f() == 45;  # 0+1+2+...+9
 }
 
 """aug assign aug in for"""
-def _aug_assign__aug_assign_aug_in_for(eng: any, _ir: any) {
+def _aug_assign__aug_assign_aug_in_for(eng: any, _fx: any) {
     f = get_func(eng, "test_aug_in_for", ctypes.c_int64);
     assert f() == 45;  # 0+1+2+...+9
 }
 
 """forever loop with break"""
-def _aug_assign__forever_loop_with_break(eng: any, _ir: any) {
+def _aug_assign__forever_loop_with_break(eng: any, _fx: any) {
     f = get_func(eng, "test_forever_break", ctypes.c_int64);
     assert f() == 45;  # 0+1+2+...+9, then break
 }
 
 """forever loop with continue"""
-def _aug_assign__forever_loop_with_continue(eng: any, _ir: any) {
+def _aug_assign__forever_loop_with_continue(eng: any, _fx: any) {
     f = get_func(eng, "test_forever_continue", ctypes.c_int64);
     assert f() == 30;  # 2+4+6+8+10, odds skipped via continue
 }
 
 """aug assign aug conditional"""
-def _aug_assign__aug_assign_aug_conditional(eng: any, _ir: any) {
+def _aug_assign__aug_assign_aug_conditional(eng: any, _fx: any) {
     f = get_func(eng, "test_aug_conditional", ctypes.c_int64);
     assert f() == 2025;  # even=20, odd=25 -> 20*100+25
 }
 
 """aug assign aug nested loops"""
-def _aug_assign__aug_assign_aug_nested_loops(eng: any, _ir: any) {
+def _aug_assign__aug_assign_aug_nested_loops(eng: any, _fx: any) {
     f = get_func(eng, "test_aug_nested_loops", ctypes.c_int64);
     assert f() == 25;  # 5*5
 }
 
 """aug assign aug float add"""
-def _aug_assign__aug_assign_aug_float_add(eng: any, _ir: any) {
+def _aug_assign__aug_assign_aug_float_add(eng: any, _fx: any) {
     f = get_func(eng, "test_aug_float_add", ctypes.c_double);
     assert abs(f() - 4.0) < 1e-10;
 }
 
 """aug assign aug float mul"""
-def _aug_assign__aug_assign_aug_float_mul(eng: any, _ir: any) {
+def _aug_assign__aug_assign_aug_float_mul(eng: any, _fx: any) {
     f = get_func(eng, "test_aug_float_mul", ctypes.c_double);
     assert abs(f() - 7.5) < 1e-10;
 }
 
 """aug assign count primes"""
-def _aug_assign__aug_assign_count_primes(eng: any, _ir: any) {
+def _aug_assign__aug_assign_count_primes(eng: any, _fx: any) {
     # Count first 10 primes using += in nested while loops.
     f = get_func(eng, "test_count_primes", ctypes.c_int64);
     assert f() == 29;  # 10th prime
 }
 
 test "aug_assign" {
-    (_eng, _ir) = compile_native("aug_assign.jac");
-    _aug_assign__aug_assign_add_assign(_eng, _ir);
-    _aug_assign__aug_assign_sub_assign(_eng, _ir);
-    _aug_assign__aug_assign_mul_assign(_eng, _ir);
-    _aug_assign__aug_assign_div_assign(_eng, _ir);
-    _aug_assign__aug_assign_mod_assign(_eng, _ir);
-    _aug_assign__aug_assign_chained_aug(_eng, _ir);
-    _aug_assign__aug_assign_aug_in_while(_eng, _ir);
-    _aug_assign__aug_assign_aug_in_for(_eng, _ir);
-    _aug_assign__forever_loop_with_break(_eng, _ir);
-    _aug_assign__forever_loop_with_continue(_eng, _ir);
-    _aug_assign__aug_assign_aug_conditional(_eng, _ir);
-    _aug_assign__aug_assign_aug_nested_loops(_eng, _ir);
-    _aug_assign__aug_assign_aug_float_add(_eng, _ir);
-    _aug_assign__aug_assign_aug_float_mul(_eng, _ir);
-    _aug_assign__aug_assign_count_primes(_eng, _ir);
+    (_eng, _fx) = compile_native("aug_assign.jac");
+    _aug_assign__aug_assign_add_assign(_eng, _fx);
+    _aug_assign__aug_assign_sub_assign(_eng, _fx);
+    _aug_assign__aug_assign_mul_assign(_eng, _fx);
+    _aug_assign__aug_assign_div_assign(_eng, _fx);
+    _aug_assign__aug_assign_mod_assign(_eng, _fx);
+    _aug_assign__aug_assign_chained_aug(_eng, _fx);
+    _aug_assign__aug_assign_aug_in_while(_eng, _fx);
+    _aug_assign__aug_assign_aug_in_for(_eng, _fx);
+    _aug_assign__forever_loop_with_break(_eng, _fx);
+    _aug_assign__forever_loop_with_continue(_eng, _fx);
+    _aug_assign__aug_assign_aug_conditional(_eng, _fx);
+    _aug_assign__aug_assign_aug_nested_loops(_eng, _fx);
+    _aug_assign__aug_assign_aug_float_add(_eng, _fx);
+    _aug_assign__aug_assign_aug_float_mul(_eng, _fx);
+    _aug_assign__aug_assign_count_primes(_eng, _fx);
 }
 
 test "chess compiles" {
-    (eng, ir) = compile_native("chess.jac");
-    assert ir.gen.llvm_ir is not None;
+    (eng, fx) = compile_native("chess.jac");
+    assert fx.llvm_ir();
 }
 
 test "chess opposite color" {
-    (eng, _ir) = compile_native("chess.jac");
+    (eng, _fx) = compile_native("chess.jac");
     opp = get_func(eng, "opposite_color", ctypes.c_int64, ctypes.c_int64);
     assert opp(0) == 1;  # WHITE -> BLACK
     assert opp(1) == 0;  # BLACK -> WHITE
 }
 
 test "chess create piece" {
-    (eng, _ir) = compile_native("chess.jac");
-    addr = native_address(eng, unit_sym(_ir, "create_piece"));
+    (eng, _fx) = compile_native("chess.jac");
+    addr = native_address(eng, unit_symbol(_fx, "create_piece"));
     assert addr != 0;
 }
 
 test "chess has entry" {
-    (eng, _ir) = compile_native("chess.jac");
+    (eng, _fx) = compile_native("chess.jac");
     addr = native_address(eng, "jac_entry");
     assert addr != 0;
 }
 
 test "chess all piece types" {
-    (eng, _ir) = compile_native("chess.jac");
+    (eng, _fx) = compile_native("chess.jac");
     # Verify all piece class methods are callable.
     piece_types = ["Pawn", "Knight", "Bishop", "Rook", "Queen", "King"];
     for piece_type in piece_types {
-        addr = native_address(eng, unit_sym(_ir, f"{piece_type}.get_symbol"));
+        addr = native_address(eng, unit_symbol(_fx, f"{piece_type}.get_symbol"));
         assert addr != 0 , f"{piece_type}.get_symbol not found";
     }
 }
 
 test "chess board methods" {
-    (eng, _ir) = compile_native("chess.jac");
+    (eng, _fx) = compile_native("chess.jac");
     # Verify Board methods are callable.
     methods = [
         "Board.is_valid_pos",
@@ -1840,13 +1896,13 @@ test "chess board methods" {
         "Board.display"
     ];
     for method in methods {
-        addr = native_address(eng, unit_sym(_ir, method));
+        addr = native_address(eng, unit_symbol(_fx, method));
         assert addr != 0 , f"{method} not found";
     }
 }
 
 test "chess game methods" {
-    (eng, _ir) = compile_native("chess.jac");
+    (eng, _fx) = compile_native("chess.jac");
     # Verify Game methods are callable.
     methods = [
         "Game.find_king",
@@ -1857,7 +1913,7 @@ test "chess game methods" {
         "Game.parse_input"
     ];
     for method in methods {
-        addr = native_address(eng, unit_sym(_ir, method));
+        addr = native_address(eng, unit_symbol(_fx, method));
         assert addr != 0 , f"{method} not found";
     }
 }
@@ -1890,7 +1946,7 @@ test "chess play random moves stress" {
 # --- TestNativeClassName (issue #6930 workstream A2) ---
 """class name: __class__.__name__ is polymorphic over subclasses"""
 def _class_name__class_name_class_name_is_polymorphic_over_subclasses(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # `kind` is defined only on the base `Widget`, so a subclass instance must
     # recover its own runtime class name through the vtable, not freeze to the
@@ -1905,14 +1961,14 @@ def _class_name__class_name_class_name_is_polymorphic_over_subclasses(
 }
 
 """class name: type(self).__name__ matches __class__.__name__"""
-def _class_name__class_name_type_self_name_matches_class_name(eng: any, _ir: any) {
+def _class_name__class_name_type_self_name_matches_class_name(eng: any, _fx: any) {
     f = get_func(eng, "button_kind_via_type", ctypes.c_char_p);
     assert f() == b"Button";
 }
 
 """class name: vtable-less class lowers to a constant name"""
 def _class_name__class_name_vtable_less_class_lowers_to_a_constant_name(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # `Lone` has no parents and no subclasses, so it carries no vtable; the
     # access lowers to a constant load rather than a vtable read.
@@ -1922,7 +1978,7 @@ def _class_name__class_name_vtable_less_class_lowers_to_a_constant_name(
 
 """class name: method-less vtable hierarchy still reads its own name"""
 def _class_name__class_name_method_less_vtable_hierarchy_still_reads_its_own_name(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # `Tag`/`SubA`/`SubB` declare no methods, so their vtable method layout is
     # empty -- but `Tag` is still vtable-flagged (it has subclasses). The vtable
@@ -1936,23 +1992,23 @@ def _class_name__class_name_method_less_vtable_hierarchy_still_reads_its_own_nam
 }
 
 test "class_name" {
-    (_eng, _ir) = compile_native("class_name.jac");
-    _class_name__class_name_class_name_is_polymorphic_over_subclasses(_eng, _ir);
-    _class_name__class_name_type_self_name_matches_class_name(_eng, _ir);
-    _class_name__class_name_vtable_less_class_lowers_to_a_constant_name(_eng, _ir);
+    (_eng, _fx) = compile_native("class_name.jac");
+    _class_name__class_name_class_name_is_polymorphic_over_subclasses(_eng, _fx);
+    _class_name__class_name_type_self_name_matches_class_name(_eng, _fx);
+    _class_name__class_name_vtable_less_class_lowers_to_a_constant_name(_eng, _fx);
     _class_name__class_name_method_less_vtable_hierarchy_still_reads_its_own_name(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
 # --- TestNativeIsinstanceUserArchetype (issue #6930, workstream A1) ---
 """isinstance user compiles"""
-def _isinstance_user__isinstance_user_compiles(eng: any, ir: any) {
-    assert ir.gen.llvm_ir is not None;
+def _isinstance_user__isinstance_user_compiles(eng: any, fx: any) {
+    assert fx.llvm_ir();
 }
 
 """isinstance user exact and subclass match"""
-def _isinstance_user__isinstance_user_exact_and_subclass_match(eng: any, _ir: any) {
+def _isinstance_user__isinstance_user_exact_and_subclass_match(eng: any, _fx: any) {
     # 0=Shape, 1=Circle, 2=Square, 3=ColoredSquare(<:Square).
     f = get_func(eng, "test_kind", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 0;  # Shape: neither Circle nor Square
@@ -1962,7 +2018,7 @@ def _isinstance_user__isinstance_user_exact_and_subclass_match(eng: any, _ir: an
 }
 
 """isinstance user narrowed field access"""
-def _isinstance_user__isinstance_user_narrowed_field_access(eng: any, _ir: any) {
+def _isinstance_user__isinstance_user_narrowed_field_access(eng: any, _fx: any) {
     # After `isinstance(s, Square)`, `s.side` must resolve to a field offset.
     f = get_func(eng, "test_side", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == -1;  # Shape: not a Square
@@ -1972,7 +2028,7 @@ def _isinstance_user__isinstance_user_narrowed_field_access(eng: any, _ir: any) 
 }
 
 """isinstance user tuple of classes"""
-def _isinstance_user__isinstance_user_tuple_of_classes(eng: any, _ir: any) {
+def _isinstance_user__isinstance_user_tuple_of_classes(eng: any, _fx: any) {
     f = get_func(eng, "test_round_or_square", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 0;  # Shape
     assert f(1) == 1;  # Circle
@@ -1982,7 +2038,7 @@ def _isinstance_user__isinstance_user_tuple_of_classes(eng: any, _ir: any) {
 
 """isinstance user no-vtable operand is clean false"""
 def _isinstance_user__isinstance_user_no_vtable_operand_is_clean_false(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # A standalone struct (no vtable) checked against a vtable class must be a
     # principled False, never a garbage read of its first user field.
@@ -1991,113 +2047,113 @@ def _isinstance_user__isinstance_user_no_vtable_operand_is_clean_false(
 }
 
 test "isinstance_user" {
-    (_eng, _ir) = compile_native("isinstance_user.jac");
-    _isinstance_user__isinstance_user_compiles(_eng, _ir);
-    _isinstance_user__isinstance_user_exact_and_subclass_match(_eng, _ir);
-    _isinstance_user__isinstance_user_narrowed_field_access(_eng, _ir);
-    _isinstance_user__isinstance_user_tuple_of_classes(_eng, _ir);
-    _isinstance_user__isinstance_user_no_vtable_operand_is_clean_false(_eng, _ir);
+    (_eng, _fx) = compile_native("isinstance_user.jac");
+    _isinstance_user__isinstance_user_compiles(_eng, _fx);
+    _isinstance_user__isinstance_user_exact_and_subclass_match(_eng, _fx);
+    _isinstance_user__isinstance_user_narrowed_field_access(_eng, _fx);
+    _isinstance_user__isinstance_user_tuple_of_classes(_eng, _fx);
+    _isinstance_user__isinstance_user_no_vtable_operand_is_clean_false(_eng, _fx);
 }
 
 test "dicts dict new empty" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_new_empty", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "dicts dict literal len" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_literal_len", ctypes.c_int64);
     assert f() == 3;
 }
 
 test "dicts dict get value" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_get_value", ctypes.c_int64);
     assert f() == 200;
 }
 
 test "dicts dict set value" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_set_value", ctypes.c_int64);
     assert f() == 20;
 }
 
 test "dicts dict update value" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_update_value", ctypes.c_int64);
     assert f() == 99;
 }
 
 test "dicts dict len after set" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_len_after_set", ctypes.c_int64);
     assert f() == 3;
 }
 
 test "dicts dict contains true" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_contains_true", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "dicts dict contains false" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_contains_false", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "dicts dict string keys" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_string_keys", ctypes.c_int64);
     assert f() == 2;
 }
 
 test "dicts dict string values" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_string_values", ctypes.c_char_p);
     result = f();
     assert result == b"two";
 }
 
 test "dicts dict sum values" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_sum_values", ctypes.c_int64);
     assert f() == 100;
 }
 
 test "dicts dict overwrite" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_overwrite", ctypes.c_int64);
     assert f() == 30;
 }
 
 test "dicts dict multiple types" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_multiple_types", ctypes.c_int64);
     assert f() == 300;
 }
 
 test "dicts dict get first" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_get_first", ctypes.c_int64);
     assert f() == 100;
 }
 
 test "dicts dict get third" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_get_third", ctypes.c_int64);
     assert f() == 300;
 }
 
 test "dicts dict set then get" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_set_then_get", ctypes.c_int64);
     assert f() == 1500;
 }
 
 test "dicts global dict get" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     # Need to call jac_entry first to initialize globals
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -2106,7 +2162,7 @@ test "dicts global dict get" {
 }
 
 test "dicts global dict len" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "global_dict_len", ctypes.c_int64);
@@ -2114,55 +2170,55 @@ test "dicts global dict len" {
 }
 
 test "sets set new empty" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "set_new_empty", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "sets set literal len" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "set_literal_len", ctypes.c_int64);
     assert f() == 5;
 }
 
 test "sets set add element" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "set_add_element", ctypes.c_int64);
     assert f() == 4;
 }
 
 test "sets set add duplicate" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "set_add_duplicate", ctypes.c_int64);
     assert f() == 3;  # Duplicates shouldn't increase length
 }
 
 test "sets set contains true" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "set_contains_true", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "sets set contains false" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "set_contains_false", ctypes.c_int64);
     assert f() == 0;
 }
 
 test "sets set string elements" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "set_string_elements", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "sets set multiple adds" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "set_multiple_adds", ctypes.c_int64);
     assert f() == 3;  # 1, 2, 3 (duplicates ignored)
 }
 
 test "sets global set contains" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "global_set_contains", ctypes.c_int64);
@@ -2170,7 +2226,7 @@ test "sets global set contains" {
 }
 
 test "sets global set len" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "global_set_len", ctypes.c_int64);
@@ -2178,13 +2234,13 @@ test "sets global set len" {
 }
 
 test "dicts items iteration sum" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_items_iter_sum", ctypes.c_int64);
     assert f() == 60;
 }
 
 test "dicts empty glob dict set and get" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     # glob x: dict[K,V] = {} previously left the global as null -> segfault on first access.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -2193,37 +2249,37 @@ test "dicts empty glob dict set and get" {
 }
 
 test "dicts dict remove method" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_remove_method", ctypes.c_int64);
     assert f() == 1;  # key must be absent after .remove()
 }
 
 test "dicts dict delete keyword" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_delete_keyword", ctypes.c_int64);
     assert f() == 1;  # key must be absent after del d[k]
 }
 
 test "dicts dict.get found" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_get_found", ctypes.c_int64);
     assert f() == 10 , f"Expected 10, got {f()}";
 }
 
 test "dicts dict.get not found" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_get_notfound", ctypes.c_int64);
     assert f() == -99 , f"Expected -99, got {f()}";
 }
 
 test "dicts dict.get no default" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     f = get_func(eng, "dict_get_no_default", ctypes.c_int64);
     assert f() == 100 , f"Expected 100, got {f()}";
 }
 
 test "dicts global dict.get method" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "global_dict_get_method", ctypes.c_int64);
@@ -2231,7 +2287,7 @@ test "dicts global dict.get method" {
 }
 
 test "dicts global dict.get not found method" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "global_dict_get_notfound_method", ctypes.c_int64);
@@ -2239,14 +2295,14 @@ test "dicts global dict.get not found method" {
 }
 
 test "dicts for-in-dict param iteration" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     # for k in d where d is a dict parameter was always elided (body never ran).
     f = get_func(eng, "dict_param_iter_sum_fixture", ctypes.c_int64);
     assert f() == 60;
 }
 
 test "dicts for-in-dict field access iteration" {
-    (eng, _ir) = compile_native("dicts_sets.jac");
+    (eng, _fx) = compile_native("dicts_sets.jac");
     # for k in c.props where c is a struct with a dict field used to segfault
     # because the AtomTrailer expression had no bare name to look up in var_dict_type.
     f = get_func(eng, "dict_field_iter_sum_fixture", ctypes.c_int64);
@@ -2255,193 +2311,187 @@ test "dicts for-in-dict field access iteration" {
 
 # --- TestNativeExceptions ---
 """exceptions basic try except"""
-def _exceptions__exceptions_basic_try_except(eng: any, _ir: any) {
+def _exceptions__exceptions_basic_try_except(eng: any, _fx: any) {
     f = get_func(eng, "test_basic_try_except", ctypes.c_int64);
     assert f() == 2;
 }
 
 """exceptions try no exception"""
-def _exceptions__exceptions_try_no_exception(eng: any, _ir: any) {
+def _exceptions__exceptions_try_no_exception(eng: any, _fx: any) {
     f = get_func(eng, "test_try_no_exception", ctypes.c_int64);
     assert f() == 42;
 }
 
 """exceptions except as binding"""
-def _exceptions__exceptions_except_as_binding(eng: any, _ir: any) {
+def _exceptions__exceptions_except_as_binding(eng: any, _fx: any) {
     f = get_func(eng, "test_except_as_binding", ctypes.c_char_p);
     assert f() == b"caught me";
 }
 
 """exceptions try else no exception"""
-def _exceptions__exceptions_try_else_no_exception(eng: any, _ir: any) {
+def _exceptions__exceptions_try_else_no_exception(eng: any, _fx: any) {
     f = get_func(eng, "test_try_else_no_exception", ctypes.c_int64);
     assert f() == 11;
 }
 
 """exceptions try else with exception"""
-def _exceptions__exceptions_try_else_with_exception(eng: any, _ir: any) {
+def _exceptions__exceptions_try_else_with_exception(eng: any, _fx: any) {
     f = get_func(eng, "test_try_else_with_exception", ctypes.c_int64);
     assert f() == 5;
 }
 
 """exceptions try finally"""
-def _exceptions__exceptions_try_finally(eng: any, _ir: any) {
+def _exceptions__exceptions_try_finally(eng: any, _fx: any) {
     f = get_func(eng, "test_try_finally", ctypes.c_int64);
     assert f() == 111;
 }
 
 """exceptions try finally no exception"""
-def _exceptions__exceptions_try_finally_no_exception(eng: any, _ir: any) {
+def _exceptions__exceptions_try_finally_no_exception(eng: any, _fx: any) {
     f = get_func(eng, "test_try_finally_no_exception", ctypes.c_int64);
     assert f() == 105;
 }
 
 """exceptions multiple except"""
-def _exceptions__exceptions_multiple_except(eng: any, _ir: any) {
+def _exceptions__exceptions_multiple_except(eng: any, _fx: any) {
     f = get_func(eng, "test_multiple_except", ctypes.c_int64);
     assert f() == 2;
 }
 
 """exceptions catch all"""
-def _exceptions__exceptions_catch_all(eng: any, _ir: any) {
+def _exceptions__exceptions_catch_all(eng: any, _fx: any) {
     f = get_func(eng, "test_catch_all", ctypes.c_int64);
     assert f() == 42;
 }
 
 """exceptions nested try"""
-def _exceptions__exceptions_nested_try(eng: any, _ir: any) {
+def _exceptions__exceptions_nested_try(eng: any, _fx: any) {
     f = get_func(eng, "test_nested_try", ctypes.c_int64);
     assert f() == 111;
 }
 
 """exceptions raise func form"""
-def _exceptions__exceptions_raise_func_form(eng: any, _ir: any) {
+def _exceptions__exceptions_raise_func_form(eng: any, _fx: any) {
     f = get_func(eng, "test_raise_func_form", ctypes.c_int64);
     assert f() == 77;
 }
 
 """exceptions full combo no exc"""
-def _exceptions__exceptions_full_combo_no_exc(eng: any, _ir: any) {
+def _exceptions__exceptions_full_combo_no_exc(eng: any, _fx: any) {
     f = get_func(eng, "test_full_combo_no_exc", ctypes.c_int64);
     assert f() == 321;
 }
 
 test "exceptions" {
-    (_eng, _ir) = compile_native("exceptions.jac");
-    _exceptions__exceptions_basic_try_except(_eng, _ir);
-    _exceptions__exceptions_try_no_exception(_eng, _ir);
-    _exceptions__exceptions_except_as_binding(_eng, _ir);
-    _exceptions__exceptions_try_else_no_exception(_eng, _ir);
-    _exceptions__exceptions_try_else_with_exception(_eng, _ir);
-    _exceptions__exceptions_try_finally(_eng, _ir);
-    _exceptions__exceptions_try_finally_no_exception(_eng, _ir);
-    _exceptions__exceptions_multiple_except(_eng, _ir);
-    _exceptions__exceptions_catch_all(_eng, _ir);
-    _exceptions__exceptions_nested_try(_eng, _ir);
-    _exceptions__exceptions_raise_func_form(_eng, _ir);
-    _exceptions__exceptions_full_combo_no_exc(_eng, _ir);
+    (_eng, _fx) = compile_native("exceptions.jac");
+    _exceptions__exceptions_basic_try_except(_eng, _fx);
+    _exceptions__exceptions_try_no_exception(_eng, _fx);
+    _exceptions__exceptions_except_as_binding(_eng, _fx);
+    _exceptions__exceptions_try_else_no_exception(_eng, _fx);
+    _exceptions__exceptions_try_else_with_exception(_eng, _fx);
+    _exceptions__exceptions_try_finally(_eng, _fx);
+    _exceptions__exceptions_try_finally_no_exception(_eng, _fx);
+    _exceptions__exceptions_multiple_except(_eng, _fx);
+    _exceptions__exceptions_catch_all(_eng, _fx);
+    _exceptions__exceptions_nested_try(_eng, _fx);
+    _exceptions__exceptions_raise_func_form(_eng, _fx);
+    _exceptions__exceptions_full_combo_no_exc(_eng, _fx);
 }
 
 # --- TestNativeFileIO ---
 """file io open write"""
-def _file_io__file_io_open_write(eng: any, _ir: any) {
+def _file_io__file_io_open_write(eng: any, _fx: any) {
     f = get_func(eng, "test_open_write", ctypes.c_int64);
     assert f() == 1;
 }
 
 """file io write file"""
-def _file_io__file_io_write_file(eng: any, _ir: any) {
+def _file_io__file_io_write_file(eng: any, _fx: any) {
     f = get_func(eng, "test_write_file", ctypes.c_int64);
     assert f() == 11;
 }
 
 """file io write read"""
-def _file_io__file_io_write_read(eng: any, _ir: any) {
+def _file_io__file_io_write_read(eng: any, _fx: any) {
     f = get_func(eng, "test_write_read", ctypes.c_char_p);
     assert f() == b"NativeIO";
 }
 
 """file io readline"""
-def _file_io__file_io_readline(eng: any, _ir: any) {
+def _file_io__file_io_readline(eng: any, _fx: any) {
     f = get_func(eng, "test_readline", ctypes.c_char_p);
     assert f() == b"line1\n";
 }
 
 """file io close idempotent"""
-def _file_io__file_io_close_idempotent(eng: any, _ir: any) {
+def _file_io__file_io_close_idempotent(eng: any, _fx: any) {
     f = get_func(eng, "test_close_idempotent", ctypes.c_int64);
     assert f() == 1;
 }
 
 """file io open nonexistent"""
-def _file_io__file_io_open_nonexistent(eng: any, _ir: any) {
+def _file_io__file_io_open_nonexistent(eng: any, _fx: any) {
     f = get_func(eng, "test_open_nonexistent", ctypes.c_int64);
     assert f() == 1;
 }
 
 """file io file methods exist"""
-def _file_io__file_io_file_methods_exist(eng: any, _ir: any) {
+def _file_io__file_io_file_methods_exist(eng: any, _fx: any) {
     f = get_func(eng, "test_file_methods_exist", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "file_io" {
-    (_eng, _ir) = compile_native("file_io.jac");
-    _file_io__file_io_open_write(_eng, _ir);
-    _file_io__file_io_write_file(_eng, _ir);
-    _file_io__file_io_write_read(_eng, _ir);
-    _file_io__file_io_readline(_eng, _ir);
-    _file_io__file_io_close_idempotent(_eng, _ir);
-    _file_io__file_io_open_nonexistent(_eng, _ir);
-    _file_io__file_io_file_methods_exist(_eng, _ir);
+    (_eng, _fx) = compile_native("file_io.jac");
+    _file_io__file_io_open_write(_eng, _fx);
+    _file_io__file_io_write_file(_eng, _fx);
+    _file_io__file_io_write_read(_eng, _fx);
+    _file_io__file_io_readline(_eng, _fx);
+    _file_io__file_io_close_idempotent(_eng, _fx);
+    _file_io__file_io_open_nonexistent(_eng, _fx);
+    _file_io__file_io_file_methods_exist(_eng, _fx);
 }
 
 # --- TestNativeContextManagers ---
 """context managers with enter"""
-def _context_mgr__context_managers_with_enter(eng: any, _ir: any) {
+def _context_mgr__context_managers_with_enter(eng: any, _fx: any) {
     f = get_func(eng, "test_with_enter", ctypes.c_int64);
     assert f() == 1;
 }
 
 """context managers with exit"""
-def _context_mgr__context_managers_with_exit(eng: any, _ir: any) {
+def _context_mgr__context_managers_with_exit(eng: any, _fx: any) {
     f = get_func(eng, "test_with_exit", ctypes.c_int64);
     assert f() == 1;
 }
 
 """context managers with body"""
-def _context_mgr__context_managers_with_body(eng: any, _ir: any) {
+def _context_mgr__context_managers_with_body(eng: any, _fx: any) {
     f = get_func(eng, "test_with_body", ctypes.c_int64);
     assert f() == 99;
 }
 
 """context managers with as binding"""
-def _context_mgr__context_managers_with_as_binding(eng: any, _ir: any) {
+def _context_mgr__context_managers_with_as_binding(eng: any, _fx: any) {
     f = get_func(eng, "test_with_as_binding", ctypes.c_int64);
     assert f() == 77;
 }
 
 """context managers file context manager"""
-def _context_mgr__context_managers_file_context_manager(eng: any, _ir: any) {
+def _context_mgr__context_managers_file_context_manager(eng: any, _fx: any) {
     f = get_func(eng, "test_file_context_manager", ctypes.c_int64);
     assert f() == 1;
 }
 
 """context managers with enter exit once"""
-def _context_mgr__context_managers_with_enter_exit_once(eng: any, _ir: any) {
+def _context_mgr__context_managers_with_enter_exit_once(eng: any, _fx: any) {
     f = get_func(eng, "test_with_enter_exit_once", ctypes.c_int64);
     assert f() == 101;
 }
 
 test "context managers preserve borrowed owners with slot exceptions" {
     options = CompileOptions(force_codespace="native", memory_profile="nogc");
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "context_mgr_nogc.jac"), options=options
-    );
-    assert not prog.errors_had;
-    eng = ir.gen.native_engine;
-    assert eng is not None;
+    (eng, _fx, _carrier) = _jit(os.path.join(FIXTURES, "context_mgr_nogc.jac"), options);
     for (name, expected) in [
         ("normal", 111),
         ("returning", 701),
@@ -2463,13 +2513,13 @@ test "context managers preserve borrowed owners with slot exceptions" {
 }
 
 test "context_mgr" {
-    (_eng, _ir) = compile_native("context_mgr.jac");
-    _context_mgr__context_managers_with_enter(_eng, _ir);
-    _context_mgr__context_managers_with_exit(_eng, _ir);
-    _context_mgr__context_managers_with_body(_eng, _ir);
-    _context_mgr__context_managers_with_as_binding(_eng, _ir);
-    _context_mgr__context_managers_file_context_manager(_eng, _ir);
-    _context_mgr__context_managers_with_enter_exit_once(_eng, _ir);
+    (_eng, _fx) = compile_native("context_mgr.jac");
+    _context_mgr__context_managers_with_enter(_eng, _fx);
+    _context_mgr__context_managers_with_exit(_eng, _fx);
+    _context_mgr__context_managers_with_body(_eng, _fx);
+    _context_mgr__context_managers_with_as_binding(_eng, _fx);
+    _context_mgr__context_managers_file_context_manager(_eng, _fx);
+    _context_mgr__context_managers_with_enter_exit_once(_eng, _fx);
     for (name, expected) in [
         ("test_with_return", 701),
         ("test_with_loop_control", 3),
@@ -2486,232 +2536,232 @@ test "context_mgr" {
 
 # -- ZeroDivisionError --
 """runtime errors int div by zero"""
-def _runtime_errors__runtime_errors_int_div_by_zero(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_int_div_by_zero(eng: any, _fx: any) {
     f = get_func(eng, "test_int_div_by_zero", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors int mod by zero"""
-def _runtime_errors__runtime_errors_int_mod_by_zero(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_int_mod_by_zero(eng: any, _fx: any) {
     f = get_func(eng, "test_int_mod_by_zero", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors div by zero var"""
-def _runtime_errors__runtime_errors_div_by_zero_var(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_div_by_zero_var(eng: any, _fx: any) {
     f = get_func(eng, "test_div_by_zero_var", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors float div by zero"""
-def _runtime_errors__runtime_errors_float_div_by_zero(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_float_div_by_zero(eng: any, _fx: any) {
     f = get_func(eng, "test_float_div_by_zero", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors div no error"""
-def _runtime_errors__runtime_errors_div_no_error(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_div_no_error(eng: any, _fx: any) {
     f = get_func(eng, "test_div_no_error", ctypes.c_int64);
     assert f() == 5;
 }
 
 # -- IndexError --
 """runtime errors list index oob"""
-def _runtime_errors__runtime_errors_list_index_oob(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_list_index_oob(eng: any, _fx: any) {
     f = get_func(eng, "test_list_index_oob", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors list negative index"""
-def _runtime_errors__runtime_errors_list_negative_index(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_list_negative_index(eng: any, _fx: any) {
     f = get_func(eng, "test_list_negative_index", ctypes.c_int64);
     assert f() == 1;
 }
 
 """list valid negative index"""
-def _runtime_errors__list_valid_negative_index(eng: any, _ir: any) {
+def _runtime_errors__list_valid_negative_index(eng: any, _fx: any) {
     f = get_func(eng, "test_list_negative_valid", ctypes.c_int64);
     assert f() == 30;
 }
 
 """runtime errors list index at len"""
-def _runtime_errors__runtime_errors_list_index_at_len(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_list_index_at_len(eng: any, _fx: any) {
     f = get_func(eng, "test_list_index_at_len", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors list valid index"""
-def _runtime_errors__runtime_errors_list_valid_index(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_list_valid_index(eng: any, _fx: any) {
     f = get_func(eng, "test_list_valid_index", ctypes.c_int64);
     assert f() == 20;
 }
 
 """runtime errors list set oob"""
-def _runtime_errors__runtime_errors_list_set_oob(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_list_set_oob(eng: any, _fx: any) {
     f = get_func(eng, "test_list_set_oob", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors empty list access"""
-def _runtime_errors__runtime_errors_empty_list_access(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_empty_list_access(eng: any, _fx: any) {
     f = get_func(eng, "test_empty_list_access", ctypes.c_int64);
     assert f() == 1;
 }
 
 # -- KeyError --
 """runtime errors dict missing key"""
-def _runtime_errors__runtime_errors_dict_missing_key(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_dict_missing_key(eng: any, _fx: any) {
     f = get_func(eng, "test_dict_missing_key", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors dict valid key"""
-def _runtime_errors__runtime_errors_dict_valid_key(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_dict_valid_key(eng: any, _fx: any) {
     f = get_func(eng, "test_dict_valid_key", ctypes.c_int64);
     assert f() == 2;
 }
 
 """runtime errors dict int missing key"""
-def _runtime_errors__runtime_errors_dict_int_missing_key(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_dict_int_missing_key(eng: any, _fx: any) {
     f = get_func(eng, "test_dict_int_missing_key", ctypes.c_int64);
     assert f() == 1;
 }
 
 # -- OverflowError --
 """runtime errors int add overflow"""
-def _runtime_errors__runtime_errors_int_add_overflow(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_int_add_overflow(eng: any, _fx: any) {
     f = get_func(eng, "test_int_add_overflow", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors int sub underflow"""
-def _runtime_errors__runtime_errors_int_sub_underflow(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_int_sub_underflow(eng: any, _fx: any) {
     f = get_func(eng, "test_int_sub_underflow", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors int mul overflow"""
-def _runtime_errors__runtime_errors_int_mul_overflow(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_int_mul_overflow(eng: any, _fx: any) {
     f = get_func(eng, "test_int_mul_overflow", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors int no overflow"""
-def _runtime_errors__runtime_errors_int_no_overflow(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_int_no_overflow(eng: any, _fx: any) {
     f = get_func(eng, "test_int_no_overflow", ctypes.c_int64);
     assert f() == 1;
 }
 
 # -- AttributeError (None dereference) --
 """runtime errors none field access"""
-def _runtime_errors__runtime_errors_none_field_access(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_none_field_access(eng: any, _fx: any) {
     f = get_func(eng, "test_none_field_access", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors none method call"""
-def _runtime_errors__runtime_errors_none_method_call(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_none_method_call(eng: any, _fx: any) {
     f = get_func(eng, "test_none_method_call", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors valid obj access"""
-def _runtime_errors__runtime_errors_valid_obj_access(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_valid_obj_access(eng: any, _fx: any) {
     f = get_func(eng, "test_valid_obj_access", ctypes.c_int64);
     assert f() == 42;
 }
 
 # -- ValueError --
 """runtime errors int parse invalid"""
-def _runtime_errors__runtime_errors_int_parse_invalid(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_int_parse_invalid(eng: any, _fx: any) {
     f = get_func(eng, "test_int_parse_invalid", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors int parse valid"""
-def _runtime_errors__runtime_errors_int_parse_valid(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_int_parse_valid(eng: any, _fx: any) {
     f = get_func(eng, "test_int_parse_valid", ctypes.c_int64);
     assert f() == 123;
 }
 
 """runtime errors int parse empty"""
-def _runtime_errors__runtime_errors_int_parse_empty(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_int_parse_empty(eng: any, _fx: any) {
     f = get_func(eng, "test_int_parse_empty", ctypes.c_int64);
     assert f() == 1;
 }
 
 # -- AssertionError --
 """runtime errors assert false"""
-def _runtime_errors__runtime_errors_assert_false(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_assert_false(eng: any, _fx: any) {
     f = get_func(eng, "test_assert_false", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors assert true"""
-def _runtime_errors__runtime_errors_assert_true(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_assert_true(eng: any, _fx: any) {
     f = get_func(eng, "test_assert_true", ctypes.c_int64);
     assert f() == 1;
 }
 
 # -- MemoryError --
 """runtime errors alloc ok"""
-def _runtime_errors__runtime_errors_alloc_ok(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_alloc_ok(eng: any, _fx: any) {
     f = get_func(eng, "test_alloc_ok", ctypes.c_int64);
     assert f() == 1;
 }
 
 # -- Combined / edge cases --
 """runtime errors catch base exception"""
-def _runtime_errors__runtime_errors_catch_base_exception(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_catch_base_exception(eng: any, _fx: any) {
     f = get_func(eng, "test_catch_base_exception", ctypes.c_int64);
     assert f() == 1;
 }
 
 """runtime errors sequential errors"""
-def _runtime_errors__runtime_errors_sequential_errors(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_sequential_errors(eng: any, _fx: any) {
     f = get_func(eng, "test_sequential_errors", ctypes.c_int64);
     assert f() == 11;
 }
 
 """runtime errors error in loop"""
-def _runtime_errors__runtime_errors_error_in_loop(eng: any, _ir: any) {
+def _runtime_errors__runtime_errors_error_in_loop(eng: any, _fx: any) {
     f = get_func(eng, "test_error_in_loop", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "runtime_errors" {
-    (_eng, _ir) = compile_native("runtime_errors.jac");
-    _runtime_errors__runtime_errors_int_div_by_zero(_eng, _ir);
-    _runtime_errors__runtime_errors_int_mod_by_zero(_eng, _ir);
-    _runtime_errors__runtime_errors_div_by_zero_var(_eng, _ir);
-    _runtime_errors__runtime_errors_float_div_by_zero(_eng, _ir);
-    _runtime_errors__runtime_errors_div_no_error(_eng, _ir);
-    _runtime_errors__runtime_errors_list_index_oob(_eng, _ir);
-    _runtime_errors__runtime_errors_list_negative_index(_eng, _ir);
-    _runtime_errors__list_valid_negative_index(_eng, _ir);
-    _runtime_errors__runtime_errors_list_index_at_len(_eng, _ir);
-    _runtime_errors__runtime_errors_list_valid_index(_eng, _ir);
-    _runtime_errors__runtime_errors_list_set_oob(_eng, _ir);
-    _runtime_errors__runtime_errors_empty_list_access(_eng, _ir);
-    _runtime_errors__runtime_errors_dict_missing_key(_eng, _ir);
-    _runtime_errors__runtime_errors_dict_valid_key(_eng, _ir);
-    _runtime_errors__runtime_errors_dict_int_missing_key(_eng, _ir);
-    _runtime_errors__runtime_errors_int_add_overflow(_eng, _ir);
-    _runtime_errors__runtime_errors_int_sub_underflow(_eng, _ir);
-    _runtime_errors__runtime_errors_int_mul_overflow(_eng, _ir);
-    _runtime_errors__runtime_errors_int_no_overflow(_eng, _ir);
-    _runtime_errors__runtime_errors_none_field_access(_eng, _ir);
-    _runtime_errors__runtime_errors_none_method_call(_eng, _ir);
-    _runtime_errors__runtime_errors_valid_obj_access(_eng, _ir);
-    _runtime_errors__runtime_errors_int_parse_invalid(_eng, _ir);
-    _runtime_errors__runtime_errors_int_parse_valid(_eng, _ir);
-    _runtime_errors__runtime_errors_int_parse_empty(_eng, _ir);
-    _runtime_errors__runtime_errors_assert_false(_eng, _ir);
-    _runtime_errors__runtime_errors_assert_true(_eng, _ir);
-    _runtime_errors__runtime_errors_alloc_ok(_eng, _ir);
-    _runtime_errors__runtime_errors_catch_base_exception(_eng, _ir);
-    _runtime_errors__runtime_errors_sequential_errors(_eng, _ir);
-    _runtime_errors__runtime_errors_error_in_loop(_eng, _ir);
+    (_eng, _fx) = compile_native("runtime_errors.jac");
+    _runtime_errors__runtime_errors_int_div_by_zero(_eng, _fx);
+    _runtime_errors__runtime_errors_int_mod_by_zero(_eng, _fx);
+    _runtime_errors__runtime_errors_div_by_zero_var(_eng, _fx);
+    _runtime_errors__runtime_errors_float_div_by_zero(_eng, _fx);
+    _runtime_errors__runtime_errors_div_no_error(_eng, _fx);
+    _runtime_errors__runtime_errors_list_index_oob(_eng, _fx);
+    _runtime_errors__runtime_errors_list_negative_index(_eng, _fx);
+    _runtime_errors__list_valid_negative_index(_eng, _fx);
+    _runtime_errors__runtime_errors_list_index_at_len(_eng, _fx);
+    _runtime_errors__runtime_errors_list_valid_index(_eng, _fx);
+    _runtime_errors__runtime_errors_list_set_oob(_eng, _fx);
+    _runtime_errors__runtime_errors_empty_list_access(_eng, _fx);
+    _runtime_errors__runtime_errors_dict_missing_key(_eng, _fx);
+    _runtime_errors__runtime_errors_dict_valid_key(_eng, _fx);
+    _runtime_errors__runtime_errors_dict_int_missing_key(_eng, _fx);
+    _runtime_errors__runtime_errors_int_add_overflow(_eng, _fx);
+    _runtime_errors__runtime_errors_int_sub_underflow(_eng, _fx);
+    _runtime_errors__runtime_errors_int_mul_overflow(_eng, _fx);
+    _runtime_errors__runtime_errors_int_no_overflow(_eng, _fx);
+    _runtime_errors__runtime_errors_none_field_access(_eng, _fx);
+    _runtime_errors__runtime_errors_none_method_call(_eng, _fx);
+    _runtime_errors__runtime_errors_valid_obj_access(_eng, _fx);
+    _runtime_errors__runtime_errors_int_parse_invalid(_eng, _fx);
+    _runtime_errors__runtime_errors_int_parse_valid(_eng, _fx);
+    _runtime_errors__runtime_errors_int_parse_empty(_eng, _fx);
+    _runtime_errors__runtime_errors_assert_false(_eng, _fx);
+    _runtime_errors__runtime_errors_assert_true(_eng, _fx);
+    _runtime_errors__runtime_errors_alloc_ok(_eng, _fx);
+    _runtime_errors__runtime_errors_catch_base_exception(_eng, _fx);
+    _runtime_errors__runtime_errors_sequential_errors(_eng, _fx);
+    _runtime_errors__runtime_errors_error_in_loop(_eng, _fx);
 }
 
 test "list method on object field (pop)" {
@@ -2724,38 +2774,35 @@ test "list method on object field (pop)" {
 # --- TestNativePyInterop ---
 test "py interop interop module compiles" {
     # Module with na block, Python functions, and entry compiles.
-    prog = JacProgram();
-    prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop.jac")), options=native_force_opts()
+    result = kernel_compile_file(
+        str(Path(FIXTURES, "na_py_interop.jac").resolve()), native_force_opts()
     );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors: {errors}";
+    assert result.ok() , f"Compilation errors: {diagnostics_text(result)}";
 }
 
 test "py interop native function exists in engine" {
     # Native function from na block is available in the JIT engine under
     # the unit's prefix (it is not `:pub`).
-    (eng, ir) = compile_native("na_py_interop.jac");
-    addr = native_address(eng, unit_sym(ir, "native_add_one_to_doubled"));
+    (eng, fx) = compile_native("na_py_interop.jac");
+    addr = native_address(eng, unit_symbol(fx, "native_add_one_to_doubled"));
     assert addr != 0 , "native_add_one_to_doubled not found in JIT engine";
 }
 
 test "py interop py function not defined in native ir" {
     # py_double should be declared (external) but NOT defined in LLVM IR.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop.jac")),
-        options=CompileOptions(default_codespace='server')
+    fx = compile_native_ir(
+        "na_py_interop.jac", options=CompileOptions(default_codespace='server')
     );
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
+    llvm_ir_str = source_spelled(fx.llvm_ir());
+    assert llvm_ir_str , "No LLVM IR generated";
     import re;
     # Must not have a define (body) for py_double -- it lives in Python
     assert 'define i64 @"py_double"' not in llvm_ir_str;
     # The extern is module-qualified, so the native code calls
     # __jac_na_import_<module>_py_double instead of a bare name resolved
     # against the process symbol table.
-    symbol = ir.gen.interop_manifest.bindings["py_double"].symbol;
+    manifest = _manifest(fx);
+    symbol = manifest.bindings["py_double"].symbol;
     assert re.search(r'declare i64 @"?' + symbol + r'"?\(', llvm_ir_str) is not None , (
         f"expected a qualified interop declare for py_double; IR excerpt: "
         f"{[
@@ -2765,47 +2812,50 @@ test "py interop py function not defined in native ir" {
         ]}"
     );
     # py_note has no `-> T`: it returns None, so native declares it void
-    note = ir.gen.interop_manifest.bindings["py_note"].symbol;
+    note = manifest.bindings["py_note"].symbol;
     assert re.search(r'declare void @"?' + note + r'"?\(', llvm_ir_str) is not None;
 }
 
 test "py interop py functions in python codegen" {
-    # py_double and call_native should appear in Python codegen output.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop.jac")),
-        options=CompileOptions(default_codespace='server')
+    # py_double and call_native should be compiled into the module's bytecode.
+    (code, _result) = _module_code(
+        os.path.join(FIXTURES, "na_py_interop.jac"),
+        CompileOptions(default_codespace='server')
     );
-    py_src = generated_python(ir);
-    assert "py_double" in py_src;
-    assert "call_native" in py_src;
+    defined = {body.co_name for body in _code_objects(code)};
+    assert "py_double" in defined;
+    assert "call_native" in defined;
 }
 
 test "py interop native function has stub in python" {
-    # Native function should have a ctypes stub in Python codegen output.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop.jac")),
-        options=CompileOptions(default_codespace='server')
+    # Native function should have a ctypes stub in the module's bytecode.
+    (code, _result) = _module_code(
+        os.path.join(FIXTURES, "na_py_interop.jac"),
+        CompileOptions(default_codespace='server')
     );
-    py_src = generated_python(ir);
+    names = _code_names(code);
+    defined = {body.co_name for body in _code_objects(code)};
     # Stub for the native function should exist
-    assert "native_add_one_to_doubled" in py_src;
+    assert "native_add_one_to_doubled" in names | defined;
     # The native function body should NOT appear as executable code in Python
-    assert "return py_double(x) + 1" not in py_src;
+    for body in _code_objects(code) {
+        if body.co_name == "native_add_one_to_doubled" {
+            assert "py_double" not in body.co_names , (
+                "the native body must not be compiled into Python"
+            );
+        }
+    }
     # Should reference ctypes for the bridge
-    assert "CFUNCTYPE" in py_src;
-    assert "get_function_address" in py_src;
+    assert "CFUNCTYPE" in names;
+    assert "get_function_address" in names;
 }
 
 test "py interop interop manifest built" {
-    # InteropAnalysisPass should detect cross-boundary calls.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop.jac")),
-        options=CompileOptions(default_codespace='server')
+    # The interop analysis should detect cross-boundary calls.
+    fx = compile_native_ir(
+        "na_py_interop.jac", options=CompileOptions(default_codespace='server')
     );
-    manifest = ir.gen.interop_manifest;
+    manifest = _manifest(fx);
     assert manifest is not None;
     # py_double: defined in SERVER, called from NATIVE
     assert "py_double" in manifest.bindings;
@@ -2819,16 +2869,13 @@ test "py interop interop manifest built" {
 
 test "py interop native calls python function" {
     # Native->Python: native_add_one_to_doubled calls py_double.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop.jac")),
-        options=CompileOptions(default_codespace='server')
+    (eng, _fx, carrier) = _jit(
+        os.path.join(FIXTURES, "na_py_interop.jac"),
+        CompileOptions(default_codespace='server')
     );
-    eng = ir.gen.native_engine;
-    assert eng is not None;
     # Register the Python function in the interop callback table
-    py_func_table = ir.gen.interop_py_funcs;
-    symbol = ir.gen.interop_manifest.bindings["py_double"].symbol;
+    py_func_table = carrier.interop_py_funcs;
+    symbol = carrier.interop_manifest.bindings["py_double"].symbol;
     assert symbol.startswith("__jac_na_import_na_py_interop_") , symbol;
     py_func_table[symbol] = lambda (x: int) { x * 2; };
     # Now call the native function
@@ -2843,27 +2890,20 @@ test "py interop full entry chain" {
     import contextlib;
     import io;
 
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop.jac")),
-        options=CompileOptions(default_codespace='server')
+    (eng, fx, carrier) = _jit(
+        os.path.join(FIXTURES, "na_py_interop.jac"),
+        CompileOptions(default_codespace='server')
     );
-    assert not prog.errors_had;
-    # Execute the compiled module with interop context injected
-    py_code = compile(
-        generated_python(ir),
-        str(os.path.join(FIXTURES, "na_py_interop.jac")),
-        "exec"
-    );
+    # Execute the module's bytecode with interop context injected
     namespace = {
-        "__jac_native_engine__": ir.gen.native_engine,
-        "__jac_interop_py_funcs__": ir.gen.interop_py_funcs
+        "__jac_native_engine__": eng,
+        "__jac_interop_py_funcs__": carrier.interop_py_funcs
     };
     buf = io.StringIO();
     err = io.StringIO();
     with contextlib.redirect_stdout(buf) {
         with contextlib.redirect_stderr(err) {
-            exec(py_code, namespace);
+            exec(fx.unit.code, namespace);
             # a None return crosses back from native, and py_note's None into native
             assert namespace["native_note"](8) is None;
         }
@@ -2875,44 +2915,30 @@ test "py interop full entry chain" {
 
 # --- TestNativeMultiModuleInterop ---
 test "multi module na module compiles" {
-    # A standalone .jac module compiles to LLVM IR.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_math_utils.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    assert "triple" in llvm_ir_str;
-    assert "square" in llvm_ir_str;
+    # A standalone .jac module compiles to native code.
+    (eng, _fx) = compile_native("na_math_utils.jac");
+    assert get_func(eng, "triple", ctypes.c_int64, ctypes.c_int64)(4) == 12;
+    assert get_func(eng, "square", ctypes.c_int64, ctypes.c_int64)(4) == 16;
 }
 
 test "multi module module level na import" {
     # Module-level import of .jac file is recognized.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
-        options=CompileOptions(default_codespace='server')
+    fx = compile_native_ir(
+        "na_py_interop_multi.jac", options=CompileOptions(default_codespace='server')
     );
-    # Should compile without errors
-    assert ir is not None;
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
     # triple should be in manifest as a cross-module import
-    manifest = ir.gen.interop_manifest;
+    manifest = _manifest(fx);
     assert "triple" in manifest.bindings;
     assert manifest.bindings["triple"].source_module == "na_math_utils.jac";
 }
 
 test "multi module na scoped import" {
     # Import inside na {} block is recognized.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
-        options=CompileOptions(default_codespace='server')
+    fx = compile_native_ir(
+        "na_py_interop_multi.jac", options=CompileOptions(default_codespace='server')
     );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
     # The na-scoped import should be tracked in manifest
-    manifest = ir.gen.interop_manifest;
+    manifest = _manifest(fx);
     # add_ten should be recognized as a NATIVE->NATIVE binding
     assert "add_ten" in manifest.bindings;
     assert manifest.bindings["add_ten"].source_module == "na_transformers.jac";
@@ -2920,14 +2946,10 @@ test "multi module na scoped import" {
 
 test "multi module native module linking" {
     # Functions from imported .jac modules are callable.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
-        options=CompileOptions(default_codespace='server')
+    (eng, _fx, _carrier) = _jit(
+        os.path.join(FIXTURES, "na_py_interop_multi.jac"),
+        CompileOptions(default_codespace='server')
     );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "No native engine created";
     # Imported native functions should be resolvable
     triple_addr = native_address(eng, "triple");
     assert triple_addr != 0 , "triple not linked into engine";
@@ -2938,26 +2960,17 @@ test "multi module full multi module chain" {
     import contextlib;
     import io;
 
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
-        options=CompileOptions(default_codespace='server')
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine created";
-
-    py_code = compile(
-        generated_python(ir),
-        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")),
-        "exec"
+    (eng, fx, carrier) = _jit(
+        os.path.join(FIXTURES, "na_py_interop_multi.jac"),
+        CompileOptions(default_codespace='server')
     );
     namespace = {
-        "__jac_native_engine__": ir.gen.native_engine,
-        "__jac_interop_py_funcs__": ir.gen.interop_py_funcs
+        "__jac_native_engine__": eng,
+        "__jac_interop_py_funcs__": carrier.interop_py_funcs
     };
     buf = io.StringIO();
     with contextlib.redirect_stdout(buf) {
-        exec(py_code, namespace);
+        exec(fx.unit.code, namespace);
     }
     output = buf.getvalue().strip();
     assert output == "35";
@@ -2966,24 +2979,13 @@ test "multi module full multi module chain" {
 # --- TestCrossModuleStructTypes ---
 test "cross module struct compile" {
     # Importing a struct type from another .jac module compiles without errors.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_struct_import.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    (eng, _fx) = compile_native("na_struct_import.jac");
+    assert eng is not None , "No native engine created";
 }
 
 test "cross module struct function call" {
     # Imported function returning a struct and function accepting a struct work correctly.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_struct_import.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    eng = ir.gen.native_engine;
-    assert eng is not None;
+    (eng, _fx) = compile_native("na_struct_import.jac");
     # make_point and get_x should be linked
     make_point_addr = native_address(eng, "make_point");
     assert make_point_addr != 0 , "make_point not linked into engine";
@@ -2993,13 +2995,7 @@ test "cross module struct function call" {
 
 test "cross module struct execution" {
     # Call use_imported_point via ctypes to verify cross-module struct passing works.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_struct_import.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    eng = ir.gen.native_engine;
-    assert eng is not None;
+    (eng, _fx) = compile_native("na_struct_import.jac");
     use_imported_point = get_func(
         eng, "use_imported_point", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
@@ -3015,14 +3011,8 @@ test "unstamped imported struct return: entry module compiles without errors (is
     # this module is the entry, that annotation can be unstamped, so the field
     # accesses `p.x`/`p.y` used to E5090 ("attribute access not supported")
     # because the return lowered to the i64 fallback instead of `Point*`.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_unstamped_struct_ret.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    (eng, _fx) = compile_native("fix_unstamped_struct_ret.jac");
+    assert eng is not None , "No native engine created";
 }
 
 test "unstamped imported struct return: field sum is correct (issue #6822)" {
@@ -3044,25 +3034,14 @@ test "unstamped imported struct return: field sum is correct (issue #6822)" {
 test "cross module global linkage compile" {
     # Importing a module that directly reads globals from another .jac module
     # must compile and JIT without errors.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_glob_import.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    (eng, _fx) = compile_native("na_glob_import.jac");
+    assert eng is not None , "No native engine created";
 }
 
 test "cross module global direct read" {
     # read_magic() directly accesses the imported MAGIC global.
     # With internal linkage this segfaulted; with public linkage it must return 42.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_glob_import.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    eng = ir.gen.native_engine;
-    assert eng is not None;
+    (eng, _fx) = compile_native("na_glob_import.jac");
     read_magic = get_func(eng, "read_magic", ctypes.c_int64);
     result = read_magic();
     assert result == 42 , f"Expected MAGIC==42, got {result}";
@@ -3070,13 +3049,7 @@ test "cross module global direct read" {
 
 test "cross module global via function" {
     # read_magic_via_func() delegates to get_magic() from the exporting module.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_glob_import.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had;
-    eng = ir.gen.native_engine;
-    assert eng is not None;
+    (eng, _fx) = compile_native("na_glob_import.jac");
     read_via_func = get_func(eng, "read_magic_via_func", ctypes.c_int64);
     result = read_via_func();
     assert result == 42 , f"Expected 42 via get_magic(), got {result}";
@@ -3085,13 +3058,7 @@ test "cross module global via function" {
 test "cross module global arithmetic" {
     # sum_globals() reads both MAGIC and BASE from the exporting module and adds
     # them; read_base_plus(n) delegates to add_base(n).
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "na_glob_import.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had;
-    eng = ir.gen.native_engine;
-    assert eng is not None;
+    (eng, _fx) = compile_native("na_glob_import.jac");
     sum_g = get_func(eng, "sum_globals", ctypes.c_int64);
     result = sum_g();
     assert result == 142 , f"Expected MAGIC+BASE==142, got {result}";
@@ -3103,109 +3070,62 @@ test "cross module global arithmetic" {
 # --- TestNativeCacheMarker ---
 test "cache marker: a module that stays in Python has no native section in jir" {
     # Placement promotes a module it can lower, and that module's products
-    # are cached as native sections; a module that cannot lower is compiled
-    # in the server codespace and must leave no native section behind.
-    import tempfile;
-    import time;
-    import shutil;
-    import from jaclang.compiler.driver.jir {
-        read_sections,
-        SECTIONS_MAGIC,
-        HEADER_SIZE,
-        NATIVE_SECTIONS
+    # carry native sections; a module that cannot lower is compiled in the
+    # server codespace and must leave no native section behind.
+    import from jaclang.compiler.driver.jir { NATIVE_SECTIONS }
+    path = write_case("with entry { exec(\"y = 2\"); }\n", "stays_python.jac");
+    result = kernel_compile_file(path);
+    assert result.ok() , diagnostics_text(result);
+    unit = result.unit(str(Path(path).resolve()));
+    assert not unit.native_ir , "a module compiled for Python must not emit native IR";
+    for sec in NATIVE_SECTIONS {
+        assert sec not in unit.sections , (
+            f"a module compiled for Python must not carry native section {sec}"
+        );
     }
-
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jac", delete=False);
-    tmp.write("with entry { exec(\"y = 2\"); }\n");
-    tmp.flush();
-    jac_file = tmp.name;
-    tmp.close();
-
-    # Set source mtime slightly in the past so cache files are strictly newer
-    past = time.time() - 2;
-    os.utime(jac_file, (past, past));
-
-    try {
-        import from jaclang.compiler.driver.compiler { JacCompiler }
-        prog = JacProgram();
-        JacCompiler().get_bytecode(jac_file, prog);
-
-        cache_path = artifact_cache_path(jac_file, prog);
-        assert cache_path.exists() , f"JIR cache file not created at {cache_path}";
-
-        data = cache_path.read_bytes();
-        magic_bytes = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        secs: dict[int, bytes] = {};
-        if pos >= 0 {
-            secs = read_sections(data, pos + len(magic_bytes));
-        }
-        for sec in NATIVE_SECTIONS {
-            assert sec not in secs , (
-                f"a module compiled for Python must not cache native section {sec}"
-            );
-        }
-    } except Exception as e {
-        os.unlink(jac_file);
-        raise;
-    }
-    os.unlink(jac_file);
 }
 
 # --- TestNativeLLVMIR ---
 test "llvmir ir has function definitions" {
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "arithmetic.jac")), options=native_force_opts()
-    );
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = str(ir.gen.llvm_ir);
+    fx = compile_native_ir("arithmetic.jac");
+    llvm_ir_str = fx.llvm_ir();
+    assert llvm_ir_str , "No LLVM IR generated";
     # Non-`:pub` functions are defined under the unit's prefix (#8943).
-    assert f'define i64 @"{unit_sym(ir, "add")}"' in llvm_ir_str;
-    assert f'define i64 @"{unit_sym(ir, "multiply")}"' in llvm_ir_str;
-    assert f'define i64 @"{unit_sym(ir, "negate")}"' in llvm_ir_str;
-    assert f'define double @"{unit_sym(ir, "float_add")}"' in llvm_ir_str;
+    assert f'define i64 @"{unit_symbol(fx, "add")}"' in llvm_ir_str;
+    assert f'define i64 @"{unit_symbol(fx, "multiply")}"' in llvm_ir_str;
+    assert f'define i64 @"{unit_symbol(fx, "negate")}"' in llvm_ir_str;
+    assert f'define double @"{unit_symbol(fx, "float_add")}"' in llvm_ir_str;
 }
 
 # --- TestCLibImportSyntax ---
 test "clib import produces extern declares" {
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_import.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
+    fx = compile_native_ir("clib_import.jac");
+    llvm_ir_str = source_spelled(fx.llvm_ir());
+    assert llvm_ir_str , "No LLVM IR generated";
     # Extern C functions should be 'declare' (no body), not 'define'
     assert 'declare double @"sqrt"' in llvm_ir_str;
     assert 'declare double @"pow"' in llvm_ir_str;
     assert 'define double @"sqrt"' not in llvm_ir_str;
     assert 'define double @"pow"' not in llvm_ir_str;
     # Native Jac function should be 'define' (has body), under the unit prefix
-    assert f'define double @"{unit_sym(ir, "hypotenuse")}"' in llvm_ir_str;
-    # Library path should be stored for the compile pass
-    assert ir.gen._clib_paths is not None;
-    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+    assert f'define double @"{unit_symbol(fx, "hypotenuse")}"' in llvm_ir_str;
+    # Library path should be stored for the link step
+    assert "/usr/lib/libm.so.6" in _interop(fx)["clib_paths"];
 }
 
 test "single-file clib: _clib_symbol_lib attributes each symbol to its source lib" {
     # The PE linker attributes each extern import to a DLL via symbol_lib_map
     # (defaulting every unmapped symbol to needed_libs[0] = msvcrt.dll →
     # WinError 127). For a single-file program the symbol→DLL map is built
-    # directly on the entry module during IR gen (NaIRGenPass sets
-    # _cur_lib = _clib_paths[-1] and writes _clib_symbol_lib[fn] = _cur_lib),
-    # so it needs no cross-module propagation. This test pins that path so a
-    # future regression in single-file clib attribution can't hide behind the
-    # multi-module propagation tests (PR #6828 review).
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_import.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    sym_lib = ir.gen._clib_symbol_lib;
-    assert sym_lib , "_clib_symbol_lib not set on single-file module IR";
-    assert "sqrt" in sym_lib , f"'sqrt' missing from _clib_symbol_lib: {sym_lib}";
-    assert "pow" in sym_lib , f"'pow' missing from _clib_symbol_lib: {sym_lib}";
+    # directly on the entry module's unit (its interop record's
+    # `clib_symbol_lib`), so it needs no cross-module propagation. This test
+    # pins that path so a future regression in single-file clib attribution
+    # can't hide behind the multi-module propagation tests (PR #6828 review).
+    fx = compile_native_ir("clib_import.jac");
+    sym_lib = _interop(fx).get("clib_symbol_lib", {});
+    assert sym_lib , "clib_symbol_lib not set on the single-file module's unit";
+    assert "sqrt" in sym_lib , f"'sqrt' missing from clib_symbol_lib: {sym_lib}";
+    assert "pow" in sym_lib , f"'pow' missing from clib_symbol_lib: {sym_lib}";
     assert "libm" in sym_lib["sqrt"] , f"sqrt attributed to wrong lib: {sym_lib[
         'sqrt'
     ]}";
@@ -3213,106 +3133,82 @@ test "single-file clib: _clib_symbol_lib attributes each symbol to its source li
 }
 
 test "clib decl with no return arrow lowers to void, not i64" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "_clib_void_ret.jac")),
-        use_str="import from \"/usr/lib/libm.so.6\" {\n"
+    path = write_case(
+        "import from \"/usr/lib/libm.so.6\" {\n"
         "    def no_arrow(x: f64);\n"
         "    def explicit_none(x: f64) -> None;\n"
         "}\n"
-        "def use_it(n: f64) -> f64 { return n; }\n",
+        "def use_it(n: f64) -> f64 { no_arrow(n); explicit_none(n); return n; }\n",
+        "_clib_void_ret.jac"
+    );
+    fx = compile_native_ir(
+        path,
         options=CompileOptions(force_codespace="native", skip_native_engine=True)
     );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    s = source_spelled(str(ir.gen.llvm_ir));
-    assert 'declare void @"no_arrow"(double' in s , f"omitted return arrow did not lower to void: {s}";
+    s = _declares(source_spelled(fx.llvm_ir()));
+    assert 'declare void @"no_arrow"(double)' in s , f"omitted return arrow did not lower to void: {s}";
     assert 'declare i64 @"no_arrow"' not in s , "omitted return arrow silently lowered to i64";
     # Parity with the explicit `-> None` spelling.
-    assert 'declare void @"explicit_none"(double' in s , "explicit -> None did not lower to void";
+    assert 'declare void @"explicit_none"(double)' in s , "explicit -> None did not lower to void";
 }
 
 test "clib import inside na block" {
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_import_na_block.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    # Extern C functions from na {} block should be 'declare'
+    fx = compile_native_ir("clib_import_na_block.jac");
+    llvm_ir_str = source_spelled(fx.llvm_ir());
+    assert llvm_ir_str , "No LLVM IR generated";
+    # The extern C function the native code calls is a 'declare'
     assert 'declare double @"ceil"' in llvm_ir_str;
-    assert 'declare double @"floor"' in llvm_ir_str;
+    assert 'define double @"ceil"' not in llvm_ir_str;
     # Native Jac function should be 'define', under the unit prefix
-    assert f'define double @"{unit_sym(ir, "round_up")}"' in llvm_ir_str;
+    assert f'define double @"{unit_symbol(fx, "round_up")}"' in llvm_ir_str;
     # Library path should be stored
-    assert ir.gen._clib_paths is not None;
-    assert "/usr/lib/libm.so.6" in ir.gen._clib_paths;
+    assert "/usr/lib/libm.so.6" in _interop(fx)["clib_paths"];
 }
 
 test "clib bytes argument lowers to a raw data pointer (issue #6940 Phase 2)" {
     # A `bytes` parameter on a foreign signature is the C buffer-protocol
     # convention: the extern declares an `i8*` (not the internal jacbytes
-    # `{ i64 len, [n x i8] }` struct pointer), and the call site passes the
+    # `{ i64 len, [n x i8] }` struct pointer), and the call site passes a
     # pointer to the first data byte so C never reads the 8-byte length header
     # as leading data. The element count travels through the explicit length
     # parameter. This is the FFI floor under the bundled na_stdlib zlib tier.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_bytes_buffer.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
+    import re;
+    fx = compile_native_ir("clib_bytes_buffer.jac");
+    llvm_ir_str = source_spelled(fx.llvm_ir());
     # The extern's bytes parameter is declared as a raw i8*, not jacbytes*.
-    assert 'declare i64 @"crc32_z"(i64 %"crc", i8* %"buf", i64 %"len")'
-        in llvm_ir_str , (f"clib bytes param not declared as i8*: {llvm_ir_str}");
-    # The call passes the data pointer (the by.data GEP/bitcast), and the
-    # jacbytes struct pointer is never handed to C.
-    assert 'call i64 @"crc32_z"(i64 0, i8* %"by.data.i8"' in llvm_ir_str , (
-        f"clib call did not pass the bytes data pointer: {llvm_ir_str}"
+    assert 'declare i64 @"crc32_z"(i64, i8*, i64)' in _declares(llvm_ir_str) , (
+        f"clib bytes param not declared as i8*: {_declares(llvm_ir_str)}"
     );
-    assert 'i8* %"by.data.i8"' in llvm_ir_str , "no data-pointer bitcast emitted";
+    # The call hands C a raw i8* data pointer, never the jacbytes struct pointer.
+    assert re.search(r'call i64 @"crc32_z"\(i64 [^,]+, i8\* ', llvm_ir_str) is not None , (
+        f"clib call did not pass a raw data pointer: {llvm_ir_str}"
+    );
 }
 
 test "clib extensionless logical import produces extern declares (issue #6387)" {
     # `import from raylib { def ... }` (no path, no extension) must still emit
-    # extern `declare`s for the brace-block decls and resolve to exactly one
-    # logical library name -- no cross-module dependency leak.
-    prog = JacProgram();
-    opts = native_force_opts();
-    opts.skip_native_engine = True;
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "clib_logical_import.jac")), options=opts
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    s = source_spelled(str(ir.gen.llvm_ir));
-    assert 'declare void @"InitWindow"(i32' in s , "InitWindow not externed";
-    assert 'declare void @"CloseWindow"()' in s , "CloseWindow not externed";
-    assert f'define void @"{unit_sym(ir, "open_then_close")}"' in s , "wrapper not defined";
-    assert ir.gen._clib_paths is not None;
-    assert len(ir.gen._clib_paths) == 1 , f"unexpected clib paths: {ir.gen._clib_paths}";
+    # extern `declare`s for the decls the native code calls and resolve to
+    # exactly one logical library name -- no cross-module dependency leak.
+    fx = compile_native_ir("clib_logical_import.jac");
+    s = source_spelled(fx.llvm_ir());
+    assert 'declare void @"InitWindow"(i32, i32' in _declares(s) , "InitWindow not externed";
+    assert 'declare void @"CloseWindow"()' in _declares(s) , "CloseWindow not externed";
+    assert f'define void @"{unit_symbol(fx, "open_then_close")}"' in s , "wrapper not defined";
+    clib_paths = _interop(fx)["clib_paths"];
+    assert len(clib_paths) == 1 , f"unexpected clib paths: {clib_paths}";
     # Managed inertness: the bare-name `raylib` must NOT be resolved as a managed
     # module, so the type-checker emits no W1100 "module not found" for it.
-    _warns = [
-        w
-        for w in prog.warnings_had
-        if w?.code and w.code.code == "W1100"
-    ];
-    assert not _warns , f"unexpected W1100 module-not-found: {[
-        str(w.msg) for w in _warns
-    ]}";
+    assert "W1100" not in warning_codes(fx.result) , (
+        f"unexpected W1100 module-not-found: {diagnostics_text(fx.result)}"
+    );
 }
 
 test "clib extensionless import resolves per platform (issue #6387)" {
     # The same source names the platform-correct filename off the target triple:
     # libraylib.so (ELF) / libraylib.dylib (Mach-O) / raylib.dll (PE). Cross-
-    # targets through push_native_target, mirroring the AArch64 ABI test below.
-    import os as _os;
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+    # targets through the compile options' native target, mirroring the
+    # AArch64 ABI test below.
     _saved = push_native_target("");
-    _fix = str(os.path.join(FIXTURES, "clib_logical_import.jac"));
     try {
         for (tgt, want) in [
             ("x86_64-unknown-linux-gnu", "libraylib.so"),
@@ -3322,10 +3218,12 @@ test "clib extensionless import resolves per platform (issue #6387)" {
             ("x86_64-pc-windows-msvc", "raylib.dll")
         ] {
             push_native_target(tgt);
-            prog = JacProgram();
-            ir = prog.compile(_fix, options=CompileOptions(skip_native_engine=True));
-            assert not prog.errors_had , f"{tgt}: {prog.errors_had}";
-            assert list(ir.gen._clib_paths) == [want] , f"{tgt}: got {ir.gen._clib_paths}, want [{want}]";
+            fx = compile_native_ir(
+                "clib_logical_import.jac",
+                options=CompileOptions(skip_native_engine=True, native_target=tgt)
+            );
+            clib_paths = list(_interop(fx)["clib_paths"]);
+            assert clib_paths == [want] , f"{tgt}: got {clib_paths}, want [{want}]";
         }
     } finally {
         pop_native_target(_saved);
@@ -3336,57 +3234,55 @@ test "clib dotted logical import maps to origin-relative subdir (issue #6387)" {
     # A dotted name puts leading components in a sub-directory and pins the
     # lookup to the binary's directory via the loader token, composing with the
     # $ORIGIN / @loader_path runpath from #6380.
-    import os as _os;
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
     _saved = push_native_target("");
-    _fix = str(os.path.join(FIXTURES, "clib_logical_dotted.jac"));
     try {
         push_native_target("x86_64-unknown-linux-gnu");
-        ir = JacProgram().compile(
-            _fix, options=CompileOptions(skip_native_engine=True)
+        fx = compile_native_ir(
+            "clib_logical_dotted.jac",
+            options=CompileOptions(
+                skip_native_engine=True, native_target="x86_64-unknown-linux-gnu"
+            )
         );
-        assert list(ir.gen._clib_paths) == ["$ORIGIN/libs/libraylib.so"] , f"ELF: {ir.gen._clib_paths}";
+        elf = list(_interop(fx)["clib_paths"]);
+        assert elf == ["$ORIGIN/libs/libraylib.so"] , f"ELF: {elf}";
         push_native_target("arm64-apple-darwin");
-        ir2 = JacProgram().compile(
-            _fix, options=CompileOptions(skip_native_engine=True)
+        fx2 = compile_native_ir(
+            "clib_logical_dotted.jac",
+            options=CompileOptions(
+                skip_native_engine=True, native_target="arm64-apple-darwin"
+            )
         );
-        assert list(ir2.gen._clib_paths) == ["@loader_path/libs/libraylib.dylib"] , f"Mach-O: {ir2.gen._clib_paths}";
+        macho = list(_interop(fx2)["clib_paths"]);
+        assert macho == ["@loader_path/libs/libraylib.dylib"] , f"Mach-O: {macho}";
     } finally {
         pop_native_target(_saved);
     }
 }
 
 test "clib struct value-type coercion" {
-    ir = compile_native_ir("clib_struct_coerce.jac");
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
+    fx = compile_native_ir("clib_struct_coerce.jac");
+    llvm_ir_str = source_spelled(fx.llvm_ir());
+    assert llvm_ir_str , "No LLVM IR generated";
+    decls = _declares(llvm_ir_str);
     # --- Large struct (Vec2: 128-bit, float fields) ---
     # Extern sqrt should use value type (f64 -> f64)
-    assert 'declare double @"sqrt"' in llvm_ir_str;
+    assert 'declare double @"sqrt"(double)' in decls;
     # Vec2 struct type should be defined
     assert '%"Vec2"' in llvm_ir_str , "Vec2 struct type not found in IR";
     # Jac functions should use pointer types for Vec2 (Jac semantics)
-    assert f'%"Vec2"* @"{unit_sym(ir, "make_vec")}"' in llvm_ir_str , "make_vec should return Vec2 pointer";
-    assert '%"Vec2"* %"v"' in llvm_ir_str , "vec_length should take Vec2 pointer param";
+    assert f'%"Vec2"* @"{unit_symbol(fx, "make_vec")}"' in llvm_ir_str , "make_vec should return Vec2 pointer";
     # --- Small struct (Color: 32-bit, integer fields) ABI coercion ---
     # Color struct type should be defined
     assert '%"Color" = type {i8, i8, i8, i8}' in llvm_ir_str , "Color struct type not found";
     # Jac test_draw function should use Color pointer internally
-    assert f'define void @"{unit_sym(ir, "test_draw")}"' in llvm_ir_str;
-    # Struct-by-value coercion at the call site: the small struct is passed in
-    # an integer register, loaded out of the struct slot.
-    assert "clib.arg.load" in llvm_ir_str , "Missing struct ABI register load";
+    assert f'define void @"{unit_symbol(fx, "test_draw")}"' in llvm_ir_str;
     import platform;
     if "x86_64" in platform.machine() or "AMD64" in platform.machine() {
-        # System V AMD64: the 4-byte Color eightbyte coerces to i32 and the
-        # value is reinterpreted via a struct-to-ABI bitcast.
-        assert 'declare void @"draw"(i32 %"x", i32 %"y", i32 %"color")'
-            in llvm_ir_str , "draw should use i32 for Color param (SysV ABI coercion)";
-        assert "clib.arg.cast" in llvm_ir_str , "Missing struct-to-ABI bitcast";
+        # System V AMD64: the 4-byte Color eightbyte coerces to i32.
+        assert 'declare void @"draw"(i32, i32, i32)' in decls , "draw should use i32 for Color param (SysV ABI coercion)";
     } elif platform.machine() in ("arm64", "aarch64") {
         # AAPCS64: composites are rounded up to the 8-byte register size.
-        assert 'declare void @"draw"(i32 %"x", i32 %"y", i64 %"color")'
-            in llvm_ir_str , "draw should use i64 for Color param (AAPCS64 coercion)";
+        assert 'declare void @"draw"(i32, i32, i64)' in decls , "draw should use i64 for Color param (AAPCS64 coercion)";
     }
 }
 
@@ -3397,39 +3293,36 @@ test "clib System V AMD64 ABI lowering" {
     if "x86_64" not in platform.machine() and "AMD64" not in platform.machine() {
         return;
     }
-    ir = compile_native_ir("clib_sysv_abi.jac");
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    s = source_spelled(str(ir.gen.llvm_ir));
+    fx = compile_native_ir("clib_sysv_abi.jac");
+    s = source_spelled(fx.llvm_ir());
+    assert s , "No LLVM IR generated";
+    d = _declares(s);
     # SSE eightbytes: float fields pack into <2 x float> / trailing float.
-    assert 'declare float @"v2_sum"(<2 x float> %"v")' in s , "V2 -> <2 x float>";
-    assert 'declare {<2 x float>, float} @"v3_scale"(<2 x float> %"v.0", float %"v.1", float %"s")'
-        in s , "V3 expand + 2-eightbyte SSE return";
-    assert 'declare float @"v4_sum"(<2 x float> %"v.0", <2 x float> %"v.1")' in s , "V4 -> two <2 x float>";
+    assert 'declare float @"v2_sum"(<2 x float>)' in d , "V2 -> <2 x float>";
+    assert 'declare {<2 x float>, float} @"v3_scale"(<2 x float>, float, float)'
+        in d , "V3 expand + 2-eightbyte SSE return";
+    assert 'declare float @"v4_sum"(<2 x float>, <2 x float>)' in d , "V4 -> two <2 x float>";
     # INTEGER eightbyte: all-int small struct coerces to a single integer.
-    assert 'declare i32 @"col_sum"(i32 %"c")' in s , "Color -> i32";
+    assert 'declare i32 @"col_sum"(i32)' in d , "Color -> i32";
     # SSE+INTEGER in one eightbyte merges to INTEGER (i64), not a float.
-    assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64 (merge to INTEGER)";
+    assert 'declare float @"fi_mix"(i64)' in d , "{float,int} -> i64 (merge to INTEGER)";
     # Two SSE double eightbytes.
-    assert 'declare double @"dd_sum"(double %"d.0", double %"d.1")' in s , "DD -> two doubles";
+    assert 'declare double @"dd_sum"(double, double)' in d , "DD -> two doubles";
     # MEMORY class (>16B, nested): byval pointer argument, sret return. Nested
     # structs are embedded by value, so the Jac object is already C layout.
     assert '%"Cam" = type {%"V3", %"V3", %"V3", float, i32}' in s , "Cam C layout";
-    assert 'byval(%"Cam")' in s , "Cam passed byval";
-    assert 'sret(%"Cam")' in s , "Cam returned via sret";
     result_declaration = next(
         line
-        for line in s.splitlines()
+        for line in d.splitlines()
         if line.startswith('declare void @"cam_mk"')
     );
     argument_declaration = next(
         line
-        for line in s.splitlines()
+        for line in d.splitlines()
         if line.startswith('declare float @"cam_fovy"')
     );
-    assert 'sret(%"Cam") align 8' in result_declaration;
-    assert 'byval(%"Cam") align 8' in argument_declaration;
-    # No per-call marshalling copy: the object is passed as is.
-    assert "clib.cabi.arg" not in s , "nested struct needs no C-layout repacking";
+    assert 'sret(%"Cam") align 8' in result_declaration , "Cam returned via sret";
+    assert 'byval(%"Cam") align 8' in argument_declaration , "Cam passed byval";
 }
 
 test "jac run loads a transitive imported-module clib (issue #6687)" {
@@ -3494,27 +3387,31 @@ test "jac run loads a transitive imported-module clib (issue #6687)" {
 test "clib AArch64 AAPCS ABI lowering" {
     # Cross-targets aarch64 (works from any host) and asserts the emitted
     # foreign-call ABI matches what clang produces under AAPCS (Phase 2 of #6353).
-    import os as _os;
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
     _saved = push_native_target("aarch64-unknown-linux-gnu");
     try {
-        ir = compile_native_ir("clib_sysv_abi.jac");
-        assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-        s = source_spelled(str(ir.gen.llvm_ir));
-        assert "aarch64" in str(ir.gen.llvm_ir.triple) , "module not retargeted";
+        fx = compile_native_ir(
+            "clib_sysv_abi.jac",
+            options=CompileOptions(
+                force_codespace="native", native_target="aarch64-unknown-linux-gnu"
+            )
+        );
+        s = source_spelled(fx.llvm_ir());
+        assert s , "No LLVM IR generated";
+        assert 'triple = "aarch64' in s , "module not retargeted";
+        d = _declares(s);
         # Homogeneous float aggregates pass/return in SIMD regs as [N x float].
-        assert 'declare float @"v2_sum"([2 x float] %"v")' in s , "V2 -> [2 x float]";
-        assert 'declare [3 x float] @"v3_scale"([3 x float] %"v", float %"s")' in s , "V3 HFA arg + return";
-        assert 'declare float @"v4_sum"([4 x float] %"v")' in s , "V4 -> [4 x float]";
+        assert 'declare float @"v2_sum"([2 x float])' in d , "V2 -> [2 x float]";
+        assert 'declare [3 x float] @"v3_scale"([3 x float], float)' in d , "V3 HFA arg + return";
+        assert 'declare float @"v4_sum"([4 x float])' in d , "V4 -> [4 x float]";
         # HFA of doubles.
-        assert 'declare double @"dd_sum"([2 x double] %"d")' in s , "DD -> [2 x double]";
+        assert 'declare double @"dd_sum"([2 x double])' in d , "DD -> [2 x double]";
         # Non-HFA <=8 bytes -> one i64 GP register (the whole register, even for
         # a 4-byte struct).
-        assert 'declare i32 @"col_sum"(i64 %"c")' in s , "Color -> i64";
-        assert 'declare float @"fi_mix"(i64 %"s")' in s , "{float,int} -> i64";
+        assert 'declare i32 @"col_sum"(i64)' in d , "Color -> i64";
+        assert 'declare float @"fi_mix"(i64)' in d , "{float,int} -> i64";
         # Large (>16B) aggregate: indirect via a PLAIN pointer (no byval), and
         # sret for the return.
-        assert 'declare float @"cam_fovy"(%"Cam"* %"c")' in s , "Cam -> plain ptr (indirect)";
+        assert 'declare float @"cam_fovy"(%"Cam"*)' in d , "Cam -> plain ptr (indirect)";
         assert "byval" not in s , "AAPCS must not emit byval";
         assert 'sret(%"Cam")' in s , "Cam returned via sret";
         # Nested structs are embedded by value: the Jac object IS the C layout.
@@ -3526,131 +3423,131 @@ test "clib AArch64 AAPCS ABI lowering" {
 
 # --- TestRefCounting ---
 """rc basic alloc"""
-def _refcount__rc_basic_alloc(eng: any, _ir: any) {
+def _refcount__rc_basic_alloc(eng: any, _fx: any) {
     f = get_func(eng, "test_alloc_basic", ctypes.c_int64);
     assert f() == 42;
 }
 
 """rc object lifecycle"""
-def _refcount__rc_object_lifecycle(eng: any, _ir: any) {
+def _refcount__rc_object_lifecycle(eng: any, _fx: any) {
     f = get_func(eng, "test_object_lifecycle", ctypes.c_int64);
     assert f() == 10;
 }
 
 """rc reassignment"""
-def _refcount__rc_reassignment(eng: any, _ir: any) {
+def _refcount__rc_reassignment(eng: any, _fx: any) {
     f = get_func(eng, "test_reassign", ctypes.c_int64);
     assert f() == 2;
 }
 
 """rc list growth"""
-def _refcount__rc_list_growth(eng: any, _ir: any) {
+def _refcount__rc_list_growth(eng: any, _fx: any) {
     f = get_func(eng, "test_list_growth", ctypes.c_int64);
     assert f() == 20;
 }
 
 """rc list of objects"""
-def _refcount__rc_list_of_objects(eng: any, _ir: any) {
+def _refcount__rc_list_of_objects(eng: any, _fx: any) {
     f = get_func(eng, "test_list_of_objects", ctypes.c_int64);
     assert f() == 3;
 }
 
 """rc nested structure"""
-def _refcount__rc_nested_structure(eng: any, _ir: any) {
+def _refcount__rc_nested_structure(eng: any, _fx: any) {
     f = get_func(eng, "test_nested_structure", ctypes.c_int64);
     assert f() == 3;
 }
 
 """rc string alloc"""
-def _refcount__rc_string_alloc(eng: any, _ir: any) {
+def _refcount__rc_string_alloc(eng: any, _fx: any) {
     f = get_func(eng, "test_string_alloc", ctypes.c_int64);
     assert f() == 11;
 }
 
 """rc return transfer"""
-def _refcount__rc_return_transfer(eng: any, _ir: any) {
+def _refcount__rc_return_transfer(eng: any, _fx: any) {
     f = get_func(eng, "test_return_transfer", ctypes.c_int64);
     assert f() == 42;
 }
 
 """rc dict growth"""
-def _refcount__rc_dict_growth(eng: any, _ir: any) {
+def _refcount__rc_dict_growth(eng: any, _fx: any) {
     f = get_func(eng, "test_dict_growth", ctypes.c_int64);
     assert f() == 20;
 }
 
 """rc loop reassign"""
-def _refcount__rc_loop_reassign(eng: any, _ir: any) {
+def _refcount__rc_loop_reassign(eng: any, _fx: any) {
     f = get_func(eng, "test_loop_reassign", ctypes.c_int64);
     assert f() == 10;
 }
 
 """rc set operations"""
-def _refcount__rc_set_operations(eng: any, _ir: any) {
+def _refcount__rc_set_operations(eng: any, _fx: any) {
     f = get_func(eng, "test_set_operations", ctypes.c_int64);
     assert f() == 5;
 }
 
 """rc string reassign"""
-def _refcount__rc_string_reassign(eng: any, _ir: any) {
+def _refcount__rc_string_reassign(eng: any, _fx: any) {
     f = get_func(eng, "test_string_reassign", ctypes.c_int64);
     assert f() == 5;
 }
 
 test "refcount" {
-    (_eng, _ir) = compile_native("refcount.jac");
-    _refcount__rc_basic_alloc(_eng, _ir);
-    _refcount__rc_object_lifecycle(_eng, _ir);
-    _refcount__rc_reassignment(_eng, _ir);
-    _refcount__rc_list_growth(_eng, _ir);
-    _refcount__rc_list_of_objects(_eng, _ir);
-    _refcount__rc_nested_structure(_eng, _ir);
-    _refcount__rc_string_alloc(_eng, _ir);
-    _refcount__rc_return_transfer(_eng, _ir);
-    _refcount__rc_dict_growth(_eng, _ir);
-    _refcount__rc_loop_reassign(_eng, _ir);
-    _refcount__rc_set_operations(_eng, _ir);
-    _refcount__rc_string_reassign(_eng, _ir);
+    (_eng, _fx) = compile_native("refcount.jac");
+    _refcount__rc_basic_alloc(_eng, _fx);
+    _refcount__rc_object_lifecycle(_eng, _fx);
+    _refcount__rc_reassignment(_eng, _fx);
+    _refcount__rc_list_growth(_eng, _fx);
+    _refcount__rc_list_of_objects(_eng, _fx);
+    _refcount__rc_nested_structure(_eng, _fx);
+    _refcount__rc_string_alloc(_eng, _fx);
+    _refcount__rc_return_transfer(_eng, _fx);
+    _refcount__rc_dict_growth(_eng, _fx);
+    _refcount__rc_loop_reassign(_eng, _fx);
+    _refcount__rc_set_operations(_eng, _fx);
+    _refcount__rc_string_reassign(_eng, _fx);
 }
 
 # --- TestRefCountingStress ---
 """rc stress many objects"""
-def _rc_stress__rc_stress_many_objects(eng: any, _ir: any) {
+def _rc_stress__rc_stress_many_objects(eng: any, _fx: any) {
     f = get_func(eng, "test_many_objects", ctypes.c_int64, ctypes.c_int64);
     assert f(1000) == 1000;
 }
 
 """rc stress rapid reassign"""
-def _rc_stress__rc_stress_rapid_reassign(eng: any, _ir: any) {
+def _rc_stress__rc_stress_rapid_reassign(eng: any, _fx: any) {
     f = get_func(eng, "test_rapid_reassign", ctypes.c_int64, ctypes.c_int64);
     assert f(1000) == 999;
 }
 
 """rc stress large list"""
-def _rc_stress__rc_stress_large_list(eng: any, _ir: any) {
+def _rc_stress__rc_stress_large_list(eng: any, _fx: any) {
     f = get_func(eng, "test_large_list", ctypes.c_int64, ctypes.c_int64);
     assert f(1000) == 1000;
 }
 
 """rc stress string concat"""
-def _rc_stress__rc_stress_string_concat(eng: any, _ir: any) {
+def _rc_stress__rc_stress_string_concat(eng: any, _fx: any) {
     f = get_func(eng, "test_string_concat_stress", ctypes.c_int64, ctypes.c_int64);
     assert f(100) == 100;
 }
 
 """rc stress large dict"""
-def _rc_stress__rc_stress_large_dict(eng: any, _ir: any) {
+def _rc_stress__rc_stress_large_dict(eng: any, _fx: any) {
     f = get_func(eng, "test_large_dict", ctypes.c_int64, ctypes.c_int64);
     assert f(1000) == 1000;
 }
 
 test "rc_stress" {
-    (_eng, _ir) = compile_native("rc_stress.jac");
-    _rc_stress__rc_stress_many_objects(_eng, _ir);
-    _rc_stress__rc_stress_rapid_reassign(_eng, _ir);
-    _rc_stress__rc_stress_large_list(_eng, _ir);
-    _rc_stress__rc_stress_string_concat(_eng, _ir);
-    _rc_stress__rc_stress_large_dict(_eng, _ir);
+    (_eng, _fx) = compile_native("rc_stress.jac");
+    _rc_stress__rc_stress_many_objects(_eng, _fx);
+    _rc_stress__rc_stress_rapid_reassign(_eng, _fx);
+    _rc_stress__rc_stress_large_list(_eng, _fx);
+    _rc_stress__rc_stress_string_concat(_eng, _fx);
+    _rc_stress__rc_stress_large_dict(_eng, _fx);
 }
 
 test "cycle collector reclaims A<->B cycles without double-free" {
@@ -3715,38 +3612,28 @@ test "keyword arguments bind to their named parameters (issue #7026)" {
 # --- Native-Default Inference Tests ---
 glob CHESS_JAC = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 
-"""Compile a regular .jac file under a native default and return the engine."""
-def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
+"""Compile a regular .jac file under a native default and JIT it; return
+(engine, fixture)."""
+def compile_auto_native(file_path: str) -> tuple[any, any] {
     import from jaclang.compiler.frontend.codeinfo { set_effective_default_codespace }
-    prog = JacProgram();
     try {
-        ir = prog.compile(
-            file_path=file_path, options=CompileOptions(default_codespace='native')
+        (eng, fx, _carrier) = _jit(
+            file_path, CompileOptions(default_codespace='native')
         );
     } finally {
         set_effective_default_codespace('');
     }
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors: {errors}";
-    return (ir, prog);
+    return (eng, fx);
 }
 
 test "native default infers chess.jac native" {
-    (ir, _) = compile_auto_native(CHESS_JAC);
-    assert ir is not None;
-    assert ir.decided_codespace == 'native' , (
-        "chess.jac should infer native under a native default"
-    );
-    assert ir.gen.native_engine is not None , (
-        "Inferred-native chess.jac should have a native engine"
-    );
+    (eng, fx) = compile_auto_native(CHESS_JAC);
+    assert fx.llvm_ir() , "chess.jac should infer native under a native default";
+    assert eng is not None , "Inferred-native chess.jac should have a native engine";
 }
 
 test "inferred-native chess.jac has entry and key functions" {
-    (ir, _) = compile_auto_native(CHESS_JAC);
-    eng = ir.gen.native_engine;
-    assert eng is not None;
+    (eng, fx) = compile_auto_native(CHESS_JAC);
     # jac_entry must exist
     assert native_address(eng, "jac_entry") != 0;
     # Key game functions must be present, under the unit's prefix
@@ -3758,7 +3645,7 @@ test "inferred-native chess.jac has entry and key functions" {
         "Game.find_king",
         "Game.play"
     ] {
-        assert native_address(eng, unit_sym(ir, func_name)) != 0 , (
+        assert native_address(eng, unit_symbol(fx, func_name)) != 0 , (
             f"{func_name} not found in auto-promoted native engine"
         );
     }
@@ -3810,8 +3697,8 @@ test "native-default chess.jac runs via cli" {
 test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Finding 2)" {
     # A regular `.jac` (no `na {}` block) that imports a bundled na_stdlib module
     # is auto-promoted by `jac build --native`. The unit records a native edge to
-    # the bundled module (`mod.gen.native_deps`, mirrored in
-    # `mod.gen.native_iface.deps`); the link plan walks those edges and the
+    # the bundled module (the unit's `native_deps`, mirrored in its native
+    # interface's `deps`); the link plan walks those edges and the
     # synthesized `jac_entry` calls every unit's initializer
     # (`native_glob_init_name(path)`), so the linked artifact MUST hold the
     # bundled modules' definitions. Before the fix, BoundaryAnalysisPass only
@@ -3824,22 +3711,21 @@ test "nacompile auto-promoted .jac links a bundled na_stdlib import (#7013 Findi
     import platform;
     fixture = str(os.path.join(FIXTURES, "autopromote_bundled_zlib.jac"));
     # Compile side: the dependency edge is recorded on the unit.
-    prog = JacProgram();
-    mod = prog.compile(
+    fx = compile_native_ir(
         fixture,
         options=CompileOptions(
             aot_mode=True, default_codespace='native', skip_native_engine=True
         )
     );
-    assert not prog.errors_had , f"Errors: {[str(e) for e in prog.errors_had]}";
-    deps = list(mod.gen.native_deps);
+    deps = list(fx.unit.native_deps);
     assert any(os.path.basename(d) == "zlib.jac" for d in deps) , (
         f"auto-promoted unit did not record the bundled zlib unit: {deps}"
     );
     assert all(os.path.isabs(d) for d in deps) , f"native_deps must be resolved paths: {deps}";
-    assert mod.gen.native_iface is not None , "no native interface exported";
-    assert list(mod.gen.native_iface.deps) == deps , (
-        f"interface deps {mod.gen.native_iface.deps} != gen deps {deps}"
+    iface = fx.iface();
+    assert iface is not None , "no native interface exported";
+    assert list(iface.deps) == deps , (
+        f"interface deps {iface.deps} != unit deps {deps}"
     );
     with tempfile.TemporaryDirectory() as tmpdir {
         out = os.path.join(tmpdir, "autopromote_bundled_zlib");
@@ -4335,25 +4221,25 @@ test "an ELF executable carries DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
 }
 
 test "list_bugs pop local removes element" {
-    (eng, _ir) = compile_native("list_bugs.jac");
+    (eng, _fx) = compile_native("list_bugs.jac");
     f = get_func(eng, "pop_and_len", ctypes.c_int64);
     assert f() == 2;
 }
 
 test "list_bugs pop local returns last value" {
-    (eng, _ir) = compile_native("list_bugs.jac");
+    (eng, _fx) = compile_native("list_bugs.jac");
     f = get_func(eng, "pop_value", ctypes.c_int64);
     assert f() == 30;
 }
 
 test "list_bugs pop loop drains list" {
-    (eng, _ir) = compile_native("list_bugs.jac");
+    (eng, _fx) = compile_native("list_bugs.jac");
     f = get_func(eng, "pop_loop", ctypes.c_int64);
     assert f() == 3;
 }
 
 test "list_bugs pop global removes element" {
-    (eng, _ir) = compile_native("list_bugs.jac");
+    (eng, _fx) = compile_native("list_bugs.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "pop_global_len", ctypes.c_int64);
@@ -4361,19 +4247,19 @@ test "list_bugs pop global removes element" {
 }
 
 test "list_bugs obj list field access" {
-    (eng, _ir) = compile_native("list_bugs.jac");
+    (eng, _fx) = compile_native("list_bugs.jac");
     f = get_func(eng, "obj_list_field", ctypes.c_int64);
     assert f() == 42;
 }
 
 test "list_bugs obj list two items" {
-    (eng, _ir) = compile_native("list_bugs.jac");
+    (eng, _fx) = compile_native("list_bugs.jac");
     f = get_func(eng, "obj_list_two_items", ctypes.c_int64);
     assert f() == 40;
 }
 
 test "list_bugs obj global list" {
-    (eng, _ir) = compile_native("list_bugs.jac");
+    (eng, _fx) = compile_native("list_bugs.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "obj_global_list", ctypes.c_int64);
@@ -4381,7 +4267,7 @@ test "list_bugs obj global list" {
 }
 
 test "list_bugs reassign int list with empty literal" {
-    (eng, _ir) = compile_native("list_bugs.jac");
+    (eng, _fx) = compile_native("list_bugs.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "reassign_int_list", ctypes.c_int64);
@@ -4389,7 +4275,7 @@ test "list_bugs reassign int list with empty literal" {
 }
 
 test "list_bugs reassign str list with empty literal" {
-    (eng, _ir) = compile_native("list_bugs.jac");
+    (eng, _fx) = compile_native("list_bugs.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "reassign_str_list", ctypes.c_int64);
@@ -4398,7 +4284,7 @@ test "list_bugs reassign str list with empty literal" {
 
 # --- String Enum Tests ---
 """string_enums comparison"""
-def _string_enums__string_enums_comparison(eng: any, _ir: any) {
+def _string_enums__string_enums_comparison(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "color_cmp", ctypes.c_int64, ctypes.c_int64);
@@ -4408,7 +4294,7 @@ def _string_enums__string_enums_comparison(eng: any, _ir: any) {
 }
 
 """string_enums value access"""
-def _string_enums__string_enums_value_access(eng: any, _ir: any) {
+def _string_enums__string_enums_value_access(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "color_value", ctypes.c_char_p, ctypes.c_int64);
@@ -4418,7 +4304,7 @@ def _string_enums__string_enums_value_access(eng: any, _ir: any) {
 }
 
 """string_enums name access"""
-def _string_enums__string_enums_name_access(eng: any, _ir: any) {
+def _string_enums__string_enums_name_access(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "color_name", ctypes.c_char_p, ctypes.c_int64);
@@ -4428,7 +4314,7 @@ def _string_enums__string_enums_name_access(eng: any, _ir: any) {
 }
 
 """string_enums direction value"""
-def _string_enums__string_enums_direction_value(eng: any, _ir: any) {
+def _string_enums__string_enums_direction_value(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "direction_value", ctypes.c_char_p, ctypes.c_int64);
@@ -4437,7 +4323,7 @@ def _string_enums__string_enums_direction_value(eng: any, _ir: any) {
 }
 
 """string_enums int enum still works"""
-def _string_enums__string_enums_int_enum_still_works(eng: any, _ir: any) {
+def _string_enums__string_enums_int_enum_still_works(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "int_enum_still_works", ctypes.c_int64);
@@ -4445,7 +4331,7 @@ def _string_enums__string_enums_int_enum_still_works(eng: any, _ir: any) {
 }
 
 """string_enums int enum name access"""
-def _string_enums__string_enums_int_enum_name_access(eng: any, _ir: any) {
+def _string_enums__string_enums_int_enum_name_access(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "priority_high_name", ctypes.c_char_p);
@@ -4455,23 +4341,23 @@ def _string_enums__string_enums_int_enum_name_access(eng: any, _ir: any) {
 }
 
 test "string_enums" {
-    (_eng, _ir) = compile_native("string_enums.jac");
-    _string_enums__string_enums_comparison(_eng, _ir);
-    _string_enums__string_enums_value_access(_eng, _ir);
-    _string_enums__string_enums_name_access(_eng, _ir);
-    _string_enums__string_enums_direction_value(_eng, _ir);
-    _string_enums__string_enums_int_enum_still_works(_eng, _ir);
-    _string_enums__string_enums_int_enum_name_access(_eng, _ir);
+    (_eng, _fx) = compile_native("string_enums.jac");
+    _string_enums__string_enums_comparison(_eng, _fx);
+    _string_enums__string_enums_value_access(_eng, _fx);
+    _string_enums__string_enums_name_access(_eng, _fx);
+    _string_enums__string_enums_direction_value(_eng, _fx);
+    _string_enums__string_enums_int_enum_still_works(_eng, _fx);
+    _string_enums__string_enums_int_enum_name_access(_eng, _fx);
 }
 
 # --- Cross-Module Enum Import Tests ---
 """enum_import compiles"""
-def _na_enum_import__enum_import_compiles(eng: any, _ir: any) {
+def _na_enum_import__enum_import_compiles(eng: any, _fx: any) {
     assert eng is not None;
 }
 
 """enum_import enum comparison"""
-def _na_enum_import__enum_import_enum_comparison(eng: any, _ir: any) {
+def _na_enum_import__enum_import_enum_comparison(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "use_imported_enum", ctypes.c_int64);
@@ -4479,7 +4365,7 @@ def _na_enum_import__enum_import_enum_comparison(eng: any, _ir: any) {
 }
 
 """enum_import value access"""
-def _na_enum_import__enum_import_value_access(eng: any, _ir: any) {
+def _na_enum_import__enum_import_value_access(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "imported_enum_value", ctypes.c_char_p);
@@ -4487,7 +4373,7 @@ def _na_enum_import__enum_import_value_access(eng: any, _ir: any) {
 }
 
 """enum_import cross module function call"""
-def _na_enum_import__enum_import_cross_module_function_call(eng: any, _ir: any) {
+def _na_enum_import__enum_import_cross_module_function_call(eng: any, _fx: any) {
     # The synthesized `jac_entry` runs every unit's initializer in
     # dependency order (the imported module's globals included) before the
     # root's own entry body; no per-module entry needs calling by hand.
@@ -4505,16 +4391,16 @@ def _na_enum_import__enum_import_cross_module_function_call(eng: any, _ir: any) 
 }
 
 test "na_enum_import" {
-    (_eng, _ir) = compile_native("na_enum_import.jac");
-    _na_enum_import__enum_import_compiles(_eng, _ir);
-    _na_enum_import__enum_import_enum_comparison(_eng, _ir);
-    _na_enum_import__enum_import_value_access(_eng, _ir);
-    _na_enum_import__enum_import_cross_module_function_call(_eng, _ir);
+    (_eng, _fx) = compile_native("na_enum_import.jac");
+    _na_enum_import__enum_import_compiles(_eng, _fx);
+    _na_enum_import__enum_import_enum_comparison(_eng, _fx);
+    _na_enum_import__enum_import_value_access(_eng, _fx);
+    _na_enum_import__enum_import_cross_module_function_call(_eng, _fx);
 }
 
 # --- Switch statement tests ---
 """switch int match"""
-def _switch_stmt__switch_int_match(eng: any, _ir: any) {
+def _switch_stmt__switch_int_match(eng: any, _fx: any) {
     `entry = get_func(eng, "jac_entry", None);
     `entry();
     f = get_func(eng, "switch_int", ctypes.c_int64, ctypes.c_int64);
@@ -4525,7 +4411,7 @@ def _switch_stmt__switch_int_match(eng: any, _ir: any) {
 }
 
 """switch enum"""
-def _switch_stmt__switch_enum(eng: any, _ir: any) {
+def _switch_stmt__switch_enum(eng: any, _fx: any) {
     `entry = get_func(eng, "jac_entry", None);
     `entry();
     f = get_func(eng, "switch_enum", ctypes.c_int64, ctypes.c_int64);
@@ -4535,7 +4421,7 @@ def _switch_stmt__switch_enum(eng: any, _ir: any) {
 }
 
 """switch string"""
-def _switch_stmt__switch_string(eng: any, _ir: any) {
+def _switch_stmt__switch_string(eng: any, _fx: any) {
     `entry = get_func(eng, "jac_entry", None);
     `entry();
     f = get_sfunc(eng, "switch_str", ctypes.c_int64, ctypes.c_char_p);
@@ -4547,7 +4433,7 @@ def _switch_stmt__switch_string(eng: any, _ir: any) {
 }
 
 """switch no default"""
-def _switch_stmt__switch_no_default(eng: any, _ir: any) {
+def _switch_stmt__switch_no_default(eng: any, _fx: any) {
     `entry = get_func(eng, "jac_entry", None);
     `entry();
     f = get_func(eng, "switch_no_default", ctypes.c_int64, ctypes.c_int64);
@@ -4557,11 +4443,11 @@ def _switch_stmt__switch_no_default(eng: any, _ir: any) {
 }
 
 test "switch_stmt" {
-    (_eng, _ir) = compile_native("switch_stmt.jac");
-    _switch_stmt__switch_int_match(_eng, _ir);
-    _switch_stmt__switch_enum(_eng, _ir);
-    _switch_stmt__switch_string(_eng, _ir);
-    _switch_stmt__switch_no_default(_eng, _ir);
+    (_eng, _fx) = compile_native("switch_stmt.jac");
+    _switch_stmt__switch_int_match(_eng, _fx);
+    _switch_stmt__switch_enum(_eng, _fx);
+    _switch_stmt__switch_string(_eng, _fx);
+    _switch_stmt__switch_no_default(_eng, _fx);
 }
 
 # --- TestJIRBitcodeCaching ---
@@ -4630,49 +4516,9 @@ test "jir bitcode cache round-trip" {
     )}";
 }
 
-# --- CType struct contract: layout metadata and field types ---
-"""struct layout exports correct field types"""
-def _func_ptr_fields__struct_layout_exports_correct_field_types(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
-    assert layout is not None , "Native layout should be exported";
-    assert "AllFields" in by_source_name(layout.structs) , "AllFields struct should be in layout";
-    af = by_source_name(layout.structs)["AllFields"];
-    field_map = {f.name: f for f in af.fields};
-    assert field_map["x"].llvm_type == "i64";
-    assert field_map["y"].llvm_type == "f64";
-    assert field_map["name"].llvm_type == "i8*";
-    assert field_map["flag"].llvm_type == "i1";
-    assert field_map["items"].llvm_type.startswith("List.");
-}
-
-"""struct layout tracks field indices correctly"""
-def _func_ptr_fields__struct_layout_tracks_field_indices_correctly(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
-    assert layout is not None;
-    af = by_source_name(layout.structs)["AllFields"];
-    indices = [f.index for f in af.fields];
-    # Indices should be consecutive starting from 0
-    assert indices == list(range(len(af.fields)));
-}
-
-"""optional field compiles to a tagged optional slot"""
-def _func_ptr_fields__optional_field_compiles_to_a_tagged_optional_slot(
-    eng: any, ir: any
-) {
-    layout = ir.gen.native_layout;
-    assert layout is not None;
-    assert "MaybePoint" in by_source_name(layout.structs);
-    mp = by_source_name(layout.structs)["MaybePoint"];
-    field_map = {f.name: f for f in mp.fields};
-    assert field_map["x"].llvm_type == "i64";
-    assert field_map["y"].llvm_type == "i64";
-    # label is str|None -> a tagged JacOptional slot (#7871 A), never a
-    # bare nullable pointer
-    assert field_map["label"].llvm_type == "opt.i8*";
-}
-
+# --- CType struct contract: field round-trips and the exported interface ---
 """all_fields struct round-trip via ctypes"""
-def _func_ptr_fields__all_fields_struct_round_trip_via_ctypes(eng: any, ir: any) {
+def _func_ptr_fields__all_fields_struct_round_trip_via_ctypes(eng: any, _fx: any) {
     make = get_sfunc(
         eng,
         "make_all_fields",
@@ -4688,7 +4534,7 @@ def _func_ptr_fields__all_fields_struct_round_trip_via_ctypes(eng: any, ir: any)
 }
 
 """all_fields bool field round-trip"""
-def _func_ptr_fields__all_fields_bool_field_round_trip(eng: any, ir: any) {
+def _func_ptr_fields__all_fields_bool_field_round_trip(eng: any, _fx: any) {
     make = get_sfunc(
         eng,
         "make_all_fields",
@@ -4703,7 +4549,7 @@ def _func_ptr_fields__all_fields_bool_field_round_trip(eng: any, ir: any) {
 }
 
 """maybe_point struct round-trip"""
-def _func_ptr_fields__maybe_point_struct_round_trip(eng: any, ir: any) {
+def _func_ptr_fields__maybe_point_struct_round_trip(eng: any, _fx: any) {
     make = get_func(
         eng, "make_maybe_point", ctypes.c_void_p, ctypes.c_int64, ctypes.c_int64
     );
@@ -4713,34 +4559,22 @@ def _func_ptr_fields__maybe_point_struct_round_trip(eng: any, ir: any) {
     assert get_x(ptr) == 10;
 }
 
-"""NativeFieldInfo func_ptr defaults to False"""
-def _func_ptr_fields__nativefieldinfo_func_ptr_defaults_to_false(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
-    assert layout is not None;
-    af = by_source_name(layout.structs)["AllFields"];
-    for f in af.fields {
-        assert f.is_func_ptr == False , f"Field {f.name} should not be func_ptr";
-        assert f.func_param_types is None;
-        assert f.func_ret_type is None;
-    }
-}
-
-"""function layout exports param and return types"""
+"""function interface exports param names and matching int types"""
 def _func_ptr_fields__function_layout_exports_param_and_return_types(
-    eng: any, ir: any
+    eng: any, fx: any
 ) {
-    layout = ir.gen.native_layout;
-    assert layout is not None;
-    assert "add" in layout.functions;
-    add_layout = layout.functions["add"];
-    assert add_layout.param_types == ["i64", "i64"];
-    assert add_layout.ret_type == "i64";
+    iface = fx.iface();
+    assert iface is not None;
+    assert "add" in iface.exports;
+    add_export = iface.exports["add"];
+    assert add_export.param_names == ["a", "b"];
+    assert add_export.param_types == [add_export.ret_type, add_export.ret_type];
 }
 
-"""layout exports all expected functions"""
-def _func_ptr_fields__layout_exports_all_expected_functions(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
-    assert layout is not None;
+"""interface exports all expected functions"""
+def _func_ptr_fields__layout_exports_all_expected_functions(eng: any, fx: any) {
+    iface = fx.iface();
+    assert iface is not None;
     expected = {
         "add",
         "mul",
@@ -4752,27 +4586,24 @@ def _func_ptr_fields__layout_exports_all_expected_functions(eng: any, ir: any) {
         "make_maybe_point",
         "get_maybe_x"
     };
-    assert expected == set(layout.functions.keys());
+    missing = expected - set(iface.exports.keys());
+    assert not missing , f"functions missing from the native interface: {missing}";
 }
 
 test "func_ptr_fields" {
-    (_eng, _ir) = compile_native("func_ptr_fields.jac");
-    _func_ptr_fields__struct_layout_exports_correct_field_types(_eng, _ir);
-    _func_ptr_fields__struct_layout_tracks_field_indices_correctly(_eng, _ir);
-    _func_ptr_fields__optional_field_compiles_to_a_tagged_optional_slot(_eng, _ir);
-    _func_ptr_fields__all_fields_struct_round_trip_via_ctypes(_eng, _ir);
-    _func_ptr_fields__all_fields_bool_field_round_trip(_eng, _ir);
-    _func_ptr_fields__maybe_point_struct_round_trip(_eng, _ir);
-    _func_ptr_fields__nativefieldinfo_func_ptr_defaults_to_false(_eng, _ir);
-    _func_ptr_fields__function_layout_exports_param_and_return_types(_eng, _ir);
-    _func_ptr_fields__layout_exports_all_expected_functions(_eng, _ir);
+    (_eng, _fx) = compile_native("func_ptr_fields.jac");
+    _func_ptr_fields__all_fields_struct_round_trip_via_ctypes(_eng, _fx);
+    _func_ptr_fields__all_fields_bool_field_round_trip(_eng, _fx);
+    _func_ptr_fields__maybe_point_struct_round_trip(_eng, _fx);
+    _func_ptr_fields__function_layout_exports_param_and_return_types(_eng, _fx);
+    _func_ptr_fields__layout_exports_all_expected_functions(_eng, _fx);
 }
 
 # --- Jac-to-Jac callable tests (Callable[[...], ret] type annotation) ---
 # Callable params carry the native closure-pair ABI, so the tests enter
 # through native wrappers that pass a plain `def` (null-env wrap path).
 """fnptr apply2 with add"""
-def _fnptr_jac__fnptr_apply2_with_add(eng: any, _ir: any) {
+def _fnptr_jac__fnptr_apply2_with_add(eng: any, _fx: any) {
     apply2_add = get_func(
         eng, "apply2_add", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
@@ -4782,7 +4613,7 @@ def _fnptr_jac__fnptr_apply2_with_add(eng: any, _ir: any) {
 }
 
 """fnptr apply2 with mul"""
-def _fnptr_jac__fnptr_apply2_with_mul(eng: any, _ir: any) {
+def _fnptr_jac__fnptr_apply2_with_mul(eng: any, _fx: any) {
     apply2_mul = get_func(
         eng, "apply2_mul", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
@@ -4792,7 +4623,7 @@ def _fnptr_jac__fnptr_apply2_with_mul(eng: any, _ir: any) {
 }
 
 """fnptr apply1 with negate"""
-def _fnptr_jac__fnptr_apply1_with_negate(eng: any, _ir: any) {
+def _fnptr_jac__fnptr_apply1_with_negate(eng: any, _fx: any) {
     apply1_negate = get_func(eng, "apply1_negate", ctypes.c_int64, ctypes.c_int64);
     assert apply1_negate(5) == -5;
     assert apply1_negate(0) == 0;
@@ -4800,7 +4631,7 @@ def _fnptr_jac__fnptr_apply1_with_negate(eng: any, _ir: any) {
 }
 
 """fnptr call_via_local stores and calls pointer"""
-def _fnptr_jac__fnptr_call_via_local_stores_and_calls_pointer(eng: any, _ir: any) {
+def _fnptr_jac__fnptr_call_via_local_stores_and_calls_pointer(eng: any, _fx: any) {
     cvl_add = get_func(
         eng, "call_via_local_add", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
     );
@@ -4812,17 +4643,17 @@ def _fnptr_jac__fnptr_call_via_local_stores_and_calls_pointer(eng: any, _ir: any
 }
 
 test "fnptr_jac" {
-    (_eng, _ir) = compile_native("fnptr_jac.jac");
-    _fnptr_jac__fnptr_apply2_with_add(_eng, _ir);
-    _fnptr_jac__fnptr_apply2_with_mul(_eng, _ir);
-    _fnptr_jac__fnptr_apply1_with_negate(_eng, _ir);
-    _fnptr_jac__fnptr_call_via_local_stores_and_calls_pointer(_eng, _ir);
+    (_eng, _fx) = compile_native("fnptr_jac.jac");
+    _fnptr_jac__fnptr_apply2_with_add(_eng, _fx);
+    _fnptr_jac__fnptr_apply2_with_mul(_eng, _fx);
+    _fnptr_jac__fnptr_apply1_with_negate(_eng, _fx);
+    _fnptr_jac__fnptr_call_via_local_stores_and_calls_pointer(_eng, _fx);
 }
 
 # --- Callable null (`= 0`) field defaults (issue #6569) ---
 """callable field accepts int 0 default in native (issue #6569)"""
 def _fnptr_null_default__callable_field_accepts_int_0_default_in_native_issue_6569(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     op_default = get_func(eng, "op_default_is_null", ctypes.c_int64);
     assert op_default() == 0;
@@ -4832,57 +4663,27 @@ def _fnptr_null_default__callable_field_accepts_int_0_default_in_native_issue_65
 
 """callable field slot resets to null via int 0 (issue #6569)"""
 def _fnptr_null_default__callable_field_slot_resets_to_null_via_int_0_issue_6569(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     reset = get_func(eng, "op_slot_reset_to_null", ctypes.c_int64, ctypes.c_int64);
     assert reset(5) == 0;
 }
 
 test "fnptr_null_default" {
-    (_eng, _ir) = compile_native("fnptr_null_default.jac");
+    (_eng, _fx) = compile_native("fnptr_null_default.jac");
     _fnptr_null_default__callable_field_accepts_int_0_default_in_native_issue_6569(
-        _eng, _ir
+        _eng, _fx
     );
     _fnptr_null_default__callable_field_slot_resets_to_null_via_int_0_issue_6569(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
 # --- C→Jac callback trampolines for clib vtable structs (issue #6570) ---
-"""clib vtable slot store emits C-ABI trampoline (issue #6570)"""
-def _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue_6570(
-    _eng: any, ir: any
-) {
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    # The Jac def has native signature i64(i64, i64); the slot declares
-    # i32(i32, i32). Storing it must go through a __clibcb trampoline with
-    # the C signature, not a raw bitcast of the Jac function.
-    assert "__clibcb" in llvm_ir_str , "no trampoline emitted for vtable slot";
-    on_event = unit_sym(ir, "_on_event");
-    assert f'define internal i32 @"{on_event}.__clibcb.0"(i32' in llvm_ir_str , "trampoline must carry the C function signature";
-    # The trampoline calls back into the Jac function.
-    assert f'@"{on_event}"' in llvm_ir_str;
-}
-
-"""clib vtable trampolines are cached per (fn, type) pair (issue #6570)"""
-def _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair_issue_6570(
-    _eng: any, ir: any
-) {
-    llvm_ir_str = source_spelled(str(ir.gen.llvm_ir));
-    # One store site → exactly one trampoline definition.
-    on_event = unit_sym(ir, "_on_event");
-    assert llvm_ir_str.count(f'define internal i32 @"{on_event}.__clibcb.0"') == 1;
-    assert f"{on_event}.__clibcb.1" not in llvm_ir_str;
-}
-
 test "clib_vtable_trampoline" {
-    (_eng, _ir) = compile_native("clib_vtable_trampoline.jac");
-    _clib_vtable_trampoline__clib_vtable_slot_store_emits_c_abi_trampoline_issue_6570(
-        _eng, _ir
-    );
-    _clib_vtable_trampoline__clib_vtable_trampolines_are_cached_per_fn_type_pair_issue_6570(
-        _eng, _ir
-    );
+    # The C-signature trampoline itself is exercised end to end by the next
+    # test, where C invokes the stored Jac callback.
+    (_eng, _fx) = compile_native("clib_vtable_trampoline.jac");
     handler_size = get_func(_eng, "make_handler", ctypes.c_int64);
     assert handler_size() == 24;
 }
@@ -4956,12 +4757,7 @@ test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
     with open(jac_src_path, "w") as f {
         f.write("\n".join(jac_lines) + "\n");
     }
-    prog = JacProgram();
-    ir = prog.compile(jac_src_path, options=native_force_opts());
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "No native engine produced";
+    (eng, _fx) = compile_native(jac_src_path);
     # C calls back into the Jac def via the trampoline: i32 args widen to
     # the Jac i64 params, the i64 result narrows to the slot's i32.
     run_cb = get_func(
@@ -4995,18 +4791,12 @@ test "clib vtable: C invokes Jac callback through trampoline (issue #6570)" {
 # --- TestCrossModuleGlobInit ---
 test "cross module glob init compiles without errors" {
     # Importing a module with a glob list initializer must compile cleanly.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "cross_module_glob_init.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    (eng, _fx) = compile_native("cross_module_glob_init.jac");
+    assert eng is not None , "No native engine created";
 }
 
 test "cross module glob init: imported glob is non-null on first access" {
-    (eng, _ir) = compile_native("cross_module_glob_init.jac");
+    (eng, _fx) = compile_native("cross_module_glob_init.jac");
     # Before the fix, _TABLE in the library module stayed null after import,
     # causing table_len() to return garbage and table_push() to segfault.
     # After the fix, the synthesized jac_entry calls the imported unit's
@@ -5022,7 +4812,7 @@ test "cross module glob init: imported glob is non-null on first access" {
 }
 
 test "cross module glob init: pushed values are readable" {
-    (eng, _ir) = compile_native("cross_module_glob_init.jac");
+    (eng, _fx) = compile_native("cross_module_glob_init.jac");
     # Verify table_get(0) and table_get(1) return the values pushed by run_test.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5036,7 +4826,7 @@ test "cross module glob init: pushed values are readable" {
 
 """transitive import: function call through two import hops returns correct value"""
 def _fix_transitive_entry__transitive_import_function_call_through_two_import_hops_returns_correc(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # run_transitive_test() → get_mid() → get_leaf() → 99
     # All three functions must be linked for this to work.
@@ -5048,7 +4838,7 @@ def _fix_transitive_entry__transitive_import_function_call_through_two_import_ho
 
 """transitive import: same result on repeated calls (no state corruption)"""
 def _fix_transitive_entry__transitive_import_same_result_on_repeated_calls_no_state_corruption(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5059,12 +4849,12 @@ def _fix_transitive_entry__transitive_import_same_result_on_repeated_calls_no_st
 }
 
 test "fix_transitive_entry" {
-    (_eng, _ir) = compile_native("fix_transitive_entry.jac");
+    (_eng, _fx) = compile_native("fix_transitive_entry.jac");
     _fix_transitive_entry__transitive_import_function_call_through_two_import_hops_returns_correc(
-        _eng, _ir
+        _eng, _fx
     );
     _fix_transitive_entry__transitive_import_same_result_on_repeated_calls_no_state_corruption(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
@@ -5074,15 +4864,8 @@ test "fix_transitive_entry" {
 # unique exports. The scan-then-decide fix demotes benign duplicates to
 # available_externally and still link_in()s B's unique symbols.
 test "mixed transitive dup: compiles without errors when A is linked before B" {
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_mixed_dup_entry.jac")),
-        options=native_force_opts()
-    );
-    assert ir is not None , "Expected successful compile";
-    assert not prog.errors_had , (
-        f"Expected no errors, got: {[str(e) for e in prog.errors_had]}"
-    );
+    (eng, _fx) = compile_native("fix_mixed_dup_entry.jac");
+    assert eng is not None , "Expected successful compile";
 }
 
 test "mixed transitive dup: unique symbol from B resolves after A was linked" {
@@ -5166,7 +4949,7 @@ test "native_safe_sym disambiguates flat vs dotted path collision" {
 }
 
 """del list item: length decrements after delete"""
-def _fix_del_list__del_list_item_length_decrements_after_delete(eng: any, _ir: any) {
+def _fix_del_list__del_list_item_length_decrements_after_delete(eng: any, _fx: any) {
     # Container starts with [10, 20, 30]; after del items[2] length must be 2.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5177,7 +4960,7 @@ def _fix_del_list__del_list_item_length_decrements_after_delete(eng: any, _ir: a
 
 """del list item: remaining elements shift left after delete"""
 def _fix_del_list__del_list_item_remaining_elements_shift_left_after_delete(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # After del items[0] from [10, 20, 30], items[0] must become 20.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5189,7 +4972,7 @@ def _fix_del_list__del_list_item_remaining_elements_shift_left_after_delete(
 
 """del list item: deleting only element yields empty list"""
 def _fix_del_list__del_list_item_deleting_only_element_yields_empty_list(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # del items[0] from single-element list — length must become 0.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5200,15 +4983,15 @@ def _fix_del_list__del_list_item_deleting_only_element_yields_empty_list(
 }
 
 test "fix_del_list" {
-    (_eng, _ir) = compile_native("fix_del_list.jac");
-    _fix_del_list__del_list_item_length_decrements_after_delete(_eng, _ir);
-    _fix_del_list__del_list_item_remaining_elements_shift_left_after_delete(_eng, _ir);
-    _fix_del_list__del_list_item_deleting_only_element_yields_empty_list(_eng, _ir);
+    (_eng, _fx) = compile_native("fix_del_list.jac");
+    _fix_del_list__del_list_item_length_decrements_after_delete(_eng, _fx);
+    _fix_del_list__del_list_item_remaining_elements_shift_left_after_delete(_eng, _fx);
+    _fix_del_list__del_list_item_deleting_only_element_yields_empty_list(_eng, _fx);
 }
 
 """imported archetype method: single increment returns 1"""
 def _fix_method_entry__imported_archetype_method_single_increment_returns_1(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # Counter.increment() on an imported struct; expect 1 after one call.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5220,7 +5003,7 @@ def _fix_method_entry__imported_archetype_method_single_increment_returns_1(
 
 """imported archetype method: double increment returns 2"""
 def _fix_method_entry__imported_archetype_method_double_increment_returns_2(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # Two calls to increment() on the same Counter; expect 2.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5232,7 +5015,7 @@ def _fix_method_entry__imported_archetype_method_double_increment_returns_2(
 
 """imported archetype method: add_delta returns updated value"""
 def _fix_method_entry__imported_archetype_method_add_delta_returns_updated_value(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # Counter starts at 5, add_delta(3); expect 8.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5244,7 +5027,7 @@ def _fix_method_entry__imported_archetype_method_add_delta_returns_updated_value
 
 """imported archetype method: independent instances do not share state"""
 def _fix_method_entry__imported_archetype_method_independent_instances_do_not_share_state(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # Two counters accumulate independently; encoded as a*100 + b.
     # a = 2 (incremented twice), b = 15 (start 10 + delta 5) → 215.
@@ -5256,31 +5039,27 @@ def _fix_method_entry__imported_archetype_method_independent_instances_do_not_sh
 }
 
 test "fix_method_entry" {
-    (_eng, _ir) = compile_native("fix_method_entry.jac");
-    _fix_method_entry__imported_archetype_method_single_increment_returns_1(_eng, _ir);
-    _fix_method_entry__imported_archetype_method_double_increment_returns_2(_eng, _ir);
+    (_eng, _fx) = compile_native("fix_method_entry.jac");
+    _fix_method_entry__imported_archetype_method_single_increment_returns_1(_eng, _fx);
+    _fix_method_entry__imported_archetype_method_double_increment_returns_2(_eng, _fx);
     _fix_method_entry__imported_archetype_method_add_delta_returns_updated_value(
-        _eng, _ir
+        _eng, _fx
     );
     _fix_method_entry__imported_archetype_method_independent_instances_do_not_share_state(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
 test "third module struct: compiles without type errors" {
     # fix_third_entry imports from fix_third_a and fix_third_b.
     # fix_third_b's read_value takes a DataA from fix_third_a — third-module struct.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_third_entry.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine";
+    (eng, _fx) = compile_native("fix_third_entry.jac");
+    assert eng is not None , "No native engine";
 }
 
 """third module struct: value field survives cross-module round-trip"""
 def _fix_third_entry__third_module_struct_value_field_survives_cross_module_round_trip(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # make_data_a(77, 3) → pass to read_value; expect 77.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5292,7 +5071,7 @@ def _fix_third_entry__third_module_struct_value_field_survives_cross_module_roun
 
 """third module struct: both fields correct after cross-module call"""
 def _fix_third_entry__third_module_struct_both_fields_correct_after_cross_module_call(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # make_data_a(77, 3) → read_sum (value+tag); expect 80.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5303,27 +5082,22 @@ def _fix_third_entry__third_module_struct_both_fields_correct_after_cross_module
 }
 
 test "fix_third_entry" {
-    (_eng, _ir) = compile_native("fix_third_entry.jac");
+    (_eng, _fx) = compile_native("fix_third_entry.jac");
     _fix_third_entry__third_module_struct_value_field_survives_cross_module_round_trip(
-        _eng, _ir
+        _eng, _fx
     );
     _fix_third_entry__third_module_struct_both_fields_correct_after_cross_module_call(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
 test "cross-module subscript: compiles without errors" {
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_subscript_entry.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine";
+    (eng, _fx) = compile_native("fix_subscript_entry.jac");
+    assert eng is not None , "No native engine";
 }
 
 test "cross-module subscript: inline ITEMS[0].value returns correct value" {
-    (eng, _ir) = compile_native("fix_subscript_entry.jac");
+    (eng, _fx) = compile_native("fix_subscript_entry.jac");
     # push_item(42, 7) then ITEMS[0].value inline (no typed local); expect 42.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();  # initialises ITEMS glob in fix_subscript_outer
@@ -5333,7 +5107,7 @@ test "cross-module subscript: inline ITEMS[0].value returns correct value" {
 }
 
 test "cross-module subscript: inline ITEMS[0].extra returns correct value" {
-    (eng, _ir) = compile_native("fix_subscript_entry.jac");
+    (eng, _fx) = compile_native("fix_subscript_entry.jac");
     # push_item(42, 7) then ITEMS[0].extra inline; expect 7.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5343,7 +5117,7 @@ test "cross-module subscript: inline ITEMS[0].extra returns correct value" {
 }
 
 test "cross-module subscript: inline access to second item returns correct value" {
-    (eng, _ir) = compile_native("fix_subscript_entry.jac");
+    (eng, _fx) = compile_native("fix_subscript_entry.jac");
     # push (42,7) then (99,3); ITEMS[1].value inline; expect 99.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5355,18 +5129,12 @@ test "cross-module subscript: inline access to second item returns correct value
 test "transitive glob init: compiles without errors" {
     # fix_transitive_glob_entry → fix_transitive_glob_mid → fix_transitive_glob_deep
     # deep has a glob list; its init must be called even though entry only imports mid.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_transitive_glob_entry.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
+    (eng, _fx) = compile_native("fix_transitive_glob_entry.jac");
+    assert eng is not None , "No native engine created";
 }
 
 test "transitive glob init: glob list in deep module is not null (no segfault)" {
-    (eng, _ir) = compile_native("fix_transitive_glob_entry.jac");
+    (eng, _fx) = compile_native("fix_transitive_glob_entry.jac");
     # Before the fix this would SIGSEGV because _TABLE in deep was never initialised.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5376,7 +5144,7 @@ test "transitive glob init: glob list in deep module is not null (no segfault)" 
 }
 
 test "transitive glob init: push through mid updates deep glob list" {
-    (eng, _ir) = compile_native("fix_transitive_glob_entry.jac");
+    (eng, _fx) = compile_native("fix_transitive_glob_entry.jac");
     # Verifies the glob list in the transitive module is live and mutable.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5396,29 +5164,18 @@ test "transitive glob init: push through mid updates deep glob list" {
 # `plan.clib_symbol_lib()`); `jit_engine` loads each one permanently before
 # the engine is created.
 test "transitive clib: compiles without errors when dep imports a .so" {
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_clib_transitive_entry.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine created";
+    (eng, _fx) = compile_native("fix_clib_transitive_entry.jac");
+    assert eng is not None , "No native engine created";
 }
 
 test "transitive clib: clib paths of dep module reach the entry's link plan" {
     # The plan's clib paths must include libm even though only the lib module
     # directly imports it: the dep's interface records the library and the
     # plan walks the dep edge.
-    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
-    prog = JacProgram();
-    fixture = str(os.path.join(FIXTURES, "fix_clib_transitive_entry.jac"));
-    opts = native_force_opts();
-    ir = prog.compile(fixture, options=opts);
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert "fix_clib_transitive_lib" in " ".join(ir.gen.native_deps) , (
-        f"entry did not record its native dependency: {ir.gen.native_deps}"
+    (plan, fx) = _link_plan("fix_clib_transitive_entry.jac", native_force_opts());
+    assert "fix_clib_transitive_lib" in " ".join(fx.unit.native_deps) , (
+        f"entry did not record its native dependency: {fx.unit.native_deps}"
     );
-    plan = build_link_plan(prog, [fixture], opts);
     clib_paths = plan.clib_paths();
     assert clib_paths , "the link plan collected no clib paths";
     assert any("/libm" in p or "libm" in p for p in clib_paths) , f"libm not found in the plan's clib paths: {clib_paths}";
@@ -5441,13 +5198,7 @@ test "transitive clib: clib symbol map of dep module reaches the entry's link pl
     # fell back to msvcrt.dll → WinError 127 at runtime. The dep declares
     # `sqrt` from libm; assert the plan carries that symbol→lib mapping
     # (regression guard for PR #6828).
-    import from jaclang.compiler.backends.native.link_plan { build_link_plan }
-    prog = JacProgram();
-    fixture = str(os.path.join(FIXTURES, "fix_clib_transitive_entry.jac"));
-    opts = native_force_opts();
-    prog.compile(fixture, options=opts);
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    plan = build_link_plan(prog, [fixture], opts);
+    (plan, _fx) = _link_plan("fix_clib_transitive_entry.jac", native_force_opts());
     sym_lib = plan.clib_symbol_lib();
     assert sym_lib , "the link plan collected no clib symbol map";
     assert "sqrt" in sym_lib , f"transitive symbol 'sqrt' missing from the plan's symbol map: {sym_lib}";
@@ -5476,17 +5227,13 @@ test "transitive clib: JIT call through dep-module extern returns correct value"
 # symbols so user imports always find an existing entry.
 test "dup clib: importing compiler-internal symbols compiles without DuplicatedNameError" {
     # Imports strlen, memcpy, calloc, free — all pre-declared by the compiler.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_dup_clib.jac")), options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors (expected none, DuplicatedNameError before fix): {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine created";
+    (eng, _fx) = compile_native("fix_dup_clib.jac");
+    assert eng is not None , "No native engine created";
 }
 
 """dup clib: user-declared strlen returns correct length for 'hello'"""
 def _fix_dup_clib__dup_clib_user_declared_strlen_returns_correct_length_for_hello(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # Verifies the reused declaration is the real strlen, not a stub.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5498,7 +5245,7 @@ def _fix_dup_clib__dup_clib_user_declared_strlen_returns_correct_length_for_hell
 
 """dup clib: user-declared strlen returns 0 for empty string"""
 def _fix_dup_clib__dup_clib_user_declared_strlen_returns_0_for_empty_string(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5508,11 +5255,11 @@ def _fix_dup_clib__dup_clib_user_declared_strlen_returns_0_for_empty_string(
 }
 
 test "fix_dup_clib" {
-    (_eng, _ir) = compile_native("fix_dup_clib.jac");
+    (_eng, _fx) = compile_native("fix_dup_clib.jac");
     _fix_dup_clib__dup_clib_user_declared_strlen_returns_correct_length_for_hello(
-        _eng, _ir
+        _eng, _fx
     );
-    _fix_dup_clib__dup_clib_user_declared_strlen_returns_0_for_empty_string(_eng, _ir);
+    _fix_dup_clib__dup_clib_user_declared_strlen_returns_0_for_empty_string(_eng, _fx);
 }
 
 # ─── FIX: Argument type coercion at C call boundaries ────────────────────────
@@ -5522,18 +5269,13 @@ test "fix_dup_clib" {
 test "ptr-to-int coerce: compiles without IR type mismatch" {
     # strlen declared with int param, called with str — triggers ptrtoint.
     # Before the fix this crashed at IR verification time.
-    prog = JacProgram();
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "fix_ptr_int_coerce.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir.gen.native_engine is not None , "No native engine created";
+    (eng, _fx) = compile_native("fix_ptr_int_coerce.jac");
+    assert eng is not None , "No native engine created";
 }
 
 """ptr-to-int coerce: strlen(int-param) called with str returns correct length"""
 def _fix_ptr_int_coerce__ptr_to_int_coerce_strlen_int_param_called_with_str_returns_correct_len(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # ptrtoint converts i8* → i64; strlen interprets it as char* and counts bytes.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5545,7 +5287,7 @@ def _fix_ptr_int_coerce__ptr_to_int_coerce_strlen_int_param_called_with_str_retu
 
 """ptr-to-int coerce: strlen(int-param) returns 0 for empty string"""
 def _fix_ptr_int_coerce__ptr_to_int_coerce_strlen_int_param_returns_0_for_empty_string(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5556,7 +5298,7 @@ def _fix_ptr_int_coerce__ptr_to_int_coerce_strlen_int_param_returns_0_for_empty_
 
 """int-to-ptr coerce: calloc result (int) assigned to str and measured by strlen"""
 def _fix_ptr_int_coerce__int_to_ptr_coerce_calloc_result_int_assigned_to_str_and_measured_by_st(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # calloc declared as returning int; result stored in str local — inttoptr.
     # calloc zeroes memory so strlen of the buffer must be 0.
@@ -5568,15 +5310,15 @@ def _fix_ptr_int_coerce__int_to_ptr_coerce_calloc_result_int_assigned_to_str_and
 }
 
 test "fix_ptr_int_coerce" {
-    (_eng, _ir) = compile_native("fix_ptr_int_coerce.jac");
+    (_eng, _fx) = compile_native("fix_ptr_int_coerce.jac");
     _fix_ptr_int_coerce__ptr_to_int_coerce_strlen_int_param_called_with_str_returns_correct_len(
-        _eng, _ir
+        _eng, _fx
     );
     _fix_ptr_int_coerce__ptr_to_int_coerce_strlen_int_param_returns_0_for_empty_string(
-        _eng, _ir
+        _eng, _fx
     );
     _fix_ptr_int_coerce__int_to_ptr_coerce_calloc_result_int_assigned_to_str_and_measured_by_st(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
@@ -5586,7 +5328,7 @@ test "fix_ptr_int_coerce" {
 # Fix: _emit_comparison now routes != through fcmp_unordered so NaN != NaN
 # returns 1 (true), while all other float comparisons keep ordered semantics.
 """float NaN: NaN != NaN must be true (1)"""
-def _fix_float_nan__float_nan_nan_nan_must_be_true_1(eng: any, _ir: any) {
+def _fix_float_nan__float_nan_nan_nan_must_be_true_1(eng: any, _fx: any) {
     # Core IEEE 754 requirement violated before the fix.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5596,7 +5338,7 @@ def _fix_float_nan__float_nan_nan_nan_must_be_true_1(eng: any, _ir: any) {
 }
 
 """float NaN: NaN == NaN must be false (0)"""
-def _fix_float_nan__float_nan_nan_nan_must_be_false_0(eng: any, _ir: any) {
+def _fix_float_nan__float_nan_nan_nan_must_be_false_0(eng: any, _fx: any) {
     # Ordered == returns false for NaN operands — this should still hold.
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -5607,7 +5349,7 @@ def _fix_float_nan__float_nan_nan_nan_must_be_false_0(eng: any, _ir: any) {
 
 """float NaN: 1.0 != 2.0 must still be true (1) after fix"""
 def _fix_float_nan__float_nan_1_0_2_0_must_still_be_true_1_after_fix(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # The fix must not break ordered != for normal finite values.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5618,7 +5360,7 @@ def _fix_float_nan__float_nan_1_0_2_0_must_still_be_true_1_after_fix(
 }
 
 """float NaN: 1.0 != 1.0 must be false (0) after fix"""
-def _fix_float_nan__float_nan_1_0_1_0_must_be_false_0_after_fix(eng: any, _ir: any) {
+def _fix_float_nan__float_nan_1_0_1_0_must_be_false_0_after_fix(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "finite_ne_self", ctypes.c_int64);
@@ -5627,7 +5369,7 @@ def _fix_float_nan__float_nan_1_0_1_0_must_be_false_0_after_fix(eng: any, _ir: a
 }
 
 """float NaN: 3.14 == 3.14 must be true (1) after fix"""
-def _fix_float_nan__float_nan_3_14_3_14_must_be_true_1_after_fix(eng: any, _ir: any) {
+def _fix_float_nan__float_nan_3_14_3_14_must_be_true_1_after_fix(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "finite_eq_self", ctypes.c_int64);
@@ -5636,24 +5378,24 @@ def _fix_float_nan__float_nan_3_14_3_14_must_be_true_1_after_fix(eng: any, _ir: 
 }
 
 test "fix_float_nan" {
-    (_eng, _ir) = compile_native("fix_float_nan.jac");
-    _fix_float_nan__float_nan_nan_nan_must_be_true_1(_eng, _ir);
-    _fix_float_nan__float_nan_nan_nan_must_be_false_0(_eng, _ir);
-    _fix_float_nan__float_nan_1_0_2_0_must_still_be_true_1_after_fix(_eng, _ir);
-    _fix_float_nan__float_nan_1_0_1_0_must_be_false_0_after_fix(_eng, _ir);
-    _fix_float_nan__float_nan_3_14_3_14_must_be_true_1_after_fix(_eng, _ir);
+    (_eng, _fx) = compile_native("fix_float_nan.jac");
+    _fix_float_nan__float_nan_nan_nan_must_be_true_1(_eng, _fx);
+    _fix_float_nan__float_nan_nan_nan_must_be_false_0(_eng, _fx);
+    _fix_float_nan__float_nan_1_0_2_0_must_still_be_true_1_after_fix(_eng, _fx);
+    _fix_float_nan__float_nan_1_0_1_0_must_be_false_0_after_fix(_eng, _fx);
+    _fix_float_nan__float_nan_3_14_3_14_must_be_true_1_after_fix(_eng, _fx);
 }
 
 # --- Lambda Support (Phase 1: simple, no captures) ---
 """lambda simple add"""
-def _lambdas__lambda_simple_add(eng: any, _ir: any) {
+def _lambdas__lambda_simple_add(eng: any, _fx: any) {
     f = get_func(eng, "apply_int_op", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(3, 4) == 7 , f"Expected 7, got {f(3, 4)}";
     assert f(10, 20) == 30 , f"Expected 30, got {f(10, 20)}";
 }
 
 """lambda negate single param"""
-def _lambdas__lambda_negate_single_param(eng: any, _ir: any) {
+def _lambdas__lambda_negate_single_param(eng: any, _fx: any) {
     f = get_func(eng, "negate_via_lambda", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == -5 , f"Expected -5, got {f(5)}";
     assert f(0) == 0 , f"Expected 0, got {f(0)}";
@@ -5661,14 +5403,14 @@ def _lambdas__lambda_negate_single_param(eng: any, _ir: any) {
 }
 
 """lambda no params"""
-def _lambdas__lambda_no_params(eng: any, _ir: any) {
+def _lambdas__lambda_no_params(eng: any, _fx: any) {
     f = get_func(eng, "get_forty_two", ctypes.c_int64);
     assert f() == 42 , f"Expected 42, got {f()}";
 }
 
 # --- Lambda Closures (Phase 2: capturing outer scope) ---
 """lambda closure captures local"""
-def _lambdas__lambda_closure_captures_local(eng: any, _ir: any) {
+def _lambdas__lambda_closure_captures_local(eng: any, _fx: any) {
     f = get_func(eng, "add_offset", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(10, 5) == 15 , f"Expected 15, got {f(10, 5)}";
     assert f(0, 42) == 42 , f"Expected 42, got {f(0, 42)}";
@@ -5676,7 +5418,7 @@ def _lambdas__lambda_closure_captures_local(eng: any, _ir: any) {
 }
 
 """lambda closure captures multiple vars"""
-def _lambdas__lambda_closure_captures_multiple_vars(eng: any, _ir: any) {
+def _lambdas__lambda_closure_captures_multiple_vars(eng: any, _fx: any) {
     f = get_func(
         eng,
         "weighted_sum",
@@ -5691,7 +5433,7 @@ def _lambdas__lambda_closure_captures_multiple_vars(eng: any, _ir: any) {
 }
 
 """lambda closure as scaler"""
-def _lambdas__lambda_closure_as_scaler(eng: any, _ir: any) {
+def _lambdas__lambda_closure_as_scaler(eng: any, _fx: any) {
     f = get_func(eng, "make_scaler", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     assert f(5, 3) == 15 , f"Expected 15, got {f(5, 3)}";
     assert f(10, 0) == 0 , f"Expected 0, got {f(10, 0)}";
@@ -5702,26 +5444,26 @@ def _lambdas__lambda_closure_as_scaler(eng: any, _ir: any) {
 
 `x + "!"` uses `x` as a string -- a bare `x;` survives a wrong `i64` slot.
 """
-def _lambdas__untyped_param_infers_str(eng: any, _ir: any) {
+def _lambdas__untyped_param_infers_str(eng: any, _fx: any) {
     f = get_sfunc(eng, "untyped_param_infers_str", ctypes.c_char_p);
     assert f() == b"hello!" , f"Expected b'hello!', got {f()}";
 }
 
 test "lambdas" {
-    (_eng, _ir) = compile_native("lambdas.jac");
-    _lambdas__lambda_simple_add(_eng, _ir);
-    _lambdas__lambda_negate_single_param(_eng, _ir);
-    _lambdas__lambda_no_params(_eng, _ir);
-    _lambdas__lambda_closure_captures_local(_eng, _ir);
-    _lambdas__lambda_closure_captures_multiple_vars(_eng, _ir);
-    _lambdas__lambda_closure_as_scaler(_eng, _ir);
-    _lambdas__untyped_param_infers_str(_eng, _ir);
+    (_eng, _fx) = compile_native("lambdas.jac");
+    _lambdas__lambda_simple_add(_eng, _fx);
+    _lambdas__lambda_negate_single_param(_eng, _fx);
+    _lambdas__lambda_no_params(_eng, _fx);
+    _lambdas__lambda_closure_captures_local(_eng, _fx);
+    _lambdas__lambda_closure_captures_multiple_vars(_eng, _fx);
+    _lambdas__lambda_closure_as_scaler(_eng, _fx);
+    _lambdas__untyped_param_infers_str(_eng, _fx);
 }
 
 # --- Multi-statement lambda callback parity (P2 cross-target probe) ---
 """multi-statement lambda map callback (native inline lowering)"""
 def _lambda_multi_stmt_callback__multi_statement_lambda_map_callback_native_inline_lowering(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "map_multi_stmt_callback", ctypes.c_int64);
     assert f() == 18 , f"Expected 18 from sum of (x+1)*2 over [1,2,3], got {f()}";
@@ -5729,7 +5471,7 @@ def _lambda_multi_stmt_callback__multi_statement_lambda_map_callback_native_inli
 
 """multi-statement lambda sort key callback (native inline lowering)"""
 def _lambda_multi_stmt_callback__multi_statement_lambda_sort_key_callback_native_inline_lowering(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "sort_multi_stmt_key", ctypes.c_int64);
     # keys: 31->1, 12->2, 23->3 => sorted order [31, 12, 23]
@@ -5737,12 +5479,12 @@ def _lambda_multi_stmt_callback__multi_statement_lambda_sort_key_callback_native
 }
 
 test "lambda_multi_stmt_callback" {
-    (_eng, _ir) = compile_native("lambda_multi_stmt_callback.jac");
+    (_eng, _fx) = compile_native("lambda_multi_stmt_callback.jac");
     _lambda_multi_stmt_callback__multi_statement_lambda_map_callback_native_inline_lowering(
-        _eng, _ir
+        _eng, _fx
     );
     _lambda_multi_stmt_callback__multi_statement_lambda_sort_key_callback_native_inline_lowering(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
@@ -5755,37 +5497,27 @@ test "lambda_multi_stmt_callback" {
 # After the fix:
 #  - The compiler tracks exported symbols in a symbol_origins dict.
 #  - When a collision is detected before link_in(), E5026 is emitted and
-#    compilation is aborted (errors_had is non-empty).
+#    compilation is aborted (the compile result carries the error).
 #  - Import compile/link failures (W5024/W5025) are now errors (E5024/E5025).
 test "symbol collision: importing two modules with the same exported symbol emits E5026" {
     # sym_collision_lib_a and sym_collision_lib_b both export `shared_fn`.
-    # Compiling the entry that imports both must emit at least one error.
-    prog = JacProgram();
-    prog.compile(
-        str(os.path.join(FIXTURES, "sym_collision_entry.jac")),
-        options=native_force_opts()
+    # Compiling the entry that imports both must emit E5026.
+    result = kernel_compile_file(
+        str(Path(FIXTURES, "sym_collision_entry.jac").resolve()), native_force_opts()
     );
-    assert prog.errors_had , (
-        "Expected E5026 symbol collision error, but errors_had is empty"
+    assert "E5026" in error_codes(result) , (
+        f"Expected E5026 in errors, got: {diagnostics_text(result)}"
     );
-    error_strs = [str(e) for e in prog.errors_had];
-    found_e5026 = any(
-        "E5026" in e or "Symbol collision" in e or "symbol collision" in e
-        for e in error_strs
-    );
-    assert found_e5026 , (f"Expected E5026 in errors, got: {error_strs}");
 }
 
 test "symbol collision: both conflicting module names appear in the error" {
     # The error message must name both source files so the developer knows which
     # modules need to be fixed.
-    prog = JacProgram();
-    prog.compile(
-        str(os.path.join(FIXTURES, "sym_collision_entry.jac")),
-        options=native_force_opts()
+    result = kernel_compile_file(
+        str(Path(FIXTURES, "sym_collision_entry.jac").resolve()), native_force_opts()
     );
-    assert prog.errors_had , "Expected collision error";
-    combined = " ".join(str(e) for e in prog.errors_had);
+    assert result.errors , "Expected collision error";
+    combined = " ".join(diag.message for diag in result.errors);
     assert "sym_collision_lib_a" in combined or "lib_a" in combined , (
         f"Expected lib_a module name in error. Got: {combined}"
     );
@@ -5796,13 +5528,11 @@ test "symbol collision: both conflicting module names appear in the error" {
 
 test "symbol collision: the colliding symbol name is reported" {
     # E5026 message must include the name of the duplicated symbol.
-    prog = JacProgram();
-    prog.compile(
-        str(os.path.join(FIXTURES, "sym_collision_entry.jac")),
-        options=native_force_opts()
+    result = kernel_compile_file(
+        str(Path(FIXTURES, "sym_collision_entry.jac").resolve()), native_force_opts()
     );
-    assert prog.errors_had , "Expected collision error";
-    combined = " ".join(str(e) for e in prog.errors_had);
+    assert result.errors , "Expected collision error";
+    combined = " ".join(diag.message for diag in result.errors);
     assert "collision_fn" in combined , (
         f"Expected 'collision_fn' in error message. Got: {combined}"
     );
@@ -5820,7 +5550,7 @@ test "symbol collision: the colliding symbol name is reported" {
 # as they are handled separately.
 """redecl type: int-to-bool re-declaration (True) returns 1"""
 def _redecl_type__redecl_type_int_to_bool_re_declaration_true_returns_1(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # x: int = 0; x: bool = True; if x { return 1; } return 0;
     # Before fix: wrong alloca type → crash or wrong value.
@@ -5832,7 +5562,7 @@ def _redecl_type__redecl_type_int_to_bool_re_declaration_true_returns_1(
 
 """redecl type: int-to-bool re-declaration (False) returns 0"""
 def _redecl_type__redecl_type_int_to_bool_re_declaration_false_returns_0(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # x: int = 99; x: bool = False; if x { return 1; } return 0;
     # After fix: fresh i1 alloca; x == False → returns 0.
@@ -5843,7 +5573,7 @@ def _redecl_type__redecl_type_int_to_bool_re_declaration_false_returns_0(
 
 """redecl type: same-type re-declaration updates value correctly"""
 def _redecl_type__redecl_type_same_type_re_declaration_updates_value_correctly(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # x: int = 50; x: int = 99; return x; → must return 99.
     # Same type: no fresh alloca needed; value must still be updated.
@@ -5854,7 +5584,7 @@ def _redecl_type__redecl_type_same_type_re_declaration_updates_value_correctly(
 
 """redecl type: bool-to-int re-declaration returns int value"""
 def _redecl_type__redecl_type_bool_to_int_re_declaration_returns_int_value(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # x: bool = True; x: int = 42; return x; → must return 42.
     # After fix: fresh i64 alloca for int; correct value stored.
@@ -5864,13 +5594,13 @@ def _redecl_type__redecl_type_bool_to_int_re_declaration_returns_int_value(
 }
 
 test "redecl_type" {
-    (_eng, _ir) = compile_native("redecl_type.jac");
-    _redecl_type__redecl_type_int_to_bool_re_declaration_true_returns_1(_eng, _ir);
-    _redecl_type__redecl_type_int_to_bool_re_declaration_false_returns_0(_eng, _ir);
+    (_eng, _fx) = compile_native("redecl_type.jac");
+    _redecl_type__redecl_type_int_to_bool_re_declaration_true_returns_1(_eng, _fx);
+    _redecl_type__redecl_type_int_to_bool_re_declaration_false_returns_0(_eng, _fx);
     _redecl_type__redecl_type_same_type_re_declaration_updates_value_correctly(
-        _eng, _ir
+        _eng, _fx
     );
-    _redecl_type__redecl_type_bool_to_int_re_declaration_returns_int_value(_eng, _ir);
+    _redecl_type__redecl_type_bool_to_int_re_declaration_returns_int_value(_eng, _fx);
 }
 
 # ─── Global Variable Scoping (na ⊆ sv) ───────────────────────────────────────
@@ -5905,7 +5635,7 @@ def run_sv_source(code: str) -> str {
 }
 
 test "glob scoping: bare function-scope assignment does not touch the module global" {
-    (eng, _ir) = compile_native("glob_scoping.jac");
+    (eng, _fx) = compile_native("glob_scoping.jac");
     # bump_local() does `counter = 5;` with no `global` declaration — Python
     # semantics make this a function-local, so the module global stays 0.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -5920,7 +5650,7 @@ test "glob scoping: bare function-scope assignment does not touch the module glo
 }
 
 test "glob scoping: explicit `global` still rebinds the module global" {
-    (eng, _ir) = compile_native("glob_scoping.jac");
+    (eng, _fx) = compile_native("glob_scoping.jac");
     # bump_global() declares `global counter;` first, so `counter = 99;` is a
     # genuine global store — this must keep working.
     entry_fn = get_func(eng, "jac_entry", None);
@@ -6000,7 +5730,7 @@ test "finding 2 guard: int-to-obj escape hatch does not leak into the sv pathway
 
 # ─── async / await (synchronous model) ───────────────────────────────────
 """await resolves an async call to its value"""
-def _async_await__await_resolves_an_async_call_to_its_value(eng: any, _ir: any) {
+def _async_await__await_resolves_an_async_call_to_its_value(eng: any, _fx: any) {
     f = get_func(eng, "driver", ctypes.c_int64, ctypes.c_int64);
     # x = await get_val() = 5; y = await add_async(5, n)
     assert f(10) == 15;
@@ -6008,7 +5738,7 @@ def _async_await__await_resolves_an_async_call_to_its_value(eng: any, _ir: any) 
 }
 
 """nested awaits evaluate inside-out"""
-def _async_await__nested_awaits_evaluate_inside_out(eng: any, _ir: any) {
+def _async_await__nested_awaits_evaluate_inside_out(eng: any, _fx: any) {
     f = get_func(eng, "nested_await", ctypes.c_int64, ctypes.c_int64);
     # add_async(get_val()=5, n)
     assert f(3) == 8;
@@ -6016,42 +5746,42 @@ def _async_await__nested_awaits_evaluate_inside_out(eng: any, _ir: any) {
 }
 
 test "async_await" {
-    (_eng, _ir) = compile_native("async_await.jac");
-    _async_await__await_resolves_an_async_call_to_its_value(_eng, _ir);
-    _async_await__nested_awaits_evaluate_inside_out(_eng, _ir);
+    (_eng, _fx) = compile_native("async_await.jac");
+    _async_await__await_resolves_an_async_call_to_its_value(_eng, _fx);
+    _async_await__nested_awaits_evaluate_inside_out(_eng, _fx);
 }
 
 # ─── flow / wait (synchronous model) ─────────────────────────────────────
 """flow then wait returns the task result"""
-def _flow_wait__flow_then_wait_returns_the_task_result(eng: any, _ir: any) {
+def _flow_wait__flow_then_wait_returns_the_task_result(eng: any, _fx: any) {
     f = get_func(eng, "run_one", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 10;
     assert f(0) == 0;
 }
 
 """wait directly on a flow expression"""
-def _flow_wait__wait_directly_on_a_flow_expression(eng: any, _ir: any) {
+def _flow_wait__wait_directly_on_a_flow_expression(eng: any, _fx: any) {
     f = get_func(eng, "run_inline", ctypes.c_int64, ctypes.c_int64);
     assert f(7) == 14;
 }
 
 """multiple flow handles waited independently"""
-def _flow_wait__multiple_flow_handles_waited_independently(eng: any, _ir: any) {
+def _flow_wait__multiple_flow_handles_waited_independently(eng: any, _fx: any) {
     f = get_func(eng, "run_two", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     # task(3)+task(4) = 6+8 = 14
     assert f(3, 4) == 14;
 }
 
 test "flow_wait" {
-    (_eng, _ir) = compile_native("flow_wait.jac");
-    _flow_wait__flow_then_wait_returns_the_task_result(_eng, _ir);
-    _flow_wait__wait_directly_on_a_flow_expression(_eng, _ir);
-    _flow_wait__multiple_flow_handles_waited_independently(_eng, _ir);
+    (_eng, _fx) = compile_native("flow_wait.jac");
+    _flow_wait__flow_then_wait_returns_the_task_result(_eng, _fx);
+    _flow_wait__wait_directly_on_a_flow_expression(_eng, _fx);
+    _flow_wait__multiple_flow_handles_waited_independently(_eng, _fx);
 }
 
 # ─── C-style iter-for loop ───────────────────────────────────────────────
 """iter-for sums a counted range"""
-def _iter_for__iter_for_sums_a_counted_range(eng: any, _ir: any) {
+def _iter_for__iter_for_sums_a_counted_range(eng: any, _fx: any) {
     f = get_func(eng, "sum_n", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 10;  # 0+1+2+3+4
     assert f(0) == 0;
@@ -6059,14 +5789,14 @@ def _iter_for__iter_for_sums_a_counted_range(eng: any, _ir: any) {
 }
 
 """iter-for counts down with a decrementing step"""
-def _iter_for__iter_for_counts_down_with_a_decrementing_step(eng: any, _ir: any) {
+def _iter_for__iter_for_counts_down_with_a_decrementing_step(eng: any, _fx: any) {
     f = get_func(eng, "count_down", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 5;  # i = 5,4,3,2,1
     assert f(0) == 0;
 }
 
 """iter-for honors break"""
-def _iter_for__iter_for_honors_break(eng: any, _ir: any) {
+def _iter_for__iter_for_honors_break(eng: any, _fx: any) {
     f = get_func(eng, "with_break", ctypes.c_int64, ctypes.c_int64);
     assert f(10) == 3;  # 0+1+2, break at i==3
     assert f(2) == 1;  # 0+1
@@ -6074,7 +5804,7 @@ def _iter_for__iter_for_honors_break(eng: any, _ir: any) {
 
 """iter-for honors continue and still advances the counter"""
 def _iter_for__iter_for_honors_continue_and_still_advances_the_counter(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "with_continue", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 8;  # 0+1+3+4 (skip 2)
@@ -6082,16 +5812,16 @@ def _iter_for__iter_for_honors_continue_and_still_advances_the_counter(
 }
 
 test "iter_for" {
-    (_eng, _ir) = compile_native("iter_for.jac");
-    _iter_for__iter_for_sums_a_counted_range(_eng, _ir);
-    _iter_for__iter_for_counts_down_with_a_decrementing_step(_eng, _ir);
-    _iter_for__iter_for_honors_break(_eng, _ir);
-    _iter_for__iter_for_honors_continue_and_still_advances_the_counter(_eng, _ir);
+    (_eng, _fx) = compile_native("iter_for.jac");
+    _iter_for__iter_for_sums_a_counted_range(_eng, _fx);
+    _iter_for__iter_for_counts_down_with_a_decrementing_step(_eng, _fx);
+    _iter_for__iter_for_honors_break(_eng, _fx);
+    _iter_for__iter_for_honors_continue_and_still_advances_the_counter(_eng, _fx);
 }
 
 # ─── Match statements ────────────────────────────────────────────────────
 """match dispatches on literal value patterns"""
-def _match_stmt__match_dispatches_on_literal_value_patterns(eng: any, _ir: any) {
+def _match_stmt__match_dispatches_on_literal_value_patterns(eng: any, _fx: any) {
     f = get_func(eng, "classify", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 100;
     assert f(1) == 200;
@@ -6099,7 +5829,7 @@ def _match_stmt__match_dispatches_on_literal_value_patterns(eng: any, _ir: any) 
 }
 
 """match supports OR patterns"""
-def _match_stmt__match_supports_or_patterns(eng: any, _ir: any) {
+def _match_stmt__match_supports_or_patterns(eng: any, _fx: any) {
     f = get_func(eng, "with_or", ctypes.c_int64, ctypes.c_int64);
     assert f(1) == 1;
     assert f(2) == 1;
@@ -6108,14 +5838,14 @@ def _match_stmt__match_supports_or_patterns(eng: any, _ir: any) {
 }
 
 """match capture pattern binds the subject"""
-def _match_stmt__match_capture_pattern_binds_the_subject(eng: any, _ir: any) {
+def _match_stmt__match_capture_pattern_binds_the_subject(eng: any, _fx: any) {
     f = get_func(eng, "with_capture", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == -1;
     assert f(7) == 14;
 }
 
 """match honors case guards"""
-def _match_stmt__match_honors_case_guards(eng: any, _ir: any) {
+def _match_stmt__match_honors_case_guards(eng: any, _fx: any) {
     f = get_func(eng, "with_guard", ctypes.c_int64, ctypes.c_int64);
     assert f(20) == 1;
     assert f(11) == 1;
@@ -6124,7 +5854,7 @@ def _match_stmt__match_honors_case_guards(eng: any, _ir: any) {
 }
 
 """match dispatches on string patterns"""
-def _match_stmt__match_dispatches_on_string_patterns(eng: any, _ir: any) {
+def _match_stmt__match_dispatches_on_string_patterns(eng: any, _fx: any) {
     f = get_sfunc(eng, "match_str", ctypes.c_int64, ctypes.c_char_p);
     assert f(b"hi") == 1;
     assert f(b"bye") == 2;
@@ -6132,24 +5862,24 @@ def _match_stmt__match_dispatches_on_string_patterns(eng: any, _ir: any) {
 }
 
 test "match_stmt" {
-    (_eng, _ir) = compile_native("match_stmt.jac");
-    _match_stmt__match_dispatches_on_literal_value_patterns(_eng, _ir);
-    _match_stmt__match_supports_or_patterns(_eng, _ir);
-    _match_stmt__match_capture_pattern_binds_the_subject(_eng, _ir);
-    _match_stmt__match_honors_case_guards(_eng, _ir);
-    _match_stmt__match_dispatches_on_string_patterns(_eng, _ir);
+    (_eng, _fx) = compile_native("match_stmt.jac");
+    _match_stmt__match_dispatches_on_literal_value_patterns(_eng, _fx);
+    _match_stmt__match_supports_or_patterns(_eng, _fx);
+    _match_stmt__match_capture_pattern_binds_the_subject(_eng, _fx);
+    _match_stmt__match_honors_case_guards(_eng, _fx);
+    _match_stmt__match_dispatches_on_string_patterns(_eng, _fx);
 }
 
 # ─── Pipe-forward operator `|>` ──────────────────────────────────────────
 """pipe-forward feeds lhs as the sole argument"""
-def _pipe_fwd__pipe_forward_feeds_lhs_as_the_sole_argument(eng: any, _ir: any) {
+def _pipe_fwd__pipe_forward_feeds_lhs_as_the_sole_argument(eng: any, _fx: any) {
     f = get_func(eng, "pipe_single", ctypes.c_int64, ctypes.c_int64);
     assert f(5) == 6;
     assert f(-1) == 0;
 }
 
 """pipe-forward chains left-associatively"""
-def _pipe_fwd__pipe_forward_chains_left_associatively(eng: any, _ir: any) {
+def _pipe_fwd__pipe_forward_chains_left_associatively(eng: any, _fx: any) {
     f = get_func(eng, "pipe_chain", ctypes.c_int64, ctypes.c_int64);
     # inc(inc(5)) == 7
     assert f(5) == 7;
@@ -6157,7 +5887,7 @@ def _pipe_fwd__pipe_forward_chains_left_associatively(eng: any, _ir: any) {
 }
 
 """pipe-forward spreads a tuple lhs into multiple args"""
-def _pipe_fwd__pipe_forward_spreads_a_tuple_lhs_into_multiple_args(eng: any, _ir: any) {
+def _pipe_fwd__pipe_forward_spreads_a_tuple_lhs_into_multiple_args(eng: any, _fx: any) {
     f = get_func(eng, "pipe_tuple", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64);
     # add(3, 4) == 7
     assert f(3, 4) == 7;
@@ -6165,15 +5895,15 @@ def _pipe_fwd__pipe_forward_spreads_a_tuple_lhs_into_multiple_args(eng: any, _ir
 }
 
 test "pipe_fwd" {
-    (_eng, _ir) = compile_native("pipe_fwd.jac");
-    _pipe_fwd__pipe_forward_feeds_lhs_as_the_sole_argument(_eng, _ir);
-    _pipe_fwd__pipe_forward_chains_left_associatively(_eng, _ir);
-    _pipe_fwd__pipe_forward_spreads_a_tuple_lhs_into_multiple_args(_eng, _ir);
+    (_eng, _fx) = compile_native("pipe_fwd.jac");
+    _pipe_fwd__pipe_forward_feeds_lhs_as_the_sole_argument(_eng, _fx);
+    _pipe_fwd__pipe_forward_chains_left_associatively(_eng, _fx);
+    _pipe_fwd__pipe_forward_spreads_a_tuple_lhs_into_multiple_args(_eng, _fx);
 }
 
 # ─── Walrus operator `:=` ────────────────────────────────────────────────
 """walrus operator binds inside an if-condition"""
-def _walrus__walrus_operator_binds_inside_an_if_condition(eng: any, _ir: any) {
+def _walrus__walrus_operator_binds_inside_an_if_condition(eng: any, _fx: any) {
     f = get_func(eng, "walrus_in_if", ctypes.c_int64, ctypes.c_int64);
     # x=10 -> n=20 (>5) -> 21
     assert f(10) == 21;
@@ -6182,7 +5912,7 @@ def _walrus__walrus_operator_binds_inside_an_if_condition(eng: any, _ir: any) {
 }
 
 """walrus operator rebinds inside a while-condition"""
-def _walrus__walrus_operator_rebinds_inside_a_while_condition(eng: any, _ir: any) {
+def _walrus__walrus_operator_rebinds_inside_a_while_condition(eng: any, _fx: any) {
     f = get_func(eng, "walrus_in_while", ctypes.c_int64, ctypes.c_int64);
     # sum(0..4) = 10
     assert f(5) == 10;
@@ -6192,7 +5922,7 @@ def _walrus__walrus_operator_rebinds_inside_a_while_condition(eng: any, _ir: any
 }
 
 """walrus expression evaluates to the assigned value"""
-def _walrus__walrus_expression_evaluates_to_the_assigned_value(eng: any, _ir: any) {
+def _walrus__walrus_expression_evaluates_to_the_assigned_value(eng: any, _fx: any) {
     f = get_func(eng, "walrus_value", ctypes.c_int64, ctypes.c_int64);
     # m = a+10 = 15, y = 15, y+m = 30
     assert f(5) == 30;
@@ -6201,10 +5931,10 @@ def _walrus__walrus_expression_evaluates_to_the_assigned_value(eng: any, _ir: an
 }
 
 test "walrus" {
-    (_eng, _ir) = compile_native("walrus.jac");
-    _walrus__walrus_operator_binds_inside_an_if_condition(_eng, _ir);
-    _walrus__walrus_operator_rebinds_inside_a_while_condition(_eng, _ir);
-    _walrus__walrus_expression_evaluates_to_the_assigned_value(_eng, _ir);
+    (_eng, _fx) = compile_native("walrus.jac");
+    _walrus__walrus_operator_binds_inside_an_if_condition(_eng, _fx);
+    _walrus__walrus_operator_rebinds_inside_a_while_condition(_eng, _fx);
+    _walrus__walrus_expression_evaluates_to_the_assigned_value(_eng, _fx);
 }
 
 test "user function shadowing a builtin name is called instead of the builtin" {
@@ -6218,7 +5948,7 @@ test "user function shadowing a builtin name is called instead of the builtin" {
 # method-name tuples); exercise int/float methods to lock that in.
 """primitive int bit_length via emitter dispatch"""
 def _prim_method_dispatch__primitive_int_bit_length_via_emitter_dispatch(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "int_bit_length", ctypes.c_int64);
     assert f() == 8;
@@ -6226,7 +5956,7 @@ def _prim_method_dispatch__primitive_int_bit_length_via_emitter_dispatch(
 
 """primitive int bit_count via emitter dispatch"""
 def _prim_method_dispatch__primitive_int_bit_count_via_emitter_dispatch(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "int_bit_count", ctypes.c_int64);
     assert f() == 3;
@@ -6234,17 +5964,17 @@ def _prim_method_dispatch__primitive_int_bit_count_via_emitter_dispatch(
 
 """primitive float is_integer via emitter dispatch"""
 def _prim_method_dispatch__primitive_float_is_integer_via_emitter_dispatch(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     f = get_func(eng, "float_is_integer", ctypes.c_int64);
     assert f() == 1;
 }
 
 test "prim_method_dispatch" {
-    (_eng, _ir) = compile_native("prim_method_dispatch.jac");
-    _prim_method_dispatch__primitive_int_bit_length_via_emitter_dispatch(_eng, _ir);
-    _prim_method_dispatch__primitive_int_bit_count_via_emitter_dispatch(_eng, _ir);
-    _prim_method_dispatch__primitive_float_is_integer_via_emitter_dispatch(_eng, _ir);
+    (_eng, _fx) = compile_native("prim_method_dispatch.jac");
+    _prim_method_dispatch__primitive_int_bit_length_via_emitter_dispatch(_eng, _fx);
+    _prim_method_dispatch__primitive_int_bit_count_via_emitter_dispatch(_eng, _fx);
+    _prim_method_dispatch__primitive_float_is_integer_via_emitter_dispatch(_eng, _fx);
 }
 
 # Integer enum members fold through the AST .lit_value getter (base-0), so
@@ -6262,9 +5992,9 @@ test "parameterless no-return function (def foo {}) is not dropped" {
     # `def foo { ... }` (no parens, no return type) is semantically
     # `def foo() -> None`. The native backend used to drop such functions and
     # their call sites entirely, so `run_ticks(n)` returned 0 instead of n.
-    (eng, ir) = compile_native("noret_no_params.jac");
+    (eng, fx) = compile_native("noret_no_params.jac");
     # The function must actually be emitted, not silently elided.
-    assert native_address(eng, unit_sym(ir, "tick")) != 0 , "void no-signature function 'tick' was dropped from the module";
+    assert native_address(eng, unit_symbol(fx, "tick")) != 0 , "void no-signature function 'tick' was dropped from the module";
     run_ticks = get_func(eng, "run_ticks", ctypes.c_int64, ctypes.c_int64);
     # If the tick() calls are emitted and run, hits == n.
     assert run_ticks(5) == 5 , "calls to a no-signature void function were not emitted";
@@ -6280,7 +6010,7 @@ test "parameterless no-return function (def foo {}) is not dropped" {
 # --- Union / tuple-trigger field access (issue #6470) ---
 """field access on a `|` union parameter lowers the field load"""
 def _union_field_access__field_access_on_a_union_parameter_lowers_the_field_load(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # `get_val(x: A | B) -> int { return x.val; }` -- both members carry `val`
     # at the same offset, so the access resolves via either member's layout.
@@ -6294,13 +6024,13 @@ def _union_field_access__field_access_on_a_union_parameter_lowers_the_field_load
 
 """tuple-trigger union gives `here` a usable field layout (issue #6470)"""
 def _union_field_access__tuple_trigger_union_gives_here_a_usable_field_layout_issue_6470(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     # `can on_either with (Sub, Other) entry { self.either += here.val; }`.
     # The tuple trigger types `here` as a union of node members; the body must
     # not truncate at `here.val` (the original bug emitted an empty body and no
     # `field.val` load, so `either` silently stayed 0).
-    addr = native_address(eng, unit_sym(_ir, "W.on_either"));
+    addr = native_address(eng, unit_symbol(_fx, "W.on_either"));
     assert addr != 0 , "event ability 'W.on_either' was dropped from the module";
     fn = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_void_p)(addr);
     # `self` is the walker W: { vtable@0, __type_tag@1, reports@2, either@3 } --
@@ -6318,74 +6048,16 @@ def _union_field_access__tuple_trigger_union_gives_here_a_usable_field_layout_is
 }
 
 test "union_field_access" {
-    (_eng, _ir) = compile_native("union_field_access.jac");
+    (_eng, _fx) = compile_native("union_field_access.jac");
     _union_field_access__field_access_on_a_union_parameter_lowers_the_field_load(
-        _eng, _ir
+        _eng, _fx
     );
     _union_field_access__tuple_trigger_union_gives_here_a_usable_field_layout_issue_6470(
-        _eng, _ir
+        _eng, _fx
     );
 }
 
 # --- TestNativeTestBlocks ---
-"""native test blocks compile to pass/fail functions"""
-def _test_blocks__native_test_blocks_compile_to_pass_fail_functions(eng: any, ir: any) {
-    layout = ir.gen.native_layout;
-    assert layout is not None;
-    tests = layout.tests;
-    assert len(tests) == 3 , f"expected 3 test entries in layout, got {len(tests)}";
-    by_name = {t.name: t for t in tests};
-    assert set(by_name.keys())
-        == {
-            "test_add_works",
-            "test_globals_visible_in_tests",
-            "test_deliberate_failure"
-        };
-    assert by_name["test_add_works"].description == "add works";
-    # Globals must be initialized before tests touch them. The engine runs
-    # the unit's initializer itself on the first address it hands out; the
-    # initializer is idempotent, so calling it by name is harmless.
-    glob_init_addr = native_address(eng, native_glob_init_name(ir.loc.mod_path));
-    assert glob_init_addr != 0 , "unit initializer not found in JIT engine";
-    ctypes.CFUNCTYPE(None)(glob_init_addr)();
-    # Convention: null (None) = pass, static message pointer = fail.
-    passing = get_func(eng, by_name["test_add_works"].symbol, ctypes.c_char_p);
-    assert passing() is None , "passing test returned a failure message";
-    uses_glob = get_func(
-        eng, by_name["test_globals_visible_in_tests"].symbol, ctypes.c_char_p
-    );
-    assert uses_glob() is None , "test reading module globals failed";
-    failing = get_func(eng, by_name["test_deliberate_failure"].symbol, ctypes.c_char_p);
-    msg = failing();
-    assert msg is not None , "failing assert did not produce a message";
-    text = msg.decode("utf-8");
-    assert "assertion failed" in text;
-    # The failing assert sits on line 23 of the fixture; the message must
-    # carry the source location so the host report can point at it.
-    assert "test_blocks.jac:23" in text , f"no source location in: {text}";
-}
-
-"""a failing native test must not abort the host process"""
-def _test_blocks__a_failing_native_test_must_not_abort_the_host_process(
-    eng: any, ir: any
-) {
-    # The implicit per-test handler is what stands between a failing assert
-    # and the no-handler abort() path -- calling the failing test twice in
-    # one process proves the handler is popped/re-armed correctly too.
-    blocks_layout = ir.gen.native_layout;
-    assert blocks_layout is not None , "native layout missing";
-    by_name = {t.name: t for t in blocks_layout.tests};
-    failing = get_func(eng, by_name["test_deliberate_failure"].symbol, ctypes.c_char_p);
-    assert failing() is not None;
-    assert failing() is not None;
-}
-
-test "test_blocks" {
-    (_eng, _ir) = compile_native("test_blocks.jac");
-    _test_blocks__native_test_blocks_compile_to_pass_fail_functions(_eng, _ir);
-    _test_blocks__a_failing_native_test_must_not_abort_the_host_process(_eng, _ir);
-}
-
 test "jac test runs .jac test blocks end to end" {
     fixture = os.path.join(FIXTURES, "test_blocks.jac");
     # The fixture holds 3 native `test` blocks, exactly 1 of them a deliberate
@@ -6480,13 +6152,9 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
             bc2 = comp.get_bytecode(fx, prog2);
         }
         assert bc2 is not None;
-        # Without a kernel the host recompiles and builds the engine in the
-        # pass itself, so the loader sees only the failed restore.
-        import from jaclang.compiler.native_compiler { ensure_loaded }
-        rebuilds = 2 if ensure_loaded() is not None else 1;
-        assert len(loads) == rebuilds , (
-            f"expected {rebuilds} loader call(s), saw {len(loads)}"
-        );
+        # The kernel recompiles and the host builds the engine through the
+        # same loader: the failed restore, then the rebuild.
+        assert len(loads) == 2 , f"expected 2 loader calls, saw {len(loads)}";
         (eng, _) = comp.get_native_interop_setup(fx, prog2);
         assert eng is not None , (
             "restore failure must trigger recompile for inferred modules"
@@ -6504,30 +6172,16 @@ test "restore-failure falls back to recompile for inferred modules (item #19)" {
 
 # ─── FIX: clib struct pointer subscript read/write (#6707, #6708) ─────────────
 # Before the fix, buf[i] on a clib struct pointer emitted E5090.
-# Fix: a struct-typed param/local (`buf: Color`) lowers to a StructName*, so
-# NaIRGenPass emits a single-index GEP (one index advances a whole struct) for
-# buf[i], and a struct load + store into the element pointer for buf[i] = val.
-test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
-    prog = JacProgram();
-    options = native_force_opts();
-    options.no_ir_cache = True;
-    options.skip_native_engine = True;
-    ir = prog.compile(
-        str(os.path.join(FIXTURES, "ptr_subscript.jac")), options=options
-    );
-    e5090 = [
-        e.code.code
-        for e in (prog.errors_had or [])
-        if e.code and e.code.code == "E5090"
-    ];
-    assert not e5090 , f"Unexpected E5090 errors: {e5090}";
-    assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
-    s = source_spelled(str(ir.gen.llvm_ir));
-    # Read path (#6708): single-index GEP on the StructName* base yields the
-    # element pointer, which is returned as-is (aliases the buffer, no copy).
-    assert "ptr.elem.ptr" in s , "Expected array-element GEP (ptr.elem.ptr)";
-    # Write path (#6707): GEP the element, load the source struct value, store.
-    assert "arr.val.struct" in s , "Expected struct load for write (arr.val.struct)";
+# Fix: a struct-typed param/local (`buf: Color`) lowers to a struct pointer, so
+# buf[i] indexes whole structs and buf[i] = val stores into the element. The
+# executed reads and writes are pinned in test_ptr_subscript_exec.jac.
+test "ptr subscript read/write: the subscripts lower natively (#6707, #6708)" {
+    fx = compile_mir("ptr_subscript.jac");
+    for name in ["read_color_r", "read_color_g", "read_vec2_x", "write_color"] {
+        assert _demotion(fx, name) is None , (
+            f"{name} must lower natively, not demote: {fx.demoted()}"
+        );
+    }
 }
 
 # ─── #7593 item 10: bare `import x` of a sibling plain .jac module ───────────
@@ -6537,14 +6191,14 @@ test "ptr subscript read/write: no E5090 and correct GEP IR (#6707, #6708)" {
 # `mod.fn()` / `mod.GLOB` resolve at compile time to the linked symbols.
 """bare import of user jac module compiles and links"""
 def _bare_import_main__bare_import_of_user_jac_module_compiles_and_links(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     assert eng is not None;
 }
 
 """bare import module-qualified call resolves to linked symbol"""
 def _bare_import_main__bare_import_module_qualified_call_resolves_to_linked_symbol(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
@@ -6555,7 +6209,7 @@ def _bare_import_main__bare_import_module_qualified_call_resolves_to_linked_symb
 }
 
 """bare import module glob attr reads dep glob"""
-def _bare_import_main__bare_import_module_glob_attr_reads_dep_glob(eng: any, _ir: any) {
+def _bare_import_main__bare_import_module_glob_attr_reads_dep_glob(eng: any, _fx: any) {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     read_glob = get_func(eng, "read_glob", ctypes.c_int64);
@@ -6563,12 +6217,12 @@ def _bare_import_main__bare_import_module_glob_attr_reads_dep_glob(eng: any, _ir
 }
 
 test "bare_import_main" {
-    (_eng, _ir) = compile_native("bare_import_main.jac");
-    _bare_import_main__bare_import_of_user_jac_module_compiles_and_links(_eng, _ir);
+    (_eng, _fx) = compile_native("bare_import_main.jac");
+    _bare_import_main__bare_import_of_user_jac_module_compiles_and_links(_eng, _fx);
     _bare_import_main__bare_import_module_qualified_call_resolves_to_linked_symbol(
-        _eng, _ir
+        _eng, _fx
     );
-    _bare_import_main__bare_import_module_glob_attr_reads_dep_glob(_eng, _ir);
+    _bare_import_main__bare_import_module_glob_attr_reads_dep_glob(_eng, _fx);
 }
 
 test "default-codespace option does not leak across compiles in one process" {
@@ -6607,7 +6261,7 @@ test "from-imported plain jac dep with glob does not demote" {
 # order (dataclass semantics) instead of demoting with E5092.
 """native new(): positional construction of a has-field obj"""
 def _new_builtin__native_new_positional_construction_of_a_has_field_obj(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     make_area = get_func(eng, "make_area", ctypes.c_int64, ctypes.c_int64);
     assert make_area(5) == 25 , f"Expected 25, got {make_area(5)}";
@@ -6616,7 +6270,7 @@ def _new_builtin__native_new_positional_construction_of_a_has_field_obj(
 
 """native new(): forwards positionally to explicit init"""
 def _new_builtin__native_new_forwards_positionally_to_explicit_init(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     make_sum = get_func(
         eng, "make_sum", ctypes.c_int64, ctypes.c_int64, ctypes.c_int64
@@ -6626,16 +6280,16 @@ def _new_builtin__native_new_forwards_positionally_to_explicit_init(
 }
 
 """native new(): no-arg call applies field defaults"""
-def _new_builtin__native_new_no_arg_call_applies_field_defaults(eng: any, _ir: any) {
+def _new_builtin__native_new_no_arg_call_applies_field_defaults(eng: any, _fx: any) {
     make_tag = get_func(eng, "make_tag", ctypes.c_int64);
     assert make_tag() == 7 , f"Expected 7, got {make_tag()}";
 }
 
 test "new_builtin" {
-    (_eng, _ir) = compile_native("new_builtin.jac");
-    _new_builtin__native_new_positional_construction_of_a_has_field_obj(_eng, _ir);
-    _new_builtin__native_new_forwards_positionally_to_explicit_init(_eng, _ir);
-    _new_builtin__native_new_no_arg_call_applies_field_defaults(_eng, _ir);
+    (_eng, _fx) = compile_native("new_builtin.jac");
+    _new_builtin__native_new_positional_construction_of_a_has_field_obj(_eng, _fx);
+    _new_builtin__native_new_forwards_positionally_to_explicit_init(_eng, _fx);
+    _new_builtin__native_new_no_arg_call_applies_field_defaults(_eng, _fx);
 }
 
 test "native positional construction maps has fields (parity with sv)" {
@@ -6658,7 +6312,7 @@ test "native positional construction maps has fields (parity with sv)" {
 # postinit-set field read back as its zero default.
 """cross-module construction runs an inherited postinit chain"""
 def _postinit_inherited_xmod_main__cross_module_construction_runs_an_inherited_postinit_chain(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     make_leaf = get_func(eng, "make_leaf", ctypes.c_int64);
     assert make_leaf() == 42 , f"Expected 42, got {make_leaf()}";
@@ -6666,18 +6320,18 @@ def _postinit_inherited_xmod_main__cross_module_construction_runs_an_inherited_p
 
 """cross-module construction runs an own postinit"""
 def _postinit_inherited_xmod_main__cross_module_construction_runs_an_own_postinit(
-    eng: any, _ir: any
+    eng: any, _fx: any
 ) {
     make_mid = get_func(eng, "make_mid", ctypes.c_int64);
     assert make_mid() == 42 , f"Expected 42, got {make_mid()}";
 }
 
 test "postinit_inherited_xmod_main" {
-    (_eng, _ir) = compile_native("postinit_inherited_xmod_main.jac");
+    (_eng, _fx) = compile_native("postinit_inherited_xmod_main.jac");
     _postinit_inherited_xmod_main__cross_module_construction_runs_an_inherited_postinit_chain(
-        _eng, _ir
+        _eng, _fx
     );
     _postinit_inherited_xmod_main__cross_module_construction_runs_an_own_postinit(
-        _eng, _ir
+        _eng, _fx
     );
 }

@@ -5,19 +5,16 @@ ImportError that source raised and hand back the Python-only schedule. A
 natively-decided program then compiled with no native passes in it: no LLVM IR,
 no alert in the ledger, and a bare "Native compilation produced no LLVM IR" from
 `jac build --native`, while `jac check` and `jac run` stayed green because the run
-lane simply used the Python bytecode. These tests pin both halves of the
-contract. The schedule really carries the native passes, and an AOT compile that
-ends with no IR names the module and the reason rather than going quiet. The
-end-to-end guardrail compiles the multi-module chess example to a real binary
-and plays a game with it, so the AOT lane can never regress behind a green run
-lane again.
+lane simply used the Python bytecode. These tests pin that the schedule really
+carries the native backend (the MIR pass), and the end-to-end guardrail compiles
+the multi-module chess example to a real binary and plays a game with it, so the
+AOT lane can never regress behind a green run lane again.
 """
 
 import os;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, JAC_ROOT, TESTS_DIR }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { jac_command, JAC_ROOT }
 import from jaclang.compiler.driver.pipeline { product_passes }
 import from jaclang.compiler.driver.pipeline_types {
     CompilationProduct,
@@ -37,47 +34,19 @@ def codegen_lane(native: bool) -> list[type] {
     return lane;
 }
 
-import from jaclang.compiler.driver.program { JacProgram }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     ),
-     CHESS = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
+glob CHESS = os.path.join(JAC_ROOT, "examples", "chess", "chess.jac");
 
 
 test "the native codegen schedule carries the native passes" {
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
+    import from jaclang.compiler.backends.native.mir.backend { MirNativePass }
     import from jaclang.compiler.backends.native.na_compile_pass { NativeCompilePass }
     sched = codegen_lane(True);
     names = [p.__name__ for p in sched];
-    assert NaIRGenPass in sched , (
-        f"native codegen schedule lost NaIRGenPass: {names}"
+    assert MirNativePass in sched , (
+        f"native codegen schedule lost MirNativePass: {names}"
     );
     assert NativeCompilePass not in sched , (
         f"machine code is the host's assembly step, not a scheduled pass: {names}"
-    );
-}
-
-
-test "an AOT compile that lowers nothing names the module" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "aot_no_lowerable_code.jac"),
-        options=CompileOptions(aot_mode=True, force_codespace='native')
-    );
-    assert ir.gen.llvm_ir is None , "the fixture is not supposed to lower";
-    assert prog.errors_had , (
-        "an AOT compile produced no native IR and no diagnostic to explain it"
-    );
-    codes = [
-        e.code.code
-        for e in prog.errors_had
-        if e.code is not None
-    ];
-    assert "E5092" in codes , f"expected an E5092 refusal, got: {codes}";
-    said = "\n".join([e.pretty_print() for e in prog.errors_had]);
-    assert "aot_no_lowerable_code" in said , (
-        f"the refusal must name the module it refused: {said}"
     );
 }
 

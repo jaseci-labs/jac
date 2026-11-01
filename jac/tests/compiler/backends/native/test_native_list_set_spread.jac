@@ -21,8 +21,7 @@ Refs #8070
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { TESTS_DIR, compile_mir, compile_native, native_address, write_case }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
     get_effective_default_codespace_override,
@@ -70,14 +69,7 @@ glob FIXTURES = os.path.join(
 
 """Compile the fixture natively and return the JIT engine."""
 def _compile -> object {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, FIXTURE)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {FIXTURE}";
+    (eng, _fx) = compile_native(FIXTURE, FIXTURES);
     gi_addr = native_address(eng, "__jac_glob_init");
     if gi_addr {
         ctypes.CFUNCTYPE(None)(gi_addr)();
@@ -107,29 +99,6 @@ def _sv_module -> object {
     }
     assert mods , "sv import of the fixture produced no module";
     return mods[0];
-}
-
-
-"""Compile a snippet natively and hand back the program for error inspection."""
-def _compile_inline(label: str, code: str) -> JacProgram {
-    prog = JacProgram();
-    prog.compile(
-        file_path=os.path.join(FIXTURES, f"_spread_{label}.jac"),
-        use_str=code,
-        options=native_force_opts()
-    );
-    return prog;
-}
-
-
-"""True if the program emitted at least one alert carrying the given code."""
-def _has_code(prog: JacProgram, code: str) -> bool {
-    for alrt in prog.errors_had {
-        if alrt.code is not None and alrt.code.code == code {
-            return True;
-        }
-    }
-    return False;
 }
 
 
@@ -258,23 +227,10 @@ test "a spread that cannot lower refuses loudly instead of dropping" {
             + "    s = {1, *d};\n    return len(s);\n}\n"
     };
     for (label, code) in cases.items() {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=os.path.join(FIXTURES, f"_spread_{label}.jac"),
-            use_str=code,
-            options=native_force_opts()
-        );
-        assert not prog.errors_had , (
-            f"{label}: the spread refusal is owned by f(), which must demote "
-            f"to a seam, got: {[str(e) for e in prog.errors_had]}"
-        );
-        assert ir.gen.native_layout is not None , (
-            f"{label}: whole-module native compile aborted"
-        );
-        assert "f" not in ir.gen.native_layout.functions , (
-            f"{label}: a spread native cannot lower must demote its function "
-            f"out of the native layout, never silently build a shorter "
-            f"container"
+        fx = compile_mir(write_case(code, f"_spread_{label}.jac"));
+        assert fx.is_demoted("f") , (
+            f"{label}: a spread native cannot lower must demote its function, "
+            f"never silently build a shorter container: {fx.demoted()}"
         );
     }
 }

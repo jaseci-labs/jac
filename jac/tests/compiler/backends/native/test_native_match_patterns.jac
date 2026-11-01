@@ -1,33 +1,17 @@
 """Behavioral tests for native structural match patterns (#7593 item 7).
 
-Sequence, mapping, star, and class (MatchArch) patterns lower to native
-LLVM IR. Expected values are pinned against real CPython `match`
-semantics (see fixtures/match_patterns.jac).
+Sequence, mapping, star, and class (MatchArch) patterns lower natively.
+Expected values are pinned against real CPython `match` semantics (see
+fixtures/match_patterns.jac).
 """
 
 import ctypes;
-import os;
 import from tests.support {
-    TESTS_DIR,
     compile_native,
+    diagnostics_text,
     get_func,
     has_error_code,
-    native_force_opts
-}
-import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
-
-"""Compile a snippet through the FRONT-END check schedule (`jac check` path:
-type_check on, codegen off) so check-time capability behavior is pinned."""
-def check_na_inline(label: str, code: str) -> JacProgram {
-    path = os.path.join(FIXTURES, f"_check_{label}.jac");
-    prog = JacProgram();
-    prog.compile(file_path=path, use_str=code, no_cgen=True);
-    return prog;
+    kernel_check_source
 }
 
 test "match sequence dispatches on length" {
@@ -124,8 +108,7 @@ test "match guard runs after structural binding" {
 }
 
 test "structural match patterns no longer raise E5090 at check time" {
-    prog = check_na_inline(
-        "match_structural_ok",
+    result = kernel_check_source(
         "obj Pt { has x: int, y: int; }\n"
         "def f(a: int, b: int) -> int {\n"
         "    xs: list[int] = [a, b];\n"
@@ -148,10 +131,10 @@ test "structural match patterns no longer raise E5090 at check time" {
         "        case Pt(x=a, y=b): return (a as int);\n"
         "        case _: return -1;\n"
         "    }\n"
-        "}\n"
+        "}\n",
+        "_check_match_structural_ok.jac"
     );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not has_error_code(prog, "E5090") , (
-        f"structural patterns must pass the capability check: {errors}"
+    assert not has_error_code(result, "E5090") , (
+        f"structural patterns must pass the capability check: {diagnostics_text(result)}"
     );
 }

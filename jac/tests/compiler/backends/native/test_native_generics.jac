@@ -10,15 +10,12 @@ import ctypes;
 import os;
 import from tests.support {
     TESTS_DIR,
+    compile_mir,
     compile_native,
     get_func,
-    has_error_code,
     native_address,
-    native_force_opts
+    write_case
 }
-import jaclang;
-
-import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -103,14 +100,6 @@ def get_sfunc(eng: any, name: str, restype: type | None, *argtypes: type) -> any
         return r;
     }
     return _call;
-}
-
-"""Compile a snippet through the native pipeline and return the program."""
-def compile_na_inline(label: str, code: str) -> JacProgram {
-    path = os.path.join(FIXTURES, f"_generics_{label}.jac");
-    prog = JacProgram();
-    prog.compile(file_path=path, use_str=code, options=native_force_opts());
-    return prog;
 }
 
 test "mono: identity specializes at int, float, and str" {
@@ -205,26 +194,20 @@ test "mono as-value: concrete Callable annotation stamps the template (#7626 A5)
 }
 
 test "mono guardrail: a generic function used as a value stays rejected" {
-    path = os.path.join(FIXTURES, "_generics_generic_as_value.jac");
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=path,
-        use_str="def pick[T](x: T) -> T {\n"
-        "    return x;\n"
-        "}\n"
-        "def use_it(v: int) -> int {\n"
-        "    f = pick;\n"
-        "    return f(v);\n"
-        "}\n",
-        options=native_force_opts()
+    fx = compile_mir(
+        write_case(
+            "def pick[T](x: T) -> T {\n"
+            "    return x;\n"
+            "}\n"
+            "def use_it(v: int) -> int {\n"
+            "    f = pick;\n"
+            "    return f(v);\n"
+            "}\n",
+            "_generics_generic_as_value.jac"
+        )
     );
-    assert not prog.errors_had , (
-        f"the generic-as-value refusal is owned by use_it(), which must "
-        f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "use_it" not in ir.gen.native_layout.functions , (
-        "a generic fn used as a value must demote its function out of the "
-        "native layout, never lower wrongly"
+    assert fx.is_demoted("use_it") , (
+        "a generic fn used as a value must demote its function, never lower "
+        f"wrongly: {fx.demoted()}"
     );
 }

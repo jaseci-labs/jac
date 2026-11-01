@@ -23,44 +23,45 @@ import ctypes;
 import os;
 import from tests.support {
     TESTS_DIR,
-    by_source_name,
+    KernelFixture,
+    compile_mir,
     compile_native,
     get_func,
-    has_error_code,
+    kernel_compile_source,
     native_build_fails,
     native_force_opts,
     sv_run,
     na_run,
     same_lines,
-    source_spelled,
-    unit_symbol
+    write_case
 }
-import jaclang;
-
-import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-"""Compile a snippet through the native pipeline and return the program."""
-def compile_na_inline(label: str, code: str) -> JacProgram {
-    path = os.path.join(FIXTURES, f"_varargs_{label}.jac");
-    prog = JacProgram();
-    prog.compile(file_path=path, use_str=code, options=native_force_opts());
-    return prog;
+"""Compile a snippet through the kernel into the native codespace and return
+its compile result."""
+def compile_na_inline(label: str, code: str) -> any {
+    return kernel_compile_source(code, f"_varargs_{label}.jac", native_force_opts());
 }
 
-"""Like `compile_na_inline`, but also hand back the compiled module so a
-granular demotion (epic #8201) is observable through the native layout."""
-def compile_na_inline_ir(label: str, code: str) -> tuple[any, ...] {
-    path = os.path.join(FIXTURES, f"_varargs_{label}.jac");
-    prog = JacProgram();
-    options = native_force_opts();
-    options.no_ir_cache = True;
-    options.skip_native_engine = True;
-    ir = prog.compile(file_path=path, use_str=code, options=options);
-    return (prog, ir, );
+"""Compile a snippet through the kernel and return the decision step's
+verdict on it: a granular demotion (epic #8201) is observable in its demoted
+set."""
+def compile_na_inline_mir(label: str, code: str) -> KernelFixture {
+    return compile_mir(write_case(code, f"_varargs_{label}.jac"));
+}
+
+"""The MIR text of `name`'s function in a compiled fixture."""
+def mir_function(fx: KernelFixture, name: str) -> str {
+    head = f"fn @{fx.symbol(name)}(";
+    for chunk in fx.mir().split("\n\n") {
+        if chunk.startswith(head) {
+            return chunk;
+        }
+    }
+    raise AssertionError(f"no MIR function {name} in {fx.path}: demoted {fx.demoted()}");
 }
 
 test "varargs: *args sums positional extras" {
@@ -154,22 +155,16 @@ test "callsite star-unpack of a LIST into a fixed-arity callee demotes the calle
     # expression lowered to None and both params default-padded); the
     # refusal now demotes use() to its Python implementation instead of
     # failing the whole module.
-    (prog, ir) = compile_na_inline_ir(
+    fx = compile_na_inline_mir(
         "star_fixed",
         "def two(a: int, b: int) -> int { return a * 10 + b; }\n"
         "def use() -> int { xs = [7, 8]; return two(*xs); }\n"
     );
-    assert not prog.errors_had , (
-        f"two(*xs) is owned by use(), which must demote to a seam, got: "
-        f"{[str(e) for e in prog.errors_had]}"
+    assert not fx.is_demoted("two") , (
+        f"clean sibling function was lost: {fx.demoted()}"
     );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "two" in layout.functions , (
-        f"clean sibling function was lost: {list(layout.functions)}"
-    );
-    assert "use" not in layout.functions , (
-        "the unpacking caller must be demoted out of the native layout"
+    assert fx.is_demoted("use") , (
+        f"the unpacking caller must be demoted: {fx.demoted()}"
     );
 }
 
@@ -190,63 +185,49 @@ test "callsite star-unpack: list spread routes through a variadic callee" {
 }
 
 test "double-star unpack into fixed parameters stays native" {
-    (prog, ir) = compile_na_inline_ir(
+    fx = compile_na_inline_mir(
         "dstar_fixed",
         "def two(a: int, b: int) -> int { return a * 10 + b; }\n"
         "def use() -> int { d = {'a': 1, 'b': 2}; return two(**d); }\n"
     );
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "two" in layout.functions and "use" in layout.functions , (
-        f"a ** spread into fixed parameters binds natively: {list(layout.functions)}"
+    assert not fx.is_demoted("two") and not fx.is_demoted("use") , (
+        f"a ** spread into fixed parameters binds natively: {fx.demoted()}"
     );
 }
 
 test "unannotated variadic parameter is a loud error" {
-    prog = compile_na_inline("unannot", "def f(*args) -> int { return 0; }\n");
-    assert prog.errors_had , "Expected a loud error for an unannotated *args";
+    result = compile_na_inline("unannot", "def f(*args) -> int { return 0; }\n");
+    assert not result.ok() , "Expected a loud error for an unannotated *args";
 }
 
 test "def:pub variadic demotes off the native interop surface" {
-    (prog, ir) = compile_na_inline_ir(
+    fx = compile_na_inline_mir(
         "pubvar", "def:pub f(*args: int) -> int { return 0; }\n"
     );
-    assert not prog.errors_had , (
+    assert fx.is_demoted("f") , (
         f"the interop bridge cannot marshal a parameter pack, so the pub "
-        f"variadic must demote to its Python implementation, got: "
-        f"{[str(e) for e in prog.errors_had]}"
-    );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "f" not in layout.functions , (
-        "the pub variadic must be demoted out of the native layout"
+        f"variadic must demote to its Python implementation: {fx.demoted()}"
     );
 }
 
 test "variadic init demotes the constructor and refuses its callers" {
-    (prog, ir) = compile_na_inline_ir(
+    # A constructor owns its own capability violation since #8234, so a
+    # variadic init demotes instead of refusing the module.
+    fx = compile_na_inline_mir(
         "initvar",
         "obj P { has n: int = 0; def init(*vals: int) { self.n = 0; } }\n"
         "def mk() -> int { p = P(); return p.n; }\n"
         "def pure(x: int) -> int { return x + 1; }\n"
     );
-    assert not prog.errors_had , (
-        f"a constructor owns its own capability violation since #8234, so a "
-        f"variadic init demotes instead of refusing the module, got: "
-        f"{[str(e) for e in prog.errors_had]}"
+    assert not fx.is_demoted("pure") , (
+        f"clean sibling function was lost: {fx.demoted()}"
     );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "pure" in layout.functions , (
-        f"clean sibling function was lost: {list(layout.functions)}"
+    assert fx.reason("P.init") == "function 'variadic or keyword-only parameters'" , (
+        f"the variadic init must be refused for its signature: {fx.demoted()}"
     );
-    assert "P.init" not in by_source_name(layout.methods) , (
-        "the variadic init must be demoted out of the native layout"
-    );
-    assert "mk" not in layout.functions , (
+    assert fx.is_demoted("mk") , (
         "constructing through a demoted initializer must refuse, not build a "
-        "half-initialized object"
+        f"half-initialized object: {fx.demoted()}"
     );
 }
 
@@ -257,30 +238,16 @@ test "a pack of a generic archetype's erased T answers what CPython answers" {
 }
 
 test "a generic pack slot is a native list, not the bare erased pointer" {
-    prog = JacProgram();
-    options = native_force_opts();
-    options.no_ir_cache = True;
-    options.skip_native_engine = True;
-    ir = prog.compile(os.path.join(FIXTURES, "varargs_generic.jac"), options=options);
-    assert not prog.errors_had , str(prog.errors_had);
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "Cell.get" in by_source_name(layout.methods) , (
-        f"the variadic method must reach the native image: {sorted(layout.methods)}"
-    );
-    assert "Cell.count" in by_source_name(layout.methods) , (
-        f"the variadic method must reach the native image: {sorted(layout.methods)}"
-    );
-    assert "Cell.pick" in by_source_name(layout.methods) , (
-        f"a pack after a fixed parameter must lower too: {sorted(layout.methods)}"
-    );
-    text = source_spelled(str(ir.gen.llvm_ir));
-    assert f'define i8* @"{source_spelled(
-        unit_symbol(ir, "Cell.get")
-    )}"(%"Cell"* %"self", %"List.ptr"* %"fallback")'
-        in text , (
-        "the pack slot must lay out as the pointer-flavoured native list; a bare "
-        "i8* there is the erased element leaking into the pack's own slot"
+    fx = compile_mir("varargs_generic.jac");
+    for name in ("Cell.get", "Cell.count", "Cell.pick") {
+        assert not fx.is_demoted(name) , (
+            f"the variadic method {name} must reach the native image: {fx.demoted()}"
+        );
+    }
+    header = mir_function(fx, "Cell.get").split("\n")[0];
+    assert "%fallback: list<" in header , (
+        "the pack slot must lay out as a native list; an erased type variable "
+        f"there is the element leaking into the pack's own slot: {header}"
     );
 }
 
@@ -292,23 +259,17 @@ test "a generic pack at a by-value type argument is refused, not lowered" {
 }
 
 test "a callee whose pack slot did not lay out refuses its caller" {
-    (prog, ir) = compile_na_inline_ir(
+    fx = compile_na_inline_mir(
         "packslot",
         "obj Cell[T] { has n: int = 0; def take(*xs: dict[T, T]) -> int { return 0; } }\n"
         "def use() -> int { c = Cell[Cell[int]](); return c.take(); }\n"
         "def pure(x: int) -> int { return x + 1; }\n"
     );
-    assert not prog.errors_had , (
-        f"the caller owns the refusal, so the module must still compile: "
-        f"{[str(e) for e in prog.errors_had]}"
+    assert not fx.is_demoted("pure") , (
+        f"clean sibling function was lost: {fx.demoted()}"
     );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "pure" in layout.functions , (
-        f"clean sibling function was lost: {list(layout.functions)}"
-    );
-    assert "use" not in layout.functions , (
+    assert fx.is_demoted("use") , (
         "binding the extras into a slot that is not a pack is a silent misread; "
-        "the caller must demote instead"
+        f"the caller must demote instead: {fx.demoted()}"
     );
 }

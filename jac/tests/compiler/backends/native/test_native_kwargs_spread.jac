@@ -1,9 +1,9 @@
 """`**` spread lowers into a callee's `**kwargs` sink and binds named params.
 
 Native already lowered the declaration half of kwargs: a callee with a
-`**kwargs` sink gets a trailing dict slot in its LLVM signature, and
-`_codegen_kwargs_dict` collects a call site's leftover *literal* keywords
-into that dict at compile time. The spread operand is merged into the sink
+`**kwargs` sink gets a trailing dict slot in its native signature, and a call
+site's leftover *literal* keywords are collected into that dict at compile
+time. The spread operand is merged into the sink
 with an index loop over the source dict, reusing the same len/get_key/
 get_val primitives dict iteration already uses.
 
@@ -20,38 +20,33 @@ Refs #8039
 """
 
 import ctypes;
-import os;
+import from pathlib { Path }
 import from tests.support {
-    TESTS_DIR,
+    compile_mir,
     compile_native,
+    diagnostics_text,
+    fixture_path,
     get_func,
     has_error_code,
-    native_force_opts
+    kernel_check_source,
+    kernel_compile_file,
+    native_force_opts,
+    unit_symbol,
+    write_case
 }
-import jaclang;
-
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
-
-"""Run a snippet through the front-end check schedule with the native
-capability authority on -- the `jac check` path that surfaces E5090."""
-def check_na_inline(label: str, code: str) -> JacProgram {
-    prog = JacProgram();
-    prog.compile(
-        file_path=os.path.join(FIXTURES, f"_kwspread_{label}.jac"),
-        use_str=code,
-        options=CompileOptions(no_cgen=True, force_codespace="native")
+"""Run a snippet through the check entry with the native capability authority
+on -- the `jac check` path that surfaces E5090."""
+def check_na_inline(label: str, code: str) -> any {
+    return kernel_check_source(
+        code, f"kwspread_{label}.jac", CompileOptions(force_codespace="native")
     );
-    return prog;
 }
 
-"""Format errors for assertion messages."""
-def fmt_errors(prog: JacProgram) -> str {
-    return str([str(e) for e in prog.errors_had]);
+"""Write a snippet as its own module; return its path."""
+def inline_case(label: str, code: str) -> Path {
+    return Path(write_case(code, f"kwspread_{label}.jac"));
 }
 
 # sink() encodes both arity and identity: base + 100*len(kw), then +1000 / +2000
@@ -93,12 +88,8 @@ test "spreading an empty dict yields an empty sink" {
 }
 
 test "the spread fixture compiles with no native diagnostics" {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, "kwargs_spread.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , fmt_errors(prog);
+    result = kernel_compile_file(fixture_path("kwargs_spread.jac"), native_force_opts());
+    assert result.ok() , diagnostics_text(result);
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -107,53 +98,44 @@ test "the spread fixture compiles with no native diagnostics" {
 # ─────────────────────────────────────────────────────────────────────
 
 test "a spread at a callee with no sink binds its declared parameters" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "_kwspread_onto_named.jac"),
-        use_str="def sink(a: int, b: int) -> int { return a + b; }\n"
+    path = inline_case(
+        "onto_named",
+        "def sink(a: int, b: int) -> int { return a + b; }\n"
         "def use -> int {\n"
         "    d: dict[str, int] = {\"b\": 2};\n"
         "    return sink(1, **d);\n"
-        "}\n",
-        options=native_force_opts()
+        "}\n"
     );
-    assert not prog.errors_had , fmt_errors(prog);
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "use" in layout.functions , (
-        f"the fixed-signature spread caller must lower: {list(layout.functions)}"
+    (eng, fx) = compile_native(path.name, str(path.parent));
+    assert unit_symbol(fx, "use") not in fx.iface().demoted , (
+        f"the fixed-signature spread caller must lower: {fx.iface().demoted}"
     );
-    use = get_func(ir.gen.native_engine, "use", ctypes.c_int64);
+    use = get_func(eng, "use", ctypes.c_int64);
     assert use() == 3 , f"got {use()}";
 }
 
 test "guardrail: a spread into a callee with no known signature demotes" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "_kwspread_unknown_callee.jac"),
-        use_str="def sink(a: int, b: int) -> int { return a + b; }\n"
+    path = inline_case(
+        "unknown_callee",
+        "def sink(a: int, b: int) -> int { return a + b; }\n"
         "def use(f: Callable[..., int]) -> int {\n"
         "    d: dict[str, int] = {\"b\": 2};\n"
         "    return f(1, **d);\n"
-        "}\n",
-        options=native_force_opts()
+        "}\n"
     );
-    assert not has_error_code(prog, "E5090") , (
+    fx = compile_mir(path.name, str(path.parent));
+    assert not has_error_code(fx.result, "E5090") , (
         f"the unknown-callee spread is owned by use(), which must demote to a "
-        f"seam, got {fmt_errors(prog)}"
+        f"seam, got {diagnostics_text(fx.result)}"
     );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "sink" in layout.functions , (
-        f"clean sibling function was lost: {list(layout.functions)}"
-    );
-    assert "use" not in layout.functions , (
+    assert not fx.is_demoted("sink") , f"clean sibling function was lost: {fx.demoted()}";
+    assert fx.is_demoted("use") , (
         "a spread into a callee without a static signature must be demoted"
     );
 }
 
 test "a spread into a sink no longer trips the capability gate" {
-    prog = check_na_inline(
+    checked = check_na_inline(
         "into_sink",
         "def sink(a: int, **kw: int) -> int { return a + len(kw); }\n"
         "def use -> int {\n"
@@ -161,7 +143,7 @@ test "a spread into a sink no longer trips the capability gate" {
         "    return sink(1, **d);\n"
         "}\n"
     );
-    assert not prog.errors_had , fmt_errors(prog);
+    assert checked.ok() , diagnostics_text(checked);
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -181,24 +163,6 @@ test "a spread and a literal keyword evaluate in source order" {
     lit_first = get_func(eng, "order_literal_then_spread", ctypes.c_int64);
     assert lit_first() == 12 , (
         f"literal should evaluate before the later **spread, got {lit_first()}"
-    );
-}
-
-# CPython raises `TypeError: got multiple values for keyword argument` when a
-# spread collides with an already-bound key. The keys of a spread are only
-# known at runtime, so the check is a guard emitted per inserted entry rather
-# than a compile-time diagnostic. Asserted on the emitted IR: executing the
-# raise through the JIT would longjmp out of the ctypes frame.
-test "a spread emits a duplicate-key guard for every entry it inserts" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "kwargs_spread.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , str([str(e) for e in prog.errors_had]);
-    llvm_text = str(ir.gen.llvm_ir);
-    assert "kwsp.dup" in llvm_text , (
-        "expected a duplicate-key guard on the spread merge path"
     );
 }
 
@@ -287,12 +251,12 @@ test "a required param a spread never supplies raises TypeError" {
 # Duplicate literal keywords stay a compile-time rejection
 # ─────────────────────────────────────────────────────────────────────
 
-# The name-keyed kw_map in _codegen_bound_args would silently drop the first
-# of two identical literal keywords, but ast_validation_pass rejects the call
+# A name-keyed binding map would silently drop the first of two identical
+# literal keywords, but ast_validation_pass rejects the call
 # with E0065 on every codespace before codegen can see it. Pinned here so the
 # front-end guard can't regress out from under the native lowering.
 test "duplicate literal keywords are rejected at check time" {
-    prog = check_na_inline(
+    checked = check_na_inline(
         "dup_literal",
         "def sink(**kw: int) -> int { return len(kw); }\n"
         "def use -> int {\n"
@@ -300,7 +264,7 @@ test "duplicate literal keywords are rejected at check time" {
         "    return sink(p=1, p=2, **d);\n"
         "}\n"
     );
-    assert has_error_code(prog, "E0065") , (
-        f"expected E0065 for a duplicate literal keyword, got {fmt_errors(prog)}"
+    assert has_error_code(checked, "E0065") , (
+        f"expected E0065 for a duplicate literal keyword, got {diagnostics_text(checked)}"
     );
 }

@@ -13,16 +13,22 @@ places the calling unit in Python, or fails the build when the module must
 be native.
 """
 
+import json;
 import os;
 import re;
-import ctypes;
 import tempfile;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.codeinfo { InteropContext }
-import from jaclang.compiler.backends.py.python_text { generated_python }
 import from jaclang.compiler.passes.placement_pass { build_native_legality }
-import from tests.support { get_func }
+import from tests.support {
+    KernelFixture,
+    diagnostics_text,
+    error_codes,
+    kernel_compile_file,
+    kernel_compile_source,
+    sv_run
+}
 
 
 """Write a tiny multi-file project into a temp dir; return its path."""
@@ -58,23 +64,17 @@ test "import from os { getppid } is refused before it can reach libc" {
     # `os` is a bundled Jac module in native code, and it defines no
     # `getppid`, so the import itself is refused. The call never reaches the
     # interop path, and no bare `getppid` extern can resolve against libc.
-    prog = JacProgram();
-    mod = prog.compile(
-        file_path="closed_world_getppid.jac",
-        use_str="import from os { getppid }\n"
+    result = kernel_compile_source(
+        "import from os { getppid }\n"
             + "def:pub pid -> i64 { return i64(getppid()); }\n",
-        options=CompileOptions(native_required=True)
+        "closed_world_getppid.jac",
+        CompileOptions(native_required=True)
     );
-    msgs = " ".join(str(e) for e in prog.errors_had);
-    codes = [
-        str(e.code.code)
-        for e in prog.errors_had
-        if e.code is not None
-    ];
-    assert "E1145" in codes and "getppid" in msgs , (
+    msgs = diagnostics_text(result);
+    assert "E1145" in error_codes(result) and "getppid" in msgs , (
         f"the import must be refused by name; got: {msgs[:300]}"
     );
-    ir_text = str(mod.gen.llvm_ir) if mod.gen.llvm_ir is not None else "";
+    ir_text = "\n".join(unit.native_ir for unit in result.units);
     assert re.search(r'@"?getppid"?\(', ir_text) is None , (
         "no bare getppid extern may be declared"
     );
@@ -145,18 +145,21 @@ test "bare and aliased spellings resolve to one interop symbol" {
             )
         }
     );
-    (prog, mod) = _compile_main(tmp);
-    assert mod.gen.llvm_ir is not None , "main.jac must lower for the native codespace";
-    bindings = mod.gen.interop_manifest.bindings;
-    symbol = bindings["answer"].symbol;
+    result = kernel_compile_file(
+        os.path.join(tmp, "main.jac"),
+        CompileOptions(aot_mode=True, default_codespace='native', skip_native_engine=True)
+    );
+    assert result.ok() , diagnostics_text(result);
+    unit = result.unit(os.path.join(tmp, "main.jac"));
+    ir_text = unit.native_ir;
+    assert ir_text , "main.jac must lower for the native codespace";
+    bindings = json.loads(unit.interop)["bindings"];
+    symbol = bindings["answer"]["symbol"];
     assert symbol.startswith("__jac_na_import_helper_") , symbol;
-    assert bindings["ans"].symbol == symbol , "an alias names the same function";
-    ir_text = str(mod.gen.llvm_ir);
-    decls = re.findall(r"declare [^\n]*@\"?__jac_na_import_\w+", ir_text);
+    assert bindings["ans"]["symbol"] == symbol , "an alias names the same function";
+    decls = re.findall(r"declare [^\n]*@\"?(__jac_na_import_\w+)", ir_text);
     assert len(decls) == 1 , f"bare/aliased spellings must emit one extern, got {decls}";
-    assert symbol in decls[0] , f"the extern must be the binding's symbol, got {decls[
-        0
-    ]}";
+    assert decls[0] == symbol , f"the extern must be the binding's symbol, got {decls[0]}";
     for bare in ("answer", "ans") {
         assert re.search(r'@"?' + bare + r'"?\(', ir_text) is None , (
             f"no bare-name extern '{bare}' may survive"
@@ -179,34 +182,15 @@ test "one name imported from two modules dispatches to each module's function" {
                 + "import from helper_b { f as g }\n\n"
                 + "def:pub both -> int {\n"
                 + "    return f() * 10 + g();\n"
+                + "}\n\n"
+                + "with entry {\n"
+                + "    print(both());\n"
                 + "}\n"
             )
         }
     );
-    (prog, mod) = _compile_main(tmp, aot=False);
-    bindings = mod.gen.interop_manifest.bindings;
-    assert "f" in bindings and "g" in bindings , (
-        f"bindings: {list(bindings)}; refusal: {mod.gen.native_refusal}; "
-        f"engine: {mod.gen.native_engine}"
-    );
-    sym_f = bindings["f"].symbol;
-    sym_g = bindings["g"].symbol;
-    assert sym_f.startswith("__jac_na_import_helper_a_") , sym_f;
-    assert sym_g.startswith("__jac_na_import_helper_b_") , sym_g;
-    py_src = generated_python(mod);
-    assert f"__jac_interop_py_funcs__['{sym_f}'] = f" in py_src , py_src;
-    assert f"__jac_interop_py_funcs__['{sym_g}'] = g" in py_src , py_src;
-    def from_a -> int {
-        return 1;
-    }
-    def from_b -> int {
-        return 2;
-    }
-    table = mod.gen.interop_py_funcs;
-    table[sym_f] = from_a;
-    table[sym_g] = from_b;
-    both = get_func(mod.gen.native_engine, "both", ctypes.c_int64);
-    assert both() == 12 , "each import must call its own module's function";
+    (out, _err) = sv_run(os.path.join(tmp, "main.jac"));
+    assert out.split() == ["12"] , f"each import must call its own module's function: {out}";
 }
 
 
@@ -222,23 +206,15 @@ test "a native function calls a server function declared after it" {
                 + "}\n\n"
                 + "def later -> int {\n"
                 + "    return 41;\n"
+                + "}\n\n"
+                + "with entry {\n"
+                + "    print(run());\n"
                 + "}\n"
             )
         }
     );
-    (prog, mod) = _compile_main(tmp, aot=False);
-    binding = mod.gen.interop_manifest.bindings.get("later");
-    assert binding is not None and binding.native_callable , (
-        f"a later server function must still get a provider: {binding}"
-    );
-    py_src = generated_python(mod);
-    assert f"__jac_interop_py_funcs__['{binding.symbol}'] = later" in py_src , py_src;
-    def later -> int {
-        return 41;
-    }
-    mod.gen.interop_py_funcs[binding.symbol] = later;
-    run = get_func(mod.gen.native_engine, "run", ctypes.c_int64);
-    assert run() == 42;
+    (out, _err) = sv_run(os.path.join(tmp, "main.jac"));
+    assert out.split() == ["42"] , f"a later server function must still get a provider: {out}";
 }
 
 
@@ -264,14 +240,16 @@ test "a native element of a mixed module calls a server function it imports" {
             )
         }
     );
-    prog = JacProgram();
-    mod = prog.compile(os.path.join(tmp, "main.jac"));
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    binding = mod.gen.interop_manifest.bindings.get("f");
-    assert binding is not None and binding.native_callable , (
+    path = os.path.join(tmp, "main.jac");
+    result = kernel_compile_file(path, CompileOptions(), ["bytecode", "mir"]);
+    assert result.ok() , diagnostics_text(result);
+    fx = KernelFixture(path=path, result=result, unit=result.unit(path));
+    assert fx.iface() is not None and "both" in fx.iface().exports , (
+        f"both must stay native: {fx.demoted()}"
+    );
+    assert not fx.is_demoted("both") , f"the native call to f must have a provider: {fx.reason('both')}";
+    binding = json.loads(fx.unit.interop)["bindings"].get("f");
+    assert binding is not None and binding["symbol"] , (
         f"the native call to f must have a provider: {binding}"
     );
-    py_src = generated_python(mod);
-    assert "get_function_address" in py_src , "both must stay native";
-    assert f"__jac_interop_py_funcs__['{binding.symbol}'] = f" in py_src , py_src;
 }

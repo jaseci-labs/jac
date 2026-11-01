@@ -14,8 +14,8 @@ def _declared_wide(ir_text: str) -> set[str] {
 }
 
 test "a unit declares only the imported functions it calls" {
-    module = compile_native_ir("lazy_decl_user.jac");
-    declared = _declared_wide(str(module.gen.llvm_ir));
+    fx = compile_native_ir("lazy_decl_user.jac");
+    declared = _declared_wide(fx.llvm_ir());
     assert declared == {"wide_3", "wide_7", "wide_19"} , sorted(declared);
 }
 
@@ -27,9 +27,7 @@ test "imported functions declared on first reference still call correctly" {
 }
 
 test "an import declared after a local function of its name leaves the local's return facts" {
-    module = compile_native_ir("lazy_ret_user.jac");
-    layout = module.gen.native_layout;
-    assert layout is not None;
-    local = layout.functions.get("items");
-    assert local is not None and local.ret_elem_keys == ["int"] , local;
+    (engine, _) = compile_native("lazy_ret_user.jac");
+    assert get_func(engine, "local_total", ctypes.c_int64)() == 6;
+    assert get_func(engine, "imported_count", ctypes.c_int64)() == 2;
 }

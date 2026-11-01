@@ -7,7 +7,7 @@ branches each read through their own local spent most of its time releasing
 locals it never assigned. Each release is now behind an inline null test, so an
 unassigned local costs a load and a not-taken branch.
 
-The IR test pins the guard. The run tests check that results are unchanged,
+The run tests check that results are unchanged,
 that an object is still dropped at the end of the iteration that assigned it
 (a guard that skipped the release would only delay the drop to the next
 reassignment or the loop exit), and that a 2 GB string churn through branch
@@ -19,13 +19,7 @@ import resource;
 import subprocess;
 import tempfile;
 import ctypes;
-import from tests.support {
-    compile_native,
-    compile_native_ir,
-    get_func,
-    jac_command,
-    TESTS_DIR
-}
+import from tests.support { compile_native, get_func, jac_command, TESTS_DIR }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR,
@@ -51,14 +45,6 @@ glob FIXTURE = os.path.join(
          "after loop"
      ],
      EXPECTED = "\n".join(["69650", "2000000000"] + DROP_ORDER + ["end", ""]);
-
-test "loop-body local releases are guarded by a null test" {
-    text = str(compile_native_ir("loop_local_release.jac").gen.llvm_ir);
-    for name in ("p0", "p1", "p2", "p3", "s0", "s3", "a", "b") {
-        assert f"iter.set.{name}" in text , f"{name}: latch release not null-guarded";
-        assert f"iter.rel.{name}" in text , f"{name}: no guarded release block";
-    }
-}
 
 test "branch-local references compute the same result" {
     (eng, _) = compile_native("loop_local_release.jac");

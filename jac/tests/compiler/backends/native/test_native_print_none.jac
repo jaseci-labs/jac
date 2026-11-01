@@ -4,8 +4,8 @@ A bare `None` lowered to a null `i8*` and went straight into the `%s`
 slot, so `print(None)` segfaulted the binary. Separately, an argument
 whose sub-expression could not lower was skipped with a bare `continue`,
 so `print(b"Hi".upper())` compiled natively and printed nothing at all --
-no output, no diagnostic, exit 0. Every other failure in `_emit_print`
-emits E5092 and declines the lowering; that one did not.
+no output, no diagnostic, exit 0. An argument that cannot lower now refuses
+its function (E5092) like every other unlowerable construct.
 """
 
 import os;

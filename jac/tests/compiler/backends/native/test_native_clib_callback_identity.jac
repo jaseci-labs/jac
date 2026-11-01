@@ -21,9 +21,7 @@ test "a callback slot and ptr(f) agree on a def's and a C function's address" {
         native_tls=True,
         native_sjlj=True
     );
-    text = str(
-        compile_native_ir("clib_callback_identity.jac", options=options).gen.llvm_ir
-    );
+    text = compile_native_ir("clib_callback_identity.jac", options=options).llvm_ir();
     trampolines = [
         line
         for line in text.splitlines()

@@ -21,48 +21,32 @@ quietly, because nothing else in the file would disagree with it.
 
 Two things still refuse, and they refuse rather than guess. A generated value
 that follows a member the fold could not reach has no maximum to count from,
-so it stays unknown and `all_values_known` reads false; such an enum is
-reported under E5092 where it is used, never lowered with guessed zeros. And
-the name is
-matched through its symbol, not its spelling: a module-local function called
-`auto` is not `enum`'s, so `enum_auto_shadow.jac` keeps its seam and the
-server lane answers what CPython answers.
+so it stays unknown; such an enum is refused under E5092 where it is used,
+never lowered with guessed zeros. And the name is matched through its symbol,
+not its spelling: a module-local function called `auto` is not `enum`'s, so
+`enum_auto_shadow.jac` demotes the function that reads it and the server lane
+answers what CPython answers.
 """
 
-import contextlib;
-import io;
+import ctypes;
 import os;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.passes.layout_pass { get_layout_registry }
+import from tests.support {
+    TESTS_DIR,
+    compile_mir,
+    compile_native,
+    compile_native_refused,
+    diagnostics_text,
+    error_codes,
+    get_func,
+    jac_command
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      EXPECTED: tuple[str, ...] = ("1", "2", "3", "10", "3", "1112", "129", "4");
-
-def compile_native(fixture: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
-    );
-    return (prog, ir, );
-}
-
-
-"""The seam report a build would show on stderr for a fixture."""
-def seam_report(fixture: str) -> str {
-    buf = io.StringIO();
-    prog = JacProgram();
-    with contextlib.redirect_stderr(buf) {
-        prog.compile(
-            file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
-        );
-    }
-    return buf.getvalue();
-}
 
 
 def sv_lines(fixture: str) -> list[str] {
@@ -102,51 +86,32 @@ def na_lines(fixture: str) -> list[str] {
 }
 
 
-test "an all-auto enum lowers with no seam" {
-    (prog, ir) = compile_native("enum_auto.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the fixture";
-    seams = seam_report("enum_auto.jac");
-    assert "attribute access" not in seams , (
-        f"a member read off the class still refused:\n{seams}"
+test "an all-auto enum lowers with nothing demoted" {
+    demoted = compile_mir("enum_auto.jac").demoted();
+    assert not any(reason.startswith("attribute") for reason in demoted.values()) , (
+        f"a member read off the class still refused: {demoted}"
     );
 }
 
 
 test "generated values count from the largest already assigned" {
-    (prog, ir) = compile_native("enum_auto.jac");
-    reg = get_layout_registry(ir, prog);
-    cat = reg.get_enum_layout("Cat");
-    assert cat is not None and cat.all_values_known , (
-        "the all-auto enum's table is still unencodable"
+    (eng, _) = compile_native("enum_auto.jac");
+    category = get_func(eng, "category", ctypes.c_int64, ctypes.c_int64);
+    assert [category(0), category(1), category(2)] == [1, 2, 3] , (
+        "the all-auto enum did not count from 1"
     );
-    cat_values = [(m.name, m.int_value) for m in cat.members];
-    assert cat_values == [("Positional", 1), ("ArgsList", 2), ("KwargsDict", 3)] , f"Cat generated {cat_values}";
-    mixed = reg.get_enum_layout("Mixed");
-    assert mixed is not None and mixed.all_values_known , (
-        "the mixed enum's table is still unencodable"
-    );
-    mixed_values = [(m.name, m.int_value) for m in mixed.members];
-    assert mixed_values == [("High", 10), ("Low", 3), ("Next", 11), ("After", 12)] , (
-        f"Mixed generated {mixed_values}; counting from the last member "
-        f"rather than the largest would read 4"
+    counted = get_func(eng, "counted", ctypes.c_int64)();
+    assert counted == 1112 , (
+        f"Mixed generated {counted}; counting from the last member rather than "
+        "the largest would read 405"
     );
 }
 
 
 test "the declared-enum spelling generates the same way" {
-    (prog, ir) = compile_native("enum_auto.jac");
-    reg = get_layout_registry(ir, prog);
-    cases: list[tuple[str, list[tuple[str, int]]]] = [
-        ("Step", [("First", 1), ("Second", 2), ("Third", 9)]),
-        ("Split", [("Low", 3), ("Next", 4)])
-    ];
-    for (name, expected) in cases {
-        lay = reg.get_enum_layout(name);
-        assert lay is not None , f"the declared enum {name} lost its layout";
-        values = [(m.name, m.int_value) for m in lay.members];
-        assert values == expected , f"{name} generated {values}";
-    }
+    (eng, _) = compile_native("enum_auto.jac");
+    stepped = get_func(eng, "stepped", ctypes.c_int64)();
+    assert stepped == 129 , f"Step generated {stepped}";
 }
 
 
@@ -159,15 +124,9 @@ test "generated values answer as CPython does" {
 
 
 test "a module-local auto is not read as the enum's" {
-    seams = seam_report("enum_auto_shadow.jac");
-    assert "demoting loudness" in seams , (
-        f"this module's own `auto` was counted as a generated value:\n{seams}"
-    );
-    (prog, ir) = compile_native("enum_auto_shadow.jac");
-    reg = get_layout_registry(ir, prog);
-    tone = reg.get_enum_layout("Tone");
-    assert tone is not None and not tone.all_values_known , (
-        "a member the fold cannot reach was reported as known"
+    fx = compile_mir("enum_auto_shadow.jac");
+    assert fx.is_demoted("loudness") , (
+        f"this module's own `auto` was counted as a generated value: {fx.demoted()}"
     );
     sv = sv_lines("enum_auto_shadow.jac");
     assert sv == ["40"] , f"server lane printed {sv}";
@@ -175,12 +134,12 @@ test "a module-local auto is not read as the enum's" {
 
 
 test "an unencodable declared enum refuses where it is used" {
-    (prog, _ir) = compile_native("enum_unencodable.jac");
-    errs = [str(e) for e in prog.errors_had];
-    assert any("Native lowering failed for enum 'Ratio'" in e for e in errs) , (
-        f"a use of an unencodable enum lowered with guessed zeros: {errs}"
+    result = compile_native_refused("enum_unencodable.jac");
+    text = diagnostics_text(result);
+    assert "E5092" in error_codes(result) and "Ratio" in text , (
+        f"a use of an unencodable enum lowered with guessed zeros: {text}"
     );
-    assert not any("Unread" in e or "enum_unencodable_lib" in e for e in errs) , (
-        f"an enum nothing uses refused its module: {errs}"
+    assert "Unread" not in text and "enum_unencodable_lib" not in text , (
+        f"an enum nothing uses refused its module: {text}"
     );
 }

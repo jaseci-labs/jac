@@ -27,6 +27,7 @@ import from jaclang.compiler.driver.native_iface {
     merge_class_layouts
 }
 import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { diagnostics_text, kernel_compile_file }
 import from jaclang.compiler.frontend.codeinfo {
     native_entry_name,
     native_glob_init_name,
@@ -42,12 +43,15 @@ def _native_opts -> CompileOptions {
     );
 }
 
+"""The native interface record the kernel published for `path`."""
 def _iface_of(path: str) -> NativeIface {
-    prog = JacProgram();
-    mod = prog.compile(file_path=path, options=_native_opts());
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    assert mod.gen.native_iface is not None , f"no native interface for {path}";
-    return mod.gen.native_iface;
+    result = kernel_compile_file(path, _native_opts(), ["mir"]);
+    assert result.ok() , diagnostics_text(result);
+    raw = result.unit(path).native_iface;
+    assert raw , f"no native interface for {path}";
+    iface = NativeIface.from_bytes(raw.encode("utf-8"));
+    assert iface is not None , f"an unreadable native interface for {path}";
+    return iface;
 }
 
 """Write `text` as `name` under `scratch` (a fresh directory when
@@ -264,7 +268,7 @@ test "native products and relocatable paths coexist in one JIR" {
         == "/installed/package/dependency.jac";
 }
 
-test "a unit's layout keeps a function named like a dependency's foreign symbol" {
+test "a unit's exports keep a function named like a dependency's foreign symbol" {
     scratch = tempfile.mkdtemp(prefix="jac-niface-foreign-");
     _scratch_copy(
         "helper.jac",
@@ -281,8 +285,7 @@ test "a unit's layout keeps a function named like a dependency's foreign symbol"
     iface = _iface_of(lib_path);
     assert "sqrt" in iface.clib_symbol_lib , sorted(iface.clib_symbol_lib.keys());
     assert "sqrt" in iface.exports , sorted(iface.exports.keys());
-    assert iface.layout is not None;
-    assert "sqrt" in iface.layout.functions , sorted(iface.layout.functions.keys());
+    assert "sqrt" not in iface.demoted , iface.demoted;
 }
 
 """Closure cells and iterator states are the backend's own helper structs,

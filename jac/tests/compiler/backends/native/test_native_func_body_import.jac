@@ -16,10 +16,18 @@ import os;
 import sys;
 import from tests.support {
     TESTS_DIR,
+    adopt_native_units,
+    compile_mir,
     compile_native,
+    compile_native_refused,
+    compile_native_unit,
+    diagnostics_text,
+    error_codes,
     native_address,
-    native_force_opts
+    native_force_opts,
+    write_case
 }
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -69,69 +77,33 @@ test "function-body imports lower and agree with sv" {
 
 # Supporting the body-scoped spelling must not smuggle unsupported modules in:
 # a Python-only import written in a body is the same capability violation a
-# module-level one is, but its owning function absorbs it as a granular seam
-# (epic #8201): the function demotes to its Python implementation with the
-# stdlib help text on the demotion diagnostic, instead of lowering to a
-# silent no-op statement -- and a native caller of the demoted function is a
-# structured E5092, never a silent bind to its abort stub.
+# module-level one is, but its owning function absorbs it (epic #8201): the
+# decision step demotes the function to its Python implementation instead of
+# lowering the import to a silent no-op statement -- and when native is
+# required, the refusal is a structured E5092.
 test "an unsupported body-scoped import demotes its function, callers stay loud" {
-    import contextlib;
-    import io;
-    prog = JacProgram();
-    buf = io.StringIO();
-    _prev = os.environ.get("JAC_NA_DEBUG");
-    os.environ["JAC_NA_DEBUG"] = "1";
-    try {
-        with contextlib.redirect_stderr(buf) {
-            ir = prog.compile(
-                file_path=os.path.join(FIXTURES, "_func_body_bad_import.jac"),
-                use_str="def use() -> int {\n"
-                "    import collections;\n"
-                "    d = collections.OrderedDict();\n"
-                "    return len(d);\n"
-                "}\n",
-                options=native_force_opts()
-            );
-        }
-    } finally {
-        if _prev is None {
-            del os.environ["JAC_NA_DEBUG"];
-        } else {
-            os.environ["JAC_NA_DEBUG"] = _prev;
-        }
-    }
-    log = buf.getvalue();
-    assert not prog.errors_had , f"a function-owned import violation must demote, got: {[
-        str(e) for e in prog.errors_had
-    ]}";
-    assert ir.gen.native_layout is not None;
-    assert "use" not in ir.gen.native_layout.functions , (
-        "the function with the Python-only import must leave the native layout"
-    );
-    assert "NA_DEBUG demote use" in log , f"no demotion recorded for use in:\n{log}";
-    assert "Native compilation supports these stdlib imports" in log , (
-        f"the demotion diagnostic should carry the stdlib help:\n{log}"
-    );
-
-    caller = JacProgram();
-    caller.compile(
-        file_path=os.path.join(FIXTURES, "_func_body_bad_import_caller.jac"),
-        use_str="def use() -> int {\n"
+    source = "def use() -> int {\n"
         "    import collections;\n"
         "    d = collections.OrderedDict();\n"
         "    return len(d);\n"
-        "}\n"
-        "with entry { print(use()); }\n",
-        options=native_force_opts()
+        "}\n";
+    fx = compile_mir(write_case(source, "_func_body_bad_import.jac"));
+    assert fx.is_demoted("use") , (
+        f"the function with the Python-only import must be demoted: {fx.demoted()}"
     );
-    caller_codes = [
-        alrt.code.code
-        for alrt in caller.errors_had
-        if alrt.code is not None
-    ];
-    assert "E5092" in caller_codes , f"expected E5092 for the native caller of the demoted function, got: {[
-        str(e) for e in caller.errors_had
-    ]}";
+
+    result = compile_native_refused(
+        write_case(
+            source + "with entry { print(use()); }\n",
+            "_func_body_bad_import_caller.jac"
+        ),
+        "",
+        CompileOptions(force_codespace="native", native_required=True)
+    );
+    assert "E5092" in error_codes(result) , (
+        f"expected E5092 for the native caller of the demoted function, got:\n"
+        f"{diagnostics_text(result)}"
+    );
 }
 
 # Widening guard. Seeing body-scoped imports must not widen what gets REGISTERED:
@@ -169,17 +141,18 @@ test "nested imports are harvested only from native-context elements" {
 # import resolves its module and that module's declared C library does reach the
 # link set -- which is the transitive half of N8c actually working.
 test "a native-context body-scoped import contributes its module's clib" {
-    prog = JacProgram();
     opts = native_force_opts();
     opts.skip_native_engine = True;
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "clib_ctx_gated_entry.jac"), options=opts
+    fx = compile_native_unit(
+        os.path.join(FIXTURES, "clib_ctx_gated_entry.jac"), "", opts, ["mir"]
     );
-    assert not prog.errors_had , f"Errors: {[str(e) for e in prog.errors_had]}";
+    prog = JacProgram();
+    prog.options = opts;
+    adopt_native_units(prog, fx.result, opts);
     # The link set is the plan's: the imported module is its own unit and its
     # declared C library rides on that unit's interface.
     import from jaclang.compiler.backends.native.link_plan { build_link_plan }
-    plan = build_link_plan(prog, [ir.loc.mod_path], opts);
+    plan = build_link_plan(prog, [fx.path], opts);
     assert any("libctxgated" in p for p in plan.clib_paths()) , (
         f"transitive body-scoped import did not contribute its clib: "
         f"{plan.clib_paths()}"

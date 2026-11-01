@@ -15,6 +15,7 @@ import re;
 import tempfile;
 import from pathlib { Path }
 import from jaclang.compiler.backends.native.llvm.binding { parse_bitcode }
+import from jaclang.compiler.backends.native.mir.emit { RAISE_BUILTIN_SYMBOL }
 import from tests.support { compile_native_ir, native_build, native_run }
 
 glob FIXTURE: str = "inline_checked_helpers.jac",
@@ -32,10 +33,12 @@ def entry_key_calls(body: str) -> list[str] {
 }
 
 test "the raise helper charges the inliner one instruction per raise site" {
-    mod = compile_native_ir(FIXTURE);
-    text = str(mod.gen.llvm_ir);
-    head = re.search(r'define [^\n]*@"?__jac_exc_raise"?\([^\n]*', text);
-    assert head is not None , "no raise helper in the unit";
+    fx = compile_native_ir(FIXTURE);
+    head = re.search(
+        r'(?:define|declare) [^\n]*@"?' + RAISE_BUILTIN_SYMBOL + r'"?\([^\n]*',
+        fx.llvm_ir()
+    );
+    assert head is not None , "the unit never declares the raise helper";
     assert '"call-inline-cost"="5"' in head.group(0) , head.group(0);
     assert "noreturn" in head.group(0) , head.group(0);
 }

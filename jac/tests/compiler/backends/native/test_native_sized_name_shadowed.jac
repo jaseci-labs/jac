@@ -4,9 +4,7 @@ instead of lowering as the cast. Fixture: fixtures/sized_name_shadowed.jac."""
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from tests.support { TESTS_DIR, compile_native, native_address }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR,
@@ -18,12 +16,7 @@ glob FIXTURE = os.path.join(
      );
 
 def probe(name: str) -> int {
-    prog = JacProgram();
-    ir = prog.compile(file_path=str(FIXTURE), options=native_force_opts());
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors: {errors}";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , "No native engine produced";
+    (eng, _fx) = compile_native(str(FIXTURE));
     addr = native_address(eng, name);
     assert addr != 0 , f"Function '{name}' not found in JIT engine";
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();

@@ -26,15 +26,8 @@ carries the coverage.
 """
 
 import ctypes;
-import os;
 import sys;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
+import from tests.support { compile_native, native_address }
 
 
 """Return a callable reading glibc `mallinfo2().uordblks`, or None if unavailable."""
@@ -72,15 +65,7 @@ def _inuse_probe -> (any | None) {
 returning in-use-heap growth (bytes) across a build/drop loop with cycle
 collection `enable`d or not."""
 def _cycle_growth(fixture: str, enable: bool, inuse: any) -> int {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    assert not prog.errors_had , (
-        f"compile errors in {fixture}: {[str(e) for e in prog.errors_had]}"
-    );
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"no native engine for {fixture}";
+    (eng, _) = compile_native(fixture);
 
     def _fn(name: str) -> any {
         addr = native_address(eng, name);

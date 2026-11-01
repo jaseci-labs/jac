@@ -2,29 +2,29 @@
 
 `has parts: (list[Item] | None)` lowers to a `JacOpt` -- a presence tag beside
 the container pointer. Every loop, comprehension and slice over such a slot
-used to hand that wrapper to the container helpers, which raised
-`Type of #1 arg mismatch` out of the IR builder: an internal compiler error,
-reported as a per-function seam and never as a wrong answer, but a crash all
-the same. The `x or []` spelling failed differently and worse -- the empty
+used to hand that wrapper to the container helpers, which crashed the IR
+builder: an internal compiler error, reported as a per-function demotion and
+never as a wrong answer, but a crash all the same. The `x or []` spelling failed differently and worse -- the empty
 display picked its own element flavour, the phi unified the two container
 pointers to `i8*`, and the element type was gone by the time the loop asked
 for it.
 
 Two properties are pinned:
 
-* every shape lowers, so none of these functions may be missing from the
-  native layout, and
+* every shape lowers, so none of these functions may be demoted, and
 * the native answer equals the sv answer, including the `None` arm -- walking
   an absent optional raises `TypeError` on both pathways rather than
   silently iterating nothing.
 """
 
-import from jaclang.compiler.backends.py.python_text { generated_python }
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { TESTS_DIR, compile_mir, compile_native, native_address }
+import from jaclang.runtime.runtime { JacRuntime }
+import from jaclang.compiler.frontend.codeinfo {
+    get_effective_default_codespace_override,
+    set_effective_default_codespace
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -50,15 +50,6 @@ glob CASES: list[str] = [
          "none_slice_raises"
      ];
 
-"""Compile the fixture natively and return (program, ir)."""
-def native_build -> tuple[any, ...] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, FIXTURE)), options=native_force_opts()
-    );
-    return (prog, ir, );
-}
-
 """Call a no-argument int-returning function out of the JIT engine."""
 def native_call(eng: any, name: str) -> int {
     addr = native_address(eng, name);
@@ -66,56 +57,49 @@ def native_call(eng: any, name: str) -> int {
     return ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();
 }
 
-"""Run the fixture through the sv pathway and return its module globals."""
-def sv_funcs -> dict[str, any] {
-    path = str(os.path.join(FIXTURES, FIXTURE));
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=path, options=CompileOptions(default_codespace='server')
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"sv compilation errors: {errors}";
-    ns: dict[str, any] = {};
-    exec(compile(generated_python(ir), path, "exec"), ns);
-    return ns;
+"""Import the fixture through the sv pathway and return its module."""
+def sv_module -> any {
+    prev = get_effective_default_codespace_override();
+    set_effective_default_codespace("server");
+    try {
+        mods = JacRuntime.jac_import(
+            target=FIXTURE[:-4], base_path=FIXTURES, reload_module=True
+        );
+    } finally {
+        set_effective_default_codespace(prev);
+    }
+    assert mods , "sv import of the fixture produced no module";
+    return mods[0];
 }
 
 
-test "every optional-container walk reaches the native layout" {
-    (prog, ir) = native_build();
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"native compilation errors: {errors}";
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
+test "every optional-container walk lowers natively" {
+    fx = compile_mir(FIXTURE);
     missing = [
         fn
         for fn in CASES
-        if fn not in ir.gen.native_layout.functions
+        if fx.is_demoted(fn)
     ];
     assert not missing , (
         "these optional-container walks demoted instead of lowering: "
-        + f"{missing}. A `JacOpt` reaching the container helpers is an "
-        + "emitter crash, not a by-design refusal."
+        + f"{missing}: {fx.demoted()}"
     );
 }
 
 
 test "optional-container walks answer the same on both pathways" {
-    (prog, ir) = native_build();
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine produced";
-    sv = sv_funcs();
+    (eng, _) = compile_native(FIXTURE);
+    sv = sv_module();
     for fn in CASES {
         na_v = native_call(eng, fn);
-        sv_v = int(sv[fn]());
+        sv_v = int(getattr(sv, fn)());
         assert na_v == sv_v , f"native {fn}() == {na_v} but sv gives {sv_v}";
     }
 }
 
 
 test "the answers are the fixture's, not a shared wrong answer" {
-    (prog, ir) = native_build();
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine produced";
+    (eng, _) = compile_native(FIXTURE);
     # 1 + 2 + 4 over the three items, every spelling of the walk.
     for fn in [
         "opt_list_direct_loop",

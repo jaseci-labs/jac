@@ -3,19 +3,14 @@ __bits_float lower through the intrinsic registry, never through user stubs.
 
 INTRINSIC_REGISTRY is the single authority for the reserved intrinsic set:
 classify_call tags these calls INTRINSIC before any user symbol can claim
-them, and NaIRGenPass._codegen_call dispatches through the registry entry.
+them, and the native backend lowers them from the registry entry.
 The fixture's stub definitions draw the W6008 collision warning and return
 deliberately wrong values (0 / 0.0), so every assertion here distinguishes
 the real bitcast from a stub fallthrough.
 """
 
 import ctypes;
-import os;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
+import from tests.support { compile_native, get_func }
 
 # IEEE-754 double bit patterns, as signed i64 (what ctypes.c_int64 yields).
 glob BITS_1_5 = 4609434218613702656,  # 0x3FF8000000000000

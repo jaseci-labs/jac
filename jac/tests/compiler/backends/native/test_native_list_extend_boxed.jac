@@ -1,14 +1,12 @@
 """`list.extend` reads its source through the same coercion every other method uses.
 
-A dict's value slot is erased, so iterating `d.values()` yields a raw `i8*`
-even where the declared value type is a list. `NativeListEmitter.emit_extend`
-took `args[0]` and went straight to a GEP for the length header. On a raw box
-that GEP walks into an `i8`, and llvmlite's type walk raises `AttributeError:
-'IntType' object has no attribute 'gep'` -- which the primitive-method wrapper
-catches and reports as E5092, so the shape reads as "extend is not lowered"
-when in fact only the erased-source case was missing.
+A dict's value slot is erased, so iterating `d.values()` yields a raw box even
+where the declared value type is a list. `extend` read the length header off
+that box directly instead of unboxing it the way `append`, `insert` and the
+spread helpers do, so the shape read as "extend is not lowered" when in fact
+only the erased-source case was missing.
 
-That is the exact shape `capability_check_pass` uses to flatten its per-owner
+That is the exact shape the capability check uses to flatten its per-owner
 violation map:
 
     _demotable: dict[int, list[...]];
@@ -16,23 +14,15 @@ violation map:
         _report.extend(_unit_viols);
     }
 
-The source is now coerced to the target's list type when it does not already
-point at a list header -- the same `_coerce_type` unboxing `append`, `insert`
-and the spread helpers already do -- and a source that still is not a list
-after that returns None, so the refusal is a refusal instead of a raised
-exception. `extend_plain_list` pins the already-typed path, which never went
+The source is coerced to the target's list type when it does not already hold
+a list. `extend_plain_list` pins the already-typed path, which never went
 through the box and must not start now.
 """
 
 import ctypes;
-import os;
-import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_address, native_force_opts }
+import from tests.support { compile_native, native_address }
 
-glob FIXTURES = os.path.join(
-         JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
-     ),
-     _ENGINE: list[any] = [];
+glob _ENGINE: list[any] = [];
 
 
 """JIT the fixture once; return its execution engine."""
@@ -40,14 +30,7 @@ def engine -> any {
     if _ENGINE {
         return _ENGINE[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "list_extend_boxed.jac"),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for the extend fixture";
+    (eng, _) = compile_native("list_extend_boxed.jac");
     _ENGINE.append(eng);
     return eng;
 }

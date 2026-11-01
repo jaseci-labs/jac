@@ -3,7 +3,7 @@
 import from jaclang.compiler.backends.native.abi { struct_layouts }
 import from jaclang.compiler.backends.native.llvm { binding, ir }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { diagnostics_text, kernel_compile_source }
 
 test "target data retains its type through the context manager" {
     source = """
@@ -16,13 +16,10 @@ def layout(value: ValueRef) -> tuple[list[int], int] {
     }
 }
 """;
-    prog = JacProgram();
-    prog.compile(
-        use_str=source,
-        file_path="abi_type_contract.jac",
-        options=CompileOptions(no_cgen=True)
+    result = kernel_compile_source(
+        source, "abi_type_contract.jac", CompileOptions(no_cgen=True)
     );
-    assert not prog.errors_had , str(prog.errors_had);
+    assert result.ok() , diagnostics_text(result);
 }
 
 test "a nullable boolean does not add eight bytes of padding" {

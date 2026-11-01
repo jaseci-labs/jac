@@ -90,33 +90,20 @@ test "sized scalars and eager defaults preserve values and input order" {
 }
 
 test "unsupported keyword forms refuse lowering instead of discarding arguments" {
-    import tempfile;
     import from pathlib { Path }
-    import from tests.support { native_force_opts }
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
+    import from tests.support { compile_mir, write_case }
     for expression in [
         "min([1, 2], key=abs)",
         "max([1, 2], key=abs)",
         "min([1, 2], `default='missing')"
     ] {
-        with tempfile.TemporaryDirectory() as directory {
-            source = Path(directory) / "refuse.jac";
-            source.write_text("def probe -> any { return " + expression + "; }");
-            prog = JacProgram();
-            na_coverage_begin();
-            try {
-                prog.compile(file_path=str(source), options=native_force_opts());
-            } finally {
-                coverage = na_coverage_end();
-            }
-            said = " ".join(
-                str(seam) for rec in coverage.values() for seam in (rec["seams"] or [])
-            );
-            assert "builtin call" in said , f"must refuse {expression}: {said}";
-        }
+        source = Path(
+            write_case("def probe -> any { return " + expression + "; }", "refuse.jac")
+        );
+        fx = compile_mir(source.name, str(source.parent));
+        assert fx.is_demoted("probe") , f"must refuse {expression}: {fx.demoted()}";
+        assert not fx.reason("probe").startswith("calls ") , (
+            f"{expression} must be refused at the call itself: {fx.reason('probe')}"
+        );
     }
 }

@@ -1,17 +1,17 @@
 """Step-1 gate of the fat-descriptor string migration (#7870): raw libc
-string calls on Jac strings must route through the __jac_str_* helper
-layer, so the descriptor flip changes helper bodies instead of every
-call site. The scan allows raw strlen/strdup/strcmp only inside
-__jac_str_* bodies and the RC machinery's type-tag compares (C strings,
-not Jac strings). The fixture must also keep running identically across
-all three gc modes -- the sweep is a pure refactor."""
+string calls on Jac strings must route through the string helper layer (the
+`__jac_rt_str_*` runtime functions), so the descriptor flip changes helper
+bodies instead of every call site. The decision step's MIR is the witness: a
+fixture function never calls strlen/strdup/strcmp directly (`call.c`); the
+helpers live in the runtime units, not in the fixture's MIR. The fixture must
+also keep running identically across all three gc modes -- the sweep is a
+pure refactor."""
 
 import os;
 import re;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { compile_mir, jac_command, TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE = os.path.join(
@@ -24,32 +24,29 @@ glob FIXTURE = os.path.join(
      };
 
 def _violations(gc_mode: str, enforce: bool) -> list[str] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=FIXTURE,
-        options=CompileOptions(
-            aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce
+    fx = compile_mir(
+        FIXTURE,
+        "",
+        CompileOptions(
+            force_codespace="native",
+            aot_mode=True,
+            na_gc_mode=gc_mode,
+            nogc_enforce_all=enforce
         )
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
-    dpat = re.compile(r'define[^@]*@"?([A-Za-z0-9_.$]+)"?');
-    cpat = re.compile(r'call[^@]*@"?(strlen|strdup|strcmp)"?\(');
+    assert not fx.demoted() , str(fx.demoted());
+    fpat = re.compile(r'^fn @"?([^\s(]+)');
+    cpat = re.compile(r'call\.c @"?(strlen|strdup|strcmp)\b');
     cur = "";
     bad: list[str] = [];
-    for ln in text.splitlines() {
-        stripped = ln.strip();
-        if stripped.startswith("declare") {
+    for ln in fx.mir().splitlines() {
+        m = fpat.search(ln);
+        if m {
+            cur = m.group(1);
             continue;
         }
-        if stripped.startswith("define") {
-            m = dpat.search(stripped);
-            cur = m.group(1) if m else "";
-            continue;
-        }
-        if cpat.search(stripped)
-            and not (cur.startswith("__jac_str_") or cur.startswith("__rc_")) {
-            bad.append(f"{cur}: {stripped}");
+        if cpat.search(ln) {
+            bad.append(f"{cur}: {ln.strip()}");
         }
     }
     return bad;

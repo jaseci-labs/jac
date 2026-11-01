@@ -14,8 +14,7 @@ element is released when its list dies, not merely kept alive.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { TESTS_DIR, compile_native, native_address }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -24,14 +23,7 @@ glob FIXTURES = os.path.join(
 
 
 def _compile(fixture: str) -> any {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine for {fixture}";
+    (eng, _fx) = compile_native(fixture, FIXTURES);
     return eng;
 }
 

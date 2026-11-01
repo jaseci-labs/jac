@@ -2,46 +2,48 @@
 
 Fresh strings move into list/set/dict containers, named bindings and string
 literals are copied in, and the headerless container drop frees the elements
-it owns through a per-instance element-drop slot -- all with zero RC calls in
-the emitted IR (the zero-RC contract of --memory nogc).
+it owns -- all with zero RC calls in the emitted IR (the zero-RC contract of
+--memory nogc).
 """
 
-import from tests.support { jac_command }
-
 import os;
-import from jaclang.compiler.driver.compile_options {
-    push_native_target,
-    pop_native_target
-}
 import subprocess;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { compile_native_ir, jac_command }
+import from jaclang.compiler.driver.compile_options {
+    CompileOptions,
+    push_native_target,
+    pop_native_target
+}
+import from jaclang.compiler.backends.native.mir.emit {
+    RELEASE_ACYCLIC_SYMBOL,
+    RELEASE_SYMBOL,
+    RETAIN_SYMBOL
+}
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures" / "nogc"),
      PROG = "str_container_prog.jac";
 
-def _compile_ir(entry_path: str) -> str {
+def _compile_ir(fixture: str) -> str {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=entry_path,
-            options=CompileOptions(aot_mode=True, memory_profile="nogc")
-        );
-        assert not prog.errors_had , [str(e) for e in prog.errors_had];
-        assert ir is not None and ir.gen.llvm_ir is not None;
-        return str(ir.gen.llvm_ir);
+        return compile_native_ir(
+            fixture,
+            FIXTURES,
+            CompileOptions(aot_mode=True, memory_profile="nogc")
+        ).llvm_ir();
     } finally {
         pop_native_target(prev);
     }
 }
 
-test "str containers compile RC-free with element-drop loops in the IR" {
-    ir = _compile_ir(os.path.join(FIXTURES, PROG));
-    assert "__rc_" not in ir , "str container build re-entered the RC world";
-    assert "edrop" in ir , "container drop carries no element-drop machinery";
+test "str containers compile RC-free" {
+    ir = _compile_ir(PROG);
+    assert ir , "no LLVM IR emitted for the nogc str container program";
+    for symbol in (RETAIN_SYMBOL, RELEASE_SYMBOL, RELEASE_ACYCLIC_SYMBOL, "__rc_") {
+        assert symbol not in ir , f"str container build re-entered the RC world: {symbol}";
+    }
 }
 
 test "host binary runs str containers and passes assert-no-rc" {

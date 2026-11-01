@@ -1,7 +1,7 @@
 """Two emitter crashes in container lowering, both now fixed.
 
 An ICE is a bug even where the construct is unsupported. The contract is a
-clean diagnostic or a seam, never a `TypeError` out of the IR builder. Both
+clean diagnostic or a demotion, never a `TypeError` out of the IR builder. Both
 faults below raised one, and both are reached from ordinary compiler code.
 
 The first is a real fix. `dict.keys()` / `dict.values()` name their result list
@@ -35,10 +35,7 @@ reverted alone.
 
 import ctypes;
 import os;
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_address, native_force_opts }
+import from tests.support { JAC_ROOT, compile_mir, compile_native, native_address }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -51,14 +48,7 @@ def engine -> any {
     if _ENGINE {
         return _ENGINE[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "container_ice_guards.jac"),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for the container fixture";
+    (eng, _fx) = compile_native("container_ice_guards.jac", FIXTURES);
     _ENGINE.append(eng);
     return eng;
 }
@@ -106,30 +96,17 @@ test "a tuple-keyed set dedups by value" {
 
 
 test "compr over or lowers, and its absent arm is falsy rather than a fault" {
-    prog = JacProgram();
-    na_coverage_begin();
-    try {
-        ir = prog.compile(
-            file_path=os.path.join(FIXTURES, "compr_or_erased.jac"),
-            options=CompileOptions(force_codespace='native')
-        );
-    } finally {
-        coverage = na_coverage_end();
-    }
-    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, "compr_or_erased.jac")));
-    seams = [str(s) for s in ((rec.get("seams") or []) if rec is not None else [])];
-    assert not seams , (
-        f"the `or`-defaulted comprehension shapes all lower now, got: {seams}"
+    fx = compile_mir("compr_or_erased.jac", FIXTURES);
+    assert not fx.demoted() , (
+        f"the `or`-defaulted comprehension shapes all lower now, got: {fx.demoted()}"
     );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
     for fn in [
         "compr_over_or",
         "tern_local_or",
         "tern_local_compr",
         "tern_inline_or"
     ] {
-        assert fn in ir.gen.native_layout.functions , f"{fn} demoted";
+        assert not fx.is_demoted(fn) , f"{fn} demoted: {fx.demoted()}";
     }
 }
 
@@ -141,14 +118,7 @@ test "an optional list held across a branch answers rather than dereferencing nu
     # a null container faulted at run time -- a silent miscompile in place of
     # the old loud refusal. A null container is falsy now, so the `or` takes
     # its right arm and the answers match CPython on both arms.
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "compr_or_erased.jac"),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for the or-defaulted fixture";
+    (eng, _fx) = compile_native("compr_or_erased.jac", FIXTURES);
     for (fn, present, absent) in [
         ("tern_local_or", 7, 0),
         ("tern_local_compr", 2, 0),

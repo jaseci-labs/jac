@@ -6,9 +6,14 @@ composition, break/empty edge cases, and first-class iter()/next() values.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
-import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support {
+    TESTS_DIR,
+    compile_native,
+    diagnostics_text,
+    get_func,
+    kernel_compile_file,
+    native_force_opts
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -166,14 +171,13 @@ test "iter assign iter of stored iterator" {
 # The checker must not type a keyword call (`next(it=...)`) that the backend
 # cannot lower — it should fail at the type level like CPython does.
 test "iter next keyword arg rejected" {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, "iter_kwarg_rejected.jac")),
-        options=native_force_opts()
+    result = kernel_compile_file(
+        str(os.path.join(FIXTURES, "iter_kwarg_rejected.jac")), native_force_opts()
     );
-    errs = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert errs , "expected a type error for next(it=...)";
-    assert any("No matching overload" in e for e in errs) , errs;
+    assert result.errors , "expected a type error for next(it=...)";
+    assert any("No matching overload" in e.message for e in result.errors) , diagnostics_text(
+        result
+    );
 }
 
 # --- #6403 M2: user-defined __iter__/__next__ bridged into the protocol ---

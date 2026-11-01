@@ -1,17 +1,10 @@
 """Dictionary reads recover the declared layout of their tuple values."""
 import ctypes;
-import from tests.support {
-    compile_native,
-    compile_native_ir,
-    get_func,
-    native_str_func
-}
-import from jaclang.compiler.backends.native.lowering { native_lowering_issues }
+import from tests.support { compile_mir, compile_native, get_func, native_str_func }
 
 test "unpack tuple-valued local global and temporary dictionaries" {
-    module = compile_native_ir("dict_tuple_values.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , str(issues);
+    demoted = compile_mir("dict_tuple_values.jac").demoted();
+    assert not demoted , str(demoted);
     (engine, _) = compile_native("dict_tuple_values.jac");
     get_func(engine, "jac_entry", None)();
     for (name, expected) in [
@@ -25,26 +18,25 @@ test "unpack tuple-valued local global and temporary dictionaries" {
 }
 
 test "unpack an imported tuple-valued dictionary" {
-    module = compile_native_ir("dict_tuple_import.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , str(issues);
+    demoted = compile_mir("dict_tuple_import.jac").demoted();
+    assert not demoted , str(demoted);
     (engine, _) = compile_native("dict_tuple_import.jac");
     get_func(engine, "jac_entry", None)();
     assert get_func(engine, "imported_tuple", ctypes.c_int64)() == 34;
 }
 
 test "setdefault and get keep a key's boxed tuple alive" {
-    (engine, module) = compile_native("dict_nested_tuple_keys.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , str(issues);
+    demoted = compile_mir("dict_nested_tuple_keys.jac").demoted();
+    assert not demoted , str(demoted);
+    (engine, _) = compile_native("dict_nested_tuple_keys.jac");
     assert get_func(engine, "setdefault_nested_keys", ctypes.c_int64)() == 121;
     assert get_func(engine, "get_nested_keys", ctypes.c_int64)() == 1;
 }
 
 test "subscript tuple values read from dictionaries" {
-    (engine, module) = compile_native("dict_tuple_reads.jac");
-    issues = native_lowering_issues(str(module.gen.llvm_ir));
-    assert not issues , str(issues);
+    demoted = compile_mir("dict_tuple_reads.jac").demoted();
+    assert not demoted , str(demoted);
+    (engine, _) = compile_native("dict_tuple_reads.jac");
     get_func(engine, "jac_entry", None)();
     for (name, expected) in [
         ("int_pair_literal_key", 4),

@@ -11,40 +11,23 @@ a retain or release writes the borrowed object's count header through the
 pointer, and LLVM deletes plain stores through a `readonly` argument.
 """
 
-import os;
 import from jaclang.compiler.driver.compile_options {
     push_native_target,
     pop_native_target
 }
-import from tests.support { TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { compile_native_ir }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
-glob FIXTURE = os.path.join(
-         TESTS_DIR,
-         "compiler",
-         "backends",
-         "native",
-         "fixtures",
-         "ownership_param_attrs.jac"
-     );
+glob FIXTURE = "ownership_param_attrs.jac";
 
 def _compile_ir(gc_mode: (str | None) = None) -> str {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=FIXTURE,
-            options=CompileOptions(
-                aot_mode=True,
-                no_ir_cache=True,
-                skip_native_engine=True,
-                na_gc_mode=gc_mode
-            )
+        fx = compile_native_ir(
+            FIXTURE, options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode)
         );
-        assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-        assert ir is not None and ir.gen.llvm_ir is not None;
-        return str(ir.gen.llvm_ir);
+        assert fx.llvm_ir() , f"no native IR for {FIXTURE}";
+        return fx.llvm_ir();
     } finally {
         pop_native_target(prev);
     }

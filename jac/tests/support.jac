@@ -446,13 +446,15 @@ def compile_native_unit(
     fixture: str,
     fixture_dir: str = "",
     options: (CompileOptions | None) = None,
-    products: (list[str] | None) = None
+    products: (list[str] | None) = None,
+    sources: (dict[str, str] | None) = None
 ) -> KernelFixture {
     path = str(Path(fixture_path(fixture, fixture_dir)).resolve());
     result = kernel_compile_file(
         path,
         options if options is not None else native_force_opts(),
-        products if products is not None else ["bytecode", "mir"]
+        products if products is not None else ["bytecode", "mir"],
+        sources
     );
     assert result.ok() , f"Compilation errors in {fixture}:\n{diagnostics_text(result)}";
     return KernelFixture(path=path, result=result, unit=result.unit(path));
@@ -478,18 +480,25 @@ JIT it in this process; return (engine, fixture).
 
 `fixture_dir` defaults to the native pass fixtures directory, which is where
 all but one caller looks; pass it explicitly for a fixture that lives
-elsewhere. The engine is NOT cached across calls -- a JIT engine owns the
+elsewhere. `options` defaults to `native_force_opts()`; `sources` overlays
+unsaved text by path. The fixture carries the unit's MIR and demoted set, so
+a JIT test can also assert a lowering decision. The engine is NOT cached across calls -- a JIT engine owns the
 module's mutable globals, so handing the same one to two tests would let the
 first test's writes reach the second. Tests that want a fixture compiled once
 should assert against it once, in a single test.
 """
 def compile_native(
-    fixture: str, fixture_dir: str = ""
+    fixture: str,
+    fixture_dir: str = "",
+    options: (CompileOptions | None) = None,
+    sources: (dict[str, str] | None) = None
 ) -> tuple[ExecutionEngine, KernelFixture] {
     import json;
     import from jaclang.compiler.driver.program { JacProgram }
-    options = native_force_opts();
-    fx = compile_native_unit(fixture, fixture_dir, options, ["bytecode"]);
+    options = options if options is not None else native_force_opts();
+    fx = compile_native_unit(
+        fixture, fixture_dir, options, ["bytecode", "mir"], sources
+    );
     prog = JacProgram();
     prog.options = options;
     adopt_native_units(prog, fx.result, options);

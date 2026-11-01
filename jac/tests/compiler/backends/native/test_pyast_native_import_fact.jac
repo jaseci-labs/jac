@@ -31,7 +31,7 @@ import from jaclang.compiler.driver.boundary_classify {
     python_side_name_refs
 }
 import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { TESTS_DIR, jac_command }
+import from tests.support { TESTS_DIR, jac_command, kernel_compile_file }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -197,32 +197,26 @@ def _run_anchor_main(proj_dir: str) -> str {
     return lines[-1] if lines else "";
 }
 
+"""Whether the kernel compiled `path` into the native codespace under
+`options`: a native module carries the IR the kernel emitted for it."""
+def _decided_native(path: str, options: CompileOptions) -> bool {
+    real = os.path.realpath(path);
+    result = kernel_compile_file(real, options);
+    assert result.ok() , [diag.message for diag in result.errors];
+    return bool(result.unit(real).native_ir);
+}
+
 test "a C-anchored module infers native under a server default" {
-    import from jaclang.compiler.frontend.codeinfo {
-        get_effective_default_codespace_override,
-        set_effective_default_codespace
-    }
     with tempfile.TemporaryDirectory() as proj {
         _anchor_project(proj);
-        prior = get_effective_default_codespace_override();
-        set_effective_default_codespace('server');
-        try {
-            prog = JacProgram();
-            options = CompileOptions(default_codespace='server', no_cgen=True);
-            lib = prog.compile(
-                file_path=os.path.join(proj, "anchor_lib.jac"), options=options
-            );
-            user = prog.compile(
-                file_path=os.path.join(proj, "anchor_user.jac"), options=options
-            );
-        } finally {
-            set_effective_default_codespace(prior);
-        }
-        assert lib.decided_codespace == "native" , (
+        options = CompileOptions(default_codespace='server');
+        assert _decided_native(os.path.join(proj, "anchor_lib.jac"), options) , (
             "anchor_lib's C import pins it native whatever the default, so it "
-            f"keeps its python side; decided {lib.decided_codespace!r}"
+            "keeps its python side"
         );
-        assert user.decided_codespace != "native" , "anchor_user has no anchor of its own";
+        assert not _decided_native(os.path.join(proj, "anchor_user.jac"), options) , (
+            "anchor_user has no anchor of its own"
+        );
     }
 }
 
@@ -398,6 +392,13 @@ test "a module that only declares a C record still binds it on its python side" 
         assert len(blocks) == 1 and not blocks[0].native_only_drop , (
             "a record is a name other modules import: its block stays bound"
         );
+    }
+}
+
+test "a python caller binds a C record from a module that only declares it" {
+    with tempfile.TemporaryDirectory() as tmp {
+        proj = os.path.realpath(tmp);
+        _embed_project(proj, bare=True);
         # Holder().n + llabs(-4).
         assert _run_anchor_main(proj) == "7";
     }

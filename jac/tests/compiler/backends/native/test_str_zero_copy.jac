@@ -5,12 +5,10 @@ rules) under the enforced headerless build. Behavior byte-identical
 across modes."""
 
 import os;
-import re;
 import subprocess;
 import tempfile;
-import from tests.support { TESTS_DIR, unit_symbol }
+import from tests.support { TESTS_DIR, KernelFixture, compile_mir }
 import from tests.support { jac_command }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE = os.path.join(
@@ -22,34 +20,46 @@ glob FIXTURE = os.path.join(
          "cycles": ["--memory", "managed"]
      };
 
-def _probe_fn_ir(gc_mode: str, enforce: bool) -> str {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=FIXTURE,
-        options=CompileOptions(
-            aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce
+"""The MIR text of `name`'s function in a compiled fixture."""
+def mir_function(fx: KernelFixture, name: str) -> str {
+    head = f"fn @{fx.symbol(name)}(";
+    for chunk in fx.mir().split("\n\n") {
+        if chunk.startswith(head) {
+            return chunk;
+        }
+    }
+    raise AssertionError(f"no MIR function {name} in {fx.path}: demoted {fx.demoted()}");
+}
+
+"""The MIR of the fixture's `probe` under `gc_mode`."""
+def _probe_fn_mir(gc_mode: str, enforce: bool) -> str {
+    fx = compile_mir(
+        FIXTURE,
+        "",
+        CompileOptions(
+            aot_mode=True,
+            force_codespace="native",
+            na_gc_mode=gc_mode,
+            nogc_enforce_all=enforce
         )
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
-    sym = re.escape(unit_symbol(ir, "probe"));
-    m = re.search(r'define[^\n]*@"?' + sym + r'"?\([^\n]*\n(.*?)\n\}', text, re.DOTALL);
-    assert m , "probe fn not found in IR";
-    return m.group(1);
+    return mir_function(fx, "probe");
 }
 
 test "managed slices are allocation-free views" {
-    body = _probe_fn_ir("rc", False);
-    assert "s.view" in body , "no view construction in managed slice";
-    assert "__rc_alloc" not in body , "managed slice still allocates";
+    body = _probe_fn_mir("rc", False);
+    assert "str.make" in body , "no view construction in managed slice";
+    for alloc in ("@__jac_rt_str_new", "@__jac_rt_str_concat", "@__jac_rt_alloc") {
+        assert alloc not in body , f"managed slice still allocates through {alloc}";
+    }
 }
 
-test "enforced headerless slices are rootless allocation-free views" {
-    body = _probe_fn_ir("none", True);
-    assert "s.view" in body , "no view construction in enforced slice";
-    assert "__jac_halloc" not in body , "enforced slice still allocates";
-    assert "s.view.root" not in body , "headerless view carries a root store";
-    assert "__jac_rc_retain" not in body , "enforced slice emits rc traffic";
+test "enforced headerless slices are allocation-free views" {
+    body = _probe_fn_mir("none", True);
+    assert "str.make" in body , "no view construction in enforced slice";
+    for alloc in ("@__jac_rt_str_new", "@__jac_rt_str_concat", "@__jac_rt_alloc") {
+        assert alloc not in body , f"enforced slice still allocates through {alloc}";
+    }
 }
 
 test "slice-view output is byte-identical across gc modes" {

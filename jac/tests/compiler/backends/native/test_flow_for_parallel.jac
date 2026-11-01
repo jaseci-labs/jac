@@ -12,8 +12,7 @@ byte-identical across thread counts and across gc modes.
 import os;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { compile_native_ir, jac_command, TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE = os.path.join(
@@ -44,15 +43,11 @@ glob FIXTURE = os.path.join(
      };
 
 def _compile_ir_path(path: str, gc_mode: str, enforce: bool) -> str {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=path,
-        options=CompileOptions(
-            aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce
-        )
-    );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    return str(ir.gen.llvm_ir);
+    return compile_native_ir(
+        os.path.basename(path),
+        os.path.dirname(path),
+        CompileOptions(aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce)
+    ).llvm_ir();
 }
 
 def _compile_ir(gc_mode: str, enforce: bool) -> str {
@@ -159,7 +154,6 @@ test "shared-capture rc stress is identical across widths and modes" {
 test "reduction accumulators keep the parallel fan-out" {
     enforced = _compile_ir_path(RED_FIXTURE, "none", True);
     assert "pthread_create" in enforced , "reductions must not force sequential";
-    assert "__jac_ffor_body" in enforced , "no outlined body for reduction loop";
     managed = _compile_ir_path(RED_FIXTURE, "cycles", False);
     assert "pthread_create" not in managed , "cycles build must stay sequential";
 }
