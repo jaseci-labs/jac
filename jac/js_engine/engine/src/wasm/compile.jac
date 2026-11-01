@@ -249,7 +249,7 @@ def _uleb(bits: int) -> int {
                 return 0;
             }
         }
-        result = result | ((b & 127) << shift);
+        result = result | wrapping_shl(b & 127, shift);
         if (b & 128) == 0 {
             break;
         }
@@ -292,14 +292,14 @@ def _sleb(bits: int) -> int {
                 }
             }
         }
-        result = result | ((b & 127) << shift);
+        result = result | wrapping_shl(b & 127, shift);
         shift = shift + 7;
         if (b & 128) == 0 {
             break;
         }
     }
     if shift < 64 and (b & 64) != 0 {
-        result = result | ((0 - 1) << shift);
+        result = result | wrapping_shl(0 - 1, shift);
     }
     if bits == 32 {
         result = int(i32.wrap(result));
