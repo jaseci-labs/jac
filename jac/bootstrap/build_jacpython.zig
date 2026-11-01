@@ -536,6 +536,13 @@ fn fileExists(io: Io, path: []const u8) bool {
     return true;
 }
 
+/// The interpreter in the build tree. macOS's file system ignores case, and
+/// the tree's Python/ directory would take the name `python`, so there it is
+/// `python.exe`, as Makefile.pre.in's BUILDEXE makes it.
+fn buildExe(c: *Ctx) []const u8 {
+    return if (c.p.os == .macos) "python.exe" else "python";
+}
+
 fn libraryName(c: *Ctx) []const u8 {
     return if (c.p.os == .linux) "libpython" ++ version ++ ".so" else "libpython" ++ version ++ ".dylib";
 }
@@ -581,7 +588,7 @@ fn link(c: *Ctx) !void {
     try exe.appendSlice(a, c.cc);
     try exe.appendSlice(a, core_ldflags.items);
     try appendWords(a, &exe, f.linkforshared);
-    try exe.appendSlice(a, &.{ "-o", "python", "Programs/python.o" });
+    try exe.appendSlice(a, &.{ "-o", buildExe(c), "Programs/python.o" });
     try exe.appendSlice(a, try libraryObjects(c));
     try appendWords(a, &exe, f.libs);
     try exe.appendSlice(a, mods);
@@ -690,7 +697,7 @@ fn install(c: *Ctx) !void {
         try Io.Dir.cwd().createDirPath(io, dir);
     }
     // altbininstall: the interpreter and the shared library.
-    try installFile(c, c.path(&.{ c.src, "python" }), l.exename, mode_exec);
+    try installFile(c, c.path(&.{ c.src, buildExe(c) }), l.exename, mode_exec);
     try installFile(c, c.path(&.{ c.src, libraryName(c) }), c.path(&.{ l.libdir, libraryName(c) }), mode_exec);
 
     // libinstall: Lib/*.py, then the files directly in each LIBSUBDIRS entry.
@@ -944,7 +951,7 @@ fn makefileVars(c: *Ctx) ![]const u8 {
         \\LDCXXSHARED= {[ldcxxshared]s}
         \\DESTSHARED= $(BINLIBDEST)/lib-dynload
         \\EXE=
-        \\BUILDEXE=
+        \\BUILDEXE= {[buildexe]s}
         \\PYTHONFRAMEWORK=
         \\PYTHONFRAMEWORKDIR= no-framework
         \\PYTHONFRAMEWORKPREFIX=
@@ -1008,6 +1015,7 @@ fn makefileVars(c: *Ctx) ![]const u8 {
         .ldcxxshared = if (linux) "$(CXX) -shared $(PY_LDFLAGS)" else "$(CXX) -bundle -undefined dynamic_lookup",
         .deployment = c.p.deployment_target orelse "",
         .host_type = host_type,
+        .buildexe = if (linux) "" else ".exe",
         .ldlibrary = if (linux) "libpython$(LDVERSION).so" else "libpython$(LDVERSION).dylib",
         .libs = f.libs,
         .libm = f.libm,
