@@ -208,7 +208,7 @@ impl build_target_kernel(
             target=spec,
             output=os.path.abspath(output),
             triple=triple,
-            search_paths=list(sys.path),
+            search_paths=[os.path.dirname(spec.root)] + list(sys.path),
             package_root=jaclang_pkg_root()
         )
     );
