@@ -200,7 +200,7 @@ def file_identity(path: str | Path) -> tuple[int, int, int, int] | None:
         st = os.stat(path)
     except OSError:
         return None
-    if os.path.abspath(path).startswith(os.path.join(get_cache_home(), "rt", "")):
+    if os.path.abspath(path).startswith(os.path.join(os.path.abspath(get_cache_home()), "rt", "")):
         return (0, st.st_size, st.st_mtime_ns, 0)
     return (st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
 
