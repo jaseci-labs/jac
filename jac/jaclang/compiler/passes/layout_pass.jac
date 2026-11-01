@@ -199,6 +199,7 @@ walker LayoutPass(CompilerPass) {
     def _build_hierarchy(archetypes: dict[str, Archetype]) -> None;
     def _layout_ancestors(class_name: str) -> set[str];
     def _layout_mro(class_name: str, cls: ClassType, reachable: set[str]) -> list[str];
+    def _mro_member_name(anc: ClassType, reachable: set[str]) -> (str | None);
     def _topo_sort(arch_map: dict[str, Archetype]) -> list[str];
     def _build_layout(arch: Archetype) -> ArchetypeLayout;
     def _build_enum_layouts(module: Module) -> None;

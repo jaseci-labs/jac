@@ -604,6 +604,8 @@ impl NaIRGenPass._codegen_bound_args(
             }
             if val is not None {
                 args.append(val);
+            } elif kw_spreads and pix >= _n_posonly {
+                args.append(self._zero_const(expected_type));
             } else {
                 args.append(self._missing_argument(nd, expected_type));
             }
