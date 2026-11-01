@@ -163,10 +163,10 @@ obj NativeUnitRegistry {
 }
 
 obj NativeIRSnapshot {
-    has bitcode: bytes,
+    has bitcode: (bytes | None),
         defined: set[str],
         declared: set[str],
-        referenced: (set[str] | None) = None;
+        referenced: set[str];
 }
 
 obj SessionHeap {

@@ -994,6 +994,7 @@ impl NativeBuildSession.lower(
             }
             discover = lowered_any;
         }
+        self.prog.release_check_caches();
         self.registry._event("native_unit_lower");
         self.registry.note_slow_step("lowering", resolved, started);
         if len(self.prog.errors_had) > errors_before or mod.gen.native_iface is None {
@@ -1072,7 +1073,10 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
         }
         _ = unit_fallbacks(mod.gen);
         snapshot = NativeIRSnapshot(
-            bitcode=unit_bitcode(ir), defined=symbols[0], declared=symbols[1]
+            bitcode=unit_bitcode(ir),
+            defined=symbols[0],
+            declared=symbols[1],
+            referenced=_ir_referenced_symbols(ir)
         );
         self.ir_snapshots[resolved] = snapshot;
         mod.gen.ir_module = None;
@@ -1130,13 +1134,6 @@ impl NativeBuildSession.unbound_symbols(
                 if consumer_snapshot is not None
                 else _ir_referenced_symbols(consumer.gen.llvm_ir)
         );
-        if consumer_snapshot is not None and used is None {
-            import jaclang.compiler.backends.native.llvm.binding as llvm;
-            used = _ir_referenced_symbols(
-                llvm.parse_bitcode(consumer_snapshot.bitcode)
-            );
-            consumer_snapshot.referenced = used;
-        }
         unbound = {
             symbol
             for symbol in unbound
@@ -1196,9 +1193,15 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
     bitcodes: list[bytes] = [];
     for (path, mod) in todo {
         snapshot = self.ir_snapshots.get(path);
-        bitcodes.append(
-            snapshot.bitcode if snapshot is not None else unit_bitcode(mod.gen.llvm_ir)
-        );
+        if snapshot is None {
+            bitcodes.append(unit_bitcode(mod.gen.llvm_ir));
+            continue;
+        }
+        if snapshot.bitcode is None {
+            raise RuntimeError(f"native unit optimized twice in one session: {path}");
+        }
+        bitcodes.append(snapshot.bitcode);
+        snapshot.bitcode = None;
     }
     bitcodes = optimize_unit_bitcodes(bitcodes, opts, int(opts.opt_level or 0));
     self.registry._timed("NATIVE_OPTIMIZE", started);
@@ -1262,18 +1265,17 @@ impl NativeBuildSession._finish(paths: list[str]) {
 }
 
 impl NativeBuildSession.close {
-    try {
-        for (phase, seconds) in self.prog.analysis.phase_time.items() {
-            self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
-        }
-        self.lowered.clear();
-        self.ir_snapshots.clear();
-        self.source_keys.clear();
-        self.prog._natives = None;
-        self.prog.release_compile_closure();
-    } finally {
-        self.heap.release();
+    self.heap.release();
+    for (phase, seconds) in self.prog.analysis.phase_time.items() {
+        self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
     }
+    self.lowered.clear();
+    self.ir_snapshots.clear();
+    self.source_keys.clear();
+    self.prog._natives = None;
+    self.prog.release_compile_closure();
+    gc.collect();
+    maybe_malloc_trim();
 }
 
 impl _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None) {

@@ -317,6 +317,8 @@ graph import {
             MEM_HEADROOM,
             memory_headroom_bytes
         },
+        compiler.driver.nativecache.NativeBuildSession.close
+            | dist.precompile_bytecode.precompile_native_unit { maybe_malloc_trim },
         dist.precompile_bytecode._precompile_retire {
             WORKER_MEM_BYTES,
             env_int,
@@ -325,7 +327,6 @@ graph import {
             worker_rss_mb
         },
         dist.precompile_bytecode.prebuild_native_units { WorkPool },
-        dist.precompile_bytecode.precompile_native_unit { maybe_malloc_trim },
         dist.precompile_bytecode.precompile_unit_context { maybe_malloc_trim },
         dist.precompile_bytecode.run_precompile {
             WORKER_MEM_BYTES,
@@ -5597,8 +5598,7 @@ graph import compiler {
         driver.nativecache.NativeUnitRegistry.compile_unit { build_link_plan },
         driver.pipeline_runner.wasm_ir_units { build_link_plan, wasm_program_ir },
     ]
-    backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache
-        | driver.nativecache.NativeBuildSession.unbound_symbols;
+    backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache;
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
