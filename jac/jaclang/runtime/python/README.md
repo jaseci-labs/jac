@@ -1,10 +1,10 @@
 # Python compiler replacement
 
-`jac native build jacpython` builds a jac whose interpreter compiles Python
-source and ASTs using native Jac machine code. CPython still provides Python
-objects, the execution engine, and the standard library. Plain `zig build`
-uses stock CPython; the interpreter is chosen at build time and each binary
-contains one runtime.
+JacPython is the only Python `jac` runs on: its interpreter compiles Python
+source and ASTs using native Jac machine code, and more of the object model and
+runtime move to Jac port by port. `zig build` (or `jac native build jacpython`)
+builds it. The standard library and the tests come from the checksum-pinned
+CPython archive.
 
 | Location (from repository root) | Responsibility |
 | --- | --- |
@@ -35,25 +35,26 @@ native modules through CPython (the tokenizer imports `unicodedata` to decode
 no current region, so module state and objects built there never land in the
 request's region.
 
-The build-time host is ordinary CPython. `prepare_native.py` uses Jac's native
-backend to emit the replacement object, rejects interpreted demotions, and
-verifies LLVM IR before emission. Zig compiles the retained C sources and links
-that object into the runtime. `cpython-sources.txt` records the excluded compiler
-inputs; the build checks that those files and their objects remain absent.
-Changes to the compiler, replacement sources, or build adapters invalidate the
-JacPython build cache.
+The build-time host is the previous JacPython, or the pinned seed when there is
+none (see Building in
+[jacpython-migration.md](../../cli/docs/internals/jacpython-migration.md)).
+`prepare_native.py` uses Jac's native backend to emit the replacement object,
+rejects interpreted demotions, and verifies LLVM IR before emission. Zig
+compiles the retained C sources and links that object into the runtime.
+`cpython-sources.txt` lists the archive files the build keeps; the replaced
+ones are not listed and are discarded. Changes to the compiler, replacement
+sources, or build adapters invalidate the JacPython build cache.
 
 Rebuild after editing the replacement:
 
 ```sh
 jac native build jacpython
-BIN="$PWD/jac/zig-out/jacpython/bin/jac"
+BIN="$PWD/jac/zig-out/bin/jac"
 (cd "$(mktemp -d)" && "$BIN" -c 'assert eval("6 * 7") == 42')
 ```
 
-Releases ship stock CPython; see
-[CONTRIBUTING.md](../../../../CONTRIBUTING.md#building-jacpython) for the
-JacPython build and its CI lane. The upstream compatibility
+See [CONTRIBUTING.md](../../../../CONTRIBUTING.md#building-jacpython) for the
+JacPython build and its CI lanes. The upstream compatibility
 runner, `scripts/run_cpython_compiler_tests.jac`, downloads checksum-pinned
 CPython tests and requires the native JacPython runtime. Build and test drivers
 may use Python; replacement algorithms execute natively.
@@ -263,12 +264,12 @@ without compiler calls as skips. Upstream skips still apply. This mode exercises
 the linked evaluator; it does not claim that the evaluator has been replaced.
 The native compiler bridge remains mandatory.
 
-From the repository root, compare execution performance using the build-only
-CPython host and a candidate runtime:
+From the repository root, compare execution performance using a CPython of the
+pinned version built elsewhere (the build makes none) and a candidate runtime:
 
 ```sh
 python3 scripts/python_evaluator_bench.py \
-    --baseline jac/.python-build/jacpython/macos-aarch64.host/python/install/bin/python3.14 \
+    --baseline /path/to/cpython-3.14.6/bin/python3.14 \
     --candidate jac/.python-build/jacpython/macos-aarch64/python/install/bin/python3.14 \
     --output /tmp/evaluator.json
 ```

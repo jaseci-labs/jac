@@ -1,8 +1,9 @@
 # JacPython Migration
 
 JacPython builds CPython 3.14.6 with parts of it replaced by native Jac.
-`jac/bootstrap/python/cpython-sources.txt` records every replaced C file as a
-`# removed:` entry; the build fails if one reappears. This page records how a
+`jac/bootstrap/python/cpython-sources.txt` lists the files of the pinned
+CPython archive the build still reads; a replaced C file leaves the list, and
+the build discards every file it does not list. This page records how a
 module is ported, what stays C and why, and the design for the two tiers that
 cannot be ported yet: the object model (`Objects/`) and the evaluator
 (`Python/`).
@@ -21,12 +22,12 @@ build time, and the previous JacPython builds the next one. The scope:
 | Argument Clinic signatures, `Python.asdl`/`Python-ast.c`, grammar and token tables | owned as Jac data; generators stop reading upstream C |
 | `Include/` | generated from the Jac layouts and declarations, so C extensions still compile |
 | configure, `Makefile.pre.in`, makesetup, `Tools/build` | replaced by `build_jacpython.zig`, `pyconfig.zig` (compiler probes for `pyconfig.h`) and Jac scripts |
-| the build-only host CPython | replaced by the previous JacPython |
+| the build-only host CPython | gone: the previous JacPython output builds the next one, or the pinned seed when there is none (see Building) |
 | remote debugging, perf trampolines, `getaddrinfo`/`getnameinfo` fallbacks | dropped, not ported |
 | HACL\* | replaced by the pure-Jac digests of `na_stdlib/_digest.jac` |
 | OpenSSL, sqlite, expat, libmpdec, libffi, zlib, bzip2, xz, zstd | stay vendored libraries |
 
-A dropped feature's files are `# removed:` entries like a port's.
+A dropped feature's files leave `cpython-sources.txt` like a port's.
 `pyconfig.zig` records the build without the feature, and `runtime/python/interpreter/`
 defines the entry points the rest of the interpreter still calls, each as the
 C file defines it in that configuration (`perf_trampoline.jac`,
@@ -37,11 +38,50 @@ The order follows cost. The binding layer's per-call overhead (thread-state
 lookups through `pthread_getspecific`, a `sigsetjmp` per `try`, heap
 allocation on call paths, C API checks that are not inlined) comes down before the hot
 core moves: ported modules run 1.5x (pyperformance geometric mean) to 2.3x
-(the module microbenchmarks) slower than the stock build of the same recipe,
+(the module microbenchmarks) slower than CPython 3.14.6 built with the same flags,
 and `dict`, `str`, `int` and the evaluator would carry that cost into every
 program. The containers, numbers and text, `typeobject.c`, the allocator,
 the evaluator and the runtime services follow, then the generated headers,
 the build system and self-hosting.
+
+## Building
+
+JacPython is the only Python: `zig build` builds it first and runs every
+later step on it, and nothing builds stock CPython. The pinned CPython archive
+(`bootstrap/python/sources.json`) stays the source of `Lib/`, the tests and a
+few install files, and is fetched by its sha256, never copied into the
+repository. JacPython keeps CPython's ABI identity: `sys.implementation.name`
+is `cpython`, the SOABI `cpython-314-<triplet>`, wheels are tagged cp314, and
+`Include/cpython/` and the PSF notice ship.
+
+A build needs a JacPython to run the Jac compiler that lowers the native
+object (`prepare_native.py`) and the generators (`gen_frozen.jac`,
+`gen_runtime_image.jac`). `-Djacpython-host` picks it:
+
+| `-Djacpython-host` | the JacPython a build runs on |
+|---|---|
+| `auto` (default) | `.python-build/jacpython/<this machine>` if it is finished, runs and is on the pinned version; else, on linux-x86_64, the seed pinned under `"jacpython-seed"` in `sources.json`, fetched, checked against its sha256 and unpacked into `.python-build/jacpython/seeds/<sha256>` |
+| `<path>` | a build output, its `python/install`, or a seed tarball |
+
+`zig build jacpython-seed-pack` packs this machine's finished output as a seed
+(`.python-build/jacpython/jacpython-seed-<platform>-<sha256 prefix>.tar.gz`,
+named by its content, with its `.sha256`): the
+install prefix, `build-key`, `build-host` and the native object's digest.
+Seeds are published to the `deps` prerelease and pinned by URL and sha256.
+The keys leave the seed out, so publishing one rebuilds nothing.
+
+Only linux-x86_64 has a seed. As `build-binaries.yml` does with the compiler
+kernel, one x86_64 job lowers `jacpython.o` for every platform with
+`zig build jacpython-object -Dtarget-platform=P`, and each platform's build
+adopts it with `-Djacpython-object=DIR`. An adopting build for its own
+platform runs Python only on the interpreter it builds (sysconfig,
+`build-details.json`, compileall, finalize, smoke), so it needs no seed.
+
+The third-party libraries (OpenSSL, zlib, zstd, sqlite, bzip2, xz, libffi,
+mpdecimal, expat) are built by `bootstrap/python/build.sh` into
+`.python-build/jacpython/<platform>.vendored` and reused while their key (their
+pins, `build.sh` and the toolchain) holds, from there or from the previous
+output, which ships them in `python/build`.
 
 ## Porting a module
 
@@ -87,9 +127,8 @@ Steps for a module `_foo` built from `Modules/_foomodule.c`:
    declaration.
 5. Add the registry line and run `jac run scripts/jacpython/gen_inittab.jac`,
    which adds the module's `PyInit__foo` to the table of built-in modules
-   (`runtime/python/inittab.jac`) and wires it in `archwire.jac`. Comment the
-   C files in `cpython-sources.txt` as `# removed: 0 source lines`, and run
-   `jac run scripts/jacpython_manifest.jac --write`.
+   (`runtime/python/inittab.jac`) and wires it in `archwire.jac`. Delete the
+   C files' lines from `cpython-sources.txt`.
 6. `jac check` each new file (from the repository root, so the dev source
    reroute checks with this tree's compiler). A single-file check reports
    native lowering failures (E5092) and native placement errors (E5090) for
@@ -162,7 +201,7 @@ the table records FEATURES, the value of every `HAVE_*` macro the source
 tests, which the port reads instead of `#ifdef`; `{"NAME", MACRO}` arrays
 (posix's `sysconf_names`) become name tables; and METHODS lists the clinic
 functions the target compiles, which the binding installs. posix's tables
-were generated this way for macOS (the host build's `pyconfig.h`) and for
+were generated this way for macOS (a macOS build's `pyconfig.h`) and for
 Linux glibc 2.17 on x86_64 and aarch64 (a `pyconfig.h` from configure with
 `CC="zig cc -target x86_64-linux-gnu.2.17"`, as the build targets Linux; the
 JacPython build now writes `pyconfig.h` from the same tests in `pyconfig.zig`).
@@ -550,12 +589,11 @@ slots are called through them:
 (`Py_TYPE`, `Py_IS_TYPE`, `Py_SIZE`, `PyType_HasFeature`) as Jac reads of the
 layouts.
 
-**Removing the C file.** The port marks the file `# removed:` in
-`cpython-sources.txt` (the build-only host keeps it; `build_jacpython.zig`
-compiles only the C it lists), and the port's definitions are
-in `jacpython.o` because `prepare_native.py` links every module under
-`object_model/`. The build's absent-input check
-then proves the C object is gone.
+**Removing the C file.** The port deletes the file's line from
+`cpython-sources.txt`, so the build discards it from the extracted archive
+(`build_jacpython.zig` compiles only the C it lists), and the port's
+definitions are in `jacpython.o` because `prepare_native.py` links every
+module under `object_model/`.
 
 What boolobject needed beyond the layouts:
 

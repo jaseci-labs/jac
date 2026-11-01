@@ -618,7 +618,7 @@ with entry {
     args = parser.parse_args();
     out = Path(args.out_option or args.out or "jacpython-bench").resolve();
     if args.action == "compare" {
-        compare(out, "cpython", "jacpython");
+        compare(out, "base", "jacpython");
         sys.exit(0);
     }
     if not args.base {
@@ -630,7 +630,7 @@ with entry {
         sys.exit("run needs --deps: uv pip install --target DEPS pyperf pyperformance");
     }
     deps = Path(args.deps).resolve();
-    interpreters = {"cpython": args.base, "jacpython": args.new};
+    interpreters = {"base": args.base, "jacpython": args.new};
     only = set(
         name
         for name in args.only.split(",")
@@ -678,7 +678,7 @@ with entry {
             if line.startswith("FAIL")
         ];
     }
-    compare(out, "cpython", "jacpython");
+    compare(out, "base", "jacpython");
     if failures {
         print("\nfailed:\n" + "\n".join(failures));
         sys.exit(1);

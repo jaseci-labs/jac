@@ -266,14 +266,13 @@ pub fn build(b: *std.Build) void {
     }
     // Pack this machine's finished JacPython as a seed another build can run
     // on (-Djacpython-host=<the tarball>, or pinned in sources.json once it
-    // is published), with its sha256 beside it. Seeds come from linux-x86_64.
+    // is published), named by its content, with its sha256 beside it.
     {
-        const seed_out = b.pathFromRoot(b.fmt(".python-build/jacpython/seed-{s}.tar.gz", .{host_osarch}));
         const pack_seed = b.addRunArtifact(seed);
-        pack_seed.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe, b.fmt("--seed-pack={s}", .{seed_out}) });
+        pack_seed.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe, b.fmt("--seed-pack={s}", .{b.pathFromRoot(".python-build/jacpython")}) });
         pack_seed.has_side_effects = true;
         pack_seed.step.dependOn(&fetch_host.step);
-        b.step("jacpython-seed-pack", "Pack this machine's JacPython output as a seed into .python-build/jacpython/seed-<platform>.tar.gz (with .sha256)")
+        b.step("jacpython-seed-pack", "Pack this machine's JacPython output as a seed: .python-build/jacpython/jacpython-seed-<platform>-<sha256 prefix>.tar.gz (with .sha256)")
             .dependOn(&pack_seed.step);
     }
 

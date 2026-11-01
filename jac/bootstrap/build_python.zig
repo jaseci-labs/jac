@@ -33,13 +33,14 @@ const object_generators = generator_inputs[0..3];
 const Source = struct { url: []const u8, sha256: []const u8, version: ?[]const u8 = null };
 
 // sources.json: the pinned archives by name, and under "jacpython-seed" a
-// JacPython to build on for each platform that has one. Only linux-x86_64
-// has one: another platform's build adopts a native object lowered there
+// JacPython to build on. It is a linux-x86_64 one, and no other platform has
+// one: another platform's build adopts a native object lowered there
 // (-Djacpython-object) and runs Python only on the interpreter it builds.
 const seed_pins = "jacpython-seed";
+const seed_platform = "linux-x86_64";
 const Pins = struct {
     sources: std.StringArrayHashMapUnmanaged(Source) = .empty,
-    seeds: std.StringArrayHashMapUnmanaged(Source) = .empty,
+    seed: ?Source = null,
 };
 
 fn parsePins(a: std.mem.Allocator, text: []const u8) !Pins {
@@ -48,13 +49,9 @@ fn parsePins(a: std.mem.Allocator, text: []const u8) !Pins {
     var pins: Pins = .{};
     var entries = value.object.iterator();
     while (entries.next()) |entry| {
-        if (!std.mem.eql(u8, entry.key_ptr.*, seed_pins)) {
-            try pins.sources.put(a, entry.key_ptr.*, try pinOf(entry.value_ptr.*));
-            continue;
-        }
-        if (entry.value_ptr.* != .object) return error.InvalidSourcePins;
-        var platforms = entry.value_ptr.object.iterator();
-        while (platforms.next()) |p| try pins.seeds.put(a, p.key_ptr.*, try pinOf(p.value_ptr.*));
+        if (std.mem.eql(u8, entry.key_ptr.*, seed_pins)) {
+            pins.seed = try pinOf(entry.value_ptr.*);
+        } else try pins.sources.put(a, entry.key_ptr.*, try pinOf(entry.value_ptr.*));
     }
     return pins;
 }
@@ -100,7 +97,7 @@ const adopt_flag = "--adopt-object=";
 // Lower only the native object and write it, with its manifest, to this
 // directory (`zig build jacpython-object`); the output tree is left alone.
 const object_only_flag = "--object-only=";
-// Pack the finished output as a seed at this path (`zig build
+// Pack the finished output as a seed into this directory (`zig build
 // jacpython-seed-pack`) instead of building.
 const seed_pack_flag = "--seed-pack=";
 const HostChoice = union(enum) { auto, installed: []const u8 };
@@ -197,7 +194,8 @@ fn isSha256(text: []const u8) bool {
 
 // The pinned seed for `platform`. A placeholder pin is an error, not a fetch.
 fn seedPin(pins: Pins, platform: []const u8) !Source {
-    const pin = pins.seeds.get(platform) orelse return error.NoSeedForPlatform;
+    if (!std.mem.eql(u8, platform, seed_platform)) return error.NoSeedForPlatform;
+    const pin = pins.seed orelse return error.NoSeedForPlatform;
     if (!isSha256(pin.sha256)) return error.SeedPlaceholder;
     return pin;
 }
@@ -320,8 +318,8 @@ fn buildHost(io: Io, gpa: std.mem.Allocator, a: std.mem.Allocator, choice: HostC
         .installed => |tree| tree,
         .seed => blk: {
             const dir = fetchSeed(io, gpa, a, cache, build_platform, pins, seed.httpGetAlloc) catch |err| switch (err) {
-                error.NoSeedForPlatform => seed.die("build-python: no JacPython to build on: {s} has no finished output and bootstrap/python/sources.json pins no " ++ seed_pins ++ " for {s}. Seeds come from linux-x86_64: on {s}, adopt a native object lowered there (-Djacpython-object=DIR), or name a JacPython with -Djacpython-host=<path>.", .{ platform_dest, build_platform, build_platform }),
-                error.SeedPlaceholder => seed.die("build-python: the " ++ seed_pins ++ " pin for {s} in bootstrap/python/sources.json is a placeholder. Pack a seed from a JacPython build with `zig build jacpython-seed-pack`, publish it and pin its URL and sha256, or name a JacPython with -Djacpython-host=<path>.", .{build_platform}),
+                error.NoSeedForPlatform => seed.die("build-python: no JacPython to build on: {s} has no finished output and bootstrap/python/sources.json pins no " ++ seed_pins ++ " for {s}. The seed is a " ++ seed_platform ++ " one: on {s}, adopt a native object lowered there (-Djacpython-object=DIR), or name a JacPython with -Djacpython-host=<path>.", .{ platform_dest, build_platform, build_platform }),
+                error.SeedPlaceholder => seed.die("build-python: the " ++ seed_pins ++ " pin in bootstrap/python/sources.json is a placeholder (TBD-SEED). Pack a seed from a JacPython build with `zig build jacpython-seed-pack`, publish it and pin its URL and sha256, or name a JacPython with -Djacpython-host=<path>.", .{}),
                 else => return err,
             };
             origin = "seed";
@@ -382,7 +380,7 @@ pub fn main(init: std.process.Init) !void {
         } else try kept.append(a, arg);
     }
     const args = kept.items;
-    if (args.len != 5) seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--reuse-lowered] [" ++ host_flag ++ "auto|<JacPython>] [" ++ adopt_flag ++ "<dir>] [" ++ object_only_flag ++ "<dir>] [" ++ seed_pack_flag ++ "<file>]", .{});
+    if (args.len != 5) seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--reuse-lowered] [" ++ host_flag ++ "auto|<JacPython>] [" ++ adopt_flag ++ "<dir>] [" ++ object_only_flag ++ "<dir>] [" ++ seed_pack_flag ++ "<dir>]", .{});
     const choice = parseHostChoice(choice_text) catch
         seed.die("build-python: " ++ host_flag ++ "stock is gone: JacPython is the only Python and builds on JacPython. Use auto (the previous output, else the pinned seed) or a JacPython's path.", .{});
     if (adopt != null and object_out != null)
@@ -399,11 +397,17 @@ pub fn main(init: std.process.Init) !void {
     const root = args[3];
     // Seeds and source archives are cached beside the outputs.
     const cache = try std.fs.path.join(a, &.{ root, ".python-build/jacpython" });
-    if (seed_pack) |out| {
-        const digest = packSeed(io, init.gpa, a, dest, out) catch |err|
+    // The seed is named by its content (a published one is never replaced):
+    // <dir>/jacpython-seed-<platform>-<sha256 prefix>.tar.gz, its sha256 beside it.
+    if (seed_pack) |dir| {
+        const packing = try std.fs.path.join(a, &.{ dir, "packing.tmp" });
+        const digest = packSeed(io, init.gpa, a, dest, packing) catch |err|
             seed.die("build-python: cannot pack {s} as a seed: {s}; build it first with `zig build build-python`", .{ dest, @errorName(err) });
-        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}.sha256", .{out}), .data = try std.fmt.allocPrint(a, "{s}  {s}\n", .{ &digest, std.fs.path.basename(out) }) });
-        seed.log("build-python: packed the seed {s}\n  sha256 {s}\n  pin it under \"" ++ seed_pins ++ "\".\"{s}\" in bootstrap/python/sources.json once it is published", .{ out, &digest, platform });
+        const name = try std.fmt.allocPrint(a, "jacpython-seed-{s}-{s}.tar.gz", .{ platform, digest[0..16] });
+        const out = try std.fs.path.join(a, &.{ dir, name });
+        try Io.Dir.cwd().rename(packing, Io.Dir.cwd(), out, io);
+        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fmt.allocPrint(a, "{s}.sha256", .{out}), .data = try std.fmt.allocPrint(a, "{s}  {s}\n", .{ &digest, name }) });
+        seed.log("build-python: packed the seed {s}\n  sha256 {s}\n  pin it as \"" ++ seed_pins ++ "\" in bootstrap/python/sources.json once it is published", .{ out, &digest });
         return;
     }
     const host_platform_dest = if (cross) try std.fs.path.join(a, &.{ std.fs.path.dirname(dest) orelse ".", build_platform }) else dest;
@@ -973,15 +977,15 @@ fn retainSources(io: Io, a: std.mem.Allocator, dir: Io.Dir, manifest: []const u8
 
 const test_pins =
     \\{"cpython": {"url": "https://example.invalid/Python-3.14.6.tgz", "sha256": "c", "version": "3.14.6"},
-    \\ "jacpython-seed": {"linux-x86_64": {"url": "TBD-SEED", "sha256": "TBD-SEED"}}}
+    \\ "jacpython-seed": {"url": "TBD-SEED", "sha256": "TBD-SEED"}}
 ;
 const test_pins_new_seed =
     \\{"cpython": {"url": "https://example.invalid/Python-3.14.6.tgz", "sha256": "c", "version": "3.14.6"},
-    \\ "jacpython-seed": {"linux-x86_64": {"url": "https://example.invalid/seed.tar.gz", "sha256": "s"}}}
+    \\ "jacpython-seed": {"url": "https://example.invalid/seed.tar.gz", "sha256": "s"}}
 ;
 const test_pins_new_cpython =
     \\{"cpython": {"url": "https://example.invalid/Python-3.14.7.tgz", "sha256": "d", "version": "3.14.7"},
-    \\ "jacpython-seed": {"linux-x86_64": {"url": "https://example.invalid/seed.tar.gz", "sha256": "s"}}}
+    \\ "jacpython-seed": {"url": "https://example.invalid/seed.tar.gz", "sha256": "s"}}
 ;
 
 test {
@@ -1316,7 +1320,7 @@ test "a build runs on the previous output when it can, else on the seed" {
     try std.testing.expectEqual(Host.seed, try selectHost(io, a, .auto, out, "3.14.6", Probe.pinned));
 }
 
-test "the seed is pinned per platform, and a placeholder pin refuses before any fetch" {
+test "the seed is pinned for linux-x86_64, and a placeholder pin refuses before any fetch" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -1326,9 +1330,10 @@ test "the seed is pinned per platform, and a placeholder pin refuses before any 
     try std.testing.expectError(error.SeedPlaceholder, seedPin(placeholder, "linux-x86_64"));
     try std.testing.expectError(error.NoSeedForPlatform, seedPin(placeholder, "macos-aarch64"));
     const digest = "0123456789abcdef" ** 4;
-    const pinned = try parsePins(a, "{\"jacpython-seed\": {\"linux-x86_64\": {\"url\": \"https://example.invalid/seed.tar.gz\", \"sha256\": \"" ++ digest ++ "\"}}}");
+    const pinned = try parsePins(a, "{\"jacpython-seed\": {\"url\": \"https://example.invalid/seed.tar.gz\", \"sha256\": \"" ++ digest ++ "\"}}");
     try std.testing.expectEqualStrings(digest, (try seedPin(pinned, "linux-x86_64")).sha256);
-    try std.testing.expectError(error.SeedPlaceholder, seedPin(try parsePins(a, "{\"jacpython-seed\": {\"linux-x86_64\": {\"url\": \"u\", \"sha256\": \"" ++ ("0123456789ABCDEF" ** 4) ++ "\"}}}"), "linux-x86_64"));
+    try std.testing.expectError(error.NoSeedForPlatform, seedPin(pinned, "linux-aarch64"));
+    try std.testing.expectError(error.SeedPlaceholder, seedPin(try parsePins(a, "{\"jacpython-seed\": {\"url\": \"u\", \"sha256\": \"" ++ ("0123456789ABCDEF" ** 4) ++ "\"}}"), "linux-x86_64"));
     try std.testing.expectError(error.InvalidSourcePins, parsePins(a, "{\"cpython\": {\"url\": \"u\"}}"));
     try std.testing.expectError(error.InvalidSourcePins, parsePins(a, "{\"jacpython-seed\": \"u\"}"));
     // The real pins parse, and name the archives the build extracts.
@@ -1379,7 +1384,7 @@ test "a packed seed unpacks to a host, is fetched by its pin once, and is refuse
     };
     Fetch.served = bytes;
     const cache = try std.fs.path.join(a, &.{ base, "cache" });
-    const pins = try parsePins(a, try std.fmt.allocPrint(a, "{{\"jacpython-seed\": {{\"linux-x86_64\": {{\"url\": \"https://example.invalid/seed.tar.gz\", \"sha256\": \"{s}\"}}}}}}", .{&digest}));
+    const pins = try parsePins(a, try std.fmt.allocPrint(a, "{{\"jacpython-seed\": {{\"url\": \"https://example.invalid/seed.tar.gz\", \"sha256\": \"{s}\"}}}}", .{&digest}));
     const tree = try fetchSeed(io, gpa, a, cache, "linux-x86_64", pins, Fetch.seedArchive);
     try std.testing.expectEqual(@as(usize, 1), Fetch.count);
     // The host parts, the provenance and the native digest; not the
@@ -1401,7 +1406,7 @@ test "a packed seed unpacks to a host, is fetched by its pin once, and is refuse
     // Bytes that are not the pinned seed are refused.
     Fetch.served = "not the seed";
     const other = "fedcba9876543210" ** 4;
-    const wrong = try parsePins(a, "{\"jacpython-seed\": {\"linux-x86_64\": {\"url\": \"u\", \"sha256\": \"" ++ other ++ "\"}}}");
+    const wrong = try parsePins(a, "{\"jacpython-seed\": {\"url\": \"u\", \"sha256\": \"" ++ other ++ "\"}}");
     try std.testing.expectError(error.SourceChecksumMismatch, fetchSeed(io, gpa, a, cache, "linux-x86_64", wrong, Fetch.seedArchive));
 }
 
