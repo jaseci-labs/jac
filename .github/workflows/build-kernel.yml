@@ -2,17 +2,18 @@ name: Build compiler kernels
 
 # Builds the native compiler kernel for each named release platform on one
 # class of x86 Linux runner and uploads it as the `kernel-<platform>` artifact
-# of the calling run (#10219). A kernel is target-specific but its build is
-# not host-specific: the kernel build takes the target's canonical triple,
-# the in-process linkers write ELF and Mach-O for any target, and the kernel
-# links no C archive of its target. A caller's build adopts the artifact with
-# `zig build -Dkernel=DIR` (or setup-jac's `kernel-dir`), and the seal refuses
-# a kernel whose unit sources, codegen, compiler, target or Python do not
-# match the tree it seals.
+# of the calling run (#10219). The host kernel comes from stage 0 (the pinned
+# previous release, stage0-kernel); for any other platform the host kernel
+# then builds the target's in-process (`jac native build kernel@<platform>`):
+# the kernel build takes the target's canonical triple, the in-process linkers
+# write ELF and Mach-O for any target, and the kernel links no C archive of
+# its target. A caller's build adopts the artifact with `zig build
+# -Dkernel=DIR` (or setup-jac's `kernel-dir`), and the seal refuses a kernel
+# whose unit sources, codegen, target or Python do not match the tree it
+# seals.
 #
-# The link-source driver (`zig build -Ddev`) runs the checkout's own
-# compiler, which is the compiler that builds the kernel; its Python is never
-# shipped, so the cache main seeds is safe for it on every channel.
+# The driver's Python is never shipped, so the cache main seeds is safe for
+# it on every channel.
 
 on:
   workflow_call:
@@ -58,7 +59,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .kernel
-          key: kernel-v2-${{ matrix.platform }}-${{ steps.inputs.outputs.kernel }}
+          key: kernel-v3-${{ matrix.platform }}-${{ steps.inputs.outputs.kernel }}
 
       - name: Fetch the prebuilt host shim from the deps release
         if: steps.kernel-cache.outputs.cache-hit != 'true'
@@ -81,8 +82,8 @@ jobs:
             echo "hit=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # The driver's Python is never shipped (it only runs the checkout's
-      # compiler), so the cache main seeds is safe on both channels here.
+      # The driver's Python is never shipped (it only runs the kernel build),
+      # so the cache main seeds is safe on both channels here.
       - name: Restore cached source-built Python (driver only)
         if: steps.kernel-cache.outputs.cache-hit != 'true'
         uses: actions/cache@v4
@@ -117,8 +118,8 @@ jobs:
         working-directory: jac
         run: zig build fetch-llvm --summary all
 
-      # A link-source driver: the payload carries no compiler of its own and
-      # runs this checkout's, which is the compiler that builds the kernel.
+      # A link-source (-Ddev) driver: it runs stages 2 and 3 of the host
+      # kernel's bootstrap, then the target build.
       - name: Build the driver
         if: steps.kernel-cache.outputs.cache-hit != 'true'
         working-directory: jac
@@ -136,25 +137,31 @@ jobs:
             zig build vendor-musl-linux-aarch64 --summary all
           fi
 
+      - name: Build the host kernel from stage 0
+        if: steps.kernel-cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/stage0-kernel
+
+      # The slot holds the extension module and its `.layout.json` and
+      # `.record.json` beside it; the seal adopts all three.
       - name: Build the kernel for ${{ matrix.platform }}
         if: steps.kernel-cache.outputs.cache-hit != 'true'
         working-directory: jac
         env:
           PYTHONUNBUFFERED: "1"
           PYTHONFAULTHANDLER: "1"
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
           BIN="$PWD/zig-out/bin/jac"
-          # --exact records the compiler's full digest, which the seal's
-          # payload tree reproduces; a dev build records only the ABI
-          # contract's, and the seal refuses to adopt that.
-          "$BIN" native build "kernel@${{ matrix.platform }}" --exact
-          "$BIN" native status "kernel@${{ matrix.platform }}"
-          if [ "${{ matrix.platform }}" = "linux-x86_64" ]; then
+          if [ "$PLATFORM" = "linux-x86_64" ]; then
             SRC=jaclang/compiler/_kernel
           else
-            SRC="jaclang/compiler/_kernel/${{ matrix.platform }}"
+            "$BIN" native build "kernel@$PLATFORM"
+            "$BIN" native status "kernel@$PLATFORM"
+            SRC="jaclang/compiler/_kernel/$PLATFORM"
           fi
+          compgen -G "$SRC/jac_kernel.*.record.json" >/dev/null || {
+            echo "::error::no kernel record in $SRC"; exit 1; }
           mkdir -p "$GITHUB_WORKSPACE/.kernel"
           cp "$SRC"/jac_kernel.* "$GITHUB_WORKSPACE/.kernel/"
           rm -f "$GITHUB_WORKSPACE/.kernel/"*.lock
