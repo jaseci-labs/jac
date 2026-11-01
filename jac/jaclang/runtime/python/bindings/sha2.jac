@@ -10,8 +10,6 @@ def:priv sha256_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObjec
 
 def:priv sha512_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
-def:priv digest_size_of(instance: ptr[PyObject], token: ClassToken) -> ptr[PyObject];
-
 def:priv sha256_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
 def:priv sha512_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
@@ -69,36 +67,20 @@ impl sha512_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     return PyLong_FromLong(SHA512_BLOCKSIZE);
 }
 
-impl digest_size_of(instance: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
-    state = sha2_of(instance, token);
-    if state is None {
-        return NULL;
-    }
-    return PyLong_FromLong(state.digestsize);
-}
-
 impl sha256_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return digest_size_of(instance, SHA256Type_token);
+    return digest_property(instance, SHA256Type_token, 1);
 }
 
 impl sha512_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return digest_size_of(instance, SHA512Type_token);
+    return digest_property(instance, SHA512Type_token, 1);
 }
 
 impl sha256_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = sha2_of(instance, SHA256Type_token);
-    if state is None {
-        return NULL;
-    }
-    return jacpy_unicode_from_text("sha224" if state.digestsize == 28 else "sha256");
+    return digest_property(instance, SHA256Type_token, 0);
 }
 
 impl sha512_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    state = sha2_of(instance, SHA512Type_token);
-    if state is None {
-        return NULL;
-    }
-    return jacpy_unicode_from_text("sha512" if state.digestsize == 64 else "sha384");
+    return digest_property(instance, SHA512Type_token, 0);
 }
 
 impl sha2_type(name: str, wide: bool) -> TypeDefinition {

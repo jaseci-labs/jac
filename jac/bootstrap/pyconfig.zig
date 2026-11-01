@@ -47,8 +47,6 @@ pub const Kind = enum {
     compile,
     /// The same, and it links.
     link,
-    /// An empty program compiles with `text` added to the flags and -Werror.
-    flag,
 };
 
 pub const Probe = struct {
@@ -247,7 +245,6 @@ fn source(a: Allocator, p: Probe, pre: []const u8) !struct { text: []const u8, s
             else
                 try std.fmt.allocPrint(a, "{s}{s}\nint main(void) {{\n{s}\n;\n  return 0;\n}}\n", .{ pre, p.includes orelse "", p.text }),
         },
-        .flag => .{ .step = .compile, .text = try std.fmt.allocPrint(a, "{s}int main(void) {{ return 0; }}\n", .{pre}) },
     };
 }
 
@@ -280,11 +277,6 @@ fn runRound(io: Io, a: Allocator, target: Target, dir: []const u8, results: *con
                 .compile => try argv.append(a, "-c"),
                 .assemble => try argv.append(a, "-S"),
                 .link => {},
-            }
-            if (p.kind == .flag) {
-                try argv.append(a, "-Werror");
-                var flags = std.mem.tokenizeScalar(u8, p.text, ' ');
-                while (flags.next()) |f| try argv.append(a, f);
             }
             try argv.appendSlice(a, &.{ c_path, "-o", out_path });
             if (src.step == .link) {

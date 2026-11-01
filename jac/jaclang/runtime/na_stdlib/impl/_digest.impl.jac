@@ -1,761 +1,933 @@
 impl DigestCore.update(data: bytes) {
-    n: int = len(data);
-    bs: int = self.block_size;
-    i: int = 0;
-    while i < n {
-        self.buf.append(data[i]);
-        if len(self.buf) == bs {
-            self.block(self.buf);
-            self.buf = [];
-        }
-        i += 1;
-    }
-    self.total += n;
+    self.absorb(__bytes_data(data), len(data));
 }
 
-impl DigestCore.block(b: list[int]) {}
+impl DigestCore.absorb(address: int, size: int) {
+    bs: int = self.block_size;
+    base: int = __bytearray_data(self.pending);
+    i: int = 0;
+    while i < size {
+        if self.used == bs {
+            self.compressed += bs;
+            self.compress(base, False);
+            self.used = 0;
+        }
+        if self.used == 0 {
+            while size - i > bs {
+                self.compressed += bs;
+                self.compress(address + i, False);
+                i += bs;
+            }
+        }
+        take: int = bs - self.used;
+        if size - i < take {
+            take = size - i;
+        }
+        _copy(base + self.used, address + i, take);
+        self.used += take;
+        i += take;
+    }
+}
+
+impl DigestCore.compress(address: int, last: bool) {}
 
 impl DigestCore.finish -> bytes {
     return b"";
 }
 
+impl DigestCore.squeeze(size: int) -> bytes {
+    return self.finish();
+}
+
 impl DigestCore.clone -> DigestCore {
-    return DigestCore(block_size=self.block_size, digest_size=self.digest_size);
+    return self.carry(DigestCore());
 }
 
-impl _rotl32(x: int, n: int) -> int {
-    return ((x << n) | (x >> (32 - n))) & _M32;
+impl DigestCore.carry(copy: DigestCore) -> DigestCore {
+    copy.name = self.name;
+    copy.block_size = self.block_size;
+    copy.digest_size = self.digest_size;
+    copy.pending = bytearray(self.pending);
+    copy.used = self.used;
+    copy.compressed = self.compressed;
+    return copy;
 }
 
-impl _rotr32(x: int, n: int) -> int {
-    return ((x >> n) | (x << (32 - n))) & _M32;
-}
-
-impl _rotr64(x: u64, n: int) -> u64 {
-    return (x >> u64(n)) | wrapping_shl(x, u64(64 - n));
-}
-
-impl _rotl64(x: u64, n: int) -> u64 {
-    if n == 0 {
-        return x;
+impl DigestCore.pad_md(big: bool, length_bytes: int) {
+    bs: int = self.block_size;
+    base: int = __bytearray_data(self.pending);
+    bits: int = (self.compressed + self.used) * 8;
+    if self.used == bs {
+        self.compress(base, False);
+        self.used = 0;
     }
-    return wrapping_shl(x, u64(n)) | (x >> u64(64 - n));
-}
-
-impl _be32(b: list[int], j: int) -> int {
-    return (b[j] << 24) | (b[j + 1] << 16) | (b[j + 2] << 8) | b[j + 3];
-}
-
-impl _le32(b: list[int], j: int) -> int {
-    return b[j] | (b[j + 1] << 8) | (b[j + 2] << 16) | (b[j + 3] << 24);
-}
-
-impl _be64(b: list[int], j: int) -> u64 {
-    v: u64 = u64(0);
+    self.pending[self.used] = 0x80;
+    self.used += 1;
+    if self.used > bs - length_bytes {
+        _zero(base + self.used, bs - self.used);
+        self.compress(base, False);
+        self.used = 0;
+    }
+    _zero(base + self.used, bs - self.used);
     k: int = 0;
     while k < 8 {
-        v = wrapping_shl(v, u64(8)) | u64(b[j + k]);
+        self.pending[bs - 1 - k if big else bs - 8 + k] = (bits >> (8 * k)) & 255;
         k += 1;
     }
-    return v;
+    self.compress(base, False);
 }
 
-impl _le64(b: list[int], j: int) -> u64 {
-    v: u64 = u64(0);
-    k: int = 7;
-    while k >= 0 {
-        v = wrapping_shl(v, u64(8)) | u64(b[j + k]);
-        k -= 1;
-    }
-    return v;
-}
-
-impl _pad_md(core: DigestCore, length_bytes: int, little: bool) {
-    bits: int = core.total * 8;
-    core.update(b"\x80");
-    while len(core.buf) != core.block_size - length_bytes {
-        core.update(b"\x00");
-    }
-    tail: list[int] = [];
-    k: int = 0;
-    while k < length_bytes {
-        shift: int = 8 * k if little else 8 * (length_bytes - 1 - k);
-        tail.append((bits >> shift) & 255 if shift < 63 else 0);
-        k += 1;
-    }
-    core.update(bytes(tail));
-}
-
-impl Md5Core.block(b: list[int]) {
-    m: list[int] = [];
-    j: int = 0;
-    while j < 16 {
-        m.append(_le32(b, 4 * j));
-        j += 1;
-    }
-    a: int = self.h[0];
-    bb: int = self.h[1];
-    c: int = self.h[2];
-    d: int = self.h[3];
+impl Md5Core.compress(address: int, last: bool) {
+    a: u32 = self.h[0];
+    b: u32 = self.h[1];
+    c: u32 = self.h[2];
+    d: u32 = self.h[3];
+    t: u32 = u32(0);
     i: int = 0;
-    while i < 64 {
-        f: int = 0;
-        g: int = 0;
-        if i < 16 {
-            f = (bb & c) | (~bb & d);
-            g = i;
-        } elif i < 32 {
-            f = (d & bb) | (~d & c);
-            g = (5 * i + 1) % 16;
-        } elif i < 48 {
-            f = bb ^ c ^ d;
-            g = (3 * i + 5) % 16;
-        } else {
-            f = c ^ (bb | (~d & _M32));
-            g = (7 * i) % 16;
-        }
-        f = (f + a + _MD5_K[i] + m[g]) & _M32;
-        a = d;
-        d = c;
-        c = bb;
-        bb = (bb + _rotl32(f, _MD5_S[i])) & _M32;
+    while i < 16 {
+        t = _md5_step(a, b, (b & c) | (~b & d), i, address, i);
+        (a, d, c, b) = (d, c, b, t);
         i += 1;
     }
-    self.h[0] = (self.h[0] + a) & _M32;
-    self.h[1] = (self.h[1] + bb) & _M32;
-    self.h[2] = (self.h[2] + c) & _M32;
-    self.h[3] = (self.h[3] + d) & _M32;
+    while i < 32 {
+        t = _md5_step(a, b, (d & b) | (~d & c), i, address, (5 * i + 1) & 15);
+        (a, d, c, b) = (d, c, b, t);
+        i += 1;
+    }
+    while i < 48 {
+        t = _md5_step(a, b, b ^ c ^ d, i, address, (3 * i + 5) & 15);
+        (a, d, c, b) = (d, c, b, t);
+        i += 1;
+    }
+    while i < 64 {
+        t = _md5_step(a, b, c ^ (b | ~d), i, address, (7 * i) & 15);
+        (a, d, c, b) = (d, c, b, t);
+        i += 1;
+    }
+    self.h[0] = wrapping_add(self.h[0], a);
+    self.h[1] = wrapping_add(self.h[1], b);
+    self.h[2] = wrapping_add(self.h[2], c);
+    self.h[3] = wrapping_add(self.h[3], d);
 }
 
 impl Md5Core.finish -> bytes {
-    t = self.dup();
-    _pad_md(t, 8, True);
-    st: list[int] = t.h;
-    out: list[int] = [];
-    i: int = 0;
-    while i < 4 {
-        k: int = 0;
-        while k < 4 {
-            out.append((st[i] >> (8 * k)) & 255);
-            k += 1;
-        }
-        i += 1;
-    }
-    return bytes(out);
+    t = Md5Core(h=list(self.h));
+    self.carry(t);
+    t.pad_md(False, 8);
+    return _words32(t.h, 16, False);
 }
 
 impl Md5Core.clone -> DigestCore {
-    return self.dup();
+    return self.carry(Md5Core(h=list(self.h)));
 }
 
-impl Md5Core.dup -> Md5Core {
-    return Md5Core(
-        block_size=64,
-        digest_size=16,
-        buf=list(self.buf),
-        total=self.total,
-        h=list(self.h)
-    );
-}
-
-impl Sha1Core.block(b: list[int]) {
-    w: list[int] = [];
+impl Sha1Core.compress(address: int, last: bool) {
+    w: list[u32] = self.w;
     j: int = 0;
     while j < 16 {
-        w.append(_be32(b, 4 * j));
+        w[j] = _be32(address + 4 * j);
         j += 1;
     }
     while j < 80 {
-        w.append(_rotl32(w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16], 1));
+        w[j] = _rotl32(w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16], u32(1));
         j += 1;
     }
-    a: int = self.h[0];
-    bb: int = self.h[1];
-    c: int = self.h[2];
-    d: int = self.h[3];
-    e: int = self.h[4];
+    a: u32 = self.h[0];
+    b: u32 = self.h[1];
+    c: u32 = self.h[2];
+    d: u32 = self.h[3];
+    e: u32 = self.h[4];
     i: int = 0;
     while i < 80 {
-        f: int = 0;
-        k: int = 0;
+        f: u32 = u32(0);
+        k: u32 = u32(0);
         if i < 20 {
-            f = (bb & c) | (~bb & d);
-            k = 0x5A827999;
+            f = (b & c) | (~b & d);
+            k = u32(0x5A827999);
         } elif i < 40 {
-            f = bb ^ c ^ d;
-            k = 0x6ED9EBA1;
+            f = b ^ c ^ d;
+            k = u32(0x6ED9EBA1);
         } elif i < 60 {
-            f = (bb & c) | (bb & d) | (c & d);
-            k = 0x8F1BBCDC;
+            f = (b & c) | (b & d) | (c & d);
+            k = u32(0x8F1BBCDC);
         } else {
-            f = bb ^ c ^ d;
-            k = 0xCA62C1D6;
+            f = b ^ c ^ d;
+            k = u32(0xCA62C1D6);
         }
-        t: int = (_rotl32(a, 5) + (f & _M32) + e + k + w[i]) & _M32;
+        t: u32 = wrapping_add(
+            wrapping_add(_rotl32(a, u32(5)), f), wrapping_add(wrapping_add(e, k), w[i])
+        );
         e = d;
         d = c;
-        c = _rotl32(bb, 30);
-        bb = a;
+        c = _rotl32(b, u32(30));
+        b = a;
         a = t;
         i += 1;
     }
-    self.h[0] = (self.h[0] + a) & _M32;
-    self.h[1] = (self.h[1] + bb) & _M32;
-    self.h[2] = (self.h[2] + c) & _M32;
-    self.h[3] = (self.h[3] + d) & _M32;
-    self.h[4] = (self.h[4] + e) & _M32;
+    self.h[0] = wrapping_add(self.h[0], a);
+    self.h[1] = wrapping_add(self.h[1], b);
+    self.h[2] = wrapping_add(self.h[2], c);
+    self.h[3] = wrapping_add(self.h[3], d);
+    self.h[4] = wrapping_add(self.h[4], e);
 }
 
 impl Sha1Core.finish -> bytes {
-    t = self.dup();
-    _pad_md(t, 8, False);
-    st: list[int] = t.h;
-    out: list[int] = [];
-    i: int = 0;
-    while i < 5 {
-        k: int = 3;
-        while k >= 0 {
-            out.append((st[i] >> (8 * k)) & 255);
-            k -= 1;
-        }
-        i += 1;
-    }
-    return bytes(out);
+    t = Sha1Core(h=list(self.h), w=self.w);
+    self.carry(t);
+    t.pad_md(True, 8);
+    return _words32(t.h, 20, True);
 }
 
 impl Sha1Core.clone -> DigestCore {
-    return self.dup();
+    return self.carry(Sha1Core(h=list(self.h), w=[u32(0)] * 80));
 }
 
-impl Sha1Core.dup -> Sha1Core {
-    return Sha1Core(
-        block_size=64,
-        digest_size=20,
-        buf=list(self.buf),
-        total=self.total,
-        h=list(self.h)
-    );
-}
-
-impl Sha256Core.block(b: list[int]) {
-    w: list[int] = [];
+impl Sha256Core.compress(address: int, last: bool) {
+    w: list[u32] = self.w;
     j: int = 0;
     while j < 16 {
-        w.append(_be32(b, 4 * j));
+        w[j] = _be32(address + 4 * j);
         j += 1;
     }
     while j < 64 {
-        x: int = w[j - 15];
-        y: int = w[j - 2];
-        s0: int = _rotr32(x, 7) ^ _rotr32(x, 18) ^ (x >> 3);
-        s1: int = _rotr32(y, 17) ^ _rotr32(y, 19) ^ (y >> 10);
-        w.append((w[j - 16] + s0 + w[j - 7] + s1) & _M32);
+        x: u32 = w[j - 15];
+        y: u32 = w[j - 2];
+        s0: u32 = _rotr32(x, u32(7)) ^ _rotr32(x, u32(18)) ^ (x >> u32(3));
+        s1: u32 = _rotr32(y, u32(17)) ^ _rotr32(y, u32(19)) ^ (y >> u32(10));
+        w[j] = wrapping_add(wrapping_add(w[j - 16], s0), wrapping_add(w[j - 7], s1));
         j += 1;
     }
-    a: int = self.h[0];
-    bb: int = self.h[1];
-    c: int = self.h[2];
-    d: int = self.h[3];
-    e: int = self.h[4];
-    f: int = self.h[5];
-    g: int = self.h[6];
-    hh: int = self.h[7];
+    a: u32 = self.h[0];
+    b: u32 = self.h[1];
+    c: u32 = self.h[2];
+    d: u32 = self.h[3];
+    e: u32 = self.h[4];
+    f: u32 = self.h[5];
+    g: u32 = self.h[6];
+    h: u32 = self.h[7];
     i: int = 0;
     while i < 64 {
-        big1: int = _rotr32(e, 6) ^ _rotr32(e, 11) ^ _rotr32(e, 25);
-        ch: int = (e & f) ^ (~e & g);
-        t1: int = (hh + big1 + (ch & _M32) + _SHA256_K[i] + w[i]) & _M32;
-        big0: int = _rotr32(a, 2) ^ _rotr32(a, 13) ^ _rotr32(a, 22);
-        mj: int = (a & bb) ^ (a & c) ^ (bb & c);
-        hh = g;
-        g = f;
-        f = e;
-        e = (d + t1) & _M32;
-        d = c;
-        c = bb;
-        bb = a;
-        a = (t1 + big0 + mj) & _M32;
-        i += 1;
-    }
-    self.h[0] = (self.h[0] + a) & _M32;
-    self.h[1] = (self.h[1] + bb) & _M32;
-    self.h[2] = (self.h[2] + c) & _M32;
-    self.h[3] = (self.h[3] + d) & _M32;
-    self.h[4] = (self.h[4] + e) & _M32;
-    self.h[5] = (self.h[5] + f) & _M32;
-    self.h[6] = (self.h[6] + g) & _M32;
-    self.h[7] = (self.h[7] + hh) & _M32;
-}
-
-impl Sha256Core.finish -> bytes {
-    t = self.dup();
-    _pad_md(t, 8, False);
-    st: list[int] = t.h;
-    out: list[int] = [];
-    i: int = 0;
-    while i < 8 {
-        k: int = 3;
-        while k >= 0 {
-            out.append((st[i] >> (8 * k)) & 255);
-            k -= 1;
-        }
-        i += 1;
-    }
-    return bytes(out[:self.digest_size]);
-}
-
-impl Sha256Core.clone -> DigestCore {
-    return self.dup();
-}
-
-impl Sha256Core.dup -> Sha256Core {
-    return Sha256Core(
-        block_size=64,
-        digest_size=self.digest_size,
-        buf=list(self.buf),
-        total=self.total,
-        h=list(self.h)
-    );
-}
-
-impl Sha512Core.block(b: list[int]) {
-    w: list[u64] = [];
-    j: int = 0;
-    while j < 16 {
-        w.append(_be64(b, 8 * j));
-        j += 1;
-    }
-    while j < 80 {
-        x: u64 = w[j - 15];
-        y: u64 = w[j - 2];
-        s0: u64 = _rotr64(x, 1) ^ _rotr64(x, 8) ^ (x >> 7);
-        s1: u64 = _rotr64(y, 19) ^ _rotr64(y, 61) ^ (y >> 6);
-        w.append(wrapping_add(wrapping_add(w[j - 16], s0), wrapping_add(w[j - 7], s1)));
-        j += 1;
-    }
-    a: u64 = self.h[0];
-    bb: u64 = self.h[1];
-    c: u64 = self.h[2];
-    d: u64 = self.h[3];
-    e: u64 = self.h[4];
-    f: u64 = self.h[5];
-    g: u64 = self.h[6];
-    hh: u64 = self.h[7];
-    i: int = 0;
-    while i < 80 {
-        big1: u64 = _rotr64(e, 14) ^ _rotr64(e, 18) ^ _rotr64(e, 41);
-        ch: u64 = (e & f) ^ (~e & g);
-        t1: u64 = wrapping_add(
-            wrapping_add(wrapping_add(hh, big1), wrapping_add(ch, _SHA512_K[i])), w[i]
+        s1: u32 = _rotr32(e, u32(6)) ^ _rotr32(e, u32(11)) ^ _rotr32(e, u32(25));
+        ch: u32 = (e & f) ^ (~e & g);
+        t1: u32 = wrapping_add(
+            wrapping_add(h, s1), wrapping_add(ch, wrapping_add(_SHA256_K[i], w[i]))
         );
-        big0: u64 = _rotr64(a, 28) ^ _rotr64(a, 34) ^ _rotr64(a, 39);
-        mj: u64 = (a & bb) ^ (a & c) ^ (bb & c);
-        hh = g;
+        s0: u32 = _rotr32(a, u32(2)) ^ _rotr32(a, u32(13)) ^ _rotr32(a, u32(22));
+        mj: u32 = (a & b) ^ (a & c) ^ (b & c);
+        h = g;
         g = f;
         f = e;
         e = wrapping_add(d, t1);
         d = c;
-        c = bb;
-        bb = a;
-        a = wrapping_add(t1, wrapping_add(big0, mj));
+        c = b;
+        b = a;
+        a = wrapping_add(t1, wrapping_add(s0, mj));
         i += 1;
     }
     self.h[0] = wrapping_add(self.h[0], a);
-    self.h[1] = wrapping_add(self.h[1], bb);
+    self.h[1] = wrapping_add(self.h[1], b);
     self.h[2] = wrapping_add(self.h[2], c);
     self.h[3] = wrapping_add(self.h[3], d);
     self.h[4] = wrapping_add(self.h[4], e);
     self.h[5] = wrapping_add(self.h[5], f);
     self.h[6] = wrapping_add(self.h[6], g);
-    self.h[7] = wrapping_add(self.h[7], hh);
+    self.h[7] = wrapping_add(self.h[7], h);
+}
+
+impl Sha256Core.finish -> bytes {
+    t = Sha256Core(h=list(self.h), w=self.w);
+    self.carry(t);
+    t.pad_md(True, 8);
+    return _words32(t.h, self.digest_size, True);
+}
+
+impl Sha256Core.clone -> DigestCore {
+    return self.carry(Sha256Core(h=list(self.h), w=[u32(0)] * 64));
+}
+
+impl Sha512Core.compress(address: int, last: bool) {
+    w: list[u64] = self.w;
+    j: int = 0;
+    while j < 16 {
+        w[j] = _be64(address + 8 * j);
+        j += 1;
+    }
+    while j < 80 {
+        x: u64 = w[j - 15];
+        y: u64 = w[j - 2];
+        s0: u64 = _rotr64(x, 1) ^ _rotr64(x, 8) ^ (x >> u64(7));
+        s1: u64 = _rotr64(y, 19) ^ _rotr64(y, 61) ^ (y >> u64(6));
+        w[j] = wrapping_add(wrapping_add(w[j - 16], s0), wrapping_add(w[j - 7], s1));
+        j += 1;
+    }
+    a: u64 = self.h[0];
+    b: u64 = self.h[1];
+    c: u64 = self.h[2];
+    d: u64 = self.h[3];
+    e: u64 = self.h[4];
+    f: u64 = self.h[5];
+    g: u64 = self.h[6];
+    h: u64 = self.h[7];
+    i: int = 0;
+    while i < 80 {
+        s1: u64 = _rotr64(e, 14) ^ _rotr64(e, 18) ^ _rotr64(e, 41);
+        ch: u64 = (e & f) ^ (~e & g);
+        t1: u64 = wrapping_add(
+            wrapping_add(h, s1), wrapping_add(ch, wrapping_add(_SHA512_K[i], w[i]))
+        );
+        s0: u64 = _rotr64(a, 28) ^ _rotr64(a, 34) ^ _rotr64(a, 39);
+        mj: u64 = (a & b) ^ (a & c) ^ (b & c);
+        h = g;
+        g = f;
+        f = e;
+        e = wrapping_add(d, t1);
+        d = c;
+        c = b;
+        b = a;
+        a = wrapping_add(t1, wrapping_add(s0, mj));
+        i += 1;
+    }
+    self.h[0] = wrapping_add(self.h[0], a);
+    self.h[1] = wrapping_add(self.h[1], b);
+    self.h[2] = wrapping_add(self.h[2], c);
+    self.h[3] = wrapping_add(self.h[3], d);
+    self.h[4] = wrapping_add(self.h[4], e);
+    self.h[5] = wrapping_add(self.h[5], f);
+    self.h[6] = wrapping_add(self.h[6], g);
+    self.h[7] = wrapping_add(self.h[7], h);
 }
 
 impl Sha512Core.finish -> bytes {
-    t = self.dup();
-    _pad_md(t, 16, False);
-    st: list[u64] = t.h;
-    out: list[int] = [];
-    i: int = 0;
-    while i < 8 {
-        k: int = 7;
-        while k >= 0 {
-            out.append(int((st[i] >> (8 * k)) & u64(255)));
-            k -= 1;
-        }
-        i += 1;
-    }
-    return bytes(out[:self.digest_size]);
+    t = Sha512Core(h=list(self.h), w=self.w);
+    self.carry(t);
+    t.pad_md(True, 16);
+    return _words64(t.h, self.digest_size, True);
 }
 
 impl Sha512Core.clone -> DigestCore {
-    return self.dup();
+    return self.carry(Sha512Core(h=list(self.h), w=[u64(0)] * 80));
 }
 
-impl Sha512Core.dup -> Sha512Core {
-    return Sha512Core(
-        block_size=128,
-        digest_size=self.digest_size,
-        buf=list(self.buf),
-        total=self.total,
-        h=list(self.h)
-    );
-}
-
-impl _keccak(a: list[u64]) {
-    c: list[u64] = [u64(0), u64(0), u64(0), u64(0), u64(0)];
-    bl: list[u64] = [];
-    k: int = 0;
-    while k < 25 {
-        bl.append(u64(0));
-        k += 1;
-    }
+impl _keccak(a: list[u64], b: list[u64]) {
     r: int = 0;
     while r < 24 {
-        x: int = 0;
-        while x < 5 {
-            c[x] = a[x] ^ a[x + 5] ^ a[x + 10] ^ a[x + 15] ^ a[x + 20];
-            x += 1;
-        }
-        x = 0;
-        while x < 5 {
-            dv: u64 = c[(x + 4) % 5] ^ _rotl64(c[(x + 1) % 5], 1);
-            y: int = 0;
-            while y < 5 {
-                a[x + 5 * y] = a[x + 5 * y] ^ dv;
-                y += 1;
-            }
-            x += 1;
-        }
-        x = 0;
-        while x < 5 {
-            y: int = 0;
-            while y < 5 {
-                bl[y + 5 * ((2 * x + 3 * y) % 5)] = _rotl64(
-                    a[x + 5 * y], _KECCAK_ROT[x + 5 * y]
-                );
-                y += 1;
-            }
-            x += 1;
-        }
-        x = 0;
-        while x < 5 {
-            y: int = 0;
-            while y < 5 {
-                a[x + 5 * y] = bl[x + 5 * y]
-                    ^ (~bl[(x + 1) % 5 + 5 * y] & bl[(x + 2) % 5 + 5 * y]);
-                y += 1;
-            }
-            x += 1;
+        c0: u64 = a[0] ^ a[5] ^ a[10] ^ a[15] ^ a[20];
+        c1: u64 = a[1] ^ a[6] ^ a[11] ^ a[16] ^ a[21];
+        c2: u64 = a[2] ^ a[7] ^ a[12] ^ a[17] ^ a[22];
+        c3: u64 = a[3] ^ a[8] ^ a[13] ^ a[18] ^ a[23];
+        c4: u64 = a[4] ^ a[9] ^ a[14] ^ a[19] ^ a[24];
+        d0: u64 = c4 ^ _rotl64(c1, 1);
+        d1: u64 = c0 ^ _rotl64(c2, 1);
+        d2: u64 = c1 ^ _rotl64(c3, 1);
+        d3: u64 = c2 ^ _rotl64(c4, 1);
+        d4: u64 = c3 ^ _rotl64(c0, 1);
+        b[0] = a[0] ^ d0;
+        b[10] = _rotl64(a[1] ^ d1, 1);
+        b[20] = _rotl64(a[2] ^ d2, 62);
+        b[5] = _rotl64(a[3] ^ d3, 28);
+        b[15] = _rotl64(a[4] ^ d4, 27);
+        b[16] = _rotl64(a[5] ^ d0, 36);
+        b[1] = _rotl64(a[6] ^ d1, 44);
+        b[11] = _rotl64(a[7] ^ d2, 6);
+        b[21] = _rotl64(a[8] ^ d3, 55);
+        b[6] = _rotl64(a[9] ^ d4, 20);
+        b[7] = _rotl64(a[10] ^ d0, 3);
+        b[17] = _rotl64(a[11] ^ d1, 10);
+        b[2] = _rotl64(a[12] ^ d2, 43);
+        b[12] = _rotl64(a[13] ^ d3, 25);
+        b[22] = _rotl64(a[14] ^ d4, 39);
+        b[23] = _rotl64(a[15] ^ d0, 41);
+        b[8] = _rotl64(a[16] ^ d1, 45);
+        b[18] = _rotl64(a[17] ^ d2, 15);
+        b[3] = _rotl64(a[18] ^ d3, 21);
+        b[13] = _rotl64(a[19] ^ d4, 8);
+        b[14] = _rotl64(a[20] ^ d0, 18);
+        b[24] = _rotl64(a[21] ^ d1, 2);
+        b[9] = _rotl64(a[22] ^ d2, 61);
+        b[19] = _rotl64(a[23] ^ d3, 56);
+        b[4] = _rotl64(a[24] ^ d4, 14);
+        k: int = 0;
+        while k < 25 {
+            b0: u64 = b[k];
+            b1: u64 = b[k + 1];
+            b2: u64 = b[k + 2];
+            b3: u64 = b[k + 3];
+            b4: u64 = b[k + 4];
+            a[k] = b0 ^ (~b1 & b2);
+            a[k + 1] = b1 ^ (~b2 & b3);
+            a[k + 2] = b2 ^ (~b3 & b4);
+            a[k + 3] = b3 ^ (~b4 & b0);
+            a[k + 4] = b4 ^ (~b0 & b1);
+            k += 5;
         }
         a[0] = a[0] ^ _KECCAK_RC[r];
         r += 1;
     }
 }
 
-impl Sha3Core.block(b: list[int]) {
+impl Sha3Core.compress(address: int, last: bool) {
     lanes: int = self.block_size // 8;
     j: int = 0;
     while j < lanes {
-        self.a[j] = self.a[j] ^ _le64(b, 8 * j);
+        self.a[j] = self.a[j] ^ _le64(address + 8 * j);
         j += 1;
     }
-    _keccak(self.a);
+    _keccak(self.a, self.b);
 }
 
 impl Sha3Core.finish -> bytes {
-    t = self.dup();
-    blk: list[int] = list(self.buf);
-    blk.append(0x06);
-    while len(blk) < self.block_size {
-        blk.append(0);
+    return self.squeeze(self.digest_size);
+}
+
+impl Sha3Core.squeeze(size: int) -> bytes {
+    t = Sha3Core(a=list(self.a), b=self.b, suffix=self.suffix);
+    self.carry(t);
+    bs: int = self.block_size;
+    base: int = __bytearray_data(t.pending);
+    if t.used == bs {
+        t.compress(base, False);
+        t.used = 0;
     }
-    blk[self.block_size - 1] = blk[self.block_size - 1] | 0x80;
-    t.block(blk);
-    st: list[u64] = t.a;
-    out: list[int] = [];
-    i: int = 0;
-    while len(out) < self.digest_size {
-        out.append(int((st[i // 8] >> (8 * (i % 8))) & u64(255)));
-        i += 1;
+    _zero(base + t.used, bs - t.used);
+    t.pending[t.used] = self.suffix;
+    t.pending[bs - 1] = t.pending[bs - 1] | 0x80;
+    t.compress(base, False);
+    out = bytearray(size);
+    target: int = __bytearray_data(out);
+    done: int = 0;
+    while done < size {
+        if done > 0 {
+            _keccak(t.a, t.b);
+        }
+        take: int = bs if size - done > bs else size - done;
+        _copy(target + done, __list_data_ptr(t.a), take);
+        done += take;
     }
     return bytes(out);
 }
 
 impl Sha3Core.clone -> DigestCore {
-    return self.dup();
+    return self.carry(Sha3Core(a=list(self.a), b=[u64(0)] * 25, suffix=self.suffix));
 }
 
-impl Sha3Core.dup -> Sha3Core {
-    return Sha3Core(
-        block_size=self.block_size,
-        digest_size=self.digest_size,
-        buf=list(self.buf),
-        total=self.total,
-        a=list(self.a)
-    );
-}
-
-impl Blake2sCore.update(data: bytes) {
-    n: int = len(data);
-    i: int = 0;
-    while i < n {
-        if len(self.buf) == 64 {
-            self.t += 64;
-            self.compress(self.buf, False);
-            self.buf = [];
-        }
-        self.buf.append(data[i]);
-        i += 1;
-    }
-    self.total += n;
-}
-
-impl Blake2sCore.block(b: list[int]) {
-    self.compress(b, False);
-}
-
-impl Blake2sCore.compress(b: list[int], last: bool) {
-    m: list[int] = [];
-    j: int = 0;
-    while j < 16 {
-        m.append(_le32(b, 4 * j));
-        j += 1;
-    }
-    v: list[int] = list(self.h);
-    j = 0;
-    while j < 8 {
-        v.append(_SHA256_IV[j]);
-        j += 1;
-    }
-    v[12] = v[12] ^ (self.t & _M32);
-    v[13] = v[13] ^ ((self.t >> 32) & _M32);
+impl Blake2sCore.compress(address: int, last: bool) {
+    v0: u32 = self.h[0];
+    v1: u32 = self.h[1];
+    v2: u32 = self.h[2];
+    v3: u32 = self.h[3];
+    v4: u32 = self.h[4];
+    v5: u32 = self.h[5];
+    v6: u32 = self.h[6];
+    v7: u32 = self.h[7];
+    v8: u32 = _SHA256_IV[0];
+    v9: u32 = _SHA256_IV[1];
+    v10: u32 = _SHA256_IV[2];
+    v11: u32 = _SHA256_IV[3];
+    v12: u32 = _SHA256_IV[4] ^ u32.wrap(self.compressed);
+    v13: u32 = _SHA256_IV[5] ^ u32.wrap(self.compressed >> 32);
+    v14: u32 = _SHA256_IV[6];
+    v15: u32 = _SHA256_IV[7];
     if last {
-        v[14] = v[14] ^ _M32;
-    }
-    rnd: int = 0;
-    while rnd < 10 {
-        s: int = 16 * (rnd % 10);
-        q: int = 0;
-        while q < 8 {
-            ia: int = q % 4;
-            ib: int = 4 + ((q + (q // 4)) % 4);
-            ic: int = 8 + ((q + 2 * (q // 4)) % 4);
-            id: int = 12 + ((q + 3 * (q // 4)) % 4);
-            mx: int = m[_BLAKE2_SIGMA[s + 2 * q]];
-            my: int = m[_BLAKE2_SIGMA[s + 2 * q + 1]];
-            v[ia] = (v[ia] + v[ib] + mx) & _M32;
-            v[id] = _rotr32(v[id] ^ v[ia], 16);
-            v[ic] = (v[ic] + v[id]) & _M32;
-            v[ib] = _rotr32(v[ib] ^ v[ic], 12);
-            v[ia] = (v[ia] + v[ib] + my) & _M32;
-            v[id] = _rotr32(v[id] ^ v[ia], 8);
-            v[ic] = (v[ic] + v[id]) & _M32;
-            v[ib] = _rotr32(v[ib] ^ v[ic], 7);
-            q += 1;
+        v14 = ~v14;
+        if self.last_node {
+            v15 = ~v15;
         }
-        rnd += 1;
     }
-    j = 0;
-    while j < 8 {
-        self.h[j] = self.h[j] ^ v[j] ^ v[j + 8];
-        j += 1;
+    r: int = 0;
+    while r < 10 {
+        s: int = 16 * r;
+        v0 = wrapping_add(wrapping_add(v0, v4), _msg32(address, s + 0));
+        v12 = _rotr32(v12 ^ v0, u32(16));
+        v8 = wrapping_add(v8, v12);
+        v4 = _rotr32(v4 ^ v8, u32(12));
+        v0 = wrapping_add(wrapping_add(v0, v4), _msg32(address, s + 1));
+        v12 = _rotr32(v12 ^ v0, u32(8));
+        v8 = wrapping_add(v8, v12);
+        v4 = _rotr32(v4 ^ v8, u32(7));
+        v1 = wrapping_add(wrapping_add(v1, v5), _msg32(address, s + 2));
+        v13 = _rotr32(v13 ^ v1, u32(16));
+        v9 = wrapping_add(v9, v13);
+        v5 = _rotr32(v5 ^ v9, u32(12));
+        v1 = wrapping_add(wrapping_add(v1, v5), _msg32(address, s + 3));
+        v13 = _rotr32(v13 ^ v1, u32(8));
+        v9 = wrapping_add(v9, v13);
+        v5 = _rotr32(v5 ^ v9, u32(7));
+        v2 = wrapping_add(wrapping_add(v2, v6), _msg32(address, s + 4));
+        v14 = _rotr32(v14 ^ v2, u32(16));
+        v10 = wrapping_add(v10, v14);
+        v6 = _rotr32(v6 ^ v10, u32(12));
+        v2 = wrapping_add(wrapping_add(v2, v6), _msg32(address, s + 5));
+        v14 = _rotr32(v14 ^ v2, u32(8));
+        v10 = wrapping_add(v10, v14);
+        v6 = _rotr32(v6 ^ v10, u32(7));
+        v3 = wrapping_add(wrapping_add(v3, v7), _msg32(address, s + 6));
+        v15 = _rotr32(v15 ^ v3, u32(16));
+        v11 = wrapping_add(v11, v15);
+        v7 = _rotr32(v7 ^ v11, u32(12));
+        v3 = wrapping_add(wrapping_add(v3, v7), _msg32(address, s + 7));
+        v15 = _rotr32(v15 ^ v3, u32(8));
+        v11 = wrapping_add(v11, v15);
+        v7 = _rotr32(v7 ^ v11, u32(7));
+        v0 = wrapping_add(wrapping_add(v0, v5), _msg32(address, s + 8));
+        v15 = _rotr32(v15 ^ v0, u32(16));
+        v10 = wrapping_add(v10, v15);
+        v5 = _rotr32(v5 ^ v10, u32(12));
+        v0 = wrapping_add(wrapping_add(v0, v5), _msg32(address, s + 9));
+        v15 = _rotr32(v15 ^ v0, u32(8));
+        v10 = wrapping_add(v10, v15);
+        v5 = _rotr32(v5 ^ v10, u32(7));
+        v1 = wrapping_add(wrapping_add(v1, v6), _msg32(address, s + 10));
+        v12 = _rotr32(v12 ^ v1, u32(16));
+        v11 = wrapping_add(v11, v12);
+        v6 = _rotr32(v6 ^ v11, u32(12));
+        v1 = wrapping_add(wrapping_add(v1, v6), _msg32(address, s + 11));
+        v12 = _rotr32(v12 ^ v1, u32(8));
+        v11 = wrapping_add(v11, v12);
+        v6 = _rotr32(v6 ^ v11, u32(7));
+        v2 = wrapping_add(wrapping_add(v2, v7), _msg32(address, s + 12));
+        v13 = _rotr32(v13 ^ v2, u32(16));
+        v8 = wrapping_add(v8, v13);
+        v7 = _rotr32(v7 ^ v8, u32(12));
+        v2 = wrapping_add(wrapping_add(v2, v7), _msg32(address, s + 13));
+        v13 = _rotr32(v13 ^ v2, u32(8));
+        v8 = wrapping_add(v8, v13);
+        v7 = _rotr32(v7 ^ v8, u32(7));
+        v3 = wrapping_add(wrapping_add(v3, v4), _msg32(address, s + 14));
+        v14 = _rotr32(v14 ^ v3, u32(16));
+        v9 = wrapping_add(v9, v14);
+        v4 = _rotr32(v4 ^ v9, u32(12));
+        v3 = wrapping_add(wrapping_add(v3, v4), _msg32(address, s + 15));
+        v14 = _rotr32(v14 ^ v3, u32(8));
+        v9 = wrapping_add(v9, v14);
+        v4 = _rotr32(v4 ^ v9, u32(7));
+        r += 1;
     }
+    self.h[0] = self.h[0] ^ v0 ^ v8;
+    self.h[1] = self.h[1] ^ v1 ^ v9;
+    self.h[2] = self.h[2] ^ v2 ^ v10;
+    self.h[3] = self.h[3] ^ v3 ^ v11;
+    self.h[4] = self.h[4] ^ v4 ^ v12;
+    self.h[5] = self.h[5] ^ v5 ^ v13;
+    self.h[6] = self.h[6] ^ v6 ^ v14;
+    self.h[7] = self.h[7] ^ v7 ^ v15;
 }
 
 impl Blake2sCore.finish -> bytes {
-    t = self.dup();
-    t.t = self.t + len(self.buf);
-    blk: list[int] = list(self.buf);
-    while len(blk) < 64 {
-        blk.append(0);
-    }
-    t.compress(blk, True);
-    out: list[int] = [];
-    i: int = 0;
-    while i < 8 {
-        k: int = 0;
-        while k < 4 {
-            out.append((t.h[i] >> (8 * k)) & 255);
-            k += 1;
-        }
-        i += 1;
-    }
-    return bytes(out);
+    t = Blake2sCore(h=list(self.h), v=self.v, last_node=self.last_node);
+    self.carry(t);
+    base: int = __bytearray_data(t.pending);
+    _zero(base + t.used, t.block_size - t.used);
+    t.compressed += t.used;
+    t.compress(base, True);
+    return _words32(t.h, self.digest_size, False);
 }
 
 impl Blake2sCore.clone -> DigestCore {
-    return self.dup();
-}
-
-impl Blake2sCore.dup -> Blake2sCore {
-    return Blake2sCore(
-        block_size=64,
-        digest_size=32,
-        buf=list(self.buf),
-        total=self.total,
-        h=list(self.h),
-        t=self.t
+    return self.carry(
+        Blake2sCore(h=list(self.h), v=[u32(0)] * 16, last_node=self.last_node)
     );
 }
 
-impl Blake2bCore.update(data: bytes) {
-    n: int = len(data);
-    i: int = 0;
-    while i < n {
-        if len(self.buf) == 128 {
-            self.t += 128;
-            self.compress(self.buf, False);
-            self.buf = [];
-        }
-        self.buf.append(data[i]);
-        i += 1;
-    }
-    self.total += n;
-}
-
-impl Blake2bCore.block(b: list[int]) {
-    self.compress(b, False);
-}
-
-impl Blake2bCore.compress(b: list[int], last: bool) {
-    m: list[u64] = [];
-    j: int = 0;
-    while j < 16 {
-        m.append(_le64(b, 8 * j));
-        j += 1;
-    }
-    v: list[u64] = list(self.h);
-    j = 0;
-    while j < 8 {
-        v.append(_SHA512_IV[j]);
-        j += 1;
-    }
-    v[12] = v[12] ^ u64(self.t);
+impl Blake2bCore.compress(address: int, last: bool) {
+    v0: u64 = self.h[0];
+    v1: u64 = self.h[1];
+    v2: u64 = self.h[2];
+    v3: u64 = self.h[3];
+    v4: u64 = self.h[4];
+    v5: u64 = self.h[5];
+    v6: u64 = self.h[6];
+    v7: u64 = self.h[7];
+    v8: u64 = _SHA512_IV[0];
+    v9: u64 = _SHA512_IV[1];
+    v10: u64 = _SHA512_IV[2];
+    v11: u64 = _SHA512_IV[3];
+    v12: u64 = _SHA512_IV[4] ^ u64(self.compressed);
+    v13: u64 = _SHA512_IV[5];
+    v14: u64 = _SHA512_IV[6];
+    v15: u64 = _SHA512_IV[7];
     if last {
-        v[14] = ~v[14];
-    }
-    rnd: int = 0;
-    while rnd < 12 {
-        s: int = 16 * (rnd % 10);
-        q: int = 0;
-        while q < 8 {
-            ia: int = q % 4;
-            ib: int = 4 + ((q + (q // 4)) % 4);
-            ic: int = 8 + ((q + 2 * (q // 4)) % 4);
-            id: int = 12 + ((q + 3 * (q // 4)) % 4);
-            mx: u64 = m[_BLAKE2_SIGMA[s + 2 * q]];
-            my: u64 = m[_BLAKE2_SIGMA[s + 2 * q + 1]];
-            v[ia] = wrapping_add(wrapping_add(v[ia], v[ib]), mx);
-            v[id] = _rotr64(v[id] ^ v[ia], 32);
-            v[ic] = wrapping_add(v[ic], v[id]);
-            v[ib] = _rotr64(v[ib] ^ v[ic], 24);
-            v[ia] = wrapping_add(wrapping_add(v[ia], v[ib]), my);
-            v[id] = _rotr64(v[id] ^ v[ia], 16);
-            v[ic] = wrapping_add(v[ic], v[id]);
-            v[ib] = _rotr64(v[ib] ^ v[ic], 63);
-            q += 1;
+        v14 = ~v14;
+        if self.last_node {
+            v15 = ~v15;
         }
-        rnd += 1;
     }
-    j = 0;
-    while j < 8 {
-        self.h[j] = self.h[j] ^ v[j] ^ v[j + 8];
-        j += 1;
+    r: int = 0;
+    while r < 12 {
+        s: int = 16 * (r % 10);
+        v0 = wrapping_add(wrapping_add(v0, v4), _msg64(address, s + 0));
+        v12 = _rotr64(v12 ^ v0, 32);
+        v8 = wrapping_add(v8, v12);
+        v4 = _rotr64(v4 ^ v8, 24);
+        v0 = wrapping_add(wrapping_add(v0, v4), _msg64(address, s + 1));
+        v12 = _rotr64(v12 ^ v0, 16);
+        v8 = wrapping_add(v8, v12);
+        v4 = _rotr64(v4 ^ v8, 63);
+        v1 = wrapping_add(wrapping_add(v1, v5), _msg64(address, s + 2));
+        v13 = _rotr64(v13 ^ v1, 32);
+        v9 = wrapping_add(v9, v13);
+        v5 = _rotr64(v5 ^ v9, 24);
+        v1 = wrapping_add(wrapping_add(v1, v5), _msg64(address, s + 3));
+        v13 = _rotr64(v13 ^ v1, 16);
+        v9 = wrapping_add(v9, v13);
+        v5 = _rotr64(v5 ^ v9, 63);
+        v2 = wrapping_add(wrapping_add(v2, v6), _msg64(address, s + 4));
+        v14 = _rotr64(v14 ^ v2, 32);
+        v10 = wrapping_add(v10, v14);
+        v6 = _rotr64(v6 ^ v10, 24);
+        v2 = wrapping_add(wrapping_add(v2, v6), _msg64(address, s + 5));
+        v14 = _rotr64(v14 ^ v2, 16);
+        v10 = wrapping_add(v10, v14);
+        v6 = _rotr64(v6 ^ v10, 63);
+        v3 = wrapping_add(wrapping_add(v3, v7), _msg64(address, s + 6));
+        v15 = _rotr64(v15 ^ v3, 32);
+        v11 = wrapping_add(v11, v15);
+        v7 = _rotr64(v7 ^ v11, 24);
+        v3 = wrapping_add(wrapping_add(v3, v7), _msg64(address, s + 7));
+        v15 = _rotr64(v15 ^ v3, 16);
+        v11 = wrapping_add(v11, v15);
+        v7 = _rotr64(v7 ^ v11, 63);
+        v0 = wrapping_add(wrapping_add(v0, v5), _msg64(address, s + 8));
+        v15 = _rotr64(v15 ^ v0, 32);
+        v10 = wrapping_add(v10, v15);
+        v5 = _rotr64(v5 ^ v10, 24);
+        v0 = wrapping_add(wrapping_add(v0, v5), _msg64(address, s + 9));
+        v15 = _rotr64(v15 ^ v0, 16);
+        v10 = wrapping_add(v10, v15);
+        v5 = _rotr64(v5 ^ v10, 63);
+        v1 = wrapping_add(wrapping_add(v1, v6), _msg64(address, s + 10));
+        v12 = _rotr64(v12 ^ v1, 32);
+        v11 = wrapping_add(v11, v12);
+        v6 = _rotr64(v6 ^ v11, 24);
+        v1 = wrapping_add(wrapping_add(v1, v6), _msg64(address, s + 11));
+        v12 = _rotr64(v12 ^ v1, 16);
+        v11 = wrapping_add(v11, v12);
+        v6 = _rotr64(v6 ^ v11, 63);
+        v2 = wrapping_add(wrapping_add(v2, v7), _msg64(address, s + 12));
+        v13 = _rotr64(v13 ^ v2, 32);
+        v8 = wrapping_add(v8, v13);
+        v7 = _rotr64(v7 ^ v8, 24);
+        v2 = wrapping_add(wrapping_add(v2, v7), _msg64(address, s + 13));
+        v13 = _rotr64(v13 ^ v2, 16);
+        v8 = wrapping_add(v8, v13);
+        v7 = _rotr64(v7 ^ v8, 63);
+        v3 = wrapping_add(wrapping_add(v3, v4), _msg64(address, s + 14));
+        v14 = _rotr64(v14 ^ v3, 32);
+        v9 = wrapping_add(v9, v14);
+        v4 = _rotr64(v4 ^ v9, 24);
+        v3 = wrapping_add(wrapping_add(v3, v4), _msg64(address, s + 15));
+        v14 = _rotr64(v14 ^ v3, 16);
+        v9 = wrapping_add(v9, v14);
+        v4 = _rotr64(v4 ^ v9, 63);
+        r += 1;
     }
+    self.h[0] = self.h[0] ^ v0 ^ v8;
+    self.h[1] = self.h[1] ^ v1 ^ v9;
+    self.h[2] = self.h[2] ^ v2 ^ v10;
+    self.h[3] = self.h[3] ^ v3 ^ v11;
+    self.h[4] = self.h[4] ^ v4 ^ v12;
+    self.h[5] = self.h[5] ^ v5 ^ v13;
+    self.h[6] = self.h[6] ^ v6 ^ v14;
+    self.h[7] = self.h[7] ^ v7 ^ v15;
 }
 
 impl Blake2bCore.finish -> bytes {
-    t = self.dup();
-    t.t = self.t + len(self.buf);
-    blk: list[int] = list(self.buf);
-    while len(blk) < 128 {
-        blk.append(0);
-    }
-    t.compress(blk, True);
-    out: list[int] = [];
-    i: int = 0;
-    while i < 8 {
-        k: int = 0;
-        while k < 8 {
-            out.append(int((t.h[i] >> (8 * k)) & u64(255)));
-            k += 1;
-        }
-        i += 1;
-    }
-    return bytes(out);
+    t = Blake2bCore(h=list(self.h), v=self.v, last_node=self.last_node);
+    self.carry(t);
+    base: int = __bytearray_data(t.pending);
+    _zero(base + t.used, t.block_size - t.used);
+    t.compressed += t.used;
+    t.compress(base, True);
+    return _words64(t.h, self.digest_size, False);
 }
 
 impl Blake2bCore.clone -> DigestCore {
-    return self.dup();
+    return self.carry(
+        Blake2bCore(h=list(self.h), v=[u64(0)] * 16, last_node=self.last_node)
+    );
 }
 
-impl Blake2bCore.dup -> Blake2bCore {
-    return Blake2bCore(
-        block_size=128,
-        digest_size=64,
-        buf=list(self.buf),
-        total=self.total,
-        h=list(self.h),
-        t=self.t
-    );
+impl HmacCore.absorb(address: int, size: int) {
+    self.inner.absorb(address, size);
+}
+
+impl HmacCore.finish -> bytes {
+    outer = self.outer.clone();
+    outer.update(self.inner.finish());
+    return outer.finish();
+}
+
+impl HmacCore.clone -> DigestCore {
+    return self.carry(HmacCore(inner=self.inner.clone(), outer=self.outer.clone()));
 }
 
 impl new_core(name: str) -> (DigestCore | None) {
     if name == "md5" {
-        return Md5Core(block_size=64, digest_size=16);
+        return _setup(
+            Md5Core(
+                h=[u32(0x67452301), u32(0xefcdab89), u32(0x98badcfe), u32(0x10325476)]
+            ),
+            name,
+            64,
+            16
+        );
     } elif name == "sha1" {
-        return Sha1Core(block_size=64, digest_size=20);
-    } elif name == "sha224" {
-        return Sha256Core(block_size=64, digest_size=28, h=list(_SHA224_IV));
-    } elif name == "sha256" {
-        return Sha256Core(block_size=64, digest_size=32, h=list(_SHA256_IV));
-    } elif name == "sha384" {
-        return Sha512Core(block_size=128, digest_size=48, h=list(_SHA384_IV));
-    } elif name == "sha512" {
-        return Sha512Core(block_size=128, digest_size=64, h=list(_SHA512_IV));
+        return _setup(
+            Sha1Core(
+                h=[
+                    u32(0x67452301),
+                    u32(0xEFCDAB89),
+                    u32(0x98BADCFE),
+                    u32(0x10325476),
+                    u32(0xC3D2E1F0)
+                ],
+                w=[u32(0)] * 80
+            ),
+            name,
+            64,
+            20
+        );
+    } elif name == "sha224" or name == "sha256" {
+        small: bool = name == "sha224";
+        return _setup(
+            Sha256Core(h=list(_SHA224_IV if small else _SHA256_IV), w=[u32(0)] * 64),
+            name,
+            64,
+            28 if small else 32
+        );
+    } elif name == "sha384" or name == "sha512" {
+        short: bool = name == "sha384";
+        return _setup(
+            Sha512Core(h=list(_SHA384_IV if short else _SHA512_IV), w=[u64(0)] * 80),
+            name,
+            128,
+            48 if short else 64
+        );
     } elif name in ["sha3_224", "sha3_256", "sha3_384", "sha3_512"] {
-        size: int = core_digest_size(name);
-        lanes: list[u64] = [];
-        while len(lanes) < 25 {
-            lanes.append(u64(0));
-        }
-        return Sha3Core(block_size=200 - 2 * size, digest_size=size, a=lanes);
-    } elif name == "blake2s" {
-        hs: list[int] = list(_SHA256_IV);
-        hs[0] = hs[0] ^ 0x01010020;
-        return Blake2sCore(block_size=64, digest_size=32, h=hs);
+        size: int = int(name[5:]) // 8;
+        return _setup(
+            Sha3Core(a=[u64(0)] * 25, b=[u64(0)] * 25), name, 200 - 2 * size, size
+        );
+    } elif name in ["shake_128", "shake_256"] {
+        return _setup(
+            Sha3Core(a=[u64(0)] * 25, b=[u64(0)] * 25, suffix=0x1F),
+            name,
+            200 - int(name[6:]) // 4,
+            0
+        );
     } elif name == "blake2b" {
-        hb: list[u64] = list(_SHA512_IV);
-        hb[0] = hb[0] ^ u64(0x01010040);
-        return Blake2bCore(block_size=128, digest_size=64, h=hb);
+        return new_blake2(True, 64, 0, 0, 0, 0, 0, 0, 1, 1, 0, u64(0), 0, 0, False);
+    } elif name == "blake2s" {
+        return new_blake2(False, 32, 0, 0, 0, 0, 0, 0, 1, 1, 0, u64(0), 0, 0, False);
     }
     return None;
 }
 
-impl core_block_size(name: str) -> int {
-    if name in ["md5", "sha1", "sha224", "sha256", "blake2s"] {
-        return 64;
-    } elif name in ["sha384", "sha512", "blake2b"] {
-        return 128;
-    } elif name in ["sha3_224", "sha3_256", "sha3_384", "sha3_512"] {
-        return 200 - 2 * core_digest_size(name);
+impl new_blake2(
+    wide: bool,
+    digest_size: int,
+    key: int,
+    key_size: int,
+    salt: int,
+    salt_size: int,
+    person: int,
+    person_size: int,
+    fanout: int,
+    depth: int,
+    leaf_size: int,
+    node_offset: u64,
+    node_depth: int,
+    inner_size: int,
+    last_node: bool
+) -> DigestCore {
+    width: int = 8 if wide else 4;
+    block = bytearray(8 * width);
+    p: int = __bytearray_data(block);
+    block[0] = digest_size;
+    block[1] = key_size;
+    block[2] = fanout;
+    block[3] = depth;
+    __mem_store_i32(p + 4, i32.wrap(leaf_size));
+    __mem_store_i32(p + 8, i32.wrap(int(node_offset & u64(0xFFFFFFFF))));
+    __mem_store_i32(p + 12, i32.wrap(int(node_offset >> u64(32))));
+    block[16 if wide else 14] = node_depth;
+    block[17 if wide else 15] = inner_size;
+    _copy(p + 4 * width, salt, salt_size);
+    _copy(p + 6 * width, person, person_size);
+    core: DigestCore = DigestCore();
+    if wide {
+        hb: list[u64] = list(_SHA512_IV);
+        j: int = 0;
+        while j < 8 {
+            hb[j] = hb[j] ^ _le64(p + 8 * j);
+            j += 1;
+        }
+        core = _setup(
+            Blake2bCore(h=hb, v=[u64(0)] * 16, last_node=last_node),
+            "blake2b",
+            128,
+            digest_size
+        );
+    } else {
+        hs: list[u32] = list(_SHA256_IV);
+        k: int = 0;
+        while k < 8 {
+            hs[k] = hs[k] ^ _le32(p + 4 * k);
+            k += 1;
+        }
+        core = _setup(
+            Blake2sCore(h=hs, v=[u32(0)] * 16, last_node=last_node),
+            "blake2s",
+            64,
+            digest_size
+        );
     }
-    return 0;
+    if key_size > 0 {
+        pad = bytearray(core.block_size);
+        _copy(__bytearray_data(pad), key, key_size);
+        core.absorb(__bytearray_data(pad), core.block_size);
+    }
+    return core;
 }
 
-impl core_digest_size(name: str) -> int {
-    if name == "md5" {
-        return 16;
-    } elif name == "sha1" {
-        return 20;
-    } elif name in ["sha224", "sha3_224"] {
-        return 28;
-    } elif name in ["sha256", "sha3_256", "blake2s"] {
-        return 32;
-    } elif name in ["sha384", "sha3_384"] {
-        return 48;
-    } elif name in ["sha512", "sha3_512", "blake2b"] {
-        return 64;
+impl new_hmac(name: str, key: int, key_size: int) -> (DigestCore | None) {
+    inner = new_core(name);
+    outer = new_core(name);
+    if inner is None or outer is None {
+        return None;
     }
-    return 0;
+    bs: int = inner.block_size;
+    pads = bytearray(2 * bs);
+    p: int = __bytearray_data(pads);
+    if key_size > bs {
+        shrink = outer.clone();
+        shrink.absorb(key, key_size);
+        hashed: bytes = shrink.finish();
+        _copy(p, __bytes_data(hashed), len(hashed));
+    } else {
+        _copy(p, key, key_size);
+    }
+    i: int = 0;
+    while i < bs {
+        pads[bs + i] = pads[i] ^ 0x5c;
+        pads[i] = pads[i] ^ 0x36;
+        i += 1;
+    }
+    inner.absorb(p, bs);
+    outer.absorb(p + bs, bs);
+    return _setup(HmacCore(inner=inner, outer=outer), name, bs, inner.digest_size);
+}
+
+impl _setup(
+    core: DigestCore, name: str, block_size: int, digest_size: int
+) -> DigestCore {
+    core.name = name;
+    core.block_size = block_size;
+    core.digest_size = digest_size;
+    core.pending = bytearray(block_size);
+    return core;
+}
+
+impl _copy(target: int, source: int, size: int) {
+    i: int = 0;
+    while i + 8 <= size {
+        __mem_store_i64(target + i, __mem_load_i64(source + i));
+        i += 8;
+    }
+    while i < size {
+        __mem_store_i8(target + i, __mem_load_i8(source + i));
+        i += 1;
+    }
+}
+
+impl _zero(target: int, size: int) {
+    i: int = 0;
+    while i < size {
+        __mem_store_i8(target + i, i8(0));
+        i += 1;
+    }
+}
+
+impl _rotl32(x: u32, n: u32) -> u32 {
+    return wrapping_shl(x, n) | (x >> ((u32(32) - n) & u32(31)));
+}
+
+impl _rotr32(x: u32, n: u32) -> u32 {
+    return (x >> n) | wrapping_shl(x, (u32(32) - n) & u32(31));
+}
+
+impl _rotr64(x: u64, n: int) -> u64 {
+    return (x >> u64(n)) | wrapping_shl(x, u64((64 - n) & 63));
+}
+
+impl _rotl64(x: u64, n: int) -> u64 {
+    return wrapping_shl(x, u64(n)) | (x >> u64((64 - n) & 63));
+}
+
+impl _bswap32(x: u32) -> u32 {
+    return wrapping_shl(x, u32(24))
+        | wrapping_shl(x & u32(0xFF00), u32(8))
+        | ((x >> u32(8)) & u32(0xFF00))
+        | (x >> u32(24));
+}
+
+impl _le32(address: int) -> u32 {
+    return u32.wrap(__mem_load_i32(address));
+}
+
+impl _be32(address: int) -> u32 {
+    return _bswap32(_le32(address));
+}
+
+impl _le64(address: int) -> u64 {
+    return u64.wrap(__mem_load_i64(address));
+}
+
+impl _be64(address: int) -> u64 {
+    return wrapping_shl(u64(_be32(address)), u64(32)) | u64(_be32(address + 4));
+}
+
+impl _words32(h: list[u32], size: int, big: bool) -> bytes {
+    out = bytearray(4 * len(h));
+    p: int = __bytearray_data(out);
+    j: int = 0;
+    while j < len(h) {
+        __mem_store_i32(p + 4 * j, i32.wrap(int(_bswap32(h[j]) if big else h[j])));
+        j += 1;
+    }
+    return bytes(out[:size]);
+}
+
+impl _words64(h: list[u64], size: int, big: bool) -> bytes {
+    words: list[u32] = [];
+    for x in h {
+        high: u32 = u32(x >> u64(32));
+        low: u32 = u32(x & u64(0xFFFFFFFF));
+        words.append(high if big else low);
+        words.append(low if big else high);
+    }
+    return _words32(words, size, big);
+}
+
+impl _md5_step(a: u32, b: u32, f: u32, i: int, address: int, word: int) -> u32 {
+    return wrapping_add(
+        b,
+        _rotl32(
+            wrapping_add(
+                wrapping_add(f, a),
+                wrapping_add(
+                    _MD5_K[i], _le32(wrapping_add(address, wrapping_shl(word, 2)))
+                )
+            ),
+            _MD5_S[i]
+        )
+    );
+}
+
+
+impl _msg32(address: int, s: int) -> u32 {
+    return _le32(wrapping_add(address, wrapping_shl(_BLAKE2_SIGMA[s], 2)));
+}
+
+impl _msg64(address: int, s: int) -> u64 {
+    return _le64(wrapping_add(address, wrapping_shl(_BLAKE2_SIGMA[s], 3)));
 }

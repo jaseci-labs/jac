@@ -19,8 +19,8 @@
 #   That separate build-only CPython host restores these to produce the native
 #   object and build itself with configure and make; no shipped runtime has
 #   them.
-#   Excluded: 292 C files / 500,605 lines; 182 headers / 166,979 lines; 42 other files / 62,259 lines.
-#   Total: 516 files / 729,843 source lines.
+#   Excluded: 305 C files / 517,358 lines; 216 headers / 172,533 lines; 42 other files / 62,259 lines.
+#   Total: 563 files / 752,150 source lines.
 #
 #   "# path  # pruned: N source lines"
 #   Not needed by any build. Neither the host nor a shipped runtime has them,
@@ -637,47 +637,47 @@ Objects/stringlib/
 # Modules/_decimal/docstrings.h  # removed: 966 source lines
 # Modules/_elementtree.c  # removed: 4,560 source lines
 # Modules/_functoolsmodule.c  # removed: 1,953 source lines
-Modules/_hacl/Hacl_HMAC.c
-Modules/_hacl/Hacl_HMAC.h
-Modules/_hacl/Hacl_Hash_Blake2b.c
-Modules/_hacl/Hacl_Hash_Blake2b.h
-Modules/_hacl/Hacl_Hash_Blake2b_Simd256.c
-Modules/_hacl/Hacl_Hash_Blake2b_Simd256.h
-Modules/_hacl/Hacl_Hash_Blake2b_Simd256_universal2.c
-Modules/_hacl/Hacl_Hash_Blake2s.c
-Modules/_hacl/Hacl_Hash_Blake2s.h
-Modules/_hacl/Hacl_Hash_Blake2s_Simd128.c
-Modules/_hacl/Hacl_Hash_Blake2s_Simd128.h
-Modules/_hacl/Hacl_Hash_Blake2s_Simd128_universal2.c
-Modules/_hacl/Hacl_Hash_MD5.c
-Modules/_hacl/Hacl_Hash_MD5.h
-Modules/_hacl/Hacl_Hash_SHA1.c
-Modules/_hacl/Hacl_Hash_SHA1.h
-Modules/_hacl/Hacl_Hash_SHA2.c
-Modules/_hacl/Hacl_Hash_SHA2.h
-Modules/_hacl/Hacl_Hash_SHA3.c
-Modules/_hacl/Hacl_Hash_SHA3.h
-Modules/_hacl/Hacl_Streaming_HMAC.c
-Modules/_hacl/Hacl_Streaming_HMAC.h
-Modules/_hacl/Hacl_Streaming_Types.h
-Modules/_hacl/Lib_Memzero0.c
-Modules/_hacl/include/
-Modules/_hacl/internal/Hacl_HMAC.h
-Modules/_hacl/internal/Hacl_Hash_Blake2b.h
-Modules/_hacl/internal/Hacl_Hash_Blake2b_Simd256.h
-Modules/_hacl/internal/Hacl_Hash_Blake2s.h
-Modules/_hacl/internal/Hacl_Hash_Blake2s_Simd128.h
-Modules/_hacl/internal/Hacl_Hash_MD5.h
-Modules/_hacl/internal/Hacl_Hash_SHA1.h
-Modules/_hacl/internal/Hacl_Hash_SHA2.h
-Modules/_hacl/internal/Hacl_Hash_SHA3.h
-Modules/_hacl/internal/Hacl_Impl_Blake2_Constants.h
-Modules/_hacl/internal/Hacl_Streaming_HMAC.h
-Modules/_hacl/internal/Hacl_Streaming_Types.h
-Modules/_hacl/lib_memzero0.h
-Modules/_hacl/libintvector-shim.h
-Modules/_hacl/libintvector.h
-Modules/_hacl/python_hacl_namespaces.h
+# Modules/_hacl/Hacl_HMAC.c  # removed: 1,567 source lines
+# Modules/_hacl/Hacl_HMAC.h  # removed: 224 source lines
+# Modules/_hacl/Hacl_Hash_Blake2b.c  # removed: 1,717 source lines
+# Modules/_hacl/Hacl_Hash_Blake2b.h  # removed: 224 source lines
+# Modules/_hacl/Hacl_Hash_Blake2b_Simd256.c  # removed: 1,599 source lines
+# Modules/_hacl/Hacl_Hash_Blake2b_Simd256.h  # removed: 210 source lines
+# Modules/_hacl/Hacl_Hash_Blake2b_Simd256_universal2.c  # removed: 15 source lines
+# Modules/_hacl/Hacl_Hash_Blake2s.c  # removed: 1,673 source lines
+# Modules/_hacl/Hacl_Hash_Blake2s.h  # removed: 202 source lines
+# Modules/_hacl/Hacl_Hash_Blake2s_Simd128.c  # removed: 1,559 source lines
+# Modules/_hacl/Hacl_Hash_Blake2s_Simd128.h  # removed: 210 source lines
+# Modules/_hacl/Hacl_Hash_Blake2s_Simd128_universal2.c  # removed: 14 source lines
+# Modules/_hacl/Hacl_Hash_MD5.c  # removed: 1,405 source lines
+# Modules/_hacl/Hacl_Hash_MD5.h  # removed: 66 source lines
+# Modules/_hacl/Hacl_Hash_SHA1.c  # removed: 567 source lines
+# Modules/_hacl/Hacl_Hash_SHA1.h  # removed: 66 source lines
+# Modules/_hacl/Hacl_Hash_SHA2.c  # removed: 1,582 source lines
+# Modules/_hacl/Hacl_Hash_SHA2.h  # removed: 203 source lines
+# Modules/_hacl/Hacl_Hash_SHA3.c  # removed: 2,457 source lines
+# Modules/_hacl/Hacl_Hash_SHA3.h  # removed: 159 source lines
+# Modules/_hacl/Hacl_Streaming_HMAC.c  # removed: 2,526 source lines
+# Modules/_hacl/Hacl_Streaming_HMAC.h  # removed: 134 source lines
+# Modules/_hacl/Hacl_Streaming_Types.h  # removed: 72 source lines
+# Modules/_hacl/Lib_Memzero0.c  # removed: 72 source lines
+# Modules/_hacl/include/  # removed: 1,432 source lines
+# Modules/_hacl/internal/Hacl_HMAC.h  # removed: 52 source lines
+# Modules/_hacl/internal/Hacl_Hash_Blake2b.h  # removed: 95 source lines
+# Modules/_hacl/internal/Hacl_Hash_Blake2b_Simd256.h  # removed: 138 source lines
+# Modules/_hacl/internal/Hacl_Hash_Blake2s.h  # removed: 94 source lines
+# Modules/_hacl/internal/Hacl_Hash_Blake2s_Simd128.h  # removed: 138 source lines
+# Modules/_hacl/internal/Hacl_Hash_MD5.h  # removed: 57 source lines
+# Modules/_hacl/internal/Hacl_Hash_SHA1.h  # removed: 56 source lines
+# Modules/_hacl/internal/Hacl_Hash_SHA2.h  # removed: 165 source lines
+# Modules/_hacl/internal/Hacl_Hash_SHA3.h  # removed: 85 source lines
+# Modules/_hacl/internal/Hacl_Impl_Blake2_Constants.h  # removed: 73 source lines
+# Modules/_hacl/internal/Hacl_Streaming_HMAC.h  # removed: 94 source lines
+# Modules/_hacl/internal/Hacl_Streaming_Types.h  # removed: 87 source lines
+# Modules/_hacl/lib_memzero0.h  # removed: 6 source lines
+# Modules/_hacl/libintvector-shim.h  # removed: 35 source lines
+# Modules/_hacl/libintvector.h  # removed: 940 source lines
+# Modules/_hacl/python_hacl_namespaces.h  # removed: 237 source lines
 # Modules/_hashopenssl.c  # removed: 2,390 source lines
 # Modules/_heapqmodule.c  # removed: 811 source lines
 # Modules/_interpchannelsmodule.c  # removed: 3,660 source lines
