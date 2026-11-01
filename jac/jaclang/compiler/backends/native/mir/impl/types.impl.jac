@@ -206,3 +206,7 @@ impl mir_c_view(elem: MirType) -> MirType {
 impl mir_c_fn(params: list[MirType], ret: MirType) -> MirType {
     return mir_type(MirKind.C_FN, args=[ret] + params);
 }
+
+impl mir_holds_ref(t: MirType) -> bool {
+    return t.kind == MirKind.STR or t.is_ref();
+}

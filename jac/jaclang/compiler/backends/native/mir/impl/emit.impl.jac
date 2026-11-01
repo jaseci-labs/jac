@@ -49,6 +49,12 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     if t.kind in (MirKind.NONE, MirKind.VOID) {
         return ir.VoidType();
     }
+    if t.kind == MirKind.STR {
+        return self.str_type();
+    }
+    if t.kind == MirKind.STR_REF {
+        return ir.IntType(8).as_pointer();
+    }
     if t.kind == MirKind.C_PTR {
         elem = t.payload();
         if elem.kind in (MirKind.NONE, MirKind.VOID) {
@@ -196,6 +202,37 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
                 type_arg_of(instr)
             )
         );
+    } elif op == MirOp.CONST_NULL {
+        self.bind(instr.result, ir.Constant(self.llvm_type(type_arg_of(instr)), None));
+    } elif op == MirOp.CONST_STR {
+        data = self.str_literal(b, instr.str_value);
+        if type_arg_of(instr).kind == MirKind.STR {
+            size = len(instr.str_value.encode("utf-8"));
+            made = b.insert_value(ir.Constant(self.str_type(), None), data, 0);
+            made = b.insert_value(made, data, 1);
+            made = b.insert_value(made, ir.Constant(ir.IntType(64), size), 2);
+            self.bind(instr.result, made);
+        } else {
+            self.bind(instr.result, data);
+        }
+    } elif op == MirOp.STR_PART {
+        index = ["root", "data", "len"].index(instr.sub);
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), index));
+    } elif op == MirOp.STR_MAKE {
+        made = ir.Constant(self.str_type(), None);
+        for (index, part) in enumerate(instr.operands) {
+            made = b.insert_value(made, self.value(part), index);
+        }
+        self.bind(instr.result, made);
+    } elif op in (MirOp.RETAIN, MirOp.RELEASE) {
+        self.emit_rc(b, instr);
+    } elif op == MirOp.CALL_RUNTIME {
+        callee = self.functions.get(instr.callee);
+        if callee is None {
+            raise MirEmitError(f"MIR runtime call to undeclared {instr.callee}");
+        }
+        made = b.call(callee, [self.value(v) for v in instr.operands]);
+        self.bind(instr.result, made);
     } elif op == MirOp.SELECT {
         self.bind(
             instr.result,
@@ -722,4 +759,61 @@ impl MirEmitter.emit_memory(b: ir.IRBuilder, instr: MirInstr) {
         );
         self.bind(instr.result, b.extract_value(pair, 0));
     }
+}
+
+impl MirEmitter.str_type -> ir.Type {
+    shape = self.module.context.get_identified_type("JacStr");
+    if shape.is_opaque {
+        i8p = ir.IntType(8).as_pointer();
+        shape.set_body(i8p, i8p, ir.IntType(64));
+    }
+    return shape;
+}
+
+impl MirEmitter.str_literal(b: ir.IRBuilder, text: str) -> ir.Value {
+    found = self.literals.get(text);
+    if found is None {
+        data = (text + "\0").encode("utf-8");
+        i64 = ir.IntType(64);
+        chars = ir.ArrayType(ir.IntType(8), len(data));
+        shape = ir.LiteralStructType([i64, i64, chars]);
+        found = ir.GlobalVariable(
+            self.module, shape, name=f".jac.str.{len(self.literals)}"
+        );
+        found.linkage = "private";
+        found.global_constant = True;
+        found.initializer = ir.Constant(
+            shape,
+            [
+                ir.Constant(i64, RC_SENTINEL),
+                ir.Constant(
+                    i64, str_len_tag(len(data) - 1, all(byte < 0x80 for byte in data))
+                ),
+                ir.Constant(chars, bytearray(data))
+            ]
+        );
+        self.literals[text] = found;
+    }
+    i32 = ir.IntType(32);
+    return b.gep(found, [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]);
+}
+
+impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
+    subject = instr.operands[0];
+    i8p = ir.IntType(8).as_pointer();
+    target = self.value(subject);
+    if subject.type.kind == MirKind.STR {
+        target = b.extract_value(target, 0);
+    } elif target.type != i8p {
+        target = b.bitcast(target, i8p);
+    }
+    if instr.op == MirOp.RETAIN {
+        b.call(self.extern(RETAIN_SYMBOL, ir.VoidType(), [i8p]), [target]);
+        self.bind(instr.result, self.value(subject));
+        return;
+    }
+    symbol = RELEASE_ACYCLIC_SYMBOL
+        if subject.type.kind in (MirKind.STR, MirKind.STR_REF)
+        else RELEASE_SYMBOL;
+    b.call(self.extern(symbol, ir.VoidType(), [i8p]), [target]);
 }

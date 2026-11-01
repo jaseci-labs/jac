@@ -1,6 +1,12 @@
 import os;
 
-glob MIR_RUNTIME_UNITS: list[str] = ["runtime/native/exceptions.jac"];
+"""Runtime units in link order: each one may call the units listed before it,
+and every other unit links against all of them."""
+glob MIR_RUNTIME_UNITS: list[str] = [
+         "runtime/native/exceptions.jac",
+         "runtime/native/rc.jac",
+         "runtime/native/strings.jac"
+     ];
 
 def mir_backend_selected -> bool;
 

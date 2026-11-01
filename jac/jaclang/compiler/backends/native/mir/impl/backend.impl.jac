@@ -20,11 +20,15 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     if self.ctx.errors_had {
         return ir_in;
     }
-    deps = [
-        unit
-        for unit in mir_runtime_unit_paths() + lowered.deps
-        if unit != os.path.realpath(path)
-    ];
+    for fn in lowered.functions {
+        mir_insert_rc(fn);
+    }
+    runtime = mir_runtime_unit_paths();
+    here = os.path.realpath(path);
+    if here in runtime {
+        runtime = runtime[:runtime.index(here)];
+    }
+    deps = [unit for unit in runtime + lowered.deps if unit != here];
     ir_in.gen.llvm_ir = emit_mir_module(
         lowered,
         self.prog.options.effective_triple(),

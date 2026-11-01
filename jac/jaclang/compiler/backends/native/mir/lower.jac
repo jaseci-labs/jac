@@ -127,6 +127,15 @@ obj MirLowering {
     def coerce_place(place: MirValue) -> MirValue;
     def global_place(nd: uni.Name) -> (MirValue | None);
     def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
+    def runtime(name: str, args: list[MirValue]) -> (MirValue | None);
+    def temp_slot(type: MirType) -> MirValue;
+    def spill(value: MirValue) -> MirValue;
+    def lower_string(nd: (uni.String | uni.MultiString)) -> MirValue;
+    def str_concat(left: MirValue, right: MirValue) -> MirValue;
+    def str_compare(op: str, left: MirValue, right: MirValue) -> MirValue;
+    def builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def lower_print(nd: uni.FuncCall) -> MirValue;
+    def write_value(value: MirValue, site: uni.UniNode);
     def emit_value(
         op: MirOp,
         type: MirType,

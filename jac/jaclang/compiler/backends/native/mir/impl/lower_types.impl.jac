@@ -87,7 +87,10 @@ impl mir_class_type(
         return mir_int(shape.width, shape.signed, shape.sized);
     }
     if name == "str" {
-        return mir_str() if position == MirPosition.VALUE else mir_str_ref();
+        if position in (MirPosition.VALUE, MirPosition.SIGNATURE) {
+            return mir_str();
+        }
+        return mir_str_ref();
     }
     raise MirRefused(mir_refusal("type", name, site));
 }

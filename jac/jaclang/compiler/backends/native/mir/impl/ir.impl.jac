@@ -200,7 +200,57 @@ impl MirBuilder.call(
     callee: str, args: list[MirValue], ret: MirType
 ) -> (MirValue | None) {
     result = None if ret.kind == MirKind.VOID else self.fn.new_value(ret);
+    if result is not None and mir_holds_ref(ret) {
+        result.owned = True;
+    }
     self.emit(MirInstr(op=MirOp.CALL, result=result, operands=args, callee=callee));
+    return result;
+}
+
+impl MirBuilder.call_runtime(
+    callee: str, args: list[MirValue], ret: MirType
+) -> (MirValue | None) {
+    result = None if ret.kind in (MirKind.VOID, MirKind.NONE) else self.fn.new_value(ret);
+    if result is not None and mir_holds_ref(ret) {
+        result.owned = True;
+    }
+    self.emit(
+        MirInstr(op=MirOp.CALL_RUNTIME, result=result, operands=args, callee=callee)
+    );
+    return result;
+}
+
+impl MirBuilder.const_str(text: str, type: MirType) -> MirValue {
+    result = self.fn.new_value(type);
+    self.emit(
+        MirInstr(op=MirOp.CONST_STR, result=result, str_value=text, type_arg=type)
+    );
+    return result;
+}
+
+impl MirBuilder.const_null(type: MirType) -> MirValue {
+    result = self.fn.new_value(type);
+    self.emit(MirInstr(op=MirOp.CONST_NULL, result=result, type_arg=type));
+    return result;
+}
+
+impl MirBuilder.str_part(value: MirValue, part: str) -> MirValue {
+    part_type = mir_int() if part == "len" else mir_c_ptr(mir_int(8, False));
+    result = self.fn.new_value(part_type);
+    self.emit(
+        MirInstr(op=MirOp.STR_PART, result=result, operands=[value], sub=part)
+    );
+    return result;
+}
+
+impl MirBuilder.str_make(
+    owner: MirValue, data: MirValue, length: MirValue
+) -> MirValue {
+    result = self.fn.new_value(mir_str());
+    result.owned = owner.owned;
+    self.emit(
+        MirInstr(op=MirOp.STR_MAKE, result=result, operands=[owner, data, length])
+    );
     return result;
 }
 

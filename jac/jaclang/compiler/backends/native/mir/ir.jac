@@ -4,6 +4,7 @@ enum MirOp {
     CONST_BOOL = "const.bool",
     CONST_STR = "const.str",
     CONST_NONE = "const.none",
+    CONST_NULL = "const.null",
     SLOT = "slot",
     LOAD = "load",
     STORE = "store",
@@ -24,6 +25,10 @@ enum MirOp {
     FENCE = "fence",
     CALL = "call",
     CALL_RUNTIME = "call.runtime",
+    STR_PART = "str.part",
+    STR_MAKE = "str.make",
+    RETAIN = "retain",
+    RELEASE = "release",
     RAISE = "raise",
     PTR_CAST = "ptr.cast",
     PTR_INT = "ptr.int",
@@ -51,7 +56,8 @@ obj MirValue {
     has id: int,
         type: MirType,
         name: str = "",
-        is_slot: bool = False;
+        is_slot: bool = False,
+        owned: bool = False;
 
     def render -> str;
 }
@@ -163,6 +169,13 @@ obj MirBuilder {
     def convert(value: MirValue, to: MirType) -> MirValue;
     def select(cond: MirValue, then: MirValue, otherwise: MirValue) -> MirValue;
     def call(callee: str, args: list[MirValue], ret: MirType) -> (MirValue | None);
+    def call_runtime(
+        callee: str, args: list[MirValue], ret: MirType
+    ) -> (MirValue | None);
+    def const_str(text: str, type: MirType) -> MirValue;
+    def const_null(type: MirType) -> MirValue;
+    def str_part(value: MirValue, part: str) -> MirValue;
+    def str_make(owner: MirValue, data: MirValue, length: MirValue) -> MirValue;
     def branch(target: MirBlock);
     def cond_branch(cond: MirValue, then: MirBlock, otherwise: MirBlock);
     def ret(value: (MirValue | None));

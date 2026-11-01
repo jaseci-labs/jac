@@ -1,4 +1,7 @@
 glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
+     RETAIN_SYMBOL: str = "__jac_rt_retain",
+     RELEASE_SYMBOL: str = "__jac_rt_release",
+     RELEASE_ACYCLIC_SYMBOL: str = "__jac_rt_release_acyclic",
      C_OPS: list[MirOp] = [
          MirOp.PTR_CAST,
          MirOp.PTR_INT,
@@ -45,6 +48,7 @@ obj MirEmitter {
         blocks: dict[str, ir.Block] = {},
         strings: dict[str, ir.GlobalVariable] = {},
         building: set[str] = set(),
+        literals: dict[str, ir.GlobalVariable] = {},
         native_tls: bool = False;
 
     def emit -> ir.Module;
@@ -71,6 +75,9 @@ obj MirEmitter {
     ) -> ir.Value;
 
     def emit_raise(b: ir.IRBuilder, instr: MirInstr);
+    def str_type -> ir.Type;
+    def str_literal(b: ir.IRBuilder, text: str) -> ir.Value;
+    def emit_rc(b: ir.IRBuilder, instr: MirInstr);
     def emit_c(b: ir.IRBuilder, instr: MirInstr);
     def emit_memory(b: ir.IRBuilder, instr: MirInstr);
     def c_struct(name: str) -> ir.Type;

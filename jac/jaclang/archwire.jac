@@ -6514,6 +6514,7 @@ graph import compiler {
             native_module_key,
             native_unit_prefix
         },
+        backends.native.mir.emit { RC_SENTINEL, str_len_tag },
         backends.native.mir.lower {
             native_def_symbol,
             native_symbol_name,
@@ -10642,7 +10643,7 @@ graph import compiler {
             CtValue,
             int_host
         },
-        backends.native.mir.lower { CtBool, CtFloat, CtInt },
+        backends.native.mir.lower { CtBool, CtFloat, CtInt, int_host },
         backends.native.na_ir_gen_pass {
             CtBool,
             CtBytes,
@@ -11616,8 +11617,11 @@ graph import compiler.backends.native.llvm.ir {
 
 graph import compiler.backends.native.mir {
     emit ++> backend { emit_mir_module }
+    rc ++> backend { mir_insert_rc }
+    runtime_abi ++> lower { mir_runtime_signature }
     ir ++> [
         backend { MirModule },
+        rc { MirBlock, MirFunction, MirInstr, MirOp, MirValue },
         emit { MirFunction, MirGlobal, MirInstr, MirModule, MirOp, MirValue },
         lower {
             MirBlock,
@@ -11646,7 +11650,24 @@ graph import compiler.backends.native.mir {
     }
     types ++> [
         emit { MirKind, MirType, mir_c_ptr },
-        ir { MirKind, MirType, mir_bool },
+        ir {
+            MirKind,
+            MirType,
+            mir_bool,
+            mir_c_ptr,
+            mir_holds_ref,
+            mir_int,
+            mir_str
+        },
+        rc { mir_holds_ref },
+        runtime_abi {
+            MirType,
+            mir_c_ptr,
+            mir_float,
+            mir_int,
+            mir_none,
+            mir_str_ref
+        },
         lower {
             MirKind,
             MirType,
@@ -11657,6 +11678,7 @@ graph import compiler.backends.native.mir {
             mir_float,
             mir_int,
             mir_none,
+            mir_str,
             mir_void
         },
         lower_types {
@@ -15594,6 +15616,7 @@ graph import project {
 }
 
 graph import runtime {
+    native.rc ++> native.strings { __jac_rt_alloc, __jac_rt_set_type }
     archetype ++> [
         constructs {
             AccessLevel,
