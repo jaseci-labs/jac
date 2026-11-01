@@ -245,7 +245,11 @@ def:pub jacpy_operator_reduce(
             if kind != 2 or jacpy_dict_size(kwargs) == 0 {
                 return pair(type, originals);
             }
-            partial = required(PyImport_ImportModuleAttrString("functools", "partial"));
+            partial = required(
+                PyImport_ImportModuleAttrString(
+                    ptr[u8]("functools"), ptr[u8]("partial")
+                )
+            );
             constructor: ptr[PyObject] = NULL;
             try {
                 name = required(jacpy_tuple_item(originals, 0));

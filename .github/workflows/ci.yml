@@ -193,6 +193,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # The runner label fixes the vCPU count, not the hardware behind it, and
+      # build times swing about 2x between hosts. Recording the host lets a
+      # slow kit be told apart from a slow change.
+      - name: Record the runner hardware
+        run: |
+          {
+            echo "### build-kit runner"
+            echo '```'
+            echo "vcpus: $(nproc)"
+            lscpu | grep -E '^(Model name|CPU family|Model:|BogoMIPS|CPU max MHz|CPU MHz|L3 cache|Thread\(s\) per core)' || true
+            free -g | awk '/^Mem:/ {print "memory_gb: total " $2 ", available " $7}'
+            echo "load_avg: $(cut -d' ' -f1-3 /proc/loadavg)"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
         with:

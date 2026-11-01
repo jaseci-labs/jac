@@ -147,10 +147,12 @@ impl create_unit_target_machine(
     if target_ovr {
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
+        llvm.initialize_all_asmparsers();
         target = llvm.Target.from_triple(target_ovr);
     } else {
         llvm.initialize_native_target();
         llvm.initialize_native_asmprinter();
+        llvm.initialize_native_asmparser();
         target = llvm.Target.from_default_triple();
     }
     assert isinstance(target, llvm.Target);
@@ -179,6 +181,7 @@ impl optimize_unit(
 impl NativeCompilePass.postinit -> None {
     llvm.initialize_native_target();
     llvm.initialize_native_asmprinter();
+    llvm.initialize_native_asmparser();
 }
 
 impl NativeCompilePass._run_impl(ir_in: uni.Module) -> uni.Module {

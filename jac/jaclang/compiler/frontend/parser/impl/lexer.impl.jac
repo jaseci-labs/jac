@@ -1210,56 +1210,11 @@ impl Lexer.scan_regular_token -> LexToken {
         return self.scan_string(ch);
     }
 
-    if ch == ":"
-        and self.peek() == ":"
-        and self.peek(2) == "p"
-        and self.peek(3) == "y"
-        and self.peek(4) == ":"
-        and self.peek(5) == ":" {
-        return self.scan_pynline();
-    }
-
     if ch == "`" and self.is_alpha(self.peek()) {
         return self.scan_kwesc_name();
     }
 
     return self.scan_operator();
-}
-
-impl Lexer.scan_pynline -> LexToken {
-    start_line = self.line;
-    start_col = self.col;
-    start_pos = self.pos;
-
-    for _ in range(6) {
-        self.advance();
-    }
-
-    code = "";
-    while not self.at_end() {
-        if self.current() == ":"
-            and self.peek() == ":"
-            and self.peek(2) == "p"
-            and self.peek(3) == "y"
-            and self.peek(4) == ":"
-            and self.peek(5) == ":" {
-            for _ in range(6) {
-                self.advance();
-            }
-            return self.make_token(
-                TokenKind.PYNLINE, code, start_line, start_col, start_pos
-            );
-        }
-        code += self.advance();
-    }
-    self.error(
-        "Unterminated inline Python block",
-        start_line,
-        start_col,
-        start_pos,
-        code_str="E0103"
-    );
-    return self.make_token(TokenKind.ERROR, code, start_line, start_col, start_pos);
 }
 
 glob _OP_CANDIDATES: dict[str, list[tuple[str, TokenKind]]] = {
@@ -1584,15 +1539,6 @@ impl Lexer.next_token -> LexToken {
 
     if ch == "\"" or ch == "'" {
         return self.scan_string(ch);
-    }
-
-    if ch == ":"
-        and self.peek() == ":"
-        and self.peek(2) == "p"
-        and self.peek(3) == "y"
-        and self.peek(4) == ":"
-        and self.peek(5) == ":" {
-        return self.scan_pynline();
     }
 
     return self.scan_operator();

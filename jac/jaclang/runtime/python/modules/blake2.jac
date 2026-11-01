@@ -1,12 +1,3 @@
-"""BLAKE2b and BLAKE2s hash objects over HACL*; derived from CPython 3.14.6
-Modules/blake2module.c. See ../LICENSE.cpython.
-
-The HACL* library stays C: CPython's Modules/_hacl/libHacl_Hash_BLAKE2.a, which
-the registry links for _blake2. HACL* has no agile BLAKE2 API, so a state
-records which implementation owns it: the portable BLAKE2s or BLAKE2b, or on
-x86-64 CPUs that can run them the vectorized ones of blake2_simd.
-"""
-
 import from c {
     def _Py_LibHacl_Hacl_Hash_Blake2s_malloc_with_params_and_key(
         p: &mut Pinned[Hacl_Hash_Blake2b_blake2_params], last_node: i32, k: ptr
@@ -51,23 +42,134 @@ obj Blake2State(NativeState) {
         variant: int = 0,
         digest_size: i64 = 0;
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
 
-    def clear {}
-    def drop {
-        if self.hash_state {
-            blake2_free(self.variant, self.hash_state);
-        }
+def:priv is_blake2b(variant: int) -> bool;
+
+def:priv blake2_free(variant: int, hacl: ptr);
+
+def:priv blake2_copy(variant: int, hacl: ptr) -> ptr;
+
+def:priv blake2b_update(hacl: ptr, address: ptr, size: i64);
+
+def:priv blake2s_update(hacl: ptr, address: ptr, size: i64);
+
+def:priv blake2b_digest(hacl: ptr, output: ptr) -> i64;
+
+def:priv blake2s_digest(hacl: ptr, output: ptr) -> i64;
+
+def:priv blake2_of(instance: ptr[PyObject]) -> Blake2State | None;
+
+def:priv select_variant(blake2b: bool) -> int;
+
+def:priv feed(state: Blake2State, data: ptr[PyObject]) -> bool;
+
+def:priv parameter_bytes(
+    view: BufferArgument, block: ptr, capacity: i32, kind: str
+) -> bool;
+
+def:priv blake2_new(
+    type: ptr[PyObject],
+    blake2b: bool,
+    data: ptr[PyObject],
+    digest_size: i32,
+    key: BufferArgument,
+    salt: BufferArgument,
+    person: BufferArgument,
+    fanout: i32,
+    depth: i32,
+    leaf_size: u64,
+    node_offset: u64,
+    node_depth: i32,
+    inner_size: i32,
+    last_node: bool
+) -> ptr[PyObject];
+
+def:priv check_tree(
+    blake2b: bool,
+    fanout: i32,
+    depth: i32,
+    leaf_size: u64,
+    node_offset: u64,
+    node_depth: i32,
+    inner_size: i32,
+    out_bytes: i32
+) -> bool;
+
+def py_blake2b_new_impl(
+    type: ptr[PyObject],
+    data_obj: ptr[PyObject],
+    digest_size: i32,
+    key: BufferArgument,
+    salt: BufferArgument,
+    person: BufferArgument,
+    fanout: i32,
+    depth: i32,
+    leaf_size: u64,
+    node_offset: u64,
+    node_depth: i32,
+    inner_size: i32,
+    last_node: bool,
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def py_blake2s_new_impl(
+    type: ptr[PyObject],
+    data_obj: ptr[PyObject],
+    digest_size: i32,
+    key: BufferArgument,
+    salt: BufferArgument,
+    person: BufferArgument,
+    fanout: i32,
+    depth: i32,
+    leaf_size: u64,
+    node_offset: u64,
+    node_depth: i32,
+    inner_size: i32,
+    last_node: bool,
+    usedforsecurity: bool,
+    string: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _blake2_blake2b_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _blake2_blake2b_update_impl(
+    receiver: ptr[PyObject], data: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv blake2_digest(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject];
+
+def _blake2_blake2b_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def _blake2_blake2b_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def get_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def get_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+def get_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
+
+impl Blake2State.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
+
+impl Blake2State.clear {}
+
+impl Blake2State.drop {
+    if self.hash_state {
+        blake2_free(self.variant, self.hash_state);
     }
 }
 
-def:priv is_blake2b(variant: int) -> bool {
+impl is_blake2b(variant: int) -> bool {
     return variant == BLAKE2B or variant == BLAKE2B_256;
 }
 
-def:priv blake2_free(variant: int, hacl: ptr) {
+impl blake2_free(variant: int, hacl: ptr) {
     if variant == BLAKE2B_256 {
         simd256_free(hacl);
     } elif variant == BLAKE2S_128 {
@@ -79,7 +181,7 @@ def:priv blake2_free(variant: int, hacl: ptr) {
     }
 }
 
-def:priv blake2_copy(variant: int, hacl: ptr) -> ptr {
+impl blake2_copy(variant: int, hacl: ptr) -> ptr {
     if variant == BLAKE2B_256 {
         return simd256_copy(hacl);
     }
@@ -92,9 +194,7 @@ def:priv blake2_copy(variant: int, hacl: ptr) -> ptr {
     return _Py_LibHacl_Hacl_Hash_Blake2s_copy(hacl);
 }
 
-"""The HACL* update over 4 GiB chunks. The error code is ignored: BLAKE2's
-2^64 - 1 byte limit takes a billion years to reach."""
-def:priv blake2b_update(hacl: ptr, address: ptr, size: i64) {
+impl blake2b_update(hacl: ptr, address: ptr, size: i64) {
     remaining = size;
     cursor = address;
     while remaining > UINT32_MAX {
@@ -105,7 +205,7 @@ def:priv blake2b_update(hacl: ptr, address: ptr, size: i64) {
     _Py_LibHacl_Hacl_Hash_Blake2b_update(hacl, cursor, u32(remaining));
 }
 
-def:priv blake2s_update(hacl: ptr, address: ptr, size: i64) {
+impl blake2s_update(hacl: ptr, address: ptr, size: i64) {
     remaining = size;
     cursor = address;
     while remaining > UINT32_MAX {
@@ -116,15 +216,15 @@ def:priv blake2s_update(hacl: ptr, address: ptr, size: i64) {
     _Py_LibHacl_Hacl_Hash_Blake2s_update(hacl, cursor, u32(remaining));
 }
 
-def:priv blake2b_digest(hacl: ptr, output: ptr) -> i64 {
+impl blake2b_digest(hacl: ptr, output: ptr) -> i64 {
     return i64(_Py_LibHacl_Hacl_Hash_Blake2b_digest(hacl, output));
 }
 
-def:priv blake2s_digest(hacl: ptr, output: ptr) -> i64 {
+impl blake2s_digest(hacl: ptr, output: ptr) -> i64 {
     return i64(_Py_LibHacl_Hacl_Hash_Blake2s_digest(hacl, output));
 }
 
-def:priv blake2_of(instance: ptr[PyObject]) -> Blake2State | None {
+impl blake2_of(instance: ptr[PyObject]) -> Blake2State | None {
     state = hash_state_of(instance, Blake2_token);
     if isinstance(state, Blake2State) {
         return state;
@@ -132,8 +232,7 @@ def:priv blake2_of(instance: ptr[PyObject]) -> Blake2State | None {
     return None;
 }
 
-"""type_to_impl(): the vectorized implementation when the CPU runs it."""
-def:priv select_variant(blake2b: bool) -> int {
+impl select_variant(blake2b: bool) -> int {
     features = jacpy_hacl_simd_features();
     if blake2b {
         return BLAKE2B_256 if (features & SIMD256) != 0 else BLAKE2B;
@@ -141,8 +240,7 @@ def:priv select_variant(blake2b: bool) -> int {
     return BLAKE2S_128 if (features & SIMD128) != 0 else BLAKE2S;
 }
 
-"""Feed data into a state through the update of its implementation."""
-def:priv feed(state: Blake2State, data: ptr[PyObject]) -> bool {
+impl feed(state: Blake2State, data: ptr[PyObject]) -> bool {
     if state.variant == BLAKE2B_256 {
         return hash_initial_data(state.hash_state, data, simd256_update);
     }
@@ -155,9 +253,7 @@ def:priv feed(state: Blake2State, data: ptr[PyObject]) -> bool {
     return hash_initial_data(state.hash_state, data, blake2s_update);
 }
 
-"""Copy an optional salt or personalization into a zeroed block of `capacity`
-bytes; False with ValueError when it is longer."""
-def:priv parameter_bytes(
+impl parameter_bytes(
     view: BufferArgument, block: ptr, capacity: i32, kind: str
 ) -> bool {
     jacpy_memory_zero(block, i64(capacity));
@@ -173,8 +269,7 @@ def:priv parameter_bytes(
     return True;
 }
 
-"""py_blake2b_or_s_new()."""
-def:priv blake2_new(
+impl blake2_new(
     type: ptr[PyObject],
     blake2b: bool,
     data: ptr[PyObject],
@@ -292,8 +387,7 @@ def:priv blake2_new(
     return instance;
 }
 
-"""The tree-hashing parameter checks of py_blake2b_or_s_new()."""
-def:priv check_tree(
+impl check_tree(
     blake2b: bool,
     fanout: i32,
     depth: i32,
@@ -332,7 +426,7 @@ def:priv check_tree(
     return True;
 }
 
-def py_blake2b_new_impl(
+impl py_blake2b_new_impl(
     type: ptr[PyObject],
     data_obj: ptr[PyObject],
     digest_size: i32,
@@ -371,7 +465,7 @@ def py_blake2b_new_impl(
     );
 }
 
-def py_blake2s_new_impl(
+impl py_blake2s_new_impl(
     type: ptr[PyObject],
     data_obj: ptr[PyObject],
     digest_size: i32,
@@ -410,7 +504,7 @@ def py_blake2s_new_impl(
     );
 }
 
-def _blake2_blake2b_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _blake2_blake2b_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = blake2_of(receiver);
     if state is None {
         return NULL;
@@ -434,7 +528,7 @@ def _blake2_blake2b_copy_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def _blake2_blake2b_update_impl(
+impl _blake2_blake2b_update_impl(
     receiver: ptr[PyObject], data: ptr[PyObject]
 ) -> ptr[PyObject] {
     state = blake2_of(receiver);
@@ -453,7 +547,7 @@ def _blake2_blake2b_update_impl(
     return hash_update(state.lock, state.hash_state, data, blake2s_update);
 }
 
-def:priv blake2_digest(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject] {
+impl blake2_digest(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject] {
     state = blake2_of(receiver);
     if state is None {
         return NULL;
@@ -479,23 +573,25 @@ def:priv blake2_digest(receiver: ptr[PyObject], as_hex: bool) -> ptr[PyObject] {
     );
 }
 
-def _blake2_blake2b_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _blake2_blake2b_digest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return blake2_digest(receiver, False);
 }
 
-def _blake2_blake2b_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _blake2_blake2b_hexdigest_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return blake2_digest(receiver, True);
 }
 
-def get_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl get_name(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = blake2_of(instance);
     if state is None {
         return NULL;
     }
-    return PyUnicode_FromString("blake2b" if is_blake2b(state.variant) else "blake2s");
+    return jacpy_unicode_from_text(
+        "blake2b" if is_blake2b(state.variant) else "blake2s"
+    );
 }
 
-def get_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl get_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = blake2_of(instance);
     if state is None {
         return NULL;
@@ -509,9 +605,7 @@ def get_block_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     );
 }
 
-"""digest_size: the digest length the state was created with, which is what
-HACL*'s info() reports."""
-def get_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+impl get_digest_size(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
     state = blake2_of(instance);
     if state is None {
         return NULL;

@@ -1483,6 +1483,38 @@ def visit_expr(
             g.emit_op(OP_CALL_INTRINSIC_1, 5, uloc);
             return None;
         }
+        if isinstance(un.op, Not)
+            and isinstance(un.operand, Compare)
+            and len((un.operand as Compare).ops) == 1
+            and not isinstance(
+                (un.operand as Compare).ops[0], (Is, IsNot, In, NotIn)
+            ) {
+            ncmp = un.operand as Compare;
+            visit_expr(g, ncmp.left);
+            visit_expr(g, ncmp.comparators[0]);
+            if codegen_busy(g) {
+                return None;
+            }
+            if not emit_cmp_link(
+                g,
+                ncmp.ops[0] as PyObj,
+                nloc(
+                    ncmp.lineno, ncmp.end_lineno, ncmp.col_offset, ncmp.end_col_offset
+                ),
+                True
+            ) {
+                codegen_fail(
+                    g, "NotImplementedError", "unsupported comparison operator"
+                );
+                return None;
+            }
+            g.emit_op(
+                OP_UNARY_NOT,
+                0,
+                nloc(un.lineno, un.end_lineno, un.col_offset, un.end_col_offset)
+            );
+            return None;
+        }
         visit_expr(g, un.operand);
         if isinstance(un.op, Not) {
             need_to_bool = True;
