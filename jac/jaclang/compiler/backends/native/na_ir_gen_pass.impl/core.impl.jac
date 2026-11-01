@@ -2066,11 +2066,7 @@ impl NaIRGenPass._ensure_dep_inference(dep_mod: uni.Module) -> None {
         or analysis.provides(dep_mod, AnalysisFact.DECL_TYPES) {
         return;
     }
-    """An importer lowers against a dependency's declarations: its archetypes,
-    fields and their defaults, enums, globals and signatures. The functions this
-    unit instantiates or evaluates (generic, comptime) are known up front, so a
-    module that has one is analysed whole. An inherited body is only known once
-    it is reached, so `_ensure_body_inference` analyses its module then.""";
+
     product = CompilationProduct.ANALYSIS
         if importer_lowers_bodies(dep_mod)
         else CompilationProduct.DECLARATIONS;
