@@ -4,7 +4,7 @@ An ambient builtin is declared three times by design:
 `jaclang/runtime/builtin.jac` carries the runtime behaviour and its
 `__all__` is the public list; `jaclang/compiler/types/jac_builtins.pyi`
 carries the signatures the type checker merges into `builtins_module`; and
-`JCIR_BUILTIN_NAMES` in `compiler/backends/py/jcir_facts.jac` is what the emitter reads to
+`PYAST_BUILTIN_NAMES` in `compiler/backends/py/pyast_facts.jac` is what the emitter reads to
 decide which bare names become `from jaclang.runtime.builtin import <name>`
 in the emitted preamble.
 
@@ -25,7 +25,7 @@ import ast;
 import os;
 import re;
 
-import from jaclang.compiler.backends.py.jcir_facts { JCIR_BUILTIN_NAMES }
+import from jaclang.compiler.backends.py.pyast_facts { PYAST_BUILTIN_NAMES }
 import from tests.support { JAC_ROOT }
 
 glob _PYI_PATH: str = os.path.join(
@@ -125,8 +125,8 @@ test "the test builtins are ambient in all three registries" {
         assert name in runtime , f"{name} missing from builtin.__all__";
         assert name in exported , f"{name} missing from jac_builtins.pyi __all__";
         assert name in declared , f"{name} not declared in jac_builtins.pyi";
-        assert name in JCIR_BUILTIN_NAMES , (
-            f"{name} missing from JCIR_BUILTIN_NAMES, so the emitter never "
+        assert name in PYAST_BUILTIN_NAMES , (
+            f"{name} missing from PYAST_BUILTIN_NAMES, so the emitter never "
             "synthesizes its import and every test that uses it raises "
             "NameError at run time"
         );
@@ -136,8 +136,8 @@ test "the test builtins are ambient in all three registries" {
 
 """The emitter's registry is the one that decides what actually gets imported.
 
-`JCIR_BUILTIN_NAMES` is the third copy of this list, read by
-`JcirGenPass.exit_name` to decide which names become
+`PYAST_BUILTIN_NAMES` is the third copy of this list, read by
+`PyastGenPass.exit_name` to decide which names become
 `from jaclang.runtime.builtin import <name>` in the emitted preamble. It is
 a literal rather than a read of `__all__` because the emitter is a sealed unit
 and cannot import the runtime module, which is exactly the condition under
@@ -147,20 +147,20 @@ which two lists drift -- and they did: the four test builtins were in
 """
 test "the emitter's builtin registry matches the runtime __all__" {
     runtime = _runtime_public_names();
-    missing = sorted(runtime - set(JCIR_BUILTIN_NAMES));
+    missing = sorted(runtime - set(PYAST_BUILTIN_NAMES));
     assert not missing , (
-        f"in builtin.__all__ but not JCIR_BUILTIN_NAMES: {missing}. The "
+        f"in builtin.__all__ but not PYAST_BUILTIN_NAMES: {missing}. The "
         "emitter will not import these, so a module that uses one compiles "
         "clean and fails at run time."
     );
-    emitter_only = set(JCIR_BUILTIN_NAMES) - runtime;
+    emitter_only = set(PYAST_BUILTIN_NAMES) - runtime;
     extra = sorted(
         n
         for n in emitter_only
         if not n.startswith("_")
     );
     assert not extra , (
-        f"in JCIR_BUILTIN_NAMES but not builtin.__all__: {extra}. The "
+        f"in PYAST_BUILTIN_NAMES but not builtin.__all__: {extra}. The "
         "emitter would synthesize an import of a name the runtime module "
         "does not export."
     );

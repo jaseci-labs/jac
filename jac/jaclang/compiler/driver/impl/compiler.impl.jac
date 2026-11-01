@@ -299,7 +299,7 @@ impl JacCompiler._adopt_kernel_compile(
     import from jaclang.compiler.driver.pass_driver { compile_progress }
     for unit in native_first(units) {
         with compile_progress.track(unit.path) {
-            bytecode = marshal.dumps(unit.code);
+            bytecode = unit.bytecode;
             sections = dict(unit.sections);
             if unit.native_ir {
                 sections.update(
@@ -742,10 +742,6 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
         }
     }
     return frame;
-}
-
-impl JacCompiler.assemble_python(program: JacProgram, module: uni.Module) {
-    require(program, module, CompilationProduct.BYTECODE);
 }
 
 impl JacCompiler.assemble_native(
@@ -1271,38 +1267,6 @@ impl native_first(units: list[CompiledUnit]) -> list[CompiledUnit] {
         place(unit);
     }
     return ordered;
-}
-
-impl assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]] {
-    if not jcir {
-        return (None, []);
-    }
-    import from jaclang.compiler.backends.py.codegen_shim { compile_ir }
-    result = compile_ir(jcir);
-    if result.modules and not result.diags {
-        return (result.modules[0].bytecode, []);
-    }
-    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-    import from jaclang.compiler.frontend.diagnostics { E5043 }
-    import from jaclang.compiler.frontend.srcloc { Span }
-    import from jaclang.compiler.passes.context { Alert }
-    return (
-        None,
-        [
-            Alert(
-                msg=E5043.format_message(error=d.message),
-                loc=Span(
-                    mod_path=d.mod_path or path,
-                    first_line=d.first_line,
-                    last_line=d.last_line,
-                    col_start=d.col_start,
-                    col_end=d.col_end
-                ),
-                from_pass=JcirBytecodeGenPass,
-                code=E5043
-            ) for d in result.diags
-        ]
-    );
 }
 
 impl unit_sections(

@@ -51,13 +51,19 @@ obj NativeDemotion {
 }
 
 """What one module compiled to. `code` is the module's JacPython code object,
-made by JacPython's compiler inside the kernel: an owned reference, NULL when
-no bytecode was asked for, which the module binding hands to its caller. The
-native products are present when the module is native."""
+made by JacPython's compiler inside the kernel (`kernel_code_object`) as an owned
+reference (NULL when no bytecode was asked for) that the module binding hands to
+its caller, and
+`bytecode` is that code object marshalled, as caches store it. `python_ast` is
+the generated Python as an `ast.Module`, present when the request names the
+"python_ast" product. The native products are present when the module is
+native."""
 obj CompiledUnit {
     has path: str,
         module_name: str,
         code: ptr[PyObject] = ptr[PyObject](),
+        bytecode: bytes = b"",
+        python_ast: any = None,
         interface: bytes = b"",
         placement: str = "",
         client_js: str = "",

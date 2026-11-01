@@ -165,8 +165,10 @@ glob _COMPILER_DIGEST_CACHE: list[str] = [],
      _PY_EMITTER_DIGESTS: dict[str, str] = {},
      _NATIVE_PRODUCER_DIGESTS: dict[str, str] = {};
 
-glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
-     PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
+glob PY_EMITTER_ROOTS: tuple[str, ...] = (
+         "compiler/backends/py",
+         "compiler/frontend/python"
+     ),
      DEV_NATIVE_PRODUCER: str = "abi:";
 
 def _manifest_compiler_digest(pkg_dir: str) -> str;

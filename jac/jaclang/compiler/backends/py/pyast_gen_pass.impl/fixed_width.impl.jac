@@ -1,4 +1,4 @@
-impl JcirGenPass._apply_coercion(nd: Expr) -> None {
+impl PyastGenPass._apply_coercion(nd: Expr) -> None {
     target = nd.coerce_to;
     got = self.outs(nd);
     if target is None or len(got) != 1 or not isinstance(got[0], CgNode) {
@@ -34,22 +34,22 @@ impl JcirGenPass._apply_coercion(nd: Expr) -> None {
     );
 }
 
-impl JcirGenPass._fw_helper(name: str) -> CgNode {
+impl PyastGenPass._fw_helper(name: str) -> CgNode {
     self.sized_imports.add(name);
     return self.name_load(name);
 }
 
-impl JcirGenPass._fw_call_node(
+impl PyastGenPass._fw_call_node(
     helper: str, args: Sequence[CgItem], jac_node: UniNode
 ) -> CgNode {
     return self.call_node(self._fw_helper(helper), args, [], jac_node=jac_node);
 }
 
-impl JcirGenPass._fw_wrap_call(nd: Expr, helper: str, args: Sequence[CgItem]) -> None {
+impl PyastGenPass._fw_wrap_call(nd: Expr, helper: str, args: Sequence[CgItem]) -> None {
     self.set_out(nd, [self._fw_call_node(helper, args, nd)]);
 }
 
-impl JcirGenPass._apply_fw(nd: Expr) -> None {
+impl PyastGenPass._apply_fw(nd: Expr) -> None {
     if isinstance(nd, FuncCall) {
         self._fw_call(nd);
         return;
@@ -65,7 +65,7 @@ impl JcirGenPass._apply_fw(nd: Expr) -> None {
     }
 }
 
-impl JcirGenPass._fw_binary(nd: BinaryExpr, name: str) -> None {
+impl PyastGenPass._fw_binary(nd: BinaryExpr, name: str) -> None {
     if not isinstance(nd.op, Token) {
         return;
     }
@@ -85,7 +85,7 @@ impl JcirGenPass._fw_binary(nd: BinaryExpr, name: str) -> None {
     }
 }
 
-impl JcirGenPass._fw_checked(
+impl PyastGenPass._fw_checked(
     name: str, op: str, left: CgNode, right: CgNode, op_node: any, jac_node: UniNode
 ) -> (CgNode | None) {
     row = shape_of(name);
@@ -116,7 +116,7 @@ impl JcirGenPass._fw_checked(
     return None;
 }
 
-impl JcirGenPass._fw_as_load(item: any) -> any {
+impl PyastGenPass._fw_as_load(item: any) -> any {
     if isinstance(item, list) {
         return [self._fw_as_load(x) for x in item];
     }
@@ -132,7 +132,7 @@ impl JcirGenPass._fw_as_load(item: any) -> any {
     return copy;
 }
 
-impl JcirGenPass._fw_aug_assign(
+impl PyastGenPass._fw_aug_assign(
     nd: Assignment, target: any, value: any
 ) -> (CgNode | None) {
     tgt = nd.target[0] if nd.target else None;
@@ -163,7 +163,7 @@ impl JcirGenPass._fw_aug_assign(
     return self.nod('Assign', ['targets', 'value'], [[target], checked], jac_node=nd);
 }
 
-impl JcirGenPass._fw_unary(nd: UnaryExpr, name: str) -> None {
+impl PyastGenPass._fw_unary(nd: UnaryExpr, name: str) -> None {
     if not isinstance(nd.op, Token) {
         return;
     }
@@ -191,7 +191,7 @@ impl JcirGenPass._fw_unary(nd: UnaryExpr, name: str) -> None {
     }
 }
 
-impl JcirGenPass._fw_call(nd: FuncCall) -> None {
+impl PyastGenPass._fw_call(nd: FuncCall) -> None {
     callee = nd.target;
     if not isinstance(callee, Name) {
         return;

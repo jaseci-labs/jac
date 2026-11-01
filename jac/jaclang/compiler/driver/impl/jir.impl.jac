@@ -475,8 +475,7 @@ impl py_emitter_digest -> str {
     }
     h = hashlib.sha256();
     for (rel, sha) in rows {
-        if _rel_under(rel, PY_EMITTER_ROOTS)
-            and not _rel_under(rel, PY_EMITTER_EXCLUDED) {
+        if _rel_under(rel, PY_EMITTER_ROOTS) {
             h.update(rel.encode());
             h.update(b"\x00");
             h.update(sha.encode());

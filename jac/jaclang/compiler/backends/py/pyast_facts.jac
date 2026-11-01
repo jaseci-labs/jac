@@ -1,4 +1,4 @@
-glob JCIR_BUILTIN_NAMES: frozenset[str] = frozenset(
+glob PYAST_BUILTIN_NAMES: frozenset[str] = frozenset(
          {
              "APIProtocol",
              "AccessLevel",
@@ -62,7 +62,7 @@ glob JCIR_BUILTIN_NAMES: frozenset[str] = frozenset(
          }
              | set(sized_scalar_names())
      ),
-     JCIR_AMBIENT_TYPING_NAMES: frozenset[str] = frozenset(
+     PYAST_AMBIENT_TYPING_NAMES: frozenset[str] = frozenset(
          {
              "Annotated",
              "AsyncIterable",
@@ -84,9 +84,4 @@ glob JCIR_BUILTIN_NAMES: frozenset[str] = frozenset(
          }
      );
 
-glob JCIR_PYTHON_MAJOR: int = 3,
-     JCIR_PYTHON_MINOR: int = 14;
-
-def jcir_is_test_path(path: str) -> bool;
-
-def jcir_python_version -> int;
+def pyast_is_test_path(path: str) -> bool;

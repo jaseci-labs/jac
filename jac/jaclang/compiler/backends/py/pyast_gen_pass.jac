@@ -76,25 +76,6 @@ glob EDGE_DIR_NAMES: dict[(int, str)] = {
      },
      SHORT_INT_LITERAL: int = 17;
 
-obj CgItem {}
-
-obj CgNode(CgItem) {
-    has cls: str,
-        keys: list[str],
-        vals: list[any],
-        l1: int = 0,
-        c1: int = 0,
-        l2: int = 0,
-        c2: int = 0,
-        jac_src: (UniNode | None) = None;
-
-    def get(key: str) -> any;
-    def setf(key: str, value: any) -> None;
-    def hasf(key: str) -> bool;
-    def items(key: str) -> list[any];
-    def push(key: str, item: any);
-}
-
 obj PlacePath {
     has kind: str,
         name: str = "",
@@ -102,24 +83,7 @@ obj PlacePath {
         key: (CgNode | None) = None;
 }
 
-obj CgSplice(CgItem) {
-    has src: str,
-        offset: int = 0,
-        bound_names: list[str] = [];
-}
-
-obj CgEllipsis(CgItem) {}
-
-obj CgWideInt(CgItem) {
-    has negative: bool,
-        magnitude: bytes;
-}
-
-def write_ir_value(w: CodegenIrWriter, v: object);
-
-def module_container_bytes(mod_path: str, root_node: CgNode) -> bytes;
-
-walker JcirGenPass(TreePass) {
+walker PyastGenPass(TreePass) {
     static has contract: PassContract = PassContract();
     has already_added: list[str] = [],
         _ct_only_names: (set[str] | None) = None,
@@ -137,8 +101,6 @@ walker JcirGenPass(TreePass) {
         _hoist_frames: list[list[CgNode]] postinit,
         preamble: list[CgItem] postinit,
         _sink: dict[UniNode, list[CgItem]] postinit,
-        _module_root: (CgNode | None) = None,
-        _module_path: str = "",
         _interop_stub_node: (UniNode | None) = None,
         _sv_boundary_names: dict[str, str] = {},
         _sv_boundary_registry: str = "",
@@ -347,7 +309,6 @@ walker JcirGenPass(TreePass) {
     ) -> CgNode;
 
     def _del_location(target: Expr, nd: DeleteStmt, ordinal: int) -> list[CgItem];
-    def ir_bytes -> bytes;
     can exit_sub_tag with SubTag exit;
     can exit_module with Module exit;
     can exit_type_param with TypeParam exit;

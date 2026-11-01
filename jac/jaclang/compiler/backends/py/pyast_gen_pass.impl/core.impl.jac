@@ -1,20 +1,20 @@
-impl JcirGenPass._get_builtin_names -> set[str] {
+impl PyastGenPass._get_builtin_names -> set[str] {
     return self._builtin_names;
 }
 
-impl JcirGenPass._get_ambient_typing_names -> set[str] {
+impl PyastGenPass._get_ambient_typing_names -> set[str] {
     return self._ambient_typing_names;
 }
 
-impl JcirGenPass.postinit -> None {
+impl PyastGenPass.postinit -> None {
     _jaclib: set[str] = set();
     _builtins: set[str] = set();
     _sized: set[str] = set();
     _typing: set[str] = set();
     self.jaclib_imports = _jaclib;
     self._runtime_aliases = {};
-    _builtin_names: set[str] = set(JCIR_BUILTIN_NAMES);
-    _ambient_names: set[str] = set(JCIR_AMBIENT_TYPING_NAMES);
+    _builtin_names: set[str] = set(PYAST_BUILTIN_NAMES);
+    _ambient_names: set[str] = set(PYAST_AMBIENT_TYPING_NAMES);
     self._builtin_names = _builtin_names;
     self._ambient_typing_names = _ambient_names;
     self._reserved_names = {nd.sym_name for nd in self.module.get_all_sub_nodes(Name)};
@@ -46,11 +46,11 @@ impl JcirGenPass.postinit -> None {
     ];
 }
 
-impl JcirGenPass._is_native_ext_module -> bool {
+impl PyastGenPass._is_native_ext_module -> bool {
     return self.module is not None and self.module.decided_codespace == 'native';
 }
 
-impl JcirGenPass._refuse(nd: (UniNode | None), construct: str) -> None {
+impl PyastGenPass._refuse(nd: (UniNode | None), construct: str) -> None {
     target = nd if nd is not None else self.ctx.current_node;
     where = '';
     if (target is not None and target.loc is not None) {
@@ -60,12 +60,11 @@ impl JcirGenPass._refuse(nd: (UniNode | None), construct: str) -> None {
         );
     }
     raise NotImplementedError(
-        f"JCIR emitter phase 1 does not lower {construct}{where}; "
-        "this construct is outside the phase 1 scope"
+        f"the Python code generator does not lower {construct}{where}"
     );
 }
 
-impl JcirGenPass.enter_walk with UniNode entry {
+impl PyastGenPass.enter_walk with UniNode entry {
     if self.ctx.is_canceled() or here.ct_pruned {
         osp_skip_rest();
         return;
@@ -127,7 +126,7 @@ impl JcirGenPass.enter_walk with UniNode entry {
     }
 }
 
-impl JcirGenPass.exit_walk with UniNode exit {
+impl PyastGenPass.exit_walk with UniNode exit {
     if here.ct_pruned {
         osp_skip_rest();
         return;
@@ -177,7 +176,7 @@ impl JcirGenPass.exit_walk with UniNode exit {
     }
 }
 
-impl JcirGenPass.finish_expr with Expr exit {
+impl PyastGenPass.finish_expr with Expr exit {
     if here.fw is not None or isinstance(here, FuncCall) {
         self._apply_fw(here);
     }
@@ -186,7 +185,7 @@ impl JcirGenPass.finish_expr with Expr exit {
     }
 }
 
-impl JcirGenPass.nod(
+impl PyastGenPass.nod(
     cls_name: str, keys: list[str], vals: list[any], jac_node: (UniNode | None) = None
 ) -> CgNode {
     src = jac_node if jac_node is not None else self.ctx.current_node;
@@ -202,13 +201,13 @@ impl JcirGenPass.nod(
     );
 }
 
-impl JcirGenPass.nod_loc(
+impl PyastGenPass.nod_loc(
     cls_name: str, keys: list[str], vals: list[any], l1: int, c1: int, l2: int, c2: int
 ) -> CgNode {
     return CgNode(cls=cls_name, keys=keys, vals=vals, l1=l1, c1=c1, l2=l2, c2=c2);
 }
 
-impl JcirGenPass.call_node(
+impl PyastGenPass.call_node(
     func: CgNode,
     args: Sequence[CgItem],
     keywords: Sequence[CgItem],
@@ -219,22 +218,22 @@ impl JcirGenPass.call_node(
     );
 }
 
-impl JcirGenPass.outs(nd: UniNode) -> list[CgItem] {
+impl PyastGenPass.outs(nd: UniNode) -> list[CgItem] {
     got = self._sink.get(nd);
     return got if got is not None else [];
 }
 
-impl JcirGenPass.set_out(nd: UniNode, items: list[CgItem]) -> None {
+impl PyastGenPass.set_out(nd: UniNode, items: list[CgItem]) -> None {
     self._sink[nd] = items;
 }
 
-impl JcirGenPass.val(nd: UniNode) -> CgNode {
+impl PyastGenPass.val(nd: UniNode) -> CgNode {
     got: (list[CgItem] | None) = self._sink.get(nd);
     if not got {
         loc = nd.loc;
         raise RuntimeError(
             self.ctx.ice(
-                f"Empty JCIR recipe on {type(nd).__name__} "
+                f"Empty codegen recipe on {type(nd).__name__} "
                 f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
             )
         );
@@ -244,7 +243,7 @@ impl JcirGenPass.val(nd: UniNode) -> CgNode {
         loc = nd.loc;
         raise RuntimeError(
             self.ctx.ice(
-                f"JCIR recipe on {type(nd).__name__} is a splice, not a value "
+                f"Codegen recipe on {type(nd).__name__} is a splice, not a value "
                 f"at {loc.mod_path}:{loc.first_line}:{loc.col_start}"
             )
         );
@@ -252,11 +251,11 @@ impl JcirGenPass.val(nd: UniNode) -> CgNode {
     return first;
 }
 
-impl JcirGenPass.const_of(value: any, jac_node: (UniNode | None) = None) -> CgNode {
+impl PyastGenPass.const_of(value: any, jac_node: (UniNode | None) = None) -> CgNode {
     return self.nod('Constant', ['value'], [value], jac_node=jac_node);
 }
 
-impl JcirGenPass.int_const_of(
+impl PyastGenPass.int_const_of(
     value: CtInt, jac_node: (UniNode | None) = None
 ) -> CgNode {
     wide = int_wide_bytes(value);
@@ -271,7 +270,7 @@ impl JcirGenPass.int_const_of(
     );
 }
 
-impl JcirGenPass.name_load(name_id: str, jac_node: (UniNode | None) = None) -> CgNode {
+impl PyastGenPass.name_load(name_id: str, jac_node: (UniNode | None) = None) -> CgNode {
     return self.nod(
         'Name',
         ['id', 'ctx'],
@@ -280,7 +279,7 @@ impl JcirGenPass.name_load(name_id: str, jac_node: (UniNode | None) = None) -> C
     );
 }
 
-impl JcirGenPass._with_ctx(cgn: CgNode, ctx_cls: str) -> CgNode {
+impl PyastGenPass._with_ctx(cgn: CgNode, ctx_cls: str) -> CgNode {
     twin = CgNode(
         cls=cgn.cls,
         keys=list(cgn.keys),
@@ -295,7 +294,7 @@ impl JcirGenPass._with_ctx(cgn: CgNode, ctx_cls: str) -> CgNode {
     return twin;
 }
 
-impl JcirGenPass.jaclib_obj(obj_name: str) -> CgNode {
+impl PyastGenPass.jaclib_obj(obj_name: str) -> CgNode {
     cached = self._runtime_aliases.get(obj_name);
     if cached is not None {
         return self.name_load(cached);
@@ -305,7 +304,7 @@ impl JcirGenPass.jaclib_obj(obj_name: str) -> CgNode {
     return self.name_load(alias);
 }
 
-impl JcirGenPass._reserve_name(preferred: str) -> str {
+impl PyastGenPass._reserve_name(preferred: str) -> str {
     alias = preferred;
     while alias in self._reserved_names {
         alias += "_";
@@ -314,14 +313,14 @@ impl JcirGenPass._reserve_name(preferred: str) -> str {
     return alias;
 }
 
-impl JcirGenPass.builtin_name(name: str) -> CgNode {
+impl PyastGenPass.builtin_name(name: str) -> CgNode {
     if (name not in ['Enum', 'IntEnum', 'StrEnum']) {
         self.builtin_imports.add(name);
     }
     return self.name_load(name);
 }
 
-impl JcirGenPass._add_preamble_once(key: str, cgn: CgNode) -> None {
+impl PyastGenPass._add_preamble_once(key: str, cgn: CgNode) -> None {
     if (key in self.already_added) {
         return;
     }
@@ -329,7 +328,7 @@ impl JcirGenPass._add_preamble_once(key: str, cgn: CgNode) -> None {
     self.already_added.append(key);
 }
 
-impl JcirGenPass.needs_enum_kind(kind: str) -> None {
+impl PyastGenPass.needs_enum_kind(kind: str) -> None {
     self._add_preamble_once(
         f"needs_enum_kind:{kind}",
         self.nod(
@@ -348,7 +347,7 @@ impl JcirGenPass.needs_enum_kind(kind: str) -> None {
     );
 }
 
-impl JcirGenPass._py_name(nd: AstSymbolNode) -> str {
+impl PyastGenPass._py_name(nd: AstSymbolNode) -> str {
     if (isinstance(nd, SpecialVarRef) and (nd.name == Tok.KW_INIT)) {
         return '__init__';
     }
@@ -358,7 +357,7 @@ impl JcirGenPass._py_name(nd: AstSymbolNode) -> str {
     return nd.sym_name;
 }
 
-impl JcirGenPass.py_ctx(nd: AstSymbolNode) -> CgNode {
+impl PyastGenPass.py_ctx(nd: AstSymbolNode) -> CgNode {
     if (nd.expr_ctx == ExprCtx.STORE) {
         return self.nod('Store', [], []);
     }
@@ -368,23 +367,23 @@ impl JcirGenPass.py_ctx(nd: AstSymbolNode) -> CgNode {
     return self.nod('Load', [], []);
 }
 
-impl JcirGenPass._next_lambda_name -> str {
+impl PyastGenPass._next_lambda_name -> str {
     self._lambda_counter += 1;
     return self._reserve_name(f"_jac_lambda_{self._lambda_counter}");
 }
 
-impl JcirGenPass._push_hoist_frame -> None {
+impl PyastGenPass._push_hoist_frame -> None {
     self._hoist_frames.append([]);
 }
 
-impl JcirGenPass._hoist_lambda(func_def: CgNode) -> None {
+impl PyastGenPass._hoist_lambda(func_def: CgNode) -> None {
     if not self._hoist_frames {
         self._hoist_frames = [[]];
     }
     self._hoist_frames[-1].append(func_def);
 }
 
-impl JcirGenPass._ancestor_is_one_of(
+impl PyastGenPass._ancestor_is_one_of(
     nd: (UniNode | None), roots: list[UniNode]
 ) -> bool {
     cur: (UniNode | None) = nd;
@@ -404,7 +403,7 @@ impl JcirGenPass._ancestor_is_one_of(
     return False;
 }
 
-impl JcirGenPass._split_scope_hoists(
+impl PyastGenPass._split_scope_hoists(
     hoists: list[CgNode], sig_roots: list[UniNode]
 ) -> tuple[(list[CgNode], list[CgNode])] {
     body_hoists: list[CgNode] = [];
@@ -420,7 +419,7 @@ impl JcirGenPass._split_scope_hoists(
     return (body_hoists, enclosing_hoists);
 }
 
-impl JcirGenPass._docstring_offset(body: list[CgItem]) -> int {
+impl PyastGenPass._docstring_offset(body: list[CgItem]) -> int {
     if not body {
         return 0;
     }
@@ -435,7 +434,7 @@ impl JcirGenPass._docstring_offset(body: list[CgItem]) -> int {
     return 1 if isinstance(inner.get('value'), str) else 0;
 }
 
-impl JcirGenPass._drain_module_hoists -> list[CgNode] {
+impl PyastGenPass._drain_module_hoists -> list[CgNode] {
     if not self._hoist_frames {
         self._hoist_frames = [[]];
     }
@@ -447,7 +446,7 @@ impl JcirGenPass._drain_module_hoists -> list[CgNode] {
     return hoists;
 }
 
-impl JcirGenPass._report_leaked_hoisted_lambdas -> None {
+impl PyastGenPass._report_leaked_hoisted_lambdas -> None {
     leftover: list[CgNode] = [];
     for frame in self._hoist_frames[1:] {
         leftover.extend(frame);
@@ -466,7 +465,7 @@ impl JcirGenPass._report_leaked_hoisted_lambdas -> None {
     }
 }
 
-impl JcirGenPass._function_expr_from_def(
+impl PyastGenPass._function_expr_from_def(
     func_def: CgNode, jac_node: UniNode
 ) -> CgNode {
     if self._closure_bindings(jac_node) {
@@ -515,7 +514,7 @@ impl JcirGenPass._function_expr_from_def(
     );
 }
 
-impl JcirGenPass._pass_link_name(link: PassLink) -> str {
+impl PyastGenPass._pass_link_name(link: PassLink) -> str {
     known = self._pass_link_names.get(link.index);
     if known is None {
         known = self._reserve_name(f"_jac_pass_{link.sym.sym_name}");
@@ -524,7 +523,7 @@ impl JcirGenPass._pass_link_name(link: PassLink) -> str {
     return known;
 }
 
-impl JcirGenPass._closure_bindings(closure: UniNode) -> list[str] {
+impl PyastGenPass._closure_bindings(closure: UniNode) -> list[str] {
     names: list[str] = [];
     for link in self.loop_links.of_closure(closure) {
         names.append(self._pass_link_name(link));
@@ -535,7 +534,7 @@ impl JcirGenPass._closure_bindings(closure: UniNode) -> list[str] {
     return names;
 }
 
-impl JcirGenPass._pass_link_args(names: list[str]) -> CgNode {
+impl PyastGenPass._pass_link_args(names: list[str]) -> CgNode {
     params: list[CgNode] = [];
     for name in names {
         params.append(self.nod('arg', ['arg', 'annotation'], [name, None]));
@@ -547,7 +546,7 @@ impl JcirGenPass._pass_link_args(names: list[str]) -> CgNode {
     );
 }
 
-impl JcirGenPass._pass_link_ref(link: PassLink, nd: Name) -> CgNode {
+impl PyastGenPass._pass_link_ref(link: PassLink, nd: Name) -> CgNode {
     cell = self.nod(
         'Attribute',
         ['value', 'attr', 'ctx'],
@@ -566,7 +565,7 @@ impl JcirGenPass._pass_link_ref(link: PassLink, nd: Name) -> CgNode {
     );
 }
 
-impl JcirGenPass._pass_link_opens(loop: UniNode) -> list[CgNode] {
+impl PyastGenPass._pass_link_opens(loop: UniNode) -> list[CgNode] {
     opens: list[CgNode] = [];
     for link in self.loop_links.of_loop(loop) {
         made: CgNode;
@@ -606,7 +605,7 @@ impl JcirGenPass._pass_link_opens(loop: UniNode) -> list[CgNode] {
     return opens;
 }
 
-impl JcirGenPass._pass_link_ctor(kind: str, loop: UniNode) -> CgNode {
+impl PyastGenPass._pass_link_ctor(kind: str, loop: UniNode) -> CgNode {
     return self.nod(
         'Attribute',
         ['value', 'attr', 'ctx'],
@@ -615,7 +614,7 @@ impl JcirGenPass._pass_link_ctor(kind: str, loop: UniNode) -> CgNode {
     );
 }
 
-impl JcirGenPass._pass_link_detaches(loop: (UniNode | None)) -> list[CgNode] {
+impl PyastGenPass._pass_link_detaches(loop: (UniNode | None)) -> list[CgNode] {
     detaches: list[CgNode] = [];
     if loop is None {
         return detaches;
@@ -643,7 +642,7 @@ impl JcirGenPass._pass_link_detaches(loop: (UniNode | None)) -> list[CgNode] {
     return detaches;
 }
 
-impl JcirGenPass._linked_closure_value(closure: UniNode, value: CgNode) -> CgNode {
+impl PyastGenPass._linked_closure_value(closure: UniNode, value: CgNode) -> CgNode {
     names = self._closure_bindings(closure);
     if not names {
         return value;
@@ -659,7 +658,7 @@ impl JcirGenPass._linked_closure_value(closure: UniNode, value: CgNode) -> CgNod
     );
 }
 
-impl JcirGenPass._linked_closure_factory(func_def: CgNode, closure: UniNode) -> CgNode {
+impl PyastGenPass._linked_closure_factory(func_def: CgNode, closure: UniNode) -> CgNode {
     names = self._closure_bindings(closure);
     factory_name = self._next_lambda_name();
     returned = self.nod(
@@ -683,7 +682,7 @@ impl JcirGenPass._linked_closure_factory(func_def: CgNode, closure: UniNode) -> 
     );
 }
 
-impl JcirGenPass.exit_token with Token exit {
+impl PyastGenPass.exit_token with Token exit {
     if here.__class__ is not Token {
         return;
     }
@@ -692,6 +691,6 @@ impl JcirGenPass.exit_token with Token exit {
     }
 }
 
-impl JcirGenPass.exit_semi with Semi exit {}
+impl PyastGenPass.exit_semi with Semi exit {}
 
-impl JcirGenPass.exit_comment_token with CommentToken exit {}
+impl PyastGenPass.exit_comment_token with CommentToken exit {}

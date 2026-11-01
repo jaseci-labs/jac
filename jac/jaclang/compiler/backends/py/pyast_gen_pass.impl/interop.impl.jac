@@ -1,4 +1,4 @@
-impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
+impl PyastGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
     manifest = self.module.gen.interop_manifest;
     parts: list[str] = [];
     names: list[str] = [];
@@ -38,11 +38,11 @@ impl JcirGenPass._gen_native_interop_stubs(nd: UniNode) -> None {
         }
     }
     if parts {
-        self.set_out(nd, [CgSplice(src='\n'.join(parts), offset=0, bound_names=names)]);
+        self.set_out(nd, [CgSplice(src='\n'.join(parts), bound_names=names)]);
     }
 }
 
-impl JcirGenPass._native_import_registration_map -> dict[str, list[CgSplice]] {
+impl PyastGenPass._native_import_registration_map -> dict[str, list[CgSplice]] {
     manifest = self.module.gen.interop_manifest;
     if not (manifest and manifest.bindings) {
         return {};
@@ -57,12 +57,12 @@ impl JcirGenPass._native_import_registration_map -> dict[str, list[CgSplice]] {
             + f"and '{local_name}' in globals():\n"
             + f"    __jac_interop_py_funcs__['{binding.symbol}'] = {local_name}"
         );
-        reg_map[local_name] = [CgSplice(src=src, offset=0)];
+        reg_map[local_name] = [CgSplice(src=src)];
     }
     return reg_map;
 }
 
-impl JcirGenPass._top_level_bound_names(items: any) -> list[str] {
+impl PyastGenPass._top_level_bound_names(items: any) -> list[str] {
     stmts = items if isinstance(items, list) else [items];
     names: list[str] = [];
     for stmt in stmts {
@@ -112,7 +112,7 @@ impl JcirGenPass._top_level_bound_names(items: any) -> list[str] {
     return names;
 }
 
-impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
+impl PyastGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
     test_name = nd.name.sym_name;
     line = nd.loc.first_line if nd.loc else 0;
     mod_path = self.module.loc.mod_path if self.module.loc else "";
@@ -127,10 +127,10 @@ impl JcirGenPass._native_test_shim_stmts(nd: Test) -> list[CgItem] {
             + test_name
             + "')"
     ];
-    return [CgSplice(src='\n'.join(src_lines), offset=0)];
+    return [CgSplice(src='\n'.join(src_lines))];
 }
 
-impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
+impl PyastGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
     manifest = self.module.gen.interop_manifest;
     if (not manifest) {
         return False;
@@ -200,11 +200,11 @@ impl JcirGenPass._generate_sv_to_sv_stubs(nd: Import) -> bool {
     if (len(parts) <= 1) {
         return False;
     }
-    self.set_out(nd, [CgSplice(src='\n\n'.join(parts), offset=0, bound_names=names)]);
+    self.set_out(nd, [CgSplice(src='\n\n'.join(parts), bound_names=names)]);
     return True;
 }
 
-impl JcirGenPass._sv_wire_args_dict(
+impl PyastGenPass._sv_wire_args_dict(
     names: list[str], types: list[str], boundary_types: dict[str, BoundaryTypeInfo]
 ) -> str {
     args_kvs: list[str] = [];
@@ -230,7 +230,7 @@ impl JcirGenPass._sv_wire_args_dict(
     return '{' + ', '.join(args_kvs) + '}';
 }
 
-impl JcirGenPass._gen_py_sv_func_stub(
+impl PyastGenPass._gen_py_sv_func_stub(
     local_name: str,
     func_name: str,
     provider_app: str,
@@ -272,7 +272,7 @@ impl JcirGenPass._gen_py_sv_func_stub(
     return 'async def ' + local_name + '(' + params + '):\n    return ' + ret_expr;
 }
 
-impl JcirGenPass._gen_py_sv_walker_stub(
+impl PyastGenPass._gen_py_sv_walker_stub(
     local_name: str,
     walker_name: str,
     provider_app: str,
@@ -328,7 +328,7 @@ impl JcirGenPass._gen_py_sv_walker_stub(
     return '\n'.join(lines);
 }
 
-impl JcirGenPass._gen_py_sv_boundary_types -> None {
+impl PyastGenPass._gen_py_sv_boundary_types -> None {
     if self._sv_boundary_registry {
         return;
     }
@@ -393,14 +393,13 @@ impl JcirGenPass._gen_py_sv_boundary_types -> None {
     self.preamble.append(
         CgSplice(
             src='\n\n'.join(parts),
-            offset=0,
             bound_names=[self._sv_serializer, self._sv_boundary_registry]
                 + list(self._sv_boundary_names.values())
         )
     );
 }
 
-impl JcirGenPass._gen_py_wire_methods -> list[str] {
+impl PyastGenPass._gen_py_wire_methods -> list[str] {
     return [
         '    def _to_wire(self):',
         '        return ' + self._sv_serializer + '.serialize(self, api_mode=True)',
@@ -412,7 +411,7 @@ impl JcirGenPass._gen_py_wire_methods -> list[str] {
     ];
 }
 
-impl JcirGenPass._gen_py_boundary_stub_class(
+impl PyastGenPass._gen_py_boundary_stub_class(
     class_name: str, info: BoundaryTypeInfo
 ) -> str {
     lines: list[str] = [];
@@ -427,7 +426,7 @@ impl JcirGenPass._gen_py_boundary_stub_class(
     return '\n'.join(lines);
 }
 
-impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list[str] {
+impl PyastGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list[str] {
     src_mod = (
         binding.ast_node.find_parent_of_type(Module)
             if binding.ast_node is not None
@@ -452,7 +451,7 @@ impl JcirGenPass._sv_endpoint_effects(binding: InteropBinding, key: str) -> list
     return names;
 }
 
-impl JcirGenPass._sv_consumer_app_expr -> str {
+impl PyastGenPass._sv_consumer_app_expr -> str {
     consumer = module_app(self.module);
     if consumer {
         return "'" + consumer + "'";
@@ -460,7 +459,7 @@ impl JcirGenPass._sv_consumer_app_expr -> str {
     return '__name__';
 }
 
-impl JcirGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
+impl PyastGenPass._sv_bridge_walker_call(expr: Expr) -> (FuncCall | None) {
     if isinstance(expr, BinaryExpr) {
         op = expr.op;
         if isinstance(op, Token) and op.name == Tok.KW_SPAWN {

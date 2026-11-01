@@ -1,18 +1,11 @@
-impl JcirGenPass.ir_bytes -> bytes {
-    if self._module_root is None {
-        raise RuntimeError(self.ctx.ice('JCIR emitter produced no module root'));
-    }
-    return module_container_bytes(self._module_path, self._module_root);
-}
-
-impl JcirGenPass.exit_sub_tag with SubTag exit {
+impl PyastGenPass.exit_sub_tag with SubTag exit {
     tag_node = here.tag;
     if isinstance(tag_node, UniNode) {
         self.set_out(here, self.outs(tag_node));
     }
 }
 
-impl JcirGenPass.exit_module with Module exit {
+impl PyastGenPass.exit_module with Module exit {
     _tag_names: dict[int, str] = {};
     for _stmt in (here.body or []) {
         if isinstance(_stmt, Archetype)
@@ -215,12 +208,14 @@ impl JcirGenPass.exit_module with Module exit {
     }
     module = self.nod('Module', ['body', 'type_ignores'], [body_items, []]);
     self.set_out(here, [module]);
-    self._module_root = module;
-    self._module_path = here.loc.mod_path;
-    here.gen.jcir = module_container_bytes(self._module_path, module);
+    here.gen.py_recipe = module;
+    here.gen.py_ast = [];
+    here.gen.py_text = None;
+    here.gen.py_code = None;
+    here.gen.py_bytecode = None;
 }
 
-impl JcirGenPass.exit_type_param with TypeParam exit {
+impl PyastGenPass.exit_type_param with TypeParam exit {
     if here.is_comptime {
         self.set_out(here, []);
         return;
@@ -231,7 +226,7 @@ impl JcirGenPass.exit_type_param with TypeParam exit {
     );
 }
 
-impl JcirGenPass._distinct_base_ast(nd: TypeAlias) -> (CgNode | None) {
+impl PyastGenPass._distinct_base_ast(nd: TypeAlias) -> (CgNode | None) {
     base = nd.distinct_base;
     if base is None {
         return None;
@@ -242,7 +237,7 @@ impl JcirGenPass._distinct_base_ast(nd: TypeAlias) -> (CgNode | None) {
     return self.name_load(base, nd);
 }
 
-impl JcirGenPass.exit_type_alias with TypeAlias exit {
+impl PyastGenPass.exit_type_alias with TypeAlias exit {
     type_param_asts: list[CgNode] = [];
     for tp in here.type_params {
         if self.outs(tp) {
@@ -282,7 +277,7 @@ impl JcirGenPass.exit_type_alias with TypeAlias exit {
     self.set_out(here, [type_alias]);
 }
 
-impl JcirGenPass.exit_global_vars with GlobalVars exit {
+impl PyastGenPass.exit_global_vars with GlobalVars exit {
     assigns_ast: list[CgItem] = [];
     for assignment in here.assignments {
         assigns_ast.extend(self.outs(assignment));
@@ -296,11 +291,11 @@ impl JcirGenPass.exit_global_vars with GlobalVars exit {
     }
 }
 
-impl JcirGenPass.enter_test with Test entry {
+impl PyastGenPass.enter_test with Test entry {
     self._push_hoist_frame();
 }
 
-impl JcirGenPass.exit_test with Test exit {
+impl PyastGenPass.exit_test with Test exit {
     test_name = here.name.sym_name;
     if here.code_context == CodeContext.NATIVE {
         body_stmts = self._native_test_shim_stmts(here);
@@ -384,7 +379,7 @@ impl JcirGenPass.exit_test with Test exit {
         'decorator_list',
         self.call_node(self.jaclib_obj('jac_test'), [], jac_test_keywords)
     );
-    if jcir_is_test_path(here.loc.mod_path) {
+    if pyast_is_test_path(here.loc.mod_path) {
         func.push(
             'decorator_list',
             self.call_node(
@@ -403,7 +398,7 @@ impl JcirGenPass.exit_test with Test exit {
     self.set_out(here, [func]);
 }
 
-impl JcirGenPass.exit_module_code with ModuleCode exit {
+impl PyastGenPass.exit_module_code with ModuleCode exit {
     stmts = self.resolve_stmt_block(here.body, doc=here.doc);
     if here.name {
         stmts = [
@@ -429,7 +424,7 @@ impl JcirGenPass.exit_module_code with ModuleCode exit {
     self.set_out(here, stmts);
 }
 
-impl JcirGenPass.exit_import with Import exit {
+impl PyastGenPass.exit_import with Import exit {
     if (
         import_binds_client_native(here, self.module.gen.interop_manifest)
         or here.native_only_drop
@@ -528,7 +523,7 @@ impl JcirGenPass.exit_import with Import exit {
     self.set_out(here, py_nodes);
 }
 
-impl JcirGenPass.exit_module_path with ModulePath exit {
+impl PyastGenPass.exit_module_path with ModulePath exit {
     if here.string_path_value is not None {
         import_node = here.parent_of_type(Import);
         if (
@@ -551,7 +546,7 @@ impl JcirGenPass.exit_module_path with ModulePath exit {
     );
 }
 
-impl JcirGenPass.exit_module_item with ModuleItem exit {
+impl PyastGenPass.exit_module_item with ModuleItem exit {
     if (isinstance(here.name, Token) and (here.name.value in ['default', '*'])) {
         import_node = here.from_parent;
         if (import_node.code_context != CodeContext.CLIENT) {

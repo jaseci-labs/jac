@@ -5125,7 +5125,7 @@ test "pipe operands keep the pipe expression as their only parent" {
         program = JacProgram();
         mod = program.compile(path, options=NO_TC);
         assert not program.errors_had;
-        assert mod.gen.py_ast;
+        assert mod.gen.py_recipe is not None;
         pipes = [
             expr
             for expr in mod.get_all_sub_nodes(uni.BinaryExpr)

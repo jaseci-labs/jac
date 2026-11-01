@@ -1,4 +1,4 @@
-impl JcirGenPass._get_sem_decorator(nd: UniNode) -> (CgNode | None) {
+impl PyastGenPass._get_sem_decorator(nd: UniNode) -> (CgNode | None) {
     semstr: str = '';
     inner_semstr: dict[(str, str)] = {};
     if isinstance(nd, Archetype) {
@@ -60,11 +60,11 @@ impl JcirGenPass._get_sem_decorator(nd: UniNode) -> (CgNode | None) {
     );
 }
 
-impl JcirGenPass.enter_archetype with Archetype entry {
+impl PyastGenPass.enter_archetype with Archetype entry {
     self.walk_decl_body(here);
 }
 
-impl JcirGenPass.exit_archetype with Archetype exit {
+impl PyastGenPass.exit_archetype with Archetype exit {
     inner = ModuleFacts.unwrap_body(here);
     decorators = [self.val(i) for i in here.decorators] if here.decorators else [];
     body: list[CgItem] = self.resolve_stmt_block(inner, doc=here.doc);
@@ -148,11 +148,11 @@ impl JcirGenPass.exit_archetype with Archetype exit {
     self.set_out(here, [class_def]);
 }
 
-impl JcirGenPass.enter_enum with Enum entry {
+impl PyastGenPass.enter_enum with Enum entry {
     self.walk_decl_body(here);
 }
 
-impl JcirGenPass.exit_enum with Enum exit {
+impl PyastGenPass.exit_enum with Enum exit {
     inner = ModuleFacts.unwrap_body(here);
     decorators = [self.val(i) for i in here.decorators] if here.decorators else [];
     body = self.resolve_stmt_block(inner, doc=here.doc);
@@ -181,12 +181,12 @@ impl JcirGenPass.exit_enum with Enum exit {
     self.set_out(here, [class_def]);
 }
 
-impl JcirGenPass.enter_ability with Ability entry {
+impl PyastGenPass.enter_ability with Ability entry {
     self._push_hoist_frame();
     self.walk_decl_body(here);
 }
 
-impl JcirGenPass.exit_ability with Ability exit {
+impl PyastGenPass.exit_ability with Ability exit {
     func_type = 'AsyncFunctionDef' if here.is_async else 'FunctionDef';
     has_by_in_return = (
         isinstance(here.signature, FuncSignature)
@@ -477,11 +477,11 @@ impl JcirGenPass.exit_ability with Ability exit {
     self.set_out(here, [func_def]);
 }
 
-impl JcirGenPass.exit_impl_def with ImplDef exit {}
+impl PyastGenPass.exit_impl_def with ImplDef exit {}
 
-impl JcirGenPass.exit_sem_def with SemDef exit {}
+impl PyastGenPass.exit_sem_def with SemDef exit {}
 
-impl JcirGenPass.exit_func_signature with FuncSignature exit {
+impl PyastGenPass.exit_func_signature with FuncSignature exit {
     posonlyargs = [self.val(i) for i in here.posonly_params];
     vararg = self.val(here.varargs) if here.varargs else None;
     kwarg = self.val(here.kwargs) if here.kwargs else None;
@@ -553,7 +553,7 @@ impl JcirGenPass.exit_func_signature with FuncSignature exit {
     );
 }
 
-impl JcirGenPass.exit_event_signature with EventSignature exit {
+impl PyastGenPass.exit_event_signature with EventSignature exit {
     arch_kw = Con.HERE.value if here.from_walker else Con.VISITOR.value;
     annotation: (CgNode | None) = None;
     if here.arch_tag_info {
@@ -617,7 +617,7 @@ impl JcirGenPass.exit_event_signature with EventSignature exit {
     );
 }
 
-impl JcirGenPass._recipe_ambient_names(v: any) -> list[str] {
+impl PyastGenPass._recipe_ambient_names(v: any) -> list[str] {
     found: list[str] = [];
     if isinstance(v, CgNode) {
         if v.cls == 'Name'
@@ -644,7 +644,7 @@ impl JcirGenPass._recipe_ambient_names(v: any) -> list[str] {
     return found;
 }
 
-impl JcirGenPass.exit_param_var with ParamVar exit {
+impl PyastGenPass.exit_param_var with ParamVar exit {
     if self.val(here.name).cls == 'Name' {
         name = self.val(here.name).get('id');
         self.set_out(
@@ -660,7 +660,7 @@ impl JcirGenPass.exit_param_var with ParamVar exit {
     }
 }
 
-impl JcirGenPass.exit_arch_has with ArchHas exit {
+impl PyastGenPass.exit_arch_has with ArchHas exit {
     vars_py: list[CgItem] = [];
     for var in here.vars {
         vars_py.extend(self.outs(var));
@@ -674,7 +674,7 @@ impl JcirGenPass.exit_arch_has with ArchHas exit {
     }
 }
 
-impl JcirGenPass.exit_has_var with HasVar exit {
+impl PyastGenPass.exit_has_var with HasVar exit {
     annotation = self.val(here.type_tag) if here.type_tag else None;
     if ((here.accessors is not None) and (len(here.accessors) > 0)) {
         result_stmts: list[CgItem] = [];
@@ -764,7 +764,7 @@ impl JcirGenPass.exit_has_var with HasVar exit {
     self.set_out(here, [ann_assign]);
 }
 
-impl JcirGenPass._invoke_llm_call(
+impl PyastGenPass._invoke_llm_call(
     model: CgNode, caller: CgNode, args: CgNode, is_async: bool = False
 ) -> CgNode {
     mtir_ast = self.call_node(
@@ -802,7 +802,7 @@ impl JcirGenPass._invoke_llm_call(
     return call;
 }
 
-impl JcirGenPass.gen_llm_body(nd: Ability) -> list[CgNode] {
+impl PyastGenPass.gen_llm_body(nd: Ability) -> list[CgNode] {
     assert isinstance(nd.signature, FuncSignature);
     model_expr: CgNode;
     if (

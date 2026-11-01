@@ -1,6 +1,6 @@
 """Client-side code generation tests -- migrated from test_client_codegen.py."""
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import tempfile;
 import from pathlib { Path }
@@ -74,11 +74,11 @@ test "compilation skips python stubs" {
     assert "__jacJsx(" in mod.gen.js;
 
     # Client Python definitions are intentionally omitted
-    assert "def component" not in generated_python(mod.gen);
-    assert "__jac_client__" not in generated_python(mod.gen);
+    assert "def component" not in generated_python(mod);
+    assert "__jac_client__" not in generated_python(mod);
 
     # Manifest data should be in mod.gen.client_manifest
-    assert "__jac_client_manifest__" not in generated_python(mod.gen);
+    assert "__jac_client_manifest__" not in generated_python(mod);
     manifest = mod.gen.client_manifest;
     assert manifest , "Client manifest should be available in mod.gen";
     assert "component" in manifest.exports;

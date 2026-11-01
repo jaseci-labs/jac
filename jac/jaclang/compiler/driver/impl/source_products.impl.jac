@@ -17,7 +17,7 @@ impl python_source(path: str, program: JacProgram) -> tuple[str, Module | None] 
             '\n'.join(error.pretty_print() for error in actual.errors_had[before:])
         );
     }
-    if module is None or not module.gen.py_ast {
+    if module is None or module.gen.py_recipe is None {
         import from jaclang.compiler.driver.source_failures {
             module_scoped_failure_details,
             bootstrap_tier_failure_details
@@ -29,8 +29,8 @@ impl python_source(path: str, program: JacProgram) -> tuple[str, Module | None] 
         }
         raise RuntimeError(f'No Python source product for {path}');
     }
-    import from jaclang.compiler.backends.py.codegen_shim { generated_python }
-    return (generated_python(module.gen), module);
+    import from jaclang.compiler.backends.py.python_text { generated_python }
+    return (generated_python(module), module);
 }
 
 impl python_text(path: str, program: JacProgram) -> str {

@@ -1,4 +1,4 @@
-impl JcirGenPass.exit_yield_expr with YieldExpr exit {
+impl PyastGenPass.exit_yield_expr with YieldExpr exit {
     if not here.with_from {
         self.set_out(
             here,
@@ -18,15 +18,15 @@ impl JcirGenPass.exit_yield_expr with YieldExpr exit {
     }
 }
 
-impl JcirGenPass.exit_await_expr with AwaitExpr exit {
+impl PyastGenPass.exit_await_expr with AwaitExpr exit {
     self.set_out(here, [self.nod('Await', ['value'], [self.val(here.target)])]);
 }
 
-impl JcirGenPass.exit_cast_expr with CastExpr exit {
+impl PyastGenPass.exit_cast_expr with CastExpr exit {
     self.set_out(here, self.outs(here.value));
 }
 
-impl JcirGenPass.exit_assignment with Assignment exit {
+impl PyastGenPass.exit_assignment with Assignment exit {
     value: (CgNode | None) = None;
     init_cv = here.value.ct_value if here.value else None;
     if here.value
@@ -139,7 +139,7 @@ impl JcirGenPass.exit_assignment with Assignment exit {
     self.set_out(here, [assignment_stmt]);
 }
 
-impl JcirGenPass.exit_binary_expr with BinaryExpr exit {
+impl PyastGenPass.exit_binary_expr with BinaryExpr exit {
     if isinstance(here.op, ConnectOp) {
         left = self.val(here.right)
             if (here.op.edge_dir == EdgeDir.IN)
@@ -276,7 +276,7 @@ impl JcirGenPass.exit_binary_expr with BinaryExpr exit {
     }
 }
 
-impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem] {
+impl PyastGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem] {
     if not isinstance(nd.op, Token) {
         raise RuntimeError(
             self.ctx.ice('translate_jac_bin_op reached a non-token operator')
@@ -345,7 +345,7 @@ impl JcirGenPass.translate_jac_bin_op(nd: BinaryExpr) -> list[CgItem] {
     return [];
 }
 
-impl JcirGenPass.exit_compare_expr with CompareExpr exit {
+impl PyastGenPass.exit_compare_expr with CompareExpr exit {
     self.set_out(
         here,
         [
@@ -362,11 +362,11 @@ impl JcirGenPass.exit_compare_expr with CompareExpr exit {
     );
 }
 
-impl JcirGenPass.exit_cfg_expr with CfgExpr exit {
+impl PyastGenPass.exit_cfg_expr with CfgExpr exit {
     self.set_out(here, self.outs(here.expr));
 }
 
-impl JcirGenPass.exit_bool_expr with BoolExpr exit {
+impl PyastGenPass.exit_bool_expr with BoolExpr exit {
     self.set_out(
         here,
         [
@@ -379,11 +379,11 @@ impl JcirGenPass.exit_bool_expr with BoolExpr exit {
     );
 }
 
-impl JcirGenPass.enter_lambda_expr with LambdaExpr entry {
+impl PyastGenPass.enter_lambda_expr with LambdaExpr entry {
     self._push_hoist_frame();
 }
 
-impl JcirGenPass.exit_lambda_expr with LambdaExpr exit {
+impl PyastGenPass.exit_lambda_expr with LambdaExpr exit {
     frame = self._hoist_frames.pop();
     signature_roots: list[UniNode] = [here.signature] if here.signature else [];
     (body_hoists, enclosing_hoists) = self._split_scope_hoists(frame, signature_roots);
@@ -446,7 +446,7 @@ impl JcirGenPass.exit_lambda_expr with LambdaExpr exit {
     self._emit_lambda_expr_body(here, here.body);
 }
 
-impl JcirGenPass._emit_lambda_expr_body(nd: LambdaExpr, body_node: Expr) -> None {
+impl PyastGenPass._emit_lambda_expr_body(nd: LambdaExpr, body_node: Expr) -> None {
     if nd.signature {
         self._remove_lambda_param_annotations(nd.signature);
     }
@@ -466,7 +466,7 @@ impl JcirGenPass._emit_lambda_expr_body(nd: LambdaExpr, body_node: Expr) -> None
     self.set_out(nd, [self._linked_closure_value(nd, lam)]);
 }
 
-impl JcirGenPass._remove_lambda_param_annotations(signature: FuncSignature) -> None {
+impl PyastGenPass._remove_lambda_param_annotations(signature: FuncSignature) -> None {
     for param in signature.params {
         if (self.outs(param) and self.val(param).cls == 'arg') {
             self.val(param).setf('annotation', None);
@@ -474,7 +474,7 @@ impl JcirGenPass._remove_lambda_param_annotations(signature: FuncSignature) -> N
     }
 }
 
-impl JcirGenPass._emit_jobj_ref(nd: UnaryExpr) -> None {
+impl PyastGenPass._emit_jobj_ref(nd: UnaryExpr) -> None {
     self.set_out(
         nd,
         [
@@ -487,7 +487,7 @@ impl JcirGenPass._emit_jobj_ref(nd: UnaryExpr) -> None {
     );
 }
 
-impl JcirGenPass.exit_unary_expr with UnaryExpr exit {
+impl PyastGenPass.exit_unary_expr with UnaryExpr exit {
     if here.ownership in (OwnershipKind.OWN, OwnershipKind.IMM) {
         self.set_out(here, [self.val(here.operand)]);
         return;
@@ -531,7 +531,7 @@ impl JcirGenPass.exit_unary_expr with UnaryExpr exit {
     }
 }
 
-impl JcirGenPass.exit_if_else_expr with IfElseExpr exit {
+impl PyastGenPass.exit_if_else_expr with IfElseExpr exit {
     self.set_out(
         here,
         [
@@ -548,7 +548,7 @@ impl JcirGenPass.exit_if_else_expr with IfElseExpr exit {
     );
 }
 
-impl JcirGenPass._multi_string_pieces(
+impl PyastGenPass._multi_string_pieces(
     str_seq: Sequence[UniNode]
 ) -> list[str | bytes | CgNode] {
     pieces: list[str | bytes | CgNode] = [];
@@ -573,7 +573,7 @@ impl JcirGenPass._multi_string_pieces(
     return pieces;
 }
 
-impl JcirGenPass.exit_multi_string with MultiString exit {
+impl PyastGenPass.exit_multi_string with MultiString exit {
     lone = here.strings[0] if (len(here.strings) == 1) else None;
     if (isinstance(lone, FString) and self.outs(lone)) {
         self.set_out(here, self.outs(lone));
@@ -610,7 +610,7 @@ impl JcirGenPass.exit_multi_string with MultiString exit {
     }
 }
 
-impl JcirGenPass._multi_string_text(piece: (str | bytes | CgNode)) -> (str | None) {
+impl PyastGenPass._multi_string_text(piece: (str | bytes | CgNode)) -> (str | None) {
     if isinstance(piece, str) {
         return piece;
     }
@@ -623,14 +623,14 @@ impl JcirGenPass._multi_string_text(piece: (str | bytes | CgNode)) -> (str | Non
     return None;
 }
 
-impl JcirGenPass._flush_text_run(merged: list[CgNode], run: list[str]) -> None {
+impl PyastGenPass._flush_text_run(merged: list[CgNode], run: list[str]) -> None {
     if run {
         merged.append(self.const_of("".join(run)));
         run.clear();
     }
 }
 
-impl JcirGenPass._flush_byte_run(merged: list[CgNode], run: list[bytes]) -> None {
+impl PyastGenPass._flush_byte_run(merged: list[CgNode], run: list[bytes]) -> None {
     if run {
         joined = bytearray();
         for chunk in run {
@@ -641,7 +641,7 @@ impl JcirGenPass._flush_byte_run(merged: list[CgNode], run: list[bytes]) -> None
     }
 }
 
-impl JcirGenPass.exit_f_string with FString exit {
+impl PyastGenPass.exit_f_string with FString exit {
     self.set_out(
         here,
         [
@@ -660,7 +660,7 @@ impl JcirGenPass.exit_f_string with FString exit {
     );
 }
 
-impl JcirGenPass.exit_formatted_value with FormattedValue exit {
+impl PyastGenPass.exit_formatted_value with FormattedValue exit {
     self.set_out(
         here,
         [
@@ -677,7 +677,7 @@ impl JcirGenPass.exit_formatted_value with FormattedValue exit {
     );
 }
 
-impl JcirGenPass.exit_list_val with ListVal exit {
+impl PyastGenPass.exit_list_val with ListVal exit {
     self.set_out(
         here,
         [
@@ -690,13 +690,13 @@ impl JcirGenPass.exit_list_val with ListVal exit {
     );
 }
 
-impl JcirGenPass.exit_set_val with SetVal exit {
+impl PyastGenPass.exit_set_val with SetVal exit {
     self.set_out(
         here, [self.nod('Set', ['elts'], [[self.val(i) for i in here.values]])]
     );
 }
 
-impl JcirGenPass.exit_tuple_val with TupleVal exit {
+impl PyastGenPass.exit_tuple_val with TupleVal exit {
     self.set_out(
         here,
         [
@@ -709,7 +709,7 @@ impl JcirGenPass.exit_tuple_val with TupleVal exit {
     );
 }
 
-impl JcirGenPass.exit_dict_val with DictVal exit {
+impl PyastGenPass.exit_dict_val with DictVal exit {
     self.set_out(
         here,
         [
@@ -725,9 +725,9 @@ impl JcirGenPass.exit_dict_val with DictVal exit {
     );
 }
 
-impl JcirGenPass.exit_k_v_pair with KVPair exit {}
+impl PyastGenPass.exit_k_v_pair with KVPair exit {}
 
-impl JcirGenPass.exit_k_w_pair with KWPair exit {
+impl PyastGenPass.exit_k_w_pair with KWPair exit {
     self.set_out(
         here,
         [
@@ -745,7 +745,7 @@ impl JcirGenPass.exit_k_w_pair with KWPair exit {
     );
 }
 
-impl JcirGenPass.exit_inner_compr with InnerCompr exit {
+impl PyastGenPass.exit_inner_compr with InnerCompr exit {
     self.set_out(
         here,
         [
@@ -763,13 +763,13 @@ impl JcirGenPass.exit_inner_compr with InnerCompr exit {
     );
 }
 
-impl JcirGenPass.enter_list_compr with ListCompr entry {
+impl PyastGenPass.enter_list_compr with ListCompr entry {
     if here.__class__ is ListCompr {
         self._push_hoist_frame();
     }
 }
 
-impl JcirGenPass.exit_list_compr with ListCompr exit {
+impl PyastGenPass.exit_list_compr with ListCompr exit {
     if here.__class__ is not ListCompr {
         return;
     }
@@ -794,7 +794,7 @@ impl JcirGenPass.exit_list_compr with ListCompr exit {
     );
 }
 
-impl JcirGenPass._statement_list_comprehension(
+impl PyastGenPass._statement_list_comprehension(
     nd: ListCompr, hoists: list[CgNode]
 ) -> CgNode {
     func_name = self._next_lambda_name();
@@ -860,7 +860,7 @@ impl JcirGenPass._statement_list_comprehension(
     );
 }
 
-impl JcirGenPass.exit_gen_compr with GenCompr exit {
+impl PyastGenPass.exit_gen_compr with GenCompr exit {
     self.set_out(
         here,
         [
@@ -873,7 +873,7 @@ impl JcirGenPass.exit_gen_compr with GenCompr exit {
     );
 }
 
-impl JcirGenPass.exit_set_compr with SetCompr exit {
+impl PyastGenPass.exit_set_compr with SetCompr exit {
     self.set_out(
         here,
         [
@@ -886,7 +886,7 @@ impl JcirGenPass.exit_set_compr with SetCompr exit {
     );
 }
 
-impl JcirGenPass.exit_dict_compr with DictCompr exit {
+impl PyastGenPass.exit_dict_compr with DictCompr exit {
     self.set_out(
         here,
         [
@@ -905,7 +905,7 @@ impl JcirGenPass.exit_dict_compr with DictCompr exit {
     );
 }
 
-impl JcirGenPass.exit_name with Name exit {
+impl PyastGenPass.exit_name with Name exit {
     if here.__class__ is not Name {
         return;
     }
@@ -982,7 +982,7 @@ impl JcirGenPass.exit_name with Name exit {
     self.set_out(here, [self.nod('Name', ['id', 'ctx'], [name, self.py_ctx(here)])]);
 }
 
-impl JcirGenPass._resolve_self_type(nd: Name) -> (CgNode | None) {
+impl PyastGenPass._resolve_self_type(nd: Name) -> (CgNode | None) {
     enclosing = nd.enclosing_decl(ArchSpec);
     enclosing_name = enclosing.name.sym_name
         if isinstance(enclosing, (Archetype, Enum)) and enclosing.name
@@ -1011,7 +1011,7 @@ impl JcirGenPass._resolve_self_type(nd: Name) -> (CgNode | None) {
     return self.nod('Name', ['id', 'ctx'], [enclosing_name, self.py_ctx(nd)]);
 }
 
-impl JcirGenPass._is_in_type_annotation(nd: UniNode) -> bool {
+impl PyastGenPass._is_in_type_annotation(nd: UniNode) -> bool {
     parent = nd.parent;
     while parent {
         if isinstance(parent, FuncSignature) {
@@ -1037,7 +1037,7 @@ impl JcirGenPass._is_in_type_annotation(nd: UniNode) -> bool {
     return False;
 }
 
-impl JcirGenPass._is_descendant_of(nd: UniNode, ancestor: UniNode) -> bool {
+impl PyastGenPass._is_descendant_of(nd: UniNode, ancestor: UniNode) -> bool {
     if nd is ancestor {
         return True;
     }
@@ -1051,11 +1051,11 @@ impl JcirGenPass._is_descendant_of(nd: UniNode, ancestor: UniNode) -> bool {
     return False;
 }
 
-impl JcirGenPass.exit_float with Float exit {
+impl PyastGenPass.exit_float with Float exit {
     self.set_out(here, [self.const_of(float(here.value))]);
 }
 
-impl JcirGenPass.exit_int with Int exit {
+impl PyastGenPass.exit_int with Int exit {
     if len(here.value) <= SHORT_INT_LITERAL {
         self.set_out(here, [self.const_of(int(here.value, 0))]);
         return;
@@ -1078,15 +1078,15 @@ impl JcirGenPass.exit_int with Int exit {
     );
 }
 
-impl JcirGenPass.exit_string with String exit {
+impl PyastGenPass.exit_string with String exit {
     self.set_out(here, [self.const_of(here.lit_value)]);
 }
 
-impl JcirGenPass.exit_bool with Bool exit {
+impl PyastGenPass.exit_bool with Bool exit {
     self.set_out(here, [self.const_of(here.value == 'True')]);
 }
 
-impl JcirGenPass.exit_builtin_type with BuiltinType exit {
+impl PyastGenPass.exit_builtin_type with BuiltinType exit {
     if here.sym_name in self._get_builtin_names() {
         self.builtin_imports.add(here.sym_name);
     }
@@ -1110,10 +1110,10 @@ impl JcirGenPass.exit_builtin_type with BuiltinType exit {
     );
 }
 
-impl JcirGenPass.exit_null with Null exit {
+impl PyastGenPass.exit_null with Null exit {
     self.set_out(here, [self.const_of(None)]);
 }
 
-impl JcirGenPass.exit_ellipsis with Ellipsis exit {
+impl PyastGenPass.exit_ellipsis with Ellipsis exit {
     self.set_out(here, [self.const_of(CgEllipsis())]);
 }

@@ -1,6 +1,6 @@
 """Test Jac cli module."""
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import io;
 import inspect;
 import json;
@@ -825,7 +825,7 @@ test "param arg" {
     jac_file_path = "";
     try {
         transform.jac2py(f"{fixture_path('params/test_complex_params.jac')}");
-        py_code = generated_python(JacProgram().compile(file_path=filename).gen);
+        py_code = generated_python(JacProgram().compile(file_path=filename));
 
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False

@@ -104,15 +104,11 @@ impl codegen_passes(request: ProductRequest) -> PassSchedule {
 }
 
 impl py_ir_passes(request: ProductRequest) -> PassSchedule {
-    return [NativeImportFactsPass, JcirGenPass];
+    return [NativeImportFactsPass, PyastGenPass];
 }
 
 impl frozen_passes(request: ProductRequest) -> PassSchedule {
     return [FreezeStructurePass];
-}
-
-impl bytecode_passes(request: ProductRequest) -> PassSchedule {
-    return [JcirBytecodeGenPass];
 }
 
 impl native_ir_passes(request: ProductRequest) -> PassSchedule {
@@ -194,6 +190,64 @@ impl prepare_interface(program: JacProgram, module: Module) -> bool {
         os.path.realpath(module.loc.mod_path or module.source.file_path),
         module
     );
+}
+
+impl assemble_bytecode(program: JacProgram, module: Module) -> bool {
+    if module.gen.py_recipe is None {
+        deliver_alerts(
+            [
+                Alert(
+                    msg=E5040.format_message(path=module.loc.mod_path),
+                    loc=module.loc.span(),
+                    from_pass=PyastGenPass,
+                    code=E5040
+                )
+            ],
+            [],
+            program
+        );
+        return False;
+    }
+    import from jaclang.compiler.backends.py.kernel_bytecode {
+        GeneratedPythonRejected,
+        kernel_code_object
+    }
+    try {
+        kernel_code_object(module);
+    } except GeneratedPythonRejected as rejected {
+        loc = module.loc.span();
+        if rejected.line {
+            loc = Span(
+                mod_path=rejected.path,
+                first_line=rejected.line,
+                last_line=rejected.line,
+                col_start=rejected.col,
+                col_end=rejected.col
+            );
+        }
+        deliver_alerts(
+            [
+                Alert(
+                    msg=E5043.format_message(error=rejected.reason),
+                    loc=loc,
+                    from_pass=PyastGenPass,
+                    code=E5043
+                )
+            ],
+            [],
+            program
+        );
+        return False;
+    }
+    return True;
+}
+
+impl drop_bytecode(program: JacProgram, module: Module) {
+    gen = module.gen;
+    gen.py_code = None;
+    gen.py_bytecode = None;
+    gen.py_ast = [];
+    gen.py_text = None;
 }
 
 impl drop_client(program: JacProgram, module: Module) {

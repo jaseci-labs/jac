@@ -166,7 +166,9 @@ impl drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool {
         return False;
     }
     gen = mod.gen;
-    gen.jcir = None;
+    gen.py_recipe = None;
+    gen.py_ast = [];
+    gen.py_code = None;
     gen.py_bytecode = None;
     gen.drop_native_ir();
     gen.native_engine = None;
@@ -202,7 +204,7 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
             "diagnostic; this is a compiler bug -- please report it"
         );
     }
-    from_pass: type = JcirGenPass
+    from_pass: type = PyastGenPass
         if reason
         else product_passes(CompilationProduct.NATIVE_LOWER)[-1];
     deliver_alerts(

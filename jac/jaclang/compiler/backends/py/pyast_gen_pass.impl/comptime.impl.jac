@@ -1,4 +1,4 @@
-impl JcirGenPass._ct_kind(v: CtValue) -> str {
+impl PyastGenPass._ct_kind(v: CtValue) -> str {
     if ct_is_scalar(v) {
         return "scalar";
     }
@@ -20,16 +20,16 @@ impl JcirGenPass._ct_kind(v: CtValue) -> str {
     return "";
 }
 
-impl JcirGenPass._ct_materializable(v: CtValue) -> bool {
+impl PyastGenPass._ct_materializable(v: CtValue) -> bool {
     return ct_is_materializable(v);
 }
 
-impl JcirGenPass._ct_concrete(nd: Expr) -> bool {
+impl PyastGenPass._ct_concrete(nd: Expr) -> bool {
     cv = nd.ct_value;
     return cv is not None and not cv.is_deferred and self._ct_materializable(cv);
 }
 
-impl JcirGenPass._comptime_only_names -> set[str] {
+impl PyastGenPass._comptime_only_names -> set[str] {
     cached = self._ct_only_names;
     if cached is not None {
         return cached;
@@ -64,7 +64,7 @@ impl JcirGenPass._comptime_only_names -> set[str] {
     return names;
 }
 
-impl JcirGenPass._is_comptime_only_name(nd: Name) -> bool {
+impl PyastGenPass._is_comptime_only_name(nd: Name) -> bool {
     if nd.sym_name in self._comptime_only_names() {
         return True;
     }
@@ -94,7 +94,7 @@ impl JcirGenPass._is_comptime_only_name(nd: Name) -> bool {
     return False;
 }
 
-impl JcirGenPass._import_ref(module: str, name: str, jac_node: UniNode) -> CgNode {
+impl PyastGenPass._import_ref(module: str, name: str, jac_node: UniNode) -> CgNode {
     imported = self.call_node(
         self.name_load('__import__', jac_node),
         [self.const_of(module, jac_node)],
@@ -122,7 +122,7 @@ impl JcirGenPass._import_ref(module: str, name: str, jac_node: UniNode) -> CgNod
     );
 }
 
-impl JcirGenPass._class_ref(module: str, name: str, jac_node: UniNode) -> CgNode {
+impl PyastGenPass._class_ref(module: str, name: str, jac_node: UniNode) -> CgNode {
     if module == "builtins" or not module {
         return self.name_load(name, jac_node);
     }
@@ -139,7 +139,7 @@ impl JcirGenPass._class_ref(module: str, name: str, jac_node: UniNode) -> CgNode
     return self._import_ref(module, name, jac_node);
 }
 
-impl JcirGenPass._ct_order_key(v: CtValue) -> str {
+impl PyastGenPass._ct_order_key(v: CtValue) -> str {
     if isinstance(v, CtNone) {
         return "0";
     }
@@ -181,7 +181,7 @@ impl JcirGenPass._ct_order_key(v: CtValue) -> str {
     return "7" + self._ct_kind(v) + ":" + enum_name + ":" + member + ":" + label;
 }
 
-impl JcirGenPass._ct_ordered(items: list[CtValue]) -> list[CtValue] {
+impl PyastGenPass._ct_ordered(items: list[CtValue]) -> list[CtValue] {
     keys: list[str] = [];
     for item in items {
         keys.append(self._ct_order_key(item));
@@ -200,7 +200,7 @@ impl JcirGenPass._ct_ordered(items: list[CtValue]) -> list[CtValue] {
     return ordered;
 }
 
-impl JcirGenPass._materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None) {
+impl PyastGenPass._materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None) {
     load = self.nod('Load', [], []);
     if isinstance(v, CtInt) {
         return self.int_const_of(v, jac_node);
@@ -326,7 +326,7 @@ impl JcirGenPass._materialize(v: CtValue, jac_node: UniNode) -> (CgNode | None) 
     return None;
 }
 
-impl JcirGenPass._is_ct_type_param(nd: Name) -> bool {
+impl PyastGenPass._is_ct_type_param(nd: Name) -> bool {
     sym = nd.sym;
     if sym is None {
         return False;
@@ -335,7 +335,7 @@ impl JcirGenPass._is_ct_type_param(nd: Name) -> bool {
     return isinstance(owner, TypeParam) and owner.is_comptime;
 }
 
-impl JcirGenPass._ct_param_decls(cls_expr: Expr) -> (list[TypeParam] | None) {
+impl PyastGenPass._ct_param_decls(cls_expr: Expr) -> (list[TypeParam] | None) {
     t = cls_expr.type;
     cls = t.as_class() if t is not None else None;
     if cls is None or not cls.shared.ct_params {
@@ -348,7 +348,7 @@ impl JcirGenPass._ct_param_decls(cls_expr: Expr) -> (list[TypeParam] | None) {
     return `list(arch.type_params or []);
 }
 
-impl JcirGenPass._ct_ctor_slots(nd: AtomTrailer) -> (list[tuple[str, UniNode]] | None) {
+impl PyastGenPass._ct_ctor_slots(nd: AtomTrailer) -> (list[tuple[str, UniNode]] | None) {
     if nd.is_attr or not isinstance(nd.right, IndexSlice) or nd.right.is_range {
         return None;
     }
@@ -370,7 +370,7 @@ impl JcirGenPass._ct_ctor_slots(nd: AtomTrailer) -> (list[tuple[str, UniNode]] |
     return out;
 }
 
-impl JcirGenPass._trailer_reaches_ct_class(nd: AtomTrailer) -> bool {
+impl PyastGenPass._trailer_reaches_ct_class(nd: AtomTrailer) -> bool {
     cur: any = nd.target;
     while isinstance(cur, AtomTrailer) {
         if self._ct_ctor_slots(cur) is not None {
@@ -381,7 +381,7 @@ impl JcirGenPass._trailer_reaches_ct_class(nd: AtomTrailer) -> bool {
     return False;
 }
 
-impl JcirGenPass._ct_param_fields(nd: Archetype) -> list[CgNode] {
+impl PyastGenPass._ct_param_fields(nd: Archetype) -> list[CgNode] {
     out: list[CgNode] = [];
     for tp in (nd.type_params or []) {
         if not tp.is_comptime {
@@ -422,7 +422,7 @@ impl JcirGenPass._ct_param_fields(nd: Archetype) -> list[CgNode] {
     return out;
 }
 
-impl JcirGenPass._record_bypasses_init(v: CtRecord) -> bool {
+impl PyastGenPass._record_bypasses_init(v: CtRecord) -> bool {
     ct = v.class_type;
     shared = ct?.shared;
     if shared is None {

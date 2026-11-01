@@ -123,9 +123,13 @@ impl AstTool.ir(args: list[str]) -> str {
 
             case 'pyast':
                 ir_mod = prog.compile(file_name, options=CompileOptions());
-                return f"{py_ast.dump(ir_mod.gen.py_ast[0], indent=2)}"
-                    if isinstance(ir_mod.gen.py_ast[0], py_ast.AST)
-                    else 'Compile failed.';
+                if ir_mod.gen.py_recipe is None {
+                    return 'Compile failed.';
+                }
+                import from jaclang.compiler.backends.py.kernel_bytecode {
+                    kernel_python_ast
+                }
+                return py_ast.dump(kernel_python_ast(ir_mod), indent=2);
 
             case 'docir':
                 return str(
@@ -133,11 +137,9 @@ impl AstTool.ir(args: list[str]) -> str {
                 );
 
             case 'py':
-                import from jaclang.compiler.backends.py.codegen_shim {
-                    generated_python
-                }
+                import from jaclang.compiler.backends.py.python_text { generated_python }
                 ir_mod = prog.compile(file_name, options=CompileOptions());
-                return generated_python(ir_mod.gen) or 'Compile failed.';
+                return generated_python(ir_mod) or 'Compile failed.';
 
             case 'esast':
                 require(prog, ir_mod, CompilationProduct.CLIENT);
