@@ -1,0 +1,72 @@
+name: JacPython conformance
+description: >
+  Hold the `jac` on PATH to JacPython's gates: the native Jac compiler is the
+  interpreter's `compile`, the code-object boundary holds, and every ported
+  module and frontend suite passes its upstream tests, fetched from the
+  sha256-pinned source archive in jac/bootstrap/python/sources.json. Run it
+  on a sealed checkout (jac-kit `sealed: "true"`, or seal-checkout after
+  setup-jac), so the gates check the binary's own compiler.
+runs:
+  using: composite
+  steps:
+    - name: Probe the native compiler
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      run: |
+        set -euxo pipefail
+        jac -c '
+        import ast, ctypes, sys
+        assert ctypes.pythonapi._PyJac_CompilerRequired() == 1
+        assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
+        assert not hasattr(sys, "_jacpython_compile")
+        assert not hasattr(sys, "_jacpython_image")
+        assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42
+        print("JacPython: native compiler active")
+        '
+
+    - name: Check the JacPython native code-object boundary
+      shell: bash
+      run: jac run scripts/test_jacpython_native.jac
+
+    # Suites whose subject is the interpreter's own `compile`, which is the
+    # native Jac compiler.
+    - name: Run the JacPython compiler tests
+      shell: bash
+      env:
+        JAC_TEST_JOBS: "0"
+      run: jac test jac/tests/compiler/test_jacpython_block_tail_compare.jac
+
+    - name: Check native standard-library replacements against their upstream tests
+      shell: bash
+      run: |
+        jac install "hypothesis>=6,<7" --global
+        # Every module runs; the step fails at the end with the full list.
+        failed=""
+        while read -r module tests _ <&3; do
+          case "$module" in ''|'#'*) continue ;; esac
+          for test in $(printf '%s' "$tests" | tr ',' ' '); do
+            jac run scripts/run_cpython_compiler_tests.jac --module "$test" --native-modules "$module" || failed="$failed $test"
+          done
+        done 3< jac/bootstrap/python/jacpython-modules.txt
+        # The frontend suites (tokenizer, parser, AST, codegen) read their
+        # own registry: they exercise no single replaced module.
+        while read -r test flags <&3; do
+          case "$test" in ''|'#'*) continue ;; esac
+          jac run scripts/run_cpython_compiler_tests.jac --module "$test" $flags || failed="$failed $test"
+        done 3< jac/bootstrap/python/jacpython-compiler-tests.txt
+        if [ -n "$failed" ]; then
+          echo "::error::upstream test modules failed:$failed"
+          exit 1
+        fi
+
+    - name: Diagnose macOS native startup failures
+      if: failure() && runner.os == 'macOS'
+      continue-on-error: true
+      shell: bash
+      working-directory: jac
+      run: |
+        if [ -x zig-out/bin/jac ]; then
+          lldb --batch -o 'settings set target.disable-aslr false' -o run \
+            -k 'thread backtrace all' -k 'image list -o -f' \
+            -- zig-out/bin/jac -c 'import ast, ctypes; assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4; assert eval(compile(ast.parse("6 * 7", mode="eval"), "<packaged-native>", "eval")) == 42'
+        fi
