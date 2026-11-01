@@ -45,12 +45,17 @@ obj NativeDemotion {
 }
 
 """What one module compiled to. `code` is the module's JacPython code object,
-made by JacPython's compiler inside the kernel; the native products are
-present when the module is native."""
+made by JacPython's compiler inside the kernel (`kernel_code_object`), and
+`bytecode` is that code object marshalled, as caches store it. `python_ast` is
+the generated Python as an `ast.Module`, present when the request names the
+"python_ast" product. The native products are present when the module is
+native."""
 obj CompiledUnit {
     has path: str,
         module_name: str,
         code: any = None,
+        bytecode: bytes = b"",
+        python_ast: any = None,
         interface: bytes = b"",
         placement: str = "",
         client_js: str = "",

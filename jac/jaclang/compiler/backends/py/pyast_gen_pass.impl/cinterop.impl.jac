@@ -1,6 +1,6 @@
 import json;
 
-impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
+impl PyastGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
     lib: dict[str, any] = {};
     if imp.from_loc is not None and imp.from_loc.path {
         names: list[str] = [];
@@ -96,7 +96,7 @@ impl JcirGenPass._clib_block_desc(imp: Import) -> dict[str, any] {
     };
 }
 
-impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
+impl PyastGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
     desc = self._clib_block_desc(imp);
     holder = f"_jac_clib_{self._c_temp_count}";
     self._c_temp_count += 1;
@@ -223,13 +223,13 @@ impl JcirGenPass._gen_clib_binding(imp: Import) -> list[CgNode] {
     return out;
 }
 
-impl JcirGenPass._c_temp_name(role: str) -> str {
+impl PyastGenPass._c_temp_name(role: str) -> str {
     name = f"_jac_c{role}{self._c_temp_count}";
     self._c_temp_count += 1;
     return name;
 }
 
-impl JcirGenPass._c_named(name: str, value: CgNode) -> CgNode {
+impl PyastGenPass._c_named(name: str, value: CgNode) -> CgNode {
     return self.nod(
         'NamedExpr',
         ['target', 'value'],
@@ -237,7 +237,7 @@ impl JcirGenPass._c_named(name: str, value: CgNode) -> CgNode {
     );
 }
 
-impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
+impl PyastGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     outs = self.outs(nd);
     call = outs[0] if outs else None;
     callee_type = nd.target.type if nd.target is not None else None;
@@ -479,7 +479,7 @@ impl JcirGenPass._c_interop_call_rewrite(nd: FuncCall) -> None {
     );
 }
 
-impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
+impl PyastGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
     if not foreign_read_copies(nd) {
         return;
     }
@@ -493,7 +493,7 @@ impl JcirGenPass._c_copy_rewrite(nd: AtomTrailer) -> None {
     );
 }
 
-impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
+impl PyastGenPass._is_c_global_value(nd: Name) -> bool {
     if clib_global_of_name(nd) is None
         or (
             nd.find_parent_of_type(Import) is not None
@@ -504,7 +504,7 @@ impl JcirGenPass._is_c_global_value(nd: Name) -> bool {
     return not is_builtin_addressof_call(nd.parent);
 }
 
-impl JcirGenPass._c_vararg_rewrite(nd: FuncCall, fixed: int) -> None {
+impl PyastGenPass._c_vararg_rewrite(nd: FuncCall, fixed: int) -> None {
     params: list[Expr | KWPair] = list(nd.params or []);
     call = self.outs(nd)[0] if self.outs(nd) else None;
     if not isinstance(call, CgNode)

@@ -1,4 +1,4 @@
-impl JcirGenPass.exit_match_stmt with MatchStmt exit {
+impl PyastGenPass.exit_match_stmt with MatchStmt exit {
     self.set_out(
         here,
         [
@@ -11,7 +11,7 @@ impl JcirGenPass.exit_match_stmt with MatchStmt exit {
     );
 }
 
-impl JcirGenPass.exit_match_case with MatchCase exit {
+impl PyastGenPass.exit_match_case with MatchCase exit {
     self.set_out(
         here,
         [
@@ -28,14 +28,14 @@ impl JcirGenPass.exit_match_case with MatchCase exit {
     );
 }
 
-impl JcirGenPass.exit_match_or with MatchOr exit {
+impl PyastGenPass.exit_match_or with MatchOr exit {
     self.set_out(
         here,
         [self.nod('MatchOr', ['patterns'], [[self.val(x) for x in here.patterns]])]
     );
 }
 
-impl JcirGenPass.exit_match_as with MatchAs exit {
+impl PyastGenPass.exit_match_as with MatchAs exit {
     self.set_out(
         here,
         [
@@ -48,26 +48,26 @@ impl JcirGenPass.exit_match_as with MatchAs exit {
     );
 }
 
-impl JcirGenPass.exit_match_wild with MatchWild exit {
+impl PyastGenPass.exit_match_wild with MatchWild exit {
     self.set_out(here, [self.nod('MatchAs', [], [])]);
 }
 
-impl JcirGenPass.exit_match_value with MatchValue exit {
+impl PyastGenPass.exit_match_value with MatchValue exit {
     self.set_out(here, [self.nod('MatchValue', ['value'], [self.val(here.value)])]);
 }
 
-impl JcirGenPass.exit_match_singleton with MatchSingleton exit {
+impl PyastGenPass.exit_match_singleton with MatchSingleton exit {
     self.set_out(here, [self.nod('MatchSingleton', ['value'], [here.value.lit_value])]);
 }
 
-impl JcirGenPass.exit_match_sequence with MatchSequence exit {
+impl PyastGenPass.exit_match_sequence with MatchSequence exit {
     self.set_out(
         here,
         [self.nod('MatchSequence', ['patterns'], [[self.val(x) for x in here.values]])]
     );
 }
 
-impl JcirGenPass.exit_match_mapping with MatchMapping exit {
+impl PyastGenPass.exit_match_mapping with MatchMapping exit {
     map_keys: list[CgNode] = [];
     map_patterns: list[CgNode] = [];
     rest: (str | None) = None;
@@ -96,13 +96,13 @@ impl JcirGenPass.exit_match_mapping with MatchMapping exit {
     );
 }
 
-impl JcirGenPass.exit_match_k_v_pair with MatchKVPair exit {}
+impl PyastGenPass.exit_match_k_v_pair with MatchKVPair exit {}
 
-impl JcirGenPass.exit_match_star with MatchStar exit {
+impl PyastGenPass.exit_match_star with MatchStar exit {
     self.set_out(here, [self.nod('MatchStar', ['name'], [here.name.sym_name])]);
 }
 
-impl JcirGenPass.exit_match_arch with MatchArch exit {
+impl PyastGenPass.exit_match_arch with MatchArch exit {
     self.set_out(
         here,
         [

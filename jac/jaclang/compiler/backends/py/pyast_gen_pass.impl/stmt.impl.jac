@@ -1,4 +1,4 @@
-impl JcirGenPass.resolve_switch_pattern(pattern: MatchPattern, target: Expr) -> CgNode {
+impl PyastGenPass.resolve_switch_pattern(pattern: MatchPattern, target: Expr) -> CgNode {
     if isinstance(pattern, MatchValue) {
         return self.nod(
             'Compare',
@@ -25,7 +25,7 @@ impl JcirGenPass.resolve_switch_pattern(pattern: MatchPattern, target: Expr) -> 
     }
 }
 
-impl JcirGenPass.resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem] {
+impl PyastGenPass.resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem] {
     var_executed = self.nod(
         'Name', ['id', 'ctx'], ['__executed', self.nod('Store', [], [])]
     );
@@ -82,7 +82,7 @@ impl JcirGenPass.resolve_switch_stmt(nd: SwitchStmt) -> list[CgItem] {
     ];
 }
 
-impl JcirGenPass._switch_passes_continue(nd: SwitchStmt) -> bool {
+impl PyastGenPass._switch_passes_continue(nd: SwitchStmt) -> bool {
     for ctrl in nd.get_all_sub_nodes(CtrlStmt) {
         if ctrl.ctrl.name != Tok.KW_CONTINUE {
             continue;
@@ -98,11 +98,11 @@ impl JcirGenPass._switch_passes_continue(nd: SwitchStmt) -> bool {
     return False;
 }
 
-impl JcirGenPass._continued_flag(nd: SwitchStmt) -> str {
+impl PyastGenPass._continued_flag(nd: SwitchStmt) -> str {
     return f"__continued_{nd.loc.first_line}_{nd.loc.col_start}";
 }
 
-impl JcirGenPass._switch_flag_set(nd: SwitchStmt, value: bool) -> CgNode {
+impl PyastGenPass._switch_flag_set(nd: SwitchStmt, value: bool) -> CgNode {
     return self.nod(
         'Assign',
         ['targets', 'value'],
@@ -119,7 +119,7 @@ impl JcirGenPass._switch_flag_set(nd: SwitchStmt, value: bool) -> CgNode {
     );
 }
 
-impl JcirGenPass._ctrl_owner(nd: UniNode) -> UniNode | None {
+impl PyastGenPass._ctrl_owner(nd: UniNode) -> UniNode | None {
     at = nd.parent;
     while at is not None {
         if not in_loop_else(nd, at) {
@@ -137,7 +137,7 @@ impl JcirGenPass._ctrl_owner(nd: UniNode) -> UniNode | None {
     return None;
 }
 
-impl JcirGenPass._continue_out(nd: UniNode) -> list[CgItem] {
+impl PyastGenPass._continue_out(nd: UniNode) -> list[CgItem] {
     owner = self._ctrl_owner(nd);
     if isinstance(owner, SwitchStmt) {
         return [self._switch_flag_set(owner, True), self.nod('Break', [], [])];
@@ -150,7 +150,7 @@ impl JcirGenPass._continue_out(nd: UniNode) -> list[CgItem] {
     return stmts;
 }
 
-impl JcirGenPass.resolve_stmt_block(
+impl PyastGenPass.resolve_stmt_block(
     nd: Sequence[CodeBlockStmt] | Sequence[EnumBlockStmt] | None,
     doc: (String | None) = None
 ) -> list[CgItem] {
@@ -171,7 +171,7 @@ impl JcirGenPass.resolve_stmt_block(
     return ret;
 }
 
-impl JcirGenPass._stmts_with_releases(stmts: Sequence[UniNode]) -> list[CgItem] {
+impl PyastGenPass._stmts_with_releases(stmts: Sequence[UniNode]) -> list[CgItem] {
     out: list[CgItem] = [];
     for x in stmts {
         if isinstance(x, ImplDef) {
@@ -187,7 +187,7 @@ impl JcirGenPass._stmts_with_releases(stmts: Sequence[UniNode]) -> list[CgItem] 
     return out;
 }
 
-impl JcirGenPass._move_release_stmts(stmt: UniNode) -> list[CgNode] {
+impl PyastGenPass._move_release_stmts(stmt: UniNode) -> list[CgNode] {
     if isinstance(stmt, (ReturnStmt, RaiseStmt)) {
         return [];
     }
@@ -232,7 +232,7 @@ impl JcirGenPass._move_release_stmts(stmt: UniNode) -> list[CgNode] {
     return [self._release_name_stmt(n, stmt) for n in names];
 }
 
-impl JcirGenPass.scope_directive_stmts(scope: UniScopeNode) -> list[CgNode] {
+impl PyastGenPass.scope_directive_stmts(scope: UniScopeNode) -> list[CgNode] {
     global_names: list[str] = [];
     nonlocal_names: list[str] = [];
     linked = self.loop_links.linked_within(scope);
@@ -256,7 +256,7 @@ impl JcirGenPass.scope_directive_stmts(scope: UniScopeNode) -> list[CgNode] {
     return stmts;
 }
 
-impl JcirGenPass.exit_typed_ctx_block with TypedCtxBlock exit {
+impl PyastGenPass.exit_typed_ctx_block with TypedCtxBlock exit {
     loc = self.name_load(Con.HERE.value if here.from_walker else Con.VISITOR.value);
     self.set_out(
         here,
@@ -276,7 +276,7 @@ impl JcirGenPass.exit_typed_ctx_block with TypedCtxBlock exit {
     );
 }
 
-impl JcirGenPass.exit_open_stmt with OpenStmt exit {
+impl PyastGenPass.exit_open_stmt with OpenStmt exit {
     self.builtin_imports.add("_jac_region_open");
     self.builtin_imports.add("_jac_region_close");
     _tmp = f"_jac_region_{here.loc.first_line}_{here.loc.col_start}";
@@ -354,7 +354,7 @@ impl JcirGenPass.exit_open_stmt with OpenStmt exit {
     self.set_out(here, [assign_stmt, open_stmt, try_stmt]);
 }
 
-impl JcirGenPass._comptime_if_out(nd: IfStmt) -> bool {
+impl PyastGenPass._comptime_if_out(nd: IfStmt) -> bool {
     if nd.ct_taken is None {
         return False;
     }
@@ -366,7 +366,7 @@ impl JcirGenPass._comptime_if_out(nd: IfStmt) -> bool {
     return True;
 }
 
-impl JcirGenPass._if_out(nd: IfStmt) -> None {
+impl PyastGenPass._if_out(nd: IfStmt) -> None {
     if self._comptime_if_out(nd) {
         return;
     }
@@ -387,22 +387,22 @@ impl JcirGenPass._if_out(nd: IfStmt) -> None {
     );
 }
 
-impl JcirGenPass.exit_if_stmt with IfStmt exit {
+impl PyastGenPass.exit_if_stmt with IfStmt exit {
     if here.__class__ is not IfStmt {
         return;
     }
     self._if_out(here);
 }
 
-impl JcirGenPass.exit_else_if with ElseIf exit {
+impl PyastGenPass.exit_else_if with ElseIf exit {
     self._if_out(here);
 }
 
-impl JcirGenPass.exit_else_stmt with ElseStmt exit {
+impl PyastGenPass.exit_else_stmt with ElseStmt exit {
     self.set_out(here, self.resolve_stmt_block(here.body));
 }
 
-impl JcirGenPass.exit_expr_stmt with ExprStmt exit {
+impl PyastGenPass.exit_expr_stmt with ExprStmt exit {
     if not here.in_fstring {
         stub_call = self._sv_bridge_walker_call(here.expr);
         if stub_call is not None {
@@ -440,7 +440,7 @@ impl JcirGenPass.exit_expr_stmt with ExprStmt exit {
     self.set_out(here, [expr_stmt]);
 }
 
-impl JcirGenPass.exit_concurrent_expr with ConcurrentExpr exit {
+impl PyastGenPass.exit_concurrent_expr with ConcurrentExpr exit {
     func = '';
     if here.tok {
         if here.tok.value == 'flow' {
@@ -483,7 +483,7 @@ impl JcirGenPass.exit_concurrent_expr with ConcurrentExpr exit {
     }
 }
 
-impl JcirGenPass.exit_try_stmt with TryStmt exit {
+impl PyastGenPass.exit_try_stmt with TryStmt exit {
     self.set_out(
         here,
         [
@@ -501,7 +501,7 @@ impl JcirGenPass.exit_try_stmt with TryStmt exit {
     );
 }
 
-impl JcirGenPass.exit_except with Except exit {
+impl PyastGenPass.exit_except with Except exit {
     self.set_out(
         here,
         [
@@ -518,11 +518,11 @@ impl JcirGenPass.exit_except with Except exit {
     );
 }
 
-impl JcirGenPass.exit_finally_stmt with FinallyStmt exit {
+impl PyastGenPass.exit_finally_stmt with FinallyStmt exit {
     self.set_out(here, self.resolve_stmt_block(here.body));
 }
 
-impl JcirGenPass._pass_body(loop: LoopStmt) -> list[CgItem] {
+impl PyastGenPass._pass_body(loop: LoopStmt) -> list[CgItem] {
     body = self.resolve_stmt_block(loop.body);
     if not self.loop_links.of_loop(loop) {
         return body;
@@ -530,7 +530,7 @@ impl JcirGenPass._pass_body(loop: LoopStmt) -> list[CgItem] {
     return [*self._pass_link_opens(loop), *body, *self._pass_link_detaches(loop)];
 }
 
-impl JcirGenPass.exit_iter_for_stmt with IterForStmt exit {
+impl PyastGenPass.exit_iter_for_stmt with IterForStmt exit {
     py_nodes: list[CgNode] = [];
     body = self._pass_body(here);
     body = body + [self.val(here.count_by)];
@@ -549,7 +549,7 @@ impl JcirGenPass.exit_iter_for_stmt with IterForStmt exit {
     self.set_out(here, py_nodes);
 }
 
-impl JcirGenPass.exit_in_for_stmt with InForStmt exit {
+impl PyastGenPass.exit_in_for_stmt with InForStmt exit {
     self.set_out(
         here,
         [
@@ -567,7 +567,7 @@ impl JcirGenPass.exit_in_for_stmt with InForStmt exit {
     );
 }
 
-impl JcirGenPass.exit_while_stmt with WhileStmt exit {
+impl PyastGenPass.exit_while_stmt with WhileStmt exit {
     self.set_out(
         here,
         [
@@ -584,7 +584,7 @@ impl JcirGenPass.exit_while_stmt with WhileStmt exit {
     );
 }
 
-impl JcirGenPass.exit_forever_stmt with ForeverStmt exit {
+impl PyastGenPass.exit_forever_stmt with ForeverStmt exit {
     self.set_out(
         here,
         [
@@ -597,7 +597,7 @@ impl JcirGenPass.exit_forever_stmt with ForeverStmt exit {
     );
 }
 
-impl JcirGenPass.exit_with_stmt with WithStmt exit {
+impl PyastGenPass.exit_with_stmt with WithStmt exit {
     self.set_out(
         here,
         [
@@ -613,7 +613,7 @@ impl JcirGenPass.exit_with_stmt with WithStmt exit {
     );
 }
 
-impl JcirGenPass.exit_expr_as_item with ExprAsItem exit {
+impl PyastGenPass.exit_expr_as_item with ExprAsItem exit {
     self.set_out(
         here,
         [
@@ -626,7 +626,7 @@ impl JcirGenPass.exit_expr_as_item with ExprAsItem exit {
     );
 }
 
-impl JcirGenPass.exit_raise_stmt with RaiseStmt exit {
+impl PyastGenPass.exit_raise_stmt with RaiseStmt exit {
     self.set_out(
         here,
         [
@@ -642,7 +642,7 @@ impl JcirGenPass.exit_raise_stmt with RaiseStmt exit {
     );
 }
 
-impl JcirGenPass.exit_assert_stmt with AssertStmt exit {
+impl PyastGenPass.exit_assert_stmt with AssertStmt exit {
     if here.is_comptime {
         self.set_out(here, []);
         return;
@@ -662,7 +662,7 @@ impl JcirGenPass.exit_assert_stmt with AssertStmt exit {
     );
 }
 
-impl JcirGenPass.exit_ctrl_stmt with CtrlStmt exit {
+impl PyastGenPass.exit_ctrl_stmt with CtrlStmt exit {
     if (here.ctrl.name == Tok.KW_BREAK) {
         owner = self._ctrl_owner(here);
         if not isinstance(owner, SwitchStmt) {
@@ -683,12 +683,12 @@ impl JcirGenPass.exit_ctrl_stmt with CtrlStmt exit {
     }
 }
 
-impl JcirGenPass._del_ctx_target(target: Expr, ctx_cls: str) -> CgNode {
+impl PyastGenPass._del_ctx_target(target: Expr, ctx_cls: str) -> CgNode {
     cgn = self.val(target);
     return self._with_ctx(cgn, ctx_cls) if cgn.hasf('ctx') else cgn;
 }
 
-impl JcirGenPass._destroy_call(value: CgNode, strict: bool) -> CgNode {
+impl PyastGenPass._destroy_call(value: CgNode, strict: bool) -> CgNode {
     keywords: list[CgNode] = [];
     if strict {
         keywords.append(
@@ -702,7 +702,7 @@ impl JcirGenPass._destroy_call(value: CgNode, strict: bool) -> CgNode {
     );
 }
 
-impl JcirGenPass._del_is_trivial(cgn: CgNode) -> bool {
+impl PyastGenPass._del_is_trivial(cgn: CgNode) -> bool {
     if cgn.cls in ('Name', 'Constant') {
         return True;
     }
@@ -721,7 +721,7 @@ impl JcirGenPass._del_is_trivial(cgn: CgNode) -> bool {
     return True;
 }
 
-impl JcirGenPass._del_slice_value(value: CgNode, nd: DeleteStmt) -> CgNode {
+impl PyastGenPass._del_slice_value(value: CgNode, nd: DeleteStmt) -> CgNode {
     if value.cls != 'Slice' {
         return value;
     }
@@ -733,7 +733,7 @@ impl JcirGenPass._del_slice_value(value: CgNode, nd: DeleteStmt) -> CgNode {
     return self.call_node(self.name_load('slice', jac_node=nd), bounds, []);
 }
 
-impl JcirGenPass._del_bind_temp(
+impl PyastGenPass._del_bind_temp(
     value: CgNode, name: str, stmts: list[CgItem], nd: DeleteStmt
 ) -> CgNode {
     bound = self._del_slice_value(value, nd);
@@ -751,7 +751,7 @@ impl JcirGenPass._del_bind_temp(
     return self.name_load(name, jac_node=nd);
 }
 
-impl JcirGenPass._del_location(
+impl PyastGenPass._del_location(
     target: Expr, nd: DeleteStmt, ordinal: int
 ) -> list[CgItem] {
     stmts: list[CgItem] = [];
@@ -796,7 +796,7 @@ impl JcirGenPass._del_location(
     return stmts;
 }
 
-impl JcirGenPass.exit_delete_stmt with DeleteStmt exit {
+impl PyastGenPass.exit_delete_stmt with DeleteStmt exit {
     stmts: list[CgItem] = [];
     ordinal = 0;
     for target in here.leaf_targets() {
@@ -826,14 +826,14 @@ impl JcirGenPass.exit_delete_stmt with DeleteStmt exit {
     self.set_out(here, stmts);
 }
 
-impl JcirGenPass.exit_return_stmt with ReturnStmt exit {
+impl PyastGenPass.exit_return_stmt with ReturnStmt exit {
     self.set_out(
         here,
         [self.nod('Return', ['value'], [self.val(here.expr) if here.expr else None])]
     );
 }
 
-impl JcirGenPass._scope_cleanup_body(
+impl PyastGenPass._scope_cleanup_body(
     scope: UniNode, body: list[CgNode]
 ) -> list[CgNode] {
     names = self.module.rc_scope_cleanup.get(id(scope), []);
@@ -852,7 +852,7 @@ impl JcirGenPass._scope_cleanup_body(
     ];
 }
 
-impl JcirGenPass._release_name_stmt(name: str, source: UniNode) -> CgNode {
+impl PyastGenPass._release_name_stmt(name: str, source: UniNode) -> CgNode {
     return self.nod(
         'Try',
         ['body', 'handlers', 'orelse', 'finalbody'],

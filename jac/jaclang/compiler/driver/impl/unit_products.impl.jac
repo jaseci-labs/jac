@@ -462,7 +462,7 @@ impl placement_record(
 impl unit_products(module: uni.Module, program: JacProgram) -> UnitProducts {
     products = UnitProducts(
         path=module.loc.mod_path,
-        jcir=module.gen.jcir or b"",
+        bytecode=module.gen.py_bytecode or b"",
         ct_file_deps=list(module.ct_file_deps),
         ct_body_deps=list(module.ct_body_deps),
         ct_def_deps=[
@@ -526,7 +526,7 @@ impl native_products(module: uni.Module, products: UnitProducts) {
 impl products_record(products: UnitProducts) -> dict[str, any] {
     return {
         "path": products.path,
-        "jcir": base64.b64encode(products.jcir).decode("ascii"),
+        "bytecode": base64.b64encode(products.bytecode).decode("ascii"),
         "mtir": products.mtir,
         "interop": products.interop,
         "client": products.client,
@@ -553,7 +553,7 @@ impl products_record(products: UnitProducts) -> dict[str, any] {
 impl products_from_record(raw: dict[str, any]) -> UnitProducts {
     return UnitProducts(
         path=str(raw.get("path", "")),
-        jcir=base64.b64decode(str(raw.get("jcir", "")).encode("ascii")),
+        bytecode=base64.b64decode(str(raw.get("bytecode", "")).encode("ascii")),
         mtir=str(raw.get("mtir", "")),
         interop=str(raw.get("interop", "")),
         client=str(raw.get("client", "")),

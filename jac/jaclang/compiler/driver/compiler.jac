@@ -23,8 +23,6 @@ def cached_client_pulls(full_target: str) -> str;
 
 def native_first(units: list[UnitProducts]) -> list[UnitProducts];
 
-def assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]];
-
 def unit_sections(
     products: UnitProducts, bytecode: (bytes | None)
 ) -> dict[int, bytes];
@@ -149,7 +147,6 @@ obj JacCompiler(SessionHooks) {
     ) -> uni.Module;
 
     def enter_compile(ctx: SessionContext) -> CompileFrame;
-    def assemble_python(program: JacProgram, module: uni.Module);
     def assemble_native(program: JacProgram, module: uni.Module, checking: bool);
     def leave_compile(ctx: SessionContext, frame: CompileFrame);
     def finish_compile(frame: CompileFrame);

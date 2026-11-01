@@ -60,8 +60,6 @@ def py_ir_passes(request: ProductRequest) -> PassSchedule;
 
 def frozen_passes(request: ProductRequest) -> PassSchedule;
 
-def bytecode_passes(request: ProductRequest) -> PassSchedule;
-
 def native_ir_passes(request: ProductRequest) -> PassSchedule;
 
 def native_lower_passes(request: ProductRequest) -> PassSchedule;
@@ -77,6 +75,10 @@ def format_lintfix_passes(request: ProductRequest) -> PassSchedule;
 def lint_passes(request: ProductRequest) -> PassSchedule;
 
 def python_ast_passes(request: ProductRequest) -> PassSchedule;
+
+def assemble_bytecode(program: JacProgram, module: Module) -> bool;
+
+def drop_bytecode(program: JacProgram, module: Module);
 
 def python_symbols_passes(request: ProductRequest) -> PassSchedule;
 
@@ -213,7 +215,10 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              on_import_error=ImportFallback.REPORT
          ),
          CompilationProduct.BYTECODE: ProductSpec(
-             needs=[CompilationProduct.PY_IR], passes=bytecode_passes
+             needs=[CompilationProduct.PY_IR],
+             action=assemble_bytecode,
+             drop=drop_bytecode,
+             acts=True
          ),
          CompilationProduct.NATIVE_IR: ProductSpec(
              needs=[CompilationProduct.FLOW, CompilationProduct.ANALYSIS],

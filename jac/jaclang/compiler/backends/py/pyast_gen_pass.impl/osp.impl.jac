@@ -1,4 +1,4 @@
-impl JcirGenPass.exit_report_stmt with ReportStmt exit {
+impl PyastGenPass.exit_report_stmt with ReportStmt exit {
     self.set_out(
         here,
         [
@@ -15,7 +15,7 @@ impl JcirGenPass.exit_report_stmt with ReportStmt exit {
     );
 }
 
-impl JcirGenPass.exit_visit_stmt with VisitStmt exit {
+impl PyastGenPass.exit_visit_stmt with VisitStmt exit {
     loc = self.name_load('self' if here.from_walker else Con.VISITOR.value);
     visit_call = self.call_node(
         self.jaclib_obj('visit'), [loc, self.val(here.target)], []
@@ -50,7 +50,7 @@ impl JcirGenPass.exit_visit_stmt with VisitStmt exit {
     );
 }
 
-impl JcirGenPass.exit_disengage_stmt with DisengageStmt exit {
+impl PyastGenPass.exit_disengage_stmt with DisengageStmt exit {
     loc = self.name_load('self' if here.from_walker else Con.VISITOR.value);
     self.set_out(
         here,
@@ -65,7 +65,7 @@ impl JcirGenPass.exit_disengage_stmt with DisengageStmt exit {
     );
 }
 
-impl JcirGenPass._fold_sorted_traversal(nd: FuncCall) -> bool {
+impl PyastGenPass._fold_sorted_traversal(nd: FuncCall) -> bool {
     if (not isinstance(nd.target, Name)) or nd.target.sym_name != 'sorted' {
         return False;
     }
@@ -160,7 +160,7 @@ impl JcirGenPass._fold_sorted_traversal(nd: FuncCall) -> bool {
     return True;
 }
 
-impl JcirGenPass._order_term(
+impl PyastGenPass._order_term(
     expr: Expr, param: str, node_ty: str, edge_ty: str
 ) -> (tuple[str, bool, bool] | None) {
     desc = False;
@@ -182,7 +182,7 @@ impl JcirGenPass._order_term(
     return (right.sym_name, desc, False);
 }
 
-impl JcirGenPass._sort_order_specs(
+impl PyastGenPass._sort_order_specs(
     key: Expr, node_ty: str, edge_ty: str
 ) -> (list[tuple[str, bool, bool]] | None) {
     if not isinstance(key, LambdaExpr) {
@@ -220,7 +220,7 @@ impl JcirGenPass._sort_order_specs(
     return out;
 }
 
-impl JcirGenPass._final_hop_types(nd: EdgeRefTrailer) -> tuple[str, str] {
+impl PyastGenPass._final_hop_types(nd: EdgeRefTrailer) -> tuple[str, str] {
     node_ty = '';
     edge_ty = '';
     for item in nd.chain {
@@ -236,7 +236,7 @@ impl JcirGenPass._final_hop_types(nd: EdgeRefTrailer) -> tuple[str, str] {
     return (node_ty, edge_ty);
 }
 
-impl JcirGenPass._is_edge_ref_target(target: UniNode) -> bool {
+impl PyastGenPass._is_edge_ref_target(target: UniNode) -> bool {
     if isinstance(target, EdgeRefTrailer) {
         return not target.edges_only and not target.is_async;
     }
@@ -253,7 +253,7 @@ impl JcirGenPass._is_edge_ref_target(target: UniNode) -> bool {
     return False;
 }
 
-impl JcirGenPass._cmp_op_str(op: CgNode) -> (str | None) {
+impl PyastGenPass._cmp_op_str(op: CgNode) -> (str | None) {
     if op.cls == 'Eq' {
         return '==';
     }
@@ -278,13 +278,13 @@ impl JcirGenPass._cmp_op_str(op: CgNode) -> (str | None) {
     return None;
 }
 
-impl JcirGenPass._query_filter_kws(
+impl PyastGenPass._query_filter_kws(
     fc: FilterCompr, type_arg: str, preds_arg: str
 ) -> list[CgNode] {
     return self._query_filter_kws_ord(fc, type_arg, preds_arg, False, [])[0];
 }
 
-impl JcirGenPass._order_name_of(x: Expr) -> (tuple[str, bool] | None) {
+impl PyastGenPass._order_name_of(x: Expr) -> (tuple[str, bool] | None) {
     inner = x;
     desc = False;
     if isinstance(inner, UnaryExpr) {
@@ -300,7 +300,7 @@ impl JcirGenPass._order_name_of(x: Expr) -> (tuple[str, bool] | None) {
     return (inner.sym_name, desc);
 }
 
-impl JcirGenPass._query_filter_kws_ord(
+impl PyastGenPass._query_filter_kws_ord(
     fc: FilterCompr,
     type_arg: str,
     preds_arg: str,
@@ -470,7 +470,7 @@ impl JcirGenPass._query_filter_kws_ord(
     return (kws, saw_order);
 }
 
-impl JcirGenPass._warn_inplace_sort(nd: FuncCall) -> None {
+impl PyastGenPass._warn_inplace_sort(nd: FuncCall) -> None {
     tgt = nd.target;
     if (not isinstance(tgt, AtomTrailer))
         or not tgt.is_attr
@@ -504,7 +504,7 @@ impl JcirGenPass._warn_inplace_sort(nd: FuncCall) -> None {
     }
 }
 
-impl JcirGenPass._traversal_consumed_now(nd: EdgeRefTrailer) -> bool {
+impl PyastGenPass._traversal_consumed_now(nd: EdgeRefTrailer) -> bool {
     parent = nd.parent;
     if parent is None {
         return False;
@@ -529,7 +529,7 @@ impl JcirGenPass._traversal_consumed_now(nd: EdgeRefTrailer) -> bool {
     return False;
 }
 
-impl JcirGenPass._simple_hop(nd: EdgeRefTrailer) -> (list[CgNode] | None) {
+impl PyastGenPass._simple_hop(nd: EdgeRefTrailer) -> (list[CgNode] | None) {
     if nd.is_async or self._traversal_consumed_now(nd) {
         return None;
     }
@@ -577,7 +577,7 @@ impl JcirGenPass._simple_hop(nd: EdgeRefTrailer) -> (list[CgNode] | None) {
     return [origin_ast, self.const_of(hop.edge_dir.value), type_ast];
 }
 
-impl JcirGenPass.exit_edge_ref_trailer with EdgeRefTrailer exit {
+impl PyastGenPass.exit_edge_ref_trailer with EdgeRefTrailer exit {
     simple = self._simple_hop(here);
     if simple is not None {
         kws: list[CgNode] = [];
@@ -714,17 +714,17 @@ impl JcirGenPass.exit_edge_ref_trailer with EdgeRefTrailer exit {
     self.set_out(here, [pynode]);
 }
 
-impl JcirGenPass.exit_edge_op_ref with EdgeOpRef exit {
+impl PyastGenPass.exit_edge_op_ref with EdgeOpRef exit {
     self.set_out(
         here, [self.name_load(Con.HERE.value if here.from_walker else 'self')]
     );
 }
 
-impl JcirGenPass.exit_disconnect_op with DisconnectOp exit {
+impl PyastGenPass.exit_disconnect_op with DisconnectOp exit {
     self.set_out(here, self.outs(here.edge_spec));
 }
 
-impl JcirGenPass.exit_connect_op with ConnectOp exit {
+impl PyastGenPass.exit_connect_op with ConnectOp exit {
     self.set_out(
         here,
         [
@@ -763,7 +763,7 @@ impl JcirGenPass.exit_connect_op with ConnectOp exit {
     );
 }
 
-impl JcirGenPass.exit_filter_compr with FilterCompr exit {
+impl PyastGenPass.exit_filter_compr with FilterCompr exit {
     iter_name = 'i';
     comprs: list[CgNode] = [];
     if here.f_type {
@@ -845,7 +845,7 @@ impl JcirGenPass.exit_filter_compr with FilterCompr exit {
     }
 }
 
-impl JcirGenPass.exit_assign_compr with AssignCompr exit {
+impl PyastGenPass.exit_assign_compr with AssignCompr exit {
     keys: list[CgNode] = [];
     values: list[CgNode] = [];
     for i in here.assigns {

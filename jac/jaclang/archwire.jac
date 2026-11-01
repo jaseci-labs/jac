@@ -641,7 +641,7 @@ graph import {
     compiler.backends.py.artifact_imports ++> dist.precompile_bytecode.seal_runtime_closure {
         runtime_sources
     }
-    compiler.backends.py.codegen_shim ++> cli.commands.transform.jac2py
+    compiler.backends.py.python_text ++> cli.commands.transform.jac2py
         | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py {
         generated_python
     }
@@ -2572,7 +2572,7 @@ graph import {
     ]
     runtime.builtin as blt --> scale.tests.server.test_restspec;
     runtime.constants ++> [
-        compiler.backends.py.jcir_gen_pass | compiler.frontend.unitree {
+        compiler.backends.py.pyast_gen_pass | compiler.frontend.unitree {
             Constants as Con,
             EdgeDir
         },
@@ -2590,7 +2590,7 @@ graph import {
             | server.identity.user_manager
             | server.server { Constants as Con },
     ]
-    runtime.constants --> compiler.backends.py.jcir_gen_pass.JcirGenPass._gen_native_interop_stubs {
+    runtime.constants --> compiler.backends.py.pyast_gen_pass.PyastGenPass._gen_native_interop_stubs {
         JAC_TO_CTYPES_STR
     }
     runtime.constructs ++> [
@@ -2732,7 +2732,7 @@ graph import {
     runtime.osp_kernel ++> [
         byllm.visit_routing._route_context { _current_scope },
         compiler.backends.es.esast_gen_pass
-            | compiler.backends.py.jcir_gen_pass
+            | compiler.backends.py.pyast_gen_pass
             | compiler.passes.comptime_resolve_pass
             | compiler.passes.jsx_intrinsic_guard_pass
             | compiler.passes.scope_walk
@@ -2747,7 +2747,7 @@ graph import {
     }
     runtime.osp_tag ++> compiler.backends.es.esast_gen_pass.EsastGenPass._build_osp_tags_js
         | compiler.backends.native.na_ir_gen_pass
-        | compiler.backends.py.jcir_gen_pass.JcirGenPass.exit_module
+        | compiler.backends.py.pyast_gen_pass.PyastGenPass.exit_module
         | compiler.jc_unit._alert_tag
         | compiler.native_compiler
         | compiler.passes.osp_analysis { stable_osp_tag }
@@ -2817,6 +2817,7 @@ graph import {
         | data.type_identity
         | server.assembly { PreparedApplication }
     runtime.python.capi ++> [
+        compiler.backends.py.kernel_bytecode { required, write_buffer },
         compiler.backends.py.jacpython.native_api {
             boundary_failure,
             checked,
@@ -2846,6 +2847,7 @@ graph import {
         },
     ]
     runtime.python.compiler_integer ++> [
+        compiler.backends.py.pyast_build { integer_from_digits },
         compiler.backends.py.jacpython.codegen_util { PyBigInt, integer_add },
         compiler.backends.py.jacpython.compiler_emit { PyBigInt, integer_negate },
         compiler.frontend.python.annotation_unparse { PyBigInt, integer_decimal },
@@ -2864,8 +2866,10 @@ graph import {
         constant_key
     }
     runtime.python.constant_output ++> compiler.backends.py.jacpython.native_api
+        | compiler.backends.py.kernel_bytecode
         | compiler.frontend.python.ast_output { constant_object }
     runtime.python.cpython_api ++> [
+        compiler.backends.py.kernel_bytecode { PyObject, jacpy_release },
         compiler.backends.py.jacpython.native_api {
             NULL,
             PyErr_SetObject,
@@ -2990,6 +2994,7 @@ graph import {
         PyInterpreterState_CONFIG
     }
     runtime.python.native_services ++> [
+        compiler.backends.py.kernel_bytecode { take_buffer },
         compiler.frontend.python.ast_input { take_buffer },
         compiler.frontend.python.compiler_diagnostics.syntax_warning { warn },
         compiler.frontend.python.parser_actions.pa_decode_bytes_escape_body {
@@ -3022,6 +3027,17 @@ graph import {
         type_has_feature
     }
     runtime.python.objects ++> [
+        compiler.backends.py.kernel_bytecode { PyCode, PyError, PyInt },
+        compiler.backends.py.pyast_build {
+            PyBool,
+            PyBytes,
+            PyEllipsis,
+            PyFloat,
+            PyInt,
+            PyObj,
+            PyStr,
+            py_none
+        },
         compiler.backends.py.jacpython.assembler { PyCode },
         compiler.backends.py.jacpython.codegen_util {
             PyInt,
@@ -3624,7 +3640,7 @@ graph import {
         compiler.backends.es.esast_gen_pass.EsastGenPass._apply_fw_coercion
             | compiler.backends.es.primitives_es.ESBuiltinEmitter.emit_print
             | compiler.backends.native.mir.lower_types
-            | compiler.backends.py.jcir_gen_pass
+            | compiler.backends.py.pyast_gen_pass
             | compiler.types.ct_eval
             | comptime._scalar_size_align { shape_of },
         compiler.backends.es.esast_gen_pass.EsastGenPass._exit_name_impl
@@ -3637,7 +3653,7 @@ graph import {
         compiler.backends.es.jac_runtime_js._build_types_runtime_js { numeric_shapes },
         compiler.backends.es.primitives_es.ESBuiltinEmitter.emit_wrapping { is_sized },
         compiler.backends.native.na_ir_gen_pass { ScalarShape, range_of, shape_of },
-        compiler.backends.py.jcir_facts | compiler.boundary_rules.json_refusal {
+        compiler.backends.py.pyast_facts | compiler.boundary_rules.json_refusal {
             sized_scalar_names
         },
         compiler.boundary_rules.non_string_key { sized_scalar_names },
@@ -5665,24 +5681,19 @@ graph import compiler {
         package_sources,
         resolve_imports
     }
-    backends.py.codegen_shim --> [
-        driver.compiler.assemble_jcir { compile_ir },
-        driver.source_products.python_source | tools.lang_tools.AstTool.ir {
-            generated_python
-        },
-    ]
+    backends.py.kernel_bytecode --> driver.pipeline.assemble_bytecode {
+        GeneratedPythonRejected,
+        kernel_code_object
+    }
+    backends.py.kernel_bytecode --> tools.lang_tools.AstTool.ir { kernel_python_ast }
     backends.py.jacpython.compiler_context ++> frontend.python.compiler_symtable {
         compile_context
     }
-    backends.py.jcir_bc_gen_pass ++> driver.pipeline.bytecode_passes {
-        JcirBytecodeGenPass
-    }
-    backends.py.jcir_bc_gen_pass --> driver.compiler.assemble_jcir {
-        JcirBytecodeGenPass
-    }
-    backends.py.jcir_gen_pass ++> driver.module_compile | driver.pipeline.py_ir_passes {
-        JcirGenPass
-    }
+    backends.py.python_text --> driver.source_products.python_source
+        | tools.lang_tools.AstTool.ir { generated_python }
+    backends.py.pyast_gen_pass ++> driver.module_compile
+        | driver.pipeline.assemble_bytecode
+        | driver.pipeline.py_ir_passes { PyastGenPass }
     boundary_rules ++> [
         passes.placement_pass.NativeLegality.settle { ability_crossing },
         passes.placement_pass.bridged_use_crosses { ability_crossing },
@@ -5753,12 +5764,12 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._final_variant_value {
             final_glob_value
         },
-        backends.py.jcir_gen_pass
+        backends.py.pyast_gen_pass
             | passes.type_checker_pass.TypeCheckPass._check_c_variadic_args {
             c_variadic_param
         },
-        backends.py.jcir_gen_pass.JcirGenPass._c_copy_rewrite { foreign_read_copies },
-        backends.py.jcir_gen_pass.JcirGenPass._c_interop_call_rewrite {
+        backends.py.pyast_gen_pass.PyastGenPass._c_copy_rewrite { foreign_read_copies },
+        backends.py.pyast_gen_pass.PyastGenPass._c_interop_call_rewrite {
             c_lent_arg_elem,
             c_lent_param,
             c_param_type,
@@ -5768,13 +5779,13 @@ graph import compiler {
             is_ptr_type,
             named_function_of
         },
-        backends.py.jcir_gen_pass.JcirGenPass._c_vararg_rewrite { c_type_spec },
-        backends.py.jcir_gen_pass.JcirGenPass._clib_block_desc {
+        backends.py.pyast_gen_pass.PyastGenPass._c_vararg_rewrite { c_type_spec },
+        backends.py.pyast_gen_pass.PyastGenPass._clib_block_desc {
             c_type_spec,
             is_foreign_struct_archetype,
             is_opaque_c_archetype
         },
-        backends.py.jcir_gen_pass.JcirGenPass._is_c_global_value {
+        backends.py.pyast_gen_pass.PyastGenPass._is_c_global_value {
             clib_global_of_name,
             is_builtin_addressof_call
         },
@@ -5894,7 +5905,7 @@ graph import compiler {
             import_binds_client_native
         },
         backends.es.esast_gen_pass.EsastGenPass._is_service_bridge_import
-            | backends.py.jcir_gen_pass.JcirGenPass._sv_bridge_walker_call {
+            | backends.py.pyast_gen_pass.PyastGenPass._sv_bridge_walker_call {
             CrossAppKind,
             classify_cross_app_import
         },
@@ -5915,8 +5926,8 @@ graph import compiler {
             import_provider_app,
             import_provider_route
         },
-        backends.py.jcir_gen_pass.JcirGenPass._sv_consumer_app_expr { module_app },
-        backends.py.jcir_gen_pass.JcirGenPass.exit_import {
+        backends.py.pyast_gen_pass.PyastGenPass._sv_consumer_app_expr { module_app },
+        backends.py.pyast_gen_pass.PyastGenPass.exit_import {
             CrossAppKind,
             classify_cross_app_import,
             import_binds_client_native
@@ -5989,7 +6000,7 @@ graph import compiler {
         placement.placement_solver.dependency_summary { hub_module_for_path },
     ]
     driver.boundary_classify --> [
-        backends.py.jcir_gen_pass.JcirGenPass._generate_sv_to_sv_stubs {
+        backends.py.pyast_gen_pass.PyastGenPass._generate_sv_to_sv_stubs {
             import_provider_app,
             import_provider_route
         },
@@ -6226,8 +6237,7 @@ graph import compiler {
     driver.pipeline_types ++> [
         backends.es.esast_gen_pass
             | backends.native.na_compile_pass
-            | backends.py.jcir_bc_gen_pass
-            | backends.py.jcir_gen_pass
+            | backends.py.pyast_gen_pass
             | passes.ast_validation_pass
             | passes.boundary_analysis_pass
             | passes.context
@@ -6456,7 +6466,7 @@ graph import compiler {
             field_initialization,
             is_field_marker
         },
-        backends.py.jcir_gen_pass.JcirGenPass.exit_has_var { is_field_marker },
+        backends.py.pyast_gen_pass.PyastGenPass.exit_has_var { is_field_marker },
     ]
     frontend.codeinfo ++> [
         backends.es.client_kernel_cache._es_backend_fingerprint
@@ -6655,12 +6665,12 @@ graph import compiler {
             HDR_TOTAL,
             RC_SENTINEL
         },
-        backends.py.jcir_gen_pass { BoundaryTypeInfo, InteropBinding },
-        backends.py.jcir_gen_pass.JcirGenPass._class_ref | types.ct_eval {
+        backends.py.pyast_gen_pass { BoundaryTypeInfo, InteropBinding },
+        backends.py.pyast_gen_pass.PyastGenPass._class_ref | types.ct_eval {
             module_dotted_name
         },
-        backends.py.jcir_gen_pass.JcirGenPass._materialize { module_dotted_name },
-        backends.py.jcir_gen_pass.JcirGenPass._native_test_shim_stmts {
+        backends.py.pyast_gen_pass.PyastGenPass._materialize { module_dotted_name },
+        backends.py.pyast_gen_pass.PyastGenPass._native_test_shim_stmts {
             native_test_symbol,
             native_unit_prefix
         },
@@ -6776,7 +6786,7 @@ graph import compiler {
     ]
     frontend.codeinfo --> [
         backends.es.esast_gen_pass.EsastGenPass._generate_sv_import_stubs
-            | backends.py.jcir_gen_pass.JcirGenPass._sv_endpoint_effects
+            | backends.py.pyast_gen_pass.PyastGenPass._sv_endpoint_effects
             | passes.boundary_analysis_pass.BoundaryAnalysisPass._collect_boundary_type {
             endpoint_key
         },
@@ -6805,12 +6815,12 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._skip_is_other_module {
             resolve_native_module
         },
-        backends.py.jcir_gen_pass.JcirGenPass._gen_native_interop_stubs {
+        backends.py.pyast_gen_pass.PyastGenPass._gen_native_interop_stubs {
             native_def_symbol,
             native_symbol_name,
             native_unit_prefix
         },
-        backends.py.jcir_gen_pass.JcirGenPass.exit_archetype
+        backends.py.pyast_gen_pass.PyastGenPass.exit_archetype
             | passes.boundary_analysis_pass.BoundaryAnalysisPass.finish {
             endpoint_key
         },
@@ -6880,7 +6890,6 @@ graph import compiler {
     type frontend.codeinfo ++> [
         backends.native.link_glue | backends.native.link_plan { InteropBinding },
         backends.native.na_compile_pass
-            | backends.py.codegen_shim
             | driver.nativecache { CodeGenTarget },
         backends.native.na_ir_gen_pass { NativeModuleLayout },
         driver.boundary_classify { InteropManifest },
@@ -6890,7 +6899,7 @@ graph import compiler {
     ]
     frontend.const_fold ++> [
         backends.native.na_ir_gen_pass
-            | backends.py.jcir_gen_pass
+            | backends.py.pyast_gen_pass
             | c_interop.c_scalar_constant
             | passes.layout_pass
             | types.enum_utils
@@ -7004,7 +7013,7 @@ graph import compiler {
             Tokens as Tok
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._unpack_into { SymbolStorage },
-        backends.py.jcir_gen_pass {
+        backends.py.pyast_gen_pass {
             CodeContext,
             OwnershipKind,
             SymbolStorage,
@@ -7109,7 +7118,7 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
             OwnershipKind
         },
-        backends.py.jcir_gen_pass.JcirGenPass._gen_native_interop_stubs {
+        backends.py.pyast_gen_pass.PyastGenPass._gen_native_interop_stubs {
             Tokens as _NsTok
         },
         c_interop.foreign_read_is_place { is_borrow_kind },
@@ -7168,8 +7177,8 @@ graph import compiler {
             E9002,
             E9003
         },
-        backends.py.jcir_bc_gen_pass { E5040, E5043 },
-        backends.py.jcir_gen_pass {
+        driver.pipeline.assemble_bytecode { E5040, E5043 },
+        backends.py.pyast_gen_pass {
             E5001,
             E5002,
             E5003,
@@ -7528,7 +7537,6 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._edge_tag_literal { E5097 },
         backends.es.esast_gen_pass.EsastGenPass._ensure_backend { E5081 },
         backends.es.esast_gen_pass.EsastGenPass._get_ast_or_default { E5097 },
-        driver.compiler.assemble_jcir { E5043 },
         passes.boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
             E5083,
             E5100
@@ -7712,14 +7720,14 @@ graph import compiler {
             enclosing_loop,
             frame_owns
         },
-        backends.py.jcir_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
+        backends.py.pyast_gen_pass { LoopLinks, LoopStmt, PassLink, in_loop_else },
         passes.ast_validation_pass { in_loop_else },
         passes.cfg_build_pass { enclosing_loop },
     ]
     frontend.module_facts ++> [
         backends.es.esast_gen_pass
             | backends.native.na_ir_gen_pass
-            | backends.py.jcir_gen_pass
+            | backends.py.pyast_gen_pass
             | driver.boundary_classify.is_server_anchored_module
             | driver.module_compile
             | driver.program.JacProgram.stamp_native_import_facts
@@ -7786,6 +7794,131 @@ graph import compiler {
     }
     frontend.python.ast_input ++> backends.py.jacpython.native_api { read_node }
     frontend.python.ast_nodes ++> [
+        backends.py.kernel_bytecode { Module },
+        backends.py.pyast_build {
+            Add,
+            And,
+            AnnAssign,
+            Assert,
+            Assign,
+            AsyncFor,
+            AsyncFunctionDef,
+            AsyncWith,
+            Attribute,
+            AugAssign,
+            Await,
+            BinOp,
+            BitAnd,
+            BitOr,
+            BitXor,
+            BoolOp,
+            Break,
+            Call,
+            ClassDef,
+            Compare,
+            Constant,
+            Continue,
+            Del,
+            Delete,
+            Dict,
+            DictComp,
+            Div,
+            Eq,
+            ExceptHandler,
+            Expr,
+            FloorDiv,
+            For,
+            FormattedValue,
+            FunctionDef,
+            GeneratorExp,
+            Global,
+            Gt,
+            GtE,
+            If,
+            IfExp,
+            Import,
+            ImportFrom,
+            In,
+            Interpolation,
+            Invert,
+            Is,
+            IsNot,
+            JoinedStr,
+            LShift,
+            Lambda,
+            List,
+            ListComp,
+            Load,
+            Lt,
+            LtE,
+            MatMult,
+            Match,
+            MatchAs,
+            MatchClass,
+            MatchMapping,
+            MatchOr,
+            MatchSequence,
+            MatchSingleton,
+            MatchStar,
+            MatchValue,
+            Mod,
+            Module,
+            Mult,
+            Name,
+            NamedExpr,
+            Nonlocal,
+            Not,
+            NotEq,
+            NotIn,
+            Or,
+            ParamSpec,
+            Pass,
+            Pow,
+            RShift,
+            Raise,
+            Return,
+            Set,
+            SetComp,
+            Slice,
+            Starred,
+            Store,
+            Sub,
+            Subscript,
+            TemplateStr,
+            Try,
+            TryStar,
+            Tuple,
+            TypeAlias,
+            TypeIgnore,
+            TypeVar,
+            TypeVarTuple,
+            UAdd,
+            USub,
+            UnaryOp,
+            While,
+            With,
+            Yield,
+            YieldFrom,
+            alias,
+            arg,
+            arguments,
+            ast_node,
+            boolop,
+            cmpop,
+            comprehension,
+            excepthandler,
+            expr,
+            expr_context,
+            keyword,
+            match_case,
+            operator,
+            pattern,
+            stmt,
+            type_ignore,
+            type_param,
+            unaryop,
+            withitem
+        },
         backends.py.jacpython.codegen_util {
             Add,
             AnnAssign,
@@ -8093,7 +8226,8 @@ graph import compiler {
             mod
         },
     ]
-    frontend.python.ast_output ++> backends.py.jacpython.native_api { ast_write_node }
+    frontend.python.ast_output ++> backends.py.jacpython.native_api
+        | backends.py.kernel_bytecode { ast_write_node }
     frontend.python.ast_validation ++> backends.py.jacpython.native_api {
         validate_ast_value
     }
@@ -8169,6 +8303,7 @@ graph import compiler {
         validate_module_body
     }
     frontend.python.parser ++> [
+        backends.py.pyast_build { parse_file },
         backends.py.jacpython.native_api {
             parse_eval_source,
             parse_file,
@@ -8187,11 +8322,14 @@ graph import compiler {
     frontend.python.source_input ++> backends.py.jacpython.native_api {
         decode_source_value
     }
-    frontend.python.syntax_error ++> backends.py.jacpython.native_api {
-        source_character_column,
-        split_source_lines,
-        syntax_failure
-    }
+    frontend.python.syntax_error ++> [
+        backends.py.jacpython.native_api {
+            source_character_column,
+            split_source_lines,
+            syntax_failure
+        },
+        backends.py.pyast_build { syntax_failure },
+    ]
     frontend.relations ++> [
         driver.program | driver.progstate | passes.scope_walk { ScopeChild },
         types.types {
@@ -8220,7 +8358,7 @@ graph import compiler {
     ]
     frontend.roles ++> [
         backends.native.na_ir_gen_pass
-            | backends.py.jcir_gen_pass
+            | backends.py.pyast_gen_pass
             | driver.program
             | driver.progstate
             | passes.ast_validation_pass
@@ -8286,7 +8424,7 @@ graph import compiler {
         driver.ifacecache._span_from_record { Span },
         passes.context { CodeLocInfo, Span },
     ]
-    frontend.srcloc --> driver.compiler.assemble_jcir { Span }
+    frontend.srcloc ++> driver.pipeline.assemble_bytecode { Span }
     frontend.unitree ++> [
         backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable {
             ability_of_symbol
@@ -8295,14 +8433,13 @@ graph import compiler {
             definition_qualname
         },
         backends.native.primitives_native { Expr, UniNode },
-        backends.py.jcir_bc_gen_pass
-            | driver.context_passes
+        driver.context_passes
             | driver.module_analysis
             | passes.annex_weave
             | tests.test_client_codegen_facts
             | tests.test_pipeline_products
             | types.stubcat.modiface { Module },
-        backends.py.jcir_gen_pass {
+        backends.py.pyast_gen_pass {
             Ability,
             ArchHas,
             ArchSpec,
@@ -9767,6 +9904,8 @@ graph import compiler {
         | backends.native.mir.lower_types
         | backends.native.na_compile_pass
         | backends.native.na_ir_gen_pass
+        | backends.py.kernel_bytecode
+        | backends.py.python_text
         | driver.boundary_classify
         | driver.compiler
         | driver.ifacecache.IfaceRegistry._client_edges
@@ -9798,6 +9937,7 @@ graph import compiler {
         | tools.treeprinter
         | tools.unparse_pass;
     type frontend.unitree ++> [
+        backends.py.pyast_recipe { UniNode },
         backends.native.entry_points
             | driver.ifacecache
             | driver.nativecache
@@ -9955,10 +10095,11 @@ graph import compiler {
         driver.pipeline.ir_passes { CFGBuildPass },
         tools.cfg_dot { is_structural_child, unwrap_to_bool },
     ]
+    kernel_api ++> backends.py.kernel_bytecode { KernelError }
     passes.comptime_resolve_pass --> driver.pipeline.ir_passes { ComptimeResolvePass }
     passes.context ++> [
         backends.es.esast_gen_pass
-            | backends.py.jcir_gen_pass
+            | backends.py.pyast_gen_pass
             | tools.cfg_dot
             | tools.doc_ir_gen_pass
             | tools.grammar_extract_pass
@@ -9967,7 +10108,6 @@ graph import compiler {
             | tools.unparse_pass { TreePass },
         backends.native.mir.backend
             | backends.native.na_compile_pass
-            | backends.py.jcir_bc_gen_pass
             | driver.context_passes
             | placement.placement_solver
             | tools.comment_attach_pass
@@ -9975,6 +10115,7 @@ graph import compiler {
         backends.native.na_ir_gen_pass { Alert, CompilerPass },
         driver.ifacecache._alert_from_record
             | driver.module_compile.report_missing_native_ir
+            | driver.pipeline.assemble_bytecode
             | driver.program
             | frontend.kernel_analyze
             | frontend.parser.frontend
@@ -9987,7 +10128,6 @@ graph import compiler {
             PassResult as CompletedPassResult
         },
     ]
-    passes.context --> driver.compiler.assemble_jcir { Alert }
     type passes.context ++> [
         driver.compiler { Alert },
         native_compiler { Alert, PassResult },
@@ -10516,7 +10656,7 @@ graph import compiler {
             imported_module_name
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._isinstance_type_name
-            | backends.py.jcir_gen_pass.JcirGenPass._exit_func_call_impl {
+            | backends.py.pyast_gen_pass.PyastGenPass._exit_func_call_impl {
             CallKind,
             classify_call
         },
@@ -10657,7 +10797,7 @@ graph import compiler {
             ct_truthy
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._instantiate_generic { ct_mangle },
-        backends.py.jcir_gen_pass.JcirGenPass._ct_kind {
+        backends.py.pyast_gen_pass.PyastGenPass._ct_kind {
             CtDict,
             CtEnumMember,
             CtFunc,
@@ -10668,10 +10808,10 @@ graph import compiler {
             CtType,
             ct_is_scalar
         },
-        backends.py.jcir_gen_pass.JcirGenPass._ct_materializable {
+        backends.py.pyast_gen_pass.PyastGenPass._ct_materializable {
             ct_is_materializable
         },
-        backends.py.jcir_gen_pass.JcirGenPass._ct_order_key {
+        backends.py.pyast_gen_pass.PyastGenPass._ct_order_key {
             CtBool,
             CtBytes,
             CtEnumMember,
@@ -10685,7 +10825,7 @@ graph import compiler {
             CtType,
             ct_repr
         },
-        backends.py.jcir_gen_pass.JcirGenPass._materialize {
+        backends.py.pyast_gen_pass.PyastGenPass._materialize {
             CtDict,
             CtEnumMember,
             CtFunc,
@@ -10698,14 +10838,14 @@ graph import compiler {
             ct_host_scalar,
             ct_is_scalar
         },
-        backends.py.jcir_gen_pass.JcirGenPass.int_const_of { int_host, int_wide_bytes },
+        backends.py.pyast_gen_pass.PyastGenPass.int_const_of { int_host, int_wide_bytes },
         frontend.host.HostServices.ct_environment | frontend.kernel_inputs {
             CtEnvironment
         },
         passes.type_checker_pass { ct_is_iterable, ct_str, ct_truthy, ct_type_name },
     ]
     type types.ct_value ++> [
-        backends.py.jcir_gen_pass { CtInt, CtRecord, CtValue },
+        backends.py.pyast_gen_pass { CtInt, CtRecord, CtValue },
         frontend.host | frontend.kernel_host { CtEnvironment },
         frontend.unitree { CtValue },
     ]
@@ -11065,7 +11205,7 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._widened_tuple_decl_type {
             ClassType as _WdClassType
         },
-        backends.py.jcir_gen_pass.JcirGenPass._clib_block_desc { FunctionType },
+        backends.py.pyast_gen_pass.PyastGenPass._clib_block_desc { FunctionType },
         c_interop._ambient_c_call_returns { FunctionType, OverloadedType },
         c_interop.c_type_arg { AnyType, ClassType, UnknownType },
         passes.boundary_analysis_pass.BoundaryAnalysisPass.enter_atom_trailer
@@ -11698,44 +11838,24 @@ graph import compiler.backends.native.mir {
 }
 
 graph import compiler.backends.py {
-    codegen_ir ++> [
-        codegen_shim {
-            CirContainer,
-            CirDiag,
-            CirModule,
-            CodegenIrFormatError,
-            CodegenIrVersionError,
-            DIAG_ERROR,
-            OP_BYTES,
-            OP_ELLIPSIS,
-            OP_END,
-            OP_FALSE,
-            OP_FLOAT,
-            OP_INT,
-            OP_INT_BIG,
-            OP_LIST,
-            OP_LOC,
-            OP_NODE,
-            OP_NONE,
-            OP_PARSE_SPLICE,
-            OP_STR,
-            OP_TRUE,
-            OP_TUPLE,
-            _r_svarint,
-            _r_varint,
-            read_container
-        },
-        jcir_gen_pass { CodegenIrWriter, int_literal_magnitude },
-    ]
-    codegen_shim ++> jcir_bc_gen_pass.JcirBytecodeGenPass.transcribe_module {
-        compile_ir
+    jacpython.product_compile ++> kernel_bytecode { compile_ast }
+    kernel_bytecode ++> python_text { kernel_python_ast }
+    pyast_facts ++> pyast_gen_pass {
+        PYAST_AMBIENT_TYPING_NAMES,
+        PYAST_BUILTIN_NAMES,
+        pyast_is_test_path
     }
-    jcir_facts ++> [
-        codegen_ir { jcir_python_version },
-        jcir_gen_pass {
-            JCIR_AMBIENT_TYPING_NAMES,
-            JCIR_BUILTIN_NAMES,
-            jcir_is_test_path
+    pyast_build ++> kernel_bytecode { build_module_ast }
+    pyast_recipe ++> [
+        kernel_bytecode { CgNode },
+        pyast_build { CgEllipsis, CgNode, CgSplice, CgWideInt },
+        pyast_gen_pass {
+            CgEllipsis,
+            CgItem,
+            CgNode,
+            CgSplice,
+            CgWideInt,
+            int_literal_magnitude
         },
     ]
 }
@@ -12350,7 +12470,8 @@ graph import compiler.driver {
     pass_driver ++> [
         application._prepare | session_compile.compile_in_session { compile_progress },
         ifacecache.IfaceRegistry.analysis_profile { diagnostic_policy_for },
-        module_compile.report_missing_native_ir { deliver_alerts },
+        module_compile.report_missing_native_ir
+            | pipeline.assemble_bytecode { deliver_alerts },
         pipeline.execute_passes { build_diagnostic_policy, run_pass },
         pipeline.run_utility { run_pass },
     ]
@@ -12365,7 +12486,6 @@ graph import compiler.driver {
         compiler.JacCompiler.assemble_native
             | module_analysis.ModuleAnalysis.require
             | nativecache.NativeBuildSession._finish { require },
-        compiler.JacCompiler.assemble_python { require },
         module_analysis.ModuleAnalysis.ready { product_ready },
         module_compile { product_passes, unavailable },
         source_failures.bootstrap_tier_failure_details { tier_reason },
@@ -12373,6 +12493,7 @@ graph import compiler.driver {
     ]
     pipeline --> [
         application._tree_source { CompilationProduct, require },
+        session_compile.SessionHooks.assemble_python { CompilationProduct, require },
         compiler.JacCompiler._format_program
             | ifacecache.IfaceRegistry._ensure_flow_graph { require },
         compiler.JacCompiler.ensure_client_codegen

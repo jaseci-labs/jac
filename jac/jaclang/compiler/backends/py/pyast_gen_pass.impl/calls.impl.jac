@@ -1,4 +1,4 @@
-impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
+impl PyastGenPass.exit_atom_trailer with AtomTrailer exit {
     if here.is_genai {
         self.set_out(here, []);
     }
@@ -224,7 +224,7 @@ impl JcirGenPass.exit_atom_trailer with AtomTrailer exit {
     self._c_copy_rewrite(here);
 }
 
-impl JcirGenPass.exit_atom_unit with AtomUnit exit {
+impl PyastGenPass.exit_atom_unit with AtomUnit exit {
     if (
         isinstance(here.value, Ability)
         and self.outs(here.value)
@@ -236,7 +236,7 @@ impl JcirGenPass.exit_atom_unit with AtomUnit exit {
     self.set_out(here, self.outs(here.value));
 }
 
-impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[list[CgNode], list[CgNode]] {
+impl PyastGenPass.gen_call_args(nd: FuncCall) -> tuple[list[CgNode], list[CgNode]] {
     args: list[CgNode] = [];
     keywords: list[CgNode] = [];
     if nd.params {
@@ -257,12 +257,12 @@ impl JcirGenPass.gen_call_args(nd: FuncCall) -> tuple[list[CgNode], list[CgNode]
     return (args, keywords);
 }
 
-impl JcirGenPass.exit_func_call with FuncCall exit {
+impl PyastGenPass.exit_func_call with FuncCall exit {
     self._exit_func_call_impl(here);
     self._c_interop_call_rewrite(here);
 }
 
-impl JcirGenPass._place_parts(arg: UniNode) -> (PlacePath | None) {
+impl PyastGenPass._place_parts(arg: UniNode) -> (PlacePath | None) {
     place = arg;
     if isinstance(arg, UnaryExpr) and is_borrow_kind(arg.ownership) {
         place = arg.operand;
@@ -282,7 +282,7 @@ impl JcirGenPass._place_parts(arg: UniNode) -> (PlacePath | None) {
     return None;
 }
 
-impl JcirGenPass._name_swap_expr(store_id: str, value: CgNode) -> CgNode {
+impl PyastGenPass._name_swap_expr(store_id: str, value: CgNode) -> CgNode {
     return self.nod(
         'NamedExpr',
         ['target', 'value'],
@@ -290,7 +290,7 @@ impl JcirGenPass._name_swap_expr(store_id: str, value: CgNode) -> CgNode {
     );
 }
 
-impl JcirGenPass._name_take_expr(owner: str) -> CgNode {
+impl PyastGenPass._name_take_expr(owner: str) -> CgNode {
     moved = self.nod(
         'Tuple',
         ['elts', 'ctx'],
@@ -306,7 +306,7 @@ impl JcirGenPass._name_take_expr(owner: str) -> CgNode {
     );
 }
 
-impl JcirGenPass._lower_take(nd: FuncCall) -> (CgNode | None) {
+impl PyastGenPass._lower_take(nd: FuncCall) -> (CgNode | None) {
     params: list[Expr | KWPair] = list(nd.params or []);
     if len(params) != 1 or isinstance(params[0], KWPair) {
         return None;
@@ -326,7 +326,7 @@ impl JcirGenPass._lower_take(nd: FuncCall) -> (CgNode | None) {
     );
 }
 
-impl JcirGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
+impl PyastGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
     params: list[Expr | KWPair] = list(nd.params or []);
     if len(params) != 2 or any([isinstance(p, KWPair) for p in params]) {
         return None;
@@ -388,7 +388,7 @@ impl JcirGenPass._lower_swap(nd: FuncCall) -> (CgNode | None) {
     );
 }
 
-impl JcirGenPass._second_of_pair(first: CgNode) -> CgNode {
+impl PyastGenPass._second_of_pair(first: CgNode) -> CgNode {
     return self.nod(
         'Subscript',
         ['value', 'slice', 'ctx'],
@@ -404,7 +404,7 @@ impl JcirGenPass._second_of_pair(first: CgNode) -> CgNode {
     );
 }
 
-impl JcirGenPass._exit_func_call_impl(nd: FuncCall) -> None {
+impl PyastGenPass._exit_func_call_impl(nd: FuncCall) -> None {
     if isinstance(nd.target, Name) and nd.target.sym_name in ('take', 'swap') {
         import from jaclang.compiler.symbol_utils { CallKind, classify_call }
         lowered = (
@@ -481,7 +481,7 @@ impl JcirGenPass._exit_func_call_impl(nd: FuncCall) -> None {
     self.set_out(nd, [self.call_node(func, args, keywords)]);
 }
 
-impl JcirGenPass.exit_index_slice with IndexSlice exit {
+impl PyastGenPass.exit_index_slice with IndexSlice exit {
     if here.is_range {
         if (len(here.slices) > 1) {
             self.set_out(
@@ -531,7 +531,7 @@ impl JcirGenPass.exit_index_slice with IndexSlice exit {
     }
 }
 
-impl JcirGenPass.exit_special_var_ref with SpecialVarRef exit {
+impl PyastGenPass.exit_special_var_ref with SpecialVarRef exit {
     if (here.name == Tok.KW_SUPER) {
         self.set_out(
             here,

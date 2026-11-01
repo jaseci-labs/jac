@@ -351,7 +351,7 @@ impl KernelHost.close_over(options: CompileOptions) {
 
 impl KernelHost.record_unit(task: ModuleAnalysis) {
     module = task.module;
-    if task.parse_failed or task.blocked or not module.gen.jcir {
+    if task.parse_failed or task.blocked or not module.gen.py_bytecode {
         return;
     }
     real = os.path.realpath(task.path);
