@@ -645,7 +645,7 @@ def stmt_loc(s: stmt) -> cloc {
         tr = s as Try;
         return nloc(tr.lineno, tr.end_lineno, tr.col_offset, tr.end_col_offset);
     }
-    return loc(1, 1, 0, 0);
+    return nloc(s.lineno, s.end_lineno, s.col_offset, s.end_col_offset);
 }
 
 # Elements of a Tuple or List target/value node.
