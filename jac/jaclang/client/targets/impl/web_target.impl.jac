@@ -88,21 +88,17 @@ impl WebTarget.build(
     loaded_mod = types.ModuleType(entry_file.stem);
     loaded_mod.__file__ = str(entry_file.resolve());
     builder = make_client_bundle_builder(project_dir);
-    try {
-        before = len(program.errors_had);
-        artifact = program._get_compiler().get_client_artifact(
-            str(entry_file.resolve()), program
-        );
-        if len(program.errors_had) > before {
-            errors = '\n'.join(str(e) for e in program.errors_had[before:]);
-            raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
-        }
-        inputs = builder.prepare(loaded_mod);
-        exports = list(artifact.manifest.exports or []) if artifact is not None else [];
-        function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
-    } finally {
-        program._get_compiler().release_compile_state(program);
+    before = len(program.errors_had);
+    artifact = kernel_client_artifact(
+        program, str(entry_file.resolve()), CompileOptions(skip_native_engine=True)
+    );
+    if len(program.errors_had) > before {
+        errors = '\n'.join(str(e) for e in program.errors_had[before:]);
+        raise RuntimeError(f"Failed to compile {entry_file}:\n{errors}");
     }
+    inputs = builder.prepare(loaded_mod);
+    exports = list(artifact.manifest.exports or []) if artifact is not None else [];
+    function_name = exports[0] if exports else DEFAULT_FUNCTION_NAME;
     builder.bundle(inputs);
     bundle_path = bundler.find_bundle();
     if not bundle_path {

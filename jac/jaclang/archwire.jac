@@ -13,7 +13,7 @@ graph import {
     edge Jac0core: jac0core.* --> artifacts.* | cache.* | cli.* | client.* | compiler.* | data.* | dist.* | packages.* | project.* | runtime.* | scale.* | server.* | testing.* | toolchains.*;
     edge Lsp: lsp.* --> cli.* | studio.*;
     edge MetaImporter: meta_importer --> client.*;
-    edge Packages: packages.* --> cli.* | client.* | dist.* | project.*;
+    edge Packages: packages.* --> cli.* | client.* | compiler.* | dist.* | project.*;
     edge Project: project.* --> artifacts.* | byllm.* | cache.* | cli.* | client.* | compiler.* | data.* | dist.* | lsp.* | packages.* | runtime.* | scale.* | server.* | studio.* | testing.* | toolchains.*;
     edge Runtime: runtime.* --> byllm.* | cli.* | client.* | compiler.* | comptime | data.* | dist.* | lib.* | project.* | scale.* | server.* | studio.* | testing.*;
     edge Scale: scale.* --> cli.* | client.* | runtime.* | server.*;
@@ -281,8 +281,8 @@ graph import {
             worker_rss_mb
         },
         dist.precompile_bytecode.prebuild_native_units { WorkPool },
-        dist.precompile_bytecode.precompile_native_unit { maybe_malloc_trim },
-        dist.precompile_bytecode.precompile_unit_context { maybe_malloc_trim },
+        dist.precompile_bytecode.precompile_native_unit
+            | dist.precompile_bytecode.precompile_unit { maybe_malloc_trim },
         dist.precompile_bytecode.run_precompile {
             WORKER_MEM_BYTES,
             WorkPool,
@@ -326,10 +326,6 @@ graph import {
         compiler.driver.client_graph.collect_client_graph
             | dist.publish.npm_sources._link_modules
             | server.hmr.HotReloader._recompile_client_unified { ClientBundleError },
-        compiler.tests.test_client_codegen_facts {
-            _client_target_module,
-            _ensure_js_generated
-        },
         dist.source.client.write_client { client_program },
     ]
     type client.client_bundle ++> [
@@ -498,9 +494,6 @@ graph import {
         convert_to_js_import_path
     }
     compiler.backends.native.c_emit ++> dist.source.client.write_client { emit_c }
-    compiler.backends.native.c_emit --> dist.native_product.write_native_product {
-        emit_c
-    }
     compiler.backends.native.floors ++> dist.payload.vendor { WASM_FLOOR_MANIFEST }
     compiler.backends.native.kernel_resolve ++> [
         dist.precompile_bytecode.adopt_kernel {
@@ -516,33 +509,6 @@ graph import {
     compiler.backends.native.kernel_stage0 ++> cli.commands.native {
         plan_kernel_prefix
     }
-    compiler.backends.native.kernel_stage0 --> dist.precompile_bytecode.seal_native {
-        refuse_missing_entries
-    }
-    compiler.backends.native.link_plan ++> [
-        cli.commands.native_build { LinkPlan },
-        cli.commands.native_build.native_build {
-            ArtifactKind,
-            LinkPlanError,
-            build_link_plan,
-            link_artifact
-        },
-        dist.native_product.write_native_product {
-            ArtifactKind,
-            build_link_plan,
-            link_artifact,
-            optimize_merged_program,
-            unique_callbacks,
-            whole_program_module
-        },
-        dist.precompile_bytecode.prebuild_native_closure { build_link_plan },
-        dist.precompile_bytecode.seal_native {
-            ArtifactKind,
-            build_link_plan,
-            link_artifact
-        },
-    ]
-    compiler.backends.native.llvm.binding as llvm ++> cli.commands.native_build._application_ir;
     compiler.backends.native.llvm.binding as llvm --> cli.commands.execution._jab_native_bin
         | dist.seal.bake_native_payloads;
     type compiler.backends.native.llvm.jit ++> cli.commands.execution { ExecutionEngine }
@@ -565,10 +531,6 @@ graph import {
     compiler.backends.native.wasm_build ++> dist.source.client.write_client {
         prepare_wasm_module
     }
-    compiler.backends.native.wasm_build --> [
-        cli.commands.native_build.native_build { app_declared_imports },
-        dist.native_product.write_native_product { _assert_ir_rc_free },
-    ]
     compiler.backends.native.wasm_host_abi --> dist.source.build.build_native_product {
         WASM_HOST_ABI,
         WASM_HOST_MODULE
@@ -632,42 +594,21 @@ graph import {
     type compiler.driver.client_graph ++> client.jac_client_compiler
         | dist.publish.npm_sources { ClientLink }
     compiler.driver.compilation_context ++> [
-        dist.precompile_bytecode._application_sources { bind_options },
-        dist.precompile_bytecode.precompile_context { bind_options, context_program },
-        dist.precompile_bytecode.precompile_unit_context {
-            cache_scope,
-            owner_scope_options
-        },
-        packages.api.package_surface { compilation_scope },
     ]
-    compiler.driver.compilation_context --> client.client_bundle.ClientBundleBuilder._compile_to_js {
-        context_program
-    }
     compiler.driver.compile_options ++> [
         cli.commands.analysis._check_file_job
             | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck
-            | dist.precompile_bytecode._application_sources
+            | dist.precompile_bytecode
             | dist.publish.builder._module_is_client_source
             | dist.publish.npm_sources._compile_module
             | dist.publish.runtime_vendor
             | dist.seal
-            | packages.api.package_surface
             | project.kernel_call
             | studio.gate
             | testing.cl_test_runner.module_is_client { CompileOptions },
-        cli.commands.analysis.explain
-            | dist.precompile_bytecode.prebuild_native_closure { CompileOptions },
-        cli.commands.analysis.grammar | dist.precompile_bytecode.precompile_context {
-            CompileOptions
-        },
-        cli.commands.native_build._restore_target { pop_native_target },
-        cli.commands.native_build.native_build {
-            CompileOptions,
-            NATIVE_LINK_MODES,
-            push_native_target
-        },
-        dist.precompile_bytecode.precompile_native_unit { CompileOptions },
-        dist.precompile_bytecode.seal_native { CompileOptions },
+        cli.commands.analysis.explain { CompileOptions },
+        cli.commands.analysis.grammar { CompileOptions },
+        cli.commands.native_build.native_build { CompileOptions, NATIVE_LINK_MODES },
         lsp.server.engine | studio.intel_server { CancelToken },
     ]
     compiler.driver.compile_options --> [
@@ -687,7 +628,6 @@ graph import {
     ]
     compiler.driver.jir ++> [
         client.client_bundle.ClientBundleBuilder._signature { ct_dep_digest },
-        client.compiler.ViteCompiler._compile_wasm_module { ct_dep_text_fresh },
         client.compiler.ViteCompiler._wasm_input_key {
             ct_dep_digest,
             running_compiler_digest
@@ -784,18 +724,35 @@ graph import {
     compiler.driver.pipeline_runner ++> [
         client.compiler.ViteCompiler._compile_wasm_module { wasm_artifact_inputs },
         client.route_scanner.resolve_route_exports { route_exports },
-        dist.precompile_bytecode._application_sources { compile_application },
         dist.source.client.write_client { wasm_ir },
     ]
-    compiler.driver.pipeline_runner --> dist.source.project.export_project {
-        native_application
-    }
     compiler.driver.pipeline_types ++> cli.commands.analysis.grammar { CompilationProduct }
     compiler.driver.program ++> [
-        cli.commands.analysis._annex_moves | cli.commands.architecture | cli.commands.fix._client_imports | cli.commands.native_build.native_build | cli.commands.transform.jac2js | cli.mcp.compiler_bridge.CompilerBridge.get_ast_snippet._do_ast | dist.native_product.write_native_product | dist.precompile_bytecode._application_sources | dist.publish.npm_sources.collect_npm_sources | dist.publish.runtime_npm._compile_cl_to_js | dist.publish.runtime_vendor | dist.seal | dist.source.project | lsp.server.engine | lsp.server.module_manager | packages.api.package_surface | server.hmr.HotReloader._classify_declarations | studio.gate | studio.model | testing.cl_test_runner.compile_cl_module | testing.test_runner._fresh_jac_state { JacProgram },
-        cli.commands.analysis._check_file_job | cli.commands.fix._format_source | cli.commands.transform.jac2py | cli.mcp.compiler_bridge.CompilerBridge.jac_to_js._do_jac2js | dist.precompile_bytecode.prebuild_native_closure | testing.cl_test_runner.module_is_client { JacProgram },
-        cli.commands.analysis._float_impls_to_annex | cli.commands.fix._verify_claims | cli.commands.transform.py2jac | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py | dist.precompile_bytecode.precompile_native_unit { JacProgram },
-        cli.commands.analysis._format_single_file_worker | cli.mcp.compiler_bridge.CompilerBridge.parse_snippet._do_parse | dist.precompile_bytecode.precompile_unit_context { JacProgram },
+        cli.commands.analysis._annex_moves
+        | cli.commands.architecture
+        | cli.commands.native_build.native_build
+        | cli.commands.transform.jac2js
+        | cli.mcp.compiler_bridge.CompilerBridge.get_ast_snippet._do_ast
+        | dist.native_product.write_native_product
+        | dist.precompile_bytecode._application_sources
+        | dist.publish.npm_sources.collect_npm_sources
+        | dist.publish.runtime_npm._compile_cl_to_js
+        | dist.publish.runtime_vendor
+        | dist.seal
+        | dist.source.project
+        | lsp.server.engine
+        | lsp.server.module_manager
+        | server.hmr.HotReloader._classify_declarations
+        | testing.cl_test_runner.compile_cl_module
+        | testing.test_runner._fresh_jac_state { JacProgram },
+        cli.commands.analysis._check_file_job
+        | cli.commands.transform.jac2py
+        | cli.mcp.compiler_bridge.CompilerBridge.jac_to_js._do_jac2js
+        | dist.precompile_bytecode.prebuild_native_closure
+        | testing.cl_test_runner.module_is_client { JacProgram },
+        cli.commands.analysis._float_impls_to_annex | cli.commands.transform.py2jac | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py | dist.precompile_bytecode.precompile_native_unit { JacProgram },
+        cli.commands.analysis._format_single_file_worker
+        | cli.mcp.compiler_bridge.CompilerBridge.parse_snippet._do_parse { JacProgram },
         cli.commands.analysis.explain | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac | dist.precompile_bytecode.seal_native { JacProgram },
         cli.commands.analysis.grammar | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck {
             JacProgram
@@ -818,12 +775,6 @@ graph import {
     compiler.driver.source_failures ++> [
         dist.precompile_bytecode._emit_unit_diagnostics {
             compiler_source_failure_details
-        },
-    ]
-    compiler.driver.source_failures --> [
-        testing.cl_test_runner.module_is_client {
-            CompilerSourceError,
-            compiler_source_failure_origin
         },
     ]
     compiler.driver.source_products ++> [
@@ -853,19 +804,9 @@ graph import {
         },
         dist.payload.assemble.ship_wiring { ARCH_FILE_NAME, prune_wiring_source },
         dist.precompile_bytecode.find_jac_files { is_arch_file },
-        studio.gate {
-            WireRec,
-            WiringSpec,
-            arch_file_for,
-            is_arch_file,
-            parse_records,
-            rule_text,
-            wiring_facts,
-            wiring_for_path
-        },
-        studio.model { ARCH_FILE_NAME, WiringSpec, wiring_for_path },
+        studio.gate { arch_file_for, is_arch_file },
+        studio.model { ARCH_FILE_NAME },
     ]
-    compiler.driver.wiring as wiring_mod ++> studio.gate;
     compiler.frontend.codeinfo ++> [
         cli.check_report.print_native_coverage { effective_default_codespace },
         cli.commands.execution._count_jac_files | server.watcher.JacFileWatcher._on_change { is_compiler_source_path },
@@ -874,9 +815,10 @@ graph import {
             set_effective_default_codespace
         },
         cli.commands.execution.serve { set_effective_default_codespace },
-        cli.commands.native_build._application_ir { is_toolchain_unit },
         client.compiler.ViteCompiler._compile_wasm_module | dist.source.client.write_client { native_wasm_stem },
-        client.js_runtime._pkg_dir | dist.interpreter._repo_root | dist.precompile_bytecode.is_toolchain_package | dist.precompiled._pkg_dir { jaclang_pkg_root },
+        client.js_runtime._pkg_dir
+        | dist.interpreter._repo_root
+        | dist.precompiled._pkg_dir { jaclang_pkg_root },
         client.vite_client_bundle { ClientArtifact },
         dist.precompile_bytecode._compiler_kernel_units { kernel_unit_paths },
         dist.publish.npm_sources._link_modules { ClientArtifact, ClientManifest },
@@ -898,10 +840,7 @@ graph import {
         | client.jac_client_compiler
         | client.jac_to_js { ClientArtifact, ClientManifest }
     compiler.frontend.constant ++> [
-        cli.commands.fix._priv_top_decls { SymbolAccess },
-        dist.publish.builder._module_is_client_source
-            | server.hmr
-            | testing.cl_test_runner.module_is_client { CodeContext },
+        server.hmr { CodeContext },
         lsp.server.engine { TOKEN_MAP },
         lsp.server.server {
             JacSemTokenModifier as SemTokMod,
@@ -920,21 +859,14 @@ graph import {
             HOST_FACT_GIT_IGNORED,
             HOST_FACT_STDLIB_MODULES
         },
-        studio.gate { active_host, install_host, set_kernel_host_mode },
-    ]
-    compiler.frontend.parser ++> [
-        cli.commands.fix._parse_module { parse as rd_parse },
-        cli.commands.fix._parses_clean { parse as rd_parse },
     ]
     compiler.frontend.parser.frontend ++> [
-        cli.commands.architecture._parse_imports | studio.gate { parse_woven },
-        studio.model { annex_sources, parse },
+        cli.commands.architecture._parse_imports { parse_woven },
     ]
     compiler.frontend.parser.frontend --> cli.commands.analysis._check_file_job
         | lsp.server.engine.JacLangServer.type_check_file { _replay_diags, parse_diags }
     compiler.frontend.parser.lexer ++> [
-        cli.commands.fix._strip_markers { tokenize },
-        lsp.server.engine | studio.intel { tokenize_full },
+        lsp.server.engine { tokenize_full },
     ]
     compiler.frontend.parser.lexer --> [
         cli.commands.analysis._check_file_job { Lexer },
@@ -942,10 +874,7 @@ graph import {
     ]
     compiler.frontend.parser.parser --> cli.commands.analysis._check_file_job
         | lsp.server.engine.JacLangServer.type_check_file { Parser as _SyntaxParser }
-    compiler.frontend.parser.tokens ++> [
-        cli.commands.fix { LexToken },
-        lsp.server.engine { TokenKind },
-    ]
+    compiler.frontend.parser.tokens ++> lsp.server.engine { TokenKind }
     compiler.frontend.python.ast_nodes --> runtime.python.symtable { Expr, stmt }
     compiler.frontend.python.ast_output --> runtime.python.symtable {
         ast_output_append_owned,
@@ -1025,19 +954,14 @@ graph import {
     compiler.frontend.unitree --> cli.commands.analysis._check_file_job
         | lsp.server.engine.JacLangServer.type_check_file { Source as _Src }
     compiler.frontend.unitree as uni ++> [
-        cli.commands.fix._access_plan | lsp.server.engine | lsp.server.module_manager | lsp.server.sem_manager | lsp.server.utils | studio.gate | studio.intel_server | studio.model,
-        cli.commands.fix._client_imports,
-        cli.commands.fix._imported_names,
-        cli.commands.fix._module_has_jsx,
-        cli.commands.fix._plain_top_decls,
-        cli.commands.fix._priv_top_decls,
+        lsp.server.engine
+        | lsp.server.module_manager
+        | lsp.server.sem_manager
+        | lsp.server.utils,
     ]
-    type compiler.frontend.unitree ++> client.client_bundle | dist.native_product { Module }
     compiler.frontend.unparse ++> dist.publish.dts
         | dist.publish.jsdoc
-        | lsp.server.engine
-        | studio.gate
-        | studio.model { unparse_node }
+        | lsp.server.engine { unparse_node }
     compiler.native_scope ++> [
         dist.precompile_bytecode._compiler_kernel_units {
             kernel_root_path,
@@ -1049,7 +973,6 @@ graph import {
     compiler.native_scope --> dist.precompile_bytecode.native_roots { kernel_root_path }
     compiler.passes.annex_weave ++> [
         cli.commands.architecture { import_form },
-        studio.model { merge_annex_into },
     ]
     compiler.passes.context ++> [
         lsp.server.utils { Alert },
@@ -1067,30 +990,17 @@ graph import {
         parse_python_source
     }
     compiler.passes.ownership_hints --> cli.commands.analysis.explain { inferred_hints }
-    compiler.placement.placement ++> cli.commands.fix._verify_claims {
-        element_display_name
-    }
     compiler.placement.placement_export --> [
         cli.commands.analysis.explain { collect_placement_rows },
         dist.precompile_bytecode._unit_extra { summary_from_bytes, summary_to_bytes },
     ]
     compiler.placement.placement_facts ++> [
-        dist.precompile_bytecode._application_sources {
-            module_spaces,
-            spaces_are_client_only
-        },
         dist.precompile_bytecode.find_jac_files { native_only },
         dist.precompile_bytecode.package_native_units { native_units_of },
-        dist.publish.runtime_vendor._compile_runtime_module
-            | testing.cl_test_runner.module_is_client { module_record },
         dist.publish.runtime_vendor._runtime_module_options { SPACE_SERVER },
     ]
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
-        dist.precompile_bytecode.sealable_sources {
-            discover_spaces,
-            spaces_are_client_only
-        },
     ]
     compiler.placement.placement_pins ++> [
         lsp.server.engine.JacLangServer._module_spec_target { in_client_npm_world },
@@ -1107,9 +1017,6 @@ graph import {
         dist.precompile_bytecode.adopt_kernel { host_target_spec },
     ]
     compiler.target_spec --> dist.precompile_bytecode.seal_native { host_target_spec }
-    compiler.tools.code_intel ++> cli.commands.code | studio.native_agent {
-        CodeIntelligence
-    }
     compiler.tools.grammar_extract_pass ++> cli.commands.analysis.grammar {
         GrammarExtractPass
     }
@@ -1121,16 +1028,9 @@ graph import {
         print_ast_tree
     }
     compiler.types.stubcat.locate as locate --> dist.payload.assemble.cached_stubcat;
-    compiler.types.stubcat.modiface ++> [
-        dist.precompile_bytecode.precompile_unit_context,
-    ]
     type compiler.types.stubcat.reader ++> project.modresolver {
         StubCatalog
     }
-    compiler.types.stubcat.writer ++> [
-        dist.precompile_bytecode.precompile_unit_context,
-    ]
-    compiler.types.type_evaluator ++> dist.precompile_bytecode.precompile_unit_context;
     compiler.types.type_utils ++> lsp.server.utils { compute_mro_linearization }
     compiler.types.types ++> [
         lsp.server.engine {
@@ -1443,7 +1343,9 @@ graph import {
         compiler.driver.jir.get_jir_cache_dir { get_jir_cache_dir as _root },
     ]
     jac0core.ext_registry ++> [
-        cli.commands.analysis._drop_covered_annexes | compiler.driver.pipeline_runner.compile_application | dist.publish.builder | testing.cl_test_runner.module_entry_for { is_annex },
+        cli.commands.analysis._drop_covered_annexes
+        | dist.publish.builder
+        | testing.cl_test_runner.module_entry_for { is_annex },
         cli.commands.cli_helpers { base_stem, is_jac, is_python },
         cli.commands.execution._jab_native_bin | client.jac_client_compiler.JacClientCompiler._native_variant | client.targets.client_dev_common.dev_proxy_paths | compiler.driver.application._semantic_metadata | dist.seal.bake_native_payloads | project.kinds | project.placement | runtime.prepared | scale.server.inprocess | server.hmr.HotReloader._get_js_filename | testing.test_runner.run_file { base_stem },
         cli.commands.native_build.native_build {
@@ -1582,10 +1484,9 @@ graph import {
         cli.commands.project._create_app { is_valid_kind },
         cli.commands.project._create_body { is_valid_kind },
         client.cli.run_client_start
-            | client.npm_provider._app_wants_client
-            | compiler.driver.pipeline_runner.compile_application
-            | scale.runtime.fleet._has_client
-            | server.static_files { kind_has_client },
+        | client.npm_provider._app_wants_client
+        | scale.runtime.fleet._has_client
+        | server.static_files { kind_has_client },
         client.cli.setup { kind_has_client },
         compiler.placement.placement.project_has_server
             | compiler.placement.placement_pins { kind_codespace },
@@ -2145,8 +2046,7 @@ graph import {
         },
         compiler.driver.application._prepare_revision { PreparedApplication },
         compiler.driver.application._prepare_sealed { PreparedApplication, publish },
-        compiler.driver.pipeline_runner.compile_application
-            | server.watcher.watch_roots { holds_application_code },
+        server.watcher.watch_roots { holds_application_code },
         dist.source.project { PreparedApplication, application_namespace },
         project.config.JacConfig.app_for_path { origin_for_source },
         server.endpoint_contract.check_endpoint_contract
@@ -3027,8 +2927,7 @@ graph import {
             | scale.memory.context.JScaleExecutionContext.init
             | server.request_scope
             | server.sv_client._local_call
-            | studio.session
-            | testing.cl_test_runner.module_is_client { JacRuntime },
+            | studio.session { JacRuntime },
         byllm.visit_routing.route_visit
             | cli.commands.cli_helpers.proc_file
             | cli.commands.execution._discover_config_from_file
@@ -4146,7 +4045,6 @@ graph import {
         },
     ]
     type project.compiler_host ++> compiler.kernel_api { ProjectHost }
-    project.compiler_host ++> studio.gate | studio.model { ProjectHost }
     project.kernel_check --> cli.commands.analysis._check_file_job { kernel_check }
     project.kernel_compile ++> [
         compiler.driver.application._kernel_units {
@@ -4388,13 +4286,162 @@ graph import {
     ]
     project.workspace ++> [
         cli.commands.analysis.check
-            | cli.commands.execution._load_executable
-            | cli.commands.fix._access_plan
-            | dist.precompile_bytecode._application_sources
-            | server.session.project_database { workspace_for_path },
+        | cli.commands.execution._load_executable
+        | dist.precompile_bytecode._application_sources
+        | server.session.project_database { workspace_for_path },
         compiler.driver.application._warn_private_declarations { app_for_path },
         dist.precompile_bytecode.sealable_sources { workspace_for_path },
     ]
+    compiler.driver.bccache ++> [
+        studio.gate { discover_annex_files, discover_base_file, host_layout_tables },
+        studio.model { discover_annex_files, discover_base_file },
+    ]
+    compiler.frontend.source_layout ++> studio.gate { is_annex_path_of }
+    project.workspace ++> studio.gate { workspace_for_path }
+    project.kernel_compile ++> studio.gate { check_request_for }
+    project.kernel_call ++> [
+        cli.commands.code | studio.gate | studio.model | studio.native_agent {
+            SessionClient,
+            tool_session
+        },
+        studio.gate { call_check },
+        studio.intel { SessionClient },
+    ]
+    type compiler.kernel_api ++> studio.intel_server { KernelDiagnostic, TokenSymbol }
+    type compiler.kernel_api ++> studio.model {
+        ModuleOutline,
+        OutlineSymbol,
+        WiringModel
+    }
+    type project.compiler_host ++> compiler.tools.studio_queries { ProjectHost }
+    compiler.kernel_api ++> project.kernel_call {
+        CodeDiagnostic,
+        ContextSlice,
+        EditSymbol,
+        EntryPoint,
+        ModuleOutline,
+        OutlineSymbol,
+        SourceRef,
+        SourceToken,
+        SymbolInfo,
+        TokenStream,
+        TokenSymbol,
+        WiredFiles,
+        WiringChange,
+        WiringEdge,
+        WiringModel,
+        WiringModule,
+        WiringRule
+    }
+    project.kernel_call ++> [
+        cli.commands.fix
+            | compiler.types.stubcat.locate.StubcatArtifact.build
+            | dist.publish.npm_builder.NpmBuilder.build
+            | packages.api.package_surface { tool_session },
+        dist.native_product.write_native_product
+            | dist.publish.runtime_npm._compile_cl_to_js
+            | server.hmr.HotReloader._classify_declarations { diagnostic_text },
+    ]
+    project.kernel_call --> [
+        compiler.driver.application_edges.application_edges
+            | compiler.driver.pipeline_runner.wasm_artifact_inputs
+            | compiler.driver.source_products.python_source { diagnostic_text },
+        compiler.driver.jir._definition_texts | compiler.types.stubcat.build.main {
+            tool_session
+        },
+    ]
+    project.kernel_compile ++> [
+        cli.commands.execution.debug { kernel_compile },
+        cli.commands.native_build.native_build {
+            kernel_native_build,
+            native_build_request_for
+        },
+        client.client_bundle.ClientBundleBuilder._compile_to_js
+            | client.targets.web_target.WebTarget.build
+            | server.hmr.HotReloader._recompile_client_code
+            | testing.cl_test_runner.compile_cl_module { kernel_client_artifact },
+        dist.native_product.write_native_product {
+            kernel_native_build,
+            native_build_request_for
+        },
+        dist.precompile_bytecode {
+            kernel_compile,
+            kernel_module_facts,
+            kernel_native_build,
+            native_build_request_for,
+            persist_units
+        },
+        dist.publish.builder._module_is_client_source
+            | server.hmr.HotReloader._classify_declarations
+            | testing.cl_test_runner.module_is_client { kernel_module_facts },
+        dist.publish.runtime_npm._compile_cl_to_js { kernel_compile },
+    ]
+    project.kernel_compile --> [
+        compiler.driver.application_edges.application_edges { kernel_module_facts },
+        compiler.driver.pipeline_runner.route_exports { kernel_client_artifact },
+        compiler.driver.pipeline_runner.wasm_artifact_inputs {
+            kernel_native_build,
+            native_build_request_for
+        },
+        compiler.driver.source_products.python_source { kernel_compile },
+    ]
+    compiler.kernel_api ++> cli.commands.fix
+        | cli.commands.native_build.native_build
+        | dist.publish.npm_builder.NpmBuilder.build
+        | packages.api.package_surface { KernelError }
+    type compiler.kernel_api ++> cli.commands.fix {
+        AccessRewrite,
+        ElementSpace,
+        ImportSpace,
+        ToolOutput
+    }
+    compiler.driver.compile_options ++> cli.commands.execution.debug
+        | client.client_bundle.ClientBundleBuilder._compile_to_js
+        | client.targets.web_target.WebTarget.build
+        | dist.native_product.write_native_product
+        | dist.publish.runtime_npm._compile_cl_to_js
+        | server.hmr.HotReloader._classify_declarations
+        | server.hmr.HotReloader._recompile_client_code
+        | testing.cl_test_runner.compile_cl_module { CompileOptions }
+    packages.api --> compiler.kernel_api.KernelSession.package_api {
+        API_FORMAT,
+        MODULE_DOCS,
+        doc_text,
+        module_path_for,
+        module_surface
+    }
+    dist.publish.npm_sources --> compiler.kernel_api.KernelSession.npm_sources {
+        NpmBoundaryError,
+        collect_npm_sources
+    }
+    project.config --> compiler.kernel_api.KernelSession.npm_sources {
+        get_config_for_path
+    }
+    project.workspace ++> compiler.tools.fix_queries.served_access_plan {
+        workspace_for_path
+    }
+    project.compiler_host --> compiler.kernel_api.native_build_request { ProjectHost }
+    compiler.kernel_api ++> project.kernel_call {
+        AccessPlan,
+        AccessRewrite,
+        AppEdge,
+        CallbackBinding,
+        ElementSpace,
+        ImportSpace,
+        LinkedUnit,
+        MarkerScan,
+        ModuleFact,
+        NativeBuildRequest,
+        NativeBuildResult,
+        NpmSource,
+        StubCatalogReport
+    }
+    compiler.kernel_api ++> project.kernel_compile { NativeBuildRequest }
+    type compiler.kernel_api ++> project.kernel_compile { CheckResult, NativeBuildResult }
+    type compiler.frontend.codeinfo ++> project.kernel_compile { ClientArtifact }
+    compiler.driver.jir ++> project.kernel_compile { SEC_CLIENT, write_module_cache }
+    compiler.driver.unit_products ++> project.kernel_compile { client_artifact_from_json }
+    compiler.driver.program ++> dist.precompile_bytecode { JacProgram }
 }
 
 graph import artifacts {
@@ -5477,7 +5524,7 @@ graph import compiler {
         FACT_SEP
     }
     backends.native.wasm_build ++> [
-        driver.pipeline_runner.wasm_artifact_inputs { emit_wasm_from_ir },
+        driver.pipeline_runner.wasm_artifact_inputs { _project_gc_settings },
         driver.pipeline_runner.wasm_ir_units {
             _assert_ir_rc_free,
             _project_gc_settings,
@@ -5486,7 +5533,6 @@ graph import compiler {
     ]
     backends.py.artifact_imports ++> [
         driver.application._prepare_sealed { runtime_sources },
-        driver.pipeline_runner.compile_application { package_sources },
     ]
     backends.py.artifact_imports --> driver.application._prepare_revision {
         import_specs,
@@ -5501,8 +5547,7 @@ graph import compiler {
     backends.py.jacpython.compiler_context ++> frontend.python.compiler_symtable {
         compile_context
     }
-    backends.py.python_text --> driver.source_products.python_source
-        | tools.lang_tools.AstTool.ir { generated_python }
+    backends.py.python_text --> tools.lang_tools.AstTool.ir { generated_python }
     backends.py.pyast_gen_pass ++> driver.module_compile
         | driver.pipeline.assemble_bytecode
         | driver.pipeline.py_ir_passes { PyastGenPass }
@@ -5765,8 +5810,7 @@ graph import compiler {
         },
         passes.wasm_contract.host_contracts { symbol_linked_source_module },
         placement.placement.summarize_module { module_own_native_anchor },
-        placement.placement_facts.discover_spaces
-            | placement.placement_solver._materialize_module { hub_module_for_path },
+        placement.placement_solver._materialize_module { hub_module_for_path },
         placement.placement_solver._is_sv_import { import_crosses_apps },
         placement.placement_solver._pullable_by_client_reference {
             is_server_anchored_module
@@ -5968,7 +6012,6 @@ graph import compiler {
         },
         tools.jac_formatter_pass.unparse_module { run_utility },
     ]
-    driver.pipeline_runner ++> backends.native.wasm_build.compile_to_wasm { build_wasm }
     driver.pipeline_types ++> [
         backends.es.esast_gen_pass
             | backends.native.na_compile_pass
@@ -6028,31 +6071,29 @@ graph import compiler {
     ]
     driver.program ++> [
         backends.es.client_kernel_cache._lower
-            | backends.native.kernel_resolve.kernel_plan
-            | backends.native.kernel_stage0.link_kernel
-            | backends.native.wasm_build.compile_to_wasm
-            | placement.placement_facts.discover_spaces
-            | placement.placement_solver._native_dep_scan
-            | tests.test_batch_decl_identity
-            | tests.test_client_codegen_facts
-            | tests.test_client_npm_entry_root
-            | tests.test_global_narrowing
-            | tests.test_jac_mobui_typing
-            | tests.test_missing_local_import
-            | tests.test_module_exports
-            | tests.test_native_kernel_cache
-            | tests.test_pipeline_products
-            | tests.test_subscript_assignment
-            | tests.test_tarfile_equivalence
-            | tests.test_test_block_analysis
-            | tests.test_unknown_cascade
-            | tests.test_untyped_third_party
-            | tests.test_zstd_equivalence
-            | tools.cfg_dot.cfg_dot_from_file
-            | tools.code_intel
-            | tools.jac_formatter_pass.format_module
-            | tools.lang_tools
-            | types.stubcat.build.build_catalog { JacProgram },
+        | backends.native.kernel_resolve.kernel_plan
+        | backends.native.kernel_stage0.link_kernel
+        | placement.placement_solver._native_dep_scan
+        | tests.test_batch_decl_identity
+        | tests.test_client_codegen_facts
+        | tests.test_client_npm_entry_root
+        | tests.test_global_narrowing
+        | tests.test_jac_mobui_typing
+        | tests.test_missing_local_import
+        | tests.test_module_exports
+        | tests.test_native_kernel_cache
+        | tests.test_pipeline_products
+        | tests.test_subscript_assignment
+        | tests.test_tarfile_equivalence
+        | tests.test_test_block_analysis
+        | tests.test_unknown_cascade
+        | tests.test_untyped_third_party
+        | tests.test_zstd_equivalence
+        | tools.cfg_dot.cfg_dot_from_file
+        | tools.code_intel
+        | tools.jac_formatter_pass.format_module
+        | tools.lang_tools
+        | types.stubcat.build.build_catalog { JacProgram },
         backends.native.kernel_stage0.link_kernel_object { JacProgram },
         backends.native.kernel_stage0.plan_kernel_prefix
             | tools.jac_formatter_pass.unparse_module { JacProgram },
@@ -6084,7 +6125,6 @@ graph import compiler {
         | symbol_utils
         | types.stubcat.build
         | types.type_evaluator { JacProgram }
-    driver.selfhost ++> types.stubcat.build.build_catalog { SelfHostCache }
     driver.toolchain --> backends.native.kernel_resolve.KernelArtifact.unavailable_reason {
         native_pipeline_available
     }
@@ -8071,7 +8111,6 @@ graph import compiler {
         c_interop.named_function_of { Ability, Name },
         capability_notes | passes.execution { Module, UniNode },
         driver.pass_driver { Module, Source },
-        driver.pipeline_runner.compile_application { Import, ModulePath },
         driver.program.JacProgram.resolve_absorb_imports { find_python_scope_node_of },
         driver.wiring {
             Ability,
@@ -9385,7 +9424,6 @@ graph import compiler {
         driver.ifacecache
         | driver.nativecache
         | driver.pipeline
-        | driver.source_products
         | types.stubcat.resolver { Module },
         backends.native.wasm_build { Module as UniModule },
         tools.treeprinter { UniNode, UniScopeNode },
@@ -10246,6 +10284,75 @@ graph import compiler {
         kernel_api.KernelSession.semantic_tokens { semantic_token_data },
         kernel_api.KernelSession.symbols { outline },
     ]
+    kernel_api ++> tools.studio_queries {
+        EditSymbol,
+        InlayHint,
+        KernelError,
+        ModuleOutline,
+        OutlineSymbol,
+        SourceSpan,
+        SourceToken,
+        TokenStream,
+        TokenSymbol,
+        WiredFiles,
+        WiringChange,
+        WiringEdge,
+        WiringModel,
+        WiringModule,
+        WiringRule
+    }
+    kernel_api ++> tools.code_intel {
+        CodeDiagnostic,
+        ContextSlice,
+        EntryPoint,
+        SourceRef,
+        SymbolInfo
+    }
+    kernel_api ++> kernel_module {
+        CodeDiagnostic,
+        ContextSlice,
+        EditSymbol,
+        EntryPoint,
+        ModuleOutline,
+        SourceRef,
+        SymbolInfo,
+        TokenStream,
+        TokenSymbol,
+        WiredFiles,
+        WiringChange,
+        WiringModel
+    }
+    frontend.unitree as uni ++> tools.studio_queries;
+    frontend.unparse ++> tools.studio_queries { unparse_node }
+    frontend.parser.frontend ++> tools.studio_queries {
+        annex_sources,
+        parse,
+        parse_woven
+    }
+    frontend.parser.lexer ++> tools.studio_queries { tokenize_full }
+    passes.annex_weave ++> tools.studio_queries { merge_annex_into }
+    driver.wiring ++> tools.studio_queries {
+        WireRec,
+        WiringSpec,
+        parse_records,
+        rule_text,
+        wiring_facts,
+        wiring_for_path
+    }
+    tools.studio_queries --> [
+        kernel_api.KernelSession.assignment_hints { assignment_hint_rows },
+        kernel_api.KernelSession.edit_symbols { edit_symbol_rows },
+        kernel_api.KernelSession.import_texts { import_text_rows },
+        kernel_api.KernelSession.module_outline { module_outline_of },
+        kernel_api.KernelSession.token_symbols { token_symbol_rows },
+        kernel_api.KernelSession.tokens { token_stream },
+        kernel_api.KernelSession.wired_dependents { wired_dependent_files },
+        kernel_api.KernelSession.wiring_changes { wiring_change_rows },
+        kernel_api.KernelSession.wiring_model { wiring_model_of },
+        kernel_api.KernelSession.wiring_module_files { wiring_files_of },
+    ]
+    tools.code_intel --> kernel_api.KernelSession.code_index { CodeIntelligence }
+    type tools.code_intel ++> kernel_api { CodeIntelligence }
     types.type_utils ++> tools.session_queries { compute_mro_linearization }
     types.types ++> tools.session_queries {
         ClassType,
@@ -10254,6 +10361,76 @@ graph import compiler {
         OverloadedType,
         TypeBase
     }
+    kernel_api ++> types.stubcat.build.main { KernelError }
+    kernel_api ++> tools.fix_queries {
+        AccessPlan,
+        AccessRewrite,
+        ElementSpace,
+        ImportSpace,
+        MarkerScan
+    }
+    kernel_api ++> kernel_module {
+        AccessPlan,
+        ElementSpace,
+        ImportSpace,
+        MarkerScan,
+        NativeBuildRequest,
+        NativeBuildResult,
+        native_build_request
+    }
+    frontend.parser ++> tools.fix_queries.parse_module { parse as rd_parse }
+    frontend.parser.lexer ++> tools.fix_queries.marker_scan { tokenize }
+    type frontend.parser.tokens ++> tools.fix_queries { LexToken }
+    frontend.unitree as uni ++> tools.fix_queries;
+    frontend.constant ++> tools.fix_queries.priv_top_decls { SymbolAccess }
+    frontend.unparse ++> tools.fix_queries.returns_jsx { unparse_node }
+    placement.placement ++> tools.fix_queries.top_element_spaces { element_display_name }
+    tools.fix_queries --> [
+        kernel_api.KernelSession.access_plan { served_access_plan },
+        kernel_api.KernelSession.client_imports { import_spaces },
+        kernel_api.KernelSession.element_spaces { top_element_spaces },
+        kernel_api.KernelSession.strip_markers { marker_scan },
+    ]
+    placement.placement_facts --> kernel_api.module_fact { module_spaces }
+    frontend.constant --> kernel_api.module_fact { CodeContext }
+    frontend.unitree --> kernel_api.module_fact { Import, ModulePath }
+    driver.pipeline --> kernel_api.run_check { require }
+    driver.pipeline_types --> kernel_api.run_check { CompilationProduct }
+    backends.native.link_plan --> kernel_api.run_native_build {
+        ArtifactKind,
+        LinkPlanError,
+        build_link_plan,
+        link_artifact,
+        optimize_merged_program,
+        unique_callbacks,
+        whole_program_module
+    }
+    driver.compile_options --> kernel_api.run_native_build {
+        pop_native_target,
+        push_native_target
+    }
+    frontend.codeinfo --> kernel_api.run_native_build { is_toolchain_unit }
+    backends.native.llvm.binding as llvm --> kernel_api.run_native_build;
+    backends.native.c_emit --> kernel_api.run_native_build { emit_c }
+    backends.native.wasm_build --> kernel_api.run_native_build {
+        _assert_ir_rc_free,
+        app_declared_imports
+    }
+    backends.native.kernel_stage0 --> kernel_api.run_native_build {
+        refuse_missing_entries
+    }
+    driver.program --> kernel_api.KernelSession.definition_rows
+        | kernel_api.KernelSession.package_api
+        | kernel_api.native_build_request { JacProgram }
+    frontend.host --> kernel_api.native_build_request { active_host, install_host }
+    driver.compilation_context --> kernel_api.KernelSession.package_api {
+        compilation_scope
+    }
+    driver.unit_products --> kernel_api.KernelSession.definition_rows {
+        definition_span_rows
+    }
+    types.stubcat.build --> kernel_api.KernelSession.stub_catalog { build_catalog }
+    frontend.host --> driver.jir._definition_texts { kernel_resident }
 }
 
 graph import compiler.backends {
@@ -11283,18 +11460,15 @@ graph import compiler.driver {
             owner_scope_options
         },
         compiler.JacCompiler.product_program
-            | pipeline_runner.compile_application
-            | session_compile.select_context { bind_options, context_program },
+        | session_compile.select_context { bind_options, context_program },
         jir._module_projection { active_options },
         jir.compute_precompile_module_key | nativecache.NativeUnitRegistry._source_key {
             cache_scope
         },
-        source_products.python_text { cache_scope, owner_scope_options, program_for },
     ]
     compilation_context --> [
         application._prepare_revision
-            | program.JacProgram.load_dependency_module
-            | source_products.python_source { program_for },
+            | program.JacProgram.load_dependency_module { program_for },
         application.prepare_application { bind_options, context_program },
         application.prepare_dynamic_module { program_for },
         jir._memoized { active_options },
@@ -11309,7 +11483,8 @@ graph import compiler.driver {
             | nativecache
             | pipeline_runner
             | program
-            | session_compile { CompileOptions },
+            | session_compile
+            | source_products { CompileOptions },
         nativecache.NativeBuildSession.finish { pop_native_target, push_native_target },
         nativecache.NativeUnitRegistry._miss { env_na_debug },
         nativecache.NativeUnitRegistry._source_key {
@@ -11317,11 +11492,6 @@ graph import compiler.driver {
             push_native_target
         },
         pass_driver { CancelToken },
-        pipeline_runner.native_application {
-            CompileOptions,
-            pop_native_target,
-            push_native_target
-        },
         pipeline_runner.wasm_ir_units {
             CompileOptions,
             pop_native_target,
@@ -11546,7 +11716,6 @@ graph import compiler.driver {
         program.JacProgram.load_dependency_module { run_pass },
     ]
     pipeline ++> [
-        application_edges.application_edges { CompilationProduct, require },
         compiler.JacCompiler.assemble_native
             | module_analysis.ModuleAnalysis.require
             | nativecache.NativeBuildSession._finish { require },
@@ -11645,7 +11814,7 @@ graph import compiler.driver {
         },
         toolchain { fail_loud_on_compiler_source },
     ]
-    source_failures --> application._prepare_revision | source_products.python_source {
+    source_failures --> application._prepare_revision {
         bootstrap_tier_failure_details,
         module_scoped_failure_details
     }
@@ -13484,6 +13653,7 @@ graph import compiler.tools {
     doc_ir as doc ++> doc_ir_gen_pass | jac_formatter_pass;
     jac_formatter_pass ++> lang_tools { unparse_module }
     reactive_use_walk ++> jac_auto_lint_pass { ReactiveUseWalker }
+    session_queries ++> studio_queries { belongs_to, definition_symbol, symbol_nodes }
     treeprinter ++> lang_tools {
         print_ast_tree,
         print_symtab_tree,
@@ -14014,7 +14184,6 @@ graph import compiler.types {
 }
 
 graph import compiler.types.stubcat {
-    build ++> locate.StubcatArtifact.build { build_catalog }
     format ++> [
         locate { FORMAT_VERSION },
         modiface { IFACE_HASH_LEN },
@@ -14371,11 +14540,7 @@ graph import dist.publish {
         builder { generate_metadata, generate_pyproject_toml },
         package_json | wheel_meta { normalize_package_name },
     ]
-    npm_sources ++> npm_builder {
-        collect_npm_sources,
-        resolve_npm_entry,
-        runtime_pkg_name
-    }
+    npm_sources ++> npm_builder { NpmSourceFile, resolve_npm_entry, runtime_pkg_name }
     npm_tarball ++> npm_builder | runtime_npm { pack_tarball }
     package_json ++> npm_builder { generate_package_json, npm_tarball_filename }
     py_imports ++> builder { rewrite_imports, wheel_module_name }
@@ -14687,7 +14852,7 @@ graph import project {
     workspace_model ++> workspace { AppSpec, WorkspaceSpec }
     kernel_call ++> [
         kernel_check { call_check },
-        kernel_compile { call_compile },
+        kernel_compile { call_check, call_compile, call_native_build },
     ]
     kernel_compile ++> kernel_check { adopt_diagnostics, check_request_for }
     config ++> [
@@ -47221,9 +47386,9 @@ graph import studio {
             sym_uri
         },
         graph { Governs, ProjectModel, WireInfo },
-        insight { Governs, ProjectModel, StRule, WireInfo },
+        insight { Governs, ProjectModel, StRule, WireInfo, arm_key },
         native_agent { ProjectModel, SKIP_DIRS },
-        tui { ProjectModel, StAbility, StImpl, StModule, StNode, WireInfo },
+        tui { ProjectModel, StAbility, StImpl, StModule, StNode, WireInfo, arm_key },
     ]
     native_agent ++> agents { NativeAgentSession }
     session ++> [

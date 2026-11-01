@@ -1,5 +1,5 @@
 impl write_native_product(
-    module: Module,
+    source_path: str,
     directory: Path,
     relative: Path,
     shared: bool = True,
@@ -7,57 +7,55 @@ impl write_native_product(
     emit_source: bool = True,
     program: JacProgram | None = None
 ) -> dict[str, any] {
+    if not shared and not emit_source {
+        raise ValueError('Binary runtime products must be shared libraries');
+    }
     if program is None {
         program = JacProgram();
-    }
-    plan = build_link_plan(program, [module.loc.mod_path], program.options);
-    manifest = module.gen.interop_manifest;
-    bindings = unique_callbacks(manifest.callable_native_imports) if shared else [];
-    plan.callback_bindings = list(bindings);
-    kind = ArtifactKind.SHARED if shared else ArtifactKind.EXECUTABLE;
-    if not shared and any(unit.iface.python_imports for unit in plan.units) {
-        raise ValueError('Standalone native products cannot import Python');
-    }
-    if not shared and plan.demoted_symbols() {
-        raise ValueError(
-            'Native declarations could not lower: ' + ', '.join(plan.demoted_symbols())
-        );
     }
     output = relative.with_suffix('.so' if shared else '');
     source = relative.with_suffix('.c');
     target = directory / (source if emit_source else output);
     target.parent.mkdir(parents=True, exist_ok=True);
-    if emit_source {
-        import from jaclang.compiler.backends.native.c_emit { emit_c }
-        spec = plan.glue_spec(kind, "c", False);
-        (merged, _) = whole_program_module(plan, spec);
-        optimize_merged_program(plan, merged, kind);
-        llvm_ir = str(merged);
-        if memory == 'nogc' {
-            import from jaclang.compiler.backends.native.wasm_build {
-                _assert_ir_rc_free
-            }
-            _assert_ir_rc_free(llvm_ir, module.loc.mod_path);
-        }
-        target.write_text(emit_c(llvm_ir), encoding='utf-8');
-    } else {
-        if not shared {
-            raise ValueError('Binary runtime products must be shared libraries');
-        }
-        link_artifact(plan, str(target), kind);
+    request = native_build_request_for(
+        [source_path],
+        'shared' if shared else 'executable',
+        CompileOptions(
+            aot_mode=True, default_codespace='native', memory_profile=memory or None
+        ),
+        str(target)
+    );
+    request.callbacks = shared;
+    request.emit_c = emit_source;
+    request.refuse_python_imports = not shared;
+    request.refuse_demoted = not shared;
+    result = kernel_native_build(program, request);
+    if not result.ok() {
+        raise ValueError('\n'.join([diagnostic_text(error) for error in result.errors]));
+    }
+    if not shared and result.python_imports {
+        raise ValueError('Standalone native products cannot import Python');
+    }
+    if not shared and result.demoted {
+        raise ValueError(
+            'Native declarations could not lower: ' + ', '.join(result.demoted)
+        );
+    }
+    if not result.linked {
+        raise ValueError(f'No native product was built for {source_path}');
     }
     return {
         'source': source.as_posix() if emit_source else '',
         'output': output.as_posix(),
         'kind': 'shared' if shared else 'executable',
-        'libraries': plan.clib_paths(),
+        'libraries': list(result.libraries),
         'callbacks': [
             {
                 'name': binding.name,
                 'symbol': binding.symbol,
                 'ret_type': binding.ret_type,
                 'param_types': list(binding.param_types)
-            } for binding in bindings
+            } for binding in result.callbacks
         ]
     };
 }

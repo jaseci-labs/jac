@@ -83,36 +83,6 @@ impl emits_server_code(mod: (uni.Module | None)) -> bool {
     return SPACE_SERVER in module_spaces(mod);
 }
 
-impl discover_spaces(
-    paths: list[str], prog: (JacProgram | None) = None
-) -> dict[str, set[str]] {
-    target = prog if prog is not None else JacProgram();
-    out: dict[str, set[str]] = {};
-    for p in paths {
-        ap = os.path.abspath(p);
-        mod = hub_module_for_path(ap, target);
-        if mod is None {
-            record = module_record(ap, target);
-            if record is not None and record.spaces {
-                out[ap] = set(record.spaces);
-                continue;
-            }
-            try {
-                mod = target.compile(file_path=ap, no_cgen=True);
-            } except Exception {}
-        }
-        spaces = set(module_spaces(mod));
-        if target.count_module_errors(os.path.normpath(ap)) > 0 {
-            spaces.add(SPACE_SERVER);
-        }
-        out[ap] = spaces;
-    }
-    if prog is None {
-        target.release_compile_closure();
-    }
-    return out;
-}
-
 impl pinned_module_space(source_path: str) -> str {
     return config_module_pin(source_path);
 }

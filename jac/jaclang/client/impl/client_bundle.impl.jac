@@ -1,29 +1,3 @@
-impl _client_target_module(source_key: str, program: any) -> (Module | None) {
-    return program._get_compiler().client_codegen_target(source_key, program);
-}
-
-impl _ensure_js_generated(mod: Module, program: any) -> None {
-    _err_mark = len(program.errors_had);
-    if program._get_compiler().ensure_client_codegen(mod, program) {
-        return;
-    }
-    _detail = '\n\n'.join(_e.pretty_print() for _e in program.errors_had[_err_mark:]);
-    raise ClientBundleError(
-        f"'{os.path.basename(mod.loc.mod_path or '')}' is used by client code "
-        f"but does not lower to the client:\n\n{_detail}"
-    );
-}
-
-impl _errors_reaching(program: any, source: str) -> list[any] {
-    source = os.path.realpath(source);
-    owned = {id(err) for err in program.diags.owned_errors(source)};
-    return [
-        err
-        for err in program.errors_had
-        if id(err) in owned or source in program.transitive_dependents(err.owner)
-    ];
-}
-
 impl ClientBundleBuilder.postinit -> None {
     if not self.runtime_path {
         self.runtime_path = Path(__file__).with_name('client_runtime.jac');
@@ -47,11 +21,7 @@ impl ClientBundleBuilder.build(
         );
         return prebuilt;
     }
-    program = client_program(self.program);
-    mod = program.find_module(str(source_path));
-    manifest = (
-        mod.gen.client_manifest if mod else self._compile_to_js(source_path).manifest
-    );
+    manifest = self._compile_to_js(source_path).manifest;
     bundle_paths = [source_path];
     if (manifest and manifest.imports) {
         for import_path in manifest.imports.values() {
@@ -110,21 +80,17 @@ impl ClientBundleBuilder._compile_to_js(
     source_path: Path, source_root: Path | None = None
 ) -> ClientArtifact {
     program = client_program(self.program);
-    if source_root is not None {
-        import copy;
-        import from jaclang.compiler.driver.compilation_context { context_program }
-        options = copy.copy(program.options);
-        options.client_source_root = str(source_root.resolve());
-        program = context_program(program, options);
-    }
-    compiler = program._get_compiler();
-    diagnostic_program = compiler.product_program(str(source_path), program);
-    prev_error_count = len(diagnostic_program.errors_had);
-    artifact = compiler.get_client_artifact(str(source_path), program);
+    root = str(source_root.resolve())
+        if source_root is not None
+        else (program.options.client_source_root if program.options is not None else "");
+    mark = len(program.errors_had);
+    artifact = kernel_client_artifact(
+        program,
+        str(source_path),
+        CompileOptions(skip_native_engine=True, client_source_root=root)
+    );
     if artifact is None {
-        errors = diagnostic_program.errors_had[prev_error_count:]
-            or _errors_reaching(diagnostic_program, str(source_path));
-        formatted = '\n'.join(str(err) for err in errors);
+        formatted = '\n'.join(str(err) for err in program.errors_had[mark:]);
         if not formatted {
             formatted = (
                 " it lowers to no client code because it declares nothing that runs on "

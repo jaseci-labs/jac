@@ -632,11 +632,17 @@ impl HotReloader._recompile_client_code(
         if program is None {
             return;
         }
-        program.invalidate_module(source_key);
-        program.drop_module_alerts(source_key);
-
         mark = len(program.errors_had);
-        artifact = program._get_compiler().get_client_artifact(source_key, program);
+        artifact = kernel_client_artifact(
+            program,
+            source_key,
+            CompileOptions(
+                skip_native_engine=True,
+                client_source_root=program.options.client_source_root
+                    if program.options is not None
+                    else ""
+            )
+        );
 
         new_errors = program.errors_had[mark:];
         if new_errors {
@@ -703,32 +709,26 @@ impl HotReloader._classify_declarations(file_path: str) -> tuple[bool, bool, boo
     has_client = False;
     has_server = False;
     has_native = False;
-    try {
-        prog = JacProgram();
-        mod = prog.compile(file_path, no_cgen=True);
-
-        for nd in mod.body {
-            nd_context = nd?.code_context;
-            if nd_context {
-                if nd_context == CodeContext.CLIENT {
-                    has_client = True;
-                } elif nd_context == CodeContext.NATIVE {
-                    has_native = True;
-                } else {
-                    has_server = True;
-                }
+    real = os.path.realpath(file_path);
+    checked = kernel_module_facts(JacProgram(), [real], CompileOptions(no_cgen=True));
+    for error in checked.errors {
+        console.error(diagnostic_text(error));
+    }
+    for fact in checked.modules {
+        if os.path.realpath(fact.path) != real {
+            continue;
+        }
+        for space in fact.spaces {
+            if space == CodeContext.CLIENT.value {
+                has_client = True;
+            } elif space == CodeContext.NATIVE.value {
+                has_native = True;
+            } else {
+                has_server = True;
             }
         }
-
-        if not has_client and not has_server and not has_native {
-            has_server = True;
-        }
-    } except SyntaxError as e {
-        console.error(_syntax_error_line(file_path, e));
-        has_server = True;
-    } except Exception as e {
-        error_type = type(e).__name__;
-        console.error(f"{error_type} in {file_path}: {e}");
+    }
+    if not has_client and not has_server and not has_native {
         has_server = True;
     }
     return (has_client, has_server, has_native);

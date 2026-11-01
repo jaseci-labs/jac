@@ -1056,12 +1056,10 @@ impl _definition_texts(path: str) -> dict[str, list[str]] {
     if cached is not None and cached[0] == content_digest {
         return cached[1];
     }
-    texts: dict[str, list[str]] = {};
-    try {
-        texts = _texts_of_spans(
-            real, text, definition_span_rows(JacProgram().parse_source(text, real))
-        );
-    } except Exception {}
+    rows = definition_span_rows(JacProgram().parse_source(text, real))
+        if kernel_resident()
+        else tool_session().definition_rows(real);
+    texts = _texts_of_spans(real, text, rows);
     _DEFINITION_TEXTS[real] = (content_digest, texts);
     return texts;
 }

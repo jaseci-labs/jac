@@ -1,3 +1,4 @@
+import os;
 import re;
 import json;
 import jaclang;
@@ -153,15 +154,13 @@ impl _runtime_source_path(framework: str = "") -> Path {
 }
 
 impl _compile_cl_to_js(src: Path) -> str {
-    program = JacProgram();
-    prev = len(program.errors_had);
-    mod = program.compile(str(src));
-    new_errors = program.errors_had[prev:];
-    if new_errors {
-        formatted = "\n".join(str(err) for err in new_errors);
+    real = os.path.realpath(str(src));
+    compiled = kernel_compile(JacProgram(), [real], CompileOptions(), products=["client_js"]);
+    if not compiled.ok() {
+        formatted = "\n".join([diagnostic_text(err) for err in compiled.errors]);
         raise ValueError(f"Failed to compile {src.name}:\n{formatted}");
     }
-    return (mod.gen.js if mod and mod.gen else "") or "";
+    return compiled.unit(real).client_js;
 }
 
 impl _already_exported(js: str) -> set[str] {

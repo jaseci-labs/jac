@@ -115,7 +115,7 @@ obj WiringSpec {
     static def admitted_names(rules: list[RuleRec]) -> (set[str] | None);
 }
 
-glob _spec_cache: dict[str, tuple[tuple[float, int], WiringSpec]] = {},
+glob _spec_cache: dict[str, tuple[str, WiringSpec]] = {},
      _resolution: ContextVar[dict[str, WiringSpec | None] | None] = ContextVar(
          'jac_wiring_resolution', `default=None
      ),

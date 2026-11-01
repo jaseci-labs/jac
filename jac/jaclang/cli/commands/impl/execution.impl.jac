@@ -732,10 +732,10 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
     base = base or './';
     mod = mod[:-4];
     if filename.endswith('.jac') {
+        target_path = os.path.realpath(filename);
         program = Jac.get_program();
-        code = program._get_compiler().get_bytecode(
-            full_target=os.path.abspath(filename), target_program=program
-        );
+        compiled = kernel_compile(program, [target_path], CompileOptions());
+        code = compiled.unit(target_path).code if compiled.ok() else None;
         if code is not None {
             if db.has_breakpoint(marshal.dumps(code)) {
                 run(filename, main, cache);
@@ -1510,15 +1510,10 @@ impl _load_executable(
     filename: str, base: str, main: bool, force_codespace: str = ''
 ) -> types.ModuleType {
     program = Jac.get_program();
-    compiler = program._get_compiler();
-    compiler_owned = compiler.selfhost.is_selfhost(
-        compiler.selfhost.resolve(filename, program)
-    );
     config = get_config_for_path(Path(filename));
-    if config is not None and config.project_root is not None {
-        compiler_owned = compiler_owned
-            or _in_compiler_tree(Path(filename), config.project_root);
-    }
+    compiler_owned = config is not None
+        and config.project_root is not None
+        and _in_compiler_tree(Path(filename), config.project_root);
     if compiler_owned {
         modules = Jac.jac_import(
             target=os.path.splitext(os.path.basename(filename))[0],
@@ -1633,23 +1628,9 @@ impl _exec_file(
                         if _kind_forced or backend == "native"
                         else None
                 );
-                (in_kernel, engine) = program._get_compiler().kernel_native_entry(
-                    full_path, program, _run_options
+                (_in_kernel, engine) = program._get_compiler().kernel_native_entry(
+                    full_path, program, _run_options or _RunOpts()
                 );
-                if not in_kernel and _run_options is None {
-                    engine = program._get_compiler().native_entry_engine(
-                        full_path, program
-                    );
-                } elif not in_kernel {
-                    ir_mod = program.compile(file_path=full_path, options=_run_options);
-                    if (
-                        ir_mod
-                        and ir_mod.decided_codespace == 'native'
-                        and ir_mod.gen.native_engine
-                    ) {
-                        engine = ir_mod.gen.native_engine;
-                    }
-                }
                 if program.errors_had {
                     for _err in program.errors_had {
                         console.error(_err.pretty_print());

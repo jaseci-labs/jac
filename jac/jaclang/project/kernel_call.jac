@@ -92,6 +92,28 @@ def grammar_of_record(raw: dict[str, any]) -> GrammarReport;
 
 def arch_plan_of_record(raw: dict[str, any]) -> ArchPlan;
 
+def outline_of_record(raw: dict[str, any]) -> ModuleOutline;
+
+def edit_symbol_of_record(raw: dict[str, any]) -> EditSymbol;
+
+def wiring_change_of_record(raw: dict[str, any]) -> WiringChange;
+
+def wiring_model_of_record(raw: dict[str, any]) -> WiringModel;
+
+def token_symbol_of_record(raw: dict[str, any]) -> TokenSymbol;
+
+def token_stream_of_record(raw: dict[str, any]) -> TokenStream;
+
+def symbol_info_of_record(raw: dict[str, any]) -> SymbolInfo;
+
+def source_ref_of_record(raw: dict[str, any]) -> SourceRef;
+
+def entry_point_of_record(raw: dict[str, any]) -> EntryPoint;
+
+def context_slice_of_record(raw: dict[str, any]) -> ContextSlice;
+
+def code_diagnostic_of_record(raw: dict[str, any]) -> CodeDiagnostic;
+
 def compile_result_of(raw: dict[str, any]) -> CompileResult;
 
 def check_result_of(raw: dict[str, any]) -> CheckResult;
@@ -99,6 +121,20 @@ def check_result_of(raw: dict[str, any]) -> CheckResult;
 def call_compile(request: CompileRequest) -> CompileResult;
 
 def call_check(request: CheckRequest) -> CheckResult;
+
+def native_build_request_record(request: NativeBuildRequest) -> dict[str, any];
+
+def native_build_result_of(raw: dict[str, any]) -> NativeBuildResult;
+
+def call_native_build(request: NativeBuildRequest) -> NativeBuildResult;
+
+def element_space_of_record(raw: dict[str, any]) -> ElementSpace;
+
+def import_space_of_record(raw: dict[str, any]) -> ImportSpace;
+
+def marker_scan_of_record(raw: dict[str, any]) -> MarkerScan;
+
+def access_plan_of_record(raw: dict[str, any]) -> AccessPlan;
 
 def open_kernel_session(project_root: str) -> any;
 
@@ -142,8 +178,37 @@ obj SessionClient {
 
     def compile(request: CompileRequest) -> CompileResult;
     def check(request: CheckRequest) -> CheckResult;
+    def strip_markers(path: str, text: str) -> MarkerScan;
+    def element_spaces(path: str) -> list[ElementSpace];
+    def client_imports(path: str) -> list[ImportSpace];
+    def access_plan(project_root: str) -> AccessPlan;
+    def package_api(base_root: str, exports: list[str]) -> str;
+    def stub_catalog(
+        out_path: str, only: list[str], pkg_dir: str
+    ) -> StubCatalogReport;
+
+    def npm_sources(project_root: str) -> list[NpmSource];
+    def definition_rows(path: str) -> list[str];
+
     def format_text(path: str, text: str, auto_lint: bool = False) -> ToolOutput;
     def with_text(path: str, text: str, query: Callable[[], any]) -> any;
+    def module_outline(path: str) -> ModuleOutline;
+    def edit_symbols(path: str, text: str) -> list[EditSymbol];
+    def import_texts(path: str, text: str) -> list[str];
+    def wiring_changes(path: str, old_text: str, new_text: str) -> list[WiringChange];
+    def wired_dependents(head: str, names: list[str]) -> WiredFiles;
+    def wiring_module_files(arch_path: str, consumers: list[str]) -> list[str];
+    def wiring_model(arch_path: str) -> WiringModel;
+    def token_symbols(path: str) -> list[TokenSymbol];
+    def assignment_hints(path: str) -> list[InlayHint];
+    def tokens(path: str, text: str) -> TokenStream;
+    def code_lookup(name: str) -> list[SymbolInfo];
+    def code_references(name: str) -> list[SourceRef];
+    def code_archetypes(kind: str) -> list[SymbolInfo];
+    def code_walkers(node_type: str) -> list[EntryPoint];
+    def code_slice(name: str, depth: int) -> ContextSlice;
+    def code_diagnostics(file: str) -> list[CodeDiagnostic];
+    def code_refresh(file: str);
 }
 
 glob _TOOL_SESSIONS: dict[str, SessionClient] = {};

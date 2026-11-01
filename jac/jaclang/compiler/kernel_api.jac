@@ -137,7 +137,30 @@ obj CheckRequest {
         sources: dict[str, str] = {},
         native_coverage: bool = False,
         placements: bool = False,
-        closure: bool = False;
+        closure: bool = False,
+        module_facts: bool = False;
+}
+
+"""What a check learned about one analysed module, present when the request
+asks for `module_facts`. `spaces` are the codespaces its elements run in (its
+decided codespace alone when it has one), `client_declared` whether it
+declares client code, `errors` how many errors it owns, and `imports` the Jac
+modules it imports, resolved to paths."""
+obj ModuleFact {
+    has path: str,
+        app: str = "",
+        spaces: list[str] = [],
+        decided: str = "",
+        client_declared: bool = False,
+        errors: int = 0,
+        imports: list[str] = [];
+}
+
+"""A cross-app edge an application's boundary facts declare: `consumer` calls
+into `provider`."""
+obj AppEdge {
+    has consumer: str,
+        provider: str;
 }
 
 obj CheckResult {
@@ -145,9 +168,147 @@ obj CheckResult {
         warnings: list[KernelDiagnostic] = [],
         reached: list[str] = [],
         coverage: list[CoverageRow] = [],
-        placements: list[PlacementRow] = [];
+        placements: list[PlacementRow] = [],
+        modules: list[ModuleFact] = [],
+        app_edges: list[AppEdge] = [];
 
     def ok -> bool;
+}
+
+"""A native artifact to build. `roots` are the closure's root modules and
+`kind` one of "executable", "shared", "wasm" or "plan" (lower the closure
+into the unit caches, link nothing). `output` is where the artifact goes;
+with `emit_c` it receives the merged program as C source instead. The
+`refuse_*` flags stop the build before linking when the closure imports
+Python or carries demoted functions; `require_entry` stops it when the root
+has no entry point; `kernel_entries` refuses a compiler kernel whose loader
+entry points are missing; `assert_no_rc` refuses emitted IR that carries
+refcount machinery; `callbacks` binds the root's callable native imports as
+callbacks."""
+obj NativeBuildRequest {
+    has roots: list[str],
+        kind: str,
+        output: str = "",
+        project_root: str = "",
+        search_paths: list[str] = [],
+        package_root: str = "",
+        options: CompileOptions = CompileOptions(),
+        link_mode: str = "",
+        native_unit: bool = False,
+        library_api: bool = False,
+        callbacks: bool = False,
+        emit_c: bool = False,
+        refuse_python_imports: bool = False,
+        refuse_demoted: bool = False,
+        require_entry: bool = False,
+        kernel_entries: bool = False,
+        assert_no_rc: bool = False;
+}
+
+obj LinkedUnit {
+    has path: str,
+        digest: str,
+        stamp: str = "";
+}
+
+obj CallbackBinding {
+    has name: str,
+        symbol: str,
+        ret_type: str,
+        param_types: list[str] = [];
+}
+
+"""What a native build did. `linked` is False when the build stopped before
+linking: on errors, or on a refusal its request asked for, whose facts
+(`python_imports`, `demoted`, `rc_symbols`, `rc_probes`, `has_entry`,
+`root_native`) say why. `recompiled` counts the units this build lowered and
+`analysed`, `lowered` and `generated` the cache events behind them; `log`
+holds the build's progress lines in order."""
+obj NativeBuildResult {
+    has errors: list[KernelDiagnostic] = [],
+        warnings: list[KernelDiagnostic] = [],
+        linked: bool = False,
+        reused: bool = False,
+        output: str = "",
+        mode: str = "",
+        triple: str = "",
+        units: list[LinkedUnit] = [],
+        recompiled: int = 0,
+        analysed: int = 0,
+        lowered: int = 0,
+        generated: int = 0,
+        sha256: str = "",
+        plan_digest: str = "",
+        layout_digest: str = "",
+        root_native: bool = False,
+        has_entry: bool = False,
+        python_imports: list[str] = [],
+        demoted: list[str] = [],
+        rc_symbols: list[str] = [],
+        rc_probes: list[str] = [],
+        libraries: list[str] = [],
+        callbacks: list[CallbackBinding] = [],
+        log: list[str] = [];
+
+    def ok -> bool;
+}
+
+"""A top-level element's codespace: `space` is where it runs, `dual` whether
+it is placed on both sides. A marker scan reuses it for the elements a
+retired placement marker claimed."""
+obj ElementSpace {
+    has name: str,
+        space: str,
+        line: int = 0,
+        dual: bool = False;
+}
+
+"""An import statement's placement: `client_only` is True when only client
+code reads what it imports. A marker scan reuses it for the retired
+`sv import` statements it strips."""
+obj ImportSpace {
+    has target: str,
+        line: int,
+        client_only: bool = False;
+}
+
+"""The source with its retired placement markers stripped, what the markers
+claimed, and `note` naming why the file was left alone (empty when it was
+scanned)."""
+obj MarkerScan {
+    has text: str = "",
+        changed: bool = False,
+        claims: list[ElementSpace] = [],
+        sv_imports: list[ImportSpace] = [],
+        note: str = "";
+}
+
+obj AccessRewrite {
+    has path: str,
+        line: int,
+        kind: str,
+        name: str,
+        reason: str;
+}
+
+obj AccessPlan {
+    has rewrites: list[AccessRewrite] = [],
+        notes: list[str] = [];
+}
+
+obj StubCatalogReport {
+    has summary: str = "",
+        load_failures: list[str] = [];
+}
+
+"""One client module a project publishes to npm: its linked JavaScript with
+JSDoc, its TypeScript declarations, and the npm packages it imports."""
+obj NpmSource {
+    has npm_path: str,
+        source_path: str,
+        js: str,
+        dts: str,
+        external_imports: list[str] = [];
 }
 
 obj TextEdit {
@@ -209,6 +370,192 @@ obj ArchPlan {
         hint: str = "";
 }
 
+"""A symbol the project-wide code index knows by name (`jac code`, studio's
+agent)."""
+obj SymbolInfo {
+    has name: str,
+        kind: str,
+        file: str,
+        line: int,
+        col: int = 0,
+        type_str: str = "",
+        doc: str = "",
+        signature: str = "",
+        fields: list[str] = [],
+        abilities: list[str] = [],
+        base_classes: list[str] = [],
+        is_genai: bool = False;
+
+    def render -> str;
+    def to_dict -> dict[str, any];
+    static def from_dict(d: dict[str, any]) -> SymbolInfo;
+}
+
+obj SourceRef {
+    has file: str,
+        line: int,
+        col: int = 0,
+        role: str = "use",
+        snippet: str = "";
+
+    def render -> str;
+    def to_dict -> dict[str, any];
+}
+
+obj CodeDiagnostic {
+    has file: str,
+        line: int,
+        severity: str,
+        message: str;
+
+    def render -> str;
+    def to_dict -> dict[str, any];
+}
+
+obj EntryPoint {
+    has walker_name: str,
+        ability: str,
+        node_type: str,
+        event: str,
+        file: str = "",
+        line: int = 0;
+
+    def render -> str;
+    def to_dict -> dict[str, any];
+    static def from_dict(d: dict[str, any]) -> EntryPoint;
+}
+
+obj ContextSlice {
+    has query: str,
+        target: (SymbolInfo | None) = None,
+        related: list[SymbolInfo] = [],
+        uses: list[SourceRef] = [];
+
+    def render -> str;
+    def to_dict -> dict[str, any];
+}
+
+"""A declaration of a module or one of its annexes. `owner` names the
+archetype a field or method belongs to; an impl names its `target`."""
+obj OutlineSymbol {
+    has kind: str,
+        name: str,
+        owner: str = "",
+        file: str = "",
+        line: int = 0,
+        end_line: int = 0,
+        col: int = 0,
+        doc: str = "",
+        bases: list[str] = [],
+        signature: str = "",
+        event: str = "",
+        type_str: str = "",
+        target: str = "";
+}
+
+"""A module's declarations, woven with its annexes; `error` says why it could
+not be parsed."""
+obj ModuleOutline {
+    has path: str,
+        doc: str = "",
+        files: list[str] = [],
+        symbols: list[OutlineSymbol] = [],
+        error: str = "";
+}
+
+"""One top-level declaration of a source text, keyed by its dotted name, with
+the text and signature an edit review compares."""
+obj EditSymbol {
+    has key: str,
+        kind: str,
+        line: int,
+        end_line: int,
+        text: str,
+        signature: str = "";
+}
+
+obj WiringChange {
+    has kind: str,
+        detail: str,
+        module: str = "";
+}
+
+"""The module files a module's wires feed; `owned` is False when no
+archwire.jac governs the module."""
+obj WiredFiles {
+    has owned: bool = False,
+        files: list[str] = [];
+}
+
+obj WiringModule {
+    has local: str,
+        file: str = "",
+        import_name: str = "",
+        project: bool = False;
+}
+
+"""One wire into one consumer. `rules` names the rules admitting it, `arms`
+the rule arms it matches as `rule<US>source<US>target`."""
+obj WiringEdge {
+    has provider: str,
+        consumer: str,
+        scope: list[str] = [],
+        names: list[str] = [],
+        form: str = "",
+        injected: bool = True,
+        line: int = 0,
+        crosses: bool = False,
+        rules: list[str] = [],
+        violation: str = "",
+        arms: list[str] = [];
+}
+
+obj WiringRule {
+    has name: str,
+        sources: list[str] = [],
+        targets: list[str] = [],
+        names: list[str] = [],
+        governs: list[str] = [];
+}
+
+"""An archwire.jac as data: its modules, its wires per consumer and its
+rules."""
+obj WiringModel {
+    has arch_path: str,
+        parsed: bool = True,
+        modules: list[WiringModule] = [],
+        edges: list[WiringEdge] = [],
+        rules: list[WiringRule] = [];
+}
+
+"""The symbol a token resolves to. Columns are 0-based, lines 1-based."""
+obj TokenSymbol {
+    has line: int,
+        col: int,
+        end_col: int,
+        name: str,
+        kind: str = "",
+        dotted: str = "",
+        decl_path: str = "",
+        decl_line: int = 0,
+        decl_col: int = 0;
+}
+
+obj SourceToken {
+    has kind: str,
+        value: str,
+        line: int,
+        col: int,
+        end_line: int,
+        end_col: int;
+}
+
+"""A text's lexical tokens and comments, for highlighting."""
+obj TokenStream {
+    has tokens: list[SourceToken] = [],
+        comments: list[SourceSpan] = [];
+}
+
 """An analysed project held across edits. Every tooling feature is a query on
 a session; an edit re-analyses incrementally inside the kernel. A query on an
 annex answers from the module that owns it."""
@@ -223,7 +570,8 @@ obj KernelSession {
         _versions: dict[str, int] = {},
         _analysed: dict[str, int] = {},
         _diagnosed: dict[str, list[KernelDiagnostic]] = {},
-        _open: set[str] = set();
+        _open: set[str] = set(),
+        _intel: (CodeIntelligence | None) = None;
 
     def postinit;
     def enter -> ProjectHost;
@@ -267,13 +615,53 @@ obj KernelSession {
         arch_path: str, action: str, prune: bool = False, graph_format: str = ""
     ) -> ArchPlan;
 
+    def strip_markers(path: str, text: str) -> MarkerScan;
+    def element_spaces(path: str) -> list[ElementSpace];
+    def client_imports(path: str) -> list[ImportSpace];
+    def access_plan(project_root: str) -> AccessPlan;
+    def package_api(base_root: str, exports: list[str]) -> str;
+    def stub_catalog(
+        out_path: str, only: list[str], pkg_dir: str
+    ) -> StubCatalogReport;
+
+    def npm_sources(project_root: str) -> list[NpmSource];
+    def definition_rows(path: str) -> list[str];
+
     def compile(request: CompileRequest) -> CompileResult;
     def check(request: CheckRequest) -> CheckResult;
+    def module_outline(path: str) -> ModuleOutline;
+    def edit_symbols(path: str, text: str) -> list[EditSymbol];
+    def import_texts(path: str, text: str) -> list[str];
+    def wiring_changes(path: str, old_text: str, new_text: str) -> list[WiringChange];
+    def wired_dependents(head: str, names: list[str]) -> WiredFiles;
+    def wiring_module_files(arch_path: str, consumers: list[str]) -> list[str];
+    def wiring_model(arch_path: str) -> WiringModel;
+    def token_symbols(path: str) -> list[TokenSymbol];
+    def assignment_hints(path: str) -> list[InlayHint];
+    def tokens(path: str, text: str) -> TokenStream;
+    def code_index -> CodeIntelligence;
+    def code_lookup(name: str) -> list[SymbolInfo];
+    def code_references(name: str) -> list[SourceRef];
+    def code_archetypes(kind: str) -> list[SymbolInfo];
+    def code_walkers(node_type: str) -> list[EntryPoint];
+    def code_slice(name: str, depth: int) -> ContextSlice;
+    def code_diagnostics(file: str) -> list[CodeDiagnostic];
+    def code_refresh(file: str);
 }
 
 def compile_request(request: CompileRequest) -> CompileResult;
 
 def check_request(request: CheckRequest) -> CheckResult;
+
+def native_build_request(request: NativeBuildRequest) -> NativeBuildResult;
+
+def run_native_build(
+    program: JacProgram, host: ProjectHost, request: NativeBuildRequest
+) -> NativeBuildResult;
+
+def module_fact(
+    program: JacProgram, real: str, module: uni.Module, app: str
+) -> ModuleFact;
 
 def open_session(
     project_root: str, search_paths: list[str], package_root: str

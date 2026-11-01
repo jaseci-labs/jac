@@ -995,18 +995,14 @@ impl inject_into_scope(owner: (Ability | ImplDef), stmt: UniNode) -> None {
 }
 
 impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
-    stamp: tuple[float, int] = (-1.0, -1);
-    try {
-        stamp = (os.path.getmtime(arch_path), os.path.getsize(arch_path));
-    } except OSError {}
-    key = os.path.realpath(root_dir);
-    cached = _spec_cache.get(key);
-    if cached is not None and cached[0] == stamp {
-        return cached[1];
-    }
     host = active_host();
     source = host.read_source(arch_path);
     digest = hashlib.sha256(source.encode()).hexdigest();
+    key = os.path.realpath(root_dir);
+    cached = _spec_cache.get(key);
+    if cached is not None and cached[0] == digest {
+        return cached[1];
+    }
     records: (tuple[bool, list[WireRec], list[RuleRec]] | None) = None;
     held = host.wiring_records(digest);
     if held {
@@ -1025,7 +1021,7 @@ impl _load_spec(root_dir: str, arch_path: str) -> WiringSpec {
         wires=records[1],
         rules=records[2]
     );
-    _spec_cache[key] = (stamp, spec);
+    _spec_cache[key] = (digest, spec);
     return spec;
 }
 

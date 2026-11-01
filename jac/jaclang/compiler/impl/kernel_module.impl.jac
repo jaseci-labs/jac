@@ -392,6 +392,7 @@ impl check_request_of(value: ptr[PyObject]) -> CheckRequest {
     native_coverage = False;
     placements = False;
     closure = False;
+    module_facts = False;
     for pair in entries_of(value, "CheckRequest") {
         what = "CheckRequest." + pair.name;
         if pair.name == "paths" {
@@ -413,6 +414,8 @@ impl check_request_of(value: ptr[PyObject]) -> CheckRequest {
             placements = flag_of(pair.value, what);
         } elif pair.name == "closure" {
             closure = flag_of(pair.value, what);
+        } elif pair.name == "module_facts" {
+            module_facts = flag_of(pair.value, what);
         } else {
             raise failure(
                 PyExc_TypeError, "CheckRequest has no field '" + pair.name + "'"
@@ -431,7 +434,8 @@ impl check_request_of(value: ptr[PyObject]) -> CheckRequest {
         sources=sources,
         native_coverage=native_coverage,
         placements=placements,
-        closure=closure
+        closure=closure,
+        module_facts=module_facts
     );
 }
 
@@ -702,6 +706,27 @@ impl check_result_object(result: CheckResult) -> ptr[PyObject] {
             put(item, "symbol", text_object(row.symbol));
             put(item, "placement", text_object(row.placement));
             put(item, "reason", text_object(row.reason));
+        }
+        modules = new_list();
+        put(record, "modules", modules);
+        for fact in result.modules {
+            item = new_record();
+            append(modules, item);
+            put(item, "path", text_object(fact.path));
+            put(item, "app", text_object(fact.app));
+            put(item, "spaces", texts_object(fact.spaces));
+            put(item, "decided", text_object(fact.decided));
+            put(item, "client_declared", flag_object(fact.client_declared));
+            put(item, "errors", int_object(fact.errors));
+            put(item, "imports", texts_object(fact.imports));
+        }
+        app_edges = new_list();
+        put(record, "app_edges", app_edges);
+        for app_edge in result.app_edges {
+            item = new_record();
+            append(app_edges, item);
+            put(item, "consumer", text_object(app_edge.consumer));
+            put(item, "provider", text_object(app_edge.provider));
         }
     } except boundary_failure as error {
         jacpy_release(record);
@@ -1195,4 +1220,973 @@ impl execute(module: ptr[PyObject]) -> i32 {
 
 impl PyInit_jac_kernel -> ptr[PyObject] {
     return definition.initialize();
+}
+
+impl outline_object(outline: ModuleOutline) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "path", text_object(outline.path));
+        put(record, "doc", text_object(outline.doc));
+        put(record, "files", texts_object(outline.files));
+        put(record, "error", text_object(outline.error));
+        symbols = new_list();
+        put(record, "symbols", symbols);
+        for row in outline.symbols {
+            item = new_record();
+            append(symbols, item);
+            put(item, "kind", text_object(row.kind));
+            put(item, "name", text_object(row.name));
+            put(item, "owner", text_object(row.owner));
+            put(item, "file", text_object(row.file));
+            put(item, "line", int_object(row.line));
+            put(item, "end_line", int_object(row.end_line));
+            put(item, "col", int_object(row.col));
+            put(item, "doc", text_object(row.doc));
+            put(item, "bases", texts_object(row.bases));
+            put(item, "signature", text_object(row.signature));
+            put(item, "event", text_object(row.event));
+            put(item, "type_str", text_object(row.type_str));
+            put(item, "target", text_object(row.target));
+        }
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl edit_symbols_object(rows: list[EditSymbol]) -> ptr[PyObject] {
+    out = new_list();
+    try {
+        for row in rows {
+            item = new_record();
+            append(out, item);
+            put(item, "key", text_object(row.key));
+            put(item, "kind", text_object(row.kind));
+            put(item, "line", int_object(row.line));
+            put(item, "end_line", int_object(row.end_line));
+            put(item, "text", text_object(row.text));
+            put(item, "signature", text_object(row.signature));
+        }
+    } except boundary_failure as error {
+        jacpy_release(out);
+        raise error;
+    }
+    return out;
+}
+
+impl wiring_changes_object(rows: list[WiringChange]) -> ptr[PyObject] {
+    out = new_list();
+    try {
+        for row in rows {
+            item = new_record();
+            append(out, item);
+            put(item, "kind", text_object(row.kind));
+            put(item, "detail", text_object(row.detail));
+            put(item, "module", text_object(row.module));
+        }
+    } except boundary_failure as error {
+        jacpy_release(out);
+        raise error;
+    }
+    return out;
+}
+
+impl wired_files_object(found: WiredFiles) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "owned", flag_object(found.owned));
+        put(record, "files", texts_object(found.files));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl wiring_model_object(model: WiringModel) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "arch_path", text_object(model.arch_path));
+        put(record, "parsed", flag_object(model.parsed));
+        modules = new_list();
+        put(record, "modules", modules);
+        for row in model.modules {
+            item = new_record();
+            append(modules, item);
+            put(item, "local", text_object(row.local));
+            put(item, "file", text_object(row.file));
+            put(item, "import_name", text_object(row.import_name));
+            put(item, "project", flag_object(row.project));
+        }
+        edges = new_list();
+        put(record, "edges", edges);
+        for row in model.edges {
+            item = new_record();
+            append(edges, item);
+            put(item, "provider", text_object(row.provider));
+            put(item, "consumer", text_object(row.consumer));
+            put(item, "scope", texts_object(row.scope));
+            put(item, "names", texts_object(row.names));
+            put(item, "form", text_object(row.form));
+            put(item, "injected", flag_object(row.injected));
+            put(item, "line", int_object(row.line));
+            put(item, "crosses", flag_object(row.crosses));
+            put(item, "rules", texts_object(row.rules));
+            put(item, "violation", text_object(row.violation));
+            put(item, "arms", texts_object(row.arms));
+        }
+        rules = new_list();
+        put(record, "rules", rules);
+        for row in model.rules {
+            item = new_record();
+            append(rules, item);
+            put(item, "name", text_object(row.name));
+            put(item, "sources", texts_object(row.sources));
+            put(item, "targets", texts_object(row.targets));
+            put(item, "names", texts_object(row.names));
+            put(item, "governs", texts_object(row.governs));
+        }
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl token_symbols_object(rows: list[TokenSymbol]) -> ptr[PyObject] {
+    out = new_list();
+    try {
+        for row in rows {
+            item = new_record();
+            append(out, item);
+            put(item, "line", int_object(row.line));
+            put(item, "col", int_object(row.col));
+            put(item, "end_col", int_object(row.end_col));
+            put(item, "name", text_object(row.name));
+            put(item, "kind", text_object(row.kind));
+            put(item, "dotted", text_object(row.dotted));
+            put(item, "decl_path", text_object(row.decl_path));
+            put(item, "decl_line", int_object(row.decl_line));
+            put(item, "decl_col", int_object(row.decl_col));
+        }
+    } except boundary_failure as error {
+        jacpy_release(out);
+        raise error;
+    }
+    return out;
+}
+
+impl token_stream_object(stream: TokenStream) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        tokens = new_list();
+        put(record, "tokens", tokens);
+        for tok in stream.tokens {
+            item = new_record();
+            append(tokens, item);
+            put(item, "kind", text_object(tok.kind));
+            put(item, "value", text_object(tok.value));
+            put(item, "line", int_object(tok.line));
+            put(item, "col", int_object(tok.col));
+            put(item, "end_line", int_object(tok.end_line));
+            put(item, "end_col", int_object(tok.end_col));
+        }
+        put(record, "comments", spans_object(stream.comments));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl symbol_info_object(info: SymbolInfo) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "name", text_object(info.name));
+        put(record, "kind", text_object(info.kind));
+        put(record, "file", text_object(info.file));
+        put(record, "line", int_object(info.line));
+        put(record, "col", int_object(info.col));
+        put(record, "type_str", text_object(info.type_str));
+        put(record, "doc", text_object(info.doc));
+        put(record, "signature", text_object(info.signature));
+        put(record, "fields", texts_object(info.fields));
+        put(record, "abilities", texts_object(info.abilities));
+        put(record, "base_classes", texts_object(info.base_classes));
+        put(record, "is_genai", flag_object(info.is_genai));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl symbol_infos_object(infos: list[SymbolInfo]) -> ptr[PyObject] {
+    out = new_list();
+    try {
+        for info in infos {
+            append(out, symbol_info_object(info));
+        }
+    } except boundary_failure as error {
+        jacpy_release(out);
+        raise error;
+    }
+    return out;
+}
+
+impl source_refs_object(refs: list[SourceRef]) -> ptr[PyObject] {
+    out = new_list();
+    try {
+        for found in refs {
+            item = new_record();
+            append(out, item);
+            put(item, "file", text_object(found.file));
+            put(item, "line", int_object(found.line));
+            put(item, "col", int_object(found.col));
+            put(item, "role", text_object(found.role));
+            put(item, "snippet", text_object(found.snippet));
+        }
+    } except boundary_failure as error {
+        jacpy_release(out);
+        raise error;
+    }
+    return out;
+}
+
+impl entry_points_object(points: list[EntryPoint]) -> ptr[PyObject] {
+    out = new_list();
+    try {
+        for point in points {
+            item = new_record();
+            append(out, item);
+            put(item, "walker_name", text_object(point.walker_name));
+            put(item, "ability", text_object(point.ability));
+            put(item, "node_type", text_object(point.node_type));
+            put(item, "event", text_object(point.event));
+            put(item, "file", text_object(point.file));
+            put(item, "line", int_object(point.line));
+        }
+    } except boundary_failure as error {
+        jacpy_release(out);
+        raise error;
+    }
+    return out;
+}
+
+impl context_slice_object(found: ContextSlice) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "query", text_object(found.query));
+        target = found.target;
+        if target is None {
+            put(record, "target", none_object());
+        } else {
+            put(record, "target", symbol_info_object(target));
+        }
+        put(record, "related", symbol_infos_object(found.related));
+        put(record, "uses", source_refs_object(found.uses));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl code_diagnostics_object(diags: list[CodeDiagnostic]) -> ptr[PyObject] {
+    out = new_list();
+    try {
+        for diag in diags {
+            item = new_record();
+            append(out, item);
+            put(item, "file", text_object(diag.file));
+            put(item, "line", int_object(diag.line));
+            put(item, "severity", text_object(diag.severity));
+            put(item, "message", text_object(diag.message));
+        }
+    } except boundary_failure as error {
+        jacpy_release(out);
+        raise error;
+    }
+    return out;
+}
+
+impl session_module_outline(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return outline_object(session_of(instance).module_outline(text_of(path, "path")));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_edit_symbols(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.edit_symbols", 2, 2);
+        return edit_symbols_object(
+            session_of(instance).edit_symbols(
+                text_of(args[0], "path"), text_of(args[1], "text")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_import_texts(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.import_texts", 2, 2);
+        return texts_object(
+            session_of(instance).import_texts(
+                text_of(args[0], "path"), text_of(args[1], "text")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_wiring_changes(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.wiring_changes", 3, 3);
+        return wiring_changes_object(
+            session_of(instance).wiring_changes(
+                text_of(args[0], "path"),
+                text_of(args[1], "old_text"),
+                text_of(args[2], "new_text")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_wired_dependents(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.wired_dependents", 2, 2);
+        return wired_files_object(
+            session_of(instance).wired_dependents(
+                text_of(args[0], "head"), texts_of(args[1], "names")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_wiring_module_files(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.wiring_module_files", 2, 2);
+        return texts_object(
+            session_of(instance).wiring_module_files(
+                text_of(args[0], "arch_path"), texts_of(args[1], "consumers")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_wiring_model(
+    instance: ptr[PyObject], arch_path: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return wiring_model_object(
+            session_of(instance).wiring_model(text_of(arch_path, "arch_path"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_token_symbols(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return token_symbols_object(
+            session_of(instance).token_symbols(text_of(path, "path"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_assignment_hints(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return hints_object(session_of(instance).assignment_hints(text_of(path, "path")));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_tokens(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.tokens", 2, 2);
+        return token_stream_object(
+            session_of(instance).tokens(
+                text_of(args[0], "path"), text_of(args[1], "text")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_code_lookup(
+    instance: ptr[PyObject], name: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return symbol_infos_object(
+            session_of(instance).code_lookup(text_of(name, "name"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_code_references(
+    instance: ptr[PyObject], name: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return source_refs_object(
+            session_of(instance).code_references(text_of(name, "name"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_code_archetypes(
+    instance: ptr[PyObject], kind: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return symbol_infos_object(
+            session_of(instance).code_archetypes(text_of(kind, "kind"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_code_walkers(
+    instance: ptr[PyObject], node_type: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return entry_points_object(
+            session_of(instance).code_walkers(text_of(node_type, "node_type"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_code_slice(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.code_slice", 2, 2);
+        return context_slice_object(
+            session_of(instance).code_slice(
+                text_of(args[0], "name"), int_of(args[1], "depth")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_code_diagnostics(
+    instance: ptr[PyObject], file: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return code_diagnostics_object(
+            session_of(instance).code_diagnostics(text_of(file, "file"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_code_refresh(
+    instance: ptr[PyObject], file: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        session_of(instance).code_refresh(text_of(file, "file"));
+        return none_object();
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl native_build_request_of(value: ptr[PyObject]) -> NativeBuildRequest {
+    roots: list[str] = [];
+    has_roots = False;
+    kind = "";
+    output = "";
+    project_root = "";
+    search_paths: list[str] = [];
+    package_root = "";
+    options = CompileOptions();
+    link_mode = "";
+    native_unit = False;
+    library_api = False;
+    callbacks = False;
+    emit_c = False;
+    refuse_python_imports = False;
+    refuse_demoted = False;
+    require_entry = False;
+    kernel_entries = False;
+    assert_no_rc = False;
+    for pair in entries_of(value, "NativeBuildRequest") {
+        what = "NativeBuildRequest." + pair.name;
+        if pair.name == "roots" {
+            roots = texts_of(pair.value, what);
+            has_roots = True;
+        } elif pair.name == "kind" {
+            kind = text_of(pair.value, what);
+        } elif pair.name == "output" {
+            output = text_of(pair.value, what);
+        } elif pair.name == "project_root" {
+            project_root = text_of(pair.value, what);
+        } elif pair.name == "search_paths" {
+            search_paths = texts_of(pair.value, what);
+        } elif pair.name == "package_root" {
+            package_root = text_of(pair.value, what);
+        } elif pair.name == "options" {
+            options = options_of(pair.value);
+        } elif pair.name == "link_mode" {
+            link_mode = text_of(pair.value, what);
+        } elif pair.name == "native_unit" {
+            native_unit = flag_of(pair.value, what);
+        } elif pair.name == "library_api" {
+            library_api = flag_of(pair.value, what);
+        } elif pair.name == "callbacks" {
+            callbacks = flag_of(pair.value, what);
+        } elif pair.name == "emit_c" {
+            emit_c = flag_of(pair.value, what);
+        } elif pair.name == "refuse_python_imports" {
+            refuse_python_imports = flag_of(pair.value, what);
+        } elif pair.name == "refuse_demoted" {
+            refuse_demoted = flag_of(pair.value, what);
+        } elif pair.name == "require_entry" {
+            require_entry = flag_of(pair.value, what);
+        } elif pair.name == "kernel_entries" {
+            kernel_entries = flag_of(pair.value, what);
+        } elif pair.name == "assert_no_rc" {
+            assert_no_rc = flag_of(pair.value, what);
+        } else {
+            raise failure(
+                PyExc_TypeError, "NativeBuildRequest has no field '" + pair.name + "'"
+            );
+        }
+    }
+    if not has_roots or not kind {
+        raise failure(PyExc_TypeError, "NativeBuildRequest needs 'roots' and 'kind'");
+    }
+    return NativeBuildRequest(
+        roots=roots,
+        kind=kind,
+        output=output,
+        project_root=project_root,
+        search_paths=search_paths,
+        package_root=package_root,
+        options=options,
+        link_mode=link_mode,
+        native_unit=native_unit,
+        library_api=library_api,
+        callbacks=callbacks,
+        emit_c=emit_c,
+        refuse_python_imports=refuse_python_imports,
+        refuse_demoted=refuse_demoted,
+        require_entry=require_entry,
+        kernel_entries=kernel_entries,
+        assert_no_rc=assert_no_rc
+    );
+}
+
+impl native_build_result_object(result: NativeBuildResult) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "errors", diagnostics_object(result.errors));
+        put(record, "warnings", diagnostics_object(result.warnings));
+        put(record, "linked", flag_object(result.linked));
+        put(record, "reused", flag_object(result.reused));
+        put(record, "output", text_object(result.output));
+        put(record, "mode", text_object(result.mode));
+        put(record, "triple", text_object(result.triple));
+        units = new_list();
+        put(record, "units", units);
+        for unit in result.units {
+            row = new_record();
+            append(units, row);
+            put(row, "path", text_object(unit.path));
+            put(row, "digest", text_object(unit.digest));
+            put(row, "stamp", text_object(unit.stamp));
+        }
+        put(record, "recompiled", int_object(result.recompiled));
+        put(record, "analysed", int_object(result.analysed));
+        put(record, "lowered", int_object(result.lowered));
+        put(record, "generated", int_object(result.generated));
+        put(record, "sha256", text_object(result.sha256));
+        put(record, "plan_digest", text_object(result.plan_digest));
+        put(record, "layout_digest", text_object(result.layout_digest));
+        put(record, "root_native", flag_object(result.root_native));
+        put(record, "has_entry", flag_object(result.has_entry));
+        put(record, "python_imports", texts_object(result.python_imports));
+        put(record, "demoted", texts_object(result.demoted));
+        put(record, "rc_symbols", texts_object(result.rc_symbols));
+        put(record, "rc_probes", texts_object(result.rc_probes));
+        put(record, "libraries", texts_object(result.libraries));
+        callbacks = new_list();
+        put(record, "callbacks", callbacks);
+        for binding in result.callbacks {
+            row = new_record();
+            append(callbacks, row);
+            put(row, "name", text_object(binding.name));
+            put(row, "symbol", text_object(binding.symbol));
+            put(row, "ret_type", text_object(binding.ret_type));
+            put(row, "param_types", texts_object(binding.param_types));
+        }
+        put(record, "log", texts_object(result.log));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl native_build_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject] {
+    try {
+        return native_build_result_object(
+            native_build_request(native_build_request_of(request))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl element_space_object(space: ElementSpace) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "name", text_object(space.name));
+        put(record, "space", text_object(space.space));
+        put(record, "line", int_object(space.line));
+        put(record, "dual", flag_object(space.dual));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl element_spaces_object(spaces: list[ElementSpace]) -> ptr[PyObject] {
+    out = new_list();
+    try {
+        for space in spaces {
+            append(out, element_space_object(space));
+        }
+    } except boundary_failure as error {
+        jacpy_release(out);
+        raise error;
+    }
+    return out;
+}
+
+impl import_spaces_object(spaces: list[ImportSpace]) -> ptr[PyObject] {
+    out = new_list();
+    try {
+        for space in spaces {
+            row = new_record();
+            append(out, row);
+            put(row, "target", text_object(space.target));
+            put(row, "line", int_object(space.line));
+            put(row, "client_only", flag_object(space.client_only));
+        }
+    } except boundary_failure as error {
+        jacpy_release(out);
+        raise error;
+    }
+    return out;
+}
+
+impl marker_scan_object(scan: MarkerScan) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "text", text_object(scan.text));
+        put(record, "changed", flag_object(scan.changed));
+        put(record, "claims", element_spaces_object(scan.claims));
+        put(record, "sv_imports", import_spaces_object(scan.sv_imports));
+        put(record, "note", text_object(scan.note));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl access_plan_object(plan: AccessPlan) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        rewrites = new_list();
+        put(record, "rewrites", rewrites);
+        for rewrite in plan.rewrites {
+            row = new_record();
+            append(rewrites, row);
+            put(row, "path", text_object(rewrite.path));
+            put(row, "line", int_object(rewrite.line));
+            put(row, "kind", text_object(rewrite.kind));
+            put(row, "name", text_object(rewrite.name));
+            put(row, "reason", text_object(rewrite.reason));
+        }
+        put(record, "notes", texts_object(plan.notes));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl session_strip_markers(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.strip_markers", 2, 2);
+        return marker_scan_object(
+            session_of(instance).strip_markers(
+                text_of(args[0], "path"), text_of(args[1], "text")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_element_spaces(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return element_spaces_object(
+            session_of(instance).element_spaces(text_of(path, "path"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_client_imports(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return import_spaces_object(
+            session_of(instance).client_imports(text_of(path, "path"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_access_plan(
+    instance: ptr[PyObject], project_root: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return access_plan_object(
+            session_of(instance).access_plan(text_of(project_root, "project_root"))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_package_api(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.package_api", 2, 2);
+        return text_object(
+            session_of(instance).package_api(
+                text_of(args[0], "base_root"), texts_of(args[1], "exports")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_stub_catalog(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.stub_catalog", 3, 3);
+        report = session_of(instance).stub_catalog(
+            text_of(args[0], "out_path"),
+            texts_of(args[1], "only"),
+            text_of(args[2], "pkg_dir")
+        );
+        record = new_record();
+        try {
+            put(record, "summary", text_object(report.summary));
+            put(record, "load_failures", texts_object(report.load_failures));
+        } except boundary_failure as error {
+            jacpy_release(record);
+            raise error;
+        }
+        return record;
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_npm_sources(
+    instance: ptr[PyObject], project_root: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        sources = session_of(instance).npm_sources(text_of(project_root, "project_root"));
+        out = new_list();
+        try {
+            for item in sources {
+                row = new_record();
+                append(out, row);
+                put(row, "npm_path", text_object(item.npm_path));
+                put(row, "source_path", text_object(item.source_path));
+                put(row, "js", text_object(item.js));
+                put(row, "dts", text_object(item.dts));
+                put(row, "external_imports", texts_object(item.external_imports));
+            }
+        } except boundary_failure as error {
+            jacpy_release(out);
+            raise error;
+        }
+        return out;
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_definition_rows(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return texts_object(session_of(instance).definition_rows(text_of(path, "path")));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
 }

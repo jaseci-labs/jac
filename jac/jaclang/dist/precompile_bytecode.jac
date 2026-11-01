@@ -6,7 +6,6 @@ import shutil;
 import sys;
 import time;
 import zlib;
-import from contextlib { contextmanager }
 
 import from pathlib { Path }
 
@@ -37,24 +36,15 @@ def placement_facts_map(package_dir: str, app: str = "") -> dict[str, list[str]]
 
 def _emit_unit_diagnostics(jac_path: str, programs: list[JacProgram]);
 
-glob _unit_program: list[JacProgram] = [];
-
 def _native_extra(jac_path: str, pkg_root: str) -> dict[int, bytes];
 
 def _unit_extra(jac_path: str, pkg_root: str, embed_src: bool) -> dict[int, bytes];
 
-glob _unit_native_program: list[any] = [];
-
 def precompile_native_unit(jac_path: str, collect: bool = True) -> str;
 
 def precompile_context(
-    jac_path: str, pkg_root: str, program: JacProgram, app: str = ""
-) -> JacProgram;
-
-@contextmanager
-def precompile_unit_context(
-    jac_path: str, pkg_root: str, collect: bool = True, app: str = ""
-) -> Iterator[JacProgram];
+    jac_path: str, pkg_root: str, app: str = ""
+) -> CompileOptions;
 
 def raised_at(err: BaseException) -> str;
 
@@ -63,16 +53,11 @@ def precompile_unit(
     pkg_root: str,
     embed_src: bool = False,
     collect: bool = True,
-    app: str = "",
-    skip_analysis: bool = False
+    app: str = ""
 ) -> bytes | None;
 
 def _precompile_unit(
-    jac_path: str,
-    pkg_root: str,
-    program: JacProgram,
-    embed_src: bool = False,
-    skip_analysis: bool = False
+    jac_path: str, pkg_root: str, options: CompileOptions, embed_src: bool = False
 ) -> bytes | None;
 
 def _seal_boot_unit(
@@ -155,8 +140,6 @@ def _precompile_retire(served: int, rss_mb: int) -> bool;
 def precompile_exit(code: int);
 
 def main;
-
-def is_toolchain_package(package_dir: str) -> bool;
 
 def run_precompile(
     source_dir: str,

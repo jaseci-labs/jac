@@ -502,7 +502,17 @@ impl ProjectHost.read_source(path: str) -> str {
 }
 
 impl ProjectHost.annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
-    return discover_annex_files(path, suffix);
+    found = discover_annex_files(path, suffix);
+    have = {os.path.realpath(f) for f in found};
+    for held in self.overlay {
+        if held in have or not held.endswith(suffix) or os.path.exists(held) {
+            continue;
+        }
+        if self.is_annex_path_of(held, path) {
+            found.append(held);
+        }
+    }
+    return found;
 }
 
 impl ProjectHost.base_file(annex_path: str) -> (str | None) {
