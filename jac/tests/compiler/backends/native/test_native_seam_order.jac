@@ -1,19 +1,27 @@
 """Seam demotion reaches callers lowered before their callee demotes.
 
-A function lowers against the demotions it has already seen. When a caller is
-lowered first and its callee demotes later in the same unit, the caller holds
+A function lowers against the demotions it has already seen. When a caller was
+lowered first and its callee demoted later in the same unit, the caller held
 a direct call to the callee's abort stub; at run time the process died with
-SIGABRT and no diagnostic. The pass now demotes every such caller (and test)
-to a fixpoint once the unit's bodies are lowered.
+SIGABRT and no diagnostic. The decision step now settles every function before
+any is emitted: a refusal reaches every caller (and test), whatever order
+they are declared in, and the reason names the callee that is not native.
 """
 
 import os;
 import subprocess;
 import tempfile;
+import from pathlib { Path }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.constant { CodeContext }
 import jaclang.compiler.frontend.unitree as uni;
-import from tests.support { TESTS_DIR, jac_command, native_force_opts }
+import from tests.support {
+    TESTS_DIR,
+    compile_mir,
+    jac_command,
+    native_force_opts,
+    write_case
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -27,6 +35,12 @@ def compile_na(label: str, code: str) -> tuple[any, ...] {
     return (prog, ir, );
 }
 
+"""The decision step's verdict on `code`, compiled as its own module."""
+def decide(label: str, code: str) -> any {
+    path = Path(write_case(code, f"seam_order_{label}.jac"));
+    return compile_mir(path.name, str(path.parent));
+}
+
 glob SEAM_SRC = (
          "def seam(n: int) -> int {\n"
          "    def same(x: int) -> int { return x; }\n"
@@ -36,7 +50,7 @@ glob SEAM_SRC = (
      );
 
 test "a caller lowered before its callee demotes becomes a seam too" {
-    (prog, ir) = compile_na(
+    fx = decide(
         "caller_first",
         "def early(n: int) -> int {\n"
         "    return seam(n) + 100;\n"
@@ -48,18 +62,16 @@ test "a caller lowered before its callee demotes becomes a seam too" {
         "\n"
             + SEAM_SRC
     );
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    functions = ir.gen.native_layout.functions;
-    assert "seam" not in functions , "the un-lowerable callee demotes";
-    assert "early" not in functions , (
+    assert fx.is_demoted("seam") , "the un-lowerable callee demotes";
+    assert fx.reason("early") == f"calls {fx.symbol('seam')}, which is not native" , (
         "a caller lowered before its callee demoted must demote too, never keep "
-        "a direct call into the callee's abort stub"
+        f"a direct call into the callee: {fx.demoted()}"
     );
-    assert "add" in functions , "an unrelated neighbour still lowers";
+    assert not fx.is_demoted("add") , "an unrelated neighbour still lowers";
 }
 
 test "demotion reaches earlier callers transitively" {
-    (prog, ir) = compile_na(
+    fx = decide(
         "transitive",
         "def first(n: int) -> int {\n"
         "    return second(n) * 2;\n"
@@ -71,13 +83,12 @@ test "demotion reaches earlier callers transitively" {
         "\n"
             + SEAM_SRC
     );
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    functions = ir.gen.native_layout.functions;
-    assert "second" not in functions and "first" not in functions , sorted(functions);
+    assert fx.reason("second") == f"calls {fx.symbol('seam')}, which is not native";
+    assert fx.reason("first") == f"calls {fx.symbol('second')}, which is not native";
 }
 
 test "a lambda reaching a later-demoted callee demotes its owner" {
-    (prog, ir) = compile_na(
+    fx = decide(
         "via_lambda",
         "def early(n: int) -> int {\n"
         "    f = lambda (x: int) -> int { return seam(x); };\n"
@@ -86,8 +97,7 @@ test "a lambda reaching a later-demoted callee demotes its owner" {
         "\n"
             + SEAM_SRC
     );
-    assert not prog.errors_had , [str(e) for e in prog.errors_had];
-    assert "early" not in ir.gen.native_layout.functions;
+    assert fx.is_demoted("early") , fx.demoted();
 }
 
 test "a test that reaches a later-demoted function runs in the server codespace" {

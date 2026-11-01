@@ -455,12 +455,7 @@ impl OwnershipCheckPass._region_expr_is_scalar(expr: Expr | None) -> bool {
     if isinstance(expr, UnaryExpr) and expr.ownership == OwnershipKind.OWN {
         _op = expr.operand;
         if isinstance(_op, Expr) and _op.type is not None {
-            _om = "";
-            try {
-                _om = _op.type.mangle();
-            } except Exception {
-                _om = "";
-            }
+            _om = _op.type.mangle();
             if _om in _REGION_SCALARS
                 or JAC_TYPE_REGISTRY.is_numeric(_om)
                 or _om in ("str", "LiteralString", "bytes") {
@@ -476,12 +471,7 @@ impl OwnershipCheckPass._region_expr_is_scalar(expr: Expr | None) -> bool {
     if is_ptr_type(expr.type) {
         return True;
     }
-    _m = "";
-    try {
-        _m = expr.type.mangle();
-    } except Exception {
-        return False;
-    }
+    _m = expr.type.mangle();
     return _m in _REGION_SCALARS or JAC_TYPE_REGISTRY.is_numeric(_m);
 }
 

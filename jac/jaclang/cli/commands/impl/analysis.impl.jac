@@ -3,8 +3,6 @@ import from fnmatch { fnmatch }
 
 def _maybe_malloc_trim;
 
-glob _CHECK_STATE: dict[(str, any)] = {"prog": None, "coverage_on": False};
-
 glob _CHECK_HEAP: dict[(str, int)] = {"base_rss": -1},
      CHECK_HEAP_REGROW_MB: int = 512;
 
@@ -37,6 +35,8 @@ def _is_app_name(target: str) -> bool;
 
 def _check_file_job(request: dict[(str, any)]) -> dict[(str, any)];
 
+def _placement_rows(rows: list[PlacementRow]) -> dict[str, dict[str, any]];
+
 def _check_file_job_settled(request: dict[(str, any)]) -> dict[(str, any)];
 
 def _release_check_heap;
@@ -65,12 +65,6 @@ impl check(
 
     if not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
         gc.set_threshold(*CHECK_GC_THRESHOLDS);
-    }
-    if not parse_only {
-        try {
-            import from jaclang.compiler.driver.ifacecache { prime_iface_codec }
-            prime_iface_codec();
-        } except Exception {}
     }
     if isinstance(paths, str) {
         paths = [paths];
@@ -277,10 +271,6 @@ impl check(
             crash_prefix="jac-check-crash-"
         );
         if use_pool {
-            import from jaclang.runtime.runtime { JacRuntime }
-            try {
-                JacRuntime.get_compiler().ensure_stub_catalog();
-            } except Exception {}
             if not os.environ.get('JAC_GC_NO_COMPILE_BOOST') {
                 gc.freeze();
             }
@@ -299,11 +289,6 @@ impl check(
     }
 
     run_units(units);
-    if native_coverage {
-        import from jaclang.compiler.driver.na_coverage { na_coverage_end }
-        coverage_report.update(na_coverage_end());
-        _CHECK_STATE["coverage_on"] = False;
-    }
 
     multi = len({r['label'] for r in results}) > 1;
     failed_results: list[dict[str, any]] = [];
@@ -391,20 +376,18 @@ impl lint(
         }
         console.print(f"  Linting {file_path}...");
         try {
-            prog = JacProgram.jac_file_linter(str(path_obj));
-            error_count = 0;
-            for warning in prog.warnings_had {
-                console.warning(f"{warning}");
-            }
-            for error in prog.errors_had {
-                console.error(f"{error}");
-                error_count += 1;
-            }
-            return (True, error_count);
-        } except Exception as e {
+            linted = tool_session().lint(str(path_obj));
+        } except KernelError as e {
             console.error(f"Error linting '{file_path}': {e}");
             return (False, 1);
         }
+        for warning in linted.warnings {
+            console.warning(diagnostic_text(warning));
+        }
+        for error in linted.errors {
+            console.error(diagnostic_text(error));
+        }
+        return (True, len(linted.errors));
     }
     def lint_fix_file(file_path: str, covered: set[str]) -> tuple[bool, int, int] {
         import os;
@@ -414,154 +397,137 @@ impl lint(
             return (False, 1, 1);
         }
         console.print(f"  Lint-fixing {file_path}...");
+        session = tool_session();
         try {
-            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=True);
-            try {
-                formatted_code = prog.mod.main.gen.jac;
-                original_code = prog.mod.main.source.code;
-            } except Exception {
-                for error in prog.errors_had {
-                    console.error(f"{error}");
-                }
-                err_count = len(prog.errors_had) or 1;
-                return (False, err_count, err_count);
-            }
-
-            has_format_error = any(
-                e.code is not None and e.code.code == "E5051" for e in prog.errors_had
-            );
-            if has_format_error {
-                for error in prog.errors_had {
-                    console.error(f"{error}");
-                }
-                err_count = len(prog.errors_had);
-                return (False, err_count, err_count);
-            }
-
-            fixed_count = 0;
-            unfixable_count = 0;
-            for warning in prog.warnings_had {
-                console.warning(f"{warning}");
-                fixed_count += 1;
-            }
-            for error in prog.errors_had {
-                console.error(f"{error}");
-                unfixable_count += 1;
-            }
-            error_count = fixed_count + unfixable_count;
-
-            import from jaclang.compiler.driver.bccache { discover_annex_files }
-            annex_paths = (
-                discover_annex_files(str(path_obj), '.impl.jac')
-                + discover_annex_files(str(path_obj), '.test.jac')
-            );
-            moves = _annex_moves(str(path_obj), annex_paths, {});
-            float_source = "";
-            if fixed_count > 0 {
-                (formatted_code, float_target, float_text) = _float_impls_to_annex(
-                    prog, str(path_obj), str(path_obj), formatted_code, moves
-                );
-                for (old_path, new_path) in moves.items() {
-                    if float_target and new_path == float_target {
-                        float_source = old_path;
-                    }
-                }
-                float_prog: (JacProgram | None) = None;
-                if float_target {
-                    float_prog = JacProgram.jac_str_formatter(
-                        float_text, float_target, auto_lint=True
-                    );
-                    if float_prog.errors_had or not float_prog.mod.main.gen.jac {
-                        for error in float_prog.errors_had {
-                            console.error(f"{error}");
-                        }
-                        console.error(
-                            f"Left '{file_path}' unchanged: its impl annex "
-                            f"'{float_target}' could not be formatted"
-                        );
-                        err_count = len(float_prog.errors_had) or 1;
-                        return (False, err_count, err_count);
-                    }
-                }
-                backups: dict[str, (bytes | None)] = {};
-                try {
-                    if float_target and float_prog is not None {
-                        backups[float_target] = _snapshot_file(float_target);
-                        os.makedirs(
-                            os.path.dirname(float_target) or ".", exist_ok=True
-                        );
-                        with open(float_target, 'w', encoding='utf-8') as f {
-                            f.write(float_prog.mod.main.gen.jac);
-                        }
-                    }
-                    changed = formatted_code != original_code;
-                    if changed {
-                        backups[str(path_obj)] = _snapshot_file(str(path_obj));
-                        with open(str(path_obj), 'w', encoding='utf-8') as f {
-                            f.write(formatted_code);
-                        }
-                    }
-                } except OSError {
-                    _restore_files(backups);
-                    raise;
-                }
-                if float_source {
-                    failure = _remove_or_restore([float_source], backups);
-                    if failure {
-                        console.error(failure);
-                        return (False, 1, 1);
-                    }
-                }
-            }
-
-            for annex_path in annex_paths {
-                if annex_path == float_source {
-                    continue;
-                }
-                home = moves.get(annex_path, "");
-                if not home and os.path.realpath(annex_path) in covered {
-                    continue;
-                }
-                try {
-                    annex_prog = JacProgram.jac_file_formatter(
-                        annex_path, auto_lint=True
-                    );
-                    annex_formatted = annex_prog.mod.main.gen.jac;
-                    annex_original = annex_prog.mod.main.source.code;
-                } except Exception {
-                    continue;
-                }
-                for warning in annex_prog.warnings_had {
-                    console.warning(f"{warning}");
-                    error_count += 1;
-                }
-                for error in annex_prog.errors_had {
-                    console.error(f"{error}");
-                    error_count += 1;
-                    unfixable_count += 1;
-                }
-                if home and annex_formatted {
-                    os.makedirs(os.path.dirname(home), exist_ok=True);
-                    with open(home, 'w', encoding='utf-8') as f {
-                        f.write(annex_formatted);
-                    }
-                    failure = _remove_or_restore([annex_path], {home: None});
-                    if failure {
-                        console.error(failure);
-                        error_count += 1;
-                        unfixable_count += 1;
-                    }
-                } elif (annex_formatted and annex_formatted != annex_original) {
-                    with open(annex_path, 'w', encoding='utf-8') as f {
-                        f.write(annex_formatted);
-                    }
-                }
-            }
-            return (True, error_count, unfixable_count);
-        } except Exception as e {
+            fixed = session.lint_fix(str(path_obj));
+            original_code = read_file_with_encoding(str(path_obj));
+        } except (OSError, KernelError) as e {
             console.error(f"Error linting '{file_path}': {e}");
             return (False, 1, 1);
         }
+        has_format_error = any([e.code == "E5051" for e in fixed.errors]);
+        if has_format_error or not fixed.text {
+            for error in fixed.errors {
+                console.error(diagnostic_text(error));
+            }
+            err_count = len(fixed.errors) or 1;
+            return (False, err_count, err_count);
+        }
+        formatted_code = fixed.text;
+        fixed_count = 0;
+        unfixable_count = 0;
+        for warning in fixed.warnings {
+            console.warning(diagnostic_text(warning));
+            fixed_count += 1;
+        }
+        for error in fixed.errors {
+            console.error(diagnostic_text(error));
+            unfixable_count += 1;
+        }
+        error_count = fixed_count + unfixable_count;
+
+        annex_paths = (
+            discover_annex_files(str(path_obj), '.impl.jac')
+            + discover_annex_files(str(path_obj), '.test.jac')
+        );
+        moves = _annex_moves(str(path_obj), annex_paths, {});
+        float_source = "";
+        if fixed_count > 0 {
+            (formatted_code, float_target, float_text) = _float_impls_to_annex(
+                fixed, str(path_obj), str(path_obj), formatted_code, moves
+            );
+            for (old_path, new_path) in moves.items() {
+                if float_target and new_path == float_target {
+                    float_source = old_path;
+                }
+            }
+            float_out: (ToolOutput | None) = None;
+            if float_target {
+                float_out = session.format_text(float_target, float_text, auto_lint=True);
+                if float_out.errors or not float_out.text {
+                    for error in float_out.errors {
+                        console.error(diagnostic_text(error));
+                    }
+                    console.error(
+                        f"Left '{file_path}' unchanged: its impl annex "
+                        f"'{float_target}' could not be formatted"
+                    );
+                    err_count = len(float_out.errors) or 1;
+                    return (False, err_count, err_count);
+                }
+            }
+            backups: dict[str, (bytes | None)] = {};
+            try {
+                if float_target and float_out is not None {
+                    backups[float_target] = _snapshot_file(float_target);
+                    os.makedirs(os.path.dirname(float_target) or ".", exist_ok=True);
+                    with open(float_target, 'w', encoding='utf-8') as f {
+                        f.write(float_out.text);
+                    }
+                }
+                if formatted_code != original_code {
+                    backups[str(path_obj)] = _snapshot_file(str(path_obj));
+                    with open(str(path_obj), 'w', encoding='utf-8') as f {
+                        f.write(formatted_code);
+                    }
+                }
+            } except OSError {
+                _restore_files(backups);
+                raise;
+            }
+            if float_source {
+                failure = _remove_or_restore([float_source], backups);
+                if failure {
+                    console.error(failure);
+                    return (False, 1, 1);
+                }
+            }
+        }
+
+        for annex_path in annex_paths {
+            if annex_path == float_source {
+                continue;
+            }
+            home = moves.get(annex_path, "");
+            if not home and os.path.realpath(annex_path) in covered {
+                continue;
+            }
+            try {
+                annex_out = session.lint_fix(annex_path);
+                annex_original = read_file_with_encoding(annex_path);
+            } except (OSError, KernelError) as e {
+                console.error(f"Error linting '{annex_path}': {e}");
+                error_count += 1;
+                unfixable_count += 1;
+                continue;
+            }
+            for warning in annex_out.warnings {
+                console.warning(diagnostic_text(warning));
+                error_count += 1;
+            }
+            for error in annex_out.errors {
+                console.error(diagnostic_text(error));
+                error_count += 1;
+                unfixable_count += 1;
+            }
+            if home and annex_out.text {
+                os.makedirs(os.path.dirname(home), exist_ok=True);
+                with open(home, 'w', encoding='utf-8') as f {
+                    f.write(annex_out.text);
+                }
+                failure = _remove_or_restore([annex_path], {home: None});
+                if failure {
+                    console.error(failure);
+                    error_count += 1;
+                    unfixable_count += 1;
+                }
+            } elif annex_out.text and annex_out.text != annex_original {
+                with open(annex_path, 'w', encoding='utf-8') as f {
+                    f.write(annex_out.text);
+                }
+            }
+        }
+        return (True, error_count, unfixable_count);
     }
     total_files = 0;
     failed_files = 0;
@@ -623,7 +589,7 @@ def _format_single_file_worker(
 ) -> dict[str, any];
 
 def _float_impls_to_annex(
-    prog: JacProgram,
+    fixed: ToolOutput,
     file_path: str,
     logical: str,
     formatted: str,
@@ -708,19 +674,14 @@ impl _annex_moves(
             continue;
         }
         annex_logical = logical.get(ap, ap);
-        try {
-            annex_prog = JacProgram.jac_str_formatter(
-                read_file_with_encoding(ap), annex_logical, auto_lint=True
-            );
-        } except (OSError, ValueError, TypeError, AttributeError) {
-            continue;
-        }
+        annex_out = tool_session().format_text(
+            annex_logical, read_file_with_encoding(ap), auto_lint=True
+        );
         annex_real = os.path.realpath(annex_logical);
-        for warning in annex_prog.warnings_had {
-            if warning.code is not None
-                and warning.code.code == "W3056"
-                and warning.loc.mod_path
-                and os.path.realpath(warning.loc.mod_path) == annex_real {
+        for warning in annex_out.warnings {
+            if warning.code == "W3056"
+                and warning.span.path
+                and os.path.realpath(warning.span.path) == annex_real {
                 moves[ap] = home;
                 break;
             }
@@ -772,7 +733,7 @@ impl _with_annex_owners(
 }
 
 impl _float_impls_to_annex(
-    prog: JacProgram,
+    fixed: ToolOutput,
     file_path: str,
     logical: str,
     formatted: str,
@@ -784,39 +745,38 @@ impl _float_impls_to_annex(
         return (formatted, "", "");
     }
     own_path = os.path.realpath(logical);
-    floated = 0;
-    for warning in prog.warnings_had {
-        if warning.code is not None
-            and warning.code.code in ("W3055", "W3056")
-            and warning.loc.mod_path
-            and os.path.realpath(warning.loc.mod_path) == own_path {
-            floated += 1;
-        }
-    }
+    floated = len(
+        [
+            warning
+            for warning in fixed.warnings
+            if warning.code in ("W3055", "W3056")
+                and warning.span.path
+                and os.path.realpath(warning.span.path) == own_path
+        ]
+    );
     if floated == 0 {
         return (formatted, "", "");
     }
-    reparsed = JacProgram.jac_str_formatter(formatted, logical, auto_lint=False);
-    if reparsed.errors_had {
-        return (formatted, "", "");
+    session = tool_session();
+    def reparsed -> list[SourceSpan] {
+        if session.parse(logical).errors {
+            return [];
+        }
+        return session.statements(logical);
     }
-    body = [
-        st
-        for st in reparsed.mod.main.body
-        if st.loc.mod_path and os.path.realpath(st.loc.mod_path) == own_path
-    ];
+    body = session.with_text(logical, formatted, reparsed);
     if len(body) < floated {
         return (formatted, "", "");
     }
     tail = body[-floated:];
     lines = formatted.splitlines(keepends=True);
     for st in tail {
-        if not lines[st.loc.first_line - 1].lstrip().startswith("impl ") {
+        if not lines[st.line - 1].lstrip().startswith("impl ") {
             return (formatted, "", "");
         }
     }
-    start = tail[0].loc.first_line - 1;
-    end = tail[-1].loc.last_line;
+    start = tail[0].line - 1;
+    end = tail[-1].end_line;
     if "".join(lines[end:]).strip() {
         return (formatted, "", "");
     }
@@ -1542,43 +1502,19 @@ impl `test(
     return rc;
 }
 
-impl gen_parser -> int {
-    gen_all_parsers();
-    console.success('Parser generated.');
-    return 0;
-}
-
 impl grammar(output: str = "", strict: bool = False) -> int {
-    import jaclang;
-    parser_path = str(
-        Path(jaclang.__file__).parent
-            / "compiler"
-            / "frontend"
-            / "parser"
-            / "parser.jac"
-    );
-    prog = JacProgram();
-    mod = prog.compile(
-        parser_path,
-        options=CompileOptions(symtab_ir_only=True, no_cgen=True, need_full_ast=True)
-    );
-    if prog.errors_had {
+    report = tool_session().grammar();
+    if report.errors {
         console.error("Failed to compile parser module.");
-        for e in prog.errors_had {
-            console.error(f"  {e}");
+        for e in report.errors {
+            console.error(f"  {diagnostic_text(e)}");
         }
         return 1;
     }
-
-    import from typing { cast }
-    pass_ = cast(
-        GrammarExtractPass, run_utility(CompilationProduct.GRAMMAR, mod, prog)
-    );
-    if len(pass_.rules) == 0 {
+    if report.rules == 0 {
         console.error("No grammar rules extracted.");
         return 1;
     }
-    text = pass_.emit_ebnf();
     if output {
         banner = (
             "# Auto-generated EBNF snapshot of the Jac grammar.\n"
@@ -1587,15 +1523,15 @@ impl grammar(output: str = "", strict: bool = False) -> int {
         );
         with open(output, "w", encoding="utf-8") as f {
             f.write(banner);
-            f.write(text);
+            f.write(report.ebnf);
             f.write("\n");
         }
-        console.success(f"EBNF grammar ({len(pass_.rules)} rules) written to {output}");
+        console.success(f"EBNF grammar ({report.rules} rules) written to {output}");
     } elif not strict {
-        console.print(text);
+        console.print(report.ebnf);
     }
     if strict {
-        console.print(pass_.emit_diagnostics());
+        console.print(report.diagnostics);
     }
     return 0;
 }
@@ -1616,80 +1552,45 @@ def _should_ignore(file_path: str, ignore_patterns: list[str]) -> bool;
 
 impl explain(topic: str, filename: str, output: str = "", memory: str = "") -> int {
     import os;
+    import re;
 
     if not os.path.isfile(filename) {
         console.error(f"File not found: {filename}");
         return 1;
     }
     path = os.path.abspath(filename);
-    prog = JacProgram();
-    if topic == "memory" {
-        import from jaclang.compiler.passes.ownership_hints { inferred_hints }
-        mod = prog.compile(
-            file_path=path,
-            options=CompileOptions(
-                rc_stats=True, nogc_debug=True, memory_profile=(memory or None)
-            )
-        );
-        for err in prog.errors_had {
-            console.print(err.pretty_print());
-        }
-        if mod is None {
-            return 1;
-        }
-        console.print(
-            f"memory profile: {prog.options.memory_profile
-                if prog.options
-                else 'managed'}"
-        );
-        hints = inferred_hints(mod);
-        console.print(f"inferred facts: {len(hints)}");
-        for h in sorted(hints, key=lambda (h) { (h.line, h.col); }) {
-            console.print(
-                f"  {os.path.basename(path)}:{h.line}:{h.col}  {h.label.strip()}"
-            );
-        }
-        console.print(f"move sites: {len(mod.own_move_sites)}");
-        console.print(
-            f"last-use releases: {sum([len(v) for v in mod.rc_last_use.values()])}"
-        );
-        return 0;
-    }
     if topic == "placement" {
-        import from jaclang.compiler.placement.placement_export {
-            collect_placement_rows
-        }
         import from jaclang.cli.check_report { print_placement_report }
-        prog.compile(file_path=path);
-        for err in prog.errors_had {
-            console.print(err.pretty_print());
+        placed = call_check(check_request_for([path], CompileOptions(), placements=True));
+        for err in placed.errors {
+            console.print(alert_of(err).pretty_print());
         }
-        print_placement_report(collect_placement_rows(prog));
+        print_placement_report(_placement_rows(placed.placements));
         return 0;
     }
-    import re;
-
-    mod = prog.compile(
-        file_path=path,
-        options=CompileOptions(aot_mode=True, default_codespace="native")
+    report = tool_session().explain(
+        path, "memory" if topic == "memory" else "native", memory
     );
-    for err in prog.errors_had {
-        console.print(err.pretty_print());
+    for err in report.errors {
+        console.print(alert_of(err).pretty_print());
     }
-    if mod is None or mod.gen.llvm_ir is None {
+    if topic == "memory" {
+        console.print(report.text);
+        return 0;
+    }
+    if not report.text {
         console.error(
             "No native IR was produced for this module; see the diagnostics above."
         );
         return 1;
     }
-    ir_text = native_linked_ir_text(mod);
     out_path = output or (os.path.splitext(path)[0] + ".ll");
     with open(out_path, "w", encoding="utf-8") as fh {
-        fh.write(ir_text);
+        fh.write(report.text);
     }
-    console.print(f"wrote {out_path} ({len(ir_text)} bytes)");
+    console.print(f"wrote {out_path} ({len(report.text)} bytes)");
     console.print("symbols:");
-    for m in re.finditer(r"^define [^@]*@([A-Za-z0-9_.$]+)\(", ir_text, re.M) {
+    for m in re.finditer(r"^define [^@]*@([A-Za-z0-9_.$]+)\(", report.text, re.M) {
         console.print(f"  {m.group(1)}");
     }
     return 0;
@@ -1820,16 +1721,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
         ];
         return result;
     }
-    prog = _CHECK_STATE["prog"];
-    if prog is None {
-        prog = JacProgram();
-        _CHECK_STATE["prog"] = prog;
-    }
-    if opts.get("native_coverage") and not _CHECK_STATE["coverage_on"] {
-        import from jaclang.compiler.driver.na_coverage { na_coverage_begin }
-        na_coverage_begin();
-        _CHECK_STATE["coverage_on"] = True;
-    }
     ignore_list = _wire_list(opts.get("ignore"));
     annex_filter_path: (str | None) = None;
     base_path = discover_base_file(file_path);
@@ -1838,26 +1729,9 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
         file_path = base_path;
     }
     try {
-        (err_start, warn_start) = (len(prog.errors_had), len(prog.warnings_had));
-        parity_view: any = None;
         if opts.get("parse_only") {
-            import from jaclang.compiler.frontend.parser.frontend {
-                parse_diags,
-                _replay_diags
-            }
-            import from jaclang.compiler.frontend.parser.lexer { Lexer }
-            import from jaclang.compiler.frontend.parser.parser {
-                Parser as _SyntaxParser
-            }
-            import from jaclang.compiler.frontend.unitree { Source as _Src }
-            import from jaclang.project.textio { read_file_with_encoding as _read_src }
-            _src_txt = _read_src(file_path);
-            (_had, _pd, _ld) = parse_diags(_src_txt, file_path);
-            if _pd or _ld {
-                _dsrc = _Src(_src_txt, mod_path=file_path);
-                _replay_diags(_ld, Lexer, prog, _dsrc);
-                _replay_diags(_pd, _SyntaxParser, prog, _dsrc);
-            }
+            parsed = tool_session().parse(file_path);
+            (found_errors, found_warnings) = (parsed.errors, parsed.warnings);
         } else {
             compile_options = CompileOptions(
                 no_cgen=not bool(opts.get("native_coverage")),
@@ -1872,109 +1746,70 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
                 )
             );
             compile_options.entry_point = file_path;
-            if opts.get('closure') {
-                import from jaclang.compiler.driver.pipeline_runner {
-                    compile_application
-                }
-                compile_application(prog, file_path, compile_options);
-            } else {
-                kernel_view: any = None;
-                if not opts.get("placements") and not opts.get("native_coverage") {
-                    import from jaclang.project.kernel_check { kernel_check }
-                    kernel_view = kernel_check(
-                        prog,
-                        file_path,
-                        compile_options,
-                        parity=bool(opts.get("kernel_parity"))
-                    );
-                }
-                adopted = kernel_view is not None and kernel_view.adopted;
-                if not adopted {
-                    prog.compile(file_path, options=compile_options);
-                    if kernel_view is not None and kernel_view.parity {
-                        parity_view = kernel_view;
-                    }
-                }
-                if opts.get("named") {
-                    project_dir = os.path.realpath(
-                        str(opts["project_root"])
-                            if opts.get("project_root")
-                            else os.path.dirname(file_path)
-                    );
-                    checked = os.path.realpath(file_path);
-                    reached_keys: list[str] = [str(key) for key in prog.mod.hub];
-                    if adopted {
-                        import from jaclang.project.kernel_check { reached_modules }
-                        reached_keys = reached_modules(kernel_view.outcome);
-                    }
-                    result['reached'] = sorted(
-                        {
-                            real
-                            for real in [os.path.realpath(key) for key in reached_keys]
-                            if real.endswith(".jac")
-                                and not real.endswith((".impl.jac", ".test.jac"))
-                                and real.startswith(project_dir + os.sep)
-                                and real != checked
-                        }
-                    );
-                }
-            }
-        }
-        if opts.get("placements") {
-            import from jaclang.compiler.placement.placement_export {
-                collect_placement_rows
-            }
-            result['placements'] = collect_placement_rows(prog);
-        }
-        if opts.get("native_coverage") {
-            import from jaclang.compiler.driver.na_coverage { na_coverage_snapshot }
-            result['coverage'] = na_coverage_snapshot();
-        }
-        for m in prog.mod.hub.values() {
-            m.terminals = [];
-            m.src_terminals = [];
-        }
-        new_errors = prog.errors_had[err_start:];
-        new_warnings = prog.warnings_had[warn_start:];
-
-        def keep(issue: any) -> bool {
-            return bool(
-                issue.loc
-                    and issue.loc.mod_path
-                    and issue.loc.mod_path.endswith(".jac")
-                    and not _should_ignore(issue.loc.mod_path, ignore_list)
-                    and (
-                        annex_filter_path is None
-                        or issue.loc.mod_path == annex_filter_path
-                    )
+            checked_view = call_check(
+                check_request_for(
+                    [file_path],
+                    compile_options,
+                    native_coverage=bool(opts.get("native_coverage")),
+                    placements=bool(opts.get("placements")),
+                    closure=bool(opts.get("closure"))
+                )
             );
+            (found_errors, found_warnings) = (checked_view.errors, checked_view.warnings);
+            if opts.get("named") {
+                project_dir = os.path.realpath(
+                    str(opts["project_root"])
+                        if opts.get("project_root")
+                        else os.path.dirname(file_path)
+                );
+                checked = os.path.realpath(file_path);
+                result['reached'] = sorted(
+                    {
+                        real
+                        for real in checked_view.reached
+                        if real.endswith(".jac")
+                            and not real.endswith((".impl.jac", ".test.jac"))
+                            and real.startswith(project_dir + os.sep)
+                            and real != checked
+                    }
+                );
+            }
+            if opts.get("placements") {
+                result['placements'] = _placement_rows(checked_view.placements);
+            }
+            if opts.get("native_coverage") {
+                covered: dict[str, dict[str, any]] = {};
+                for row in checked_view.coverage {
+                    demotion = row.demoted[0] if row.demoted else None;
+                    covered[row.path] = {
+                        'outcome': 'native' if row.native else 'demoted',
+                        'code': demotion.code if demotion is not None else '',
+                        'detail': f"{demotion.symbol}: {demotion.reason}"
+                            if demotion is not None
+                            else ''
+                    };
+                }
+                result['coverage'] = covered;
+            }
         }
-        if parity_view is not None {
-            import from jaclang.project.kernel_check { report_parity }
-            report_parity(
-                parity_view,
-                file_path,
-                [
-                    e
-                    for e in new_errors
-                    if keep(e)
-                ],
-                [
-                    w
-                    for w in new_warnings
-                    if keep(w)
-                ],
-                keep
+
+        def keep(diag: KernelDiagnostic) -> bool {
+            where = diag.span.path;
+            return bool(
+                where
+                    and where.endswith(".jac")
+                    and not _should_ignore(where, ignore_list)
+                    and (annex_filter_path is None or where == annex_filter_path)
             );
         }
         result['errors'] = [
-            _diag_wire(e)
-            for e in new_errors
+            _diag_wire(alert_of(e))
+            for e in found_errors
             if keep(e)
         ];
         result['warnings'] = [
-            _diag_wire(w)
-            for w in new_warnings
+            _diag_wire(alert_of(w))
+            for w in found_warnings
             if keep(w)
         ];
         result['success'] = len(result['errors']) == 0;
@@ -1986,14 +1821,25 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
         result['success'] = False;
         return result;
     } finally {
-        if opts.get('closure') {
-            prog._get_compiler().release_compile_state(prog);
-            _CHECK_STATE['prog'] = None;
-        } else {
-            prog.release_compile_closure(collect=bool(request.get("collect")));
-        }
         _maybe_malloc_trim();
     }
+}
+
+impl _placement_rows(rows: list[PlacementRow]) -> dict[str, dict[str, any]] {
+    placed: dict[str, dict[str, any]] = {};
+    for row in rows {
+        held = placed.setdefault(row.path, {'decided': '', 'rows': [], 'crossings': 0});
+        held['rows'].append(
+            {
+                'name': row.symbol,
+                'kind': '',
+                'space': row.placement,
+                'dual': False,
+                'evidence': row.reason.split("; ") if row.reason else []
+            }
+        );
+    }
+    return placed;
 }
 
 impl _check_file_job_settled(request: dict[(str, any)]) -> dict[(str, any)] {
@@ -2135,181 +1981,155 @@ impl _format_single_file_worker(
         }
     }
 
+    session = tool_session();
     try {
+        original_code = read_file_with_encoding(str(path_obj));
         if logical_path {
-            source_str = read_file_with_encoding(str(path_obj));
-            prog = JacProgram.jac_str_formatter(
-                source_str, effective_logical, auto_lint=lintfix
+            laid_out = session.format_text(
+                effective_logical, original_code, auto_lint=lintfix
             );
         } else {
-            prog = JacProgram.jac_file_formatter(str(path_obj), auto_lint=lintfix);
+            laid_out = session.lint_fix(str(path_obj))
+                if lintfix
+                else session.format(str(path_obj));
         }
-        if prog.errors_had {
-            has_format_error = any(
-                e.code is not None and e.code.code == "E5051" for e in prog.errors_had
-            );
-            if has_format_error or not lintfix {
-                result['syntax_errors'] = [str(e) for e in prog.errors_had];
+        if laid_out.errors {
+            has_format_error = any([e.code == "E5051" for e in laid_out.errors]);
+            if has_format_error or not lintfix or not laid_out.text.strip() {
+                result['syntax_errors'] = [diagnostic_text(e) for e in laid_out.errors];
                 return result;
             }
         }
-        try {
-            formatted_code = prog.mod.main.gen.jac;
-            original_code = prog.mod.main.source.code;
-            if not formatted_code or len(formatted_code.strip()) == 0 {
-                if prog.errors_had {
-                    result['syntax_errors'] = [str(e) for e in prog.errors_had];
-                    return result;
+        formatted_code = laid_out.text;
+        float_target = "";
+        float_text = "";
+        if lintfix {
+            moves = _annex_moves(str(path_obj), annex_paths, annex_logical_map);
+            (formatted_code, float_target, float_text) = _float_impls_to_annex(
+                laid_out, str(path_obj), effective_logical, formatted_code, moves
+            );
+        }
+        changed = formatted_code != original_code;
+        result['changed'] = changed;
+
+        if changed and not check {
+            result['formatted_code'] = formatted_code;
+        }
+
+        if lintfix {
+            float_done = False;
+            float_ok = False;
+            for annex_path in annex_paths {
+                home = moves.get(annex_path, "");
+                out_path = home or annex_path;
+                is_float_target = bool(float_target)
+                    and os.path.realpath(out_path) == os.path.realpath(float_target);
+                if covered is not None
+                    and not is_float_target
+                    and not home
+                    and (os.path.realpath(annex_path) in covered) {
+                    continue;
                 }
-            }
-            float_target = "";
-            float_text = "";
-            if lintfix {
-                moves = _annex_moves(str(path_obj), annex_paths, annex_logical_map);
-                (formatted_code, float_target, float_text) = _float_impls_to_annex(
-                    prog, str(path_obj), effective_logical, formatted_code, moves
-                );
-            }
-            changed = formatted_code != original_code;
-            result['changed'] = changed;
-
-            if changed and not check {
-                result['formatted_code'] = formatted_code;
-            }
-
-            if lintfix {
-                float_done = False;
-                float_ok = False;
-                for annex_path in annex_paths {
-                    home = moves.get(annex_path, "");
-                    out_path = home or annex_path;
-                    is_float_target = bool(float_target)
-                        and os.path.realpath(out_path)
-                            == os.path.realpath(float_target);
-                    if covered is not None
-                        and not is_float_target
-                        and not home
-                        and (os.path.realpath(annex_path) in covered) {
+                annex_logical = annex_logical_map.get(annex_path, annex_path);
+                if is_float_target {
+                    float_done = True;
+                }
+                try {
+                    annex_original = read_file_with_encoding(annex_path);
+                    if is_float_target {
+                        annex_out = session.format_text(
+                            annex_logical, float_text, auto_lint=True
+                        );
+                    } elif logical_path {
+                        annex_out = session.format_text(
+                            annex_logical, annex_original, auto_lint=True
+                        );
+                    } else {
+                        annex_out = session.lint_fix(annex_path);
+                    }
+                } except (OSError, KernelError) as e {
+                    annex_ok = False;
+                    annex_error_count += 1;
+                    result['errors_strs'].append(
+                        f"Error formatting annex '{annex_path}': {e}"
+                    );
+                    continue;
+                }
+                annex_formatted = annex_out.text;
+                for warning in annex_out.warnings {
+                    result['warnings_strs'].append(diagnostic_text(warning));
+                }
+                for error in annex_out.errors {
+                    result['errors_strs'].append(diagnostic_text(error));
+                    annex_ok = False;
+                    annex_error_count += 1;
+                }
+                if is_float_target {
+                    float_ok = bool(annex_formatted) and not annex_out.errors;
+                    if not float_ok {
                         continue;
                     }
-                    annex_logical = annex_logical_map.get(annex_path, annex_path);
-                    if is_float_target {
-                        float_done = True;
-                    }
-                    try {
-                        if is_float_target {
-                            annex_prog = JacProgram.jac_str_formatter(
-                                float_text, annex_logical, auto_lint=True
-                            );
-                        } elif logical_path {
-                            annex_src = read_file_with_encoding(annex_path);
-                            annex_prog = JacProgram.jac_str_formatter(
-                                annex_src, annex_logical, auto_lint=True
-                            );
-                        } else {
-                            annex_prog = JacProgram.jac_file_formatter(
-                                annex_path, auto_lint=True
-                            );
-                        }
-                        annex_formatted = annex_prog.mod.main.gen.jac;
-                        annex_original = read_file_with_encoding(annex_path)
-                            if is_float_target
-                            else annex_prog.mod.main.source.code;
-                    } except (OSError, ValueError, TypeError, AttributeError) as e {
-                        annex_ok = False;
-                        annex_error_count += 1;
-                        result['errors_strs'].append(
-                            f"Error formatting annex '{annex_path}': {e}"
-                        );
-                        continue;
-                    }
-                    for warning in annex_prog.warnings_had {
-                        result['warnings_strs'].append(str(warning));
-                    }
-                    for error in annex_prog.errors_had {
-                        result['errors_strs'].append(str(error));
-                        annex_ok = False;
-                        annex_error_count += 1;
-                    }
-                    if is_float_target {
-                        float_ok = bool(annex_formatted) and not annex_prog.errors_had;
-                        if not float_ok {
-                            continue;
-                        }
-                    }
-                    annex_formatted_map[annex_path] = (
-                        annex_formatted if annex_formatted is not None else ""
-                    );
-                    if home and annex_formatted {
-                        result['changed'] = True;
-                        result['floated_annexes'].extend([home, annex_path]);
-                        if not check {
-                            result['impl_results'].append((home, annex_formatted));
-                            result['removed_annexes'].append(annex_path);
-                        }
-                    } elif (annex_formatted and annex_formatted != annex_original) {
-                        result['changed'] = True;
-                        if not check {
-                            result['impl_results'].append(
-                                (annex_path, annex_formatted)
-                            );
-                        }
-                    }
                 }
-                if float_target and not float_done {
-                    new_logical = float_target;
-                    if logical_path {
-                        new_logical = str(
-                            Path(effective_logical).parent
-                                / os.path.relpath(float_target, str(path_obj.parent))
-                        );
+                annex_formatted_map[annex_path] = annex_formatted;
+                if home and annex_formatted {
+                    result['changed'] = True;
+                    result['floated_annexes'].extend([home, annex_path]);
+                    if not check {
+                        result['impl_results'].append((home, annex_formatted));
+                        result['removed_annexes'].append(annex_path);
                     }
-                    new_prog = JacProgram.jac_str_formatter(
-                        float_text, new_logical, auto_lint=True
-                    );
-                    for error in new_prog.errors_had {
-                        result['errors_strs'].append(str(error));
-                        annex_ok = False;
-                        annex_error_count += 1;
+                } elif (annex_formatted and annex_formatted != annex_original) {
+                    result['changed'] = True;
+                    if not check {
+                        result['impl_results'].append((annex_path, annex_formatted));
                     }
-                    float_ok = bool(new_prog.mod.main.gen.jac)
-                        and not new_prog.errors_had;
-                    if float_ok {
-                        result['changed'] = True;
-                        if not check {
-                            result['impl_results'].append(
-                                (float_target, new_prog.mod.main.gen.jac)
-                            );
-                        }
-                    }
-                }
-                if float_target and not float_ok {
-                    result['success'] = False;
-                    result['changed'] = False;
-                    result['formatted_code'] = None;
-                    result['impl_results'] = [];
-                    result['errors'] = annex_error_count + 1;
-                    result['syntax_errors'] = [
-                        f"Left '{file_path}' unchanged: its impl annex "
-                        f"'{float_target}' could not be formatted"
-                    ];
-                    return result;
-                } elif float_target {
-                    result['floated_annexes'].append(float_target);
                 }
             }
-        } except (OSError, ValueError, TypeError, AttributeError) {
-            result['syntax_errors'] = [str(e) for e in prog.errors_had];
-            return result;
+            if float_target and not float_done {
+                new_logical = float_target;
+                if logical_path {
+                    new_logical = str(
+                        Path(effective_logical).parent
+                            / os.path.relpath(float_target, str(path_obj.parent))
+                    );
+                }
+                new_out = session.format_text(new_logical, float_text, auto_lint=True);
+                for error in new_out.errors {
+                    result['errors_strs'].append(diagnostic_text(error));
+                    annex_ok = False;
+                    annex_error_count += 1;
+                }
+                float_ok = bool(new_out.text) and not new_out.errors;
+                if float_ok {
+                    result['changed'] = True;
+                    if not check {
+                        result['impl_results'].append((float_target, new_out.text));
+                    }
+                }
+            }
+            if float_target and not float_ok {
+                result['success'] = False;
+                result['changed'] = False;
+                result['formatted_code'] = None;
+                result['impl_results'] = [];
+                result['errors'] = annex_error_count + 1;
+                result['syntax_errors'] = [
+                    f"Left '{file_path}' unchanged: its impl annex "
+                    f"'{float_target}' could not be formatted"
+                ];
+                return result;
+            } elif float_target {
+                result['floated_annexes'].append(float_target);
+            }
         }
 
         lint_errors = 0;
         if lintfix {
-            for warning in prog.warnings_had {
-                result['warnings_strs'].append(str(warning));
+            for warning in laid_out.warnings {
+                result['warnings_strs'].append(diagnostic_text(warning));
             }
-            for error in prog.errors_had {
-                result['errors_strs'].append(str(error));
+            for error in laid_out.errors {
+                result['errors_strs'].append(diagnostic_text(error));
                 lint_errors += 1;
             }
             lint_errors += annex_error_count;

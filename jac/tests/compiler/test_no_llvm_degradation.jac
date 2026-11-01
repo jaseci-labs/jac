@@ -1,11 +1,12 @@
-"""Degradation path: with the LLVM shim unavailable, programs must still
-compile cleanly into the server codespace with zero scheduling errors.
+"""With the LLVM shim unavailable or stale, the tooling around native code
+keeps working: availability probes stay light, the bindings import and only
+their calls raise, `jac native status` reports the shim, and native code
+generation is never scheduled against a shim that cannot serve it.
 
-The shim is present in every environment the suite runs in, so the child
-process makes the artifact router find none: every tier of the `llvm-shim`
-artifact probes as missing, which is the same signal the native scheduling
-gate sees when the shared object is genuinely absent. This is the suite
-home of what used to be ci.yml's `test-no-llvm` job.
+The shim is present in every environment the suite runs in, so each child
+process makes the artifact router find none (or a stale one): every tier of
+the `llvm-shim` artifact probes as missing or stale, which is the same signal
+the native scheduling gate sees when the shared object is genuinely absent.
 """
 
 import os;
@@ -14,16 +15,6 @@ import sys;
 import tempfile;
 import from tests.support { cache_env }
 import from tests.support { JAC_ROOT }
-
-glob PROG = (
-         "def mul(a: int, b: int) -> int {\n"
-         "    return a * b;\n"
-         "}\n\n"
-         "with entry {\n"
-         "    print(mul(6, 7));\n"
-         "}\n"
-     );
-
 
 def _run_no_llvm(
     argv: list[str], work: str, probe: str = "Probe.missing()"
@@ -58,21 +49,6 @@ except SystemExit as exc:
 }
 
 
-test "no-llvm run degrades to the server codespace and still executes" {
-    with tempfile.TemporaryDirectory() as work {
-        prog = os.path.join(work, "prog.jac");
-        with open(prog, "w") as f {
-            f.write(PROG);
-        }
-        (rc, out) = _run_no_llvm(["run", prog], work);
-        assert rc == 0 , f"jac run failed without an LLVM shim:\n{out}";
-        assert "42" in out.splitlines() or "42" in out , out;
-        assert "scheduling error" not in out , out;
-        assert "preferred native but did not lower" not in out , out;
-    }
-}
-
-
 test "native availability probes do not load code generators or LLVM bindings" {
     script = """
 import sys
@@ -81,7 +57,7 @@ from jaclang.artifacts import router
 from jaclang.artifacts.model import Probe, Source
 from jaclang.compiler.backends.native.llvm.shim_path import ShimArtifact
 from jaclang.compiler.driver.toolchain import native_pipeline_available, _native_env_memo
-heavy = ('jaclang.compiler.backends.native.na_ir_gen_pass',
+heavy = ('jaclang.compiler.backends.native.mir',
          'jaclang.compiler.backends.native.na_compile_pass',
          'jaclang.compiler.backends.native.llvm.binding')
 for probe, expected in [(Probe.missing(), False), (Probe.hit(Source.CHECKOUT, '/probe-shim', {}), True)]:
@@ -114,7 +90,8 @@ from jaclang.artifacts.model import ArtifactUnavailable, Probe
 from jaclang.compiler.backends.native.llvm.shim_path import ShimArtifact
 for probe in ('probe_sealed', 'probe_checkout', 'probe_kit'):
     patch.object(ShimArtifact, probe, return_value={STALE}).start()
-from jaclang.compiler.backends.native.llvm.binding import initfini, targets, executionengine
+from jaclang.compiler.backends.native.llvm.binding import initfini, targets
+from jaclang.compiler.backends.native.llvm import jit
 try:
     targets.get_default_triple()
 except ArtifactUnavailable:
@@ -215,7 +192,7 @@ native verdict, for example a module pinned native in a project that places
 nothing native by inference, so no placement probe has consulted the shim yet.
 That verdict must come from the shim before the codegen schedule starts
 loading: inside the loading window the host defers to an optimistic answer and
-`NaIRGenPass` would be scheduled against a stale shim."""
+`MirNativePass` would be scheduled against a stale shim."""
 test "a native codegen request in a fresh process takes the shim's verdict" {
     script = f"""
 import sys
@@ -232,7 +209,7 @@ from jaclang.compiler.driver.toolchain import _native_env_memo
 assert not _native_env_memo, _native_env_memo
 schedule = resolve(CompilationProduct.CODEGEN, ProductRequest(native=True))[0]
 names = [p.__name__ for p in schedule or []]
-assert 'NaIRGenPass' not in names, names
+assert 'MirNativePass' not in names, names
 assert 'EsastGenPass' in names, names
 """;
     proc = subprocess.run(

@@ -12,8 +12,8 @@ Two properties are pinned here.
 
 2. When the element type is genuinely un-inferable the backend must pick ONE
    representation and stay congruent with it -- tagged elements compared
-   against unboxed peers get the peer boxed too -- or refuse the lowering with
-   E5090. Silently comparing a `{tag, payload}` element against a raw i64 field
+   against unboxed peers get the peer boxed too -- or refuse the lowering,
+   demoting the owning function. Silently comparing a `{tag, payload}` element against a raw i64 field
    is the outcome this forbids.
 
 Before the fix, `container_elem_unknown.jac` and the untyped enum list both
@@ -23,34 +23,29 @@ took the first element's lowered type (i64, from the literal `1`) in place of
 the checker's `float`.
 """
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import jaclang;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from pathlib { Path }
+import from tests.support {
+    TESTS_DIR,
+    compile_mir,
+    compile_native,
+    native_address,
+    write_case
+}
+import from jaclang.runtime.runtime { JacRuntime }
+import from jaclang.compiler.frontend.codeinfo {
+    get_effective_default_codespace_override,
+    set_effective_default_codespace
+}
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      );
 
-"""Compile a fixture through the native pipeline and return (engine, LLVM IR)."""
-def native_compile(fixture: str) -> tuple[object, str] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
-    return (eng, str(ir.gen.llvm_ir));
-}
-
 """Compile a fixture through the native pipeline and return its JIT engine."""
 def native_engine(fixture: str) -> object {
-    return native_compile(fixture)[0];
+    return compile_native(fixture)[0];
 }
 
 """Call a no-argument int-returning function out of the JIT engine."""
@@ -62,43 +57,23 @@ def native_call(eng: any, name: str) -> int {
 
 """Run the same fixture through the sv pathway and return its module globals."""
 def sv_funcs(fixture: str) -> dict[str, any] {
-    path = str(os.path.join(FIXTURES, fixture));
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=path, options=CompileOptions(default_codespace='server')
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"sv compilation errors in {fixture}: {errors}";
-    ns: dict[str, any] = {};
-    exec(compile(generated_python(ir.gen), path, "exec"), ns);
-    return ns;
-}
-
-"""Compile a snippet through the native pipeline and return the program."""
-def compile_na_inline(label: str, code: str) -> JacProgram {
-    path = os.path.join(FIXTURES, f"_elem_infer_{label}.jac");
-    prog = JacProgram();
-    prog.compile(file_path=path, use_str=code, options=native_force_opts());
-    return prog;
-}
-
-"""Like `compile_na_inline`, but also hand back the compiled module so a
-granular demotion (epic #8201) is observable through the native layout."""
-def compile_na_inline_ir(label: str, code: str) -> tuple[any, ...] {
-    path = os.path.join(FIXTURES, f"_elem_infer_{label}.jac");
-    prog = JacProgram();
-    ir = prog.compile(file_path=path, use_str=code, options=native_force_opts());
-    return (prog, ir, );
-}
-
-"""Return True if the program emitted at least one alert with the given code."""
-def has_error_code(prog: JacProgram, code: str) -> bool {
-    for alrt in prog.errors_had {
-        if alrt.code is not None and alrt.code.code == code {
-            return True;
-        }
+    prev = get_effective_default_codespace_override();
+    set_effective_default_codespace("server");
+    try {
+        mods = JacRuntime.jac_import(
+            target=fixture[:-4], base_path=FIXTURES, reload_module=True
+        );
+    } finally {
+        set_effective_default_codespace(prev);
     }
-    return False;
+    assert mods , f"sv import of {fixture} produced no module";
+    return vars(mods[0]);
+}
+
+"""The decision step's verdict on a snippet compiled as its own module."""
+def decide_inline(label: str, code: str) -> any {
+    path = Path(write_case(code, f"elem_infer_{label}.jac"));
+    return compile_mir(path.name, str(path.parent));
 }
 
 glob PAIRS: list[tuple[str, str]] = [
@@ -131,7 +106,7 @@ test "container elem inference: the annotation cannot change the answer" {
 }
 
 test "container elem inference: untyped enum list is not boxed away from congruence" {
-    (eng, llvm) = native_compile("container_elem_infer.jac");
+    eng = native_engine("container_elem_infer.jac");
     assert native_call(eng, "untyped_enum_pick") == 1 , (
         "c[1] == Color.GREEN on an untyped enum list"
     );
@@ -142,10 +117,11 @@ test "container elem inference: untyped enum list is not boxed away from congrue
     # so none of them may fall back to tagged {tag, payload} storage. The
     # untyped enum list is the one that used to: its inferred element type is
     # a union of enum-member types, which the backend could not lower.
-    assert "List.jacval" not in llvm , (
+    mir = compile_mir("container_elem_infer.jac").mir();
+    assert "list<any>" not in mir , (
         "a container with a known element type fell back to tagged storage"
     );
-    assert "List.f64" in llvm , "list[float] must keep unboxed f64 storage";
+    assert "list<f64>" in mir , "list[float] must keep unboxed f64 storage";
 }
 
 test "container elem inference: list[float] keeps f64 storage past an int literal" {
@@ -208,14 +184,14 @@ test "un-inferable elem type: ordering a tagged element checks its tag at runtim
 }
 
 test "un-inferable elem type: equality against an unboxable peer is refused" {
-    # The equality branch boxes the unboxed peer, but _box_to_jacval only
-    # represents scalars and pointers. An aggregate peer -- here a by-value
+    # The equality branch boxes the unboxed peer, but boxing only represents
+    # scalars and pointers. An aggregate peer -- here a by-value
     # tuple literal -- has no tagged representation, and its old catch-all
     # stored tag=0/payload=0, so `x[0] == (1, 2)` compared a real element
     # against a null-ish tagged value and could answer True for `0 == (0, 0)`.
     # The guard is now symmetric with the ordering branch: unboxable peers
     # refuse to lower, and the refusal demotes the owning function to a seam.
-    (prog, ir) = compile_na_inline_ir(
+    fx = decide_inline(
         "eq_tuple",
         "def f -> int {\n"
             + "    x = [];\n"
@@ -227,19 +203,14 @@ test "un-inferable elem type: equality against an unboxable peer is refused" {
             + "    return 0;\n"
             + "}\n"
     );
-    assert not prog.errors_had , (
-        "the unboxable-peer refusal is owned by f(), which must demote, got "
-        + f"{[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "f" not in ir.gen.native_layout.functions , (
-        "the refused comparison's function must be demoted out of the layout, "
-        + "never answer True for 0 == (0, 0)"
+    assert fx.is_demoted("f") , (
+        "the refused comparison's function must be demoted, "
+        + f"never answer True for 0 == (0, 0): {fx.demoted()}"
     );
 }
 
 test "un-inferable elem type: an unorderable mixed comparison is refused, not guessed" {
-    (prog, ir) = compile_na_inline_ir(
+    fx = decide_inline(
         "order_str",
         "def f() -> int {\n"
             + "    x = [];\n"
@@ -251,14 +222,8 @@ test "un-inferable elem type: an unorderable mixed comparison is refused, not gu
             + "    return 0;\n"
             + "}\n"
     );
-    assert not prog.errors_had , (
-        "the unorderable-comparison refusal is owned by f(), which must "
-        + f"demote, got {[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "f" not in ir.gen.native_layout.functions , (
-        "the refused comparison's function must be demoted out of the layout, "
-        + "never guessed"
+    assert fx.is_demoted("f") , (
+        f"the refused comparison's function must be demoted, never guessed: {fx.demoted()}"
     );
 }
 

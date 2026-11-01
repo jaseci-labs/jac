@@ -12,8 +12,8 @@ import os;
 import shutil;
 import tempfile;
 import from jaclang.compiler.driver.program { JacProgram }
+import from jaclang.compiler.driver.arch_file { ARCH_FILE_NAME }
 import from jaclang.compiler.driver.wiring {
-    ARCH_FILE_NAME,
     WiringSpec,
     parse_records,
     wiring_facts

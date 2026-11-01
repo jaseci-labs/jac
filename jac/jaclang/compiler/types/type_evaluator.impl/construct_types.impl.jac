@@ -857,6 +857,11 @@ impl TypeEvaluator._extern_scalar_type(type_expr: Expr | None) -> TypeBase {
         if self._is_typed_c_declaration(declared) {
             return self._convert_to_instance(declared);
         }
+        instance = self._convert_to_instance(declared);
+        if isinstance(instance, ClassType)
+            and instance.shared.class_name == "NoneType" {
+            return instance;
+        }
     }
     return AnyType(is_foreign=True);
 }

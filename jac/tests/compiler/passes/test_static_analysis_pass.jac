@@ -1,6 +1,6 @@
 """Static analysis pass tests."""
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import from tests.support { JAC_ROOT }
 import jaclang;
@@ -150,7 +150,7 @@ test "ambient typing names resolve without import" {
         assert len(undef) == 0 , f"{tname} should be ambient: got {undef}";
     }
     assert len(error_msgs) == 0 , f"Expected no errors, got: {error_msgs}";
-    py_code = generated_python(prog.compile(file_path).gen);
+    py_code = generated_python(prog.compile(file_path));
     assert py_code is not None , "Expected Python codegen to succeed";
     assert "from typing import" in py_code , f"Expected typing import auto-injected, got:\n{py_code[:500]}";
     for tname in typing_names {
@@ -231,48 +231,14 @@ test "ambient-name imports are refused on the import line with E1125" {
     ]}";
 }
 
-test "bootstrap-compiled modules keep the ambient-import advisory" {
-    # jac0.py resolves names solely through real imports: for the modules it
-    # compiles (the seed-manifest set), an ambient-name import is load-bearing, so
-    # the escalation carves them out -- W1103 stays advisory there, E1125 never
-    # fires. The predicate is path-shaped; pin its boundary on both sides.
-    import from jaclang.compiler.passes.static_analysis_pass {
-        is_bootstrap_compiled_module
-    }
-    assert is_bootstrap_compiled_module("/repo/jac/jaclang/runtime/runtime.jac");
-    assert is_bootstrap_compiled_module(
-        "/repo/jac/jaclang/compiler/passes/execution.jac"
-    );
-    assert is_bootstrap_compiled_module("C:\\repo\\jac\\jaclang\\runtime\\runtime.jac");
-    assert not is_bootstrap_compiled_module(
-        "/repo/jac/jaclang/compiler/passes/layout_pass.jac"
-    );
-    assert not is_bootstrap_compiled_module("/repo/apps/jac0core/module.jac");
-    assert not is_bootstrap_compiled_module("");
-
-    # A relative path names the same module. `jac check` receives one whenever
-    # it is handed a path relative to cwd -- which is what CI's scoped mode
-    # does, feeding it the entries of changed-jac.txt. Matching only the
-    # absolute spelling made the same file report E1125 relatively and nothing
-    # absolutely.
-    assert is_bootstrap_compiled_module("jaclang/runtime/runtime.jac");
-    assert is_bootstrap_compiled_module(
-        "jaclang/compiler/backends/py/jcir_gen_pass.jac"
-    );
-    assert is_bootstrap_compiled_module("jaclang\\runtime\\runtime.jac");
-    assert not is_bootstrap_compiled_module("jaclang/compiler/passes/layout_pass.jac");
-    assert not is_bootstrap_compiled_module("apps/jac0core/module.jac");
-    assert not is_bootstrap_compiled_module("myjaclang/jac0core/module.jac");
-}
-
 test "the ambient provider module keeps its typing imports" {
     # jaclang/runtime/builtin.jac is the runtime side of the ambient set,
-    # and its own typing imports are its export surface: JcirGenPass routes
+    # and its own typing imports are its export surface: PyastGenPass routes
     # synthesized names (builtin_name('ClassVar'), 'override',
     # 'abstractmethod') through `from jaclang.runtime.builtin import ...`,
     # which resolves only because builtin.jac imports those names itself.
     # Stripping them breaks every module whose codegen wraps a static field in
-    # ClassVar. The predicate mirrors JcirGenPass.exit_module's
+    # ClassVar. The predicate mirrors PyastGenPass.exit_module's
     # is_builtin_module test exactly.
     import from jaclang.compiler.passes.static_analysis_pass {
         is_ambient_provider_module

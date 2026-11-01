@@ -643,9 +643,9 @@ Emitted by `jac check --lint`. Rules can be configured in [`jac.toml`](config/in
 
 Emitted during code generation, formatting, and native compilation.
 
-### JCIR Generation
+### Python Code Generation
 
-Emitted while lowering the unitree into the compact codegen IR container (`JcirGenPass`) that the Python-bytecode backend compiles.
+Emitted while lowering the unitree into the Python codegen recipe (`PyastGenPass`) that the kernel builds into JacPython's AST and compiles to bytecode.
 
 | Code | Message |
 |------|---------|

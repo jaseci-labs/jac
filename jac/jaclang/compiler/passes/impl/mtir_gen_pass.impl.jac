@@ -42,46 +42,40 @@ impl MTIRGenPass._parse_type_expr(
         }
         return str(type_expr);
     }
-    try {
-        text = unparse_node(type_expr)
-            if isinstance(type_expr, UniNode)
-            else str(type_expr);
-        if ('[' in text) and (']' in text) {
-            base = text.split('[', 1)[0].strip();
-            inner = text[(text.find('[') + 1):text.rfind(']')].strip();
-            parts = [
-                p.strip()
-                for p in inner.split(',')
-                if p.strip()
-            ];
-            resolved_parts: list[(ClassInfo | EnumInfo | TypeForm | str | None)] = [];
-            for p in parts {
-                try_sym = None;
-                if isinstance(scope, UniScopeNode) {
-                    try {
-                        try_sym = scope.lookup(p, deep=True);
-                    } except Exception {
-                        try_sym = None;
-                    }
-                }
-                if try_sym {
-                    nested = self._extract_class_info(try_sym);
-                    resolved_parts.append(nested or p);
-                } elif p in PRIMITIVE_TYPES {
-                    resolved_parts.append(p);
-                } else {
-                    resolved_parts.append(p);
-                }
+    text = unparse_node(type_expr)
+        if isinstance(type_expr, UniNode)
+        else str(type_expr);
+    if ('[' in text) and (']' in text) {
+        base = text.split('[', 1)[0].strip();
+        inner = text[(text.find('[') + 1):text.rfind(']')].strip();
+        parts = [
+            p.strip()
+            for p in inner.split(',')
+            if p.strip()
+        ];
+        resolved_parts: list[(ClassInfo | EnumInfo | TypeForm | str | None)] = [];
+        for p in parts {
+            try_sym = None;
+            if isinstance(scope, UniScopeNode) {
+                try_sym = scope.lookup(p, deep=True);
             }
-            if (base == 'list') and (len(resolved_parts) == 1) {
-                return mk_list(resolved_parts[0]);
+            if try_sym {
+                nested = self._extract_class_info(try_sym);
+                resolved_parts.append(nested or p);
+            } elif p in PRIMITIVE_TYPES {
+                resolved_parts.append(p);
+            } else {
+                resolved_parts.append(p);
             }
-            if (base == 'dict') and (len(resolved_parts) == 2) {
-                return mk_dict(resolved_parts[0], resolved_parts[1]);
-            }
-            return mk_form(base, resolved_parts);
         }
-    } except Exception {}
+        if (base == 'list') and (len(resolved_parts) == 1) {
+            return mk_list(resolved_parts[0]);
+        }
+        if (base == 'dict') and (len(resolved_parts) == 2) {
+            return mk_dict(resolved_parts[0], resolved_parts[1]);
+        }
+        return mk_form(base, resolved_parts);
+    }
     sym = self._extract_type_symbol(type_expr, scope);
     if sym is not None {
         if sym.sym_type.value == 'enum' {
@@ -386,31 +380,29 @@ impl MTIRGenPass._extract_tools_from_expr(
             tools_arg = param.value;
             if isinstance(tools_arg, (ListVal, TupleVal)) {
                 for tool in tools_arg.values {
-                    try {
-                        tool_sym: (Symbol | None) = None;
-                        if isinstance(tool, Name) {
-                            tool_sym = scope.lookup(tool.value, deep=True);
-                        } elif isinstance(tool, AtomTrailer)
-                            and isinstance(tool.right, Name) {
-                            tool_sym = scope.lookup(tool.right.value, deep=True);
-                        } elif isinstance(tool, AstSymbolNode) {
-                            tool_sym = tool.sym;
-                        }
+                    tool_sym: (Symbol | None) = None;
+                    if isinstance(tool, Name) {
+                        tool_sym = scope.lookup(tool.value, deep=True);
+                    } elif isinstance(tool, AtomTrailer)
+                        and isinstance(tool.right, Name) {
+                        tool_sym = scope.lookup(tool.right.value, deep=True);
+                    } elif isinstance(tool, AstSymbolNode) {
+                        tool_sym = tool.sym;
+                    }
 
-                        if tool_sym {
-                            tool_ability = tool_sym.decl.name_of
-                                if tool_sym.decl
-                                else None;
-                            if tool_ability and isinstance(tool_ability, Ability) {
-                                tool_info: FunctionInfo = (
-                                    self._extract_method_info(tool_ability)
-                                        if tool_ability.is_method
-                                        else self._extract_function_info(tool_ability)
-                                );
-                                tools.append(tool_info);
-                            }
+                    if tool_sym {
+                        tool_ability = tool_sym.decl.name_of
+                            if tool_sym.decl
+                            else None;
+                        if tool_ability and isinstance(tool_ability, Ability) {
+                            tool_info: FunctionInfo = (
+                                self._extract_method_info(tool_ability)
+                                    if tool_ability.is_method
+                                    else self._extract_function_info(tool_ability)
+                            );
+                            tools.append(tool_info);
                         }
-                    } except Exception {}
+                    }
                 }
             }
         }

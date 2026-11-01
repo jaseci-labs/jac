@@ -4,7 +4,6 @@ import sys;
 import time;
 
 glob SLOW_STEP_SECONDS: float = 2.0,
-     DEMOTED_SYMBOL_SUFFIX: str = ".__jac_demoted",
      _HEAP_HELD: list[bool] = [False];
 
 class NativeBuildStopped(BaseException) {}
@@ -41,7 +40,6 @@ obj NativeUnitRegistry {
         unit_functions: dict[str, tuple[int, int]] = {};
 
     def postinit;
-    def begin_parse(path: str);
     def note_step(verb: str, path: str = "", detail: str = "") -> float;
     def note_slow_step(verb: str, path: str, started: float);
     def clear;
@@ -201,6 +199,7 @@ obj NativeBuildSession {
     def finish(paths: list[str]);
     def _optimize_in_parallel(paths: list[str]) -> set[str];
     def _finish(paths: list[str]);
+    def _persist_unit(path: str, mod: any);
     def close;
 }
 

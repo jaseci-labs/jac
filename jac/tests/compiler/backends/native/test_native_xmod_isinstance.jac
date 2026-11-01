@@ -10,35 +10,11 @@ at the right vtable rather than merely existing.
 """
 
 import ctypes;
-import os;
-import from tests.support {
-    TESTS_DIR,
-    compile_native,
-    get_func,
-    native_force_opts,
-    source_spelled
-}
-
-import from jaclang.compiler.driver.program { JacProgram }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
+import from tests.support { compile_mir, compile_native, get_func }
 
 test "isinstance against an imported class lowers natively" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "xmod_isinstance_main.jac")),
-        options=native_force_opts()
-    );
-    demoted = [
-        d.pretty_print()
-        for d in (prog.errors_had or [])
-        if d.code is not None and d.code.code == "E5092"
-    ];
-    assert not demoted , f"cross-module isinstance did not lower: {demoted}";
-    llvm_ir = source_spelled(str(ir.gen.llvm_ir));
-    assert "Circle.__vtable" in llvm_ir , "the imported Circle vtable is not referenced at all";
+    fx = compile_mir("xmod_isinstance_main.jac");
+    assert not fx.demoted() , f"cross-module isinstance did not lower: {fx.demoted()}";
 }
 
 test "imported base class matches through the imported MRO" {

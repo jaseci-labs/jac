@@ -88,37 +88,3 @@ impl compiler_source_failure_origin(err: BaseException) -> (str | None) {
     }
     return None;
 }
-
-impl module_import_in_flight(file_path: str) -> bool {
-    for mod in list(sys.modules.values()) {
-        spec = mod?.__spec__;
-        if spec is None {
-            continue;
-        }
-        if spec?.origin == file_path and bool(spec?._initializing) {
-            return True;
-        }
-    }
-    return False;
-}
-
-impl import_error_re_enters(err: BaseException, file_path: str) -> (str | None) {
-    if not isinstance(err, ImportError) or not module_import_in_flight(file_path) {
-        return None;
-    }
-    cursor: any = err;
-    for _ in range(8) {
-        if cursor is None {
-            break;
-        }
-        name = cursor?.name;
-        if isinstance(name, str) and name {
-            spec = sys.modules.get(name)?.__spec__;
-            if spec is not None and spec?.origin == file_path {
-                return name;
-            }
-        }
-        cursor = cursor?.__cause__ or cursor?.__context__;
-    }
-    return None;
-}

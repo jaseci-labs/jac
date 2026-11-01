@@ -90,56 +90,32 @@ impl decode_tokens(data: list[int]) -> list[tuple[int, int, int, str]] {
     return out;
 }
 
-impl defining_symbol(sym: any) -> any {
-    cur = sym;
-    seen: set[int] = set();
-    while cur is not None and cur.provider is not None and id(cur) not in seen {
-        seen.add(id(cur));
-        target = cur.provider.definition();
-        if target is None or target is cur {
-            break;
-        }
-        cur = target;
-    }
-    return cur;
-}
-
-impl symbol_info(nd: any) -> dict[str, any] {
-    info: dict[str, any] = {"name": str(getattr(nd, "value", "") or "")};
-    sym = nd?.sym;
-    if sym is None {
+impl symbol_info(row: TokenSymbol) -> dict[str, any] {
+    info: dict[str, any] = {"name": row.name};
+    if not row.kind {
         return info;
     }
-    try {
-        d = defining_symbol(sym) or sym;
-        info["name"] = d.sym_name;
-        info["kind"] = d.sym_type.value;
-        info["dotted"] = d.sym_dotted_name;
-        decl = d.decl;
-        if decl is not None and decl.loc is not None {
-            info["decl_path"] = str(decl.loc.mod_path or "");
-            info["decl_line"] = int(decl.loc.first_line);
-            info["decl_col"] = max(0, int(decl.loc.col_start) - 1);
-        }
-    } except Exception {}
+    info["kind"] = row.kind;
+    info["dotted"] = row.dotted;
+    if row.decl_path or row.decl_line {
+        info["decl_path"] = row.decl_path;
+        info["decl_line"] = row.decl_line;
+        info["decl_col"] = row.decl_col;
+    }
     return info;
 }
 
-impl alert_tuple(
-    alert: any, severity: str
-) -> tuple[str, str, str, str, int, int, int, int] {
-    code = alert.code.code if alert.code else "";
-    hint = alert.help_text or (alert.code.help_text if alert.code else "") or "";
-    loc = alert.loc;
+impl diag_tuple(diag: KernelDiagnostic) -> tuple[str, str, str, str, int, int, int, int] {
+    span = diag.span;
     return (
-        severity,
-        str(code),
-        str(alert.msg),
-        str(hint),
-        max(1, int(loc.first_line)),
-        max(0, int(loc.col_start) - 1),
-        max(1, int(loc.last_line)),
-        max(0, int(loc.col_end) - 1)
+        diag.severity,
+        diag.code,
+        diag.message,
+        diag.help,
+        max(1, span.line),
+        max(0, span.col - 1),
+        max(1, span.end_line),
+        max(0, span.end_col - 1)
     );
 }
 
@@ -153,9 +129,8 @@ impl check_head(
     max_apps: int = 0,
     cancel: (CancelToken | None) = None
 ) -> dict[str, any] {
-    engine_mod = sys.modules.get(JacLangServer.__module__);
-    if max_apps > 0 and engine_mod is not None {
-        engine_mod.LSP_SHARED_APP_LIMIT = max_apps;
+    if max_apps > 0 {
+        ls.client().set_shared_app_limit(max_apps);
     }
     files = unit_files(head);
     ls.last_error = "";
@@ -165,56 +140,33 @@ impl check_head(
         return {"ok": False, "error": "cancelled", "cancelled": True, "files": {}};
     }
     result: dict[str, any] = {"ok": ok, "error": ls.last_error, "files": {}};
-    errors = list(ls.program.errors_had);
-    warnings = list(ls.program.warnings_had);
     for f in files {
         sem_rows = decode_tokens(list(ls.get_semantic_tokens(uri_of(f)).data))
             if ok
             else [];
         syms: list[tuple[int, int, int, dict[str, any]]] = [];
-        mgr = ls.sem_managers.get(f) if ok else None;
-        if mgr is not None {
-            for (pos, col_end, length, nd) in mgr.static_sem_tokens {
-                syms.append(
-                    (pos.line, pos.character, pos.character + length, symbol_info(nd))
-                );
-            }
-        }
-        diags = [
-            alert_tuple(e, "error")
-            for e in errors
-            if e.loc.mod_path == f
-        ]
-            + [
-                alert_tuple(w, "warning")
-                for w in warnings
-                if w.loc.mod_path == f
-            ];
         inlays: list[tuple[int, int, str]] = [];
         if ok {
-            try {
-                inlays += type_hints(ls, f);
-            } except Exception {}
-            try {
-                whole = lspt.Range(
-                    start=lspt.Position(line=0, character=0),
-                    end=lspt.Position(line=len(texts[f]) + 1, character=0)
-                );
-                for h in ls.get_inlay_hints(uri_of(f), whole) {
-                    lbl = h.label
-                        if isinstance(h.label, str)
-                        else "".join([str(getattr(p, "value", p)) for p in h.label]);
-                    inlays.append(
-                        (int(h.position.line), int(h.position.character), lbl)
-                    );
-                }
-            } except Exception {}
+            for row in ls.client().token_symbols(f) {
+                syms.append((row.line - 1, row.col, row.end_col, symbol_info(row)));
+            }
+            inlays += type_hints(ls, f);
+            whole = lspt.Range(
+                start=lspt.Position(line=0, character=0),
+                end=lspt.Position(line=len(texts[f]) + 1, character=0)
+            );
+            for h in ls.get_inlay_hints(uri_of(f), whole) {
+                lbl = h.label
+                    if isinstance(h.label, str)
+                    else "".join([str(part.value) for part in h.label]);
+                inlays.append((int(h.position.line), int(h.position.character), lbl));
+            }
         }
         result["files"][f] = {
             "lines": texts[f],
             "sem": sem_rows,
             "syms": syms,
-            "diags": diags,
+            "diags": [diag_tuple(d) for d in ls.kernel_diagnostics.get(f, [])],
             "inlays": inlays
         };
     }
@@ -271,46 +223,26 @@ impl references_at(
 }
 
 impl invalidate_path(ls: StudioLangServer, path: str) -> list[str] {
-    try {
-        ls.program.invalidate_module(path);
-        return [os.path.realpath(p) for p in ls.program.transitive_dependents(path)];
-    } except Exception {
-        return [];
+    real = os.path.realpath(path);
+    deps = [os.path.realpath(p) for p in ls.client().dependents(real)];
+    if os.path.exists(real) {
+        with open(real, "r", encoding="utf-8", errors="replace") as fh {
+            ls.client().update(real, fh.read());
+        }
+        ls.client().close(real);
+    } else {
+        ls.client().forget(real);
     }
+    return deps;
 }
 
 impl shutdown_server(ls: StudioLangServer) {
-    try {
-        ls.shutdown();
-    } except Exception {}
+    ls.shutdown();
 }
 
 impl type_hints(ls: StudioLangServer, path: str) -> list[tuple[int, int, str]] {
-    mod = ls.program.mod.hub.get(path);
-    out: list[tuple[int, int, str]] = [];
-    if mod is None {
-        return out;
-    }
-    seen: set[int] = set();
-    for asg in mod.get_all_sub_nodes(uni.Assignment) {
-        if asg.type_tag is not None
-            or len(asg.target) != 1
-            or not isinstance(asg.target[0], uni.Name) {
-            continue;
-        }
-        tgt = asg.target[0];
-        sym = tgt.sym;
-        if sym is None or id(sym) in seen {
-            continue;
-        }
-        seen.add(id(sym));
-        ty = tgt?.type;
-        txt = str(ty) if ty is not None else "";
-        if not txt or "Unknown" in txt or len(txt) > 48 {
-            continue;
-        }
-        loc = tgt.loc;
-        out.append((loc.first_line - 1, loc.col_end - 1, f": {txt}"));
-    }
-    return out;
+    return [
+        (h.line - 1, h.col - 1, h.label)
+        for h in ls.client().assignment_hints(path)
+    ];
 }

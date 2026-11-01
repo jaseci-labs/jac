@@ -1,76 +1,55 @@
-import ast as ast3;
-
 impl py2jac(filename: str) -> int {
-    if filename.endswith('.py') {
-        file_source = read_file_with_encoding(filename);
-        converted = run_utility(
-            CompilationProduct.PYTHON_AST,
-            uni.PythonModuleAst(
-                ast3.parse(file_source), orig_src=uni.Source(file_source, filename)
-            ),
-            JacProgram()
-        ).module;
-        assert isinstance(converted, uni.Module);
-        code = unparse_module(converted, requires_format=False);
-        prog = JacProgram.jac_str_formatter(
-            source_str=code, file_path=filename, auto_lint=False
-        );
-        console.print(prog.mod.main.gen.jac, markup=False, highlight=False);
-        for error in prog.errors_had {
-            console.error(f"{error}");
-        }
-
-        if prog.errors_had {
-            return 1;
-        }
-    } else {
+    if not filename.endswith('.py') {
         console.error('Not a .py file.');
         return 1;
     }
-    return 0;
+    converted = tool_session().py_to_jac(filename);
+    console.print(converted.text, markup=False, highlight=False);
+    for error in converted.errors {
+        console.error(diagnostic_text(error));
+    }
+    return 1 if converted.errors else 0;
 }
 
 impl jac2py(filename: str) -> int {
-    if filename.endswith('.jac') {
-        code = generated_python(JacProgram().compile(file_path=filename).gen);
-        if code {
-            console.print(code, markup=False, highlight=False);
-            return 0;
-        } else {
-            return 1;
-        }
-    } else {
+    if not filename.endswith('.jac') {
         console.error('Not a .jac file.');
         return 1;
     }
+    compiled = call_compile(
+        compile_request_for([filename], CompileOptions(), {}, ["python_ast"])
+    );
+    for error in compiled.errors {
+        console.error(diagnostic_text(error));
+    }
+    if not compiled.ok() {
+        return 1;
+    }
+    console.print(
+        ast.unparse(compiled.unit(filename).python_ast), markup=False, highlight=False
+    );
+    return 0;
 }
 
 impl jac2js(filename: str) -> int {
-    if filename.endswith('.jac') {
-        try {
-            prog = JacProgram();
-            ir = prog.compile(file_path=filename);
-            if prog.errors_had {
-                for error in prog.errors_had {
-                    console.error(f"{error}");
-                }
-                return 1;
-            }
-            js_output = ir.gen.js or '';
-            if not js_output.strip() {
-                console.error('ECMAScript code generation produced no output.');
-                return 1;
-            }
-            console.print(js_output, markup=False, highlight=False);
-            return 0;
-        } except Exception as e {
-            console.error(f"Generating JavaScript failed: {e}");
-            import traceback;
-            traceback.print_exc();
-            return 1;
-        }
-    } else {
+    if not filename.endswith('.jac') {
         console.error('Not a .jac file.');
         return 1;
     }
+    compiled = call_compile(
+        compile_request_for([filename], CompileOptions(), {}, ["client_js"])
+    );
+    if not compiled.ok() {
+        for error in compiled.errors {
+            console.error(diagnostic_text(error));
+        }
+        return 1;
+    }
+    js_output = compiled.unit(filename).client_js;
+    if not js_output.strip() {
+        console.error('ECMAScript code generation produced no output.');
+        return 1;
+    }
+    console.print(js_output, markup=False, highlight=False);
+    return 0;
 }

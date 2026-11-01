@@ -29,14 +29,12 @@ A class something IS dispatched through keeps its header and its refusal --
 that pair genuinely has no assignment satisfying both.
 """
 
-import contextlib;
-import io;
 import os;
 import from tests.support {
     TESTS_DIR,
     by_source_name,
+    compile_mir,
     native_force_opts,
-    source_spelled,
     sv_run,
     na_run,
     same_lines
@@ -62,18 +60,6 @@ def compile_native(fixture: str, expect_demotions: bool = False) -> tuple[any, .
     return (prog, ir, );
 }
 
-"""The seam report a build would show on stderr for a fixture."""
-def seam_report(fixture: str) -> str {
-    buf = io.StringIO();
-    prog = JacProgram();
-    with contextlib.redirect_stderr(buf) {
-        prog.compile(
-            file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-        );
-    }
-    return source_spelled(buf.getvalue());
-}
-
 """Field name to slot index, as the consumer's registry holds it."""
 def slots_of(ir: uni.Module, prog: JacProgram, name: str) -> dict[str, any] {
     layout = by_source_name(get_layout_registry(ir, prog).layouts).get(name);
@@ -81,10 +67,10 @@ def slots_of(ir: uni.Module, prog: JacProgram, name: str) -> dict[str, any] {
     return dict(layout.field_index);
 }
 
-test "a consumer subclass reads its imported base's fields with no seam" {
-    seams = seam_report("xmod_inherit_main.jac");
-    assert "run_probe" not in seams , (
-        f"inherited field access still demotes its owner: {seams}"
+test "a consumer subclass reads its imported base's fields with no demotion" {
+    fx = compile_mir("xmod_inherit_main.jac", FIXTURES);
+    assert not fx.is_demoted("run_probe") , (
+        f"inherited field access still demotes its owner: {fx.demoted()}"
     );
 }
 
@@ -157,17 +143,15 @@ test "a vtable-less imported base and its subclass agree on the header" {
         f"`depth` must sit where the module that declared it put it: "
         f"Anchor {anchor.field_index} vs FlatKid {kid.field_index}"
     );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
+}
+
+test "the inherited read through a vtable-less imported base lowers" {
+    fx = compile_mir("xmod_inherit_flat_main.jac", FIXTURES);
     for fn in ["read_inherited", "stays_clean"] {
-        assert fn in layout.functions , (
-            f"'{fn}' must lower once the headers agree: " f"{list(layout.functions)}"
+        assert not fx.is_demoted(fn) , (
+            f"'{fn}' must lower once the headers agree: {fx.demoted()}"
         );
     }
-    seams = seam_report("xmod_inherit_flat_main.jac");
-    assert "read_inherited" not in seams , (
-        f"the inherited read must no longer demote: {seams}"
-    );
 }
 
 

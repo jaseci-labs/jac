@@ -33,11 +33,11 @@ import from jaclang.compiler.kernel_target {
 }
 import from jaclang.compiler.native_scope { kernel_root_path, native_scope_paths }
 import from jaclang.compiler.placement.placement_facts { native_only }
-import from jaclang.compiler.backends.native.kernel_stage0 {
+import from jaclang.compiler.backends.native.kernel_resolve {
     STAGE0_UNKNOWN_FORMAT,
-    build_target_kernel,
-    running_kernel_target
+    build_target_kernel
 }
+import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
 import from jaclang.project.modresolver { resolve_module }
 
 """Copy the running jaclang tree under `dst`, sources only; the vendored
@@ -65,7 +65,7 @@ test "a kernel target round-trips through its JSON form" {
         back = read_kernel_target(path);
         assert back is not None;
         assert back.to_dict() == spec.to_dict();
-        assert back.root_module_path() == "/somewhere/jaclang/compiler/jc_unit.jac";
+        assert back.root_module_path() == "/somewhere/jaclang/compiler/kernel_module.jac";
         # A format this compiler does not know is refused, and the stage-0
         # entry reports it with the status that sends the caller back to a
         # self-build.
@@ -130,10 +130,10 @@ test "a kernel target retargets the package predicates at a staging copy" {
         assert native_unit_identity(unitree_copy) == identity;
         assert is_kernel_unit_path(osp_copy);
         assert os.path.realpath(str(native_stdlib_root())).startswith(real_copy);
-        assert native_only(os.path.join(copy, "compiler", "jc_unit.jac"));
+        assert native_only(os.path.join(copy, "compiler", "kernel_module.jac"));
         (resolved, lang) = resolve_module(
             "jaclang.compiler.frontend.unitree",
-            os.path.join(copy, "compiler", "jc_unit.jac")
+            os.path.join(copy, "compiler", "kernel_module.jac")
         );
         assert lang == "jac" , lang;
         assert os.path.realpath(resolved) == os.path.realpath(unitree_copy) , resolved;

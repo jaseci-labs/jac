@@ -1,37 +1,12 @@
-"""List subscript bounds checks take one unsigned compare on the hot path.
+"""List subscripts follow Python's index semantics natively.
 
 `xs[i]` / `xs[i] = v` follow Python: a negative index counts from the end and
-anything still out of range raises IndexError. The in-range case is a single
-`index <u len` compare (a negative index is a huge unsigned value), weighted so
-the in-range edge stays the fall-through; the negative wrap and the raise live
-in a cold block. The IR test pins that shape; the run tests pin the semantics.
+anything still out of range raises IndexError, including indices whose
+magnitude overflows the unsigned length compare.
 """
 
 import ctypes;
-import from tests.support { compile_native, compile_native_ir, get_func }
-
-test "list subscripts check the in-range case with one weighted unsigned compare" {
-    text = str(compile_native_ir("list_index_check.jac").gen.llvm_ir);
-    lines = text.splitlines();
-    for tag in ("idx", "setidx") {
-        name = tag + ".inrange";
-        cmp = [
-            ln
-            for ln in lines
-            if name in ln and " = icmp " in ln
-        ];
-        assert cmp , f"{tag}: no in-range compare";
-        assert all("icmp ult" in ln for ln in cmp) , f"{tag}: in-range compare is not unsigned";
-        br = [
-            ln
-            for ln in lines
-            if ln.strip().startswith("br i1") and name in ln
-        ];
-        assert br , f"{tag}: no branch on the in-range compare";
-        assert all("!prof" in ln for ln in br) , f"{tag}: in-range branch is not weighted";
-        assert (tag + ".wrap") in text , f"{tag}: no cold wrap block";
-    }
-}
+import from tests.support { compile_native, get_func }
 
 test "list reads follow Python index semantics" {
     (eng, _) = compile_native("list_index_check.jac");

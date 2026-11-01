@@ -16,7 +16,7 @@ import ctypes;
 import from tests.support { compile_native, get_func }
 
 test "sum follows list element types and start values" {
-    (eng, _ir) = compile_native("sum_element_types.jac");
+    (eng, _fx) = compile_native("sum_element_types.jac");
     assert get_func(eng, "sum_ints", ctypes.c_int64)() == 10;
     assert get_func(eng, "sum_floats", ctypes.c_double)() == 1.75;
     assert get_func(eng, "sum_bools", ctypes.c_int64)() == 3;
@@ -28,7 +28,7 @@ test "sum follows list element types and start values" {
 }
 
 test "a float sum keeps the terms a plain running total rounds away" {
-    (eng, _ir) = compile_native("sum_element_types.jac");
+    (eng, _fx) = compile_native("sum_element_types.jac");
     # CPython carries the rounding error of each float addition beside the
     # total (Neumaier's compensated sum) and folds it in at the end.
     kept = 10000000000000002.0;

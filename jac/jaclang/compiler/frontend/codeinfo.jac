@@ -160,13 +160,13 @@ glob JAC_ENTRY_SYMBOL: str = "jac_entry",
 glob KERNEL_UNIT_REL: tuple[str, ...] = (
          "runtime/osp_kernel.jac",
          "runtime/osp_graph.jac",
-         "runtime/region_native.jac",
-         "compiler/backends/common/fmt_kernel.jac"
+         "runtime/osp_native.jac",
+         "runtime/region_native.jac"
      ),
      OSP_KERNEL_REL: str = "runtime/osp_kernel.jac",
      OSP_GRAPH_REL: str = "runtime/osp_graph.jac",
-     REGION_KERNEL_REL: str = "runtime/region_native.jac",
-     FMT_KERNEL_REL: str = "compiler/backends/common/fmt_kernel.jac";
+     OSP_NATIVE_REL: str = "runtime/osp_native.jac",
+     REGION_KERNEL_REL: str = "runtime/region_native.jac";
 
 glob _PKG_REAL: list[str] = [];
 
@@ -396,9 +396,10 @@ obj CodeGenTarget {
         js: str = '',
         css: str = '',
         _client_manifest: (ClientManifest | None) = None,
+        py_recipe: any = None,
         py_ast: list[any] = [],
+        py_code: any = None,
         py_bytecode: (bytes | None) = None,
-        jcir: (bytes | None) = None,
         es_ast: EsNode | Sequence[EsNode] | SliceInfo | IndexInfo | None = None,
         llvm_ir: any = None,
         ir_module: (IRModule | None) = None,
@@ -409,7 +410,6 @@ obj CodeGenTarget {
         native_deps: list[str] = [],
         native_codespace: bool = False,
         native_refusal: str = "",
-        native_fallbacks: (NativeFallbacks | None) = None,
         native_refusal_code: str = "",
         placement_mode: str = "",
         native_undecided: bool = False,

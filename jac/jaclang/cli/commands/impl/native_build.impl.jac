@@ -2,12 +2,6 @@ import os;
 import sys;
 
 
-def _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]];
-
-
-def _application_ir(plan: LinkPlan) -> str;
-
-
 impl native_build(
     filename: str,
     output: str = "",
@@ -83,7 +77,6 @@ impl native_build(
         or ("apple" in triple)
         or ("darwin" in triple)
     );
-    _prev_target = push_native_target(triple);
 
     if not output {
         output = base_stem(filename);
@@ -99,111 +92,91 @@ impl native_build(
 
     console.print(f"Compiling {filename} to native binary");
 
+    options = CompileOptions(
+        aot_mode=True,
+        default_codespace="native",
+        skip_native_engine=True,
+        memory_profile=memory,
+        native_target=triple,
+        native_debug=(True if debug else None),
+        native_link_mode=(link_mode or None),
+        no_ir_cache=debug or no_ir_cache
+    );
+    kind = "shared" if shared else ("wasm" if is_wasm else "executable");
+    request = native_build_request_for(
+        [os.path.abspath(filename)], kind, options, output
+    );
+    request.link_mode = link_mode;
+    request.library_api = shared;
+    request.refuse_python_imports = not lib and not is_wasm;
+    request.refuse_demoted = not lib;
+    request.require_entry = not shared and not is_wasm;
+    request.assert_no_rc = assert_no_rc;
+    prog = JacProgram();
     try {
-        prog = JacProgram();
-        options = CompileOptions(
-            aot_mode=True,
-            default_codespace="native",
-            skip_native_engine=True,
-            memory_profile=memory,
-            native_target=triple,
-            native_debug=(True if debug else None),
-            native_link_mode=(link_mode or None),
-            no_ir_cache=debug or no_ir_cache
-        );
-        prog.options = options;
-        ir_module = (
-            prog.compile(file_path=os.path.abspath(filename), options=options)
-                if is_wasm
-                else None
-        );
-        plan = build_link_plan(
-            prog, [os.path.abspath(filename)], options, mode=link_mode
-        );
-    } except LinkPlanError as e {
-        console.print(str(e));
-        _restore_target(_prev_target);
-        return 1;
-    } except Exception as e {
+        result = kernel_native_build(prog, request);
+    } except KernelError as e {
         console.error(f"Jac compilation failed: {e}");
-        import traceback;
-        traceback.print_exc();
-        _restore_target(_prev_target);
         return 1;
+    }
+    for line in result.log {
+        console.print(line);
     }
 
     if prog.errors_had {
         for _err in prog.errors_had {
             console.print(_err.pretty_print());
         }
-        _restore_target(_prev_target);
         return 1;
     }
 
-    if is_wasm and (ir_module is None or ir_module.gen.native_iface is None) {
-        if not (ir_module and ir_module.decided_codespace == 'native') {
-            console.error(
-                "This .jac file is not compatible with native compilation.\n"
-                "  It may use walkers, nodes, edges, async, lambdas, or other\n"
-                "  constructs not supported by the native backend.\n"
-                "  Remove the incompatible constructs it names."
-            );
-        } else {
-            console.error(
-                f"Native compilation produced no native unit for {filename} and no\n"
-                "  diagnostic explains why; this is a compiler bug -- please report it."
-            );
-        }
+    if is_wasm and not result.root_native {
+        console.error(
+            "This .jac file is not compatible with native compilation.\n"
+            "  It may use walkers, nodes, edges, async, lambdas, or other\n"
+            "  constructs not supported by the native backend.\n"
+            "  Remove the incompatible constructs it names."
+        );
         for _warn in prog.warnings_had {
             console.print(_warn.pretty_print());
         }
-        _restore_target(_prev_target);
         return 1;
     }
     console.print("  Auto-promoted to native compilation.");
 
-    python_imports = sorted(
-        {name for unit in plan.units for name in unit.iface.python_imports}
-    );
-    if not lib and not is_wasm and python_imports {
+    if request.refuse_python_imports and result.python_imports {
         console.error(
             "Cannot compile to standalone binary: "
             "file has Python/server dependencies (native_imports)."
         );
-        for name in python_imports {
+        for name in result.python_imports {
             console.error(f"  - {name}");
         }
-        _restore_target(_prev_target);
         return 1;
     }
 
     console.print(
-        f"  Link plan: {len(plan.units)} unit(s), mode={plan.mode}, target={plan.triple}"
+        f"  Link plan: {len(result.units)} unit(s), mode={result.mode}, target={result.triple}"
     );
 
-    if not lib {
-        _demoted = plan.demoted_symbols();
-        if _demoted {
-            console.error(
-                f"{len(_demoted)} function(s) in the native closure were demoted to "
-                "Python-only: "
-                    + ", ".join(_demoted),
-                hint="A self-contained binary cannot run a demoted function. Run `jac explain placement` on the file to see why each one failed to lower."
-            );
-            _restore_target(_prev_target);
-            return 1;
-        }
+    if request.refuse_demoted and result.demoted {
+        console.error(
+            f"{len(result.demoted)} function(s) in the native closure were demoted to "
+            "Python-only: "
+                + ", ".join(result.demoted),
+            hint="A self-contained binary cannot run a demoted function. Run `jac explain placement` on the file to see why each one failed to lower."
+        );
+        return 1;
     }
 
     if assert_no_rc {
-        (_rc_syms, _rc_probes) = _scan_rc_machinery(_application_ir(plan));
-        if _rc_syms or _rc_probes {
+        if result.rc_symbols or result.rc_probes {
             _parts: list[str] = [];
-            if _rc_syms {
-                _parts.append("RC/collector symbols: " + ", ".join(_rc_syms));
+            if result.rc_symbols {
+                _parts.append("RC/collector symbols: " + ", ".join(result.rc_symbols));
             }
-            if _rc_probes {
-                _parts.append("entry-point env probes: " + ", ".join(_rc_probes));
+            if result.rc_probes {
+                _parts.append("entry-point env probes: " + ", ".join(result.rc_probes));
             }
             console.error(
                 "nogc invariant violated (compiler bug): emitted IR contains "
@@ -211,7 +184,6 @@ impl native_build(
                     + "\n  (module has managed heap types or RC-emitting code;"
                     + " see rc-stats coverage)"
             );
-            _restore_target(_prev_target);
             return 1;
         }
         console.print(
@@ -220,48 +192,22 @@ impl native_build(
         );
     }
 
-    if not shared and not is_wasm and not plan.root_unit().iface.entry_symbol {
+    if request.require_entry and not result.has_entry {
         console.error(
             "No entry point found. " "The file must have a 'with entry { }' block."
         );
-        _restore_target(_prev_target);
         return 1;
     }
 
-    kind = ArtifactKind.SHARED
-        if shared
-        else (ArtifactKind.WASM if is_wasm else ArtifactKind.EXECUTABLE);
-    plan.library_api = shared;
-    app_imports: (set | None) = None;
-    if is_wasm {
-        import from jaclang.compiler.backends.native.wasm_build { app_declared_imports }
-        assert ir_module is not None;
-        app_imports = app_declared_imports(ir_module);
-    }
-    try {
-        result = link_artifact(
-            plan, output, kind, log=console.print, app_imports=app_imports
-        );
-    } except Exception as e {
-        console.error(f"Native link failed: {e}");
-        import traceback;
-        traceback.print_exc();
+    if not result.linked {
+        console.error(f"Native link of {filename} did not run.");
         return 1;
-    } finally {
-        _restore_target(_prev_target);
     }
 
     file_size = os.path.getsize(output);
-    lowered = len(prog.native_units().compiled_paths);
-    compiled = set(prog.native_units().compiled_paths);
-    reused_units = len(
-        [
-            u
-            for u in plan.units
-            if u.path not in compiled
-        ]
+    console.print(
+        f"  Recompiled {result.recompiled} unit(s); reused {len(result.units) - result.recompiled}."
     );
-    console.print(f"  Recompiled {lowered} unit(s); reused {reused_units}.");
     if result.reused {
         console.print(f"  Up to date: {output} ({file_size} bytes).");
         return 0;
@@ -285,44 +231,4 @@ impl native_build(
         console.print(f"  Run with: ./{output}");
     }
     return 0;
-}
-
-
-def _restore_target(prev_target: (str | None));
-
-impl _scan_rc_machinery(llvm_ir_str: str) -> tuple[list[str], list[str]] {
-    import re;
-    syms: set[str] = set();
-    for m in re.finditer(r"__rc_[A-Za-z0-9_]*", llvm_ir_str) {
-        syms.add(m.group(0));
-    }
-    probes: list[str] = [];
-    for probe in ["JAC_GC"] {
-        if probe in llvm_ir_str {
-            probes.append(probe);
-        }
-    }
-    return (sorted(syms), probes);
-}
-
-
-impl _application_ir(plan: LinkPlan) -> str {
-    registry = plan.prog.native_units();
-    parts: list[str] = [];
-    for u in plan.units {
-        if is_toolchain_unit(u.path) {
-            continue;
-        }
-        bc = registry.bitcode_for(u.path, plan.options);
-        if bc is None {
-            continue;
-        }
-        parts.append(str(llvm.parse_bitcode(bc)));
-    }
-    return "\n".join(parts);
-}
-
-
-impl _restore_target(prev_target: (str | None)) {
-    pop_native_target(prev_target);
 }

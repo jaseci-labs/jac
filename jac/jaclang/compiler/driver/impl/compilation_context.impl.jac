@@ -38,8 +38,7 @@ impl owner_scope_options(
     program: JacProgram, options: (CompileOptions | None) = None
 ) -> (CompileOptions | None) {
     chosen = options if options is not None else program.options;
-    if program.internal
-        or (chosen.package_canonical and not chosen.client_source_root) {
+    if chosen.package_canonical and not chosen.client_source_root {
         return None;
     }
     return chosen;
@@ -154,9 +153,6 @@ impl context_program(program: JacProgram, options: CompileOptions) -> JacProgram
 }
 
 impl program_for(path: str, program: JacProgram) -> JacProgram {
-    if program.internal {
-        return program;
-    }
     return context_program(program, bind_options(path, program, program.options));
 }
 

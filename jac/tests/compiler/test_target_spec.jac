@@ -27,11 +27,11 @@ test "a target is found by osarch or by any spelling of its triple" {
     assert triple_osarch("x86_64-unknown-linux-gnu") == "linux-x86_64";
 }
 
-test "every release target names its kernel the way its loader looks for it" {
+test "every release target names its kernel the way its importer looks for it" {
     names = {spec.osarch: spec.kernel_file_name() for spec in RELEASE_TARGETS};
-    assert names["linux-x86_64"] == "libjac_compiler.so";
-    assert names["macos-aarch64"] == "libjac_compiler.dylib";
-    assert names["windows-x86_64"] == "jac_compiler.dll";
+    assert names["linux-x86_64"] == "jac_kernel.so";
+    assert names["macos-aarch64"] == "jac_kernel.so";
+    assert names["windows-x86_64"] == "jac_kernel.pyd";
     osarches = [spec.osarch for spec in RELEASE_TARGETS];
     assert len(osarches) == len(set(osarches));
 }
@@ -61,6 +61,6 @@ test "the host's kernel stays in place and another target's lands beside it" {
     );
     path = kernel_path_for(other);
     assert path.endswith(
-        os.path.join("compiler", "kernels", other.osarch, other.kernel_file_name())
+        os.path.join("compiler", "_kernel", other.osarch, other.kernel_file_name())
     ) , path;
 }

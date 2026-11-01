@@ -4,10 +4,16 @@ Each case here was found by the tier census (`tests/tier_census.jac`): an
 ordinary program, not written for the native tier, that lowered, ran to the
 end and printed something else. A refusal is loud; these were not."""
 import from pathlib { Path }
-import from tests.support { assert_native_identity }
+import from tests.support { assert_native_identity, compile_native_refused }
 
 def fixture(name: str) -> str {
     return str(Path(__file__).resolve().parent / "fixtures" / name);
+}
+
+"""The error messages of a fixture compiled with the native tier required."""
+def refusals_of(name: str) -> list[str] {
+    result = compile_native_refused(fixture(name));
+    return [f"{diag.code}: {diag.message}" for diag in result.errors];
 }
 
 """A `switch` falls through: once a case matches, every later case runs until
@@ -95,14 +101,7 @@ program printed less than the Python tier, with no error. What is still not
 lowered (`root` as a value, and a list on both sides of a connect) is
 refused by name."""
 test "graph forms the native tier cannot lower are refused, not dropped" {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from tests.support { native_force_opts }
-    options = native_force_opts();
-    options.skip_native_engine = True;
-    options.no_ir_cache = True;
-    program = JacProgram();
-    program.compile(file_path=fixture("graph_forms_not_lowered.jac"), options=options);
-    refusals = [str(e) for e in program.errors_had];
+    refusals = refusals_of("graph_forms_not_lowered.jac");
     assert any("expression 'root'" in r for r in refusals) , refusals;
     assert any("connect operand 'root'" in r for r in refusals) , refusals;
     assert any("connect operand 'list'" in r for r in refusals) , refusals;
@@ -114,15 +113,10 @@ source: the graph engine runs it. So a walker with an ability that could not
 be lowered compiled, and the program stopped on the stub when the engine
 reached it. The module is now refused when that happens."""
 test "a walker ability that cannot be lowered refuses the module" {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from tests.support { native_force_opts }
-    options = native_force_opts();
-    options.skip_native_engine = True;
-    options.no_ir_cache = True;
-    program = JacProgram();
-    program.compile(file_path=fixture("ability_not_lowered.jac"), options=options);
-    refusals = [str(e) for e in program.errors_had];
-    assert any("event ability" in r and "look" in r for r in refusals) , refusals;
+    refusals = refusals_of("ability_not_lowered.jac");
+    assert any(r.startswith("E5092") and "event ability" in r for r in refusals) , (
+        refusals
+    );
 }
 
 """`print(f())` writes `None` when `f` returns nothing. The native tier
@@ -212,19 +206,13 @@ One that arrives at root, or runs both ways, gives the node an outgoing edge
 a forward traversal would follow, so it is refused like any other use of
 root."""
 test "a connect that puts an edge into root is refused" {
-    import from jaclang.compiler.driver.program { JacProgram }
-    import from tests.support { native_force_opts }
-    options = native_force_opts();
-    options.skip_native_engine = True;
-    options.no_ir_cache = True;
-    program = JacProgram();
-    program.compile(file_path=fixture("connect_into_root.jac"), options=options);
+    everything = refusals_of("connect_into_root.jac");
     refusals = [
-        str(e)
-        for e in program.errors_had
-        if "connect operand 'root'" in str(e)
+        r
+        for r in everything
+        if "connect operand 'root'" in r
     ];
-    assert len(refusals) == 4 , [str(e) for e in program.errors_had];
+    assert len(refusals) == 4 , everything;
 }
 
 """A `continue` inside a switch belongs to the loop around the switch. The

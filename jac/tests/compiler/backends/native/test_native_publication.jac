@@ -143,36 +143,17 @@ test "a bytecode compile preserves native products across compilation contexts" 
     }
 }
 
-test "suppressed module lowering failures retain their cause" {
-    import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-    import from jaclang.compiler.frontend.diagnostics { E5092 }
-    original: any = NaIRGenPass._codegen_entry;
-    def fail_entry(pass_: any, nodes: any) {
-        original(pass_, nodes);
-        pass_.emit(E5092, kind="test operation", name="unlowerable_entry");
-    }
-    with tempfile.TemporaryDirectory() as directory {
-        source = Path(directory) / "main.jac";
-        source.write_text("with entry { print(42); }\n");
-        program = JacProgram();
-        options = CompileOptions(
-            aot_mode=True,
-            default_codespace="native",
-            skip_native_engine=True,
-            suppress_codes=["E5092"]
-        );
-        with patch.object(NaIRGenPass, "_codegen_entry", fail_entry) {
-            unit_entry = program.native_units().compile_unit(str(source), options);
-        }
-        assert unit_entry is None;
-        failure = program.native_units().failures[str(source.resolve())];
-        assert "unlowerable_entry" in failure , failure;
-        assert "E5092" in failure , failure;
-    }
-}
-
 test "in-memory native source overrides never reuse disk products" {
     import ctypes;
+    import json;
+    import from tests.support {
+        KernelFixture,
+        adopt_native_units,
+        diagnostics_text,
+        kernel_compile_file,
+        native_address,
+        remember_native_unit
+    }
     with tempfile.TemporaryDirectory() as directory {
         source = Path(directory) / "main.jac";
         source.write_text("def answer -> int { return 7; }\n");
@@ -181,16 +162,27 @@ test "in-memory native source overrides never reuse disk products" {
             aot_mode=True, default_codespace="native", skip_native_engine=True
         );
         build_link_plan(program, [str(source)], build_options);
+        path = str(source.resolve());
         options = CompileOptions(force_codespace="native");
-        changed = JacProgram().compile(
-            str(source), use_str="def answer -> int { return 42; }\n", options=options
+        result = kernel_compile_file(
+            path, options, ["bytecode"], {path: "def answer -> int { return 42; }\n"}
         );
+        assert result.ok() , diagnostics_text(result);
         assert not options.no_ir_cache;
-        assert changed.gen.native_iface is not None;
-        assert changed.gen.native_engine is not None;
-        symbol = changed.gen.native_iface.symbol_of("answer");
-        assert symbol is not None;
-        address = changed.gen.native_engine.get_function_address(symbol);
+        changed = KernelFixture(path=path, result=result, unit=result.unit(path));
+        assert changed.iface() is not None;
+        assert changed.iface().symbol_of("answer") is not None;
+        jit = JacProgram();
+        jit.options = options;
+        adopt_native_units(jit, result, options);
+        jit._get_compiler()._load_native_from_cache(
+            path, jit, json.loads(changed.unit.interop) if changed.unit.interop else None
+        );
+        carrier = jit.hub.artifacts.get(path);
+        engine = carrier.native_engine if carrier is not None else None;
+        assert engine is not None;
+        remember_native_unit(engine, changed);
+        address = native_address(engine, "answer");
         assert address;
         assert ctypes.CFUNCTYPE(ctypes.c_int64)(address)() == 42;
     }

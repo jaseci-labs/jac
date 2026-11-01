@@ -293,6 +293,9 @@ impl _link_elf(job: NativeLinkJob, work: str) -> list[str] {
         return _run_lld(args, "static ELF");
     }
     args += ["-rpath", "$ORIGIN", "--enable-new-dtags"];
+    for runpath in job.runpaths {
+        args += ["-rpath", "$ORIGIN/" + runpath];
+    }
     if job.shared {
         args += ["-shared", "-soname", job.soname];
         script = os.path.join(work, "exports.map");
@@ -408,6 +411,9 @@ impl _link_macho(job: NativeLinkJob, work: str) -> list[str] {
         "-undefined",
         "dynamic_lookup"
     ];
+    for runpath in job.runpaths {
+        args += ["-rpath", "@loader_path/" + runpath];
+    }
     if job.shared {
         args += ["-dylib", "-install_name", f"@rpath/{job.soname}"];
         for sym in job.export_symbols {

@@ -8,8 +8,8 @@ Jac has first-class syntax for all three method kinds -- `abst`, `class def`,
 The native capability authority inspects `nd.decorators`, a list of `Expr`
 nodes. A keyword populates no such list, so the keyword forms cross the
 native boundary while the hand-written decorators demote their method to a
-Python-only seam (granular demotion, epic #8201) -- the method leaves the
-native layout rather than running undecorated. The compiler's own front-end
+Python-only seam (granular demotion, epic #8201) -- the method is demoted
+off native rather than running undecorated. The compiler's own front-end
 sources used the decorator spellings in places (`passes/transform.jac`,
 `runtime.jac`, `compiler.jac`); this test pins both halves of the contract
 so that regression is visible.
@@ -24,38 +24,29 @@ Tracks the front-end native idiom work in #8039.
 """
 
 import ctypes;
-import os;
+import from pathlib { Path }
 import from tests.support {
-    TESTS_DIR,
+    compile_mir,
     compile_native,
+    diagnostics_text,
+    fixture_path,
     get_func,
     has_error_code,
-    native_force_opts
+    kernel_check_source,
+    kernel_compile_file,
+    kernel_compile_source,
+    native_force_opts,
+    source_spelled,
+    write_case
 }
-import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
-
-"""Run a snippet through the front-end check schedule with the native
-capability authority on -- the `jac check` path that surfaces E5090."""
-def check_na_inline(label: str, code: str) -> JacProgram {
-    prog = JacProgram();
-    prog.compile(
-        file_path=os.path.join(FIXTURES, f"_mkind_{label}.jac"),
-        use_str=code,
-        options=CompileOptions(no_cgen=True, force_codespace="native")
+"""Run a snippet through the check entry with the native capability authority
+on -- the `jac check` path that surfaces E5090."""
+def check_na_inline(label: str, code: str) -> any {
+    return kernel_check_source(
+        code, f"mkind_{label}.jac", CompileOptions(force_codespace="native")
     );
-    return prog;
-}
-
-"""Format errors for assertion messages."""
-def fmt_errors(prog: JacProgram) -> str {
-    return str([str(e) for e in prog.errors_had]);
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -89,12 +80,10 @@ test "class def: a classmethod lowers receiver-less and carries its arguments" {
 }
 
 test "the keyword fixture compiles with no native diagnostics at all" {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, "method_kind_keywords.jac")),
-        options=native_force_opts()
+    result = kernel_compile_file(
+        fixture_path("method_kind_keywords.jac"), native_force_opts()
     );
-    assert not prog.errors_had , fmt_errors(prog);
+    assert result.ok() , diagnostics_text(result);
 }
 
 # ─────────────────────────────────────────────────────────────────────
@@ -102,10 +91,8 @@ test "the keyword fixture compiles with no native diagnostics at all" {
 # ─────────────────────────────────────────────────────────────────────
 
 test "guardrail: @abstractmethod refuses where abst is accepted" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "_mkind_abstractmethod.jac"),
-        use_str="import from abc { abstractmethod }\n"
+    result = kernel_compile_source(
+        "import from abc { abstractmethod }\n"
         "obj Base {\n"
         "    @abstractmethod\n"
         "    def go(x: int) -> int;\n"
@@ -114,9 +101,10 @@ test "guardrail: @abstractmethod refuses where abst is accepted" {
         "    def go(x: int) -> int { return x + 1; }\n"
         "}\n"
         "with entry { print(Impl().go(1)); }\n",
-        options=native_force_opts()
+        "mkind_abstractmethod.jac",
+        native_force_opts()
     );
-    errs = fmt_errors(prog);
+    errs = diagnostics_text(result);
     assert "decorator 'on go'" in errs , (
         f"the capability gate must still name the decorator spelling: {errs}"
     );
@@ -126,7 +114,7 @@ test "guardrail: @abstractmethod refuses where abst is accepted" {
         "a seam. `import abc;` has always refused the whole module here; "
         f"the `from` spelling is classified on the same terms: {errs}"
     );
-    assert ir.gen.llvm_ir is None , (
+    assert not any(unit.native_ir for unit in result.units) , (
         "a module-fatal violation must withhold the LLVM IR"
     );
     kw = check_na_inline(
@@ -139,26 +127,26 @@ test "guardrail: @abstractmethod refuses where abst is accepted" {
         "}\n"
         "with entry { print(Impl().go(1)); }\n"
     );
-    assert not kw.errors_had , fmt_errors(kw);
+    assert kw.ok() , diagnostics_text(kw);
 }
 
 test "guardrail: @classmethod demotes at the capability gate" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "_mkind_classmethod.jac"),
-        use_str="obj Holder {\n"
-        "    @classmethod\n"
-        "    def make(cls: any) -> int { return 7; }\n"
-        "}\n",
-        options=native_force_opts()
+    path = Path(
+        write_case(
+            "obj Holder {\n"
+            "    @classmethod\n"
+            "    def make(cls: any) -> int { return 7; }\n"
+            "}\n",
+            "mkind_classmethod.jac"
+        )
     );
-    assert not has_error_code(prog, "E5090") , (
-        f"a @classmethod method must demote, not fail the module: {fmt_errors(prog)}"
+    fx = compile_mir(path.name, str(path.parent));
+    assert not has_error_code(fx.result, "E5090") , (
+        f"a @classmethod method must demote, not fail the module: "
+        f"{diagnostics_text(fx.result)}"
     );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "Holder.make" not in layout.methods , (
-        "the @classmethod method must be demoted out of the native layout"
+    assert any(source_spelled(sym).endswith(".Holder.make") for sym in fx.demoted()) , (
+        f"the @classmethod method must be demoted out of native: {fx.demoted()}"
     );
 }
 

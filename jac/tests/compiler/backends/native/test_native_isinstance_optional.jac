@@ -1,32 +1,17 @@
 """`isinstance` lowers when the operand is optional.
 
-Native represents an optional as `{i8 tag, payload}` with tag 0 meaning
-None. `_emit_isinstance` boxed the operand directly, which does not work for
-that layout, so every `isinstance` on a `T | None` value hit E5092 -- and
-`unitree.jac` is full of them, since most tree navigation returns optionals.
-
-The fix guards the check: `None` is an instance of nothing, so the payload
-is only inspected on the some-branch and the none-branch yields False
-through a phi. The guard matters beyond tidiness -- the user-archetype path
-reads a vtable pointer off the object, so an unguarded unwrap would
-dereference an undefined payload.
-
-`_opt_unwrap_attr` deliberately is not reused here: it raises AttributeError
-on None, which is right for attribute access and wrong for `isinstance`.
+An optional is None or a present payload, so the check has to test presence
+first: `None` is an instance of nothing, and the payload is only inspected
+when one is present (the user-archetype path reads a vtable pointer off the
+object, so an unguarded unwrap would dereference an undefined payload). Most
+tree navigation returns optionals, so an `isinstance` on a `T | None` value
+must lower rather than demote its function.
 
 Refs #8039
 """
 
 import ctypes;
-import os;
-import from tests.support { TESTS_DIR, compile_native, get_func, native_force_opts }
-import jaclang;
-
-import from jaclang.compiler.driver.program { JacProgram }
-
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     );
+import from tests.support { compile_mir, compile_native, get_func }
 
 test "isinstance on an optional: None is an instance of nothing" {
     (eng, _) = compile_native("isinstance_optional.jac");
@@ -60,11 +45,7 @@ test "an optional crosses into a static method and still narrows" {
     assert f(0) is False;
 }
 
-test "the optional-isinstance fixture compiles with no native diagnostics" {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, "isinstance_optional.jac")),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , str([str(e) for e in prog.errors_had]);
+test "the optional-isinstance fixture lowers with nothing demoted" {
+    demoted = compile_mir("isinstance_optional.jac").demoted();
+    assert not demoted , str(demoted);
 }

@@ -25,7 +25,7 @@ import from jaclang.compiler.driver.compile_options {
     push_native_target,
     pop_native_target
 }
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import from jaclang.project.config { JacConfig, CheckConfig, LintConfig, set_config }
 import from jaclang.compiler.placement.placement_export { collect_placement_rows }
 
@@ -82,7 +82,7 @@ test "a client component with an impl body is placed with its declaration" {
     js = mod.gen.js;
     assert "function App(props)" in js , js;
     assert "__jacCallFunction(\"app\"" not in js , js;
-    assert "def app(" not in generated_python(mod.gen);
+    assert "def app(" not in generated_python(mod);
 }
 
 test "component state written from a lambda compiles in an impl body" {
@@ -208,7 +208,7 @@ def write_variant(workdir: str, files: dict[str, str]) {
 tagged with the file its body came from, which is the one intended difference."""
 def py_artifact(mod: uni.Module) -> str {
     kept: list[str] = [];
-    for ln in generated_python(mod.gen).splitlines() {
+    for ln in generated_python(mod).splitlines() {
         if "impl_patch_filename" not in ln {
             kept.append(ln);
             continue;

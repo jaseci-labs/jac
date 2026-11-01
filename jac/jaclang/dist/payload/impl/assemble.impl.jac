@@ -61,28 +61,25 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
 }
 
 impl ship_wiring(package_root: str, site_package: str) {
+    arch_files: list[str] = [];
+    dropped: list[str] = [];
     for (dirpath, _dirs, filenames) in os.walk(package_root) {
-        if ARCH_FILE_NAME not in filenames {
-            continue;
+        for name in filenames {
+            path = os.path.join(dirpath, name);
+            rel = os.path.relpath(path, package_root).replace(os.sep, "/");
+            if skip_jaclang(rel) {
+                dropped.append(path);
+            } elif name == ARCH_FILE_NAME {
+                arch_files.append(path);
+            }
         }
-        source_path = os.path.join(dirpath, ARCH_FILE_NAME);
+    }
+    session = tool_session(package_root);
+    for source_path in arch_files {
         rel = os.path.relpath(source_path, package_root);
-        if skip_jaclang(rel.replace(os.sep, "/")) {
-            continue;
-        }
-        with open(source_path, encoding="utf-8") as f {
-            source = f.read();
-        }
-        shipped = prune_wiring_source(
-            source,
-            source_path,
-            lambda (path: str) { skip_jaclang(
-                os.path.relpath(path, package_root).replace(os.sep, "/")
-            ); }
-        );
         target = os.path.join(site_package, rel);
         make_dirs(os.path.dirname(target));
-        write_text(target, shipped);
+        write_text(target, session.shipped_wiring(source_path, dropped));
     }
 }
 

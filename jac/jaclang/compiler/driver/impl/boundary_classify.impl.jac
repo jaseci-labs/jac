@@ -195,11 +195,7 @@ impl import_declares_native_target(
     if nd.from_loc is None {
         return False;
     }
-    try {
-        resolved = nd.from_loc.resolve_relative_path();
-    } except Exception {
-        return False;
-    }
+    resolved = nd.from_loc.resolve_relative_path();
     if not isinstance(resolved, str) or not resolved.endswith('.jac') {
         return False;
     }
@@ -327,11 +323,7 @@ impl bridgeable_import_target(nd: uni.Import) -> (str | None) {
     ) {
         return None;
     }
-    try {
-        resolved = nd.from_loc.resolve_relative_path();
-    } except Exception {
-        return None;
-    }
+    resolved = nd.from_loc.resolve_relative_path();
     if not isinstance(resolved, str) or not resolved.endswith('.jac') {
         return None;
     }
@@ -589,11 +581,7 @@ impl import_binds_client_native(
     if manifest is None or not manifest.bindings {
         return False;
     }
-    try {
-        resolved_path = nd.from_loc.resolve_relative_path();
-    } except Exception {
-        return False;
-    }
+    resolved_path = nd.from_loc.resolve_relative_path();
     for item in nd.items {
         if not isinstance(item, uni.ModuleItem) {
             continue;

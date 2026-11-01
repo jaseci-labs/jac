@@ -105,9 +105,7 @@ impl build_catalog(
 
     prog = JacProgram();
 
-    prog._compiler = JacCompiler(
-        stub_catalog_disabled=True, _selfhost=SelfHostCache(_program=prog)
-    );
+    prog._compiler = JacCompiler(stub_catalog_disabled=True);
 
     try {
         with building(["stubcat"]) {
@@ -206,13 +204,9 @@ impl _build_catalog_inner(
 }
 
 impl _cached_catalog(pkg_dir: (str | None)) -> str {
-    try {
-        import from jaclang.compiler.types.stubcat.locate { dev_catalog_path }
-        import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
-        return dev_catalog_path(pkg_dir or jaclang_pkg_root());
-    } except Exception {
-        return "";
-    }
+    import from jaclang.compiler.types.stubcat.locate { dev_catalog_path }
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    return dev_catalog_path(pkg_dir or jaclang_pkg_root());
 }
 
 impl _keep_catalog(out: str, cached: str) {
@@ -262,17 +256,18 @@ impl main(argv: list[str]) -> int {
         return 0;
     }
     try {
-        manifest = build_catalog(out, only=only, pkg_dir=pkg_dir, quiet=False);
-    } except Exception as e {
-        sys.stderr.write(f"stubcat: build failed: {type(e).__name__}: {e}\n");
+        report = tool_session().stub_catalog(out, only or [], pkg_dir or "");
+    } except KernelError as e {
+        sys.stderr.write(f"stubcat: build failed: {e}\n");
         return 1;
     }
-    if cached and not manifest["load_failures"] {
+    sys.stderr.write(report.summary + "\n");
+    if cached and not report.load_failures {
         _keep_catalog(out, cached);
     }
-    if manifest["load_failures"] {
+    if report.load_failures {
         sys.stderr.write(
-            f"stubcat: {len(manifest['load_failures'])} modules failed to load\n"
+            f"stubcat: {len(report.load_failures)} modules failed to load\n"
         );
     }
     return 0;

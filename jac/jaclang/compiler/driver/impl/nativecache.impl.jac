@@ -2,13 +2,6 @@ impl NativeUnitRegistry.postinit {
     self.building = set();
 }
 
-impl NativeUnitRegistry.begin_parse(path: str) {
-    if self.session is not None {
-        self.session.settle_heap();
-    }
-    self.note_step("parse", path);
-}
-
 impl NativeUnitRegistry.note_step(
     verb: str, path: str = "", detail: str = ""
 ) -> float {
@@ -604,9 +597,6 @@ impl NativeUnitRegistry.compile_unit(
         }
         session.finish([unit.path for unit in plan.units]);
         return self.entries.get(resolved);
-    } except Exception as exc {
-        self.failures[resolved] = f"{type(exc).__name__}: {exc}";
-        return None;
     } finally {
         self.session = None;
         session.close();
@@ -633,10 +623,6 @@ impl NativeUnitRegistry.adopt_lowered(
         return None;
     }
     iface.resolve_deps(resolved);
-    fallbacks = native_fallbacks_in_ir(ir_text);
-    if opts.native_required_for(resolved) {
-        fallbacks.require();
-    }
     if opts.debug_ir {
         import from jaclang.compiler.frontend.host { active_host }
         active_host().save_native_debug_ir(resolved, ir_text);
@@ -649,7 +635,6 @@ impl NativeUnitRegistry.adopt_lowered(
         self.prog.hub.artifacts[resolved] = carrier;
     }
     carrier.llvm_ir = ir_text;
-    carrier.native_fallbacks = fallbacks;
     carrier.native_iface = iface;
     carrier.native_bitcode = bitcode;
     carrier.native_object = emit_unit_object(bitcode, opts) if debug else None;
@@ -898,7 +883,8 @@ impl NativeBuildSession.lower(
     path: str, use_str: (str | None) = None
 ) -> (NativeUnitEntry | None) {
     resolved = os.path.realpath(path);
-    if resolved in self.registry.building {
+    if resolved in self.registry.building
+        or (use_str is None and resolved in self.unlowerable) {
         return None;
     }
     self.heap.take();
@@ -1012,20 +998,14 @@ impl NativeBuildSession.lower(
             raise NativeBuildStopped();
         }
         return ent;
-    } except Exception {
-        import traceback;
-        self.registry.failures[resolved] = traceback.format_exc();
-        import from jaclang.compiler.driver.compile_options { env_na_debug }
-        if env_na_debug() {
-            import sys;
-            sys.stderr.write(self.registry.failures[resolved]);
-        }
-        return None;
     } finally {
         if len(self.prog.errors_had) > errors_before {
             self.registry.failures[resolved] = "\n".join(
                 alert.pretty_print() for alert in self.prog.errors_had[errors_before:]
             );
+        }
+        if resolved not in self.lowered {
+            self.unlowerable.add(resolved);
         }
         self.registry.building.discard(resolved);
         self.prog.options = prior_options;
@@ -1041,10 +1021,7 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
         or not (self.options.aot_mode or self.options.skip_native_engine) {
         return;
     }
-    import from jaclang.compiler.backends.native.na_compile_pass {
-        unit_bitcode,
-        unit_fallbacks
-    }
+    import from jaclang.compiler.backends.native.na_compile_pass { unit_bitcode }
     for path in paths {
         resolved = os.path.realpath(path);
         mod = self.lowered.get(resolved);
@@ -1056,7 +1033,6 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
         if symbols is None {
             continue;
         }
-        _ = unit_fallbacks(mod.gen);
         snapshot = NativeIRSnapshot(
             bitcode=unit_bitcode(ir), defined=symbols[0], declared=symbols[1]
         );
@@ -1102,10 +1078,8 @@ impl NativeBuildSession.unbound_symbols(
         prefix = f"{ent.iface.prefix}." if ent.iface.prefix else "";
         for symbol in declared {
             if symbol not in defined
-                and (
-                    (prefix and symbol.startswith(prefix))
-                    or (symbol + DEMOTED_SYMBOL_SUFFIX) in defined
-                ) {
+                and prefix
+                and symbol.startswith(prefix) {
                 unbound.add(symbol);
             }
         }
@@ -1155,9 +1129,6 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
         mod = self.lowered.get(path);
         if mod is None or (mod.gen.llvm_ir is None and path not in self.ir_snapshots) {
             continue;
-        }
-        if opts.native_required_for(path) {
-            unit_fallbacks(mod.gen).require();
         }
         cached = self.registry.ensure(path, compile_on_miss=False, options=opts);
         if cached is not None and cached.bitcode is not None {
@@ -1243,8 +1214,36 @@ impl NativeBuildSession._finish(paths: list[str]) {
         }
         self.registry.record_module(mod, self.prog.options);
         self.registry._stash_products(path, mod.gen);
-        self.prog._get_compiler()._persist_native_unit(path, mod, self.prog);
+        self._persist_unit(path, mod);
     }
+}
+
+impl NativeBuildSession._persist_unit(path: str, mod: any) {
+    if self.prog.iface_registry().verifying
+        or mod.parse_failed
+        or mod.gen.native_iface is None {
+        return;
+    }
+    import json;
+    import from jaclang.compiler.driver.jir {
+        SEC_INTEROP,
+        SEC_PLACEMENT,
+        write_module_cache
+    }
+    import from jaclang.compiler.driver.unit_products {
+        interop_record,
+        placement_record
+    }
+    sections = self.registry.product_sections(path);
+    interop = interop_record(mod);
+    if interop {
+        sections[SEC_INTEROP] = json.dumps(interop).encode('utf-8');
+    }
+    placement = placement_record(mod, self.prog);
+    if placement {
+        sections[SEC_PLACEMENT] = placement.encode('utf-8');
+    }
+    write_module_cache(path, None, extra_sections=sections);
 }
 
 impl NativeBuildSession.close {

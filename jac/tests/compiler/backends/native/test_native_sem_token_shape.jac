@@ -1,8 +1,8 @@
 """`NameAtom.sem_token`'s two backend gaps, asserted by value.
 
-`sem_token` shipped as an `abort()` stub in the sealed native parser, waived
-four times over (the base plus its re-emission on `Name`, `SpecialVarRef` and
-`BuiltinType`). Two independent causes kept it there, and each is checked
+`sem_token` was refused in the sealed native parser four times over (the base
+plus its re-emission on `Name`, `SpecialVarRef` and `BuiltinType`). Two
+independent causes kept it there, and each is checked
 here on its own before they are checked together:
 
 *An enum member's value came from the syntax of its initialiser.* Only an
@@ -18,8 +18,8 @@ struct the unit knows.* `sem_token` reads `type(self.type).__name__`, and
 `self.type` is `TypeBase | None` -- a class reached through a typing-only
 import, so the slot is an opaque object pointer with no struct to freeze a
 name against and no known vtable to walk, exactly like a type-erased generic
-slot. The read has to resolve the runtime class the way
-`_emit_isinstance_ptr_tags` does, off the class-name stamp in the rc header.
+slot. The read has to resolve the runtime class the way `isinstance` does,
+off the class-name stamp in the rc header.
 An option is here for the same reason with different storage: its JacOpt
 payload has to be unwrapped before anything can be read off it, and the absent
 arm is `NoneType`.
@@ -37,11 +37,10 @@ import ctypes;
 import os;
 import from tests.support {
     TESTS_DIR,
+    compile_native,
     native_address,
-    native_force_opts,
     native_str_func
 }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
     get_effective_default_codespace_override,
@@ -71,14 +70,7 @@ def _compile -> object {
     if _ENG {
         return _ENG[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, FIXTURE)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {FIXTURE}";
+    (eng, _) = compile_native(FIXTURE);
     _ENG.append(eng);
     return eng;
 }

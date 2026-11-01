@@ -212,30 +212,3 @@ test "implicit projects still identify their entry" {
         assert app_for_path(str(base / 'helper.jac')) is None;
     }
 }
-
-test "application traversal checks imported bodies on cold and warm requests" {
-    import from jaclang.compiler.driver.pipeline_runner { compile_application }
-    with TemporaryDirectory() as td {
-        base = Path(td);
-        entry_path = str(base / 'main.jac');
-        helper_path = str(base / 'helper.jac');
-        (base / 'main.jac').write_text(
-            'import from helper { count }\ndef run -> int { return count(); }\n'
-        );
-        (base / 'helper.jac').write_text('def count -> int { return 1; }\n');
-        options = CompileOptions(no_cgen=True, iface_ok=True, project_root=td);
-        cold = JacProgram();
-        compile_application(cold, entry_path, options);
-        assert not cold.errors_had;
-        (base / 'helper.jac').write_text('def count -> int { return "bad"; }\n');
-        for iteration in range(2) {
-            checked = JacProgram();
-            compile_application(checked, entry_path, options);
-            assert any(
-                alert.loc.mod_path == helper_path
-                    and alert.code is not None
-                    and alert.code.code == 'E1002' for alert in checked.errors_had
-            ) , f'imported body escaped checking on request {iteration}';
-        }
-    }
-}

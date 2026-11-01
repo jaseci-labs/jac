@@ -4,8 +4,7 @@ import from collections.abc { Iterator }
 import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 
-glob ARCH_FILE_NAME: str = "archwire.jac",
-     SKIPPED_PROJECT_DIRS: tuple[str, ...] = ("node_modules", "__pycache__"),
+glob SKIPPED_PROJECT_DIRS: tuple[str, ...] = ("node_modules", "__pycache__"),
      RECORDS_FORMAT: int = 4;
 
 obj WireBinding {
@@ -115,7 +114,7 @@ obj WiringSpec {
     static def admitted_names(rules: list[RuleRec]) -> (set[str] | None);
 }
 
-glob _spec_cache: dict[str, tuple[tuple[float, int], WiringSpec]] = {},
+glob _spec_cache: dict[str, tuple[str, WiringSpec]] = {},
      _resolution: ContextVar[dict[str, WiringSpec | None] | None] = ContextVar(
          'jac_wiring_resolution', `default=None
      ),
@@ -125,8 +124,6 @@ glob _spec_cache: dict[str, tuple[tuple[float, int], WiringSpec]] = {},
 @contextmanager
 def wiring_scope -> Iterator[None];
 
-def is_arch_file(path: str) -> bool;
-def arch_file_for(path: str) -> (str | None);
 def wiring_for_path(path: str) -> (WiringSpec | None);
 def wiring_annex_for(file_path: str) -> (WovenAnnex | None);
 def wiring_digest_for(file_path: str) -> str;

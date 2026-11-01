@@ -1,51 +1,68 @@
+impl _env_reference(
+    body: str, environ: dict[str, str]
+) -> tuple[str, UnresolvedRef | None] {
+    if body == "" or not (body[0].isalpha() or body[0] == "_") or not body[0].isascii() {
+        return ("${" + body + "}", None);
+    }
+    end = 1;
+    while end < len(body)
+        and body[end].isascii()
+        and (body[end].isalnum() or body[end] == "_") {
+        end += 1;
+    }
+    var_name = body[:end];
+    rest = body[end:];
+    if rest != "" and not (rest.startswith(":-") or rest.startswith(":?")) {
+        return (
+            "${" + body + "}",
+            UnresolvedRef(var=var_name, unsupported=True, form="${" + body + "}")
+        );
+    }
+    if var_name in environ {
+        return (environ[var_name], None);
+    }
+    operator = rest[:2];
+    operand = rest[2:];
+    if operator == ":-" {
+        return (operand, None);
+    }
+    return (
+        "${" + body + "}",
+        UnresolvedRef(var=var_name, required=operator == ":?", message=operand)
+    );
+}
+
 impl interpolate_env_vars(
     value: str,
     environ: dict[str, str] | None = None,
     sink: list[UnresolvedRef] | None = None
 ) -> str {
-    import os;
-    import re;
-    if not isinstance(value, str) {
-        return value;
-    }
-    source = os.environ if environ is None else environ;
-
-    pattern = r"\$\{([^}]*)\}";
-    supported = r"([A-Za-z_][A-Za-z0-9_]*)(?:(:[-?])([^}]*))?";
-    def replace_env_var(`match: re.Match) -> str {
-        body = `match.group(1);
-        parts = re.fullmatch(supported, body);
-        leading = re.match(r"[A-Za-z_][A-Za-z0-9_]*", body);
-        if leading is None {
-            return `match.group(0);
+    source: dict[str, str] = dict(os.environ) if environ is None else environ;
+    out: list[str] = [];
+    pos = 0;
+    while True {
+        start = value.find("${", pos);
+        if start < 0 {
+            out.append(value[pos:]);
+            break;
         }
-        var_name = leading.group(0);
-        record = None;
-        if parts is None {
-            record = UnresolvedRef(
-                var=var_name, unsupported=True, form=`match.group(0)
-            );
-        } else {
-            operator = parts.group(2);
-            operand = parts.group(3) or "";
-            env_value = source.get(var_name);
-            if env_value is not None {
-                return env_value;
-            }
-            if operator == ":-" {
-                return operand;
-            }
-            record = UnresolvedRef(
-                var=var_name, required=operator == ":?", message=operand
-            );
+        close = value.find("}", start + 2);
+        if close < 0 {
+            out.append(value[pos:]);
+            break;
         }
-        if sink is not None {
+        out.append(value[pos:start]);
+        (text, record) = _env_reference(value[start + 2:close], source);
+        if record is not None {
+            if sink is None {
+                raise ValueError(record.describe());
+            }
             sink.append(record);
-            return `match.group(0);
         }
-        raise ValueError(record.describe());
+        out.append(text);
+        pos = close + 1;
     }
-    return re.sub(pattern, replace_env_var, value);
+    return "".join(out);
 }
 
 impl UnresolvedRef.describe -> str {
@@ -77,14 +94,12 @@ impl is_in_project -> bool {
 impl JacConfig.discover(
     start_path: Path | None = None, profile: str | None = None
 ) -> JacConfig | None {
-    import from pathlib { Path }
     result = find_project_root(start_path);
     if result is None {
         return None;
     }
     (project_root, toml_path) = result;
     config = JacConfig.load(toml_path);
-
     base = start_path if start_path is not None else Path.cwd();
     config.discovered_from_ancestor = project_root.resolve() != base.resolve();
     if profile {
@@ -120,36 +135,778 @@ impl JacConfig.resolve(
 impl JacConfig.from_toml_str(
     toml_str: str, toml_path: Path | None = None
 ) -> JacConfig {
-    import tomllib;
-    data = tomllib.loads(toml_str);
+    try {
+        data = tomllib.loads(toml_str);
+    } except tomllib.TOMLDecodeError as exc {
+        raise MalformedJacTomlError(file_path=_origin_of(toml_path), original=exc);
+    }
     return _parse_toml_data(data, toml_path);
 }
 
-def _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, any];
+impl _origin_of(toml_path: Path | None) -> str {
+    return str(toml_path) if toml_path is not None else "jac.toml";
+}
 
-impl JacConfig._section_map -> dict[
-    str,
-    RunConfig
-        | BuildConfig
-        | TestConfig
-        | ServeConfig
-        | FormatConfig
-        | DotConfig
-        | CacheConfig
-        | EnvironmentConfig
-        | ClientConfig
-] {
-    return {
-        "run": self.run,
-        "build": self.build,
-        "test": self.`test,
-        "serve": self.serve,
-        "format": self.format,
-        "dot": self.dot,
-        "cache": self.cache,
-        "environment": self.environment,
-        "client": self.client
-    };
+impl _toml_key(key: str) -> str {
+    return key.replace("_", "-");
+}
+
+impl _parse_person(t: TomlTable, key: str, index: int, item: any) -> PersonConfig {
+    if isinstance(item, str) {
+        return PersonConfig(name=item, email="");
+    }
+    if not isinstance(item, dict) {
+        raise t.error(
+            f"{key}[{index}]", f"expected a string or a table, got {toml_kind(item)}"
+        );
+    }
+    person = TomlTable(data=item, where=t.child_where(f"{key}[{index}]"), origin=t.origin);
+    found = PersonConfig();
+    for field in person.keys() {
+        if field == "name" {
+            found.name = person.text(field);
+        } elif field == "email" {
+            found.email = person.text(field);
+        } else {
+            raise person.unknown(field, ["name", "email"]);
+        }
+    }
+    return found;
+}
+
+impl _parse_persons_at(t: TomlTable, key: str) -> list[PersonConfig] {
+    raw = t.data[key];
+    if not isinstance(raw, list) {
+        raise t.error(key, f"expected an array, got {toml_kind(raw)}");
+    }
+    people: list[PersonConfig] = [];
+    index = 0;
+    for item in raw {
+        people.append(_parse_person(t, key, index, item));
+        index += 1;
+    }
+    return people;
+}
+
+impl PackageIncludeConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "packages" {
+            self.packages = t.texts(key);
+        } elif key == "data" {
+            self.data = t.text_list_map(key);
+        } else {
+            raise t.unknown(key, INCLUDE_KEYS);
+        }
+    }
+}
+
+impl ProjectConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        name = _toml_key(key);
+        if name == "name" {
+            self.name = t.text(key);
+        } elif name == "version" {
+            self.version = t.text(key);
+        } elif name == "description" {
+            self.description = t.text(key);
+        } elif name == "authors" {
+            self.authors = _parse_persons_at(t, key);
+        } elif name == "maintainers" {
+            self.maintainers = _parse_persons_at(t, key);
+        } elif name == "license" {
+            self.license = t.text(key);
+        } elif name == "readme" {
+            self.readme = t.text(key);
+        } elif name == "keywords" {
+            self.keywords = t.texts(key);
+        } elif name == "classifiers" {
+            self.classifiers = t.texts(key);
+        } elif name == "requires-python" {
+            self.requires_python = t.text(key);
+        } elif name == "jac-version" {
+            self.jac_version = t.text(key);
+        } elif name == "entry-point" {
+            self.entry_point = validate_entry_point(t.text(key));
+            self.entry_point_declared = True;
+        } elif name == "kind" {
+            self.kind = t.text(key);
+        } elif name == "default-app" {
+            self.default_app = t.text(key).strip();
+        } elif name == "exports" {
+            self.exports = t.texts(key);
+        } elif name == "urls" {
+            self.urls = t.text_map(key);
+        } elif name == "include" {
+            included = PackageIncludeConfig();
+            included.apply(t.table(key));
+            self.`include = included;
+        } else {
+            raise t.unknown(key, PROJECT_KEYS);
+        }
+    }
+}
+
+impl RunConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "session" {
+            self.session = t.text(key);
+        } elif key == "main" {
+            self.main = t.flag(key);
+        } elif key == "cache" {
+            self.cache = t.flag(key);
+        } elif key == "diagnostics" {
+            self.diagnostics = t.text(key);
+        } else {
+            raise t.unknown(key, RUN_KEYS);
+        }
+    }
+}
+
+impl NativeConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "link_mode" {
+            mode = t.text(key);
+            if mode != "objects" and mode != "bitcode" {
+                raise t.error(key, "must be objects or bitcode");
+            }
+            self.link_mode = mode;
+        } elif key == "require" {
+            self.require = t.texts(key);
+        } elif key == "target" {
+            self.target = t.text(key);
+        } elif key == "opt" {
+            self.opt = t.integer(key);
+        } elif key == "debug" {
+            self.debug = t.flag(key);
+        } elif key == "threads" {
+            threads = t.integer(key);
+            if threads < 1 {
+                raise t.error(key, "must be at least 1");
+            }
+            self.threads = threads;
+        } else {
+            raise t.unknown(key, NATIVE_KEYS);
+        }
+    }
+}
+
+impl MemoryConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "profile" {
+            profile = t.text(key).strip().lower();
+            if profile not in MEMORY_PROFILES {
+                raise t.error(key, f"must be one of {', '.join(MEMORY_PROFILES)}");
+            }
+            self.profile = profile;
+        } elif key == "enforce" {
+            self.enforce = t.texts(key);
+        } elif key == "exempt" {
+            self.exempt = t.texts(key);
+        } else {
+            raise t.unknown(key, MEMORY_KEYS);
+        }
+    }
+    if self.profile == "nogc" and (self.enforce or self.exempt) {
+        raise t.error(
+            "enforce/exempt",
+            "cannot be set under profile = 'nogc': every module is held to the contract"
+        );
+    }
+}
+
+impl MemoryConfig.gc_mode -> str {
+    if self.profile == "rc" {
+        return "rc";
+    }
+    if self.profile == "nogc" {
+        return "none";
+    }
+    return "cycles";
+}
+
+impl PlacementConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "default" {
+            raw = t.text(key).strip().lower();
+            if raw not in PLACEMENT_ALIASES {
+                raise t.error(key, "must be one of 'server'/'sv', 'native'/'na'");
+            }
+            self.default_codespace = PLACEMENT_ALIASES[raw];
+        } elif key == "pins" {
+            pins = dict(self.pins);
+            for (pattern, place) in t.text_map(key).items() {
+                pins[pattern] = place;
+            }
+            self.pins = pins;
+        } else {
+            raise t.unknown(key, PLACEMENT_KEYS);
+        }
+    }
+}
+
+impl BuildConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key in BUILD_RETIRED {
+            raise t.error(key, f"was retired; use {BUILD_RETIRED[key]}");
+        }
+        if key == "dir" {
+            self.dir = t.text(key);
+        } else {
+            raise t.unknown(key, BUILD_KEYS);
+        }
+    }
+}
+
+impl TestConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "directory" {
+            self.directory = t.text(key);
+        } elif key == "directories" {
+            self.directories = t.texts(key);
+        } elif key == "isolate" {
+            self.isolate = t.texts(key);
+        } elif key == "serial" {
+            self.serial = t.texts(key);
+        } elif key == "filter" {
+            self.filter = t.text(key);
+        } elif key == "verbose" {
+            self.verbose = t.flag(key);
+        } elif key == "fail_fast" {
+            self.fail_fast = t.flag(key);
+        } elif key == "max_failures" {
+            self.max_failures = t.integer(key);
+        } else {
+            raise t.unknown(key, TEST_KEYS);
+        }
+    }
+}
+
+impl ServeWorkersConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "count" {
+            self.count = t.scalar_text(key);
+        } elif key == "threads" {
+            self.threads = t.scalar_text(key);
+        } elif key == "max_requests" {
+            self.max_requests = t.integer(key);
+        } elif key == "max_requests_jitter" {
+            self.max_requests_jitter = t.integer(key);
+        } elif key == "request_timeout" {
+            self.request_timeout = t.number(key);
+        } elif key == "boot_timeout" {
+            self.boot_timeout = t.number(key);
+        } elif key == "hang_timeout" {
+            self.hang_timeout = t.number(key);
+        } else {
+            raise t.unknown(key, WORKERS_KEYS);
+        }
+    }
+}
+
+impl ServeTlsConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "certfile" {
+            self.certfile = t.text(key);
+        } elif key == "keyfile" {
+            self.keyfile = t.text(key);
+        } elif key == "ca_certs" {
+            self.ca_certs = t.text(key);
+        } elif key == "min_version" {
+            self.min_version = t.scalar_text(key);
+        } else {
+            raise t.unknown(key, TLS_KEYS);
+        }
+    }
+}
+
+impl ServeProxyConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "trusted" {
+            self.trusted = t.texts(key);
+        } else {
+            raise t.unknown(key, PROXY_KEYS);
+        }
+    }
+}
+
+impl ServeLimitsConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "max_connections" {
+            self.max_connections = t.integer(key);
+        } elif key == "backlog" {
+            self.backlog = t.integer(key);
+        } elif key == "max_body_bytes" {
+            self.max_body_bytes = t.integer(key);
+        } elif key == "max_header_bytes" {
+            self.max_header_bytes = t.integer(key);
+        } elif key == "max_header_count" {
+            self.max_header_count = t.integer(key);
+        } elif key == "max_request_line_bytes" {
+            self.max_request_line_bytes = t.integer(key);
+        } elif key == "multipart_spool_bytes" {
+            self.multipart_spool_bytes = t.integer(key);
+        } else {
+            raise t.unknown(key, LIMITS_KEYS);
+        }
+    }
+}
+
+impl ServeTimeoutsConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "header" {
+            self.header = t.number(key);
+        } elif key == "body" {
+            self.body = t.number(key);
+        } elif key == "keepalive" {
+            self.keepalive = t.number(key);
+        } elif key == "drain" {
+            self.drain = t.number(key);
+        } elif key == "close" {
+            self.close = t.number(key);
+        } else {
+            raise t.unknown(key, TIMEOUTS_KEYS);
+        }
+    }
+}
+
+impl ServeAccessLogConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "enabled" {
+            self.enabled = t.flag(key);
+        } elif key == "format" {
+            self.format = t.text(key);
+        } elif key == "suppress_health_checks" {
+            self.suppress_health_checks = t.flag(key);
+        } else {
+            raise t.unknown(key, ACCESS_LOG_KEYS);
+        }
+    }
+}
+
+impl ServeCompressionConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "enabled" {
+            self.enabled = t.flag(key);
+        } elif key == "min_bytes" {
+            self.min_bytes = t.integer(key);
+        } elif key == "level" {
+            self.level = t.integer(key);
+        } else {
+            raise t.unknown(key, COMPRESSION_KEYS);
+        }
+    }
+}
+
+impl ServeWebSocketConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "allowed_origins" {
+            self.allowed_origins = t.texts(key);
+        } elif key == "max_message_bytes" {
+            self.max_message_bytes = t.integer(key);
+        } elif key == "ping_interval" {
+            self.ping_interval = t.number(key);
+        } elif key == "ping_timeout" {
+            self.ping_timeout = t.number(key);
+        } else {
+            raise t.unknown(key, WEBSOCKET_KEYS);
+        }
+    }
+}
+
+impl ServeConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "host" {
+            self.host = t.text(key);
+        } elif key == "port" {
+            self.port = t.integer(key);
+        } elif key == "session" {
+            self.session = t.text(key);
+        } elif key == "main" {
+            self.main = t.flag(key);
+        } elif key == "docs_enabled" {
+            self.docs_enabled = t.flag(key);
+        } elif key == "graph_enabled" {
+            self.graph_enabled = t.flag(key);
+        } elif key == "cors_origins" {
+            self.cors_origins = t.text_or_texts(key);
+        } elif key == "public_origin" {
+            self.public_origin = t.text(key);
+        } elif key == "on_conflict" {
+            mode = t.text(key).strip().lower();
+            if mode not in SERVE_CONFLICT_MODES {
+                raise t.error(key, "must be 'retry' or 'fail'");
+            }
+            self.on_conflict = mode;
+        } elif key == "conflict_max_attempts" {
+            self.conflict_max_attempts = t.integer(key);
+        } elif key == "conflict_backoff_ms" {
+            self.conflict_backoff_ms = t.integer(key);
+        } elif key == "workers" {
+            if isinstance(t.data[key], dict) {
+                self.workers.apply(t.table(key));
+            } else {
+                self.workers.count = t.scalar_text(key);
+            }
+        } elif key == "tls" {
+            self.tls.apply(t.table(key));
+        } elif key == "proxy" {
+            self.proxy.apply(t.table(key));
+        } elif key == "limits" {
+            self.limits.apply(t.table(key));
+        } elif key == "timeouts" {
+            self.timeouts.apply(t.table(key));
+        } elif key == "access_log" {
+            self.access_log.apply(t.table(key));
+        } elif key == "compression" {
+            self.compression.apply(t.table(key));
+        } elif key == "websocket" {
+            self.websocket.apply(t.table(key));
+        } elif key == "auth" {
+            self.auth = _deep_merge(self.auth, t.raw_table(key));
+        } else {
+            raise t.unknown(key, SERVE_KEYS);
+        }
+    }
+}
+
+impl FormatConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "outfile" {
+            self.outfile = t.text(key);
+        } else {
+            raise t.unknown(key, FORMAT_KEYS);
+        }
+    }
+}
+
+impl LintConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "select" {
+            self.select = t.texts(key);
+        } elif key == "ignore" {
+            self.ignore = t.texts(key);
+        } elif key == "exclude" {
+            self.exclude = t.texts(key);
+        } else {
+            raise t.unknown(key, LINT_KEYS);
+        }
+    }
+}
+
+impl CheckConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        name = _toml_key(key);
+        if key == "print_errs" {
+            self.print_errs = t.flag(key);
+        } elif key == "lint" {
+            self.lint.apply(t.table(key));
+        } elif key == "exclude" {
+            self.exclude = t.texts(key);
+        } elif key == "suppress" {
+            self.suppress = t.texts(key);
+        } elif key == "suppress_categories" {
+            self.suppress_categories = t.texts(key);
+        } elif key == "enforce_access" {
+            self.enforce_access = t.flag(key);
+        } elif key == "warn_native_seams" {
+            self.warn_native_seams = t.flag(key);
+        } elif name == "untyped-external" {
+            level = t.text(key);
+            if level != "warning" and level != "error" {
+                raise t.error(key, "must be 'warning' or 'error'");
+            }
+            self.untyped_external = level;
+        } else {
+            raise t.unknown(key, CHECK_KEYS);
+        }
+    }
+}
+
+impl DotConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "depth" {
+            self.depth = t.integer(key);
+        } elif key == "traverse" {
+            self.traverse = t.flag(key);
+        } elif key == "bfs" {
+            self.bfs = t.flag(key);
+        } elif key == "edge_limit" {
+            self.edge_limit = t.integer(key);
+        } elif key == "node_limit" {
+            self.node_limit = t.integer(key);
+        } elif key == "format" {
+            self.format = t.text(key);
+        } else {
+            raise t.unknown(key, DOT_KEYS);
+        }
+    }
+}
+
+impl CacheConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "enabled" {
+            self.enabled = t.flag(key);
+        } elif key == "dir" {
+            self.dir = t.text(key);
+        } else {
+            raise t.unknown(key, CACHE_KEYS);
+        }
+    }
+}
+
+impl StorageConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "type" {
+            self.storage_type = t.text(key);
+        } elif key == "base_path" {
+            self.base_path = t.text(key);
+        } elif key == "create_dirs" {
+            self.create_dirs = t.flag(key);
+        } elif key == "bucket" {
+            self.bucket = t.text(key);
+        } elif key == "prefix" {
+            self.prefix = t.text(key);
+        } elif key == "region" {
+            self.region = t.text(key);
+        } elif key == "endpoint_url" {
+            self.endpoint_url = t.optional_text(key);
+        } elif key == "project_id" {
+            self.project_id = t.text(key);
+        } elif key == "public_read" {
+            self.public_read = t.flag(key);
+        } else {
+            raise t.unknown(key, STORAGE_KEYS);
+        }
+    }
+}
+
+impl EnvironmentConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "default_profile" {
+            self.default_profile = t.text(key);
+        } else {
+            raise t.unknown(key, ENVIRONMENT_KEYS);
+        }
+    }
+}
+
+impl ClientErrorsConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "verbose" {
+            self.verbose = t.flag(key);
+        } else {
+            raise t.unknown(key, CLIENT_ERRORS_KEYS);
+        }
+    }
+}
+
+impl ClientConfig.apply(t: TomlTable) {
+    if t.has_key("framework") {
+        self.framework = t.text("framework");
+    }
+    if t.has_key("paths") {
+        paths = dict(self.paths);
+        paths.update(t.text_map("paths"));
+        self.paths = paths;
+    }
+}
+
+impl DatabaseConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "indexes" {
+            indexes = dict(self.indexes);
+            for (arch, fields) in t.text_list_map(key).items() {
+                indexes[arch] = fields;
+            }
+            self.indexes = indexes;
+        } elif key == "retention_days" {
+            days = t.scalar_text(key).strip();
+            if not days.isdigit() {
+                raise t.error(key, "must be a whole number of days");
+            }
+            self.retention_days = int(days);
+        } elif key == "postgres_dist" {
+            self.postgres_dist = t.text(key);
+        } elif key == "postgres_version" {
+            self.postgres_version = t.scalar_text(key);
+        } else {
+            raise t.unknown(key, DATABASE_KEYS);
+        }
+    }
+}
+
+impl NetworkConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "offline" {
+            self.offline = t.flag(key);
+        } else {
+            raise t.unknown(key, NETWORK_KEYS);
+        }
+    }
+}
+
+impl ToolchainsConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "system" {
+            self.system = t.flag(key);
+        } else {
+            raise t.unknown(key, TOOLCHAINS_KEYS);
+        }
+    }
+}
+
+impl DevConfig.apply(t: TomlTable) {
+    for key in t.keys() {
+        if key == "jaclang_source" {
+            self.jaclang_source = t.text(key);
+        } elif key == "exact" {
+            self.exact = t.flag(key);
+        } elif key == "pod_binary" {
+            self.pod_binary = t.text(key);
+        } elif key == "jobs" {
+            self.jobs = t.scalar_text(key);
+        } elif key == "test_jobs" {
+            self.test_jobs = t.scalar_text(key);
+        } elif key == "check_jobs" {
+            self.check_jobs = t.scalar_text(key);
+        } elif key == "fmt_jobs" {
+            self.fmt_jobs = t.scalar_text(key);
+        } else {
+            raise t.unknown(key, DEV_KEYS);
+        }
+    }
+}
+
+impl _check_retired(t: TomlTable) {
+    for (section, detail) in RETIRED_SECTIONS.items() {
+        if t.has_key(section) {
+            raise t.error(section, detail);
+        }
+    }
+    if t.has_key("scale") {
+        scale = t.raw_table("scale");
+        if "microservices" in scale {
+            raise t.error(
+                "scale.microservices",
+                "was removed: declare each service as an [apps.<name>] table "
+                    "(kind = \"service\", entry-point, route) and move the gateway "
+                    "settings (logs, ingress, cors, boot keys) to [scale.gateway]. "
+                    "See the Breaking Changes page "
+                    "(docs/community/breaking-changes.md, Workspaces)"
+            );
+        }
+    }
+}
+
+impl _apply_sections(cfg: JacConfig, t: TomlTable) {
+    _check_retired(t);
+    if t.has_key("project") {
+        cfg.project.apply(t.table("project"));
+    }
+    if t.has_key("run") {
+        cfg.run.apply(t.table("run"));
+    }
+    if t.has_key("build") {
+        cfg.build.apply(t.table("build"));
+    }
+    if t.has_key("memory") {
+        cfg.memory.apply(t.table("memory"));
+    }
+    if t.has_key("native") {
+        cfg.native.apply(t.table("native"));
+    }
+    if t.has_key("placement") {
+        cfg.placement.apply(t.table("placement"));
+    }
+    if t.has_key("test") {
+        cfg.`test.apply(t.table("test"));
+    }
+    if t.has_key("serve") {
+        cfg.serve.apply(t.table("serve"));
+    }
+    if t.has_key("format") {
+        cfg.format.apply(t.table("format"));
+    }
+    if t.has_key("check") {
+        cfg.check.apply(t.table("check"));
+    }
+    if t.has_key("dot") {
+        cfg.dot.apply(t.table("dot"));
+    }
+    if t.has_key("cache") {
+        cfg.cache.apply(t.table("cache"));
+    }
+    if t.has_key("storage") {
+        cfg.storage.apply(t.table("storage"));
+    }
+    if t.has_key("client_errors") {
+        cfg.client_errors.apply(t.table("client_errors"));
+    }
+    if t.has_key("client") {
+        cfg.client.apply(t.table("client"));
+    }
+    if t.has_key("database") {
+        cfg.database.apply(t.table("database"));
+    }
+    if t.has_key("network") {
+        cfg.network.apply(t.table("network"));
+    }
+    if t.has_key("toolchains") {
+        cfg.toolchains.apply(t.table("toolchains"));
+    }
+    if t.has_key("dev") {
+        cfg.dev.apply(t.table("dev"));
+    }
+    if t.has_key("environment") {
+        cfg.environment.apply(t.table("environment"));
+    }
+    _apply_capabilities(cfg, t);
+    cfg.merge_dependency_tables(t.data, t.where + "." if t.where else "");
+    _apply_named_tables(cfg, t);
+}
+
+impl _apply_capabilities(cfg: JacConfig, t: TomlTable) {
+    for feature in CAPABILITY_SECTIONS {
+        if not t.has_key(feature) {
+            continue;
+        }
+        table = t.raw_table(feature);
+        if feature in cfg.plugins {
+            cfg.plugins[feature] = _deep_merge(cfg.plugins[feature], table);
+        } else {
+            cfg.plugins[feature] = table;
+        }
+    }
+}
+
+impl _apply_named_tables(cfg: JacConfig, t: TomlTable) {
+    if t.has_key("scripts") {
+        for (name, command) in t.text_map("scripts").items() {
+            cfg.scripts[name] = command;
+        }
+    }
+    if t.has_key("entrypoints") {
+        groups = t.table("entrypoints");
+        for group in groups.keys() {
+            refs = groups.text_map(group);
+            merged = dict(cfg.entrypoints.get(group, {}));
+            for (name, ref) in refs.items() {
+                merged[name] = ref;
+            }
+            cfg.entrypoints[group] = merged;
+        }
+    }
+    if t.has_key("optional-dependencies") {
+        groups = t.table("optional-dependencies");
+        for group in groups.keys() {
+            deps = groups.text_map(group);
+            merged = dict(cfg.optional_dependencies.get(group, {}));
+            for (name, spec) in deps.items() {
+                merged[name] = spec;
+            }
+            cfg.optional_dependencies[group] = merged;
+        }
+    }
 }
 
 impl JacConfig.apply_profile(
@@ -159,98 +916,33 @@ impl JacConfig.apply_profile(
         self._layers.append(("profile", profile_name));
         _visited = set();
     }
-    if profile_name not in self.environments {
-        return;
-    }
-    if profile_name in _visited {
+    if profile_name not in self.environments or profile_name in _visited {
         return;
     }
     _visited.add(profile_name);
-    profile = self.environments[profile_name];
-
-    if "inherits" in profile {
-        parent_name = profile["inherits"];
-        if parent_name in self.environments {
-            self.apply_profile(parent_name, _visited=_visited);
+    profile = TomlTable(
+        data=dict(self.environments[profile_name]),
+        where=f"environments.{profile_name}",
+        origin=_origin_of(self.toml_path)
+    );
+    if profile.has_key("inherits") {
+        parent_name = profile.text("inherits");
+        if parent_name not in self.environments {
+            raise profile.error(
+                "inherits", f"names '{parent_name}', which is not a profile"
+            );
         }
+        self.apply_profile(parent_name, _visited=_visited);
+        del profile.data["inherits"];
     }
-
-    section_map = self._section_map();
-    for (section, obj) in section_map.items() {
-        if section in profile {
-            profile_section: dict[str, any] = profile[section];
-            for (key, value) in profile_section.items() {
-                if not hasattr(obj, key) {
-                    continue;
-                }
-                current = getattr(obj, key);
-                if isinstance(current, dict) and isinstance(value, dict) {
-                    setattr(obj, key, _deep_merge(current, value));
-                } else {
-                    setattr(obj, key, value);
-                }
-            }
-        }
-    }
-
-    if "project" in profile {
-        profile_project: dict[str, any] = profile["project"];
-        for (key, value) in profile_project.items() {
-            attr = key.replace("-", "_");
-            if hasattr(self.project, attr) {
-                setattr(self.project, attr, value);
-            }
-        }
-    }
-
-    if "check" in profile {
-        check_data: dict[str, any] = profile["check"];
-        for (key, value) in check_data.items() {
-            if key == "lint" and isinstance(value, dict) {
-                for (lk, lv) in value.items() {
-                    if hasattr(self.check.lint, lk) {
-                        setattr(self.check.lint, lk, lv);
-                    }
-                }
-            } elif hasattr(self.check, key) {
-                setattr(self.check, key, value);
-            }
-        }
-    }
-
-    if "storage" in profile {
-        storage_data: dict[str, any] = profile["storage"];
-        for (key, value) in storage_data.items() {
-            if key == "type" {
-                self.storage.storage_type = value;
-            } elif hasattr(self.storage, key) {
-                setattr(self.storage, key, value);
-            }
-        }
-    }
-
-    for _feat in CAPABILITY_SECTIONS {
-        if _feat in profile and isinstance(profile[_feat], dict) {
-            if _feat in self.plugins {
-                self.plugins[_feat] = _deep_merge(self.plugins[_feat], profile[_feat]);
-            } else {
-                self.plugins[_feat] = profile[_feat];
-            }
-        }
-    }
-
-    self.merge_dependency_tables(profile, f"environments.{profile_name}.");
-    if "scripts" in profile {
-        self.scripts.update(profile["scripts"]);
-    }
-    if "apps" in profile {
-        self.merge_apps_table(profile["apps"]);
+    _apply_sections(self, profile);
+    if profile.has_key("apps") {
+        self.merge_apps_table(profile.raw_table("apps"));
     }
 }
 
 impl JacConfig.merge_apps_table(apps_table: dict[str, any]) -> None {
-    import copy;
-    if not isinstance(apps_table, dict) or not apps_table {
+    if not apps_table {
         return;
     }
     base = self._base_data.get("apps");
@@ -263,8 +955,9 @@ impl JacConfig.merge_apps_table(apps_table: dict[str, any]) -> None {
     merged = _deep_merge(copy.deepcopy(base), copy.deepcopy(apps_table));
     self._base_data["apps"] = merged;
     self._raw_data["apps"] = copy.deepcopy(merged);
+    project = self._base_data.get("project", {});
     self.apps = parse_apps(
-        self._base_data.get("project", {}), _interpolate_recursive(merged)
+        project if isinstance(project, dict) else {}, _interpolate_recursive(merged)
     );
 }
 
@@ -274,93 +967,28 @@ impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
     }
     self._layers.append(("overlay", profile_name or ""));
     if profile_name {
-        profile_path = self.project_root / f"jac.{profile_name}.toml";
-        self.merge_from_toml_file(profile_path);
-
+        self.merge_from_toml_file(self.project_root / f"jac.{profile_name}.toml");
         self.apply_profile(profile_name, _visited=set());
         self.active_profile = profile_name;
     }
-
-    local_path = self.project_root / "jac.local.toml";
-    self.merge_from_toml_file(local_path);
+    self.merge_from_toml_file(self.project_root / "jac.local.toml");
 }
 
 impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     if not toml_path.exists() {
         return;
     }
-    data: dict[str, any] = read_toml_with_encoding(str(toml_path));
-    (data, refs) = resolve_env_refs(data);
+    raw: dict[str, any] = read_toml_with_encoding(str(toml_path));
+    (resolved, refs) = resolve_env_refs(raw);
+    data: dict[str, any] = resolved;
     self.unresolved = self.unresolved + refs;
-    section_map = self._section_map();
-    for (section, obj) in section_map.items() {
-        if section in data {
-            data_section: dict[str, any] = data[section];
-            for (key, value) in data_section.items() {
-                if hasattr(obj, key) {
-                    setattr(obj, key, value);
-                }
-            }
+    layer = TomlTable(data=data, where="", origin=str(toml_path));
+    _apply_sections(self, layer);
+    if layer.has_key("environments") {
+        environments = layer.table("environments");
+        for name in environments.keys() {
+            self.environments[name] = environments.raw_table(name);
         }
-    }
-    if "project" in data {
-        proj: dict[str, any] = data["project"];
-        for (key, value) in proj.items() {
-            attr = key.replace("-", "_");
-            if attr == "authors" {
-                self.project.authors = _parse_persons(value);
-            } elif attr == "maintainers" {
-                self.project.maintainers = _parse_persons(value);
-            } elif attr == "include" {
-                self.project.`include = _parse_include(value);
-            } elif hasattr(self.project, attr) {
-                setattr(self.project, attr, value);
-            }
-        }
-    }
-
-    if "check" in data {
-        check_data: dict[str, any] = data["check"];
-        for (key, value) in check_data.items() {
-            if key == "lint" and isinstance(value, dict) {
-                for (lk, lv) in value.items() {
-                    if hasattr(self.check.lint, lk) {
-                        setattr(self.check.lint, lk, lv);
-                    }
-                }
-            } elif hasattr(self.check, key) {
-                setattr(self.check, key, value);
-            }
-        }
-    }
-
-    if "storage" in data {
-        storage_data: dict[str, any] = data["storage"];
-        for (key, value) in storage_data.items() {
-            if key == "type" {
-                self.storage.storage_type = value;
-            } elif hasattr(self.storage, key) {
-                setattr(self.storage, key, value);
-            }
-        }
-    }
-    _apply_memory_native_placement(self, data);
-    for _feat in CAPABILITY_SECTIONS {
-        if _feat in data and isinstance(data[_feat], dict) {
-            if _feat in self.plugins {
-                self.plugins[_feat] = _deep_merge(self.plugins[_feat], data[_feat]);
-            } else {
-                self.plugins[_feat] = data[_feat];
-            }
-        }
-    }
-
-    self.merge_dependency_tables(data);
-    if "environments" in data {
-        self.environments.update(data["environments"]);
-    }
-    if "scripts" in data {
-        self.scripts.update(data["scripts"]);
     }
     if self.config_files is None {
         self.config_files = [];
@@ -368,19 +996,103 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
     if toml_path not in self.config_files {
         self.config_files.append(toml_path);
     }
-
     for (key, value) in data.items() {
-        if key in self._raw_data
-            and isinstance(self._raw_data[key], dict)
-            and isinstance(value, dict) {
-            self._raw_data[key].update(value);
+        current = self._raw_data.get(key);
+        if isinstance(current, dict) and isinstance(value, dict) {
+            current.update(value);
         } else {
             self._raw_data[key] = value;
         }
     }
-    if "apps" in data {
-        self.merge_apps_table(data["apps"]);
+    if layer.has_key("apps") {
+        self.merge_apps_table(layer.raw_table("apps"));
     }
+}
+
+impl _parse_toml_data(
+    data: dict[str, any], toml_path: Path | None = None
+) -> JacConfig {
+    (resolved, refs) = resolve_env_refs(data);
+    doc: dict[str, any] = resolved;
+    config = JacConfig();
+    config.unresolved = refs;
+    config._raw_data = data;
+    config._base_data = copy.deepcopy(data);
+    if toml_path is not None {
+        config.toml_path = toml_path;
+        config.project_root = toml_path.parent;
+    }
+    top = TomlTable(data=doc, where="", origin=_origin_of(toml_path));
+    _apply_sections(config, top);
+    if top.has_key("environments") {
+        environments = top.table("environments");
+        for name in environments.keys() {
+            config.environments[name] = environments.raw_table(name);
+        }
+    }
+    project: dict[str, any] = top.raw_table("project") if top.has_key("project") else {};
+    if top.has_key("apps") {
+        config.apps = parse_apps(project, top.raw_table("apps"));
+        config.is_workspace = True;
+    } else {
+        if config.project.default_app {
+            raise top.error("project.default-app", "requires an [apps] table");
+        }
+        app = implicit_app(config.project);
+        config.apps = {app.name: app};
+    }
+    config.persistence = parse_persistence(
+        top.raw_table("persistence") if top.has_key("persistence") else {},
+        config.project.name
+    );
+    return config;
+}
+
+impl _interpolate_recursive(`obj: any) -> any {
+    (resolved, _) = resolve_env_refs(`obj);
+    return resolved;
+}
+
+impl resolve_env_refs(
+    data: any, environ: dict[str, str] | None = None, path: str = ""
+) -> tuple[any, list[UnresolvedRef]] {
+    refs: list[UnresolvedRef] = [];
+    return (_resolve_env_into(data, path, environ, refs), refs);
+}
+
+impl _resolve_env_into(
+    item: any, at: str, environ: dict[str, str] | None, refs: list[UnresolvedRef]
+) -> any {
+    if isinstance(item, str) {
+        found: list[UnresolvedRef] = [];
+        resolved = interpolate_env_vars(item, environ, found);
+        for ref in found {
+            ref.path = at;
+            ref.raw = resolved;
+            refs.append(ref);
+        }
+        return resolved;
+    }
+    if isinstance(item, dict) {
+        table: dict[str, any] = {};
+        for (key, value) in item.items() {
+            name = str(key);
+            table[name] = _resolve_env_into(
+                value, f"{at}.{name}" if at else name, environ, refs
+            );
+        }
+        return table;
+    }
+    if isinstance(item, list) {
+        items: list[any] = [];
+        index = 0;
+        for value in item {
+            items.append(_resolve_env_into(value, f"{at}[{index}]", environ, refs));
+            index += 1;
+        }
+        return items;
+    }
+    return item;
 }
 
 impl JacConfig.get_plugin_deps(dep_type: str) -> dict[str, any] {
@@ -403,7 +1115,6 @@ impl JacConfig.get_section(name: str) -> dict[str, any] | None {
 }
 
 impl JacConfig.get_build_dir -> Path {
-    import from pathlib { Path }
     base = self.project_root or Path.cwd();
     return base / self.build.dir;
 }
@@ -433,18 +1144,14 @@ impl JacConfig.save -> None {
         raise ValueError("No toml_path set, cannot save configuration");
     }
 
-    import copy;
     text = "";
     old_doc: dict[str, any] = {};
     if self.toml_path.exists() {
-        import tomllib;
-        import from jaclang.project.textio { read_file_with_encoding }
-        import from jaclang.project.tomlio { MalformedJacTomlError }
         text = read_file_with_encoding(str(self.toml_path));
         try {
             old_doc = tomllib.loads(text);
         } except tomllib.TOMLDecodeError as exc {
-            raise MalformedJacTomlError(str(self.toml_path), exc);
+            raise MalformedJacTomlError(file_path=str(self.toml_path), original=exc);
         }
     }
     doc = copy.deepcopy(old_doc);
@@ -478,17 +1185,13 @@ impl JacConfig._write_toml_text(text: str) -> None {
         raise ValueError("No toml_path set, cannot save configuration");
     }
     if self.discovered_from_ancestor {
-        import from jaclang.cli.console { console }
-        console.warning(
-            f"No jac.toml in the current directory -- modifying {self.toml_path}"
-        );
-        console.print(
-            "  Run this command from the project root, "
-            "or 'jac create' here to start a new project.",
-            style="muted"
+        sys.stderr.write(
+            f"warning: no jac.toml in the current directory -- modifying {self.toml_path}\n"
+                "  Run this command from the project root, "
+                "or 'jac create' here to start a new project.\n"
         );
     }
-    with open(self.toml_path, "w") as f {
+    with open(str(self.toml_path), "w") as f {
         f.write(text);
     }
 }
@@ -797,383 +1500,6 @@ impl JacConfig.remove_dependency(
     return False;
 }
 
-impl _parse_persons(raw: list[object]) -> list[PersonConfig] {
-    result: list[PersonConfig] = [];
-    for item in raw {
-        if isinstance(item, dict) {
-            result.append(
-                PersonConfig(name=item.get("name", ""), email=item.get("email", ""))
-            );
-        } elif isinstance(item, str) {
-            result.append(PersonConfig(name=item, email=""));
-        }
-    }
-    return result;
-}
-
-impl _parse_include(raw: dict[str, any]) -> PackageIncludeConfig {
-    return PackageIncludeConfig(
-        packages=raw.get("packages", []), data=raw.get("data", {})
-    );
-}
-
-impl _parse_toml_data(
-    data: dict[str, any], toml_path: Path | None = None
-) -> JacConfig {
-    import copy;
-    raw = data;
-    (data, refs) = resolve_env_refs(raw);
-    config = JacConfig();
-    config.unresolved = refs;
-    config._raw_data = raw;
-    config._base_data = copy.deepcopy(raw);
-    if toml_path {
-        config.toml_path = toml_path;
-        config.project_root = toml_path.parent;
-    }
-    if "project" in data {
-        import from jaclang.project.apps { validate_entry_point }
-        proj = data["project"];
-        config.project = ProjectConfig(
-            name=proj.get("name", ""),
-            version=proj.get("version", "0.1.0"),
-            description=proj.get("description", ""),
-            authors=_parse_persons(proj.get("authors", [])),
-            maintainers=_parse_persons(proj.get("maintainers", [])),
-            license=proj.get("license", ""),
-            readme=proj.get("readme", "README.md"),
-            keywords=proj.get("keywords", []),
-            classifiers=proj.get("classifiers", []),
-            requires_python=proj.get("requires-python", ""),
-            jac_version=proj.get("jac-version", ""),
-            entry_point=validate_entry_point(proj.get("entry-point", "main")),
-            kind=proj.get("kind", ""),
-            default_app=str(
-                proj.get("default-app", proj.get("default_app", "")) or ""
-            ).strip(),
-            exports=[str(e) for e in proj.get("exports", [])],
-            urls=proj.get("urls", {}),
-            `include=_parse_include(proj.get("include", {}))
-        );
-    }
-    config.merge_dependency_tables(data);
-    if "run" in data {
-        run_data = data["run"];
-        config.run = RunConfig(
-            session=run_data.get("session", ""),
-            main=run_data.get("main", True),
-            cache=run_data.get("cache", True),
-            diagnostics=run_data.get("diagnostics", "error")
-        );
-    }
-    _apply_build_section(config, data);
-    _apply_memory_native_placement(config, data);
-    if "test" in data {
-        test_data = data["test"];
-        config.`test = TestConfig(
-            directory=test_data.get("directory", ""),
-            directories=[str(_d) for _d in test_data.get("directories", [])],
-            isolate=[str(_p) for _p in test_data.get("isolate", [])],
-            serial=[str(_p) for _p in test_data.get("serial", [])],
-            filter=test_data.get("filter", ""),
-            verbose=test_data.get("verbose", False),
-            fail_fast=test_data.get("fail_fast", False),
-            max_failures=test_data.get("max_failures", 0)
-        );
-    }
-    if "serve" in data {
-        serve_data = data["serve"];
-
-        on_conflict = str(serve_data.get("on_conflict", "retry")).strip().lower();
-        if on_conflict not in ("retry", "fail") {
-            import from jaclang.cli.console { console }
-            console.warning(
-                f"[serve] on_conflict='{serve_data.get('on_conflict')}' is not "
-                "'retry' or 'fail'; defaulting to 'retry'."
-            );
-            on_conflict = "retry";
-        }
-        workers_raw = serve_data.get("workers", {});
-        workers_data: dict[str, any] = (
-            workers_raw if isinstance(workers_raw, dict) else {"count": workers_raw}
-        );
-        tls_data: dict[str, any] = serve_data.get("tls", {}) or {};
-        proxy_data: dict[str, any] = serve_data.get("proxy", {}) or {};
-        limits_data: dict[str, any] = serve_data.get("limits", {}) or {};
-        timeouts_data: dict[str, any] = serve_data.get("timeouts", {}) or {};
-        access_data: dict[str, any] = serve_data.get("access_log", {}) or {};
-        compression_data: dict[str, any] = serve_data.get("compression", {}) or {};
-        ws_data: dict[str, any] = serve_data.get("websocket", {}) or {};
-        auth_data = serve_data.get("auth", {});
-        if not isinstance(auth_data, dict) {
-            raise ValueError(
-                f"[serve.auth] must be a table, got {type(auth_data).__name__}"
-            );
-        }
-        cors_raw = serve_data.get("cors_origins", ["*"]);
-        config.serve = ServeConfig(
-            host=str(serve_data.get("host", "0.0.0.0")),
-            port=serve_data.get("port", 8000),
-            session=serve_data.get("session", ""),
-            main=serve_data.get("main", True),
-            docs_enabled=bool(serve_data.get("docs_enabled", True)),
-            graph_enabled=bool(serve_data.get("graph_enabled", True)),
-            cors_origins=[str(_o) for _o in cors_raw]
-                if isinstance(cors_raw, list)
-                else [str(cors_raw)],
-            public_origin=str(serve_data.get("public_origin", "")),
-            on_conflict=on_conflict,
-            conflict_max_attempts=serve_data.get("conflict_max_attempts", 5),
-            conflict_backoff_ms=serve_data.get("conflict_backoff_ms", 0),
-            workers=ServeWorkersConfig(
-                count=str(workers_data.get("count", "")),
-                threads=str(workers_data.get("threads", "auto")),
-                max_requests=int(workers_data.get("max_requests", 0)),
-                max_requests_jitter=int(workers_data.get("max_requests_jitter", 0)),
-                request_timeout=float(workers_data.get("request_timeout", 0.0)),
-                boot_timeout=float(workers_data.get("boot_timeout", 120.0)),
-                hang_timeout=float(workers_data.get("hang_timeout", 30.0))
-            ),
-            tls=ServeTlsConfig(
-                certfile=str(tls_data.get("certfile", "")),
-                keyfile=str(tls_data.get("keyfile", "")),
-                ca_certs=str(tls_data.get("ca_certs", "")),
-                min_version=str(tls_data.get("min_version", "1.2"))
-            ),
-            proxy=ServeProxyConfig(
-                trusted=[str(_p) for _p in proxy_data.get("trusted", [])]
-            ),
-            limits=ServeLimitsConfig(
-                max_connections=int(limits_data.get("max_connections", 0)),
-                backlog=int(limits_data.get("backlog", 2048)),
-                max_body_bytes=int(limits_data.get("max_body_bytes", 104857600)),
-                max_header_bytes=int(limits_data.get("max_header_bytes", 65536)),
-                max_header_count=int(limits_data.get("max_header_count", 100)),
-                max_request_line_bytes=int(
-                    limits_data.get("max_request_line_bytes", 8192)
-                ),
-                multipart_spool_bytes=int(
-                    limits_data.get("multipart_spool_bytes", 1048576)
-                )
-            ),
-            timeouts=ServeTimeoutsConfig(
-                header=float(timeouts_data.get("header", 30.0)),
-                body=float(timeouts_data.get("body", 60.0)),
-                keepalive=float(timeouts_data.get("keepalive", 65.0)),
-                drain=float(timeouts_data.get("drain", 10.0)),
-                close=float(timeouts_data.get("close", 5.0))
-            ),
-            access_log=ServeAccessLogConfig(
-                enabled=bool(access_data.get("enabled", True)),
-                format=str(access_data.get("format", "text")),
-                suppress_health_checks=bool(
-                    access_data.get("suppress_health_checks", False)
-                )
-            ),
-            compression=ServeCompressionConfig(
-                enabled=bool(compression_data.get("enabled", True)),
-                min_bytes=int(compression_data.get("min_bytes", 1024)),
-                level=int(compression_data.get("level", 4))
-            ),
-            websocket=ServeWebSocketConfig(
-                allowed_origins=[str(_o) for _o in ws_data.get("allowed_origins", [])],
-                max_message_bytes=int(ws_data.get("max_message_bytes", 0)),
-                ping_interval=float(ws_data.get("ping_interval", 20.0)),
-                ping_timeout=float(ws_data.get("ping_timeout", 20.0))
-            ),
-            auth=auth_data
-        );
-    }
-    if "format" in data {
-        fmt = data["format"];
-        config.format = FormatConfig(outfile=fmt.get("outfile", ""));
-    }
-    if "check" in data {
-        check_data = data["check"];
-        lint_config = LintConfig();
-        if "lint" in check_data {
-            lint_data = check_data["lint"];
-            lint_config = LintConfig(
-                select=lint_data.get("select", ["default"]),
-                ignore=lint_data.get("ignore", []),
-                exclude=lint_data.get("exclude", [])
-            );
-        }
-        config.check = CheckConfig(
-            print_errs=check_data.get("print_errs", True),
-            lint=lint_config,
-            exclude=check_data.get("exclude", []),
-            suppress=check_data.get("suppress", []),
-            suppress_categories=check_data.get("suppress_categories", []),
-            enforce_access=check_data.get("enforce_access", False),
-            warn_native_seams=check_data.get("warn_native_seams", True),
-            untyped_external=str(check_data.get("untyped-external", "warning"))
-        );
-    }
-    if "dot" in data {
-        dot_data = data["dot"];
-        config.dot = DotConfig(
-            depth=dot_data.get("depth", -1),
-            traverse=dot_data.get("traverse", False),
-            bfs=dot_data.get("bfs", False),
-            edge_limit=dot_data.get("edge_limit", 512),
-            node_limit=dot_data.get("node_limit", 512),
-            format=dot_data.get("format", "dot")
-        );
-    }
-    if "cache" in data {
-        cache_data = data["cache"];
-        config.cache = CacheConfig(
-            enabled=cache_data.get("enabled", True), dir=cache_data.get("dir", "cache")
-        );
-    }
-    if "storage" in data {
-        storage_data: dict[str, any] = data["storage"];
-        for (key, value) in storage_data.items() {
-            if key == "type" {
-                config.storage.storage_type = value;
-            } elif hasattr(config.storage, key) {
-                setattr(config.storage, key, value);
-            }
-        }
-    }
-    if "client_errors" in data {
-        ce_data = data["client_errors"];
-        config.client_errors = ClientErrorsConfig(
-            verbose=ce_data.get("verbose", False)
-        );
-    }
-    if "client" in data {
-        client_data = data["client"];
-        config.client = ClientConfig(framework=client_data.get("framework", "react"));
-    }
-    if isinstance(data.get("database"), dict) {
-        db_data: dict[str, any] = data["database"];
-        indexes = db_data.get("indexes");
-        days = str(db_data.get("retention_days") or "0").strip();
-        config.database = DatabaseConfig(
-            indexes={
-                str(arch): [str(field) for field in fields]
-                for (arch, fields) in (
-                    indexes.items() if isinstance(indexes, dict) else []
-                )
-                if isinstance(fields, list)
-            },
-            retention_days=int(days) if days.isdigit() else 0,
-            postgres_dist=str(db_data.get("postgres_dist") or ""),
-            postgres_version=str(db_data.get("postgres_version") or "")
-        );
-    }
-    if isinstance(data.get("network"), dict) {
-        config.network = NetworkConfig(offline=data["network"].get("offline") is True);
-    }
-    if isinstance(data.get("toolchains"), dict) {
-        config.toolchains = ToolchainsConfig(
-            system=data["toolchains"].get("system", True) is not False
-        );
-    }
-    if "dev" in data {
-        dev_data = data["dev"];
-
-        config.dev = DevConfig(
-            jaclang_source=str(dev_data.get("jaclang_source", "")),
-            exact=dev_data.get("exact") is True,
-            pod_binary=str(dev_data.get("pod_binary", "")),
-            jobs=str(dev_data.get("jobs", "")),
-            test_jobs=str(dev_data.get("test_jobs", "")),
-            check_jobs=str(dev_data.get("check_jobs", "")),
-            fmt_jobs=str(dev_data.get("fmt_jobs", ""))
-        );
-    }
-    _scale_raw = data.get("scale");
-    if isinstance(_scale_raw, dict) and "microservices" in _scale_raw {
-        raise ValueError(
-            "jac.toml [scale.microservices] was removed: declare each service as "
-            "an [apps.<name>] table (kind = \"service\", entry-point, route) and "
-            "move the gateway settings (logs, ingress, cors, boot keys) to "
-            "[scale.gateway]. See the Breaking Changes page "
-            "(docs/community/breaking-changes.md, Workspaces)."
-        );
-    }
-    for _feat in CAPABILITY_SECTIONS {
-        if _feat in data and isinstance(data[_feat], dict) {
-            config.plugins[_feat] = data[_feat];
-        }
-    }
-    if "environment" in data {
-        env = data["environment"];
-        config.environment = EnvironmentConfig(
-            default_profile=env.get("default_profile", "")
-        );
-    }
-    if "environments" in data {
-        config.environments = data["environments"];
-    }
-    if "scripts" in data {
-        config.scripts = data["scripts"];
-    }
-    if "entrypoints" in data {
-        for (group, refs) in data["entrypoints"].items() {
-            if isinstance(refs, dict) {
-                config.entrypoints[group] = dict(refs);
-            }
-        }
-    }
-    if "optional-dependencies" in data {
-        for (group, deps) in data["optional-dependencies"].items() {
-            if isinstance(deps, dict) {
-                config.optional_dependencies[group] = dict(deps);
-            }
-        }
-    }
-    if "apps" in data {
-        config.apps = parse_apps(data.get("project", {}), data["apps"]);
-        config.is_workspace = True;
-    } else {
-        if config.project.default_app {
-            raise ValueError("[project] default-app requires an [apps] table");
-        }
-        app = implicit_app(config);
-        config.apps = {app.name: app};
-    }
-
-    config.persistence = parse_persistence(
-        data.get("persistence", {}), config.project.name
-    );
-    return config;
-}
-
-impl _interpolate_recursive(`obj: any) -> any {
-    (resolved, _) = resolve_env_refs(`obj);
-    return resolved;
-}
-
-impl resolve_env_refs(
-    data: any, environ: dict[str, str] | None = None, path: str = ""
-) -> tuple[any, list[UnresolvedRef]] {
-    refs: list[UnresolvedRef] = [];
-    def walk(item: any, at: str) -> any {
-        if isinstance(item, str) {
-            found: list[UnresolvedRef] = [];
-            resolved = interpolate_env_vars(item, environ, found);
-            for ref in found {
-                ref.path = at;
-                ref.raw = resolved;
-                refs.append(ref);
-            }
-            return resolved;
-        } elif isinstance(item, dict) {
-            return {
-                k: walk(v, f"{at}.{k}" if at else str(k)) for (k, v) in item.items()
-            };
-        } elif isinstance(item, list) {
-            return [walk(v, f"{at}[{i}]") for (i, v) in enumerate(item)];
-        }
-        return item;
-    }
-    return (walk(data, path), refs);
-}
-
 impl report_env_findings(
     refs: list[UnresolvedRef], context: str, hint: str = ""
 ) -> None {
@@ -1300,7 +1626,7 @@ impl JacConfig.resolve_app(name: str = "") -> AppConfig {
         return found;
     }
     if not self.apps {
-        return implicit_app(self);
+        return implicit_app(self.project);
     }
     if self.default_app and self.default_app in self.apps {
         return self.apps[self.default_app];
@@ -1325,7 +1651,6 @@ impl JacConfig.resolved_kind(app: AppConfig) -> str {
 }
 
 impl JacConfig.effective_for_app(name: str) -> JacConfig {
-    import copy;
     app = self.apps.get(name);
     if app is None {
         raise ValueError(
@@ -1356,10 +1681,6 @@ impl JacConfig.effective_for_app(name: str) -> JacConfig {
 impl JacConfig.app_for_target(entry_path: str = "") -> AppConfig | None {
     if not self.is_workspace or not self.apps {
         return None;
-    }
-    if not entry_path {
-        import from jaclang.runtime.runtime { JacRuntime }
-        entry_path = JacRuntime.get_full_target_path() or "";
     }
     if not entry_path {
         return None;
@@ -1395,10 +1716,6 @@ impl JacConfig.serving_apps -> list[AppConfig] {
 impl JacConfig.default_app.getter -> str {
     return self.project.default_app;
 }
-
-def _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None;
-
-def _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]);
 
 impl _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, any] {
     result = base.copy();
@@ -1449,7 +1766,6 @@ impl _dependency_doc(config: JacConfig, dev: bool) -> dict[str, any] {
 }
 
 impl _needs_quoting(key: str) -> bool {
-    import re;
     return not bool(re.`match(r'^[A-Za-z0-9_-]+$', key));
 }
 
@@ -1506,7 +1822,6 @@ impl _toml_flatten(
 }
 
 impl _toml_token_alt(name: str) -> str {
-    import re;
     alts: list[str] = [];
     if name and not _needs_quoting(name) {
         alts.append(re.escape(name));
@@ -1522,7 +1837,6 @@ impl _toml_token_alt(name: str) -> str {
 impl _toml_find_span(
     lines: list[str], parts: tuple[str, ...]
 ) -> tuple[int, int] | None {
-    import re;
     header_re = re.compile(
         r"^\s*\[\s*"
             + r"\s*\.\s*".join([_toml_token_alt(p) for p in parts])
@@ -1553,7 +1867,6 @@ impl _toml_find_span(
 impl _toml_find_key(
     lines: list[str], span: tuple[int, int], key: str
 ) -> tuple[int, int] | None {
-    import re;
     key_re = re.compile(r"^\s*" + _toml_token_alt(key) + r"\s*=\s*");
     found = -1;
     value_start = -1;
@@ -1638,7 +1951,6 @@ impl _toml_value_end(line: str, start: int) -> int | None {
 impl _toml_replace_key(
     lines: list[str], parts: tuple[str, ...], key: str, value_text: str
 ) -> bool {
-    import re;
     span = _toml_find_span(lines, parts);
     if span is None {
         return False;
@@ -1714,126 +2026,6 @@ impl _toml_remove_section(lines: list[str], parts: tuple[str, ...]) -> bool {
         lines.pop(span[0]);
     }
     return True;
-}
-
-impl _apply_build_section(cfg: JacConfig, data: dict[str, any]) -> None {
-    if "build" not in data or not isinstance(data["build"], dict) {
-        return;
-    }
-
-    build_data = data["build"];
-    for (_old_key, _new_home) in [
-        ("default_codespace", "[placement] default"),
-        ("native", "[native]")
-    ] {
-        if _old_key in build_data {
-            console.error(
-                f"jac.toml: [build] {_old_key} was retired; use {_new_home}."
-            );
-        }
-    }
-    if "native_closure_cap" in build_data {
-        console.warning(
-            "jac.toml: [build] native_closure_cap was retired; a module's whole "
-            "import closure is always judged for native placement."
-        );
-    }
-    cfg.build = BuildConfig(dir=str(build_data.get("dir", BuildConfig().dir)));
-}
-
-impl _apply_memory_native_placement(cfg: JacConfig, data: dict[str, any]) {
-    for (_old, _new) in [("gc", "[memory] profile / enforce / exempt")] {
-        if _old in data {
-            console.error(f"jac.toml: the [{_old}] section was retired; use {_new}.");
-        }
-    }
-    if "memory" in data and isinstance(data["memory"], dict) {
-        mem = data["memory"];
-        if "profile" in mem {
-            _prof = str(mem["profile"]).strip().lower();
-            if _prof in ("managed", "rc", "nogc") {
-                cfg.memory.profile = _prof;
-            } else {
-                console.warning(
-                    f"[memory] profile='{mem['profile']}' is not one of managed, rc,"
-                    " nogc; defaulting to 'managed'."
-                );
-            }
-        }
-        if "enforce" in mem {
-            cfg.memory.enforce = [str(_m) for _m in mem["enforce"]];
-        }
-        if "exempt" in mem {
-            cfg.memory.exempt = [str(_m) for _m in mem["exempt"]];
-        }
-        if cfg.memory.profile == "nogc" and (cfg.memory.enforce or cfg.memory.exempt) {
-            console.warning(
-                "[memory] enforce/exempt are ignored under profile = 'nogc': every"
-                " module is held to the contract."
-            );
-        }
-    }
-    if "native" in data and isinstance(data["native"], dict) {
-        nat = data["native"];
-        _link_mode = str(nat.get("link_mode", cfg.native.link_mode));
-        if _link_mode not in ("objects", "bitcode") {
-            raise ValueError("[native] link_mode must be objects or bitcode");
-        }
-        cfg.native.link_mode = _link_mode;
-        if "require" in nat {
-            if not isinstance(nat["require"], list)
-                or not all(isinstance(pattern, str) for pattern in nat["require"]) {
-                raise ValueError("[native] require must be a list of module patterns");
-            }
-            cfg.native.require = list(nat["require"]);
-        }
-        cfg.native.target = str(nat.get("target", cfg.native.target));
-        try {
-            cfg.native.opt = int(nat.get("opt", cfg.native.opt));
-        } except (TypeError, ValueError) {
-            console.warning(
-                f"[native] opt='{nat.get('opt')}' must be an integer; defaulting to 2."
-            );
-            cfg.native.opt = 2;
-        }
-        cfg.native.debug = bool(nat.get("debug", cfg.native.debug));
-        try {
-            cfg.native.threads = max(1, int(nat.get("threads", cfg.native.threads)));
-        } except (TypeError, ValueError) {
-            console.warning(
-                f"[native] threads='{nat.get(
-                    'threads'
-                )}' must be an integer; defaulting to 4."
-            );
-            cfg.native.threads = 4;
-        }
-    }
-    if "arch" in data {
-        raise ValueError(
-            "[arch] was removed from jac.toml: an archwire.jac seals the directory it"
-            " sits in. Delete the [arch] table and run `jac arch init --strip` in"
-            " each directory it closed."
-        );
-    }
-    if "placement" in data
-        and isinstance(data["placement"], dict)
-        and "default" in data["placement"] {
-        _cs_aliases = {"sv": "server", "na": "native"};
-        _raw = data["placement"]["default"];
-        _cs = _cs_aliases.get(str(_raw).strip().lower(), str(_raw).strip().lower());
-        if _cs in ("server", "native") {
-            cfg.placement.default_codespace = _cs;
-        } else {
-            console.warning(
-                f"[placement] default='{_raw}' is not one of 'server'/'sv', 'native'/'na';"
-                " defaulting to 'native'."
-            );
-        }
-    }
-}
-
-impl MemoryConfig.gc_mode -> str {
-    return {"managed": "cycles", "rc": "rc", "nogc": "none"}[self.profile];
 }
 
 impl offline_mode -> bool {

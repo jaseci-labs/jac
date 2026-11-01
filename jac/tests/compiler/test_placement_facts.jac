@@ -6,15 +6,13 @@ import tempfile;
 import from tests.support { JAC_ROOT }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.placement.placement_facts {
-    discover_spaces,
     emits_server_code,
     is_client_only,
     module_spaces,
     native_only,
     native_unit,
     project_root_of,
-    require_project_root,
-    spaces_are_client_only
+    require_project_root
 }
 
 glob FIXTURE_DIR = os.path.join(
@@ -49,22 +47,6 @@ test "a mixed module emits server code and is never client-only" {
 
 test "an empty or unreadable module defaults to server" {
     assert module_spaces(None) == {"server"};
-    facts = discover_spaces([_fixture("does_not_exist.jac")]);
-    assert facts[os.path.abspath(_fixture("does_not_exist.jac"))] == {"server"};
-}
-
-
-test "discover_spaces batches paths and classifies the client-only ones" {
-    paths = [_fixture("infer_client_app.jac"), _fixture("infer_three_spaces.jac")];
-    facts = discover_spaces(paths);
-    assert facts[os.path.abspath(paths[0])] == {"client"};
-    assert "server" in facts[os.path.abspath(paths[1])];
-    assert [
-        p
-        for (p, sp) in facts.items()
-        if spaces_are_client_only(sp)
-    ]
-        == [os.path.abspath(paths[0])];
 }
 
 
@@ -79,22 +61,6 @@ test "require_project_root is loud where project_root_of is soft" {
         caught = True;
     }
     assert caught;
-}
-
-
-test "a module with compile errors is never classified client-only" {
-    d = tempfile.mkdtemp(prefix="jac-broken-client-");
-    broken = os.path.join(d, "broken_page.jac");
-    with open(broken, "w") as f {
-        f.write(
-            "node Todo {\n    has text: str\n        done: bool = False\n}\n"
-                + "def:pub app -> JsxElement {\n    return <div>x</div>;\n}\n"
-        );
-    }
-    facts = discover_spaces([broken]);
-    spaces = facts[os.path.abspath(broken)];
-    assert "server" in spaces , spaces;
-    assert not spaces_are_client_only(spaces);
 }
 
 
@@ -130,7 +96,6 @@ test "placement_pins imports stay within the documented allowlist" {
         "jaclang/compiler/driver/impl/program.impl.jac",
         "jaclang/compiler/driver/jir.jac",
         "jaclang/compiler/driver/impl/jir.impl.jac",
-        "jaclang/compiler/driver/na_coverage.jac",
         "jaclang/compiler/native_scope.jac",
         "jaclang/project/modresolver.jac",
         "jaclang/compiler/passes/impl/boundary_analysis_pass.impl.jac",
@@ -204,8 +169,8 @@ def _pkg_path(*parts: str) -> str {
 test "native_only names the modules with no bytecode meaning" {
     # The kernel roots import C symbols; the native standard library lives
     # under runtime/na_stdlib. Neither is ever bytecoded.
-    assert native_only(_pkg_path("compiler", "jc_unit.jac"));
-    assert native_only(_pkg_path("compiler", "jc_materialize.jac"));
+    assert native_only(_pkg_path("compiler", "kernel_module.jac"));
+    assert native_only(_pkg_path("dist", "fused", "embed.jac"));
     assert native_only(_pkg_path("runtime", "na_stdlib", "_bz2_native.jac"));
     assert native_only(_pkg_path("runtime", "na_stdlib", "zlib.jac"));
     # A frontend module in the kernel's roster is bytecode and native at once,
@@ -214,16 +179,16 @@ test "native_only names the modules with no bytecode meaning" {
     assert not native_only(_pkg_path("dist", "precompile_bytecode.jac"));
     # Anything outside the package is never a toolchain native-only module.
     d = tempfile.mkdtemp(prefix="jac-native-only-");
-    assert not native_only(os.path.join(d, "jc_unit.jac"));
+    assert not native_only(os.path.join(d, "kernel_module.jac"));
 }
 
 
 test "native_unit follows native_only, the kernel roster and the native-unit compile" {
     # Native-only modules are native units under any compile.
-    assert native_unit(_pkg_path("compiler", "jc_unit.jac"));
-    assert native_unit(_pkg_path("compiler", "jc_materialize.jac"));
+    assert native_unit(_pkg_path("compiler", "kernel_module.jac"));
+    assert native_unit(_pkg_path("dist", "fused", "embed.jac"));
     assert native_unit(_pkg_path("runtime", "na_stdlib", "_bz2_native.jac"));
-    assert native_unit(_pkg_path("compiler", "jc_unit.jac"), native_unit_compile=False);
+    assert native_unit(_pkg_path("compiler", "kernel_module.jac"), native_unit_compile=False);
     # A NATIVE_SCOPE frontend module is a native unit only under a
     # native-unit compile: the same source is a bytecode unit otherwise.
     scope_mod = _pkg_path("compiler", "frontend", "unitree.jac");
@@ -233,8 +198,7 @@ test "native_unit follows native_only, the kernel roster and the native-unit com
     for rel in [
         ("runtime", "osp_kernel.jac"),
         ("runtime", "osp_graph.jac"),
-        ("runtime", "region_native.jac"),
-        ("compiler", "backends", "common", "fmt_kernel.jac")
+        ("runtime", "region_native.jac")
     ] {
         p = _pkg_path(*rel);
         assert native_unit(p) , f"{'/'.join(rel)} must be a native unit";

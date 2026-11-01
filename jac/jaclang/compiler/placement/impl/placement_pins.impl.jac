@@ -187,11 +187,7 @@ impl classify_bare_import(spec: str, source_path: str) -> BareImportVerdict {
     }
     path = '';
     lang = '';
-    try {
-        (path, lang) = active_host().resolve_module(spec, source_path);
-    } except Exception {
-        path = '';
-    }
+    (path, lang) = active_host().resolve_module(spec, source_path);
     found = bool(path) and os.path.isfile(path);
     if found and lang == 'jac' {
         return BareImportVerdict(world='jac', rule='jac module', path=path);

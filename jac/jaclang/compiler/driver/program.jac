@@ -20,8 +20,7 @@ class JacProgram {
         _natives: NativeUnitRegistry | None,
         context_root: JacProgram | None,
         context_key: str,
-        contexts: dict[str, JacProgram],
-        internal: bool;
+        contexts: dict[str, JacProgram];
 
     def init(self: JacProgram, main_mod: (uni.ProgramModule | None) = None) -> None;
     def _get_compiler(self: JacProgram) -> JacCompiler;
@@ -61,7 +60,6 @@ class JacProgram {
     def reset_module_root(self: JacProgram, module_root: uni.ProgramModule) -> None;
     static def hub_key(path: str) -> str;
     def has_failed_parse(self: JacProgram, path: str) -> bool;
-    def execution_hubs(self: JacProgram) -> list[dict[str, uni.Module]];
     def find_module(self: JacProgram, path: str) -> (uni.Module | None);
     def parse_source(
         self: JacProgram,

@@ -11,7 +11,7 @@ that i64 and worked. Reading a key back out was not: `.name`/`.value` on a
 runtime enum-typed value indexed the per-enum ordinal arrays with the raw
 key, so an int-valued enum landed on the wrong member (LOW's value 2 is
 HIGH's ordinal) or past the end of the array (25, 40) -- a segfault -- and
-`.value` had no array at all, which demoted the whole module. That made
+`.value` had no array at all, so the reads were refused. That made
 `dict[Level, str]` unusable: its keys could not be iterated or inspected.
 """
 
@@ -19,13 +19,12 @@ import ctypes;
 import os;
 import from tests.support {
     TESTS_DIR,
+    compile_native as compile_fixture,
     native_address,
-    native_force_opts,
     native_str_func
 }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime }
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -39,14 +38,7 @@ def compile_native(fixture: str) -> ExecutionEngine {
     if _ENG {
         return _ENG[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , f"No native engine produced for {fixture}";
+    (eng, _) = compile_fixture(fixture);
     # The glob tables live in module globals; without jac_entry they are null
     # and every table read segfaults the JIT.
     entry_addr = native_address(eng, "jac_entry");

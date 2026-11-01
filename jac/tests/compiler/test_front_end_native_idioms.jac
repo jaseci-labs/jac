@@ -171,40 +171,28 @@ test "helpers module scope binds no Python modules" {
 # text I/O module, so none of the helpers here has to demote at all.
 test "source helpers lower when a native unit reaches them" {
     import jaclang;
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
-    helpers_path = os.path.join(
-        os.path.dirname(jaclang.__file__), "project", "source.jac"
+    import from tests.support { diagnostics_text, kernel_compile_file }
+    helpers_path = os.path.realpath(
+        os.path.join(os.path.dirname(jaclang.__file__), "project", "source.jac")
     );
-    prog = JacProgram();
     opts = CompileOptions(
         aot_mode=True, force_codespace='native'
     ).clone_for_native_import();
-    na_coverage_begin();
-    try {
-        ir = prog.compile(file_path=helpers_path, options=opts);
-    } finally {
-        coverage = na_coverage_end();
-    }
-    assert not prog.errors_had , (
+    result = kernel_compile_file(helpers_path, opts, ["mir"]);
+    assert result.ok() , (
         f"project/source.jac must reach the backend, not refuse on a signature no "
-        f"callable owns: {[str(e) for e in prog.errors_had]}"
+        f"callable owns: {diagnostics_text(result)}"
     );
-    assert ir is not None and ir.gen.llvm_ir is not None , (
+    unit = result.unit(helpers_path);
+    assert unit is not None and unit.native_ir , (
         "no LLVM IR for project/source.jac, so every consumer that links it inherits "
         "a module-level refusal"
     );
-    rec = coverage.get(os.path.realpath(helpers_path));
-    assert rec is not None , "the coverage recorded nothing for project/source.jac";
-    seams = [str(s) for s in (rec["seams"] or [])];
-    own_seams = [
-        s
-        for s in seams
-        if os.path.join("project", "source.jac") in s
-    ];
-    assert not own_seams , f"project/source.jac demoted its own helpers: {own_seams}";
+    assert not unit.demoted , (
+        f"project/source.jac demoted its own helpers: {[
+            (d.symbol, d.reason) for d in unit.demoted
+        ]}"
+    );
 }
 
 test "helpers no longer exports the moved symbols" {
@@ -467,16 +455,23 @@ test "scan_native_blockers names the offending node from the table" {
 }
 
 test "guardrail: @lru_cache refuses where a dict cache does not" {
-    import from tests.support { native_force_opts }
-    dec = JacProgram();
-    dec_ir = dec.compile(
-        file_path=os.path.join(FIXTURES, "_idiom_lru_cache.jac"),
-        use_str="import from functools { lru_cache }\n"
-        "@lru_cache(maxsize=8)\n"
-        "def twice(n: int) -> int { return n * 2; }\n",
-        options=native_force_opts()
+    import from tests.support {
+        diagnostics_text,
+        kernel_compile_file,
+        native_force_opts
+    }
+    dec_path = os.path.realpath(os.path.join(FIXTURES, "_idiom_lru_cache.jac"));
+    dec = kernel_compile_file(
+        dec_path,
+        native_force_opts(),
+        ["mir"],
+        sources={
+            dec_path: "import from functools { lru_cache }\n"
+                "@lru_cache(maxsize=8)\n"
+                "def twice(n: int) -> int { return n * 2; }\n"
+        }
     );
-    errs = fmt_errors(dec);
+    errs = diagnostics_text(dec);
     assert "decorator 'on twice'" in errs , (
         f"the capability gate must still name the dynamic decorator: {errs}"
     );
@@ -486,7 +481,8 @@ test "guardrail: @lru_cache refuses where a dict cache does not" {
         "a seam, so it refuses the module exactly as a bare "
         f"`import functools;` does: {errs}"
     );
-    assert dec_ir.gen.llvm_ir is None , (
+    assert not dec.ok();
+    assert not [u for u in dec.units if u.native_ir] , (
         "a module-fatal violation must withhold the LLVM IR"
     );
     memo = check_na_inline(

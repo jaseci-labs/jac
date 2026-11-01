@@ -15,77 +15,80 @@ has` is class-level, so it takes no part in the instance dataclass field
 order and none of the instance layout rules.
 """
 
+import ctypes;
 import os;
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, source_spelled, unit_symbol }
+import from tests.support {
+    JAC_ROOT,
+    KernelFixture,
+    compile_native,
+    diagnostics_text,
+    error_codes,
+    get_func,
+    kernel_compile_file,
+    names_global,
+    native_str_func,
+    unit_symbol,
+    warning_codes
+}
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
      );
 
 
-"""Compile a fixture in the native codespace; return the program and module."""
-def compile_native(name: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, name),
-        options=CompileOptions(
+"""Compile a fixture in the native codespace through the kernel; return the
+result and, when it compiled, what it made of the fixture."""
+def compile_meta(name: str) -> tuple[any, (KernelFixture | None)] {
+    path = os.path.realpath(os.path.join(FIXTURES, name));
+    result = kernel_compile_file(
+        path,
+        CompileOptions(
             aot_mode=True,
             force_codespace='native',
             na_gc_mode='cycles',
             no_ir_cache=True,
             skip_native_engine=True
-        )
+        ),
+        ["mir"]
     );
-    return (prog, ir, );
+    if not result.ok() {
+        return (result, None);
+    }
+    return (result, KernelFixture(path=path, result=result, unit=result.unit(path)));
 }
 
 
-"""Compile a fixture in the server codespace; return its errors."""
-def server_errors(name: str) -> list[any] {
-    prog = JacProgram();
-    prog.compile(
-        file_path=os.path.join(FIXTURES, name),
-        options=CompileOptions(force_codespace='server')
+"""Compile a fixture in the server codespace through the kernel."""
+def server_result(name: str) -> any {
+    return kernel_compile_file(
+        os.path.join(FIXTURES, name), CompileOptions(force_codespace='server')
     );
-    return [str(e) for e in prog.errors_had];
-}
-
-
-def diag_codes(entries: list[any]) -> list[any] {
-    return [
-        e.code.code
-        for e in entries
-        if e.code is not None
-    ];
 }
 
 
 test "class-level tuple metadata lowers natively" {
-    (prog, ir) = compile_native("static_tuple_meta.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for static tuple metadata";
+    (result, fx) = compile_meta("static_tuple_meta.jac");
+    assert fx is not None , diagnostics_text(result);
+    assert fx.llvm_ir() , "no native IR for static tuple metadata";
+    assert not fx.demoted() , str(fx.demoted());
 }
 
 
 test "class-level tuple metadata keeps the literal's layout" {
-    (_prog, ir) = compile_native("static_tuple_meta.jac");
-    text = source_spelled(str(ir.gen.llvm_ir));
-    assert f'@"{source_spelled(unit_symbol(ir, "Access.PROVIDES"))}" = global {{i8*}}*'
-        in text , (
+    (eng, _fx) = compile_native(os.path.join(FIXTURES, "static_tuple_meta.jac"));
+    provided = native_str_func(eng, "first_provided", ctypes.c_char_p)();
+    assert provided == b"access-checks" , (
         "the widened `tuple` annotation did not narrow to the one-element "
-        "tuple of str its constant declares; a scalar slot here would make "
-        "every read of it garbage"
+        f"tuple of str its constant declares: read {provided!r}"
     );
-    assert f'@"{source_spelled(unit_symbol(ir, "Stage.REQUIRES"))}" = global {{}}*'
-        in text , ("the empty tuple did not land on a zero-field struct");
+    assert get_func(eng, "run", ctypes.c_int64)() == 2 + len("access-checks");
 }
 
 
 test "static tuple metadata draws no instance-layout warning" {
-    (prog, _ir) = compile_native("static_tuple_meta.jac");
-    codes = diag_codes(prog.warnings_had);
+    (result, _fx) = compile_meta("static_tuple_meta.jac");
+    codes = warning_codes(result);
     assert "W5032" not in codes , (
         f"class-level field judged against the instance layout: {codes}"
     );
@@ -93,48 +96,48 @@ test "static tuple metadata draws no instance-layout warning" {
 
 
 test "a defaulted static has does not order instance fields" {
-    (prog, ir) = compile_native("static_meta_ordering.jac");
-    codes = diag_codes(prog.errors_had);
-    assert "E2004" not in codes , (
+    (result, fx) = compile_meta("static_meta_ordering.jac");
+    assert "E2004" not in error_codes(result) , (
         f"class-level constant counted as a defaulted instance field: "
-        f"{[str(e) for e in prog.errors_had]}"
+        f"{diagnostics_text(result)}"
     );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for static-first archetype";
+    assert fx is not None , diagnostics_text(result);
+    assert fx.llvm_ir() , "no native IR for static-first archetype";
 }
 
 
 test "the static has ordering rule matches on the server lane" {
-    errs = server_errors("static_meta_ordering.jac");
-    assert not errs , f"server lane rejected a class-level constant: {errs}";
+    result = server_result("static_meta_ordering.jac");
+    assert result.ok() , (
+        f"server lane rejected a class-level constant: {diagnostics_text(result)}"
+    );
 }
 
 
 test "a TypeAlias glob lowers as a compile-time declaration" {
-    (prog, ir) = compile_native("type_alias_glob.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the alias module";
+    (result, fx) = compile_meta("type_alias_glob.jac");
+    assert fx is not None , diagnostics_text(result);
+    assert fx.llvm_ir() , "no native IR for the alias module";
 }
 
 
 test "a type-parameter glob lowers as a compile-time declaration" {
-    (prog, ir) = compile_native("type_param_glob.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the type-param module";
-    assert f'@"{source_spelled(unit_symbol(ir, "T"))}"'
-        not in source_spelled(str(ir.gen.llvm_ir))
-        and '@"T"' not in source_spelled(str(ir.gen.llvm_ir)) , (
+    (result, fx) = compile_meta("type_param_glob.jac");
+    assert fx is not None , diagnostics_text(result);
+    text = fx.llvm_ir();
+    assert text , "no native IR for the type-param module";
+    assert not names_global(text, unit_symbol(fx, "T")) and '@"T"' not in text , (
         "the type variable was given storage instead of being erased"
     );
 }
 
 
 test "a widened tuple glob lowers from its constant" {
-    (prog, ir) = compile_native("tuple_glob_meta.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the tuple glob";
-    assert f'@"{source_spelled(unit_symbol(ir, "MOVE_EXEMPT"))}" = global {{i8*, i8*}}*'
-        in source_spelled(str(ir.gen.llvm_ir)) , (
+    (eng, _fx) = compile_native(os.path.join(FIXTURES, "tuple_glob_meta.jac"));
+    exempt = native_str_func(eng, "is_exempt", ctypes.c_bool, ctypes.c_char_p);
+    assert exempt("len") is True and exempt("id") is True , (
         "the glob did not take the two-element str layout its constant declares"
     );
+    assert exempt("print") is False;
+    assert get_func(eng, "run", ctypes.c_int64)() == 1;
 }

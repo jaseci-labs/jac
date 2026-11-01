@@ -9,25 +9,24 @@ when the parallel path consumes an else-bearing loop again."""
 
 import os;
 import ctypes;
-import from tests.support { NATIVE_FIXTURES, get_func }
+import from tests.support { KernelFixture, NATIVE_FIXTURES, compile_native, get_func }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURE = os.path.join(NATIVE_FIXTURES, "flow_for_else_run.jac"),
      PROBES = [("flow_else_exhausts", True), ("flow_else_zero_iter", True)];
 
-def compile_with_profile(memory: str) -> tuple[any, any] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=FIXTURE,
-        options=CompileOptions(force_codespace='native', memory_profile=memory)
+"""`compile_native` under explicit options: kernel compile, then JIT the
+unit in this process."""
+def compile_native_with(
+    fixture: str, options: CompileOptions, fixture_dir: str = ""
+) -> tuple[any, KernelFixture] {
+    return compile_native(fixture, fixture_dir, options);
+}
+
+def compile_with_profile(memory: str) -> tuple[any, KernelFixture] {
+    return compile_native_with(
+        FIXTURE, CompileOptions(force_codespace="native", memory_profile=memory)
     );
-    assert not prog.errors_had , (
-        f"{memory}: compilation errors: {[str(e) for e in prog.errors_had]}"
-    );
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"{memory}: no native engine produced";
-    return (eng, ir);
 }
 
 test "flow for else runs in the parallel-eligible rc profile" {

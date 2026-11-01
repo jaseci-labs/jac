@@ -1,40 +1,47 @@
 """Count live references, independently of RSS and allocator caching."""
 
 import ctypes;
-import os;
-import from tests.support { TESTS_DIR, get_func }
+import json;
+import from tests.support {
+    KernelFixture,
+    adopt_native_units,
+    compile_native_unit,
+    get_func,
+    native_address,
+    remember_native_unit
+}
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.frontend.codeinfo { HDR_RC_OFF }
-import from jaclang.compiler.native_compiler { ensure_loaded }
 
-test "native string and temporary roots balance across storage and calls" {
-    kernel = ensure_loaded();
-    if kernel is None {
-        return;
-    }
-    program = JacProgram();
+"""`compile_native` under the cycle collector: the kernel compiles the fixture
+and its native units are JIT-loaded here; return (engine, fixture)."""
+def compile_native_managed(fixture: str) -> tuple[any, KernelFixture] {
     options = CompileOptions(
         force_codespace="native", memory_profile="managed", no_ir_cache=True
     );
-    mod = program.compile(
-        os.path.join(
-            TESTS_DIR,
-            "compiler",
-            "backends",
-            "native",
-            "fixtures",
-            "rc_string_lifetime.jac"
-        ),
-        options=options
+    fx = compile_native_unit(fixture, "", options, ["bytecode"]);
+    prog = JacProgram();
+    prog.options = options;
+    adopt_native_units(prog, fx.result, options);
+    prog._get_compiler()._load_native_from_cache(
+        fx.path, prog, json.loads(fx.unit.interop) if fx.unit.interop else None
     );
-    assert not program.errors_had , [str(e) for e in program.errors_had];
-    engine = mod.gen.native_engine;
-    assert engine is not None;
-    make = kernel.lib.jac_str_new;
-    release = kernel.lib.jac_release;
-    release.argtypes = [ctypes.c_void_p];
-    release.restype = None;
+    carrier = prog.hub.artifacts.get(fx.path);
+    engine = carrier.native_engine if carrier is not None else None;
+    assert engine is not None , f"No JIT engine produced for {fixture}";
+    remember_native_unit(engine, fx);
+    return (engine, fx);
+}
+
+test "native string and temporary roots balance across storage and calls" {
+    (engine, _) = compile_native_managed("rc_string_lifetime.jac");
+    make = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int64)(
+        native_address(engine, "jac_str_new")
+    );
+    release = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(
+        native_address(engine, "jac_release")
+    );
     value = b"borrowed";
     references: dict[str, int] = {};
     for (name, copies) in [

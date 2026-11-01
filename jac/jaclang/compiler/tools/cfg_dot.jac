@@ -13,4 +13,4 @@ walker CoalesceBBPass(TreePass) {
     def _has_bool_sc(condition: Expr) -> bool;
 }
 
-def cfg_dot_from_file(file_name: str) -> str;
+def cfg_dot_text(program: JacProgram, module: Module) -> str;

@@ -1,5 +1,5 @@
 impl SessionContext.merge_alerts {
-    if self.target is self.caller or self.target.internal {
+    if self.target is self.caller {
         return;
     }
     self.caller.errors_had.extend(self.target.errors_had[self.errors_mark:]);
@@ -38,7 +38,10 @@ impl SessionHooks.compile_attempt(
     return compile_once(self, file_path, target_program, use_str, options);
 }
 
-impl SessionHooks.assemble_python(program: JacProgram, module: uni.Module) {}
+impl SessionHooks.assemble_python(program: JacProgram, module: uni.Module) {
+    import from jaclang.compiler.driver.pipeline { CompilationProduct, require }
+    require(program, module, CompilationProduct.BYTECODE);
+}
 
 impl SessionHooks.assemble_native(
     program: JacProgram, module: uni.Module, checking: bool
@@ -48,11 +51,9 @@ impl select_context(
     file_path: str, program: JacProgram, options: CompileOptions
 ) -> SessionContext {
     target = program;
-    if not program.internal {
-        options = bind_options(file_path, program, options);
-        if not active_host().native_session_active(program) {
-            target = context_program(program, options);
-        }
+    options = bind_options(file_path, program, options);
+    if not active_host().native_session_active(program) {
+        target = context_program(program, options);
     }
     return SessionContext(
         caller=program,

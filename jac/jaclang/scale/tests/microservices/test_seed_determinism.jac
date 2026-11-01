@@ -31,9 +31,9 @@ test "identical content packs to identical bytes (content-address stable)" {
 def _stage_compiler_tree(where: str, codegen_body: str) -> str {
     pkg = Path(where, "jaclang");
     for rel in [
-        "jac0.py",
+        "meta_importer.py",
         "compiler/driver/jir.jac",
-        "compiler/backends/py/jcir_gen_pass.jac",
+        "compiler/backends/py/pyast_gen_pass.jac",
         "compiler/backends/native/llvm/libjacllvm.so",
         "dist/precompile_bytecode.jac",
         "server/machine.jac",
@@ -41,13 +41,13 @@ def _stage_compiler_tree(where: str, codegen_body: str) -> str {
         "compiler/.jac/cache/hidden.jac",
         "compiler/tests/test_lowering.jac",
         "compiler/tests/fixtures/corpus.jac",
-        "compiler/backends/py/jcir_gen_pass.test.jac"
+        "compiler/backends/py/pyast_gen_pass.test.jac"
     ] {
         f = pkg / rel;
         f.parent.mkdir(parents=True, exist_ok=True);
         f.write_text(f"stub for {rel}\n");
     }
-    (pkg / "compiler/backends/py/jcir_gen_pass.jac").write_text(codegen_body);
+    (pkg / "compiler/backends/py/pyast_gen_pass.jac").write_text(codegen_body);
     return str(pkg);
 }
 
@@ -87,7 +87,7 @@ test "the compiler digest ignores build artifacts and non-compiler modules" {
             ("compiler/.jac/cache/hidden.jac", "cache droppings\n"),
             ("compiler/tests/test_lowering.jac", "new compiler test\n"),
             ("compiler/tests/fixtures/corpus.jac", "new fixture\n"),
-            ("compiler/backends/py/jcir_gen_pass.test.jac", "new annex test\n")
+            ("compiler/backends/py/pyast_gen_pass.test.jac", "new annex test\n")
         ] {
             Path(a, rel).write_text(text);
             assert compiler_source_digest(a) == base , f"{rel} must not participate in the compiler digest";
@@ -141,12 +141,12 @@ test "the running compiler digest covers the real compiler tree" {
     rels = compiler_source_files(pkg);
     for expected in [
         "compiler_inputs.txt",
-        "jac0.py",
+        "meta_importer.py",
         "compiler/driver/jir.jac",
         "compiler/frontend/unitree.jac",
-        "compiler/backends/py/jcir_gen_pass.jac",
-        "compiler/backends/py/jcir_gen_pass.impl/expr.impl.jac",
-        "compiler/backends/native/na_ir_gen_pass.impl/core.impl.jac",
+        "compiler/backends/py/pyast_gen_pass.jac",
+        "compiler/backends/py/pyast_gen_pass.impl/expr.impl.jac",
+        "compiler/backends/native/mir/impl/lower.impl.jac",
         "compiler/passes/type_checker_pass.jac",
         "dist/precompile_bytecode.jac"
     ] {

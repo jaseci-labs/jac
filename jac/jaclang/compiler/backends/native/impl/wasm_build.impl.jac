@@ -105,7 +105,7 @@ impl _link_wasm_libc(mod: ModuleRef) -> bool {
 
     for fn in _mod_functions(libc) {
         if not fn.is_declaration and fn.name in WASM_HOST_ABI {
-            fn.linkage = "internal";
+            fn.linkage = Linkage.internal;
         }
     }
     provided: set[str] = set();
@@ -147,12 +147,12 @@ impl _link_wasm_libc(mod: ModuleRef) -> bool {
         if fn.name in provided
             and not fn.is_declaration
             and fn.name not in _LATE_BOUND {
-            fn.linkage = "internal";
+            fn.linkage = Linkage.internal;
         }
     }
     for gv in _mod_globals(mod) {
         if gv.name in provided and not gv.is_declaration {
-            gv.linkage = "internal";
+            gv.linkage = Linkage.internal;
         }
     }
     return True;
@@ -163,7 +163,7 @@ impl _internalize_late_bound(mod: ModuleRef) {
         if fn.name in _LATE_BOUND
             and fn.name not in _BACKEND_BOUND
             and not fn.is_declaration {
-            fn.linkage = "internal";
+            fn.linkage = Linkage.internal;
         }
     }
 }
@@ -308,16 +308,12 @@ impl _project_gc_settings -> tuple[str, list[str], list[str]] {
     gc_mode = "cycles";
     enf_mods: list[str] = [];
     enf_grand: list[str] = [];
-    try {
-        import from jaclang.project { get_config }
-        cfg = get_config();
-        if cfg {
-            gc_mode = cfg.memory.gc_mode();
-            enf_mods = list(cfg.memory.enforce);
-            enf_grand = list(cfg.memory.exempt);
-        }
-    } except Exception {
-        return ("cycles", [], []);
+    import from jaclang.project { get_config }
+    cfg = get_config();
+    if cfg {
+        gc_mode = cfg.memory.gc_mode();
+        enf_mods = list(cfg.memory.enforce);
+        enf_grand = list(cfg.memory.exempt);
     }
     return (gc_mode, enf_mods, enf_grand);
 }
@@ -343,8 +339,4 @@ impl _assert_ir_rc_free(llvm_ir_str: str, file_path: str) {
                 + " that re-enters the reference-counted world"
         );
     }
-}
-
-impl compile_to_wasm(file_path: str, export_funcs: list[str] = []) -> bytes {
-    return build_wasm(JacProgram(), file_path, export_funcs);
 }

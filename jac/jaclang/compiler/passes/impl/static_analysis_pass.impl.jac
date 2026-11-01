@@ -484,12 +484,7 @@ impl StaticAnalysisPass._check_client_imports(mod: Module) -> None {
             and nd.from_loc.string_path_value is None
             and not nd.is_virtual_jac
         ) {
-            resolved = None;
-            try {
-                resolved = nd.from_loc.resolve_relative_path();
-            } except Exception {
-                resolved = None;
-            }
+            resolved = nd.from_loc.resolve_relative_path();
             if isinstance(resolved, str) and resolved.endswith('.jac') {
                 import from jaclang.compiler.frontend.diagnostics { W1105 }
                 import from jaclang.compiler.placement.placement_pins {
@@ -582,8 +577,7 @@ impl StaticAnalysisPass._check_typing_import_refusals(mod: Module) -> None {
 
 impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
     import from jaclang.compiler.passes.static_analysis_pass {
-        is_ambient_provider_module,
-        is_bootstrap_compiled_module
+        is_ambient_provider_module
     }
     if not self.prog.type_evaluator {
         return;
@@ -593,8 +587,7 @@ impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
         return;
     }
     mod_path = mod.loc.mod_path or "";
-    advisory_only = is_bootstrap_compiled_module(mod_path)
-        or is_ambient_provider_module(mod_path);
+    advisory_only = is_ambient_provider_module(mod_path);
     for nd in mod.get_all_sub_nodes(typ=Import) {
         if (nd.loc.mod_path or "").endswith(".pyi") {
             continue;
@@ -635,19 +628,6 @@ impl StaticAnalysisPass._check_redundant_imports(mod: Module) -> None {
 
 impl StaticAnalysisPass.run_walk with Module entry {
     self.module = self._run_impl(here);
-}
-
-impl is_bootstrap_compiled_module(mod_path: str) -> bool {
-    norm = mod_path.replace("\\", "/");
-    if norm.startswith("jaclang/") {
-        return active_host().is_seed_source(norm[len("jaclang/"):]);
-    }
-    marker = "/jaclang/";
-    idx = norm.rfind(marker);
-    if idx < 0 {
-        return False;
-    }
-    return active_host().is_seed_source(norm[idx + len(marker):]);
 }
 
 impl is_ambient_provider_module(mod_path: str) -> bool {

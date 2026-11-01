@@ -52,10 +52,12 @@ test "scalar tuples returned by value agree with the Python backend" {
 }
 
 test "a scalar tuple return is a register struct, a managed one stays boxed" {
-    text = str(compile_native_ir(FIXTURE).gen.llvm_ir);
+    # The return convention is an emitted ABI fact: importers, vtable slots
+    # and callables all agree on these LLVM signatures.
+    text = compile_native_ir(FIXTURE).llvm_ir();
     (ordered_def, ordered_body) = _defined_body(text, "ordered");
     assert ordered_def.startswith("define {i64, i64} ") , ordered_def;
-    assert not any("__rc_alloc" in line for line in ordered_body) , ordered_body;
+    assert not any("__jac_rt_alloc" in line for line in ordered_body) , ordered_body;
     (scaled_def, _) = _defined_body(text, "scaled");
     assert scaled_def.startswith("define {i64, double} ") , scaled_def;
     (checked_def, _) = _defined_body(text, "checked");

@@ -5,7 +5,6 @@ import from typing { Protocol }
 class BuildServices(Protocol) {
     def compiler(self: BuildServices) -> JacCompiler abst;
     def program(self: BuildServices) -> JacProgram abst;
-    def selfhost(self: BuildServices) -> SelfHostCache abst;
     def client_builder(self: BuildServices) -> ClientBundleBuilder abst;
     def prepare_application(
         self: BuildServices,

@@ -11,13 +11,10 @@ against the manifest at registration; the jaclang image inside a single binary
 is covered by the payload's sha256 trailer at materialization time instead.
 See issue #7135 (#6852 Phase 4).
 
-Both compile tiers share ONE JIR container and ONE manifest tree. Full-compiler
-modules carry a normal JIR; jac0-compiled bootstrap modules (jac0core/*, which
-the full compiler depends on and whose JIR reader is itself a jac0core module)
-carry a JIR flagged ``"bootstrap": true`` and are loaded by ``bootstrap_code``
-via the pure-Python section reader below -- no ``.jac`` machinery, so the tier
-works before any ``.jac`` (including ``modresolver`` / ``jir`` / the compiler)
-can load. jac0 stays the compiler for that tier; only the container is unified.
+Every module carries a JIR whose bytecode section the kernel produced when the
+image was sealed. ``module_code`` reads that section with the pure-Python
+reader below -- no ``.jac`` machinery -- so the host imports its own modules
+before any ``.jac`` (including ``jir.jac``) can load.
 
 This module is therefore **plain Python with no jaclang dependencies** (like the
 sibling ``cache_paths.py`` / ``ext_registry.py``).
@@ -51,10 +48,9 @@ kind/capabilities/entry/payloads)::
         },
         "project/modresolver.jac": {
           "module": "jaclang.project.modresolver",
-          "jir": "jac0core/modresolver.jir",
+          "jir": "project/modresolver.jir",
           "package": false,
-          "sha256": "...",
-          "bootstrap": true                # jac0 tier; load via bootstrap_code
+          "sha256": "..."
         }, ...
       },
       "payloads": {                     # optional non-module payloads, baked at
@@ -63,11 +59,11 @@ kind/capabilities/entry/payloads)::
       },
       "native": {                       # optional (format 9): the package's
         "units": {                      # native units, by pkg-relative source
-          "compiler/jc_unit.jac": {"jir": "compiler/jc_unit.jir",
+          "compiler/kernel_module.jac": {"jir": "compiler/kernel_module.jir",
                                    "iface_digest": "..."}
         },
         "artifact": {                   # the one linked artifact
-          "path": "compiler/libjac_compiler.so",  # pkg-relative
+          "path": "compiler/_kernel/jac_kernel.so",  # pkg-relative
           "sha256": "...", "layout_digest": "...", "plan_digest": "...",
           "triple": "x86_64-unknown-linux-gnu", "mode": "objects"
         }
@@ -110,10 +106,8 @@ MANIFEST_FORMAT = 9
 # skew means a stale or partial install.
 MANIFEST_FORMATS_ACCEPTED = (2, 3, 4, 5, 6, 7, 8, MANIFEST_FORMAT)
 # Must match jaclang.compiler.driver.jir.* ; kept literal here because this module
-# must import before any .jac module (including jir.jac) can. This is the whole
-# point of the bootstrap tier: jac0core modules are loaded from their JIR by the
-# pure-Python section reader below, so they need none of the .jac machinery
-# (jir.jac's reader is itself a jac0core module).
+# must import before any .jac module (including jir.jac) can: the host loads
+# every sealed module from its JIR with the pure-Python section reader below.
 PRECOMPILE_SENTINEL = "__PKG_ROOT__"
 JIR_FORMAT_VERSION = 30
 HEADER_SIZE = 32
@@ -202,12 +196,7 @@ class SealedImage:
         # Optional native record (format 9): the package's native units and
         # the one linked artifact the link plan produced from them.
         self.native: dict = manifest.get("native") or {}
-        # Optional: the artifacts this image leaves out by design (a pull
-        # request's CI kit omits the kernel); each runs on its floor quietly.
-        self.omits: frozenset = frozenset(manifest.get("omits") or ())
-        # fullname -> (entry, src_relpath). One tree: full-compiler modules and
-        # jac0-compiled bootstrap modules share the JIR container + manifest;
-        # ``entry["bootstrap"]`` flags the jac0 tier (loaded via bootstrap_code).
+        # fullname -> (entry, src_relpath).
         self.index: dict[str, tuple[dict, str]] = {}
         self._build_index()
 
@@ -354,12 +343,12 @@ class SealedImage:
                     f"sealed image: payload {path} does not match its manifest sha256"
                 )
 
-    def bootstrap_code(self, fullname: str) -> types.CodeType | None:
-        """Code object for a bootstrap-tier module, extracted from its JIR's
-        bytecode section by the pure-Python reader -- no jir.jac, no running
-        jaclang. This is what makes the jac0core layer loadable at boot."""
+    def module_code(self, fullname: str) -> types.CodeType | None:
+        """Code object for a sealed module, extracted from its JIR's bytecode
+        section by the pure-Python reader -- no jir.jac, no running jaclang.
+        None when the image has no bytecode for it (a native-only module)."""
         found = self.index.get(fullname)
-        if found is None or not found[0].get("bootstrap"):
+        if found is None:
             return None
         data = self._jir_bytes(fullname)
         if data is None:

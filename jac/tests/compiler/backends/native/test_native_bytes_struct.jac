@@ -7,17 +7,11 @@ These exercise the sv↔na-congruent surface a binary parser needs:
   - `open(path, "rb").read()` returning that length-aware bytes buffer.
 """
 
-import from tests.support {
-    compile_native,
-    get_func,
-    native_address,
-    native_force_opts
-}
+import from tests.support { compile_mir, compile_native, get_func, native_address }
 import ctypes;
 import os;
 import tempfile;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 
@@ -326,29 +320,14 @@ test "struct unpack short buffer raises" {
     assert f() == -1;
 }
 
-test "struct pack wrong arg count is a compile error" {
-    import contextlib;
-    import io;
-    buf = io.StringIO();
-    prog = JacProgram();
-    with contextlib.redirect_stderr(buf) {
-        ir = prog.compile(
-            file_path=str(os.path.join(FIXTURES, "struct_bad_pack.jac")),
-            options=native_force_opts()
-        );
-    }
-    assert not prog.errors_had , (
-        f"the bad struct.pack is owned by bad_pack(), which must demote to "
-        f"a seam, got: {[str(e) for e in prog.errors_had]}"
-    );
-    assert ir.gen.native_layout is not None , "whole-module native compile aborted";
-    assert "bad_pack" not in ir.gen.native_layout.functions , (
+test "struct pack wrong arg count demotes its function" {
+    fx = compile_mir("struct_bad_pack.jac");
+    assert fx.is_demoted("bad_pack") , (
         "a struct.pack with the wrong argument count must demote its "
-        "function out of the native layout, never pack uninitialized tail "
-        "bytes"
+        f"function, never pack uninitialized tail bytes: {fx.demoted()}"
     );
-    assert "struct.pack" in buf.getvalue() , (
-        f"the demotion reason must name struct.pack, got:\n{buf.getvalue()}"
+    assert "struct.pack" in fx.reason("bad_pack") , (
+        f"the demotion reason must name struct.pack, got: {fx.reason('bad_pack')}"
     );
 }
 

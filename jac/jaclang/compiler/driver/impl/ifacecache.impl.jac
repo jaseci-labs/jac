@@ -1,39 +1,20 @@
 impl iface_codec -> (IfaceCodec | None) {
-    if _CODEC_MEMO {
-        return _CODEC_MEMO[0];
-    }
-    import sys;
-    for name in _CODEC_MODULES {
-        mod = sys.modules.get(name);
-        if mod is None {
-            return None;
-        }
-        spec = mod?.__spec__;
-        if spec is not None and bool(getattr(spec, "_initializing", False)) {
-            return None;
-        }
-    }
-    writer = sys.modules[_CODEC_MODULES[-2]];
-    modiface = sys.modules[_CODEC_MODULES[-1]];
-    try {
-        codec = IfaceCodec(
-            build_module_iface=writer.build_module_iface,
-            open_module_iface=modiface.open_module_iface,
-            read_iface_hash=modiface.read_iface_hash,
-            iface_module=modiface.iface_module
+    import from jaclang.compiler.types.stubcat.writer { build_module_iface }
+    import from jaclang.compiler.types.stubcat.modiface { iface_module, open_module_iface, read_iface_hash }
+    if not _CODEC_MEMO {
+        _CODEC_MEMO.append(
+            IfaceCodec(
+                build_module_iface=build_module_iface,
+                open_module_iface=open_module_iface,
+                read_iface_hash=read_iface_hash,
+                iface_module=iface_module
+            )
         );
-    } except AttributeError {
-        return None;
     }
-    _CODEC_MEMO.append(codec);
-    return codec;
+    return _CODEC_MEMO[0];
 }
 
 impl prime_iface_codec -> (IfaceCodec | None) {
-    import importlib;
-    for name in _CODEC_MODULES {
-        importlib.import_module(name);
-    }
     return iface_codec();
 }
 
@@ -208,12 +189,8 @@ impl IfaceRegistry.note_dep(dep_path: str) {
     }
     digest = "";
     if is_stub_like_path(real) {
-        try {
-            import from jaclang.compiler.driver.jir { compute_stub_module_key }
-            digest = compute_stub_module_key(real);
-        } except Exception {
-            digest = "";
-        }
+        import from jaclang.compiler.driver.jir { compute_stub_module_key }
+        digest = compute_stub_module_key(real);
     } else {
         ent = self.entries.get(real);
         digest = ent.digest if ent is not None else "";
@@ -228,24 +205,18 @@ impl IfaceRegistry.note_dep(dep_path: str) {
 
 impl IfaceRegistry._client_edges(mod: any) -> set[str] {
     out: set[str] = set();
-    try {
-        for imp in mod.get_all_sub_nodes(uni.Import) {
-            if imp.from_loc is None or imp.is_virtual_jac {
-                continue;
-            }
-            if imp.code_context != CodeContext.CLIENT {
-                continue;
-            }
-            try {
-                target = imp.from_loc.resolve_relative_path();
-            } except Exception {
-                continue;
-            }
-            if isinstance(target, str) and target.endswith(".jac") {
-                out.add(os.path.realpath(target));
-            }
+    for imp in mod.get_all_sub_nodes(uni.Import) {
+        if imp.from_loc is None or imp.is_virtual_jac {
+            continue;
         }
-    } except Exception {}
+        if imp.code_context != CodeContext.CLIENT {
+            continue;
+        }
+        target = imp.from_loc.resolve_relative_path();
+        if isinstance(target, str) and target.endswith(".jac") {
+            out.add(os.path.realpath(target));
+        }
+    }
     return out;
 }
 
@@ -255,11 +226,7 @@ impl IfaceRegistry.dep_rows(resolved_path: str, mod: any) -> list[DepRow] {
     out: list[DepRow] = [];
     for (path, digest) in bucket.items() {
         if not digest {
-            try {
-                digest = SOURCE_DEP_PREFIX + module_cache_key(path);
-            } except Exception {
-                digest = "";
-            }
+            digest = SOURCE_DEP_PREFIX + module_cache_key(path);
         }
         out.append(
             DepRow(path=path, digest=digest, flags="c" if path in client else "")
@@ -495,7 +462,7 @@ impl IfaceRegistry._ensure_in_context(
                 resolved, module, options, before_errors, before_warnings
             );
         }
-    } except Exception {} finally {
+    } finally {
         self.building.discard(resolved);
     }
     return self.entries.get(resolved);
@@ -534,17 +501,15 @@ impl IfaceRegistry._restore_placement(ent: IfaceEntry) {
     if ent.placement is None {
         return;
     }
-    try {
-        import from jaclang.compiler.placement.placement { summary_store }
-        import from jaclang.compiler.placement.placement_export { summary_from_bytes }
-        restored = summary_from_bytes(
-            ent.placement,
-            path_mapper=ent.paths.resolve if ent.paths is not None else None
-        );
-        if restored is not None {
-            summary_store(self.prog)[os.path.abspath(ent.path)] = restored;
-        }
-    } except Exception {}
+    import from jaclang.compiler.placement.placement { summary_store }
+    import from jaclang.compiler.placement.placement_export { summary_from_bytes }
+    restored = summary_from_bytes(
+        ent.placement,
+        path_mapper=ent.paths.resolve if ent.paths is not None else None
+    );
+    if restored is not None {
+        summary_store(self.prog)[os.path.abspath(ent.path)] = restored;
+    }
 }
 
 impl IfaceRegistry._prepare(ent: IfaceEntry, mod: any) {
@@ -770,7 +735,7 @@ impl IfaceRegistry.analysis_profile(options: any) -> str {
     import hashlib;
     import json;
     pol = diagnostic_policy_for(
-        active_host().check_settings(getattr(options, 'target_app', '') or ''),
+        active_host().check_settings(options.target_app),
         list(options.suppress_codes or [])
     );
     ident = json.dumps(
@@ -793,7 +758,7 @@ impl IfaceRegistry.analysis_profile(options: any) -> str {
 }
 
 impl IfaceRegistry._ensure_flow_graph(mod: any) -> None {
-    if getattr(mod, "stub_only", False) or getattr(mod, "is_raised_from_py", False) {
+    if mod.stub_only or mod.is_raised_from_py {
         return;
     }
     if self.prog.analysis.provides(mod, AnalysisFact.CFG_SUCC) {
@@ -875,13 +840,8 @@ impl IfaceRegistry._persist_in_context(
         return;
     }
     sections: dict[int, bytes] = {};
-    modkey = "";
-    try {
-        modkey = module_cache_key(resolved);
-    } except Exception {
-        modkey = "";
-    }
-    inferred = bool(getattr(mod, "codespace_inferred", False));
+    modkey = module_cache_key(resolved);
+    inferred = bool(mod.codespace_inferred);
     memo = self._iface_bytes.get(resolved);
     payload: (bytes | None) = None;
     if inferred {
@@ -912,12 +872,10 @@ impl IfaceRegistry._persist_in_context(
         sections[SEC_CTDEPS] = ct_rows;
     }
     if not options.symtab_ir_only {
-        try {
-            import from jaclang.compiler.driver.jir { SEC_INTEROP }
-            import from jaclang.compiler.driver.unit_products { interop_record }
-            interop_dict = interop_record(mod);
-            sections[SEC_INTEROP] = json.dumps(interop_dict).encode("utf-8");
-        } except Exception {}
+        import from jaclang.compiler.driver.jir { SEC_INTEROP }
+        import from jaclang.compiler.driver.unit_products { interop_record }
+        interop_dict = interop_record(mod);
+        sections[SEC_INTEROP] = json.dumps(interop_dict).encode("utf-8");
     }
     if options.no_cgen {
         profiles = self._existing_profiles(resolved);
@@ -1048,11 +1006,7 @@ impl IfaceRegistry.resolve_module(path: str) -> (Module | None) {
             return found;
         }
     }
-    try {
-        return self.prog.load_dependency_module(resolved);
-    } except Exception {
-        return None;
-    }
+    return self.prog.load_dependency_module(resolved);
 }
 
 impl IfaceRegistry.resolve_shared(
@@ -1076,14 +1030,10 @@ impl IfaceRegistry.resolve_shared(
     }
     resolved_type: any = None;
     provider = sym.provider;
-    try {
-        if provider is not None {
-            resolved_type = provider.resolve_type(sym);
-        } else {
-            resolved_type = self.prog.get_type_evaluator().get_type_of_symbol(sym);
-        }
-    } except Exception {
-        return None;
+    if provider is not None {
+        resolved_type = provider.resolve_type(sym);
+    } else {
+        resolved_type = self.prog.get_type_evaluator().get_type_of_symbol(sym);
     }
     shared = resolved_type?._shared;
     if shared is not None {
@@ -1157,12 +1107,10 @@ impl IfaceRegistry._verify_analysis(resolved: str, options: any, prof: dict[str,
     prog2 = self._fresh_verify_program();
     self.verifying = True;
     try {
-        try {
-            import copy;
-            verified_options = copy.copy(options);
-            verified_options.need_full_ast = True;
-            prog2.compile(resolved, options=verified_options);
-        } except Exception {}
+        import copy;
+        verified_options = copy.copy(options);
+        verified_options.need_full_ast = True;
+        prog2.compile(resolved, options=verified_options);
 
         def digestible(alert: any) -> tuple[str, int, int, str | None, str] {
             return (
@@ -1197,9 +1145,7 @@ impl IfaceRegistry._verify_analysis(resolved: str, options: any, prof: dict[str,
 }
 
 impl artifact_cache_path(path: str, program: JacProgram) -> Path {
-    selected = program_for(path, program);
-    owner_options = None if selected.internal else selected.options;
-    with cache_scope(owner_options) {
+    with cache_scope(program_for(path, program).options) {
         return get_module_cache_path(path);
     }
 }

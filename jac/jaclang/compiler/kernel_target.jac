@@ -11,6 +11,7 @@ obj KernelTarget {
         kernel_unit_rel: list[str] = [],
         native_lowered_rel: list[str] = [],
         native_only_rel: list[str] = [],
+        native_host_rel: list[str] = [],
         link_mode: str = "";
 
     def to_dict -> dict[str, object];
@@ -36,6 +37,8 @@ def read_kernel_target(path: str) -> (KernelTarget | None);
 def with_link_mode(spec: KernelTarget, link_mode: str) -> KernelTarget;
 
 def write_kernel_target(spec: KernelTarget, path: str);
+
+def roster_of(spec: KernelTarget) -> dict[str, object];
 
 def set_kernel_target(spec: (KernelTarget | None)) -> (KernelTarget | None);
 

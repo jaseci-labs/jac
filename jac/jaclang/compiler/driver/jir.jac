@@ -8,12 +8,12 @@ import from contextlib { contextmanager }
 import from contextvars { ContextVar }
 import from pathlib { Path }
 
-glob MAGIC = b"JIR\x00",
-     FORMAT_VERSION: int = 30,
-     HEADER_SIZE: int = 32,
+glob MAGIC: bytes = JIR_MAGIC,
+     FORMAT_VERSION: int = JIR_FORMAT_VERSION,
+     HEADER_SIZE: int = JIR_HEADER_SIZE,
      HEADER_FMT: str = "<4sHHIIIIII",
      EXTERNAL_REF: int = 0xFFFFFF,
-     SECTIONS_MAGIC: any = b"JIRX",
+     SECTIONS_MAGIC: any = JIR_SECTIONS_MAGIC,
      SEC_BYTECODE: int = 0x02,
      SEC_MTIR: int = 0x03,
      SEC_INTEROP: int = 0x05,
@@ -35,7 +35,7 @@ glob MAGIC = b"JIR\x00",
      SEC_PATH_ROOT: int = 0x15,
      SEC_EMITKEY: int = 0x16,
      SEC_PYSRC: int = 0x17,
-     SEC_TERMINATOR: int = 0xFF,
+     SEC_TERMINATOR: int = JIR_SEC_TERMINATOR,
      FLAG_PRECOMPILED: int = 0x02,
      FLAG_CARRIED: int = 0x08,
      PRECOMPILE_SENTINEL: str = "__PKG_ROOT__",
@@ -50,8 +50,8 @@ glob NATIVE_SECTIONS: tuple[int, ...] = (
          SEC_NDEPS,
          SEC_NCTDEPS
      ),
-     NATIVE_STAMP_MAGIC: bytes = b"JNS1",
-     NATIVE_VARIANTS_MAGIC: bytes = b"JNV1";
+     NATIVE_STAMP_MAGIC: bytes = JIR_STAMP_MAGIC,
+     NATIVE_VARIANTS_MAGIC: bytes = JIR_VARIANTS_MAGIC;
 
 glob LOCK_POOL_SIZE: int = 64;
 
@@ -142,6 +142,15 @@ glob COMPILER_DIGEST_ROSTER_MARK: str = "roster",
      COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__"),
      COMPILER_DIGEST_SKIP: tuple[str, ...] = ();
 
+glob COMPILER_IDENTITY_NAME: str = "compiler_identity.json",
+     STAGING_REWRITTEN_NAMES: tuple[str, ...] = ("archwire.jac", );
+
+def read_input_rules(manifest_path: str) -> tuple[tuple[str, ...], tuple[str, ...]];
+
+def is_roster_input(rel_path: str, roster: tuple[str, ...]) -> bool;
+
+def is_staging_rewritten(rel: str) -> bool;
+
 def compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]];
 
 def compiler_source_files(pkg_dir: str) -> list[str];
@@ -165,8 +174,10 @@ glob _COMPILER_DIGEST_CACHE: list[str] = [],
      _PY_EMITTER_DIGESTS: dict[str, str] = {},
      _NATIVE_PRODUCER_DIGESTS: dict[str, str] = {};
 
-glob PY_EMITTER_ROOTS: tuple[str, ...] = ("compiler/backends/py", ),
-     PY_EMITTER_EXCLUDED: tuple[str, ...] = ("compiler/backends/py/jacpython", ),
+glob PY_EMITTER_ROOTS: tuple[str, ...] = (
+         "compiler/backends/py",
+         "compiler/frontend/python"
+     ),
      DEV_NATIVE_PRODUCER: str = "abi:";
 
 def _manifest_compiler_digest(pkg_dir: str) -> str;

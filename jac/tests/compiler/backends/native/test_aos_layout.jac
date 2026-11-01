@@ -1,6 +1,6 @@
 """By-value AoS element buffers (#7870 item 3): under enforced
 headerless codegen a `list[own T]` of a scalar-fielded archetype lowers
-to a contiguous by-value buffer (List.aos.T) with move-in appends and
+to a contiguous by-value buffer (`list.aos<T>` in MIR) with move-in appends and
 in-place element drops through the recursive drop registry; managed
 modes keep pointer elements and the annotation erases, so output is
 byte-identical across gc modes. The macOS `leaks` gate pins the
@@ -10,9 +10,20 @@ import os;
 import shutil;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support {
+    compile_mir,
+    diagnostics_text,
+    jac_command,
+    source_spelled,
+    TESTS_DIR
+}
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.project.kernel_call {
+    compile_request_record,
+    compile_result_of,
+    open_kernel_session
+}
+import from jaclang.project.kernel_compile { compile_request_for }
 
 glob FIXTURE = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures", "aos_layout.jac"
@@ -23,27 +34,27 @@ glob FIXTURE = os.path.join(
          "cycles": ["--memory", "managed"]
      };
 
-def _compile_ir(gc_mode: str, enforce: bool) -> str {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=FIXTURE,
-        options=CompileOptions(
+"""The fixture's MIR under `gc_mode`: the representation the decision step
+chose for every list, with no emission."""
+def _compile_mir(gc_mode: str, enforce: bool) -> str {
+    fx = compile_mir(
+        FIXTURE,
+        "",
+        CompileOptions(
+            force_codespace="native",
             aot_mode=True,
             na_gc_mode=gc_mode,
-            nogc_enforce_all=enforce,
-            skip_native_engine=True,
-            no_ir_cache=True
+            nogc_enforce_all=enforce
         )
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    return str(ir.gen.llvm_ir);
+    return source_spelled(fx.mir());
 }
 
 test "enforced list[own T] lowers to the by-value AoS family" {
-    enforced = _compile_ir("none", True);
-    assert "List.aos.Cell" in enforced , "no AoS family in enforced build";
-    managed = _compile_ir("rc", False);
-    assert "List.aos.Cell" not in managed , "managed build must keep pointer elements";
+    enforced = _compile_mir("none", True);
+    assert "list.aos<obj Cell>" in enforced , "no AoS family in enforced build";
+    managed = _compile_mir("rc", False);
+    assert "list.aos<" not in managed , "managed build must keep pointer elements";
 }
 
 test "AoS output is byte-identical across gc modes and leak-free" {
@@ -91,6 +102,7 @@ test "recompiling after adding a subclass recomputes inline layout eligibility" 
         + "    values.append(Cell(value=7));\n"
         + "    return values;\n}\n";
     options = CompileOptions(
+        force_codespace="native",
         aot_mode=True,
         na_gc_mode="none",
         nogc_enforce_all=True,
@@ -100,14 +112,18 @@ test "recompiling after adding a subclass recomputes inline layout eligibility" 
     with tempfile.TemporaryDirectory() as directory {
         path = Path(directory) / "layout_lifetime.jac";
         path.write_text(source);
-        program = JacProgram();
-        first = program.compile(file_path=str(path), options=options);
-        assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
-        assert "List.aos.Cell" in str(first.gen.llvm_ir);
-        program.release_compile_closure(collect=False);
-        path.write_text(source + "obj Child(Cell) { has extra: int = 1; }\n");
-        second = program.compile(file_path=str(path), options=options);
-        assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
-        assert "List.aos.Cell" not in str(second.gen.llvm_ir);
+        session = open_kernel_session(directory);
+        request = compile_request_record(
+            compile_request_for([str(path)], options, {}, ["mir"])
+        );
+        first = compile_result_of(session.compile(request));
+        assert first.ok() , diagnostics_text(first);
+        assert "list.aos<" in first.unit(str(path)).native_mir;
+        changed = source + "obj Child(Cell) { has extra: int = 1; }\n";
+        path.write_text(changed);
+        session.update(str(path), changed);
+        second = compile_result_of(session.compile(request));
+        assert second.ok() , diagnostics_text(second);
+        assert "list.aos<" not in second.unit(str(path)).native_mir;
     }
 }

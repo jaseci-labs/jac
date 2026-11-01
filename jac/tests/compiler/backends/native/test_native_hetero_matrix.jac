@@ -8,10 +8,9 @@ carries hetero-store ownership special cases.
 Coverage:
   - JIT read-back correctness for list and dict mixed elements
     (store/load/overwrite/append/pop/clear/iteration/repr).
-  - IR-shape gate: the hetero fixtures build jacval containers and contain
-    ZERO `ptr.toint` coercions -- the only emitter that ever `ptrtoint`'d an
-    RC pointer into an integer container slot. Boxing uses the tagged
-    `jv.p2i` path, whose payload the container releases through the tag.
+  - Representation gate: the decision step gives the hetero fixtures'
+    containers boxed `any` elements, never an integer slot holding a
+    reference.
   - Full-reclamation churn under gc rc and cycles via the glibc
     `mallinfo2().uordblks` in-use probe (container death, slot overwrite,
     and clear() all release), and under headerless `--memory nogc
@@ -24,13 +23,22 @@ import os;
 import subprocess;
 import sys;
 import tempfile;
+import json;
+import re;
+import from pathlib { Path }
 import from tests.support {
+    KernelFixture,
     TESTS_DIR,
+    adopt_native_units,
+    compile_mir,
+    compile_native_unit,
+    jac_command,
     native_address,
     native_force_opts,
-    native_str_func
+    native_str_func,
+    remember_native_unit,
+    write_case
 }
-import from tests.support { jac_command }
 import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -50,17 +58,22 @@ def _opts(gc_mode: str | None = None, enforce: bool = False) -> any {
 }
 
 
-def _compile(fixture: str, options: any | None = None) -> tuple[object, any] {
+"""Compile a fixture through the kernel under `options` and JIT its native
+units here; return (engine, fixture)."""
+def _compile(fixture: str, options: any | None = None) -> tuple[object, KernelFixture] {
+    opts = options if options is not None else native_force_opts();
+    fx = compile_native_unit(fixture, FIXTURES, opts, ["bytecode"]);
     prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)),
-        options=(options if options is not None else native_force_opts())
+    prog.options = opts;
+    adopt_native_units(prog, fx.result, opts);
+    prog._get_compiler()._load_native_from_cache(
+        fx.path, prog, json.loads(fx.unit.interop) if fx.unit.interop else None
     );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
+    carrier = prog.hub.artifacts.get(fx.path);
+    eng = carrier.native_engine if carrier is not None else None;
     assert eng is not None , f"No native engine for {fixture}";
-    return (eng, ir);
+    remember_native_unit(eng, fx);
+    return (eng, fx);
 }
 
 
@@ -127,19 +140,14 @@ test "hetero dict read-back, overwrite, pop, clear" {
     assert cl(b"z") == 0;
 }
 
-test "IR shape: hetero containers are jacval; no ptrtoint into integer slots" {
+test "representation: hetero containers hold boxed elements" {
     for fixture in [PROG, "hetero_list_str.jac"] {
-        (_, ir) = _compile(fixture);
-        text = str(ir.gen.llvm_ir);
-        assert "List.jacval" in text , f"{fixture}: hetero list did not lower to List.jacval";
-        assert "ptr.toint" not in text , (
-            f"{fixture}: an RC pointer was ptrtoint'd into an integer "
-            f"container slot (the deleted List.i64 boxing path is back)"
-        );
+        text = compile_mir(fixture).mir();
+        assert "list<any>" in text , f"{fixture}: hetero list did not lower to boxed elements";
     }
-    (_, ir2) = _compile(PROG);
-    text2 = str(ir2.gen.llvm_ir);
-    assert "Dict.ptr.jacval" in text2 , "hetero dict did not lower to Dict.<k>.jacval";
+    assert re.search(r"dict<[^<>]+, any>", compile_mir(PROG).mir()) , (
+        "hetero dict did not lower to boxed values"
+    );
 }
 
 
@@ -289,7 +297,6 @@ test "hetero nogc fixture passes under headerless --memory nogc (AOT)" {
 }
 
 test "mixed dict keys and mixed set elements are stable diagnostics" {
-    import tempfile as _tf;
     for (src_text, fn_name, label) in [
         (
             "def bad_keys -> int { d: dict[any, any] = {1: \"a\", \"b\": 2}; return len(d); }",
@@ -302,26 +309,11 @@ test "mixed dict keys and mixed set elements are stable diagnostics" {
             "set-mixed-elems"
         )
     ] {
-        with _tf.NamedTemporaryFile(mode="w", suffix=".jac", delete=False) as tf {
-            tf.write(src_text);
-            path = tf.name;
-        }
-        try {
-            prog = JacProgram();
-            ir = prog.compile(file_path=path, options=native_force_opts());
-            assert not prog.errors_had , (
-                f"{label}: the refusal is owned by {fn_name}(), which must "
-                f"demote to a seam, got: {[str(e) for e in prog.errors_had]}"
-            );
-            assert ir.gen.native_layout is not None , (
-                f"{label}: whole-module native compile aborted"
-            );
-            assert fn_name not in ir.gen.native_layout.functions , (
-                f"{label}: the refused container must demote its function "
-                f"out of the native layout, never lower silently"
-            );
-        } finally {
-            os.unlink(path);
-        }
+        source = Path(write_case(src_text, f"{fn_name}.jac"));
+        fx = compile_mir(source.name, str(source.parent));
+        assert fx.is_demoted(fn_name) , (
+            f"{label}: the refused container must demote its function, never "
+            f"lower silently: {fx.demoted()}"
+        );
     }
 }

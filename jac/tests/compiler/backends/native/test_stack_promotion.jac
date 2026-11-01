@@ -9,93 +9,70 @@ as `promoted=N`.
 """
 
 import os;
+import subprocess;
+import from tests.support {
+    KernelFixture,
+    TESTS_DIR,
+    compile_mir,
+    compile_native_ir,
+    jac_command,
+    names_function
+}
 import from jaclang.compiler.driver.compile_options {
+    CompileOptions,
     push_native_target,
     pop_native_target
 }
-import subprocess;
-import from tests.support { jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.backends.native.mir.emit { RELEASE_SYMBOL }
 
-glob FIXTURE = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures", "stack_promotion.jac"
-     ),
-     C_FIXTURE = os.path.join(
-         TESTS_DIR,
-         "compiler",
-         "backends",
-         "native",
-         "fixtures",
-         "stack_promotion_c.jac"
-     );
+glob FIXDIR = os.path.join(TESTS_DIR, "compiler", "backends", "native", "fixtures"),
+     FIXTURE = os.path.join(FIXDIR, "stack_promotion.jac");
 
-def _compile_ir(gc_mode: str, enforce: bool) -> str {
+"""The decision step's verdict on the promotion fixture for a memory mode."""
+def _compile_mir(gc_mode: str, enforce: bool) -> KernelFixture {
     prev = push_native_target("wasm32-unknown-unknown");
     try {
-        prog = JacProgram();
-        ir = prog.compile(
-            file_path=FIXTURE,
-            options=CompileOptions(
-                aot_mode=True,
-                na_gc_mode=gc_mode,
-                nogc_enforce_all=enforce,
-                no_ir_cache=True,
-                skip_native_engine=True
-            )
+        return compile_mir(
+            "stack_promotion.jac",
+            FIXDIR,
+            CompileOptions(aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce)
         );
-        assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-        assert ir is not None and ir.gen.llvm_ir is not None;
-        return str(ir.gen.llvm_ir);
     } finally {
         pop_native_target(prev);
     }
 }
 
-def _compile_native_ir(path: str) -> str {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=path,
-        options=CompileOptions(aot_mode=True, no_ir_cache=True, skip_native_engine=True)
-    );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    assert ir is not None and ir.gen.llvm_ir is not None;
-    return str(ir.gen.llvm_ir);
+"""The MIR of function `name` in `fx`, as `MirFunction.render` prints it."""
+def mir_function(fx: KernelFixture, name: str) -> str {
+    text = fx.mir();
+    head = f"fn @{fx.symbol(name)}(";
+    assert head in text , f"{name} has no MIR in {fx.path}:\n{text}";
+    body = text[text.index(head):];
+    return body[:body.index("\n}") + 2];
 }
 
-def _fn_ir(ir: str, name: str) -> str {
-    lines = ir.split("\n");
-    out: list[str] = [];
-    active = False;
-    for line in lines {
-        if line.startswith("define") and name in line {
-            active = True;
-        }
-        if active {
-            out.append(line);
-            if line == "}" {
-                break;
-            }
-        }
-    }
-    assert out , f"no function body found for {name}";
-    return "\n".join(out);
+"""Whether a function's MIR puts an object on the heap: a constructor call,
+the runtime allocator, or a C allocation."""
+def heap_allocates(body: str) -> bool {
+    return any(
+        marker in body
+        for marker in (".__ctor", "@__jac_rt_alloc", "@malloc", "@calloc")
+    );
 }
 
 test "managed mode: borrowed-only owner is stack-promoted" {
-    body = _fn_ir(_compile_ir("cycles", False), "promoted_frame");
-    assert "stk.Buffer" in body , body;
+    body = mir_function(_compile_mir("cycles", False), "promoted_frame");
+    assert not heap_allocates(body) , body;
 }
 
 test "managed mode: returned owner stays on the heap" {
-    body = _fn_ir(_compile_ir("cycles", False), "escaping_frame");
-    assert "stk.Buffer" not in body , body;
+    body = mir_function(_compile_mir("cycles", False), "escaping_frame");
+    assert heap_allocates(body) , body;
 }
 
 test "headerless mode: borrowed-only owner is stack-promoted" {
-    body = _fn_ir(_compile_ir("none", True), "promoted_frame");
-    assert "stk.Buffer" in body , body;
-    assert "malloc" not in body , body;
+    body = mir_function(_compile_mir("none", True), "promoted_frame");
+    assert not heap_allocates(body) , body;
 }
 
 test "jac explain memory reports the promoted count" {
@@ -108,21 +85,27 @@ test "jac explain memory reports the promoted count" {
     assert "promoted=1" in res.stderr , res.stderr;
 }
 
-test "a C record of raw pointers lent to C lives on the stack, released by nothing" {
-    body = _fn_ir(_compile_native_ir(C_FIXTURE), "lend_slots");
-    assert "stk.PointerSlots" in body , body;
-    assert "malloc" not in body , body;
-    assert "unwind.node" not in body , body;
+test "a C record of raw pointers lent to C lives on the stack" {
+    fx = compile_mir("stack_promotion_c.jac", FIXDIR, CompileOptions(aot_mode=True));
+    body = mir_function(fx, "lend_slots");
+    assert not heap_allocates(body) , body;
 }
 
 test "a local also bound to a heap record is still released" {
-    body = _fn_ir(_compile_native_ir(C_FIXTURE), "rebind_slots");
-    assert "__rc_release" in body , body;
+    fx = compile_native_ir("stack_promotion_c.jac", FIXDIR, CompileOptions(aot_mode=True));
+    body = "";
+    for block in fx.llvm_ir().split("\ndefine ")[1:] {
+        if names_function(block.split("\n")[0], "rebind_slots") {
+            body = block[:block.index("\n}")];
+            break;
+        }
+    }
+    assert body , "rebind_slots is not defined in the IR";
+    assert RELEASE_SYMBOL in body , body;
 }
 
 test "a named function used as a Callable is a static closure" {
-    ir = _compile_native_ir(C_FIXTURE);
-    body = _fn_ir(ir, "apply_named");
-    assert "__jac_fnclos" in body , body;
-    assert "malloc" not in body and "__rc_alloc" not in body , body;
+    fx = compile_mir("stack_promotion_c.jac", FIXDIR, CompileOptions(aot_mode=True));
+    body = mir_function(fx, "apply_named");
+    assert not heap_allocates(body) , body;
 }

@@ -92,16 +92,6 @@ obj EditReview {
     def to_dict -> dict[str, any];
 }
 
-obj OverlayHost(ProjectHost) {
-    has overlay: dict[str, str] = {},
-        enabled: bool = False,
-        log_path: str = "";
-
-    def read_source(path: str) -> str;
-    def annex_files(path: str, suffix: str = ".impl.jac") -> list[str];
-    def note(message: str, style: str = "dim");
-}
-
 obj ThreadRouter {
     has target: any,
         sink: any,
@@ -119,7 +109,7 @@ obj EditGate {
         max_dependents: int = 6,
         overlay: dict[str, str] = {},
         log_path: str = "",
-        _host: (OverlayHost | None) = None,
+        _session: (SessionClient | None) = None,
         _baselines:
             dict[
                 str,
@@ -128,6 +118,7 @@ obj EditGate {
         _last_deps: list[str] = [];
 
     def postinit;
+    def client -> SessionClient;
     def stage(path: str, new_text: str) -> None;
     def unstage(path: str) -> None;
     def staged -> dict[str, str];
@@ -138,7 +129,6 @@ obj EditGate {
     def _disk_text(path: str) -> (str | None);
     def _text_for(path: str, overlay: bool) -> str;
     def _stamp(paths: list[str]) -> tuple[tuple[str, int, int], ...];
-    def _arch_staged -> bool;
     def _module_files(head: str) -> list[str];
     def _head_of(path: str) -> str;
     def _owner(head: str) -> dict[str, str];
@@ -153,13 +143,19 @@ obj EditGate {
 
 def gate_root_for(path: str) -> str;
 
-def symbol_table(text: str, path: str) -> dict[str, tuple[str, int, int, str, str]];
+def symbol_table(
+    session: SessionClient, text: str, path: str
+) -> dict[str, tuple[str, int, int, str, str]];
 
-def symbol_changes(old_text: str, new_text: str, path: str) -> list[SymbolChange];
+def symbol_changes(
+    session: SessionClient, old_text: str, new_text: str, path: str
+) -> list[SymbolChange];
 
-def import_lines(text: str, path: str) -> list[str];
+def import_lines(session: SessionClient, text: str, path: str) -> list[str];
 
-def wiring_changes(old_text: str, new_text: str, path: str) -> list[ArchChange];
+def wiring_changes(
+    session: SessionClient, old_text: str, new_text: str, path: str
+) -> list[ArchChange];
 
 def match_diagnostics(
     before: list[DiagInfo], after: list[DiagInfo]
@@ -174,9 +170,5 @@ def change_groups(changes: list[SymbolChange]) -> dict[str, list[str]];
 def partial_text(
     old_text: str, new_text: str, changes: list[SymbolChange], keep: set[str]
 ) -> str;
-
-def _node_text(nd: any) -> str;
-
-def _lines_text(lines: list[str], first: int, last: int) -> str;
 
 def _rel(path: str, root_dir: str) -> str;

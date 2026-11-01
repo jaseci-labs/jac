@@ -9,8 +9,7 @@ import os;
 import re;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { compile_mir, jac_command, TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE = os.path.join(
@@ -23,20 +22,23 @@ glob FIXTURE = os.path.join(
      };
 
 test "chunk bodies build view headers without allocating" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=FIXTURE, options=CompileOptions(aot_mode=True, memory_profile="nogc")
+    fx = compile_mir(
+        FIXTURE,
+        "",
+        CompileOptions(force_codespace="native", aot_mode=True, memory_profile="nogc")
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
-    m = re.search(
-        r'define[^\n]*@"__jac_ffor_body_\d+"\([^\n]*\n(.*?)\n\}', text, re.DOTALL
-    );
-    assert m , "no outlined flow-for body in IR";
-    body = m.group(1);
-    assert "chunk.hdr" not in body or "chunk.eb" in body , body[:400];
-    assert "chunk.eb" in text , "no chunk header construction in IR";
-    assert "__jac_halloc" not in m.group(1) , "chunk body allocates per chunk";
+    bodies = [
+        chunk
+        for chunk in fx.mir().split("\n\n")
+        if re.match(r'fn @[^(]*__jac_ffor_body_\d+\(', chunk)
+    ];
+    assert bodies , f"no outlined flow-for body in the MIR; demoted: {fx.demoted()}";
+    assert any(" = view " in body for body in bodies) , "no chunk view header in MIR";
+    for body in bodies {
+        for alloc in ("@__jac_rt_alloc", "@__jac_rt_list_new") {
+            assert alloc not in body , f"chunk body allocates per chunk:\n{body[:400]}";
+        }
+    }
 }
 
 test "chunked output is identical across modes, widths, and python" {

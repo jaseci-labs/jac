@@ -3,7 +3,7 @@
 `jac run` sat silent through the whole initial client compile. The client
 layer cannot narrate that stretch: by the time it asks for a file's JS, the
 front end has already pulled the entire import graph through parse and type
-check. Every module enters the compiler through `JacCompiler.compile`, entry
+check. Every module enters the compiler through `JacProgram.compile`, entry
 and dependency alike, so that is where progress is reported; a CLI status line
 subscribes for exactly the compile it drives and nothing else.
 """
@@ -74,12 +74,12 @@ test "nested compilation completes dependencies before their importer" {
 
 test "exceptions finish active work and detach both listeners" {
     import from unittest.mock { patch }
-    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import jaclang.project.kernel_compile as kernel_compile_mod;
     started: list[str] = [];
     finished: list[str] = [];
     main_path = _project();
     with patch.object(
-        JacCompiler, "compile_attempt", side_effect=RuntimeError("failed")
+        kernel_compile_mod, "kernel_compile", side_effect=RuntimeError("failed")
     ) {
         try {
             with compile_progress.listen(started.append, finished.append) {

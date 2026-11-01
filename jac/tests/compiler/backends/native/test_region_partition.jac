@@ -10,7 +10,12 @@ byte-identical across gc modes.
 import os;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR }
+import from tests.support {
+    adopt_native_units,
+    compile_native_unit,
+    jac_command,
+    TESTS_DIR
+}
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
@@ -40,14 +45,14 @@ glob FIXTURE = os.path.join(
      };
 
 test "children draw pages from the parent behind the reabsorb contract" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=SHARE_FIXTURE,
-        options=CompileOptions(aot_mode=True, memory_profile="rc")
+    opts = CompileOptions(aot_mode=True, memory_profile="rc");
+    fx = compile_native_unit(
+        os.path.basename(SHARE_FIXTURE), os.path.dirname(SHARE_FIXTURE), opts, ["mir"]
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
-    assert "__jac_region_partition" in text , "no partition call in the module";
+    assert "__jac_region_partition" in fx.llvm_ir() , "no partition call in the module";
+    prog = JacProgram();
+    prog.options = opts;
+    adopt_native_units(prog, fx.result, opts);
     # The region kernel is its own unit; the program that links it holds its
     # draw and reabsorb paths under the unit's prefix.
     import from jaclang.compiler.backends.native.link_plan {
@@ -55,7 +60,7 @@ test "children draw pages from the parent behind the reabsorb contract" {
         build_link_plan,
         whole_program_module
     }
-    plan = build_link_plan(prog, [ir.loc.mod_path], prog.options);
+    plan = build_link_plan(prog, [fx.path], opts);
     spec = plan.glue_spec(ArtifactKind.JIT, "jit", False);
     (linked, _exports) = whole_program_module(plan, spec);
     linked_any: any = linked;

@@ -196,7 +196,10 @@ impl StubcatArtifact.build(log: Callable[[str], None], force: bool, exact: bool)
     pkg = jaclang_pkg_dir();
     out = dev_catalog_path(pkg);
     log(f"  building the stub catalog into {out}");
-    build_catalog(out, pkg_dir=pkg, quiet=True);
+    report = tool_session().stub_catalog(out, [], pkg);
+    for failure in report.load_failures {
+        log(f"  stub catalog: {failure}");
+    }
     maybe_sweep("jir-stubcat");
 }
 
@@ -245,9 +248,11 @@ impl _read_trimmed(path: str) -> str {
 }
 
 impl _publish(cat: StubCatalog | None) -> StubCatalog | None {
+    import from jaclang.project.modresolver { use_stub_catalog }
     if cat is not None and not _CATALOG_CACHE {
         _CATALOG_CACHE.append(cat);
         set_active(cat);
+        use_stub_catalog(cat);
         _ORIGIN.clear();
         _ORIGIN.extend(_OPENED_FROM);
     }
@@ -276,8 +281,10 @@ impl open_catalog -> StubCatalog | None {
 }
 
 impl reset_catalog_cache {
+    import from jaclang.project.modresolver { use_stub_catalog }
     _CATALOG_CACHE.clear();
     _DIGEST_CACHE.clear();
     _ORIGIN.clear();
     set_active(None);
+    use_stub_catalog(None);
 }

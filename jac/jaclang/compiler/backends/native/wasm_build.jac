@@ -88,5 +88,3 @@ def app_declared_imports(ir_module: UniModule, plan: any = None) -> set[str];
 def _project_gc_settings -> tuple[str, list[str], list[str]];
 
 def _assert_ir_rc_free(llvm_ir_str: str, file_path: str);
-
-def compile_to_wasm(file_path: str, export_funcs: list[str] = []) -> bytes;

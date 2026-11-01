@@ -1,8 +1,7 @@
 walker DeclImplMatchPass(CompilerPass) {
     static has contract: PassContract = PassContract(
         requires=(AnalysisFact.SYM_OF, ),
-        provides=(AnalysisFact.IMPL_OF, ),
-        kernel_safe=True
+        provides=(AnalysisFact.IMPL_OF, )
     );
 
     has _e2026_reported: set[int] = set();

@@ -1,20 +1,36 @@
 """Optional results carry ownership through boolean expressions and dictionary reads."""
 
 import ctypes;
-import from tests.support { native_address }
-import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support {
+    adopt_native_units,
+    compile_native_unit,
+    native_address,
+    remember_native_unit
+}
+
+"""JIT the fixture under memory `profile`: `compile_native` with the profile
+in the options."""
+def profile_engine(fixture: str, profile: str) -> any {
+    import json;
+    import from jaclang.compiler.driver.program { JacProgram }
+    options = CompileOptions(force_codespace="native", memory_profile=profile);
+    fx = compile_native_unit(fixture, "", options, ["bytecode"]);
+    prog = JacProgram();
+    prog.options = options;
+    adopt_native_units(prog, fx.result, options);
+    prog._get_compiler()._load_native_from_cache(
+        fx.path, prog, json.loads(fx.unit.interop) if fx.unit.interop else None
+    );
+    carrier = prog.hub.artifacts.get(fx.path);
+    engine = carrier.native_engine if carrier is not None else None;
+    assert engine is not None , f"No JIT engine produced for {fixture}";
+    remember_native_unit(engine, fx);
+    return engine;
+}
 
 def check_optional_temporaries(profile: str) {
-    program = JacProgram();
-    module = program.compile(
-        str(Path(__file__).parent / "fixtures" / "rc_optional_temporaries.jac"),
-        options=CompileOptions(force_codespace="native", memory_profile=profile)
-    );
-    assert not program.errors_had , [str(error) for error in program.errors_had];
-    engine = module.gen.native_engine;
-    assert engine is not None;
+    engine = profile_engine("rc_optional_temporaries.jac", profile);
     dropped = ctypes.CFUNCTYPE(ctypes.c_int64)(native_address(engine, "dropped_count"));
     for (name, argument, expected, allocations) in [
         ("optional_or", 0, 5, 1),

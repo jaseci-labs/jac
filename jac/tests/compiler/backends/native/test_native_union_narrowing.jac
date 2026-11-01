@@ -27,8 +27,7 @@ Refs #8150, #8027 (T1.1), #8039, #8052
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { TESTS_DIR, compile_native, native_address }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
     get_effective_default_codespace_override,
@@ -44,8 +43,8 @@ glob FIXTURES = os.path.join(
 
 """Compile a fixture natively and return its JIT engine, memoized per module.
 
-A narrowing the backend cannot lower surfaces here first: the emitter raises,
-the module carries diagnostics, and there is no engine to call into. That is
+A narrowing the backend cannot lower surfaces here first: the kernel's compile
+carries diagnostics, and there is no engine to call into. That is
 a real failure of the shape, so it is asserted rather than skipped.
 """
 def _engine(fixture: str) -> any {
@@ -53,14 +52,7 @@ def _engine(fixture: str) -> any {
     if hit is not None {
         return hit;
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, fixture)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
+    (eng, _fx) = compile_native(str(os.path.join(FIXTURES, fixture)));
     _ENGINES[fixture] = eng;
     return eng;
 }

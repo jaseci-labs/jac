@@ -1,5 +1,4 @@
 import os;
-import sys;
 
 class CompilerSourceError(RuntimeError) {}
 
@@ -20,7 +19,3 @@ def _jac_source_failure_path(err: BaseException) -> (str | None);
 def fail_loud_on_compiler_source(err: ImportError) -> None;
 
 def compiler_source_failure_origin(err: BaseException) -> (str | None);
-
-def module_import_in_flight(file_path: str) -> bool;
-
-def import_error_re_enters(err: BaseException, file_path: str) -> (str | None);

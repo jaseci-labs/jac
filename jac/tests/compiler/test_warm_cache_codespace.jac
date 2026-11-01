@@ -12,8 +12,7 @@ raised. The client-codespace probe caught the ImportError and answered
 The key is now a function of the module and the configuration, the symtab-IR
 schedule pre-imports the compiler modules its passes reach at run time (the
 discipline the IR product already kept) so no compile is ever the first to
-import one, a compile that still manages to re-enter itself says so out loud
-instead of degrading, and a probe failure that comes from the compiler's own
+import one, and a probe failure that comes from the compiler's own
 source refuses to answer at all.
 
 A fourth law closes the cold-start hole (#8982 items 3 and 4): the modules a
@@ -60,9 +59,6 @@ import from jaclang.testing.cl_test_runner { _COLOR_CACHE, module_is_client }
 
 glob SYMBOL_UTILS: str = os.path.join(
          os.path.dirname(str(jaclang.__file__)), "compiler", "symbol_utils.jac"
-     ),
-     EXPR_KEYS: str = os.path.join(
-         os.path.dirname(str(jaclang.__file__)), "compiler", "expr_keys.jac"
      );
 
 
@@ -295,7 +291,7 @@ test "a schedule dependency mid-import puts the compile on the bootstrap tier" {
                 CompilationProduct.FROZEN
             ) for p in (schedule_for(product, ProductRequest(native=True)) or [])
         ];
-        assert tail == ["NativeImportFactsPass", "JcirGenPass"] , tail;
+        assert tail == ["NativeImportFactsPass", "PyastGenPass"] , tail;
     } finally {
         sys.modules[name] = saved;
     }
@@ -324,13 +320,6 @@ test "a silent internal compile failure names the dependency mid-import" {
 
 
 test "every scheduled pass and loader import is a declared schedule dependency" {
-    import from jaclang.bootstrap_manifest { is_seed_source }
-    `root = os.path.dirname(str(jaclang.__file__));
-
-    def seed(mod_name: str) -> bool {
-        rel = mod_name.removeprefix("jaclang.").replace(".", os.sep) + ".jac";
-        return is_seed_source(rel);
-    }
     codegen = (schedule_for(CompilationProduct.CODEGEN) or [])
         + (schedule_for(CompilationProduct.PY_IR) or [])
         + (schedule_for(CompilationProduct.FROZEN) or []);
@@ -349,48 +338,13 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
         }
         for p in passes {
             owner = p.__module__;
-            covered = seed(owner)
-                or any(owner == dep or owner.startswith(dep + ".") for dep in deps);
+            covered = any(owner == dep or owner.startswith(dep + ".") for dep in deps);
             assert covered , (
-                f"{origin}: pass {p.__name__} lives in {owner}, which is neither a "
-                "seed module nor in the schedule's dependency list; a compile "
-                "reached from its import would run the schedule that needs it"
+                f"{origin}: pass {p.__name__} lives in {owner}, which is not in "
+                "the schedule's dependency list; a compile reached from its "
+                "import would run the schedule that needs it"
             );
         }
-    }
-}
-
-
-test "a compile that re-enters the module being imported says so" {
-    # The kernel's early passes carry their own expr_keys, so only the
-    # bytecode frontend reaches the module this test holds mid-import.
-    import from unittest.mock { patch }
-    import jaclang.compiler.native_compiler as native_compiler;
-    ek = sys.modules["jaclang.compiler.expr_keys"];
-    saved_fn = ek.collect_assigned_symbols;
-    sys.modules["jac_reentrant_probe"] = initializing_stub(EXPR_KEYS);
-    delattr(ek, "collect_assigned_symbols");
-    try {
-        prog = JacProgram();
-        compiler = prog._get_compiler();
-        raised = False;
-        try {
-            with patch.object(native_compiler, "ensure_loaded", return_value=None) {
-                compiler.compile(
-                    file_path=EXPR_KEYS,
-                    target_program=compiler.selfhost.program,
-                    options=CompileOptions(no_cgen=True)
-                );
-            }
-        } except CompilerSourceError as loud {
-            raised = True;
-            assert "re-entered" in str(loud) , str(loud);
-            assert "jaclang.compiler.expr_keys" in str(loud) , str(loud);
-        }
-        assert raised , "a re-entrant compile degraded quietly instead of refusing";
-    } finally {
-        setattr(ek, "collect_assigned_symbols", saved_fn);
-        del sys.modules["jac_reentrant_probe"];
     }
 }
 

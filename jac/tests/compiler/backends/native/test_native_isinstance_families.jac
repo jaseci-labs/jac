@@ -14,8 +14,8 @@ arms is untagged.
 *Abstract base classes.* `collections.abc.Sequence` is a Python object no
 native unit can host. It answers by reducing to the finite set of native shapes
 that inhabit it; ABCs with no exact reduction refuse loudly instead, and the
-refusal is read back off the coverage seam that demotes the method, naming the
-ABC, rather than being a wrong answer nobody sees.
+refusal is read back off the reason the decision step demotes the function
+with, naming the ABC, rather than being a wrong answer nobody sees.
 
 *Type arms that arrive as values.* `isinstance(x, types)` with `types` a
 parameter. The fixed-arity spelling unrolls its arms; the variadic one lowers
@@ -24,11 +24,7 @@ to a native sequence, so the compare runs as a loop over a runtime length.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import jaclang;
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from tests.support { TESTS_DIR, compile_mir, compile_native, native_address }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
@@ -45,20 +41,12 @@ class PyBar(PyBase) {}
 class PyBaz(PyBase) {}
 
 """Compile the fixture once and hand back its JIT engine."""
-def families_engine -> ExecutionEngine {
+def families_engine -> any {
     if _ENGINE {
         return _ENGINE[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "isinstance_families.jac")),
-        options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not errors , f"isinstance_families.jac did not lower: {errors}";
-    assert ir.gen.llvm_ir , "no native IR for isinstance_families.jac";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , "no native engine for isinstance_families.jac";
+    (eng, fx) = compile_native("isinstance_families.jac", FIXTURES);
+    assert fx.llvm_ir() , "no native IR for isinstance_families.jac";
     _ENGINE.append(eng);
     return eng;
 }
@@ -142,49 +130,21 @@ test "abc arm: Mapping separates dicts from sequences" {
 
 
 test "abc arm: an ABC with no exact reduction refuses instead of guessing" {
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
-    prog = JacProgram();
-    na_coverage_begin();
-    try {
-        prog.compile(
-            file_path=str(os.path.join(FIXTURES, "isinstance_abc_opaque.jac")),
-            options=native_force_opts()
-        );
-    } finally {
-        coverage = na_coverage_end();
-    }
-    said = " ".join(
-        str(seam) for rec in coverage.values() for seam in (rec["seams"] or [])
-    );
-    assert "isinstance against `Iterable`" in said , (
-        "an unreducible ABC has to name itself in the seam that demotes the "
-        f"method, so the refusal is actionable; got: {said}"
+    fx = compile_mir("isinstance_abc_opaque.jac", FIXTURES);
+    assert fx.is_demoted("chk") , f"chk must refuse its ABC arm: {fx.demoted()}";
+    said = fx.reason("chk");
+    assert "Iterable" in said , (
+        "an unreducible ABC has to name itself in the reason that demotes the "
+        f"function, so the refusal is actionable; got: {said}"
     );
 }
 
 
 test "abc arm: a Python-based operand refuses rather than read a partial MRO" {
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
-    prog = JacProgram();
-    na_coverage_begin();
-    try {
-        prog.compile(
-            file_path=str(os.path.join(FIXTURES, "isinstance_pyb_abc.jac")),
-            options=native_force_opts()
-        );
-    } finally {
-        coverage = na_coverage_end();
-    }
-    said = " ".join(
-        str(seam) for rec in coverage.values() for seam in (rec["seams"] or [])
-    );
-    assert "isinstance against `Sequence`" in said , (
+    fx = compile_mir("isinstance_pyb_abc.jac", FIXTURES);
+    assert fx.is_demoted("chk") , f"chk must refuse its ABC arm: {fx.demoted()}";
+    said = fx.reason("chk");
+    assert "Sequence" in said , (
         "a reducible ABC is only exact while the operand's whole MRO is "
         f"native; a Python-side base has to refuse it; got: {said}"
     );
@@ -213,7 +173,7 @@ test "value arms: a variadic tuple of types loops over a runtime length" {
 }
 
 
-test "seam shapes: the coverage sites' own spellings lower and answer" {
+test "call-site shapes: the compiler's own spellings lower and answer" {
     walk = native_fn("chk_parent_walk", argc=0);
     assert walk() == 1 , (
         "`_find_parent_of_types` walks parents until an arm in the runtime "

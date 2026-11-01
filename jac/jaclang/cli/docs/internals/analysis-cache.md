@@ -180,13 +180,9 @@ real-AST derivation (a pinned identity contract; their frontend is the
 cheap phase) -- they participate in `SEC_DEPS` through their content key
 instead, so a stub edit still re-analyzes its importers.
 
-The compiler's own tree is an ordinary citizen of the cache. The selfhost
-program (the compiler compiling itself) hydrates and persists like any
-other program; the one bootstrap rule is readiness, not identity. While the
-interface codec's own modules (the type evaluator and the stubcat reader,
-writer and modiface) are not yet importable, or are mid-import, `eligible`
-answers no and those compiles run cold. The jac0 seed tier never goes
-through `compile()` and does not know the cache exists.
+The compiler's own tree is an ordinary citizen of the cache: the kernel
+compiles it like any other program, and it hydrates and persists the same
+way.
 
 Interfaces are encoded only inside analysis-driven closures: the compile
 at the root of the closure (the outermost `compile()` call) must be a

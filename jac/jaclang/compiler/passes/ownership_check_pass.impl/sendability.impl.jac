@@ -106,12 +106,7 @@ impl OwnershipCheckPass._collect_flow_reductions(lp: InForStmt) -> dict[SymId, s
             or tgt.sym.decl.find_parent_of_type(ModuleCode) is not _lp_mc {
             continue;
         }
-        _t = "";
-        try {
-            _t = tgt.type.mangle() if tgt.type is not None else "";
-        } except Exception {
-            _t = "";
-        }
+        _t = tgt.type.mangle() if tgt.type is not None else "";
         if _t != "int" {
             continue;
         }
@@ -443,12 +438,7 @@ impl OwnershipCheckPass._is_deep_immutable_scalar(nm: Name) -> bool {
     if t is None {
         return False;
     }
-    _mangled = "";
-    try {
-        _mangled = t.mangle();
-    } except Exception {
-        return False;
-    }
+    _mangled = t.mangle();
     return _mangled in ("int", "float", "bool", "str", "bytes");
 }
 
@@ -468,12 +458,7 @@ impl OwnershipCheckPass._chunks_shape_of(
     ) {
         return None;
     }
-    _m = "";
-    try {
-        _m = _t.target.type.mangle() if _t.target.type is not None else "";
-    } except Exception {
-        return None;
-    }
+    _m = _t.target.type.mangle() if _t.target.type is not None else "";
     if _m != "list" and not _m.startswith("list[") {
         return None;
     }

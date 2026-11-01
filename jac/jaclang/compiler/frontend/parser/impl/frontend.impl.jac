@@ -136,16 +136,9 @@ impl parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = "",
-    load_kernel: bool = True
+    annexes: list[WovenAnnex]
 ) -> tuple[Module, bool] {
-    nat = active_host().native_parse(
-        source_str, file_path, prog, annexes, early_context, load_kernel
-    );
-    if nat is not None {
-        return nat;
-    }
+    guard_host_compile(f"parsing {file_path}");
     (module, had_error) = parse(source_str, file_path, prog=prog);
     if had_error or not annexes {
         return (module, had_error);
@@ -161,17 +154,13 @@ impl annex_paths(file_path: str) -> list[str] {
     if not file_path.endswith(".jac") {
         return [];
     }
-    try {
-        import from jaclang.compiler.frontend.host { active_host }
-        host = active_host();
-        if host.base_file(file_path) is not None {
-            return [];
-        }
-        found = host.annex_files(file_path, ".impl.jac")
-            + host.annex_files(file_path, ".test.jac");
-    } except Exception {
+    import from jaclang.compiler.frontend.host { active_host }
+    host = active_host();
+    if host.base_file(file_path) is not None {
         return [];
     }
+    found = host.annex_files(file_path, ".impl.jac")
+        + host.annex_files(file_path, ".test.jac");
     unique: list[str] = [];
     for path in found {
         if path not in unique {
@@ -185,18 +174,12 @@ impl annex_sources(file_path: str) -> list[WovenAnnex] {
     host = active_host();
     out: list[WovenAnnex] = [];
     for pth in annex_paths(file_path) {
-        try {
-            out.append(WovenAnnex(source=host.read_source(pth), path=pth));
-        } except Exception {
-            continue;
-        }
+        out.append(WovenAnnex(source=host.read_source(pth), path=pth));
     }
-    try {
-        import from jaclang.compiler.driver.wiring { wiring_annex_for }
-        wired = wiring_annex_for(file_path);
-        if wired is not None {
-            out.append(wired);
-        }
-    } except Exception {}
+    import from jaclang.compiler.driver.wiring { wiring_annex_for }
+    wired = wiring_annex_for(file_path);
+    if wired is not None {
+        out.append(wired);
+    }
     return out;
 }

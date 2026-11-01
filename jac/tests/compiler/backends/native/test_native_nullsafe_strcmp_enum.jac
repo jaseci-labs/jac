@@ -13,8 +13,12 @@ enum's defining module is walked after the module referencing it.
 import ctypes;
 import os;
 import from pathlib { Path }
-import from tests.support { compile_native, get_func, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support {
+    compile_native,
+    get_func,
+    kernel_compile_file,
+    native_force_opts
+}
 
 glob FIXTURES = str(Path(__file__).resolve().parent / "fixtures");
 test "optional string equality is tag arithmetic, matching Python" {
@@ -33,12 +37,10 @@ test "optional string equality is tag arithmetic, matching Python" {
 }
 
 test "un-narrowed optional ordering is rejected at check time" {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, "optional_ptr_diag.jac")),
-        options=native_force_opts()
+    result = kernel_compile_file(
+        str(os.path.join(FIXTURES, "optional_ptr_diag.jac")), native_force_opts()
     );
-    msgs = [str(e) for e in prog.errors_had];
+    msgs = [diag.message for diag in result.errors];
     assert any("used where an ordered operand is required" in m for m in msgs) , (
         f"expected the E1121 ordering diagnostic, got: {msgs}"
     );
@@ -59,7 +61,7 @@ test "imported enum in container types survives module walk order" {
     # dict[Opcode, int]) which imports opcodes_mod (the enum), so the using
     # module is walked before Opcode is name-registered. Without the
     # structural enum fallback, lowering the glob's dict type fails with
-    # E5092 (compile_native then raises on prog.errors_had).
+    # E5092 (compile_native then fails on the kernel's errors).
     (eng, _) = compile_native("opcodes_entry.jac");
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();

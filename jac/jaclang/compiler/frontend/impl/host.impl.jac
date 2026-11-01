@@ -2,10 +2,6 @@ impl HostServices.session -> Iterator[None] {
     yield ;
 }
 
-impl HostServices.in_kernel -> bool {
-    return False;
-}
-
 impl HostServices.project_defaults -> (ProjectDefaults | None) {
     return None;
 }
@@ -70,8 +66,6 @@ impl HostServices.client_pulls(path: str) -> str {
     return "";
 }
 
-impl HostServices.client_pull_grew(path: str) {}
-
 impl HostServices.has_npm_package(spec: str, base_path: str) -> bool {
     return False;
 }
@@ -93,18 +87,6 @@ impl HostServices.declared_dependencies(
 impl HostServices.note(message: str, style: str = "dim") {}
 
 impl HostServices.stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
-    return None;
-}
-
-impl HostServices.parse_python(
-    source_str: str, file_path: str, program: JacProgram
-) -> tuple[Module, bool] {
-    raise RuntimeError("no compiler host is installed");
-}
-
-impl HostServices.stub_interface(
-    program: JacProgram, file_path: str
-) -> (Module | None) {
     return None;
 }
 
@@ -146,10 +128,6 @@ impl HostServices.wiring_file(path: str) -> (str | None) {
     return None;
 }
 
-impl HostServices.is_seed_source(rel_path: str) -> bool {
-    return False;
-}
-
 impl HostServices.wiring_records(digest: str) -> str {
     return "";
 }
@@ -161,17 +139,6 @@ impl HostServices.native_scan_record(path: str, digest: str) -> str {
 }
 
 impl HostServices.keep_native_scan_record(path: str, digest: str, text: str) {}
-
-impl HostServices.native_parse(
-    source_str: str,
-    file_path: str,
-    program: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = "",
-    load_kernel: bool = True
-) -> (tuple[Module, bool] | None) {
-    return None;
-}
 
 impl HostServices.woven_module(
     path: str, program: (JacProgram | None)
@@ -231,16 +198,6 @@ impl HostServices.client_boundary_facts(
     return None;
 }
 
-impl HostServices.kernel_compile(
-    program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
-    return None;
-}
-
-impl HostServices.in_compiler_tree(path: str) -> bool {
-    return False;
-}
-
 impl HostServices.schedule_import_failed(err: ImportError) {}
 
 impl HostServices.client_osp_core_js -> str {
@@ -259,16 +216,6 @@ impl HostServices.native_session_declares(
 
 impl HostServices.native_session_active(program: JacProgram) -> bool {
     return False;
-}
-
-impl HostServices.record_native_coverage(
-    path: str, outcome: str, code: str = "", detail: str = ""
-) {}
-
-impl HostServices.native_analyze(
-    program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-) -> (ModuleAnalysis | None) {
-    return None;
 }
 
 impl HostServices.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
@@ -307,10 +254,6 @@ impl HostServices.run_module_pipeline(
     raise RuntimeError("no compiler host is installed");
 }
 
-impl HostServices.internal_program(program: JacProgram) -> (JacProgram | None) {
-    return None;
-}
-
 impl HostServices.bind_context_program(
     context_root: JacProgram, program: JacProgram
 ) {}
@@ -333,10 +276,6 @@ impl HostServices.load_modules(names: list[str]) {}
 
 impl HostServices.module_in_flight(names: list[str]) -> str {
     return "";
-}
-
-impl HostServices.import_in_flight(path: str) -> bool {
-    return False;
 }
 
 impl HostServices.has_active_stub_catalog -> bool {
@@ -364,12 +303,21 @@ impl HostServices.default_target_triple -> str {
     return "";
 }
 
-impl HostServices.host_side -> HostServices {
-    return self;
+impl active_host -> HostServices {
+    if _HOSTS {
+        return _HOSTS[-1];
+    }
+    if kernel_resident() {
+        raise RuntimeError(
+            "no host services are installed in the compiler kernel: a compiler "
+            "lookup ran outside a compile, check or session request"
+        );
+    }
+    return _NEUTRAL_HOST;
 }
 
-impl active_host -> HostServices {
-    return _HOSTS[-1] if _HOSTS else _NEUTRAL_HOST;
+impl installed_host -> (HostServices | None) {
+    return _HOSTS[-1] if _HOSTS else None;
 }
 
 impl package_root -> str {
@@ -381,24 +329,30 @@ impl set_package_root(path: str) {
     _PACKAGE_ROOT.append(path);
 }
 
-impl install_host(host: HostServices) {
+impl install_host(host: (HostServices | None)) {
     _HOSTS.clear();
-    _HOSTS.append(host);
-}
-
-impl set_kernel_host_mode(mode: str) -> str {
-    previous = kernel_host_mode();
-    _KERNEL_HOST_MODE.clear();
-    if mode {
-        _KERNEL_HOST_MODE.append(mode);
+    if host is not None {
+        _HOSTS.append(host);
     }
-    return previous;
 }
 
-impl kernel_host_mode -> str {
-    return _KERNEL_HOST_MODE[0] if _KERNEL_HOST_MODE else "";
+impl mark_kernel_resident {
+    if not _KERNEL_RESIDENT {
+        _KERNEL_RESIDENT.append(True);
+    }
 }
 
-impl kernel_host_enabled -> bool {
-    return kernel_host_mode() != "";
+impl kernel_resident -> bool {
+    return bool(_KERNEL_RESIDENT);
+}
+
+impl guard_host_compile(what: str) {
+    if kernel_resident() {
+        return;
+    }
+    raise HostCompileError(
+        f"internal compiler error: {what} ran on the host. The kernel is the only "
+        "compiler: host code reaches the parser and the pass driver only through "
+        "a kernel request (compile, check, a session query or a kernel build)."
+    );
 }

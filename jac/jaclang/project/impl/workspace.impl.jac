@@ -11,46 +11,10 @@ impl _real(path: str) -> str {
     return resolved;
 }
 
-impl _read_toml(toml_path: str) -> dict[str, any] {
-    import tomllib;
-    try {
-        with open(toml_path, 'rb') as f {
-            doc = tomllib.load(f);
-        }
-    } except Exception {
-        return {};
-    }
-    return doc if isinstance(doc, dict) else {};
-}
-
-impl _table(raw: any, *keys: str) -> dict[str, any] {
-    cur = raw;
-    for key in keys {
-        if not isinstance(cur, dict) {
-            return {};
-        }
-        cur = cur.get(key, {});
-    }
-    return cur if isinstance(cur, dict) else {};
-}
-
-impl _pins_of(raw: any) -> dict[str, str] {
-    pins: dict[str, str] = {};
-    if isinstance(raw, dict) {
-        for (key, value) in raw.items() {
-            pins[str(key)] = str(value);
-        }
-    }
-    return pins;
-}
-
-impl _npm_names_of(raw: any) -> set[str] {
+impl _npm_names_of(config: JacConfig) -> set[str] {
     names: set[str] = set();
-    if not isinstance(raw, dict) {
-        return names;
-    }
-    for k in raw {
-        key = str(k);
+    raw = config.plugin_dependencies.get('npm', {});
+    for key in raw {
         if key == 'dev' {
             continue;
         }
@@ -58,8 +22,8 @@ impl _npm_names_of(raw: any) -> set[str] {
     }
     dev = raw.get('dev', {});
     if isinstance(dev, dict) {
-        for k in dev {
-            names.add(str(k));
+        for key in dev {
+            names.add(str(key));
         }
     }
     return names;
@@ -89,8 +53,7 @@ impl _chain_stamp(root_dir: str) -> tuple[float, ...] {
     return tuple(stamps);
 }
 
-impl _implicit_kind(root_dir: str, project: dict[str, any]) -> str {
-    kind = str(project.get('kind', '') or '');
+impl _implicit_kind(root_dir: str, kind: str) -> str {
     if kind {
         return kind;
     }
@@ -106,20 +69,15 @@ impl _implicit_kind(root_dir: str, project: dict[str, any]) -> str {
     return outer_app.kind if outer_app is not None else '';
 }
 
-impl _build_workspace(
-    root_dir: str, toml_path: str, doc: dict[str, any]
-) -> WorkspaceSpec {
-    project = _table(doc, 'project');
-    apps_raw = doc.get('apps', {});
-    explicit = isinstance(apps_raw, dict) and len(apps_raw) > 0;
-    base_pins = _pins_of(_table(doc, 'placement', 'pins'));
-    base_npm = _npm_names_of(_table(doc, 'dependencies', 'npm'));
+impl _build_workspace(root_dir: str, toml_path: str, config: JacConfig) -> WorkspaceSpec {
+    project = config.project;
+    explicit = config.is_workspace;
+    base_pins = dict(config.placement.pins);
+    base_npm = _npm_names_of(config);
     apps: dict[str, AppSpec] = {};
     if explicit {
-        import from jaclang.project.apps { parse_apps }
-        declarations = parse_apps(project, apps_raw);
         entries: dict[str, str] = {};
-        for (name, declaration) in declarations.items() {
+        for (name, declaration) in config.apps.items() {
             entry_abs = _real(declaration.entry_path(root_dir));
             if entry_abs in entries {
                 raise ValueError(
@@ -129,10 +87,7 @@ impl _build_workspace(
                 );
             }
             entries[entry_abs] = name;
-            raw = declaration.overlays;
-            pins = dict(base_pins);
-            pins.update(_pins_of(_table(raw, 'placement', 'pins')));
-            npm = set(base_npm) | _npm_names_of(_table(raw, 'dependencies', 'npm'));
+            effective = config.effective_for_app(name) if declaration.overlays else config;
             apps[name] = AppSpec(
                 name=name,
                 kind=declaration.kind,
@@ -140,21 +95,22 @@ impl _build_workspace(
                 ui=kind_ui(declaration.kind),
                 platform=declaration.platform,
                 route=declaration.route,
-                pins=pins,
-                npm_names=npm,
+                pins=dict(effective.placement.pins),
+                npm_names=_npm_names_of(effective),
                 has_server=kind_has_server(declaration.kind),
                 codespace=kind_codespace(declaration.kind)
             );
         }
     } else {
-        name = str(project.get('name', '') or 'main');
-        kind = _implicit_kind(root_dir, project);
-        import from jaclang.project.apps { resolve_entry_path }
-        entry_module = str(project.get('entry-point', '') or '');
+        name = project.name or 'main';
+        kind = _implicit_kind(root_dir, project.kind);
+        entry_module = project.entry_point
+            if project.entry_point_declared
+            else kind_entry(kind);
         apps[name] = AppSpec(
             name=name,
             kind=kind,
-            `entry=resolve_entry_path(entry_module or kind_entry(kind), root_dir),
+            `entry=resolve_entry_path(entry_module, root_dir),
             ui=kind_ui(kind),
             pins=dict(base_pins),
             npm_names=set(base_npm),
@@ -163,9 +119,7 @@ impl _build_workspace(
             implicit=True
         );
     }
-    default_app = str(
-        project.get('default-app', '') or project.get('default_app', '') or ''
-    );
+    default_app = project.default_app;
     if not default_app and len(apps) == 1 {
         default_app = next(iter(apps));
     }
@@ -173,12 +127,9 @@ impl _build_workspace(
         app.real_entry = _real(app.`entry) if app.`entry else '';
         app.fact_digest = _fact_digest(app, root_dir);
     }
-    namespace = persistence_namespace(
-        doc.get("persistence", {}), str(project.get("name", ""))
-    );
+    namespace = config.persistence.namespace;
     h = hashlib.sha256();
     h.update(namespace.encode());
-    h.update(json.dumps(doc.get("persistence", {}), sort_keys=True).encode());
     h.update(
         json.dumps(
             [explicit, default_app, [a.fact_digest for a in apps.values()]],
@@ -215,6 +166,7 @@ impl workspace_for_path(path: str) -> (WorkspaceSpec | None) {
 }
 
 impl _workspace_for_path(path: str) -> (WorkspaceSpec | None) {
+    import from jaclang.project.config { JacConfig }
     root_dir = find_jac_project_root(path);
     if not root_dir {
         return None;
@@ -226,7 +178,7 @@ impl _workspace_for_path(path: str) -> (WorkspaceSpec | None) {
     if cached is not None and cached[0] == stamp {
         return cached[1];
     }
-    ws = _build_workspace(root_dir, toml_path, _read_toml(toml_path));
+    ws = _build_workspace(root_dir, toml_path, JacConfig.load(Path(toml_path)));
     _ws_cache[key] = (stamp, ws);
     return ws;
 }
@@ -237,23 +189,16 @@ impl app_for_path(path: str) -> (AppSpec | None) {
 }
 
 impl _fact_digest(app: AppSpec, ws_root: str) -> str {
-    def _rel(path: str) -> str {
-        if not path {
-            return '';
-        }
-        try {
-            return os.path.relpath(path, ws_root).replace(os.sep, '/');
-        } except ValueError {
-            return os.path.normpath(path).replace(os.sep, '/');
-        }
-    }
+    entry_rel = os.path.relpath(app.`entry, ws_root).replace(os.sep, '/')
+        if app.`entry
+        else '';
     h = hashlib.sha256();
     h.update(
         json.dumps(
             [
                 app.name,
                 app.kind,
-                _rel(app.`entry),
+                entry_rel,
                 app.effective_route(),
                 app.platform,
                 sorted(app.pins.items()),
@@ -279,15 +224,21 @@ impl persistence_namespace(raw: any, project_name: str) -> str {
     return namespace;
 }
 
-impl workspace_scope -> Iterator[None] {
-    if _resolution.get() is not None {
-        yield ;
-        return;
+impl workspace_scope -> WorkspaceScope {
+    return WorkspaceScope();
+}
+
+impl WorkspaceScope.__enter__ -> WorkspaceScope {
+    if _resolution.get() is None {
+        self.token = _resolution.set(WorkspaceResolution());
     }
-    token = _resolution.set(WorkspaceResolution());
-    try {
-        yield ;
-    } finally {
-        _resolution.reset(token);
+    return self;
+}
+
+impl WorkspaceScope.__exit__(exc_type: any, exc: any, trace: any) -> bool {
+    if self.token is not None {
+        _resolution.reset(self.token);
+        self.token = None;
     }
+    return False;
 }

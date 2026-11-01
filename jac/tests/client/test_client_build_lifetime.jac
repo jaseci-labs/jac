@@ -6,7 +6,7 @@ import from pathlib { Path }
 import from unittest.mock { patch }
 import from jaclang.client.targets.web_target { WebTarget }
 import from jaclang.client.vite_bundler { ViteBundler }
-import from jaclang.compiler.driver.compiler { JacCompiler }
+import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.runtime.runtime { JacRuntime as Jac }
 
 test "standalone client build releases application trees before bundling" {
@@ -24,8 +24,8 @@ test "standalone client build releases application trees before bundling" {
         reached: list[bool] = [];
         trees: list[weakref.ref] = [];
         program = Jac.get_program();
-        original_compile = JacCompiler.compile;
-        def compile(self: JacCompiler, *args: any, **kwargs: any) -> any {
+        original_compile = JacProgram.compile;
+        def compile(self: JacProgram, *args: any, **kwargs: any) -> any {
             mod = original_compile(self, *args, **kwargs);
             if mod is not None and mod.loc.mod_path == str(entry_path) {
                 trees.append(weakref.ref(mod));
@@ -46,7 +46,7 @@ test "standalone client build releases application trees before bundling" {
                 'export function launch() {}'
             );
         }
-        with patch.object(JacCompiler, "compile", compile), patch.object(
+        with patch.object(JacProgram, "compile", compile), patch.object(
             ViteBundler, "build", bundle
         ) {
             WebTarget().build(entry_path, project_dir);

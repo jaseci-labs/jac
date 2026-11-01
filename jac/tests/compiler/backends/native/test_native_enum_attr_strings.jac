@@ -10,29 +10,16 @@ sealed-artifact crash.
 """
 
 import ctypes;
-import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from tests.support { compile_native as compile_fixture, native_address }
+import from jaclang.compiler.backends.native.llvm.jit { ExecutionEngine }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     ),
-     _ENG: list[any] = [];
+glob _ENG: list[any] = [];
 
 def compile_native -> ExecutionEngine {
     if _ENG {
         return _ENG[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "enum_attr_runtime.jac")),
-        options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors: {errors}";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , "No native engine produced for enum_attr_runtime.jac";
+    (eng, _) = compile_fixture("enum_attr_runtime.jac");
     _ENG.append(eng);
     return eng;
 }

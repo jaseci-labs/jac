@@ -603,7 +603,7 @@ impl PyastBuildPass.proc_set(nd: py_ast.Set) -> SetVal {
     return SetVal(values=valid, kid=kid);
 }
 
-impl PyastBuildPass.proc_pass(nd: py_ast.Pass) -> Semi {
+impl PyastBuildPass.proc_pass(nd: py_ast.stmt) -> Semi {
     return Semi(
         orig_src=self.orig_src,
         name=Tok.SEMI,
@@ -618,7 +618,7 @@ impl PyastBuildPass.proc_pass(nd: py_ast.Pass) -> Semi {
 }
 
 impl PyastBuildPass.proc_nonlocal(nd: py_ast.Nonlocal) -> Semi {
-    return self.proc_pass(cast(py_ast.Pass, nd));
+    return self.proc_pass(nd);
 }
 
 impl PyastBuildPass.proc_named_expr(nd: py_ast.NamedExpr) -> AtomUnit {
@@ -672,24 +672,37 @@ impl PyastBuildPass.proc_match_star(nd: py_ast.MatchStar) -> MatchStar {
 }
 
 impl PyastBuildPass.proc_match_singleton(nd: py_ast.MatchSingleton) -> MatchSingleton {
-    type = Tok.NULL if (nd.value is None) else Tok.BOOL;
-    ret_type = Null if (nd.value is None) else Bool;
-    value = ret_type(
-        orig_src=self.orig_src,
-        name=type,
-        value=str(nd.value),
-        line=nd.lineno,
-        end_line=nd.end_lineno or nd.lineno,
-        col_start=nd.col_offset,
-        col_end=(nd.col_offset + len(str(nd.value))),
-        pos_start=0,
-        pos_end=0
-    );
-    if isinstance(value, (Bool, Null)) {
+    singleton = nd.value;
+    if isinstance(singleton, PyNoneType) {
+        value = Null(
+            orig_src=self.orig_src,
+            name=Tok.NULL,
+            value='None',
+            line=nd.lineno,
+            end_line=nd.end_lineno or nd.lineno,
+            col_start=nd.col_offset,
+            col_end=(nd.col_offset + 4),
+            pos_start=0,
+            pos_end=0
+        );
         return MatchSingleton(value=value, kid=[value]);
-    } else {
-        raise RuntimeError(self.ctx.ice());
     }
+    if isinstance(singleton, PyBool) {
+        text = 'True' if singleton.val else 'False';
+        value = Bool(
+            orig_src=self.orig_src,
+            name=Tok.BOOL,
+            value=text,
+            line=nd.lineno,
+            end_line=nd.end_lineno or nd.lineno,
+            col_start=nd.col_offset,
+            col_end=(nd.col_offset + len(text)),
+            pos_start=0,
+            pos_end=0
+        );
+        return MatchSingleton(value=value, kid=[value]);
+    }
+    raise RuntimeError(self.ctx.ice('Invalid match singleton'));
 }
 
 impl PyastBuildPass.proc_match_sequence(nd: py_ast.MatchSequence) -> MatchSequence {
@@ -907,10 +920,11 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> MultiString {
 
     valid: list[(String | FormattedValue)] = [];
     for i in nd.values {
-        if (isinstance(i, py_ast.Constant) and isinstance(i.value, str)) {
+        if (isinstance(i, py_ast.Constant) and isinstance(i.value, PyStr)) {
+            text = i.value.val;
             escaped_value = self._get_source_segment(i);
             if escaped_value is None {
-                raw_repr = repr(i.value);
+                raw_repr = repr(text);
                 escaped_value = raw_repr[1:-1];
             }
 
@@ -922,7 +936,7 @@ impl PyastBuildPass.proc_joined_str(nd: py_ast.JoinedStr) -> MultiString {
                     line=i.lineno,
                     end_line=i.end_lineno or i.lineno,
                     col_start=i.col_offset,
-                    col_end=(i.col_offset + len(i.value)),
+                    col_end=(i.col_offset + len(text)),
                     pos_start=0,
                     pos_end=0
                 )
@@ -988,9 +1002,10 @@ impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> Import {
             modpaths.append(self.name_node(nd, i, col_start=0, col_end=0));
         }
     }
-    moddots = [self.operator(Tok.DOT, '.') for _ in range(nd.level)];
+    level = nd.level or 0;
+    moddots = [self.operator(Tok.DOT, '.') for _ in range(level)];
     modparts = moddots + modpaths;
-    path = ModulePath(path=modpaths or None, level=nd.level, alias=None, kid=modparts);
+    path = ModulePath(path=modpaths or None, level=level, alias=None, kid=modparts);
     names = [self.convert(name) for name in nd.names];
     valid_names = [];
     for name in names {
@@ -1082,7 +1097,7 @@ impl PyastBuildPass.proc_if_exp(nd: py_ast.IfExp) -> IfElseExpr {
 }
 
 impl PyastBuildPass.proc_global(nd: py_ast.Global) -> Semi {
-    return self.proc_pass(cast(py_ast.Pass, nd));
+    return self.proc_pass(nd);
 }
 
 impl PyastBuildPass.proc_generator_exp(nd: py_ast.GeneratorExp) -> GenCompr {
@@ -1100,8 +1115,8 @@ impl PyastBuildPass.proc_formatted_value(nd: py_ast.FormattedValue) -> Formatted
         if isinstance(nd.format_spec, py_ast.JoinedStr) {
             fmt_parts: list[str] = [];
             for part in nd.format_spec.values {
-                if isinstance(part, py_ast.Constant) and isinstance(part.value, str) {
-                    fmt_parts.append(part.value);
+                if isinstance(part, py_ast.Constant) and isinstance(part.value, PyStr) {
+                    fmt_parts.append(part.value.val);
                 } elif isinstance(part, py_ast.FormattedValue) {
                     nested_fmt = self.convert(part);
                     if isinstance(nested_fmt, FormattedValue) {
@@ -1248,61 +1263,117 @@ impl PyastBuildPass.proc_continue(nd: py_ast.Continue) -> CtrlStmt {
 }
 
 impl PyastBuildPass.proc_constant(nd: py_ast.Constant) -> Literal {
-    type_mapping: dict[type, type[Literal]] = {
-        int: Int,
-        float: Float,
-        str: String,
-        bytes: String,
-        bool: Bool,
-        type(None): Null
-    };
-    value_type = type(nd.value);
-    if (value_type in type_mapping) {
-        if (value_type is None) {
-            token_type = 'NULL';
-        } elif (value_type is str) {
-            token_type = 'STRING';
-        } else {
-            token_type = f"{value_type.__name__.upper()}";
-        }
-        if (value_type is str) {
-            value = self._get_source_segment(nd);
-            if value is None {
-                raw_repr = repr(nd.value);
-                quote = "'" if raw_repr.startswith("'") else '"';
-                value = f"{quote}{raw_repr[1:-1]}{quote}";
-            } else {
-                value = self._strip_string_continuations(value);
-            }
-        } else {
-            value = str(nd.value);
-        }
-        return type_mapping[value_type](
-            orig_src=self.orig_src,
-            name=token_type,
-            value=value,
-            line=nd.lineno,
-            end_line=nd.end_lineno or nd.lineno,
-            col_start=nd.col_offset,
-            col_end=(nd.col_offset + len(str(nd.value))),
-            pos_start=0,
-            pos_end=0
-        );
-    } elif (nd.value == Ellipsis) {
+    value = nd.value;
+    line = nd.lineno;
+    end_line = nd.end_lineno or nd.lineno;
+    col = nd.col_offset;
+    if isinstance(value, PyEllipsis) {
         return UniEllipsis(
             orig_src=self.orig_src,
             name=Tok.ELLIPSIS,
             value='...',
-            line=nd.lineno,
-            end_line=nd.end_lineno or nd.lineno,
-            col_start=nd.col_offset,
-            col_end=(nd.col_offset + 3),
+            line=line,
+            end_line=end_line,
+            col_start=col,
+            col_end=(col + 3),
             pos_start=0,
             pos_end=0
         );
-    } else {
-        raise RuntimeError(self.ctx.ice('Invalid type for constant'));
     }
+    if isinstance(value, PyStr) {
+        text = value.val;
+        segment = self._get_source_segment(nd);
+        if segment is None {
+            raw_repr = repr(text);
+            quote = "'" if raw_repr.startswith("'") else '"';
+            segment = f"{quote}{raw_repr[1:-1]}{quote}";
+        } else {
+            segment = self._strip_string_continuations(segment);
+        }
+        return String(
+            orig_src=self.orig_src,
+            name='STRING',
+            value=segment,
+            line=line,
+            end_line=end_line,
+            col_start=col,
+            col_end=(col + len(text)),
+            pos_start=0,
+            pos_end=0
+        );
+    }
+    if isinstance(value, PyBytes) {
+        spelled = repr(bytes(value.val));
+        return String(
+            orig_src=self.orig_src,
+            name='BYTES',
+            value=spelled,
+            line=line,
+            end_line=end_line,
+            col_start=col,
+            col_end=(col + len(spelled)),
+            pos_start=0,
+            pos_end=0
+        );
+    }
+    if isinstance(value, PyBool) {
+        spelled = 'True' if value.val else 'False';
+        return Bool(
+            orig_src=self.orig_src,
+            name='BOOL',
+            value=spelled,
+            line=line,
+            end_line=end_line,
+            col_start=col,
+            col_end=(col + len(spelled)),
+            pos_start=0,
+            pos_end=0
+        );
+    }
+    if isinstance(value, PyNoneType) {
+        return Null(
+            orig_src=self.orig_src,
+            name=Tok.NULL,
+            value='None',
+            line=line,
+            end_line=end_line,
+            col_start=col,
+            col_end=(col + 4),
+            pos_start=0,
+            pos_end=0
+        );
+    }
+    if isinstance(value, (PyInt, PyBigInt)) {
+        spelled = integer_decimal(value)
+            if isinstance(value, PyBigInt)
+            else str(value.val);
+        return Int(
+            orig_src=self.orig_src,
+            name='INT',
+            value=spelled,
+            line=line,
+            end_line=end_line,
+            col_start=col,
+            col_end=(col + len(spelled)),
+            pos_start=0,
+            pos_end=0
+        );
+    }
+    if isinstance(value, PyFloat) {
+        spelled = repr(value.val);
+        return Float(
+            orig_src=self.orig_src,
+            name='FLOAT',
+            value=spelled,
+            line=line,
+            end_line=end_line,
+            col_start=col,
+            col_end=(col + len(spelled)),
+            pos_start=0,
+            pos_end=0
+        );
+    }
+    raise RuntimeError(self.ctx.ice('Invalid type for constant'));
 }
 
 impl PyastBuildPass.proc_compare(nd: py_ast.Compare) -> AtomUnit {
@@ -2023,13 +2094,13 @@ impl PyastBuildPass.proc_function_def(
     return ret;
 }
 
-impl PyastBuildPass.proc_template_str(nd: py_ast.AST) -> UniNode {
+impl PyastBuildPass.proc_template_str(nd: py_ast.TemplateStr) -> UniNode {
     raise RuntimeError(
         self.ctx.ice("Python 3.14 t-strings (PEP 750) are not supported in Jac")
     );
 }
 
-impl PyastBuildPass.proc_interpolation(nd: py_ast.AST) -> UniNode {
+impl PyastBuildPass.proc_interpolation(nd: py_ast.Interpolation) -> UniNode {
     raise RuntimeError(
         self.ctx.ice("Python 3.14 t-string interpolations are not supported in Jac")
     );
@@ -2098,24 +2169,235 @@ impl PyastBuildPass.extract_with_entry(
 }
 
 impl PyastBuildPass._run_impl(ir_in: PythonModuleAst) -> Module {
-    py_mod = ir_in.ast;
-    if not isinstance(py_mod, py_ast.Module) {
-        raise RuntimeError(self.ctx.ice('Expected a Python module AST root'));
-    }
-    self.module = self.proc_module(py_mod);
+    self.module = self.proc_module(ir_in.ast);
     return self.module;
 }
 
-impl PyastBuildPass.convert(nd: py_ast.AST) -> UniNode {
+impl PyastBuildPass.convert(nd: py_ast.ast_node) -> UniNode {
     if self.is_canceled() {
         raise StopIteration;
     }
-    if hasattr(self, f"proc_{pascal_to_snake(type(nd).__name__)}") {
-        ret = getattr(self, f"proc_{pascal_to_snake(type(nd).__name__)}")(nd);
-    } else {
-        raise RuntimeError(self.ctx.ice(f"Unknown node type {type(nd).__name__}"));
+    kind = nd.node_kind();
+    match kind {
+        case py_ast.ast_kind.Module:
+            return self.proc_module(nd as py_ast.Module);
+        case py_ast.ast_kind.Interactive:
+            return self.proc_interactive(nd as py_ast.Interactive);
+        case py_ast.ast_kind.FunctionType:
+            return self.proc_function_type(nd as py_ast.FunctionType);
+        case py_ast.ast_kind.FunctionDef:
+            return self.proc_function_def(nd as py_ast.FunctionDef);
+        case py_ast.ast_kind.AsyncFunctionDef:
+            return self.proc_async_function_def(nd as py_ast.AsyncFunctionDef);
+        case py_ast.ast_kind.ClassDef:
+            return self.proc_class_def(nd as py_ast.ClassDef);
+        case py_ast.ast_kind.Return:
+            return self.proc_return(nd as py_ast.Return);
+        case py_ast.ast_kind.Delete:
+            return self.proc_delete(nd as py_ast.Delete);
+        case py_ast.ast_kind.Assign:
+            return self.proc_assign(nd as py_ast.Assign);
+        case py_ast.ast_kind.TypeAlias:
+            return self.proc_type_alias(nd as py_ast.TypeAlias);
+        case py_ast.ast_kind.AugAssign:
+            return self.proc_aug_assign(nd as py_ast.AugAssign);
+        case py_ast.ast_kind.AnnAssign:
+            return self.proc_ann_assign(nd as py_ast.AnnAssign);
+        case py_ast.ast_kind.For:
+            return self.proc_for(nd as py_ast.For);
+        case py_ast.ast_kind.AsyncFor:
+            return self.proc_async_for(nd as py_ast.AsyncFor);
+        case py_ast.ast_kind.While:
+            return self.proc_while(nd as py_ast.While);
+        case py_ast.ast_kind.If:
+            return self.proc_if(nd as py_ast.If);
+        case py_ast.ast_kind.With:
+            return self.proc_with(nd as py_ast.With);
+        case py_ast.ast_kind.AsyncWith:
+            return self.proc_async_with(nd as py_ast.AsyncWith);
+        case py_ast.ast_kind.Match:
+            return self.proc_match(nd as py_ast.Match);
+        case py_ast.ast_kind.Raise:
+            return self.proc_raise(nd as py_ast.Raise);
+        case py_ast.ast_kind.Try:
+            return self.proc_try(nd as py_ast.Try);
+        case py_ast.ast_kind.TryStar:
+            return self.proc_try_star(nd as py_ast.TryStar);
+        case py_ast.ast_kind.Assert:
+            return self.proc_assert(nd as py_ast.Assert);
+        case py_ast.ast_kind.Import:
+            return self.proc_import(nd as py_ast.Import);
+        case py_ast.ast_kind.ImportFrom:
+            return self.proc_import_from(nd as py_ast.ImportFrom);
+        case py_ast.ast_kind.Global:
+            return self.proc_global(nd as py_ast.Global);
+        case py_ast.ast_kind.Nonlocal:
+            return self.proc_nonlocal(nd as py_ast.Nonlocal);
+        case py_ast.ast_kind.Expr:
+            return self.proc_expr(nd as py_ast.Expr);
+        case py_ast.ast_kind.Pass:
+            return self.proc_pass(nd as py_ast.Pass);
+        case py_ast.ast_kind.Break:
+            return self.proc_break(nd as py_ast.Break);
+        case py_ast.ast_kind.Continue:
+            return self.proc_continue(nd as py_ast.Continue);
+        case py_ast.ast_kind.BoolOp:
+            return self.proc_bool_op(nd as py_ast.BoolOp);
+        case py_ast.ast_kind.NamedExpr:
+            return self.proc_named_expr(nd as py_ast.NamedExpr);
+        case py_ast.ast_kind.BinOp:
+            return self.proc_bin_op(nd as py_ast.BinOp);
+        case py_ast.ast_kind.UnaryOp:
+            return self.proc_unary_op(nd as py_ast.UnaryOp);
+        case py_ast.ast_kind.Lambda:
+            return self.proc_lambda(nd as py_ast.Lambda);
+        case py_ast.ast_kind.IfExp:
+            return self.proc_if_exp(nd as py_ast.IfExp);
+        case py_ast.ast_kind.Dict:
+            return self.proc_dict(nd as py_ast.Dict);
+        case py_ast.ast_kind.Set:
+            return self.proc_set(nd as py_ast.Set);
+        case py_ast.ast_kind.ListComp:
+            return self.proc_list_comp(nd as py_ast.ListComp);
+        case py_ast.ast_kind.SetComp:
+            return self.proc_set_comp(nd as py_ast.SetComp);
+        case py_ast.ast_kind.DictComp:
+            return self.proc_dict_comp(nd as py_ast.DictComp);
+        case py_ast.ast_kind.GeneratorExp:
+            return self.proc_generator_exp(nd as py_ast.GeneratorExp);
+        case py_ast.ast_kind.Await:
+            return self.proc_await(nd as py_ast.Await);
+        case py_ast.ast_kind.Yield:
+            return self.proc_yield(nd as py_ast.Yield);
+        case py_ast.ast_kind.YieldFrom:
+            return self.proc_yield_from(nd as py_ast.YieldFrom);
+        case py_ast.ast_kind.Compare:
+            return self.proc_compare(nd as py_ast.Compare);
+        case py_ast.ast_kind.Call:
+            return self.proc_call(nd as py_ast.Call);
+        case py_ast.ast_kind.FormattedValue:
+            return self.proc_formatted_value(nd as py_ast.FormattedValue);
+        case py_ast.ast_kind.Interpolation:
+            return self.proc_interpolation(nd as py_ast.Interpolation);
+        case py_ast.ast_kind.JoinedStr:
+            return self.proc_joined_str(nd as py_ast.JoinedStr);
+        case py_ast.ast_kind.TemplateStr:
+            return self.proc_template_str(nd as py_ast.TemplateStr);
+        case py_ast.ast_kind.Constant:
+            return self.proc_constant(nd as py_ast.Constant);
+        case py_ast.ast_kind.Attribute:
+            return self.proc_attribute(nd as py_ast.Attribute);
+        case py_ast.ast_kind.Subscript:
+            return self.proc_subscript(nd as py_ast.Subscript);
+        case py_ast.ast_kind.Starred:
+            return self.proc_starred(nd as py_ast.Starred);
+        case py_ast.ast_kind.Name:
+            return self.proc_name(nd as py_ast.Name);
+        case py_ast.ast_kind.List:
+            return self.proc_list(nd as py_ast.List);
+        case py_ast.ast_kind.Tuple:
+            return self.proc_tuple(nd as py_ast.Tuple);
+        case py_ast.ast_kind.Slice:
+            return self.proc_slice(nd as py_ast.Slice);
+        case py_ast.ast_kind.And:
+            return self.proc_and(nd as py_ast.And);
+        case py_ast.ast_kind.Or:
+            return self.proc_or(nd as py_ast.Or);
+        case py_ast.ast_kind.Add:
+            return self.proc_add(nd as py_ast.Add);
+        case py_ast.ast_kind.Sub:
+            return self.proc_sub(nd as py_ast.Sub);
+        case py_ast.ast_kind.Mult:
+            return self.proc_mult(nd as py_ast.Mult);
+        case py_ast.ast_kind.MatMult:
+            return self.proc_mat_mult(nd as py_ast.MatMult);
+        case py_ast.ast_kind.Div:
+            return self.proc_div(nd as py_ast.Div);
+        case py_ast.ast_kind.Mod:
+            return self.proc_mod(nd as py_ast.Mod);
+        case py_ast.ast_kind.Pow:
+            return self.proc_pow(nd as py_ast.Pow);
+        case py_ast.ast_kind.LShift:
+            return self.proc_l_shift(nd as py_ast.LShift);
+        case py_ast.ast_kind.RShift:
+            return self.proc_r_shift(nd as py_ast.RShift);
+        case py_ast.ast_kind.BitOr:
+            return self.proc_bit_or(nd as py_ast.BitOr);
+        case py_ast.ast_kind.BitXor:
+            return self.proc_bit_xor(nd as py_ast.BitXor);
+        case py_ast.ast_kind.BitAnd:
+            return self.proc_bit_and(nd as py_ast.BitAnd);
+        case py_ast.ast_kind.FloorDiv:
+            return self.proc_floor_div(nd as py_ast.FloorDiv);
+        case py_ast.ast_kind.Invert:
+            return self.proc_invert(nd as py_ast.Invert);
+        case py_ast.ast_kind.Not:
+            return self.proc_not(nd as py_ast.Not);
+        case py_ast.ast_kind.UAdd:
+            return self.proc_u_add(nd as py_ast.UAdd);
+        case py_ast.ast_kind.USub:
+            return self.proc_u_sub(nd as py_ast.USub);
+        case py_ast.ast_kind.Eq:
+            return self.proc_eq(nd as py_ast.Eq);
+        case py_ast.ast_kind.NotEq:
+            return self.proc_not_eq(nd as py_ast.NotEq);
+        case py_ast.ast_kind.Lt:
+            return self.proc_lt(nd as py_ast.Lt);
+        case py_ast.ast_kind.LtE:
+            return self.proc_lt_e(nd as py_ast.LtE);
+        case py_ast.ast_kind.Gt:
+            return self.proc_gt(nd as py_ast.Gt);
+        case py_ast.ast_kind.GtE:
+            return self.proc_gt_e(nd as py_ast.GtE);
+        case py_ast.ast_kind.Is:
+            return self.proc_is(nd as py_ast.Is);
+        case py_ast.ast_kind.IsNot:
+            return self.proc_is_not(nd as py_ast.IsNot);
+        case py_ast.ast_kind.In:
+            return self.proc_in(nd as py_ast.In);
+        case py_ast.ast_kind.NotIn:
+            return self.proc_not_in(nd as py_ast.NotIn);
+        case py_ast.ast_kind.comprehension:
+            return self.proc_comprehension(nd as py_ast.comprehension);
+        case py_ast.ast_kind.ExceptHandler:
+            return self.proc_except_handler(nd as py_ast.ExceptHandler);
+        case py_ast.ast_kind.arguments:
+            return self.proc_arguments(nd as py_ast.arguments);
+        case py_ast.ast_kind.arg:
+            return self.proc_arg(nd as py_ast.arg);
+        case py_ast.ast_kind.keyword:
+            return self.proc_keyword(nd as py_ast.keyword);
+        case py_ast.ast_kind.alias:
+            return self.proc_alias(nd as py_ast.alias);
+        case py_ast.ast_kind.withitem:
+            return self.proc_withitem(nd as py_ast.withitem);
+        case py_ast.ast_kind.match_case:
+            return self.proc_match_case(nd as py_ast.match_case);
+        case py_ast.ast_kind.MatchValue:
+            return self.proc_match_value(nd as py_ast.MatchValue);
+        case py_ast.ast_kind.MatchSingleton:
+            return self.proc_match_singleton(nd as py_ast.MatchSingleton);
+        case py_ast.ast_kind.MatchSequence:
+            return self.proc_match_sequence(nd as py_ast.MatchSequence);
+        case py_ast.ast_kind.MatchMapping:
+            return self.proc_match_mapping(nd as py_ast.MatchMapping);
+        case py_ast.ast_kind.MatchClass:
+            return self.proc_match_class(nd as py_ast.MatchClass);
+        case py_ast.ast_kind.MatchStar:
+            return self.proc_match_star(nd as py_ast.MatchStar);
+        case py_ast.ast_kind.MatchAs:
+            return self.proc_match_as(nd as py_ast.MatchAs);
+        case py_ast.ast_kind.MatchOr:
+            return self.proc_match_or(nd as py_ast.MatchOr);
+        case py_ast.ast_kind.TypeVar:
+            return self.proc_type_var(nd as py_ast.TypeVar);
+        case py_ast.ast_kind.ParamSpec:
+            return self.proc_param_spec(nd as py_ast.ParamSpec);
+        case py_ast.ast_kind.TypeVarTuple:
+            return self.proc_type_var_tuple(nd as py_ast.TypeVarTuple);
+        case _:
+            raise RuntimeError(self.ctx.ice(f"Unknown node kind {kind.name}"));
     }
-    return ret;
 }
 
 impl PyastBuildPass.nu(nd: T) -> T {
@@ -2124,7 +2406,7 @@ impl PyastBuildPass.nu(nd: T) -> T {
 }
 
 impl PyastBuildPass.name_node(
-    nd: py_ast.AST,
+    nd: PyPositioned,
     value: str,
     name_tok: Tok = Tok.NAME,
     col_end: int = -1,
@@ -2156,18 +2438,14 @@ impl PyastBuildPass.postinit -> None {
     self.in_fstring_expr = False;
 }
 
-impl PyastBuildPass._get_source_segment(nd: py_ast.AST) -> (str | None) {
-    try {
-        if (nd.end_lineno is None or nd.end_col_offset is None) {
-            return None;
-        }
-        lineno = nd.lineno - 1;
-        end_lineno = nd.end_lineno - 1;
-        col_offset = nd.col_offset;
-        end_col_offset = nd.end_col_offset;
-    } except AttributeError {
+impl PyastBuildPass._get_source_segment(nd: py_ast.expr) -> (str | None) {
+    if (nd.end_lineno is None or nd.end_col_offset is None or nd.lineno < 1) {
         return None;
     }
+    lineno = nd.lineno - 1;
+    end_lineno = nd.end_lineno - 1;
+    col_offset = nd.col_offset;
+    end_col_offset = nd.end_col_offset;
     lines = self._source_lines;
     if (end_lineno >= len(lines)) {
         return None;
@@ -2244,8 +2522,6 @@ impl PyastBuildPass.run_walk with PythonModuleAst entry {
     self.module = self._run_impl(here);
 }
 
-impl PyastBuildPass.proc_ellipsis(nd: py_ast.Constant) {}
-
 impl PyastBuildPass.proc_function_type(nd: py_ast.FunctionType) {}
 
 impl PyastBuildPass.proc_interactive(nd: py_ast.Interactive) {}
@@ -2264,4 +2540,95 @@ impl build_python_module(py_mod: PythonModuleAst) -> Module {
     built = walk.module;
     assert isinstance(built, Module);
     return built;
+}
+
+impl python_syntax_alert(failure: syntax_failure, orig_src: Source) -> Alert {
+    first_line = failure.lineno if failure.lineno > 0 else 1;
+    last_line = failure.end_lineno if failure.end_lineno >= first_line else first_line;
+    first_col = failure.offset if failure.offset > 0 else 1;
+    last_col = failure.end_offset if failure.end_offset > 0 else first_col + 1;
+    span = Span.make(
+        orig_src.file_path,
+        orig_src.code,
+        (first_line, last_line),
+        (first_col, last_col),
+        (0, 0)
+    );
+    return Alert(
+        msg=E0111.format_message(message=failure.msg),
+        loc=span,
+        from_pass=PyastBuildPass,
+        code=E0111
+    );
+}
+
+impl parse_python_source(
+    source_str: str, file_path: str, program: JacProgram
+) -> tuple[Module, bool] {
+    orig_src = Source(source_str, mod_path=file_path);
+    tree: (py_ast.Module | None) = None;
+    try {
+        tree = parse_file(source_str, file_path);
+    } except syntax_failure as failure {
+        program.errors_had.append(python_syntax_alert(failure, orig_src));
+        stub = Module.make_stub(inject_src=orig_src);
+        stub.set_kids(nodes=[EmptyToken(orig_src=orig_src)]);
+        return (stub, True);
+    }
+    if tree is None {
+        raise RuntimeError(f"{file_path}: the Python parser returned no module");
+    }
+    built = run_utility(
+        CompilationProduct.PYTHON_AST,
+        PythonModuleAst(tree, orig_src=orig_src),
+        program,
+        cancel_token=program.options.cancel_token if program.options else None
+    );
+    return (built.module, len(built.ctx.errors_had) > 0);
+}
+
+impl python_top_level_names(path: str) -> set[str] {
+    with open(path, encoding="utf-8") as handle {
+        source = handle.read();
+    }
+    tree = parse_file(source, path);
+    if tree is None {
+        raise RuntimeError(f"{path}: the Python parser returned no module");
+    }
+    out: set[str] = set();
+    for stmt_node in tree.body {
+        if isinstance(stmt_node, py_ast.ClassDef) {
+            out.add(stmt_node.name);
+        } elif isinstance(stmt_node, py_ast.FunctionDef) {
+            out.add(stmt_node.name);
+        } elif isinstance(stmt_node, py_ast.AsyncFunctionDef) {
+            out.add(stmt_node.name);
+        } elif isinstance(stmt_node, py_ast.AnnAssign) {
+            if isinstance(stmt_node.target, py_ast.Name) {
+                out.add(stmt_node.target.id);
+            }
+        } elif isinstance(stmt_node, py_ast.Assign) {
+            for target in stmt_node.targets {
+                if not isinstance(target, py_ast.Name) {
+                    continue;
+                }
+                out.add(target.id);
+                if target.id != "__all__" {
+                    continue;
+                }
+                listed: list[py_ast.expr] = [];
+                if isinstance(stmt_node.value, py_ast.List) {
+                    listed = stmt_node.value.elts;
+                } elif isinstance(stmt_node.value, py_ast.Tuple) {
+                    listed = stmt_node.value.elts;
+                }
+                for elt in listed {
+                    if isinstance(elt, py_ast.Constant) and isinstance(elt.value, PyStr) {
+                        out.add(elt.value.val);
+                    }
+                }
+            }
+        }
+    }
+    return out;
 }

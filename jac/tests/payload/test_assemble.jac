@@ -189,21 +189,15 @@ test "a linked-source payload publishes an empty catalog region" {
     }
 }
 
-test "the precompile child keeps the cache home and the kit omissions while HOME moves" {
+test "the precompile child keeps the cache home while HOME moves" {
     with tempfile.TemporaryDirectory() as tmp {
         site = os.path.join(tmp, "site");
         os.makedirs(site);
-        outer = {
-            "JAC_CACHE_HOME": os.path.join(tmp, "cache"),
-            "JAC_KIT_OMIT": "kernel"
-        };
+        outer = {"JAC_CACHE_HOME": os.path.join(tmp, "cache")};
         with patch.dict(os.environ, outer) {
             env = precompile_env(os.path.join(tmp, "python"), site);
         }
         assert env["JAC_CACHE_HOME"] == outer["JAC_CACHE_HOME"];
-        assert env["JAC_KIT_OMIT"] == "kernel" , (
-            "the seal reads what the kit build asked it to leave out"
-        );
         assert env["HOME"] == site + ".home";
     }
 }
@@ -576,7 +570,7 @@ test "stripping the kernel keeps its sidecar hash truthful" {
         site = os.path.join(tmp, "site");
         pre = Path(site) / "jaclang" / "_precompiled";
         pre.mkdir(parents=True);
-        lib = Path(site) / "jaclang" / "compiler" / "libjac_compiler.so";
+        lib = Path(site) / "jaclang" / "compiler" / "_kernel" / "jac_kernel.so";
         lib.parent.mkdir(parents=True);
         lib.write_bytes(b"not an ELF image, so strip leaves it alone");
         (pre / "MANIFEST.json").write_text(
@@ -584,7 +578,7 @@ test "stripping the kernel keeps its sidecar hash truthful" {
                 {
                     "native": {
                         "artifact": {
-                            "path": "compiler/libjac_compiler.so",
+                            "path": "compiler/_kernel/jac_kernel.so",
                             "sha256": "stale"
                         }
                     }
@@ -592,7 +586,9 @@ test "stripping the kernel keeps its sidecar hash truthful" {
             )
         );
         Path(str(lib) + ".layout.json").write_text(
-            json.dumps({"classes": {}, "artifact_sha256": "stale", "plan_digest": "p"})
+            json.dumps(
+                {"unit_sources": {}, "artifact_sha256": "stale", "plan_digest": "p"}
+            )
         );
         strip_kernel_best_effort(site);
         actual = hashlib.sha256(lib.read_bytes()).hexdigest();
@@ -602,7 +598,7 @@ test "stripping the kernel keeps its sidecar hash truthful" {
         assert sidecar["artifact_sha256"] == actual , (
             "the sidecar must describe the library the kit ships, or a checkout never adopts it"
         );
-        assert sidecar["plan_digest"] == "p" and sidecar["classes"] == {};
+        assert sidecar["plan_digest"] == "p" and sidecar["unit_sources"] == {};
     }
 }
 

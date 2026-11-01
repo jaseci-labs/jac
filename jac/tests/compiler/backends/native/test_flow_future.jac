@@ -7,8 +7,7 @@ are not exactly `wait` keep the sequential erasure."""
 import os;
 import subprocess;
 import tempfile;
-import from tests.support { jac_command, TESTS_DIR }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { compile_mir, jac_command, TESTS_DIR }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE = os.path.join(
@@ -21,27 +20,29 @@ glob FIXTURE = os.path.join(
          "cycles": ["--memory", "managed"]
      };
 
-def _compile_ir(gc_mode: str, enforce: bool) -> str {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=FIXTURE,
-        options=CompileOptions(
-            aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce
+"""The fixture's MIR under `gc_mode`: whether a flow call runs as a spawned
+task is the decision step's choice of representation."""
+def _compile_mir(gc_mode: str, enforce: bool) -> str {
+    return compile_mir(
+        FIXTURE,
+        "",
+        CompileOptions(
+            aot_mode=True,
+            force_codespace="native",
+            na_gc_mode=gc_mode,
+            nogc_enforce_all=enforce
         )
-    );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    return str(ir.gen.llvm_ir);
+    ).mir();
 }
 
 test "flow calls outline into future tasks in parallel-capable builds" {
     for (mode, enforce) in (("none", True), ("rc", False)) {
-        text = _compile_ir(mode, enforce);
-        assert "__jac_flow_task" in text , f"{mode}: no outlined future task";
-        assert "pthread_create" in text , f"{mode}: no spawn";
-        assert "pthread_join" in text , f"{mode}: no join";
+        text = _compile_mir(mode, enforce);
+        assert "@pthread_create" in text , f"{mode}: no spawn";
+        assert "@pthread_join" in text , f"{mode}: no join";
     }
-    seq = _compile_ir("cycles", False);
-    assert "__jac_flow_task" not in seq , "cycles build must stay sequential";
+    seq = _compile_mir("cycles", False);
+    assert "@pthread_create" not in seq , "cycles build must stay sequential";
 }
 
 test "future output is byte-identical across gc modes" {

@@ -1,20 +1,74 @@
-import from importlib.machinery { ModuleSpec }
 import os;
-import sys;
-import tomllib;
 import from pathlib { Path }
 
 glob _project_root_cache: dict[str, str | None] = {},
      _import_base_stack: list[str] = [],
      COMPILER_PACKAGE: str = 'jaclang';
 
+obj SearchRoots {
+    has interpreter: list[str] = [],
+        editable: dict[str, str] = {},
+        sites: list[str] = [];
+}
+
+obj PythonModuleSite {
+    has origin: str = "",
+        namespace_dirs: list[str] = [];
+}
+
+obj PythonProbe {
+    has origin: str = "",
+        package_dir: str = "",
+        namespace_dir: str = "";
+}
+
+obj JacVirtualModule {
+    has name: str,
+        path: str = "",
+        exports: list[str] = [];
+}
+
+glob _SEARCH_ROOTS: list[SearchRoots] = [],
+     _STUB_CATALOG: list[StubCatalog] = [],
+     _DECLARED_VIRTUAL: dict[str, JacVirtualModule] = {},
+     _DECLARED_SCANNED: list[bool] = [],
+     JAC_VIRTUAL_PREFIX: str = '@jac/',
+     JAC_MODULES_GROUP: str = 'jac.modules',
+     JAC_MODULE_EXPORTS_GROUP: str = 'jac.module_exports',
+     EDITABLE_FINDER_PREFIX: str = '__editable___',
+     EDITABLE_FINDER_SUFFIX: str = '_finder.py',
+     PY_SOURCE_SUFFIXES: tuple[str, ...] = ('.py', '.pyi'),
+     PY_EXTENSION_SUFFIXES: tuple[str, ...] = ('.so', '.pyd'),
+     SITE_DIR_NAMES: tuple[str, ...] = ('site-packages', 'dist-packages'),
+     WALK_SKIP_DIRS: tuple[str, ...] = ('__pycache__', 'node_modules'),
+     JAC_VIRTUAL_MODULE_SOURCES: dict[str, str] = {
+         "mobui": "client_mobui",
+         "pwa": "pwa_runtime",
+         "wasm_host": "wasm_host",
+         "webgl": "webgl"
+     };
+
+def install_search_roots(interpreter_paths: list[str]);
+
+def search_roots -> SearchRoots;
+
+def editable_mappings(site_dir: str) -> dict[str, str];
+
+def quoted_strings(text: str) -> list[str];
+
+def editable_mapping_of(finder_path: str) -> dict[str, str];
+
+def use_stub_catalog(catalog: (StubCatalog | None));
+
+def active_stub_catalog -> (StubCatalog | None);
+
 def push_import_base(base_dir: str);
 
 def pop_import_base;
 
-def _finders_find_spec(name: str, search: (list[str] | None)) -> (ModuleSpec | None);
+def probe_python_root(root: str, name: str) -> PythonProbe;
 
-def _find_spec_no_exec(target: str) -> (ModuleSpec | None);
+def find_python_module(parts: list[str]) -> (PythonModuleSite | None);
 
 def find_project_root(start: (Path | None) = None) -> (tuple[Path, Path] | None);
 
@@ -40,6 +94,16 @@ def module_name_in(root_dir: str, path: str) -> (str | None);
 
 def get_jac_search_paths(base_path: (str | None) = None) -> list[str];
 
+def required_package_root -> str;
+
+def language_of(path: str) -> str;
+
+def module_suffixes -> list[str];
+
+def subtree_has_jac(directory: str) -> bool;
+
+def is_jac_namespace_package(directory: str) -> bool;
+
 glob _CASE_BLIND_FS: list[bool] = [];
 
 def case_blind_filesystem -> bool;
@@ -54,6 +118,12 @@ def _self_tree_candidate(
     base_dir: str, actual_parts: list[str]
 ) -> (tuple[(str, str)] | None);
 
+def virtual_module_basenames(module_name: str) -> list[str];
+
+def parse_entry_points(text: str) -> dict[str, dict[str, str]];
+
+def declared_virtual_modules -> dict[str, JacVirtualModule];
+
 def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None);
 
 def resolve_jac_virtual_module_path(target: str) -> (str | None);
@@ -65,6 +135,8 @@ def _get_path_aliases -> dict[str, str];
 def _resolve_path_alias(target: str, base_path: str) -> (str | None);
 
 def is_path_alias_import(target: str, base_path: str) -> bool;
+
+def _find_under(directory: str, file_names: list[str]) -> (str | None);
 
 def resolve_module(
     target: str, base_path: str, string_spec: bool = False
@@ -85,21 +157,40 @@ glob NPM_RUNTIME_CONDITIONS: tuple[str, ...] = (
      NPM_TYPES_CONDITIONS: tuple[str, ...] = ('types', 'import', 'default'),
      NPM_DTS_SUFFIXES: tuple[str, ...] = ('.d.ts', '.d.mts', '.d.cts');
 
+obj NpmExport {
+    has path: str = "",
+        targets: list[NpmExport] = [],
+        conditions: list[tuple[str, NpmExport]] = [],
+        subpaths: list[tuple[str, NpmExport]] = [];
+}
+
+obj NpmPackageJson {
+    has module: str = "",
+        main: str = "",
+        types: str = "",
+        typings: str = "",
+        exports: (NpmExport | None) = None;
+}
+
 def _find_npm_package(
     spec: str, base_path: str
 ) -> (tuple[(str, list[str], str)] | None);
 
-def _read_package_json(pkg_dir: str) -> dict[str, any];
+def npm_text(value: object) -> str;
+
+def npm_export_of(value: object) -> NpmExport;
+
+def _read_package_json(pkg_dir: str) -> NpmPackageJson;
 
 def _resolve_export_target(
-    target: object,
+    target: NpmExport,
     conditions: tuple[str, ...],
     pkg_dir: str,
     star_sub: (str | None) = None
 ) -> (str | None);
 
 def _resolve_pkg_exports(
-    exports: object, subpath: str, conditions: tuple[str, ...], pkg_dir: str
+    exports: NpmExport, subpath: str, conditions: tuple[str, ...], pkg_dir: str
 ) -> (str | None);
 
 def has_client_npm_package(spec: str, base_path: str) -> bool;
@@ -116,7 +207,7 @@ def sibling_declaration_file(js_path: str) -> (str | None);
 
 def _npm_file_with_ext(candidate: str) -> (str | None);
 
-def _npm_package_entry(pkg_dir: str, data: dict[str, any]) -> (str | None);
+def _npm_package_entry(pkg_dir: str, data: NpmPackageJson) -> (str | None);
 
 def get_typeshed_paths -> list[str];
 

@@ -8,14 +8,26 @@ does for this walk.
 """
 
 import ctypes;
-import from tests.support { native_address }
 import re;
+import from jaclang.compiler.backends.native.mir.emit {
+    RELEASE_ACYCLIC_SYMBOL,
+    RELEASE_SYMBOL,
+    RETAIN_SYMBOL
+}
 import from tests.support {
     compile_native,
     compile_native_ir,
+    native_address,
     native_force_opts,
     unit_symbol
 }
+
+glob RETAIN_CALL: str = r"@\"?" + re.escape(RETAIN_SYMBOL) + r"\"?\(",
+     RELEASE_CALL: str = r"@\"?("
+         + re.escape(RELEASE_SYMBOL)
+         + "|"
+         + re.escape(RELEASE_ACYCLIC_SYMBOL)
+         + r")\"?\(";
 
 """The body of `name` in `ir`, from its define line to its closing brace."""
 def function_body(ir: str, name: str) -> str {
@@ -44,26 +56,25 @@ test "the borrowed walk emits no retain and no release" {
     # counted control)
     opts = native_force_opts();
     opts.na_borrow_infer = False;
-    module = compile_native_ir("managed_borrow_walk.jac", options=opts);
-    ir = str(module.gen.llvm_ir);
-    borrowed = function_body(ir, re.escape(unit_symbol(module, "borrowed_walk")));
-    owning = function_body(ir, re.escape(unit_symbol(module, "owning_walk")));
-    assert not re.findall(r"@\"?_*rc_retain", borrowed) , (
+    fx = compile_native_ir("managed_borrow_walk.jac", options=opts);
+    ir = fx.llvm_ir();
+    borrowed = function_body(ir, re.escape(unit_symbol(fx, "borrowed_walk")));
+    owning = function_body(ir, re.escape(unit_symbol(fx, "owning_walk")));
+    assert not re.findall(RETAIN_CALL, borrowed) , (
         "the borrowed walk still retains: " + borrowed
     );
-    assert not re.findall(r"@\"?_*rc_release", borrowed) , (
+    assert not re.findall(RELEASE_CALL, borrowed) , (
         "the borrowed walk still releases: " + borrowed
     );
-    assert re.findall(r"@\"?_*rc_retain", owning) , (
+    assert re.findall(RETAIN_CALL, owning) , (
         "the owning walk is expected to retain, so this test would prove nothing"
     );
 }
 
 test "borrow inference makes the unannotated walk a borrow as well" {
-    module = compile_native_ir("managed_borrow_walk.jac");
-    ir = str(module.gen.llvm_ir);
-    owning = function_body(ir, re.escape(unit_symbol(module, "owning_walk")));
-    assert not re.findall(r"@\"?_*rc_retain", owning) , (
+    fx = compile_native_ir("managed_borrow_walk.jac");
+    owning = function_body(fx.llvm_ir(), re.escape(unit_symbol(fx, "owning_walk")));
+    assert not re.findall(RETAIN_CALL, owning) , (
         "the unannotated walk still retains: " + owning
     );
 }

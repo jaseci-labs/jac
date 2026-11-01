@@ -20,11 +20,7 @@ impl annotation_text(nd: (UniNode | None)) -> str {
         return '';
     }
 
-    try {
-        return ' '.join(unparse_node(nd).split());
-    } except Exception {
-        return '';
-    }
+    return ' '.join(unparse_node(nd).split());
 }
 
 impl public_surface(mod: Module) -> dict[str, tuple[str, str, UniNode]] {
@@ -114,11 +110,7 @@ impl VariantAgreementPass._parse_sibling(path: str) -> (Module | None) {
         return found;
     }
 
-    try {
-        (mod, had_error) = parse(active_host().read_source(path), path, prog=None);
-    } except Exception {
-        return None;
-    }
+    (mod, had_error) = parse(active_host().read_source(path), path, prog=None);
     return None if had_error else mod;
 }
 

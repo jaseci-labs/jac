@@ -20,7 +20,7 @@ test "inferred compiler dependencies respect the active native scope" {
     checkout_root = os.path.join(checkout.name, "jaclang", "compiler");
     Path(checkout_root).mkdir(parents=True);
     Path(os.path.join(checkout.name, "jaclang", "jac.toml")).write_text("");
-    checkout_entry = os.path.join(checkout_root, "jc_unit.jac");
+    checkout_entry = os.path.join(checkout_root, "kernel_module.jac");
     previous = set_native_unit_compile(True);
     try {
         assert policy.scope_allows_inferred_path(member);

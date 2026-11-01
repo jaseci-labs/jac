@@ -399,7 +399,7 @@ impl native_unit_root(directory: str) -> (str | None) {
         if os.path.isdir(os.path.join(d, "_precompiled"))
             or os.path.isfile(os.path.join(d, "jac.toml"))
             or (
-                os.path.isfile(os.path.join(d, "jac0.py"))
+                os.path.isfile(os.path.join(d, "meta_importer.py"))
                 and os.path.isfile(os.path.join(d, "__init__.py"))
             ) {
             return d;
@@ -1042,7 +1042,6 @@ impl CodeGenTarget.has_native_ir -> bool {
 impl CodeGenTarget.drop_native_ir {
     self.ir_module = None;
     self.llvm_ir = None;
-    self.native_fallbacks = None;
 }
 
 impl endpoint_descriptor(module: Module, kind: str, name: str) -> dict[str, str] {

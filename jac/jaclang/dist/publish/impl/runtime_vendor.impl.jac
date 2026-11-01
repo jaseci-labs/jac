@@ -114,30 +114,16 @@ impl _compile_runtime_module(
         return path.read_text(encoding="utf-8");
     }
 
-    rel_posix = path.relative_to(pkg_root).as_posix();
-    if is_seed_source(rel_posix) {
-        import from jaclang.jac0 { compile_jac, discover_impl_files }
-        jac_source = path.read_text(encoding="utf-8");
-        impl_sources: list[tuple[str, str]] = [];
-        for impl_path in discover_impl_files(str(path)) {
-            impl_sources.append(
-                (Path(impl_path).read_text(encoding="utf-8"), impl_path)
-            );
-        }
-        return compile_jac(jac_source, str(path), impl_sources=impl_sources or None);
-    }
-
-    recorded = module_record(str(path), prog);
-    if native is None or (recorded is not None and recorded.decided != 'native') {
+    if native is None {
         return python_text(str(path), prog);
     }
-    (py_out, ir) = python_source(str(path), prog);
-    if native is not None and ir is not None and ir.gen.native_engine is not None {
+    (py_out, is_native) = python_source(str(path), prog);
+    if is_native {
         import from jaclang.dist.native_product { write_native_product }
         with tempfile.TemporaryDirectory(prefix='jac-runtime-native-') as temporary {
             directory = Path(temporary);
             record = write_native_product(
-                ir,
+                str(path),
                 directory,
                 Path('native') / path.relative_to(pkg_root).with_suffix('.py'),
                 emit_source=native_sources,
@@ -283,9 +269,6 @@ impl build_runtime_closure(
         pending.update(
             _runtime_dependencies(pkg_root, tree, module, package) - processed
         );
-    }
-    if program.contexts {
-        program._get_compiler().release_compile_state(program);
     }
     for relative in [
         name

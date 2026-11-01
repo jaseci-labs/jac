@@ -133,7 +133,7 @@ One plan produces every artifact: `jac build --native`, native app builds,
 the kernel resolver, `jac precompile --seal` and the in-process JIT are all
 callers, and the plan knows nothing about any of them.
 
-1. Resolve roots: an entry module, `jc_unit` for the kernel, every native
+1. Resolve roots: an entry module, `kernel_module` for the kernel, every native
    unit of a package for a seal.
 2. Discover the native dependency closure. Read matching unit records without
    recursively compiling their consumers; the plan owns dependency agreement.
@@ -279,7 +279,7 @@ setting, and stay inert unless the application calls them.
 
 ## The kernel
 
-The native compiler kernel is the plan rooted at `jc_unit` with the
+The native compiler kernel is the plan rooted at `kernel_module` with the
 frontend scope compiled as native units, linked as a shared library in
 bitcode mode. `resolve_kernel()` in `kernel_resolve.jac` is the one lookup.
 It only ever loads a kernel; nothing but `jac native build kernel` and the seal

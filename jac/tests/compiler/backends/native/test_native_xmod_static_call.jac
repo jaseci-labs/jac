@@ -10,9 +10,9 @@ but the class-qualified form had no such arm: `Merger.merge(...)` found no
 said nothing -- the silent-wrong-answer class (#7685 family, found by wave 1's
 parity canary weaving two statements where bytecode wove four).
 
-The two forms now land the same way, and where they land is #8206's
-partition: a module-scope call has no owning callable and stays module-fatal,
-a body-scoped one demotes its own function and leaves its siblings native.
+The two forms now land the same way: the decision step refuses the call by
+name. Where native is required that refusal is an E5092 error; otherwise a
+body-scoped call demotes its own function and leaves its siblings native.
 
 The control is the same three files with the Python base removed. It must
 still lower and still agree with the Python lane, so the refusal reads as a
@@ -25,56 +25,18 @@ import os;
 import sys;
 import from tests.support {
     TESTS_DIR,
-    by_source_name,
-    native_address,
-    native_force_opts,
-    source_spelled
+    compile_mir,
+    compile_native,
+    compile_native_refused,
+    diagnostics_text,
+    error_codes,
+    native_address
 }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
-import from jaclang.compiler.driver.na_coverage { na_coverage_begin, na_coverage_end }
-import from jaclang.compiler.driver.program { JacProgram }
 
 glob FIXTURES = os.path.join(
          TESTS_DIR, "compiler", "backends", "native", "fixtures"
      ),
      MERGED = 7;
-
-
-"""Forced-native options that skip the IR cache so the coverage always runs."""
-def _opts -> CompileOptions {
-    return CompileOptions(force_codespace='native');
-}
-
-
-"""Compile a fixture on the native pathway; return (program, module)."""
-def _compile_native(fixture: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
-    return (prog, ir);
-}
-
-
-"""Compile a fixture under the demotion coverage; return (program, module, coverage)."""
-def _compile_with_coverage(fixture: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    na_coverage_begin();
-    try {
-        ir = prog.compile(file_path=os.path.join(FIXTURES, fixture), options=_opts());
-    } finally {
-        coverage = na_coverage_end();
-    }
-    return (prog, ir, coverage);
-}
-
-
-"""The coverage seam list recorded for a fixture path."""
-def _seams_of(coverage: dict[str, any], fixture: str) -> list[str] {
-    rec = coverage.get(os.path.realpath(os.path.join(FIXTURES, fixture)));
-    if rec is None {
-        return [];
-    }
-    return [source_spelled(str(s)) for s in (rec.get("seams") or [])];
-}
 
 
 """Run the fixture's function in the plain Python lane."""
@@ -103,85 +65,47 @@ def _run_py_lane(stem: str, func_name: str) -> object {
 
 
 test "a module-scope static call into a Python-side class refuses" {
-    (prog, ir) = _compile_native("xmod_static_pybase_main.jac");
-    texts = [str(e) for e in prog.errors_had];
-    codes = [
-        str(alrt.code.code)
-        for alrt in prog.errors_had
-        if alrt.code is not None
-    ];
-    assert "E5092" in codes , (
+    result = compile_native_refused("xmod_static_pybase_main.jac");
+    text = diagnostics_text(result);
+    assert "E5092" in error_codes(result) , (
         "the call resolved to no native `Merger`, so codegen dropped it and "
-        f"the entry block wove nothing: {texts}"
+        f"the entry block wove nothing: {text}"
     );
-    assert any("Merger.merge" in t for t in texts) , (
+    assert "Merger.merge" in text , (
         f"the diagnostic must name the callee it refuses, the way the "
-        f"free-function crossing names its function: {texts}"
-    );
-    assert ir.gen.llvm_ir is None , (
-        "a module whose entry silently loses a statement is worse than a "
-        "refusal, so nothing may lower here"
+        f"free-function crossing names its function: {text}"
     );
 }
 
 
 test "a body-scoped static call demotes only its owning function" {
-    (prog, ir, coverage) = _compile_with_coverage("xmod_static_pybase_seam.jac");
-    assert not prog.errors_had , (
-        f"a function owns this violation, so it demotes rather than failing "
-        f"the module: {[str(e) for e in prog.errors_had]}"
+    fx = compile_mir("xmod_static_pybase_seam.jac");
+    assert not fx.is_demoted("clean") , f"the clean sibling was lost: {fx.demoted()}";
+    assert fx.is_demoted("probe") , (
+        "the calling function must be demoted, not lowered with the call "
+        f"quietly removed: {fx.demoted()}"
     );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "clean" in layout.functions , (
-        f"the clean sibling was lost: {sorted(layout.functions)}"
-    );
-    assert "probe" not in layout.functions , (
-        "the calling function must be demoted out of the native layout, not "
-        "lowered with the call quietly removed"
-    );
-    seams = [
-        s
-        for s in _seams_of(coverage, "xmod_static_pybase_seam.jac")
-        if s.startswith("probe: ")
-    ];
-    assert len(seams) == 1 , (
-        f"expected exactly one coverage seam for probe, got: {_seams_of(
-            coverage, 'xmod_static_pybase_seam.jac'
-        )}"
-    );
-    assert "Merger.merge" in seams[0] , (
-        f"the seam reason must name the callee: {seams[0]}"
+    assert "Merger.merge" in fx.reason("probe") , (
+        f"the demotion reason must name the callee: {fx.reason('probe')}"
     );
 }
 
 
 test "the same call with no Python base still lowers" {
-    (prog, ir) = _compile_native("xmod_static_native_main.jac");
-    assert not prog.errors_had , (
-        f"only the Python-side crossing may refuse; a class-qualified call "
-        f"into a native module must be untouched: {[str(e) for e in prog.errors_had]}"
+    fx = compile_mir("xmod_static_native_main.jac");
+    assert not fx.is_demoted("run_merge") , f"the caller was demoted: {fx.demoted()}";
+    merge_unit = fx.result.unit(
+        os.path.realpath(os.path.join(FIXTURES, "xmod_static_native_merge.jac"))
     );
-    layout = ir.gen.native_layout;
-    assert layout is not None , "whole-module native compile aborted";
-    assert "run_merge" in layout.functions , (
-        f"the caller was demoted: {sorted(layout.functions)}"
-    );
-    assert "Merger.merge" in by_source_name(layout.methods) , (
-        f"the imported static method lost its native lowering: {sorted(layout.methods)}"
+    assert not merge_unit.demoted , (
+        "the imported static method lost its native lowering: "
+        f"{[(d.symbol, d.reason) for d in merge_unit.demoted]}"
     );
 }
 
 
 test "the control's two lanes agree on the merged value" {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "xmod_static_native_main.jac"),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for the control";
+    (eng, _) = compile_native("xmod_static_native_main.jac");
     addr = native_address(eng, "run_merge");
     assert addr != 0 , "run_merge is absent from the JIT engine";
     native_val = ctypes.CFUNCTYPE(ctypes.c_int64)(addr)();

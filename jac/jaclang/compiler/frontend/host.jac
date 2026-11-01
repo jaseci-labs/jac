@@ -60,7 +60,6 @@ obj HostServices {
     @contextmanager
     def session -> Iterator[None];
 
-    def in_kernel -> bool;
     def project_defaults -> (ProjectDefaults | None);
     def check_settings(target_app: str) -> CheckSettings;
     def project_facts(path: str) -> (ProjectFacts | None);
@@ -79,7 +78,6 @@ obj HostServices {
     def in_typeshed_tree(path: str) -> bool;
     def sibling_declaration(js_path: str) -> (str | None);
     def client_pulls(path: str) -> str;
-    def client_pull_grew(path: str);
     def has_npm_package(spec: str, base_path: str) -> bool;
     def resolve_npm_package(spec: str, base_path: str) -> (str | None);
     def npm_declarations(spec: str, base_path: str) -> (str | None);
@@ -89,11 +87,6 @@ obj HostServices {
 
     def note(message: str, style: str = "dim");
     def stub_catalog_for(program: JacProgram) -> (StubCatalog | None);
-    def parse_python(
-        source_str: str, file_path: str, program: JacProgram
-    ) -> tuple[Module, bool];
-
-    def stub_interface(program: JacProgram, file_path: str) -> (Module | None);
     def ct_environment -> CtEnvironment;
     def path_facts(path: str) -> PathFacts;
     def host_platform -> HostPlatform;
@@ -103,20 +96,10 @@ obj HostServices {
     def is_annex_path_of(candidate: str, base: str) -> bool;
     def package_init(directory: str) -> (str | None);
     def wiring_file(path: str) -> (str | None);
-    def is_seed_source(rel_path: str) -> bool;
     def wiring_records(digest: str) -> str;
     def keep_wiring_records(digest: str, text: str);
     def native_scan_record(path: str, digest: str) -> str;
     def keep_native_scan_record(path: str, digest: str, text: str);
-    def native_parse(
-        source_str: str,
-        file_path: str,
-        program: (JacProgram | None),
-        annexes: list[WovenAnnex],
-        early_context: str = "",
-        load_kernel: bool = True
-    ) -> (tuple[Module, bool] | None);
-
     def woven_module(path: str, program: (JacProgram | None)) -> (Module | None);
     def place_wired_imports(module: Module);
     def drop_python_lane_products(path: str, program: JacProgram);
@@ -137,11 +120,6 @@ obj HostServices {
     def save_native_debug_ir(path: str, text: str);
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
-    def kernel_compile(
-        program: JacProgram, path: str, options: CompileOptions
-    ) -> (CompileReport | None);
-
-    def in_compiler_tree(path: str) -> bool;
     def schedule_import_failed(err: ImportError);
     def client_osp_core_js -> str;
     def client_stub_globals -> list[str];
@@ -150,13 +128,6 @@ obj HostServices {
     ) -> (bool | None);
 
     def native_session_active(program: JacProgram) -> bool;
-    def record_native_coverage(
-        path: str, outcome: str, code: str = "", detail: str = ""
-    );
-
-    def native_analyze(
-        program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-    ) -> (ModuleAnalysis | None);
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(
@@ -183,7 +154,6 @@ obj HostServices {
         options: CompileOptions
     ) -> Module;
 
-    def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);
     def note_program_dependency(program: JacProgram, resolved_path: str);
     def forget_program_products(program: JacProgram, resolved_path: str);
@@ -192,13 +162,11 @@ obj HostServices {
     def collect_released_memory;
     def load_modules(names: list[str]);
     def module_in_flight(names: list[str]) -> str;
-    def import_in_flight(path: str) -> bool;
     def has_active_stub_catalog -> bool;
     def typeshed_unavailable_reason -> str;
     def is_native_only_source(rel: str) -> bool;
     def is_native_lowered_source(rel: str) -> bool;
     def default_target_triple -> str;
-    def host_side -> HostServices;
 }
 
 obj NeutralHost(HostServices) {}
@@ -208,20 +176,24 @@ glob HOST_FACT_SEP: str = "\x1e",
      HOST_FACT_GIT_IGNORED: str = "git_ignored";
 
 glob _HOSTS: list[HostServices] = [],
-     _KERNEL_HOST_MODE: list[str] = [],
      _NEUTRAL_HOST: HostServices = NeutralHost(),
-     _PACKAGE_ROOT: list[str] = [];
+     _PACKAGE_ROOT: list[str] = [],
+     _KERNEL_RESIDENT: list[bool] = [];
 
 def active_host -> HostServices;
+
+def installed_host -> (HostServices | None);
 
 def package_root -> str;
 
 def set_package_root(path: str);
 
-def install_host(host: HostServices);
+def install_host(host: (HostServices | None));
 
-def set_kernel_host_mode(mode: str) -> str;
+def mark_kernel_resident;
 
-def kernel_host_mode -> str;
+def kernel_resident -> bool;
 
-def kernel_host_enabled -> bool;
+class HostCompileError(RuntimeError) {}
+
+def guard_host_compile(what: str);

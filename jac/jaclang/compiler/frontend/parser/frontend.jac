@@ -30,9 +30,7 @@ def parse_woven(
     source_str: str,
     file_path: str,
     prog: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = "",
-    load_kernel: bool = True
+    annexes: list[WovenAnnex]
 ) -> tuple[Module, bool];
 
 def annex_paths(file_path: str) -> list[str];

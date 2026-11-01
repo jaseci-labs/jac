@@ -1,18 +1,17 @@
 """Erased distinct types (#8030 B1): check-time brand, runtime primitive.
 
 `type X := int;` brands X nominally in the checker while every
-lowering (jac0, sv, native) erases it to the base primitive; X(v) is a
+lowering (sv, native) erases it to the base primitive; X(v) is a
 zero-cost cast. `obj X(builtin)` is rejected with a pointer at the
 distinct form (E1106); a distinct alias over a non-primitive base is
 rejected (E1107).
 """
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import from tests.support { JAC_ROOT }
 import from jaclang { JacRuntime as Jac }
 import from jaclang { JacRuntimeInterface }
-import from jaclang.jac0 { compile_jac }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.frontend.parser.frontend { parse_diags }
 
@@ -90,21 +89,11 @@ test "runtime value is the erased primitive" {
 }
 
 
-test "jac0 bootstrap erases distinct to a plain alias" {
-    py_src = compile_jac(
-        "type NodeId := int;\n\ndef f(x: NodeId) -> NodeId {\n"
-            + "    return NodeId(x);\n}\n",
-        "d.jac"
-    );
-    assert "NodeId = int" in py_src , py_src;
-    assert "distinct" not in py_src , py_src;
-}
-
 """Compile a fixture and hand back its generated Python."""
 def compile_py(name: str) -> tuple[list[any], str] {
     prog = JacProgram();
     mod = prog.compile(os.path.join(FIXTURE_DIR, name));
-    return (prog.errors_had, generated_python(mod.gen), );
+    return (prog.errors_had, generated_python(mod), );
 }
 
 

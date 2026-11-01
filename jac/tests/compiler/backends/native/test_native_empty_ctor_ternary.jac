@@ -24,8 +24,7 @@ adding to it proves the two arms really do share a representation.
 
 import ctypes;
 import os;
-import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { JAC_ROOT, native_address, native_force_opts }
+import from tests.support { JAC_ROOT, compile_native, native_address }
 
 glob FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "backends", "native", "fixtures"
@@ -38,14 +37,7 @@ def engine -> any {
     if _ENGINE {
         return _ENGINE[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, "empty_ctor_ternary.jac"),
-        options=native_force_opts()
-    );
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , "no native engine for the empty-ctor fixture";
+    (eng, _fx) = compile_native("empty_ctor_ternary.jac", FIXTURES);
     _ENGINE.append(eng);
     return eng;
 }

@@ -50,21 +50,11 @@ impl NativeStamp.pack(payload: bytes) -> bytes {
 impl NativeStamp.unpack_record(
     data: (bytes | None)
 ) -> (tuple[NativeStamp, bytes] | None) {
-    if data is None or len(data) < 8 or data[:4] != NATIVE_STAMP_MAGIC {
+    found = stamp_record(data);
+    if found is None {
         return None;
     }
-    (head_len, ) = struct.unpack_from("<I", data, 4);
-    if len(data) < 8 + head_len {
-        return None;
-    }
-    try {
-        parts = data[8:8 + head_len].decode("utf-8").split("\x1f");
-    } except Exception {
-        return None;
-    }
-    if len(parts) != 5 {
-        return None;
-    }
+    parts = found[0];
     return (
         NativeStamp(
             compiler_digest=parts[0],
@@ -73,7 +63,7 @@ impl NativeStamp.unpack_record(
             reloc=parts[3],
             code_model=parts[4]
         ),
-        data[8 + head_len:]
+        found[1]
     );
 }
 
@@ -92,30 +82,7 @@ impl current_native_stamp(
 }
 
 impl native_section_variants(data: (bytes | None)) -> dict[str, bytes] {
-    variants: dict[str, bytes] = {};
-    if data is None or len(data) < 8 or data[:4] != NATIVE_VARIANTS_MAGIC {
-        return variants;
-    }
-    (count, ) = struct.unpack_from("<I", data, 4);
-    pos = 8;
-    for _ in range(count) {
-        if pos + 4 > len(data) {
-            return {};
-        }
-        (size, ) = struct.unpack_from("<I", data, pos);
-        pos += 4;
-        if size > len(data) - pos {
-            return {};
-        }
-        record = data[pos:pos + size];
-        found = NativeStamp.unpack_record(record);
-        if found is None or found[0].key() in variants {
-            return {};
-        }
-        variants[found[0].key()] = record;
-        pos += size;
-    }
-    return variants if pos == len(data) else {};
+    return variant_records(data);
 }
 
 impl pack_native_variants(variants: dict[str, bytes]) -> bytes {
@@ -192,17 +159,14 @@ impl JirPaths.to_bytes(package_dir: str = "") -> bytes {
 }
 
 impl JirPaths.from_bytes(data: bytes | None, base_dir: str = "") -> JirPaths {
-    import json;
     if not data {
         return JirPaths(base_dir=base_dir);
     }
-    payload = json.loads(data.decode("utf-8"));
-    if base_dir and payload.get("subdir") {
-        base_dir = os.path.normpath(
-            os.path.join(base_dir, *payload["subdir"].split("/"))
-        );
+    stored = path_roots_of(data);
+    if base_dir and stored.subdir {
+        base_dir = os.path.normpath(os.path.join(base_dir, *stored.subdir.split("/")));
     }
-    return JirPaths(roots=payload["roots"], base_dir=base_dir or payload["base"]);
+    return JirPaths(roots=stored.roots, base_dir=base_dir or stored.base);
 }
 
 impl read_jir_paths(data: bytes, base_dir: str = "") -> JirPaths {
@@ -230,29 +194,20 @@ impl create_header(
 }
 
 impl parse_header(data: (bytes | memoryview)) -> (JirHeader | None) {
-    if len(data) < HEADER_SIZE {
-        return None;
-    }
-    try {
-        (magic, fmt_ver, py_ver, jac_hash, src_hash, n_nodes, n_syms, sp_size, flags) = struct.unpack(
-            HEADER_FMT, data[:HEADER_SIZE]
-        );
-    } except struct.error {
-        return None;
-    }
-    if magic != MAGIC or fmt_ver != FORMAT_VERSION {
+    head = read_jir_head(bytes(data[:HEADER_SIZE]));
+    if head is None {
         return None;
     }
     return JirHeader(
-        magic=magic,
-        format_version=fmt_ver,
-        python_version=py_ver,
-        jaclang_version_hash=jac_hash,
-        source_content_hash=src_hash,
-        node_count=n_nodes,
-        symbol_count=n_syms,
-        string_pool_size=sp_size,
-        flags=flags
+        magic=head.magic,
+        format_version=head.format_version,
+        python_version=head.python_version,
+        jaclang_version_hash=head.jaclang_version_hash,
+        source_content_hash=head.source_content_hash,
+        node_count=head.node_count,
+        symbol_count=head.symbol_count,
+        string_pool_size=head.string_pool_size,
+        flags=head.flags
     );
 }
 
@@ -300,7 +255,8 @@ impl is_compiler_tree_path(source_path: str) -> bool {
         return False;
     }
     rel = resolved[len(base):].replace(os.sep, "/");
-    for digest_root in COMPILER_DIGEST_ROOTS {
+    (roots, _roster) = compiler_input_rules(_jaclang_pkg_dir);
+    for digest_root in roots {
         if rel == digest_root or rel.startswith(digest_root + "/") {
             return True;
         }
@@ -312,21 +268,38 @@ impl _module_codespace_mode(source_path: str) -> str {
     if is_package_keyed_path(source_path) {
         return "internal";
     }
-    try {
-        import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
-        return effective_default_codespace();
-    } except Exception {
-        return "server";
+    import from jaclang.compiler.frontend.codeinfo { effective_default_codespace }
+    return effective_default_codespace();
+}
+
+impl read_input_rules(manifest_path: str) -> tuple[tuple[str, ...], tuple[str, ...]] {
+    with open(manifest_path, encoding="utf-8") as inputs {
+        lines = [
+            line.strip()
+            for line in inputs
+            if line.strip() and not line.lstrip().startswith("#")
+        ];
     }
+    roots = tuple(line for line in lines if not line.startswith("!"));
+    roster = tuple(line[1:] for line in lines if line.startswith("!"));
+    return (roots, roster);
+}
+
+impl is_roster_input(rel_path: str, roster: tuple[str, ...]) -> bool {
+    for entry in roster {
+        if rel_path == entry or rel_path.startswith(entry + "/") {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl is_staging_rewritten(rel: str) -> bool {
+    return rel.replace(os.sep, "/").rsplit("/", 1)[-1] in STAGING_REWRITTEN_NAMES;
 }
 
 impl compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]] {
-    manifest = os.path.join(str(pkg_dir), "compiler_inputs.txt");
-    try {
-        return read_input_rules(manifest);
-    } except OSError {
-        return (COMPILER_DIGEST_ROOTS, COMPILER_DIGEST_ROSTER);
-    }
+    return read_input_rules(os.path.join(str(pkg_dir), "compiler_inputs.txt"));
 }
 
 impl compiler_source_files(pkg_dir: str) -> list[str] {
@@ -520,8 +493,7 @@ impl py_emitter_digest -> str {
     }
     h = hashlib.sha256();
     for (rel, sha) in rows {
-        if _rel_under(rel, PY_EMITTER_ROOTS)
-            and not _rel_under(rel, PY_EMITTER_EXCLUDED) {
+        if _rel_under(rel, PY_EMITTER_ROOTS) {
             h.update(rel.encode());
             h.update(b"\x00");
             h.update(sha.encode());
@@ -632,12 +604,7 @@ impl _config_for_module(resolved: Path) -> any {
 }
 
 impl _analysis_fingerprint_for(source_path: str) -> str {
-    cfg: any = None;
-    try {
-        cfg = _config_for_module(Path(source_path).resolve());
-    } except Exception {
-        cfg = None;
-    }
+    cfg: any = _config_for_module(Path(source_path).resolve());
     import from jaclang.compiler.frontend.codeinfo { effective_native_target }
     mem_cfg = cfg.memory if cfg is not None else None;
     native_cfg = cfg.native if cfg is not None else None;
@@ -654,12 +621,7 @@ impl _analysis_fingerprint_for(source_path: str) -> str {
 
 impl _check_policy_digest(source_path: str) -> str {
     import json;
-    cfg: any = None;
-    try {
-        cfg = _config_for_module(Path(source_path).resolve());
-    } except Exception {
-        cfg = None;
-    }
+    cfg: any = _config_for_module(Path(source_path).resolve());
     check = cfg.check if cfg is not None else None;
     if check is None {
         return "";
@@ -920,26 +882,16 @@ impl _compute_module_key_uncached(source_path: str) -> str {
 }
 
 impl read_section_bytes(data: bytes, sec_type: int) -> (bytes | None) {
-    try {
-        magic: any = SECTIONS_MAGIC;
-        pos = data.find(magic, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic));
-        return sections.get(sec_type);
-    } except Exception {
+    start = sections_start(data);
+    if start < 0 {
         return None;
     }
+    return read_sections(data, start).get(sec_type);
 }
 
 impl _read_key_section(data: bytes, sec_type: int) -> (str | None) {
-    try {
-        key_bytes = read_section_bytes(data, sec_type);
-        return key_bytes.decode('utf-8') if key_bytes is not None else None;
-    } except Exception {
-        return None;
-    }
+    key_bytes = read_section_bytes(data, sec_type);
+    return key_bytes.decode('utf-8') if key_bytes is not None else None;
 }
 
 impl read_modkey(data: bytes) -> (str | None) {
@@ -1052,9 +1004,9 @@ impl ct_deps_section(
 }
 
 impl module_ct_deps_section(mod: any) -> (bytes | None) {
-    files: list[str] = getattr(mod, "ct_file_deps", []) or [];
-    bodies: list[str] = getattr(mod, "ct_body_deps", []) or [];
-    definitions: list[tuple[str, str]] = getattr(mod, "ct_def_deps", []) or [];
+    files: list[str] = list(mod.ct_file_deps);
+    bodies: list[str] = list(mod.ct_body_deps);
+    definitions: list[tuple[str, str]] = list(mod.ct_def_deps);
     if not (files or bodies or definitions) {
         return None;
     }
@@ -1112,12 +1064,10 @@ impl _definition_texts(path: str) -> dict[str, list[str]] {
     if cached is not None and cached[0] == content_digest {
         return cached[1];
     }
-    texts: dict[str, list[str]] = {};
-    try {
-        texts = _texts_of_spans(
-            real, text, definition_span_rows(JacProgram().parse_source(text, real))
-        );
-    } except Exception {}
+    rows = definition_span_rows(JacProgram().parse_source(text, real))
+        if kernel_resident()
+        else tool_session().definition_rows(real);
+    texts = _texts_of_spans(real, text, rows);
     _DEFINITION_TEXTS[real] = (content_digest, texts);
     return texts;
 }
@@ -1293,11 +1243,7 @@ impl read_dep_rows(data: bytes, base_dir: str = "") -> list[DepRow] {
         return out;
     }
     paths = read_jir_paths(data, base_dir);
-    for line in raw.split("\n") {
-        if "\t" not in line {
-            continue;
-        }
-        parts = line.split("\t");
+    for parts in tab_rows(raw) {
         out.append(
             DepRow(
                 path=paths.resolve(parts[0]),
@@ -1543,7 +1489,7 @@ impl _sweep_once(cache_root: Path) {
         maybe_sweep_dir(
             cache_root, bucket("jir-modules").policy, keep={compiler_generation()}
         );
-        maybe_sweep("jir-bootstrap");
+        maybe_sweep("stage0");
     } except Exception {}
 }
 
@@ -1628,28 +1574,7 @@ impl read_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, byte
 
 impl _decode_sections(data: (bytes | memoryview), start_pos: int) -> dict[int, bytes] {
     stat_note("jir_decode");
-    result: dict[int, bytes] = {};
-    pos = start_pos;
-    try {
-        while pos < len(data) {
-            sec_type = data[pos];
-            pos += 1;
-            if sec_type == SEC_TERMINATOR {
-                break;
-            }
-            if pos + 4 > len(data) {
-                break;
-            }
-            (sec_len, ) = struct.unpack_from('<I', data, pos);
-            pos += 4;
-            if pos + sec_len > len(data) {
-                break;
-            }
-            result[sec_type] = bytes(data[pos:pos + sec_len]);
-            pos += sec_len;
-        }
-    } except Exception {}
-    return result;
+    return decode_sections(bytes(data), start_pos);
 }
 
 impl read_jir(cache_path: Path) -> bytes {
@@ -1683,17 +1608,7 @@ impl read_jir(cache_path: Path) -> bytes {
 }
 
 impl read_bytecode_only(data: bytes) -> (bytes | None) {
-    try {
-        magic_bytes: any = SECTIONS_MAGIC;
-        pos = data.find(magic_bytes, HEADER_SIZE);
-        if pos < 0 {
-            return None;
-        }
-        sections = read_sections(data, pos + len(magic_bytes));
-        return sections.get(SEC_BYTECODE);
-    } except Exception {
-        return None;
-    }
+    return read_section_bytes(data, SEC_BYTECODE);
 }
 
 impl write_precompiled_jir(

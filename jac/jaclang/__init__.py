@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING
 
 
 def _install_compiler_host(package_dir: Path) -> None:
-    # The compiler reaches the toolchain package and the project (jac.toml,
-    # workspaces, module resolution) only through what is registered here. A
-    # runtime-only export ships neither the compiler nor the project layer.
+    # The compiler runs in the kernel, which installs its own host services.
+    # The host process registers only the package root and the module search
+    # path that host-side resolution reads. A runtime-only export ships
+    # neither the compiler nor the project layer.
     try:
         host = import_module("jaclang.compiler.frontend.host")
     except ModuleNotFoundError as exc:
@@ -18,12 +19,12 @@ def _install_compiler_host(package_dir: Path) -> None:
         return
     host.set_package_root(str(package_dir.absolute()))
     try:
-        project_host = import_module("jaclang.project.compiler_host")
+        modresolver = import_module("jaclang.project.modresolver")
     except ModuleNotFoundError as exc:
-        if exc.name != "jaclang.project.compiler_host":
+        if exc.name != "jaclang.project.modresolver":
             raise
         return
-    host.install_host(project_host.ProjectHost())
+    modresolver.install_search_roots(list(sys.path))
 
 
 def _install_importer() -> None:
@@ -35,8 +36,13 @@ def _install_importer() -> None:
         _install_compiler_host(package_dir)
         return
 
-    # Source loading is an optional build service. Exported packages install
-    # their prepared importer from the same initialization entry point.
+    # `jac native build kernel` is stage 0: it runs before any .jac module
+    # loads, since loading one needs the kernel it builds.
+    import_module("jaclang.jac0core.stage0").run_requested_bootstrap(sys.argv)
+
+    # Every .jac import is compiled code from the kernel; importing the meta
+    # importer loads the kernel. Exported packages install their prepared
+    # importer from the same initialization entry point.
     importer = import_module("jaclang.meta_importer").JacMetaImporter
     if not any(isinstance(f, importer) for f in sys.meta_path):
         sys.meta_path.insert(0, importer())
@@ -58,10 +64,10 @@ def _install_importer() -> None:
 # `import jaclang` stays cheap while `from jaclang import JacRuntime`,
 # `import jaclang.compiler`, etc. keep working unchanged.
 def _load_jac_runtime() -> None:
-    # The runtime does not require the compiler to be pre-imported (it loads via
-    # the jac0 bootstrap tier, not the full compiler), so we don't pull in
-    # `jaclang.compiler` here -- doing so would re-introduce a heavy import on
-    # the fast paths. `jaclang.compiler` stays available lazily via __getattr__.
+    # The runtime does not require the compiler package to be pre-imported, so
+    # we don't pull in `jaclang.compiler` here -- doing so would re-introduce a
+    # heavy import on the fast paths. `jaclang.compiler` stays available lazily
+    # via __getattr__.
     from jaclang.runtime.runtime import JacRuntime, JacRuntimeInterface
 
     globals().update(

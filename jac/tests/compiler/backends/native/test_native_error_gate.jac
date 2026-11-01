@@ -12,11 +12,17 @@ holes in the code (exit 0, zero diagnostics).
 """
 import from jaclang.compiler.driver.ifacecache { artifact_cache_path }
 
-import from tests.support { native_force_opts }
+import from tests.support {
+    diagnostics_text,
+    error_codes,
+    kernel_check_file,
+    kernel_compile_file,
+    native_force_opts
+}
 import os;
 import tempfile;
+import from jaclang.compiler.driver.compile_options { CompileOptions }
 import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.jir { get_module_cache_path }
 import from jaclang.runtime.runtime { JacRuntime }
 
 def _bytecode(prog: JacProgram, target: str) -> any {
@@ -25,7 +31,7 @@ def _bytecode(prog: JacProgram, target: str) -> any {
 
 # `eval` of a runtime string can never be lowered on the na pathway: it
 # would need an embedded interpreter inside the AOT-compiled binary. The
-# E5092 fires deep inside NaIRGenPass codegen and, crucially, is NOT caught
+# E5092 is the MIR decision step's refusal and, crucially, is NOT caught
 # by the up-front capability blacklist -- that makes it the exact "drift"
 # class of error the gate exists for. (An earlier version leaned on
 # for-loop tuple destructuring, but #7238 later lowered that construct
@@ -60,33 +66,23 @@ def write_module(name: str, source: str) -> str {
     return src_path;
 }
 
-"""Return True if the program emitted at least one alert with the given code."""
-def has_error_code(prog: JacProgram, code: str) -> bool {
-    for alrt in prog.errors_had {
-        if alrt.code is not None and alrt.code.code == code {
-            return True;
-        }
-    }
-    return False;
-}
-
-"""Format errors for assertion messages."""
-def fmt_errors(prog: JacProgram) -> str {
-    return str([str(e) for e in prog.errors_had]);
+"""Options that place a module in the native codespace and require it there,
+so a refusal is an E5092 error rather than a demotion."""
+def required_opts -> CompileOptions {
+    return CompileOptions(force_codespace="native", native_required=True);
 }
 
 test "na codegen errors withhold the native artifact" {
     src = write_module("gate_bad.jac", BAD_NA_SOURCE);
-    prog = JacProgram();
-    mod = prog.compile(file_path=src, options=native_force_opts());
-    assert has_error_code(prog, "E5092") , (
-        f"Expected E5092 from native codegen, got: {fmt_errors(prog)}"
+    result = kernel_compile_file(src, required_opts(), ["bytecode", "mir"]);
+    assert "E5092" in error_codes(result) , (
+        f"Expected E5092 from native codegen, got: {diagnostics_text(result)}"
     );
-    assert mod.gen.llvm_ir is None , (
+    assert not any(unit.native_ir for unit in result.units) , (
         "a module with native codegen errors must not publish llvm ir"
     );
-    assert mod.gen.native_engine is None , (
-        "a module with native codegen errors must not publish a jit engine"
+    assert not any(unit.native_object for unit in result.units) , (
+        "a module with native codegen errors must not publish a native object"
     );
 }
 
@@ -116,37 +112,26 @@ test "import of a natively-unlowerable module demotes and succeeds" {
 
 test "check-path compile surfaces native codegen errors (check/run parity)" {
     src = write_module("gate_bad_check.jac", BAD_NA_SOURCE);
-    prog = JacProgram();
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    prog.compile(
-        file_path=src,
-        options=CompileOptions(
-            no_cgen=True, native_parity=True, force_codespace="native",
-        )
-    );
-    assert has_error_code(prog, "E5092") , (
+    opts = required_opts();
+    opts.native_parity = True;
+    result = kernel_check_file(src, opts);
+    assert "E5092" in error_codes(result) , (
         f"`jac check` path must report the same native errors `jac run` "
-        f"does, got: {fmt_errors(prog)}"
+        f"does, got: {diagnostics_text(result)}"
     );
     seen: set = set();
-    for alrt in prog.errors_had {
-        key = (
-            alrt.code.code if alrt.code is not None else "",
-            alrt.loc.first_line,
-            alrt.loc.col_start,
-            alrt.msg
-        );
-        assert key not in seen , f"duplicate diagnostic reported: {alrt}";
+    for diag in result.errors {
+        key = (diag.code, diag.span.line, diag.span.col, diag.message);
+        assert key not in seen , f"duplicate diagnostic reported: {key}";
         seen.add(key);
     }
 }
 
 test "clean na module still publishes artifacts and caches" {
     src = write_module("gate_good.jac", GOOD_NA_SOURCE);
-    prog = JacProgram();
-    mod = prog.compile(file_path=src, options=native_force_opts());
-    assert not prog.errors_had , f"unexpected errors: {fmt_errors(prog)}";
-    assert mod.gen.llvm_ir is not None , ("clean na module must still publish llvm ir");
+    result = kernel_compile_file(src, native_force_opts());
+    assert result.ok() , f"unexpected errors: {diagnostics_text(result)}";
+    assert result.unit(src).native_ir , "clean na module must still publish llvm ir";
     bc = _bytecode(JacProgram(), src);
     assert bc is not None , "clean na module must still produce bytecode";
     assert os.path.exists(artifact_cache_path(src, JacProgram())) , (

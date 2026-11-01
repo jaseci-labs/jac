@@ -2,10 +2,10 @@
 
 A `type` had no native representation at all, so a dict keyed by one had no
 layout: the layout pass reported the field as not layout-compatible and the
-codegen pass refused the type outright, demoting every method that touched it.
-`UniNode.__sub_node_tab` is exactly that dict, which is why the seal shipped
-`_construct_sub_node_tab` and `FuncSignature.is_in_py_class` as `abort()`
-stubs and why two more methods were hand-rewritten to dodge it.
+backend refused the type outright, demoting every method that touched it.
+`UniNode.__sub_node_tab` is exactly that dict, which is why the seal refused
+`_construct_sub_node_tab` and `FuncSignature.is_in_py_class` and why two more
+methods were hand-rewritten to dodge it.
 
 Each case JIT-compiles `fixtures/type_keyed_dict.jac` and compares the answer
 against the same source run through the sv pathway, so the assertion is
@@ -17,8 +17,13 @@ boundary that `type_keyed_dict_lib` puts between two of the key classes.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support {
+    TESTS_DIR,
+    compile_native,
+    kernel_compile_file,
+    native_address,
+    native_force_opts
+}
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
     get_effective_default_codespace_override,
@@ -37,14 +42,7 @@ def _engine -> any {
     if _ENG {
         return _ENG[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, FIXTURE)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {FIXTURE}";
+    (eng, _) = compile_native(FIXTURE);
     entry_addr = native_address(eng, "jac_entry");
     assert entry_addr != 0 , "no jac_entry to initialize module globals";
     ctypes.CFUNCTYPE(None)(entry_addr)();
@@ -54,11 +52,10 @@ def _engine -> any {
 
 """Warnings the native compile of the fixture emitted."""
 def _warnings -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(FIXTURES, FIXTURE)), options=native_force_opts()
+    result = kernel_compile_file(
+        str(os.path.join(FIXTURES, FIXTURE)), native_force_opts()
     );
-    return [str(w) for w in (prog.warnings_had or [])];
+    return [f"{w.code} {w.message}" for w in result.warnings];
 }
 
 """Import the same fixture through the sv/bytecode pathway (the oracle)."""

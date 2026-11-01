@@ -1,18 +1,9 @@
-"""Congruence tests for optional coercion at call and assignment seams (N2).
+"""Congruence tests for optional coercion at call and assignment sites (N2).
 
-`NaIRGenPass._coerce_type` implements optional wrapping and checked
-unwrapping. Three use sites did not route through it: method call
-arguments on the primitive dispatch path, method receivers, and
-tuple-unpack stores. The tests whose names begin "primitive call
-argument", "call receiver" and "unpack store" write the idiomatic jac
-those seams used to reject.
-
-The tests named "user obj call argument" and "primitive call argument:
-element wrap" pin coercions that already worked before that fix -- the
-first through the coercion loop against the callee's declared LLVM
-signature, the second through the list emitter's own element-type
-coercion. They are kept because they are cheap native-vs-sv congruence
-coverage, not because they pin the new routing.
+Optional wrapping and checked unwrapping have to apply at every place a value
+meets a declared type: method call arguments on the primitive dispatch path,
+method receivers, tuple-unpack stores, user obj call arguments and list
+elements. The tests write the idiomatic jac those sites used to reject.
 
 Every test asserts the native result equals the result of the same
 fixture run through the sv/bytecode pathway.

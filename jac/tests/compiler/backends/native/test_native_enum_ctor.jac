@@ -22,17 +22,19 @@ print the same lines, and CPython's own answers for the same six calls are
 `2 1 25 4 rejected rejected 0`.
 """
 
-import contextlib;
-import io;
+import ctypes;
 import os;
 import subprocess;
 import tempfile;
 import from tests.support {
     jac_command,
     TESTS_DIR,
+    compile_mir,
+    compile_native,
+    get_func,
     native_force_opts,
-    python_run,
-    compile_native_ir
+    native_str_func,
+    python_run
 }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.passes.layout_pass { get_layout_registry }
@@ -42,15 +44,6 @@ glob FIXTURES = os.path.join(
      ),
      EXPECTED: tuple[str, ...] = ("2", "1", "25", "4", "rejected", "rejected", "0");
 
-def compile_native(fixture: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
-    );
-    return (prog, ir, );
-}
-
-
 def sv_lines(fixture: str) -> list[str] {
     output = python_run(os.path.join(FIXTURES, fixture), timeout=900);
     return [
@@ -58,19 +51,6 @@ def sv_lines(fixture: str) -> list[str] {
         for line in output.splitlines()
         if line.strip()
     ];
-}
-
-
-"""The seam report a build would show on stderr for a fixture."""
-def seam_report(fixture: str) -> str {
-    buf = io.StringIO();
-    prog = JacProgram();
-    with contextlib.redirect_stderr(buf) {
-        prog.compile(
-            file_path=os.path.join(FIXTURES, fixture), options=native_force_opts()
-        );
-    }
-    return buf.getvalue();
 }
 
 
@@ -95,35 +75,39 @@ def na_lines(fixture: str) -> list[str] {
 }
 
 
-test "the enum-constructor fixture lowers with no seam" {
-    (prog, ir) = compile_native("enum_ctor.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    assert ir is not None and ir.gen.llvm_ir , "no native IR for the fixture";
+test "the enum-constructor fixture lowers with no demotion" {
+    fx = compile_mir("enum_ctor.jac", FIXTURES);
+    assert not fx.demoted() , str(fx.demoted());
 }
 
 
 test "the call validates against every declared member" {
-    ir = compile_native_ir("enum_ctor.jac");
-    text = str(ir.gen.llvm_ir);
-    for member in ("Null", "Instantiable", "Instance", "Ambiguous") {
-        assert f"ec.Flags.{member}" in text , (
-            f"'{member}' is missing from the validation table, so a value it "
-            f"carries would be rejected"
+    (eng, _fx) = compile_native("enum_ctor.jac", FIXTURES);
+    as_instance = get_func(eng, "as_instance", ctypes.c_int64, ctypes.c_int64);
+    as_class = get_func(eng, "as_class", ctypes.c_int64, ctypes.c_int64);
+    assert as_instance(1) == 2 , "a re-tagged member was rejected";
+    assert as_class(2) == 1 , "a re-tagged member was rejected";
+    guarded = native_str_func(eng, "guarded", ctypes.c_char_p, ctypes.c_int64);
+    for (value, want) in [(0, b"0"), (1, b"1"), (2, b"2"), (4, b"4")] {
+        assert guarded(value) == want , (
+            f"{value} is missing from the validation table, so a value a "
+            f"member carries was rejected"
         );
     }
-    assert "raise.ValueError" in text , (
-        "the call lowered to the identity; an undeclared value would pass "
-        "through as a member"
-    );
+    for value in [3, 7] {
+        assert guarded(value) == b"rejected" , (
+            f"the call lowered to the identity; {value} passed through as a member"
+        );
+    }
 }
 
 
 test "the declared-enum spelling validates the same way" {
-    ir = compile_native_ir("enum_ctor.jac");
-    text = str(ir.gen.llvm_ir);
-    for member in ("LOW", "MID", "HIGH") {
-        assert f"ec.Level.{member}" in text , (
-            f"'{member}' is missing from the declared enum's table"
+    (eng, _fx) = compile_native("enum_ctor.jac", FIXTURES);
+    level_of = get_func(eng, "level_of", ctypes.c_int64, ctypes.c_int64);
+    for value in [2, 25, 40] {
+        assert level_of(value) == value , (
+            f"{value} is missing from the declared enum's table"
         );
     }
 }
@@ -138,33 +122,23 @@ test "declared and undeclared values answer as CPython does" {
 
 
 test "a noninteger input to an integer enum refuses by name" {
-    seams = seam_report("xmod_demote_dyn_lib.jac");
-    assert "enum constructor 'Hue'" in seams , (
-        f"the floating-point input lowered silently:\n{seams}"
+    fx = compile_mir("xmod_demote_dyn_lib.jac", FIXTURES);
+    assert fx.is_demoted("from_code") , (
+        f"the floating-point input lowered silently: {fx.demoted()}"
     );
-    assert "from_code" in seams , (
-        f"the refusal did not demote the callable that owns it:\n{seams}"
-    );
+    assert "Hue" in fx.reason("from_code") , fx.reason("from_code");
 }
 
 test "string enum constructors resolve values and reject missing members" {
-    import ctypes;
-    import from tests.support { get_func }
-    (prog, ir) = compile_native("enum_ctor_string.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    probe = get_func(ir.gen.native_engine, "probe", ctypes.c_int64, ctypes.c_int64);
+    (eng, _fx) = compile_native("enum_ctor_string.jac", FIXTURES);
+    probe = get_func(eng, "probe", ctypes.c_int64, ctypes.c_int64);
     assert [probe(i) for i in range(4)] == [1, 1, 1, -1];
 }
 
 
 test "a same-named local function is not read as the enum" {
-    (prog, ir) = compile_native("enum_ctor_shadow_main.jac");
-    assert not prog.errors_had , f"{[str(e) for e in prog.errors_had]}";
-    text = str(ir.gen.llvm_ir);
-    assert "ec.Tone.SOFT" not in text , (
-        "the hook matched the imported enum by spelling, so this module's own "
-        "`Tone` function was replaced by a member lookup"
-    );
+    # the hook must not match the imported enum by spelling and replace this
+    # module's own `Tone` function with a member lookup
     sv = sv_lines("enum_ctor_shadow_main.jac");
     assert sv == ["6", "12"] , f"server lane printed {sv}";
     na = na_lines("enum_ctor_shadow_main.jac");
@@ -173,10 +147,11 @@ test "a same-named local function is not read as the enum" {
 
 
 test "a non-integer argument refuses instead of being coerced" {
-    seams = seam_report("enum_ctor_bad_arg.jac");
-    assert "enum constructor 'Level'" in seams , (
-        f"a float argument was coerced into the member table:\n{seams}"
+    fx = compile_mir("enum_ctor_bad_arg.jac", FIXTURES);
+    assert fx.is_demoted("widen") , (
+        f"a float argument was coerced into the member table: {fx.demoted()}"
     );
+    assert "Level" in fx.reason("widen") , fx.reason("widen");
 }
 
 

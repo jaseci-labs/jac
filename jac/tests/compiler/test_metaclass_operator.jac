@@ -17,8 +17,7 @@ a type-annotation position, where a subscript is always specialization and
 the metaclass never runs.
 """
 
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from tests.support { kernel_check_source }
 
 glob META_GETITEM: str = "class Meta(type) {\n"
          + "    def __getitem__(cls: Meta, key: str) -> int {\n        return len(key);\n    }\n"
@@ -30,11 +29,10 @@ glob META_GETITEM: str = "class Meta(type) {\n"
          + "def probe_val -> Box[int] {\n    return Box[int](item=3);\n}\n";
 
 def check_src(src: str) -> list[str] {
-    prog = JacProgram();
-    prog.compile(
-        file_path="metaop.jac", use_str=src, options=CompileOptions(no_cgen=True)
-    );
-    return [str(e) for e in prog.errors_had];
+    return [
+        f"{diag.code}: {diag.message}"
+        for diag in kernel_check_source(src, "metaop.jac").errors
+    ];
 }
 
 test "a metaclass operator is reachable from the class object" {

@@ -62,8 +62,6 @@ def py_ir_passes(request: ProductRequest) -> PassSchedule;
 
 def frozen_passes(request: ProductRequest) -> PassSchedule;
 
-def bytecode_passes(request: ProductRequest) -> PassSchedule;
-
 def native_ir_passes(request: ProductRequest) -> PassSchedule;
 
 def native_lower_passes(request: ProductRequest) -> PassSchedule;
@@ -79,6 +77,10 @@ def format_lintfix_passes(request: ProductRequest) -> PassSchedule;
 def lint_passes(request: ProductRequest) -> PassSchedule;
 
 def python_ast_passes(request: ProductRequest) -> PassSchedule;
+
+def assemble_bytecode(program: JacProgram, module: Module) -> bool;
+
+def drop_bytecode(program: JacProgram, module: Module);
 
 def python_symbols_passes(request: ProductRequest) -> PassSchedule;
 
@@ -159,7 +161,7 @@ glob IR_LOADS: list[str] = [
          'jaclang.compiler.backends.es',
          'jaclang.compiler.passes.freeze_structure_pass'
      ],
-     NATIVE_LOADS: list[str] = ['jaclang.compiler.backends.native.na_ir_gen_pass', ];
+     NATIVE_LOADS: list[str] = ['jaclang.compiler.backends.native.mir.backend', ];
 
 glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          CompilationProduct.SYMBOLS: ProductSpec(
@@ -174,8 +176,7 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              passes=ir_passes,
              bootstrap=bootstrap_ir_passes,
              loads=IR_LOADS,
-             tiered=True,
-             on_import_error=ImportFallback.BOOTSTRAP_INTERNAL
+             tiered=True
          ),
          CompilationProduct.FLOW: ProductSpec(passes=flow_passes, cached=True),
          CompilationProduct.PLACEMENT: ProductSpec(action=place_module, acts=True),
@@ -223,7 +224,10 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              on_import_error=ImportFallback.REPORT
          ),
          CompilationProduct.BYTECODE: ProductSpec(
-             needs=[CompilationProduct.PY_IR], passes=bytecode_passes
+             needs=[CompilationProduct.PY_IR],
+             action=assemble_bytecode,
+             drop=drop_bytecode,
+             acts=True
          ),
          CompilationProduct.NATIVE_IR: ProductSpec(
              needs=[CompilationProduct.FLOW, CompilationProduct.ANALYSIS],
@@ -283,14 +287,11 @@ def tier_reason(product: CompilationProduct) -> str;
 def resolve(
     product: CompilationProduct,
     request: (ProductRequest | None) = None,
-    internal: bool = False,
     peer_fell_back: bool = False
 ) -> tuple[(PassSchedule | None), bool, bool];
 
 def schedule_for(
-    product: CompilationProduct,
-    request: (ProductRequest | None) = None,
-    internal: bool = False
+    product: CompilationProduct, request: (ProductRequest | None) = None
 ) -> (PassSchedule | None);
 
 def unavailable(product: CompilationProduct) -> str;
@@ -300,8 +301,6 @@ def product_passes(
 ) -> PassSchedule;
 
 def product_facts(product: CompilationProduct) -> set[AnalysisFact];
-
-def early_passes -> PassSchedule;
 
 def dependents(product: CompilationProduct) -> list[CompilationProduct];
 

@@ -7,7 +7,7 @@ default_codespace-driven whole-module native inference (native by default,
 server signals and closure poison opt modules back out).
 """
 
-import from jaclang.compiler.backends.py.codegen_shim { generated_python }
+import from jaclang.compiler.backends.py.python_text { generated_python }
 import os;
 import re;
 import from tests.support { JAC_ROOT }
@@ -513,46 +513,39 @@ test "transitive import chain infers native under native default" {
     assert mod.gen.native_engine is not None;
 }
 
-test "coverage records demotion with first error code" {
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
-    na_coverage_begin();
-    try {
-        compile_with_default("nadefault_nolower.jac", "native", cgen=True);
-    } finally {
-        coverage = na_coverage_end();
-    }
-    rec = coverage.get(
-        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_nolower.jac"))
+"""`jac check --native-coverage` under the native default: the decision step's
+row for every module the check reached, keyed by real path."""
+def coverage_under_native_default(name: str) -> dict[str, any] {
+    import from tests.support { kernel_check_file }
+    result = kernel_check_file(
+        os.path.join(FIXTURE_DIR, name),
+        CompileOptions(default_codespace="native"),
+        native_coverage=True
     );
-    assert rec is not None , "demoted module missing from coverage";
-    assert rec['outcome'] == 'demoted' , f"expected demoted, got {rec}";
-    assert rec['code'] == 'E5092' , f"expected first-error code, got {rec}";
+    return {os.path.realpath(row.path): row for row in result.coverage};
 }
 
-test "coverage records native and server outcomes" {
-    import from jaclang.compiler.driver.na_coverage {
-        na_coverage_begin,
-        na_coverage_end
-    }
-    na_coverage_begin();
-    try {
-        compile_with_default("nadefault_pure.jac", "native", cgen=True);
-        compile_with_default("nadefault_root_osp.jac", "native", cgen=True);
-    } finally {
-        coverage = na_coverage_end();
-    }
-    pure = coverage.get(
-        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_pure.jac"))
+test "coverage records demotion with its code" {
+    path = os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_nolower.jac"));
+    row = coverage_under_native_default("nadefault_nolower.jac").get(path);
+    assert row is not None , "demoted module missing from coverage";
+    assert row.native == 0 , f"expected demoted, got {row}";
+    assert row.demoted , f"a demoted module names no demoted function: {row}";
+    assert all(d.code == 'E5092' for d in row.demoted) , [d.code for d in row.demoted];
+}
+
+test "coverage records native and demoted outcomes" {
+    pure_path = os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_pure.jac"));
+    blocked_path = os.path.realpath(
+        os.path.join(FIXTURE_DIR, "nadefault_root_osp.jac")
     );
-    blocked = coverage.get(
-        os.path.realpath(os.path.join(FIXTURE_DIR, "nadefault_root_osp.jac"))
+    pure = coverage_under_native_default("nadefault_pure.jac").get(pure_path);
+    blocked = coverage_under_native_default("nadefault_root_osp.jac").get(blocked_path);
+    assert pure is not None and pure.native == 1 and not pure.demoted , f"got {pure}";
+    assert blocked is not None and blocked.native == 0 , f"got {blocked}";
+    assert blocked.demoted and all(d.reason for d in blocked.demoted) , (
+        f"a demoted record must carry the decision step's reason: {blocked}"
     );
-    assert pure is not None and pure['outcome'] == 'native' , f"got {pure}";
-    assert blocked is not None and blocked['outcome'] == 'server' , f"got {blocked}";
-    assert blocked['detail'] != '' , "server record must carry the classifier reason";
 }
 
 test "include chain infers native under native default" {
@@ -636,8 +629,7 @@ test "client import pulls a pure markerless module cross-module" {
 
 test "cross-module pulled elements dual-emit for the server side" {
     import from jaclang.client.client_bundle { _ensure_js_generated }
-    import from jaclang.compiler.backends.py.jcir_bc_gen_pass { JcirBytecodeGenPass }
-    import from jaclang.compiler.backends.py.jcir_gen_pass { JcirGenPass }
+    import from jaclang.compiler.backends.py.pyast_gen_pass { PyastGenPass }
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURE_DIR, "infer_xmod_app.jac"), no_cgen=False);
     util = hub_module(prog, "infer_xmod_util.jac");
@@ -662,9 +654,8 @@ test "cross-module pulled elements dual-emit for the server side" {
         "pulled glob must be exportable to its client importers"
     );
     assert util_js.strip() , "pulled module must produce client JS";
-    run_pass(JcirGenPass, util, prog);
-    run_pass(JcirBytecodeGenPass, util, prog);
-    py_src = generated_python(util.gen);
+    run_pass(PyastGenPass, util, prog);
+    py_src = generated_python(util);
     assert 'def register' in py_src , (
         "pulled element must still exist in the python module (dual emit)"
     );

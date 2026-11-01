@@ -3,80 +3,7 @@ impl declared_entry_points(source: str) -> list[str] {
     return re.findall(r"^def:pub\s+([A-Za-z_][A-Za-z0-9_]*)", source, re.MULTILINE);
 }
 
-impl unit_issue_details(plan: LinkPlan) -> Callable[[str], dict[str, str]] {
-    registry = plan.prog.native_units();
-    cache: dict[str, dict[str, str]] = {};
-
-    def details(path: str) -> dict[str, str] {
-        found = cache.get(path);
-        if found is not None {
-            return found;
-        }
-        out: dict[str, str] = {};
-        bitcode = registry.bitcode_for(path, plan.options);
-        if bitcode is not None {
-            for issue in native_lowering_issues(str(llvm.parse_bitcode(bitcode))) {
-                out.setdefault(issue.symbol, issue.detail);
-            }
-        }
-        cache[path] = out;
-        return out;
-    }
-    return details;
-}
-
-impl demotion_chain(
-    plan: LinkPlan,
-    path: str,
-    name: str,
-    details: Callable[[str], dict[str, str]],
-    pkg_root: str
-) -> list[str] {
-    import re;
-    chain: list[str] = [];
-    seen: set[str] = set();
-    current: (str | None) = name;
-    owner: (str | None) = path;
-    while current is not None and owner is not None {
-        step = f"{owner}:{current}";
-        if step in seen {
-            break;
-        }
-        seen.add(step);
-        detail = details(owner).get(current, "");
-        label = os.path.relpath(owner, os.path.dirname(pkg_root));
-        chain.append(f"{current} ({label})" + (f": {detail}" if detail else ""));
-        called = re.search(
-            r"Native lowering failed for (?:function|method) '([^']+)'", detail
-        );
-        if called is None {
-            break;
-        }
-        current = called.group(1);
-        here = plan.unit(owner);
-        candidates = [here] if here is not None else [];
-        if here is not None {
-            candidates.extend(plan.unit(dep) for dep in here.iface.deps);
-        }
-        candidates.extend(plan.units);
-        owner = next(
-            (
-                unit.path
-                for unit in candidates
-                if unit is not None and current in unit.iface.demoted
-            ),
-            None
-        );
-    }
-    return chain;
-}
-
-impl missing_kernel_entries(
-    plan: LinkPlan,
-    pkg_root: str,
-    details: (Callable[[str], dict[str, str]] | None) = None
-) -> list[str] {
-    issues = details if details is not None else unit_issue_details(plan);
+impl missing_kernel_entries(plan: LinkPlan, pkg_root: str) -> list[str] {
     problems: list[str] = [];
     for rel in KERNEL_ENTRY_SOURCES {
         source_path = os.path.realpath(os.path.join(pkg_root, rel));
@@ -90,19 +17,9 @@ impl missing_kernel_entries(
         }
         exported = set(unit.iface.pub_symbols());
         for name in declared {
-            if native_def_symbol(name) in exported {
-                continue;
+            if native_def_symbol(name) not in exported {
+                problems.append(f"{name} is not exported by {rel}");
             }
-            chain = demotion_chain(plan, unit.path, name, issues, pkg_root);
-            problems.append(
-                f"{name} is not exported"
-                    + (
-                        "; it was demoted to Python:\n      "
-                            + "\n      <- ".join(chain)
-                            if chain
-                            else ""
-                    )
-            );
         }
     }
     return problems;
@@ -112,8 +29,8 @@ impl refuse_missing_entries(plan: LinkPlan, pkg_root: str) {
     problems = missing_kernel_entries(plan, pkg_root);
     if problems {
         raise KernelEntryError(
-            "the native compiler kernel would not export the entry points its "
-            "loader calls:\n  "
+            "the native compiler kernel would not export its extension module's "
+            "init function:\n  "
                 + "\n  ".join(problems)
         );
     }
@@ -127,7 +44,57 @@ impl running_kernel_target(pkg_root: str = "") -> KernelTarget {
         root_module=KERNEL_ROOT_MODULE,
         kernel_unit_rel=list(KERNEL_UNIT_REL),
         native_lowered_rel=list(NATIVE_LOWERED_PATHS),
-        native_only_rel=list(NATIVE_ONLY_REL) + list(NATIVE_ONLY_DIR_REL)
+        native_only_rel=list(NATIVE_ONLY_REL) + list(NATIVE_ONLY_DIR_REL),
+        native_host_rel=list(NATIVE_HOST_REL)
+    );
+}
+
+impl kernel_options(spec: (TargetSpec | None) = None) -> CompileOptions {
+    return CompileOptions(
+        aot_mode=True,
+        native_required=True,
+        native_require=[],
+        native_link_mode=KERNEL_LINK_MODE,
+        na_debug=False,
+        default_codespace="native",
+        native_unit=True,
+        kernel_build=True,
+        skip_native_engine=True,
+        native_target=(spec or host_target_spec()).triple,
+        na_gc_mode="cycles",
+        memory_profile="managed",
+        nogc_enforce_all=False,
+        memory_enforce=[],
+        memory_exempt=[],
+        native_threads=4,
+        rc_debug_codegen=False,
+        native_debug=False,
+        opt_level=2,
+        dump_ir_path="",
+        debug_ir=False,
+        rc_stats=False,
+        nogc_debug=False
+    );
+}
+
+impl kernel_plan(
+    prog: (JacProgram | None) = None,
+    mode: str = "",
+    target: (KernelTarget | None) = None,
+    spec: (TargetSpec | None) = None
+) -> LinkPlan {
+    program = prog if prog is not None else JacProgram();
+    options = kernel_options(spec);
+    root_path = target.root_module_path() if target is not None else kernel_root_path();
+    return build_link_plan(program, [root_path], options, mode=mode, native_unit=True);
+}
+
+impl kernel_llvm_runpath(lib_path: str, pkg_root: str = "") -> str {
+    llvm_dir = os.path.join(
+        pkg_root or jaclang_pkg_root(), "compiler", "backends", "native", "llvm"
+    );
+    return os.path.relpath(llvm_dir, os.path.dirname(os.path.abspath(lib_path))).replace(
+        os.sep, "/"
     );
 }
 
@@ -137,7 +104,8 @@ impl link_kernel(
     prog: (JacProgram | None) = None,
     log: (Callable[[str], None] | None) = None,
     link_mode: str = "",
-    spec: (TargetSpec | None) = None
+    spec: (TargetSpec | None) = None,
+    runpath: str = ""
 ) -> LinkResult {
     mode = link_mode
         or (target.link_mode if target is not None else "")
@@ -172,7 +140,13 @@ impl link_kernel(
         os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
 
         program.release_compile_closure();
-        result = link_artifact(plan, dst, ArtifactKind.SHARED, log=log);
+        result = link_artifact(
+            plan,
+            dst,
+            ArtifactKind.SHARED,
+            log=log,
+            runpaths=[runpath] if runpath else []
+        );
         if log is not None {
             events = plan.prog.analysis.cache_events;
             log(
@@ -190,109 +164,17 @@ impl link_kernel(
     }
 }
 
-impl GcPauses.observe(phase: str, info: dict[str, int]) {
-    if info.get("generation") != 2 {
-        return;
-    }
-    if phase == "start" {
-        self._started = time.perf_counter();
-        return;
-    }
-    pause = time.perf_counter() - self._started;
-    self.collections += 1;
-    self.total_seconds += pause;
-    self.longest_seconds = max(self.longest_seconds, pause);
-    if pause > 1.0 {
-        self.long_pauses.append(
-            (self._started - self.origin, pause, info.get("collected", 0))
-        );
-    }
-}
-
-impl unit_line_count(path: str) -> int {
-    total = 0;
-    for source in [path] + discover_annex_files(path, ".impl.jac") {
-        try {
-            with open(source, "rb") as f {
-                total += f.read().count(b"\n");
-            }
-        } except OSError {}
-    }
-    return total;
-}
-
-impl peak_rss_gb -> float {
-    import resource;
-    import sys;
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
-    return peak / (1 << 30) if sys.platform == "darwin" else peak / (1 << 20);
-}
-
-impl plan_kernel_prefix(stop_after: int, log: Callable[[str], None]) -> int {
-    import gc;
-    import from operator { itemgetter }
+impl link_kernel_object(
+    dst: str,
+    log: (Callable[[str], None] | None) = None,
+    spec: (TargetSpec | None) = None
+) -> str {
     program = JacProgram();
-    registry = program.native_units();
-    started = time.perf_counter();
-
-    def stamped(line: str) {
-        log(f"[{time.perf_counter() - started:7.1f}s {peak_rss_gb():5.1f}G] {line}");
-    }
-
-    registry.progress = stamped;
-    registry.cold = True;
-    program.iface_registry().cold = True;
-    registry.stop_after = stop_after;
-    pauses = GcPauses(origin=started);
-    gc.callbacks.append(pauses.observe);
-    log(f"  Planning the kernel uncached until {stop_after} units are lowered");
-    try {
-        kernel_plan(program, mode=KERNEL_LINK_MODE);
-        log("  The whole kernel was planned before the stop");
-    } except NativeBuildStopped {} finally {
-        registry.progress = None;
-        gc.callbacks.remove(pauses.observe);
-    }
-    log(
-        f"  Kernel prefix: {registry.lowered_units} units lowered in "
-        f"{time.perf_counter() - started:.1f}s (nothing linked), "
-        f"peak RSS {peak_rss_gb():.1f} GB"
-    );
-    log(registry.phase_summary());
-    log(
-        f"  GC: {pauses.collections} gen-2 collections, "
-        f"{pauses.total_seconds:.1f}s paused, longest {pauses.longest_seconds:.2f}s"
-    );
-    for (at, seconds, collected) in pauses.long_pauses {
-        log(f"    gen-2 pause of {seconds:.2f}s at {at:.1f}s, {collected} collected");
-    }
-    for (path, why) in sorted(registry.failures.items()) {
-        reason = why.strip().splitlines()[-1] if why.strip() else "no reason recorded";
-        log(f"  Failed to lower {native_unit_identity(path)}: {reason}");
-    }
-    log(
-        "  Lowering time per unit (lines include annexes; functions declared/defined):"
-    );
-    for (path, seconds) in sorted(
-        registry.unit_lower_seconds.items(), key=itemgetter(1), reverse=True
-    ) {
-        (declared, defined) = registry.unit_functions.get(path, (0, 0));
-        log(
-            f"    {seconds:7.2f}s {unit_line_count(path):7d} lines "
-            f"{declared:6d}/{defined:<6d} {native_unit_identity(path)}"
-        );
-    }
-    return registry.lowered_units;
-}
-
-impl build_target_kernel(
-    spec_path: str, dst: str, log: (Callable[[str], None] | None) = None
-) -> int {
-    spec = read_kernel_target(spec_path);
-    if spec is None {
-        return STAGE0_UNKNOWN_FORMAT;
-    }
-    set_kernel_target(spec);
-    link_kernel(dst, target=spec, log=log);
-    return 0;
+    plan = kernel_plan(program, mode=NATIVE_LINK_MODE_BITCODE, spec=spec);
+    refuse_missing_entries(plan, jaclang_pkg_root());
+    program.release_compile_closure();
+    data = link_object(plan, [KERNEL_INIT_SYMBOL], log=log);
+    os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
+    atomic_write(dst, data);
+    return dst;
 }

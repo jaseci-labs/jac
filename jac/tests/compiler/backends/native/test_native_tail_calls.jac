@@ -18,11 +18,11 @@ import from pathlib { Path }
 import from tests.support {
     assert_native_identity,
     compile_native_ir,
+    error_codes,
     jac_command,
-    native_build,
-    source_spelled
+    kernel_compile_file,
+    native_build
 }
-import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures";
@@ -33,8 +33,8 @@ test "tail calls agree with the Python backend under every memory profile" {
 }
 
 test "every tail call lowers to musttail" {
-    ir = compile_native_ir("tail_calls_deep.jac");
-    text = source_spelled(str(ir.gen.llvm_ir));
+    fx = compile_native_ir("tail_calls_deep.jac");
+    text = fx.llvm_ir();
     assert text.count("musttail call") >= 4 , text[:2000];
 }
 
@@ -107,15 +107,10 @@ test "a tail call the frame cannot host is refused with the reason" {
 }
 
 test "return tail needs a call" {
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(FIXTURES / "tail_calls_syntax.jac"),
-        options=CompileOptions(no_cgen=True)
+    codes = error_codes(
+        kernel_compile_file(
+            str(FIXTURES / "tail_calls_syntax.jac"), CompileOptions(no_cgen=True)
+        )
     );
-    codes = [
-        e.code.code
-        for e in prog.errors_had
-        if e.code is not None
-    ];
     assert "E0097" in codes , codes;
 }

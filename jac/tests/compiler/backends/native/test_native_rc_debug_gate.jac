@@ -2,7 +2,7 @@
 
 The RC printf trace (RC MALLOC / RC RETAIN / RC RELEASE / RC FREE) is
 emitted only when the build is a debug build (`jac build --native --debug`,
-or `[native] debug = true` in jac.toml): NaIRGenPass reads
+or `[native] debug = true` in jac.toml): native codegen reads
 `rc_debug_codegen` from its compile options, which follow `native_debug`
 when unset. Gate ON must reproduce the runtime-toggleable trace; gate OFF
 must compile the trace out entirely and reduce `__rc_debug_enable()` to a

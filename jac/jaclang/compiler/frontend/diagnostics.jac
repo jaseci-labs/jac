@@ -409,6 +409,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Unsupported escape sequence '\\N{{...}}'",
          help="Resolving a Unicode character name needs the name database, which the compiler does not carry. Write the code point as \\uXXXX or \\UXXXXXXXX, or prefix the string with r to keep the backslash."
      ),
+     E0111 = _err("E0111", Category.SYNTAX, "Python syntax error: {message}"),
      W0100 = _warn(
          "W0100",
          Category.SYNTAX,
@@ -960,6 +961,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " destroy request, so it must yield nodes, edges or archetypes. Assign"
          " `None` to the location that holds this value if you meant to drop a"
          " reference."
+     ),
+     E1408 = _err(
+         "E1408",
+         Category.IMPORT,
+         "'{path}' belongs to another compiler's tree ({root})",
+         help="This kernel compiles the jaclang package it was built from and"
+         " programs outside any jaclang package. A module inside a different"
+         " jaclang checkout is compiled by that checkout's own kernel; run it"
+         " with that checkout's `jac`."
      ),
      E1134 = _err(
          "E1134",
@@ -2332,7 +2342,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5090",
          Category.CODEGEN,
          "Native pathway does not yet support {kind} '{name}'",
-         help="This Jac construct is supported on the @sv/Python pathway but is not implemented in the native compiler yet. Move the code to a non-native context, or extend NaIRGenPass to handle this node type."
+         help="This Jac construct is supported on the @sv/Python pathway but is not implemented in the native compiler yet. Move the code to a non-native context, or teach MIR lowering (compiler/backends/native/mir) this node type."
      ),
      E5091 = _err(
          "E5091",
@@ -2344,7 +2354,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5092",
          Category.CODEGEN,
          "Native lowering failed for {kind} '{name}'",
-         help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered by NaIRGenPass. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
+         help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered to MIR. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
      ),
      E5096 = _err(
          "E5096",

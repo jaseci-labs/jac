@@ -212,7 +212,7 @@ test "a no-op build lowers no units and preserves the linked artifact" {
 
 test "the layout sidecar records the inputs a kernel is accepted by" {
     if _can_link_host() {
-        import from jaclang.compiler.backends.native.kernel_resolve { read_sidecar }
+        import json;
         import from jaclang.compiler.backends.native.link_plan { unit_source_digest }
         import from jaclang.compiler.driver.jir { running_compiler_digest }
         import from jaclang.compiler.frontend.codeinfo { native_unit_identity }
@@ -220,8 +220,9 @@ test "the layout sidecar records the inputs a kernel is accepted by" {
         (prog, plan) = _plan_for(root_dir);
         output = os.path.join(root_dir, "program");
         link_artifact(plan, output, ArtifactKind.EXECUTABLE);
-        sidecar = read_sidecar(output);
-        assert sidecar is not None;
+        with open(output + ".layout.json", encoding="utf-8") as handle {
+            sidecar = json.load(handle);
+        }
         assert sidecar["compiler_digest"] == running_compiler_digest();
         assert sidecar["codegen_identity"] == _opts().base_codegen_identity();
         assert sidecar["triple"] == plan.triple;
@@ -555,7 +556,6 @@ test "a shared link exports only the C ABI" {
         prog = JacProgram();
         opts = _opts();
         base = os.path.join(root_dir, "base.jac");
-        prog.compile(file_path=base, options=opts);
         plan = build_link_plan(prog, [base], opts);
         suffix = ".dylib" if sys.platform == "darwin" else ".so";
         out = os.path.join(root_dir, "libbase" + suffix);
@@ -627,8 +627,6 @@ test "the glue supplies the region-death hook only when no unit does" {
     }
     gprog = JacProgram();
     opts = _opts();
-    gprog.compile(file_path=graph_path, options=opts);
-    assert not gprog.errors_had , [str(e) for e in gprog.errors_had];
     gplan = build_link_plan(gprog, [graph_path], opts);
     suppliers = [
         u.path
@@ -867,9 +865,7 @@ test "a link refuses unit objects that reference a symbol no unit defines" {
                 + '  ret void\n}\n'
         );
         callee = _target_object(
-            triple,
-            'define void @"callee_unit.kept"() { ret void }\n'
-                + 'define void @"probe.__jac_demoted"() { ret void }\n'
+            triple, 'define void @"callee_unit.kept"() { ret void }\n'
         );
         glue = _target_object(
             triple, 'define void @"jac_glue_marker"() { ret void }\n'
@@ -883,11 +879,9 @@ test "a link refuses unit objects that reference a symbol no unit defines" {
             triple=triple
         );
         found = unresolved_unit_symbols(plan, [caller, callee, glue]);
-        assert len(found) == 2 , (triple, found);
+        assert len(found) == 1 , (triple, found);
         assert found[0].startswith("callee_unit.gone (not defined by callee_unit.jac")
             and "used by caller_unit.jac" in found[0] , (triple, found);
-        assert found[1].startswith("probe (demoted to Python")
-            and "used by caller_unit.jac" in found[1] , (triple, found);
         assert unresolved_unit_symbols(plan, [callee, glue]) == [];
     }
 }
@@ -1360,7 +1354,7 @@ glob CASCADE_SOURCES: dict[str, str] = {
 import json, os, sys
 import jaclang
 from jaclang.compiler.driver.program import JacProgram
-from jaclang.compiler.backends.native.kernel_resolve import kernel_options
+from jaclang.compiler.backends.native.kernel_stage0 import kernel_options
 from jaclang.compiler.backends.native.link_plan import build_link_plan
 prog = JacProgram()
 plan = build_link_plan(prog, [os.path.join(sys.argv[1], 'pkg', 'user.jac')], kernel_options(), native_unit=True)
@@ -1417,7 +1411,7 @@ test "an edit inside one unit's body lowers that unit alone" {
     };
 }
 
-"""The number of `NaIRGenPass` instances alive each time a unit starts
+"""The number of `MirNativePass` instances alive each time a unit starts
 lowering, over a cold build of `entry`. A dependency lowered inside its
 consumer's pass shows up as a live pass."""
 def _live_passes_at_lower(entry_path: str) -> tuple[list[int], set[str]] {
@@ -1434,7 +1428,7 @@ def _live_passes_at_lower(entry_path: str) -> tuple[list[int], set[str]] {
                 sum(
                     1
                     for o in gc.get_objects()
-                    if type(o).__name__ == "NaIRGenPass"
+                    if type(o).__name__ == "MirNativePass"
                 )
             );
         }
@@ -1526,19 +1520,3 @@ test "a lowering that stops for its dependencies builds no IR, so each unit buil
     );
 }
 
-test "the formatting kernel lowers before a unit that parses an int or calls a bytes method" {
-    root_dir = tempfile.mkdtemp(prefix="jac-kernel-deps-");
-    Path(root_dir, "lib.jac").write_text(
-        "def parse(text: str) -> int {\n    return int(text);\n}\n\n"
-        "def hexed(data: bytes) -> str {\n    return data.hex();\n}\n"
-    );
-    Path(root_dir, "top.jac").write_text(
-        "import from lib { parse, hexed }\n\n"
-        "def run(text: str) -> str {\n    return hexed(b\"ab\") + str(parse(text));\n}\n"
-    );
-    (live_at_lower, lowered) = _live_passes_at_lower(os.path.join(root_dir, "top.jac"));
-    assert {"lib.jac", "top.jac", "fmt_kernel.jac"} <= lowered , lowered;
-    assert max(live_at_lower) == 0 , (
-        f"a kernel lowered inside a consumer's pass: {live_at_lower}"
-    );
-}

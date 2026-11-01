@@ -18,8 +18,7 @@ later one, or the object inside it is never destroyed.
 
 import ctypes;
 import os;
-import from tests.support { TESTS_DIR, native_address, native_force_opts }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support { TESTS_DIR, compile_native, native_address }
 import from jaclang.runtime.runtime { JacRuntime }
 import from jaclang.compiler.frontend.codeinfo {
     get_effective_default_codespace_override,
@@ -54,14 +53,7 @@ def _compile -> any {
     if _MEMO {
         return _MEMO[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, FIXTURE)), options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {FIXTURE}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {FIXTURE}";
+    (eng, _fx) = compile_native(FIXTURE, FIXTURES);
     gi_addr = native_address(eng, "__jac_glob_init");
     if gi_addr {
         ctypes.CFUNCTYPE(None)(gi_addr)();

@@ -33,10 +33,6 @@ obj _BuildingSpan {
 
 def _decide(artifact: Artifact) -> Resolution;
 
-def omitted_by_image -> frozenset[str];
-
-def _omitted(sealed_image: bool) -> frozenset[str];
-
 def _provision(artifact: Artifact, resolution: Resolution) -> Resolution;
 
 def _to_stderr(line: str);

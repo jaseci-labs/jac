@@ -1,15 +1,12 @@
 """C6 gate (#7870): the zero-copy parse kernel's tokenize loop is
-allocation-free per token in the enforced build -- tokens are rootless
-slice views, keyword compares run length-aware memcmp over descriptor
-parts (__jac_str_cmp3, or `bcmp` once the linked-module optimizer folds
-the descriptor compare), and char probes read the static char cache.
-Behavioral identity across modes rides the ownbench differential."""
+allocation-free per token in the enforced build -- tokens are slices of the
+input, keyword compares run length-aware compares over descriptor parts
+(`__jac_rt_str_cmp` on data and length), and nothing in the loop builds a
+new string. The decision step's MIR is the witness. Behavioral identity
+across modes rides the ownbench differential."""
 
-import os;
-import re;
 import from pathlib { Path }
-import from jaclang.compiler.driver.program { JacProgram }
-import from tests.support { unit_symbol }
+import from tests.support { KernelFixture, compile_mir }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob KERNEL = str(
@@ -20,38 +17,42 @@ glob KERNEL = str(
              / "own_parse.jac"
      );
 
-def _tokenize_ir(gc_mode: str, enforce: bool) -> str {
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=KERNEL,
-        options=CompileOptions(
-            aot_mode=True, na_gc_mode=gc_mode, nogc_enforce_all=enforce
+"""The MIR text of `name`'s function in a compiled fixture."""
+def mir_function(fx: KernelFixture, name: str) -> str {
+    head = f"fn @{fx.symbol(name)}(";
+    for chunk in fx.mir().split("\n\n") {
+        if chunk.startswith(head) {
+            return chunk;
+        }
+    }
+    raise AssertionError(f"no MIR function {name} in {fx.path}: demoted {fx.demoted()}");
+}
+
+def _tokenize_mir(gc_mode: str, enforce: bool) -> str {
+    fx = compile_mir(
+        KERNEL,
+        "",
+        CompileOptions(
+            force_codespace="native",
+            aot_mode=True,
+            na_gc_mode=gc_mode,
+            nogc_enforce_all=enforce
         )
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    text = str(ir.gen.llvm_ir);
-    sym = re.escape(unit_symbol(ir, "tokenize"));
-    m = re.search(r'define[^\n]*@"?' + sym + r'"?\([^\n]*\n(.*?)\n\}', text, re.DOTALL);
-    assert m , "tokenize fn not found in IR";
-    return m.group(1);
+    assert not fx.is_demoted("tokenize") , str(fx.demoted());
+    return mir_function(fx, "tokenize");
 }
 
 test "enforced tokenize loop allocates nothing per token" {
-    body = _tokenize_ir("none", True);
-    assert "s.view" in body , "tokens are not slice views";
-    assert "__jac_halloc" not in body , "enforced tokenize still allocates";
-    assert "__rc_alloc" not in body , "enforced tokenize emits rc allocation";
-    # Compares against a literal lower to a length check plus memcmp on the
-    # descriptor parts (_emit_str_parts_cmp); older lowerings went through
-    # __jac_str_cmp3 or bcmp. Any of them compares parts without allocating.
-    assert "__jac_str_cmp3" in body or "bcmp" in body or "memcmp" in body , (
-        "keyword compares bypass descriptor parts"
-    );
-    assert "s.view.root" not in body , "enforced views carry a root store";
+    body = _tokenize_mir("none", True);
+    assert "@__jac_rt_alloc" not in body , "enforced tokenize still allocates";
+    assert "@__jac_rt_str_new" not in body , "enforced tokenize copies tokens";
+    assert "@__jac_rt_str_concat" not in body , "enforced tokenize builds strings";
+    assert "@__jac_rt_str_cmp" in body , "keyword compares bypass descriptor parts";
 }
 
 test "managed tokenize is also view-based and allocation-free" {
-    body = _tokenize_ir("rc", False);
-    assert "s.view" in body , "managed tokens are not slice views";
-    assert "__rc_alloc" not in body , "managed tokenize allocates per token";
+    body = _tokenize_mir("rc", False);
+    assert "@__jac_rt_alloc" not in body , "managed tokenize allocates per token";
+    assert "@__jac_rt_str_new" not in body , "managed tokenize copies tokens";
 }

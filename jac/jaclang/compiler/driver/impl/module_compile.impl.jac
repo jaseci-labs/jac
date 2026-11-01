@@ -82,13 +82,7 @@ impl admits_interface(task: ModuleAnalysis) -> bool {
         return False;
     }
     return (options.no_cgen and not options.symtab_ir_only)
-        or (
-            closure.no_cgen
-            and not closure.symtab_ir_only
-            and not (
-                task.program.internal and active_host().in_compiler_tree(task.path)
-            )
-        );
+        or (closure.no_cgen and not closure.symtab_ir_only);
 }
 
 impl run_interface(task: ModuleAnalysis) {
@@ -138,11 +132,7 @@ impl client_import_paths(module: uni.Module) -> list[str] {
         if not imp.from_loc or imp.is_virtual_jac {
             continue;
         }
-        try {
-            source = imp.from_loc.resolve_relative_path();
-        } except Exception {
-            continue;
-        }
+        source = imp.from_loc.resolve_relative_path();
         if isinstance(source, str)
             and imp.code_context == CodeContext.CLIENT
             and source.endswith('.jac') {
@@ -166,7 +156,9 @@ impl drop_products_on_error(program: JacProgram, mod: uni.Module) -> bool {
         return False;
     }
     gen = mod.gen;
-    gen.jcir = None;
+    gen.py_recipe = None;
+    gen.py_ast = [];
+    gen.py_code = None;
     gen.py_bytecode = None;
     gen.drop_native_ir();
     gen.native_engine = None;
@@ -202,7 +194,7 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
             "diagnostic; this is a compiler bug -- please report it"
         );
     }
-    from_pass: type = JcirGenPass
+    from_pass: type = PyastGenPass
         if reason
         else product_passes(CompilationProduct.NATIVE_LOWER)[-1];
     deliver_alerts(
@@ -225,11 +217,7 @@ impl report_missing_native_ir(program: JacProgram, mod: uni.Module) -> None {
 impl analyze_for_compile(
     program: JacProgram, path: str, options: CompileOptions, source: str | None
 ) -> ModuleAnalysis {
-    analysis = active_host().native_analyze(program, path, options, source);
-    if analysis is None {
-        analysis = analyze_module(program, path, options, source);
-    }
-    return analysis;
+    return analyze_module(program, path, options, source);
 }
 
 impl compile_task(

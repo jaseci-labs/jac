@@ -19,21 +19,30 @@ import os;
 import re;
 import subprocess;
 import tempfile;
-import from tests.support { assert_native_identity, jac_command, NATIVE_FIXTURES }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support {
+    assert_native_identity,
+    compile_native_ir,
+    jac_command,
+    NATIVE_FIXTURES
+}
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "move_last_use.jac");
 
-"""The fixture's unoptimized IR under `gc_mode`, with or without the wider moves."""
+"""The fixture's unoptimized IR under `gc_mode`, with or without the wider
+moves. Reference counting runs after the decision step, so the counts are an
+emitted-IR fact: the MIR the decision step prints carries none."""
 def fixture_ir(gc_mode: str, moves: bool) -> str {
-    prog = JacProgram();
-    mod = prog.compile(
-        file_path=FIXTURE,
-        options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode, na_move_flow=moves)
-    );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    return str(mod.gen.llvm_ir);
+    return compile_native_ir(
+        FIXTURE,
+        "",
+        CompileOptions(
+            aot_mode=True,
+            force_codespace="native",
+            na_gc_mode=gc_mode,
+            na_move_flow=moves
+        )
+    ).llvm_ir();
 }
 
 """How many retains and releases function `name` emits."""
@@ -41,7 +50,7 @@ def rc_ops(text: str, name: str) -> int {
     found = re.search(r'define [^\n]*\.' + name + r'"?\(.*?\n}\n', text, re.S);
     assert found is not None , f"{name} not found in the IR";
     return len(
-        re.findall(r'call void @"__rc_(retain|release)[^"]*"\(', found.group(0))
+        re.findall(r'call void @"__jac_rt_(retain|release)[^"]*"\(', found.group(0))
     );
 }
 

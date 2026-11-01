@@ -4,10 +4,7 @@ A frame that owns rc locals links an unwind record so a raise crossing it
 releases them. A frame that can raise while holding one only through its own
 `raise` statements and checks (every call that can raise runs while its
 locals are still null) now links none and releases its locals at those raise
-sites instead. A frame that does link one, and every `try`, fetch the thread's
-exception context through an always-inlined fast path rather than a call to
-the shared weak lookup, and a `try` in a program that never entered a region
-reads one flag instead of calling for the region depth.
+sites instead.
 
 The fixture agrees with the Python backend, and a debug build's live-object
 dump holds nothing at exit but the global table.
@@ -17,21 +14,25 @@ import os;
 import re;
 import subprocess;
 import tempfile;
-import from tests.support { assert_native_identity, jac_command, NATIVE_FIXTURES }
-import from jaclang.compiler.driver.program { JacProgram }
+import from tests.support {
+    assert_native_identity,
+    compile_native_ir,
+    jac_command,
+    NATIVE_FIXTURES
+}
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
 glob FIXTURE: str = os.path.join(NATIVE_FIXTURES, "unwind_leaf.jac"),
      DROP_RAISE: str = os.path.join(NATIVE_FIXTURES, "unwind_drop_raise.jac");
 
-"""The fixture's unoptimized IR under `gc_mode`."""
+"""The LLVM IR the kernel emits for the fixture under `gc_mode`."""
 def fixture_ir(gc_mode: str) -> str {
-    prog = JacProgram();
-    mod = prog.compile(
-        file_path=FIXTURE, options=CompileOptions(aot_mode=True, na_gc_mode=gc_mode)
+    fx = compile_native_ir(
+        FIXTURE,
+        "",
+        CompileOptions(force_codespace="native", aot_mode=True, na_gc_mode=gc_mode)
     );
-    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
-    return str(mod.gen.llvm_ir);
+    return fx.llvm_ir();
 }
 
 """The body of function `name` in `text`."""
@@ -41,9 +42,9 @@ def body_of(text: str, name: str) -> str {
     return found.group(0);
 }
 
-"""Does `name` link an unwind record (it then has a cleanup function)?"""
+"""Does `name` link an unwind record (push an exception frame)?"""
 def links_record(text: str, name: str) -> bool {
-    return re.search(r'define [^\n]*\.' + name + r'\.__unwind"', text) is not None;
+    return "__jac_rt_exc_push" in body_of(text, name);
 }
 
 test "frames that hold a local only across their own raises link no record" {
@@ -51,22 +52,9 @@ test "frames that hold a local only across their own raises link no record" {
         text = fixture_ir(gc_mode);
         for name in ["lookup", "make"] {
             assert not links_record(text, name) , f"{gc_mode} {name} links a record";
-            assert "__jac_exception_context" not in body_of(text, name) , f"{gc_mode} {name} fetches the context";
         }
         assert links_record(text, "keep") , f"{gc_mode} keep lost its record";
     }
-}
-
-test "frames and handlers fetch the context through the inlined fast path" {
-    text = fixture_ir("rc");
-    assert '@"__jac_exception_context.inl"()' in body_of(text, "keep");
-    found = re.search(r'define [^\n]*@"__jac_exception_context\.inl"\(\)[^\n]*', text);
-    assert found is not None , "no inlined lookup";
-    assert "alwaysinline" in found.group(0)
-        or re.search(r'attributes #\d+ = \{[^}]*alwaysinline', text) is not None;
-    guard = body_of(text, "guard");
-    assert '@"__jac_region_tls_used"' in guard;
-    assert "region.depth.read" in guard;
 }
 
 test "the program prints what the Python backend prints under rc and managed" {

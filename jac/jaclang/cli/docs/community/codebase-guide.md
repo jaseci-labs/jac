@@ -10,7 +10,7 @@ For setup instructions and PR workflow, see the [Contributing](contributing.md) 
 
 Before you open any files, these five ideas will save you a lot of confusion:
 
-**Jac is written in Jac.** Most of the compiler and runtime are `.jac` files, not Python. A small bootstrap transpiler (`jac0.py`) is pure Python -- it compiles just enough of the compiler (the seed set declared in `jaclang/bootstrap_manifest.py`) so the full compiler can take over and compile itself. Once bootstrapped, the full compiler handles everything else. If you're wondering "how does a Jac compiler compile itself?" -- that's the answer.
+**Jac is written in Jac.** The compiler and runtime are `.jac` files. The compiler runs as the *kernel*: the same sources compiled natively into a JacPython extension module, which compiles every other `.jac` module (its own sources included) to bytecode. A checkout's kernel is built by `jac native build kernel` on the previous jac release (stage 0, pinned in `jac/bootstrap/pins.json`), then rebuilt by itself until two builds agree. If you're wondering "how does a Jac compiler compile itself?" -- that's the answer.
 
 **Declaration and implementation are separate.** You'll see pairs like `foo.jac` (declarations/interfaces) and `foo.impl.jac` or `impl/foo.impl.jac` (implementations). This is a first-class Jac language feature, similar to header/source separation. When you're looking for where something is *defined*, check the `.jac` file; for how it *works*, check the `.impl.jac` file.
 
@@ -121,9 +121,9 @@ The `PRODUCTS` table in `compiler/driver/pipeline.jac` defines every pass schedu
 
 1. `RcFactsPass`, `EsastGenPass` -- Reference-count facts and the JavaScript AST
 2. `NaIRGenPass` -- LLVM IR, only for a module that needs native code (then the session assembles `NATIVE_OBJECT`)
-3. `NativeImportFactsPass`, `JcirGenPass` -- Lower the unitree into the compact codegen IR container
+3. `NativeImportFactsPass`, `PyastGenPass` -- Lower the unitree into the Python codegen recipe
 4. `FreezeStructurePass` -- Freeze the module's structure
-5. `JcirBytecodeGenPass` -- The `BYTECODE` product the session assembles last
+5. `assemble_bytecode` -- The `BYTECODE` product the session assembles last: the kernel builds the recipe into JacPython's AST and compiles it with JacPython's compiler
 
 Each product has a bootstrap variant that the compiler falls back to when it is compiling its own pass modules; see the `PRODUCTS` table for the authoritative ordering.
 

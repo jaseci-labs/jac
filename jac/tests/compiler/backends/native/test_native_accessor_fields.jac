@@ -14,38 +14,18 @@ accessors, so it only reads back as `11` if properties took no slots.
 """
 
 import ctypes;
-import os;
-import from tests.support {
-    TESTS_DIR,
-    by_source_name,
-    native_address,
-    native_force_opts
-}
-import jaclang.compiler.frontend.unitree as uni;
-import from jaclang.compiler.driver.program { JacProgram }
-import from jaclang.compiler.backends.native.llvm.binding { ExecutionEngine }
+import from tests.support { compile_native, native_address }
 
-glob FIXTURES = os.path.join(
-         TESTS_DIR, "compiler", "backends", "native", "fixtures"
-     ),
-     _ENGINE_MEMO: list[any] = [];
+glob _ENGINE_MEMO: list[any] = [];
 
 """Compile the accessor fixture once and hand back its JIT engine."""
-def accessor_engine -> tuple[ExecutionEngine, uni.Module] {
+def accessor_engine -> tuple[any, any] {
     if _ENGINE_MEMO {
         return _ENGINE_MEMO[0];
     }
-    prog = JacProgram();
-    ir = prog.compile(
-        file_path=str(os.path.join(FIXTURES, "accessor_fields.jac")),
-        options=native_force_opts()
-    );
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors: {errors}";
-    eng = ir.gen.native_engine;
-    assert isinstance(eng, ExecutionEngine) , "No native engine produced for accessor_fields.jac";
-    _ENGINE_MEMO.append((eng, ir, ));
-    return (eng, ir);
+    (eng, fx) = compile_native("accessor_fields.jac");
+    _ENGINE_MEMO.append((eng, fx, ));
+    return (eng, fx);
 }
 
 """Get a ctypes-callable function from the JIT engine."""
@@ -99,24 +79,4 @@ test "an overridden accessor dispatches on the runtime class" {
     f = get_func(eng, "inherited_accessor", ctypes.c_int64, ctypes.c_int64);
     assert f(0) == 101 , "Tagged.label.getter";
     assert f(1) == 102 , "Renamed.label.getter overrides it";
-}
-
-
-test "a property is absent from the exported struct layout" {
-    (_eng, ir) = accessor_engine();
-    layout = ir.gen.native_layout;
-    assert layout is not None , "no native layout exported";
-    names = [f.name for f in by_source_name(layout.structs)["Box"].fields];
-    assert "doubled" not in names and "width" not in names , (
-        f"properties still occupy data slots in the marshalling layout: {names}"
-    );
-    assert "head" in names and "_width" in names and "tail" in names , (
-        f"real fields went missing from the layout: {names}"
-    );
-    assert "Box.width.__get__" in by_source_name(layout.methods) , (
-        "no getter method exported for Box.width"
-    );
-    assert "Box.width.__set__" in by_source_name(layout.methods) , (
-        "no setter method exported for Box.width"
-    );
 }
