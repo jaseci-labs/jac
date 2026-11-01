@@ -118,6 +118,7 @@ These are already converted (see "Done").
 ## Left: sorted by target
 
 These are the files that still build a host `JacProgram`, call `rd_parse` / `run_walker`, or read `gen.*` / `hub` / `type_evaluator` off a compiled module. There are 225 files with 3,186 tests, but most files are mixed: their diagnostic-only tests move to the compile entry and their tree-reading tests move to the suite. In the "Today" column:
+
 - "reads the tree / pass outputs": at least one test is internals.
 - "diagnostics only": the whole file is compile-and-check.
 - "host compile, no tree reads": the host compile goes through the kernel already and only needs the helper switch.
@@ -517,6 +518,7 @@ These native and plumbing files are on the kernel helpers except for the tests b
 ## Oracle tests ahead of MIR
 
 These native tests now assert what the MIR backend must do. They fail until MIR does it, and that is intended: they are the backend's oracle.
+
 - **C ABI coercion.** sret, byval and eightbyte classification are not done; `abi.impl.jac` exists but MIR emission does not use it. Affected: SysV, AArch64, struct coercion, bytes arguments.
 - **Memory.** `memory_profile` / `na_gc_mode` (RC-free IR under nogc, per-gc-mode fan-out), borrow awareness (no-retain walks, noalias/readonly attributes), region runtime calls, stack promotion, move elision, `&mut` lending, `preserve_none`.
 - **Representations.** `list.aos`, views in chunked flow bodies, `str.make` slices, `opt` payloads, pthread flow tasks, `**kwargs` callees, and E5095 on `__list_data_ptr`.
