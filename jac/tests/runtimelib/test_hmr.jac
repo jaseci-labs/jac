@@ -1006,6 +1006,28 @@ test "watcher survives ignored generated tree creation" {
         nested_source = nested / "child.jac";
         nested_source.write_text("glob child = 1;\n");
         time.sleep(0.5);
+        generated_root = os.path.realpath(str(app_dir / ".jac"));
+        watched_dirs = {
+            os.path.realpath(os.fsdecode(emitter.watch.path))
+            for emitter in watcher._observer.emitters
+        };
+        assert not any(
+            path == generated_root or path.startswith(generated_root + os.sep)
+            for path in watched_dirs
+        ) , str(watched_dirs);
+        generated_alias = app_dir / "generated-link";
+        symlink_created = False;
+        try {
+            os.symlink(str(generated), str(generated_alias), target_is_directory=True);
+            symlink_created = True;
+        } except (OSError, NotImplementedError) {}
+        if symlink_created {
+            alias_watcher = JacFileWatcher(watch_paths=[str(generated_alias)]);
+            alias_watcher.start();
+            alias_watched_dirs = list(alias_watcher._observer.emitters);
+            alias_watcher.stop();
+            assert not alias_watched_dirs , str(alias_watched_dirs);
+        }
         watcher.stop();
         observed = {os.path.realpath(event.path) for event in events};
         assert os.path.realpath(str(source)) in observed , (
