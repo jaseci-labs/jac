@@ -21,7 +21,7 @@ impl MirInstr.render -> str {
         parts.append(repr(self.float_value));
     } elif self.op == MirOp.CONST_BOOL {
         parts.append("true" if self.int_value else "false");
-    } elif self.op == MirOp.CONST_STR {
+    } elif self.op in (MirOp.CONST_STR, MirOp.CONST_BYTES) {
         parts.append(repr(self.str_value));
     }
     if self.operands {

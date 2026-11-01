@@ -221,8 +221,8 @@ the next pass relies on.
 ## The runtime library
 
 The native runtime is Jac source, compiled once by this backend and linked
-like any other unit, the way `runtime/osp_kernel.jac`,
-`runtime/region_native.jac` and `fmt_kernel.jac` already are. It replaces the
+like any other unit, the way `runtime/osp_kernel.jac` and
+`runtime/region_native.jac` already are. It replaces the
 helpers `NaIRGenPass` emitted as hand-built LLVM IR into every unit (about 175
 per unit, specialized per element type and sharing state through weak
 globals).
@@ -235,7 +235,14 @@ globals).
   per-thread context. `setjmp` itself is emitted inline by the exception pass,
   because it must run in the frame that a `longjmp` returns to.
 - **Strings, bytes, repr and hashing** as runtime functions over the `JacStr`
-  descriptor and `jacbytes` layouts.
+  descriptor and `jacbytes` layouts: `runtime/native/text.jac` (a byte
+  builder, code point indexing with the per-thread UTF-8 cursor cache, the str
+  methods), `runtime/native/format.jac` (float repr and format specs from exact
+  big-integer digit generation, int and float parsing, rounding, powers,
+  CPython's int, float and tuple hashes) and `runtime/native/bytes.jac` (bytes,
+  bytearray, codecs). They replace `fmt_kernel.jac`. Lowering generates one
+  repr function per container type and per `obj` archetype that has no
+  `__repr__`, building the text with the runtime's byte builder.
 - **Containers** as generic Jac code (`list[T]`, `dict[K, V]`, `set[T]`), which
   the monomorphization pass instantiates per MIR type, in place of the
   per-element-type helpers.
@@ -266,13 +273,12 @@ it does not generate. These stay exactly as they are:
   `__jac_rc_threaded` keep their names and layouts; they are defined once, in
   the runtime library.
 - **Kernels:** `runtime/osp_kernel.jac`, `runtime/osp_graph.jac`,
-  `runtime/osp_native.jac`, `runtime/region_native.jac` and
-  `compiler/backends/common/fmt_kernel.jac` are Jac units lowered by this same
-  backend. Their struct layouts are ABI, so they must lower identically. A unit
-  that uses OSP depends on the three OSP units; every OSP archetype carries its
-  type tag at +8 and a walker its reports list at +16, and each module
-  registers its own archetypes and event abilities from its global
-  initializer.
+  `runtime/osp_native.jac` and `runtime/region_native.jac` are Jac units
+  lowered by this same backend. Their struct layouts are ABI, so they must
+  lower identically. A unit that uses OSP depends on the three OSP units;
+  every OSP archetype carries its type tag at +8 and a walker its reports list
+  at +16, and each module registers its own archetypes and event abilities
+  from its global initializer.
 - **Symbols:** unit prefixes, `"{prefix}.{name}"`, pub naming, the fixed
   per-unit names (`__jac_glob_init_<prefix>`, `__jac_entry_<prefix>`,
   `__jac_rt_probe_<prefix>`, test and import-callback names), and the exported

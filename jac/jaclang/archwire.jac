@@ -10959,6 +10959,8 @@ graph import compiler.backends.native.mir {
             MirType,
             mir_any,
             mir_bool,
+            mir_bytearray,
+            mir_bytes,
             mir_class,
             mir_iter,
             mir_range,
@@ -10984,6 +10986,8 @@ graph import compiler.backends.native.mir {
             MirType,
             mir_any,
             mir_bool,
+            mir_bytearray,
+            mir_bytes,
             mir_class,
             mir_enum,
             mir_iter,
@@ -15531,6 +15535,7 @@ graph import runtime.na_stdlib {
 }
 
 graph import runtime.native {
+    exceptions ++> bytes { __jac_rt_raise_builtin }
     dicts ++> [
         anys { __jac_rt_dict_len },
         iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
@@ -15553,8 +15558,47 @@ graph import runtime.native {
         __jac_rt_retain,
         __jac_rt_set_type
     }
-    lists ++> dicts { __jac_rt_elem_eq, __jac_rt_elem_release, __jac_rt_elem_retain }
+    lists ++> [
+        dicts { __jac_rt_elem_eq, __jac_rt_elem_release, __jac_rt_elem_retain },
+        text { __jac_rt_list_new, __jac_rt_list_push, __jac_rt_list_reverse },
+        bytes { __jac_rt_list_new, __jac_rt_list_push },
+    ]
+    text ++> [
+        format {
+            __jac_rt_sb_add,
+            __jac_rt_sb_byte,
+            __jac_rt_sb_data,
+            __jac_rt_sb_drop,
+            __jac_rt_sb_finish,
+            __jac_rt_sb_int,
+            __jac_rt_sb_len,
+            __jac_rt_sb_new,
+            __jac_rt_sb_truncate,
+            __jac_rt_str_chr,
+            __jac_rt_str_repr,
+            __jac_rt_utf8_width
+        },
+        bytes {
+            __jac_rt_sb_add,
+            __jac_rt_sb_byte,
+            __jac_rt_sb_data,
+            __jac_rt_sb_drop,
+            __jac_rt_sb_finish,
+            __jac_rt_sb_int,
+            __jac_rt_sb_len,
+            __jac_rt_sb_new,
+            __jac_rt_utf8_width
+        },
+    ]
     rc ++> [
+        text { __jac_rt_is_heap, __jac_rt_release_acyclic },
+        format { __jac_rt_release_acyclic },
+        bytes {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release_acyclic,
+            __jac_rt_set_type
+        },
         dicts {
             __jac_rt_alloc,
             __jac_rt_free_block,
@@ -15586,6 +15630,8 @@ graph import runtime.native {
         dicts { __jac_rt_str_size },
         iterators { __jac_rt_str_new, __jac_rt_str_size },
         lists { __jac_rt_str_cmp, __jac_rt_str_size },
+        text { __jac_rt_str_new, __jac_rt_str_size },
+        format { __jac_rt_str_new, __jac_rt_str_size },
     ]
 }
 

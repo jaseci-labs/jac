@@ -69,7 +69,8 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     if t.kind == MirKind.ANY {
         return self.jacval_type();
     }
-    if t.kind in (MirKind.STR_REF, MirKind.OBJ, MirKind.FN) or mir_is_container(t) {
+    if t.kind in (MirKind.STR_REF, MirKind.OBJ, MirKind.FN, MirKind.BYTES, MirKind.BYTEARRAY)
+        or mir_is_container(t) {
         return ir.IntType(8).as_pointer();
     }
     if t.kind == MirKind.C_PTR {
@@ -238,6 +239,8 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         } else {
             self.bind(instr.result, data);
         }
+    } elif op == MirOp.CONST_BYTES {
+        self.bind(instr.result, self.bytes_literal(b, instr.str_value.encode("latin-1")));
     } elif op == MirOp.STR_PART {
         index = ["root", "data", "len"].index(instr.sub);
         self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), index));
@@ -953,6 +956,35 @@ impl MirEmitter.str_literal(b: ir.IRBuilder, text: str) -> ir.Value {
     return b.gep(found, [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]);
 }
 
+impl MirEmitter.bytes_literal(b: ir.IRBuilder, data: bytes) -> ir.Value {
+    key = data.decode("latin-1");
+    found = self.byte_literals.get(key);
+    if found is None {
+        i64 = ir.IntType(64);
+        chars = ir.ArrayType(ir.IntType(8), len(data));
+        shape = ir.LiteralStructType([i64, i64, i64, chars]);
+        found = ir.GlobalVariable(
+            self.module, shape, name=f".jac.bytes.{len(self.byte_literals)}"
+        );
+        found.linkage = "private";
+        found.global_constant = True;
+        found.initializer = ir.Constant(
+            shape,
+            [
+                ir.Constant(i64, RC_SENTINEL),
+                ir.Constant(i64, 0),
+                ir.Constant(i64, len(data)),
+                ir.Constant(chars, bytearray(data))
+            ]
+        );
+        self.byte_literals[key] = found;
+    }
+    i32 = ir.IntType(32);
+    return b.bitcast(
+        b.gep(found, [ir.Constant(i32, 0), ir.Constant(i32, 2)]), ir.IntType(8).as_pointer()
+    );
+}
+
 impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
     subject = instr.operands[0];
     if subject.type.kind == MirKind.ANY {
@@ -1004,9 +1036,8 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, self.value(subject));
         return;
     }
-    symbol = RELEASE_ACYCLIC_SYMBOL
-        if held_type.kind in (MirKind.STR, MirKind.STR_REF)
-        else RELEASE_SYMBOL;
+    acyclic = (MirKind.STR, MirKind.STR_REF, MirKind.BYTES, MirKind.BYTEARRAY);
+    symbol = RELEASE_ACYCLIC_SYMBOL if held_type.kind in acyclic else RELEASE_SYMBOL;
     b.call(self.extern(symbol, ir.VoidType(), [i8p]), [target]);
 }
 
