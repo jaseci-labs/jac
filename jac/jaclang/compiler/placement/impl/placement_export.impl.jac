@@ -163,7 +163,7 @@ impl summary_from_bytes(
             }
         }
         return summary;
-    } except Exception {
+    } except (ValueError, KeyError, TypeError) {
         return None;
     }
 }
@@ -224,27 +224,25 @@ impl collect_placement_rows(prog: JacProgram) -> dict[str, dict[str, any]] {
             ) {
                 continue;
             }
-            try {
-                import from jaclang.compiler.driver.boundary_classify {
-                    ClientImportVerdict,
-                    classify_client_import_item,
-                    is_client_boundary_import
-                }
-                import from jaclang.compiler.symbol_utils {
-                    resolve_import_source_module
-                }
-                if is_client_boundary_import(stmt) {
-                    src = resolve_import_source_module(prog, stmt);
-                    if src is not None {
-                        for item in stmt.items {
-                            verdict = classify_client_import_item(src, item, prog);
-                            if verdict == ClientImportVerdict.BRIDGED {
-                                crossings += 1;
-                            }
+            import from jaclang.compiler.driver.boundary_classify {
+                ClientImportVerdict,
+                classify_client_import_item,
+                is_client_boundary_import
+            }
+            import from jaclang.compiler.symbol_utils {
+                resolve_import_source_module
+            }
+            if is_client_boundary_import(stmt) {
+                src = resolve_import_source_module(prog, stmt);
+                if src is not None {
+                    for item in stmt.items {
+                        verdict = classify_client_import_item(src, item, prog);
+                        if verdict == ClientImportVerdict.BRIDGED {
+                            crossings += 1;
                         }
                     }
                 }
-            } except Exception {}
+            }
         }
         rows_by_module[os.path.abspath(str(mod_path))] = {
             'decided': mod.decided_codespace or '',

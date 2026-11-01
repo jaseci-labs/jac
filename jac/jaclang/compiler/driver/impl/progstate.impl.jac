@@ -133,11 +133,7 @@ impl DepGraph.record_module(mod: uni.Module) -> None {
             }
         }
         for mp in paths {
-            try {
-                target = os.path.realpath(mp.resolve_relative_path());
-            } except Exception {
-                continue;
-            }
+            target = os.path.realpath(mp.resolve_relative_path());
             self.record(importer, target);
         }
     }

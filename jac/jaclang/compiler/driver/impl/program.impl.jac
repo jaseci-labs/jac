@@ -452,9 +452,7 @@ impl JacProgram.parse_str(
 ) -> uni.Module {
     mod = self.parse_source(source_str, file_path, cancel_token);
     if self.deps.tracking {
-        try {
-            self.deps.record_module(mod);
-        } except Exception {}
+        self.deps.record_module(mod);
     }
     return mod;
 }
@@ -681,14 +679,9 @@ impl JacProgram.resolve_absorb_imports(self: JacProgram, mod: uni.Module) -> Non
             continue;
         }
         resolved = path_node.resolve_relative_path();
-        module: (uni.Module | None) = None;
-        try {
-            module = self.load_dependency_module(
-                resolved, importer_path=mod.loc.mod_path
-            );
-        } except Exception {
-            module = None;
-        }
+        module: (uni.Module | None) = self.load_dependency_module(
+            resolved, importer_path=mod.loc.mod_path
+        );
         imp.absorbed_mod = module;
     }
 }
@@ -886,12 +879,8 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
         }
         abilities: dict[(str, uni.Ability)] = {};
         walkers: dict[(str, uni.Archetype)] = {};
-        try {
-            collect_abilities(src, abilities);
-        } except Exception {}
-        try {
-            collect_walkers(src, walkers);
-        } except Exception {}
+        collect_abilities(src, abilities);
+        collect_walkers(src, walkers);
         for name in wanted {
             wk_decl = walkers.get(name);
             if wk_decl is not None {
@@ -957,11 +946,7 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                     or cl_na_edge
                 );
                 facts.native_from_path = resolve_native(module_name, na_intent);
-                try {
-                    facts.from_loc_resolved = nd.from_loc.resolve_relative_path();
-                } except Exception {
-                    facts.from_loc_resolved = None;
-                }
+                facts.from_loc_resolved = nd.from_loc.resolve_relative_path();
                 facts.is_service = nd.is_service_import;
                 if (
                     nd.items
@@ -970,13 +955,9 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                 ) {
                     resolved = facts.from_loc_resolved;
                     if (resolved is not None and resolved.endswith('.jac')) {
-                        try {
-                            facts.pinned_server = (
-                                config_module_pin(resolved) == 'server'
-                            );
-                        } except Exception {
-                            facts.pinned_server = False;
-                        }
+                        facts.pinned_server = (
+                            config_module_pin(resolved) == 'server'
+                        );
                     }
                 }
                 if (
@@ -1069,28 +1050,16 @@ impl JacProgram.ingest_comptime_producers(
             if not imp.is_comptime or imp.from_loc is None or imp.is_virtual_jac {
                 continue;
             }
-            try {
-                target = imp.from_loc.resolve_relative_path();
-            } except Exception {
-                continue;
-            }
+            target = imp.from_loc.resolve_relative_path();
             if not isinstance(target, str) or not target.endswith('.jac') {
                 continue;
             }
             if not os.path.isfile(target) or os.path.realpath(target) == here_real {
                 continue;
             }
-            try {
-                self.load_dependency_module(
-                    target, importer_path=file_path, need_tree=True
-                );
-            } except Exception as ct_ingest_err {
-                import logging as _ct_logging;
-                _ct_logging.getLogger(__name__).debug(
-                    f"comptime producer {target} of {file_path} "
-                    f"could not be ingested: {ct_ingest_err}"
-                );
-            }
+            self.load_dependency_module(
+                target, importer_path=file_path, need_tree=True
+            );
         }
     } finally {
         self.options = saved_opts;
@@ -1103,11 +1072,10 @@ impl JacProgram.count_module_blocking_errors(self: JacProgram, mod_path: str) ->
         if e.code is None or not e.code.blocks_codegen {
             continue;
         }
-        try {
-            e_path = os.path.normpath(e.loc.mod_path);
-        } except Exception {
+        if not e.loc.mod_path {
             continue;
         }
+        e_path = os.path.normpath(e.loc.mod_path);
         if e_path == mod_path {
             count += 1;
         }
@@ -1118,11 +1086,10 @@ impl JacProgram.count_module_blocking_errors(self: JacProgram, mod_path: str) ->
 impl JacProgram.count_module_errors(self: JacProgram, mod_path: str) -> int {
     count = 0;
     for e in self.errors_had {
-        try {
-            e_path = os.path.normpath(e.loc.mod_path);
-        } except Exception {
+        if not e.loc.mod_path {
             continue;
         }
+        e_path = os.path.normpath(e.loc.mod_path);
         if e_path == mod_path {
             count += 1;
         }
@@ -1138,11 +1105,10 @@ impl JacProgram.module_scoped_errors(self: JacProgram, mod_path: str) -> bool {
         if e.code is None or e.code.category not in (Category.CODEGEN, Category.ICE) {
             continue;
         }
-        try {
-            e_path = os.path.normpath(e.loc.mod_path);
-        } except Exception {
+        if not e.loc.mod_path {
             continue;
         }
+        e_path = os.path.normpath(e.loc.mod_path);
         if e_path == norm or e_path.startswith(prefix) {
             return True;
         }

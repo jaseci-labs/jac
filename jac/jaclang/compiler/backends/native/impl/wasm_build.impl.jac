@@ -308,16 +308,12 @@ impl _project_gc_settings -> tuple[str, list[str], list[str]] {
     gc_mode = "cycles";
     enf_mods: list[str] = [];
     enf_grand: list[str] = [];
-    try {
-        import from jaclang.project { get_config }
-        cfg = get_config();
-        if cfg {
-            gc_mode = cfg.memory.gc_mode();
-            enf_mods = list(cfg.memory.enforce);
-            enf_grand = list(cfg.memory.exempt);
-        }
-    } except Exception {
-        return ("cycles", [], []);
+    import from jaclang.project { get_config }
+    cfg = get_config();
+    if cfg {
+        gc_mode = cfg.memory.gc_mode();
+        enf_mods = list(cfg.memory.enforce);
+        enf_grand = list(cfg.memory.exempt);
     }
     return (gc_mode, enf_mods, enf_grand);
 }

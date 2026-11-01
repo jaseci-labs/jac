@@ -138,11 +138,7 @@ impl client_import_paths(module: uni.Module) -> list[str] {
         if not imp.from_loc or imp.is_virtual_jac {
             continue;
         }
-        try {
-            source = imp.from_loc.resolve_relative_path();
-        } except Exception {
-            continue;
-        }
+        source = imp.from_loc.resolve_relative_path();
         if isinstance(source, str)
             and imp.code_context == CodeContext.CLIENT
             and source.endswith('.jac') {

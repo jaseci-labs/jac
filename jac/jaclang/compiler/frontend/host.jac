@@ -186,11 +186,13 @@ glob _HOSTS: list[HostServices] = [],
 
 def active_host -> HostServices;
 
+def installed_host -> (HostServices | None);
+
 def package_root -> str;
 
 def set_package_root(path: str);
 
-def install_host(host: HostServices);
+def install_host(host: (HostServices | None));
 
 def mark_kernel_resident;
 

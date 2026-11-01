@@ -54,6 +54,7 @@ obj MirEmitter {
         blocks: dict[str, ir.Block] = {},
         strings: dict[str, ir.GlobalVariable] = {},
         building: set[str] = set(),
+        defined: set[str] = set(),
         literals: dict[str, ir.GlobalVariable] = {},
         native_tls: bool = False;
 

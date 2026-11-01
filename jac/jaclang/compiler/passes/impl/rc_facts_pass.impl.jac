@@ -131,11 +131,7 @@ impl RcFactsPass._scalar_attr_read(nm: NameAtom) -> bool {
     if ty is None {
         return False;
     }
-    try {
-        m = str(ty.mangle());
-    } except Exception {
-        return False;
-    }
+    m = str(ty.mangle());
     return m in ("int", "float", "bool");
 }
 

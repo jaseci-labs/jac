@@ -61,12 +61,7 @@ impl _native_dep_scan(
         unresolved = scan.unresolved;
     } else {
         for f in files {
-            try {
-                src = host.read_source(f);
-            } except Exception {
-                sv_reason = "unreadable annex";
-                break;
-            }
+            src = host.read_source(f);
             (dep_mod, had_err) = rd_parse(src, f, prog=JacProgram());
             if had_err {
                 sv_reason = "parse error";
@@ -99,11 +94,7 @@ impl _native_scan_digest(files: list[str], hold_exempt: bool) -> str {
     host = active_host();
     parts: list[str] = [NATIVE_SCAN_RECORD, str(int(hold_exempt))];
     for f in files {
-        try {
-            text = host.read_source(f);
-        } except Exception {
-            return "";
-        }
+        text = host.read_source(f);
         parts.append(os.path.realpath(f));
         parts.append(hashlib.sha256(text.encode()).hexdigest());
     }
@@ -246,11 +237,7 @@ impl dependency_summary(prog: JacProgram, path: str) -> (PlacementSummary | None
     }
     mod = hub_module_for_path(key, prog);
     if mod is None {
-        try {
-            mod = prog.load_dependency_module(key);
-        } except Exception {
-            return store.get(key);
-        }
+        mod = prog.load_dependency_module(key);
         if key in store {
             return store[key];
         }
@@ -418,11 +405,7 @@ impl _materialize_module(path: str, prog: JacProgram) -> (uni.Module | None) {
     if not os.path.exists(path) {
         return None;
     }
-    try {
-        return prog.load_dependency_module(path, need_tree=True);
-    } except Exception {
-        return None;
-    }
+    return prog.load_dependency_module(path, need_tree=True);
 }
 
 impl _import_source_module(elem: uni.Import, prog: JacProgram) -> (uni.Module | None) {
@@ -812,17 +795,15 @@ impl _emit_solver_warning(
             return;
         }
     }
-    try {
-        prog.warnings_had.append(
-            Alert(
-                msg=diag.format_message(name=name),
-                loc=nd.loc.span(),
-                from_pass=CompilerPass,
-                code=diag,
-                help_text=diag.format_help(name=name)
-            )
-        );
-    } except Exception {}
+    prog.warnings_had.append(
+        Alert(
+            msg=diag.format_message(name=name),
+            loc=nd.loc.span(),
+            from_pass=CompilerPass,
+            code=diag,
+            help_text=diag.format_help(name=name)
+        )
+    );
 }
 
 impl _warn_state_forks(target: uni.Module, prog: JacProgram) {
@@ -950,19 +931,17 @@ impl _pull_boundary_import(
     if hub_target is not None and hub_target is not module {
         targets.append(hub_target);
     }
-    try {
-        import from jaclang.compiler.driver.boundary_classify {
-            symbol_linked_source_module
-        }
-        linked = symbol_linked_source_module(imp);
-        if (
-            linked is not None
-            and linked is not module
-            and not any(linked is t for t in targets)
-        ) {
-            targets.append(linked);
-        }
-    } except Exception {}
+    import from jaclang.compiler.driver.boundary_classify {
+        symbol_linked_source_module
+    }
+    linked = symbol_linked_source_module(imp);
+    if (
+        linked is not None
+        and linked is not module
+        and not any(linked is t for t in targets)
+    ) {
+        targets.append(linked);
+    }
     new_stamps = 0;
     for target in targets {
         work.observe(target);
@@ -991,11 +970,7 @@ impl invalidate_importers_es(prog: JacProgram, mod_path: str) -> list[uni.Module
             if imp.from_loc is None {
                 continue;
             }
-            try {
-                target = imp.from_loc.resolve_relative_path();
-            } except Exception {
-                continue;
-            }
+            target = imp.from_loc.resolve_relative_path();
             if isinstance(target, str) and os.path.realpath(target) == key {
                 import from jaclang.compiler.driver.pipeline { invalidate }
                 import from jaclang.compiler.driver.pipeline_types {

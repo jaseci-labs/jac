@@ -477,20 +477,13 @@ impl JacCompiler._restore_sections(
 ) -> None {
     if (SEC_NBITCODE in secs or SEC_NOBJ in secs)
         and self._wants_native_engine(full_target, actual_program) {
-        try {
-            import json;
-            cached_interop: (dict[str, any] | None) = None;
-            interop_bytes = secs.get(SEC_INTEROP);
-            if interop_bytes is not None {
-                cached_interop = json.loads(interop_bytes.decode('utf-8'));
-            }
-            self._load_native_from_cache(full_target, actual_program, cached_interop);
-        } except Exception as e {
-            import logging;
-            logging.getLogger(__name__).debug(
-                f"Failed to load native module from cache: {e}"
-            );
+        import json;
+        cached_interop: (dict[str, any] | None) = None;
+        interop_bytes = secs.get(SEC_INTEROP);
+        if interop_bytes is not None {
+            cached_interop = json.loads(interop_bytes.decode('utf-8'));
         }
+        self._load_native_from_cache(full_target, actual_program, cached_interop);
     }
     client_bytes = secs.get(SEC_CLIENT);
     if client_bytes is not None {
@@ -501,27 +494,23 @@ impl JacCompiler._restore_sections(
     }
     mtir_bytes = secs.get(SEC_MTIR);
     if mtir_bytes is not None {
-        try {
-            actual_program.mtir_map.update(
-                info_graph_from_json(mtir_bytes.decode("utf-8"))
-            );
-        } except Exception {}
+        actual_program.mtir_map.update(
+            info_graph_from_json(mtir_bytes.decode("utf-8"))
+        );
     }
 
     placement_bytes = secs.get(SEC_PLACEMENT);
     if placement_bytes is not None {
-        try {
-            import from jaclang.compiler.placement.placement { summary_store }
-            import from jaclang.compiler.placement.placement_export {
-                summary_from_bytes
-            }
-            import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT }
-            paths = JirPaths.from_bytes(secs.get(SEC_PATH_ROOT), base_dir);
-            restored = summary_from_bytes(placement_bytes, path_mapper=paths.resolve);
-            if restored is not None {
-                summary_store(actual_program)[os.path.abspath(full_target)] = restored;
-            }
-        } except Exception {}
+        import from jaclang.compiler.placement.placement { summary_store }
+        import from jaclang.compiler.placement.placement_export {
+            summary_from_bytes
+        }
+        import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT }
+        paths = JirPaths.from_bytes(secs.get(SEC_PATH_ROOT), base_dir);
+        restored = summary_from_bytes(placement_bytes, path_mapper=paths.resolve);
+        if restored is not None {
+            summary_store(actual_program)[os.path.abspath(full_target)] = restored;
+        }
     }
 }
 

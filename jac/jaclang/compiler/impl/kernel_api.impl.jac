@@ -275,11 +275,11 @@ impl run_check(
 
 impl compile_request(request: CompileRequest) -> CompileResult {
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.host { active_host, install_host }
+    import from jaclang.compiler.frontend.host { install_host, installed_host }
     import from jaclang.project.compiler_host { ProjectHost }
     enter_world(request.project_root, request.search_paths, request.package_root);
     host = ProjectHost(root=request.project_root);
-    previous = active_host();
+    previous = installed_host();
     install_host(host);
     try {
         return run_compile(JacProgram(), host, request);
@@ -290,11 +290,11 @@ impl compile_request(request: CompileRequest) -> CompileResult {
 
 impl check_request(request: CheckRequest) -> CheckResult {
     import from jaclang.compiler.driver.program { JacProgram }
-    import from jaclang.compiler.frontend.host { active_host, install_host }
+    import from jaclang.compiler.frontend.host { install_host, installed_host }
     import from jaclang.project.compiler_host { ProjectHost }
     enter_world(request.project_root, request.search_paths, request.package_root);
     host = ProjectHost(root=request.project_root);
-    previous = active_host();
+    previous = installed_host();
     install_host(host);
     try {
         return run_check(JacProgram(), host, request);
@@ -334,8 +334,8 @@ impl KernelSession.enter -> ProjectHost {
 }
 
 impl KernelSession.leave {
-    import from jaclang.compiler.frontend.host { NeutralHost, install_host }
-    install_host(NeutralHost());
+    import from jaclang.compiler.frontend.host { install_host }
+    install_host(None);
 }
 
 impl KernelSession.invalidate(real: str) {

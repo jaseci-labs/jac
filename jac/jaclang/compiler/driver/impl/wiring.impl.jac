@@ -498,11 +498,7 @@ impl WiringSpec.import_provider(path_node: ModulePath) -> (str | None) {
         ) {
         return None;
     }
-    try {
-        resolved = path_node.resolve_relative_path();
-    } except Exception {
-        return None;
-    }
+    resolved = path_node.resolve_relative_path();
     if not resolved or not os.path.isfile(resolved) {
         return None;
     }

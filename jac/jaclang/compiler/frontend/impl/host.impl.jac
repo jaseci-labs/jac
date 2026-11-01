@@ -320,7 +320,20 @@ impl HostServices.default_target_triple -> str {
 }
 
 impl active_host -> HostServices {
-    return _HOSTS[-1] if _HOSTS else _NEUTRAL_HOST;
+    if _HOSTS {
+        return _HOSTS[-1];
+    }
+    if kernel_resident() {
+        raise RuntimeError(
+            "no host services are installed in the compiler kernel: a compiler "
+            "lookup ran outside a compile, check or session request"
+        );
+    }
+    return _NEUTRAL_HOST;
+}
+
+impl installed_host -> (HostServices | None) {
+    return _HOSTS[-1] if _HOSTS else None;
 }
 
 impl package_root -> str {
@@ -332,9 +345,11 @@ impl set_package_root(path: str) {
     _PACKAGE_ROOT.append(path);
 }
 
-impl install_host(host: HostServices) {
+impl install_host(host: (HostServices | None)) {
     _HOSTS.clear();
-    _HOSTS.append(host);
+    if host is not None {
+        _HOSTS.append(host);
+    }
 }
 
 impl mark_kernel_resident {

@@ -1049,9 +1049,23 @@ impl MirLowering.ensure_c_types(t: (TypeBase | None)) {
         return;
     }
     name = arch.name.value;
-    if name in self.mir.structs {
+    site = f"{arch.loc.mod_path}:{arch.loc.first_line}:{arch.loc.col_start}";
+    held = self.c_struct_sites.get(name);
+    if held is not None {
+        if held != site {
+            raise MirRefused(
+                mir_refusal(
+                    "C struct",
+                    name,
+                    arch,
+                    f"Another C struct named {name} is declared at {held}; one module "
+                    "can use only one C struct of a name."
+                )
+            );
+        }
         return;
     }
+    self.c_struct_sites[name] = site;
     made = MirStructDef(name=name);
     self.mir.structs[name] = made;
     evaluator = self.prog.get_type_evaluator();

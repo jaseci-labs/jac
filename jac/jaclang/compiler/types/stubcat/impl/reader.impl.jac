@@ -12,9 +12,7 @@ impl CatProvider.resolve_type(symbol: Symbol) -> TypeBase {
         }
         self.memo = resolved;
         self.memo_set = True;
-        try {
-            symbol.decl.type = resolved;
-        } except Exception {}
+        symbol.decl.type = resolved;
     }
     found = self.memo;
     if found is None {
@@ -321,11 +319,7 @@ impl StubCatalog.module_by_id(mid: int) -> (Module | None) {
         ext: (Module | None) = None;
         resolver = self.resolver;
         if resolver is not None {
-            try {
-                ext = resolver.resolve_module(self.abs_path(rel));
-            } except Exception {
-                ext = None;
-            }
+            ext = resolver.resolve_module(self.abs_path(rel));
         }
         if ext is None {
             tok = self._token(mid, name, 1, 0, 1, 0);
@@ -340,9 +334,7 @@ impl StubCatalog.module_by_id(mid: int) -> (Module | None) {
     self._mod_memo[mid] = mod;
     self._scope_memo[scope_id] = mod;
     if decided {
-        try {
-            mod.decided_codespace = decided;
-        } except Exception {}
+        mod.decided_codespace = decided;
     }
     if name != "builtins" {
         builtins = self.module("builtins");
@@ -818,13 +810,9 @@ impl StubCatalog.shared_of(shid: int) -> (ClassDetailsShared | None) {
         resolved: (ClassDetailsShared | None) = None;
         resolver = self.resolver;
         if resolver is not None and xmid >= 0 {
-            try {
-                resolved = resolver.resolve_shared(
-                    self.abs_path(self._mod_recs[xmid][1]), dotted, name
-                );
-            } except Exception {
-                resolved = None;
-            }
+            resolved = resolver.resolve_shared(
+                self.abs_path(self._mod_recs[xmid][1]), dotted, name
+            );
         }
         if resolved is None {
             resolved = ClassDetailsShared(

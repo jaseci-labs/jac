@@ -36,11 +36,7 @@ impl PackageBoundaryPass._package_of(path: str) -> (ProjectFacts | None) {
 impl PackageBoundaryPass._check_target(
     importer: (ProjectFacts | None), path_node: ModulePath
 ) -> None {
-    try {
-        resolved = path_node.resolve_relative_path();
-    } except Exception {
-        return;
-    }
+    resolved = path_node.resolve_relative_path();
     if not resolved or not os.path.isfile(resolved) {
         return;
     }

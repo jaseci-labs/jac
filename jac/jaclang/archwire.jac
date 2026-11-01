@@ -10191,10 +10191,10 @@ graph import compiler {
     frontend.host --> driver.program.JacProgram.compile { active_host, kernel_resident }
     frontend.host --> [
         kernel_api.KernelSession.enter { install_host },
-        kernel_api.KernelSession.leave { NeutralHost, install_host },
+        kernel_api.KernelSession.leave { install_host },
         kernel_api.check_request | kernel_api.compile_request {
-            active_host,
-            install_host
+            install_host,
+            installed_host
         },
         kernel_api.enter_world { mark_kernel_resident, set_package_root },
     ]
@@ -11312,11 +11312,7 @@ graph import compiler.driver {
         application.prepare_application | ifacecache.IfaceRegistry._verify_iface {
             CompileOptions
         },
-        nativecache.NativeBuildSession.lower {
-            env_na_debug,
-            pop_native_target,
-            push_native_target
-        },
+        nativecache.NativeBuildSession.lower { pop_native_target, push_native_target },
         nativecache.NativeUnitRegistry.known_digest { env_na_debug },
         nativecache.NativeUnitRegistry.record_module { env_na_debug },
     ]
