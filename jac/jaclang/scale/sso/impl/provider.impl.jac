@@ -47,6 +47,14 @@ impl OAuth2CodeProvider.extra_authorize_params -> dict[str, str] {
     return {};
 }
 
+impl OAuth2CodeProvider.connect_params -> dict[str, str] {
+    return {};
+}
+
+impl OAuth2CodeProvider.revoke_url -> str {
+    return '';
+}
+
 impl OAuth2CodeProvider.fetch_user(
     access_token: str, token_payload: dict[str, any]
 ) -> SSOUserInfo {
@@ -85,7 +93,10 @@ impl OAuth2CodeProvider._exchange_code(
     if code_verifier {
         fields['code_verifier'] = code_verifier;
     }
-    form = urlencode(fields);
+    return await self._token_request(fields);
+}
+
+impl OAuth2CodeProvider._token_request(fields: dict[str, str]) -> dict[str, any] {
     resp = await arequest(
         'POST',
         self.token_url(),
@@ -93,11 +104,20 @@ impl OAuth2CodeProvider._exchange_code(
             'Content-Type': 'application/x-www-form-urlencoded',
             'Accept': 'application/json'
         },
-        data=form
+        data=urlencode(fields)
     );
     if not resp.ok() {
+        body: any = None;
+        try {
+            body = resp.json();
+        } except Exception {}
+        if fields.get('grant_type') == 'refresh_token'
+            and isinstance(body, dict)
+            and body.get('error') == 'invalid_grant' {
+            raise GrantRefused(f"{self._label()} refused the refresh token");
+        }
         raise RuntimeError(
-            f"{self._label()} token exchange failed: " f"HTTP {resp.status_code}"
+            f"{self._label()} token request failed: " f"HTTP {resp.status_code}"
         );
     }
     payload = resp.json();
@@ -105,6 +125,31 @@ impl OAuth2CodeProvider._exchange_code(
         raise RuntimeError(f"{self._label()} token endpoint returned a non-object");
     }
     return payload;
+}
+
+impl OAuth2CodeProvider.refresh_grant(refresh_token: str) -> dict[str, any] {
+    return await self._token_request(
+        {
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token,
+            'client_id': self.client_id,
+            'client_secret': self.client_secret
+        }
+    );
+}
+
+impl OAuth2CodeProvider.revoke_token(token: str) -> bool {
+    url = self.revoke_url();
+    if not url or not token {
+        return False;
+    }
+    resp = await arequest(
+        'POST',
+        url,
+        headers={'Content-Type': 'application/x-www-form-urlencoded'},
+        data=urlencode({'token': token})
+    );
+    return resp.ok();
 }
 
 impl OAuth2CodeProvider._callback_param(request: Request, name: str) -> (str | None) {

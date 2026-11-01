@@ -64,3 +64,15 @@ impl caller_authentication_methods -> list[str] {
     }
     return [str(m) for m in (claims.get('amr') or [])];
 }
+
+impl bind_caller_user(user_id: (str | None)) -> any {
+    return _caller_user.set(str(user_id or ''));
+}
+
+impl release_caller_user(binding: any) {
+    _caller_user.reset(binding);
+}
+
+impl caller_user_id -> str {
+    return _caller_user.get();
+}

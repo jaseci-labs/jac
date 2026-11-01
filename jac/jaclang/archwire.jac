@@ -192,6 +192,7 @@ graph import {
             | toolchains.tools.ToolArtifact.checkout_path { bucket },
         cli.commands.cache { RETIRED, gc, purge, status, unmanaged },
         compiler.types.stubcat.locate.StubcatArtifact.build
+            | project.compiler_host.ProjectHost.keep_native_scan_record
             | scale.injector.binary._fetch_verified_asset { maybe_sweep },
         dist.jab | toolchains.store { bucket, maybe_sweep },
         packages.index.fetch_verified | scale.admin.console_build.console_cache_dir {
@@ -783,7 +784,8 @@ graph import {
             running_compiler_digest
         },
         client.jac_client_compiler.JacClientCompiler.emit_dependencies {
-            compute_content_sha256
+            compute_content_sha256,
+            ct_dep_digest
         },
         client.targets.desktop._dev_launch._dev_roots_from_env { dev_source },
         dist.precompile_bytecode {
@@ -847,6 +849,10 @@ graph import {
         },
         project.compiler_host.ProjectHost.in_compiler_tree { is_compiler_tree_path },
         project.compiler_host.ProjectHost.save_native_debug_ir { get_native_debug_dir },
+        project.compiler_host._native_scan_path {
+            get_jir_cache_dir,
+            module_env_fingerprint
+        },
         project.compiler_host._wiring_records_path
             | project.kernel_snapshot.interface_cache_file {
             get_jir_cache_dir,
@@ -2728,6 +2734,7 @@ graph import {
         compiler.backends.es.esast_gen_pass
             | compiler.backends.py.jcir_gen_pass
             | compiler.passes.comptime_resolve_pass
+            | compiler.passes.declaration_type_pass
             | compiler.passes.jsx_intrinsic_guard_pass
             | compiler.passes.scope_walk
             | compiler.tools.grammar_extract_pass { osp_skip_rest },
@@ -3759,7 +3766,9 @@ graph import {
         | testing.testing { HotReloader }
     server.identity.assurance ++> [
         scale.admin.admin_portal { METHOD_PASSWORD, second_factor_claims },
+        scale.sso.grants { caller_user_id },
         scale.sso.oauth_session { METHOD_FEDERATED },
+        scale.tests.server.test_sso_grants { bind_caller_user, release_caller_user },
     ]
     server.identity.assurance --> scale.tests.data.test_gateway_owned_identity {
         caller_assurance_level,
@@ -3777,7 +3786,8 @@ graph import {
             | scale.sso.sso_auth
             | scale.tests.server.test_oauth_session
             | scale.tests.server.test_registration_challenge
-            | scale.tests.server.test_sso { AuthTokenStore },
+            | scale.tests.server.test_sso
+            | scale.tests.server.test_sso_grants { AuthTokenStore },
         scale.tests.data.test_auth_tokens_fail_closed
             | scale.tests.server.test_emailer_factory {
             AuthTokenStore,
@@ -3786,13 +3796,14 @@ graph import {
     ]
     server.identity.config ++> [
         scale.runtime.gateway.microservice_gateway.MicroserviceGateway._install_admin_api
-            | scale.tests.server.test_auth_policy_startup { configure_identity },
+            | scale.tests.server.test_auth_policy_startup
+            | scale.tests.server.test_sso_grants { configure_identity },
         scale.sso.github | scale.sso.oauth_session { auth_settings },
+        scale.sso.grants | scale.tests.server.test_admin { signing_secret },
         scale.tests.data.test_gateway_owned_identity {
             signing_algorithm as jwt_algorithm,
             signing_secret as jwt_secret
         },
-        scale.tests.server.test_admin { signing_secret },
         scale.tests.server.test_serve { signing_secret as jwt_secret },
         scale.webhook.webhook.WebhookUtils.create_api_key_token {
             signing_algorithm,
@@ -3851,6 +3862,7 @@ graph import {
             | scale.tests.server.test_auth_policy_startup
             | scale.tests.server.test_firebase_auth_sso
             | scale.tests.server.test_sso
+            | scale.tests.server.test_sso_grants
             | scale.tests.server.test_ws_hardening { UserManager },
         scale.server.jobs_ext { SYSTEM_USER, UserRole },
         scale.server.webhook_ext { SYSTEM_USER },
@@ -4353,6 +4365,7 @@ graph import {
             AuthSettings,
             RegistrationSettings
         },
+        scale.tests.server.test_sso_grants { AuthSettings, PasswordSettings },
     ]
     server.settings --> [
         runtime.source_app.main
@@ -4411,13 +4424,12 @@ graph import {
         scale.admin.admin_portal
             | scale.admin.workloads
             | scale.server.jobs_ext
+            | scale.server.sso_ext
             | scale.server.webhook_ext
             | scale.shared.utils
             | scale.sso.sso_auth
             | scale.webhook.webhook { Meta, TransportResponse },
-        scale.server.sso_ext | scale.tests.server.test_firebase_auth_sso {
-            TransportResponse
-        },
+        scale.tests.server.test_firebase_auth_sso { TransportResponse },
     ]
     server.watcher ++> [
         client.targets.client_dev_common
@@ -5153,6 +5165,10 @@ graph import client {
         jacSetToken as _jacSetToken,
         jacSignup as _jacSignup,
         jacSpawn as _jacSpawn,
+        jacSsoConnect as _jacSsoConnect,
+        jacSsoConnections as _jacSsoConnections,
+        jacSsoDisconnect as _jacSsoDisconnect,
+        jacSsoFinish as _jacSsoFinish,
         jacSsoLogin as _jacSsoLogin,
         navigate as _navigate
     }
@@ -6162,9 +6178,13 @@ graph import compiler {
     driver.pass_driver as pass_driver ++> tests.test_pipeline_products;
     driver.pipeline ++> [
         backends.es.client_kernel_cache._lower
-            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference
+            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_body_inference
             | passes.layout_pass.get_layout_registry
             | tools.lang_tools { CompilationProduct, require },
+        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
+            CompilationProduct,
+            require
+        },
         jc_unit { early_passes },
         tests.test_module_exports
             | tools.cfg_dot.cfg_dot_from_file
@@ -6216,6 +6236,7 @@ graph import compiler {
             | passes.cfg_build_pass
             | passes.comptime_resolve_pass
             | passes.decl_impl_match_pass
+            | passes.declaration_type_pass
             | passes.freeze_structure_pass
             | passes.import_wiring_pass
             | passes.ownership_check_pass
@@ -6892,7 +6913,7 @@ graph import compiler {
             is_borrow_kind
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._clib_place_ptr { is_borrow_kind },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
             SymbolStorage
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_clib_args {
@@ -7053,7 +7074,7 @@ graph import compiler {
         types.types { ParamKind },
     ]
     frontend.constant --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
             OwnershipKind
         },
         backends.py.jcir_gen_pass.JcirGenPass._gen_native_interop_stubs {
@@ -7531,27 +7552,30 @@ graph import compiler {
             | driver.program.JacProgram.execution_hubs
             | driver.progstate.ModuleHub.is_fresh
             | passes.placement_pass.PlacementPass._run_undecided
-            | placement.placement_solver._native_dep_scan
+            | placement.placement_solver._keep_native_scan
             | tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__
             | types.type_evaluator.TypeEvaluator._client_npm_base { active_host },
         driver.compilation_context.context_app
             | driver.program.JacProgram.jac_file_formatter
             | driver.progstate.ModuleHub.stamp
             | passes.placement_pass.settle_native_module
-            | placement.placement_solver.native_placement_candidate
+            | placement.placement_solver._native_dep_scan
             | tools.jac_auto_lint_pass.JacAutoLintPass._base_decl_archetypes
             | types.type_evaluator.TypeEvaluator._declared_missing_dependency {
             active_host
         },
         driver.pass_driver { CheckSettings, active_host },
         driver.program.JacProgram.jac_file_linter
+            | placement.placement_solver._native_scan_digest
             | tools.jac_auto_lint_pass.JacAutoLintPass._is_sibling_annex
             | types.type_evaluator.TypeEvaluator._jac_virtual_sibling_dts {
             active_host
         },
         driver.program.JacProgram.jac_str_formatter
+            | placement.placement_solver._read_native_scan
             | types.type_evaluator.TypeEvaluator._load_ts_declarations { active_host },
         driver.program.JacProgram.note_stub_tree_served
+            | placement.placement_solver.native_placement_candidate
             | types.type_evaluator.TypeEvaluator._resolve_client_npm_module {
             active_host
         },
@@ -8345,7 +8369,6 @@ graph import compiler {
             Null,
             OpenStmt,
             ParamVar,
-            PyInlineCode,
             RaiseStmt,
             ReportStmt,
             ReturnStmt,
@@ -8655,7 +8678,6 @@ graph import compiler {
             MultiString,
             Name,
             ParamVar,
-            PyInlineCode,
             String,
             Token,
             TupleVal,
@@ -8755,6 +8777,20 @@ graph import compiler {
             binding_sites_in,
             is_identifier_slot,
             typed_rebind_names
+        },
+        passes.declaration_type_pass {
+            Ability,
+            Archetype,
+            CodeBlockStmt,
+            Enum,
+            Expr,
+            FuncSignature,
+            ImplDef,
+            Kid,
+            Module,
+            ModuleCode,
+            Test,
+            UniNode
         },
         passes.endpoint_effect_pass {
             Ability,
@@ -9934,6 +9970,12 @@ graph import compiler {
         symbol_utils { CompilerPass },
     ]
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
+    passes.declaration_type_pass ++> [
+        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
+            importer_lowers_bodies
+        },
+        driver.pipeline.declaration_passes { DeclarationTypePass },
+    ]
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
     passes.freeze_structure_pass ++> driver.pipeline.frozen_passes {
@@ -10502,6 +10544,7 @@ graph import compiler {
             | backends.native.host_facts.primitive_methods_fact
             | backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__
             | c_interop._spec_for_name
+            | passes.declaration_type_pass
             | passes.layout_pass
             | passes.mtir_gen_pass
             | passes.ownership_check_pass
@@ -10646,11 +10689,14 @@ graph import compiler {
         frontend.unitree { CtValue },
     ]
     types.fixed_width ++> [
+        passes.declaration_type_pass
+            | passes.type_checker_pass.TypeCheckPass._stamp_fixed_width {
+            numeric_name_of
+        },
         passes.type_checker_pass.TypeCheckPass._provably_in_range {
             interval_of_expr,
             interval_of_op
         },
-        passes.type_checker_pass.TypeCheckPass._stamp_fixed_width { numeric_name_of },
     ]
     types.operations ++> [
         backends.es.esast_gen_pass { AUG_TO_BINARY_MAP },
@@ -12526,7 +12572,6 @@ graph import compiler.frontend {
             ChainRole,
             ChildrenRole,
             ClibDeclsRole,
-            CodeRole,
             CollectionRole,
             ComparesRole,
             ComprRole,
@@ -12799,7 +12844,6 @@ graph import compiler.frontend {
             Null,
             OpenStmt,
             ParamVar,
-            PyInlineCode,
             RaiseStmt,
             ReportStmt,
             ReturnStmt,
@@ -12923,7 +12967,6 @@ graph import compiler.frontend {
             NameAtom,
             ParamVar,
             ProgramModule,
-            PyInlineCode,
             RaiseStmt,
             Slice,
             String,
@@ -14093,7 +14136,9 @@ graph import compiler.passes {
         },
     ]
     scope_walk ++> static_analysis_pass { ScopeWalker }
-    type_checker_pass ++> comptime_resolve_pass { TypeCheckPass }
+    type_checker_pass ++> comptime_resolve_pass | declaration_type_pass {
+        TypeCheckPass
+    }
     wasm_contract --> [
         boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
             function_contract,
@@ -14117,14 +14162,13 @@ graph import compiler.placement {
             PLACEMENT_HOLD_EXEMPT_ROOTS,
             PlacementSummary,
             get_module_summary,
+            native_blocker_scan,
             record_placement_evidence,
-            scan_native_blockers,
             summary_store
         },
         placement_solver._endpoint_veto_applies { project_has_server },
     ]
     placement --> [
-        placement_solver.PlacementApplyPass._run_impl { native_blocker_scan },
         placement_solver._closure_pullable { module_has_root_access },
         placement_solver._pullable_by_client_reference { module_has_root_access },
     ]
@@ -14169,6 +14213,10 @@ graph import compiler.tests {
             run_py_fixture,
             run_with_both
         },
+        test_fn_identity_equivalence | test_osp_equivalence {
+            run_py_fixture,
+            run_with_both
+        },
         test_graph_fragment_equivalence {
             run_js_module_fixture,
             run_py_fixture,
@@ -14181,7 +14229,6 @@ graph import compiler.tests {
             run_with_both
         },
         test_native_list_search_equality { compile_native, get_func },
-        test_osp_equivalence { run_py_fixture, run_with_both },
         test_prim_equivalence {
             compare_results,
             compile_fixture_to_js,
@@ -45521,9 +45568,8 @@ graph import scale {
         project_env_path
     }
     config.validation ++> [
-        runtime.cli.diagnostics.PlanValidator._check_config_keys {
-            validate_scale_config
-        },
+        runtime.cli.diagnostics.PlanValidator._check_config_keys
+            | tests.server.test_sso_grants { validate_scale_config },
         tests.apps.test_app_scale_overrides {
             STRICT_ENV,
             validate_app_scale_config,
@@ -46506,9 +46552,26 @@ graph import scale {
         | tests.server.test_oauth_providers
         | tests.server.test_oauth_session
         | tests.server.test_sso { GithubSSOProvider }
-    sso.google ++> tests.server.test_oauth_providers | tests.server.test_sso {
-        GoogleSSOProvider
-    }
+    sso.google ++> tests.server.test_oauth_providers
+        | tests.server.test_sso
+        | tests.server.test_sso_grants { GoogleSSOProvider }
+    sso.grants ++> [
+        server.sso_ext { connections_for, disconnect_for, register_sso },
+        tests.server.test_sso_grants {
+            REFRESH_LEASE_SECONDS,
+            REFRESH_REQUEST_SECONDS,
+            _grant_context,
+            _grant_secret,
+            access_token_for,
+            connections_for,
+            disconnect_for,
+            grant_from_tokens,
+            register_sso,
+            seal_secret,
+            sso_access_token,
+            unseal_secret
+        },
+    ]
     sso.oauth_session ++> [
         server.sso_ext { OAuthSession },
         tests.server.test_oauth_session {
@@ -46517,6 +46580,7 @@ graph import scale {
             complete_identity
         },
         tests.server.test_registration_challenge { complete_identity },
+        tests.server.test_sso_grants { OAuthSession, challenge_of },
     ]
     sso.provider ++> [
         server.sso_ext { OAuth2CodeProvider },
@@ -46524,10 +46588,12 @@ graph import scale {
             | tests.server.test_oauth_session
             | tests.server.test_registration_challenge
             | tests.server.test_sso { SSOUserInfo },
+        tests.server.test_sso_grants { GrantRefused, SSOUserInfo },
     ]
     sso.sso_auth ++> server.sso_ext
         | tests.server.test_firebase_auth_sso
-        | tests.server.test_sso { SSOAuth }
+        | tests.server.test_sso
+        | tests.server.test_sso_grants { SSOAuth }
     state.factory ++> [
         runtime.middleware.rate_limit { get_state_backend },
         tests.microservices.test_rate_limit._reset_state { _backend_holder },
@@ -47157,6 +47223,7 @@ graph import scale.sso {
     firebase --> sso_auth.SSOAuth.get_sso { FirebaseSSOProvider }
     github --> sso_auth.SSOAuth.get_sso { GithubSSOProvider }
     google --> sso_auth.SSOAuth.get_sso { GoogleSSOProvider }
+    grants ++> oauth_session { grant_from_tokens }
     oauth_session ++> sso_auth {
         OAuthLogin,
         OAuthSession,
@@ -47167,8 +47234,10 @@ graph import scale.sso {
         apple { OAuth2CodeProvider, SSOUserInfo, decode_jwt_payload_unverified },
         firebase { SSOProvider, SSOUserInfo },
         github | google | oauth_session { OAuth2CodeProvider, SSOUserInfo },
+        grants { GrantRefused, OAuth2CodeProvider },
         sso_auth { OAuth2CodeProvider, SSOProvider, SSOUserInfo },
     ]
+    type sso_auth ++> grants { SSOAuth }
 }
 
 graph import scale.state {
@@ -47290,7 +47359,7 @@ graph import scale.tests.deploy {
 graph import scale.tests.server {
     oauth_fixtures ++> [
         test_oauth_session { FakeTokens, fake_users, provider },
-        test_sso { FakeTokens, fake_users },
+        test_sso | test_sso_grants { FakeTokens, fake_users },
     ]
 }
 
@@ -47363,7 +47432,13 @@ graph import server {
             second_factor_claims,
             token_assurance
         },
-        middleware { bind_caller_assurance, release_caller_assurance, token_assurance },
+        middleware {
+            bind_caller_assurance,
+            bind_caller_user,
+            release_caller_assurance,
+            release_caller_user,
+            token_assurance
+        },
     ]
     identity.audit ++> endpoints.auth | endpoints.second_factor {
         client_ip,
