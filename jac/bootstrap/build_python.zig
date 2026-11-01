@@ -476,10 +476,10 @@ pub fn main(init: std.process.Init) !void {
             }
         }
     }
-    // Something is built: first the vendored libraries, then the interpreter
-    // the build runs on, which lowers the native object. A build that adopts
-    // an object runs Python only on the interpreter it builds, and has none.
-    options.vendored = try vendoredLibraries(io, init.gpa, a, platform, dest, root, args[4], pins, &vendored);
+    // Something is built: first the interpreter the build runs on, which
+    // lowers the native object, so a missing one fails before any library is
+    // built; then the vendored libraries. A build that adopts an object runs
+    // Python only on the interpreter it builds, and has none.
     var provenance: []const u8 = "";
     if (adopted) |m| {
         provenance = try std.fmt.allocPrint(a, "adopted native object {s} lowered on {s}\n", .{ m.object, m.lowered_on });
@@ -488,6 +488,7 @@ pub fn main(init: std.process.Init) !void {
         options.host = host.tree;
         provenance = host.provenance;
     }
+    options.vendored = try vendoredLibraries(io, init.gpa, a, platform, dest, root, args[4], pins, &vendored);
     try runBuild(io, init.gpa, a, root, pins, options, cache);
     // Cache only the runtime and link archives, not intermediate objects or sources.
     for ([_][]const u8{ "src", "deps", "bin", "absent-inputs" }) |rel| {

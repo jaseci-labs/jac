@@ -1092,14 +1092,10 @@ impl NaIRGenPass._c_const_struct(expr: uni.Expr, sname: str) -> (ir.Constant | N
         }
     }
     struct_type = self.struct_types[sname];
-    # The checked record and the lowered one can be different platform
-    # variants (a macOS struct stat has other fields than the LP64 one the
-    # checker reads), so each given field goes to its slot in the lowered
-    # layout and every other slot is zero.
+
     indices = self.struct_field_indices.get(sname, {});
     values: list[ir.Constant] = [
-        ir.Constant(elem, None)
-        for elem in struct_type.elements
+        ir.Constant(elem, None) for elem in struct_type.elements
     ];
     for (i, field) in enumerate(fields) {
         arg = given.get(field.name.sym_name);

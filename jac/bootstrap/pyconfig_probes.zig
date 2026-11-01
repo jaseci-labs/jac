@@ -56,6 +56,14 @@ pub const probes = [_]Probe{
     .{ .name = "HAVE_ZDICT_H", .kind = .value, .value = "" },
     .{ .name = "HAVE_ZLIB_H", .kind = .value, .value = "" },
     .{ .name = "HAVE_ZSTD_H", .kind = .value, .value = "" },
+    // A macOS target is probed against Zig's darwin headers, which leave out
+    // sys/xattr.h, util.h and utmp.h. The SDK has them, as
+    // posix_constants.darwin.jac records.
+    .{ .name = "HAVE_SYS_XATTR_H", .kind = .value, .os = .macos },
+    .{ .name = "HAVE_UTIL_H", .kind = .value, .os = .macos },
+    .{ .name = "HAVE_UTMP_H", .kind = .value, .os = .macos },
+    .{ .name = "HAVE_UT_NAMESIZE", .kind = .value, .os = .macos },
+    .{ .name = "HAVE_DECL_UT_NAMESIZE", .kind = .value, .os = .macos },
     .{ .name = "USE_COMPUTED_GOTOS", .kind = .value, .value = "" },
     .{ .name = "_PYTHONFRAMEWORK", .kind = .value, .value = "\"\"" },
     .{ .name = "_PYTHREAD_NAME_MAXLEN", .kind = .value, .value = "15", .os = .linux },
