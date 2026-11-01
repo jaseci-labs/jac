@@ -13,7 +13,8 @@ import from engine.src.runtime.jsvalue {
     jsv_to_double,
     jsv_is_double,
     jsv_is_object_cell,
-    jsv_to_table_id
+    jsv_to_table_id,
+    jsv_is_undefined
 }
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.jsobject { js_object_get }

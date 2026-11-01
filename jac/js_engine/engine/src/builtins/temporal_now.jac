@@ -5,7 +5,8 @@ import from engine.src.runtime.jsvalue {
     jsv_from_string_id,
     jsv_is_int32,
     jsv_to_int32,
-    js_undefined
+    js_undefined,
+    jsv_is_undefined
 }
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.jsobject { js_object_get }
@@ -39,6 +40,7 @@ import from engine.src.builtins.date {
     js_Date_getMonth,
     js_Date_getDate
 }
+import from engine.src.runtime.error { vm_has_native_exc }
 
 glob _NOW_ANCHORED: bool = False,
      _NOW_EPOCH_MS: int = 0,

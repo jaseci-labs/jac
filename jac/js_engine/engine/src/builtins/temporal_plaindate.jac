@@ -12,7 +12,8 @@ import from engine.src.runtime.jsvalue {
     jsv_is_double,
     jsv_is_object_cell,
     jsv_is_undefined,
-    jsv_is_string_cell
+    jsv_is_string_cell,
+    jsv_to_table_id
 }
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.jsobject { js_object_get, js_object_set }
@@ -126,11 +127,7 @@ import from engine.src.builtins.temporal {
 import from engine.src.builtins.temporal_duration { ToTemporalDurationValue }
 import from engine.src.builtins.string { js_coerce_to_string }
 
-import from engine.src.runtime.mem {
-    byte_chr,
-    str_byte,
-    str_nbytes
-}
+import from engine.src.runtime.mem { byte_chr, str_byte, str_nbytes }
 
 def:priv _get_int(o: JSValue, key: int) -> int {
     v: JSValue = js_object_get(o, key);
@@ -419,7 +416,8 @@ def:pub js_PlainDate_with(this_val: JSValue, args: list[JSValue]) -> JSValue {
         # is a RangeError even under overflow:"constrain". But this ALGORITHMIC check
         # fires only AFTER options.overflow is read (options-read-before-validation),
         # so remember it here and throw below.
-        mc_is_leap: bool = len(mc_s) > 0 and byte_chr(str_byte(mc_s, str_nbytes(mc_s) - 1)) == "L";
+        mc_is_leap: bool = len(mc_s) > 0
+            and byte_chr(str_byte(mc_s, str_nbytes(mc_s) - 1)) == "L";
         if cal == "iso8601" and (mc_n > 12 or mc_is_leap) {
             bad_month_code = True;
         }

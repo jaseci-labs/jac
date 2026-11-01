@@ -17,7 +17,8 @@ import from engine.src.runtime.jsvalue {
     JSValue,
     jsv_is_object_cell,
     js_undefined,
-    jsv_to_table_id
+    jsv_to_table_id,
+    jsv_is_undefined
 }
 import from engine.src.runtime.jsobject {
     js_object_get,
@@ -27,9 +28,7 @@ import from engine.src.runtime.gc_pin { gc_pin_value }
 import from engine.src.runtime.jsstring { str_from_id }
 import from engine.src.ffi.libc { getenv, write }
 
-import from engine.src.runtime.mem {
-    str_nbytes
-}
+import from engine.src.runtime.mem { str_nbytes }
 
 """
 Map from native-function index (get_native_idx) → parent file path.

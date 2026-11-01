@@ -41,7 +41,8 @@ import from engine.src.runtime.jsvalue {
     jsv_to_bool,
     jsv_to_table_id,
     jsv_from_bool,
-    jsv_from_string_id
+    jsv_from_string_id,
+    jsv_is_symbol
 }
 import from engine.src.runtime.jsobject {
     js_object_create_null,
@@ -66,7 +67,8 @@ import from engine.src.runtime.jsstring {
 import from engine.src.runtime.error {
     make_syntax_error,
     make_type_error,
-    vm_throw_native
+    vm_throw_native,
+    vm_has_native_exc
 }
 import from engine.src.builtins.array { _KEY_IS_ARRAY, js_array_create }
 import from engine.src.builtins.string {
@@ -230,21 +232,30 @@ def _parse_value_ex(p: JSONParser, depth: int) -> list[JSValue] {
     if ch == "t" {
         kv: JSValue = _check_keyword(p, "true");
         if p.want_source {
-            return [kv, jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))];
+            return [
+                kv,
+                jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))
+            ];
         }
         return [kv, js_undefined()];
     }
     if ch == "f" {
         kv2: JSValue = _check_keyword(p, "false");
         if p.want_source {
-            return [kv2, jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))];
+            return [
+                kv2,
+                jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))
+            ];
         }
         return [kv2, js_undefined()];
     }
     if ch == "n" {
         kv3: JSValue = _check_keyword(p, "null");
         if p.want_source {
-            return [kv3, jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))];
+            return [
+                kv3,
+                jsv_from_string_id(str_heap(str_substr_in(p.src, start, p.pos)))
+            ];
         }
         return [kv3, js_undefined()];
     }

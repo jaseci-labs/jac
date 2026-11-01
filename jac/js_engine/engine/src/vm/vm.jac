@@ -68,7 +68,8 @@ import from engine.src.runtime.jsvalue {
     jsv_from_object_id,
     jsv_coerce_to_bool,
     jsv_coerce_to_number,
-    jsv_coerce_to_str
+    jsv_coerce_to_str,
+    jsv_is_number
 }
 import from engine.src.runtime.jsstring {
     str_intern_index,
@@ -484,7 +485,8 @@ import from engine.src.runtime.jsobject {
     KEY_PROTO,
     KEY_LENGTH,
     SYMBOL_KEY_BASE,
-    BUILTIN_BASE
+    BUILTIN_BASE,
+    js_object_create_data_property_or_throw
 }
 import from engine.src.vm.vm_obs {
     vm_obs_set_active_handle,
@@ -1723,7 +1725,7 @@ def _ric_fill_get(ricp: int, c: int, ins: Instruction, rv: JSValue) -> None {
 
 """After a SETFIELD hit through the Instruction's own-slot IC (_vm_set_ic_ok:
 a writable own data slot of shape ins.ic_obj): copy it into the flat IC."""
-def _ric_fill_set(ricp: int, c: int, ins: Instruction) -> None {
+def _ric_fill_set(ricp: int, c: int, ins: Instruction) {
     __mem_store_i64(wrapping_add(ricp, wrapping_mul(c, 16)), ins.ic_obj);
     __mem_store_i64(
         wrapping_add(ricp, wrapping_add(wrapping_mul(c, 16), 8)), ins.ic_ver // 16
@@ -40065,7 +40067,7 @@ def _vm_own_key_is_enumerable_now(vm: VM, jsobj: JSValue, kid: int) -> bool {
 """Give `boxed`, the String wrapper of `raw`, its index properties: one per
 UTF-16 code unit, each that unit as a string (a byte index would add a property
 per encoded byte of a non-ASCII character)."""
-def _vm_box_string_units(boxed: JSValue, raw: str) -> None {
+def _vm_box_string_units(boxed: JSValue, raw: str) {
     bu_units: list[int] = js_string_utf16_units(raw);
     bu_i: int = 0;
     while bu_i < len(bu_units) {

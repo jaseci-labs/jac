@@ -2585,6 +2585,22 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func_name in self.decorated_fns and not _var_callee {
         return self._codegen_decorated_call(nd, func_name);
     }
+    if _mod_qual is None
+        and isinstance(nd.target, uni.Name)
+        and nd.target.sym is None
+        and func_name not in self.local_vars
+        and func_name not in self.global_vars {
+        self.emit(
+            E5092,
+            node_override=nd,
+            kind="name",
+            name=func_name,
+            help_text=f"'{func_name}' is neither defined nor imported in this module, so "
+            "the type checker leaves it unresolved; a native call does not bind to "
+            "a same-named function elsewhere in the program. Import it where it is used."
+        );
+        return None;
+    }
     func: ir.Function | None = None if _var_callee else self.scope.function(func_name);
     if declaration is not None and declaration.name_ref is not None {
         declaring_module = declaration.parent_scope;
