@@ -94,6 +94,12 @@ def configparser_py -> dict[any, any] {
     }
     cpw: ConfigParser = ConfigParser();
     cpw.read_string("[s]\nb = multi\n\tline2\n");
+    cpws: ConfigParser = ConfigParser();
+    cpws.read_string("[s]\na = first\n\u00a0second\n");
+    out["unicode_cont"] = cpws.get("s", "a");
+    cpwi: ConfigParser = ConfigParser(inline_comment_prefixes=[";"]);
+    cpwi.read_string("[s]\na = one\u00a0; comment\n");
+    out["unicode_inline"] = cpwi.get("s", "a");
     try {
         ConfigParser().get("nope", "k");
     } except NoSectionError as e {
@@ -206,6 +212,14 @@ def configparser_py -> dict[any, any] {
     } except Exception {
         out["e_gi_nofb"] = "WRONG-TYPE";
     }
+    cpd: ConfigParser = ConfigParser();
+    cpd.add_section("s");
+    cpd.set("DEFAULT", "old", "1");
+    saved_defaults: dict[str, str] = cpd.defaults();
+    cpd.remove_option("DEFAULT", "old");
+    saved_defaults["new"] = "2";
+    out["defaults_live"] = ("old" not in saved_defaults)
+        and (cpd.get("s", "new") == "2");
     return out;
 }
 
@@ -275,6 +289,12 @@ def configparser_na -> dict[str, any] {
     }
     cpw: ConfigParser = ConfigParser();
     cpw.read_string("[s]\nb = multi\n\tline2\n");
+    cpws: ConfigParser = ConfigParser();
+    cpws.read_string("[s]\na = first\n\u00a0second\n");
+    out["unicode_cont"] = cpws.get("s", "a");
+    cpwi: ConfigParser = ConfigParser(inline_comment_prefixes=[";"]);
+    cpwi.read_string("[s]\na = one\u00a0; comment\n");
+    out["unicode_inline"] = cpwi.get("s", "a");
     try {
         ConfigParser().get("nope", "k");
     } except NoSectionError as e {
@@ -387,5 +407,13 @@ def configparser_na -> dict[str, any] {
     } except Exception {
         out["e_gi_nofb"] = "WRONG-TYPE";
     }
+    cpd: ConfigParser = ConfigParser();
+    cpd.add_section("s");
+    cpd.set("DEFAULT", "old", "1");
+    saved_defaults: dict[str, str] = cpd.defaults();
+    cpd.remove_option("DEFAULT", "old");
+    saved_defaults["new"] = "2";
+    out["defaults_live"] = ("old" not in saved_defaults)
+        and (cpd.get("s", "new") == "2");
     return out;
 }
