@@ -37900,6 +37900,7 @@ graph import runtime.python {
     ]
     objects --> symtable { PyObj, py_error }
     opcode_meta ++> [
+        constant_output { CO_OPTIMIZED },
         modules.opcode {
             is_block_push_opcode,
             opcode_has_arg,

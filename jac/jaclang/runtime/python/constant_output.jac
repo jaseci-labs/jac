@@ -120,18 +120,31 @@ obj constant_writer {
         return self.filename_handle;
     }
 
+    def text_items(values: list[str]) -> PyTuple {
+        items: list[PyObj] = [];
+        for value in values {
+            items.append(PyStr(t="str", val=value));
+        }
+        return PyTuple(t="tuple", items=items);
+    }
+
     def code_of(code: PyCode) -> ptr[PyObject] {
         names = code.localsplusnames;
         kinds = code.localspluskinds;
         owned: list[ptr[PyObject]] = [];
         try {
             bytecode = held(owned, code_buffer(code.co_code));
-            consts = held(owned, self.tuple_of(code.consts));
-            code_names = held(owned, text_tuple(code.names));
-            localsplusnames = held(owned, text_tuple(names));
+            consts = held(owned, self.write(PyTuple(t="tuple", items=code.consts)));
+            code_names = held(owned, self.write(self.text_items(code.names)));
+            localsplusnames = held(owned, self.write(self.text_items(names)));
             localspluskinds = held(owned, code_buffer(kinds));
             name = held(owned, text_object(code.name));
-            qualname = held(owned, text_object(code.qualname));
+            qualname = held(
+                owned,
+                text_object(code.qualname)
+                    if code.flags & CO_OPTIMIZED or code.name == "<module>"
+                    else self.write(PyStr(t="str", val=code.qualname))
+            );
             linetable = held(owned, code_buffer(code.linetable));
             exceptiontable = held(owned, code_buffer(code.exceptiontable));
             return required(
@@ -183,19 +196,6 @@ def code_buffer(data: list[int]) -> ptr[PyObject] {
 def held(owned: list[ptr[PyObject]], handle: ptr[PyObject]) -> ptr[PyObject] {
     owned.append(required(handle));
     return handle;
-}
-
-def text_tuple(values: list[str]) -> ptr[PyObject] {
-    result = required(PyTuple_New(i64(len(values))));
-    try {
-        for (index, value) in enumerate(values) {
-            checked(jacpy_tuple_set_owned(result, i64(index), text_object(value)));
-        }
-    } except Exception {
-        jacpy_release(result);
-        raise;
-    }
-    return result;
 }
 
 # Compiler integers keep 15-bit digits; CPython reads the little-endian
