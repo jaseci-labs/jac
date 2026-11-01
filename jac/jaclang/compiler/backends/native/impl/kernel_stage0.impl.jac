@@ -112,8 +112,8 @@ impl refuse_missing_entries(plan: LinkPlan, pkg_root: str) {
     problems = missing_kernel_entries(plan, pkg_root);
     if problems {
         raise KernelEntryError(
-            "the native compiler kernel would not export the entry points its "
-            "loader calls:\n  "
+            "the native compiler kernel would not export its extension module's "
+            "init function:\n  "
                 + "\n  ".join(problems)
         );
     }
@@ -137,7 +137,8 @@ impl link_kernel(
     prog: (JacProgram | None) = None,
     log: (Callable[[str], None] | None) = None,
     link_mode: str = "",
-    spec: (TargetSpec | None) = None
+    spec: (TargetSpec | None) = None,
+    runpath: str = ""
 ) -> LinkResult {
     mode = link_mode
         or (target.link_mode if target is not None else "")
@@ -172,7 +173,13 @@ impl link_kernel(
         os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
 
         program.release_compile_closure();
-        result = link_artifact(plan, dst, ArtifactKind.SHARED, log=log);
+        result = link_artifact(
+            plan,
+            dst,
+            ArtifactKind.SHARED,
+            log=log,
+            runpaths=[runpath] if runpath else []
+        );
         if log is not None {
             events = plan.prog.analysis.cache_events;
             log(
@@ -188,6 +195,21 @@ impl link_kernel(
     } finally {
         registry.progress = None;
     }
+}
+
+impl link_kernel_object(
+    dst: str,
+    log: (Callable[[str], None] | None) = None,
+    spec: (TargetSpec | None) = None
+) -> str {
+    program = JacProgram();
+    plan = kernel_plan(program, mode=NATIVE_LINK_MODE_BITCODE, spec=spec);
+    refuse_missing_entries(plan, jaclang_pkg_root());
+    program.release_compile_closure();
+    data = link_object(plan, [KERNEL_INIT_SYMBOL], log=log);
+    os.makedirs(os.path.dirname(os.path.abspath(dst)) or ".", exist_ok=True);
+    atomic_write(dst, data);
+    return dst;
 }
 
 impl GcPauses.observe(phase: str, info: dict[str, int]) {

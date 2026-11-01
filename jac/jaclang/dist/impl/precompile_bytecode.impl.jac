@@ -1234,7 +1234,7 @@ impl seal_native(
         native_target=host_target_spec().triple
     );
     roots = native_roots(pkg_name, units);
-    artifact_rel = os.path.join("compiler", kernel_lib_name())
+    artifact_rel = os.path.join("compiler", KERNEL_DIR_NAME, kernel_lib_name())
         if pkg_name == "jaclang"
         else os.path.join(NATIVE_DIR_REL, "lib" + pkg_name + _shared_suffix());
     console.print(f"  Native units: {len(units)} (roots: {len(roots)})");
@@ -1355,7 +1355,7 @@ impl adopt_kernel(
                 + (f" (and {len(drift) - 5} more)" if len(drift) > 5 else "")
         );
     }
-    dst = pkg_path / "compiler" / name;
+    dst = pkg_path / "compiler" / KERNEL_DIR_NAME / name;
     dst.parent.mkdir(parents=True, exist_ok=True);
     shutil.copyfile(src, str(dst));
     os.chmod(str(dst), 0o755);
@@ -1377,7 +1377,7 @@ impl adopt_kernel(
             ).hexdigest();
         }
     }
-    artifact_rel = os.path.join("compiler", name);
+    artifact_rel = os.path.join("compiler", KERNEL_DIR_NAME, name);
     console.print(
         f"  Native artifact: {artifact_rel} adopted from {kernel_dir} "
         f"({len(ids)} units, plan {str(sidecar.get('plan_digest', ''))[:12]})"

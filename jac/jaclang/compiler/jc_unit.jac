@@ -14,8 +14,6 @@ obj JcState {
         diags_h: int = 0,
         lexdiags_h: int = 0,
         comments_h: int = 0,
-        analysis_h: int = 0,
-        compile_h: int = 0,
         early_context: int = 0,
         pass_times: list[float] = [],
         pass_names_h: list[int] = [],
@@ -93,13 +91,5 @@ def:pub jc_lex_errs -> int;
 def _mz_list(items: list[any], hint: int) -> int;
 
 def _register_shape_keys;
-
-def:pub jc_analyze(inputs: str, path: str, source: str, has_source: int) -> int;
-
-def:pub jc_compile(inputs: str, path: str, source: str, has_source: int) -> int;
-
-def:pub jc_take_compile -> int;
-
-def:pub jc_take_analysis -> int;
 
 def:pub jc_rc_debug(v: int) -> int;

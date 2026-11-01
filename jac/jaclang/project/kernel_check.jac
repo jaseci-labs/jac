@@ -13,8 +13,6 @@ obj KernelCheck {
 
 class KernelCheckError(RuntimeError) {}
 
-def analysis_kernel -> any;
-
 def loaded_pass_type(name: str) -> (type | None);
 
 def pass_type_named(name: str) -> type;
@@ -58,6 +56,8 @@ def _check_record_path(
 
 def _replayed_outcome(record_path: str, path: str) -> (AnalysisReport | None);
 
-def _record_outcome(record_path: str, path: str, outcome: AnalysisReport);
+def _record_outcome(
+    record_path: str, path: str, result: dict[str, any], outcome: AnalysisReport
+);
 
 def _reads_compile_time_inputs(modules: set[str]) -> bool;

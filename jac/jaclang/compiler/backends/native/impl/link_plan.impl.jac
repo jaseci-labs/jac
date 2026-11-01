@@ -1020,13 +1020,10 @@ impl _write_sidecar(
     plan_digest: str,
     action_digest: str = "",
     artifact_sha256: str = ""
-) -> tuple[dict[str, any], str] {
-    classes = plan.merged_layout();
-    ldigest = layout_digest_of(classes);
-
+) -> str {
+    ldigest = layout_digest_of(plan.merged_layout());
     unit_paths = [u.path for u in plan.units];
     sidecar = {
-        "classes": classes,
         "plan_digest": plan_digest,
         "layout_digest": ldigest,
         "units": unit_paths,
@@ -1050,7 +1047,7 @@ impl _write_sidecar(
         output_path + ".layout.json",
         json.dumps(sidecar, sort_keys=True).encode("utf-8")
     );
-    return (classes, ldigest);
+    return ldigest;
 }
 
 impl _sha256_of(path: str) -> str {
@@ -1079,8 +1076,8 @@ impl _reuse_artifact(
             or sidecar.get("action_digest") != action_digest {
             return None;
         }
-        classes = plan.merged_layout();
-        if sidecar.get("classes") != classes {
+        ldigest = layout_digest_of(plan.merged_layout());
+        if sidecar.get("layout_digest") != ldigest {
             return None;
         }
         digest = _sha256_of(output_path);
@@ -1090,9 +1087,8 @@ impl _reuse_artifact(
         return LinkResult(
             output_path=output_path,
             plan_digest=plan.plan_digest(),
-            layout_digest=layout_digest_of(classes),
+            layout_digest=ldigest,
             sha256=digest,
-            classes=classes,
             units=[u.path for u in plan.units],
             reused=True
         );
@@ -1117,7 +1113,8 @@ impl link_artifact(
     output_path: str,
     kind: ArtifactKind,
     log: any = None,
-    app_imports: (set | None) = None
+    app_imports: (set | None) = None,
+    runpaths: list[str] = []
 ) -> LinkResult {
     if kind == ArtifactKind.SHARED {
         for unit in plan.units {
@@ -1244,7 +1241,9 @@ impl link_artifact(
         inputs.archives = inputs.archives + [atomics];
     }
     soname = os.path.basename(output_path);
-    action_digest = inputs.digest(plan.plan_digest(), kind.value, soname);
+    action_digest = inputs.digest(
+        plan.plan_digest(), kind.value + "".join(":" + rp for rp in runpaths), soname
+    );
     reused = _reuse_artifact(plan, output_path, action_digest);
     if reused is not None {
         plan.prog.native_units().note_link(True);
@@ -1278,7 +1277,8 @@ impl link_artifact(
             for (sym, raw) in clib_symbol_lib.items()
             if raw in floor_handled
         },
-        static_musl=static_musl
+        static_musl=static_musl,
+        runpaths=list(runpaths)
     );
     try {
         warnings = link_native(job);
@@ -1308,17 +1308,40 @@ impl link_artifact(
     _log_phase(log, f"{platform} link", link_started);
     digest = plan.plan_digest();
     artifact_sha256 = _sha256_of(output_path);
-    (classes, ldigest) = _write_sidecar(
-        plan, output_path, digest, action_digest, artifact_sha256
-    );
+    ldigest = _write_sidecar(plan, output_path, digest, action_digest, artifact_sha256);
     return LinkResult(
         output_path=output_path,
         plan_digest=digest,
         layout_digest=ldigest,
         sha256=artifact_sha256,
-        classes=classes,
         units=[u.path for u in plan.units]
     );
+}
+
+impl link_object(
+    plan: LinkPlan, exports: list[str], log: (Callable[[str], None] | None) = None
+) -> bytes {
+    platform = _platform_of(plan.triple);
+    tm = _target_machine(plan, ArtifactKind.SHARED);
+    spec = plan.glue_spec(ArtifactKind.SHARED, platform, False);
+    spec.data_layout = str(tm.target_data);
+    started = time.perf_counter();
+    (merged, glue_exports) = whole_program_module(plan, spec);
+    started = _log_phase(
+        log, f"whole_program_module ({len(plan.units)} units)", started
+    );
+    internalize_native_implementation(merged, exports + glue_exports);
+    opt_level = 0 if plan.options.native_debug else int(plan.options.opt_level or 0);
+    if opt_level > 0 {
+        pto = llvm.create_pipeline_tuning_options(speed_level=opt_level);
+        pb = llvm.create_pass_builder(tm, pto);
+        pb.getModulePassManager().run(merged, pb);
+    }
+    started = _log_phase(log, "optimize_whole_program", started);
+    data = tm.emit_object(merged);
+    merged.close();
+    _log_phase(log, "emit_object", started);
+    return data;
 }
 
 impl _unmangled(symbol: str, mangled: bool) -> str {
@@ -1426,13 +1449,12 @@ impl link_wasm(
     wasm_bytes = emit_wasm_from_ir(merged_ir, app_imports=imports);
     atomic_write(output_path, wasm_bytes, mode=0o644);
     digest = plan.plan_digest();
-    (classes, ldigest) = _write_sidecar(plan, output_path, digest);
+    ldigest = _write_sidecar(plan, output_path, digest);
     return LinkResult(
         output_path=output_path,
         plan_digest=digest,
         layout_digest=ldigest,
         sha256=_sha256_of(output_path),
-        classes=classes,
         units=[u.path for u in plan.units]
     );
 }

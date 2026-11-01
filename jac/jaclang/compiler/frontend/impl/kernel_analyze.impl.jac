@@ -1,44 +1,3 @@
-impl DiagSpan.to_dict -> dict[str, any] {
-    return {
-        "mod_path": self.mod_path,
-        "first_line": self.first_line,
-        "last_line": self.last_line,
-        "col_start": self.col_start,
-        "col_end": self.col_end,
-        "pos_start": self.pos_start,
-        "pos_end": self.pos_end,
-        "src_window": self.src_window,
-        "window_offset": self.window_offset,
-        "window_line": self.window_line
-    };
-}
-
-impl AnalysisDiag.to_dict -> dict[str, any] {
-    return {
-        "code": self.code,
-        "message": self.message,
-        "path": self.path,
-        "line": self.line,
-        "col": self.col,
-        "pass": self.pass_name,
-        "msg": self.msg,
-        "span": self.span.to_dict(),
-        "related": [{"label": r.label, "span": r.span.to_dict()} for r in self.related],
-        "help_text": self.help_text,
-        "owner": self.owner
-    };
-}
-
-impl ModuleReport.to_dict -> dict[str, any] {
-    return {
-        "path": self.path,
-        "parse_failed": self.parse_failed,
-        "blocked": self.blocked,
-        "native": self.native,
-        "passes": list(self.passes)
-    };
-}
-
 impl AnalysisReport.module(path: str) -> (ModuleReport | None) {
     resolved = os.path.realpath(path);
     for candidate in self.modules {
@@ -47,77 +6,6 @@ impl AnalysisReport.module(path: str) -> (ModuleReport | None) {
         }
     }
     return None;
-}
-
-impl AnalysisReport.to_dict -> dict[str, any] {
-    return {
-        "status": self.status,
-        "message": self.message,
-        "entry": self.entry_path,
-        "modules": [m.to_dict() for m in self.modules],
-        "errors": [d.to_dict() for d in self.errors],
-        "warnings": [d.to_dict() for d in self.warnings],
-        "misses": list(self.misses),
-        "events": [list(row) for row in self.events],
-        "reads": [list(row) for row in self.reads]
-    };
-}
-
-impl AnalysisReport.to_json -> str {
-    return json.dumps(self.to_dict(), sort_keys=True);
-}
-
-impl AnalysisReport.from_json(text: str) -> AnalysisReport {
-    return AnalysisReport.from_dict(json_map(json.loads(text)));
-}
-
-impl AnalysisReport.from_dict(raw: dict[str, any]) -> AnalysisReport {
-    return AnalysisReport(
-        status=json_int(raw.get("status"), ANALYSIS_CRASHED),
-        message=str(raw.get("message", "")),
-        entry_path=str(raw.get("entry", "")),
-        modules=[module_from_dict(m) for m in json_maps(raw.get("modules"))],
-        errors=[diag_from_dict(d) for d in json_maps(raw.get("errors"))],
-        warnings=[diag_from_dict(d) for d in json_maps(raw.get("warnings"))],
-        misses=json_str_list(raw.get("misses")),
-        events=json_str_pairs_of(raw.get("events")),
-        reads=json_str_pairs_of(raw.get("reads"))
-    );
-}
-
-impl json_str_pairs_of(value: object) -> list[list[str]] {
-    rows: list[list[str]] = [];
-    if isinstance(value, list) {
-        for item in value {
-            rows.append(json_str_list(item));
-        }
-    }
-    return rows;
-}
-
-impl module_from_dict(raw: dict[str, any]) -> ModuleReport {
-    return ModuleReport(
-        path=str(raw.get("path", "")),
-        parse_failed=bool(raw.get("parse_failed", False)),
-        blocked=bool(raw.get("blocked", False)),
-        native=bool(raw.get("native", False)),
-        passes=json_str_list(raw.get("passes"))
-    );
-}
-
-impl span_from_dict(raw: dict[str, any]) -> DiagSpan {
-    return DiagSpan(
-        mod_path=str(raw.get("mod_path", "")),
-        first_line=json_int(raw.get("first_line")),
-        last_line=json_int(raw.get("last_line")),
-        col_start=json_int(raw.get("col_start")),
-        col_end=json_int(raw.get("col_end")),
-        pos_start=json_int(raw.get("pos_start")),
-        pos_end=json_int(raw.get("pos_end")),
-        src_window=str(raw.get("src_window", "")),
-        window_offset=json_int(raw.get("window_offset")),
-        window_line=json_int(raw.get("window_line"))
-    );
 }
 
 impl span_record(span: Span) -> DiagSpan {
@@ -132,27 +20,6 @@ impl span_record(span: Span) -> DiagSpan {
         src_window=span.src_window,
         window_offset=span.window_offset,
         window_line=span.window_line
-    );
-}
-
-impl diag_from_dict(raw: dict[str, any]) -> AnalysisDiag {
-    return AnalysisDiag(
-        code=str(raw.get("code", "")),
-        message=str(raw.get("message", "")),
-        path=str(raw.get("path", "")),
-        line=json_int(raw.get("line")),
-        col=json_int(raw.get("col")),
-        pass_name=str(raw.get("pass", "")),
-        msg=str(raw.get("msg", "")),
-        span=span_from_dict(json_map(raw.get("span"))),
-        related=[
-            RelatedDiag(
-                label=str(r.get("label", "")),
-                span=span_from_dict(json_map(r.get("span")))
-            ) for r in json_maps(raw.get("related"))
-        ],
-        help_text=json_opt_str(raw.get("help_text")),
-        owner=str(raw.get("owner", ""))
     );
 }
 
@@ -317,31 +184,6 @@ impl run_kernel_session(
     return run;
 }
 
-impl decode_inputs(inputs_json: str) -> (KernelInputs | str) {
-    kernel_trace("decode inputs");
-    try {
-        return KernelInputs.from_json(inputs_json);
-    } except Exception as err {
-        return f"undecodable kernel inputs: {err}";
-    }
-}
-
-impl run_kernel_analysis(
-    inputs_json: str,
-    path: str,
-    source: (str | None),
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
-) -> AnalysisReport {
-    inputs = decode_inputs(inputs_json);
-    if isinstance(inputs, str) {
-        return AnalysisReport(status=ANALYSIS_CRASHED, message=inputs, entry_path=path);
-    }
-    return run_kernel_session(inputs, path, source, False, asker, kernel_asker).outcome(
-        path
-    );
-}
-
 impl CompileReport.unit(path: str) -> (UnitProducts | None) {
     resolved = os.path.realpath(path);
     for candidate in self.units {
@@ -350,43 +192,4 @@ impl CompileReport.unit(path: str) -> (UnitProducts | None) {
         }
     }
     return None;
-}
-
-impl CompileReport.to_json -> str {
-    return json.dumps(
-        {
-            "analysis": self.analysis.to_dict(),
-            "units": [products_record(u) for u in self.units]
-        },
-        sort_keys=True
-    );
-}
-
-impl CompileReport.from_json(text: str) -> CompileReport {
-    raw = json_map(json.loads(text));
-    return CompileReport(
-        analysis=AnalysisReport.from_dict(json_map(raw.get("analysis"))),
-        units=[products_from_record(u) for u in json_maps(raw.get("units"))]
-    );
-}
-
-impl run_kernel_compile(
-    inputs_json: str,
-    path: str,
-    source: (str | None),
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
-) -> CompileReport {
-    inputs = decode_inputs(inputs_json);
-    if isinstance(inputs, str) {
-        return CompileReport(
-            analysis=AnalysisReport(
-                status=ANALYSIS_CRASHED, message=inputs, entry_path=path
-            )
-        );
-    }
-    run = run_kernel_session(inputs, path, source, True, asker, kernel_asker);
-    return CompileReport(
-        analysis=run.outcome(path), units=list(run.host.units.values())
-    );
 }

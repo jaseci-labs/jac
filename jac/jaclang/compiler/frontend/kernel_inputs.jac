@@ -1,5 +1,3 @@
-import base64;
-import json;
 
 glob KERNEL_INPUTS_VERSION: int = 2,
      KEY_SEP: str = "\x1f";
@@ -157,9 +155,6 @@ obj KernelInputs {
         npm: list[NpmAnswer] = [],
         declared: list[DeclaredDependencies] = [],
         python_ifaces: list[PythonInterface] = [];
-
-    def to_json -> str;
-    static def from_json(text: str) -> KernelInputs;
 }
 
 def resolution_key(target: str, base_path: str, string_spec: bool) -> str;
@@ -170,51 +165,9 @@ def pair_key(first: str, second: str) -> str;
 
 def request_of(options: CompileOptions) -> RequestOptions;
 
-def request_to_dict(request: RequestOptions) -> dict[str, any];
-
-def request_from_dict(raw: dict[str, any]) -> RequestOptions;
-
-def check_to_dict(check: CheckSettings) -> dict[str, any];
-
-def check_from_dict(raw: dict[str, any]) -> CheckSettings;
-
-def defaults_to_dict(defaults: ProjectDefaults) -> dict[str, any];
-
-def defaults_from_dict(raw: dict[str, any]) -> ProjectDefaults;
-
-def facts_to_dict(facts: ProjectFacts) -> dict[str, any];
-
-def facts_from_dict(raw: dict[str, any]) -> ProjectFacts;
-
-def lint_to_dict(lint: LintSettings) -> dict[str, any];
-
-def lint_from_dict(raw: dict[str, any]) -> LintSettings;
-
-def app_to_dict(app: AppSpec) -> dict[str, any];
-
-def app_from_dict(raw: dict[str, any]) -> AppSpec;
-
-def workspace_to_dict(ws: WorkspaceSpec) -> dict[str, any];
-
-def workspace_from_dict(raw: dict[str, any]) -> WorkspaceSpec;
-
-def layout_to_dict(layout: LayoutTables) -> dict[str, any];
-
-def layout_from_dict(raw: dict[str, any]) -> LayoutTables;
-
-def manifest_to_dict(manifest: ManifestSets) -> dict[str, any];
-
-def manifest_from_dict(raw: dict[str, any]) -> ManifestSets;
-
-def optional_list(raw: object) -> (list[str] | None);
-
 def json_str_list(value: object) -> list[str];
 
-def json_str_pairs(value: object) -> list[list[str]];
-
 def json_str_map(value: object) -> dict[str, str];
-
-def json_bool_map(value: object) -> dict[str, bool];
 
 def json_map(value: object) -> dict[str, any];
 
@@ -222,16 +175,5 @@ def json_maps(value: object) -> list[dict[str, any]];
 
 def json_int(value: object, fallback: int = 0) -> int;
 
-def inputs_to_dict(inputs: KernelInputs) -> dict[str, any];
-
-def answers_to_dict(inputs: KernelInputs) -> dict[str, any];
-
 def json_opt_str(value: object) -> (str | None);
 
-def merge_str_map(into: dict[str, str], value: object);
-
-def merge_bool_map(into: dict[str, bool], value: object);
-
-def merge_answers(inputs: KernelInputs, raw: dict[str, any]);
-
-def inputs_from_dict(raw: dict[str, any]) -> KernelInputs;

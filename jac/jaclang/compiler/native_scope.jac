@@ -16,6 +16,8 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.jc_materialize"),
          NativeScopeEntry(module="jaclang.compiler.jc_ask"),
          NativeScopeEntry(module="jaclang.compiler.jc_unit"),
+         NativeScopeEntry(module="jaclang.compiler.kernel_api"),
+         NativeScopeEntry(module="jaclang.compiler.kernel_module"),
          NativeScopeEntry(module="jaclang.compiler.frontend.diagnostics"),
          NativeScopeEntry(module="jaclang.compiler.passes.context"),
          NativeScopeEntry(module="jaclang.compiler.passes.ast_validation_pass"),
@@ -169,15 +171,14 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.backends.native.primitives_native"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.na_ir_gen_pass")
      ),
-     KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
+     KERNEL_ROOT_MODULE: str = "jaclang.compiler.kernel_module",
      KERNEL_ABI_CONTRACT_REL: tuple[str, ...] = (
          "runtime/osp_kernel.jac",
          "runtime/osp_graph.jac",
          "runtime/region_native.jac",
          "compiler/backends/common/fmt_kernel.jac",
          "runtime/osp_tag.jac",
-         "compiler/backends/native/region_abi.jac",
-         "compiler/native_compiler.jac"
+         "compiler/backends/native/region_abi.jac"
      ),
      _SCOPE_SUFFIX_CACHE: list[str] = [],
      _SCOPE_SUFFIX_GEN: list[int] = [-1];

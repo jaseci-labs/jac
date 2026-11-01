@@ -7,6 +7,7 @@ glob CLIENT_RECORD_VERSION: int = 5,
 
 obj UnitProducts {
     has path: str,
+        code: any = None,
         jcir: bytes = b"",
         mtir: str = "",
         interop: str = "",
