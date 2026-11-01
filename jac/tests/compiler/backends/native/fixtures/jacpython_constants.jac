@@ -24,6 +24,10 @@ import from jaclang.runtime.python.compiler_integer {
     PyBigInt
 }
 
+def:pub none_probe -> ptr[PyObject] {
+    return constant_object(py_none());
+}
+
 def:pub probe_constants -> ptr[PyObject] {
     same = PyStr(t="str", val="repeat");
     values: list[PyObj] = [
