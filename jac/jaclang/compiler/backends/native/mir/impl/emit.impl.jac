@@ -66,7 +66,10 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     if t.kind == MirKind.OBJ and t.name != "*" {
         return self.object_struct(t.name).as_pointer();
     }
-    if t.kind == MirKind.STR_REF or t.kind == MirKind.OBJ or mir_is_container(t) {
+    if t.kind == MirKind.ANY {
+        return self.jacval_type();
+    }
+    if t.kind in (MirKind.STR_REF, MirKind.OBJ, MirKind.FN) or mir_is_container(t) {
         return ir.IntType(8).as_pointer();
     }
     if t.kind == MirKind.C_PTR {
@@ -257,6 +260,9 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
     } elif op == MirOp.REF_CAST {
         source = self.value(instr.operands[0]);
         to = self.llvm_type(type_arg_of(instr));
+        if instr.operands[0].type.kind == MirKind.ANY {
+            source = b.extract_value(source, 1);
+        }
         if isinstance(source.type, ir.IntType) {
             self.bind(instr.result, b.inttoptr(source, to));
         } elif source.type == to {
@@ -266,6 +272,8 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         }
     } elif op in (MirOp.RETAIN, MirOp.RELEASE) {
         self.emit_rc(b, instr);
+    } elif op in ANY_OPS {
+        self.emit_any(b, instr);
     } elif op == MirOp.CALL_RUNTIME {
         callee = self.functions.get(instr.callee);
         if callee is None {
@@ -842,6 +850,58 @@ impl MirEmitter.str_type -> ir.Type {
     return shape;
 }
 
+impl MirEmitter.jacval_type -> ir.Type {
+    shape = self.module.context.get_identified_type("JacVal");
+    if shape.is_opaque {
+        shape.set_body(ir.IntType(8), ir.IntType(64));
+    }
+    return shape;
+}
+
+impl MirEmitter.any_bits(b: ir.IRBuilder, value: ir.Value, t: MirType) -> ir.Value {
+    i64 = ir.IntType(64);
+    if isinstance(value.type, ir.PointerType) {
+        return b.ptrtoint(value, i64);
+    }
+    if t.kind == MirKind.FLOAT {
+        wide = b.fpext(value, ir.DoubleType()) if t.width == 32 else value;
+        return b.bitcast(wide, i64);
+    }
+    if isinstance(value.type, ir.IntType) and value.type.width < 64 {
+        if t.kind == MirKind.INT and t.signed {
+            return b.sext(value, i64);
+        }
+        return b.zext(value, i64);
+    }
+    if isinstance(value.type, ir.IntType) {
+        return value;
+    }
+    raise MirEmitError(f"no any payload for MIR type {t.render()}");
+}
+
+impl MirEmitter.emit_any(b: ir.IRBuilder, instr: MirInstr) {
+    op = instr.op;
+    i8 = ir.IntType(8);
+    if op == MirOp.ANY_TAG {
+        self.bind(instr.result, b.zext(b.extract_value(self.value(instr.operands[0]), 0), ir.IntType(64)));
+        return;
+    }
+    if op == MirOp.ANY_PAYLOAD {
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), 1));
+        return;
+    }
+    made = ir.Constant(self.jacval_type(), None);
+    if op == MirOp.ANY_BOX {
+        source = instr.operands[0];
+        made = b.insert_value(made, ir.Constant(i8, instr.int_value), 0);
+        made = b.insert_value(made, self.any_bits(b, self.value(source), source.type), 1);
+    } else {
+        made = b.insert_value(made, b.trunc(self.value(instr.operands[0]), i8), 0);
+        made = b.insert_value(made, self.value(instr.operands[1]), 1);
+    }
+    self.bind(instr.result, made);
+}
+
 impl MirEmitter.str_literal(b: ir.IRBuilder, text: str) -> ir.Value {
     found = self.literals.get(text);
     if found is None {
@@ -872,6 +932,17 @@ impl MirEmitter.str_literal(b: ir.IRBuilder, text: str) -> ir.Value {
 
 impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
     subject = instr.operands[0];
+    if subject.type.kind == MirKind.ANY {
+        i64 = ir.IntType(64);
+        whole = self.value(subject);
+        tag = b.zext(b.extract_value(whole, 0), i64);
+        symbol = ANY_RETAIN_SYMBOL if instr.op == MirOp.RETAIN else ANY_RELEASE_SYMBOL;
+        b.call(self.extern(symbol, ir.VoidType(), [i64, i64]), [tag, b.extract_value(whole, 1)]);
+        if instr.op == MirOp.RETAIN {
+            self.bind(instr.result, whole);
+        }
+        return;
+    }
     if subject.type.kind == MirKind.TUPLE {
         whole = self.value(subject);
         for (index, member) in enumerate(subject.type.args) {

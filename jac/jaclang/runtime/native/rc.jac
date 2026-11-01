@@ -3,7 +3,9 @@ import from c {
         has trace: Callable[[ptr[u8], ptr[u8]], None];
     }  def malloc(n: int) -> int;  def free(p: int) -> None;  def realloc(
         p: int, n: int
-    ) -> int;  def calloc(n: int, size: int) -> int;  def pthread_getspecific(
+    ) -> int;  def calloc(n: int, size: int) -> int;  def memset(
+        p: int, value: i32, n: int
+    ) -> int;  def pthread_getspecific(
         key: int
     ) -> int;
 }
@@ -162,6 +164,8 @@ def _reclaim_one(o: int);
 def _reclaim_garbage -> None;
 
 def:pub __jac_rt_alloc(size: int) -> int;
+
+def:pub __jac_rt_alloc_zeroed(size: int) -> int;
 
 def:pub __jac_rt_set_type(o: int, tag: int);
 

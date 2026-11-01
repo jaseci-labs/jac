@@ -30,9 +30,6 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
     if layout is None {
         raise MirRefused(mir_refusal("archetype", name, arch, "The archetype has no native layout."));
     }
-    if layout.is_osp {
-        raise MirRefused(mir_refusal("archetype", f"{name} (OSP)", arch));
-    }
     local = owner is self.module;
     prefix = native_unit_prefix(owner.loc.mod_path);
     made = MirObjectDef(
@@ -57,6 +54,7 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
             )
         );
     }
+    self.osp_header_fields(made, layout);
     if layout.has_vtable {
         made.vtable_symbol = native_symbol_name(
             prefix, native_unit_spelling(f"{name}.__vtable", owner.loc.mod_path)
@@ -160,6 +158,7 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
         );
         self.order.append(key);
     }
+    self.declare_osp_abilities(arch);
     if obj_def.local {
         self.trace_pairs.append((obj_def.drop_symbol, obj_def.trace_symbol));
     }
@@ -219,7 +218,7 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
         }
         size = fn.new_value(mir_int());
         b.emit(MirInstr(op=MirOp.SIZEOF, result=size, type_arg=self_type));
-        raw = self.runtime("__jac_rt_alloc", [size]);
+        raw = self.runtime("__jac_rt_alloc_zeroed", [size]);
         if raw is None {
             raise MirRefused(mir_refusal("constructor", obj_def.name, arch));
         }
@@ -246,6 +245,7 @@ impl MirLowering.lower_constructor(arch: uni.Archetype) -> (MirFunction | None) 
             );
             b.store(slot, self.emit_value(MirOp.VTABLE_ADDR, mir_c_ptr(mir_c_ptr(mir_int(8, False))), [], str_value=obj_def.name));
         }
+        self.osp_header(this, obj_def);
         init = self.find_method(arch, "init") or self.find_method(arch, "__init__");
         if init is None {
             for ((pname, ptype, _), value) in zip(params, values) {
@@ -312,6 +312,7 @@ impl MirLowering.lower_drop(obj_def: MirObjectDef) -> MirFunction {
     }
     b.branch(free_bb);
     b.position(free_bb);
+    self.osp_drop(obj_def, raw);
     address = self.address_of(raw);
     self.runtime("__jac_rt_free_block", [b.binary("sub", address, b.const_int(32, mir_int()))]);
     b.ret(None);
@@ -333,7 +334,8 @@ impl MirLowering.lower_trace(obj_def: MirObjectDef) -> MirFunction {
     fn.params.append(MirParam(name="visitor", value=visit_fn));
     this = b.ref_cast(raw, mir_obj(obj_def.name), False);
     for member in obj_def.fields {
-        if not mir_holds_ref(member.type) or member.type.kind in (MirKind.STR, MirKind.STR_REF) {
+        if not mir_holds_ref(member.type)
+            or member.type.kind in (MirKind.STR, MirKind.STR_REF, MirKind.ANY) {
             continue;
         }
         place = self.emit_value(MirOp.FIELD_ADDR, mir_c_ptr(member.type), [this], int_value=member.index);
@@ -409,7 +411,7 @@ impl MirLowering.object_method(
     if decl is None {
         raise MirRefused(mir_refusal("method", f"{archetype_native_name(arch)}.{name}", nd));
     }
-    args = self.call_args(nd);
+    args = self.bound_args(nd, method, True);
     if len(args) != len(decl.params) {
         raise MirRefused(mir_refusal("call", f"{name} with {len(args)} arguments", nd));
     }
@@ -474,7 +476,7 @@ impl MirLowering.isinstance_check(value: MirValue, arch: uni.Archetype) -> MirVa
 }
 
 impl MirLowering.lower_module_init -> (MirFunction | None) {
-    if not self.trace_pairs and not self.deferred_globals {
+    if not self.trace_pairs and not self.deferred_globals and not self.osp_setup {
         return None;
     }
     path = self.module.loc.mod_path;
@@ -493,6 +495,9 @@ impl MirLowering.lower_module_init -> (MirFunction | None) {
                 "__jac_rt_trace_register",
                 [self.emit_value(MirOp.PTR_INT, mir_int(), [drop_fn]), self.emit_value(MirOp.PTR_INT, mir_int(), [trace_fn])]
             );
+        }
+        if self.osp_setup {
+            b.call(self.osp_setup, [], mir_none());
         }
         for (glob_def, initial) in self.deferred_globals {
             place = self.emit_value(MirOp.GLOBAL_ADDR, mir_c_ptr(glob_def.type), [], str_value=glob_def.symbol);

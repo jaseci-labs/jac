@@ -31,6 +31,10 @@ enum MirOp {
     OPT_MAKE = "opt.make",
     TUPLE_MAKE = "tuple.make",
     TUPLE_GET = "tuple.get",
+    ANY_BOX = "any.box",
+    ANY_MAKE = "any.make",
+    ANY_TAG = "any.tag",
+    ANY_PAYLOAD = "any.payload",
     OPT_PRESENT = "opt.present",
     OPT_GET = "opt.get",
     RETAIN = "retain",
@@ -167,7 +171,8 @@ obj MirObjectDef {
         drop_symbol: str = "",
         trace_symbol: str = "",
         is_acyclic: bool = False,
-        local: bool = False;
+        local: bool = False,
+        osp_kind: str = "";
 
     def field(name: str) -> (MirObjectField | None);
 }

@@ -214,7 +214,7 @@ impl mir_holds_ref(t: MirType) -> bool {
     if t.kind == MirKind.TUPLE {
         return any(mir_holds_ref(member) for member in t.args);
     }
-    return t.kind == MirKind.STR or t.is_ref();
+    return t.kind in (MirKind.STR, MirKind.ANY) or t.is_ref();
 }
 
 impl mir_list(elem: MirType) -> MirType {

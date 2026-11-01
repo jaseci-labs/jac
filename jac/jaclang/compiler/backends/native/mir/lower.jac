@@ -33,6 +33,29 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      POP_EMPTY_MESSAGE: str = "pop from empty list",
      KEY_MESSAGE: str = "key not found",
      LIST_VALUE_MESSAGE: str = "value is not in list",
+     STR_INDEX_MESSAGE: str = "string index out of range",
+     ANY_INT_TAG: int = 0,
+     ANY_FLOAT_TAG: int = 1,
+     ANY_STR_TAG: int = 2,
+     ANY_LIST_TAG: int = 3,
+     ANY_DICT_TAG: int = 4,
+     ANY_SET_TAG: int = 5,
+     ANY_OBJ_TAG: int = 6,
+     ANY_BOOL_TAG: int = 7,
+     ANY_NONE_TAG: int = 8,
+     OSP_DIR_IN: int = 1,
+     OSP_DIR_OUT: int = 2,
+     OSP_DIR_ANY: int = 3,
+     OSP_TAG_OFFSET: int = 8,
+     UNTYPED_OSP_TAG: int = -1,
+     OSP_ROOT_HELP: str = "The native tier has no root node yet. Build the graph from a node of your own, or keep this module on the server codespace.",
+     OSP_ROOT_CONNECT_HELP: str = "The native tier has no root node. A plain `root ++> node` is accepted as an anchor that nothing native can observe; one that names an edge, collects it, points at root, or sits in a module that follows edges backward would be missed.",
+     OSP_PREDICATE_HELP: str = "edge attribute predicates need a named edge type (`->:E:field == value:->`) so the edge layout is known",
+     OSP_FILTER_HELP: str = "This filter's element archetype is not statically known; put a type filter first (`[?:NodeType]`) so field predicates can resolve a layout, or filter with an explicit loop.",
+     OSP_JID_HELP: str = "Native `jid()` takes one argument statically typed as a node or edge (narrow an optional one with `is not None` first); only nodes and edges have a graph identity.",
+     OSP_SKIP_HELP: str = "`skip` ends an event ability (a void body); in a value-returning function use an explicit `return`.",
+     OSP_FANOUT_HELP: str = "A connect lowers with a list of nodes on one side only, and not where it also collects the edges; connect in a loop.",
+     OSP_DISCONNECT_LIST_HELP: str = "a disconnect with both list operands and attribute predicates is not lowered natively; loop over the nodes and disconnect each pair.",
      EXC_TYPE_OFFSET: int = 8,
      EXC_MESSAGE_OFFSET: int = 24,
      MEMORY_ORDERS: list[str] = [
@@ -62,7 +85,8 @@ obj MirFnState {
         env: (MirValue | None) = None,
         locals: dict[int, MirValue] = {},
         loops: list[MirLoopTarget] = [],
-        caught: list[tuple[MirValue, MirValue, MirValue]] = [];
+        caught: list[tuple[MirValue, MirValue, MirValue]] = [],
+        specials: dict[str, MirValue] = {};
 }
 
 obj MirDecl {
@@ -71,7 +95,8 @@ obj MirDecl {
         ret: MirType,
         params: list[MirType] = [],
         self_type: (MirType | None) = None,
-        owner: (uni.Archetype | None) = None;
+        owner: (uni.Archetype | None) = None,
+        event: str = "";
 }
 
 obj MirLowering {
@@ -89,7 +114,11 @@ obj MirLowering {
         fn_values: dict[int, MirDecl] = {},
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
-        state: (MirFnState | None) = None;
+        state: (MirFnState | None) = None,
+        osp_model: (OspModel | None) = None,
+        osp_setup: str = "",
+        osp_thunks: dict[str, str] = {},
+        osp_preds: int = 0;
 
     def lower -> MirModule;
     def settle;
@@ -252,6 +281,73 @@ obj MirLowering {
     def lower_raise(nd: uni.RaiseStmt);
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
     def exception_name(nd: uni.Expr) -> str;
+    def any_tag(t: MirType, site: uni.UniNode) -> int;
+    def any_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def any_make(tag: MirValue, payload: MirValue) -> MirValue;
+    def any_none -> MirValue;
+    def any_unbox(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def any_to_box(value: MirValue, site: uni.UniNode) -> MirValue;
+    def any_from_box(handle: MirValue) -> MirValue;
+    def identity(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def bound_args(nd: uni.FuncCall, ab: uni.Ability, method: bool) -> list[uni.Expr];
+    def constant_default(value: (uni.Expr | None)) -> bool;
+    def builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def list_concat(left: MirValue, right: MirValue) -> MirValue;
+    def str_subscript(nd: uni.AtomTrailer) -> (MirValue | None);
+    def osp_call(name: str, args: list[MirValue]) -> MirValue;
+    def osp_hold(value: MirValue) -> MirValue;
+    def osp_layout(arch: (uni.Archetype | None)) -> (ArchetypeLayout | None);
+    def osp_arch_of(nd: (uni.UniNode | None)) -> (uni.Archetype | None);
+    def osp_tag(arch: uni.Archetype) -> int;
+    def osp_type_tag(nd: (uni.Expr | None), site: uni.UniNode) -> int;
+    def osp_handle(value: MirValue, site: uni.UniNode) -> MirValue;
+    def osp_handles(value: MirValue, site: uni.UniNode) -> MirValue;
+    def osp_one(handle: MirValue) -> MirValue;
+    def osp_typed(handles: MirValue, site: uni.Expr) -> MirValue;
+    def osp_header_fields(made: MirObjectDef, layout: ArchetypeLayout);
+    def osp_header(this: MirValue, obj_def: MirObjectDef);
+    def osp_drop(obj_def: MirObjectDef, raw: MirValue);
+    def osp_bases(arch: uni.Archetype) -> list[uni.Archetype];
+    def osp_model_of -> OspModel;
+    def declare_osp_abilities(arch: uni.Archetype);
+    def lower_ability(decl: MirDecl) -> (MirFunction | None);
+    def osp_thunk(owner: uni.Archetype, ability: str) -> str;
+    def lower_osp_module;
+    def osp_special(nd: uni.SpecialVarRef) -> MirValue;
+    def osp_leave;
+    def lower_osp_stmt(nd: uni.UniNode);
+    def lower_osp_binary(nd: uni.BinaryExpr) -> MirValue;
+    def lower_spawn(nd: uni.BinaryExpr) -> MirValue;
+    def lower_connect(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValue;
+    def osp_root_anchor(nd: uni.BinaryExpr, co: uni.ConnectOp) -> MirValue;
+    def osp_assign_values(
+        co: uni.ConnectOp, edge: (uni.Archetype | None), site: uni.UniNode
+    ) -> dict[str, MirValue];
+
+    def osp_edge_object(
+        co: uni.ConnectOp,
+        edge: (uni.Archetype | None),
+        values: dict[str, MirValue],
+        site: uni.UniNode
+    ) -> MirValue;
+
+    def lower_disconnect(nd: uni.BinaryExpr, dop: uni.DisconnectOp) -> MirValue;
+    def osp_list_operand(nd: uni.Expr) -> bool;
+    def lower_edge_handles(nd: uni.EdgeRefTrailer) -> MirValue;
+    def lower_osp_filter(nd: uni.AtomTrailer) -> MirValue;
+    def osp_filter_arch(f: uni.FilterCompr, holder: (uni.Expr | None)) -> (uni.Archetype | None);
+    def osp_type_pred(tag: int) -> MirValue;
+    def osp_field_pred(
+        arch: uni.Archetype, compares: Sequence[uni.Expr], site: uni.UniNode
+    ) -> MirValue;
+
+    def osp_predicate(label: str) -> tuple[MirFunction, MirFnState];
+    def osp_closure(
+        symbol: str, code: MirType, captures: list[tuple[MirValue, MirType]], to: MirType
+    ) -> MirValue;
+
+    def osp_delete(target: uni.Expr) -> bool;
+    def lower_jid(nd: uni.FuncCall) -> MirValue;
     def emit_value(
         op: MirOp,
         type: MirType,

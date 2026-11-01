@@ -722,3 +722,9 @@ impl jac_retain(o: ptr[u8]) {
 impl jac_release(o: ptr[u8]) {
     __jac_rt_release(int(o));
 }
+
+impl __jac_rt_alloc_zeroed(size: int) -> int {
+    made = __jac_rt_alloc(size);
+    memset(made, i32(0), size);
+    return made;
+}

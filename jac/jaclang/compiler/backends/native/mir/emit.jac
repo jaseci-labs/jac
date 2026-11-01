@@ -4,6 +4,9 @@ glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
      EXC_FRAME_BYTES: int = 256,
      RELEASE_SYMBOL: str = "__jac_rt_release",
      RELEASE_ACYCLIC_SYMBOL: str = "__jac_rt_release_acyclic",
+     ANY_RETAIN_SYMBOL: str = "__jac_rt_any_retain",
+     ANY_RELEASE_SYMBOL: str = "__jac_rt_any_release",
+     ANY_OPS: list[MirOp] = [MirOp.ANY_BOX, MirOp.ANY_MAKE, MirOp.ANY_TAG, MirOp.ANY_PAYLOAD],
      C_OPS: list[MirOp] = [
          MirOp.PTR_CAST,
          MirOp.PTR_INT,
@@ -83,6 +86,9 @@ obj MirEmitter {
 
     def emit_raise(b: ir.IRBuilder, instr: MirInstr);
     def str_type -> ir.Type;
+    def jacval_type -> ir.Type;
+    def emit_any(b: ir.IRBuilder, instr: MirInstr);
+    def any_bits(b: ir.IRBuilder, value: ir.Value, t: MirType) -> ir.Value;
     def str_literal(b: ir.IRBuilder, text: str) -> ir.Value;
     def emit_rc(b: ir.IRBuilder, instr: MirInstr);
     def emit_c(b: ir.IRBuilder, instr: MirInstr);

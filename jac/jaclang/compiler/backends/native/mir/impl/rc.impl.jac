@@ -14,7 +14,16 @@ impl MirRcState.run {
     }
     for blk in self.fn.blocks {
         for instr in blk.instrs {
-            if instr.op in (MirOp.STR_PART, MirOp.PTR_CAST, MirOp.PTR_INT, MirOp.OPT_GET, MirOp.TUPLE_GET)
+            if instr.op
+                in (
+                    MirOp.STR_PART,
+                    MirOp.PTR_CAST,
+                    MirOp.PTR_INT,
+                    MirOp.OPT_GET,
+                    MirOp.TUPLE_GET,
+                    MirOp.ANY_TAG,
+                    MirOp.ANY_PAYLOAD
+                )
                 and instr.result is not None {
                 self.parents[instr.result.id] = instr.operands[0].id;
             }
@@ -96,7 +105,7 @@ impl MirRcState.rewrite(blk: MirBlock) {
                 instr.result.owned = mir_holds_ref(instr.result.type);
             }
             self.out.append(made);
-        } elif instr.op in (MirOp.STR_MAKE, MirOp.REF_CAST, MirOp.OPT_MAKE) {
+        } elif instr.op in (MirOp.STR_MAKE, MirOp.REF_CAST, MirOp.OPT_MAKE, MirOp.ANY_BOX) {
             owner = instr.operands[0];
             result = instr.result;
             if result is not None and owner.id in self.pending {

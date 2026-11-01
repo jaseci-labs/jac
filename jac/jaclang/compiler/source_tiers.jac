@@ -96,7 +96,8 @@ glob SEED_PATHS: tuple[str, ...] = (
          "dist/fused/_libc.jac",
          "dist/fused/bringup.jac",
          "dist/fused/materialize.jac",
-         "dist/fused/js_engine.jac"
+         "dist/fused/js_engine.jac",
+         "runtime/osp_native.jac"
      ),
      NATIVE_ONLY_DIR_REL: tuple[str, ...] = ("runtime/na_stdlib", ),
      NATIVE_LOWERED_PATHS: tuple[str, ...] = (

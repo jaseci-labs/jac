@@ -147,3 +147,24 @@ impl __jac_rt_str_ref(owner: ptr[u8], data: ptr[u8], n: int) -> ptr[u8] {
     }
     return __jac_rt_str_new(data, n);
 }
+
+impl __jac_rt_str_char_at(data: ptr[u8], n: int, index: int) -> ptr[u8] {
+    bytes = data.view(n);
+    seen = -1;
+    i = 0;
+    while i < n {
+        if (int(bytes[i]) & 192) != 128 {
+            seen += 1;
+            if seen == index {
+                start = i;
+                i += 1;
+                while i < n and (int(bytes[i]) & 192) == 128 {
+                    i += 1;
+                }
+                return __jac_rt_str_new(data + start, i - start);
+            }
+        }
+        i += 1;
+    }
+    return __jac_rt_str_new(data, 0);
+}

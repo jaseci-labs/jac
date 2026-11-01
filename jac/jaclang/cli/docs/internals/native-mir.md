@@ -128,8 +128,12 @@ once (LLVM's `mem2reg` promotes them as before). The instruction families:
 - **Generators:** `yield`, `yield.from`. The generator pass turns the function
   into a frame and a state machine.
 - **OSP:** spawn, connect, disconnect, edge references and filters, visit,
-  report and disengage, as typed instructions the OSP pass lowers to kernel
-  calls.
+  report, disengage and skip lower straight to `call.runtime` instructions
+  against the OSP kernel's native entry points (`runtime/osp_native.jac`,
+  signatures in `MIR_OSP_ABI`), the way containers lower to their runtime
+  helpers. Handles are object addresses; type and attribute filters are
+  closures the kernel calls; event abilities are reached through thunks taking
+  two `any` values.
 - **Memory:** `retain`, `release`, `move`, region enter and leave. Only the
   ownership/RC and region passes insert these; lowering never does.
 
@@ -197,8 +201,9 @@ does not change either does not invalidate importers.
    records.
 5. **Generators:** frames and state machines.
 6. **Regions and nogc:** region scopes, headerless allocation.
-7. **Runtime lowering:** container, string, hash, repr and OSP operations
-   become calls to runtime helpers.
+7. **Runtime lowering:** container, string, hash and repr operations become
+   calls to runtime helpers. OSP operations are already kernel calls when
+   lowering emits them.
 
 Each pass has a verifier that checks its output; the verifier is the contract
 the next pass relies on.
@@ -251,9 +256,13 @@ it does not generate. These stay exactly as they are:
   `__jac_rc_threaded` keep their names and layouts; they are defined once, in
   the runtime library.
 - **Kernels:** `runtime/osp_kernel.jac`, `runtime/osp_graph.jac`,
-  `runtime/region_native.jac` and `compiler/backends/common/fmt_kernel.jac` are
-  Jac units lowered by this same backend. Their struct layouts are ABI, so they
-  must lower identically.
+  `runtime/osp_native.jac`, `runtime/region_native.jac` and
+  `compiler/backends/common/fmt_kernel.jac` are Jac units lowered by this same
+  backend. Their struct layouts are ABI, so they must lower identically. A unit
+  that uses OSP depends on the three OSP units; every OSP archetype carries its
+  type tag at +8 and a walker its reports list at +16, and each module
+  registers its own archetypes and event abilities from its global
+  initializer.
 - **Symbols:** unit prefixes, `"{prefix}.{name}"`, pub naming, the fixed
   per-unit names (`__jac_glob_init_<prefix>`, `__jac_entry_<prefix>`,
   `__jac_rt_probe_<prefix>`, test and import-callback names), and the exported
