@@ -106,13 +106,9 @@ libjacllvm.dylib
 libjacllvm.*.artifact.json
 jacllvm.dll.artifact.json
 jacllvm.dll
-# Kit-built native compiler kernel (#8824), staged in-tree by mkpayload.
-libjac_compiler.so
-libjac_compiler.dylib
-libjac_compiler.so.layout.json
-libjac_compiler.dylib.layout.json
-jaclang/compiler/kernels/
-jaclang/compiler/.kernel-build.*
+# The native compiler kernel's extension module (`jac native build kernel`),
+# with its record and the per-target kernels beside it.
+jaclang/compiler/_kernel/
 # Any other `nacompile --shared` unit that lands in-tree with its layout
 # sidecar (a stray libjac_npy.so was committed once).
 libjac_*.so

@@ -1028,6 +1028,10 @@ impl KernelHost.lower_dependency(
 
 impl KernelHost.native_fact(kind: str, key: str) -> str {
     self.census.count("native_fact");
+    if kind == FACT_TARGET {
+        import from jaclang.compiler.backends.native.target_facts { target_fact_text }
+        return target_fact_text(key);
+    }
     tag = pair_key(kind, key);
     if tag in self.inputs.native_facts {
         return self.inputs.native_facts[tag];

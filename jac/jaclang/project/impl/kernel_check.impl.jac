@@ -1,17 +1,3 @@
-impl analysis_kernel -> any {
-    kernel = ensure_loaded();
-    if kernel is not None and not hasattr(kernel.lib, "jc_analyze") {
-        import from jaclang.compiler.backends.native.kernel_resolve { KernelLoadError }
-        raise KernelLoadError(
-            "jac: the native compiler kernel cannot analyze\n"
-            f"  kernel: {kernel.lib_path}\n"
-            "  error:  the loaded kernel has no jc_analyze\n"
-            "  fix:    rebuild it with `jac native build kernel --force`"
-        );
-    }
-    return kernel;
-}
-
 impl loaded_pass_type(name: str) -> (type | None) {
     for (mod_name, mod) in list(sys.modules.items()) {
         if mod is None or not mod_name.startswith("jaclang.compiler.") {
@@ -89,14 +75,8 @@ impl kernel_check(
     if is_compiler_source_path(path) {
         return KernelCheck();
     }
-    kernel = analysis_kernel();
-    if kernel is None {
-        import from jaclang.compiler.backends.native.kernel_resolve {
-            refuse_unloadable
-        }
-        refuse_unloadable();
-        return KernelCheck();
-    }
+    import from jaclang.compiler.backends.native.kernel_resolve { load_kernel }
+    kernel = load_kernel();
     record_path = None if parity else _check_record_path(program, path, options);
     replayed = _replayed_outcome(record_path, path) if record_path else None;
     if replayed is not None {
@@ -109,37 +89,16 @@ impl kernel_check(
         return KernelCheck(outcome=replayed, adopted=True);
     }
     try {
-        outcome = kernel_analysis(active_host(), program, path, options, isolated=True);
-    } except Exception as err {
+        result = kernel_analysis(path, options);
+    } except kernel.KernelError as err {
         if not parity {
             raise KernelCheckError(
-                f"the native compiler kernel could not analyze {path}: "
-                f"{type(err).__name__}: {err}"
+                f"the native compiler kernel could not analyze {path}: {err}"
             ) from err;
         }
-        return KernelCheck(parity=True, failure=f"{type(err).__name__}: {err}");
+        return KernelCheck(parity=True, failure=f"KernelError: {err}");
     }
-    if host_deferred(outcome) {
-        return KernelCheck(outcome=outcome);
-    }
-    if outcome.misses {
-        failure = f"the kernel lacked host answers ({outcome.misses[0]})";
-        if not parity {
-            raise KernelCheckError(
-                f"the native compiler kernel could not analyze {path}: {failure}"
-            );
-        }
-        return KernelCheck(outcome=outcome, parity=True, failure=failure);
-    }
-    entry_module = outcome.module(path);
-    if entry_module is None {
-        raise KernelCheckError(
-            f"the native compiler kernel analyzed {path} but reported no module for it"
-        );
-    }
-    if entry_module.native {
-        return KernelCheck(outcome=outcome);
-    }
+    outcome = analysis_report_of(result, path);
     if parity {
         return KernelCheck(outcome=outcome, parity=True);
     }
@@ -150,7 +109,7 @@ impl kernel_check(
         program.warnings_had.append(alert_of(diag));
     }
     if record_path {
-        _record_outcome(record_path, path, outcome);
+        _record_outcome(record_path, path, result, outcome);
     }
     return KernelCheck(outcome=outcome, adopted=True);
 }
@@ -190,13 +149,15 @@ impl _replayed_outcome(record_path: str, path: str) -> (AnalysisReport | None) {
                 return None;
             }
         }
-        return AnalysisReport.from_dict(record["report"]);
+        return analysis_report_of(record["result"], path);
     } except (OSError, ValueError, KeyError, TypeError) {
         return None;
     }
 }
 
-impl _record_outcome(record_path: str, path: str, outcome: AnalysisReport) {
+impl _record_outcome(
+    record_path: str, path: str, result: dict[str, any], outcome: AnalysisReport
+) {
     import json;
     real = os.path.realpath(path);
     try {
@@ -219,7 +180,7 @@ impl _record_outcome(record_path: str, path: str, outcome: AnalysisReport) {
             "key": module_cache_key(real),
             "deps": deps,
             "dirs": dirs,
-            "report": outcome.to_dict()
+            "result": result
         };
         atomic_write(record_path, json.dumps(record).encode("utf-8"));
     } except (OSError, ValueError, TypeError) {}

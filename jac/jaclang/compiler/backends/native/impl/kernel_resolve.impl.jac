@@ -2,20 +2,19 @@ impl kernel_lib_name -> str {
     return host_target_spec().kernel_file_name();
 }
 
+impl kernel_dir -> str {
+    return os.path.join(jaclang_pkg_root(), "compiler", KERNEL_DIR_NAME);
+}
+
 impl source_tree_kernel_path -> str {
-    return os.path.join(jaclang_pkg_root(), "compiler", kernel_lib_name());
+    return os.path.join(kernel_dir(), kernel_lib_name());
 }
 
 impl kernel_path_for(spec: TargetSpec) -> str {
     if spec.osarch == host_target_spec().osarch {
         return source_tree_kernel_path();
     }
-    return os.path.join(
-        os.path.dirname(source_tree_kernel_path()),
-        "kernels",
-        spec.osarch,
-        spec.kernel_file_name()
-    );
+    return os.path.join(kernel_dir(), spec.osarch, spec.kernel_file_name());
 }
 
 impl read_sidecar(lib_path: str) -> (dict[str, any] | None) {
@@ -24,25 +23,16 @@ impl read_sidecar(lib_path: str) -> (dict[str, any] | None) {
         with open(lib_path + LAYOUT_SIDECAR_SUFFIX, "r", encoding="utf-8") as f {
             data = json.load(f);
         }
-    } except Exception {
+    } except FileNotFoundError {
         return None;
     }
-    if not isinstance(data, dict) or not isinstance(data.get("classes"), dict) {
-        return None;
+    if not isinstance(data, dict) or not isinstance(data.get("unit_sources"), dict) {
+        raise KernelUnavailable(
+            f"the kernel record {lib_path}{LAYOUT_SIDECAR_SUFFIX} is malformed; "
+            "rebuild it with `jac native build kernel --force`"
+        );
     }
     return data;
-}
-
-impl sealed_link_refusal(record: dict[str, any], sidecar: dict[str, any]) -> str {
-    mode = str(record.get("mode", KERNEL_LINK_MODE));
-    linked = str(sidecar.get("link_mode", KERNEL_LINK_MODE));
-    if linked != mode {
-        return f"the manifest records a {mode} link but the sidecar a {linked} link";
-    }
-    if mode == KERNEL_LINK_MODE {
-        return "";
-    }
-    return f"a sealed image carries a {KERNEL_LINK_MODE} link, not a {mode} link";
 }
 
 impl _from_sealed_image -> (ResolvedKernel | None) {
@@ -50,56 +40,24 @@ impl _from_sealed_image -> (ResolvedKernel | None) {
     if image is None {
         return None;
     }
-    record = image.native_artifact();
-    if record is None {
+    if KERNEL_MODULE_NAME not in sys.builtin_module_names {
         raise KernelUnavailable(
-            "sealed jaclang image carries no native compiler kernel; the image "
-            "is immutable, so rebuild the payload"
+            "this sealed jac has no built-in compiler kernel (`jac_kernel`); the "
+            "release is damaged, so reinstall jac"
         );
     }
-    lib_path = str(image.pkg_dir / record["path"]);
-    sidecar = read_sidecar(lib_path);
-    if not os.path.isfile(lib_path) or sidecar is None {
-        raise KernelUnavailable(
-            f"sealed jaclang image names kernel {lib_path} but it or its "
-            f"{LAYOUT_SIDECAR_SUFFIX} sidecar is missing"
-        );
-    }
-    if _sha256_file(lib_path) != record.get("sha256") {
-        raise KernelUnavailable(
-            f"sealed kernel {lib_path} does not match its manifest sha256"
-        );
-    }
-    refusal = sealed_link_refusal(record, sidecar);
-    if refusal {
-        raise KernelUnavailable(f"sealed kernel {lib_path}: {refusal}");
-    }
-    if str(sidecar.get("plan_digest", "")) != str(record.get("plan_digest", "")) {
-        raise KernelUnavailable(
-            f"sealed kernel {lib_path}: sidecar plan digest disagrees with the manifest"
-        );
-    }
-    built_for = triple_osarch(
-        str(record.get("triple", "") or sidecar.get("triple", ""))
-    );
-    host = host_target_spec().osarch;
-    if built_for != host {
-        raise KernelUnavailable(
-            f"sealed kernel {lib_path} was built for {built_for}, not this {host} host"
-        );
-    }
-    python = f"{sys.version_info.major}.{sys.version_info.minor}";
-    if str(sidecar.get("python", python)) != python {
-        raise KernelUnavailable(
-            f"sealed kernel {lib_path} was built for Python {sidecar.get('python')}, "
-            f"not {python}"
-        );
-    }
+    record = image.native_artifact() or {};
     return ResolvedKernel(
-        lib_path=lib_path,
-        layout=sidecar["classes"],
+        path=BUILTIN_KERNEL,
         source="sealed",
         plan_digest=str(record.get("plan_digest", ""))
+    );
+}
+
+impl kernel_llvm_runpath(lib_path: str) -> str {
+    llvm_dir = os.path.join(jaclang_pkg_root(), "compiler", "backends", "native", "llvm");
+    return os.path.relpath(llvm_dir, os.path.dirname(os.path.abspath(lib_path))).replace(
+        os.sep, "/"
     );
 }
 
@@ -335,9 +293,7 @@ impl KernelArtifact.probe_sealed -> (Probe | None) {
     if sealed is None {
         return None;
     }
-    record = dict(read_sidecar(sealed.lib_path) or {});
-    record["plan_digest"] = sealed.plan_digest;
-    return Probe.hit(Source.SEALED, sealed.lib_path, record);
+    return Probe.hit(Source.SEALED, sealed.path, {"plan_digest": sealed.plan_digest});
 }
 
 impl KernelArtifact.probe_checkout -> Probe {
@@ -378,40 +334,68 @@ impl KernelArtifact.build(log: Callable[[str], None], force: bool, exact: bool) 
     build_kernel(kernel_path_for(spec), log=log, spec=spec);
 }
 
-impl refuse_unloadable {
-    failed = load_failure();
-    if failed is None {
-        return;
+impl require_kernel -> ResolvedKernel {
+    try {
+        found = require("kernel").found;
+    } except ArtifactUnavailable as err {
+        raise KernelLoadError(
+            "jac: the native compiler kernel is unavailable\n"
+            f"  error:  {err}\n"
+            "  fix:    run `jac native build kernel`"
+        ) from err;
     }
-    (lib_path, source, err) = failed;
-    if source in ("sealed", "kit") {
-        remedy = "this jac installation is damaged; reinstall jac";
-    } else {
-        remedy = (
-            "rebuild it with `jac native build kernel --force`, or delete "
-            f"{lib_path} and {lib_path}{LAYOUT_SIDECAR_SUFFIX} to compile on the "
-            "bytecode compiler"
-        );
-    }
-    raise KernelLoadError(
-        "jac: the native compiler kernel cannot be loaded\n"
-        f"  kernel: {lib_path}\n"
-        f"  error:  {err}\n"
-        f"  fix:    {remedy}"
-    );
-}
-
-impl resolve_kernel -> (ResolvedKernel | None) {
-    found = resolve("kernel").found;
-    if found is None {
-        return None;
-    }
+    assert found is not None;
     return ResolvedKernel(
-        lib_path=found.path,
-        layout=found.record["classes"],
+        path=found.path,
         source=found.source.value,
         plan_digest=str(found.record.get("plan_digest", ""))
     );
+}
+
+impl load_kernel -> any {
+    if _LOADED {
+        return _LOADED[0];
+    }
+    import importlib;
+    resolved = require_kernel();
+    if resolved.path != BUILTIN_KERNEL {
+        folder = os.path.dirname(os.path.abspath(resolved.path));
+        if folder not in sys.path {
+            sys.path.insert(0, folder);
+        }
+    }
+    try {
+        module = importlib.import_module(KERNEL_MODULE_NAME);
+    } except ImportError as err {
+        remedy = (
+            "this jac installation is damaged; reinstall jac"
+                if resolved.source in ("sealed", "kit")
+                else "rebuild it with `jac native build kernel --force`"
+        );
+        raise KernelLoadError(
+            "jac: the native compiler kernel cannot be loaded\n"
+            f"  kernel: {resolved.path}\n"
+            f"  error:  {err}\n"
+            f"  fix:    {remedy}"
+        ) from err;
+    }
+    loaded = str(getattr(module, "__file__", "") or BUILTIN_KERNEL);
+    expected = resolved.path
+        if resolved.path == BUILTIN_KERNEL
+        else os.path.realpath(resolved.path);
+    if loaded != BUILTIN_KERNEL {
+        loaded = os.path.realpath(loaded);
+    }
+    if loaded != expected {
+        raise KernelLoadError(
+            "jac: the native compiler kernel cannot be loaded\n"
+            f"  kernel: {resolved.path}\n"
+            f"  error:  `import {KERNEL_MODULE_NAME}` found {loaded} instead\n"
+            "  fix:    run `jac native build kernel`"
+        );
+    }
+    _LOADED.append(module);
+    return module;
 }
 
 impl build_kernel(
@@ -428,7 +412,13 @@ impl build_kernel(
     os.makedirs(staging, exist_ok=True);
     tmp = os.path.join(staging, os.path.basename(destination));
     try {
-        result = link_kernel(tmp, log=log, link_mode=link_mode, spec=spec);
+        result = link_kernel(
+            tmp,
+            log=log,
+            link_mode=link_mode,
+            spec=spec,
+            runpath=kernel_llvm_runpath(destination)
+        );
         publish(tmp, destination, companions=(LAYOUT_SIDECAR_SUFFIX, ));
         result.output_path = destination;
     } finally {

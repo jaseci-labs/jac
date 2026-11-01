@@ -151,12 +151,12 @@ jobs:
           "$BIN" native build "kernel@${{ matrix.platform }}" --exact
           "$BIN" native status "kernel@${{ matrix.platform }}"
           if [ "${{ matrix.platform }}" = "linux-x86_64" ]; then
-            SRC=jaclang/compiler
+            SRC=jaclang/compiler/_kernel
           else
-            SRC="jaclang/compiler/kernels/${{ matrix.platform }}"
+            SRC="jaclang/compiler/_kernel/${{ matrix.platform }}"
           fi
           mkdir -p "$GITHUB_WORKSPACE/.kernel"
-          cp "$SRC"/*jac_compiler.* "$GITHUB_WORKSPACE/.kernel/"
+          cp "$SRC"/jac_kernel.* "$GITHUB_WORKSPACE/.kernel/"
           rm -f "$GITHUB_WORKSPACE/.kernel/"*.lock
           ls -la "$GITHUB_WORKSPACE/.kernel"
 

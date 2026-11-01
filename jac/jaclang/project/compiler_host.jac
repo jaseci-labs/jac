@@ -80,15 +80,6 @@ obj ProjectHost(HostServices) {
     def keep_wiring_records(digest: str, text: str);
     def native_scan_record(path: str, digest: str) -> str;
     def keep_native_scan_record(path: str, digest: str, text: str);
-    def native_parse(
-        source_str: str,
-        file_path: str,
-        program: (JacProgram | None),
-        annexes: list[WovenAnnex],
-        early_context: str = "",
-        load_kernel: bool = True
-    ) -> (tuple[Module, bool] | None);
-
     def woven_module(path: str, program: (JacProgram | None)) -> (Module | None);
     def place_wired_imports(module: Module);
     def drop_python_lane_products(path: str, program: JacProgram);

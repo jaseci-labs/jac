@@ -333,6 +333,10 @@ impl ProjectHost.native_fact(kind: str, key: str) -> str {
     if kind == HOST_FACT_GIT_IGNORED {
         return HOST_FACT_SEP.join(_git_ignored_under(key));
     }
+    if kind == FACT_TARGET {
+        import from jaclang.compiler.backends.native.target_facts { target_fact_text }
+        return target_fact_text(key);
+    }
     import from jaclang.compiler.backends.native.host_facts { host_native_fact }
     return host_native_fact(kind, key);
 }
@@ -478,53 +482,6 @@ impl ProjectHost.keep_native_scan_record(path: str, digest: str, text: str) {
 
 impl ProjectHost.is_seed_source(rel_path: str) -> bool {
     return is_seed_source(rel_path);
-}
-
-impl ProjectHost.native_parse(
-    source_str: str,
-    file_path: str,
-    program: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = "",
-    load_kernel: bool = True
-) -> (tuple[Module, bool] | None) {
-    natives = program._natives if program is not None else None;
-    if natives is not None {
-        natives.begin_parse(file_path);
-    }
-    kernel = _jc.ensure_loaded()
-        if load_kernel
-        else (_jc._KERNEL_CELL[0] if _jc._KERNEL_CELL else None);
-    if kernel is None {
-        return None;
-    }
-    wired = any([bool(annex.consumer) for annex in annexes]);
-    kernel.prepare_early(early_context if program is not None and not wired else "");
-    for annex in annexes {
-        kernel.annex(annex);
-    }
-    if kernel.run(source_str, file_path) != 0 {
-        return None;
-    }
-    module = kernel.take_module();
-    if module is None {
-        return None;
-    }
-    p_errs = kernel.err_count();
-    lex_errs = kernel.lex_errs();
-    p_diags = kernel.take_diags();
-    lex_diags = kernel.take_lexdiags();
-    comments = kernel.take_comments();
-    had_error = finish_parse(
-        module, p_errs, p_diags, comments, lex_diags, lex_errs, program
-    );
-    if program is not None {
-        results = kernel.take_pass_results();
-        if results {
-            program.analysis.record_early(module, results);
-        }
-    }
-    return (module, had_error);
 }
 
 impl ProjectHost.woven_module(

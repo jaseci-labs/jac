@@ -1,4 +1,3 @@
-import json;
 import os;
 import sys;
 
@@ -17,8 +16,6 @@ obj DiagSpan {
         src_window: str = "",
         window_offset: int = 0,
         window_line: int = 0;
-
-    def to_dict -> dict[str, any];
 }
 
 obj RelatedDiag {
@@ -38,8 +35,6 @@ obj AnalysisDiag {
         related: list[RelatedDiag] = [],
         help_text: (str | None) = None,
         owner: str = "";
-
-    def to_dict -> dict[str, any];
 }
 
 obj ModuleReport {
@@ -48,8 +43,6 @@ obj ModuleReport {
         blocked: bool = False,
         native: bool = False,
         passes: list[str] = [];
-
-    def to_dict -> dict[str, any];
 }
 
 obj AnalysisReport {
@@ -64,21 +57,9 @@ obj AnalysisReport {
         reads: list[list[str]] = [];
 
     def module(path: str) -> (ModuleReport | None);
-    def to_dict -> dict[str, any];
-    def to_json -> str;
-    static def from_json(text: str) -> AnalysisReport;
-    static def from_dict(raw: dict[str, any]) -> AnalysisReport;
 }
 
-def json_str_pairs_of(value: object) -> list[list[str]];
-
-def module_from_dict(raw: dict[str, any]) -> ModuleReport;
-
-def span_from_dict(raw: dict[str, any]) -> DiagSpan;
-
 def span_record(span: Span) -> DiagSpan;
-
-def diag_from_dict(raw: dict[str, any]) -> AnalysisDiag;
 
 def diag_of(alert: Alert) -> AnalysisDiag;
 
@@ -112,29 +93,9 @@ def run_kernel_session(
     kernel_asker: bool = False
 ) -> KernelRun;
 
-def decode_inputs(inputs_json: str) -> (KernelInputs | str);
-
-def run_kernel_analysis(
-    inputs_json: str,
-    path: str,
-    source: (str | None),
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
-) -> AnalysisReport;
-
 obj CompileReport {
     has analysis: AnalysisReport,
         units: list[UnitProducts] = [];
 
     def unit(path: str) -> (UnitProducts | None);
-    def to_json -> str;
-    static def from_json(text: str) -> CompileReport;
 }
-
-def run_kernel_compile(
-    inputs_json: str,
-    path: str,
-    source: (str | None),
-    asker: (HostAsker | None) = None,
-    kernel_asker: bool = False
-) -> CompileReport;

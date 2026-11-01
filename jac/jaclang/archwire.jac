@@ -41,7 +41,7 @@ graph import {
     artifacts.model ++> [
         cli.commands.execution._run_node_tool
             | client.cli.run_npm_add_global
-            | compiler.backends.native.llvm.binding.ffi
+            | compiler.backends.native.kernel_resolve.require_kernel
             | dist.seal.ensure_client_dist
             | project.compiler_host.ProjectHost.typeshed_unavailable_reason
             | server.server { ArtifactUnavailable },
@@ -75,13 +75,13 @@ graph import {
         client.js_engine.engine_dir
             | client.js_runtime.js_runtime_path
             | compiler.backends.native.llvm.shim_path.shim_path
+            | compiler.backends.native.kernel_resolve.require_kernel
             | compiler.backends.native.wasm_build._link_wasm_libc
             | data.pg_dist.postgres_bin_dir
             | project.compiler_host.ProjectHost.typeshed_unavailable_reason
             | toolchains.c_backend.ensure_c_backend
             | toolchains.tools.tool_path { require },
         client.js_runtime.JsEngineArtifact.floor_present
-            | compiler.backends.native.kernel_resolve.resolve_kernel
             | compiler.backends.native.native_link.floor_lib_dir
             | compiler.backends.native.wasm_build._wasm_libc_dir
             | compiler.types.stubcat.locate.open_catalog { resolve },
@@ -555,23 +555,31 @@ graph import {
         emit_c
     }
     compiler.backends.native.floors ++> dist.payload.vendor { WASM_FLOOR_MANIFEST }
+    compiler.backends.native.na_constants ++> project.compiler_host.ProjectHost.native_fact {
+        FACT_TARGET
+    }
+    compiler.backends.native.target_facts --> project.compiler_host.ProjectHost.native_fact {
+        target_fact_text
+    }
     compiler.backends.native.host_facts --> project.compiler_host.ProjectHost.native_fact {
         host_native_fact
     }
     compiler.backends.native.kernel_resolve ++> [
         dist.precompile_bytecode.adopt_kernel {
+            KERNEL_DIR_NAME,
             LAYOUT_SIDECAR_SUFFIX,
             kernel_lib_name,
             read_sidecar,
             unit_drift
         },
-        dist.precompile_bytecode.seal_native { kernel_lib_name },
+        dist.precompile_bytecode.seal_native { KERNEL_DIR_NAME, kernel_lib_name },
+        project.kernel_call.kernel_analysis { load_kernel },
     ]
     compiler.backends.native.kernel_resolve --> [
-        project.kernel_check.analysis_kernel { KernelLoadError },
-        project.kernel_check.kernel_check | project.kernel_compile.kernel_route {
-            refuse_unloadable
+        project.kernel_check.kernel_check | project.kernel_compile.kernel_compile {
+            load_kernel
         },
+        project.kernel_compile.kernel_route { load_kernel },
     ]
     compiler.backends.native.kernel_stage0 ++> cli.commands.native {
         plan_kernel_prefix
@@ -608,9 +616,7 @@ graph import {
     compiler.backends.native.llvm.binding as llvm ++> cli.commands.native_build._application_ir;
     compiler.backends.native.llvm.binding as llvm --> cli.commands.execution._jab_native_bin
         | dist.seal.bake_native_payloads;
-    type compiler.backends.native.llvm.binding.executionengine ++> cli.commands.execution {
-        ExecutionEngine
-    }
+    type compiler.backends.native.llvm.jit ++> cli.commands.execution { ExecutionEngine }
     compiler.backends.native.llvm.shim_path ++> dist.payload.assemble.assemble_site {
         write_shim_record
     }
@@ -729,6 +735,7 @@ graph import {
             | dist.publish.runtime_vendor
             | dist.seal
             | packages.api.package_surface
+            | project.kernel_call
             | project.kernel_check
             | project.kernel_compile
             | project.kernel_snapshot
@@ -1028,9 +1035,9 @@ graph import {
         | project.compiler_host.ProjectHost.native_pipeline_available {
         native_pipeline_available
     }
-    compiler.driver.unit_products ++> project.kernel_compile | project.kernel_snapshot {
-        UnitProducts
-    }
+    compiler.driver.unit_products ++> project.kernel_call
+        | project.kernel_compile
+        | project.kernel_snapshot { UnitProducts }
     compiler.driver.wiring ++> [
         cli.commands.architecture {
             ARCH_FILE_NAME,
@@ -1124,7 +1131,7 @@ graph import {
     compiler.frontend.diagnostics ++> client.client_diagnostics._diag
         | project.kernel_check.alert_of { DIAGNOSTICS }
     compiler.frontend.host ++> [
-        cli.commands.architecture | project.kernel_check { active_host },
+        cli.commands.architecture { active_host },
         project.compiler_host {
             CheckSettings,
             HostPlatform,
@@ -1155,20 +1162,21 @@ graph import {
         install_host
     }
     compiler.frontend.kernel_analyze ++> [
-        project.kernel_check { AnalysisDiag, AnalysisReport, DiagSpan },
-        project.kernel_compile {
-            ANALYSIS_CRASHED,
+        project.kernel_call {
+            AnalysisDiag,
             AnalysisReport,
             CompileReport,
-            kernel_trace,
-            run_kernel_compile
+            DiagSpan,
+            ModuleReport,
+            RelatedDiag
         },
+        project.kernel_check { AnalysisDiag, AnalysisReport, DiagSpan },
+        project.kernel_compile { AnalysisReport, CompileReport, kernel_trace },
         project.kernel_snapshot {
             ANALYSIS_CRASHED,
             ANALYSIS_OK,
             AnalysisReport,
-            analysis_report,
-            run_kernel_analysis
+            analysis_report
         },
     ]
     type compiler.frontend.kernel_analyze ++> project.compiler_host { CompileReport }
@@ -1186,13 +1194,11 @@ graph import {
         KernelHost
     }
     compiler.frontend.kernel_inputs ++> [
-        project.kernel_compile { PythonInterface },
         project.kernel_snapshot {
             KEY_SEP,
             KernelInputs,
             ManifestSets,
             PythonInterface,
-            answers_to_dict,
             pair_key,
             request_of
         },
@@ -1204,7 +1210,6 @@ graph import {
     ]
     compiler.frontend.parser.frontend ++> [
         cli.commands.architecture._parse_imports | studio.gate { parse_woven },
-        project.compiler_host.ProjectHost.native_parse { finish_parse },
         project.compiler_host.ProjectHost.woven_module { annex_sources, parse_woven },
         studio.model { annex_sources, parse },
     ]
@@ -1334,11 +1339,6 @@ graph import {
         | lsp.server.engine
         | studio.gate
         | studio.model { unparse_node }
-    compiler.native_compiler ++> project.kernel_check.analysis_kernel
-        | project.kernel_compile.kernel_route
-        | project.kernel_snapshot.loaded_kernel { ensure_loaded }
-    compiler.native_compiler as _jc ++> project.compiler_host.ProjectHost.native_parse;
-    type compiler.native_compiler ++> project.kernel_snapshot { NativeCompiler }
     compiler.native_scope ++> [
         dist.precompile_bytecode._compiler_kernel_units {
             kernel_root_path,
@@ -1352,7 +1352,6 @@ graph import {
         cli.commands.architecture { import_form },
         studio.model { merge_annex_into },
     ]
-    type compiler.passes.annex_weave ++> project.compiler_host { WovenAnnex }
     compiler.passes.context ++> [
         lsp.server.utils | project.kernel_check { Alert },
         project.kernel_check.loaded_pass_type { CompilerPass },
@@ -1745,8 +1744,9 @@ graph import {
         artifacts.router.names { ARTIFACTS },
         artifacts.router.resolve { resolution_in_flight },
     ]
-    jac0core.artifact_registry --> compiler.driver.compiler.JacCompiler.ensure_stub_catalog
-        | compiler.native_compiler.ensure_loaded { resolution_in_flight }
+    jac0core.artifact_registry --> compiler.driver.compiler.JacCompiler.ensure_stub_catalog {
+        resolution_in_flight
+    }
     jac0core.cache_paths ++> [
         artifacts.router.publish { FileLock, atomic_write },
         cache.home { get_cache_home },
@@ -1762,6 +1762,7 @@ graph import {
             | dist.seal.sealed_image_key { file_sha256 },
         client.js_runtime.JsEngineArtifact.build
             | compiler.backends.native.kernel_resolve._inspect
+            | compiler.backends.native.kernel_stage0.link_kernel_object
             | compiler.backends.native.link_plan
             | compiler.backends.native.llvm.shim_path.write_shim_record
             | compiler.backends.native.native_link
@@ -2505,9 +2506,11 @@ graph import {
         compiler.driver.boundary_classify | compiler.driver.compilation_context {
             AppSpec
         },
-        compiler.frontend.host
-            | compiler.frontend.kernel_host
-            | compiler.frontend.kernel_inputs { AppSpec, WorkspaceSpec },
+        compiler.frontend.host | compiler.frontend.kernel_host {
+            AppSpec,
+            WorkspaceSpec
+        },
+        compiler.frontend.kernel_inputs { WorkspaceSpec },
     ]
     runtime.archetype ++> [
         byllm.llm._mock_jsonable { Archetype },
@@ -2520,8 +2523,7 @@ graph import {
             NodeArchetype,
             WalkerAnchor
         },
-        compiler.native_compiler.NativeCompiler._register
-            | data.query_planner._acl_residual { NodeArchetype },
+        data.query_planner._acl_residual { NodeArchetype },
         data.query_planner { Anchor, anchor_key },
         data.query_planner._edge_residual { EdgeArchetype },
         data.query_planner._trusted_names { Archetype, Root },
@@ -2539,9 +2541,6 @@ graph import {
         lib.jaclib { GenericEdge, ObjectSpatialFunction as DSFunc, Root },
         server.session { Anchor, EdgeAnchor, NodeAnchor, Root },
     ]
-    runtime.archetype --> compiler.native_compiler.NativeCompiler._register {
-        NodeAnchor
-    }
     runtime.build_services ++> [
         client.runtime_source.client_runtime_cl_basename
             | scale.runtime.fleet._compiled_app_edges
@@ -2701,13 +2700,10 @@ graph import {
         },
         byllm.systemone._state_value { fields as record_fields, is_record },
         cli.NonGPT { fields as dc_fields, is_record },
-        compiler.native_compiler.NativeCompiler._field_annotations { fields },
-        compiler.native_compiler.NativeCompiler._register_defaults { fields },
         comptime { fields as _record_fields, is_record as _is_record },
     ]
     runtime.object_model ++> [
         cli.NonGPT
-            | compiler.native_compiler.NativeCompiler._register_defaults
             | data.contracts
             | data.serializer
             | scale.memory.context { MISSING },
@@ -2741,7 +2737,6 @@ graph import {
     runtime.osp_tag ++> compiler.backends.es.esast_gen_pass.EsastGenPass._build_osp_tags_js
         | compiler.backends.py.jcir_gen_pass.JcirGenPass.exit_module
         | compiler.jc_unit._alert_tag
-        | compiler.native_compiler
         | compiler.passes.osp_analysis { stable_osp_tag }
     runtime.osp_tag --> [
         compiler.backends.es.esast_gen_pass.EsastGenPass._edge_tag_literal {
@@ -2808,6 +2803,32 @@ graph import {
         | compiler.driver.build_services
         | data.type_identity
         | server.assembly { PreparedApplication }
+    runtime.python.bindings.module ++> compiler.kernel_module {
+        MethodCallbacks,
+        MethodDefinition,
+        ModuleDefinition,
+        ModuleHooks,
+        add_state_owned,
+        jacpy_binding_exception,
+        jacpy_binding_state_get
+    }
+    runtime.python.bindings.payload ++> compiler.kernel_module {
+        clear_payload,
+        dispose_payload,
+        jacpy_binding_native_get,
+        jacpy_binding_native_present,
+        jacpy_binding_native_set,
+        traverse_payload
+    }
+    runtime.python.bindings.state ++> compiler.kernel_module { NativeState }
+    runtime.python.bindings.type ++> compiler.kernel_module {
+        PropertyCallbacks,
+        PropertyDefinition,
+        TypeDefinition,
+        TypeFlags,
+        TypeHooks,
+        jacpy_binding_allocate
+    }
     runtime.python.capi ++> [
         compiler.backends.py.jacpython.native_api {
             boundary_failure,
@@ -2823,6 +2844,17 @@ graph import {
             boundary_failure
         },
         compiler.frontend.python.source_input { boundary_failure, read_buffer },
+        compiler.kernel_module {
+            boundary_failure,
+            checked,
+            dict_set_text,
+            object_error,
+            required,
+            text_object,
+            text_value,
+            type_name,
+            write_buffer
+        },
     ]
     runtime.python.characters ++> [
         compiler.frontend.python.parser_actions.pa_decode_escape_body {
@@ -2960,6 +2992,33 @@ graph import {
             jacpy_source_bytes,
             jacpy_source_kind,
             jacpy_utf8
+        },
+        compiler.kernel_api { PyObject },
+        compiler.kernel_module {
+            NULL,
+            PyBool_FromLong,
+            PyDict_New,
+            PyDict_Next,
+            PyExc_SystemError,
+            PyExc_TypeError,
+            PyLong_AsLongLong,
+            PyLong_FromLongLong,
+            PyObject,
+            PyObject_IsTrue,
+            Py_NewRef,
+            Py_None,
+            jacpy_error_pending,
+            jacpy_is_bool,
+            jacpy_is_code,
+            jacpy_is_dict,
+            jacpy_is_list,
+            jacpy_is_long,
+            jacpy_is_unicode,
+            jacpy_list_append_owned,
+            jacpy_list_new,
+            jacpy_release,
+            jacpy_sequence_item,
+            jacpy_sequence_size
         },
     ]
     runtime.python.layouts ++> compiler.backends.py.jacpython.native_bridge {
@@ -5583,15 +5642,16 @@ graph import compiler {
         tests.xbackend_equiv._prelude_cwd { stage_jac_prelude_package },
         tests.xbackend_equiv.run_js_module_fixture { stage_jac_prelude_package },
     ]
-    backends.native.kernel_resolve --> native_compiler.ensure_loaded { resolve_kernel }
     backends.native.link_plan --> [
         driver.compiler.JacCompiler._load_native_from_cache { jit_engine_for_cached },
         driver.nativecache.NativeUnitRegistry.compile_unit { build_link_plan },
         driver.pipeline_runner.wasm_ir_units { build_link_plan, wasm_program_ir },
     ]
-    backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache
-        | driver.nativecache.NativeBuildSession.unbound_symbols;
-    type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
+    backends.native.llvm.binding as llvm --> driver.nativecache.NativeBuildSession.unbound_symbols;
+    backends.native.llvm.jit --> driver.compiler.JacCompiler._load_native_from_cache {
+        add_symbol
+    }
+    type backends.native.llvm.jit ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
     backends.native.mir.backend --> driver.pipeline.codegen_passes
@@ -5617,6 +5677,12 @@ graph import compiler {
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },
     ]
+    backends.native.na_constants ++> frontend.kernel_host.KernelHost.native_fact {
+        FACT_TARGET
+    }
+    backends.native.target_facts --> frontend.kernel_host.KernelHost.native_fact {
+        target_fact_text
+    }
     backends.native.na_constants --> driver.native_iface.resolve_native_unit_ref {
         FACT_IMPORT_PATHS,
         FACT_PACKAGE_STORE,
@@ -5971,6 +6037,8 @@ graph import compiler {
         backends.es.client_kernel_cache._lower
             | frontend.kernel_host
             | frontend.kernel_inputs
+            | kernel_api
+            | kernel_module
             | tests.test_batch_decl_identity
             | tests.test_client_codegen_facts
             | tests.test_global_narrowing
@@ -5982,6 +6050,7 @@ graph import compiler {
             | tests.test_zstd_equivalence
             | tools.lang_tools { CompileOptions },
         backends.native.kernel_resolve { CompileOptions, NATIVE_LINK_MODE_OBJECTS },
+        backends.native.kernel_stage0.link_kernel_object { NATIVE_LINK_MODE_BITCODE },
         backends.native.link_plan {
             CompileOptions,
             NATIVE_LINK_MODE_BITCODE,
@@ -6219,6 +6288,7 @@ graph import compiler {
             | tools.jac_formatter_pass.format_module
             | tools.lang_tools
             | types.stubcat.build.build_catalog { JacProgram },
+        backends.native.kernel_stage0.link_kernel_object { JacProgram },
         backends.native.kernel_stage0.plan_kernel_prefix
             | tools.jac_formatter_pass.unparse_module { JacProgram },
     ]
@@ -6257,7 +6327,7 @@ graph import compiler {
     }
     driver.unit_products ++> [
         boundary_audit.boundary_audit { interop_record },
-        frontend.kernel_analyze { UnitProducts, products_from_record, products_record },
+        frontend.kernel_analyze { UnitProducts },
         frontend.kernel_host { UnitProducts, native_products, unit_products },
     ]
     driver.wiring ++> [
@@ -6377,7 +6447,9 @@ graph import compiler {
         },
         backends.es.esast_gen_pass.EsastGenPass.prepare { ClientManifest },
         backends.native.kernel_resolve._verdict_key { jaclang_pkg_root },
-        backends.native.kernel_resolve.source_tree_kernel_path { jaclang_pkg_root },
+        backends.native.kernel_resolve.kernel_dir { jaclang_pkg_root },
+        backends.native.kernel_resolve.kernel_llvm_runpath { jaclang_pkg_root },
+        backends.native.kernel_stage0.link_kernel_object { jaclang_pkg_root },
         backends.native.kernel_resolve.unit_drift
             | backends.native.kernel_stage0.plan_kernel_prefix
             | backends.native.link_plan.LinkPlan.plan_digest
@@ -6413,7 +6485,6 @@ graph import compiler {
             native_unit_prefix,
             native_unit_spelling
         },
-        native_compiler.NativeCompiler._resolve_classes { NATIVE_ARCH_SCOPE_SEP },
         native_bindings.import_gaps { resolve_native_module },
         passes.layout_pass.record_interface_twins
             | types.types.ClassDetailsShared.same_class { bundled_stdlib_module_of },
@@ -6863,8 +6934,7 @@ graph import compiler {
             E5102,
             W5096
         },
-        driver.ifacecache._alert_from_record
-            | native_compiler.NativeCompiler.take_pass_results { DIAGNOSTICS },
+        driver.ifacecache._alert_from_record { DIAGNOSTICS },
         driver.program.JacProgram.module_scoped_errors { Category },
         passes.access_check_pass {
             E2034,
@@ -7231,7 +7301,6 @@ graph import compiler {
             | backends.es.esast_gen_pass
             | backends.es.free_ident_audit.client_ambient_globals
             | backends.es.jac_runtime_js.build_osp_core_js
-            | backends.native.abi.struct_layouts
             | backends.py.artifact_imports
             | driver.application._kernel_units
             | driver.boundary_classify
@@ -7340,13 +7409,6 @@ graph import compiler {
         kernel_target.target_pkg_root { package_root },
     ]
     type frontend.host ++> driver.compiler { HostServices }
-    frontend.kernel_analyze ++> jc_unit {
-        ANALYSIS_CRASHED,
-        AnalysisReport,
-        CompileReport,
-        run_kernel_analysis,
-        run_kernel_compile
-    }
     frontend.kernel_inputs ++> [
         driver.application._reusable_interfaces { PythonInterface },
         driver.unit_products.client_artifact_from_json {
@@ -7445,7 +7507,6 @@ graph import compiler {
         jc_unit { CommentData, SrcDiag },
         tools.grammar_extract_pass { BUILTIN_TYPE_KINDS, TokenKind },
     ]
-    type frontend.parser.tokens ++> native_compiler { CommentData, SrcDiag }
     frontend.python.annotation_unparse ++> backends.py.jacpython.product_compile {
         stringify_future_annotations
     }
@@ -7907,11 +7968,7 @@ graph import compiler {
             | passes.ownership_check_pass
             | passes.region_infer_pass
             | tools.jac_formatter_pass { BodyRole, Kid },
-        jc_unit | native_compiler.NativeCompiler._register {
-            AccessorsRole,
-            BodyRole,
-            SpecRole
-        },
+        jc_unit { AccessorsRole, BodyRole, SpecRole },
         passes.annex_weave | passes.static_analysis_pass { BodyRole },
         passes.pyast_load_pass {
             Kid,
@@ -9499,6 +9556,25 @@ graph import compiler {
         jc_mz_run,
         jc_mz_shape_keys
     }
+    kernel_api ++> kernel_module {
+        CheckRequest,
+        CheckResult,
+        CompileRequest,
+        CompileResult,
+        CompiledUnit,
+        CompletionItem,
+        DocumentSymbol,
+        InlayHint,
+        KernelDiagnostic,
+        KernelError,
+        KernelSession,
+        NativeDemotion,
+        SourceSpan,
+        TextEdit,
+        check_request,
+        compile_request,
+        open_session
+    }
     kernel_target ++> [
         backends.native.kernel_stage0 {
             KERNEL_TARGET_FORMAT,
@@ -9549,9 +9625,6 @@ graph import compiler {
         passes.placement_pass.build_native_legality { binding_gaps },
     ]
     native_bindings --> passes.placement_pass.build_native_legality { import_gaps }
-    native_compiler ++> backends.native.kernel_resolve.refuse_unloadable {
-        load_failure
-    }
     native_scope ++> [
         backends.native.kernel_resolve.kernel_plan { kernel_root_path },
         backends.native.kernel_stage0.running_kernel_target {
@@ -9582,9 +9655,7 @@ graph import compiler {
         frontend.parser.frontend { WovenAnnex, merge_annex_into },
         frontend.parser.frontend.parse_woven | jc_unit { merge_annex_into },
     ]
-    type passes.annex_weave ++> frontend.host | frontend.kernel_host | native_compiler {
-        WovenAnnex
-    }
+    type passes.annex_weave ++> frontend.host | frontend.kernel_host { WovenAnnex }
     passes.ast_validation_pass ++> driver.pipeline { ASTValidationPass }
     passes.boundary_analysis_pass ++> driver.pipeline { BoundaryAnalysisPass }
     passes.capability_check_pass ++> [
@@ -9622,14 +9693,10 @@ graph import compiler {
         driver.pipeline { CompilerPass, PassSchedule },
         driver.progstate { Alert, CompileContext, PassResult },
         jc_unit | types.type_evaluator { CompileContext },
-        native_compiler.NativeCompiler.take_pass_results {
-            PassResult as CompletedPassResult
-        },
     ]
     passes.context --> driver.compiler.assemble_jcir { Alert }
     type passes.context ++> [
         driver.compiler { Alert },
-        native_compiler { Alert, PassResult },
         symbol_utils { CompilerPass },
     ]
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
@@ -9897,7 +9964,7 @@ graph import compiler {
         },
     ]
     target_spec ++> [
-        backends.native.kernel_resolve { host_target_spec, target_spec, triple_osarch },
+        backends.native.kernel_resolve { host_target_spec, target_spec },
         backends.native.link_glue.link_glue_ir { triple_osarch },
     ]
     type target_spec ++> backends.native.kernel_resolve
@@ -10490,6 +10557,7 @@ graph import compiler.backends.native {
         kernel_resolve.kernel_plan { build_link_plan },
         kernel_stage0 { LinkPlan },
         kernel_stage0.link_kernel { ArtifactKind, link_artifact },
+        kernel_stage0.link_kernel_object { link_object },
     ]
     link_plan --> na_compile_pass.NativeCompilePass._run_impl {
         SymbolCollision,
@@ -10500,23 +10568,29 @@ graph import compiler.backends.native {
         kernel_stage0 { LinkResult },
     ]
     llvm.binding as llvm ++> [
-        host_facts.struct_layouts_fact
-        | link_glue.bind_shared_callbacks
-        | link_plan
-        | na_compile_pass
-        | native_link
-        | wasm_build._exported_functions,
-        host_facts.target_fact
-            | link_glue.init_object_codegen
-            | wasm_build._load_libc_module,
+        target_facts
+            | link_glue.bind_shared_callbacks
+            | link_plan
+            | na_compile_pass
+            | native_link
+            | wasm_build._exported_functions,
+        link_glue.init_object_codegen | wasm_build._load_libc_module,
         wasm_build.prepare_wasm_module,
     ]
+    llvm.jit ++> [
+        link_plan { ExecutionEngine, create_mcjit_compiler },
+        na_compile_pass { add_symbol },
+    ]
     type llvm.binding ++> [
-        link_plan { ExecutionEngine, ModuleRef, TargetMachine },
+        link_plan { ModuleRef, TargetMachine },
         na_compile_pass { ModuleRef, TargetMachine },
         wasm_build { ModuleRef, TargetMachine, ValueRef },
     ]
-    llvm.binding.value ++> link_plan.internalize_native_implementation { Visibility }
+    llvm.binding.value ++> [
+        link_plan.internalize_native_implementation { Visibility },
+        wasm_build._internalize_late_bound { Linkage },
+        wasm_build._link_wasm_libc { Linkage },
+    ]
     type llvm.binding.value ++> link_plan { ValueRef }
     llvm.ir as ir ++> abi
         | lexical_scope
@@ -10533,7 +10607,7 @@ graph import compiler.backends.native {
         wasm_build.prepare_wasm_module { optimize_unit },
     ]
     na_constants ++> [
-        abi.struct_layouts { FACT_SEP, FACT_STRUCT_LAYOUTS },
+        target_facts { FACT_SEP },
         host_facts {
             FACT_CODEC_NAME,
             FACT_CODEC_TABLES,
@@ -10541,9 +10615,7 @@ graph import compiler.backends.native {
             FACT_PACKAGE_STORE,
             FACT_PRIMITIVE_METHODS,
             FACT_SEALED_RUNTIME,
-            FACT_SEP,
-            FACT_STRUCT_LAYOUTS,
-            FACT_TARGET
+            FACT_SEP
         },
     ]
     native_link ++> [
@@ -10569,6 +10641,7 @@ graph import compiler.backends.native {
         POSIX_FLOOR_IR_MACOS_AARCH64,
         POSIX_FLOOR_IR_MACOS_X86_64
     }
+    target_facts ++> abi.struct_layouts { measure_struct_layouts }
     wasm_artifact ++> [
         native_link { wasm_ld_args, write_allowed_imports },
         wasm_build { rename_wasm_imports },
@@ -10591,31 +10664,120 @@ graph import compiler.backends.native {
 }
 
 graph import compiler.backends.native.llvm {
-    binding ++> [
-        binding.config
-            | binding.context
-            | binding.dylib
-            | binding.initfini
-            | binding.linker
-            | binding.lld
-            | binding.module
-            | binding.newpassmanagers
-            | binding.object_file
-            | binding.options
-            | binding.targets
-            | binding.value { ffi },
-        binding.executionengine { ffi, object_file, targets },
+    capi ++> [
+        binding.context {
+            LLVMPY_ContextCreate,
+            LLVMPY_ContextDispose,
+            LLVMPY_GetGlobalContext
+        },
+        binding.ffi { LLVMPY_DisposeString, free, malloc, memcpy, strlen },
+        binding.initfini {
+            LLVMPY_InitializeAllAsmParsers,
+            LLVMPY_InitializeAllAsmPrinters,
+            LLVMPY_InitializeAllTargetInfos,
+            LLVMPY_InitializeAllTargetMCs,
+            LLVMPY_InitializeAllTargets,
+            LLVMPY_InitializeNativeAsmParser,
+            LLVMPY_InitializeNativeAsmPrinter,
+            LLVMPY_InitializeNativeTarget
+        },
+        binding.linker { LLVMPY_LinkModules },
+        binding.lld { LLVMPY_LldLink, LLVMPY_ObjectSymbols, LLVMPY_WriteImportLibrary },
+        binding.module {
+            LLVMPY_CloneModule,
+            LLVMPY_DisposeFunctionsIter,
+            LLVMPY_DisposeGlobalsIter,
+            LLVMPY_DisposeModule,
+            LLVMPY_FunctionsIterNext,
+            LLVMPY_GetDataLayout,
+            LLVMPY_GetModuleName,
+            LLVMPY_GetNamedFunction,
+            LLVMPY_GetNamedGlobalVariable,
+            LLVMPY_GetTarget,
+            LLVMPY_GlobalsIterNext,
+            LLVMPY_ModuleFunctionsIter,
+            LLVMPY_ModuleGlobalsIter,
+            LLVMPY_ParseAssembly,
+            LLVMPY_ParseBitcode,
+            LLVMPY_PrintModuleToString,
+            LLVMPY_SetDataLayout,
+            LLVMPY_SetModuleName,
+            LLVMPY_SetTarget,
+            LLVMPY_SplitModuleBitcode,
+            LLVMPY_VerifyModule,
+            LLVMPY_WriteBitcodeToString,
+            free,
+            malloc
+        },
+        binding.newpassmanagers {
+            LLVMPY_CreateNewModulePassManager,
+            LLVMPY_CreatePassBuilder,
+            LLVMPY_CreatePipelineTuningOptions,
+            LLVMPY_DisposeNewModulePassManger,
+            LLVMPY_DisposePassBuilder,
+            LLVMPY_DisposePipelineTuningOptions,
+            LLVMPY_PTOGetInlinerThreshold,
+            LLVMPY_PTOGetLoopInterleaving,
+            LLVMPY_PTOGetLoopUnrolling,
+            LLVMPY_PTOGetLoopVectorization,
+            LLVMPY_PTOGetSLPVectorization,
+            LLVMPY_PTOSetInlinerThreshold,
+            LLVMPY_PTOSetLoopInterleaving,
+            LLVMPY_PTOSetLoopUnrolling,
+            LLVMPY_PTOSetLoopVectorization,
+            LLVMPY_PTOSetSLPVectorization,
+            LLVMPY_RunNewModulePassManager,
+            LLVMPY_buildPerModuleDefaultPipeline,
+            LLVMPY_module_AddVerifierPass
+        },
+        binding.options { LLVMPY_SetCommandLine },
+        binding.targets {
+            LLVMPY_ABIAlignmentOfType,
+            LLVMPY_ABISizeOfType,
+            LLVMPY_CopyStringRepOfTargetData,
+            LLVMPY_CreateTargetData,
+            LLVMPY_CreateTargetMachine,
+            LLVMPY_CreateTargetMachineData,
+            LLVMPY_DisposeMemoryBuffer,
+            LLVMPY_DisposeTargetData,
+            LLVMPY_DisposeTargetMachine,
+            LLVMPY_GetBufferSize,
+            LLVMPY_GetBufferStart,
+            LLVMPY_GetDefaultTargetTriple,
+            LLVMPY_GetTargetDescription,
+            LLVMPY_GetTargetFromTriple,
+            LLVMPY_GetTargetMachineTriple,
+            LLVMPY_GetTargetName,
+            LLVMPY_GlobalGetValueType,
+            LLVMPY_OffsetOfElement,
+            LLVMPY_SetTargetMachineAsmVerbosity,
+            LLVMPY_TargetMachineEmitToMemory
+        },
+        binding.value {
+            LLVMPY_CountParamTypes,
+            LLVMPY_GetLinkage,
+            LLVMPY_GetParamTypes,
+            LLVMPY_GetReturnType,
+            LLVMPY_GetValueName,
+            LLVMPY_GetVisibility,
+            LLVMPY_GlobalGetValueType,
+            LLVMPY_IsDeclaration,
+            LLVMPY_IsFunctionVararg,
+            LLVMPY_PrintType,
+            LLVMPY_PrintValueToString,
+            LLVMPY_SetLinkage,
+            LLVMPY_SetValueName,
+            LLVMPY_SetVisibility,
+            free,
+            malloc
+        },
     ]
-    include binding.config ++> binding;
     include binding.context ++> binding;
-    include binding.dylib ++> binding;
-    include binding.executionengine ++> binding;
     include binding.initfini ++> binding;
     include binding.linker ++> binding;
     include binding.lld ++> binding;
     include binding.module ++> binding;
     include binding.newpassmanagers ++> binding;
-    include binding.object_file ++> binding;
     include binding.options ++> binding;
     include binding.targets ++> binding;
     include binding.value ++> binding;
@@ -10625,20 +10787,26 @@ graph import compiler.backends.native.llvm {
     include ir.module ++> ir;
     include ir.types ++> ir;
     include ir.values ++> ir;
-    shim_path ++> binding.ffi { shim_path }
+    shim_path ++> jit { shim_path }
+    type binding ++> jit { ModuleRef, TargetMachine, ValueRef }
 }
 
 graph import compiler.backends.native.llvm.binding {
-    common ++> [
-        dylib | options { _encode_string },
-        ffi { _is_shutting_down },
-        module | targets | value { _decode_string, _encode_string },
+    context ++> module { ContextRef, get_global_context }
+    ffi ++> [
+        context | newpassmanagers { ObjectRef },
+        lld { c_text_array, free_text_array, take_text },
+        linker { take_text },
+        module { ObjectRef, c_text, take_bytes, take_text },
+        targets { ObjectRef, c_bytes, c_text, take_text },
+        value { ObjectRef, c_text, take_text },
     ]
-    context ++> module { get_global_context }
     linker ++> module { link_modules }
+    type module ++> linker | newpassmanagers | targets { ModuleRef }
+    type targets ++> newpassmanagers { TargetMachine }
     value ++> [
         module { ValueRef },
-        targets.TargetMachine.emit_object { Linkage },
+        targets { Linkage },
     ]
     type value ++> targets { ValueRef }
 }
@@ -11691,14 +11859,7 @@ graph import compiler.frontend {
     type kernel_analyze ++> host | kernel_host { CompileReport }
     kernel_host ++> kernel_analyze { HostAsker, KernelHost }
     kernel_inputs ++> [
-        kernel_analyze {
-            KernelInputs,
-            json_int,
-            json_map,
-            json_maps,
-            json_opt_str,
-            json_str_list
-        },
+        kernel_analyze { KernelInputs },
         kernel_host {
             DeclaredDependencies,
             ImportResolution,
@@ -11709,7 +11870,6 @@ graph import compiler.frontend {
             PythonInterface,
             json_map,
             local_key,
-            merge_answers,
             pair_key,
             resolution_key
         },
@@ -14599,22 +14759,13 @@ graph import project {
         config { PackageDep },
         config.JacConfig.merge_dependency_tables { split_dependency_table },
     ]
+    kernel_call ++> [
+        kernel_check { analysis_report_of, kernel_analysis },
+        kernel_compile { compile_report_of, compile_request_record },
+    ]
     kernel_check ++> kernel_compile.kernel_compile_reported { alert_of }
     kernel_compile ++> compiler_host.ProjectHost.kernel_compile { host_kernel_compile }
-    kernel_snapshot ++> [
-        compiler_host.ProjectHost.kernel_inputs { session_inputs },
-        kernel_check { host_deferred, kernel_analysis },
-        kernel_compile {
-            COMPILE_ENTRY,
-            KernelAnalysisError,
-            _IFACE_BUILT,
-            call_with_asker,
-            host_deferred,
-            kernel_snapshot,
-            loaded_kernel,
-            other_compiler_report
-        },
-    ]
+    kernel_snapshot ++> compiler_host.ProjectHost.kernel_inputs { session_inputs }
     kernel_snapshot --> compiler_host.ProjectHost.native_analyze {
         record_kernel_session
     }

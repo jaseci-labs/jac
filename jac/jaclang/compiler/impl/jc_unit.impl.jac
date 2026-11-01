@@ -249,60 +249,6 @@ impl _register_shape_keys {
     jc_mz_shape_keys(id(probe));
 }
 
-impl jc_analyze(inputs: str, path: str, source: str, has_source: int) -> int {
-    _drop_stale_regions();
-    _drop_h(_JC.analysis_h);
-    _JC.analysis_h = 0;
-    status = ANALYSIS_CRASHED;
-    try {
-        outcome = run_kernel_analysis(
-            inputs, path, source if has_source != 0 else None, None, True
-        );
-        status = outcome.status;
-        text = outcome.to_json();
-    } except Exception as err {
-        text = AnalysisReport(
-            status=ANALYSIS_CRASHED, message=f"kernel analysis raised: {err}"
-        ).to_json();
-    }
-    _JC.analysis_h = PyUnicode_FromString(id(text));
-    return status;
-}
-
-impl jc_compile(inputs: str, path: str, source: str, has_source: int) -> int {
-    _drop_stale_regions();
-    _drop_h(_JC.compile_h);
-    _JC.compile_h = 0;
-    status = ANALYSIS_CRASHED;
-    try {
-        outcome = run_kernel_compile(
-            inputs, path, source if has_source != 0 else None, None, True
-        );
-        status = outcome.analysis.status;
-        text = outcome.to_json();
-    } except Exception as err {
-        text = CompileReport(
-            analysis=AnalysisReport(
-                status=ANALYSIS_CRASHED, message=f"kernel compile raised: {err}"
-            )
-        ).to_json();
-    }
-    _JC.compile_h = PyUnicode_FromString(id(text));
-    return status;
-}
-
-impl jc_take_compile -> int {
-    h = _JC.compile_h;
-    _JC.compile_h = 0;
-    return h;
-}
-
-impl jc_take_analysis -> int {
-    h = _JC.analysis_h;
-    _JC.analysis_h = 0;
-    return h;
-}
-
 impl jc_rc_debug(v: int) -> int {
     if v != 0 {
         __rc_debug_enable();

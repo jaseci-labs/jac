@@ -2332,7 +2332,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5090",
          Category.CODEGEN,
          "Native pathway does not yet support {kind} '{name}'",
-         help="This Jac construct is supported on the @sv/Python pathway but is not implemented in the native compiler yet. Move the code to a non-native context, or extend NaIRGenPass to handle this node type."
+         help="This Jac construct is supported on the @sv/Python pathway but is not implemented in the native compiler yet. Move the code to a non-native context, or teach MIR lowering (compiler/backends/native/mir) this node type."
      ),
      E5091 = _err(
          "E5091",
@@ -2344,7 +2344,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5092",
          Category.CODEGEN,
          "Native lowering failed for {kind} '{name}'",
-         help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered by NaIRGenPass. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
+         help="The construct is within the native capability set, but this specific shape (its types, values, or runtime bindings) could not be lowered to MIR. Adjust the shape, add type annotations, or move the code to a non-native context. Statically-known unsupported constructs are reported as E5090 by the capability check instead."
      ),
      E5096 = _err(
          "E5096",

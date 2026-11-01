@@ -56,7 +56,6 @@ obj LinkResult {
         plan_digest: str,
         layout_digest: str,
         sha256: str,
-        classes: dict[str, any] = {},
         units: list[str] = [],
         reused: bool = False;
 }
@@ -178,7 +177,7 @@ def _write_sidecar(
     plan_digest: str,
     action_digest: str = "",
     artifact_sha256: str = ""
-) -> tuple[dict[str, any], str];
+) -> str;
 
 def _sha256_of(path: str) -> str;
 
@@ -193,8 +192,13 @@ def link_artifact(
     output_path: str,
     kind: ArtifactKind,
     log: any = None,
-    app_imports: (set | None) = None
+    app_imports: (set | None) = None,
+    runpaths: list[str] = []
 ) -> LinkResult;
+
+def link_object(
+    plan: LinkPlan, exports: list[str], log: (Callable[[str], None] | None) = None
+) -> bytes;
 
 def _unmangled(symbol: str, mangled: bool) -> str;
 

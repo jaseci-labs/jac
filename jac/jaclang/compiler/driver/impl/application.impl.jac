@@ -820,9 +820,7 @@ impl _kernel_units(
         options.project_root = `root;
         options.no_cgen = False;
         options.skip_native_engine = True;
-        compiled = kernel_compile_application(
-            active_host(), program, path, options, seeds=list(seeds.values())
-        );
+        compiled = kernel_compile_application(active_host(), program, path, options);
         if compiled is None {
             return None;
         }

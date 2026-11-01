@@ -2,10 +2,8 @@ import os;
 import time;
 
 glob STAGE0_UNKNOWN_FORMAT: int = 3,
-     KERNEL_ENTRY_SOURCES: tuple[str, ...] = (
-         "compiler/jc_unit.jac",
-         "compiler/jc_materialize.jac"
-     );
+     KERNEL_ENTRY_SOURCES: tuple[str, ...] = ("compiler/kernel_module.jac", ),
+     KERNEL_INIT_SYMBOL: str = "PyInit_jac_kernel";
 
 class KernelEntryError(RuntimeError) {}
 
@@ -23,8 +21,15 @@ def link_kernel(
     prog: (JacProgram | None) = None,
     log: (Callable[[str], None] | None) = None,
     link_mode: str = "",
-    spec: (TargetSpec | None) = None
+    spec: (TargetSpec | None) = None,
+    runpath: str = ""
 ) -> LinkResult;
+
+def link_kernel_object(
+    dst: str,
+    log: (Callable[[str], None] | None) = None,
+    spec: (TargetSpec | None) = None
+) -> str;
 
 obj GcPauses {
     has collections: int = 0,

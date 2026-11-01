@@ -427,7 +427,7 @@ pub fn build(b: *std.Build) void {
             if (debug_src) mk.addArg("--debug-src");
         }
         // A compiler kernel built elsewhere (issue #10219): the seal adopts the
-        // libjac_compiler.* and sidecar in this directory instead of building
+        // jac_kernel.* extension module and its record in this directory instead of building
         // the kernel, so one builder can make the kernel for every target.
         // The seal refuses a kernel whose recorded unit sources, codegen,
         // target or Python do not match this tree.

@@ -509,12 +509,12 @@ impl JacCompiler._load_native_from_cache(
         if manifest.callable_native_imports
             and not isinstance(engine, SharedNativeEngine) {
             import from jaclang.runtime.interop_bridge { register_py_callbacks }
-            import jaclang.compiler.backends.native.llvm.binding as llvm;
+            import from jaclang.compiler.backends.native.llvm.jit { add_symbol }
             register_py_callbacks(
                 manifest.callable_native_imports,
                 py_func_table,
                 callbacks_list,
-                llvm.add_symbol
+                add_symbol
             );
         }
     }

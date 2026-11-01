@@ -16,6 +16,8 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.jc_materialize"),
          NativeScopeEntry(module="jaclang.compiler.jc_ask"),
          NativeScopeEntry(module="jaclang.compiler.jc_unit"),
+         NativeScopeEntry(module="jaclang.compiler.kernel_api"),
+         NativeScopeEntry(module="jaclang.compiler.kernel_module"),
          NativeScopeEntry(module="jaclang.compiler.frontend.diagnostics"),
          NativeScopeEntry(module="jaclang.compiler.passes.context"),
          NativeScopeEntry(module="jaclang.compiler.passes.ast_validation_pass"),
@@ -159,6 +161,35 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
              module="jaclang.compiler.backends.native.llvm.ir.instructions"
          ),
          NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.ir.builder"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.capi"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.__init__"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.binding.ffi"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.context"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.binding.value"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.module"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.linker"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.targets"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.newpassmanagers"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.llvm.binding.lld"),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.initfini"
+         ),
+         NativeScopeEntry(
+             module="jaclang.compiler.backends.native.llvm.binding.options"
+         ),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.target_facts"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.lexical_scope"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.na_constants"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.foreign"),
@@ -173,15 +204,14 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.backends.native.mir.emit"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.mir.backend")
      ),
-     KERNEL_ROOT_MODULE: str = "jaclang.compiler.jc_unit",
+     KERNEL_ROOT_MODULE: str = "jaclang.compiler.kernel_module",
      KERNEL_ABI_CONTRACT_REL: tuple[str, ...] = (
          "runtime/osp_kernel.jac",
          "runtime/osp_graph.jac",
          "runtime/region_native.jac",
          "compiler/backends/common/fmt_kernel.jac",
          "runtime/osp_tag.jac",
-         "compiler/backends/native/region_abi.jac",
-         "compiler/native_compiler.jac"
+         "compiler/backends/native/region_abi.jac"
      ),
      _SCOPE_SUFFIX_CACHE: list[str] = [],
      _SCOPE_SUFFIX_GEN: list[int] = [-1];

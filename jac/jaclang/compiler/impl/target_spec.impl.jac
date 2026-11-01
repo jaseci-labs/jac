@@ -1,5 +1,5 @@
 impl TargetSpec.kernel_file_name -> str {
-    return f"{self.shared_prefix}jac_compiler{self.shared_suffix}";
+    return "jac_kernel.pyd" if self.osarch.startswith("windows") else "jac_kernel.so";
 }
 
 impl triple_osarch(triple: str) -> str {

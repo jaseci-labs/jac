@@ -45,12 +45,13 @@ obj NativeDemotion {
 }
 
 """What one module compiled to. `code` is the module's JacPython code object,
-made by JacPython's compiler inside the kernel; the native products are
-present when the module is native."""
+made by JacPython's compiler inside the kernel: an owned reference, NULL when
+no bytecode was asked for, which the module binding hands to its caller. The
+native products are present when the module is native."""
 obj CompiledUnit {
     has path: str,
         module_name: str,
-        code: any = None,
+        code: ptr[PyObject] = ptr[PyObject](),
         interface: bytes = b"",
         placement: str = "",
         client_js: str = "",
@@ -69,10 +70,22 @@ obj CompileRequest {
         products: list[str] = ["bytecode"];
 }
 
+"""A source the kernel read while compiling, with the digest of the text it
+read."""
+obj SourceRead {
+    has path: str,
+        digest: str;
+}
+
+"""`reached` names every module the compile analysed, the entries included,
+and `reads` the sources it read, so a caller can tell when its products go
+stale."""
 obj CompileResult {
     has units: list[CompiledUnit] = [],
         errors: list[KernelDiagnostic] = [],
-        warnings: list[KernelDiagnostic] = [];
+        warnings: list[KernelDiagnostic] = [],
+        reached: list[str] = [],
+        reads: list[SourceRead] = [];
 
     def ok -> bool;
     def unit(path: str) -> CompiledUnit;
@@ -104,6 +117,7 @@ obj CheckRequest {
 obj CheckResult {
     has errors: list[KernelDiagnostic] = [],
         warnings: list[KernelDiagnostic] = [],
+        reached: list[str] = [],
         coverage: list[CoverageRow] = [],
         placements: list[PlacementRow] = [];
 
