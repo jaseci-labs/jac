@@ -735,6 +735,28 @@ impl is_bundled_native_module(module_name: str) -> bool {
     return _native_variant_path(os.path.join(stdlib_dir, path_name)) is not None;
 }
 
+impl set_native_variant_os(os_name: str | None) -> (str | None) {
+    prev = _native_variant_os_ctx.get(None);
+    _native_variant_os_ctx.set(os_name);
+    return prev;
+}
+
+impl importer_variant_os(path: str) -> str {
+    import os;
+    name = os.path.basename(path);
+    if not name.endswith(".jac") {
+        return "";
+    }
+    parts = name[:-len(".jac")].split(".");
+    if parts and parts[-1] in NATIVE_VARIANT_ARCHES {
+        parts.pop();
+    }
+    if parts and parts[-1] in NATIVE_VARIANT_OSES {
+        return parts[-1];
+    }
+    return "";
+}
+
 impl set_native_target_override(triple: str | None) -> (str | None) {
     prev = _native_target_ctx.get(None);
     _native_target_ctx.set(triple);
@@ -792,7 +814,8 @@ impl native_target_arch -> str {
 
 impl _native_variant_path(base_no_ext: str) -> (str | None) {
     import os;
-    _osarchv = f"{base_no_ext}.{native_target_os()}.{native_target_arch()}.jac";
+    _os = _native_variant_os_ctx.get(None) or native_target_os();
+    _osarchv = f"{base_no_ext}.{_os}.{native_target_arch()}.jac";
     if os.path.exists(_osarchv) {
         return _osarchv;
     }
@@ -800,7 +823,6 @@ impl _native_variant_path(base_no_ext: str) -> (str | None) {
     if os.path.exists(_archv) {
         return _archv;
     }
-    _os = native_target_os();
     _osv = os.path.join(f"{base_no_ext}.{_os}.jac");
     if os.path.exists(_osv) {
         return _osv;
