@@ -1092,7 +1092,7 @@ impl JacProgram.ingest_comptime_producers(
                 );
             } except Exception as ct_ingest_err {
                 import logging as _ct_logging;
-                _ct_logging.getLogger(__name__).debug(
+                _ct_logging.getLogger("jaclang.compiler.driver.program").debug(
                     f"comptime producer {target} of {file_path} "
                     f"could not be ingested: {ct_ingest_err}"
                 );

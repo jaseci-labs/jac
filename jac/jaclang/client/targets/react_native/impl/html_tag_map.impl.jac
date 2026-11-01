@@ -1,4 +1,4 @@
-impl supported_rn_html_tags -> frozenset {
+impl supported_rn_html_tags -> frozenset[str] {
     tags: set[str] = set();
     for tag in RN_HTML_VIEW_TAGS {
         tags.add(tag);

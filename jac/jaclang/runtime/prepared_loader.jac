@@ -21,6 +21,8 @@ obj PreparedLoader(Loader) {
 
 obj PreparedFinder(MetaPathFinder) {
     def find_spec(
-        fullname: str, path: list[str] | None = None, target: ModuleType | None = None
+        fullname: str,
+        path: Sequence[str] | None = None,
+        target: ModuleType | None = None
     ) -> ModuleSpec | None;
 }

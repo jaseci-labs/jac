@@ -95,8 +95,8 @@ impl _resolve_externals(
     }
 
     rt_pkg = runtime_pkg_name(config);
-    npm = config._raw_data.get("npm", {});
-    npm = npm if isinstance(npm, dict) else {};
+    raw_npm = config._raw_data.get("npm", {});
+    npm: dict[str, any] = raw_npm if isinstance(raw_npm, dict) else {};
 
     if rt_pkg in externals {
         rt_ver = npm.get("runtime_version", "");

@@ -1,5 +1,14 @@
+impl HTTPError.init(status_code: int, detail: str = '') {
+    self.status_code = status_code;
+    self.detail = detail;
+}
+
 impl HTTPError.__str__ -> str {
     return self.detail or f"HTTP {self.status_code}";
+}
+
+impl WebSocketDisconnect.init(code: int = 1000) {
+    self.code = code;
 }
 
 impl WebSocketDisconnect.__str__ -> str {
@@ -168,7 +177,8 @@ impl _normalize_headers(headers: any) -> Headers {
             result.append(str(k), str(v));
         }
     } elif isinstance(headers, list) {
-        for (k, v) in headers {
+        header_pairs: list[any] = headers;
+        for (k, v) in header_pairs {
             result.append(str(k), str(v));
         }
     }

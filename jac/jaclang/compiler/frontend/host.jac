@@ -127,6 +127,7 @@ obj HostServices {
     ) -> (NativeIface | None);
 
     def native_dep_discovery_open(program: JacProgram) -> bool;
+    def native_dep_unlowerable(program: JacProgram, path: str) -> bool;
     def native_deps_deferred(program: JacProgram) -> bool;
     def held_native_iface(
         program: JacProgram, path: str, options: CompileOptions

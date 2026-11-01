@@ -921,10 +921,10 @@ impl NaIRGenPass._emit_key_comparison(
             isinstance(key_type, ir.PointerType)
             or isinstance(key_type, ir.LiteralStructType)
         )
-        and self._tuple_key_fields(key_type) is not None
+        and (_key_fields := self._tuple_key_fields(key_type)) is not None
     ) {
         _eq: ir.Value = ir.Constant(ir.IntType(1), 1);
-        for (_fi, _fk) in self._tuple_key_fields(key_type) {
+        for (_fi, _fk) in _key_fields {
             _sv = self._tuple_key_field_val(b, stored_val, _fi, _fk);
             _qv = self._tuple_key_field_val(b, search_val, _fi, _fk);
             if _fk == "str" or _fk == "jacstr" {
@@ -1185,7 +1185,7 @@ impl NaIRGenPass._tuple_box_release_fn(
                 [ir.Constant(i32, 0), ir.Constant(i32, idx)],
                 name=f"tup.f{idx}.p"
             );
-            if self._opt_ptr_payload_of(struct_type.elements[idx]) is not None {
+            if self._opt_ptr_payload_of(struct_type.members()[idx]) is not None {
                 fptr = b.gep(
                     fptr,
                     [ir.Constant(i32, 0), ir.Constant(i32, 1)],
@@ -1247,7 +1247,7 @@ impl NaIRGenPass._tuple_box_trace_fn(
         fptr = b.gep(
             _obj, [ir.Constant(i32, 0), ir.Constant(i32, idx)], name=f"tr.f{idx}.p"
         );
-        if self._opt_ptr_payload_of(struct_type.elements[idx]) is not None {
+        if self._opt_ptr_payload_of(struct_type.members()[idx]) is not None {
             fptr = b.gep(
                 fptr, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name=f"tr.f{idx}.pvp"
             );

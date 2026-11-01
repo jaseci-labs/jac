@@ -36,9 +36,13 @@ impl GithubSSOProvider.verified_primary_email(access_token: str) -> str {
     } except RuntimeError {
         return '';
     }
-    for item in (listed if isinstance(listed, list) else []) {
-        if isinstance(item, dict) and item.get('primary') and item.get('verified') {
-            return str(item.get('email') or '');
+    emails: list[any] = listed if isinstance(listed, list) else [];
+    for item in emails {
+        if isinstance(item, dict) {
+            email_row: dict[str, any] = item;
+            if email_row.get('primary') and email_row.get('verified') {
+                return str(email_row.get('email') or '');
+            }
         }
     }
     return '';

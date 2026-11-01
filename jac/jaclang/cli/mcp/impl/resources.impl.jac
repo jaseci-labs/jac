@@ -278,9 +278,10 @@ impl ResourceProvider._fetch_github_categories -> list[str] {
     if data is None or not isinstance(data, list) {
         return [];
     }
+    entries: list[dict[str, any]] = data;
     categories: list[str] = [
         item["name"]
-        for item in data
+        for item in entries
         if item.get("type") == "dir"
             and not item["name"].startswith(".")
             and not item["name"].startswith("_")
@@ -362,8 +363,9 @@ impl _list_jac_files_recursive(
     if data is None or not isinstance(data, list) {
         return [];
     }
+    entries: list[dict[str, any]] = data;
     results: list[tuple[str, str]] = [];
-    for item in data {
+    for item in entries {
         name = item.get("name", "");
         rel = f"{base_path}/{name}" if base_path else name;
         if item.get("type") == "file" and name.endswith(".jac") {

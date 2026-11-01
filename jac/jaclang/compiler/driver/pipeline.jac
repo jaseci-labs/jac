@@ -144,6 +144,7 @@ glob IR_LOADS: list[str] = [
          'jaclang.project.config',
          'jaclang.compiler.passes.static_analysis_pass',
          'jaclang.compiler.passes.access_check_pass',
+         'jaclang.compiler.passes.flow_check_pass',
          'jaclang.compiler.passes.variant_agreement_pass',
          'jaclang.compiler.passes.capability_check_pass',
          'jaclang.compiler.capability_notes',
@@ -265,8 +266,6 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
      _LOADING: ContextVar[list[CompilationProduct]] = ContextVar(
          'jac_schedule_loading', `default=[]
      );
-
-def contract_of(p: type[CompilerPass]) -> PassContract;
 
 def validate_schedule(
     passes: PassSchedule,

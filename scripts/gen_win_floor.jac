@@ -40,7 +40,7 @@ glob DROPPED_ATTRIBUTES: list[str] = [
 def compile_ir -> str {
     compiler = shlex.split(os.environ.get("CC", "zig cc"));
     with tempfile.TemporaryDirectory() as scratch {
-        out = os.path.join(scratch, "win_floor.ll");
+        ir_path = os.path.join(scratch, "win_floor.ll");
         command = compiler
             + [
                 "-target",
@@ -55,7 +55,7 @@ def compile_ir -> str {
                 "-S",
                 "-emit-llvm",
                 "-o",
-                out,
+                ir_path,
                 str(SOURCE)
             ];
         done = subprocess.run(command, capture_output=True, text=True);
@@ -67,7 +67,7 @@ def compile_ir -> str {
                 print(line, file=sys.stderr);
             }
         }
-        return Path(out).read_text(encoding="utf-8");
+        return Path(ir_path).read_text(encoding="utf-8");
     }
 }
 

@@ -11,6 +11,28 @@ obj syntax_failure(Exception) {
         # The tokenize module's errors carry no end position (None), as
         # Python-tokenize.c's _tokenizer_error builds them.
         open_end: bool = False;
+
+    def init(
+        msg: str,
+        filename: str = "<unknown>",
+        lineno: int = 0,
+        offset: int = -1,
+        text: str | None = None,
+        end_lineno: int = 0,
+        end_offset: int = -1,
+        kind: str = "SyntaxError",
+        open_end: bool = False
+    ) {
+        self.msg = msg;
+        self.filename = filename;
+        self.lineno = lineno;
+        self.offset = offset;
+        self.text = text;
+        self.end_lineno = end_lineno;
+        self.end_offset = end_offset;
+        self.kind = kind;
+        self.open_end = open_end;
+    }
 }
 
 # Lines keep their terminators; CR, LF and CRLF each end a line.

@@ -16,7 +16,7 @@ obj queue_state(NativeState) {
         jacpy_queue_clear(self);
     }
 
-    def traverse_refs(visitor: ptr[PyObject], context: ptr[PyObject]) -> i32 {
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         for i in range(self.items.count) {
             result = visit_reference(self.items.borrow(i), visitor, context);
             if result != 0 {

@@ -88,7 +88,8 @@ impl AnalysisReport.from_dict(raw: dict[str, any]) -> AnalysisReport {
 impl json_str_pairs_of(value: object) -> list[list[str]] {
     rows: list[list[str]] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             rows.append(json_str_list(item));
         }
     }

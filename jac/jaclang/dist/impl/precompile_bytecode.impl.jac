@@ -676,9 +676,11 @@ impl seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int {
 
     def on_record(idx: int, record: dict[(str, any)]) {
         result = record.get("result");
-        error = str(result.get("error") or "")
-            if isinstance(result, dict)
-            else str(record.get("crash") or record.get("error") or "no result");
+        error = str(record.get("crash") or record.get("error") or "no result");
+        if isinstance(result, dict) {
+            outcome: dict[str, any] = result;
+            error = str(outcome.get("error") or "");
+        }
         if error {
             failures.append(f"{Path(units[idx]).name} - {error}");
         }
@@ -1330,7 +1332,11 @@ impl adopt_kernel(
         );
     }
     ids_raw = sidecar.get("unit_ids");
-    ids = [str(i) for i in ids_raw] if isinstance(ids_raw, list) else [];
+    ids: list[str] = [];
+    if isinstance(ids_raw, list) {
+        id_items: list[any] = ids_raw;
+        ids = [str(i) for i in id_items];
+    }
     recorded = sidecar.get("unit_sources");
     if not ids or not isinstance(recorded, dict) or not recorded {
         raise RuntimeError(f"prebuilt kernel {src} names no unit sources");
@@ -1827,8 +1833,9 @@ impl run_precompile(
             counts["failed"] += 1;
             return;
         }
-        status = str(result.get("status") or "failed");
-        message = str(result.get("message") or "");
+        outcome: dict[str, any] = result;
+        status = str(outcome.get("status") or "failed");
+        message = str(outcome.get("message") or "");
         if status == "failed" and message {
             if message.lstrip().startswith("SKIP") {
                 console.print(message);

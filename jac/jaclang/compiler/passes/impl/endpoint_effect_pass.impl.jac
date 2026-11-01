@@ -35,7 +35,8 @@ impl callable_key(sym: Symbol) -> CallableKey {
 impl _summary_strings(value: object) -> list[str] {
     out: list[str] = [];
     if isinstance(value, list) {
-        for item in value {
+        items: list[any] = value;
+        for item in items {
             out.append(str(item));
         }
     }

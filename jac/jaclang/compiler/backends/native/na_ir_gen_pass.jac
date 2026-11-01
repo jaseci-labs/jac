@@ -151,17 +151,6 @@ obj ImportedFunctions(FunctionSource) {
 }
 
 walker NaIRGenPass(CompilerPass) {
-    static has contract: PassContract = PassContract(
-        requires=(
-            AnalysisFact.TYPE_OF,
-            AnalysisFact.CFG_SUCC,
-            AnalysisFact.OWNERSHIP,
-            AnalysisFact.CAPABILITY,
-            AnalysisFact.RC_FACTS,
-
-        )
-    );
-
     has module: uni.Module,
         _llvm_module: (ir.Module | None) = None,
         _type_map: (dict[str, ir.Type] | None) = None,
@@ -332,6 +321,7 @@ walker NaIRGenPass(CompilerPass) {
         _unit_exports: dict[str, NativeExport] = {},
         _demoted_names: set[str] = set(),
         _seam_stub_ids: set[int] = set(),
+        _seam_stubs: dict[str, ir.Function] = {},
         _native_test_nodes: dict[str, uni.Test] = {},
         _lowering_issues: list[NativeLoweringIssue] = [],
         tuple_types: dict[str, ir.LiteralStructType] = {},
@@ -529,8 +519,7 @@ walker NaIRGenPass(CompilerPass) {
         _closure_uid: int = 0,
         _fresh_fn_values: set[str] = set(),
         _nested_fn_frames: dict[str, ir.Function] = {},
-        _opt_struct_types: dict[str, ir.IdentifiedStructType] = {},
-        _loop_rebind_memo: dict[tuple[int, str], bool] = {};
+        _opt_struct_types: dict[str, ir.IdentifiedStructType] = {};
 
     has builder: ir.IRBuilder { getter; }
     has llvm_module: ir.Module { getter; }
@@ -924,7 +913,10 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_receiver(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _emit_take_ref(value: ir.Value, op: str, loc: str = "") -> None;
     def _codegen_bound_args(
-        nd: uni.FuncCall, func: ir.Function, self_offset: int = 0
+        nd: uni.FuncCall,
+        func: ir.Function,
+        self_offset: int = 0,
+        receiver: (ir.Value | None) = None
     ) -> list[ir.Value];
 
     def _emit_pack_slot_refusal(nd: uni.FuncCall, star: str) -> None;
@@ -976,7 +968,17 @@ walker NaIRGenPass(CompilerPass) {
         bind_records: list[dict[str, any]]
     ) -> None;
 
-    def _default_arg_fallback(t: ir.Type) -> ir.Value;
+    def _frontend_binding(nd: uni.FuncCall) -> (dict[str, uni.UniNode] | None);
+    def _missing_argument(nd: uni.UniNode, t: ir.Type) -> ir.Value;
+    def _default_thunk(func: ir.Function, slot: int, name: str) -> ir.Function;
+    def _call_default_thunk(
+        func: ir.Function, param: uni.ParamVar, slot: int, prior: list[ir.Value]
+    ) -> (ir.Value | None);
+
+    def _emit_default_thunks(
+        func: ir.Function, params: list[uni.ParamVar], base: int
+    ) -> None;
+
     def _try_flow_future(nd: uni.ConcurrentExpr) -> (ir.Value | None);
     def _flow_future_licensed(nd: uni.ConcurrentExpr) -> (uni.Name | None);
     def _clib_struct_layout(name: str) -> tuple[int, int, list[tuple[int, bool, int]]];
@@ -1359,7 +1361,7 @@ walker NaIRGenPass(CompilerPass) {
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
     def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(
-        nd: uni.Ability, unavailable: (set | None) = None, imp_layout: any = None
+        nd: uni.Ability, unavailable: (set[str] | None) = None, imp_layout: any = None
     ) -> None;
 
     def _declares_lazily(nd: uni.Ability) -> bool;
@@ -1369,8 +1371,9 @@ walker NaIRGenPass(CompilerPass) {
     def _module_function_known(key: tuple[str, str]) -> bool;
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
+    def _module_callable_names(mod: uni.Module) -> set[str];
     def _ensure_body_inference(method: uni.Ability) -> None;
-    def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
+    def _imported_function_demotions(imported_mod: uni.Module) -> (set[str] | None);
     def _lower_module -> None;
     def _settle_module -> None;
     def _static_refusals(owner: uni.UniNode) -> (list[NativeRefusal] | None);
@@ -1396,10 +1399,6 @@ walker NaIRGenPass(CompilerPass) {
     def _rename_demoted_symbol(name: str, func: ir.Function) -> None;
     def _propagate_seam_demotions -> None;
     def _reaches_seam_stub(func: ir.Function, seen: set[int]) -> (str | None);
-    def _check_native_import_names(
-        imported_mods: list[tuple[str, uni.Module]]
-    ) -> None;
-
     def _process_clib_imports(module: uni.Module) -> None;
     def _declare_pending_clib_globals -> None;
     def _declare_clib_struct(decl: uni.Archetype) -> (str | None);
@@ -1874,6 +1873,7 @@ walker NaIRGenPass(CompilerPass) {
     def _ct_fold(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _ct_origin(nd: uni.Expr) -> bool;
     def _ct_only_name(nd: uni.Name) -> bool;
+    def _comptime_imported(sym: (uni.Symbol | None)) -> bool;
     def _ability_has_ct_params(ability: uni.Ability) -> bool;
     def _solve_ct_args(
         ability: uni.Ability, nd: uni.FuncCall
@@ -3154,7 +3154,7 @@ walker NaIRGenPass(CompilerPass) {
         nd: uni.InForStmt,
         kind: str,
         collection_val: ir.Value,
-        helpers: (dict[str, any] | None),
+        helpers: dict[str, any],
         var_names: list[str],
         var_types: list[ir.Type],
         rc_vars: bool,
@@ -3358,15 +3358,6 @@ walker NaIRGenPass(CompilerPass) {
     def _flow_narrowed_type_of(expr: (uni.UniNode | None)) -> (TypeBase | None);
     def _narrowed_flow_type(nd: uni.UniNode) -> (TypeBase | None);
     def _narrowing_blocked_by_none_test(nd: uni.UniNode) -> bool;
-    def _narrowing_stable_in_loops(nd: uni.UniNode, name: str) -> bool;
-    def _loop_rebinds_name(loop: uni.UniNode, name: str) -> bool;
-    def _target_bound_names(target: uni.UniNode) -> list[uni.Name];
-    def _body_assigns_before(
-        loop: uni.WhileStmt | uni.ForeverStmt | uni.InForStmt | uni.IterForStmt,
-        child: (uni.UniNode | None),
-        name: str
-    ) -> bool;
-
     def _apply_flow_narrowing(nd: uni.UniNode, val: ir.Value) -> ir.Value;
     def _unbox_narrowed_member(nd: uni.AtomTrailer, val: ir.Value) -> ir.Value;
     def _bare_any_container_type(nt: ClassType) -> (ir.Type | None);
@@ -3374,12 +3365,11 @@ walker NaIRGenPass(CompilerPass) {
     def _lower_function_type_raw(t: SemanticFunctionType) -> ir.PointerType;
     def _stack_entry_alloca(var_type: ir.Type, name: str) -> ir.Value;
     def _abi_sizeof(t: ir.Type) -> int;
-    def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_jac_type(type_expr: uni.UniNode) -> ir.Type;
     def _lower_type_by_name(name: (str | None)) -> (ir.Type | None);
-    def _lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None);
     def _lower_list_for_elem(elem_llvm: ir.Type) -> ir.Type;
     def _resolve_decl_type(
-        type_expr: (uni.UniNode | None), value: (uni.UniNode | None)
+        type_expr: uni.UniNode, value: (uni.UniNode | None)
     ) -> ir.Type;
 
     def _widened_tuple_decl_type(
@@ -3388,7 +3378,7 @@ walker NaIRGenPass(CompilerPass) {
 
     def _tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStructType;
     def _byvalue_ret_type(ret_type: ir.Type) -> ir.Type;
-    def _resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type;
+    def _resolve_sig_type(type_expr: uni.UniNode) -> ir.Type;
     def _resolve_return_type(
         type_expr: (uni.UniNode | None), method: bool = False
     ) -> ir.Type;
@@ -3739,7 +3729,7 @@ walker NaIRGenPass(CompilerPass) {
     def _runtime_class_value(expr: (uni.UniNode | None)) -> (ir.Value | None);
     def _runtime_class_arms(
         expr: (uni.UniNode | None)
-    ) -> tuple[list[ir.Value] | None, ir.Value | None];
+    ) -> tuple[list[ir.Value], ir.Value | None];
 
     def _isinstance_operand_arch(nd: uni.FuncCall, operand: ir.Value) -> (str | None);
     def _emit_isinstance_runtime(

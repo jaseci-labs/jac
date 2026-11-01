@@ -1028,6 +1028,12 @@ impl __unwrapFormSchema(schema: any) -> any {
     return actualSchema;
 }
 
-impl BridgeError.postinit {
-    self.message = self.detail;
+impl BridgeError.init(
+    app: str = "", name: str = "", detail: str = "", status: int = 0
+) {
+    self.app = app;
+    self.name = name;
+    self.detail = detail;
+    self.status = status;
+    self.message = detail;
 }

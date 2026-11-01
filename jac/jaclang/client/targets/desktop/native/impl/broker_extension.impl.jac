@@ -117,7 +117,11 @@ impl DesktopBrokerExtension.register(server: JacAPIServer) {
         } except Exception {
             body = {};
         }
-        token = str(body.get("token", "") or "") if isinstance(body, dict) else "";
+        token = "";
+        if isinstance(body, dict) {
+            fields: dict[str, any] = body;
+            token = str(fields.get("token", "") or "");
+        }
         store.write(token);
         return JSONResponse(content={"ok": True});
     }
@@ -312,7 +316,11 @@ impl DesktopBrokerExtension.register(server: JacAPIServer) {
         } except Exception {
             body = {};
         }
-        name = str(body.get("name", "") or "") if isinstance(body, dict) else "";
+        name = "";
+        if isinstance(body, dict) {
+            fields: dict[str, any] = body;
+            name = str(fields.get("name", "") or "");
+        }
         try {
             changed = choice.choose(name);
         } except ValueError as e {

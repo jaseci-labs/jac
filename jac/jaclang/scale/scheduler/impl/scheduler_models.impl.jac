@@ -31,15 +31,16 @@ impl CreateJobRequest.from_dict(data: any) -> CreateJobRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
+    body: dict[str, any] = data;
 
     comptime allowed: set[str] = {f.name for f in fields(CreateJobRequest)};
-    _validate_trigger_fields(data, allowed);
+    _validate_trigger_fields(body, allowed);
     return CreateJobRequest(
-        walker_or_function=require_str(data, 'walker_or_function'),
-        trigger=str(data.get('trigger')),
-        interval=float(data['interval']) if data.get('interval') is not None else None,
-        cron=data.get('cron'),
-        date=data.get('date')
+        walker_or_function=require_str(body, 'walker_or_function'),
+        trigger=str(body.get('trigger')),
+        interval=float(body['interval']) if body.get('interval') is not None else None,
+        cron=body.get('cron'),
+        date=body.get('date')
     );
 }
 
@@ -47,13 +48,14 @@ impl UpdateJobRequest.from_dict(data: any) -> UpdateJobRequest {
     if not isinstance(data, dict) {
         raise ValueError('request body must be an object');
     }
+    body: dict[str, any] = data;
 
     comptime allowed: set[str] = {f.name for f in fields(UpdateJobRequest)};
-    _validate_trigger_fields(data, allowed);
+    _validate_trigger_fields(body, allowed);
     return UpdateJobRequest(
-        trigger=str(data.get('trigger')),
-        interval=float(data['interval']) if data.get('interval') is not None else None,
-        cron=data.get('cron'),
-        date=data.get('date')
+        trigger=str(body.get('trigger')),
+        interval=float(body['interval']) if body.get('interval') is not None else None,
+        cron=body.get('cron'),
+        date=body.get('date')
     );
 }

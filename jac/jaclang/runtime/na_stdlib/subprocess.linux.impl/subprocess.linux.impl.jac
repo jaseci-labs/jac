@@ -1,13 +1,29 @@
-impl CalledProcessError.postinit {
-    if self.stdout is None {
-        self.stdout = self.output;
-    }
+impl CalledProcessError.init(
+    returncode: int = 0,
+    cmd: any = None,
+    output: any = None,
+    stderr: any = None,
+    stdout: any = None
+) {
+    self.returncode = returncode;
+    self.cmd = cmd;
+    self.output = output;
+    self.stderr = stderr;
+    self.stdout = stdout if stdout is not None else output;
 }
 
-impl TimeoutExpired.postinit {
-    if self.stdout is None {
-        self.stdout = self.output;
-    }
+impl TimeoutExpired.init(
+    cmd: any = None,
+    timeout: any = None,
+    output: any = None,
+    stderr: any = None,
+    stdout: any = None
+) {
+    self.cmd = cmd;
+    self.timeout = timeout;
+    self.output = output;
+    self.stderr = stderr;
+    self.stdout = stdout if stdout is not None else output;
 }
 
 impl CompletedProcess.check_returncode {

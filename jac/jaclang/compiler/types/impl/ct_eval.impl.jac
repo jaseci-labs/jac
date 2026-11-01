@@ -848,7 +848,7 @@ impl CtEvaluator._eval_symbol(sym: Symbol, use: UniNode) -> CtValue {
 }
 
 impl CtEvaluator._module_value(mp: ModulePath) -> CtModule {
-    path = ".".join([p.value for p in (mp.path or [])]);
+    path = ".".join([str(p.value) for p in (mp.path or [])]);
     if path == "math" {
         return CtModule(name="math");
     }

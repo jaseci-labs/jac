@@ -170,10 +170,8 @@ impl StudioMcp.handle(msg: dict[str, any]) -> (dict[str, any] | None) {
     method = msg.get("method");
     has_id = "id" in msg;
     mid = msg.get("id");
-    params = msg.get("params");
-    if not isinstance(params, dict) {
-        params = {};
-    }
+    raw_params = msg.get("params");
+    params: dict[str, any] = raw_params if isinstance(raw_params, dict) else {};
     if not isinstance(method, str) {
         if has_id {
             return {
@@ -268,8 +266,13 @@ impl StudioMcp.tool_params(tool: StudioTool, args: dict[str, any]) -> dict[str, 
             );
         }
         clean: list[dict[str, any]] = [];
-        for e in entries {
-            if not isinstance(e, dict) or "step" not in e {
+        entry_items: list[any] = entries;
+        for raw_entry in entry_items {
+            if not isinstance(raw_entry, dict) {
+                raise ValueError("each entry needs 'step' and 'keys'.");
+            }
+            e: dict[str, any] = raw_entry;
+            if "step" not in e {
                 raise ValueError("each entry needs 'step' and 'keys'.");
             }
             keys = e.get("keys") or [];
@@ -343,7 +346,7 @@ impl serve_studio_mcp(socket_path: str, root_dir: str) -> int {
             );
             continue;
         }
-        msgs = msg if isinstance(msg, list) else [msg];
+        msgs: list[any] = msg if isinstance(msg, list) else [msg];
         replies: list[dict[str, any]] = [];
         for m in msgs {
             r = srv.handle(m) if isinstance(m, dict) else None;

@@ -79,7 +79,6 @@ obj CompileContext {
 }
 
 walker CompilerPass {
-    static has contract: (PassContract | None) = None;
     has ctx: CompileContext,
         module: Module;
 
@@ -87,8 +86,6 @@ walker CompilerPass {
 
     def release;
 }
-
-type PassSchedule = list[type[CompilerPass]];
 
 walker TreePass(CompilerPass, TreeWalker) {
     has _decl_bodies: list[ImplDef] = [];

@@ -3273,7 +3273,7 @@ impl NativeListEmitter._emit_key_sort(
     key_node: UniNode
 ) -> (ir.Value | None) {
     p = ctx.pass_ref;
-    helpers = p.list_helpers.get(ctx.type_key);
+    helpers = p.list_helpers[ctx.type_key];
     b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
@@ -5394,13 +5394,13 @@ impl NativeBuiltinEmitter._emit_extreme(
     loop = fn.append_basic_block(name + ".loop");
     body = fn.append_basic_block(name + ".body");
     done = fn.append_basic_block(name + ".done");
+    empty_block = b.basic_block;
     if fallback is None {
         p._emit_runtime_raise(
             empty, "ValueError", name + "() arg is an empty sequence"
         );
         b.branch(start);
     } else {
-        empty_block = b.basic_block;
         b.cbranch(empty, done, start);
     }
     b.position_at_end(start);
@@ -5562,7 +5562,7 @@ impl NativeBuiltinEmitter.emit_sorted(
     if items is None or elem_key is None or not isinstance(_le, NativeListEmitter) {
         return None;
     }
-    _ctx2 = ctx.__class__(
+    _ctx2 = NativeEmitCtx(
         pass_ref=p,
         type_key=elem_key,
         call_kwargs=(ctx?.call_kwargs or {}),
@@ -5600,7 +5600,7 @@ impl NativeBuiltinEmitter.emit_reversed(
     if not isinstance(_le, NativeListEmitter) {
         return None;
     }
-    _ctx2 = ctx.__class__(pass_ref=p, type_key=elem_key or "");
+    _ctx2 = NativeEmitCtx(pass_ref=p, type_key=elem_key or "");
 
     rev_copy = _le.emit_copy(_ctx2, list_val, []);
     if rev_copy is None {
@@ -6331,7 +6331,7 @@ impl NativeBuiltinEmitter.emit_list(
             if not isinstance(_le, NativeListEmitter) {
                 return None;
             }
-            _ctx2 = ctx.__class__(pass_ref=p, type_key=lk);
+            _ctx2 = NativeEmitCtx(pass_ref=p, type_key=lk);
             return _le.emit_copy(_ctx2, val, []);
         }
     }
@@ -6349,7 +6349,7 @@ impl NativeBuiltinEmitter.emit_list(
         _le3 = p?._native_emitters?.get("list");
         if _lt_ptr is not None and isinstance(_le3, NativeListEmitter) {
             _lv = b.bitcast(val, _lt_ptr.as_pointer(), name="l.union.cast");
-            _ctx3 = ctx.__class__(pass_ref=p, type_key="ptr");
+            _ctx3 = NativeEmitCtx(pass_ref=p, type_key="ptr");
             return _le3.emit_copy(_ctx3, _lv, []);
         }
     }
@@ -6392,7 +6392,7 @@ impl NativeBuiltinEmitter.emit_dict(
             if not isinstance(_de, NativeDictEmitter) {
                 return None;
             }
-            _ctx2 = ctx.__class__(pass_ref=p, type_key=dk);
+            _ctx2 = NativeEmitCtx(pass_ref=p, type_key=dk);
             return _de.emit_copy(_ctx2, val, []);
         }
     }
@@ -6493,7 +6493,7 @@ impl NativeBuiltinEmitter.emit_set(
             if not isinstance(_se, NativeSetEmitter) {
                 return None;
             }
-            _ctx2 = ctx.__class__(pass_ref=p, type_key=sk);
+            _ctx2 = NativeEmitCtx(pass_ref=p, type_key=sk);
             return _se.emit_copy(_ctx2, val, []);
         }
     }
@@ -6517,7 +6517,7 @@ impl NativeBuiltinEmitter.emit_set(
     if not scalar {
         return None;
     }
-    _ctx3 = ctx.__class__(pass_ref=p, type_key=ctx.type_key);
+    _ctx3 = NativeEmitCtx(pass_ref=p, type_key=ctx.type_key);
     drained = self.emit_set(_ctx3, [listed]);
     p._release_owned_args([p._mark_owned(listed)]);
     return drained;

@@ -22,6 +22,7 @@ glob __all__ = [
          'create_j_context',
          'get_context',
          'impl_patch_filename',
+         'CALL_DEFAULT',
          'jac_test',
          'jsx',
          'log_report',

@@ -22,6 +22,12 @@ def linearize_mro(
     cls: ClassType, _visiting: (set[int] | None) = None
 ) -> list[ClassType];
 
+def mro_is_consistent(cls: ClassType) -> bool;
+
+def c3_merge(
+    cls: ClassType, _visiting: (set[int] | None) = None
+) -> tuple[list[ClassType], bool];
+
 def mro_signature(cls: ClassType) -> list[tuple[int, str]];
 
 def ensure_mro_fresh(cls: ClassType, _visiting: (set[int] | None) = None) -> bool;

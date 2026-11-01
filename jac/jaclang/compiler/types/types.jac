@@ -359,10 +359,15 @@ node FunctionType(TypeBase) {
     def specialize_func_type_vars(solution: dict[(str, TypeBase)]) -> FunctionType;
     def is_gradual_callable_form -> bool;
     def is_from_callable_annotation -> bool;
+    def param_spec -> (TypeVarType | None);
+    def with_param_spec(captured: FunctionType) -> FunctionType;
 }
 
 def create_callable_type(
-    param_types: list[TypeBase], return_type: TypeBase, is_gradual: bool = False
+    param_types: list[TypeBase],
+    return_type: TypeBase,
+    is_gradual: bool = False,
+    param_spec: (TypeVarType | None) = None
 ) -> FunctionType;
 
 node OverloadedType(TypeBase) {

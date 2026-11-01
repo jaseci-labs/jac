@@ -260,7 +260,7 @@ def back_edge_rewiden(n: int) -> int {
     total = 0;
     i = 0;
     while i < 2 {
-        total = total + v;
+        total = total + (v as int);
         v = pick(n - 5);
         i += 1;
     }
@@ -290,7 +290,7 @@ def loop_unpack_rebind(n: int) -> int {
     total = 0;
     i = 0;
     while i < 2 {
-        total = total + v;
+        total = total + (v as int);
         (v, i) = (pick(n - 5), i + 1);
     }
     return total;

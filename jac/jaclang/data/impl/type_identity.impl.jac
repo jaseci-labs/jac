@@ -170,14 +170,13 @@ impl identity_namespace(module_name: str) -> str {
             f'Malformed persistent module identity: {module_name}'
         );
     }
-    if not isinstance(parts, list)
-        or len(parts) != 2
-        or not all(isinstance(p, str) and p for p in parts) {
+    fields: list[any] = parts if isinstance(parts, list) else [];
+    if len(fields) != 2 or not all(isinstance(p, str) and p for p in fields) {
         raise TypeResolutionError(
             f'Malformed persistent module identity: {module_name}'
         );
     }
-    return str(parts[0]);
+    return str(fields[0]);
 }
 
 impl index_application(application: PreparedApplication) {

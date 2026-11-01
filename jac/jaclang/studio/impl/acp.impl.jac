@@ -1,5 +1,11 @@
-impl AcpError.postinit -> None {
-    Exception.__init__(self, f"{self.method}: {self.message} (code {self.code})");
+impl AcpError.init(
+    method: str = "", code: int = 0, message: str = "", data: any = None
+) -> None {
+    self.method = method;
+    self.code = code;
+    self.message = message;
+    self.data = data;
+    Exception.__init__(self, f"{method}: {message} (code {code})");
 }
 
 impl PendingCall.postinit -> None {
@@ -276,14 +282,15 @@ impl AcpSession._read_loop -> None {
         }
         self._trace("<-", text);
         try {
-            msg = json.loads(text);
+            raw_msg = json.loads(text);
         } except ValueError {
             self.emit("log", {"text": f"agent wrote a non-JSON line: {text[:200]}"});
             continue;
         }
-        if not isinstance(msg, dict) {
+        if not isinstance(raw_msg, dict) {
             continue;
         }
+        msg: dict[str, any] = raw_msg;
         method = msg.get("method");
         if method is None {
             self._on_response(msg);
@@ -413,11 +420,18 @@ impl AcpSession._on_update(upd: dict[str, any]) -> None {
     } elif kind == "plan" {
         self.emit("plan", {"entries": upd.get("entries") or []});
     } elif kind == "available_commands_update" {
-        cmds = [
-            {"name": c.get("name", ""), "description": c.get("description", "")}
-            for c in (upd.get("availableCommands") or [])
-            if isinstance(c, dict)
-        ];
+        cmds: list[dict[str, any]] = [];
+        for c in (upd.get("availableCommands") or []) {
+            if isinstance(c, dict) {
+                command: dict[str, any] = c;
+                cmds.append(
+                    {
+                        "name": command.get("name", ""),
+                        "description": command.get("description", "")
+                    }
+                );
+            }
+        }
         self.commands = cmds;
         self.emit("commands", {"commands": cmds});
     } else {
@@ -494,15 +508,19 @@ impl AcpSession._handle(method: str, params: dict[str, any], rid: any) -> any {
 }
 
 impl AcpSession._permission(params: dict[str, any], rid: any) -> dict[str, any] {
-    options = [
-        {
-            "optionId": o.get("optionId", ""),
-            "name": o.get("name", ""),
-            "kind": o.get("kind", "")
+    options: list[dict[str, any]] = [];
+    for o in (params.get("options") or []) {
+        if isinstance(o, dict) {
+            option: dict[str, any] = o;
+            options.append(
+                {
+                    "optionId": option.get("optionId", ""),
+                    "name": option.get("name", ""),
+                    "kind": option.get("kind", "")
+                }
+            );
         }
-        for o in (params.get("options") or [])
-        if isinstance(o, dict)
-    ];
+    }
     self.expect(rid, "permission");
     if self._cancel_at {
         self.answer(rid, None);
@@ -564,8 +582,11 @@ impl AcpSession._terminal_create(params: dict[str, any]) -> dict[str, any] {
     args = [str(a) for a in (params.get("args") or [])];
     env = dict(os.environ);
     for e in (params.get("env") or []) {
-        if isinstance(e, dict) and e.get("name") {
-            env[str(e["name"])] = str(e.get("value", ""));
+        if isinstance(e, dict) {
+            env_var: dict[str, any] = e;
+            if env_var.get("name") {
+                env[str(env_var["name"])] = str(env_var.get("value", ""));
+            }
         }
     }
     cwd = self.resolve_path(str(params.get("cwd") or self.cwd));
@@ -820,21 +841,27 @@ impl AcpSession._trace(direction: str, text: str) -> None {
 
 impl chunk_text(content: any) -> str {
     if isinstance(content, list) {
-        return "".join([chunk_text(c) for c in content]);
+        chunks: list[any] = content;
+        return "".join([chunk_text(c) for c in chunks]);
     }
     if not isinstance(content, dict) {
         return "";
     }
-    kind = content.get("type", "");
+    block: dict[str, any] = content;
+    kind = block.get("type", "");
     if kind == "text" {
-        return str(content.get("text", ""));
+        return str(block.get("text", ""));
     }
     if kind == "resource_link" {
-        return f"[{content.get('name', '')}]({content.get('uri', '')})";
+        return f"[{block.get('name', '')}]({block.get('uri', '')})";
     }
     if kind == "resource" {
-        res = content.get("resource") or {};
-        return str(res.get("text", "")) if isinstance(res, dict) else "";
+        res = block.get("resource") or {};
+        if not isinstance(res, dict) {
+            return "";
+        }
+        resource: dict[str, any] = res;
+        return str(resource.get("text", ""));
     }
     return "";
 }

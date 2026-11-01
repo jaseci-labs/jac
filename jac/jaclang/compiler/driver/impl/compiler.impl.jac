@@ -947,9 +947,7 @@ impl JacCompiler._persist_native_unit(
 }
 
 impl JacCompiler._release_compile_scratch(target_program: JacProgram) -> None {
-    try {
-        target_program.release_check_caches();
-    } except Exception {}
+    target_program.release_check_caches();
 }
 
 impl JacCompiler.run_module(

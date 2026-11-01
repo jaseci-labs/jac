@@ -1,5 +1,7 @@
 type SymId = int;
 type DataflowTransfer = Callable[[UniCFGNode, set[SymId]], set[SymId]];
+type EdgeTransfer = Callable[[UniCFGNode, UniCFGNode, set[SymId]], set[SymId]];
+type CfgSuccessors = Callable[[UniCFGNode], list[UniCFGNode]];
 
 def _state_at(state: dict[int, set[SymId]], key: int) -> set[SymId];
 
@@ -9,6 +11,14 @@ def solve_forward(
 
 def solve_forward_must(
     cfg_nodes: list[UniCFGNode], transfer: DataflowTransfer, universe: set[SymId]
+) -> dict[int, set[SymId]];
+
+def solve_forward_must_edges(
+    nodes: list[UniCFGNode],
+    successors: CfgSuccessors,
+    entries: list[UniCFGNode],
+    transfer: EdgeTransfer,
+    universe: set[SymId]
 ) -> dict[int, set[SymId]];
 
 def solve_backward_gen_kill(

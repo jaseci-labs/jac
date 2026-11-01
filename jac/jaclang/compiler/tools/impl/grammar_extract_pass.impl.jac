@@ -1472,7 +1472,7 @@ impl GrammarExtractPass.interpret_call(call: uni.FuncCall) -> GExpr | None {
             }
 
             if `sem.kind == "ignore" {
-                for param in call.params {
+                for param in (call.params or []) {
                     inner_call = self.get_call_from_expr(param);
                     if inner_call is not None {
                         result = self.interpret_call(inner_call);
@@ -1490,7 +1490,7 @@ impl GrammarExtractPass.interpret_call(call: uni.FuncCall) -> GExpr | None {
         }
 
         if method.startswith("_") {
-            for param in call.params {
+            for param in (call.params or []) {
                 inner_call = self.get_call_from_expr(param);
                 if inner_call is not None {
                     result = self.interpret_call(inner_call);
@@ -1503,7 +1503,7 @@ impl GrammarExtractPass.interpret_call(call: uni.FuncCall) -> GExpr | None {
         return None;
     }
 
-    for param in call.params {
+    for param in (call.params or []) {
         inner_call = self.get_call_from_expr(param);
         if inner_call is not None {
             result = self.interpret_call(inner_call);

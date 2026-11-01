@@ -924,18 +924,40 @@ impl FunctionType.specialize(class_type: ClassType) -> FunctionType {
 impl FunctionType.specialize_func_type_vars(
     solution: dict[(str, TypeBase)]
 ) -> FunctionType {
-    clone = self.clone();
+    applied = apply_solved_type_vars(self, solution);
+    assert isinstance(applied, FunctionType);
+    return applied;
+}
 
-    for param in clone.parameters {
-        if param.param_type {
-            param.param_type = apply_solved_type_vars(param.param_type, solution);
+impl FunctionType.param_spec -> (TypeVarType | None) {
+    for param in self.parameters {
+        spec = param.param_type;
+        if param.category == ParameterCategory.ArgsList
+            and isinstance(spec, TypeVarType)
+            and spec.is_param_spec {
+            return spec;
         }
     }
+    return None;
+}
 
-    if clone.return_type {
-        clone.return_type = apply_solved_type_vars(clone.return_type, solution);
+impl FunctionType.with_param_spec(captured: FunctionType) -> FunctionType {
+    spec = self.param_spec();
+    clone = self.clone();
+    if spec is None {
+        return clone;
     }
-
+    clone.parameters = [
+        param
+        for param in clone.parameters
+        if param.param_type is not spec
+    ]
+        + [param.clone() for param in captured.parameters];
+    if captured.is_gradual_callable_form() {
+        clone.function_flags |= FunctionTypeFlags.GradualCallableForm;
+    } else {
+        clone.function_flags &= ~FunctionTypeFlags.GradualCallableForm;
+    }
     return clone;
 }
 
@@ -1393,9 +1415,33 @@ impl _class_scope_category(scope: any) -> any {
 }
 
 impl create_callable_type(
-    param_types: list[TypeBase], return_type: TypeBase, is_gradual: bool = False
+    param_types: list[TypeBase],
+    return_type: TypeBase,
+    is_gradual: bool = False,
+    param_spec: (TypeVarType | None) = None
 ) -> FunctionType {
     parameters: list[Parameter] = [];
+    if param_spec is not None {
+        is_gradual = True;
+        parameters.append(
+            Parameter(
+                name="args",
+                category=ParameterCategory.ArgsList,
+                param_type=param_spec,
+                default_value=None,
+                param_kind=ParamKind.VARARG
+            )
+        );
+        parameters.append(
+            Parameter(
+                name="kwargs",
+                category=ParameterCategory.KwargsDict,
+                param_type=param_spec,
+                default_value=None,
+                param_kind=ParamKind.KWARG
+            )
+        );
+    }
 
     for (idx, param_type) in enumerate(param_types) {
         parameters.append(

@@ -10,7 +10,6 @@ def callable_key(sym: Symbol) -> CallableKey;
 def _summary_strings(value: object) -> list[str];
 
 walker EndpointEffectPass(TreePass) {
-    static has contract: PassContract = PassContract();
     has _is_writer: bool = False,
         _unknown: bool = False,
         _declared_reads: set[str] = set(),

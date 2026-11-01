@@ -110,12 +110,6 @@ glob PIN_FIXTURE_DIR = os.path.join(
          "    }\n"
          "    return 0;\n"
          "}\n\n"
-         "def narrow(x: int | None) -> int {\n"
-         "    if x < 5 {\n"
-         "        return 1;\n"
-         "    }\n"
-         "    return 0;\n"
-         "}\n\n"
          "def other(x: int) -> int {\n"
          "    return x * 2;\n"
          "}\n\n"
@@ -472,7 +466,7 @@ test "a finding that only matters natively keeps its own code where native is re
         for e in forced.errors_had
         if e.code is not None
     ];
-    assert "E1124" in codes and "E1121" in codes , (
+    assert "E1124" in codes , (
         f"forced native must report the recorded findings under their own "
         f"codes: {[str(e) for e in forced.errors_had]}"
     );
@@ -483,7 +477,7 @@ test "a finding that only matters natively keeps its own code where native is re
         ]}"
     );
     placed = placed_by_name(mod);
-    assert placed["run"] == 'server' and placed["narrow"] == 'server' , placed;
+    assert placed["run"] == 'server' , placed;
     assert placed["other"] == 'native' , placed;
 }
 

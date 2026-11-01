@@ -306,8 +306,10 @@ node UniCFGNode(UniNode) {
     has affected_symbols: set[str] postinit;
     has bb_in: list[UniCFGNode] { getter; }
     has bb_out: list[UniCFGNode] { getter; }
+    has cfg_exits: list[UniCFGNode] { getter; }
 
     def cfg_link(target: UniCFGNode) -> None;
+    def cfg_exit_to(frame: UniCFGNode) -> None;
     def init(*, kid: Sequence[UniNode] = []) -> None;
     def postinit -> None;
     def get_head -> UniCFGNode;
@@ -1880,6 +1882,11 @@ node FuncCall(Expr) {
         setter(callee_signature: (TypeBase | None));
     }
 
+    has arg_binding: list[tuple[int, UniNode]] {
+        getter;
+        setter(arg_binding: list[tuple[int, UniNode]]);
+    }
+
     has target: Expr { getter; }
     has params: (Sequence[(Expr | KWPair)] | None) { getter; }
 
@@ -2553,11 +2560,19 @@ def def_insert_unpacking(
 def bind_assignment_targets(nd: Assignment) -> None;
 def bind_walrus_target(nd: BinaryExpr) -> None;
 def is_walrus(nd: UniNode) -> bool;
+
+def is_irrefutable_pattern(pat: MatchPattern) -> bool;
 def binding_sites_in(scope_root: UniNode) -> list[UniNode];
 def typed_rebind_names(nd: Assignment) -> list[Name];
 def definition_qualname(decl: UniNode) -> str;
 
 def lookup_enclosing_binding(from_scope: UniScopeNode, name: str) -> (Symbol | None);
+
+def lookup_block_binding(scope: UniScopeNode, name: str) -> (Symbol | None);
+
+def declare_global_vars(nd: GlobalVars) -> bool;
+
+def forward_glob_binding(mod: Module, name: str) -> (Symbol | None);
 
 def rebind_or_def_insert(
     target: AstSymbolNode, py_scope: UniScopeNode, single_decl: str

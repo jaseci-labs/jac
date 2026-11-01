@@ -277,7 +277,7 @@ impl NormalizePass.enter_archetype with uni.Archetype entry {
     if here.body {
         if isinstance(here.body, uni.ImplDef) {
             new_kid.append(here.gen_token(Tok.SEMI));
-        } else {
+        } elif isinstance(here.body, Sequence) {
             new_kid.append(here.gen_token(Tok.LBRACE));
             for stmt in here.body {
                 new_kid.append(stmt);
@@ -392,7 +392,7 @@ impl NormalizePass.enter_enum with uni.Enum entry {
     if here.body {
         if isinstance(here.body, uni.ImplDef) {
             new_kid.append(here.gen_token(Tok.SEMI));
-        } else {
+        } elif isinstance(here.body, Sequence) {
             new_kid.append(here.gen_token(Tok.LBRACE));
             prev_stmt = None;
             for stmt in here.body {

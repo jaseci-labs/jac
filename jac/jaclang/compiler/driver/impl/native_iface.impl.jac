@@ -595,8 +595,9 @@ impl NativeIface.classes_json -> dict[str, any] {
 
 impl _rekey_class_refs(value: any, keys: dict[str, str]) -> any {
     if isinstance(value, dict) {
+        entries: dict[str, any] = value;
         out: dict[str, any] = {};
-        for (k, v) in value.items() {
+        for (k, v) in entries.items() {
             if k in ("aux", "class") and isinstance(v, str) {
                 out[k] = keys.get(v, v);
             } else {
@@ -606,7 +607,8 @@ impl _rekey_class_refs(value: any, keys: dict[str, str]) -> any {
         return out;
     }
     if isinstance(value, list) {
-        return [_rekey_class_refs(v, keys) for v in value];
+        items: list[any] = value;
+        return [_rekey_class_refs(v, keys) for v in items];
     }
     return value;
 }

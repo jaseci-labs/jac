@@ -101,6 +101,10 @@ impl _warn_once(key_material: str, message: str) -> None {
     logger.warning(message);
 }
 
+impl JWTError.init(reason: str = 'invalid token') {
+    self.reason = reason;
+}
+
 impl JWTError.__str__ -> str {
     return self.reason;
 }
@@ -163,15 +167,17 @@ impl jwt_decode(
     }
     (head_part, body_part, sig_part) = (parts[0], parts[1], parts[2]);
     try {
-        header = loads(_b64url_decode(head_part));
-        payload = loads(_b64url_decode(body_part));
+        raw_header = loads(_b64url_decode(head_part));
+        raw_payload = loads(_b64url_decode(body_part));
         signature = _b64url_decode(sig_part);
     } except Exception {
         raise JWTError(reason='malformed token');
     }
-    if not isinstance(header, dict) or not isinstance(payload, dict) {
+    if not isinstance(raw_header, dict) or not isinstance(raw_payload, dict) {
         raise JWTError(reason='malformed token');
     }
+    header: dict[str, any] = raw_header;
+    payload: dict[str, any] = raw_payload;
     if header.get('alg') != 'HS256' {
         raise JWTError(reason='unsupported algorithm');
     }

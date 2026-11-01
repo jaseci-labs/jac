@@ -362,12 +362,12 @@ glob KEYWORDS: dict[str, TokenKind] = {
 
 def lookup_keyword(text: str) -> TokenKind | None;
 
-glob RESERVED_KINDS: frozenset = frozenset(KEYWORDS.values())
+glob RESERVED_KINDS: frozenset[TokenKind] = frozenset(KEYWORDS.values())
          - frozenset({TokenKind.BOOL, TokenKind.NULL});
 
 def is_reserved_kind(kind: TokenKind) -> bool;
 
-glob BUILTIN_TYPE_KINDS: frozenset = frozenset(
+glob BUILTIN_TYPE_KINDS: frozenset[TokenKind] = frozenset(
          {
              TokenKind.TYP_STRING,
              TokenKind.TYP_INT,

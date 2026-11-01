@@ -28,6 +28,6 @@ glob RN_HTML_VIEW_TAGS = [
      ],
      RN_HTML_SPECIAL_TAGS = ["button", "input", "textarea", "img", "a"];
 
-def supported_rn_html_tags -> frozenset;
+def supported_rn_html_tags -> frozenset[str];
 
 def rn_tag_suggestions -> dict[str, str];

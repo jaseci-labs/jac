@@ -1,3 +1,7 @@
+impl RequestValidationError.init(errors: list[dict[str, any]] = []) {
+    self.errors = errors;
+}
+
 impl RequestValidationError.__str__ -> str {
     return f"{len(self.errors)} validation error(s)";
 }
@@ -27,6 +31,7 @@ impl _construct_object(value: any, target: any) -> any {
     if not isinstance(value, dict) {
         raise ValueError(f"expected object for {getattr(target, '__name__', target)}");
     }
+    record: dict[str, any] = value;
     init_fn = getattr(target, '__init__');
     hints: dict[str, any] = {};
     try {
@@ -41,8 +46,8 @@ impl _construct_object(value: any, target: any) -> any {
             in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD) {
             continue;
         }
-        if pname in value {
-            kwargs[pname] = coerce_value(value[pname], hints.get(pname));
+        if pname in record {
+            kwargs[pname] = coerce_value(record[pname], hints.get(pname));
         } elif param.`default is inspect.Parameter.empty {
             raise ValueError(f"missing required field '{pname}'");
         }
@@ -152,8 +157,9 @@ impl coerce_value(value: any, target: any = None) -> any {
             if not isinstance(value, dict) {
                 raise ValueError(f"expected object, got {type(value).__name__}");
             }
+            entries: dict[str, any] = value;
             val_t = args[1] if len(args) > 1 else None;
-            return {k: coerce_value(v, val_t) for (k, v) in value.items()};
+            return {k: coerce_value(v, val_t) for (k, v) in entries.items()};
         }
         if origin is tuple {
             return tuple(
@@ -292,8 +298,11 @@ impl _extract_raw(
             }
             return (True, form_values);
         }
-        if isinstance(body_json, dict) and param.name in body_json {
-            return (True, body_json[param.name]);
+        if isinstance(body_json, dict) {
+            body_fields: dict[str, any] = body_json;
+            if param.name in body_fields {
+                return (True, body_fields[param.name]);
+            }
         }
         files = request.upload_files.get(param.name, []);
         target = _param_target(param);

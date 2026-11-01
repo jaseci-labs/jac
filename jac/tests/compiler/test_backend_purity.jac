@@ -201,8 +201,14 @@ glob FORBIDDEN: dict[str, str] = {
              "an already-resolved archetype symbol - a symbol-FACT reader, "
              "not a re-run of member resolution"
          ),
+         ("native/na_ir_gen_pass.impl/generics.impl.jac", ".lookup("): (
+             1,
+             "_ct_only_name reads the symbol a comptime import bound in this "
+             "name's own scope; the frontend's symbol table is the fact, and a "
+             "type parameter's use site is not linked to it"
+         ),
          ("native/na_ir_gen_pass.impl/core.impl.jac", "type_tag.tag"): (
-             3,
+             2,
              "declaration-surface reads at interop layout export, plus the "
              "quiet lowerability probe on imported globs (the py-side "
              "carve-out for dual-codespace modules) which reads the same "

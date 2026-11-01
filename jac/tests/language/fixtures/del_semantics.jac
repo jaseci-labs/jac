@@ -333,13 +333,7 @@ def multi_targets {
         raised = True;
     }
     assert raised , "C3 no KeyError";
-    gone = False;
-    try {
-        print(a3c);
-    } except UnboundLocalError {
-        gone = True;
-    }
-    assert gone , "C3 a3c still bound";
+    assert "a3c" not in locals() , "C3 a3c still bound";
 }
 
 """D. Root is never a valid destroy target."""

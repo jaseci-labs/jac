@@ -1,5 +1,5 @@
 impl target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, str] {
-    npm_plugin_deps: dict[str, str] = dict(config.plugin_dependencies.get("npm", {}));
+    npm_plugin_deps: dict[str, any] = dict(config.plugin_dependencies.get("npm", {}));
     deps: dict[str, str] = {};
     key1 = str(target_name or "").strip();
     keys = [key1, key1.replace("_", "-"), key1.replace("-", "_")];
@@ -9,7 +9,8 @@ impl target_scoped_npm_deps(config: JacConfig, target_name: str) -> dict[str, st
         }
         section = npm_plugin_deps.get(key, {});
         if isinstance(section, dict) {
-            for (name, version) in section.items() {
+            section_table: dict[str, any] = section;
+            for (name, version) in section_table.items() {
                 if isinstance(version, str) {
                     deps[name] = version;
                 }

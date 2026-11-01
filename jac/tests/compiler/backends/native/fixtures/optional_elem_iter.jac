@@ -27,7 +27,7 @@ def _filled -> Holder {
 def opt_list_direct_loop -> int {
     h = _filled();
     total = 0;
-    for p in h.parts {
+    for p in (h.parts as list[Item]) {
         total += p.n;
     }
     return total;
@@ -44,7 +44,7 @@ def opt_list_or_loop -> int {
 
 def opt_list_direct_compr -> int {
     h = _filled();
-    return sum([p.n for p in h.parts]);
+    return sum([p.n for p in (h.parts as list[Item])]);
 }
 
 def opt_list_or_compr -> int {
@@ -75,7 +75,7 @@ def opt_str_list_loop -> int {
 def opt_dict_direct_loop -> int {
     h = _filled();
     total = 0;
-    for k in h.tbl {
+    for k in (h.tbl as dict[str, int]) {
         total += len(k);
     }
     return total;
@@ -108,7 +108,7 @@ def none_direct_loop_raises -> int {
     h = Holder();
     total = 0;
     try {
-        for p in h.parts {
+        for p in (h.parts as list[Item]) {
             total += p.n;
         }
     } except TypeError {
@@ -138,7 +138,7 @@ def optional_local_loop -> int {
 
 def opt_list_slice_len -> int {
     h = _filled();
-    copy = h.parts[:];
+    copy = (h.parts as list[Item])[:];
     total = 0;
     for p in copy {
         total += p.n;
@@ -148,14 +148,14 @@ def opt_list_slice_len -> int {
 
 def opt_list_index -> int {
     h = _filled();
-    return h.parts[1].n;
+    return (h.parts as list[Item])[1].n;
 }
 
 def none_slice_raises -> int {
     h = Holder();
     total = 0;
     try {
-        for p in h.parts[:] {
+        for p in (h.parts as list[Item])[:] {
             total += p.n;
         }
     } except TypeError {

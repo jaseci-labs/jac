@@ -134,7 +134,9 @@ impl PgEventStream._advance(topic: str, group: str, hi: int) {
 }
 
 impl PgEventStream._to_event(payload: any) -> Event {
-    data = payload if isinstance(payload, dict) else json.loads(str(payload));
+    data: dict[str, any] = payload
+        if isinstance(payload, dict)
+        else json.loads(str(payload));
     return Event(
         event_type=str(data.get('event_type') or ''),
         data=cast(dict, data.get('data') or {}),

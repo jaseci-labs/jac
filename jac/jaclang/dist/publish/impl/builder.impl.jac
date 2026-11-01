@@ -478,7 +478,7 @@ impl _with_bootstrap(init_source: str, shim: str) -> str {
             isinstance(stmt, py_ast.ImportFrom) and (stmt.module == "__future__")
         );
         if is_docstring or is_future {
-            insert_at = stmt.end_lineno + 1;
+            insert_at = (stmt.end_lineno or stmt.lineno) + 1;
         } else {
             break;
         }

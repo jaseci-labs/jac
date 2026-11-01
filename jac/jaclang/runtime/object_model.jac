@@ -3,7 +3,8 @@ import from copy { deepcopy }
 import from reprlib { recursive_repr }
 import from typing { get_origin, ClassVar as PyClassVar, Callable as PyCallable, cast }
 
-glob MISSING: object = object();
+glob MISSING: object = object(),
+     CALL_DEFAULT: object = object();
 
 class ObjectField {
     has name: str,
@@ -51,6 +52,8 @@ def fields(value: object) -> tuple[ObjectField, ...];
 def _is_class_var(annotation: object) -> bool;
 
 def _install_init(cls: type, declared: list[ObjectField]);
+
+def _handwritten_init_owner(cls: type) -> (type | None);
 
 def make_object(cls: type) -> type;
 

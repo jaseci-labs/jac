@@ -92,7 +92,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
             self.client_manifest.exports.append(name);
             self.client_manifest.params[name] = [
                 p.name.sym_name
-                for p in here.signature.params
+                for p in (here.signature.params or [])
                 if p is not ref_param
             ]
                 if isinstance(here.signature, uni.FuncSignature)
@@ -115,7 +115,7 @@ impl EsastGenPass.exit_ability with uni.Ability exit {
     sig_params = (
         [
             p
-            for p in here.signature.params
+            for p in (here.signature.params or [])
             if p is not ref_param
         ]
             if isinstance(here.signature, uni.FuncSignature)

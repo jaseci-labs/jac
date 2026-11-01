@@ -1,4 +1,5 @@
 import logging;
+import from typing { SupportsIndex }
 import from uuid { UUID }
 
 glob logger = logging.getLogger(__name__),
@@ -69,9 +70,9 @@ class LazyRefs(list) {
     def __delitem__(self: LazyRefs, key: any) -> None;
     def append(self: LazyRefs, item: any) -> None;
     def extend(self: LazyRefs, items: any) -> None;
-    def insert(self: LazyRefs, i: int, item: any) -> None;
+    def insert(self: LazyRefs, i: SupportsIndex, item: any) -> None;
     def remove(self: LazyRefs, item: any) -> None;
-    def pop(self: LazyRefs, i: int = -1) -> any;
+    def pop(self: LazyRefs, i: SupportsIndex = -1) -> any;
     def clear(self: LazyRefs) -> None;
     def sort(self: LazyRefs, **kw: any) -> None;
     def reverse(self: LazyRefs) -> None;

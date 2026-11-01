@@ -87,7 +87,9 @@ test "the seal records the native unit and its artifact" {
             image = load_image(os.path.join(pkg, "_precompiled"));
             assert image is not None;
             image.verify_native();
-            assert image.native_artifact()["path"] == artifact["path"];
+            native_artifact = image.native_artifact();
+            assert native_artifact is not None;
+            assert native_artifact["path"] == artifact["path"];
             assert set(image.native_units().keys()) == {"fast.jac"};
             import ctypes;
             import from jaclang.runtime.native_library { shared_engine_for }

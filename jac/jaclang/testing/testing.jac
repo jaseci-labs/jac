@@ -13,7 +13,7 @@ obj TestResponse {
     def json -> dict[str, any];
 
     has ok: bool { getter; }
-    has data: (dict[str, any] | None) { getter; }
+    has data: any { getter; }
 }
 
 obj JacTestClient {

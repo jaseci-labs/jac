@@ -1,3 +1,7 @@
+impl AttemptsExhausted.init(retry_after: int = 1) {
+    self.retry_after = retry_after;
+}
+
 impl limit_key(scope: str, actor: str) -> str {
     return "ratelimit:" + hashlib.sha256((scope + ":" + actor).encode()).hexdigest();
 }

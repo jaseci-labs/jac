@@ -4,7 +4,9 @@ Cross-backend equivalence fixture. A name whose every assignment is inside a
 loop belongs to one pass of that loop as far as a closure created in the body
 is concerned: the closure shares it with the rest of the function while the
 pass lasts and keeps its own copy once the pass ends. A name also assigned
-outside the loop stays shared.
+outside the loop stays shared. A case that reads such a name after its loop
+uses a `while True` loop, since a local must be assigned on every path before
+it is read and a `for` loop may run no passes.
 """
 
 def loop_closures_py -> dict[str, any] {
@@ -56,13 +58,18 @@ def loop_closures_py -> dict[str, any] {
     }
 
     bump_fs: list[Callable[[], int]] = [];
-    for x in [1, 2, 3] {
-        c = x;
+    step = 0;
+    while True {
+        step += 1;
+        c = step;
         def bump -> int {
             c += 10;
             return c;
         }
         bump_fs.append(bump);
+        if step == 3 {
+            break;
+        }
     }
     bump_first = bump_fs[0]();
     bump_again = bump_fs[0]();
@@ -109,10 +116,12 @@ def loop_closures_py -> dict[str, any] {
     }
 
     break_fs: list[Callable[[], int]] = [];
-    for x in [1, 2, 3] {
-        b = x;
+    step = 0;
+    while True {
+        step += 1;
+        b = step;
         break_fs.append(lambda -> int { return b; });
-        if x == 2 {
+        if step == 2 {
             break;
         }
     }
@@ -144,9 +153,14 @@ def loop_closures_py -> dict[str, any] {
     ];
 
     after_fs: list[Callable[[], int]] = [];
-    for x in [1, 2, 3] {
-        a = x * 2;
+    step = 0;
+    while True {
+        step += 1;
+        a = step * 2;
         after_fs.append(lambda -> int { return a; });
+        if step == 3 {
+            break;
+        }
     }
 
     return {
@@ -220,13 +234,18 @@ def loop_closures_cl -> dict[str, any] {
     }
 
     bump_fs: list[Callable[[], int]] = [];
-    for x in [1, 2, 3] {
-        c = x;
+    step = 0;
+    while True {
+        step += 1;
+        c = step;
         def bump -> int {
             c += 10;
             return c;
         }
         bump_fs.append(bump);
+        if step == 3 {
+            break;
+        }
     }
     bump_first = bump_fs[0]();
     bump_again = bump_fs[0]();
@@ -273,10 +292,12 @@ def loop_closures_cl -> dict[str, any] {
     }
 
     break_fs: list[Callable[[], int]] = [];
-    for x in [1, 2, 3] {
-        b = x;
+    step = 0;
+    while True {
+        step += 1;
+        b = step;
         break_fs.append(lambda -> int { return b; });
-        if x == 2 {
+        if step == 2 {
             break;
         }
     }
@@ -308,9 +329,14 @@ def loop_closures_cl -> dict[str, any] {
     ];
 
     after_fs: list[Callable[[], int]] = [];
-    for x in [1, 2, 3] {
-        a = x * 2;
+    step = 0;
+    while True {
+        step += 1;
+        a = step * 2;
         after_fs.append(lambda -> int { return a; });
+        if step == 3 {
+            break;
+        }
     }
 
     return {
@@ -384,13 +410,18 @@ def loop_closures_na -> dict[str, any] {
     }
 
     bump_fs: list[Callable[[], int]] = [];
-    for x in [1, 2, 3] {
-        c = x;
+    step = 0;
+    while True {
+        step += 1;
+        c = step;
         def bump -> int {
             c += 10;
             return c;
         }
         bump_fs.append(bump);
+        if step == 3 {
+            break;
+        }
     }
     bump_first = bump_fs[0]();
     bump_again = bump_fs[0]();
@@ -437,10 +468,12 @@ def loop_closures_na -> dict[str, any] {
     }
 
     break_fs: list[Callable[[], int]] = [];
-    for x in [1, 2, 3] {
-        b = x;
+    step = 0;
+    while True {
+        step += 1;
+        b = step;
         break_fs.append(lambda -> int { return b; });
-        if x == 2 {
+        if step == 2 {
             break;
         }
     }
@@ -472,9 +505,14 @@ def loop_closures_na -> dict[str, any] {
     ];
 
     after_fs: list[Callable[[], int]] = [];
-    for x in [1, 2, 3] {
-        a = x * 2;
+    step = 0;
+    while True {
+        step += 1;
+        a = step * 2;
         after_fs.append(lambda -> int { return a; });
+        if step == 3 {
+            break;
+        }
     }
 
     return {

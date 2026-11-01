@@ -386,14 +386,15 @@ impl _parse_log_body(
             parse_ok = False;
         }
         if parse_ok {
-            out["ts"] = parsed.get("ts") or ts_iso;
-            out["level"] = parsed.get("level") or out["level"];
-            out["service"] = parsed.get("service") or out["service"];
-            out["trace_id"] = parsed.get("trace_id");
-            out["msg"] = parsed.get("msg") or body;
-            out["extras"] = parsed.get("extras") or {};
-            if parsed.get("exc") {
-                out["extras"]["exc"] = parsed["exc"];
+            record: dict[str, any] = parsed;
+            out["ts"] = record.get("ts") or ts_iso;
+            out["level"] = record.get("level") or out["level"];
+            out["service"] = record.get("service") or out["service"];
+            out["trace_id"] = record.get("trace_id");
+            out["msg"] = record.get("msg") or body;
+            out["extras"] = record.get("extras") or {};
+            if record.get("exc") {
+                out["extras"]["exc"] = record["exc"];
             }
             return out;
         }

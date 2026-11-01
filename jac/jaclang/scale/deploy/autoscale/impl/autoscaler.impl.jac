@@ -13,11 +13,16 @@ impl triggers_can_reach_zero(
     if not isinstance(triggers, list) {
         return False;
     }
-    return any(
-        _is_real_trigger_type(t.get("type", ""))
-        for t in triggers
-        if isinstance(t, dict)
-    );
+    entries: list[any] = triggers;
+    for t in entries {
+        if isinstance(t, dict) {
+            trigger: dict[str, any] = t;
+            if _is_real_trigger_type(trigger.get("type", "")) {
+                return True;
+            }
+        }
+    }
+    return False;
 }
 
 impl transition_from(

@@ -317,7 +317,8 @@ impl ViteBundler._format_config_object(
         } elif isinstance(value, (int, float)) {
             items.append(f"{indent_str}  {key}: {value},");
         } elif isinstance(value, list) {
-            list_str = ', '.join(repr(v) for v in value);
+            values: list[any] = value;
+            list_str = ', '.join(repr(v) for v in values);
             items.append(f"{indent_str}  {key}: [{list_str}],");
         } elif isinstance(value, dict) {
             nested = self._format_config_object(value, (indent + 2));
@@ -1164,10 +1165,11 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(parents=True, exist_ok=True);
     created_files: list[Path] = [];
-    for (config_name, config_data) in configs.items() {
-        if not isinstance(config_data, dict) {
+    for (config_name, raw_config) in configs.items() {
+        if not isinstance(raw_config, dict) {
             continue;
         }
+        config_data: dict[str, any] = raw_config;
         extension = config_data.get('extension', '.js');
         config_path = configs_dir / f'{config_name}.config{extension}';
 
@@ -1211,7 +1213,8 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     auth = npm_config.get('auth', {});
     for (registry_path, auth_data) in auth.items() {
         if isinstance(auth_data, dict) {
-            for (key, value) in auth_data.items() {
+            auth_table: dict[str, any] = auth_data;
+            for (key, value) in auth_table.items() {
                 lines.append(f"{registry_path}:{key}={value}");
             }
         } elif isinstance(auth_data, str) {
@@ -1299,7 +1302,8 @@ impl ViteBundler._dispatch_client_event(self: ViteBundler, line: str) -> None {
     if not isinstance(data, dict) {
         return;
     }
-    handler(str(data.get('slot') or ''), data.get('payload'));
+    event: dict[str, any] = data;
+    handler(str(event.get('slot') or ''), event.get('payload'));
 }
 
 impl ViteBundler.start_dev_server(
@@ -1699,20 +1703,20 @@ impl _split_build_overrides(
     build_config: dict[str, any]
 ) -> tuple[dict[str, any], dict[str, any], dict[str, any]] {
     build = dict(build_config);
-    rollup = build.pop('rollupOptions', {});
-    if not isinstance(rollup, dict) {
+    raw_rollup = build.pop('rollupOptions', {});
+    if not isinstance(raw_rollup, dict) {
         raise ClientBundleError(
             '[client.vite.build] rollupOptions must be a table'
         ) from None;
     }
-    rollup = dict(rollup);
-    output = rollup.pop('output', {});
-    if not isinstance(output, dict) {
+    rollup: dict[str, any] = dict(raw_rollup);
+    raw_output = rollup.pop('output', {});
+    if not isinstance(raw_output, dict) {
         raise ClientBundleError(
             '[client.vite.build.rollupOptions] output must be a single table'
         ) from None;
     }
-    output = dict(output);
+    output: dict[str, any] = dict(raw_output);
     ignored: list[str] = [];
     for key in ('outDir', 'emptyOutDir') {
         if build.pop(key, None) is not None {

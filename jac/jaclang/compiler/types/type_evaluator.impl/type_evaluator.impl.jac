@@ -349,10 +349,26 @@ impl TypeEvaluator._get_type_of_expression_core(
                 tuple_inst = self._convert_to_instance(self.prefetch.tuple_class);
                 if isinstance(tuple_inst, ClassType) and expr.values {
                     elem_types_t: list[TypeBase] = [];
-                    for _val in expr.values {
+                    expected_elems: list[TypeBase] = expected_type.private.type_args
+                        if isinstance(expected_type, ClassType)
+                            and expected_type.shared.same_class(
+                                self.prefetch.tuple_class.shared
+                            )
+                            and expected_type.private.type_args
+                        else [];
+                    for (pos, _val) in enumerate(expr.values) {
+                        expected_elem: TypeBase | None = None;
+                        if expected_elems {
+                            expected_elem = self._convert_to_instance(
+                                expected_elems[pos]
+                                    if pos < len(expected_elems)
+                                    else expected_elems[-1]
+                            );
+                        }
                         et = self._container_value_type(
                             self.get_type_of_expression(
-                                _val.value if isinstance(_val, KWPair) else _val
+                                _val.value if isinstance(_val, KWPair) else _val,
+                                expected_type=expected_elem
                             ),
                             expr
                         );
@@ -1662,6 +1678,23 @@ impl TypeEvaluator._get_type_of_expression_core(
                         return UnknownType(is_diagnosed=True);
                     }
                 }
+                if result is None and isinstance(base_type, UnionType) {
+                    for union_part in base_type.types {
+                        if isinstance(union_part, (UnknownType, AnyType))
+                            or union_part.is_any_instance() {
+                            return UnknownType();
+                        }
+                    }
+                    for union_part in base_type.types {
+                        if self.get_type_of_magic_method_call(
+                            union_part, "__getitem__", [subscript_arg], None
+                        )
+                            is None {
+                            self.emit_diag(E1040, expr, type=str(union_part));
+                            return UnknownType(is_diagnosed=True);
+                        }
+                    }
+                }
                 return result or UnknownType();
             }
 
@@ -1807,6 +1840,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                         );
                         continue;
                     }
+                    if all_numeric(left_type) and all_numeric(right_type) {
+                        continue;
+                    }
                     (magic, rmagic) = BINARY_OPERATOR_MAP[op.name];
                     result = self.get_type_of_magic_method_call(
                         left_type, magic, [expr.rights[i]], None
@@ -1864,7 +1900,9 @@ impl TypeEvaluator._get_type_of_expression_core(
 
             and_override_keys: list[int] = [];
             for i in range(num_values) {
-                op_type = self.get_type_of_expression(expr.values[i].expr);
+                op_type = self.get_type_of_expression(
+                    expr.values[i].expr, expected_type=expected_type
+                );
 
                 if is_and and i < num_values - 1 {
                     import from jaclang.compiler.types.type_evaluator {
@@ -3484,10 +3522,21 @@ impl TypeEvaluator.get_type_of_magic_method_call(
     if isinstance(obj_type, UnionType) {
         result_types: list[TypeBase] = [];
         for member_type in obj_type.types {
-            result = self.get_type_of_magic_method_call(
-                member_type, method_name, arg_nodes, node_for_error
-            );
-            if result is not None and not self._type_in_list(result, result_types) {
+            result: TypeBase | None = None;
+            if isinstance(member_type, TypeVarType) {
+                result = UnknownType();
+            } elif isinstance(member_type, UnknownType)
+                or self.is_any_type(member_type) {
+                result = member_type;
+            } else {
+                result = self.get_type_of_magic_method_call(
+                    member_type, method_name, arg_nodes, node_for_error
+                );
+            }
+            if result is None {
+                return None;
+            }
+            if not self._type_in_list(result, result_types) {
                 result_types.append(result);
             }
         }
@@ -4774,6 +4823,59 @@ impl TypeEvaluator.flow_pred_never_returns(pred: UniCFGNode) -> bool {
     return False;
 }
 
+impl TypeEvaluator.flow_edge_live(pred: UniCFGNode, succ: UniCFGNode) -> bool {
+    if self.flow_pred_never_returns(pred) {
+        return False;
+    }
+    return not (
+        isinstance(pred, MatchStmt)
+        and not isinstance(succ, MatchCase)
+        and self.match_is_exhaustive(pred)
+    );
+}
+
+impl TypeEvaluator.match_is_exhaustive(stmt: MatchStmt) -> bool {
+    remaining: list[TypeBase] = [];
+    subject = self.get_type_of_expression(stmt.target);
+    remaining = list(subject.types) if isinstance(subject, UnionType) else [subject];
+    for mc in stmt.cases {
+        if mc.guard is not None {
+            continue;
+        }
+        if is_irrefutable_pattern(mc.pattern) {
+            return True;
+        }
+        covered = self._get_type_from_match_pattern(mc.pattern);
+        if covered is None or not self._pattern_covers_its_type(mc.pattern) {
+            continue;
+        }
+        alternatives = covered.types if isinstance(covered, UnionType) else [covered];
+        remaining = [
+            member
+            for member in remaining
+            if not any(self.assign_type(member, alt) for alt in alternatives)
+        ];
+        if not remaining {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl TypeEvaluator._pattern_covers_its_type(pat: MatchPattern) -> bool {
+    if isinstance(pat, MatchArch) {
+        return all(is_irrefutable_pattern(arg) for arg in (pat.arg_patterns or []))
+            and all(is_irrefutable_pattern(kw.value) for kw in (pat.kw_patterns or []));
+    }
+    if isinstance(pat, MatchAs) and pat.pattern is not None {
+        return self._pattern_covers_its_type(pat.pattern);
+    }
+    if isinstance(pat, MatchOr) {
+        return all(self._pattern_covers_its_type(alt) for alt in pat.patterns);
+    }
+    return False;
+}
+
 impl TypeEvaluator.get_narrowed_type(
     symbol: Symbol, at_node: UniNode
 ) -> TypeBase | None {
@@ -4931,7 +5033,9 @@ impl TypeEvaluator._get_type_from_flow_node(
     has_unnarrowed_pred: bool = False;
     for pred in flow_node.bb_in {
         if pred is flow_node {
-            has_unnarrowed_pred = True;
+            if not is_loop_header or self._loop_body_writes_target(flow_node, target) {
+                has_unnarrowed_pred = True;
+            }
             continue;
         }
 
@@ -5315,6 +5419,17 @@ impl TypeEvaluator._loop_body_writes_target(
                 if kw.key is not None {
                     keys.update(collect_assignment_target_keys(kw.key));
                 }
+            }
+        }
+        for nm in loop_node.get_all_sub_nodes(Name) {
+            holder = nm.parent;
+            if nm.expr_ctx != ExprCtx.LOAD
+                or (
+                    isinstance(holder, BinaryExpr)
+                    and is_walrus(holder)
+                    and holder.left is nm
+                ) {
+                keys.add(nm.value);
             }
         }
         written = keys;

@@ -76,7 +76,7 @@ impl jab_app_meta(img_root: Path) -> dict[str, any] {
     raw = json.loads(
         (img_root / "_precompiled" / MANIFEST_NAME).read_text(encoding="utf-8")
     );
-    meta = raw if isinstance(raw, dict) else {};
+    meta: dict[str, any] = raw if isinstance(raw, dict) else {};
     return {
         "kind": meta.get("kind", ""),
         "app": meta.get("app", ""),

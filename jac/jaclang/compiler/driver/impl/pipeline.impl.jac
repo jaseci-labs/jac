@@ -24,107 +24,105 @@ impl no_blocker -> str {
 
 impl front_passes -> PassSchedule {
     return [
-        AppContextPass,
-        GraphLoweringPass,
-        ASTValidationPass,
-        AbsorbImportsPass,
-        SymTabBuildPass
+        APP_CONTEXT_STEP,
+        GRAPH_LOWERING_STEP,
+        AST_VALIDATION_STEP,
+        ABSORB_IMPORTS_STEP,
+        SYM_TAB_BUILD_STEP
     ];
 }
 
 impl symbols_passes(request: ProductRequest) -> PassSchedule {
-    return front_passes() + [DeclImplMatchPass, PlacementApplyPass];
+    return front_passes() + [DECL_IMPL_MATCH_STEP, PLACEMENT_APPLY_STEP];
 }
 
 impl bootstrap_ir_passes(request: ProductRequest) -> (PassSchedule | None) {
-    return front_passes() + [DeclImplMatchPass, SemanticAnalysisPass];
+    return front_passes() + [DECL_IMPL_MATCH_STEP, SEMANTIC_ANALYSIS_STEP];
 }
 
 impl ir_passes(request: ProductRequest) -> PassSchedule {
     passes = front_passes()
         + [
-            ImportWiringPass,
-            PackageBoundaryPass,
-            DeclImplMatchPass,
-            SemanticAnalysisPass,
-            SemDefMatchPass,
-            CFGBuildPass
+            IMPORT_WIRING_STEP,
+            PACKAGE_BOUNDARY_STEP,
+            DECL_IMPL_MATCH_STEP,
+            SEMANTIC_ANALYSIS_STEP,
+            SEM_DEF_MATCH_STEP,
+            CFG_BUILD_STEP
         ];
     if request.gen_mtir {
-        import from jaclang.compiler.passes.mtir_gen_pass { MTIRGenPass }
-        passes.append(MTIRGenPass);
+        passes.append(MTIR_GEN_STEP);
     }
-    passes.append(JsxIntrinsicGuardPass);
-    passes.append(PlacementApplyPass);
-    import from jaclang.compiler.passes.comptime_resolve_pass { ComptimeResolvePass }
-    passes.append(ComptimeResolvePass);
+    passes.append(JSX_INTRINSIC_GUARD_STEP);
+    passes.append(PLACEMENT_APPLY_STEP);
+    passes.append(COMPTIME_RESOLVE_STEP);
     return passes;
 }
 
 impl flow_passes(request: ProductRequest) -> PassSchedule {
-    return [CFGBuildPass];
+    return [CFG_BUILD_STEP];
 }
 
 impl analysis_passes(request: ProductRequest) -> PassSchedule {
     return [
-        RegionInferPass,
-        VariantAgreementPass,
-        TypeCheckPass,
-        StaticAnalysisPass,
-        AccessCheckPass,
-        OwnershipCheckPass,
-        PlacementPass,
-        PortabilityWarnPass,
-        JacLintCheckPass
+        REGION_INFER_STEP,
+        VARIANT_AGREEMENT_STEP,
+        TYPE_CHECK_STEP,
+        STATIC_ANALYSIS_STEP,
+        FLOW_CHECK_STEP,
+        ACCESS_CHECK_STEP,
+        OWNERSHIP_CHECK_STEP,
+        PLACEMENT_STEP,
+        PORTABILITY_WARN_STEP,
+        JAC_LINT_CHECK_STEP
     ];
 }
 
 impl declaration_passes(request: ProductRequest) -> PassSchedule {
-    return [DeclarationTypePass];
+    return [DECLARATION_TYPE_STEP];
 }
 
 impl boundary_passes(request: ProductRequest) -> PassSchedule {
     if not request.endpoint_effects {
-        return [BoundaryFactsPass, BoundaryAnalysisPass];
+        return [BOUNDARY_FACTS_STEP, BOUNDARY_ANALYSIS_STEP];
     }
-    return [BoundaryFactsPass, BoundaryAnalysisPass, EndpointEffectPass];
+    return [BOUNDARY_FACTS_STEP, BOUNDARY_ANALYSIS_STEP, ENDPOINT_EFFECT_STEP];
 }
 
 impl client_passes(request: ProductRequest) -> PassSchedule {
-    return [EsastGenPass];
+    return [ESAST_GEN_STEP];
 }
 
 impl layout_passes(request: ProductRequest) -> PassSchedule {
-    return [LayoutPass];
+    return [LAYOUT_STEP];
 }
 
 impl codegen_passes(request: ProductRequest) -> PassSchedule {
-    passes: PassSchedule = [RcFactsPass, EsastGenPass];
+    passes: PassSchedule = [RC_FACTS_STEP, ESAST_GEN_STEP];
     if request.native and not unavailable(CompilationProduct.NATIVE_LOWER) {
-        import from jaclang.compiler.backends.native.na_ir_gen_pass { NaIRGenPass }
-        passes.append(NaIRGenPass);
+        passes.append(NA_IR_GEN_STEP);
     }
     return passes;
 }
 
 impl py_ir_passes(request: ProductRequest) -> PassSchedule {
-    return [NativeImportFactsPass, JcirGenPass];
+    return [NATIVE_IMPORT_FACTS_STEP, JCIR_GEN_STEP];
 }
 
 impl frozen_passes(request: ProductRequest) -> PassSchedule {
-    return [FreezeStructurePass];
+    return [FREEZE_STRUCTURE_STEP];
 }
 
 impl bytecode_passes(request: ProductRequest) -> PassSchedule {
-    return [JcirBytecodeGenPass];
+    return [JCIR_BYTECODE_GEN_STEP];
 }
 
 impl native_ir_passes(request: ProductRequest) -> PassSchedule {
-    return [NativeImportFactsPass, RcFactsPass, NaIRGenPass];
+    return [NATIVE_IMPORT_FACTS_STEP, RC_FACTS_STEP, NA_IR_GEN_STEP];
 }
 
 impl native_lower_passes(request: ProductRequest) -> PassSchedule {
-    return [RcFactsPass, NaIRGenPass];
+    return [RC_FACTS_STEP, NA_IR_GEN_STEP];
 }
 
 impl native_toolchain_blocker -> str {
@@ -133,51 +131,51 @@ impl native_toolchain_blocker -> str {
 }
 
 impl native_object_passes(request: ProductRequest) -> PassSchedule {
-    return [NativeCompilePass];
+    return [NATIVE_COMPILE_STEP];
 }
 
 impl format_passes(request: ProductRequest) -> PassSchedule {
-    return [CommentAttachPass, DocIRGenPass, JacFormatPass];
+    return [COMMENT_ATTACH_STEP, DOC_IR_GEN_STEP, JAC_FORMAT_STEP];
 }
 
 impl format_lintfix_passes(request: ProductRequest) -> PassSchedule {
-    return [CommentAttachPass, JacAutoLintPass, DocIRGenPass, JacFormatPass];
+    return [COMMENT_ATTACH_STEP, JAC_AUTO_LINT_STEP, DOC_IR_GEN_STEP, JAC_FORMAT_STEP];
 }
 
 impl lint_passes(request: ProductRequest) -> PassSchedule {
-    return [JacLintCheckPass];
+    return [JAC_LINT_CHECK_STEP];
 }
 
 impl python_ast_passes(request: ProductRequest) -> PassSchedule {
-    return [PyastBuildPass];
+    return [PYAST_BUILD_STEP];
 }
 
 impl python_symbols_passes(request: ProductRequest) -> PassSchedule {
-    return [SymTabBuildPass];
+    return [SYM_TAB_BUILD_STEP];
 }
 
 impl grammar_passes(request: ProductRequest) -> PassSchedule {
-    return [GrammarExtractPass];
+    return [GRAMMAR_EXTRACT_STEP];
 }
 
 impl cfg_dot_passes(request: ProductRequest) -> PassSchedule {
-    return [CoalesceBBPass];
+    return [COALESCE_BB_STEP];
 }
 
 impl normalize_passes(request: ProductRequest) -> PassSchedule {
-    return [NormalizePass];
+    return [NORMALIZE_STEP];
 }
 
 impl unparse_passes(request: ProductRequest) -> PassSchedule {
-    return [UnparsePass];
+    return [UNPARSE_STEP];
 }
 
 impl doc_passes(request: ProductRequest) -> PassSchedule {
-    return [DocIRGenPass];
+    return [DOC_IR_GEN_STEP];
 }
 
 impl format_text_passes(request: ProductRequest) -> PassSchedule {
-    return [JacFormatPass];
+    return [JAC_FORMAT_STEP];
 }
 
 impl place_module(program: JacProgram, module: Module) -> bool {
@@ -225,17 +223,6 @@ impl require_typeshed_stubs -> None {
     }
 }
 
-impl contract_of(p: type[CompilerPass]) -> PassContract {
-    contract = p.contract;
-    if contract is None {
-        raise RuntimeError(
-            f"scheduling error: pass {p.__name__} declares no contract; every "
-            "scheduled pass states the analysis facts it requires and provides"
-        );
-    }
-    return contract;
-}
-
 impl validate_schedule(
     passes: PassSchedule,
     preprovided: (set[AnalysisFact] | None) = None,
@@ -244,19 +231,18 @@ impl validate_schedule(
     provided: set[AnalysisFact] = set(preprovided)
         if preprovided is not None
         else set();
-    for p in passes {
-        contract = contract_of(p);
-        for tag in contract.requires {
+    for step in passes {
+        for tag in step.contract.requires {
             if tag not in provided {
                 raise RuntimeError(
-                    f"scheduling error: pass {p.__name__} requires analysis "
+                    f"scheduling error: pass {step.name} requires analysis "
                     f"'{tag}' which is neither provided by an earlier pass in "
                     f"the {origin} nor already available -- the schedule was "
                     f"constructed missing a declared dependency."
                 );
             }
         }
-        for tag in contract.provides {
+        for tag in step.contract.provides {
             provided.add(tag);
         }
     }
@@ -265,8 +251,8 @@ impl validate_schedule(
 
 impl providers_of(passes: PassSchedule) -> set[AnalysisFact] {
     out: set[AnalysisFact] = set();
-    for p in passes {
-        for tag in contract_of(p).provides {
+    for step in passes {
+        for tag in step.contract.provides {
             out.add(tag);
         }
     }
@@ -324,6 +310,9 @@ impl resolve(
             active_host().load_modules(list(spec.loads));
         }
         schedule = spec.passes(req);
+        for step in schedule {
+            step.load();
+        }
     } except ImportError as e {
         fallback = spec.on_import_error;
         if fallback == ImportFallback.RAISE
@@ -358,7 +347,9 @@ impl unavailable(product: CompilationProduct) -> str {
         if spec.loads {
             active_host().load_modules(list(spec.loads));
         }
-        spec.passes(ProductRequest());
+        for step in spec.passes(ProductRequest()) {
+            step.load();
+        }
     } except ImportError as e {
         active_host().schedule_import_failed(e);
         return f"{type(e).__name__}: {e}";
@@ -380,9 +371,9 @@ impl product_facts(product: CompilationProduct) -> set[AnalysisFact] {
 
 impl early_passes -> PassSchedule {
     return [
-        p
-        for p in product_passes(CompilationProduct.IR)
-        if contract_of(p).kernel_safe
+        step
+        for step in product_passes(CompilationProduct.IR)
+        if step.contract.kernel_safe
     ];
 }
 
@@ -548,8 +539,8 @@ impl invalidate(program: JacProgram, module: Module, product: CompilationProduct
             build.tasks.pop(current, None);
             if not spec.acts {
                 for step in product_passes(current) {
-                    if not contract_of(step).provides {
-                        build.done.discard(step.__name__);
+                    if not step.contract.provides {
+                        build.done.discard(step.name);
                     }
                 }
             }
@@ -572,20 +563,20 @@ impl execute_passes(
     );
     policy = build_diagnostic_policy(program);
     for step in passes {
-        if step.__name__ in build.done {
+        if step.name in build.done {
             continue;
         }
         if cancelled(cancel_token) {
             return module;
         }
         module = run_pass(
-            step, module, program, cancel_token=cancel_token, policy=policy
+            step.load(), module, program, cancel_token=cancel_token, policy=policy
         ).module;
-        build.facts.update(contract_of(step).provides);
+        build.facts.update(step.contract.provides);
         if cancelled(cancel_token) {
             return module;
         }
-        build.done.add(step.__name__);
+        build.done.add(step.name);
     }
     return module;
 }
@@ -600,6 +591,5 @@ impl run_utility(
         raise ValueError(f"{product.value} is not a utility product");
     }
     step = product_passes(product)[0];
-    contract_of(step);
-    return run_pass(step, ir, program, cancel_token=cancel_token);
+    return run_pass(step.load(), ir, program, cancel_token=cancel_token);
 }

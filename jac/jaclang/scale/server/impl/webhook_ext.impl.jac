@@ -145,7 +145,8 @@ impl WebhookExtension.run_walker(
     )['fields'];
     walker_kwargs: dict[str, any] = {};
     if isinstance(body_data, dict) {
-        for (field_name, value) in body_data.items() {
+        body_fields: dict[str, any] = body_data;
+        for (field_name, value) in body_fields.items() {
             if field_name in fields and field_name != '_jac_spawn_node' {
                 walker_kwargs[field_name] = value;
             }

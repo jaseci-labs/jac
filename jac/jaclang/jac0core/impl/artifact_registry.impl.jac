@@ -1,7 +1,8 @@
 impl _marks -> set[str] {
     marked = handoff().get("building");
     if isinstance(marked, list) {
-        return {str(name) for name in marked};
+        names: list[any] = marked;
+        return {str(name) for name in names};
     }
     return set();
 }

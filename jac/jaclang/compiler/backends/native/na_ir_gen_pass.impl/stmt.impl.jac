@@ -1017,11 +1017,8 @@ impl NaIRGenPass._codegen_open_stmt(nd: uni.OpenStmt) -> None {
         nd.body if isinstance(nd.body, (list, tuple)) else None
     );
     _i8p = ir.IntType(8).as_pointer();
-    _hdl = self._codegen_expr(nd.target);
+    _hdl = self._codegen_required(nd.target);
     if _hdl is None {
-        if isinstance(nd.body, (list, tuple)) {
-            self._codegen_body(nd.body);
-        }
         return;
     }
     _hdl = self._region_ptr(_hdl, name="region.hdl");
@@ -1147,7 +1144,7 @@ impl NaIRGenPass._codegen_iter_for(nd: uni.IterForStmt) -> None {
 }
 
 impl NaIRGenPass._codegen_match(nd: uni.MatchStmt) -> None {
-    subj = self._codegen_expr(nd.target);
+    subj = self._codegen_required(nd.target);
     if subj is None {
         return;
     }
@@ -2214,8 +2211,8 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
     if pending_value is None and isinstance(nd.value, uni.FuncCall) {
         func_name = self._get_name(nd.value.target);
         if func_name == "set" and nd.type_tag is not None {
-            _set_t0 = nd.target[0] if nd.target else None;
-            set_type = self._resolve_jac_type(_set_t0);
+            set_target = nd.target[0];
+            set_type = self._resolve_jac_type(set_target);
             if isinstance(set_type, ir.PointerType) {
                 for (elem_name, stype) in self.set_types.items() {
                     if set_type == stype.as_pointer() {
@@ -2225,7 +2222,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
                                 helpers["new"], [], name="set.new"
                             );
                             self._nogc_stamp_elem_drops(
-                                pending_value, self._nogc_type_arg_mangles(_set_t0)
+                                pending_value, self._nogc_type_arg_mangles(set_target)
                             );
 
                             self._mark_owned(pending_value);
@@ -4078,12 +4075,12 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         step_val: (ir.Value | None) = None;
         if len(params) == 1 {
             start_val = ir.Constant(ir.IntType(64), 0);
-            stop_val = self._codegen_expr(params[0]);
+            stop_val = self._codegen_required(params[0]);
         } elif len(params) >= 2 {
-            start_val = self._codegen_expr(params[0]);
-            stop_val = self._codegen_expr(params[1]);
+            start_val = self._codegen_required(params[0]);
+            stop_val = self._codegen_required(params[1]);
             if len(params) >= 3 {
-                step_val = self._codegen_expr(params[2]);
+                step_val = self._codegen_required(params[2]);
                 if step_val is None {
                     return;
                 }
@@ -4099,12 +4096,15 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                 );
             }
         }
+        if start_val is None or stop_val is None {
+            return;
+        }
         if start_val is not None and stop_val is not None {
             self._codegen_for_indexed(
                 nd,
                 kind="range",
                 collection_val=self._coerce_type(stop_val, ir.IntType(64)),
-                helpers=None,
+                helpers={},
                 var_names=[loop_var_name],
                 var_types=[ir.IntType(64)],
                 rc_vars=False,
@@ -4144,7 +4144,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             nd,
             kind="range",
             collection_val=_rv_parts[1],
-            helpers=None,
+            helpers={},
             var_names=[loop_var_name],
             var_types=[ir.IntType(64)],
             rc_vars=False,
@@ -4207,7 +4207,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             nd,
             kind="bytes",
             collection_val=_coll_memo,
-            helpers=None,
+            helpers={},
             var_names=[loop_var_name],
             var_types=[ir.IntType(64)],
             rc_vars=False,
@@ -4224,7 +4224,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             nd,
             kind="str",
             collection_val=_coll_memo,
-            helpers=None,
+            helpers={},
             var_names=[loop_var_name],
             var_types=[ir.IntType(8).as_pointer()],
             rc_vars=False,
@@ -5063,7 +5063,7 @@ impl NaIRGenPass._codegen_for_indexed(
     nd: uni.InForStmt,
     kind: str,
     collection_val: ir.Value,
-    helpers: (dict[str, any] | None),
+    helpers: dict[str, any],
     var_names: list[str],
     var_types: list[ir.Type],
     rc_vars: bool,

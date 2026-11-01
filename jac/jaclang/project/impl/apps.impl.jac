@@ -77,14 +77,15 @@ impl parse_apps(
         if not isinstance(table, dict) {
             raise ValueError(f"[apps.{name}] must be a table");
         }
+        app_table: dict[str, any] = table;
         fields: dict[str, any] = {};
         overlays: dict[str, any] = {};
-        for (key, value) in table.items() {
+        for (key, value) in app_table.items() {
             if isinstance(value, dict) {
-                overlays[str(key)] = value;
+                overlays[key] = value;
                 continue;
             }
-            attr = str(key).replace("-", "_");
+            attr = key.replace("-", "_");
             if attr in REMOVED_APP_KEYS {
                 raise ValueError(
                     f"[apps.{name}] '{key}' was removed: {REMOVED_APP_KEYS[attr]}"

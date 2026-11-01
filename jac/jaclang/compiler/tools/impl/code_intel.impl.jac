@@ -335,13 +335,16 @@ impl CodeIntelligence._cached_record(real: str) -> (dict[str, any] | None) {
     } except (OSError, ValueError) {
         return None;
     }
-    if not isinstance(rec, dict)
-        or rec.get("schema") != INDEX_SCHEMA
-        or rec.get("file") != real {
+    if not isinstance(rec, dict) {
+        return None;
+    }
+    record: dict[str, any] = rec;
+    if record.get("schema") != INDEX_SCHEMA or record.get("file") != real {
         return None;
     }
     try {
-        for (dep, digest) in rec.get("external", {}).items() {
+        external: dict[str, any] = record.get("external", {});
+        for (dep, digest) in external.items() {
             if compute_content_sha256(dep) != digest {
                 return None;
             }
@@ -349,7 +352,7 @@ impl CodeIntelligence._cached_record(real: str) -> (dict[str, any] | None) {
     } except OSError {
         return None;
     }
-    return rec;
+    return record;
 }
 
 impl CodeIntelligence._compile_and_index(stale: set[str]) {

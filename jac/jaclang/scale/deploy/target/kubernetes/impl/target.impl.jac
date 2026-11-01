@@ -313,8 +313,12 @@ impl KubernetesTarget._scan_for_crash_loop(
     fleet_app_names: set,
     companion_app_names: set | None = None
 ) -> dict[str, any] {
-    imagepull_reasons: set = {"ImagePullBackOff", "ErrImagePull", "InvalidImageName"};
-    transient_reasons: set = {"PodInitializing", "ContainerCreating"};
+    imagepull_reasons: set[str] = {
+        "ImagePullBackOff",
+        "ErrImagePull",
+        "InvalidImageName"
+    };
+    transient_reasons: set[str] = {"PodInitializing", "ContainerCreating"};
     crash = "";
     crash_pod = None;
     pulls: dict[str, any] = {};

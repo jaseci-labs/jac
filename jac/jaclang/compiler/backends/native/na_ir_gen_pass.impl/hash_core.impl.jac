@@ -959,6 +959,12 @@ impl NaIRGenPass._emit_hash_core_helpers(
         "clear": clear_fn,
         "get_key": get_key_fn
     };
+    _pub_specs: list[tuple[str, str, ir.Function]] = [
+        ("find", "find", find_fn),
+        ("insert", _ins_op, ins_fn),
+        ("contains", "contains", contains_fn),
+        ("remove", "remove", remove_fn)
+    ];
     if has_vals {
         core["pop_ph"] = pop_fn;
 
@@ -1017,6 +1023,11 @@ impl NaIRGenPass._emit_hash_core_helpers(
             bmi.ret(ir.Constant(_vt, 0));
         }
         core["get_ph"] = get_fn;
+        _pub_specs.append(("lookup", "lookup", lookup_fn));
+        if pop_fn is not None {
+            _pub_specs.append(("pop", "pop", pop_fn));
+        }
+        _pub_specs.append(("get", "get", get_fn));
 
         get_val_fnty = ir.FunctionType(_vt, [cont_ptr_type, i64]);
         get_val_fn: ir.Function = ir.Function(
@@ -1069,19 +1080,6 @@ impl NaIRGenPass._emit_hash_core_helpers(
         core["get_val"] = get_val_fn;
     }
 
-    _pub_specs: list[tuple[str, str, ir.Function]] = [
-        ("find", "find", find_fn),
-        ("insert", _ins_op, ins_fn),
-        ("contains", "contains", contains_fn),
-        ("remove", "remove", remove_fn)
-    ];
-    if has_vals {
-        _pub_specs.append(("lookup", "lookup", lookup_fn));
-        if pop_fn is not None {
-            _pub_specs.append(("pop", "pop", pop_fn));
-        }
-        _pub_specs.append(("get", "get", get_fn));
-    }
     for (_wkey, _wop, _wcore) in _pub_specs {
         _w_args = [a.type for a in _wcore.args];
         _wfnty = ir.FunctionType(_wcore.function_type.return_type, _w_args[:-1]);

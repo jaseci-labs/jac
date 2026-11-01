@@ -25,7 +25,7 @@ import from ..lib { formatter as format }
 import from ...config { settings }
 
 # String path notation (@jac/runtime)
-import from "@jac/runtime" { renderJsxTree, jacLogin, jacLogout }
+import from "@jac/runtime" { jacLogin, jacLogout }
 
 # Using imported functions in a simple client function
 def example_usage() -> int {

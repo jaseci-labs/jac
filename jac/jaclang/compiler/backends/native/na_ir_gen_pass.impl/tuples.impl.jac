@@ -195,25 +195,30 @@ impl NaIRGenPass._unpack_into(
             }
             continue;
         }
-        fresh = var_name not in self.local_vars;
-        if not fresh {
-            alloca = self.local_vars[var_name];
-            if not isinstance(alloca.type, ir.PointerType) {
+        kept_slot: (ir.Value | None) = None;
+        stored = elem_val;
+        if var_name in self.local_vars {
+            existing = self.local_vars[var_name];
+            if not isinstance(existing.type, ir.PointerType) {
                 return False;
             }
-            slot_type = alloca.pointee_type;
+            slot_type = existing.pointee_type;
             _target_ty = self._lower_type(target.type)
                 if isinstance(target, uni.Expr)
                 else None;
-            fresh = self._rebinds_slot(slot_type, _target_ty, elem_val.type);
-            if not fresh {
-                stored = self._coerce_container_element(elem_val, slot_type)
+            if not self._rebinds_slot(slot_type, _target_ty, elem_val.type) {
+                coerced = self._coerce_container_element(elem_val, slot_type)
                     if slot_type == self.jacval_type
                     else self._coerce_type(elem_val, slot_type);
-                fresh = stored.type != slot_type;
+                if coerced.type == slot_type {
+                    kept_slot = existing;
+                    stored = coerced;
+                }
             }
         }
-        if fresh {
+        if kept_slot is not None {
+            alloca = kept_slot;
+        } else {
             _i8p = ir.IntType(8).as_pointer();
             _want = self._lower_type(target.type)
                 if isinstance(target, uni.Expr)
@@ -384,7 +389,7 @@ impl NaIRGenPass._list_get_of_value(value: ir.Value) -> (ir.Function | None) {
 
 impl NaIRGenPass._get_struct_size(struct_type: ir.LiteralStructType) -> int {
     total: int = 0;
-    for elem in struct_type.elements {
+    for elem in struct_type.members() {
         if isinstance(elem, ir.IntType) {
             total += elem.width // 8;
         } elif isinstance(elem, ir.DoubleType) {
@@ -550,7 +555,7 @@ impl NaIRGenPass._coerce_tuple_to_struct(
     out: ir.Value = ir.Constant(target_struct, ir.Undefined);
     for i in range(len(target_struct.members())) {
         fld = self.builder.extract_value(val, i, name=f"tcoerce.{i}");
-        tgt_ty = target_struct.elements[i];
+        tgt_ty = target_struct.members()[i];
         if fld.type != tgt_ty {
             fld = self._coerce_type(fld, tgt_ty);
         }

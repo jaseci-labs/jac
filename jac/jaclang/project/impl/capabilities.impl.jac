@@ -60,11 +60,12 @@ impl derive_capabilities(
         if not isinstance(section, dict) {
             continue;
         }
+        table: dict[str, any] = section;
         keys: list[str] = list(rule["keys"]);
         flag = rule.get("flag");
         if flag is not None {
             for key in keys {
-                if section.get(key) {
+                if table.get(key) {
                     caps.add(str(flag));
                 }
             }
@@ -72,7 +73,7 @@ impl derive_capabilities(
         }
         values: dict[str, str] = dict(rule.get("values", {}));
         for key in keys {
-            raw = section.get(key);
+            raw = table.get(key);
             if isinstance(raw, str) {
                 cap = values.get(raw.strip().lower());
                 if cap {
@@ -173,7 +174,8 @@ impl byllm_intent_capabilities(config: JacConfig) -> set[str] {
     }
     caps.add("llm");
     model = byllm.get("model");
-    default_model = model.get("default_model", "") if isinstance(model, dict) else "";
+    model_table: dict[str, any] = model if isinstance(model, dict) else {};
+    default_model = model_table.get("default_model", "");
     if (isinstance(default_model, str) and default_model.startswith("local:"))
         or isinstance(byllm.get("local"), dict) {
         caps.add("llm.local");

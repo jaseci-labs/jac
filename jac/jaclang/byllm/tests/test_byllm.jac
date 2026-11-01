@@ -1008,7 +1008,7 @@ async def _stream_8932(llm: _byllm_llm_mod.BaseLLM, pace: float = 0.0) -> str {
 obj _EagerStream8932(_byllm_llm_mod.BaseLLM) {
     has build_s: float = 0.0;
 
-    override def model_call_with_stream(params: dict[str, any]) -> object {
+    override def model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
         time.sleep(self.build_s);
         return [text_chunk("eager "), text_chunk("list")];
     }
@@ -1019,7 +1019,7 @@ obj _EagerStream8932(_byllm_llm_mod.BaseLLM) {
 obj _LazyStream8932(_byllm_llm_mod.BaseLLM) {
     has produced: list[float] = [];
 
-    override def model_call_with_stream(params: dict[str, any]) -> object {
+    override def model_call_with_stream(params: dict[str, any]) -> Iterable[object] {
         for word in ["one ", "two ", "three"] {
             self.produced.append(time.perf_counter());
             yield text_chunk(word);

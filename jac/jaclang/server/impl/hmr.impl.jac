@@ -493,6 +493,8 @@ impl HotReloader._reload_server_module(file_path: str) -> None {
 }
 
 impl HotReloader._recompile_client_unified(file_path: str) -> None {
+    program = None;
+    mark = 0;
     try {
         source_path = Path(file_path).resolve();
         if not source_path.exists() {

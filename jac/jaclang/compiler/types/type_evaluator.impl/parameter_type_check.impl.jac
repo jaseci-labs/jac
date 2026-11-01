@@ -4,6 +4,9 @@ impl TypeEvaluator.validate_arg_types(
     mismatches: list[ArgTypeMismatch] | None = None,
     solved_type_vars: (dict[str, TypeBase] | None) = None
 ) -> bool {
+    if not checking_overload {
+        self._record_call_binding(args);
+    }
     has_errors: bool = False;
     binding_failures: set[Expr | KWPair] = set();
     trial: list[tuple[UniNode, str, str, bool]] = [];
@@ -494,7 +497,6 @@ impl TypeEvaluator._validate_call_type(
                 if self.validate_arg_types(
                     arg_param_match, checking_overload=True, mismatches=mismatches
                 ) {
-                    self.validate_arg_types(arg_param_match);
                     ret_type = overload.return_type;
 
                     if ret_type and _contains_unknown(ret_type) {
@@ -507,10 +509,12 @@ impl TypeEvaluator._validate_call_type(
                     }
 
                     if not _contains_unknown(ret_type or UnknownType()) {
+                        self.validate_arg_types(arg_param_match);
                         expr.callee_signature = overload;
                         return ret_type or UnknownType();
                     }
                     if _fallback_result is None {
+                        self.validate_arg_types(arg_param_match);
                         _fallback_result = ret_type;
                         expr.callee_signature = overload;
                     }
@@ -684,21 +688,22 @@ impl TypeEvaluator._validate_call_type(
             }
         }
 
-        if matched_method is None {
-            init_method = self._lookup_class_member(caller_type, "init");
-            is_from_object = init_method is not None
-                and init_method.class_type.shared.class_name == "object";
-
-            if init_method and not is_from_object {
-                method_ty = self._get_method_with_overloads(init_method, caller_type);
-                matched_method = self._validate_constructor_method(expr, method_ty);
-                if matched_method is None and expr.params {
-                    init_sym_type = self.get_type_of_symbol(init_method.symbol);
-                    if isinstance(init_sym_type, FunctionType) {
-                        self.match_args_to_params(expr.params, expr, init_sym_type);
-                    }
+        init_method = self._lookup_class_member(caller_type, "init");
+        if init_method is not None
+            and init_method.class_type.shared.class_name != "object" {
+            method_ty = self._get_method_with_overloads(init_method, caller_type);
+            init_match = self._validate_constructor_method(expr, method_ty);
+            if init_match is None and expr.params {
+                init_sym_type = self.get_type_of_symbol(init_method.symbol);
+                if isinstance(init_sym_type, FunctionType) {
+                    self.match_args_to_params(expr.params, expr, init_sym_type);
                 }
-            } elif caller_type.is_data_class() {
+            }
+            if init_match is not None {
+                matched_method = init_match;
+            }
+        } elif matched_method is None {
+            if caller_type.is_data_class() {
                 expr.callee_signature = self._validate_constructor_method(
                     expr, self._create_object_init_method(caller_type)
                 );
@@ -847,7 +852,10 @@ impl TypeEvaluator.match_args_to_params(
         }
     }
     return MatchArgsToParamsResult(
-        arg_params=arg_params, argument_errors=argument_errors
+        arg_params=arg_params,
+        argument_errors=argument_errors,
+        func_type=func_type,
+        call=node_for_error if isinstance(node_for_error, FuncCall) else None
     );
 }
 
@@ -1063,6 +1071,19 @@ impl TypeEvaluator.assign_type_to_type_var(
     }
 
     if isinstance(param_type, FunctionType) and isinstance(arg_type, FunctionType) {
+        spec = param_type.param_spec();
+        if spec is not None {
+            if spec.name and spec.name not in bindings {
+                bindings[spec.name] = arg_type;
+            }
+            if param_type.return_type is not None
+                and arg_type.return_type is not None {
+                self.assign_type_to_type_var(
+                    param_type.return_type, arg_type.return_type, bindings
+                );
+            }
+            return True;
+        }
         param_params: list[Parameter] = param_type.parameters or [];
         arg_params: list[Parameter] = arg_type.parameters or [];
         for (i, pp) in enumerate(param_params) {
@@ -1271,7 +1292,7 @@ impl TypeEvaluator._type_args_from_init_overload(
             }
         }
         if spread is not None and spread.param_type is not None {
-            for arg in expr.params {
+            for arg in (expr.params or []) {
                 if isinstance(arg, KWPair)
                     and isinstance(arg.key, Name)
                     and arg.key.value not in named {
@@ -1634,7 +1655,7 @@ impl TypeEvaluator._collect_type_var_bindings(
     }
 
     param_idx = 0;
-    for arg in expr.params {
+    for arg in (expr.params or []) {
         if isinstance(arg, KWPair) {
             if isinstance(arg.key, Name) {
                 for param in params {
@@ -1776,4 +1797,30 @@ impl _literal_kwargs_spread(arg: KWPair) -> (list[tuple[str, Expr]] | None) {
         last[name] = kv.value;
     }
     return list(last.items());
+}
+
+impl TypeEvaluator._record_call_binding(args: MatchArgsToParamsResult) -> None {
+    call = args.call;
+    func_type = args.func_type;
+    if call is None or func_type is None or args.argument_errors {
+        return;
+    }
+    binding: list[tuple[int, UniNode]] = [];
+    for (arg, param) in args.arg_params.items() {
+        if param is None {
+            continue;
+        }
+        slot = -1;
+        for (index, declared) in enumerate(func_type.parameters) {
+            if declared is param {
+                slot = index;
+                break;
+            }
+        }
+        if slot < 0 {
+            continue;
+        }
+        binding.append((slot, arg.value if isinstance(arg, KWPair) else arg));
+    }
+    call.arg_binding = binding;
 }

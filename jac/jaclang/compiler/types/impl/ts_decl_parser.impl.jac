@@ -132,7 +132,7 @@ impl _parse_dts_inner(source: str) -> (dict[str, TsDecl] | None) {
     namespaces: dict[str, dict[str, TsDecl]] = {};
     export_eq: (str | None) = None;
     saw_export = False;
-    typevar_stack: list[set] = [];
+    typevar_stack: list[set[str]] = [];
 
     def kind_at(k: int = 0) -> str {
         return toks[pos + k][0] if pos + k < n else '';

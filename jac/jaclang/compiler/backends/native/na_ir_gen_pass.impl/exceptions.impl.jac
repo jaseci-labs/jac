@@ -1228,6 +1228,7 @@ impl NaIRGenPass._codegen_try_unwind(
             self.builder.position_at_end(handler_bb);
             self._emit_exc_pop(self.builder);
 
+            binding: (tuple[str, ir.Value, ir.Value] | None) = None;
             if except_node.name is not None {
                 var_name = except_node.name.value
                     if isinstance(except_node.name, uni.Name)
@@ -1255,6 +1256,7 @@ impl NaIRGenPass._codegen_try_unwind(
                     self._emit_rc_release_typed(_bound_old, op="overwrite");
                 }
                 self.local_vars[var_name] = alloca;
+                binding = (var_name, alloca, bound_val);
             }
 
             unbound_slot: (ir.Value | None) = None;
@@ -1278,9 +1280,10 @@ impl NaIRGenPass._codegen_try_unwind(
             if unbound_slot is not None {
                 self._unbound_caught_slots[id(caught_values)] = unbound_slot;
             }
-            if except_node.name is not None {
+            if binding is not None {
+                (bound_name, bound_slot, bound_value) = binding;
                 self._exc_bindings.append(
-                    (func, var_name, alloca, bound_val, caught_values)
+                    (func, bound_name, bound_slot, bound_value, caught_values)
                 );
             }
             self._finally_stack.append(frame);
@@ -2274,7 +2277,7 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
     if isinstance(rt, ir.VoidType) {
         self.builder.ret_void();
     } else {
-        self.builder.ret(self._default_arg_fallback(rt));
+        self.builder.ret(self._zero_const(rt));
     }
 }
 

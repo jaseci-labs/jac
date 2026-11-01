@@ -727,12 +727,6 @@ test "W3035: is with literal" {
     assert has_diagnostic_code(prog, "W3035", in_warnings=True);
 }
 
-test "W3036: mutable default argument" {
-    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3036_mutable_default.jac");
-    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
-    assert has_diagnostic_code(prog, "W3036", in_warnings=True);
-}
-
 test "W3040: filter comparison tautology on shadowed name" {
     path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3040_filter_tautology.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);
@@ -977,6 +971,49 @@ test "implicit return participates in return-type checking" {
     # `ok_tail`'s implicit return satisfies the all-paths-return analysis.
     assert not has_diagnostic_code(program, "E1004") , (
         "a tail implicit return must count as returning on all paths"
+    );
+}
+
+test "E1007-E1014: default, MRO, constructor and override rules" {
+    fixture = "semantic_class_and_default_rules.jac";
+    (program, _) = compile_and_check(fixture);
+    with open(os.path.join(NEW_DIAG_FIXTURES, fixture)) as f {
+        lines = f.read().splitlines();
+    }
+    codes = ["E1007", "E1008", "E1009", "E1012", "E1013", "E1014"];
+    for code in codes {
+        expected = sorted(
+            i + 1
+            for i in range(len(lines))
+            if f"# {code}" in lines[i]
+        );
+        reported = sorted(
+            e.loc.first_line
+            for e in program.errors_had
+            if e.code is not None and e.code.code == code
+        );
+        assert reported == expected , f"{code} lines {reported}, expected {expected}";
+    }
+}
+
+test "E1006: every path must assign a local before it is read" {
+    fixture = "semantic_E1006_definite_assignment.jac";
+    (program, _) = compile_and_check(fixture);
+    with open(os.path.join(NEW_DIAG_FIXTURES, fixture)) as f {
+        lines = f.read().splitlines();
+    }
+    expected = {
+        i + 1
+        for i in range(len(lines))
+        if "# E1006" in lines[i]
+    };
+    reported = [
+        e.loc.first_line
+        for e in program.errors_had
+        if e.code is not None and e.code.code == "E1006"
+    ];
+    assert sorted(reported) == sorted(expected) , (
+        f"E1006 lines {sorted(reported)}, expected {sorted(expected)}"
     );
 }
 

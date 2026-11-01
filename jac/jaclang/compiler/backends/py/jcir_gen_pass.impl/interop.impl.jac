@@ -63,7 +63,10 @@ impl JcirGenPass._native_import_registration_map -> dict[str, list[CgSplice]] {
 }
 
 impl JcirGenPass._top_level_bound_names(items: any) -> list[str] {
-    stmts = items if isinstance(items, list) else [items];
+    stmts: list[any] = [items];
+    if isinstance(items, list) {
+        stmts = items;
+    }
     names: list[str] = [];
     for stmt in stmts {
         if isinstance(stmt, list) {

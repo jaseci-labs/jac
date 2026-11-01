@@ -1127,7 +1127,8 @@ impl _port_is_explicit(port: (int | None), cfg: any) -> bool {
         return True;
     }
     raw = getattr(cfg, "_raw_data", {}).get("serve", {});
-    return not (isinstance(raw, dict) and raw.get("port") == port);
+    serve_table: dict[str, any] = raw if isinstance(raw, dict) else {};
+    return serve_table.get("port") != port;
 }
 
 impl _serve_overrides(

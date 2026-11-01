@@ -13,6 +13,7 @@ obj BridgeError(RuntimeError) {
         detail: str = "",
         status: int = 0;
 
+    def init(app: str = "", name: str = "", detail: str = "", status: int = 0);
     def __str__ -> str;
 }
 

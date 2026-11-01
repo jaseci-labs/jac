@@ -398,6 +398,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             );
             return None;
         }
+        _first_elem_type: ir.Type = _first_src_info["helpers"]["elem_type"];
     } else {
         first_val = self._str_norm_optional(self._codegen_expr(nd.values[0]));
         if first_val is None {
@@ -416,6 +417,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
             first_val = self._coerce_type(first_val, _decl_elem);
         }
         first_val = self._variadic_elem_coerce(first_val, nd);
+        _first_elem_type = first_val.type;
     }
     _lit_spec = self._elem_spec_of(nd);
     _aos_lit = self._aos_elem_of(nd);
@@ -435,9 +437,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         elem_type = _decl_elem;
         elem_type_name = _lit_spec or "i64";
     } else {
-        elem_type = first_val.type
-            if first_val is not None
-            else _first_src_info["helpers"]["elem_type"];
+        elem_type = _first_elem_type;
         elem_type_name = "i64";
         if isinstance(elem_type, (ir.DoubleType, ir.FloatType)) {
             elem_type_name = "f64";
@@ -472,7 +472,7 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     _linit_loc = f"{os.path.basename(self.module.loc.mod_path)}:{nd.loc.first_line
         if nd.loc
         else 0}";
-    if first_val is None {
+    if _first_src_info is not None {
         if self._reject_spread_slot_mismatch(
             nd.values[0],
             _first_src_info["helpers"]["elem_type"],
@@ -1254,7 +1254,17 @@ impl NaIRGenPass._body_keeps_list_headers(body: list[uni.UniNode]) -> bool {
                 }
             } elif kind
                 in ("IfStmt", "ElseIf", "WhileStmt", "IfElseExpr", "AssertStmt") {
-                if not self._anchor_plain(nd?.condition) {
+                if isinstance(
+                    nd,
+                    (
+                        uni.IfStmt,
+                        uni.ElseIf,
+                        uni.WhileStmt,
+                        uni.IfElseExpr,
+                        uni.AssertStmt
+                    )
+                )
+                    and not self._anchor_plain(nd.condition) {
                     return False;
                 }
             } elif kind in ("DictVal", "SetVal") {

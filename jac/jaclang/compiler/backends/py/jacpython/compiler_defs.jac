@@ -1080,6 +1080,7 @@ def visit_type_alias(g: cfg_builder, ta: TypeAlias) -> stmt_cont {
     generic = len(tps) > 0;
     gp_name = "<generic parameters of " + name + ">";
     sym_v = None;
+    sym_params: sym_block | None = None;
     if generic {
         sym_gp = g.sym_top.child_scope(ta, scope_role.TYPE_PARAMETERS);
         if sym_gp is None {
@@ -1115,7 +1116,7 @@ def visit_type_alias(g: cfg_builder, ta: TypeAlias) -> stmt_cont {
         g.u.diag = u_v.diag;
         return stmt_cont(loc=tloc);
     }
-    if generic {
+    if sym_params is not None {
         cfg_v = verify_cfg(u_v);
         if cfg_v.diag is not None {
             g.u.diag = cfg_v.diag;

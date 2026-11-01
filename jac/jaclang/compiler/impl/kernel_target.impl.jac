@@ -46,7 +46,8 @@ impl _str_list(value: object) -> list[str] {
     if not isinstance(value, list) {
         return [];
     }
-    return [str(v) for v in value];
+    items: list[any] = value;
+    return [str(v) for v in items];
 }
 
 impl kernel_target_from_dict(data: dict[str, object]) -> (KernelTarget | None) {
