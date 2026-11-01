@@ -125,17 +125,9 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
     } elif op == MirOp.CONST_BOOL {
         self.bind(instr.result, ir.Constant(ir.IntType(1), instr.int_value));
     } elif op == MirOp.SLOT {
-        func = b.function;
-        entry_builder = ir.IRBuilder(func.entry_basic_block);
-        first = func.entry_basic_block.instructions;
-        if first {
-            entry_builder.position_before(first[0]);
-        }
         self.bind(
             instr.result,
-            entry_builder.alloca(
-                self.llvm_type(type_arg_of(instr)), name=result_of(instr).name
-            )
+            b.alloca(self.llvm_type(type_arg_of(instr)), name=result_of(instr).name)
         );
     } elif op == MirOp.LOAD {
         self.bind(instr.result, b.load(self.value(instr.operands[0])));

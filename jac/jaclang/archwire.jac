@@ -5608,6 +5608,11 @@ graph import compiler {
         tests.test_prim_equivalence { native_lowering_issues },
     ]
     type backends.native.lowering ++> frontend.codeinfo { NativeFallbacks }
+    backends.native.mir.backend --> [
+        driver.pipeline.codegen_passes { MirNativePass, mir_backend_selected },
+        driver.pipeline.native_ir_passes { MirNativePass, mir_backend_selected },
+        driver.pipeline.native_lower_passes { MirNativePass, mir_backend_selected },
+    ]
     backends.native.na_compile_pass ++> [
         driver.nativecache.NativeBuildSession._optimize_in_parallel {
             optimize_unit_bitcodes,
@@ -6152,7 +6157,10 @@ graph import compiler {
             layout_digest as layout_digest_of,
             merge_class_layouts
         },
-        backends.native.na_ir_gen_pass { NativeExport, NativeIface },
+        backends.native.mir.backend | backends.native.na_ir_gen_pass {
+            NativeExport,
+            NativeIface
+        },
         backends.native.na_ir_gen_pass.NaIRGenPass._export_native_iface {
             NativeClassLayout,
             NativeFieldSlot,
@@ -6226,7 +6234,8 @@ graph import compiler {
             | tools.jac_formatter_pass
             | tools.normalize_pass
             | tools.unparse_pass { PassContract },
-        backends.native.na_ir_gen_pass
+        backends.native.mir.backend
+            | backends.native.na_ir_gen_pass
             | passes.access_check_pass
             | passes.capability_check_pass
             | passes.cfg_build_pass
@@ -6487,6 +6496,11 @@ graph import compiler {
             is_kernel_unit_path
         },
         backends.native.link_plan._write_sidecar { native_unit_identity },
+        backends.native.mir.backend {
+            jaclang_pkg_root,
+            native_module_key,
+            native_unit_prefix
+        },
         backends.native.mir.lower {
             native_def_symbol,
             native_symbol_name,
@@ -7119,6 +7133,9 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._warn_rpc_callable_params { W6005 },
         backends.es.esast_gen_pass.EsastGenPass.prepare
             | passes.placement_pass.PlacementPass._run_decided { E5096 },
+        backends.native.mir.backend
+            | backends.native.primitives_native
+            | driver.module_compile.report_missing_native_ir { E5092 },
         backends.native.na_compile_pass { E5020, E5026 },
         backends.native.na_ir_gen_pass {
             DiagnosticInfo,
@@ -7137,8 +7154,6 @@ graph import compiler {
             E9002,
             E9003
         },
-        backends.native.primitives_native
-            | driver.module_compile.report_missing_native_ir { E5092 },
         backends.py.jcir_bc_gen_pass { E5040, E5043 },
         backends.py.jcir_gen_pass {
             E5001,
@@ -9733,6 +9748,7 @@ graph import compiler {
         | backends.es.jsx_processor
         | backends.es.view_ir
         | backends.native.foreign
+        | backends.native.mir.backend
         | backends.native.mir.lower
         | backends.native.mir.lower_types
         | backends.native.na_compile_pass
@@ -9934,7 +9950,8 @@ graph import compiler {
             | tools.jac_auto_lint_pass
             | tools.normalize_pass
             | tools.unparse_pass { TreePass },
-        backends.native.na_compile_pass
+        backends.native.mir.backend
+            | backends.native.na_compile_pass
             | backends.py.jcir_bc_gen_pass
             | driver.context_passes
             | placement.placement_solver
@@ -11582,7 +11599,9 @@ graph import compiler.backends.native.llvm.ir {
 }
 
 graph import compiler.backends.native.mir {
+    emit ++> backend { emit_mir_module }
     ir ++> [
+        backend { MirModule },
         emit { MirFunction, MirInstr, MirModule, MirOp, MirValue },
         lower {
             MirBlock,
@@ -11595,6 +11614,7 @@ graph import compiler.backends.native.mir {
             MirValue
         },
     ]
+    lower ++> backend { MirLowering }
     lower_types ++> lower {
         MirPosition,
         MirRefused,
