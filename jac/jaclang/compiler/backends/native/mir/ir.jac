@@ -13,6 +13,15 @@ enum MirOp {
     NEG = "neg",
     NOT = "not",
     CONV = "conv",
+    SELECT = "select",
+    BITCAST = "bitcast",
+    MEM_LOAD = "mem.load",
+    MEM_STORE = "mem.store",
+    ATOMIC_LOAD = "atomic.load",
+    ATOMIC_STORE = "atomic.store",
+    ATOMIC_RMW = "atomic.rmw",
+    ATOMIC_CAS = "atomic.cas",
+    FENCE = "fence",
     CALL = "call",
     CALL_RUNTIME = "call.runtime",
     RAISE = "raise",
@@ -99,7 +108,8 @@ obj MirGlobal {
         symbol: str,
         type: MirType,
         int_value: int = 0,
-        float_value: float = 0.0;
+        float_value: float = 0.0,
+        linkage: str = "";
 }
 
 obj MirStructField {
@@ -146,6 +156,7 @@ obj MirBuilder {
     def negate(value: MirValue) -> MirValue;
     def logical_not(value: MirValue) -> MirValue;
     def convert(value: MirValue, to: MirType) -> MirValue;
+    def select(cond: MirValue, then: MirValue, otherwise: MirValue) -> MirValue;
     def call(callee: str, args: list[MirValue], ret: MirType) -> (MirValue | None);
     def branch(target: MirBlock);
     def cond_branch(cond: MirValue, then: MirBlock, otherwise: MirBlock);

@@ -44,6 +44,7 @@ obj MirType {
     def is_scalar -> bool;
     def is_numeric -> bool;
     def is_ref -> bool;
+    def is_sized -> bool;
     def payload -> MirType;
     def render -> str;
 }
@@ -64,7 +65,7 @@ def mir_none -> MirType;
 
 def mir_bool -> MirType;
 
-def mir_int(width: int = 64, signed: bool = True) -> MirType;
+def mir_int(width: int = 64, signed: bool = True, sized: bool = False) -> MirType;
 
 def mir_float(width: int = 64) -> MirType;
 

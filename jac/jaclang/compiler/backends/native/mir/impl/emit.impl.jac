@@ -193,6 +193,24 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
                 type_arg_of(instr)
             )
         );
+    } elif op == MirOp.SELECT {
+        self.bind(
+            instr.result,
+            b.select(
+                self.value(instr.operands[0]),
+                self.value(instr.operands[1]),
+                self.value(instr.operands[2])
+            )
+        );
+    } elif op == MirOp.BITCAST {
+        self.bind(
+            instr.result,
+            b.bitcast(
+                self.value(instr.operands[0]), self.llvm_type(type_arg_of(instr))
+            )
+        );
+    } elif op in MEMORY_OPS {
+        self.emit_memory(b, instr);
     } elif op == MirOp.CALL {
         callee = self.functions.get(instr.callee);
         if callee is None {
@@ -268,6 +286,12 @@ impl MirEmitter.emit_bin(b: ir.IRBuilder, instr: MirInstr) -> ir.Value {
         }
         if op == "xor" {
             return b.xor(l, r);
+        }
+        if op == "shl" {
+            return b.shl(l, r);
+        }
+        if op == "shr" {
+            return b.ashr(l, r) if t.signed else b.lshr(l, r);
         }
         if op == "floordiv" {
             return self.emit_floordiv(b, l, r, t.signed);
@@ -548,6 +572,7 @@ impl MirEmitter.global_variable(glob_def: MirGlobal) -> ir.GlobalVariable {
     }
     shape = self.llvm_type(glob_def.type);
     made = ir.GlobalVariable(self.module, shape, name=glob_def.symbol);
+    made.linkage = glob_def.linkage;
     if glob_def.type.kind == MirKind.FLOAT {
         made.initializer = ir.Constant(shape, glob_def.float_value);
     } else {
@@ -613,4 +638,56 @@ impl MirEmitter.keyed_block_fn(label: str, size: int) -> ir.Function {
     block.add_incoming(made, create);
     b.ret(b.ptrtoint(block, i64));
     return func;
+}
+
+impl MirEmitter.emit_memory(b: ir.IRBuilder, instr: MirInstr) {
+    op = instr.op;
+    if op == MirOp.FENCE {
+        if instr.str_value != "monotonic" {
+            b.fence(instr.str_value);
+        }
+        return;
+    }
+    cell = self.llvm_type(
+        instr.operands[1].type
+            if op in (MirOp.MEM_STORE, MirOp.ATOMIC_STORE)
+            else type_arg_of(instr)
+    );
+    address = b.inttoptr(self.value(instr.operands[0]), cell.as_pointer());
+    width = cell.width if isinstance(cell, ir.IntType) else 64;
+    align = max(width // 8, 1);
+    if op == MirOp.MEM_LOAD {
+        self.bind(instr.result, b.load(address));
+    } elif op == MirOp.MEM_STORE {
+        b.store(self.value(instr.operands[1]), address);
+    } elif op == MirOp.ATOMIC_LOAD {
+        self.bind(instr.result, b.load_atomic(address, instr.str_value, align));
+    } elif op == MirOp.ATOMIC_STORE {
+        b.store_atomic(
+            self.value(instr.operands[1]), address, instr.str_value, align
+        );
+    } elif op == MirOp.ATOMIC_RMW {
+        self.bind(
+            instr.result,
+            b.atomic_rmw(
+                instr.sub,
+                address,
+                self.value(instr.operands[1]),
+                ordering=instr.str_value
+            )
+        );
+    } elif op == MirOp.ATOMIC_CAS {
+        order = instr.str_value;
+        failure = "acquire"
+            if order == "acq_rel"
+            else ("monotonic" if order == "release" else order);
+        pair = b.cmpxchg(
+            address,
+            self.value(instr.operands[1]),
+            self.value(instr.operands[2]),
+            order,
+            failure
+        );
+        self.bind(instr.result, b.extract_value(pair, 0));
+    }
 }

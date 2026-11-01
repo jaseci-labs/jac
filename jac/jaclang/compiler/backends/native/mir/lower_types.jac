@@ -23,3 +23,5 @@ def mir_class_type_named(name: str, site: (uni.UniNode | None) = None) -> MirTyp
 def mir_class_type(
     t: ClassType, position: MirPosition, site: (uni.UniNode | None) = None
 ) -> MirType;
+
+def mir_spec_type(spec: str) -> MirType;

@@ -54,14 +54,18 @@ impl MirLowering.declare(ab: uni.Ability) {
 }
 
 impl MirLowering.symbol_of(ab: uni.Ability) -> str {
+    return self.unit_symbol(self.name_of(ab), ab.access);
+}
+
+impl MirLowering.unit_symbol(name: str, access: (uni.SubTag[uni.Token] | None)) -> str {
     path = self.module.loc.mod_path;
-    name = native_unit_spelling(self.name_of(ab), path);
-    is_pub = bool(ab.access and ab.access.tag.name == Tok.KW_PUB);
+    spelled = native_unit_spelling(name, path);
+    is_pub = bool(access and access.tag.name == Tok.KW_PUB);
     bundled = native_unit_identity(path).startswith("jaclang/runtime/na_stdlib/");
     if is_pub and not bundled {
-        return native_def_symbol(name);
+        return native_def_symbol(spelled);
     }
-    return native_symbol_name(native_unit_prefix(path), name);
+    return native_symbol_name(native_unit_prefix(path), spelled);
 }
 
 impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
@@ -456,6 +460,11 @@ impl MirLowering.arith(
         }
         raise MirRefused(mir_refusal("binary operator", f"{op} on float", site));
     }
+    if op in (Tok.LSHIFT, Tok.RSHIFT) {
+        shifted = b.convert(left, mir_int()) if left.type.kind == MirKind.BOOL else left;
+        count = b.convert(right, mir_int()) if right.type.kind == MirKind.BOOL else right;
+        return self.shift(op, shifted, count);
+    }
     (li, ri) = self.unify_numeric(left, right, site);
     if op in (Tok.PLUS, Tok.MINUS, Tok.STAR_MUL) {
         name = "add" if op == Tok.PLUS else ("sub" if op == Tok.MINUS else "mul");
@@ -485,6 +494,55 @@ impl MirLowering.arith(
         return b.binary("xor", li, ri);
     }
     raise MirRefused(mir_refusal("binary operator", op, site));
+}
+
+impl MirLowering.shift(op: str, left: MirValue, right: MirValue) -> MirValue {
+    b = self.builder();
+    t = left.type;
+    name = "shl" if op == Tok.LSHIFT else "shr";
+    if t.is_sized() or right.type.is_sized() {
+        unsigned_count = b.convert(right, mir_int(right.type.width, False));
+        self.raise_if(
+            b.compare(
+                "ge", unsigned_count, b.const_int(t.width, unsigned_count.type)
+            ),
+            "OverflowError",
+            SHIFT_MESSAGE
+        );
+        count = b.convert(right, t);
+        result = b.binary(name, left, count);
+        if name == "shl" {
+            self.raise_if(
+                b.compare("ne", b.binary("shr", result, count), left),
+                "OverflowError",
+                OVERFLOW_MESSAGE
+            );
+        }
+        return result;
+    }
+    self.raise_if(
+        b.compare("lt", right, b.const_int(0, right.type)),
+        "ValueError",
+        NEGATIVE_SHIFT_MESSAGE
+    );
+    count = b.convert(right, t);
+    unsigned_count = b.convert(count, mir_int(64, False));
+    wide = b.compare("ge", unsigned_count, b.const_int(64, unsigned_count.type));
+    safe = b.binary("and", count, b.const_int(63, t));
+    result = b.binary(name, left, safe);
+    if name == "shr" {
+        return b.select(wide, b.binary("shr", left, b.const_int(63, t)), result);
+    }
+    self.raise_if(
+        b.binary("and", wide, b.compare("ne", left, b.const_int(0, t))),
+        "OverflowError",
+        OVERFLOW_MESSAGE
+    );
+    lost = b.compare("ne", b.binary("shr", result, safe), left);
+    self.raise_if(
+        b.binary("and", b.logical_not(wide), lost), "OverflowError", OVERFLOW_MESSAGE
+    );
+    return b.select(wide, b.const_int(0, t), result);
 }
 
 impl MirLowering.lower_compare(nd: uni.CompareExpr) -> MirValue {
@@ -633,7 +691,7 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
         return self.c_call(nd, callee);
     }
     name = self.call_name(nd);
-    if name in MIR_INTRINSICS {
+    if isinstance(nd.target, uni.Name) and INTRINSIC_REGISTRY.is_intrinsic(name) {
         return self.intrinsic_call(nd, name);
     }
     target = nd.target;
@@ -967,7 +1025,121 @@ impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
             MirOp.TLS_BLOCK, mir_int(64), [], str_value=label, int_value=size
         );
     }
+    found = INTRINSIC_REGISTRY.get(name);
+    if found is None or len(args) != found.arity() {
+        raise MirRefused(mir_refusal("intrinsic", name, nd, code="E5095"));
+    }
+    dispatch = found.dispatch;
+    result_type = mir_spec_type(found.result_spec);
+    if dispatch == IntrinsicDispatch.MEM_LOAD {
+        address = self.intrinsic_operand(args[0], "i64");
+        return self.emit_value(MirOp.MEM_LOAD, result_type, [address]);
+    }
+    if dispatch == IntrinsicDispatch.MEM_STORE {
+        address = self.intrinsic_operand(args[0], "i64");
+        value = self.intrinsic_operand(args[1], found.param_specs[1]);
+        return self.emit_value(MirOp.MEM_STORE, mir_none(), [address, value]);
+    }
+    if dispatch in (IntrinsicDispatch.FLOAT_BITS, IntrinsicDispatch.BITS_FLOAT) {
+        value = self.intrinsic_operand(args[0], found.param_specs[0]);
+        return self.emit_value(MirOp.BITCAST, result_type, [value]);
+    }
+    if dispatch == IntrinsicDispatch.ATOMIC_FENCE {
+        order = self.memory_order(nd, args[0], "fence");
+        return self.emit_value(MirOp.FENCE, mir_none(), [], str_value=order);
+    }
+    if dispatch == IntrinsicDispatch.ATOMIC_XCHG {
+        address = self.intrinsic_operand(args[0], "i64");
+        value = self.intrinsic_operand(args[1], "i64");
+        return self.emit_value(
+            MirOp.ATOMIC_RMW,
+            result_type,
+            [address, value],
+            sub="xchg",
+            str_value="seq_cst"
+        );
+    }
+    if dispatch == IntrinsicDispatch.ATOMIC_LOAD {
+        address = self.intrinsic_operand(args[0], "i64");
+        order = self.memory_order(nd, args[1], "load");
+        return self.emit_value(
+            MirOp.ATOMIC_LOAD, result_type, [address], str_value=order
+        );
+    }
+    if dispatch == IntrinsicDispatch.ATOMIC_STORE {
+        address = self.intrinsic_operand(args[0], "i64");
+        value = self.intrinsic_operand(args[1], found.param_specs[1]);
+        order = self.memory_order(nd, args[2], "store");
+        return self.emit_value(
+            MirOp.ATOMIC_STORE, mir_none(), [address, value], str_value=order
+        );
+    }
+    if dispatch == IntrinsicDispatch.ATOMIC_CAS {
+        address = self.intrinsic_operand(args[0], "i64");
+        expected = self.intrinsic_operand(args[1], found.param_specs[1]);
+        desired = self.intrinsic_operand(args[2], found.param_specs[2]);
+        order = self.memory_order(nd, args[3], "rmw");
+        return self.emit_value(
+            MirOp.ATOMIC_CAS,
+            result_type,
+            [address, expected, desired],
+            str_value=order
+        );
+    }
+    if dispatch == IntrinsicDispatch.ATOMIC_RMW {
+        address = self.intrinsic_operand(args[0], "i64");
+        value = self.intrinsic_operand(args[1], found.param_specs[1]);
+        order = self.memory_order(nd, args[2], "rmw");
+        operation = name[len("__atomic_"):].rsplit("_i", 1)[0];
+        return self.emit_value(
+            MirOp.ATOMIC_RMW,
+            result_type,
+            [address, value],
+            sub="xchg" if operation == "swap" else operation,
+            str_value=order
+        );
+    }
     raise MirRefused(mir_refusal("intrinsic", name, nd));
+}
+
+impl MirLowering.intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue {
+    value = self.lower_expr(arg);
+    if value.type.kind == MirKind.C_PTR and spec == "i64" {
+        return self.emit_value(MirOp.PTR_INT, mir_int(64, True, True), [value]);
+    }
+    return self.coerce(value, mir_spec_type(spec), arg);
+}
+
+impl MirLowering.memory_order(nd: uni.FuncCall, arg: uni.Expr, kind: str) -> str {
+    (ok, value) = c_scalar_constant(arg);
+    if not ok
+        or not isinstance(value, int)
+        or value < 0
+        or value >= len(MEMORY_ORDERS) {
+        raise MirRefused(
+            mir_refusal(
+                "intrinsic",
+                self.call_name(nd),
+                arg,
+                "The memory order is a constant from 0 (relaxed) to 5 (seq_cst).",
+                "E5095"
+            )
+        );
+    }
+    order = MEMORY_ORDERS[value];
+    if (kind == "load" and order in ("release", "acq_rel"))
+        or (kind == "store" and order in ("acquire", "acq_rel")) {
+        raise MirRefused(
+            mir_refusal(
+                "intrinsic",
+                self.call_name(nd),
+                arg,
+                f"A {kind} cannot use memory order {value}.",
+                "E5095"
+            )
+        );
+    }
+    return order;
 }
 
 impl MirLowering.type_call(nd: uni.FuncCall) -> (MirValue | None) {
@@ -1086,10 +1258,14 @@ impl MirLowering.global_place(nd: uni.Name) -> (MirValue | None) {
     found = self.mir.globals.get(sym.sym_name);
     if found is None {
         value_type = self.symbol_type(sym, nd);
+        group = declaration.parent;
+        access = group.access if isinstance(group, uni.GlobalVars) else None;
+        is_priv = bool(access and access.tag.name == Tok.KW_PRIV);
         made = MirGlobal(
             name=sym.sym_name,
-            symbol=native_symbol_name(self.mir.prefix, sym.sym_name),
-            type=value_type
+            symbol=self.unit_symbol(sym.sym_name, access),
+            type=value_type,
+            linkage="internal" if is_priv else ""
         );
         initial = declaration.value;
         if isinstance(initial, uni.Int) and value_type.kind == MirKind.INT {

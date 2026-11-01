@@ -186,6 +186,16 @@ impl MirBuilder.convert(value: MirValue, to: MirType) -> MirValue {
     return result;
 }
 
+impl MirBuilder.select(
+    cond: MirValue, then: MirValue, otherwise: MirValue
+) -> MirValue {
+    result = self.fn.new_value(then.type);
+    self.emit(
+        MirInstr(op=MirOp.SELECT, result=result, operands=[cond, then, otherwise])
+    );
+    return result;
+}
+
 impl MirBuilder.call(
     callee: str, args: list[MirValue], ret: MirType
 ) -> (MirValue | None) {

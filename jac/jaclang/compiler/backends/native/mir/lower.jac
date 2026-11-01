@@ -12,9 +12,15 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "MOD_EQ": "MOD",
          "BW_AND_EQ": "BW_AND",
          "BW_OR_EQ": "BW_OR",
-         "BW_XOR_EQ": "BW_XOR"
+         "BW_XOR_EQ": "BW_XOR",
+         "LSHIFT_EQ": "LSHIFT",
+         "RSHIFT_EQ": "RSHIFT"
      },
-     MIR_INTRINSICS: list[str] = ["__thread_local_block"],
+     SHIFT_MESSAGE: str = "shift count out of range",
+     NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
+     MEMORY_ORDERS: list[str] = [
+         "monotonic", "acquire", "acquire", "release", "acq_rel", "seq_cst"
+     ],
      COMPARE_OPERATORS: dict[str, str] = {
          "EE": "eq",
          "NE": "ne",
@@ -56,6 +62,7 @@ obj MirLowering {
     def module_abilities -> list[uni.Ability];
     def declare(ab: uni.Ability);
     def symbol_of(ab: uni.Ability) -> str;
+    def unit_symbol(name: str, access: (uni.SubTag[uni.Token] | None)) -> str;
     def name_of(ab: uni.Ability) -> str;
     def ability_sym(ab: uni.Ability) -> uni.Symbol;
     def lower_function(decl: MirDecl) -> (MirFunction | None);
@@ -77,6 +84,7 @@ obj MirLowering {
     def lower_name(nd: uni.Name) -> MirValue;
     def lower_binary(nd: uni.BinaryExpr) -> MirValue;
     def arith(op: str, left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def shift(op: str, left: MirValue, right: MirValue) -> MirValue;
     def lower_compare(nd: uni.CompareExpr) -> MirValue;
     def compare_values(
         op: str, left: MirValue, right: MirValue, site: uni.UniNode
@@ -104,6 +112,8 @@ obj MirLowering {
     def call_name(nd: uni.FuncCall) -> str;
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
     def intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue;
+    def intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue;
+    def memory_order(nd: uni.FuncCall, arg: uni.Expr, kind: str) -> str;
     def type_call(nd: uni.FuncCall) -> (MirValue | None);
     def method_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
     def call_args(nd: uni.FuncCall) -> list[uni.Expr];

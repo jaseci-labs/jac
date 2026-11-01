@@ -55,7 +55,7 @@ impl mir_class_type_named(name: str, site: (uni.UniNode | None) = None) -> MirTy
     if shape.is_float {
         return mir_float(shape.width);
     }
-    return mir_int(shape.width, shape.signed);
+    return mir_int(shape.width, shape.signed, shape.sized);
 }
 
 impl mir_class_type(
@@ -84,7 +84,7 @@ impl mir_class_type(
         if shape.is_float {
             return mir_float(shape.width);
         }
-        return mir_int(shape.width, shape.signed);
+        return mir_int(shape.width, shape.signed, shape.sized);
     }
     if name == "str" {
         return mir_str() if position == MirPosition.VALUE else mir_str_ref();
@@ -100,4 +100,17 @@ impl mir_c_elem(t: (TypeBase | None), site: (uni.UniNode | None) = None) -> MirT
         return mir_int(8, False);
     }
     return mir_type_of(t, MirPosition.C_FIELD, site);
+}
+
+impl mir_spec_type(spec: str) -> MirType {
+    if spec == "none" {
+        return mir_none();
+    }
+    if spec == "f64" {
+        return mir_float(64);
+    }
+    if spec.startswith("i") and spec[1:].isdigit() {
+        return mir_int(int(spec[1:]), True, True);
+    }
+    raise MirRefused(mir_refusal("intrinsic operand", spec));
 }

@@ -14,6 +14,15 @@ glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
          MirOp.CALL_C,
          MirOp.CALL_FNPTR
      ],
+     MEMORY_OPS: list[MirOp] = [
+         MirOp.MEM_LOAD,
+         MirOp.MEM_STORE,
+         MirOp.ATOMIC_LOAD,
+         MirOp.ATOMIC_STORE,
+         MirOp.ATOMIC_RMW,
+         MirOp.ATOMIC_CAS,
+         MirOp.FENCE
+     ],
      CMP_SYMBOLS: dict[str, str] = {
          "eq": "==",
          "ne": "!=",
@@ -60,6 +69,7 @@ obj MirEmitter {
 
     def emit_raise(b: ir.IRBuilder, instr: MirInstr);
     def emit_c(b: ir.IRBuilder, instr: MirInstr);
+    def emit_memory(b: ir.IRBuilder, instr: MirInstr);
     def c_struct(name: str) -> ir.Type;
     def tls_block(label: str, size: int) -> ir.GlobalVariable;
     def global_variable(glob_def: MirGlobal) -> ir.GlobalVariable;

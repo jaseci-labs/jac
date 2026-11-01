@@ -9827,6 +9827,7 @@ graph import compiler {
         passes.endpoint_effect_pass.EndpointEffectPass._scan { unparse_node },
     ]
     intrinsic_registry ++> [
+        backends.native.mir.lower { INTRINSIC_REGISTRY, IntrinsicDispatch },
         backends.native.na_ir_gen_pass { IntrinsicEntry },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_call
             | symbol_utils.intrinsic_registry_if_ready { INTRINSIC_REGISTRY },
@@ -11639,6 +11640,7 @@ graph import compiler.backends.native.mir {
         MirRefused,
         mir_class_type_named,
         mir_refusal,
+        mir_spec_type,
         mir_type_of,
         refusal_of
     }

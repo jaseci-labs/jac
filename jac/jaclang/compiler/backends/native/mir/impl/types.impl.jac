@@ -26,6 +26,10 @@ impl MirType.is_ref -> bool {
         );
 }
 
+impl MirType.is_sized -> bool {
+    return self.kind == MirKind.INT and self.name == "sized";
+}
+
 impl MirType.payload -> MirType {
     if not self.args {
         raise ValueError(f"MIR type {self.render()} has no payload");
@@ -35,6 +39,9 @@ impl MirType.payload -> MirType {
 
 impl MirType.render -> str {
     if self.kind == MirKind.INT {
+        if not self.is_sized() {
+            return "int";
+        }
         return f"{'i' if self.signed else 'u'}{self.width}";
     }
     if self.kind == MirKind.FLOAT {
@@ -81,8 +88,11 @@ impl mir_bool -> MirType {
     return mir_type(MirKind.BOOL, width=1);
 }
 
-impl mir_int(width: int = 64, signed: bool = True) -> MirType {
-    return mir_type(MirKind.INT, width=width, signed=signed);
+impl mir_int(width: int = 64, signed: bool = True, sized: bool = False) -> MirType {
+    sized = sized or width != 64 or not signed;
+    return mir_type(
+        MirKind.INT, width=width, signed=signed, name="sized" if sized else ""
+    );
 }
 
 impl mir_float(width: int = 64) -> MirType {
