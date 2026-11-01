@@ -647,7 +647,6 @@ impl _prepare(
     for path in entries {
         capture(path);
     }
-    import from jaclang.project.kernel_compile { host_prepared }
     import from jaclang.compiler.driver.jir { begin_prepare_memo, end_prepare_memo }
     with compile_progress.listen(capture) {
         memo = begin_prepare_memo();
@@ -657,7 +656,6 @@ impl _prepare(
             );
         } finally {
             end_prepare_memo(memo);
-            host_prepared();
         }
     }
 }
@@ -674,7 +672,7 @@ impl _unit_lookup(
 impl _unit_row(unit: any) -> dict[str, any] {
     return {
         'key': compute_module_key(unit.path),
-        'iface': unit.iface,
+        'iface': unit.interface.decode('utf-8'),
         'shape': unit.iface_shape,
         'effects': unit.effects,
         'placement': unit.placement,
@@ -706,48 +704,6 @@ impl _file_digest(path: str) -> str {
     }
 }
 
-impl _reusable_interfaces(
-    previous: dict[str, dict[str, any]],
-    entries: list[str],
-    specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]],
-    `root: str
-) -> dict[str, any] {
-    import base64;
-    held = {os.path.realpath(path) for path in entries};
-    by_real = {os.path.realpath(source): found for (source, found) in specs.items()};
-    seeds: dict[str, any] = {};
-    for (path, row) in previous.items() {
-        if path in held or not row.get('iface') or not os.path.isfile(path) {
-            continue;
-        }
-        if compute_module_key(path) != row.get('key') {
-            continue;
-        }
-        known = by_real.get(path);
-        if known is None or 'imports' not in row {
-            continue;
-        }
-        if sorted(resolve_imports(known, path, `root)) != row['imports'] {
-            continue;
-        }
-        digests = row.get('py_digests');
-        if digests is None {
-            continue;
-        }
-        if any(_file_digest(dep) != digest for (dep, digest) in digests.items()) {
-            continue;
-        }
-        seeds[path] = PythonInterface(
-            path=path,
-            pkg_dir=os.path.dirname(path),
-            data=base64.b64decode(row['iface']),
-            placement=row.get('placement') or '',
-            effects=row.get('effects') or ''
-        );
-    }
-    return seeds;
-}
-
 impl _importers_of(
     changed: set[str], rows: dict[str, dict[str, any]], among: set[str]
 ) -> set[str] {
@@ -767,8 +723,7 @@ impl _importers_of(
 impl _unreached_changes(
     units: dict[str, ManifestSource],
     rows: dict[str, dict[str, any]],
-    previous: dict[str, dict[str, any]],
-    seeds: dict[str, any]
+    previous: dict[str, dict[str, any]]
 ) -> list[str] {
     seen = `set(units);
     frontier = list(units);
@@ -782,7 +737,7 @@ impl _unreached_changes(
             }
             seen.add(dep);
             frontier.append(dep);
-            if dep not in seeds and dep not in units and os.path.isfile(dep) {
+            if dep not in units and os.path.isfile(dep) {
                 missing.append(dep);
             }
         }
@@ -800,123 +755,39 @@ impl _kernel_units(
     rows: dict[str, dict[str, any]],
     specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]],
     recorded: dict[str, str]
-) -> (dict[str, ManifestSource] | None) {
+) -> dict[str, ManifestSource] {
     import copy;
-    selfhost = program._get_compiler().selfhost;
-    seeds = _reusable_interfaces(previous, entries, specs, `root);
-    warned = len(program.warnings_had);
+    options = copy.copy(program.options);
+    options.project_root = `root;
+    options.no_cgen = False;
+    options.skip_native_engine = True;
+    forget_application_units();
     units: dict[str, ManifestSource] = {};
-    reached: set[str] = set();
-    read: dict[str, str] = {};
-    def capture(path: str) {
-        if path in seeds and path not in units and path in recorded {
-            inputs.setdefault(path, recorded[path]);
-        } else {
-            _capture_input(path, inputs);
-        }
-    }
-    def compile_target(path: str) -> (bool | None) {
-        options = copy.copy(program.options);
-        options.project_root = `root;
-        options.no_cgen = False;
-        options.skip_native_engine = True;
-        compiled = kernel_compile_application(
-            active_host(), program, path, options, seeds=list(seeds.values())
-        );
-        if compiled is None {
-            return None;
-        }
-        for module in compiled.analysis.modules {
-            if not selfhost.is_selfhost(selfhost.resolve(module.path, program)) {
-                reached.add(os.path.realpath(module.path));
-            }
-        }
-        for row in compiled.analysis.reads {
-            read[row[0]] = row[1] if read.get(row[0], row[1]) == row[1] else '';
-        }
+    targets = [os.path.realpath(path) for path in entries];
+    while targets {
+        compiled = kernel_compile_application(program, targets, options);
+        _check(program, before);
         for unit in compiled.units {
             real = os.path.realpath(unit.path);
-            if real not in units {
-                units[real] = _unit_source(unit);
-                rows[real] = _unit_row(unit);
+            if real in units {
+                continue;
+            }
+            units[real] = _unit_source(unit);
+            rows[real] = _unit_row(unit);
+            _capture_input(real, inputs);
+            for dep in unit.jac_deps {
+                _capture_input(dep, inputs);
             }
         }
-        return os.path.realpath(path) in units;
-    }
-    while True {
-        forget_application_units();
-        rows.clear();
-        units.clear();
-        reached.clear();
-        read.clear();
-        del program.errors_had[before:];
-        del program.warnings_had[warned:];
-        targets = list(entries);
-        failed = False;
-        while targets and not failed {
-            for path in targets {
-                landed = compile_target(path);
-                if landed is None {
-                    forget_application_units();
-                    return None;
-                }
-                if not landed {
-                    failed = True;
-                    break;
-                }
-            }
-            if not failed {
-                targets = _unreached_changes(units, rows, previous, seeds);
+        for path in targets {
+            if path not in units {
+                raise RuntimeError(
+                    f"the compiler kernel compiled {path} but returned no unit for it "
+                    "and reported no error"
+                );
             }
         }
-        if failed or (seeds and len(program.errors_had) > before) {
-            if not seeds {
-                forget_application_units();
-                if failed {
-                    _check(program, before);
-                    raise RuntimeError(
-                        "the native compiler kernel compiled the application "
-                        "but returned no unit for an entry and reported no error"
-                    );
-                }
-                break;
-            }
-            seeds.clear();
-            continue;
-        }
-        changed = {
-            path
-            for (path, row) in rows.items()
-            if path in previous
-                and (
-                    previous[path].get('shape') != row['shape']
-                    or previous[path].get('effects') != row['effects']
-                )
-        };
-        stale = _importers_of(changed, previous, `set(seeds) - `set(units));
-        if not stale {
-            break;
-        }
-        for path in stale {
-            seeds.pop(path, None);
-        }
-    }
-    _check(program, before);
-    hold_compiled_content(read);
-    for path in reached {
-        capture(path);
-    }
-    frontier = list(units);
-    while frontier {
-        row = rows.get(frontier.pop()) or {};
-        for dep in row.get('jac_deps') or [] {
-            if dep in seeds and dep not in units {
-                capture(dep);
-                units[dep] = _unit_source(_row_unit(dep, previous[dep]));
-                rows[dep] = previous[dep];
-                frontier.append(dep);
-            }
-        }
+        targets = _unreached_changes(units, rows, previous);
     }
     return units;
 }
@@ -1046,7 +917,6 @@ impl _prepare_revision(
     );
     before = len(program.errors_had);
     import copy;
-    modules: dict[str, uni.Module] = {};
     previous_rows: dict[str, dict[str, any]] = candidate.get('unit_rows') or {}
         if isinstance(candidate, dict)
         else {};
@@ -1057,7 +927,7 @@ impl _prepare_revision(
         or {}
         if isinstance(candidate, dict)
         else {};
-    units: (dict[str, ManifestSource] | None) = _kernel_units(
+    units: dict[str, ManifestSource] = _kernel_units(
         program,
         entries,
         `root,
@@ -1068,21 +938,7 @@ impl _prepare_revision(
         recorded_specs,
         candidate.get('dependencies') or {} if isinstance(candidate, dict) else {}
     );
-    if units is None {
-        import from jaclang.compiler.driver.pipeline_runner { compile_application }
-        import from jaclang.project.kernel_compile { host_preparing }
-        host_preparing(`entry);
-        for path in entries {
-            options = copy.copy(program.options);
-            options.project_root = `root;
-            options.no_cgen = False;
-            modules[path] = compile_application(program, path, options);
-            _check(program, before);
-        }
-    }
-    entry_client = modules[`entry].gen.client_manifest
-        if units is None
-        else units[os.path.realpath(`entry)].client;
+    entry_client = units[os.path.realpath(`entry)].client;
     has_client = client
         and bool(
             (entry_client is not None and entry_client.has_client)
@@ -1106,16 +962,12 @@ impl _prepare_revision(
     }
     routes = prepare_route_metadata(os.path.dirname(`entry), program);
     for path in entries {
-        if units is not None {
-            revision.manifests[path] = build_manifest(
-                `root,
-                units[os.path.realpath(path)],
-                _unit_lookup(units),
-                list(units.values())
-            );
-        } else {
-            revision.manifests[path] = _manifest(program, path, `root, modules[path]);
-        }
+        revision.manifests[path] = build_manifest(
+            `root,
+            units[os.path.realpath(path)],
+            _unit_lookup(units),
+            list(units.values())
+        );
         _check(program, before);
     }
     revision.manifests[`entry]['spa_routes'] = routes;

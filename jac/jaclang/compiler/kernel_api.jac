@@ -9,7 +9,13 @@ caches itself, and every failure is a diagnostic or a raised `KernelError`,
 never a quiet default.
 
 Requests name files by absolute path. `sources` overlays unsaved editor text
-on the file system for the paths it names."""
+on the file system for the paths it names. `search_paths` is the
+interpreter's module search path and `package_root` the jaclang package the
+kernel was built from; the kernel resolves imports over them and raises a
+`KernelError` when either is missing. Lines and columns are 1-based."""
+import os;
+import copy;
+
 class KernelError(Exception) {}
 
 obj SourceSpan {
@@ -57,13 +63,25 @@ obj CompiledUnit {
         native_object: bytes = b"",
         native_iface: str = "",
         native_deps: list[str] = [],
+        native_ir: str = "",
+        native_layout: str = "",
         demoted: list[NativeDemotion] = [],
-        jac_deps: list[str] = [];
+        jac_deps: list[str] = [],
+        app: str = "",
+        persistence: list[str] = [],
+        import_edges: list[str] = [],
+        interop: str = "",
+        client_manifest: str = "",
+        iface_shape: str = "",
+        effects: str = "",
+        sections: dict[int, bytes] = {};
 }
 
 obj CompileRequest {
     has paths: list[str],
         project_root: str = "",
+        search_paths: list[str] = [],
+        package_root: str = "",
         options: CompileOptions = CompileOptions(),
         sources: dict[str, str] = {},
         products: list[str] = ["bytecode"];
@@ -94,6 +112,8 @@ obj PlacementRow {
 obj CheckRequest {
     has paths: list[str],
         project_root: str = "",
+        search_paths: list[str] = [],
+        package_root: str = "",
         options: CompileOptions = CompileOptions(),
         sources: dict[str, str] = {},
         native_coverage: bool = False,
@@ -105,7 +125,8 @@ obj CheckResult {
     has errors: list[KernelDiagnostic] = [],
         warnings: list[KernelDiagnostic] = [],
         coverage: list[CoverageRow] = [],
-        placements: list[PlacementRow] = [];
+        placements: list[PlacementRow] = [],
+        reached: list[str] = [];
 
     def ok -> bool;
 }
@@ -139,7 +160,21 @@ obj DocumentSymbol {
 """An analysed project held across edits. Every tooling feature is a query on
 a session; an edit re-analyses incrementally inside the kernel."""
 obj KernelSession {
-    has project_root: str;
+    has project_root: str,
+        search_paths: list[str] = [],
+        package_root: str = "",
+        options: CompileOptions = CompileOptions(),
+        _host: (ProjectHost | None) = None,
+        _program: (JacProgram | None) = None,
+        _versions: dict[str, int] = {},
+        _analysed: dict[str, int] = {},
+        _open: set[str] = set();
+
+    def postinit;
+    def enter -> ProjectHost;
+    def leave;
+    def invalidate(real: str);
+    def analysed(path: str) -> uni.Module;
 
     def update(path: str, text: str);
     def close(path: str);
@@ -167,4 +202,30 @@ def compile_request(request: CompileRequest) -> CompileResult;
 
 def check_request(request: CheckRequest) -> CheckResult;
 
-def open_session(project_root: str) -> KernelSession;
+def open_session(
+    project_root: str, search_paths: list[str], package_root: str
+) -> KernelSession;
+
+def enter_world(project_root: str, search_paths: list[str], package_root: str);
+
+def run_compile(
+    program: JacProgram, host: ProjectHost, request: CompileRequest
+) -> CompileResult;
+
+def run_check(
+    program: JacProgram, host: ProjectHost, request: CheckRequest
+) -> CheckResult;
+
+def emitted_paths(host: ProjectHost, requested: list[str]) -> list[str];
+
+def compiled_unit(host: ProjectHost, real: str, want_code: bool) -> CompiledUnit;
+
+def kernel_diagnostic(alert: Alert, severity: str) -> KernelDiagnostic;
+
+def source_span(loc: Span) -> SourceSpan;
+
+def other_compiler_diagnostic(path: str, root: str) -> KernelDiagnostic;
+
+def collect_diagnostics(
+    program: JacProgram, errors: list[KernelDiagnostic], warnings: list[KernelDiagnostic]
+);

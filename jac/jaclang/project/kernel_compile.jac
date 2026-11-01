@@ -1,59 +1,54 @@
+"""The host's compile entry. Every compile is a request to the in-process
+kernel (`jac_kernel`); the host only builds requests and adopts results."""
+import marshal;
 import os;
+import sys;
 
-glob KERNEL_TIMING_ENV: str = "JAC_KERNEL_TIMING",
-     SLOW_COMPILE_SECONDS: float = 20.0,
-     _APPLICATION_UNITS: dict[str, UnitProducts] = {},
-     _HOST_PREPARING: list[str] = [],
-     _IN_PROCESS: list[bool] = [];
+glob _APPLICATION_UNITS: dict[str, CompiledUnit] = {};
 
 class KernelCompileError(RuntimeError) {}
 
-def run_kernel_in_process(on: bool = True) -> bool;
+class KernelReported {}
 
-def kernel_compile_in_process -> bool;
+def compile_request_for(
+    paths: list[str],
+    options: CompileOptions,
+    sources: dict[str, str],
+    products: list[str]
+) -> CompileRequest;
+
+def check_request_for(
+    paths: list[str],
+    options: CompileOptions,
+    native_coverage: bool = False,
+    placements: bool = False,
+    closure: bool = False
+) -> CheckRequest;
+
+def span_of(record: SourceSpan) -> Span;
+
+def alert_of(diag: KernelDiagnostic) -> Alert;
+
+def adopt_diagnostics(
+    program: JacProgram, errors: list[KernelDiagnostic], warnings: list[KernelDiagnostic]
+);
 
 def kernel_compile(
-    host: HostServices,
     program: JacProgram,
-    path: str,
+    paths: list[str],
     options: CompileOptions,
-    source: (str | None) = None,
-    in_process: bool = False,
-    isolated: bool = True,
-    emit_closure: bool = False,
-    emit_cached: bool = True,
-    seeds: (list[PythonInterface] | None) = None
-) -> (CompileReport | None);
+    sources: (dict[str, str] | None) = None,
+    products: (list[str] | None) = None
+) -> CompileResult;
 
-def kernel_route(program: JacProgram, path: str) -> tuple[bool, bool];
-
-def kernel_compile_reported(
-    host: HostServices,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    in_process: bool,
-    emit_closure: bool,
-    emit_cached: bool = True,
-    seeds: (list[PythonInterface] | None) = None
-) -> (CompileReport | None);
-
-def kernel_generates_native(program: JacProgram, path: str) -> bool;
-
-def host_kernel_compile(
-    host: HostServices, program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None);
+def compile_through_kernel(
+    program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
+) -> uni.Module;
 
 def kernel_compile_application(
-    host: HostServices,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    seeds: (list[PythonInterface] | None) = None
-) -> (CompileReport | None);
+    program: JacProgram, paths: list[str], options: CompileOptions
+) -> CompileResult;
+
+def take_application_unit(path: str) -> (CompiledUnit | None);
 
 def forget_application_units;
-
-def host_preparing(entry_path: str);
-
-def host_prepared;

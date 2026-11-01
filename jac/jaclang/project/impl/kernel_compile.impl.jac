@@ -1,200 +1,118 @@
-impl run_kernel_in_process(on: bool = True) -> bool {
-    previous = kernel_compile_in_process();
-    _IN_PROCESS.clear();
-    if on {
-        _IN_PROCESS.append(True);
-    }
-    return previous;
+impl compile_request_for(
+    paths: list[str],
+    options: CompileOptions,
+    sources: dict[str, str],
+    products: list[str]
+) -> CompileRequest {
+    return CompileRequest(
+        paths=[os.path.realpath(path) for path in paths],
+        project_root=options.project_root or "",
+        search_paths=list(sys.path),
+        package_root=package_root(),
+        options=options,
+        sources={os.path.realpath(path): text for (path, text) in sources.items()},
+        products=products
+    );
 }
 
-impl kernel_compile_in_process -> bool {
-    return bool(_IN_PROCESS);
+impl check_request_for(
+    paths: list[str],
+    options: CompileOptions,
+    native_coverage: bool = False,
+    placements: bool = False,
+    closure: bool = False
+) -> CheckRequest {
+    return CheckRequest(
+        paths=[os.path.realpath(path) for path in paths],
+        project_root=options.project_root or "",
+        search_paths=list(sys.path),
+        package_root=package_root(),
+        options=options,
+        native_coverage=native_coverage,
+        placements=placements,
+        closure=closure
+    );
+}
+
+impl span_of(record: SourceSpan) -> Span {
+    return Span(
+        mod_path=record.path,
+        first_line=record.line,
+        last_line=record.end_line,
+        col_start=record.col,
+        col_end=record.end_col
+    );
+}
+
+impl alert_of(diag: KernelDiagnostic) -> Alert {
+    return Alert(
+        msg=diag.message,
+        loc=span_of(diag.span),
+        from_pass=KernelReported,
+        code=DIAGNOSTICS[diag.code] if diag.code else None,
+        related=[(note.label, span_of(note.span)) for note in diag.related],
+        help_text=diag.help or None
+    );
+}
+
+impl adopt_diagnostics(
+    program: JacProgram, errors: list[KernelDiagnostic], warnings: list[KernelDiagnostic]
+) {
+    for diag in errors {
+        program.errors_had.append(alert_of(diag));
+    }
+    for diag in warnings {
+        program.warnings_had.append(alert_of(diag));
+    }
 }
 
 impl kernel_compile(
-    host: HostServices,
     program: JacProgram,
-    path: str,
+    paths: list[str],
     options: CompileOptions,
-    source: (str | None) = None,
-    in_process: bool = False,
-    isolated: bool = True,
-    emit_closure: bool = False,
-    emit_cached: bool = True,
-    seeds: (list[PythonInterface] | None) = None
-) -> (CompileReport | None) {
-    import time;
-    started = time.monotonic();
-    snapshot = kernel_snapshot(
-        host,
-        program,
-        path,
-        options,
-        emit_closure=emit_closure,
-        emit_cached=emit_cached,
-        seeds=seeds
+    sources: (dict[str, str] | None) = None,
+    products: (list[str] | None) = None
+) -> CompileResult {
+    import jac_kernel;
+    wanted = products if products is not None else ([] if options.no_cgen else ["bytecode"]);
+    result = jac_kernel.compile_request(
+        compile_request_for(paths, options, sources or {}, wanted)
     );
-    seeded = time.monotonic();
-    if snapshot.other_compiler {
-        outcome = CompileReport(
-            analysis=other_compiler_report(path, snapshot.other_compiler)
-        );
-    } elif in_process {
-        outcome = run_kernel_compile(snapshot.text(), path, source, snapshot);
-    } else {
-        kernel = loaded_kernel(COMPILE_ENTRY);
-        outcome = CompileReport.from_json(
-            call_with_asker(kernel, COMPILE_ENTRY, snapshot, path, source, isolated)
-        );
-    }
-    analysis = outcome.analysis;
-    sink = os.environ.get(KERNEL_TIMING_ENV, "");
-    total = time.monotonic() - started;
-    if sink or total > SLOW_COMPILE_SECONDS {
-        import sys;
-        line = f"jac: kernel compile {path}: {total:.2f}s "
-        f"(inputs {seeded - started:.2f}s, kernel {total - (seeded - started):.2f}s, "
-        f"{len(outcome.units)} unit(s), deferred={host_deferred(analysis)}; "
-        f"this process has built {int(_IFACE_BUILT[0])} interfaces in "
-        f"{_IFACE_BUILT[1]:.2f}s)\n";
-        if os.sep in sink {
-            with open(sink, "a", encoding="utf-8") as log {
-                log.write(line);
-            }
-        } else {
-            sys.stderr.write(line);
-        }
-    }
-    if host_deferred(analysis) {
-        return None;
-    }
-    if analysis.status == ANALYSIS_CRASHED {
-        detail = f" ({analysis.misses[-1]})" if analysis.misses else "";
-        raise KernelAnalysisError(analysis.message + detail + snapshot.failure_note());
-    }
-    if analysis.misses {
-        raise KernelAnalysisError(
-            f"the kernel lacked host answers ({analysis.misses[0]})"
-                + snapshot.failure_note()
-        );
-    }
-    return outcome;
+    adopt_diagnostics(program, result.errors, result.warnings);
+    return result;
 }
 
-impl kernel_route(program: JacProgram, path: str) -> tuple[bool, bool] {
-    if program.internal or is_compiler_source_path(path) or _HOST_PREPARING {
-        return (False, False);
+impl compile_through_kernel(
+    program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
+) -> uni.Module {
+    real = os.path.realpath(file_path);
+    sources = {real: use_str} if use_str is not None else {};
+    result = kernel_compile(program, [real], options, sources);
+    module = uni.Module.make_stub(inject_name=os.path.splitext(os.path.basename(real))[0]);
+    module.loc.mod_path = real;
+    if options.no_cgen or not result.ok() {
+        return module;
     }
-    if kernel_compile_in_process() {
-        return (True, True);
-    }
-
-    if ensure_loaded() is None {
-        import from jaclang.compiler.backends.native.kernel_resolve {
-            refuse_unloadable
-        }
-        refuse_unloadable();
-        return (False, False);
-    }
-    return (True, False);
-}
-
-impl kernel_compile_reported(
-    host: HostServices,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    in_process: bool,
-    emit_closure: bool,
-    emit_cached: bool = True,
-    seeds: (list[PythonInterface] | None) = None
-) -> (CompileReport | None) {
-    try {
-        compiled = kernel_compile(
-            host,
-            program,
-            path,
-            options,
-            in_process=in_process,
-            emit_closure=emit_closure,
-            emit_cached=emit_cached,
-            seeds=seeds
-        );
-    } except KernelAnalysisError as err {
-        raise KernelCompileError(
-            f"the native compiler kernel could not compile {path}: {err}"
-        ) from err;
-    }
-    if compiled is None {
-        return None;
-    }
-    kernel_trace(
-        f"kernel compiled {path}: {len(compiled.units)} unit(s), "
-        f"{len(compiled.analysis.errors)} error(s)"
-    );
-
-    replay_event_rows(host, compiled.analysis.events);
-
-    for diag in compiled.analysis.errors {
-        program.errors_had.append(alert_of(diag));
-    }
-    for diag in compiled.analysis.warnings {
-        program.warnings_had.append(alert_of(diag));
-    }
-    return compiled;
-}
-
-impl kernel_generates_native(program: JacProgram, path: str) -> bool {
-    return kernel_route(program, path)[0];
-}
-
-impl host_kernel_compile(
-    host: HostServices, program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
-    (routed, in_process) = kernel_route(program, path);
-    if not routed or options.skip_analysis {
-        return None;
-    }
-    ready = _APPLICATION_UNITS.pop(os.path.realpath(path), None);
-    if ready is not None {
-        return CompileReport(analysis=AnalysisReport(entry_path=path), units=[ready]);
-    }
-    return kernel_compile_reported(
-        host, program, path, options, in_process, True, emit_cached=False
-    );
+    unit = result.unit(real);
+    module.gen.py_bytecode = marshal.dumps(unit.code);
+    module.gen.js = unit.client_js;
+    return module;
 }
 
 impl kernel_compile_application(
-    host: HostServices,
-    program: JacProgram,
-    path: str,
-    options: CompileOptions,
-    seeds: (list[PythonInterface] | None) = None
-) -> (CompileReport | None) {
-    (routed, in_process) = kernel_route(program, path);
-    if not routed {
-        return None;
-    }
-    compiled = kernel_compile_reported(
-        host, program, path, options, in_process, True, seeds=seeds
-    );
-    if compiled is None {
-        return None;
-    }
-    for unit in compiled.units {
+    program: JacProgram, paths: list[str], options: CompileOptions
+) -> CompileResult {
+    result = kernel_compile(program, paths, options);
+    for unit in result.units {
         _APPLICATION_UNITS[os.path.realpath(unit.path)] = unit;
     }
-    return compiled;
+    return result;
+}
+
+impl take_application_unit(path: str) -> (CompiledUnit | None) {
+    return _APPLICATION_UNITS.pop(os.path.realpath(path), None);
 }
 
 impl forget_application_units {
     _APPLICATION_UNITS.clear();
-}
-
-impl host_preparing(entry_path: str) {
-    _HOST_PREPARING.append(entry_path);
-}
-
-impl host_prepared {
-    _HOST_PREPARING.clear();
 }
