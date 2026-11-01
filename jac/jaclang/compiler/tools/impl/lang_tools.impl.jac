@@ -54,19 +54,11 @@ impl AstTool.ir(args: list[str]) -> str {
         base = base or './';
         if file_name.endswith('.py') {
             file_source = read_file_with_encoding(file_name);
-            parsed_ast = py_ast.parse(file_source);
             if (output == 'pyast') {
-                return f"{py_ast.dump(parsed_ast, indent=2)}";
+                return f"{py_ast.dump(py_ast.parse(file_source), indent=2)}";
             }
             try {
-                rep = run_utility(
-                    CompilationProduct.PYTHON_AST,
-                    uni.PythonModuleAst(
-                        parsed_ast, orig_src=uni.Source(file_source, file_name)
-                    ),
-                    prog
-                ).module;
-                assert isinstance(rep, uni.Module);
+                (rep, _had_error) = parse_python_source(file_source, file_name, prog);
                 rep_src = unparse_module(rep);
                 console.print(rep_src);
                 ir_mod = prog.compile(

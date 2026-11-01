@@ -1,52 +1,19 @@
 impl host_layout_tables -> LayoutTables {
-    if not _LAYOUT_TABLES {
-        import from jaclang.jac0core.ext_registry {
-            ANNEX_FOLDER,
-            INIT_FILES,
-            JAC_SUFFIX,
-            MODULE_SUFFIXES,
-            RETIRED_CLIENT_SUFFIX,
-            RETIRED_NATIVE_SUFFIX,
-            STEM_REKEY_SUFFIXES,
-            _JS_SUFFIXES,
-            _PY_SUFFIXES
-        }
-        _LAYOUT_TABLES.append(
-            LayoutTables(
-                jac_suffix=JAC_SUFFIX,
-                annex_folders=dict(ANNEX_FOLDER),
-                module_suffixes=list(MODULE_SUFFIXES),
-                init_files=list(INIT_FILES),
-                stem_rekey_suffixes=list(STEM_REKEY_SUFFIXES),
-                foreign_suffixes=list(_PY_SUFFIXES) + list(_JS_SUFFIXES),
-                retired_native=[RETIRED_NATIVE_SUFFIX, ".na.impl.jac"],
-                retired_client=[RETIRED_CLIENT_SUFFIX, ".cl.impl.jac"]
-            )
-        );
-    }
-    return _LAYOUT_TABLES[0];
+    return JAC_LAYOUT_TABLES;
 }
 
 impl _dir_entries(directory: str) -> (list[str] | None) {
-    try {
-        st = os.stat(directory);
-    } except OSError {
+    if not os.path.isdir(directory) {
         return None;
     }
-    if not stat.S_ISDIR(st.st_mode) {
-        return None;
-    }
+    mtime_ns = os.stat(directory).st_mtime_ns;
     cached = _DIR_LISTINGS.get(directory);
-    if cached is not None and cached[0] == st.st_mtime_ns {
+    if cached is not None and cached[0] == mtime_ns {
         return cached[1];
     }
-    try {
-        names = sorted(os.listdir(directory));
-    } except OSError {
-        return None;
-    }
-    if time.time_ns() - st.st_mtime_ns > LISTING_SETTLE_NS {
-        _DIR_LISTINGS[directory] = (st.st_mtime_ns, names);
+    names = sorted(os.listdir(directory));
+    if time.time_ns() - mtime_ns > LISTING_SETTLE_NS {
+        _DIR_LISTINGS[directory] = (mtime_ns, names);
     } else {
         _DIR_LISTINGS.pop(directory, None);
     }

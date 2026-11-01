@@ -3,7 +3,8 @@
 `PyInit_jac_kernel` is the module's init function: `jac native build kernel`
 links it into the development extension module, and a release links it into
 the interpreter's table of built-in modules. The module has three functions,
-`compile(request)`, `check(request)` and `open_session(project_root)`, the
+`compile(request)`, `check(request)` and
+`open_session(project_root, search_paths, package_root)`, the
 `Session` type whose methods are `KernelSession`'s, and the `KernelError`
 exception.
 
@@ -11,7 +12,8 @@ Requests and results are plain Python data named after the records in
 `kernel_api.jac`: a request is a dict of its record's fields (an absent field
 keeps its default, an unknown one is a TypeError), and every result record is
 a dict of all of its fields. Lists, strings, ints, bools and bytes cross as
-themselves; a compiled unit's `code` is its code object, or None. A
+themselves; a unit's `sections` is a dict from section tag to bytes and its
+`code` is its code object, or None. A
 `KernelError` raised in the kernel raises `jac_kernel.KernelError`; any other
 failure escaping the kernel is a SystemError naming an internal compiler
 error. Nothing calls back into the host."""
@@ -101,6 +103,8 @@ def:priv demotions_object(demotions: list[NativeDemotion]) -> ptr[PyObject];
 
 def:priv code_object(unit: CompiledUnit) -> ptr[PyObject];
 
+def:priv sections_object(sections: dict[int, bytes]) -> ptr[PyObject];
+
 def:priv unit_object(unit: CompiledUnit) -> ptr[PyObject];
 
 def:priv compile_result_object(result: CompileResult) -> ptr[PyObject];
@@ -122,7 +126,7 @@ def:priv compile_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyOb
 def:priv check_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv open_session_call(
-    module: ptr[PyObject], project_root: ptr[PyObject]
+    module: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject];
 
 def:priv session_of(instance: ptr[PyObject]) -> KernelSession;
@@ -339,9 +343,9 @@ glob:priv session_methods: list[MethodDefinition] = [
          ),
          MethodDefinition(
              "open_session",
-             MethodCallbacks(positional=open_session_call),
-             "open_session(project_root)\n--\n\nOpen an analysed project held across edits.",
-             METH_O
+             MethodCallbacks(fast=open_session_call),
+             "open_session(project_root, search_paths, package_root)\n--\n\nOpen an analysed project held across edits.",
+             METH_FASTCALL
          )
      ];
 

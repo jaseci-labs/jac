@@ -339,6 +339,8 @@ impl compile_request_of(value: ptr[PyObject]) -> CompileRequest {
     paths: list[str] = [];
     has_paths = False;
     project_root = "";
+    search_paths: list[str] = [];
+    package_root = "";
     options = CompileOptions();
     sources: dict[str, str] = {};
     products: list[str] = ["bytecode"];
@@ -349,6 +351,10 @@ impl compile_request_of(value: ptr[PyObject]) -> CompileRequest {
             has_paths = True;
         } elif pair.name == "project_root" {
             project_root = text_of(pair.value, what);
+        } elif pair.name == "search_paths" {
+            search_paths = texts_of(pair.value, what);
+        } elif pair.name == "package_root" {
+            package_root = text_of(pair.value, what);
         } elif pair.name == "options" {
             options = options_of(pair.value);
         } elif pair.name == "sources" {
@@ -367,6 +373,8 @@ impl compile_request_of(value: ptr[PyObject]) -> CompileRequest {
     return CompileRequest(
         paths=paths,
         project_root=project_root,
+        search_paths=search_paths,
+        package_root=package_root,
         options=options,
         sources=sources,
         products=products
@@ -377,6 +385,8 @@ impl check_request_of(value: ptr[PyObject]) -> CheckRequest {
     paths: list[str] = [];
     has_paths = False;
     project_root = "";
+    search_paths: list[str] = [];
+    package_root = "";
     options = CompileOptions();
     sources: dict[str, str] = {};
     native_coverage = False;
@@ -389,6 +399,10 @@ impl check_request_of(value: ptr[PyObject]) -> CheckRequest {
             has_paths = True;
         } elif pair.name == "project_root" {
             project_root = text_of(pair.value, what);
+        } elif pair.name == "search_paths" {
+            search_paths = texts_of(pair.value, what);
+        } elif pair.name == "package_root" {
+            package_root = text_of(pair.value, what);
         } elif pair.name == "options" {
             options = options_of(pair.value);
         } elif pair.name == "sources" {
@@ -411,6 +425,8 @@ impl check_request_of(value: ptr[PyObject]) -> CheckRequest {
     return CheckRequest(
         paths=paths,
         project_root=project_root,
+        search_paths=search_paths,
+        package_root=package_root,
         options=options,
         sources=sources,
         native_coverage=native_coverage,
@@ -578,6 +594,27 @@ impl code_object(unit: CompiledUnit) -> ptr[PyObject] {
     return code;
 }
 
+impl sections_object(sections: dict[int, bytes]) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        for (tag, data) in sections.items() {
+            key = int_object(tag);
+            try {
+                value = required(write_buffer(data));
+                status = PyDict_SetItem(record, key, value);
+                jacpy_release(value);
+                checked(i64(status));
+            } finally {
+                jacpy_release(key);
+            }
+        }
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
 impl unit_object(unit: CompiledUnit) -> ptr[PyObject] {
     record = new_record();
     try {
@@ -590,8 +627,18 @@ impl unit_object(unit: CompiledUnit) -> ptr[PyObject] {
         put(record, "native_object", write_buffer(unit.native_object));
         put(record, "native_iface", text_object(unit.native_iface));
         put(record, "native_deps", texts_object(unit.native_deps));
+        put(record, "native_ir", text_object(unit.native_ir));
+        put(record, "native_layout", text_object(unit.native_layout));
         put(record, "demoted", demotions_object(unit.demoted));
         put(record, "jac_deps", texts_object(unit.jac_deps));
+        put(record, "app", text_object(unit.app));
+        put(record, "persistence", texts_object(unit.persistence));
+        put(record, "import_edges", texts_object(unit.import_edges));
+        put(record, "interop", text_object(unit.interop));
+        put(record, "client_manifest", text_object(unit.client_manifest));
+        put(record, "iface_shape", text_object(unit.iface_shape));
+        put(record, "effects", text_object(unit.effects));
+        put(record, "sections", sections_object(unit.sections));
     } except boundary_failure as error {
         jacpy_release(record);
         raise error;
@@ -767,11 +814,17 @@ impl check_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject] 
 }
 
 impl open_session_call(
-    module: ptr[PyObject], project_root: ptr[PyObject]
+    module: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        folder = text_of(project_root, "project_root");
-        state = SessionState(session=open_session(folder));
+        args = arguments(stack, count, "open_session", 3, 3);
+        state = SessionState(
+            session=open_session(
+                text_of(args[0], "project_root"),
+                texts_of(args[1], "search_paths"),
+                text_of(args[2], "package_root")
+            )
+        );
         instance = required(jacpy_binding_allocate(handles.session));
         if jacpy_binding_native_set(instance, session_type.handle, state) < 0 {
             jacpy_release(instance);
@@ -805,7 +858,7 @@ impl arguments(
         wanted = str(least) if least == most else f"{least} to {most}";
         raise failure(
             PyExc_TypeError,
-            f"Session.{method}() takes {wanted} positional arguments ({given} given)"
+            f"{method}() takes {wanted} positional arguments ({given} given)"
         );
     }
     view = stack.view(count);
@@ -820,7 +873,7 @@ impl session_update(
     instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        args = arguments(stack, count, "update", 2, 2);
+        args = arguments(stack, count, "Session.update", 2, 2);
         session_of(instance).update(
             text_of(args[0], "path"), text_of(args[1], "text")
         );
@@ -864,7 +917,7 @@ impl session_rename_module(
     instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        args = arguments(stack, count, "rename_module", 2, 2);
+        args = arguments(stack, count, "Session.rename_module", 2, 2);
         session_of(instance).rename_module(
             text_of(args[0], "old_path"), text_of(args[1], "new_path")
         );
@@ -898,7 +951,7 @@ impl session_hover(
     instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        args = arguments(stack, count, "hover", 3, 3);
+        args = arguments(stack, count, "Session.hover", 3, 3);
         return text_object(
             session_of(instance).hover(
                 text_of(args[0], "path"), int_of(args[1], "line"), int_of(args[2], "col")
@@ -917,7 +970,7 @@ impl session_definition(
     instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        args = arguments(stack, count, "definition", 3, 3);
+        args = arguments(stack, count, "Session.definition", 3, 3);
         return spans_object(
             session_of(instance).definition(
                 text_of(args[0], "path"), int_of(args[1], "line"), int_of(args[2], "col")
@@ -936,7 +989,7 @@ impl session_references(
     instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        args = arguments(stack, count, "references", 3, 3);
+        args = arguments(stack, count, "Session.references", 3, 3);
         return spans_object(
             session_of(instance).references(
                 text_of(args[0], "path"), int_of(args[1], "line"), int_of(args[2], "col")
@@ -955,7 +1008,7 @@ impl session_completion(
     instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        args = arguments(stack, count, "completion", 3, 4);
+        args = arguments(stack, count, "Session.completion", 3, 4);
         trigger = text_of(args[3], "trigger") if len(args) == 4 else "";
         return completions_object(
             session_of(instance).completion(
@@ -992,7 +1045,7 @@ impl session_inlay_hints(
     instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        args = arguments(stack, count, "inlay_hints", 3, 3);
+        args = arguments(stack, count, "Session.inlay_hints", 3, 3);
         return hints_object(
             session_of(instance).inlay_hints(
                 text_of(args[0], "path"),
@@ -1025,7 +1078,7 @@ impl session_rename(
     instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        args = arguments(stack, count, "rename", 4, 4);
+        args = arguments(stack, count, "Session.rename", 4, 4);
         return edits_object(
             session_of(instance).rename(
                 text_of(args[0], "path"),

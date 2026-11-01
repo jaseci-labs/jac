@@ -197,7 +197,8 @@ impl JacProgram.load_dependency_module(
             import from jaclang.compiler.driver.pass_driver { run_pass }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
             src = use_str or active_host().read_source(source_path);
-            (mod, _stub_errors) = active_host().parse_python(src, source_path, self);
+            import from jaclang.compiler.passes.pyast_load_pass { parse_python_source }
+            (mod, _stub_errors) = parse_python_source(src, source_path, self);
             mod.stub_only = True;
             self.install_module(resolved_path, mod);
             self.note_stub_tree_served(resolved_path);
@@ -482,12 +483,14 @@ impl JacProgram.compile(
             native_unit=native_unit_compile_active()
         );
     }
-    import from jaclang.compiler.frontend.host { active_host }
+    import from jaclang.compiler.frontend.host { active_host, kernel_resident }
+    if not kernel_resident() {
+        import from jaclang.project.kernel_compile { compile_through_kernel }
+        return compile_through_kernel(self, file_path, use_str, options);
+    }
     mod = active_host().compile_module(self, file_path, use_str, options);
     if self.deps.tracking {
-        try {
-            self.deps.record_module(mod);
-        } except Exception {}
+        self.deps.record_module(mod);
     }
     return mod;
 }
@@ -582,7 +585,8 @@ impl JacProgram.parse_source(
 ) -> uni.Module {
     had_error = False;
     if (file_path.endswith('.py') or file_path.endswith('.pyi')) {
-        (parsed, had_error) = active_host().parse_python(source_str, file_path, self);
+        import from jaclang.compiler.passes.pyast_load_pass { parse_python_source }
+        (parsed, had_error) = parse_python_source(source_str, file_path, self);
     } else {
         retired = active_host().path_facts(file_path).retired_marker;
         if retired == "native" {

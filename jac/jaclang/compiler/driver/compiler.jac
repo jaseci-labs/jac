@@ -21,7 +21,7 @@ def cached_client_artifact(full_target: str) -> (ClientArtifact | None);
 
 def cached_client_pulls(full_target: str) -> str;
 
-def native_first(units: list[UnitProducts]) -> list[UnitProducts];
+def native_first(units: list[CompiledUnit]) -> list[CompiledUnit];
 
 def assemble_jcir(jcir: bytes, path: str) -> tuple[(bytes | None), list[Alert]];
 
@@ -93,7 +93,7 @@ obj JacCompiler(SessionHooks) {
     def _persist_client_artifact(full_target: str, artifact: ClientArtifact) -> None;
     def _adopt_kernel_compile(
         full_target: str, program: JacProgram, options: CompileOptions
-    ) -> tuple[bool, (bytes | None)];
+    ) -> (types.CodeType | None);
 
     def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
     def kernel_native_entry(
@@ -102,7 +102,7 @@ obj JacCompiler(SessionHooks) {
 
     def native_entry_engine(full_target: str, target_program: JacProgram) -> any;
     def _adopt_native_unit(
-        unit: UnitProducts,
+        unit: CompiledUnit,
         program: JacProgram,
         options: CompileOptions,
         compile_deps: bytes

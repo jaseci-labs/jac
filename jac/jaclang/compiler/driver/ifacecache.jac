@@ -7,12 +7,6 @@ import time;
 glob DIAG_SCHEMA: int = 1,
      SOURCE_DEP_PREFIX: str = "src:",
      IFACE_RETAIN_CAP: int = 1024,
-     _CODEC_MODULES: tuple[str, ...] = (
-         "jaclang.compiler.types.type_evaluator",
-         "jaclang.compiler.types.stubcat.reader",
-         "jaclang.compiler.types.stubcat.writer",
-         "jaclang.compiler.types.stubcat.modiface"
-     ),
      _CODEC_MEMO: list[IfaceCodec] = [];
 
 obj IfaceCodec {

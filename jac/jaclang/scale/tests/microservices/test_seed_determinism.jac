@@ -146,7 +146,7 @@ test "the running compiler digest covers the real compiler tree" {
         "compiler/frontend/unitree.jac",
         "compiler/backends/py/jcir_gen_pass.jac",
         "compiler/backends/py/jcir_gen_pass.impl/expr.impl.jac",
-        "compiler/backends/native/na_ir_gen_pass.impl/core.impl.jac",
+        "compiler/backends/native/mir/impl/lower.impl.jac",
         "compiler/passes/type_checker_pass.jac",
         "dist/precompile_bytecode.jac"
     ] {

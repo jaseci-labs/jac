@@ -7,100 +7,156 @@ impl options_record(options: CompileOptions) -> dict[str, any] {
     return record;
 }
 
-impl compile_request_record(
-    path: str, options: CompileOptions, source: (str | None) = None
-) -> dict[str, any] {
-    real = os.path.realpath(path);
+impl compile_request_record(request: CompileRequest) -> dict[str, any] {
     return {
-        "paths": [real],
-        "project_root": options.project_root or "",
-        "options": options_record(options),
-        "sources": {real: source} if source is not None else {},
-        "products": list(KERNEL_PRODUCTS)
+        "paths": list(request.paths),
+        "project_root": request.project_root,
+        "search_paths": list(request.search_paths),
+        "package_root": request.package_root,
+        "options": options_record(request.options),
+        "sources": dict(request.sources),
+        "products": list(request.products)
     };
 }
 
-impl check_request_record(
-    path: str,
-    options: CompileOptions,
-    source: (str | None) = None,
-    closure: bool = False,
-    native_coverage: bool = False,
-    placements: bool = False
-) -> dict[str, any] {
-    real = os.path.realpath(path);
+impl check_request_record(request: CheckRequest) -> dict[str, any] {
     return {
-        "paths": [real],
-        "project_root": options.project_root or "",
-        "options": options_record(options),
-        "sources": {real: source} if source is not None else {},
-        "closure": closure,
-        "native_coverage": native_coverage,
-        "placements": placements
+        "paths": list(request.paths),
+        "project_root": request.project_root,
+        "search_paths": list(request.search_paths),
+        "package_root": request.package_root,
+        "options": options_record(request.options),
+        "sources": dict(request.sources),
+        "native_coverage": request.native_coverage,
+        "placements": request.placements,
+        "closure": request.closure
     };
 }
 
-impl span_of_record(raw: dict[str, any]) -> DiagSpan {
-    return DiagSpan(
-        mod_path=raw["path"],
-        first_line=raw["line"],
-        last_line=raw["end_line"],
-        col_start=raw["col"],
-        col_end=raw["end_col"]
-    );
-}
-
-impl diag_of_record(raw: dict[str, any]) -> AnalysisDiag {
-    span = raw["span"];
-    message: str = raw["message"];
-    return AnalysisDiag(
-        code=raw["code"],
-        message=message.split("\n", 1)[0],
-        path=span["path"],
-        line=span["line"],
-        col=span["col"],
-        pass_name=raw["pass_name"],
-        msg=message,
-        span=span_of_record(span),
-        related=[
-            RelatedDiag(label=note["label"], span=span_of_record(note["span"]))
-            for note in raw["related"]
-        ],
-        help_text=raw["help"] or None
-    );
-}
-
-impl analysis_report_of(result: dict[str, any], entry_path: str) -> AnalysisReport {
-    return AnalysisReport(
-        entry_path=os.path.realpath(entry_path),
-        modules=[ModuleReport(path=path) for path in result["reached"]],
-        errors=[diag_of_record(d) for d in result["errors"]],
-        warnings=[diag_of_record(d) for d in result["warnings"]]
-    );
-}
-
-impl unit_of_record(raw: dict[str, any]) -> UnitProducts {
-    return UnitProducts(
+impl span_of_record(raw: dict[str, any]) -> SourceSpan {
+    return SourceSpan(
         path=raw["path"],
+        line=raw["line"],
+        col=raw["col"],
+        end_line=raw["end_line"],
+        end_col=raw["end_col"]
+    );
+}
+
+impl diagnostic_of_record(raw: dict[str, any]) -> KernelDiagnostic {
+    return KernelDiagnostic(
         code=raw["code"],
+        severity=raw["severity"],
+        message=raw["message"],
+        span=span_of_record(raw["span"]),
+        help=raw["help"],
+        pass_name=raw["pass_name"],
+        related=[
+            RelatedNote(label=note["label"], span=span_of_record(note["span"]))
+            for note in raw["related"]
+        ]
+    );
+}
+
+impl demotion_of_record(raw: dict[str, any]) -> NativeDemotion {
+    return NativeDemotion(
+        symbol=raw["symbol"],
+        kind=raw["kind"],
+        reason=raw["reason"],
+        code=raw["code"],
+        span=span_of_record(raw["span"])
+    );
+}
+
+impl unit_of_record(raw: dict[str, any]) -> CompiledUnit {
+    return CompiledUnit(
+        path=raw["path"],
+        module_name=raw["module_name"],
+        code=raw["code"],
+        interface=raw["interface"],
         placement=raw["placement"],
-        client=raw["client_js"],
+        client_js=raw["client_js"],
+        native_object=raw["native_object"],
         native_iface=raw["native_iface"],
         native_deps=list(raw["native_deps"]),
-        jac_deps=list(raw["jac_deps"])
+        native_ir=raw["native_ir"],
+        native_layout=raw["native_layout"],
+        demoted=[demotion_of_record(row) for row in raw["demoted"]],
+        jac_deps=list(raw["jac_deps"]),
+        app=raw["app"],
+        persistence=list(raw["persistence"]),
+        import_edges=list(raw["import_edges"]),
+        interop=raw["interop"],
+        client_manifest=raw["client_manifest"],
+        iface_shape=raw["iface_shape"],
+        effects=raw["effects"],
+        sections=dict(raw["sections"])
     );
 }
 
-impl compile_report_of(result: dict[str, any], entry_path: str) -> CompileReport {
-    analysis = analysis_report_of(result, entry_path);
-    analysis.reads = [[read["path"], read["digest"]] for read in result["reads"]];
-    return CompileReport(
-        analysis=analysis, units=[unit_of_record(unit) for unit in result["units"]]
+impl compile_result_of(raw: dict[str, any]) -> CompileResult {
+    return CompileResult(
+        units=[unit_of_record(unit) for unit in raw["units"]],
+        errors=[diagnostic_of_record(diag) for diag in raw["errors"]],
+        warnings=[diagnostic_of_record(diag) for diag in raw["warnings"]],
+        reached=list(raw["reached"]),
+        reads=[
+            SourceRead(path=read["path"], digest=read["digest"])
+            for read in raw["reads"]
+        ]
     );
 }
 
-impl kernel_analysis(
-    path: str, options: CompileOptions, source: (str | None) = None
-) -> dict[str, any] {
-    return load_kernel().check(check_request_record(path, options, source));
+impl check_result_of(raw: dict[str, any]) -> CheckResult {
+    return CheckResult(
+        errors=[diagnostic_of_record(diag) for diag in raw["errors"]],
+        warnings=[diagnostic_of_record(diag) for diag in raw["warnings"]],
+        reached=list(raw["reached"]),
+        coverage=[
+            CoverageRow(
+                path=row["path"],
+                native=row["native"],
+                demoted=[demotion_of_record(item) for item in row["demoted"]]
+            )
+            for row in raw["coverage"]
+        ],
+        placements=[
+            PlacementRow(
+                path=row["path"],
+                symbol=row["symbol"],
+                placement=row["placement"],
+                reason=row["reason"]
+            )
+            for row in raw["placements"]
+        ]
+    );
+}
+
+impl call_compile(request: CompileRequest) -> CompileResult {
+    kernel = load_kernel();
+    try {
+        raw = kernel.compile(compile_request_record(request));
+    } except kernel.KernelError as error {
+        raise KernelError(str(error)) from error;
+    }
+    return compile_result_of(raw);
+}
+
+impl call_check(request: CheckRequest) -> CheckResult {
+    kernel = load_kernel();
+    try {
+        raw = kernel.check(check_request_record(request));
+    } except kernel.KernelError as error {
+        raise KernelError(str(error)) from error;
+    }
+    return check_result_of(raw);
+}
+
+impl open_kernel_session(project_root: str) -> any {
+    kernel = load_kernel();
+    try {
+        return kernel.open_session(project_root, list(sys.path), package_root());
+    } except kernel.KernelError as error {
+        raise KernelError(str(error)) from error;
+    }
 }

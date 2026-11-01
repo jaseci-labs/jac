@@ -1,3 +1,71 @@
+impl HostSession.closure_options -> (CompileOptions | None) {
+    return self.closure;
+}
+
+impl HostSession.run_module(
+    file_path: str,
+    target_program: JacProgram,
+    use_str: (str | None),
+    options: CompileOptions
+) -> Module {
+    task = analyze_module(target_program, file_path, options, use_str)
+        if options.no_cgen or options.symtab_ir_only
+        else compile_task(self, target_program, file_path, options, use_str);
+    self.host.analyses[os.path.realpath(file_path)] = task;
+    self.host.record_unit(task);
+    return task.module;
+}
+
+impl ProjectHost.postinit {
+    self._session = HostSession(host=self, closure=self.closure);
+}
+
+impl ProjectHost.close_over(options: CompileOptions) {
+    self.closure = options;
+    if self._session is not None {
+        self._session.closure = options;
+    }
+}
+
+impl ProjectHost.record_unit(task: ModuleAnalysis) {
+    if task.parse_failed or task.blocked or not task.ready(CompilationProduct.PY_IR) {
+        return;
+    }
+    module = task.module;
+    real = os.path.realpath(task.path);
+    products = unit_products(module, task.program);
+    if not products.path {
+        products.path = real;
+    }
+    lowered = self._lowered.get(real);
+    if lowered is not None and lowered is not module and not products.native_ir {
+        native_products(lowered, products);
+    }
+    self.units[real] = products;
+}
+
+impl ProjectHost.forget_unit(path: str) {
+    real = os.path.realpath(path);
+    self.analyses.pop(real, None);
+    self.units.pop(real, None);
+    self._native_ifaces.pop(real, None);
+    self._lowered.pop(real, None);
+    self.grown.discard(real);
+    self._facts.clear();
+    self._last_defaults = None;
+}
+
+impl ProjectHost.project_config(path: str = "") -> JacConfig {
+    start = path or self.root;
+    if not start {
+        raise RuntimeError(
+            "the kernel host has no project root: a request names no project and no path"
+        );
+    }
+    cfg = get_config_for_path(Path(start));
+    return cfg if cfg is not None else JacConfig();
+}
+
 impl ProjectHost.session -> Iterator[None] {
     with workspace_scope(), wiring_scope() {
         yield ;
@@ -10,18 +78,7 @@ impl ProjectHost.project_defaults -> (ProjectDefaults | None) {
     }
     self._defaults_active = True;
     try {
-        cfg: any = None;
-        try {
-            import from jaclang.project.config { get_config }
-            cfg = get_config();
-        } except Exception {
-            return None;
-        }
-        if cfg is None {
-            import from jaclang.project.config { JacConfig }
-            cfg = JacConfig();
-        }
-        self._last_defaults = project_defaults_of(cfg);
+        self._last_defaults = project_defaults_of(self.project_config());
         return self._last_defaults;
     } finally {
         self._defaults_active = False;
@@ -29,51 +86,32 @@ impl ProjectHost.project_defaults -> (ProjectDefaults | None) {
 }
 
 impl ProjectHost.check_settings(target_app: str) -> CheckSettings {
-    cfg: any = None;
-    try {
-        import from jaclang.project.config { get_config }
-        cfg = get_config();
-    } except Exception {
-        return CheckSettings();
-    }
-    if cfg is None {
-        return CheckSettings();
-    }
-    if target_app and isinstance(cfg.apps, dict) and target_app in cfg.apps {
-        try {
-            cfg = cfg.effective_for_app(target_app);
-        } except Exception {}
+    cfg = self.project_config();
+    if target_app and target_app in cfg.apps {
+        cfg = cfg.effective_for_app(target_app);
     }
     return check_settings_of(cfg.check);
 }
 
-def package_name_of(name: str) -> str;
-
 impl ProjectHost.project_facts(path: str) -> (ProjectFacts | None) {
-    import from pathlib { Path }
-    try {
-        import from jaclang.project.config { get_config_for_path }
-        cfg = get_config_for_path(Path(path));
-    } except Exception {
-        return None;
-    }
+    cfg = get_config_for_path(Path(path));
     if cfg is None or cfg.project_root is None {
         return None;
     }
     project_root = str(cfg.project_root);
     cached = self._facts.get(project_root);
-    if cached is not None and cached[0] is cfg {
-        return cached[1];
+    if cached is not None {
+        return cached;
     }
     facts = ProjectFacts(
         project_root=project_root,
         check=check_settings_of(cfg.check),
-        client_framework=cfg.client.framework if cfg.client else "react",
+        client_framework=cfg.client.framework,
         package_name=package_name_of(cfg.project.name),
         package_exports=list(cfg.project.exports),
         package_mounts=project_mounts_dir(project_root)
     );
-    self._facts[project_root] = (cfg, facts);
+    self._facts[project_root] = facts;
     return facts;
 }
 
@@ -81,7 +119,6 @@ impl ProjectHost.workspace(path: str) -> (WorkspaceSpec | None) {
     if not path {
         return None;
     }
-    import from jaclang.project.workspace { workspace_for_path }
     return workspace_for_path(path);
 }
 
@@ -96,42 +133,40 @@ impl ProjectHost.project_root(path: str) -> (str | None) {
 impl ProjectHost.declared_dependencies(
     module_path: str, fallback_app: str
 ) -> (list[str] | None) {
-    import from pathlib { Path }
-    try {
-        import from jaclang.project.config { get_config_for_path }
-        cfg = get_config_for_path(Path(module_path));
-    } except Exception {
-        return None;
-    }
+    cfg = get_config_for_path(Path(module_path));
     if cfg is None {
         return None;
     }
     scopes = [cfg];
-    owner = cfg.app_for_path(str(Path(module_path).resolve()));
+    owner = cfg.app_for_path(os.path.realpath(module_path));
     app_name = owner.name if owner is not None else fallback_app;
     if app_name and app_name in cfg.apps {
-        try {
-            scopes.append(cfg.effective_for_app(app_name));
-        } except Exception {}
+        scopes.append(cfg.effective_for_app(app_name));
     }
     names: list[str] = [];
     for scope in scopes {
-        names.extend(
-            [
-                *scope.dependencies,
-                *scope.dev_dependencies,
-                *scope.pypi_dependencies,
-                *scope.pypi_dev_dependencies
-            ]
-        );
+        names.extend(scope.dependencies.keys());
+        names.extend(scope.dev_dependencies.keys());
+        names.extend(scope.pypi_dependencies.keys());
+        names.extend(scope.pypi_dev_dependencies.keys());
     }
-    return [str(n) for n in names];
+    return names;
 }
 
 impl ProjectHost.resolve_module(
     target: str, base_path: str, string_spec: bool = False
 ) -> tuple[str, str] {
     return resolve_module(target, base_path, string_spec=string_spec);
+}
+
+impl ProjectHost.resolve_local_module(
+    base: str, parts: list[str]
+) -> (tuple[str, str] | None) {
+    return resolve_local_module(base, parts);
+}
+
+impl ProjectHost.jac_virtual_module_path(target: str) -> (str | None) {
+    return resolve_jac_virtual_module_path(target);
 }
 
 impl ProjectHost.is_path_alias(target: str, base_path: str) -> bool {
@@ -167,67 +202,67 @@ impl ProjectHost.native_pipeline_available -> tuple[bool, str] {
 }
 
 impl ProjectHost.note(message: str, style: str = "dim") {
-    import sys;
-    try {
-        import from jaclang.cli.console { console }
-        console.print(message, style=style, file=sys.stderr);
-    } except Exception {}
+    sys.stderr.write(message + "\n");
 }
 
 impl ProjectHost.drop_python_lane_products(path: str, program: JacProgram) {
     with cache_scope(owner_scope_options(program)) {
-        try {
-            drop_python_lane_products(path);
-        } except OSError {}
+        drop_python_lane_products(path);
     }
 }
 
 impl ProjectHost.lint_settings(path: str) -> LintSettings {
-    import from pathlib { Path }
-    config = (get_config_for_path(Path(path)) if path else get_explicit_config())
-        or JacConfig();
+    config = self.project_config(path);
     if path {
         owner = (self.base_file(path) or path)
             if self.path_facts(path).is_annex
             else path;
-        app = context_app(str(Path(owner).resolve()));
+        app = context_app(os.path.realpath(owner));
         if app is not None and not app.implicit and app.name in config.apps {
             config = config.effective_for_app(app.name);
         }
     }
-    lint = config.check.lint if config.check else None;
+    lint = config.check.lint;
     return LintSettings(
         check=check_settings_of(config.check),
-        exclude=list(lint.exclude) if lint else [],
-        project_root=str(config.project_root) if (lint and config.project_root) else ""
+        exclude=list(lint.exclude),
+        project_root=str(config.project_root) if config.project_root else ""
     );
 }
 
 impl ProjectHost.compiler_for(program: JacProgram) -> JacCompiler {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
     if program._compiler is None {
-        import from jaclang.compiler.driver.compiler { JacCompiler }
         program._compiler = JacCompiler();
     }
     return program._compiler;
 }
 
 impl ProjectHost.iface_registry_for(program: JacProgram) -> IfaceRegistry {
+    import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
     if program._iface is None {
-        import from jaclang.compiler.driver.ifacecache { IfaceRegistry }
         program._iface = IfaceRegistry(prog=program);
     }
     return program._iface;
 }
 
+impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
+    import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
+    if program._natives is None {
+        program._natives = NativeUnitRegistry(prog=program);
+    }
+    return program._natives;
+}
+
 impl ProjectHost.native_session_declares(
     program: JacProgram, source: str, element: str
 ) -> (bool | None) {
+    import from jaclang.compiler.placement.placement_facts { session_declares_native }
     registry = program._natives;
     session = registry.session if registry is not None else None;
     if session is None {
         return None;
     }
-    import from jaclang.compiler.placement.placement_facts { session_declares_native }
     return session_declares_native(
         session.options, source, element, session.registry.prog
     );
@@ -236,17 +271,7 @@ impl ProjectHost.native_session_declares(
 impl ProjectHost.client_boundary_facts(
     program: JacProgram, path: str
 ) -> (list[str] | None) {
-    try {
-        return program.iface_registry().client_boundary_facts(path);
-    } except Exception {
-        return None;
-    }
-}
-
-impl ProjectHost.kernel_compile(
-    program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
-    return host_kernel_compile(self, program, path, options);
+    return self.iface_registry_for(program).client_boundary_facts(path);
 }
 
 impl ProjectHost.in_compiler_tree(path: str) -> bool {
@@ -254,7 +279,7 @@ impl ProjectHost.in_compiler_tree(path: str) -> bool {
 }
 
 impl ProjectHost.schedule_import_failed(err: ImportError) {
-    fail_loud_on_compiler_source(err);
+    raise err;
 }
 
 impl ProjectHost.client_osp_core_js -> str {
@@ -267,12 +292,10 @@ impl ProjectHost.client_pulls(path: str) -> str {
 
 impl ProjectHost.client_stub_globals -> list[str] {
     if not self._stub_globals {
-        import os;
-        import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
         stub_dir = os.path.join(jaclang_pkg_root(), "compiler", "types");
         names: set[str] = set();
         for stub in ("js_globals.pyi", "dom_types.pyi") {
-            names.update(client_stub_names(os.path.join(stub_dir, stub)));
+            names.update(python_top_level_names(os.path.join(stub_dir, stub)));
         }
         self._stub_globals.extend(sorted(names));
     }
@@ -282,25 +305,45 @@ impl ProjectHost.client_stub_globals -> list[str] {
 impl ProjectHost.native_dep_iface(
     program: JacProgram, path: str, options: CompileOptions
 ) -> (NativeIface | None) {
-    return program.native_units().dep_iface(
-        path, options, products=not options.no_cgen
-    );
+    real = os.path.realpath(path);
+    known = self._native_ifaces.get(real);
+    if known is not None {
+        return known;
+    }
+    if real in self._lowering {
+        return None;
+    }
+    found: (NativeIface | None) = None;
+    text = self.held_native_iface(program, real, options);
+    if text {
+        found = NativeIface.from_bytes(text.encode("utf-8"));
+        if found is None {
+            raise RuntimeError(f"the native interface cached for {real} is unreadable");
+        }
+        found.resolve_deps(real);
+    } else {
+        found = self.lower_dependency(program, real, options);
+    }
+    if found is not None {
+        self._native_ifaces[real] = found;
+    }
+    return found;
 }
 
 impl ProjectHost.native_dep_discovery_open(program: JacProgram) -> bool {
-    return program.native_units().dep_discovery_open();
+    return self.native_units_for(program).dep_discovery_open();
 }
 
 impl ProjectHost.native_deps_deferred(program: JacProgram) -> bool {
-    return program.native_units().close_dep_deferral();
+    return self.native_units_for(program).close_dep_deferral();
 }
 
 impl ProjectHost.held_native_iface(
     program: JacProgram, path: str, options: CompileOptions
 ) -> str {
-    ent = program.native_units().ensure(
+    ent = self.native_units_for(program).ensure(
         path,
-        compile_on_miss=is_compiler_source_path(path),
+        compile_on_miss=False,
         options=options,
         check_deps=False,
         products=not options.no_cgen
@@ -308,13 +351,48 @@ impl ProjectHost.held_native_iface(
     return ent.iface.to_bytes().decode("utf-8") if ent is not None else "";
 }
 
+impl ProjectHost.lower_dependency(
+    program: JacProgram, real: str, options: CompileOptions
+) -> (NativeIface | None) {
+    self._lowering.add(real);
+    previous = program.options;
+    codespace = get_effective_default_codespace_override();
+    mark = len(program.errors_had);
+    try {
+        opts = options.clone_for_native_import();
+        opts.no_cgen = True;
+        module = self.compile_module(program, real, None, opts);
+        if len(program.errors_had) > mark {
+            return None;
+        }
+        opts.no_cgen = False;
+        program.options = opts;
+        set_effective_default_codespace("native");
+        if not product_ready(program, module, CompilationProduct.ANALYSIS)
+            and not require(program, module, CompilationProduct.ANALYSIS) {
+            return None;
+        }
+        require(program, module, CompilationProduct.NATIVE_LOWER);
+        if len(program.errors_had) > mark {
+            return None;
+        }
+        if module.gen.native_iface is not None {
+            self.grown.add(real);
+            self._lowered[real] = module;
+        }
+        return module.gen.native_iface;
+    } finally {
+        program.options = previous;
+        set_effective_default_codespace(codespace);
+        self._lowering.discard(real);
+    }
+}
+
 impl ProjectHost.native_lowering_failed(program: JacProgram, path: str, detail: str) {
-    import os;
-    program.native_units().failures[os.path.realpath(path)] = detail;
+    self.native_units_for(program).failures[os.path.realpath(path)] = detail;
 }
 
 impl ProjectHost.save_native_debug_ir(path: str, text: str) {
-    import os;
     stem = os.path.splitext(os.path.basename(path))[0];
     ir_dir = str(get_native_debug_dir(path));
     os.makedirs(ir_dir, exist_ok=True);
@@ -326,79 +404,24 @@ impl ProjectHost.save_native_debug_ir(path: str, text: str) {
 }
 
 impl ProjectHost.native_fact(kind: str, key: str) -> str {
-    import sys;
-    if kind == HOST_FACT_STDLIB_MODULES {
-        return HOST_FACT_SEP.join(sorted(sys.stdlib_module_names));
-    }
-    if kind == HOST_FACT_GIT_IGNORED {
-        return HOST_FACT_SEP.join(_git_ignored_under(key));
-    }
-    if kind == FACT_TARGET {
-        import from jaclang.compiler.backends.native.target_facts { target_fact_text }
-        return target_fact_text(key);
-    }
     import from jaclang.compiler.backends.native.host_facts { host_native_fact }
     return host_native_fact(kind, key);
 }
 
-def _git_ignored_under(root_dir: str) -> list[str];
-
-impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
-    if program._natives is None {
-        import from jaclang.compiler.driver.nativecache { NativeUnitRegistry }
-        program._natives = NativeUnitRegistry(prog=program);
-    }
-    return program._natives;
-}
-
-impl ProjectHost.native_analyze(
-    program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-) -> (ModuleAnalysis | None) {
-    if program.internal or not kernel_host_enabled() {
-        return None;
-    }
-    import from jaclang.compiler.frontend.kernel_host { KernelHost }
-    import from jaclang.project.kernel_snapshot { record_kernel_session }
-    import from jaclang.compiler.driver.module_analysis { analyze_module }
-    import from jaclang.compiler.frontend.host { active_host, install_host }
-    import time;
-    started = time.perf_counter();
-    inputs = self.kernel_inputs(program, path, options, source);
-    kernel = KernelHost(
-        inputs=inputs,
-        fallback=self,
-        closure=self.compiler_for(program).closure_options()
-    );
-    kernel.census.snapshot_seconds = time.perf_counter() - started;
-    kernel.census.scanned_modules = inputs.scanned_modules;
-    previous = active_host();
-    install_host(kernel);
-    try {
-        return analyze_module(program, path, options, source);
-    } finally {
-        install_host(previous);
-        kernel.replay(previous);
-        record_kernel_session(kernel.census, path);
-    }
-}
-
-impl ProjectHost.kernel_inputs(
-    program: JacProgram, path: str, options: CompileOptions, source: (str | None) = None
-) -> KernelInputs {
-    return session_inputs(self, program, path, options);
-}
-
 impl ProjectHost.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
     return JacCompiler.jac_file_formatter(file_path, auto_lint);
 }
 
 impl ProjectHost.format_source(
     source_str: str, file_path: str, auto_lint: bool = False
 ) -> JacProgram {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
     return JacCompiler.jac_str_formatter(source_str, file_path, auto_lint);
 }
 
 impl ProjectHost.lint_file(file_path: str) -> JacProgram {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
     return JacCompiler.jac_file_linter(file_path);
 }
 
@@ -409,74 +432,34 @@ impl ProjectHost.wiring_file(path: str) -> (str | None) {
     return arch_file_for(path);
 }
 
-def _wiring_records_path(digest: str) -> str;
-
 impl ProjectHost.wiring_records(digest: str) -> str {
-    try {
-        with open(_wiring_records_path(digest), "r", encoding="utf-8") as f {
-            return f.read();
-        }
-    } except (OSError, RuntimeError, UnicodeDecodeError) {
+    path = wiring_records_path(digest);
+    if not os.path.isfile(path) {
         return "";
+    }
+    with open(path, "r", encoding="utf-8") as f {
+        return f.read();
     }
 }
 
 impl ProjectHost.keep_wiring_records(digest: str, text: str) {
-    import os;
-    import tempfile;
-    try {
-        path = _wiring_records_path(digest);
-        directory = os.path.dirname(path);
-        os.makedirs(directory, exist_ok=True);
-        (fd, scratch) = tempfile.mkstemp(dir=directory, suffix=".tmp");
-        try {
-            with os.fdopen(fd, "w", encoding="utf-8") as f {
-                f.write(text);
-            }
-            os.replace(scratch, path);
-        } except OSError {
-            os.unlink(scratch);
-        }
-    } except (OSError, RuntimeError) {}
+    write_record(wiring_records_path(digest), text);
 }
 
-def _native_scan_path(path: str, digest: str) -> str;
-
 impl ProjectHost.native_scan_record(path: str, digest: str) -> str {
-    import os;
-    try {
-        store = _native_scan_path(path, digest);
-        with open(store, "r", encoding="utf-8") as f {
-            text = f.read();
-        }
-    } except (OSError, RuntimeError, UnicodeDecodeError) {
+    store = native_scan_path(path, digest);
+    if not os.path.isfile(store) {
         return "";
     }
-    try {
-        os.utime(store, None);
-    } except OSError {}
+    with open(store, "r", encoding="utf-8") as f {
+        text = f.read();
+    }
+    os.utime(store, None);
     return text;
 }
 
 impl ProjectHost.keep_native_scan_record(path: str, digest: str, text: str) {
-    import os;
-    import tempfile;
-    try {
-        store = _native_scan_path(path, digest);
-        directory = os.path.dirname(store);
-        os.makedirs(directory, exist_ok=True);
-        (fd, scratch) = tempfile.mkstemp(dir=directory, suffix=".tmp");
-        try {
-            with os.fdopen(fd, "w", encoding="utf-8") as f {
-                f.write(text);
-            }
-            os.replace(scratch, store);
-        } except OSError {
-            os.unlink(scratch);
-        }
-    } except (OSError, RuntimeError) {
-        return;
-    }
+    write_record(native_scan_path(path, digest), text);
     maybe_sweep("jir-nativescan");
 }
 
@@ -487,14 +470,8 @@ impl ProjectHost.is_seed_source(rel_path: str) -> bool {
 impl ProjectHost.woven_module(
     path: str, program: (JacProgram | None)
 ) -> (Module | None) {
-    try {
-        source = self.read_source(path);
-    } except Exception {
-        return None;
-    }
-    (module, had_error) = parse_woven(
-        source, path, program, annex_sources(path), load_kernel=False
-    );
+    source = self.read_source(path);
+    (module, had_error) = parse_woven(source, path, program, annex_sources(path));
     if had_error {
         return None;
     }
@@ -506,22 +483,22 @@ impl ProjectHost.place_wired_imports(module: Module) {
     place_wired_imports(module);
 }
 
-impl ProjectHost.resolve_local_module(
-    base: str, parts: list[str]
-) -> (tuple[str, str] | None) {
-    return resolve_local_module(base, parts);
-}
-
-impl ProjectHost.jac_virtual_module_path(target: str) -> (str | None) {
-    return resolve_jac_virtual_module_path(target);
-}
-
 impl ProjectHost.path_facts(path: str) -> PathFacts {
     return path_facts_of(host_layout_tables(), path);
 }
 
 impl ProjectHost.read_source(path: str) -> str {
-    return read_file_with_encoding(path);
+    real = os.path.realpath(path);
+    held = self.overlay.get(real);
+    if held is not None {
+        return held;
+    }
+    text = read_file_with_encoding(path);
+    digest = hashlib.sha256(Path(real).read_bytes()).hexdigest();
+    self.source_reads[real] = digest
+        if self.source_reads.get(real, digest) == digest
+        else "";
+    return text;
 }
 
 impl ProjectHost.annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
@@ -542,21 +519,15 @@ impl ProjectHost.package_init(directory: str) -> (str | None) {
 
 impl ProjectHost.host_platform -> HostPlatform {
     if self._platform is None {
-        import platform;
-        import sys;
+        (major, minor, _patch) = platform.python_version_tuple();
         self._platform = HostPlatform(
-            machine=platform.machine(),
-            python_major=sys.version_info.major,
-            python_minor=sys.version_info.minor
+            machine=platform.machine(), python_major=int(major), python_minor=int(minor)
         );
     }
     return self._platform;
 }
 
 impl ProjectHost.ct_environment -> CtEnvironment {
-    import sys;
-    import platform;
-
     triple = effective_native_target().lower();
     if triple {
         arch = "";
@@ -581,10 +552,11 @@ impl ProjectHost.ct_environment -> CtEnvironment {
             }
         }
     }
+    system = platform.system().lower();
     host_os = "linux";
-    if sys.platform.startswith("win") {
+    if system.startswith("win") {
         host_os = "windows";
-    } elif sys.platform == "darwin" {
+    } elif system == "darwin" {
         host_os = "darwin";
     }
     return CtEnvironment(os=host_os, arch=platform.machine());
@@ -594,56 +566,16 @@ impl ProjectHost.stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
     return self.compiler_for(program).stub_catalog();
 }
 
-impl ProjectHost.parse_python(
-    source_str: str, file_path: str, program: JacProgram
-) -> tuple[Module, bool] {
-    import ast as py_ast;
-    built = run_utility(
-        CompilationProduct.PYTHON_AST,
-        uni.PythonModuleAst(
-            py_ast.parse(source_str),
-            orig_src=uni.Source(source_str, mod_path=file_path)
-        ),
-        program,
-        cancel_token=program.options.cancel_token if program.options else None
-    );
-    return (built.module, len(built.ctx.errors_had) > 0);
-}
-
 impl UnitCollectBudget.due -> bool {
-    import os;
-    import sys;
     def env_int(name: str, fallback: int) -> int {
         raw = os.environ.get(name, "").strip();
         if not raw {
             return fallback;
         }
-        try {
-            return int(raw);
-        } except ValueError {
-            return fallback;
+        if not raw.lstrip("-").isdigit() {
+            raise ValueError(f"{name} must be an integer, not {raw!r}");
         }
-    }
-    def peak_rss_mb -> int {
-        try {
-            with open("/proc/self/status", encoding="utf-8") as status {
-                for line in status {
-                    if line.startswith("VmHWM:") {
-                        return int(line.split()[1]) // 1024;
-                    }
-                }
-            }
-        } except (OSError, ValueError, IndexError) {}
-        try {
-            import resource;
-        } except ImportError {
-            return 0;
-        }
-        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss;
-        if sys.platform == "darwin" {
-            return int(peak // (1024 * 1024));
-        }
-        return int(peak // 1024);
+        return int(raw);
     }
     self.releases += 1;
     every = env_int("JAC_UNIT_COLLECT_EVERY", UNIT_COLLECT_EVERY);
@@ -653,7 +585,7 @@ impl UnitCollectBudget.due -> bool {
         self.last_peak_mb = peak;
     }
     by_count = every > 0 and self.releases >= every;
-    by_growth = growth > 0 and (peak - self.last_peak_mb) >= growth;
+    by_growth = growth > 0 and peak > 0 and (peak - self.last_peak_mb) >= growth;
     if not (by_count or by_growth) {
         return False;
     }
@@ -662,24 +594,45 @@ impl UnitCollectBudget.due -> bool {
     return True;
 }
 
+impl peak_rss_mb -> int {
+    status = "/proc/self/status";
+    if not os.path.isfile(status) {
+        return 0;
+    }
+    with open(status, encoding="utf-8") as handle {
+        for line in handle {
+            if line.startswith("VmHWM:") {
+                return int(line.split()[1]) // 1024;
+            }
+        }
+    }
+    return 0;
+}
+
 impl ProjectHost.compile_module(
     program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
 ) -> Module {
-    return self.compiler_for(program).compile(
-        file_path=file_path, target_program=program, use_str=use_str, options=options
-    );
+    session = self._session;
+    if session is None {
+        raise RuntimeError("the kernel host was used before its session was opened");
+    }
+    return compile_in_session(session, file_path, program, use_str, options);
 }
 
 impl ProjectHost.build_module(
     program: JacProgram, file_path: str, use_str: (str | None)
 ) -> Module {
-    return self.compiler_for(program).build(file_path, program, use_str);
+    return self.compile_module(program, file_path, use_str, CompileOptions());
 }
 
 impl ProjectHost.run_module_pipeline(
     program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
 ) -> Module {
-    return self.compiler_for(program).run_module(file_path, program, use_str, options);
+    session = self._session;
+    if session is None {
+        raise RuntimeError("the kernel host was used before its session was opened");
+    }
+    return session.run_module(file_path, program, use_str, options);
 }
 
 impl ProjectHost.native_session_active(program: JacProgram) -> bool {
@@ -688,7 +641,7 @@ impl ProjectHost.native_session_active(program: JacProgram) -> bool {
 }
 
 impl ProjectHost.internal_program(program: JacProgram) -> (JacProgram | None) {
-    return self.compiler_for(program).selfhost.peek_program();
+    return None;
 }
 
 impl ProjectHost.bind_context_program(context_root: JacProgram, program: JacProgram) {
@@ -700,9 +653,7 @@ impl ProjectHost.bind_context_program(context_root: JacProgram, program: JacProg
 }
 
 impl ProjectHost.note_program_dependency(program: JacProgram, resolved_path: str) {
-    try {
-        self.iface_registry_for(program).note_dep(resolved_path);
-    } except Exception {}
+    self.iface_registry_for(program).note_dep(resolved_path);
 }
 
 impl ProjectHost.forget_program_products(program: JacProgram, resolved_path: str) {
@@ -712,6 +663,7 @@ impl ProjectHost.forget_program_products(program: JacProgram, resolved_path: str
     if program._iface is not None {
         program._iface.forget(resolved_path);
     }
+    self.forget_unit(resolved_path);
 }
 
 impl ProjectHost.release_program_products(program: JacProgram, retain_stubs: bool) {
@@ -736,50 +688,29 @@ impl ProjectHost.prepare_interface(
 
 impl ProjectHost.collect_released_memory {
     if self._collect_budget.due() {
-        import gc;
         gc.collect();
     }
 }
 
-impl ProjectHost.load_modules(names: list[str]) {
-    import importlib;
-    for name in names {
-        try {
-            importlib.import_module(name);
-        } except ImportError as err {
-            import from jaclang.compiler.driver.source_failures {
-                fail_loud_on_compiler_source
-            }
-            fail_loud_on_compiler_source(err);
-            raise;
-        }
-    }
-}
+impl ProjectHost.load_modules(names: list[str]) {}
 
 impl ProjectHost.module_in_flight(names: list[str]) -> str {
-    import sys;
-    for name in names {
-        spec = sys.modules.get(name)?.__spec__;
-        if spec is not None and getattr(spec, '_initializing', False) {
-            return name;
-        }
-    }
-    return '';
+    return "";
 }
 
 impl ProjectHost.import_in_flight(path: str) -> bool {
-    return module_import_in_flight(path);
+    return False;
 }
 
 impl ProjectHost.has_active_stub_catalog -> bool {
-    return active() is not None;
+    return active_stub_catalog() is not None;
 }
 
 impl ProjectHost.typeshed_unavailable_reason -> str {
-    try {
-        require("typeshed");
-    } except ArtifactUnavailable as e {
-        return str(e);
+    for stdlib_dir in get_typeshed_paths() {
+        if not os.path.isdir(stdlib_dir) {
+            return f"typeshed is not installed at {stdlib_dir}";
+        }
     }
     return "";
 }
@@ -793,46 +724,45 @@ impl ProjectHost.is_native_lowered_source(rel: str) -> bool {
 }
 
 impl ProjectHost.default_target_triple -> str {
-    try {
-        import from jaclang.compiler.backends.native.llvm.binding { get_default_triple }
-        return str(get_default_triple());
-    } except Exception {
-        return "";
-    }
+    import from jaclang.compiler.backends.native.llvm.binding.targets { get_default_triple }
+    return str(get_default_triple());
 }
 
 impl package_name_of(name: str) -> str {
     return name if is_scoped_package_name(name) else "";
 }
 
-impl _git_ignored_under(root_dir: str) -> list[str] {
-    import os;
-    paths: list[str] = [];
-    for (directory, dirs, files) in os.walk(root_dir) {
-        dirs[:] = [
-            d
-            for d in dirs
-            if not d.startswith(".") and d not in ("node_modules", "__pycache__")
-        ];
-        for name in files {
-            if name.endswith(".jac") {
-                paths.append(os.path.realpath(os.path.join(directory, name)));
-            }
-        }
+impl other_compiler_root(path: str) -> str {
+    if not path.endswith((".jac", ".py")) {
+        return "";
     }
-    kept = set(drop_git_ignored(paths, cwd=root_dir));
-    return sorted(
-        [
-            p
-            for p in paths
-            if p not in kept
-        ]
-    );
+    folder = os.path.dirname(os.path.realpath(path));
+    known = _OTHER_COMPILER_DIRS.get(folder);
+    if known is not None {
+        return known;
+    }
+    found = "";
+    own = os.path.realpath(jaclang_pkg_root());
+    current = folder;
+    while True {
+        if os.path.basename(current) == COMPILER_PACKAGE_NAME
+            and os.path.isfile(os.path.join(current, OTHER_COMPILER_MARKER)) {
+            if current != own {
+                found = current;
+            }
+            break;
+        }
+        above = os.path.dirname(current);
+        if above == current {
+            break;
+        }
+        current = above;
+    }
+    _OTHER_COMPILER_DIRS[folder] = found;
+    return found;
 }
 
-impl _native_scan_path(path: str, digest: str) -> str {
-    import hashlib;
-    import os;
+impl native_scan_path(path: str, digest: str) -> str {
     name = hashlib.sha256(
         (digest + "\x00" + module_env_fingerprint(path)).encode()
     ).hexdigest();
@@ -841,9 +771,16 @@ impl _native_scan_path(path: str, digest: str) -> str {
     );
 }
 
-impl _wiring_records_path(digest: str) -> str {
-    import hashlib;
-    import os;
+impl write_record(path: str, text: str) {
+    os.makedirs(os.path.dirname(path), exist_ok=True);
+    scratch = f"{path}.{os.getpid()}.tmp";
+    with open(scratch, "w", encoding="utf-8") as f {
+        f.write(text);
+    }
+    os.replace(scratch, path);
+}
+
+impl wiring_records_path(digest: str) -> str {
     name = hashlib.sha256(
         (digest + "\x00" + running_compiler_digest()).encode()
     ).hexdigest();
@@ -852,24 +789,21 @@ impl _wiring_records_path(digest: str) -> str {
     );
 }
 
-impl check_settings_of(check: any) -> CheckSettings {
-    if check is None {
-        return CheckSettings();
-    }
+impl check_settings_of(check: CheckConfig) -> CheckSettings {
     lint = check.lint;
     return CheckSettings(
-        suppress=list(check.suppress or []),
-        suppress_categories=list(check.suppress_categories or []),
-        lint_active=bool(lint),
-        lint_select=list(lint.select) if lint else [],
-        lint_ignore=list(lint.ignore) if lint else [],
-        enforce_access=bool(check.enforce_access),
+        suppress=list(check.suppress),
+        suppress_categories=list(check.suppress_categories),
+        lint_active=True,
+        lint_select=list(lint.select),
+        lint_ignore=list(lint.ignore),
+        enforce_access=check.enforce_access,
         untyped_external_error=check.untyped_external == "error",
-        warn_native_seams=bool(check.warn_native_seams)
+        warn_native_seams=check.warn_native_seams
     );
 }
 
-impl project_defaults_of(cfg: any) -> ProjectDefaults {
+impl project_defaults_of(cfg: JacConfig) -> ProjectDefaults {
     native = cfg.native;
     memory = cfg.memory;
     return ProjectDefaults(
@@ -884,42 +818,6 @@ impl project_defaults_of(cfg: any) -> ProjectDefaults {
         memory_enforce=list(memory.enforce),
         memory_exempt=list(memory.exempt),
         check=check_settings_of(cfg.check),
-        client_framework=cfg.client.framework if cfg.client else "react"
+        client_framework=cfg.client.framework
     );
-}
-
-impl client_stub_names(path: str) -> set[str] {
-    import ast;
-    out: set[str] = set();
-    try {
-        with open(path, encoding="utf-8") as handle {
-            tree = ast.parse(handle.read());
-        }
-    } except Exception {
-        return out;
-    }
-    for node in tree.body {
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) {
-            out.add(node.name);
-        } elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) {
-            out.add(node.target.id);
-        } elif isinstance(node, ast.Assign) {
-            for tgt in node.targets {
-                if not isinstance(tgt, ast.Name) {
-                    continue;
-                }
-                out.add(tgt.id);
-                if tgt.id != "__all__"
-                    or not isinstance(node.value, (ast.List, ast.Tuple)) {
-                    continue;
-                }
-                for elt in node.value.elts {
-                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str) {
-                        out.add(elt.value);
-                    }
-                }
-            }
-        }
-    }
-    return out;
 }

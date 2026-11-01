@@ -2,10 +2,6 @@ impl HostServices.session -> Iterator[None] {
     yield ;
 }
 
-impl HostServices.in_kernel -> bool {
-    return False;
-}
-
 impl HostServices.project_defaults -> (ProjectDefaults | None) {
     return None;
 }
@@ -94,12 +90,6 @@ impl HostServices.note(message: str, style: str = "dim") {}
 
 impl HostServices.stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
     return None;
-}
-
-impl HostServices.parse_python(
-    source_str: str, file_path: str, program: JacProgram
-) -> tuple[Module, bool] {
-    raise RuntimeError("no compiler host is installed");
 }
 
 impl HostServices.stub_interface(
@@ -231,12 +221,6 @@ impl HostServices.client_boundary_facts(
     return None;
 }
 
-impl HostServices.kernel_compile(
-    program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
-    return None;
-}
-
 impl HostServices.in_compiler_tree(path: str) -> bool {
     return False;
 }
@@ -259,12 +243,6 @@ impl HostServices.native_session_declares(
 
 impl HostServices.native_session_active(program: JacProgram) -> bool {
     return False;
-}
-
-impl HostServices.native_analyze(
-    program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-) -> (ModuleAnalysis | None) {
-    return None;
 }
 
 impl HostServices.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
@@ -380,6 +358,16 @@ impl set_package_root(path: str) {
 impl install_host(host: HostServices) {
     _HOSTS.clear();
     _HOSTS.append(host);
+}
+
+impl mark_kernel_resident {
+    if not _KERNEL_RESIDENT {
+        _KERNEL_RESIDENT.append(True);
+    }
+}
+
+impl kernel_resident -> bool {
+    return bool(_KERNEL_RESIDENT);
 }
 
 impl set_kernel_host_mode(mode: str) -> str {

@@ -206,6 +206,7 @@ _modresolver.__file__ = _modresolver_origin
 _modresolver.__package__ = "jaclang.project"
 exec(_modresolver_code, _modresolver.__dict__)  # noqa: S102
 sys.modules["jaclang.project.modresolver"] = _modresolver
+_modresolver.install_search_roots(list(sys.path))
 get_jac_search_paths = _modresolver.get_jac_search_paths
 
 

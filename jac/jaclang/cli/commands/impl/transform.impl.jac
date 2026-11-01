@@ -1,16 +1,9 @@
-import ast as ast3;
-
 impl py2jac(filename: str) -> int {
     if filename.endswith('.py') {
         file_source = read_file_with_encoding(filename);
-        converted = run_utility(
-            CompilationProduct.PYTHON_AST,
-            uni.PythonModuleAst(
-                ast3.parse(file_source), orig_src=uni.Source(file_source, filename)
-            ),
-            JacProgram()
-        ).module;
-        assert isinstance(converted, uni.Module);
+        (converted, _had_error) = parse_python_source(
+            file_source, filename, JacProgram()
+        );
         code = unparse_module(converted, requires_format=False);
         prog = JacProgram.jac_str_formatter(
             source_str=code, file_path=filename, auto_lint=False

@@ -1,4 +1,9 @@
-import os;
+"""The host's side of the kernel boundary. Host code speaks `kernel_api`
+records and the kernel module `jac_kernel` speaks plain Python data named
+after them: each call turns its request record into a dict, calls the loaded
+kernel, and turns the result dict back into its record. A refusal the kernel
+raises is a `KernelError`."""
+import sys;
 
 glob KERNEL_OPTION_FIELDS: tuple[str, ...] = (
          "symtab_ir_only",
@@ -51,40 +56,28 @@ glob KERNEL_OPTION_FIELDS: tuple[str, ...] = (
          "strict_dependencies",
          "package_canonical",
          "na_move_flow"
-     ),
-     KERNEL_PRODUCTS: tuple[str, ...] = (
-         "bytecode",
-         "interface",
-         "placement",
-         "client",
-         "native"
      );
 
 def options_record(options: CompileOptions) -> dict[str, any];
 
-def compile_request_record(
-    path: str, options: CompileOptions, source: (str | None) = None
-) -> dict[str, any];
+def compile_request_record(request: CompileRequest) -> dict[str, any];
 
-def check_request_record(
-    path: str,
-    options: CompileOptions,
-    source: (str | None) = None,
-    closure: bool = False,
-    native_coverage: bool = False,
-    placements: bool = False
-) -> dict[str, any];
+def check_request_record(request: CheckRequest) -> dict[str, any];
 
-def span_of_record(raw: dict[str, any]) -> DiagSpan;
+def span_of_record(raw: dict[str, any]) -> SourceSpan;
 
-def diag_of_record(raw: dict[str, any]) -> AnalysisDiag;
+def diagnostic_of_record(raw: dict[str, any]) -> KernelDiagnostic;
 
-def analysis_report_of(result: dict[str, any], entry_path: str) -> AnalysisReport;
+def demotion_of_record(raw: dict[str, any]) -> NativeDemotion;
 
-def unit_of_record(raw: dict[str, any]) -> UnitProducts;
+def unit_of_record(raw: dict[str, any]) -> CompiledUnit;
 
-def compile_report_of(result: dict[str, any], entry_path: str) -> CompileReport;
+def compile_result_of(raw: dict[str, any]) -> CompileResult;
 
-def kernel_analysis(
-    path: str, options: CompileOptions, source: (str | None) = None
-) -> dict[str, any];
+def check_result_of(raw: dict[str, any]) -> CheckResult;
+
+def call_compile(request: CompileRequest) -> CompileResult;
+
+def call_check(request: CheckRequest) -> CheckResult;
+
+def open_kernel_session(project_root: str) -> any;

@@ -1,4 +1,3 @@
-import ast as py_ast;
 import os;
 import re;
 import from typing { TypeAlias, cast }
@@ -43,7 +42,7 @@ walker PyastBuildPass(CompilerPass) {
     ) -> Name;
 
     def is_canceled -> bool;
-    def convert(nd: py_ast.AST) -> UniNode;
+    def convert(nd: py_ast.ast_node) -> UniNode;
     def _run_impl(ir_in: PythonModuleAst) -> Module;
     can run_walk with PythonModuleAst entry;
     def extract_with_entry(
@@ -82,14 +81,13 @@ walker PyastBuildPass(CompilerPass) {
     def proc_continue(nd: py_ast.Continue) -> CtrlStmt;
     def proc_dict(nd: py_ast.Dict) -> DictVal;
     def proc_dict_comp(nd: py_ast.DictComp) -> DictCompr;
-    def proc_ellipsis(nd: py_ast.Constant);
     def proc_except_handler(nd: py_ast.ExceptHandler) -> Except;
     def proc_expr(nd: py_ast.Expr) -> ExprStmt;
     def proc_formatted_value(nd: py_ast.FormattedValue) -> FormattedValue;
     def proc_function_type(nd: py_ast.FunctionType);
     def proc_interactive(nd: py_ast.Interactive);
-    def proc_template_str(nd: py_ast.AST) -> UniNode;
-    def proc_interpolation(nd: py_ast.AST) -> UniNode;
+    def proc_template_str(nd: py_ast.TemplateStr) -> UniNode;
+    def proc_interpolation(nd: py_ast.Interpolation) -> UniNode;
     def proc_generator_exp(nd: py_ast.GeneratorExp) -> GenCompr;
     def proc_global(nd: py_ast.Global) -> Semi;
     def proc_if_exp(nd: py_ast.IfExp) -> IfElseExpr;
@@ -111,7 +109,7 @@ walker PyastBuildPass(CompilerPass) {
     def proc_name(nd: py_ast.Name) -> Name;
     def proc_named_expr(nd: py_ast.NamedExpr) -> AtomUnit;
     def proc_nonlocal(nd: py_ast.Nonlocal) -> Semi;
-    def proc_pass(nd: py_ast.Pass) -> Semi;
+    def proc_pass(nd: py_ast.stmt) -> Semi;
     def proc_set(nd: py_ast.Set) -> SetVal;
     def _proc_compr(nd: PyComprehensionNode, compr_cls: type[ComprT]) -> ComprT;
     def proc_set_comp(nd: py_ast.SetComp) -> ListCompr;
@@ -169,3 +167,11 @@ walker PyastBuildPass(CompilerPass) {
 }
 
 def build_python_module(py_mod: PythonModuleAst) -> Module;
+
+def parse_python_source(
+    source_str: str, file_path: str, program: JacProgram
+) -> tuple[Module, bool];
+
+def python_syntax_alert(failure: syntax_failure, orig_src: Source) -> Alert;
+
+def python_top_level_names(path: str) -> set[str];

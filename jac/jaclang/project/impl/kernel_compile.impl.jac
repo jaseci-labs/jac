@@ -1,99 +1,115 @@
-impl kernel_compile(
-    program: JacProgram, path: str, options: CompileOptions, source: (str | None) = None
-) -> CompileReport {
-    import time;
-    started = time.monotonic();
-    import from jaclang.compiler.backends.native.kernel_resolve { load_kernel }
-    kernel = load_kernel();
-    try {
-        result = kernel.compile(compile_request_record(path, options, source));
-    } except kernel.KernelError as err {
-        raise KernelCompileError(
-            f"the native compiler kernel could not compile {path}: {err}"
-        ) from err;
-    }
-    outcome = compile_report_of(result, path);
-    sink = os.environ.get(KERNEL_TIMING_ENV, "");
-    total = time.monotonic() - started;
-    if sink or total > SLOW_COMPILE_SECONDS {
-        import sys;
-        line = f"jac: kernel compile {path}: {total:.2f}s, {len(outcome.units)} unit(s)\n";
-        if os.sep in sink {
-            with open(sink, "a", encoding="utf-8") as log {
-                log.write(line);
-            }
-        } else {
-            sys.stderr.write(line);
-        }
-    }
-    return outcome;
-}
-
-impl kernel_route(program: JacProgram, path: str) -> bool {
-    if program.internal or is_compiler_source_path(path) or _HOST_PREPARING {
-        return False;
-    }
-    import from jaclang.compiler.backends.native.kernel_resolve { load_kernel }
-    load_kernel();
-    return True;
-}
-
-impl kernel_compile_reported(
-    host: HostServices, program: JacProgram, path: str, options: CompileOptions
-) -> CompileReport {
-    compiled = kernel_compile(program, path, options);
-    kernel_trace(
-        f"kernel compiled {path}: {len(compiled.units)} unit(s), "
-        f"{len(compiled.analysis.errors)} error(s)"
+impl compile_request_for(
+    paths: list[str],
+    options: CompileOptions,
+    sources: dict[str, str],
+    products: list[str]
+) -> CompileRequest {
+    return CompileRequest(
+        paths=[os.path.realpath(path) for path in paths],
+        project_root=options.project_root or "",
+        search_paths=list(sys.path),
+        package_root=package_root(),
+        options=options,
+        sources={os.path.realpath(path): text for (path, text) in sources.items()},
+        products=products
     );
-    replay_event_rows(host, compiled.analysis.events);
-    for diag in compiled.analysis.errors {
+}
+
+impl check_request_for(
+    paths: list[str],
+    options: CompileOptions,
+    native_coverage: bool = False,
+    placements: bool = False,
+    closure: bool = False
+) -> CheckRequest {
+    return CheckRequest(
+        paths=[os.path.realpath(path) for path in paths],
+        project_root=options.project_root or "",
+        search_paths=list(sys.path),
+        package_root=package_root(),
+        options=options,
+        native_coverage=native_coverage,
+        placements=placements,
+        closure=closure
+    );
+}
+
+impl span_of(record: SourceSpan) -> Span {
+    return Span(
+        mod_path=record.path,
+        first_line=record.line,
+        last_line=record.end_line,
+        col_start=record.col,
+        col_end=record.end_col
+    );
+}
+
+impl alert_of(diag: KernelDiagnostic) -> Alert {
+    return Alert(
+        msg=diag.message,
+        loc=span_of(diag.span),
+        from_pass=KernelReported,
+        code=DIAGNOSTICS[diag.code] if diag.code else None,
+        related=[(note.label, span_of(note.span)) for note in diag.related],
+        help_text=diag.help or None
+    );
+}
+
+impl adopt_diagnostics(
+    program: JacProgram, errors: list[KernelDiagnostic], warnings: list[KernelDiagnostic]
+) {
+    for diag in errors {
         program.errors_had.append(alert_of(diag));
     }
-    for diag in compiled.analysis.warnings {
+    for diag in warnings {
         program.warnings_had.append(alert_of(diag));
     }
-    return compiled;
 }
 
-impl kernel_generates_native(program: JacProgram, path: str) -> bool {
-    return kernel_route(program, path);
+impl kernel_compile(
+    program: JacProgram,
+    paths: list[str],
+    options: CompileOptions,
+    sources: (dict[str, str] | None) = None,
+    products: (list[str] | None) = None
+) -> CompileResult {
+    wanted = products if products is not None else ([] if options.no_cgen else ["bytecode"]);
+    result = call_compile(compile_request_for(paths, options, sources or {}, wanted));
+    adopt_diagnostics(program, result.errors, result.warnings);
+    return result;
 }
 
-impl host_kernel_compile(
-    host: HostServices, program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
-    if not kernel_route(program, path) or options.skip_analysis {
-        return None;
+impl compile_through_kernel(
+    program: JacProgram, file_path: str, use_str: (str | None), options: CompileOptions
+) -> uni.Module {
+    real = os.path.realpath(file_path);
+    sources = {real: use_str} if use_str is not None else {};
+    result = kernel_compile(program, [real], options, sources);
+    module = uni.Module.make_stub(inject_name=os.path.splitext(os.path.basename(real))[0]);
+    module.loc.mod_path = real;
+    if options.no_cgen or not result.ok() {
+        return module;
     }
-    ready = _APPLICATION_UNITS.pop(os.path.realpath(path), None);
-    if ready is not None {
-        return CompileReport(analysis=AnalysisReport(entry_path=path), units=[ready]);
-    }
-    return kernel_compile_reported(host, program, path, options);
+    unit = result.unit(real);
+    module.gen.py_bytecode = marshal.dumps(unit.code);
+    module.gen.js = unit.client_js;
+    return module;
 }
 
 impl kernel_compile_application(
-    host: HostServices, program: JacProgram, path: str, options: CompileOptions
-) -> (CompileReport | None) {
-    if not kernel_route(program, path) {
-        return None;
-    }
-    compiled = kernel_compile_reported(host, program, path, options);
-    for unit in compiled.units {
+    program: JacProgram, paths: list[str], options: CompileOptions
+) -> CompileResult {
+    result = kernel_compile(program, paths, options);
+    for unit in result.units {
         _APPLICATION_UNITS[os.path.realpath(unit.path)] = unit;
     }
-    return compiled;
+    return result;
+}
+
+impl take_application_unit(path: str) -> (CompiledUnit | None) {
+    return _APPLICATION_UNITS.pop(os.path.realpath(path), None);
 }
 
 impl forget_application_units {
     _APPLICATION_UNITS.clear();
-}
-
-impl host_preparing(entry_path: str) {
-    _HOST_PREPARING.append(entry_path);
-}
-
-impl host_prepared {
-    _HOST_PREPARING.clear();
 }

@@ -409,6 +409,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Unsupported escape sequence '\\N{{...}}'",
          help="Resolving a Unicode character name needs the name database, which the compiler does not carry. Write the code point as \\uXXXX or \\UXXXXXXXX, or prefix the string with r to keep the backslash."
      ),
+     E0111 = _err("E0111", Category.SYNTAX, "Python syntax error: {message}"),
      W0100 = _warn(
          "W0100",
          Category.SYNTAX,
@@ -960,6 +961,15 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " destroy request, so it must yield nodes, edges or archetypes. Assign"
          " `None` to the location that holds this value if you meant to drop a"
          " reference."
+     ),
+     E1408 = _err(
+         "E1408",
+         Category.IMPORT,
+         "'{path}' belongs to another compiler's tree ({root})",
+         help="This kernel compiles the jaclang package it was built from and"
+         " programs outside any jaclang package. A module inside a different"
+         " jaclang checkout is compiled by that checkout's own kernel; run it"
+         " with that checkout's `jac`."
      ),
      E1134 = _err(
          "E1134",

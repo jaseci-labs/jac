@@ -16,11 +16,17 @@ impl PackageDep.to_toml -> str | dict[str, str] {
     if self.version and self.version != "*" {
         out["version"] = self.version;
     }
-    for key in ("path", "git", "rev", "registry") {
-        value = getattr(self, key);
-        if value {
-            out[key] = value;
-        }
+    if self.path {
+        out["path"] = self.path;
+    }
+    if self.git {
+        out["git"] = self.git;
+    }
+    if self.rev {
+        out["rev"] = self.rev;
+    }
+    if self.registry {
+        out["registry"] = self.registry;
     }
     return out;
 }
