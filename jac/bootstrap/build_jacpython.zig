@@ -10,6 +10,8 @@ const Allocator = std.mem.Allocator;
 const Environ = std.process.Environ;
 const builtin = @import("builtin");
 const pyconfig = @import("pyconfig.zig");
+const seed = @import("seed.zig");
+const sha256Hex = seed.sha256Hex;
 
 pub const Options = struct {
     platform: []const u8,
@@ -349,12 +351,6 @@ pub const ObjectManifest = struct {
     object: []const u8,
     lowered_on: []const u8,
 };
-
-fn sha256Hex(bytes: []const u8) [64]u8 {
-    var digest: [32]u8 = undefined;
-    std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
-    return std.fmt.bytesToHex(digest, .lower);
-}
 
 fn fileSha256(io: Io, a: Allocator, file_path: []const u8) ![64]u8 {
     return sha256Hex(try Io.Dir.cwd().readFileAlloc(io, file_path, a, .unlimited));
