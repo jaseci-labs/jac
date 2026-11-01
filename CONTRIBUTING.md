@@ -169,39 +169,20 @@ To skip this check, add the `skip-release-notes-check` label to your PR.
 
 ## Building JacPython
 
-Releases ship one configuration: stock CPython. JacPython (CPython with its C
-progressively replaced by native Jac, the Python compiler included) is an
-accelerator you build on request. From the repository, with Zig 0.16 and the
-LLVM shim in place (`zig build fetch-llvm` once):
-
-```bash
-jac native build jacpython
-```
-
-That builds a second jac, `jac/zig-out/jacpython/bin/jac`, whose bundled
-interpreter is JacPython; the jac you ran it with is unchanged. Use it like any
-jac. It reports the native compiler as active:
-
-```bash
-JACPYTHON_BIN="$PWD/jac/zig-out/jacpython/bin/jac"
-cd "$(mktemp -d)"   # outside the repo, so its [dev] stanza does not reroute the compiler
-"$JACPYTHON_BIN" -c '
-import ast, ctypes
-assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
-print("Python compiler: native JacPython")
-exec(compile(ast.parse("print(6 * 7)"), "<jacpython-trial>", "exec"))
-'
-"$JACPYTHON_BIN" native status jacpython
-```
+JacPython (CPython with its C progressively replaced by native Jac, the Python
+compiler included) is the only Python jac builds on, ships or runs. With Zig
+0.16 and the LLVM shim in place (`zig build fetch-llvm` once), `zig build` in
+`jac/` (or `jac native build jacpython`) builds it, then `jac/zig-out/bin/jac`
+on it. The build runs on the previous JacPython output, or on the pinned
+linux-x86_64 seed when there is none; on another platform, adopt a native
+object lowered on linux-x86_64 with `-Djacpython-object=DIR`. See
+[the build guide](jac/launcher/README.md#build) and the Building section of
+[the migration notes](jac/jaclang/cli/docs/internals/jacpython-migration.md).
 
 `jac native build jacpython --exact` rebuilds the runtime instead of reusing one
 whose lowered sources are unchanged. Its native compiler object is linked at
 build time, so editing compiler source through the dev loop does not change an
-existing JacPython binary: rebuild it. CI builds and tests JacPython in its own
-lane (`.github/workflows/_jacpython.yml`), on a pull request carrying the
-`native:jacpython` label and nightly on every supported platform. See
-[the build guide](jac/launcher/README.md#build) for cache details and
-prerequisites.
+existing binary: rebuild it.
 
 ## Code Rules and Guidelines
 

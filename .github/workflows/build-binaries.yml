@@ -1,9 +1,9 @@
 name: Build jac native binaries
 
 # Builds the self-contained `jac` binary per platform and attaches it to a
-# GitHub Release: one official configuration (CPython + bun) per target.
-# JacPython and js_engine are accelerators built only on request
-# (`jac native build`); a release ships their floors.
+# GitHub Release: one configuration (JacPython + bun) per target. js_engine
+# is an accelerator built only on request (`jac native build`); a release
+# ships its floor.
 # One parameterized workflow serves both channels:
 #   - channel=release (default): cold, glibc-2.17-pinned builds attached to a
 #     versioned release. Called by release.yml after it cuts the release (a
@@ -157,9 +157,10 @@ jobs:
           # exists to build it goes red when it fails. Delete the flag when
           # #8805 is fixed and the leg should carry a release again; that
           # restores it as a blocking leg and a required asset in one edit.
-          # No leg builds its own compiler kernel: the `kernel` job builds every
-          # leg's kernel on x86 Linux and each leg's seal adopts it (#10219), so
-          # an ARM leg no longer needs the 16-vCPU runner's memory.
+          # No leg builds its own compiler kernel or lowers its own
+          # jacpython.o: the `kernel` job builds both for every leg on x86
+          # Linux and each leg adopts them (#10219, #10472), so an ARM leg
+          # no longer needs the 16-vCPU runner's memory.
           LEGS='[
             {"os": "blacksmith-8vcpu-ubuntu-2404", "platform": "linux-x86_64", "zig_target": "x86_64-linux-gnu.2.17"},
             {"os": "blacksmith-8vcpu-ubuntu-2404-arm", "platform": "linux-aarch64", "zig_target": "aarch64-linux-gnu.2.17"},
@@ -213,9 +214,10 @@ jobs:
           echo "Building: $(jq -r 'map(.platform) | join(" ")' <<<"$LEGS")"
           echo "Required to publish: ${REQUIRED:-(none)}"
 
-  # The compiler kernel for every leg, built on x86 Linux (#10219): the ~2 h
-  # of single-threaded lowering and code generation stay off the ARM runners,
-  # which are 2.5-3x slower per thread. See build-kernel.yml.
+  # The compiler kernel and JacPython's native object for every leg, built on
+  # x86 Linux (#10219, #10472): the hours of single-threaded lowering and code
+  # generation stay off the ARM and macOS runners, which are 2.5-3x slower
+  # per thread. See build-kernel.yml.
   kernel:
     needs: plan
     uses: ./.github/workflows/build-kernel.yml
@@ -315,12 +317,13 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.precompiled-build/cpython
-          key: jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
+          path: jac/.precompiled-build/jacpython
+          key: jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-${{ steps.inputs.outputs.payload }}
           restore-keys: |
-            jac-precompiled-cpython-c${{ steps.inputs.outputs.compiler }}-
+            jac-precompiled-jacpython-c${{ steps.inputs.outputs.compiler }}-
 
-      # Cache the selected runtime and any build host. Release builds remain cold.
+      # Cache the JacPython runtime. Release builds remain cold: they link the
+      # object the `kernel` job lowered and do the native rest themselves.
       - name: Resolve Python SDK cache input
         id: python-sdk
         shell: bash
@@ -329,14 +332,14 @@ jobs:
           if [ "$RUNNER_OS" = macOS ]; then sdk=$(xcrun --sdk macosx --show-sdk-version); fi
           echo "version=$sdk" >> "$GITHUB_OUTPUT"
 
-      - name: Restore cached source-built Python (dev channel)
+      - name: Restore cached JacPython runtime (dev channel)
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.python-build/cpython
-          key: python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python_cpython }}
+          path: jac/.python-build/jacpython
+          key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-${{ steps.inputs.outputs.python }}
           restore-keys: |
-            python-build-v4-cpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
+            python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdk${{ steps.python-sdk.outputs.version }}-
 
       - name: Restore cached bun runtime (dev channel)
         if: inputs.channel == 'dev'
@@ -353,10 +356,10 @@ jobs:
         if: inputs.channel == 'dev'
         uses: actions/cache@v4
         with:
-          path: jac/.payload-layers/cpython
-          key: payload-layers-cpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
+          path: jac/.payload-layers/jacpython
+          key: payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-${{ steps.inputs.outputs.layers }}
           restore-keys: |
-            payload-layers-cpython-${{ runner.os }}-${{ runner.arch }}-
+            payload-layers-jacpython-${{ runner.os }}-${{ runner.arch }}-
 
       # Release channel: fetch the prebuilt, target-pinned shim that
       # build-shims.yml publishes on the rolling `deps` prerelease instead of
@@ -463,12 +466,20 @@ jobs:
           launchctl list | grep -i reportcrash
           exit 0
 
-      # The kernel job built this leg's compiler kernel; the seal adopts it.
+      # The kernel job built this leg's compiler kernel and lowered its
+      # jacpython.o; the build links the object and the seal adopts the
+      # kernel.
       - name: Download the compiler kernel
         uses: actions/download-artifact@v4
         with:
           name: kernel-${{ matrix.platform }}
           path: .kernel
+
+      - name: Download the JacPython object
+        uses: actions/download-artifact@v4
+        with:
+          name: jacpython-object-${{ matrix.platform }}
+          path: .jacpython-object
 
       - name: Build the jac binary (one command)
         working-directory: jac
@@ -476,6 +487,9 @@ jobs:
         # its in-tree place, and the build reuses it there. The release
         # channel's prebuilt asset is named by the hash of the same inputs, so
         # placing it and adopting it is equally sound.
+        # -Djacpython-object links the prebuilt jacpython.o, so the leg runs
+        # only JacPython's native rest: the vendored libraries, the C, the
+        # link, sysconfig and compileall.
         # build.zig streams mkpayload live under CI (-Dpayload-progress). The
         # seal children are plain Python, so these make their output
         # line-buffered and a native fault print its stack.
@@ -488,7 +502,8 @@ jobs:
             cp "${{ steps.shim-fetch.outputs.file }}" "$PLACED"
             zig build adopt-shim $DTARGET --summary all
           fi
-          zig build $DTARGET -Dkernel="$GITHUB_WORKSPACE/.kernel" --summary all
+          zig build $DTARGET -Dkernel="$GITHUB_WORKSPACE/.kernel" \
+            -Djacpython-object="$GITHUB_WORKSPACE/.jacpython-object" --summary all
 
       # Launcher unit tests (`zig build test`) live in ci.yml's `test-launcher`
       # job so they gate every PR on Linux + macOS, not just release time. The
@@ -503,7 +518,7 @@ jobs:
           printf 'with entry { print("ok"); }\n' > "$WORK/h.jac"
           env -i HOME="$WORK" PATH=/usr/bin:/bin "$BIN" run "$WORK/h.jac" | grep -q ok
 
-      - name: Verify the shipped Python is stock CPython
+      - name: Verify the shipped Python is JacPython
         working-directory: jac
         run: |
           set -euo pipefail
@@ -513,7 +528,8 @@ jobs:
           import ctypes;
           import os;
           with entry {
-              assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerRequired");
+              assert ctypes.pythonapi._PyJac_CompilerRequired() == 1;
+              assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4;
               assert not hasattr(sys, "_jacpython_compile");
               assert not hasattr(sys, "_jacpython_image");
               assert eval("6 * 7") == 42;
@@ -525,7 +541,7 @@ jobs:
           BIN="$PWD/zig-out/bin/jac"
           (cd "$WORK" && "$BIN" run "$WORK/native_compiler.jac")
           # A release never runs a required artifact on its floor, and ships
-          # every floor its policy names (CPython, bun).
+          # every floor its policy names (bun).
           (cd "$WORK" && "$BIN" native status && "$BIN" native status --require release)
 
       # Guards #7047: the binary must not leak PYTHONHOME/PYTHONPATH (or any

@@ -1,17 +1,14 @@
-"""The parts the HACL*-backed hash modules share; derived from CPython 3.14.6
+"""The parts the hash modules share; derived from CPython 3.14.6
 Modules/hashlib.h. See ../LICENSE.cpython.
 
-A hash object keeps its HACL* state as native state under a ClassToken.
-HACL* takes 32-bit lengths, so each module wraps its update function in a
-loop over 4 GiB chunks and passes that wrapper here. An update of at least
-HASHLIB_GIL_MINSIZE bytes runs with the GIL released, and from then on the
-object takes its lock around every access to the HACL* state, as
-ENTER_HASHLIB and LEAVE_HASHLIB do. The lock is a PyThread lock, allocated
-when the object first needs it.
+A hash object keeps a digest core from na_stdlib/_digest.jac as native state
+under a ClassToken. An update of at least HASHLIB_GIL_MINSIZE bytes runs with
+the GIL released, and from then on the object takes its lock around every
+access to the core, as ENTER_HASHLIB and LEAVE_HASHLIB do. The lock is a
+PyThread lock, allocated when the object first needs it.
 """
 
-glob HASHLIB_GIL_MINSIZE: i64 = 2048,
-     UINT32_MAX: i64 = 0xFFFFFFFF;
+glob HASHLIB_GIL_MINSIZE: i64 = 2048;
 
 """The mutex of a hash object and its use_mutex flag."""
 obj HashLock {
@@ -126,85 +123,196 @@ def hash_state_of(instance: ptr[PyObject], token: ClassToken) -> NativeState | N
     return None;
 }
 
-"""Feed a constructor's initial data into a HACL* state. The new object is not
-shared yet, so large data runs with the GIL released but takes no lock."""
-def hash_initial_data(
-    hacl: ptr, data: ptr[PyObject], update: Callable[[ptr, ptr, i64], None]
-) -> bool {
+"""A hash object's native state: its digest core and, once an update has been
+large enough to run without the GIL, its lock."""
+obj DigestState(NativeState) {
+    has core: DigestCore,
+        lock: HashLock | None = None;
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
+        return i32(0);
+    }
+
+    def clear {}
+}
+
+"""The digest state of a hash object of `token`, or None with SystemError set."""
+def digest_state(instance: ptr[PyObject], token: ClassToken) -> DigestState | None {
+    state = hash_state_of(instance, token);
+    if isinstance(state, DigestState) {
+        return state;
+    }
+    return None;
+}
+
+"""The size of `value` when it is exactly bytes and too small to release the
+GIL for, else -1. Such data is hashed in place without a buffer view."""
+def small_bytes(value: ptr[PyObject]) -> int {
+    if Py_TYPE(value) == addressof(PyBytes_Type) {
+        size = jacpy_bytes_length(value);
+        if size < HASHLIB_GIL_MINSIZE {
+            return int(size);
+        }
+    }
+    return -1;
+}
+
+"""Feed a constructor's initial data into a core. The new object is not shared
+yet, so large data runs with the GIL released but takes no lock."""
+def hash_initial_data(core: DigestCore, data: ptr[PyObject]) -> bool {
+    small = small_bytes(data);
+    if small >= 0 {
+        core.absorb(int(jacpy_bytes_address(data)), small);
+        return True;
+    }
     view = hash_buffer(data);
     if view is None {
         return False;
     }
-    address = view.address();
+    address = int(view.address());
     size = view.size();
     if size >= HASHLIB_GIL_MINSIZE {
         thread = PyEval_SaveThread();
-        update(hacl, address, size);
+        core.absorb(address, size);
         PyEval_RestoreThread(thread);
     } else {
-        update(hacl, address, size);
+        core.absorb(address, size);
     }
     view.close();
     return True;
 }
 
-"""update() of a hash object. From HASHLIB_GIL_MINSIZE bytes the object
-switches to locked access, and a locked update runs with the GIL released."""
-def hash_update(
-    lock: HashLock,
-    hacl: ptr,
-    value: ptr[PyObject],
-    update: Callable[[ptr, ptr, i64], None]
+"""A new hash object of `cls` owning `core`, fed `data` unless it is NULL."""
+def digest_object(
+    cls: ptr[PyObject], token: ClassToken, core: DigestCore, data: ptr[PyObject]
 ) -> ptr[PyObject] {
+    instance = hash_object_new(cls, token, DigestState(core=core));
+    if instance and data and not hash_initial_data(core, data) {
+        jacpy_release(instance);
+        return NULL;
+    }
+    return instance;
+}
+
+"""A module constructor: the `data` or `string` argument fed to a new object."""
+def digest_new(
+    cls: ptr[PyObject],
+    token: ClassToken,
+    core: DigestCore | None,
+    data: ptr[PyObject],
+    string: ptr[PyObject]
+) -> ptr[PyObject] {
+    value = data;
+    if string {
+        (given, value) = data_argument(data, string);
+        if given < 0 {
+            return NULL;
+        }
+    }
+    if core is None {
+        object_error(PyExc_SystemError, "bad argument to internal function");
+        return NULL;
+    }
+    return digest_object(cls, token, core, value);
+}
+
+"""copy(): a new object of the receiver's type with a snapshot of its core."""
+def digest_copy(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
+    state = digest_state(receiver, token);
+    if state is None {
+        return NULL;
+    }
+    lock = state.lock;
+    if lock is not None {
+        lock.enter();
+    }
+    core = state.core.clone();
+    if lock is not None {
+        lock.leave();
+    }
+    return digest_object(Py_TYPE(receiver), token, core, NULL);
+}
+
+"""update(). From HASHLIB_GIL_MINSIZE bytes the object switches to locked
+access, and a locked update runs with the GIL released."""
+def digest_update(
+    receiver: ptr[PyObject], token: ClassToken, value: ptr[PyObject]
+) -> ptr[PyObject] {
+    state = digest_state(receiver, token);
+    if state is None {
+        return NULL;
+    }
+    lock = state.lock;
+    small = small_bytes(value) if lock is None else -1;
+    if small >= 0 {
+        state.core.absorb(int(jacpy_bytes_address(value)), small);
+        return Py_NewRef(borrowed_none());
+    }
     view = hash_buffer(value);
     if view is None {
         return NULL;
     }
-    address = view.address();
+    address = int(view.address());
     size = view.size();
-    if not lock.use_mutex and size >= HASHLIB_GIL_MINSIZE and not lock.enable() {
-        view.close();
-        return NULL;
+    if lock is None and size >= HASHLIB_GIL_MINSIZE {
+        lock = HashLock();
+        if not lock.enable() {
+            view.close();
+            return NULL;
+        }
+        state.lock = lock;
     }
-    if lock.use_mutex {
+    if lock is not None {
         mutex = lock.lock;
         thread = PyEval_SaveThread();
         PyThread_acquire_lock(mutex, 1);
-        update(hacl, address, size);
+        state.core.absorb(address, size);
         PyThread_release_lock(mutex);
         PyEval_RestoreThread(thread);
     } else {
-        update(hacl, address, size);
+        state.core.absorb(address, size);
     }
     view.close();
     return Py_NewRef(borrowed_none());
 }
 
-"""digest() or hexdigest(): `digest` writes into a buffer of `capacity` bytes
-and returns how many it wrote; `size`, when not negative, keeps only that
-prefix (SHA-224 and SHA-384 truncate the wider state's output)."""
-def hash_digest(
-    lock: HashLock,
-    hacl: ptr,
-    capacity: i64,
-    size: i64,
-    digest: Callable[[ptr, ptr], i64],
-    as_hex: bool
+"""digest() or hexdigest(); `length`, when not negative, squeezes that many
+bytes from an extendable-output core (SHAKE)."""
+def digest_value(
+    receiver: ptr[PyObject], token: ClassToken, as_hex: bool, length: i64 = -1
 ) -> ptr[PyObject] {
-    output = PyMem_Malloc(u64(capacity));
-    if not output {
-        PyErr_NoMemory();
+    state = digest_state(receiver, token);
+    if state is None {
         return NULL;
     }
-    lock.enter();
-    written = digest(hacl, output);
-    lock.leave();
-    length = size if size >= 0 else written;
-    result = _Py_strhex(output, length)
-        if as_hex
-        else jacpy_bytes_from_memory(output, length);
-    PyMem_Free(output);
-    return result;
+    lock = state.lock;
+    if lock is not None {
+        lock.enter();
+    }
+    value = state.core.finish() if length < 0 else state.core.squeeze(int(length));
+    if lock is not None {
+        lock.leave();
+    }
+    if as_hex {
+        return _Py_strhex(ptr(__bytes_data(value)), i64(len(value)));
+    }
+    return jacpy_bytes_from_payload(value, i64(len(value)));
+}
+
+"""A property of a hash object: `which` 0 is name, 1 digest_size, 2 block_size."""
+def digest_property(
+    instance: ptr[PyObject], token: ClassToken, which: int
+) -> ptr[PyObject] {
+    state = digest_state(instance, token);
+    if state is None {
+        return NULL;
+    }
+    if which == 0 {
+        return jacpy_unicode_from_text(state.core.name);
+    }
+    return PyLong_FromLong(
+        i64(state.core.digest_size if which == 1 else state.core.block_size)
+    );
 }
 
 """_tscmp(): whether two buffers are equal, in time that depends only on the

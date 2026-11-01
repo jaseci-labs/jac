@@ -1,18 +1,18 @@
 # jac single-binary launcher (Jac, dlopen embed)
 
 `jac` is one self-contained executable: a small native launcher stub with the
-jaclang runtime + a private CPython appended as a payload. It needs **no system
+jaclang runtime + a private JacPython appended as a payload. It needs **no system
 Python, uv, or pip** at install or runtime. Both halves are Jac:
 
 | Piece | Where | Tier |
 |---|---|---|
 | Launcher stub (`launcher.jac`) | this directory | native (`jac build --as native` / `nacompile`) |
 | Fused-runtime library | `jaclang/dist/fused/` | native, shipped in the payload |
-| Payload tool (fetch, stage, precompile, pack) | `jaclang/dist/payload/` | Python tier, run on source-built CPython |
+| Payload tool (fetch, stage, precompile, pack) | `jaclang/dist/payload/` | Python tier, run on source-built JacPython |
 | Bootstrap seeds (`build_python.zig`, `fetch_typeshed.zig`), `pins.json` | `bootstrap/` | Zig + the pin files |
 | `build.zig` | `jac/` | the one-command entry; also the C/C++ cross-compiler for the LLVM shim and the vendored runtimes |
 
-Instead of statically linking CPython, the launcher **`dlopen`s the bundled
+Instead of statically linking JacPython, the launcher **`dlopen`s the bundled
 `libpython` at runtime** -- the same way jac-native loads LLVM. The stub links
 only libc (and `libdl` on Linux, so it also runs on glibc < 2.34); nothing
 Python is linked at build time.
@@ -76,8 +76,7 @@ cd jac
 
 zig build test                       # bootstrap unit tests (no network needed)
 zig build stub                       # just the launcher stub (no payload)
-zig build                            # -> zig-out/bin/jac (stock CPython)
-zig build -Dpython=jacpython         # JacPython (prefer `jac native build jacpython`)
+zig build                            # -> zig-out/bin/jac, on JacPython
 ./zig-out/bin/jac --version
 
 zig build -Dpayload-progress         # stream the payload build live
@@ -85,68 +84,60 @@ zig build -Dpayload=/tmp/p.tar.zst   # pack a prebuilt payload (skip fetch+assem
 zig build -Ddev                      # editable dev binary: link the compiler from this tree
 ```
 
-`zig build` first builds CPython from the checksum-pinned sources in
-`bootstrap/python/sources.json` and fetches the pinned typeshed stubs. The
-Python bootstrap uses Zig for C compilation and archiving, with the upstream
-configure/make recipes retained for platform probes and generated files.
-No installed Python, Jac, or python-build-standalone distribution is needed.
-Build hosts need Zig 0.16.0, make, Perl, a POSIX shell, and network access.
-macOS also needs the SDK provided by Xcode command line tools.
+`zig build` first builds JacPython, the only Python, from the
+checksum-pinned sources in `bootstrap/python/sources.json` and fetches the
+pinned typeshed stubs. Zig compiles the C and archives it; no configure or
+make runs for the interpreter. A JacPython runs that build: the previous
+output for this machine, a JacPython named with `-Djacpython-host=<path>`, or
+the seed pinned under `"jacpython-seed"` in `sources.json`
+(`zig build jacpython-seed-pack` makes one). No installed Python, Jac, or
+python-build-standalone distribution is needed. Build hosts need Zig 0.16.0,
+make, Perl (for the third-party libraries), a POSIX shell, and network access.
+macOS also needs the SDK provided by Xcode command line tools, for the link.
 
-Builds use stock CPython by default. `-Dpython=jacpython` selects JacPython's
-native parser/compiler replacement at build time; `jac native build jacpython`
-runs that build into `zig-out/jacpython/` so it sits beside the CPython binary.
-Each binary bundles one runtime. For JacPython, the CPython VM and
-object runtime remain. A separate build-only CPython host runs Jac's
-native compiler to emit that object. The build rejects interpreted demotions;
-no replacement bytecode, compiler seed, or Python adapter ships in the payload.
-`zig build build-python` builds only the selected runtime and its native libraries.
-Its cache in `.python-build/<cpython|jacpython>/<platform>` contains the interpreter,
+JacPython's native object is the Jac compiler's output for the replaced parts
+of CPython. One x86_64 Linux machine lowers it for every platform
+(`zig build jacpython-object -Dtarget-platform=P`), with no macOS SDK:
+pyconfig.h is probed against Zig's own headers on every machine. Each
+platform's JacPython is built only there, and a build adopts the object with
+`-Djacpython-object=DIR`; an adopting build runs Python only on the
+interpreter it builds. The build rejects interpreted demotions; no
+replacement bytecode, compiler seed, or Python adapter ships in the payload.
+`zig build build-python` builds only the runtime and its native libraries.
+Its cache in `.python-build/jacpython/<platform>` contains the interpreter,
 shared library, stdlib, licenses, CA certificates, and static archives for Jac's
-native backend. For JacPython, the adjacent `<platform>.host` tree is only a
-build tool. Precompile and payload-layer caches are also separated by variant.
+native backend; `<platform>.vendored` holds the third-party libraries
+`bootstrap/python/build.sh` builds, and `seeds/` the unpacked seeds.
 A content fingerprint covers the source checksums, source allowlist, recipes,
-Zig version, target, and macOS SDK version. A cache hit skips compilation; a miss builds from
+Zig version, and target. A cache hit skips compilation; a miss builds from
 source and checks relocation before marking the distribution complete.
 `JAC_PYTHON_JOBS` controls build parallelism (default 4).
 
-Each supported release platform builds on its matching runner. Linux targets
-retain the glibc 2.17 floor; Intel macOS targets 12.0 and ARM macOS targets 11.0.
-The existing launcher still loads the shared CPython library from its payload.
-The source-built runtime excludes Tk, curses, readline, dbm, and CPython test
+Linux targets retain the glibc 2.17 floor; Intel macOS targets 12.0 and ARM
+macOS targets 11.0. The launcher loads the shared JacPython library from its
+payload. The runtime excludes Tk, curses, readline, dbm, and CPython test
 extensions. `bootstrap/python/cpython-sources.txt` is the source allowlist:
 each line names a file or a directory ending in `/`, relative to the pinned
-CPython archive. Only those paths survive extraction into the build tree;
-stock CPython (including the build-only host) restores entries marked
-`# removed:`. The shipped JacPython runtime omits those entries. Changes to JacPython
-or the Jac compiler that produces its native object invalidate the runtime cache;
-they do not invalidate the build-only host.
+CPython archive. Only those paths survive extraction into the build tree.
 Blank lines and full-line comments are allowed; globs, missing paths, and
 overlapping entries fail the build. The archive is still downloaded and
 checksum-verified as a whole. Other dependency archives use `sources.json`.
 
 Stable and rolling dev releases build one binary per selected platform, on
-stock CPython: `jac-<version>-<platform>` (or `jac-dev-<platform>`), each with
-its own `.sha256` checksum. JacPython is not released; it is built on request.
+JacPython: `jac-<version>-<platform>` (or `jac-dev-<platform>`), each with
+its own `.sha256` checksum.
 Docker images use the same assets.
 Intel Mac remains a manually selected release target.
 
-The list starts with the C implementations needed by the Linux/macOS release
-builds, their headers/generated tables, the Python standard library, and the
-upstream configure/make inputs and license notices. Tests and unsupported GUI
-packages are excluded. Upstream's default make target still requires
-`Programs/_testembed.c`; it is a build prerequisite, not a retained test suite.
-Generated files created by configure/make do not need their own source entries.
-
-When a Jac implementation replaces a C component, connect it to the runtime,
-update the build recipe, and remove the corresponding source entries and any
-unused headers. Split a directory entry into its remaining files before
-retiring only part of it. The runtime fingerprint and CI cache keys include
-the list, so every change rebuilds and verifies the resulting Python runtime.
-Deleting an entry alone does not substitute Jac code for a CPython C API.
-The separate ignored CPython reference checkout remains a generator input.
-The initial source recipe uses `-O2` without PBS's PGO/LTO optimizations;
-performance parity has not been established.
+The list holds the C the runtime still compiles, the headers and tables it
+reads, the Python standard library, the install inputs and the license
+notices. Tests and unsupported GUI packages are excluded. When a Jac
+implementation replaces a C component, connect it to the runtime and delete
+its entries and any headers no longer used. Split a directory entry into its
+remaining files before retiring only part of it. The runtime fingerprint and
+CI cache keys include the list, so every change rebuilds and verifies the
+resulting Python runtime. Deleting an entry alone does not substitute Jac
+code for a CPython C API.
 
 * `JAC_NA_DEBUG=1 jac build --native launcher/launcher.jac` prints why a function in
   the stub's closure would be demoted to Python-only; the stub must lower in

@@ -15644,6 +15644,15 @@ graph import runtime {
         source_app._load_application { NativeLibrary, native_callback_of },
     ]
     memory ++> context { Memory }
+    na_stdlib._digest ++> [
+        python.modules.blake2 { new_blake2 },
+        python.modules.hmac { new_hmac },
+        python.modules.md5
+            | python.modules.sha1
+            | python.modules.sha2
+            | python.modules.sha3 { new_core },
+    ]
+    type na_stdlib._digest ++> python.modules.hashlib { DigestCore }
     object_interop ++> typecache { fields, is_record }
     object_model ++> [
         archetype { ObjectField, asdict, fields, is_jac_object, make_object },
@@ -15773,7 +15782,10 @@ graph import runtime.na_stdlib {
         dt_tm_gmtoff,
         dt_tm_zone
     }
-    _digest ++> hashlib | hmac { new_core }
+    _digest ++> [
+        hashlib { new_core },
+        hmac { new_hmac },
+    ]
     type _digest ++> hashlib | hmac { DigestCore }
     _directory_native ++> [
         glob | shutil | uuid | zoneinfo { try_directory_names },
@@ -16225,6 +16237,7 @@ graph import runtime.python {
             | modules.fcntl
             | modules.hashlib
             | modules.hashopenssl
+            | modules.hmac
             | modules.imp
             | modules.io_buffered
             | modules.io_bytesio
@@ -16656,17 +16669,14 @@ graph import runtime.python {
     bindings.stat ++> inittab { PyInit__stat }
     bindings.state ++> modules.abc
         | modules.asyncio_core
-        | modules.blake2
         | modules.bz2
         | modules.collections
         | modules.csv
         | modules.elementtree
         | modules.hashlib
         | modules.hashopenssl
-        | modules.hmac
         | modules.lsprof
         | modules.lzma
-        | modules.md5
         | modules.mmap
         | modules.multibytecodec
         | modules.multiprocessing
@@ -16676,9 +16686,6 @@ graph import runtime.python {
         | modules.pyexpat
         | modules.queue
         | modules.select
-        | modules.sha1
-        | modules.sha2
-        | modules.sha3
         | modules.socket_core
         | modules.sqlite3
         | modules.ssl_core
@@ -17217,7 +17224,10 @@ graph import runtime.python {
             | modules.codecs_jp
             | modules.codecs_kr
             | modules.codecs_tw
-            | modules.posix_stat_platform { PyObject },
+            | modules.md5
+            | modules.posix_stat_platform
+            | modules.sha1
+            | modules.sha2 { PyObject },
         bindings.binascii { NULL, PyExc_ValueError, PyObject },
         bindings.blake2 {
             PyLong_FromLong,
@@ -17796,14 +17806,7 @@ graph import runtime.python {
             jacpy_module_add_int_text,
             jacpy_release
         },
-        bindings.sha2 {
-            NULL,
-            PyLong_FromLong,
-            PyModule_AddIntConstant,
-            PyObject,
-            Py_TYPE,
-            jacpy_unicode_from_text
-        },
+        bindings.sha2 { PyLong_FromLong, PyModule_AddIntConstant, PyObject, Py_TYPE },
         bindings.sha3 {
             PyModule_AddIntConstant,
             PyModule_AddStringConstant,
@@ -19323,22 +19326,7 @@ graph import runtime.python {
             jacpy_release,
             jacpy_sequence_slot
         },
-        modules.blake2 {
-            NULL,
-            PyErr_NoMemory,
-            PyExc_OverflowError,
-            PyExc_ValueError,
-            PyLong_FromLong,
-            PyMem_Free,
-            PyMem_Malloc,
-            PyObject,
-            Py_TYPE,
-            jacpy_hacl_simd_features,
-            jacpy_memory_copy,
-            jacpy_memory_zero,
-            jacpy_release,
-            jacpy_unicode_from_text
-        },
+        modules.blake2 { NULL, PyExc_OverflowError, PyExc_ValueError, PyObject },
         modules.bz2 {
             NULL,
             PyBytes_AsString,
@@ -20581,14 +20569,14 @@ graph import runtime.python {
         },
         modules.hashlib {
             NULL,
+            PyBytes_Type,
             PyErr_NoMemory,
             PyEval_RestoreThread,
             PyEval_SaveThread,
             PyExc_BufferError,
             PyExc_SystemError,
             PyExc_TypeError,
-            PyMem_Free,
-            PyMem_Malloc,
+            PyLong_FromLong,
             PyObject,
             PyObject_CheckBuffer,
             PyThread_acquire_lock,
@@ -20598,11 +20586,14 @@ graph import runtime.python {
             Py_NewRef,
             Py_TYPE,
             _Py_strhex,
-            jacpy_bytes_from_memory,
+            jacpy_bytes_address,
+            jacpy_bytes_from_payload,
+            jacpy_bytes_length,
             jacpy_crypto_compare,
             jacpy_is_unicode,
             jacpy_release,
-            jacpy_unicode_ascii
+            jacpy_unicode_ascii,
+            jacpy_unicode_from_text
         },
         modules.hashopenssl {
             NULL,
@@ -20664,13 +20655,8 @@ graph import runtime.python {
             PyErr_NoMemory,
             PyErr_SetObject,
             PyExc_OverflowError,
-            PyExc_RuntimeError,
             PyExc_TypeError,
-            PyExc_ValueError,
-            PyLong_FromLong,
             PyLong_FromVoidPtr,
-            PyMem_Free,
-            PyMem_Malloc,
             PyNumber_ToBase,
             PyObject,
             PyObject_CallNoArgs,
@@ -20680,10 +20666,8 @@ graph import runtime.python {
             PyUnicode_Concat,
             PyUnicode_FromString,
             Py_None,
-            Py_TYPE,
-            _Py_strhex,
-            jacpy_bytes_from_memory,
-            jacpy_hacl_simd_features,
+            jacpy_bytes_address,
+            jacpy_bytes_from_payload,
             jacpy_is_unicode,
             jacpy_release,
             jacpy_unicode_from_text
@@ -21659,13 +21643,6 @@ graph import runtime.python {
             jacpy_release,
             jacpy_special_noargs,
             jacpy_tuple_item
-        },
-        modules.md5 | modules.sha1 | modules.sha2 {
-            NULL,
-            PyErr_NoMemory,
-            PyObject,
-            Py_TYPE,
-            jacpy_release
         },
         modules.mmap {
             NULL,
@@ -22792,19 +22769,10 @@ graph import runtime.python {
         modules.sha3 {
             NULL,
             PyBytes_FromStringAndSize,
-            PyErr_NoMemory,
-            PyExc_SystemError,
             PyExc_ValueError,
             PyLong_FromLong,
-            PyMem_Free,
-            PyMem_Malloc,
             PyObject,
-            PyType_GetModule,
-            Py_TYPE,
-            _Py_strhex,
-            jacpy_bytes_from_memory,
-            jacpy_release,
-            jacpy_unicode_from_text
+            PyType_GetModule
         },
         modules.signal {
             NULL,
@@ -32263,7 +32231,6 @@ graph import runtime.python {
             _object
         },
         object_model.type {
-            ALIGNOF_MAX_ALIGN_T,
             FRAME_OWNED_BY_GENERATOR,
             FRAME_OWNED_BY_INTERPRETER,
             MCACHE_SIZE_EXP,
@@ -33862,7 +33829,6 @@ graph import runtime.python {
             PyThreadState_NEXT,
             PyThreadState_REMOTE_DEBUGGER_PENDING_CALL,
             PyThreadState_REMOTE_DEBUGGER_SCRIPT_PATH,
-            SYS_ARCH_X86_64,
             _PyRuntimeState_GLOBAL_STRINGS,
             _PyRuntimeState_OPEN_CODE_HOOK,
             _PyRuntimeState_OPEN_CODE_USERDATA,
@@ -34022,6 +33988,7 @@ graph import runtime.python {
             _PyRuntimeState_TUPLE_EMPTY
         },
         object_model.type {
+            ALIGNOF_MAX_ALIGN_T,
             PyInterpreterState_CACHED_OBJREDUCE,
             PyInterpreterState_RARE_SET_BASES,
             PyInterpreterState_RARE_SET_CLASS,
@@ -35145,13 +35112,15 @@ graph import runtime.python {
         grp_getgrgid_impl,
         grp_getgrnam_impl
     }
-    modules.hashlib ++> bindings.blake2
-        | bindings.hashopenssl
-        | bindings.hmac
-        | bindings.md5
-        | bindings.sha1
-        | bindings.sha2
-        | bindings.sha3 { HASHLIB_GIL_MINSIZE }
+    modules.hashlib ++> [
+        bindings.blake2
+            | bindings.hashopenssl
+            | bindings.hmac
+            | bindings.md5
+            | bindings.sha1
+            | bindings.sha3 { HASHLIB_GIL_MINSIZE },
+        bindings.sha2 { HASHLIB_GIL_MINSIZE, digest_property },
+    ]
     modules.hashopenssl ++> [
         bindings.clinic.hashopenssl {
             EVPXOF_digest_impl,
@@ -36560,8 +36529,7 @@ graph import runtime.python {
             SHA256Type_token,
             SHA256_BLOCKSIZE,
             SHA512Type_token,
-            SHA512_BLOCKSIZE,
-            sha2_of
+            SHA512_BLOCKSIZE
         },
     ]
     modules.sha3 ++> [
@@ -36575,7 +36543,7 @@ graph import runtime.python {
             py_sha3_new_impl
         },
         bindings.sha3 {
-            SHA3_TYPES,
+            SHA3_NAMES,
             SHA3_token,
             get_block_size,
             get_capacity_bits,
@@ -39480,7 +39448,7 @@ graph import runtime.python.bindings {
             convert_int,
             convert_ssize
         },
-        multibytecodec | sha2 { ClassToken },
+        multibytecodec { ClassToken },
         syslog { argument_label, convert_int, convert_str },
     ]
     members ++> [
@@ -40761,19 +40729,6 @@ graph import runtime.python.modules {
         asyncio.future_clear { clear_future_fields },
     ]
     binary_scalars ++> struct { read_bits, write_bits }
-    blake2_simd ++> blake2 {
-        Hacl_Hash_Blake2b_blake2_params,
-        simd128_copy,
-        simd128_digest,
-        simd128_free,
-        simd128_malloc,
-        simd128_update,
-        simd256_copy,
-        simd256_digest,
-        simd256_free,
-        simd256_malloc,
-        simd256_update
-    }
     cjkcodecs ++> [
         cjkcodecs_mappings_cn { DbcsMap, Gb18030Range },
         cjkcodecs_mappings_hk | cjkcodecs_mappings_kr | cjkcodecs_mappings_tw {
@@ -41867,15 +41822,13 @@ graph import runtime.python.modules {
     }
     fcntl_records ++> fcntl { flock_record }
     hashlib ++> [
-        blake2 | md5 | sha1 | sha2 | sha3 {
-            HashLock,
-            UINT32_MAX,
+        blake2 {
             data_argument,
-            hash_digest,
-            hash_initial_data,
-            hash_object_new,
-            hash_state_of,
-            hash_update
+            digest_copy,
+            digest_object,
+            digest_property,
+            digest_update,
+            digest_value
         },
         hashopenssl {
             HASHLIB_GIL_MINSIZE,
@@ -41887,15 +41840,25 @@ graph import runtime.python.modules {
             hash_state_of
         },
         hmac {
-            HashLock,
-            UINT32_MAX,
+            digest_copy,
+            digest_object,
+            digest_property,
+            digest_state,
+            digest_update,
+            digest_value,
             hash_buffer,
-            hash_initial_data,
-            hash_object_new,
-            hash_state_of,
-            hash_update
+            small_bytes
         },
+        md5 | sha1 | sha2 { digest_copy, digest_new, digest_update, digest_value },
         operator { compare_digest },
+        sha3 {
+            digest_copy,
+            digest_new,
+            digest_property,
+            digest_state,
+            digest_update,
+            digest_value
+        },
     ]
     interpreters_common ++> [
         interpchannels | interpqueues {

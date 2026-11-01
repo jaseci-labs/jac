@@ -4,15 +4,18 @@ name: JacPython compatibility
 # `native:jacpython-compat` label (each push re-runs it while the label stays).
 # Runs the whole upstream CPython regression suite -- every
 # regrtest module of the release pinned in jac/bootstrap/python/sources.json --
-# on JacPython and on stock CPython built from the same pin, on the same
-# runner type, and compares the two. A module or test counts against JacPython
+# on JacPython and on stock CPython of the same release (actions/setup-python),
+# on the same runner type, and compares the two. A module or test counts against JacPython
 # only when stock CPython passes it and JacPython fails or skips it, so
 # failures the runner's environment causes on both do not. No test corpus is
 # checked in: scripts/cpython_compat.jac fetches the pinned tests into each
 # interpreter's standard library inside the job.
 #
-# The _jacpython.yml lane runs a pinned list of upstream modules as a gate on
-# pull requests; this is the full suite, for a compatibility verdict.
+# This is the one place CI runs stock CPython: as the reference of a
+# compatibility verdict, never to build or run jac
+# (scripts/check_no_stock_cpython.sh exempts this file). ci.yml's test-jacpython
+# runs a pinned list of upstream modules as a gate on every pull request; this
+# is the full suite.
 
 on:
   workflow_dispatch:
@@ -63,13 +66,26 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Build jac and the interpreter (cached)
+      # Both legs run the orchestrator on jac; the jacpython leg also tests
+      # the runtime jac is built on.
+      - name: Build jac and its JacPython runtime (cached)
         uses: ./.github/actions/setup-jac
         with:
-          python: ${{ matrix.python }}
-          need-build-inputs: "true"
+          need-build-inputs: ${{ matrix.python == 'jacpython' }}
+
+      - name: Read the pinned CPython release
+        id: pin
+        run: echo "version=$(jq -r .cpython.version jac/bootstrap/python/sources.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up stock CPython ${{ steps.pin.outputs.version }}
+        if: matrix.python == 'cpython'
+        id: stock
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ steps.pin.outputs.version }}
 
       - name: Set up Zig 0.16.0
+        if: matrix.python == 'jacpython'
         uses: mlugg/setup-zig@v2
         with:
           version: 0.16.0
@@ -91,8 +107,9 @@ jobs:
       # A binary-cache hit restores the interpreter tree by prefix; this checks
       # its inputs against the checkout and rebuilds it only when they differ.
       - name: Build the interpreter under test
+        if: matrix.python == 'jacpython'
         working-directory: jac
-        run: zig build build-python -Dpython=${{ matrix.python }} --summary all
+        run: zig build build-python --summary all
 
       # Tested where it was built: build-details.json and getpath record the
       # install prefix, and their tests check it. The caches above were saved
@@ -101,8 +118,14 @@ jobs:
         id: python
         env:
           VARIANT: ${{ matrix.python }}
+          STOCK: ${{ steps.stock.outputs.python-path }}
         run: |
           set -euo pipefail
+          if [ "$VARIANT" = cpython ]; then
+            "$STOCK" -VV
+            echo "bin=$STOCK" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           case "$RUNNER_OS/$RUNNER_ARCH" in
             Linux/X64) osarch=linux-x86_64 ;;
             Linux/ARM64) osarch=linux-aarch64 ;;
@@ -110,7 +133,7 @@ jobs:
             macOS/X64) osarch=macos-x86_64 ;;
             *) echo "::error::unsupported runner $RUNNER_OS/$RUNNER_ARCH"; exit 1 ;;
           esac
-          prefix="$GITHUB_WORKSPACE/jac/.python-build/$VARIANT/$osarch/python/install"
+          prefix="$GITHUB_WORKSPACE/jac/.python-build/jacpython/$osarch/python/install"
           bin=$(find "$prefix/bin" -name 'python3.*' ! -name '*-config' | head -1)
           "$bin" -VV
           echo "bin=$bin" >> "$GITHUB_OUTPUT"
@@ -138,9 +161,9 @@ jobs:
           path: ${{ runner.temp }}/results
           if-no-files-found: ignore
 
-      # The compare job runs the stock kit's binary instead of building one.
+      # The compare job runs this leg's binary instead of building one.
       - name: Upload the jac binary for the comparison
-        if: matrix.python == 'cpython'
+        if: matrix.python == 'jacpython'
         uses: actions/upload-artifact@v4
         with:
           name: cpython-compat-kit

@@ -14,13 +14,40 @@ permissions:
   contents: read
 
 jobs:
-  # The JacPython accelerator on every platform it supports. Releases ship
-  # CPython; this is where JacPython's gates run without a pull request asking.
-  jacpython:
+  # JacPython's conformance gates on linux-aarch64. ci.yml runs them on the
+  # linux-x86_64 kit and _macos-native.yml (macos-native below) on the macOS
+  # kit; this leg builds its kit on ARM, from a kernel and jacpython.o lowered
+  # on x86.
+  jacpython-aarch64-prebuild:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * *' }}
-    uses: ./.github/workflows/_jacpython.yml
+    uses: ./.github/workflows/build-kernel.yml
     with:
-      runners: '["blacksmith-8vcpu-ubuntu-2404", "ubuntu-24.04-arm", "macos-14"]'
+      platforms: '["linux-aarch64"]'
+
+  jacpython-aarch64:
+    needs: jacpython-aarch64-prebuild
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the jac binary (cached)
+        uses: ./.github/actions/setup-jac
+        with:
+          prebuilt: linux-aarch64
+
+      # The gates run the binary's own compiler, not the checkout's.
+      - uses: ./.github/actions/seal-checkout
+
+      - uses: ./.github/actions/jacpython-conformance
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: jacpython-build-logs-linux-aarch64
+          path: jac/.python-build/**/*.log
+          include-hidden-files: true
+          if-no-files-found: ignore
 
   # The js_engine accelerator: releases ship bun, so this is where the engine
   # is built and gated without a pull request asking.

@@ -294,7 +294,7 @@ impl _link_elf(job: NativeLinkJob, work: str) -> list[str] {
     }
     args += ["-rpath", "$ORIGIN", "--enable-new-dtags"];
     if job.shared {
-        args += ["-shared", "-soname", job.soname];
+        args += ["-shared", "-soname", job.soname, "-Bsymbolic"];
         script = os.path.join(work, "exports.map");
         with open(script, "w") as f {
             f.write("{\n  global:\n");

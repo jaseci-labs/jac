@@ -42,8 +42,6 @@ assert sqlite3.connect(":memory:").execute("select 6 * 7").fetchone() == (42,)
 assert str(decimal.Decimal("0.1") + decimal.Decimal("0.2")) == "0.3"
 assert hashlib.sha256(sample).digest()
 assert ctypes.pythonapi.PyInitConfig_Create
-mode = sys.argv[1] if len(sys.argv) > 1 else "jacpython"
-assert mode in ("jacpython", "host"), mode
 # Every extension module this configuration built imports: what `make
 # checksharedmods` runs Tools/build/check_extension_modules.py for, which
 # JacPython does not keep. Here the check is strict and reads the installed
@@ -64,20 +62,10 @@ for name in sorted(built - set(build_vars["MODDISABLED_NAMES"].split())):
     except ImportError as error:
         unimportable.append(f"{name}: {error}")
 assert not unimportable, "built extension modules fail to import:\n" + "\n".join(unimportable)
-if mode == "jacpython":
-    assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
-try:
-    required_compiler = ctypes.pythonapi._PyJac_CompilerRequired
-except AttributeError:
-    required_compiler = None  # Only the build host retains the C compiler.
-if mode == "jacpython":
-    assert required_compiler is not None, "JacPython was requested but is missing"
-elif mode == "host":
-    assert required_compiler is None, "Unexpected JacPython runtime"
-    assert getattr(sys, "_jacpython_compile", None) is None
-    assert not hasattr(sys, "_jacpython_image"), "Unexpected embedded seed"
-    assert not hasattr(ctypes.pythonapi, "_PyJac_CompilerBridgeVersion")
-if required_compiler is not None:
+assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
+# The symbol lookup fails on an interpreter that is not JacPython.
+required_compiler = ctypes.pythonapi._PyJac_CompilerRequired
+if required_compiler:
     import _bisect
     import _heapq
     import _random
