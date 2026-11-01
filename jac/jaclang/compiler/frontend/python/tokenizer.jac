@@ -381,6 +381,22 @@ def _is_id_start(c: int) -> bool {
     return c >= 128 and unicode_start(c);
 }
 
+def _scan_identifier(spell: str) -> int {
+    n = len(spell);
+    first = ord(spell[0]);
+    if not (first == 95 or _is_id_start(first)) {
+        return 0;
+    }
+    i = 1;
+    while i < n {
+        if not _is_id_continue(ord(spell[i])) {
+            return i;
+        }
+        i += 1;
+    }
+    return n;
+}
+
 def _is_id_continue(c: int) -> bool {
     if _is_id_start(c) or _is_digit(c) {
         return True;
@@ -668,7 +684,7 @@ def _read_number(st: tok_state) -> tok_token | tok_diag {
     );
 }
 
-def _read_name(st: tok_state) -> tok_token {
+def _read_name(st: tok_state) -> tok_token | tok_diag {
     start = st.pos;
     start_col = st.col_offset;
     _advance(st);
@@ -690,13 +706,37 @@ def _read_name(st: tok_state) -> tok_token {
     st.pos = end;
     while _has_source(st) {
         c = _peek(st);
-        if not _is_id_continue(c) and not (st.extra_tokens and c >= 128) {
+        if not _is_id_continue(c) and c < 128 {
             break;
         }
         _advance(st);
     }
     spell = st.data[start:st.pos].decode("utf-8");
     _peek(st);
+    if not st.extra_tokens and not spell.isascii() {
+        invalid = _scan_identifier(spell);
+        if invalid < len(spell) {
+            ch = ord(spell[invalid]);
+            col = start_col + len(spell[:invalid].encode("utf-8"));
+            message = "invalid non-printable character U+" + format(ch, "04X");
+            if unicode_printable(ch) {
+                message = "invalid character '"
+                    + chr(ch)
+                    + "' (U+"
+                    + format(ch, "04X")
+                    + ")";
+            }
+            bad = mk_diag(
+                "SyntaxError",
+                message,
+                tok_loc_span(st.lineno, st.lineno, col, col + 1),
+                st.filename
+            );
+            st.error = bad;
+            st.done = True;
+            return bad;
+        }
+    }
     return tok_token(
         tok_type=NAME,
         spelling=spell,
@@ -778,7 +818,12 @@ def _string_syntax_error(st: tok_state, msg: str, start_col: int) -> tok_diag {
 }
 
 def _fstring_emit_middle(
-    st: tok_state, text: str, lineno: int, col_offset: int, end_col_offset: int
+    st: tok_state,
+    text: str,
+    lineno: int,
+    col_offset: int,
+    end_col_offset: int,
+    doubled_brace: bool = False
 ) -> tok_token {
     mode = st.string_modes[-1];
     metadata = "raw" if mode.raw else "";
@@ -795,7 +840,8 @@ def _fstring_emit_middle(
         lineno=lineno,
         col_offset=col_offset,
         end_lineno=st.lineno,
-        end_col_offset=end_col_offset
+        end_col_offset=end_col_offset,
+        doubled_brace=doubled_brace
     );
 }
 
@@ -946,10 +992,12 @@ def _fstring_next_segment(st: tok_state) -> tok_token | tok_diag | None {
             # first, and the second is consumed with it.
             _advance(st);
             text = _source_text(st, seg);
-            end_col = st.col_offset;
             _advance(st);
+            end_col = st.col_offset;
             mode.resume = True;
-            return _fstring_emit_middle(st, text, start_lineno, start_col, end_col);
+            return _fstring_emit_middle(
+                st, text, start_lineno, start_col, end_col, True
+            );
         }
         if ch == ord("}") {
             return _string_syntax_error(
@@ -1362,10 +1410,12 @@ def _tokenizer_next(st: tok_state) -> tok_token | tok_diag {
             }
             return str_tok as tok_token;
         }
-        if _is_id_start(ch) or (st.extra_tokens and ch >= 128) {
-            tok = _read_name(st);
-            st.paren_level = st.paren_level + _track_paren_delta(tok.tok_type);
-            return tok;
+        if _is_id_start(ch) or ch >= 128 {
+            name_tok = _read_name(st);
+            if isinstance(name_tok, tok_diag) {
+                return name_tok;
+            }
+            return name_tok as tok_token;
         }
         op = _match_operator(st);
         if op is not None {
