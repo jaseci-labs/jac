@@ -8,6 +8,7 @@ walker TypeCheckPass(TreePass) {
     static has contract: PassContract = PassContract(provides=(AnalysisFact.TYPE_OF, ));
     has evaluator: TypeEvaluator postinit,
         _deferred_writes: list[tuple[Expr, (UniNode | None)]] postinit,
+        _deferred_rebinds: list[tuple[Expr, UniNode]] postinit,
         _lambda_depth: int = 0,
         _restores_evaluator: bool = False,
         _outer_pass: (CompileContext | None) = None,
@@ -95,7 +96,10 @@ walker TypeCheckPass(TreePass) {
     def _write_leaves(target: (Expr | None)) -> list[Expr];
     def _is_unannotated_rebind(prior: Symbol, target: Name) -> bool;
     def _is_exempt_rebind(prior: Symbol, target: Name, declared: TypeBase) -> bool;
-    def _check_for_target_rebinds(nd: InForStmt) -> None;
+    def _check_rebind_types(target: (Expr | None), site: UniNode) -> None;
+    def _flush_rebind_types -> None;
+    def _judge_rebind_types(target: Expr, site: UniNode) -> None;
+    def _rebound_value_type(leaf: Name, site: UniNode) -> (TypeBase | None);
     def _check_immutable_write(
         target: (Expr | None), rebind_scope: (UniNode | None) = None
     ) -> None;

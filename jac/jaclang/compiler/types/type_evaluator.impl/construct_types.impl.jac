@@ -148,10 +148,13 @@ impl TypeEvaluator._extract_tuple_element_type(
     ) {
         return self._convert_to_instance(cls.private.type_args[0]);
     }
-    if cls.private.type_args and idx < len(cls.private.type_args) {
-        return self._convert_to_instance(cls.private.type_args[idx]);
+    if cls.is_builtin("tuple") {
+        if cls.private.type_args and idx < len(cls.private.type_args) {
+            return self._convert_to_instance(cls.private.type_args[idx]);
+        }
+        return None;
     }
-    return None;
+    return self._get_iterable_element_type(cls);
 }
 
 impl TypeEvaluator._tuple_has_variadic_arg(cls: ClassType) -> bool {

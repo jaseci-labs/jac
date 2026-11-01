@@ -11,7 +11,9 @@ to evolve, matching TypeScript's strict-mode evolving locals.
 
 A `for` target that reuses the name writes the same variable, so it is held
 to the frozen type too (#9972), in the single and the unpacking form, and
-an annotated local to its annotation.
+an annotated local to its annotation. So is every other binder that writes
+the local (#10405): unpacking, chained assignment, walrus, `with ... as` and
+`except ... as`.
 """
 
 with entry {
@@ -62,3 +64,42 @@ impl rebinds_param(x: int) -> int {
 }
 
 def rebinds_param(x: int) -> int;
+
+obj Label {
+    has text: str = "";
+}
+
+def binder_rebinds {
+    title = Label(text="a");
+    (kind, title) = ("k", "x");  # <-- Error
+    [kind, title] = ["k", "x"];  # <-- Error
+    other = title="x";  # <-- Error
+    if (title := "x") {  # <-- Error
+        print(kind, other);
+    }
+    with open("x.txt") as title {  # <-- Error
+        print(1);
+    }
+    try {
+        print(1);
+    } except ValueError as title {  # <-- Error
+        print(2);
+    }
+    (kind, title) = ("k", Label());  # <-- Ok
+    [first, second] = [Label(), Label()];  # <-- Ok: first binding
+    pending = None;
+    (kind, pending) = ("k", 3);  # <-- Ok: None-sentinel
+    print(first, second, pending);
+}
+
+def for_unpack_rebinds {
+    title = Label(text="a");
+    for [kind, title] in [["k", "x"]] {  # <-- Error
+        print(kind);
+    }
+    count = 0;
+    # Iterating a dict yields its keys, so `count` gets a key's characters.
+    for (key, count) in {"ab": 1} {  # <-- Error
+        print(key);
+    }
+}

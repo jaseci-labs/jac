@@ -1123,14 +1123,16 @@ impl EsastGenPass._lower_func_call(here: uni.FuncCall) -> None {
             continue;
         }
         if (isinstance(param, uni.UnaryExpr) and param.op.name == Tok.STAR_MUL.value) {
-            spread_arg = cast(
+            positional_spread = cast(
                 es.Expression,
                 param.operand.gen.es_ast
                     if (param.operand and param.operand.gen.es_ast)
                     else self.sync_loc(es.Identifier(name='undefined'), jac_node=param)
             );
             args.append(
-                self.sync_loc(es.SpreadElement(argument=spread_arg), jac_node=param)
+                self.sync_loc(
+                    es.SpreadElement(argument=positional_spread), jac_node=param
+                )
             );
             continue;
         }
