@@ -60,12 +60,23 @@ def missing_exports(expected, exported):
     return [name for name in expected if name not in present]
 
 
-def undefined_exports(module, expected):
-    """The expected entry points the merged module does not define itself."""
+def undefined_exports(module, expected, kind="function"):
+    """The expected symbols the merged module does not define itself.
+
+    PyInit_* entry points are functions and the static type objects are globals,
+    so the lookup has to match how each symbol was emitted. Both lookups raise
+    NameError when the name is absent.
+    """
+    if kind == "function":
+        lookup = module.get_function
+    elif kind == "global":
+        lookup = module.get_global_variable
+    else:
+        raise ValueError("unknown symbol kind: " + kind)
     missing = []
     for name in expected:
         try:
-            value = module.get_function(name)
+            value = lookup(name)
         except NameError:
             missing.append(name)
             continue
@@ -161,7 +172,9 @@ def main(argv):
     # The plan promises the symbols; the merged module must define them, not
     # merely declare them. This is the last point before code generation where a
     # dropped binding is still a readable error.
-    missing = undefined_exports(compiled, expected + STATIC_TYPE_EXPORTS)
+    missing = undefined_exports(compiled, expected) + undefined_exports(
+        compiled, STATIC_TYPE_EXPORTS, "global",
+    )
     if missing:
         raise RuntimeError(
             "JacPython export contract is broken: the merged native module does "
@@ -178,7 +191,9 @@ def main(argv):
         machine, llvm.create_pipeline_tuning_options(speed_level=2),
     )
     builder.getModulePassManager().run(compiled, builder)
-    missing = undefined_exports(compiled, expected + STATIC_TYPE_EXPORTS)
+    missing = undefined_exports(compiled, expected) + undefined_exports(
+        compiled, STATIC_TYPE_EXPORTS, "global",
+    )
     if missing:
         raise RuntimeError(
             "JacPython export contract is broken after optimization: "
