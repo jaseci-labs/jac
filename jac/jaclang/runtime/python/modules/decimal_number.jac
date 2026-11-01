@@ -1,17 +1,6 @@
-"""The decimal.Decimal type of the _decimal module.
-
-Modules/_decimal/_decimal.c's Decimal implementation in native Jac: the
-constructor, string conversion and formatting, the conversions to int, float,
-tuple and integer ratio, the number protocol, the methods, comparison and
-hashing. Arithmetic uses the current context unless a method takes one.
-See ../LICENSE.cpython.
-"""
-
 import from c {
-    def mbstowcs(dest: ptr[i32], src: ptr[u8], n: u64) -> u64;
-    # The constants of the hash: the modulus 2**61 - 1, the inverse of 10
-    # modulo it, and ten, as static constant mpd_t values.
-    glob:priv hash_p_data: list[u64] = [u64(2305843009213693951)],
+    def mbstowcs(dest: ptr[i32], src: ptr[u8], n: u64) -> u64;  glob:priv hash_p_data:
+             list[u64] = [u64(2305843009213693951)],
          hash_inv10_p_data: list[u64] = [u64(2075258708292324556)],
          hash_ten_data: list[u64] = [u64(10)]; glob:priv hash_p: mpd_t = mpd_t(
              flags=MPD_POS | MPD_STATIC | MPD_CONST_DATA,
@@ -43,12 +32,243 @@ glob:priv PY_HASH_INF: Final[int] = 314159,
      INT_MAX: Final[int] = 2147483647,
      SIZE_MAX: Final[u64] = 0xFFFFFFFFFFFFFFFF;
 
-# ---------------------------------------------------------------------------
-# Argument parsing.
-
-"""PyArg_ParseTupleAndKeywords() with `units` over `keywords`, or None with
-the error set."""
 def parse_keywords(
+    args: ptr[PyObject], kwds: ptr[PyObject], units: str, keywords: list[str]
+) -> (list[ArgumentValue] | None);
+
+def parse_tuple(args: ptr[PyObject], units: str) -> (list[ArgumentValue] | None);
+
+def positional_objects(
+    args: ptr[PyObject], units: str
+) -> (list[ArgumentValue] | None);
+
+def given_or(value: ArgumentValue, fallback: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_traverse(dec: ptr[PyObject], visitor: ptr, arg: ptr) -> i32;
+
+def dec_dealloc(dec: ptr[PyObject]);
+
+def dec_new(
+    type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_from_float(type: ptr[PyObject], pyfloat: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_from_number(type: ptr[PyObject], number: ptr[PyObject]) -> ptr[PyObject];
+
+def unicode_fromascii(s: ptr[u8], size: i64) -> ptr[PyObject];
+
+def dec_str(dec: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_repr(dec: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_strdup(src: ptr[u8], size: i64) -> ptr[u8];
+
+def dec_replace_fillchar(dest: ptr[u8], size: i64);
+
+def dotsep_as_utf8(s: ptr[u8]) -> ptr[PyObject];
+
+obj OverrideValue {
+    has value: ptr[PyObject] = NULL,
+        failed: bool = False;
+}
+
+def dict_get_item_string(dict: ptr[PyObject], key: str) -> OverrideValue;
+
+def pydec_format(
+    dec: ptr[PyObject],
+    context: ptr[PyObject],
+    fmt: ptr[PyObject],
+    module: ptr[PyObject]
+) -> ptr[PyObject];
+
+def needs_utf8(s: ptr[u8]) -> bool;
+
+def dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv format_with_spec(
+    dec: ptr[PyObject],
+    context: ptr[PyObject],
+    spec: mpd_spec_t,
+    overrides: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_as_long(
+    dec: ptr[PyObject], context: ptr[PyObject], round: i32
+) -> ptr[PyObject];
+
+def long_power(a: ptr[PyObject], b: ptr[PyObject], c: ptr[PyObject]) -> ptr[PyObject];
+
+def long_multiply(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject];
+
+def long_floor_divide(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_as_integer_ratio(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_to_integral(
+    dec: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], exact: bool
+) -> ptr[PyObject];
+
+def dec_to_integral_value(
+    dec: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_to_integral_exact(
+    dec: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_as_float(dec: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_round(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_as_tuple(dec: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv coefficient_digits(x: ptr[mpd_t]) -> ptr[PyObject];
+
+def nm_unary(self: ptr[PyObject], op: int) -> ptr[PyObject];
+
+def nm_binary(self: ptr[PyObject], other: ptr[PyObject], op: int) -> ptr[PyObject];
+
+def nm_mpd_qminus(self: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_mpd_qplus(self: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_mpd_qabs(self: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_mpd_qadd(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_mpd_qsub(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_mpd_qmul(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_mpd_qdiv(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_mpd_qrem(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_mpd_qdivint(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_dec_as_long(dec: ptr[PyObject]) -> ptr[PyObject];
+
+def nm_nonzero(v: ptr[PyObject]) -> i32;
+
+def nm_mpd_qdivmod(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject];
+
+def divmod_operands(
+    module: ptr[PyObject], a: ptr[PyObject], b: ptr[PyObject], context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def nm_mpd_qpow(
+    base: ptr[PyObject], exp: ptr[PyObject], mod: ptr[PyObject]
+) -> ptr[PyObject];
+
+def power_operands(
+    module: ptr[PyObject],
+    a: ptr[PyObject],
+    b: ptr[PyObject],
+    c: ptr[PyObject],
+    context: ptr[PyObject]
+) -> ptr[PyObject];
+
+def method_context(self: ptr[PyObject], value: ArgumentValue) -> ptr[PyObject];
+
+def dec_unary_va(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], op: int
+) -> ptr[PyObject];
+
+obj BinaryOperands {
+    has a: ptr[PyObject] = NULL,
+        b: ptr[PyObject] = NULL,
+        context: ptr[PyObject] = NULL;
+}
+
+def binary_operands(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> BinaryOperands;
+
+def dec_binary_va(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], op: int
+) -> ptr[PyObject];
+
+def dec_total_va(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], op: int
+) -> ptr[PyObject];
+
+def dec_bool_va(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], op: int
+) -> ptr[PyObject];
+
+def dec_bool(self: ptr[PyObject], op: int) -> ptr[PyObject];
+
+def dec_mpd_qfma(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_mpd_adjexp(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_canonical(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_conjugate(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_mpd_radix_of(module: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_mpd_radix(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_mpd_qcopy_abs(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_mpd_qcopy_negate(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_mpd_class(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_mpd_to_eng(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_mpd_qcopy_sign(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_mpd_same_quantum(
+    self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_mpd_qquantize(
+    v: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
+) -> ptr[PyObject];
+
+def quantize_with(
+    v: ptr[PyObject],
+    exp: ptr[PyObject],
+    rounding: ptr[PyObject],
+    context_arg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def dec_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject];
+
+def dec_ceil(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_complex(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_copy(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_floor(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_hash_value(v: ptr[PyObject]) -> i64;
+
+def dec_hash(op: ptr[PyObject]) -> i64;
+
+def dec_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_sizeof(v: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_trunc(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject];
+
+def dec_real(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+def dec_imag(self: ptr[PyObject], closure: ptr) -> ptr[PyObject];
+
+impl parse_keywords(
     args: ptr[PyObject], kwds: ptr[PyObject], units: str, keywords: list[str]
 ) -> (list[ArgumentValue] | None) {
     if not kwds or PyDict_Size(kwds) == 0 {
@@ -64,8 +284,7 @@ def parse_keywords(
     }
 }
 
-"""PyArg_ParseTuple() with `units`, or None with the error set."""
-def parse_tuple(args: ptr[PyObject], units: str) -> (list[ArgumentValue] | None) {
+impl parse_tuple(args: ptr[PyObject], units: str) -> (list[ArgumentValue] | None) {
     fast = positional_objects(args, units);
     if fast is not None {
         return fast;
@@ -77,11 +296,7 @@ def parse_tuple(args: ptr[PyObject], units: str) -> (list[ArgumentValue] | None)
     }
 }
 
-"""The common case of the object-only formats _decimal parses ("O", "|"):
-positional arguments within the arity, taken without ArgumentFormat's
-per-call format analysis. None (with no error set) for any other call,
-which the caller hands to ArgumentFormat for Python/getargs.c's errors."""
-def positional_objects(
+impl positional_objects(
     args: ptr[PyObject], units: str
 ) -> (list[ArgumentValue] | None) {
     maximum = len(units);
@@ -108,19 +323,15 @@ def positional_objects(
     return values;
 }
 
-"""An optional object argument, or `fallback` when it was not given."""
-def given_or(value: ArgumentValue, fallback: ptr[PyObject]) -> ptr[PyObject] {
+impl given_or(value: ArgumentValue, fallback: ptr[PyObject]) -> ptr[PyObject] {
     return value.object if value.given else fallback;
 }
 
-# ---------------------------------------------------------------------------
-# Allocation.
-
-def dec_traverse(dec: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
+impl dec_traverse(dec: ptr[PyObject], visitor: ptr, arg: ptr) -> i32 {
     return visit_reference(ptr[PyObject](object_type(dec)), visitor, arg);
 }
 
-def dec_dealloc(dec: ptr[PyObject]) {
+impl dec_dealloc(dec: ptr[PyObject]) {
     tp = object_type(dec);
     PyObject_GC_UnTrack(ptr(dec));
     from_libmpdec = mpd(dec);
@@ -129,8 +340,7 @@ def dec_dealloc(dec: ptr[PyObject]) {
     jacpy_release(ptr[PyObject](tp));
 }
 
-"""Decimal(value="0", context=None)."""
-def dec_new(
+impl dec_new(
     type: ptr[PyTypeObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     values = parse_keywords(args, kwds, "|OO", ["value", "context"]);
@@ -146,8 +356,7 @@ def dec_new(
     return dec_type_from_object_exact(ptr[PyObject](type), v, context);
 }
 
-"""Decimal.from_float(f) (class method)."""
-def dec_from_float(type: ptr[PyObject], pyfloat: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_from_float(type: ptr[PyObject], pyfloat: ptr[PyObject]) -> ptr[PyObject] {
     module = module_of_type(type);
     context = current_context_borrowed(module);
     if not context {
@@ -162,8 +371,7 @@ def dec_from_float(type: ptr[PyObject], pyfloat: ptr[PyObject]) -> ptr[PyObject]
     return result;
 }
 
-"""Decimal.from_number(number) (class method)."""
-def dec_from_number(type: ptr[PyObject], number: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_from_number(type: ptr[PyObject], number: ptr[PyObject]) -> ptr[PyObject] {
     module = module_of_type(type);
     context = current_context_borrowed(module);
     if not context {
@@ -178,16 +386,11 @@ def dec_from_number(type: ptr[PyObject], number: ptr[PyObject]) -> ptr[PyObject]
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Conversions from decimal.
-
-"""A str of the `size` ASCII bytes at `s`."""
-def unicode_fromascii(s: ptr[u8], size: i64) -> ptr[PyObject] {
+impl unicode_fromascii(s: ptr[u8], size: i64) -> ptr[PyObject] {
     return PyUnicode_DecodeASCII(ptr(s), size, ptr[u8]());
 }
 
-"""str(): the default module context only gives the value of `capitals`."""
-def dec_str(dec: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_str(dec: ptr[PyObject]) -> ptr[PyObject] {
     context = current_context_borrowed(module_of(dec));
     if not context {
         return NULL;
@@ -203,7 +406,7 @@ def dec_str(dec: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def dec_repr(dec: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_repr(dec: ptr[PyObject]) -> ptr[PyObject] {
     context = current_context_borrowed(module_of(dec));
     if not context {
         return NULL;
@@ -218,8 +421,7 @@ def dec_repr(dec: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""A copy of `size` bytes, NUL-terminated, in PyMem_Malloc memory."""
-def dec_strdup(src: ptr[u8], size: i64) -> ptr[u8] {
+impl dec_strdup(src: ptr[u8], size: i64) -> ptr[u8] {
     dest = ptr[u8](PyMem_Malloc(u64(size + 1)));
     if not dest {
         PyErr_NoMemory();
@@ -230,8 +432,7 @@ def dec_strdup(src: ptr[u8], size: i64) -> ptr[u8] {
     return dest;
 }
 
-"""Put back the NUL fill characters that were replaced by 0xff."""
-def dec_replace_fillchar(dest: ptr[u8], size: i64) {
+impl dec_replace_fillchar(dest: ptr[u8], size: i64) {
     for i in range(int(size)) {
         if (dest + i).view(1)[0] == u8(0xff) {
             (dest + i).view(1)[0] = u8(0);
@@ -239,9 +440,7 @@ def dec_replace_fillchar(dest: ptr[u8], size: i64) {
     }
 }
 
-"""A decimal_point or thousands_sep that may be multibyte or in [128, 255]
-as UTF-8 bytes (new reference)."""
-def dotsep_as_utf8(s: ptr[u8]) -> ptr[PyObject] {
+impl dotsep_as_utf8(s: ptr[u8]) -> ptr[PyObject] {
     buf = ptr[i32](PyMem_Malloc(8));
     if not buf {
         PyErr_NoMemory();
@@ -249,11 +448,12 @@ def dotsep_as_utf8(s: ptr[u8]) -> ptr[PyObject] {
     }
     n = mbstowcs(buf, s, 2);
     if n != u64(1) {
-        # Issue #7442
         PyMem_Free(ptr(buf));
         PyErr_SetString(
             PyExc_ValueError,
-            "invalid decimal point or unsupported combination of LC_CTYPE and LC_NUMERIC"
+            ptr[u8](
+                "invalid decimal point or unsupported combination of LC_CTYPE and LC_NUMERIC"
+            )
         );
         return NULL;
     }
@@ -267,17 +467,9 @@ def dotsep_as_utf8(s: ptr[u8]) -> ptr[PyObject] {
     return utf8;
 }
 
-"""One override of format(): dict[key] as UTF-8 bytes (new reference) whose
-address replaces the spec field, NULL when the key is absent; `failed` on
-error."""
-obj OverrideValue {
-    has value: ptr[PyObject] = NULL,
-        failed: bool = False;
-}
-
-def dict_get_item_string(dict: ptr[PyObject], key: str) -> OverrideValue {
+impl dict_get_item_string(dict: ptr[PyObject], key: str) -> OverrideValue {
     result = OverrideValue();
-    keyobj = PyUnicode_FromString(key);
+    keyobj = jacpy_unicode_from_text(key);
     if not keyobj {
         result.failed = True;
         return result;
@@ -293,8 +485,7 @@ def dict_get_item_string(dict: ptr[PyObject], key: str) -> OverrideValue {
     return result;
 }
 
-"""The _pydecimal fallback for format specifiers libmpdec does not support."""
-def pydec_format(
+impl pydec_format(
     dec: ptr[PyObject],
     context: ptr[PyObject],
     fmt: ptr[PyObject],
@@ -302,7 +493,9 @@ def pydec_format(
 ) -> ptr[PyObject] {
     pydecimal = state_value(module, STATE_PYDECIMAL);
     if not pydecimal {
-        pydecimal = PyImport_ImportModuleAttrString("_pydecimal", "Decimal");
+        pydecimal = PyImport_ImportModuleAttrString(
+            ptr[u8]("_pydecimal"), ptr[u8]("Decimal")
+        );
         if not pydecimal {
             return NULL;
         }
@@ -321,22 +514,18 @@ def pydec_format(
     result = PyObject_CallMethod(pydec, "__format__", "(OO)", fmt, context);
     jacpy_release(pydec);
     if not result and PyErr_ExceptionMatches(PyExc_ValueError) != 0 {
-        # Do not confuse users with the _pydecimal exception
         PyErr_Clear();
-        PyErr_SetString(PyExc_ValueError, "invalid format string");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("invalid format string"));
     }
     return result;
 }
 
-"""Whether a C string needs converting to UTF-8: longer than one byte, or
-one non-ASCII byte."""
-def needs_utf8(s: ptr[u8]) -> bool {
+impl needs_utf8(s: ptr[u8]) -> bool {
     n = c_string_length(s);
     return n > 1 or (n == 1 and s.view(1)[0] >= u8(128));
 }
 
-"""__format__(format_spec, override=None)."""
-def dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     module = module_of(dec);
     context = current_context_borrowed(module);
     if not context {
@@ -349,7 +538,7 @@ def dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     fmtarg = values[0].object;
     overrides = values[1].object if values[1].given else NULL;
     if jacpy_is_unicode(fmtarg) == 0 {
-        PyErr_SetString(PyExc_TypeError, "format arg must be str");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("format arg must be str"));
         return NULL;
     }
     size: i64 = 0;
@@ -360,7 +549,9 @@ def dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     if size > 0 and (fmt + (size - 1)).view(1)[0] == u8(78) {
         if PyErr_WarnEx(
             PyExc_DeprecationWarning,
-            "Format specifier 'N' is deprecated and slated for removal in Python 3.18",
+            ptr[u8](
+                "Format specifier 'N' is deprecated and slated for removal in Python 3.18"
+            ),
             1
         )
             < 0 {
@@ -369,8 +560,6 @@ def dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     }
     replace_fillchar = False;
     if size > 0 and fmt.view(1)[0] == u8(0) {
-        # NUL fill character: must be replaced with a valid UTF-8 char
-        # before calling mpd_parse_fmt_str().
         replace_fillchar = True;
         fmt = dec_strdup(fmt, size);
         if not fmt {
@@ -386,8 +575,6 @@ def dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
         return pydec_format(dec, context, fmtarg, module);
     }
     if replace_fillchar {
-        # The placeholder must be an invalid UTF-8 byte, so reversing the
-        # substitution cannot clobber a UTF-8 separator or decimal point.
         spec.fill_0 = u8(0xff);
         spec.fill_1 = u8(0);
     }
@@ -398,9 +585,7 @@ def dec_format(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""The formatting after the spec is parsed: the overrides or locale
-separators, then mpd_qformat_spec()."""
-def:priv format_with_spec(
+impl format_with_spec(
     dec: ptr[PyObject],
     context: ptr[PyObject],
     spec: mpd_spec_t,
@@ -412,11 +597,10 @@ def:priv format_with_spec(
     result: ptr[PyObject] = NULL;
     failed = False;
     if overrides {
-        # Values for decimal_point, thousands_sep and grouping can be given
-        # in the overrides dict; they take precedence over localeconv(). The
-        # feature is not documented and is only used in test_decimal.
         if jacpy_is_dict(overrides) == 0 {
-            PyErr_SetString(PyExc_TypeError, "optional argument must be a dict");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("optional argument must be a dict")
+            );
             return NULL;
         }
         found = dict_get_item_string(overrides, "decimal_point");
@@ -442,11 +626,10 @@ def:priv format_with_spec(
             }
         }
         if not failed and mpd_validate_lconv(&mut spec) < 0 {
-            PyErr_SetString(PyExc_ValueError, "invalid override dict");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("invalid override dict"));
             failed = True;
         }
     } else {
-        # fix locale dependent non-ascii characters
         if needs_utf8(spec.dot) {
             dot = dotsep_as_utf8(spec.dot);
             failed = not dot;
@@ -471,7 +654,7 @@ def:priv format_with_spec(
             } else {
                 PyErr_SetString(
                     PyExc_ValueError,
-                    "format specification exceeds internal limits of _decimal"
+                    ptr[u8]("format specification exceeds internal limits of _decimal")
                 );
             }
         } else {
@@ -493,16 +676,16 @@ def:priv format_with_spec(
     return result;
 }
 
-"""An int from a Decimal, rounded with `round`; the context precision is not
-observed."""
-def dec_as_long(
+impl dec_as_long(
     dec: ptr[PyObject], context: ptr[PyObject], round: i32
 ) -> ptr[PyObject] {
     if mpd_isspecial(mpd(dec)) != 0 {
         if mpd_isnan(mpd(dec)) != 0 {
-            PyErr_SetString(PyExc_ValueError, "cannot convert NaN to integer");
+            PyErr_SetString(PyExc_ValueError, ptr[u8]("cannot convert NaN to integer"));
         } else {
-            PyErr_SetString(PyExc_OverflowError, "cannot convert Infinity to integer");
+            PyErr_SetString(
+                PyExc_OverflowError, ptr[u8]("cannot convert Infinity to integer")
+            );
         }
         return NULL;
     }
@@ -533,8 +716,7 @@ def dec_as_long(
     layout = PyLong_GetNativeLayout().view(1);
     base = u32(1) << u32(layout[0].bits_per_digit);
     digit_size = int(layout[0].digit_size);
-    # A temporary buffer for the digits: libmpdec requires space it
-    # allocated, or rlen exact, to export into (gh-127925).
+
     status = 0;
     n: u64 = 0;
     tmp_digits = ptr();
@@ -565,29 +747,29 @@ def dec_as_long(
     return PyLongWriter_Finish(writer);
 }
 
-# int's number slots (PyLong_Type.tp_as_number), as the C module calls them.
-def long_power(a: ptr[PyObject], b: ptr[PyObject], c: ptr[PyObject]) -> ptr[PyObject] {
+impl long_power(a: ptr[PyObject], b: ptr[PyObject], c: ptr[PyObject]) -> ptr[PyObject] {
     return addressof(PyLong_Type).view(1)[0].tp_as_number.view(1)[0].nb_power(a, b, c);
 }
 
-def long_multiply(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+impl long_multiply(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     return addressof(PyLong_Type).view(1)[0].tp_as_number.view(1)[0].nb_multiply(a, b);
 }
 
-def long_floor_divide(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
+impl long_floor_divide(a: ptr[PyObject], b: ptr[PyObject]) -> ptr[PyObject] {
     return addressof(PyLong_Type).view(1)[0].tp_as_number.view(1)[0].nb_floor_divide(
         a, b
     );
 }
 
-"""as_integer_ratio(): the exact (numerator, denominator) in lowest terms."""
-def dec_as_integer_ratio(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_as_integer_ratio(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     if mpd_isspecial(mpd(self)) != 0 {
         if mpd_isnan(mpd(self)) != 0 {
-            PyErr_SetString(PyExc_ValueError, "cannot convert NaN to integer ratio");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("cannot convert NaN to integer ratio")
+            );
         } else {
             PyErr_SetString(
-                PyExc_OverflowError, "cannot convert Infinity to integer ratio"
+                PyExc_OverflowError, ptr[u8]("cannot convert Infinity to integer ratio")
             );
         }
         return NULL;
@@ -609,7 +791,7 @@ def dec_as_integer_ratio(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObj
     }
     exp = 0 if mpd_iszero(mpd(tmp)) != 0 else mpd(tmp).view(1)[0].exp;
     mpd(tmp).view(1)[0].exp = 0;
-    # context and rounding are unused here: the conversion is exact
+
     numerator = dec_as_long(tmp, context, MPD_ROUND_FLOOR);
     jacpy_release(tmp);
     if not numerator {
@@ -674,8 +856,7 @@ def dec_as_integer_ratio(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObj
     return result;
 }
 
-"""to_integral_value(rounding=None, context=None) and to_integral_exact."""
-def dec_to_integral(
+impl dec_to_integral(
     dec: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], exact: bool
 ) -> ptr[PyObject] {
     values = parse_keywords(args, kwds, "|OO", ["rounding", "context"]);
@@ -724,27 +905,28 @@ def dec_to_integral(
     return result;
 }
 
-def dec_to_integral_value(
+impl dec_to_integral_value(
     dec: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     return dec_to_integral(dec, args, kwds, False);
 }
 
-def dec_to_integral_exact(
+impl dec_to_integral_exact(
     dec: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     return dec_to_integral(dec, args, kwds, True);
 }
 
-"""float(): through the decimal string, so the result is correctly rounded."""
-def dec_as_float(dec: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_as_float(dec: ptr[PyObject]) -> ptr[PyObject] {
     s: ptr[PyObject] = NULL;
     if mpd_isnan(mpd(dec)) != 0 {
         if mpd_issnan(mpd(dec)) != 0 {
-            PyErr_SetString(PyExc_ValueError, "cannot convert signaling NaN to float");
+            PyErr_SetString(
+                PyExc_ValueError, ptr[u8]("cannot convert signaling NaN to float")
+            );
             return NULL;
         }
-        s = PyUnicode_FromString("-nan" if mpd_isnegative(mpd(dec)) != 0 else "nan");
+        s = jacpy_unicode_from_text("-nan" if mpd_isnegative(mpd(dec)) != 0 else "nan");
     } else {
         s = dec_str(dec);
     }
@@ -756,9 +938,7 @@ def dec_as_float(dec: ptr[PyObject]) -> ptr[PyObject] {
     return f;
 }
 
-"""__round__(n=None): an int rounded half-even, or a Decimal quantized to n
-places."""
-def dec_round(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_round(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     module = module_of(dec);
     context = current_context_borrowed(module);
     if not context {
@@ -773,7 +953,7 @@ def dec_round(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     }
     x = values[0].object;
     if jacpy_is_long(x) == 0 {
-        PyErr_SetString(PyExc_TypeError, "optional arg must be an integer");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("optional arg must be an integer"));
         return NULL;
     }
     y = PyLong_AsSsize_t(x);
@@ -803,8 +983,7 @@ def dec_round(dec: ptr[PyObject], args: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""as_tuple(): the DecimalTuple (sign, digits, exponent)."""
-def dec_as_tuple(dec: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_as_tuple(dec: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     x = mpd_qncopy(mpd(dec));
     if not x {
         PyErr_NoMemory();
@@ -816,14 +995,14 @@ def dec_as_tuple(dec: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     expt: ptr[PyObject] = NULL;
     if sign {
         if mpd_isinfinite(x) != 0 {
-            expt = PyUnicode_FromString("F");
-            # decimal.py has non-compliant infinity payloads.
+            expt = PyUnicode_FromString(ptr[u8]("F"));
+
             if expt {
-                coeff = Py_BuildValue("(i)", i32(0));
+                coeff = Py_BuildValue(ptr[u8]("(i)"), i32(0));
             }
         } else {
             if mpd_isnan(x) != 0 {
-                expt = PyUnicode_FromString("n" if mpd_isqnan(x) != 0 else "N");
+                expt = jacpy_unicode_from_text("n" if mpd_isqnan(x) != 0 else "N");
             } else {
                 expt = PyLong_FromSsize_t(mpd(dec).view(1)[0].exp);
             }
@@ -848,12 +1027,11 @@ def dec_as_tuple(dec: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-"""The coefficient digits of a finite or NaN value as a tuple of ints."""
-def:priv coefficient_digits(x: ptr[mpd_t]) -> ptr[PyObject] {
+impl coefficient_digits(x: ptr[mpd_t]) -> ptr[PyObject] {
     if x.view(1)[0].len <= 0 {
         return PyTuple_New(0);
     }
-    # make an integer, and clear NaN and sign
+
     x.view(1)[0].exp = 0;
     mpd_clear_flags(x);
     intstring = mpd_to_sci(x, 1);
@@ -878,11 +1056,7 @@ def:priv coefficient_digits(x: ptr[mpd_t]) -> ptr[PyObject] {
     return coeff;
 }
 
-# ---------------------------------------------------------------------------
-# Number methods, in the current context.
-
-"""Dec_UnaryNumberMethod."""
-def nm_unary(self: ptr[PyObject], op: int) -> ptr[PyObject] {
+impl nm_unary(self: ptr[PyObject], op: int) -> ptr[PyObject] {
     module = module_of(self);
     context = current_context_borrowed(module);
     if not context {
@@ -900,9 +1074,7 @@ def nm_unary(self: ptr[PyObject], op: int) -> ptr[PyObject] {
     return result;
 }
 
-"""Dec_BinaryNumberMethod: NotImplemented for operands that do not
-convert."""
-def nm_binary(self: ptr[PyObject], other: ptr[PyObject], op: int) -> ptr[PyObject] {
+impl nm_binary(self: ptr[PyObject], other: ptr[PyObject], op: int) -> ptr[PyObject] {
     module = module_of_left_or_right(self, other);
     context = current_context_borrowed(module);
     if not context {
@@ -933,43 +1105,43 @@ def nm_binary(self: ptr[PyObject], other: ptr[PyObject], op: int) -> ptr[PyObjec
     return result;
 }
 
-def nm_mpd_qminus(self: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qminus(self: ptr[PyObject]) -> ptr[PyObject] {
     return nm_unary(self, OP_MINUS);
 }
 
-def nm_mpd_qplus(self: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qplus(self: ptr[PyObject]) -> ptr[PyObject] {
     return nm_unary(self, OP_PLUS);
 }
 
-def nm_mpd_qabs(self: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qabs(self: ptr[PyObject]) -> ptr[PyObject] {
     return nm_unary(self, OP_ABS);
 }
 
-def nm_mpd_qadd(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qadd(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
     return nm_binary(self, other, OP_ADD);
 }
 
-def nm_mpd_qsub(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qsub(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
     return nm_binary(self, other, OP_SUB);
 }
 
-def nm_mpd_qmul(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qmul(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
     return nm_binary(self, other, OP_MUL);
 }
 
-def nm_mpd_qdiv(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qdiv(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
     return nm_binary(self, other, OP_DIV);
 }
 
-def nm_mpd_qrem(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qrem(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
     return nm_binary(self, other, OP_REM);
 }
 
-def nm_mpd_qdivint(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qdivint(self: ptr[PyObject], other: ptr[PyObject]) -> ptr[PyObject] {
     return nm_binary(self, other, OP_DIVINT);
 }
 
-def nm_dec_as_long(dec: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_dec_as_long(dec: ptr[PyObject]) -> ptr[PyObject] {
     context = current_context_borrowed(module_of(dec));
     if not context {
         return NULL;
@@ -977,11 +1149,11 @@ def nm_dec_as_long(dec: ptr[PyObject]) -> ptr[PyObject] {
     return dec_as_long(dec, context, MPD_ROUND_DOWN);
 }
 
-def nm_nonzero(v: ptr[PyObject]) -> i32 {
+impl nm_nonzero(v: ptr[PyObject]) -> i32 {
     return i32(0 if mpd_iszero(mpd(v)) != 0 else 1);
 }
 
-def nm_mpd_qdivmod(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
+impl nm_mpd_qdivmod(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
     module = module_of_left_or_right(v, w);
     context = current_context_borrowed(module);
     if not context {
@@ -999,8 +1171,7 @@ def nm_mpd_qdivmod(v: ptr[PyObject], w: ptr[PyObject]) -> ptr[PyObject] {
     return divmod_operands(module, a, b, context);
 }
 
-"""divmod of two converted operands, whose references it releases."""
-def divmod_operands(
+impl divmod_operands(
     module: ptr[PyObject], a: ptr[PyObject], b: ptr[PyObject], context: ptr[PyObject]
 ) -> ptr[PyObject] {
     q = dec_alloc(module);
@@ -1031,7 +1202,7 @@ def divmod_operands(
     return ret;
 }
 
-def nm_mpd_qpow(
+impl nm_mpd_qpow(
     base: ptr[PyObject], exp: ptr[PyObject], mod: ptr[PyObject]
 ) -> ptr[PyObject] {
     module = module_of_ternary(base, exp, mod);
@@ -1060,8 +1231,7 @@ def nm_mpd_qpow(
     return power_operands(module, a, b, c, context);
 }
 
-"""a ** b, or pow(a, b, c) when c is given; releases the operands."""
-def power_operands(
+impl power_operands(
     module: ptr[PyObject],
     a: ptr[PyObject],
     b: ptr[PyObject],
@@ -1091,17 +1261,11 @@ def power_operands(
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Methods with an optional context argument.
-
-"""The context argument of a method, or the current context (borrowed);
-NULL with an error set."""
-def method_context(self: ptr[PyObject], value: ArgumentValue) -> ptr[PyObject] {
+impl method_context(self: ptr[PyObject], value: ArgumentValue) -> ptr[PyObject] {
     return context_or_current(module_of(self), given_or(value, Py_None));
 }
 
-"""Dec_UnaryFuncVA."""
-def dec_unary_va(
+impl dec_unary_va(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], op: int
 ) -> ptr[PyObject] {
     values = parse_keywords(args, kwds, "|O", ["context"]);
@@ -1124,15 +1288,7 @@ def dec_unary_va(
     return result;
 }
 
-"""The (other, context) arguments of a binary method, converted: `a` and `b`
-new references, or `context` NULL on failure."""
-obj BinaryOperands {
-    has a: ptr[PyObject] = NULL,
-        b: ptr[PyObject] = NULL,
-        context: ptr[PyObject] = NULL;
-}
-
-def binary_operands(
+impl binary_operands(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> BinaryOperands {
     operands = BinaryOperands();
@@ -1159,8 +1315,7 @@ def binary_operands(
     return operands;
 }
 
-"""Dec_BinaryFuncVA."""
-def dec_binary_va(
+impl dec_binary_va(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], op: int
 ) -> ptr[PyObject] {
     operands = binary_operands(self, args, kwds);
@@ -1185,8 +1340,7 @@ def dec_binary_va(
     return result;
 }
 
-"""Dec_BinaryFuncVA_NO_CTX: the context only records conversion errors."""
-def dec_total_va(
+impl dec_total_va(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], op: int
 ) -> ptr[PyObject] {
     operands = binary_operands(self, args, kwds);
@@ -1205,8 +1359,7 @@ def dec_total_va(
     return result;
 }
 
-"""Dec_BoolFuncVA."""
-def dec_bool_va(
+impl dec_bool_va(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject], op: int
 ) -> ptr[PyObject] {
     values = parse_keywords(args, kwds, "|O", ["context"]);
@@ -1220,13 +1373,11 @@ def dec_bool_va(
     return bool_object(bool_op(op, mpd(self), ctx_of(context)));
 }
 
-"""Dec_BoolFunc: predicates without a context."""
-def dec_bool(self: ptr[PyObject], op: int) -> ptr[PyObject] {
+impl dec_bool(self: ptr[PyObject], op: int) -> ptr[PyObject] {
     return bool_object(bool_op(op, mpd(self), ptr[mpd_context_t]()));
 }
 
-"""fma(other, third, context=None)."""
-def dec_mpd_qfma(
+impl dec_mpd_qfma(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     values = parse_keywords(args, kwds, "OO|O", ["other", "third", "context"]);
@@ -1270,8 +1421,7 @@ def dec_mpd_qfma(
     return result;
 }
 
-"""adjusted(): the adjusted exponent, 0 for special values."""
-def dec_mpd_adjexp(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_mpd_adjexp(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     retval: i64 = 0;
     if mpd_isspecial(mpd(self)) == 0 {
         retval = mpd_adjexp(mpd(self));
@@ -1279,16 +1429,15 @@ def dec_mpd_adjexp(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSsize_t(retval);
 }
 
-def dec_canonical(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_canonical(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(self);
 }
 
-def dec_conjugate(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_conjugate(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(self);
 }
 
-"""Decimal(10)."""
-def dec_mpd_radix_of(module: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_mpd_radix_of(module: ptr[PyObject]) -> ptr[PyObject] {
     result = dec_alloc(module);
     if not result {
         return NULL;
@@ -1297,11 +1446,11 @@ def dec_mpd_radix_of(module: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def dec_mpd_radix(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_mpd_radix(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return dec_mpd_radix_of(module_of(self));
 }
 
-def dec_mpd_qcopy_abs(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_mpd_qcopy_abs(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     result = dec_alloc(module_of(self));
     if not result {
         return NULL;
@@ -1316,7 +1465,7 @@ def dec_mpd_qcopy_abs(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject
     return result;
 }
 
-def dec_mpd_qcopy_negate(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_mpd_qcopy_negate(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     result = dec_alloc(module_of(self));
     if not result {
         return NULL;
@@ -1331,8 +1480,7 @@ def dec_mpd_qcopy_negate(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObj
     return result;
 }
 
-"""number_class(context=None)."""
-def dec_mpd_class(
+impl dec_mpd_class(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     values = parse_keywords(args, kwds, "|O", ["context"]);
@@ -1346,8 +1494,7 @@ def dec_mpd_class(
     return c_string_text(mpd_class(mpd(self), ctx_of(context)));
 }
 
-"""to_eng_string(context=None)."""
-def dec_mpd_to_eng(
+impl dec_mpd_to_eng(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     values = parse_keywords(args, kwds, "|O", ["context"]);
@@ -1369,8 +1516,7 @@ def dec_mpd_to_eng(
     return result;
 }
 
-"""copy_sign(other, context=None)."""
-def dec_mpd_qcopy_sign(
+impl dec_mpd_qcopy_sign(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     operands = binary_operands(self, args, kwds);
@@ -1394,8 +1540,7 @@ def dec_mpd_qcopy_sign(
     return result;
 }
 
-"""same_quantum(other, context=None)."""
-def dec_mpd_same_quantum(
+impl dec_mpd_same_quantum(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
     operands = binary_operands(self, args, kwds);
@@ -1408,16 +1553,29 @@ def dec_mpd_same_quantum(
     return result;
 }
 
-"""quantize(exp, rounding=None, context=None)."""
-def dec_mpd_qquantize(
+impl dec_mpd_qquantize(
     v: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject] {
+    if (not kwds or PyDict_Size(kwds) == 0) and PyTuple_Size(args) == 1 {
+        return quantize_with(v, PyTuple_GetItem(args, 0), Py_None, Py_None);
+    }
     values = parse_keywords(args, kwds, "O|OO", ["exp", "rounding", "context"]);
     if values is None {
         return NULL;
     }
+    return quantize_with(
+        v, values[0].object, given_or(values[1], Py_None), given_or(values[2], Py_None)
+    );
+}
+
+impl quantize_with(
+    v: ptr[PyObject],
+    exp: ptr[PyObject],
+    rounding: ptr[PyObject],
+    context_arg: ptr[PyObject]
+) -> ptr[PyObject] {
     module = module_of(v);
-    context = context_or_current(module, given_or(values[2], Py_None));
+    context = context_or_current(module, context_arg);
     if not context {
         return NULL;
     }
@@ -1425,7 +1583,6 @@ def dec_mpd_qquantize(
     if not workctx {
         return NULL;
     }
-    rounding = given_or(values[1], Py_None);
     if rounding != Py_None {
         round = getround(module, rounding);
         if round < 0 {
@@ -1442,7 +1599,7 @@ def dec_mpd_qquantize(
         free_work_context(workctx);
         return NULL;
     }
-    b = convert_op(True, values[0].object, context);
+    b = convert_op(True, exp, context);
     if not b {
         jacpy_release(a);
         free_work_context(workctx);
@@ -1467,10 +1624,7 @@ def dec_mpd_qquantize(
     return result;
 }
 
-# ---------------------------------------------------------------------------
-# Special methods.
-
-def dec_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject] {
+impl dec_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject] {
     module = module_of_left_or_right(v, w);
     context = current_context_borrowed(module);
     if not context {
@@ -1489,14 +1643,12 @@ def dec_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject
     jacpy_release(a);
     jacpy_release(b);
     if r == INT_MAX {
-        # sNaNs or op={le,ge,lt,gt} always signal.
         if a_issnan or b_issnan or (int(op) != Py_EQ_OP and int(op) != Py_NE_OP) {
             if dec_addstatus(context, status) {
                 return NULL;
             }
         }
-        # qNaN comparison with op={eq,ne} or comparison with
-        # InvalidOperation disabled.
+
         return bool_object(int(op) == Py_NE_OP);
     }
     result = False;
@@ -1516,7 +1668,7 @@ def dec_richcompare(v: ptr[PyObject], w: ptr[PyObject], op: i32) -> ptr[PyObject
     return PyBool_FromLong(1 if result else 0);
 }
 
-def dec_ceil(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_ceil(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     context = current_context_borrowed(module_of(self));
     if not context {
         return NULL;
@@ -1524,7 +1676,7 @@ def dec_ceil(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return dec_as_long(self, context, MPD_ROUND_CEILING);
 }
 
-def dec_complex(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_complex(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     f = dec_as_float(self);
     if not f {
         return NULL;
@@ -1537,12 +1689,11 @@ def dec_complex(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return PyComplex_FromDoubles(x, 0.0);
 }
 
-"""__copy__ (METH_NOARGS) and __deepcopy__ (METH_O)."""
-def dec_copy(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_copy(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(self);
 }
 
-def dec_floor(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_floor(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     context = current_context_borrowed(module_of(self));
     if not context {
         return NULL;
@@ -1550,12 +1701,12 @@ def dec_floor(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return dec_as_long(self, context, MPD_ROUND_FLOOR);
 }
 
-"""The hash, which agrees with int, float and Fraction for equal values:
-(coefficient * 10**exponent) mod 2**61 - 1."""
-def dec_hash_value(v: ptr[PyObject]) -> i64 {
+impl dec_hash_value(v: ptr[PyObject]) -> i64 {
     if mpd_isspecial(mpd(v)) != 0 {
         if mpd_issnan(mpd(v)) != 0 {
-            PyErr_SetString(PyExc_TypeError, "Cannot hash a signaling NaN value");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("Cannot hash a signaling NaN value")
+            );
             return -1;
         } elif mpd_isnan(mpd(v)) != 0 {
             return PyObject_GenericHash(v);
@@ -1577,7 +1728,6 @@ def dec_hash_value(v: ptr[PyObject]) -> i64 {
     status: u32 = 0;
     exp = mpd(v).view(1)[0].exp;
     if exp >= 0 {
-        # 10**exp(v) % p
         mpd_qsset_ssize(tmp, exp, addressof(max_context), &mut status);
         mpd_qpowmod(
             exp_hash,
@@ -1588,7 +1738,6 @@ def dec_hash_value(v: ptr[PyObject]) -> i64 {
             &mut status
         );
     } else {
-        # inv10_p**(-exp(v)) % p
         mpd_qsset_ssize(tmp, -exp, addressof(max_context), &mut status);
         mpd_qpowmod(
             exp_hash,
@@ -1599,7 +1748,7 @@ def dec_hash_value(v: ptr[PyObject]) -> i64 {
             &mut status
         );
     }
-    # hash = (int(v) * exp_hash) % p
+
     if mpd_qcopy(tmp, mpd(v), &mut status) == 0 {
         mpd_del(exp_hash);
         mpd_del(tmp);
@@ -1620,7 +1769,7 @@ def dec_hash_value(v: ptr[PyObject]) -> i64 {
             PyErr_NoMemory();
         } else {
             PyErr_SetString(
-                PyExc_RuntimeError, "dec_hash: internal error: please report"
+                PyExc_RuntimeError, ptr[u8]("dec_hash: internal error: please report")
             );
         }
         return -1;
@@ -1628,7 +1777,7 @@ def dec_hash_value(v: ptr[PyObject]) -> i64 {
     return result;
 }
 
-def dec_hash(op: ptr[PyObject]) -> i64 {
+impl dec_hash(op: ptr[PyObject]) -> i64 {
     record = ptr[PyDecObject](op).view(1);
     if record[0].hash == -1 {
         record[0].hash = dec_hash_value(op);
@@ -1636,19 +1785,17 @@ def dec_hash(op: ptr[PyObject]) -> i64 {
     return record[0].hash;
 }
 
-"""__reduce__: (type(self), (str(self),))."""
-def dec_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_reduce(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     text = dec_str(self);
     if not text {
         return NULL;
     }
-    result = Py_BuildValue("O(O)", ptr[PyObject](object_type(self)), text);
+    result = Py_BuildValue(ptr[u8]("O(O)"), ptr[PyObject](object_type(self)), text);
     jacpy_release(text);
     return result;
 }
 
-"""__sizeof__: the object and a dynamically allocated coefficient."""
-def dec_sizeof(v: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_sizeof(v: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     res = u64(object_type(v).view(1)[0].tp_basicsize);
     if mpd_isdynamic_data(mpd(v)) != 0 {
         res += u64(mpd(v).view(1)[0].alloc) * u64(MPD_UINT_SIZE);
@@ -1656,7 +1803,7 @@ def dec_sizeof(v: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromSize_t(res);
 }
 
-def dec_trunc(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
+impl dec_trunc(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     context = current_context_borrowed(module_of(self));
     if not context {
         return NULL;
@@ -1664,11 +1811,11 @@ def dec_trunc(self: ptr[PyObject], dummy: ptr[PyObject]) -> ptr[PyObject] {
     return dec_as_long(self, context, MPD_ROUND_DOWN);
 }
 
-def dec_real(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl dec_real(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     return Py_NewRef(self);
 }
 
-def dec_imag(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
+impl dec_imag(self: ptr[PyObject], closure: ptr) -> ptr[PyObject] {
     result = dec_alloc(module_of(self));
     if not result {
         return NULL;

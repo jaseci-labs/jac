@@ -4305,6 +4305,7 @@ test "an ELF executable carries DT_RUNPATH=$ORIGIN (issue #6353 gap 4)" {
     }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     ir = "target triple = \"x86_64-unknown-linux-gnu\"\n"
         + "define void @_start() {\n  ret void\n}\n";
     mod = llvm.parse_assembly(ir);

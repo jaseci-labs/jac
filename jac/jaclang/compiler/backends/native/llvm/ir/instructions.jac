@@ -11,7 +11,8 @@ glob TailMarkerOptions: frozenset[str] = frozenset(['tail', 'musttail', 'notail'
              'readonly',
              'readnone',
              'noinline',
-             'alwaysinline'
+             'alwaysinline',
+             'returns_twice'
          ]
      ),
      _FAST_MATH_FLAGS: frozenset[str] = frozenset(
@@ -976,6 +977,54 @@ class InlineAsm(Value) {
 
     def __str__(self: InlineAsm) -> str {
         return f"{self.type} {self.get_reference()}";
+    }
+}
+
+class CmpXchg(Instruction) {
+    has ordering: str = '',
+        failordering: str = '';
+
+    def init(
+        self: CmpXchg,
+        parent: Block,
+        ptr: Value,
+        cmp: Value,
+        val: Value,
+        ordering: str,
+        failordering: str,
+        name: str
+    ) {
+        outtype = types.LiteralStructType([val.type, types.IntType(1)]);
+        super.init(parent, outtype, "cmpxchg", [ptr, cmp, val], name);
+        self.ordering = ordering;
+        self.failordering = failordering;
+    }
+
+    def descr(self: CmpXchg, buf: list[str]) {
+        ptr = self.operands[0];
+        cmp = self.operands[1];
+        val = self.operands[2];
+        buf.append(
+            f"cmpxchg {ptr.type} {ptr.get_reference()}, "
+            f"{cmp.type} {cmp.get_reference()}, {val.type} {val.get_reference()} "
+            f"{self.ordering} {self.failordering}"
+            f"{self._stringify_metadata(leading_comma=True)}\n"
+        );
+    }
+}
+
+class Fence(Instruction) {
+    has ordering: str = '';
+
+    def init(self: Fence, parent: Block, ordering: str, name: str = '') {
+        super.init(parent, types.VoidType(), "fence", [], name);
+        self.ordering = ordering;
+    }
+
+    def descr(self: Fence, buf: list[str]) {
+        buf.append(
+            f"fence {self.ordering}{self._stringify_metadata(leading_comma=True)}\n"
+        );
     }
 }
 

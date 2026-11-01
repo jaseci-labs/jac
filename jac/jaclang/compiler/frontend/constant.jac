@@ -365,7 +365,6 @@ class Tokens(StrEnum) {
     with entry {
         FLOAT = 'FLOAT';
         STRING = 'STRING';
-        PYNLINE = 'PYNLINE';
         BOOL = 'BOOL';
         INT = 'INT';
         HEX = 'HEX';
@@ -736,7 +735,6 @@ glob TOKEN_MAP: dict[str, str] = {
          'PIPE_BKWD': '<|',
          'PIPE_FWD': '|>',
          'PLUS': '+',
-         'PYNLINE': '::py::',
          'RBRACE': '}',
          'RETURN_HINT': '->',
          'RF_DQ_START': 'rf"',

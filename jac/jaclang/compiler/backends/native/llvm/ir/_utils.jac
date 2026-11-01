@@ -13,6 +13,10 @@ class NameScope {
         return (name in self._useset);
     }
 
+    def release(self: NameScope, name: str) {
+        self._useset.discard(name);
+    }
+
     def register(self: NameScope, name: str, deduplicate: bool = False) -> str {
         if deduplicate {
             name = self.deduplicate(name);

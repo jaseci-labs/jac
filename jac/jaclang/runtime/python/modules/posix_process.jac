@@ -1,16 +1,3 @@
-"""The posix process area: fork, exec, posix_spawn, kill, the wait family and
-the W* status macros, _exit, abort, system, times, process priorities, the
-sched_* functions, namespaces, pidfd_open and getloadavg, with the
-waitid_result, sched_param and times_result types.
-
-Derived from CPython 3.14.6 Modules/posixmodule.c; see ../LICENSE.cpython.
-What exists or is laid out differently on one OS only (siginfo_t, the sizes
-of posix_spawnattr_t, posix_spawn_file_actions_t and sigset_t, clock_t,
-mode_t, the <sys/wait.h> macros, fexecve(), the Linux sched_* and cpu set
-calls, setns(), unshare(), pidfd_open() and the OS thread count) is in
-posix_process_platform.<os>.jac.
-"""
-
 import from c {
     obj load_averages {
         has one: f64 = 0.0,
@@ -42,15 +29,13 @@ import from c {
         envp: ptr[ptr[u8]]
     ) -> i32;  def posix_spawnattr_init(attr: ptr) -> i32;  def posix_spawnattr_destroy(
         attr: ptr
-    ) -> i32;  def posix_spawnattr_setpgroup(attr: ptr, pgroup: i32) -> i32;
-    # The short flags argument, passed sign-extended as the ABIs promote it.
-    def posix_spawnattr_setflags(attr: ptr, flags: i32) -> i32;  def posix_spawnattr_setsigmask(
-        attr: ptr, sigmask: ptr
-    ) -> i32;  def posix_spawnattr_setsigdefault(attr: ptr, sigdefault: ptr) -> i32;  def posix_spawn_file_actions_init(
+    ) -> i32;  def posix_spawnattr_setpgroup(attr: ptr, pgroup: i32) -> i32;  def posix_spawnattr_setflags(
+        attr: ptr, flags: i32
+    ) -> i32;  def posix_spawnattr_setsigmask(attr: ptr, sigmask: ptr) -> i32;  def posix_spawnattr_setsigdefault(
+        attr: ptr, sigdefault: ptr
+    ) -> i32;  def posix_spawn_file_actions_init(file_actions: ptr) -> i32;  def posix_spawn_file_actions_destroy(
         file_actions: ptr
-    ) -> i32;  def posix_spawn_file_actions_destroy(file_actions: ptr) -> i32;
-    # mode_t passed zero-extended (unsigned short on macOS).
-    def posix_spawn_file_actions_addopen(
+    ) -> i32;  def posix_spawn_file_actions_addopen(
         file_actions: ptr, fd: i32, path: ptr[u8], oflag: i32, mode: u32
     ) -> i32;  def posix_spawn_file_actions_addclose(
         file_actions: ptr, fd: i32
@@ -75,17 +60,229 @@ import from c {
 
 glob:priv Py_RTFLAGS_FORK: u64 = 32768,
      Py_RTFLAGS_EXEC: u64 = 65536,
-     # sizeof(unsigned long) * CHAR_BIT: the fewest CPUs a cpu_set_t holds.
      NCPUS_START: i32 = 64,
      WAITID_RESULT_DOC: str = "waitid_result: Result from waitid.\n\nThis object may be accessed either as a tuple of\n  (si_pid, si_uid, si_signo, si_status, si_code),\nor via the attributes si_pid, si_uid, and so on.\n\nSee os.waitid for more information.",
      TIMES_RESULT_DOC: str = "times_result: Result from os.times().\n\nThis object may be accessed either as a tuple of\n  (user, system, children_user, children_system, elapsed),\nor via the attributes user, system, children_user, children_system,\nand elapsed.\n\nSee os.times for more information.",
-     # os_sched_param__doc__, the clinic docstring of os.sched_param.__new__.
      SCHED_PARAM_DOC: str = "sched_param(sched_priority)\n--\n\nCurrently has only one field: sched_priority\n\n  sched_priority\n    A scheduling parameter.";
 
-# --- priorities ------------------------------------------------------------
+def os_nice_impl(module: ptr[PyObject], increment: i32) -> ptr[PyObject];
 
-def os_nice_impl(module: ptr[PyObject], increment: i32) -> ptr[PyObject] {
-    # nice() returns the new priority, which may be -1: errno tells.
+def os_getpriority_impl(module: ptr[PyObject], which: i32, who: i32) -> ptr[PyObject];
+
+def os_setpriority_impl(
+    module: ptr[PyObject], which: i32, who: i32, priority: i32
+) -> ptr[PyObject];
+
+def os_system_impl(module: ptr[PyObject], command: ptr[PyObject]) -> i64;
+
+def os__exit_impl(module: ptr[PyObject], status: i32) -> ptr[PyObject];
+
+def os_abort_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def free_string_array(array: ptr[ptr[u8]], count: i64);
+
+def:priv string_array_new(count: i64) -> ptr[ptr[u8]];
+
+def fsconvert_strdup(o: ptr[PyObject], out: ptr[ptr[u8]]) -> i32;
+
+def parse_envlist(env: ptr[PyObject]) -> tuple[ptr[ptr[u8]], i64];
+
+def parse_arglist(argv: ptr[PyObject], argc: i64) -> ptr[ptr[u8]];
+
+def:priv first_argument_empty(argvlist: ptr[ptr[u8]]) -> bool;
+
+def os_execv_impl(
+    module: ptr[PyObject], path: path_t, argv: ptr[PyObject]
+) -> ptr[PyObject];
+
+def os_execve_impl(
+    module: ptr[PyObject], path: path_t, argv: ptr[PyObject], env: ptr[PyObject]
+) -> ptr[PyObject];
+
+def convert_sched_param(module: ptr[PyObject], param: ptr[PyObject]) -> (i32 | None);
+
+def parse_posix_spawn_flags(
+    module: ptr[PyObject],
+    func_name: str,
+    setpgroup: ptr[PyObject],
+    resetids: bool,
+    setsid: bool,
+    setsigmask: ptr[PyObject],
+    setsigdef: ptr[PyObject],
+    scheduler: ptr[PyObject],
+    attrp: ptr
+) -> i32;
+
+def:priv spawn_sigset(signals: ptr[PyObject], attrp: ptr, defaults: bool) -> bool;
+
+def parse_file_actions(
+    file_actions: ptr[PyObject], file_actionsp: ptr, temp_buffer: ptr[PyObject]
+) -> i32;
+
+def py_posix_spawn(
+    use_posix_spawnp: bool,
+    module: ptr[PyObject],
+    path: path_t,
+    argv: ptr[PyObject],
+    env: ptr[PyObject],
+    file_actions: ptr[PyObject],
+    setpgroup: ptr[PyObject],
+    resetids: bool,
+    setsid: bool,
+    setsigmask: ptr[PyObject],
+    setsigdef: ptr[PyObject],
+    scheduler: ptr[PyObject]
+) -> ptr[PyObject];
+
+def os_posix_spawn_impl(
+    module: ptr[PyObject],
+    path: path_t,
+    argv: ptr[PyObject],
+    env: ptr[PyObject],
+    file_actions: ptr[PyObject],
+    setpgroup: ptr[PyObject],
+    resetids: bool,
+    setsid: bool,
+    setsigmask: ptr[PyObject],
+    setsigdef: ptr[PyObject],
+    scheduler: ptr[PyObject]
+) -> ptr[PyObject];
+
+def os_posix_spawnp_impl(
+    module: ptr[PyObject],
+    path: path_t,
+    argv: ptr[PyObject],
+    env: ptr[PyObject],
+    file_actions: ptr[PyObject],
+    setpgroup: ptr[PyObject],
+    resetids: bool,
+    setsid: bool,
+    setsigmask: ptr[PyObject],
+    setsigdef: ptr[PyObject],
+    scheduler: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv check_null_or_callable(value: ptr[PyObject], obj_name: str) -> i32;
+
+def os_register_at_fork_impl(
+    module: ptr[PyObject],
+    before: ptr[PyObject],
+    after_in_child: ptr[PyObject],
+    after_in_parent: ptr[PyObject]
+) -> ptr[PyObject];
+
+def warn_about_fork_with_threads(name: str, num_os_threads: i64);
+
+def:priv fork_forbidden(subinterpreters: bool) -> bool;
+
+def os_fork1_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_fork_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_forkpty_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_sched_get_priority_max_impl(
+    module: ptr[PyObject], policy: i32
+) -> ptr[PyObject];
+
+def os_sched_get_priority_min_impl(
+    module: ptr[PyObject], policy: i32
+) -> ptr[PyObject];
+
+def os_sched_getscheduler_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject];
+
+def os_sched_param_impl(
+    cls: ptr[PyObject], sched_priority: ptr[PyObject]
+) -> ptr[PyObject];
+
+def sched_param_reduce(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def os_sched_setscheduler_impl(
+    module: ptr[PyObject], pid: i32, policy: i32, param_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def os_sched_getparam_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject];
+
+def os_sched_setparam_impl(
+    module: ptr[PyObject], pid: i32, param_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def os_sched_rr_get_interval_impl(module: ptr[PyObject], pid: i32) -> f64;
+
+def os_sched_yield_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_sched_setaffinity_impl(
+    module: ptr[PyObject], pid: i32, mask: ptr[PyObject]
+) -> ptr[PyObject];
+
+def os_sched_getaffinity_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject];
+
+def os_kill_impl(module: ptr[PyObject], pid: i32, signal: i64) -> ptr[PyObject];
+
+def os_killpg_impl(module: ptr[PyObject], pgid: i32, signal: i32) -> ptr[PyObject];
+
+def:priv doubletime(value: timeval) -> f64;
+
+def:priv set_result(result: ptr[PyObject], pos: i64, item: ptr[PyObject]) -> bool;
+
+def wait_helper(
+    module: ptr[PyObject], pid: i32, status: i32, ru: rusage
+) -> ptr[PyObject];
+
+def os_wait3_impl(module: ptr[PyObject], options: i32) -> ptr[PyObject];
+
+def os_wait4_impl(module: ptr[PyObject], pid: i32, options: i32) -> ptr[PyObject];
+
+def os_waitid_impl(
+    module: ptr[PyObject], idtype: i32, id: u32, options: i32
+) -> ptr[PyObject];
+
+def os_waitpid_impl(module: ptr[PyObject], pid: i32, options: i32) -> ptr[PyObject];
+
+def os_wait_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_pidfd_open_impl(module: ptr[PyObject], pid: i32, flags: u32) -> ptr[PyObject];
+
+def os_setns_impl(module: ptr[PyObject], fd: i32, nstype: i32) -> ptr[PyObject];
+
+def os_unshare_impl(module: ptr[PyObject], flags: i32) -> ptr[PyObject];
+
+def os_WCOREDUMP_impl(module: ptr[PyObject], status: i32) -> i32;
+
+def os_WIFCONTINUED_impl(module: ptr[PyObject], status: i32) -> i32;
+
+def os_WIFSTOPPED_impl(module: ptr[PyObject], status: i32) -> i32;
+
+def os_WIFSIGNALED_impl(module: ptr[PyObject], status: i32) -> i32;
+
+def os_WIFEXITED_impl(module: ptr[PyObject], status: i32) -> i32;
+
+def os_WEXITSTATUS_impl(module: ptr[PyObject], status: i32) -> i32;
+
+def os_WTERMSIG_impl(module: ptr[PyObject], status: i32) -> i32;
+
+def os_WSTOPSIG_impl(module: ptr[PyObject], status: i32) -> i32;
+
+def os_waitstatus_to_exitcode_impl(
+    module: ptr[PyObject], status_obj: ptr[PyObject]
+) -> ptr[PyObject];
+
+def build_times_result(
+    module: ptr[PyObject],
+    user: f64,
+    system_time: f64,
+    children_user: f64,
+    children_system: f64,
+    elapsed: f64
+) -> ptr[PyObject];
+
+def os_times_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def os_getloadavg_impl(module: ptr[PyObject]) -> ptr[PyObject];
+
+def posix_process_exec(module: ptr[PyObject]) -> bool;
+
+impl os_nice_impl(module: ptr[PyObject], increment: i32) -> ptr[PyObject] {
     jacpy_set_errno(0);
     value = nice(increment);
     if HAVE_BROKEN_NICE and HAVE_GETPRIORITY {
@@ -99,7 +296,7 @@ def os_nice_impl(module: ptr[PyObject], increment: i32) -> ptr[PyObject] {
     return PyLong_FromLong(i64(value));
 }
 
-def os_getpriority_impl(module: ptr[PyObject], which: i32, who: i32) -> ptr[PyObject] {
+impl os_getpriority_impl(module: ptr[PyObject], which: i32, who: i32) -> ptr[PyObject] {
     jacpy_set_errno(0);
     retval = getpriority(which, u32.wrap(who));
     if jacpy_errno() != 0 {
@@ -108,7 +305,7 @@ def os_getpriority_impl(module: ptr[PyObject], which: i32, who: i32) -> ptr[PyOb
     return PyLong_FromLong(i64(retval));
 }
 
-def os_setpriority_impl(
+impl os_setpriority_impl(
     module: ptr[PyObject], which: i32, who: i32, priority: i32
 ) -> ptr[PyObject] {
     retval = setpriority(which, u32.wrap(who), priority);
@@ -118,11 +315,9 @@ def os_setpriority_impl(
     return Py_NewRef(Py_None);
 }
 
-# --- system, _exit, abort --------------------------------------------------
-
-def os_system_impl(module: ptr[PyObject], command: ptr[PyObject]) -> i64 {
+impl os_system_impl(module: ptr[PyObject], command: ptr[PyObject]) -> i64 {
     bytes = PyBytes_AsString(command);
-    if PySys_Audit("os.system", "(O)", command) < 0 {
+    if PySys_Audit(ptr[u8]("os.system"), ptr[u8]("(O)"), command) < 0 {
         return -1;
     }
     thread = PyEval_SaveThread();
@@ -131,35 +326,31 @@ def os_system_impl(module: ptr[PyObject], command: ptr[PyObject]) -> i64 {
     return i64(result);
 }
 
-def os__exit_impl(module: ptr[PyObject], status: i32) -> ptr[PyObject] {
+impl os__exit_impl(module: ptr[PyObject], status: i32) -> ptr[PyObject] {
     _exit(status);
     return NULL;
 }
 
-def os_abort_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_abort_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     abort();
     return NULL;
 }
 
-# --- exec ------------------------------------------------------------------
-
-def free_string_array(array: ptr[ptr[u8]], count: i64) {
+impl free_string_array(array: ptr[ptr[u8]], count: i64) {
     for i in range(count) {
         PyMem_Free((array + i).view(1)[0]);
     }
     PyMem_Free(array);
 }
 
-# PyMem_NEW(char *, count): NULL when the size would overflow.
-def:priv string_array_new(count: i64) -> ptr[ptr[u8]] {
+impl string_array_new(count: i64) -> ptr[ptr[u8]] {
     if count < 0 or count > 0x7FFFFFFFFFFFFFFF // 8 {
         return ptr[ptr[u8]]();
     }
     return ptr[ptr[u8]](PyMem_Malloc(u64(count) * 8));
 }
 
-# A PyMem copy of `o`'s file system bytes, stored at `out`; 1 on success.
-def fsconvert_strdup(o: ptr[PyObject], out: ptr[ptr[u8]]) -> i32 {
+impl fsconvert_strdup(o: ptr[PyObject], out: ptr[ptr[u8]]) -> i32 {
     result = i32(0);
     ub = NULL;
     if PyUnicode_FSConverter(o, &mut ub) == 0 {
@@ -178,10 +369,7 @@ def fsconvert_strdup(o: ptr[PyObject], out: ptr[ptr[u8]]) -> i32 {
     return result;
 }
 
-# The environment mapping `env` as a NULL-terminated array of "key=value"
-# strings and its length (C's *envc_ptr); NULL with the exception set on
-# failure.
-def parse_envlist(env: ptr[PyObject]) -> tuple[ptr[ptr[u8]], i64] {
+impl parse_envlist(env: ptr[PyObject]) -> tuple[ptr[ptr[u8]], i64] {
     i = PyMapping_Size(env);
     if i < 0 {
         return (ptr[ptr[u8]](), i64(0));
@@ -209,13 +397,14 @@ def parse_envlist(env: ptr[PyObject]) -> tuple[ptr[ptr[u8]], i64] {
             break;
         }
         if jacpy_is_list(keys) == 0 or jacpy_is_list(vals) == 0 {
-            PyErr_Format(PyExc_TypeError, "env.keys() or env.values() is not a list");
+            PyErr_Format(
+                PyExc_TypeError, ptr[u8]("env.keys() or env.values() is not a list")
+            );
             break;
         }
         pos = i64(0);
         entry_failed = False;
         while pos < i {
-            # Strong references: the converters may run arbitrary code.
             key = PyList_GetItemRef(keys, pos);
             if not key {
                 entry_failed = True;
@@ -235,12 +424,14 @@ def parse_envlist(env: ptr[PyObject]) -> tuple[ptr[ptr[u8]], i64] {
                 break;
             }
             if PyBytes_Size(key2) == 0 or strchr(PyBytes_AsString(key2) + 1, i32(61)) {
-                PyErr_SetString(PyExc_ValueError, "illegal environment variable name");
+                PyErr_SetString(
+                    PyExc_ValueError, ptr[u8]("illegal environment variable name")
+                );
                 entry_failed = True;
                 break;
             }
             keyval = PyBytes_FromFormat(
-                "%s=%s", PyBytes_AsString(key2), PyBytes_AsString(val2)
+                ptr[u8]("%s=%s"), PyBytes_AsString(key2), PyBytes_AsString(val2)
             );
             if not keyval {
                 entry_failed = True;
@@ -286,10 +477,7 @@ def parse_envlist(env: ptr[PyObject]) -> tuple[ptr[ptr[u8]], i64] {
     return (envlist, envc);
 }
 
-# The first `argc` items of the sequence `argv` as a NULL-terminated array
-# of strings; NULL with the exception set on failure (C's *argc update on
-# failure only feeds its own free_string_array()).
-def parse_arglist(argv: ptr[PyObject], argc: i64) -> ptr[ptr[u8]] {
+impl parse_arglist(argv: ptr[PyObject], argc: i64) -> ptr[ptr[u8]] {
     argvlist = string_array_new(argc + 1);
     if not argvlist {
         PyErr_NoMemory();
@@ -314,28 +502,30 @@ def parse_arglist(argv: ptr[PyObject], argc: i64) -> ptr[ptr[u8]] {
     return argvlist;
 }
 
-# The first byte of argvlist[0].
-def:priv first_argument_empty(argvlist: ptr[ptr[u8]]) -> bool {
+impl first_argument_empty(argvlist: ptr[ptr[u8]]) -> bool {
     return argvlist.view(1)[0].view(1)[0] == 0;
 }
 
-def os_execv_impl(
+impl os_execv_impl(
     module: ptr[PyObject], path: path_t, argv: ptr[PyObject]
 ) -> ptr[PyObject] {
     interp = PyInterpreterState_Get();
     if _PyInterpreterState_HasFeature(interp, Py_RTFLAGS_EXEC) == 0 {
         PyErr_SetString(
-            PyExc_RuntimeError, "exec not supported for isolated subinterpreters"
+            PyExc_RuntimeError,
+            ptr[u8]("exec not supported for isolated subinterpreters")
         );
         return NULL;
     }
     if jacpy_is_list(argv) == 0 and jacpy_is_tuple(argv) == 0 {
-        PyErr_SetString(PyExc_TypeError, "execv() arg 2 must be a tuple or list");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("execv() arg 2 must be a tuple or list")
+        );
         return NULL;
     }
     argc = PySequence_Size(argv);
     if argc < 1 {
-        PyErr_SetString(PyExc_ValueError, "execv() arg 2 must not be empty");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("execv() arg 2 must not be empty"));
         return NULL;
     }
     argvlist = parse_arglist(argv, argc);
@@ -344,44 +534,48 @@ def os_execv_impl(
     }
     if first_argument_empty(argvlist) {
         PyErr_SetString(
-            PyExc_ValueError, "execv() arg 2 first element cannot be empty"
+            PyExc_ValueError, ptr[u8]("execv() arg 2 first element cannot be empty")
         );
         free_string_array(argvlist, argc);
         return NULL;
     }
-    if PySys_Audit("os.exec", "OOO", path.object, argv, Py_None) < 0 {
+    if PySys_Audit(ptr[u8]("os.exec"), ptr[u8]("OOO"), path.object, argv, Py_None)
+        < 0 {
         free_string_array(argvlist, argc);
         return NULL;
     }
     execv(path.narrow, argvlist);
-    # If we get here it's definitely an error.
+
     posix_error();
     free_string_array(argvlist, argc);
     return NULL;
 }
 
-def os_execve_impl(
+impl os_execve_impl(
     module: ptr[PyObject], path: path_t, argv: ptr[PyObject], env: ptr[PyObject]
 ) -> ptr[PyObject] {
     interp = PyInterpreterState_Get();
     if _PyInterpreterState_HasFeature(interp, Py_RTFLAGS_EXEC) == 0 {
         PyErr_SetString(
-            PyExc_RuntimeError, "exec not supported for isolated subinterpreters"
+            PyExc_RuntimeError,
+            ptr[u8]("exec not supported for isolated subinterpreters")
         );
         return NULL;
     }
     if jacpy_is_list(argv) == 0 and jacpy_is_tuple(argv) == 0 {
-        PyErr_SetString(PyExc_TypeError, "execve: argv must be a tuple or list");
+        PyErr_SetString(
+            PyExc_TypeError, ptr[u8]("execve: argv must be a tuple or list")
+        );
         return NULL;
     }
     argc = PySequence_Size(argv);
     if argc < 1 {
-        PyErr_SetString(PyExc_ValueError, "execve: argv must not be empty");
+        PyErr_SetString(PyExc_ValueError, ptr[u8]("execve: argv must not be empty"));
         return NULL;
     }
     if PyMapping_Check(env) == 0 {
         PyErr_SetString(
-            PyExc_TypeError, "execve: environment must be a mapping object"
+            PyExc_TypeError, ptr[u8]("execve: environment must be a mapping object")
         );
         return NULL;
     }
@@ -390,7 +584,9 @@ def os_execve_impl(
         return NULL;
     }
     if first_argument_empty(argvlist) {
-        PyErr_SetString(PyExc_ValueError, "execve: argv first element cannot be empty");
+        PyErr_SetString(
+            PyExc_ValueError, ptr[u8]("execve: argv first element cannot be empty")
+        );
         free_string_array(argvlist, argc);
         return NULL;
     }
@@ -399,13 +595,13 @@ def os_execve_impl(
         free_string_array(argvlist, argc);
         return NULL;
     }
-    if PySys_Audit("os.exec", "OOO", path.object, argv, env) >= 0 {
+    if PySys_Audit(ptr[u8]("os.exec"), ptr[u8]("OOO"), path.object, argv, env) >= 0 {
         if HAVE_FEXECVE and path.fd > -1 {
             fexecve_call(path.fd, argvlist, envlist);
         } else {
             execve(path.narrow, argvlist, envlist);
         }
-        # If we get here it's definitely an error.
+
         posix_path_error(path);
     }
     free_string_array(envlist, envc);
@@ -413,12 +609,9 @@ def os_execve_impl(
     return NULL;
 }
 
-# --- posix_spawn -----------------------------------------------------------
-
-# convert_sched_param(): the sched_priority of a sched_param instance.
-def convert_sched_param(module: ptr[PyObject], param: ptr[PyObject]) -> (i32 | None) {
+impl convert_sched_param(module: ptr[PyObject], param: ptr[PyObject]) -> (i32 | None) {
     if Py_TYPE(param) != state_object(module, STATE_SCHED_PARAM_TYPE) {
-        PyErr_SetString(PyExc_TypeError, "must have a sched_param object");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("must have a sched_param object"));
         return None;
     }
     priority = PyLong_AsLong(PyStructSequence_GetItem(param, 0));
@@ -426,15 +619,13 @@ def convert_sched_param(module: ptr[PyObject], param: ptr[PyObject]) -> (i32 | N
         return None;
     }
     if priority > INT_MAX or priority < INT_MIN {
-        PyErr_SetString(PyExc_OverflowError, "sched_priority out of range");
+        PyErr_SetString(PyExc_OverflowError, ptr[u8]("sched_priority out of range"));
         return None;
     }
     return i32(priority);
 }
 
-# Fill *attrp from the posix_spawn keyword arguments; 0 on success, -1 with
-# the exception set (and attrp destroyed, except for an unavailable setsid).
-def parse_posix_spawn_flags(
+impl parse_posix_spawn_flags(
     module: ptr[PyObject],
     func_name: str,
     setpgroup: ptr[PyObject],
@@ -496,7 +687,7 @@ def parse_posix_spawn_flags(
             if POSIX_SPAWN_SETSCHEDULER == 0 {
                 PyErr_SetString(
                     PyExc_NotImplementedError,
-                    "The scheduler option is not supported in this system."
+                    ptr[u8]("The scheduler option is not supported in this system.")
                 );
                 break;
             }
@@ -504,7 +695,7 @@ def parse_posix_spawn_flags(
             schedparam_obj = NULL;
             if PyArg_ParseTuple(
                 scheduler,
-                "OO;A scheduler tuple must have two elements",
+                ptr[u8]("OO;A scheduler tuple must have two elements"),
                 &mut py_schedpolicy,
                 &mut schedparam_obj
             )
@@ -552,9 +743,7 @@ def parse_posix_spawn_flags(
     return i32(0);
 }
 
-# The setsigmask (or, with `defaults`, setsigdef) step of
-# parse_posix_spawn_flags(): False with the exception set.
-def:priv spawn_sigset(signals: ptr[PyObject], attrp: ptr, defaults: bool) -> bool {
+impl spawn_sigset(signals: ptr[PyObject], attrp: ptr, defaults: bool) -> bool {
     signal_set = PyMem_RawMalloc(u64(SIGSET_SIZE));
     if not signal_set {
         PyErr_NoMemory();
@@ -576,13 +765,12 @@ def:priv spawn_sigset(signals: ptr[PyObject], attrp: ptr, defaults: bool) -> boo
     return True;
 }
 
-# Fill *file_actionsp from the file_actions sequence; `temp_buffer` keeps
-# the open paths alive until posix_spawn() (glibc before 2.20 does not copy
-# them). 0 on success, -1 with the exception set.
-def parse_file_actions(
+impl parse_file_actions(
     file_actions: ptr[PyObject], file_actionsp: ptr, temp_buffer: ptr[PyObject]
 ) -> i32 {
-    seq = PySequence_Fast(file_actions, "file_actions must be a sequence or None");
+    seq = PySequence_Fast(
+        file_actions, ptr[u8]("file_actions must be a sequence or None")
+    );
     if not seq {
         return i32(-1);
     }
@@ -597,10 +785,11 @@ def parse_file_actions(
     failed = False;
     i = i64(0);
     while i < jacpy_fast_size(seq) {
-        file_action = Py_NewRef(jacpy_fast_item(seq, i));
+        file_action = jacpy_fast_item(seq, i);
         if jacpy_is_tuple(file_action) == 0 or PyTuple_Size(file_action) == 0 {
             PyErr_SetString(
-                PyExc_TypeError, "Each file_actions element must be a non-empty tuple"
+                PyExc_TypeError,
+                ptr[u8]("Each file_actions element must be a non-empty tuple")
             );
             failed = True;
             break;
@@ -619,11 +808,10 @@ def parse_file_actions(
             path_obj = NULL;
             oflag_obj = NULL;
             mode_obj = NULL;
-            # "OiO&ik": the path goes through PyUnicode_FSConverter between
-            # the fd and oflag conversions.
+
             if PyArg_ParseTuple(
                 file_action,
-                "OiOOO;A open file_action tuple must have 5 elements",
+                ptr[u8]("OiOOO;A open file_action tuple must have 5 elements"),
                 &mut tag_obj,
                 &mut fd,
                 &mut path_obj,
@@ -639,12 +827,14 @@ def parse_file_actions(
                 break;
             }
             if PyArg_Parse(
-                oflag_obj, "i;A open file_action tuple must have 5 elements", &mut oflag
+                oflag_obj,
+                ptr[u8]("i;A open file_action tuple must have 5 elements"),
+                &mut oflag
             )
                 == 0
                 or PyArg_Parse(
                     mode_obj,
-                    "k;A open file_action tuple must have 5 elements",
+                    ptr[u8]("k;A open file_action tuple must have 5 elements"),
                     &mut mode
                 )
                     == 0 {
@@ -672,7 +862,7 @@ def parse_file_actions(
             fd = i32(0);
             if PyArg_ParseTuple(
                 file_action,
-                "Oi;A close file_action tuple must have 2 elements",
+                ptr[u8]("Oi;A close file_action tuple must have 2 elements"),
                 &mut tag_obj,
                 &mut fd
             )
@@ -692,7 +882,7 @@ def parse_file_actions(
             fd2 = i32(0);
             if PyArg_ParseTuple(
                 file_action,
-                "Oii;A dup2 file_action tuple must have 3 elements",
+                ptr[u8]("Oii;A dup2 file_action tuple must have 3 elements"),
                 &mut tag_obj,
                 &mut fd1,
                 &mut fd2
@@ -709,7 +899,9 @@ def parse_file_actions(
                 break;
             }
         } else {
-            PyErr_SetString(PyExc_TypeError, "Unknown file_actions identifier");
+            PyErr_SetString(
+                PyExc_TypeError, ptr[u8]("Unknown file_actions identifier")
+            );
             failed = True;
             break;
         }
@@ -725,7 +917,7 @@ def parse_file_actions(
     return i32(0);
 }
 
-def py_posix_spawn(
+impl py_posix_spawn(
     use_posix_spawnp: bool,
     module: ptr[PyObject],
     path: path_t,
@@ -754,26 +946,30 @@ def py_posix_spawn(
     while True {
         if jacpy_is_list(argv) == 0 and jacpy_is_tuple(argv) == 0 {
             PyErr_Format(
-                PyExc_TypeError, "%s: argv must be a tuple or list", func_name
+                PyExc_TypeError, ptr[u8]("%s: argv must be a tuple or list"), func_name
             );
             break;
         }
         argc = PySequence_Size(argv);
         if argc < 1 {
-            PyErr_Format(PyExc_ValueError, "%s: argv must not be empty", func_name);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("%s: argv must not be empty"), func_name
+            );
             break;
         }
         if PyMapping_Check(env) == 0 and env != Py_None {
             PyErr_Format(
                 PyExc_TypeError,
-                "%s: environment must be a mapping object or None",
+                ptr[u8]("%s: environment must be a mapping object or None"),
                 func_name
             );
             break;
         }
         if scheduler and jacpy_is_tuple(scheduler) == 0 and scheduler != Py_None {
             PyErr_Format(
-                PyExc_TypeError, "%s: scheduler must be a tuple or None", func_name
+                PyExc_TypeError,
+                ptr[u8]("%s: scheduler must be a tuple or None"),
+                func_name
             );
             break;
         }
@@ -783,7 +979,9 @@ def py_posix_spawn(
         }
         if first_argument_empty(argvlist) {
             PyErr_Format(
-                PyExc_ValueError, "%s: argv first element cannot be empty", func_name
+                PyExc_ValueError,
+                ptr[u8]("%s: argv first element cannot be empty"),
+                func_name
             );
             break;
         }
@@ -831,7 +1029,10 @@ def py_posix_spawn(
             break;
         }
         attrp = attr;
-        if PySys_Audit("os.posix_spawn", "OOO", path.object, argv, env) < 0 {
+        if PySys_Audit(
+            ptr[u8]("os.posix_spawn"), ptr[u8]("OOO"), path.object, argv, env
+        )
+            < 0 {
             break;
         }
         pid = i32(0);
@@ -871,7 +1072,7 @@ def py_posix_spawn(
     return result;
 }
 
-def os_posix_spawn_impl(
+impl os_posix_spawn_impl(
     module: ptr[PyObject],
     path: path_t,
     argv: ptr[PyObject],
@@ -900,7 +1101,7 @@ def os_posix_spawn_impl(
     );
 }
 
-def os_posix_spawnp_impl(
+impl os_posix_spawnp_impl(
     module: ptr[PyObject],
     path: path_t,
     argv: ptr[PyObject],
@@ -929,15 +1130,11 @@ def os_posix_spawnp_impl(
     );
 }
 
-# --- fork ------------------------------------------------------------------
-
-# check_null_or_callable(): 0, or -1 with a TypeError when `value` is set and
-# not callable.
-def:priv check_null_or_callable(value: ptr[PyObject], obj_name: str) -> i32 {
+impl check_null_or_callable(value: ptr[PyObject], obj_name: str) -> i32 {
     if value and PyCallable_Check(value) == 0 {
         PyErr_Format(
             PyExc_TypeError,
-            "'%s' must be callable, not %s",
+            ptr[u8]("'%s' must be callable, not %s"),
             obj_name,
             _PyType_Name(Py_TYPE(value))
         );
@@ -946,14 +1143,14 @@ def:priv check_null_or_callable(value: ptr[PyObject], obj_name: str) -> i32 {
     return i32(0);
 }
 
-def os_register_at_fork_impl(
+impl os_register_at_fork_impl(
     module: ptr[PyObject],
     before: ptr[PyObject],
     after_in_child: ptr[PyObject],
     after_in_parent: ptr[PyObject]
 ) -> ptr[PyObject] {
     if not before and not after_in_child and not after_in_parent {
-        PyErr_SetString(PyExc_TypeError, "At least one argument is required.");
+        PyErr_SetString(PyExc_TypeError, ptr[u8]("At least one argument is required."));
         return NULL;
     }
     if check_null_or_callable(before, "before") != 0
@@ -974,13 +1171,9 @@ def os_register_at_fork_impl(
     return Py_NewRef(Py_None);
 }
 
-# warn_about_fork_with_threads(): a DeprecationWarning in the parent after a
-# fork when more than one thread runs. Best effort: never leaves an error
-# set. num_os_threads is trusted only when >= 1.
-def warn_about_fork_with_threads(name: str, num_os_threads: i64) {
+impl warn_about_fork_with_threads(name: str, num_os_threads: i64) {
     num_python_threads = num_os_threads;
     if num_python_threads <= 0 {
-        # Fall back to the threads the threading module knows about.
         threading_name = interned("threading");
         if not threading_name {
             PyErr_Clear();
@@ -1014,7 +1207,7 @@ def warn_about_fork_with_threads(name: str, num_os_threads: i64) {
             return;
         }
         jacpy_release(threading);
-        # threading.active_count() without its lock: a best-effort count.
+
         num_python_threads = PyMapping_Length(threading_active)
             + PyMapping_Length(threading_limbo);
         PyErr_Clear();
@@ -1025,7 +1218,9 @@ def warn_about_fork_with_threads(name: str, num_os_threads: i64) {
         PyErr_WarnFormat(
             PyExc_DeprecationWarning,
             1,
-            "This process (pid=%d) is multi-threaded, use of %s() may lead to deadlocks in the child.",
+            ptr[u8](
+                "This process (pid=%d) is multi-threaded, use of %s() may lead to deadlocks in the child."
+            ),
             getpid(),
             name
         );
@@ -1033,34 +1228,32 @@ def warn_about_fork_with_threads(name: str, num_os_threads: i64) {
     }
 }
 
-# The interpreter checks the fork functions share: None when forking is
-# allowed, else the exception is set. `subinterpreters` selects fork1's and
-# forkpty's main-interpreter test over fork's feature flag.
-def:priv fork_forbidden(subinterpreters: bool) -> bool {
+impl fork_forbidden(subinterpreters: bool) -> bool {
     interp = PyInterpreterState_Get();
     if jacpy_interpreter_finalizing() != 0 {
         PyErr_SetString(
-            PyExc_PythonFinalizationError, "can't fork at interpreter shutdown"
+            PyExc_PythonFinalizationError, ptr[u8]("can't fork at interpreter shutdown")
         );
         return True;
     }
     if subinterpreters {
         if interp != _PyInterpreterState_Main() {
             PyErr_SetString(
-                PyExc_RuntimeError, "fork not supported for subinterpreters"
+                PyExc_RuntimeError, ptr[u8]("fork not supported for subinterpreters")
             );
             return True;
         }
     } elif _PyInterpreterState_HasFeature(interp, Py_RTFLAGS_FORK) == 0 {
         PyErr_SetString(
-            PyExc_RuntimeError, "fork not supported for isolated subinterpreters"
+            PyExc_RuntimeError,
+            ptr[u8]("fork not supported for isolated subinterpreters")
         );
         return True;
     }
     return False;
 }
 
-def os_fork1_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_fork1_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if fork_forbidden(True) {
         return NULL;
     }
@@ -1068,13 +1261,10 @@ def os_fork1_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     pid = fork_one();
     saved_errno = jacpy_errno();
     if pid == 0 {
-        # child: this clobbers and resets the import lock.
         PyOS_AfterFork_Child();
     } else {
-        # Counted before AfterFork_Parent in case those hooks start threads.
         num_os_threads = get_number_of_os_threads();
         PyOS_AfterFork_Parent();
-        # After PyOS_AfterFork_Parent() starts the world, to avoid deadlock.
         warn_about_fork_with_threads("fork1", num_os_threads);
     }
     if pid == -1 {
@@ -1084,24 +1274,21 @@ def os_fork1_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(pid));
 }
 
-def os_fork_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_fork_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if fork_forbidden(False) {
         return NULL;
     }
-    if PySys_AuditTuple("os.fork", NULL) < 0 {
+    if PySys_AuditTuple(ptr[u8]("os.fork"), NULL) < 0 {
         return NULL;
     }
     PyOS_BeforeFork();
     pid = fork();
     saved_errno = jacpy_errno();
     if pid == 0 {
-        # child: this clobbers and resets the import lock.
         PyOS_AfterFork_Child();
     } else {
-        # Counted before AfterFork_Parent in case those hooks start threads.
         num_os_threads = get_number_of_os_threads();
         PyOS_AfterFork_Parent();
-        # After PyOS_AfterFork_Parent() starts the world, to avoid deadlock.
         warn_about_fork_with_threads("fork", num_os_threads);
     }
     if pid == -1 {
@@ -1111,38 +1298,32 @@ def os_fork_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return PyLong_FromLong(i64(pid));
 }
 
-def os_forkpty_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_forkpty_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     master_fd = i32(-1);
     if fork_forbidden(True) {
         return NULL;
     }
-    if PySys_AuditTuple("os.forkpty", NULL) < 0 {
+    if PySys_AuditTuple(ptr[u8]("os.forkpty"), NULL) < 0 {
         return NULL;
     }
     PyOS_BeforeFork();
     pid = forkpty(&mut master_fd, ptr[u8](), ptr(), ptr());
     if pid == 0 {
-        # child: this clobbers and resets the import lock.
         PyOS_AfterFork_Child();
     } else {
-        # Counted before AfterFork_Parent in case those hooks start threads.
         num_os_threads = get_number_of_os_threads();
         PyOS_AfterFork_Parent();
-        # After PyOS_AfterFork_Parent() starts the world, to avoid deadlock.
         warn_about_fork_with_threads("forkpty", num_os_threads);
     }
     if pid == -1 {
         return posix_error();
     }
-    return Py_BuildValue("(Ni)", PyLong_FromLong(i64(pid)), master_fd);
+    return Py_BuildValue(ptr[u8]("(Ni)"), PyLong_FromLong(i64(pid)), master_fd);
 }
 
-# --- sched -----------------------------------------------------------------
-
-def os_sched_get_priority_max_impl(
+impl os_sched_get_priority_max_impl(
     module: ptr[PyObject], policy: i32
 ) -> ptr[PyObject] {
-    # errno must be cleared before the call.
     jacpy_set_errno(0);
     priority = sched_get_priority_max(policy);
     if priority == -1 and jacpy_errno() != 0 {
@@ -1151,10 +1332,9 @@ def os_sched_get_priority_max_impl(
     return PyLong_FromLong(i64(priority));
 }
 
-def os_sched_get_priority_min_impl(
+impl os_sched_get_priority_min_impl(
     module: ptr[PyObject], policy: i32
 ) -> ptr[PyObject] {
-    # errno must be cleared before the call.
     jacpy_set_errno(0);
     priority = sched_get_priority_min(policy);
     if priority == -1 and jacpy_errno() != 0 {
@@ -1163,7 +1343,7 @@ def os_sched_get_priority_min_impl(
     return PyLong_FromLong(i64(priority));
 }
 
-def os_sched_getscheduler_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject] {
+impl os_sched_getscheduler_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject] {
     policy = sched_getscheduler_call(pid);
     if policy < 0 {
         return posix_error();
@@ -1171,8 +1351,7 @@ def os_sched_getscheduler_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject]
     return PyLong_FromLong(i64(policy));
 }
 
-# os.sched_param.__new__: `cls` is the type.
-def os_sched_param_impl(
+impl os_sched_param_impl(
     cls: ptr[PyObject], sched_priority: ptr[PyObject]
 ) -> ptr[PyObject] {
     res = PyStructSequence_New(cls);
@@ -1183,27 +1362,27 @@ def os_sched_param_impl(
     return res;
 }
 
-# sched_param.__reduce__
-def sched_param_reduce(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
-    return Py_BuildValue("(O(O))", Py_TYPE(self), PyStructSequence_GetItem(self, 0));
+impl sched_param_reduce(self: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+    return Py_BuildValue(
+        ptr[u8]("(O(O))"), Py_TYPE(self), PyStructSequence_GetItem(self, 0)
+    );
 }
 
-def os_sched_setscheduler_impl(
+impl os_sched_setscheduler_impl(
     module: ptr[PyObject], pid: i32, policy: i32, param_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     param = convert_sched_param(module, param_obj);
     if param is None {
         return NULL;
     }
-    # sched_setscheduler() returns the previous policy on some systems; -1
-    # is the error everywhere.
+
     if sched_setscheduler_call(pid, policy, param) == -1 {
         return posix_error();
     }
     return Py_NewRef(Py_None);
 }
 
-def os_sched_getparam_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject] {
+impl os_sched_getparam_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject] {
     (status, sched_priority) = sched_getparam_call(pid);
     if status != 0 {
         return posix_error();
@@ -1221,7 +1400,7 @@ def os_sched_getparam_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject] {
     return result;
 }
 
-def os_sched_setparam_impl(
+impl os_sched_setparam_impl(
     module: ptr[PyObject], pid: i32, param_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     param = convert_sched_param(module, param_obj);
@@ -1234,7 +1413,7 @@ def os_sched_setparam_impl(
     return Py_NewRef(Py_None);
 }
 
-def os_sched_rr_get_interval_impl(module: ptr[PyObject], pid: i32) -> f64 {
+impl os_sched_rr_get_interval_impl(module: ptr[PyObject], pid: i32) -> f64 {
     (status, tv_sec, tv_nsec) = sched_rr_get_interval_call(pid);
     if status != 0 {
         posix_error();
@@ -1243,7 +1422,7 @@ def os_sched_rr_get_interval_impl(module: ptr[PyObject], pid: i32) -> f64 {
     return f64(tv_sec) + 1e-9 * f64(tv_nsec);
 }
 
-def os_sched_yield_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_sched_yield_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
     result = sched_yield();
     PyEval_RestoreThread(thread);
@@ -1253,7 +1432,7 @@ def os_sched_yield_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-def os_sched_setaffinity_impl(
+impl os_sched_setaffinity_impl(
     module: ptr[PyObject], pid: i32, mask: ptr[PyObject]
 ) -> ptr[PyObject] {
     iterator = PyObject_GetIter(mask);
@@ -1279,7 +1458,7 @@ def os_sched_setaffinity_impl(
             if PyIndex_Check(item) == 0 {
                 PyErr_Format(
                     PyExc_TypeError,
-                    "expected an iterator of ints, but iterator yielded %R",
+                    ptr[u8]("expected an iterator of ints, but iterator yielded %R"),
                     Py_TYPE(item)
                 );
                 jacpy_release(item);
@@ -1290,18 +1469,17 @@ def os_sched_setaffinity_impl(
             jacpy_release(item);
             if cpu < 0 {
                 if not PyErr_Occurred() {
-                    PyErr_SetString(PyExc_ValueError, "negative CPU number");
+                    PyErr_SetString(PyExc_ValueError, ptr[u8]("negative CPU number"));
                 }
                 item_failed = True;
                 break;
             }
             if cpu > INT_MAX - 1 {
-                PyErr_SetString(PyExc_OverflowError, "CPU number too large");
+                PyErr_SetString(PyExc_OverflowError, ptr[u8]("CPU number too large"));
                 item_failed = True;
                 break;
             }
             if cpu >= i64(ncpus) {
-                # Grow the CPU mask to fit the CPU number.
                 newncpus = ncpus;
                 while i64(newncpus) <= cpu {
                     if i64(newncpus) > INT_MAX // 2 {
@@ -1349,7 +1527,7 @@ def os_sched_setaffinity_impl(
     return Py_NewRef(Py_None);
 }
 
-def os_sched_getaffinity_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject] {
+impl os_sched_getaffinity_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject] {
     ncpus = NCPUS_START;
     setsize = u64(0);
     mask = ptr();
@@ -1368,7 +1546,8 @@ def os_sched_getaffinity_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject] 
         }
         if i64(ncpus) > INT_MAX // 2 {
             PyErr_SetString(
-                PyExc_OverflowError, "could not allocate a large enough CPU set"
+                PyExc_OverflowError,
+                ptr[u8]("could not allocate a large enough CPU set")
             );
             return NULL;
         }
@@ -1408,24 +1587,22 @@ def os_sched_getaffinity_impl(module: ptr[PyObject], pid: i32) -> ptr[PyObject] 
     return res;
 }
 
-# --- kill ------------------------------------------------------------------
-
-def os_kill_impl(module: ptr[PyObject], pid: i32, signal: i64) -> ptr[PyObject] {
-    if PySys_Audit("os.kill", "in", pid, signal) < 0 {
+impl os_kill_impl(module: ptr[PyObject], pid: i32, signal: i64) -> ptr[PyObject] {
+    if PySys_Audit(ptr[u8]("os.kill"), ptr[u8]("in"), pid, signal) < 0 {
         return NULL;
     }
     if kill(pid, i32.wrap(signal)) == -1 {
         return posix_error();
     }
-    # Check immediately if the signal was sent to the current process.
+
     if PyErr_CheckSignals() != 0 {
         return NULL;
     }
     return Py_NewRef(Py_None);
 }
 
-def os_killpg_impl(module: ptr[PyObject], pgid: i32, signal: i32) -> ptr[PyObject] {
-    if PySys_Audit("os.killpg", "ii", pgid, signal) < 0 {
+impl os_killpg_impl(module: ptr[PyObject], pgid: i32, signal: i32) -> ptr[PyObject] {
+    if PySys_Audit(ptr[u8]("os.killpg"), ptr[u8]("ii"), pgid, signal) < 0 {
         return NULL;
     }
     if killpg(pgid, signal) == -1 {
@@ -1434,14 +1611,11 @@ def os_killpg_impl(module: ptr[PyObject], pgid: i32, signal: i32) -> ptr[PyObjec
     return Py_NewRef(Py_None);
 }
 
-# --- wait ------------------------------------------------------------------
-
-def:priv doubletime(value: timeval) -> f64 {
+impl doubletime(value: timeval) -> f64 {
     return f64(value.tv_sec) + f64(value.tv_usec) * 0.000001;
 }
 
-# SET_RESULT: store `item` at `pos`, or release `result` when it is NULL.
-def:priv set_result(result: ptr[PyObject], pos: i64, item: ptr[PyObject]) -> bool {
+impl set_result(result: ptr[PyObject], pos: i64, item: ptr[PyObject]) -> bool {
     if not item {
         jacpy_release(result);
         return False;
@@ -1450,18 +1624,19 @@ def:priv set_result(result: ptr[PyObject], pos: i64, item: ptr[PyObject]) -> boo
     return True;
 }
 
-# wait_helper(): (pid, status, resource.struct_rusage) for wait3/wait4.
-def wait_helper(
+impl wait_helper(
     module: ptr[PyObject], pid: i32, status: i32, ru: rusage
 ) -> ptr[PyObject] {
     if pid == -1 {
         return posix_error();
     }
-    # A wait that succeeded with no child ready leaves ru unset.
+
     if pid == 0 {
         ru = rusage();
     }
-    struct_rusage = PyImport_ImportModuleAttrString("resource", "struct_rusage");
+    struct_rusage = PyImport_ImportModuleAttrString(
+        ptr[u8]("resource"), ptr[u8]("struct_rusage")
+    );
     if not struct_rusage {
         return NULL;
     }
@@ -1497,10 +1672,10 @@ def wait_helper(
             return NULL;
         }
     }
-    return Py_BuildValue("NiN", PyLong_FromLong(i64(pid)), status, result);
+    return Py_BuildValue(ptr[u8]("NiN"), PyLong_FromLong(i64(pid)), status, result);
 }
 
-def os_wait3_impl(module: ptr[PyObject], options: i32) -> ptr[PyObject] {
+impl os_wait3_impl(module: ptr[PyObject], options: i32) -> ptr[PyObject] {
     ru = rusage();
     async_err = i32(0);
     status = i32(0);
@@ -1523,7 +1698,7 @@ def os_wait3_impl(module: ptr[PyObject], options: i32) -> ptr[PyObject] {
     return wait_helper(module, pid, status, ru);
 }
 
-def os_wait4_impl(module: ptr[PyObject], pid: i32, options: i32) -> ptr[PyObject] {
+impl os_wait4_impl(module: ptr[PyObject], pid: i32, options: i32) -> ptr[PyObject] {
     ru = rusage();
     async_err = i32(0);
     status = i32(0);
@@ -1546,7 +1721,7 @@ def os_wait4_impl(module: ptr[PyObject], pid: i32, options: i32) -> ptr[PyObject
     return wait_helper(module, res, status, ru);
 }
 
-def os_waitid_impl(
+impl os_waitid_impl(
     module: ptr[PyObject], idtype: i32, id: u32, options: i32
 ) -> ptr[PyObject] {
     si = siginfo_t();
@@ -1593,7 +1768,7 @@ def os_waitid_impl(
     return result;
 }
 
-def os_waitpid_impl(module: ptr[PyObject], pid: i32, options: i32) -> ptr[PyObject] {
+impl os_waitpid_impl(module: ptr[PyObject], pid: i32, options: i32) -> ptr[PyObject] {
     async_err = i32(0);
     status = i32(0);
     res = i32(0);
@@ -1612,10 +1787,10 @@ def os_waitpid_impl(module: ptr[PyObject], pid: i32, options: i32) -> ptr[PyObje
     if res < 0 {
         return posix_error() if async_err == 0 else NULL;
     }
-    return Py_BuildValue("Ni", PyLong_FromLong(i64(res)), status);
+    return Py_BuildValue(ptr[u8]("Ni"), PyLong_FromLong(i64(res)), status);
 }
 
-def os_wait_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_wait_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     async_err = i32(0);
     status = i32(0);
     pid = i32(0);
@@ -1634,10 +1809,10 @@ def os_wait_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     if pid < 0 {
         return posix_error() if async_err == 0 else NULL;
     }
-    return Py_BuildValue("Ni", PyLong_FromLong(i64(pid)), status);
+    return Py_BuildValue(ptr[u8]("Ni"), PyLong_FromLong(i64(pid)), status);
 }
 
-def os_pidfd_open_impl(module: ptr[PyObject], pid: i32, flags: u32) -> ptr[PyObject] {
+impl os_pidfd_open_impl(module: ptr[PyObject], pid: i32, flags: u32) -> ptr[PyObject] {
     fd = pidfd_open_call(pid, flags);
     if fd < 0 {
         return posix_error();
@@ -1645,7 +1820,7 @@ def os_pidfd_open_impl(module: ptr[PyObject], pid: i32, flags: u32) -> ptr[PyObj
     return PyLong_FromLong(i64(fd));
 }
 
-def os_setns_impl(module: ptr[PyObject], fd: i32, nstype: i32) -> ptr[PyObject] {
+impl os_setns_impl(module: ptr[PyObject], fd: i32, nstype: i32) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
     res = setns_call(fd, nstype);
     PyEval_RestoreThread(thread);
@@ -1655,7 +1830,7 @@ def os_setns_impl(module: ptr[PyObject], fd: i32, nstype: i32) -> ptr[PyObject] 
     return Py_NewRef(Py_None);
 }
 
-def os_unshare_impl(module: ptr[PyObject], flags: i32) -> ptr[PyObject] {
+impl os_unshare_impl(module: ptr[PyObject], flags: i32) -> ptr[PyObject] {
     thread = PyEval_SaveThread();
     res = unshare_call(flags);
     PyEval_RestoreThread(thread);
@@ -1665,41 +1840,39 @@ def os_unshare_impl(module: ptr[PyObject], flags: i32) -> ptr[PyObject] {
     return Py_NewRef(Py_None);
 }
 
-# --- wait status macros ----------------------------------------------------
-
-def os_WCOREDUMP_impl(module: ptr[PyObject], status: i32) -> i32 {
+impl os_WCOREDUMP_impl(module: ptr[PyObject], status: i32) -> i32 {
     return WCOREDUMP(status);
 }
 
-def os_WIFCONTINUED_impl(module: ptr[PyObject], status: i32) -> i32 {
+impl os_WIFCONTINUED_impl(module: ptr[PyObject], status: i32) -> i32 {
     return WIFCONTINUED(status);
 }
 
-def os_WIFSTOPPED_impl(module: ptr[PyObject], status: i32) -> i32 {
+impl os_WIFSTOPPED_impl(module: ptr[PyObject], status: i32) -> i32 {
     return WIFSTOPPED(status);
 }
 
-def os_WIFSIGNALED_impl(module: ptr[PyObject], status: i32) -> i32 {
+impl os_WIFSIGNALED_impl(module: ptr[PyObject], status: i32) -> i32 {
     return WIFSIGNALED(status);
 }
 
-def os_WIFEXITED_impl(module: ptr[PyObject], status: i32) -> i32 {
+impl os_WIFEXITED_impl(module: ptr[PyObject], status: i32) -> i32 {
     return WIFEXITED(status);
 }
 
-def os_WEXITSTATUS_impl(module: ptr[PyObject], status: i32) -> i32 {
+impl os_WEXITSTATUS_impl(module: ptr[PyObject], status: i32) -> i32 {
     return WEXITSTATUS(status);
 }
 
-def os_WTERMSIG_impl(module: ptr[PyObject], status: i32) -> i32 {
+impl os_WTERMSIG_impl(module: ptr[PyObject], status: i32) -> i32 {
     return WTERMSIG(status);
 }
 
-def os_WSTOPSIG_impl(module: ptr[PyObject], status: i32) -> i32 {
+impl os_WSTOPSIG_impl(module: ptr[PyObject], status: i32) -> i32 {
     return WSTOPSIG(status);
 }
 
-def os_waitstatus_to_exitcode_impl(
+impl os_waitstatus_to_exitcode_impl(
     module: ptr[PyObject], status_obj: ptr[PyObject]
 ) -> ptr[PyObject] {
     status = PyLong_AsInt(status_obj);
@@ -1709,36 +1882,36 @@ def os_waitstatus_to_exitcode_impl(
     exitcode = i32(0);
     if WIFEXITED(status) != 0 {
         exitcode = WEXITSTATUS(status);
-        # A sanity check; it should not occur in practice.
+
         if exitcode < 0 {
-            PyErr_Format(PyExc_ValueError, "invalid WEXITSTATUS: %i", exitcode);
+            PyErr_Format(
+                PyExc_ValueError, ptr[u8]("invalid WEXITSTATUS: %i"), exitcode
+            );
             return NULL;
         }
     } elif WIFSIGNALED(status) != 0 {
         signum = WTERMSIG(status);
-        # A sanity check; it should not occur in practice.
         if signum <= 0 {
-            PyErr_Format(PyExc_ValueError, "invalid WTERMSIG: %i", signum);
+            PyErr_Format(PyExc_ValueError, ptr[u8]("invalid WTERMSIG: %i"), signum);
             return NULL;
         }
         exitcode = -signum;
     } elif WIFSTOPPED(status) != 0 {
-        # Only when the process is traced or waitpid() had WUNTRACED.
         signum = WSTOPSIG(status);
         PyErr_Format(
-            PyExc_ValueError, "process stopped by delivery of signal %i", signum
+            PyExc_ValueError,
+            ptr[u8]("process stopped by delivery of signal %i"),
+            signum
         );
         return NULL;
     } else {
-        PyErr_Format(PyExc_ValueError, "invalid wait status: %i", status);
+        PyErr_Format(PyExc_ValueError, ptr[u8]("invalid wait status: %i"), status);
         return NULL;
     }
     return PyLong_FromLong(i64(exitcode));
 }
 
-# --- times, getloadavg -----------------------------------------------------
-
-def build_times_result(
+impl build_times_result(
     module: ptr[PyObject],
     user: f64,
     system_time: f64,
@@ -1762,7 +1935,7 @@ def build_times_result(
     return value;
 }
 
-def os_times_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_times_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     ticks_per_second = f64(posix_state(module).ticks_per_second);
     jacpy_set_errno(0);
     (ok, user, system_time, children_user, children_system, elapsed) = process_times();
@@ -1779,20 +1952,16 @@ def os_times_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     );
 }
 
-def os_getloadavg_impl(module: ptr[PyObject]) -> ptr[PyObject] {
+impl os_getloadavg_impl(module: ptr[PyObject]) -> ptr[PyObject] {
     loadavg = load_averages();
     if getloadavg(&mut loadavg, i32(3)) != 3 {
-        PyErr_SetString(PyExc_OSError, "Load averages are unobtainable");
+        PyErr_SetString(PyExc_OSError, ptr[u8]("Load averages are unobtainable"));
         return NULL;
     }
-    return Py_BuildValue("ddd", loadavg.one, loadavg.five, loadavg.fifteen);
+    return Py_BuildValue(ptr[u8]("ddd"), loadavg.one, loadavg.five, loadavg.fifteen);
 }
 
-# --- module exec -----------------------------------------------------------
-
-# The area's part of posixmodule_exec(): waitid_result, sched_param,
-# times_result, the struct_rusage name and ticks_per_second.
-def posix_process_exec(module: ptr[PyObject]) -> bool {
+impl posix_process_exec(module: ptr[PyObject]) -> bool {
     if HAVE_WAITID {
         waitid_result = struct_sequence_type(
             "posix.waitid_result",
@@ -1855,7 +2024,7 @@ def posix_process_exec(module: ptr[PyObject]) -> bool {
     }
     ticks_per_second = i64(0);
     if _Py_GetTicksPerSecond(&mut ticks_per_second) < 0 {
-        PyErr_SetString(PyExc_RuntimeError, "cannot read ticks_per_second");
+        PyErr_SetString(PyExc_RuntimeError, ptr[u8]("cannot read ticks_per_second"));
         return False;
     }
     posix_state(module).ticks_per_second = ticks_per_second;

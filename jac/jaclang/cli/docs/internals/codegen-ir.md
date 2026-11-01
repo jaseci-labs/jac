@@ -247,10 +247,9 @@ with the register unset is a hard error instead. Downstream of the shim,
 format entirely, which is the whole point of the shim tier.
 
 Spliced statements keep the line numbers `ast.parse` gave them, shifted by
-the operand offset. This matches today's behavior exactly: `pyinline_sync`
-adds the jac node's `first_line` to inline Python, and the generated stub
-sources (interop stubs, sv-to-sv stubs, native test shims) keep their
-parse-relative 1..k line numbers with no offset.
+the operand offset. The generated stub sources (interop stubs, sv-to-sv
+stubs, native test shims) keep their parse-relative 1..k line numbers with
+no offset.
 
 ### 5.1 The deterministic loc-fill rule
 
@@ -364,7 +363,6 @@ performed by the shim because it intrinsically requires CPython.
 | Semstr decorators (`_get_sem_decorator`), `jac_test` decorators, `impl_patch_filename` decoration | IR emission | decorator `Call` nodes with `Constant` operands; the `is_test(mod_path)` predicate moves producer-side |
 | Enum lowering (`Enum`/`IntEnum`/`StrEnum` choice, `auto()` values) | IR emission | |
 | Has-var lowering (`ObjectField(init=False)`, `ObjectField(default_factory=lambda: ...)`, constant fast path) | IR emission | see fidelity note 2 |
-| `PyInlineCode` (`::py::` blocks) | shim transcription | `OP_PARSE_SPLICE` with the jac first_line as offset; `textwrap.dedent` is a producer-side string op |
 | Native interop stubs, sv-to-sv stubs, boundary stub classes, native test shims, registration map | shim transcription | producer builds the Python source text from the interop manifest (sealed-side data); shim parses via `OP_PARSE_SPLICE` with offset 0 |
 | `compile()` + `marshal.dumps` (all of pybc_gen) | shim transcription | end of the same crossing |
 | `ast3.unparse` into `gen.py` | tooling only | never crosses |
@@ -542,7 +540,7 @@ assumed away.
   Lane-portable jac with no CPython ast import anywhere; it ports
   `pyast_gen`'s decisions method by method into recipe construction
   (`CgNode` trees: class name, field names, field values, one normalized
-  location per node, `CgSplice` markers for `::py::` splices) and
+  location per node, `CgSplice` markers for generated Python stub source) and
   serializes the finished module recipe through `CodegenIrWriter`, also
   stashing the container on the module's `gen.jcir` for the pipeline
   consumer. The recipe tree is the emitter's working form; the wire

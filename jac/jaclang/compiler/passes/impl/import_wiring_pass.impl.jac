@@ -538,23 +538,23 @@ impl names_read_in(body: UniNode, mod: Module) -> set[str] {
     ] {
         parent = nd.parent;
         sym = nd.sym;
+        if (isinstance(parent, AtomTrailer) and parent.is_attr and parent.right is nd)
+            or (isinstance(parent, KWPair) and parent.key is nd)
+            or (isinstance(parent, JsxElementName) and parent.parts[0] is not nd)
+            or nd.find_parent_of_type(ModulePath) is not None
+            or nd.find_parent_of_type(ModuleItem) is not None {
+            continue;
+        }
         if nd.expr_ctx != ExprCtx.LOAD
             or (
                 sym is not None
                 and not sym.imported
                 and sym.decl is not None
                 and sym.decl.find_parent_of_type(Module) is mod
-            )
-            or (
-                isinstance(parent, AtomTrailer)
-                and parent.is_attr
-                and parent.right is nd
-            )
-            or (isinstance(parent, KWPair) and parent.key is nd)
-            or (isinstance(parent, JsxElementName) and parent.parts[0] is not nd)
-            or nd.find_parent_of_type(ModulePath) is not None
-            or nd.find_parent_of_type(ModuleItem) is not None {
-            continue;
+            ) {
+            if clib_global_of_name(nd) is None {
+                continue;
+            }
         }
         names.add(nd.value);
     }

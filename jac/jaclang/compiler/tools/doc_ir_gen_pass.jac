@@ -150,7 +150,6 @@ walker DocIRGenPass(TreePass) {
     can exit_expr_as_item with uni.ExprAsItem exit;
     can exit_filter_compr with uni.FilterCompr exit;
     can exit_assign_compr with uni.AssignCompr exit;
-    can exit_py_inline_code with uni.PyInlineCode exit;
     can exit_test with uni.Test exit;
     can exit_match_stmt with uni.MatchStmt exit;
     can exit_match_case with uni.MatchCase exit;
