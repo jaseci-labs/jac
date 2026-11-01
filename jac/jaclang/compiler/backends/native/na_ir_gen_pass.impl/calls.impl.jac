@@ -256,6 +256,22 @@ impl NaIRGenPass._arch_init_params_of(type_name: str) -> (list[uni.ParamVar] | N
     return params;
 }
 
+impl NaIRGenPass._frontend_binding(
+    nd: uni.FuncCall
+) -> (dict[str, uni.UniNode] | None) {
+    signature = nd.callee_signature;
+    if not isinstance(signature, SemanticFunctionType) {
+        return None;
+    }
+    named: dict[str, uni.UniNode] = {};
+    for (slot, arg) in nd.arg_binding {
+        if slot < len(signature.parameters) {
+            named[signature.parameters[slot].name] = arg;
+        }
+    }
+    return named;
+}
+
 impl NaIRGenPass._missing_argument(nd: uni.UniNode, t: ir.Type) -> ir.Value {
     self.emit(
         E5092,
@@ -477,6 +493,20 @@ impl NaIRGenPass._codegen_bound_args(
         self._emit_kw_spread_refusal(nd);
     }
     if not _bind_path {
+        bound: (dict[str, uni.UniNode] | None) = None;
+        if not any(isinstance(p, NativeSpreadArg) for p in positional) {
+            bound = self._frontend_binding(nd);
+            if bound is None {
+                self.emit(
+                    E5092,
+                    node_override=nd,
+                    kind="call",
+                    name="argument binding",
+                    help_text="The type checker binds each argument of a resolved call to a parameter; this call has no recorded binding, so native lowering cannot tell which argument fills which parameter."
+                );
+                return [self._zero_const(arg.type) for arg in func.args[self_offset:]];
+            }
+        }
         for (pix, sp) in enumerate(sig_params) {
             slot = self_offset + pix;
             if (
@@ -490,9 +520,12 @@ impl NaIRGenPass._codegen_bound_args(
                 if slot < len(func.args)
                 else ir.IntType(64);
             chosen: (uni.Expr | NativeSpreadArg | None) = None;
-            if pix < len(positional) {
+            if bound is not None and sp.name.sym_name in bound {
+                bound_arg = bound[sp.name.sym_name];
+                chosen = bound_arg if isinstance(bound_arg, uni.Expr) else None;
+            } elif bound is None and pix < len(positional) {
                 chosen = positional[pix];
-            } elif sp.name.sym_name in kw_map {
+            } elif bound is None and sp.name.sym_name in kw_map {
                 chosen = kw_map[sp.name.sym_name];
             } elif sp.value is not None {
                 chosen = sp.value;

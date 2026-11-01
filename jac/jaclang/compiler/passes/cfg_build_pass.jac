@@ -1,17 +1,6 @@
 import from typing { cast }
 
 walker CFGBuildPass(TreePass) {
-    static has contract: PassContract = PassContract(
-        provides=(
-            AnalysisFact.CFG_SUCC,
-            AnalysisFact.CFG_TRUE,
-            AnalysisFact.CFG_FALSE,
-            AnalysisFact.CFG_EXIT,
-
-        ),
-        kernel_safe=True
-    );
-
     def link_bbs(source: UniCFGNode, target: UniCFGNode) -> None;
     def _is_exit_target(source: UniCFGNode, target: UniCFGNode) -> bool;
     def _link_to(source: UniCFGNode, target: (UniCFGNode | None)) -> None;

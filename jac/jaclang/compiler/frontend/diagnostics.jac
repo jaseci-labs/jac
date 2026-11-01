@@ -1231,6 +1231,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          " scalar's storage only to a C function, where the write lands.",
          blocks_codegen=True
      ),
+     E1160 = _err(
+         "E1160",
+         Category.TYPE,
+         "'{name}' takes {expected}; this call passes {got}",
+         help="The fixed-width builtins have fixed signatures: a sized cast such as"
+         " `i32(x)` takes one number, `wrapping_add`/`wrapping_sub`/`wrapping_mul`/"
+         "`wrapping_shl` take two integers, and `wrapping_neg` takes one sized"
+         " integer.",
+         blocks_codegen=True
+     ),
      E1301 = _err(
          "E1301",
          Category.SEMANTIC,

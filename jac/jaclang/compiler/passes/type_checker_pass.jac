@@ -5,7 +5,6 @@ glob FW_INTERVAL_OPS: dict[str, str] = {
      };
 
 walker TypeCheckPass(TreePass) {
-    static has contract: PassContract = PassContract(provides=(AnalysisFact.TYPE_OF, ));
     has evaluator: TypeEvaluator postinit,
         _deferred_writes: list[tuple[Expr, (UniNode | None)]] postinit,
         _lambda_depth: int = 0,

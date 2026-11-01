@@ -9,6 +9,7 @@ codes, each pinned here with its line and column:
   E1127  a narrowing (or sign-changing) implicit conversion
   E1128  a binary operator whose operands have no common fixed-width type
   E1129  unary minus on an unsigned operand
+  E1160  a fixed-width builtin called with the wrong arity or a non-number
 
 The same program must check identically on the server and native lanes.
 """
@@ -18,7 +19,14 @@ import from tests.support { TESTS_DIR }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
 
-glob FW_CODES: tuple[str, ...] = ("E1126", "E1127", "E1128", "E1129", "E1130"),
+glob FW_CODES: tuple[str, ...] = (
+         "E1126",
+         "E1127",
+         "E1128",
+         "E1129",
+         "E1130",
+         "E1160"
+     ),
      VIRTUAL_PATH: str = os.path.join(
          TESTS_DIR, "compiler", "passes", "fixtures", "checker", "_fw_inline.jac"
      );
@@ -507,6 +515,22 @@ test "MIN, MAX, wrap and the wrapping_* builtins type-check with precise types" 
 test "wrapping_* over mismatched operands is E1128" {
     src = "with entry {\n    a: i8 = 1;\n    b: u8 = 1;\n    s = wrapping_add(a, b);\n}\n";
     assert fw_only(check(src)) == [("E1128", 4, 9)];
+}
+
+test "a fixed-width builtin with the wrong arity or a non-number is E1160" {
+    src = (
+        "with entry {\n"
+        "    a: i8 = 1;\n"
+        "    s = wrapping_add(a);\n"
+        "    n = wrapping_neg(a, a);\n"
+        "    c = i32(1, 2);\n"
+        "    t = wrapping_add(a, 'x');\n"
+        "}\n"
+    );
+    assert fw_only(check(src))
+        == [("E1160", 3, 9), ("E1160", 4, 9), ("E1160", 5, 9), ("E1160", 6, 9)] , fw_only(
+        check(src)
+    );
 }
 
 # ── lane parity ───────────────────────────────────────────────────

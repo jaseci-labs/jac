@@ -151,17 +151,6 @@ obj ImportedFunctions(FunctionSource) {
 }
 
 walker NaIRGenPass(CompilerPass) {
-    static has contract: PassContract = PassContract(
-        requires=(
-            AnalysisFact.TYPE_OF,
-            AnalysisFact.CFG_SUCC,
-            AnalysisFact.OWNERSHIP,
-            AnalysisFact.CAPABILITY,
-            AnalysisFact.RC_FACTS,
-
-        )
-    );
-
     has module: uni.Module,
         _llvm_module: (ir.Module | None) = None,
         _type_map: (dict[str, ir.Type] | None) = None,
@@ -979,6 +968,7 @@ walker NaIRGenPass(CompilerPass) {
         bind_records: list[dict[str, any]]
     ) -> None;
 
+    def _frontend_binding(nd: uni.FuncCall) -> (dict[str, uni.UniNode] | None);
     def _missing_argument(nd: uni.UniNode, t: ir.Type) -> ir.Value;
     def _default_thunk(func: ir.Function, slot: int, name: str) -> ir.Function;
     def _call_default_thunk(

@@ -497,7 +497,6 @@ impl TypeEvaluator._validate_call_type(
                 if self.validate_arg_types(
                     arg_param_match, checking_overload=True, mismatches=mismatches
                 ) {
-                    self.validate_arg_types(arg_param_match);
                     ret_type = overload.return_type;
 
                     if ret_type and _contains_unknown(ret_type) {
@@ -510,10 +509,12 @@ impl TypeEvaluator._validate_call_type(
                     }
 
                     if not _contains_unknown(ret_type or UnknownType()) {
+                        self.validate_arg_types(arg_param_match);
                         expr.callee_signature = overload;
                         return ret_type or UnknownType();
                     }
                     if _fallback_result is None {
+                        self.validate_arg_types(arg_param_match);
                         _fallback_result = ret_type;
                         expr.callee_signature = overload;
                     }

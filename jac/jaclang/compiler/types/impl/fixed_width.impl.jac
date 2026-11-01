@@ -495,10 +495,30 @@ impl fixed_width_call_type(
         and callee_type.is_builtin()
         and not callee_type.is_instance()
         and JAC_TYPE_REGISTRY.is_sized(callee_type.shared.class_name)
-        and len(args) == 1
     ) {
+        cast_name = callee_type.shared.class_name;
+        if len(args) != 1 {
+            evaluator.emit_diag(
+                E1160,
+                call,
+                name=cast_name,
+                expected="one number",
+                got=f"{len(args)} arguments"
+            );
+            return UnknownType(is_diagnosed=True);
+        }
         arg_type = evaluator.get_type_of_expression(args[0]);
         if numeric_name_of(arg_type) is None {
+            if _definitely_not_numeric(arg_type) {
+                evaluator.emit_diag(
+                    E1160,
+                    call,
+                    name=cast_name,
+                    expected="one number",
+                    got=str(arg_type)
+                );
+                return UnknownType(is_diagnosed=True);
+            }
             return None;
         }
         target = evaluator._convert_to_instance(callee_type);
@@ -512,35 +532,86 @@ impl fixed_width_call_type(
     }
     callee = call.target;
     for name in WRAPPING_BINARY_BUILTINS {
-        if _is_jac_builtin_fn(evaluator, callee, name) and len(args) == 2 {
-            left_type = evaluator.get_type_of_expression(args[0]);
-            right_type = evaluator.get_type_of_expression(args[1]);
-            if not both_numeric(left_type, right_type) {
-                return None;
-            }
-            unified = unify_numeric_operands(
-                evaluator, left_type, right_type, args[0], args[1], call, name
+        if not _is_jac_builtin_fn(evaluator, callee, name) {
+            continue;
+        }
+        if len(args) != 2 {
+            evaluator.emit_diag(
+                E1160,
+                call,
+                name=name,
+                expected="two integers",
+                got=f"{len(args)} arguments"
             );
-            if unified is None {
-                return UnknownType(is_diagnosed=True);
-            }
-            if JAC_TYPE_REGISTRY.is_sized(numeric_name_of(unified) or "") {
-                return unified;
+            return UnknownType(is_diagnosed=True);
+        }
+        left_type = evaluator.get_type_of_expression(args[0]);
+        right_type = evaluator.get_type_of_expression(args[1]);
+        if not both_numeric(left_type, right_type) {
+            for operand_type in (left_type, right_type) {
+                if _definitely_not_numeric(operand_type) {
+                    evaluator.emit_diag(
+                        E1160,
+                        call,
+                        name=name,
+                        expected="two integers",
+                        got=str(operand_type)
+                    );
+                    return UnknownType(is_diagnosed=True);
+                }
             }
             return None;
         }
+        unified = unify_numeric_operands(
+            evaluator, left_type, right_type, args[0], args[1], call, name
+        );
+        if unified is None {
+            return UnknownType(is_diagnosed=True);
+        }
+        if JAC_TYPE_REGISTRY.is_sized(numeric_name_of(unified) or "") {
+            return unified;
+        }
+        return None;
     }
     for name in WRAPPING_UNARY_BUILTINS {
-        if _is_jac_builtin_fn(evaluator, callee, name) and len(args) == 1 {
-            operand_type = evaluator.get_type_of_expression(args[0]);
-            operand = numeric_name_of(operand_type);
-            if operand is not None and JAC_TYPE_REGISTRY.is_sized(operand) {
-                return operand_type;
-            }
-            return None;
+        if not _is_jac_builtin_fn(evaluator, callee, name) {
+            continue;
         }
+        if len(args) != 1 {
+            evaluator.emit_diag(
+                E1160,
+                call,
+                name=name,
+                expected="one sized integer",
+                got=f"{len(args)} arguments"
+            );
+            return UnknownType(is_diagnosed=True);
+        }
+        operand_type = evaluator.get_type_of_expression(args[0]);
+        operand = numeric_name_of(operand_type);
+        if operand is not None and JAC_TYPE_REGISTRY.is_sized(operand) {
+            return operand_type;
+        }
+        if _definitely_not_numeric(operand_type) {
+            evaluator.emit_diag(
+                E1160,
+                call,
+                name=name,
+                expected="one sized integer",
+                got=str(operand_type)
+            );
+            return UnknownType(is_diagnosed=True);
+        }
+        return None;
     }
     return None;
+}
+
+impl _definitely_not_numeric(t: TypeBase) -> bool {
+    return isinstance(t, ClassType)
+        and t.is_instance()
+        and t.shared.class_name not in ("int", "float", "bool", "object")
+        and numeric_name_of(t) is None;
 }
 
 impl shift_result_type(

@@ -186,7 +186,6 @@ obj LayoutRegistry {
 }
 
 walker LayoutPass(CompilerPass) {
-    static has contract: PassContract = PassContract();
     has registry: LayoutRegistry postinit,
         isinstance_targets: set[str] postinit;
 

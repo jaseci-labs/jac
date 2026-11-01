@@ -267,8 +267,6 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          'jac_schedule_loading', `default=[]
      );
 
-def contract_of(p: type[CompilerPass]) -> PassContract;
-
 def validate_schedule(
     passes: PassSchedule,
     preprovided: (set[AnalysisFact] | None) = None,

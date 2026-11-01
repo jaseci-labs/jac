@@ -51,7 +51,7 @@ def _write_tmp(src: str) -> str {
 test "lint report scheduler uses JacLintCheckPass" {
     sched = product_passes(CompilationProduct.LINT);
     assert len(sched) == 1;
-    assert sched[0] is JacLintCheckPass;
+    assert sched[0].load() is JacLintCheckPass;
 }
 
 test "lint report path preserves every diagnostic the mutation pass emits" {

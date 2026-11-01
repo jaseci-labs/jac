@@ -78,6 +78,8 @@ def arithmetic_result_type(evaluator: TypeEvaluator, t: TypeBase) -> TypeBase;
 
 def both_numeric(left_type: TypeBase, right_type: TypeBase) -> bool;
 
+def _definitely_not_numeric(t: TypeBase) -> bool;
+
 def all_numeric(t: TypeBase) -> bool;
 
 def is_unsigned_type(t: TypeBase | None) -> bool;

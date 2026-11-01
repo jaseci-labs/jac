@@ -398,16 +398,19 @@ on every compile's critical path, the ANALYSIS spec's `precheck` calls
 
 ### How passes are scheduled
 
-Every pass declares its contract on its own class:
-`static has contract: PassContract = PassContract(requires=..., provides=...)`,
-naming the `AnalysisFact`s it needs and supplies, and `kernel_safe=True` for
-the passes the native kernel runs while it parses. A scheduled pass with no
-contract is a scheduling error, and a schedule whose pass requires a fact no
+Schedules are static data. `pass_registry.jac` holds one `PassStep` per
+pass: its `name` (the pass class name), its `contract`
+(`PassContract(requires=..., provides=...)`, naming the `AnalysisFact`s it
+needs and supplies, and `kernel_safe=True` for the passes the native kernel
+runs while it parses), and `load`, a function that imports and returns the
+pass class. Reading a schedule's names and contracts never imports a pass;
+only resolving a schedule to run it (and `unavailable`) calls `load`, so an
+`ImportError` surfaces there. A schedule whose pass requires a fact no
 earlier pass or recorded fact provides is rejected before any pass runs.
 
 One table, `PRODUCTS` in `pipeline.jac`, defines every schedule. Each
-`ProductSpec` names the products it `needs`, its pass list (built lazily, so
-the compiler can compile its own passes), its `bootstrap` variant, the
+`ProductSpec` names the products it `needs`, its step list (built per
+request from registry steps), its `bootstrap` variant, the
 modules it `loads`, the products whose tier it shares (`tier_with`), its
 import fallback, and whether a finished task is reused (`cached`). The
 facts a product guarantees are derived from its passes' contracts, and the

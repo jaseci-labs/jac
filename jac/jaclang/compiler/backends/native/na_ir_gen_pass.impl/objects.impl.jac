@@ -1205,14 +1205,28 @@ impl NaIRGenPass._demote_method_if_unlowerable(
     }
 
     _own = list(self.ctx.errors_had[local_mark:]);
-    _refusals = [refusal_from_alert(_diag) for _diag in _own];
+    _lowering = [
+        _diag
+        for _diag in _own
+        if _diag.code is not None and _diag.code.code in ("E5090", "E5092")
+    ];
+    if not _lowering {
+        return False;
+    }
+    _refusals = [refusal_from_alert(_diag) for _diag in _lowering];
     if self._legality is not None {
         self._legality.late[full_name] = _refusals;
     }
     required = self.prog.options.native_required_for(self.module.loc.mod_path)
         or self._owner_required(full_name);
     if not required and not self._lacks_python_body(full_name) {
+        kept = [
+            _diag
+            for _diag in _own
+            if not any(_diag is _r for _r in _lowering)
+        ];
         del self.ctx.errors_had[local_mark:];
+        self.ctx.errors_had.extend(kept);
     }
     self._place_unit_python(
         full_name, func, _refusals, keep_func=keep_func, stub_body=stub_body
@@ -1998,6 +2012,9 @@ impl NaIRGenPass._codegen_instantiation(
         return None;
     }
     _pos_field_pairs: list[tuple[str, uni.UniNode]] = [];
+    _ctor_bound = self._frontend_binding(nd)
+        if isinstance(nd, uni.FuncCall) and ctor_params is None and not _has_init
+        else None;
     _pos_all: list[uni.Expr] = [
         p
         for p in params
@@ -2030,7 +2047,11 @@ impl NaIRGenPass._codegen_instantiation(
             );
             return None;
         }
-        if _pos_args and not _msg_only {
+        if _ctor_bound is not None and not _msg_only {
+            for (_bound_field, _bound_arg) in _ctor_bound.items() {
+                _pos_field_pairs.append((_bound_field, _bound_arg));
+            }
+        } elif _pos_args and not _msg_only {
             _order = self.struct_constructor_order.get(type_name);
             if _order is None or len(_pos_args) > len(_order) {
                 self.emit(
@@ -2236,7 +2257,7 @@ impl NaIRGenPass._codegen_instantiation(
         _field_inits.extend(ctor_values.items());
     }
     for param in params {
-        if isinstance(param, uni.KWPair) and not _has_init {
+        if isinstance(param, uni.KWPair) and not _has_init and _ctor_bound is None {
             _kn = param.key.sym_name if param.key else None;
             if _kn is not None {
                 _field_inits.append((_kn, param.value));

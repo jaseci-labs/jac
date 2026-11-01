@@ -25,10 +25,6 @@ obj FrameFlow {
 }
 
 walker FlowCheckPass(CompilerPass) {
-    static has contract: PassContract = PassContract(
-        requires=(AnalysisFact.CFG_SUCC, ), provides=(AnalysisFact.FLOW_CHECKS, )
-    );
-
     def _run_impl(ir_in: Module) -> Module;
     can run_walk with Module entry;
     def _frames(flat: list[UniNode]) -> list[UniCFGNode];
