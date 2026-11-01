@@ -3623,6 +3623,7 @@ graph import {
     runtime.scalars ++> [
         compiler.backends.es.esast_gen_pass.EsastGenPass._apply_fw_coercion
             | compiler.backends.es.primitives_es.ESBuiltinEmitter.emit_print
+            | compiler.backends.native.mir.lower_types
             | compiler.backends.py.jcir_gen_pass
             | compiler.types.ct_eval
             | comptime._scalar_size_align { shape_of },
@@ -6300,6 +6301,7 @@ graph import compiler {
     type driver.program ++> backends.native.kernel_resolve
         | backends.native.kernel_stage0
         | backends.native.link_plan
+        | backends.native.mir.lower
         | capability_notes
         | frontend.host
         | frontend.parser.frontend
@@ -6485,6 +6487,13 @@ graph import compiler {
             is_kernel_unit_path
         },
         backends.native.link_plan._write_sidecar { native_unit_identity },
+        backends.native.mir.lower {
+            native_def_symbol,
+            native_symbol_name,
+            native_unit_identity,
+            native_unit_prefix,
+            native_unit_spelling
+        },
         backends.native.na_ir_gen_pass {
             HDR_ALLOC_ID_OFF,
             HDR_DTOR_OFF,
@@ -6883,6 +6892,22 @@ graph import compiler {
             | expr_keys.type_tag_borrows
             | passes.type_checker_pass.TypeCheckPass._check_c_function_def
             | types.type_evaluator.TypeEvaluator._c_lent_args { is_borrow_kind },
+        backends.native.mir.lower
+            | backends.native.na_ir_gen_pass.NaIRGenPass._flow_future_licensed
+            | backends.native.primitives_native
+            | c_interop.c_offset_address
+            | driver.wiring
+            | expr_keys
+            | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
+            | passes.graph_lowering_pass
+            | passes.mtir_gen_pass
+            | passes.ownership_check_pass.OwnershipCheckPass._emit_flow_for_diagnostics
+            | passes.type_checker_pass.TypeCheckPass.exit_impl_def
+            | tools.cfg_dot.CoalesceBBPass._node_label
+            | tools.comment_attach_pass
+            | tools.jac_auto_lint_pass
+            | types.operations
+            | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
         backends.native.na_ir_gen_pass {
             CodeContext,
             OwnershipKind,
@@ -6921,21 +6946,6 @@ graph import compiler {
             | passes.capability_check_pass.PortabilityWarnPass._check_js_globals
             | passes.import_wiring_pass
             | tools.reactive_use_walk { ExprCtx },
-        backends.native.na_ir_gen_pass.NaIRGenPass._flow_future_licensed
-            | backends.native.primitives_native
-            | c_interop.c_offset_address
-            | driver.wiring
-            | expr_keys
-            | passes.cfg_build_pass.CFGBuildPass.exit_ctrl_stmt
-            | passes.graph_lowering_pass
-            | passes.mtir_gen_pass
-            | passes.ownership_check_pass.OwnershipCheckPass._emit_flow_for_diagnostics
-            | passes.type_checker_pass.TypeCheckPass.exit_impl_def
-            | tools.cfg_dot.CoalesceBBPass._node_label
-            | tools.comment_attach_pass
-            | tools.jac_auto_lint_pass
-            | types.operations
-            | types.type_evaluator.TypeEvaluator._find_predicate_for { Tokens as Tok },
         backends.native.na_ir_gen_pass.NaIRGenPass._hl_view_base_licensed
             | driver.boundary_classify.module_own_native_anchor
             | passes.ownership_hints
@@ -9723,6 +9733,8 @@ graph import compiler {
         | backends.es.jsx_processor
         | backends.es.view_ir
         | backends.native.foreign
+        | backends.native.mir.lower
+        | backends.native.mir.lower_types
         | backends.native.na_compile_pass
         | backends.native.na_ir_gen_pass
         | driver.boundary_classify
@@ -10185,6 +10197,7 @@ graph import compiler {
     }
     passes.package_boundary_pass ++> driver.pipeline { PackageBoundaryPass }
     passes.placement_pass ++> [
+        backends.native.mir.lower_types { NativeRefusal },
         backends.native.na_ir_gen_pass { NativeLegality, NativeRefusal, NativeRefused },
         backends.native.na_ir_gen_pass.NaIRGenPass._demote_method_if_unlowerable {
             refusal_from_alert
@@ -10203,6 +10216,7 @@ graph import compiler {
     passes.placement_pass --> backends.native.na_compile_pass.NativeCompilePass._run_impl {
         settle_native_module
     }
+    type passes.placement_pass ++> backends.native.mir.lower { NativeRefusal }
     passes.pyast_load_pass ++> [
         driver.pipeline.python_ast_passes | tools.lang_tools { PyastBuildPass },
         tools.lang_tools.AstTool.py_uni_nodes { PyastBuildPass },
@@ -10516,6 +10530,7 @@ graph import compiler {
             | backends.es.jac_runtime_js._build_exc_runtime_js
             | backends.native.foreign
             | backends.native.host_facts.primitive_methods_fact
+            | backends.native.mir.emit
             | backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__
             | c_interop._spec_for_name
             | passes.layout_pass
@@ -10802,6 +10817,7 @@ graph import compiler {
             TypeBase
         },
         backends.es.esast_gen_pass.EsastGenPass._arch_kind_of_type
+            | backends.native.mir.lower_types
             | backends.native.na_ir_gen_pass.NaIRGenPass._agg_key_args
             | passes.capability_check_pass
             | passes.layout_pass.class_form_enum_scalar
@@ -10828,6 +10844,9 @@ graph import compiler {
         backends.es.esast_gen_pass.EsastGenPass._osp_expr_arch_name
             | backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_orderable
             | passes.layout_pass.enum_class_of { ClassType },
+        backends.native.mir.lower
+            | backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_return_type
+            | c_interop.c_param_type { FunctionType },
         backends.native.na_ir_gen_pass {
             ClassType,
             FunctionType as SemanticFunctionType,
@@ -10857,8 +10876,6 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._lower_clib_function_type {
             FunctionType as CallbackType
         },
-        backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_return_type
-            | c_interop.c_param_type { FunctionType },
         backends.native.na_ir_gen_pass.NaIRGenPass._typed_elem_llvm_of {
             TypeVarType as _TeTypeVar
         },
@@ -11024,7 +11041,8 @@ graph import compiler {
         },
     ]
     type types.types ++> [
-        backends.native.primitives_native
+        backends.native.mir.lower_types
+            | backends.native.primitives_native
             | frontend.unitree
             | passes.ownership_check_pass { TypeBase },
         c_interop { ClassType, TypeBase },
@@ -11336,6 +11354,7 @@ graph import compiler.backends.native {
     llvm.ir as ir ++> abi
         | lexical_scope
         | lowering
+        | mir.emit
         | na_ir_gen_pass
         | primitives_native;
     llvm.ir.types ++> link_glue.bind_shared_callbacks { _wrapname }
@@ -11560,6 +11579,44 @@ graph import compiler.backends.native.llvm.ir {
     values --> types.ArrayType.wrap_constant_value { Constant, Value }
     values as values ++> builder | module;
     type values ++> types { Constant, Value }
+}
+
+graph import compiler.backends.native.mir {
+    ir ++> [
+        emit { MirFunction, MirInstr, MirModule, MirOp, MirValue },
+        lower {
+            MirBlock,
+            MirBuilder,
+            MirFunction,
+            MirInstr,
+            MirModule,
+            MirOp,
+            MirParam,
+            MirValue
+        },
+    ]
+    lower_types ++> lower {
+        MirPosition,
+        MirRefused,
+        mir_class_type_named,
+        mir_refusal,
+        mir_type_of,
+        refusal_of
+    }
+    types ++> [
+        emit { MirKind, MirType },
+        ir { MirKind, MirType, mir_bool },
+        lower { MirKind, MirType, mir_bool, mir_float, mir_int, mir_none },
+        lower_types {
+            MirType,
+            mir_bool,
+            mir_float,
+            mir_int,
+            mir_none,
+            mir_str,
+            mir_str_ref
+        },
+    ]
 }
 
 graph import compiler.backends.py {
