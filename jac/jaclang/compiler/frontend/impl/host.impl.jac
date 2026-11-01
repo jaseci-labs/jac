@@ -221,10 +221,6 @@ impl HostServices.client_boundary_facts(
     return None;
 }
 
-impl HostServices.in_compiler_tree(path: str) -> bool {
-    return False;
-}
-
 impl HostServices.schedule_import_failed(err: ImportError) {}
 
 impl HostServices.client_osp_core_js -> str {
@@ -281,10 +277,6 @@ impl HostServices.run_module_pipeline(
     raise RuntimeError("no compiler host is installed");
 }
 
-impl HostServices.internal_program(program: JacProgram) -> (JacProgram | None) {
-    return None;
-}
-
 impl HostServices.bind_context_program(
     context_root: JacProgram, program: JacProgram
 ) {}
@@ -307,10 +299,6 @@ impl HostServices.load_modules(names: list[str]) {}
 
 impl HostServices.module_in_flight(names: list[str]) -> str {
     return "";
-}
-
-impl HostServices.import_in_flight(path: str) -> bool {
-    return False;
 }
 
 impl HostServices.has_active_stub_catalog -> bool {
@@ -336,10 +324,6 @@ impl HostServices.is_native_lowered_source(rel: str) -> bool {
 
 impl HostServices.default_target_triple -> str {
     return "";
-}
-
-impl HostServices.host_side -> HostServices {
-    return self;
 }
 
 impl active_host -> HostServices {

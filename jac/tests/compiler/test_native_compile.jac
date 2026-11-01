@@ -403,7 +403,7 @@ def prepared_view(base: Path, in_kernel: bool) -> dict[str, any] {
         return (False, False);
     }
     def in_process(program: JacProgram, path: str) -> tuple[bool, bool] {
-        return (not program.internal, True);
+        return (True, True);
     }
     route = in_process if in_kernel else host_only;
     sessions: list[str] = [];
@@ -860,7 +860,7 @@ test "an application with a client prepares through the kernel" {
     import from jaclang.compiler.driver.application { prepare_application }
     import jaclang.project.kernel_compile as kernel_compile_mod;
     def in_process(program: JacProgram, path: str) -> tuple[bool, bool] {
-        return (not program.internal, True);
+        return (True, True);
     }
     def sessions_for(base: Path, client: bool) -> list[str] {
         (base / 'jac.toml').write_text(CONFIG);

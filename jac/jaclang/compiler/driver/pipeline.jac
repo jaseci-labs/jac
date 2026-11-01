@@ -174,8 +174,7 @@ glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
              passes=ir_passes,
              bootstrap=bootstrap_ir_passes,
              loads=IR_LOADS,
-             tiered=True,
-             on_import_error=ImportFallback.BOOTSTRAP_INTERNAL
+             tiered=True
          ),
          CompilationProduct.FLOW: ProductSpec(passes=flow_passes, cached=True),
          CompilationProduct.PLACEMENT: ProductSpec(action=place_module, acts=True),
@@ -278,14 +277,11 @@ def tier_reason(product: CompilationProduct) -> str;
 def resolve(
     product: CompilationProduct,
     request: (ProductRequest | None) = None,
-    internal: bool = False,
     peer_fell_back: bool = False
 ) -> tuple[(PassSchedule | None), bool, bool];
 
 def schedule_for(
-    product: CompilationProduct,
-    request: (ProductRequest | None) = None,
-    internal: bool = False
+    product: CompilationProduct, request: (ProductRequest | None) = None
 ) -> (PassSchedule | None);
 
 def unavailable(product: CompilationProduct) -> str;

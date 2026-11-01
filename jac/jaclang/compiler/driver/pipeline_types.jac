@@ -65,7 +65,6 @@ enum CompilationProduct {
 enum ImportFallback {
     RAISE = "raise",
     BOOTSTRAP = "bootstrap",
-    BOOTSTRAP_INTERNAL = "bootstrap-internal",
     REPORT = "report"
 }
 

@@ -1178,9 +1178,7 @@ impl IfaceRegistry._verify_analysis(resolved: str, options: any, prof: dict[str,
 }
 
 impl artifact_cache_path(path: str, program: JacProgram) -> Path {
-    selected = program_for(path, program);
-    owner_options = None if selected.internal else selected.options;
-    with cache_scope(owner_options) {
+    with cache_scope(program_for(path, program).options) {
         return get_module_cache_path(path);
     }
 }

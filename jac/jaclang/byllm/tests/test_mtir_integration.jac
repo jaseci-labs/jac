@@ -31,7 +31,7 @@ import from jaclang.runtime.semantic {
     type_to_str,
 }
 import from jaclang.compiler.driver.program { JacProgram }
-import from support { fixture_path, load_fixture, need_outside_jaclang }
+import from support { fixture_path, load_fixture }
 
 # =============================================================================
 # Schema Generation Data Structure Tests
@@ -479,7 +479,6 @@ test "scope name generation algorithm" {
 }
 
 test "imported function scope resolution" {
-    need_outside_jaclang(fixture_path("importer_main.jac"));
     importer = load_fixture("importer_main");
 
     assert JacRuntime.program is not None;
@@ -759,7 +758,6 @@ test "enum in schema generation" {
 # Scope Resolution Consistency Tests (Runtime vs Compile-time)
 # =============================================================================
 test "same function name different files resolve distinctly" {
-    need_outside_jaclang(fixture_path("scope_main.jac"));
     load_fixture("scope_main");
 
     assert JacRuntime.program is not None;
@@ -803,7 +801,6 @@ test "same function name different files resolve distinctly" {
 }
 
 test "submodule MTIR keyed by import fullname" {
-    need_outside_jaclang(fixture_path("scope_main.jac"));
     # Force re-execution so our exec_module rename fires against the fresh program.
     for name in [
         "scope_main",
@@ -849,7 +846,6 @@ test "submodule MTIR keyed by import fullname" {
 }
 
 test "compiled MTIR keeps the params, tools and fields a call site needs" {
-    need_outside_jaclang(fixture_path("call_site_lists.jac"));
     mod = load_fixture("call_site_lists");
     describe = JacRuntime.fetch_mtir(mod.describe);
     assert isinstance(describe, FunctionInfo);

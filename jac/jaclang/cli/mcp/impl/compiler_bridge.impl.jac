@@ -92,10 +92,8 @@ impl CompilerBridge.typecheck_snippet(
     }
     def _do_typecheck(tmp_path: str) -> dict[str, any] {
         program = JacProgram();
-        compiler = Jac.get_compiler();
-
-        ir = compiler.compile(
-            tmp_path, program, use_str=code, options=CompileOptions(no_cgen=True)
+        ir = program.compile(
+            tmp_path, use_str=code, options=CompileOptions(no_cgen=True)
         );
 
         errors: list[dict[str, any]] = [];
@@ -161,11 +159,8 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
         };
     }
     def _do_py2jac(tmp_path: str) -> dict[str, any] {
-        compiler = Jac.get_compiler();
-
         program = JacProgram();
-
-        ir = compiler.compile(tmp_path, program);
+        ir = program.compile(tmp_path);
 
         warnings: list[str] = [];
         for w in program.warnings_had {

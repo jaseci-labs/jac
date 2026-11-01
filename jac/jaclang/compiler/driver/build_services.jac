@@ -1,7 +1,6 @@
 obj CompilerBuildServices(BuildServices) {
     def compiler -> JacCompiler;
     def program -> JacProgram;
-    def selfhost -> SelfHostCache;
     def client_builder -> ClientBundleBuilder;
     def prepare_application(
         entry_path: str,

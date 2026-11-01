@@ -274,10 +274,6 @@ impl ProjectHost.client_boundary_facts(
     return self.iface_registry_for(program).client_boundary_facts(path);
 }
 
-impl ProjectHost.in_compiler_tree(path: str) -> bool {
-    return is_compiler_tree_path(path);
-}
-
 impl ProjectHost.schedule_import_failed(err: ImportError) {
     raise err;
 }
@@ -640,10 +636,6 @@ impl ProjectHost.native_session_active(program: JacProgram) -> bool {
     return natives is not None and natives.session is not None;
 }
 
-impl ProjectHost.internal_program(program: JacProgram) -> (JacProgram | None) {
-    return None;
-}
-
 impl ProjectHost.bind_context_program(context_root: JacProgram, program: JacProgram) {
     program._compiler = self.compiler_for(context_root);
     root_iface = context_root._iface;
@@ -696,10 +688,6 @@ impl ProjectHost.load_modules(names: list[str]) {}
 
 impl ProjectHost.module_in_flight(names: list[str]) -> str {
     return "";
-}
-
-impl ProjectHost.import_in_flight(path: str) -> bool {
-    return False;
 }
 
 impl ProjectHost.has_active_stub_catalog -> bool {

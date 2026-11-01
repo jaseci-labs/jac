@@ -1686,10 +1686,6 @@ impl JacLLM.get_mtir_from_map(scope: str) -> (Info | None) {
     }
     owner = JacRuntime.program.context_root or JacRuntime.program;
     programs = [owner, *owner.contexts.values()];
-    internal = JacRuntime.get_compiler().selfhost.peek_program();
-    if internal is not None {
-        programs.append(internal);
-    }
     for program in programs {
         found = program.mtir_map.get(scope);
         if found is not None {
@@ -2020,7 +2016,6 @@ impl JacRuntime.reset_process_state(cls: any, clear_modules: bool = True) -> Non
     }
     cls.program = None;
     cls.compiler = None;
-    cls.selfhost = None;
     import from jaclang.project.config { set_config }
     set_config(None);
 }
@@ -2045,14 +2040,6 @@ impl JacRuntime.get_program(cls: any) -> JacProgram {
         cls.program = prog;
     }
     return cls.program;
-}
-
-impl JacRuntime.get_selfhost(cls: any) -> SelfHostCache {
-    if (cls.selfhost is None) {
-        import from jaclang.runtime.build_services { build_services }
-        cls.selfhost = build_services().selfhost();
-    }
-    return cls.selfhost;
 }
 
 impl JacRuntime.shared_root_id -> (UUID | None) {

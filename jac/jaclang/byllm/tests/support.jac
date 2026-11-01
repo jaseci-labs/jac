@@ -398,30 +398,6 @@ def need(module: str, package: str = "") {
 }
 
 
-"""Skip the calling test unless `path` compiles into the runtime's own program; fail
-instead under `JAC_TEST_STRICT`.
-
-A file inside the jaclang package compiles into the compiler's program instead, so the
-MTIR it registers never reaches `JacRuntime.program`. CI runs such tests from a copy.
-"""
-def need_outside_jaclang(path: str) {
-    import from jaclang.runtime.runtime { JacRuntime }
-    import from jaclang.testing.test_runner { strict_mode }
-    program = JacRuntime.get_program();
-    if JacRuntime.get_selfhost().resolve(path, program) is program {
-        return;
-    }
-    reason = (
-        "this fixture compiles into the compiler's own program here; "
-        "run from a copy outside the jaclang tree, as CI does"
-    );
-    if strict_mode() {
-        raise AssertionError(f"{reason} (JAC_TEST_STRICT is set)");
-    }
-    testskip(reason);
-}
-
-
 """The whole conversation of call `n` as one string, for `in` assertions.
 
 Use it to ask whether something reached the model at all. For questions about

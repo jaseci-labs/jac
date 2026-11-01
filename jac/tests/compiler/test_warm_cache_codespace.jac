@@ -59,11 +59,8 @@ import from jaclang.compiler.driver.jir {
 import from jaclang.testing.cl_test_runner { _COLOR_CACHE, module_is_client }
 
 glob SYMBOL_UTILS: str = os.path.join(
-         os.path.dirname(str(jaclang.__file__)), "compiler", "symbol_utils.jac"
-     ),
-     EXPR_KEYS: str = os.path.join(
-         os.path.dirname(str(jaclang.__file__)), "compiler", "expr_keys.jac"
-     );
+    os.path.dirname(str(jaclang.__file__)), "compiler", "symbol_utils.jac"
+);
 
 
 """A module object whose spec claims `path` is mid-import, as an importer does."""
@@ -357,40 +354,6 @@ test "every scheduled pass and loader import is a declared schedule dependency" 
                 "reached from its import would run the schedule that needs it"
             );
         }
-    }
-}
-
-
-test "a compile that re-enters the module being imported says so" {
-    # The kernel's early passes carry their own expr_keys, so only the
-    # bytecode frontend reaches the module this test holds mid-import.
-    import from unittest.mock { patch }
-    import jaclang.compiler.native_compiler as native_compiler;
-    ek = sys.modules["jaclang.compiler.expr_keys"];
-    saved_fn = ek.collect_assigned_symbols;
-    sys.modules["jac_reentrant_probe"] = initializing_stub(EXPR_KEYS);
-    delattr(ek, "collect_assigned_symbols");
-    try {
-        prog = JacProgram();
-        compiler = prog._get_compiler();
-        raised = False;
-        try {
-            with patch.object(native_compiler, "ensure_loaded", return_value=None) {
-                compiler.compile(
-                    file_path=EXPR_KEYS,
-                    target_program=compiler.selfhost.program,
-                    options=CompileOptions(no_cgen=True)
-                );
-            }
-        } except CompilerSourceError as loud {
-            raised = True;
-            assert "re-entered" in str(loud) , str(loud);
-            assert "jaclang.compiler.expr_keys" in str(loud) , str(loud);
-        }
-        assert raised , "a re-entrant compile degraded quietly instead of refusing";
-    } finally {
-        setattr(ek, "collect_assigned_symbols", saved_fn);
-        del sys.modules["jac_reentrant_probe"];
     }
 }
 

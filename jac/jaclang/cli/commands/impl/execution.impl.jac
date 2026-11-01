@@ -1510,16 +1510,10 @@ impl _load_executable(
     filename: str, base: str, main: bool, force_codespace: str = ''
 ) -> types.ModuleType {
     program = Jac.get_program();
-    compiler = program._get_compiler();
-    compiler_owned = compiler.selfhost.is_selfhost(
-        compiler.selfhost.resolve(filename, program)
-    );
     config = get_config_for_path(Path(filename));
-    if config is not None and config.project_root is not None {
-        compiler_owned = compiler_owned
-            or _in_compiler_tree(Path(filename), config.project_root);
-    }
-    if compiler_owned {
+    if config is not None
+        and config.project_root is not None
+        and _in_compiler_tree(Path(filename), config.project_root) {
         modules = Jac.jac_import(
             target=os.path.splitext(os.path.basename(filename))[0],
             base_path=base,

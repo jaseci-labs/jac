@@ -232,7 +232,7 @@ test "preparation does not execute modules and warm restoration does not compile
         forget(str(path));
         with patch.object(
             JacCompiler,
-            '_compile_pipeline',
+            '_adopt_kernel_compile',
             side_effect=AssertionError('warm preparation entered the compiler')
         ) {
             second = prepare_application(str(path), JacProgram(), tmp);
@@ -727,7 +727,7 @@ test "runtime logs and toolchain directories do not become application inputs" {
             log.write_text('still running');
             with patch.object(
                 JacCompiler,
-                '_compile_pipeline',
+                '_adopt_kernel_compile',
                 side_effect=AssertionError('log invalidated revision')
             ) {
                 prepare_application(str(path), JacProgram(), tmp);
@@ -890,7 +890,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 }
                 with patch.object(
                     JacCompiler,
-                    '_compile_pipeline',
+                    '_adopt_kernel_compile',
                     side_effect=AssertionError('sealed source was compiled')
                 ), patch.object(
                     JacCompiler,
@@ -1119,7 +1119,7 @@ test "unrelated source changes do not invalidate a prepared dependency closure" 
             unrelated.write_text('def other -> int { return 3; }\n');
             with patch.object(
                 JacCompiler,
-                '_compile_pipeline',
+                '_adopt_kernel_compile',
                 side_effect=AssertionError('unrelated source invalidated preparation')
             ) {
                 prepare_application(str(path), JacProgram(), tmp);
@@ -1367,13 +1367,12 @@ test "a preparation on another thread neither breaks nor wedges an in-process pr
         path.write_text("def:pub hello -> int { return 1; }\n");
         extra.write_text("def:pub other -> int { return 2; }\n");
         program = JacProgram();
-        compiler = program._get_compiler();
         first = prepare_application(str(path), program, tmp);
         releasing = threading.Event();
         compiling = threading.Event();
         released = threading.Event();
         original_release = application._release_compile_state;
-        original_enter = JacCompiler.enter_compile;
+        original_adopt = JacCompiler._adopt_kernel_compile;
         def held_release(owner: any) {
             releasing.set();
             compiling.wait(5);
@@ -1383,14 +1382,13 @@ test "a preparation on another thread neither breaks nor wedges an in-process pr
                 released.set();
             }
         }
-        def held_enter(self: any, ctx: any) -> any {
-            frame = original_enter(self, ctx);
+        def held_adopt(self: any, full_target: str, prog: any, options: any) -> any {
             if threading.current_thread().name == 'dynamic-import'
                 and not compiling.is_set() {
                 compiling.set();
                 released.wait(5);
             }
-            return frame;
+            return original_adopt(self, full_target, prog, options);
         }
         errors: list[str] = [];
         def reprepare {
@@ -1411,7 +1409,7 @@ test "a preparation on another thread neither breaks nor wedges an in-process pr
         path.write_text("def:pub hello -> int { return 3; }\n");
         try {
             with patch.object(application, '_release_compile_state', held_release) {
-                with patch.object(JacCompiler, 'enter_compile', held_enter) {
+                with patch.object(JacCompiler, '_adopt_kernel_compile', held_adopt) {
                     threads = [
                         threading.Thread(target=reprepare, name='hmr-reprepare'),
                         threading.Thread(target=dynamic, name='dynamic-import')
@@ -1424,9 +1422,6 @@ test "a preparation on another thread neither breaks nor wedges an in-process pr
             }
             assert not stuck , f"workers still running: {stuck}";
             assert not errors , errors;
-            assert compiler._reentrant_depth == 0 , (
-                f"the compiler was left {compiler._reentrant_depth} compiles deep"
-            );
             path.write_text("def:pub hello -> int { return 4; }\n");
             assert application.reprepare_application(first, program).code;
         } finally {
@@ -1434,74 +1429,6 @@ test "a preparation on another thread neither breaks nor wedges an in-process pr
                 forget(str(path));
             }
         }
-    } finally {
-        if not stuck {
-            shutil.rmtree(tmp, ignore_errors=True);
-        }
-    }
-}
-
-test "compiles on two threads leave the compiler free to release" {
-    import threading;
-    tmp = tempfile.mkdtemp(prefix='jac-compile-threads-');
-    stuck: list[str] = [];
-    try {
-        base = Path(tmp);
-        first = base / 'first.jac';
-        second = base / 'second.jac';
-        first.write_text("def:pub one -> int { return 1; }\n");
-        second.write_text("def:pub two -> int { return 2; }\n");
-        program = JacProgram();
-        compiler = program._get_compiler();
-        first_entered = threading.Event();
-        second_entered = threading.Event();
-        first_done = threading.Event();
-        original_enter = JacCompiler.enter_compile;
-        def held_enter(self: any, ctx: any) -> any {
-            frame = original_enter(self, ctx);
-            name = threading.current_thread().name;
-            if name == 'first' and not first_entered.is_set() {
-                first_entered.set();
-                assert second_entered.wait(120) , "the second compile never started";
-            } elif name == 'second' and not second_entered.is_set() {
-                second_entered.set();
-                assert first_done.wait(120) , (
-                    "the first compile did not finish before the second"
-                );
-            }
-            return frame;
-        }
-        errors: list[str] = [];
-        def compile_one(path: Path) {
-            try {
-                if path == second {
-                    first_entered.wait(60);
-                }
-                compiler.compile(str(path), program);
-            } except Exception as e {
-                errors.append(f"{path.name}: {e}");
-            } finally {
-                if path == first {
-                    first_done.set();
-                }
-            }
-        }
-        with patch.object(JacCompiler, 'enter_compile', held_enter) {
-            threads = [
-                threading.Thread(target=compile_one, args=(first, ), name='first'),
-                threading.Thread(target=compile_one, args=(second, ), name='second')
-            ];
-            for thread in threads {
-                thread.start();
-            }
-            stuck.extend(_join_all(threads));
-        }
-        assert not stuck , f"workers still running: {stuck}";
-        assert not errors , errors;
-        assert compiler._reentrant_depth == 0 , (
-            f"the compiler was left {compiler._reentrant_depth} compiles deep"
-        );
-        compiler.release_compile_state(program);
     } finally {
         if not stuck {
             shutil.rmtree(tmp, ignore_errors=True);
@@ -1575,77 +1502,6 @@ test "a dev reload waits for the preparation lock before it takes the import loc
     assert waiting == [False] , (
         "the reload waited for the preparation lock while holding the import lock"
     );
-}
-
-test "a compile that leaves first keeps the closure of one still running" {
-    import threading;
-    tmp = tempfile.mkdtemp(prefix='jac-compile-closure-');
-    stuck: list[str] = [];
-    try {
-        base = Path(tmp);
-        first = base / 'first.jac';
-        second = base / 'second.jac';
-        first.write_text("def:pub one -> int { return 1; }\n");
-        second.write_text("def:pub two -> int { return 2; }\n");
-        program = JacProgram();
-        compiler = program._get_compiler();
-        first_entered = threading.Event();
-        second_entered = threading.Event();
-        first_done = threading.Event();
-        kept: list[bool] = [];
-        original_enter = JacCompiler.enter_compile;
-        def held_enter(self: any, ctx: any) -> any {
-            frame = original_enter(self, ctx);
-            name = threading.current_thread().name;
-            if name == 'first' and not first_entered.is_set() {
-                first_entered.set();
-                assert second_entered.wait(120) , "the second compile never started";
-            } elif name == 'second' and not second_entered.is_set() {
-                second_entered.set();
-                assert first_done.wait(120) , (
-                    "the first compile did not finish before the second"
-                );
-                kept.append(self._closure_opts is not None);
-            }
-            return frame;
-        }
-        errors: list[str] = [];
-        def compile_one(path: Path) {
-            try {
-                if path == second {
-                    first_entered.wait(60);
-                }
-                compiler.compile(str(path), program);
-            } except Exception as e {
-                errors.append(f"{path.name}: {e}");
-            } finally {
-                if path == first {
-                    first_done.set();
-                }
-            }
-        }
-        with patch.object(JacCompiler, 'enter_compile', held_enter) {
-            threads = [
-                threading.Thread(target=compile_one, args=(first, ), name='first'),
-                threading.Thread(target=compile_one, args=(second, ), name='second')
-            ];
-            for thread in threads {
-                thread.start();
-            }
-            stuck.extend(_join_all(threads));
-        }
-        assert not stuck , f"workers still running: {stuck}";
-        assert not errors , errors;
-        assert kept == [True] , (
-            "the compile that left first cleared the closure options of the one still running"
-        );
-        assert compiler._closure_opts is None;
-        assert compiler._reentrant_depth == 0;
-    } finally {
-        if not stuck {
-            shutil.rmtree(tmp, ignore_errors=True);
-        }
-    }
 }
 
 obj _ReloadProbe {

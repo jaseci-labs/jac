@@ -345,7 +345,7 @@ test "a compiled cross-app import is reported as a consumer/provider edge" {
 }
 
 
-test "edge analysis visits modules registered while analyzing either hub" {
+test "edge analysis visits modules registered while analyzing" {
     import from types { SimpleNamespace }
     import from unittest.mock { patch }
     import from jaclang.compiler.driver.program { JacProgram }
@@ -359,28 +359,27 @@ test "edge analysis visits modules registered while analyzing either hub" {
     }
     first = module([]);
     added = module([("web", "orders")]);
-    internal = module([]);
+    middle = module([]);
     final = module([("orders", "db")]);
-    user_hub = {"first": first};
-    compiler_hub = {"internal": internal};
+    def seed(prog: any, *args: any, **kwargs: any) -> any {
+        prog.mod.hub["first"] = first;
+        return first;
+    }
     def analyze(prog: any, mod: any, product: any) -> bool {
         if mod is first {
-            user_hub["added"] = added;
+            prog.mod.hub["added"] = added;
+            prog.mod.hub["middle"] = middle;
         }
-        if mod is internal {
-            compiler_hub["final"] = final;
+        if mod is middle {
+            prog.mod.hub["final"] = final;
         }
         return True;
     }
     import jaclang.compiler.driver.pipeline as pipeline;
-    with patch.object(JacProgram, "compile"), patch.object(
-        JacProgram, "execution_hubs", return_value=[user_hub, compiler_hub]
-    ), patch.object(pipeline, "require", analyze) {
+    with patch.object(JacProgram, "compile", seed), patch.object(
+        pipeline, "require", analyze
+    ) {
         edges = _compiled_app_edges("main.jac", "web", "web-app", "/tmp");
-        assert set(edges) == {("web", "orders"), ("orders", "db")} , (
-            edges,
-            list(user_hub),
-            list(compiler_hub)
-        );
+        assert set(edges) == {("web", "orders"), ("orders", "db")} , edges;
     }
 }

@@ -6,10 +6,6 @@ impl CompilerBuildServices.program -> JacProgram {
     return JacProgram();
 }
 
-impl CompilerBuildServices.selfhost -> SelfHostCache {
-    return SelfHostCache();
-}
-
 impl CompilerBuildServices.client_builder -> ClientBundleBuilder {
     return make_client_bundle_builder();
 }

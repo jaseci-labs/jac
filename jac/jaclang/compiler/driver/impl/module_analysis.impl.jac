@@ -6,7 +6,6 @@ impl ModuleAnalysis.parse {
     existing = self.program.mod.hub.get(os.path.realpath(self.path));
     built = self.program.analysis.peek(existing) if existing is not None else None;
     if self.source is None
-        and not self.program.internal
         and existing is not None
         and not existing.stub_only
         and not existing.parse_failed
@@ -104,8 +103,7 @@ impl run_analysis(task: ModuleAnalysis) {
     host = active_host();
     _annex_of_base = host.path_facts(task.path).is_annex
         and host.base_file(str(task.path)) is not None;
-    _unasked = task.options.skip_analysis
-        or (program.internal and host.import_in_flight(task.path));
+    _unasked = task.options.skip_analysis;
     _client = module is not None
         and not task.parse_failed
         and module.declares_codespace(_CodeCtx.CLIENT, path_hint=task.path);

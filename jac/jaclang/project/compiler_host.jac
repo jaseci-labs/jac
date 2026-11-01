@@ -129,7 +129,6 @@ obj ProjectHost(HostServices) {
     def iface_registry_for(program: JacProgram) -> IfaceRegistry;
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
-    def in_compiler_tree(path: str) -> bool;
     def schedule_import_failed(err: ImportError);
     def client_osp_core_js -> str;
     def client_stub_globals -> list[str];
@@ -162,7 +161,6 @@ obj ProjectHost(HostServices) {
     ) -> Module;
 
     def native_session_active(program: JacProgram) -> bool;
-    def internal_program(program: JacProgram) -> (JacProgram | None);
     def bind_context_program(context_root: JacProgram, program: JacProgram);
     def note_program_dependency(program: JacProgram, resolved_path: str);
     def forget_program_products(program: JacProgram, resolved_path: str);
@@ -171,7 +169,6 @@ obj ProjectHost(HostServices) {
     def collect_released_memory;
     def load_modules(names: list[str]);
     def module_in_flight(names: list[str]) -> str;
-    def import_in_flight(path: str) -> bool;
     def has_active_stub_catalog -> bool;
     def typeshed_unavailable_reason -> str;
     def is_native_only_source(rel: str) -> bool;

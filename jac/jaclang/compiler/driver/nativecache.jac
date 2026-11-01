@@ -200,6 +200,7 @@ obj NativeBuildSession {
     def finish(paths: list[str]);
     def _optimize_in_parallel(paths: list[str]) -> set[str];
     def _finish(paths: list[str]);
+    def _persist_unit(path: str, mod: any);
     def close;
 }
 

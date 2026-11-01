@@ -128,7 +128,7 @@ impl module_record(
     if program is None {
         return _record_at(real);
     }
-    actual = program._get_compiler().product_program(real, program, execution=True);
+    actual = program._get_compiler().product_program(real, program);
     with cache_scope(owner_scope_options(actual)) {
         return _record_at(real);
     }

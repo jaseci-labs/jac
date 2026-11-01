@@ -12,46 +12,6 @@ import from jaclang.compiler.driver.program { JacProgram }
 
 glob SRC = "def area(r: float) -> float { return 3.14 * r * r; }\n";
 
-test "direct compiler source compilation retains analysis across nested import eviction" {
-    import marshal;
-    import tempfile;
-    import from pathlib { Path }
-    import from unittest.mock { patch }
-    import jaclang.compiler.driver.pass_driver as compiler_mod;
-    import from jaclang.compiler.driver.compile_options { CompileOptions }
-    compiler = JacProgram()._get_compiler();
-    program = compiler.selfhost.program;
-    original_run = compiler_mod.run_pass;
-    evictions: list[str] = [];
-
-    def run_and_evict(pass_cls: any, mod: any, prog: any, **kwargs: any) -> any {
-        result = original_run(pass_cls, mod, prog, **kwargs);
-        if pass_cls.__name__ == "CFGBuildPass" and prog is program {
-            evictions.append(mod.loc.mod_path);
-            compiler.selfhost.evict_unit(mod.loc.mod_path, None, collect=False);
-        }
-        return result;
-    }
-
-    with tempfile.TemporaryDirectory() as directory {
-        source = str(Path(directory) / "direct_compile.jac");
-        with patch.object(compiler_mod, "run_pass", side_effect=run_and_evict) {
-            mod = compiler.compile(
-                source,
-                target_program=program,
-                use_str="glob answer: int = 42;\n",
-                options=CompileOptions(force_codespace="server")
-            );
-        }
-        assert evictions;
-        assert mod.gen.py_bytecode is not None;
-        namespace: dict[str, any] = {"__name__": "direct_compile", "__file__": source};
-        exec(marshal.loads(mod.gen.py_bytecode), namespace);
-        assert namespace["answer"] == 42;
-        assert not program.mod.hub;
-    }
-}
-
 test "programs hydrate independent semantic objects from shared catalog bytes" {
     first = JacProgram();
     second = JacProgram();
@@ -109,15 +69,12 @@ test "a fully compiled module is collectable after release_compile_closure" {
     );
 }
 
-test "a compiler phase boundary collects both application and selfhost trees" {
+test "a compiler phase boundary collects application trees" {
     prog = JacProgram();
     compiler = prog._get_compiler();
-    internal = compiler.selfhost.program;
     (_, app_ref, _, _) = _probe(prog);
-    (_, internal_ref, _, _) = _probe(internal);
     compiler.release_compile_state(prog);
     assert app_ref() is None;
-    assert internal_ref() is None;
     # Releasing working state must leave the compiler reusable.
     (_, next_ref, _, _) = _probe(prog);
     assert next_ref() is not None;
@@ -150,29 +107,12 @@ def _stub_probe(prog: JacProgram) -> any {
 
 test "a compiler phase boundary releases stub roots as well as source trees" {
     import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    internal = JacProgram();
-    compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
-    internal._compiler = compiler;
+    compiler = JacCompiler();
     program = JacProgram();
     program._compiler = compiler;
     app_stub = _stub_probe(program);
-    bootstrap_stub = _stub_probe(internal);
     compiler.release_compile_state(program);
     assert app_stub() is None , "completed application still owns its stub trees";
-    assert bootstrap_stub() is None , "completed compiler still owns bootstrap stubs";
-}
-
-test "activating the catalog releases the compiler's bootstrap stub trees" {
-    import from jaclang.compiler.driver.compiler { JacCompiler }
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    internal = JacProgram();
-    compiler = JacCompiler(_selfhost=SelfHostCache(_program=internal));
-    internal._compiler = compiler;
-    bootstrap_stub = _stub_probe(internal);
-    assert compiler.ensure_stub_catalog() is not None;
-    gc.collect();
-    assert bootstrap_stub() is None , "the active catalog still retains bootstrap stubs";
 }
 
 glob STUB_SRC: str = (
@@ -185,20 +125,16 @@ glob STUB_SRC: str = (
      );
 
 def _stub_modules(prog: JacProgram) -> dict[str, any] {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
     out: dict[str, any] = {};
-    for p in [prog, Jac.get_compiler().selfhost.program] {
-        for (path, mod) in p.mod.hub.items() {
-            if path.endswith(".pyi") {
-                out[path] = weakref.ref(mod);
-            }
+    for (path, mod) in prog.mod.hub.items() {
+        if path.endswith(".pyi") {
+            out[path] = weakref.ref(mod);
         }
     }
     return out;
 }
 
 test "typeshed never enters the hub and builtins bindings survive a release" {
-    import from jaclang.runtime.runtime { JacRuntime as Jac }
     prog = JacProgram();
     first = prog.compile(file_path="stub_retention_probe.jac", use_str=STUB_SRC);
     assert first is not None and not prog.errors_had , f"{[
@@ -210,7 +146,6 @@ test "typeshed never enters the hub and builtins bindings survive a release" {
         "catalog serves them and nothing should parse a stdlib .pyi into a hub"
     );
     prog.release_compile_closure();
-    Jac.get_compiler().selfhost.program.release_compile_closure();
     gc.collect();
     second = prog.compile(
         file_path="stub_retention_probe_2.jac", use_str=STUB_SRC + "# second unit\n"
@@ -247,29 +182,6 @@ test "releasing a closure drops the evaluator and keeps the session catalog" {
     }
     gc.collect();
     assert catalog() is None , "a fully released catalog is still owned outside its session";
-}
-
-test "compiler execution retains its own analysis until the outer import completes" {
-    import from jaclang.compiler.driver.selfhost { SelfHostCache }
-    prog = JacProgram();
-    cache = SelfHostCache(_program=prog);
-    (path, mod_ref, kid_ref, anchor_ref) = _probe(prog);
-    cache.enter_execution();
-    try {
-        cache.enter_execution();
-        try {
-            cache.evict_unit(path, None, collect=False);
-            assert prog.find_module(path) is not None;
-        } finally {
-            cache.exit_execution();
-        }
-        assert prog.find_module(path) is not None;
-    } finally {
-        cache.exit_execution();
-    }
-    assert prog.find_module(path) is None;
-    gc.collect();
-    assert mod_ref() is None and kid_ref() is None and anchor_ref() is None;
 }
 
 test "closure release drops native products while retaining execution carriers" {

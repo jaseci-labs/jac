@@ -470,11 +470,6 @@ impl precompile_native_unit(jac_path: str, collect: bool = True) -> str {
 impl precompile_context(
     jac_path: str, pkg_root: str, program: JacProgram, app: str = ""
 ) -> JacProgram {
-    compiler = program._get_compiler();
-    selected = compiler.selfhost.resolve(jac_path, program);
-    if compiler.selfhost.is_selfhost(selected) {
-        return selected;
-    }
     entry_path = os.path.join(pkg_root, '__init__.jac');
     if os.path.isfile(os.path.join(pkg_root, 'jac.toml')) {
         import from jaclang.project.config { get_config_for_path }
@@ -507,7 +502,6 @@ impl precompile_unit_context(
         os.path.realpath(jac_path), app
     );
     selected = precompile_context(jac_path, pkg_root, program, source_app);
-    compiler.unit_collect = collect;
     owner_options = owner_scope_options(selected);
     with cache_scope(owner_options) {
         try {
@@ -517,9 +511,6 @@ impl precompile_unit_context(
                 if selected.context_root is not None
                 else selected;
             owner.release_compile_closure(collect=collect);
-            if owner is not compiler.selfhost.program {
-                compiler.selfhost.program.release_compile_closure(collect=collect);
-            }
             maybe_malloc_trim();
         }
     }
@@ -584,7 +575,7 @@ impl _precompile_unit(
         full_target=jac_path, target_program=program, skip_analysis=skip_analysis
     );
     if code is None {
-        _emit_unit_diagnostics(jac_path, [program, compiler.selfhost.program]);
+        _emit_unit_diagnostics(jac_path, [program]);
         return None;
     }
     patched = patch_co_filenames_bytes(

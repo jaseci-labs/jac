@@ -21,12 +21,10 @@ impl application_edges(
     seen: set[int] = set();
     while True {
         fresh: list[any] = [];
-        for hub in list(prog.execution_hubs()) {
-            for mod in list(hub.values()) {
-                if id(mod) not in seen {
-                    seen.add(id(mod));
-                    fresh.append(mod);
-                }
+        for mod in list(prog.mod.hub.values()) {
+            if id(mod) not in seen {
+                seen.add(id(mod));
+                fresh.append(mod);
             }
         }
         if not fresh {
