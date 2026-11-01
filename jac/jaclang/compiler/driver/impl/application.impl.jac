@@ -1259,9 +1259,7 @@ impl _prepare_revision(
                 current.get(path) != digest
                 for (path, digest) in _digests(inventory).items()
             )
-            or any(
-                current.get(path, '') != digest for (path, digest) in read.items()
-            )
+            or any(current.get(path, '') != digest for (path, digest) in read.items())
             or any(
                 ct_dep_digest(path, with_annexes=True) != digest
                 for (path, digest) in client_modules.items()

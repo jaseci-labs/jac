@@ -1668,10 +1668,6 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     } else {
         b.position_at_end(entry_blk);
     }
-
-    env_slot = b.alloca(env_ty, name="unwind.env");
-    node_ty = self._unwind_node_type();
-    link = b.alloca(node_ty, name="unwind.node");
     if cached is not None {
         entry_blk.instructions.insert(b._anchor, cached);
         b._anchor += 1;
