@@ -1616,14 +1616,17 @@ test "dev mode named endpoints and HMR refresh" {
             f.write(greet_walker);
         }
 
-        time.sleep(3);
-
-        requests.get(f"{dm_base_url}/healthz", timeout=10);
-        time.sleep(1);
-
-        response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
-        assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} after the HMR edit: {response.text[:300]!r}";
-        paths = response.json().get("paths", {});
+        hmr_deadline = time.monotonic() + 20;
+        paths: dict[str, any] = {};
+        while time.monotonic() < hmr_deadline {
+            response = requests.get(f"{dm_base_url}/openapi.json", timeout=10);
+            assert response.status_code == 200 , f"dev mode /openapi.json returned {response.status_code} after the HMR edit: {response.text[:300]!r}";
+            paths = response.json().get("paths", {});
+            if "/walker/Greet" in paths {
+                break;
+            }
+            time.sleep(0.5);
+        }
 
         assert "/walker/Greet" in paths , f"Expected /walker/Greet after HMR, got: {list(
             paths.keys()
