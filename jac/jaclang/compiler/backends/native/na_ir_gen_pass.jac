@@ -20,6 +20,12 @@ glob UTF8_CURSOR_MIN_BYTES: int = 64,
      UTF8_CURSOR_OFF: int = 6,
      UTF8_CURSOR_USED: int = 7;
 
+glob UNBOUND_ROLE_READ: int = 0,
+     UNBOUND_ROLE_ASSIGN: int = 1,
+     UNBOUND_ROLE_AUG: int = 2,
+     UNBOUND_ROLE_SKIP: int = 3,
+     UNBOUND_ROLE_EXCLUDE: int = 4;
+
 def _jc_optional_payload(semantic: (TypeBase | None)) -> (TypeBase | None);
 
 def _restore_entry[V](table: dict[str, V], key: str, prior: (V | None));
@@ -103,6 +109,13 @@ obj NativeBindingState {
         closure_cell_handles: dict[str, ir.Value];
 }
 
+obj NativeUnboundFacts {
+    has frame: uni.UniNode,
+        guarded: set[str],
+        reads: set[int],
+        augs: set[int];
+}
+
 obj NativeFunctionState {
     has bindings: NativeBindingState,
         _builder: ir.IRBuilder | None,
@@ -162,6 +175,9 @@ walker NaIRGenPass(CompilerPass) {
         local_vars: dict[str, ir.Value] = {},
         param_vars: set[str] = set(),
         _unlowered_locals: dict[str, set[str]] = {},
+        _unbound_memo: dict[int, NativeUnboundFacts] = {},
+        _unbound_flags: dict[str, ir.Value] = {},
+        _unbound_early: dict[str, ir.Value] = {},
         flow_future_meta: dict[int, tuple[ir.Type, ir.Type]] = {},
         drop_fn_registry: dict[str, ir.Function] = {},
         has_native_code: bool = False,
@@ -3090,6 +3106,37 @@ walker NaIRGenPass(CompilerPass) {
     def _codegen_forever(nd: uni.ForeverStmt) -> None;
     def _none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | None);
     def _codegen_assignment(nd: uni.Assignment) -> None;
+    def _codegen_assignment_core(nd: uni.Assignment) -> None;
+    def _unbound_root(nd: uni.UniNode) -> (uni.UniNode | None);
+    def _unbound_facts(nd: uni.UniNode) -> (NativeUnboundFacts | None);
+    def _unbound_scan(frame: uni.UniNode) -> NativeUnboundFacts;
+    def _unbound_is_nested(frame: uni.UniNode) -> bool;
+    def _unbound_params(frame: uni.UniNode) -> set[str];
+    def _unbound_block(nd: uni.UniNode) -> (Sequence[uni.UniNode] | None);
+    def _unbound_role(nm: uni.Name, frame: uni.UniNode, top: set[int]) -> int;
+    def _unbound_target_names(target: uni.UniNode, out: list[uni.Name]) -> None;
+    def _unbound_is_flow(nd: uni.InForStmt) -> bool;
+    def _unbound_inside(nd: (uni.UniNode | None), frame: uni.UniNode) -> bool;
+    def _unbound_dominated(
+        start: uni.UniNode,
+        name: str,
+        frame: uni.UniNode,
+        firsts: dict[int, dict[str, int]],
+        places: dict[int, int]
+    ) -> bool;
+
+    def _unbound_firsts(
+        owner: uni.UniNode, firsts: dict[int, dict[str, int]], places: dict[int, int]
+    ) -> dict[str, int];
+
+    def _unbound_key(name: str) -> str;
+    def _unbound_flag(name: str) -> ir.Value;
+    def _guard_unbound_read(nd: uni.Name) -> None;
+    def _guard_unbound_aug(nd: uni.Assignment) -> None;
+    def _emit_unbound_check(name: str, typed: uni.UniNode) -> None;
+    def _mark_unbound_targets(nd: uni.Assignment) -> None;
+    def _mark_target_bound(target: uni.UniNode) -> None;
+    def _mark_bound(name: str, at: uni.UniNode) -> None;
     def _codegen_dict_counter_update(nd: uni.Assignment) -> bool;
     def _same_pure_key(a: uni.UniNode, b: uni.UniNode) -> bool;
     def _codegen_ctrl(nd: uni.CtrlStmt) -> None;

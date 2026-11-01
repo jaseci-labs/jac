@@ -646,6 +646,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
             return None;
         }
     }
+    self._guard_unbound_read(nd);
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
         value = self.builder.load(alloca, name=var_name);
@@ -760,7 +761,7 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
         self.builder.store(value, alloca);
         self.local_vars[var_name] = alloca;
     }
-
+    self._mark_bound(var_name, nd);
     return self.builder.load(alloca, name=var_name);
 }
 
