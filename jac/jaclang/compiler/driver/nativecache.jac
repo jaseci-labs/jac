@@ -7,6 +7,8 @@ glob SLOW_STEP_SECONDS: float = 2.0,
      DEMOTED_SYMBOL_SUFFIX: str = ".__jac_demoted",
      _HEAP_HELD: list[bool] = [False];
 
+glob ASYNC_OPTIMIZE_BATCH_SIZE: int = 16;
+
 class NativeBuildStopped(BaseException) {}
 
 obj NativeUnitEntry {
@@ -188,6 +190,16 @@ obj NativeBuildSession {
         deferred: list[set[str]] = [],
         discovery_open: list[bool] = [],
         unlowerable: set[str] = set(),
+        async_snapshots: bool = False,
+        snapshot_executor: any = None,
+        snapshot_future: any = None,
+        snapshot_path: (str | None) = None,
+        optimizer_executor: any = None,
+        optimizer_future: any = None,
+        optimizer_paths: list[str] = [],
+        pending_opt_paths: list[str] = [],
+        pending_opt_bitcodes: list[bytes] = [],
+        optimized_units: set[str] = set(),
         heap: SessionHeap = SessionHeap();
 
     def discovering -> bool;
@@ -197,6 +209,11 @@ obj NativeBuildSession {
     def settle_heap;
     def lower(path: str, use_str: (str | None) = None) -> (NativeUnitEntry | None);
     def compact_ir(paths: list[str]);
+    def enqueue_snapshot(path: str);
+    def await_snapshot(path: (str | None) = None);
+    def schedule_snapshot_optimization(path: str, snapshot: NativeIRSnapshot);
+    def flush_optimization_batch(force: bool = False);
+    def await_optimization;
     def unbound_symbols(path: str, deps: list[str]) -> (list[str] | None);
     def finish(paths: list[str]);
     def _optimize_in_parallel(paths: list[str]) -> set[str];
@@ -207,6 +224,12 @@ obj NativeBuildSession {
 glob VERDICT_CLOSURE_LIMIT: int = 4096;
 
 def _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None);
+
+def _snapshot_ir_text(ir_text: str) -> tuple[NativeIRSnapshot, tuple[int, int]];
+
+def _optimize_snapshot_batch(
+    bitcodes: list[bytes], options: CompileOptions, opt_level: int
+) -> tuple[list[bytes], float];
 
 def _ir_referenced_symbols(unit_ir: any) -> set[str];
 

@@ -120,6 +120,9 @@ test "the plan drops lowered LLVM modules before optimizing bitcode" {
     ) -> any {
         result = original_lower(self, path, use_str);
         if result is not None and self.compact_on_lower {
+            if self.async_snapshots {
+                self.await_snapshot(path);
+            }
             module = self.lowered.get(os.path.realpath(path));
             assert module is not None;
             assert module.gen.llvm_ir is None and module.gen.ir_module is None , (

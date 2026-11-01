@@ -100,6 +100,40 @@ impl unit_bitcode(unit_ir: any) -> bytes {
     return module_bitcode(llvm.parse_assembly(str(unit_ir), llvm.create_context()));
 }
 
+impl unit_snapshot_text(
+    ir_text: str
+) -> tuple[bytes, set[str], set[str], tuple[int, int]] {
+    mod = llvm.parse_assembly(ir_text, llvm.create_context());
+    defined: set[str] = set();
+    declared: set[str] = set();
+    declared_functions = 0;
+    defined_functions = 0;
+    for fn in module_functions(mod) {
+        name = str(fn.name);
+        if fn.is_declaration {
+            declared.add(name);
+            declared_functions += 1;
+        } else {
+            defined.add(name);
+            defined_functions += 1;
+        }
+    }
+    for global_var in mod.global_variables {
+        name = str(global_var.name);
+        if global_var.is_declaration {
+            declared.add(name);
+        } else {
+            defined.add(name);
+        }
+    }
+    return (
+        module_bitcode(mod),
+        defined,
+        declared,
+        (declared_functions, defined_functions)
+    );
+}
+
 impl unit_module_copy(unit_ir: any, context: any) -> ModuleRef {
     if isinstance(unit_ir, llvm.ModuleRef) {
         return llvm.parse_bitcode(module_bitcode(unit_ir), context);
@@ -401,9 +435,13 @@ impl native_linked_ir_text(module: uni.Module) -> str {
 }
 
 
-impl unit_fallbacks(gen: CodeGenTarget) -> NativeFallbacks {
+impl unit_fallbacks(
+    gen: CodeGenTarget, ir_text: (str | None) = None
+) -> NativeFallbacks {
     if gen.native_fallbacks is None {
-        gen.native_fallbacks = native_fallbacks_in_ir(str(gen.llvm_ir));
+        gen.native_fallbacks = native_fallbacks_in_ir(
+            ir_text if ir_text is not None else str(gen.llvm_ir)
+        );
     }
     return gen.native_fallbacks;
 }

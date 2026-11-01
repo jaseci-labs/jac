@@ -5584,6 +5584,7 @@ graph import compiler {
     ]
     backends.native.llvm.binding as llvm --> driver.compiler.JacCompiler._load_native_from_cache
         | driver.nativecache.NativeBuildSession.unbound_symbols;
+    backends.native.llvm.binding as llvm_snapshot --> driver.nativecache.NativeBuildSession.enqueue_snapshot;
     type backends.native.llvm.binding ++> driver.compiler.JacCompiler._load_native_from_cache
         | frontend.codeinfo { ExecutionEngine }
     type backends.native.llvm.ir ++> frontend.codeinfo { Module as IRModule }
@@ -5602,6 +5603,8 @@ graph import compiler {
             emit_unit_object,
             optimize_unit_ir
         },
+        driver.nativecache._optimize_snapshot_batch { optimize_unit_bitcodes },
+        driver.nativecache._snapshot_ir_text { unit_snapshot_text },
         driver.pipeline.native_object_passes { NativeCompilePass },
     ]
     backends.native.na_compile_pass --> [
@@ -5609,9 +5612,13 @@ graph import compiler {
             unit_bitcode,
             unit_fallbacks
         },
+        driver.nativecache.NativeBuildSession.enqueue_snapshot { unit_fallbacks },
         driver.nativecache.NativeBuildSession.lower {
             settle_unit_ir,
             unit_function_counts
+        },
+        driver.nativecache.NativeBuildSession.schedule_snapshot_optimization {
+            unit_fallbacks
         },
         driver.nativecache.NativeUnitRegistry.emit_objects { emit_unit_objects },
         driver.nativecache.NativeUnitRegistry.object_for { emit_unit_object },

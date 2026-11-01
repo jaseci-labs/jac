@@ -880,6 +880,7 @@ impl NativeBuildSession.close_discovery -> bool {
 }
 
 impl NativeBuildSession.postinit {
+    self.async_snapshots = os.environ.get("JAC_NATIVE_SNAPSHOT_ASYNC", "1") != "0";
     self.prog = JacProgram();
     self.prog.options = self.options.clone_for_native_import();
     self.prog._natives = self.registry;
@@ -901,6 +902,7 @@ impl NativeBuildSession.lower(
     if resolved in self.registry.building {
         return None;
     }
+    self.await_snapshot(resolved);
     self.heap.take();
     self.registry.building.add(resolved);
     import from jaclang.compiler.frontend.codeinfo {
@@ -994,17 +996,32 @@ impl NativeBuildSession.lower(
             }
             return None;
         }
-        import from jaclang.compiler.backends.native.na_compile_pass {
-            settle_unit_ir,
-            unit_function_counts
+        async_snapshot = (
+            self.async_snapshots
+            and self.compact_on_lower
+            and not self.options.native_debug
+            and not self.options.dump_ir_path
+            and (self.options.aot_mode or self.options.skip_native_engine)
+        );
+        if not async_snapshot {
+            import from jaclang.compiler.backends.native.na_compile_pass {
+                settle_unit_ir,
+                unit_function_counts
+            }
+            settle_unit_ir(mod);
+            self.registry.unit_functions[resolved] = unit_function_counts(
+                mod.gen.llvm_ir
+            );
         }
-        settle_unit_ir(mod);
-        self.registry.unit_functions[resolved] = unit_function_counts(mod.gen.llvm_ir);
         self.lowered[resolved] = mod;
         ent = self.registry.record_module(mod, opts);
         self.registry._stash_products(resolved, mod.gen);
         if self.compact_on_lower {
-            self.compact_ir([resolved]);
+            if async_snapshot {
+                self.enqueue_snapshot(resolved);
+            } else {
+                self.compact_ir([resolved]);
+            }
         }
         self.settle_heap();
         self.registry.lowered_units += 1;
@@ -1041,6 +1058,7 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
         or not (self.options.aot_mode or self.options.skip_native_engine) {
         return;
     }
+    self.await_snapshot();
     import from jaclang.compiler.backends.native.na_compile_pass {
         unit_bitcode,
         unit_fallbacks
@@ -1066,10 +1084,127 @@ impl NativeBuildSession.compact_ir(paths: list[str]) {
     }
 }
 
+impl NativeBuildSession.enqueue_snapshot(path: str) {
+    self.await_snapshot();
+    resolved = os.path.realpath(path);
+    mod = self.lowered.get(resolved);
+    if mod is None or mod.gen.llvm_ir is None {
+        return;
+    }
+    import concurrent.futures;
+    import jaclang.compiler.backends.native.llvm.binding as llvm_snapshot;
+    import from jaclang.compiler.backends.native.na_compile_pass { unit_fallbacks }
+    if self.snapshot_executor is None {
+        self.snapshot_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1);
+    }
+    ir = mod.gen.llvm_ir;
+    ir_text = str(ir);
+    _ = unit_fallbacks(mod.gen, ir_text);
+    if not isinstance(ir, llvm_snapshot.ModuleRef) {
+        ir.release();
+    }
+    mod.gen.ir_module = None;
+    mod.gen.llvm_ir = ir_text;
+    self.snapshot_path = resolved;
+    self.snapshot_future = self.snapshot_executor.submit(_snapshot_ir_text, ir_text);
+}
+
+impl NativeBuildSession.await_snapshot(path: (str | None) = None) {
+    if self.snapshot_future is None
+        or (path is not None and self.snapshot_path != os.path.realpath(path)) {
+        return;
+    }
+    future = self.snapshot_future;
+    resolved = self.snapshot_path;
+    self.snapshot_future = None;
+    self.snapshot_path = None;
+    result = future.result();
+    if result is not None and resolved is not None {
+        (snapshot, counts) = result;
+        self.registry.unit_functions[resolved] = counts;
+        if snapshot is not None {
+            mod = self.lowered.get(resolved);
+            if mod is not None {
+                mod.gen.ir_module = None;
+                mod.gen.llvm_ir = None;
+            }
+            self.ir_snapshots[resolved] = snapshot;
+            self.schedule_snapshot_optimization(resolved, snapshot);
+        }
+    }
+}
+
+impl NativeBuildSession.schedule_snapshot_optimization(
+    path: str, snapshot: NativeIRSnapshot
+) {
+    mod = self.lowered.get(path);
+    if mod is None {
+        return;
+    }
+    import from jaclang.compiler.backends.native.na_compile_pass { unit_fallbacks }
+    if self.options.native_required_for(path) {
+        unit_fallbacks(mod.gen).require();
+    }
+    cached = self.registry.ensure(path, compile_on_miss=False, options=self.options);
+    if cached is not None and cached.bitcode is not None {
+        mod.gen.native_bitcode = cached.bitcode;
+        mod.gen.native_object = cached.object_bytes;
+        self.optimized_units.add(path);
+        return;
+    }
+    self.pending_opt_paths.append(path);
+    self.pending_opt_bitcodes.append(snapshot.bitcode);
+    if len(self.pending_opt_paths) >= ASYNC_OPTIMIZE_BATCH_SIZE {
+        self.flush_optimization_batch();
+    }
+}
+
+impl NativeBuildSession.flush_optimization_batch(force: bool = False) {
+    if not self.pending_opt_paths
+        or (not force and len(self.pending_opt_paths) < ASYNC_OPTIMIZE_BATCH_SIZE) {
+        return;
+    }
+    self.await_optimization();
+    import concurrent.futures;
+    if self.optimizer_executor is None {
+        self.optimizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1);
+    }
+    paths = self.pending_opt_paths;
+    bitcodes = self.pending_opt_bitcodes;
+    self.pending_opt_paths = [];
+    self.pending_opt_bitcodes = [];
+    options = self.options.clone_for_native_import();
+    self.optimizer_paths = paths;
+    self.optimizer_future = self.optimizer_executor.submit(
+        _optimize_snapshot_batch, bitcodes, options, int(options.opt_level or 0)
+    );
+}
+
+impl NativeBuildSession.await_optimization {
+    if self.optimizer_future is None {
+        return;
+    }
+    future = self.optimizer_future;
+    paths = self.optimizer_paths;
+    self.optimizer_future = None;
+    self.optimizer_paths = [];
+    (bitcodes, elapsed) = future.result();
+    for (path, bitcode) in zip(paths, bitcodes) {
+        mod = self.lowered.get(path);
+        if mod is not None {
+            mod.gen.native_bitcode = bitcode;
+            self.registry.note_codegen(path, False);
+            self.optimized_units.add(path);
+        }
+    }
+    self.registry._add_time("NATIVE_OPTIMIZE", elapsed);
+}
+
 impl NativeBuildSession.unbound_symbols(
     path: str, deps: list[str]
 ) -> (list[str] | None) {
     resolved_path = os.path.realpath(path);
+    self.await_snapshot(resolved_path);
     consumer = self.lowered.get(resolved_path);
     if consumer is None {
         return None;
@@ -1087,6 +1222,7 @@ impl NativeBuildSession.unbound_symbols(
     unbound: set[str] = set();
     for dep in deps {
         real = os.path.realpath(dep);
+        self.await_snapshot(real);
         provider = self.lowered.get(real);
         ent = self.registry.entries.get(real);
         provider_snapshot = self.ir_snapshots.get(real);
@@ -1143,6 +1279,9 @@ impl NativeBuildSession.finish(paths: list[str]) {
 }
 
 impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
+    self.await_snapshot();
+    self.flush_optimization_batch(True);
+    self.await_optimization();
     opts = self.prog.options;
     if opts.native_debug
         or opts.dump_ir_path
@@ -1154,6 +1293,10 @@ impl NativeBuildSession._optimize_in_parallel(paths: list[str]) -> set[str] {
     for path in paths {
         mod = self.lowered.get(path);
         if mod is None or (mod.gen.llvm_ir is None and path not in self.ir_snapshots) {
+            continue;
+        }
+        if path in self.optimized_units {
+            optimized.add(path);
             continue;
         }
         if opts.native_required_for(path) {
@@ -1249,6 +1392,19 @@ impl NativeBuildSession._finish(paths: list[str]) {
 
 impl NativeBuildSession.close {
     try {
+        try {
+            self.await_snapshot();
+            self.await_optimization();
+        } finally {
+            if self.snapshot_executor is not None {
+                self.snapshot_executor.shutdown(True);
+                self.snapshot_executor = None;
+            }
+            if self.optimizer_executor is not None {
+                self.optimizer_executor.shutdown(True);
+                self.optimizer_executor = None;
+            }
+        }
         for (phase, seconds) in self.prog.analysis.phase_time.items() {
             self.registry._add_time("NATIVE_FRONTEND_" + phase, seconds);
         }
@@ -1278,6 +1434,23 @@ impl _ir_symbols(unit_ir: any) -> (tuple[set[str], set[str]] | None) {
         }
     }
     return (defined, declared);
+}
+
+impl _snapshot_ir_text(ir_text: str) -> tuple[NativeIRSnapshot, tuple[int, int]] {
+    (bitcode, defined, declared, counts) = unit_snapshot_text(ir_text);
+    return (
+        NativeIRSnapshot(bitcode=bitcode, defined=defined, declared=declared),
+        counts
+    );
+}
+
+
+impl _optimize_snapshot_batch(
+    bitcodes: list[bytes], options: CompileOptions, opt_level: int
+) -> tuple[list[bytes], float] {
+    started = time.perf_counter();
+    optimized = optimize_unit_bitcodes(bitcodes, options, opt_level);
+    return (optimized, time.perf_counter() - started);
 }
 
 impl _ir_referenced_symbols(unit_ir: any) -> set[str] {

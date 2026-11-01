@@ -1,7 +1,11 @@
 """A released IR module is freed by reference counting alone."""
 import gc;
 import weakref;
-import from jaclang.compiler.backends.native.llvm { ir }
+import from jaclang.compiler.backends.native.llvm { ir, binding as llvm }
+import from jaclang.compiler.backends.native.na_compile_pass {
+    unit_bitcode,
+    unit_snapshot_text
+}
 
 test "a released module and its functions are freed without the cyclic collector" {
     module = ir.Module(context=ir.Context());
@@ -20,4 +24,23 @@ test "a released module and its functions are freed without the cyclic collector
     } finally {
         gc.enable();
     }
+}
+
+test "text snapshots preserve bitcode, symbols, and function counts" {
+    module = ir.Module(name="snapshot_probe");
+    i64 = ir.IntType(64);
+    defined = ir.Function(module, ir.FunctionType(i64, []), name="defined");
+    builder = ir.IRBuilder(defined.append_basic_block("entry"));
+    builder.ret(ir.Constant(i64, 7));
+    _ = ir.Function(module, ir.FunctionType(i64, []), name="declared");
+    expected_bitcode = unit_bitcode(module);
+
+    (bitcode, definitions, declarations, counts) = unit_snapshot_text(str(module));
+    assert bitcode == expected_bitcode;
+    assert definitions == {"defined"};
+    assert declarations == {"declared"};
+    assert counts == (1, 1);
+    restored = llvm.parse_bitcode(bitcode);
+    restored.verify();
+    module.release();
 }
