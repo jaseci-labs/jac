@@ -2,12 +2,12 @@
 
 A kernel session places one root's closure: a shared module exports to the
 client what that root pulls from it, and a later root that pulls more grows
-the module's held artifact. The client compiler writes each module of a bundle
-once, so the first page to reach a shared module wrote it with that page's
-pulls, and a later page's import of another name failed in Vite (jaclang.org's
-`tokens.jac`, written for the layout without the `spacing` the mobile theme on
-the tech demo imports). The compile function here grows the shared module the
-way a kernel session does, so the case needs no kernel."""
+the module's held artifact. A bundle that kept the first page's file failed in
+Vite on a later page's import of another name (jaclang.org's `tokens.jac`,
+written for the layout without the `spacing` the mobile theme on the tech demo
+imports), and a grown module's new import must be emitted with it. The compile
+function here grows the shared module the way a kernel session does, so the
+case needs no kernel."""
 import os;
 import shutil;
 import from pathlib { Path }
@@ -46,28 +46,40 @@ test "a shared module a later page grows is written with every page's pulls" {
         main = proj / "main.jac";
         shared = proj / "shared.jac";
         mid = proj / "mid.jac";
+        helper = proj / "helper.jac";
         first = proj / "pages" / "a.jac";
         second = proj / "pages" / "b.jac";
         _write(proj / "jac.toml", '[project]\nname = "shared-pages"\n');
-        for path in [main, shared, mid] {
+        for path in [main, shared, mid, helper] {
             _write(path, "");
         }
         for path in [first, second] {
             _write(path, PAGE);
         }
         compiled: list[Path] = [];
-        def compile_to_js(path: Path) -> ClientArtifact {
+        def compile_to_js(
+            path: Path, source_root: (Path | None) = None
+        ) -> ClientArtifact {
             path = path.resolve();
             compiled.append(path);
             if path == shared {
                 grown = second in compiled;
                 names = ["avatar_of", "name_of"] if grown else ["avatar_of"];
-                return _artifact(
-                    "".join(
-                        f"export function {name}(u) {{ return u; }}\n" for name in names
-                    ),
-                    names
+                body = "".join(
+                    f"export function {name}(u) {{ return u; }}\n" for name in names
                 );
+                if grown {
+                    return _artifact(
+                        f'import {{ fmt }} from "./helper.js";\n{body}',
+                        names,
+                        {"helper": str(helper)},
+                        {str(helper): ["fmt"]}
+                    );
+                }
+                return _artifact(body, names);
+            }
+            if path == helper {
+                return _artifact("export function fmt(u) { return u; }\n", ["fmt"]);
             }
             if path == mid {
                 return _artifact(
@@ -111,6 +123,7 @@ test "a shared module a later page grows is written with every page's pulls" {
         );
         (exports, _) = jcc.compile(None, main);
         written = (proj / "compiled" / "shared.js").read_text(encoding="utf-8");
+        helper_emitted = (proj / "compiled" / "helper.js").is_file();
     } finally {
         shutil.rmtree(proj, ignore_errors=True);
     }
@@ -120,4 +133,8 @@ test "a shared module a later page grows is written with every page's pulls" {
         + f"after the first page wrote the module; got:\n{written}"
     );
     assert "name_of" in exports;
+    assert helper_emitted , (
+        "helper.js must be emitted: shared.js imports it only after the second page "
+        "grew the module, so no earlier walk reached it"
+    );
 }
