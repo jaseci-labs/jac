@@ -43,7 +43,8 @@ jobs:
         include:
           - os: blacksmith-8vcpu-ubuntu-2404
             platform: linux-x86_64
-          - os: blacksmith-8vcpu-ubuntu-2404-arm
+          # Lowering the runtime peaks above the 8 vCPU ARM runner's memory.
+          - os: blacksmith-16vcpu-ubuntu-2404-arm
             platform: linux-aarch64
           - os: macos-15
             platform: macos-aarch64
@@ -157,6 +158,14 @@ jobs:
           assert sys.prefix.startswith(sys.argv[1]), sys.prefix
           print(sys.version, ssl.OPENSSL_VERSION, sqlite3.sqlite_version)
           ' "$CHECK"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: jacpython-seed-logs-${{ matrix.platform }}
+          path: jac/.python-build/**/logs/
+          include-hidden-files: true
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         if: steps.asset.outputs.exists != 'true'
