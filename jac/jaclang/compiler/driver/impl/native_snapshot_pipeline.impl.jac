@@ -60,8 +60,12 @@ impl NativeSnapshotPipeline._flush_optimization(
         self.optimizer_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1);
     }
     inputs = self.pending_optimization;
+    self.optimizer_paths = [item.path for item in inputs];
+    bitcodes = [item.bitcode for item in inputs];
     options = self.options.clone_for_native_import();
-    future = self.optimizer_executor.submit(_optimize_snapshot_batch, inputs, options);
+    future = self.optimizer_executor.submit(
+        _optimize_snapshot_batch, bitcodes, options
+    );
     self.pending_optimization = [];
     self.optimizer_future = future;
 }
@@ -74,7 +78,16 @@ impl NativeSnapshotPipeline._await_optimization(
     }
     future = self.optimizer_future;
     self.optimizer_future = None;
-    batch = future.result();
+    (bitcodes, elapsed) = future.result();
+    paths = self.optimizer_paths;
+    self.optimizer_paths = [];
+    batch = NativeOptimizationBatch(
+        units=[
+            NativeOptimizedUnit(path=path, bitcode=bitcode)
+            for (path, bitcode) in zip(paths, bitcodes)
+        ],
+        elapsed=elapsed
+    );
     if on_complete is not None {
         on_complete(batch);
     }
@@ -119,6 +132,7 @@ impl NativeSnapshotPipeline.close {
     self.snapshot_future = None;
     self.snapshot_path = None;
     self.optimizer_future = None;
+    self.optimizer_paths.clear();
     self.pending_optimization.clear();
     if failure is not None {
         raise failure;
@@ -130,17 +144,9 @@ impl _snapshot_ir_text(path: str, ir_text: str) -> NativeSnapshotResult {
 }
 
 impl _optimize_snapshot_batch(
-    inputs: list[NativeOptimizationInput], options: CompileOptions
-) -> NativeOptimizationBatch {
+    bitcodes: list[bytes], options: CompileOptions
+) -> tuple[list[bytes], float] {
     started = time.perf_counter();
-    bitcodes = optimize_unit_bitcodes(
-        [item.bitcode for item in inputs], options, int(options.opt_level or 0)
-    );
-    return NativeOptimizationBatch(
-        units=[
-            NativeOptimizedUnit(path=item.path, bitcode=bitcode)
-            for (item, bitcode) in zip(inputs, bitcodes)
-        ],
-        elapsed=time.perf_counter() - started
-    );
+    optimized = optimize_unit_bitcodes(bitcodes, options, int(options.opt_level or 0));
+    return (optimized, time.perf_counter() - started);
 }
