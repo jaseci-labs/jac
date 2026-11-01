@@ -1,11 +1,11 @@
-"""Benchmark JacPython against the stock CPython the same recipe builds.
+"""Benchmark JacPython against a CPython of the pinned version.
 
-A JacPython build also produces a build-only stock CPython from the same
-configure flags (`<platform>.host`), so the two interpreters differ only in
-the C that JacPython replaces. Each benchmark runs on both at once, each
-pinned to its own physical core, so both see the same machine conditions.
+The build makes no CPython: `--base` names one built elsewhere (for instance
+`uv python install 3.14.6`), and `--new` defaults to this machine's JacPython
+output. Each benchmark runs on both at once, each pinned to its own physical
+core, so both see the same machine conditions.
 
-    jac run scripts/jacpython/bench.jac run --deps DEPS --out OUT
+    jac run scripts/jacpython/bench.jac run --base CPYTHON --deps DEPS --out OUT
     jac run scripts/jacpython/bench.jac compare OUT
 
 `DEPS` holds pyperf and pyperformance, which the interpreters import (they
@@ -601,7 +601,7 @@ def compare(out: Path, base: str, new: str) {
 
 with entry {
     parser = argparse.ArgumentParser(
-        description="Benchmark JacPython against the stock CPython of the same recipe."
+        description="Benchmark JacPython against a CPython of the pinned version."
     );
     parser.add_argument("action", choices=["run", "compare"]);
     parser.add_argument("out", nargs="?", `default="");
@@ -613,13 +613,18 @@ with entry {
     parser.add_argument("--jobs", type=int, `default=8);
     parser.add_argument("--fast", action="store_true");
     parser.add_argument("--only", `default="");
-    parser.add_argument("--base", `default=interpreter_path(f"{PLATFORM}.host"));
+    parser.add_argument("--base", `default="", help="a CPython of the pinned version");
     parser.add_argument("--new", `default=interpreter_path(PLATFORM));
     args = parser.parse_args();
     out = Path(args.out_option or args.out or "jacpython-bench").resolve();
     if args.action == "compare" {
         compare(out, "cpython", "jacpython");
         sys.exit(0);
+    }
+    if not args.base {
+        sys.exit(
+            "run needs --base: a CPython of the pinned version to compare against"
+        );
     }
     if not args.deps {
         sys.exit("run needs --deps: uv pip install --target DEPS pyperf pyperformance");

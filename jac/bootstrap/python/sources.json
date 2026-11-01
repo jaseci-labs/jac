@@ -43,5 +43,11 @@
   "certifi": {
     "url": "https://github.com/certifi/python-certifi/archive/9d0a8f1f3a0d6b2e38d5773db7afe1a37e4527b6.tar.gz",
     "sha256": "74a1dcf5983616dfb07972e8b26f065497879c551f6457e197f1409b824e60c1"
+  },
+  "jacpython-seed": {
+    "linux-x86_64": {
+      "url": "TBD-SEED: https://github.com/jaseci-labs/jac/releases/download/deps/jacpython-seed-linux-x86_64-<sha256>.tar.gz",
+      "sha256": "TBD-SEED"
+    }
   }
 }

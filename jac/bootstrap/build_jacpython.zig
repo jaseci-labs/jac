@@ -1,9 +1,9 @@
 //! The JacPython runtime, built without autoconf or make. build_python.zig has
-//! extracted the pruned CPython tree; this lowers the native Jac object with
-//! the build-only host, writes pyconfig.h from compiler probes, compiles the C
-//! that remains with the flags CPython's makefile uses, links libpython and the
-//! interpreter, and installs the tree `make install` installs. The build-only
-//! host keeps CPython's own configure and make (build.sh).
+//! extracted the pruned CPython tree; this lowers the native Jac object on the
+//! host JacPython (or adopts one lowered elsewhere), writes pyconfig.h from
+//! compiler probes, compiles the C that remains with the flags CPython's
+//! makefile uses, links libpython and the interpreter, and installs the tree
+//! `make install` installs.
 const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
@@ -14,18 +14,19 @@ const pyconfig = @import("pyconfig.zig");
 pub const Options = struct {
     platform: []const u8,
     /// The build tree: src/cpython (extracted), and the install prefix
-    /// python/install, as build.sh lays it out for the host.
+    /// python/install.
     work: []const u8,
     zig: []const u8,
     /// bootstrap/python.
     recipe: []const u8,
-    /// The build output the build runs on: the bootstrap host, or a previous
-    /// JacPython runtime (its python/install).
-    host: []const u8,
+    /// The JacPython output the build runs on (its python/install): it lowers
+    /// the native object and runs the generators. Null for a build that
+    /// adopts an object for this machine's platform, which runs Python only
+    /// on the interpreter it builds.
+    host: ?[]const u8 = null,
     /// The tree whose python/build (the vendored archives, their headers and
-    /// the CA bundle) and python/licenses this build links and ships: the
-    /// host's, or for a target this machine cannot run, the libraries build.sh
-    /// cross-compiled for it.
+    /// the CA bundle) and python/licenses this build links and ships, as
+    /// build.sh built them for the target.
     vendored: []const u8,
     /// The target is another platform. Every step that runs Python runs on
     /// the host, told the target as CPython's own cross builds tell their
@@ -122,7 +123,7 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     for ([_][]const u8{ "CFLAGS", "CPPFLAGS", "LDFLAGS", "CXXFLAGS", "CPATH", "C_INCLUDE_PATH", "CPLUS_INCLUDE_PATH", "LIBRARY_PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME", "_PYTHON_HOST_PLATFORM", "_PYTHON_SYSCONFIGDATA_NAME", "_PYTHON_SYSCONFIGDATA_PATH", "_PYTHON_PROJECT_BASE" }) |name| {
         _ = c.env.swapRemove(name);
     }
-    // Transient compiler caches stay in the build tree, as for the host.
+    // Transient compiler caches stay in the build tree.
     try c.env.put("ZIG_LOCAL_CACHE_DIR", c.cache);
     try c.env.put("ZIG_GLOBAL_CACHE_DIR", c.cache);
     try c.env.put("SOURCE_DATE_EPOCH", "0");
@@ -150,7 +151,7 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     try step(&c, "pyconfig", writePyconfig, .{&c});
 
     // The frozen modules (importlib's bootstrap, zipimport, getpath.py and the
-    // startup stdlib), compiled and marshalled by the host as
+    // startup stdlib), compiled and marshalled by the host JacPython as
     // _freeze_module.py would, and written as one Jac module the native
     // object links. _PyRuntime's initializer, which only the C preprocessor
     // builds from pycore_runtime_init.h, compiled for this target against
@@ -165,9 +166,10 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     if (o.adopt_object) |dir| {
         try step(&c, "adopt-native", adoptObject, .{ &c, dir, native });
     } else {
-        try step(&c, "frozen", generate, .{ &c, try frozenArgs(&c, frozen) });
-        try step(&c, "runtime_image", generate, .{ &c, try runtimeImageArgs(&c, runtime_image) });
-        try step(&c, "native", runArgv, .{ &c, &[_][]const u8{ hostPython(&c), "-I", c.path(&.{ o.recipe, "prepare_native.py" }), o.root, native, o.platform, frozen, runtime_image }, null });
+        const host = try hostPython(&c);
+        try step(&c, "frozen", generate, .{ &c, host, try frozenArgs(&c, frozen) });
+        try step(&c, "runtime_image", generate, .{ &c, host, try runtimeImageArgs(&c, runtime_image) });
+        try step(&c, "native", runArgv, .{ &c, &[_][]const u8{ host, "-I", c.path(&.{ o.recipe, "prepare_native.py" }), o.root, native, o.platform, frozen, runtime_image }, null });
         try step(&c, "native-manifest", writeObjectManifest, .{ &c, native });
     }
     if (o.object_out) |out| {
@@ -191,12 +193,12 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     try step(&c, "install-tools", installTools, .{&c});
     try absentInputs(&c);
 
-    try step(&c, "finalize", runArgv, .{ &c, &[_][]const u8{ installedPython(&c), "-I", c.path(&.{ o.recipe, "finalize.py" }), c.prefix }, null });
+    try step(&c, "finalize", runArgv, .{ &c, &[_][]const u8{ try installedPython(&c), "-I", c.path(&.{ o.recipe, "finalize.py" }), c.prefix }, null });
     const build_dir = c.path(&.{ o.work, "python/build" });
     try Io.Dir.cwd().createDirPath(io, c.path(&.{ build_dir, "lib" }));
     try copyMatching(&c, c.path(&.{ c.deps, "lib" }), c.path(&.{ build_dir, "lib" }), ".a");
-    // The headers too: with the archives, they let this runtime be the next
-    // build's host without the bootstrap host that built them.
+    // The headers too: with the archives, they let the next build link them
+    // without building them again (build_python.zig vendoredLibraries).
     try copyTree(&c, c.path(&.{ c.deps, "include" }), c.path(&.{ build_dir, "include" }));
     try Io.Dir.copyFile(.cwd(), c.path(&.{ vendored_build, "cacert.pem" }), .cwd(), c.path(&.{ build_dir, "cacert.pem" }), io, .{});
     try Io.Dir.copyFile(.cwd(), c.path(&.{ native, "sha256" }), .cwd(), c.path(&.{ build_dir, "jacpython-native-sha256" }), io, .{});
@@ -204,9 +206,9 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     try Io.Dir.cwd().deleteTree(io, native);
     try c.env.put("PYTHONFAULTHANDLER", "1");
     if (o.cross) {
-        std.debug.print("build-python: smoke skipped: {s} does not run on this machine; run bootstrap/python/smoke.py jacpython with its interpreter on the target\n", .{o.platform});
+        std.debug.print("build-python: smoke skipped: {s} does not run on this machine; run bootstrap/python/smoke.py with its interpreter on the target\n", .{o.platform});
     } else {
-        try step(&c, "smoke", runArgv, .{ &c, &[_][]const u8{ c.path(&.{ c.prefix, "bin/python" ++ version }), "-X", "faulthandler", "-I", c.path(&.{ o.recipe, "smoke.py" }), "jacpython" }, null });
+        try step(&c, "smoke", runArgv, .{ &c, &[_][]const u8{ c.path(&.{ c.prefix, "bin/python" ++ version }), "-X", "faulthandler", "-I", c.path(&.{ o.recipe, "smoke.py" }) }, null });
     }
     // No compiled test modules, docs, or configuration machinery in the runtime.
     for ([_][]const u8{ "share", "lib/python" ++ version ++ "/test", "lib/python" ++ version ++ "/idlelib", "lib/python" ++ version ++ "/tkinter", "lib/python" ++ version ++ "/turtledemo" }) |rel| {
@@ -215,14 +217,15 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     std.debug.print("build-python: runtime and native archives ready\n", .{});
 }
 
-fn hostPython(c: *Ctx) []const u8 {
-    return c.path(&.{ c.o.host, "python/install/bin/python" ++ version });
+fn hostPython(c: *Ctx) ![]const u8 {
+    const host = c.o.host orelse return error.NoHostInterpreter;
+    return c.path(&.{ host, "python/install/bin/python" ++ version });
 }
 
 /// The interpreter that runs Python over the installed tree (sysconfig,
-/// compileall, finalize): the new one, or the host when the target is
-/// another platform. The byte-code is the same either way.
-fn installedPython(c: *Ctx) []const u8 {
+/// build-details.json, compileall, finalize): the new one, or the host when
+/// the target is another platform. The byte-code is the same either way.
+fn installedPython(c: *Ctx) ![]const u8 {
     return if (c.o.cross) hostPython(c) else layout(c).exename;
 }
 
@@ -267,18 +270,18 @@ fn runArgv(c: *Ctx, argv: []const []const u8, cwd: ?[]const u8) !void {
     if (term != .exited or term.exited != 0) return error.CommandFailed;
 }
 
-/// One of scripts/jacpython's generators, run by the build-only host with the
+/// One of scripts/jacpython's generators, run by `python` with the
 /// checkout's jaclang on its path; the generator's main() takes the arguments.
-fn generate(c: *Ctx, args: []const []const u8) !void {
+fn generate(c: *Ctx, python: []const u8, args: []const []const u8) !void {
     var argv: std.ArrayList([]const u8) = .empty;
     try argv.appendSlice(c.a, &.{
-        hostPython(c), "-I",                                           "-c",
+        python,   "-I",                                           "-c",
         \\import importlib, sys
         \\sys.path[:0] = sys.argv[1:3]
         \\import jaclang
         \\importlib.import_module(sys.argv[3]).main(sys.argv[4:])
         ,
-        c.o.root,      c.path(&.{ c.o.root, "../scripts/jacpython" }),
+        c.o.root, c.path(&.{ c.o.root, "../scripts/jacpython" }),
     });
     try argv.appendSlice(c.a, args);
     try runArgv(c, argv.items, null);
@@ -1464,7 +1467,7 @@ fn sysconfig(c: *Ctx) !void {
         _ = c.env.swapRemove(key);
     };
     try runArgv(c, &.{
-        installedPython(c),                "-E",                                    "-S", "-c",
+        try installedPython(c),            "-E",                                    "-S", "-c",
         \\import sys
         \\import sysconfig.__main__ as generator
         \\generator.get_makefile_filename = lambda: sys.argv[1]
@@ -1473,8 +1476,8 @@ fn sysconfig(c: *Ctx) !void {
         ,
         c.path(&.{ l.libpl, "Makefile" }), c.path(&.{ l.includepy, "pyconfig.h" }),
     }, gen);
-    // The build-details generator runs on the host and reads only the
-    // target's platform; the data name would hide the host's own.
+    // The build-details generator reads only the target's platform from the
+    // environment; on the host, the data name would hide the host's own.
     for (cross_env[1..]) |kv| _ = c.env.swapRemove(kv[0]);
     const builddir = std.mem.trim(u8, try readFile(c, c.path(&.{ gen, "pybuilddir.txt" })), " \r\n");
     const data = c.path(&.{ gen, builddir, try std.fmt.allocPrint(c.a, "{s}.py", .{name}) });
@@ -1482,7 +1485,7 @@ fn sysconfig(c: *Ctx) !void {
     const details = c.path(&.{ gen, builddir, "build-details.json" });
     // build-details.json (PEP 739); JacPython keeps no Tools/build: the
     // generator reads this build's sysconfig data.
-    try generate(c, &.{ "gen_build_details", "--sysconfig", data, "--output", details });
+    try generate(c, try installedPython(c), &.{ "gen_build_details", "--sysconfig", data, "--output", details });
     try installFile(c, data, c.path(&.{ l.libdest, try std.fmt.allocPrint(c.a, "{s}.py", .{name}) }), mode_data);
     try installFile(c, c.path(&.{ gen, builddir, json_name }), c.path(&.{ l.libdest, json_name }), mode_data);
     try installFile(c, details, c.path(&.{ l.libdest, "build-details.json" }), mode_data);
@@ -1495,7 +1498,7 @@ fn compileall(c: *Ctx) !void {
     defer _ = c.env.swapRemove("PYTHONPATH");
     const jobs = try std.fmt.allocPrint(c.a, "-j{d}", .{c.o.jobs});
     const script = c.path(&.{ l.libdest, "compileall.py" });
-    const python = installedPython(c);
+    const python = try installedPython(c);
     try runArgv(c, &.{ python, "-E", "-Wi", script, "-o", "0", "-o", "1", "-o", "2", jobs, "-d", l.libdest, "-f", "-x", "bad_coding|badsyntax|site-packages", l.libdest }, null);
     const site = c.path(&.{ l.libdest, "site-packages" });
     try runArgv(c, &.{ python, "-E", "-Wi", script, "-o", "0", "-o", "1", "-o", "2", jobs, "-d", site, "-f", "-x", "badsyntax", site }, null);
