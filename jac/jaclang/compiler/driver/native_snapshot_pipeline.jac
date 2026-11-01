@@ -54,5 +54,5 @@ def _snapshot_ir_text(
 ) -> tuple[str, bytes, set[str], set[str], tuple[int, int]];
 
 def _optimize_snapshot_batch(
-    bitcodes: list[bytes], options: CompileOptions
+    bitcodes: list[bytes], native_target: str, native_debug: bool, opt_level: int
 ) -> tuple[list[bytes], float];

@@ -73,9 +73,11 @@ impl NativeSnapshotPipeline._flush_optimization(
     inputs = self.pending_optimization;
     self.optimizer_paths = [item.path for item in inputs];
     bitcodes = [item.bitcode for item in inputs];
-    options = self.options.clone_for_native_import();
+    native_target = self.options.native_target or "";
+    native_debug = bool(self.options.native_debug);
+    opt_level = int(self.options.opt_level or 0);
     future = self.optimizer_executor.submit(
-        _optimize_snapshot_batch, bitcodes, options
+        _optimize_snapshot_batch, bitcodes, native_target, native_debug, opt_level
     );
     self.pending_optimization = [];
     self.optimizer_future = future;
@@ -158,9 +160,11 @@ impl _snapshot_ir_text(
 }
 
 impl _optimize_snapshot_batch(
-    bitcodes: list[bytes], options: CompileOptions
+    bitcodes: list[bytes], native_target: str, native_debug: bool, opt_level: int
 ) -> tuple[list[bytes], float] {
     started = time.perf_counter();
-    optimized = optimize_unit_bitcodes(bitcodes, options, int(options.opt_level or 0));
+    optimized = optimize_unit_bitcodes_with_config(
+        bitcodes, native_target, native_debug, opt_level
+    );
     return (optimized, time.perf_counter() - started);
 }
