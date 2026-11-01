@@ -248,3 +248,7 @@ impl mir_opt(payload: MirType) -> MirType {
 impl mir_tuple(members: list[MirType]) -> MirType {
     return mir_type(MirKind.TUPLE, args=members);
 }
+
+impl mir_fn(params: list[MirType], ret: MirType) -> MirType {
+    return mir_type(MirKind.FN, args=[ret] + params);
+}

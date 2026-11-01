@@ -10872,6 +10872,7 @@ graph import compiler.backends.native.mir {
             MirType,
             mir_bool,
             mir_dict,
+            mir_fn,
             mir_list,
             mir_obj,
             mir_opt,
@@ -15370,6 +15371,14 @@ graph import runtime.na_stdlib {
 }
 
 graph import runtime.native {
+    lists ++> closures { __jac_rt_elem_release, __jac_rt_elem_retain }
+    rc ++> closures {
+        __jac_rt_alloc,
+        __jac_rt_free_block,
+        __jac_rt_release,
+        __jac_rt_retain,
+        __jac_rt_set_type
+    }
     lists ++> dicts { __jac_rt_elem_eq, __jac_rt_elem_release, __jac_rt_elem_retain }
     rc ++> [
         dicts {

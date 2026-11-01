@@ -33,6 +33,8 @@ impl MirLowering.lower -> MirModule {
         self.mir.functions.append(self.lower_drop(obj_def));
         self.mir.functions.append(self.lower_trace(obj_def));
     }
+    self.mir.functions.extend(self.nested);
+    self.nested = [];
     for extra in (self.lower_module_init(), self.lower_module_entry()) {
         if extra is not None {
             self.mir.functions.append(extra);
@@ -204,6 +206,7 @@ impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
                 self.st().locals[id(twins[index].name.sym)] = slot;
             }
         }
+        self.prepare_cells(ab, list(body));
         self.lower_body(body);
         if not self.builder().block.terminated() {
             if decl.ret.kind == MirKind.NONE {
@@ -278,6 +281,21 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_delete(nd);
     } elif isinstance(nd, uni.TryStmt) {
         self.lower_try(nd);
+    } elif isinstance(nd, uni.Ability) and isinstance(nd.signature, uni.FuncSignature) {
+        body = nd.body.body if isinstance(nd.body, uni.ImplDef) else nd.body;
+        if not isinstance(body, (list, tuple)) or nd.name_ref is None {
+            raise MirRefused(mir_refusal("statement", "nested function", nd));
+        }
+        fn_type = self.type_of(
+            self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(nd)),
+            MirPosition.VALUE,
+            nd
+        );
+        made = self.lower_closure(nd, nd.signature, list(body), fn_type, self.name_of(nd));
+        if not isinstance(nd.name_ref, uni.Name) {
+            raise MirRefused(mir_refusal("statement", "nested function name", nd));
+        }
+        self.store_name(nd.name_ref, made);
     } elif isinstance(nd, uni.RaiseStmt) {
         self.lower_raise(nd);
     } else {
@@ -351,6 +369,13 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
 }
 
 impl MirLowering.store_name(target: uni.Name, value: MirValue) {
+    if target.sym is not None {
+        cell = self.cell_of(id(target.sym));
+        if cell is not None {
+            self.cell_write(cell, value, self.st().cell_types[id(target.sym)], target);
+            return;
+        }
+    }
     slot = self.local_slot(target.sym, target);
     self.builder().store(slot, self.coerce(value, slot.type, target));
 }
@@ -481,6 +506,10 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.none_value();
     } elif isinstance(nd, uni.TupleVal) {
         value = self.lower_tuple(nd);
+    } elif isinstance(nd, uni.LambdaExpr) {
+        value = self.lower_closure(
+            nd, nd.signature, nd.body, self.expr_type(nd), f"lambda{len(self.nested)}"
+        );
     } elif isinstance(nd, uni.ListVal) {
         value = self.lower_list_literal(nd);
     } elif isinstance(nd, uni.DictVal) {
@@ -528,6 +557,12 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     if nd.value == "self" and receiver is not None {
         return receiver;
     }
+    if nd.sym is not None {
+        cell = self.cell_of(id(nd.sym));
+        if cell is not None {
+            return self.cell_read(cell, self.st().cell_types[id(nd.sym)]);
+        }
+    }
     if nd.sym is None or id(nd.sym) not in self.st().locals {
         folded = nd.ct_value;
         whole = int_host(folded) if isinstance(folded, CtInt) else None;
@@ -548,9 +583,11 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
             if nd.sym is not None
             else None;
         if decl is not None {
-            return self.emit_value(
+            address = self.emit_value(
                 MirOp.FN_ADDR, mir_c_fn(decl.params, decl.ret), [], callee=decl.symbol
             );
+            self.fn_values[address.id] = decl;
+            return address;
         }
         raise MirRefused(mir_refusal("name", nd.value, nd));
     }
@@ -922,6 +959,12 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if via_type is not None {
         return via_type;
     }
+    if isinstance(target, uni.Expr) and target.type is not None {
+        target_type = self.expr_type(target);
+        if target_type.kind == MirKind.FN {
+            return self.closure_call(nd, self.lower_expr(target));
+        }
+    }
     raise MirRefused(mir_refusal("call", name or type(target).__name__, nd));
 }
 
@@ -962,6 +1005,9 @@ impl MirLowering.truthy(value: MirValue, site: uni.UniNode) -> MirValue {
 impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue {
     if value.type is to {
         return value;
+    }
+    if value.type.kind == MirKind.C_FN and to.kind == MirKind.FN and value.id in self.fn_values {
+        return self.function_value(self.fn_values[value.id], to);
     }
     if to.kind == MirKind.OPT {
         if value.type.kind == MirKind.NONE {

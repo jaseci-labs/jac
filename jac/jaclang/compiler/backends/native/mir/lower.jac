@@ -21,6 +21,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      SHIFT_MESSAGE: str = "shift count out of range",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
+     CLOSURE_CELLS_OFFSET: int = 16,
      KIND_INT: int = 0,
      KIND_FLOAT: int = 1,
      KIND_BOOL: int = 2,
@@ -55,6 +56,10 @@ obj MirFnState {
     has fn: MirFunction,
         b: MirBuilder,
         self_value: (MirValue | None) = None,
+        captured: dict[int, MirValue] = {},
+        cell_types: dict[int, MirType] = {},
+        env_cells: dict[int, int] = {},
+        env: (MirValue | None) = None,
         locals: dict[int, MirValue] = {},
         loops: list[MirLoopTarget] = [],
         caught: list[tuple[MirValue, MirValue, MirValue]] = [];
@@ -78,6 +83,9 @@ obj MirLowering {
         archetypes: dict[str, uni.Archetype] = {},
         trace_pairs: list[tuple[str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
+        nested: list[MirFunction] = [],
+        adapters: dict[str, str] = {},
+        fn_values: dict[int, MirDecl] = {},
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
         state: (MirFnState | None) = None;
@@ -223,6 +231,22 @@ obj MirLowering {
     def lower_tuple(nd: uni.TupleVal) -> MirValue;
     def tuple_get(value: MirValue, index: int) -> MirValue;
     def unpack_into(targets: list[uni.Expr], value: MirValue, site: uni.UniNode);
+    def function_of(nd: uni.UniNode) -> (uni.UniNode | None);
+    def names_within(nd: uni.UniNode) -> list[uni.Name];
+    def captured_symbols(owner: uni.UniNode, body: Sequence[uni.UniNode]) -> list[uni.Symbol];
+    def prepare_cells(owner: uni.UniNode, body: Sequence[uni.UniNode]);
+    def cell_of(sym_id: int) -> (MirValue | None);
+    def cell_read(cell: MirValue, value_type: MirType) -> MirValue;
+    def cell_write(cell: MirValue, value: MirValue, value_type: MirType, site: uni.UniNode);
+    def lower_closure(
+        owner: uni.UniNode,
+        signature: (uni.FuncSignature | None),
+        body: (uni.Expr | Sequence[uni.UniNode]),
+        fn_type: MirType,
+        label: str
+    ) -> MirValue;
+    def closure_call(nd: uni.FuncCall, callee: MirValue) -> MirValue;
+    def function_value(decl: MirDecl, to: MirType) -> MirValue;
     def lower_try(nd: uni.TryStmt);
     def lower_raise(nd: uni.RaiseStmt);
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;

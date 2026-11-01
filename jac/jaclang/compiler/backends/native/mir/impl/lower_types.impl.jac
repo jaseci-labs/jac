@@ -59,6 +59,12 @@ impl mir_type_of(
         ];
         return mir_c_fn(params, mir_type_of(t.return_type, MirPosition.C_FIELD, site));
     }
+    if isinstance(t, FunctionType) {
+        params = [
+            mir_type_of(p.param_type, MirPosition.VALUE, site) for p in t.parameters
+        ];
+        return mir_fn(params, mir_type_of(t.return_type, MirPosition.SIGNATURE, site));
+    }
     raise MirRefused(mir_refusal("type", str(t), site));
 }
 
