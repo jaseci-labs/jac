@@ -10,6 +10,10 @@ def codegen_footprint(blob: bytes) -> int;
 def codegen_map(work: Callable[..., bytes], blobs: list[bytes]) -> list[bytes];
 def emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes];
 def unit_bitcode(unit_ir: any) -> bytes;
+def unit_snapshot_text(
+    ir_text: str
+) -> tuple[bytes, set[str], set[str], tuple[int, int]];
+
 def unit_module_copy(unit_ir: any, context: any) -> ModuleRef;
 def optimized_bitcode(
     mod: ModuleRef, options: CompileOptions, opt_level: int
@@ -53,4 +57,6 @@ walker NativeCompilePass(CompilerPass) {
 }
 
 def native_linked_ir_text(module: uni.Module) -> str;
-def unit_fallbacks(gen: CodeGenTarget) -> NativeFallbacks;
+def unit_fallbacks(
+    gen: CodeGenTarget, ir_text: (str | None) = None
+) -> NativeFallbacks;
