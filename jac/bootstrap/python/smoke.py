@@ -64,7 +64,8 @@ for name in sorted(built - set(build_vars["MODDISABLED_NAMES"].split())):
 assert not unimportable, "built extension modules fail to import:\n" + "\n".join(unimportable)
 assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
 # The symbol lookup fails on an interpreter that is not JacPython.
-if ctypes.pythonapi._PyJac_CompilerRequired:
+required_compiler = ctypes.pythonapi._PyJac_CompilerRequired
+if required_compiler:
     import _bisect
     import _heapq
     import _random
