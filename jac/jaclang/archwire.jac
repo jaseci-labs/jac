@@ -9960,9 +9960,10 @@ graph import compiler {
             KERNEL_ROOT_MODULE,
             NATIVE_SCOPE
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._in_compiler_scope
+            | placement.placement_solver._native_deps_ok { in_native_scope_path },
         driver.jir.abi_contract_digest { KERNEL_ABI_CONTRACT_REL },
         driver.program.JacProgram.declared_codespace { package_host_edge },
-        placement.placement_solver._native_deps_ok { in_native_scope_path },
         placement.placement_solver.native_closure_blocker { in_native_scope_path },
         placement.placement_solver.native_placement_candidate { in_native_scope_path },
     ]
@@ -12960,6 +12961,7 @@ graph import compiler.frontend {
             NameAtom,
             Symbol,
             UniCFGNode,
+            UniNode,
             UniScopeNode
         },
         roles {

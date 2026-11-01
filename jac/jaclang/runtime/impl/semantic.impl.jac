@@ -150,7 +150,8 @@ impl InfoGraphReader.shell(record: dict[str, any]) -> (Info | TypeForm) {
 
 impl InfoGraphReader.find(raw: any) -> (Info | TypeForm | None) {
     if isinstance(raw, dict) {
-        slot = raw.get("n");
+        fields: dict[str, any] = raw;
+        slot = fields.get("n");
         if isinstance(slot, int) and 0 <= slot < len(self.built) {
             return self.built[slot];
         }

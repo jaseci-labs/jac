@@ -865,7 +865,7 @@ impl NaIRGenPass._is_c_ptr_node(nd: (uni.UniNode | None)) -> bool {
     if isinstance(nd, uni.CfgExpr) {
         nd = nd.expr;
     }
-    return nd is not None and is_ptr_type(nd?.type);
+    return isinstance(nd, uni.Expr) and is_ptr_type(nd.type);
 }
 
 impl NaIRGenPass._c_ptr_aug(

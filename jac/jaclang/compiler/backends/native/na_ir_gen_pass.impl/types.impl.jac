@@ -887,7 +887,7 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
     }
 
     if cname in ("list", "Sequence") {
-        if not type_args {
+        if not type_args and not self._in_compiler_scope() {
             return None;
         }
         elem_llvm: ir.Type = ir.IntType(64);
@@ -906,7 +906,7 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
     }
 
     if cname == "dict" {
-        if len(type_args) < 2 {
+        if len(type_args) < 2 and not self._in_compiler_scope() {
             return None;
         }
         k_llvm: ir.Type = ir.IntType(64);
@@ -942,7 +942,7 @@ impl NaIRGenPass._lower_class_type(t: ClassType) -> (ir.Type | None) {
     }
 
     if cname in ("set", "frozenset") {
-        if not type_args {
+        if not type_args and not self._in_compiler_scope() {
             return None;
         }
         elem_llvm: ir.Type = ir.IntType(64);
@@ -1240,6 +1240,12 @@ impl NaIRGenPass._resolve_decl_type(
         widened = self._widened_tuple_decl_type(type_expr, value);
         if widened is not None {
             return widened;
+        }
+        if isinstance(value, uni.Expr) and value?.type is not None {
+            from_value = self._lower_type(value.type);
+            if from_value is not None {
+                return from_value;
+            }
         }
     }
     return self._resolve_jac_type(type_expr);

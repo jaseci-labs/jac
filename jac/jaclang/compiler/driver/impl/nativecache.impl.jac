@@ -500,6 +500,9 @@ impl NativeUnitRegistry.dep_iface(
         check_deps=False,
         products=products
     );
+    if ent is None and session is not None and resolved not in self.building {
+        session.unlowerable.add(resolved);
+    }
     return ent.iface if ent is not None else None;
 }
 
@@ -1001,6 +1004,7 @@ impl NativeBuildSession.lower(
         settle_unit_ir(mod);
         self.registry.unit_functions[resolved] = unit_function_counts(mod.gen.llvm_ir);
         self.lowered[resolved] = mod;
+        self.unlowerable.discard(resolved);
         ent = self.registry.record_module(mod, opts);
         self.registry._stash_products(resolved, mod.gen);
         if self.compact_on_lower {
