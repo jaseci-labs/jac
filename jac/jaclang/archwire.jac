@@ -2101,6 +2101,7 @@ graph import {
         compiler.backends.es.esast_gen_pass
             | compiler.backends.py.pyast_gen_pass
             | compiler.passes.comptime_resolve_pass
+            | compiler.passes.declaration_type_pass
             | compiler.passes.jsx_intrinsic_guard_pass
             | compiler.passes.scope_walk
             | compiler.tools.grammar_extract_pass { osp_skip_rest },
@@ -5994,6 +5995,7 @@ graph import compiler {
             | passes.cfg_build_pass
             | passes.comptime_resolve_pass
             | passes.decl_impl_match_pass
+            | passes.declaration_type_pass
             | passes.freeze_structure_pass
             | passes.import_wiring_pass
             | passes.ownership_check_pass
@@ -8384,6 +8386,20 @@ graph import compiler {
             is_identifier_slot,
             typed_rebind_names
         },
+        passes.declaration_type_pass {
+            Ability,
+            Archetype,
+            CodeBlockStmt,
+            Enum,
+            Expr,
+            FuncSignature,
+            ImplDef,
+            Kid,
+            Module,
+            ModuleCode,
+            Test,
+            UniNode
+        },
         passes.endpoint_effect_pass {
             Ability,
             Archetype,
@@ -9552,6 +9568,9 @@ graph import compiler {
         symbol_utils { CompilerPass },
     ]
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
+    passes.declaration_type_pass ++> [
+        driver.pipeline.declaration_passes { DeclarationTypePass },
+    ]
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
     passes.freeze_structure_pass ++> driver.pipeline.frozen_passes {
@@ -9859,6 +9878,7 @@ graph import compiler {
             | backends.native.mir.emit
             | backends.native.mir.lower
             | c_interop._spec_for_name
+            | passes.declaration_type_pass
             | passes.layout_pass
             | passes.mtir_gen_pass
             | passes.ownership_check_pass
@@ -9972,11 +9992,14 @@ graph import compiler {
         frontend.unitree { CtValue },
     ]
     types.fixed_width ++> [
+        passes.declaration_type_pass
+            | passes.type_checker_pass.TypeCheckPass._stamp_fixed_width {
+            numeric_name_of
+        },
         passes.type_checker_pass.TypeCheckPass._provably_in_range {
             interval_of_expr,
             interval_of_op
         },
-        passes.type_checker_pass.TypeCheckPass._stamp_fixed_width { numeric_name_of },
     ]
     types.operations ++> [
         backends.es.esast_gen_pass { AUG_TO_BINARY_MAP },
@@ -13350,7 +13373,9 @@ graph import compiler.passes {
         },
     ]
     scope_walk ++> static_analysis_pass { ScopeWalker }
-    type_checker_pass ++> comptime_resolve_pass { TypeCheckPass }
+    type_checker_pass ++> comptime_resolve_pass | declaration_type_pass {
+        TypeCheckPass
+    }
     wasm_contract --> [
         boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
             function_contract,
@@ -13425,6 +13450,10 @@ graph import compiler.tests {
             run_py_fixture,
             run_with_both
         },
+        test_fn_identity_equivalence | test_osp_equivalence {
+            run_py_fixture,
+            run_with_both
+        },
         test_graph_fragment_equivalence {
             run_js_module_fixture,
             run_py_fixture,
@@ -13437,7 +13466,6 @@ graph import compiler.tests {
             run_with_both
         },
         test_native_list_search_equality { compile_native, get_func },
-        test_osp_equivalence { run_py_fixture, run_with_both },
         test_prim_equivalence {
             compare_results,
             compile_fixture_to_js,
