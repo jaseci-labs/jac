@@ -6,7 +6,8 @@ glob MIR_RUNTIME_UNITS: list[str] = [
          "runtime/native/exceptions.jac",
          "runtime/native/rc.jac",
          "runtime/native/strings.jac",
-         "runtime/native/lists.jac"
+         "runtime/native/lists.jac",
+         "runtime/native/dicts.jac"
      ];
 
 def mir_backend_selected -> bool;

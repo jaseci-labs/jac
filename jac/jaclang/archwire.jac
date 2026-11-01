@@ -16256,7 +16256,16 @@ graph import runtime.na_stdlib {
 }
 
 graph import runtime.native {
+    lists ++> dicts { __jac_rt_elem_eq, __jac_rt_elem_release, __jac_rt_elem_retain }
     rc ++> [
+        dicts {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_release_acyclic,
+            __jac_rt_set_type,
+            __jac_rt_trace_register
+        },
         lists {
             __jac_rt_alloc,
             __jac_rt_free_block,
@@ -16268,7 +16277,10 @@ graph import runtime.native {
         },
         strings { __jac_rt_alloc, __jac_rt_set_type },
     ]
-    strings ++> lists { __jac_rt_str_cmp, __jac_rt_str_size }
+    strings ++> [
+        dicts { __jac_rt_str_size },
+        lists { __jac_rt_str_cmp, __jac_rt_str_size },
+    ]
 }
 
 graph import runtime.python {
