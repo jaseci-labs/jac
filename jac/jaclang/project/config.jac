@@ -1,3 +1,4 @@
+import copy;
 import os;
 import re;
 import sys;
@@ -17,9 +18,155 @@ obj PersonConfig {
         email: str = "";
 }
 
+glob RUN_KEYS: list[str] = ["session", "main", "cache", "diagnostics"],
+     NATIVE_KEYS: list[str] = ["link_mode", "require", "target", "opt", "debug", "threads"],
+     MEMORY_KEYS: list[str] = ["profile", "enforce", "exempt"],
+     MEMORY_PROFILES: list[str] = ["managed", "rc", "nogc"],
+     PLACEMENT_KEYS: list[str] = ["default", "pins"],
+     PLACEMENT_ALIASES: dict[str, str] = {"sv": "server", "na": "native", "server": "server", "native": "native"},
+     BUILD_KEYS: list[str] = ["dir"],
+     BUILD_RETIRED: dict[str, str] = {
+         "default_codespace": "[placement] default",
+         "native": "[native]",
+         "native_closure_cap": "nothing: a module's whole import closure is always judged for native placement"
+     },
+     TEST_KEYS: list[str] = [
+         "directory",
+         "directories",
+         "isolate",
+         "serial",
+         "filter",
+         "verbose",
+         "fail_fast",
+         "max_failures"
+     ],
+     PROJECT_KEYS: list[str] = [
+         "name",
+         "version",
+         "description",
+         "authors",
+         "maintainers",
+         "license",
+         "readme",
+         "keywords",
+         "classifiers",
+         "requires-python",
+         "jac-version",
+         "entry-point",
+         "kind",
+         "default-app",
+         "exports",
+         "urls",
+         "include"
+     ],
+     INCLUDE_KEYS: list[str] = ["packages", "data"],
+     SERVE_KEYS: list[str] = [
+         "host",
+         "port",
+         "session",
+         "main",
+         "docs_enabled",
+         "graph_enabled",
+         "cors_origins",
+         "public_origin",
+         "on_conflict",
+         "conflict_max_attempts",
+         "conflict_backoff_ms",
+         "workers",
+         "tls",
+         "proxy",
+         "limits",
+         "timeouts",
+         "access_log",
+         "compression",
+         "websocket",
+         "auth"
+     ],
+     SERVE_CONFLICT_MODES: list[str] = ["retry", "fail"],
+     WORKERS_KEYS: list[str] = [
+         "count",
+         "threads",
+         "max_requests",
+         "max_requests_jitter",
+         "request_timeout",
+         "boot_timeout",
+         "hang_timeout"
+     ],
+     TLS_KEYS: list[str] = ["certfile", "keyfile", "ca_certs", "min_version"],
+     PROXY_KEYS: list[str] = ["trusted"],
+     LIMITS_KEYS: list[str] = [
+         "max_connections",
+         "backlog",
+         "max_body_bytes",
+         "max_header_bytes",
+         "max_header_count",
+         "max_request_line_bytes",
+         "multipart_spool_bytes"
+     ],
+     TIMEOUTS_KEYS: list[str] = ["header", "body", "keepalive", "drain", "close"],
+     ACCESS_LOG_KEYS: list[str] = ["enabled", "format", "suppress_health_checks"],
+     COMPRESSION_KEYS: list[str] = ["enabled", "min_bytes", "level"],
+     WEBSOCKET_KEYS: list[str] = [
+         "allowed_origins",
+         "max_message_bytes",
+         "ping_interval",
+         "ping_timeout"
+     ],
+     FORMAT_KEYS: list[str] = ["outfile"],
+     LINT_KEYS: list[str] = ["select", "ignore", "exclude"],
+     CHECK_KEYS: list[str] = [
+         "print_errs",
+         "lint",
+         "exclude",
+         "suppress",
+         "suppress_categories",
+         "enforce_access",
+         "warn_native_seams",
+         "untyped-external"
+     ],
+     DOT_KEYS: list[str] = ["depth", "traverse", "bfs", "edge_limit", "node_limit", "format"],
+     CACHE_KEYS: list[str] = ["enabled", "dir"],
+     STORAGE_KEYS: list[str] = [
+         "type",
+         "base_path",
+         "create_dirs",
+         "bucket",
+         "prefix",
+         "region",
+         "endpoint_url",
+         "project_id",
+         "public_read"
+     ],
+     ENVIRONMENT_KEYS: list[str] = ["default_profile"],
+     CLIENT_ERRORS_KEYS: list[str] = ["verbose"],
+     DATABASE_KEYS: list[str] = ["indexes", "retention_days", "postgres_dist", "postgres_version"],
+     NETWORK_KEYS: list[str] = ["offline"],
+     TOOLCHAINS_KEYS: list[str] = ["system"],
+     DEV_KEYS: list[str] = [
+         "jaclang_source",
+         "exact",
+         "pod_binary",
+         "jobs",
+         "test_jobs",
+         "check_jobs",
+         "fmt_jobs"
+     ],
+     RETIRED_SECTIONS: dict[str, str] = {
+         "gc": "the [gc] section was retired; use [memory] profile / enforce / exempt",
+         "arch": "[arch] was removed from jac.toml: an archwire.jac seals the directory it sits in. Delete the [arch] table and run `jac arch init --strip` in each directory it closed"
+     };
+
+def _toml_key(key: str) -> str;
+
+def _parse_person(t: TomlTable, key: str, index: int, item: any) -> PersonConfig;
+
+def _parse_persons_at(t: TomlTable, key: str) -> list[PersonConfig];
+
 obj PackageIncludeConfig {
     has packages: list[str] = [],
         data: dict[str, list[str]] = {};
+
+    def apply(t: TomlTable);
 }
 
 obj ProjectConfig {
@@ -35,11 +182,14 @@ obj ProjectConfig {
         requires_python: str = "",
         jac_version: str = "",
         entry_point: str = "main",
+        entry_point_declared: bool = False,
         kind: str = "",
         default_app: str = "",
         exports: list[str] = [],
         urls: dict[str, str] = {},
         `include: PackageIncludeConfig = PackageIncludeConfig();
+
+    def apply(t: TomlTable);
 }
 
 obj RunConfig {
@@ -47,6 +197,8 @@ obj RunConfig {
         main: bool = True,
         cache: bool = True,
         diagnostics: str = "error";
+
+    def apply(t: TomlTable);
 }
 
 obj NativeConfig {
@@ -56,6 +208,8 @@ obj NativeConfig {
         opt: int = 2,
         debug: bool = False,
         threads: int = 4;
+
+    def apply(t: TomlTable);
 }
 
 obj MemoryConfig {
@@ -64,14 +218,20 @@ obj MemoryConfig {
         exempt: list[str] = [];
 
     def gc_mode -> str;
+    def apply(t: TomlTable);
 }
 
 obj PlacementConfig {
-    has default_codespace: str = "native";
+    has default_codespace: str = "native",
+        pins: dict[str, str] = {};
+
+    def apply(t: TomlTable);
 }
 
 obj BuildConfig {
     has dir: str = ".jac";
+
+    def apply(t: TomlTable);
 }
 
 obj TestConfig {
@@ -83,6 +243,8 @@ obj TestConfig {
         verbose: bool = False,
         fail_fast: bool = False,
         max_failures: int = 0;
+
+    def apply(t: TomlTable);
 }
 
 obj ServeWorkersConfig {
@@ -93,6 +255,8 @@ obj ServeWorkersConfig {
         request_timeout: float = 0.0,
         boot_timeout: float = 120.0,
         hang_timeout: float = 30.0;
+
+    def apply(t: TomlTable);
 }
 
 obj ServeTlsConfig {
@@ -100,10 +264,14 @@ obj ServeTlsConfig {
         keyfile: str = "",
         ca_certs: str = "",
         min_version: str = "1.2";
+
+    def apply(t: TomlTable);
 }
 
 obj ServeProxyConfig {
     has trusted: list[str] = [];
+
+    def apply(t: TomlTable);
 }
 
 obj ServeLimitsConfig {
@@ -114,6 +282,8 @@ obj ServeLimitsConfig {
         max_header_count: int = 100,
         max_request_line_bytes: int = 8192,
         multipart_spool_bytes: int = 1048576;
+
+    def apply(t: TomlTable);
 }
 
 obj ServeTimeoutsConfig {
@@ -122,18 +292,24 @@ obj ServeTimeoutsConfig {
         keepalive: float = 65.0,
         drain: float = 10.0,
         close: float = 5.0;
+
+    def apply(t: TomlTable);
 }
 
 obj ServeAccessLogConfig {
     has enabled: bool = True,
         format: str = "text",
         suppress_health_checks: bool = False;
+
+    def apply(t: TomlTable);
 }
 
 obj ServeCompressionConfig {
     has enabled: bool = True,
         min_bytes: int = 1024,
         level: int = 4;
+
+    def apply(t: TomlTable);
 }
 
 obj ServeWebSocketConfig {
@@ -141,6 +317,8 @@ obj ServeWebSocketConfig {
         max_message_bytes: int = 0,
         ping_interval: float = 20.0,
         ping_timeout: float = 20.0;
+
+    def apply(t: TomlTable);
 }
 
 obj ServeConfig {
@@ -164,16 +342,22 @@ obj ServeConfig {
         compression: ServeCompressionConfig = ServeCompressionConfig(),
         websocket: ServeWebSocketConfig = ServeWebSocketConfig(),
         auth: dict[str, any] = {};
+
+    def apply(t: TomlTable);
 }
 
 obj FormatConfig {
     has outfile: str = "";
+
+    def apply(t: TomlTable);
 }
 
 obj LintConfig {
     has select: list[str] = ["default"],
         ignore: list[str] = [],
         exclude: list[str] = [];
+
+    def apply(t: TomlTable);
 }
 
 obj CheckConfig {
@@ -185,6 +369,8 @@ obj CheckConfig {
         enforce_access: bool = False,
         warn_native_seams: bool = True,
         untyped_external: str = "warning";
+
+    def apply(t: TomlTable);
 }
 
 obj DotConfig {
@@ -194,11 +380,15 @@ obj DotConfig {
         edge_limit: int = 512,
         node_limit: int = 512,
         format: str = "dot";
+
+    def apply(t: TomlTable);
 }
 
 obj CacheConfig {
     has enabled: bool = True,
         dir: str = "cache";
+
+    def apply(t: TomlTable);
 }
 
 obj StorageConfig {
@@ -211,18 +401,27 @@ obj StorageConfig {
         endpoint_url: (str | None) = None,
         project_id: str = "",
         public_read: bool = False;
+
+    def apply(t: TomlTable);
 }
 
 obj EnvironmentConfig {
     has default_profile: str = "";
+
+    def apply(t: TomlTable);
 }
 
 obj ClientErrorsConfig {
     has verbose: bool = False;
+
+    def apply(t: TomlTable);
 }
 
 obj ClientConfig {
-    has framework: str = "react";
+    has framework: str = "react",
+        paths: dict[str, str] = {};
+
+    def apply(t: TomlTable);
 }
 
 obj DatabaseConfig {
@@ -230,14 +429,20 @@ obj DatabaseConfig {
         retention_days: int = 0,
         postgres_dist: str = "",
         postgres_version: str = "";
+
+    def apply(t: TomlTable);
 }
 
 obj NetworkConfig {
     has offline: bool = False;
+
+    def apply(t: TomlTable);
 }
 
 obj ToolchainsConfig {
     has system: bool = True;
+
+    def apply(t: TomlTable);
 }
 
 obj DevConfig {
@@ -248,6 +453,8 @@ obj DevConfig {
         test_jobs: str = "",
         check_jobs: str = "",
         fmt_jobs: str = "";
+
+    def apply(t: TomlTable);
 }
 
 obj UnresolvedRef {
@@ -269,9 +476,15 @@ def interpolate_env_vars(
     sink: list[UnresolvedRef] | None = None
 ) -> str;
 
+def _env_reference(body: str, environ: dict[str, str]) -> tuple[str, UnresolvedRef | None];
+
 def resolve_env_refs(
     data: any, environ: dict[str, str] | None = None, path: str = ""
 ) -> tuple[any, list[UnresolvedRef]];
+
+def _resolve_env_into(
+    item: any, at: str, environ: dict[str, str] | None, refs: list[UnresolvedRef]
+) -> any;
 
 def report_env_findings(
     refs: list[UnresolvedRef], context: str, hint: str = ""
@@ -351,19 +564,6 @@ obj JacConfig {
         toml_str: str, toml_path: Path | None = None
     ) -> JacConfig;
 
-    def _section_map -> dict[
-        str,
-        RunConfig
-            | BuildConfig
-            | TestConfig
-            | ServeConfig
-            | FormatConfig
-            | DotConfig
-            | CacheConfig
-            | EnvironmentConfig
-            | ClientConfig
-    ];
-
     def apply_profile(profile_name: str, _visited: set[str] | None = None) -> None;
     def apply_profile_overlay(profile_name: str | None = None) -> None;
     def get_plugin_deps(dep_type: str) -> dict[str, any];
@@ -403,9 +603,17 @@ obj JacConfig {
 
 def _parse_toml_data(data: dict[str, any], toml_path: Path | None = None) -> JacConfig;
 
-def _parse_persons(raw: list[object]) -> list[PersonConfig];
+def _origin_of(toml_path: Path | None) -> str;
 
-def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
+def _apply_sections(cfg: JacConfig, t: TomlTable);
+
+def _apply_capabilities(cfg: JacConfig, t: TomlTable);
+
+def _apply_named_tables(cfg: JacConfig, t: TomlTable);
+
+def _check_retired(t: TomlTable);
+
+def _deep_merge(base: dict[str, any], `override: dict[str, any]) -> dict[str, any];
 
 def _interpolate_recursive(`obj: any) -> any;
 

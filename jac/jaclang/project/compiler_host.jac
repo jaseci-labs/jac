@@ -1,7 +1,20 @@
+"""The kernel's host services: the one implementation that answers the
+compiler's questions about the world. It runs inside the kernel and reads the
+project, the file system and the caches itself; nothing is asked of the
+process that loaded the kernel."""
+import gc;
+import hashlib;
+import os;
+import platform;
+import sys;
 import from contextlib { contextmanager }
+import from pathlib { Path }
 
 glob UNIT_COLLECT_EVERY: int = 16,
-     UNIT_COLLECT_GROWTH_MB: int = 512;
+     UNIT_COLLECT_GROWTH_MB: int = 512,
+     COMPILER_PACKAGE_NAME: str = "jaclang",
+     OTHER_COMPILER_MARKER: str = "compiler/kernel_api.jac",
+     _OTHER_COMPILER_DIRS: dict[str, str] = {};
 
 obj UnitCollectBudget {
     has releases: int = 0,
@@ -10,14 +23,42 @@ obj UnitCollectBudget {
     def due -> bool;
 }
 
+obj HostSession(SessionHooks) {
+    has host: ProjectHost,
+        closure: (CompileOptions | None) = None;
+
+    def closure_options -> (CompileOptions | None);
+    def run_module(
+        file_path: str,
+        target_program: JacProgram,
+        use_str: (str | None),
+        options: CompileOptions
+    ) -> Module;
+}
+
 obj ProjectHost(HostServices) {
-    has _defaults_active: bool = False,
+    has root: str = "",
+        overlay: dict[str, str] = {},
+        closure: (CompileOptions | None) = None,
+        analyses: dict[str, ModuleAnalysis] = {},
+        units: dict[str, UnitProducts] = {},
+        grown: set[str] = set(),
+        _defaults_active: bool = False,
         _last_defaults: (ProjectDefaults | None) = None,
-        _facts: dict[str, tuple[any, ProjectFacts]] = {},
+        _facts: dict[str, ProjectFacts] = {},
         _stub_globals: list[str] = [],
         _collect_budget: UnitCollectBudget = UnitCollectBudget(),
-        _platform: (HostPlatform | None) = None;
+        _platform: (HostPlatform | None) = None,
+        _native_ifaces: dict[str, NativeIface] = {},
+        _lowering: set[str] = set(),
+        _lowered: dict[str, Module] = {},
+        _session: (HostSession | None) = None;
 
+    def postinit;
+    def close_over(options: CompileOptions);
+    def record_unit(task: ModuleAnalysis);
+    def forget_unit(path: str);
+    def project_config(path: str = "") -> JacConfig;
     @contextmanager
     def session -> Iterator[None];
 
@@ -49,6 +90,10 @@ obj ProjectHost(HostServices) {
         program: JacProgram, path: str, options: CompileOptions
     ) -> str;
 
+    def lower_dependency(
+        program: JacProgram, real: str, options: CompileOptions
+    ) -> (NativeIface | None);
+
     def native_lowering_failed(program: JacProgram, path: str, detail: str);
     def native_fact(kind: str, key: str) -> str;
     def save_native_debug_ir(path: str, text: str);
@@ -62,10 +107,6 @@ obj ProjectHost(HostServices) {
     def native_pipeline_available -> tuple[bool, str];
     def note(message: str, style: str = "dim");
     def stub_catalog_for(program: JacProgram) -> (StubCatalog | None);
-    def parse_python(
-        source_str: str, file_path: str, program: JacProgram
-    ) -> tuple[Module, bool];
-
     def ct_environment -> CtEnvironment;
     def host_platform -> HostPlatform;
     def path_facts(path: str) -> PathFacts;
@@ -80,15 +121,6 @@ obj ProjectHost(HostServices) {
     def keep_wiring_records(digest: str, text: str);
     def native_scan_record(path: str, digest: str) -> str;
     def keep_native_scan_record(path: str, digest: str, text: str);
-    def native_parse(
-        source_str: str,
-        file_path: str,
-        program: (JacProgram | None),
-        annexes: list[WovenAnnex],
-        early_context: str = "",
-        load_kernel: bool = True
-    ) -> (tuple[Module, bool] | None);
-
     def woven_module(path: str, program: (JacProgram | None)) -> (Module | None);
     def place_wired_imports(module: Module);
     def drop_python_lane_products(path: str, program: JacProgram);
@@ -96,10 +128,6 @@ obj ProjectHost(HostServices) {
     def iface_registry_for(program: JacProgram) -> IfaceRegistry;
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
-    def kernel_compile(
-        program: JacProgram, path: str, options: CompileOptions
-    ) -> (CompileReport | None);
-
     def in_compiler_tree(path: str) -> bool;
     def schedule_import_failed(err: ImportError);
     def client_osp_core_js -> str;
@@ -111,17 +139,6 @@ obj ProjectHost(HostServices) {
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
     );
-
-    def native_analyze(
-        program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-    ) -> (ModuleAnalysis | None);
-
-    def kernel_inputs(
-        program: JacProgram,
-        path: str,
-        options: CompileOptions,
-        source: (str | None) = None
-    ) -> KernelInputs;
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(
@@ -165,8 +182,18 @@ obj ProjectHost(HostServices) {
     def default_target_triple -> str;
 }
 
-def check_settings_of(check: any) -> CheckSettings;
+def check_settings_of(check: CheckConfig) -> CheckSettings;
 
-def project_defaults_of(cfg: any) -> ProjectDefaults;
+def project_defaults_of(cfg: JacConfig) -> ProjectDefaults;
 
-def client_stub_names(path: str) -> set[str];
+def package_name_of(name: str) -> str;
+
+def other_compiler_root(path: str) -> str;
+
+def peak_rss_mb -> int;
+
+def wiring_records_path(digest: str) -> str;
+
+def native_scan_path(path: str, digest: str) -> str;
+
+def write_record(path: str, text: str);

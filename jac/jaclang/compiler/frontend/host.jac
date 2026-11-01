@@ -60,7 +60,6 @@ obj HostServices {
     @contextmanager
     def session -> Iterator[None];
 
-    def in_kernel -> bool;
     def project_defaults -> (ProjectDefaults | None);
     def check_settings(target_app: str) -> CheckSettings;
     def project_facts(path: str) -> (ProjectFacts | None);
@@ -89,10 +88,6 @@ obj HostServices {
 
     def note(message: str, style: str = "dim");
     def stub_catalog_for(program: JacProgram) -> (StubCatalog | None);
-    def parse_python(
-        source_str: str, file_path: str, program: JacProgram
-    ) -> tuple[Module, bool];
-
     def stub_interface(program: JacProgram, file_path: str) -> (Module | None);
     def ct_environment -> CtEnvironment;
     def path_facts(path: str) -> PathFacts;
@@ -137,10 +132,6 @@ obj HostServices {
     def save_native_debug_ir(path: str, text: str);
     def native_units_for(program: JacProgram) -> NativeUnitRegistry;
     def client_boundary_facts(program: JacProgram, path: str) -> (list[str] | None);
-    def kernel_compile(
-        program: JacProgram, path: str, options: CompileOptions
-    ) -> (CompileReport | None);
-
     def in_compiler_tree(path: str) -> bool;
     def schedule_import_failed(err: ImportError);
     def client_osp_core_js -> str;
@@ -153,10 +144,6 @@ obj HostServices {
     def record_native_coverage(
         path: str, outcome: str, code: str = "", detail: str = ""
     );
-
-    def native_analyze(
-        program: JacProgram, path: str, options: CompileOptions, source: (str | None)
-    ) -> (ModuleAnalysis | None);
 
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(
@@ -210,7 +197,8 @@ glob HOST_FACT_SEP: str = "\x1e",
 glob _HOSTS: list[HostServices] = [],
      _KERNEL_HOST_MODE: list[str] = [],
      _NEUTRAL_HOST: HostServices = NeutralHost(),
-     _PACKAGE_ROOT: list[str] = [];
+     _PACKAGE_ROOT: list[str] = [],
+     _KERNEL_RESIDENT: list[bool] = [];
 
 def active_host -> HostServices;
 
@@ -219,6 +207,10 @@ def package_root -> str;
 def set_package_root(path: str);
 
 def install_host(host: HostServices);
+
+def mark_kernel_resident;
+
+def kernel_resident -> bool;
 
 def set_kernel_host_mode(mode: str) -> str;
 

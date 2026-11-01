@@ -1,11 +1,18 @@
 import os;
-import stat;
 import time;
-import from pathlib { Path }
 
 glob _DIR_LISTINGS: dict[str, tuple[int, list[str]]] = {},
      LISTING_SETTLE_NS: int = 2_000_000_000,
-     _LAYOUT_TABLES: list[LayoutTables] = [];
+     JAC_LAYOUT_TABLES: LayoutTables = LayoutTables(
+         jac_suffix=".jac",
+         annex_folders={".impl.jac": ".impl", ".test.jac": ".test"},
+         module_suffixes=[".jac"],
+         init_files=["__init__.jac"],
+         stem_rekey_suffixes=[".impl"],
+         foreign_suffixes=[".pyi", ".py", ".jsx", ".tsx", ".js", ".ts"],
+         retired_native=[".na.jac", ".na.impl.jac"],
+         retired_client=[".cl.jac", ".cl.impl.jac"]
+     );
 
 def host_layout_tables -> LayoutTables;
 

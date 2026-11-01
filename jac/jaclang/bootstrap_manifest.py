@@ -143,6 +143,7 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/passes/sym_tab_build_pass.jac",
     "compiler/passes/context.jac",
     "compiler/native_scope.jac",
+    "compiler/source_tiers.jac",
     "compiler/kernel_target.jac",
     "compiler/field_semantics.jac",
     "compiler/c_interop.jac",
