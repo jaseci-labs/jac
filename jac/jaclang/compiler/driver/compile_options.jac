@@ -27,11 +27,17 @@ obj CompileOptions {
         memory_profile: (str | None) = None,
         na_gc_mode: (str | None) = None,
         nogc_enforce_all: (bool | None) = None,
+        na_borrow_infer: bool = True,
         memory_enforce: (list[str] | None) = None,
         memory_exempt: (list[str] | None) = None,
         native_threads: (int | None) = None,
         rc_debug_codegen: (bool | None) = None,
         native_target: (str | None) = None,
+        native_tls: bool = False,
+        native_sjlj: bool = False,
+        native_unchecked_views: bool = False,
+        native_direct_c_entries: bool = False,
+        native_heap: str = "",
         native_debug: (bool | None) = None,
         opt_level: (int | None) = None,
         dump_ir_path: (str | None) = None,
@@ -46,13 +52,16 @@ obj CompileOptions {
         entry_point: str = "",
         ui: str = "",
         project_root: (str | None) = None,
+        client_source_root: str = "",
         native_module_walk_order: (str | None) = None,
         strict_dependencies: bool = False,
         package_canonical: bool = False,
+        na_move_flow: bool = True,
         cancel_token: (CancelToken | None) = None;
 
     def postinit;
     def effective_triple -> str;
+    def native_options_identity -> str;
     def codegen_identity -> str;
     def codegen_fingerprint -> str;
     def analysis_identity -> str;

@@ -55,7 +55,9 @@ import from engine.src.runtime.mem {
     read_byte,
     read_u64,
     write_byte,
-    str_from_raw
+    str_from_raw,
+    str_byte,
+    str_nbytes
 }
 import from engine.src.runtime.binary_state {
     BinaryViewWitness,
@@ -140,17 +142,17 @@ def _bn_int_or(v: JSValue, dflt: int) -> int {
 
 """Case-insensitive equality of a Jac str against an ASCII lowercase literal."""
 def _bn_eq_ci(s: str, lit: str) -> bool {
-    n: int = len(s);
-    if n != len(lit) {
+    n: int = str_nbytes(s);
+    if n != str_nbytes(lit) {
         return False;
     }
     i: int = 0;
     while i < n {
-        c: int = ord(s[i]);
+        c: int = str_byte(s, i);
         if c >= 65 and c <= 90 {
             c = c + 32;
         }
-        if c != ord(lit[i]) {
+        if c != str_byte(lit, i) {
             return False;
         }
         i += 1;
@@ -672,19 +674,19 @@ def _bn_is_range_arg(v: JSValue) -> bool {
         return False;
     }
     st: str = str_from_id(jsv_to_table_id(v));
-    n: int = len(st);
+    n: int = str_nbytes(st);
     if n == 0 or n > 10 {
         return False;
     }
     i: int = 0;
-    if ord(st[0]) == 45 {
+    if str_byte(st, 0) == 45 {
         i = 1;
         if n == 1 {
             return False;
         }
     }
     while i < n {
-        c: int = ord(st[i]);
+        c: int = str_byte(st, i);
         if c < 48 or c > 57 {
             return False;
         }
@@ -702,16 +704,16 @@ def _bn_range_int(v: JSValue, dflt: int) -> int {
         return _bn_int_or(v, dflt);
     }
     st: str = str_from_id(jsv_to_table_id(v));
-    n: int = len(st);
+    n: int = str_nbytes(st);
     neg: bool = False;
     i: int = 0;
-    if n > 0 and ord(st[0]) == 45 {
+    if n > 0 and str_byte(st, 0) == 45 {
         neg = True;
         i = 1;
     }
     acc: int = 0;
     while i < n {
-        acc = acc * 10 + (ord(st[i]) - 48);
+        acc = acc * 10 + (str_byte(st, i) - 48);
         i = i + 1;
     }
     if neg {
@@ -1043,27 +1045,27 @@ def:pub buf_init_typed_array(
 
 """True when s[i..] starts the NUL sentinel C0 80 (called with s[i] == 192)."""
 def _bn_at_nul_sentinel(s: str, i: int, n: int) -> bool {
-    return i + 1 < n and ord(s[i + 1]) == 128;
+    return i + 1 < n and str_byte(s, i + 1) == 128;
 }
 
 """Wire UTF-8 byte length of engine string `s`."""
 def _bn_wire_utf8_len(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     out: int = 0;
     while i < n {
-        b: int = ord(s[i]);
+        b: int = str_byte(s, i);
         if b < 128 {
             i = i + 1;
             out = out + 1;
         } elif b == 192 and _bn_at_nul_sentinel(s, i, n) {
             i = i + 2;  # NUL sentinel → one 0x00 byte
             out = out + 1;
-        } elif b == 237 and i + 2 < n and (ord(s[i + 1]) & 224) == 160 {
-            if (ord(s[i + 1]) & 240) == 160
+        } elif b == 237 and i + 2 < n and (str_byte(s, i + 1) & 224) == 160 {
+            if (str_byte(s, i + 1) & 240) == 160
                 and i + 5 < n
-                and ord(s[i + 3]) == 237
-                and (ord(s[i + 4]) & 240) == 176 {
+                and str_byte(s, i + 3) == 237
+                and (str_byte(s, i + 4) & 240) == 176 {
                 out = out + 4;  # high + low surrogate → one 4-byte scalar
                 i = i + 6;
             } else {
@@ -1091,11 +1093,11 @@ def _bn_wire_utf8_len(s: str) -> int {
 bytes written; never splits a character (node: a character that does not fit
 is not written at all)."""
 def _bn_wire_utf8_write(s: str, dst: int, off: int, cap: int) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     w: int = 0;
     while i < n {
-        b: int = ord(s[i]);
+        b: int = str_byte(s, i);
         if b < 128 {
             if w + 1 > cap {
                 break;
@@ -1110,20 +1112,20 @@ def _bn_wire_utf8_write(s: str, dst: int, off: int, cap: int) -> int {
             write_byte(dst, off + w, 0);  # NUL sentinel → a real NUL byte
             i = i + 2;
             w = w + 1;
-        } elif b == 237 and i + 2 < n and (ord(s[i + 1]) & 224) == 160 {
-            b1: int = ord(s[i + 1]);
-            b2: int = ord(s[i + 2]);
+        } elif b == 237 and i + 2 < n and (str_byte(s, i + 1) & 224) == 160 {
+            b1: int = str_byte(s, i + 1);
+            b2: int = str_byte(s, i + 2);
             if (b1 & 240) == 160
                 and i + 5 < n
-                and ord(s[i + 3]) == 237
-                and (ord(s[i + 4]) & 240) == 176 {
+                and str_byte(s, i + 3) == 237
+                and (str_byte(s, i + 4) & 240) == 176 {
                 if w + 4 > cap {
                     break;
                 }
                 hi: int = ((b & 15) << 12) | ((b1 & 63) << 6) | (b2 & 63);
-                lo: int = ((ord(s[i + 3]) & 15) << 12)
-                    | ((ord(s[i + 4]) & 63) << 6)
-                    | (ord(s[i + 5]) & 63);
+                lo: int = ((str_byte(s, i + 3) & 15) << 12)
+                    | ((str_byte(s, i + 4) & 63) << 6)
+                    | (str_byte(s, i + 5) & 63);
                 cp: int = 65536 + ((hi - 55296) << 10) + (lo - 56320);
                 write_byte(dst, off + w, 240 | (cp >> 18));
                 write_byte(dst, off + w + 1, 128 | ((cp >> 12) & 63));
@@ -1156,7 +1158,7 @@ def _bn_wire_utf8_write(s: str, dst: int, off: int, cap: int) -> int {
             }
             k: int = 0;
             while k < l {
-                write_byte(dst, off + w + k, ord(s[i + k]));
+                write_byte(dst, off + w + k, str_byte(s, i + k));
                 k = k + 1;
             }
             w = w + l;
@@ -1169,30 +1171,30 @@ def _bn_wire_utf8_write(s: str, dst: int, off: int, cap: int) -> int {
 """latin1 / ascii write: the low byte of each UTF-16 code unit of `s` into
 dst[off .. off+cap). Returns the bytes written."""
 def _bn_latin1_write(s: str, dst: int, off: int, cap: int) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     w: int = 0;
     while i < n and w < cap {
-        b: int = ord(s[i]);
+        b: int = str_byte(s, i);
         unit: int = b;
         if b < 128 {
             i = i + 1;
         } elif b < 224 and i + 1 < n {
             # (the NUL sentinel C0 80 decodes to unit 0 here)
-            unit = ((b & 31) << 6) | (ord(s[i + 1]) & 63);
+            unit = ((b & 31) << 6) | (str_byte(s, i + 1) & 63);
             i = i + 2;
         } elif b < 240 and i + 2 < n {
             unit = ((b & 15) << 12)
-                | ((ord(s[i + 1]) & 63) << 6)
-                | (ord(s[i + 2]) & 63);
+                | ((str_byte(s, i + 1) & 63) << 6)
+                | (str_byte(s, i + 2) & 63);
             i = i + 3;
         } elif b >= 240 and i + 3 < n {
             # Real 4-byte scalar (not produced by the engine, handled for safety):
             # two UTF-16 units → two bytes.
             cp4: int = ((b & 7) << 18)
-                | ((ord(s[i + 1]) & 63) << 12)
-                | ((ord(s[i + 2]) & 63) << 6)
-                | (ord(s[i + 3]) & 63);
+                | ((str_byte(s, i + 1) & 63) << 12)
+                | ((str_byte(s, i + 2) & 63) << 6)
+                | (str_byte(s, i + 3) & 63);
             cp4 = cp4 - 65536;
             write_byte(dst, off + w, (55296 + (cp4 >> 10)) & 255);
             w = w + 1;
@@ -1480,8 +1482,8 @@ def _bn_decode_hex(ptr: int, s: int, e: int) -> str {
     i: int = s;
     while i < e {
         b: int = read_byte(ptr, i);
-        write_byte(data, j, ord(_BN_HEX_CHARS[b >> 4]));
-        write_byte(data, j + 1, ord(_BN_HEX_CHARS[b & 15]));
+        write_byte(data, j, str_byte(_BN_HEX_CHARS, b >> 4));
+        write_byte(data, j + 1, str_byte(_BN_HEX_CHARS, b & 15));
         j = j + 2;
         i = i + 1;
     }
@@ -1515,18 +1517,18 @@ def _bn_decode_base64(ptr: int, s: int, e: int, url_safe: bool) -> str {
         if i + 2 < e {
             b2 = read_byte(ptr, i + 2);
         }
-        write_byte(data, j, ord(tbl[b0 >> 2]));
-        write_byte(data, j + 1, ord(tbl[((b0 & 3) << 4) | (b1 >> 4)]));
+        write_byte(data, j, str_byte(tbl, b0 >> 2));
+        write_byte(data, j + 1, str_byte(tbl, ((b0 & 3) << 4) | (b1 >> 4)));
         j = j + 2;
         if i + 1 < e {
-            write_byte(data, j, ord(tbl[((b1 & 15) << 2) | (b2 >> 6)]));
+            write_byte(data, j, str_byte(tbl, ((b1 & 15) << 2) | (b2 >> 6)));
             j = j + 1;
         } elif not url_safe {
             write_byte(data, j, 61);
             j = j + 1;
         }
         if i + 2 < e {
-            write_byte(data, j, ord(tbl[b2 & 63]));
+            write_byte(data, j, str_byte(tbl, b2 & 63));
             j = j + 1;
         } elif not url_safe {
             write_byte(data, j, 61);
@@ -2178,11 +2180,11 @@ def _bn_hex_val(c: int) -> int {
 
 """Decoded byte count of a base64 string (both alphabets; stops at '=')."""
 def _bn_b64_byte_length(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     valid: int = 0;
     i: int = 0;
     while i < n {
-        c: int = ord(s[i]);
+        c: int = str_byte(s, i);
         if c == 61 {
             break;
         }
@@ -2196,13 +2198,13 @@ def _bn_b64_byte_length(s: str) -> int {
 
 """Decode base64 `s` into dst[off .. off+cap); returns bytes written."""
 def _bn_b64_write(s: str, dst: int, off: int, cap: int) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     acc: int = 0;
     bits: int = 0;
     w: int = 0;
     i: int = 0;
     while i < n and w < cap {
-        c: int = ord(s[i]);
+        c: int = str_byte(s, i);
         i = i + 1;
         if c == 61 {
             break;
@@ -2224,11 +2226,11 @@ def _bn_b64_write(s: str, dst: int, off: int, cap: int) -> int {
 
 """Decoded byte count of a hex string (valid leading pairs only)."""
 def _bn_hex_byte_length(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     cnt: int = 0;
     while i + 1 < n {
-        if _bn_hex_val(ord(s[i])) < 0 or _bn_hex_val(ord(s[i + 1])) < 0 {
+        if _bn_hex_val(str_byte(s, i)) < 0 or _bn_hex_val(str_byte(s, i + 1)) < 0 {
             break;
         }
         cnt = cnt + 1;
@@ -2238,12 +2240,12 @@ def _bn_hex_byte_length(s: str) -> int {
 }
 
 def _bn_hex_write(s: str, dst: int, off: int, cap: int) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     w: int = 0;
     while i + 1 < n and w < cap {
-        hi: int = _bn_hex_val(ord(s[i]));
-        lo: int = _bn_hex_val(ord(s[i + 1]));
+        hi: int = _bn_hex_val(str_byte(s, i));
+        lo: int = _bn_hex_val(str_byte(s, i + 1));
         if hi < 0 or lo < 0 {
             break;
         }

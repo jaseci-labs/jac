@@ -110,6 +110,11 @@ import from engine.src.pm.lockfile {
 import from engine.src.pm.project { PkgJson, pm_read_package_json, pm_workspace_dirs }
 import from engine.src.pm.platform { pm_current_os, pm_current_cpu }
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
+
 obj:pub ResolveResult {
     has ok: bool = False,
         error: str = "",
@@ -592,7 +597,7 @@ def _rdeps_to_lockdeps(deps: list[RDep]) -> list[LockDep] {
 def _lock_url(url: str) -> str {
     d: str = PM_DEFAULT_REGISTRY;
     if d.endswith("/") {
-        d = d[0:len(d) - 1];
+        d = str_bslice(d, 0, str_nbytes(d) - 1);
     }
     if url.startswith(d) {
         return "";

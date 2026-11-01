@@ -35,7 +35,12 @@ import from engine.src.runtime.jsvalue {
     jsv_to_table_id
 }
 import from engine.src.builtins.generator_type { JSGeneratorState }
-import from engine.src.runtime.realm { Realm, gc_note_alloc }
+import from engine.src.runtime.realm {
+    Realm,
+    gc_note_alloc,
+    gc_note_gen_write,
+    gc_note_gen_young
+}
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.wk_keys { WK_VALUE, WK_DONE }
 import from engine.src.runtime.jsobject {
@@ -203,7 +208,8 @@ def:pub js_generator_create(
         _GEN_REALM.generators_mark_epoch.append(0);  # A2.2b GC mark bitmap
         idx = len(_GEN_REALM.generators) - 1;
     }
-    gc_note_alloc(_GEN_REALM);  # G0.4: account generator allocation (reuse or append)
+    gc_note_gen_young(_GEN_REALM, idx);
+    gc_note_alloc(_GEN_REALM, 512);  # G0.4: account generator allocation (reuse or append)
 
     js_obj: JSValue = js_undefined();
     if jsv_is_object_cell(_GEN_INSTANCE_PROTO)
@@ -256,18 +262,22 @@ def:pub js_get_generator_state(v: JSValue) -> JSGeneratorState {
     return _GEN_REALM.generators[idx];
 }
 
-"""Update the generator state back into the table after mutation."""
+"""Update the generator state back into the table after mutation (a suspend
+writes its locals, saved stack and delegate: the generational barrier)."""
 def:pub js_set_generator_state(v: JSValue, state: JSGeneratorState) -> None {
+    idx: int = -1;
     if _GEN_SID > 0 {
         gs_iv: JSValue = js_object_ic_hit(v, _GEN_SID, _GEN_IDX_SI);
         if jsv_is_int32(gs_iv) {
-            _GEN_REALM.generators[jsv_to_int32(gs_iv)] = state;
-            return;
+            idx = jsv_to_int32(gs_iv);
         }
     }
-    idx_v: JSValue = js_object_get(v, _KEY_GEN_IDX);
-    idx: int = jsv_to_int32(idx_v);
+    if idx < 0 {
+        idx_v: JSValue = js_object_get(v, _KEY_GEN_IDX);
+        idx = jsv_to_int32(idx_v);
+    }
     _GEN_REALM.generators[idx] = state;
+    gc_note_gen_write(_GEN_REALM, idx);
 }
 
 glob _GEN_REALM: Realm;

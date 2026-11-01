@@ -461,13 +461,25 @@ obj CompiledFunction {
         const_cache: list[JSValue] = [],
         optimized: int = 0,
         has_tail_call: bool = False,
+        # 1 when no super() can run inside the function (its own code and the
+        # arrows it creates, transitively): the register translator then keeps
+        # `this` symbolic and folds it into its use; 0 when one can; -1 unknown
+        this_lazy: int = -1,
         risa: int = 0,
         reg_tmp_base: int = 0,
+        # set with the register translation: the in-loop call entry's static
+        # conditions (no generator / async / bound function, any arguments
+        # object unmapped) hold -- one test per call instead of five
+        reg_simple: bool = False,
         rcode: list[int] = [],
         rorig: list[int] = [],
         rhandler: list[int] = [],
         reg_gen_start: int = -1,
-        rcode_ptr: int = 0;
+        rcode_ptr: int = 0,
+        # The register loop's flat own-slot property IC, two words per stack
+        # instruction (shape id, slot index; 0: empty), raw like rcode_ptr: a
+        # GETFIELD / SETFIELD hit reads it without the Instruction's IC fields.
+        ric_ptr: int = 0;
 }
 
 # parent-local slot index per free_var; -1 = transitive capture

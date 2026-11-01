@@ -11,9 +11,10 @@ LOAD_DEREF).
 Implementation: each cell is a JS object with a single property "__c__".
 """
 
-import from engine.src.runtime.jsvalue { JSValue, jsv_is_object_cell, jsv_to_table_id }
+import from engine.src.runtime.jsvalue { JSValue, jsv_is_object_cell, jsv_to_table_id, jsv_hole, jsv_is_hole }
 import from engine.src.runtime.jsstring { str_intern }
 import from engine.src.runtime.jsobject {
+    js_object_new_shaped1,
     js_object_create_null,
     js_object_get,
     js_object_set,
@@ -21,7 +22,8 @@ import from engine.src.runtime.jsobject {
     js_object_ic_shape,
     js_object_slot_at_id,
     js_object_own_data_slot,
-    js_object_shape_slot_set
+    js_object_shape_slot_set,
+    js_object_ic_hit
 }
 
 """Interned key used inside cell objects to store the wrapped value."""
@@ -49,6 +51,9 @@ glob _CELL_SHAPE: int = -1,
 
 """Create a closure cell wrapping `val`."""
 def:pub make_cell(val: JSValue) -> JSValue {
+    if _CELL_SHAPE > 0 and _CELL_SLOT == 0 {
+        return js_object_new_shaped1(-1, _CELL_SHAPE, val);
+    }
     ck: int = _get_ck();
     cell: JSValue = js_object_create_null();
     js_object_set(cell, ck, val);
@@ -65,8 +70,12 @@ def:pub make_cell(val: JSValue) -> JSValue {
 
 """Read the value inside a closure cell."""
 def:pub cell_get(cell: JSValue) -> JSValue {
-    if _CELL_SHAPE > 0 and js_object_ic_shape(cell) == _CELL_SHAPE {
-        return js_object_slot_at_id(jsv_to_table_id(cell), _CELL_SLOT);
+    # One IC-style table access (shape test and slot read together).
+    if _CELL_SHAPE > 0 {
+        cg_v: JSValue = js_object_ic_hit(cell, _CELL_SHAPE, _CELL_SLOT);
+        if not jsv_is_hole(cg_v) {
+            return cg_v;
+        }
     }
     return js_object_get(cell, _get_ck());
 }

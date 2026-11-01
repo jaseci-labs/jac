@@ -9,11 +9,11 @@ whose type is `tuple[type[Leaf]]` narrowed the subject to a *tuple*.
 
 That is not a missed narrow, it is a wrong one, and it is louder than it
 looks: every member access and every call site downstream of the guard then
-type-checks against `tuple`. It surfaced in `capability_check_pass`, whose
-`NATIVE_REJECT_NODES` table guards the node it then files a violation for:
+type-checks against `tuple`. It surfaced in a pass whose table of node
+classes guards the node it then files a violation for:
 
-    glob NATIVE_REJECT_NODES: tuple = (PyInlineCode, );
-    if isinstance(nd, NATIVE_REJECT_NODES) {
+    glob REJECT_NODES: tuple = (Leaf, );
+    if isinstance(nd, REJECT_NODES) {
         out.append((nd, kind, type(nd).__name__, None));   # nd was `tuple`
     }
 

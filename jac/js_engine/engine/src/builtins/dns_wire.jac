@@ -23,7 +23,11 @@ import from engine.src.runtime.mem {
     write_byte,
     write_i32,
     write_i64,
-    byte_chr
+    byte_chr,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
 }
 import from engine.src.runtime.jsvalue {
     JSValue,
@@ -91,14 +95,15 @@ def _dw_encode_qname(host: str) -> str {
     out: str = "";
     label: str = "";
     i: int = 0;
-    while i <= len(host) {
+    _nb98_host: int = str_nbytes(host);
+    while i <= _nb98_host {
         c: str = ".";
-        if i < len(host) {
-            c = host[i];
+        if i < str_nbytes(host) {
+            c = byte_chr(str_byte(host, i));
         }
-        if c == "." or i == len(host) {
+        if c == "." or i == str_nbytes(host) {
             if len(label) > 0 {
-                out = out + _dw_chr(len(label)) + label;
+                out = out + _dw_chr(str_nbytes(label)) + label;
                 label = "";
             }
         } else {
@@ -118,18 +123,20 @@ def _dw_write_u16_be_buf(ptr: int, off: int, v: int) -> int {
 def _dw_write_name_buf(ptr: int, off: int, host: str) -> int {
     label: str = "";
     i: int = 0;
-    while i <= len(host) {
+    _nb125_host: int = str_nbytes(host);
+    while i <= _nb125_host {
         c: str = ".";
-        if i < len(host) {
-            c = host[i];
+        if i < str_nbytes(host) {
+            c = byte_chr(str_byte(host, i));
         }
-        if c == "." or i == len(host) {
+        if c == "." or i == str_nbytes(host) {
             if len(label) > 0 {
-                write_byte(ptr, off, len(label));
+                write_byte(ptr, off, str_nbytes(label));
                 off = off + 1;
                 li: int = 0;
-                while li < len(label) {
-                    write_byte(ptr, off, ord(label[li]));
+                _nb135_label: int = str_nbytes(label);
+                while li < _nb135_label {
+                    write_byte(ptr, off, str_byte(label, li));
                     off = off + 1;
                     li = li + 1;
                 }
@@ -282,12 +289,13 @@ def _dw_ptr_name_from_ip(ip: str) -> str {
     parts: list[str] = [];
     cur: str = "";
     i: int = 0;
-    while i <= len(ip) {
+    _nb289_ip: int = str_nbytes(ip);
+    while i <= _nb289_ip {
         c: str = ".";
-        if i < len(ip) {
-            c = ip[i];
+        if i < str_nbytes(ip) {
+            c = byte_chr(str_byte(ip, i));
         }
-        if c == "." or i == len(ip) {
+        if c == "." or i == str_nbytes(ip) {
             if len(cur) > 0 {
                 parts.append(cur);
                 cur = "";
@@ -328,15 +336,16 @@ def:pub dns_wire_load_resolv_conf -> list[str] {
     line: str = "";
     i: int = 0;
     while i < n {
-        ch: str = text[i];
+        ch: str = byte_chr(str_byte(text, i));
         if ch == "\n" or ch == "\r" {
             if _dw_line_prefix(line, "nameserver") {
-                rest: str = line[10:];
+                rest: str = str_bslice_from(line, 10);
                 j: int = 0;
-                while j < len(rest) and rest[j] == " " {
+                _nb340_rest: int = str_nbytes(rest);
+                while j < _nb340_rest and byte_chr(str_byte(rest, j)) == " " {
                     j = j + 1;
                 }
-                ip: str = rest[j:];
+                ip: str = str_bslice_from(rest, j);
                 if len(ip) > 0 {
                     out.append(ip);
                 }
@@ -354,12 +363,13 @@ def:pub dns_wire_load_resolv_conf -> list[str] {
 }
 
 def _dw_line_prefix(line: str, prefix: str) -> bool {
-    if len(line) < len(prefix) {
+    if str_nbytes(line) < str_nbytes(prefix) {
         return False;
     }
     pi: int = 0;
-    while pi < len(prefix) {
-        if line[pi] != prefix[pi] {
+    _nb365_prefix: int = str_nbytes(prefix);
+    while pi < _nb365_prefix {
+        if byte_chr(str_byte(line, pi)) != byte_chr(str_byte(prefix, pi)) {
             return False;
         }
         pi = pi + 1;
@@ -387,10 +397,11 @@ def _dw_set_rcv_timeout(fd: int, sec: int) {
 def _dw_parse_port_digits(ps: str) -> int {
     pi: int = 0;
     pv: int = 0;
-    while pi < len(ps) {
-        pch: str = ps[pi];
+    _nb394_ps: int = str_nbytes(ps);
+    while pi < _nb394_ps {
+        pch: str = byte_chr(str_byte(ps, pi));
         if pch >= "0" and pch <= "9" {
-            pv = pv * 10 + (ord(pch) - 48);
+            pv = pv * 10 + (str_byte(pch, 0) - 48);
         } else {
             return 0;
         }
@@ -402,16 +413,16 @@ def _dw_parse_port_digits(ps: str) -> int {
 def _dw_parse_host_port(server: str) -> list[str] {
     host: str = server;
     port: int = 53;
-    slen: int = len(server);
-    if slen >= 2 and server[0] == "[" {
+    slen: int = str_nbytes(server);
+    if slen >= 2 and byte_chr(str_byte(server, 0)) == "[" {
         bi: int = 1;
-        while bi < slen and server[bi] != "]" {
+        while bi < slen and byte_chr(str_byte(server, bi)) != "]" {
             bi = bi + 1;
         }
         if bi < slen {
-            host = server[1:bi];
-            if bi + 1 < slen and server[bi + 1] == ":" {
-                pv: int = _dw_parse_port_digits(server[bi + 2:]);
+            host = str_bslice(server, 1, bi);
+            if bi + 1 < slen and byte_chr(str_byte(server, bi + 1)) == ":" {
+                pv: int = _dw_parse_port_digits(str_bslice_from(server, bi + 2));
                 if pv > 0 {
                     port = pv;
                 }
@@ -423,15 +434,15 @@ def _dw_parse_host_port(server: str) -> list[str] {
     last_colon: int = -1;
     ci: int = 0;
     while ci < slen {
-        if server[ci] == ":" {
+        if byte_chr(str_byte(server, ci)) == ":" {
             colon_count = colon_count + 1;
             last_colon = ci;
         }
         ci = ci + 1;
     }
     if colon_count == 1 and last_colon >= 0 {
-        host = server[0:last_colon];
-        pv2: int = _dw_parse_port_digits(server[last_colon + 1:]);
+        host = str_bslice(server, 0, last_colon);
+        pv2: int = _dw_parse_port_digits(str_bslice_from(server, last_colon + 1));
         if pv2 > 0 {
             port = pv2;
         }
@@ -467,10 +478,11 @@ def _dw_query_tcp(server: str) -> int {
     if len(hp2[1]) > 0 {
         port2 = 0;
         pi4: int = 0;
-        while pi4 < len(hp2[1]) {
-            pch4: str = hp2[1][pi4];
+        _nb474_hp2_1_: int = str_nbytes(hp2[1]);
+        while pi4 < _nb474_hp2_1_ {
+            pch4: str = byte_chr(str_byte(hp2[1], pi4));
             if pch4 >= "0" and pch4 <= "9" {
-                port2 = port2 * 10 + (ord(pch4) - 48);
+                port2 = port2 * 10 + (str_byte(pch4, 0) - 48);
             }
             pi4 = pi4 + 1;
         }
@@ -525,10 +537,11 @@ def _dw_query_udp(server: str) -> int {
     if len(hp[1]) > 0 {
         port = 0;
         pi3: int = 0;
-        while pi3 < len(hp[1]) {
-            pch3: str = hp[1][pi3];
+        _nb532_hp_1_: int = str_nbytes(hp[1]);
+        while pi3 < _nb532_hp_1_ {
+            pch3: str = byte_chr(str_byte(hp[1], pi3));
             if pch3 >= "0" and pch3 <= "9" {
-                port = port * 10 + (ord(pch3) - 48);
+                port = port * 10 + (str_byte(pch3, 0) - 48);
             }
             pi3 = pi3 + 1;
         }

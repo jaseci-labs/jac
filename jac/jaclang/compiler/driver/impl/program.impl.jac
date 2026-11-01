@@ -112,6 +112,13 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
 }
 
 impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.release_module(resolved_path);
+            }
+        }
+    }
     released = self.hub.mod.hub.get(resolved_path) or self.find_module(resolved_path);
     self.invalidate_module(resolved_path);
     self.drop_module_alerts(resolved_path);
