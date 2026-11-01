@@ -436,8 +436,18 @@ from_path ::=
 
 import_items ::=
     "{" (
-        ("def" | "can" | "obj" | "class" | "enum" | "async" | STRING | "glob" | "has")
-        element_stmt*
+        (
+            "def"
+            | "can"
+            | "obj"
+            | "class"
+            | "enum"
+            | "async"
+            | STRING
+            | "glob"
+            | "has"
+            | "@"
+        ) element_stmt*
         | (("*" | "default" | NAME | KWESC_NAME) ("as" (NAME | KWESC_NAME))? ","?)*
     ) "}"
 

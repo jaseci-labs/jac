@@ -292,9 +292,9 @@ impl build_runtime_closure(
         for name in closure
         if name.endswith('.py')
     ] {
-        for parent in Path(relative).parents {
-            if str(parent) != '.' {
-                closure.setdefault((parent / '__init__.py').as_posix(), b'');
+        for ancestor in Path(relative).parents {
+            if str(ancestor) != '.' {
+                closure.setdefault((ancestor / '__init__.py').as_posix(), b'');
             }
         }
     }

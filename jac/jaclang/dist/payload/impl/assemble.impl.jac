@@ -42,7 +42,7 @@ impl mk_payload(python_dir: str, repo_root: str, out: str, opts: MkPayloadOpts) 
             "pip",
             "install",
             "--quiet",
-            "watchdog>=3.0.0",
+            "watchdog>=3.0.0,<7",
             "tomlkit",
             "--target",
             site

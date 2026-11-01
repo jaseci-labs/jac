@@ -106,4 +106,25 @@ def:pub __jacReportError(
     componentStack: str = ""
 ) -> None;
 
+def __jacIsExtensionError(stack: str, filename: str = "") -> bool;
+
+def __jacIsExtensionUrl(url: str) -> bool;
+
+def __jacClaimErrorReport(message: str, stack: str) -> bool;
+
+glob __JAC_EXTENSION_URL_PREFIXES: list[str] = [
+         "chrome-extension://",
+         "moz-extension://",
+         "safari-web-extension://",
+         "safari-extension://"
+     ],
+     __JAC_ERROR_REPORTS_PER_MINUTE: int = 10,
+     __JAC_ERROR_REPORTS_PER_PAGE: int = 200,
+     __JAC_STACK_FRAME_RE: any = RegExp(
+         "^\\s*at\\s+(?:.*?\\()?(.*?)\\)?\\s*$|^[^@]*@(.*:\\d+:\\d+)\\s*$"
+     ),
+     __JAC_ENGINE_FRAME_RE: any = RegExp(
+         "^(?:<anonymous>|native|\\[native code\\]|index \\d+|unknown location)?$"
+     );
+
 def:pub __jacReactErrorHandler(error: any, info: any) -> None;

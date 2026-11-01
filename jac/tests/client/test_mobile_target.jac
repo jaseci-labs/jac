@@ -582,10 +582,9 @@ test "JacClientCompiler selects the native runtime with native=True" {
     assert "target_name" not in src_content , "compile() takes native=, not target_name=";
     assert "target_name" not in impl_content;
     assert "self.compile_runtime_utils(self.NATIVE_RUNTIME_FILE)" in impl_content;
-    assert "COMPOUND_EXTENSIONS = ['.native.jac']" in src_content , (
-        "COMPOUND_EXTENSIONS must strip .native.jac ahead of the plain .jac "
-        "fallback so Header.native.jac maps to Header.js (not Header.native.js)."
-    );
+    import from jaclang.compiler.backends.es.client_paths { jac_js_path }
+    assert jac_js_path("Header.native.jac") == "Header.js";
+    assert jac_js_path("Header.jac") == "Header.js";
     assert "client_react_core.jac" in impl_content , (
         "compile_runtime_utils must bundle client_react_core (D9)"
     );
@@ -1976,6 +1975,15 @@ test "compiler resolves .native.jac when native=True" {
         artifact = jac_compiler.jac_compiler.compile_module(entry_file);
         if artifact.js {
             jac_compiler.compile(None, entry_file, native=True);
+            import re;
+            runtime_js = (compiled_dir / "client_runtime.js").read_text();
+            for spec in re.findall(
+                r'(?:from|import)\s+[\'"](\.[^\'"]+)[\'"]', runtime_js
+            ) {
+                assert (compiled_dir / spec).is_file() , (
+                    f"unresolved native runtime import: {spec}"
+                );
+            }
 
             # The native variant should have been picked. Verify by checking
             # the compiled header.js for native-only content.

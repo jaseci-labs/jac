@@ -41,8 +41,8 @@ impl _inventory(
             result[path] = _stamp(path, previous.get(path));
         }
     }
-    for path in Path(`root).`glob('jac*.toml') {
-        result[str(path)] = _stamp(str(path), previous.get(str(path)));
+    for toml_path in Path(`root).`glob('jac*.toml') {
+        result[str(toml_path)] = _stamp(str(toml_path), previous.get(str(toml_path)));
     }
     return result;
 }
@@ -556,6 +556,9 @@ impl prepare_application(
                     import from jaclang.runtime.prepared { publish }
                     applications: list[PreparedApplication] = [];
                     for path in entries {
+                        source_root = `root
+                            if Path(path).is_relative_to(`root)
+                            else os.path.dirname(path);
                         options = bind_options(
                             path,
                             program,
@@ -564,7 +567,8 @@ impl prepare_application(
                                 force_codespace=force_codespace,
                                 skip_native_engine=program.options.skip_native_engine,
                                 entry_point=path,
-                                project_root=`root
+                                project_root=`root,
+                                client_source_root=source_root if client else ''
                             )
                         );
                         actual = context_program(program, options);
@@ -794,13 +798,23 @@ impl _kernel_units(
     inputs: dict[str, str],
     previous: dict[str, dict[str, any]],
     rows: dict[str, dict[str, any]],
-    specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]]
+    specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]],
+    recorded: dict[str, str]
 ) -> (dict[str, ManifestSource] | None) {
     import copy;
     selfhost = program._get_compiler().selfhost;
     seeds = _reusable_interfaces(previous, entries, specs, `root);
     warned = len(program.warnings_had);
     units: dict[str, ManifestSource] = {};
+    reached: set[str] = set();
+    read: dict[str, str] = {};
+    def capture(path: str) {
+        if path in seeds and path not in units and path in recorded {
+            inputs.setdefault(path, recorded[path]);
+        } else {
+            _capture_input(path, inputs);
+        }
+    }
     def compile_target(path: str) -> (bool | None) {
         options = copy.copy(program.options);
         options.project_root = `root;
@@ -812,10 +826,13 @@ impl _kernel_units(
         if compiled is None {
             return None;
         }
-        for reached in compiled.analysis.modules {
-            if not selfhost.is_selfhost(selfhost.resolve(reached.path, program)) {
-                _capture_input(reached.path, inputs);
+        for module in compiled.analysis.modules {
+            if not selfhost.is_selfhost(selfhost.resolve(module.path, program)) {
+                reached.add(os.path.realpath(module.path));
             }
+        }
+        for row in compiled.analysis.reads {
+            read[row[0]] = row[1] if read.get(row[0], row[1]) == row[1] else '';
         }
         for unit in compiled.units {
             real = os.path.realpath(unit.path);
@@ -830,6 +847,8 @@ impl _kernel_units(
         forget_application_units();
         rows.clear();
         units.clear();
+        reached.clear();
+        read.clear();
         del program.errors_had[before:];
         del program.warnings_had[warned:];
         targets = list(entries);
@@ -883,12 +902,16 @@ impl _kernel_units(
         }
     }
     _check(program, before);
+    hold_compiled_content(read);
+    for path in reached {
+        capture(path);
+    }
     frontier = list(units);
     while frontier {
         row = rows.get(frontier.pop()) or {};
         for dep in row.get('jac_deps') or [] {
             if dep in seeds and dep not in units {
-                _capture_input(dep, inputs);
+                capture(dep);
                 units[dep] = _unit_source(_row_unit(dep, previous[dep]));
                 rows[dep] = previous[dep];
                 frontier.append(dep);
@@ -1040,7 +1063,8 @@ impl _prepare_revision(
         inputs,
         previous_rows,
         unit_rows,
-        recorded_specs
+        recorded_specs,
+        candidate.get('dependencies') or {} if isinstance(candidate, dict) else {}
     );
     if units is None {
         import from jaclang.compiler.driver.pipeline_runner { compile_application }
@@ -1206,32 +1230,36 @@ impl _prepare_revision(
     for path in project_facts {
         _capture_input(path, inputs);
     }
-    if any(
-        ct_dep_digest(path, with_annexes=True) != digest
-        for (path, digest) in inputs.items()
-    ) {
-        raise RuntimeError(
-            'Sources changed during preparation; retry with the new revision.'
-        );
-    }
-    read: dict[str, str] = {};
-    if revision.client_compiler is not None {
-        read = dict(revision.client_compiler.jac_client_compiler.input_files);
-        client_files = sorted(read);
-    }
-    settled = _client_inventory(`root, client_dirs, client_files, inventory)
-        if client
-        else _inventory(inventory_root, inputs=True, previous=inventory);
-    current = _digests(settled);
-    if (not client and current != _digests(inventory))
-        or any(
-            current.get(path) != digest
-            for (path, digest) in _digests(inventory).items()
-        )
-        or any(current.get(path, '') != digest for (path, digest) in read.items()) {
-        raise RuntimeError(
-            'Sources changed during preparation; retry with the new revision.'
-        );
+    with content_on_disk() {
+        if any(
+            ct_dep_digest(path, with_annexes=True) != digest
+            for (path, digest) in inputs.items()
+        ) {
+            raise RuntimeError(
+                'Sources changed during preparation; retry with the new revision.'
+            );
+        }
+        read: dict[str, str] = {};
+        if revision.client_compiler is not None {
+            read = dict(revision.client_compiler.jac_client_compiler.input_files);
+            client_files = sorted(read);
+        }
+        settled = _client_inventory(`root, client_dirs, client_files, inventory)
+            if client
+            else _inventory(inventory_root, inputs=True, previous=inventory);
+        current = _digests(settled);
+        if (not client and current != _digests(inventory))
+            or any(
+                current.get(path) != digest
+                for (path, digest) in _digests(inventory).items()
+            )
+            or any(
+                current.get(path, '') != digest for (path, digest) in read.items()
+            ) {
+            raise RuntimeError(
+                'Sources changed during preparation; retry with the new revision.'
+            );
+        }
     }
     if client {
         inventory = settled;

@@ -4,3 +4,7 @@
 engine/tests/test262/vendor/
 engine/tests/test262/.run_logs
 regression_logs/
+# Local quick-run setup (make → bin/js_engine), not part of the build.
+Makefile
+js_engine.c
+bin/

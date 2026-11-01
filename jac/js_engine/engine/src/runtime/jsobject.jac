@@ -18,7 +18,7 @@ ECMAScript spec refs:
   §10.1.8  [[Get]]  / §10.1.9  [[Set]]  / §10.1.10 [[Delete]]
 """
 
-import from engine.src.runtime.gc_barrier { gc_gen_on }
+import from engine.src.runtime.gc_barrier { gc_gen_on, gc_rem_obj }
 import from engine.src.runtime.jsvalue {
     JSValue,
     jsv_is_object_cell,
@@ -74,6 +74,8 @@ import from engine.src.runtime.jsobj_type {
 }
 import from engine.src.runtime.jscell {
     FLAG_IS_PROTO,
+    FLAG_OLD,
+    FLAG_REMEMBERED,
     FLAG_MODULE_NS,
     FLAG_MAPPED_ARGS,
     FLAG_IS_CLASS,
@@ -94,7 +96,14 @@ import from engine.src.runtime.shape {
     SHAPE_ATTR_ACCESSOR
 }
 import from engine.src.runtime.realm { Realm, gc_note_alloc, gc_mark_byte, objmark_push }
-import from engine.src.runtime.mem { read_byte, write_byte }
+import from engine.src.runtime.mem {
+    read_byte,
+    write_byte,
+    read_u64,
+    write_i64,
+    str_byte,
+    str_nbytes
+}
 import from engine.src.ffi.libc { getenv, write }
 import from engine.src.runtime.encoding {
     PROTO_MAX_DEPTH,
@@ -172,34 +181,38 @@ def _obj_gen -> bool {
     return _OBJ_GEN_ON == 1;
 }
 
-"""Allocate a JSObject in the global table; return its 1-based index."""
-def _obj_alloc(prototype_idx: int) -> int {
-    gc_note_alloc(_OBJ_REALM);  # G0.4: account this object allocation (reuse or append path)
-    # Mark the prototype as such — gates the dense-elements index protector:
-    # an index-keyed prop landing on any flagged object clears the protector.
-    # First time only (flag not yet set): also scan for index props it may
-    # have acquired BEFORE becoming a prototype. Amortized once per object.
-    if prototype_idx > 0 and prototype_idx <= len(_OBJ_REALM.objects) {
-        pa_raw: JSObject = _OBJ_REALM.objects[prototype_idx - 1];
-        if (pa_raw.cell_flags & FLAG_IS_PROTO) == 0 {
-            pa_raw.cell_flags = pa_raw.cell_flags | FLAG_IS_PROTO;
-            if idx_protector_ok() {
-                # A Proxy prototype traps EVERY inherited [[Set]]/[[Get]] —
-                # no index-key scan can prove it inert.
-                if pa_raw.class_id != 0 {
+"""Mark `prototype_idx` as a prototype (gates the dense-elements index
+protector: an index-keyed prop landing on any flagged object clears it).
+First time only: also scan for index props it may have acquired BEFORE
+becoming a prototype. Amortized once per prototype object."""
+def _obj_note_proto(prototype_idx: int) {
+    pa_raw: JSObject = _OBJ_REALM.objects[prototype_idx - 1];
+    pa_raw.cell_flags = pa_raw.cell_flags | FLAG_IS_PROTO;
+    if idx_protector_ok() {
+        # A Proxy prototype traps EVERY inherited [[Set]]/[[Get]] —
+        # no index-key scan can prove it inert.
+        if pa_raw.class_id != 0 {
+            idx_protector_clear();
+        } elif pa_raw.elems_kind != ELEMS_NONE and pa_raw.elen() > 0 {
+            idx_protector_clear();
+        } else {
+            for pa_k in pa_raw.all_keys() {
+                if _obj_is_array_index_key_id(pa_k) {
                     idx_protector_clear();
-                } elif pa_raw.elems_kind != ELEMS_NONE and pa_raw.elen() > 0 {
-                    idx_protector_clear();
-                } else {
-                    for pa_k in pa_raw.all_keys() {
-                        if _obj_is_array_index_key_id(pa_k) {
-                            idx_protector_clear();
-                            break;
-                        }
-                    }
+                    break;
                 }
             }
         }
+    }
+}
+
+"""Allocate a JSObject in the global table; return its 1-based index."""
+def _obj_alloc(prototype_idx: int) -> int {
+    gc_note_alloc(_OBJ_REALM);  # G0.4: account this object allocation (reuse or append path)
+    if prototype_idx > 0
+        and prototype_idx <= len(_OBJ_REALM.objects)
+        and (_OBJ_REALM.objects[prototype_idx - 1].cell_flags & FLAG_IS_PROTO) == 0 {
+        _obj_note_proto(prototype_idx);
     }
     # A2.4: reuse a tombstoned slot from the GC free-list if available.
     if len(_OBJ_REALM.free_object_slots) > 0 {
@@ -285,7 +298,7 @@ def _obj_alloc(prototype_idx: int) -> int {
                 + " gc_on="
                 + str(_OBJ_REALM.gc_enabled)
                 + "\n";
-            write(2, odm, len(odm));
+            write(2, odm, str_nbytes(odm));
         }
     }
     _OBJ_REALM.objects.append(
@@ -304,6 +317,18 @@ def _obj_alloc(prototype_idx: int) -> int {
         _OBJ_REALM.gc_young_alloc.append(idx);
     }
     return idx;
+}
+
+"""A fresh ordinary object with [[Prototype]] table id `proto_idx` (-1 =
+null) already at the one-property shape `sid` with `v0` in its slot: one
+property add from the empty root shape without the transition. `sid` must
+be learned from an object built the ordinary way."""
+def:pub js_object_new_shaped1(proto_idx: int, sid: int, v0: JSValue) -> JSValue {
+    sh1_idx: int = _obj_alloc(proto_idx);
+    _OBJ_REALM.objects[sh1_idx - 1].shape_id = sid;
+    _OBJ_REALM.objects[sh1_idx - 1].spush(v0);
+    _OBJ_REALM.objects[sh1_idx - 1].version = 1;
+    return _obj_wrap(sh1_idx);
 }
 
 """A fresh ordinary object with [[Prototype]] table id `proto_idx` (-1 =
@@ -451,7 +476,47 @@ def:pub js_object_ic_hit(v: JSValue, sid: int, si: int) -> JSValue {
     if ih_id <= 0 {
         return jsv_hole();
     }
-    return _OBJ_REALM.objects[ih_id - 1].ic_slot(sid, si);
+    # The row's own IC test (JSObject.ic_slot) and slot read (sget), as
+    # table-row field reads: the GETFIELD hit runs ~50M times per build and
+    # paid two dispatched method calls here.
+    if _OBJ_REALM.objects[ih_id - 1].shape_id != sid
+        or _OBJ_REALM.objects[ih_id - 1].class_id != 0
+        or _OBJ_REALM.objects[ih_id - 1].mode != MAP_MODE_SHAPE
+        or (_OBJ_REALM.objects[ih_id - 1].cell_flags & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
+        return jsv_hole();
+    }
+    # (_obj_slot_read spelled out: the inliner left it a call on this path)
+    if si < 2 {
+        if si == 0 {
+            return _OBJ_REALM.objects[ih_id - 1].s0;
+        }
+        return _OBJ_REALM.objects[ih_id - 1].s1;
+    }
+    if si < 4 {
+        if si == 2 {
+            return _OBJ_REALM.objects[ih_id - 1].s2;
+        }
+        return _OBJ_REALM.objects[ih_id - 1].s3;
+    }
+    return read_u64(_OBJ_REALM.objects[ih_id - 1].sp, si * 8 - 16);
+}
+
+"""slots[si] of table row `id` read in place (JSObject.sget without the
+dispatch): the four inline slots, then the slot buffer."""
+def _obj_slot_read(id: int, si: int) -> JSValue {
+    if si < 2 {
+        if si == 0 {
+            return _OBJ_REALM.objects[id - 1].s0;
+        }
+        return _OBJ_REALM.objects[id - 1].s1;
+    }
+    if si < 4 {
+        if si == 2 {
+            return _OBJ_REALM.objects[id - 1].s2;
+        }
+        return _OBJ_REALM.objects[id - 1].s3;
+    }
+    return read_u64(_OBJ_REALM.objects[id - 1].sp, si * 8 - 16);
 }
 
 """The SET IC's hit test and write in one table access (see js_object_ic_hit)."""
@@ -463,7 +528,36 @@ def:pub js_object_ic_set_hit(v: JSValue, sid: int, si: int, val: JSValue) -> boo
     if is_id <= 0 {
         return False;
     }
-    return _OBJ_REALM.objects[is_id - 1].ic_slot_set(sid, si, val);
+    if _OBJ_REALM.objects[is_id - 1].shape_id != sid
+        or _OBJ_REALM.objects[is_id - 1].class_id != 0
+        or _OBJ_REALM.objects[is_id - 1].mode != MAP_MODE_SHAPE
+        or (_OBJ_REALM.objects[is_id - 1].cell_flags & (FLAG_MODULE_NS | FLAG_IS_GLOBAL)) != 0 {
+        return False;
+    }
+    # JSObject.wb, in place: an old row that is not yet remembered joins the
+    # remembered set when a cell is stored into it.
+    if (_OBJ_REALM.objects[is_id - 1].cell_flags & (FLAG_OLD | FLAG_REMEMBERED)) == FLAG_OLD
+        and jsv_is_cell(val) {
+        _OBJ_REALM.objects[is_id - 1].cell_flags = _OBJ_REALM.objects[is_id - 1].cell_flags
+            | FLAG_REMEMBERED;
+        gc_rem_obj(is_id);
+    }
+    if si < 2 {
+        if si == 0 {
+            _OBJ_REALM.objects[is_id - 1].s0 = val;
+        } else {
+            _OBJ_REALM.objects[is_id - 1].s1 = val;
+        }
+    } elif si < 4 {
+        if si == 2 {
+            _OBJ_REALM.objects[is_id - 1].s2 = val;
+        } else {
+            _OBJ_REALM.objects[is_id - 1].s3 = val;
+        }
+    } else {
+        write_i64(_OBJ_REALM.objects[is_id - 1].sp, si * 8 - 16, val);
+    }
+    return True;
 }
 
 """[[Prototype]] table id of the object with table id `id` (0 = null)."""
@@ -675,7 +769,19 @@ def:pub js_object_ic_shape(v: JSValue) -> int {
 """slots[si] of the object with table id `id` (an IC hit: the caller has
 matched the shape, so the slot exists)."""
 def:pub js_object_slot_at_id(id: int, si: int) -> JSValue {
-    return _OBJ_REALM.objects[id - 1].sget(si);
+    if si < 2 {
+        if si == 0 {
+            return _OBJ_REALM.objects[id - 1].s0;
+        }
+        return _OBJ_REALM.objects[id - 1].s1;
+    }
+    if si < 4 {
+        if si == 2 {
+            return _OBJ_REALM.objects[id - 1].s2;
+        }
+        return _OBJ_REALM.objects[id - 1].s3;
+    }
+    return read_u64(_OBJ_REALM.objects[id - 1].sp, si * 8 - 16);
 }
 
 """Table slot index of `v`'s own data property `key` when `v` is an ordinary
@@ -766,12 +872,8 @@ glob _ACC_EMPTY: AccessorTable = AccessorTable();
 """Accessor table for READ access: the object's own table, or the shared empty one
 when it has no accessors. Result must not be mutated (see _acc_rw for writes)."""
 def _acc_ro(raw: JSObject) -> AccessorTable {
-    ar_x: JSObjectExt | None = raw.ext;
-    if ar_x is not None {
-        ar_a: AccessorTable | None = ar_x.accessors;
-        if ar_a is not None {
-            return ar_a;
-        }
+    if raw.ext is not None and raw.ext.accessors is not None {
+        return raw.ext.accessors;
     }
     return _ACC_EMPTY;
 }
@@ -993,19 +1095,26 @@ def:pub js_object_get(jsobj: JSValue, key: int) -> JSValue {
         if not jsv_is_hole(gt_own) {
             # Mapped arguments: an aliased index reads the live parameter slot.
             if _OBJ_REALM.objects[current_idx - 1].mapped_args() {
-                gt_ars: ArgsState = _args_row(current_idx);
-                if key in gt_ars.slot_map {
-                    ms: int = gt_ars.slot_map[key];
-                    if ms >= 0 and ms < len(gt_ars.locals) {
-                        return gt_ars.locals[ms];
-                    }
-                }
+                return _go_mapped_arg(current_idx, key, gt_own);
             }
             return gt_own;
         }
         current_idx = _OBJ_REALM.objects[current_idx - 1].prototype_idx;
     }
     return js_undefined();
+}
+
+"""js_object_get's mapped-`arguments` read, kept out of the walk: its owned
+ArgsState local would register every js_object_get call for unwind."""
+def _go_mapped_arg(current_idx: int, key: int, own_v: JSValue) -> JSValue {
+    gt_ars: ArgsState = _args_row(current_idx);
+    if key in gt_ars.slot_map {
+        ms: int = gt_ars.slot_map[key];
+        if ms >= 0 and ms < len(gt_ars.locals) {
+            return gt_ars.locals[ms];
+        }
+    }
+    return own_v;
 }
 
 """
@@ -1021,7 +1130,37 @@ involved no getter, trap or side effect, so it equals the full ordinary [[Get]].
 (A plain JSValue, not a tuple: tuple returns are heap-allocated per call.)
 """
 def:pub js_object_get_ordinary(jsobj: JSValue, key: int) -> JSValue {
+    # The common levels (shape mode, no accessor tables) are read here with
+    # no owned local; the first level that needs a row handle or the dict
+    # hands the rest of the walk to _go_ordinary_slow.
     go_idx: int = jsv_to_table_id(jsobj);
+    for _go_depth in range(PROTO_MAX_DEPTH) {
+        if go_idx <= 0 {
+            return js_undefined();
+        }
+        if (_OBJ_REALM.objects[go_idx - 1].brand & BRAND_STRING_OBJ) != 0
+            and (key == KEY_LENGTH or _obj_is_array_index_key_id(key)) {
+            return jsv_hole();
+        }
+        go_c: int = _OBJ_REALM.objects[go_idx - 1].ord_slot(key);
+        if go_c >= 0 {
+            return _OBJ_REALM.objects[go_idx - 1].sget(go_c);
+        }
+        if go_c == -2 {
+            return jsv_hole();
+        }
+        if go_c <= -3 {
+            return _go_ordinary_slow(go_idx, key);
+        }
+        go_idx = _OBJ_REALM.objects[go_idx - 1].prototype_idx;
+    }
+    return jsv_hole();
+}
+
+"""js_object_get_ordinary from level `go_idx` on, with the row handle and
+dict reads the lean walk leaves out."""
+def _go_ordinary_slow(go_start: int, key: int) -> JSValue {
+    go_idx: int = go_start;
     for _go_depth in range(PROTO_MAX_DEPTH) {
         if go_idx <= 0 {
             return js_undefined();
@@ -1399,7 +1538,7 @@ def:pub obj_stats_report {
         + " intern="
         + str(intern_n)
         + "\n";
-    write(2, msg, len(msg));
+    write(2, msg, str_nbytes(msg));
 }
 
 """Own-property data read without prototype walk (IC hit path).
@@ -1473,7 +1612,12 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
             raw.eset(dsi, val);
             return 0;
         }
-        if raw.is_ext() {
+        # An arguments object's elements never grow past the arguments it was
+        # made with: an index at or beyond them is an ordinary property (its
+        # `length` does not follow, and an iterator over it stops at `length`).
+        if (raw.cell_flags & FLAG_IS_ARGUMENTS) != 0 {
+            raw.ensure_sparse();
+        } elif raw.is_ext() {
             if dsi == dsn {
                 raw.epush(val);
                 return 0;
@@ -1486,10 +1630,10 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
                 raw.elems_kind = ELEMS_HOLEY;
                 return 0;
             }
+            raw.ensure_sparse();
         } else {
             return 1;
         }
-        raw.ensure_sparse();
     }
     # Array-index keys would each mint a transition (per-index shape chains,
     # e.g. filling an array-like) — send them to dict mode instead. Dense
@@ -1536,7 +1680,7 @@ def:pub js_object_set(jsobj: JSValue, key: int, val: JSValue) -> int {
                         + " acc="
                         + str(_DEOPT_ACC)
                         + "\n";
-                    write(2, dm, len(dm));
+                    write(2, dm, str_nbytes(dm));
                 }
             }
             raw.pm_ensure_dict();
@@ -1888,6 +2032,12 @@ def:pub js_object_has_own(jsobj: JSValue, key: int) -> bool {
     if not _OBJ_REALM.objects[ho_id - 1].has_acc() {
         return False;
     }
+    return _ho_in_acc_tables(ho_id, key);
+}
+
+"""js_object_has_own's accessor-table probe (an owned row handle, kept out
+of the common path)."""
+def _ho_in_acc_tables(ho_id: int, key: int) -> bool {
     raw: JSObject = _obj_get(ho_id);
     return (
         key in _acc_ro(raw).getters
@@ -1999,13 +2149,13 @@ def _obj_array_index_sort_key(kid: int) -> int {
     s: str = str_from_id(kid);
     np: int = 0;
     pi: int = 0;
-    sn: int = len(s);
+    sn: int = str_nbytes(s);
     # Byte-wise digit test: the previous `ch: str = str_substr(...)` per digit
     # parked an owned 1-byte str in a named local that is never released — two
     # leaked allocations per array-index property get (Array.prototype.join over
     # 800 elements retained 100KB per call).
     while pi < sn {
-        cc: int = ord(s[pi]);
+        cc: int = str_byte(s, pi);
         if cc >= 48 and cc <= 57 {
             np = np * 10 + (cc - 48);
         }
@@ -2297,20 +2447,29 @@ def:pub js_object_own_key_is_enumerable_now(jsobj: JSValue, kid: int) -> bool {
     if jsv_to_table_id(jsobj) <= 0 {
         return False;
     }
-    raw_e: JSObject = _obj_get(jsv_to_table_id(jsobj));
-    if raw_e.elems_kind != ELEMS_NONE and _obj_is_array_index_key_id(kid) {
+    en_id: int = jsv_to_table_id(jsobj);
+    if _OBJ_REALM.objects[en_id - 1].elems_kind != ELEMS_NONE
+        and _obj_is_array_index_key_id(kid) {
         den: int = _obj_array_index_sort_key(kid);
-        return den < raw_e.elen() and not jsv_is_hole(raw_e.eget(den));
+        return den < _OBJ_REALM.objects[en_id - 1].elen()
+            and not jsv_is_hole(_OBJ_REALM.objects[en_id - 1].eget(den));
     }
     # Shape mode: data AND accessor entries answer from the packed attrs
     # (get_property reports accessors as not-found, so it can't be used here).
-    if raw_e.mode == MAP_MODE_SHAPE {
-        oke: int = shape_lookup(raw_e.shape_id, kid);
+    if _OBJ_REALM.objects[en_id - 1].mode == MAP_MODE_SHAPE {
+        oke: int = shape_lookup(_OBJ_REALM.objects[en_id - 1].shape_id, kid);
         if oke >= 0 {
             return (oke & PROP_ENUMERABLE) != 0;
         }
         return False;
     }
+    return _own_key_enumerable_dict(en_id, kid);
+}
+
+"""js_object_own_key_is_enumerable_now's dict-mode half (an owned row
+handle and a descriptor, kept out of the shape-mode path)."""
+def _own_key_enumerable_dict(en_id: int, kid: int) -> bool {
+    raw_e: JSObject = _obj_get(en_id);
     p_e: JSProperty = raw_e.get_property(kid);
     if p_e.key != 0 {
         return p_e.enumerable;

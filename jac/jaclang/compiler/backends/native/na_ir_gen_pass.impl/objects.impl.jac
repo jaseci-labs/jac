@@ -989,7 +989,9 @@ impl NaIRGenPass._forward_declare_method(
         param_types.append(self._resolve_sig_type(p));
     }
 
-    ret_type = self._resolve_sig_type(sig.return_type)
+    ret_type = self._byvalue_ret_type(
+        self._resolve_return_type(sig.return_type, method=True)
+    )
         if isinstance(sig, uni.FuncSignature)
         else ir.IntType(64);
     if isinstance(sig, uni.FuncSignature) and self._ability_is_generator(method) {
@@ -1847,7 +1849,55 @@ impl NaIRGenPass._stack_alloc_target_ok(nd: uni.UniNode) -> bool {
         return False;
     }
     sym = targets[0].sym;
-    return sym is not None and sym.na_stack_ok;
+    if sym is None or not sym.na_stack_ok {
+        return False;
+    }
+
+    ability = nd.enclosing_decl(uni.Ability);
+    return ability is None or not self._ability_is_generator(ability);
+}
+
+impl NaIRGenPass._stack_only_bound(sym: uni.Symbol, type_name: str) -> bool {
+    occurrences: list[uni.NameAtom] = list(sym.defn) + list(sym.uses);
+    for occurrence in occurrences {
+        child: uni.UniNode = occurrence;
+        holder: (uni.UniNode | None) = occurrence.parent;
+        while holder is not None
+            and not isinstance(holder, (uni.Assignment, uni.InForStmt))
+            and not isinstance(holder, uni.CodeBlockStmt) {
+            child = holder;
+            holder = holder.parent;
+        }
+        if isinstance(holder, uni.InForStmt) {
+            if holder.target is child {
+                return False;
+            }
+            continue;
+        }
+        if not isinstance(holder, uni.Assignment) {
+            continue;
+        }
+        bound = False;
+        for target in holder.target {
+            if target is child {
+                bound = True;
+            }
+        }
+        if not bound {
+            continue;
+        }
+        value = holder.value;
+        if child is not occurrence
+            or holder.aug_op is not None
+            or len(holder.target) != 1
+            or not isinstance(value, uni.FuncCall)
+            or (self._arch_ref_key(value.target) or self._get_name(value.target))
+                != type_name
+            or not self._stack_alloc_target_ok(value) {
+            return False;
+        }
+    }
+    return True;
 }
 
 impl NaIRGenPass._empty_container_for_field(
@@ -2056,6 +2106,14 @@ impl NaIRGenPass._codegen_instantiation(
         );
         if self.rc_set_type_fn is not None {
             self._emit_set_type_tag(self.builder, _stk_i8, type_name);
+        }
+        _stk_asgn = nd.find_parent_of_type(uni.Assignment);
+        if _stk_asgn is not None
+            and len(_stk_asgn.target) == 1
+            and isinstance(_stk_asgn.target[0], uni.Name)
+            and _stk_asgn.target[0].sym is not None
+            and self._stack_only_bound(_stk_asgn.target[0].sym, type_name) {
+            self.borrowed_vars.add(_stk_asgn.target[0].sym_name);
         }
     } else {
         null_ptr = ir.Constant(struct_ptr_type, None);
@@ -2880,7 +2938,12 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
                         _cargs.append(_pv);
                     }
                 }
-                _r = self.builder.call(_fnp, _cargs, name=f"icall.{method_name}");
+                _r = self.builder.call(
+                    _fnp,
+                    _cargs,
+                    name=f"icall.{method_name}",
+                    cconv=self._field_call_convention(nd) or None
+                );
                 if isinstance(_fn_ty.return_type, ir.VoidType) {
                     return None;
                 }
@@ -3349,10 +3412,6 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     if self._arch_has_vtable(type_name) and not _is_mono_method and not _static_call {
         result = self._codegen_virtual_call(obj_val, method_name, args, type_name);
         if result is not None {
-            if isinstance(func.return_value.type, ir.VoidType) {
-                return ir.Constant(ir.IntType(64), 0);
-            }
-
             return self._erased_call_result(nd, func, result);
         }
     }
@@ -3374,10 +3433,6 @@ impl NaIRGenPass._codegen_method_call_inner(nd: uni.FuncCall) -> (ir.Value | Non
     self._emit_err_check(
         self._callee_ability_of(nd) or self._linked_callee_decl(func), site=nd
     );
-
-    if isinstance(func.return_value.type, ir.VoidType) {
-        return ir.Constant(ir.IntType(64), 0);
-    }
 
     return self._erased_call_result(nd, func, result);
 }
@@ -4001,6 +4056,9 @@ impl NaIRGenPass._narrow_receiver_ptr(
     }
 
     if isinstance(obj_val.type, ir.PointerType) {
+        if type_name in self.clib_struct_names and self._unchecked_views_on() {
+            return obj_val;
+        }
         null_ptr = ir.Constant(obj_val.type, None);
         is_null = self.builder.icmp_unsigned(
             "==", obj_val, null_ptr, name="null.field.chk"
@@ -4369,7 +4427,7 @@ impl NaIRGenPass._codegen_field_aug_assign(
         rhs_node,
         target_type=target.type,
         unsigned=self._is_unsigned_node(target),
-        checked=self._is_sized_node(target) or self._is_sized_node(rhs_node)
+        sized=self._is_sized_node(target)
     );
     if scalar is not None {
         return scalar;

@@ -1,8 +1,16 @@
-"""The resource module: generated clinic tables, struct_rusage and the constants."""
-
 glob:priv INTERNAL: list[str] = ["RLIM_INFINITY", "RLIM_NLIMITS"];
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+def:priv methods -> list[MethodDefinition];
+
+glob:priv definition = ModuleDefinition(
+         "resource", "", methods(), ModuleHooks(execute=execute), 1
+     );
+
+def:pub PyInit_resource -> ptr[PyObject];
+
+impl execute(module: ptr[PyObject]) -> i32 {
     if PLATFORM == "" or len(CONSTANTS) == 0 {
         object_error(
             PyExc_ImportError,
@@ -10,7 +18,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         );
         return i32(-1);
     }
-    if PyModule_AddObjectRef(module, "error", PyExc_OSError) < 0 {
+    if PyModule_AddObjectRef(module, ptr[u8]("error"), PyExc_OSError) < 0 {
         return i32(-1);
     }
     usage = jacpy_struct_sequence_type(
@@ -23,7 +31,8 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         return i32(-1);
     }
     for (name, value) in CONSTANTS {
-        if name not in INTERNAL and PyModule_AddIntConstant(module, name, value) < 0 {
+        if name not in INTERNAL
+            and jacpy_module_add_int_text(module, name, value) < 0 {
             return i32(-1);
         }
     }
@@ -32,7 +41,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
         else i32(-1);
 }
 
-def:priv methods -> list[MethodDefinition] {
+impl methods -> list[MethodDefinition] {
     return [
         method
         for method in module_methods
@@ -40,10 +49,6 @@ def:priv methods -> list[MethodDefinition] {
     ];
 }
 
-glob:priv definition = ModuleDefinition(
-         "resource", "", methods(), ModuleHooks(execute=execute), 1
-     );
-
-def:pub PyInit_resource -> ptr[PyObject] {
+impl PyInit_resource -> ptr[PyObject] {
     return definition.initialize();
 }

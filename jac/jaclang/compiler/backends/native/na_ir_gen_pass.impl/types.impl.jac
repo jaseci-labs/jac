@@ -997,7 +997,7 @@ impl NaIRGenPass._lower_function_signature(t: SemanticFunctionType) -> ir.Functi
     if t.return_type is not None {
         _r = self._lower_type(t.return_type);
         if _r is not None {
-            ret_type = _r;
+            ret_type = self._byvalue_ret_type(_r);
         }
     }
     param_types: list[ir.Type] = [];
@@ -1180,6 +1180,18 @@ impl NaIRGenPass._resolve_sig_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     return _sig_out;
 }
 
+impl NaIRGenPass._resolve_return_type(
+    type_expr: (uni.UniNode | None), method: bool = False
+) -> ir.Type {
+    if type_expr is None {
+        return ir.VoidType();
+    }
+    if method {
+        return self._resolve_sig_type(type_expr);
+    }
+    return self._resolve_jac_type(type_expr);
+}
+
 impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     if type_expr is None {
         return ir.IntType(64);
@@ -1280,6 +1292,25 @@ impl NaIRGenPass._tuple_struct_of(elem_types: list[ir.Type]) -> ir.LiteralStruct
         self.tuple_types[tuple_key] = ir.LiteralStructType(elem_types);
     }
     return self.tuple_types[tuple_key];
+}
+
+impl NaIRGenPass._byvalue_ret_type(ret_type: ir.Type) -> ir.Type {
+    if not isinstance(ret_type, ir.PointerType) {
+        return ret_type;
+    }
+    shape = ret_type.pointee;
+    if not isinstance(shape, ir.LiteralStructType) or not shape.elements {
+        return ret_type;
+    }
+    for element in shape.elements {
+        if not isinstance(element, (ir.IntType, ir.DoubleType, ir.FloatType)) {
+            return ret_type;
+        }
+    }
+    if shape not in self.tuple_types.values() {
+        return ret_type;
+    }
+    return shape;
 }
 
 impl NaIRGenPass._resolve_field_type(var: uni.UniNode) -> ir.Type {
@@ -2739,6 +2770,10 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _wi64 = ir.IntType(64);
             _wi8p = ir.IntType(8).as_pointer();
             _wfn = val;
+
+            if isinstance(val, ir.Function) {
+                return self._static_fn_closure(_clos_tgt, val);
+            }
             if isinstance(_wfn.type, ir.FunctionType) {
                 _wfn = self.builder.bitcast(
                     _wfn, _wfn.type.as_pointer(), name="clos.wrap.fnp"
@@ -2847,6 +2882,18 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
         and isinstance(val.type.pointee, ir.FunctionType)
         and isinstance(target_type, ir.IntType) {
         return self.builder.ptrtoint(val, target_type, name="fn.ptrtoint");
+    }
+
+    if isinstance(target_type, ir.LiteralStructType)
+        and isinstance(val.type, ir.PointerType)
+        and isinstance(val.type.pointee, ir.LiteralStructType)
+        and len(val.type.pointee.members()) == len(target_type.members())
+        and not self._tuple_managed_fields(val.type.pointee) {
+        held = self.builder.load(val, name="tuple.unbox");
+        if self._is_owned(val) {
+            self._emit_rc_release_simple(val, op="tuple_unbox", loc="");
+        }
+        return self._coerce_tuple_to_struct(held, target_type);
     }
 
     if isinstance(val.type, ir.PointerType)
@@ -2963,7 +3010,11 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             }
             if isinstance(val, ir.Constant) and isinstance(val.constant, int) {
                 _w = target_type.width;
-                if -(1 << (_w - 1)) <= val.constant < (1 << _w) {
+                _fits = _int_min_bits(_w) <= val.constant;
+                if _fits and _w < 64 {
+                    _fits = val.constant <= (1 << _w) - 1;
+                }
+                if _fits {
                     return ir.Constant(target_type, val.constant);
                 }
             }
@@ -3146,7 +3197,7 @@ impl NaIRGenPass._emit_str_concat_inplace(
         return None;
     }
     memcpy_cc = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    realloc_fn = self._get_or_declare_extern("realloc", i8p, [i8p, i64]);
+    realloc_fn = self._heap_extern("realloc");
 
     _root_ok: ir.Value = ir.Constant(i1, 1);
     if _desc_slot {
@@ -3245,7 +3296,7 @@ impl NaIRGenPass._emit_str_concat_inplace(
     if self._target_is_wasm() {
         self.builder.branch(grow_bb);
     } else {
-        usable = self._floor_call("__jac_malloc_size", i64, [base], "ip.usable");
+        usable = self._heap_usable_size(self.builder, base, "ip.usable");
         cap = self.builder.sub(usable, ir.Constant(i64, HDR_TOTAL), name="ip.cap");
         _units = self.builder.lshr(cap, ir.Constant(i64, 8), name="ip.units");
         _clamped = self.builder.select(
@@ -3302,7 +3353,13 @@ impl NaIRGenPass._emit_str_concat_inplace(
         name="ip.guc"
     );
     _gst = self.builder.or_(
-        self.builder.and_(aw, ir.Constant(i64, 0x000FFFFFFFFFFFFF), name="ip.nawkeep"),
+        self.builder.and_(
+            aw,
+            ir.Constant(
+                i64, 0x000FFFFFFFFFFFFF & ~(POOL_CLASS_MASK << POOL_CLASS_SHIFT)
+            ),
+            name="ip.nawkeep"
+        ),
         self.builder.shl(_gclamped, ir.Constant(i64, 52), name="ip.gushift"),
         name="ip.gstamp"
     );
@@ -3419,8 +3476,8 @@ impl NaIRGenPass._emit_binary_op(
     left: ir.Value,
     right: ir.Value,
     unsigned: bool = False,
-    checked: bool = False,
-    inplace_slot: (ir.Value | None) = None
+    inplace_slot: (ir.Value | None) = None,
+    sized: bool = True
 ) -> (ir.Value | None) {
     if op == Tok.PLUS and inplace_slot is not None {
         _ipr = self._emit_str_concat_inplace(left, right, inplace_slot);
@@ -3802,15 +3859,13 @@ impl NaIRGenPass._emit_binary_op(
         }
         (left, right) = self._unify_int_widths(left, right);
         if op == Tok.LSHIFT {
-            if checked {
-                return self._emit_checked_shl(left, right, unsigned);
-            }
-            return self.builder.shl(left, right, name="shl");
+            return self._emit_checked_shl(left, right, unsigned)
+                if sized
+                else self._emit_plain_int_shl(left, right);
         } elif op == Tok.RSHIFT {
-            if checked {
-                return self._emit_shr(left, right, unsigned);
-            }
-            return self.builder.ashr(left, right, name="ashr");
+            return self._emit_shr(left, right, unsigned)
+                if sized
+                else self._emit_plain_int_shr(left, right);
         }
         if left.type != right.type {
             self.emit(
@@ -4969,7 +5024,21 @@ impl NaIRGenPass._emit_comparison(
         }
 
         if left.type == i8_ptr and right.type == i8_ptr {
-            cmp_result = self._call_str_cmp(self.builder, left, right, name="strcmp");
+            _lit_r = self._one_byte_literal(right);
+            _lit_l = self._one_byte_literal(left) if _lit_r is None else None;
+            if _lit_r is not None {
+                cmp_result = self._emit_str_cmp_one_byte(left, _lit_r);
+            } elif _lit_l is not None {
+                cmp_result = self.builder.sub(
+                    ir.Constant(ir.IntType(32), 0),
+                    self._emit_str_cmp_one_byte(right, _lit_l),
+                    name="s1.flip"
+                );
+            } else {
+                cmp_result = self._call_str_cmp(
+                    self.builder, left, right, name="strcmp"
+                );
+            }
             zero = ir.Constant(ir.IntType(32), 0);
             if op == Tok.EE or op == Tok.NE {
                 _sym = "==" if op == Tok.EE else "!=";
@@ -6359,6 +6428,7 @@ impl NaIRGenPass._lower_untyped_annotation(nd: uni.UniNode) -> (ir.Type | None) 
                 if _fnret is None {
                     _fnret = ir.VoidType();
                 }
+                _fnret = self._byvalue_ret_type(_fnret);
                 _fnparams: list[ir.Type] = [];
                 if isinstance(_fnparams_nd, uni.ListVal) {
                     for _fp in _fnparams_nd.values {

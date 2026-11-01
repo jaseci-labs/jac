@@ -15,7 +15,7 @@ impl NaIRGenPass._hash_order_position_ptr(
 impl NaIRGenPass._hash_order_alloc(b: ir.IRBuilder, capacity: ir.Value) -> ir.Value {
     i64 = ir.IntType(64);
     i8p = ir.IntType(8).as_pointer();
-    malloc_fn = self._get_or_declare_extern("malloc", i8p, [i64]);
+    malloc_fn = self._heap_extern("malloc");
     count = b.add(b.mul(capacity, ir.Constant(i64, 2)), ir.Constant(i64, 1));
     raw = b.call(malloc_fn, [b.mul(count, ir.Constant(i64, 8))], name="order.raw");
     order = b.bitcast(raw, i64.as_pointer(), name="order.array");

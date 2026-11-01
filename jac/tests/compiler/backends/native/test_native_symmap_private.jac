@@ -57,6 +57,12 @@ test "a bitcode build's symbol map names the private refcount helpers" {
         with open(out_bin + ".symmap") as f {
             names = {line.rsplit(" ", 1)[0] for line in f.read().splitlines()};
         }
-        assert "__rc_release_simple" in names , "private release helper missing from the symbol map";
+        # (`__rc_release_simple` is inlined at every release; the last
+        # reference's release stays out of line in `__rc_release_impl`, which
+        # the merged module may rename with a numeric suffix, one per unit)
+        assert any(
+            n == "__rc_release_impl" or n.startswith("__rc_release_impl.")
+            for n in names
+        ) , "private release helper missing from the symbol map";
     }
 }

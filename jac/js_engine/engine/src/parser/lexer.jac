@@ -14,7 +14,12 @@ the parser calls after each token to signal when the next `/` begins a regexp.
 Bun reference: bun/src/js_lexer.zig (~3 000 lines)
 ECMAScript spec: §12 — Lexical Grammar  https://tc39.es/ecma262/#sec-lexical-grammar
 """
-import from engine.src.runtime.mem { byte_chr }
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -190,11 +195,11 @@ Return the character of `s` at index `i`, or "" if out of bounds.
 Works around the Jac native slice bug (s[a:b] → only first char).
 """
 def _ch(s: str, i: int) -> str {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if i < 0 or i >= n {
         return "";
     }
-    return s[i];
+    return byte_chr(str_byte(s, i));
 }
 
 """
@@ -202,7 +207,7 @@ Build the substring s[start:end] character by character.
 No bounds checks required on the caller — clamped internally.
 """
 def _substr(s: str, start: int, end: int) -> str {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     st: int = start;
     en: int = end;
     if st < 0 {
@@ -214,7 +219,7 @@ def _substr(s: str, start: int, end: int) -> str {
     result: str = "";
     i: int = st;
     while i < en {
-        result = result + s[i];
+        result = result + byte_chr(str_byte(s, i));
         i = i + 1;
     }
     return result;
@@ -235,12 +240,12 @@ def _is_hex_digit(c: str) -> bool {
 """Return the numeric value (0–15) of a single hex digit. Assumes `_is_hex_digit(c)`."""
 def _lex_hex_val(c: str) -> int {
     if c >= "0" and c <= "9" {
-        return ord(c) - 48;
+        return str_byte(c, 0) - 48;
     }
     if c >= "a" and c <= "f" {
-        return ord(c) - 97 + 10;
+        return str_byte(c, 0) - 97 + 10;
     }
-    return ord(c) - 65 + 10;
+    return str_byte(c, 0) - 65 + 10;
 }
 
 """Encode a Unicode code point as a UTF-8 byte string (mirrors
@@ -257,15 +262,53 @@ def _lex_utf8_cp(cp: int) -> str {
 }
 
 """
-Return the Unicode code point at code-point index `pos` in `chars`.
-The lexer uses code-point indices; a native Jac string subscript is itself
-code-point based. The `cp_len` result stays 1 so callers advance once.
+Decode the UTF-8 code point starting at byte `pos` in `s`.
+Returns [code_point, byte_length].  On a malformed/truncated sequence, returns
+the raw lead byte as the code point with length 1 (lenient — the lexer then
+treats it as a non-identifier byte).  Pure-ASCII bytes return [byte, 1].
 """
-def _lex_utf8_decode_at(chars: list[str], pos: int) -> list[int] {
-    if pos < 0 or pos >= len(chars) {
+def _lex_utf8_decode_at(s: str, pos: int) -> list[int] {
+    n: int = str_nbytes(s);
+    if pos >= n {
         return [0, 0];
     }
-    return [ord(chars[pos]), 1];
+    b0: int = str_byte(s, pos);
+    if b0 < 128 {
+        return [b0, 1];
+    }
+    # 2-byte: 110xxxxx 10xxxxxx
+    if b0 >= 192 and b0 < 224 and pos + 1 < n {
+        b1: int = str_byte(s, pos + 1);
+        if b1 >= 128 and b1 < 192 {
+            return [((b0 & 31) << 6) | (b1 & 63), 2];
+        }
+    }
+    # 3-byte: 1110xxxx 10xxxxxx 10xxxxxx
+    if b0 >= 224 and b0 < 240 and pos + 2 < n {
+        c1: int = str_byte(s, pos + 1);
+        c2: int = str_byte(s, pos + 2);
+        if c1 >= 128 and c1 < 192 and c2 >= 128 and c2 < 192 {
+            return [((b0 & 15) << 12) | ((c1 & 63) << 6) | (c2 & 63), 3];
+        }
+    }
+    # 4-byte: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+    if b0 >= 240 and b0 < 248 and pos + 3 < n {
+        d1: int = str_byte(s, pos + 1);
+        d2: int = str_byte(s, pos + 2);
+        d3: int = str_byte(s, pos + 3);
+        if d1 >= 128
+            and d1 < 192
+            and d2 >= 128
+            and d2 < 192
+            and d3 >= 128
+            and d3 < 192 {
+            return [
+                ((b0 & 7) << 18) | ((d1 & 63) << 12) | ((d2 & 63) << 6) | (d3 & 63),
+                4
+            ];
+        }
+    }
+    return [b0, 1];
 }
 
 """
@@ -369,10 +412,10 @@ glob _CH_VT: str = chr(11),
 """Single bytes of U+2028 LINE SEPARATOR (E2 80 A8) and U+2029 PARAGRAPH
 SEPARATOR (E2 80 A9), sliced out of their UTF-8 encodings. `chr(226)` is not
 the byte 0xE2: chr UTF-8-encodes code points >= 128 (C3 A2)."""
-glob _B_E2: str = chr(8232)[0:1];
-glob _B_80: str = chr(8232)[1:2],
-     _B_A8: str = chr(8232)[2:3],
-     _B_A9: str = chr(8233)[2:3];
+glob _B_E2: str = str_bslice(chr(8232), 0, 1);
+glob _B_80: str = str_bslice(chr(8232), 1, 2),
+     _B_A8: str = str_bslice(chr(8232), 2, 3),
+     _B_A9: str = str_bslice(chr(8233), 2, 3);
 
 """Return true if `c` is ASCII whitespace (excluding newlines)."""
 def _is_space(c: str) -> bool {
@@ -569,7 +612,6 @@ Or incrementally:
 """
 obj:pub Lexer {
     has source: str,
-        source_chars: list[str] = [],
         source_len: int = 0,
         pos: int = 0,
         line: int = 1,
@@ -586,10 +628,7 @@ obj:pub Lexer {
         if self.pos >= self.source_len {
             return "";
         }
-        if self.source_chars {
-            return self.source_chars[self.pos];
-        }
-        return self.source[self.pos];
+        return byte_chr(str_byte(self.source, self.pos));
     }
 
     """Look ahead by `offset` characters without consuming."""
@@ -598,10 +637,7 @@ obj:pub Lexer {
         if p < 0 or p >= self.source_len {
             return "";
         }
-        if self.source_chars {
-            return self.source_chars[p];
-        }
-        return self.source[p];
+        return byte_chr(str_byte(self.source, p));
     }
 
     """Consume and return the current character, advancing pos and col."""
@@ -609,14 +645,14 @@ obj:pub Lexer {
         if self.pos >= self.source_len {
             return "";
         }
-        c: str = self._cur();
+        c: str = byte_chr(str_byte(self.source, self.pos));
         self.pos = self.pos + 1;
         if c == "\n" {
             self.line = self.line + 1;
             self.col = 1;
-        } elif c == _CH_CR {
+        } elif c < " " and c == _CH_CR {
             # \r\n counts as one line break
-            if self.pos < self.source_len and self._peek(0) == "\n" {
+            if self.pos < self.source_len and byte_chr(str_byte(self.source, self.pos)) == "\n" {
                 self.pos = self.pos + 1;
             }
             self.line = self.line + 1;
@@ -673,10 +709,10 @@ obj:pub Lexer {
                 } else {
                     cont = False;
                 }
-            } elif ord(c) >= 128 {
+            } elif str_byte(c, 0) >= 128 {
                 # Non-ASCII: may be Unicode whitespace (NBSP, Zs, BOM) or a Unicode
                 # line terminator (U+2028 / U+2029).  Decode and skip if so.
-                ws_arr: list[int] = _lex_utf8_decode_at(self.source_chars, self.pos);
+                ws_arr: list[int] = _lex_utf8_decode_at(self.source, self.pos);
                 ws_cp: int = ws_arr[0];
                 ws_len: int = ws_arr[1];
                 if ws_len > 0 and _is_unicode_newline_cp(ws_cp) {
@@ -704,7 +740,7 @@ obj:pub Lexer {
     """Build a Token from its parts."""
     def _tok(tt: TokenType, value: str, start_line: int, start_col: int) -> Token {
         end_off: int = self.pos;
-        start_off: int = end_off - len(value);
+        start_off: int = end_off - str_nbytes(value);
         if start_off < 0 {
             start_off = 0;
         }
@@ -785,7 +821,7 @@ obj:pub Lexer {
                     vparts.append(dec);
                     had_escape = True;
                 }
-            } elif ord(c) < 128 {
+            } elif str_byte(c, 0) < 128 {
                 if _is_id_cont(c) {
                     vparts.append(self._advance());
                 } else {
@@ -794,7 +830,7 @@ obj:pub Lexer {
             } else {
                 # Non-ASCII: decode the full UTF-8 code point and accept it as an
                 # identifier part if it isn't whitespace / a line terminator.
-                dec_arr: list[int] = _lex_utf8_decode_at(self.source_chars, self.pos);
+                dec_arr: list[int] = _lex_utf8_decode_at(self.source, self.pos);
                 cp_id: int = dec_arr[0];
                 cp_len: int = dec_arr[1];
                 if cp_len > 0 and _is_unicode_id_cp(cp_id) {
@@ -1032,17 +1068,22 @@ obj:pub Lexer {
 
     # ── RegExp literal scanner ─────────────────────────────────────────────
 
-    """True if current code point is an ECMAScript LineTerminator."""
+    """True if the current position begins a LineTerminator: LF, CR, or the
+    multi-byte U+2028 LINE SEPARATOR (E2 80 A8) / U+2029 PARAGRAPH SEPARATOR
+    (E2 80 A9).  The source is UTF-8 bytes, so LS/PS are matched by their byte
+    sequence (unlike `_is_newline`, which only sees a single ASCII byte)."""
     def _at_line_terminator -> bool {
         c: str = self._cur();
         if c == "\n" or c == _CH_CR {
             return True;
         }
-        if c == "" {
-            return False;
+        if c == _B_E2 and self._peek(1) == _B_80 {
+            b3: str = self._peek(2);
+            if b3 == _B_A8 or b3 == _B_A9 {
+                return True;
+            }
         }
-        cp: int = ord(c);
-        return cp == 0x2028 or cp == 0x2029;
+        return False;
     }
 
     """
@@ -1058,7 +1099,7 @@ obj:pub Lexer {
         in_class: bool = False;
 
         # A RegularExpressionLiteral may not contain a LineTerminator (ES §12.9.5):
-        # LF, CR, U+2028 LINE SEPARATOR, or U+2029 PARAGRAPH SEPARATOR.
+        # LF, CR, or the multi-byte LS (U+2028 = E2 80 A8) / PS (U+2029 = E2 80 A9).
         # Reaching one before the closing `/` leaves the literal unterminated, which
         # the parser reports as a SyntaxError.  A `\` followed by a LineTerminator is
         # likewise invalid (no closing `/` on the line).
@@ -1499,11 +1540,9 @@ obj:pub Lexer {
         pn_start_nonascii: bool = False;
         if c == "#" {
             pn_n1: str = self._peek(1);
-            if ord(pn_n1) >= 128 {
+            if str_byte(pn_n1, 0) >= 128 {
                 # Decode the code point at pos+1 (the byte right after `#`).
-                pn_s_arr: list[int] = _lex_utf8_decode_at(
-                    self.source_chars, self.pos + 1
-                );
+                pn_s_arr: list[int] = _lex_utf8_decode_at(self.source, self.pos + 1);
                 if pn_s_arr[1] > 0 and _is_unicode_id_cp(pn_s_arr[0]) {
                     pn_start_nonascii = True;
                 }
@@ -1529,7 +1568,7 @@ obj:pub Lexer {
                     } else {
                         pn_body = pn_body + pn_dec;
                     }
-                } elif ord(pc) < 128 {
+                } elif str_byte(pc, 0) < 128 {
                     if _is_id_cont(pc) {
                         pn_body = pn_body + self._advance();
                     } else {
@@ -1541,9 +1580,7 @@ obj:pub Lexer {
                     # non-ASCII branch in _scan_ident(); without this the private-name
                     # body would truncate at the first multibyte char (e.g. `#℘`),
                     # producing a key that no longer matches the public spelling.
-                    pn_arr: list[int] = _lex_utf8_decode_at(
-                        self.source_chars, self.pos
-                    );
+                    pn_arr: list[int] = _lex_utf8_decode_at(self.source, self.pos);
                     pn_cp: int = pn_arr[0];
                     pn_clen: int = pn_arr[1];
                     if pn_clen > 0 and _is_unicode_id_cp(pn_cp) {
@@ -1569,8 +1606,8 @@ obj:pub Lexer {
         # An identifier may begin with a Unicode escape (`\u{6F}bc` ≡ `obc`) or a
         # non-ASCII identifier code point (`café`, `ω`, CJK, Cyrillic, …).
         id_start_nonascii: bool = False;
-        if ord(c) >= 128 {
-            ids_arr: list[int] = _lex_utf8_decode_at(self.source_chars, self.pos);
+        if str_byte(c, 0) >= 128 {
+            ids_arr: list[int] = _lex_utf8_decode_at(self.source, self.pos);
             if ids_arr[1] > 0 and _is_unicode_id_cp(ids_arr[0]) {
                 id_start_nonascii = True;
             }
@@ -1695,15 +1732,6 @@ obj:pub Lexer {
 """Create a new Lexer for the given source string."""
 def:pub make_lexer(source: str) -> Lexer {
     lx: Lexer = Lexer(source=source);
-    if source.isascii() {
-        lx.source_len = len(source);
-    } else {
-        chars: list[str] = [];
-        for ch in source {
-            chars.append(ch);
-        }
-        lx.source_chars = chars;
-        lx.source_len = len(chars);
-    }
+    lx.source_len = str_nbytes(source);
     return lx;
 }

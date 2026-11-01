@@ -112,6 +112,13 @@ impl JacProgram.invalidate_module(self: JacProgram, resolved_path: str) -> None 
 }
 
 impl JacProgram.release_module(self: JacProgram, resolved_path: str) -> None {
+    if self.context_root is None {
+        for context in list(self.contexts.values()) {
+            if context is not self {
+                context.release_module(resolved_path);
+            }
+        }
+    }
     released = self.hub.mod.hub.get(resolved_path) or self.find_module(resolved_path);
     self.invalidate_module(resolved_path);
     self.drop_module_alerts(resolved_path);
@@ -1000,14 +1007,15 @@ impl JacProgram.stamp_boundary_facts(self: JacProgram, mod: uni.Module) -> None 
                             if not isinstance(item, uni.ModuleItem) {
                                 continue;
                             }
-                            verdict = classify_client_import_item(linked_mod, item);
+                            verdict = classify_client_import_item(
+                                linked_mod, item, self
+                            );
                             if verdict != ClientImportVerdict.BRIDGED {
                                 continue;
                             }
-                            sym_name = item.name.value;
-                            decl = ability_of_symbol(linked_mod.lookup(sym_name));
-                            if decl is not None {
-                                facts.bridged_decls[sym_name] = decl;
+                            decl = import_item_declaration(linked_mod, item, self);
+                            if isinstance(decl, uni.Ability) {
+                                facts.bridged_decls[item.name.value] = decl;
                             }
                         }
                     }

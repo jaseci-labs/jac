@@ -84,15 +84,13 @@ def parse_frontmatter(source: str) -> dict[str, any] {
 
     raw = m.group(1);
     meta: dict[str, any] = {};
-    current_key: str | None = None;
+    # ("" until the first key: a key always starts with a letter or `_`)
+    current_key: str = "";
     current_val_lines: list[str] = [];
 
     def _flush {
-        # `str(...)` is a no-op cast for the str value the guard guarantees;
-        # the checker does not narrow captured (or copied) `str | None`
-        # locals inside a nested def, so the raw capture is rejected E1053.
-        if current_key is not None {
-            meta[str(current_key)] = _parse_yaml_value("\n".join(current_val_lines));
+        if current_key {
+            meta[current_key] = _parse_yaml_value("\n".join(current_val_lines));
         }
     }
 
@@ -103,7 +101,7 @@ def parse_frontmatter(source: str) -> dict[str, any] {
             _flush();
             current_key = key_match.group(1);
             current_val_lines = [key_match.group(2)] if key_match.group(2) else [];
-        } elif current_key is not None {
+        } elif current_key {
             current_val_lines.append(line);
         }
     }
@@ -168,9 +166,7 @@ Returns:
                        whole subtree, e.g. an entire generated-test directory)
     path_skip_type  — {path: skip_type} for individually listed tests
 """
-def build_skip_lookup(
-    manifest: dict[str, any]
-) -> tuple[set[str], set[str], set[str], list[tuple[str, str]], dict[str, str]] {
+def build_skip_lookup(manifest: dict[str, any]) -> tuple[set[str], set[str], set[str], list[tuple[str, str]], dict[str, str]] {
     skipped_flags: set[str] = set();
     skipped_features: set[str] = set();
     skipped_paths: set[str] = set();
@@ -1362,11 +1358,7 @@ def _check_baseline(
     perf_mem_floor_mb: float = 5.0
 ) -> int {
     known = _load_known_failures(known_path);
-    known_in_scope = {
-        rel
-        for rel in known
-        if rel in ran_paths
-    };
+    known_in_scope = {rel for rel in known if rel in ran_paths};
     func_regressions = sorted(
         rel
         for (rel, r) in current.items()
@@ -1395,7 +1387,9 @@ def _check_baseline(
 
     if func_regressions {
         print(
-            f"\nREGRESSIONS ({len(func_regressions)} tests fail that are not in {known_path}):"
+            f"\nREGRESSIONS ({len(
+                func_regressions
+            )} tests fail that are not in {known_path}):"
         );
         for p in func_regressions {
             r = current[p];

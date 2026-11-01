@@ -673,6 +673,8 @@ impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
             ) {
             call = last;
         }
+    } elif last is val {
+        call = self._retype_tail_call(blk, func);
     }
     if call is None {
         self.emit(
@@ -693,6 +695,52 @@ impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
     } else {
         self.builder.ret(call);
     }
+}
+
+impl NaIRGenPass._retype_tail_call(
+    blk: ir.Block, func: ir.Function
+) -> (ir.CallInstr | None) {
+    if len(blk.instructions) < 2 {
+        return None;
+    }
+    last = blk.instructions[-1];
+    prev = blk.instructions[-2];
+    if not isinstance(last, ir.CastInstr)
+        or not isinstance(prev, ir.CallInstr)
+        or last.operands[0] is not prev {
+        return None;
+    }
+    fnty = func.function_type;
+    if last.type != fnty.return_type {
+        return None;
+    }
+    try {
+        callee_ty = prev.callee.function_type;
+    } except TypeError {
+        return None;
+    }
+    if callee_ty.var_arg or len(callee_ty.args) != len(fnty.args) {
+        return None;
+    }
+    word = ir.IntType(64);
+    for i in range(len(fnty.args)) {
+        have = callee_ty.args[i];
+        want = fnty.args[i];
+        if have != want
+            and not (isinstance(have, ir.PointerType) and want == word)
+            and not (have == word and isinstance(want, ir.PointerType)) {
+            return None;
+        }
+    }
+    blk.instructions.remove(last);
+    blk.instructions.remove(prev);
+    self.builder.position_at_end(blk);
+    callee = self.builder.bitcast(prev.callee, fnty.as_pointer(), name="tail.callee");
+    args: list[ir.Value] = [];
+    for (i, arg) in enumerate(prev.args) {
+        args.append(self._clib_reinterpret(arg, fnty.args[i], name=f"tail.arg.{i}"));
+    }
+    return self.builder.call(callee, args, name="tail.call", cconv=prev.cconv);
 }
 
 impl NaIRGenPass._tail_frame_blocker -> (str | None) {
@@ -1920,8 +1968,8 @@ impl NaIRGenPass._apply_scalar_aug_op(
     aug_op: str,
     rhs_node: (uni.Expr | None) = None,
     unsigned: bool = False,
-    checked: bool = False,
-    target_type: any = None
+    target_type: any = None,
+    sized: bool = True
 ) -> (ir.Value | None) {
     (is_ptr_aug, stepped) = self._c_ptr_aug(current, rhs, aug_op, target_type);
     if is_ptr_aug {
@@ -1953,13 +2001,11 @@ impl NaIRGenPass._apply_scalar_aug_op(
         return None;
     }
     if aug_op == "**=" {
-        return self._codegen_pow(
-            current, rhs, rhs_node, unsigned=unsigned, checked=checked
-        );
+        return self._codegen_pow(current, rhs, rhs_node, unsigned=unsigned);
     }
     coerced = self._coerce_type(rhs, current.type);
     result = self._emit_binary_op(
-        op_toks[aug_op], current, coerced, unsigned=unsigned, checked=checked
+        op_toks[aug_op], current, coerced, unsigned=unsigned, sized=sized
     );
     if result is not None and result.type != current.type {
         result = self._coerce_type(result, current.type);
@@ -1989,9 +2035,165 @@ impl NaIRGenPass._none_initialized_local_type(nd: uni.Assignment) -> (ir.Type | 
     return lowered;
 }
 
+impl NaIRGenPass._same_pure_key(a: uni.UniNode, b: uni.UniNode) -> bool {
+    if isinstance(a, uni.Name) and isinstance(b, uni.Name) {
+        return a.value == b.value and a.sym is not None and a.sym is b.sym;
+    }
+    if isinstance(a, uni.String) and isinstance(b, uni.String) {
+        return a.lit_value == b.lit_value;
+    }
+    if isinstance(a, uni.Int) and isinstance(b, uni.Int) {
+        return a.lit_value == b.lit_value;
+    }
+    return False;
+}
+
+impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
+    if nd.aug_op is not None or len(nd.target) != 1 or self._nogc_headerless() {
+        return False;
+    }
+    tgt = nd.target[0];
+    if not isinstance(tgt, uni.AtomTrailer)
+        or not isinstance(tgt.right, uni.IndexSlice)
+        or tgt.right.is_range
+        or not tgt.right.slices
+        or len(tgt.right.slices) != 1
+        or not isinstance(tgt.target, uni.Name) {
+        return False;
+    }
+    d_node = tgt.target;
+    slice0 = tgt.right.slices[0];
+    key_node = slice0.start if slice0?.start else slice0;
+    val = nd.value;
+    if not isinstance(val, uni.BinaryExpr) or not isinstance(val.op, uni.Token) {
+        return False;
+    }
+    aug_ops: dict[str, str] = {
+        Tok.PLUS: "+=",
+        Tok.MINUS: "-=",
+        Tok.STAR_MUL: "*=",
+        Tok.BW_OR: "|=",
+        Tok.BW_AND: "&=",
+        Tok.BW_XOR: "^="
+    };
+    aug = aug_ops.get(val.op.name);
+    call = val.left;
+    if aug is None
+        or not isinstance(call, uni.FuncCall)
+        or not isinstance(call.target, uni.AtomTrailer)
+        or not call.target.is_attr
+        or not isinstance(call.target.target, uni.Name)
+        or not isinstance(call.target.right, uni.Name)
+        or call.target.right.value != "get"
+        or call.target.target.value != d_node.value
+        or call.target.target.sym is not d_node.sym {
+        return False;
+    }
+    params = list(call.params or []);
+    if len(params) != 2
+        or isinstance(params[0], uni.KWPair)
+        or isinstance(params[1], uni.KWPair) {
+        return False;
+    }
+    if not self._same_pure_key(params[0], key_node) {
+        return False;
+    }
+    for part in (params[1], val.right) {
+        if not isinstance(part, (uni.Name, uni.Int, uni.Float)) {
+            return False;
+        }
+    }
+    dict_type_key = self._dict_key_of(d_node);
+    helpers = self.dict_helpers.get(dict_type_key) if dict_type_key else None;
+    if helpers is None or "lookup_ph" not in helpers or "hash" not in helpers {
+        return False;
+    }
+    val_type = helpers["val_type"];
+    if not (val_type == ir.IntType(64) or isinstance(val_type, ir.DoubleType)) {
+        return False;
+    }
+    dval = self._codegen_expr(d_node);
+    if dval is None or self._dict_key_reconcile(dict_type_key, dval) != dict_type_key {
+        return False;
+    }
+    dval = self._unwrap_opt_container(dval);
+    kval = self._codegen_expr(key_node);
+    if kval is None {
+        return False;
+    }
+    kval = self._coerce_type(kval, helpers["key_type"]);
+    b = self.builder;
+    fn = b.function;
+    (_ph_fn, static_h) = self._static_key_op(helpers, "set", key_node);
+    h = static_h
+        if static_h is not None
+        else b.call(helpers["hash"], [kval], name="dcu.hash");
+    slot = b.call(helpers["lookup_ph"], [dval, kval, h], name="dcu.slot");
+    hit = b.icmp_unsigned("!=", slot, ir.Constant(slot.type, None), name="dcu.hit");
+    hit_bb = fn.append_basic_block("dcu.hit");
+    miss_bb = fn.append_basic_block("dcu.miss");
+    cur_bb = fn.append_basic_block("dcu.cur");
+    b.cbranch(hit, hit_bb, miss_bb);
+    b.position_at_end(hit_bb);
+    cur_hit = b.load(slot, name="dcu.old");
+    hit_end = b.block;
+    b.branch(cur_bb);
+    b.position_at_end(miss_bb);
+    fallback = self._codegen_expr(params[1]);
+    if fallback is None {
+        return False;
+    }
+    cur_miss = self._coerce_type(fallback, val_type);
+    miss_end = self.builder.block;
+    self.builder.branch(cur_bb);
+    b = self.builder;
+    b.position_at_end(cur_bb);
+    cur = b.phi(val_type, name="dcu.cur");
+    cur.add_incoming(cur_hit, hit_end);
+    cur.add_incoming(cur_miss, miss_end);
+    rhs = self._codegen_expr(val.right);
+    new = (
+        self._emit_binary_op(
+            val.op.name,
+            cur,
+            rhs,
+            unsigned=self._is_unsigned_node(val) or self._is_unsigned_node(val.left),
+            sized=self._is_sized_node(val)
+                or self._is_sized_node(val.left)
+                or self._is_sized_node(val.right)
+        )
+            if rhs is not None
+            else None
+    );
+    if new is None {
+        self.emit(E5092, node_override=nd.value, kind="expression", name="dict update");
+        return True;
+    }
+    new = self._coerce_type(new, val_type);
+    b = self.builder;
+    store_bb = fn.append_basic_block("dcu.store");
+    insert_bb = fn.append_basic_block("dcu.insert");
+    done_bb = fn.append_basic_block("dcu.done");
+    b.cbranch(hit, store_bb, insert_bb);
+    b.position_at_end(store_bb);
+    b.store(new, slot);
+    b.branch(done_bb);
+    b.position_at_end(insert_bb);
+    self._rc_call_with_ctx(
+        helpers["set_ph"], [dval, kval, new, h], op="dict_set", loc=new.jac_loc
+    );
+    self.builder.branch(done_bb);
+    self.builder.position_at_end(done_bb);
+    self._release_owned_args([kval], op="dict_set");
+    return True;
+}
+
 impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
+        return;
+    }
+    if self._codegen_dict_counter_update(nd) {
         return;
     }
     pending_value: (ir.Value | None) = None;
@@ -2245,8 +2447,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                             nd.aug_op.value,
                                             nd.value,
                                             target_type=target_expr.type,
-                                            checked=self._is_sized_node(target_expr)
-                                                or self._is_sized_node(nd.value)
+                                            sized=self._is_sized_node(target_expr)
                                         );
                                     }
                                 }
@@ -2289,8 +2490,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                             nd.aug_op.value,
                                             nd.value,
                                             target_type=target_expr.type,
-                                            checked=self._is_sized_node(target_expr)
-                                                or self._is_sized_node(nd.value)
+                                            sized=self._is_sized_node(target_expr)
                                         );
                                     }
                                 }
@@ -2445,8 +2645,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         nd.value,
                         target_type=target_expr.type,
                         unsigned=self._is_unsigned_node(target_expr),
-                        checked=self._is_sized_node(target_expr)
-                            or self._is_sized_node(nd.value)
+                        sized=self._is_sized_node(target_expr)
                     );
                 }
                 _is_cplx_lhs = current.type == self.complex_struct_type.as_pointer();
@@ -2470,8 +2669,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     value = _cplx_aug;
                 } elif aug_op_val == "+=" {
                     if isinstance(current.type, ir.IntType) {
-                        value = self.builder.add(
-                            current, coerced, name=f"{var_name}.add"
+                        value = self._emit_overflow_op(
+                            "add", current, coerced, self._is_unsigned_node(target_expr)
                         );
                     } elif isinstance(current.type, ir.DoubleType) {
                         value = self.builder.fadd(
@@ -2534,8 +2733,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     }
                 } elif aug_op_val == "-=" {
                     if isinstance(current.type, ir.IntType) {
-                        value = self.builder.sub(
-                            current, coerced, name=f"{var_name}.sub"
+                        value = self._emit_overflow_op(
+                            "sub", current, coerced, self._is_unsigned_node(target_expr)
                         );
                     } elif isinstance(current.type, ir.PointerType) {
                         _se = self._ensure_emitters().get("set");
@@ -2559,8 +2758,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     }
                 } elif aug_op_val == "*=" {
                     if isinstance(current.type, ir.IntType) {
-                        value = self.builder.mul(
-                            current, coerced, name=f"{var_name}.mul"
+                        value = self._emit_overflow_op(
+                            "mul", current, coerced, self._is_unsigned_node(target_expr)
                         );
                     } else {
                         value = self.builder.fmul(
@@ -2578,7 +2777,9 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             "ZeroDivisionError",
                             "integer division or modulo by zero"
                         );
-                        (q, _) = self._codegen_int_floor_divmod(current, coerced);
+                        (q, _) = self._emit_int_divmod(
+                            current, coerced, self._is_unsigned_node(target_expr)
+                        );
                         value = q;
                     } else {
                         fzero = ir.Constant(ir.DoubleType(), 0.0);
@@ -2601,7 +2802,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             "ZeroDivisionError",
                             "integer division or modulo by zero"
                         );
-                        (_, r) = self._codegen_int_floor_divmod(current, coerced);
+                        (_, r) = self._emit_int_divmod(
+                            current,
+                            coerced,
+                            self._is_unsigned_node(target_expr),
+                            trap_min=False
+                        );
                         value = r;
                     } else {
                         fzero = ir.Constant(ir.DoubleType(), 0.0);
@@ -2770,14 +2976,22 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     }
                 } elif aug_op_val == "<<=" {
                     if isinstance(current.type, ir.IntType) {
-                        value = self.builder.shl(
-                            current, coerced, name=f"{var_name}.shl"
+                        value = (
+                            self._emit_checked_shl(
+                                current, coerced, self._is_unsigned_node(target_expr)
+                            )
+                                if self._is_sized_node(target_expr)
+                                else self._emit_plain_int_shl(current, coerced)
                         );
                     }
                 } elif aug_op_val == ">>=" {
                     if isinstance(current.type, ir.IntType) {
-                        value = self.builder.ashr(
-                            current, coerced, name=f"{var_name}.ashr"
+                        value = (
+                            self._emit_shr(
+                                current, coerced, self._is_unsigned_node(target_expr)
+                            )
+                                if self._is_sized_node(target_expr)
+                                else self._emit_plain_int_shr(current, coerced)
                         );
                     }
                 } elif aug_op_val == "**=" {
@@ -2786,9 +3000,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         value,
                         "**=",
                         nd.value,
-                        unsigned=self._is_unsigned_node(target_expr),
-                        checked=self._is_sized_node(target_expr)
-                            or self._is_sized_node(nd.value)
+                        unsigned=self._is_unsigned_node(target_expr)
                     );
                     if pow_res is not None {
                         value = pow_res;
@@ -3003,8 +3215,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 coerced = self._coerce_type(value, current.type);
                 if aug_op_val == "+=" {
                     if isinstance(current.type, ir.IntType) {
-                        value = self.builder.add(
-                            current, coerced, name=f"glob.{var_name}.add"
+                        value = self._emit_overflow_op(
+                            "add", current, coerced, self._is_unsigned_node(target_expr)
                         );
                     } elif isinstance(current.type, ir.DoubleType) {
                         value = self.builder.fadd(
@@ -3035,8 +3247,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     }
                 } elif aug_op_val == "-=" {
                     if isinstance(current.type, ir.IntType) {
-                        value = self.builder.sub(
-                            current, coerced, name=f"glob.{var_name}.sub"
+                        value = self._emit_overflow_op(
+                            "sub", current, coerced, self._is_unsigned_node(target_expr)
                         );
                     } elif isinstance(current.type, ir.DoubleType) {
                         value = self.builder.fsub(
@@ -3059,8 +3271,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     }
                 } elif aug_op_val == "*=" {
                     if isinstance(current.type, ir.IntType) {
-                        value = self.builder.mul(
-                            current, coerced, name=f"glob.{var_name}.mul"
+                        value = self._emit_overflow_op(
+                            "mul", current, coerced, self._is_unsigned_node(target_expr)
                         );
                     } elif isinstance(current.type, ir.DoubleType) {
                         value = self.builder.fmul(
@@ -3069,9 +3281,22 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                     }
                 } elif aug_op_val == "%=" {
                     if isinstance(current.type, ir.IntType) {
-                        value = self.builder.srem(
-                            current, coerced, name=f"glob.{var_name}.mod"
+                        izero = ir.Constant(current.type, 0);
+                        is_zero = self.builder.icmp_signed(
+                            "==", coerced, izero, name=f"glob.{var_name}.mod.zero.chk"
                         );
+                        self._emit_runtime_raise(
+                            is_zero,
+                            "ZeroDivisionError",
+                            "integer division or modulo by zero"
+                        );
+                        (_, r) = self._emit_int_divmod(
+                            current,
+                            coerced,
+                            self._is_unsigned_node(target_expr),
+                            trap_min=False
+                        );
+                        value = r;
                     }
                 } elif aug_op_val == "&=" {
                     if isinstance(current.type, ir.IntType) {
@@ -3130,6 +3355,62 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 break;
                             }
                         }
+                    }
+                } elif aug_op_val == "//=" {
+                    if isinstance(current.type, ir.IntType) {
+                        izero = ir.Constant(current.type, 0);
+                        is_zero = self.builder.icmp_signed(
+                            "==", coerced, izero, name=f"glob.{var_name}.div.zero.chk"
+                        );
+                        self._emit_runtime_raise(
+                            is_zero,
+                            "ZeroDivisionError",
+                            "integer division or modulo by zero"
+                        );
+                        (q, _) = self._emit_int_divmod(
+                            current, coerced, self._is_unsigned_node(target_expr)
+                        );
+                        value = q;
+                    } else {
+                        fzero = ir.Constant(ir.DoubleType(), 0.0);
+                        is_zero = self.builder.fcmp_ordered(
+                            "==", coerced, fzero, name=f"glob.{var_name}.fdiv.zero.chk"
+                        );
+                        self._emit_runtime_raise(
+                            is_zero, "ZeroDivisionError", "float division by zero"
+                        );
+                        value = self._codegen_float_floor_div(current, coerced);
+                    }
+                } elif aug_op_val == "**=" {
+                    pow_res = self._apply_scalar_aug_op(
+                        current,
+                        value,
+                        "**=",
+                        nd.value,
+                        unsigned=self._is_unsigned_node(target_expr)
+                    );
+                    if pow_res is not None {
+                        value = pow_res;
+                    }
+                } elif aug_op_val == "<<=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = (
+                            self._emit_checked_shl(
+                                current, coerced, self._is_unsigned_node(target_expr)
+                            )
+                                if self._is_sized_node(target_expr)
+                                else self._emit_plain_int_shl(current, coerced)
+                        );
+                    }
+                } elif aug_op_val == ">>=" {
+                    if isinstance(current.type, ir.IntType) {
+                        value = (
+                            self._emit_shr(
+                                current, coerced, self._is_unsigned_node(target_expr)
+                            )
+                                if self._is_sized_node(target_expr)
+                                else self._emit_plain_int_shr(current, coerced)
+                        );
                     }
                 }
             }
@@ -4083,6 +4364,19 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         }
         return;
     }
+
+    _loop_borrow = (
+        id(nd) in self.module.managed_borrow_binds
+        and self._gc_mode() != "none"
+        and not self._nogc_headerless()
+        and _unpack_target is None
+        and isinstance(actual_elem_type, ir.PointerType)
+        and self._gen_ctx is None
+    );
+    if _loop_borrow {
+        self.borrowed_vars.add(loop_var_name);
+        self.rc_ops_elided += 2;
+    }
     self._codegen_for_indexed(
         nd,
         kind="list",
@@ -4090,7 +4384,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         helpers=helpers,
         var_names=[loop_var_name],
         var_types=[actual_elem_type],
-        rc_vars=True,
+        rc_vars=not _loop_borrow,
         coll_release_op="forl_coll",
         elem_cast=inner_type,
         unpack_target=_unpack_target
@@ -4893,6 +5187,14 @@ impl NaIRGenPass._codegen_for_indexed(
     body_bb = func.append_basic_block(name="for.body");
     incr_bb = func.append_basic_block(name="for.incr");
     (else_bb, end_bb) = self._loop_exit_blocks(func, nd, "for");
+
+    _outer_anchors = self._list_anchors;
+    if kind == "range"
+        and self._gen_ctx is None
+        and isinstance(nd.body, (list, tuple)) {
+        self._list_anchors = dict(_outer_anchors);
+        self._emit_list_anchors(list(nd.body));
+    }
     self.builder.branch(cond_bb);
     self.builder.position_at_end(cond_bb);
     if _gen_stop_slot is not None {
@@ -5077,6 +5379,7 @@ impl NaIRGenPass._codegen_for_indexed(
 
     _for_prebody = set(self.local_vars.keys());
     self._codegen_pass_body(nd);
+    self._list_anchors = _outer_anchors;
     if not self.builder.block.is_terminated {
         self._emit_loop_iter_cleanup(
             [

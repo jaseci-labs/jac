@@ -536,10 +536,24 @@ impl _real_click(cdp: CDP, x: float, y: float) {
     cdp.call("Input.dispatchMouseEvent", {"type": "mouseReleased"} | base);
 }
 
+impl _type_steps(text: str) -> list[dict[str, any]] {
+    steps: list[dict[str, any]] = [];
+    for ch in text.replace("\r\n", "\n") {
+        if ch in ("\n", "\r") {
+            down = _key_down("Enter");
+            steps.append(down);
+            steps.append({"type": "keyUp", "key": "Enter", "code": down["code"]});
+        } else {
+            steps.append({"type": "keyDown", "text": ch});
+            steps.append({"type": "keyUp"});
+        }
+    }
+    return steps;
+}
+
 impl _type_text(cdp: CDP, text: str) {
-    for ch in text {
-        cdp.call("Input.dispatchKeyEvent", {"type": "keyDown", "text": ch});
-        cdp.call("Input.dispatchKeyEvent", {"type": "keyUp"});
+    for step in _type_steps(text) {
+        cdp.call("Input.dispatchKeyEvent", step);
     }
 }
 

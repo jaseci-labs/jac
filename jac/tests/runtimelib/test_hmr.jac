@@ -384,6 +384,22 @@ test "a watch around the jac checkout reports no compiler source events" {
     assert _count_jac_files(package) == 0;
 }
 
+test "explicit application roots admit only their compiler source events" {
+    import os;
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    package = os.path.realpath(jaclang_pkg_root());
+    checkout = os.path.dirname(package);
+    app_root = os.path.join(package, "runtime");
+    app_source = os.path.join(app_root, "prepared.jac");
+    other_source = os.path.join(package, "server", "server.jac");
+    watcher = JacFileWatcher(watch_paths=[checkout], compiler_source_roots=[app_root]);
+
+    watcher._on_change(app_source, ChangeType.MODIFIED);
+    watcher._on_change(other_source, ChangeType.MODIFIED);
+
+    assert sorted(watcher._pending_events) == [app_source];
+}
+
 test "nothing under site-packages or a hidden directory becomes a watch root" {
     import os;
     with tempfile.TemporaryDirectory() as tmp {
@@ -885,6 +901,9 @@ obj _FakeJcc {
         compiled_dir: str;
 
     def _output_path_for(source_path: any, base_dir: any) -> Path {
+        if not str(source_path).endswith('.jac') {
+            return Path(self.compiled_dir) / Path(source_path).name;
+        }
         return self.out_path;
     }
 

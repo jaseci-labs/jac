@@ -20,7 +20,13 @@ import from engine.src.runtime.mem {
     io_free,
     write_byte,
     str_from_raw,
-    byte_chr
+    byte_chr,
+    str_bfind,
+    str_brfind,
+    str_bslice,
+    str_bslice_in,
+    str_byte,
+    str_nbytes
 }
 
 # Byte-based GC trigger for heap strings. The object trigger counts ALLOCATIONS
@@ -96,7 +102,7 @@ Supports negative indices (Python semantics).
 Returns "" if `i` is out of bounds.
 """
 def str_char_at(s: str, i: int) -> str {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n == 0 {
         return "";
     }
@@ -107,7 +113,7 @@ def str_char_at(s: str, i: int) -> str {
     if idx < 0 or idx >= n {
         return "";
     }
-    return s[idx];
+    return byte_chr(str_byte(s, idx));
 }
 
 """
@@ -116,7 +122,7 @@ Negative indices are normalised before the call.
 Uses a character loop — avoids the native slice bug.
 """
 def:pub str_substr(s: str, start: int, end: int) -> str {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     # Normalise negative indices
     st: int = start;
     en: int = end;
@@ -141,58 +147,25 @@ def:pub str_substr(s: str, start: int, end: int) -> str {
     if st >= en {
         return "";
     }
-    # Jac str slices use Unicode code-point indices. `s[st:en]` alone is a
-    # BORROWED view ({root, data, len} into `s`); the
+    # Jac `str` is UTF-8 byte-wise, so [st,en) is one contiguous byte range.
+    # `s[st:en]` alone is a BORROWED view ({root, data, len} into `s`); the
     # result goes on to outlive `s` (heap_strings, swept by the JS GC), so take
     # an owned, length-stamped copy: a repeat with a runtime count memcpys the
     # view once (cf. str_stamp_copy). Replaces a per-byte write_byte(ord(s[k]))
     # loop plus a second full copy through str_from_raw.
     cp_n: int = 1;
-    return s[st:en] * cp_n;
+    return str_bslice_in(s, st, en) * cp_n;
 }
 
-"""
-Extract a raw UTF-8 byte range from the engine string representation.
-Offsets are byte offsets (for PCRE2 and UTF-8 conversion), not Jac codepoint
-indices. Use byte_chr to preserve CESU-8 and the modified-UTF-8 NUL sentinel.
-"""
-def:pub str_byte_substr(s: str, start: int, end: int) -> str {
-    if s.isascii() {
-        return str_substr(s, start, end);
-    }
-    raw: bytes = _str_utf8_bytes(s);
-    n: int = len(raw);
-    st: int = start;
-    en: int = end;
-    if st < 0 {
-        st = n + st;
-        if st < 0 {
-            st = 0;
-        }
-    }
-    if en < 0 {
-        en = n + en;
-        if en < 0 {
-            en = 0;
-        }
-    }
-    if st > n {
-        st = n;
-    }
-    if en > n {
-        en = n;
-    }
-    if st >= en {
+"""str_substr for bounds the caller already knows are in range
+(0 <= start <= end <= str_nbytes(s)): an owned copy without measuring `s`,
+which for a non-ASCII string is a strlen per call."""
+def:pub str_substr_in(s: str, start: int, end: int) -> str {
+    if start >= end {
         return "";
     }
-    parts: list[str] = [];
-    i: int = st;
-    while i < en {
-        b: int = _raw_byte_at(raw, i);
-        parts.append(nul_sentinel() if b == 0 else byte_chr(b));
-        i = i + 1;
-    }
-    return "".join(parts);
+    ci_n: int = 1;
+    return str_bslice_in(s, start, end) * ci_n;
 }
 
 """Return a length-STAMPED copy of `s`.
@@ -217,8 +190,11 @@ Useful when you need random access beyond what single-char indexing provides.
 """
 def str_chars(s: str) -> list[str] {
     result: list[str] = [];
-    for c in s {
-        result.append(c);
+    sc_n: int = str_nbytes(s);
+    sc_i: int = 0;
+    while sc_i < sc_n {
+        result.append(byte_chr(str_byte(s, sc_i)));
+        sc_i = sc_i + 1;
     }
     return result;
 }
@@ -265,10 +241,10 @@ def:pub nul_sentinel -> str {
 
 """True when s contains the NUL sentinel (bytes C0 80)."""
 def _str_has_nul_sentinel(s: str) -> bool {
-    if len(s) < 2 {
+    if str_nbytes(s) < 2 {
         return False;
     }
-    return s.find(nul_sentinel()) >= 0;
+    return str_bfind(s, nul_sentinel()) >= 0;
 }
 
 """Cache flag value: 1 = "byte-clean" ASCII (every byte < 128, so byte offset
@@ -358,14 +334,14 @@ glob _AIX_BITS: list[int] = [],
 # encoding.BUILTIN_BASE
 def _kcls_of(s: str) -> int {
     kc_r: int = 1;
-    kc_n: int = len(s);
+    kc_n: int = str_nbytes(s);
     if kc_n == 0 {
         return 3;
     }
-    if kc_n >= 2 and ord(s[0]) == 95 and ord(s[1]) == 95 {
+    if kc_n >= 2 and str_byte(s, 0) == 95 and str_byte(s, 1) == 95 {
         kc_r = kc_r | 4;
         if kc_n >= 8 {
-            kc_p: str = s[0:8];
+            kc_p: str = str_bslice(s, 0, 8);
             if kc_p == "__brand@" {
                 kc_r = kc_r | 8;
             } elif kc_p == "__priv_#" {
@@ -462,18 +438,18 @@ def:pub str_id_array_index_value(kid: int) -> int {
         }
     }
     av_s: str = str_from_id(kid);
-    av_n: int = len(av_s);
+    av_n: int = str_nbytes(av_s);
     if av_n == 0 {
         return -1;
     }
-    av_c0: int = ord(av_s[0]);
+    av_c0: int = str_byte(av_s, 0);
     if av_c0 < 48 or av_c0 > 57 or (av_c0 == 48 and av_n > 1) {
         return -1;
     }
     av_v: int = 0;
     av_i: int = 0;
     while av_i < av_n {
-        av_c: int = ord(av_s[av_i]);
+        av_c: int = str_byte(av_s, av_i);
         if av_c < 48 or av_c > 57 {
             return -1;
         }
@@ -491,11 +467,11 @@ def:pub str_id_array_index_value(kid: int) -> int {
 
 """Canonical array-index text: "0", or a digit 1-9 then digits, below 2^32 − 1."""
 def _str_text_is_array_index(s: str) -> bool {
-    tx_n: int = len(s);
+    tx_n: int = str_nbytes(s);
     if tx_n == 0 {
         return False;
     }
-    tx_c0: int = ord(s[0]);
+    tx_c0: int = str_byte(s, 0);
     if tx_c0 == 48 {
         return tx_n == 1;
     }
@@ -505,7 +481,7 @@ def _str_text_is_array_index(s: str) -> bool {
     tx_v: int = tx_c0 - 48;
     tx_i: int = 1;
     while tx_i < tx_n {
-        tx_c: int = ord(s[tx_i]);
+        tx_c: int = str_byte(s, tx_i);
         if tx_c < 48 or tx_c > 57 {
             return False;
         }
@@ -585,7 +561,8 @@ obj:pub U16Index {
         bytes: list[int] = [],
         units: list[int] = [],
         total: int = 0,
-        regular: bool = True;
+        regular: bool = True,
+        nbytes: int = 0;
 }
 
 # A few recent indexes (round-robin), keyed by string id. Converting a UTF-16
@@ -596,9 +573,7 @@ glob U16IX_STEP: int = 64,
      U16IX_SLOTS: int = 256,
      _U16IX: list[U16Index] = [],
      _U16IX_NEXT: int = 0,
-     _U16IX_POS: dict[int, int] = {},
-     _U16RAW_ID: int = -1,
-     _U16RAW: bytes = bytes([]);
+     _U16IX_POS: dict[int, int] = {};
 
 # string id -> its slot in _U16IX: lookups and the per-allocation invalidation
 # in _heap_slot_alloc used to scan all U16IX_SLOTS entries (the scan alone was
@@ -635,9 +610,10 @@ def _heap_slot_alloc(s: str, rl: int, rr: int, rlen: int, asc: int) -> int {
     # string slices (str_substr) with almost no object allocation — under 500K
     # objects while heap strings grew to 11GB in 10s, OOMing WITH --gc because
     # collections simply never triggered.
-    gc_note_alloc(_STR_REALM);
+    # A leaf's rlen is its byte length (the callers measure it once).
+    gc_note_alloc(_STR_REALM, 48 + rlen if rl < 0 else 48);
     if rl < 0 {
-        _hs_note_bytes(len(s));
+        _hs_note_bytes(rlen);
     }  # leaf bytes (ropes are metered on flatten)
     fn: int = len(_STR_REALM.free_heap_string_slots);
     if fn > 0 {
@@ -647,9 +623,6 @@ def _heap_slot_alloc(s: str, rl: int, rr: int, rlen: int, asc: int) -> int {
         # now stale — drop the memo. (Any other slot leaves the memo valid.)
         if (HEAP_STRING_BASE + idx) == _U16MEMO_ID {
             _U16MEMO_ID = -1;
-        }
-        if (HEAP_STRING_BASE + idx) == _U16RAW_ID {
-            _U16RAW_ID = -1;
         }
         u16_slot: int = _U16IX_POS.get(HEAP_STRING_BASE + idx, -1);
         if u16_slot >= 0 {
@@ -681,7 +654,7 @@ def:pub str_heap(s: str) -> int {
     if len(s) == 0 {
         return 6;
     }
-    return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, len(s), _ascii_flag(s));
+    return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, str_nbytes(s), _ascii_flag(s));
 }
 
 """str_heap for text the caller knows is byte-clean ASCII (a slice of a
@@ -690,7 +663,7 @@ def:pub str_heap_ascii(s: str) -> int {
     if len(s) == 0 {
         return 6;
     }
-    return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, len(s), 1);
+    return HEAP_STRING_BASE + _heap_slot_alloc(s, -1, -1, str_nbytes(s), 1);
 }
 
 """Character length of a string cell without forcing a rope flatten."""
@@ -702,7 +675,7 @@ def:pub str_cell_len(id: int) -> int {
         }
         return 0;
     }
-    return len(str_from_id(id));
+    return str_nbytes(str_from_id(id));
 }
 
 """1 if the string cell is known pure-ASCII, 2 if non-ASCII, 0 if unknown.
@@ -810,7 +783,7 @@ def _slice_flatten(hidx: int) -> str {
     out: str = str_substr(
         str_from_id(_STR_REALM.rope_left[hidx]), off, off + _STR_REALM.rope_len[hidx]
     );
-    _hs_note_bytes(len(out));
+    _hs_note_bytes(str_nbytes(out));
     _STR_REALM.heap_strings[hidx] = out;
     _STR_REALM.rope_left[hidx] = -1;
     _STR_REALM.rope_right[hidx] = -1;
@@ -853,7 +826,7 @@ def _rope_flatten(hidx: int) -> str {
         }
     }
     out: str = "".join(parts);
-    _hs_note_bytes(len(out));
+    _hs_note_bytes(str_nbytes(out));
     # Cache and collapse to a flat leaf so repeated reads are O(1).
     _STR_REALM.heap_strings[hidx] = out;
     _STR_REALM.rope_left[hidx] = -1;
@@ -955,7 +928,7 @@ obj:pub JSString {
 
     """Initialise length from data (called after construction)."""
     def:pub postinit {
-        self.length = len(self.data);
+        self.length = str_nbytes(self.data);
     }
 
     # ── Hashing & identity ─────────────────────────────────────────────────
@@ -996,7 +969,7 @@ obj:pub JSString {
         if c == "" {
             return -1;
         }
-        return ord(c);
+        return str_byte(c, 0);
     }
 
     """
@@ -1016,7 +989,7 @@ obj:pub JSString {
     """
     def:pub index_of(needle: str, from_idx: int = 0) -> int {
         if from_idx <= 0 {
-            return self.data.find(needle);
+            return str_bfind(self.data, needle);
         }
         # find(needle, start) — native start-offset search, NO copy. The old
         # workaround str_substr'd the ENTIRE TAIL on every call, so a JS scan
@@ -1024,7 +997,7 @@ obj:pub JSString {
         # allocated O(n) per iteration → O(n²) bytes total. On vite@6's
         # import-analysis scanning a 340KB chunk source that was ~0.8GB/s of
         # transient allocations until OOM (the parse5 dynamic-import "blowup").
-        return self.data.find(needle, from_idx);
+        return str_bfind(self.data, needle, from_idx);
     }
 
     """
@@ -1032,7 +1005,7 @@ obj:pub JSString {
     Returns the last index of `needle`, or -1.
     """
     def:pub last_index_of(needle: str) -> int {
-        return self.data.rfind(needle);
+        return str_brfind(self.data, needle);
     }
 
     """
@@ -1181,7 +1154,7 @@ obj:pub JSString {
         needed: int = target_len - self.length;
         pad_parts: list[str] = [];
         k: int = 0;
-        pad_len: int = len(pad_str);
+        pad_len: int = str_nbytes(pad_str);
         while k < needed {
             idx: int = k;
             # wrap around pad_str
@@ -1207,7 +1180,7 @@ obj:pub JSString {
         needed: int = target_len - self.length;
         pad_parts: list[str] = [];
         k: int = 0;
-        pad_len: int = len(pad_str);
+        pad_len: int = str_nbytes(pad_str);
         while k < needed {
             idx: int = k;
             while idx >= pad_len {
@@ -1367,10 +1340,10 @@ ASCII fast path: trim TAB/LF/VT/FF/CR/SP by byte offset — zero allocations
 when there is nothing to trim, one substr otherwise. Any non-ASCII byte at a
 boundary falls back to the full decode (it may be Unicode whitespace)."""
 def _stf_trim_numeric(s: str) -> str {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     start: int = 0;
     while start < n {
-        b: int = ord(s[start]);
+        b: int = str_byte(s, start);
         if b == 32 or (b >= 9 and b <= 13) {
             start = start + 1;
         } elif b >= 128 {
@@ -1381,7 +1354,7 @@ def _stf_trim_numeric(s: str) -> str {
     }
     end: int = n;
     while end > start {
-        b2: int = ord(s[end - 1]);
+        b2: int = str_byte(s, end - 1);
         if b2 == 32 or (b2 >= 9 and b2 <= 13) {
             end = end - 1;
         } elif b2 >= 128 {
@@ -1404,10 +1377,10 @@ Byte scan — `_` is the single byte 0x5F and UTF-8 lead/continuation bytes are
 all >= 0x80, so no decode is needed (the old path decoded the whole string to
 a fresh codepoint list per call)."""
 def _stf_has_numeric_separator(s: str) -> bool {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     while i < n {
-        if ord(s[i]) == 95 {
+        if str_byte(s, i) == 95 {
             return True;
         }
         i = i + 1;
@@ -1417,16 +1390,16 @@ def _stf_has_numeric_separator(s: str) -> bool {
 
 """Parse signed integer literal body in `radix` (2, 8, or 16). Returns NaN on failure."""
 def _stf_parse_int_body(body: str, radix: int, sign: float) -> float {
-    n: int = len(body);
+    n: int = str_nbytes(body);
     if n == 0 {
         return _stf_nan();
     }
     val: int = 0;
     i: int = 0;
     while i < n {
-        c: str = body[i];
+        c: str = byte_chr(str_byte(body, i));
         dv: int = -1;
-        o: int = ord(c);
+        o: int = str_byte(c, 0);
         if o >= 48 and o <= 57 {
             dv = o - 48;
         } elif o >= 65 and o <= 90 {
@@ -1448,15 +1421,15 @@ Validate StrDecimalLiteral grammar; on success convert via native float() for IE
 Returns NaN when the trimmed literal is syntactically invalid.
 """
 def _stf_parse_decimal_literal(t: str) -> float {
-    tlen: int = len(t);
+    tlen: int = str_nbytes(t);
     if tlen == 0 {
         return _stf_nan();
     }
     pos: int = 0;
     sign: float = 1.0;
-    if t[0] == "+" {
+    if byte_chr(str_byte(t, 0)) == "+" {
         pos = 1;
-    } elif t[0] == "-" {
+    } elif byte_chr(str_byte(t, 0)) == "-" {
         sign = -1.0;
         pos = 1;
     }
@@ -1476,15 +1449,15 @@ def _stf_parse_decimal_literal(t: str) -> float {
     fdiv: float = 1.0;
     has_dig: bool = False;
 
-    while pos < tlen and t[pos] >= "0" and t[pos] <= "9" {
-        ipart = ipart * 10 + ord(t[pos]) - 48;
+    while pos < tlen and byte_chr(str_byte(t, pos)) >= "0" and byte_chr(str_byte(t, pos)) <= "9" {
+        ipart = ipart * 10 + str_byte(t, pos) - 48;
         has_dig = True;
         pos = pos + 1;
     }
-    if pos < tlen and t[pos] == "." {
+    if pos < tlen and byte_chr(str_byte(t, pos)) == "." {
         pos = pos + 1;
-        while pos < tlen and t[pos] >= "0" and t[pos] <= "9" {
-            fpart = fpart * 10.0 + float(ord(t[pos]) - 48);
+        while pos < tlen and byte_chr(str_byte(t, pos)) >= "0" and byte_chr(str_byte(t, pos)) <= "9" {
+            fpart = fpart * 10.0 + float(str_byte(t, pos) - 48);
             fdiv = fdiv * 10.0;
             has_dig = True;
             pos = pos + 1;
@@ -1494,16 +1467,16 @@ def _stf_parse_decimal_literal(t: str) -> float {
         return _stf_nan();
     }
 
-    if pos < tlen and (t[pos] == "e" or t[pos] == "E") {
+    if pos < tlen and (byte_chr(str_byte(t, pos)) == "e" or byte_chr(str_byte(t, pos)) == "E") {
         pos = pos + 1;
-        if pos < tlen and (t[pos] == "+" or t[pos] == "-") {
+        if pos < tlen and (byte_chr(str_byte(t, pos)) == "+" or byte_chr(str_byte(t, pos)) == "-") {
             pos = pos + 1;
         }
         if pos == tlen {
             return _stf_nan();
         }
         exp_has: bool = False;
-        while pos < tlen and t[pos] >= "0" and t[pos] <= "9" {
+        while pos < tlen and byte_chr(str_byte(t, pos)) >= "0" and byte_chr(str_byte(t, pos)) <= "9" {
             exp_has = True;
             pos = pos + 1;
         }
@@ -1547,29 +1520,29 @@ def:pub str_to_float(s: str) -> float {
 
     pos: int = 0;
     sign: float = 1.0;
-    if t[0] == "+" {
+    if byte_chr(str_byte(t, 0)) == "+" {
         pos = 1;
-    } elif t[0] == "-" {
+    } elif byte_chr(str_byte(t, 0)) == "-" {
         sign = -1.0;
         pos = 1;
     }
-    tlen: int = len(t);
+    tlen: int = str_nbytes(t);
     if pos == tlen {
         return _stf_nan();
     }
 
     # Hex literal 0x…
-    if pos + 1 < tlen and t[pos] == "0" and (t[pos + 1] == "x" or t[pos + 1] == "X") {
+    if pos + 1 < tlen and byte_chr(str_byte(t, pos)) == "0" and (byte_chr(str_byte(t, pos + 1)) == "x" or byte_chr(str_byte(t, pos + 1)) == "X") {
         body: str = str_substr(t, pos + 2, tlen);
         return _stf_parse_int_body(body, 16, sign);
     }
     # Binary literal 0b…
-    if pos + 1 < tlen and t[pos] == "0" and (t[pos + 1] == "b" or t[pos + 1] == "B") {
+    if pos + 1 < tlen and byte_chr(str_byte(t, pos)) == "0" and (byte_chr(str_byte(t, pos + 1)) == "b" or byte_chr(str_byte(t, pos + 1)) == "B") {
         body2: str = str_substr(t, pos + 2, tlen);
         return _stf_parse_int_body(body2, 2, sign);
     }
     # Octal literal 0o…
-    if pos + 1 < tlen and t[pos] == "0" and (t[pos + 1] == "o" or t[pos + 1] == "O") {
+    if pos + 1 < tlen and byte_chr(str_byte(t, pos)) == "0" and (byte_chr(str_byte(t, pos + 1)) == "o" or byte_chr(str_byte(t, pos + 1)) == "O") {
         body3: str = str_substr(t, pos + 2, tlen);
         return _stf_parse_int_body(body3, 8, sign);
     }
@@ -1610,44 +1583,6 @@ def:pub utf8_encode_scalar(cp: int) -> str {
         return "?";
     }
     return chr(cp);
-}
-
-def _str_utf8_bytes(s: str) -> bytes {
-    return s.encode("utf-8");
-}
-
-def:pub utf8_byte_len(s: str) -> int {
-    if s.isascii() {
-        return len(s);
-    }
-    return len(_str_utf8_bytes(s));
-}
-
-def _raw_byte_at(data: bytes, i: int) -> int {
-    return int.from_bytes(data[i:i + 1], "big");
-}
-
-"""Byte view of s for offset-based scans. One encode per string: helpers
-like str_is_nul_escape re-encode the whole string on every call, which is
-O(n^2) when a loop consults them per character (URI decode did)."""
-def:pub str_utf8_byte_view(s: str) -> bytes {
-    return _str_utf8_bytes(s);
-}
-
-"""Byte at offset i of a str_utf8_byte_view view."""
-def:pub str_view_byte_at(data: bytes, i: int) -> int {
-    return _raw_byte_at(data, i);
-}
-
-def _raw_bytes_to_ints(data: bytes) -> list[int] {
-    out: list[int] = [];
-    i: int = 0;
-    n: int = len(data);
-    while i < n {
-        out.append(_raw_byte_at(data, i));
-        i = i + 1;
-    }
-    return out;
 }
 
 """
@@ -1723,53 +1658,47 @@ def:pub _utf8_bytes_to_codepoints(raw: list[int]) -> list[int] {
 
 """True when s[i..i+1] is the NUL code-unit sentinel (bytes C0 80)."""
 def _str_is_nul_escape(s: str, i: int) -> bool {
-    raw: bytes = _str_utf8_bytes(s);
-    return i >= 0
-        and i + 1 < len(raw)
-        and _raw_byte_at(raw, i) == 192
-        and _raw_byte_at(raw, i + 1) == 128;
-}
-
-"""Public NUL-sentinel predicate for builtin modules outside runtime."""
-def:pub str_is_nul_escape(s: str, i: int) -> bool {
-    return _str_is_nul_escape(s, i);
+    # byte values, not one-character strings: this runs per byte in the
+    # offset walkers (V4.26). The callers keep 0 <= i < str_nbytes(s); the
+    # byte test comes first so `s` is measured only at a C0 lead.
+    if str_byte(s, i) != 192 or i + 1 >= str_nbytes(s) {
+        return False;
+    }
+    return str_byte(s, i + 1) == 128;
 }
 
 """Convert a raw BYTE offset in `s` into a UTF-16 code-unit offset.
 
-Byte offsets (what PCRE2 and raw-byte APIs return) do NOT equal JS string indices
-when `s` holds multi-byte UTF-8 or the 2-byte C0 80 NUL
+Byte offsets (what native `str.find`/`str.rfind` and byte slicing return) do NOT
+equal JS string indices when `s` holds multi-byte UTF-8 or the 2-byte C0 80 NUL
 sentinel: a 2/3-byte char is 1 unit, a 4-byte char is 2 units (surrogate pair),
-and the 2-byte C0 80 NUL sentinel is 1 unit. Position-returning String methods
+and the 4-byte NUL sentinel is 1 unit. Position-returning String methods
 (indexOf/lastIndexOf) MUST report code-unit indices — matching .length /
 charCodeAt / slice — or callers doing position arithmetic (e.g. rollup's
 findFirstOccurrenceOutsideComment + MagicString) go out of bounds."""
 def:pub js_string_byte_to_unit(s: str, byte_off: int) -> int {
-    if s.isascii() {
-        if byte_off <= 0 {
-            return 0;
-        }
-        return byte_off if byte_off < len(s) else len(s);
-    }
-    raw: bytes = _str_utf8_bytes(s);
-    n: int = len(raw);
+    n: int = str_nbytes(s);
     lim: int = byte_off;
-    if lim < 0 {
-        lim = 0;
-    }
     if lim > n {
         lim = n;
     }
     units: int = 0;
     i: int = 0;
     while i < lim {
-        cw: int = _u16_step(raw, i, n);
-        if cw == 0 {
+        # (the C0 80 NUL sentinel is a 2-byte, 1-unit lead like any < 224)
+        b: int = str_byte(s, i);
+        if b < 128 {
             i = i + 1;
             units = units + 1;
+        } elif b < 224 {
+            i = i + 2;
+            units = units + 1;
+        } elif b < 240 {
+            i = i + 3;
+            units = units + 1;
         } else {
-            i = i + (cw >> 2);
-            units = units + (cw & 3);
+            i = i + 4;
+            units = units + 2;
         }
     }
     return units;
@@ -1778,24 +1707,24 @@ def:pub js_string_byte_to_unit(s: str, byte_off: int) -> int {
 """Convert a UTF-16 code-unit offset in `s` into a raw BYTE offset (inverse of
 js_string_byte_to_unit; sentinel/multi-byte aware)."""
 def:pub js_string_unit_to_byte(s: str, unit_off: int) -> int {
-    if s.isascii() {
-        if unit_off <= 0 {
-            return 0;
-        }
-        return unit_off if unit_off < len(s) else len(s);
-    }
-    raw: bytes = _str_utf8_bytes(s);
-    n: int = len(raw);
+    n: int = str_nbytes(s);
     units: int = 0;
     i: int = 0;
     while i < n and units < unit_off {
-        cw: int = _u16_step(raw, i, n);
-        if cw == 0 {
+        # (the C0 80 NUL sentinel is a 2-byte, 1-unit lead like any < 224)
+        b: int = str_byte(s, i);
+        if b < 128 {
             i = i + 1;
             units = units + 1;
+        } elif b < 224 {
+            i = i + 2;
+            units = units + 1;
+        } elif b < 240 {
+            i = i + 3;
+            units = units + 1;
         } else {
-            i = i + (cw >> 2);
-            units = units + (cw & 3);
+            i = i + 4;
+            units = units + 2;
         }
     }
     return i;
@@ -1809,41 +1738,40 @@ indices in O(total) instead of rescanning from the start each time."""
 def:pub js_string_unit_to_byte_from(
     s: str, byte_from: int, unit_from: int, unit_to: int
 ) -> int {
-    if s.isascii() {
-        if unit_to <= unit_from {
-            return byte_from;
-        }
-        end_byte: int = byte_from + unit_to - unit_from;
-        return end_byte if end_byte < len(s) else len(s);
-    }
-    raw: bytes = _str_utf8_bytes(s);
-    n: int = len(raw);
+    n: int = str_nbytes(s);
     units: int = unit_from;
     i: int = byte_from;
     while i < n and units < unit_to {
-        cw: int = _u16_step(raw, i, n);
-        if cw == 0 {
+        # (the C0 80 NUL sentinel is a 2-byte, 1-unit lead like any < 224)
+        b: int = str_byte(s, i);
+        if b < 128 {
             i = i + 1;
             units = units + 1;
+        } elif b < 224 {
+            i = i + 2;
+            units = units + 1;
+        } elif b < 240 {
+            i = i + 3;
+            units = units + 1;
         } else {
-            i = i + (cw >> 2);
-            units = units + (cw & 3);
+            i = i + 4;
+            units = units + 2;
         }
     }
     return i;
 }
 
-"""Width of the character starting at byte `i` of `raw`, packed as
+"""Width of the character starting at byte `i` of `s`, packed as
 (bytes << 2) | utf16_units, or 0 for a sequence the decoder could read
 differently (see U16Index.regular). The C0 80 NUL sentinel is one unit.
 (An int, not a tuple: tuple returns are heap-allocated per call.)"""
-def _u16_step(raw: bytes, i: int, n: int) -> int {
-    b: int = _raw_byte_at(raw, i);
+def _u16_step(s: str, i: int, n: int) -> int {
+    b: int = str_byte(s, i);
     if b < 128 {
         return 5;
     }
-    if b == 192 and i + 1 < n and _raw_byte_at(raw, i + 1) == 128 {
-        return 9;
+    if b == 192 and _str_is_nul_escape(s, i) {
+        return 9;  # NUL sentinel: 2 bytes, 1 unit
     }
     if b < 194 or b > 244 {
         return 0;
@@ -1857,7 +1785,7 @@ def _u16_step(raw: bytes, i: int, n: int) -> int {
     if i + w > n {
         return 0;
     }
-    if b == 244 and _raw_byte_at(raw, i + 1) >= 144 {
+    if b == 244 and str_byte(s, i + 1) >= 144 {
         return 0;
     }
     if w == 4 {
@@ -1874,16 +1802,16 @@ per-character step (~40 instructions; these builds were 29% of the jac_client
 render phase). Any byte >= 128 ends the run, including the NUL sentinel C0 80
 (one UTF-16 unit), which _u16_step measures."""
 def _u16ix_build(id: int, s: str) -> U16Index {
-    raw: bytes = _str_utf8_bytes(s);
     ix: U16Index = U16Index(id=id, bytes=[0], units=[0], total=0, regular=True);
-    n: int = len(raw);
+    n: int = str_nbytes(s);
+    ix.nbytes = n;
     i: int = 0;
     u: int = 0;
     nxt: int = U16IX_STEP;
     while i < n {
         r: int = i;
         while r < n {
-            rb: int = _raw_byte_at(raw, r);
+            rb: int = str_byte(s, r);
             if rb >= 128 {
                 break;
             }
@@ -1902,7 +1830,7 @@ def _u16ix_build(id: int, s: str) -> U16Index {
                 break;
             }
         }
-        cw: int = _u16_step(raw, i, n);
+        cw: int = _u16_step(s, i, n);
         if cw == 0 {
             ix.regular = False;
             return ix;
@@ -1919,34 +1847,13 @@ def _u16ix_build(id: int, s: str) -> U16Index {
     return ix;
 }
 
-"""The raw UTF-8 byte view behind a cached U16Index.
-
-u16ix_unit_to_byte / u16ix_byte_to_unit used to re-encode the whole subject on
-EVERY call (each exec()'s index/lastIndex conversion on a large non-ASCII
-subject paid a full copy even though the checkpoint index was cached). Keep a
-one-slot raw view keyed by the index's string id, refreshed by
-js_string_u16ix, and reused by the walkers. Invalidated with the other
-per-id memos when a heap slot is recycled (see _heap_slot_alloc)."""
-def _u16ix_raw(ix: U16Index, s: str) -> bytes {
-    if _U16RAW_ID == ix.id {
-        return _U16RAW;
-    }
-    return _str_utf8_bytes(s);
-}
-
 """The U16Index of string `id` (whose text is `s`), built on first use."""
 def:pub js_string_u16ix(id: int, s: str) -> U16Index {
     hit: int = _U16IX_POS.get(id, -1);
     if hit >= 0 {
-        if _U16RAW_ID != id {
-            _U16RAW = _str_utf8_bytes(s);
-            _U16RAW_ID = id;
-        }
         return _U16IX[hit];
     }
     built: U16Index = _u16ix_build(id, s);
-    _U16RAW = _str_utf8_bytes(s);
-    _U16RAW_ID = id;
     if len(_U16IX) < U16IX_SLOTS {
         _U16IX_POS[id] = len(_U16IX);
         _U16IX.append(built);
@@ -1965,13 +1872,11 @@ def:pub js_string_u16ix(id: int, s: str) -> U16Index {
 """Byte offset of UTF-16 unit `t` (0 <= t <= ix.total) in `s`, or -1 when `t`
 falls between the two halves of a surrogate pair (no byte boundary there)."""
 def:pub u16ix_unit_to_byte(ix: U16Index, s: str, t: int) -> int {
-    raw: bytes = _u16ix_raw(ix, s);
-    n: int = len(raw);
     if t <= 0 {
         return 0;
     }
     if t >= ix.total {
-        return n;
+        return ix.nbytes;
     }
     j: int = t // U16IX_STEP;
     if j >= len(ix.units) {
@@ -1985,8 +1890,9 @@ def:pub u16ix_unit_to_byte(ix: U16Index, s: str, t: int) -> int {
     }
     i: int = ix.bytes[j];
     u: int = ix.units[j];
+    n: int = ix.nbytes;
     while u < t {
-        cw: int = _u16_step(raw, i, n);
+        cw: int = _u16_step(s, i, n);
         i = i + (cw >> 2);
         u = u + (cw & 3);
     }
@@ -2010,10 +1916,9 @@ def:pub u16ix_byte_to_unit(ix: U16Index, s: str, b: int) -> int {
     }
     i: int = ix.bytes[lo];
     u: int = ix.units[lo];
-    raw: bytes = _u16ix_raw(ix, s);
-    n: int = len(raw);
+    n: int = ix.nbytes;
     while i < b and i < n {
-        cw: int = _u16_step(raw, i, n);
+        cw: int = _u16_step(s, i, n);
         i = i + (cw >> 2);
         u = u + (cw & 3);
     }
@@ -2021,26 +1926,41 @@ def:pub u16ix_byte_to_unit(ix: U16Index, s: str, b: int) -> int {
 }
 
 """
-Decode a Jac str to Unicode code points. ASCII strings take a direct character
-loop; other strings are first viewed as UTF-8 bytes so CESU-8 and the NUL
-sentinel are decoded without depending on Jac's codepoint indexing.
+Decode a Jac str (raw UTF-8 byte sequence) to a list of Unicode code-point ints.
+
+Optimisation: for pure-ASCII strings (all bytes < 128) each byte IS its own codepoint,
+so we skip the expensive _utf8_bytes_to_codepoints parser entirely.
+We also read bytes via s[i] (char-cache GEP, O(1)) instead of calling str_char_at
+(which performs a redundant bounds check and len() call on each iteration).
 """
 def:pub utf8_decode_str_to_codepoints(s: str) -> list[int] {
-    # Native Jac str indexing is by Unicode code point, not UTF-8 byte.
-    # Preserve CESU-8 and the C0 80 NUL sentinel through encode(), then decode
-    # the raw byte view explicitly.
-    if s.isascii() {
+    n: int = str_nbytes(s);
+    raw: list[int] = [];
+    is_ascii: bool = True;
+    i: int = 0;
+    while i < n {
+        b: int = str_byte(s, i);
+        raw.append(b);
+        if b >= 128 {
+            is_ascii = False;
+        }
+        i = i + 1;
+    }
+    if is_ascii {
         out: list[int] = [];
-        i: int = 0;
-        n: int = len(s);
-        while i < n {
-            out.append(ord(s[i]));
-            i = i + 1;
+        j: int = 0;
+        while j < n {
+            if _str_is_nul_escape(s, j) {
+                out.append(0);
+                j = j + 2;
+                continue;
+            }
+            out.append(str_byte(s, j));
+            j = j + 1;
         }
         return out;
     }
-    raw: bytes = _str_utf8_bytes(s);
-    return _utf8_bytes_to_codepoints(_raw_bytes_to_ints(raw));
+    return _utf8_bytes_to_codepoints(raw);
 }
 
 """
@@ -2110,26 +2030,28 @@ def:pub js_string_utf16_len_cell(id: int) -> int {
 Return the number of UTF-16 code units in `s` (ECMAScript String.prototype.length).
 
 ASCII fast path: for strings where every byte is < 128, each byte maps to exactly
-one UTF-16 code unit, so the length equals Jac's character length. Non-ASCII strings
-are scanned through their explicit UTF-8 byte view and decoded only if a byte sequence
-is malformed.
+one UTF-16 code unit (no surrogates, no multi-byte codepoints), so the length equals
+the byte length.  We scan the raw bytes with s[i] (char-cache, O(1) per byte, no
+function-call overhead) and bail out to the full decode only when a high byte is found.
+For the vite/bundler workload (pure ASCII JS source), this eliminates the
+utf8_decode_str_to_codepoints + codepoints_to_utf16_units calls entirely.
 """
 def:pub js_string_utf16_len(s: str) -> int {
-    if s.isascii() {
-        return len(s);
-    }
-    raw: bytes = _str_utf8_bytes(s);
-    n: int = len(raw);
+    n: int = str_nbytes(s);
     i: int = 0;
     units: int = 0;
     while i < n {
-        b: int = _raw_byte_at(raw, i);
-        if b < 128 {
+        if str_byte(s, i) < 128 {
             units = units + 1;
             i = i + 1;
             continue;
         }
-        lw: int = _u16_step(raw, i, n);
+        # Non-ASCII (or the C0 80 NUL sentinel): count units per character in
+        # the same pass. Decoding the whole string into code points and then
+        # UTF-16 units just to take a length cost ~18M instructions per call on
+        # a bundle-sized string (regexp exec asked it per call). Only a
+        # sequence the decoder could read differently takes the full decode.
+        lw: int = _u16_step(s, i, n);
         if lw == 0 {
             return len(codepoints_to_utf16_units(utf8_decode_str_to_codepoints(s)));
         }
@@ -2154,23 +2076,23 @@ def:pub js_string_utf16_unit_at(s: str, n: int) -> int {
     if n < 0 {
         return -1;
     }
-    if s.isascii() {
-        if n < len(s) {
-            return ord(s[n]);
-        }
-        return -1;
-    }
-    raw: bytes = _str_utf8_bytes(s);
-    blen: int = len(raw);
+    blen: int = str_nbytes(s);
     ui: int = 0;
     i: int = 0;
     while i < blen {
-        b: int = _raw_byte_at(raw, i);
-        if b >= 128 {
+        if str_byte(s, i) >= 128 {
             break;
         }
+        if _str_is_nul_escape(s, i) {
+            if ui == n {
+                return 0;
+            }
+            ui = ui + 1;
+            i = i + 2;
+            continue;
+        }
         if ui == n {
-            return b;
+            return str_byte(s, i);
         }
         ui = ui + 1;
         i = i + 1;
@@ -2197,8 +2119,8 @@ def:pub js_string_unit_at_cell(id: int, n: int) -> int {
     if str_cell_ascii(id) == 1 {
         # Flag 1 = byte-clean (see _ascii_flag): 1 byte == 1 unit, O(1).
         s_a: str = str_from_id(id);
-        if n < len(s_a) {
-            return ord(s_a[n]);
+        if n < str_nbytes(s_a) {
+            return str_byte(s_a, n);
         }
         return -1;
     }
@@ -2254,15 +2176,15 @@ whole native link). Engine strings are CESU-8 + the NUL sentinel C0 80; wire for
 real UTF-8: surrogate pairs → 4-byte scalars, lone halves → U+FFFD, sentinel → 0x00.
 Called with s[i] == 192."""
 def _ws_at_nul_sentinel(s: str, i: int, n: int) -> bool {
-    return i + 1 < n and ord(s[i + 1]) == 128;
+    return i + 1 < n and str_byte(s, i + 1) == 128;
 }
 
 """True when `s` needs conversion to wire UTF-8 (NUL sentinel or 0xED surrogate lead)."""
 def:pub wire_utf8_needs_convert(s: str) -> bool {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     while i < n {
-        b: int = ord(s[i]);
+        b: int = str_byte(s, i);
         if b == 237 {
             return True;
         }
@@ -2276,22 +2198,22 @@ def:pub wire_utf8_needs_convert(s: str) -> bool {
 
 """Wire UTF-8 byte length of engine string `s`."""
 def:pub wire_utf8_len(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     out: int = 0;
     while i < n {
-        b: int = ord(s[i]);
+        b: int = str_byte(s, i);
         if b < 128 {
             i = i + 1;
             out = out + 1;
         } elif b == 192 and _ws_at_nul_sentinel(s, i, n) {
             i = i + 2;  # NUL sentinel → one 0x00 byte
             out = out + 1;
-        } elif b == 237 and i + 2 < n and (ord(s[i + 1]) & 224) == 160 {
-            if (ord(s[i + 1]) & 240) == 160
+        } elif b == 237 and i + 2 < n and (str_byte(s, i + 1) & 224) == 160 {
+            if (str_byte(s, i + 1) & 240) == 160
                 and i + 5 < n
-                and ord(s[i + 3]) == 237
-                and (ord(s[i + 4]) & 240) == 176 {
+                and str_byte(s, i + 3) == 237
+                and (str_byte(s, i + 4) & 240) == 176 {
                 out = out + 4;  # high + low surrogate → one 4-byte scalar
                 i = i + 6;
             } else {
@@ -2318,11 +2240,11 @@ def:pub wire_utf8_len(s: str) -> int {
 """Encode `s` as wire UTF-8 into dst[0 .. cap); returns bytes written, never splits a char."""
 def:pub wire_utf8_write(s: str, dst: int, cap: int) -> int {
     off: int = 0;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     i: int = 0;
     w: int = 0;
     while i < n {
-        b: int = ord(s[i]);
+        b: int = str_byte(s, i);
         if b < 128 {
             if w + 1 > cap {
                 break;
@@ -2337,20 +2259,20 @@ def:pub wire_utf8_write(s: str, dst: int, cap: int) -> int {
             write_byte(dst, off + w, 0);  # NUL sentinel → a real NUL byte
             i = i + 2;
             w = w + 1;
-        } elif b == 237 and i + 2 < n and (ord(s[i + 1]) & 224) == 160 {
-            b1: int = ord(s[i + 1]);
-            b2: int = ord(s[i + 2]);
+        } elif b == 237 and i + 2 < n and (str_byte(s, i + 1) & 224) == 160 {
+            b1: int = str_byte(s, i + 1);
+            b2: int = str_byte(s, i + 2);
             if (b1 & 240) == 160
                 and i + 5 < n
-                and ord(s[i + 3]) == 237
-                and (ord(s[i + 4]) & 240) == 176 {
+                and str_byte(s, i + 3) == 237
+                and (str_byte(s, i + 4) & 240) == 176 {
                 if w + 4 > cap {
                     break;
                 }
                 hi: int = ((b & 15) << 12) | ((b1 & 63) << 6) | (b2 & 63);
-                lo: int = ((ord(s[i + 3]) & 15) << 12)
-                    | ((ord(s[i + 4]) & 63) << 6)
-                    | (ord(s[i + 5]) & 63);
+                lo: int = ((str_byte(s, i + 3) & 15) << 12)
+                    | ((str_byte(s, i + 4) & 63) << 6)
+                    | (str_byte(s, i + 5) & 63);
                 cp: int = 65536 + ((hi - 55296) << 10) + (lo - 56320);
                 write_byte(dst, off + w, 240 | (cp >> 18));
                 write_byte(dst, off + w + 1, 128 | ((cp >> 12) & 63));
@@ -2383,7 +2305,7 @@ def:pub wire_utf8_write(s: str, dst: int, cap: int) -> int {
             }
             k: int = 0;
             while k < l {
-                write_byte(dst, off + w + k, ord(s[i + k]));
+                write_byte(dst, off + w + k, str_byte(s, i + k));
                 k = k + 1;
             }
             w = w + l;
