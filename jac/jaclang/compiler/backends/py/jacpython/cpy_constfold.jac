@@ -4,6 +4,35 @@
 # compiler's constant objects. None means CPython's evaluation raised and the
 # instruction is left unfolded.
 
+import from c {
+    def fmod(x: f64, y: f64) -> f64;  def floor(value: f64) -> f64;  def copysign(
+        x: f64, y: f64
+    ) -> f64;
+}
+
+def float_div_mod(vx: float, wx: float) -> tuple[float, float] {
+    mod = fmod(vx, wx);
+    div = (vx - mod) / wx;
+    if mod != 0.0 {
+        if (wx < 0.0) != (mod < 0.0) {
+            mod += wx;
+            div -= 1.0;
+        }
+    } else {
+        mod = copysign(0.0, wx);
+    }
+    floordiv = 0.0;
+    if div != 0.0 {
+        floordiv = floor(div);
+        if div - floordiv > 0.5 {
+            floordiv += 1.0;
+        }
+    } else {
+        floordiv = copysign(0.0, vx / wx);
+    }
+    return (floordiv, mod);
+}
+
 glob MAX_INT_SIZE: int = 128,
      MAX_COLLECTION_SIZE: int = 256,
      MAX_STR_SIZE: int = 4096,
@@ -663,13 +692,15 @@ def eval_float_binop(x: float, op: int, y: float) -> PyObj | None {
         if y == 0.0 {
             return None;
         }
-        return PyFloat(t="float", val=x // y);
+        (floordiv, _) = float_div_mod(x, y);
+        return PyFloat(t="float", val=floordiv);
     }
     if op == NB_REMAINDER {
         if y == 0.0 {
             return None;
         }
-        return PyFloat(t="float", val=x % y);
+        (_, mod) = float_div_mod(x, y);
+        return PyFloat(t="float", val=mod);
     }
     if op == NB_POWER {
         return float_pow_const(x, y);
