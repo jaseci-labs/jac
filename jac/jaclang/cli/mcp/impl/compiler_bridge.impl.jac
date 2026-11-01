@@ -1,3 +1,4 @@
+import ast;
 import tempfile;
 
 import os;
@@ -6,7 +7,7 @@ import threading;
 import logging;
 import from typing { IO }
 
-def _extract_error_info(alert: object) -> dict[str, any];
+def _extract_error_info(diag: KernelDiagnostic) -> dict[str, any];
 
 def _snippet_task(code: str, worker: object, suffix: str = ".jac") -> object;
 
@@ -52,17 +53,9 @@ impl CompilerBridge.parse_snippet(
         };
     }
     def _do_parse(tmp_path: str) -> dict[str, any] {
-        program = JacProgram();
-
-        ir = program.parse_str(code, tmp_path);
-
-        errors: list[dict[str, any]] = [];
-        for e in program.errors_had {
-            errors.append(_extract_error_info(e));
-        }
-
-        valid = len(errors) == 0 and ir is not None;
-        return {"valid": valid, "errors": errors};
+        parsed = tool_session().parse(tmp_path);
+        errors = [_extract_error_info(e) for e in parsed.errors];
+        return {"valid": not errors, "errors": errors};
     }
     (success, result) = run_with_timeout(_snippet_task(code, _do_parse));
     if not success {
@@ -91,24 +84,10 @@ impl CompilerBridge.typecheck_snippet(
         };
     }
     def _do_typecheck(tmp_path: str) -> dict[str, any] {
-        program = JacProgram();
-        compiler = Jac.get_compiler();
-
-        ir = compiler.compile(
-            tmp_path, program, use_str=code, options=CompileOptions(no_cgen=True)
-        );
-
-        errors: list[dict[str, any]] = [];
-        warnings: list[dict[str, any]] = [];
-        for e in program.errors_had {
-            errors.append(_extract_error_info(e));
-        }
-        for w in program.warnings_had {
-            warnings.append(_extract_error_info(w));
-        }
-
-        valid = len(errors) == 0 and ir is not None;
-        return {"valid": valid, "errors": errors, "warnings": warnings};
+        checked = call_check(check_request_for([tmp_path], CompileOptions(no_cgen=True)));
+        errors = [_extract_error_info(e) for e in checked.errors];
+        warnings = [_extract_error_info(w) for w in checked.warnings];
+        return {"valid": not errors, "errors": errors, "warnings": warnings};
     }
     (success, result) = run_with_timeout(_snippet_task(code, _do_typecheck));
     if not success {
@@ -130,21 +109,17 @@ impl CompilerBridge.format_snippet(code: str) -> dict[str, any] {
         };
     }
     def _do_format(tmp_path: str) -> dict[str, any] {
-        compiler = Jac.get_compiler();
-
-        result_prog = compiler.jac_str_formatter(code, tmp_path);
-
-        if result_prog is None {
-            return {"formatted": code, "changed": False, "error": "Format failed"};
+        laid_out = tool_session().format(tmp_path);
+        if not laid_out.text {
+            return {
+                "formatted": code,
+                "changed": False,
+                "error": diagnostic_text(laid_out.errors[0])
+                    if laid_out.errors
+                    else "Format failed"
+            };
         }
-
-        formatted = code;
-        if result_prog.mod {
-            formatted = unparse_module(result_prog.mod.main);
-        }
-
-        changed = formatted != code;
-        return {"formatted": formatted, "changed": changed};
+        return {"formatted": laid_out.text, "changed": laid_out.text != code};
     }
     (success, result) = run_with_timeout(_snippet_task(code, _do_format));
     if not success {
@@ -161,28 +136,18 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
         };
     }
     def _do_py2jac(tmp_path: str) -> dict[str, any] {
-        compiler = Jac.get_compiler();
-
-        program = JacProgram();
-
-        ir = compiler.compile(tmp_path, program);
-
-        warnings: list[str] = [];
-        for w in program.warnings_had {
-            warnings.append(str(w));
+        converted = tool_session().py_to_jac(tmp_path);
+        if not converted.text {
+            return {
+                "jac_code": "",
+                "warnings": [diagnostic_text(e) for e in converted.errors]
+                    or ["Conversion failed"]
+            };
         }
-
-        if ir is None {
-            errors: list[str] = [];
-            for e in program.errors_had {
-                errors.append(str(e));
-            }
-            return {"jac_code": "", "warnings": errors or ["Conversion failed"]};
-        }
-
-        jac_code = unparse_module(ir);
-
-        return {"jac_code": jac_code, "warnings": warnings};
+        return {
+            "jac_code": converted.text,
+            "warnings": [diagnostic_text(w) for w in converted.warnings]
+        };
     }
     (success, result) = run_with_timeout(
         _snippet_task(python_code, _do_py2jac, suffix=".py")
@@ -194,8 +159,6 @@ impl CompilerBridge.py_to_jac(python_code: str) -> dict[str, any] {
 }
 
 impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, any] {
-    import json;
-
     if len(code) > MAX_INPUT_SIZE {
         return {
             "error": f"Input exceeds maximum size of {MAX_INPUT_SIZE} bytes",
@@ -203,26 +166,12 @@ impl CompilerBridge.get_ast_snippet(code: str, fmt: str = "tree") -> dict[str, a
         };
     }
     def _do_ast(tmp_path: str) -> dict[str, any] {
-        program = JacProgram();
-
-        ir = program.parse_str(code, tmp_path);
-
-        errors: list[dict[str, any]] = [];
-        for e in program.errors_had {
-            errors.append(_extract_error_info(e));
-        }
-
-        if ir is None {
+        shown = tool_session().ast_view(tmp_path, "json" if fmt == "json" else "tree");
+        errors = [_extract_error_info(e) for e in shown.errors];
+        if not shown.text {
             return {"error": "Parse failed", "errors": errors, "ast": None};
         }
-
-        if fmt == "json" {
-            ast_output = json.dumps(node_to_dict(ir), `default=str);
-        } else {
-            ast_output = print_ast_tree(ir);
-        }
-
-        return {"ast": ast_output, "valid": len(errors) == 0, "errors": errors};
+        return {"ast": shown.text, "valid": not errors, "errors": errors};
     }
     (success, result) = run_with_timeout(_snippet_task(code, _do_ast));
     if not success {
@@ -241,35 +190,22 @@ impl CompilerBridge.lint_snippet(code: str, auto_fix: bool = False) -> dict[str,
         };
     }
     def _do_lint(tmp_path: str) -> dict[str, any] {
-        if auto_fix {
-            prog = JacCompiler.jac_str_formatter(
-                source_str=code, file_path=tmp_path, auto_lint=True
-            );
-        } else {
-            prog = JacCompiler.jac_file_linter(file_path=tmp_path);
-        }
-
-        violations: list[dict[str, any]] = [];
-        for w in prog.warnings_had {
-            violations.append(_extract_error_info(w));
-        }
-        for e in prog.errors_had {
+        session = tool_session();
+        linted = session.lint_fix(tmp_path) if auto_fix else session.lint(tmp_path);
+        violations: list[dict[str, any]] = [
+            _extract_error_info(w) for w in linted.warnings
+        ];
+        for e in linted.errors {
             info = _extract_error_info(e);
             info["severity"] = "error";
             violations.append(info);
         }
-
-        fixed_code: (str | None) = None;
-        changed = False;
-        if auto_fix and prog.mod and prog.mod.main and prog.mod.main.gen {
-            fixed_code = prog.mod.main.gen.jac;
-            if fixed_code is None {
-                fixed_code = unparse_module(prog.mod.main);
-            }
-            changed = fixed_code is not None and fixed_code != code;
-        }
-
-        return {"violations": violations, "fixed_code": fixed_code, "changed": changed};
+        fixed_code: (str | None) = linted.text if auto_fix and linted.text else None;
+        return {
+            "violations": violations,
+            "fixed_code": fixed_code,
+            "changed": fixed_code is not None and fixed_code != code
+        };
     }
     (success, result) = run_with_timeout(_snippet_task(code, _do_lint));
     if not success {
@@ -291,24 +227,21 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, any] {
         };
     }
     def _do_jac2py(tmp_path: str) -> dict[str, any] {
-        prog = JacProgram();
-        ir = prog.compile(file_path=tmp_path);
-
-        warnings: list[str] = [];
-        for w in prog.warnings_had {
-            warnings.append(str(w));
+        compiled = call_compile(
+            compile_request_for([tmp_path], CompileOptions(), {}, ["python_ast"])
+        );
+        warnings = [diagnostic_text(w) for w in compiled.warnings];
+        if not compiled.ok() {
+            return {
+                "python_code": "",
+                "warnings": [diagnostic_text(e) for e in compiled.errors]
+                    or ["Conversion failed"]
+            };
         }
-
-        if ir is None or prog.errors_had {
-            errors: list[str] = [];
-            for e in prog.errors_had {
-                errors.append(str(e));
-            }
-            return {"python_code": "", "warnings": errors or ["Conversion failed"]};
-        }
-
-        py_code = generated_python(ir);
-        return {"python_code": py_code, "warnings": warnings};
+        return {
+            "python_code": ast.unparse(compiled.unit(tmp_path).python_ast),
+            "warnings": warnings
+        };
     }
     (success, result) = run_with_timeout(
         _snippet_task(code, _do_jac2py), timeout=DEFAULT_TIMEOUT
@@ -327,23 +260,18 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, any] {
         };
     }
     def _do_jac2js(tmp_path: str) -> dict[str, any] {
-        prog = JacProgram();
-        ir = prog.compile(file_path=tmp_path);
-
-        warnings: list[str] = [];
-        for w in prog.warnings_had {
-            warnings.append(str(w));
+        compiled = call_compile(
+            compile_request_for([tmp_path], CompileOptions(), {}, ["client_js"])
+        );
+        warnings = [diagnostic_text(w) for w in compiled.warnings];
+        if not compiled.ok() {
+            return {
+                "js_code": "",
+                "warnings": [diagnostic_text(e) for e in compiled.errors]
+                    or ["Conversion failed"]
+            };
         }
-
-        if ir is None or prog.errors_had {
-            errors: list[str] = [];
-            for e in prog.errors_had {
-                errors.append(str(e));
-            }
-            return {"js_code": "", "warnings": errors or ["Conversion failed"]};
-        }
-
-        js_code = ir.gen.js or "";
+        js_code = compiled.unit(tmp_path).client_js;
         if not js_code.strip() {
             warnings.append("ECMAScript code generation produced no output.");
         }
@@ -614,12 +542,8 @@ impl CompilerBridge.create_project(
     return result;
 }
 
-impl _extract_error_info(alert: object) -> dict[str, any] {
-    return {
-        "line": alert?.loc?.first_line or 0,
-        "col": alert?.loc?.col_start or 0,
-        "message": alert?.msg or str(alert)
-    };
+impl _extract_error_info(diag: KernelDiagnostic) -> dict[str, any] {
+    return {"line": diag.span.line, "col": diag.span.col, "message": diag.message};
 }
 
 impl _snippet_task(code: str, worker: object, suffix: str = ".jac") -> object {

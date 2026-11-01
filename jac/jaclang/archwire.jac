@@ -514,9 +514,6 @@ graph import {
     compiler.backends.native.llvm.shim_path ++> dist.payload.assemble.assemble_site {
         write_shim_record
     }
-    compiler.backends.native.na_compile_pass ++> cli.commands.analysis.explain {
-        native_linked_ir_text
-    }
     compiler.backends.native.wasm_artifact ++> client.compiler.ViteCompiler._compile_wasm_module {
         wasm_assets
     }
@@ -536,10 +533,6 @@ graph import {
     }
     compiler.backends.py.artifact_imports ++> dist.precompile_bytecode.seal_runtime_closure {
         runtime_sources
-    }
-    compiler.backends.py.python_text ++> cli.commands.transform.jac2py
-        | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py {
-        generated_python
     }
     compiler.backends.py.jacpython.compiler_context --> runtime.python.symtable {
         compile_context
@@ -566,7 +559,9 @@ graph import {
         cli.commands.analysis._check_file_job { discover_base_file },
         cli.commands.analysis._drop_covered_annexes { discover_base_file },
         cli.commands.analysis._float_impls_to_annex | cli.commands.architecture | toolchains.desktop.module_files { discover_annex_files },
-        cli.commands.analysis._unit_weight { discover_annex_files },
+        cli.commands.analysis._unit_weight | cli.commands.analysis.lint.lint_fix_file {
+            discover_annex_files
+        },
         cli.commands.analysis._with_annex_owners { discover_base_file },
         lsp.server.engine | studio.intel_server {
             discover_annex_files,
@@ -576,7 +571,6 @@ graph import {
     ]
     compiler.driver.bccache --> [
         cli.commands.analysis._format_single_file_worker { discover_annex_files },
-        cli.commands.analysis.lint.lint_fix_file { discover_annex_files },
         cli.commands.analysis.precommit { discover_annex_files },
         testing.test_runner._suite_source { discover_base_file },
     ]
@@ -594,17 +588,15 @@ graph import {
         | dist.publish.npm_sources { ClientLink }
     compiler.driver.compile_options ++> [
         cli.commands.analysis._check_file_job
-            | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck
-            | dist.precompile_bytecode
-            | dist.publish.builder._module_is_client_source
-            | dist.publish.npm_sources._compile_module
-            | dist.publish.runtime_vendor
-            | dist.seal
-            | project.kernel_call
-            | studio.gate
-            | testing.cl_test_runner.module_is_client { CompileOptions },
+        | dist.precompile_bytecode
+        | dist.publish.builder._module_is_client_source
+        | dist.publish.npm_sources._compile_module
+        | dist.publish.runtime_vendor
+        | dist.seal
+        | project.kernel_call
+        | studio.gate
+        | testing.cl_test_runner.module_is_client { CompileOptions },
         cli.commands.analysis.explain { CompileOptions },
-        cli.commands.analysis.grammar { CompileOptions },
         cli.commands.native_build.native_build { CompileOptions, NATIVE_LINK_MODES },
         lsp.server.engine | studio.intel_server { CancelToken },
     ]
@@ -613,12 +605,10 @@ graph import {
     ]
     compiler.driver.compiler ++> [
         cli.commands.analysis.check { CHECK_GC_THRESHOLDS },
-        cli.mcp.compiler_bridge.CompilerBridge.lint_snippet._do_lint { JacCompiler },
         dist.precompile_bytecode.run_precompile { COMPILE_GC_THRESHOLDS },
     ]
     type compiler.driver.compiler ++> runtime.build_services | runtime.runtime { JacCompiler }
     compiler.driver.ifacecache --> [
-        cli.commands.analysis.check { prime_iface_codec },
         dist.precompile_bytecode._unit_extra { DIAG_SCHEMA, IfaceRegistry },
     ]
     compiler.driver.jir ++> [
@@ -712,7 +702,6 @@ graph import {
         NativeIface
     }
     compiler.driver.pipeline ++> [
-        cli.commands.analysis.grammar { run_utility },
         dist.publish.npm_sources._compile_module { CompilationProduct, require },
     ]
     compiler.driver.pipeline as pipeline --> scale.tests.apps.test_fleet_from_apps;
@@ -721,12 +710,8 @@ graph import {
         client.route_scanner.resolve_route_exports { route_exports },
         dist.source.client.write_client { wasm_ir },
     ]
-    compiler.driver.pipeline_types ++> cli.commands.analysis.grammar { CompilationProduct }
     compiler.driver.program ++> [
-        cli.commands.analysis._annex_moves
-        | cli.commands.native_build.native_build
-        | cli.commands.transform.jac2js
-        | cli.mcp.compiler_bridge.CompilerBridge.get_ast_snippet._do_ast
+        cli.commands.native_build.native_build
         | dist.native_product.write_native_product
         | dist.precompile_bytecode._application_sources
         | dist.publish.npm_sources.collect_npm_sources
@@ -737,19 +722,10 @@ graph import {
         | server.hmr.HotReloader._classify_declarations
         | testing.cl_test_runner.compile_cl_module
         | testing.test_runner._fresh_jac_state { JacProgram },
-        cli.commands.analysis._check_file_job
-        | cli.commands.transform.jac2py
-        | cli.mcp.compiler_bridge.CompilerBridge.jac_to_js._do_jac2js
-        | dist.precompile_bytecode.prebuild_native_closure
+        dist.precompile_bytecode.prebuild_native_closure
         | testing.cl_test_runner.module_is_client { JacProgram },
-        cli.commands.analysis._float_impls_to_annex | cli.commands.transform.py2jac | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py | dist.precompile_bytecode.precompile_native_unit { JacProgram },
-        cli.commands.analysis._format_single_file_worker
-        | cli.mcp.compiler_bridge.CompilerBridge.parse_snippet._do_parse { JacProgram },
-        cli.commands.analysis.explain | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac | dist.precompile_bytecode.seal_native { JacProgram },
-        cli.commands.analysis.grammar | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck {
-            JacProgram
-        },
-        cli.commands.analysis.lint { JacProgram },
+        dist.precompile_bytecode.precompile_native_unit { JacProgram },
+        dist.precompile_bytecode.seal_native { JacProgram },
         dist.publish.builder._backend_source { JacProgram as JacProgramRt },
         dist.publish.builder._module_is_client_source { JacProgram as JacProgramRt },
     ]
@@ -838,11 +814,6 @@ graph import {
             HOST_FACT_STDLIB_MODULES
         },
     ]
-    compiler.frontend.parser.frontend --> cli.commands.analysis._check_file_job { _replay_diags, parse_diags }
-    compiler.frontend.parser.lexer --> [
-        cli.commands.analysis._check_file_job { Lexer },
-    ]
-    compiler.frontend.parser.parser --> cli.commands.analysis._check_file_job { Parser as _SyntaxParser }
     compiler.frontend.python.ast_nodes --> runtime.python.symtable { Expr, stmt }
     compiler.frontend.python.ast_output --> runtime.python.symtable {
         ast_output_append_owned,
@@ -915,7 +886,6 @@ graph import {
         dist.publish.jsdoc { Ability, FuncSignature, Module, ParamVar, UniNode },
         packages.api { HasVar, Module, Symbol },
     ]
-    compiler.frontend.unitree --> cli.commands.analysis._check_file_job { Source as _Src }
     compiler.frontend.unparse ++> dist.publish.dts | dist.publish.jsdoc { unparse_node }
     compiler.native_scope ++> [
         dist.precompile_bytecode._compiler_kernel_units {
@@ -927,12 +897,7 @@ graph import {
     ]
     compiler.native_scope --> dist.precompile_bytecode.native_roots { kernel_root_path }
     type compiler.passes.context ++> client.client_diagnostics | server.hmr { Alert }
-    compiler.passes.pyast_load_pass ++> cli.commands.transform.py2jac {
-        parse_python_source
-    }
-    compiler.passes.ownership_hints --> cli.commands.analysis.explain { inferred_hints }
     compiler.placement.placement_export --> [
-        cli.commands.analysis.explain { collect_placement_rows },
         dist.precompile_bytecode._unit_extra { summary_from_bytes, summary_to_bytes },
     ]
     compiler.placement.placement_facts ++> [
@@ -954,16 +919,7 @@ graph import {
         dist.precompile_bytecode.adopt_kernel { host_target_spec },
     ]
     compiler.target_spec --> dist.precompile_bytecode.seal_native { host_target_spec }
-    compiler.tools.grammar_extract_pass ++> cli.commands.analysis.grammar {
-        GrammarExtractPass
-    }
-    compiler.tools.jac_formatter_pass ++> cli.commands.transform.py2jac
-        | cli.mcp.compiler_bridge { unparse_module }
     compiler.tools.lang_tools ++> cli.commands.tools.tool { AstTool }
-    compiler.tools.treeprinter ++> cli.mcp.compiler_bridge {
-        node_to_dict,
-        print_ast_tree
-    }
     compiler.types.stubcat.locate as locate --> dist.payload.assemble.cached_stubcat;
     type compiler.types.stubcat.reader ++> project.modresolver {
         StubCatalog
@@ -1690,7 +1646,6 @@ graph import {
         TemplateRegistry
     }
     project.textio --> [
-        cli.commands.analysis._check_file_job { read_file_with_encoding as _read_src },
         compiler.driver.compiler.JacCompiler.get_bytecode { read_file_with_encoding },
     ]
     project.tomlio ++> [
@@ -2855,26 +2810,23 @@ graph import {
             | server.sv_client._local_call
             | studio.session { JacRuntime },
         byllm.visit_routing.route_visit
-            | cli.commands.cli_helpers.proc_file
-            | cli.commands.execution._discover_config_from_file
-            | cli.commands.tools.dot
-            | cli.mcp.compiler_bridge.CompilerBridge.format_snippet._do_format
-            | client.cli.run_client_start
-            | client.route_scanner.resolve_route_exports
-            | client.targets.mobile_target
-            | client.targets.web_target.WebTarget.build
-            | dist.seal.bake_serve_payloads
-            | server.endpoints.pages
-            | server.hmr.HotReloader._recompile_client_code
-            | server.server.ModuleIntrospector._check_module_freshness
-            | server.static_files { JacRuntime as Jac },
+        | cli.commands.cli_helpers.proc_file
+        | cli.commands.execution._discover_config_from_file
+        | cli.commands.tools.dot
+        | client.cli.run_client_start
+        | client.route_scanner.resolve_route_exports
+        | client.targets.mobile_target
+        | client.targets.web_target.WebTarget.build
+        | dist.seal.bake_serve_payloads
+        | server.endpoints.pages
+        | server.hmr.HotReloader._recompile_client_code
+        | server.server.ModuleIntrospector._check_module_freshness
+        | server.static_files { JacRuntime as Jac },
         cli.commands.execution._exec_file
-            | cli.mcp.compiler_bridge.CompilerBridge.py_to_jac._do_py2jac
-            | server.hmr.HotReloader._recompile_client_unified
-            | server.server.ModuleIntrospector._resolve_declared { JacRuntime as Jac },
+        | server.hmr.HotReloader._recompile_client_unified
+        | server.server.ModuleIntrospector._resolve_declared { JacRuntime as Jac },
         cli.commands.execution._invoke_entrypoint
-            | cli.mcp.compiler_bridge.CompilerBridge.typecheck_snippet._do_typecheck
-            | server.server.ModuleIntrospector.route_spec { JacRuntime as Jac },
+        | server.server.ModuleIntrospector.route_spec { JacRuntime as Jac },
         cli.commands.execution._load_executable { JacRuntime as Jac },
         cli.commands.execution._pin_run_scope { JacRuntime as Jac },
         cli.commands.execution.debug { JacRuntime as Jac },
@@ -2888,8 +2840,7 @@ graph import {
     ]
     runtime.runtime --> [
         byllm.visit_routing._candidate_for { JacRuntimeInterface },
-        cli.commands.analysis.check.run_units
-            | compiler.driver.compiler.JacCompiler.selfhost.getter
+        compiler.driver.compiler.JacCompiler.selfhost.getter
             | compiler.driver.selfhost.SelfHostCache.program.getter
             | compiler.tests.test_stubcat_roundtrip.small_catalog
             | server.serving.supervisor.WorkerSupervisor._spawn
@@ -3978,7 +3929,6 @@ graph import {
         },
     ]
     type project.compiler_host ++> compiler.kernel_api { ProjectHost }
-    project.kernel_check --> cli.commands.analysis._check_file_job { kernel_check }
     project.kernel_compile ++> [
         compiler.driver.application._kernel_units {
             forget_application_units,
@@ -4191,11 +4141,10 @@ graph import {
     ]
     project.textio ++> [
         cli.commands.analysis._annex_moves
-            | cli.commands.architecture
-            | cli.commands.transform.py2jac
-            | compiler.driver.compiler
-            | runtime.traceback_render { read_file_with_encoding },
-        cli.commands.analysis._float_impls_to_annex { read_file_with_encoding },
+        | cli.commands.architecture
+        | compiler.driver.compiler
+        | runtime.traceback_render { read_file_with_encoding },
+        cli.commands.analysis.lint.lint_fix_file { read_file_with_encoding },
         cli.commands.analysis._format_single_file_worker { read_file_with_encoding },
         cli.commands.analysis._iter_jac_files | cli.commands.architecture._arch_files {
             drop_git_ignored
@@ -4240,6 +4189,32 @@ graph import {
     type project.compiler_host ++> compiler.tools.arch_plan
         | compiler.tools.studio_queries { ProjectHost }
     project.kernel_call ++> cli.commands.architecture { tool_session }
+    project.kernel_call ++> cli.commands.analysis {
+        call_check,
+        diagnostic_text,
+        tool_session
+    }
+    project.kernel_compile ++> cli.commands.analysis { alert_of, check_request_for }
+    project.kernel_call ++> cli.commands.transform | cli.mcp.compiler_bridge {
+        call_compile,
+        diagnostic_text,
+        tool_session
+    }
+    project.kernel_call ++> cli.mcp.compiler_bridge { call_check }
+    project.kernel_compile ++> cli.commands.transform | cli.mcp.compiler_bridge {
+        compile_request_for
+    }
+    project.kernel_compile ++> cli.mcp.compiler_bridge { check_request_for }
+    compiler.driver.compile_options ++> cli.commands.transform
+        | cli.mcp.compiler_bridge { CompileOptions }
+    type compiler.kernel_api ++> cli.mcp.compiler_bridge { KernelDiagnostic }
+    compiler.kernel_api ++> cli.commands.analysis { KernelError }
+    type compiler.kernel_api ++> cli.commands.analysis {
+        KernelDiagnostic,
+        PlacementRow,
+        SourceSpan,
+        ToolOutput
+    }
     project.kernel_call ++> lsp.server.engine { SessionClient, diagnostic_text }
     type compiler.kernel_api ++> lsp.server.engine { KernelDiagnostic }
     type compiler.kernel_api ++> lsp.server.utils {
