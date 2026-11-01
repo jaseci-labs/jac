@@ -96,31 +96,21 @@ test "the static type exports are validated as globals, not functions" {
         == ["PyInit__bisect"];
 }
 
-test "the registered PyInit_* exports are all reachable from native_api.jac" {
-    # Compiles the real native_api.jac closure the build lowers and asserts the
-    # exact contract prepare_native checks before emitting jacpython.o. Deleting
-    # a binding wire from archwire.jac fails here, in the normal test suite,
-    # instead of only in the native build. Runs the plan construction only: pure
-    # Jac lowering, no LLVM shim and no CPython source tree needed.
+test "the export contract checks registered modules and static type globals" {
+    # The JacPython build compiles the inittab and runtime roots together, then
+    # checks the merged module before and after optimization. Keep the reusable
+    # contract helpers importable so this test can check both symbol classes.
     prepare = _load_prepare();
-    built = prepare.native_plan(JAC_ROOT, "x86_64-unknown-linux-gnu");
-    program = built[0];
-    plan = built[1];
-    assert not program.errors_had , [e.pretty_print() for e in program.errors_had];
-    assert plan.units , "native_api.jac lowered to an empty plan";
-    exports = plan.pub_exports();
-    missing = prepare.missing_exports(
-        prepare.registered_exports(Path(JAC_ROOT)), exports
+    expected = prepare.registered_exports(Path(JAC_ROOT));
+    assert expected;
+    assert prepare.missing_exports(expected, expected) == [];
+    assert prepare.missing_exports(expected + prepare.STATIC_TYPE_EXPORTS, expected)
+        == prepare.STATIC_TYPE_EXPORTS;
+
+    merged = _Merged(
+        defined={name: False for name in expected},
+        globals={name: False for name in prepare.STATIC_TYPE_EXPORTS}
     );
-    assert not missing , (
-        "native_api.jac does not export registered PyInit_* symbols: "
-        + ", ".join(missing)
-    );
-    missing = prepare.missing_exports(prepare.STATIC_TYPE_EXPORTS, exports);
-    assert not missing , (
-        "native_api.jac does not define the static type objects the patched C"
-        " static_types table references (wire their object_model units into"
-        " this closure): "
-        + ", ".join(missing)
-    );
+    assert prepare.undefined_exports(merged, expected) == [];
+    assert prepare.undefined_exports(merged, prepare.STATIC_TYPE_EXPORTS, "global") == [];
 }
