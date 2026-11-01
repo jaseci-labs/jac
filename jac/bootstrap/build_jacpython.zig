@@ -834,16 +834,14 @@ fn compile(c: *Ctx) !void {
     // Programs/python.c and getpath are the only C left to compile: everything
     // else libpython holds is the native object.
     const stdmodule = try stdmoduleCflags(c, Flags.of(c.p));
-    var commands: std.ArrayList([]const []const u8) = .empty;
     for ([_][2][]const u8{ .{ "./Programs/python.c", "Programs/python.o" }, .{ "./" ++ getpath_source, getpath_object } }) |pair| {
         var argv: std.ArrayList([]const u8) = .empty;
         try argv.appendSlice(a, c.cc);
         try argv.append(a, "-c");
         try argv.appendSlice(a, stdmodule);
         try argv.appendSlice(a, &.{ "-DPy_BUILD_CORE", "-o", pair[1], pair[0] });
-        try commands.append(a, argv.items);
+        try runArgv(c, argv.items, c.src);
     }
-    try runAll(c, commands.items, c.src);
 }
 
 /// MODLIBS: the foreign libraries jacpython-modules.txt lists for the native
