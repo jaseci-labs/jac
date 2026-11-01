@@ -266,7 +266,7 @@ Here is the actual anatomy. The `jac` you download is a small native **launcher 
 | Component | How it's in the binary | What you can uninstall |
 |---|---|---|
 | **Launcher stub** | The `jac` file itself: native machine code linked against libc only. Everything below rides in the appended payload | -- |
-| **CPython 3.14** | A private [python-build-standalone](https://github.com/astral-sh/python-build-standalone) build (PGO+LTO, stripped), `dlopen`ed by the launcher at startup: your system Python is never consulted | Python, pyenv, conda |
+| **JacPython 3.14** | A private Python 3.14 whose compiler and much of whose C are native Jac, built from pinned sources and `dlopen`ed by the launcher at startup: your system Python is never consulted | Python, pyenv, conda |
 | **Jac compiler + runtime** | Precompiled to JIR in the payload's private site: the REST server (`jac run`), client framework, K8s deployer (`jac scale deploy`), and byLLM (`by llm()`). Their optional third-party deps (litellm, pymongo, ...) resolve per-project via `jac install` | Flask, FastAPI, Express · Docker, kubectl, Helm · LangChain |
 | **Bun** | The real Bun executable, carried inside the payload and invoked by absolute path, never on your `PATH` | Node.js, npm, npx, yarn |
 | **LLVM 22** | Statically linked into a single `jacllvm` shared library behind the llvmlite ABI | gcc, clang |
