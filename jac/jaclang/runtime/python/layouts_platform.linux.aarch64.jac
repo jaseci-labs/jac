@@ -1,4 +1,5 @@
 glob LAYOUTS_PLATFORM: str = "linux.aarch64",
+     PYCONFIG_ALIGNOF_MAX_ALIGN_T: Final[i64] = 16,
      PyConfig_VERBOSE: Final[i64] = 208,
      PyConfig_DEV_MODE: Final[i64] = 12,
      PyConfig_FILESYSTEM_ENCODING: Final[i64] = 80,
