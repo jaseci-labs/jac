@@ -1,18 +1,20 @@
 """Check the C layouts of the Jac object records against the generated headers.
 
-A native Jac object-model port defines and reads CPython objects in place, so
+A native Jac object-model port defines and reads Python objects in place, so
 their layouts are ABI: `PyObject`, `PyVarObject`, `PyTypeObject`, the slot
 tables and the concrete object structs must match what C extensions compile
 against byte for byte. jaclang/runtime/python/layouts.jac declares them, and
 gen_include.jac writes the headers' structs and constants from it. This
 script's only input is layouts.jac (and the C-layout records of
-cpython_api.jac it shares); it reads no header:
+python_capi.jac it shares); it reads no header:
 
     jac run scripts/jacpython/gen_layouts.jac            # rewrite the checks
     jac run scripts/jacpython/gen_layouts.jac --check    # fail on drift
 
 The platform constants need `zig` (or `--zig`) to cross-compile their probe
-for each target.
+for each target, against that target's own pyconfig.h, which
+bootstrap/pyconfig_tool.zig writes from the build's probes; `--deps` names the
+vendored libraries those probes read (a JacPython build's python/build).
 
 - jaclang/runtime/python/layouts.jac: one foreign struct per layout in LAYOUTS
   (and the structs they embed by value), function-pointer slots as
@@ -23,8 +25,8 @@ for each target.
 - jaclang/runtime/python/layouts_platform.<os>.<arch>.jac: the constants in
   PLATFORM_CONSTANTS, whose values differ between the supported platforms
   (where a field sits in the interpreter state, past records sized by the C
-  library), each folded by `zig cc -target` for that platform against the
-  generated headers. The plain layouts_platform.jac names no platform, and a
+  library or fields its configuration enables), each folded by `zig cc -target`
+  for that platform against the generated headers and its pyconfig.h. The plain layouts_platform.jac names no platform, and a
   port reading one of these constants refuses to start on a platform without
   a generated table.
 - bootstrap/python/layouts_check.c: `_Static_assert`s on the offset, size,
@@ -40,6 +42,7 @@ for each target.
   PRIVATE_LAYOUTS) is declared in layouts_check.c from its Jac record.
 """
 import argparse;
+import os;
 import re;
 import shlex;
 import subprocess;
@@ -58,7 +61,7 @@ import from common {
 
 glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
      CHECK: Path = BOOTSTRAP / "layouts_check.c",
-     CAPI: Path = RUNTIME / "cpython_api.jac",
+     CAPI: Path = RUNTIME / "python_capi.jac",
      PLATFORM_OUTPUT: str = "layouts_platform",
      COMMAND: str = "scripts/jacpython/gen_layouts.jac",
      # Configuration macros a constant reads, folded to 0 or 1 for the probe
@@ -70,6 +73,12 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
          "#define JAC_FORCE_UTF8_FS_ENCODING 0",
          "#endif",
          # mimalloc chooses its OS calls at run time; a flag one OS lacks is 0.
+         # The monotonic condition attribute exists where pthread_condattr_setclock does.
+         "#ifdef CONDATTR_MONOTONIC",
+         "#define JAC_THREADS_CONDATTR_VAL offsetof(_PyRuntimeState, threads._condattr_monotonic.val)",
+         "#else",
+         "#define JAC_THREADS_CONDATTR_VAL 0",
+         "#endif",
          "#ifdef __APPLE__",
          "#define JAC_CONFIG_USE_SYSTEM_LOGGER offsetof(PyConfig, use_system_logger)",
          "#else",
@@ -1397,7 +1406,6 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
              "i64"
          ),
          ("_Py_ATTR_CACHE_UNUSED", "_Py_ATTR_CACHE_UNUSED", "u16"),
-         ("ALIGNOF_MAX_ALIGN_T", "ALIGNOF_MAX_ALIGN_T", "i64"),
          ("Py_T_ULONG", "Py_T_ULONG", "i32"),
          ("Py_tp_base", "Py_tp_base", "i32"),
          ("Py_tp_bases", "Py_tp_bases", "i32"),
@@ -5143,6 +5151,7 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
      # Constants whose values differ between the supported platforms, in the
      # form of CONSTANTS.
      PLATFORM_CONSTANTS: list[tuple[str, str, str]] = [
+         ("ALIGNOF_MAX_ALIGN_T", "ALIGNOF_MAX_ALIGN_T", "i64"),
          ("PyConfig_VERBOSE", "offsetof(PyConfig, verbose)", "i64"),
          ("PyConfig_DEV_MODE", "offsetof(PyConfig, dev_mode)", "i64"),
          (
@@ -6096,7 +6105,7 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
          ),
          (
              "_PyRuntimeState_THREADS_CONDATTR_VAL",
-             "offsetof(_PyRuntimeState, threads._condattr_monotonic.val)",
+             "JAC_THREADS_CONDATTR_VAL",
              "i64"
          ),
          (
@@ -7093,7 +7102,7 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
          "PyHamtIteratorState.i_pos": 8
      },
      # The C designator of a record field whose C member has another name: a
-     # field cpython_api.jac renamed, or the member a named union is read
+     # field python_capi.jac renamed, or the member a named union is read
      # through. A field named after a Jac keyword with a trailing underscore
      # (`obj_`) is the keyword in C without needing an entry.
      C_MEMBERS: dict[str, str] = {
@@ -7264,7 +7273,7 @@ def require(name: str) -> None {
     }
     if name not in records {
         sys.exit(
-            f"gen_layouts: {name} is not a record of layouts.jac or cpython_api.jac"
+            f"gen_layouts: {name} is not a record of layouts.jac or python_capi.jac"
         );
     }
     ctype = next(
@@ -7319,8 +7328,8 @@ def require(name: str) -> None {
     order.append(name);
 }
 
-# The records of layouts.jac and, for a layout cpython_api.jac declares
-# (Py_buffer, Py_complex), cpython_api.jac's, laid out in dependency order.
+# The records of layouts.jac and, for a layout python_capi.jac declares
+# (Py_buffer, Py_complex), python_capi.jac's, laid out in dependency order.
 def compute_layouts(layouts_jac: Path) {
     shared = jac_records(CAPI);
     records.update(jac_records(layouts_jac));
@@ -7401,7 +7410,7 @@ def render_check(
     lines = [
         "/* Generated by scripts/jacpython/gen_layouts.jac; do not edit.",
         " * Every layout and constant jaclang/runtime/python/layouts.jac declares,",
-        " * asserted against the generated CPython headers. build_jacpython.zig",
+        " * asserted against the generated C API headers. build_jacpython.zig",
         " * compiles this for every JacPython build, so a layout drift fails it. */",
         "#ifndef Py_BUILD_CORE",
         "#define Py_BUILD_CORE 1",
@@ -7510,20 +7519,58 @@ def render_platform(suffix: str, values: dict[str, int]) -> str {
 }
 
 # --------------------------------------------------------------- C toolchain
-# The configured pyconfig.h of a local JacPython build: configure's output,
-# the one header the generated tree lacks. Any platform's will do, since the
-# asserts hold the constants to the same values on every build.
-def default_config -> Path {
-    for config in sorted(
-        (JAC / ".python-build/jacpython").glob(
-            "*/python/install/include/python3.14/pyconfig.h"
-        )
-    ) {
-        return config.parent;
+# The vendored libraries' headers and archives of a local JacPython build,
+# for the configuration probes.
+def default_deps -> Path {
+    for deps in sorted((JAC / ".python-build/jacpython").glob("*/python/build")) {
+        if (deps / "include").is_dir() {
+            return deps;
+        }
     }
     sys.exit(
-        "No configured pyconfig.h under jac/.python-build; run a JacPython build or pass --config"
+        "No vendored libraries under jac/.python-build; run a JacPython build or pass --deps"
     );
+}
+
+# Each platform's pyconfig.h, from the build's own probes run for that target
+# (bootstrap/pyconfig_tool.zig): {platform suffix: directory holding it}.
+def platform_configs(zig: str, deps: Path, scratch: Path) -> dict[str, Path] {
+    configs: dict[str, Path] = {};
+    for (suffix, target, _) in PLATFORMS {
+        (system, arch) = suffix.split(".");
+        out = scratch / f"config-{suffix}";
+        out.mkdir();
+        result = subprocess.run(
+            [
+                zig,
+                "run",
+                str(JAC / "bootstrap/pyconfig_tool.zig"),
+                "--",
+                zig,
+                str(deps),
+                str(out),
+                "macos" if system == "darwin" else system,
+                arch,
+                target,
+                ("macos" if system == "darwin" else system) + "-" + arch
+            ],
+            capture_output=True,
+            text=True
+        );
+        if result.returncode != 0 {
+            sys.exit(f"Probing {suffix}'s pyconfig.h failed:\n{result.stderr}");
+        }
+        configs[suffix] = out;
+    }
+    return configs;
+}
+
+# The platform suffix of this machine, whose configuration the asserts are
+# compiled against.
+def host_suffix -> str {
+    machine = os.uname().machine.lower();
+    arch = "aarch64" if machine in ("arm64", "aarch64") else machine;
+    return ("darwin" if sys.platform == "darwin" else "linux") + "." + arch;
 }
 
 # The generated headers as a build stages them, under `scratch`/Include.
@@ -7633,7 +7680,7 @@ with entry:__main__ {
     );
     parser.add_argument("--cc", help="C compiler command");
     parser.add_argument(
-        "--config", help="directory holding a configured CPython's pyconfig.h"
+        "--deps", help="a JacPython build's python/build (the vendored libraries)"
     );
     parser.add_argument("--zig", help="zig, for the platform constants");
     parser.set_defaults(cc="cc", zig="zig");
@@ -7650,18 +7697,20 @@ with entry:__main__ {
         sys.exit(f"gen_layouts: layouts.jac does not declare {', '.join(missing)}");
     }
     values = {name: declared[name][1] for (name, _, _) in CONSTANTS};
-    config = Path(args.config) if args.config else default_config();
+    deps = Path(args.deps) if args.deps else default_deps();
     current = True;
     with tempfile.TemporaryDirectory() as scratch {
-        flags = probe_flags(stage_headers(Path(scratch)), config);
+        headers = stage_headers(Path(scratch));
+        configs = platform_configs(args.zig, deps, Path(scratch));
         platform_values: dict[str, dict[str, int]] = {};
         for (suffix, target, _) in PLATFORMS {
             platform_values[suffix] = extract(
-                flags, [args.zig, "cc", "-target", target]
+                probe_flags(headers, configs[suffix]),
+                [args.zig, "cc", "-target", target]
             );
         }
         check = render_check(values, platform_values);
-        verify(check, flags, shlex.split(args.cc));
+        verify(check, probe_flags(headers, configs[host_suffix()]), shlex.split(args.cc));
     }
     current = write_or_check(CHECK, check, args.check, COMMAND) and current;
     for (suffix, _, _) in PLATFORMS + [("", "", "")] {
