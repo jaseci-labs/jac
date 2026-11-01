@@ -661,6 +661,7 @@ impl NaIRGenPass._load_native_unit_module(path: str) -> (uni.Module | None) {
             real,
             options=_UnitOpts(
                 no_cgen=True,
+                symtab_ir_only=True,
                 aot_mode=True,
                 default_codespace='native',
                 force_codespace='native',
@@ -1286,7 +1287,9 @@ impl NaIRGenPass._native_imports(
         if imported_mod is None and os.path.isfile(full_path) {
             _saved_opts = self.prog.options;
             try {
-                imported_mod = self.prog.compile(full_path, no_cgen=True);
+                imported_mod = self.prog.compile(
+                    full_path, no_cgen=True, symtab_ir_only=True
+                );
             } except Exception {
                 imported_mod = None;
             } finally {

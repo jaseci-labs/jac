@@ -506,6 +506,10 @@ impl NaIRGenPass._codegen_bound_args(
                 );
                 return [self._zero_const(arg.type) for arg in func.args[self_offset:]];
             }
+            declared_names = {p.name.sym_name for p in callee_sig.get_parameters()};
+            if not all(name in declared_names for name in bound) {
+                bound = None;
+            }
         }
         for (pix, sp) in enumerate(sig_params) {
             slot = self_offset + pix;
@@ -2633,6 +2637,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             and func_name not in self.generic_fns {
             _src_ab = self._find_source_ability(binding.source_module, func_name);
             if _src_ab is not None and _src_ab.type_params {
+                _src_mod = _src_ab.find_parent_of_type(uni.Module);
+                if _src_mod is not None {
+                    self._ensure_dep_inference(_src_mod);
+                }
+                self._ensure_body_inference(_src_ab);
                 self.generic_fns[func_name] = _src_ab;
             }
         }
