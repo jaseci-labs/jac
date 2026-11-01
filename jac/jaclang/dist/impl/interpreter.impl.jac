@@ -7,7 +7,7 @@ impl _repo_root -> str {
 }
 
 impl jacpython_binary -> str {
-    return os.path.join(_repo_root(), "zig-out", "jacpython", "bin", "jac");
+    return os.path.join(_repo_root(), "zig-out", "bin", "jac");
 }
 
 impl _this_process(source: Source) -> Probe {
@@ -16,9 +16,9 @@ impl _this_process(source: Source) -> Probe {
     }
     built = jacpython_binary();
     return Probe.missing(
-        f"this jac bundles CPython; the JacPython build is {built}"
+        f"this jac predates JacPython; the JacPython build is {built}"
             if os.path.isfile(built)
-            else "this jac bundles CPython; `jac native build jacpython` builds a jac on JacPython"
+            else "this jac predates JacPython; `jac native build jacpython` builds a jac on it"
     );
 }
 
@@ -61,7 +61,7 @@ impl JacPythonArtifact.build_blocker -> str {
 impl JacPythonArtifact.build(log: Callable[[str], None], force: bool, exact: bool) {
     import subprocess;
     prefix = os.path.dirname(os.path.dirname(jacpython_binary()));
-    argv = ["zig", "build", "-Dpython=jacpython", "--prefix", prefix];
+    argv = ["zig", "build", "--prefix", prefix];
     if not exact {
         argv.append("-Dreuse-python=true");
     }

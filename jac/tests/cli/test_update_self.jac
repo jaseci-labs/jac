@@ -1,8 +1,8 @@
 """`jac update --self`: offline tests for the self-update flow.
 
 GitHub and download calls are patched at their module boundaries
-(`GitHub.release`, the `.sha256` sidecar GET, toolchains `fetch`, the
-JacPython probe -- the fake fetch still enforces the digest contract); the update
+(`GitHub.release`, the `.sha256` sidecar GET, toolchains `fetch` -- the fake
+fetch still enforces the digest contract); the update
 target is a throwaway file with a real JACBIN01 trailer, so the genuine trailer
 parser and the genuine atomic replace are exercised.
 """
@@ -57,7 +57,6 @@ def run_flow(
     real_bin: bool = True,
     linked: str | None = None,
     readonly: bool = False,
-    jacpython: bool = False,
     managed: bool = False,
     installer_managed: bool = True,
     sidecar: str = "ok"
@@ -114,9 +113,6 @@ def run_flow(
 
     fetchm = patch("jaclang.toolchains.store.fetch", side_effect=fake_fetch).start();
     patch("jaclang.dist.self_update._fetch_text", side_effect=fake_sidecar).start();
-    patch(
-        "jaclang.dist.self_update._running_jacpython", return_value=jacpython
-    ).start();
     patch(
         "jaclang.packages.github.GitHub.release", side_effect=fake_release_call
     ).start();
@@ -227,18 +223,6 @@ test "guard: readonly install refuses before any download" {
     if os.geteuid() != 0 {
         (rc, target, fetchm, tags, tmp) = run_flow(readonly=True);
         assert rc == 1 and fetchm.call_count == 0;
-        shutil.rmtree(tmp, ignore_errors=True);
-    }
-}
-
-
-test "guard: JacPython install refuses before any download" {
-    (rc, target, fetchm, tags, tmp) = run_flow(jacpython=True);
-    try {
-        assert rc == 1 and fetchm.call_count == 0;
-        assert b"fake launcher" in target.read_bytes();
-        assert sorted(p.name for p in tmp.iterdir()) == [".jac-install", "jac"];
-    } finally {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
