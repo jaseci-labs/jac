@@ -644,8 +644,12 @@ graph import {
         | cli.mcp.compiler_bridge.CompilerBridge.jac_to_py._do_jac2py {
         generated_python
     }
-    compiler.backends.py.jacpython.compiler_context --> runtime.python.symtable {
-        compile_context
+    compiler.backends.py.jacpython.cpy_compile ++> runtime.python.symtable {
+        cpy_future_from_ast
+    }
+    compiler.backends.py.jacpython.cpy_symtable ++> runtime.python.symtable {
+        cpy_ste,
+        cpy_symtable_build
     }
     compiler.boundary_audit ++> client.compiler.ViteCompiler.prepare_bundle {
         boundary_audit
@@ -1225,7 +1229,7 @@ graph import {
         cli.commands.fix { LexToken },
         lsp.server.engine { TokenKind },
     ]
-    compiler.frontend.python.ast_nodes --> runtime.python.symtable { Expr, stmt }
+    compiler.frontend.python.ast_nodes --> runtime.python.symtable { Expression, mod }
     compiler.frontend.python.ast_output --> runtime.python.symtable {
         ast_output_append_owned,
         ast_output_checked,
@@ -1233,27 +1237,6 @@ graph import {
     }
     compiler.frontend.python.compiler_diagnostics ++> runtime.python.tokenize {
         report_token_warnings
-    }
-    compiler.frontend.python.compiler_diagnostics --> runtime.python.symtable {
-        compiler_diag_to_pyobj
-    }
-    compiler.frontend.python.compiler_symtable ++> runtime.python.symtable {
-        DEF_BOUND,
-        DEF_PARAM,
-        SCOPE_CELL,
-        SCOPE_LOCAL,
-        SCOPE_OFFSET,
-        SYM_USE,
-        is_type_variable_info,
-        scope_info_kind,
-        scope_kind,
-        sym_block
-    }
-    compiler.frontend.python.compiler_symtable --> runtime.python.symtable {
-        build_module_symtable
-    }
-    compiler.frontend.python.compiler_validate --> runtime.python.symtable {
-        future_features
     }
     compiler.frontend.python.parser --> runtime.python.symtable {
         parse_eval_expr,
@@ -3100,12 +3083,6 @@ graph import {
             PySet,
             PyStr,
             PyTuple
-        },
-        compiler.frontend.python.compiler_diagnostics {
-            PyError,
-            PyInt,
-            PyObj,
-            py_error
         },
         compiler.frontend.python.compiler_preprocess {
             PyBool,
@@ -5557,9 +5534,6 @@ graph import compiler {
             generated_python
         },
     ]
-    backends.py.jacpython.compiler_context ++> frontend.python.compiler_symtable {
-        compile_context
-    }
     backends.py.jcir_bc_gen_pass ++> driver.pipeline.bytecode_passes {
         JcirBytecodeGenPass
     }
@@ -7877,9 +7851,6 @@ graph import compiler {
     }
     frontend.python.compiler_preprocess ++> backends.py.jacpython.cpy_codegen
         | backends.py.jacpython.product_compile { preprocess_node }
-    frontend.python.compiler_symtable ++> backends.py.jacpython.native_api {
-        mangle_name
-    }
     frontend.python.parser ++> [
         backends.py.jacpython.native_api {
             parse_eval_source,
@@ -11502,6 +11473,7 @@ graph import compiler.backends.py.jacpython {
             ste_set_symbol,
             stmt_loc
         },
+        native_api { cpy_mangle },
     ]
     product_compile ++> native_api { compile_ast, compile_source, prepare_ast_output }
 }
@@ -12582,8 +12554,6 @@ graph import compiler.frontend.python {
         annotation_unparse {
             Add,
             And,
-            AnnAssign,
-            AsyncFunctionDef,
             Attribute,
             Await,
             BinOp,
@@ -12600,7 +12570,6 @@ graph import compiler.frontend.python {
             Eq,
             FloorDiv,
             FormattedValue,
-            FunctionDef,
             GeneratorExp,
             Gt,
             GtE,
@@ -12641,7 +12610,6 @@ graph import compiler.frontend.python {
             UnaryOp,
             Yield,
             YieldFrom,
-            arg,
             arguments,
             ast_node,
             comprehension,
@@ -13079,144 +13047,26 @@ graph import compiler.frontend.python {
             expr,
             stmt
         },
-        compiler_symtable {
-            AnnAssign,
-            Assert,
-            Assign,
-            AsyncFor,
-            AsyncFunctionDef,
-            AsyncWith,
-            Attribute,
-            AugAssign,
-            Await,
-            BinOp,
-            BoolOp,
-            Call,
-            ClassDef,
-            Compare,
-            Delete,
-            Dict,
-            DictComp,
-            Expr,
-            For,
-            FormattedValue,
-            FunctionDef,
-            GeneratorExp,
-            Global,
-            If,
-            IfExp,
-            Import,
-            ImportFrom,
-            Interpolation,
-            JoinedStr,
-            Lambda,
-            List,
-            ListComp,
-            Match,
-            MatchAs,
-            MatchClass,
-            MatchMapping,
-            MatchOr,
-            MatchSequence,
-            MatchSingleton,
-            MatchStar,
-            MatchValue,
-            Name,
-            NamedExpr,
-            Nonlocal,
-            ParamSpec,
-            Pass,
-            Raise,
-            Return,
-            Set,
-            SetComp,
-            Slice,
-            Starred,
-            Subscript,
-            TemplateStr,
-            Try,
-            TryStar,
-            Tuple,
-            TypeAlias,
-            TypeVar,
-            TypeVarTuple,
-            UnaryOp,
-            While,
-            With,
-            Yield,
-            YieldFrom,
-            alias,
-            arg,
-            arguments,
-            ast_kind,
-            ast_node,
-            comprehension,
-            expr,
-            pattern,
-            stmt,
-            type_param
-        },
         compiler_validate {
             AnnAssign,
-            Assert,
-            Assign,
             AsyncFor,
             AsyncFunctionDef,
             AsyncWith,
-            Attribute,
             AugAssign,
             Await,
             BinOp,
-            BoolOp,
-            Break,
-            Call,
             ClassDef,
-            Compare,
-            Constant,
-            Continue,
-            Del,
-            Delete,
-            DictComp,
-            Expr,
-            For,
             FunctionDef,
-            GeneratorExp,
-            Global,
-            If,
-            ImportFrom,
-            Is,
-            IsNot,
-            Lambda,
-            List,
-            ListComp,
-            Load,
             MatMult,
             Match,
-            Name,
             NamedExpr,
-            Nonlocal,
             ParamSpec,
-            Pass,
-            Return,
-            SetComp,
-            Slice,
-            Starred,
-            Store,
-            Subscript,
             TemplateStr,
-            Try,
             TryStar,
-            Tuple,
             TypeAlias,
             TypeVar,
             TypeVarTuple,
-            UnaryOp,
-            While,
-            With,
-            Yield,
-            YieldFrom,
             arguments,
-            ast_kind,
             ast_node,
             comprehension,
             expr,
@@ -13385,22 +13235,10 @@ graph import compiler.frontend.python {
     ]
     ast_nodes --> parser.finish_parse { TypeIgnore }
     ast_walk ++> [
-        annotation_unparse | ast_validation { ast_child_visitor, visit_ast_children },
+        ast_validation | compiler_validate { ast_child_visitor, visit_ast_children },
         compiler_preprocess { ast_rewriter, rewrite_ast_children },
-        compiler_validate { ast_child_buffer, ast_child_visitor, visit_ast_children },
     ]
-    compiler_diagnostics ++> compiler_symtable {
-        compiler_diagnostic,
-        symbol_diagnostic
-    }
-    compiler_diagnostics --> [
-        compiler_validate {
-            compiler_diagnostic,
-            syntax_warning,
-            validation_diagnostic
-        },
-        peg_runtime.peg_scan_token { report_token_warnings },
-    ]
+    compiler_diagnostics --> peg_runtime.peg_scan_token { report_token_warnings }
     compiler_validate --> parser.finish_parse { validate_feature_version }
     parser_actions ++> parser {
         keyword_or_starred_node,
