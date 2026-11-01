@@ -55,15 +55,15 @@ made by JacPython's compiler inside the kernel (`kernel_code_object`) as an owne
 reference (NULL when no bytecode was asked for) that the module binding hands to
 its caller, and
 `bytecode` is that code object marshalled, as caches store it. `python_ast` is
-the generated Python as an `ast.Module`, present when the request names the
-"python_ast" product. The native products are present when the module is
+the generated Python as an owned `ast.Module` reference, present when the
+request names the "python_ast" product. The native products are present when the module is
 native."""
 obj CompiledUnit {
     has path: str,
         module_name: str,
         code: ptr[PyObject] = ptr[PyObject](),
         bytecode: bytes = b"",
-        python_ast: any = None,
+        python_ast: ptr[PyObject] = ptr[PyObject](),
         interface: bytes = b"",
         placement: str = "",
         client_js: str = "",
@@ -176,8 +176,42 @@ obj DocumentSymbol {
         children: list[DocumentSymbol] = [];
 }
 
+"""What a text-producing tool made of one file: the text (empty when the file
+did not parse) and the diagnostics the tool raised on the way."""
+obj ToolOutput {
+    has text: str = "",
+        errors: list[KernelDiagnostic] = [],
+        warnings: list[KernelDiagnostic] = [];
+}
+
+"""The Jac grammar as EBNF, extracted from the parser's own source."""
+obj GrammarReport {
+    has ebnf: str,
+        rules: int,
+        diagnostics: str = "",
+        errors: list[KernelDiagnostic] = [];
+}
+
+"""What `jac arch` would write for one archwire.jac. `text` is the formatted
+archwire (or the rendered graph for the "graph" action); `refusal` names why
+nothing can be written, with `hint` saying what to do instead. `modules` are
+the module files the wiring governs and `fed` the ones a pruned wire fed."""
+obj ArchPlan {
+    has arch_path: str,
+        text: str = "",
+        modules: list[str] = [],
+        fed: list[str] = [],
+        added: int = 0,
+        dropped: int = 0,
+        rules: int = 0,
+        rules_added: int = 0,
+        refusal: str = "",
+        hint: str = "";
+}
+
 """An analysed project held across edits. Every tooling feature is a query on
-a session; an edit re-analyses incrementally inside the kernel."""
+a session; an edit re-analyses incrementally inside the kernel. A query on an
+annex answers from the module that owns it."""
 obj KernelSession {
     has project_root: str,
         search_paths: list[str] = [],
@@ -185,20 +219,29 @@ obj KernelSession {
         options: CompileOptions = CompileOptions(),
         _host: (ProjectHost | None) = None,
         _program: (JacProgram | None) = None,
+        shared_app_limit: int = 4,
         _versions: dict[str, int] = {},
         _analysed: dict[str, int] = {},
+        _diagnosed: dict[str, list[KernelDiagnostic]] = {},
         _open: set[str] = set();
 
     def postinit;
     def enter -> ProjectHost;
     def leave;
     def invalidate(real: str);
+    def owner(real: str) -> str;
     def analysed(path: str) -> uni.Module;
+    def app_targets(real: str) -> list[tuple[str, str, str]];
+    def app_diagnostics(real: str) -> list[KernelDiagnostic];
+    def formatted(path: str, auto_lint: bool) -> ToolOutput;
+    def tool_program -> JacProgram;
 
     def update(path: str, text: str);
     def close(path: str);
     def forget(path: str);
     def rename_module(old_path: str, new_path: str);
+    def dependents(path: str) -> list[str];
+    def set_shared_app_limit(limit: int);
     def diagnostics(path: str) -> list[KernelDiagnostic];
     def hover(path: str, line: int, col: int) -> str;
     def definition(path: str, line: int, col: int) -> list[SourceSpan];
@@ -211,8 +254,19 @@ obj KernelSession {
     def inlay_hints(path: str, first_line: int, last_line: int) -> list[InlayHint];
     def symbols(path: str) -> list[DocumentSymbol];
     def rename(path: str, line: int, col: int, new_name: str) -> list[TextEdit];
-    def format(path: str) -> str;
-    def lint_fix(path: str) -> str;
+    def format(path: str) -> ToolOutput;
+    def lint_fix(path: str) -> ToolOutput;
+    def lint(path: str) -> ToolOutput;
+    def parse(path: str) -> ToolOutput;
+    def statements(path: str) -> list[SourceSpan];
+    def py_to_jac(path: str) -> ToolOutput;
+    def ast_view(path: str, view: str) -> ToolOutput;
+    def explain(path: str, topic: str, memory_profile: str = "") -> ToolOutput;
+    def grammar -> GrammarReport;
+    def arch_plan(
+        arch_path: str, action: str, prune: bool = False, graph_format: str = ""
+    ) -> ArchPlan;
+
     def compile(request: CompileRequest) -> CompileResult;
     def check(request: CheckRequest) -> CheckResult;
 }
@@ -248,3 +302,7 @@ def other_compiler_diagnostic(path: str, root: str) -> KernelDiagnostic;
 def collect_diagnostics(
     program: JacProgram, errors: list[KernelDiagnostic], warnings: list[KernelDiagnostic]
 );
+
+def merge_app_diagnostics(
+    collected: list[tuple[str, list[KernelDiagnostic]]]
+) -> list[KernelDiagnostic];
