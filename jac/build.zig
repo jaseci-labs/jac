@@ -229,9 +229,11 @@ pub fn build(b: *std.Build) void {
     // A JacPython native object lowered elsewhere (issue #10472), as -Dkernel
     // adopts a compiler kernel: `zig build jacpython-object` lowers one for
     // any release platform on one machine, and the build for that platform
-    // links it instead of lowering its own. The seed refuses an object
-    // lowered for another target, from other sources, or with other frozen
-    // modules than this build generates.
+    // links it instead of lowering its own, in any checkout and on any host
+    // interpreter: the object carries the frozen modules and _PyRuntime image
+    // lowered into it, and getpath's install prefix is linked, not lowered.
+    // The seed refuses an object lowered for another target, from other
+    // sources or tools, or against other headers.
     const object_platform = target_platform orelse (osArchString(target.result) orelse host_osarch);
     const adopt_object: ?[]const u8 = if (b.option([]const u8, "jacpython-object", "Link the prebuilt JacPython native object in this directory (from `zig build jacpython-object`) instead of lowering it")) |dir| blk: {
         if (!jacpython) std.debug.panic("-Djacpython-object needs -Dpython=jacpython", .{});
@@ -254,10 +256,8 @@ pub fn build(b: *std.Build) void {
         build_python_step.dependOn(&fetch_cross.step);
     }
     // Lower only JacPython's native object for -Dtarget-platform, with the
-    // manifest another build checks it against, into
-    // .python-build/jacpython/<platform>.object. The object compiles in the
-    // install prefix of .python-build/jacpython/<platform>.work, so the build
-    // that adopts it runs in a checkout at the same path.
+    // generated modules lowered into it and the manifest another build checks
+    // it against, into .python-build/jacpython/<platform>.object.
     {
         const object_dest = b.pathFromRoot(b.fmt(".python-build/jacpython/{s}", .{python_platform}));
         const lower_object = b.addRunArtifact(seed);

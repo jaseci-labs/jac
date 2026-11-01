@@ -37,7 +37,7 @@ pub const Options = struct {
     environ: *const Environ.Map,
     /// What lowers the native object apart from the sources it lowers:
     /// build_python.zig's objectTools. Recorded in the object's manifest.
-    object_tools: []const u8 = "",
+    object_tools: ?ToolsFn = null,
     /// A native object lowered elsewhere (a directory the native stage
     /// wrote, see object_files): checked against this build and linked in
     /// place of lowering one.
@@ -151,22 +151,23 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
 
     // The frozen modules (importlib's bootstrap, zipimport, getpath.py and the
     // startup stdlib), compiled and marshalled by the host as
-    // _freeze_module.py would, with getpath's build inputs, and written as one
-    // Jac module the native object links. _PyRuntime's initializer, which
-    // only the C preprocessor builds from pycore_runtime_init.h, compiled for
-    // this target against this tree's pyconfig.h and written as the C data of
-    // another. Then the native object itself.
+    // _freeze_module.py would, and written as one Jac module the native
+    // object links. _PyRuntime's initializer, which only the C preprocessor
+    // builds from pycore_runtime_init.h, compiled for this target against
+    // this tree's pyconfig.h and written as the C data of another. Then the
+    // native object itself. An adopted object carries both modules, from the
+    // build that lowered it, so this build's host generates neither.
     const native = c.path(&.{ o.work, "native" });
-    const frozen = c.path(&.{ native, "frozen_modules.jac" });
-    const runtime_image = c.path(&.{ native, "runtime_image.jac" });
+    const frozen = c.path(&.{ native, frozen_module });
+    const runtime_image = c.path(&.{ native, runtime_image_module });
     try Io.Dir.cwd().createDirPath(io, native);
-    try step(&c, "frozen", generate, .{ &c, try getpathArgs(&c, frozen) });
-    try step(&c, "runtime_image", generate, .{ &c, try runtimeImageArgs(&c, runtime_image) });
     if (o.adopt_object) |dir| {
-        try step(&c, "adopt-native", adoptObject, .{ &c, dir, native, frozen, runtime_image });
+        try step(&c, "adopt-native", adoptObject, .{ &c, dir, native });
     } else {
+        try step(&c, "frozen", generate, .{ &c, try frozenArgs(&c, frozen) });
+        try step(&c, "runtime_image", generate, .{ &c, try runtimeImageArgs(&c, runtime_image) });
         try step(&c, "native", runArgv, .{ &c, &[_][]const u8{ hostPython(&c), "-I", c.path(&.{ o.recipe, "prepare_native.py" }), o.root, native, o.platform, frozen, runtime_image }, null });
-        try step(&c, "native-manifest", writeObjectManifest, .{ &c, native, frozen, runtime_image });
+        try step(&c, "native-manifest", writeObjectManifest, .{ &c, native });
     }
     if (o.object_out) |out| {
         const tmp = try std.fmt.allocPrint(a, "{s}.tmp", .{out});
@@ -299,16 +300,9 @@ fn generate(c: *Ctx, args: []const []const u8) !void {
     try runArgv(c, argv.items, null);
 }
 
-/// gen_frozen's arguments: the frozen modules and getpath's configured
-/// locations, the values CPython's makefile passes to Modules/getpath.c
-/// (makefileVars installs the same PLATLIBDIR; an in-tree build has an empty
-/// VPATH).
-fn getpathArgs(c: *Ctx, output: []const u8) ![]const []const u8 {
-    var argv: std.ArrayList([]const u8) = .empty;
-    try argv.appendSlice(c.a, &.{ "gen_frozen", "--source", c.src, "--output", output });
-    try argv.appendSlice(c.a, &.{ "--prefix", c.prefix, "--exec-prefix", c.prefix });
-    try argv.appendSlice(c.a, &.{ "--pythonpath", "", "--vpath", "", "--platlibdir", "lib" });
-    return argv.items;
+/// gen_frozen's arguments.
+fn frozenArgs(c: *Ctx, output: []const u8) ![]const []const u8 {
+    return c.a.dupe([]const u8, &.{ "gen_frozen", "--source", c.src, "--output", output });
 }
 
 /// gen_runtime_image's arguments: this tree's configured headers, then the
@@ -323,11 +317,19 @@ fn runtimeImageArgs(c: *Ctx, output: []const u8) ![]const []const u8 {
 
 // ------------------------------------------------------------- native object
 
+const frozen_module = "frozen_modules.jac";
+const runtime_image_module = "runtime_image.jac";
+
 /// What the native stage leaves next to the object, and what a directory
 /// given to -Djacpython-object holds: the object, its sha256 and the sources
-/// it was lowered from (both recorded in python/build), and the manifest
-/// another build checks the object against before it links it.
-pub const object_files = [_][]const u8{ "jacpython.o", "sha256", "sources", "manifest.json" };
+/// it was lowered from (both recorded in python/build), the two generated
+/// modules lowered into it, and the manifest another build checks the
+/// object against before it links it.
+pub const object_files = [_][]const u8{ "jacpython.o", "sha256", "sources", frozen_module, runtime_image_module, "manifest.json" };
+
+/// build_python.zig's objectTools: the digest of what lowers an object, given
+/// the sources it lowers (which it leaves out).
+pub const ToolsFn = *const fn (Io, Allocator, []const u8, []const []const u8) anyerror![64]u8;
 
 /// manifest.json.
 pub const ObjectManifest = struct {
@@ -342,14 +344,15 @@ pub const ObjectManifest = struct {
     tools: []const u8,
     /// The sha256 of every lowered source, by its path in the Jac root.
     sources: std.json.ArrayHashMap([]const u8),
-    /// The sha256 of the two generated modules the object links: the frozen
-    /// modules, compiled by the build's host and carrying getpath's
-    /// configured prefix, and the _PyRuntime image.
+    /// The sha256 of the two generated modules lowered into the object and
+    /// shipped beside it: the frozen modules, marshalled by the lowering
+    /// build's host, and the _PyRuntime image.
     frozen: []const u8,
     runtime_image: []const u8,
-    /// getpath's configured prefix in the frozen modules: the producing
-    /// build's install prefix inside its work tree.
-    prefix: []const u8,
+    /// headersDigest of the tree the object was lowered for: the pyconfig.h
+    /// and Include/ the _PyRuntime image was computed from, which a build
+    /// compiles the C around the object against.
+    headers: []const u8,
     /// The sha256 of jacpython.o.
     object: []const u8,
     lowered_on: []const u8,
@@ -445,7 +448,7 @@ pub const ObjectRecord = struct {
     object: []const u8,
     frozen: []const u8,
     runtime_image: []const u8,
-    prefix: []const u8,
+    headers: []const u8,
     lowered_on: []const u8,
 };
 
@@ -464,7 +467,7 @@ pub fn objectManifestJson(io: Io, a: Allocator, r: ObjectRecord) ![]const u8 {
         .sources = sources,
         .frozen = r.frozen,
         .runtime_image = r.runtime_image,
-        .prefix = r.prefix,
+        .headers = r.headers,
         .object = &object_sha,
         .lowered_on = r.lowered_on,
     };
@@ -473,7 +476,7 @@ pub fn objectManifestJson(io: Io, a: Allocator, r: ObjectRecord) ![]const u8 {
 
 /// After prepare_native.py: the manifest that lets another build, on this
 /// machine or another, check the object before it links it.
-fn writeObjectManifest(c: *Ctx, native: []const u8, frozen: []const u8, runtime_image: []const u8) !void {
+fn writeObjectManifest(c: *Ctx, native: []const u8) !void {
     const object = try Io.Dir.cwd().readFileAlloc(c.io, c.path(&.{ native, "jacpython.o" }), c.a, .unlimited);
     const object_sha = sha256Hex(object);
     if (!std.mem.eql(u8, std.mem.trim(u8, try readFile(c, c.path(&.{ native, "sha256" })), " \r\n"), &object_sha))
@@ -483,17 +486,19 @@ fn writeObjectManifest(c: *Ctx, native: []const u8, frozen: []const u8, runtime_
         c.print("jacpython.o is {s} code; {s} needs {s}", .{ describeFormat(format), c.o.platform, describeFormat(.{ .os = c.p.os, .arch = c.p.arch }) });
         return error.NativeObjectForAnotherTarget;
     }
-    const frozen_sha = try fileSha256(c.io, c.a, frozen);
-    const image_sha = try fileSha256(c.io, c.a, runtime_image);
+    const frozen_sha = try fileSha256(c.io, c.a, c.path(&.{ native, frozen_module }));
+    const image_sha = try fileSha256(c.io, c.a, c.path(&.{ native, runtime_image_module }));
+    const headers = try headersDigest(c);
+    const tools = try c.o.object_tools.?(c.io, c.a, c.o.root, try loweredSources(c.io, c.a, native));
     const text = try objectManifestJson(c.io, c.a, .{
         .platform = c.o.platform,
-        .tools = c.o.object_tools,
+        .tools = &tools,
         .root = c.o.root,
         .sources = try readFile(c, c.path(&.{ native, "sources" })),
         .object = object,
         .frozen = &frozen_sha,
         .runtime_image = &image_sha,
-        .prefix = c.prefix,
+        .headers = &headers,
         .lowered_on = try std.fmt.allocPrint(c.a, "{s}-{s}", .{ @tagName(buildOs()), @tagName(buildArch()) }),
     });
     try writeFile(c, c.path(&.{ native, "manifest.json" }), text, mode_data);
@@ -505,17 +510,32 @@ pub fn llvmTriple(platform: []const u8) ![]const u8 {
     return (try platformOf(platform)).llvm_triple;
 }
 
-/// What the build adopting an object knows to check it against. The digests
-/// of the generated modules are null before the generators have run, as in
-/// build_python.zig's early check.
+/// What the build adopting an object knows to check it against: `tools` is
+/// objectTools over the object's own `sources` record (loweredSources).
+/// `headers` is null before pyconfig.h is written, as in build_python.zig's
+/// early check.
 pub const ObjectExpect = struct {
     platform: []const u8,
     tools: []const u8,
     root: []const u8,
-    frozen: ?[]const u8 = null,
-    runtime_image: ?[]const u8 = null,
-    prefix: ?[]const u8 = null,
+    headers: ?[]const u8 = null,
 };
+
+/// The paths an object's `sources` record lists, in the Jac root; none when
+/// there is no record (checkObject refuses that directory).
+pub fn loweredSources(io: Io, a: Allocator, dir: []const u8) ![]const []const u8 {
+    const list = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ dir, "sources" }), a, .limited(4 * 1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => return &.{},
+        else => return err,
+    };
+    var names: std.ArrayList([]const u8) = .empty;
+    var lines = std.mem.splitScalar(u8, list, '\n');
+    while (lines.next()) |raw| {
+        const rel = std.mem.trim(u8, raw, " \r\t");
+        if (rel.len > 0) try names.append(a, rel);
+    }
+    return names.items;
+}
 
 pub const ObjectCheck = union(enum) { adopted: ObjectManifest, refused: []const u8 };
 
@@ -550,6 +570,14 @@ pub fn checkObject(io: Io, a: Allocator, dir: []const u8, expect: ObjectExpect) 
     const format = objectFormat(object);
     if (format == null or format.?.os != p.os or format.?.arch != p.arch)
         return refuse(a, "{s}/jacpython.o is {s} code; {s} needs {s}", .{ dir, describeFormat(format), expect.platform, describeFormat(.{ .os = p.os, .arch = p.arch }) });
+    for ([_][2][]const u8{ .{ frozen_module, m.frozen }, .{ runtime_image_module, m.runtime_image } }) |shipped| {
+        const generated = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ dir, shipped[0] }), a, .unlimited) catch |err| switch (err) {
+            error.FileNotFound => return refuse(a, "{s} has no {s}, the module lowered into its object; {s}", .{ dir, shipped[0], regenerate }),
+            else => return err,
+        };
+        if (!std.mem.eql(u8, &sha256Hex(generated), shipped[1]))
+            return refuse(a, "{s}/{s} is not the module its manifest says was lowered into the object", .{ dir, shipped[0] });
+    }
 
     const list = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ dir, "sources" }), a, .limited(4 * 1024 * 1024)) catch |err| switch (err) {
         error.FileNotFound => return refuse(a, "{s} has no sources record", .{dir}),
@@ -566,6 +594,8 @@ pub fn checkObject(io: Io, a: Allocator, dir: []const u8, expect: ObjectExpect) 
     }
     const inputs = objectInputs(expect.tools, current.names, current.digests);
     if (!std.mem.eql(u8, &inputs, m.inputs)) {
+        // The tools digest leaves the lowered sources out, so each part of a
+        // refusal names a separate change.
         var why: std.ArrayList(u8) = .empty;
         if (changed.items.len > 0) {
             try why.print(a, "{d} of the sources it was lowered from differ here:", .{changed.items.len});
@@ -574,32 +604,27 @@ pub fn checkObject(io: Io, a: Allocator, dir: []const u8, expect: ObjectExpect) 
         }
         if (!std.mem.eql(u8, m.tools, expect.tools)) {
             if (why.items.len > 0) try why.appendSlice(a, "; and ");
-            try why.appendSlice(a, "what lowers it differs (the jaclang compiler tree, prepare_native.py, the CPython or typeshed pin, or the LLVM shim's inputs)");
+            try why.appendSlice(a, "what lowers it differs (the rest of the jaclang compiler tree, prepare_native.py, the frozen-module or _PyRuntime generators, the CPython or typeshed pin, or the LLVM shim's inputs)");
         }
         if (why.items.len == 0) try why.appendSlice(a, "its manifest's input digest does not follow from its own sources and tools");
         return refuse(a, "the object in {s} was not lowered from this checkout: {s}. {s}", .{ dir, why.items, regenerate });
     }
-    if (expect.prefix) |prefix| if (!std.mem.eql(u8, prefix, m.prefix))
-        return refuse(a, "the object in {s} compiles in getpath's prefix {s}, the install prefix of the build that lowered it; this build's is {s}. Lower it in a checkout at this path", .{ dir, m.prefix, prefix });
-    if (expect.frozen) |frozen| if (!std.mem.eql(u8, frozen, m.frozen))
-        return refuse(a, "the frozen modules compiled into the object in {s} (sha256 {s}) differ from this build's ({s}): another interpreter compiled them, or Lib/ differs. Lower it on the same -Djacpython-host", .{ dir, m.frozen, frozen });
-    if (expect.runtime_image) |image| if (!std.mem.eql(u8, image, m.runtime_image))
-        return refuse(a, "the _PyRuntime image compiled into the object in {s} (sha256 {s}) differs from this build's ({s}): its pyconfig.h or headers differ", .{ dir, m.runtime_image, image });
+    if (expect.headers) |headers| if (!std.mem.eql(u8, headers, m.headers))
+        return refuse(a, "the object in {s} was lowered against another pyconfig.h or Include/ (headers {s}, this build's {s}): the _PyRuntime image in it and the layouts it assumes would not match the C this build compiles. Lower it with this target's probes", .{ dir, m.headers, headers });
     return .{ .adopted = m };
 }
 
-/// The native stage, for an object lowered elsewhere: checked against what
-/// this build generated, then put where prepare_native.py writes.
-fn adoptObject(c: *Ctx, dir: []const u8, native: []const u8, frozen: []const u8, runtime_image: []const u8) !void {
-    const frozen_sha = try fileSha256(c.io, c.a, frozen);
-    const image_sha = try fileSha256(c.io, c.a, runtime_image);
+/// The native stage, for an object lowered elsewhere: checked against this
+/// checkout and this tree's headers, then put, with the modules lowered into
+/// it, where the native stage writes.
+fn adoptObject(c: *Ctx, dir: []const u8, native: []const u8) !void {
+    const tools = try c.o.object_tools.?(c.io, c.a, c.o.root, try loweredSources(c.io, c.a, dir));
+    const headers = try headersDigest(c);
     switch (try checkObject(c.io, c.a, dir, .{
         .platform = c.o.platform,
-        .tools = c.o.object_tools,
+        .tools = &tools,
         .root = c.o.root,
-        .frozen = &frozen_sha,
-        .runtime_image = &image_sha,
-        .prefix = c.prefix,
+        .headers = &headers,
     })) {
         .refused => |why| {
             c.print("build-python: refusing the prebuilt native object: {s}", .{why});
@@ -612,6 +637,83 @@ fn adoptObject(c: *Ctx, dir: []const u8, native: []const u8, frozen: []const u8,
             c.print("adopted jacpython.o {s} from {s}, lowered on {s}", .{ m.object, dir, m.lowered_on });
         },
     }
+}
+
+/// The sha256 of pyconfig.h and every file under Include/, by path: what
+/// gen_runtime_image computes the _PyRuntime image from, and what the C
+/// around the native object is compiled against.
+fn headersDigest(c: *Ctx) ![64]u8 {
+    var hash = std.crypto.hash.sha2.Sha256.init(.{});
+    hash.update("jacpython-object-headers\x00pyconfig.h\x00");
+    hash.update(try readFile(c, c.path(&.{ c.src, "pyconfig.h" })));
+    var include = try Io.Dir.cwd().openDir(c.io, c.path(&.{ c.src, "Include" }), .{ .iterate = true });
+    defer include.close(c.io);
+    var walker = try include.walk(c.a);
+    defer walker.deinit();
+    var paths: std.ArrayList([]const u8) = .empty;
+    while (try walker.next(c.io)) |entry| {
+        if (entry.kind == .file) try paths.append(c.a, try c.a.dupe(u8, entry.path));
+    }
+    std.mem.sort([]const u8, paths.items, {}, struct {
+        fn less(_: void, l: []const u8, r: []const u8) bool {
+            return std.mem.lessThan(u8, l, r);
+        }
+    }.less);
+    for (paths.items) |rel| {
+        hash.update("\x00Include/");
+        hash.update(rel);
+        hash.update("\x00");
+        hash.update(try include.readFileAlloc(c.io, rel, c.a, .unlimited));
+    }
+    var digest: [32]u8 = undefined;
+    hash.final(&digest);
+    return std.fmt.bytesToHex(digest, .lower);
+}
+
+// ------------------------------------------------------- getpath's locations
+
+/// The C the build links for jacpy_getpath_macro(): Modules/getpath.c's
+/// build inputs, which CPython's makefile passes as -D flags when it compiles
+/// getpath.c. In order: PREFIX and EXEC_PREFIX (this build's install prefix),
+/// PYTHONPATH and VPATH (empty, as for an in-tree build), and PLATLIBDIR
+/// (what makefileVars installs). They are linked rather than lowered, so the
+/// native object names no build path and another checkout can adopt it.
+const getpath_source = "Python/jacpython_getpath.c";
+const getpath_object = "Python/jacpython_getpath.o";
+
+fn getpathConfig(a: Allocator, prefix: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, "/* Generated by build_jacpython.zig: getpath's configured locations. */\n#include <stdint.h>\n\nstatic const char *const values[] = {");
+    for ([_][]const u8{ prefix, prefix, "", "", "lib" }, 0..) |value, i| {
+        try out.appendSlice(a, if (i == 0) "\n    \"" else ",\n    \"");
+        // Printable ASCII as itself; quotes, backslashes, '?' (trigraphs)
+        // and every other byte as an octal escape.
+        for (value) |byte| {
+            if (byte >= 0x20 and byte < 0x7f and byte != '"' and byte != '\\' and byte != '?') {
+                try out.append(a, byte);
+            } else try out.print(a, "\\{o:0>3}", .{byte});
+        }
+        try out.append(a, '"');
+    }
+    try out.appendSlice(a, "\n};\n\nconst char *jacpy_getpath_macro(int64_t which) {\n    return which >= 0 && which < 5 ? values[which] : 0;\n}\n");
+    return out.items;
+}
+
+test "getpath's locations are linked as C strings of the install prefix, whatever bytes it holds" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const text = try getpathConfig(arena.allocator(), "/w/\xc3\xa9\"\\?x");
+    const values =
+        \\static const char *const values[] = {
+        \\    "/w/\303\251\042\134\077x",
+        \\    "/w/\303\251\042\134\077x",
+        \\    "",
+        \\    "",
+        \\    "lib"
+        \\};
+    ;
+    try std.testing.expect(std.mem.indexOf(u8, text, values) != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "const char *jacpy_getpath_macro(int64_t which) {") != null);
 }
 
 // ---------------------------------------------------------------- pyconfig.h
@@ -772,9 +874,10 @@ fn haclArchives(c: *Ctx) ![]const Archive {
 /// The object prepare_native.py lowers the Jac runtime into.
 const native_object = "Python/jacpython.o";
 
-/// LIBRARY_OBJS, what libpython and the interpreter hold: the native object.
+/// LIBRARY_OBJS, what libpython and the interpreter hold: the native object
+/// and getpath's configured locations.
 fn libraryObjects(c: *Ctx) ![]const []const u8 {
-    return c.a.dupe([]const u8, &.{native_object});
+    return c.a.dupe([]const u8, &.{ native_object, getpath_object });
 }
 
 fn compile(c: *Ctx) !void {
@@ -783,11 +886,13 @@ fn compile(c: *Ctx) !void {
     defer src_dir.close(c.io);
     try src_dir.createDirPath(c.io, "Python");
     try Io.Dir.copyFile(.cwd(), c.path(&.{ c.o.work, "native/jacpython.o" }), src_dir, native_object, c.io, .{});
+    try src_dir.writeFile(c.io, .{ .sub_path = getpath_source, .data = try getpathConfig(a, c.prefix) });
 
     const f = Flags.of(c.p);
     const stdmodule = try stdmoduleCflags(c, f);
     var objects: std.ArrayList(Object) = .empty;
     try objects.append(a, .{ .source = "./Programs/python.c", .object = "Programs/python.o" });
+    try objects.append(a, .{ .source = "./" ++ getpath_source, .object = getpath_object });
     const simd = haclSimd(c);
     const hacl = [_][]const u8{ "Lib_Memzero0", "Hacl_Hash_MD5", "Hacl_Hash_SHA1", "Hacl_Hash_SHA2", "Hacl_Hash_SHA3", "Hacl_Hash_Blake2s", "Hacl_Hash_Blake2b", "Hacl_HMAC" };
     for (hacl) |name| {
