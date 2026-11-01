@@ -54,6 +54,7 @@ obj MirLowering {
         module: uni.Module,
         mir: MirModule,
         decls: dict[int, MirDecl] = {},
+        decl_syms: dict[int, int] = {},
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
         state: (MirFnState | None) = None;

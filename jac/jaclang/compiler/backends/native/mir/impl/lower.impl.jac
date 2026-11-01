@@ -47,6 +47,7 @@ impl MirLowering.declare(ab: uni.Ability) {
         ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, ab);
     }
     key = id(ab);
+    self.decl_syms[id(self.ability_sym(ab))] = key;
     self.decls[key] = MirDecl(
         ability=ab, symbol=self.symbol_of(ab), params=params, ret=ret
     );
@@ -386,6 +387,14 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         place = self.global_place(nd);
         if place is not None {
             return self.builder().load(place, self.place_elem(place));
+        }
+        decl = self.decls.get(self.decl_syms.get(id(nd.sym), -1))
+            if nd.sym is not None
+            else None;
+        if decl is not None {
+            return self.emit_value(
+                MirOp.FN_ADDR, mir_c_fn(decl.params, decl.ret), [], callee=decl.symbol
+            );
         }
         raise MirRefused(mir_refusal("name", nd.value, nd));
     }
@@ -1006,6 +1015,30 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
 
 impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {
     args = self.call_args(nd);
+    if name == "__global_block" {
+        label = c_string_literal(args[0]) if args else None;
+        (ok, size) = c_scalar_constant(args[1]) if len(args) == 2 else (False, None);
+        if not label or not ok or not isinstance(size, int) or size <= 0 {
+            raise MirRefused(
+                mir_refusal(
+                    "intrinsic",
+                    name,
+                    nd,
+                    "The block is named by a string literal and sized by a positive constant.",
+                    "E5095"
+                )
+            );
+        }
+        self.mir.global_blocks[label] = max(self.mir.global_blocks.get(label, 0), size);
+        return self.emit_value(
+            MirOp.GLOBAL_BLOCK, mir_int(64), [], str_value=label, int_value=size
+        );
+    }
+    if name == "__mem_call_dtor" {
+        target = self.intrinsic_operand(args[0], "i64");
+        subject = self.intrinsic_operand(args[1], "i64");
+        return self.emit_value(MirOp.CALL_DTOR, mir_none(), [target, subject]);
+    }
     if name == "__thread_local_block" {
         label = c_string_literal(args[0]) if args else None;
         (ok, size) = c_scalar_constant(args[1]) if len(args) == 2 else (False, None);
@@ -1165,7 +1198,8 @@ impl MirLowering.type_call(nd: uni.FuncCall) -> (MirValue | None) {
     }
     if result_type.is_numeric() and len(args) == 1 {
         value = self.lower_expr(args[0]);
-        if value.type.kind == MirKind.C_PTR and result_type.kind == MirKind.INT {
+        if value.type.kind in (MirKind.C_PTR, MirKind.C_FN)
+            and result_type.kind == MirKind.INT {
             return self.emit_value(MirOp.PTR_INT, result_type, [value]);
         }
         if value.type.is_numeric() {

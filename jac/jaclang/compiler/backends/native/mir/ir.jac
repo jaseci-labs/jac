@@ -35,6 +35,9 @@ enum MirOp {
     ELEM_ADDR = "elem.addr",
     FIELD_ADDR = "field.addr",
     TLS_BLOCK = "tls.block",
+    GLOBAL_BLOCK = "global.block",
+    FN_ADDR = "fn.addr",
+    CALL_DTOR = "call.dtor",
     GLOBAL_ADDR = "global.addr",
     CALL_C = "call.c",
     CALL_FNPTR = "call.fnptr",
@@ -131,7 +134,8 @@ obj MirModule {
         externs: dict[str, MirExtern] = {},
         structs: dict[str, MirStructDef] = {},
         globals: dict[str, MirGlobal] = {},
-        tls_blocks: dict[str, int] = {};
+        tls_blocks: dict[str, int] = {},
+        global_blocks: dict[str, int] = {};
 
     def function(symbol: str) -> (MirFunction | None);
     def render -> str;

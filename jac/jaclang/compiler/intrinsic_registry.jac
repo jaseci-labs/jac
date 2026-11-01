@@ -13,6 +13,7 @@ enum IntrinsicDispatch {
     ATOMIC_FENCE = "atomic_fence",
     CALL_DTOR = "call_dtor",
     REGION_TLS = "region_tls",
+    GLOBAL_BLOCK = "global_block",
     ALLOCA = "alloca",
     LIST_DATA = "list_data",
     BUFFER_DATA = "buffer_data",
@@ -395,6 +396,12 @@ glob INTRINSIC_REGISTRY = IntrinsicRegistry(
                  param_specs=["str", "i64"],
                  result_spec="i64",
                  dispatch=IntrinsicDispatch.C_THREAD_LOCAL
+             ),
+             "__global_block": IntrinsicEntry(
+                 name="__global_block",
+                 param_specs=["str", "i64"],
+                 result_spec="i64",
+                 dispatch=IntrinsicDispatch.GLOBAL_BLOCK
              ),
              "__thread_local": IntrinsicEntry(
                  name="__thread_local",

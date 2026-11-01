@@ -10,6 +10,9 @@ glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
          MirOp.ELEM_ADDR,
          MirOp.FIELD_ADDR,
          MirOp.TLS_BLOCK,
+         MirOp.GLOBAL_BLOCK,
+         MirOp.FN_ADDR,
+         MirOp.CALL_DTOR,
          MirOp.GLOBAL_ADDR,
          MirOp.CALL_C,
          MirOp.CALL_FNPTR
@@ -72,6 +75,7 @@ obj MirEmitter {
     def emit_memory(b: ir.IRBuilder, instr: MirInstr);
     def c_struct(name: str) -> ir.Type;
     def tls_block(label: str, size: int) -> ir.GlobalVariable;
+    def global_block(label: str, size: int) -> ir.GlobalVariable;
     def global_variable(glob_def: MirGlobal) -> ir.GlobalVariable;
     def keyed_block_fn(label: str, size: int) -> ir.Function;
 }

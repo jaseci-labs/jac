@@ -24,6 +24,9 @@ impl MirEmitter.emit -> ir.Module {
     for glob_def in self.mir.globals.values() {
         self.global_variable(glob_def);
     }
+    for (label, size) in self.mir.global_blocks.items() {
+        self.global_block(label, size);
+    }
     for fn in self.mir.functions {
         self.declare(fn);
     }
@@ -544,6 +547,22 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
                 b.call(self.keyed_block_fn(instr.str_value, instr.int_value), [])
             );
         }
+    } elif op == MirOp.GLOBAL_BLOCK {
+        block = self.global_block(instr.str_value, instr.int_value);
+        self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
+    } elif op == MirOp.FN_ADDR {
+        target = self.functions.get(instr.callee);
+        if target is None {
+            raise MirEmitError(f"MIR address of undeclared function {instr.callee}");
+        }
+        self.bind(instr.result, target);
+    } elif op == MirOp.CALL_DTOR {
+        i8p = ir.IntType(8).as_pointer();
+        dtor_type = ir.FunctionType(ir.VoidType(), [i8p]).as_pointer();
+        b.call(
+            b.inttoptr(self.value(instr.operands[0]), dtor_type),
+            [b.inttoptr(self.value(instr.operands[1]), i8p)]
+        );
     } elif op == MirOp.CALL_C {
         callee = self.functions.get(instr.callee);
         if callee is None {
@@ -563,6 +582,19 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
     } else {
         raise MirEmitError(f"no emitter for MIR instruction {op.value}");
     }
+}
+
+impl MirEmitter.global_block(label: str, size: int) -> ir.GlobalVariable {
+    found = self.module.globals.get(label);
+    if isinstance(found, ir.GlobalVariable) {
+        return found;
+    }
+    shape = ir.ArrayType(ir.IntType(64), (max(size, 1) + 7) // 8);
+    made = ir.GlobalVariable(self.module, shape, name=label);
+    made.linkage = "weak";
+    made.initializer = ir.Constant(shape, None);
+    made.align = 16;
+    return made;
 }
 
 impl MirEmitter.global_variable(glob_def: MirGlobal) -> ir.GlobalVariable {
