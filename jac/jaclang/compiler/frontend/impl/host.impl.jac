@@ -66,8 +66,6 @@ impl HostServices.client_pulls(path: str) -> str {
     return "";
 }
 
-impl HostServices.client_pull_grew(path: str) {}
-
 impl HostServices.has_npm_package(spec: str, base_path: str) -> bool {
     return False;
 }
@@ -89,12 +87,6 @@ impl HostServices.declared_dependencies(
 impl HostServices.note(message: str, style: str = "dim") {}
 
 impl HostServices.stub_catalog_for(program: JacProgram) -> (StubCatalog | None) {
-    return None;
-}
-
-impl HostServices.stub_interface(
-    program: JacProgram, file_path: str
-) -> (Module | None) {
     return None;
 }
 
@@ -327,10 +319,6 @@ impl HostServices.default_target_triple -> str {
     return "";
 }
 
-impl HostServices.host_side -> HostServices {
-    return self;
-}
-
 impl active_host -> HostServices {
     return _HOSTS[-1] if _HOSTS else _NEUTRAL_HOST;
 }
@@ -357,21 +345,4 @@ impl mark_kernel_resident {
 
 impl kernel_resident -> bool {
     return bool(_KERNEL_RESIDENT);
-}
-
-impl set_kernel_host_mode(mode: str) -> str {
-    previous = kernel_host_mode();
-    _KERNEL_HOST_MODE.clear();
-    if mode {
-        _KERNEL_HOST_MODE.append(mode);
-    }
-    return previous;
-}
-
-impl kernel_host_mode -> str {
-    return _KERNEL_HOST_MODE[0] if _KERNEL_HOST_MODE else "";
-}
-
-impl kernel_host_enabled -> bool {
-    return kernel_host_mode() != "";
 }

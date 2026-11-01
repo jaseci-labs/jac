@@ -350,10 +350,10 @@ impl JacCompiler.native_entry_engine(
 
 impl JacCompiler.kernel_native_entry(
     full_target: str, target_program: JacProgram, options: (CompileOptions | None)
-) -> tuple[bool, any] {
+) -> any {
     path = JacProgram.hub_key(full_target);
     if options is None and module_record(path, target_program) is not None {
-        return (False, None);
+        return self.native_entry_engine(path, target_program);
     }
     actual = self.selfhost.resolve(path, target_program, execution=True);
     compiled = actual;
@@ -366,10 +366,10 @@ impl JacCompiler.kernel_native_entry(
     import from jaclang.compiler.placement.placement { summary_store }
     placed = summary_store(compiled).get(os.path.abspath(path));
     if placed is None or placed.decided != 'native' {
-        return (True, None);
+        return None;
     }
     carrier = compiled.hub.artifacts.get(path);
-    return (True, carrier.native_engine if carrier is not None else None);
+    return carrier.native_engine if carrier is not None else None;
 }
 
 impl JacCompiler._adopt_native_unit(
@@ -733,13 +733,6 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
     frame.retain_selfhost = target_program.internal;
     if frame.retain_selfhost {
         self.selfhost.enter_execution();
-        import from jaclang.compiler.frontend.host { active_host, install_host }
-        session_host = active_host();
-        host_side = session_host.host_side();
-        if host_side is not session_host {
-            frame.session_host = session_host;
-            install_host(host_side);
-        }
     }
     return frame;
 }
@@ -786,10 +779,6 @@ impl JacCompiler.finish_compile(frame: CompileFrame) {
     }
     if frame.retain_selfhost {
         self.selfhost.exit_execution();
-    }
-    if frame.session_host is not None {
-        import from jaclang.compiler.frontend.host { install_host }
-        install_host(frame.session_host);
     }
 }
 

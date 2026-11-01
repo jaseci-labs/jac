@@ -187,13 +187,7 @@ impl JacProgram.load_dependency_module(
         and not (need_tree and isinstance(target_hub[resolved_path], CatModule)) {
         mod = target_hub[resolved_path];
     } else {
-        served: (uni.Module | None) = None;
-        if resolved_path.endswith('.pyi') and not need_tree {
-            served = active_host().stub_interface(self, resolved_path);
-        }
-        if served is not None {
-            mod = served;
-        } elif resolved_path.endswith('.pyi') {
+        if resolved_path.endswith('.pyi') {
             import from jaclang.compiler.driver.pass_driver { run_pass }
             import from jaclang.compiler.passes.sym_tab_build_pass { SymTabBuildPass }
             src = use_str or active_host().read_source(source_path);

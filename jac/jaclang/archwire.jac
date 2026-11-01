@@ -920,7 +920,7 @@ graph import {
             HOST_FACT_GIT_IGNORED,
             HOST_FACT_STDLIB_MODULES
         },
-        studio.gate { active_host, install_host, set_kernel_host_mode },
+        studio.gate { active_host, install_host },
     ]
     compiler.frontend.parser ++> [
         cli.commands.fix._parse_module { parse as rd_parse },
@@ -7141,7 +7141,6 @@ graph import compiler {
             | passes.mtir_gen_pass.MTIRGenPass._get_scope_str
             | passes.ownership_check_pass.OwnershipCheckPass._nogc_module_enforced
             | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
-            | placement.placement_solver._pull_into_target
             | types.type_evaluator.TypeEvaluator.get_type_of_module_item {
             active_host
         },
@@ -7151,8 +7150,6 @@ graph import compiler {
             active_host
         },
         driver.program.JacProgram.iface_registry { active_host },
-        driver.compiler.JacCompiler.enter_compile { active_host, install_host },
-        driver.compiler.JacCompiler.finish_compile { install_host },
         driver.program.JacProgram.invalidate_module { active_host },
         driver.program.JacProgram.load_dependency_module { active_host },
         driver.program.JacProgram.native_units { active_host },
@@ -7160,7 +7157,6 @@ graph import compiler {
         driver.program.JacProgram.stub_catalog { active_host },
         kernel_target.target_pkg_root { package_root },
     ]
-    type frontend.host ++> driver.compiler { HostServices }
     frontend.loop_links ++> [
         backends.es.esast_gen_pass {
             LoopLinks,

@@ -879,7 +879,6 @@ impl _pull_into_target(
     if not seed_ids {
         return 0;
     }
-    import from jaclang.compiler.frontend.host { active_host }
     work = placement_work(prog);
     target_path = os.path.realpath(target.loc.mod_path or '');
     if id(target) not in work.seeded {
@@ -896,7 +895,6 @@ impl _pull_into_target(
         target, prog, seed_ref_ids=seed_ids, dual=True, pull_dependents=False
     );
     if new_stamps {
-        active_host().client_pull_grew(target_path);
         work.changed(target);
         _warn_state_forks(target, prog);
         importer = os.path.basename(module.loc.mod_path or '');

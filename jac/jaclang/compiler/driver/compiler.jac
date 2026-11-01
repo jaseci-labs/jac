@@ -30,8 +30,7 @@ def unit_sections(
 obj HostCompileFrame(CompileFrame) {
     has depth_prev: int = 0,
         gc_prev: (tuple[int, int, int] | None) = None,
-        retain_selfhost: bool = False,
-        session_host: (HostServices | None) = None;
+        retain_selfhost: bool = False;
 }
 
 obj JacCompiler(SessionHooks) {
@@ -96,7 +95,7 @@ obj JacCompiler(SessionHooks) {
     def _wants_native_engine(full_target: str, program: JacProgram) -> bool;
     def kernel_native_entry(
         full_target: str, target_program: JacProgram, options: (CompileOptions | None)
-    ) -> tuple[bool, any];
+    ) -> any;
 
     def native_entry_engine(full_target: str, target_program: JacProgram) -> any;
     def _adopt_native_unit(
