@@ -1,4 +1,7 @@
 impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None) {
+    if name == "jid" {
+        return self.lower_jid(nd);
+    }
     args = self.call_args(nd);
     if not args and name in ("list", "dict", "set") {
         made = self.expr_type(nd);

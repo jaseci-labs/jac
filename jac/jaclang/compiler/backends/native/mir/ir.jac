@@ -171,7 +171,8 @@ obj MirObjectDef {
         drop_symbol: str = "",
         trace_symbol: str = "",
         is_acyclic: bool = False,
-        local: bool = False;
+        local: bool = False,
+        osp_kind: str = "";
 
     def field(name: str) -> (MirObjectField | None);
 }

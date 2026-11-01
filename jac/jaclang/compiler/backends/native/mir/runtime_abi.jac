@@ -62,6 +62,38 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_any_release": ["none", "int", "int"]
      };
 
+"""The OSP functions generated code calls, by symbol, with their MIR
+signatures in the same form as `MIR_RUNTIME_ABI`. They are the pub functions
+of `runtime/osp_native.jac`, which drives the OSP kernel (`osp_kernel.jac`,
+`osp_graph.jac`) for native code; a unit that calls one depends on those three
+units. Node and edge handles are their object addresses."""
+glob MIR_OSP_ABI: dict[str, list[str]] = {
+         "__jac_osp_register": ["none", "int", "list.int", "bool"],
+         "__jac_osp_slot": ["none", "int", "bool", "int", "fn.slot"],
+         "__jac_osp_spawn": ["opt.list.any", "any", "int", "int"],
+         "__jac_osp_visit": ["bool", "list.int", "int"],
+         "__jac_osp_report": ["none", "any"],
+         "__jac_osp_disengage": ["none"],
+         "__jac_osp_skip": ["none"],
+         "__jac_osp_generic_edge": ["int"],
+         "__jac_osp_connect": ["none", "int", "int", "int", "bool", "int"],
+         "__jac_osp_refs": ["list.int", "int", "int", "int", "bool"],
+         "__jac_osp_refs_many": ["list.int", "list.int", "int", "int", "bool"],
+         "__jac_osp_refs_pred": ["list.int", "list.int", "int", "int", "bool", "fn.pred"],
+         "__jac_osp_filter": ["list.int", "list.int", "fn.pred"],
+         "__jac_osp_keep_toward": ["list.int", "list.int", "list.int", "int", "bool", "list.int"],
+         "__jac_osp_disconnect": ["bool", "int", "int", "int", "int"],
+         "__jac_osp_disconnect_pred": ["bool", "int", "int", "int", "int", "fn.pred"],
+         "__jac_osp_disconnect_many": ["bool", "list.int", "list.int", "int", "int"],
+         "__jac_osp_destroy": ["none", "int"],
+         "__jac_osp_destroy_all": ["none", "list.int"],
+         "__jac_osp_reclaimed": ["none", "int", "bool"],
+         "__jac_osp_jid": ["str", "int"],
+         "__jac_osp_is_a": ["bool", "int", "int"]
+     };
+
+def mir_osp_signature(name: str) -> tuple[list[MirType], MirType];
+
 def mir_runtime_signature(name: str) -> tuple[list[MirType], MirType];
 
 def mir_runtime_spec(spec: str) -> MirType;

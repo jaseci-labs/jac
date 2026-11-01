@@ -2115,6 +2115,7 @@ graph import {
     }
     runtime.osp_tag ++> compiler.backends.es.esast_gen_pass.EsastGenPass._build_osp_tags_js
         | compiler.backends.py.pyast_gen_pass.PyastGenPass.exit_module
+        | compiler.backends.native.mir.lower
         | compiler.jc_unit._alert_tag
         | compiler.passes.osp_analysis { stable_osp_tag }
     runtime.osp_tag --> [
@@ -6236,6 +6237,10 @@ graph import compiler {
         },
         backends.native.mir.emit { RC_SENTINEL, str_len_tag },
         backends.native.mir.lower {
+            OSP_GRAPH_REL,
+            OSP_KERNEL_REL,
+            OSP_NATIVE_REL,
+            kernel_unit_path,
             native_def_symbol,
             native_entry_name,
             native_glob_init_name,
@@ -9601,15 +9606,20 @@ graph import compiler {
         driver.pipeline.layout_passes { LayoutPass },
         symbol_utils.collect_method_names { archetype_accessors },
     ]
-    type passes.layout_pass ++> frontend.codeinfo { LayoutRegistry }
+    type passes.layout_pass ++> [
+        backends.native.mir.lower { ArchetypeLayout },
+        frontend.codeinfo { LayoutRegistry },
+    ]
     passes.mtir_gen_pass --> driver.pipeline.ir_passes { MTIRGenPass }
     passes.osp_analysis ++> [
         backends.es.esast_gen_pass { OspAnalysis, OspModel, OspSlot },
+        backends.native.mir.lower { OSP_ANY_TAGS, OspAnalysis },
         backends.es.esast_gen_pass.EsastGenPass._osp_model {
             get_osp_model
         },
     ]
     type passes.osp_analysis ++> [
+        backends.native.mir.lower { OspModel, OspSlot },
         frontend.codeinfo { OspModel },
     ]
     passes.ownership_check_pass ++> driver.pipeline.analysis_passes {
@@ -10786,7 +10796,7 @@ graph import compiler.backends.native.llvm.ir {
 graph import compiler.backends.native.mir {
     emit ++> backend { emit_mir_module }
     rc ++> backend { mir_insert_rc }
-    runtime_abi ++> lower { mir_runtime_signature }
+    runtime_abi ++> lower { mir_osp_signature, mir_runtime_signature }
     ir ++> [
         backend { MirModule },
         rc { MirBlock, MirFunction, MirInstr, MirOp, MirValue },
@@ -10840,12 +10850,17 @@ graph import compiler.backends.native.mir {
         rc { mir_holds_ref },
         runtime_abi {
             MirType,
+            mir_any,
             mir_bool,
             mir_c_ptr,
             mir_float,
+            mir_fn,
             mir_int,
+            mir_list,
             mir_none,
+            mir_opt,
             mir_ref,
+            mir_str,
             mir_str_ref
         },
         lower {
@@ -10854,6 +10869,7 @@ graph import compiler.backends.native.mir {
             mir_any,
             mir_bool,
             mir_c_fn,
+            mir_fn,
             mir_holds_ref,
             mir_is_container,
             mir_list,
@@ -14862,6 +14878,29 @@ graph import runtime {
         runtime { make_object },
     ]
     object_pydantic ++> object_model._pydantic_schema { object_schema }
+    native.rc ++> osp_native { __jac_rt_alloc, __jac_rt_release, __jac_rt_retain }
+    osp_graph ++> osp_native {
+        osp_conn,
+        osp_destroy,
+        osp_destroy_all,
+        osp_disconn_between,
+        osp_disconn_between_many,
+        osp_disconn_between_pred,
+        osp_filter,
+        osp_forget_edge,
+        osp_forget_node,
+        osp_is_a,
+        osp_is_dead,
+        osp_jid,
+        osp_keep_toward,
+        osp_pin_refs,
+        osp_refs,
+        osp_refs_edge_pred,
+        osp_refs_many,
+        osp_register_type,
+        osp_take_unpinned,
+        osp_unpinned_count
+    }
     osp_graph as _graph ++> osp_graph_sv;
     osp_graph_sv ++> [
         graph_utils.traverse_graph { sv_register_hydrated },
@@ -14885,6 +14924,27 @@ graph import runtime {
             OspWalkScope,
             OspWalkerDesc,
             UNTYPED
+        },
+        osp_native {
+            OspNodeDesc,
+            OspRuntime,
+            OspSlot,
+            OspWalkScope,
+            OspWalkerDesc,
+            _current_scope,
+            osp_disengage,
+            osp_forget,
+            osp_forget_all,
+            osp_kernel_pending,
+            osp_kernel_pin_refs,
+            osp_node_desc,
+            osp_register_desc,
+            osp_report,
+            osp_skip_rest,
+            osp_spawn,
+            osp_take_acquired,
+            osp_take_released,
+            osp_visit
         },
         runtime.JacBuiltin.log_report { _current_scope, osp_report },
         runtime.JacGraph.clear_edges { osp_forget },

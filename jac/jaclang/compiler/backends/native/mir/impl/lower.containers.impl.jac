@@ -744,6 +744,9 @@ impl MirLowering.lower_for_container(nd: uni.InForStmt, holder: MirValue) {
 impl MirLowering.lower_delete(nd: uni.DeleteStmt) {
     b = self.builder();
     for target in nd.targets {
+        if self.osp_delete(target) {
+            continue;
+        }
         if not isinstance(target, uni.AtomTrailer)
             or target.is_attr
             or not isinstance(target.right, uni.IndexSlice) {

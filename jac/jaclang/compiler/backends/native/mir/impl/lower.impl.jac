@@ -33,6 +33,7 @@ impl MirLowering.lower -> MirModule {
         self.mir.functions.append(self.lower_drop(obj_def));
         self.mir.functions.append(self.lower_trace(obj_def));
     }
+    self.lower_osp_module();
     self.mir.functions.extend(self.nested);
     self.nested = [];
     for extra in (self.lower_module_init(), self.lower_module_entry()) {
@@ -157,6 +158,9 @@ impl MirLowering.unit_symbol(
 }
 
 impl MirLowering.lower_function(decl: MirDecl) -> (MirFunction | None) {
+    if decl.event {
+        return self.lower_ability(decl);
+    }
     ab = decl.ability;
     fn = MirFunction(name=self.name_of(ab), symbol=decl.symbol, ret=decl.ret);
     first = fn.new_block("entry");
@@ -300,6 +304,8 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.store_name(nd.name_ref, made);
     } elif isinstance(nd, uni.RaiseStmt) {
         self.lower_raise(nd);
+    } elif isinstance(nd, (uni.VisitStmt, uni.ReportStmt, uni.DisengageStmt)) {
+        self.lower_osp_stmt(nd);
     } else {
         raise MirRefused(mir_refusal("statement", type(nd).__name__, nd));
     }
@@ -480,6 +486,10 @@ impl MirLowering.lower_while(nd: uni.WhileStmt) {
 }
 
 impl MirLowering.lower_ctrl(nd: uni.CtrlStmt) {
+    if nd.ctrl.name == Tok.KW_SKIP {
+        self.lower_osp_stmt(nd);
+        return;
+    }
     if not self.st().loops {
         raise MirRefused(mir_refusal("statement", nd.ctrl.value, nd));
     }
@@ -550,6 +560,8 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.lower_call(nd);
     } elif isinstance(nd, uni.AtomTrailer) {
         value = self.lower_trailer(nd);
+    } elif isinstance(nd, uni.EdgeRefTrailer) {
+        value = self.osp_typed(self.lower_edge_handles(nd), nd);
     } else {
         raise MirRefused(mir_refusal("expression", type(nd).__name__, nd));
     }
@@ -566,6 +578,9 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
     receiver = self.st().self_value;
     if nd.value == "self" and receiver is not None {
         return receiver;
+    }
+    if isinstance(nd, uni.SpecialVarRef) and nd.value in ("here", "visitor", "root") {
+        return self.osp_special(nd);
     }
     if nd.sym is not None {
         cell = self.cell_of(id(nd.sym));
@@ -610,6 +625,10 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
 }
 
 impl MirLowering.lower_binary(nd: uni.BinaryExpr) -> MirValue {
+    if isinstance(nd.op, (uni.ConnectOp, uni.DisconnectOp))
+        or (isinstance(nd.op, uni.Token) and nd.op.name == Tok.KW_SPAWN) {
+        return self.lower_osp_binary(nd);
+    }
     if not isinstance(nd.op, uni.Token) {
         raise MirRefused(mir_refusal("binary operator", type(nd.op).__name__, nd));
     }
@@ -1598,6 +1617,9 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
 }
 
 impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
+    if isinstance(nd.right, uni.FilterCompr) {
+        return self.lower_osp_filter(nd);
+    }
     via_str = self.str_subscript(nd);
     if via_str is not None {
         return via_str;

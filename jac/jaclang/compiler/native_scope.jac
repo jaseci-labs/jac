@@ -313,6 +313,7 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
      KERNEL_ABI_CONTRACT_REL: tuple[str, ...] = (
          "runtime/osp_kernel.jac",
          "runtime/osp_graph.jac",
+         "runtime/osp_native.jac",
          "runtime/region_native.jac",
          "compiler/backends/common/fmt_kernel.jac",
          "runtime/osp_tag.jac",
