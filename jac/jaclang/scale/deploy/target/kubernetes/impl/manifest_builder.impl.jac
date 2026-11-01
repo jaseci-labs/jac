@@ -1229,15 +1229,18 @@ impl ManifestBuilder._build_env(
         if peer_name == svc_name or peer_name == GATEWAY_NAME {
             continue;
         }
-        if self._get_http_activation_config(peer_name) is not None {
-            continue;
-        }
         key = sv_client.peer_url_env_key(peer_name);
         if key in seen_peer_keys {
             continue;
         }
         seen_peer_keys.add(key);
-        env.append({"name": key, "value": self._peer_dns_url(peer_name)});
+
+        url = (
+            ""
+                if self._get_http_activation_config(peer_name) is not None
+                else self._peer_dns_url(peer_name)
+        );
+        env.append({"name": key, "value": url});
     }
 
     for `entry in self.deploy_context.env_list {
