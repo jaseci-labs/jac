@@ -1249,14 +1249,15 @@ impl _prepare_revision(
             if client
             else _inventory(inventory_root, inputs=True, previous=inventory);
         current = _digests(settled);
+        changed_read = any(
+            current.get(path, '') != digest for (path, digest) in read.items()
+        );
         if (not client and current != _digests(inventory))
             or any(
                 current.get(path) != digest
                 for (path, digest) in _digests(inventory).items()
             )
-            or any(
-                current.get(path, '') != digest for (path, digest) in read.items()
-            ) {
+            or changed_read {
             raise RuntimeError(
                 'Sources changed during preparation; retry with the new revision.'
             );
