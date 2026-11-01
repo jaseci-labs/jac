@@ -48,6 +48,34 @@ test "uninitialized locals at slots 63 and 64 raise their error" {
     }
 }
 
+test "deleted high locals stay uninitialized on exception edges" {
+    lines = ["def read_local(flag):"];
+    # The argument and 63 fillers put high_local at slot 64.
+    for index in range(63) {
+        lines.append(f"    filler_{index} = {index}");
+    }
+    lines.extend(
+        [
+            "    high_local = 1",
+            "    try:",
+            "        del high_local",
+            "        1 / 0",
+            "    except ZeroDivisionError:",
+            "        return high_local"
+        ]
+    );
+    namespace: dict[str, any] = {};
+    pyexec(pycompile("\n".join(lines) + "\n", "local_slots.py", "exec"), namespace);
+    read_local = namespace["read_local"];
+    raised = False;
+    try {
+        read_local(True);
+    } except UnboundLocalError {
+        raised = True;
+    }
+    assert raised;
+}
+
 test "definitely assigned high locals keep unchecked loads" {
     # This code-shape assertion covers JacPython's optimizer only. Stock
     # CPython emits its own LOAD_FAST_CHECK layout for this source.
