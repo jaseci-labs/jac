@@ -29,6 +29,8 @@ enum MirOp {
     STR_MAKE = "str.make",
     REF_CAST = "ref.cast",
     OPT_MAKE = "opt.make",
+    TUPLE_MAKE = "tuple.make",
+    TUPLE_GET = "tuple.get",
     OPT_PRESENT = "opt.present",
     OPT_GET = "opt.get",
     RETAIN = "retain",

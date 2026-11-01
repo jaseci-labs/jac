@@ -211,6 +211,9 @@ impl mir_holds_ref(t: MirType) -> bool {
     if t.kind == MirKind.OPT {
         return mir_holds_ref(t.payload());
     }
+    if t.kind == MirKind.TUPLE {
+        return any(mir_holds_ref(member) for member in t.args);
+    }
     return t.kind == MirKind.STR or t.is_ref();
 }
 
@@ -240,4 +243,8 @@ impl mir_obj(name: str) -> MirType {
 
 impl mir_opt(payload: MirType) -> MirType {
     return mir_type(MirKind.OPT, args=[payload]);
+}
+
+impl mir_tuple(members: list[MirType]) -> MirType {
+    return mir_type(MirKind.TUPLE, args=members);
 }

@@ -138,3 +138,5 @@ def mir_is_container(t: MirType) -> bool;
 def mir_obj(name: str) -> MirType;
 
 def mir_opt(payload: MirType) -> MirType;
+
+def mir_tuple(members: list[MirType]) -> MirType;

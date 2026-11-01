@@ -220,6 +220,9 @@ obj MirLowering {
     def opt_begin(value: MirValue, result: MirType) -> tuple[MirValue, MirValue, MirBlock, MirBlock];
     def opt_switch(held: MirValue, present_value: MirValue, absent: MirBlock, done: MirBlock);
     def opt_end(held: MirValue, absent_value: MirValue, done: MirBlock) -> MirValue;
+    def lower_tuple(nd: uni.TupleVal) -> MirValue;
+    def tuple_get(value: MirValue, index: int) -> MirValue;
+    def unpack_into(targets: list[uni.Expr], value: MirValue, site: uni.UniNode);
     def lower_try(nd: uni.TryStmt);
     def lower_raise(nd: uni.RaiseStmt);
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;

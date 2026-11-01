@@ -10827,7 +10827,7 @@ graph import compiler.backends.native.mir {
         refusal_of
     }
     types ++> [
-        emit { MirKind, MirType, mir_c_ptr, mir_is_container },
+        emit { MirKind, MirType, mir_c_ptr, mir_holds_ref, mir_is_container },
         ir {
             MirKind,
             MirType,
@@ -10859,6 +10859,7 @@ graph import compiler.backends.native.mir {
             mir_obj,
             mir_ref,
             mir_str_ref,
+            mir_tuple,
             mir_c_ptr,
             mir_c_view,
             mir_float,
@@ -10874,6 +10875,7 @@ graph import compiler.backends.native.mir {
             mir_list,
             mir_obj,
             mir_opt,
+            mir_tuple,
             mir_set,
             mir_c_fn,
             mir_c_ptr,

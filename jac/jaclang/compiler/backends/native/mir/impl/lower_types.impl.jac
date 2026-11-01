@@ -110,6 +110,13 @@ impl mir_class_type(
         }
         return mir_int(shape.width, shape.signed, shape.sized);
     }
+    if name == "tuple" {
+        members = t.private.type_args if t.private else None;
+        if not members {
+            raise MirRefused(mir_refusal("type", "tuple without member types", site));
+        }
+        return mir_tuple([mir_type_of(member, MirPosition.VALUE, site) for member in members]);
+    }
     if name in ("list", "dict", "set") {
         args = t.private.type_args if t.private else None;
         if not args {

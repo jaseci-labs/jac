@@ -60,6 +60,9 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     if t.kind == MirKind.OPT {
         return ir.LiteralStructType([ir.IntType(1), self.llvm_type(t.payload())]);
     }
+    if t.kind == MirKind.TUPLE {
+        return ir.LiteralStructType([self.llvm_type(member) for member in t.args]);
+    }
     if t.kind == MirKind.OBJ and t.name != "*" {
         return self.object_struct(t.name).as_pointer();
     }
@@ -239,6 +242,14 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         made = ir.Constant(self.llvm_type(type_arg_of(instr)), None);
         made = b.insert_value(made, ir.Constant(ir.IntType(1), 1), 0);
         self.bind(instr.result, b.insert_value(made, self.value(instr.operands[0]), 1));
+    } elif op == MirOp.TUPLE_MAKE {
+        made = ir.Constant(self.llvm_type(type_arg_of(instr)), None);
+        for (index, member) in enumerate(instr.operands) {
+            made = b.insert_value(made, self.value(member), index);
+        }
+        self.bind(instr.result, made);
+    } elif op == MirOp.TUPLE_GET {
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), instr.int_value));
     } elif op == MirOp.OPT_PRESENT {
         self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), 0));
     } elif op == MirOp.OPT_GET {
@@ -853,6 +864,22 @@ impl MirEmitter.str_literal(b: ir.IRBuilder, text: str) -> ir.Value {
 
 impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
     subject = instr.operands[0];
+    if subject.type.kind == MirKind.TUPLE {
+        whole = self.value(subject);
+        for (index, member) in enumerate(subject.type.args) {
+            if not mir_holds_ref(member) {
+                continue;
+            }
+            part = MirValue(id=-1, type=member);
+            self.values[-1] = b.extract_value(whole, index);
+            self.emit_rc(b, MirInstr(op=instr.op, operands=[part]));
+        }
+        self.values.pop(-1, None);
+        if instr.op == MirOp.RETAIN {
+            self.bind(instr.result, whole);
+        }
+        return;
+    }
     i8p = ir.IntType(8).as_pointer();
     target = self.value(subject);
     held_type = subject.type;

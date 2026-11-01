@@ -291,6 +291,12 @@ impl MirLowering.lower_assignment(nd: uni.Assignment) {
         raise MirRefused(mir_refusal("assignment", "several targets", nd));
     }
     target = targets[0];
+    if isinstance(target, uni.TupleVal) and nd.value is not None and nd.aug_op is None {
+        self.unpack_into(
+            [t for t in target.values if isinstance(t, uni.Expr)], self.lower_expr(nd.value), nd
+        );
+        return;
+    }
     if isinstance(target, uni.AtomTrailer)
         and not target.is_attr
         and isinstance(target.right, uni.IndexSlice)
@@ -473,6 +479,8 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.builder().const_bool(nd.value.lower() in ("true", "1"));
     } elif isinstance(nd, uni.Null) {
         value = self.none_value();
+    } elif isinstance(nd, uni.TupleVal) {
+        value = self.lower_tuple(nd);
     } elif isinstance(nd, uni.ListVal) {
         value = self.lower_list_literal(nd);
     } elif isinstance(nd, uni.DictVal) {
@@ -1513,6 +1521,19 @@ impl MirLowering.lower_place(nd: uni.UniNode) -> MirValue {
 }
 
 impl MirLowering.lower_trailer(nd: uni.AtomTrailer) -> MirValue {
+    if not nd.is_attr
+        and isinstance(nd.right, uni.IndexSlice)
+        and isinstance(nd.target, uni.Expr)
+        and self.expr_type(nd.target).kind == MirKind.TUPLE {
+        slices = nd.right.slices;
+        start = slices[0].start if len(slices) == 1 and not nd.right.is_range else None;
+        folded = start.ct_value if isinstance(start, uni.Expr) else None;
+        whole = int_host(folded) if isinstance(folded, CtInt) else None;
+        if whole is None {
+            raise MirRefused(mir_refusal("subscript", "tuple index that is not a constant", nd));
+        }
+        return self.tuple_get(self.lower_expr(nd.target), whole);
+    }
     if not nd.is_attr and isinstance(nd.right, uni.IndexSlice) {
         target_type = self.expr_type(nd.target) if isinstance(nd.target, uni.Expr) else mir_void();
         if mir_is_container(target_type) {
