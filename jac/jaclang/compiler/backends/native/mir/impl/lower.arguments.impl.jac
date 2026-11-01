@@ -76,3 +76,16 @@ impl MirLowering.constant_default(value: (uni.Expr | None)) -> bool {
     }
     return isinstance(value.ct_value, (CtInt, CtBool, CtFloat));
 }
+
+impl MirLowering.param_nodes(sig: uni.FuncSignature, skip_self: bool) -> list[uni.ParamVar] {
+    if sig.varargs is not None or sig.kwargs is not None or sig.kwonlyargs {
+        raise MirRefused(
+            mir_refusal("function", "variadic or keyword-only parameters", sig)
+        );
+    }
+    return [
+        pv
+        for pv in list(sig.posonly_params) + list(sig.params or [])
+        if not skip_self or pv.name.value != "self"
+    ];
+}

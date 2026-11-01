@@ -156,7 +156,7 @@ impl mir_osp(kind: str) -> MirType {
 }
 
 impl mir_enum(name: str, underlying: MirType) -> MirType {
-    return mir_type(MirKind.ENUM, name=name, args=[underlying]);
+    return mir_type(MirKind.ENUM, width=64, signed=True, name=name, args=[underlying]);
 }
 
 impl mir_fn(params: list[MirType], ret: MirType) -> MirType {

@@ -30,6 +30,13 @@ impl MirLowering.builtin_value(nd: uni.FuncCall, name: str) -> (MirValue | None)
     }
     if name in ("list", "reversed") {
         value = self.lower_expr(args[0]);
+        if name == "list" and value.type.kind != MirKind.LIST {
+            made_type = self.expr_type(nd);
+            if made_type.kind != MirKind.LIST {
+                raise MirRefused(mir_refusal("call", f"list as {made_type.render()}", nd));
+            }
+            return self.drain(value, made_type.payload(), nd);
+        }
         if value.type.kind != MirKind.LIST {
             raise MirRefused(mir_refusal("call", f"{name} of {value.type.render()}", nd));
         }

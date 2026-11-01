@@ -59,7 +59,22 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
          "__jac_rt_write_int": ["none", "int", "int"],
          "__jac_rt_any_box": ["ref", "int", "int"],
          "__jac_rt_any_retain": ["none", "int", "int"],
-         "__jac_rt_any_release": ["none", "int", "int"]
+         "__jac_rt_any_release": ["none", "int", "int"],
+         "__jac_rt_any_truthy": ["bool", "int", "int"],
+         "__jac_rt_any_str": ["str.ref", "int", "int"],
+         "__jac_rt_any_type_name": ["ptr", "int", "int"],
+         "__jac_rt_any_isa": ["bool", "int", "int", "ptr"],
+         "__jac_rt_type_name": ["ptr", "ref"],
+         "__jac_rt_cstr_eq": ["bool", "ptr", "ptr"],
+         "__jac_rt_str_from_cstr": ["str.ref", "ptr"],
+         "__jac_rt_elem_share": ["int", "int", "int"],
+         "__jac_rt_iter_new": ["ref", "int", "ref"],
+         "__jac_rt_iter_list": ["ref", "ref", "int"],
+         "__jac_rt_iter_keys": ["ref", "ref", "int"],
+         "__jac_rt_iter_range": ["ref", "int", "int", "int"],
+         "__jac_rt_iter_str": ["ref", "str.ref"],
+         "__jac_rt_gen_frame": ["ref", "int", "int"],
+         "__jac_rt_range_new": ["ref", "int", "int", "int"]
      };
 
 """The OSP functions generated code calls, by symbol, with their MIR

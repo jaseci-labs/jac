@@ -1,4 +1,5 @@
 import os;
+import hashlib;
 
 glob OVERFLOW_MESSAGE: str = "integer overflow",
      ZERO_DIVISION_MESSAGE: str = "integer division or modulo by zero",
@@ -70,14 +71,66 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "GTE": "ge"
      };
 
+"""The `any` tags each builtin type name matches in isinstance(), and the
+type name type() reports for a value of each MIR kind."""
+glob ANY_TYPE_TAGS: dict[str, list[int]] = {
+         "int": [0, 7],
+         "bool": [7],
+         "float": [1],
+         "str": [2],
+         "list": [3],
+         "dict": [4],
+         "set": [5],
+         "frozenset": [5],
+         "NoneType": [8]
+     },
+     STATIC_TYPE_NAMES: dict[str, str] = {
+         "int": "int",
+         "float": "float",
+         "str": "str",
+         "str.ref": "str",
+         "bool": "bool",
+         "none": "NoneType",
+         "list": "list",
+         "dict": "dict",
+         "set": "set",
+         "tuple": "tuple",
+         "range": "range",
+         "fn": "function",
+         "iter": "generator"
+     };
+
 obj MirLoopTarget {
     has head: MirBlock,
         after: MirBlock;
 }
 
+"""How a `for`, a comprehension or `yield from` walks one source: a list by
+index, a dict or set by slot cursor, a range by its three bounds, an enum
+class by member, or anything else through a `JacIter`."""
+obj MirIterCursor {
+    has kind: str,
+        elem: MirType,
+        source: (MirValue | None) = None,
+        position: (MirValue | None) = None,
+        limit: (MirValue | None) = None,
+        stride: (MirValue | None) = None,
+        out: (MirValue | None) = None,
+        payloads: list[int] = [];
+}
+
+"""The generator a resume function is lowering: its element type and the
+frame and out cell its `yield`s write."""
+obj MirGenInfo {
+    has elem: MirType,
+        frame: MirValue,
+        out: MirValue;
+}
+
 obj MirFnState {
     has fn: MirFunction,
         b: MirBuilder,
+        generator: (MirGenInfo | None) = None,
         self_value: (MirValue | None) = None,
         captured: dict[int, MirValue] = {},
         cell_types: dict[int, MirType] = {},
@@ -96,8 +149,11 @@ obj MirDecl {
         params: list[MirType] = [],
         self_type: (MirType | None) = None,
         owner: (uni.Archetype | None) = None,
-        event: str = "";
+        event: str = "",
+        env: dict[str, TypeBase] = {};
 }
+
+def mono_symbol_text(text: str) -> str;
 
 obj MirLowering {
     has prog: JacProgram,
@@ -113,11 +169,17 @@ obj MirLowering {
         fn_values: dict[int, MirDecl] = {},
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
-        state: (MirFnState | None) = None,
         osp_model: (OspModel | None) = None,
         osp_setup: str = "",
         osp_thunks: dict[str, str] = {},
-        osp_preds: int = 0;
+        osp_preds: int = 0,
+        type_env: dict[str, TypeBase] = {},
+        templates: dict[int, uni.Ability] = {},
+        instances: dict[str, MirDecl] = {},
+        pending: list[MirDecl] = [],
+        enum_types: dict[str, TypeBase] = {},
+        bindings: list[InteropBinding] = [],
+        state: (MirFnState | None) = None;
 
     def lower -> MirModule;
     def settle;
@@ -356,4 +418,137 @@ obj MirLowering {
         int_value: int = 0,
         str_value: str = ""
     ) -> MirValue;
+    def is_generator(ab: uni.Ability) -> bool;
+    def ability_sig(ab: uni.Ability) -> (uni.FuncSignature | None);
+    def lower_generator(decl: MirDecl) -> (MirFunction | None);
+    def alias_twins(ab: uni.Ability, sig: uni.FuncSignature, skip_self: bool);
+    def lower_yield(nd: uni.YieldExpr);
+    def yield_value(value: MirValue, site: uni.UniNode);
+    def yield_expression(nd: uni.YieldExpr) -> MirValue;
+    def runtime_value(name: str, args: list[MirValue]) -> MirValue;
+    def iter_open(value: MirValue, site: uni.UniNode) -> MirIterCursor;
+    def iter_step(cursor: MirIterCursor, body: MirBlock, done: MirBlock) -> MirValue;
+    def iter_advance(it: MirValue, out: MirValue) -> MirValue;
+    def element_from_bits(bits: MirValue, elem: MirType) -> MirValue;
+    def iter_value(value: MirValue, site: uni.UniNode) -> MirValue;
+    def iter_coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def builtin_source(nd: uni.UniNode, names: list[str]) -> str;
+    def is_special_source(nd: uni.Expr) -> bool;
+    def open_sources(
+        collection: uni.Expr
+    ) -> tuple[list[MirIterCursor], (MirValue | None)];
+
+    def step_sources(
+        cursors: list[MirIterCursor], counter: (MirValue | None), done: MirBlock
+    ) -> list[MirValue];
+
+    def bind_values(target: uni.Expr, values: list[MirValue], site: uni.UniNode);
+    def bind_target(target: uni.Expr, value: MirValue);
+    def lower_for_sources(nd: uni.InForStmt, holder: (MirValue | None));
+    def split_args(nd: uni.FuncCall) -> tuple[list[uni.Expr], dict[str, uni.Expr]];
+    def iter_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def builtin_next(nd: uni.FuncCall, args: list[uni.Expr]) -> MirValue;
+    def builtin_sorted(
+        nd: uni.FuncCall, args: list[uni.Expr], named: dict[str, uni.Expr]
+    ) -> MirValue;
+
+    def builtin_fold(nd: uni.FuncCall, name: str, source: uni.Expr) -> MirValue;
+    def drain(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue;
+    def lower_comprehension(nd: (uni.ListCompr | uni.DictCompr)) -> MirValue;
+    def compr_level(
+        nd: (uni.ListCompr | uni.DictCompr),
+        levels: list[uni.InnerCompr],
+        index: int,
+        made: MirValue
+    );
+
+    def compr_emit(nd: (uni.ListCompr | uni.DictCompr), made: MirValue);
+    def is_absent(value: MirValue) -> MirValue;
+    def value_truthy(value: MirValue, site: uni.UniNode) -> (MirValue | None);
+    def any_to_str(value: MirValue, site: uni.UniNode) -> MirValue;
+    def narrow(value: MirValue, nd: uni.Name) -> MirValue;
+    def type_names(target: uni.Expr) -> (list[str] | None);
+    def target_archetype(target: uni.Expr) -> (uni.Archetype | None);
+    def isinstance_value(
+        subject: uni.Expr, target: uni.Expr, site: uni.UniNode
+    ) -> (MirValue | None);
+
+    def any_isinstance(value: MirValue, target: uni.Expr, site: uni.UniNode) -> MirValue;
+    def value_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def type_value(value: MirValue, site: uni.UniNode) -> MirValue;
+    def class_name_str(value: MirValue) -> MirValue;
+    def is_template(ab: uni.Ability) -> bool;
+    def mentions_typevar(t: (TypeBase | None)) -> bool;
+    def resolved(t: (TypeBase | None)) -> (TypeBase | None);
+    def unify(
+        declared: (TypeBase | None),
+        actual: (TypeBase | None),
+        solution: dict[str, TypeBase]
+    );
+
+    def type_param_names(ab: uni.Ability) -> list[str];
+    def generic_call(
+        nd: uni.FuncCall,
+        ab: uni.Ability,
+        receiver: (MirValue | None),
+        owner: (uni.Archetype | None)
+    ) -> MirValue;
+
+    def declare_instance(
+        ab: uni.Ability,
+        env: dict[str, TypeBase],
+        symbol: str,
+        owner: (uni.Archetype | None)
+    ) -> MirDecl;
+
+    def lower_instances;
+    def enum_layout(t: (TypeBase | None), site: uni.UniNode) -> EnumLayout;
+    def enum_layout_of(value_type: MirType, site: uni.UniNode) -> EnumLayout;
+    def enum_payload(layout: EnumLayout, member: EnumMemberLayout) -> int;
+    def is_enum_class(nd: uni.UniNode) -> bool;
+    def attr_special(nd: uni.AtomTrailer) -> (MirValue | None);
+    def enum_member(nd: uni.AtomTrailer) -> (MirValue | None);
+    def enum_attr(value: MirValue, name: str, site: uni.AtomTrailer) -> MirValue;
+    def enum_select(value: MirValue, layout: EnumLayout, texts: list[str]) -> MirValue;
+    def enum_str(value: MirValue, site: uni.UniNode) -> MirValue;
+    def compare_special(
+        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> (MirValue | None);
+
+    def enum_coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue;
+    def enum_call(nd: uni.FuncCall) -> (MirValue | None);
+    def enum_cursor(collection: uni.Expr) -> MirIterCursor;
+    def lower_with(nd: uni.WithStmt);
+    def with_items(
+        items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
+    );
+
+    def with_generator(
+        items: list[uni.ExprAsItem], index: int, body: Sequence[uni.CodeBlockStmt]
+    );
+
+    def call_exit(decl: MirDecl, held: MirValue, site: uni.UniNode) -> MirValue;
+    def none_arg(ptype: MirType, site: uni.UniNode) -> MirValue;
+    def guard_open -> tuple[MirValue, MirBlock];
+    def guard_caught(frame: MirValue) -> tuple[MirValue, MirValue, MirValue];
+    def jumps_out(body: Sequence[uni.UniNode]) -> bool;
+    def lower_match(nd: uni.MatchStmt);
+    def lower_switch(nd: uni.SwitchStmt);
+    def match_test(
+        pat: uni.MatchPattern, subject: MirValue, fail: MirBlock, site: uni.UniNode
+    );
+
+    def match_arch(pat: uni.MatchArch, subject: MirValue, fail: MirBlock);
+    def branch_unless(cond: MirValue, fail: MirBlock);
+    def python_call(nd: uni.FuncCall) -> (MirValue | None);
+    def bridge_call(
+        symbol: str, name: str, args: list[MirValue], ret: MirType, site: uni.UniNode
+    ) -> MirValue;
+
+    def bridge_type(t: MirType, site: uni.UniNode) -> MirType;
+    def bridge_type_name(t: MirType) -> str;
+    def bridge_symbol(symbol: str);
+    def python_base_of(arch: uni.Archetype) -> (str | None);
+    def param_nodes(sig: uni.FuncSignature, skip_self: bool) -> list[uni.ParamVar];
+
 }

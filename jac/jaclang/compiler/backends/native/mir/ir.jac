@@ -60,6 +60,10 @@ enum MirOp {
     GLOBAL_ADDR = "global.addr",
     CALL_C = "call.c",
     CALL_FNPTR = "call.fnptr",
+    CALL_PYTHON = "call.python",
+    YIELD = "yield",
+    FRAME_NEW = "frame.new",
+    FRAME_FIELD = "frame.field",
     BR = "br",
     COND_BR = "cond_br",
     RET = "ret",
@@ -112,6 +116,7 @@ obj MirFunction {
         blocks: list[MirBlock] = [],
         linkage: str = "external",
         manual_rc: bool = False,
+        resumable: bool = False,
         next_id: int = 0,
         next_label: int = 0;
 
@@ -177,6 +182,15 @@ obj MirObjectDef {
     def field(name: str) -> (MirObjectField | None);
 }
 
+"""A generator's frame, decided by the generator pass: its size in bytes, the
+offset of every local slot of its resume function keyed by the slot's value
+id, and the function that releases the slots when the frame is dropped."""
+obj MirFrame {
+    has size: int,
+        drop_symbol: str,
+        offsets: dict[int, int] = {};
+}
+
 obj MirModule {
     has path: str,
         prefix: str,
@@ -188,6 +202,9 @@ obj MirModule {
         global_blocks: dict[str, int] = {},
         objects: dict[str, MirObjectDef] = {},
         demoted: dict[str, str] = {},
+        bridged: dict[str, str] = {},
+        python_imports: list[str] = [],
+        frames: dict[str, MirFrame] = {},
         deps: list[str] = [];
 
     def function(symbol: str) -> (MirFunction | None);
