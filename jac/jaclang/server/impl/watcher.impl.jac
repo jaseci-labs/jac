@@ -75,7 +75,11 @@ impl JacFileWatcher.start -> None {
 
     def ignored_directory(path: str) -> bool {
         name = Path(path).name;
-        return name.startswith('.') or name in {'node_modules', '__pycache__', 'venv'};
+        ignored = {'.jac', '.git', '.venv', 'node_modules', '__pycache__', 'venv'};
+        resolved_parts = Path(os.path.realpath(path)).parts;
+        return name.startswith('.')
+            or name in ignored
+            or any([part in ignored for part in resolved_parts]);
     }
 
     def schedule_directory(path: str, handler: any) {
@@ -98,14 +102,16 @@ impl JacFileWatcher.start -> None {
     }
 
     def schedule_tree(path: str, handler: any) {
-        if ignored_directory(path) or not os.path.isdir(path) {
+        resolved = os.path.realpath(path);
+        if ignored_directory(resolved) or not os.path.isdir(resolved) {
             return;
         }
-        for (current, dirs, _) in os.walk(path) {
+        for (current, dirs, _) in os.walk(resolved, followlinks=False) {
             dirs[:] = sorted(
                 d
                 for d in dirs
-                if not ignored_directory(d)
+                if not os.path.islink(os.path.join(current, d))
+                    and not ignored_directory(os.path.join(current, d))
             );
             schedule_directory(current, handler);
         }
@@ -122,7 +128,9 @@ impl JacFileWatcher.start -> None {
         }
         for name in children {
             child = os.path.join(path, name);
-            if os.path.isdir(child) and not ignored_directory(child) {
+            if os.path.isdir(child)
+                and not os.path.islink(child)
+                and not ignored_directory(child) {
                 resolved = os.path.realpath(child);
                 if resolved not in scheduled {
                     schedule_tree(child, handler);
