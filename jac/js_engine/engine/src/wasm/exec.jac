@@ -771,23 +771,23 @@ def _clz64(x: int) -> int {
     n: int = 0;
     if (x >> 32) == 0 {
         n = n + 32;
-        x = x << 32;
+        x = wrapping_shl(x, 32);
     }
     if (x >> 48) == 0 {
         n = n + 16;
-        x = x << 16;
+        x = wrapping_shl(x, 16);
     }
     if (x >> 56) == 0 {
         n = n + 8;
-        x = x << 8;
+        x = wrapping_shl(x, 8);
     }
     if (x >> 60) == 0 {
         n = n + 4;
-        x = x << 4;
+        x = wrapping_shl(x, 4);
     }
     if (x >> 62) == 0 {
         n = n + 2;
-        x = x << 2;
+        x = wrapping_shl(x, 2);
     }
     if (x >> 63) == 0 {
         n = n + 1;
