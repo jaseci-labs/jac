@@ -2718,7 +2718,9 @@ graph import {
             | data.serializer
             | scale.memory.context { MISSING },
         comptime { MISSING as _MISSING, ObjectField as _field },
-        lib.jaclib | server.server { CALL_DEFAULT },
+        lib.jaclib | scale.events.broker._signature_faults | server.server {
+            CALL_DEFAULT
+        },
         scale.sdk.spec.DeploySpec.from_config { fields },
         scale.server.sso_ext | scale.sso.oauth_session { asdict },
     ]
@@ -2734,6 +2736,7 @@ graph import {
         compiler.backends.es.esast_gen_pass
             | compiler.backends.py.jcir_gen_pass
             | compiler.passes.comptime_resolve_pass
+            | compiler.passes.declaration_type_pass
             | compiler.passes.jsx_intrinsic_guard_pass
             | compiler.passes.scope_walk
             | compiler.tools.grammar_extract_pass { osp_skip_rest },
@@ -6178,9 +6181,13 @@ graph import compiler {
     driver.pass_driver as pass_driver ++> tests.test_pipeline_products;
     driver.pipeline ++> [
         backends.es.client_kernel_cache._lower
-            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference
+            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_body_inference
             | passes.layout_pass.get_layout_registry
             | tools.lang_tools { CompilationProduct, require },
+        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
+            CompilationProduct,
+            require
+        },
         jc_unit { early_passes },
         tests.test_module_exports
             | tools.cfg_dot.cfg_dot_from_file
@@ -6233,6 +6240,7 @@ graph import compiler {
             | passes.comptime_resolve_pass
             | passes.decl_impl_match_pass
             | passes.flow_check_pass
+            | passes.declaration_type_pass
             | passes.freeze_structure_pass
             | passes.import_wiring_pass
             | passes.ownership_check_pass
@@ -6912,7 +6920,7 @@ graph import compiler {
             is_borrow_kind
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._clib_place_ptr { is_borrow_kind },
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
             SymbolStorage
         },
         backends.native.na_ir_gen_pass.NaIRGenPass._codegen_clib_args {
@@ -7077,7 +7085,7 @@ graph import compiler {
         types.types { ParamKind },
     ]
     frontend.constant --> [
-        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment {
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_assignment_core {
             OwnershipKind
         },
         backends.py.jcir_gen_pass.JcirGenPass._gen_native_interop_stubs {
@@ -8795,6 +8803,20 @@ graph import compiler {
             is_identifier_slot,
             typed_rebind_names
         },
+        passes.declaration_type_pass {
+            Ability,
+            Archetype,
+            CodeBlockStmt,
+            Enum,
+            Expr,
+            FuncSignature,
+            ImplDef,
+            Kid,
+            Module,
+            ModuleCode,
+            Test,
+            UniNode
+        },
         passes.endpoint_effect_pass {
             Ability,
             Archetype,
@@ -8842,6 +8864,7 @@ graph import compiler {
             FinallyStmt,
             ForeverStmt,
             FuncSignature,
+            HasVar,
             IfElseExpr,
             IfStmt,
             ImplDef,
@@ -10041,6 +10064,12 @@ graph import compiler {
         symbol_utils { CompilerPass },
     ]
     passes.decl_impl_match_pass ++> driver.pipeline { DeclImplMatchPass }
+    passes.declaration_type_pass ++> [
+        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
+            importer_lowers_bodies
+        },
+        driver.pipeline.declaration_passes { DeclarationTypePass },
+    ]
     passes.endpoint_effect_pass ++> driver.pipeline { EndpointEffectPass }
     passes.execution ++> driver.pass_driver | tests.xbackend_equiv { run_walker }
     passes.flow_check_pass ++> driver.pipeline.analysis_passes { FlowCheckPass }
@@ -10607,6 +10636,7 @@ graph import compiler {
             | backends.native.host_facts.primitive_methods_fact
             | backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__
             | c_interop._spec_for_name
+            | passes.declaration_type_pass
             | passes.layout_pass
             | passes.mtir_gen_pass
             | passes.ownership_check_pass
@@ -10751,11 +10781,14 @@ graph import compiler {
         frontend.unitree { CtValue },
     ]
     types.fixed_width ++> [
+        passes.declaration_type_pass
+            | passes.type_checker_pass.TypeCheckPass._stamp_fixed_width {
+            numeric_name_of
+        },
         passes.type_checker_pass.TypeCheckPass._provably_in_range {
             interval_of_expr,
             interval_of_op
         },
-        passes.type_checker_pass.TypeCheckPass._stamp_fixed_width { numeric_name_of },
     ]
     types.operations ++> [
         backends.es.esast_gen_pass { AUG_TO_BINARY_MAP },
@@ -14208,7 +14241,9 @@ graph import compiler.passes {
         },
     ]
     scope_walk ++> static_analysis_pass { ScopeWalker }
-    type_checker_pass ++> comptime_resolve_pass { TypeCheckPass }
+    type_checker_pass ++> comptime_resolve_pass | declaration_type_pass {
+        TypeCheckPass
+    }
     wasm_contract --> [
         boundary_analysis_pass.BoundaryAnalysisPass._register_na_client_import {
             function_contract,
@@ -14283,6 +14318,10 @@ graph import compiler.tests {
             run_py_fixture,
             run_with_both
         },
+        test_fn_identity_equivalence | test_osp_equivalence {
+            run_py_fixture,
+            run_with_both
+        },
         test_graph_fragment_equivalence {
             run_js_module_fixture,
             run_py_fixture,
@@ -14295,7 +14334,6 @@ graph import compiler.tests {
             run_with_both
         },
         test_native_list_search_equality { compile_native, get_func },
-        test_osp_equivalence { run_py_fixture, run_with_both },
         test_prim_equivalence {
             compare_results,
             compile_fixture_to_js,
@@ -14647,6 +14685,7 @@ graph import compiler.types {
     }
     fixed_width ++> [
         operations {
+            all_numeric,
             arithmetic_result_type,
             both_numeric,
             numeric_name_of,

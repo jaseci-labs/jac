@@ -248,6 +248,7 @@ impl NaIRGenPass._unpack_into(
             );
         }
         self.builder.store(stored, alloca);
+        self._mark_bound(var_name, target);
     }
 
     if (not is_value) and self._is_owned(_orig_tv) {

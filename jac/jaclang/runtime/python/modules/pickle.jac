@@ -343,9 +343,7 @@ impl PicklerState.drop {
     self.clear();
 }
 
-impl UnpicklerState.traverse_refs(
-    visitor: ptr, context: ptr
-) -> i32 {
+impl UnpicklerState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
     result = super.traverse_refs(visitor, context);
     if result != 0 or not self.native.rec {
         return result;

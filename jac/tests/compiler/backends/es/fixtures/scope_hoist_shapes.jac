@@ -18,14 +18,18 @@ def t_ifelse(neg: bool) -> str {
 
 def t_while -> int {
     n = 3;
-    while n > 0 {
+    while True {
         last = n;
         n -= 1;
+        if n <= 0 {
+            break;
+        }
     }
     return last;
 }
 
 def t_for -> int {
+    hit = 0;
     for x in [1, 2, 3] {
         hit = x;
     }

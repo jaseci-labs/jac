@@ -492,6 +492,7 @@ impl NaIRGenPass._codegen_lambda(nd: uni.LambdaExpr) -> (ir.Value | None) {
     fn_type = ir.FunctionType(ret_type, all_param_types);
     anon_fn = ir.Function(self.llvm_module, fn_type, name=anon_name);
     anon_fn.linkage = "private";
+    self._fresh_fn_values.add(anon_name);
     self._register_pass_links(nd, anon_fn);
     for (i, arg) in enumerate(anon_fn.args) {
         if i < len(all_param_names) {
@@ -646,6 +647,7 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
             return None;
         }
     }
+    self._guard_unbound_read(nd);
     if var_name in self.local_vars {
         alloca = self.local_vars[var_name];
         value = self.builder.load(alloca, name=var_name);
@@ -786,7 +788,7 @@ impl NaIRGenPass._codegen_walrus(nd: uni.BinaryExpr) -> (ir.Value | None) {
         self.builder.store(value, alloca);
         self.local_vars[var_name] = alloca;
     }
-
+    self._mark_bound(var_name, nd);
     return self.builder.load(alloca, name=var_name);
 }
 
@@ -3092,9 +3094,11 @@ impl NaIRGenPass._codegen_plain_trailer(nd: uni.AtomTrailer) -> (ir.Value | None
                 and right_name not in self.struct_field_indices.get(type_name, {})
                 and self._accessor_slot_of(type_name, right_name, "property") is None
                 and self._resolve_method(type_name, right_name) is not None {
-                bound = self._emit_bound_method_value(
-                    self._opt_unwrap_attr(obj_val), type_name, right_name
-                );
+                _recv = self._opt_unwrap_attr(obj_val);
+                if self._is_owned(obj_val) {
+                    self._mark_owned(_recv);
+                }
+                bound = self._emit_bound_method_value(_recv, type_name, right_name);
                 if bound is not None {
                     return bound;
                 }

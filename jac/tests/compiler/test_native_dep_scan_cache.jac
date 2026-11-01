@@ -24,6 +24,12 @@ glob LIB = "def bump(x: int) -> int {\n    return x + 1;\n}\n",
      USE = "import from lib { bump }\n\ndef twice(x: int) -> int;\n",
      USE_IMPL = "impl twice(x: int) -> int {\n    return bump(bump(x));\n}\n";
 
+def _scan_reason(path: str) -> str {
+    scan = _native_dep_scan(path);
+    assert scan is not None;
+    return scan[0];
+}
+
 def write_closure(directory: str) -> str {
     for (name, text) in [
         ("lib.jac", LIB),
@@ -59,26 +65,26 @@ test "an unchanged dependency's scan is read from disk without parsing it" {
 test "an edit to the scanned module is scanned again" {
     with TemporaryDirectory() as directory {
         use = write_closure(os.path.realpath(directory));
-        assert _native_dep_scan(use)[0] == "";
+        assert _scan_reason(use) == "";
         native_scan_memo_clear();
         with open(use, "a") as handle {
             handle.write("\nasync def later -> int {\n    return 1;\n}\n");
         }
-        assert _native_dep_scan(use)[0] == "async ability";
+        assert _scan_reason(use) == "async ability";
     }
 }
 
 test "an edit to an annex of the scanned module is scanned again" {
     with TemporaryDirectory() as directory {
         use = write_closure(os.path.realpath(directory));
-        assert _native_dep_scan(use)[0] == "";
+        assert _scan_reason(use) == "";
         native_scan_memo_clear();
         with open(os.path.join(os.path.dirname(use), "use.impl.jac"), "w") as handle {
             handle.write(
                 "impl twice(x: int) -> int {\n    here = root;\n    return x;\n}\n"
             );
         }
-        assert _native_dep_scan(use)[0] == "root access (persistent graph)";
+        assert _scan_reason(use) == "root access (persistent graph)";
     }
 }
 
@@ -111,7 +117,7 @@ test "a missing import target is judged again once it exists" {
         use = write_closure(os.path.realpath(directory));
         lib = os.path.join(os.path.dirname(use), "lib.jac");
         os.remove(lib);
-        assert _native_dep_scan(use)[0] == "unresolved import 'lib'";
+        assert _scan_reason(use) == "unresolved import 'lib'";
         native_scan_memo_clear();
         with open(lib, "w") as handle {
             handle.write(LIB);
@@ -130,7 +136,7 @@ test "a stored scan whose import target disappeared is judged again" {
         assert _native_dep_scan(use) == ("", [lib]);
         native_scan_memo_clear();
         os.remove(lib);
-        assert _native_dep_scan(use)[0] == "unresolved import 'lib'";
+        assert _scan_reason(use) == "unresolved import 'lib'";
     }
 }
 

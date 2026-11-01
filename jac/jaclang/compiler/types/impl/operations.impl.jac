@@ -349,6 +349,11 @@ impl get_type_of_binary_operation(
                 return UnknownType();
             }
             if isinstance(left_type, UnionType) or isinstance(right_type, UnionType) {
+                if all_numeric(left_type) and all_numeric(right_type) {
+                    return left_type
+                        if isinstance(left_type, UnionType)
+                        else right_type;
+                }
                 evaluator.emit_diag(
                     E1011,
                     expr,

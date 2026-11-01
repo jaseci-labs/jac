@@ -68,3 +68,36 @@ test "a unit that cannot lower is lowered once for all its importers" {
         }
     }
 }
+
+test "a read inside a ternary keeps the source of an earlier alias live" {
+    with tempfile.TemporaryDirectory(dir=TESTS_DIR) as directory {
+        main = Path(directory) / "alias_ternary.jac";
+        main.write_text(
+            """obj V { has n: int = 1; }
+def keep(v: V, t: int) -> V { return V(n=v.n + t); }
+def grow(v: V, t: int) -> V { return V(n=v.n + t * 10); }
+def alias_then_rebind(start: int, t: int) -> int {
+    value = V(n=start);
+    prior = value;
+    value = grow(value, t) if t == 3 else keep(value, t);
+    return value.n + prior.n;
+}
+with entry {
+    print(alias_then_rebind(1, 2));
+    print(alias_then_rebind(1, 3));
+}
+"""
+        );
+        out_bin = str(Path(directory) / "probe.bin");
+        comp = subprocess.run(
+            jac_command("build", "--native", str(main), "-o", out_bin),
+            capture_output=True,
+            text=True,
+            timeout=900
+        );
+        assert comp.returncode == 0 , comp.stderr[-1200:];
+        proc = subprocess.run([out_bin], capture_output=True, text=True, timeout=120);
+        assert proc.returncode == 0 , proc.stderr[-400:];
+        assert proc.stdout.split() == ["4", "32"] , proc.stdout;
+    }
+}

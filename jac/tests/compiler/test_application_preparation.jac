@@ -201,7 +201,8 @@ test "import discovery reads levels past a module's single-byte name pool" {
             for instruction in dis.get_instructions(code)
             if instruction.opname == 'IMPORT_NAME'
         ];
-        assert imports[0].arg > 255;
+        first_arg = imports[0].arg;
+        assert first_arg is not None and first_arg > 255;
         assert runtime_sources(code, source, tmp)
             == {str(base / name) for name in expected};
     } finally {

@@ -20,7 +20,7 @@ impl TestResponse.ok.getter -> bool {
     return 200 <= self.status_code < 300;
 }
 
-impl TestResponse.data.getter -> (dict[str, any] | None) {
+impl TestResponse.data.getter -> any {
     response_json = self.json();
     if not isinstance(response_json, dict) {
         return response_json;

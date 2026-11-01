@@ -178,8 +178,9 @@ jobs:
   # The kit lane builds this checkout and publishes it for every test lane.
   build-kit:
     # A kit that seals the native compiler kernel lowers the analysis zone in
-    # one process and peaks near 15 GB, which starves a 4-vCPU runner.
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    # one process and peaks above 30 GB during object emission, which an 8-vCPU
+    # runner's memory cannot hold.
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     # A pull request's kit carries no native compiler kernel: the compiler
     # runs from the bytecode the same build precompiles, which is the path a
     # kernel build itself compiles through. The kernel is most of a kit's build

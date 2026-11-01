@@ -165,8 +165,8 @@ impl LayoutPass._build_hierarchy(archetypes: dict[str, Archetype]) -> None {
             if not isinstance(anc, ClassType) {
                 continue;
             }
-            anc_name = class_type_native_name(anc) or anc.shared.class_name;
-            if anc_name in reachable and anc_name not in reg.mro_order {
+            anc_name = self._mro_member_name(anc, reachable);
+            if anc_name is not None and anc_name not in reg.mro_order {
                 reg.set_mro(anc_name, self._layout_mro(anc_name, anc, reachable));
             }
         }
@@ -196,12 +196,20 @@ impl LayoutPass._layout_mro(
         if not isinstance(anc, ClassType) {
             continue;
         }
-        anc_name = class_type_native_name(anc) or anc.shared.class_name;
-        if anc_name in reachable and anc_name not in order {
+        anc_name = self._mro_member_name(anc, reachable);
+        if anc_name is not None and anc_name not in order {
             order.append(anc_name);
         }
     }
     return order;
+}
+
+impl LayoutPass._mro_member_name(anc: ClassType, reachable: set[str]) -> (str | None) {
+    native_name = class_type_native_name(anc);
+    if native_name in reachable {
+        return native_name;
+    }
+    return anc.shared.class_name if anc.shared.class_name in reachable else None;
 }
 
 impl LayoutPass._topo_sort(arch_map: dict[str, Archetype]) -> list[str] {
@@ -564,10 +572,27 @@ impl LayoutPass._build_vtable_layout(
         owner = arch_name;
         for check_name in mro {
             check_arch = arch_map.get(check_name);
+            found = False;
             if check_arch is None {
+                for held_in in mro {
+                    held_layout = self.registry.layouts.get(held_in);
+                    for held in (held_layout.methods if held_layout else []) {
+                        if held.name == mname and held.owner == check_name {
+                            sig_node = held.signature;
+                            owner = check_name;
+                            found = True;
+                            break;
+                        }
+                    }
+                    if found {
+                        break;
+                    }
+                }
+                if found {
+                    break;
+                }
                 continue;
             }
-            found = False;
             for method in check_arch.get_methods() {
                 mn = method.name_ref.sym_name if method.name_ref else None;
                 if mn == mname {

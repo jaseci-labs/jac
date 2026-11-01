@@ -907,6 +907,10 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         fn_type = ir.FunctionType(ret_type, param_types);
         fn = ir.Function(self.llvm_module, fn_type, name=mangled);
         fn.linkage = "private";
+        self._fresh_fn_values.add(mangled);
+        if not captures {
+            self._nested_fn_frames[mangled] = self.builder.function;
+        }
         for (i, arg) in enumerate(fn.args) {
             if i < len(param_names) {
                 arg.name = param_names[i];
@@ -964,6 +968,11 @@ impl NaIRGenPass._codegen_nested_ability(nd: uni.Ability) -> None {
         }
     } finally {
         self._leave_function(state);
+    }
+
+    _id_slot = self._fn_identity_slot(fn);
+    if _id_slot is not None and not self.builder.block.is_terminated {
+        self._release_loop_coll_slot(_id_slot, op="fn_identity");
     }
 }
 
@@ -1131,6 +1140,10 @@ impl NaIRGenPass._predeclare_nested_siblings(nd: uni.Ability) -> None {
             self.llvm_module, ir.FunctionType(_rt, _ptypes), name=_mangled
         );
         _fn.linkage = "private";
+        self._fresh_fn_values.add(_mangled);
+        if not _caps {
+            self._nested_fn_frames[_mangled] = self.builder.function;
+        }
         for (i, _arg) in enumerate(_fn.args) {
             if i < len(_pnames) {
                 _arg.name = _pnames[i];

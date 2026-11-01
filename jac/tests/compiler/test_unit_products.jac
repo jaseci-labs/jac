@@ -47,7 +47,7 @@ test "the MTIR graph keeps shared nodes and cycles through its record" {
     returned = back_move.return_type;
     assert isinstance(returned, TypeForm) and returned.head == "list";
     assert returned.args[0] is back_point and returned.args[1:] == ["str", None];
-    assert back_move.params[0].name == "dx";
+    assert back_move.params is not None and back_move.params[0].name == "dx";
     assert back_point.semstr == "a point" and back_move.semstr == "moves it";
 }
 
