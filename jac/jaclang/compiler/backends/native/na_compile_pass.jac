@@ -10,9 +10,17 @@ def codegen_footprint(blob: bytes) -> int;
 def codegen_map(work: Callable[..., bytes], blobs: list[bytes]) -> list[bytes];
 def emit_unit_objects(bitcodes: list[bytes], options: CompileOptions) -> list[bytes];
 def unit_bitcode(unit_ir: any) -> bytes;
-def unit_snapshot_text(
-    ir_text: str
-) -> tuple[bytes, set[str], set[str], tuple[int, int]];
+
+obj UnitIRSnapshot {
+    has bitcode: bytes,
+        defined: set[str],
+        declared: set[str],
+        function_counts: tuple[int, int],
+        referenced: (set[str] | None) = None;
+}
+
+def unit_snapshot_text(ir_text: str) -> UnitIRSnapshot;
+def unit_snapshot_module(mod: ModuleRef) -> UnitIRSnapshot;
 
 def unit_module_copy(unit_ir: any, context: any) -> ModuleRef;
 def optimized_bitcode(

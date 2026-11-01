@@ -100,10 +100,12 @@ impl unit_bitcode(unit_ir: any) -> bytes {
     return module_bitcode(llvm.parse_assembly(str(unit_ir), llvm.create_context()));
 }
 
-impl unit_snapshot_text(
-    ir_text: str
-) -> tuple[bytes, set[str], set[str], tuple[int, int]] {
+impl unit_snapshot_text(ir_text: str) -> UnitIRSnapshot {
     mod = llvm.parse_assembly(ir_text, llvm.create_context());
+    return unit_snapshot_module(mod);
+}
+
+impl unit_snapshot_module(mod: ModuleRef) -> UnitIRSnapshot {
     defined: set[str] = set();
     declared: set[str] = set();
     declared_functions = 0;
@@ -126,11 +128,11 @@ impl unit_snapshot_text(
             defined.add(name);
         }
     }
-    return (
-        module_bitcode(mod),
-        defined,
-        declared,
-        (declared_functions, defined_functions)
+    return UnitIRSnapshot(
+        bitcode=module_bitcode(mod),
+        defined=defined,
+        declared=declared,
+        function_counts=(declared_functions, defined_functions)
     );
 }
 
