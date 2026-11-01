@@ -106,6 +106,7 @@ impl _from_sealed_image -> (ResolvedKernel | None) {
 impl kernel_options(spec: (TargetSpec | None) = None) -> CompileOptions {
     return CompileOptions(
         aot_mode=True,
+        native_required=True,
         native_require=[],
         native_link_mode=KERNEL_LINK_MODE,
         na_debug=False,
