@@ -1189,7 +1189,7 @@ impl prebuild_native_units(roots: list[str]) {
         jobs=1,
         rss_log_env="JAC_PRECOMPILE_RSS_LOG",
         crash_prefix="jac-precompile-crash-"
-    ).run();
+    ).run_inline();
     console.print(
         f"  Native prebuild: {len(roots)} root(s) in "
             + f"{time.monotonic() - started:.1f}s"
