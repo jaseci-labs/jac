@@ -1858,6 +1858,7 @@ walker NaIRGenPass(CompilerPass) {
     def _ct_fold(nd: (uni.UniNode | None)) -> (ir.Value | None);
     def _ct_origin(nd: uni.Expr) -> bool;
     def _ct_only_name(nd: uni.Name) -> bool;
+    def _comptime_imported(sym: (uni.Symbol | None)) -> bool;
     def _ability_has_ct_params(ability: uni.Ability) -> bool;
     def _solve_ct_args(
         ability: uni.Ability, nd: uni.FuncCall

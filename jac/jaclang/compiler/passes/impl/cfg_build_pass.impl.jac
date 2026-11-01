@@ -48,6 +48,10 @@ impl CFGBuildPass._link_to(source: UniCFGNode, target: (UniCFGNode | None)) -> N
 }
 
 impl CFGBuildPass._is_terminal(nd: UniNode) -> bool {
+    if isinstance(nd, AssertStmt) {
+        condition = _unwrap_parens(nd.condition);
+        return isinstance(condition, Bool) and condition.value == "False";
+    }
     return isinstance(nd, (ReturnStmt, RaiseStmt, CtrlStmt, DisengageStmt));
 }
 

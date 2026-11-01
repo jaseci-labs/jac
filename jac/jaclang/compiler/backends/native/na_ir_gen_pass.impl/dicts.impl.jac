@@ -662,6 +662,14 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     }
     if not nd.kv_pairs {
         _dk = self._peer_dict_key() or self._dict_key_of(nd);
+        if _dk is None and self.jacval_type is not None {
+            _str_key = ir.IntType(8).as_pointer();
+            (_key_spec, _key_size) = self._hash_key_spec(_str_key);
+            _dk = f"{_key_spec}:jacval";
+            self._emit_dict_helpers(
+                _key_spec, "jacval", _str_key, self.jacval_type, _key_size
+            );
+        }
         _helpers = self.dict_helpers.get(_dk) if _dk is not None else None;
         if _helpers is not None {
             _empty_dv = self.builder.call(_helpers["new"], [], name="dict.empty");

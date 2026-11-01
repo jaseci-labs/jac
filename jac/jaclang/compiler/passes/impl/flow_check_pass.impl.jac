@@ -106,6 +106,9 @@ impl FlowCheckPass._build_frame(
         if sym is None or id(sym) in fr.tracked {
             continue;
         }
+        if sym.decl is not None and isinstance(sym.decl.parent, HasVar) {
+            continue;
+        }
         if sym.storage in (SymbolStorage.LOCAL, SymbolStorage.CAPTURED)
             and frame_owns(scope, sym) {
             fr.tracked.add(id(sym));

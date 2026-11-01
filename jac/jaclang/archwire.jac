@@ -2718,7 +2718,9 @@ graph import {
             | data.serializer
             | scale.memory.context { MISSING },
         comptime { MISSING as _MISSING, ObjectField as _field },
-        lib.jaclib | server.server { CALL_DEFAULT },
+        lib.jaclib | scale.events.broker._signature_faults | server.server {
+            CALL_DEFAULT
+        },
         scale.sdk.spec.DeploySpec.from_config { fields },
         scale.server.sso_ext | scale.sso.oauth_session { asdict },
     ]
@@ -8842,6 +8844,7 @@ graph import compiler {
             FinallyStmt,
             ForeverStmt,
             FuncSignature,
+            HasVar,
             IfElseExpr,
             IfStmt,
             ImplDef,
@@ -14648,6 +14651,7 @@ graph import compiler.types {
     }
     fixed_width ++> [
         operations {
+            all_numeric,
             arithmetic_result_type,
             both_numeric,
             numeric_name_of,

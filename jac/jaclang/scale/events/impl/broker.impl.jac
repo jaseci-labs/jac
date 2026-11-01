@@ -42,7 +42,10 @@ impl _signature_faults(
         }
         if w.has_default and not have.has_default {
             faults.append(f"{method} drops the default {w.`default} for '{w.name}'");
-        } elif w.has_default and have.`default != w.`default {
+        } elif w.has_default
+            and w.`default is not CALL_DEFAULT
+            and have.`default is not CALL_DEFAULT
+            and have.`default != w.`default {
             faults.append(
                 f"{method} defaults '{w.name}' to {have.`default}, "
                 f"interface declares {w.`default}"

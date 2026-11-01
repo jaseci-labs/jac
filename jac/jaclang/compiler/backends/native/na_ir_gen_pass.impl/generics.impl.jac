@@ -720,16 +720,16 @@ impl NaIRGenPass._module_ability(
 
 impl NaIRGenPass._ct_only_name(nd: uni.Name) -> bool {
     bound = nd.sym_tab.lookup(nd.sym_name) if nd.sym_tab is not None else None;
-    for sym in [nd.sym, bound] {
-        decl = sym.decl if sym is not None else None;
-        imp = decl.find_parent_of_type(uni.Import)
-            if isinstance(decl, uni.Name)
-            else None;
-        if imp is not None and imp.is_comptime {
-            return True;
-        }
+    return self._comptime_imported(nd.sym) or self._comptime_imported(bound);
+}
+
+impl NaIRGenPass._comptime_imported(sym: (uni.Symbol | None)) -> bool {
+    if sym is None {
+        return False;
     }
-    return False;
+    decl = sym.decl;
+    imp = decl.find_parent_of_type(uni.Import) if isinstance(decl, uni.Name) else None;
+    return imp is not None and imp.is_comptime;
 }
 
 impl _mangle_word_char(ch: str) -> bool {
