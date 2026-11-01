@@ -187,4 +187,5 @@ obj JacCompiler(SessionHooks) {
     ) -> JacProgram;
 
     static def jac_file_linter(file_path: str) -> JacProgram;
+    static def jac_str_linter(source_str: str, file_path: str) -> JacProgram;
 }

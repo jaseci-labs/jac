@@ -141,7 +141,7 @@ def open_kernel_session(project_root: str) -> any;
 obj SessionClient {
     has project_root: str = "",
         handle: any = None,
-        _lock: threading.RLock = threading.RLock();
+        _lock: any = threading.RLock();
 
     def postinit;
     def ask(method: str, *args: any) -> any;

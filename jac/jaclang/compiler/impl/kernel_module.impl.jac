@@ -625,6 +625,7 @@ impl unit_object(unit: CompiledUnit) -> ptr[PyObject] {
         put(record, "path", text_object(unit.path));
         put(record, "module_name", text_object(unit.module_name));
         put(record, "code", code_object(unit));
+        put(record, "python_ast", python_ast_object(unit));
         put(record, "interface", write_buffer(unit.interface));
         put(record, "placement", text_object(unit.placement));
         put(record, "client_js", text_object(unit.client_js));
@@ -643,6 +644,62 @@ impl unit_object(unit: CompiledUnit) -> ptr[PyObject] {
         put(record, "iface_shape", text_object(unit.iface_shape));
         put(record, "effects", text_object(unit.effects));
         put(record, "sections", sections_object(unit.sections));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl python_ast_object(unit: CompiledUnit) -> ptr[PyObject] {
+    tree = unit.python_ast;
+    unit.python_ast = NULL;
+    if tree == NULL {
+        return none_object();
+    }
+    return tree;
+}
+
+impl output_object(output: ToolOutput) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "text", text_object(output.text));
+        put(record, "errors", diagnostics_object(output.errors));
+        put(record, "warnings", diagnostics_object(output.warnings));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl grammar_object(report: GrammarReport) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "ebnf", text_object(report.ebnf));
+        put(record, "rules", int_object(report.rules));
+        put(record, "diagnostics", text_object(report.diagnostics));
+        put(record, "errors", diagnostics_object(report.errors));
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
+impl arch_plan_object(plan: ArchPlan) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "arch_path", text_object(plan.arch_path));
+        put(record, "text", text_object(plan.text));
+        put(record, "modules", texts_object(plan.modules));
+        put(record, "fed", texts_object(plan.fed));
+        put(record, "added", int_object(plan.added));
+        put(record, "dropped", int_object(plan.dropped));
+        put(record, "rules", int_object(plan.rules));
+        put(record, "rules_added", int_object(plan.rules_added));
+        put(record, "refusal", text_object(plan.refusal));
+        put(record, "hint", text_object(plan.hint));
     } except boundary_failure as error {
         jacpy_release(record);
         raise error;
@@ -674,6 +731,10 @@ impl compile_result_object(result: CompileResult) -> ptr[PyObject] {
             if unit.code != NULL {
                 jacpy_release(unit.code);
                 unit.code = NULL;
+            }
+            if unit.python_ast != NULL {
+                jacpy_release(unit.python_ast);
+                unit.python_ast = NULL;
             }
         }
         jacpy_release(record);
@@ -1123,7 +1184,7 @@ impl session_rename(
 
 impl session_format(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject] {
     try {
-        return text_object(session_of(instance).format(text_of(path, "path")));
+        return output_object(session_of(instance).format(text_of(path, "path")));
     } except boundary_failure {
         return NULL;
     } except KernelError as error {
@@ -1137,7 +1198,7 @@ impl session_lint_fix(
     instance: ptr[PyObject], path: ptr[PyObject]
 ) -> ptr[PyObject] {
     try {
-        return text_object(session_of(instance).lint_fix(text_of(path, "path")));
+        return output_object(session_of(instance).lint_fix(text_of(path, "path")));
     } except boundary_failure {
         return NULL;
     } except KernelError as error {
@@ -1167,6 +1228,163 @@ impl session_check(instance: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObj
     try {
         return check_result_object(
             session_of(instance).check(check_request_of(request))
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_dependents(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject] {
+    try {
+        return texts_object(session_of(instance).dependents(text_of(path, "path")));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_set_shared_app_limit(
+    instance: ptr[PyObject], limit: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        session_of(instance).set_shared_app_limit(int_of(limit, "limit"));
+        return none_object();
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_lint(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject] {
+    try {
+        return output_object(session_of(instance).lint(text_of(path, "path")));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_parse(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject] {
+    try {
+        return output_object(session_of(instance).parse(text_of(path, "path")));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_statements(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return spans_object(session_of(instance).statements(text_of(path, "path")));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_py_to_jac(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject] {
+    try {
+        return output_object(session_of(instance).py_to_jac(text_of(path, "path")));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_ast_view(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.ast_view", 2, 2);
+        return output_object(
+            session_of(instance).ast_view(
+                text_of(args[0], "path"), text_of(args[1], "view")
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_explain(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.explain", 2, 3);
+        memory_profile = text_of(args[2], "memory_profile") if len(args) == 3 else "";
+        return output_object(
+            session_of(instance).explain(
+                text_of(args[0], "path"), text_of(args[1], "topic"), memory_profile
+            )
+        );
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_grammar(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        arguments(stack, count, "Session.grammar", 0, 0);
+        return grammar_object(session_of(instance).grammar());
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl session_arch_plan(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    try {
+        args = arguments(stack, count, "Session.arch_plan", 2, 4);
+        prune = flag_of(args[2], "prune") if len(args) >= 3 else False;
+        graph_format = text_of(args[3], "graph_format") if len(args) == 4 else "";
+        return arch_plan_object(
+            session_of(instance).arch_plan(
+                text_of(args[0], "arch_path"),
+                text_of(args[1], "action"),
+                prune,
+                graph_format
+            )
         );
     } except boundary_failure {
         return NULL;

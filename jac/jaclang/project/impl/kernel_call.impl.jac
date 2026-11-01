@@ -91,7 +91,8 @@ impl unit_of_record(raw: dict[str, any]) -> CompiledUnit {
         client_manifest=raw["client_manifest"],
         iface_shape=raw["iface_shape"],
         effects=raw["effects"],
-        sections=dict(raw["sections"])
+        sections=dict(raw["sections"]),
+        python_ast=raw["python_ast"]
     );
 }
 
@@ -176,6 +177,246 @@ impl open_kernel_session(project_root: str) -> any {
     } except kernel.KernelError as error {
         raise KernelError(str(error)) from error;
     }
+}
+
+impl completion_of_record(raw: dict[str, any]) -> CompletionItem {
+    return CompletionItem(
+        label=raw["label"],
+        kind=raw["kind"],
+        detail=raw["detail"],
+        insert_text=raw["insert_text"]
+    );
+}
+
+impl hint_of_record(raw: dict[str, any]) -> InlayHint {
+    return InlayHint(
+        line=raw["line"], col=raw["col"], label=raw["label"], kind=raw["kind"]
+    );
+}
+
+impl symbol_of_record(raw: dict[str, any]) -> DocumentSymbol {
+    return DocumentSymbol(
+        name=raw["name"],
+        kind=raw["kind"],
+        span=span_of_record(raw["span"]),
+        children=[symbol_of_record(child) for child in raw["children"]]
+    );
+}
+
+impl edit_of_record(raw: dict[str, any]) -> TextEdit {
+    return TextEdit(span=span_of_record(raw["span"]), text=raw["text"]);
+}
+
+impl output_of_record(raw: dict[str, any]) -> ToolOutput {
+    return ToolOutput(
+        text=raw["text"],
+        errors=[diagnostic_of_record(diag) for diag in raw["errors"]],
+        warnings=[diagnostic_of_record(diag) for diag in raw["warnings"]]
+    );
+}
+
+impl grammar_of_record(raw: dict[str, any]) -> GrammarReport {
+    return GrammarReport(
+        ebnf=raw["ebnf"],
+        rules=raw["rules"],
+        diagnostics=raw["diagnostics"],
+        errors=[diagnostic_of_record(diag) for diag in raw["errors"]]
+    );
+}
+
+impl arch_plan_of_record(raw: dict[str, any]) -> ArchPlan {
+    return ArchPlan(
+        arch_path=raw["arch_path"],
+        text=raw["text"],
+        modules=list(raw["modules"]),
+        fed=list(raw["fed"]),
+        added=raw["added"],
+        dropped=raw["dropped"],
+        rules=raw["rules"],
+        rules_added=raw["rules_added"],
+        refusal=raw["refusal"],
+        hint=raw["hint"]
+    );
+}
+
+impl SessionClient.postinit {
+    self.handle = open_kernel_session(self.project_root);
+}
+
+impl SessionClient.ask(method: str, *args: any) -> any {
+    kernel = load_kernel();
+    with self._lock {
+        try {
+            return getattr(self.handle, method)(*args);
+        } except kernel.KernelError as error {
+            raise KernelError(str(error)) from error;
+        }
+    }
+}
+
+impl SessionClient.update(path: str, text: str) {
+    self.ask("update", path, text);
+}
+
+impl SessionClient.close(path: str) {
+    self.ask("close", path);
+}
+
+impl SessionClient.forget(path: str) {
+    self.ask("forget", path);
+}
+
+impl SessionClient.rename_module(old_path: str, new_path: str) {
+    self.ask("rename_module", old_path, new_path);
+}
+
+impl SessionClient.dependents(path: str) -> list[str] {
+    return list(self.ask("dependents", path));
+}
+
+impl SessionClient.set_shared_app_limit(limit: int) {
+    self.ask("set_shared_app_limit", limit);
+}
+
+impl SessionClient.diagnostics(path: str) -> list[KernelDiagnostic] {
+    return [diagnostic_of_record(diag) for diag in self.ask("diagnostics", path)];
+}
+
+impl SessionClient.hover(path: str, line: int, col: int) -> str {
+    return self.ask("hover", path, line, col);
+}
+
+impl SessionClient.definition(path: str, line: int, col: int) -> list[SourceSpan] {
+    return [span_of_record(span) for span in self.ask("definition", path, line, col)];
+}
+
+impl SessionClient.references(path: str, line: int, col: int) -> list[SourceSpan] {
+    return [span_of_record(span) for span in self.ask("references", path, line, col)];
+}
+
+impl SessionClient.completion(
+    path: str, line: int, col: int, trigger: str = ""
+) -> list[CompletionItem] {
+    return [
+        completion_of_record(item)
+        for item in self.ask("completion", path, line, col, trigger)
+    ];
+}
+
+impl SessionClient.semantic_tokens(path: str) -> list[int] {
+    return list(self.ask("semantic_tokens", path));
+}
+
+impl SessionClient.inlay_hints(
+    path: str, first_line: int, last_line: int
+) -> list[InlayHint] {
+    return [
+        hint_of_record(hint)
+        for hint in self.ask("inlay_hints", path, first_line, last_line)
+    ];
+}
+
+impl SessionClient.symbols(path: str) -> list[DocumentSymbol] {
+    return [symbol_of_record(symbol) for symbol in self.ask("symbols", path)];
+}
+
+impl SessionClient.rename(
+    path: str, line: int, col: int, new_name: str
+) -> list[TextEdit] {
+    return [
+        edit_of_record(edit)
+        for edit in self.ask("rename", path, line, col, new_name)
+    ];
+}
+
+impl SessionClient.format(path: str) -> ToolOutput {
+    return output_of_record(self.ask("format", path));
+}
+
+impl SessionClient.lint_fix(path: str) -> ToolOutput {
+    return output_of_record(self.ask("lint_fix", path));
+}
+
+impl SessionClient.lint(path: str) -> ToolOutput {
+    return output_of_record(self.ask("lint", path));
+}
+
+impl SessionClient.parse(path: str) -> ToolOutput {
+    return output_of_record(self.ask("parse", path));
+}
+
+impl SessionClient.statements(path: str) -> list[SourceSpan] {
+    return [span_of_record(span) for span in self.ask("statements", path)];
+}
+
+impl SessionClient.py_to_jac(path: str) -> ToolOutput {
+    return output_of_record(self.ask("py_to_jac", path));
+}
+
+impl SessionClient.ast_view(path: str, view: str) -> ToolOutput {
+    return output_of_record(self.ask("ast_view", path, view));
+}
+
+impl SessionClient.explain(
+    path: str, topic: str, memory_profile: str = ""
+) -> ToolOutput {
+    return output_of_record(self.ask("explain", path, topic, memory_profile));
+}
+
+impl SessionClient.grammar -> GrammarReport {
+    return grammar_of_record(self.ask("grammar"));
+}
+
+impl SessionClient.arch_plan(
+    arch_path: str, action: str, prune: bool = False, graph_format: str = ""
+) -> ArchPlan {
+    return arch_plan_of_record(
+        self.ask("arch_plan", arch_path, action, prune, graph_format)
+    );
+}
+
+impl SessionClient.compile(request: CompileRequest) -> CompileResult {
+    return compile_result_of(self.ask("compile", compile_request_record(request)));
+}
+
+impl SessionClient.check(request: CheckRequest) -> CheckResult {
+    return check_result_of(self.ask("check", check_request_record(request)));
+}
+
+impl SessionClient.with_text(path: str, text: str, query: Callable[[], any]) -> any {
+    with self._lock {
+        self.update(path, text);
+        try {
+            return query();
+        } finally {
+            self.close(path);
+        }
+    }
+}
+
+impl SessionClient.format_text(
+    path: str, text: str, auto_lint: bool = False
+) -> ToolOutput {
+    return self.with_text(
+        path,
+        text,
+        lambda -> ToolOutput {
+            return self.lint_fix(path) if auto_lint else self.format(path);
+        }
+    );
+}
+
+impl tool_session(project_root: str = "") -> SessionClient {
+    held = _TOOL_SESSIONS.get(project_root);
+    if held is None {
+        held = SessionClient(project_root=project_root);
+        _TOOL_SESSIONS[project_root] = held;
+    }
+    return held;
+}
+
+impl diagnostic_text(diag: KernelDiagnostic) -> str {
+    return f"{diag.span.path}, line {diag.span.line}, col {diag.span.col}: {diag.message}";
 }
 
 impl outline_of_record(raw: dict[str, any]) -> ModuleOutline {

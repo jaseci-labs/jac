@@ -80,6 +80,45 @@ impl collect_diagnostics(
     }
 }
 
+impl merge_app_diagnostics(
+    collected: list[tuple[str, list[KernelDiagnostic]]]
+) -> list[KernelDiagnostic] {
+    def key_of(diag: KernelDiagnostic) -> tuple[str, str, int, int, str, str] {
+        return (
+            diag.severity,
+            diag.span.path,
+            diag.span.line,
+            diag.span.col,
+            diag.code,
+            diag.message
+        );
+    }
+    seen_apps: dict[tuple[str, str, int, int, str, str], set[str]] = {};
+    for (app_name, found) in collected {
+        for diag in found {
+            seen_apps.setdefault(key_of(diag), set()).add(app_name);
+        }
+    }
+    merged: list[KernelDiagnostic] = [];
+    emitted: set[tuple[str, str, int, int, str, str]] = set();
+    for (app_name, found) in collected {
+        for diag in found {
+            key = key_of(diag);
+            if len(seen_apps[key]) >= len(collected) {
+                if key not in emitted {
+                    emitted.add(key);
+                    merged.append(diag);
+                }
+                continue;
+            }
+            tagged = copy.copy(diag);
+            tagged.message = f"[app:{app_name}] {diag.message}";
+            merged.append(tagged);
+        }
+    }
+    return merged;
+}
+
 impl emitted_paths(host: ProjectHost, requested: list[str]) -> list[str] {
     import from jaclang.compiler.driver.jir { get_module_cache_path, is_module_cache_valid }
     chosen: list[str] = [];
@@ -100,8 +139,13 @@ impl emitted_paths(host: ProjectHost, requested: list[str]) -> list[str] {
     return chosen;
 }
 
-impl compiled_unit(host: ProjectHost, real: str, want_code: bool) -> CompiledUnit {
-    import from jaclang.compiler.backends.py.kernel_bytecode { kernel_code_object }
+impl compiled_unit(
+    host: ProjectHost, real: str, want_code: bool, want_ast: bool = False
+) -> CompiledUnit {
+    import from jaclang.compiler.backends.py.kernel_bytecode {
+        kernel_code_object,
+        kernel_python_ast
+    }
     import from jaclang.compiler.driver.compiler { unit_sections }
     import from jaclang.compiler.driver.unit_products { client_artifact_from_json }
     products = host.units[real];
@@ -115,6 +159,9 @@ impl compiled_unit(host: ProjectHost, real: str, want_code: bool) -> CompiledUni
         path=real,
         module_name=module.name,
         code=kernel_code_object(module) if want_code else ptr[PyObject](),
+        python_ast=Py_NewRef(kernel_python_ast(module))
+            if want_ast
+            else ptr[PyObject](),
         interface=products.iface.encode("utf-8"),
         placement=products.placement,
         client_js=client.js if client is not None else "",
@@ -190,8 +237,9 @@ impl run_compile(
     if options.no_cgen {
         return result;
     }
+    want_ast = "python_ast" in request.products;
     for real in emitted_paths(host, requested) {
-        result.units.append(compiled_unit(host, real, want_code));
+        result.units.append(compiled_unit(host, real, want_code, want_ast));
     }
     return result;
 }
@@ -626,22 +674,94 @@ impl KernelSession.invalidate(real: str) {
     }
 }
 
-impl KernelSession.analysed(path: str) -> uni.Module {
-    real = os.path.realpath(path);
+impl KernelSession.owner(real: str) -> str {
+    host = self._host;
+    if host is None {
+        raise KernelError("the kernel session is closed");
+    }
+    base = host.base_file(real);
+    return os.path.realpath(base) if base else real;
+}
+
+impl KernelSession.touch(real: str) {
+    owner = self.owner(real);
+    for path in {real, owner} {
+        self._versions[path] = self._versions.get(path, 0) + 1;
+        self.invalidate(path);
+    }
+}
+
+impl KernelSession.app_targets(real: str) -> list[tuple[str, str, str]] {
+    host = self._host;
+    if host is None {
+        raise KernelError("the kernel session is closed");
+    }
+    space = host.workspace(real);
+    if space is None {
+        return [];
+    }
+    app = host.app_for_path(real);
+    if app is not None {
+        return [(app.name, app.kind, app.`entry or real)];
+    }
+    return [
+        (each.name, each.kind, each.`entry or real)
+        for each in list(space.apps.values())[:self.shared_app_limit]
+    ];
+}
+
+impl KernelSession.compile_for(
+    real: str, target: (tuple[str, str, str] | None)
+) -> uni.Module {
+    host = self._host;
     program = self._program;
-    host = self.enter();
+    options = copy.copy(self.options);
+    if target is not None {
+        (name, kind, entry_path) = target;
+        space = host.workspace(real);
+        options.target_app = name;
+        options.app_kind = kind;
+        options.entry_point = entry_path;
+        options.project_root = space.project_root if space is not None else None;
+    }
+    for path in self.own_files(real) {
+        program.drop_module_alerts(path);
+    }
+    program.invalidate_module(real);
+    with host.session() {
+        return program.compile(real, use_str=host.overlay.get(real), options=options);
+    }
+}
+
+impl KernelSession.own_files(real: str) -> set[str] {
+    host = self._host;
+    if host is None {
+        raise KernelError("the kernel session is closed");
+    }
+    return {
+        real,
+        *[
+            os.path.realpath(path)
+            for path in [
+                *host.annex_files(real, ".impl.jac"),
+                *host.annex_files(real, ".test.jac")
+            ]
+        ]
+    };
+}
+
+impl KernelSession.analysed(path: str) -> uni.Module {
+    real = self.owner(os.path.realpath(path));
+    program = self._program;
+    self.enter();
     try {
         version = self._versions.get(real, 0);
         held = program.find_module(real);
         if held is not None and self._analysed.get(real) == version {
             return held;
         }
-        program.drop_module_alerts(real);
-        with host.session() {
-            module = program.compile(
-                real, use_str=host.overlay.get(real), options=self.options
-            );
-        }
+        targets = self.app_targets(real);
+        module = self.compile_for(real, targets[0] if targets else None);
         self._analysed[real] = version;
         return module;
     } finally {
@@ -657,8 +777,7 @@ impl KernelSession.update(path: str, text: str) {
     }
     host.overlay[real] = text;
     self._open.add(real);
-    self._versions[real] = self._versions.get(real, 0) + 1;
-    self.invalidate(real);
+    self.touch(real);
 }
 
 impl KernelSession.close(path: str) {
@@ -675,8 +794,7 @@ impl KernelSession.close(path: str) {
     }
     on_disk = read_file_with_encoding(real) if os.path.isfile(real) else None;
     if on_disk != held {
-        self._versions[real] = self._versions.get(real, 0) + 1;
-        self.invalidate(real);
+        self.touch(real);
     }
 }
 
@@ -689,9 +807,10 @@ impl KernelSession.forget(path: str) {
     }
     host.overlay.pop(real, None);
     self._open.discard(real);
-    self.invalidate(real);
+    self.touch(real);
     program.release_module(real);
     self._versions.pop(real, None);
+    self._analysed.pop(real, None);
 }
 
 impl KernelSession.rename_module(old_path: str, new_path: str) {
@@ -713,26 +832,69 @@ impl KernelSession.rename_module(old_path: str, new_path: str) {
     if was_open {
         self._open.add(new_real);
     }
-    self._versions[new_real] = self._versions.get(new_real, 0) + 1;
-    self.invalidate(new_real);
+    self.touch(new_real);
+}
+
+impl KernelSession.dependents(path: str) -> list[str] {
+    program = self._program;
+    if program is None {
+        raise KernelError("the kernel session is closed");
+    }
+    real = os.path.realpath(path);
+    found = program.transitive_dependents(real) | program.transitive_dependents(
+        self.owner(real)
+    );
+    return sorted([os.path.realpath(dep) for dep in found]);
+}
+
+impl KernelSession.set_shared_app_limit(limit: int) {
+    if limit < 1 {
+        raise KernelError(f"the shared-app limit must be at least 1, not {limit}");
+    }
+    self.shared_app_limit = limit;
+    self._analysed.clear();
 }
 
 impl KernelSession.diagnostics(path: str) -> list[KernelDiagnostic] {
-    real = os.path.realpath(path);
-    self.analysed(real);
+    real = self.owner(os.path.realpath(path));
+    files = self.own_files(real);
     program = self._program;
-    found: list[KernelDiagnostic] = [];
-    for alert in program.errors_had {
-        if alert.loc.mod_path and os.path.realpath(alert.loc.mod_path) == real {
-            found.append(kernel_diagnostic(alert, "error"));
+    def gathered -> list[KernelDiagnostic] {
+        found: list[KernelDiagnostic] = [];
+        for (severity, alerts) in [
+            ("error", program.errors_had),
+            ("warning", program.warnings_had)
+        ] {
+            for alert in alerts {
+                if alert.loc.mod_path and os.path.realpath(alert.loc.mod_path) in files {
+                    found.append(kernel_diagnostic(alert, severity));
+                }
+            }
         }
+        return found;
     }
-    for alert in program.warnings_had {
-        if alert.loc.mod_path and os.path.realpath(alert.loc.mod_path) == real {
-            found.append(kernel_diagnostic(alert, "warning"));
+    self.enter();
+    try {
+        targets = self.app_targets(real);
+    } finally {
+        self.leave();
+    }
+    if len(targets) <= 1 {
+        self.analysed(real);
+        return gathered();
+    }
+    collected: list[tuple[str, list[KernelDiagnostic]]] = [];
+    self.enter();
+    try {
+        for target in targets {
+            self.compile_for(real, target);
+            collected.append((target[0], gathered()));
         }
+        self._analysed[real] = self._versions.get(real, 0);
+    } finally {
+        self.leave();
     }
-    return found;
+    return merge_app_diagnostics(collected);
 }
 
 impl KernelSession.hover(path: str, line: int, col: int) -> str {
@@ -803,34 +965,278 @@ impl KernelSession.rename(
     return rename_edits(selected, new_name) if selected is not None else [];
 }
 
-impl KernelSession.format(path: str) -> str {
-    import from jaclang.compiler.driver.program { JacProgram }
+impl KernelSession.formatted(path: str, auto_lint: bool) -> ToolOutput {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
     real = os.path.realpath(path);
     host = self.enter();
     try {
-        formatted = JacProgram.jac_str_formatter(host.read_source(real), real);
+        program = JacCompiler.jac_str_formatter(host.read_source(real), real, auto_lint);
     } finally {
         self.leave();
     }
-    if formatted.errors_had {
-        raise KernelError(f"{real} does not parse: {formatted.errors_had[0].msg}");
-    }
-    return formatted.mod.main.gen.jac;
+    out = ToolOutput();
+    collect_diagnostics(program, out.errors, out.warnings);
+    main = program.mod.main;
+    out.text = (main.gen.jac or "") if main is not None else "";
+    return out;
 }
 
-impl KernelSession.lint_fix(path: str) -> str {
-    import from jaclang.compiler.driver.program { JacProgram }
+impl KernelSession.format(path: str) -> ToolOutput {
+    return self.formatted(path, False);
+}
+
+impl KernelSession.lint_fix(path: str) -> ToolOutput {
+    return self.formatted(path, True);
+}
+
+impl KernelSession.lint(path: str) -> ToolOutput {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
     real = os.path.realpath(path);
     host = self.enter();
     try {
-        fixed = JacProgram.jac_str_formatter(host.read_source(real), real, True);
+        program = JacCompiler.jac_str_linter(host.read_source(real), real);
     } finally {
         self.leave();
     }
-    if fixed.errors_had {
-        raise KernelError(f"{real} does not parse: {fixed.errors_had[0].msg}");
+    out = ToolOutput();
+    collect_diagnostics(program, out.errors, out.warnings);
+    return out;
+}
+
+impl KernelSession.parse(path: str) -> ToolOutput {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    real = os.path.realpath(path);
+    host = self.enter();
+    try {
+        (program, _module) = JacCompiler._prepare_tool_program(
+            host.read_source(real), real
+        );
+    } finally {
+        self.leave();
     }
-    return fixed.mod.main.gen.jac;
+    out = ToolOutput();
+    collect_diagnostics(program, out.errors, out.warnings);
+    return out;
+}
+
+impl KernelSession.statements(path: str) -> list[SourceSpan] {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    real = os.path.realpath(path);
+    host = self.enter();
+    try {
+        (program, module) = JacCompiler._prepare_tool_program(
+            host.read_source(real), real
+        );
+    } finally {
+        self.leave();
+    }
+    if module is None {
+        raise KernelError(f"{real} does not parse: {program.errors_had[0].msg}");
+    }
+    return [
+        source_span(stmt.loc)
+        for stmt in module.body
+        if stmt.loc.mod_path and os.path.realpath(stmt.loc.mod_path) == real
+    ];
+}
+
+impl KernelSession.py_to_jac(path: str) -> ToolOutput {
+    import from jaclang.compiler.driver.compiler { JacCompiler }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.passes.pyast_load_pass { parse_python_source }
+    import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
+    real = os.path.realpath(path);
+    if not real.endswith((".py", ".pyi")) {
+        raise KernelError(f"{real} is not a Python file");
+    }
+    out = ToolOutput();
+    host = self.enter();
+    try {
+        program = JacProgram();
+        (converted, had_error) = parse_python_source(host.read_source(real), real, program);
+        collect_diagnostics(program, out.errors, out.warnings);
+        if had_error {
+            return out;
+        }
+        laid_out = JacCompiler.jac_str_formatter(
+            unparse_module(converted, requires_format=False), real, False
+        );
+    } finally {
+        self.leave();
+    }
+    collect_diagnostics(laid_out, out.errors, out.warnings);
+    main = laid_out.mod.main;
+    out.text = (main.gen.jac or "") if main is not None else "";
+    return out;
+}
+
+impl KernelSession.ast_view(path: str, view: str) -> ToolOutput {
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.passes.pyast_load_pass { parse_python_source }
+    import from jaclang.compiler.tools.ast_views {
+        ANALYSED_VIEWS,
+        PARSED_VIEWS,
+        analysed_view,
+        parsed_view
+    }
+    import from jaclang.compiler.tools.jac_formatter_pass { unparse_module }
+    real = os.path.realpath(path);
+    if view not in PARSED_VIEWS and view not in ANALYSED_VIEWS {
+        raise KernelError(
+            f"unknown AST view '{view}'; expected one of "
+            + ", ".join([*PARSED_VIEWS, *ANALYSED_VIEWS])
+        );
+    }
+    out = ToolOutput();
+    program = JacProgram();
+    host = self.enter();
+    try {
+        source = host.read_source(real);
+        if view in PARSED_VIEWS {
+            module = program.parse_str(source, real);
+            collect_diagnostics(program, out.errors, out.warnings);
+            if not out.errors {
+                out.text = parsed_view(module, view);
+            }
+            return out;
+        }
+        target = real;
+        if real.endswith(".py") {
+            (converted, had_error) = parse_python_source(source, real, program);
+            if had_error {
+                collect_diagnostics(program, out.errors, out.warnings);
+                return out;
+            }
+            source = unparse_module(converted);
+            target = real[:-len(".py")] + ".jac";
+        }
+        with host.session() {
+            module = program.compile(
+                target, use_str=source, options=CompileOptions(no_cgen=True)
+            );
+        }
+        collect_diagnostics(program, out.errors, out.warnings);
+        out.text = analysed_view(program, module, view);
+        return out;
+    } finally {
+        self.leave();
+    }
+}
+
+impl KernelSession.explain(
+    path: str, topic: str, memory_profile: str = ""
+) -> ToolOutput {
+    import from jaclang.compiler.backends.native.na_compile_pass {
+        native_linked_ir_text
+    }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.passes.ownership_hints { inferred_hints }
+    real = os.path.realpath(path);
+    if topic == "memory" {
+        options = CompileOptions(
+            rc_stats=True, nogc_debug=True, memory_profile=(memory_profile or None)
+        );
+    } elif topic == "native" {
+        options = CompileOptions(aot_mode=True, default_codespace="native");
+    } else {
+        raise KernelError(
+            f"unknown explain topic '{topic}'; the kernel explains 'memory' and 'native'"
+        );
+    }
+    out = ToolOutput();
+    program = JacProgram();
+    host = self.enter();
+    try {
+        with host.session() {
+            module = program.compile(
+                real, use_str=host.overlay.get(real), options=options
+            );
+        }
+    } finally {
+        self.leave();
+    }
+    collect_diagnostics(program, out.errors, out.warnings);
+    if topic == "native" {
+        if module.gen.llvm_ir is not None {
+            out.text = native_linked_ir_text(module);
+        }
+        return out;
+    }
+    name = os.path.basename(real);
+    hints = sorted(
+        inferred_hints(module), key=lambda (h: any) { (h.line, h.col); }
+    );
+    lines = [
+        f"memory profile: {program.options.memory_profile
+            if program.options and program.options.memory_profile
+            else 'managed'}",
+        f"inferred facts: {len(hints)}",
+        *[f"  {name}:{h.line}:{h.col}  {h.label.strip()}" for h in hints],
+        f"move sites: {len(module.own_move_sites)}",
+        f"last-use releases: {sum([len(v) for v in module.rc_last_use.values()])}"
+    ];
+    out.text = "\n".join(lines);
+    return out;
+}
+
+impl KernelSession.grammar -> GrammarReport {
+    import from jaclang.compiler.driver.pipeline { run_utility }
+    import from jaclang.compiler.driver.pipeline_types { CompilationProduct }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.tools.grammar_extract_pass { GrammarExtractPass }
+    parser_path = os.path.join(
+        self.package_root, "compiler", "frontend", "parser", "parser.jac"
+    );
+    report = GrammarReport(ebnf="", rules=0);
+    program = JacProgram();
+    host = self.enter();
+    try {
+        with host.session() {
+            module = program.compile(
+                parser_path,
+                options=CompileOptions(
+                    symtab_ir_only=True, no_cgen=True, need_full_ast=True
+                )
+            );
+        }
+        ignored: list[KernelDiagnostic] = [];
+        collect_diagnostics(program, report.errors, ignored);
+        if report.errors {
+            return report;
+        }
+        extracted = run_utility(CompilationProduct.GRAMMAR, module, program);
+    } finally {
+        self.leave();
+    }
+    if not isinstance(extracted, GrammarExtractPass) {
+        raise KernelError("the grammar product did not run the grammar extractor");
+    }
+    report.ebnf = extracted.emit_ebnf();
+    report.rules = len(extracted.rules);
+    report.diagnostics = extracted.emit_diagnostics();
+    return report;
+}
+
+impl KernelSession.arch_plan(
+    arch_path: str, action: str, prune: bool = False, graph_format: str = ""
+) -> ArchPlan {
+    import from jaclang.compiler.tools.arch_plan { graph_plan, init_plan, sync_plan }
+    real = os.path.realpath(arch_path);
+    host = self.enter();
+    try {
+        if action == "init" {
+            return init_plan(host, real);
+        }
+        if action == "sync" {
+            return sync_plan(host, real, prune);
+        }
+        if action == "graph" {
+            return graph_plan(real, graph_format);
+        }
+    } finally {
+        self.leave();
+    }
+    raise KernelError(f"unknown arch action '{action}'; expected init, sync or graph");
 }
 
 impl KernelSession.compile(request: CompileRequest) -> CompileResult {

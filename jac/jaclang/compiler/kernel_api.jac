@@ -569,7 +569,6 @@ obj KernelSession {
         shared_app_limit: int = 4,
         _versions: dict[str, int] = {},
         _analysed: dict[str, int] = {},
-        _diagnosed: dict[str, list[KernelDiagnostic]] = {},
         _open: set[str] = set(),
         _intel: (CodeIntelligence | None) = None;
 
@@ -578,11 +577,12 @@ obj KernelSession {
     def leave;
     def invalidate(real: str);
     def owner(real: str) -> str;
+    def touch(real: str);
     def analysed(path: str) -> uni.Module;
     def app_targets(real: str) -> list[tuple[str, str, str]];
-    def app_diagnostics(real: str) -> list[KernelDiagnostic];
+    def compile_for(real: str, target: (tuple[str, str, str] | None)) -> uni.Module;
+    def own_files(real: str) -> set[str];
     def formatted(path: str, auto_lint: bool) -> ToolOutput;
-    def tool_program -> JacProgram;
 
     def update(path: str, text: str);
     def close(path: str);
@@ -679,7 +679,9 @@ def run_check(
 
 def emitted_paths(host: ProjectHost, requested: list[str]) -> list[str];
 
-def compiled_unit(host: ProjectHost, real: str, want_code: bool) -> CompiledUnit;
+def compiled_unit(
+    host: ProjectHost, real: str, want_code: bool, want_ast: bool = False
+) -> CompiledUnit;
 
 def kernel_diagnostic(alert: Alert, severity: str) -> KernelDiagnostic;
 

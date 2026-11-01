@@ -1003,7 +1003,10 @@ impl JacCompiler._format_program(
 }
 
 impl JacCompiler.jac_file_linter(file_path: str) -> JacProgram {
-    source_str = read_file_with_encoding(file_path);
+    return JacCompiler.jac_str_linter(read_file_with_encoding(file_path), file_path);
+}
+
+impl JacCompiler.jac_str_linter(source_str: str, file_path: str) -> JacProgram {
     (prog, current_mod) = JacCompiler._prepare_tool_program(source_str, file_path);
     if current_mod is None {
         return prog;

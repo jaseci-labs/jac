@@ -121,6 +121,14 @@ def:priv symbols_object(symbols: list[DocumentSymbol]) -> ptr[PyObject];
 
 def:priv edits_object(edits: list[TextEdit]) -> ptr[PyObject];
 
+def:priv python_ast_object(unit: CompiledUnit) -> ptr[PyObject];
+
+def:priv output_object(output: ToolOutput) -> ptr[PyObject];
+
+def:priv grammar_object(report: GrammarReport) -> ptr[PyObject];
+
+def:priv arch_plan_object(plan: ArchPlan) -> ptr[PyObject];
+
 def:priv compile_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv check_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
@@ -337,6 +345,40 @@ def:priv session_code_refresh(
     instance: ptr[PyObject], file: ptr[PyObject]
 ) -> ptr[PyObject];
 
+def:priv session_dependents(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv session_set_shared_app_limit(
+    instance: ptr[PyObject], limit: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_lint(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv session_parse(instance: ptr[PyObject], path: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv session_statements(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_py_to_jac(
+    instance: ptr[PyObject], path: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv session_ast_view(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_explain(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_grammar(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
+def:priv session_arch_plan(
+    instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject];
+
 def:priv session_project_root(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
 def:priv session_dealloc(instance: ptr[PyObject]);
@@ -427,13 +469,13 @@ glob:priv session_methods: list[MethodDefinition] = [
          MethodDefinition(
              "format",
              MethodCallbacks(positional=session_format),
-             "format(path)\n--\n\nThe file's formatted text.",
+             "format(path)\n--\n\nThe file's formatted text, as a ToolOutput dict.",
              METH_O
          ),
          MethodDefinition(
              "lint_fix",
              MethodCallbacks(positional=session_lint_fix),
-             "lint_fix(path)\n--\n\nThe file's text with its lint fixes applied.",
+             "lint_fix(path)\n--\n\nThe file's text with its lint fixes applied, as a ToolOutput dict.",
              METH_O
          ),
          MethodDefinition(
@@ -597,6 +639,66 @@ glob:priv session_methods: list[MethodDefinition] = [
              MethodCallbacks(positional=session_code_refresh),
              "code_refresh(file)\n--\n\nRe-index a changed file, or the whole project.",
              METH_O
+         ),
+         MethodDefinition(
+             "dependents",
+             MethodCallbacks(positional=session_dependents),
+             "dependents(path)\n--\n\nEvery module that depends on a file, transitively.",
+             METH_O
+         ),
+         MethodDefinition(
+             "set_shared_app_limit",
+             MethodCallbacks(positional=session_set_shared_app_limit),
+             "set_shared_app_limit(limit)\n--\n\nHow many apps a shared module is checked against.",
+             METH_O
+         ),
+         MethodDefinition(
+             "lint",
+             MethodCallbacks(positional=session_lint),
+             "lint(path)\n--\n\nThe file's lint diagnostics, as a ToolOutput dict.",
+             METH_O
+         ),
+         MethodDefinition(
+             "parse",
+             MethodCallbacks(positional=session_parse),
+             "parse(path)\n--\n\nThe file's syntax diagnostics, as a ToolOutput dict.",
+             METH_O
+         ),
+         MethodDefinition(
+             "statements",
+             MethodCallbacks(positional=session_statements),
+             "statements(path)\n--\n\nThe spans of the file's own top-level statements.",
+             METH_O
+         ),
+         MethodDefinition(
+             "py_to_jac",
+             MethodCallbacks(positional=session_py_to_jac),
+             "py_to_jac(path)\n--\n\nA Python file as formatted Jac, as a ToolOutput dict.",
+             METH_O
+         ),
+         MethodDefinition(
+             "ast_view",
+             MethodCallbacks(fast=session_ast_view),
+             "ast_view(path, view)\n--\n\nOne of the AST tool's views of a file.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "explain",
+             MethodCallbacks(fast=session_explain),
+             "explain(path, topic, memory_profile='')\n--\n\nThe memory or native report for a file.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "grammar",
+             MethodCallbacks(fast=session_grammar),
+             "grammar()\n--\n\nThe Jac grammar as EBNF, as a GrammarReport dict.",
+             METH_FASTCALL
+         ),
+         MethodDefinition(
+             "arch_plan",
+             MethodCallbacks(fast=session_arch_plan),
+             "arch_plan(arch_path, action, prune=False, graph_format='')\n--\n\nWhat `jac arch` would write for an archwire.jac.",
+             METH_FASTCALL
          )
      ],
      session_type: TypeDefinition = TypeDefinition(
