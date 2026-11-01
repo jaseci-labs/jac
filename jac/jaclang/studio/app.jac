@@ -140,7 +140,6 @@ glob STYLE_COLORS: dict[str, int] = {
          "property": 117,
          "event": 117,
          "decorator": 180,
-         "embedded": 139,
          "tag": 167,
          "text": 252,
          "error": 196

@@ -19,10 +19,9 @@ base method that reaches nothing on `self`, both keep lowering. Refusing on
 "has a Python-side base" would be trivially safe and would cost every
 interop call in the tree.
 
-What is NOT detected is stated honestly in `_pyb_shadowed_dispatch`: a body
-written inside an inline `::py::` block is opaque text rather than unitree,
-and reflective dispatch cannot be read statically. Those shapes stay
-unreported; this closes the divergence the tree can prove.
+What is NOT detected is stated in `_pyb_shadowed_dispatch`: reflective
+dispatch cannot be read statically, so that shape stays unreported; this
+closes the divergence the tree can prove.
 """
 
 import os;

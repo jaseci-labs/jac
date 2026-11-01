@@ -11,8 +11,8 @@ override. `plain` reaches nothing, and `calls_free` reaches a module function
 rather than `self` -- both are the control: they carry no shadow hazard and
 must keep lowering, or the refusal is over-broad.
 
-The `::py::` block in `note_origin` is what keeps this module Python-side, so
-a subclass in a native unit gets a pyb shadow rather than a lowered base.
+The `async` method `note_origin` is what keeps this module Python-side, so a
+subclass in a native unit gets a pyb shadow rather than a lowered base.
 """
 import from abc { ABC }
 
@@ -50,9 +50,7 @@ obj DispatchBase(ABC) {
         return _double(n);
     }
 
-    def note_origin {
-        ::py::
-        self.seed = self.seed + 0
-        ::py::
+    async def note_origin {
+        self.seed = self.seed + 0;
     }
 }
