@@ -5,7 +5,8 @@ and every other unit links against all of them."""
 glob MIR_RUNTIME_UNITS: list[str] = [
          "runtime/native/exceptions.jac",
          "runtime/native/rc.jac",
-         "runtime/native/strings.jac"
+         "runtime/native/strings.jac",
+         "runtime/native/lists.jac"
      ];
 
 def mir_backend_selected -> bool;

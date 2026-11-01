@@ -15616,7 +15616,6 @@ graph import project {
 }
 
 graph import runtime {
-    native.rc ++> native.strings { __jac_rt_alloc, __jac_rt_set_type }
     archetype ++> [
         constructs {
             AccessLevel,
@@ -16254,6 +16253,22 @@ graph import runtime.na_stdlib {
         tcgetattr,
         tcsetattr
     }
+}
+
+graph import runtime.native {
+    rc ++> [
+        lists {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_release_acyclic,
+            __jac_rt_retain,
+            __jac_rt_set_type,
+            __jac_rt_trace_register
+        },
+        strings { __jac_rt_alloc, __jac_rt_set_type },
+    ]
+    strings ++> lists { __jac_rt_str_cmp, __jac_rt_str_size }
 }
 
 graph import runtime.python {
