@@ -73,6 +73,8 @@ test "definitely assigned high locals keep unchecked loads" {
     namespace: dict[str, any] = {};
     pyexec(pycompile("\n".join(lines) + "\n", "local_slots.py", "exec"), namespace);
     read_local = namespace["read_local"];
+    assert read_local(True) == 1;
+    assert read_local(False) == 2;
     loads: list[str] = [];
     for instruction in dis.get_instructions(read_local) {
         if instruction.argval == "high_local"
