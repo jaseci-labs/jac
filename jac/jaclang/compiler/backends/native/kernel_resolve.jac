@@ -61,8 +61,6 @@ obj Stage0Artifact(Artifact) {
     override def build(log: Callable[[str], None], force: bool, exact: bool);
 }
 
-def require_kernel -> ResolvedKernel;
-
 def load_kernel -> any;
 
 def check_kernel_roster(spec: KernelTarget);

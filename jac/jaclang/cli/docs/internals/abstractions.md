@@ -21,8 +21,8 @@ abstraction is implemented two different ways, that shows up here.
 All nine keywords flow through a single, unified pipeline: tokenized in
 `compiler/frontend/parser/tokens.jac`, parsed by `compiler/frontend/parser/impl/parser.impl.jac`
 into a small set of AST node types defined in `compiler/frontend/unitree.jac`, and
-implemented by `JacRuntimeInterface` in `runtime/runtime.jac`. Both the
-bootstrap compiler (`jac0.py`) and the full compiler share this front end.
+implemented by `JacRuntimeInterface` in `runtime/runtime.jac`. The front end
+runs inside the compiler kernel.
 
 | Keyword | Token | AST node | Runtime |
 |---|---|---|---|

@@ -66,13 +66,12 @@ graph import {
     ]
     artifacts.router ++> [
         client.js_engine.engine_dir
-            | client.js_runtime.js_runtime_path
-            | compiler.backends.native.llvm.shim_path.shim_path
-            | compiler.backends.native.kernel_resolve.require_kernel
-            | compiler.backends.native.wasm_build._link_wasm_libc
-            | data.pg_dist.postgres_bin_dir
-            | toolchains.c_backend.ensure_c_backend
-            | toolchains.tools.tool_path { require },
+        | client.js_runtime.js_runtime_path
+        | compiler.backends.native.llvm.shim_path.shim_path
+        | compiler.backends.native.wasm_build._link_wasm_libc
+        | data.pg_dist.postgres_bin_dir
+        | toolchains.c_backend.ensure_c_backend
+        | toolchains.tools.tool_path { require },
         client.js_runtime.JsEngineArtifact.floor_present
             | compiler.backends.native.native_link.floor_lib_dir
             | compiler.backends.native.wasm_build._wasm_libc_dir

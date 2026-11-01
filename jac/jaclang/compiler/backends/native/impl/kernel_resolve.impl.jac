@@ -159,24 +159,6 @@ impl Stage0Artifact.build(log: Callable[[str], None], force: bool, exact: bool) 
     }
 }
 
-impl require_kernel -> ResolvedKernel {
-    try {
-        found = require("kernel").found;
-    } except ArtifactUnavailable as err {
-        raise KernelLoadError(
-            "jac: the compiler kernel is unavailable\n"
-            f"  error:  {err}\n"
-            "  fix:    run `jac native build kernel`"
-        ) from err;
-    }
-    assert found is not None;
-    return ResolvedKernel(
-        path=found.path,
-        source=found.source.value,
-        plan_digest=str(found.record.get("plan_digest", ""))
-    );
-}
-
 impl load_kernel -> any {
     import from jaclang.jac0core.stage0 { boot_kernel }
     return boot_kernel();

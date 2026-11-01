@@ -145,9 +145,8 @@ Every codespace shares the **same front end**.
 - AST nodes are defined in [`compiler/frontend/unitree.jac`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac/jaclang/compiler/frontend/unitree.jac)
   (generate a node-by-node catalogue with `jac tool autodoc_uninode`).
 
-The bootstrap compiler (`jac0.py`) and the full compiler share this front end
-verbatim -- see [Abstractions Inventory](abstractions.md) for the full keyword
-table.
+The front end runs only inside the compiler kernel -- see
+[Abstractions Inventory](abstractions.md) for the full keyword table.
 
 ### The tree is a graph
 
@@ -778,13 +777,14 @@ The compiler keeps two on-disk caches so the front end and back end can be
 skipped when nothing has changed. Both are buckets of the machine-wide jac
 cache (`~/.cache/jac` on Linux; `jac cache status` prints the root and every
 bucket), whose root, per-bucket `CACHEDIR.TAG` markers and retention policies are owned
-by `jaclang.cache`. The pre-bootstrap Python module
+by `jaclang.cache`. The boot-time Python module
 `jaclang/jac0core/cache_paths.py` holds the root rule itself, because the
-bootstrap tier imports it before any `.jac` module can be compiled.
+kernel boot (`jaclang/jac0core/stage0.py`) reads it before any `.jac` module
+can be imported.
 
 | Cache | Bucket | Invalidated when | Reclaimed when |
 |-------|--------|------------------|----------------|
-| **Bootstrap** | `jir-bootstrap` (`<cache>/jir/bootstrap/`) | A `compiler/driver/` file or `jac0.py` changes | An entry goes unused for 14 days |
+| **Stage 0** | `stage0` (`<cache>/stage0/<version>/`) | The `stage0` pin in `bootstrap/pins.json` moves to another release | A release goes unused for 60 days |
 | **Module** | `jir-modules` (`<cache>/jir/modules/<generation>/`) | The full compiler's output format changes, or the source / its imports change | A generation goes unused for 14 days (`JAC_CACHE_GENERATION_TTL_DAYS`) |
 
 Every compiler digest (one per checkout) names a **generation** directory, so
@@ -835,8 +835,8 @@ When debugging compiler changes, clear the relevant bucket:
 # Just the compiled modules
 jac cache purge --bucket jir-modules
 
-# The bootstrap tier too
-jac cache purge --bucket jir-bootstrap
+# The pinned previous release that builds the kernel
+jac cache purge --bucket stage0
 
 # Everything jac manages (fused runtimes, app images, toolchains included)
 jac cache purge
