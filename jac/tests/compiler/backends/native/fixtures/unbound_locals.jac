@@ -178,6 +178,25 @@ def chained_late(xs: list[int]) -> int {
     return y;
 }
 
+def bump(n: int) -> int {
+    return n + 1;
+}
+
+"""A local called on a path that never assigned it raises instead of calling null."""
+def called(c: bool) -> int {
+    if c {
+        cb: Callable[[int], int] = bump;
+    }
+    return cb(1);
+}
+
+"""A local called before the statement that assigns it raises too."""
+def called_early -> int {
+    n = cb(1);
+    cb: Callable[[int], int] = bump;
+    return n + cb(2);
+}
+
 with entry {
     t = Tally();
     print(t.add(True));
@@ -247,6 +266,17 @@ with entry {
     print(chained_unpack([(0, 0), (0, 0)]));
     try {
         print(chained_late([0, 0]));
+    } except UnboundLocalError as e {
+        print("caught", e);
+    }
+    print(called(True));
+    try {
+        print(called(False));
+    } except UnboundLocalError as e {
+        print("caught", e);
+    }
+    try {
+        print(called_early());
     } except UnboundLocalError as e {
         print("caught", e);
     }

@@ -2660,6 +2660,9 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
     }
     if func is None {
+        if isinstance(nd.target, uni.Name) {
+            self._guard_unbound_read(nd.target);
+        }
         if func_name in self.local_vars {
             _alloca = self.local_vars[func_name];
             _loaded = self.builder.load(_alloca, name=f"fptr.{func_name}");
