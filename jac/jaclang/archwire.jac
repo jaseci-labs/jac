@@ -3068,6 +3068,7 @@ graph import {
             PyTuple,
             hashkey_equal
         },
+        compiler.backends.py.jacpython.cpy_symtable { PyStr },
         compiler.backends.py.jacpython.flowgraph {
             PyInt,
             PyObj,
@@ -8028,6 +8029,92 @@ graph import compiler {
             pattern,
             stmt
         },
+        backends.py.jacpython.cpy_symtable {
+            AnnAssign,
+            Assert,
+            Assign,
+            AsyncFor,
+            AsyncFunctionDef,
+            AsyncWith,
+            Attribute,
+            AugAssign,
+            Await,
+            BinOp,
+            BoolOp,
+            Call,
+            ClassDef,
+            Compare,
+            Constant,
+            Del,
+            Delete,
+            Dict,
+            DictComp,
+            Expr,
+            Expression,
+            For,
+            FormattedValue,
+            FunctionDef,
+            FunctionType,
+            GeneratorExp,
+            Global,
+            If,
+            IfExp,
+            Import,
+            ImportFrom,
+            Interactive,
+            Interpolation,
+            JoinedStr,
+            Lambda,
+            List,
+            ListComp,
+            Match,
+            MatchAs,
+            MatchClass,
+            MatchMapping,
+            MatchOr,
+            MatchSequence,
+            MatchStar,
+            MatchValue,
+            Module,
+            Name,
+            NamedExpr,
+            Nonlocal,
+            ParamSpec,
+            Raise,
+            Return,
+            Set,
+            SetComp,
+            Slice,
+            Starred,
+            Store,
+            Subscript,
+            TemplateStr,
+            Try,
+            TryStar,
+            Tuple,
+            TypeAlias,
+            TypeVar,
+            TypeVarTuple,
+            UnaryOp,
+            While,
+            With,
+            Yield,
+            YieldFrom,
+            alias,
+            arg,
+            arguments,
+            comprehension,
+            excepthandler,
+            expr,
+            expr_context,
+            keyword,
+            match_case,
+            mod,
+            pattern,
+            stmt,
+            type_param,
+            withitem
+        },
         backends.py.jacpython.native_api { ast_kind, mod },
         backends.py.jacpython.product_compile {
             Expr,
@@ -8132,11 +8219,14 @@ graph import compiler {
     frontend.python.source_input ++> backends.py.jacpython.native_api {
         decode_source_value
     }
-    frontend.python.syntax_error ++> backends.py.jacpython.native_api {
-        source_character_column,
-        split_source_lines,
-        syntax_failure
-    }
+    frontend.python.syntax_error ++> [
+        backends.py.jacpython.cpy_symtable { syntax_failure },
+        backends.py.jacpython.native_api {
+            source_character_column,
+            split_source_lines,
+            syntax_failure
+        },
+    ]
     frontend.relations ++> [
         driver.program | driver.progstate | passes.scope_walk { ScopeChild },
         types.types {
@@ -11888,6 +11978,7 @@ graph import compiler.backends.py.jacpython {
     ]
     compiler_loops as dispatch_loops ++> compiler_codegen.visit_stmt;
     compiler_match as dispatch_match ++> compiler_codegen.visit_stmt;
+    cpy_seq ++> cpy_symtable { mkloc, srcloc }
     flowgraph ++> [
         assembler { flatten_blocks, verified_cfg },
         compiler_annotations | compiler_defs | product_compile { verify_cfg },
