@@ -29,15 +29,9 @@ import from compression.zstd { compress as _zc, decompress as _zd, ZstdFile }
 coerces the whole module into the native codespace,
 which is exactly what these bundled-stdlib fixtures need."""
 def _compile_native_forced(fixture: str) -> tuple[any, ...] {
-    prog = JacProgram();
-    opts = CompileOptions(default_codespace="native");
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)), options=opts);
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
-    remember_engine_unit(eng, ir);
-    return (eng, ir);
+    return jit_through_kernel(
+        os.path.join(FIXTURES, fixture), CompileOptions(default_codespace="native")
+    );
 }
 
 

@@ -20,7 +20,7 @@ builtin `Any`, so both the E1020 guard in `type_checker_pass` and the
 
 This also covers the bare-generic chain that surfaced it in the compiler
 itself: `_gen_ctx: (dict | None)` indexed twice yields builtin `Any`, so
-`(_sn, _soff, _st) = _gc["slots"][-1];` in `closures.impl.jac` was E1020.
+`(_sn, _soff, _st) = _gc["slots"][-1];` in the old native closure lowering was E1020.
 
 Still out of scope, and reproducible with no unpacking at all: operators on an
 explicit `any` (`x: any = "a"; x + "b";`) report E1055. The binary-op checker
@@ -76,7 +76,7 @@ test "unpacking through an any-valued chain binds Any, not Unknown" {
     errs = check_errors("unpack_any_element.jac");
     # `ctx: dict[str, any]` indexed twice yields builtin `Any`; each target
     # must bind `Any` so `takes_type(ty)` stays clean. This is the compiler's
-    # own `_gc["slots"][-1]` shape from na_ir_gen_pass closures.
+    # own `_gc["slots"][-1]` shape from the old native closure lowering.
     joined = " ".join(errs);
     assert "E1020" not in joined , f"any-valued chain unpack errored: {errs}";
     assert "E1053" not in joined , f"Unknown leaked out of the chain: {errs}";

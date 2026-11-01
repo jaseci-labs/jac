@@ -4149,6 +4149,8 @@ graph import {
     ]
     type project.compiler_host ++> compiler.kernel_api { ProjectHost }
     project.compiler_host ++> compiler.kernel_tests.kit { ProjectHost }
+    project.kernel_call --> compiler.tests.xbackend_equiv { call_compile }
+    project.kernel_compile --> compiler.tests.xbackend_equiv { compile_request_for }
     project.compiler_host ++> studio.gate | studio.model { ProjectHost }
     project.kernel_check --> cli.commands.analysis._check_file_job { kernel_check }
     project.kernel_compile ++> [
@@ -6046,11 +6048,9 @@ graph import compiler {
             | tests.test_native_kernel_cache
             | tests.test_pipeline_products
             | tests.test_subscript_assignment
-            | tests.test_tarfile_equivalence
             | tests.test_test_block_analysis
             | tests.test_unknown_cascade
             | tests.test_untyped_third_party
-            | tests.test_zstd_equivalence
             | tools.cfg_dot.cfg_dot_from_file
             | tools.code_intel
             | tools.jac_formatter_pass.format_module
@@ -6063,6 +6063,9 @@ graph import compiler {
     driver.program --> tests.test_graph_fragment_equivalence
         | tests.test_stubcat_roundtrip
         | tests.xbackend_equiv { JacProgram }
+    driver.compiler --> tests.xbackend_equiv { native_first }
+    driver.jir --> tests.xbackend_equiv { SEC_CTDEPS }
+    driver.native_iface --> tests.xbackend_equiv { NativeIface }
     type driver.program ++> backends.native.kernel_resolve
         | backends.native.kernel_stage0
         | backends.native.link_plan
@@ -13508,14 +13511,14 @@ graph import compiler.tests {
         test_tarfile_equivalence {
             FIXTURES,
             get_func,
-            remember_engine_unit,
+            jit_through_kernel,
             run_py_fixture
         },
         test_xbackend_equiv { run_js_expr, run_js_function },
         test_zstd_equivalence {
             FIXTURES,
             compare_results,
-            remember_engine_unit,
+            jit_through_kernel,
             run_native_function,
             run_py_fixture
         },

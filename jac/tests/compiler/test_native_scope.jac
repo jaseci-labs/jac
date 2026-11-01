@@ -1,4 +1,4 @@
-"""The native scope: the kernel's unit roster, served from libjac_compiler.
+"""The native scope: the kernel's unit roster, linked into the kernel module.
 
 An entry joins `NATIVE_SCOPE` when the full suite is green with it in and its
 equivalence fixture exists. The built image's manifest records the units the

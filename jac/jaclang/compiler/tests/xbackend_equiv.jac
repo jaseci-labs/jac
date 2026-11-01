@@ -36,6 +36,11 @@ import from jaclang.compiler.frontend.codeinfo {
 }
 import from jaclang.compiler.driver.program { JacProgram }
 import from jaclang.compiler.driver.compile_options { CompileOptions }
+import from jaclang.compiler.driver.compiler { native_first }
+import from jaclang.compiler.driver.jir { SEC_CTDEPS }
+import from jaclang.compiler.driver.native_iface { NativeIface }
+import from jaclang.project.kernel_call { call_compile }
+import from jaclang.project.kernel_compile { compile_request_for }
 
 glob FIXTURES = str(
          Path(jaclang.__file__).parent / "compiler" / "tests" / "fixtures"
@@ -225,28 +230,74 @@ def run_js_expr(js_code: str, expr: str) -> any {
 # -----------------------------------------------------------------------
 # NA (Native / LLVM) helpers
 # -----------------------------------------------------------------------
-def compile_native(fixture: str, *, no_ir_cache: bool = False) -> tuple[any, ...] {
-    prog = JacProgram();
-    path = str(os.path.join(_fixture_shadow_dir(), fixture));
-    ir = prog.compile(file_path=path, options=CompileOptions(no_ir_cache=no_ir_cache));
-    errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
-    assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
-    eng = ir.gen.native_engine;
-    assert eng is not None , f"No native engine produced for {fixture}";
-    # The engine carries the link plan's ordered initializers
-    # (`static_init_symbols`) and runs them itself on the first address it
-    # hands out for a non-chained symbol; remember which unit it was built
-    # from so bare Jac names resolve to the unit's qualified symbols.
-    remember_engine_unit(eng, ir, path);
-    return (eng, ir);
+"""What the kernel made of a native fixture: its unit, the LLVM IR emitted for
+it, its MIR and the functions the decision step demoted, by link symbol."""
+obj EquivNative {
+    has path: str,
+        unit: any;
+
+    def llvm_ir -> str {
+        return self.unit.native_ir;
+    }
+
+    def demoted -> dict[str, str] {
+        return {row.symbol: row.reason for row in self.unit.demoted};
+    }
+
+    def iface -> any {
+        if not self.unit.native_iface {
+            return None;
+        }
+        return NativeIface.from_bytes(self.unit.native_iface.encode("utf-8"));
+    }
+
+    def is_demoted(name: str) -> bool {
+        return native_symbol_name(native_unit_prefix(self.path), name) in self.demoted();
+    }
+
+    def reason(name: str) -> str {
+        return self.demoted().get(
+            native_symbol_name(native_unit_prefix(self.path), name), ""
+        );
+    }
 }
 
-"""Pin the unit an engine was built from, so bare Jac names resolve to the
-unit's qualified symbols; every compile path that hands an engine to
-`get_func` calls this."""
-def remember_engine_unit(eng: object, ir: object, path: str = "") {
-    unit_path = ir.loc.mod_path if (ir?.loc and ir.loc.mod_path) else path;
-    _ENGINE_UNITS[id(eng)] = (unit_path, ir.gen.native_iface, );
+"""Compile `path` through the kernel and JIT it in this process the way the
+compile entry adopts native units for `jac run`; return (engine, fixture)."""
+def jit_through_kernel(path: str, options: CompileOptions) -> tuple[any, EquivNative] {
+    path = os.path.realpath(path);
+    result = call_compile(compile_request_for([path], options, {}, ["bytecode", "mir"]));
+    errors = [
+        f"{diag.code} {diag.span.path}:{diag.span.line}: {diag.message}"
+        for diag in result.errors
+    ];
+    assert result.ok() , f"Compilation errors in {path}: {errors}";
+    prog = JacProgram();
+    prog.options = options;
+    compiler = prog._get_compiler();
+    for unit in native_first(result.units) {
+        if unit.native_ir {
+            compiler._adopt_native_unit(
+                unit, prog, options, unit.sections.get(SEC_CTDEPS, b"")
+            );
+        }
+    }
+    fixture = EquivNative(path=path, unit=result.unit(path));
+    compiler._load_native_from_cache(
+        path, prog, json.loads(fixture.unit.interop) if fixture.unit.interop else None
+    );
+    carrier = prog.hub.artifacts.get(path);
+    eng = carrier.native_engine if carrier is not None else None;
+    assert eng is not None , f"No native engine produced for {path}";
+    _ENGINE_UNITS[id(eng)] = (path, fixture.iface(), );
+    return (eng, fixture);
+}
+
+def compile_native(fixture: str, *, no_ir_cache: bool = False) -> tuple[any, EquivNative] {
+    return jit_through_kernel(
+        os.path.join(_fixture_shadow_dir(), fixture),
+        CompileOptions(no_ir_cache=no_ir_cache)
+    );
 }
 
 """The engine symbol for a Jac-level name.
@@ -275,14 +326,15 @@ def native_symbol_for(eng: object, name: str) -> str {
 }
 
 def compile_native_errors(fixture: str) -> list[str] {
-    # compile_native for fixtures whose native lane is EXPECTED to emit
-    # diagnostics; returns the rendered errors for assertion.
-    prog = JacProgram();
-    prog.compile(
-        file_path=str(os.path.join(_fixture_shadow_dir(), fixture)),
-        options=CompileOptions()
+    result = call_compile(
+        compile_request_for(
+            [os.path.realpath(os.path.join(_fixture_shadow_dir(), fixture))],
+            CompileOptions(),
+            {},
+            ["bytecode"]
+        )
     );
-    return [str(e) for e in prog.errors_had] if prog.errors_had else [];
+    return [f"{diag.code}: {diag.message}" for diag in result.errors];
 }
 
 def get_func(eng: object, name: str, restype: type, *argtypes: type) -> object {
