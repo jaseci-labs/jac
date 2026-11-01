@@ -52,6 +52,15 @@ def unit_drift(
     spec: (TargetSpec | None) = None
 ) -> list[str];
 
+def _verdict_key(
+    lib_path: str,
+    sidecar: dict[str, any],
+    units: list[str],
+    spec: (TargetSpec | None) = None
+) -> str;
+
+def _verdict_path(lib_path: str) -> str;
+
 def _inspect(
     lib_path: str, expected_sha: str = "", spec: (TargetSpec | None) = None
 ) -> tuple[(dict[str, any] | None), list[str]];
@@ -81,6 +90,7 @@ obj KernelArtifact(Artifact) {
     override def probe_kit -> Probe;
     override def checkout_path -> str;
     def spec -> TargetSpec;
+    def for_host -> bool;
     override def build(log: Callable[[str], None], force: bool, exact: bool);
 }
 

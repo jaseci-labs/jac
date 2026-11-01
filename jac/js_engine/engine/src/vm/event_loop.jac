@@ -224,6 +224,12 @@ import from "libjs_native.so" {
     ) -> int;
 }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_byte,
+    str_nbytes
+}
+
 # Bridge: called from C (via _napi_vm_call_fn) to invoke a JS closure via the VM.
 # C typedef: int64_t fn(int64_t vm_ptr, int64_t fn_val, int64_t this_val,
 #                       int64_t argc, int64_t *argv_jsv)
@@ -289,8 +295,9 @@ glob _EL_REJECTION_ID: int = 0;  # numbering for --unhandled-rejections=warn mes
 def _el_js_quote(s: str) -> str {
     out: str = "\"";
     i: int = 0;
-    while i < len(s) {
-        c: str = s[i];
+    _nb298_s: int = str_nbytes(s);
+    while i < _nb298_s {
+        c: str = byte_chr(str_byte(s, i));
         if c == "\\" or c == "\"" {
             out = out + "\\" + c;
         } elif c == "\n" {
@@ -966,22 +973,22 @@ def:pub el_run(source: str, script_name: str, extra_args: list[str]) -> int {
     el_is_esm: bool = False;
     el_input_type: str = process_get_input_type();
     sn: str = script_name;
-    sn_len: int = len(sn);
+    sn_len: int = str_nbytes(sn);
     if el_input_type == "module" {
         el_is_esm = True;
     } elif el_input_type == "commonjs" {
         el_is_esm = False;
     } elif sn_len >= 4
-        and sn[sn_len - 4] == "."
-        and sn[sn_len - 3] == "m"
-        and sn[sn_len - 2] == "j"
-        and sn[sn_len - 1] == "s" {
+        and byte_chr(str_byte(sn, sn_len - 4)) == "."
+        and byte_chr(str_byte(sn, sn_len - 3)) == "m"
+        and byte_chr(str_byte(sn, sn_len - 2)) == "j"
+        and byte_chr(str_byte(sn, sn_len - 1)) == "s" {
         el_is_esm = True;
     } elif sn_len >= 4
-        and sn[sn_len - 4] == "."
-        and sn[sn_len - 3] == "c"
-        and sn[sn_len - 2] == "j"
-        and sn[sn_len - 1] == "s" {
+        and byte_chr(str_byte(sn, sn_len - 4)) == "."
+        and byte_chr(str_byte(sn, sn_len - 3)) == "c"
+        and byte_chr(str_byte(sn, sn_len - 2)) == "j"
+        and byte_chr(str_byte(sn, sn_len - 1)) == "s" {
         # `.cjs` is CommonJS even inside a "type": "module" package (Node).
         el_is_esm = False;
     } elif package_type_for_path(cjs_abs_path) == "module" {

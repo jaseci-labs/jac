@@ -44,8 +44,6 @@ edge ChildrenRole(Role): JsxElement --> JsxChild | JsxElement {}
 
 edge ClibDeclsRole(Role): Import --> UniNode {}
 
-edge CodeRole(Role): PyInlineCode --> Token {}
-
 edge CollectionRole(Role): UniNode --> Expr {}
 
 edge ComparesRole(Role): FilterCompr --> Expr {}

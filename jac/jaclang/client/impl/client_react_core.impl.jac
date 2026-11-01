@@ -123,13 +123,17 @@ impl __doWalkerFetch(
         raise __bridgeErrorFromFetch(fetch_err, app, `walker);
     }
     if not response.ok {
-        if response.status == 401 and not app {
-            globalThis.__jacRemoveLocalStorage__("jac_token");
-            handler = globalThis.__jacHandleWalkerUnauthorized__;
-            if handler {
-                handler();
+        if response.status == 401 {
+            dropped = __jacDropRejectedToken(str(token or ""));
+            if not app {
+                if dropped {
+                    handler = globalThis.__jacHandleWalkerUnauthorized__;
+                    if handler {
+                        handler();
+                    }
+                }
+                return {};
             }
-            return {};
         }
         error_text = await response.text();
         walker_name = f"{`walker}/{nodeId}" if nodeId else `walker;
@@ -171,13 +175,17 @@ impl __doFuncFetch(
         raise __bridgeErrorFromFetch(fetch_err, app, function_name);
     }
     if not response.ok {
-        if response.status == 401 and not app {
-            globalThis.__jacRemoveLocalStorage__("jac_token");
-            handler = globalThis.__jacHandleWalkerUnauthorized__;
-            if handler {
-                handler();
+        if response.status == 401 {
+            dropped = __jacDropRejectedToken(str(token or ""));
+            if not app {
+                if dropped {
+                    handler = globalThis.__jacHandleWalkerUnauthorized__;
+                    if handler {
+                        handler();
+                    }
+                }
+                return {};
             }
-            return {};
         }
         error_text = await response.text();
         raise __bridgeErrorFor(
@@ -315,6 +323,18 @@ impl jacSignup(
     if profile != None {
         body["profile"] = profile;
     }
+    registration = policy["registration"] if policy else None;
+    if registration and registration["challenge"] {
+        proof = await __solveRegistrationChallenge(str(base_url));
+        if proof["error"] {
+            return SignupResult(
+                success=False, error=proof["error"], status=int(proof["status"])
+            );
+        }
+        if proof["challenge"] {
+            body["challenge"] = proof["challenge"];
+        }
+    }
     response = await fetch(
         f"{base_url}/user/register",
         {
@@ -416,7 +436,37 @@ impl jacLogout -> None {
 
 impl jacIsLoggedIn -> bool {
     token = globalThis.__jacGetLocalStorage__("jac_token");
-    return token != None and token != "";
+    if not token {
+        return False;
+    }
+    if __jacTokenExpired(str(token)) {
+        globalThis.__jacRemoveLocalStorage__("jac_token");
+        return False;
+    }
+    return True;
+}
+
+impl __jacDropRejectedToken(sent: str) -> bool {
+    if str(globalThis.__jacGetLocalStorage__("jac_token") or "") != sent {
+        return False;
+    }
+    globalThis.__jacRemoveLocalStorage__("jac_token");
+    return True;
+}
+
+impl __jacTokenExpired(token: str) -> bool {
+    parts = token.split(".");
+    if len(parts) != 3 {
+        return False;
+    }
+    try {
+        claims: any = JSON.parse(
+            str(globalThis.atob(parts[1].replace("-", "+").replace("_", "/")))
+        );
+        return Number.isFinite(claims["exp"]) and claims["exp"] * 1000 <= Date.now();
+    } except Exception {
+        return False;
+    }
 }
 
 impl jacSetToken(token: str) -> None {
@@ -467,6 +517,11 @@ impl __jacReportError(
     componentStack: str = ""
 ) -> None {
     try {
+        stack_text = str(stack or "");
+        if __jacIsExtensionError(stack_text, str(url or ""))
+            or not __jacClaimErrorReport(str(message), stack_text) {
+            return;
+        }
         baseUrl = globalThis.__jacGetApiBaseUrl__();
         url_fn = globalThis.__jacDefaultErrorReportUrl__;
         report_url = url or (url_fn() if url_fn else "");
@@ -490,6 +545,65 @@ impl __jacReportError(
     } except Exception {}
 }
 
+impl __jacIsExtensionUrl(url: str) -> bool {
+    for prefix in __JAC_EXTENSION_URL_PREFIXES {
+        if url.startswith(prefix) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl __jacIsExtensionError(stack: str, filename: str = "") -> bool {
+    frame_urls: list[str] = [];
+    for line in stack.split("\n") {
+        text: any = line;
+        frame: any = text.match(__JAC_STACK_FRAME_RE);
+        if frame {
+            location = frame[1] or frame[2] or "";
+            if not __JAC_ENGINE_FRAME_RE.test(location) {
+                frame_urls.append(location);
+            }
+        }
+    }
+    if len(frame_urls) == 0 {
+        return __jacIsExtensionUrl(filename);
+    }
+    for frame_url in frame_urls {
+        if not __jacIsExtensionUrl(frame_url) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl __jacClaimErrorReport(message: str, stack: str) -> bool {
+    now = Date.now();
+    budget: any = globalThis.__jacErrorReportBudget;
+    if not budget {
+        budget = {"seen": {}, "seenCount": 0, "sentAt": []};
+        setattr(globalThis, "__jacErrorReportBudget", budget);
+    }
+    key = f"{message}\n{stack}";
+    if budget.seen[key] or budget.seenCount >= __JAC_ERROR_REPORTS_PER_PAGE {
+        return False;
+    }
+    recent: list[float] = [];
+    for sent_at in budget.sentAt {
+        if now - sent_at < 60000 {
+            recent.append(sent_at);
+        }
+    }
+    budget.sentAt = recent;
+    if len(recent) >= __JAC_ERROR_REPORTS_PER_MINUTE {
+        return False;
+    }
+    recent.append(now);
+    budget.seenCount += 1;
+    budget.seen[key] = True;
+    return True;
+}
+
 impl __jacReactErrorHandler(error: any, info: any) -> None {
     try {
         message = error.message if error else "Unknown error";
@@ -504,4 +618,8 @@ impl _awaitPlatformReady {
     if ready {
         await ready;
     }
+}
+
+impl BridgeError.postinit {
+    self.message = self.detail;
 }

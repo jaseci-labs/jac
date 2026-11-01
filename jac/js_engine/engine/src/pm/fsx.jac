@@ -45,7 +45,8 @@ import from engine.src.runtime.mem {
     read_u32,
     read_ptr,
     write_byte,
-    str_from_foreign_cstr
+    str_from_foreign_cstr,
+    str_nbytes
 }
 import from engine.src.pm.bytes { ByteBuf, bytebuf_from, str_to_cbuf, bytes_to_str }
 
@@ -277,7 +278,7 @@ def:pub fsx_write_bytes(path: str, ptr: int, n: int, mode: int) -> int {
 
 """fsx_write_bytes for a str."""
 def:pub fsx_write_str(path: str, s: str, mode: int) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     if n == 0 {
         return fsx_write_bytes(path, 0, 0, mode);
     }
@@ -575,7 +576,7 @@ def:pub fsx_mkdtemp(template: str) -> str {
         io_free(p);
         return "";
     }
-    s: str = bytes_to_str(p, 0, len(template));
+    s: str = bytes_to_str(p, 0, str_nbytes(template));
     io_free(p);
     return s;
 }

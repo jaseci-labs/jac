@@ -94,6 +94,7 @@ test "ro units: the first write raises ReadOnlyRetry and records the key" {
         try {
             s.unit_enter(key);
             raised = False;
+            resurfaced = False;
             try {
                 s.read_barrier();
                 assert _store(s).txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY;
@@ -104,11 +105,19 @@ test "ro units: the first write raises ReadOnlyRetry and records the key" {
                     raised = True;
                 }
             } finally {
-                s.unit_exit();
+                try {
+                    s.unit_exit();
+                } except ReadOnlyRetry {
+                    resurfaced = True;
+                }
             }
             assert raised , (
                 'a write inside a read-tier unit must raise ReadOnlyRetry so '
                 'the OCC loop re-runs the request at SERIALIZABLE'
+            );
+            assert resurfaced , (
+                'a ReadOnlyRetry caught inside the unit must resurface at unit '
+                'exit, or the unit would commit the rest of the attempt'
             );
             assert unit_writes_recorded(key) , (
                 'the writing unit key must be recorded so later runs skip the '
@@ -294,6 +303,7 @@ test "ro units: marking the whole unit stack bounds the read-tier retry at two p
             s.unit_enter(outer);
             s.unit_enter(inner);
             raised = False;
+            resurfaced = False;
             try {
                 s.read_barrier();
                 assert _store(s).txn_isolation() is TxnIsolation.SNAPSHOT_READ_ONLY;
@@ -305,9 +315,14 @@ test "ro units: marking the whole unit stack bounds the read-tier retry at two p
                 }
             } finally {
                 s.unit_exit();
-                s.unit_exit();
+                try {
+                    s.unit_exit();
+                } except ReadOnlyRetry {
+                    resurfaced = True;
+                }
             }
             assert raised;
+            assert resurfaced , 'the caught retry resurfaces when the outer unit exits';
             assert unit_writes_recorded(inner);
             assert unit_writes_recorded(outer) , (
                 'the outer unit must be recorded as a writer too: the re-run '

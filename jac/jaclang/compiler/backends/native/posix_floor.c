@@ -21,6 +21,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -32,11 +33,12 @@
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <malloc/malloc.h>
+#include <sys/mount.h>
 #else
 #include <malloc.h>
+#include <sys/statfs.h>
 #include <sys/syscall.h>
 #endif
-
 #define JAC_FLOOR __attribute__((visibility("hidden")))
 
 /* ---- errno and the standard streams ---- */
@@ -92,21 +94,108 @@ JAC_FLOOR const char *__jac_dirent_name(void *entry) {
 
 JAC_FLOOR int __jac_at_fdcwd(void) { return AT_FDCWD; }
 
-/* The home directory of user `name` (the calling user when it is empty)
- * copied into buf: its length, -1 when there is no such user, or -2 when the
- * user has no home directory. */
+/* A directory entry's d_type (DT_UNKNOWN where the C library records none)
+ * and inode number. */
+JAC_FLOOR int64_t __jac_dirent_type(void *entry) {
+#if defined(_DIRENT_HAVE_D_TYPE) || defined(__APPLE__)
+    return ((struct dirent *)entry)->d_type;
+#else
+    (void)entry;
+    return DT_UNKNOWN;
+#endif
+}
+
+JAC_FLOOR uint64_t __jac_dirent_ino(void *entry) {
+    return (uint64_t)((struct dirent *)entry)->d_ino;
+}
+
+JAC_FLOOR int __jac_dirfd(void *dir) { return dirfd((DIR *)dir); }
+
+JAC_FLOOR void *__jac_fdopendir(int fd) { return fdopendir(fd); }
+
+JAC_FLOOR void __jac_rewinddir(void *dir) { rewinddir((DIR *)dir); }
+
+/* The target's whole struct stat of a path, of a symbolic link itself, of an
+ * open descriptor and of a path relative to a directory descriptor. Linux
+ * makes the system calls glibc's wrappers make (its struct stat is the
+ * kernel's on x86-64 and AArch64), since glibc before 2.33 exports no stat
+ * symbols. */
+JAC_FLOOR int __jac_stat_record(const char *path, void *out) {
+#if defined(__APPLE__)
+    return stat(path, (struct stat *)out);
+#else
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, out, 0);
+#endif
+}
+
+JAC_FLOOR int __jac_lstat_record(const char *path, void *out) {
+#if defined(__APPLE__)
+    return lstat(path, (struct stat *)out);
+#else
+    return (int)syscall(SYS_newfstatat, AT_FDCWD, path, out, AT_SYMLINK_NOFOLLOW);
+#endif
+}
+
+JAC_FLOOR int __jac_fstat_record(int fd, void *out) {
+#if defined(__APPLE__)
+    return fstat(fd, (struct stat *)out);
+#else
+    return (int)syscall(SYS_fstat, fd, out);
+#endif
+}
+
+JAC_FLOOR int __jac_fstatat_record(int dir_fd, const char *path, void *out, int flags) {
+#if defined(__APPLE__)
+    return fstatat(dir_fd, path, (struct stat *)out, flags);
+#else
+    return (int)syscall(SYS_newfstatat, dir_fd, path, out, flags);
+#endif
+}
+
+/* The target's struct statfs of a path and of an open descriptor. */
+JAC_FLOOR int __jac_statfs_record(const char *path, void *out) {
+    return statfs(path, (struct statfs *)out);
+}
+
+JAC_FLOOR int __jac_fstatfs_record(int fd, void *out) {
+    return fstatfs(fd, (struct statfs *)out);
+}
+
+/* The home directory of user `name` (the calling user when it is empty):
+ * its length, -1 when there is no such user, or -2 when the user has no home
+ * directory. It is copied into buf only when it fits; a length of cap or more
+ * asks the caller to call again with a larger buf. The record buffer grows
+ * while the lookup reports ERANGE, so a large account record still resolves. */
 JAC_FLOOR int64_t __jac_home_dir(const char *name, char *buf, int64_t cap) {
     struct passwd pw;
     struct passwd *found = NULL;
-    char scratch[4096];
-    int rc = name[0] ? getpwnam_r(name, &pw, scratch, sizeof scratch, &found)
-                     : getpwuid_r(getuid(), &pw, scratch, sizeof scratch, &found);
-    if (rc != 0 || found == NULL) return -1;
-    if (pw.pw_dir == NULL) return -2;
-    size_t n = strlen(pw.pw_dir);
-    if ((int64_t)n >= cap) return -1;
-    memcpy(buf, pw.pw_dir, n + 1);
-    return (int64_t)n;
+    size_t size = 4096;
+    char *scratch = NULL;
+    int rc;
+    for (;;) {
+        char *grown = realloc(scratch, size);
+        if (grown == NULL) {
+            free(scratch);
+            return -1;
+        }
+        scratch = grown;
+        rc = name[0] ? getpwnam_r(name, &pw, scratch, size, &found)
+                     : getpwuid_r(getuid(), &pw, scratch, size, &found);
+        if (rc != ERANGE) break;
+        size *= 2;
+    }
+    int64_t out;
+    if (rc != 0 || found == NULL) {
+        out = -1;
+    } else if (pw.pw_dir == NULL) {
+        out = -2;
+    } else {
+        size_t n = strlen(pw.pw_dir);
+        if ((int64_t)n < cap) memcpy(buf, pw.pw_dir, n + 1);
+        out = (int64_t)n;
+    }
+    free(scratch);
+    return out;
 }
 
 /* The running executable's path copied into buf: its length, or -1. */
@@ -208,6 +297,55 @@ JAC_FLOOR double __jac_fmadd(double a, double b, double c) {
     return __builtin_fma(a, b, c);
 #else
     return a * b + c;
+#endif
+}
+
+/* CPUID leaf `leaf`, sub-leaf `subleaf` as eax, ebx, ecx and edx in out[0..3];
+ * zeros off x86-64. */
+JAC_FLOOR void __jac_cpuid(uint32_t leaf, uint32_t subleaf, uint32_t *out) {
+#if defined(__x86_64__)
+    /* A plain cpuid statement rather than <cpuid.h>'s macro, whose dialect
+     * alternatives (xchg%(q%|%)) the C backend cannot hand to a C compiler. */
+    __asm__ volatile("cpuid"
+                     : "=a"(out[0]), "=b"(out[1]), "=c"(out[2]), "=d"(out[3])
+                     : "a"(leaf), "c"(subleaf));
+#else
+    (void)leaf;
+    (void)subleaf;
+    out[0] = out[1] = out[2] = out[3] = 0;
+#endif
+}
+
+/* Write `text` to the unified system log at os_log type `type` (macOS); a
+ * no-op elsewhere. This is <os/log.h>'s os_log_with_type(OS_LOG_DEFAULT,
+ * type, "%{public}s", text) written out, so the floor builds without the
+ * macOS SDK: the record is formatted by the compiler's os_log builtins from a
+ * format string in the image's __oslogstring section, where the log reader
+ * looks it up. */
+#if defined(__APPLE__)
+struct os_log_s;
+extern struct os_log_s _os_log_default;
+extern void *__dso_handle;
+extern _Bool os_log_type_enabled(struct os_log_s *log, uint8_t type);
+extern void _os_log_impl(void *dso, struct os_log_s *log, uint8_t type,
+                         const char *format, uint8_t *buf, uint32_t size);
+__attribute__((section("__TEXT,__oslogstring,cstring_literals")))
+static const char jac_system_log_format[] = "%{public}s";
+#endif
+
+JAC_FLOOR void __jac_system_log(int type, const char *text) {
+#if defined(__APPLE__)
+    struct os_log_s *log = &_os_log_default;
+    uint8_t level = (uint8_t)type;
+    if (os_log_type_enabled(log, level)) {
+        uint8_t _Alignas(16) buf[__builtin_os_log_format_buffer_size("%{public}s", text)];
+        _os_log_impl(&__dso_handle, log, level, jac_system_log_format,
+                     (uint8_t *)__builtin_os_log_format(buf, "%{public}s", text),
+                     (uint32_t)sizeof(buf));
+    }
+#else
+    (void)type;
+    (void)text;
 #endif
 }
 

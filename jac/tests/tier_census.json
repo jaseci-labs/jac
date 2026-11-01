@@ -1,7 +1,7 @@
 {
   "summary": {
-    "same": 49,
-    "refused": 79,
+    "same": 50,
+    "refused": 78,
     "fails": 0,
     "differs": 1,
     "hangs": 0,
@@ -539,7 +539,7 @@
     "tests/language/fixtures/lambda_per_instance_default.jac": {
       "class": "same"
     },
-    "tests/language/fixtures/loop_else_break.jac": {
+    "tests/language/fixtures/loop_else_control.jac": {
       "class": "same"
     },
     "tests/language/fixtures/match_class_pattern.jac": {
@@ -575,8 +575,7 @@
       "reason": "the Python tier is not repeatable"
     },
     "tests/language/fixtures/operator_precedence.jac": {
-      "class": "refused",
-      "reason": "E5090 Native pathway does not yet support statement 'PyInlineCode'"
+      "class": "same"
     },
     "tests/language/fixtures/params/test_complex_params.jac": {
       "class": "crashes",

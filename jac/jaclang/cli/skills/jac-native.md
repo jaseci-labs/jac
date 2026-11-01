@@ -62,7 +62,7 @@ Anything else fails **loudly at compile time** - `import json` -> *"Native pathw
 
 The stdlib table is for **host** binaries. On `--target wasm32` there is no libc/libm to link: each unresolved symbol becomes a wasm *import* the JS host must supply (`math.sin` -> an `env.sin` import, `time.time` -> `clock_gettime`; `random` is self-contained and works in-browser). Supply `Math.sin` etc. from JS or hand-roll - the shooter flagship hand-rolls Taylor `jcos`/`jsin` to keep one source for both targets. See `jac-native-wasm`.
 
-**Not supported** (compile errors): `async`, decorators, multiple inheritance, `::py::`, `by llm()`, PyPI, `subprocess` (E5090), and `os.fork`/`os.pipe` (E5092). Host binaries can run child commands with `os.system`, but that call blocks until the command finishes. For work stepped from a frame loop, see Generators. Lambdas: see gotchas.
+**Not supported** (compile errors): `async`, decorators, multiple inheritance, `by llm()`, PyPI, `subprocess` (E5090), and `os.fork`/`os.pipe` (E5092). Host binaries can run child commands with `os.system`, but that call blocks until the command finishes. For work stepped from a frame loop, see Generators. Lambdas: see gotchas.
 
 ## Gotchas (all verified against the current compiler)
 
@@ -173,7 +173,7 @@ with entry {
 `jac build --native` is incremental per module: the build says `Recompiled N unit(s); reused M`, and a rebuild with nothing changed costs only the link. How long an edit takes depends on what it invalidates:
 
 - **Check before building.** `jac check <file>` reports type errors, reserved words and unknown types for the files you changed in seconds to a minute; a full native build of a large program takes minutes and stops at the first module that fails.
-- **Keep the cache.** It is keyed by the compiler that built it: pointing `JAC_DEV_SOURCE` at another compiler tree, or `jac clean --cache`, recompiles every module. Stay on one compiler while iterating, and clean only for genuinely stale behaviour.
+- **Keep the cache.** It is keyed by the compiler that built it: switching to another compiler tree (`[dev] jaclang_source` in `jac.toml`), or `jac clean --cache`, recompiles every module. Stay on one compiler while iterating, and clean only for genuinely stale behaviour.
 - **Mind the import graph.** An edit to a module many others import (a shared base type, a host interface) recompiles all of them; one to a leaf recompiles little.
 - **Probe small.** To try a construct or time a function, build a ten-line program that imports just what it needs rather than the whole application.
 - **One heavy job at a time.** Native builds and `jac test` runs each compile their own closure; running several at once makes each slower.

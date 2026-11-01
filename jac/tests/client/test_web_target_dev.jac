@@ -148,17 +148,18 @@ test "static and pwa dev flows inherit the compile-before-serve fix" {
 }
 
 
-"""The dev server writes its own index.html rather than going through
-HeaderBuilder, so `[client.app_meta_data] scripts` has to be injected there too.
-Without it an SDK the app depends on is present in `jac build` output but
-silently missing under `jac run --dev`, which reads as a bug.
+"""The dev server writes its own index.html, so its head is built from
+`[client.app_meta_data]` with the same HeaderBuilder a production page uses:
+scripts, icon, meta and link tags all match `jac build` output, and only the
+title is marked "(Dev)". Before, dev injected just the scripts, so the tab
+showed "Jac App (Dev)" and every page 404'd on /favicon.ico.
 
 Only the plugin lookup is patched, on the real config class: replacing
 `get_config` wholesale with a stand-in breaks whatever else reads the config
 while the patch is active (CompileOptions reads `gc` and `build.native` when a
 module compiles lazily inside the window, which is what happens when the
 compiler runs from source rather than the sealed payload)."""
-test "configured scripts reach the dev server index.html" {
+test "the dev server index.html carries the configured head" {
     import tempfile;
     import from jaclang.project.config { JacConfig }
     import from jaclang.client.vite_bundler { ViteBundler }
@@ -166,10 +167,16 @@ test "configured scripts reach the dev server index.html" {
     def _fake_plugin_config(self: JacConfig, name: str) -> dict[str, any] {
         return {
             "app_meta_data": {
-                "title": "ignored in dev",
+                "title": "My Site",
+                "description": "A site.",
+                "icon": "/static/assets/logo.svg",
                 "scripts": [{"src": "https://js.stripe.com/v3", "defer": True}]
             }
         };
+    }
+
+    def _no_plugin_config(self: JacConfig, name: str) -> dict[str, any] {
+        return {};
     }
 
     with tempfile.TemporaryDirectory() as tmp {
@@ -181,19 +188,26 @@ test "configured scripts reach the dev server index.html" {
             bundler._ensure_dev_index_html(build_dir);
         }
         page = (build_dir / "index.html").read_text(encoding="utf-8");
+        with unittest.mock.patch.object(
+            JacConfig, "get_plugin_config", _no_plugin_config
+        ) {
+            bundler._ensure_dev_index_html(build_dir);
+        }
+        bare = (build_dir / "index.html").read_text(encoding="utf-8");
     }
 
-    assert '<script src="https://js.stripe.com/v3" defer></script>' in page , (
-        "scripts configured in jac.toml must be injected into the dev "
-        f"index.html; got:\n{page}"
+    head = page[:page.index("</head>")];
+    assert '<script src="https://js.stripe.com/v3" defer></script>' in head , page;
+    assert '<link rel="icon" type="image/svg+xml" href="/static/assets/logo.svg" />'
+        in head , (
+        "without the configured icon the browser falls back to /favicon.ico, "
+        f"which 404s on every dev page; got:\n{page}"
     );
-    assert page.index("js.stripe.com") < page.index("</head>") , (
-        "the injected script must land inside the head, not after it"
-    );
-    assert "ignored in dev" not in page , (
-        "only the scripts key is injected in dev; the dev index keeps its own "
-        "title and meta tags"
-    );
+    assert '<meta name="description" content="A site." />' in head , page;
+    assert head.count("<title>") == 1 and "<title>My Site (Dev)</title>" in head , page;
+    assert head.count("<meta charset=") == 1 , page;
+    assert "<title>Jac App (Dev)</title>" in bare , bare;
+    assert "__JAC_DEV_HEAD__" not in page and "__JAC_DEV_HEAD__" not in bare;
 }
 
 

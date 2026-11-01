@@ -226,6 +226,33 @@ test "the client build's inputs are the bundle's membership, nothing more" {
 }
 
 
+test "the client build's stage leaves out what the deploy writes under .jac" {
+    project_dir = _app(_PARKED);
+    base = Path(project_dir);
+    (base / ".jac" / "admin").mkdir(parents=True);
+    (base / ".jac" / "admin" / "index.html").write_text("admin");
+    (base / ".jac" / "serve_manifest.json").write_text("{}");
+    (raised, rec) = _with_recording_build(project_dir);
+    try {
+        assert raised is None , f"the staged build must succeed: {raised}";
+        staged: set[str] = set(_read(os.path.join(rec, "files")).splitlines());
+        written = sorted(
+            [
+                n
+                for n in staged
+                if n.startswith(".jac/")
+            ]
+        );
+        assert not written , (
+            f"the client build staged files the deploy rewrites while it runs: {written}"
+        );
+    } finally {
+        shutil.rmtree(project_dir, ignore_errors=True);
+        shutil.rmtree(rec, ignore_errors=True);
+    }
+}
+
+
 test "the build reads the sanitized jac.toml, not the raw one" {
     project_dir = _app(_PARKED);
     (raised, rec) = _with_recording_build(project_dir);

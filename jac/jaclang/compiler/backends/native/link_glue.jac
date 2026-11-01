@@ -70,5 +70,5 @@ def bind_shared_callbacks(
 ) -> tuple[str, list[InteropBinding]];
 
 def inject_heap_accounting(
-    llvm_ir_str: str, managed: bool = False
+    llvm_ir_str: str, managed: bool = False, heap: str = ""
 ) -> tuple[str, list[str]];

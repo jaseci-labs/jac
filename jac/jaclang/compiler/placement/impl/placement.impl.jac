@@ -141,7 +141,7 @@ impl module_has_root_access(stmt: uni.UniNode) -> bool {
     }
     found = False;
     for svr in mod.get_all_sub_nodes(uni.SpecialVarRef) {
-        if svr.orig.name == Tok.KW_ROOT {
+        if svr.orig.name == Tok.KW_ROOT and not ModuleFacts.is_test_code(svr) {
             found = True;
             break;
         }
@@ -165,10 +165,6 @@ impl _element_reqs(stmt: uni.UniNode) -> list[list[str]] {
             verdict = classify_import(stmt);
             reqs.append(['NPM' if verdict.world == 'npm' else 'PY', verdict.rule]);
         }
-        return reqs;
-    }
-    if isinstance(stmt, uni.PyInlineCode) {
-        reqs.append(['PY', 'inline ::py:: block']);
         return reqs;
     }
     if stmt.element_sub_nodes(uni.JsxElement) {
@@ -395,22 +391,21 @@ impl module_anchor_reasons(module: uni.Module) -> list[str] {
         }
     }
     for arch in module.get_all_sub_nodes(uni.Archetype) {
-        if arch.arch_kind is not None and module_has_root_access(module) {
+        if arch.arch_kind is not None
+            and not ModuleFacts.is_test_code(arch)
+            and module_has_root_access(module) {
             reasons.append(f"graph archetype '{arch.name.value}'");
             break;
         }
     }
     import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
     for ab in module.get_all_sub_nodes(uni.Ability) {
-        if ability_delegates_to_model(ab) {
+        if ability_delegates_to_model(ab) and not ModuleFacts.is_test_code(ab) {
             reasons.append(f"by llm ability '{ab.py_resolve_name()}'");
             break;
         }
     }
-    if module.get_all_sub_nodes(uni.PyInlineCode) {
-        reasons.append('inline ::py:: block');
-    }
-    for stmt in module.elements {
+    for stmt in ModuleFacts.iter_placement_stmts(module) {
         if isinstance(stmt, uni.TypedCtxBlock) {
             reasons.append('typed context block');
             break;
@@ -421,7 +416,7 @@ impl module_anchor_reasons(module: uni.Module) -> list[str] {
         if imp.has_clib_decls or imp.is_virtual_jac or imp.has_string_path {
             continue;
         }
-        if imp.is_comptime {
+        if imp.is_comptime or ModuleFacts.is_test_code(imp) {
             continue;
         }
         if classify_import(imp).world == 'py' {
@@ -453,7 +448,6 @@ impl native_blocker_scan(
     hold_exempt: bool = False
 ) -> NativeBlockerScan {
     scan = NativeBlockerScan();
-    deps = scan.deps;
     _held_path = (module.loc.mod_path if module.loc is not None else '') or '';
     if not hold_exempt {
         for (_held_rel, _held_why) in PLACEMENT_INFERENCE_HELD.items() {
@@ -463,24 +457,63 @@ impl native_blocker_scan(
             }
         }
     }
+    _scan_blockers_under(scan, module, module, base_dir, allow_pub);
+    for stmt in module.body {
+        if isinstance(stmt, uni.Test) {
+            probe = NativeBlockerScan();
+            _scan_blockers_under(probe, stmt, module, base_dir, True);
+            why = probe.first();
+            if why {
+                scan.tests.append((stmt, why));
+                continue;
+            }
+            for (dep_imp, dep_path) in probe.dep_imports {
+                scan.test_dep_imports.append((stmt, dep_imp, dep_path));
+            }
+        }
+    }
+    return scan;
+}
+
+impl _scan_blockers_under(
+    scan: NativeBlockerScan,
+    scope_node: uni.UniNode,
+    module: uni.Module,
+    base_dir: str,
+    allow_pub: bool
+) {
+    deps = scan.deps;
+    skip_tests = scope_node is module;
     for (nd_name, typ) in PLACEMENT_SV_SIGNAL_NODES {
-        for found in module.get_all_sub_nodes(typ) {
+        for found in scope_node.get_all_sub_nodes(typ) {
+            if skip_tests and ModuleFacts.is_test_code(found) {
+                continue;
+            }
             scan.sites.append((found, f"contains {nd_name}"));
         }
     }
 
     for (nd_name, typ) in PLACEMENT_NATIVE_REJECT_NODES {
-        for found in module.get_all_sub_nodes(typ) {
+        for found in scope_node.get_all_sub_nodes(typ) {
+            if skip_tests and ModuleFacts.is_test_code(found) {
+                continue;
+            }
             scan.sites.append((found, f"native-unsupported {nd_name}"));
         }
     }
-    for svr in module.get_all_sub_nodes(uni.SpecialVarRef) {
+    for svr in scope_node.get_all_sub_nodes(uni.SpecialVarRef) {
+        if skip_tests and ModuleFacts.is_test_code(svr) {
+            continue;
+        }
         if svr.orig.name == Tok.KW_ROOT and not scan.module {
             scan.module = "root access (persistent graph)";
         }
     }
     import from jaclang.compiler.driver.boundary_classify { ability_delegates_to_model }
-    for ab in module.get_all_sub_nodes(uni.Ability) {
+    for ab in scope_node.get_all_sub_nodes(uni.Ability) {
+        if skip_tests and ModuleFacts.is_test_code(ab) {
+            continue;
+        }
         if ability_delegates_to_model(ab) {
             scan.sites.append((ab, "by llm ability (needs the byLLM runtime)"));
             continue;
@@ -506,7 +539,13 @@ impl native_blocker_scan(
         }
     }
     scan_mod_path = module.loc.mod_path or '';
-    for stmt in module.elements {
+    weighed: list[uni.UniNode] = ModuleFacts.iter_placement_stmts(module)
+        if skip_tests
+        else [];
+    for stmt in weighed {
+        if stmt.top_element is not stmt {
+            continue;
+        }
         if isinstance(stmt, uni.ContextAwareNode) and scan_mod_path {
             import from jaclang.compiler.placement.placement_pins { config_pin_for }
             pin = config_pin_for(scan_mod_path, element_display_name(stmt));
@@ -521,7 +560,10 @@ impl native_blocker_scan(
             scan.sites.append((stmt, endpoint));
         }
     }
-    for imp in module.get_all_sub_nodes(uni.Import) {
+    for imp in scope_node.get_all_sub_nodes(uni.Import) {
+        if skip_tests and ModuleFacts.is_test_code(imp) {
+            continue;
+        }
         if imp.has_clib_decls {
             continue;
         }
@@ -572,6 +614,9 @@ impl native_blocker_scan(
         }
         for (name, path, is_bare, is_module_import) in targets {
             clean = name.lstrip('.') if name else '';
+            if path is not None {
+                scan.probes.append(os.path.abspath(path));
+            }
             if is_bare {
                 if clean and clean in NATIVE_SUPPORTED_STDLIB {
                     continue;
@@ -582,6 +627,9 @@ impl native_blocker_scan(
                 if not (
                     is_module_import and path is not None and path.endswith('.jac')
                 ) {
+                    if path is None and not scan.module and not scan.sites {
+                        scan.unresolved = True;
+                    }
                     scan.sites.append((imp, f"non-native import '{clean}'"));
                     break;
                 }
@@ -606,16 +654,22 @@ impl native_blocker_scan(
             if clean and is_bundled_native_module(clean) {
                 continue;
             }
-            if clean
-                and resolve_native_module(clean, base_dir, allow_inferred=False)[1]
-                    is not None {
-                continue;
+            if clean {
+                native_path = resolve_native_module(
+                    clean, base_dir, allow_inferred=False
+                )[1];
+                if native_path is not None {
+                    scan.probes.append(os.path.abspath(native_path));
+                    continue;
+                }
+            }
+            if path is None and not scan.module and not scan.sites {
+                scan.unresolved = True;
             }
             scan.sites.append((imp, f"unresolved import '{clean}'"));
             break;
         }
     }
-    return scan;
 }
 
 impl scan_native_blockers(
@@ -633,7 +687,7 @@ impl summarize_module(
 ) -> PlacementSummary {
     ps = PlacementSummary();
     ps.schema = PLACEMENT_SCHEMA;
-    ps.mod_path = module.loc.mod_path or '';
+    ps.mod_path = os.path.abspath(module.loc.mod_path) if module.loc.mod_path else '';
     ps.decided = module.decided_codespace or '';
     ps.anchors = module_anchor_reasons(module);
     base_dir = os.path.dirname(os.path.abspath(ps.mod_path)) if ps.mod_path else '';
@@ -708,6 +762,9 @@ impl summarize_module(
         }
         ps.elements.append(es);
     }
+    ps.client_declared = module.declares_codespace(CodeContext.CLIENT);
+    ps.native_declared = module.declares_codespace(CodeContext.NATIVE);
+    ps.native_anchor = module_own_native_anchor(module);
     return ps;
 }
 

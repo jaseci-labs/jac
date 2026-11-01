@@ -527,6 +527,19 @@ impl Plan._flatten_manifests -> list[dict[str, any]] {
     if self.bundle.get("user_secret") {
         out.append(self.bundle["user_secret"]);
     }
+    ops_rbac = dget(self.bundle, "ops_rbac");
+    if ops_rbac.get("service_account") {
+        account = dict(ops_rbac["service_account"]);
+        metadata = dict(dget(account, "metadata"));
+        metadata.pop("labels", None);
+        account["metadata"] = metadata;
+        out.append(account);
+    }
+    for key in ["role", "role_binding"] {
+        if ops_rbac.get(key) {
+            out.append(ops_rbac[key]);
+        }
+    }
     for key in ["pvcs", "deployments", "services", "pdbs"] {
         for m in dget(self.bundle, key).values() {
             out.append(m);

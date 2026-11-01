@@ -1,12 +1,4 @@
 impl _http_activation_nested_schema(cluster_scoped: bool = False) -> dict[str, any] {
-    """The `nested` fields shared verbatim by [scale.kubernetes.http_activation]
-    and [apps.NAME.scale.http_activation] -- factored out so
-    the two call sites (top-level default, per-app override) can't drift
-    out of sync on a field's type/default the way two independent copies
-    would.
-
-    `cluster_scoped` adds the keys that only the top-level block honors.
-    """;
     fields = {
         "enabled": {
             "type": "bool",
@@ -307,6 +299,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "type": "string",
                                 "default": "",
                                 "description": "Google OAuth client secret"
+                            },
+                            "scopes": {
+                                "type": "list",
+                                "default": [],
+                                "description": "Extra scopes a signed-in user may grant when connecting Google for API access"
                             }
                         }
                     },
@@ -324,6 +321,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "type": "string",
                                 "default": "",
                                 "description": "Apple OAuth client secret"
+                            },
+                            "scopes": {
+                                "type": "list",
+                                "default": [],
+                                "description": "Extra scopes a signed-in user may grant when connecting Apple for API access"
                             }
                         }
                     },
@@ -341,6 +343,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "type": "string",
                                 "default": "",
                                 "description": "GitHub OAuth client secret"
+                            },
+                            "scopes": {
+                                "type": "list",
+                                "default": [],
+                                "description": "Extra scopes a signed-in user may grant when connecting GitHub for API access"
                             }
                         }
                     },
@@ -668,7 +675,7 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                     "service_account_name": {
                         "type": "string",
                         "default": "",
-                        "description": "ServiceAccount assigned to app pods; empty uses the namespace default"
+                        "description": "ServiceAccount assigned to app pods; empty uses the namespace default. With ops_console on, the gateway runs as its own <app>-ops ServiceAccount instead"
                     },
                     "ops_console": {
                         "type": "bool",

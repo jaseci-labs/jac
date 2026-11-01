@@ -7,7 +7,7 @@ targets, called **codespaces**:
 
 | Codespace | Selector | Backend output | Runs on |
 |-----------|----------|----------------|---------|
-| **Server** | Inferred; the default, anchored by python imports, graph archetypes, `::py::` blocks, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
+| **Server** | Inferred; the default, anchored by python imports, graph archetypes, and typed context blocks; `[placement.pins]` override | Python AST → CPython bytecode | CPython |
 | **Client** | **Inferred** from client-only syntax (JSX, browser globals, string-path npm imports) and symbol references; `[placement.pins]` override or a `.jac` implementation-variant file | ESTree → JavaScript | Browsers / Node |
 | **Native** | **Inferred** -- whole modules by the placement solver's verdict under the native default codespace, elements from extern-decl (C-ABI FFI) imports and their users; `[placement.pins]` override, or forced module-wide by `jac build <file> --native` / `CompileOptions(force_codespace='native')` | LLVM IR → object code → executable | Bare machine (Linux / macOS, x86_64 / arm64) |
 
@@ -286,7 +286,7 @@ tree every backend reads.
    stricter or the native library lacks a member it recorded a *refusal*
    (the same table, and `compiler/native_bindings.jac`). The legality table
    adds what the tree shows (`native_blocker_scan`): an async or `by llm`
-   ability, inline Python, an endpoint, a pin to another codespace, an
+   ability, an endpoint, a pin to another codespace, an
    import with no native form, or access to the persistent graph (`root`)
    closes the module's native preference, as the parse-time scan did on
    `main`. These are syntactic facts, so `PlacementApplyPass` reads them
@@ -322,8 +322,15 @@ interfaces is checked (`E5116`). A refusal only the backend can see places
 the module on the server in place (`settle_native_module`): the tree was
 typed for no codespace, so the Python backend, which runs after the native
 one in the same schedule, emits it as it is. A backend exception is a
-compiler error and is never absorbed as a refusal, and so is a native unit
-the host fails to link after the kernel lowered it. Nothing about a
+compiler error (E9003, which blocks the module: neither its bytecode nor the
+JCIR the kernel hands the host survives it) and is never absorbed as a
+refusal, and so is a native unit the host fails to link after the kernel
+lowered it. Once the kernel is loaded its answer is final: the host compiles a
+program itself only when the program reaches something only the host can
+answer (`host_deferred`: another copy of the compiler, a native stdlib module
+the kernel has no interface for, third-party Python source). A kernel crash,
+or a kernel answer with no unit and no error, is an error, never a reason to
+compile the program again on the host. Nothing about a
 placement is stored between compiles beyond each module's summary.
 
 Between client and server code the same boundary rule judges what a request

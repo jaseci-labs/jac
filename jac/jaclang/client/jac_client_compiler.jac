@@ -10,8 +10,9 @@ with entry {
 class JacClientCompiler {
     has entry_path: str = "",
         na_wasm_modules: set[str] = set(),
+        link_demand: dict[Path, dict[Path, list[str]]] = {},
         input_files: dict[str, str] = {},
-        emitted_js: dict[(Path, tuple[(Path, str)])] = {};
+        client_modules: dict[str, str] = {};
 
     with entry {
         ROUTER_EXPORTS = [
@@ -28,8 +29,6 @@ class JacClientCompiler {
             'JacClientErrorBoundary'
         ];
 
-        COMPOUND_EXTENSIONS = ['.native.jac'] + list(ANNEX_SUFFIXES);
-
         NATIVE_RUNTIME_FILE = "client_runtime_native.jac";
 
         SELF_COMPILED_VIRTUAL_MODULES = {"@jac/mobui", "@jac/pwa"};
@@ -39,7 +38,7 @@ class JacClientCompiler {
         self: JacClientCompiler,
         project_dir: Path,
         runtime_path: (Path | None),
-        compile_to_js_func: Callable[[Path], ClientArtifact],
+        compile_to_js_func: Callable[[Path, Path | None], ClientArtifact],
         extract_exports_func: Callable[[ClientManifest | None], list[str]],
         extract_globals_func:
             Callable[[ClientManifest | None, ModuleType | None], dict[str, any]],
@@ -96,19 +95,6 @@ class JacClientCompiler {
         native: bool = False
     ) -> bool;
 
-    def _write_module(
-        self: JacClientCompiler,
-        module_path: Path,
-        artifact: ClientArtifact,
-        output_path: Path
-    ) -> None;
-
-    def _rewrite_grown_modules(
-        self: JacClientCompiler,
-        collected_exports: set[str],
-        collected_globals: dict[(str, any)]
-    ) -> None;
-
     def rescan_pages(self: JacClientCompiler) -> bool;
     def _check_entry_renders_routes(
         self: JacClientCompiler, entry_manifest: any
@@ -120,7 +106,14 @@ class JacClientCompiler {
 
     def _warn_unrouted_pages(self: JacClientCompiler, scanner: RouteScanner) -> None;
     def _generate_routes_manifest(self: JacClientCompiler) -> bool;
-    def _write_source_map(
+    def _module_text(
+        self: JacClientCompiler,
+        module_path: Path,
+        artifact: ClientArtifact,
+        link: (ClientLink | None) = None
+    ) -> str;
+
+    def _write_js(
         self: JacClientCompiler,
         artifact: ClientArtifact,
         source_file: str,

@@ -30,10 +30,14 @@ impl KubernetesTargetBase._load_cluster_config {
         kubeconfig_failed = True;
     }
     if not kubeconfig_failed {
+        self._kubectl = kubectl_cluster(
+            self.k8s_config.kube_context, getattr(self.k8s_config, "kubeconfig", "")
+        );
         return;
     }
     try {
         k8s_cluster_config.load_incluster_config();
+        self._kubectl = in_cluster_kubectl();
     } except ConfigException as e {
         raise ConfigException(
             "Could not load Kubernetes config from either kubeconfig "
@@ -341,7 +345,9 @@ impl KubernetesTargetBase.enable_tls(app_name: str) {
         core_v1 = client.CoreV1Api();
         apps_v1 = client.AppsV1Api();
 
-        ingress_deployer = IngressDeployer(self.k8s_config, self.logger);
+        ingress_deployer = IngressDeployer(
+            self.k8s_config, self.logger, kubectl=self._kubectl
+        );
         ingress_deployer.enable_tls(
             app_name, namespace, networking_v1, custom_api, core_v1, apps_v1
         );
@@ -472,9 +478,13 @@ impl KubernetesTargetBase.get_full_status(app_name: str) -> dict[str, any] {
             pod_labels: (dict[str, str] | None) = pod.metadata.labels;
             if pod_labels and 'app' in pod_labels {
                 pod_app = pod_labels['app'];
-                if pod.status and pod.status.container_statuses {
-                    for cs in pod.status.container_statuses {
-                        if cs.restart_count and cs.restart_count > 0 {
+                if pod.status
+                    and not pod.metadata.deletion_timestamp
+                    and pod.status.phase not in ("Failed", "Succeeded") {
+                    statuses: list[any] = list(pod.status.init_container_statuses or [])
+                        + list(pod.status.container_statuses or []);
+                    for cs in statuses {
+                        if container_crashlooping(cs) {
                             restarting_apps[pod_app] = True;
                         }
                     }

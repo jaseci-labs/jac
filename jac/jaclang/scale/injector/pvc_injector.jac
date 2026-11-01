@@ -74,13 +74,14 @@ obj PvcInjector(Injector) {
         loader_image: str = "busybox:1.36",
         _object_key: str = "",
         _bundle_bytes: bytes = b"",
-        _fleet: any = None;
+        _fleet: any = None,
+        _client_ready: any = None;
 
     def _seed_artifacts -> list[tuple[str, bytes]];
     def _unpack_bundle_paths -> list[str];
     def _skip_when_image_binary -> dict[str, str];
     def prepare(app_name: str, namespace: str, project_dir: str);
-    def seed(app_name: str, namespace: str);
+    def seed(app_name: str, namespace: str, kubectl: KubectlCluster);
     def unpack_script -> str;
     def mutate_pod_spec(
         pod_spec: dict[str, any], base_image: str, unpack_container: bool = True

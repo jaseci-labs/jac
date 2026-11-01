@@ -1,3 +1,4 @@
 [placement.pins]
 "checker_browser_hostapis" = "client"
 "checker_js_globals_client" = "client"
+"checker_overload_rejection_help" = "server"

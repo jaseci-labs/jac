@@ -27,7 +27,7 @@ impl NaIRGenPass._emit_pow_zero_guard(base: ir.Value) -> None {
 }
 
 impl NaIRGenPass._codegen_int_pow(
-    base: ir.Value, exp: ir.Value, unsigned: bool = False, checked: bool = False
+    base: ir.Value, exp: ir.Value, unsigned: bool = False
 ) -> ir.Value {
     int_ty = base.type;
     one = ir.Constant(int_ty, 1);
@@ -50,11 +50,7 @@ impl NaIRGenPass._codegen_int_pow(
 
     self.builder.position_at_end(body_bb);
     cur_result = self.builder.load(result_alloca, name="pow.cur");
-    new_result = (
-        self._emit_overflow_op("mul", cur_result, base, unsigned)
-            if checked
-            else self.builder.mul(cur_result, base, name="pow.mul")
-    );
+    new_result = self._emit_overflow_op("mul", cur_result, base, unsigned);
     self.builder.store(new_result, result_alloca);
     cur_counter = self.builder.load(counter_alloca, name="pow.ci");
     next_counter = self.builder.add(cur_counter, one, name="pow.inc");
@@ -113,9 +109,6 @@ impl NaIRGenPass._floor_call(
     call_name: str = "",
     builder: (ir.IRBuilder | None) = None
 ) -> ir.Value {
-    """Call a runtime floor function (posix_floor.c, win_floor.c): what a C
-    library spells, lays out or numbers per target lives behind these, so
-    the call is the same on every target.""";
     fn = self._get_or_declare_extern(name, ret, [a.type for a in args]);
     b = builder if builder is not None else self.builder;
     return b.call(fn, args, name=call_name or name);
@@ -140,8 +133,6 @@ impl NaIRGenPass._emit_stdio_handle(
 }
 
 impl NaIRGenPass._emit_platform_name -> ir.Value {
-    """sys.platform in CPython's spelling. The floor names the target's
-    platform at run time, so the lowered code is the same on every target.""";
     if self._target_is_wasm() {
         triple = str(self.llvm_module.triple or "").lower();
         return self._make_global_string(
@@ -169,8 +160,6 @@ impl NaIRGenPass._emit_platform_name -> ir.Value {
 }
 
 impl NaIRGenPass._emit_fmadd(a: ir.Value, b: ir.Value, c: ir.Value) -> ir.Value {
-    """a * b + c as llvm.fmuladd: the backend fuses it where the target's own
-    C compiler would (aarch64) and keeps it separate where it would not.""";
     f64 = ir.DoubleType();
     fn = self.llvm_module.globals.get("llvm.fmuladd.f64");
     if not isinstance(fn, ir.Function) {
@@ -836,8 +825,7 @@ impl NaIRGenPass._codegen_pow(
     base: ir.Value,
     exp: ir.Value,
     exp_node: (uni.Expr | None) = None,
-    unsigned: bool = False,
-    checked: bool = False
+    unsigned: bool = False
 ) -> (ir.Value | None) {
     ctype_ptr = self.complex_struct_type.as_pointer();
     if base.type == ctype_ptr or exp.type == ctype_ptr {
@@ -900,10 +888,10 @@ impl NaIRGenPass._codegen_pow(
             self._emit_pow_zero_guard(base);
             return self._emit_float_pow(base, exp, unsigned);
         }
-        return self._codegen_int_pow(base, exp, unsigned, checked);
+        return self._codegen_int_pow(base, exp, unsigned);
     }
     if unsigned {
-        return self._codegen_int_pow(base, exp, True, checked);
+        return self._codegen_int_pow(base, exp, True);
     }
 
     int_ty = base.type;
@@ -923,7 +911,7 @@ impl NaIRGenPass._codegen_pow(
     self.builder.branch(merge_bb);
 
     self.builder.position_at_end(pos_bb);
-    iresult = self._codegen_int_pow(base, exp, unsigned, checked);
+    iresult = self._codegen_int_pow(base, exp, unsigned);
     pos_pred = self.builder.block;
     i_as_f = self.builder.sitofp(iresult, f64, name="pow.i2f");
     self.builder.branch(merge_bb);

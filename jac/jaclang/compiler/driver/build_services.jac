@@ -14,7 +14,10 @@ obj CompilerBuildServices(BuildServices) {
         path: str, program: JacProgram, application: PreparedApplication
     ) -> PreparedApplication;
 
-    def hot_reloader(base_path: str, module_name: str) -> HotReloader;
+    def hot_reloader(
+        base_path: str, module_name: str, entry_path: str = ""
+    ) -> HotReloader;
+
     def client_runtime_basename(framework: str) -> str;
     def application_edges(
         entry_path: str, app_name: str, app_kind: str, project_root: str

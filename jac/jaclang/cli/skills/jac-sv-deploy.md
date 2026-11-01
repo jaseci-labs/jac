@@ -7,12 +7,12 @@ Production serving is the built-in `scale` subsystem's job. Scale ships inside `
 
 ## jac run
 
-`jac run [app.jac]` (default entry `main.jac`; needs a `jac.toml` in the cwd). Boolean flags are **hyphenated**: `--no-client` (API only, skip client bundling), `--port/-p` (auto-falls back if taken), `--faux` (print the generated API surface without starting - cheap endpoint preview), `--profile prod` (config profile), `--dev` (HMR). `jac run` exits when stdin closes - any backgrounded/daemonized server must be launched with `< /dev/null` (systemd/containers do this for you; shell scripts and CI must do it explicitly). For prod, kill Swagger:
+`jac run [app.jac]` (default entry `main.jac`; needs a `jac.toml` in the cwd). Boolean flags are **hyphenated**: `--no-client` (API only, skip client bundling), `--port/-p` (default 8000; without `-p` a held default port moves the server to the next free one, while a port given with `-p` must be free or the server exits), `--faux` (print the generated API surface without starting - cheap endpoint preview), `--profile prod` (config profile), `--dev` (HMR). `jac run` does not watch stdin, so a backgrounded server keeps running until it is stopped. For prod, kill Swagger:
 
 ```toml
 [serve]
 docs_enabled = false          # disables /docs, /openapi.json
-graph_enabled = false         # disables /graph, /graph/data
+graph_enabled = false         # disables /graph, /graph/node, /graph/neighbors
 
 [serve.workers]
 count = "auto"                # one worker per core of the CPU quota; "1" for I/O-bound apps

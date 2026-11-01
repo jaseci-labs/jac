@@ -570,3 +570,29 @@ test "the suite leaves no dev-loop global behind" {
     assert _error_rate_limiter._seen == {};
     assert _error_rate_limiter._count == 0;
 }
+
+
+test "a vite that exits before it is ready raises at once with its exit code and last line" {
+    import sys;
+    import time;
+    import from jaclang.client.vite_bundler { ViteBundler }
+    import from jaclang.client.artifact { ClientBundleError }
+    with TemporaryDirectory() as tmp {
+        bundler = ViteBundler(Path(tmp));
+        command = [
+            sys.executable,
+            "-c",
+            "print('vite: bad config'); raise SystemExit(3)"
+        ];
+        started = time.monotonic();
+        raised = "";
+        try {
+            bundler._start_vite_with_output_capture(command, Path(tmp), sys);
+        } except ClientBundleError as e {
+            raised = str(e);
+        }
+        assert "exited with code 3" in raised , raised;
+        assert "vite: bad config" in raised , raised;
+        assert time.monotonic() - started < 20 , "waited out the ready timeout";
+    }
+}

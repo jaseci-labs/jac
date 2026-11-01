@@ -90,7 +90,10 @@ import from engine.src.runtime.mem {
     write_byte,
     write_i32,
     write_i64,
-    byte_chr
+    byte_chr,
+    str_bfind,
+    str_byte,
+    str_nbytes
 }
 import from engine.src.runtime.jsstring { str_substr }
 import from engine.src.net.constants { AF_INET, AF_INET6, SOCK_STREAM }
@@ -197,7 +200,7 @@ def _ctx_load_cert_pem(ssl_ctx: int, cert_pem: str) -> bool {
     if bio == 0 {
         return False;
     }
-    BIO_write(bio, cert_pem, len(cert_pem));
+    BIO_write(bio, cert_pem, str_nbytes(cert_pem));
     x509: int = PEM_read_bio_X509(bio, 0, 0, 0);
     BIO_free(bio);
     if x509 == 0 {
@@ -217,7 +220,7 @@ def _ctx_load_key_pem(ssl_ctx: int, key_pem: str) -> bool {
     if bio == 0 {
         return False;
     }
-    BIO_write(bio, key_pem, len(key_pem));
+    BIO_write(bio, key_pem, str_nbytes(key_pem));
     pkey: int = PEM_read_bio_PrivateKey(bio, 0, 0, 0);
     BIO_free(bio);
     if pkey == 0 {
@@ -261,14 +264,14 @@ def:pub tls_create_client_context(cfg: TLSConfig) -> TLSContext {
 
     # Optional client certificate
     if cfg.cert_file != "" {
-        if cfg.cert_file[0] == "-" {
+        if byte_chr(str_byte(cfg.cert_file, 0)) == "-" {
             _ctx_load_cert_pem(ssl_ctx, cfg.cert_file);
         } else {
             SSL_CTX_use_certificate_file(ssl_ctx, cfg.cert_file, SSL_FILETYPE_PEM);
         }
     }
     if cfg.key_file != "" {
-        if cfg.key_file[0] == "-" {
+        if byte_chr(str_byte(cfg.key_file, 0)) == "-" {
             _ctx_load_key_pem(ssl_ctx, cfg.key_file);
         } else {
             SSL_CTX_use_PrivateKey_file(ssl_ctx, cfg.key_file, SSL_FILETYPE_PEM);
@@ -312,14 +315,14 @@ def:pub tls_create_server_context(cfg: TLSConfig) -> TLSContext {
     }
 
     if cfg.cert_file != "" {
-        if cfg.cert_file[0] == "-" {
+        if byte_chr(str_byte(cfg.cert_file, 0)) == "-" {
             _ctx_load_cert_pem(ssl_ctx, cfg.cert_file);
         } else {
             SSL_CTX_use_certificate_file(ssl_ctx, cfg.cert_file, SSL_FILETYPE_PEM);
         }
     }
     if cfg.key_file != "" {
-        if cfg.key_file[0] == "-" {
+        if byte_chr(str_byte(cfg.key_file, 0)) == "-" {
             _ctx_load_key_pem(ssl_ctx, cfg.key_file);
         } else {
             SSL_CTX_use_PrivateKey_file(ssl_ctx, cfg.key_file, SSL_FILETYPE_PEM);
@@ -379,13 +382,14 @@ def:pub tls_wrap_fd(fd: int, ctx: TLSContext, server_side: bool) -> TLSSocket {
 """Whether `name` is an IP literal (dotted IPv4, or IPv6 — hostnames never
 contain a colon) rather than a DNS name."""
 def _is_ip_literal(name: str) -> bool {
-    if name.find(":") >= 0 {
+    if str_bfind(name, ":") >= 0 {
         return True;
     }
     dots: int = 0;
     i: int = 0;
-    while i < len(name) {
-        c: str = name[i];
+    _nb390_name: int = str_nbytes(name);
+    while i < _nb390_name {
+        c: str = byte_chr(str_byte(name, i));
         if c == "." {
             dots = dots + 1;
         } elif c < "0" or c > "9" {
@@ -406,8 +410,8 @@ non-blocking retry may call it again. False (fail closed) when there is no
 name to check or OpenSSL rejects it."""
 def _set_peer_identity(sock: TLSSocket) -> bool {
     name: str = sock.context.server_name;
-    if len(name) > 1 and name[0] == "[" and name[len(name) - 1] == "]" {
-        name = str_substr(name, 1, len(name) - 1);
+    if str_nbytes(name) > 1 and byte_chr(str_byte(name, 0)) == "[" and byte_chr(str_byte(name, str_nbytes(name) - 1)) == "]" {
+        name = str_substr(name, 1, str_nbytes(name) - 1);
     }
     if name == "" {
         return False;
@@ -596,12 +600,12 @@ def:pub tls_write(sock: TLSSocket, data: str) -> int {
     if sock.ssl_ptr == 0 {
         return 0 - 1;
     }
-    n: int = len(data);
+    n: int = str_nbytes(data);
     total: int = 0;
     remaining: str = data;
 
     while total < n {
-        rc: int = SSL_write(sock.ssl_ptr, remaining, len(remaining));
+        rc: int = SSL_write(sock.ssl_ptr, remaining, str_nbytes(remaining));
 
         # C int -1 zero-extends to large positive in i64
         if rc > 2147483647 {
@@ -616,7 +620,7 @@ def:pub tls_write(sock: TLSSocket, data: str) -> int {
         total = total + rc;
         if total < n {
             # Partial write on a blocking fd — advance the window
-            remaining = str_substr(remaining, rc, len(remaining));
+            remaining = str_substr(remaining, rc, str_nbytes(remaining));
         }
     }
 
@@ -783,8 +787,9 @@ def:pub tls_client_wrap_fd(
         alpn_list: list[str] = [];
         cur: str = "";
         ci: int = 0;
-        while ci < len(alpn_csv) {
-            ch: str = alpn_csv[ci];
+        _nb789_alpn_csv: int = str_nbytes(alpn_csv);
+        while ci < _nb789_alpn_csv {
+            ch: str = byte_chr(str_byte(alpn_csv, ci));
             if ch == "," {
                 if len(cur) > 0 {
                     alpn_list.append(cur);
@@ -959,7 +964,7 @@ def:pub tls_ctx_set_alpn_protos(ctx: TLSContext, protocols: list[str]) -> int {
     total: int = 0;
     i: int = 0;
     while i < len(protocols) {
-        total = total + 1 + len(protocols[i]);
+        total = total + 1 + str_nbytes(protocols[i]);
         i = i + 1;
     }
     if total == 0 {
@@ -972,14 +977,14 @@ def:pub tls_ctx_set_alpn_protos(ctx: TLSContext, protocols: list[str]) -> int {
     j: int = 0;
     while j < len(protocols) {
         proto: str = protocols[j];
-        plen: int = len(proto);
+        plen: int = str_nbytes(proto);
         # Write length byte
         write_byte(buf, offset, plen);
         offset = offset + 1;
         # Write protocol string bytes
         k: int = 0;
         while k < plen {
-            write_byte(buf, offset, ord(proto[k]));
+            write_byte(buf, offset, str_byte(proto, k));
             offset = offset + 1;
             k = k + 1;
         }
@@ -998,7 +1003,7 @@ def:pub tls_alpn_build_wire(protocols: list[str]) -> list[int] {
     total: int = 0;
     i: int = 0;
     while i < len(protocols) {
-        total = total + 1 + len(protocols[i]);
+        total = total + 1 + str_nbytes(protocols[i]);
         i = i + 1;
     }
     if total == 0 {
@@ -1010,12 +1015,12 @@ def:pub tls_alpn_build_wire(protocols: list[str]) -> list[int] {
     j: int = 0;
     while j < len(protocols) {
         proto: str = protocols[j];
-        plen: int = len(proto);
+        plen: int = str_nbytes(proto);
         write_byte(buf, offset, plen);
         offset = offset + 1;
         k: int = 0;
         while k < plen {
-            write_byte(buf, offset, ord(proto[k]));
+            write_byte(buf, offset, str_byte(proto, k));
             offset = offset + 1;
             k = k + 1;
         }

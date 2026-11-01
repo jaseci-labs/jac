@@ -1,16 +1,6 @@
 impl NaIRGenPass._emit_tls_slot(
     slot_name: str, get_name: str, set_name: str, destructor: ir.Function | None = None
 ) -> tuple[ir.Function, ir.Function] {
-    """A per-thread pointer slot with lock-free accessors.
-
-    Every unit that touches the slot emits these same accessors, so no unit
-    resolves another's copy: linkonce_odr lets the optimizer inline the fast
-    path into each caller, while the key, state and lock stay weak so one
-    process-wide slot serves every unit. Until the first thread publishes the
-    key, an accessor takes the cold initializer, which serializes on the spin
-    lock, re-checks under it, creates the key and publishes it with a release
-    store; the accessors' acquire load pairs with that store.
-    """;
     if get_name in self.extern_funcs {
         return (self.extern_funcs[get_name], self.extern_funcs[set_name]);
     }
@@ -38,6 +28,24 @@ impl NaIRGenPass._emit_tls_slot(
         sb.store(sb.inttoptr(set_fn.args[0], i8p, name="tls.p"), slot);
         sb.ret_void();
         return (get_fn, set_fn);
+    }
+
+    native_tls = self._native_tls_on();
+    cache: ir.GlobalVariable | None = None;
+    if native_tls {
+        cache = ir.GlobalVariable(self.llvm_module, i8p, name=f"{slot_name}_tl");
+        cache.linkage = "weak";
+        cache.thread_local = True;
+        cache.tls_model = "initialexec";
+        cache.initializer = ir.Constant(i8p, None);
+        gb = ir.IRBuilder(get_fn.append_basic_block("entry"));
+        gb.ret(gb.ptrtoint(gb.load(cache, name="tls.v"), i64, name="tls.i64"));
+        if destructor is None {
+            sb = ir.IRBuilder(set_fn.append_basic_block("entry"));
+            sb.store(sb.inttoptr(set_fn.args[0], i8p, name="tls.p"), cache);
+            sb.ret_void();
+            return (get_fn, set_fn);
+        }
     }
 
     key_gv = ir.GlobalVariable(self.llvm_module, i64, name=f"{slot_name}_key");
@@ -95,14 +103,20 @@ impl NaIRGenPass._emit_tls_slot(
     ib.store_atomic(zero, lock_gv, "release", 8);
     ib.ret_void();
 
-    get_key = self._emit_tls_ready_key(get_fn, state_gv, key_gv, init_fn);
-    gb = ir.IRBuilder(get_fn.blocks[-1]);
-    _gp = gb.call(get_specific, [get_key], name="tls.v");
-    gb.ret(gb.ptrtoint(_gp, i64, name="tls.i64"));
+    if cache is None {
+        get_key = self._emit_tls_ready_key(get_fn, state_gv, key_gv, init_fn);
+        gb = ir.IRBuilder(get_fn.blocks[-1]);
+        _gp = gb.call(get_specific, [get_key], name="tls.v");
+        gb.ret(gb.ptrtoint(_gp, i64, name="tls.i64"));
+    }
 
     set_key = self._emit_tls_ready_key(set_fn, state_gv, key_gv, init_fn);
     sb = ir.IRBuilder(set_fn.blocks[-1]);
-    sb.call(set_specific, [set_key, sb.inttoptr(set_fn.args[0], i8p, name="tls.p")]);
+    value = sb.inttoptr(set_fn.args[0], i8p, name="tls.p");
+    if cache is not None {
+        sb.store(value, cache);
+    }
+    sb.call(set_specific, [set_key, value]);
     sb.ret_void();
     return (get_fn, set_fn);
 }
@@ -113,13 +127,6 @@ impl NaIRGenPass._emit_tls_ready_key(
     key_gv: ir.GlobalVariable,
     init_fn: ir.Function
 ) -> ir.Value {
-    """Open `accessor` with the slot's readiness check and return its key.
-
-    Once the key is published the check is one acquire load, which compiles to
-    a plain load on x86-64 and AArch64; only a thread that finds the slot
-    unpublished calls the cold initializer. The builder is left positioned in
-    the block that holds the key, for the accessor to finish.
-    """;
     i64 = ir.IntType(64);
     check_bb = accessor.append_basic_block("entry");
     cold = accessor.append_basic_block("init");

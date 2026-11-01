@@ -118,10 +118,14 @@ impl __doWalkerFetch(
         `walker
     );
     if not response.ok {
-        if response.status == 401 and not app {
-            __removeLocalStorage("jac_token");
-            window.location.reload();
-            return {};
+        if response.status == 401 {
+            dropped = __jacDropRejectedToken(str(token or ""));
+            if not app {
+                if dropped {
+                    window.location.reload();
+                }
+                return {};
+            }
         }
         error_text = await response.text();
         walker_name = f"{`walker}/{nodeId}" if nodeId else `walker;
@@ -156,10 +160,14 @@ impl __doFuncFetch(
         function_name
     );
     if not response.ok {
-        if response.status == 401 and not app {
-            __removeLocalStorage("jac_token");
-            window.location.reload();
-            return {};
+        if response.status == 401 {
+            dropped = __jacDropRejectedToken(str(token or ""));
+            if not app {
+                if dropped {
+                    window.location.reload();
+                }
+                return {};
+            }
         }
         error_text = await response.text();
         raise __bridgeErrorFor(
@@ -307,6 +315,18 @@ impl jacSignup(
     if profile != None {
         body["profile"] = profile;
     }
+    registration = policy["registration"] if policy else None;
+    if registration and registration["challenge"] {
+        proof = await __solveRegistrationChallenge(base_url);
+        if proof["error"] {
+            return SignupResult(
+                success=False, error=proof["error"], status=int(proof["status"])
+            );
+        }
+        if proof["challenge"] {
+            body["challenge"] = proof["challenge"];
+        }
+    }
     response = await fetch(
         f"{base_url}/user/register",
         {
@@ -419,7 +439,37 @@ impl jacLogout -> None {
 
 impl jacIsLoggedIn -> bool {
     token = __getLocalStorage("jac_token");
-    return token != None and token != "";
+    if not token {
+        return False;
+    }
+    if __jacTokenExpired(str(token)) {
+        __removeLocalStorage("jac_token");
+        return False;
+    }
+    return True;
+}
+
+impl __jacDropRejectedToken(sent: str) -> bool {
+    if str(__getLocalStorage("jac_token") or "") != sent {
+        return False;
+    }
+    __removeLocalStorage("jac_token");
+    return True;
+}
+
+impl __jacTokenExpired(token: str) -> bool {
+    parts = token.split(".");
+    if len(parts) != 3 {
+        return False;
+    }
+    try {
+        claims: any = JSON.parse(
+            str(globalThis.atob(parts[1].replace("-", "+").replace("_", "/")))
+        );
+        return Number.isFinite(claims["exp"]) and claims["exp"] * 1000 <= Date.now();
+    } except Exception {
+        return False;
+    }
 }
 
 impl __jacClearCache -> None {
@@ -494,6 +544,169 @@ impl jacSsoLogin(platform: str, api_base: str = "", operation: str = "login") ->
     return True;
 }
 
+impl __jacB64Url(bytes: any) -> str {
+    text = "";
+    for b in bytes {
+        text += String.fromCharCode(b);
+    }
+    encoded: str = btoa(text);
+    return "".join("_".join("-".join(encoded.split("+")).split("/")).split("="));
+}
+
+impl __jacAuthedJson(
+    method: str, url: str, body: (dict[str, any] | None) = None
+) -> any {
+    token = __getLocalStorage("jac_token");
+    if not token {
+        return None;
+    }
+    init: dict[str, any] = {
+        "method": method,
+        "headers": {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+    };
+    if body is not None {
+        init["body"] = JSON.stringify(body);
+    }
+    try {
+        response = await fetch(url, init);
+        if not response.ok {
+            if response.status == 401 {
+                __jacDropRejectedToken(token);
+            }
+            return None;
+        }
+        payload: any = JSON.parse(await response.text());
+        return payload["data"] if payload else None;
+    } except Exception as e {
+        console.warn("[jac-client] request failed:", e);
+        return None;
+    }
+}
+
+impl jacSsoConnect(
+    platform: str, scopes: (list[str] | None) = None, api_base: str = ""
+) -> bool {
+    base = api_base or __getApiBaseUrl();
+    wanted: list[str] = scopes or [];
+    store: any = globalThis.sessionStorage;
+    cryptoApi: any = globalThis.crypto;
+    if not store or not cryptoApi or not cryptoApi.subtle {
+        return False;
+    }
+    seed: any = Reflect.construct(Uint8Array, [48]);
+    cryptoApi.getRandomValues(seed);
+    verifier = __jacB64Url(seed);
+    digest: any = await cryptoApi.subtle.digest(
+        "SHA-256", Reflect.construct(TextEncoder, []).encode(verifier)
+    );
+    challenge = __jacB64Url(Reflect.construct(Uint8Array, [digest]));
+    started: any = await __jacAuthedJson(
+        "POST",
+        f"{base}/sso/{encodeURIComponent(platform)}/begin",
+        {
+            "challenge": challenge,
+            "mode": "web",
+            "intent": "connect",
+            "scopes": " ".join(wanted)
+        }
+    );
+    if not started or not started["ok"] or not started["url"] {
+        return False;
+    }
+    store.setItem(
+        "jac_sso_pending",
+        JSON.stringify(
+            {
+                "platform": platform,
+                "state": started["state"],
+                "verifier": verifier,
+                "api_base": base
+            }
+        )
+    );
+    window.location.href = started["url"];
+    return True;
+}
+
+impl jacSsoFinish(api_base: str = "") -> dict[str, any] {
+    store: any = globalThis.sessionStorage;
+    params: any = Reflect.construct(URLSearchParams, [window.location.search]);
+    state = params.get("state") or "";
+    raw = store.getItem("jac_sso_pending") if store else "";
+    if not raw or not state {
+        return {"ok": False, "connected": False, "platform": "", "error": ""};
+    }
+    store.removeItem("jac_sso_pending");
+    pending: any = JSON.parse(raw);
+    platform = pending["platform"] or "";
+    if pending["state"] != state {
+        return {
+            "ok": False,
+            "connected": False,
+            "platform": platform,
+            "error": "This sign-in was started in another window. Please try again."
+        };
+    }
+    denied = params.get("error") or "";
+    if denied {
+        return {"ok": False, "connected": False, "platform": platform, "error": denied};
+    }
+    base = api_base or pending["api_base"] or __getApiBaseUrl();
+    response = await fetch(
+        f"{base}/sso/{encodeURIComponent(platform)}/finish",
+        {
+            "method": "POST",
+            "headers": {"Content-Type": "application/json"},
+            "body": JSON.stringify(
+                {
+                    "code": params.get("code") or "",
+                    "state": state,
+                    "verifier": pending["verifier"]
+                }
+            )
+        }
+    );
+    result: any = None;
+    if response.ok {
+        payload: any = JSON.parse(await response.text());
+        result = payload["data"] if payload else None;
+    }
+    if not result {
+        return {
+            "ok": False,
+            "connected": False,
+            "platform": platform,
+            "error": "Could not finish connecting. Please try again."
+        };
+    }
+    if result["ok"] and result["token"] and not __getLocalStorage("jac_token") {
+        jacSetToken(result["token"]);
+    }
+    return {
+        "ok": bool(result["ok"]),
+        "connected": bool(result["connected"]),
+        "platform": platform,
+        "error": result["error"] or ""
+    };
+}
+
+impl jacSsoConnections(api_base: str = "") -> list[dict[str, any]] {
+    base = api_base or __getApiBaseUrl();
+    data: any = await __jacAuthedJson("GET", f"{base}/sso/connections");
+    return data or [];
+}
+
+impl jacSsoDisconnect(platform: str, api_base: str = "") -> bool {
+    base = api_base or __getApiBaseUrl();
+    data: any = await __jacAuthedJson(
+        "DELETE", f"{base}/sso/{encodeURIComponent(platform)}/connection"
+    );
+    return bool(data and data["disconnected"]);
+}
+
 impl __getLocalStorage(key: str) -> str {
     if not globalThis.localStorage {
         return "";
@@ -522,6 +735,11 @@ impl __jacReportError(
     componentStack: str = ""
 ) -> None {
     try {
+        stack_text = str(stack or "");
+        if __jacIsExtensionError(stack_text, str(url or ""))
+            or not __jacClaimErrorReport(str(message), stack_text) {
+            return;
+        }
         baseUrl = __getApiBaseUrl();
         fetch(
             f"{baseUrl}/cl/__error__",
@@ -541,6 +759,65 @@ impl __jacReportError(
             }
         );
     } except Exception {}
+}
+
+impl __jacIsExtensionUrl(url: str) -> bool {
+    for prefix in __JAC_EXTENSION_URL_PREFIXES {
+        if url.startswith(prefix) {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl __jacIsExtensionError(stack: str, filename: str = "") -> bool {
+    frame_urls: list[str] = [];
+    for line in stack.split("\n") {
+        text: any = line;
+        frame: any = text.match(__JAC_STACK_FRAME_RE);
+        if frame {
+            location = frame[1] or frame[2] or "";
+            if not __JAC_ENGINE_FRAME_RE.test(location) {
+                frame_urls.append(location);
+            }
+        }
+    }
+    if len(frame_urls) == 0 {
+        return __jacIsExtensionUrl(filename);
+    }
+    for frame_url in frame_urls {
+        if not __jacIsExtensionUrl(frame_url) {
+            return False;
+        }
+    }
+    return True;
+}
+
+impl __jacClaimErrorReport(message: str, stack: str) -> bool {
+    now = Date.now();
+    budget: any = globalThis.__jacErrorReportBudget;
+    if not budget {
+        budget = {"seen": {}, "seenCount": 0, "sentAt": []};
+        setattr(globalThis, "__jacErrorReportBudget", budget);
+    }
+    key = f"{message}\n{stack}";
+    if budget.seen[key] or budget.seenCount >= __JAC_ERROR_REPORTS_PER_PAGE {
+        return False;
+    }
+    recent: list[float] = [];
+    for sent_at in budget.sentAt {
+        if now - sent_at < 60000 {
+            recent.append(sent_at);
+        }
+    }
+    budget.sentAt = recent;
+    if len(recent) >= __JAC_ERROR_REPORTS_PER_MINUTE {
+        return False;
+    }
+    recent.append(now);
+    budget.seenCount += 1;
+    budget.seen[key] = True;
+    return True;
 }
 
 impl __jacInstallErrorHandlers -> None {
@@ -749,4 +1026,8 @@ impl __unwrapFormSchema(schema: any) -> any {
         console.warn("Failed to unwrap schema:", e);
     }
     return actualSchema;
+}
+
+impl BridgeError.postinit {
+    self.message = self.detail;
 }

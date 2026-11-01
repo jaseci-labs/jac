@@ -7,6 +7,52 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Inline Python (`::py::`) is removed from the language (unreleased)
+
+`::py:: ... ::py::` blocks are gone. The lexer no longer recognizes the fence, the grammar has no inline-Python element, and the compiler has no node for it, so a file that still contains one fails to parse. There is no deprecation period and no dedicated diagnostic: the fence now reads as stray `:` tokens, and `E0103` (unterminated inline Python block) is retired.
+
+Move the Python into a `.py` module next to your `.jac` sources and import it. Local `.py` files import with the same syntax as any Python package:
+
+```python
+# legacy.py
+def validate_title(title):
+    return len(title) > 3 and title.strip() != ""
+```
+
+```jac
+import from legacy { validate_title }
+
+with entry {
+    print(validate_title("Build API"));
+}
+```
+
+| Before | Now |
+|---|---|
+| `::py::` block at module level, in an `obj`/`class` body, or in a function body | the code moves to a `.py` module and is imported |
+| Python methods added to an `enum` through a `::py::` block in its body | an enum body holds members and `with entry` code only; define an enum that needs Python methods in the `.py` module, or keep the logic in a Jac function that takes the member |
+| `::py::` as the server anchor that kept a module off the client or native lanes | a used Python import, a graph archetype, or a `[placement.pins]` entry anchors server; an `async` ability is a static native refusal |
+
+**Impact:** every `::py::` block must be moved before the file compiles again. Code that was already pure Jac is unaffected.
+
+---
+
+### The Ops Console's Role is bound to its own `<app>-ops` ServiceAccount ([#10023](https://github.com/jaseci-labs/jac/pull/10023), unreleased)
+
+With `[scale.kubernetes] ops_console = true` and no `service_account_name`, the Ops Console's Role was bound to the namespace's `default` ServiceAccount, so every pod that names no account of its own (the app's other containers and any co-tenant workload) received the console's read rights, and its patch and delete rights when `ops_console_mutations` was set. The Role is now bound to a ServiceAccount named `<app>-ops` that jac-scale creates, and only the gateway pod runs as it.
+
+With the console on, three things change for an app that is already deployed:
+
+| Before | Now | What to do |
+|---|---|---|
+| The gateway ran as `service_account_name` | The gateway runs as `<app>-ops`; microservice pods still run as `service_account_name` | If the gateway got a cloud identity (IRSA, Workload Identity) from `service_account_name`, create `<app>-ops` with the same annotations before the next deploy. jac-scale uses an existing account as is and never overwrites it. |
+| `service_account_name = "<app>-ops"` was accepted | The deploy fails, since every pod would run as the account the Role is bound to | Choose a different `service_account_name`, or leave it empty. |
+| Creating ServiceAccounts was needed only for the in-cluster database or monitoring | Every deploy with the console on creates `<app>-ops` | Grant the identity that runs `jac scale deploy` `create` on `serviceaccounts` in the namespace. |
+
+The next deploy rolls the gateway pods once and replaces the old RoleBinding in place, which revokes the grant to `default`. A deployment that has already switched the console off keeps that old binding until it is deleted by hand (`kubectl delete rolebinding <app>-ops-console -n <namespace>`). See [Ops Console ServiceAccount](../reference/plugins/jac-scale-kubernetes.md#ops-console-serviceaccount).
+
+---
+
 ### A closure created in a loop body keeps its own iteration's values (unreleased)
 
 A `lambda` or nested `def` created in a loop body used to share every name with the rest of the function, so a closure kept past its iteration saw whatever the last iteration assigned: in a JSX `for` slot every per-item handler acted on the last item, and on the server a list of callbacks built in a loop all read the final value. A name whose every assignment is inside the loop (the loop target, or a local the body introduces) is now shared with such a closure only while its pass through the body lasts; when the pass ends, the closure keeps that pass's value. This holds in every codespace.
@@ -331,7 +377,7 @@ Three escalations close the two-spellings-for-one-type gap. `import from typing 
 
 ### `pub` is placement evidence only in project kinds that have a server ([#8211](https://github.com/jaseci-labs/jac/pull/8211), unreleased)
 
-In kinds with a server (`web-app`, `service`, `service-mesh`, `desktop`, `mobile`, and the no-kind default) nothing changes: an evidence-free `def:pub` is still a server endpoint. In a serverless kind (`js-package`) `pub` means export and is not placement evidence, and server evidence there (root access, an FFI extern, `::py::`, a value-level Python import) is now a build error `E5087` naming the kind, instead of a silent server placement that could only fail at runtime.
+In kinds with a server (`web-app`, `service`, `service-mesh`, `desktop`, `mobile`, and the no-kind default) nothing changes: an evidence-free `def:pub` is still a server endpoint. In a serverless kind (`js-package`) `pub` means export and is not placement evidence, and server evidence there (root access, an FFI extern, a value-level Python import) is now a build error `E5087` naming the kind, instead of a silent server placement that could only fail at runtime.
 
 **Impact:** if a `js-package` genuinely needs a server, declare a `[project] kind` that has one.
 
@@ -514,7 +560,7 @@ Use the braced block form instead. It compiles to the same node and is now the c
 | `to sv:` <br> `<server stmts>` | `sv { <server stmts> }` (or leave at module top level -- server is the default context) |
 | `to na:` <br> `<native stmts>` | `na { <native stmts> }` |
 
-**Impact:** rewrite any `to cl:` / `to sv:` / `to na:` section into the matching braced block, wrapping exactly the statements that belonged to that section. Single-statement prefixes (`cl def:pub foo() {...}`, `sv ...`, `na ...`) and file-extension contexts (`.jac`, `.na.jac`) are unaffected. (At the time, `to` still drove the iter-for loop; `to` has since been removed as a keyword entirely -- see [the clean-break entry above](#legacy-syntax-removed-in-one-clean-break-7514).)
+**Impact:** rewrite any `to cl:` / `to sv:` / `to na:` section into the matching braced block, wrapping exactly the statements that belonged to that section. Single-statement prefixes (`cl def:pub foo() {...}`, `sv ...`, `na ...`) and file-extension contexts were unaffected by this removal but are gone too: the later placement clean break removed every `sv`/`cl`/`na` spelling ([#7772](https://github.com/jaseci-labs/jac/issues/7772), see [the entry above](#all-placement-spellings-removed-svclna-markers-the-svjaccljac-suffixes-and-the-variant-directive-7772-jaclang-035)). (At the time, `to` still drove the iter-for loop; `to` has since been removed as a keyword entirely -- see [the clean-break entry above](#legacy-syntax-removed-in-one-clean-break-7514).)
 
 ---
 

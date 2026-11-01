@@ -95,13 +95,15 @@ impl JacFormatPass.format_doc_ir(
         for (idx, part) in enumerate(doc_node.parts) {
             is_last = (idx + 1) == num_parts;
 
-            if is_last {
+            if is_last or current_line_budget <= 0 {
                 child_trailing = trailing_width;
             } else {
-                child_trailing = self._flat_first_line_width(
-                    doc.Concat(doc_node.parts[(idx + 1):]),
+                child_trailing = self._flat_tail_width(
+                    doc_node.parts,
+                    idx + 1,
                     base=trailing_width,
-                    is_broken=is_broken
+                    is_broken=is_broken,
+                    cap=current_line_budget
                 );
             }
             pend_before = ''.join(self._pending_suffixes);
@@ -281,48 +283,59 @@ impl JacFormatPass._probe_fits(
     return True;
 }
 
-impl JacFormatPass._flat_first_line_width(
-    nd: doc.DocType, base: int = 0, is_broken: bool = False
+impl JacFormatPass._flat_tail_width(
+    parts: list[doc.DocType],
+    start: int,
+    base: int = 0,
+    is_broken: bool = False,
+    cap: int = 0
 ) -> int {
     work: deque[object] = deque();
-    work.append(nd);
     width = 0;
-    while work {
-        cur = work.pop();
-        if isinstance(cur, doc.Text) {
-            width += len(cur.text);
-        } elif isinstance(cur, doc.Line) {
-            if (cur.hard or cur.literal) {
+    i = start;
+    while i < len(parts) {
+        work.append(parts[i]);
+        i += 1;
+        while work {
+            if cap > 0 and width >= cap {
                 return width;
             }
-            if cur.tight {
-                if is_broken {
+            cur = work.pop();
+            if isinstance(cur, doc.Text) {
+                width += len(cur.text);
+            } elif isinstance(cur, doc.Line) {
+                if (cur.hard or cur.literal) {
                     return width;
                 }
-            } else {
-                if is_broken {
-                    return width;
+                if cur.tight {
+                    if is_broken {
+                        return width;
+                    }
+                } else {
+                    if is_broken {
+                        return width;
+                    }
+                    width += 1;
                 }
-                width += 1;
+            } elif isinstance(cur, doc.Concat) {
+                for p in reversed(cur.parts) {
+                    work.append(p);
+                }
+            } elif isinstance(cur, doc.Group) {
+                return width;
+            } elif isinstance(cur, doc.Indent) {
+                work.append(cur.contents);
+            } elif isinstance(cur, doc.Align) {
+                work.append(cur.contents);
+            } elif isinstance(cur, doc.IfBreak) {
+                if is_broken {
+                    work.append(cur.break_contents);
+                } else {
+                    work.append(cur.flat_contents);
+                }
+            } elif isinstance(cur, (doc.LineSuffix, doc.BreakParent)) {
+                continue;
             }
-        } elif isinstance(cur, doc.Concat) {
-            for p in reversed(cur.parts) {
-                work.append(p);
-            }
-        } elif isinstance(cur, doc.Group) {
-            return width;
-        } elif isinstance(cur, doc.Indent) {
-            work.append(cur.contents);
-        } elif isinstance(cur, doc.Align) {
-            work.append(cur.contents);
-        } elif isinstance(cur, doc.IfBreak) {
-            if is_broken {
-                work.append(cur.break_contents);
-            } else {
-                work.append(cur.flat_contents);
-            }
-        } elif isinstance(cur, (doc.LineSuffix, doc.BreakParent)) {
-            continue;
         }
     }
     return width + base;

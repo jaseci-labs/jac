@@ -8,8 +8,24 @@ impl ASTValidationPass.enter_module with Module entry {
     if here.is_raised_from_py or here.stub_only {
         return;
     }
+    imported = self._import_bindings(here);
     first_line: dict[str, int] = {};
     for item in here.body {
+        if isinstance(item, ContextAwareNode) {
+            for declared in self._declared_names(item) {
+                binding = imported.get(declared.value);
+                if binding is not None
+                    and binding[0].code_context == item.code_context
+                    and not self._imports_itself(here, binding[0]) {
+                    self.ctx.emit(
+                        E2036,
+                        node_override=declared,
+                        name=declared.value,
+                        prior=self._binding_origin(here, binding[1])
+                    );
+                }
+            }
+        }
         name_node: (UniNode | None) = None;
         if isinstance(item, Ability) {
             name_node = item.name_ref;
@@ -27,12 +43,80 @@ impl ASTValidationPass.enter_module with Module entry {
                 E2036,
                 node_override=name_node,
                 name=name_node.value,
-                line=first_line[name_node.value]
+                prior=f"definition on line {first_line[name_node.value]}"
             );
         } else {
             first_line[name_node.value] = name_node.loc.first_line;
         }
     }
+}
+
+impl ASTValidationPass._import_bindings(mod: Module) -> dict[str, tuple[Import, Name]] {
+    bound: dict[str, tuple[Import, Name]] = {};
+    for stmt in mod.body {
+        if not isinstance(stmt, Import) or stmt.is_absorb {
+            continue;
+        }
+        for item in stmt.items {
+            name: (UniNode | None) = item.alias;
+            if name is None and isinstance(item, ModuleItem) {
+                name = item.name;
+            } elif name is None and isinstance(item, ModulePath) and item.path {
+                name = item.path[0];
+            }
+            if isinstance(name, Name) and name.value not in bound {
+                bound[name.value] = (stmt, name);
+            }
+        }
+    }
+    return bound;
+}
+
+impl ASTValidationPass._declared_names(item: ContextAwareNode) -> list[Name] {
+    name: (UniNode | None) = None;
+    if isinstance(item, Ability) {
+        name = item.name_ref;
+    } elif isinstance(item, (Archetype, Enum, TypeAlias)) {
+        name = item.name;
+    } elif isinstance(item, GlobalVars) {
+        typed: list[Name] = [];
+        for assign in item.assignments {
+            if assign.type_tag is None {
+                continue;
+            }
+            for target in assign.target {
+                if isinstance(target, Name) {
+                    typed.append(target);
+                }
+            }
+        }
+        return typed;
+    }
+    return [name] if isinstance(name, Name) else [];
+}
+
+impl ASTValidationPass._imports_itself(mod: Module, stmt: Import) -> bool {
+    source = stmt.from_loc;
+    if source is None {
+        return False;
+    }
+    stem = os.path.basename(mod.loc.mod_path).split(".")[0];
+    if source.level == 1 and source.dot_path_str == f".{stem}" {
+        return True;
+    }
+    resolved = source.resolve_relative_path();
+    return bool(resolved)
+        and os.path.realpath(resolved) == os.path.realpath(mod.loc.mod_path);
+}
+
+impl ASTValidationPass._binding_origin(mod: Module, name: Name) -> str {
+    line = name.loc.first_line;
+    if name.loc.mod_path == mod.loc.mod_path {
+        return f"import on line {line}";
+    }
+    source = os.path.basename(name.loc.mod_path);
+    kind = "wire" if source == "archwire.jac" else "import";
+    return f"{kind} on line {line} of {source}";
 }
 
 impl ASTValidationPass.enter_module_code with ModuleCode entry {
@@ -318,22 +402,16 @@ impl ASTValidationPass.enter_ctrl_stmt with CtrlStmt entry {
 
     parent = here.parent;
     while parent is not None {
-        if isinstance(parent, (InForStmt, IterForStmt, WhileStmt, ForeverStmt)) {
-            return;
-        }
-
-        if kw == "break" and isinstance(parent, (SwitchStmt, MatchStmt)) {
-            return;
-        }
-        if kw == "continue" and isinstance(parent, ElseStmt) {
-            if isinstance(parent.parent, (InForStmt, IterForStmt, WhileStmt)) {
-                self.ctx.emit(E0059, node_override=here);
+        if not in_loop_else(here, parent) {
+            if isinstance(parent, (InForStmt, IterForStmt, WhileStmt, ForeverStmt)) {
                 return;
             }
-        }
-
-        if isinstance(parent, (Ability, ImplDef, Module)) {
-            break;
+            if kw == "break" and isinstance(parent, (SwitchStmt, MatchStmt)) {
+                return;
+            }
+            if isinstance(parent, (Ability, ImplDef, Module)) {
+                break;
+            }
         }
         parent = parent.parent;
     }
@@ -482,6 +560,65 @@ impl ASTValidationPass.enter_archetype with Archetype entry {
             self.ctx.emit(E0076, node_override=nref, name=mname);
         }
         seen_methods.add(dedup_name);
+    }
+
+    if isinstance(here.body, list) {
+        self._check_field_method_clash(here, here.body);
+    }
+}
+
+impl ASTValidationPass.enter_impl_def with ImplDef entry {
+    if isinstance(here.body, list) {
+        self._check_field_method_clash(here, here.body);
+    }
+}
+
+impl ASTValidationPass._member_attr_name(nref: Name) -> str {
+    if nref.name == Tok.KW_INIT {
+        return "__init__";
+    }
+    if nref.name == Tok.KW_POST_INIT {
+        return "__post_init__";
+    }
+    return nref.value;
+}
+
+impl ASTValidationPass._check_field_method_clash(
+    owner_node: UniNode, members: list[UniNode]
+) -> None {
+    owner = owner_node.find_parent_of_type(Module);
+    if owner is not None and (owner.is_raised_from_py or owner.stub_only) {
+        return;
+    }
+    field_lines: dict[str, int] = {};
+    for item in members {
+        if isinstance(item, ArchHas) {
+            for var in item.vars {
+                if var.name.value not in field_lines {
+                    field_lines[var.name.value] = var.name.loc.first_line;
+                }
+            }
+        }
+    }
+    if len(field_lines) == 0 {
+        return;
+    }
+    for item in members {
+        if not isinstance(item, Ability) {
+            continue;
+        }
+        aref = item.name_ref;
+        if not isinstance(aref, Name) {
+            continue;
+        }
+        attr = self._member_attr_name(aref);
+        if attr not in field_lines {
+            continue;
+        }
+        kind = "ability" if isinstance(item.signature, EventSignature) else "method";
+        self.ctx.emit(
+            E0078, node_override=aref, name=attr, kind=kind, line=field_lines[attr]
+        );
     }
 }
 

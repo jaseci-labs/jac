@@ -43,7 +43,13 @@ import from engine.src.runtime.jsobject {
 import from engine.src.builtins.array { js_is_array, js_array_get, js_array_len }
 import from engine.src.runtime.jsstring { str_intern, str_from_id }
 import from engine.src.runtime.gc_pin { gc_pin_value }
-import from engine.src.runtime.mem { byte_chr }
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
 import from engine.src.runtime.error {
     make_module_not_found,
     make_err_esm_module_not_found,
@@ -84,60 +90,60 @@ def _mnf(msg: str, is_esm_import: int) -> JSValue {
 # ── Path utilities — imported from src.builtins.path_utils ─────────────────
 
 def mr_path_has_ext(path: str) -> bool {
-    n: int = len(path);
-    if n >= 3 and path[n - 3] == "." and path[n - 2] == "j" and path[n - 1] == "s" {
+    n: int = str_nbytes(path);
+    if n >= 3 and byte_chr(str_byte(path, n - 3)) == "." and byte_chr(str_byte(path, n - 2)) == "j" and byte_chr(str_byte(path, n - 1)) == "s" {
         return True;
     }
     if n >= 4
-        and path[n - 4] == "."
-        and path[n - 3] == "m"
-        and path[n - 2] == "j"
-        and path[n - 1] == "s" {
+        and byte_chr(str_byte(path, n - 4)) == "."
+        and byte_chr(str_byte(path, n - 3)) == "m"
+        and byte_chr(str_byte(path, n - 2)) == "j"
+        and byte_chr(str_byte(path, n - 1)) == "s" {
         return True;
     }
     if n >= 4
-        and path[n - 4] == "."
-        and path[n - 3] == "c"
-        and path[n - 2] == "j"
-        and path[n - 1] == "s" {
+        and byte_chr(str_byte(path, n - 4)) == "."
+        and byte_chr(str_byte(path, n - 3)) == "c"
+        and byte_chr(str_byte(path, n - 2)) == "j"
+        and byte_chr(str_byte(path, n - 1)) == "s" {
         return True;
     }
     if n >= 5
-        and path[n - 5] == "."
-        and path[n - 4] == "j"
-        and path[n - 3] == "s"
-        and path[n - 2] == "o"
-        and path[n - 1] == "n" {
+        and byte_chr(str_byte(path, n - 5)) == "."
+        and byte_chr(str_byte(path, n - 4)) == "j"
+        and byte_chr(str_byte(path, n - 3)) == "s"
+        and byte_chr(str_byte(path, n - 2)) == "o"
+        and byte_chr(str_byte(path, n - 1)) == "n" {
         return True;
     }
     if n >= 5
-        and path[n - 5] == "."
-        and path[n - 4] == "n"
-        and path[n - 3] == "o"
-        and path[n - 2] == "d"
-        and path[n - 1] == "e" {
+        and byte_chr(str_byte(path, n - 5)) == "."
+        and byte_chr(str_byte(path, n - 4)) == "n"
+        and byte_chr(str_byte(path, n - 3)) == "o"
+        and byte_chr(str_byte(path, n - 2)) == "d"
+        and byte_chr(str_byte(path, n - 1)) == "e" {
         return True;
     }
     if n >= 5
-        and path[n - 5] == "."
-        and path[n - 4] == "w"
-        and path[n - 3] == "a"
-        and path[n - 2] == "s"
-        and path[n - 1] == "m" {
+        and byte_chr(str_byte(path, n - 5)) == "."
+        and byte_chr(str_byte(path, n - 4)) == "w"
+        and byte_chr(str_byte(path, n - 3)) == "a"
+        and byte_chr(str_byte(path, n - 2)) == "s"
+        and byte_chr(str_byte(path, n - 1)) == "m" {
         return True;
     }
     return False;
 }
 
 def mr_ends_with(s: str, suffix: str) -> bool {
-    ns: int = len(s);
-    nf: int = len(suffix);
+    ns: int = str_nbytes(s);
+    nf: int = str_nbytes(suffix);
     if nf > ns {
         return False;
     }
     i: int = 0;
     while i < nf {
-        if s[ns - nf + i] != suffix[i] {
+        if byte_chr(str_byte(s, ns - nf + i)) != byte_chr(str_byte(suffix, i)) {
             return False;
         }
         i = i + 1;
@@ -149,17 +155,17 @@ def _resolver_is_relative_or_absolute(spec: str) -> bool {
     if len(spec) == 0 {
         return False;
     }
-    if spec[0] == "/" {
+    if byte_chr(str_byte(spec, 0)) == "/" {
         return True;
     }
     # Bare "." / ".." are relative (Node: require('.') → package root / index)
     if spec == "." or spec == ".." {
         return True;
     }
-    if len(spec) >= 2 and spec[0] == "." and spec[1] == "/" {
+    if str_nbytes(spec) >= 2 and byte_chr(str_byte(spec, 0)) == "." and byte_chr(str_byte(spec, 1)) == "/" {
         return True;
     }
-    if len(spec) >= 3 and spec[0] == "." and spec[1] == "." and spec[2] == "/" {
+    if str_nbytes(spec) >= 3 and byte_chr(str_byte(spec, 0)) == "." and byte_chr(str_byte(spec, 1)) == "." and byte_chr(str_byte(spec, 2)) == "/" {
         return True;
     }
     return False;
@@ -362,17 +368,17 @@ def _resolve_conditions(val: JSValue, is_esm_import: int) -> str {
 }
 
 def _validate_export_target(target: str, pkg_root: str) -> bool {
-    if len(target) < 2 {
+    if str_nbytes(target) < 2 {
         return False;
     }
-    if target[0] != "." or target[1] != "/" {
+    if byte_chr(str_byte(target, 0)) != "." or byte_chr(str_byte(target, 1)) != "/" {
         return False;
     }
     if mr_ends_with(target, "/") {
         return False;
     }
     # Reject targets that escape package root via ../
-    joined: str = path_abspath(target[2:], pkg_root);
+    joined: str = path_abspath(str_bslice_from(target, 2), pkg_root);
     root_norm: str = path_normalize(pkg_root);
     if not (mr_starts_with(joined, root_norm + "/") or joined == root_norm) {
         return False;
@@ -381,12 +387,13 @@ def _validate_export_target(target: str, pkg_root: str) -> bool {
 }
 
 def mr_starts_with(hay: str, needle: str) -> bool {
-    if len(needle) > len(hay) {
+    if str_nbytes(needle) > str_nbytes(hay) {
         return False;
     }
     i: int = 0;
-    while i < len(needle) {
-        if hay[i] != needle[i] {
+    _nb394_needle: int = str_nbytes(needle);
+    while i < _nb394_needle {
+        if byte_chr(str_byte(hay, i)) != byte_chr(str_byte(needle, i)) {
             return False;
         }
         i = i + 1;
@@ -401,15 +408,16 @@ def _match_export_key(request: str, key: str) -> bool {
     if "*" in key {
         star: int = -1;
         ki: int = 0;
-        while ki < len(key) {
-            if key[ki] == "*" {
+        _nb410_key: int = str_nbytes(key);
+        while ki < _nb410_key {
+            if byte_chr(str_byte(key, ki)) == "*" {
                 star = ki;
             }
             ki = ki + 1;
         }
         if star >= 0 {
-            prefix: str = key[0:star];
-            suffix: str = key[star + 1:];
+            prefix: str = str_bslice(key, 0, star);
+            suffix: str = str_bslice_from(key, star + 1);
             if mr_starts_with(request, prefix) and mr_ends_with(request, suffix) {
                 return True;
             }
@@ -424,8 +432,9 @@ def _substitute_export_pattern(request: str, pattern: str, target_pat: str) -> s
     }
     star_p: int = -1;
     pi: int = 0;
-    while pi < len(pattern) {
-        if pattern[pi] == "*" {
+    _nb433_pattern: int = str_nbytes(pattern);
+    while pi < _nb433_pattern {
+        if byte_chr(str_byte(pattern, pi)) == "*" {
             star_p = pi;
         }
         pi = pi + 1;
@@ -433,13 +442,14 @@ def _substitute_export_pattern(request: str, pattern: str, target_pat: str) -> s
     if star_p < 0 {
         return target_pat;
     }
-    pfx: str = pattern[0:star_p];
-    sfx: str = pattern[star_p + 1:];
-    mid: str = request[len(pfx):len(request) - len(sfx)];
+    pfx: str = str_bslice(pattern, 0, star_p);
+    sfx: str = str_bslice_from(pattern, star_p + 1);
+    mid: str = str_bslice(request, str_nbytes(pfx), str_nbytes(request) - str_nbytes(sfx));
     star_t: int = -1;
     ti: int = 0;
-    while ti < len(target_pat) {
-        if target_pat[ti] == "*" {
+    _nb447_target_pat: int = str_nbytes(target_pat);
+    while ti < _nb447_target_pat {
+        if byte_chr(str_byte(target_pat, ti)) == "*" {
             star_t = ti;
         }
         ti = ti + 1;
@@ -447,8 +457,8 @@ def _substitute_export_pattern(request: str, pattern: str, target_pat: str) -> s
     if star_t < 0 {
         return target_pat;
     }
-    out: str = target_pat[0:star_t] + mid + target_pat[star_t + 1:];
-    if out[0] != "." {
+    out: str = str_bslice(target_pat, 0, star_t) + mid + str_bslice_from(target_pat, star_t + 1);
+    if byte_chr(str_byte(out, 0)) != "." {
         out = "./" + out;
     }
     return out;
@@ -468,7 +478,7 @@ def _lookup_exports(exports_val: JSValue, subpath: str, is_esm_import: int) -> s
     if req == "" {
         req = ".";
     }
-    if req[0] != "." {
+    if byte_chr(str_byte(req, 0)) != "." {
         req = "./" + req;
     }
     # Top-level array form: `"exports": [alt1, alt2]` — alternatives for ".".
@@ -487,7 +497,7 @@ def _lookup_exports(exports_val: JSValue, subpath: str, is_esm_import: int) -> s
         hk: int = 0;
         while hk < len(keys) {
             hkk: str = keys[hk];
-            if len(hkk) > 0 and hkk[0] == "." {
+            if len(hkk) > 0 and byte_chr(str_byte(hkk, 0)) == "." {
                 has_subpath_key = True;
                 break;
             }
@@ -537,8 +547,9 @@ def _lookup_exports(exports_val: JSValue, subpath: str, is_esm_import: int) -> s
 
 def _is_pattern_key(k: str) -> bool {
     pi: int = 0;
-    while pi < len(k) {
-        if k[pi] == "*" {
+    _nb546_k: int = str_nbytes(k);
+    while pi < _nb546_k {
+        if byte_chr(str_byte(k, pi)) == "*" {
             return True;
         }
         pi = pi + 1;
@@ -569,12 +580,13 @@ obj BareSpecifier {
 
 def _parse_bare_specifier(spec: str) -> BareSpecifier {
     # Returns (package_name, subpath) where subpath is like "./feature" or ""
-    if len(spec) > 0 and spec[0] == "@" {
+    if len(spec) > 0 and byte_chr(str_byte(spec, 0)) == "@" {
         # @scope/pkg or @scope/pkg/sub
         slash1: int = -1;
         i: int = 0;
-        while i < len(spec) {
-            if spec[i] == "/" {
+        _nb582_spec: int = str_nbytes(spec);
+        while i < _nb582_spec {
+            if byte_chr(str_byte(spec, i)) == "/" {
                 slash1 = i;
                 break;
             }
@@ -585,8 +597,9 @@ def _parse_bare_specifier(spec: str) -> BareSpecifier {
         }
         slash2: int = -1;
         j: int = slash1 + 1;
-        while j < len(spec) {
-            if spec[j] == "/" {
+        _nb594_spec: int = str_nbytes(spec);
+        while j < _nb594_spec {
+            if byte_chr(str_byte(spec, j)) == "/" {
                 slash2 = j;
                 break;
             }
@@ -595,14 +608,15 @@ def _parse_bare_specifier(spec: str) -> BareSpecifier {
         if slash2 < 0 {
             return BareSpecifier(name=spec, subpath="");
         }
-        pkg: str = spec[0:slash2];
-        sub: str = "." + spec[slash2:];
+        pkg: str = str_bslice(spec, 0, slash2);
+        sub: str = "." + str_bslice_from(spec, slash2);
         return BareSpecifier(name=pkg, subpath=sub);
     }
     slash: int = -1;
     k: int = 0;
-    while k < len(spec) {
-        if spec[k] == "/" {
+    _nb610_spec: int = str_nbytes(spec);
+    while k < _nb610_spec {
+        if byte_chr(str_byte(spec, k)) == "/" {
             slash = k;
             break;
         }
@@ -611,7 +625,7 @@ def _parse_bare_specifier(spec: str) -> BareSpecifier {
     if slash < 0 {
         return BareSpecifier(name=spec, subpath="");
     }
-    return BareSpecifier(name=spec[0:slash], subpath="." + spec[slash:]);
+    return BareSpecifier(name=str_bslice(spec, 0, slash), subpath="." + str_bslice_from(spec, slash));
 }
 
 def _node_modules_paths(from_dir: str) -> list[str] {
@@ -648,7 +662,7 @@ def _resolve_target_in_package(
         msg: str = "Invalid package target \"" + target + "\"";
         return _err_result(make_err_invalid_package_target(msg));
     }
-    rel: str = target[2:];
+    rel: str = str_bslice_from(target, 2);
     abs_base: str = path_abspath(rel, pkg_root);
     probed: str = _probe_file_path(abs_base);
     if probed == "" {
@@ -668,7 +682,7 @@ def _resolve_package_exports(
     if jsv_is_undefined(exports_v) or jsv_is_null(exports_v) {
         if subpath != "" and subpath != "." {
             tgt_nf: str = subpath;
-            if tgt_nf[0] != "." {
+            if byte_chr(str_byte(tgt_nf, 0)) != "." {
                 tgt_nf = "./" + tgt_nf;
             }
             return _resolve_target_in_package(pkg_root, tgt_nf, is_esm_import);
@@ -677,7 +691,7 @@ def _resolve_package_exports(
         if main == "" {
             main = "./index.js";
         }
-        if main[0] != "." {
+        if byte_chr(str_byte(main, 0)) != "." {
             main = "./" + main;
         }
         return _resolve_target_in_package(pkg_root, main, is_esm_import);
@@ -781,8 +795,8 @@ def _resolve_imports_hash(
 }
 
 def _match_import_pattern(spec: str, pattern: str) -> bool {
-    if pattern[len(pattern) - 1] == "*" {
-        prefix: str = pattern[0:len(pattern) - 1];
+    if byte_chr(str_byte(pattern, str_nbytes(pattern) - 1)) == "*" {
+        prefix: str = str_bslice(pattern, 0, str_nbytes(pattern) - 1);
         return mr_starts_with(spec, prefix);
     }
     return False;
@@ -792,12 +806,13 @@ def _resolve_import_pattern(spec: str, pattern: str, target_pat: str) -> str {
     if not _match_import_pattern(spec, pattern) {
         return "";
     }
-    prefix: str = pattern[0:len(pattern) - 1];
-    suffix: str = spec[len(prefix):];
+    prefix: str = str_bslice(pattern, 0, str_nbytes(pattern) - 1);
+    suffix: str = str_bslice_from(spec, str_nbytes(prefix));
     star: int = -1;
     ti: int = 0;
-    while ti < len(target_pat) {
-        if target_pat[ti] == "*" {
+    _nb805_target_pat: int = str_nbytes(target_pat);
+    while ti < _nb805_target_pat {
+        if byte_chr(str_byte(target_pat, ti)) == "*" {
             star = ti;
         }
         ti = ti + 1;
@@ -805,10 +820,10 @@ def _resolve_import_pattern(spec: str, pattern: str, target_pat: str) -> str {
     if star < 0 {
         return target_pat;
     }
-    tpre: str = target_pat[0:star];
-    tsuf: str = target_pat[star + 1:];
+    tpre: str = str_bslice(target_pat, 0, star);
+    tsuf: str = str_bslice_from(target_pat, star + 1);
     out: str = tpre + suffix + tsuf;
-    if out[0] != "." {
+    if byte_chr(str_byte(out, 0)) != "." {
         out = "./" + out;
     }
     return out;
@@ -858,7 +873,7 @@ def _resolve_bare(
 
 def _resolve_relative(spec: str, from_dir: str, is_esm_import: int) -> ResolveResult {
     base: str = spec;
-    if len(spec) >= 1 and spec[0] == "." {
+    if len(spec) >= 1 and byte_chr(str_byte(spec, 0)) == "." {
         base = path_abspath(spec, from_dir);
     }
     base = path_normalize(base);
@@ -881,15 +896,15 @@ Canonical module resolution entry point.
 Returns ResolveResult with absolute path and format, or err JSValue to throw.
 """
 def _strip_file_url(p: str) -> str {
-    if len(p) > 7
-        and p[0] == "f"
-        and p[1] == "i"
-        and p[2] == "l"
-        and p[3] == "e"
-        and p[4] == ":"
-        and p[5] == "/"
-        and p[6] == "/" {
-        fu: str = p[7:];
+    if str_nbytes(p) > 7
+        and byte_chr(str_byte(p, 0)) == "f"
+        and byte_chr(str_byte(p, 1)) == "i"
+        and byte_chr(str_byte(p, 2)) == "l"
+        and byte_chr(str_byte(p, 3)) == "e"
+        and byte_chr(str_byte(p, 4)) == ":"
+        and byte_chr(str_byte(p, 5)) == "/"
+        and byte_chr(str_byte(p, 6)) == "/" {
+        fu: str = str_bslice_from(p, 7);
         # URL semantics: `?query` / `#fragment` are never part of the filesystem
         # path (a literal ? or # in a path must be percent-encoded). Node strips
         # them; we resolved the literal string, so
@@ -900,10 +915,10 @@ def _strip_file_url(p: str) -> str {
         # the module cache on the FULL URL (each ?t= evaluates fresh); we key on
         # the path — acceptable for vite, which writes a NEW temp file per load.
         fq: int = 0;
-        fn2: int = len(fu);
+        fn2: int = str_nbytes(fu);
         while fq < fn2 {
-            if fu[fq] == "?" or fu[fq] == "#" {
-                return fu[0:fq];
+            if byte_chr(str_byte(fu, fq)) == "?" or byte_chr(str_byte(fu, fq)) == "#" {
+                return str_bslice(fu, 0, fq);
             }
             fq = fq + 1;
         }
@@ -915,13 +930,13 @@ def _strip_file_url(p: str) -> str {
 """Hex digit value, or -1 if not a hex digit."""
 def _hex_nibble(c: str) -> int {
     if c >= "0" and c <= "9" {
-        return ord(c) - ord("0");
+        return str_byte(c, 0) - ord("0");
     }
     if c >= "a" and c <= "f" {
-        return ord(c) - ord("a") + 10;
+        return str_byte(c, 0) - ord("a") + 10;
     }
     if c >= "A" and c <= "F" {
-        return ord(c) - ord("A") + 10;
+        return str_byte(c, 0) - ord("A") + 10;
     }
     return -1;
 }
@@ -939,10 +954,11 @@ def _percent_decode_path(s: str) -> str {
     }
     has_pct: int = 0;
     si: int = 0;
-    while si < len(s) {
-        if s[si] == "%" {
+    _nb948_s: int = str_nbytes(s);
+    while si < _nb948_s {
+        if byte_chr(str_byte(s, si)) == "%" {
             has_pct = 1;
-            si = len(s);
+            si = str_nbytes(s);
         }
         si = si + 1;
     }
@@ -951,11 +967,11 @@ def _percent_decode_path(s: str) -> str {
     }
     out: str = "";
     i: int = 0;
-    n: int = len(s);
+    n: int = str_nbytes(s);
     while i < n {
-        if s[i] == "%" and i + 2 < n {
-            h1: int = _hex_nibble(s[i + 1]);
-            h2: int = _hex_nibble(s[i + 2]);
+        if byte_chr(str_byte(s, i)) == "%" and i + 2 < n {
+            h1: int = _hex_nibble(byte_chr(str_byte(s, i + 1)));
+            h2: int = _hex_nibble(byte_chr(str_byte(s, i + 2)));
             if h1 >= 0 and h2 >= 0 {
                 b: int = h1 * 16 + h2;
                 # Avoid embedding raw NUL (chr(0) collides with "" in Jac).
@@ -966,11 +982,11 @@ def _percent_decode_path(s: str) -> str {
                 }
                 i = i + 3;
             } else {
-                out = out + s[i];
+                out = out + byte_chr(str_byte(s, i));
                 i = i + 1;
             }
         } else {
-            out = out + s[i];
+            out = out + byte_chr(str_byte(s, i));
             i = i + 1;
         }
     }
@@ -986,14 +1002,14 @@ def:pub resolve_specifier(
     if is_esm_import != 0 {
         specifier = _percent_decode_path(specifier);
     }
-    if len(specifier) > 7
-        and specifier[0] == "f"
-        and specifier[1] == "i"
-        and specifier[2] == "l"
-        and specifier[3] == "e"
-        and specifier[4] == ":"
-        and specifier[5] == "/"
-        and specifier[6] == "/" {
+    if str_nbytes(specifier) > 7
+        and byte_chr(str_byte(specifier, 0)) == "f"
+        and byte_chr(str_byte(specifier, 1)) == "i"
+        and byte_chr(str_byte(specifier, 2)) == "l"
+        and byte_chr(str_byte(specifier, 3)) == "e"
+        and byte_chr(str_byte(specifier, 4)) == ":"
+        and byte_chr(str_byte(specifier, 5)) == "/"
+        and byte_chr(str_byte(specifier, 6)) == "/" {
         abs_u: str = _strip_file_url(specifier);
         # CJS require(fileURL) still needs a single decode pass.
         if is_esm_import == 0 {
@@ -1003,13 +1019,13 @@ def:pub resolve_specifier(
         return _ok_result(abs_u, fmt_u);
     }
     bare: str = specifier;
-    if len(specifier) > 5
-        and specifier[0] == "n"
-        and specifier[1] == "o"
-        and specifier[2] == "d"
-        and specifier[3] == "e"
-        and specifier[4] == ":" {
-        bare = specifier[5:];
+    if str_nbytes(specifier) > 5
+        and byte_chr(str_byte(specifier, 0)) == "n"
+        and byte_chr(str_byte(specifier, 1)) == "o"
+        and byte_chr(str_byte(specifier, 2)) == "d"
+        and byte_chr(str_byte(specifier, 3)) == "e"
+        and byte_chr(str_byte(specifier, 4)) == ":" {
+        bare = str_bslice_from(specifier, 5);
     }
 
     if is_builtin_module(bare) {
@@ -1024,16 +1040,17 @@ def:pub resolve_specifier(
     # package#import (consumer require.resolve) — not exposed outside owning package
     hash_pos: int = -1;
     hp: int = 1;
-    while hp < len(specifier) {
-        if specifier[hp] == "#" {
+    _nb1033_specifier: int = str_nbytes(specifier);
+    while hp < _nb1033_specifier {
+        if byte_chr(str_byte(specifier, hp)) == "#" {
             hash_pos = hp;
-            hp = len(specifier);
+            hp = str_nbytes(specifier);
         }
         hp = hp + 1;
     }
     if hash_pos > 0 {
-        pkg_part: str = specifier[0:hash_pos];
-        imp_part: str = specifier[hash_pos:];
+        pkg_part: str = str_bslice(specifier, 0, hash_pos);
+        imp_part: str = str_bslice_from(specifier, hash_pos);
         pkg_root_h: str = _find_package_root(pkg_part, from_dir);
         if pkg_root_h == "" {
             return _err_result(
@@ -1051,7 +1068,7 @@ def:pub resolve_specifier(
     }
 
     # Package imports (#hash) — only from within owning package
-    if len(specifier) > 0 and specifier[0] == "#" {
+    if len(specifier) > 0 and byte_chr(str_byte(specifier, 0)) == "#" {
         own_root: str = _nearest_package_root(from_dir);
         if own_root == "" {
             return _err_result(

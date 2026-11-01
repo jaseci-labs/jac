@@ -1,367 +1,147 @@
 """Native validation of manually constructed ASTs after schema conversion."""
 
-def ast_kind(value: ast_node) -> str {
-    if isinstance(value, Module) {
-        return "Module";
-    }
-    if isinstance(value, Interactive) {
-        return "Interactive";
-    }
-    if isinstance(value, Expression) {
-        return "Expression";
-    }
-    if isinstance(value, FunctionType) {
-        return "FunctionType";
-    }
-    if isinstance(value, FunctionDef) {
-        return "FunctionDef";
-    }
-    if isinstance(value, AsyncFunctionDef) {
-        return "AsyncFunctionDef";
-    }
-    if isinstance(value, ClassDef) {
-        return "ClassDef";
-    }
-    if isinstance(value, Return) {
-        return "Return";
-    }
-    if isinstance(value, Delete) {
-        return "Delete";
-    }
-    if isinstance(value, Assign) {
-        return "Assign";
-    }
-    if isinstance(value, TypeAlias) {
-        return "TypeAlias";
-    }
-    if isinstance(value, AugAssign) {
-        return "AugAssign";
-    }
-    if isinstance(value, AnnAssign) {
-        return "AnnAssign";
-    }
-    if isinstance(value, For) {
-        return "For";
-    }
-    if isinstance(value, AsyncFor) {
-        return "AsyncFor";
-    }
-    if isinstance(value, While) {
-        return "While";
-    }
-    if isinstance(value, If) {
-        return "If";
-    }
-    if isinstance(value, With) {
-        return "With";
-    }
-    if isinstance(value, AsyncWith) {
-        return "AsyncWith";
-    }
-    if isinstance(value, Match) {
-        return "Match";
-    }
-    if isinstance(value, Raise) {
-        return "Raise";
-    }
-    if isinstance(value, Try) {
-        return "Try";
-    }
-    if isinstance(value, TryStar) {
-        return "TryStar";
-    }
-    if isinstance(value, Assert) {
-        return "Assert";
-    }
-    if isinstance(value, Import) {
-        return "Import";
-    }
-    if isinstance(value, ImportFrom) {
-        return "ImportFrom";
-    }
-    if isinstance(value, Global) {
-        return "Global";
-    }
-    if isinstance(value, Nonlocal) {
-        return "Nonlocal";
-    }
-    if isinstance(value, Expr) {
-        return "Expr";
-    }
-    if isinstance(value, Pass) {
-        return "Pass";
-    }
-    if isinstance(value, Break) {
-        return "Break";
-    }
-    if isinstance(value, Continue) {
-        return "Continue";
-    }
-    if isinstance(value, BoolOp) {
-        return "BoolOp";
-    }
-    if isinstance(value, NamedExpr) {
-        return "NamedExpr";
-    }
-    if isinstance(value, BinOp) {
-        return "BinOp";
-    }
-    if isinstance(value, UnaryOp) {
-        return "UnaryOp";
-    }
-    if isinstance(value, Lambda) {
-        return "Lambda";
-    }
-    if isinstance(value, IfExp) {
-        return "IfExp";
-    }
-    if isinstance(value, Dict) {
-        return "Dict";
-    }
-    if isinstance(value, Set) {
-        return "Set";
-    }
-    if isinstance(value, ListComp) {
-        return "ListComp";
-    }
-    if isinstance(value, SetComp) {
-        return "SetComp";
-    }
-    if isinstance(value, DictComp) {
-        return "DictComp";
-    }
-    if isinstance(value, GeneratorExp) {
-        return "GeneratorExp";
-    }
-    if isinstance(value, Await) {
-        return "Await";
-    }
-    if isinstance(value, Yield) {
-        return "Yield";
-    }
-    if isinstance(value, YieldFrom) {
-        return "YieldFrom";
-    }
-    if isinstance(value, Compare) {
-        return "Compare";
-    }
-    if isinstance(value, Call) {
-        return "Call";
-    }
-    if isinstance(value, FormattedValue) {
-        return "FormattedValue";
-    }
-    if isinstance(value, Interpolation) {
-        return "Interpolation";
-    }
-    if isinstance(value, JoinedStr) {
-        return "JoinedStr";
-    }
-    if isinstance(value, TemplateStr) {
-        return "TemplateStr";
-    }
-    if isinstance(value, Constant) {
-        return "Constant";
-    }
-    if isinstance(value, Attribute) {
-        return "Attribute";
-    }
-    if isinstance(value, Subscript) {
-        return "Subscript";
-    }
-    if isinstance(value, Starred) {
-        return "Starred";
-    }
-    if isinstance(value, Name) {
-        return "Name";
-    }
-    if isinstance(value, List) {
-        return "List";
-    }
-    if isinstance(value, Tuple) {
-        return "Tuple";
-    }
-    if isinstance(value, Slice) {
-        return "Slice";
-    }
-    if isinstance(value, Load) {
-        return "Load";
-    }
-    if isinstance(value, Store) {
-        return "Store";
-    }
-    if isinstance(value, Del) {
-        return "Del";
-    }
-    if isinstance(value, And) {
-        return "And";
-    }
-    if isinstance(value, Or) {
-        return "Or";
-    }
-    if isinstance(value, Add) {
-        return "Add";
-    }
-    if isinstance(value, Sub) {
-        return "Sub";
-    }
-    if isinstance(value, Mult) {
-        return "Mult";
-    }
-    if isinstance(value, MatMult) {
-        return "MatMult";
-    }
-    if isinstance(value, Div) {
-        return "Div";
-    }
-    if isinstance(value, Mod) {
-        return "Mod";
-    }
-    if isinstance(value, Pow) {
-        return "Pow";
-    }
-    if isinstance(value, LShift) {
-        return "LShift";
-    }
-    if isinstance(value, RShift) {
-        return "RShift";
-    }
-    if isinstance(value, BitOr) {
-        return "BitOr";
-    }
-    if isinstance(value, BitXor) {
-        return "BitXor";
-    }
-    if isinstance(value, BitAnd) {
-        return "BitAnd";
-    }
-    if isinstance(value, FloorDiv) {
-        return "FloorDiv";
-    }
-    if isinstance(value, Invert) {
-        return "Invert";
-    }
-    if isinstance(value, Not) {
-        return "Not";
-    }
-    if isinstance(value, UAdd) {
-        return "UAdd";
-    }
-    if isinstance(value, USub) {
-        return "USub";
-    }
-    if isinstance(value, Eq) {
-        return "Eq";
-    }
-    if isinstance(value, NotEq) {
-        return "NotEq";
-    }
-    if isinstance(value, Lt) {
-        return "Lt";
-    }
-    if isinstance(value, LtE) {
-        return "LtE";
-    }
-    if isinstance(value, Gt) {
-        return "Gt";
-    }
-    if isinstance(value, GtE) {
-        return "GtE";
-    }
-    if isinstance(value, Is) {
-        return "Is";
-    }
-    if isinstance(value, IsNot) {
-        return "IsNot";
-    }
-    if isinstance(value, In) {
-        return "In";
-    }
-    if isinstance(value, NotIn) {
-        return "NotIn";
-    }
-    if isinstance(value, comprehension) {
-        return "comprehension";
-    }
-    if isinstance(value, ExceptHandler) {
-        return "ExceptHandler";
-    }
-    if isinstance(value, arguments) {
-        return "arguments";
-    }
-    if isinstance(value, arg) {
-        return "arg";
-    }
-    if isinstance(value, keyword) {
-        return "keyword";
-    }
-    if isinstance(value, alias) {
-        return "alias";
-    }
-    if isinstance(value, withitem) {
-        return "withitem";
-    }
-    if isinstance(value, match_case) {
-        return "match_case";
-    }
-    if isinstance(value, MatchValue) {
-        return "MatchValue";
-    }
-    if isinstance(value, MatchSingleton) {
-        return "MatchSingleton";
-    }
-    if isinstance(value, MatchSequence) {
-        return "MatchSequence";
-    }
-    if isinstance(value, MatchMapping) {
-        return "MatchMapping";
-    }
-    if isinstance(value, MatchClass) {
-        return "MatchClass";
-    }
-    if isinstance(value, MatchStar) {
-        return "MatchStar";
-    }
-    if isinstance(value, MatchAs) {
-        return "MatchAs";
-    }
-    if isinstance(value, MatchOr) {
-        return "MatchOr";
-    }
-    if isinstance(value, TypeIgnore) {
-        return "TypeIgnore";
-    }
-    if isinstance(value, TypeVar) {
-        return "TypeVar";
-    }
-    if isinstance(value, ParamSpec) {
-        return "ParamSpec";
-    }
-    if isinstance(value, TypeVarTuple) {
-        return "TypeVarTuple";
+glob AST_KIND_NAMES: list[str] = [
+         "Module",
+         "Interactive",
+         "Expression",
+         "FunctionType",
+         "FunctionDef",
+         "AsyncFunctionDef",
+         "ClassDef",
+         "Return",
+         "Delete",
+         "Assign",
+         "TypeAlias",
+         "AugAssign",
+         "AnnAssign",
+         "For",
+         "AsyncFor",
+         "While",
+         "If",
+         "With",
+         "AsyncWith",
+         "Match",
+         "Raise",
+         "Try",
+         "TryStar",
+         "Assert",
+         "Import",
+         "ImportFrom",
+         "Global",
+         "Nonlocal",
+         "Expr",
+         "Pass",
+         "Break",
+         "Continue",
+         "BoolOp",
+         "NamedExpr",
+         "BinOp",
+         "UnaryOp",
+         "Lambda",
+         "IfExp",
+         "Dict",
+         "Set",
+         "ListComp",
+         "SetComp",
+         "DictComp",
+         "GeneratorExp",
+         "Await",
+         "Yield",
+         "YieldFrom",
+         "Compare",
+         "Call",
+         "FormattedValue",
+         "Interpolation",
+         "JoinedStr",
+         "TemplateStr",
+         "Constant",
+         "Attribute",
+         "Subscript",
+         "Starred",
+         "Name",
+         "List",
+         "Tuple",
+         "Slice",
+         "Load",
+         "Store",
+         "Del",
+         "And",
+         "Or",
+         "Add",
+         "Sub",
+         "Mult",
+         "MatMult",
+         "Div",
+         "Mod",
+         "Pow",
+         "LShift",
+         "RShift",
+         "BitOr",
+         "BitXor",
+         "BitAnd",
+         "FloorDiv",
+         "Invert",
+         "Not",
+         "UAdd",
+         "USub",
+         "Eq",
+         "NotEq",
+         "Lt",
+         "LtE",
+         "Gt",
+         "GtE",
+         "Is",
+         "IsNot",
+         "In",
+         "NotIn",
+         "comprehension",
+         "ExceptHandler",
+         "arguments",
+         "arg",
+         "keyword",
+         "alias",
+         "withitem",
+         "match_case",
+         "MatchValue",
+         "MatchSingleton",
+         "MatchSequence",
+         "MatchMapping",
+         "MatchClass",
+         "MatchStar",
+         "MatchAs",
+         "MatchOr",
+         "TypeIgnore",
+         "TypeVar",
+         "ParamSpec",
+         "TypeVarTuple"
+     ];
+
+def ast_kind_name(value: ast_node) -> str {
+    kind = value.node_kind().value;
+    if kind >= 0 and kind < len(AST_KIND_NAMES) {
+        return AST_KIND_NAMES[kind];
     }
     return "AST";
 }
 
 def ast_positions(value: ast_node) -> tuple[int, int, int, int] {
-    if isinstance(value, expr) {
+    kind = value.node_kind().value;
+    if kind >= 32 and kind <= 60 {
+        e = value as expr;
         return (
-            value.lineno,
-            value.col_offset,
-            value.end_lineno if value.end_lineno is not None else value.lineno,
-            value.end_col_offset
-                if value.end_col_offset is not None
-                else value.col_offset
+            e.lineno,
+            e.col_offset,
+            e.end_lineno if e.end_lineno is not None else e.lineno,
+            e.end_col_offset if e.end_col_offset is not None else e.col_offset
         );
     }
-    if isinstance(value, stmt) {
+    if kind >= 4 and kind <= 31 {
+        st = value as stmt;
         return (
-            value.lineno,
-            value.col_offset,
-            value.end_lineno if value.end_lineno is not None else value.lineno,
-            value.end_col_offset
-                if value.end_col_offset is not None
-                else value.col_offset
+            st.lineno,
+            st.col_offset,
+            st.end_lineno if st.end_lineno is not None else st.lineno,
+            st.end_col_offset if st.end_col_offset is not None else st.col_offset
         );
     }
     if isinstance(value, pattern) {
@@ -553,7 +333,7 @@ def validate_ast_identifier(name: str, capture: bool = False) {
 
 def require_ast_items(value_node: ast_node, field: str) {
     if not ast_has_items(value_node, field) {
-        raise ValueError("empty " + field + " on " + ast_kind(value_node));
+        raise ValueError("empty " + field + " on " + ast_kind_name(value_node));
     }
 }
 
@@ -639,15 +419,33 @@ def validate_ast_value(
     if value_node is None {
         return;
     }
-    if isinstance(value_node, (expr, stmt, pattern, arg, excepthandler, type_param)) {
+    kind = value_node.node_kind();
+    kind_value = kind.value;
+    if (kind_value >= 4 and kind_value <= 60)
+        or (kind_value >= 101 and kind_value <= 108)
+        or (kind_value >= 110 and kind_value <= 112)
+        or kind == ast_kind.ExceptHandler
+        or kind == ast_kind.arg {
         validate_ast_positions(value_node);
     }
-    if isinstance(value_node, expr) {
-        if isinstance(value_node, Name) {
+    if kind_value >= 32 and kind_value <= 60 {
+        if (kind == ast_kind.Name and isinstance(value_node, Name)) {
             validate_ast_identifier(value_node.id);
         }
-        if isinstance(value_node, (Name, Attribute, Subscript, Starred, List, Tuple)) {
-            actual = ast_kind(value_node.ctx);
+        if (
+            (
+                kind == ast_kind.Name
+                or kind == ast_kind.Attribute
+                or kind == ast_kind.Subscript
+                or kind == ast_kind.Starred
+                or kind == ast_kind.List
+                or kind == ast_kind.Tuple
+            )
+            and isinstance(
+                value_node, (Name, Attribute, Subscript, Starred, List, Tuple)
+            )
+        ) {
+            actual = ast_kind_name(value_node.ctx);
             if actual != context {
                 raise ValueError(
                     f"expression must have {context} context but has {actual} instead"
@@ -659,14 +457,15 @@ def validate_ast_value(
             );
         }
     }
-    if isinstance(value_node, Constant) {
+    if (kind == ast_kind.Constant and isinstance(value_node, Constant)) {
         validate_ast_constant(value_node.value);
         return;
     }
-    if isinstance(value_node, BoolOp) and len(value_node.values) < 2 {
+    if (kind == ast_kind.BoolOp and isinstance(value_node, BoolOp))
+        and len(value_node.values) < 2 {
         raise ValueError("BoolOp with less than 2 values");
     }
-    if isinstance(value_node, Compare) {
+    if (kind == ast_kind.Compare and isinstance(value_node, Compare)) {
         if not value_node.comparators {
             raise ValueError("Compare with no comparators");
         }
@@ -676,11 +475,19 @@ def validate_ast_value(
             );
         }
     }
-    if isinstance(value_node, Dict)
+    if (kind == ast_kind.Dict and isinstance(value_node, Dict))
         and len(value_node.keys) != len(value_node.values) {
         raise ValueError("Dict doesn't have the same number of keys as values");
     }
-    if isinstance(value_node, (ListComp, SetComp, GeneratorExp, DictComp)) {
+    if (
+        (
+            kind == ast_kind.ListComp
+            or kind == ast_kind.SetComp
+            or kind == ast_kind.GeneratorExp
+            or kind == ast_kind.DictComp
+        )
+        and isinstance(value_node, (ListComp, SetComp, GeneratorExp, DictComp))
+    ) {
         if not value_node.generators {
             raise ValueError("comprehension with no generators");
         }
@@ -688,7 +495,7 @@ def validate_ast_value(
             validate_ast_value(item);
         }
     }
-    if isinstance(value_node, arguments) {
+    if (kind == ast_kind.arguments and isinstance(value_node, arguments)) {
         for item in value_node.posonlyargs {
             validate_ast_value(item);
         }
@@ -741,28 +548,46 @@ def validate_ast_value(
     ) {
         require_ast_items(value_node, "body");
     }
-    if isinstance(value_node, (Assign, Delete)) {
+    if (
+        (kind == ast_kind.Assign or kind == ast_kind.Delete)
+        and isinstance(value_node, (Assign, Delete))
+    ) {
         require_ast_items(value_node, "targets");
     }
-    if isinstance(value_node, (Import, ImportFrom, Global, Nonlocal)) {
+    if (
+        (
+            kind == ast_kind.Import
+            or kind == ast_kind.ImportFrom
+            or kind == ast_kind.Global
+            or kind == ast_kind.Nonlocal
+        )
+        and isinstance(value_node, (Import, ImportFrom, Global, Nonlocal))
+    ) {
         require_ast_items(value_node, "names");
     }
-    if isinstance(value_node, (With, AsyncWith)) {
+    if (
+        (kind == ast_kind.With or kind == ast_kind.AsyncWith)
+        and isinstance(value_node, (With, AsyncWith))
+    ) {
         require_ast_items(value_node, "items");
     }
-    if isinstance(value_node, Match) {
+    if (kind == ast_kind.Match and isinstance(value_node, Match)) {
         require_ast_items(value_node, "cases");
     }
-    if isinstance(value_node, ImportFrom) and (value_node.level or 0) < 0 {
+    if (kind == ast_kind.ImportFrom and isinstance(value_node, ImportFrom))
+        and (value_node.level or 0) < 0 {
         raise ValueError("Negative ImportFrom level");
     }
-    if isinstance(value_node, Raise)
+    if (kind == ast_kind.Raise and isinstance(value_node, Raise))
         and value_node.exc is None
         and value_node.cause is not None {
         raise ValueError("Raise with cause but no exception");
     }
-    if isinstance(value_node, (Try, TryStar)) {
-        name = ast_kind(value_node);
+    if (
+        (kind == ast_kind.Try or kind == ast_kind.TryStar)
+        and isinstance(value_node, (Try, TryStar))
+    ) {
+        name = ast_kind_name(value_node);
         if not value_node.handlers and not value_node.finalbody {
             raise ValueError(f"{name} has neither except handlers nor finalbody");
         }
@@ -770,35 +595,43 @@ def validate_ast_value(
             raise ValueError(f"{name} has orelse but no except handlers");
         }
     }
-    if isinstance(value_node, NamedExpr) {
+    if (kind == ast_kind.NamedExpr and isinstance(value_node, NamedExpr)) {
         if not isinstance(value_node.target, Name) {
             raise TypeError("NamedExpr target must be a Name");
         }
         validate_ast_value(value_node.value);
         return;
     }
-    if isinstance(value_node, AnnAssign)
+    if (kind == ast_kind.AnnAssign and isinstance(value_node, AnnAssign))
         and value_node.simple
         and not isinstance(value_node.target, Name) {
         raise TypeError("AnnAssign with simple non-Name target");
     }
-    if isinstance(value_node, TypeAlias) and not isinstance(value_node.name, Name) {
+    if (kind == ast_kind.TypeAlias and isinstance(value_node, TypeAlias))
+        and not isinstance(value_node.name, Name) {
         raise TypeError("TypeAlias with non-Name name");
     }
-    if isinstance(value_node, (TypeVar, TypeVarTuple, ParamSpec)) {
+    if (
+        (
+            kind == ast_kind.TypeVar
+            or kind == ast_kind.TypeVarTuple
+            or kind == ast_kind.ParamSpec
+        )
+        and isinstance(value_node, (TypeVar, TypeVarTuple, ParamSpec))
+    ) {
         validate_ast_identifier(value_node.name);
     }
-    if isinstance(value_node, MatchValue) {
+    if (kind == ast_kind.MatchValue and isinstance(value_node, MatchValue)) {
         validate_ast_pattern_value(value_node.value);
         return;
     }
-    if isinstance(value_node, MatchSingleton) {
+    if (kind == ast_kind.MatchSingleton and isinstance(value_node, MatchSingleton)) {
         if not isinstance(value_node.value, (PyNoneType, PyBool)) {
             raise ValueError("MatchSingleton can only contain True, False and None");
         }
         return;
     }
-    if isinstance(value_node, MatchMapping) {
+    if (kind == ast_kind.MatchMapping and isinstance(value_node, MatchMapping)) {
         if len(value_node.keys) != len(value_node.patterns) {
             raise ValueError(
                 "MatchMapping doesn't have the same number of keys as patterns"
@@ -815,7 +648,7 @@ def validate_ast_value(
             validate_ast_pattern_value(key);
         }
     }
-    if isinstance(value_node, MatchClass) {
+    if (kind == ast_kind.MatchClass and isinstance(value_node, MatchClass)) {
         if len(value_node.kwd_attrs) != len(value_node.kwd_patterns) {
             raise ValueError(
                 "MatchClass doesn't have the same number of keyword attributes as patterns"
@@ -834,14 +667,18 @@ def validate_ast_value(
             validate_ast_identifier(name);
         }
     }
-    if isinstance(value_node, (MatchStar, MatchAs)) {
+    if (
+        (kind == ast_kind.MatchStar or kind == ast_kind.MatchAs)
+        and isinstance(value_node, (MatchStar, MatchAs))
+    ) {
         if value_node.name is not None {
             validate_ast_identifier(value_node.name, True);
         }
-        if isinstance(value_node, MatchStar) and not star_ok {
+        if (kind == ast_kind.MatchStar and isinstance(value_node, MatchStar))
+            and not star_ok {
             raise ValueError("can't use MatchStar here");
         }
-        if isinstance(value_node, MatchAs)
+        if (kind == ast_kind.MatchAs and isinstance(value_node, MatchAs))
             and value_node.pattern is not None
             and value_node.name is None {
             raise ValueError(
@@ -849,7 +686,8 @@ def validate_ast_value(
             );
         }
     }
-    if isinstance(value_node, MatchOr) and len(value_node.patterns) < 2 {
+    if (kind == ast_kind.MatchOr and isinstance(value_node, MatchOr))
+        and len(value_node.patterns) < 2 {
         raise ValueError("MatchOr requires at least 2 patterns");
     }
     visit_ast_children(
@@ -863,30 +701,51 @@ obj ast_value_children(ast_child_visitor) {
         context: str;
 
     def child(field: str, value: ast_node) {
-        owner = self.owner;
-        if field == "ctx"
-            or (
-                field == "generators"
-                and isinstance(owner, (ListComp, SetComp, GeneratorExp, DictComp))
+        kind = self.owner.node_kind();
+        if (
+            (
+                kind == ast_kind.Name
+                or kind == ast_kind.Attribute
+                or kind == ast_kind.Subscript
+                or kind == ast_kind.Starred
+                or kind == ast_kind.List
+                or kind == ast_kind.Tuple
             )
-            or (field == "keys" and isinstance(owner, MatchMapping)) {
+            and field == "ctx"
+        )
+            or (
+                (
+                    kind == ast_kind.ListComp
+                    or kind == ast_kind.SetComp
+                    or kind == ast_kind.GeneratorExp
+                    or kind == ast_kind.DictComp
+                )
+                and field == "generators"
+            )
+            or (kind == ast_kind.MatchMapping and field == "keys") {
             return;
         }
         child_context = "Load";
-        if field == "targets" and isinstance(owner, Delete) {
+        if kind == ast_kind.Delete and field == "targets" {
             child_context = "Del";
         } elif (
-            field == "target"
-            and isinstance(owner, (AugAssign, AnnAssign, For, AsyncFor, comprehension))
+            (
+                kind == ast_kind.AugAssign
+                or kind == ast_kind.AnnAssign
+                or kind == ast_kind.For
+                or kind == ast_kind.AsyncFor
+                or kind == ast_kind.comprehension
+            )
+            and field == "target"
         )
-            or (field == "targets" and isinstance(owner, Assign))
-            or (field == "name" and isinstance(owner, TypeAlias))
-            or (field == "optional_vars" and isinstance(owner, withitem)) {
+            or (kind == ast_kind.Assign and field == "targets")
+            or (kind == ast_kind.TypeAlias and field == "name")
+            or (kind == ast_kind.withitem and field == "optional_vars") {
             child_context = "Store";
-        } elif (field == "elts" and isinstance(owner, (List, Tuple)))
-            or (field == "value" and isinstance(owner, Starred)) {
+        } elif ((kind == ast_kind.List or kind == ast_kind.Tuple) and field == "elts")
+            or (kind == ast_kind.Starred and field == "value") {
             child_context = self.context;
         }
-        validate_ast_value(value, child_context, isinstance(owner, MatchSequence));
+        validate_ast_value(value, child_context, kind == ast_kind.MatchSequence);
     }
 }

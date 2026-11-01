@@ -5,35 +5,9 @@ orchestration execute here, without converting the sequence to a Jac list.
 Derived from CPython 3.14.6; see ../LICENSE.cpython.
 """
 
-# The type slots bisect calls directly: sq_item (ssizeargfunc) and
-# tp_richcompare (richcmpfunc).
-import from c {
-    obj SequenceItemSlot {
-        has call: Callable[[ptr[PyObject], i64], ptr[PyObject]] = 0;
-    }  obj RichCompareSlot {
-        has call: Callable[[ptr[PyObject], ptr[PyObject], i32], ptr[PyObject]] = 0;
-    }
-}
+import from c { def Py_EnterRecursiveCall(where: ptr[u8]) -> i32;  }
 
 glob:priv PY_LT: i32 = 0;
-
-"""left < right through a type's tp_richcompare: 1, 0, -1 on error, or -2
-when the slot returns NotImplemented, so the caller falls back to the full
-comparison protocol."""
-def:priv slot_less(
-    compare: RichCompareSlot, left: ptr[PyObject], right: ptr[PyObject]
-) -> i64 {
-    result = compare.call(left, right, PY_LT);
-    if result == 0 {
-        return -1;
-    }
-    comparison = i64(-2);
-    if result != Py_NotImplemented {
-        comparison = i64(PyObject_IsTrue(result));
-    }
-    jacpy_release(result);
-    return comparison;
-}
 
 def bisect_index(
     sequence: ptr[PyObject],
@@ -53,61 +27,99 @@ def bisect_index(
             return -1;
         }
     }
-    item_slot = SequenceItemSlot();
-    slot = jacpy_sequence_slot(sequence);
-    if slot == 0 {
+    if jacpy_sequence_slot(sequence) == NULL {
         return -1;
     }
-    item_slot.call = int(slot);
-    context = " in _bisect.bisect_right" if right else " in _bisect.bisect_left";
-    if jacpy_recursion_enter(context) != 0 {
-        return -1;
-    }
-    compare = jacpy_comparison_slot(item);
-    compare_slot = RichCompareSlot();
-    compare_slot.call = int(compare);
-    try {
-        while low < high {
-            # Unsigned addition avoids overflow for valid ssize_t bounds.
-            middle = i64((u64(low) + u64(high)) // u64(2));
-            value = item_slot.call(sequence, middle);
-            if value == 0 {
-                return -1;
-            }
-            if key != 0 {
-                mapped = PyObject_CallOneArg(key, value);
-                jacpy_release(value);
-                value = mapped;
-                if value == 0 {
-                    return -1;
-                }
-            }
-            left = item if right else value;
-            other = value if right else item;
-            comparison = i64(-2);
-            if compare != 0 and jacpy_same_type(item, value) != 0 {
-                comparison = slot_less(compare_slot, left, other);
-                if comparison == -2 {
-                    compare = ptr();
-                }
-            }
-            if comparison == -2 {
-                comparison = jacpy_less(left, other);
-            }
-            jacpy_release(value);
-            if comparison < 0 {
-                return -1;
-            }
-            if (comparison != 0) == right {
-                high = middle;
-            } else {
-                low = middle + 1;
-            }
+    sequence_type = object_type(sequence);
+    if right {
+        if Py_EnterRecursiveCall(ptr[u8](" in _bisect.bisect_right")) != 0 {
+            return -1;
         }
-        return low;
-    } finally {
-        Py_LeaveRecursiveCall();
+    } elif Py_EnterRecursiveCall(ptr[u8](" in _bisect.bisect_left")) != 0 {
+        return -1;
     }
+    item_type = object_type(item);
+    fast = int(item_type.view(1)[0].tp_richcompare) != 0;
+    while low < high {
+        middle = i64((u64(low) + u64(high)) >> u64(1));
+        value = sequence_type.view(1)[0].tp_as_sequence.view(1)[0].sq_item(
+            sequence, middle
+        );
+        if value == NULL {
+            Py_LeaveRecursiveCall();
+            return -1;
+        }
+        if key != NULL {
+            mapped = PyObject_CallOneArg(key, value);
+            object_decref(value);
+            if mapped == NULL {
+                Py_LeaveRecursiveCall();
+                return -1;
+            }
+            value = mapped;
+        }
+        comparison: i64 = 0;
+        if fast and object_type(value) == item_type {
+            outcome = item_type.view(1)[0].tp_richcompare(
+                item if right else value, value if right else item, PY_LT
+            );
+            if outcome == ptr[PyObject](addressof(_Py_TrueStruct)) {
+                object_decref(outcome);
+                object_decref(value);
+                if right {
+                    high = middle;
+                } else {
+                    low = middle + 1;
+                }
+                continue;
+            }
+            if outcome == ptr[PyObject](addressof(_Py_FalseStruct)) {
+                object_decref(outcome);
+                object_decref(value);
+                if right {
+                    low = middle + 1;
+                } else {
+                    high = middle;
+                }
+                continue;
+            }
+            if outcome == NULL {
+                object_decref(value);
+                Py_LeaveRecursiveCall();
+                return -1;
+            }
+            if outcome == Py_NotImplemented {
+                object_decref(outcome);
+                fast = False;
+                comparison = i64(
+                    PyObject_RichCompareBool(
+                        item if right else value, value if right else item, PY_LT
+                    )
+                );
+            } else {
+                comparison = i64(PyObject_IsTrue(outcome));
+                object_decref(outcome);
+            }
+        } else {
+            comparison = i64(
+                PyObject_RichCompareBool(
+                    item if right else value, value if right else item, PY_LT
+                )
+            );
+        }
+        object_decref(value);
+        if comparison < 0 {
+            Py_LeaveRecursiveCall();
+            return -1;
+        }
+        if (comparison != 0) == right {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    Py_LeaveRecursiveCall();
+    return low;
 }
 
 # internal_bisect_right/left through the key: the index, or -1 with the

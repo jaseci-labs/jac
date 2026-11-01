@@ -15,8 +15,59 @@ import from jaclang.runtime.prepared {
     initialize_application
 }
 
+glob SERVE_MANIFEST_SHAPES: dict[int, dict[str, set[str]]] = {
+         3: {
+             'manifest': {
+                 'app',
+                 'client',
+                 'endpoint_effects',
+                 'format',
+                 'jaclang_version',
+                 'module_manifests',
+                 'persistence',
+                 'private_declarations',
+                 'spa_routes',
+                 'surface'
+             },
+             'module': {
+                 'app',
+                 'client',
+                 'endpoint_effects',
+                 'persistence',
+                 'private_declarations',
+                 'spa_routes',
+                 'surface'
+             },
+             'surface': {
+                 'explicit_access',
+                 'exposure',
+                 'kind',
+                 'placement',
+                 'reflect',
+                 'route',
+                 'scheduled',
+                 'src'
+             }
+         }
+     };
+
+"""Collect the key names of a serve manifest, its module records, and their surface entries."""
+def serve_manifest_shape(manifest: dict[str, any]) -> dict[str, set[str]] {
+    modules = list(manifest['module_manifests'].values());
+    return {
+        'manifest': set(manifest),
+        'module': {key for record in modules for key in record},
+        'surface': {
+            key for record in modules for rec in (record.get('surface') or {}).values()
+            for key in rec
+        }
+    };
+}
+
 test "sealing retains each colocated service's access metadata" {
     import from jaclang.dist.seal { build_serve_manifest }
+    import from jaclang.server.sealed_serve { SERVE_MANIFEST_FORMAT }
+    import from jaclang.cli.manifest_route { resolve_cli_version }
     with tempfile.TemporaryDirectory() as tmp {
         base = Path(tmp);
         (base / 'jac.toml').write_text(
@@ -25,20 +76,38 @@ test "sealing retains each colocated service's access metadata" {
                 + '[apps.scoring]\nkind="service"\nentry-point="scoring"\n'
         );
         path = base / 'main.jac';
-        path.write_text('def:pub ping -> int { return 1; }\n');
+        path.write_text(
+            'import from scoring { top_score }\n'
+                + 'def:pub ping -> int { return 1; }\n'
+        );
         (base / 'scoring.jac').write_text(
             'walker:pub Score { can run with Root entry { report 42; } }\n'
                 + 'def private_score -> int { return 42; }\n'
+                + 'def:pub top_score -> int { return 42; }\n'
         );
         try {
             manifest = build_serve_manifest(path, base);
             assert manifest is not None;
+            assert manifest['format'] == SERVE_MANIFEST_FORMAT;
+            assert manifest['jaclang_version'] == resolve_cli_version();
+            shape = serve_manifest_shape(manifest);
+            assert shape == SERVE_MANIFEST_SHAPES.get(SERVE_MANIFEST_FORMAT) , (
+                f'serve manifest shape changed under format {SERVE_MANIFEST_FORMAT}: '
+                + f'{shape}. If older readers cannot handle the change, bump '
+                + 'SERVE_MANIFEST_FORMAT; then record the new shape in SERVE_MANIFEST_SHAPES.'
+            );
             modules = manifest['module_manifests'];
             assert modules['main.jac']['app'] == 'web';
             assert modules['scoring.jac']['app'] == 'scoring';
             assert modules['scoring.jac']['surface']['Score']['exposure'] == 'public';
             assert 'private_score' not in modules['scoring.jac']['surface'] , (
                 "the served surface lists only exposed declarations"
+            );
+            assert modules['scoring.jac']['surface']['top_score']['exposure']
+                == 'public';
+            assert 'ping' in manifest['surface'];
+            assert 'top_score' not in manifest['surface'] , (
+                "an app importing a colocated service's function must not serve it"
             );
             for entry_manifest in [manifest, *modules.values()] {
                 assert 'root' not in entry_manifest , (
@@ -318,6 +387,125 @@ test "an edit prepare analyses only the edited module and matches a cold prepare
     }
 }
 
+test "a source saved while the kernel compiles is rebuilt by the next prepare" {
+    import jaclang.compiler.frontend.kernel_host as kernel_host;
+    import jaclang.project.kernel_compile as kernel_compile;
+    import from jaclang.compiler.driver.pass_driver { compile_progress }
+    real_read = kernel_host.read_utf8_source;
+    real_compile = kernel_compile.kernel_compile_application;
+    # The native kernel runs its own runtime, so prepare's progress listener
+    # never hears its compiles; the in-process kernel must not either.
+    def unheard_compile(*args: any, **kwargs: any) -> any {
+        listeners = compile_progress._listeners;
+        compile_progress._listeners = [];
+        try {
+            return real_compile(*args, **kwargs);
+        } finally {
+            compile_progress._listeners = listeners;
+        }
+    }
+    def parent(tag: str) -> str {
+        return "import from .Child { Child }\n\ndef:pub Parent() -> JsxElement {\n"
+            + f'    return <div><h1>{{"parent {tag}"}}</h1><Child/></div>;\n}}\n';
+    }
+    web_app = {
+        'jac.toml': '[project]\nname="midsave"\nkind="web-app"\nentry-point="main"\n',
+        'main.jac': "import from .components.Parent { Parent }\n\n"
+            + "def:pub app -> JsxElement {\n    <Parent/>\n}\n",
+        'components/Parent.jac': parent('v0'),
+        'components/Child.jac': 'def:pub Child() -> JsxElement {\n    return <span>{"child"}</span>;\n}\n'
+    };
+    server_app = {
+        'main.jac': "import from mods.b { b_value }\n"
+            + "walker:pub Total { can go with Root entry { report b_value(); } }\n",
+        'mods/a.jac': "def:pub a_value(x: int) -> int { return x; }\n",
+        'mods/b.jac': "import from mods.a { a_value }\nnode Item { has n: int = 0; }\n"
+            + "def:pub b_value -> int { return a_value(1) + Item(n=2).n; }\n"
+    };
+    # (case, client app, files, edit before the racing prepare, file whose read
+    # triggers the save, the save)
+    cases = [
+        (
+            "a client module the kernel read",
+            True,
+            web_app,
+            ('components/Parent.jac', parent('v1')),
+            'Parent.jac',
+            ('components/Parent.jac', parent('v2'))
+        ),
+        (
+            "a module served from the last prepare",
+            False,
+            server_app,
+            ('mods/b.jac', server_app['mods/b.jac'].replace("n=2", "n=3")),
+            'b.jac',
+            (
+                'mods/a.jac',
+                "def:pub a_value(x: int) -> int { return x + 7; }\n"
+                    + "walker:pub Extra { can go with Root entry { report 7; } }\n"
+            )
+        )
+    ];
+    for (label, client, files, edit, trigger, save) in cases {
+        tmp = tempfile.mkdtemp(prefix="jac-prepared-kernel-midsave-");
+        base = Path(tmp);
+        path = base / 'main.jac';
+        saved: list[bool] = [];
+        def saving_read(source: str, *rest: any) -> (str | None) {
+            text = real_read(source, *rest);
+            if not saved and os.path.basename(source) == trigger {
+                saved.append(True);
+                (base / save[0]).write_text(save[1]);
+            }
+            return text;
+        }
+        def prepare -> any {
+            try {
+                return prepare_application(str(path), JacProgram(), tmp, client=client);
+            } finally {
+                forget(str(path));
+            }
+        }
+        try {
+            for (rel, text) in files.items() {
+                (base / rel).parent.mkdir(parents=True, exist_ok=True);
+                (base / rel).write_text(text);
+            }
+            with patch("jaclang.project.kernel_compile._IN_PROCESS", [True]) {
+                prepare();
+                (base / edit[0]).write_text(edit[1]);
+                raised = False;
+                try {
+                    with patch.object(kernel_host, 'read_utf8_source', saving_read), patch.object(
+                        kernel_compile, 'kernel_compile_application', unheard_compile
+                    ) {
+                        prepare();
+                    }
+                } except RuntimeError as error {
+                    raised = 'Sources changed during preparation' in str(error);
+                }
+                assert saved , f"{label}: the kernel never read {trigger}";
+                assert raised , f"{label}: a save during the compile did not fail the prepare";
+                followup = prepare();
+                built = base / '.jac/client/compiled/components/Parent.js';
+                rebuilt = 'parent v2' in built.read_text() if client else True;
+                shutil.rmtree(base / '.jac' / 'cache' / 'applications');
+                cold = prepare();
+            }
+            assert rebuilt , f"{label}: Parent.js was not rebuilt from the saved Parent.jac";
+            assert followup.manifests == cold.manifests , (
+                f"{label}: the next prepare kept metadata from before the save"
+            );
+            assert followup.code == cold.code , (
+                f"{label}: the next prepare kept code from before the save"
+            );
+        } finally {
+            forget(str(path));
+            shutil.rmtree(tmp, ignore_errors=True);
+        }
+    }
+}
+
 test "an edit reached through a plain import and an empty helper match a cold prepare" {
     tmp = tempfile.mkdtemp(prefix="jac-prepared-kernel-plain-");
     base = Path(tmp);
@@ -569,7 +757,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
     site_before = sys.modules['site'];
     images_before = list(sealed._images);
     import from jaclang.compiler.driver.jir { get_module_cache_path }
-    import from jaclang.server.sealed_serve { client_dist_for }
+    import from jaclang.server.sealed_serve { client_dist_for, serve_manifest_stamp }
     import from jaclang.cli.console { console }
     for package_name in ['prepared_sealed_test', 'site'] {
         with tempfile.TemporaryDirectory(prefix='jac-prepared-sealed-') as raw_tmp {
@@ -671,6 +859,7 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                     json.dumps(
                         {
                             ** first.manifests[str(path)],
+                            ** serve_manifest_stamp(),
                             'module_manifests': {
                                 os.path.relpath(source, tmp): metadata
                                 for application in [first, *first.applications]
@@ -747,14 +936,35 @@ test "sealed preparation consumes baked artifacts without compiling retained sou
                 assert prepared.client_compiler is None;
                 assert client_dist_for(str(path)) == dist;
                 assert (dist / 'arena.wasm').read_bytes() == b'baked wasm';
-                (base / '.jac' / 'serve_manifest.json').unlink();
-                caught = '';
-                try {
-                    prepare_application(str(path), JacProgram(), tmp, dev=False);
-                } except RuntimeError as e {
-                    caught = str(e);
+                serve_manifest = base / '.jac' / 'serve_manifest.json';
+                for (stale, expected) in [
+                    (
+                        {'module_manifests': {}},
+                        'built by an older jac (serve manifest format unstamped)'
+                    ),
+                    (
+                        {
+                            'format': 2,
+                            'jaclang_version': '0.37.11',
+                            'module_manifests': {}
+                        },
+                        'built by jac 0.37.11 (serve manifest format 2)'
+                    ),
+                    (None, 'Sealed application has no serving manifest')
+                ] {
+                    if stale is None {
+                        serve_manifest.unlink();
+                    } else {
+                        serve_manifest.write_text(json.dumps(stale));
+                    }
+                    caught = '';
+                    try {
+                        prepare_application(str(path), JacProgram(), tmp, dev=False);
+                    } except RuntimeError as e {
+                        caught = str(e);
+                    }
+                    assert expected in caught , caught;
                 }
-                assert 'Sealed application has no serving manifest' in caught , caught;
             } finally {
                 for (name, loaded) in list(sys.modules.items()) {
                     if str(getattr(loaded, '__file__', '') or '').startswith(
@@ -1599,4 +1809,118 @@ test "loading a prepared application grows with its module count, not its square
     assert large < 6 * small , (
         f"prepared lookups went {small} -> {large} for 4x the modules"
     );
+}
+
+"""A dev reload invalidates an edited module in every app context, and must
+drop that module's diagnostics there too. A service context that failed on a
+broken shared module kept those alerts after the file was restored, so its next
+compile was blocked by them and kept reporting errors at lines that no longer
+existed."""
+test "a reload drops a restored module's errors from every app context" {
+    tmp = tempfile.mkdtemp(prefix="jac-prepared-context-alerts-");
+    base = Path(tmp);
+    path = base / 'web' / 'main.jac';
+    shared = base / 'core' / 'graph.jac';
+    service = base / 'core' / 'know.jac';
+    def reload(program: JacProgram, edited: Path) {
+        program.invalidate_module(os.path.realpath(str(edited)));
+        program.drop_module_alerts(os.path.realpath(str(edited)));
+    }
+    try {
+        (base / 'jac.toml').write_text(
+            '[project]\nname="ctxalerts"\ndefault-app="web"\n'
+                + '[apps.web]\nkind="service"\nentry-point="web.main"\n'
+                + '[apps.know]\nkind="service"\nentry-point="core.know"\n'
+        );
+        (base / 'web').mkdir();
+        (base / 'core').mkdir();
+        good = "def:pub g_value -> int {\n    return 1;\n}\n";
+        shared.write_text(good);
+        service.write_text(
+            "import from core.graph { g_value }\n"
+                + "def:pub know_ping -> int { return g_value(); }\n"
+        );
+        path.write_text("def:pub total -> int { return 3; }\n");
+        program = JacProgram();
+        prepare_application(str(path), program, tmp, services=[str(service)]);
+        shared.write_text(
+            good + "\n\n\ndef probe -> int {\n    return NOT_DEFINED.size;\n}\n"
+        );
+        reload(program, shared);
+        for _ in range(2) {
+            failed = False;
+            try {
+                prepare_application(str(path), program, tmp, services=[str(service)]);
+            } except RuntimeError {
+                failed = True;
+            }
+            assert failed , "the broken shared module must fail the service";
+        }
+        shared.write_text(good);
+        reload(program, shared);
+        for context in program.contexts.values() {
+            assert not context.diags.owned_errors(os.path.realpath(str(shared))) , (
+                "a context kept the errors of a module the reload restored"
+            );
+        }
+        service.write_text(
+            "import from core.graph { g_value }\n"
+                + "def:pub know_ping -> int { return g_value() + 1; }\n"
+        );
+        shutil.rmtree(base / '.jac' / 'cache');
+        prepare_application(str(path), program, tmp, services=[str(service)]);
+    } finally {
+        forget(str(path));
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}
+
+"""A prepare that failed leaves its analysed modules in the program, the broken
+one among them with its errors already on record. A retry with no edit must
+analyse that module again and fail with its errors, rather than reuse it as
+fresh and pass over it. The host compile path is pinned, since that is where
+the program's modules are reused."""
+test "a retried prepare fails again on a module whose earlier analysis failed" {
+    import jaclang.project.kernel_compile as kernel_compile;
+    tmp = tempfile.mkdtemp(prefix="jac-prepared-retry-");
+    base = Path(tmp);
+    path = base / 'main.jac';
+    try {
+        (base / 'jac.toml').write_text(
+            '[project]\nname="retry"\n[apps.web]\nkind="web-app"\nentry-point="main"\n'
+        );
+        (base / 'card.jac').write_text(
+            "def:pub Card(count: int) -> JsxElement {\n"
+                + "    return <b>{NOT_DEFINED.size + count}</b>;\n}\n"
+        );
+        path.write_text(
+            "import from card { Card }\n\n"
+                + "def:pub app -> JsxElement {\n"
+                + "    return <section><Card count={2}/></section>;\n}\n"
+        );
+        program = JacProgram();
+        recorded: list[int] = [];
+        with patch.object(
+            kernel_compile, 'kernel_route', return_value=(False, False)
+        ) {
+            for attempt in range(2) {
+                message = '';
+                try {
+                    prepare_application(str(path), program, tmp);
+                } except RuntimeError as err {
+                    message = str(err);
+                }
+                assert 'card.jac' in message , (
+                    f"attempt {attempt + 1} passed over the broken module"
+                );
+                recorded.append(len(program.errors_had));
+            }
+        }
+        assert recorded[0] == recorded[1] , (
+            f"the retry kept the first attempt's errors: {recorded}"
+        );
+    } finally {
+        forget(str(path));
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
 }
