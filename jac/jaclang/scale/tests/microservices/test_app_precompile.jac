@@ -11,7 +11,9 @@ import from pathlib { Path }
 
 def _mini_app -> str {
     d = tempfile.mkdtemp(prefix="jac-app-");
-    Path(d, "jac.toml").write_text("[project]\nname = \"mini\"\n");
+    Path(d, "jac.toml").write_text(
+        "[project]\nname = \"mini\"\nentry-point = \"svc\"\n"
+    );
     Path(d, "svc.jac").write_text("def:pub ping -> str { return \"pong\"; }\n");
     return d;
 }
@@ -192,6 +194,29 @@ test "an unchanged project reuses its sealed bundle instead of sealing again" {
         f"a deploy of unchanged code sealed the app again: {again_log}"
     );
     assert again == first , "the reused bundle differs from the one sealed";
+    cache_dir = base / ".jac" / "seal-cache";
+    unbootable = io.BytesIO();
+    with tarfile.open(fileobj=unbootable, mode="w:gz") as tar {
+        tar.add(str(base / "svc.jac"), arcname="svc.jac");
+    }
+    planted = [
+        ("has no serve manifest", unbootable.getvalue()),
+        ("is not an archive", b"not a bundle")
+    ];
+    for (label, raw) in planted {
+        cached = [
+            cache_dir / n
+            for n in os.listdir(cache_dir)
+            if n.endswith(".jab")
+        ];
+        assert len(cached) == 1 , (label, cached);
+        cached[0].write_bytes(raw);
+        (resealed, resealed_log) = _pack_logged(base, binary);
+        assert not any("Reusing the sealed bundle" in m for m in resealed_log) , (
+            f"a cached bundle that {label} was reused"
+        );
+        assert ".jac/serve_manifest.json" in _names(resealed) , label;
+    }
     (base / "svc.jac").write_text("def:pub ping -> str { return \"pong!\"; }\n");
     (edited, edited_log) = _pack_logged(base, binary);
     assert not any("Reusing the sealed bundle" in m for m in edited_log) , (
@@ -344,14 +369,36 @@ test "pack_jab without a pod binary is a hard error (a .jab requires a seal)" {
 }
 
 
-test "an unrunnable pod binary fails the seal instead of shipping unsealed" {
-    caught = False;
-    try {
-        pack_jab(_mini_app(), b"not-an-elf");
-    } except Exception {
-        caught = True;
+test "a seal that cannot yield a bootable .jab fails the pack instead of the pod" {
+    import from jaclang.server.sealed_serve { SERVE_MANIFEST_REL }
+    cases = [
+        ("an unrunnable pod binary", "", b"not-an-elf", []),
+        (
+            "a bake that writes no manifest over a stale local copy",
+            'entry-point="missing"\n',
+            b"",
+            ["RuntimeError", SERVE_MANIFEST_REL, "sealing without serve payloads"]
+        )
+    ];
+    for (label, entry_line, binary, expected) in cases {
+        base = Path(_mini_app());
+        (base / "jac.toml").write_text(
+            f'[project]\nname="mini"\n{entry_line}\n[scale]\nfat_bundle = false\n'
+        );
+        (base / ".jac").mkdir();
+        (base / ".jac" / "serve_manifest.json").write_text('{"stale": true}\n');
+        seal_binary = binary or require_pod_binary().read_bytes();
+        caught = "";
+        try {
+            pack_jab(str(base), seal_binary);
+        } except Exception as e {
+            caught = f"{type(e).__name__}: {e}";
+        }
+        assert caught , label;
+        for text in expected {
+            assert text in caught , (label, text, caught);
+        }
     }
-    assert caught;
 }
 
 

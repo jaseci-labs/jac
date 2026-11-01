@@ -12,7 +12,7 @@ in default CI.
 
 import os;
 import from pathlib { Path }
-import from tests.support { offline_project }
+import from tests.support { offline_project, unit_source }
 
 # Client target modules ship with core under jaclang/client/.
 glob _client_dir = (
@@ -453,8 +453,8 @@ test "mobile build source includes iOS, web and release wiring" {
     cfg_path = _targets_dir / "react_native" / "config.jac";
 
     impl_content = impl_path.read_text();
-    build_content = build_path.read_text();
-    cfg_content = cfg_path.read_text();
+    build_content = unit_source(build_path);
+    cfg_content = unit_source(cfg_path);
 
     build_section = impl_content.split("impl MobileTarget.build")[1].split(
         "impl MobileTarget.dev"
@@ -509,8 +509,8 @@ test "native runtime file ships parallel to the web runtime" {
     assert "import from jaclang.client.client_react_core"
         in _woven_text(runtime_native);
 
-    core_content = runtime_core.read_text();
-    cl_content = runtime_native.read_text();
+    core_content = unit_source(runtime_core);
+    cl_content = unit_source(runtime_native);
     impl_content = runtime_native_impl.read_text();
 
     # Renderer dispatch lives in core (R3); native supplies __jacNativeCreate.
@@ -569,7 +569,7 @@ test "JacClientCompiler selects the native runtime with native=True" {
     # Source-level contract check.
     src_path = _client_dir / "jac_client_compiler.jac";
     impl_path = _client_dir / "impl" / "jac_client_compiler.impl.jac";
-    src_content = src_path.read_text();
+    src_content = unit_source(src_path);
     impl_content = impl_path.read_text();
 
     assert 'NATIVE_RUNTIME_FILE = "client_runtime_native.jac"' in src_content , (
@@ -582,10 +582,9 @@ test "JacClientCompiler selects the native runtime with native=True" {
     assert "target_name" not in src_content , "compile() takes native=, not target_name=";
     assert "target_name" not in impl_content;
     assert "self.compile_runtime_utils(self.NATIVE_RUNTIME_FILE)" in impl_content;
-    assert "COMPOUND_EXTENSIONS = ['.native.jac']" in src_content , (
-        "COMPOUND_EXTENSIONS must strip .native.jac ahead of the plain .jac "
-        "fallback so Header.native.jac maps to Header.js (not Header.native.js)."
-    );
+    import from jaclang.compiler.backends.es.client_paths { jac_js_path }
+    assert jac_js_path("Header.native.jac") == "Header.js";
+    assert jac_js_path("Header.jac") == "Header.js";
     assert "client_react_core.jac" in impl_content , (
         "compile_runtime_utils must bundle client_react_core (D9)"
     );
@@ -652,9 +651,9 @@ test "target selection keeps web and native entry/runtime paths separate" {
     web_compiler_impl = _client_dir / "impl" / "compiler.impl.jac";
     web_target_impl = _targets_dir / "impl" / "web_target.impl.jac";
 
-    rn_build_content = rn_build_src.read_text();
+    rn_build_content = unit_source(rn_build_src);
     rn_impl_content = rn_impl_src.read_text();
-    rn_dev_content = rn_dev_src.read_text();
+    rn_dev_content = unit_source(rn_dev_src);
     web_content = web_compiler_impl.read_text();
 
     assert "registerRootComponent(App)" in rn_build_content;
@@ -1976,6 +1975,15 @@ test "compiler resolves .native.jac when native=True" {
         artifact = jac_compiler.jac_compiler.compile_module(entry_file);
         if artifact.js {
             jac_compiler.compile(None, entry_file, native=True);
+            import re;
+            runtime_js = (compiled_dir / "client_runtime.js").read_text();
+            for spec in re.findall(
+                r'(?:from|import)\s+[\'"](\.[^\'"]+)[\'"]', runtime_js
+            ) {
+                assert (compiled_dir / spec).is_file() , (
+                    f"unresolved native runtime import: {spec}"
+                );
+            }
 
             # The native variant should have been picked. Verify by checking
             # the compiled header.js for native-only content.

@@ -7,7 +7,7 @@ fdatasync().
 """
 
 import from c {
-    def dlsym(handle: ptr, symbol: str) -> ptr;  def _NSGetEnviron -> ptr[
+    def dlsym(handle: ptr, symbol: ptr[u8]) -> ptr;  def _NSGetEnviron -> ptr[
         ptr[ptr[u8]]
     ];  def fsync(fd: i32) -> i32;  def fchdir(fd: i32) -> i32;
 }
@@ -31,6 +31,6 @@ def fildes_call(fd: i32, operation: int) -> i32 {
 
 # A function newer than the deployment target (mkfifoat and mknodat need
 # macOS 13), looked up as a weak import is tested; RTLD_DEFAULT is -2.
-def runtime_function(name: str) -> ptr {
+def runtime_function(name: ptr[u8]) -> ptr {
     return dlsym(ptr(-2), name);
 }

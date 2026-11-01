@@ -570,7 +570,12 @@ impl serve(
                 watch_paths = application_watch_roots(
                     base, prepared, Jac.get_program()
                 );
-                watcher = JacFileWatcher(watch_paths=watch_paths);
+                compiler_source_roots = [
+                    str(part.`root) for part in [prepared, *prepared.applications]
+                ];
+                watcher = JacFileWatcher(
+                    watch_paths=watch_paths, compiler_source_roots=compiler_source_roots
+                );
                 client_compiler = None;
                 if not no_client {
                     try {
@@ -727,10 +732,12 @@ impl debug(filename: str, main: bool = True, cache: bool = False) -> int {
     base = base or './';
     mod = mod[:-4];
     if filename.endswith('.jac') {
-        bytecode = JacProgram().compile(filename).gen.py_bytecode;
-        if bytecode {
-            code = marshal.loads(bytecode);
-            if db.has_breakpoint(bytecode) {
+        program = Jac.get_program();
+        code = program._get_compiler().get_bytecode(
+            full_target=os.path.abspath(filename), target_program=program
+        );
+        if code is not None {
+            if db.has_breakpoint(marshal.dumps(code)) {
                 run(filename, main, cache);
             } else {
                 func = types.FunctionType(code, globals());

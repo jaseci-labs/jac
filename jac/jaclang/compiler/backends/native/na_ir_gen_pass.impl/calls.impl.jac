@@ -761,19 +761,6 @@ impl NaIRGenPass._codegen_bound_args(
 }
 
 impl NaIRGenPass._emit_pack_slot_refusal(nd: uni.FuncCall, star: str) -> None {
-    """Refuse a call whose callee declares a pack it could not lay out.
-
-    Binding the extras positionally into a slot that is not a pack is the one
-    answer this site may never give: the callee reads that slot as its whole
-    parameter pack, so the mismatch is a silent misread at run time rather
-    than a missing feature.
-
-    Reached only when the signature that declares the pack is the one the
-    called function was built from. A bundled native module whose typeshed
-    stub is variadic while its own definition is fixed-arity -- `os.path.join`
-    is the standing example -- resolves a signature belonging to a different
-    implementation, and positional binding against the real one is correct.
-    """;
     _sink = "*args" if star == "*" else "**kwargs";
     self.emit(
         E5092,
@@ -1296,8 +1283,6 @@ impl NaIRGenPass._native_module_call_target(
 }
 
 impl NaIRGenPass._stdlib_intercept_covers(module_name: str, func_name: str) -> bool {
-    """Whether `module_name.func_name` lowers through a compiler intercept for an
-    imported stdlib module (`os`, `random`, `struct`).""";
     return module_name in self._native_stdlib_modules
         and stdlib_intercepted(module_name, func_name);
 }
@@ -1315,13 +1300,6 @@ impl NaIRGenPass._emit_stdlib_intercept(
 }
 
 impl NaIRGenPass._from_imported_intercept(nd: uni.FuncCall) -> tuple[str, str] | None {
-    """The intercepted (module, function) a bare call names when the name was bound
-    by `import from <module> { function }`: `randint(1, 6)` lowers exactly like
-    `random.randint(1, 6)`. The callee symbol lives in the module's stub, so a
-    local or module definition that shadows the name never matches. The stub is
-    named by its place in the stdlib tree, not its file stem: `os` is a package
-    whose stub is `os/__init__.pyi`.""";
-
     if not isinstance(nd.target, uni.Name) or nd.target.sym is None {
         return None;
     }
@@ -1377,6 +1355,19 @@ impl NaIRGenPass._codegen_intrinsic(
     }
     if _dispatch == IntrinsicDispatch.ATOMIC_XCHG {
         return self._emit_intrinsic_atomic_xchg(nd, intr, positional);
+    }
+    if _dispatch == IntrinsicDispatch.C_THREAD_LOCAL {
+        return self._emit_intrinsic_c_thread_local(nd, intr, positional);
+    }
+    if _dispatch
+        in (
+            IntrinsicDispatch.ATOMIC_LOAD,
+            IntrinsicDispatch.ATOMIC_STORE,
+            IntrinsicDispatch.ATOMIC_CAS,
+            IntrinsicDispatch.ATOMIC_RMW,
+            IntrinsicDispatch.ATOMIC_FENCE
+        ) {
+        return self._emit_intrinsic_atomic(nd, intr, positional);
     }
     if _dispatch == IntrinsicDispatch.CALL_DTOR {
         return self._emit_intrinsic_call_dtor(nd, intr, positional);
@@ -1624,14 +1615,6 @@ impl NaIRGenPass._emit_intrinsic_region_tls(
 impl NaIRGenPass._emit_intrinsic_list_data(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
-    """`__list_data_ptr(lst)` is the address of `lst`'s element buffer, as an
-    integer for the `__mem_*` accessors. It holds until the list next grows
-    past its capacity (an append then moves the buffer) and only while the
-    list is alive; nothing here checks an index, so the caller owns the
-    bounds. The list itself stays the owner of the elements: a store through
-    the pointer is a plain word write, so it is for scalar element types.
-    """;
-
     if not isinstance(args[0], (uni.Name, uni.AtomTrailer)) {
         self._emit_intrinsic_misuse(
             nd,
@@ -1672,14 +1655,6 @@ impl NaIRGenPass._emit_intrinsic_list_data(
 impl NaIRGenPass._emit_intrinsic_alloca(
     nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
 ) -> (ir.Value | None) {
-    """`__alloca(n)` reserves `n` bytes of scratch. A constant `n` lowers to an
-    i64-array alloca in the entry block (8-byte ABI alignment for the `__mem_*`
-    i64 accessors), so a call inside a loop reuses one slot instead of churning
-    stack per iteration; a runtime `n` lowers to a call-site dynamic alloca,
-    since an entry-block slot cannot reference a size computed later in the
-    function. Either way the buffer is per-call scratch that must not outlive
-    the invocation (the bundled floors' timespecs).
-    """;
     n = self._intrinsic_operand(nd, intr, args[0], intr.param_specs[0]);
     if n is None {
         return None;
@@ -2595,6 +2570,18 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         func = self._module_function((real_path(source), func_name))
             if source is not None
             else None;
+        if func is None and _mod_qual == "os" and func_name not in self.generic_fns {
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="function",
+                name=f"{_mod_qual}.{func_name}",
+                help_text=f"'{_mod_qual}' has no native implementation of '{func_name}', "
+                "so the native pathway cannot call it; call it from a server (@sv) "
+                "context instead."
+            );
+            return None;
+        }
     }
     if func is None and not _var_callee {
         manifest = self.module.gen.interop_manifest;
@@ -2611,7 +2598,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if binding is not None
             and func_name not in self.generic_fns
             and (
-                binding.source_context.value == "server"
+                binding.native_callable
                 or (
                     binding.source_context.value == "native"
                     and binding.source_module is not None
@@ -2649,11 +2636,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             for p in sig.get_parameters() {
                 param_ir_types.append(self._resolve_jac_type(p));
             }
-            ret_ir_type = self._resolve_jac_type(sig.return_type);
-            if sig.return_type is None and clib_import_of(sig) is not None {
-                ret_ir_type = ir.VoidType();
+            ret_ir_type = self._resolve_return_type(sig.return_type);
+            if binding.source_context.value == "native" {
+                ret_ir_type = self._byvalue_ret_type(ret_ir_type);
             }
-            _extern_sym = func_name;
+            _extern_sym = binding.symbol if binding.native_callable else func_name;
             if binding.source_context.value == "native" and _src_ab is not None {
                 _extern_sym = self._symbol_for(
                     func_name,
@@ -2880,15 +2867,6 @@ impl NaIRGenPass._jacval_tags_for_type(name: str) -> list[int] {
 impl NaIRGenPass._isinstance_static_verdict(
     name: str, operand: ir.Value
 ) -> (bool | None) {
-    """Answer the arms whose native representation carries no JacVal tag.
-
-    A native tuple is an unboxed literal struct and a `bytes` / `bytearray` is
-    a pointer to its own runtime struct, so none of the three is reachable
-    through a tag compare -- but each is fully decided by the operand's LLVM
-    type, which is known here. Returning `True`/`False` settles that arm at
-    compile time; `None` means the name is not one of these and falls through
-    to the tag and vtable machinery.
-    """;
     if name == "tuple" {
         return self._tuple_struct_of_value(operand) is not None;
     }
@@ -2905,21 +2883,6 @@ impl NaIRGenPass._isinstance_static_verdict(
 impl NaIRGenPass._isinstance_abc_reduction(
     type_expr: uni.UniNode, name: str
 ) -> (list[str] | None) {
-    """The native shapes an `isinstance` arm naming a stdlib ABC reduces to.
-
-    A `collections.abc` class is a Python object no native unit can host, so a
-    check against one is only answerable by reducing it to the finite set of
-    native runtime shapes that inhabit it. `_NA_ABC_REDUCTIONS` holds the
-    reductions that are exact rather than approximate: every entry is a
-    container ABC whose members, among values a native unit can hold, are
-    precisely the listed builtins. Protocol-shaped ABCs are deliberately absent
-    -- an archetype with `__iter__` inhabits `Iterable` too, so a builtin-only
-    answer there would be silently wrong. Those sit in `_NA_ABC_OPAQUE`.
-
-    `None` means the arm is not a stdlib ABC and the caller should treat it as
-    it always has. An empty list means it is one this backend refuses to guess
-    at, and the caller turns that into a diagnostic rather than an answer.
-    """;
     if name in self.struct_types or name in self.enum_types {
         return None;
     }
@@ -2948,13 +2911,6 @@ impl NaIRGenPass._isinstance_abc_reduction(
 impl NaIRGenPass._isinstance_target_names(
     nd: uni.FuncCall, operand: ir.Value, type_arg: uni.UniNode
 ) -> (list[str] | None) {
-    """Flatten the type argument into the type names the check has to test.
-
-    A tuple argument contributes each of its arms; a stdlib ABC arm expands to
-    the native shapes it reduces to, and keeps its own name too whenever some
-    archetype names it in an MRO, so a user type registered under the ABC still
-    answers through the vtable arm. `None` means a diagnostic was emitted.
-    """;
     raw: list[uni.UniNode] = list(type_arg.values or [])
         if isinstance(type_arg, uni.TupleVal)
         else [type_arg];
@@ -3001,14 +2957,6 @@ impl NaIRGenPass._isinstance_target_names(
 impl NaIRGenPass._isinstance_operand_is_pyb(
     nd: uni.FuncCall, operand: ir.Value
 ) -> bool {
-    """Does the operand's class reach its bases through the Python bridge?
-
-    A class with a Python-side base carries an MRO this unit never modelled --
-    `PyBase(ABC)` in the interop fixtures is exactly that shape -- so which
-    abstract base classes such an instance inhabits is not answerable from the
-    native layout. Only the reduction cares: an archetype arm still answers
-    through the vtable, whose MRO covers the layout-trusted bases.
-    """;
     arch = self._isinstance_operand_arch(nd, operand);
     if arch is None {
         return False;
@@ -4030,16 +3978,6 @@ impl NaIRGenPass._unwrap_cfg_expr(e: any) -> any {
 impl NaIRGenPass._call_args_lowered(
     nd: uni.UniNode, func: ir.Function, func_name: str, coerced: list[ir.Value]
 ) -> bool {
-    """Whether every argument reached the callee's parameter type.
-
-    `_coerce_type` answers with the value unchanged when it has no coercion
-    for a pair, so a lowering that lost a type upstream reaches the builder
-    with an argument the callee cannot take. The builder's `TypeError` is
-    then reported as an internal compiler error, which buries the real
-    defect under a crash. Refusing here demotes the one callable and names
-    the parameter that did not line up, so the coverage records a fact rather
-    than a stack trace.
-    """;
     _n = min(len(coerced), len(func.args));
     for _i in range(_n) {
         if coerced[_i].type == func.args[_i].type {
@@ -4395,14 +4333,20 @@ impl NaIRGenPass._emit_swap(nd: uni.FuncCall) -> (ir.Value | None) {
 impl NaIRGenPass._codegen_callable_value(
     nd: uni.FuncCall, value: ir.Value, captures: list[tuple[str, ir.Value]]
 ) -> (ir.Value | None) {
+    if self._opt_payload_of(value.type) is not None {
+        _callee = self._opt_unwrap_guarded(
+            value, "call", "'NoneType' object is not callable"
+        );
+        if _callee is not None {
+            return self._codegen_callable_value(nd, _callee, captures);
+        }
+    }
     closure_name = self._closure_struct_of(value.type);
     if closure_name is not None {
         return self._codegen_closure_call(nd, value, closure_name);
     }
     if not isinstance(value.type, ir.PointerType)
         or not isinstance(value.type.pointee, ir.FunctionType) {
-        """No call signature to lower against. Refuse loudly: in statement
-        position a silent None would drop the call and its effects.""";
         self.emit(
             E5092,
             node_override=nd,
@@ -4428,7 +4372,9 @@ impl NaIRGenPass._codegen_callable_value(
     for (name, slot) in captures {
         coerced.append(self.builder.load(slot, name=f"cap.{name}"));
     }
-    result = self.builder.call(value, coerced, name="icall");
+    result = self.builder.call(
+        value, coerced, name="icall", cconv=self._field_call_convention(nd) or None
+    );
     for arg in args {
         if isinstance(arg.type, ir.PointerType) and self._is_owned(arg) {
             self._emit_rc_release_simple(arg, op="icall_arg", loc="");
@@ -4438,14 +4384,6 @@ impl NaIRGenPass._codegen_callable_value(
 }
 
 impl NaIRGenPass._folded_ord(nd: uni.FuncCall) -> (ir.Constant | None) {
-    """`ord` of a one-character literal, folded to its code point.
-
-    The call has already resolved to the builtin, so a module's own `ord` never
-    reaches here. Scanners compare characters against literals, as C does with
-    `c == '#'`; folding keeps each of those a constant instead of a runtime
-    decode of a static string.
-    """;
-
     params = list(nd.params or []);
     if len(params) != 1 or not isinstance(params[0], uni.Expr) {
         return None;
@@ -4455,4 +4393,146 @@ impl NaIRGenPass._folded_ord(nd: uni.FuncCall) -> (ir.Constant | None) {
         return None;
     }
     return ir.Constant(ir.IntType(64), ord(value));
+}
+
+impl NaIRGenPass._emit_intrinsic_c_thread_local(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    name = c_string_literal(args[0]);
+    if not name {
+        self._emit_intrinsic_misuse(
+            nd, intr, "the C variable is named by a string literal"
+        );
+        return None;
+    }
+
+    defining = intr.name != "__c_thread_local";
+    cell: ir.Type = ir.IntType(64) if defining else ir.IntType(8);
+    if intr.name == "__thread_local_block" {
+        (ok, size) = c_scalar_constant(args[1]);
+        if not ok or not isinstance(size, int) or size <= 0 {
+            self._emit_intrinsic_misuse(
+                nd, intr, "the block size is a positive constant"
+            );
+            return None;
+        }
+        cell = ir.ArrayType(ir.IntType(64), (size + 7) // 8);
+    }
+    existing = self.llvm_module.globals.get(name);
+    if existing is None {
+        existing = ir.GlobalVariable(self.llvm_module, cell, name=name);
+        existing.linkage = "weak" if defining else "external";
+        if defining {
+            existing.initializer = ir.Constant(cell, 0)
+                if isinstance(cell, ir.IntType)
+                else ir.Constant(cell, None);
+        }
+        existing.thread_local = True;
+        existing.tls_model = "initialexec";
+        if intr.name == "__thread_local" {
+            self._record_export(name, name, "global", True);
+        }
+    } elif not isinstance(existing, ir.GlobalVariable) or not existing.thread_local {
+        self._emit_intrinsic_misuse(
+            nd, intr, f"'{name}' is already declared and is not thread-local"
+        );
+        return None;
+    }
+    return self.builder.ptrtoint(existing, ir.IntType(64), name="c.tls.addr");
+}
+
+impl NaIRGenPass._intrinsic_memory_order(
+    nd: uni.FuncCall, intr: IntrinsicEntry, arg: uni.Expr, kind: str
+) -> (str | None) {
+    (ok, value) = c_scalar_constant(arg);
+    names = ["monotonic", "acquire", "acquire", "release", "acq_rel", "seq_cst"];
+    if not ok or not isinstance(value, int) or value < 0 or value >= len(names) {
+        self._emit_intrinsic_misuse(
+            nd, intr, "the memory order is a constant from 0 (relaxed) to 5 (seq_cst)"
+        );
+        return None;
+    }
+    order = names[value];
+    if (kind == "load" and order in ("release", "acq_rel"))
+        or (kind == "store" and order in ("acquire", "acq_rel")) {
+        self._emit_intrinsic_misuse(
+            nd, intr, f"a {kind} cannot use memory order {value}"
+        );
+        return None;
+    }
+    return order;
+}
+
+impl NaIRGenPass._emit_intrinsic_atomic(
+    nd: uni.FuncCall, intr: IntrinsicEntry, args: list[uni.Expr]
+) -> (ir.Value | None) {
+    b = self.builder;
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_FENCE {
+        order = self._intrinsic_memory_order(nd, intr, args[0], "fence");
+        if order is None {
+            return None;
+        }
+        if order != "monotonic" {
+            b.fence(order);
+        }
+        return None;
+    }
+    width = int(intr.name.rsplit("_i", 1)[1]);
+    value_type = ir.IntType(width);
+    addr = self._intrinsic_operand(nd, intr, args[0], "i64");
+    if addr is None {
+        return None;
+    }
+    slot = b.inttoptr(addr, value_type.as_pointer(), name="atomic.p");
+    align = width // 8;
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_LOAD {
+        order = self._intrinsic_memory_order(nd, intr, args[1], "load");
+        if order is None {
+            return None;
+        }
+        return b.load_atomic(slot, order, align, name="atomic.ld");
+    }
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_STORE {
+        val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+        order = self._intrinsic_memory_order(nd, intr, args[2], "store");
+        if val is None or order is None {
+            return None;
+        }
+        b.store_atomic(val, slot, order, align);
+        return None;
+    }
+    if intr.dispatch == IntrinsicDispatch.ATOMIC_CAS {
+        expected = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+        desired = self._intrinsic_operand(nd, intr, args[2], intr.param_specs[2]);
+        order = self._intrinsic_memory_order(nd, intr, args[3], "rmw");
+        if expected is None or desired is None or order is None {
+            return None;
+        }
+        failure = "acquire"
+            if order == "acq_rel"
+            else ("monotonic" if order == "release" else order);
+        pair = b.cmpxchg(slot, expected, desired, order, failure, name="atomic.cas");
+        return b.extract_value(pair, 0, name="atomic.cas.old");
+    }
+    val = self._intrinsic_operand(nd, intr, args[1], intr.param_specs[1]);
+    order = self._intrinsic_memory_order(nd, intr, args[2], "rmw");
+    if val is None or order is None {
+        return None;
+    }
+    op = intr.name[len("__atomic_"):].rsplit("_i", 1)[0];
+    return b.atomic_rmw(
+        "xchg" if op == "swap" else op, slot, val, ordering=order, name="atomic.rmw"
+    );
+}
+
+impl NaIRGenPass._field_call_convention(nd: uni.FuncCall) -> str {
+    target = nd.target;
+    if not isinstance(target, uni.AtomTrailer) or not target.is_attr {
+        return "";
+    }
+    arch = foreign_struct_of_type(target.target.type) if target.target else None;
+    if arch is None {
+        return "";
+    }
+    return self._calling_convention_of(arch.decorators);
 }

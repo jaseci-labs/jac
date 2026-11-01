@@ -1,8 +1,10 @@
+glob RAISE_SITE_INLINE_COST: int = 5;
+
 impl NaIRGenPass._get_exception_state_type -> ir.Type {
     if self._exc_state_type is not None {
         return self._exc_state_type;
     }
-    """The Windows floor's pair saves xmm6-xmm15 as well: 240 bytes.""";
+
     jmp_buf_type = ir.ArrayType(
         ir.IntType(8), 256 if self._exc_jmp_symbols()[0] == "__jac_setjmp" else 200
     );
@@ -28,7 +30,8 @@ impl NaIRGenPass._declare_exception_runtime -> None {
     setjmp_fn = self._get_or_declare_extern(setjmp_name, i32, [i8p]);
     setjmp_fn.attributes.add("returns_twice");
 
-    longjmp_fn = self._get_or_declare_extern(longjmp_name, ir.VoidType(), [i8p, i32]);
+    longjmp_args = [i8p] if self._exc_builtin_sjlj() else [i8p, i32];
+    longjmp_fn = self._get_or_declare_extern(longjmp_name, ir.VoidType(), longjmp_args);
     longjmp_fn.attributes.add("noreturn");
 
     self._get_or_declare_extern("abort", ir.VoidType(), []);
@@ -41,20 +44,6 @@ impl NaIRGenPass._declare_exception_runtime -> None {
 }
 
 impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
-    """The setjmp/longjmp pair every native exception frame arms and unwinds through.
-
-    Plain `setjmp` saves the signal mask: on Darwin it costs a `sigprocmask`
-    and a `sigaltstack` syscall per armed frame (and `longjmp` two more per
-    raise), on glibc it is `__sigsetjmp(env, 1)` and one `rt_sigprocmask`. Jac
-    code never changes the mask between arming a frame and raising into it,
-    so that is dead work on every `try`, walker spawn and guarded call.
-    `_setjmp`/`_longjmp` leave the mask alone. They only work as a pair --
-    Darwin's `longjmp` restores the mask from a buffer slot `_setjmp` never
-    writes -- so every frame raises through the matching `_longjmp`. wasm
-    keeps the portable names, which its SjLj lowering matches. Windows raises
-    through the floor's own pair (win_floor.jac): the UCRT's `longjmp` unwinds
-    through exception tables a Jac image does not carry.
-    """;
     triple = str(self.llvm_module.triple or "").lower();
     if "wasm" in triple {
         return ("setjmp", "longjmp");
@@ -64,16 +53,44 @@ impl NaIRGenPass._exc_jmp_symbols -> tuple[str, str] {
             return ("__jac_setjmp", "__jac_longjmp");
         }
     }
+    if self._native_sjlj_on() and triple.startswith("x86_64") {
+        return ("llvm.eh.sjlj.setjmp", "llvm.eh.sjlj.longjmp");
+    }
     return ("_setjmp", "_longjmp");
 }
 
+impl NaIRGenPass._exc_builtin_sjlj -> bool {
+    return self._exc_jmp_symbols()[0] == "llvm.eh.sjlj.setjmp";
+}
+
+impl NaIRGenPass._emit_exc_arm(
+    b: ir.IRBuilder, env: ir.Value, name: str = ""
+) -> ir.Value {
+    if self._exc_builtin_sjlj() {
+        b.function.attributes.add("noinline");
+        i8p = ir.IntType(8).as_pointer();
+        i32 = ir.IntType(32);
+        words = b.bitcast(env, i8p.as_pointer());
+        frame = b.call(
+            self._get_or_declare_extern("llvm.frameaddress.p0", i8p, [i32]),
+            [ir.Constant(i32, 0)]
+        );
+        b.store(frame, words);
+        stack = b.call(self._get_or_declare_extern("llvm.stacksave.p0", i8p, []), []);
+        b.store(stack, b.gep(words, [ir.Constant(i32, 2)]));
+    }
+    armed = b.call(self._exc_setjmp_fn(), [env], name=name);
+    if self._exc_builtin_sjlj() {
+        armed.attributes.add("returns_twice");
+    }
+    return armed;
+}
+
 impl NaIRGenPass._exc_setjmp_fn -> ir.Function {
-    """The setjmp of `_exc_jmp_symbols`, once `_declare_exception_runtime` ran.""";
     return self.extern_funcs[self._exc_jmp_symbols()[0]];
 }
 
 impl NaIRGenPass._exc_longjmp_fn -> ir.Function {
-    """The longjmp of `_exc_jmp_symbols`, the pair of `_exc_setjmp_fn`.""";
     return self.extern_funcs[self._exc_jmp_symbols()[1]];
 }
 
@@ -158,6 +175,9 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     fnty = ir.FunctionType(ir.VoidType(), [i8p, i32, i8p]);
     func = self._define_function("__jac_exc_raise", fnty);
     func.linkage = "private";
+    func.attributes.add("noreturn");
+    func.attributes.add("cold");
+    func.attributes.add_string("call-inline-cost", str(RAISE_SITE_INLINE_COST));
     func.args[0].name = "obj";
     func.args[1].name = "type_id";
     func.args[2].name = "msg";
@@ -176,25 +196,32 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
     b.cbranch(is_null, no_handler_bb, has_handler_bb);
 
     b.position_at_end(no_handler_bb);
-    printf_fn = self._get_printf();
-    err_fmt_str = "Uncaught exception: %s\n\0";
-    err_fmt_bytes = bytearray(err_fmt_str.encode("utf8"));
-    err_fmt_const = ir.Constant(
-        ir.ArrayType(ir.IntType(8), len(err_fmt_bytes)), err_fmt_bytes
-    );
-    err_fmt_global = ir.GlobalVariable(
-        self.llvm_module, err_fmt_const.type, name=".exc.uncaught.fmt"
-    );
-    err_fmt_global.linkage = "private";
-    err_fmt_global.global_constant = True;
-    err_fmt_global.initializer = err_fmt_const;
-    err_fmt_ptr = b.bitcast(err_fmt_global, i8p);
-    b.call(printf_fn, [err_fmt_ptr, msg_val]);
-
-    _fflush = self._get_or_declare_extern("fflush", ir.IntType(32), [i8p]);
-    b.call(_fflush, [ir.Constant(i8p, None)]);
-    abort_fn = self.extern_funcs["abort"];
-    b.call(abort_fn, []);
+    if self._target_is_wasm() {
+        report_fn = self._get_or_declare_extern(
+            "__jac_uncaught_exception", ir.VoidType(), [i8p]
+        );
+        b.call(report_fn, [msg_val]);
+    } else {
+        stderr_val = self._emit_stdio_handle(2, "stderr", b);
+        fprintf_fn = self._get_or_declare_extern(
+            "fprintf", ir.IntType(32), [i8p, i8p], var_arg=True
+        );
+        err_fmt_str = "Uncaught exception: %s\n\0";
+        err_fmt_bytes = bytearray(err_fmt_str.encode("utf8"));
+        err_fmt_const = ir.Constant(
+            ir.ArrayType(ir.IntType(8), len(err_fmt_bytes)), err_fmt_bytes
+        );
+        err_fmt_global = ir.GlobalVariable(
+            self.llvm_module, err_fmt_const.type, name=".exc.uncaught.fmt"
+        );
+        err_fmt_global.linkage = "private";
+        err_fmt_global.global_constant = True;
+        err_fmt_global.initializer = err_fmt_const;
+        err_fmt_ptr = b.bitcast(err_fmt_global, i8p);
+        b.call(fprintf_fn, [stderr_val, err_fmt_ptr, msg_val]);
+    }
+    exit_fn = self._get_or_declare_extern("exit", ir.VoidType(), [i32]);
+    b.call(exit_fn, [ir.Constant(i32, 1)]);
     b.unreachable();
 
     b.position_at_end(has_handler_bb);
@@ -249,7 +276,12 @@ impl NaIRGenPass._emit_exc_raise_helper -> None {
         cur_handler, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="env.ptr"
     );
     env_i8p = b.bitcast(env_ptr, i8p, name="env.i8p");
-    b.call(self._exc_longjmp_fn(), [env_i8p, ir.Constant(i32, 1)]);
+    if self._exc_builtin_sjlj() {
+        func.attributes.add("noinline");
+        b.call(self._exc_longjmp_fn(), [env_i8p]);
+    } else {
+        b.call(self._exc_longjmp_fn(), [env_i8p, ir.Constant(i32, 1)]);
+    }
     b.unreachable();
     self._exc_raise_fn = func;
 }
@@ -313,11 +345,6 @@ impl NaIRGenPass._emit_runtime_raise(
 }
 
 impl NaIRGenPass._emit_raise_value(exc_type_name: str, msg_val: ir.Value) -> None {
-    """Raise `exc_type_name` here with a message computed at run time.
-
-    The block ends at the raise, so the caller positions the builder elsewhere
-    before emitting more code.
-    """;
     if not self._slot_lowering_active() and self._exc_raise_fn is None {
         self._declare_exception_runtime();
     }
@@ -1342,7 +1369,17 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     fast_ret = func.append_basic_block("fast.ret");
     miss_bb = func.append_basic_block("miss");
     b = ir.IRBuilder(entry_bb);
-    if self.rc_threaded_gv is not None {
+    if self._native_tls_on() {
+        held = b.call(get_fn, [], name="exc.tl");
+        b.cbranch(
+            b.icmp_unsigned("!=", held, ir.Constant(i64, 0), name="exc.tl.set"),
+            fast_bb,
+            miss_bb
+        );
+        b = ir.IRBuilder(fast_bb);
+        b.ret(b.inttoptr(held, context_ptr));
+        func.blocks.remove(fast_ret);
+    } elif self.rc_threaded_gv is not None {
         mt_flag = b.load_atomic(self.rc_threaded_gv, "monotonic", 1, name="exc.mt");
         b.cbranch(
             b.icmp_unsigned(
@@ -1354,15 +1391,19 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     } else {
         b.branch(miss_bb);
     }
-    b = ir.IRBuilder(fast_bb);
-    main_ctx = b.load(main_gv, name="exc.main");
-    b.cbranch(
-        b.icmp_unsigned("==", main_ctx, ir.Constant(i8p, None), name="exc.main.none"),
-        miss_bb,
-        fast_ret
-    );
-    b = ir.IRBuilder(fast_ret);
-    b.ret(b.bitcast(main_ctx, context_ptr));
+    if not self._native_tls_on() {
+        b = ir.IRBuilder(fast_bb);
+        main_ctx = b.load(main_gv, name="exc.main");
+        b.cbranch(
+            b.icmp_unsigned(
+                "==", main_ctx, ir.Constant(i8p, None), name="exc.main.none"
+            ),
+            miss_bb,
+            fast_ret
+        );
+        b = ir.IRBuilder(fast_ret);
+        b.ret(b.bitcast(main_ctx, context_ptr));
+    }
     b = ir.IRBuilder(miss_bb);
     b.ret(b.call(slow_fn, [], name="exc.slow"));
 
@@ -1386,7 +1427,7 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     found.add_incoming(value, slow_entry);
     found.add_incoming(created, create);
     context = b.inttoptr(found, context_ptr);
-    if self.rc_threaded_gv is None {
+    if self.rc_threaded_gv is None or self._native_tls_on() {
         b.ret(context);
         return func;
     }
@@ -1407,13 +1448,56 @@ impl NaIRGenPass._get_exception_context_fn -> ir.Function {
     return func;
 }
 
-impl NaIRGenPass._exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value {
-    """The local an `except ... as name` binds, shared by every handler of the name.
+impl NaIRGenPass._get_exception_context_inl_fn -> ir.Function {
+    if self._exc_context_inl_fn is not None {
+        return self._exc_context_inl_fn;
+    }
+    shared = self._get_exception_context_fn();
+    context_ptr = shared.function_type.return_type;
+    i8 = ir.IntType(8);
+    i8p = i8.as_pointer();
+    func = ir.Function(
+        self.llvm_module,
+        ir.FunctionType(context_ptr, []),
+        name="__jac_exception_context.inl"
+    );
+    func.linkage = "private";
+    func.attributes.add("alwaysinline");
+    self._exc_context_inl_fn = func;
+    entry_bb = func.append_basic_block("entry");
+    fast_bb = func.append_basic_block("fast");
+    slow_bb = func.append_basic_block("slow");
+    b = ir.IRBuilder(entry_bb);
+    main_gv = self.llvm_module.get_global("__jac_exception_main_ctx");
+    if self.rc_threaded_gv is None {
+        b.branch(slow_bb);
+    } else {
+        mt_flag = b.load_atomic(self.rc_threaded_gv, "monotonic", 1, name="exc.mt");
+        main_ctx = b.load(main_gv, name="exc.main");
+        br = b.cbranch(
+            b.and_(
+                b.icmp_unsigned("==", mt_flag, ir.Constant(i8, 0), name="exc.st"),
+                b.icmp_unsigned(
+                    "!=", main_ctx, ir.Constant(i8p, None), name="exc.main.set"
+                ),
+                name="exc.fast"
+            ),
+            fast_bb,
+            slow_bb
+        );
+        br.set_weights([2000, 1]);
+        fb = ir.IRBuilder(fast_bb);
+        fb.ret(fb.bitcast(main_ctx, context_ptr));
+    }
+    if not fast_bb.is_terminated {
+        ir.IRBuilder(fast_bb).unreachable();
+    }
+    sb = ir.IRBuilder(slow_bb);
+    sb.ret(sb.call(shared, [], name="exc.shared"));
+    return func;
+}
 
-    Each handler used to take a fresh slot for the name, so scope exit (which
-    releases the slot the name maps to last) never released what an earlier
-    handler bound: one caught exception leaked per function per such handler.
-    """;
+impl NaIRGenPass._exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Value {
     existing = self.local_vars.get(var_name);
     if not self._nogc_headerless()
         and self._gen_ctx is None
@@ -1428,9 +1512,8 @@ impl NaIRGenPass._exc_binding_slot(var_name: str, slot_type: ir.Type) -> ir.Valu
 impl NaIRGenPass._unwind_top_slot(
     b: ir.IRBuilder, context: (ir.Value | None) = None
 ) -> ir.Value {
-    """The thread's unwind chain head: the newest frame that owns rc locals.""";
     if context is None {
-        context = b.call(self._get_exception_context_fn(), []);
+        context = b.call(self._get_exception_context_inl_fn(), []);
     }
     return b.gep(
         context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 4)]
@@ -1438,24 +1521,11 @@ impl NaIRGenPass._unwind_top_slot(
 }
 
 impl NaIRGenPass._unwind_node_type -> ir.Type {
-    """`{prev, cleanup, env}`: one frame's link in the unwind chain.""";
     i8p = ir.IntType(8).as_pointer();
     return ir.LiteralStructType([i8p, i8p, i8p]);
 }
 
 impl NaIRGenPass._register_unwind_cleanup -> None {
-    """Let a raise that crosses this frame release its owned locals.
-
-    A raise reaches its handler with `longjmp`, which skips every frame in
-    between, and with them the scope cleanup each frame would have run on a
-    normal return: every rc object those frames held leaked, once per raise.
-    A frame that owns such locals now links a node into the thread's unwind
-    chain on entry (its local slots and a cleanup function built from the
-    same scope cleanup a return runs) and unlinks it on every return. The
-    raise walks the chain down to the handler's saved head, releasing each
-    crossed frame's locals, before it jumps. A frame whose locals need no
-    cleanup (scalars, borrowed values, parameters) links nothing.
-    """;
     if self._builder is None or self._gen_ctx is not None {
         return;
     }
@@ -1531,9 +1601,15 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     if not pending or not slots {
         return;
     }
+    sites = self._unwind_raise_sites(func, slots);
+    if sites is not None {
+        self._unwind_release_at_raises(func, slots, sites);
+        return;
+    }
     cleanup_ty = ir.FunctionType(ir.VoidType(), [i8p]);
     cleanup = ir.Function(self.llvm_module, cleanup_ty, name=f"{func.name}.__unwind");
     cleanup.linkage = "private";
+    cleanup.attributes.add("cold");
     env_ty = ir.ArrayType(i8p, len(slots));
     try {
         cb = ir.IRBuilder(cleanup.append_basic_block("entry"));
@@ -1565,6 +1641,12 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     if cached is not None {
         entry_blk.instructions.remove(cached);
     }
+
+    node_ty = self._unwind_node_type();
+    ab = ir.IRBuilder(entry_blk);
+    ab.position_at_start(entry_blk);
+    env_slot = ab.alloca(env_ty, name="unwind.env");
+    link = ab.alloca(node_ty, name="unwind.node");
     self._hoist_entry_allocas(entry_blk);
     shadows = self._unwind_shadow_slots(func, slots);
     anchor: any = None;
@@ -1586,19 +1668,20 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     } else {
         b.position_at_end(entry_blk);
     }
+
+    env_slot = b.alloca(env_ty, name="unwind.env");
+    node_ty = self._unwind_node_type();
+    link = b.alloca(node_ty, name="unwind.node");
     if cached is not None {
         entry_blk.instructions.insert(b._anchor, cached);
         b._anchor += 1;
     }
-    env_slot = b.alloca(env_ty, name="unwind.env");
     for (k, (_name, slot)) in enumerate(slots) {
         b.store(
             b.bitcast(shadows.get(id(slot), slot), i8p),
             b.gep(env_slot, [ir.Constant(i32, 0), ir.Constant(i32, k)])
         );
     }
-    node_ty = self._unwind_node_type();
-    link = b.alloca(node_ty, name="unwind.node");
     top_slot = self._unwind_top_slot(b, cached);
     prev = b.load(top_slot, name="unwind.prev");
     b.store(prev, b.gep(link, [ir.Constant(i32, 0), ir.Constant(i32, 0)]));
@@ -1627,23 +1710,303 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
     }
 }
 
+impl NaIRGenPass._unwind_nothrow_callee(name: str) -> bool {
+    if name.startswith("__rc_") or name.startswith("llvm.") {
+        return True;
+    }
+    return name
+        in (
+            "__jac_exception_context",
+            "__jac_exception_context.inl",
+            "__jac_str_stamp",
+            "__jac_fmt_i64",
+            "snprintf",
+            "strlen",
+            "malloc",
+            "calloc",
+            "realloc",
+            "free",
+            "memcpy",
+            "memmove",
+            "memset"
+        );
+}
+
+impl NaIRGenPass._drop_guard_fn(hook: ir.Function, owner: str) -> ir.Function {
+    name = f"{hook.name}.guarded";
+    if name in self.llvm_module.globals {
+        found = self.llvm_module.get_global(name);
+        if isinstance(found, ir.Function) {
+            return found;
+        }
+    }
+    if self._exc_raise_fn is None {
+        self._declare_exception_runtime();
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    fn = ir.Function(
+        self.llvm_module, ir.FunctionType(ir.VoidType(), [hook.args[0].type]), name=name
+    );
+    fn.linkage = "private";
+    fn.attributes.add("noinline");
+    fn.args[0].name = "self";
+    entry_bb = fn.append_basic_block("entry");
+    call_bb = fn.append_basic_block("drop.call");
+    raised_bb = fn.append_basic_block("drop.raised");
+    done_bb = fn.append_basic_block("done");
+    saved_builder = self._builder;
+    try {
+        b = ir.IRBuilder(entry_bb);
+        self._builder = b;
+        (state, depth) = self._push_exception_handler(raised_bb, call_bb);
+        b.position_at_end(call_bb);
+        b.call(hook, [fn.args[0]]);
+        self._emit_exc_pop(b);
+        b.branch(done_bb);
+        b.position_at_end(raised_bb);
+        self._emit_exc_pop(b);
+        self._region_unwind(b.load(depth, name="rgn.depth"));
+        (_exc_type, exc_obj, exc_msg) = self._exception_values(state);
+        if not self._target_is_wasm() {
+            shown = owner.split("$")[0];
+            text = f"Exception ignored in: {shown}.drop: %s\n\0";
+            data = bytearray(text.encode("utf8"));
+            fmt = ir.GlobalVariable(
+                self.llvm_module,
+                ir.ArrayType(ir.IntType(8), len(data)),
+                name=f".drop.guard.fmt.{hook.name}"
+            );
+            fmt.linkage = "private";
+            fmt.global_constant = True;
+            fmt.initializer = ir.Constant(ir.ArrayType(ir.IntType(8), len(data)), data);
+            empty = b.bitcast(fmt, i8p);
+            empty = b.gep(empty, [ir.Constant(i32, len(data) - 1)], name="drop.no.msg");
+            msg = b.select(
+                b.icmp_unsigned(
+                    "==", exc_msg, ir.Constant(i8p, None), name="drop.msg.null"
+                ),
+                empty,
+                exc_msg,
+                name="drop.msg"
+            );
+            fprintf_fn = self._get_or_declare_extern(
+                "fprintf", i32, [i8p, i8p], var_arg=True
+            );
+            b.call(
+                fprintf_fn,
+                [self._emit_stdio_handle(2, "stderr", b), b.bitcast(fmt, i8p), msg]
+            );
+        }
+        release_fn = self.rc_release_simple_fn;
+        if release_fn is not None {
+            b.call(release_fn, [b.bitcast(exc_obj, i8p)]);
+        }
+        b.branch(done_bb);
+        b.position_at_end(done_bb);
+        b.ret_void();
+    } finally {
+        self._builder = saved_builder;
+    }
+    return fn;
+}
+
+impl NaIRGenPass._unwind_raise_sites(
+    func: ir.Function, slots: list[tuple[str, ir.Value]]
+) -> (list[tuple[ir.Instruction, set[int]]] | None) {
+    if os.environ.get("JAC_NO_UNWIND_SKIP") {
+        return None;
+    }
+    for known in self._setjmp_functions {
+        if known is func {
+            return None;
+        }
+    }
+    tracked: dict[int, ir.Value] = {};
+    for (_name, slot) in slots {
+        tracked[id(slot)] = slot;
+    }
+
+    for blk in func.blocks {
+        for inst in blk.instructions {
+            if isinstance(inst, ir.LoadInstr) {
+                continue;
+            }
+            if isinstance(inst, ir.StoreInstr) {
+                if id(inst.operands[0]) in tracked {
+                    return None;
+                }
+                continue;
+            }
+            if not isinstance(inst, ir.Instruction) {
+                continue;
+            }
+            for operand in inst.operands {
+                if id(operand) in tracked {
+                    return None;
+                }
+            }
+        }
+    }
+    succs: dict[int, list[ir.Block]] = {};
+    for blk in func.blocks {
+        if not blk.instructions {
+            return None;
+        }
+        term = blk.instructions[-1];
+        dests: list[ir.Block] = [];
+        if isinstance(term, ir.SwitchInstr) {
+            dests.append(term.default_bb);
+            for (_val, dest) in term.cases {
+                dests.append(dest);
+            }
+        } elif isinstance(term, ir.Instruction)
+            and term.opname in ("br", "ret", "ret void", "unreachable") {
+            for op in term.operands {
+                if isinstance(op, ir.Block) {
+                    dests.append(op);
+                }
+            }
+        } else {
+            return None;
+        }
+        succs[id(blk)] = dests;
+    }
+
+    held_in: dict[int, set[int]] = {};
+    for blk in func.blocks {
+        held_in[id(blk)] = set();
+    }
+    held_in[id(func.entry_basic_block)] = set(tracked.keys());
+    changed = True;
+    while changed {
+        changed = False;
+        for blk in func.blocks {
+            held = set(held_in[id(blk)]);
+            for inst_value in blk.instructions {
+                if isinstance(inst_value, ir.StoreInstr)
+                    and id(inst_value.operands[1]) in tracked {
+                    stored = inst_value.operands[0];
+                    if isinstance(stored, ir.Constant) and stored.constant is None {
+                        held.discard(id(inst_value.operands[1]));
+                    } else {
+                        held.add(id(inst_value.operands[1]));
+                    }
+                }
+            }
+            for dest in succs[id(blk)] {
+                into = held_in[id(dest)];
+                if not held.issubset(into) {
+                    into.update(held);
+                    changed = True;
+                }
+            }
+        }
+    }
+    sites: list[tuple[ir.Instruction, set[int]]] = [];
+    for blk in func.blocks {
+        held = set(held_in[id(blk)]);
+        for inst in blk.instructions {
+            if isinstance(inst, ir.StoreInstr) and id(inst.operands[1]) in tracked {
+                stored = inst.operands[0];
+                if isinstance(stored, ir.Constant) and stored.constant is None {
+                    held.discard(id(inst.operands[1]));
+                } else {
+                    held.add(id(inst.operands[1]));
+                }
+                continue;
+            }
+            if not isinstance(inst, ir.CallInstr) {
+                continue;
+            }
+            callee = inst.callee;
+            name: (str | None) = callee.name
+                if isinstance(callee, ir.Function)
+                else None;
+            if name == "__jac_exc_raise" {
+                if len(blk.instructions) < 2
+                    or blk.instructions[-2] is not inst
+                    or not isinstance(blk.instructions[-1], ir.Unreachable) {
+                    return None;
+                }
+                if held {
+                    sites.append((inst, set(held)));
+                }
+                continue;
+            }
+            if name is not None and self._unwind_nothrow_callee(name) {
+                continue;
+            }
+            if held {
+                return None;
+            }
+        }
+    }
+    return sites;
+}
+
+impl NaIRGenPass._unwind_release_at_raises(
+    func: ir.Function,
+    slots: list[tuple[str, ir.Value]],
+    sites: list[tuple[ir.Instruction, set[int]]]
+) -> None {
+    saved_builder = self._builder;
+    saved_locals = self.local_vars;
+    saved_regions = self.region_open_stack;
+    saved_cells = self.closure_cell_handles;
+    try {
+        for (site, held) in sites {
+            blk = site.parent;
+            insts = list(blk.instructions);
+            kept: list[ir.NamedValue] = [];
+            tail: list[ir.NamedValue] = [];
+            i = 0;
+            while i < len(insts) and insts[i] is not site {
+                kept.append(insts[i]);
+                i += 1;
+            }
+            while i < len(insts) {
+                tail.append(insts[i]);
+                i += 1;
+            }
+            blk.instructions.clear();
+            blk.instructions.extend(kept);
+            raise_blk = func.append_basic_block(name="raise.at");
+            for moved in tail {
+                if isinstance(moved, ir.Instruction) {
+                    moved.parent = raise_blk;
+                }
+                raise_blk.instructions.append(moved);
+            }
+            raise_blk.terminator = blk.terminator;
+            blk.terminator = None;
+            self._builder = ir.IRBuilder(blk);
+            self._builder.position_at_end(blk);
+            site_locals: dict[str, ir.Value] = {};
+            for (name, slot) in slots {
+                if id(slot) in held {
+                    site_locals[name] = slot;
+                }
+            }
+            self.local_vars = site_locals;
+            self.region_open_stack = [];
+            self.closure_cell_handles = {};
+            self._emit_scope_cleanup(skip_var=None, loc="unwind");
+            if not self._builder.block.is_terminated {
+                self._builder.branch(raise_blk);
+            }
+        }
+    } finally {
+        self._builder = saved_builder;
+        self.local_vars = saved_locals;
+        self.region_open_stack = saved_regions;
+        self.closure_cell_handles = saved_cells;
+    }
+}
+
 impl NaIRGenPass._unwind_shadow_slots(
     func: ir.Function, slots: list[tuple[str, ir.Value]]
 ) -> dict[int, ir.Value] {
-    """Shadow each registered local the function only loads and stores directly.
-
-    The unwind node needs, for every owned local, a word that holds the
-    local's current value when a raise crosses the frame. Handing the chain
-    the local's own slot publishes its address, and an escaped slot can never
-    be promoted to a register: every call may then read or write it, so the
-    local is reloaded after each one. A slot whose only uses are loads from it
-    and stores into it gets a shadow instead -- its own entry alloca, written
-    right after every store into the slot -- and the chain is handed the
-    shadow. The shadow holds the slot's value at every call, which is the only
-    place a raise can start, and the slot itself stays promotable. A slot used
-    any other way (its address taken, stored, cast or passed on) is handed over
-    as before. Returns the shadow of each shadowed slot, by the slot's id.
-    """;
     plain: dict[int, ir.Value] = {};
     for (_name, slot) in slots {
         plain[id(slot)] = slot;
@@ -1726,14 +2089,6 @@ impl NaIRGenPass._unwind_shadow_slots(
 }
 
 impl NaIRGenPass._hoist_entry_allocas(entry_blk: ir.Block) -> None {
-    """Move every local slot of the entry block, with the zero stores that
-    initialize it, ahead of the block's other instructions.
-
-    `_entry_alloca` prepends each slot to the entry block, and so does
-    entry code such as a closure cell's allocation, so a slot created
-    before that code sits after it. The unwind link registers every slot at
-    the end of the leading slots; each must be defined there.
-    """;
     slots: list[ir.NamedValue] = [];
     rest: list[ir.NamedValue] = [];
     insts = list(entry_blk.instructions);
@@ -1764,7 +2119,7 @@ impl NaIRGenPass._exception_handler_slot(
     b: ir.IRBuilder, context: (ir.Value | None) = None
 ) -> ir.Value {
     if context is None {
-        context = b.call(self._get_exception_context_fn(), []);
+        context = b.call(self._get_exception_context_inl_fn(), []);
     }
     slot = b.gep(
         context, [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 3)]
@@ -1774,7 +2129,7 @@ impl NaIRGenPass._exception_handler_slot(
 
 impl NaIRGenPass._nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value] {
     i32 = ir.IntType(32);
-    context = self.builder.call(self._get_exception_context_fn(), []);
+    context = self.builder.call(self._get_exception_context_inl_fn(), []);
     fields = [
         self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, i)])
         for i in range(3)
@@ -1783,28 +2138,14 @@ impl NaIRGenPass._nogc_err_slot -> tuple[ir.Value, ir.Value, ir.Value] {
 }
 
 impl NaIRGenPass._nogc_err_drop_slot -> ir.Value {
-    """The error record's drop slot: how to free the pending payload.
-
-    A raise that hands its payload to the record stores the function that
-    frees it here, and null when the payload is not the record's to free (a
-    static message, or an object someone else still owns). Whoever takes the
-    error off the record takes this with it.
-    """;
     i32 = ir.IntType(32);
-    context = self.builder.call(self._get_exception_context_fn(), []);
+    context = self.builder.call(self._get_exception_context_inl_fn(), []);
     return self.builder.gep(context, [ir.Constant(i32, 0), ir.Constant(i32, 4)]);
 }
 
 impl NaIRGenPass._raise_payload_drop(
     payload: (ir.Value | None), msg: ir.Value, type_name: str
 ) -> (ir.Value | None) {
-    """The drop a raise hands to the error record with its payload, if any.
-
-    Only a value the raise owns outright is handed over: a freshly built
-    exception object is dropped through its class's drop (which reads the
-    object's own vtable for a subclass), and a freshly built message string
-    is freed. A borrowed object or a static message gets no drop.
-    """;
     i8p = ir.IntType(8).as_pointer();
     if payload is not None and payload is not msg {
         if not self._is_owned(payload) or type_name not in self.struct_types {
@@ -1824,7 +2165,6 @@ impl NaIRGenPass._raise_payload_drop(
 }
 
 impl NaIRGenPass._emit_caught_drop(drop_slot: ir.Value, obj_slot: ir.Value) -> None {
-    """Drop the exception a handler took off the error record, then forget it.""";
     i8p = ir.IntType(8).as_pointer();
     func = self.builder.function;
     drop = self.builder.load(drop_slot, name="exc.drop");
@@ -1849,17 +2189,6 @@ impl NaIRGenPass._emit_caught_drop(drop_slot: ir.Value, obj_slot: ir.Value) -> N
 }
 
 impl NaIRGenPass._exc_binding_escapes(handler: uni.Except) -> bool {
-    """Can the exception bound by `except ... as e` outlive its handler?
-
-    The handler drops the caught exception when it ends, so every use of the
-    binding must only read it: an argument to a plain function call, an
-    operand of arithmetic, comparison or `not`, an f-string part, a branch
-    condition, a statement of its own, or `raise e`, reached directly or
-    through attribute, index and method-call chains rooted at `e`. Anything
-    else -- storing it, returning it, putting it in a container, handing it to
-    a method, capturing it in a closure -- may keep a reference past the
-    drop, so the handler leaves such an exception undropped.
-    """;
     if not isinstance(handler.name, uni.Name) {
         return False;
     }
@@ -1956,13 +2285,6 @@ impl NaIRGenPass._emit_err_propagate(loc: str = "") -> None {
 impl NaIRGenPass._emit_err_check(
     callee: (uni.Ability | None), site: (uni.UniNode | None) = None
 ) -> None {
-    """Propagate a raise the callee left pending, unless the call is a tail call.
-
-    A `return tail` call returns the callee's result straight to this
-    function's caller, which checks the pending error itself; the frame has no
-    handler and nothing to clean up (the tail lowering refuses otherwise), so
-    propagating here would return the same fallback one frame earlier.
-    """;
     if callee is not None and (site is None or site is not self._tail_call_site) {
         self._emit_pending_error_check();
     }
@@ -2242,9 +2564,9 @@ impl NaIRGenPass._push_exception_handler(
     state = self._stack_entry_alloca(self._get_exception_state_type(), "exc.state");
     depth = self._stack_entry_alloca(ir.IntType(64), "rgn.depth.slot");
     self._emit_exc_push(self.builder, state);
-    self.builder.store(self._region_depth(), depth);
+    self.builder.store(self._region_depth_if_used(), depth);
     env = self.builder.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 0)]);
-    result = self.builder.call(self._exc_setjmp_fn(), [self.builder.bitcast(env, i8p)]);
+    result = self._emit_exc_arm(self.builder, self.builder.bitcast(env, i8p));
     self.builder.cbranch(
         self.builder.icmp_signed("!=", result, ir.Constant(i32, 0)), dispatch, body
     );
@@ -2340,15 +2662,6 @@ impl NaIRGenPass._codegen_finally_guard(nd: uni.TryStmt) -> None {
 }
 
 impl NaIRGenPass._mark_setjmp_function(func: ir.Function) -> None {
-    """Record a function that arms a setjmp frame.
-
-    It stays optimizable. What C requires of such a function -- a local
-    written between the arming and the longjmp that returns to it must be
-    volatile, or the second return may see a stale register copy -- is
-    applied before the module is handed on (_volatilize_setjmp_locals). The
-    setjmp call keeps returns_twice, so LLVM neither inlines the function
-    nor reuses its stack slots across the arming.
-    """;
     for known in self._setjmp_functions {
         if known is func {
             return;
@@ -2358,7 +2671,6 @@ impl NaIRGenPass._mark_setjmp_function(func: ir.Function) -> None {
 }
 
 impl NaIRGenPass._setjmp_local_base(value: ir.Value) -> (ir.Value | None) {
-    """The local (alloca) a pointer addresses through GEPs and casts, or None.""";
     current = value;
     while True {
         if isinstance(current, ir.AllocaInstr) {
@@ -2393,59 +2705,16 @@ impl NaIRGenPass._block_successors(block: ir.Block) -> list[ir.Block] {
 }
 
 impl NaIRGenPass._volatilize_setjmp_locals -> None {
-    """Make volatile exactly the locals a setjmp function writes after an arming.
-
-    Every instruction that can run after an arming -- the rest of the arming
-    block and every block reachable from it -- is scanned for stores into a
-    local; each such local's loads and stores anywhere in the function become
-    volatile, so the value a handler, finally clause or re-armed generator
-    frame reads after the longjmp is the one last written. Locals only
-    written before every arming keep their register and SSA form, and the
-    rest of the function is optimized as usual.
-    """;
     if not self._setjmp_functions {
         return;
     }
     setjmp_name = self._exc_jmp_symbols()[0];
     for func in self._setjmp_functions {
-        after: list[any] = [];
-        pending: list[ir.Block] = [];
-        for block in func.blocks {
-            armed = False;
-            for inst in block.instructions {
-                if armed {
-                    after.append(inst);
-                } elif isinstance(inst, ir.CallInstr) {
-                    callee = inst.callee;
-                    if isinstance(callee, ir.Function) and callee.name == setjmp_name {
-                        armed = True;
-                    }
-                }
-            }
-            if armed {
-                pending.extend(self._block_successors(block));
-            }
+        targets = self._setjmp_volatile_allocas(func, setjmp_name);
+        if targets is None {
+            targets = self._setjmp_reachable_writes(func, setjmp_name);
         }
-        seen: set[int] = set();
-        while pending {
-            block = pending.pop();
-            if id(block) in seen {
-                continue;
-            }
-            seen.add(id(block));
-            after.extend(block.instructions);
-            pending.extend(self._block_successors(block));
-        }
-        written: set[int] = set();
-        for inst in after {
-            if isinstance(inst, ir.StoreInstr) {
-                base = self._setjmp_local_base(inst.operands[1]);
-                if base is not None {
-                    written.add(id(base));
-                }
-            }
-        }
-        if not written {
+        if not targets {
             continue;
         }
         for block in func.blocks {
@@ -2459,7 +2728,7 @@ impl NaIRGenPass._volatilize_setjmp_locals -> None {
                 }
                 if target is not None {
                     base = self._setjmp_local_base(target);
-                    if base is not None and id(base) in written {
+                    if base is not None and id(base) in targets {
                         setattr(inst, "volatile", True);
                     }
                 }
@@ -2469,22 +2738,365 @@ impl NaIRGenPass._volatilize_setjmp_locals -> None {
     self._setjmp_functions = [];
 }
 
-impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
-    """The thread's exception context for a handler armed or popped at `b`.
+impl NaIRGenPass._setjmp_reachable_writes(
+    func: ir.Function, setjmp_name: str
+) -> set[int] {
+    after: list[any] = [];
+    pending: list[ir.Block] = [];
+    for block in func.blocks {
+        armed = False;
+        for inst in block.instructions {
+            if armed {
+                after.append(inst);
+            } elif isinstance(inst, ir.CallInstr) {
+                callee = inst.callee;
+                if isinstance(callee, ir.Function) and callee.name == setjmp_name {
+                    armed = True;
+                }
+            }
+        }
+        if armed {
+            pending.extend(self._block_successors(block));
+        }
+    }
+    seen: set[int] = set();
+    while pending {
+        block = pending.pop();
+        if id(block) in seen {
+            continue;
+        }
+        seen.add(id(block));
+        after.extend(block.instructions);
+        pending.extend(self._block_successors(block));
+    }
+    written: set[int] = set();
+    for inst in after {
+        if isinstance(inst, ir.StoreInstr) {
+            base = self._setjmp_local_base(inst.operands[1]);
+            if base is not None {
+                written.add(id(base));
+            }
+        }
+    }
+    return written;
+}
 
-    The context is one per-thread block (pthread key, so JIT, AOT and every
-    unit share it) holding the handler chain and the unwind-chain head. A
-    function fetches it once, at entry, and every arming, pop and unwind
-    link in the activation reuses that value: an activation runs on one
-    thread, and the value is set before any setjmp and never changed, so a
-    longjmp back into the function still sees it. A generator's resume
-    function can run on a different thread each time it resumes, and
-    fetches it where it is used.
-    """;
+impl NaIRGenPass._setjmp_volatile_allocas(
+    func: ir.Function, setjmp_name: str
+) -> (set[int] | None) {
+    memo: dict[int, list[ir.AllocaInstr]] = {};
+    sites: list[tuple[set[int], ir.Block]] = [];
+    candidates: set[int] = set();
+    for block in func.blocks {
+        for (index, inst) in enumerate(block.instructions) {
+            if not isinstance(inst, ir.CallInstr) {
+                continue;
+            }
+            callee = inst.callee;
+            if not isinstance(callee, ir.Function) or callee.name != setjmp_name {
+                continue;
+            }
+            landing = self._setjmp_landing(block, index);
+            if landing is None {
+                return None;
+            }
+            written = self._setjmp_region_writes(block, index, memo);
+            if written is None {
+                return None;
+            }
+            sites.append((written, landing));
+            candidates.update(written);
+        }
+    }
+    targets: set[int] = set();
+    if not candidates {
+        return targets;
+    }
+    live_in = self._setjmp_live_in(func, candidates, memo);
+    for (written, landing) in sites {
+        live = live_in.get(id(landing));
+        if live is None {
+            return None;
+        }
+        targets.update(written & live);
+    }
+    return targets;
+}
+
+impl NaIRGenPass._setjmp_landing(block: ir.Block, index: int) -> (ir.Block | None) {
+    insts = block.instructions;
+    if len(insts) != index + 3 {
+        return None;
+    }
+    call = insts[index];
+    cond = insts[index + 1];
+    term = insts[index + 2];
+    if not isinstance(cond, ir.ICMPInstr)
+        or cond.op != "ne"
+        or cond.operands[0] is not call {
+        return None;
+    }
+    zero = cond.operands[1];
+    if not isinstance(zero, ir.Constant) or zero.constant != 0 {
+        return None;
+    }
+    if not isinstance(term, ir.ConditionalBranch) or term.operands[0] is not cond {
+        return None;
+    }
+    landing = term.operands[1];
+    if not isinstance(landing, ir.Block) {
+        return None;
+    }
+    return landing;
+}
+
+impl NaIRGenPass._setjmp_value_allocas(
+    value: ir.Value, memo: dict[int, list[ir.AllocaInstr]]
+) -> list[ir.AllocaInstr] {
+    found: list[ir.AllocaInstr] = [];
+    if not isinstance(value, ir.Instruction) {
+        return found;
+    }
+    known = memo.get(id(value));
+    if known is not None {
+        return known;
+    }
+    seen: set[int] = set();
+    pending: list[ir.Value] = [value];
+    while pending {
+        current = pending.pop();
+        if id(current) in seen {
+            continue;
+        }
+        seen.add(id(current));
+        if isinstance(current, ir.AllocaInstr) {
+            found.append(current);
+        } elif isinstance(current, ir.GEPInstr) or isinstance(current, ir.CastInstr) {
+            pending.append(current.operands[0]);
+        } elif isinstance(current, ir.SelectInstr) {
+            pending.append(current.operands[1]);
+            pending.append(current.operands[2]);
+        } elif isinstance(current, ir.PhiInstr) {
+            for (incoming, _) in current.incomings {
+                pending.append(incoming);
+            }
+        }
+    }
+    memo[id(value)] = found;
+    return found;
+}
+
+impl NaIRGenPass._setjmp_operands(inst: ir.Instruction) -> list[ir.Value] {
+    if isinstance(inst, ir.PhiInstr) {
+        return [incoming for (incoming, _) in inst.incomings];
+    }
+    return list(inst.operands);
+}
+
+impl NaIRGenPass._setjmp_region_writes(
+    block: ir.Block, index: int, memo: dict[int, list[ir.AllocaInstr]]
+) -> (set[int] | None) {
+    push_fn = self._exc_push_fn;
+    pop_fn = self._exc_pop_fn;
+    blocks: list[ir.Block] = [block];
+    starts: list[int] = [index + 1];
+    ends: list[int] = [];
+    raising: list[bool] = [];
+    successors: list[list[int]] = [];
+    nodes: dict[tuple[int, int], int] = {};
+    depths: list[int] = [0];
+    position = 0;
+    while position < len(blocks) {
+        current = blocks[position];
+        depth = depths[position];
+        insts = current.instructions;
+        stop = len(insts);
+        open = True;
+        raises = False;
+        for at in range(starts[position], len(insts)) {
+            inst = insts[at];
+            if not isinstance(inst, ir.CallInstr) {
+                continue;
+            }
+            callee = inst.callee;
+            if push_fn is not None and callee is push_fn {
+                depth += 1;
+            } elif pop_fn is not None and callee is pop_fn {
+                if depth == 0 {
+                    stop = at;
+                    open = False;
+                    break;
+                }
+                depth -= 1;
+            } elif self._setjmp_call_may_raise(inst) {
+                raises = True;
+            }
+        }
+        ends.append(stop);
+        raising.append(raises);
+        targets: list[int] = [];
+        if open {
+            if depth > 64 {
+                return None;
+            }
+            for successor in self._block_successors(current) {
+                key = (id(successor), depth);
+                found = nodes.get(key, -1);
+                if found < 0 {
+                    found = len(blocks);
+                    nodes[key] = found;
+                    blocks.append(successor);
+                    starts.append(0);
+                    depths.append(depth);
+                }
+                targets.append(found);
+            }
+        }
+        successors.append(targets);
+        position += 1;
+    }
+    reach: list[bool] = list(raising);
+    changed = True;
+    while changed {
+        changed = False;
+        for node in range(len(blocks)) {
+            if reach[node] {
+                continue;
+            }
+            for target in successors[node] {
+                if reach[target] {
+                    reach[node] = True;
+                    changed = True;
+                    break;
+                }
+            }
+        }
+    }
+    written: set[int] = set();
+    for node in range(len(blocks)) {
+        if not reach[node] {
+            continue;
+        }
+        follows = False;
+        for target in successors[node] {
+            if reach[target] {
+                follows = True;
+            }
+        }
+        insts = blocks[node].instructions;
+        at = ends[node] - 1;
+        while at >= starts[node] {
+            inst = insts[at];
+            at -= 1;
+            if not isinstance(inst, ir.Instruction) {
+                continue;
+            }
+            if isinstance(inst, ir.CallInstr) and self._setjmp_call_may_raise(inst) {
+                follows = True;
+            }
+            if not follows {
+                continue;
+            }
+            if isinstance(inst, ir.LoadInstr) or isinstance(inst, ir.GEPInstr) {
+                continue;
+            }
+            if isinstance(inst, ir.CastInstr)
+                and inst.opname in ("bitcast", "addrspacecast") {
+                continue;
+            }
+            for operand in self._setjmp_operands(inst) {
+                for alloca in self._setjmp_value_allocas(operand, memo) {
+                    written.add(id(alloca));
+                }
+            }
+        }
+    }
+    return written;
+}
+
+impl NaIRGenPass._setjmp_call_may_raise(inst: ir.CallInstr) -> bool {
+    callee = inst.callee;
+    if not isinstance(callee, ir.Function) {
+        return True;
+    }
+    if callee is self._exc_push_fn or callee is self._exc_pop_fn {
+        return False;
+    }
+    return not callee.name.startswith("llvm.");
+}
+
+impl NaIRGenPass._setjmp_live_in(
+    func: ir.Function, candidates: set[int], memo: dict[int, list[ir.AllocaInstr]]
+) -> dict[int, set[int]] {
+    blocks: list[ir.Block] = list(func.blocks);
+    gens: dict[int, set[int]] = {};
+    kills: dict[int, set[int]] = {};
+    successors: dict[int, list[ir.Block]] = {};
+    for block in blocks {
+        gen: set[int] = set();
+        kill: set[int] = set();
+        for inst in block.instructions {
+            if not isinstance(inst, ir.Instruction) {
+                continue;
+            }
+            operands = self._setjmp_operands(inst);
+            killed = -1;
+            if isinstance(inst, ir.StoreInstr) {
+                dest = inst.operands[1];
+                if isinstance(dest, ir.AllocaInstr)
+                    and not dest.operands
+                    and id(dest) in candidates {
+                    killed = id(dest);
+                    operands = [inst.operands[0]];
+                }
+            }
+            for operand in operands {
+                for alloca in self._setjmp_value_allocas(operand, memo) {
+                    key = id(alloca);
+                    if key in candidates and key not in kill {
+                        gen.add(key);
+                    }
+                }
+            }
+            if killed >= 0 {
+                kill.add(killed);
+            }
+        }
+        gens[id(block)] = gen;
+        kills[id(block)] = kill;
+        successors[id(block)] = self._block_successors(block);
+    }
+    live_in: dict[int, set[int]] = {};
+    for block in blocks {
+        live_in[id(block)] = set(gens[id(block)]);
+    }
+    changed = True;
+    while changed {
+        changed = False;
+        for block in reversed(blocks) {
+            out: set[int] = set();
+            for successor in successors[id(block)] {
+                found = live_in.get(id(successor));
+                if found is not None {
+                    out.update(found);
+                }
+            }
+            current = live_in[id(block)];
+            grown = gens[id(block)] | (out - kills[id(block)]);
+            if len(grown) != len(current) {
+                live_in[id(block)] = grown;
+                changed = True;
+            }
+        }
+    }
+    return live_in;
+}
+
+impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
     func = b.function;
     gc = self._gen_ctx;
     if gc is not None and func is gc.resume_fn {
-        return b.call(self._get_exception_context_fn(), [], name="exc.context");
+        return b.call(self._get_exception_context_inl_fn(), [], name="exc.context");
     }
     cached = self._exc_context_cache.get(id(func));
     if cached is not None {
@@ -2503,7 +3115,7 @@ impl NaIRGenPass._exc_context_for(b: ir.IRBuilder) -> ir.Value {
     saved_anchor: int = b._anchor;
     b.position_at_start(first_block);
     b._anchor = index;
-    context = b.call(self._get_exception_context_fn(), [], name="exc.context");
+    context = b.call(self._get_exception_context_inl_fn(), [], name="exc.context");
     b._block = saved_block;
     b._anchor = saved_anchor + 1
         if saved_block is first_block and saved_anchor >= index

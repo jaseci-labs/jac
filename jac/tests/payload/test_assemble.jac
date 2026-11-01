@@ -515,6 +515,56 @@ test "assemble_site bundles a content-keyed shim under the canonical name" {
     }
 }
 
+test "a fetched bun leaves the payload executable by users who do not own it" {
+    # The official image extracts the runtime as root and runs jac as uid 1000,
+    # which cannot chmod a root-owned file: bun has to come out of the payload
+    # executable, not wait for jac to chmod it at first use (#10384).
+    import hashlib;
+    import zipfile;
+    import jaclang.dist.payload.fetch as fetch_mod;
+    import from jaclang.dist.payload.cli { main }
+    import from jaclang.dist.payload.fetch { BUN_BASE, BUN_VERSION }
+
+    buf = io.BytesIO();
+    with zipfile.ZipFile(buf, "w") as zf {
+        zf.writestr("bun-linux-x64/bun", b"\x7fELF bun\n");
+    }
+    zip_bytes = buf.getvalue();
+    release = f"{BUN_BASE}/bun-v{BUN_VERSION}";
+    assets = {
+        f"{release}/bun-linux-x64.zip": zip_bytes,
+        f"{release}/SHASUMS256.txt": f"{hashlib.sha256(
+            zip_bytes
+        ).hexdigest()}  bun-linux-x64.zip\n".encode()
+    };
+    base = tempfile.mkdtemp(prefix="jac-payload-bun-");
+    try {
+        bun = os.path.join(base, "bun-build", "bun");
+        with patch.object(fetch_mod, "http_get", assets.__getitem__) {
+            assert main(["fetch-bun", "linux-x86_64", os.path.dirname(bun)]) == 0;
+        }
+        repo = os.path.join(base, "repo");
+        fake_repo(repo);
+        wf(repo, "build.zig", b"shim input\n");
+        wf(repo, "build.zig.zon", b"shim input\n");
+        shim = os.path.join(base, "libjacllvm." + shim_file_name().rsplit(".", 1)[-1]);
+        wf(base, os.path.basename(shim), b"prebuilt-shim-bytes");
+        stage = os.path.join(base, "stage");
+        assemble_site(
+            repo, os.path.join(stage, "site"), MkPayloadOpts(shim_so=shim, bun_bin=bun)
+        );
+        packed = os.path.join(base, "payload.tar.zst");
+        tar_zst_dir(stage, packed, None);
+        rt = os.path.join(base, "rt");
+        extract_payload(packed, rt);
+        mode = os.stat(os.path.join(rt, "site/jaclang/client/_bun/bun")).st_mode
+            & 0o777;
+        assert mode & 0o111 == 0o111 , f"bun leaves the payload as {oct(mode)}";
+    } finally {
+        shutil.rmtree(base, ignore_errors=True);
+    }
+}
+
 test "stripping the kernel keeps its sidecar hash truthful" {
     import hashlib;
     import json;

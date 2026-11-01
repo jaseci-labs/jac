@@ -405,7 +405,7 @@ impl JacBuiltin.printgraph(
     node_depths: dict[(NodeArchetype, int)] = {nd: 0};
     queue: list[tuple[NodeArchetype, int]] = [(nd, 0)];
     connections: list[tuple[(NodeArchetype, NodeArchetype, EdgeArchetype)]] = [];
-    """Depth first search.""";
+
     def dfs(nd: NodeArchetype, cur_depth: int) {
         if (nd not in visited_nodes) {
             visited_nodes.append(nd);
@@ -480,7 +480,28 @@ impl JacBuiltin.printgraph(
         );
         mermaid_content += f'{visited_nodes.index(node_)}["{label}"]\n';
     }
-    output = (dot_content + '}') if (format == 'dot') else mermaid_content;
+    if format == 'json' {
+        output = json.dumps(
+            {
+                'version': '1.0',
+                'nodes': [
+                    {
+                        'id': n.__jac__.ensure_id().hex,
+                        'label': 'root'
+                            if isinstance(n, Root)
+                            else str(n.__jac__.archetype)
+                    } for n in visited_nodes
+                ],
+                'edges': [
+                    {'from': s.__jac__.ensure_id().hex, 'to': t.__jac__.ensure_id().hex}
+                        | ({} if isinstance(e, GenericEdge) else {'label': str(e)})
+                    for (s, t, e) in connections
+                ]
+            }
+        );
+    } else {
+        output = (dot_content + '}') if (format == 'dot') else mermaid_content;
+    }
     if file {
         with open(file, 'w') as f {
             f.write(output);

@@ -111,8 +111,19 @@ test "f32 rounds to binary32 after every operation" {
     assert probe_f("f32_rounds_per_op") == 0.30000001192092896;
 }
 
-test "plain int keeps its pre-existing lowering: shifts, negation, abs and pow do not trap" {
-    assert probe("plain_int_is_not_sized") == 4;
+test "plain int arithmetic traps on overflow and stays exact in range" {
+    assert probe("plain_int_add_overflow_traps") == 1;
+    assert probe("plain_int_sub_underflow_traps") == 1;
+    assert probe("plain_int_mul_overflow_traps") == 1;
+    assert probe("plain_int_pow_overflow_traps") == 1;
+    assert probe("plain_int_pow_in_range") == 3;
+    assert probe("plain_int_shl_overflow_traps") == 1;
+    assert probe("plain_int_large_shift_results") == -1;
+    assert probe("plain_int_aug_large_shift_results") == -1;
+    assert probe("plain_int_neg_min_traps") == 1;
+    assert probe("plain_int_abs_min_traps") == 1;
+    assert probe("plain_int_aug_mul_traps") == 1;
+    assert probe("plain_int_aug_floordiv_zero_raises") == 1;
 }
 
 test "sized casts unwrap narrowed optional fields" {

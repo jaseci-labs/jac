@@ -1,5 +1,15 @@
 impl JacToJSCompiler.add_runtime_imports(js_code: str) -> str {
-    return prepend_active_runtime_globals(js_code);
+    key = (type(resolve_active_backend()).__name__, js_code);
+    held = _RUNTIME_IMPORTS_MEMO.get(key);
+    if held is not None {
+        return held;
+    }
+    text = prepend_active_runtime_globals(js_code);
+    if len(_RUNTIME_IMPORTS_MEMO) >= RUNTIME_IMPORTS_MEMO_CAP {
+        _RUNTIME_IMPORTS_MEMO.clear();
+    }
+    _RUNTIME_IMPORTS_MEMO[key] = text;
+    return text;
 }
 
 impl JacToJSCompiler.extract_globals(
@@ -13,7 +23,7 @@ impl JacToJSCompiler.extract_exports(manifest: (ClientManifest | None)) -> list[
 }
 
 impl JacToJSCompiler.compile_module(module_path: Path) -> ClientArtifact {
-    artifact = self._compile_to_js(module_path);
+    artifact = self._compile_to_js(module_path, self.source_root);
     self.boundary_contracts[str(module_path)] = artifact.boundary_contracts;
     return artifact;
 }

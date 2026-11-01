@@ -2721,6 +2721,7 @@ impl Parser.parse_lambda_expr -> Expr {
     rbrace_uni: Token | None = None;
     if self.match_tok(TokenKind.LBRACE) {
         lbrace_uni = self.make_uni_token(self.previous());
+        self._lambda_block = True;
         body_stmts2 = self._apply_implicit_return(self.parse_code_block_stmts());
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
     } else {
@@ -3226,12 +3227,6 @@ impl Parser.parse_element_stmt -> ElementStmt | EmptyToken | None {
         return self.parse_sem_def();
     }
 
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
-    }
-
     if self.check(TokenKind.KW_WITH) {
         return self.parse_module_code();
     }
@@ -3482,15 +3477,17 @@ impl Parser.parse_module_code -> ModuleCode {
 
 impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
     stmts: list[CodeBlockStmt] = [];
-    checked_first = False;
+    lambda_block = self._lambda_block;
+    self._lambda_block = False;
+    flagged: list[SourceLoc] = [];
+    flagged_at: list[int] = [];
     while not self.check(TokenKind.RBRACE) and not self.at_end() {
         before = self.pos;
         stmt = self.parse_statement();
         if stmt is not None {
             is_docstring = False;
             if (
-                not checked_first
-                and self._view_body_depth == 0
+                self._view_body_depth == 0
                 and isinstance(stmt, ExprStmt)
                 and not stmt.in_fstring
                 and stmt.has_semi
@@ -3506,14 +3503,8 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
                 }
             }
             if is_docstring {
-                self.emit_warn(
-                    "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc.",
-                    "W0060",
-                    loc=self.tokens[before].loc
-                );
-            }
-            if not isinstance(stmt, Semi) {
-                checked_first = True;
+                flagged.append(self.tokens[before].loc);
+                flagged_at.append(len(stmts));
             }
             stmts.append(stmt);
 
@@ -3538,6 +3529,34 @@ impl Parser.parse_code_block_stmts -> list[CodeBlockStmt] {
         if self.pos == before {
             self.advance();
         }
+    }
+    if lambda_block {
+        real = [
+            i
+            for i in range(len(stmts))
+            if not isinstance(stmts[i], Semi)
+        ];
+        rest = [
+            i
+            for i in real
+            if i not in flagged_at
+        ];
+        if len(real) == 1 {
+            return stmts;
+        }
+        if len(rest) == 1 {
+            lone = stmts[rest[0]];
+            if isinstance(lone, ExprStmt) and lone.has_semi {
+                return stmts;
+            }
+        }
+    }
+    for loc in flagged {
+        self.emit_warn(
+            "A string on its own does nothing. Docstrings go before the declaration, not inside the body; write a note inside a body as a # comment.",
+            "W0060",
+            loc=loc
+        );
     }
     return stmts;
 }
@@ -3821,12 +3840,6 @@ impl Parser.parse_statement -> CodeBlockStmt | None {
     if self.check(TokenKind.KW_HAS)
         or (self.check(TokenKind.KW_STATIC) and self.check_peek(TokenKind.KW_HAS)) {
         return self.parse_has_stmt();
-    }
-
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
     }
 
     if self.check_any(
@@ -4733,13 +4746,6 @@ impl Parser.parse_class_pattern_args(
 }
 
 impl Parser.parse_return_stmt -> ReturnStmt {
-    """`return expr;`, or `return tail call(...);` for a guaranteed tail call.
-
-    `tail` is contextual: it marks a tail call only directly after `return`
-    and before a name that starts the call, so `return tail;`,
-    `return tail(x);` and `return tail.next;` still read a variable named
-    `tail`. The operand of `return tail` must be a call.
-    """;
     ret_uni = self.consume_uni(TokenKind.KW_RETURN);
     expr = None;
     tail_uni: Token | None = None;
@@ -5232,7 +5238,8 @@ impl Parser.parse_import_items(
         TokenKind.KW_ASYNC,
         TokenKind.STRING,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_HAS
+        TokenKind.KW_HAS,
+        TokenKind.DECOR_OP
     )
         and (is_clib_import or not self.check(TokenKind.STRING)) {
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
@@ -5472,7 +5479,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.DECOR_OP) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5481,21 +5488,21 @@ impl Parser.parse_archetype_member -> UniNode | None {
         if self.check_peek(TokenKind.KW_HAS) {
             has_stmt = self.parse_has_stmt();
             if doc {
-                _ = self._attach_doc(has_stmt, doc);
+                self._attach_doc(has_stmt, doc);
             }
             return has_stmt;
         }
 
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
     if self.check(TokenKind.KW_HAS) {
         has_stmt = self.parse_has_stmt();
         if doc {
-            _ = self._attach_doc(has_stmt, doc);
+            self._attach_doc(has_stmt, doc);
         }
         return has_stmt;
     }
@@ -5503,7 +5510,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_ASYNC) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5517,7 +5524,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ct_globals = self.parse_comptime_global();
         if doc {
-            _ = self._attach_doc(ct_globals, doc);
+            self._attach_doc(ct_globals, doc);
         }
         return ct_globals;
     }
@@ -5526,7 +5533,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5537,7 +5544,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
         ) {
         ability = self.parse_ability();
         if doc {
-            _ = self._attach_doc(ability, doc);
+            self._attach_doc(ability, doc);
         }
         return ability;
     }
@@ -5550,14 +5557,14 @@ impl Parser.parse_archetype_member -> UniNode | None {
     ) {
         archetype = self.parse_archetype();
         if doc {
-            _ = self._attach_doc(archetype, doc);
+            self._attach_doc(archetype, doc);
         }
         return archetype;
     }
     if self.check(TokenKind.KW_ENUM) {
         enum_node = self.parse_enum();
         if doc {
-            _ = self._attach_doc(enum_node, doc);
+            self._attach_doc(enum_node, doc);
         }
         return enum_node;
     }
@@ -5565,15 +5572,9 @@ impl Parser.parse_archetype_member -> UniNode | None {
     if self.check(TokenKind.KW_IMPL) {
         impl_node = self.parse_impl_def();
         if doc {
-            _ = self._attach_doc(impl_node, doc);
+            self._attach_doc(impl_node, doc);
         }
         return impl_node;
-    }
-
-    if self.check(TokenKind.PYNLINE) {
-        py_tok = self.expect(TokenKind.PYNLINE);
-        py_code = self.make_uni_token(py_tok);
-        return PyInlineCode(code=py_code, kid=[py_code]);
     }
 
     if self.check(TokenKind.KW_WITH) {
@@ -5593,7 +5594,7 @@ impl Parser.parse_archetype_member -> UniNode | None {
             kid.append(rb_uni);
             module_code = ModuleCode(name=None, body=body, kid=kid, doc=None);
             if doc {
-                _ = self._attach_doc(module_code, doc);
+                self._attach_doc(module_code, doc);
             }
             return module_code;
         }
@@ -6317,13 +6318,6 @@ impl Parser.parse_enum -> Enum {
                 if self.match_tok(TokenKind.COMMA) {
                     body_kid.append(self.make_uni_token(self.previous()));
                 }
-            } elif self.check(TokenKind.PYNLINE) {
-                py_tok = self.expect(TokenKind.PYNLINE);
-                py_code = self.make_uni_token(py_tok);
-                pynline = PyInlineCode(code=py_code, kid=[py_code]);
-                pynline.is_enum_stmt = True;
-                body_l.append(pynline);
-                body_kid.append(pynline);
             } elif self.check(TokenKind.KW_WITH) {
                 mc = self.parse_module_code();
                 mc.is_enum_stmt = True;

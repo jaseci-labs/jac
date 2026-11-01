@@ -136,7 +136,8 @@ def _kernel_units(
     inputs: dict[str, str],
     previous: dict[str, dict[str, any]],
     rows: dict[str, dict[str, any]],
-    specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]]
+    specs: dict[str, list[tuple[int, str, (tuple[str, ...] | None)]]],
+    recorded: dict[str, str]
 ) -> (dict[str, ManifestSource] | None);
 
 def _prepare_revision(

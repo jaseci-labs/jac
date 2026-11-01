@@ -235,6 +235,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Duplicate declaration of '{name}' (already declared as {kind})",
          help="Jac supports decl/impl separation, not decl/decl. Either inline the body into the first `obj/node/edge/walker/enum` block, or split into a body-less declaration plus an `impl` block."
      ),
+     E0078 = _err(
+         "E0078",
+         Category.SYNTAX,
+         "The {kind} '{name}' has the name of the field declared on line {line}",
+         help="A field and a method or ability of one archetype share one attribute name, so the {kind} replaces the field and `self.{name}` reads the function. Rename one of them."
+     ),
      E0080 = _err(
          "E0080",
          Category.SYNTAX,
@@ -367,7 +373,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W0060 = _warn(
          "W0060",
          Category.SYNTAX,
-         "Docstrings in Jac go before the declaration, not inside the body. Move this string before the enclosing test/can/obj/etc."
+         "A string on its own does nothing. Docstrings go before the declaration, not inside the body; write a note inside a body as a # comment."
      ),
      W0063 = _warn(
          "W0063",
@@ -378,7 +384,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
      E0102 = _err("E0102", Category.SYNTAX, "Unterminated f-string"),
-     E0103 = _err("E0103", Category.SYNTAX, "Unterminated inline Python block"),
      E0104 = _err("E0104", Category.SYNTAX, "Unexpected end of JSX content"),
      E0105 = _err("E0105", Category.SYNTAX, "Unexpected character: '{ch}'"),
      E0106 = _err("E0106", Category.SYNTAX, "Unexpected character in JSX tag: '{ch}'"),
@@ -605,6 +610,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E1090 = _err(
          "E1090", Category.TYPE, "Cannot raise {type} (not an exception type)"
+     ),
+     E1161 = _err(
+         "E1161",
+         Category.TYPE,
+         "Cannot use {type} as an exception cause (not an exception type or None)"
      ),
      E1091 = _err(
          "E1091",
@@ -1766,8 +1776,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2036 = _err(
          "E2036",
          Category.SEMANTIC,
-         "Duplicate definition of '{name}': it replaces the definition on line {line}.",
-         help="A module-level name can be defined once. The later definition is the one that runs, while calls are checked against the earlier one, so rename or remove one of them. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
+         "Duplicate definition of '{name}': the {prior} binds it too.",
+         help="A module-level name is bound once, by one definition or by one import or wire. Uses are checked against one binding while another can be the one that runs, so rename or remove one of them, or bind the import under another name with `as`. Use `impl {name}` to give a declaration its body, or `@overload` for alternative signatures."
      ),
      E2037 = _err(
          "E2037",
@@ -2112,7 +2122,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Docstring can be removed [strip-docstrings]",
          help="'Deslop' rule, on under select = [\"all\"] (not [\"default\"]) or "
          "when \"strip-docstrings\" is named in [check.lint] select. "
-         "`jac fmt --lintfix` then removes all docstrings."
+         "`jac fmt --lintfix` then removes all docstrings, and every string "
+         "written as a statement inside a body."
      ),
      W3053 = _warn(
          "W3053",
@@ -2140,6 +2151,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "\"separate-impls\" is named in [check.lint] select. "
          "`jac fmt --lintfix` leaves the declaration in place and moves its body"
          " into an `impl` at the bottom of the module."
+     ),
+     W3056 = _warn(
+         "W3056",
+         Category.LINT,
+         "{what} [impls-in-annex]",
+         help="On under select = [\"all\"] (not [\"default\"]) or when "
+         "\"impls-in-annex\" is named in [check.lint] select. Every impl lives in"
+         " its module's `impl/<module>.impl.jac` annex (or `<module>.impl/` for a"
+         " dotted stem such as a platform variant), never in the module itself or"
+         " beside it. `jac fmt --lintfix` moves the impls and relocates the annex."
      ),
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -2174,7 +2195,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "strip-docstrings": "W3051",
          "remove-wired-import": "W3053",
          "remove-dead-import": "W3054",
-         "separate-impls": "W3055"
+         "separate-impls": "W3055",
+         "impls-in-annex": "W3056"
      },
      E5001 = _err(
          "E5001",
@@ -2383,7 +2405,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E5093",
          Category.CODEGEN,
          "Type '{type}' on {what} of '{name}' cannot cross the native->Python call boundary",
-         help="Native code calling a Python-context function marshals through a fixed ctypes callback table: int (c_int64), float (c_double), bool (c_bool), str (c_char_p), sized ints, plus None returns. Any other type would be reinterpreted as a raw c_int64 and produce garbage values at runtime. Use a supported primitive at the boundary, or move the callee into the native context. (Python calling INTO native code is unaffected: that direction goes through the native marshal bridge, which handles lists, structs, and enums.)"
+         help="Native code calling a Python-context function passes its arguments as C values: int (c_int64), float (c_double), bool (c_bool), str (c_char_p), the sized scalars at their own width and sign (i8 to u64, f32, f64), plus None returns. No other type has a C form at this boundary, bytes included. Use a supported primitive at the boundary, or move the callee into the native context. (Python calling INTO native code is unaffected: that direction goes through the native marshal bridge, which handles lists, structs, and enums.)"
      ),
      E5080 = _err(
          "E5080",
@@ -2602,6 +2624,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.ICE,
          "ICE: missing semantic annotation -- {details}",
          help="Codegen required a fact the central analysis pipeline never recorded on the unitree. This is a compiler bug, not an error in your program."
+     ),
+     E9003 = _err(
+         "E9003",
+         Category.ICE,
+         "ICE: the native backend crashed lowering {kind} '{name}': {details}",
+         help="This is a compiler bug, not an error in your program -- please report it. A crash is never treated as a construct the backend declined, so the module does not run until it is fixed. Pin the module to the server codespace under [placement.pins] in jac.toml to keep working meanwhile.",
+         blocks_codegen=True
      ),
      E7001 = _err(
          "E7001",

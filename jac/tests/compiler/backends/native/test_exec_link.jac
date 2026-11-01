@@ -37,6 +37,7 @@ def _emit_object(
 ) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     mod = llvm.parse_assembly(ir_txt);
     mod.verify();
     tm = llvm.Target.from_triple(triple).create_target_machine(
@@ -49,6 +50,7 @@ def _emit_object(
 def _emit_for_tm(tm: any, triple: str) -> bytes {
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     mod = llvm.parse_assembly(f'target triple = "{triple}"\n');
     mod.triple = triple;
     mod.data_layout = str(tm.target_data);
@@ -303,6 +305,7 @@ test "AOT executable code model emits COFF, not ELF, on a Windows triple" {
     import from unittest.mock { patch }
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     win_triple = "x86_64-pc-windows-msvc";
     target = llvm.Target.from_triple(win_triple);
     with patch.object(_tgt.os, "name", "nt") {

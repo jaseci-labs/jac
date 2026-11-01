@@ -44,6 +44,26 @@ assert hashlib.sha256(sample).digest()
 assert ctypes.pythonapi.PyInitConfig_Create
 mode = sys.argv[1] if len(sys.argv) > 1 else "jacpython"
 assert mode in ("jacpython", "host"), mode
+# Every extension module this configuration built imports: what `make
+# checksharedmods` runs Tools/build/check_extension_modules.py for, which
+# JacPython does not keep. Here the check is strict and reads the installed
+# tree: the modules the Setup files build (MODBUILT_NAMES, MODSHARED_NAMES)
+# and those configure enabled, minus Setup.local's *disabled* block. The
+# JacPython build records inittab.jac's modules under the same names.
+build_vars = sysconfig.get_config_vars()
+built = set(build_vars["MODBUILT_NAMES"].split()) | set(build_vars["MODSHARED_NAMES"].split())
+built |= {
+    key[len("MODULE_"):-len("_STATE")].lower()
+    for key, value in build_vars.items()
+    if key.startswith("MODULE_") and key.endswith("_STATE") and value == "yes"
+}
+unimportable = []
+for name in sorted(built - set(build_vars["MODDISABLED_NAMES"].split())):
+    try:
+        __import__(name)
+    except ImportError as error:
+        unimportable.append(f"{name}: {error}")
+assert not unimportable, "built extension modules fail to import:\n" + "\n".join(unimportable)
 if mode == "jacpython":
     assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
 try:
@@ -203,7 +223,6 @@ assert _heapq.heappop([1, 2, 3]) == 1
     del source
     gc.collect()
     assert reference() is None
-    assert ctypes.pythonapi.jacpy_array_insert
     numeric_array = array.array('q')
     array_empty_size = numeric_array.__sizeof__()
     numeric_array.extend(range(10000))
@@ -249,8 +268,12 @@ assert _heapq.heappop([1, 2, 3]) == 1
             return 7
     numeric_array[0] = ArrayMutation()
     assert numeric_array.tolist() == [7]
-    numeric_array.append(ArrayMutation())
-    assert numeric_array.tolist() == [4, 7]
+    try:
+        numeric_array.append(ArrayMutation())
+    except IndexError:
+        pass  # as CPython: the append index no longer exists after the clear
+    else:
+        raise AssertionError("array append kept a stale index")
     assert array.array('w', 'aΩ😀').tounicode() == 'aΩ😀'
     class IteratorOwner:
         def key(self, value):
@@ -274,7 +297,6 @@ assert _heapq.heappop([1, 2, 3]) == 1
     del first, lagging
     gc.collect()  # Releasing a long replay chain must use the destruction budget.
 
-    assert ctypes.pythonapi.jacpy_tee_next
     assert list(itertools.batched(range(5), 2)) == [(0, 1), (2, 3), (4,)]
     assert list(itertools.permutations("ab")) == [("a", "b"), ("b", "a")]
     assert [(key, list(group)) for key, group in itertools.groupby("aabb")] == [
@@ -335,7 +357,7 @@ assert _heapq.heappop([1, 2, 3]) == 1
         def __ceil__(self):
             return "custom ceiling"
     assert math.ceil(CustomCeil()) == "custom ceiling"
-    assert ctypes.pythonapi.jacpy_deque_append
+    assert ctypes.pythonapi.jacpy_deque_push
     deque = _collections.deque
     sequence = deque(range(1024))
     full_size = sequence.__sizeof__()
@@ -508,11 +530,24 @@ assert _heapq.heappop([1, 2, 3]) == 1
     del owner
     gc.collect()
     assert owner_ref() is None, "Native JSON bindings hid a Python reference cycle"
-    try:
-        json.loads("[" * 100_000 + "0" + "]" * 100_000)
-    except RecursionError:
-        pass
-    else:
+    # The C stack bounds recursion, so parse on a thread with a fixed stack:
+    # the build's own stack limit may be large enough for the whole document.
+    import threading
+    nested_outcome = []
+
+    def parse_nested():
+        try:
+            json.loads("[" * 100_000 + "0" + "]" * 100_000)
+            nested_outcome.append("parsed")
+        except RecursionError:
+            nested_outcome.append("guarded")
+
+    previous_stack_size = threading.stack_size(8 << 20)
+    nested_thread = threading.Thread(target=parse_nested)
+    nested_thread.start()
+    nested_thread.join()
+    threading.stack_size(previous_stack_size)
+    if nested_outcome != ["guarded"]:
         raise AssertionError("Native JSON did not guard recursive parsing")
     assert ctypes.pythonapi.jacpy_queue_get
     import threading
@@ -561,7 +596,6 @@ assert _heapq.heappop([1, 2, 3]) == 1
     recursive_getter = _operator.itemgetter(recursive_items)
     recursive_items.append(recursive_getter)
     assert repr(recursive_getter) == "operator.itemgetter([operator.itemgetter(...)])"
-    assert ctypes.pythonapi.jacpy_binascii_convert
     assert binascii.a2b_base64(binascii.b2a_base64(b"native codec")) == b"native codec"
     assert binascii.crc32(b"123456789") == 0xcbf43926
     # Private Jac helpers must not interpose on zlib's distinct C ABI.

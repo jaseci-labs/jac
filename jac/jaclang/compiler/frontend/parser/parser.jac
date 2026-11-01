@@ -8,7 +8,6 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.BOOL: Tok.BOOL.value,
          TokenKind.NULL: Tok.NULL.value,
          TokenKind.ELLIPSIS: Tok.ELLIPSIS.value,
-         TokenKind.PYNLINE: Tok.PYNLINE.value,
          TokenKind.NAME: Tok.NAME.value,
          TokenKind.KWESC_NAME: Tok.KWESC_NAME.value,
          TokenKind.TYP_STRING: Tok.TYP_STRING.value,
@@ -199,6 +198,7 @@ obj Parser {
         source: Source postinit,
         diags: list[SrcDiag] = [],
         _view_body_depth: int = 0,
+        _lambda_block: bool = False,
         _no_connect_op_depth: int = 0,
         _gen_test_idx: int = 0;
 

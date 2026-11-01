@@ -610,9 +610,7 @@ A plain Jac `import` lowers verbatim to a Python import node:
 | `import type X;` | wrapped in `if TYPE_CHECKING:` |
 
 Because these are real Python imports, `pandas`/`numpy`/`sklearn` "just
-work." Untyped Python return values arrive in Jac as `any`. Inline Python
-via `::py::` blocks is parsed into a `PyInlineCode` node and spliced
-verbatim into the Python AST (server backend only).
+work." Untyped Python return values arrive in Jac as `any`.
 
 ### Python importing Jac
 
@@ -712,8 +710,7 @@ constructs the native backend cannot lower -- non-allowlisted imports
 (allowlist: `sys`, `os`, `random`, `struct`, `enum`,
 `collections.abc`; `math`, `cmath`, `time`, and the other bundled
 `na_stdlib` modules are supported through bundling rather than the allowlist),
-structural match patterns, generators (`yield`), inline Python (`::py::`),
-`by llm()`, and a handful of edge-traversal forms. Anything `E5090` rejects
+structural match patterns, generators (`yield`), `by llm()`, and a handful of edge-traversal forms. Anything `E5090` rejects
 can never reach, let alone cross, the native boundary. See
 [Native Compilation](../reference/language/native-pathway.md) for the full
 list.

@@ -1,11 +1,3 @@
-"""liblzma compressor and decompressor objects and filter specifiers.
-
-Derived from CPython 3.14.6 Modules/_lzmamodule.c; see ../LICENSE.cpython.
-liblzma keeps pointers into each lzma_stream between calls, so every stream is
-pinned. lzma_code() runs with the GIL released, so the streams allocate through
-one allocator record over PyMem_RawMalloc()/PyMem_RawFree().
-"""
-
 import from lzma {
     obj lzma_allocator {
         has alloc: Callable[[ptr, u64, u64], ptr] = 0,
@@ -100,13 +92,11 @@ import from lzma {
 
 import from c { def free(address: ptr);  }
 
-# Container formats.
 glob FORMAT_AUTO: i32 = 0,
      FORMAT_XZ: i32 = 1,
      FORMAT_ALONE: i32 = 2,
      FORMAT_RAW: i32 = 3;
 
-# lzma.h (xz 5.8.1) constants the module publishes.
 glob LZMA_CHECK_NONE: i32 = 0,
      LZMA_CHECK_CRC32: i32 = 1,
      LZMA_CHECK_CRC64: i32 = 4,
@@ -132,7 +122,6 @@ glob LZMA_CHECK_NONE: i32 = 0,
      LZMA_PRESET_DEFAULT: u32 = 6,
      LZMA_PRESET_EXTREME: u32 = 0x80000000;
 
-# Module state slots, in the order the binding fills them.
 glob COMPRESSOR_TYPE: int = 0,
      DECOMPRESSOR_TYPE: int = 1,
      LZMA_ERROR: int = 2,
@@ -166,22 +155,11 @@ glob:priv LZMA_OK: i32 = 0,
      LZMA_OPTIONS_BCJ_SIZE: u64 = 4,
      UINT64_MAX: u64 = 0xFFFFFFFFFFFFFFFF,
      SSIZE_MAX: u64 = 0x7FFFFFFFFFFFFFFF,
-     # Py_ASNATIVEBYTES_NATIVE_ENDIAN | UNSIGNED_BUFFER | REJECT_NEGATIVE
-     # | ALLOW_INDEX
      NATIVE_UNSIGNED: i32 = 31;
 
-# PyLzma_Malloc() / PyLzma_Free(): PyMem_Malloc() cannot be used, because the
-# GIL is not held when lzma_code() is called.
-def:priv lzma_malloc(opaque: ptr, items: u64, size: u64) -> ptr {
-    if size != 0 and items > SSIZE_MAX // size {
-        return ptr();
-    }
-    return PyMem_RawMalloc(items * size);
-}
+def:priv lzma_malloc(opaque: ptr, items: u64, size: u64) -> ptr;
 
-def:priv lzma_free(opaque: ptr, address: ptr) {
-    PyMem_RawFree(address);
-}
+def:priv lzma_free(opaque: ptr, address: ptr);
 
 import from c {
     glob:priv lzma_allocator_record: lzma_allocator = lzma_allocator(
@@ -194,21 +172,196 @@ import from jaclang.runtime.python.bindings.members {
     record_set_object
 }
 
-def:priv new_stream -> Pinned[lzma_stream] {
+def:priv new_stream -> Pinned[lzma_stream];
+
+def:priv error_of(module: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv instance_error(instance: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv catch_lzma_error(error: ptr[PyObject], lzret: i32) -> bool;
+
+def:priv lock_acquire(lock: ptr);
+
+def:priv native_unsigned(
+    value: ptr[PyObject], target: ptr, size: i64, kind: str
+) -> bool;
+
+def:priv lzma_vli_converter(value: ptr[PyObject], target: ptr[u64]) -> bool;
+
+def:priv lzma_mode_converter(value: ptr[PyObject], target: ptr[u32]) -> bool;
+
+def:priv lzma_mf_converter(value: ptr[PyObject], target: ptr[u32]) -> bool;
+
+def convert_lzma_vli_converter(value: ptr[PyObject], fname: str, label: str) -> u64;
+
+def:priv uint32_option(value: ptr[PyObject], target: ptr[u32]) -> bool;
+
+def:priv known_keywords(spec: ptr[PyObject], names: list[str]) -> bool;
+
+def:priv spec_arguments(
+    empty_tuple: ptr[PyObject], spec: ptr[PyObject], units: str, names: list[str]
+) -> (list[ptr[PyObject]] | None);
+
+def:priv parse_filter_spec_lzma(
+    error: ptr[PyObject], empty_tuple: ptr[PyObject], spec: ptr[PyObject]
+) -> ptr;
+
+def:priv parse_filter_spec_delta(
+    error: ptr[PyObject], empty_tuple: ptr[PyObject], spec: ptr[PyObject]
+) -> ptr;
+
+def:priv parse_filter_spec_bcj(
+    error: ptr[PyObject], empty_tuple: ptr[PyObject], spec: ptr[PyObject]
+) -> ptr;
+
+def:priv is_bcj(id: u64) -> bool;
+
+def lzma_filter_converter(
+    module: ptr[PyObject], spec: ptr[PyObject], filter: ptr[lzma_filter]
+) -> bool;
+
+def:priv free_filter_chain(filters: ptr[lzma_filter]);
+
+def:priv new_filter_chain -> ptr[lzma_filter];
+
+def:priv parse_filter_chain_spec(
+    module: ptr[PyObject], filters: ptr[lzma_filter], filterspecs: ptr[PyObject]
+) -> bool;
+
+def:priv spec_add_field(spec: ptr[PyObject], key: str, value: u64) -> bool;
+
+def:priv build_filter_spec(filter: ptr[lzma_filter]) -> ptr[PyObject];
+
+obj CompressorState(NativeState) {
+    has lzs: Pinned[lzma_stream],
+        flushed: bool = False,
+        lock: ptr = ptr();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
+
+def:priv sync_out(lzs: &mut Pinned[lzma_stream], cursor: Cursor);
+
+def:priv compress(
+    receiver: ptr[PyObject], state: CompressorState, data: ptr, length: i64, action: i32
+) -> ptr[PyObject];
+
+def:priv compressor_of(instance: ptr[PyObject]) -> CompressorState | None;
+
+def _lzma_LZMACompressor_compress_impl(
+    receiver: ptr[PyObject], data: BufferArgument
+) -> ptr[PyObject];
+
+def _lzma_LZMACompressor_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv compressor_init_xz(
+    module: ptr[PyObject],
+    lzs: &mut Pinned[lzma_stream],
+    check: i32,
+    preset: u32,
+    filterspecs: ptr[PyObject]
+) -> bool;
+
+def:priv compressor_init_alone(
+    module: ptr[PyObject],
+    lzs: &mut Pinned[lzma_stream],
+    preset: u32,
+    filterspecs: ptr[PyObject]
+) -> bool;
+
+def:priv compressor_init_raw(
+    module: ptr[PyObject], lzs: &mut Pinned[lzma_stream], filterspecs: ptr[PyObject]
+) -> bool;
+
+def lzma_compressor_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject];
+
+obj DecompressorState(NativeState) {
+    has lzs: Pinned[lzma_stream],
+        check: i32 = 0,
+        eof: bool = False,
+        unused_data: ptr[PyObject] = NULL,
+        needs_input: bool = True,
+        input_buffer: ptr = ptr(),
+        input_buffer_size: u64 = 0,
+        lock: ptr = ptr();
+
+    def traverse_refs(visitor: ptr, context: ptr) -> i32;
+    def clear;
+    def drop;
+}
+
+def mirror_decompressor(instance: ptr[PyObject], state: DecompressorState);
+
+def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None;
+
+def:priv decompress_buf(
+    receiver: ptr[PyObject], state: DecompressorState, max_length: i64
+) -> ptr[PyObject];
+
+def:priv decompress(
+    receiver: ptr[PyObject],
+    state: DecompressorState,
+    data: ptr,
+    length: u64,
+    max_length: i64
+) -> ptr[PyObject];
+
+def _lzma_LZMADecompressor_decompress_impl(
+    receiver: ptr[PyObject], data: BufferArgument, max_length: i64
+) -> ptr[PyObject];
+
+def:priv decompressor_init_raw(
+    module: ptr[PyObject], lzs: &mut Pinned[lzma_stream], filterspecs: ptr[PyObject]
+) -> bool;
+
+def _lzma_LZMADecompressor_impl(
+    type: ptr[PyObject], format_: i32, memlimit: ptr[PyObject], filters: ptr[PyObject]
+) -> ptr[PyObject];
+
+def _lzma_is_check_supported_impl(
+    module: ptr[PyObject], check_id: i32
+) -> ptr[PyObject];
+
+def lzma_encode_filter_properties(
+    module: ptr[PyObject], arg: ptr[PyObject]
+) -> ptr[PyObject];
+
+def:priv encode_filter_properties(
+    module: ptr[PyObject], filter: ptr[lzma_filter]
+) -> ptr[PyObject];
+
+def _lzma__decode_filter_properties_impl(
+    module: ptr[PyObject], filter_id: u64, encoded_props: BufferArgument
+) -> ptr[PyObject];
+
+impl lzma_malloc(opaque: ptr, items: u64, size: u64) -> ptr {
+    if size != 0 and items > SSIZE_MAX // size {
+        return ptr();
+    }
+    return PyMem_RawMalloc(items * size);
+}
+
+impl lzma_free(opaque: ptr, address: ptr) {
+    PyMem_RawFree(address);
+}
+
+impl new_stream -> Pinned[lzma_stream] {
     return pin(lzma_stream(allocator=addressof(lzma_allocator_record)));
 }
 
-def:priv error_of(module: ptr[PyObject]) -> ptr[PyObject] {
+impl error_of(module: ptr[PyObject]) -> ptr[PyObject] {
     return jacpy_binding_state_get(module, LZMA_ERROR);
 }
 
-# The LZMAError of the module that defines `instance`'s type.
-def:priv instance_error(instance: ptr[PyObject]) -> ptr[PyObject] {
+impl instance_error(instance: ptr[PyObject]) -> ptr[PyObject] {
     return error_of(PyType_GetModule(Py_TYPE(instance)));
 }
 
-# catch_lzma_error(): True when `lzret` is a failure, with the error set.
-def:priv catch_lzma_error(error: ptr[PyObject], lzret: i32) -> bool {
+impl catch_lzma_error(error: ptr[PyObject], lzret: i32) -> bool {
     if lzret == LZMA_OK
         or lzret == LZMA_GET_CHECK
         or lzret == LZMA_NO_CHECK
@@ -237,7 +390,7 @@ def:priv catch_lzma_error(error: ptr[PyObject], lzret: i32) -> bool {
     return True;
 }
 
-def:priv lock_acquire(lock: ptr) {
+impl lock_acquire(lock: ptr) {
     if PyThread_acquire_lock(lock, 0) == 0 {
         thread = PyEval_SaveThread();
         PyThread_acquire_lock(lock, 1);
@@ -245,11 +398,7 @@ def:priv lock_acquire(lock: ptr) {
     }
 }
 
-# INT_TYPE_CONVERTER_FUNC(): an unsigned C integer of `size` bytes at
-# `target`, rejecting negative values and values wider than the C type.
-def:priv native_unsigned(
-    value: ptr[PyObject], target: ptr, size: i64, kind: str
-) -> bool {
+impl native_unsigned(value: ptr[PyObject], target: ptr, size: i64, kind: str) -> bool {
     written = PyLong_AsNativeBytes(value, target, size, NATIVE_UNSIGNED);
     if written < 0 {
         return False;
@@ -261,20 +410,19 @@ def:priv native_unsigned(
     return True;
 }
 
-def:priv lzma_vli_converter(value: ptr[PyObject], target: ptr[u64]) -> bool {
+impl lzma_vli_converter(value: ptr[PyObject], target: ptr[u64]) -> bool {
     return native_unsigned(value, target, 8, "lzma_vli");
 }
 
-def:priv lzma_mode_converter(value: ptr[PyObject], target: ptr[u32]) -> bool {
+impl lzma_mode_converter(value: ptr[PyObject], target: ptr[u32]) -> bool {
     return native_unsigned(value, target, 4, "lzma_mode");
 }
 
-def:priv lzma_mf_converter(value: ptr[PyObject], target: ptr[u32]) -> bool {
+impl lzma_mf_converter(value: ptr[PyObject], target: ptr[u32]) -> bool {
     return native_unsigned(value, target, 4, "lzma_match_finder");
 }
 
-# The clinic converter for `lzma_vli` parameters.
-def convert_lzma_vli_converter(value: ptr[PyObject], fname: str, label: str) -> u64 {
+impl convert_lzma_vli_converter(value: ptr[PyObject], fname: str, label: str) -> u64 {
     cell = ptr[u64](PyMem_Calloc(1, 8));
     if cell.is_null() {
         PyErr_NoMemory();
@@ -289,7 +437,7 @@ def convert_lzma_vli_converter(value: ptr[PyObject], fname: str, label: str) -> 
     return result;
 }
 
-def:priv uint32_option(value: ptr[PyObject], target: ptr[u32]) -> bool {
+impl uint32_option(value: ptr[PyObject], target: ptr[u32]) -> bool {
     if value.is_null() {
         return True;
     }
@@ -301,11 +449,7 @@ def:priv uint32_option(value: ptr[PyObject], target: ptr[u32]) -> bool {
     return True;
 }
 
-# The keyword arguments of `spec` for PyArg_ParseTupleAndKeywords(), as the
-# object format units see them; None when parsing failed.
-# Whether every key of the dict `spec` is a str naming one of `names`, so
-# parsing it cannot fail; the caller replaces any failure with its own error.
-def:priv known_keywords(spec: ptr[PyObject], names: list[str]) -> bool {
+impl known_keywords(spec: ptr[PyObject], names: list[str]) -> bool {
     keys = PyDict_Keys(spec);
     if not keys {
         return False;
@@ -316,7 +460,7 @@ def:priv known_keywords(spec: ptr[PyObject], names: list[str]) -> bool {
         found = False;
         if jacpy_is_unicode(key) != 0 {
             for name in names {
-                if PyUnicode_EqualToUTF8(key, name) != 0 {
+                if jacpy_unicode_equal_text(key, name) != 0 {
                     found = True;
                     break;
                 }
@@ -331,7 +475,7 @@ def:priv known_keywords(spec: ptr[PyObject], names: list[str]) -> bool {
     return known;
 }
 
-def:priv spec_arguments(
+impl spec_arguments(
     empty_tuple: ptr[PyObject], spec: ptr[PyObject], units: str, names: list[str]
 ) -> (list[ptr[PyObject]] | None) {
     if jacpy_is_dict(spec) == 0 or not known_keywords(spec, names) {
@@ -345,16 +489,13 @@ def:priv spec_arguments(
     return [value.object if value.given else NULL for value in values];
 }
 
-# Filter specifier parsing: Python dicts into the lzma_filter records
-# liblzma expects.
-def:priv parse_filter_spec_lzma(
+impl parse_filter_spec_lzma(
     error: ptr[PyObject], empty_tuple: ptr[PyObject], spec: ptr[PyObject]
 ) -> ptr {
     preset: u32 = LZMA_PRESET_DEFAULT;
-    # First, fill in default values for all the options using a preset.
-    # Then, override the defaults with any values given by the caller.
+
     preset_obj = NULL;
-    if PyMapping_GetOptionalItemString(spec, "preset", &mut preset_obj) < 0 {
+    if PyMapping_GetOptionalItemString(spec, ptr[u8]("preset"), &mut preset_obj) < 0 {
         return ptr();
     }
     if preset_obj {
@@ -443,7 +584,7 @@ def:priv parse_filter_spec_lzma(
     return options;
 }
 
-def:priv parse_filter_spec_delta(
+impl parse_filter_spec_delta(
     error: ptr[PyObject], empty_tuple: ptr[PyObject], spec: ptr[PyObject]
 ) -> ptr {
     dist: u32 = 1;
@@ -466,7 +607,7 @@ def:priv parse_filter_spec_delta(
     return options;
 }
 
-def:priv parse_filter_spec_bcj(
+impl parse_filter_spec_bcj(
     error: ptr[PyObject], empty_tuple: ptr[PyObject], spec: ptr[PyObject]
 ) -> ptr {
     start_offset: u32 = 0;
@@ -488,7 +629,7 @@ def:priv parse_filter_spec_bcj(
     return options;
 }
 
-def:priv is_bcj(id: u64) -> bool {
+impl is_bcj(id: u64) -> bool {
     return id == LZMA_FILTER_X86
         or id == LZMA_FILTER_POWERPC
         or id == LZMA_FILTER_IA64
@@ -497,8 +638,7 @@ def:priv is_bcj(id: u64) -> bool {
         or id == LZMA_FILTER_SPARC;
 }
 
-# lzma_filter_converter(): one filter specifier into the record at `filter`.
-def lzma_filter_converter(
+impl lzma_filter_converter(
     module: ptr[PyObject], spec: ptr[PyObject], filter: ptr[lzma_filter]
 ) -> bool {
     if PyMapping_Check(spec) == 0 {
@@ -508,7 +648,7 @@ def lzma_filter_converter(
         return False;
     }
     id_obj = NULL;
-    if PyMapping_GetOptionalItemString(spec, "id", &mut id_obj) < 0 {
+    if PyMapping_GetOptionalItemString(spec, ptr[u8]("id"), &mut id_obj) < 0 {
         return False;
     }
     if not id_obj {
@@ -546,7 +686,7 @@ def lzma_filter_converter(
     return not options.is_null();
 }
 
-def:priv free_filter_chain(filters: ptr[lzma_filter]) {
+impl free_filter_chain(filters: ptr[lzma_filter]) {
     chain = filters.view(LZMA_FILTERS_MAX + 1);
     index = 0;
     while chain[index].id != LZMA_VLI_UNKNOWN {
@@ -555,8 +695,7 @@ def:priv free_filter_chain(filters: ptr[lzma_filter]) {
     }
 }
 
-# A filter array of LZMA_FILTERS_MAX + 1 records; the caller frees it.
-def:priv new_filter_chain -> ptr[lzma_filter] {
+impl new_filter_chain -> ptr[lzma_filter] {
     filters = ptr[lzma_filter](
         PyMem_Calloc(u64(LZMA_FILTERS_MAX + 1), LZMA_FILTER_SIZE)
     );
@@ -566,7 +705,7 @@ def:priv new_filter_chain -> ptr[lzma_filter] {
     return filters;
 }
 
-def:priv parse_filter_chain_spec(
+impl parse_filter_chain_spec(
     module: ptr[PyObject], filters: ptr[lzma_filter], filterspecs: ptr[PyObject]
 ) -> bool {
     num_filters = PySequence_Size(filterspecs);
@@ -596,12 +735,12 @@ def:priv parse_filter_chain_spec(
     return True;
 }
 
-def:priv spec_add_field(spec: ptr[PyObject], key: str, value: u64) -> bool {
+impl spec_add_field(spec: ptr[PyObject], key: str, value: u64) -> bool {
     value_object = PyLong_FromUnsignedLongLong(value);
     if not value_object {
         return False;
     }
-    key_object = PyUnicode_InternFromString(key);
+    key_object = jacpy_unicode_intern_text(key);
     if not key_object {
         jacpy_release(value_object);
         return False;
@@ -612,8 +751,7 @@ def:priv spec_add_field(spec: ptr[PyObject], key: str, value: u64) -> bool {
     return status == 0;
 }
 
-# build_filter_spec(): the Python filter specifier of the record at `filter`.
-def:priv build_filter_spec(filter: ptr[lzma_filter]) -> ptr[PyObject] {
+impl build_filter_spec(filter: ptr[lzma_filter]) -> ptr[PyObject] {
     spec = PyDict_New();
     if not spec {
         return NULL;
@@ -621,9 +759,7 @@ def:priv build_filter_spec(filter: ptr[lzma_filter]) -> ptr[PyObject] {
     id = filter.view(1)[0].id;
     options = filter.view(1)[0].options;
     ok = spec_add_field(spec, "id", id);
-    # For LZMA1 filters, lzma_properties_{encode,decode}() only look at the
-    # lc, lp, pb, and dict_size fields. For LZMA2 filters, only the
-    # dict_size field is used.
+
     if ok and id == LZMA_FILTER_LZMA1 {
         record = ptr[lzma_options_lzma](options).view(1);
         ok = spec_add_field(spec, "lc", u64(record[0].lc))
@@ -652,32 +788,25 @@ def:priv build_filter_spec(filter: ptr[lzma_filter]) -> ptr[PyObject] {
     return spec;
 }
 
-# LZMACompressor class.
+impl CompressorState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
 
-obj CompressorState(NativeState) {
-    has lzs: Pinned[lzma_stream],
-        flushed: bool = False,
-        lock: ptr = ptr();
+impl CompressorState.clear {}
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
-    }
-
-    def clear {}
-    def drop {
-        lzma_end(&mut self.lzs);
-        if self.lock {
-            PyThread_free_lock(self.lock);
-        }
+impl CompressorState.drop {
+    lzma_end(&mut self.lzs);
+    if self.lock {
+        PyThread_free_lock(self.lock);
     }
 }
 
-def:priv sync_out(lzs: &mut Pinned[lzma_stream], cursor: Cursor) {
+impl sync_out(lzs: &mut Pinned[lzma_stream], cursor: Cursor) {
     lzs.value.next_out = cursor.next_out;
     lzs.value.avail_out = u64(cursor.avail_out);
 }
 
-def:priv compress(
+impl compress(
     receiver: ptr[PyObject], state: CompressorState, data: ptr, length: i64, action: i32
 ) -> ptr[PyObject] {
     error = instance_error(receiver);
@@ -695,7 +824,6 @@ def:priv compress(
         lzret = lzma_code(&mut state.lzs, action);
         PyEval_RestoreThread(thread);
         if lzret == LZMA_BUF_ERROR and length == 0 and state.lzs.value.avail_out > 0 {
-            # That wasn't a real error.
             lzret = LZMA_OK;
         }
         if catch_lzma_error(error, lzret) {
@@ -721,7 +849,7 @@ def:priv compress(
     return result;
 }
 
-def:priv compressor_of(instance: ptr[PyObject]) -> CompressorState | None {
+impl compressor_of(instance: ptr[PyObject]) -> CompressorState | None {
     if jacpy_binding_native_present(instance, LZMACompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, LZMACompressor_token.handle);
         if isinstance(state, CompressorState) {
@@ -732,7 +860,7 @@ def:priv compressor_of(instance: ptr[PyObject]) -> CompressorState | None {
     return None;
 }
 
-def _lzma_LZMACompressor_compress_impl(
+impl _lzma_LZMACompressor_compress_impl(
     receiver: ptr[PyObject], data: BufferArgument
 ) -> ptr[PyObject] {
     state = compressor_of(receiver);
@@ -750,7 +878,7 @@ def _lzma_LZMACompressor_compress_impl(
     return result;
 }
 
-def _lzma_LZMACompressor_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
+impl _lzma_LZMACompressor_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     state = compressor_of(receiver);
     if state is None {
         return NULL;
@@ -767,7 +895,7 @@ def _lzma_LZMACompressor_flush_impl(receiver: ptr[PyObject]) -> ptr[PyObject] {
     return result;
 }
 
-def:priv compressor_init_xz(
+impl compressor_init_xz(
     module: ptr[PyObject],
     lzs: &mut Pinned[lzma_stream],
     check: i32,
@@ -793,7 +921,7 @@ def:priv compressor_init_xz(
     return not catch_lzma_error(error_of(module), lzret);
 }
 
-def:priv compressor_init_alone(
+impl compressor_init_alone(
     module: ptr[PyObject],
     lzs: &mut Pinned[lzma_stream],
     preset: u32,
@@ -839,7 +967,7 @@ def:priv compressor_init_alone(
     return PyErr_Occurred().is_null() and not catch_lzma_error(error, lzret);
 }
 
-def:priv compressor_init_raw(
+impl compressor_init_raw(
     module: ptr[PyObject], lzs: &mut Pinned[lzma_stream], filterspecs: ptr[PyObject]
 ) -> bool {
     if filterspecs == Py_None {
@@ -860,9 +988,7 @@ def:priv compressor_init_raw(
     return not catch_lzma_error(error_of(module), lzret);
 }
 
-# Compressor_new(): PyArg_ParseTupleAndKeywords(args, kwargs,
-# "|iiOO:LZMACompressor", ...), then the stream for the container format.
-def lzma_compressor_new(
+impl lzma_compressor_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
 ) -> ptr[PyObject] {
     format_ = FORMAT_XZ;
@@ -939,39 +1065,24 @@ def lzma_compressor_new(
     return instance;
 }
 
-# LZMADecompressor class.
+impl DecompressorState.traverse_refs(visitor: ptr, context: ptr) -> i32 {
+    return i32(0);
+}
 
-obj DecompressorState(NativeState) {
-    has lzs: Pinned[lzma_stream],
-        check: i32 = 0,
-        eof: bool = False,
-        unused_data: ptr[PyObject] = NULL,
-        needs_input: bool = True,
-        input_buffer: ptr = ptr(),
-        input_buffer_size: u64 = 0,
-        lock: ptr = ptr();
+impl DecompressorState.clear {}
 
-    def traverse_refs(visitor: ptr, context: ptr) -> i32 {
-        return i32(0);
+impl DecompressorState.drop {
+    if self.input_buffer {
+        PyMem_Free(self.input_buffer);
     }
-
-    def clear {}
-    def drop {
-        if self.input_buffer {
-            PyMem_Free(self.input_buffer);
-        }
-        lzma_end(&mut self.lzs);
-        jacpy_release(self.unused_data);
-        if self.lock {
-            PyThread_free_lock(self.lock);
-        }
+    lzma_end(&mut self.lzs);
+    jacpy_release(self.unused_data);
+    if self.lock {
+        PyThread_free_lock(self.lock);
     }
 }
 
-# Decompressor_members[]: check (Py_T_INT), eof and needs_input (Py_T_BOOL)
-# and unused_data (Py_T_OBJECT_EX) read the record, which mirrors the state
-# after every change and holds unused_data borrowed.
-def mirror_decompressor(instance: ptr[PyObject], state: DecompressorState) {
+impl mirror_decompressor(instance: ptr[PyObject], state: DecompressorState) {
     record = jacpy_binding_record(instance, LZMADecompressor_token.handle);
     record_set_int(record, 0, int(state.check));
     record_set_byte(record, 4, 1 if state.eof else 0);
@@ -979,7 +1090,7 @@ def mirror_decompressor(instance: ptr[PyObject], state: DecompressorState) {
     record_set_object(record, 8, state.unused_data);
 }
 
-def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
+impl decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
     if jacpy_binding_native_present(instance, LZMADecompressor_token.handle) != 0 {
         state = jacpy_binding_native_get(instance, LZMADecompressor_token.handle);
         if isinstance(state, DecompressorState) {
@@ -990,9 +1101,7 @@ def decompressor_of(instance: ptr[PyObject]) -> DecompressorState | None {
     return None;
 }
 
-# Decompress the stream's pending input; at most max_length bytes are
-# returned, so some of the input may not be consumed.
-def:priv decompress_buf(
+impl decompress_buf(
     receiver: ptr[PyObject], state: DecompressorState, max_length: i64
 ) -> ptr[PyObject] {
     error = instance_error(receiver);
@@ -1010,7 +1119,6 @@ def:priv decompress_buf(
         if lzret == LZMA_BUF_ERROR
             and state.lzs.value.avail_in == 0
             and state.lzs.value.avail_out > 0 {
-            # That wasn't a real error.
             lzret = LZMA_OK;
         }
         if catch_lzma_error(error, lzret) {
@@ -1024,9 +1132,6 @@ def:priv decompress_buf(
             state.eof = True;
             break;
         } elif state.lzs.value.avail_out == 0 {
-            # Check avail_out before avail_in: the stream's internal state
-            # may still hold output, so grow the buffer and continue when
-            # max_length allows.
             if buffer.data_size(0) == max_length {
                 break;
             }
@@ -1047,7 +1152,7 @@ def:priv decompress_buf(
     return result;
 }
 
-def:priv decompress(
+impl decompress(
     receiver: ptr[PyObject],
     state: DecompressorState,
     data: ptr,
@@ -1055,10 +1160,8 @@ def:priv decompress(
     max_length: i64
 ) -> ptr[PyObject] {
     in_use = False;
-    # Prepend unconsumed input if necessary.
+
     if not state.lzs.value.next_in.is_null() {
-        # Bytes that can be appended to the input buffer, and the bytes
-        # available once the existing contents move to its start.
         buffer_end = int(state.input_buffer) + int(state.input_buffer_size);
         pending_end = int(state.lzs.value.next_in) + int(state.lzs.value.avail_in);
         avail_now = u64(buffer_end - pending_end);
@@ -1115,16 +1218,10 @@ def:priv decompress(
         }
     } elif state.lzs.value.avail_in == 0 {
         state.lzs.value.next_in = ptr[u8]();
-        # With avail_out also 0 the stream may still hold output for the next
-        # call (max_length >= 0 then); otherwise the input is exhausted.
         state.needs_input = state.lzs.value.avail_out != 0;
     } else {
         state.needs_input = False;
-        # Without the input buffer in use, copy the tail of the caller's
-        # buffer into it.
         if not in_use {
-            # Discard the buffer if it is too small; resizing it may
-            # needlessly copy the current contents.
             if state.input_buffer
                 and state.input_buffer_size < state.lzs.value.avail_in {
                 PyMem_Free(state.input_buffer);
@@ -1151,7 +1248,7 @@ def:priv decompress(
     return result;
 }
 
-def _lzma_LZMADecompressor_decompress_impl(
+impl _lzma_LZMADecompressor_decompress_impl(
     receiver: ptr[PyObject], data: BufferArgument, max_length: i64
 ) -> ptr[PyObject] {
     state = decompressor_of(receiver);
@@ -1172,7 +1269,7 @@ def _lzma_LZMADecompressor_decompress_impl(
     return result;
 }
 
-def:priv decompressor_init_raw(
+impl decompressor_init_raw(
     module: ptr[PyObject], lzs: &mut Pinned[lzma_stream], filterspecs: ptr[PyObject]
 ) -> bool {
     filters = new_filter_chain();
@@ -1189,7 +1286,7 @@ def:priv decompressor_init_raw(
     return not catch_lzma_error(error_of(module), lzret);
 }
 
-def _lzma_LZMADecompressor_impl(
+impl _lzma_LZMADecompressor_impl(
     type: ptr[PyObject], format_: i32, memlimit: ptr[PyObject], filters: ptr[PyObject]
 ) -> ptr[PyObject] {
     decoder_flags = LZMA_TELL_ANY_CHECK | LZMA_TELL_NO_CHECK;
@@ -1262,17 +1359,13 @@ def _lzma_LZMADecompressor_impl(
     return instance;
 }
 
-# Module-level functions.
-
-def _lzma_is_check_supported_impl(
+impl _lzma_is_check_supported_impl(
     module: ptr[PyObject], check_id: i32
 ) -> ptr[PyObject] {
     return PyBool_FromLong(i64(lzma_check_is_supported(check_id)));
 }
 
-# _encode_filter_properties(filter, /): the lzma_filter converter, then
-# the encoded properties; the converted options are freed on every path.
-def lzma_encode_filter_properties(
+impl lzma_encode_filter_properties(
     module: ptr[PyObject], arg: ptr[PyObject]
 ) -> ptr[PyObject] {
     filter = ptr[lzma_filter](PyMem_Calloc(1, LZMA_FILTER_SIZE));
@@ -1292,7 +1385,7 @@ def lzma_encode_filter_properties(
     return result;
 }
 
-def:priv encode_filter_properties(
+impl encode_filter_properties(
     module: ptr[PyObject], filter: ptr[lzma_filter]
 ) -> ptr[PyObject] {
     error = error_of(module);
@@ -1313,7 +1406,7 @@ def:priv encode_filter_properties(
     return result;
 }
 
-def _lzma__decode_filter_properties_impl(
+impl _lzma__decode_filter_properties_impl(
     module: ptr[PyObject], filter_id: u64, encoded_props: BufferArgument
 ) -> ptr[PyObject] {
     filter = ptr[lzma_filter](PyMem_Calloc(1, LZMA_FILTER_SIZE));
@@ -1330,8 +1423,7 @@ def _lzma__decode_filter_properties_impl(
         return NULL;
     }
     result = build_filter_spec(filter);
-    # filter.options was allocated by lzma_properties_decode() with the
-    # default allocator, so it is released with free().
+
     free(filter.view(1)[0].options);
     PyMem_Free(filter);
     return result;

@@ -3738,343 +3738,344 @@ def ast_write_TypeVarTuple(value: TypeVarTuple) -> ptr[PyObject] {
 }
 
 def:pub ast_write_node(value: ast_node) -> ptr[PyObject] {
-    if isinstance(value, Module) {
+    kind = value.node_kind();
+    if kind == ast_kind.Module and isinstance(value, Module) {
         return ast_write_Module(value);
     }
-    if isinstance(value, Interactive) {
+    if kind == ast_kind.Interactive and isinstance(value, Interactive) {
         return ast_write_Interactive(value);
     }
-    if isinstance(value, Expression) {
+    if kind == ast_kind.Expression and isinstance(value, Expression) {
         return ast_write_Expression(value);
     }
-    if isinstance(value, FunctionType) {
+    if kind == ast_kind.FunctionType and isinstance(value, FunctionType) {
         return ast_write_FunctionType(value);
     }
-    if isinstance(value, FunctionDef) {
+    if kind == ast_kind.FunctionDef and isinstance(value, FunctionDef) {
         return ast_write_FunctionDef(value);
     }
-    if isinstance(value, AsyncFunctionDef) {
+    if kind == ast_kind.AsyncFunctionDef and isinstance(value, AsyncFunctionDef) {
         return ast_write_AsyncFunctionDef(value);
     }
-    if isinstance(value, ClassDef) {
+    if kind == ast_kind.ClassDef and isinstance(value, ClassDef) {
         return ast_write_ClassDef(value);
     }
-    if isinstance(value, Return) {
+    if kind == ast_kind.Return and isinstance(value, Return) {
         return ast_write_Return(value);
     }
-    if isinstance(value, Delete) {
+    if kind == ast_kind.Delete and isinstance(value, Delete) {
         return ast_write_Delete(value);
     }
-    if isinstance(value, Assign) {
+    if kind == ast_kind.Assign and isinstance(value, Assign) {
         return ast_write_Assign(value);
     }
-    if isinstance(value, TypeAlias) {
+    if kind == ast_kind.TypeAlias and isinstance(value, TypeAlias) {
         return ast_write_TypeAlias(value);
     }
-    if isinstance(value, AugAssign) {
+    if kind == ast_kind.AugAssign and isinstance(value, AugAssign) {
         return ast_write_AugAssign(value);
     }
-    if isinstance(value, AnnAssign) {
+    if kind == ast_kind.AnnAssign and isinstance(value, AnnAssign) {
         return ast_write_AnnAssign(value);
     }
-    if isinstance(value, For) {
+    if kind == ast_kind.For and isinstance(value, For) {
         return ast_write_For(value);
     }
-    if isinstance(value, AsyncFor) {
+    if kind == ast_kind.AsyncFor and isinstance(value, AsyncFor) {
         return ast_write_AsyncFor(value);
     }
-    if isinstance(value, While) {
+    if kind == ast_kind.While and isinstance(value, While) {
         return ast_write_While(value);
     }
-    if isinstance(value, If) {
+    if kind == ast_kind.If and isinstance(value, If) {
         return ast_write_If(value);
     }
-    if isinstance(value, With) {
+    if kind == ast_kind.With and isinstance(value, With) {
         return ast_write_With(value);
     }
-    if isinstance(value, AsyncWith) {
+    if kind == ast_kind.AsyncWith and isinstance(value, AsyncWith) {
         return ast_write_AsyncWith(value);
     }
-    if isinstance(value, Match) {
+    if kind == ast_kind.Match and isinstance(value, Match) {
         return ast_write_Match(value);
     }
-    if isinstance(value, Raise) {
+    if kind == ast_kind.Raise and isinstance(value, Raise) {
         return ast_write_Raise(value);
     }
-    if isinstance(value, Try) {
+    if kind == ast_kind.Try and isinstance(value, Try) {
         return ast_write_Try(value);
     }
-    if isinstance(value, TryStar) {
+    if kind == ast_kind.TryStar and isinstance(value, TryStar) {
         return ast_write_TryStar(value);
     }
-    if isinstance(value, Assert) {
+    if kind == ast_kind.Assert and isinstance(value, Assert) {
         return ast_write_Assert(value);
     }
-    if isinstance(value, Import) {
+    if kind == ast_kind.Import and isinstance(value, Import) {
         return ast_write_Import(value);
     }
-    if isinstance(value, ImportFrom) {
+    if kind == ast_kind.ImportFrom and isinstance(value, ImportFrom) {
         return ast_write_ImportFrom(value);
     }
-    if isinstance(value, Global) {
+    if kind == ast_kind.Global and isinstance(value, Global) {
         return ast_write_Global(value);
     }
-    if isinstance(value, Nonlocal) {
+    if kind == ast_kind.Nonlocal and isinstance(value, Nonlocal) {
         return ast_write_Nonlocal(value);
     }
-    if isinstance(value, Expr) {
+    if kind == ast_kind.Expr and isinstance(value, Expr) {
         return ast_write_Expr(value);
     }
-    if isinstance(value, Pass) {
+    if kind == ast_kind.Pass and isinstance(value, Pass) {
         return ast_write_Pass(value);
     }
-    if isinstance(value, Break) {
+    if kind == ast_kind.Break and isinstance(value, Break) {
         return ast_write_Break(value);
     }
-    if isinstance(value, Continue) {
+    if kind == ast_kind.Continue and isinstance(value, Continue) {
         return ast_write_Continue(value);
     }
-    if isinstance(value, BoolOp) {
+    if kind == ast_kind.BoolOp and isinstance(value, BoolOp) {
         return ast_write_BoolOp(value);
     }
-    if isinstance(value, NamedExpr) {
+    if kind == ast_kind.NamedExpr and isinstance(value, NamedExpr) {
         return ast_write_NamedExpr(value);
     }
-    if isinstance(value, BinOp) {
+    if kind == ast_kind.BinOp and isinstance(value, BinOp) {
         return ast_write_BinOp(value);
     }
-    if isinstance(value, UnaryOp) {
+    if kind == ast_kind.UnaryOp and isinstance(value, UnaryOp) {
         return ast_write_UnaryOp(value);
     }
-    if isinstance(value, Lambda) {
+    if kind == ast_kind.Lambda and isinstance(value, Lambda) {
         return ast_write_Lambda(value);
     }
-    if isinstance(value, IfExp) {
+    if kind == ast_kind.IfExp and isinstance(value, IfExp) {
         return ast_write_IfExp(value);
     }
-    if isinstance(value, Dict) {
+    if kind == ast_kind.Dict and isinstance(value, Dict) {
         return ast_write_Dict(value);
     }
-    if isinstance(value, Set) {
+    if kind == ast_kind.Set and isinstance(value, Set) {
         return ast_write_Set(value);
     }
-    if isinstance(value, ListComp) {
+    if kind == ast_kind.ListComp and isinstance(value, ListComp) {
         return ast_write_ListComp(value);
     }
-    if isinstance(value, SetComp) {
+    if kind == ast_kind.SetComp and isinstance(value, SetComp) {
         return ast_write_SetComp(value);
     }
-    if isinstance(value, DictComp) {
+    if kind == ast_kind.DictComp and isinstance(value, DictComp) {
         return ast_write_DictComp(value);
     }
-    if isinstance(value, GeneratorExp) {
+    if kind == ast_kind.GeneratorExp and isinstance(value, GeneratorExp) {
         return ast_write_GeneratorExp(value);
     }
-    if isinstance(value, Await) {
+    if kind == ast_kind.Await and isinstance(value, Await) {
         return ast_write_Await(value);
     }
-    if isinstance(value, Yield) {
+    if kind == ast_kind.Yield and isinstance(value, Yield) {
         return ast_write_Yield(value);
     }
-    if isinstance(value, YieldFrom) {
+    if kind == ast_kind.YieldFrom and isinstance(value, YieldFrom) {
         return ast_write_YieldFrom(value);
     }
-    if isinstance(value, Compare) {
+    if kind == ast_kind.Compare and isinstance(value, Compare) {
         return ast_write_Compare(value);
     }
-    if isinstance(value, Call) {
+    if kind == ast_kind.Call and isinstance(value, Call) {
         return ast_write_Call(value);
     }
-    if isinstance(value, FormattedValue) {
+    if kind == ast_kind.FormattedValue and isinstance(value, FormattedValue) {
         return ast_write_FormattedValue(value);
     }
-    if isinstance(value, Interpolation) {
+    if kind == ast_kind.Interpolation and isinstance(value, Interpolation) {
         return ast_write_Interpolation(value);
     }
-    if isinstance(value, JoinedStr) {
+    if kind == ast_kind.JoinedStr and isinstance(value, JoinedStr) {
         return ast_write_JoinedStr(value);
     }
-    if isinstance(value, TemplateStr) {
+    if kind == ast_kind.TemplateStr and isinstance(value, TemplateStr) {
         return ast_write_TemplateStr(value);
     }
-    if isinstance(value, Constant) {
+    if kind == ast_kind.Constant and isinstance(value, Constant) {
         return ast_write_Constant(value);
     }
-    if isinstance(value, Attribute) {
+    if kind == ast_kind.Attribute and isinstance(value, Attribute) {
         return ast_write_Attribute(value);
     }
-    if isinstance(value, Subscript) {
+    if kind == ast_kind.Subscript and isinstance(value, Subscript) {
         return ast_write_Subscript(value);
     }
-    if isinstance(value, Starred) {
+    if kind == ast_kind.Starred and isinstance(value, Starred) {
         return ast_write_Starred(value);
     }
-    if isinstance(value, Name) {
+    if kind == ast_kind.Name and isinstance(value, Name) {
         return ast_write_Name(value);
     }
-    if isinstance(value, List) {
+    if kind == ast_kind.List and isinstance(value, List) {
         return ast_write_List(value);
     }
-    if isinstance(value, Tuple) {
+    if kind == ast_kind.Tuple and isinstance(value, Tuple) {
         return ast_write_Tuple(value);
     }
-    if isinstance(value, Slice) {
+    if kind == ast_kind.Slice and isinstance(value, Slice) {
         return ast_write_Slice(value);
     }
-    if isinstance(value, Load) {
+    if kind == ast_kind.Load and isinstance(value, Load) {
         return ast_write_Load(value);
     }
-    if isinstance(value, Store) {
+    if kind == ast_kind.Store and isinstance(value, Store) {
         return ast_write_Store(value);
     }
-    if isinstance(value, Del) {
+    if kind == ast_kind.Del and isinstance(value, Del) {
         return ast_write_Del(value);
     }
-    if isinstance(value, And) {
+    if kind == ast_kind.And and isinstance(value, And) {
         return ast_write_And(value);
     }
-    if isinstance(value, Or) {
+    if kind == ast_kind.Or and isinstance(value, Or) {
         return ast_write_Or(value);
     }
-    if isinstance(value, Add) {
+    if kind == ast_kind.Add and isinstance(value, Add) {
         return ast_write_Add(value);
     }
-    if isinstance(value, Sub) {
+    if kind == ast_kind.Sub and isinstance(value, Sub) {
         return ast_write_Sub(value);
     }
-    if isinstance(value, Mult) {
+    if kind == ast_kind.Mult and isinstance(value, Mult) {
         return ast_write_Mult(value);
     }
-    if isinstance(value, MatMult) {
+    if kind == ast_kind.MatMult and isinstance(value, MatMult) {
         return ast_write_MatMult(value);
     }
-    if isinstance(value, Div) {
+    if kind == ast_kind.Div and isinstance(value, Div) {
         return ast_write_Div(value);
     }
-    if isinstance(value, Mod) {
+    if kind == ast_kind.Mod and isinstance(value, Mod) {
         return ast_write_Mod(value);
     }
-    if isinstance(value, Pow) {
+    if kind == ast_kind.Pow and isinstance(value, Pow) {
         return ast_write_Pow(value);
     }
-    if isinstance(value, LShift) {
+    if kind == ast_kind.LShift and isinstance(value, LShift) {
         return ast_write_LShift(value);
     }
-    if isinstance(value, RShift) {
+    if kind == ast_kind.RShift and isinstance(value, RShift) {
         return ast_write_RShift(value);
     }
-    if isinstance(value, BitOr) {
+    if kind == ast_kind.BitOr and isinstance(value, BitOr) {
         return ast_write_BitOr(value);
     }
-    if isinstance(value, BitXor) {
+    if kind == ast_kind.BitXor and isinstance(value, BitXor) {
         return ast_write_BitXor(value);
     }
-    if isinstance(value, BitAnd) {
+    if kind == ast_kind.BitAnd and isinstance(value, BitAnd) {
         return ast_write_BitAnd(value);
     }
-    if isinstance(value, FloorDiv) {
+    if kind == ast_kind.FloorDiv and isinstance(value, FloorDiv) {
         return ast_write_FloorDiv(value);
     }
-    if isinstance(value, Invert) {
+    if kind == ast_kind.Invert and isinstance(value, Invert) {
         return ast_write_Invert(value);
     }
-    if isinstance(value, Not) {
+    if kind == ast_kind.Not and isinstance(value, Not) {
         return ast_write_Not(value);
     }
-    if isinstance(value, UAdd) {
+    if kind == ast_kind.UAdd and isinstance(value, UAdd) {
         return ast_write_UAdd(value);
     }
-    if isinstance(value, USub) {
+    if kind == ast_kind.USub and isinstance(value, USub) {
         return ast_write_USub(value);
     }
-    if isinstance(value, Eq) {
+    if kind == ast_kind.Eq and isinstance(value, Eq) {
         return ast_write_Eq(value);
     }
-    if isinstance(value, NotEq) {
+    if kind == ast_kind.NotEq and isinstance(value, NotEq) {
         return ast_write_NotEq(value);
     }
-    if isinstance(value, Lt) {
+    if kind == ast_kind.Lt and isinstance(value, Lt) {
         return ast_write_Lt(value);
     }
-    if isinstance(value, LtE) {
+    if kind == ast_kind.LtE and isinstance(value, LtE) {
         return ast_write_LtE(value);
     }
-    if isinstance(value, Gt) {
+    if kind == ast_kind.Gt and isinstance(value, Gt) {
         return ast_write_Gt(value);
     }
-    if isinstance(value, GtE) {
+    if kind == ast_kind.GtE and isinstance(value, GtE) {
         return ast_write_GtE(value);
     }
-    if isinstance(value, Is) {
+    if kind == ast_kind.Is and isinstance(value, Is) {
         return ast_write_Is(value);
     }
-    if isinstance(value, IsNot) {
+    if kind == ast_kind.IsNot and isinstance(value, IsNot) {
         return ast_write_IsNot(value);
     }
-    if isinstance(value, In) {
+    if kind == ast_kind.In and isinstance(value, In) {
         return ast_write_In(value);
     }
-    if isinstance(value, NotIn) {
+    if kind == ast_kind.NotIn and isinstance(value, NotIn) {
         return ast_write_NotIn(value);
     }
-    if isinstance(value, comprehension) {
+    if kind == ast_kind.comprehension and isinstance(value, comprehension) {
         return ast_write_comprehension(value);
     }
-    if isinstance(value, ExceptHandler) {
+    if kind == ast_kind.ExceptHandler and isinstance(value, ExceptHandler) {
         return ast_write_ExceptHandler(value);
     }
-    if isinstance(value, arguments) {
+    if kind == ast_kind.arguments and isinstance(value, arguments) {
         return ast_write_arguments(value);
     }
-    if isinstance(value, arg) {
+    if kind == ast_kind.arg and isinstance(value, arg) {
         return ast_write_arg(value);
     }
-    if isinstance(value, keyword) {
+    if kind == ast_kind.keyword and isinstance(value, keyword) {
         return ast_write_keyword(value);
     }
-    if isinstance(value, alias) {
+    if kind == ast_kind.alias and isinstance(value, alias) {
         return ast_write_alias(value);
     }
-    if isinstance(value, withitem) {
+    if kind == ast_kind.withitem and isinstance(value, withitem) {
         return ast_write_withitem(value);
     }
-    if isinstance(value, match_case) {
+    if kind == ast_kind.match_case and isinstance(value, match_case) {
         return ast_write_match_case(value);
     }
-    if isinstance(value, MatchValue) {
+    if kind == ast_kind.MatchValue and isinstance(value, MatchValue) {
         return ast_write_MatchValue(value);
     }
-    if isinstance(value, MatchSingleton) {
+    if kind == ast_kind.MatchSingleton and isinstance(value, MatchSingleton) {
         return ast_write_MatchSingleton(value);
     }
-    if isinstance(value, MatchSequence) {
+    if kind == ast_kind.MatchSequence and isinstance(value, MatchSequence) {
         return ast_write_MatchSequence(value);
     }
-    if isinstance(value, MatchMapping) {
+    if kind == ast_kind.MatchMapping and isinstance(value, MatchMapping) {
         return ast_write_MatchMapping(value);
     }
-    if isinstance(value, MatchClass) {
+    if kind == ast_kind.MatchClass and isinstance(value, MatchClass) {
         return ast_write_MatchClass(value);
     }
-    if isinstance(value, MatchStar) {
+    if kind == ast_kind.MatchStar and isinstance(value, MatchStar) {
         return ast_write_MatchStar(value);
     }
-    if isinstance(value, MatchAs) {
+    if kind == ast_kind.MatchAs and isinstance(value, MatchAs) {
         return ast_write_MatchAs(value);
     }
-    if isinstance(value, MatchOr) {
+    if kind == ast_kind.MatchOr and isinstance(value, MatchOr) {
         return ast_write_MatchOr(value);
     }
-    if isinstance(value, TypeIgnore) {
+    if kind == ast_kind.TypeIgnore and isinstance(value, TypeIgnore) {
         return ast_write_TypeIgnore(value);
     }
-    if isinstance(value, TypeVar) {
+    if kind == ast_kind.TypeVar and isinstance(value, TypeVar) {
         return ast_write_TypeVar(value);
     }
-    if isinstance(value, ParamSpec) {
+    if kind == ast_kind.ParamSpec and isinstance(value, ParamSpec) {
         return ast_write_ParamSpec(value);
     }
-    if isinstance(value, TypeVarTuple) {
+    if kind == ast_kind.TypeVarTuple and isinstance(value, TypeVarTuple) {
         return ast_write_TypeVarTuple(value);
     }
     raise ValueError("Unsupported AST node");
