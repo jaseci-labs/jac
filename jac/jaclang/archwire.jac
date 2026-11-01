@@ -10286,7 +10286,7 @@ graph import compiler {
     driver.compile_options ++> kernel_tests.context_bindings | kernel_tests.kit { CompileOptions }
     driver.program ++> kernel_tests.kit { JacProgram }
     frontend.codeinfo ++> kernel_tests.kit { native_unit_prefix }
-    frontend.host ++> kernel_tests.kit { install_host }
+    frontend.host ++> kernel_tests.kit { install_host, package_root }
     frontend.parser.frontend ++> kernel_tests.kit { parse }
     frontend.unitree as uni ++> kernel_tests.kit;
     frontend.relations ++> kernel_tests.scopes { ScopeChild }

@@ -1,7 +1,8 @@
 """What kernel test cases analyse with. A source is written into the running
 case's scratch directory and compiled by a fresh program under a fresh project
-host, the way a compile request is; parsing alone uses the parser directly, and
-lowering runs the decision step with no emission."""
+host, the way a compile request is; a checkout fixture is analysed in place
+(`analyse_file(checkout_path("tests/..."))`). Parsing alone uses the parser
+directly, and lowering runs the decision step with no emission."""
 import os;
 
 obj Analysis {
@@ -77,6 +78,23 @@ def analyse(
         );
     }
     return Analysis(program=program, module=module, path=path);
+}
+
+def checkout_path(rel: str) -> str {
+    return os.path.join(os.path.dirname(package_root()), rel);
+}
+
+def analyse_file(path: str, options: (CompileOptions | None) = None) -> Analysis {
+    real = os.path.realpath(path);
+    host = ProjectHost(root=os.path.dirname(real));
+    install_host(host);
+    program = JacProgram();
+    with host.session() {
+        module = program.compile(
+            real, options=options if options is not None else CompileOptions(no_cgen=True)
+        );
+    }
+    return Analysis(program=program, module=module, path=real);
 }
 
 def parse_text(text: str, name: str = "case.jac") -> uni.Module {
