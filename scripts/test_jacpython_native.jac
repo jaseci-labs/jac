@@ -6,6 +6,7 @@ library and builds objects through the runtime's retained object API.
 """
 import argparse;
 import ctypes;
+import faulthandler;
 import math;
 import from pathlib { Path }
 import sys;
@@ -30,6 +31,8 @@ def verify(library_path: Path) {
             "The JacPython output oracle runs inside the JacPython runtime (bridge 4)"
         );
     }
+    # Keep the active Python frame in CI logs if native verification crashes.
+    faulthandler.enable();
     library = ctypes.PyDLL(str(library_path), mode=ctypes.RTLD_GLOBAL);
     library.diagnostic_probe.argtypes = [];
     library.diagnostic_probe.restype = ctypes.c_int64;
