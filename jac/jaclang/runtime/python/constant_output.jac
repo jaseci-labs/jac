@@ -120,51 +120,20 @@ obj constant_writer {
         return self.filename_handle;
     }
 
-    # CPython merges argument cells into their local slots, then appends the
-    # remaining cells and free variables in compiler-assigned order.
     def code_of(code: PyCode) -> ptr[PyObject] {
-        names: list[str] = [];
-        kinds: list[int] = [];
-        if len(code.localsplusnames) > 0 {
-            for name in code.localsplusnames {
-                names.append(name);
-            }
-            for kind in code.localspluskinds {
-                kinds.append(kind);
-            }
-        } else {
-            slots: dict[str, int] = {};
-            local_kind = CO_FAST_LOCAL
-                | (0 if code.flags & CO_OPTIMIZED else CO_FAST_HIDDEN);
-            for name in code.varnames {
-                slots[name] = len(names);
-                names.append(name[6:] if name.startswith(".comp.") else name);
-                kinds.append(local_kind);
-            }
-            for name in code.cellvars {
-                if name in slots {
-                    kinds[slots[name]] |= CO_FAST_CELL;
-                } else {
-                    names.append(name);
-                    kinds.append(CO_FAST_CELL);
-                }
-            }
-            for name in code.freevars {
-                names.append(name);
-                kinds.append(CO_FAST_FREE);
-            }
-        }
+        names = code.localsplusnames;
+        kinds = code.localspluskinds;
         owned: list[ptr[PyObject]] = [];
         try {
-            bytecode = held(owned, write_buffer(bytes(code.co_code)));
+            bytecode = held(owned, code_buffer(code.co_code));
             consts = held(owned, self.tuple_of(code.consts));
             code_names = held(owned, text_tuple(code.names));
             localsplusnames = held(owned, text_tuple(names));
-            localspluskinds = held(owned, write_buffer(bytes(kinds)));
+            localspluskinds = held(owned, code_buffer(kinds));
             name = held(owned, text_object(code.name));
             qualname = held(owned, text_object(code.qualname));
-            linetable = held(owned, write_buffer(bytes(code.linetable)));
-            exceptiontable = held(owned, write_buffer(bytes(code.exceptiontable)));
+            linetable = held(owned, code_buffer(code.linetable));
+            exceptiontable = held(owned, code_buffer(code.exceptiontable));
             return required(
                 jacpy_code_new(
                     i64(code.argcount),
@@ -200,6 +169,15 @@ obj constant_writer {
         jacpy_release(self.filename_handle);
         self.filename_handle = NULL;
     }
+}
+
+def code_buffer(data: list[int]) -> ptr[PyObject] {
+    if len(data) != 1 {
+        return write_buffer(bytes(data));
+    }
+    raw = required(PyBytes_FromStringAndSize(ptr[u8](), i64(1)));
+    ptr[u8](PyBytes_AsString(raw)).view(1)[0] = u8(data[0]);
+    return raw;
 }
 
 def held(owned: list[ptr[PyObject]], handle: ptr[PyObject]) -> ptr[PyObject] {

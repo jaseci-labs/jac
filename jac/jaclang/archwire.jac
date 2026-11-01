@@ -17464,6 +17464,8 @@ graph import runtime.python {
         constant_output {
             NULL,
             PyBool_FromLong,
+            PyBytes_AsString,
+            PyBytes_FromStringAndSize,
             PyComplex_FromDoubles,
             PyFloat_FromDouble,
             PyLong_FromLongLong,
@@ -37898,13 +37900,6 @@ graph import runtime.python {
     ]
     objects --> symtable { PyObj, py_error }
     opcode_meta ++> [
-        constant_output {
-            CO_FAST_CELL,
-            CO_FAST_FREE,
-            CO_FAST_HIDDEN,
-            CO_FAST_LOCAL,
-            CO_OPTIMIZED
-        },
         modules.opcode {
             is_block_push_opcode,
             opcode_has_arg,
