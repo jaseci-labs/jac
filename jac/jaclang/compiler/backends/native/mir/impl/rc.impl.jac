@@ -14,7 +14,7 @@ impl MirRcState.run {
     }
     for blk in self.fn.blocks {
         for instr in blk.instrs {
-            if instr.op in (MirOp.STR_PART, MirOp.PTR_CAST, MirOp.PTR_INT)
+            if instr.op in (MirOp.STR_PART, MirOp.PTR_CAST, MirOp.PTR_INT, MirOp.OPT_GET)
                 and instr.result is not None {
                 self.parents[instr.result.id] = instr.operands[0].id;
             }
@@ -86,7 +86,7 @@ impl MirRcState.rewrite(blk: MirBlock) {
                 self.release_slots();
                 self.out.append(instr);
             }
-        } elif instr.op in (MirOp.STR_MAKE, MirOp.REF_CAST) {
+        } elif instr.op in (MirOp.STR_MAKE, MirOp.REF_CAST, MirOp.OPT_MAKE) {
             owner = instr.operands[0];
             result = instr.result;
             if result is not None and owner.id in self.pending {

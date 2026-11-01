@@ -57,6 +57,9 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     if t.kind == MirKind.STR {
         return self.str_type();
     }
+    if t.kind == MirKind.OPT {
+        return ir.LiteralStructType([ir.IntType(1), self.llvm_type(t.payload())]);
+    }
     if t.kind == MirKind.OBJ and t.name != "*" {
         return self.object_struct(t.name).as_pointer();
     }
@@ -232,6 +235,14 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
             made = b.insert_value(made, self.value(part), index);
         }
         self.bind(instr.result, made);
+    } elif op == MirOp.OPT_MAKE {
+        made = ir.Constant(self.llvm_type(type_arg_of(instr)), None);
+        made = b.insert_value(made, ir.Constant(ir.IntType(1), 1), 0);
+        self.bind(instr.result, b.insert_value(made, self.value(instr.operands[0]), 1));
+    } elif op == MirOp.OPT_PRESENT {
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), 0));
+    } elif op == MirOp.OPT_GET {
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), 1));
     } elif op == MirOp.REF_CAST {
         source = self.value(instr.operands[0]);
         to = self.llvm_type(type_arg_of(instr));
@@ -844,10 +855,20 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
     subject = instr.operands[0];
     i8p = ir.IntType(8).as_pointer();
     target = self.value(subject);
-    if subject.type.kind == MirKind.STR {
+    held_type = subject.type;
+    present: (ir.Value | None) = None;
+    if held_type.kind == MirKind.OPT {
+        present = b.extract_value(target, 0);
+        target = b.extract_value(target, 1);
+        held_type = held_type.payload();
+    }
+    if held_type.kind == MirKind.STR {
         target = b.extract_value(target, 0);
     } elif target.type != i8p {
         target = b.bitcast(target, i8p);
+    }
+    if present is not None {
+        target = b.select(present, target, ir.Constant(i8p, None));
     }
     if instr.op == MirOp.RETAIN {
         b.call(self.extern(RETAIN_SYMBOL, ir.VoidType(), [i8p]), [target]);
@@ -855,7 +876,7 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
         return;
     }
     symbol = RELEASE_ACYCLIC_SYMBOL
-        if subject.type.kind in (MirKind.STR, MirKind.STR_REF)
+        if held_type.kind in (MirKind.STR, MirKind.STR_REF)
         else RELEASE_SYMBOL;
     b.call(self.extern(symbol, ir.VoidType(), [i8p]), [target]);
 }

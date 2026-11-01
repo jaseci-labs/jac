@@ -415,6 +415,8 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.builder().const_float(float(nd.value), self.expr_type(nd));
     } elif isinstance(nd, uni.Bool) {
         value = self.builder().const_bool(nd.value.lower() in ("true", "1"));
+    } elif isinstance(nd, uni.Null) {
+        value = self.none_value();
     } elif isinstance(nd, uni.ListVal) {
         value = self.lower_list_literal(nd);
     } elif isinstance(nd, uni.DictVal) {
@@ -489,7 +491,11 @@ impl MirLowering.lower_name(nd: uni.Name) -> MirValue {
         raise MirRefused(mir_refusal("name", nd.value, nd));
     }
     slot = self.st().locals[id(nd.sym)];
-    return self.builder().load(slot, slot.type);
+    loaded = self.builder().load(slot, slot.type);
+    if loaded.type.kind == MirKind.OPT and nd.type is not None and not isinstance(nd.type, UnionType) {
+        return self.opt_get(loaded);
+    }
+    return loaded;
 }
 
 impl MirLowering.lower_binary(nd: uni.BinaryExpr) -> MirValue {
@@ -681,6 +687,17 @@ impl MirLowering.lower_compare(nd: uni.CompareExpr) -> MirValue {
 impl MirLowering.compare_values(
     op: str, left: MirValue, right: MirValue, site: uni.UniNode
 ) -> MirValue {
+    if op in (Tok.KW_IS, Tok.KW_ISN, Tok.EE, Tok.NE)
+        and MirKind.NONE in (left.type.kind, right.type.kind) {
+        other = right if left.type.kind == MirKind.NONE else left;
+        absent = self.builder().const_bool(True);
+        if other.type.kind == MirKind.OPT {
+            absent = self.builder().logical_not(self.opt_present(other));
+        } elif other.type.kind != MirKind.NONE {
+            absent = self.builder().const_bool(False);
+        }
+        return absent if op in (Tok.KW_IS, Tok.EE) else self.builder().logical_not(absent);
+    }
     if op in (Tok.KW_IN, Tok.KW_NIN) {
         found = self.contains(left, right, site);
         return found if op == Tok.KW_IN else self.builder().logical_not(found);
@@ -867,12 +884,29 @@ impl MirLowering.truthy(value: MirValue, site: uni.UniNode) -> MirValue {
         size = self.container_len(value);
         return b.compare("ne", size, b.const_int(0, size.type));
     }
+    if value.type.kind == MirKind.NONE {
+        return b.const_bool(False);
+    }
+    if value.type.kind == MirKind.OPT {
+        (held, payload, absent, done) = self.opt_begin(value, mir_bool());
+        self.opt_switch(held, self.truthy(payload, site), absent, done);
+        return self.opt_end(held, b.const_bool(False), done);
+    }
     raise MirRefused(mir_refusal("truth test", value.type.render(), site));
 }
 
 impl MirLowering.coerce(value: MirValue, to: MirType, site: uni.UniNode) -> MirValue {
     if value.type is to {
         return value;
+    }
+    if to.kind == MirKind.OPT {
+        if value.type.kind == MirKind.NONE {
+            return self.builder().const_null(to);
+        }
+        return self.opt_wrap(self.coerce(value, to.payload(), site), to);
+    }
+    if value.type.kind == MirKind.OPT and value.type.payload() is to {
+        return self.opt_get(value);
     }
     if value.type.is_numeric() and to.is_numeric() {
         return self.builder().convert(value, to);
@@ -1133,6 +1167,11 @@ impl MirLowering.to_str(value: MirValue, site: uni.UniNode) -> MirValue {
     }
     if value.type.kind == MirKind.NONE {
         return b.const_str("None", mir_str());
+    }
+    if value.type.kind == MirKind.OPT {
+        (held, payload, absent, done) = self.opt_begin(value, mir_str());
+        self.opt_switch(held, self.to_str(payload, site), absent, done);
+        return self.opt_end(held, b.const_str("None", mir_str()), done);
     }
     if value.type.kind == MirKind.INT {
         made = self.runtime("__jac_rt_str_from_int", [b.convert(value, mir_int())]);

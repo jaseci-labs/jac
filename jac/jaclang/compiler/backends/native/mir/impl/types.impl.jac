@@ -208,6 +208,9 @@ impl mir_c_fn(params: list[MirType], ret: MirType) -> MirType {
 }
 
 impl mir_holds_ref(t: MirType) -> bool {
+    if t.kind == MirKind.OPT {
+        return mir_holds_ref(t.payload());
+    }
     return t.kind == MirKind.STR or t.is_ref();
 }
 
@@ -233,4 +236,8 @@ impl mir_is_container(t: MirType) -> bool {
 
 impl mir_obj(name: str) -> MirType {
     return mir_type(MirKind.OBJ, name=name);
+}
+
+impl mir_opt(payload: MirType) -> MirType {
+    return mir_type(MirKind.OPT, args=[payload]);
 }

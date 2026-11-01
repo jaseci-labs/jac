@@ -10892,8 +10892,8 @@ graph import compiler {
         backends.native.mir.lower
             | backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_return_type
             | c_interop.c_param_type { FunctionType },
-        backends.native.mir.lower_types { AnyType, ClassType, FunctionType },
-        backends.native.mir.lower { ClassType },
+        backends.native.mir.lower_types { AnyType, ClassType, FunctionType, UnionType },
+        backends.native.mir.lower { ClassType, UnionType },
         backends.native.na_ir_gen_pass {
             ClassType,
             FunctionType as SemanticFunctionType,
@@ -11719,6 +11719,7 @@ graph import compiler.backends.native.mir {
             mir_dict,
             mir_list,
             mir_obj,
+            mir_opt,
             mir_set,
             mir_c_fn,
             mir_c_ptr,

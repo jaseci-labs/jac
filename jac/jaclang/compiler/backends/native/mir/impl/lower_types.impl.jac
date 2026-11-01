@@ -32,6 +32,24 @@ impl mir_type_of(
     if isinstance(t, ClassType) {
         return mir_class_type(t, position, site);
     }
+    if isinstance(t, UnionType) {
+        members = [
+            member
+            for member in t.types
+            if not (isinstance(member, ClassType) and member.shared.class_name in ("NoneType", "None"))
+        ];
+        if len(members) == 1 and len(members) < len(t.types) {
+            return mir_opt(mir_type_of(members[0], position, site));
+        }
+        raise MirRefused(
+            mir_refusal(
+                "type",
+                str(t),
+                site,
+                "Native code holds an optional (T | None) union so far; other unions need a shared representation."
+            )
+        );
+    }
     if isinstance(t, AnyType) and t.is_foreign and t.foreign_scalar {
         return mir_class_type_named(t.foreign_scalar, site);
     }
