@@ -213,3 +213,12 @@ impl MirBuilder.ret(value: (MirValue | None)) {
 impl MirBuilder.unreachable {
     self.emit(MirInstr(op=MirOp.UNREACHABLE));
 }
+
+impl MirStructDef.index_of(field: str) -> int {
+    for (index, member) in enumerate(self.fields) {
+        if member.name == field {
+            return index;
+        }
+    }
+    raise KeyError(f"C struct {self.name} has no field {field}");
+}

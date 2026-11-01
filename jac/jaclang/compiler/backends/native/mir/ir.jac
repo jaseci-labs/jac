@@ -16,6 +16,19 @@ enum MirOp {
     CALL = "call",
     CALL_RUNTIME = "call.runtime",
     RAISE = "raise",
+    PTR_CAST = "ptr.cast",
+    PTR_INT = "ptr.int",
+    PTR_NULL = "ptr.null",
+    PTR_OFFSET = "ptr.offset",
+    CSTR = "cstr",
+    VIEW = "view",
+    VIEW_LEN = "view.len",
+    ELEM_ADDR = "elem.addr",
+    FIELD_ADDR = "field.addr",
+    TLS_BLOCK = "tls.block",
+    GLOBAL_ADDR = "global.addr",
+    CALL_C = "call.c",
+    CALL_FNPTR = "call.fnptr",
     BR = "br",
     COND_BR = "cond_br",
     RET = "ret",
@@ -25,7 +38,8 @@ enum MirOp {
 obj MirValue {
     has id: int,
         type: MirType,
-        name: str = "";
+        name: str = "",
+        is_slot: bool = False;
 
     def render -> str;
 }
@@ -76,14 +90,38 @@ obj MirFunction {
 
 obj MirExtern {
     has symbol: str,
+        ret: MirType,
+        params: list[MirType] = [];
+}
+
+obj MirGlobal {
+    has name: str,
+        symbol: str,
+        type: MirType,
+        int_value: int = 0,
+        float_value: float = 0.0;
+}
+
+obj MirStructField {
+    has name: str,
         type: MirType;
+}
+
+obj MirStructDef {
+    has name: str,
+        fields: list[MirStructField] = [];
+
+    def index_of(field: str) -> int;
 }
 
 obj MirModule {
     has path: str,
         prefix: str,
         functions: list[MirFunction] = [],
-        externs: dict[str, MirExtern] = {};
+        externs: dict[str, MirExtern] = {},
+        structs: dict[str, MirStructDef] = {},
+        globals: dict[str, MirGlobal] = {},
+        tls_blocks: dict[str, int] = {};
 
     def function(symbol: str) -> (MirFunction | None);
     def render -> str;

@@ -1,4 +1,19 @@
 glob RAISE_BUILTIN_SYMBOL: str = "__jac_rt_raise_builtin",
+     C_OPS: list[MirOp] = [
+         MirOp.PTR_CAST,
+         MirOp.PTR_INT,
+         MirOp.PTR_NULL,
+         MirOp.PTR_OFFSET,
+         MirOp.CSTR,
+         MirOp.VIEW,
+         MirOp.VIEW_LEN,
+         MirOp.ELEM_ADDR,
+         MirOp.FIELD_ADDR,
+         MirOp.TLS_BLOCK,
+         MirOp.GLOBAL_ADDR,
+         MirOp.CALL_C,
+         MirOp.CALL_FNPTR
+     ],
      CMP_SYMBOLS: dict[str, str] = {
          "eq": "==",
          "ne": "!=",
@@ -16,7 +31,9 @@ obj MirEmitter {
         functions: dict[str, ir.Function] = {},
         values: dict[int, ir.Value] = {},
         blocks: dict[str, ir.Block] = {},
-        strings: dict[str, ir.GlobalVariable] = {};
+        strings: dict[str, ir.GlobalVariable] = {},
+        building: set[str] = set(),
+        native_tls: bool = False;
 
     def emit -> ir.Module;
     def llvm_type(t: MirType) -> ir.Type;
@@ -42,9 +59,16 @@ obj MirEmitter {
     ) -> ir.Value;
 
     def emit_raise(b: ir.IRBuilder, instr: MirInstr);
+    def emit_c(b: ir.IRBuilder, instr: MirInstr);
+    def c_struct(name: str) -> ir.Type;
+    def tls_block(label: str, size: int) -> ir.GlobalVariable;
+    def global_variable(glob_def: MirGlobal) -> ir.GlobalVariable;
+    def keyed_block_fn(label: str, size: int) -> ir.Function;
 }
 
-def emit_mir_module(mir: MirModule, triple: str = "") -> ir.Module;
+def emit_mir_module(
+    mir: MirModule, triple: str = "", native_tls: bool = False
+) -> ir.Module;
 
 def result_of(instr: MirInstr) -> MirValue;
 

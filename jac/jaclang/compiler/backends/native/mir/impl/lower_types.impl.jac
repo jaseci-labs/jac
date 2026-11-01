@@ -32,6 +32,15 @@ impl mir_type_of(
     if isinstance(t, ClassType) {
         return mir_class_type(t, position, site);
     }
+    if isinstance(t, AnyType) and t.is_foreign and t.foreign_scalar {
+        return mir_class_type_named(t.foreign_scalar, site);
+    }
+    if isinstance(t, FunctionType) and position == MirPosition.C_FIELD {
+        params = [
+            mir_type_of(p.param_type, MirPosition.C_FIELD, site) for p in t.parameters
+        ];
+        return mir_c_fn(params, mir_type_of(t.return_type, MirPosition.C_FIELD, site));
+    }
     raise MirRefused(mir_refusal("type", str(t), site));
 }
 
@@ -52,6 +61,17 @@ impl mir_class_type_named(name: str, site: (uni.UniNode | None) = None) -> MirTy
 impl mir_class_type(
     t: ClassType, position: MirPosition, site: (uni.UniNode | None) = None
 ) -> MirType {
+    kind = c_builtin_kind(t);
+    if kind == "ptr" {
+        return mir_c_ptr(mir_c_elem(c_type_arg(t), site));
+    }
+    if kind == "PtrView" {
+        return mir_c_view(mir_c_elem(c_type_arg(t), site));
+    }
+    arch = foreign_struct_of_type(t);
+    if arch is not None {
+        return mir_c_struct(arch.name.value);
+    }
     name = t.shared.class_name;
     if name in ("NoneType", "None") {
         return mir_none();
@@ -70,4 +90,14 @@ impl mir_class_type(
         return mir_str() if position == MirPosition.VALUE else mir_str_ref();
     }
     raise MirRefused(mir_refusal("type", name, site));
+}
+
+impl mir_c_elem(t: (TypeBase | None), site: (uni.UniNode | None) = None) -> MirType {
+    if t is None {
+        return mir_int(8, False);
+    }
+    if isinstance(t, ClassType) and t.shared.class_name in ("object", "NoneType") {
+        return mir_int(8, False);
+    }
+    return mir_type_of(t, MirPosition.C_FIELD, site);
 }

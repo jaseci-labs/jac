@@ -26,7 +26,11 @@ enum MirKind {
     SLICE = "slice",
     REGION = "region",
     CLASS = "class",
-    TYPEVAR = "typevar"
+    TYPEVAR = "typevar",
+    C_PTR = "c.ptr",
+    C_STRUCT = "c.struct",
+    C_VIEW = "c.view",
+    C_FN = "c.fn"
 }
 
 obj MirType {
@@ -109,3 +113,11 @@ def mir_region -> MirType;
 def mir_class(name: str) -> MirType;
 
 def mir_typevar(name: str) -> MirType;
+
+def mir_c_ptr(elem: MirType) -> MirType;
+
+def mir_c_struct(name: str) -> MirType;
+
+def mir_c_view(elem: MirType) -> MirType;
+
+def mir_c_fn(params: list[MirType], ret: MirType) -> MirType;

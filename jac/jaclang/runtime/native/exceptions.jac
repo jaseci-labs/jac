@@ -17,7 +17,9 @@ import from c {
             error_message: ptr[u8];
     }  def _longjmp(env: ptr[u8], value: i32) -> None;  def write(
         fd: i32, buf: ptr[u8], count: i64
-    ) -> i64;  def strlen(text: ptr[u8]) -> i64;  def `exit(code: i32) -> None;
+    ) -> i64;  def strlen(text: ptr[u8]) -> i64;  def _exit(code: i32) -> None;  def fflush(
+        stream: ptr[u8]
+    ) -> i32;
 }
 
 glob EXC_STATE_HEADER: int = 40;

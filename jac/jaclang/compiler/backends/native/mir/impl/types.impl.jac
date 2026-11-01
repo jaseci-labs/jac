@@ -1,5 +1,6 @@
 impl MirType.is_scalar -> bool {
-    return self.kind in (MirKind.BOOL, MirKind.INT, MirKind.FLOAT, MirKind.NONE);
+    return self.kind
+        in (MirKind.BOOL, MirKind.INT, MirKind.FLOAT, MirKind.NONE, MirKind.C_PTR);
 }
 
 impl MirType.is_numeric -> bool {
@@ -178,4 +179,20 @@ impl mir_class(name: str) -> MirType {
 
 impl mir_typevar(name: str) -> MirType {
     return mir_type(MirKind.TYPEVAR, name=name);
+}
+
+impl mir_c_ptr(elem: MirType) -> MirType {
+    return mir_type(MirKind.C_PTR, args=[elem]);
+}
+
+impl mir_c_struct(name: str) -> MirType {
+    return mir_type(MirKind.C_STRUCT, name=name);
+}
+
+impl mir_c_view(elem: MirType) -> MirType {
+    return mir_type(MirKind.C_VIEW, args=[elem]);
+}
+
+impl mir_c_fn(params: list[MirType], ret: MirType) -> MirType {
+    return mir_type(MirKind.C_FN, args=[ret] + params);
 }

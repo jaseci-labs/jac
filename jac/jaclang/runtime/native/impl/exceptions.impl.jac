@@ -38,7 +38,8 @@ impl __jac_rt_raise(target: ptr[u8], type_id: i32, message: ptr[u8]) {
     handler = ctx.view(1)[0].handler;
     if int(handler) == 0 {
         _report_uncaught(message);
-        `exit(i32(1));
+        fflush(ptr[u8]());
+        _exit(i32(1));
     }
     cell = handler.view(1);
     cell[0].target = target;

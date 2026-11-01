@@ -14,6 +14,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "BW_OR_EQ": "BW_OR",
          "BW_XOR_EQ": "BW_XOR"
      },
+     MIR_INTRINSICS: list[str] = ["__thread_local_block"],
      COMPARE_OPERATORS: dict[str, str] = {
          "EE": "eq",
          "NE": "ne",
@@ -91,4 +92,31 @@ obj MirLowering {
     ) -> tuple[MirValue, MirValue];
 
     def raise_if(cond: MirValue, exception: str, message: str);
+    def type_of(
+        t: (TypeBase | None), position: MirPosition, site: uni.UniNode
+    ) -> MirType;
+
+    def ensure_c_types(t: (TypeBase | None));
+    def arch_fields(arch: uni.Archetype) -> list[uni.HasVar];
+    def lower_place(nd: uni.UniNode) -> MirValue;
+    def place_elem(place: MirValue) -> MirType;
+    def lower_trailer(nd: uni.AtomTrailer) -> MirValue;
+    def call_name(nd: uni.FuncCall) -> str;
+    def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
+    def intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue;
+    def type_call(nd: uni.FuncCall) -> (MirValue | None);
+    def method_call(nd: uni.FuncCall, target: uni.AtomTrailer) -> (MirValue | None);
+    def call_args(nd: uni.FuncCall) -> list[uni.Expr];
+    def coerce_place(place: MirValue) -> MirValue;
+    def global_place(nd: uni.Name) -> (MirValue | None);
+    def global_declaration(sym: uni.Symbol) -> (uni.Assignment | None);
+    def emit_value(
+        op: MirOp,
+        type: MirType,
+        operands: list[MirValue],
+        sub: str = "",
+        callee: str = "",
+        int_value: int = 0,
+        str_value: str = ""
+    ) -> MirValue;
 }

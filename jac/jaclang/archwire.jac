@@ -5699,6 +5699,19 @@ graph import compiler {
         },
     ]
     c_interop ++> [
+        backends.native.mir.lower {
+            c_builtin_kind,
+            c_scalar_constant,
+            c_string_literal,
+            c_type_arg,
+            clib_import_of,
+            foreign_struct_of_type
+        },
+        backends.native.mir.lower_types {
+            c_builtin_kind,
+            c_type_arg,
+            foreign_struct_of_type
+        },
         backends.native.na_ir_gen_pass {
             c_array_elem,
             c_builtin_kind,
@@ -10628,6 +10641,7 @@ graph import compiler {
             CtValue,
             int_host
         },
+        backends.native.mir.lower { CtBool, CtFloat, CtInt },
         backends.native.na_ir_gen_pass {
             CtBool,
             CtBytes,
@@ -10834,7 +10848,6 @@ graph import compiler {
             TypeBase
         },
         backends.es.esast_gen_pass.EsastGenPass._arch_kind_of_type
-            | backends.native.mir.lower_types
             | backends.native.na_ir_gen_pass.NaIRGenPass._agg_key_args
             | passes.capability_check_pass
             | passes.layout_pass.class_form_enum_scalar
@@ -10864,6 +10877,7 @@ graph import compiler {
         backends.native.mir.lower
             | backends.native.na_ir_gen_pass.NaIRGenPass._sort_key_return_type
             | c_interop.c_param_type { FunctionType },
+        backends.native.mir.lower_types { AnyType, ClassType, FunctionType },
         backends.native.na_ir_gen_pass {
             ClassType,
             FunctionType as SemanticFunctionType,
@@ -11058,7 +11072,8 @@ graph import compiler {
         },
     ]
     type types.types ++> [
-        backends.native.mir.lower_types
+        backends.native.mir.lower
+            | backends.native.mir.lower_types
             | backends.native.primitives_native
             | frontend.unitree
             | passes.ownership_check_pass { TypeBase },
@@ -11602,15 +11617,19 @@ graph import compiler.backends.native.mir {
     emit ++> backend { emit_mir_module }
     ir ++> [
         backend { MirModule },
-        emit { MirFunction, MirInstr, MirModule, MirOp, MirValue },
+        emit { MirFunction, MirGlobal, MirInstr, MirModule, MirOp, MirValue },
         lower {
             MirBlock,
             MirBuilder,
+            MirExtern,
             MirFunction,
+            MirGlobal,
             MirInstr,
             MirModule,
             MirOp,
             MirParam,
+            MirStructDef,
+            MirStructField,
             MirValue
         },
     ]
@@ -11624,12 +11643,26 @@ graph import compiler.backends.native.mir {
         refusal_of
     }
     types ++> [
-        emit { MirKind, MirType },
+        emit { MirKind, MirType, mir_c_ptr },
         ir { MirKind, MirType, mir_bool },
-        lower { MirKind, MirType, mir_bool, mir_float, mir_int, mir_none },
+        lower {
+            MirKind,
+            MirType,
+            mir_bool,
+            mir_c_ptr,
+            mir_c_view,
+            mir_float,
+            mir_int,
+            mir_none,
+            mir_void
+        },
         lower_types {
             MirType,
             mir_bool,
+            mir_c_fn,
+            mir_c_ptr,
+            mir_c_struct,
+            mir_c_view,
             mir_float,
             mir_int,
             mir_none,

@@ -1,12 +1,29 @@
-impl emit_mir_module(mir: MirModule, triple: str = "") -> ir.Module {
+impl emit_mir_module(
+    mir: MirModule, triple: str = "", native_tls: bool = False
+) -> ir.Module {
     module = ir.Module(name=mir.path);
     if triple {
         module.triple = triple;
     }
-    return MirEmitter(mir=mir, module=module).emit();
+    return MirEmitter(mir=mir, module=module, native_tls=native_tls).emit();
 }
 
 impl MirEmitter.emit -> ir.Module {
+    for ext in self.mir.externs.values() {
+        self.extern(
+            ext.symbol,
+            self.llvm_type(ext.ret),
+            [self.llvm_type(param) for param in ext.params]
+        );
+    }
+    if self.native_tls {
+        for (label, size) in self.mir.tls_blocks.items() {
+            self.tls_block(label, size);
+        }
+    }
+    for glob_def in self.mir.globals.values() {
+        self.global_variable(glob_def);
+    }
     for fn in self.mir.functions {
         self.declare(fn);
     }
@@ -28,6 +45,26 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     }
     if t.kind in (MirKind.NONE, MirKind.VOID) {
         return ir.VoidType();
+    }
+    if t.kind == MirKind.C_PTR {
+        elem = t.payload();
+        if elem.kind in (MirKind.NONE, MirKind.VOID) {
+            return ir.IntType(8).as_pointer();
+        }
+        return self.llvm_type(elem).as_pointer();
+    }
+    if t.kind == MirKind.C_STRUCT {
+        return self.c_struct(t.name);
+    }
+    if t.kind == MirKind.C_VIEW {
+        return ir.LiteralStructType(
+            [self.llvm_type(mir_c_ptr(t.payload())), ir.IntType(64)]
+        );
+    }
+    if t.kind == MirKind.C_FN {
+        return ir.FunctionType(
+            self.llvm_type(t.args[0]), [self.llvm_type(arg) for arg in t.args[1:]]
+        ).as_pointer();
     }
     raise MirEmitError(f"no LLVM form for MIR type {t.render()}");
 }
@@ -165,6 +202,8 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, made);
     } elif op == MirOp.RAISE {
         self.emit_raise(b, instr);
+    } elif op in C_OPS {
+        self.emit_c(b, instr);
     } elif op == MirOp.BR {
         b.branch(self.blocks[instr.targets[0]]);
     } elif op == MirOp.COND_BR {
@@ -387,4 +426,191 @@ impl type_arg_of(instr: MirInstr) -> MirType {
         raise MirEmitError(f"MIR {instr.op.value} has no type argument");
     }
     return found;
+}
+
+impl MirEmitter.c_struct(name: str) -> ir.Type {
+    made = self.module.context.get_identified_type(f"jac.c.{name}");
+    if made.is_opaque and name not in self.building {
+        layout = self.mir.structs.get(name);
+        if layout is None {
+            raise MirEmitError(f"no layout for C struct {name}");
+        }
+        self.building.add(name);
+        members = [self.llvm_type(member.type) for member in layout.fields];
+        self.building.discard(name);
+        made.set_body(*members);
+    }
+    return made;
+}
+
+impl MirEmitter.tls_block(label: str, size: int) -> ir.GlobalVariable {
+    found = self.module.globals.get(label);
+    if isinstance(found, ir.GlobalVariable) {
+        return found;
+    }
+    cell = ir.ArrayType(ir.IntType(64), (size + 7) // 8);
+    made = ir.GlobalVariable(self.module, cell, name=label);
+    made.linkage = "weak";
+    made.initializer = ir.Constant(cell, None);
+    made.thread_local = True;
+    made.tls_model = "initialexec";
+    return made;
+}
+
+impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
+    op = instr.op;
+    i32 = ir.IntType(32);
+    if op == MirOp.PTR_NULL {
+        self.bind(instr.result, ir.Constant(self.llvm_type(type_arg_of(instr)), None));
+    } elif op == MirOp.PTR_CAST {
+        source = self.value(instr.operands[0]);
+        to = self.llvm_type(type_arg_of(instr));
+        if isinstance(source.type, ir.IntType) {
+            self.bind(instr.result, b.inttoptr(source, to));
+        } else {
+            self.bind(instr.result, b.bitcast(source, to));
+        }
+    } elif op == MirOp.PTR_INT {
+        self.bind(
+            instr.result,
+            b.ptrtoint(
+                self.value(instr.operands[0]), self.llvm_type(type_arg_of(instr))
+            )
+        );
+    } elif op == MirOp.PTR_OFFSET {
+        self.bind(
+            instr.result,
+            b.gep(self.value(instr.operands[0]), [self.value(instr.operands[1])])
+        );
+    } elif op == MirOp.CSTR {
+        self.bind(
+            instr.result,
+            b.bitcast(
+                self.cstring(b, instr.str_value), self.llvm_type(type_arg_of(instr))
+            )
+        );
+    } elif op == MirOp.VIEW {
+        shape = self.llvm_type(type_arg_of(instr));
+        made = b.insert_value(
+            ir.Constant(shape, None), self.value(instr.operands[0]), 0
+        );
+        self.bind(instr.result, b.insert_value(made, self.value(instr.operands[1]), 1));
+    } elif op == MirOp.VIEW_LEN {
+        self.bind(instr.result, b.extract_value(self.value(instr.operands[0]), 1));
+    } elif op == MirOp.ELEM_ADDR {
+        base = b.extract_value(self.value(instr.operands[0]), 0);
+        self.bind(instr.result, b.gep(base, [self.value(instr.operands[1])]));
+    } elif op == MirOp.FIELD_ADDR {
+        self.bind(
+            instr.result,
+            b.gep(
+                self.value(instr.operands[0]),
+                [ir.Constant(i32, 0), ir.Constant(i32, instr.int_value)]
+            )
+        );
+    } elif op == MirOp.GLOBAL_ADDR {
+        self.bind(instr.result, self.module.globals[instr.str_value]);
+    } elif op == MirOp.TLS_BLOCK {
+        if self.native_tls {
+            block = self.tls_block(instr.str_value, instr.int_value);
+            self.bind(instr.result, b.ptrtoint(block, ir.IntType(64)));
+        } else {
+            self.bind(
+                instr.result,
+                b.call(self.keyed_block_fn(instr.str_value, instr.int_value), [])
+            );
+        }
+    } elif op == MirOp.CALL_C {
+        callee = self.functions.get(instr.callee);
+        if callee is None {
+            raise MirEmitError(f"MIR C call to undeclared function {instr.callee}");
+        }
+        made = b.call(callee, [self.value(v) for v in instr.operands]);
+        if type_arg_of(instr).kind != MirKind.NONE {
+            self.bind(instr.result, made);
+        }
+    } elif op == MirOp.CALL_FNPTR {
+        made = b.call(
+            self.value(instr.operands[0]), [self.value(v) for v in instr.operands[1:]]
+        );
+        if type_arg_of(instr).kind != MirKind.NONE {
+            self.bind(instr.result, made);
+        }
+    } else {
+        raise MirEmitError(f"no emitter for MIR instruction {op.value}");
+    }
+}
+
+impl MirEmitter.global_variable(glob_def: MirGlobal) -> ir.GlobalVariable {
+    found = self.module.globals.get(glob_def.symbol);
+    if isinstance(found, ir.GlobalVariable) {
+        return found;
+    }
+    shape = self.llvm_type(glob_def.type);
+    made = ir.GlobalVariable(self.module, shape, name=glob_def.symbol);
+    if glob_def.type.kind == MirKind.FLOAT {
+        made.initializer = ir.Constant(shape, glob_def.float_value);
+    } else {
+        made.initializer = ir.Constant(shape, glob_def.int_value);
+    }
+    return made;
+}
+
+impl MirEmitter.keyed_block_fn(label: str, size: int) -> ir.Function {
+    name = f"__jac_tls_block.{label}";
+    found = self.module.globals.get(name);
+    if isinstance(found, ir.Function) {
+        return found;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    i32 = ir.IntType(32);
+    i64 = ir.IntType(64);
+    key_gv = ir.GlobalVariable(self.module, i64, name=f"{label}.key");
+    key_gv.linkage = "weak";
+    key_gv.initializer = ir.Constant(i64, 0);
+    ready_gv = ir.GlobalVariable(self.module, i32, name=f"{label}.ready");
+    ready_gv.linkage = "weak";
+    ready_gv.initializer = ir.Constant(i32, 0);
+    key_create = self.extern("pthread_key_create", i32, [i8p, i8p]);
+    get_specific = self.extern("pthread_getspecific", i8p, [i64]);
+    set_specific = self.extern("pthread_setspecific", i32, [i64, i8p]);
+    zalloc = self.extern("calloc", i8p, [i64, i64]);
+    func = ir.Function(self.module, ir.FunctionType(i64, []), name=name);
+    func.linkage = "linkonce_odr";
+    first = func.append_basic_block("entry");
+    claim = func.append_basic_block("claim");
+    make_key = func.append_basic_block("make_key");
+    spin = func.append_basic_block("spin");
+    keyed = func.append_basic_block("keyed");
+    create = func.append_basic_block("create");
+    done = func.append_basic_block("done");
+    b = ir.IRBuilder(first);
+    ready = b.load_atomic(ready_gv, "acquire", 4);
+    b.cbranch(b.icmp_unsigned("==", ready, ir.Constant(i32, 2)), keyed, claim);
+    b.position_at_end(claim);
+    pair = b.cmpxchg(
+        ready_gv, ir.Constant(i32, 0), ir.Constant(i32, 1), "acq_rel", "acquire"
+    );
+    b.cbranch(b.extract_value(pair, 1), make_key, spin);
+    b.position_at_end(make_key);
+    b.call(key_create, [b.bitcast(key_gv, i8p), ir.Constant(i8p, None)]);
+    b.store_atomic(ir.Constant(i32, 2), ready_gv, "release", 4);
+    b.branch(keyed);
+    b.position_at_end(spin);
+    again = b.load_atomic(ready_gv, "acquire", 4);
+    b.cbranch(b.icmp_unsigned("==", again, ir.Constant(i32, 2)), keyed, spin);
+    b.position_at_end(keyed);
+    key = b.load(key_gv);
+    held = b.call(get_specific, [key]);
+    b.cbranch(b.icmp_unsigned("==", held, ir.Constant(i8p, None)), create, done);
+    b.position_at_end(create);
+    made = b.call(zalloc, [ir.Constant(i64, 1), ir.Constant(i64, size)]);
+    b.call(set_specific, [key, made]);
+    b.branch(done);
+    b.position_at_end(done);
+    block = b.phi(i8p);
+    block.add_incoming(held, keyed);
+    block.add_incoming(made, create);
+    b.ret(b.ptrtoint(block, i64));
+    return func;
 }
