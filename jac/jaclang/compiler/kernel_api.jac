@@ -57,7 +57,10 @@ its caller, and
 `bytecode` is that code object marshalled, as caches store it. `python_ast` is
 the generated Python as an `ast.Module`, present when the request names the
 "python_ast" product. The native products are present when the module is
-native."""
+native. When the request names the "mir" product, `native_mir` is the module's
+mid-level IR as `MirModule.render()` prints it and `demoted` holds every
+function the decision step refused, with its reason; both come from lowering
+alone, with no emission."""
 obj CompiledUnit {
     has path: str,
         module_name: str,
@@ -71,6 +74,7 @@ obj CompiledUnit {
         native_iface: str = "",
         native_deps: list[str] = [],
         native_ir: str = "",
+        native_mir: str = "",
         native_layout: str = "",
         demoted: list[NativeDemotion] = [],
         jac_deps: list[str] = [],
@@ -217,6 +221,32 @@ obj KernelSession {
     def check(request: CheckRequest) -> CheckResult;
 }
 
+"""A test compiled into the kernel. `suite` names the kernel test module that
+holds it (`compiler/kernel_tests/<suite>.jac`, listed by `kernel_testing`)."""
+obj KernelTestCase {
+    has suite: str,
+        name: str;
+}
+
+"""Run the named cases of one suite inside the kernel, or all of its cases when
+`names` is empty. `scratch` is a directory the caller owns, where cases write
+the sources they analyse."""
+obj KernelTestRequest {
+    has suite: str,
+        scratch: str,
+        names: list[str] = [],
+        search_paths: list[str] = [],
+        package_root: str = "";
+}
+
+"""One case's result: `message` is the failure, empty when it passed."""
+obj KernelTestOutcome {
+    has suite: str,
+        name: str,
+        passed: bool,
+        message: str = "";
+}
+
 def compile_request(request: CompileRequest) -> CompileResult;
 
 def check_request(request: CheckRequest) -> CheckResult;
@@ -224,6 +254,10 @@ def check_request(request: CheckRequest) -> CheckResult;
 def open_session(
     project_root: str, search_paths: list[str], package_root: str
 ) -> KernelSession;
+
+def kernel_test_cases -> list[KernelTestCase];
+
+def run_kernel_tests(request: KernelTestRequest) -> list[KernelTestOutcome];
 
 def enter_world(project_root: str, search_paths: list[str], package_root: str);
 
@@ -237,7 +271,11 @@ def run_check(
 
 def emitted_paths(host: ProjectHost, requested: list[str]) -> list[str];
 
-def compiled_unit(host: ProjectHost, real: str, want_code: bool) -> CompiledUnit;
+def compiled_unit(
+    program: JacProgram, host: ProjectHost, real: str, want_code: bool, want_mir: bool
+) -> CompiledUnit;
+
+def native_decision(program: JacProgram, module: uni.Module, unit: CompiledUnit);
 
 def kernel_diagnostic(alert: Alert, severity: str) -> KernelDiagnostic;
 

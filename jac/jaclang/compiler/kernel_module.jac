@@ -6,7 +6,9 @@ the interpreter's table of built-in modules. The module has three functions,
 `compile(request)`, `check(request)` and
 `open_session(project_root, search_paths, package_root)`, the
 `Session` type whose methods are `KernelSession`'s, and the `KernelError`
-exception.
+exception. `tests()` lists the test cases compiled into the kernel and
+`run_tests(request)` runs a suite's cases inside the kernel, returning a
+`KernelTestOutcome` dict per case.
 
 Requests and results are plain Python data named after the records in
 `kernel_api.jac`: a request is a dict of its record's fields (an absent field
@@ -19,6 +21,7 @@ failure escaping the kernel is a SystemError naming an internal compiler
 error. Nothing calls back into the host."""
 glob MODULE_DOC: str = "The Jac compiler kernel.",
      SESSION_DOC: str = "An analysed project held across edits; every query is a method.",
+     METH_NOARGS: int = 4,
      METH_O: int = 8,
      METH_FASTCALL: int = 128;
 
@@ -73,6 +76,8 @@ def:priv compile_request_of(value: ptr[PyObject]) -> CompileRequest;
 
 def:priv check_request_of(value: ptr[PyObject]) -> CheckRequest;
 
+def:priv test_request_of(value: ptr[PyObject]) -> KernelTestRequest;
+
 def:priv put(record: ptr[PyObject], key: str, value: ptr[PyObject]);
 
 def:priv append(items: ptr[PyObject], value: ptr[PyObject]);
@@ -121,6 +126,10 @@ def:priv symbols_object(symbols: list[DocumentSymbol]) -> ptr[PyObject];
 
 def:priv edits_object(edits: list[TextEdit]) -> ptr[PyObject];
 
+def:priv test_cases_object(cases: list[KernelTestCase]) -> ptr[PyObject];
+
+def:priv test_outcomes_object(outcomes: list[KernelTestOutcome]) -> ptr[PyObject];
+
 def:priv compile_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv check_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
@@ -128,6 +137,10 @@ def:priv check_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObje
 def:priv open_session_call(
     module: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject];
+
+def:priv tests_call(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject];
+
+def:priv run_tests_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject];
 
 def:priv session_of(instance: ptr[PyObject]) -> KernelSession;
 
@@ -346,6 +359,18 @@ glob:priv session_methods: list[MethodDefinition] = [
              MethodCallbacks(fast=open_session_call),
              "open_session(project_root, search_paths, package_root)\n--\n\nOpen an analysed project held across edits.",
              METH_FASTCALL
+         ),
+         MethodDefinition(
+             "tests",
+             MethodCallbacks(positional=tests_call),
+             "tests()\n--\n\nThe test cases compiled into the kernel, as KernelTestCase dicts.",
+             METH_NOARGS
+         ),
+         MethodDefinition(
+             "run_tests",
+             MethodCallbacks(positional=run_tests_call),
+             "run_tests(request)\n--\n\nRun a KernelTestRequest dict inside the kernel; returns KernelTestOutcome dicts.",
+             METH_O
          )
      ];
 

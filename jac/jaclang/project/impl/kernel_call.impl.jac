@@ -80,6 +80,7 @@ impl unit_of_record(raw: dict[str, any]) -> CompiledUnit {
         native_iface=raw["native_iface"],
         native_deps=list(raw["native_deps"]),
         native_ir=raw["native_ir"],
+        native_mir=raw["native_mir"],
         native_layout=raw["native_layout"],
         demoted=[demotion_of_record(row) for row in raw["demoted"]],
         jac_deps=list(raw["jac_deps"]),
@@ -159,4 +160,42 @@ impl open_kernel_session(project_root: str) -> any {
     } except kernel.KernelError as error {
         raise KernelError(str(error)) from error;
     }
+}
+
+impl kernel_tests -> list[KernelTestCase] {
+    kernel = load_kernel();
+    try {
+        raw = kernel.tests();
+    } except kernel.KernelError as error {
+        raise KernelError(str(error)) from error;
+    }
+    return [KernelTestCase(suite=row["suite"], name=row["name"]) for row in raw];
+}
+
+impl call_kernel_tests(
+    suite: str, scratch: str, names: (list[str] | None) = None
+) -> list[KernelTestOutcome] {
+    kernel = load_kernel();
+    try {
+        raw = kernel.run_tests(
+            {
+                "suite": suite,
+                "scratch": scratch,
+                "names": list(names or []),
+                "search_paths": list(sys.path),
+                "package_root": package_root()
+            }
+        );
+    } except kernel.KernelError as error {
+        raise KernelError(str(error)) from error;
+    }
+    return [
+        KernelTestOutcome(
+            suite=row["suite"],
+            name=row["name"],
+            passed=row["passed"],
+            message=row["message"]
+        )
+        for row in raw
+    ];
 }

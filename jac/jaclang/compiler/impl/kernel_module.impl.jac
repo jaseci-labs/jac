@@ -435,6 +435,42 @@ impl check_request_of(value: ptr[PyObject]) -> CheckRequest {
     );
 }
 
+impl test_request_of(value: ptr[PyObject]) -> KernelTestRequest {
+    suite = "";
+    scratch = "";
+    names: list[str] = [];
+    search_paths: list[str] = [];
+    package_root = "";
+    for pair in entries_of(value, "KernelTestRequest") {
+        what = "KernelTestRequest." + pair.name;
+        if pair.name == "suite" {
+            suite = text_of(pair.value, what);
+        } elif pair.name == "scratch" {
+            scratch = text_of(pair.value, what);
+        } elif pair.name == "names" {
+            names = texts_of(pair.value, what);
+        } elif pair.name == "search_paths" {
+            search_paths = texts_of(pair.value, what);
+        } elif pair.name == "package_root" {
+            package_root = text_of(pair.value, what);
+        } else {
+            raise failure(
+                PyExc_TypeError, "KernelTestRequest has no field '" + pair.name + "'"
+            );
+        }
+    }
+    if not suite {
+        raise failure(PyExc_TypeError, "KernelTestRequest needs 'suite'");
+    }
+    return KernelTestRequest(
+        suite=suite,
+        scratch=scratch,
+        names=names,
+        search_paths=search_paths,
+        package_root=package_root
+    );
+}
+
 impl put(record: ptr[PyObject], key: str, value: ptr[PyObject]) {
     required(value);
     status = dict_set_text(record, key, value);
@@ -628,6 +664,7 @@ impl unit_object(unit: CompiledUnit) -> ptr[PyObject] {
         put(record, "native_iface", text_object(unit.native_iface));
         put(record, "native_deps", texts_object(unit.native_deps));
         put(record, "native_ir", text_object(unit.native_ir));
+        put(record, "native_mir", text_object(unit.native_mir));
         put(record, "native_layout", text_object(unit.native_layout));
         put(record, "demoted", demotions_object(unit.demoted));
         put(record, "jac_deps", texts_object(unit.jac_deps));
@@ -787,6 +824,64 @@ impl edits_object(edits: list[TextEdit]) -> ptr[PyObject] {
         raise error;
     }
     return out;
+}
+
+impl test_cases_object(cases: list[KernelTestCase]) -> ptr[PyObject] {
+    items = new_list();
+    try {
+        for case in cases {
+            row = new_record();
+            append(items, row);
+            put(row, "suite", text_object(case.suite));
+            put(row, "name", text_object(case.name));
+        }
+    } except boundary_failure as error {
+        jacpy_release(items);
+        raise error;
+    }
+    return items;
+}
+
+impl test_outcomes_object(outcomes: list[KernelTestOutcome]) -> ptr[PyObject] {
+    items = new_list();
+    try {
+        for outcome in outcomes {
+            row = new_record();
+            append(items, row);
+            put(row, "suite", text_object(outcome.suite));
+            put(row, "name", text_object(outcome.name));
+            put(row, "passed", flag_object(outcome.passed));
+            put(row, "message", text_object(outcome.message));
+        }
+    } except boundary_failure as error {
+        jacpy_release(items);
+        raise error;
+    }
+    return items;
+}
+
+impl tests_call(module: ptr[PyObject], unused: ptr[PyObject]) -> ptr[PyObject] {
+    try {
+        return test_cases_object(kernel_test_cases());
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl run_tests_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject] {
+    try {
+        return test_outcomes_object(run_kernel_tests(test_request_of(request)));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
 }
 
 impl compile_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject] {

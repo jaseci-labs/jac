@@ -100,7 +100,9 @@ impl emitted_paths(host: ProjectHost, requested: list[str]) -> list[str] {
     return chosen;
 }
 
-impl compiled_unit(host: ProjectHost, real: str, want_code: bool) -> CompiledUnit {
+impl compiled_unit(
+    program: JacProgram, host: ProjectHost, real: str, want_code: bool, want_mir: bool
+) -> CompiledUnit {
     import from jaclang.compiler.backends.py.kernel_bytecode { kernel_code_object }
     import from jaclang.compiler.driver.compiler { unit_sections }
     import from jaclang.compiler.driver.unit_products { client_artifact_from_json }
@@ -111,7 +113,7 @@ impl compiled_unit(host: ProjectHost, real: str, want_code: bool) -> CompiledUni
     }
     module = task.module;
     client = client_artifact_from_json(products.client) if products.client else None;
-    return CompiledUnit(
+    unit = CompiledUnit(
         path=real,
         module_name=module.name,
         code=kernel_code_object(module) if want_code else ptr[PyObject](),
@@ -132,6 +134,59 @@ impl compiled_unit(host: ProjectHost, real: str, want_code: bool) -> CompiledUni
         effects=products.effects,
         sections=unit_sections(products, None)
     );
+    if want_mir {
+        native_decision(program, module, unit);
+    }
+    return unit;
+}
+
+impl native_decision(program: JacProgram, module: uni.Module, unit: CompiledUnit) {
+    import from jaclang.compiler.backends.native.mir.ir { MirModule }
+    import from jaclang.compiler.backends.native.mir.lower { MirLowering }
+    import from jaclang.compiler.frontend.codeinfo { native_unit_prefix }
+    lowering = MirLowering(
+        prog=program,
+        module=module,
+        mir=MirModule(path=unit.path, prefix=native_unit_prefix(unit.path))
+    );
+    lowered = lowering.lower();
+    unit.native_mir = lowered.render();
+    names: dict[str, str] = {};
+    sites: dict[str, SourceSpan] = {};
+    for decl in lowering.decls.values() {
+        names[decl.symbol] = lowering.name_of(decl.ability);
+        if decl.ability.loc {
+            sites[decl.symbol] = source_span(decl.ability.loc);
+        }
+    }
+    fallback = source_span(module.loc) if module.loc else SourceSpan(path=unit.path);
+    for (symbol, reason) in sorted(lowered.demoted.items()) {
+        refused = lowering.refusals.get(names.get(symbol, symbol), []);
+        if refused {
+            first = refused[0];
+            unit.demoted.append(
+                NativeDemotion(
+                    symbol=symbol,
+                    kind=first.kind,
+                    reason=reason,
+                    code=first.code,
+                    span=source_span(first.site.loc)
+                        if first.site is not None and first.site.loc
+                        else sites.get(symbol, fallback)
+                )
+            );
+            continue;
+        }
+        unit.demoted.append(
+            NativeDemotion(
+                symbol=symbol,
+                kind="function",
+                reason=reason,
+                code="E5092",
+                span=sites.get(symbol, fallback)
+            )
+        );
+    }
 }
 
 impl run_compile(
@@ -140,6 +195,7 @@ impl run_compile(
     import from jaclang.project.compiler_host { other_compiler_root }
     result = CompileResult();
     want_code = "bytecode" in request.products;
+    want_mir = "mir" in request.products;
     options = copy.copy(request.options);
     if not request.products {
         options.no_cgen = True;
@@ -191,7 +247,7 @@ impl run_compile(
         return result;
     }
     for real in emitted_paths(host, requested) {
-        result.units.append(compiled_unit(host, real, want_code));
+        result.units.append(compiled_unit(program, host, real, want_code, want_mir));
     }
     return result;
 }
@@ -271,6 +327,47 @@ impl run_check(
     }
     result.reached = sorted(host.analyses.keys());
     return result;
+}
+
+impl kernel_test_cases -> list[KernelTestCase] {
+    import from jaclang.compiler.kernel_testing { kernel_suites }
+    cases: list[KernelTestCase] = [];
+    for suite in kernel_suites() {
+        for case in suite.cases {
+            cases.append(KernelTestCase(suite=suite.name, name=case.name));
+        }
+    }
+    return cases;
+}
+
+impl run_kernel_tests(request: KernelTestRequest) -> list[KernelTestOutcome] {
+    import from jaclang.compiler.kernel_testing { find_suite, run_case }
+    if not request.scratch or not os.path.isdir(request.scratch) {
+        raise KernelError(
+            f"the kernel test request names no scratch directory: '{request.scratch}'"
+        );
+    }
+    suite = find_suite(request.suite);
+    known = {case.name for case in suite.cases};
+    for name in request.names {
+        if name not in known {
+            raise KernelError(f"kernel test suite '{suite.name}' has no case '{name}'");
+        }
+    }
+    enter_world(request.scratch, request.search_paths, request.package_root);
+    outcomes: list[KernelTestOutcome] = [];
+    for case in suite.cases {
+        if request.names and case.name not in request.names {
+            continue;
+        }
+        failure = run_case(case, os.path.join(request.scratch, f"{suite.name}-{len(outcomes)}"));
+        outcomes.append(
+            KernelTestOutcome(
+                suite=suite.name, name=case.name, passed=not failure, message=failure
+            )
+        );
+    }
+    return outcomes;
 }
 
 impl compile_request(request: CompileRequest) -> CompileResult {
