@@ -1,3 +1,5 @@
+glob __all__ = ["sock_cloexec_works"];
+
 import from c {
     def socket(domain: i32, type: i32, protocol: i32) -> i32;  def bind(
         fd: i32, addr: ptr, len: u32

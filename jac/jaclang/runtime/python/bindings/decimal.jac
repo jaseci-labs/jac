@@ -1,3 +1,11 @@
+glob __all__ = [
+         "mpd_mallocfunc",
+         "mpd_callocfunc",
+         "mpd_reallocfunc",
+         "mpd_free",
+         "mpd_traphandler"
+     ];
+
 def dec_mpd_qexp(
     self: ptr[PyObject], args: ptr[PyObject], kwds: ptr[PyObject]
 ) -> ptr[PyObject];
