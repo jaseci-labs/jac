@@ -8989,6 +8989,7 @@ graph import compiler {
             IterForStmt,
             MatchCase,
             MatchStmt,
+            Module,
             ModuleCode,
             ReturnStmt,
             SemDef,

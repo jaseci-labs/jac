@@ -130,7 +130,7 @@ impl check_head(
     cancel: (CancelToken | None) = None
 ) -> dict[str, any] {
     if max_apps > 0 {
-        ls.session.set_shared_app_limit(max_apps);
+        ls.client().set_shared_app_limit(max_apps);
     }
     files = unit_files(head);
     ls.last_error = "";
@@ -147,7 +147,7 @@ impl check_head(
         syms: list[tuple[int, int, int, dict[str, any]]] = [];
         inlays: list[tuple[int, int, str]] = [];
         if ok {
-            for row in ls.session.token_symbols(f) {
+            for row in ls.client().token_symbols(f) {
                 syms.append((row.line - 1, row.col, row.end_col, symbol_info(row)));
             }
             inlays += type_hints(ls, f);
@@ -224,14 +224,14 @@ impl references_at(
 
 impl invalidate_path(ls: StudioLangServer, path: str) -> list[str] {
     real = os.path.realpath(path);
-    deps = [os.path.realpath(p) for p in ls.session.dependents(real)];
+    deps = [os.path.realpath(p) for p in ls.client().dependents(real)];
     if os.path.exists(real) {
         with open(real, "r", encoding="utf-8", errors="replace") as fh {
-            ls.session.update(real, fh.read());
+            ls.client().update(real, fh.read());
         }
-        ls.session.close(real);
+        ls.client().close(real);
     } else {
-        ls.session.forget(real);
+        ls.client().forget(real);
     }
     return deps;
 }
@@ -243,6 +243,6 @@ impl shutdown_server(ls: StudioLangServer) {
 impl type_hints(ls: StudioLangServer, path: str) -> list[tuple[int, int, str]] {
     return [
         (h.line - 1, h.col - 1, h.label)
-        for h in ls.session.assignment_hints(path)
+        for h in ls.client().assignment_hints(path)
     ];
 }
