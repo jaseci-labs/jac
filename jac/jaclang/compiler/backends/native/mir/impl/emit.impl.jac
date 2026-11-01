@@ -92,6 +92,12 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
             self.llvm_type(t.args[0]), [self.llvm_type(arg) for arg in t.args[1:]]
         ).as_pointer();
     }
+    if t.kind == MirKind.ENUM {
+        return ir.IntType(64);
+    }
+    if t.is_ref() or t.kind == MirKind.CLASS {
+        return ir.IntType(8).as_pointer();
+    }
     raise MirEmitError(f"no LLVM form for MIR type {t.render()}");
 }
 
@@ -308,6 +314,17 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
         self.bind(instr.result, made);
     } elif op == MirOp.RAISE {
         self.emit_raise(b, instr);
+    } elif op == MirOp.CALL_PYTHON {
+        callee = self.functions.get(instr.callee);
+        if callee is None {
+            raise MirEmitError(f"MIR Python call to undeclared bridge {instr.callee}");
+        }
+        made = b.call(callee, [self.value(v) for v in instr.operands]);
+        if type_arg_of(instr).kind != MirKind.NONE {
+            self.bind(instr.result, made);
+        }
+    } elif op in (MirOp.YIELD, MirOp.FRAME_NEW, MirOp.FRAME_FIELD) {
+        raise MirEmitError(f"MIR {op.value} survived the generator pass");
     } elif op in C_OPS {
         self.emit_c(b, instr);
     } elif op == MirOp.BR {
@@ -480,6 +497,12 @@ impl MirEmitter.emit_cmp(b: ir.IRBuilder, instr: MirInstr) -> ir.Value {
 impl MirEmitter.emit_conv(
     b: ir.IRBuilder, value: ir.Value, src: MirType, dst: MirType
 ) -> ir.Value {
+    if src.kind == MirKind.ENUM {
+        return self.emit_conv(b, value, mir_int(), dst);
+    }
+    if dst.kind == MirKind.ENUM {
+        return self.emit_conv(b, value, src, mir_int());
+    }
     to = self.llvm_type(dst);
     if dst.kind == MirKind.BOOL {
         if src.kind == MirKind.FLOAT {

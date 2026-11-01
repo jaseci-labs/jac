@@ -21,6 +21,10 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     for fn in lowered.functions {
         mir_insert_rc(fn);
     }
+    mir_lower_generators(lowered);
+    for binding in lowering.bindings {
+        ir_in.gen.interop_manifest.bindings[binding.name] = binding;
+    }
     runtime = mir_runtime_unit_paths();
     here = os.path.realpath(path);
     if here in runtime {
@@ -54,6 +58,9 @@ impl MirNativePass.report_refusals(lowering: MirLowering) {
 impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
     exports: dict[str, NativeExport] = {};
     for fn in mir.functions {
+        if fn.linkage == "internal" {
+            continue;
+        }
         exports[fn.name] = NativeExport(
             name=fn.name,
             symbol=fn.symbol,
@@ -69,6 +76,7 @@ impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
         exports=exports,
         deps=list(deps),
         demoted=sorted(mir.demoted),
+        python_imports=sorted(mir.python_imports),
         init_symbol=native_glob_init_name(mir.path)
             if mir.function(native_glob_init_name(mir.path)) is not None
             else "",

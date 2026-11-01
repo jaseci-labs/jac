@@ -6115,6 +6115,7 @@ graph import compiler {
     ]
     driver.wiring --> frontend.parser.frontend.annex_sources { wiring_annex_for }
     erased_imports ++> [
+        backends.native.mir.lower { contextmanager_ability },
         field_semantics.is_field_marker { erased_import_binds },
     ]
     erased_imports --> [
@@ -6234,9 +6235,13 @@ graph import compiler {
         },
         backends.native.mir.emit { RC_SENTINEL, str_len_tag },
         backends.native.mir.lower {
+            InteropBinding,
+            InteropContext,
+            NATIVE_ERASED_BASES,
             OSP_GRAPH_REL,
             OSP_KERNEL_REL,
             OSP_NATIVE_REL,
+            interop_callback_symbol,
             kernel_unit_path,
             native_def_symbol,
             native_entry_name,
@@ -9590,10 +9595,16 @@ graph import compiler {
             NON_DISPATCHED_METHODS,
             VTABLE_HEADER_SLOTS,
             archetype_native_name,
+            enum_decl_of,
             get_layout_registry,
-            layout_slot_count
+            is_enum_class_type,
+            layout_slot_count,
+            native_type_key
         },
-        backends.native.mir.lower_types { class_type_native_name },
+        backends.native.mir.lower_types {
+            class_type_native_name,
+            is_enum_class_type
+        },
         backends.es.esast_gen_pass.EsastGenPass._field_constructor_args {
             archetype_native_name,
             get_layout_registry
@@ -9603,7 +9614,7 @@ graph import compiler {
         symbol_utils.collect_method_names { archetype_accessors },
     ]
     type passes.layout_pass ++> [
-        backends.native.mir.lower { ArchetypeLayout },
+        backends.native.mir.lower { ArchetypeLayout, EnumLayout, EnumMemberLayout },
         frontend.codeinfo { LayoutRegistry },
     ]
     passes.mtir_gen_pass --> driver.pipeline.ir_passes { MTIRGenPass }
@@ -9724,6 +9735,7 @@ graph import compiler {
             config_element_pin,
             config_pin_for
         },
+        backends.native.mir.lower { config_module_pin },
         tools.session_queries { in_client_npm_world },
     ]
     placement.placement_pins --> [
@@ -10122,8 +10134,14 @@ graph import compiler {
             | passes.layout_pass.enum_class_of { ClassType },
         backends.native.mir.lower
             | c_interop.c_param_type { FunctionType },
-        backends.native.mir.lower_types { AnyType, ClassType, FunctionType, UnionType },
-        backends.native.mir.lower { ClassType, UnionType },
+        backends.native.mir.lower_types {
+            AnyType,
+            ClassType,
+            FunctionType,
+            TypeVarType,
+            UnionType
+        },
+        backends.native.mir.lower { AnyType, ClassType, TypeVarType, UnionType },
         frontend.unitree.DeleteStmt.type_may_hold_graph { ClassType, UnionType },
         frontend.unitree.DeleteStmt.type_has_graph_member {
             ClassType,
@@ -10796,10 +10814,25 @@ graph import compiler.backends.native.llvm.ir {
 
 graph import compiler.backends.native.mir {
     emit ++> backend { emit_mir_module }
+    generators ++> backend { mir_lower_generators }
     rc ++> backend { mir_insert_rc }
-    runtime_abi ++> lower { mir_osp_signature, mir_runtime_signature }
+    runtime_abi ++> [
+        generators { mir_runtime_signature },
+        lower { mir_osp_signature, mir_runtime_signature },
+    ]
     ir ++> [
         backend { MirModule },
+        generators {
+            MirBlock,
+            MirExtern,
+            MirFrame,
+            MirFunction,
+            MirInstr,
+            MirModule,
+            MirOp,
+            MirParam,
+            MirValue
+        },
         rc { MirBlock, MirFunction, MirInstr, MirOp, MirValue },
         emit {
             MirFunction,
@@ -10838,7 +10871,17 @@ graph import compiler.backends.native.mir {
         refusal_of
     }
     types ++> [
-        emit { MirKind, MirType, mir_c_ptr, mir_holds_ref, mir_is_container },
+        emit { MirKind, MirType, mir_c_ptr, mir_holds_ref, mir_int, mir_is_container },
+        generators {
+            MirKind,
+            MirType,
+            mir_bool,
+            mir_c_fn,
+            mir_c_ptr,
+            mir_holds_ref,
+            mir_int,
+            mir_none
+        },
         ir {
             MirKind,
             MirType,
@@ -10869,6 +10912,9 @@ graph import compiler.backends.native.mir {
             MirType,
             mir_any,
             mir_bool,
+            mir_class,
+            mir_iter,
+            mir_range,
             mir_c_fn,
             mir_fn,
             mir_holds_ref,
@@ -10887,9 +10933,14 @@ graph import compiler.backends.native.mir {
             mir_void
         },
         lower_types {
+            MirKind,
             MirType,
             mir_any,
             mir_bool,
+            mir_class,
+            mir_enum,
+            mir_iter,
+            mir_range,
             mir_dict,
             mir_fn,
             mir_list,
@@ -15433,7 +15484,14 @@ graph import runtime.na_stdlib {
 }
 
 graph import runtime.native {
-    lists ++> closures { __jac_rt_elem_release, __jac_rt_elem_retain }
+    dicts ++> [
+        anys { __jac_rt_dict_len },
+        iterators { __jac_rt_dict_key_at, __jac_rt_dict_next },
+    ]
+    lists ++> [
+        closures { __jac_rt_elem_release, __jac_rt_elem_retain },
+        iterators { __jac_rt_elem_retain },
+    ]
     rc ++> anys {
         __jac_rt_alloc,
         __jac_rt_free_block,
@@ -15468,9 +15526,18 @@ graph import runtime.native {
             __jac_rt_trace_register
         },
         strings { __jac_rt_alloc, __jac_rt_retain, __jac_rt_set_type },
+        iterators {
+            __jac_rt_alloc,
+            __jac_rt_free_block,
+            __jac_rt_release,
+            __jac_rt_retain,
+            __jac_rt_set_type
+        },
     ]
     strings ++> [
+        anys { __jac_rt_str_from_int, __jac_rt_str_new, __jac_rt_str_size },
         dicts { __jac_rt_str_size },
+        iterators { __jac_rt_str_new, __jac_rt_str_size },
         lists { __jac_rt_str_cmp, __jac_rt_str_size },
     ]
 }

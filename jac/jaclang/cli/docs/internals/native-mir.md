@@ -199,7 +199,17 @@ does not change either does not invalidate importers.
    `rc_last_use`, `own_move_sites`, parameter ownership) and MIR liveness.
 4. **Exceptions:** lower `try` regions to the setjmp protocol and unwind
    records.
-5. **Generators:** frames and state machines.
+5. **Generators:** frames and state machines. Lowering splits a generator into
+   a start function (under the generator's symbol: `frame.new`, the arguments
+   stored with `frame.field`, a `JacIter` over the resume function) and a
+   resumable resume function `i1 (i8* frame, i8* out)` whose body carries
+   `yield`. After reference counting, the pass gives every slot a frame offset
+   after the 40-byte header (resume point at +0, then the pending-exception
+   flag, type, object and message), splits blocks at each yield (element bits
+   into `out`, resume point into the frame, `ret true`), dispatches on the
+   resume point at entry, keeps values that live across a yield in the frame,
+   and emits the frame's drop function. A next function writes an element as
+   container-slot bits, retained when refcounted, so the consumer owns it.
 6. **Regions and nogc:** region scopes, headerless allocation.
 7. **Runtime lowering:** container, string, hash and repr operations become
    calls to runtime helpers. OSP operations are already kernel calls when

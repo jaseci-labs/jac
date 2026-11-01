@@ -30,6 +30,17 @@ impl MirLowering.object_def(arch: uni.Archetype) -> MirObjectDef {
     if layout is None {
         raise MirRefused(mir_refusal("archetype", name, arch, "The archetype has no native layout."));
     }
+    python_base = self.python_base_of(arch);
+    if python_base is not None {
+        raise MirRefused(
+            mir_refusal(
+                "archetype",
+                f"{name} (Python base {python_base})",
+                arch,
+                "An archetype with a Python base class keeps its instance state in Python; native code does not hold such objects."
+            )
+        );
+    }
     local = owner is self.module;
     prefix = native_unit_prefix(owner.loc.mod_path);
     made = MirObjectDef(
@@ -131,14 +142,15 @@ impl MirLowering.declare_archetype(arch: uni.Archetype) {
         if not isinstance(sig, uni.FuncSignature) {
             continue;
         }
-        if method.is_static or sig.varargs is not None or sig.kwargs is not None {
+        if method.is_static {
             raise MirRefused(mir_refusal("method", self.name_of(method), method));
         }
+        if self.is_template(method) {
+            self.templates[id(method)] = method;
+            continue;
+        }
         params: list[MirType] = [];
-        for pv in list(sig.posonly_params) + list(sig.params or []) {
-            if pv.name.value == "self" {
-                continue;
-            }
+        for pv in self.param_nodes(sig, True) {
             params.append(self.symbol_type(pv.name.sym, pv));
         }
         fn_type = self.prog.get_type_evaluator().get_type_of_symbol(self.ability_sym(method));
@@ -406,6 +418,9 @@ impl MirLowering.object_method(
     method = self.find_method(arch, name);
     if method is None {
         return None;
+    }
+    if id(method) in self.templates {
+        return self.generic_call(nd, method, receiver, arch);
     }
     decl = self.decls.get(id(method));
     if decl is None {

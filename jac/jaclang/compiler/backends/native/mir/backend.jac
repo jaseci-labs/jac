@@ -9,7 +9,8 @@ glob MIR_RUNTIME_UNITS: list[str] = [
          "runtime/native/lists.jac",
          "runtime/native/dicts.jac",
          "runtime/native/closures.jac",
-         "runtime/native/anys.jac"
+         "runtime/native/anys.jac",
+         "runtime/native/iterators.jac"
      ];
 
 def mir_runtime_unit_paths -> list[str];

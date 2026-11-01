@@ -22,7 +22,8 @@ impl MirRcState.run {
                     MirOp.OPT_GET,
                     MirOp.TUPLE_GET,
                     MirOp.ANY_TAG,
-                    MirOp.ANY_PAYLOAD
+                    MirOp.ANY_PAYLOAD,
+                    MirOp.FRAME_FIELD
                 )
                 and instr.result is not None {
                 self.parents[instr.result.id] = instr.operands[0].id;
@@ -92,7 +93,9 @@ impl MirRcState.rewrite(blk: MirBlock) {
                 self.release_slots();
                 self.out.append(MirInstr(op=MirOp.RET, operands=[returned]));
             } else {
-                self.release_slots();
+                if not self.fn.resumable {
+                    self.release_slots();
+                }
                 self.out.append(instr);
             }
         } elif instr.op == MirOp.TUPLE_MAKE {
@@ -181,7 +184,7 @@ impl MirRcState.release_slots {
 }
 
 impl MirRcState.initialize_slots {
-    if not self.ref_slots {
+    if not self.ref_slots or self.fn.resumable {
         return;
     }
     first = self.fn.blocks[0];

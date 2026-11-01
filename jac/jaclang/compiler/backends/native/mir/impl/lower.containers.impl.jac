@@ -1,6 +1,16 @@
 impl MirLowering.elem_kind(t: MirType, site: uni.UniNode) -> int {
-    if t.kind == MirKind.INT {
+    if t.kind in (MirKind.INT, MirKind.ENUM) {
         return KIND_INT;
+    }
+    if t.kind == MirKind.TUPLE {
+        raise MirRefused(
+            mir_refusal(
+                "container element",
+                t.render(),
+                site,
+                "A native container slot holds one machine word, and a tuple does not fit one."
+            )
+        );
     }
     if t.kind == MirKind.FLOAT {
         return KIND_FLOAT;

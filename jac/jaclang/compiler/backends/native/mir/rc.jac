@@ -13,7 +13,10 @@ String literals are immortal, so they are neither retained nor released.
 A store into heap memory (a field) releases what it overwrites, and a load
 of a reference from heap memory is retained, because the heap can change
 under a borrowed copy. Functions marked `manual_rc` (generated drop and
-trace functions) manage counts themselves and are left alone."""
+trace functions) manage counts themselves and are left alone. A generator's
+resume function keeps its slots across returns: they live in its frame,
+whose drop releases them, so its returns release nothing and its slots start
+zeroed rather than initialized."""
 glob RC_CONSUMING_OPS: list[MirOp] = [MirOp.STORE, MirOp.RET];
 
 class MirRcError(Exception) {}
