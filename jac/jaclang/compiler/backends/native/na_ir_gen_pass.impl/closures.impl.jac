@@ -126,6 +126,71 @@ impl NaIRGenPass._static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Va
     );
 }
 
+impl NaIRGenPass._fn_identity_struct -> str {
+    name = "JacFnIdentity";
+    if name not in self.struct_types {
+        self._register_iter_struct(name, ["id"], [ir.IntType(64)]);
+    }
+    return name;
+}
+
+impl NaIRGenPass._fn_identity_slot(fn: ir.Function) -> (str | None) {
+    if self._nogc_headerless()
+        or self._nested_fn_frames.get(fn.name) is not self.builder.function {
+        return None;
+    }
+    _gen = self._gen_ctx;
+    if _gen is not None and self.builder.function is _gen.resume_fn {
+        return None;
+    }
+    name = f"fn.identity.{fn.name}";
+    if name not in self.local_vars {
+        self.local_vars[name] = self._entry_alloca(
+            self.struct_types[self._fn_identity_struct()].as_pointer(), name
+        );
+    }
+    return name;
+}
+
+impl NaIRGenPass._fn_value_env(fn: ir.Function) -> (ir.Value | None) {
+    if fn.name not in self._fresh_fn_values {
+        return None;
+    }
+    i8p = ir.IntType(8).as_pointer();
+    if fn.name not in self._nested_fn_frames {
+        return self.builder.bitcast(
+            self._alloc_iter_struct(self._fn_identity_struct()),
+            i8p,
+            name="clos.wrap.id"
+        );
+    }
+    slot_name = self._fn_identity_slot(fn);
+    if slot_name is None {
+        return None;
+    }
+    slot = self.local_vars[slot_name];
+    func = self.builder.function;
+    open_bb = func.append_basic_block(name="fn.id.open");
+    ready_bb = func.append_basic_block(name="fn.id.ready");
+    self.builder.cbranch(
+        self.builder.icmp_unsigned(
+            "==",
+            self.builder.load(slot, name="fn.id.cur"),
+            ir.Constant(slot.pointee_type, None),
+            name="fn.id.unset"
+        ),
+        open_bb,
+        ready_bb
+    );
+    self.builder.position_at_end(open_bb);
+    self.builder.store(self._alloc_iter_struct(self._fn_identity_struct()), slot);
+    self.builder.branch(ready_bb);
+    self.builder.position_at_end(ready_bb);
+    env = self.builder.load(slot, name="fn.id");
+    self._emit_rc_retain(env, op="fn_identity", loc="");
+    return self.builder.bitcast(env, i8p, name="clos.wrap.id");
+}
+
 impl NaIRGenPass._callable_signature_of(val_type: ir.Type) -> (ir.FunctionType | None) {
     closure_name = self._closure_struct_of(val_type);
     if closure_name is not None {

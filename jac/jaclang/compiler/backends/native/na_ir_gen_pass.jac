@@ -512,6 +512,7 @@ walker NaIRGenPass(CompilerPass) {
         closure_thunks: dict[str, ir.Function] = {},
         _closure_uid: int = 0,
         _fresh_fn_values: set[str] = set(),
+        _nested_fn_frames: dict[str, ir.Function] = {},
         _opt_struct_types: dict[str, ir.IdentifiedStructType] = {},
         _loop_rebind_memo: dict[tuple[int, str], bool] = {};
 
@@ -1087,6 +1088,9 @@ walker NaIRGenPass(CompilerPass) {
 
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
     def _static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Value;
+    def _fn_identity_struct -> str;
+    def _fn_identity_slot(fn: ir.Function) -> (str | None);
+    def _fn_value_env(fn: ir.Function) -> (ir.Value | None);
     def _wrap_fn_as_closure_value(val: ir.Value) -> ir.Value;
     def _is_bare_function_value(val: ir.Value) -> bool;
     def _closure_like_type(val_type: ir.Type) -> bool;

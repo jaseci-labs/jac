@@ -622,6 +622,80 @@ def identities -> int {
     );
 }
 
+test "typed callable: reads of one function object compare equal" {
+    (prog, ir) = compile_na_inline_ir(
+        "same_function_identity",
+        """
+def reads -> int {
+    def inner(x: int) -> int { return x + 1; }
+    a: Callable[[int], int] = inner;
+    b: Callable[[int], int] = inner;
+    r = 0;
+    if a == b { r += 1; }
+    if a(1) == 2 and b(2) == 3 { r += 10; }
+    return r;
+}
+def register(cb: Callable[[int], int], cbs: list[Callable[[int], int]]) -> None {
+    cbs.append(cb);
+}
+def unregister(cb: Callable[[int], int], cbs: list[Callable[[int], int]]) -> int {
+    n = 0;
+    for c in cbs {
+        if c == cb { n += 1; }
+    }
+    return n;
+}
+def callback_removal -> int {
+    def inner(x: int) -> int { return x; }
+    cbs: list[Callable[[int], int]] = [];
+    register(inner, cbs);
+    return unregister(inner, cbs);
+}
+def in_branches(flag: bool) -> int {
+    def inner(x: int) -> int { return x; }
+    a: Callable[[int], int] = inner;
+    b: Callable[[int], int] = inner;
+    if flag {
+        b = inner;
+    }
+    return 1 if a == b else 0;
+}
+def per_execution -> int {
+    fs: list[Callable[[int], int]] = [];
+    same = 0;
+    for i in range(2) {
+        def inner(x: int) -> int { return x; }
+        a: Callable[[int], int] = inner;
+        b: Callable[[int], int] = inner;
+        if a == b { same += 1; }
+        fs.append(a);
+    }
+    return same * 10 + (1 if fs[0] != fs[1] else 0);
+}
+def churn -> int {
+    n = 0;
+    for i in range(100000) {
+        def inner(x: int) -> int { return x; }
+        a: Callable[[int], int] = inner;
+        b: Callable[[int], int] = inner;
+        if a == b { n += 1; }
+    }
+    return n;
+}
+"""
+    );
+    assert not prog.errors_had , [e.pretty_print() for e in prog.errors_had];
+    eng = ir.gen.native_engine;
+    assert get_func(eng, "reads", ctypes.c_int64)() == 11;
+    assert get_func(eng, "callback_removal", ctypes.c_int64)() == 1;
+    assert get_func(eng, "in_branches", ctypes.c_int64, ctypes.c_bool)(True) == 1;
+    assert get_func(eng, "in_branches", ctypes.c_int64, ctypes.c_bool)(False) == 1;
+    assert get_func(eng, "per_execution", ctypes.c_int64)() == 21 , (
+        "each execution of a def is a new function, read consistently within it"
+    );
+    assert get_func(eng, "churn", ctypes.c_int64)() == 100000;
+}
+
 test "typed callable: a method read through different static types compares equal" {
     (prog, ir) = compile_na_inline_ir(
         "bound_method_cross_type",

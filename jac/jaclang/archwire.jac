@@ -14181,6 +14181,10 @@ graph import compiler.tests {
             run_py_fixture,
             run_with_both
         },
+        test_fn_identity_equivalence | test_osp_equivalence {
+            run_py_fixture,
+            run_with_both
+        },
         test_graph_fragment_equivalence {
             run_js_module_fixture,
             run_py_fixture,
@@ -14193,7 +14197,6 @@ graph import compiler.tests {
             run_with_both
         },
         test_native_list_search_equality { compile_native, get_func },
-        test_osp_equivalence { run_py_fixture, run_with_both },
         test_prim_equivalence {
             compare_results,
             compile_fixture_to_js,

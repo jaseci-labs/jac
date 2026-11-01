@@ -2771,8 +2771,13 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
             _wi8p = ir.IntType(8).as_pointer();
             _wfn = val;
 
+            _wenv: ir.Value = ir.Constant(_wi8p, None);
             if isinstance(val, ir.Function) {
-                return self._static_fn_closure(_clos_tgt, val);
+                _fn_env = self._fn_value_env(val);
+                if _fn_env is None {
+                    return self._static_fn_closure(_clos_tgt, val);
+                }
+                _wenv = _fn_env;
             }
             if isinstance(_wfn.type, ir.FunctionType) {
                 _wfn = self.builder.bitcast(
@@ -2793,15 +2798,6 @@ impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.V
                 [ir.Constant(_wi32, 0), ir.Constant(_wi32, 1)],
                 name="clos.wrap.env.slot"
             );
-            _wenv: ir.Value = ir.Constant(_wi8p, None);
-            if isinstance(val, ir.Function) and val.name in self._fresh_fn_values {
-                if "JacFnIdentity" not in self.struct_types {
-                    self._register_iter_struct("JacFnIdentity", ["id"], [_wi64]);
-                }
-                _wenv = self.builder.bitcast(
-                    self._alloc_iter_struct("JacFnIdentity"), _wi8p, name="clos.wrap.id"
-                );
-            }
             self.builder.store(_wenv, _wenv_slot);
             self._mark_owned(_wclos);
             return _wclos;
