@@ -31,7 +31,7 @@ test "identical content packs to identical bytes (content-address stable)" {
 def _stage_compiler_tree(where: str, codegen_body: str) -> str {
     pkg = Path(where, "jaclang");
     for rel in [
-        "jac0.py",
+        "meta_importer.py",
         "compiler/driver/jir.jac",
         "compiler/backends/py/pyast_gen_pass.jac",
         "compiler/backends/native/llvm/libjacllvm.so",
@@ -141,7 +141,7 @@ test "the running compiler digest covers the real compiler tree" {
     rels = compiler_source_files(pkg);
     for expected in [
         "compiler_inputs.txt",
-        "jac0.py",
+        "meta_importer.py",
         "compiler/driver/jir.jac",
         "compiler/frontend/unitree.jac",
         "compiler/backends/py/pyast_gen_pass.jac",

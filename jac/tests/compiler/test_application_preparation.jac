@@ -1003,20 +1003,6 @@ test "failed preparation does not replace the last working revision" {
 }
 
 
-test "preparation infrastructure compiles through the binary bootstrap" {
-    import from jaclang.jac0 { compile_jac }
-    package = Path(__file__).resolve().parents[2] / 'jaclang';
-    for relative in [
-        'compiler/driver/application.jac',
-        'compiler/backends/py/artifact_imports.jac',
-        'runtime/prepared.jac'
-    ] {
-        path = package / relative;
-        compile(compile_jac(path.read_text(), str(path)), str(path), 'exec');
-    }
-}
-
-
 test "prepared services with the same entry filename load independently" {
     import from jaclang.runtime.prepared { load_prepared_module }
     tmp = tempfile.mkdtemp(prefix='jac-prepared-services-');

@@ -75,12 +75,6 @@ def _precompile_unit(
     skip_analysis: bool = False
 ) -> bytes | None;
 
-def _seal_boot_unit(
-    jac_path: str, pkg_root: str, out_root: str, embed_src: bool
-) -> str;
-
-def seal_bootstrap(pkg_dir: Path, out_dir: Path, embed_src: bool) -> int;
-
 glob PRECOMPILED_KEEP_DIRS: tuple[str, ...] = ();
 
 def prune_stale_precompiled_dirs(precompiled_dir: Path, pyver: str) -> int;
@@ -115,7 +109,6 @@ def seal_finalize(
 
 def native_roots(pkg_name: str, units: list[str]) -> list[str];
 
-def kit_omissions(pkg_name: str) -> list[str];
 
 def _compiler_kernel_units -> set[str];
 
@@ -146,8 +139,7 @@ def write_manifest(
     modules: dict[str, dict[str, any]],
     payloads: (dict[str, str] | None) = None,
     app_meta: (dict[str, any] | None) = None,
-    native_record: (dict[str, any] | None) = None,
-    omits: (list[str] | None) = None
+    native_record: (dict[str, any] | None) = None
 );
 
 def _precompile_retire(served: int, rss_mb: int) -> bool;

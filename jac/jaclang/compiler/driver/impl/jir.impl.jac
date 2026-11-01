@@ -255,7 +255,8 @@ impl is_compiler_tree_path(source_path: str) -> bool {
         return False;
     }
     rel = resolved[len(base):].replace(os.sep, "/");
-    for digest_root in COMPILER_DIGEST_ROOTS {
+    (roots, _roster) = compiler_input_rules(_jaclang_pkg_dir);
+    for digest_root in roots {
         if rel == digest_root or rel.startswith(digest_root + "/") {
             return True;
         }
@@ -275,13 +276,34 @@ impl _module_codespace_mode(source_path: str) -> str {
     }
 }
 
-impl compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]] {
-    manifest = os.path.join(str(pkg_dir), "compiler_inputs.txt");
-    try {
-        return read_input_rules(manifest);
-    } except OSError {
-        return (COMPILER_DIGEST_ROOTS, COMPILER_DIGEST_ROSTER);
+impl read_input_rules(manifest_path: str) -> tuple[tuple[str, ...], tuple[str, ...]] {
+    with open(manifest_path, encoding="utf-8") as inputs {
+        lines = [
+            line.strip()
+            for line in inputs
+            if line.strip() and not line.lstrip().startswith("#")
+        ];
     }
+    roots = tuple(line for line in lines if not line.startswith("!"));
+    roster = tuple(line[1:] for line in lines if line.startswith("!"));
+    return (roots, roster);
+}
+
+impl is_roster_input(rel_path: str, roster: tuple[str, ...]) -> bool {
+    for entry in roster {
+        if rel_path == entry or rel_path.startswith(entry + "/") {
+            return True;
+        }
+    }
+    return False;
+}
+
+impl is_staging_rewritten(rel: str) -> bool {
+    return rel.replace(os.sep, "/").rsplit("/", 1)[-1] in STAGING_REWRITTEN_NAMES;
+}
+
+impl compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]] {
+    return read_input_rules(os.path.join(str(pkg_dir), "compiler_inputs.txt"));
 }
 
 impl compiler_source_files(pkg_dir: str) -> list[str] {
@@ -1483,7 +1505,7 @@ impl _sweep_once(cache_root: Path) {
         maybe_sweep_dir(
             cache_root, bucket("jir-modules").policy, keep={compiler_generation()}
         );
-        maybe_sweep("jir-bootstrap");
+        maybe_sweep("stage0");
     } except Exception {}
 }
 

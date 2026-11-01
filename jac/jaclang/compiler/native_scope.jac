@@ -249,7 +249,6 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.backends.native.codec_tables"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.kernel_facts"),
          NativeScopeEntry(module="jaclang.compiler.kernel_api"),
-         NativeScopeEntry(module="jaclang.compiler.source_tiers"),
          NativeScopeEntry(module="jaclang.compiler.tools.session_queries"),
          NativeScopeEntry(module="jaclang.compiler.backends.py.kernel_bytecode"),
          NativeScopeEntry(module="jaclang.compiler.backends.es.client_kernel_cache"),
@@ -307,7 +306,13 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          NativeScopeEntry(module="jaclang.compiler.backends.native.mir.lower"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.mir.rc"),
          NativeScopeEntry(module="jaclang.compiler.backends.native.mir.emit"),
-         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.backend")
+         NativeScopeEntry(module="jaclang.compiler.backends.native.mir.backend"),
+         NativeScopeEntry(module="jaclang.compiler.target_spec"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.na_compile_pass"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.link_glue"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.native_link"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.link_plan"),
+         NativeScopeEntry(module="jaclang.compiler.backends.native.kernel_stage0")
      ),
      KERNEL_ROOT_MODULE: str = "jaclang.compiler.kernel_module",
      KERNEL_ABI_CONTRACT_REL: tuple[str, ...] = (
@@ -317,6 +322,62 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          "compiler/backends/common/fmt_kernel.jac",
          "runtime/osp_tag.jac",
          "compiler/backends/native/region_abi.jac"
+     ),
+     NATIVE_ONLY_REL: tuple[str, ...] = (
+         "compiler/kernel_module.jac",
+         "compiler/jc_unit.jac",
+         "compiler/jc_materialize.jac",
+         "compiler/jc_ask.jac",
+         "compiler/backends/py/pyast_gen_pass.jac",
+         "compiler/backends/py/pyast_build.jac",
+         "compiler/backends/py/pyast_recipe.jac",
+         "compiler/backends/py/pyast_facts.jac",
+         "compiler/backends/py/kernel_bytecode.jac",
+         "compiler/backends/es/esast_gen_pass.jac",
+         "compiler/backends/es/es_unparse.jac",
+         "compiler/backends/es/estree.jac",
+         "compiler/backends/es/jsx_processor.jac",
+         "compiler/backends/es/view_ir.jac",
+         "compiler/backends/es/reactive_intent.jac",
+         "compiler/backends/es/scoped_styles.jac",
+         "compiler/backends/es/free_ident_audit.jac",
+         "compiler/backends/es/primitives_es.jac",
+         "compiler/backends/common/primitives.jac",
+         "compiler/types/type_evaluator.jac",
+         "compiler/types/types.jac",
+         "compiler/types/type_utils.jac",
+         "compiler/types/operations.jac",
+         "compiler/types/ownership.jac",
+         "compiler/types/properties.jac",
+         "compiler/types/fixed_width.jac",
+         "compiler/types/enum_utils.jac",
+         "compiler/types/ct_builtins.jac",
+         "compiler/types/ct_eval.jac",
+         "compiler/types/ct_format.jac",
+         "compiler/types/ct_int.jac",
+         "compiler/types/ct_ops.jac",
+         "compiler/types/ct_value.jac",
+         "compiler/types/builtin_extensions.jac",
+         "compiler/types/ts_decl_parser.jac",
+         "compiler/driver/module_analysis.jac",
+         "compiler/driver/module_compile.jac",
+         "compiler/driver/session_compile.jac",
+         "compiler/driver/context_passes.jac",
+         "dist/fused/embed.jac",
+         "dist/fused/_libc.jac"
+     ),
+     NATIVE_ONLY_DIR_REL: tuple[str, ...] = (
+         "runtime/na_stdlib",
+         "compiler/frontend/parser",
+         "compiler/passes",
+         "compiler/backends/native/mir",
+         "compiler/backends/native/llvm/ir"
+     ),
+     NATIVE_HOST_REL: tuple[str, ...] = ("compiler/passes/context.jac", ),
+     NATIVE_LOWERED_PATHS: tuple[str, ...] = (
+         "compiler/frontend/python",
+         "compiler/backends/py/jacpython",
+         "runtime/python"
      ),
      _SCOPE_SUFFIX_CACHE: list[str] = [],
      _SCOPE_SUFFIX_GEN: list[int] = [-1];
@@ -340,3 +401,9 @@ def scope_module_path(module: str) -> str;
 def native_scope_paths -> list[str];
 
 def kernel_root_path -> str;
+
+def is_native_only(rel_path: str) -> bool;
+
+def is_native_lowered(rel: str) -> bool;
+
+def native_only_module(module: str) -> bool;

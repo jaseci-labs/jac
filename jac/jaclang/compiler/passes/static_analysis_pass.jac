@@ -168,8 +168,6 @@ glob BUILTIN_NAMES: set[str] = {
          'Type': 'type'
      };
 
-def is_bootstrap_compiled_module(mod_path: str) -> bool;
-
 def is_ambient_provider_module(mod_path: str) -> bool;
 
 walker UnusedSymbolWalker(ScopeWalker) {

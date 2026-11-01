@@ -117,7 +117,6 @@ obj ProjectHost(HostServices) {
     def is_annex_path_of(candidate: str, base: str) -> bool;
     def package_init(directory: str) -> (str | None);
     def wiring_file(path: str) -> (str | None);
-    def is_seed_source(rel_path: str) -> bool;
     def wiring_records(digest: str) -> str;
     def keep_wiring_records(digest: str, text: str);
     def native_scan_record(path: str, digest: str) -> str;

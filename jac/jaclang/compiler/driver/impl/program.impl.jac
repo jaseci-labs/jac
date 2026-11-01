@@ -486,6 +486,7 @@ impl JacProgram.compile(
 impl JacProgram.build(
     self: JacProgram, file_path: str, use_str: (str | None) = None
 ) -> uni.Module {
+    guard_host_compile(f"building {file_path}");
     return active_host().build_module(self, file_path, use_str);
 }
 
@@ -570,6 +571,7 @@ impl JacProgram.parse_source(
     file_path: str,
     cancel_token: (CancelToken | None) = None
 ) -> uni.Module {
+    guard_host_compile(f"parsing {file_path}");
     had_error = False;
     if (file_path.endswith('.py') or file_path.endswith('.pyi')) {
         import from jaclang.compiler.passes.pyast_load_pass { parse_python_source }

@@ -8,7 +8,7 @@ this module that knowledge was re-derived in ~30 places as copy-pasted suffix
 tuples and hand-rolled ``endswith`` precedence chains (see issue #6858).
 
 This is **plain Python with no jaclang dependencies** so the pre-runtime
-bootstrap (``_jac_finder.py``, ``jac0.py``, ``meta_importer.py``) can import it,
+bootstrap (``_jac_finder.py``, ``stage0.py``, ``meta_importer.py``) can import it,
 exactly like the sibling ``cache_paths.py``. Jac code consumes it as a normal
 ``.py`` import::
 

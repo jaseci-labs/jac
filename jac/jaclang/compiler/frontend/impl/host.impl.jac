@@ -136,10 +136,6 @@ impl HostServices.wiring_file(path: str) -> (str | None) {
     return None;
 }
 
-impl HostServices.is_seed_source(rel_path: str) -> bool {
-    return False;
-}
-
 impl HostServices.wiring_records(digest: str) -> str {
     return "";
 }
@@ -352,6 +348,17 @@ impl mark_kernel_resident {
 
 impl kernel_resident -> bool {
     return bool(_KERNEL_RESIDENT);
+}
+
+impl guard_host_compile(what: str) {
+    if kernel_resident() {
+        return;
+    }
+    raise HostCompileError(
+        f"internal compiler error: {what} ran on the host. The kernel is the only "
+        "compiler: host code reaches the parser and the pass driver only through "
+        "a kernel request (compile, check, a session query or a kernel build)."
+    );
 }
 
 impl set_kernel_host_mode(mode: str) -> str {

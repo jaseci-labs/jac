@@ -196,7 +196,7 @@ test "a staging that ships the wiring rewritten keeps the checkout's identity" {
         write_compiler_identity
     }
     import from jaclang.compiler.driver.wiring { ARCH_FILE_NAME }
-    import from jaclang.bootstrap_manifest { is_staging_rewritten }
+    import from jaclang.compiler.driver.jir { is_staging_rewritten }
     import shutil;
     assert is_staging_rewritten(ARCH_FILE_NAME);
     with tempfile.TemporaryDirectory() as tmp {

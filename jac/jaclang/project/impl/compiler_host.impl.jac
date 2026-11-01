@@ -459,10 +459,6 @@ impl ProjectHost.keep_native_scan_record(path: str, digest: str, text: str) {
     maybe_sweep("jir-nativescan");
 }
 
-impl ProjectHost.is_seed_source(rel_path: str) -> bool {
-    return is_seed_source(rel_path);
-}
-
 impl ProjectHost.woven_module(
     path: str, program: (JacProgram | None)
 ) -> (Module | None) {

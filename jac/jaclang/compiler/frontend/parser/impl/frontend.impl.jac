@@ -140,6 +140,7 @@ impl parse_woven(
     early_context: str = "",
     load_kernel: bool = True
 ) -> tuple[Module, bool] {
+    guard_host_compile(f"parsing {file_path}");
     nat = active_host().native_parse(
         source_str, file_path, prog, annexes, early_context, load_kernel
     );

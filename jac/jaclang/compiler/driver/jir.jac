@@ -142,6 +142,15 @@ glob COMPILER_DIGEST_ROSTER_MARK: str = "roster",
      COMPILER_DIGEST_SKIP_DIRS: tuple[str, ...] = ("tests", "test", "__pycache__"),
      COMPILER_DIGEST_SKIP: tuple[str, ...] = ();
 
+glob COMPILER_IDENTITY_NAME: str = "compiler_identity.json",
+     STAGING_REWRITTEN_NAMES: tuple[str, ...] = ("archwire.jac", );
+
+def read_input_rules(manifest_path: str) -> tuple[tuple[str, ...], tuple[str, ...]];
+
+def is_roster_input(rel_path: str, roster: tuple[str, ...]) -> bool;
+
+def is_staging_rewritten(rel: str) -> bool;
+
 def compiler_input_rules(pkg_dir: str) -> tuple[tuple[str, ...], tuple[str, ...]];
 
 def compiler_source_files(pkg_dir: str) -> list[str];
