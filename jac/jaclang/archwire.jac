@@ -30885,9 +30885,8 @@ graph import scale {
         project_env_path
     }
     config.validation ++> [
-        runtime.cli.diagnostics.PlanValidator._check_config_keys {
-            validate_scale_config
-        },
+        runtime.cli.diagnostics.PlanValidator._check_config_keys
+            | tests.server.test_sso_grants { validate_scale_config },
         tests.apps.test_app_scale_overrides {
             STRICT_ENV,
             validate_app_scale_config,
@@ -31876,6 +31875,8 @@ graph import scale {
     sso.grants ++> [
         server.sso_ext { connections_for, disconnect_for, register_sso },
         tests.server.test_sso_grants {
+            REFRESH_LEASE_SECONDS,
+            REFRESH_REQUEST_SECONDS,
             _grant_context,
             _grant_secret,
             access_token_for,

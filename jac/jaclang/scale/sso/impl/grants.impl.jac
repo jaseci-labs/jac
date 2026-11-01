@@ -139,7 +139,9 @@ impl _refresh_claimed(
     provider: any = auth.get_sso(platform);
     now = time.time();
     try {
-        payload = await provider.refresh_grant(refresh);
+        payload: dict[str, any] = await asyncio.wait_for(
+            provider.refresh_grant(refresh), REFRESH_REQUEST_SECONDS
+        );
     } except GrantRefused {
         auth.users.drop_oauth_grant(user_id, platform, version);
         return '';

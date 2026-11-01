@@ -21,7 +21,7 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
     """,
          """
     CREATE TABLE IF NOT EXISTS identity_oauth_grants (
-        user_id  text NOT NULL,
+        user_id  text NOT NULL REFERENCES identity_users (user_id) ON DELETE CASCADE,
         platform text NOT NULL,
         doc      jsonb NOT NULL,
         version  bigint NOT NULL DEFAULT 1,
@@ -39,6 +39,9 @@ def _pg_json_default(o: object) -> str;
 
 
 def _pg_unique_violation(e: Exception) -> bool;
+
+
+def _pg_foreign_key_violation(e: Exception) -> bool;
 
 
 def _pg_load_doc(raw: any) -> dict[str, any];
@@ -132,9 +135,6 @@ impl PgIdentityStorage.identity_taken(value: str) -> bool {
 impl PgIdentityStorage.delete_user(user_id: str) -> bool {
     self.store.rows('DELETE FROM identity_lookups WHERE user_id = :u', {'u': user_id});
     self.store.rows('DELETE FROM sso_lookups WHERE user_id = :u', {'u': user_id});
-    self.store.rows(
-        'DELETE FROM identity_oauth_grants WHERE user_id = :u', {'u': user_id}
-    );
     rows = self.store.rows(
         'DELETE FROM identity_users WHERE user_id = :u RETURNING user_id',
         {'u': user_id}
@@ -204,20 +204,27 @@ impl PgIdentityStorage._get_oauth_grants(user_id: str) -> list[dict[str, any]] {
 }
 
 impl PgIdentityStorage._put_oauth_grant(user_id: str, grant: dict[str, any]) -> int {
-    rows = self.store.rows(
-        """
-        INSERT INTO identity_oauth_grants (user_id, platform, doc)
-        VALUES (:u, :p, CAST(:d AS jsonb))
-        ON CONFLICT (user_id, platform) DO UPDATE
-        SET doc = EXCLUDED.doc, version = identity_oauth_grants.version + 1
-        RETURNING version
-        """,
-        {
-            'u': user_id,
-            'p': str(grant.get('platform') or ''),
-            'd': json.dumps(_grant_doc(grant), `default=_pg_json_default)
+    try {
+        rows = self.store.rows(
+            """
+            INSERT INTO identity_oauth_grants (user_id, platform, doc)
+            VALUES (:u, :p, CAST(:d AS jsonb))
+            ON CONFLICT (user_id, platform) DO UPDATE
+            SET doc = EXCLUDED.doc, version = identity_oauth_grants.version + 1
+            RETURNING version
+            """,
+            {
+                'u': user_id,
+                'p': str(grant.get('platform') or ''),
+                'd': json.dumps(_grant_doc(grant), `default=_pg_json_default)
+            }
+        );
+    } except Exception as e {
+        if _pg_foreign_key_violation(e) {
+            return 0;
         }
-    );
+        raise;
+    }
     return int(rows[0][0]);
 }
 
@@ -477,6 +484,15 @@ impl _pg_json_default(o: object) -> str {
     return str(o);
 }
 
+
+impl _pg_foreign_key_violation(e: Exception) -> bool {
+    for arg in getattr(e, 'args', ()) {
+        if isinstance(arg, dict) and arg.get('C') == '23503' {
+            return True;
+        }
+    }
+    return False;
+}
 
 impl _pg_unique_violation(e: Exception) -> bool {
     for arg in getattr(e, 'args', ()) {

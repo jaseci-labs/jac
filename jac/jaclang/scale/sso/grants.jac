@@ -10,6 +10,7 @@ glob SEAL_PREFIX: str = 'v1.',
      SEAL_NONCE_BYTES: int = 16,
      SEAL_TAG_BYTES: int = 32,
      REFRESH_SKEW_SECONDS: int = 60,
+     REFRESH_REQUEST_SECONDS: float = 30.0,
      REFRESH_LEASE_SECONDS: int = 45,
      REFRESH_POLL_SECONDS: float = 0.1,
      _active: dict[str, any] = {};

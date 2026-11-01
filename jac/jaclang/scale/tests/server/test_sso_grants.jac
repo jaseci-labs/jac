@@ -601,3 +601,62 @@ test "unlinking the identity or deleting the user removes the grant" {
         }
     }
 }
+
+test "the provider scopes are a known setting of every provider" {
+    for platform in ["google", "apple", "github"] {
+        assert validate_scale_config(
+            {"sso": {platform: {"client_id": "id", "scopes": [CAL]}}}
+        )
+            == [] , platform;
+    }
+}
+
+test "a refresh ends before its claim can expire" {
+    assert REFRESH_REQUEST_SECONDS < REFRESH_LEASE_SECONDS;
+    with TemporaryDirectory() as tmpdir {
+        try {
+            (manager, user_id) = connected_store(tmpdir);
+            async def stalled(token: str) -> dict[str, any] {
+                await asyncio.sleep(30);
+                return {"access_token": "at-late", "expires_in": 3600};
+            }
+            with patch.object(
+                GoogleSSOProvider, "refresh_grant", AsyncMock(side_effect=stalled)
+            ), patch("jaclang.scale.sso.grants.REFRESH_REQUEST_SECONDS", 0.05) {
+                try {
+                    asyncio.run(access_token_for(user_id, "google"));
+                    assert False , "a stalled refresh was not cut off";
+                } except TimeoutError {}
+            }
+            kept: any = manager.oauth_grant(user_id, "google");
+            assert kept is not None and not kept.get("refresh_claimed_until");
+            manager.close();
+        } finally {
+            configure_identity(AuthSettings(), "");
+        }
+    }
+}
+
+test "a grant cannot outlive or be written for a missing user" {
+    with TemporaryDirectory() as tmpdir {
+        try {
+            (manager, user_id) = connected_store(tmpdir);
+            storage: any = manager._identity_storage;
+            assert storage._put_oauth_grant(
+                "no-such-user", {"platform": "google", "access_token": ""}
+            )
+                == 0;
+            assert storage._get_oauth_grants("no-such-user") == [];
+            assert storage._get_oauth_grants(user_id) != [];
+            storage.store.rows(
+                "DELETE FROM identity_users WHERE user_id = :u", {"u": user_id}
+            );
+            assert storage._get_oauth_grants(user_id) == [] , (
+                "the database left a grant behind for a deleted user"
+            );
+            manager.close();
+        } finally {
+            configure_identity(AuthSettings(), "");
+        }
+    }
+}
