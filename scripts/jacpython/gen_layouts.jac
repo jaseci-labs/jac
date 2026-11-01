@@ -13,8 +13,7 @@ cpython_api.jac it shares); it reads no header:
 
 The platform constants need `zig` (or `--zig`) to cross-compile their probe
 for each target, against that target's own pyconfig.h, which
-bootstrap/pyconfig_tool.zig writes from the build's probes; `--deps` names the
-vendored libraries those probes read (a JacPython build's python/build).
+bootstrap/pyconfig_tool.zig writes from the build's probes.
 
 - jaclang/runtime/python/layouts.jac: one foreign struct per layout in LAYOUTS
   (and the structs they embed by value), function-pointer slots as
@@ -6103,11 +6102,7 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
              "offsetof(_PyRuntimeState, threads._condattr_monotonic.ptr)",
              "i64"
          ),
-         (
-             "_PyRuntimeState_THREADS_CONDATTR_VAL",
-             "JAC_THREADS_CONDATTR_VAL",
-             "i64"
-         ),
+         ("_PyRuntimeState_THREADS_CONDATTR_VAL", "JAC_THREADS_CONDATTR_VAL", "i64"),
          (
              "PyInterpreterState_THREADS_STACKSIZE",
              "offsetof(PyInterpreterState, threads.stacksize)",
@@ -7519,22 +7514,9 @@ def render_platform(suffix: str, values: dict[str, int]) -> str {
 }
 
 # --------------------------------------------------------------- C toolchain
-# The vendored libraries' headers and archives of a local JacPython build,
-# for the configuration probes.
-def default_deps -> Path {
-    for deps in sorted((JAC / ".python-build/jacpython").glob("*/python/build")) {
-        if (deps / "include").is_dir() {
-            return deps;
-        }
-    }
-    sys.exit(
-        "No vendored libraries under jac/.python-build; run a JacPython build or pass --deps"
-    );
-}
-
 # Each platform's pyconfig.h, from the build's own probes run for that target
 # (bootstrap/pyconfig_tool.zig): {platform suffix: directory holding it}.
-def platform_configs(zig: str, deps: Path, scratch: Path) -> dict[str, Path] {
+def platform_configs(zig: str, scratch: Path) -> dict[str, Path] {
     configs: dict[str, Path] = {};
     for (suffix, target, _) in PLATFORMS {
         (system, arch) = suffix.split(".");
@@ -7547,7 +7529,6 @@ def platform_configs(zig: str, deps: Path, scratch: Path) -> dict[str, Path] {
                 str(JAC / "bootstrap/pyconfig_tool.zig"),
                 "--",
                 zig,
-                str(deps),
                 str(out),
                 "macos" if system == "darwin" else system,
                 arch,
@@ -7679,9 +7660,6 @@ with entry:__main__ {
         description="Check the Jac object layouts against the generated headers"
     );
     parser.add_argument("--cc", help="C compiler command");
-    parser.add_argument(
-        "--deps", help="a JacPython build's python/build (the vendored libraries)"
-    );
     parser.add_argument("--zig", help="zig, for the platform constants");
     parser.set_defaults(cc="cc", zig="zig");
     parser.add_argument("--check", action="store_true");
@@ -7697,11 +7675,10 @@ with entry:__main__ {
         sys.exit(f"gen_layouts: layouts.jac does not declare {', '.join(missing)}");
     }
     values = {name: declared[name][1] for (name, _, _) in CONSTANTS};
-    deps = Path(args.deps) if args.deps else default_deps();
     current = True;
     with tempfile.TemporaryDirectory() as scratch {
         headers = stage_headers(Path(scratch));
-        configs = platform_configs(args.zig, deps, Path(scratch));
+        configs = platform_configs(args.zig, Path(scratch));
         platform_values: dict[str, dict[str, int]] = {};
         for (suffix, target, _) in PLATFORMS {
             platform_values[suffix] = extract(
@@ -7710,7 +7687,9 @@ with entry:__main__ {
             );
         }
         check = render_check(values, platform_values);
-        verify(check, probe_flags(headers, configs[host_suffix()]), shlex.split(args.cc));
+        verify(
+            check, probe_flags(headers, configs[host_suffix()]), shlex.split(args.cc)
+        );
     }
     current = write_or_check(CHECK, check, args.check, COMMAND) and current;
     for (suffix, _, _) in PLATFORMS + [("", "", "")] {

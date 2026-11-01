@@ -93,13 +93,15 @@ the seed pinned under `"jacpython-seed"` in `sources.json`
 (`zig build jacpython-seed-pack` makes one). No installed Python, Jac, or
 python-build-standalone distribution is needed. Build hosts need Zig 0.16.0,
 make, Perl (for the third-party libraries), a POSIX shell, and network access.
-macOS also needs the SDK provided by Xcode command line tools.
+macOS also needs the SDK provided by Xcode command line tools, for the link.
 
 JacPython's native object is the Jac compiler's output for the replaced parts
-of CPython. One x86_64 machine can lower it for every platform
-(`zig build jacpython-object -Dtarget-platform=P`), and a build adopts it with
-`-Djacpython-object=DIR`; an adopting build for its own platform runs Python
-only on the interpreter it builds. The build rejects interpreted demotions; no
+of CPython. One x86_64 Linux machine lowers it for every platform
+(`zig build jacpython-object -Dtarget-platform=P`), with no macOS SDK:
+pyconfig.h is probed against Zig's own headers on every machine. Each
+platform's JacPython is built only there, and a build adopts the object with
+`-Djacpython-object=DIR`; an adopting build runs Python only on the
+interpreter it builds. The build rejects interpreted demotions; no
 replacement bytecode, compiler seed, or Python adapter ships in the payload.
 `zig build build-python` builds only the runtime and its native libraries.
 Its cache in `.python-build/jacpython/<platform>` contains the interpreter,
@@ -107,7 +109,7 @@ shared library, stdlib, licenses, CA certificates, and static archives for Jac's
 native backend; `<platform>.vendored` holds the third-party libraries
 `bootstrap/python/build.sh` builds, and `seeds/` the unpacked seeds.
 A content fingerprint covers the source checksums, source allowlist, recipes,
-Zig version, target, and macOS SDK version. A cache hit skips compilation; a miss builds from
+Zig version, and target. A cache hit skips compilation; a miss builds from
 source and checks relocation before marking the distribution complete.
 `JAC_PYTHON_JOBS` controls build parallelism (default 4).
 

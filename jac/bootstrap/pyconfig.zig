@@ -14,10 +14,11 @@ pub const Arch = enum { x86_64, aarch64 };
 pub const Target = struct {
     os: Os,
     arch: Arch,
-    /// The C compiler command: zig cc, -target and, on macOS, the SDK flags.
+    /// The C compiler command: zig cc and -target, never a macOS SDK. Zig's
+    /// own headers and libSystem stubs make a target's probes the same on
+    /// every machine, so an object lowered on Linux carries the pyconfig.h
+    /// its macOS build probes.
     cc: []const []const u8,
-    /// The vendored libraries' headers and archives (ffi.h, zlib.h, ...).
-    deps: []const u8,
     /// The compiler's environment (its cache directories, deployment target).
     environ: ?*const std.process.Environ.Map = null,
 };
@@ -250,8 +251,6 @@ fn source(a: Allocator, p: Probe, pre: []const u8) !struct { text: []const u8, s
 
 fn runRound(io: Io, a: Allocator, target: Target, dir: []const u8, results: *const Results, batch: []*Job, jobs: usize) !void {
     const pre = try prelude(a, results);
-    const include_flag = try std.fmt.allocPrint(a, "-I{s}/include", .{target.deps});
-    const lib_flag = try std.fmt.allocPrint(a, "-L{s}/lib", .{target.deps});
     var start: usize = 0;
     while (start < batch.len) {
         const end = @min(batch.len, start + @max(jobs, 1));
@@ -272,7 +271,6 @@ fn runRound(io: Io, a: Allocator, target: Target, dir: []const u8, results: *con
             var argv: std.ArrayList([]const u8) = .empty;
             try argv.appendSlice(a, target.cc);
             try argv.appendSlice(a, &probe_cflags);
-            try argv.append(a, include_flag);
             switch (src.step) {
                 .compile => try argv.append(a, "-c"),
                 .assemble => try argv.append(a, "-S"),
@@ -280,7 +278,6 @@ fn runRound(io: Io, a: Allocator, target: Target, dir: []const u8, results: *con
             }
             try argv.appendSlice(a, &.{ c_path, "-o", out_path });
             if (src.step == .link) {
-                try argv.append(a, lib_flag);
                 if (p.kind == .lib) try argv.append(a, p.text);
                 var libs = std.mem.tokenizeScalar(u8, p.libs, ' ');
                 while (libs.next()) |l| try argv.append(a, l);
@@ -470,5 +467,19 @@ test "every probe name is unique per target and every decision is sane" {
         if (p.kind == .value) continue;
         try std.testing.expect(p.name.len > 0);
         if (p.kind == .lib) try std.testing.expect(p.symbol.len > 0);
+    }
+}
+
+test "no probe reads the vendored libraries: what they provide is decided" {
+    for (probes) |p| {
+        if (p.kind == .value) continue;
+        for ([_][]const u8{ "ffi.h", "-lffi", "-lsqlite3", "zlib.h", "bzlib.h", "lzma.h", "zstd.h", "zdict.h" }) |vendored| {
+            for ([_][]const u8{ p.text, p.includes orelse "", p.libs }) |field| {
+                if (std.mem.indexOf(u8, field, vendored) != null or (p.kind == .lib and std.mem.eql(u8, p.text, "-lz"))) {
+                    std.debug.print("{s} probes the vendored {s}\n", .{ p.name, vendored });
+                    return error.TestProbeReadsVendoredLibrary;
+                }
+            }
+        }
     }
 }

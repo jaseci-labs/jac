@@ -72,10 +72,14 @@ The keys leave the seed out, so publishing one rebuilds nothing.
 
 Only linux-x86_64 has a seed. As `build-binaries.yml` does with the compiler
 kernel, one x86_64 job lowers `jacpython.o` for every platform with
-`zig build jacpython-object -Dtarget-platform=P`, and each platform's build
-adopts it with `-Djacpython-object=DIR`. An adopting build for its own
-platform runs Python only on the interpreter it builds (sysconfig,
+`zig build jacpython-object -Dtarget-platform=P`, and each platform's build,
+on that platform, adopts it with `-Djacpython-object=DIR`. An adopting build
+runs Python only on the interpreter it builds (sysconfig,
 `build-details.json`, compileall, finalize, smoke), so it needs no seed.
+Nothing the object depends on reads a macOS SDK: pyconfig.h is probed with
+Zig's own headers and libSystem stubs, and what the vendored libraries
+provide is decided rather than probed, so Linux and macOS write the same
+pyconfig.h for a macOS target. The SDK joins only the macOS link.
 
 The third-party libraries (OpenSSL, zlib, zstd, sqlite, bzip2, xz, libffi,
 mpdecimal, expat) are built by `bootstrap/python/build.sh` into

@@ -1,17 +1,9 @@
-"""Remove build-host paths from the installed interpreter's extension metadata.
-
-The install prefix is the running interpreter's, or the first argument when
-another interpreter finalizes it (a JacPython cross-built for a platform this
-machine cannot run).
-"""
+"""Remove build-host paths from the installed interpreter's extension metadata."""
 import pathlib
 import pprint
 import sys
 
-if len(sys.argv) > 1:
-    prefix = pathlib.Path(sys.argv[1]).resolve()
-else:
-    prefix = pathlib.Path(sys.executable).resolve().parents[1]
+prefix = pathlib.Path(sys.executable).resolve().parents[1]
 work = prefix.parents[1]
 for config in (prefix / "lib/python3.14").glob("_sysconfigdata_*.py"):
     namespace = {}

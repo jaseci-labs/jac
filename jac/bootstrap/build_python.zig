@@ -387,12 +387,12 @@ pub fn main(init: std.process.Init) !void {
         seed.die("build-python: " ++ adopt_flag ++ " and " ++ object_only_flag ++ " exclude each other", .{});
     const platform = args[1];
     if (!supported(platform)) seed.die("build-python: unsupported platform {s}", .{platform});
-    // A JacPython for another platform is cross-built on this machine's own
-    // interpreter: the previous output for this machine's platform beside
-    // the destination, or the seed.
     const build_platform = hostPlatform();
     if (!supported(build_platform)) seed.die("build-python: JacPython builds on linux-x86_64, linux-aarch64, macos-x86_64 or macos-aarch64, not {s}", .{build_platform});
-    const cross = !std.mem.eql(u8, platform, build_platform);
+    // A JacPython is built on its own platform. Any machine lowers any
+    // platform's native object, which that platform's build adopts.
+    if (object_out == null and !std.mem.eql(u8, platform, build_platform))
+        seed.die("build-python: a {s} JacPython is built on {s}. Here, lower its native object (`zig build jacpython-object -Dtarget-platform={s}`) and adopt it there with -Djacpython-object.", .{ platform, platform, platform });
     const dest = args[2];
     const root = args[3];
     // Seeds and source archives are cached beside the outputs.
@@ -410,9 +410,31 @@ pub fn main(init: std.process.Init) !void {
         seed.log("build-python: packed the seed {s}\n  sha256 {s}\n  pin it as \"" ++ seed_pins ++ "\" in bootstrap/python/sources.json once it is published", .{ out, &digest });
         return;
     }
-    const host_platform_dest = if (cross) try std.fs.path.join(a, &.{ std.fs.path.dirname(dest) orelse ".", build_platform }) else dest;
     const pins = try readPins(io, a, root);
     const pin = (pins.sources.get("cpython") orelse return error.MissingCPythonSource).version orelse return error.MissingCPythonVersion;
+    const work = try std.fmt.allocPrint(a, "{s}.work", .{dest});
+    var options: build_jacpython.Options = .{
+        .platform = platform,
+        .work = work,
+        .zig = args[4],
+        .recipe = try std.fs.path.join(a, &.{ root, "bootstrap/python" }),
+        .root = root,
+        .jobs = try jobCount(init.environ_map),
+        .environ = init.environ_map,
+        .object_tools = objectTools,
+        .adopt_object = adopt,
+        .object_out = object_out,
+    };
+    // Only the native object: it is lowered on this machine's JacPython, for
+    // any platform, from the pruned CPython tree alone. The output tree, the
+    // vendored libraries and the keys are left alone.
+    if (object_out != null) {
+        const host_dest = try std.fs.path.join(a, &.{ std.fs.path.dirname(dest) orelse ".", build_platform });
+        options.host = (try buildHost(io, init.gpa, a, choice, host_dest, cache, build_platform, pins, pin)).tree;
+        try runBuild(io, init.gpa, a, root, pins, options, cache);
+        try Io.Dir.cwd().deleteTree(io, work);
+        return;
+    }
     const smoke = try std.fs.path.join(a, &.{ root, "bootstrap/python/smoke.py" });
     const key = try buildKey(io, a, platform, root);
     const vendored = try vendoredKey(io, a, platform, root);
@@ -425,7 +447,7 @@ pub fn main(init: std.process.Init) !void {
     var adopted: ?build_jacpython.ObjectManifest = null;
     if (adopt) |given| {
         const dir = if (std.mem.endsWith(u8, given, ".o")) std.fs.path.dirname(given) orelse "." else given;
-        adopt = dir;
+        options.adopt_object = dir;
         const tools = try objectTools(io, a, root, try build_jacpython.loweredSources(io, a, dir));
         switch (try build_jacpython.checkObject(io, a, dir, .{ .platform = platform, .tools = &tools, .root = root })) {
             .refused => |why| seed.die("build-python: refusing the prebuilt native object: {s}", .{why}),
@@ -438,88 +460,68 @@ pub fn main(init: std.process.Init) !void {
         const linked = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ dest, "python/build/jacpython-native-sha256" }), a, .limited(128)) catch "";
         break :blk std.mem.eql(u8, std.mem.trim(u8, linked, " \r\n"), m.object);
     } else true;
-    if (object_out == null and links_adopted and std.mem.eql(u8, old, &key) and seed.fileExists(io, python)) {
-        if (!cross) try runSmoke(io, python, smoke);
+    if (links_adopted and std.mem.eql(u8, old, &key) and seed.fileExists(io, python)) {
+        try runSmoke(io, python, smoke);
         seed.log("build-python: cached {s} ({s})", .{ platform, key[0..16] });
         return;
     }
     const sources_stamp = try std.fs.path.join(a, &.{ dest, "build-key-sources" });
-    if (object_out == null and reuse and seed.fileExists(io, python)) {
+    if (reuse and seed.fileExists(io, python)) {
         if (try sourcesKey(io, a, platform, root, dest)) |lowered| {
             const recorded = Io.Dir.cwd().readFileAlloc(io, sources_stamp, a, .limited(128)) catch "";
             if (std.mem.eql(u8, recorded, &lowered)) {
-                if (!cross) try runSmoke(io, python, smoke);
+                try runSmoke(io, python, smoke);
                 seed.log("build-python: reusing {s}; the sources it was lowered from are unchanged ({s})", .{ platform, lowered[0..16] });
                 return;
             }
         }
     }
-    // Something is built: first the vendored libraries for the target, then
-    // the interpreter the build runs on. That host lowers the native object,
-    // and runs the Python of a build for a platform this machine cannot run.
-    // A build that adopts an object for this machine's platform runs Python
-    // only on the interpreter it builds, and has no host.
-    const vendored_tree = try vendoredLibraries(io, init.gpa, a, platform, dest, root, args[4], pins, &vendored);
-    var host_tree: ?[]const u8 = null;
+    // Something is built: first the vendored libraries, then the interpreter
+    // the build runs on, which lowers the native object. A build that adopts
+    // an object runs Python only on the interpreter it builds, and has none.
+    options.vendored = try vendoredLibraries(io, init.gpa, a, platform, dest, root, args[4], pins, &vendored);
     var provenance: []const u8 = "";
-    if (adopted == null or cross) {
-        const host = try buildHost(io, init.gpa, a, choice, host_platform_dest, cache, build_platform, pins, pin);
-        host_tree = host.tree;
+    if (adopted) |m| {
+        provenance = try std.fmt.allocPrint(a, "adopted native object {s} lowered on {s}\n", .{ m.object, m.lowered_on });
+    } else {
+        const host = try buildHost(io, init.gpa, a, choice, dest, cache, build_platform, pins, pin);
+        options.host = host.tree;
         provenance = host.provenance;
     }
-    if (cross) provenance = try std.fmt.allocPrint(a, "{s}cross-built on {s}\n", .{ provenance, build_platform });
-    if (adopted) |m| provenance = try std.fmt.allocPrint(a, "{s}adopted native object {s} lowered on {s}\n", .{ provenance, m.object, m.lowered_on });
-    const work = try std.fmt.allocPrint(a, "{s}.work", .{dest});
-    // A failed build never produces the completion stamp or replaces a good tree.
-    try Io.Dir.cwd().deleteTree(io, work);
-    try Io.Dir.cwd().createDirPath(io, work);
-    try extractSources(io, init.gpa, a, root, work, pins, .cpython);
-    build_jacpython.build(io, a, .{
-        .platform = platform,
-        .work = work,
-        .zig = args[4],
-        .recipe = try std.fs.path.join(a, &.{ root, "bootstrap/python" }),
-        .host = host_tree,
-        .vendored = vendored_tree,
-        .cross = cross,
-        .root = root,
-        .jobs = try jobCount(init.environ_map),
-        .environ = init.environ_map,
-        .object_tools = objectTools,
-        .adopt_object = adopt,
-        .object_out = object_out,
-    }) catch |err| {
-        if (err == error.NativeObjectRefused)
-            seed.die("build-python: the prebuilt native object was refused (see above); logs at {s}/logs", .{work});
-        // A runtime that builds the next one can carry its own defect into
-        // the build; another JacPython rules that out.
-        if (host_tree) |tree|
-            seed.log("build-python: this build ran on the JacPython at {s}; if that runtime is at fault, name another with " ++ host_flag ++ "<path> (zig build -Djacpython-host=...), such as the pinned seed under {s}/seeds", .{ tree, cache });
-        seed.die("build-python: build failed ({s}); logs at {s}/logs", .{ @errorName(err), work });
-    };
-    // Only the object was wanted: the output tree stays as it was.
-    if (object_out != null) {
-        try Io.Dir.cwd().deleteTree(io, work);
-        return;
-    }
+    try runBuild(io, init.gpa, a, root, pins, options, cache);
     // Cache only the runtime and link archives, not intermediate objects or sources.
     for ([_][]const u8{ "src", "deps", "bin", "absent-inputs" }) |rel| {
         try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, rel }));
     }
     // The vendored libraries were built under this key (vendoredLibraries).
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ work, vendored_record }), .data = &vendored });
-    if (provenance.len > 0) {
-        try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ work, "build-host" }), .data = provenance });
-    }
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ work, "build-host" }), .data = provenance });
     try Io.Dir.cwd().deleteTree(io, dest);
     try Io.Dir.cwd().rename(work, Io.Dir.cwd(), dest, io);
     // Verify relocation before allowing a cache hit on the next invocation.
-    // A cross-built runtime is checked on its target.
-    if (!cross) try runSmoke(io, python, smoke);
+    try runSmoke(io, python, smoke);
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp_path, .data = &key });
     if (try sourcesKey(io, a, platform, root, dest)) |lowered| {
         try Io.Dir.cwd().writeFile(io, .{ .sub_path = sources_stamp, .data = &lowered });
     }
+}
+
+// Extract the pruned CPython tree into a fresh work tree and run
+// build_jacpython.zig there. A failed build never produces the completion
+// stamp or replaces a good tree.
+fn runBuild(io: Io, gpa: std.mem.Allocator, a: std.mem.Allocator, root: []const u8, pins: Pins, options: build_jacpython.Options, cache: []const u8) !void {
+    try Io.Dir.cwd().deleteTree(io, options.work);
+    try Io.Dir.cwd().createDirPath(io, options.work);
+    try extractSources(io, gpa, a, root, options.work, pins, .cpython);
+    build_jacpython.build(io, a, options) catch |err| {
+        if (err == error.NativeObjectRefused)
+            seed.die("build-python: the prebuilt native object was refused (see above); logs at {s}/logs", .{options.work});
+        // A runtime that builds the next one can carry its own defect into
+        // the build; another JacPython rules that out.
+        if (options.host) |tree|
+            seed.log("build-python: this build ran on the JacPython at {s}; if that runtime is at fault, name another with " ++ host_flag ++ "<path> (zig build -Djacpython-host=...), such as the pinned seed under {s}/seeds", .{ tree, cache });
+        seed.die("build-python: build failed ({s}); logs at {s}/logs", .{ @errorName(err), options.work });
+    };
 }
 
 fn extractTarGz(gpa: std.mem.Allocator, io: Io, archive: []const u8, dir: Io.Dir, strip: u32) !void {
@@ -565,8 +567,7 @@ fn extractSources(io: Io, gpa: std.mem.Allocator, a: std.mem.Allocator, root: []
     }
 }
 
-// The vendored libraries a build links and ships: build.sh compiles them for
-// the target (cross-compiling them for a platform this machine cannot run)
+// The vendored libraries a build links and ships: build.sh compiles them
 // into <dest>.vendored, laid out as an output's python/build and
 // python/licenses. They are reused while their key holds, from there or from
 // the previous output, which carries them.
@@ -680,15 +681,12 @@ fn sourcesKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
     return std.fmt.bytesToHex(digest, .lower);
 }
 
-/// The target and the toolchain every C translation uses.
-fn hashToolchain(io: Io, a: std.mem.Allocator, platform: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
+/// The target and the toolchain every C translation uses. The macOS SDK is
+/// not named: nothing the native object depends on reads it, so every
+/// machine keys a target alike (CI's cache keys name the SDK the link used).
+fn hashToolchain(platform: []const u8, hash: *std.crypto.hash.sha2.Sha256) void {
     hash.update(platform);
     hash.update(builtin.zig_version_string);
-    if (std.mem.startsWith(u8, platform, "macos-")) {
-        const sdk = try std.process.run(a, io, .{ .argv = &.{ "xcrun", "--sdk", "macosx", "--show-sdk-version" } });
-        if (sdk.term != .exited or sdk.term.exited != 0) return error.MissingMacOSSDK;
-        hash.update(std.mem.trim(u8, sdk.stdout, " \r\n"));
-    }
 }
 
 /// What the vendored libraries' archives, headers, notices and CA bundle are
@@ -696,7 +694,7 @@ fn hashToolchain(io: Io, a: std.mem.Allocator, platform: []const u8, hash: *std.
 /// whose record differs are built again (vendoredLibraries).
 fn vendoredKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8) ![64]u8 {
     var hash = std.crypto.hash.sha2.Sha256.init(.{});
-    try hashToolchain(io, a, platform, &hash);
+    hashToolchain(platform, &hash);
     try hashPins(io, a, root, &hash);
     hash.update("bootstrap/python/build.sh");
     hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, "bootstrap/python/build.sh" }), a, .unlimited));
@@ -706,14 +704,7 @@ fn vendoredKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const
 }
 
 fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
-    try hashToolchain(io, a, platform, hash);
-    // A runtime cross-built for this platform elsewhere is a seed: its key
-    // differs from the one a build here computes, so the target builds its
-    // own on it instead of taking it as cached.
-    if (!std.mem.eql(u8, platform, hostPlatform())) {
-        hash.update("cross-built on");
-        hash.update(hostPlatform());
-    }
+    hashToolchain(platform, hash);
     try hashPins(io, a, root, hash);
     for (inputs) |path| {
         const full = try std.fs.path.join(a, &.{ root, path });
@@ -1161,6 +1152,8 @@ test "the build key follows the compiler, the recipe and the archives' pins, not
     try std.testing.expectEqual(before_host_key, try buildKey(io, a, hostPlatform(), root));
     try dir.writeFile(io, .{ .sub_path = "bootstrap/python/sources.json", .data = test_pins_new_cpython });
     try std.testing.expect(!std.mem.eql(u8, &before_host_key, &(try buildKey(io, a, hostPlatform(), root))));
+    // A macOS key needs no SDK, so any machine computes it.
+    try std.testing.expect(!std.mem.eql(u8, &(try buildKey(io, a, "macos-aarch64", root)), &(try buildKey(io, a, "linux-aarch64", root))));
 }
 
 test "a PR may reuse a runtime whose recorded lowered sources are unchanged" {
@@ -1450,6 +1443,10 @@ test "the vendored libraries' key follows their pins and build.sh, not the runti
     try std.testing.expect(!std.mem.eql(u8, &before, &pinned));
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/build.sh", .data = "new recipe" });
     try std.testing.expect(!std.mem.eql(u8, &pinned, &(try vendoredKey(io, a, hostPlatform(), root))));
+    // Every platform keys on any machine, without an SDK, and apart.
+    const mac = try vendoredKey(io, a, "macos-aarch64", root);
+    try std.testing.expect(!std.mem.eql(u8, &mac, &(try vendoredKey(io, a, "macos-x86_64", root))));
+    try std.testing.expect(!std.mem.eql(u8, &mac, &(try vendoredKey(io, a, "linux-aarch64", root))));
 }
 
 test "every release platform's native object triple is prepare_native.py's" {

@@ -3,16 +3,11 @@
 CPython's `make all` runs Tools/build/generate-build-details.py with the
 interpreter it just built, and `make install` copies the file it writes into
 the library directory. JacPython keeps no Tools/build: build_jacpython.zig
-runs this generator with the pinned build-time CPython between those two
-steps. The
-values the upstream script reads from sysconfig come from the build's own
-sysconfig data (the _sysconfigdata module in the build directory); those it
-reads from the running interpreter (sys.version_info, sys.implementation and
-importlib's suffix lists) are the host's, which is the same CPython release
-built with the same configuration, as a cross build's build Python is. A host
-of another platform reports its own platform-tagged suffix; the build's
-EXT_SUFFIX takes its place, and get_platform() reads the target from
-_PYTHON_HOST_PLATFORM.
+runs this generator on the interpreter it just built, between those two
+steps. The values the upstream script reads from sysconfig come from the
+build's own sysconfig data (the _sysconfigdata module in the build
+directory); the rest (sys.version_info, sys.implementation and importlib's
+suffix lists) from the running interpreter.
 
     jac run scripts/jacpython/gen_build_details.jac \\
         --sysconfig <build dir>/_sysconfigdata_<...>.py --output <build dir>/build-details.json

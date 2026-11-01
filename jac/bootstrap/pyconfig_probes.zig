@@ -38,6 +38,24 @@ pub const probes = [_]Probe{
     .{ .name = "WITH_NEXT_FRAMEWORK", .kind = .value, .value = "" },
     .{ .name = "WITH_PYMALLOC", .kind = .value },
     .{ .name = "WITH_VALGRIND", .kind = .value, .value = "" },
+    // The vendored libraries are pinned and built for every target, so what
+    // configure finds in them is decided here rather than probed: a probe
+    // would need the target's own archives, which a machine lowering another
+    // platform's object does not build. configure is handed each library's
+    // flags, so it checks none of their headers; libffi 3.4 has complex
+    // types on every release target.
+    .{ .name = "_Py_FFI_SUPPORT_C_COMPLEX", .kind = .value },
+    .{ .name = "HAVE_FFI_CLOSURE_ALLOC", .kind = .value },
+    .{ .name = "HAVE_FFI_PREP_CIF_VAR", .kind = .value },
+    .{ .name = "HAVE_FFI_PREP_CLOSURE_LOC", .kind = .value },
+    .{ .name = "HAVE_LIBSQLITE3", .kind = .value },
+    .{ .name = "PY_SQLITE_HAVE_SERIALIZE", .kind = .value },
+    .{ .name = "HAVE_ZLIB_COPY", .kind = .value },
+    .{ .name = "HAVE_BZLIB_H", .kind = .value, .value = "" },
+    .{ .name = "HAVE_LZMA_H", .kind = .value, .value = "" },
+    .{ .name = "HAVE_ZDICT_H", .kind = .value, .value = "" },
+    .{ .name = "HAVE_ZLIB_H", .kind = .value, .value = "" },
+    .{ .name = "HAVE_ZSTD_H", .kind = .value, .value = "" },
     .{ .name = "USE_COMPUTED_GOTOS", .kind = .value, .value = "" },
     .{ .name = "_PYTHONFRAMEWORK", .kind = .value, .value = "\"\"" },
     .{ .name = "_PYTHREAD_NAME_MAXLEN", .kind = .value, .value = "15", .os = .linux },
@@ -143,17 +161,6 @@ pub const probes = [_]Probe{
     \\    goto *targets[0];
     \\    return 1;
     \\}
-    \\
-    },
-    // configure runs a complex call through libffi; the vendored libffi's
-    // own record of complex support stands in for it.
-    .{ .name = "_Py_FFI_SUPPORT_C_COMPLEX", .kind = .link, .libs = "-lffi", .includes =
-    \\#include <complex.h>
-    \\#include <ffi.h>
-    \\#ifndef FFI_TARGET_HAS_COMPLEX_TYPE
-    \\#error no complex types
-    \\#endif
-    \\int main(void) { ffi_type *t = &ffi_type_complex_double; return t->size == 0; }
     \\
     },
     // The byte order of doubles (AX_C_FLOAT_WORDS_BIGENDIAN).
@@ -366,9 +373,6 @@ pub const probes = [_]Probe{
     .{ .name = "HAVE_LOGIN_TTY", .kind = .func, .text = "login_tty", .libs = "-lutil", .os = .linux },
     .{ .name = "HAVE_LOGIN_TTY", .kind = .func, .text = "login_tty" },
     // The vendored libraries (LIBSQLITE3_LIBS and ZLIB_LIBS).
-    .{ .name = "HAVE_LIBSQLITE3", .kind = .lib, .text = "-lsqlite3", .symbol = "sqlite3_bind_double", .libs = "-lm -lpthread" },
-    .{ .name = "PY_SQLITE_HAVE_SERIALIZE", .kind = .lib, .text = "-lsqlite3", .symbol = "sqlite3_serialize", .libs = "-lm -lpthread" },
-    .{ .name = "HAVE_ZLIB_COPY", .kind = .lib, .text = "-lz", .symbol = "inflateCopy" },
     .{ .name = "WITH_LIBINTL", .kind = .lib, .text = "-lintl", .symbol = "textdomain" },
     // AC_HEADER_DIRENT stops at the first header that declares DIR.
     .{ .name = "HAVE_DIRENT_H", .kind = .header, .text = "dirent.h" },
@@ -428,7 +432,6 @@ pub const probes = [_]Probe{
     .{ .name = "HAVE_BIND_TEXTDOMAIN_CODESET", .kind = .func, .text = "bind_textdomain_codeset" },
     .{ .name = "HAVE_BLUETOOTH_BLUETOOTH_H", .kind = .header, .text = "bluetooth/bluetooth.h" },
     .{ .name = "HAVE_BLUETOOTH_H", .kind = .header, .text = "bluetooth.h" },
-    .{ .name = "HAVE_BZLIB_H", .kind = .header, .text = "bzlib.h" },
     .{ .name = "HAVE_CHMOD", .kind = .func, .text = "chmod" },
     .{ .name = "HAVE_CHOWN", .kind = .func, .text = "chown" },
     .{ .name = "HAVE_CHROOT", .kind = .address, .text = "chroot", .includes = "#include <unistd.h>\n" },
@@ -489,9 +492,6 @@ pub const probes = [_]Probe{
     .{ .name = "HAVE_FDOPENDIR", .kind = .func, .text = "fdopendir" },
     .{ .name = "HAVE_FDWALK", .kind = .func, .text = "fdwalk" },
     .{ .name = "HAVE_FEXECVE", .kind = .func, .text = "fexecve" },
-    .{ .name = "HAVE_FFI_CLOSURE_ALLOC", .kind = .address, .text = "ffi_closure_alloc", .includes = "#include <ffi.h>\n" },
-    .{ .name = "HAVE_FFI_PREP_CIF_VAR", .kind = .address, .text = "ffi_prep_cif_var", .includes = "#include <ffi.h>\n" },
-    .{ .name = "HAVE_FFI_PREP_CLOSURE_LOC", .kind = .address, .text = "ffi_prep_closure_loc", .includes = "#include <ffi.h>\n" },
     .{ .name = "HAVE_FLOCK", .kind = .func, .text = "flock" },
     .{ .name = "HAVE_FORK", .kind = .func, .text = "fork" },
     .{ .name = "HAVE_FORK1", .kind = .func, .text = "fork1" },
@@ -599,7 +599,6 @@ pub const probes = [_]Probe{
     .{ .name = "HAVE_LOG2", .kind = .func, .text = "log2" },
     .{ .name = "HAVE_LSTAT", .kind = .func, .text = "lstat" },
     .{ .name = "HAVE_LUTIMES", .kind = .func, .text = "lutimes" },
-    .{ .name = "HAVE_LZMA_H", .kind = .header, .text = "lzma.h" },
     .{ .name = "HAVE_MADVISE", .kind = .func, .text = "madvise" },
     .{ .name = "HAVE_MBRTOWC", .kind = .func, .text = "mbrtowc" },
     .{ .name = "HAVE_MEMFD_CREATE", .kind = .address, .text = "memfd_create", .includes = "#ifdef HAVE_SYS_MMAN_H\n#include <sys/mman.h>\n#endif\n#ifdef HAVE_SYS_MEMFD_H\n#include <sys/memfd.h>\n#endif\n" },
@@ -833,9 +832,6 @@ pub const probes = [_]Probe{
     .{ .name = "HAVE_WCSXFRM", .kind = .func, .text = "wcsxfrm" },
     .{ .name = "HAVE_WMEMCMP", .kind = .func, .text = "wmemcmp" },
     .{ .name = "HAVE_WRITEV", .kind = .func, .text = "writev" },
-    .{ .name = "HAVE_ZDICT_H", .kind = .header, .text = "zdict.h" },
-    .{ .name = "HAVE_ZLIB_H", .kind = .header, .text = "zlib.h" },
-    .{ .name = "HAVE_ZSTD_H", .kind = .header, .text = "zstd.h" },
     .{ .name = "HAVE__GETPTY", .kind = .func, .text = "_getpty" },
     .{ .name = "HAVE___UINT128_T", .kind = .type, .text = "__uint128_t" },
     .{ .name = "SIZEOF_DOUBLE", .kind = .sizeof, .text = "double" },

@@ -6,8 +6,8 @@
 #
 #   build.sh <platform> <work> <zig>
 #
-# The libraries of another platform are cross-compiled here, with autoconf's
-# --host and --build, so the target never runs make.
+# Only on the platform itself: another platform's build lowers only its
+# native object, which needs none of these.
 set -eu
 platform=$1
 work=$2
@@ -15,21 +15,12 @@ zig=$3
 jobs=${JAC_PYTHON_JOBS:-4}
 case "$jobs" in ''|*[!0-9]*|0) echo 'JAC_PYTHON_JOBS must be a positive integer' >&2; exit 1;; esac
 case "$platform" in
-    linux-x86_64) target=x86_64-linux-gnu.2.17; openssl_target=linux-x86_64; gnu_type=x86_64-pc-linux-gnu ;;
-    linux-aarch64) target=aarch64-linux-gnu.2.17; openssl_target=linux-aarch64; gnu_type=aarch64-unknown-linux-gnu ;;
-    macos-x86_64) target=x86_64-macos.12.0; openssl_target=darwin64-x86_64-cc; gnu_type=x86_64-apple-darwin ;;
-    macos-aarch64) target=aarch64-macos.11.0; openssl_target=darwin64-arm64-cc; gnu_type=aarch64-apple-darwin ;;
+    linux-x86_64) target=x86_64-linux-gnu.2.17; openssl_target=linux-x86_64 ;;
+    linux-aarch64) target=aarch64-linux-gnu.2.17; openssl_target=linux-aarch64 ;;
+    macos-x86_64) target=x86_64-macos.12.0; openssl_target=darwin64-x86_64-cc ;;
+    macos-aarch64) target=aarch64-macos.11.0; openssl_target=darwin64-arm64-cc ;;
     *) echo "Unsupported Python release platform: $platform" >&2; exit 1 ;;
 esac
-case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) build_platform=linux-x86_64; build_type=x86_64-pc-linux-gnu ;;
-    Linux-aarch64 | Linux-arm64) build_platform=linux-aarch64; build_type=aarch64-unknown-linux-gnu ;;
-    Darwin-x86_64) build_platform=macos-x86_64; build_type=x86_64-apple-darwin ;;
-    Darwin-arm64) build_platform=macos-aarch64; build_type=aarch64-apple-darwin ;;
-    *) build_platform=unsupported; build_type=unsupported ;;
-esac
-cross=
-[ "$platform" = "$build_platform" ] || cross="--host=$gnu_type --build=$build_type"
 for tool in make perl; do
     command -v "$tool" >/dev/null || { echo "The vendored libraries' build requires $tool" >&2; exit 1; }
 done
@@ -119,7 +110,7 @@ sqlite() {
 }
 xz() {
     cd "$src/xz"
-    ./configure $cross --prefix="$deps" --libdir="$deps/lib" --disable-shared \
+    ./configure --prefix="$deps" --libdir="$deps/lib" --disable-shared \
         --disable-doc --disable-nls --disable-xz --disable-xzdec \
         --disable-lzmadec --disable-lzmainfo --disable-lzma-links --disable-scripts
     make -j"$jobs"
@@ -127,20 +118,20 @@ xz() {
 }
 libffi() {
     cd "$src/libffi"
-    ./configure $cross --prefix="$deps" --libdir="$deps/lib" --disable-shared \
+    ./configure --prefix="$deps" --libdir="$deps/lib" --disable-shared \
         --disable-docs --disable-multi-os-directory
     make -j"$jobs"
     make install
 }
 mpdecimal() {
     cd "$src/mpdecimal"
-    ./configure $cross --prefix="$deps" --libdir="$deps/lib" --disable-shared --disable-cxx
+    ./configure --prefix="$deps" --libdir="$deps/lib" --disable-shared --disable-cxx
     make -j"$jobs"
     make install
 }
 expat() {
     cd "$src/expat"
-    ./configure $cross --prefix="$deps" --libdir="$deps/lib" --disable-shared \
+    ./configure --prefix="$deps" --libdir="$deps/lib" --disable-shared \
         --without-docbook --without-examples --without-tests
     make -j"$jobs"
     make install
