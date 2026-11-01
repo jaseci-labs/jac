@@ -146,6 +146,9 @@ def main -> int {
                 "runtime/python/opcode_meta.jac",
                 "runtime/python/cpython_api.jac",
                 "runtime/python/capi.jac",
+                # cpython_api's platform-selected C struct declarations.
+                "runtime/python/modules/stat_records.jac",
+                "runtime/python/modules/time_records.jac",
                 "runtime/python/constant_keys.jac",
                 "runtime/python/constant_output.jac",
                 "compiler/frontend/python/syntax_error.jac"
