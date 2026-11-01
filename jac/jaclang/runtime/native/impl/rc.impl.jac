@@ -548,6 +548,10 @@ impl __jac_rt_set_type(o: int, tag: int) {
     __mem_store_i64(o - HDR_TAG_BACK, tag);
 }
 
+impl __jac_rt_is_heap(o: int) -> bool {
+    return o != 0 and __mem_load_i64(o - HDR_RC_BACK) != RC_SENTINEL and _magic_ok(o);
+}
+
 impl __jac_rt_retain(o: int) {
     if o == 0 {
         return;

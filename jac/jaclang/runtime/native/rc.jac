@@ -165,6 +165,8 @@ def:pub __jac_rt_alloc(size: int) -> int;
 
 def:pub __jac_rt_set_type(o: int, tag: int);
 
+def:pub __jac_rt_is_heap(o: int) -> bool;
+
 def:pub __jac_rt_retain(o: int);
 
 def:pub __jac_rt_release(o: int);
