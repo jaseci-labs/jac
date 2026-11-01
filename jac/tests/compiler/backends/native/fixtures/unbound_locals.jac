@@ -160,6 +160,24 @@ def straight -> int {
     return len(c) + b;
 }
 
+"""A chained assignment stores its targets in order, so a later one reads an earlier one."""
+def chained_index(xs: list[int]) -> int {
+    x = xs[x]=1;
+    return x + xs[1];
+}
+
+"""Every name an unpacked target binds is set before the next chained target reads it."""
+def chained_unpack(xs: list[tuple[int, int]]) -> int {
+    (a, b) = xs[a]=(1, 2);
+    return a + b + xs[1][1];
+}
+
+"""A chained target that reads a later target still finds it unassigned."""
+def chained_late(xs: list[int]) -> int {
+    xs[y] = y=1;
+    return y;
+}
+
 with entry {
     t = Tally();
     print(t.add(True));
@@ -225,4 +243,11 @@ with entry {
     print(summed([1, 2, 3], True));
     print(raised(True), raised(False), raised(True));
     print(straight());
+    print(chained_index([0, 0, 0]));
+    print(chained_unpack([(0, 0), (0, 0)]));
+    try {
+        print(chained_late([0, 0]));
+    } except UnboundLocalError as e {
+        print("caught", e);
+    }
 }

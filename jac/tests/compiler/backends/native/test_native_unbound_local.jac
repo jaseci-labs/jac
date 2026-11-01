@@ -27,7 +27,10 @@ glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures",
          "walrus_seen",
          "while_break",
          "carried",
-         "as_name_error"
+         "as_name_error",
+         "chained_index",
+         "chained_unpack",
+         "chained_late"
      ],
      EXPECTED: list[str] = [
          "3",
@@ -52,7 +55,10 @@ glob FIXTURES: Path = Path(__file__).resolve().parent / "fixtures",
          "NameError: cannot access local variable 'w' where it is not associated with a value",
          "18",
          "4 9 9",
-         "5"
+         "5",
+         "2",
+         "5",
+         "caught cannot access local variable 'y' where it is not associated with a value"
      ];
 
 """The names of the bound flags `fn` keeps for its locals."""

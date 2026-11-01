@@ -3135,6 +3135,7 @@ walker NaIRGenPass(CompilerPass) {
     def _guard_unbound_aug(nd: uni.Assignment) -> None;
     def _emit_unbound_check(name: str, typed: uni.UniNode) -> None;
     def _mark_unbound_targets(nd: uni.Assignment) -> None;
+    def _mark_target_bound(target: uni.UniNode) -> None;
     def _mark_bound(name: str, at: uni.UniNode) -> None;
     def _codegen_dict_counter_update(nd: uni.Assignment) -> bool;
     def _same_pure_key(a: uni.UniNode, b: uni.UniNode) -> bool;

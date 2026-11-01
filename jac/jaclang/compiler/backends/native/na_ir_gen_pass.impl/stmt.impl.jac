@@ -2259,6 +2259,7 @@ impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
         if target_index > 0 {
             assignment_rhs.is_owned = False;
             assignment_rhs.na_tuple_owned = None;
+            self._mark_target_bound(targets[target_index - 1]);
         }
         value: ir.Value = assignment_rhs;
         if isinstance(target_expr, uni.TupleVal) {

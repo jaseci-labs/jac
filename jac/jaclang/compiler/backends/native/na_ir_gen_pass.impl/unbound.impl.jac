@@ -300,9 +300,6 @@ impl NaIRGenPass._unbound_scan(frame: uni.UniNode) -> NativeUnboundFacts {
         and not isinstance(frame.spec, (uni.FuncSignature, uni.EventSignature)) {
         return facts;
     }
-    if frame.get_all_sub_nodes(uni.PyInlineCode) {
-        return facts;
-    }
     top: set[int] = set();
     for stmt in body {
         top.add(id(stmt));
@@ -448,10 +445,14 @@ impl NaIRGenPass._mark_unbound_targets(nd: uni.Assignment) -> None {
     if facts is None or not facts.guarded {
         return;
     }
-    names: list[uni.Name] = [];
     for target in nd.target {
-        self._unbound_target_names(target, names);
+        self._mark_target_bound(target);
     }
+}
+
+impl NaIRGenPass._mark_target_bound(target: uni.UniNode) -> None {
+    names: list[uni.Name] = [];
+    self._unbound_target_names(target, names);
     for name in names {
         self._mark_bound(name.value, name);
     }
@@ -470,6 +471,7 @@ impl NaIRGenPass._mark_bound(name: str, at: uni.UniNode) -> None {
     if isinstance(early, ir.Instruction)
         and early.parent.parent is self.builder.function
         and self.local_vars.get(name) is not early {
+        self._unbound_early.pop(key);
         self.emit(
             E5092,
             node_override=at,
