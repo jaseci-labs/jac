@@ -15,25 +15,25 @@ def _emit_json(command: str, payload: dict[str, any]);
 def _fail(command: str, message: str, text: bool) -> int;
 
 
-def _load_ci -> CodeIntelligence;
+def _load_ci -> SessionClient;
 
 
-def _code_symbol(ci: CodeIntelligence, name: str, text: bool) -> int;
+def _code_symbol(ci: SessionClient, name: str, text: bool) -> int;
 
 
-def _code_uses(ci: CodeIntelligence, name: str, text: bool) -> int;
+def _code_uses(ci: SessionClient, name: str, text: bool) -> int;
 
 
-def _code_map(ci: CodeIntelligence, kind: str, text: bool) -> int;
+def _code_map(ci: SessionClient, kind: str, text: bool) -> int;
 
 
-def _code_walkers(ci: CodeIntelligence, node_type: str, text: bool) -> int;
+def _code_walkers(ci: SessionClient, node_type: str, text: bool) -> int;
 
 
-def _code_slice(ci: CodeIntelligence, name: str, depth: int, text: bool) -> int;
+def _code_slice(ci: SessionClient, name: str, depth: int, text: bool) -> int;
 
 
-def _code_diag(ci: CodeIntelligence, file: str, text: bool) -> int;
+def _code_diag(ci: SessionClient, file: str, text: bool) -> int;
 
 
 def _print_usage;
@@ -99,20 +99,18 @@ impl _fail(command: str, message: str, text: bool) -> int {
 }
 
 
-impl _load_ci -> CodeIntelligence {
+impl _load_ci -> SessionClient {
     found = find_project_root();
     proj_dir = str(found[0]) if found is not None else os.getcwd();
-    ci = CodeIntelligence(proj_dir=proj_dir);
-    ci.load();
-    return ci;
+    return tool_session(proj_dir);
 }
 
 
-impl _code_symbol(ci: CodeIntelligence, name: str, text: bool) -> int {
-    defs = ci.lookup(name);
+impl _code_symbol(ci: SessionClient, name: str, text: bool) -> int {
+    defs = ci.code_lookup(name);
     uses = [
         r
-        for r in ci.references(name)
+        for r in ci.code_references(name)
         if r.role == "use"
     ];
     if not defs {
@@ -148,8 +146,8 @@ impl _code_symbol(ci: CodeIntelligence, name: str, text: bool) -> int {
 }
 
 
-impl _code_uses(ci: CodeIntelligence, name: str, text: bool) -> int {
-    refs = ci.references(name);
+impl _code_uses(ci: SessionClient, name: str, text: bool) -> int {
+    refs = ci.code_references(name);
     if not refs {
         if text {
             console.warning(f"No definitions or uses of '{name}' were found.");
@@ -167,8 +165,8 @@ impl _code_uses(ci: CodeIntelligence, name: str, text: bool) -> int {
 }
 
 
-impl _code_map(ci: CodeIntelligence, kind: str, text: bool) -> int {
-    archs = ci.archetypes(kind);
+impl _code_map(ci: SessionClient, kind: str, text: bool) -> int {
+    archs = ci.code_archetypes(kind);
     if not archs and kind {
         if text {
             console.warning(f"No '{kind}' archetypes found in the project.");
@@ -193,8 +191,8 @@ impl _code_map(ci: CodeIntelligence, kind: str, text: bool) -> int {
 }
 
 
-impl _code_walkers(ci: CodeIntelligence, node_type: str, text: bool) -> int {
-    eps = ci.walkers_visiting(node_type);
+impl _code_walkers(ci: SessionClient, node_type: str, text: bool) -> int {
+    eps = ci.code_walkers(node_type);
     if not eps {
         if text {
             console.warning(f"No walkers traverse a '{node_type}' node.");
@@ -215,8 +213,8 @@ impl _code_walkers(ci: CodeIntelligence, node_type: str, text: bool) -> int {
 }
 
 
-impl _code_slice(ci: CodeIntelligence, name: str, depth: int, text: bool) -> int {
-    sl = ci.slice_for(name, depth);
+impl _code_slice(ci: SessionClient, name: str, depth: int, text: bool) -> int {
+    sl = ci.code_slice(name, depth);
     if sl.target is None {
         if text {
             console.warning(f"No symbol named '{name}' was found.");
@@ -234,8 +232,8 @@ impl _code_slice(ci: CodeIntelligence, name: str, depth: int, text: bool) -> int
 }
 
 
-impl _code_diag(ci: CodeIntelligence, file: str, text: bool) -> int {
-    diags = ci.diagnostics(file);
+impl _code_diag(ci: SessionClient, file: str, text: bool) -> int {
+    diags = ci.code_diagnostics(file);
     errors = len(
         [
             d

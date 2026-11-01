@@ -169,46 +169,6 @@ impl EditReview.to_dict -> dict[str, any] {
     };
 }
 
-impl OverlayHost.read_source(path: str) -> str {
-    if self.enabled and self.overlay {
-        real = os.path.realpath(path);
-        if real in self.overlay {
-            return self.overlay[real];
-        }
-    }
-    return super.read_source(path);
-}
-
-impl OverlayHost.annex_files(path: str, suffix: str = ".impl.jac") -> list[str] {
-    found = super.annex_files(path, suffix);
-    if not self.enabled or not self.overlay {
-        return found;
-    }
-    have = {os.path.realpath(f) for f in found};
-    for staged in self.overlay {
-        if staged in have or not staged.endswith(suffix) or os.path.exists(staged) {
-            continue;
-        }
-        try {
-            if self.is_annex_path_of(staged, path) {
-                found.append(staged);
-            }
-        } except Exception {}
-    }
-    return found;
-}
-
-impl OverlayHost.note(message: str, style: str = "dim") {
-    if not self.log_path {
-        return;
-    }
-    try {
-        with open(self.log_path, "a") as fh {
-            fh.write(message + "\n");
-        }
-    } except Exception {}
-}
-
 impl ThreadRouter.write(data: str) -> int {
     if threading.get_ident() == self.thread_id {
         try {
@@ -301,9 +261,6 @@ impl EditGate.commit(path: str) -> None {
         fh.write(text);
     }
     self.overlay.pop(real, None);
-    if is_arch_file(real) {
-        wiring_mod._spec_cache.clear();
-    }
 }
 
 impl EditGate._disk_text(path: str) -> (str | None) {
@@ -337,73 +294,66 @@ impl EditGate._stamp(paths: list[str]) -> tuple[tuple[str, int, int], ...] {
     return tuple(out);
 }
 
-impl EditGate._arch_staged -> bool {
-    return any([is_arch_file(p) for p in self.overlay]);
+impl EditGate.client -> SessionClient {
+    if self._session is None {
+        self._session = tool_session(self.root_dir);
+    }
+    return self._session;
 }
 
 impl EditGate._head_of(path: str) -> str {
-    host = active_host();
-    try {
-        base = host.base_file(path);
-        if base {
-            return os.path.realpath(base);
-        }
-    } except Exception {}
+    base = discover_base_file(path);
+    if base {
+        return os.path.realpath(base);
+    }
+    tables = host_layout_tables();
     for staged in self.overlay {
         if staged == path or os.path.basename(staged).count(".") != 1 {
             continue;
         }
-        try {
-            if host.is_annex_path_of(path, staged) {
-                return staged;
-            }
-        } except Exception {}
+        if is_annex_path_of(tables, path, staged) {
+            return staged;
+        }
     }
     return path;
 }
 
 impl EditGate._module_files(head: str) -> list[str] {
     files = [head];
-    try {
-        host = active_host();
-        for suffix in [".impl.jac", ".test.jac"] {
-            for f in host.annex_files(head, suffix) {
-                real = os.path.realpath(f);
-                if real not in files {
-                    files.append(real);
-                }
+    for suffix in [".impl.jac", ".test.jac"] {
+        for f in discover_annex_files(head, suffix) {
+            real = os.path.realpath(f);
+            if real not in files {
+                files.append(real);
             }
         }
-    } except Exception {}
+    }
+    tables = host_layout_tables();
     for staged in self.overlay {
         if staged in files or not staged.endswith(".jac") {
             continue;
         }
-        try {
-            if active_host().is_annex_path_of(staged, head) {
-                files.append(staged);
-            }
-        } except Exception {}
+        if is_annex_path_of(tables, staged, head) {
+            files.append(staged);
+        }
     }
     return files;
 }
 
 impl EditGate._owner(head: str) -> dict[str, str] {
     info: dict[str, str] = {"project_root": "", "target_app": "", "app_kind": ""};
-    try {
-        ws = active_host().workspace(head);
-        if ws is not None {
-            info["project_root"] = ws.project_root;
-            app = ws.app_for_path(head);
-            if app is None and not ws.explicit {
-                app = next(iter(ws.apps.values()), None);
-            }
-            if app is not None {
-                info["target_app"] = app.name;
-                info["app_kind"] = app.kind;
-            }
+    ws = workspace_for_path(head);
+    if ws is not None {
+        info["project_root"] = ws.project_root;
+        app = ws.app_for_path(head);
+        if app is None and not ws.explicit {
+            app = next(iter(ws.apps.values()), None);
         }
-    } except Exception {}
+        if app is not None {
+            info["target_app"] = app.name;
+            info["app_kind"] = app.kind;
+        }
+    }
     if not info["project_root"] {
         info["project_root"] = self.root_dir;
     }
@@ -465,68 +415,38 @@ impl EditGate._quiet_exit(saved: dict[str, any]) -> None {
 
 impl EditGate._check(target: str, overlay: bool) -> list[DiagInfo] {
     target = os.path.realpath(target);
-    if self._host is None {
-        self._host = OverlayHost();
-    }
-    host = self._host;
-    host.log_path = self.log_path;
-    host.overlay = self.overlay;
-    host.enabled = overlay;
     owner = self._owner(target);
     module_files = set(self._module_files(target));
     arch = arch_file_for(target) if not is_arch_file(target) else target;
-    previous = active_host();
-    previous_mode = set_kernel_host_mode("");
-    arch_staged = self._arch_staged();
-    if arch_staged {
-        wiring_mod._spec_cache.clear();
+    opts = CompileOptions(
+        no_cgen=True,
+        project_root=owner["project_root"] or None,
+        target_app=owner["target_app"],
+        app_kind=owner["app_kind"]
+    );
+    opts.entry_point = target;
+    request = check_request_for([target], opts);
+    if overlay {
+        request.sources = dict(self.overlay);
+    } elif not os.path.exists(target) {
+        request.sources = {target: ""};
     }
-    install_host(host);
-    prog = JacProgram();
-    try {
-        prog.deps.tracking = True;
-        prog.iface_registry().verifying = True;
-        opts = CompileOptions(
-            no_cgen=True,
-            project_root=owner["project_root"] or None,
-            target_app=owner["target_app"],
-            app_kind=owner["app_kind"]
-        );
-        opts.entry_point = target;
-        source = host.read_source(target)
-            if (overlay or os.path.exists(target))
-            else "";
-        prog.compile(target, use_str=source, options=opts);
-        read: set[str] = set(prog.deps.dependents.keys());
-        for importers in prog.deps.dependents.values() {
-            read.update(importers);
-        }
-        self._last_deps = sorted(read);
-    } finally {
-        install_host(previous);
-        set_kernel_host_mode(previous_mode);
-        if arch_staged {
-            wiring_mod._spec_cache.clear();
-        }
-    }
+    result = call_check(request);
+    self._last_deps = sorted(result.reached);
     out: list[DiagInfo] = [];
     seen: set[tuple[str, int, int, str, str, str]] = set();
     texts: dict[str, list[str]] = {};
-    for (severity, alerts) in [
-        ("error", prog.errors_had),
-        ("warning", prog.warnings_had)
-    ] {
-        for a in alerts {
-            loc = a.loc;
-            if loc is None or not loc.mod_path {
+    for (severity, diags) in [("error", result.errors), ("warning", result.warnings)] {
+        for d in diags {
+            span = d.span;
+            if not span.path {
                 continue;
             }
-            fpath = os.path.realpath(loc.mod_path);
+            fpath = os.path.realpath(span.path);
             if fpath not in module_files and fpath != arch {
                 continue;
             }
-            code = a.code.code if a.code is not None else "";
-            key = (fpath, loc.first_line, loc.col_start, code, a.msg, severity);
+            key = (fpath, span.line, span.col, d.code, d.message, severity);
             if key in seen {
                 continue;
             }
@@ -535,18 +455,18 @@ impl EditGate._check(target: str, overlay: bool) -> list[DiagInfo] {
                 texts[fpath] = self._text_for(fpath, overlay).splitlines();
             }
             src_lines = texts[fpath];
-            anchor = src_lines[loc.first_line - 1].strip()
-                if 0 < loc.first_line <= len(src_lines)
+            anchor = src_lines[span.line - 1].strip()
+                if 0 < span.line <= len(src_lines)
                 else "";
             out.append(
                 DiagInfo(
                     file=fpath,
-                    line=loc.first_line,
-                    col=loc.col_start,
+                    line=span.line,
+                    col=span.col,
                     severity=severity,
-                    code=code,
-                    message=a.msg,
-                    help=a.help_text or "",
+                    code=d.code,
+                    message=d.message,
+                    help=d.help,
                     anchor=anchor
                 )
             );
@@ -627,47 +547,10 @@ impl EditGate._dependents(head: str, review: EditReview) -> list[str] {
     if not public {
         return [];
     }
-    names = {s.key.split(".")[0] for s in public};
-    out: list[str] = [];
-    spec: (WiringSpec | None) = None;
-    try {
-        spec = wiring_for_path(head);
-    } except Exception {
-        spec = None;
-    }
-    if spec is not None and spec.owns(head) {
-        for w in spec.wires {
-            split = spec.split_consumer(w.provider);
-            if split is None {
-                continue;
-            }
-            pfile = spec.module_file(split[0]);
-            if pfile is None or os.path.realpath(pfile) != head {
-                continue;
-            }
-            carried = set([it[0] for it in w.items]);
-            if split[1] {
-                carried.add(split[1][0]);
-            }
-            if carried and not (carried & names) {
-                continue;
-            }
-            for consumer in w.consumers {
-                csplit = spec.split_consumer(consumer);
-                if csplit is None {
-                    continue;
-                }
-                cfile = spec.module_file(csplit[0]);
-                if cfile is None {
-                    continue;
-                }
-                creal = os.path.realpath(cfile);
-                if creal != head and creal not in out {
-                    out.append(creal);
-                }
-            }
-        }
-    } else {
+    names = sorted({s.key.split(".")[0] for s in public});
+    wired = self.client().wired_dependents(head, names);
+    out: list[str] = list(wired.files);
+    if not wired.owned {
         for f in self._scan_importers(head) {
             if f not in out {
                 out.append(f);
@@ -680,28 +563,14 @@ impl EditGate._dependents(head: str, review: EditReview) -> list[str] {
 impl EditGate._targets(real: str, review: EditReview) -> list[str] {
     if is_arch_file(real) {
         targets: list[str] = [real];
-        spec: (WiringSpec | None) = None;
-        try {
-            spec = wiring_for_path(real);
-        } except Exception {
-            spec = None;
-        }
-        if spec is not None {
-            for ch in review.arch_changes {
-                if ch.kind not in ["new wire", "removed wire", "changed wire"] {
-                    continue;
-                }
-                csplit = spec.split_consumer(ch.module) if ch.module else None;
-                if csplit is None {
-                    continue;
-                }
-                cfile = spec.module_file(csplit[0]);
-                if cfile is not None {
-                    creal = os.path.realpath(cfile);
-                    if creal not in targets {
-                        targets.append(creal);
-                    }
-                }
+        consumers = [
+            ch.module
+            for ch in review.arch_changes
+            if ch.kind in ["new wire", "removed wire", "changed wire"] and ch.module
+        ];
+        for creal in self.client().wiring_module_files(real, consumers) {
+            if creal not in targets {
+                targets.append(creal);
             }
         }
         return targets[:self.max_dependents + 1];
@@ -774,12 +643,15 @@ impl EditGate.review(path: str, new_text: str, cancelled: any = None) -> EditRev
         );
         saved = self._quiet_enter();
         try {
+            session = self.client();
             if is_arch_file(real) {
-                rv.arch_changes = wiring_changes(old_text or "", new_text, real);
+                rv.arch_changes = wiring_changes(session, old_text or "", new_text, real);
             } else {
-                rv.symbol_changes = symbol_changes(old_text or "", new_text, real);
-                old_imports = import_lines(old_text or "", real);
-                new_imports = import_lines(new_text, real);
+                rv.symbol_changes = symbol_changes(
+                    session, old_text or "", new_text, real
+                );
+                old_imports = import_lines(session, old_text or "", real);
+                new_imports = import_lines(session, new_text, real);
                 for imp in new_imports {
                     if imp not in old_imports {
                         rv.arch_changes.append(
@@ -853,21 +725,6 @@ impl gate_root_for(path: str) -> str {
     }
 }
 
-impl _node_text(nd: any) -> str {
-    if nd is None {
-        return "";
-    }
-    try {
-        return " ".join(unparse_node(nd).split());
-    } except Exception {
-        return "";
-    }
-}
-
-impl _lines_text(lines: list[str], first: int, last: int) -> str {
-    return "\n".join([ln.rstrip() for ln in lines[max(first - 1, 0):max(last, 0)]]);
-}
-
 impl _rel(path: str, root_dir: str) -> str {
     if not root_dir {
         return path;
@@ -880,113 +737,24 @@ impl _rel(path: str, root_dir: str) -> str {
     return path if rel.startswith("..") else rel;
 }
 
-impl symbol_table(text: str, path: str) -> dict[str, tuple[str, int, int, str, str]] {
+impl symbol_table(
+    session: SessionClient, text: str, path: str
+) -> dict[str, tuple[str, int, int, str, str]] {
     table: dict[str, tuple[str, int, int, str, str]] = {};
     if not text.strip() {
         return table;
     }
-    (module, had_error) = parse_woven(text, path, None, [], load_kernel=False);
-    if module is None {
-        return table;
-    }
-    lines = text.splitlines();
-    def put(key: str, kind: str, nd: any, sig: str) {
-        first = nd.loc.first_line;
-        last = nd.loc.last_line;
-        k = key;
-        n = 2;
-        while k in table {
-            k = f"{key}#{n}";
-            n += 1;
-        }
-        table[k] = (kind, first, last, _lines_text(lines, first, last), sig);
-    }
-    for el in module.body {
-        if isinstance(el, uni.Archetype) {
-            name = el.name.sym_name;
-            kind = el.arch_type.value;
-            member_spans: list[tuple[int, int]] = [];
-            fields: list[str] = [];
-            for hv in el.get_has_vars() {
-                fname = hv.name.sym_name;
-                ftype = _node_text(hv.type_tag.tag if hv.type_tag else None);
-                fields.append(f"{fname}: {ftype}");
-                put(f"{name}.{fname}", "has", hv, ftype);
-            }
-            for ab in el.get_methods() {
-                if ab.name_ref is None {
-                    continue;
-                }
-                member_spans.append((ab.loc.first_line, ab.loc.last_line));
-                put(
-                    f"{name}.{ab.name_ref.sym_name}",
-                    "method",
-                    ab,
-                    _node_text(ab.signature)
-                );
-            }
-            own_lines: list[str] = [];
-            for i in range(el.loc.first_line, el.loc.last_line + 1) {
-                if any([a <= i <= b for (a, b) in member_spans]) {
-                    continue;
-                }
-                if 0 < i <= len(lines) {
-                    own_lines.append(lines[i - 1].rstrip());
-                }
-            }
-            bases = ", ".join([_node_text(b) for b in (el.base_classes or [])]);
-            k = name;
-            table[k] = (
-                kind,
-                el.loc.first_line,
-                el.loc.last_line,
-                "\n".join(own_lines),
-                f"{kind}({bases}) " + "; ".join(fields)
-            );
-        } elif isinstance(el, uni.Enum) {
-            name = el.name.sym_name;
-            put(
-                name,
-                "enum",
-                el,
-                _lines_text(lines, el.loc.first_line, el.loc.last_line)
-            );
-        } elif isinstance(el, uni.Ability) {
-            if el.name_ref is None {
-                continue;
-            }
-            put(el.name_ref.sym_name, "def", el, _node_text(el.signature));
-        } elif isinstance(el, uni.GlobalVars) {
-            for asg in el.assignments {
-                tgt = ", ".join([_node_text(t) for t in asg.target]);
-                if not tgt {
-                    continue;
-                }
-                tname = tgt.split(":")[0].strip();
-                put(
-                    tname,
-                    "glob",
-                    asg,
-                    _node_text(asg.type_tag) if asg.type_tag else tgt
-                );
-            }
-        } elif isinstance(el, uni.Test) {
-            put(f"test {_node_text(el.name)}", "test", el, "");
-        }
-    }
-    for idef in module.get_all_sub_nodes(uni.ImplDef) {
-        parts = [t.sym_name for t in idef.target];
-        if not parts {
-            continue;
-        }
-        put("impl " + ".".join(parts), "impl", idef, "");
+    for row in session.edit_symbols(path, text) {
+        table[row.key] = (row.kind, row.line, row.end_line, row.text, row.signature);
     }
     return table;
 }
 
-impl symbol_changes(old_text: str, new_text: str, path: str) -> list[SymbolChange] {
-    old_tab = symbol_table(old_text, path);
-    new_tab = symbol_table(new_text, path);
+impl symbol_changes(
+    session: SessionClient, old_text: str, new_text: str, path: str
+) -> list[SymbolChange] {
+    old_tab = symbol_table(session, old_text, path);
+    new_tab = symbol_table(session, new_text, path);
     out: list[SymbolChange] = [];
     for (key, nv) in new_tab.items() {
         ov = old_tab.get(key);
@@ -1031,93 +799,20 @@ impl symbol_changes(old_text: str, new_text: str, path: str) -> list[SymbolChang
     return out;
 }
 
-impl import_lines(text: str, path: str) -> list[str] {
-    out: list[str] = [];
+impl import_lines(session: SessionClient, text: str, path: str) -> list[str] {
     if not text.strip() {
-        return out;
+        return [];
     }
-    try {
-        (module, had_error) = parse_woven(text, path, None, [], load_kernel=False);
-    } except Exception {
-        return out;
-    }
-    if module is None {
-        return out;
-    }
-    lines = text.splitlines();
-    for imp in module.get_all_sub_nodes(uni.Import) {
-        t = " ".join(_lines_text(lines, imp.loc.first_line, imp.loc.last_line).split());
-        if t and t not in out {
-            out.append(t);
-        }
-    }
-    return out;
+    return session.import_texts(path, text);
 }
 
-impl wiring_changes(old_text: str, new_text: str, path: str) -> list[ArchChange] {
-    out: list[ArchChange] = [];
-    old_rec = parse_records(old_text, path) if old_text.strip() else (False, [], []);
-    new_rec = parse_records(new_text, path);
-    if new_rec[0] {
-        out.append(
-            ArchChange(
-                kind="archwire syntax error",
-                detail="the new archwire.jac does not parse; its wiring is incomplete"
-            )
-        );
-    }
-    def facts(recs: list[WireRec]) -> dict[tuple[str, ...], str] {
-        found: dict[tuple[str, ...], str] = {};
-        for (consumer, binding) in wiring_facts(recs) {
-            arrow = "++>" if binding.injected else "-->";
-            head = " ".join(
-                [
-                    w
-                    for w in binding.form.split(" ")
-                    if w in ("comptime", "include", "type")
-                ]
-                    + [binding.provider]
-            );
-            if binding.is_module_form() {
-                alias = f" as {binding.alias}" if binding.alias else "";
-                text = f"{head}{alias} {arrow} {consumer}";
-            } else {
-                item = binding.name + (f" as {binding.alias}" if binding.alias else "");
-                text = f"{head} {arrow} {consumer} {{ {item} }}";
-            }
-            found[(consumer, ) + binding.key()] = text;
-        }
-        return found;
-    }
-    old_facts = facts(old_rec[1]);
-    new_facts = facts(new_rec[1]);
-    for (k, text) in new_facts.items() {
-        if k not in old_facts {
-            out.append(ArchChange(kind="new wire", detail=text, module=k[0]));
-        }
-    }
-    for (k, text) in old_facts.items() {
-        if k not in new_facts {
-            out.append(ArchChange(kind="removed wire", detail=text, module=k[0]));
-        }
-    }
-    old_rules = {r.name: rule_text(r) for r in old_rec[2]};
-    new_rules = {r.name: rule_text(r) for r in new_rec[2]};
-    for (name, text) in new_rules.items() {
-        if name not in old_rules {
-            out.append(ArchChange(kind="new rule", detail=text));
-        } elif old_rules[name] != text {
-            out.append(
-                ArchChange(kind="changed rule", detail=f"{old_rules[name]}  =>  {text}")
-            );
-        }
-    }
-    for (name, text) in old_rules.items() {
-        if name not in new_rules {
-            out.append(ArchChange(kind="removed rule", detail=text));
-        }
-    }
-    return out;
+impl wiring_changes(
+    session: SessionClient, old_text: str, new_text: str, path: str
+) -> list[ArchChange] {
+    return [
+        ArchChange(kind=row.kind, detail=row.detail, module=row.module)
+        for row in session.wiring_changes(path, old_text, new_text)
+    ];
 }
 
 impl match_diagnostics(
