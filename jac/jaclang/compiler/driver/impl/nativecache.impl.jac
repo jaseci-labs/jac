@@ -2,13 +2,6 @@ impl NativeUnitRegistry.postinit {
     self.building = set();
 }
 
-impl NativeUnitRegistry.begin_parse(path: str) {
-    if self.session is not None {
-        self.session.settle_heap();
-    }
-    self.note_step("parse", path);
-}
-
 impl NativeUnitRegistry.note_step(
     verb: str, path: str = "", detail: str = ""
 ) -> float {
@@ -604,9 +597,6 @@ impl NativeUnitRegistry.compile_unit(
         }
         session.finish([unit.path for unit in plan.units]);
         return self.entries.get(resolved);
-    } except Exception as exc {
-        self.failures[resolved] = f"{type(exc).__name__}: {exc}";
-        return None;
     } finally {
         self.session = None;
         session.close();
@@ -1008,15 +998,6 @@ impl NativeBuildSession.lower(
             raise NativeBuildStopped();
         }
         return ent;
-    } except Exception {
-        import traceback;
-        self.registry.failures[resolved] = traceback.format_exc();
-        import from jaclang.compiler.driver.compile_options { env_na_debug }
-        if env_na_debug() {
-            import sys;
-            sys.stderr.write(self.registry.failures[resolved]);
-        }
-        return None;
     } finally {
         if len(self.prog.errors_had) > errors_before {
             self.registry.failures[resolved] = "\n".join(

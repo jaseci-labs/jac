@@ -1184,7 +1184,7 @@ Every native artifact is produced by one link plan
 (`compiler/backends/native/link_plan.jac`; the design and its reasons are
 recorded in the [Native Units](../../internals/native-units.md) internals
 page). It resolves roots (an entry
-module, the kernel root `jc_unit`, or every native unit of a sealed
+module, the kernel root `kernel_module`, or every native unit of a sealed
 package), walks the native edges recorded in `SEC_NDEPS` dependencies
 first, analyzes stale units in an owned compiler session and reuses those
 analyzed trees while settling cycles, checks that every unit's recorded
@@ -1207,7 +1207,7 @@ sidecar, which is the merge of the units' class layouts.
 
 The compiler modules the kernel links are listed in
 `jaclang/compiler/native_scope.jac` (`NATIVE_SCOPE`); they are native units
-and bytecode units at once, and the kernel root (`jc_unit`) is native only.
+and bytecode units at once, and the kernel root (`kernel_module`) is native only.
 Whether a compile treats the scope as native is `CompileOptions.native_unit`,
 set by the link plan for the compiles it requests; there is no process-global
 mode flag. The kernel comes from one lookup, `resolve_kernel()`

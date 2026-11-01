@@ -3,7 +3,7 @@ import os;
 
 
 walker ASTValidationPass(TreePass) {
-    static has contract: PassContract = PassContract(kernel_safe=True);
+    static has contract: PassContract = PassContract();
 
     can enter_try_stmt with TryStmt entry;
     can enter_match_stmt with MatchStmt entry;

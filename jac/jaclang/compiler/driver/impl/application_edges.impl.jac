@@ -41,12 +41,8 @@ impl application_edges(
                 continue;
             }
             if not man.app_edges and not man.surface {
-                try {
-                    require(prog, mod, CompilationProduct.BOUNDARIES);
-                    man = mod.gen.interop_manifest;
-                } except Exception {
-                    continue;
-                }
+                require(prog, mod, CompilationProduct.BOUNDARIES);
+                man = mod.gen.interop_manifest;
                 if man is None {
                     continue;
                 }

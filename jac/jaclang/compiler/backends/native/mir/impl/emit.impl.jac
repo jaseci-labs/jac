@@ -1,7 +1,7 @@
 impl emit_mir_module(
     mir: MirModule, triple: str = "", native_tls: bool = False
 ) -> ir.Module {
-    module = ir.Module(name=mir.path);
+    module = ir.Module(name=mir.path, context=ir.Context());
     if triple {
         module.triple = triple;
     }
@@ -533,17 +533,25 @@ impl type_arg_of(instr: MirInstr) -> MirType {
 }
 
 impl MirEmitter.c_struct(name: str) -> ir.Type {
-    made = self.module.context.get_identified_type(f"jac.c.{name}");
-    if made.is_opaque and name not in self.building {
-        layout = self.mir.structs.get(name);
-        if layout is None {
-            raise MirEmitError(f"no layout for C struct {name}");
-        }
-        self.building.add(name);
-        members = [self.llvm_type(member.type) for member in layout.fields];
-        self.building.discard(name);
-        made.set_body(*members);
+    label = f"jac.c.{name}";
+    made = self.module.context.get_identified_type(label);
+    if name in self.building or label in self.defined {
+        return made;
     }
+    if not made.is_opaque {
+        raise MirEmitError(
+            f"C struct {name} already has a body this module did not give it"
+        );
+    }
+    layout = self.mir.structs.get(name);
+    if layout is None {
+        raise MirEmitError(f"no layout for C struct {name}");
+    }
+    self.building.add(name);
+    members = [self.llvm_type(member.type) for member in layout.fields];
+    self.building.discard(name);
+    made.set_body(*members);
+    self.defined.add(label);
     return made;
 }
 
@@ -910,8 +918,13 @@ impl MirEmitter.emit_rc(b: ir.IRBuilder, instr: MirInstr) {
 
 impl MirEmitter.object_struct(name: str) -> ir.Type {
     shape = self.module.context.get_identified_type(name);
-    if not shape.is_opaque or name in self.building {
+    if name in self.building or name in self.defined {
         return shape;
+    }
+    if not shape.is_opaque {
+        raise MirEmitError(
+            f"struct {name} already has a body this module did not give it"
+        );
     }
     obj_def = self.mir.objects.get(name);
     if obj_def is None {
@@ -934,6 +947,7 @@ impl MirEmitter.object_struct(name: str) -> ir.Type {
     }
     shape.set_body(*slots);
     self.building.discard(name);
+    self.defined.add(name);
     return shape;
 }
 

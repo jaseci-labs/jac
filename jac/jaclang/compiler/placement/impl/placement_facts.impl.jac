@@ -97,9 +97,7 @@ impl discover_spaces(
                 out[ap] = set(record.spaces);
                 continue;
             }
-            try {
-                mod = target.compile(file_path=ap, no_cgen=True);
-            } except Exception {}
+            mod = target.compile(file_path=ap, no_cgen=True);
         }
         spaces = set(module_spaces(mod));
         if target.count_module_errors(os.path.normpath(ap)) > 0 {

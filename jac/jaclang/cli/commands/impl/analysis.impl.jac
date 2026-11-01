@@ -1537,12 +1537,6 @@ impl `test(
     return rc;
 }
 
-impl gen_parser -> int {
-    gen_all_parsers();
-    console.success('Parser generated.');
-    return 0;
-}
-
 impl grammar(output: str = "", strict: bool = False) -> int {
     import jaclang;
     parser_path = str(

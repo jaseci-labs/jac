@@ -451,7 +451,6 @@ graph import {
     client.vite_client_bundle --> compiler.driver.application._prepare_revision {
         make_client_bundle_builder
     }
-    compiler ++> cli.commands.analysis.gen_parser { gen_all_parsers }
     compiler.backends.es.backends.registry ++> [
         client.client_surface.prepend_active_runtime_globals
             | client.compiler.ViteCompiler._create_pages_entry_content
@@ -920,7 +919,7 @@ graph import {
             HOST_FACT_GIT_IGNORED,
             HOST_FACT_STDLIB_MODULES
         },
-        studio.gate { active_host, install_host, set_kernel_host_mode },
+        studio.gate { active_host, install_host },
     ]
     compiler.frontend.parser ++> [
         cli.commands.fix._parse_module { parse as rd_parse },
@@ -2115,7 +2114,6 @@ graph import {
     }
     runtime.osp_tag ++> compiler.backends.es.esast_gen_pass.EsastGenPass._build_osp_tags_js
         | compiler.backends.py.pyast_gen_pass.PyastGenPass.exit_module
-        | compiler.jc_unit._alert_tag
         | compiler.passes.osp_analysis { stable_osp_tag }
     runtime.osp_tag --> [
         compiler.backends.es.esast_gen_pass.EsastGenPass._edge_tag_literal {
@@ -4164,7 +4162,6 @@ graph import {
     }
     project.modresolver --> compiler.kernel_api.enter_world { install_search_roots }
     project.modresolver ++> compiler.tools.session_queries {
-        in_client_npm_world,
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
@@ -4685,7 +4682,6 @@ graph import cli {
         SPEC_CHECK,
         SPEC_EXPLAIN,
         SPEC_FORMAT,
-        SPEC_GEN_PARSER,
         SPEC_PRECOMMIT,
         SPEC_TEST
     }
@@ -5949,7 +5945,6 @@ graph import compiler {
         backends.es.client_kernel_cache._lower
             | passes.layout_pass.get_layout_registry
             | tools.lang_tools { CompilationProduct, require },
-        jc_unit { early_passes },
         tools.cfg_dot.cfg_dot_from_file
             | tools.jac_formatter_pass.format_module
             | tools.lang_tools.AstTool.ir { run_utility },
@@ -6547,7 +6542,6 @@ graph import compiler {
             | driver.module_compile
             | driver.program.JacProgram.stamp_boundary_facts
             | driver.unit_products
-            | jc_unit
             | passes.boundary_analysis_pass
             | passes.placement_pass
             | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
@@ -7144,7 +7138,6 @@ graph import compiler {
             | passes.mtir_gen_pass.MTIRGenPass._get_scope_str
             | passes.ownership_check_pass.OwnershipCheckPass._nogc_module_enforced
             | passes.static_analysis_pass.StaticAnalysisPass._check_client_imports
-            | placement.placement_solver._pull_into_target
             | types.type_evaluator.TypeEvaluator.get_type_of_module_item {
             active_host
         },
@@ -7154,8 +7147,6 @@ graph import compiler {
             active_host
         },
         driver.program.JacProgram.iface_registry { active_host },
-        driver.compiler.JacCompiler.enter_compile { active_host, install_host },
-        driver.compiler.JacCompiler.finish_compile { install_host },
         driver.program.JacProgram.invalidate_module { active_host },
         driver.program.JacProgram.load_dependency_module { active_host },
         driver.program.JacProgram.native_units { active_host },
@@ -7163,7 +7154,6 @@ graph import compiler {
         driver.program.JacProgram.stub_catalog { active_host },
         kernel_target.target_pkg_root { package_root },
     ]
-    type frontend.host ++> driver.compiler { HostServices }
     frontend.loop_links ++> [
         backends.es.esast_gen_pass {
             LoopLinks,
@@ -7232,7 +7222,6 @@ graph import compiler {
         tools.jac_auto_lint_pass.JacAutoLintPass._reparse_signature { tokenize_full },
     ]
     frontend.parser.parser ++> [
-        jc_unit { parse_program },
         tools.jac_auto_lint_pass.JacAutoLintPass._impl_header { Parser },
         tools.jac_auto_lint_pass.JacAutoLintPass._reparse_signature { Parser },
         types.type_evaluator.TypeEvaluator._resolve_string_type_expr {
@@ -7241,7 +7230,6 @@ graph import compiler {
     ]
     frontend.parser.tokens ++> [
         driver.wiring { is_name_usable_kind, lookup_keyword },
-        jc_unit { CommentData, SrcDiag },
         tools.grammar_extract_pass { BUILTIN_TYPE_KINDS, TokenKind },
     ]
     frontend.python.annotation_unparse ++> backends.py.jacpython.product_compile {
@@ -7836,7 +7824,6 @@ graph import compiler {
             | passes.ownership_check_pass
             | passes.region_infer_pass
             | tools.jac_formatter_pass { BodyRole, Kid },
-        jc_unit { AccessorsRole, BodyRole, SpecRole },
         passes.annex_weave | passes.static_analysis_pass { BodyRole },
         passes.pyast_load_pass {
             Kid,
@@ -8070,7 +8057,7 @@ graph import compiler {
         c_interop.final_glob_value { Name },
         c_interop.named_function_of { Ability, Name },
         capability_notes | passes.execution { Module, UniNode },
-        driver.pass_driver { Module, Source },
+        driver.pass_driver { Module },
         driver.pipeline_runner.compile_application { Import, ModulePath },
         driver.program.JacProgram.resolve_absorb_imports { find_python_scope_node_of },
         driver.wiring {
@@ -8137,7 +8124,6 @@ graph import compiler {
             ModuleItem,
             Name
         },
-        jc_unit { Import, Module },
         native_bindings {
             Ability,
             Archetype,
@@ -9418,14 +9404,6 @@ graph import compiler {
         },
     ]
     type intrinsic_registry ++> symbol_utils { IntrinsicRegistry }
-    jc_ask ++> jc_unit { set_host_callback, take_host_answer }
-    jc_materialize ++> jc_unit {
-        hint_commentdata,
-        hint_srcdiag,
-        jc_mz_obj,
-        jc_mz_run,
-        jc_mz_shape_keys
-    }
     kernel_api ++> kernel_module {
         CheckRequest,
         CheckResult,
@@ -9523,9 +9501,8 @@ graph import compiler {
     passes.annex_weave ++> [
         driver.wiring { WovenAnnex, import_form },
         frontend.parser.frontend { WovenAnnex, merge_annex_into },
-        frontend.parser.frontend.parse_woven | jc_unit { merge_annex_into },
+        frontend.parser.frontend.parse_woven { merge_annex_into },
     ]
-    type passes.annex_weave ++> frontend.host { WovenAnnex }
     passes.ast_validation_pass ++> driver.pipeline { ASTValidationPass }
     passes.boundary_analysis_pass ++> driver.pipeline { BoundaryAnalysisPass }
     passes.capability_check_pass ++> [
@@ -9562,8 +9539,8 @@ graph import compiler {
             | placement.placement_solver._emit_solver_warning { Alert },
         driver.pass_driver { Alert, CompilerPass, DiagnosticPolicy },
         driver.pipeline { CompilerPass, PassSchedule },
-        driver.progstate { Alert, CompileContext, PassResult },
-        jc_unit | types.type_evaluator { CompileContext },
+        driver.progstate { Alert, CompileContext },
+        types.type_evaluator { CompileContext },
     ]
     type passes.context ++> [
         driver.compiler { Alert },
@@ -9640,7 +9617,7 @@ graph import compiler {
     passes.static_analysis_pass ++> driver.pipeline.analysis_passes {
         StaticAnalysisPass
     }
-    passes.sym_tab_build_pass ++> driver.pipeline | jc_unit { SymTabBuildPass }
+    passes.sym_tab_build_pass ++> driver.pipeline { SymTabBuildPass }
     passes.sym_tab_build_pass --> driver.program.JacProgram.load_dependency_module {
         SymTabBuildPass
     }
@@ -9718,6 +9695,7 @@ graph import compiler {
             config_element_pin,
             config_pin_for
         },
+        tools.session_queries { in_client_npm_world },
     ]
     placement.placement_pins --> [
         driver.jir._project_env_fingerprint_uncached { config_kind_space, pins_digest },
@@ -10211,10 +10189,10 @@ graph import compiler {
     frontend.host --> driver.program.JacProgram.compile { active_host, kernel_resident }
     frontend.host --> [
         kernel_api.KernelSession.enter { install_host },
-        kernel_api.KernelSession.leave { NeutralHost, install_host },
+        kernel_api.KernelSession.leave { install_host },
         kernel_api.check_request | kernel_api.compile_request {
-            active_host,
-            install_host
+            install_host,
+            installed_host
         },
         kernel_api.enter_world { mark_kernel_resident, set_package_root },
     ]
@@ -11335,11 +11313,7 @@ graph import compiler.driver {
         application.prepare_application | ifacecache.IfaceRegistry._verify_iface {
             CompileOptions
         },
-        nativecache.NativeBuildSession.lower {
-            env_na_debug,
-            pop_native_target,
-            push_native_target
-        },
+        nativecache.NativeBuildSession.lower { pop_native_target, push_native_target },
         nativecache.NativeUnitRegistry.known_digest { env_na_debug },
         nativecache.NativeUnitRegistry.record_module { env_na_debug },
     ]
@@ -11749,9 +11723,7 @@ graph import compiler.frontend {
     host ++> [
         codeinfo.endpoint_descriptor | helpers.evaluate_version_condition | parser.frontend.annex_sources | unitree.Import.__jac_detected.getter { active_host },
         codeinfo.jaclang_pkg_root { package_root },
-        parser.frontend.parse_woven | unitree.ModulePath.resolve_relative_path {
-            active_host
-        },
+        unitree.ModulePath.resolve_relative_path { active_host },
         source_layout { PathFacts },
     ]
     host --> [
@@ -13324,7 +13296,7 @@ graph import compiler.passes {
             | jsx_intrinsic_guard_pass
             | semantic_analysis_pass
             | sym_tab_build_pass { TreePass },
-        execution { Alert, CompileContext, CompilerPass, DiagnosticPolicy, PassResult },
+        execution { Alert, CompileContext, CompilerPass, DiagnosticPolicy },
         placement_pass { Alert, CompilerPass },
         type_checker_pass { CompileContext, TreePass },
     ]

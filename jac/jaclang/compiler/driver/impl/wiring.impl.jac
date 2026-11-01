@@ -498,11 +498,7 @@ impl WiringSpec.import_provider(path_node: ModulePath) -> (str | None) {
         ) {
         return None;
     }
-    try {
-        resolved = path_node.resolve_relative_path();
-    } except Exception {
-        return None;
-    }
+    resolved = path_node.resolve_relative_path();
     if not resolved or not os.path.isfile(resolved) {
         return None;
     }
@@ -706,7 +702,7 @@ impl module_records(mod: Module, source: str) -> tuple[list[WireRec], list[RuleR
 impl parse_records(
     source: str, path: str
 ) -> tuple[bool, list[WireRec], list[RuleRec]] {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     (wires, rules) = module_records(mod, source);
     return (bool(had_error), wires, rules);
 }
@@ -1518,7 +1514,7 @@ impl render_wiring(
 }
 
 impl canonical_wiring_source(source: str, path: str) -> str {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     if had_error
         or mod.doc is not None
         or mod.source.comments
@@ -1540,7 +1536,7 @@ impl canonical_wiring_source(source: str, path: str) -> str {
 impl prune_wiring_source(
     source: str, path: str, dropped: Callable[[str], bool]
 ) -> str {
-    (mod, had_error) = parse_woven(source, path, None, [], load_kernel=False);
+    (mod, had_error) = parse_woven(source, path, None, []);
     if had_error {
         return source;
     }

@@ -296,8 +296,6 @@ def product_passes(
 
 def product_facts(product: CompilationProduct) -> set[AnalysisFact];
 
-def early_passes -> PassSchedule;
-
 def dependents(product: CompilationProduct) -> list[CompilationProduct];
 
 def product_ready(

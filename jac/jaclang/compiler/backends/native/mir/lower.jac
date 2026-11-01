@@ -81,6 +81,7 @@ obj MirLowering {
         decls: dict[int, MirDecl] = {},
         decl_syms: dict[int, int] = {},
         archetypes: dict[str, uni.Archetype] = {},
+        c_struct_sites: dict[str, str] = {},
         trace_pairs: list[tuple[str, str]] = [],
         deferred_globals: list[tuple[MirGlobal, uni.Expr]] = [],
         nested: list[MirFunction] = [],

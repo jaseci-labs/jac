@@ -206,13 +206,9 @@ impl _build_catalog_inner(
 }
 
 impl _cached_catalog(pkg_dir: (str | None)) -> str {
-    try {
-        import from jaclang.compiler.types.stubcat.locate { dev_catalog_path }
-        import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
-        return dev_catalog_path(pkg_dir or jaclang_pkg_root());
-    } except Exception {
-        return "";
-    }
+    import from jaclang.compiler.types.stubcat.locate { dev_catalog_path }
+    import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
+    return dev_catalog_path(pkg_dir or jaclang_pkg_root());
 }
 
 impl _keep_catalog(out: str, cached: str) {

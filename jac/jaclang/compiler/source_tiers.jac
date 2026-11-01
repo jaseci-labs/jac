@@ -43,8 +43,6 @@ glob SEED_PATHS: tuple[str, ...] = (
          "compiler/kernel_target.jac",
          "compiler/field_semantics.jac",
          "compiler/c_interop.jac",
-         "compiler/jc_unit.jac",
-         "compiler/jc_materialize.jac",
          "compiler/passes/execution.jac",
          "compiler/tools/treeprinter.jac",
          "runtime/runtime.jac",
@@ -93,11 +91,12 @@ glob SEED_PATHS: tuple[str, ...] = (
          "project/app_kinds.jac"
      ),
      NATIVE_ONLY_REL: tuple[str, ...] = (
-         "compiler/jc_unit.jac",
-         "compiler/jc_materialize.jac",
-         "compiler/jc_ask.jac",
+         "compiler/kernel_module.jac",
          "dist/fused/embed.jac",
-         "dist/fused/_libc.jac"
+         "dist/fused/_libc.jac",
+         "dist/fused/bringup.jac",
+         "dist/fused/materialize.jac",
+         "dist/fused/js_engine.jac"
      ),
      NATIVE_ONLY_DIR_REL: tuple[str, ...] = ("runtime/na_stdlib", ),
      NATIVE_LOWERED_PATHS: tuple[str, ...] = (

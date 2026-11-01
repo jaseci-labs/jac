@@ -3004,13 +3004,9 @@ impl _chunks_receiver_type(nd: FuncCall) -> (str | None) {
     ) {
         return None;
     }
-    try {
-        recv = nd.target.target.type;
-        if recv is None {
-            return None;
-        }
-        return recv.mangle();
-    } except Exception {
+    recv = nd.target.target.type;
+    if recv is None {
         return None;
     }
+    return recv.mangle();
 }

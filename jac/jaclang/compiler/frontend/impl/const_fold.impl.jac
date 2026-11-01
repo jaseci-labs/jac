@@ -32,21 +32,17 @@ impl fold_const(expr: (UniNode | None)) -> tuple[(bool, any)] {
             return (False, None);
         }
         opv = expr.op.value;
-        try {
-            if opv == "-" and isinstance(v, (int, float)) {
-                return (True, -v);
-            }
-            if opv == "+" and isinstance(v, (int, float)) {
-                return (True, v);
-            }
-            if opv == "not" {
-                return (True, not v);
-            }
-            if opv == "~" and isinstance(v, int) {
-                return (True, ~v);
-            }
-        } except Exception {
-            return (False, None);
+        if opv == "-" and isinstance(v, (int, float)) {
+            return (True, -v);
+        }
+        if opv == "+" and isinstance(v, (int, float)) {
+            return (True, v);
+        }
+        if opv == "not" {
+            return (True, not v);
+        }
+        if opv == "~" and isinstance(v, int) {
+            return (True, ~v);
         }
         return (False, None);
     }
@@ -122,7 +118,7 @@ impl fold_const(expr: (UniNode | None)) -> tuple[(bool, any)] {
                 and rv < 4096 {
                 return (True, lv * rv);
             }
-        } except Exception {
+        } except ArithmeticError {
             return (False, None);
         }
         return (False, None);

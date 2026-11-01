@@ -350,10 +350,10 @@ impl JacCompiler.native_entry_engine(
 
 impl JacCompiler.kernel_native_entry(
     full_target: str, target_program: JacProgram, options: (CompileOptions | None)
-) -> tuple[bool, any] {
+) -> any {
     path = JacProgram.hub_key(full_target);
     if options is None and module_record(path, target_program) is not None {
-        return (False, None);
+        return self.native_entry_engine(path, target_program);
     }
     actual = self.selfhost.resolve(path, target_program, execution=True);
     compiled = actual;
@@ -366,10 +366,10 @@ impl JacCompiler.kernel_native_entry(
     import from jaclang.compiler.placement.placement { summary_store }
     placed = summary_store(compiled).get(os.path.abspath(path));
     if placed is None or placed.decided != 'native' {
-        return (True, None);
+        return None;
     }
     carrier = compiled.hub.artifacts.get(path);
-    return (True, carrier.native_engine if carrier is not None else None);
+    return carrier.native_engine if carrier is not None else None;
 }
 
 impl JacCompiler._adopt_native_unit(
@@ -477,20 +477,13 @@ impl JacCompiler._restore_sections(
 ) -> None {
     if (SEC_NBITCODE in secs or SEC_NOBJ in secs)
         and self._wants_native_engine(full_target, actual_program) {
-        try {
-            import json;
-            cached_interop: (dict[str, any] | None) = None;
-            interop_bytes = secs.get(SEC_INTEROP);
-            if interop_bytes is not None {
-                cached_interop = json.loads(interop_bytes.decode('utf-8'));
-            }
-            self._load_native_from_cache(full_target, actual_program, cached_interop);
-        } except Exception as e {
-            import logging;
-            logging.getLogger(__name__).debug(
-                f"Failed to load native module from cache: {e}"
-            );
+        import json;
+        cached_interop: (dict[str, any] | None) = None;
+        interop_bytes = secs.get(SEC_INTEROP);
+        if interop_bytes is not None {
+            cached_interop = json.loads(interop_bytes.decode('utf-8'));
         }
+        self._load_native_from_cache(full_target, actual_program, cached_interop);
     }
     client_bytes = secs.get(SEC_CLIENT);
     if client_bytes is not None {
@@ -501,27 +494,23 @@ impl JacCompiler._restore_sections(
     }
     mtir_bytes = secs.get(SEC_MTIR);
     if mtir_bytes is not None {
-        try {
-            actual_program.mtir_map.update(
-                info_graph_from_json(mtir_bytes.decode("utf-8"))
-            );
-        } except Exception {}
+        actual_program.mtir_map.update(
+            info_graph_from_json(mtir_bytes.decode("utf-8"))
+        );
     }
 
     placement_bytes = secs.get(SEC_PLACEMENT);
     if placement_bytes is not None {
-        try {
-            import from jaclang.compiler.placement.placement { summary_store }
-            import from jaclang.compiler.placement.placement_export {
-                summary_from_bytes
-            }
-            import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT }
-            paths = JirPaths.from_bytes(secs.get(SEC_PATH_ROOT), base_dir);
-            restored = summary_from_bytes(placement_bytes, path_mapper=paths.resolve);
-            if restored is not None {
-                summary_store(actual_program)[os.path.abspath(full_target)] = restored;
-            }
-        } except Exception {}
+        import from jaclang.compiler.placement.placement { summary_store }
+        import from jaclang.compiler.placement.placement_export {
+            summary_from_bytes
+        }
+        import from jaclang.compiler.driver.jir { JirPaths, SEC_PATH_ROOT }
+        paths = JirPaths.from_bytes(secs.get(SEC_PATH_ROOT), base_dir);
+        restored = summary_from_bytes(placement_bytes, path_mapper=paths.resolve);
+        if restored is not None {
+            summary_store(actual_program)[os.path.abspath(full_target)] = restored;
+        }
     }
 }
 
@@ -733,13 +722,6 @@ impl JacCompiler.enter_compile(ctx: SessionContext) -> CompileFrame {
     frame.retain_selfhost = target_program.internal;
     if frame.retain_selfhost {
         self.selfhost.enter_execution();
-        import from jaclang.compiler.frontend.host { active_host, install_host }
-        session_host = active_host();
-        host_side = session_host.host_side();
-        if host_side is not session_host {
-            frame.session_host = session_host;
-            install_host(host_side);
-        }
     }
     return frame;
 }
@@ -786,10 +768,6 @@ impl JacCompiler.finish_compile(frame: CompileFrame) {
     }
     if frame.retain_selfhost {
         self.selfhost.exit_execution();
-    }
-    if frame.session_host is not None {
-        import from jaclang.compiler.frontend.host { install_host }
-        install_host(frame.session_host);
     }
 }
 

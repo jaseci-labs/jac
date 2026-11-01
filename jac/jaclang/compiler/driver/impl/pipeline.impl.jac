@@ -434,14 +434,6 @@ impl product_facts(product: CompilationProduct) -> set[AnalysisFact] {
     return providers_of(product_passes(product));
 }
 
-impl early_passes -> PassSchedule {
-    return [
-        p
-        for p in product_passes(CompilationProduct.IR)
-        if contract_of(p).kernel_safe
-    ];
-}
-
 impl dependents(product: CompilationProduct) -> list[CompilationProduct] {
     out: list[CompilationProduct] = [];
     frontier: list[CompilationProduct] = [product];

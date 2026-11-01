@@ -1633,23 +1633,9 @@ impl _exec_file(
                         if _kind_forced or backend == "native"
                         else None
                 );
-                (in_kernel, engine) = program._get_compiler().kernel_native_entry(
+                engine = program._get_compiler().kernel_native_entry(
                     full_path, program, _run_options
                 );
-                if not in_kernel and _run_options is None {
-                    engine = program._get_compiler().native_entry_engine(
-                        full_path, program
-                    );
-                } elif not in_kernel {
-                    ir_mod = program.compile(file_path=full_path, options=_run_options);
-                    if (
-                        ir_mod
-                        and ir_mod.decided_codespace == 'native'
-                        and ir_mod.gen.native_engine
-                    ) {
-                        engine = ir_mod.gen.native_engine;
-                    }
-                }
                 if program.errors_had {
                     for _err in program.errors_had {
                         console.error(_err.pretty_print());

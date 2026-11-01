@@ -163,12 +163,7 @@ impl OwnershipCheckPass._infer_plain_type(t: (TypeBase | None)) -> bool {
     if t is None {
         return False;
     }
-    mangled = "";
-    try {
-        mangled = t.mangle();
-    } except Exception {
-        return False;
-    }
+    mangled = t.mangle();
     if not mangled {
         return False;
     }
@@ -308,12 +303,7 @@ impl OwnershipCheckPass._infer_indexable(target: object) -> bool {
     if not isinstance(target, Expr) {
         return False;
     }
-    mangled = "";
-    try {
-        mangled = target.type.mangle() if target.type is not None else "";
-    } except Exception {
-        return False;
-    }
+    mangled = target.type.mangle() if target.type is not None else "";
     head = mangled.split("[")[0];
     return head in ("list", "dict", "tuple", "str", "bytes", "bytearray");
 }
@@ -327,12 +317,7 @@ impl OwnershipCheckPass._infer_iterable(coll: object) -> bool {
     if not isinstance(coll, Expr) or coll.type is None {
         return False;
     }
-    mangled = "";
-    try {
-        mangled = coll.type.mangle();
-    } except Exception {
-        return False;
-    }
+    mangled = coll.type.mangle();
     return mangled.split("[")[0]
         in ("list", "dict", "set", "frozenset", "tuple", "str", "bytes", "range");
 }
@@ -455,12 +440,7 @@ impl OwnershipCheckPass._infer_path(expr: object) -> (tuple[Name, set[str]] | No
             if not isinstance(cur.right, IndexSlice) or cur.right.is_range {
                 return None;
             }
-            _tt = "";
-            try {
-                _tt = cur.target.type.mangle() if cur.target.type is not None else "";
-            } except Exception {
-                return None;
-            }
+            _tt = cur.target.type.mangle() if cur.target.type is not None else "";
             if not _tt.startswith("list[") {
                 return None;
             }
@@ -709,14 +689,9 @@ impl OwnershipCheckPass._infer_loop_borrows(
         if other_binds.get(sid, 0) != 1 or simple.get(sid) or sid in excluded {
             continue;
         }
-        coll_type = "";
-        try {
-            coll_type = st.collection.type.mangle()
-                if st.collection.type is not None
-                else "";
-        } except Exception {
-            continue;
-        }
+        coll_type = st.collection.type.mangle()
+            if st.collection.type is not None
+            else "";
         if not coll_type.startswith("list[") {
             continue;
         }
@@ -843,12 +818,7 @@ impl OwnershipCheckPass._infer_builtin_outer(e: object) -> bool {
     if not isinstance(e, Expr) or e.type is None {
         return False;
     }
-    mangled = "";
-    try {
-        mangled = e.type.mangle();
-    } except Exception {
-        return False;
-    }
+    mangled = e.type.mangle();
     return mangled.split("[")[0]
         in ("list", "dict", "set", "frozenset", "tuple", "str", "bytes", "bytearray");
 }
@@ -857,12 +827,7 @@ impl OwnershipCheckPass._infer_scalar_slot(tgt: object) -> bool {
     if not isinstance(tgt, AtomTrailer) or tgt.type is None {
         return False;
     }
-    mangled = "";
-    try {
-        mangled = tgt.type.mangle();
-    } except Exception {
-        return False;
-    }
+    mangled = tgt.type.mangle();
     return mangled in ("int", "float", "bool", "complex")
         or JAC_TYPE_REGISTRY.is_sized(mangled);
 }
@@ -871,12 +836,7 @@ impl OwnershipCheckPass._infer_is_type_expr(nd: object) -> bool {
     if not isinstance(nd, Expr) or nd.type is None {
         return False;
     }
-    tex = "";
-    try {
-        tex = nd.type.mangle();
-    } except Exception {
-        return False;
-    }
+    tex = nd.type.mangle();
     return tex.startswith("type[");
 }
 
