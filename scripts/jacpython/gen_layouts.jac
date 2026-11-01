@@ -6,7 +6,7 @@ tables and the concrete object structs must match what C extensions compile
 against byte for byte. jaclang/runtime/python/layouts.jac declares them, and
 gen_include.jac writes the headers' structs and constants from it. This
 script's only input is layouts.jac (and the C-layout records of
-python_capi.jac it shares); it reads no header:
+cpython_api.jac it shares); it reads no header:
 
     jac run scripts/jacpython/gen_layouts.jac            # rewrite the checks
     jac run scripts/jacpython/gen_layouts.jac --check    # fail on drift
@@ -61,7 +61,7 @@ import from common {
 
 glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
      CHECK: Path = BOOTSTRAP / "layouts_check.c",
-     CAPI: Path = RUNTIME / "python_capi.jac",
+     CAPI: Path = RUNTIME / "cpython_api.jac",
      PLATFORM_OUTPUT: str = "layouts_platform",
      COMMAND: str = "scripts/jacpython/gen_layouts.jac",
      # Configuration macros a constant reads, folded to 0 or 1 for the probe
@@ -7102,7 +7102,7 @@ glob LAYOUTS_JAC: Path = RUNTIME / "layouts.jac",
          "PyHamtIteratorState.i_pos": 8
      },
      # The C designator of a record field whose C member has another name: a
-     # field python_capi.jac renamed, or the member a named union is read
+     # field cpython_api.jac renamed, or the member a named union is read
      # through. A field named after a Jac keyword with a trailing underscore
      # (`obj_`) is the keyword in C without needing an entry.
      C_MEMBERS: dict[str, str] = {
@@ -7273,7 +7273,7 @@ def require(name: str) -> None {
     }
     if name not in records {
         sys.exit(
-            f"gen_layouts: {name} is not a record of layouts.jac or python_capi.jac"
+            f"gen_layouts: {name} is not a record of layouts.jac or cpython_api.jac"
         );
     }
     ctype = next(
@@ -7328,8 +7328,8 @@ def require(name: str) -> None {
     order.append(name);
 }
 
-# The records of layouts.jac and, for a layout python_capi.jac declares
-# (Py_buffer, Py_complex), python_capi.jac's, laid out in dependency order.
+# The records of layouts.jac and, for a layout cpython_api.jac declares
+# (Py_buffer, Py_complex), cpython_api.jac's, laid out in dependency order.
 def compute_layouts(layouts_jac: Path) {
     shared = jac_records(CAPI);
     records.update(jac_records(layouts_jac));
