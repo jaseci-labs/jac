@@ -20,7 +20,14 @@ obj UnitIRSnapshot {
 }
 
 def unit_snapshot_text(ir_text: str) -> UnitIRSnapshot;
+def unit_snapshot_text_values(
+    ir_text: str
+) -> tuple[bytes, set[str], set[str], tuple[int, int]];
+
 def unit_snapshot_module(mod: ModuleRef) -> UnitIRSnapshot;
+def unit_snapshot_module_values(
+    mod: ModuleRef
+) -> tuple[bytes, set[str], set[str], tuple[int, int]];
 
 def unit_module_copy(unit_ir: any, context: any) -> ModuleRef;
 def optimized_bitcode(

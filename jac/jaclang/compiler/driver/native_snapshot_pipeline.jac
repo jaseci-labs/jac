@@ -49,7 +49,9 @@ obj NativeSnapshotPipeline {
     );
 }
 
-def _snapshot_ir_text(path: str, ir_text: str) -> NativeSnapshotResult;
+def _snapshot_ir_text(
+    path: str, ir_text: str
+) -> tuple[str, bytes, set[str], set[str], tuple[int, int]];
 
 def _optimize_snapshot_batch(
     bitcodes: list[bytes], options: CompileOptions

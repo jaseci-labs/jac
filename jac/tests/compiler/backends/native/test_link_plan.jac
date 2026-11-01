@@ -160,9 +160,6 @@ test "a pending snapshot overlaps an independent lower and persists both product
     import threading;
     import jaclang.compiler.driver.native_snapshot_pipeline as snapshot_pipeline;
     import from jaclang.compiler.driver.nativecache { NativeBuildSession }
-    import from jaclang.compiler.driver.native_snapshot_pipeline {
-        NativeSnapshotResult
-    }
     with tempfile.TemporaryDirectory() as work {
         first = str(Path(work) / "first.jac");
         second = str(Path(work) / "second.jac");
@@ -182,7 +179,9 @@ test "a pending snapshot overlaps an independent lower and persists both product
         snapshot_calls = [0];
         original_snapshot = snapshot_pipeline._snapshot_ir_text;
         original_enqueue = NativeBuildSession.enqueue_snapshot;
-        def hold_first_snapshot(path: str, ir_text: str) -> NativeSnapshotResult {
+        def hold_first_snapshot(
+            path: str, ir_text: str
+        ) -> tuple[str, bytes, set[str], set[str], tuple[int, int]] {
             snapshot_calls[0] += 1;
             if snapshot_calls[0] == 1 {
                 snapshot_started.set();
@@ -190,12 +189,20 @@ test "a pending snapshot overlaps an independent lower and persists both product
                     raise RuntimeError("test timed out waiting to release snapshot");
                 }
                 try {
-                    return original_snapshot(path, ir_text);
+                    result = original_snapshot(path, ir_text);
+                    assert isinstance(result, tuple) , (
+                        "snapshot workers must return plain values, not Jac models"
+                    );
+                    return result;
                 } finally {
                     snapshot_finished.set();
                 }
             }
-            return original_snapshot(path, ir_text);
+            result = original_snapshot(path, ir_text);
+            assert isinstance(result, tuple) , (
+                "snapshot workers must return plain values, not Jac models"
+            );
+            return result;
         }
         def observe_enqueue(self: NativeBuildSession, path: str) {
             resolved = os.path.realpath(path);

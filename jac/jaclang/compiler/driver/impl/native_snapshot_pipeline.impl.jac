@@ -19,13 +19,24 @@ impl NativeSnapshotPipeline.take_snapshot(
     path: (str | None) = None
 ) -> (NativeSnapshotResult | None) {
     if self.snapshot_future is None
+        or self.snapshot_path is None
         or (path is not None and self.snapshot_path != os.path.realpath(path)) {
         return None;
     }
     future = self.snapshot_future;
+    resolved = self.snapshot_path;
     self.snapshot_future = None;
     self.snapshot_path = None;
-    return future.result();
+    (resolved, bitcode, defined, declared, function_counts) = future.result();
+    return NativeSnapshotResult(
+        path=resolved,
+        snapshot=UnitIRSnapshot(
+            bitcode=bitcode,
+            defined=defined,
+            declared=declared,
+            function_counts=function_counts
+        )
+    );
 }
 
 impl NativeSnapshotPipeline.queue_optimization(
@@ -139,8 +150,11 @@ impl NativeSnapshotPipeline.close {
     }
 }
 
-impl _snapshot_ir_text(path: str, ir_text: str) -> NativeSnapshotResult {
-    return NativeSnapshotResult(path=path, snapshot=unit_snapshot_text(ir_text));
+impl _snapshot_ir_text(
+    path: str, ir_text: str
+) -> tuple[str, bytes, set[str], set[str], tuple[int, int]] {
+    (bitcode, defined, declared, function_counts) = unit_snapshot_text_values(ir_text);
+    return (path, bitcode, defined, declared, function_counts);
 }
 
 impl _optimize_snapshot_batch(
