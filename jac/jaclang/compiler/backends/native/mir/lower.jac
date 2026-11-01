@@ -16,7 +16,8 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "BW_OR_EQ": "BW_OR",
          "BW_XOR_EQ": "BW_XOR",
          "LSHIFT_EQ": "LSHIFT",
-         "RSHIFT_EQ": "RSHIFT"
+         "RSHIFT_EQ": "RSHIFT",
+         "STAR_POW_EQ": "STAR_POW"
      },
      SHIFT_MESSAGE: str = "shift count out of range",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
@@ -46,6 +47,77 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
          "LTE": "le",
          "GTE": "ge"
      };
+
+"""Mode numbers the text, format and bytes runtime units take, by the method or
+codec name generated code passes them for. TEXT_STOP is the default end
+position, past any string or bytes length."""
+glob TEXT_CASES: dict[str, int] = {
+         "upper": 0,
+         "lower": 1,
+         "casefold": 1,
+         "swapcase": 2,
+         "title": 3,
+         "capitalize": 4
+     },
+     TEXT_TESTS: dict[str, int] = {
+         "isdigit": 0,
+         "isdecimal": 0,
+         "isnumeric": 0,
+         "isalpha": 1,
+         "isspace": 2,
+         "isalnum": 3,
+         "isupper": 4,
+         "islower": 5,
+         "isascii": 6,
+         "isidentifier": 7,
+         "istitle": 8,
+         "isprintable": 9
+     },
+     TEXT_STRIPS: dict[str, int] = {"strip": 0, "lstrip": 1, "rstrip": 2},
+     TEXT_JUSTIFY: dict[str, int] = {"ljust": 0, "rjust": 1, "center": 2},
+     TEXT_CODECS: dict[str, int] = {
+         "utf-8": 0,
+         "utf8": 0,
+         "u8": 0,
+         "utf": 0,
+         "ascii": 1,
+         "us-ascii": 1,
+         "646": 1,
+         "latin-1": 2,
+         "latin1": 2,
+         "iso-8859-1": 2,
+         "iso8859-1": 2,
+         "l1": 2
+     },
+     TEXT_ERRORS: dict[str, int] = {"strict": 0, "replace": 1, "ignore": 2},
+     TEXT_BUILTINS: list[str] = [
+         "str",
+         "len",
+         "int",
+         "float",
+         "bool",
+         "bytes",
+         "bytearray",
+         "repr",
+         "ascii",
+         "format",
+         "hash",
+         "ord",
+         "chr",
+         "hex",
+         "oct",
+         "bin",
+         "abs",
+         "min",
+         "max",
+         "round",
+         "divmod",
+         "pow"
+     ],
+     TEXT_STOP: int = 4611686018427387904,
+     FSTRING_STR: int = 115,
+     FSTRING_REPR: int = 114,
+     FSTRING_ASCII: int = 97;
 
 obj MirLoopTarget {
     has head: MirBlock,
@@ -86,6 +158,7 @@ obj MirLowering {
         nested: list[MirFunction] = [],
         adapters: dict[str, str] = {},
         fn_values: dict[int, MirDecl] = {},
+        text_fns: dict[str, str] = {},
         order: list[int] = [],
         refusals: dict[str, list[NativeRefusal]] = {},
         state: (MirFnState | None) = None;
@@ -171,7 +244,6 @@ obj MirLowering {
     def str_compare(op: str, left: MirValue, right: MirValue) -> MirValue;
     def builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def lower_print(nd: uni.FuncCall) -> MirValue;
-    def write_value(value: MirValue, site: uni.UniNode);
     def elem_kind(t: MirType, site: uni.UniNode) -> int;
     def to_bits(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue;
     def scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue;
@@ -251,6 +323,91 @@ obj MirLowering {
     def lower_raise(nd: uni.RaiseStmt);
     def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
     def exception_name(nd: uni.Expr) -> str;
+    def call_rt(name: str, args: list[MirValue]) -> MirValue;
+    def text_const(text: str) -> tuple[MirValue, MirValue];
+    def as_text(value: MirValue) -> MirValue;
+    def owned_text(handle: MirValue) -> MirValue;
+    def text_position(value: MirValue, to: MirType) -> (MirValue | None);
+    def text_operands(left: MirValue, right: MirValue) -> tuple[MirValue, MirValue];
+    def is_text(value: MirValue) -> bool;
+    def is_byte_seq(value: MirValue) -> bool;
+    def present(arg: (uni.Expr | None)) -> bool;
+    def bind_args(nd: uni.FuncCall, names: list[str]) -> list[(uni.Expr | None)];
+    def text_arg(arg: (uni.Expr | None), site: uni.UniNode) -> MirValue;
+    def int_arg(arg: (uni.Expr | None), fallback: int) -> MirValue;
+    def bool_arg(arg: (uni.Expr | None), fallback: bool) -> MirValue;
+    def codec_arg(
+        arg: (uni.Expr | None), table: dict[str, int], site: uni.UniNode
+    ) -> MirValue;
+
+    def codec_failure(exception: str) -> MirValue;
+    def literal_text(nd: (uni.UniNode | None)) -> (str | None);
+    def typed_handle(handle: MirValue, nd: uni.Expr) -> MirValue;
+    def text_method(receiver: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
+    def text_partition(text: MirValue, sep: MirValue, reverse: bool) -> MirValue;
+    def slice_operands(part: uni.Slice) -> tuple[MirValue, MirValue, MirValue, MirValue];
+    def text_subscript(
+        holder: MirValue, slice: uni.IndexSlice, site: uni.UniNode
+    ) -> MirValue;
+
+    def text_contains(item: MirValue, holder: MirValue, site: uni.UniNode) -> MirValue;
+    def text_binary(
+        op: str, left: MirValue, right: MirValue, site: uni.UniNode
+    ) -> (MirValue | None);
+
+    def percent_format(template: str, values: MirValue, site: uni.UniNode) -> MirValue;
+    def lower_for_text(nd: uni.InForStmt, holder: MirValue);
+    def bytes_literal(nd: (uni.String | uni.MultiString)) -> (MirValue | None);
+    def byte_parts(held: MirValue) -> tuple[MirValue, MirValue];
+    def byte_at(data: MirValue, index: MirValue) -> MirValue;
+    def byte_len(value: MirValue) -> MirValue;
+    def to_bytearray(value: MirValue) -> MirValue;
+    def byte_index(size: MirValue, index_nd: uni.Expr, message: str) -> MirValue;
+    def bytes_subscript(
+        held: MirValue, slice: uni.IndexSlice, site: uni.UniNode
+    ) -> MirValue;
+
+    def bytearray_store(target: uni.AtomTrailer, value_nd: uni.Expr, site: uni.UniNode);
+    def bytes_arg(
+        arg: (uni.Expr | None), site: uni.UniNode
+    ) -> tuple[MirValue, MirValue];
+
+    def bytes_method(held: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
+    def str_value(value: MirValue, site: uni.UniNode) -> MirValue;
+    def repr_of(value: MirValue, site: uni.UniNode) -> MirValue;
+    def ascii_of(value: MirValue, site: uni.UniNode) -> MirValue;
+    def object_text(value: MirValue, method: str, site: uni.UniNode) -> MirValue;
+    def text_fn(value_type: MirType, site: uni.UniNode) -> str;
+    def sb_text(sb: MirValue, text: str);
+    def sb_value(sb: MirValue, text: MirValue);
+    def dict_part(d: MirValue, at: MirValue, part: MirType, is_key: bool) -> MirValue;
+    def container_repr_body(param: MirValue, site: uni.UniNode);
+    def object_repr_body(param: MirValue, site: uni.UniNode);
+    def fstring_value(nd: uni.FString) -> MirValue;
+    def format_value(
+        value: MirValue, spec: (MirValue | None), site: uni.UniNode
+    ) -> MirValue;
+
+    def type_label(t: MirType) -> str;
+    def print_call(nd: uni.FuncCall) -> MirValue;
+    def stream_fd(nd: uni.Expr) -> int;
+    def write_value(value: MirValue, fd: int, site: uni.UniNode);
+    def text_builtin(nd: uni.FuncCall, name: str) -> (MirValue | None);
+    def text_bytes(value: MirValue) -> tuple[MirValue, MirValue];
+    def bytes_from(args: list[uni.Expr], nd: uni.FuncCall) -> MirValue;
+    def absolute(value: MirValue, site: uni.UniNode) -> MirValue;
+    def extreme(
+        first: MirValue, rest: list[uni.Expr], name: str, site: uni.UniNode
+    ) -> MirValue;
+
+    def rounded(
+        value: MirValue, digits_nd: (uni.Expr | None), site: uni.UniNode
+    ) -> MirValue;
+
+    def divmod_value(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def power(left: MirValue, right: MirValue, site: uni.UniNode) -> MirValue;
+    def pow_result(site: uni.UniNode) -> MirType;
+    def hash_value(value: MirValue, site: uni.UniNode) -> MirValue;
     def emit_value(
         op: MirOp,
         type: MirType,

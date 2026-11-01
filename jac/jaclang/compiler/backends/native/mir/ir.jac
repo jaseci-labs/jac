@@ -3,6 +3,7 @@ enum MirOp {
     CONST_FLOAT = "const.float",
     CONST_BOOL = "const.bool",
     CONST_STR = "const.str",
+    CONST_BYTES = "const.bytes",
     CONST_NONE = "const.none",
     CONST_NULL = "const.null",
     SLOT = "slot",

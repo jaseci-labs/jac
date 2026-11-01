@@ -55,6 +55,7 @@ obj MirEmitter {
         strings: dict[str, ir.GlobalVariable] = {},
         building: set[str] = set(),
         literals: dict[str, ir.GlobalVariable] = {},
+        byte_literals: dict[str, ir.GlobalVariable] = {},
         native_tls: bool = False;
 
     def emit -> ir.Module;
@@ -83,6 +84,7 @@ obj MirEmitter {
     def emit_raise(b: ir.IRBuilder, instr: MirInstr);
     def str_type -> ir.Type;
     def str_literal(b: ir.IRBuilder, text: str) -> ir.Value;
+    def bytes_literal(b: ir.IRBuilder, data: bytes) -> ir.Value;
     def emit_rc(b: ir.IRBuilder, instr: MirInstr);
     def emit_c(b: ir.IRBuilder, instr: MirInstr);
     def emit_memory(b: ir.IRBuilder, instr: MirInstr);

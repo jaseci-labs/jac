@@ -150,6 +150,12 @@ impl mir_class_type(
         }
         return mir_str_ref();
     }
+    if name == "bytes" {
+        return mir_bytes();
+    }
+    if name == "bytearray" {
+        return mir_bytearray();
+    }
     raise MirRefused(mir_refusal("type", name, site));
 }
 

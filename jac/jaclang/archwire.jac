@@ -10852,6 +10852,8 @@ graph import compiler.backends.native.mir {
             MirKind,
             MirType,
             mir_bool,
+            mir_bytearray,
+            mir_bytes,
             mir_c_fn,
             mir_holds_ref,
             mir_is_container,
@@ -10871,6 +10873,8 @@ graph import compiler.backends.native.mir {
         lower_types {
             MirType,
             mir_bool,
+            mir_bytearray,
+            mir_bytes,
             mir_dict,
             mir_fn,
             mir_list,

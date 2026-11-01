@@ -18,7 +18,7 @@ impl MirRcState.run {
                 and instr.result is not None {
                 self.parents[instr.result.id] = instr.operands[0].id;
             }
-            if instr.op in (MirOp.CONST_STR, MirOp.CONST_NULL)
+            if instr.op in (MirOp.CONST_STR, MirOp.CONST_BYTES, MirOp.CONST_NULL)
                 and instr.result is not None {
                 self.immortal.add(instr.result.id);
             }

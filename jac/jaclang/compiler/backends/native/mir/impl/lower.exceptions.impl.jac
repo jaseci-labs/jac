@@ -148,7 +148,16 @@ impl MirLowering.lower_raise(nd: uni.RaiseStmt) {
         b.raise_builtin(name, args[0].lit_value);
         return;
     }
-    text = self.to_str(self.lower_expr(args[0]), args[0]);
+    message = self.lower_expr(args[0]);
+    if message.type.kind == MirKind.C_PTR {
+        self.runtime(
+            "__jac_rt_raise_builtin",
+            [b.const_int(JAC_TYPE_REGISTRY.exception_type_id(name), mir_int(32, True, True)), message]
+        );
+        b.unreachable();
+        return;
+    }
+    text = self.to_str(message, args[0]);
     held = self.runtime(
         "__jac_rt_str_ref", [b.str_part(text, "root"), b.str_part(text, "data"), b.str_part(text, "len")]
     );
