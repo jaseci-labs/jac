@@ -31876,6 +31876,8 @@ graph import scale {
     sso.grants ++> [
         server.sso_ext { connections_for, disconnect_for, register_sso },
         tests.server.test_sso_grants {
+            _grant_context,
+            _grant_secret,
             access_token_for,
             connections_for,
             disconnect_for,

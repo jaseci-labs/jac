@@ -483,11 +483,7 @@ impl UserManager.get_sso_accounts(user_id: str) -> list[dict[str, str]] {
 }
 
 impl UserManager.oauth_grants(user_id: str) -> list[dict[str, any]] {
-    return [
-        c
-        for c in self._identity_storage._get_credentials(user_id)
-        if c.get('type') == OAUTH_GRANT_CREDENTIAL
-    ];
+    return self._identity_storage._get_oauth_grants(user_id);
 }
 
 impl UserManager.oauth_grant(user_id: str, platform: str) -> dict[str, any] | None {
@@ -499,39 +495,22 @@ impl UserManager.oauth_grant(user_id: str, platform: str) -> dict[str, any] | No
     return None;
 }
 
-impl UserManager.save_oauth_grant(user_id: str, grant: dict[str, any]) -> bool {
-    if not self._identity_storage.user_exists_by_id(user_id) {
-        return False;
+impl UserManager.save_oauth_grant(
+    user_id: str, grant: dict[str, any], version: (int | None) = None
+) -> int {
+    if version is not None {
+        return self._identity_storage._swap_oauth_grant(user_id, grant, version);
     }
-    platform = grant.get('platform');
-    kept = [
-        c
-        for c in self._identity_storage._get_credentials(user_id)
-        if not (
-            c.get('type') == OAUTH_GRANT_CREDENTIAL and c.get('platform') == platform
-        )
-    ];
-    kept.append({** grant, 'type': OAUTH_GRANT_CREDENTIAL});
-    self._identity_storage._update_credentials(user_id, kept);
-    return True;
+    if not self._identity_storage.user_exists_by_id(user_id) {
+        return 0;
+    }
+    return self._identity_storage._put_oauth_grant(user_id, grant);
 }
 
 impl UserManager.drop_oauth_grant(
-    user_id: str, platform: str
+    user_id: str, platform: str, version: (int | None) = None
 ) -> dict[str, any] | None {
-    dropped: dict[str, any] | None = None;
-    kept: list[dict[str, any]] = [];
-    for c in self._identity_storage._get_credentials(user_id) {
-        if c.get('type') == OAUTH_GRANT_CREDENTIAL and c.get('platform') == platform {
-            dropped = c;
-        } else {
-            kept.append(c);
-        }
-    }
-    if dropped is not None {
-        self._identity_storage._update_credentials(user_id, kept);
-    }
-    return dropped;
+    return self._identity_storage._take_oauth_grant(user_id, platform, version);
 }
 
 impl UserManager.get_user_by_sso(

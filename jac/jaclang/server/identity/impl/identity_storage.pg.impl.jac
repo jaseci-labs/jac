@@ -20,6 +20,15 @@ glob _PG_IDENTITY_SCHEMA: list[str] = [
     )
     """,
          """
+    CREATE TABLE IF NOT EXISTS identity_oauth_grants (
+        user_id  text NOT NULL,
+        platform text NOT NULL,
+        doc      jsonb NOT NULL,
+        version  bigint NOT NULL DEFAULT 1,
+        PRIMARY KEY (user_id, platform)
+    )
+    """,
+         """
     CREATE INDEX IF NOT EXISTS idx_identity_lookups_user
         ON identity_lookups (user_id)
     """
@@ -36,6 +45,9 @@ def _pg_load_doc(raw: any) -> dict[str, any];
 
 
 def _pg_public(raw: any) -> dict[str, any];
+
+
+def _grant_doc(grant: dict[str, any]) -> dict[str, any];
 
 
 impl PgIdentityStorage.postinit -> None {
@@ -120,6 +132,9 @@ impl PgIdentityStorage.identity_taken(value: str) -> bool {
 impl PgIdentityStorage.delete_user(user_id: str) -> bool {
     self.store.rows('DELETE FROM identity_lookups WHERE user_id = :u', {'u': user_id});
     self.store.rows('DELETE FROM sso_lookups WHERE user_id = :u', {'u': user_id});
+    self.store.rows(
+        'DELETE FROM identity_oauth_grants WHERE user_id = :u', {'u': user_id}
+    );
     rows = self.store.rows(
         'DELETE FROM identity_users WHERE user_id = :u RETURNING user_id',
         {'u': user_id}
@@ -175,6 +190,70 @@ impl PgIdentityStorage._update_credentials(
         """,
         {'u': user_id, 'p': json.dumps(patch, `default=_pg_json_default)}
     );
+}
+
+impl PgIdentityStorage._get_oauth_grants(user_id: str) -> list[dict[str, any]] {
+    rows = self.store.rows(
+        """
+        SELECT doc, version FROM identity_oauth_grants
+        WHERE user_id = :u ORDER BY platform
+        """,
+        {'u': user_id}
+    );
+    return [{** _pg_load_doc(r[0]), 'version': int(r[1])} for r in rows];
+}
+
+impl PgIdentityStorage._put_oauth_grant(user_id: str, grant: dict[str, any]) -> int {
+    rows = self.store.rows(
+        """
+        INSERT INTO identity_oauth_grants (user_id, platform, doc)
+        VALUES (:u, :p, CAST(:d AS jsonb))
+        ON CONFLICT (user_id, platform) DO UPDATE
+        SET doc = EXCLUDED.doc, version = identity_oauth_grants.version + 1
+        RETURNING version
+        """,
+        {
+            'u': user_id,
+            'p': str(grant.get('platform') or ''),
+            'd': json.dumps(_grant_doc(grant), `default=_pg_json_default)
+        }
+    );
+    return int(rows[0][0]);
+}
+
+impl PgIdentityStorage._swap_oauth_grant(
+    user_id: str, grant: dict[str, any], version: int
+) -> int {
+    rows = self.store.rows(
+        """
+        UPDATE identity_oauth_grants
+        SET doc = CAST(:d AS jsonb), version = version + 1
+        WHERE user_id = :u AND platform = :p AND version = CAST(:v AS bigint)
+        RETURNING version
+        """,
+        {
+            'u': user_id,
+            'p': str(grant.get('platform') or ''),
+            'v': str(version),
+            'd': json.dumps(_grant_doc(grant), `default=_pg_json_default)
+        }
+    );
+    return int(rows[0][0]) if rows else 0;
+}
+
+impl PgIdentityStorage._take_oauth_grant(
+    user_id: str, platform: str, version: (int | None) = None
+) -> dict[str, any] | None {
+    rows = self.store.rows(
+        """
+        DELETE FROM identity_oauth_grants
+        WHERE user_id = :u AND platform = :p
+          AND (CAST(:v AS bigint) IS NULL OR version = CAST(:v AS bigint))
+        RETURNING doc
+        """,
+        {'u': user_id, 'p': platform, 'v': None if version is None else str(version)}
+    );
+    return _pg_load_doc(rows[0][0]) if rows else None;
 }
 
 impl PgIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] {
@@ -426,5 +505,13 @@ impl _pg_public(raw: any) -> dict[str, any] {
         'profile': d.get('profile') or {},
         'created_at': d.get('created_at'),
         'updated_at': d.get('updated_at')
+    };
+}
+
+impl _grant_doc(grant: dict[str, any]) -> dict[str, any] {
+    return {
+        k: v
+        for (k, v) in grant.items()
+        if k != 'version'
     };
 }

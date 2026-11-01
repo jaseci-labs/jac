@@ -18,17 +18,23 @@ impl _keystream(key: bytes, nonce: bytes, length: int) -> bytes {
     return bytes(out[:length]);
 }
 
-impl seal_secret(plain: str, key_material: str = '') -> str {
+impl _seal_tag(mac_key: bytes, context: str, nonce: bytes, body: bytes) -> bytes {
+    bound = context.encode('utf-8');
+    header = b'v1' + len(bound).to_bytes(4, 'big') + bound;
+    return hmac.new(mac_key, header + nonce + body, hashlib.sha256).digest();
+}
+
+impl seal_secret(plain: str, key_material: str = '', context: str = '') -> str {
     (enc_key, mac_key) = _seal_keys(key_material);
     data = plain.encode('utf-8');
     nonce = secrets.token_bytes(SEAL_NONCE_BYTES);
     stream = _keystream(enc_key, nonce, len(data));
     body = bytes(a ^ b for (a, b) in zip(data, stream));
-    tag = hmac.new(mac_key, b'v1' + nonce + body, hashlib.sha256).digest();
+    tag = _seal_tag(mac_key, context, nonce, body);
     return SEAL_PREFIX + urlsafe_b64encode(nonce + body + tag).decode().rstrip('=');
 }
 
-impl unseal_secret(sealed: str, key_material: str = '') -> str {
+impl unseal_secret(sealed: str, key_material: str = '', context: str = '') -> str {
     if not sealed.startswith(SEAL_PREFIX) {
         raise ValueError('not a sealed secret');
     }
@@ -45,15 +51,30 @@ impl unseal_secret(sealed: str, key_material: str = '') -> str {
     body = raw[SEAL_NONCE_BYTES:-SEAL_TAG_BYTES];
     tag = raw[-SEAL_TAG_BYTES:];
     (enc_key, mac_key) = _seal_keys(key_material);
-    expected = hmac.new(mac_key, b'v1' + nonce + body, hashlib.sha256).digest();
-    if not hmac.compare_digest(tag, expected) {
+    if not hmac.compare_digest(tag, _seal_tag(mac_key, context, nonce, body)) {
         raise ValueError('sealed secret failed authentication');
     }
     stream = _keystream(enc_key, nonce, len(body));
     return bytes(a ^ b for (a, b) in zip(body, stream)).decode('utf-8');
 }
 
+impl _grant_context(user_id: str, platform: str) -> str {
+    return f"oauth-grant:{user_id}:{platform}";
+}
+
+impl _grant_secret(user_id: str, grant: dict[str, any], field: str) -> str {
+    try {
+        return unseal_secret(
+            str(grant.get(field) or ''),
+            context=_grant_context(user_id, str(grant.get('platform') or ''))
+        );
+    } except ValueError {
+        return '';
+    }
+}
+
 impl grant_from_tokens(
+    user_id: str,
     platform: str,
     external_id: str,
     payload: dict[str, any],
@@ -63,6 +84,10 @@ impl grant_from_tokens(
 ) -> dict[str, any] {
     moment = now or time.time();
     prior = previous or {};
+    if external_id and str(prior.get('external_id') or '') != external_id {
+        prior = {};
+    }
+    context = _grant_context(user_id, platform);
     granted = str(payload.get('scope') or '').replace(',', ' ').split();
     scopes = granted or sorted(set(list(prior.get('scopes') or []) + requested));
     access = str(payload.get('access_token') or '');
@@ -79,8 +104,8 @@ impl grant_from_tokens(
         'platform': platform,
         'external_id': external_id or str(prior.get('external_id') or ''),
         'scopes': scopes,
-        'access_token': seal_secret(access) if access else '',
-        'refresh_token': seal_secret(refresh)
+        'access_token': seal_secret(access, context=context) if access else '',
+        'refresh_token': seal_secret(refresh, context=context)
             if refresh
             else str(prior.get('refresh_token') or ''),
         'expires_at': expires_at,
@@ -103,52 +128,83 @@ impl register_sso(auth: SSOAuth) -> None {
     _active['sso'] = auth;
 }
 
-impl access_token_for(user_id: str, platform: str) -> str {
-    auth: any = _active.get('sso');
-    if auth is None or not user_id {
-        return '';
-    }
-    grant = auth.users.oauth_grant(user_id, platform);
-    if not grant {
-        return '';
-    }
+impl _refresh_claimed(
+    auth: any,
+    user_id: str,
+    platform: str,
+    grant: dict[str, any],
+    refresh: str,
+    version: int
+) -> str {
+    provider: any = auth.get_sso(platform);
     now = time.time();
-    expires_at = float(grant.get('expires_at') or 0);
-    access = '';
-    try {
-        access = unseal_secret(str(grant.get('access_token') or ''));
-    } except ValueError {}
-    if access and (expires_at == 0 or expires_at - REFRESH_SKEW_SECONDS > now) {
-        return access;
-    }
-    refresh = '';
-    try {
-        refresh = unseal_secret(str(grant.get('refresh_token') or ''));
-    } except ValueError {
-        return '';
-    }
-    provider = auth.get_sso(platform);
-    if not isinstance(provider, OAuth2CodeProvider) {
-        return '';
-    }
     try {
         payload = await provider.refresh_grant(refresh);
     } except GrantRefused {
-        auth.users.drop_oauth_grant(user_id, platform);
+        auth.users.drop_oauth_grant(user_id, platform, version);
         return '';
+    } except Exception {
+        auth.users.save_oauth_grant(
+            user_id, {** grant, 'refresh_claimed_until': 0}, version
+        );
+        raise;
     }
-    auth.users.save_oauth_grant(
+    saved = auth.users.save_oauth_grant(
         user_id,
         grant_from_tokens(
+            user_id,
             platform,
             str(grant.get('external_id') or ''),
             payload,
             list(grant.get('scopes') or []),
             previous=grant,
             now=now
-        )
+        ),
+        version
     );
+    if not saved {
+        return await access_token_for(user_id, platform);
+    }
     return str(payload.get('access_token') or '');
+}
+
+impl access_token_for(user_id: str, platform: str) -> str {
+    auth: any = _active.get('sso');
+    if auth is None or not user_id {
+        return '';
+    }
+    deadline = time.time() + REFRESH_LEASE_SECONDS;
+    while time.time() < deadline {
+        grant = auth.users.oauth_grant(user_id, platform);
+        if not grant {
+            return '';
+        }
+        now = time.time();
+        expires_at = float(grant.get('expires_at') or 0);
+        access = _grant_secret(user_id, grant, 'access_token');
+        if access and (expires_at == 0 or expires_at - REFRESH_SKEW_SECONDS > now) {
+            return access;
+        }
+        if float(grant.get('refresh_claimed_until') or 0) > now {
+            if access and expires_at > now {
+                return access;
+            }
+            await asyncio.sleep(REFRESH_POLL_SECONDS);
+            continue;
+        }
+        refresh = _grant_secret(user_id, grant, 'refresh_token');
+        if not refresh or not isinstance(auth.get_sso(platform), OAuth2CodeProvider) {
+            return '';
+        }
+        claim = {** grant, 'refresh_claimed_until': now + REFRESH_LEASE_SECONDS};
+        version = auth.users.save_oauth_grant(user_id, claim, int(grant['version']));
+        if version {
+            return await _refresh_claimed(
+                auth, user_id, platform, claim, refresh, version
+            );
+        }
+    }
+    return '';
 }
 
 impl connections_for(user_id: str) -> list[ConnectedAccount] {
@@ -171,11 +227,13 @@ impl disconnect_for(user_id: str, platform: str) -> bool {
     provider = auth.get_sso(platform);
     if isinstance(provider, OAuth2CodeProvider) {
         for field in ['refresh_token', 'access_token'] {
-            try {
-                token = unseal_secret(str(dropped.get(field) or ''));
-                await provider.revoke_token(token);
+            token = _grant_secret(user_id, dropped, field);
+            if token {
+                try {
+                    await provider.revoke_token(token);
+                } except Exception {}
                 break;
-            } except Exception {}
+            }
         }
     }
     return True;

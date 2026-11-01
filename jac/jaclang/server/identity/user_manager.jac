@@ -7,7 +7,6 @@ glob logger = logging.getLogger(__name__),
      SYSTEM_USER: str = '__system__',
      LOGIN_SCOPE: str = 'login-attempt',
      RETIRED_ADMIN_PASSWORD: str = 'changeme',
-     OAUTH_GRANT_CREDENTIAL: str = 'oauth_grant',
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
          '_jaclang_root_id_cache', `default=None
      );
@@ -100,8 +99,14 @@ obj UserManager {
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, str] | None;
     def oauth_grants(user_id: str) -> list[dict[str, any]];
     def oauth_grant(user_id: str, platform: str) -> dict[str, any] | None;
-    def save_oauth_grant(user_id: str, grant: dict[str, any]) -> bool;
-    def drop_oauth_grant(user_id: str, platform: str) -> dict[str, any] | None;
+    def save_oauth_grant(
+        user_id: str, grant: dict[str, any], version: (int | None) = None
+    ) -> int;
+
+    def drop_oauth_grant(
+        user_id: str, platform: str, version: (int | None) = None
+    ) -> dict[str, any] | None;
+
     def validate_token(token: str) -> str | None;
     def get_user_role(user_id: str) -> str | None;
     def set_user_role(user_id: str, role: str) -> dict[str, str];

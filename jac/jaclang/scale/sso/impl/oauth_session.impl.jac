@@ -268,6 +268,7 @@ impl OAuthSession.exchange(
             self.users.save_oauth_grant(
                 link_user,
                 grant_from_tokens(
+                    link_user,
                     self.platform,
                     info.external_id,
                     payload,
