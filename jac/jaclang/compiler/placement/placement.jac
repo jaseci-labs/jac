@@ -3,7 +3,6 @@ import os;
 glob PLACEMENT_SCHEMA: int = 6,
      PLACEMENT_SV_SIGNAL_NODES: list[tuple[str, type[uni.UniNode]]] = [
          ("TypedCtxBlock", uni.TypedCtxBlock),
-         ("PyInlineCode", uni.PyInlineCode),
          ("JsxElement", uni.JsxElement)
      ],
      PLACEMENT_NATIVE_REJECT_NODES: list[tuple[str, type[uni.UniNode]]] = [],

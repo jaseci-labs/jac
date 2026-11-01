@@ -8,7 +8,6 @@ enum TokenKind {
     BOOL = "BOOL",
     NULL = "NULL",
     ELLIPSIS = "ELLIPSIS",
-    PYNLINE = "PYNLINE",
     NAME = "NAME",
     KWESC_NAME = "KWESC_NAME",
     TYP_STRING = "str",
