@@ -28,7 +28,8 @@ def tomllib_py -> dict[any, any] {
     matrix: any = v["matrix"];
     mrow1: any = matrix[1];
     ports: any = v["ports"];
-    server: any = v["server"];
+    server: dict[str, any] = v["server"];
+    owner: dict[str, any] = v["owner"];
     tls: any = server["tls"];
     inline: any = v["inline"];
     ic: any = inline["c"];
@@ -128,7 +129,7 @@ def tomllib_py -> dict[any, any] {
         "run_present": "run_at" in server,
         "local_present": "local_at" in server,
         "tea_present": "tea" in server,
-        "dob_present": "dob" in v["owner"],
+        "dob_present": "dob" in owner,
         "e1": e1,
         "e2": e2,
         "e3": e3,
@@ -154,7 +155,8 @@ def tomllib_na -> dict[str, any] {
     matrix: any = v["matrix"];
     mrow1: any = matrix[1];
     ports: any = v["ports"];
-    server: any = v["server"];
+    server: dict[str, any] = v["server"];
+    owner: dict[str, any] = v["owner"];
     tls: any = server["tls"];
     inline: any = v["inline"];
     ic: any = inline["c"];
@@ -254,7 +256,7 @@ def tomllib_na -> dict[str, any] {
         "run_present": "run_at" in server,
         "local_present": "local_at" in server,
         "tea_present": "tea" in server,
-        "dob_present": "dob" in v["owner"],
+        "dob_present": "dob" in owner,
         "e1": e1,
         "e2": e2,
         "e3": e3,

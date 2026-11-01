@@ -34,7 +34,13 @@ def _starts_at(s: str, sub: str, at: int) -> bool;
 def _find_from(s: str, sub: str, start: int) -> int;
 
 
+def _lstrip(s: str) -> str;
+
+
 def _rstrip(s: str) -> str;
+
+
+def _strip(s: str) -> str;
 
 
 def _join_nl(parts: list[str]) -> str;

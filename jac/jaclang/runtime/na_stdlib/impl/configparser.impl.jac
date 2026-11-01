@@ -159,6 +159,26 @@ impl _find_from(s: str, sub: str, start: int) -> int {
 }
 
 
+impl _lstrip(s: str) -> str {
+    n: int = len(s);
+    start: int = 0;
+    while start < n {
+        width: int = 1;
+        c: int = ord(s[start]);
+        if c == 194 {
+            width = 2;
+        } elif c == 225 or c == 226 or c == 227 {
+            width = 3;
+        }
+        if not _is_ws(s, start + width - 1) {
+            break;
+        }
+        start += width;
+    }
+    return s[start:n];
+}
+
+
 impl _rstrip(s: str) -> str {
     n: int = len(s);
     e: int = n;
@@ -173,6 +193,11 @@ impl _rstrip(s: str) -> str {
         }
     }
     return s[0:e];
+}
+
+
+impl _strip(s: str) -> str {
+    return _rstrip(_lstrip(s));
 }
 
 
@@ -994,7 +1019,7 @@ impl ConfigParser._read_lines(lines: list[str], source: str) {
         raw: str = lines[i];
         lineno: int = i + 1;
         i += 1;
-        trimmed: str = raw.strip();
+        trimmed: str = _strip(raw);
         clean: str = self._strip_comments(trimmed);
         has_comments: bool = trimmed != clean;
         if clean == "" {
@@ -1038,7 +1063,7 @@ impl ConfigParser._read_lines(lines: list[str], source: str) {
                 continue;
             }
             dlen: int = self._delim_len(clean, best);
-            on_raw: str = clean[0:best].rstrip();
+            on_raw: str = _rstrip(clean[0:best]);
             optname = on_raw.lower();
             if optname == "" {
                 pe.append(lineno, raw);
@@ -1062,7 +1087,7 @@ impl ConfigParser._read_lines(lines: list[str], source: str) {
             }
             sub[optname] = True;
             vraw: str = clean[best + dlen:];
-            val: str = vraw.strip();
+            val: str = _strip(vraw);
             cur[optname] = [val];
             has_opt = optname != "";
         } else {
