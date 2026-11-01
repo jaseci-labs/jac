@@ -20,6 +20,7 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      },
      SHIFT_MESSAGE: str = "shift count out of range",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
+     RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
      MEMORY_ORDERS: list[str] = [
          "monotonic", "acquire", "acquire", "release", "acq_rel", "seq_cst"
      ],
@@ -86,6 +87,11 @@ obj MirLowering {
     def lower_else(nd: (uni.ElseStmt | uni.ElseIf | None), done: MirBlock);
     def lower_while(nd: uni.WhileStmt);
     def lower_ctrl(nd: uni.CtrlStmt);
+    def lower_for(nd: uni.InForStmt);
+    def lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]);
+    def lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue;
+    def to_str(value: MirValue, site: uni.UniNode) -> MirValue;
+    def lower_fstring(nd: uni.FString) -> MirValue;
     def lower_expr(nd: uni.UniNode) -> MirValue;
     def lower_name(nd: uni.Name) -> MirValue;
     def lower_binary(nd: uni.BinaryExpr) -> MirValue;

@@ -178,6 +178,8 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_while(nd);
     } elif isinstance(nd, uni.CtrlStmt) {
         self.lower_ctrl(nd);
+    } elif isinstance(nd, uni.InForStmt) {
+        self.lower_for(nd);
     } else {
         raise MirRefused(mir_refusal("statement", type(nd).__name__, nd));
     }
@@ -364,6 +366,10 @@ impl MirLowering.lower_expr(nd: uni.UniNode) -> MirValue {
         value = self.lower_unary(nd);
     } elif isinstance(nd, uni.BoolExpr) {
         value = self.lower_bool(nd);
+    } elif isinstance(nd, uni.IfElseExpr) {
+        value = self.lower_if_else_expr(nd);
+    } elif isinstance(nd, uni.FString) {
+        value = self.lower_fstring(nd);
     } elif isinstance(nd, uni.FuncCall) {
         value = self.lower_call(nd);
     } elif isinstance(nd, uni.AtomTrailer) {
@@ -934,10 +940,14 @@ impl MirLowering.lower_string(nd: (uni.String | uni.MultiString)) -> MirValue {
     parts = nd.strings if isinstance(nd, uni.MultiString) else [nd];
     result: (MirValue | None) = None;
     for part in parts {
-        if not isinstance(part, uni.String) or not isinstance(part.lit_value, str) {
+        piece: MirValue;
+        if isinstance(part, uni.FString) {
+            piece = self.lower_fstring(part);
+        } elif isinstance(part, uni.String) and isinstance(part.lit_value, str) {
+            piece = self.builder().const_str(part.lit_value, mir_str());
+        } else {
             raise MirRefused(mir_refusal("expression", type(part).__name__, part));
         }
-        piece = self.builder().const_str(part.lit_value, mir_str());
         result = piece if result is None else self.str_concat(result, piece);
     }
     if result is None {
@@ -1001,22 +1011,158 @@ impl MirLowering.builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None) 
         raise MirRefused(mir_refusal("call", f"len of {value.type.render()}", nd));
     }
     if name == "str" and len(args) == 1 {
-        value = self.lower_expr(args[0]);
-        if value.type.kind == MirKind.STR {
-            return value;
-        }
-        if value.type.kind == MirKind.INT {
-            made = self.runtime(
-                "__jac_rt_str_from_int", [self.builder().convert(value, mir_int())]
-            );
-            size = self.runtime("__jac_rt_str_size", [made]) if made is not None else None;
-            if made is not None and size is not None {
-                return self.builder().str_make(made, made, size);
-            }
-        }
-        raise MirRefused(mir_refusal("call", f"str of {value.type.render()}", nd));
+        return self.to_str(self.lower_expr(args[0]), nd);
     }
     return None;
+}
+
+impl MirLowering.to_str(value: MirValue, site: uni.UniNode) -> MirValue {
+    b = self.builder();
+    if value.type.kind == MirKind.STR {
+        return value;
+    }
+    if value.type.kind == MirKind.BOOL {
+        return b.select(
+            value, b.const_str("True", mir_str()), b.const_str("False", mir_str())
+        );
+    }
+    if value.type.kind == MirKind.NONE {
+        return b.const_str("None", mir_str());
+    }
+    if value.type.kind == MirKind.INT {
+        made = self.runtime("__jac_rt_str_from_int", [b.convert(value, mir_int())]);
+        size = self.runtime("__jac_rt_str_size", [made]) if made is not None else None;
+        if made is not None and size is not None {
+            return b.str_make(made, made, size);
+        }
+    }
+    raise MirRefused(mir_refusal("conversion", f"{value.type.render()} to str", site));
+}
+
+impl MirLowering.lower_fstring(nd: uni.FString) -> MirValue {
+    result: (MirValue | None) = None;
+    for part in nd.parts {
+        piece: MirValue;
+        if isinstance(part, uni.String) {
+            if not isinstance(part.lit_value, str) {
+                raise MirRefused(mir_refusal("expression", "bytes in f-string", part));
+            }
+            piece = self.builder().const_str(part.lit_value, mir_str());
+        } elif isinstance(part, uni.FormattedValue) {
+            if part.format_spec is not None or part.conversion not in (-1, 115) {
+                raise MirRefused(
+                    mir_refusal("f-string", "format spec or conversion", part)
+                );
+            }
+            piece = self.to_str(self.lower_expr(part.format_part), part);
+        } else {
+            raise MirRefused(mir_refusal("expression", type(part).__name__, part));
+        }
+        result = piece if result is None else self.str_concat(result, piece);
+    }
+    if result is None {
+        return self.builder().const_str("", mir_str());
+    }
+    return result;
+}
+
+impl MirLowering.lower_if_else_expr(nd: uni.IfElseExpr) -> MirValue {
+    b = self.builder();
+    fn = self.st().fn;
+    result_type = self.expr_type(nd);
+    held = self.temp_slot(result_type);
+    then = fn.new_block("sel.then");
+    otherwise = fn.new_block("sel.else");
+    done = fn.new_block("sel.done");
+    b.cond_branch(self.truthy(self.lower_expr(nd.condition), nd.condition), then, otherwise);
+    b.position(then);
+    b.store(held, self.coerce(self.lower_expr(nd.value), result_type, nd.value));
+    b.branch(done);
+    b.position(otherwise);
+    b.store(held, self.coerce(self.lower_expr(nd.else_value), result_type, nd.else_value));
+    b.branch(done);
+    b.position(done);
+    return b.load(held, result_type);
+}
+
+impl MirLowering.lower_for(nd: uni.InForStmt) {
+    source = nd.collection;
+    if isinstance(source, uni.FuncCall)
+        and isinstance(source.target, uni.Name)
+        and source.target.value == "range" {
+        callee = source.callee_decl;
+        if callee is None
+            or os.path.basename(callee.loc.mod_path) in ("builtins.pyi", "builtins.jac") {
+            bounds = self.call_args(source);
+            if 1 <= len(bounds) <= 3 {
+                self.lower_range_for(nd, bounds);
+                return;
+            }
+        }
+    }
+    raise MirRefused(mir_refusal("statement", "for over " + type(source).__name__, nd));
+}
+
+impl MirLowering.lower_range_for(nd: uni.InForStmt, bounds: list[uni.Expr]) {
+    b = self.builder();
+    fn = self.st().fn;
+    if not isinstance(nd.target, uni.Name) {
+        raise MirRefused(mir_refusal("statement", "for target", nd.target));
+    }
+    values = [self.coerce(self.lower_expr(bound), mir_int(), bound) for bound in bounds];
+    start = b.const_int(0, mir_int());
+    step = b.const_int(1, mir_int());
+    stop = values[0];
+    if len(values) >= 2 {
+        start = values[0];
+        stop = values[1];
+    }
+    if len(values) == 3 {
+        step = values[2];
+        self.raise_if(
+            b.compare("eq", step, b.const_int(0, mir_int())),
+            "ValueError",
+            RANGE_STEP_MESSAGE
+        );
+    }
+    limit = self.temp_slot(mir_int());
+    stride = self.temp_slot(mir_int());
+    current = self.temp_slot(mir_int());
+    b.store(limit, stop);
+    b.store(stride, step);
+    b.store(current, start);
+    head = fn.new_block("for.head");
+    body = fn.new_block("for.body");
+    advance = fn.new_block("for.step");
+    otherwise = fn.new_block("for.else");
+    after = fn.new_block("for.exit");
+    b.branch(head);
+    b.position(head);
+    now = b.load(current, mir_int());
+    end = b.load(limit, mir_int());
+    pace = b.load(stride, mir_int());
+    upward = b.compare("gt", pace, b.const_int(0, mir_int()));
+    more = b.select(upward, b.compare("lt", now, end), b.compare("gt", now, end));
+    b.cond_branch(more, body, otherwise);
+    b.position(body);
+    self.store_name(nd.target, now);
+    self.st().loops.append(MirLoopTarget(head=advance, after=after));
+    self.lower_body(nd.body);
+    self.st().loops.pop();
+    if not self.builder().block.terminated() {
+        self.builder().branch(advance);
+    }
+    b.position(advance);
+    was = b.load(current, mir_int());
+    by_now = b.load(stride, mir_int());
+    store_next = fn.new_block("for.next");
+    b.cond_branch(b.overflows("add", was, by_now), otherwise, store_next);
+    b.position(store_next);
+    b.store(current, b.binary("add", was, by_now));
+    b.branch(head);
+    b.position(otherwise);
+    self.lower_else(nd.else_body, after);
+    b.position(after);
 }
 
 impl MirLowering.lower_print(nd: uni.FuncCall) -> MirValue {
