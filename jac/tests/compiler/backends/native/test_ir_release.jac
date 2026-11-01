@@ -45,26 +45,48 @@ test "text snapshots preserve bitcode, symbols, and function counts" {
     module.release();
 }
 
-test "target lookup restores the ctypes pointer signature" {
+test "target lookup restores the ctypes pointer signatures" {
     import ctypes;
     import jaclang.compiler.backends.native.llvm.binding.targets as targets;
     import from jaclang.compiler.backends.native.llvm.binding { Target, TargetMachine }
     llvm.initialize_native_target();
-    previous_target = targets.ffi.lib.LLVMPY_GetTargetFromTriple.restype;
-    previous_machine = targets.ffi.lib.LLVMPY_CreateTargetMachine.restype;
-    previous_data = targets.ffi.lib.LLVMPY_CreateTargetMachineData.restype;
+    get_target = targets.ffi.lib.LLVMPY_GetTargetFromTriple;
+    create_machine = targets.ffi.lib.LLVMPY_CreateTargetMachine;
+    create_data = targets.ffi.lib.LLVMPY_CreateTargetMachineData;
+    previous_target_argtypes = get_target.argtypes;
+    previous_target_restype = get_target.restype;
+    previous_machine_argtypes = create_machine.argtypes;
+    previous_machine_restype = create_machine.restype;
+    previous_data_argtypes = create_data.argtypes;
+    previous_data_restype = create_data.restype;
     try {
-        targets.ffi.lib.LLVMPY_GetTargetFromTriple.restype = ctypes.c_int;
-        targets.ffi.lib.LLVMPY_CreateTargetMachine.restype = ctypes.c_int;
-        targets.ffi.lib.LLVMPY_CreateTargetMachineData.restype = ctypes.c_int;
+        get_target.argtypes = [];
+        get_target.restype = ctypes.c_int;
+        create_machine.argtypes = [];
+        create_machine.restype = ctypes.c_int;
+        create_data.argtypes = [];
+        create_data.restype = ctypes.c_int;
+
         target = Target.from_default_triple();
         assert isinstance(target, Target);
+        assert get_target.argtypes == previous_target_argtypes;
+        assert get_target.restype is previous_target_restype;
+
         machine = target.create_target_machine();
         assert isinstance(machine, TargetMachine);
-        _ = machine.target_data;
+        assert create_machine.argtypes == previous_machine_argtypes;
+        assert create_machine.restype is previous_machine_restype;
+
+        data = machine.target_data;
+        assert isinstance(data, targets.TargetData);
+        assert create_data.argtypes == previous_data_argtypes;
+        assert create_data.restype is previous_data_restype;
     } finally {
-        targets.ffi.lib.LLVMPY_GetTargetFromTriple.restype = previous_target;
-        targets.ffi.lib.LLVMPY_CreateTargetMachine.restype = previous_machine;
-        targets.ffi.lib.LLVMPY_CreateTargetMachineData.restype = previous_data;
+        get_target.argtypes = previous_target_argtypes;
+        get_target.restype = previous_target_restype;
+        create_machine.argtypes = previous_machine_argtypes;
+        create_machine.restype = previous_machine_restype;
+        create_data.argtypes = previous_data_argtypes;
+        create_data.restype = previous_data_restype;
     }
 }
