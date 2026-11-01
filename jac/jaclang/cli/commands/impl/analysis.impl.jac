@@ -299,11 +299,6 @@ impl check(
     }
 
     run_units(units);
-    if native_coverage {
-        import from jaclang.compiler.driver.na_coverage { na_coverage_end }
-        coverage_report.update(na_coverage_end());
-        _CHECK_STATE["coverage_on"] = False;
-    }
 
     multi = len({r['label'] for r in results}) > 1;
     failed_results: list[dict[str, any]] = [];
@@ -1825,11 +1820,6 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
         prog = JacProgram();
         _CHECK_STATE["prog"] = prog;
     }
-    if opts.get("native_coverage") and not _CHECK_STATE["coverage_on"] {
-        import from jaclang.compiler.driver.na_coverage { na_coverage_begin }
-        na_coverage_begin();
-        _CHECK_STATE["coverage_on"] = True;
-    }
     ignore_list = _wire_list(opts.get("ignore"));
     annex_filter_path: (str | None) = None;
     base_path = discover_base_file(file_path);
@@ -1927,8 +1917,8 @@ impl _check_file_job(request: dict[(str, any)]) -> dict[(str, any)] {
             result['placements'] = collect_placement_rows(prog);
         }
         if opts.get("native_coverage") {
-            import from jaclang.compiler.driver.na_coverage { na_coverage_snapshot }
-            result['coverage'] = na_coverage_snapshot();
+            import from jaclang.compiler.backends.native.mir.backend { native_coverage }
+            result['coverage'] = native_coverage(prog);
         }
         for m in prog.mod.hub.values() {
             m.terminals = [];

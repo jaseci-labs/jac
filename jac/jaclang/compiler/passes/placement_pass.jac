@@ -70,10 +70,6 @@ def _demote_unreached_imports(
 
 def stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode];
 def uncrossable_native(mod: Module, prog: JacProgram, held: set[int]) -> set[int];
-def settle_native_module(
-    mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
-) -> (NativeRefusal | None);
-
 walker PlacementPass(CompilerPass) {
     static has contract: PassContract = PassContract(
         requires=(AnalysisFact.TYPE_OF, ),

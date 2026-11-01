@@ -157,7 +157,7 @@ glob IR_LOADS: list[str] = [
          'jaclang.compiler.backends.es',
          'jaclang.compiler.passes.freeze_structure_pass'
      ],
-     NATIVE_LOADS: list[str] = ['jaclang.compiler.backends.native.na_ir_gen_pass', ];
+     NATIVE_LOADS: list[str] = ['jaclang.compiler.backends.native.mir.backend', ];
 
 glob PRODUCTS: dict[CompilationProduct, ProductSpec] = {
          CompilationProduct.SYMBOLS: ProductSpec(

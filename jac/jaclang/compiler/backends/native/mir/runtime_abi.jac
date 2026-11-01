@@ -56,3 +56,14 @@ glob MIR_RUNTIME_ABI: dict[str, list[str]] = {
 def mir_runtime_signature(name: str) -> tuple[list[MirType], MirType];
 
 def mir_runtime_spec(spec: str) -> MirType;
+
+"""The methods of builtin types that native code lowers, by type name. The
+checker and placement read this to know which method calls stay native."""
+glob MIR_PRIMITIVE_METHODS: dict[str, list[str]] = {
+         "list": [
+             "append", "clear", "copy", "extend", "index", "insert", "pop", "reverse", "sort"
+         ],
+         "dict": ["clear", "copy", "get", "keys", "pop", "update", "values"],
+         "set": ["add", "clear", "copy", "discard", "remove", "update"],
+         "str": []
+     };

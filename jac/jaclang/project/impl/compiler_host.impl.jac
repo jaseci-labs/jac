@@ -347,12 +347,6 @@ impl ProjectHost.native_units_for(program: JacProgram) -> NativeUnitRegistry {
     return program._natives;
 }
 
-impl ProjectHost.record_native_coverage(
-    path: str, outcome: str, code: str = "", detail: str = ""
-) {
-    na_coverage_record(path, outcome, code, detail);
-}
-
 impl ProjectHost.native_analyze(
     program: JacProgram, path: str, options: CompileOptions, source: (str | None)
 ) -> (ModuleAnalysis | None) {

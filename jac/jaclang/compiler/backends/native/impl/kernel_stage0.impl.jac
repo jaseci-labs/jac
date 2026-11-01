@@ -3,80 +3,7 @@ impl declared_entry_points(source: str) -> list[str] {
     return re.findall(r"^def:pub\s+([A-Za-z_][A-Za-z0-9_]*)", source, re.MULTILINE);
 }
 
-impl unit_issue_details(plan: LinkPlan) -> Callable[[str], dict[str, str]] {
-    registry = plan.prog.native_units();
-    cache: dict[str, dict[str, str]] = {};
-
-    def details(path: str) -> dict[str, str] {
-        found = cache.get(path);
-        if found is not None {
-            return found;
-        }
-        out: dict[str, str] = {};
-        bitcode = registry.bitcode_for(path, plan.options);
-        if bitcode is not None {
-            for issue in native_lowering_issues(str(llvm.parse_bitcode(bitcode))) {
-                out.setdefault(issue.symbol, issue.detail);
-            }
-        }
-        cache[path] = out;
-        return out;
-    }
-    return details;
-}
-
-impl demotion_chain(
-    plan: LinkPlan,
-    path: str,
-    name: str,
-    details: Callable[[str], dict[str, str]],
-    pkg_root: str
-) -> list[str] {
-    import re;
-    chain: list[str] = [];
-    seen: set[str] = set();
-    current: (str | None) = name;
-    owner: (str | None) = path;
-    while current is not None and owner is not None {
-        step = f"{owner}:{current}";
-        if step in seen {
-            break;
-        }
-        seen.add(step);
-        detail = details(owner).get(current, "");
-        label = os.path.relpath(owner, os.path.dirname(pkg_root));
-        chain.append(f"{current} ({label})" + (f": {detail}" if detail else ""));
-        called = re.search(
-            r"Native lowering failed for (?:function|method) '([^']+)'", detail
-        );
-        if called is None {
-            break;
-        }
-        current = called.group(1);
-        here = plan.unit(owner);
-        candidates = [here] if here is not None else [];
-        if here is not None {
-            candidates.extend(plan.unit(dep) for dep in here.iface.deps);
-        }
-        candidates.extend(plan.units);
-        owner = next(
-            (
-                unit.path
-                for unit in candidates
-                if unit is not None and current in unit.iface.demoted
-            ),
-            None
-        );
-    }
-    return chain;
-}
-
-impl missing_kernel_entries(
-    plan: LinkPlan,
-    pkg_root: str,
-    details: (Callable[[str], dict[str, str]] | None) = None
-) -> list[str] {
-    issues = details if details is not None else unit_issue_details(plan);
+impl missing_kernel_entries(plan: LinkPlan, pkg_root: str) -> list[str] {
     problems: list[str] = [];
     for rel in KERNEL_ENTRY_SOURCES {
         source_path = os.path.realpath(os.path.join(pkg_root, rel));
@@ -90,19 +17,9 @@ impl missing_kernel_entries(
         }
         exported = set(unit.iface.pub_symbols());
         for name in declared {
-            if native_def_symbol(name) in exported {
-                continue;
+            if native_def_symbol(name) not in exported {
+                problems.append(f"{name} is not exported by {rel}");
             }
-            chain = demotion_chain(plan, unit.path, name, issues, pkg_root);
-            problems.append(
-                f"{name} is not exported"
-                    + (
-                        "; it was demoted to Python:\n      "
-                            + "\n      <- ".join(chain)
-                            if chain
-                            else ""
-                    )
-            );
         }
     }
     return problems;

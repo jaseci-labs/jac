@@ -150,10 +150,6 @@ obj HostServices {
     ) -> (bool | None);
 
     def native_session_active(program: JacProgram) -> bool;
-    def record_native_coverage(
-        path: str, outcome: str, code: str = "", detail: str = ""
-    );
-
     def native_analyze(
         program: JacProgram, path: str, options: CompileOptions, source: (str | None)
     ) -> (ModuleAnalysis | None);

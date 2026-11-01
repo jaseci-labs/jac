@@ -8,8 +8,7 @@ glob _CATALOGS: dict[str, StubCatalog] = {};
 
 glob HOST_ONLY_ANSWER: str = "host_only",
      EMIT_QUESTION: str = "emit_unit",
-     EVENT_NOTE: str = "note",
-     EVENT_COVERAGE: str = "coverage";
+     EVENT_NOTE: str = "note";
 
 class HostOnlyError(RuntimeError) {}
 
@@ -18,7 +17,7 @@ obj HostAsker {
     def record_interface(program: JacProgram, module: Module, products: UnitProducts);
 }
 
-enum HostEventKind { NOTE, COVERAGE, COLLECT }
+enum HostEventKind { NOTE, COLLECT }
 
 obj HostEvent {
     has kind: HostEventKind,
@@ -226,10 +225,6 @@ obj KernelHost(HostServices) {
     ) -> (bool | None);
 
     def native_session_active(program: JacProgram) -> bool;
-    def record_native_coverage(
-        path: str, outcome: str, code: str = "", detail: str = ""
-    );
-
     def format_file(file_path: str, auto_lint: bool = False) -> JacProgram;
     def format_source(
         source_str: str, file_path: str, auto_lint: bool = False

@@ -1042,7 +1042,6 @@ impl CodeGenTarget.has_native_ir -> bool {
 impl CodeGenTarget.drop_native_ir {
     self.ir_module = None;
     self.llvm_ir = None;
-    self.native_fallbacks = None;
 }
 
 impl endpoint_descriptor(module: Module, kind: str, name: str) -> dict[str, str] {

@@ -261,10 +261,6 @@ impl HostServices.native_session_active(program: JacProgram) -> bool {
     return False;
 }
 
-impl HostServices.record_native_coverage(
-    path: str, outcome: str, code: str = "", detail: str = ""
-) {}
-
 impl HostServices.native_analyze(
     program: JacProgram, path: str, options: CompileOptions, source: (str | None)
 ) -> (ModuleAnalysis | None) {

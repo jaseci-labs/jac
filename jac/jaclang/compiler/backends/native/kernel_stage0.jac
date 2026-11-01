@@ -11,21 +11,7 @@ class KernelEntryError(RuntimeError) {}
 
 def declared_entry_points(source: str) -> list[str];
 
-def unit_issue_details(plan: LinkPlan) -> Callable[[str], dict[str, str]];
-
-def demotion_chain(
-    plan: LinkPlan,
-    path: str,
-    name: str,
-    details: Callable[[str], dict[str, str]],
-    pkg_root: str
-) -> list[str];
-
-def missing_kernel_entries(
-    plan: LinkPlan,
-    pkg_root: str,
-    details: (Callable[[str], dict[str, str]] | None) = None
-) -> list[str];
+def missing_kernel_entries(plan: LinkPlan, pkg_root: str) -> list[str];
 
 def refuse_missing_entries(plan: LinkPlan, pkg_root: str);
 

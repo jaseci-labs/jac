@@ -400,10 +400,6 @@ impl KernelHost.event_rows -> list[list[str]] {
     for event in self.events {
         if event.kind == HostEventKind.NOTE {
             rows.append([EVENT_NOTE, event.path, event.text, event.code, event.detail]);
-        } elif event.kind == HostEventKind.COVERAGE {
-            rows.append(
-                [EVENT_COVERAGE, event.path, event.text, event.code, event.detail]
-            );
         }
     }
     return rows;
@@ -1155,21 +1151,6 @@ impl KernelHost.native_session_active(program: JacProgram) -> bool {
     return answer;
 }
 
-impl KernelHost.record_native_coverage(
-    path: str, outcome: str, code: str = "", detail: str = ""
-) {
-    self.buffer(
-        HostEvent(
-            kind=HostEventKind.COVERAGE,
-            path=path,
-            text=outcome,
-            code=code,
-            detail=detail
-        ),
-        "record_native_coverage"
-    );
-}
-
 impl KernelHost.format_file(file_path: str, auto_lint: bool = False) -> JacProgram {
     with self.delegating("format_file") as host {
         answer = host.format_file(file_path, auto_lint);
@@ -1399,8 +1380,6 @@ impl replay_event_rows(target: HostServices, rows: list[list[str]]) {
         }
         if row[0] == EVENT_NOTE {
             target.note(row[2], row[3]);
-        } elif row[0] == EVENT_COVERAGE {
-            target.record_native_coverage(row[1], row[2], row[3], row[4]);
         }
     }
 }
@@ -1408,8 +1387,6 @@ impl replay_event_rows(target: HostServices, rows: list[list[str]]) {
 impl replay_event(target: HostServices, event: HostEvent) {
     if event.kind == HostEventKind.NOTE {
         target.note(event.text, event.code);
-    } elif event.kind == HostEventKind.COVERAGE {
-        target.record_native_coverage(event.path, event.text, event.code, event.detail);
     } elif event.kind == HostEventKind.COLLECT {
         target.collect_released_memory();
     }

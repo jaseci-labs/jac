@@ -53,4 +53,3 @@ walker NativeCompilePass(CompilerPass) {
 }
 
 def native_linked_ir_text(module: uni.Module) -> str;
-def unit_fallbacks(gen: CodeGenTarget) -> NativeFallbacks;

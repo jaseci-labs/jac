@@ -409,7 +409,6 @@ obj CodeGenTarget {
         native_deps: list[str] = [],
         native_codespace: bool = False,
         native_refusal: str = "",
-        native_fallbacks: (NativeFallbacks | None) = None,
         native_refusal_code: str = "",
         placement_mode: str = "",
         native_undecided: bool = False,

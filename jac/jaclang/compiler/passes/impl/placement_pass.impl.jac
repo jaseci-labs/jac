@@ -774,51 +774,6 @@ impl stamp_native(mod: Module, held: set[int]) -> list[ContextAwareNode] {
     return stamped;
 }
 
-impl settle_native_module(
-    mod: Module, prog: JacProgram, pending: list[Alert], warnings: list[Alert]
-) -> (NativeRefusal | None) {
-    if not pending or not native_placement_soft(prog, mod) {
-        return None;
-    }
-    if mod.gen.placement_mode == "inferred" {
-        for (need, _why) in element_requirements(mod, prog).values() {
-            if need == "native" {
-                return None;
-            }
-        }
-    }
-
-    refusal = refusal_from_alert(pending[0]);
-    del pending[:];
-    del warnings[:];
-    gen = mod.gen;
-    gen.native_refusal_code = refusal.code;
-    gen.native_refusal = refusal.headline();
-    gen.llvm_ir = None;
-    gen.native_engine = None;
-    gen.native_bitcode = None;
-    gen.native_object = None;
-    gen.native_iface = None;
-    gen.native_layout = None;
-    gen.native_deps = [];
-    settle_server(mod);
-
-    record_decided(prog, mod);
-    mod_path = mod.loc.mod_path if mod.loc is not None else "";
-    resolved = os.path.realpath(mod_path);
-    for stale in invalidate_importers_es(prog, resolved) {
-        drop_native_bindings(stale, resolved);
-    }
-    host = active_host();
-    host.record_native_coverage(resolved, 'demoted', refusal.code, refusal.headline());
-    host.note(
-        f"note: {mod_path} preferred native but did not lower; "
-        f"compiled in the server codespace ({refusal.headline()})",
-        "dim"
-    );
-    return refusal;
-}
-
 impl PlacementPass._emit_refusal(refusal: NativeRefusal, required_by: str) -> None {
     if refusal.site is None {
         return;
@@ -912,7 +867,6 @@ impl PlacementPass._run_decided(ir_in: Module) -> Module {
                 self._emit_refusal(refusal, "");
             }
         }
-        active_host().record_native_coverage(mod_path, 'native');
     }
     refresh_placement_module(ir_in, self.prog);
     if solve_module_placement(ir_in, self.prog) {
@@ -1094,31 +1048,6 @@ impl PlacementPass._run_undecided(ir_in: Module) -> Module {
     ir_in.codespace_inferred = any(
         elem.code_context == CodeContext.NATIVE for elem in tentative
     );
-    if CodeContext.NATIVE in placed {
-        active_host().record_native_coverage(mod_path, 'native');
-    } else {
-        first = legality.module[0]
-            if legality.module
-            else (
-                legality.blockers[0]
-                    if legality.blockers
-                    else (
-                        next(iter(legality.elements.values()))
-                            if legality.elements
-                            else (
-                                next(iter(legality.preferences.values()))
-                                    if legality.preferences
-                                    else None
-                            )
-                    )
-            );
-        active_host().record_native_coverage(
-            mod_path,
-            'server',
-            first.code if first is not None else '',
-            first.headline() if first is not None else why
-        );
-    }
     report_serverless_kind_errors(self, ir_in);
     ir_in.gen.placement_mode = 'inferred';
 

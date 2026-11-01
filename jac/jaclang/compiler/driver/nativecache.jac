@@ -4,7 +4,6 @@ import sys;
 import time;
 
 glob SLOW_STEP_SECONDS: float = 2.0,
-     DEMOTED_SYMBOL_SUFFIX: str = ".__jac_demoted",
      _HEAP_HELD: list[bool] = [False];
 
 class NativeBuildStopped(BaseException) {}

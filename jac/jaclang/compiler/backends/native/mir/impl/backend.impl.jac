@@ -1,7 +1,3 @@
-impl mir_backend_selected -> bool {
-    return os.environ.get("JAC_NATIVE_MIR", "") == "1";
-}
-
 impl mir_runtime_unit_paths -> list[str] {
     pkg = jaclang_pkg_root();
     return [os.path.realpath(os.path.join(pkg, rel)) for rel in MIR_RUNTIME_UNITS];
@@ -80,4 +76,30 @@ impl MirNativePass.interface(mir: MirModule, deps: list[str]) -> NativeIface {
             if mir.function(native_entry_name(mir.path)) is not None
             else ""
     );
+}
+
+impl native_coverage(prog: JacProgram) -> dict[str, dict[str, any]] {
+    findings: dict[str, dict[str, any]] = {};
+    for module in list(prog.mod.hub.values()) {
+        path = module.loc.mod_path if module.loc else "";
+        if not path.endswith(".jac") {
+            continue;
+        }
+        lowering = MirLowering(
+            prog=prog, module=module, mir=MirModule(path=path, prefix=native_unit_prefix(path))
+        );
+        lowered = lowering.lower();
+        if not lowered.demoted {
+            findings[os.path.realpath(path)] = {"outcome": "native", "code": "", "detail": "", "demoted": {}};
+            continue;
+        }
+        (first, reason) = sorted(lowered.demoted.items())[0];
+        findings[os.path.realpath(path)] = {
+            "outcome": "demoted",
+            "code": "E5092",
+            "detail": f"{first}: {reason}",
+            "demoted": dict(lowered.demoted)
+        };
+    }
+    return findings;
 }

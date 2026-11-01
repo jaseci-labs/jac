@@ -576,9 +576,6 @@ impl _build_link_plan(
     check_pub_collisions(ordered);
     initialization_order(ordered, real_roots);
 
-    for unit in ordered {
-        na_coverage_replay(unit.path, unit.iface.coverage or {"outcome": "native"});
-    }
     return LinkPlan(
         prog=prog,
         options=opts,

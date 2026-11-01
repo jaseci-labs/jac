@@ -10,8 +10,6 @@ glob MIR_RUNTIME_UNITS: list[str] = [
          "runtime/native/dicts.jac"
      ];
 
-def mir_backend_selected -> bool;
-
 def mir_runtime_unit_paths -> list[str];
 
 walker MirNativePass(CompilerPass) {
@@ -24,3 +22,8 @@ walker MirNativePass(CompilerPass) {
     def interface(mir: MirModule, deps: list[str]) -> NativeIface;
     can run_walk with uni.Module entry;
 }
+
+"""What the decision step makes of every analysed module in `prog`: lowering
+to MIR without emission, and the demoted set it settles. This is what
+`jac check --native-coverage` reports."""
+def native_coverage(prog: JacProgram) -> dict[str, dict[str, any]];

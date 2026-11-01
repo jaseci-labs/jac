@@ -18,12 +18,7 @@ impl wasm_ir_units(
             memory_exempt=enf_grand,
             native_target="wasm32-unknown-unknown"
         );
-        na_coverage_begin();
-        try {
-            ir = program.compile(file_path=os.path.abspath(file_path), options=options);
-        } finally {
-            coverage = na_coverage_end();
-        }
+        ir = program.compile(file_path=os.path.abspath(file_path), options=options);
         if len(program.errors_had) > before {
             first = program.errors_had[before].pretty_print();
             more = len(program.errors_had) - before - 1;
@@ -31,17 +26,8 @@ impl wasm_ir_units(
             raise RuntimeError(f"{first}{suffix}");
         }
         if (ir is None) or (ir.gen.llvm_ir is None) {
-            rec = coverage.get(os.path.realpath(os.path.abspath(file_path)));
-            reason = "the module did not lower to native IR"
-                + " (no demotion recorded; it likely compiled as a"
-                + " non-native codespace)";
-            if rec {
-                code = f" [{rec['code']}]" if rec['code'] else '';
-                detail = f": {rec['detail']}" if rec['detail'] else '';
-                reason = f"{rec['outcome']}{code}{detail}";
-            }
             raise RuntimeError(
-                f"native lowering produced no IR for '{file_path}': {reason}"
+                f"native lowering produced no IR for '{file_path}': the module did not compile to the native codespace"
             );
         }
         import from jaclang.compiler.backends.native.link_plan {
