@@ -51,5 +51,7 @@ impl semaphore_timedwait(sema: ptr, abstime: ptr[timespec]) -> i32 {
 
 impl timeval_store(tv: ptr[timeval], seconds: i64, microseconds: i64) {
     tv.view(1)[0].tv_sec = seconds;
-    tv.view(1)[0].tv_usec = i32(microseconds);
+    # suseconds_t is 32 bits here and follows the 8-byte tv_sec; the store goes
+    # through its address because `timeval` types as the LP64 record.
+    ptr[i32](ptr[u8](tv) + 8).view(1)[0] = i32(microseconds);
 }
