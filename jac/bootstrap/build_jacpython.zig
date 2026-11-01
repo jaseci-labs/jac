@@ -161,6 +161,7 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     const frozen = c.path(&.{ native, frozen_module });
     const runtime_image = c.path(&.{ native, runtime_image_module });
     try Io.Dir.cwd().createDirPath(io, native);
+    try writeFile(&c, c.path(&.{ native, "jac.toml" }), unit_root_marker, mode_data);
     if (o.adopt_object) |dir| {
         try step(&c, "adopt-native", adoptObject, .{ &c, dir, native });
     } else {
@@ -316,6 +317,18 @@ fn runtimeImageArgs(c: *Ctx, output: []const u8) ![]const []const u8 {
 }
 
 // ------------------------------------------------------------- native object
+
+// The Jac compiler names a module's native symbols (its global
+// initializer, among others) by its path below the nearest unit root, a
+// directory holding jac.toml, prefixed with that directory's name. Without a
+// root of their own the generated modules would be named by their path from
+// the repository root, which starts with the checkout's directory name, so
+// the same object lowered in two checkouts would differ. This file makes the
+// native directory their root: they are native/frozen_modules.jac and
+// native/runtime_image.jac in every checkout. The modules import nothing
+// from Jac, and the compile takes its configuration from the working
+// directory, so the file changes nothing else.
+const unit_root_marker = "# The unit root of the generated modules (build_jacpython.zig).\n";
 
 const frozen_module = "frozen_modules.jac";
 const runtime_image_module = "runtime_image.jac";
