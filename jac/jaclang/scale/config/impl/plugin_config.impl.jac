@@ -299,6 +299,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "type": "string",
                                 "default": "",
                                 "description": "Google OAuth client secret"
+                            },
+                            "scopes": {
+                                "type": "list",
+                                "default": [],
+                                "description": "Extra scopes a signed-in user may grant when connecting Google for API access"
                             }
                         }
                     },
@@ -316,6 +321,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "type": "string",
                                 "default": "",
                                 "description": "Apple OAuth client secret"
+                            },
+                            "scopes": {
+                                "type": "list",
+                                "default": [],
+                                "description": "Extra scopes a signed-in user may grant when connecting Apple for API access"
                             }
                         }
                     },
@@ -333,6 +343,11 @@ impl JacScalePluginConfig.get_config_schema -> dict[str, any] {
                                 "type": "string",
                                 "default": "",
                                 "description": "GitHub OAuth client secret"
+                            },
+                            "scopes": {
+                                "type": "list",
+                                "default": [],
+                                "description": "Extra scopes a signed-in user may grant when connecting GitHub for API access"
                             }
                         }
                     },

@@ -9,7 +9,8 @@ glob AAL1: str = 'aal1',
      METHOD_RECOVERY: str = 'recovery',
      _caller_assurance: ContextVar[dict[str, any] | None] = ContextVar(
          '_jaclang_caller_assurance', `default=None
-     );
+     ),
+     _caller_user: ContextVar[str] = ContextVar('_jaclang_caller_user', `default='');
 
 
 def second_factor_claims(methods: list[str]) -> dict[str, any];
@@ -31,3 +32,12 @@ def caller_assurance_level -> str;
 
 
 def caller_authentication_methods -> list[str];
+
+
+def bind_caller_user(user_id: (str | None)) -> any;
+
+
+def release_caller_user(binding: any);
+
+
+def caller_user_id -> str;

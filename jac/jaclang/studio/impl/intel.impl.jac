@@ -210,8 +210,6 @@ impl lex_spans(text: str, path: str = "<input>") -> list[list[Span]] {
             style = "decorator";
         } elif kind in PUNCT_KINDS {
             style = "punct";
-        } elif kind == "PYNLINE" {
-            style = "embedded";
         } elif kind == "JSX_NAME" {
             style = "tag";
         } elif kind == "JSX_TEXT" {

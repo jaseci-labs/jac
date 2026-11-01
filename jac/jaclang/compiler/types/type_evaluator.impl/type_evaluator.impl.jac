@@ -2305,7 +2305,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     if isinstance(symbol_type, FunctionType) {
                         overloaded_ty: OverloadedType | None = None;
-                        overloaded_fns: list[FunctionType] = [symbol_type];
+                        overloaded_fns: list[FunctionType] = [];
 
                         def_sym = self.resolve_to_definition_symbol(symbol);
                         symbol_scope: UniScopeNode | None = def_sym.parent_tab;
@@ -2319,9 +2319,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 symbol_scope, def_sym.sym_name
                             );
                             for overload_symbol in all_syms {
-                                if overload_symbol == def_sym {
-                                    continue;
-                                }
                                 overload_type = self.get_type_of_symbol(
                                     overload_symbol
                                 );
@@ -2329,6 +2326,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                                     overloaded_fns.append(overload_type);
                                 }
                             }
+                        }
+                        if not any(fn is symbol_type for fn in overloaded_fns) {
+                            overloaded_fns.insert(0, symbol_type);
                         }
                         if len(overloaded_fns) > 1 {
                             overloaded_ty = OverloadedType(overloads=overloaded_fns);

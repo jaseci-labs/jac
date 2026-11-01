@@ -22,7 +22,6 @@ walker UnparsePass(TreePass) {
     can exit_global_vars with uni.GlobalVars exit;
     can exit_test with uni.Test exit;
     can exit_module_code with uni.ModuleCode exit;
-    can exit_py_inline_code with uni.PyInlineCode exit;
     can exit_import with uni.Import exit;
     can exit_module_path with uni.ModulePath exit;
     can exit_module_item with uni.ModuleItem exit;
