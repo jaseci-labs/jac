@@ -79,11 +79,15 @@ def verify(library_path: Path) {
 }
 
 
-# The staged units: `roots` and every runtime/python module they import,
+# The staged units: `roots` and every module archwire.jac wires into them,
 # transitively, with each module's platform variants and impl files, so the
 # copy resolves the same imports the package does.
 def staged_sources(sources: Path, roots: list[str]) -> list[str] {
-    import re;
+    import from jaclang.compiler.driver.wiring { wiring_for_path }
+    spec = wiring_for_path(str(sources / roots[0]));
+    if spec is None {
+        raise RuntimeError(f"No archwire.jac governs {sources}");
+    }
     staged: list[str] = [];
     pending = list(roots);
     while pending {
@@ -103,11 +107,11 @@ def staged_sources(sources: Path, roots: list[str]) -> list[str] {
                 pending.append(str(part.relative_to(sources)));
             }
         }
-        for name in re.findall(r"import from jaclang\.([\w.]+)", module.read_text()) {
-            target = name.replace(".", "/") + ".jac";
-            if target.startswith("runtime/python/") {
-                pending.append(target);
-            }
+        for part in sorted((module.parent / "impl").glob(f"{stem}.*.jac")) {
+            pending.append(str(part.relative_to(sources)));
+        }
+        for wire in spec.consumer_wires(spec.module_name(str(module)) or "") {
+            pending.append(wire.provider.replace(".", "/") + ".jac");
         }
     }
     return staged;
@@ -127,6 +131,12 @@ def main -> int {
         stage = Path(temporary);
         # Keep these compilation units out of the compiler's own self-host
         # program. Preserve the package hierarchy and never edit the checkout.
+        # The package marker and archwire.jac make the copy a package whose
+        # modules receive the same wired imports as their originals.
+        package = stage / "native_subject";
+        package.mkdir();
+        (package / "__init__.jac").write_text("");
+        (package / "archwire.jac").write_text((sources / "archwire.jac").read_text());
         for relative in staged_sources(
             sources,
             [
