@@ -34,6 +34,9 @@ def _starts_at(s: str, sub: str, at: int) -> bool;
 def _find_from(s: str, sub: str, start: int) -> int;
 
 
+def _prefix_chars(s: str, end: int) -> str;
+
+
 def _lstrip(s: str) -> str;
 
 

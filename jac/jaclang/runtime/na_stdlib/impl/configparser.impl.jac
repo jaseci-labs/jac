@@ -159,6 +159,34 @@ impl _find_from(s: str, sub: str, start: int) -> int {
 }
 
 
+impl _prefix_chars(s: str, end: int) -> str {
+    out: str = "";
+    i: int = 0;
+    while i < end {
+        c: int = ord(s[i]);
+        cp: int = c;
+        width: int = 1;
+        if c >= 194 and c <= 223 {
+            width = 2;
+            cp = (c - 192) * 64 + ord(s[i + 1]) - 128;
+        } elif c >= 224 and c <= 239 {
+            width = 3;
+            cp = (c - 224) * 4096 + (ord(s[i + 1]) - 128) * 64 + ord(s[i + 2]) - 128;
+        } elif c >= 240 and c <= 244 {
+            width = 4;
+            cp = (c - 240) * 262144
+                + (ord(s[i + 1]) - 128) * 4096
+                + (ord(s[i + 2]) - 128) * 64
+                + ord(s[i + 3])
+                - 128;
+        }
+        out += chr(cp);
+        i += width;
+    }
+    return out;
+}
+
+
 impl _lstrip(s: str) -> str {
     n: int = len(s);
     start: int = 0;
@@ -942,7 +970,7 @@ impl ConfigParser._strip_comments(text: str) -> str {
             while j3 < len(self.inline_comment_prefixes) {
                 prefix: str = self.inline_comment_prefixes[j3];
                 if _starts_at(text, prefix, i) {
-                    return _rstrip(text.split(prefix)[0]);
+                    return _rstrip(_prefix_chars(text, i));
                 }
                 j3 += 1;
             }
