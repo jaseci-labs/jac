@@ -289,6 +289,18 @@ impl hmac_repr(instance: ptr[PyObject]) -> ptr[PyObject] {
 }
 
 impl oneshot(name: str, keyobj: ptr[PyObject], msgobj: ptr[PyObject]) -> ptr[PyObject] {
+    key_size = small_bytes(keyobj);
+    msg_size = small_bytes(msgobj);
+    if key_size >= 0 and msg_size >= 0 {
+        quick = new_hmac(name, int(jacpy_bytes_address(keyobj)), key_size);
+        if quick is None {
+            PyErr_NoMemory();
+            return NULL;
+        }
+        quick.absorb(int(jacpy_bytes_address(msgobj)), msg_size);
+        digest = quick.finish();
+        return jacpy_bytes_from_payload(digest, i64(len(digest)));
+    }
     key = sized_buffer(keyobj, "key");
     if key is None {
         return NULL;

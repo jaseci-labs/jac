@@ -20522,6 +20522,7 @@ graph import runtime.python {
         },
         modules.hashlib {
             NULL,
+            PyBytes_Type,
             PyErr_NoMemory,
             PyEval_RestoreThread,
             PyEval_SaveThread,
@@ -20538,7 +20539,9 @@ graph import runtime.python {
             Py_NewRef,
             Py_TYPE,
             _Py_strhex,
+            jacpy_bytes_address,
             jacpy_bytes_from_payload,
+            jacpy_bytes_length,
             jacpy_crypto_compare,
             jacpy_is_unicode,
             jacpy_release,
@@ -20616,6 +20619,7 @@ graph import runtime.python {
             PyUnicode_Concat,
             PyUnicode_FromString,
             Py_None,
+            jacpy_bytes_address,
             jacpy_bytes_from_payload,
             jacpy_is_unicode,
             jacpy_release,
@@ -41795,7 +41799,8 @@ graph import runtime.python.modules {
             digest_state,
             digest_update,
             digest_value,
-            hash_buffer
+            hash_buffer,
+            small_bytes
         },
         md5 | sha1 | sha2 { digest_copy, digest_new, digest_update, digest_value },
         operator { compare_digest },

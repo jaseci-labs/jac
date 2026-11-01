@@ -123,10 +123,11 @@ def hash_state_of(instance: ptr[PyObject], token: ClassToken) -> NativeState | N
     return None;
 }
 
-"""A hash object's native state: its digest core and its lock."""
+"""A hash object's native state: its digest core and, once an update has been
+large enough to run without the GIL, its lock."""
 obj DigestState(NativeState) {
-    has lock: HashLock,
-        core: DigestCore;
+    has core: DigestCore,
+        lock: HashLock | None = None;
 
     def traverse_refs(visitor: ptr, context: ptr) -> i32 {
         return i32(0);
@@ -144,9 +145,26 @@ def digest_state(instance: ptr[PyObject], token: ClassToken) -> DigestState | No
     return None;
 }
 
+"""The size of `value` when it is exactly bytes and too small to release the
+GIL for, else -1. Such data is hashed in place without a buffer view."""
+def small_bytes(value: ptr[PyObject]) -> int {
+    if Py_TYPE(value) == addressof(PyBytes_Type) {
+        size = jacpy_bytes_length(value);
+        if size < HASHLIB_GIL_MINSIZE {
+            return int(size);
+        }
+    }
+    return -1;
+}
+
 """Feed a constructor's initial data into a core. The new object is not shared
 yet, so large data runs with the GIL released but takes no lock."""
 def hash_initial_data(core: DigestCore, data: ptr[PyObject]) -> bool {
+    small = small_bytes(data);
+    if small >= 0 {
+        core.absorb(int(jacpy_bytes_address(data)), small);
+        return True;
+    }
     view = hash_buffer(data);
     if view is None {
         return False;
@@ -168,7 +186,7 @@ def hash_initial_data(core: DigestCore, data: ptr[PyObject]) -> bool {
 def digest_object(
     cls: ptr[PyObject], token: ClassToken, core: DigestCore, data: ptr[PyObject]
 ) -> ptr[PyObject] {
-    instance = hash_object_new(cls, token, DigestState(lock=HashLock(), core=core));
+    instance = hash_object_new(cls, token, DigestState(core=core));
     if instance and data and not hash_initial_data(core, data) {
         jacpy_release(instance);
         return NULL;
@@ -184,9 +202,12 @@ def digest_new(
     data: ptr[PyObject],
     string: ptr[PyObject]
 ) -> ptr[PyObject] {
-    (given, value) = data_argument(data, string);
-    if given < 0 {
-        return NULL;
+    value = data;
+    if string {
+        (given, value) = data_argument(data, string);
+        if given < 0 {
+            return NULL;
+        }
     }
     if core is None {
         object_error(PyExc_SystemError, "bad argument to internal function");
@@ -201,9 +222,14 @@ def digest_copy(receiver: ptr[PyObject], token: ClassToken) -> ptr[PyObject] {
     if state is None {
         return NULL;
     }
-    state.lock.enter();
+    lock = state.lock;
+    if lock is not None {
+        lock.enter();
+    }
     core = state.core.clone();
-    state.lock.leave();
+    if lock is not None {
+        lock.leave();
+    }
     return digest_object(Py_TYPE(receiver), token, core, NULL);
 }
 
@@ -216,18 +242,27 @@ def digest_update(
     if state is None {
         return NULL;
     }
+    lock = state.lock;
+    small = small_bytes(value) if lock is None else -1;
+    if small >= 0 {
+        state.core.absorb(int(jacpy_bytes_address(value)), small);
+        return Py_NewRef(borrowed_none());
+    }
     view = hash_buffer(value);
     if view is None {
         return NULL;
     }
-    lock = state.lock;
     address = int(view.address());
     size = view.size();
-    if not lock.use_mutex and size >= HASHLIB_GIL_MINSIZE and not lock.enable() {
-        view.close();
-        return NULL;
+    if lock is None and size >= HASHLIB_GIL_MINSIZE {
+        lock = HashLock();
+        if not lock.enable() {
+            view.close();
+            return NULL;
+        }
+        state.lock = lock;
     }
-    if lock.use_mutex {
+    if lock is not None {
         mutex = lock.lock;
         thread = PyEval_SaveThread();
         PyThread_acquire_lock(mutex, 1);
@@ -250,9 +285,14 @@ def digest_value(
     if state is None {
         return NULL;
     }
-    state.lock.enter();
+    lock = state.lock;
+    if lock is not None {
+        lock.enter();
+    }
     value = state.core.finish() if length < 0 else state.core.squeeze(int(length));
-    state.lock.leave();
+    if lock is not None {
+        lock.leave();
+    }
     if as_hex {
         return _Py_strhex(ptr(__bytes_data(value)), i64(len(value)));
     }
