@@ -17,6 +17,7 @@ obj FileChangeEvent {
 
 obj JacFileWatcher {
     has watch_paths: list[str],
+        compiler_source_roots: list[str] = [],
         pattern: str = "*.jac",
         additional_patterns: list[str] = [
             "*.tsx",

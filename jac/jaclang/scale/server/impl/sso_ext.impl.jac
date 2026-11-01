@@ -8,6 +8,7 @@ impl resolve_sso_client_redirect(requested: (str | None), configured: str) -> st
 impl SSOExtension.register(server: JacAPIServer) {
     sso = SSOAuth(users=server.user_manager);
     self.sso = sso;
+    register_sso(sso);
     platform_param = APIParameter(
         name='platform',
         data_type='string',
@@ -59,7 +60,12 @@ impl SSOExtension.register(server: JacAPIServer) {
         );
     }
     async def oauth_begin(
-        request: Request, platform: str, challenge: str, mode: str = "web"
+        request: Request,
+        platform: str,
+        challenge: str,
+        mode: str = "web",
+        intent: str = "signin",
+        scopes: str = ""
     ) -> TransportResponse {
         session = configured_session(platform);
         if session is None {
@@ -84,7 +90,26 @@ impl SSOExtension.register(server: JacAPIServer) {
                 message="Configure client_auth_callback_url for client-managed OAuth"
             );
         }
-        result = session.begin(challenge, mode, link_user, callback, True);
+        requested: list[str] = [];
+        if intent == "connect" {
+            if not link_user {
+                return TransportResponse.fail(
+                    code="SIGN_IN_REQUIRED",
+                    message="Sign in before connecting an account.",
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+            vetted = sso.connect_scopes(platform, scopes.replace(",", " ").split());
+            if vetted is None {
+                return TransportResponse.fail(
+                    code="SCOPES_NOT_ALLOWED",
+                    message="Those permissions are not configured for this provider.",
+                    meta=Meta(extra={'http_status': 400})
+                );
+            }
+            requested = vetted;
+        }
+        result = session.begin(challenge, mode, link_user, callback, True, requested);
         return TransportResponse.success(data=asdict(result));
     }
     async def oauth_finish(
@@ -109,7 +134,7 @@ impl SSOExtension.register(server: JacAPIServer) {
         return TransportResponse.success(data=asdict(session.poll(poll)));
     }
     for (path, callback, names) in [
-        ("begin", oauth_begin, ["challenge", "mode"]),
+        ("begin", oauth_begin, ["challenge", "mode", "intent", "scopes"]),
         ("finish", oauth_finish, ["code", "state", "verifier"]),
         ("poll", oauth_poll, ["poll"])
     ] {
@@ -123,7 +148,7 @@ impl SSOExtension.register(server: JacAPIServer) {
                         APIParameter(
                             name=name,
                             data_type="string",
-                            required=name != "mode",
+                            required=name not in ["mode", "intent", "scopes"],
                             kind=ParameterType.BODY
                         ) for name in names
                     ],
@@ -209,6 +234,50 @@ impl SSOExtension.register(server: JacAPIServer) {
             )
         );
     }
+
+    async def list_connections(request: Request) -> TransportResponse {
+        (user_id, error) = require_user(request);
+        if error is not None {
+            return error;
+        }
+        return TransportResponse.success(
+            data=[asdict(c) for c in connections_for(str(user_id))]
+        );
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/sso/connections',
+            callback=list_connections,
+            parameters=[],
+            tags=['SSO APIs'],
+            summary='List connected accounts',
+            description='The providers the caller has connected, with the permissions each granted. Tokens are never returned.',
+            requires_auth=True
+        )
+    );
+
+    async def disconnect(request: Request, platform: str) -> TransportResponse {
+        (user_id, error) = require_user(request);
+        if error is not None {
+            return error;
+        }
+        return TransportResponse.success(
+            data={'disconnected': await disconnect_for(str(user_id), platform)}
+        );
+    }
+    server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.DELETE,
+            path='/sso/{platform}/connection',
+            callback=disconnect,
+            parameters=[platform_param],
+            tags=['SSO APIs'],
+            summary='Disconnect a connected account',
+            description='Forgets the caller\'s stored grant for the provider and revokes it with the provider when it supports revocation.',
+            requires_auth=True
+        )
+    );
 
     async def firebase_token(body_data: FirebaseTokenRequest) -> TransportResponse {
         return await sso.firebase_token_auth_with_id_token(body_data.id_token);

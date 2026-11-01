@@ -263,7 +263,6 @@ element_stmt ::=
     | graph_import
     | impl_def
     | sem_def
-    | PYNLINE
     | module_code
 
 comptime_element ::= ability | import_stmt | comptime_stmt | comptime_global
@@ -320,7 +319,6 @@ statement ::=
     | archetype
     | impl_def
     | has_stmt
-    | PYNLINE
     | "->" expression "{" code_block_stmts "}"
     | expression (assignment_with_target | ";")?
 
@@ -436,8 +434,18 @@ from_path ::=
 
 import_items ::=
     "{" (
-        ("def" | "can" | "obj" | "class" | "enum" | "async" | STRING | "glob" | "has")
-        element_stmt*
+        (
+            "def"
+            | "can"
+            | "obj"
+            | "class"
+            | "enum"
+            | "async"
+            | STRING
+            | "glob"
+            | "has"
+            | "@"
+        ) element_stmt*
         | (("*" | "default" | NAME | KWESC_NAME) ("as" (NAME | KWESC_NAME))? ","?)*
     ) "}"
 
@@ -455,7 +463,6 @@ archetype_member ::=
         | archetype
         | enum
         | impl_def
-        | PYNLINE
         | "with" (("entry" | "exit") "{" code_block_stmts "}")?
         | statement
     )
@@ -485,7 +492,7 @@ param_var ::=
 enum ::=
     ("@" atomic_chain)* "enum" access_tag (NAME | KWESC_NAME)
     (":" atomic_chain | "(" (atomic_chain ("," atomic_chain)*)? ")")?
-    ("{" (enum_member ","? | PYNLINE | module_code)* "}" | ";")
+    ("{" (enum_member ","? | module_code)* "}" | ";")
 
 enum_member ::= (NAME | KWESC_NAME) ("=" expression)?
 

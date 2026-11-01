@@ -299,6 +299,15 @@ def write_bench_result(
     );
 }
 
+"""High-compute mode, or False for the original shooter.
+
+`demo.sh` creates a sibling `.flock` file to turn on the boids flock (see
+`update_flock`): 256 boids that steer against each other every frame, so the
+frame spends real time in the program's own arithmetic rather than inside
+raylib. Without the file none of the flock code runs and the shooter is exactly
+the original one. Read with raylib's FileExists, like `.bench_seconds`."""
+glob flock_mode: bool = FileExists(".flock");
+
 """Benchmark accumulators. `bench` is the requested duration (0 = interactive),
 resolved once at startup; `frames`/`max_fps` are tallied across the run."""
 glob bench: float = bench_seconds(),
@@ -351,6 +360,29 @@ obj Bullet {
         life: float;
 }
 
+"""One member of the flock: position, velocity, and the acceleration the
+steering pass computes for it before the integration pass applies it."""
+obj Boid {
+    has x: float,
+        y: float,
+        z: float,
+        vx: float,
+        vy: float,
+        vz: float,
+        ax: float,
+        ay: float,
+        az: float;
+}
+
+"""Flock size and steering radii. Every boid looks at every other boid each
+frame, so the steering pass is NUM_BOIDS * NUM_BOIDS neighbour tests of pure
+arithmetic - the part of the frame that runs outside raylib."""
+glob NUM_BOIDS: int = 256,
+     BOID_VIEW2: float = 9.0,
+     BOID_SEP2: float = 1.0,
+     BOID_MAX_SPEED: float = 5.0,
+     BOID_MIN_SPEED: float = 2.0;
+
 
 """cos via range-reduced Taylor series (good to ~1e-4 on the reduced range)."""
 def jcos(a: float) -> float {
@@ -388,6 +420,131 @@ def rand_range(lo: float, hi: float) -> float {
     return lo + rand01() * (hi - lo);
 }
 
+
+"""Square root by Newton's method (12 fixed iterations, so no libm is needed)."""
+def jsqrt(v: float) -> float {
+    if v <= 0.0 {
+        return 0.0;
+    }
+    g = v if v > 1.0 else 1.0;
+    k = 0;
+    while k < 12 {
+        g = 0.5 * (g + v / g);
+        k += 1;
+    }
+    return g;
+}
+
+"""A boid at a random spot over the arena with a random heading."""
+def spawn_boid -> Boid {
+    x = rand_range(-12.0, 12.0);
+    y = rand_range(1.0, 7.0);
+    z = rand_range(-14.0, 4.0);
+    vx = rand_range(-2.0, 2.0);
+    vy = rand_range(-0.5, 0.5);
+    vz = rand_range(-2.0, 2.0);
+    return Boid(x=x, y=y, z=z, vx=vx, vy=vy, vz=vz, ax=0.0, ay=0.0, az=0.0);
+}
+
+"""Steer every boid by separation, alignment and cohesion over the neighbours
+within its view radius (an all-pairs pass), then integrate with a speed clamp.
+Steering reads only positions and velocities and writes only accelerations, so
+the result does not depend on the order the boids are visited in."""
+def update_flock(flock: list[Boid], step: float) {
+    n = len(flock);
+    i = 0;
+    while i < n {
+        b = flock[i];
+        cnt = 0;
+        cx = 0.0;
+        cy = 0.0;
+        cz = 0.0;
+        avx = 0.0;
+        avy = 0.0;
+        avz = 0.0;
+        sx = 0.0;
+        sy = 0.0;
+        sz = 0.0;
+        j = 0;
+        while j < n {
+            if j != i {
+                o = flock[j];
+                dx = o.x - b.x;
+                dy = o.y - b.y;
+                dz = o.z - b.z;
+                d2 = dx * dx + dy * dy + dz * dz;
+                if d2 < BOID_VIEW2 {
+                    cnt += 1;
+                    cx += o.x;
+                    cy += o.y;
+                    cz += o.z;
+                    avx += o.vx;
+                    avy += o.vy;
+                    avz += o.vz;
+                    if d2 < BOID_SEP2 {
+                        inv = 1.0 / (d2 + 0.01);
+                        sx -= dx * inv;
+                        sy -= dy * inv;
+                        sz -= dz * inv;
+                    }
+                }
+            }
+            j += 1;
+        }
+        ax = 0.0;
+        ay = 0.0;
+        az = 0.0;
+        if cnt > 0 {
+            fc = float(cnt);
+            ax = (cx / fc - b.x) * 0.6 + (avx / fc - b.vx) * 0.9 + sx * 1.5;
+            ay = (cy / fc - b.y) * 0.6 + (avy / fc - b.vy) * 0.9 + sy * 1.5;
+            az = (cz / fc - b.z) * 0.6 + (avz / fc - b.vz) * 0.9 + sz * 1.5;
+        }
+        b.ax = ax - b.x * 0.08;
+        b.ay = ay + (4.0 - b.y) * 0.3;
+        b.az = az - (b.z + 5.0) * 0.08;
+        i += 1;
+    }
+    i = 0;
+    while i < n {
+        b = flock[i];
+        b.vx += b.ax * step;
+        b.vy += b.ay * step;
+        b.vz += b.az * step;
+        s2 = b.vx * b.vx + b.vy * b.vy + b.vz * b.vz;
+        if s2 > BOID_MAX_SPEED * BOID_MAX_SPEED {
+            k = BOID_MAX_SPEED / jsqrt(s2);
+            b.vx *= k;
+            b.vy *= k;
+            b.vz *= k;
+        } elif s2 > 0.0 and s2 < BOID_MIN_SPEED * BOID_MIN_SPEED {
+            k = BOID_MIN_SPEED / jsqrt(s2);
+            b.vx *= k;
+            b.vy *= k;
+            b.vz *= k;
+        }
+        b.x += b.vx * step;
+        b.y += b.vy * step;
+        b.z += b.vz * step;
+        i += 1;
+    }
+}
+
+"""Draw each boid as a short streak trailing back along its velocity."""
+def draw_flock(flock: list[Boid]) {
+    rlBegin(i32(RL_LINES));
+    rlColor4ub(120, 200, 255, 255);
+    i = 0;
+    while i < len(flock) {
+        b = flock[i];
+        rlVertex3f(f32(b.x), f32(b.y), f32(b.z));
+        rlVertex3f(
+            f32(b.x - b.vx * 0.12), f32(b.y - b.vy * 0.12), f32(b.z - b.vz * 0.12)
+        );
+        i += 1;
+    }
+    rlEnd();
+}
 
 """(Re)place a target somewhere in the arena in front of the player."""
 def respawn(t: Target) {
@@ -539,7 +696,8 @@ def handle_input(step: float) {
 
 
 glob targets: list[Target] = [],
-     bullets: list[Bullet] = [];
+     bullets: list[Bullet] = [],
+     flock: list[Boid] = [];
 
 with entry {
     open_window(960, 600, "Jac Cube Shooter");
@@ -552,6 +710,12 @@ with entry {
 
     for n in range(24) {
         bullets.append(Bullet(x=0.0, y=0.0, z=0.0, vx=0.0, vy=0.0, vz=0.0, life=0.0));
+    }
+
+    if flock_mode {
+        for n in range(NUM_BOIDS) {
+            flock.append(spawn_boid());
+        }
     }
 
     while not should_close() {
@@ -580,6 +744,9 @@ with entry {
             t.y = t.base_y + 0.4 * jsin(world_t * 1.5 + t.phase);
             ti += 1;
         }
+        if flock_mode {
+            update_flock(flock, step);
+        }
 
         begin_frame(15, 18, 28);
         set_camera(px, py, pz, yaw, pitch, 1.6);
@@ -601,6 +768,9 @@ with entry {
                 draw_box(b.x, b.y, b.z, 0.22, 0.22, 0.22, 250, 220, 90);
             }
             bi += 1;
+        }
+        if flock_mode {
+            draw_flock(flock);
         }
 
         end_camera(960.0, 600.0);

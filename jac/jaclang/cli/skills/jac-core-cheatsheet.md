@@ -176,6 +176,6 @@ Generators (`yield` / `yield from`), decorators (`@deco` above `def`), walrus `(
 
 ## See also
 
-`jac-types` (type system, `as` casts, `any` boundaries) · `jac-has-fields` (fields) · `jac-impl-files` (file layout) · `jac-codespaces` (inferred client/server/native placement) · `jac-python-interop` (PyPI, `::py::`, calling Jac from Python) · `jac-concurrency` (`flow`/`wait`, async)
+`jac-types` (type system, `as` casts, `any` boundaries) · `jac-has-fields` (fields) · `jac-impl-files` (file layout) · `jac-codespaces` (inferred client/server/native placement) · `jac-python-interop` (PyPI, local `.py` modules, calling Jac from Python) · `jac-concurrency` (`flow`/`wait`, async)
 
 Deep dives bundled with the CLI: `jac guide reference/language/syntax-cheatsheet` (complete syntax reference), `jac guide reference` (lists the full language/CLI/config reference set).

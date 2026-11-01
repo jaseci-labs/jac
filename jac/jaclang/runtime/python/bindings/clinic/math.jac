@@ -20,78 +20,53 @@ def:priv math_lcm_call(
 def:priv math_ceil_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: ptr[PyObject] = value;
-        return math_ceil_impl(receiver, x);
-    } except boundary_failure {
-        return NULL;
-    }
+    x: ptr[PyObject] = value;
+    return math_ceil_impl(receiver, x);
 }
 
 def:priv math_floor_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: ptr[PyObject] = value;
-        return math_floor_impl(receiver, x);
-    } except boundary_failure {
-        return NULL;
-    }
+    x: ptr[PyObject] = value;
+    return math_floor_impl(receiver, x);
 }
 
 def:priv math_fsum_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        seq: ptr[PyObject] = value;
-        return math_fsum_impl(receiver, seq);
-    } except boundary_failure {
-        return NULL;
-    }
+    seq: ptr[PyObject] = value;
+    return math_fsum_impl(receiver, seq);
 }
 
 def:priv math_isqrt_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        n: ptr[PyObject] = value;
-        return math_isqrt_impl(receiver, n);
-    } except boundary_failure {
-        return NULL;
-    }
+    n: ptr[PyObject] = value;
+    return math_isqrt_impl(receiver, n);
 }
 
 def:priv math_factorial_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        n: ptr[PyObject] = value;
-        return math_factorial_impl(receiver, n);
-    } except boundary_failure {
-        return NULL;
-    }
+    n: ptr[PyObject] = value;
+    return math_factorial_impl(receiver, n);
 }
 
 def:priv math_trunc_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: ptr[PyObject] = value;
-        return math_trunc_impl(receiver, x);
-    } except boundary_failure {
-        return NULL;
-    }
+    x: ptr[PyObject] = value;
+    return math_trunc_impl(receiver, x);
 }
 
 def:priv math_frexp_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: f64 = convert_double(value);
-        return math_frexp_impl(receiver, x);
-    } except boundary_failure {
+    x: f64 = PyFloat_AsDouble(value);
+    if x == -1.0 and failed() {
         return NULL;
     }
+    return math_frexp_impl(receiver, x);
 }
 
 def:priv math_ldexp_bound(
@@ -109,46 +84,49 @@ def:priv math_ldexp_bound(
     }
 }
 
+def:priv math_ldexp_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    x: f64 = PyFloat_AsDouble(clinic_args[0]);
+    if x == -1.0 and failed() {
+        return NULL;
+    }
+    i: ptr[PyObject] = clinic_args[1];
+    return math_ldexp_impl(receiver, x, i);
+}
+
 def:priv math_ldexp_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 2 or nargs > 2) and not check_positional("ldexp", int(nargs), 2, 2) {
         return NULL;
     }
-    return math_ldexp_bound(receiver, args, nargs);
+    return math_ldexp_direct(receiver, args, nargs);
 }
 
 def:priv math_modf_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: f64 = convert_double(value);
-        return math_modf_impl(receiver, x);
-    } except boundary_failure {
+    x: f64 = PyFloat_AsDouble(value);
+    if x == -1.0 and failed() {
         return NULL;
     }
+    return math_modf_impl(receiver, x);
 }
 
 def:priv math_log2_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: ptr[PyObject] = value;
-        return math_log2_impl(receiver, x);
-    } except boundary_failure {
-        return NULL;
-    }
+    x: ptr[PyObject] = value;
+    return math_log2_impl(receiver, x);
 }
 
 def:priv math_log10_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: ptr[PyObject] = value;
-        return math_log10_impl(receiver, x);
-    } except boundary_failure {
-        return NULL;
-    }
+    x: ptr[PyObject] = value;
+    return math_log10_impl(receiver, x);
 }
 
 def:priv math_fma_bound(
@@ -168,13 +146,32 @@ def:priv math_fma_bound(
     }
 }
 
+def:priv math_fma_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    x: f64 = PyFloat_AsDouble(clinic_args[0]);
+    if x == -1.0 and failed() {
+        return NULL;
+    }
+    y: f64 = PyFloat_AsDouble(clinic_args[1]);
+    if y == -1.0 and failed() {
+        return NULL;
+    }
+    z: f64 = PyFloat_AsDouble(clinic_args[2]);
+    if z == -1.0 and failed() {
+        return NULL;
+    }
+    return math_fma_impl(receiver, x, y, z);
+}
+
 def:priv math_fma_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 3 or nargs > 3) and not check_positional("fma", int(nargs), 3, 3) {
         return NULL;
     }
-    return math_fma_bound(receiver, args, nargs);
+    return math_fma_direct(receiver, args, nargs);
 }
 
 def:priv math_fmod_bound(
@@ -192,13 +189,28 @@ def:priv math_fmod_bound(
     }
 }
 
+def:priv math_fmod_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    x: f64 = PyFloat_AsDouble(clinic_args[0]);
+    if x == -1.0 and failed() {
+        return NULL;
+    }
+    y: f64 = PyFloat_AsDouble(clinic_args[1]);
+    if y == -1.0 and failed() {
+        return NULL;
+    }
+    return math_fmod_impl(receiver, x, y);
+}
+
 def:priv math_fmod_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 2 or nargs > 2) and not check_positional("fmod", int(nargs), 2, 2) {
         return NULL;
     }
-    return math_fmod_bound(receiver, args, nargs);
+    return math_fmod_direct(receiver, args, nargs);
 }
 
 def:priv math_dist_bound(
@@ -216,13 +228,22 @@ def:priv math_dist_bound(
     }
 }
 
+def:priv math_dist_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    p: ptr[PyObject] = clinic_args[0];
+    q: ptr[PyObject] = clinic_args[1];
+    return math_dist_impl(receiver, p, q);
+}
+
 def:priv math_dist_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 2 or nargs > 2) and not check_positional("dist", int(nargs), 2, 2) {
         return NULL;
     }
-    return math_dist_bound(receiver, args, nargs);
+    return math_dist_direct(receiver, args, nargs);
 }
 
 def:priv math_hypot_call(
@@ -246,13 +267,22 @@ def:priv math_sumprod_bound(
     }
 }
 
+def:priv math_sumprod_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    p: ptr[PyObject] = clinic_args[0];
+    q: ptr[PyObject] = clinic_args[1];
+    return math_sumprod_impl(receiver, p, q);
+}
+
 def:priv math_sumprod_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 2 or nargs > 2) and not check_positional("sumprod", int(nargs), 2, 2) {
         return NULL;
     }
-    return math_sumprod_bound(receiver, args, nargs);
+    return math_sumprod_direct(receiver, args, nargs);
 }
 
 def:priv math_pow_bound(
@@ -270,68 +300,78 @@ def:priv math_pow_bound(
     }
 }
 
+def:priv math_pow_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    x: f64 = PyFloat_AsDouble(clinic_args[0]);
+    if x == -1.0 and failed() {
+        return NULL;
+    }
+    y: f64 = PyFloat_AsDouble(clinic_args[1]);
+    if y == -1.0 and failed() {
+        return NULL;
+    }
+    return math_pow_impl(receiver, x, y);
+}
+
 def:priv math_pow_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 2 or nargs > 2) and not check_positional("pow", int(nargs), 2, 2) {
         return NULL;
     }
-    return math_pow_bound(receiver, args, nargs);
+    return math_pow_direct(receiver, args, nargs);
 }
 
 def:priv math_degrees_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: f64 = convert_double(value);
-        return math_degrees_impl(receiver, x);
-    } except boundary_failure {
+    x: f64 = PyFloat_AsDouble(value);
+    if x == -1.0 and failed() {
         return NULL;
     }
+    return math_degrees_impl(receiver, x);
 }
 
 def:priv math_radians_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: f64 = convert_double(value);
-        return math_radians_impl(receiver, x);
-    } except boundary_failure {
+    x: f64 = PyFloat_AsDouble(value);
+    if x == -1.0 and failed() {
         return NULL;
     }
+    return math_radians_impl(receiver, x);
 }
 
 def:priv math_isfinite_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: f64 = convert_double(value);
-        return math_isfinite_impl(receiver, x);
-    } except boundary_failure {
+    x: f64 = PyFloat_AsDouble(value);
+    if x == -1.0 and failed() {
         return NULL;
     }
+    return math_isfinite_impl(receiver, x);
 }
 
 def:priv math_isnan_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: f64 = convert_double(value);
-        return math_isnan_impl(receiver, x);
-    } except boundary_failure {
+    x: f64 = PyFloat_AsDouble(value);
+    if x == -1.0 and failed() {
         return NULL;
     }
+    return math_isnan_impl(receiver, x);
 }
 
 def:priv math_isinf_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        x: f64 = convert_double(value);
-        return math_isinf_impl(receiver, x);
-    } except boundary_failure {
+    x: f64 = PyFloat_AsDouble(value);
+    if x == -1.0 and failed() {
         return NULL;
     }
+    return math_isinf_impl(receiver, x);
 }
 
 glob:priv math_isclose_signature = CallSignature(
@@ -372,13 +412,7 @@ def:priv math_isclose_call(
     if kwnames == NULL and nargs >= 2 and nargs <= 2 {
         return math_isclose_bound(receiver, args, nargs);
     }
-    values = unpack_stack(math_isclose_signature, args, nargs, kwnames);
-    if values {
-        unpacked = math_isclose_bound(receiver, values, 4);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         math_isclose_signature, args, nargs, kwnames, math_isclose_bound, receiver
     );
 }
@@ -405,6 +439,18 @@ def:priv math_prod_bound(
     }
 }
 
+def:priv math_prod_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    iterable: ptr[PyObject] = clinic_args[0];
+    start: ptr[PyObject] = NULL;
+    if count > 1 {
+        start = clinic_args[1];
+    }
+    return math_prod_impl(receiver, iterable, start);
+}
+
 def:priv math_prod_call(
     receiver: ptr[PyObject],
     args: ptr[ptr[PyObject]],
@@ -412,15 +458,9 @@ def:priv math_prod_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 1 and nargs <= 1 {
-        return math_prod_bound(receiver, args, nargs);
+        return math_prod_direct(receiver, args, nargs);
     }
-    values = unpack_stack(math_prod_signature, args, nargs, kwnames);
-    if values {
-        unpacked = math_prod_bound(receiver, values, 2);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         math_prod_signature, args, nargs, kwnames, math_prod_bound, receiver
     );
 }
@@ -443,13 +483,25 @@ def:priv math_perm_bound(
     }
 }
 
+def:priv math_perm_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    n: ptr[PyObject] = clinic_args[0];
+    k: ptr[PyObject] = borrowed_none();
+    if count > 1 {
+        k = clinic_args[1];
+    }
+    return math_perm_impl(receiver, n, k);
+}
+
 def:priv math_perm_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 1 or nargs > 2) and not check_positional("perm", int(nargs), 1, 2) {
         return NULL;
     }
-    return math_perm_bound(receiver, args, nargs);
+    return math_perm_direct(receiver, args, nargs);
 }
 
 def:priv math_comb_bound(
@@ -467,13 +519,22 @@ def:priv math_comb_bound(
     }
 }
 
+def:priv math_comb_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    n: ptr[PyObject] = clinic_args[0];
+    k: ptr[PyObject] = clinic_args[1];
+    return math_comb_impl(receiver, n, k);
+}
+
 def:priv math_comb_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs < 2 or nargs > 2) and not check_positional("comb", int(nargs), 2, 2) {
         return NULL;
     }
-    return math_comb_bound(receiver, args, nargs);
+    return math_comb_direct(receiver, args, nargs);
 }
 
 glob:priv math_nextafter_signature = CallSignature(
@@ -500,6 +561,25 @@ def:priv math_nextafter_bound(
     }
 }
 
+def:priv math_nextafter_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    x: f64 = PyFloat_AsDouble(clinic_args[0]);
+    if x == -1.0 and failed() {
+        return NULL;
+    }
+    y: f64 = PyFloat_AsDouble(clinic_args[1]);
+    if y == -1.0 and failed() {
+        return NULL;
+    }
+    steps: ptr[PyObject] = borrowed_none();
+    if count > 2 {
+        steps = clinic_args[2];
+    }
+    return math_nextafter_impl(receiver, x, y, steps);
+}
+
 def:priv math_nextafter_call(
     receiver: ptr[PyObject],
     args: ptr[ptr[PyObject]],
@@ -507,26 +587,19 @@ def:priv math_nextafter_call(
     kwnames: ptr[PyObject]
 ) -> ptr[PyObject] {
     if kwnames == NULL and nargs >= 2 and nargs <= 2 {
-        return math_nextafter_bound(receiver, args, nargs);
+        return math_nextafter_direct(receiver, args, nargs);
     }
-    values = unpack_stack(math_nextafter_signature, args, nargs, kwnames);
-    if values {
-        unpacked = math_nextafter_bound(receiver, values, 3);
-        PyMem_Free(values);
-        return unpacked;
-    }
-    return invoke_stack(
+    return invoke_keywords(
         math_nextafter_signature, args, nargs, kwnames, math_nextafter_bound, receiver
     );
 }
 
 def:priv math_ulp_call(receiver: ptr[PyObject], value: ptr[PyObject]) -> ptr[PyObject] {
-    try {
-        x: f64 = convert_double(value);
-        return return_double(math_ulp_impl(receiver, x));
-    } except boundary_failure {
+    x: f64 = PyFloat_AsDouble(value);
+    if x == -1.0 and failed() {
         return NULL;
     }
+    return return_double(math_ulp_impl(receiver, x));
 }
 
 glob math_log_doc: str = "log(x, [base=math.e])\nReturn the logarithm of x to the given base.\n\nIf the base is not specified, returns the natural logarithm (base e) of x.",

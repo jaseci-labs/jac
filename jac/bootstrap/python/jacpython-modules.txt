@@ -2,25 +2,21 @@
 #
 # One module per line: <module> [<upstream tests> [linker flags...]]
 #   <module>          CPython import name; its PyInit_<module> is a :pub
-#                     definition under jaclang/runtime/python/bindings/. Its
-#                     module is wired into
-#                     compiler/backends/py/jacpython/native_api.jac in
-#                     jaclang/archwire.jac, which puts it in the compiled plan.
+#                     definition under jaclang/runtime/python/bindings/ and is
+#                     imported by compiler/backends/py/jacpython/native_api.jac.
 #   <upstream tests>  Comma-separated pinned CPython test modules that
 #                     scripts/run_cpython_compiler_tests.jac runs against it.
 #                     Omitted when every upstream suite for the module needs
 #                     something outside it (_testcapi, compiler features).
-#   linker flags      Extra Setup.local flags for a foreign library. A path
-#                     Modules/<name>.a names an archive CPython's makefile
-#                     builds (the vendored HACL* libraries); build.sh makes
-#                     it before linking the interpreter. A flag prefixed
-#                     with an OS (linux:-lrt) applies only on that OS.
+#   linker flags      Extra linker flags for a foreign library. A path
+#                     Modules/<name>.a names an archive the build compiles
+#                     from CPython's vendored sources (HACL*) before linking
+#                     the interpreter. A flag prefixed with an OS
+#                     (linux:-lrt) applies only on that OS.
 #
-# This file is the single list. build.sh writes the Setup.local *static* block
-# from it; prepare_native.py fails when a listed PyInit is absent from the
-# compiled plan's public exports, and the final link fails if the object does
-# not define it; smoke.py asserts each module is built in; CI runs each
-# module's tests.
+# This file is the single list. build_jacpython.zig links libpython with these
+# flags and fails when inittab.jac does not hold a listed PyInit;
+# smoke.py asserts each module is built in; CI runs each module's tests.
 # The C sources a module replaces are the `# removed:` entries of
 # cpython-sources.txt; build_python.zig owns that parser.
 
@@ -32,6 +28,7 @@ _operator       test.test_operator,test.test_hmac      -lcrypto
 _queue          test.test_queue
 _json           test.test_json
 _csv            test.test_csv
+_remote_debugging
 _struct         test.test_struct
 cmath           test.test_cmath
 math            test.test_math
@@ -48,6 +45,7 @@ grp             test.test_grp
 _types          test.test_types
 _typing
 _suggestions
+_warnings       test.test_warnings
 _sysconfig      test.test_sysconfig
 _weakref        test.test_weakref
 _tracemalloc    test.test_tracemalloc
@@ -98,3 +96,15 @@ _hashlib        test.test_hashlib,test.test_hmac        -lcrypto
 _ssl            test.test_ssl                           -lssl -lcrypto
 _asyncio        test.test_asyncio,test.test_contextlib_async
 posix           test.test_os,test.test_posix,test.test_shutil,test.test_glob,test.test_tempfile   linux:-lutil
+_contextvars    test.test_context
+faulthandler    test.test_faulthandler
+_signal         test.test_signal
+_thread         test.test_thread,test.test_threading,test.test_threading_local
+_interpreters   test.test__interpreters,test.test_interpreters,test.test_crossinterp,test.test_concurrent_futures.test_interpreter_pool
+_interpchannels test.test__interpchannels
+_interpqueues   test.test_interpreters
+marshal         test.test_marshal
+_imp            test.test_imp,test.test_importlib
+_io             test.test_io,test.test_fileio,test.test_memoryio,test.test_bufio,test.test_univnewlines,test.test_file
+_ctypes         test.test_ctypes                        -lffi -ldl
+_scproxy        test.test_urllib2                       macos:-framework macos:SystemConfiguration macos:-framework macos:CoreFoundation

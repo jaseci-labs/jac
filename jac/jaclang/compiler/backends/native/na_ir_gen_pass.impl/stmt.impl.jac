@@ -171,8 +171,8 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.DeleteStmt) {
         self._codegen_delete(nd);
     } elif isinstance(nd, uni.Semi) {} elif isinstance(nd, uni.Import) {} elif isinstance(
-        nd, uni.PyInlineCode
-    ) {} elif isinstance(nd, uni.VisitStmt) {
+        nd, uni.VisitStmt
+    ) {
         self._codegen_visit(nd);
     } elif isinstance(nd, uni.DisengageStmt) {
         self._codegen_disengage(nd);
@@ -673,6 +673,8 @@ impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
             ) {
             call = last;
         }
+    } elif last is val {
+        call = self._retype_tail_call(blk, func);
     }
     if call is None {
         self.emit(
@@ -693,6 +695,52 @@ impl NaIRGenPass._codegen_tail_return(nd: uni.ReturnStmt) -> None {
     } else {
         self.builder.ret(call);
     }
+}
+
+impl NaIRGenPass._retype_tail_call(
+    blk: ir.Block, func: ir.Function
+) -> (ir.CallInstr | None) {
+    if len(blk.instructions) < 2 {
+        return None;
+    }
+    last = blk.instructions[-1];
+    prev = blk.instructions[-2];
+    if not isinstance(last, ir.CastInstr)
+        or not isinstance(prev, ir.CallInstr)
+        or last.operands[0] is not prev {
+        return None;
+    }
+    fnty = func.function_type;
+    if last.type != fnty.return_type {
+        return None;
+    }
+    try {
+        callee_ty = prev.callee.function_type;
+    } except TypeError {
+        return None;
+    }
+    if callee_ty.var_arg or len(callee_ty.args) != len(fnty.args) {
+        return None;
+    }
+    word = ir.IntType(64);
+    for i in range(len(fnty.args)) {
+        have = callee_ty.args[i];
+        want = fnty.args[i];
+        if have != want
+            and not (isinstance(have, ir.PointerType) and want == word)
+            and not (have == word and isinstance(want, ir.PointerType)) {
+            return None;
+        }
+    }
+    blk.instructions.remove(last);
+    blk.instructions.remove(prev);
+    self.builder.position_at_end(blk);
+    callee = self.builder.bitcast(prev.callee, fnty.as_pointer(), name="tail.callee");
+    args: list[ir.Value] = [];
+    for (i, arg) in enumerate(prev.args) {
+        args.append(self._clib_reinterpret(arg, fnty.args[i], name=f"tail.arg.{i}"));
+    }
+    return self.builder.call(callee, args, name="tail.call", cconv=prev.cconv);
 }
 
 impl NaIRGenPass._tail_frame_blocker -> (str | None) {
@@ -2140,7 +2188,7 @@ impl NaIRGenPass._codegen_dict_counter_update(nd: uni.Assignment) -> bool {
     return True;
 }
 
-impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
+impl NaIRGenPass._codegen_assignment_core(nd: uni.Assignment) -> None {
     _rhs_errs_before = len(self.ctx.errors_had);
     if self._lower_partition_unpack(nd) {
         return;
@@ -2211,6 +2259,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         if target_index > 0 {
             assignment_rhs.is_owned = False;
             assignment_rhs.na_tuple_owned = None;
+            self._mark_target_bound(targets[target_index - 1]);
         }
         value: ir.Value = assignment_rhs;
         if isinstance(target_expr, uni.TupleVal) {
@@ -4316,6 +4365,19 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         }
         return;
     }
+
+    _loop_borrow = (
+        id(nd) in self.module.managed_borrow_binds
+        and self._gc_mode() != "none"
+        and not self._nogc_headerless()
+        and _unpack_target is None
+        and isinstance(actual_elem_type, ir.PointerType)
+        and self._gen_ctx is None
+    );
+    if _loop_borrow {
+        self.borrowed_vars.add(loop_var_name);
+        self.rc_ops_elided += 2;
+    }
     self._codegen_for_indexed(
         nd,
         kind="list",
@@ -4323,7 +4385,7 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         helpers=helpers,
         var_names=[loop_var_name],
         var_types=[actual_elem_type],
-        rc_vars=True,
+        rc_vars=not _loop_borrow,
         coll_release_op="forl_coll",
         elem_cast=inner_type,
         unpack_target=_unpack_target

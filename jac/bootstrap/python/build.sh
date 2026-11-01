@@ -1,17 +1,12 @@
 #!/bin/sh
-# Native release builds: every C translation and archive uses the pinned Zig.
+# The build-only host CPython: stock CPython and its vendored libraries, built
+# with CPython's own configure and make. Every C translation and archive uses
+# the pinned Zig. The JacPython runtime is built by build_jacpython.zig.
 set -eu
 platform=$1
 work=$2
 zig=$3
 recipe=$4
-host=${5:-}
-root=$6
-mode=$7
-case "$mode:$host" in
-    host:|jacpython:?*) ;;
-    *) echo "Invalid Python build mode/host: $mode" >&2; exit 1 ;;
-esac
 jobs=${JAC_PYTHON_JOBS:-4}
 case "$jobs" in ''|*[!0-9]*|0) echo 'JAC_PYTHON_JOBS must be a positive integer' >&2; exit 1;; esac
 case "$platform" in
@@ -146,20 +141,11 @@ openssl() {
 }
 cpython() {
     cd "$src/cpython"
-    if [ -n "$host" ]; then
-        patch -f -F0 -p1 -i "$recipe/compiler-bridge.patch"
-        cp "$recipe/compiler_bridge.c" Python/jac_compile.c
-        cp "$recipe/compiler_bridge.h" Python/jac_compile.h
-        cp "$recipe/compiler_runtime.c" Python/jac_runtime.c
-        cp "$recipe/object_api.c" Python/jac_objects.c
-        cp "$recipe/binding_api.c" Python/jac_bindings.c
-        cp "$work/native/jacpython.o" Python/jacpython.o
-    fi
     # cpython-sources.txt decides what the extracted tree holds; detach the
-    # upstream rules that still name pruned paths. This runs second because
-    # compiler-bridge.patch carries zero-context hunks, which match on line
-    # number alone and so must see pristine ones.
+    # upstream rules that still name pruned paths, then the objects the host
+    # no longer needs.
     patch -f -F0 -p1 -i "$recipe/build-graph.patch"
+    patch -f -F0 -p1 -i "$recipe/host-graph.patch"
     # The shared interpreter must survive relocation into the Jac payload.
     case "$platform" in
         linux-*)
@@ -225,43 +211,6 @@ _curses
 _curses_panel
 readline
 SETUP
-    archives=
-    if [ -n "$host" ]; then
-        # Setup.local is read first and its first rule wins, so a registered
-        # module's PyInit resolves from jacpython.o even when Setup.bootstrap
-        # or Setup.stdlib still names the replaced C source. prepare_native.py
-        # checks that every registered PyInit is exported by the compiled plan;
-        # an absent binding fails there before this link.
-        registry=$recipe/jacpython-modules.txt
-        echo '*static*' >> Modules/Setup.local
-        while read -r module tests flags; do
-            case "$module" in ''|'#'*) continue ;; esac
-            # A flag prefixed with an OS (linux:-lrt) applies only there.
-            selected=
-            for flag in $flags; do
-                case "$flag" in
-                    *:*)
-                        [ "${flag%%:*}" = "${platform%%-*}" ] || continue
-                        flag=${flag#*:}
-                        ;;
-                esac
-                # A library the build vendors (-lz, -lsqlite3) links its
-                # static archive, as the C modules' LIB*_LIBS do, never the
-                # system's copy.
-                case "$flag" in
-                    -l*) [ -f "$deps/lib/lib${flag#-l}.a" ] && flag="$deps/lib/lib${flag#-l}.a" ;;
-                esac
-                selected="$selected $flag"
-                # A flag naming an archive under Modules/ is one of CPython's
-                # own make targets (the vendored HACL* libraries). makesetup
-                # only puts it on the link line: a module without a C source
-                # has no rule that depends on it, so it is built before the
-                # interpreter.
-                case "$flag" in Modules/*.a) archives="$archives $flag" ;; esac
-            done
-            echo "$module$selected" >> Modules/Setup.local
-        done < "$registry"
-    fi
     # CPython runs the compiler itself; dependency-oriented -O2 flags above
     # must not override the release interpreter's optimization settings.
     export CFLAGS='-O3 -fPIC -fno-semantic-interposition' LLVM_AR="$AR"
@@ -276,29 +225,15 @@ SETUP
         --disable-test-modules --with-ensurepip=no --with-pkg-config=no \
         --with-openssl="$deps" --with-openssl-rpath=no \
         --with-system-expat --with-system-libmpdec --without-readline
-    if [ -n "$host" ]; then
-        # Native Jac defines and reads objects through layouts.jac; its
-        # generated asserts fail the build if this configuration disagrees.
-        "$CC" $CFLAGS -DPy_BUILD_CORE -I. -IInclude -c -o "$work/layouts_check.o" "$recipe/layouts_check.c"
-        rm -f "$work/layouts_check.o"
-        # The configure features the generated constant tables recorded
-        # must be this build's.
-        "$CC" $CFLAGS -I. -IInclude -c -o "$work/features_check.o" "$recipe/features_check.c"
-        rm -f "$work/features_check.o"
-    fi
-    if [ -n "$archives" ]; then
-        # shellcheck disable=SC2086 # one make target per archive
-        python_make -j"$jobs" $archives
-    fi
     # Embed the same core objects in the executable: venv --copies must run
     # without a libpython next to the copied executable. Jac's launcher still
     # uses the separately built shared library. Neither needs libpython3.so.
-    python_make -j"$jobs" PY3LIBRARY= 'LINK_PYTHON_OBJS=$(LIBRARY_OBJS)'
+    make -j"$jobs" PY3LIBRARY= 'LINK_PYTHON_OBJS=$(LIBRARY_OBJS)'
     # CPython's install targets create overlapping directories. BSD install
     # fails if another target creates the same directory after its check.
-    python_make -j1 PY3LIBRARY= 'LINK_PYTHON_OBJS=$(LIBRARY_OBJS)' "COMPILEALL_OPTS=-j$jobs" install
+    make -j1 PY3LIBRARY= 'LINK_PYTHON_OBJS=$(LIBRARY_OBJS)' "COMPILEALL_OPTS=-j$jobs" install
     # Check the completed build, including generated sources and objects,
-    # against the paths this mode must not contain. build_python.zig writes
+    # against the paths the host must not contain. build_python.zig writes
     # that list; it owns the only parser for cpython-sources.txt. Redirect
     # rather than pipe: a pipeline hides both a missing list and the exit.
     while IFS= read -r excluded; do
@@ -308,58 +243,32 @@ SETUP
         fi
     done < "$work/absent-inputs"
 }
-python_make() {
-    if [ -n "$host" ]; then
-        # Freeze with the explicit build-time interpreter. Neither helper
-        # executable needs to run before the reduced runtime is linked.
-        freezer="$host/python/install/bin/python3.14 $src/cpython/Programs/_freeze_module.py"
-        make "$@" "FREEZE_MODULE_BOOTSTRAP=$freezer" FREEZE_MODULE_BOOTSTRAP_DEPS= \
-            "FREEZE_MODULE=$freezer" FREEZE_MODULE_DEPS=
-    else
-        make "$@"
-    fi
-}
-
-if [ -n "$host" ]; then
-    cp -R "$host/python/build/include/." "$deps/include/"
-    cp "$host/python/build/lib/"*.a "$deps/lib/"
-    cp -R "$host/python/licenses" "$work/python/licenses"
-    step native "$host/python/install/bin/python3.14" -I "$recipe/prepare_native.py" "$root" "$work/native" "$platform"
-else
-    # Preserve notices before discarding each dependency's installed build tree.
-    mkdir -p "$work/python/licenses"
-    find "$src" -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'Copyright*' \) |
-    while IFS= read -r notice; do
-        relative=${notice#"$src/"}
-        mkdir -p "$work/python/licenses/$(dirname "$relative")"
-        cp "$notice" "$work/python/licenses/$relative"
-    done
-    step zlib zlib
-    step bzip2 bzip2
-    step zstd zstd
-    step sqlite sqlite
-    step xz xz
-    step libffi libffi
-    step mpdecimal mpdecimal
-    step expat expat
-    step openssl openssl
-fi
+# Preserve notices before discarding each dependency's installed build tree.
+mkdir -p "$work/python/licenses"
+find "$src" -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'Copyright*' \) |
+while IFS= read -r notice; do
+    relative=${notice#"$src/"}
+    mkdir -p "$work/python/licenses/$(dirname "$relative")"
+    cp "$notice" "$work/python/licenses/$relative"
+done
+step zlib zlib
+step bzip2 bzip2
+step zstd zstd
+step sqlite sqlite
+step xz xz
+step libffi libffi
+step mpdecimal mpdecimal
+step expat expat
+step openssl openssl
 step cpython cpython
 step finalize "$prefix/bin/python3.14" -I "$recipe/finalize.py"
 mkdir -p "$work/python/build/lib" "$work/python/licenses"
 cp "$deps/lib/"*.a "$work/python/build/lib/"
-if [ -n "$host" ]; then
-    cp "$host/python/build/cacert.pem" "$work/python/build/cacert.pem"
-    cp "$work/native/sha256" "$work/python/build/jacpython-native-sha256"
-    cp "$work/native/sources" "$work/python/build/jacpython-native-sources"
-    rm -rf "$work/native"
-else
-    # Only dependency headers/archives are reused by the target build. Host
-    # CPython objects and libpython are never copied into the reduced runtime.
-    cp -R "$deps/include" "$work/python/build/include"
-    cp "$src/certifi/certifi/cacert.pem" "$work/python/build/cacert.pem"
-fi
-step smoke env PYTHONFAULTHANDLER=1 "$prefix/bin/python3.14" -X faulthandler -I "$recipe/smoke.py" "$mode"
+# Only dependency headers/archives are reused by the JacPython build. Host
+# CPython objects and libpython are never copied into the reduced runtime.
+cp -R "$deps/include" "$work/python/build/include"
+cp "$src/certifi/certifi/cacert.pem" "$work/python/build/cacert.pem"
+step smoke env PYTHONFAULTHANDLER=1 "$prefix/bin/python3.14" -X faulthandler -I "$recipe/smoke.py" host
 # No compiled test modules, docs, or configuration machinery in the runtime.
 rm -rf "$prefix/share" "$prefix/lib/python3.14/test" \
     "$prefix/lib/python3.14/idlelib" "$prefix/lib/python3.14/tkinter" \
