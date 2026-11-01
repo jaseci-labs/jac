@@ -1094,14 +1094,10 @@ impl session_completion(
     instance: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
 ) -> ptr[PyObject] {
     try {
-        args = arguments(stack, count, "Session.completion", 3, 4);
-        trigger = text_of(args[3], "trigger") if len(args) == 4 else "";
+        args = arguments(stack, count, "Session.completion", 3, 3);
         return completions_object(
             session_of(instance).completion(
-                text_of(args[0], "path"),
-                int_of(args[1], "line"),
-                int_of(args[2], "col"),
-                trigger
+                text_of(args[0], "path"), int_of(args[1], "line"), int_of(args[2], "col")
             )
         );
     } except boundary_failure {

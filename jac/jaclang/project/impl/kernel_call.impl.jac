@@ -294,13 +294,8 @@ impl SessionClient.references(path: str, line: int, col: int) -> list[SourceSpan
     return [span_of_record(span) for span in self.ask("references", path, line, col)];
 }
 
-impl SessionClient.completion(
-    path: str, line: int, col: int, trigger: str = ""
-) -> list[CompletionItem] {
-    return [
-        completion_of_record(item)
-        for item in self.ask("completion", path, line, col, trigger)
-    ];
+impl SessionClient.completion(path: str, line: int, col: int) -> list[CompletionItem] {
+    return [completion_of_record(item) for item in self.ask("completion", path, line, col)];
 }
 
 impl SessionClient.semantic_tokens(path: str) -> list[int] {

@@ -570,6 +570,7 @@ obj KernelSession {
         _versions: dict[str, int] = {},
         _analysed: dict[str, int] = {},
         _open: set[str] = set(),
+        _edges_seeded: bool = False,
         _intel: (CodeIntelligence | None) = None;
 
     def postinit;
@@ -594,10 +595,7 @@ obj KernelSession {
     def hover(path: str, line: int, col: int) -> str;
     def definition(path: str, line: int, col: int) -> list[SourceSpan];
     def references(path: str, line: int, col: int) -> list[SourceSpan];
-    def completion(
-        path: str, line: int, col: int, trigger: str = ""
-    ) -> list[CompletionItem];
-
+    def completion(path: str, line: int, col: int) -> list[CompletionItem];
     def semantic_tokens(path: str) -> list[int];
     def inlay_hints(path: str, first_line: int, last_line: int) -> list[InlayHint];
     def symbols(path: str) -> list[DocumentSymbol];

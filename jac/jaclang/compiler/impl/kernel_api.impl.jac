@@ -840,6 +840,16 @@ impl KernelSession.dependents(path: str) -> list[str] {
     if program is None {
         raise KernelError("the kernel session is closed");
     }
+    if not self._edges_seeded and self.project_root {
+        import from jaclang.compiler.driver.ifacecache { seed_dep_edges }
+        self.enter();
+        try {
+            seed_dep_edges(program, self.project_root);
+        } finally {
+            self.leave();
+        }
+        self._edges_seeded = True;
+    }
     real = os.path.realpath(path);
     found = program.transitive_dependents(real) | program.transitive_dependents(
         self.owner(real)
@@ -923,15 +933,25 @@ impl KernelSession.references(path: str, line: int, col: int) -> list[SourceSpan
     return reference_spans(selected) if selected is not None else [];
 }
 
-impl KernelSession.completion(
-    path: str, line: int, col: int, trigger: str = ""
-) -> list[CompletionItem] {
-    import from jaclang.compiler.tools.session_queries { completion_items }
+impl KernelSession.completion(path: str, line: int, col: int) -> list[CompletionItem] {
+    import from jaclang.compiler.tools.session_queries {
+        completion_items,
+        inside_literal_or_comment
+    }
     real = os.path.realpath(path);
+    host = self.enter();
+    try {
+        source = host.read_source(real);
+    } finally {
+        self.leave();
+    }
+    if inside_literal_or_comment(source, real, line, col) {
+        return [];
+    }
     module = self.analysed(real);
     self.enter();
     try {
-        return completion_items(self._program, module, line, col, trigger);
+        return completion_items(self._program, module, real, line, col);
     } finally {
         self.leave();
     }

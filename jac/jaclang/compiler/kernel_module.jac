@@ -439,7 +439,7 @@ glob:priv session_methods: list[MethodDefinition] = [
          MethodDefinition(
              "completion",
              MethodCallbacks(fast=session_completion),
-             "completion(path, line, col, trigger='')\n--\n\nCompletions at a position.",
+             "completion(path, line, col)\n--\n\nCompletions at a position.",
              METH_FASTCALL
          ),
          MethodDefinition(

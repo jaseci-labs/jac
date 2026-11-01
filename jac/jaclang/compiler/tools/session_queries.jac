@@ -1,6 +1,15 @@
 """Editor queries over an analysed module, answered inside the kernel session.
 Positions are 1-based lines and columns, the compiler's own convention."""
 import os;
+import re;
+
+glob STRING_TOKEN_KINDS: tuple[TokenKind, ...] = (
+         TokenKind.STRING,
+         TokenKind.F_TEXT_DQ,
+         TokenKind.F_TEXT_SQ,
+         TokenKind.F_TEXT_TDQ,
+         TokenKind.F_TEXT_TSQ
+     );
 
 glob LOOP_SCOPES: tuple[type, ...] = (
          uni.IfStmt,
@@ -23,7 +32,9 @@ def symbol_nodes(module: uni.Module, path: str) -> list[uni.NameAtom];
 
 def token_at(module: uni.Module, path: str, line: int, col: int) -> (uni.NameAtom | None);
 
-def node_at(module: uni.Module, line: int, col: int) -> (uni.Token | None);
+def node_at(
+    module: uni.Module, line: int, col: int, path: str = ""
+) -> (uni.Token | None);
 
 def semantic_token_data(module: uni.Module, path: str) -> list[int];
 
@@ -39,6 +50,8 @@ def module_spec_target(mp: uni.ModulePath) -> str;
 
 def string_import_definition(module: uni.Module, line: int, col: int) -> list[SourceSpan];
 
+def dts_declaration(dts_path: str, name: str) -> (SourceSpan | None);
+
 def reference_spans(nd: uni.NameAtom) -> list[SourceSpan];
 
 def rename_edits(nd: uni.NameAtom, new_name: str) -> list[TextEdit];
@@ -49,14 +62,22 @@ def completion_from_symbol(name: str, sym: uni.Symbol) -> CompletionItem;
 
 def members_of(ty: (TypeBase | uni.UniScopeNode)) -> list[CompletionItem];
 
-def scope_at(module: uni.Module, line: int, col: int) -> uni.UniScopeNode;
+def scope_at(
+    module: uni.Module, line: int, col: int, path: str = ""
+) -> uni.UniScopeNode;
+
+def scope_items(scope: uni.UniScopeNode) -> list[CompletionItem];
+
+def node_items(program: JacProgram, nd: uni.UniNode) -> list[CompletionItem];
+
+def inside_literal_or_comment(source: str, path: str, line: int, col: int) -> bool;
 
 def keyword_items(seen: set[str]) -> list[CompletionItem];
 
 def node_type(program: JacProgram, nd: uni.UniNode) -> (TypeBase | None);
 
 def completion_items(
-    program: JacProgram, module: uni.Module, line: int, col: int, trigger: str
+    program: JacProgram, module: uni.Module, path: str, line: int, col: int
 ) -> list[CompletionItem];
 
 def inlay_hint_rows(module: uni.Module, first_line: int, last_line: int) -> list[InlayHint];

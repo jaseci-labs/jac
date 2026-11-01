@@ -610,7 +610,6 @@ graph import {
     ]
     compiler.driver.compile_options --> [
         cli.commands.execution._exec_file { CompileOptions as _RunOpts },
-        lsp.server.engine.JacLangServer.type_check_file { CompileOptions },
     ]
     compiler.driver.compiler ++> [
         cli.commands.analysis.check { CHECK_GC_THRESHOLDS },
@@ -621,7 +620,6 @@ graph import {
     compiler.driver.ifacecache --> [
         cli.commands.analysis.check { prime_iface_codec },
         dist.precompile_bytecode._unit_extra { DIAG_SCHEMA, IfaceRegistry },
-        lsp.server.engine.JacLangServer._fanout_dependents { seed_dep_edges },
     ]
     compiler.driver.jir ++> [
         client.client_bundle.ClientBundleBuilder._signature { ct_dep_digest },
@@ -736,8 +734,6 @@ graph import {
         | dist.publish.runtime_vendor
         | dist.seal
         | dist.source.project
-        | lsp.server.engine
-        | lsp.server.module_manager
         | server.hmr.HotReloader._classify_declarations
         | testing.cl_test_runner.compile_cl_module
         | testing.test_runner._fresh_jac_state { JacProgram },
@@ -825,7 +821,6 @@ graph import {
         | client.jac_to_js { ClientArtifact, ClientManifest }
     compiler.frontend.constant ++> [
         server.hmr { CodeContext },
-        lsp.server.engine { TOKEN_MAP },
         lsp.server.server {
             JacSemTokenModifier as SemTokMod,
             JacSemTokenType as SemTokType
@@ -843,18 +838,11 @@ graph import {
             HOST_FACT_STDLIB_MODULES
         },
     ]
-    compiler.frontend.parser.frontend --> cli.commands.analysis._check_file_job
-        | lsp.server.engine.JacLangServer.type_check_file { _replay_diags, parse_diags }
-    compiler.frontend.parser.lexer ++> [
-        lsp.server.engine { tokenize_full },
-    ]
+    compiler.frontend.parser.frontend --> cli.commands.analysis._check_file_job { _replay_diags, parse_diags }
     compiler.frontend.parser.lexer --> [
         cli.commands.analysis._check_file_job { Lexer },
-        lsp.server.engine.JacLangServer.type_check_file { Lexer as _Lexer },
     ]
-    compiler.frontend.parser.parser --> cli.commands.analysis._check_file_job
-        | lsp.server.engine.JacLangServer.type_check_file { Parser as _SyntaxParser }
-    compiler.frontend.parser.tokens ++> lsp.server.engine { TokenKind }
+    compiler.frontend.parser.parser --> cli.commands.analysis._check_file_job { Parser as _SyntaxParser }
     compiler.frontend.python.ast_nodes --> runtime.python.symtable { Expr, stmt }
     compiler.frontend.python.ast_output --> runtime.python.symtable {
         ast_output_append_owned,
@@ -911,7 +899,6 @@ graph import {
         tokenizer_next
     }
     compiler.frontend.srcloc ++> [
-        lsp.server.utils { CodeLocInfo, Span },
         project.textio.span_for_file { Span as SrcSpan },
     ]
     type compiler.frontend.srcloc ++> project.source | project.textio { Span }
@@ -926,21 +913,10 @@ graph import {
             UniNode
         },
         dist.publish.jsdoc { Ability, FuncSignature, Module, ParamVar, UniNode },
-        lsp.server.engine { UniScopeNode },
-        lsp.server.utils { Symbol, UniScopeNode },
         packages.api { HasVar, Module, Symbol },
     ]
-    compiler.frontend.unitree --> cli.commands.analysis._check_file_job
-        | lsp.server.engine.JacLangServer.type_check_file { Source as _Src }
-    compiler.frontend.unitree as uni ++> [
-        lsp.server.engine
-        | lsp.server.module_manager
-        | lsp.server.sem_manager
-        | lsp.server.utils,
-    ]
-    compiler.frontend.unparse ++> dist.publish.dts
-        | dist.publish.jsdoc
-        | lsp.server.engine { unparse_node }
+    compiler.frontend.unitree --> cli.commands.analysis._check_file_job { Source as _Src }
+    compiler.frontend.unparse ++> dist.publish.dts | dist.publish.jsdoc { unparse_node }
     compiler.native_scope ++> [
         dist.precompile_bytecode._compiler_kernel_units {
             kernel_root_path,
@@ -950,15 +926,7 @@ graph import {
         dist.precompile_bytecode.seal_native { in_native_scope_path },
     ]
     compiler.native_scope --> dist.precompile_bytecode.native_roots { kernel_root_path }
-    compiler.passes.context ++> [
-        lsp.server.utils { Alert },
-    ]
-    type compiler.passes.context ++> client.client_diagnostics
-        | lsp.server.engine
-        | server.hmr { Alert }
-    compiler.passes.ownership_hints ++> lsp.server.engine.JacLangServer.get_inlay_hints {
-        inferred_hints
-    }
+    type compiler.passes.context ++> client.client_diagnostics | server.hmr { Alert }
     compiler.passes.pyast_load_pass ++> cli.commands.transform.py2jac {
         parse_python_source
     }
@@ -974,10 +942,6 @@ graph import {
     ]
     compiler.placement.placement_facts --> [
         dist.precompile_bytecode.run_precompile { native_only },
-    ]
-    compiler.placement.placement_pins ++> [
-        lsp.server.engine.JacLangServer._module_spec_target { in_client_npm_world },
-        lsp.server.engine.JacLangServer._npm_item_location { in_client_npm_world },
     ]
     compiler.placement.placement_pins --> scale.tests.microservices.test_app_precompile {
         config_module_pin
@@ -1004,16 +968,7 @@ graph import {
     type compiler.types.stubcat.reader ++> project.modresolver {
         StubCatalog
     }
-    compiler.types.type_utils ++> lsp.server.utils { compute_mro_linearization }
     compiler.types.types ++> [
-        lsp.server.engine {
-            ClassType,
-            FunctionType,
-            ModuleType,
-            OverloadedType,
-            TypeBase
-        },
-        lsp.server.utils { ClassType, ModuleType, TypeBase },
         packages.api { ClassType, FunctionType },
     ]
     comptime ++> [
@@ -1756,9 +1711,6 @@ graph import {
         },
         client.cli.run_npm_add_global { node_root },
     ]
-    project.workspace --> lsp.server.engine.JacLangServer.type_check_file {
-        workspace_for_path
-    }
     project.workspace_model ++> [
         compiler.driver.boundary_classify | compiler.driver.compilation_context {
             AppSpec
@@ -4230,14 +4182,6 @@ graph import {
             | dist.precompile_bytecode.image_mount_prefix { project_mounts },
         dist.publish.py_imports { resolve_module },
         dist.publish.runtime_vendor._module_to_file { resolve_local_module },
-        lsp.server.engine.JacLangServer._module_spec_target {
-            resolve_client_npm_declarations,
-            resolve_client_npm_package
-        },
-        lsp.server.engine.JacLangServer._npm_item_location {
-            resolve_client_npm_declarations,
-            resolve_client_npm_package
-        },
         runtime.runtime {
             find_jac_project_root,
             infer_language,
@@ -4296,6 +4240,14 @@ graph import {
     type project.compiler_host ++> compiler.tools.arch_plan
         | compiler.tools.studio_queries { ProjectHost }
     project.kernel_call ++> cli.commands.architecture { tool_session }
+    project.kernel_call ++> lsp.server.engine { SessionClient, diagnostic_text }
+    type compiler.kernel_api ++> lsp.server.engine { KernelDiagnostic }
+    type compiler.kernel_api ++> lsp.server.utils {
+        CompletionItem,
+        DocumentSymbol,
+        KernelDiagnostic,
+        SourceSpan
+    }
     type compiler.kernel_api ++> cli.commands.architecture { ArchPlan }
     compiler.kernel_api ++> project.kernel_call {
         CodeDiagnostic,
@@ -10224,6 +10176,7 @@ graph import compiler {
     driver.compile_options ++> kernel_api { CompileOptions }
     driver.compiler --> kernel_api.compiled_unit { unit_sections }
     type kernel_api ++> driver.compiler { CompiledUnit }
+    driver.ifacecache --> kernel_api.KernelSession.dependents { seed_dep_edges }
     driver.jir --> kernel_api.emitted_paths {
         get_module_cache_path,
         is_module_cache_valid
@@ -10264,6 +10217,8 @@ graph import compiler {
     type driver.program ++> tools.session_queries { JacProgram }
     driver.unit_products --> kernel_api.compiled_unit { client_artifact_from_json }
     frontend.constant ++> tools.session_queries { TOKEN_MAP }
+    frontend.parser.lexer ++> tools.session_queries { tokenize_full }
+    frontend.parser.tokens ++> tools.session_queries { TokenKind }
     frontend.diagnostics --> kernel_api.other_compiler_diagnostic { E1408 }
     frontend.host --> driver.program.JacProgram.compile { active_host, kernel_resident }
     frontend.host --> [
@@ -10290,7 +10245,10 @@ graph import compiler {
     type passes.context ++> kernel_api { Alert }
     placement.placement_export --> kernel_api.run_check { collect_placement_rows }
     tools.session_queries --> [
-        kernel_api.KernelSession.completion { completion_items },
+        kernel_api.KernelSession.completion {
+            completion_items,
+            inside_literal_or_comment
+        },
         kernel_api.KernelSession.definition {
             definition_spans,
             string_import_definition,
@@ -14622,7 +14580,6 @@ graph import jac0core {
 graph import lsp {
     protocol.server ++> server.engine { LanguageServer }
     protocol.types as lspt ++> server.engine
-        | server.sem_manager
         | server.server
         | server.utils;
 }
@@ -14657,10 +14614,7 @@ graph import lsp.protocol {
 
 graph import lsp.server {
     engine ++> server { JacLangServer }
-    module_manager ++> engine { ModuleManager }
     rwlock ++> engine { ReadWriteLock }
-    sem_manager ++> engine | module_manager { SemTokManager }
-    utils ++> engine { doc_of_sym, get_completion_items }
 }
 
 graph import packages {
