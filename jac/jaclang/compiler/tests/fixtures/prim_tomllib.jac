@@ -81,6 +81,14 @@ def tomllib_py -> dict[any, any] {
     } except Exception {
         e6 = "WRONG-TYPE";
     }
+    e7: str = "";
+    try {
+        loads("a=\"é\" b=1");
+    } except TOMLDecodeError as e {
+        e7 = "TOMLDecodeError: " + str(e);
+    } except Exception {
+        e7 = "WRONG-TYPE";
+    }
     return {
         "title": v["title"],
         "limit": v["limit"],
@@ -126,7 +134,8 @@ def tomllib_py -> dict[any, any] {
         "e3": e3,
         "e4": e4,
         "e5": e5,
-        "e6": e6
+        "e6": e6,
+        "e7": e7
     };
 }
 
@@ -198,6 +207,14 @@ def tomllib_na -> dict[str, any] {
     } except Exception {
         e6 = "WRONG-TYPE";
     }
+    e7: str = "";
+    try {
+        loads("a=\"é\" b=1");
+    } except TOMLDecodeError as e {
+        e7 = "TOMLDecodeError: " + str(e);
+    } except Exception {
+        e7 = "WRONG-TYPE";
+    }
     return {
         "title": v["title"],
         "limit": v["limit"],
@@ -243,6 +260,7 @@ def tomllib_na -> dict[str, any] {
         "e3": e3,
         "e4": e4,
         "e5": e5,
-        "e6": e6
+        "e6": e6,
+        "e7": e7
     };
 }
