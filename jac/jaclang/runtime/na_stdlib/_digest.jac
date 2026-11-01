@@ -1,221 +1,220 @@
-glob _M32: int = 0xFFFFFFFF,
-     _MD5_K: list[int] = [
-         0xd76aa478,
-         0xe8c7b756,
-         0x242070db,
-         0xc1bdceee,
-         0xf57c0faf,
-         0x4787c62a,
-         0xa8304613,
-         0xfd469501,
-         0x698098d8,
-         0x8b44f7af,
-         0xffff5bb1,
-         0x895cd7be,
-         0x6b901122,
-         0xfd987193,
-         0xa679438e,
-         0x49b40821,
-         0xf61e2562,
-         0xc040b340,
-         0x265e5a51,
-         0xe9b6c7aa,
-         0xd62f105d,
-         0x02441453,
-         0xd8a1e681,
-         0xe7d3fbc8,
-         0x21e1cde6,
-         0xc33707d6,
-         0xf4d50d87,
-         0x455a14ed,
-         0xa9e3e905,
-         0xfcefa3f8,
-         0x676f02d9,
-         0x8d2a4c8a,
-         0xfffa3942,
-         0x8771f681,
-         0x6d9d6122,
-         0xfde5380c,
-         0xa4beea44,
-         0x4bdecfa9,
-         0xf6bb4b60,
-         0xbebfbc70,
-         0x289b7ec6,
-         0xeaa127fa,
-         0xd4ef3085,
-         0x04881d05,
-         0xd9d4d039,
-         0xe6db99e5,
-         0x1fa27cf8,
-         0xc4ac5665,
-         0xf4292244,
-         0x432aff97,
-         0xab9423a7,
-         0xfc93a039,
-         0x655b59c3,
-         0x8f0ccc92,
-         0xffeff47d,
-         0x85845dd1,
-         0x6fa87e4f,
-         0xfe2ce6e0,
-         0xa3014314,
-         0x4e0811a1,
-         0xf7537e82,
-         0xbd3af235,
-         0x2ad7d2bb,
-         0xeb86d391
+glob _MD5_K: list[u32] = [
+         u32(0xd76aa478),
+         u32(0xe8c7b756),
+         u32(0x242070db),
+         u32(0xc1bdceee),
+         u32(0xf57c0faf),
+         u32(0x4787c62a),
+         u32(0xa8304613),
+         u32(0xfd469501),
+         u32(0x698098d8),
+         u32(0x8b44f7af),
+         u32(0xffff5bb1),
+         u32(0x895cd7be),
+         u32(0x6b901122),
+         u32(0xfd987193),
+         u32(0xa679438e),
+         u32(0x49b40821),
+         u32(0xf61e2562),
+         u32(0xc040b340),
+         u32(0x265e5a51),
+         u32(0xe9b6c7aa),
+         u32(0xd62f105d),
+         u32(0x02441453),
+         u32(0xd8a1e681),
+         u32(0xe7d3fbc8),
+         u32(0x21e1cde6),
+         u32(0xc33707d6),
+         u32(0xf4d50d87),
+         u32(0x455a14ed),
+         u32(0xa9e3e905),
+         u32(0xfcefa3f8),
+         u32(0x676f02d9),
+         u32(0x8d2a4c8a),
+         u32(0xfffa3942),
+         u32(0x8771f681),
+         u32(0x6d9d6122),
+         u32(0xfde5380c),
+         u32(0xa4beea44),
+         u32(0x4bdecfa9),
+         u32(0xf6bb4b60),
+         u32(0xbebfbc70),
+         u32(0x289b7ec6),
+         u32(0xeaa127fa),
+         u32(0xd4ef3085),
+         u32(0x04881d05),
+         u32(0xd9d4d039),
+         u32(0xe6db99e5),
+         u32(0x1fa27cf8),
+         u32(0xc4ac5665),
+         u32(0xf4292244),
+         u32(0x432aff97),
+         u32(0xab9423a7),
+         u32(0xfc93a039),
+         u32(0x655b59c3),
+         u32(0x8f0ccc92),
+         u32(0xffeff47d),
+         u32(0x85845dd1),
+         u32(0x6fa87e4f),
+         u32(0xfe2ce6e0),
+         u32(0xa3014314),
+         u32(0x4e0811a1),
+         u32(0xf7537e82),
+         u32(0xbd3af235),
+         u32(0x2ad7d2bb),
+         u32(0xeb86d391)
      ],
-     _MD5_S: list[int] = [
-         7,
-         12,
-         17,
-         22,
-         7,
-         12,
-         17,
-         22,
-         7,
-         12,
-         17,
-         22,
-         7,
-         12,
-         17,
-         22,
-         5,
-         9,
-         14,
-         20,
-         5,
-         9,
-         14,
-         20,
-         5,
-         9,
-         14,
-         20,
-         5,
-         9,
-         14,
-         20,
-         4,
-         11,
-         16,
-         23,
-         4,
-         11,
-         16,
-         23,
-         4,
-         11,
-         16,
-         23,
-         4,
-         11,
-         16,
-         23,
-         6,
-         10,
-         15,
-         21,
-         6,
-         10,
-         15,
-         21,
-         6,
-         10,
-         15,
-         21,
-         6,
-         10,
-         15,
-         21
+     _MD5_S: list[u32] = [
+         u32(7),
+         u32(12),
+         u32(17),
+         u32(22),
+         u32(7),
+         u32(12),
+         u32(17),
+         u32(22),
+         u32(7),
+         u32(12),
+         u32(17),
+         u32(22),
+         u32(7),
+         u32(12),
+         u32(17),
+         u32(22),
+         u32(5),
+         u32(9),
+         u32(14),
+         u32(20),
+         u32(5),
+         u32(9),
+         u32(14),
+         u32(20),
+         u32(5),
+         u32(9),
+         u32(14),
+         u32(20),
+         u32(5),
+         u32(9),
+         u32(14),
+         u32(20),
+         u32(4),
+         u32(11),
+         u32(16),
+         u32(23),
+         u32(4),
+         u32(11),
+         u32(16),
+         u32(23),
+         u32(4),
+         u32(11),
+         u32(16),
+         u32(23),
+         u32(4),
+         u32(11),
+         u32(16),
+         u32(23),
+         u32(6),
+         u32(10),
+         u32(15),
+         u32(21),
+         u32(6),
+         u32(10),
+         u32(15),
+         u32(21),
+         u32(6),
+         u32(10),
+         u32(15),
+         u32(21),
+         u32(6),
+         u32(10),
+         u32(15),
+         u32(21)
      ],
-     _SHA256_K: list[int] = [
-         0x428a2f98,
-         0x71374491,
-         0xb5c0fbcf,
-         0xe9b5dba5,
-         0x3956c25b,
-         0x59f111f1,
-         0x923f82a4,
-         0xab1c5ed5,
-         0xd807aa98,
-         0x12835b01,
-         0x243185be,
-         0x550c7dc3,
-         0x72be5d74,
-         0x80deb1fe,
-         0x9bdc06a7,
-         0xc19bf174,
-         0xe49b69c1,
-         0xefbe4786,
-         0x0fc19dc6,
-         0x240ca1cc,
-         0x2de92c6f,
-         0x4a7484aa,
-         0x5cb0a9dc,
-         0x76f988da,
-         0x983e5152,
-         0xa831c66d,
-         0xb00327c8,
-         0xbf597fc7,
-         0xc6e00bf3,
-         0xd5a79147,
-         0x06ca6351,
-         0x14292967,
-         0x27b70a85,
-         0x2e1b2138,
-         0x4d2c6dfc,
-         0x53380d13,
-         0x650a7354,
-         0x766a0abb,
-         0x81c2c92e,
-         0x92722c85,
-         0xa2bfe8a1,
-         0xa81a664b,
-         0xc24b8b70,
-         0xc76c51a3,
-         0xd192e819,
-         0xd6990624,
-         0xf40e3585,
-         0x106aa070,
-         0x19a4c116,
-         0x1e376c08,
-         0x2748774c,
-         0x34b0bcb5,
-         0x391c0cb3,
-         0x4ed8aa4a,
-         0x5b9cca4f,
-         0x682e6ff3,
-         0x748f82ee,
-         0x78a5636f,
-         0x84c87814,
-         0x8cc70208,
-         0x90befffa,
-         0xa4506ceb,
-         0xbef9a3f7,
-         0xc67178f2
+     _SHA256_K: list[u32] = [
+         u32(0x428a2f98),
+         u32(0x71374491),
+         u32(0xb5c0fbcf),
+         u32(0xe9b5dba5),
+         u32(0x3956c25b),
+         u32(0x59f111f1),
+         u32(0x923f82a4),
+         u32(0xab1c5ed5),
+         u32(0xd807aa98),
+         u32(0x12835b01),
+         u32(0x243185be),
+         u32(0x550c7dc3),
+         u32(0x72be5d74),
+         u32(0x80deb1fe),
+         u32(0x9bdc06a7),
+         u32(0xc19bf174),
+         u32(0xe49b69c1),
+         u32(0xefbe4786),
+         u32(0x0fc19dc6),
+         u32(0x240ca1cc),
+         u32(0x2de92c6f),
+         u32(0x4a7484aa),
+         u32(0x5cb0a9dc),
+         u32(0x76f988da),
+         u32(0x983e5152),
+         u32(0xa831c66d),
+         u32(0xb00327c8),
+         u32(0xbf597fc7),
+         u32(0xc6e00bf3),
+         u32(0xd5a79147),
+         u32(0x06ca6351),
+         u32(0x14292967),
+         u32(0x27b70a85),
+         u32(0x2e1b2138),
+         u32(0x4d2c6dfc),
+         u32(0x53380d13),
+         u32(0x650a7354),
+         u32(0x766a0abb),
+         u32(0x81c2c92e),
+         u32(0x92722c85),
+         u32(0xa2bfe8a1),
+         u32(0xa81a664b),
+         u32(0xc24b8b70),
+         u32(0xc76c51a3),
+         u32(0xd192e819),
+         u32(0xd6990624),
+         u32(0xf40e3585),
+         u32(0x106aa070),
+         u32(0x19a4c116),
+         u32(0x1e376c08),
+         u32(0x2748774c),
+         u32(0x34b0bcb5),
+         u32(0x391c0cb3),
+         u32(0x4ed8aa4a),
+         u32(0x5b9cca4f),
+         u32(0x682e6ff3),
+         u32(0x748f82ee),
+         u32(0x78a5636f),
+         u32(0x84c87814),
+         u32(0x8cc70208),
+         u32(0x90befffa),
+         u32(0xa4506ceb),
+         u32(0xbef9a3f7),
+         u32(0xc67178f2)
      ],
-     _SHA256_IV: list[int] = [
-         0x6a09e667,
-         0xbb67ae85,
-         0x3c6ef372,
-         0xa54ff53a,
-         0x510e527f,
-         0x9b05688c,
-         0x1f83d9ab,
-         0x5be0cd19
+     _SHA256_IV: list[u32] = [
+         u32(0x6a09e667),
+         u32(0xbb67ae85),
+         u32(0x3c6ef372),
+         u32(0xa54ff53a),
+         u32(0x510e527f),
+         u32(0x9b05688c),
+         u32(0x1f83d9ab),
+         u32(0x5be0cd19)
      ],
-     _SHA224_IV: list[int] = [
-         0xc1059ed8,
-         0x367cd507,
-         0x3070dd17,
-         0xf70e5939,
-         0xffc00b31,
-         0x68581511,
-         0x64f98fa7,
-         0xbefa4fa4
+     _SHA224_IV: list[u32] = [
+         u32(0xc1059ed8),
+         u32(0x367cd507),
+         u32(0x3070dd17),
+         u32(0xf70e5939),
+         u32(0xffc00b31),
+         u32(0x68581511),
+         u32(0x64f98fa7),
+         u32(0xbefa4fa4)
      ],
      _SHA512_K: list[u64] = [
          u64(0x428a2f98d728ae22),
@@ -344,33 +343,6 @@ glob _M32: int = 0xFFFFFFFF,
          u64(0x8000000000008080),
          u64(0x0000000080000001),
          u64(0x8000000080008008)
-     ],
-     _KECCAK_ROT: list[int] = [
-         0,
-         1,
-         62,
-         28,
-         27,
-         36,
-         44,
-         6,
-         55,
-         20,
-         3,
-         10,
-         43,
-         25,
-         39,
-         41,
-         45,
-         15,
-         21,
-         8,
-         18,
-         2,
-         61,
-         56,
-         14
      ],
      _BLAKE2_SIGMA: list[int] = [
          0,
@@ -536,108 +508,154 @@ glob _M32: int = 0xFFFFFFFF,
      ];
 
 obj DigestCore {
-    has block_size: int = 64,
+    has name: str = "",
+        block_size: int = 64,
         digest_size: int = 0,
-        buf: list[int] = [],
-        total: int = 0;
+        pending: bytearray = bytearray(0),
+        used: int = 0,
+        compressed: int = 0;
 
     def update(data: bytes);
-    def block(b: list[int]);
+    def absorb(address: int, size: int);
+    def compress(address: int, last: bool);
     def finish -> bytes;
+    def squeeze(size: int) -> bytes;
     def clone -> DigestCore;
+    def carry(copy: DigestCore) -> DigestCore;
+    def pad_md(big: bool, length_bytes: int);
 }
 
 obj Md5Core(DigestCore) {
-    has h: list[int] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476];
+    has h: list[u32] = [];
 
-    override def block(b: list[int]);
+    override def compress(address: int, last: bool);
     override def finish -> bytes;
     override def clone -> DigestCore;
-    def dup -> Md5Core;
 }
 
 obj Sha1Core(DigestCore) {
-    has h: list[int] = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
+    has h: list[u32] = [],
+        w: list[u32] = [];
 
-    override def block(b: list[int]);
+    override def compress(address: int, last: bool);
     override def finish -> bytes;
     override def clone -> DigestCore;
-    def dup -> Sha1Core;
 }
 
 obj Sha256Core(DigestCore) {
-    has h: list[int] = [];
+    has h: list[u32] = [],
+        w: list[u32] = [];
 
-    override def block(b: list[int]);
+    override def compress(address: int, last: bool);
     override def finish -> bytes;
     override def clone -> DigestCore;
-    def dup -> Sha256Core;
 }
 
 obj Sha512Core(DigestCore) {
-    has h: list[u64] = [];
+    has h: list[u64] = [],
+        w: list[u64] = [];
 
-    override def block(b: list[int]);
+    override def compress(address: int, last: bool);
     override def finish -> bytes;
     override def clone -> DigestCore;
-    def dup -> Sha512Core;
 }
 
 obj Sha3Core(DigestCore) {
-    has a: list[u64] = [];
+    has a: list[u64] = [],
+        b: list[u64] = [],
+        suffix: int = 6;
 
-    override def block(b: list[int]);
+    override def compress(address: int, last: bool);
     override def finish -> bytes;
+    override def squeeze(size: int) -> bytes;
     override def clone -> DigestCore;
-    def dup -> Sha3Core;
 }
 
 obj Blake2sCore(DigestCore) {
-    has h: list[int] = [],
-        t: int = 0;
+    has h: list[u32] = [],
+        v: list[u32] = [],
+        last_node: bool = False;
 
-    override def update(data: bytes);
-    override def block(b: list[int]);
-    def compress(b: list[int], last: bool);
+    override def compress(address: int, last: bool);
     override def finish -> bytes;
     override def clone -> DigestCore;
-    def dup -> Blake2sCore;
 }
 
 obj Blake2bCore(DigestCore) {
     has h: list[u64] = [],
-        t: int = 0;
+        v: list[u64] = [],
+        last_node: bool = False;
 
-    override def update(data: bytes);
-    override def block(b: list[int]);
-    def compress(b: list[int], last: bool);
+    override def compress(address: int, last: bool);
     override def finish -> bytes;
     override def clone -> DigestCore;
-    def dup -> Blake2bCore;
+}
+
+obj HmacCore(DigestCore) {
+    has inner: DigestCore = DigestCore(),
+        outer: DigestCore = DigestCore();
+
+    override def absorb(address: int, size: int);
+    override def finish -> bytes;
+    override def clone -> DigestCore;
 }
 
 def:pub new_core(name: str) -> (DigestCore | None);
 
-def:pub core_block_size(name: str) -> int;
+def:pub new_blake2(
+    wide: bool,
+    digest_size: int,
+    key: int,
+    key_size: int,
+    salt: int,
+    salt_size: int,
+    person: int,
+    person_size: int,
+    fanout: int,
+    depth: int,
+    leaf_size: int,
+    node_offset: u64,
+    node_depth: int,
+    inner_size: int,
+    last_node: bool
+) -> DigestCore;
 
-def:pub core_digest_size(name: str) -> int;
+def:pub new_hmac(name: str, key: int, key_size: int) -> (DigestCore | None);
 
-def _rotl32(x: int, n: int) -> int;
+def _setup(
+    core: DigestCore, name: str, block_size: int, digest_size: int
+) -> DigestCore;
 
-def _rotr32(x: int, n: int) -> int;
+def _copy(target: int, source: int, size: int);
+
+def _zero(target: int, size: int);
+
+def _rotl32(x: u32, n: u32) -> u32;
+
+def _rotr32(x: u32, n: u32) -> u32;
 
 def _rotr64(x: u64, n: int) -> u64;
 
 def _rotl64(x: u64, n: int) -> u64;
 
-def _be32(b: list[int], j: int) -> int;
+def _bswap32(x: u32) -> u32;
 
-def _le32(b: list[int], j: int) -> int;
+def _le32(address: int) -> u32;
 
-def _be64(b: list[int], j: int) -> u64;
+def _be32(address: int) -> u32;
 
-def _le64(b: list[int], j: int) -> u64;
+def _le64(address: int) -> u64;
 
-def _pad_md(core: DigestCore, length_bytes: int, little: bool);
+def _be64(address: int) -> u64;
 
-def _keccak(a: list[u64]);
+def _words32(h: list[u32], size: int, big: bool) -> bytes;
+
+def _words64(h: list[u64], size: int, big: bool) -> bytes;
+
+def _keccak(a: list[u64], b: list[u64]);
+
+def _msg32(address: int, s: int) -> u32;
+
+def _msg64(address: int, s: int) -> u64;
+
+def _md5_step(a: u32, b: u32, f: u32, i: int, address: int, word: int) -> u32;

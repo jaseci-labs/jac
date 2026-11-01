@@ -107,13 +107,12 @@ impl execute(module: ptr[PyObject]) -> i32 {
     }
     for index in range(len(sha3_types)) {
         if not add_state_owned(
-            module, index, SHA3_TYPES[index][0], sha3_types[index].create(module)
+            module, index, SHA3_NAMES[index], sha3_types[index].create(module)
         ) {
             return i32(-1);
         }
     }
-    if PyModule_AddStringConstant(module, ptr[u8]("implementation"), ptr[u8]("HACL"))
-        < 0
+    if PyModule_AddStringConstant(module, ptr[u8]("implementation"), ptr[u8]("Jac")) < 0
         or PyModule_AddIntConstant(module, ptr[u8]("_GIL_MINSIZE"), HASHLIB_GIL_MINSIZE)
             < 0 {
         return i32(-1);

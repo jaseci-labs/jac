@@ -1,6 +1,5 @@
 obj:pub HMAC {
-    has _inner: DigestCore,
-        _outer: DigestCore,
+    has _core: DigestCore,
         digest_size: int,
         block_size: int,
         name: str;

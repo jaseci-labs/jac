@@ -267,23 +267,6 @@ fn runArgv(c: *Ctx, argv: []const []const u8, cwd: ?[]const u8) !void {
     if (term != .exited or term.exited != 0) return error.CommandFailed;
 }
 
-/// Run commands `jobs` at a time; every one must succeed.
-fn runAll(c: *Ctx, commands: []const []const []const u8, cwd: ?[]const u8) !void {
-    var start: usize = 0;
-    var failed = false;
-    while (start < commands.len) {
-        const end = @min(commands.len, start + @max(c.o.jobs, 1));
-        var children: std.ArrayList(std.process.Child) = .empty;
-        for (commands[start..end]) |argv| try children.append(c.a, try spawn(c, argv, cwd));
-        for (children.items) |*child| {
-            const term = try child.wait(c.io);
-            if (term != .exited or term.exited != 0) failed = true;
-        }
-        if (failed) return error.CommandFailed;
-        start = end;
-    }
-}
-
 /// One of scripts/jacpython's generators, run by the build-only host with the
 /// checkout's jaclang on its path; the generator's main() takes the arguments.
 fn generate(c: *Ctx, args: []const []const u8) !void {
@@ -831,59 +814,6 @@ fn stdmoduleCflags(c: *Ctx, f: Flags) ![]const []const u8 {
     return out.items;
 }
 
-const Object = struct {
-    source: []const u8,
-    object: []const u8,
-    /// Extra flags before or after the common ones, as the makefile rule has them.
-    before: []const []const u8 = &.{},
-    after: []const []const u8 = &.{},
-    hacl: bool = false,
-};
-
-/// HACL*'s vectorized BLAKE2 objects, when the target can compile them.
-fn haclSimd(c: *Ctx) struct { v128: bool, v256: bool, universal2: bool } {
-    return .{
-        .v128 = c.probes.defined("_Py_HACL_CAN_COMPILE_VEC128"),
-        .v256 = c.probes.defined("_Py_HACL_CAN_COMPILE_VEC256"),
-        // configure picks the universal2 wrappers when building on Apple silicon.
-        .universal2 = c.p.os == .macos and c.p.arch == .aarch64,
-    };
-}
-
-const hacl_dir = "Modules/_hacl";
-
-/// The HACL* archives the native modules link (jacpython-modules.txt names
-/// them) and the objects each holds, as the makefile groups them.
-const Archive = struct { name: []const u8, objects: []const []const u8 };
-
-fn haclArchives(c: *Ctx) ![]const Archive {
-    const a = c.a;
-    const simd = haclSimd(c);
-    var blake2: std.ArrayList([]const u8) = .empty;
-    try blake2.appendSlice(a, &.{ hacl_dir ++ "/Hacl_Hash_Blake2s.o", hacl_dir ++ "/Hacl_Hash_Blake2b.o", hacl_dir ++ "/Lib_Memzero0.o" });
-    if (simd.v128) try blake2.append(a, if (simd.universal2) hacl_dir ++ "/Hacl_Hash_Blake2s_Simd128_universal2.o" else hacl_dir ++ "/Hacl_Hash_Blake2s_Simd128.o");
-    if (simd.v256) try blake2.append(a, if (simd.universal2) hacl_dir ++ "/Hacl_Hash_Blake2b_Simd256_universal2.o" else hacl_dir ++ "/Hacl_Hash_Blake2b_Simd256.o");
-    const md5 = &[_][]const u8{hacl_dir ++ "/Hacl_Hash_MD5.o"};
-    const sha1 = &[_][]const u8{hacl_dir ++ "/Hacl_Hash_SHA1.o"};
-    const sha2 = &[_][]const u8{hacl_dir ++ "/Hacl_Hash_SHA2.o"};
-    const sha3 = &[_][]const u8{hacl_dir ++ "/Hacl_Hash_SHA3.o"};
-    var hmac: std.ArrayList([]const u8) = .empty;
-    try hmac.appendSlice(a, &.{ hacl_dir ++ "/Hacl_HMAC.o", hacl_dir ++ "/Hacl_Streaming_HMAC.o" });
-    try hmac.appendSlice(a, md5);
-    try hmac.appendSlice(a, sha1);
-    try hmac.appendSlice(a, sha2);
-    try hmac.appendSlice(a, sha3);
-    try hmac.appendSlice(a, blake2.items);
-    return try a.dupe(Archive, &.{
-        .{ .name = hacl_dir ++ "/libHacl_Hash_MD5.a", .objects = md5 },
-        .{ .name = hacl_dir ++ "/libHacl_Hash_SHA1.a", .objects = sha1 },
-        .{ .name = hacl_dir ++ "/libHacl_Hash_SHA2.a", .objects = sha2 },
-        .{ .name = hacl_dir ++ "/libHacl_Hash_SHA3.a", .objects = sha3 },
-        .{ .name = hacl_dir ++ "/libHacl_Hash_BLAKE2.a", .objects = blake2.items },
-        .{ .name = hacl_dir ++ "/libHacl_HMAC.a", .objects = hmac.items },
-    });
-}
-
 /// The object prepare_native.py lowers the Jac runtime into.
 const native_object = "Python/jacpython.o";
 
@@ -901,59 +831,15 @@ fn compile(c: *Ctx) !void {
     try Io.Dir.copyFile(.cwd(), c.path(&.{ c.o.work, "native/jacpython.o" }), src_dir, native_object, c.io, .{});
     try src_dir.writeFile(c.io, .{ .sub_path = getpath_source, .data = try getpathConfig(a, c.prefix) });
 
-    const f = Flags.of(c.p);
-    const stdmodule = try stdmoduleCflags(c, f);
-    var objects: std.ArrayList(Object) = .empty;
-    try objects.append(a, .{ .source = "./Programs/python.c", .object = "Programs/python.o" });
-    try objects.append(a, .{ .source = "./" ++ getpath_source, .object = getpath_object });
-    const simd = haclSimd(c);
-    const hacl = [_][]const u8{ "Lib_Memzero0", "Hacl_Hash_MD5", "Hacl_Hash_SHA1", "Hacl_Hash_SHA2", "Hacl_Hash_SHA3", "Hacl_Hash_Blake2s", "Hacl_Hash_Blake2b", "Hacl_HMAC" };
-    for (hacl) |name| {
-        try objects.append(a, .{ .source = try std.fmt.allocPrint(a, "./" ++ hacl_dir ++ "/{s}.c", .{name}), .object = try std.fmt.allocPrint(a, hacl_dir ++ "/{s}.o", .{name}), .hacl = true });
-    }
-    try objects.append(a, .{ .source = "./" ++ hacl_dir ++ "/Hacl_Streaming_HMAC.c", .object = hacl_dir ++ "/Hacl_Streaming_HMAC.o", .before = &.{"-Wno-unused-variable"}, .hacl = true });
-    const simd128 = &[_][]const u8{ "-msse", "-msse2", "-msse3", "-msse4.1", "-msse4.2", "-DHACL_CAN_COMPILE_VEC128" };
-    const simd256 = &[_][]const u8{ "-mavx2", "-DHACL_CAN_COMPILE_VEC256" };
-    if (simd.v128) {
-        const name = if (simd.universal2) "Hacl_Hash_Blake2s_Simd128_universal2" else "Hacl_Hash_Blake2s_Simd128";
-        try objects.append(a, .{ .source = try std.fmt.allocPrint(a, "./" ++ hacl_dir ++ "/{s}.c", .{name}), .object = try std.fmt.allocPrint(a, hacl_dir ++ "/{s}.o", .{name}), .after = simd128, .hacl = true });
-    }
-    if (simd.v256) {
-        const name = if (simd.universal2) "Hacl_Hash_Blake2b_Simd256_universal2" else "Hacl_Hash_Blake2b_Simd256";
-        try objects.append(a, .{ .source = try std.fmt.allocPrint(a, "./" ++ hacl_dir ++ "/{s}.c", .{name}), .object = try std.fmt.allocPrint(a, hacl_dir ++ "/{s}.o", .{name}), .after = simd256, .hacl = true });
-    }
-
-    // LIBHACL_CFLAGS: HACL*'s include paths and feature macros, glibc's lack of
-    // explicit_bzero before 2.25, then PY_STDMODULE_CFLAGS and CCSHARED.
-    var hacl_flags: std.ArrayList([]const u8) = .empty;
-    try hacl_flags.appendSlice(a, &.{ "-I./" ++ hacl_dir, "-I./" ++ hacl_dir ++ "/include", "-D_BSD_SOURCE", "-D_DEFAULT_SOURCE" });
-    if (c.p.os == .linux and !c.probes.defined("HAVE_EXPLICIT_BZERO")) try hacl_flags.append(a, "-DLINUX_NO_EXPLICIT_BZERO");
-    try hacl_flags.appendSlice(a, stdmodule);
-    try appendWords(a, &hacl_flags, f.ccshared);
-
-    var commands: std.ArrayList([]const []const u8) = .empty;
-    for (objects.items) |obj| {
+    // Programs/python.c and the getpath locations are the only C left to
+    // compile: everything else libpython holds is the native object.
+    const stdmodule = try stdmoduleCflags(c, Flags.of(c.p));
+    for ([_][2][]const u8{ .{ "./Programs/python.c", "Programs/python.o" }, .{ "./" ++ getpath_source, getpath_object } }) |pair| {
         var argv: std.ArrayList([]const u8) = .empty;
         try argv.appendSlice(a, c.cc);
-        try argv.appendSlice(a, obj.before);
         try argv.append(a, "-c");
-        if (obj.hacl) {
-            try argv.appendSlice(a, hacl_flags.items);
-        } else {
-            try argv.appendSlice(a, stdmodule);
-            try argv.append(a, "-DPy_BUILD_CORE");
-        }
-        try argv.appendSlice(a, obj.after);
-        try argv.appendSlice(a, &.{ "-o", obj.object, obj.source });
-        try commands.append(a, argv.items);
-    }
-    try runAll(c, commands.items, c.src);
-
-    for (try haclArchives(c)) |archive| {
-        src_dir.deleteFile(c.io, archive.name) catch {};
-        var argv: std.ArrayList([]const u8) = .empty;
-        try argv.appendSlice(a, &.{ c.o.zig, "ar", "rcs", archive.name });
-        try argv.appendSlice(a, archive.objects);
+        try argv.appendSlice(a, stdmodule);
+        try argv.appendSlice(a, &.{ "-DPy_BUILD_CORE", "-o", pair[1], pair[0] });
         try runArgv(c, argv.items, c.src);
     }
 }

@@ -370,9 +370,6 @@ pub const probes = [_]Probe{
     .{ .name = "PY_SQLITE_HAVE_SERIALIZE", .kind = .lib, .text = "-lsqlite3", .symbol = "sqlite3_serialize", .libs = "-lm -lpthread" },
     .{ .name = "HAVE_ZLIB_COPY", .kind = .lib, .text = "-lz", .symbol = "inflateCopy" },
     .{ .name = "WITH_LIBINTL", .kind = .lib, .text = "-lintl", .symbol = "textdomain" },
-    // HACL*'s vectorized BLAKE2 needs the x86 SIMD flags.
-    .{ .name = "_Py_HACL_CAN_COMPILE_VEC128", .kind = .flag, .text = "-msse -msse2 -msse3 -msse4.1 -msse4.2" },
-    .{ .name = "_Py_HACL_CAN_COMPILE_VEC256", .kind = .flag, .text = "-mavx2" },
     // AC_HEADER_DIRENT stops at the first header that declares DIR.
     .{ .name = "HAVE_DIRENT_H", .kind = .header, .text = "dirent.h" },
     .{ .name = "HAVE_NDIR_H", .kind = .value, .value = "" },

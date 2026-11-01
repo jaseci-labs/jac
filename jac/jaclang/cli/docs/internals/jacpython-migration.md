@@ -23,7 +23,8 @@ build time, and the previous JacPython builds the next one. The scope:
 | configure, `Makefile.pre.in`, makesetup, `Tools/build` | replaced by `build_jacpython.zig`, `pyconfig.zig` (compiler probes for `pyconfig.h`) and Jac scripts |
 | the build-only host CPython | replaced by the previous JacPython |
 | remote debugging, perf trampolines, `getaddrinfo`/`getnameinfo` fallbacks | dropped, not ported |
-| HACL\*, OpenSSL, sqlite, expat, libmpdec, libffi, zlib, bzip2, xz, zstd | stay vendored libraries |
+| HACL\* | replaced by the pure-Jac digests of `na_stdlib/_digest.jac` |
+| OpenSSL, sqlite, expat, libmpdec, libffi, zlib, bzip2, xz, zstd | stay vendored libraries |
 
 A dropped feature's files are `# removed:` entries like a port's.
 `pyconfig.zig` records the build without the feature, and `runtime/python/interpreter/`
@@ -102,12 +103,9 @@ links libpython and the interpreter with each registered module's linker flags
 from the registry and fails when the table lacks a listed `PyInit`. `smoke.py`
 and the CI compatibility step read the same registry.
 
-A module over a library that CPython vendors and builds itself names the
-library's archive as its linker flag: `_md5` lists
-`Modules/_hacl/libHacl_Hash_MD5.a`; `build_jacpython.zig` compiles the
-HACL*sources and archives them as CPython's makefile groups them before
-linking the interpreter. The Jac module declares the library's
-functions by their linked names (HACL* prefixes them with `_Py_LibHacl_`).
+The hash modules (`_md5`, `_sha1`, `_sha2`, `_sha3`, `_blake2`, `_hmac`) keep
+their digest state in the cores of `na_stdlib/_digest.jac`, the same Jac that
+native programs' `hashlib` and `hmac` run, so no HACL* C is compiled or linked.
 Data tables CPython generates into headers become C data definitions a
 generator writes from the pinned headers, not a data-only C object:
 `scripts/jacpython/gen_unicodedata.jac` reads `Modules/unicodedata_db.h` and
@@ -141,7 +139,7 @@ The calls a regular expression makes most bind their positional arguments
 directly and fall back to the generated clinic glue for keywords or
 conversions, so error messages stay the C module's.
 Code that only exists on some architectures goes in a `<name>.<arch>.jac`
-variant beside a portable `<name>.jac` (`modules/blake2_simd.x86_64.jac`), and
+variant beside a portable `<name>.jac` (`modules/epoll_layout.x86_64.jac`), and
 code that differs between C libraries in a `<name>.<os>.jac` variant
 (`modules/semaphore_platform.darwin.jac`). A linker flag only one OS needs
 carries that OS as a prefix: glibc 2.17 keeps `shm_open` in librt, so
@@ -366,7 +364,7 @@ defined in Jac under its C name:
 | CPU feature probes (CPUID), the macOS system log (`os_log`'s compile-time format builtins) | compiler intrinsics | the native floor (`__jac_cpuid`, `__jac_system_log`) |
 | the libm functions Zig's compiler-rt also defines (`log`, `sin`, `fma`, ...) | a Mach-O link binds compiler-rt's weak copies ahead of libSystem's | `jacpy_libm_*` look them up in libSystem (libm on Linux) |
 | `_PyRuntime` and its initializer | built by the C preprocessor from `pycore_runtime_init.h` | see below |
-| vendored libraries (HACL*, libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL) | external dependencies, not CPython | built and linked as before |
+| vendored libraries (libmpdec, expat, zlib, bzip2, xz, zstd, sqlite, OpenSSL) | external dependencies, not CPython | built and linked as before |
 
 The helpers take and return typed pointers (`PyObject *`, `Py_buffer *`,
 `PyUnicodeWriter *`); `gen_capi.jac` declares them to their callers from their
