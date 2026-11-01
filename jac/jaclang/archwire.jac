@@ -192,6 +192,7 @@ graph import {
             | toolchains.tools.ToolArtifact.checkout_path { bucket },
         cli.commands.cache { RETIRED, gc, purge, status, unmanaged },
         compiler.types.stubcat.locate.StubcatArtifact.build
+            | project.compiler_host.ProjectHost.keep_native_scan_record
             | scale.injector.binary._fetch_verified_asset { maybe_sweep },
         dist.jab | toolchains.store { bucket, maybe_sweep },
         packages.index.fetch_verified | scale.admin.console_build.console_cache_dir {
@@ -847,6 +848,10 @@ graph import {
         },
         project.compiler_host.ProjectHost.in_compiler_tree { is_compiler_tree_path },
         project.compiler_host.ProjectHost.save_native_debug_ir { get_native_debug_dir },
+        project.compiler_host._native_scan_path {
+            get_jir_cache_dir,
+            module_env_fingerprint
+        },
         project.compiler_host._wiring_records_path
             | project.kernel_snapshot.interface_cache_file {
             get_jir_cache_dir,
@@ -7540,27 +7545,30 @@ graph import compiler {
             | driver.program.JacProgram.execution_hubs
             | driver.progstate.ModuleHub.is_fresh
             | passes.placement_pass.PlacementPass._run_undecided
-            | placement.placement_solver._native_dep_scan
+            | placement.placement_solver._keep_native_scan
             | tools.jac_auto_lint_pass.JacAutoLintPass.__post_init__
             | types.type_evaluator.TypeEvaluator._client_npm_base { active_host },
         driver.compilation_context.context_app
             | driver.program.JacProgram.jac_file_formatter
             | driver.progstate.ModuleHub.stamp
             | passes.placement_pass.settle_native_module
-            | placement.placement_solver.native_placement_candidate
+            | placement.placement_solver._native_dep_scan
             | tools.jac_auto_lint_pass.JacAutoLintPass._base_decl_archetypes
             | types.type_evaluator.TypeEvaluator._declared_missing_dependency {
             active_host
         },
         driver.pass_driver { CheckSettings, active_host },
         driver.program.JacProgram.jac_file_linter
+            | placement.placement_solver._native_scan_digest
             | tools.jac_auto_lint_pass.JacAutoLintPass._is_sibling_annex
             | types.type_evaluator.TypeEvaluator._jac_virtual_sibling_dts {
             active_host
         },
         driver.program.JacProgram.jac_str_formatter
+            | placement.placement_solver._read_native_scan
             | types.type_evaluator.TypeEvaluator._load_ts_declarations { active_host },
         driver.program.JacProgram.note_stub_tree_served
+            | placement.placement_solver.native_placement_candidate
             | types.type_evaluator.TypeEvaluator._resolve_client_npm_module {
             active_host
         },
@@ -14121,14 +14129,13 @@ graph import compiler.placement {
             PLACEMENT_HOLD_EXEMPT_ROOTS,
             PlacementSummary,
             get_module_summary,
+            native_blocker_scan,
             record_placement_evidence,
-            scan_native_blockers,
             summary_store
         },
         placement_solver._endpoint_veto_applies { project_has_server },
     ]
     placement --> [
-        placement_solver.PlacementApplyPass._run_impl { native_blocker_scan },
         placement_solver._closure_pullable { module_has_root_access },
         placement_solver._pullable_by_client_reference { module_has_root_access },
     ]
