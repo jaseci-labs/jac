@@ -8246,6 +8246,7 @@ graph import compiler {
         backends.native.na_ir_gen_pass.NaIRGenPass._binds_variable {
             ability_of_symbol
         },
+        backends.native.na_ir_gen_pass.NaIRGenPass._codegen_name { resolved_decl_of },
         backends.native.na_ir_gen_pass.NaIRGenPass._record_generic_definition {
             definition_qualname
         },

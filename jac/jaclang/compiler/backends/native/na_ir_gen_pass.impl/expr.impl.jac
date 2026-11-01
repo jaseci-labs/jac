@@ -703,11 +703,27 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
         return self._codegen_type_name_str(var_name);
     }
     _ref = self._codegen_class_ref(nd);
-    if _ref is None
-        and nd.expr_ctx == ExprCtx.LOAD
-        and self._binds_variable(nd)
-        and not self._reads_unlowered_local(nd) {
-        self.emit(E5092, node_override=nd, kind="variable read", name=var_name);
+    if _ref is None and nd.expr_ctx == ExprCtx.LOAD {
+        _decl = resolved_decl_of(nd.sym) if nd.sym is not None else None;
+        if _decl is not None and isinstance(_decl.name_of, uni.Ability) {
+            _owner = _decl.find_parent_of_type(uni.Module);
+            _demoted = self._imported_function_demotions(_owner)
+                if _owner is not None
+                else None;
+            _where = _owner.loc.mod_path if _owner is not None else "its module";
+            _why = "its module demoted it to Python"
+                if _demoted is not None and var_name in _demoted
+                else "it was not declared in this native unit";
+            self.emit(
+                E5092,
+                node_override=nd,
+                kind="function reference",
+                name=var_name,
+                help_text=f"'{var_name}' (from {_where}) has no native definition here: {_why}. A function used as a value must lower to a native function."
+            );
+        } elif self._binds_variable(nd) and not self._reads_unlowered_local(nd) {
+            self.emit(E5092, node_override=nd, kind="variable read", name=var_name);
+        }
     }
     return _ref;
 }
