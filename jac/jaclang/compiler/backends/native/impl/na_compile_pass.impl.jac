@@ -193,18 +193,51 @@ impl optimize_unit_bitcode(
 impl optimize_unit_bitcodes(
     bitcodes: list[bytes], options: CompileOptions, opt_level: int
 ) -> list[bytes] {
+    return optimize_unit_bitcodes_with_config(
+        bitcodes, options.native_target or "", bool(options.native_debug), opt_level
+    );
+}
+
+impl optimize_unit_bitcodes_with_config(
+    bitcodes: list[bytes], native_target: str, native_debug: bool, opt_level: int
+) -> list[bytes] {
     import functools;
-    create_unit_target_machine(options);
+    create_unit_target_machine_with_config(native_target, native_debug);
     return codegen_map(
-        functools.partial(optimize_unit_bitcode, options=options, opt_level=opt_level),
+        functools.partial(
+            optimize_unit_bitcode_with_config,
+            native_target=native_target,
+            native_debug=native_debug,
+            opt_level=opt_level
+        ),
         bitcodes
     );
+}
+
+impl optimize_unit_bitcode_with_config(
+    bitcode: bytes, native_target: str, native_debug: bool, opt_level: int
+) -> bytes {
+    mod = llvm.parse_bitcode(bitcode, llvm.create_context());
+    mod.verify();
+    optimize_unit(
+        mod,
+        create_unit_target_machine_with_config(native_target, native_debug),
+        opt_level
+    );
+    return module_bitcode(mod);
 }
 
 impl create_unit_target_machine(
     options: CompileOptions, jit: bool = False
 ) -> TargetMachine {
-    target_ovr = options.native_target or "";
+    return create_unit_target_machine_with_config(
+        options.native_target or "", bool(options.native_debug), jit
+    );
+}
+
+impl create_unit_target_machine_with_config(
+    target_ovr: str, native_debug: bool, jit: bool = False
+) -> TargetMachine {
     if target_ovr {
         llvm.initialize_all_targets();
         llvm.initialize_all_asmprinters();
@@ -217,7 +250,7 @@ impl create_unit_target_machine(
         target = llvm.Target.from_default_triple();
     }
     assert isinstance(target, llvm.Target);
-    opt = 0 if options.native_debug else 2;
+    opt = 0 if native_debug else 2;
     tm = target.create_target_machine(
         opt=opt, reloc=NATIVE_RELOC_MODEL, codemodel=NATIVE_CODE_MODEL, jit=jit
     );

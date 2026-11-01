@@ -43,6 +43,18 @@ def optimize_unit_bitcodes(
     bitcodes: list[bytes], options: CompileOptions, opt_level: int
 ) -> list[bytes];
 
+def optimize_unit_bitcodes_with_config(
+    bitcodes: list[bytes], native_target: str, native_debug: bool, opt_level: int
+) -> list[bytes];
+
+def optimize_unit_bitcode_with_config(
+    bitcode: bytes, native_target: str, native_debug: bool, opt_level: int
+) -> bytes;
+
+def create_unit_target_machine_with_config(
+    target_ovr: str, native_debug: bool, jit: bool = False
+) -> TargetMachine;
+
 def module_functions(mod: ModuleRef) -> list[any];
 def unit_function_counts(unit_ir: any) -> tuple[int, int];
 def settle_unit_ir(module: uni.Module) -> None;
