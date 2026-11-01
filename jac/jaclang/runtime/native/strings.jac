@@ -19,6 +19,8 @@ def:pub __jac_rt_str_size(text: ptr[u8]) -> int;
 
 def:pub __jac_rt_str_new(data: ptr[u8], n: int) -> ptr[u8];
 
+def:pub __jac_rt_str_ref(owner: ptr[u8], data: ptr[u8], n: int) -> ptr[u8];
+
 def:pub __jac_rt_str_concat(a: ptr[u8], an: int, b: ptr[u8], bn: int) -> ptr[u8];
 
 def:pub __jac_rt_str_from_int(value: int) -> ptr[u8];

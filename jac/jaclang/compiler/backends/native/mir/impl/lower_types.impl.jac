@@ -86,6 +86,27 @@ impl mir_class_type(
         }
         return mir_int(shape.width, shape.signed, shape.sized);
     }
+    if name in ("list", "dict", "set") {
+        args = t.private.type_args if t.private else None;
+        if not args {
+            raise MirRefused(
+                mir_refusal(
+                    "type",
+                    f"{name} without element types",
+                    site,
+                    "Native containers need their element types; annotate the value."
+                )
+            );
+        }
+        members = [mir_type_of(arg, MirPosition.ELEMENT, site) for arg in args];
+        if name == "list" {
+            return mir_list(members[0]);
+        }
+        if name == "set" {
+            return mir_set(members[0]);
+        }
+        return mir_dict(members[0], members[1]);
+    }
     if name == "str" {
         if position in (MirPosition.VALUE, MirPosition.SIGNATURE) {
             return mir_str();

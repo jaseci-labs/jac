@@ -22,5 +22,11 @@ impl mir_runtime_spec(spec: str) -> MirType {
     if spec == "str.ref" {
         return mir_str_ref();
     }
+    if spec == "ref" {
+        return mir_ref();
+    }
+    if spec == "bool" {
+        return mir_bool();
+    }
     raise KeyError(f"no runtime type spec {spec}");
 }

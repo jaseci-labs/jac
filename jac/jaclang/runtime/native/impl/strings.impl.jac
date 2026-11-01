@@ -139,3 +139,11 @@ impl __jac_rt_str_from_int(value: int) -> ptr[u8] {
     start = _int_text(value, buf);
     return __jac_rt_str_new(ptr[u8](buf + start), INT_TEXT_MAX - start);
 }
+
+impl __jac_rt_str_ref(owner: ptr[u8], data: ptr[u8], n: int) -> ptr[u8] {
+    if int(owner) != 0 and int(owner) == int(data) and __jac_rt_str_size(owner) == n {
+        __jac_rt_retain(int(owner));
+        return owner;
+    }
+    return __jac_rt_str_new(data, n);
+}

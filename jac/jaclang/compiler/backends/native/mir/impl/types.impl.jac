@@ -210,3 +210,23 @@ impl mir_c_fn(params: list[MirType], ret: MirType) -> MirType {
 impl mir_holds_ref(t: MirType) -> bool {
     return t.kind == MirKind.STR or t.is_ref();
 }
+
+impl mir_list(elem: MirType) -> MirType {
+    return mir_type(MirKind.LIST, args=[elem]);
+}
+
+impl mir_dict(key: MirType, value: MirType) -> MirType {
+    return mir_type(MirKind.DICT, args=[key, value]);
+}
+
+impl mir_set(elem: MirType) -> MirType {
+    return mir_type(MirKind.SET, args=[elem]);
+}
+
+impl mir_ref -> MirType {
+    return mir_type(MirKind.OBJ, name="*");
+}
+
+impl mir_is_container(t: MirType) -> bool {
+    return t.kind in (MirKind.LIST, MirKind.DICT, MirKind.SET);
+}

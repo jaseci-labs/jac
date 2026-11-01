@@ -124,3 +124,13 @@ def mir_c_view(elem: MirType) -> MirType;
 def mir_c_fn(params: list[MirType], ret: MirType) -> MirType;
 
 def mir_holds_ref(t: MirType) -> bool;
+
+def mir_list(elem: MirType) -> MirType;
+
+def mir_dict(key: MirType, value: MirType) -> MirType;
+
+def mir_set(elem: MirType) -> MirType;
+
+def mir_ref -> MirType;
+
+def mir_is_container(t: MirType) -> bool;

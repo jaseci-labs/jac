@@ -27,6 +27,7 @@ enum MirOp {
     CALL_RUNTIME = "call.runtime",
     STR_PART = "str.part",
     STR_MAKE = "str.make",
+    REF_CAST = "ref.cast",
     RETAIN = "retain",
     RELEASE = "release",
     RAISE = "raise",
@@ -176,6 +177,7 @@ obj MirBuilder {
     def const_null(type: MirType) -> MirValue;
     def str_part(value: MirValue, part: str) -> MirValue;
     def str_make(owner: MirValue, data: MirValue, length: MirValue) -> MirValue;
+    def ref_cast(value: MirValue, to: MirType, owned: bool) -> MirValue;
     def branch(target: MirBlock);
     def cond_branch(cond: MirValue, then: MirBlock, otherwise: MirBlock);
     def ret(value: (MirValue | None));

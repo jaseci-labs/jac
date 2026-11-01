@@ -70,13 +70,13 @@ impl MirRcState.rewrite(blk: MirBlock) {
                 self.release_slots();
                 self.out.append(instr);
             }
-        } elif instr.op == MirOp.STR_MAKE {
+        } elif instr.op in (MirOp.STR_MAKE, MirOp.REF_CAST) {
             owner = instr.operands[0];
             result = instr.result;
             if result is not None and owner.id in self.pending {
                 self.pending.pop(owner.id);
                 result.owned = True;
-            } elif result is not None {
+            } elif result is not None and instr.sub != "owned" {
                 result.owned = False;
             }
             self.out.append(instr);

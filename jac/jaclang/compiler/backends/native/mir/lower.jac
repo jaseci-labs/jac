@@ -21,6 +21,17 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      SHIFT_MESSAGE: str = "shift count out of range",
      NEGATIVE_SHIFT_MESSAGE: str = "negative shift count",
      RANGE_STEP_MESSAGE: str = "range() arg 3 must not be zero",
+     KIND_INT: int = 0,
+     KIND_FLOAT: int = 1,
+     KIND_BOOL: int = 2,
+     KIND_STR: int = 3,
+     KIND_REF: int = 4,
+     NO_VALUE_KIND: int = -1,
+     LIST_INDEX_MESSAGE: str = "list index out of range",
+     LIST_ASSIGN_MESSAGE: str = "list assignment index out of range",
+     POP_EMPTY_MESSAGE: str = "pop from empty list",
+     KEY_MESSAGE: str = "key not found",
+     LIST_VALUE_MESSAGE: str = "value is not in list",
      MEMORY_ORDERS: list[str] = [
          "monotonic", "acquire", "acquire", "release", "acq_rel", "seq_cst"
      ],
@@ -142,6 +153,35 @@ obj MirLowering {
     def builtin_call(nd: uni.FuncCall, name: str) -> (MirValue | None);
     def lower_print(nd: uni.FuncCall) -> MirValue;
     def write_value(value: MirValue, site: uni.UniNode);
+    def elem_kind(t: MirType, site: uni.UniNode) -> int;
+    def to_bits(value: MirValue, elem: MirType, site: uni.UniNode) -> MirValue;
+    def scalar_from_bits(bits: MirValue, elem: MirType) -> MirValue;
+    def owned_element(handle: MirValue, elem: MirType) -> MirValue;
+    def address_of(value: MirValue) -> MirValue;
+    def container_len(value: MirValue) -> MirValue;
+    def list_read(lst: MirValue, index: MirValue) -> MirValue;
+    def list_index(lst: MirValue, index: MirValue, message: str) -> MirValue;
+    def lower_list_literal(nd: uni.ListVal) -> MirValue;
+    def lower_set_literal(nd: uni.SetVal) -> MirValue;
+    def lower_dict_literal(nd: uni.DictVal) -> MirValue;
+    def new_list(elem: MirType, capacity: int) -> MirValue;
+    def new_dict(key: MirType, value: (MirType | None), result: MirType) -> MirValue;
+    def container_get(base: MirValue, slice: uni.IndexSlice, site: uni.UniNode) -> MirValue;
+    def container_set(
+        base: MirValue, slice: uni.IndexSlice, value: MirValue, site: uni.UniNode
+    );
+    def dict_get(d: MirValue, key: MirValue, site: uni.UniNode) -> MirValue;
+    def list_slice(lst: MirValue, part: uni.Slice, site: uni.UniNode) -> MirValue;
+    def container_method(
+        receiver: MirValue, name: str, nd: uni.FuncCall
+    ) -> (MirValue | None);
+    def list_method(lst: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
+    def dict_method(d: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
+    def set_method(s: MirValue, name: str, nd: uni.FuncCall) -> (MirValue | None);
+    def contains(item: MirValue, holder: MirValue, site: uni.UniNode) -> MirValue;
+    def container_eq(left: MirValue, right: MirValue) -> MirValue;
+    def lower_for_container(nd: uni.InForStmt, holder: MirValue);
+    def lower_delete(nd: uni.DeleteStmt);
     def emit_value(
         op: MirOp,
         type: MirType,

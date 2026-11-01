@@ -254,6 +254,21 @@ impl MirBuilder.str_make(
     return result;
 }
 
+impl MirBuilder.ref_cast(value: MirValue, to: MirType, owned: bool) -> MirValue {
+    result = self.fn.new_value(to);
+    result.owned = owned;
+    self.emit(
+        MirInstr(
+            op=MirOp.REF_CAST,
+            result=result,
+            operands=[value],
+            type_arg=to,
+            sub="owned" if owned else ""
+        )
+    );
+    return result;
+}
+
 impl MirBuilder.branch(target: MirBlock) {
     self.emit(MirInstr(op=MirOp.BR, targets=[target.label]));
 }

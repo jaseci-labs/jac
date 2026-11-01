@@ -52,7 +52,7 @@ impl MirEmitter.llvm_type(t: MirType) -> ir.Type {
     if t.kind == MirKind.STR {
         return self.str_type();
     }
-    if t.kind == MirKind.STR_REF {
+    if t.kind == MirKind.STR_REF or t.kind == MirKind.OBJ or mir_is_container(t) {
         return ir.IntType(8).as_pointer();
     }
     if t.kind == MirKind.C_PTR {
@@ -224,6 +224,16 @@ impl MirEmitter.emit_instr(b: ir.IRBuilder, instr: MirInstr) {
             made = b.insert_value(made, self.value(part), index);
         }
         self.bind(instr.result, made);
+    } elif op == MirOp.REF_CAST {
+        source = self.value(instr.operands[0]);
+        to = self.llvm_type(type_arg_of(instr));
+        if isinstance(source.type, ir.IntType) {
+            self.bind(instr.result, b.inttoptr(source, to));
+        } elif source.type == to {
+            self.bind(instr.result, source);
+        } else {
+            self.bind(instr.result, b.bitcast(source, to));
+        }
     } elif op in (MirOp.RETAIN, MirOp.RELEASE) {
         self.emit_rc(b, instr);
     } elif op == MirOp.CALL_RUNTIME {

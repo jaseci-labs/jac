@@ -11649,7 +11649,7 @@ graph import compiler.backends.native.mir {
         refusal_of
     }
     types ++> [
-        emit { MirKind, MirType, mir_c_ptr },
+        emit { MirKind, MirType, mir_c_ptr, mir_is_container },
         ir {
             MirKind,
             MirType,
@@ -11662,10 +11662,12 @@ graph import compiler.backends.native.mir {
         rc { mir_holds_ref },
         runtime_abi {
             MirType,
+            mir_bool,
             mir_c_ptr,
             mir_float,
             mir_int,
             mir_none,
+            mir_ref,
             mir_str_ref
         },
         lower {
@@ -11673,6 +11675,11 @@ graph import compiler.backends.native.mir {
             MirType,
             mir_bool,
             mir_c_fn,
+            mir_holds_ref,
+            mir_is_container,
+            mir_list,
+            mir_ref,
+            mir_str_ref,
             mir_c_ptr,
             mir_c_view,
             mir_float,
@@ -11684,6 +11691,9 @@ graph import compiler.backends.native.mir {
         lower_types {
             MirType,
             mir_bool,
+            mir_dict,
+            mir_list,
+            mir_set,
             mir_c_fn,
             mir_c_ptr,
             mir_c_struct,
@@ -15616,7 +15626,7 @@ graph import project {
 }
 
 graph import runtime {
-    native.rc ++> native.strings { __jac_rt_alloc, __jac_rt_set_type }
+    native.rc ++> native.strings { __jac_rt_alloc, __jac_rt_retain, __jac_rt_set_type }
     archetype ++> [
         constructs {
             AccessLevel,
