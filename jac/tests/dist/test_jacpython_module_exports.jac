@@ -25,13 +25,21 @@ obj _Symbol {
 }
 
 obj _Merged {
-    has defined: dict[str, bool];
+    has defined: dict[str, bool],
+        globals: dict[str, bool] = {};
 
     def get_function(name: str) -> _Symbol {
         if name not in self.defined {
             raise NameError(name);
         }
         return _Symbol(is_declaration=self.defined[name]);
+    }
+
+    def get_global_variable(name: str) -> _Symbol {
+        if name not in self.globals {
+            raise NameError(name);
+        }
+        return _Symbol(is_declaration=self.globals[name]);
     }
 }
 
@@ -68,6 +76,24 @@ test "a declared-only export is not accepted as a defined entry point" {
         merged, ["PyInit__bisect", "PyInit_math", "PyInit__json"]
     )
         == ["PyInit_math", "PyInit__json"];
+}
+
+test "the static type exports are validated as globals, not functions" {
+    # object.c's static_types table refers to these as global objects. Checking
+    # them with get_function() rejects a correct build, so the lookup kind has to
+    # follow how each symbol is emitted.
+    prepare = _load_prepare();
+    merged = _Merged(
+        defined={"PyInit__bisect": True},
+        globals={"PyRange_Type": False, "PyCell_Type": True}
+    );
+    assert prepare.undefined_exports(
+        merged, ["PyRange_Type", "PyCell_Type", "_PyTemplate_Type"], "global"
+    )
+        == ["PyCell_Type", "_PyTemplate_Type"];
+    # A function of the same name does not satisfy the global contract.
+    assert prepare.undefined_exports(merged, ["PyInit__bisect"], "global")
+        == ["PyInit__bisect"];
 }
 
 test "the registered PyInit_* exports are all reachable from native_api.jac" {
