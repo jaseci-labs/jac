@@ -107,23 +107,10 @@ jobs:
         with:
           ref: refs/pull/${{ needs.resolve.outputs.pr }}/head
 
-      - name: Download the compiler kernel
-        uses: actions/download-artifact@v4
-        with:
-          name: kernel-${{ matrix.osarch }}
-          path: .kernel
-
-      - name: Download the JacPython object
-        uses: actions/download-artifact@v4
-        with:
-          name: jacpython-object-${{ matrix.osarch }}
-          path: .jacpython-object
-
       - name: Set up jac (build the binary)
         uses: ./.github/actions/setup-jac
         with:
-          kernel-dir: ${{ github.workspace }}/.kernel
-          jacpython-object: ${{ github.workspace }}/.jacpython-object
+          prebuilt: ${{ matrix.osarch }}
 
       - name: Stage the binary
         run: |

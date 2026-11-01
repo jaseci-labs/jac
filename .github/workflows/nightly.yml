@@ -31,23 +31,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download the compiler kernel
-        uses: actions/download-artifact@v4
-        with:
-          name: kernel-linux-aarch64
-          path: .kernel
-
-      - name: Download the JacPython object
-        uses: actions/download-artifact@v4
-        with:
-          name: jacpython-object-linux-aarch64
-          path: .jacpython-object
-
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
         with:
-          kernel-dir: ${{ github.workspace }}/.kernel
-          jacpython-object: ${{ github.workspace }}/.jacpython-object
+          prebuilt: linux-aarch64
 
       # The gates run the binary's own compiler, not the checkout's.
       - uses: ./.github/actions/seal-checkout

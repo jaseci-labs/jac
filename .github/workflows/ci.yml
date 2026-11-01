@@ -603,8 +603,7 @@ jobs:
             exit 1
           fi
 
-      # JacPython is the only Python jac builds on or ships. The gate names
-      # what may still mention stock CPython (scripts/no_stock_cpython.allow):
+      # JacPython is the only Python jac builds on or ships. The gate exempts
       # the ABI identity, the pinned source archive, the manual comparison
       # workflow and history.
       - name: Block stock CPython build and runtime dependencies

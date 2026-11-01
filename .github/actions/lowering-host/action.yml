@@ -1,0 +1,52 @@
+name: Lowering host
+description: >
+  Prepare an x86 Linux runner to run the checkout's compiler on JacPython, as
+  build-kernel.yml and build-seeds.yml do: Zig, the jacllvm shim (prebuilt
+  from the deps release, else built from the pinned LLVM), the Zig package
+  store, and main's last linux-x86_64 JacPython runtime (restore only, by
+  prefix; without one the build fetches the pinned seed).
+inputs:
+  python-key:
+    description: The `python` key of scripts/ci_cache_keys.sh.
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/restore@v4
+      with:
+        path: jac/.python-build/jacpython
+        key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-${{ inputs.python-key }}
+        restore-keys: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-
+
+    - uses: actions/cache@v4
+      with:
+        path: .zig-cache/p
+        key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
+        restore-keys: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
+
+    - shell: bash
+      run: sudo apt-get update && sudo apt-get install -y zstd
+
+    - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+      with:
+        version: 0.16.0
+        use-cache: false
+
+    - name: Place the jacllvm shim
+      shell: bash
+      working-directory: jac
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ASSET: libjacllvm-linux-x86_64-${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}.so
+      run: |
+        set -euo pipefail
+        mkdir -p "$RUNNER_TEMP/shim"
+        if gh release download deps --repo "$GITHUB_REPOSITORY" --pattern "$ASSET" --pattern "$ASSET.sha256" \
+             --dir "$RUNNER_TEMP/shim" --clobber 2>/dev/null \
+           && ( cd "$RUNNER_TEMP/shim" && shasum -a 256 -c "$ASSET.sha256" ); then
+          cp "$RUNNER_TEMP/shim/$ASSET" jaclang/compiler/backends/native/llvm/libjacllvm.so
+          zig build adopt-shim --summary all
+        else
+          echo "No prebuilt shim $ASSET; building it from source."
+          zig build fetch-llvm --summary all
+        fi

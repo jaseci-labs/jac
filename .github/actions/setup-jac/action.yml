@@ -25,21 +25,14 @@ inputs:
       prepare_native.py with a missing libjacllvm.so.
     required: false
     default: "false"
-  kernel-dir:
+  prebuilt:
     description: >
-      A directory holding a compiler kernel built elsewhere for this runner's
-      platform (build-kernel.yml's `kernel-<platform>` artifact). The seal
-      adopts it instead of building the kernel, and refuses it unless it was
-      built from this tree (#10219). Empty builds the kernel as usual.
-    required: false
-    default: ""
-  jacpython-object:
-    description: >
-      A directory holding JacPython's native object lowered elsewhere for this
-      runner's platform (build-kernel.yml's `jacpython-object-<platform>`
-      artifact). The build links it (-Djacpython-object) instead of lowering
-      its own, and refuses it unless it was lowered from this tree. Empty
-      lowers the object as usual.
+      A release platform whose compiler kernel and jacpython.o this run built
+      on x86 Linux (build-kernel.yml's `kernel-<platform>` and
+      `jacpython-object-<platform>` artifacts). The build adopts both
+      (-Dkernel, -Djacpython-object) instead of building them, and refuses
+      either unless it was built from this tree (#10219, #10472). Empty
+      builds both as usual.
     required: false
     default: ""
   native-kernel:
@@ -280,6 +273,18 @@ runs:
       # the stubs otherwise.
       run: zig build fetch-typeshed --summary all
 
+    - if: steps.cache.outputs.cache-hit != 'true' && inputs.prebuilt != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: kernel-${{ inputs.prebuilt }}
+        path: ${{ runner.temp }}/prebuilt/kernel
+
+    - if: steps.cache.outputs.cache-hit != 'true' && inputs.prebuilt != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: jacpython-object-${{ inputs.prebuilt }}
+        path: ${{ runner.temp }}/prebuilt/jacpython-object
+
     - name: Build the jac binary
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
@@ -290,9 +295,9 @@ runs:
       # A PR reuses the JacPython runtime main last built when the sources it
       # was lowered from are unchanged (build_python.zig sourcesKey); main
       # keeps the full key, so the runtime is at most one main build behind.
-      # With `jacpython-object`, the build links that prebuilt object instead
-      # of lowering one; an ARM or macOS runner then skips the lowering, which
-      # runs 2.5-3x slower there.
+      # With `prebuilt`, the build adopts the kernel and jacpython.o lowered
+      # on x86 instead of lowering them, which runs 2.5-3x slower on an ARM or
+      # macOS runner.
       # A pull request's kit leaves the native compiler kernel out unless the
       # PR carries the `native:kernel` label or the caller sets native-kernel.
       # The seal omits only what JAC_KIT_OMIT names (artifacts/kit.jac
@@ -300,14 +305,11 @@ runs:
       # build-binaries.yml, ships it all.
       env:
         PR_BUILD: ${{ github.event_name == 'pull_request' }}
-        KERNEL_DIR: ${{ inputs.kernel-dir }}
-        OBJECT_DIR: ${{ inputs.jacpython-object }}
+        PREBUILT: ${{ inputs.prebuilt != '' && format('{0}/prebuilt', runner.temp) || '' }}
         JAC_KIT_OMIT: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'native:kernel') && inputs.native-kernel != 'true' && 'kernel' || '' }}
       run: |
         PY=(-Dreuse-python="$PR_BUILD")
-        if [ -n "$OBJECT_DIR" ]; then PY+=(-Djacpython-object="$OBJECT_DIR"); fi
-        KERNEL_ARG=()
-        if [ -n "$KERNEL_DIR" ]; then KERNEL_ARG=(-Dkernel="$KERNEL_DIR"); fi
+        if [ -n "$PREBUILT" ]; then PY+=(-Dkernel="$PREBUILT/kernel" -Djacpython-object="$PREBUILT/jacpython-object"); fi
         TARGET_ARG=()
         case "$RUNNER_OS/$RUNNER_ARCH" in
           Linux/X64) TARGET_ARG=(-Dtarget=x86_64-linux-gnu.2.17) ;;
@@ -320,7 +322,7 @@ runs:
         set -o pipefail
         LOG="$(mktemp)"
         for attempt in 1 2 3; do
-          if zig build "${PY[@]}" "${TARGET_ARG[@]}" "${KERNEL_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
+          if zig build "${PY[@]}" "${TARGET_ARG[@]}" --summary all 2>&1 | tee "$LOG"; then
             exit 0
           fi
           if grep -qE 'Seal aborted|Seal incomplete|seal-finalize failed' "$LOG"; then

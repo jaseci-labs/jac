@@ -13,7 +13,7 @@ name: JacPython compatibility
 #
 # This is the one place CI runs stock CPython: as the reference of a
 # compatibility verdict, never to build or run jac
-# (scripts/no_stock_cpython.allow names this file). ci.yml's test-jacpython
+# (scripts/check_no_stock_cpython.sh exempts this file). ci.yml's test-jacpython
 # runs a pinned list of upstream modules as a gate on every pull request; this
 # is the full suite.
 

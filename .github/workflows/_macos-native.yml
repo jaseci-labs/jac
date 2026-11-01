@@ -44,23 +44,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download the compiler kernel
-        uses: actions/download-artifact@v4
-        with:
-          name: kernel-macos-aarch64
-          path: .kernel
-
-      - name: Download the JacPython object
-        uses: actions/download-artifact@v4
-        with:
-          name: jacpython-object-macos-aarch64
-          path: .jacpython-object
-
       - name: Build the jac binary (cached)
         uses: ./.github/actions/setup-jac
         with:
-          kernel-dir: ${{ github.workspace }}/.kernel
-          jacpython-object: ${{ github.workspace }}/.jacpython-object
+          prebuilt: macos-aarch64
 
       - name: Set up Zig 0.16.0
         uses: mlugg/setup-zig@v2

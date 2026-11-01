@@ -1,20 +1,17 @@
 name: Build the JacPython seed
 
 # Builds the linux-x86_64 JacPython seed and, on a manual run on main,
-# attaches it to the rolling `deps` prerelease. The seed is the one
-# interpreter a JacPython build starts from when it has no earlier JacPython
-# output of its own: `-Djacpython-host=auto` fetches it by the URL and sha256
-# pinned under `jacpython-seed` in jac/bootstrap/python/sources.json. One
-# linux-x86_64 seed serves every platform, because only build-kernel.yml's x86
-# Linux job lowers jacpython.o and every other leg adopts it.
+# attaches it to the rolling `deps` prerelease. The seed is the interpreter a
+# JacPython build starts from when it has no earlier output of its own:
+# `-Djacpython-host=auto` fetches it by the URL and sha256 pinned under
+# `jacpython-seed` in jac/bootstrap/python/sources.json. One linux-x86_64 seed
+# serves every platform, because only x86 Linux lowers jacpython.o
+# (build-kernel.yml) and every other build adopts it.
 #
-# Publishing a seed does not change what any build uses. A maintainer moves
-# the pin to it in a pull request, with the URL and sha256 the publish job
-# prints, after reviewing the build that made it. A pinned asset is never
-# replaced: the publish job refuses a name the release already carries.
-#
-# A pull request that edits this workflow builds and verifies a seed and
-# publishes nothing, like any run that is not a manual run on main.
+# Publishing changes no build: a maintainer moves the pin in a pull request,
+# with the URL and sha256 the publish job prints. A published asset is never
+# replaced. Any other run, such as a pull request editing this file, builds
+# and verifies a seed and publishes nothing.
 
 on:
   workflow_dispatch:
@@ -36,146 +33,59 @@ jobs:
     outputs:
       asset: ${{ steps.seed.outputs.asset }}
     steps:
-      # SHA-pinned: a seed is the interpreter every later JacPython build runs
-      # on, so a re-pointed tag on the action must not reach it.
+      # SHA-pinned: a seed is the interpreter later JacPython builds run on.
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Fingerprint immutable build inputs
         id: inputs
         run: bash scripts/ci_cache_keys.sh >> "$GITHUB_OUTPUT"
 
-      # The previous JacPython runtime main built, which `auto` builds on;
-      # without one it fetches the pinned seed. Restore only: this workflow
-      # never seeds the shared runtime cache.
-      - name: Restore the JacPython runtime
-        uses: actions/cache/restore@v4
+      - uses: ./.github/actions/lowering-host
         with:
-          path: jac/.python-build/jacpython
-          key: python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-${{ steps.inputs.outputs.python }}
-          restore-keys: |
-            python-build-v4-jacpython-${{ runner.os }}-${{ runner.arch }}-zig0.16.0-sdkzig-libc-
+          python-key: ${{ steps.inputs.outputs.python }}
 
-      - name: Fetch the prebuilt host shim from the deps release
-        id: shim-fetch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SHIM_KEY: ${{ hashFiles('jac/native/**', 'jac/build.zig', 'jac/bootstrap/pins.json') }}
-        run: |
-          set -euo pipefail
-          ASSET="libjacllvm-linux-x86_64-${SHIM_KEY}.so"
-          mkdir -p .shim-fetch
-          if gh release download deps --repo "$GITHUB_REPOSITORY" \
-               --pattern "$ASSET" --pattern "$ASSET.sha256" \
-               --dir .shim-fetch --clobber 2>/dev/null \
-             && ( cd .shim-fetch && shasum -a 256 -c "$ASSET.sha256" ); then
-            echo "hit=true" >> "$GITHUB_OUTPUT"
-            echo "file=$GITHUB_WORKSPACE/.shim-fetch/$ASSET" >> "$GITHUB_OUTPUT"
-          else
-            echo "No prebuilt shim $ASSET; building it from source."
-            echo "hit=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Cache the Zig package store
-        uses: actions/cache@v4
-        with:
-          path: .zig-cache/p
-          key: zig-pkgs-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('jac/build.zig.zon') }}
-          restore-keys: |
-            zig-pkgs-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Install host tools (zstd)
-        run: sudo apt-get update && sudo apt-get install -y zstd
-
-      - name: Set up Zig 0.16.0
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
-        with:
-          version: 0.16.0
-          use-cache: false
-
-      - name: Fetch LLVM for the jacllvm shim
-        if: steps.shim-fetch.outputs.hit != 'true'
-        working-directory: jac
-        run: zig build fetch-llvm --summary all
-
-      - name: Build JacPython
+      # jacpython-seed-pack builds JacPython first, then writes the tarball,
+      # named by its content, and its .sha256.
+      - name: Build and pack the seed
+        id: seed
         working-directory: jac
         env:
           PYTHONUNBUFFERED: "1"
-          PYTHONFAULTHANDLER: "1"
-        run: |
-          set -euo pipefail
-          if [ "${{ steps.shim-fetch.outputs.hit }}" = "true" ]; then
-            cp "${{ steps.shim-fetch.outputs.file }}" jaclang/compiler/backends/native/llvm/libjacllvm.so
-            zig build adopt-shim --summary all
-          fi
-          zig build build-python -Djacpython-host=auto --summary all
-
-      # The pack step names its tarball; find the one it just wrote.
-      - name: Pack the seed
-        id: seed
-        working-directory: jac
         run: |
           set -euo pipefail
           MARK="$(mktemp)"
           zig build jacpython-seed-pack --summary all
-          mapfile -t found < <(find . \( -path ./.zig-cache -o -path ./jaclang \) -prune \
-            -o -type f -name '*seed*.tar*' ! -name '*.sha256' -newer "$MARK" -print)
-          [ "${#found[@]}" -eq 1 ] || {
-            echo "::error::expected one new seed tarball from jacpython-seed-pack, found ${#found[@]}: ${found[*]:-none}"
-            exit 1
-          }
-          SRC="${found[0]}"
-          ASSET="$(basename "$SRC")"
+          mapfile -t found < <(find .python-build/jacpython -maxdepth 1 -name 'jacpython-seed-*.tar.gz' -newer "$MARK")
+          [ "${#found[@]}" -eq 1 ] || { echo "::error::expected one new seed, found ${#found[@]}"; exit 1; }
           mkdir -p "$GITHUB_WORKSPACE/dist-seed"
-          cp "$SRC" "$GITHUB_WORKSPACE/dist-seed/$ASSET"
-          ( cd "$GITHUB_WORKSPACE/dist-seed" && sha256sum "$ASSET" > "$ASSET.sha256" )
-          if [ -f "$SRC.sha256" ]; then
-            [ "$(cut -d' ' -f1 "$SRC.sha256")" = "$(cut -d' ' -f1 "$GITHUB_WORKSPACE/dist-seed/$ASSET.sha256")" ] || {
-              echo "::error::$SRC does not match the sha256 jacpython-seed-pack wrote beside it"; exit 1; }
-          fi
-          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
-          cat "$GITHUB_WORKSPACE/dist-seed/$ASSET.sha256"
+          cp "${found[0]}" "${found[0]}.sha256" "$GITHUB_WORKSPACE/dist-seed/"
+          ( cd "$GITHUB_WORKSPACE/dist-seed" && sha256sum -c ./*.sha256 )
+          echo "asset=$(basename "${found[0]}")" >> "$GITHUB_OUTPUT"
 
-      # The seed must be a runnable JacPython of the pinned release, and it
-      # must run where a build will use it: unpacked anywhere, with nothing
-      # from this checkout or the runner's own Python on its path.
+      # A runnable JacPython of the pinned release, unpacked anywhere, with
+      # nothing from this checkout or the runner's Python on its path.
       - name: Verify the seed
         working-directory: dist-seed
         env:
           ASSET: ${{ steps.seed.outputs.asset }}
         run: |
           set -euo pipefail
-          WANT="$(jq -r .cpython.version "$GITHUB_WORKSPACE/jac/bootstrap/python/sources.json")"
+          SOURCES="$GITHUB_WORKSPACE/jac/bootstrap/python/sources.json"
           UNPACK="$(mktemp -d)"
-          case "$ASSET" in
-            *.tar.zst) zstd -dc "$ASSET" | tar -x -C "$UNPACK" ;;
-            *) tar -xf "$ASSET" -C "$UNPACK" ;;
-          esac
-          find "$UNPACK" -maxdepth 3 | head -40
-          mapfile -t bins < <(find "$UNPACK" -type f -perm -u+x -path '*/bin/python3.*' ! -name '*-config')
-          [ "${#bins[@]}" -ge 1 ] || { echo "::error::the seed holds no bin/python3.<minor>"; exit 1; }
-          PY="${bins[0]}"
-          (cd "$UNPACK" && env -i HOME="$UNPACK" PATH=/usr/bin:/bin "$PY" -I -c '
+          tar -xzf "$ASSET" -C "$UNPACK"
+          (cd "$UNPACK" && env -i HOME="$UNPACK" PATH=/usr/bin:/bin "$UNPACK"/python/install/bin/python3 -I -c '
           import ast, ctypes, platform, sys
-          want = sys.argv[1]
-          assert platform.python_version() == want, (platform.python_version(), want)
+          assert platform.python_version() == sys.argv[1], (platform.python_version(), sys.argv[1])
           assert sys.implementation.name == "cpython"
           assert ctypes.pythonapi._PyJac_CompilerRequired() == 1
           assert ctypes.pythonapi._PyJac_CompilerBridgeVersion() == 4
           assert eval(compile(ast.parse("6 * 7", mode="eval"), "<seed>", "eval")) == 42
           import hashlib, json, sqlite3, ssl, zlib
           print("seed:", sys.version.split()[0], sys.platform, platform.machine())
-          ' "$WANT")
-          PIN="$(jq -r '."jacpython-seed".sha256 // empty' "$GITHUB_WORKSPACE/jac/bootstrap/python/sources.json")"
-          GOT="$(cut -d' ' -f1 "$ASSET.sha256")"
-          if [ "$PIN" = "$GOT" ]; then
-            echo "This seed is the one sources.json pins."
-          else
-            echo "sources.json pins ${PIN:-no seed}; this build is $GOT."
-          fi
+          ' "$(jq -r .cpython.version "$SOURCES")")
+          echo "sources.json pins $(jq -r '."jacpython-seed".sha256' "$SOURCES"); this seed is $(cut -d' ' -f1 "$ASSET.sha256")."
 
-      - name: Upload the seed
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: jacpython-seed
           path: dist-seed/
@@ -195,33 +105,25 @@ jobs:
           path: dist-seed
 
       - name: Publish to the deps prerelease
+        working-directory: dist-seed
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ASSET: ${{ needs.build.outputs.asset }}
         run: |
           set -euo pipefail
-          ( cd dist-seed && sha256sum -c "$ASSET.sha256" )
+          sha256sum -c "$ASSET.sha256"
           gh release create deps --repo "$GITHUB_REPOSITORY" --prerelease \
             --title "Prebuilt build dependencies (rolling)" \
             --notes "Content-addressed prebuilt build artifacts (LLVMPY shims, JacPython seeds). Consumed by the build; not for direct download." \
             2>/dev/null || true
-          # A pinned seed is fetched by name and checked by sha256, so an
-          # asset already on the release is never replaced.
-          if gh release view deps --repo "$GITHUB_REPOSITORY" --json assets \
-               --jq '.assets[].name' | grep -qx "$ASSET"; then
+          if gh release view deps --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx "$ASSET"; then
             echo "::error::the deps release already carries $ASSET; a published seed is never replaced"
             exit 1
           fi
-          gh release upload deps --repo "$GITHUB_REPOSITORY" \
-            "dist-seed/$ASSET" "dist-seed/$ASSET.sha256"
-          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/deps/$ASSET"
-          SHA="$(cut -d' ' -f1 "dist-seed/$ASSET.sha256")"
+          gh release upload deps --repo "$GITHUB_REPOSITORY" "$ASSET" "$ASSET.sha256"
           {
-            echo "### JacPython seed published"
-            echo ""
-            echo "Pin it in \`jac/bootstrap/python/sources.json\`:"
-            echo ""
+            echo "Pin the seed in \`jac/bootstrap/python/sources.json\`:"
             echo '```json'
-            echo "\"jacpython-seed\": { \"url\": \"$URL\", \"sha256\": \"$SHA\" }"
+            echo "\"jacpython-seed\": { \"url\": \"https://github.com/$GITHUB_REPOSITORY/releases/download/deps/$ASSET\", \"sha256\": \"$(cut -d' ' -f1 "$ASSET.sha256")\" }"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
