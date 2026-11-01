@@ -28,5 +28,8 @@ impl mir_runtime_spec(spec: str) -> MirType {
     if spec == "bool" {
         return mir_bool();
     }
+    if spec == "i32" {
+        return mir_int(32, True, True);
+    }
     raise KeyError(f"no runtime type spec {spec}");
 }

@@ -32,6 +32,8 @@ glob OVERFLOW_MESSAGE: str = "integer overflow",
      POP_EMPTY_MESSAGE: str = "pop from empty list",
      KEY_MESSAGE: str = "key not found",
      LIST_VALUE_MESSAGE: str = "value is not in list",
+     EXC_TYPE_OFFSET: int = 8,
+     EXC_MESSAGE_OFFSET: int = 24,
      MEMORY_ORDERS: list[str] = [
          "monotonic", "acquire", "acquire", "release", "acq_rel", "seq_cst"
      ],
@@ -54,7 +56,8 @@ obj MirFnState {
         b: MirBuilder,
         self_value: (MirValue | None) = None,
         locals: dict[int, MirValue] = {},
-        loops: list[MirLoopTarget] = [];
+        loops: list[MirLoopTarget] = [],
+        caught: list[tuple[MirValue, MirValue, MirValue]] = [];
 }
 
 obj MirDecl {
@@ -208,6 +211,10 @@ obj MirLowering {
     def isinstance_check(value: MirValue, arch: uni.Archetype) -> MirValue;
     def lower_module_init -> (MirFunction | None);
     def lower_module_entry -> (MirFunction | None);
+    def lower_try(nd: uni.TryStmt);
+    def lower_raise(nd: uni.RaiseStmt);
+    def exception_matches(type_id: MirValue, clause: uni.Expr) -> MirValue;
+    def exception_name(nd: uni.Expr) -> str;
     def emit_value(
         op: MirOp,
         type: MirType,

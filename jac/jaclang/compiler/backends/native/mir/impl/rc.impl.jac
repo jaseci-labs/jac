@@ -167,7 +167,7 @@ impl MirRcState.initialize_slots {
     }
     first = self.fn.blocks[0];
     at = 0;
-    while at < len(first.instrs) and first.instrs[at].op == MirOp.SLOT {
+    while at < len(first.instrs) and first.instrs[at].op in (MirOp.SLOT, MirOp.EXC_FRAME) {
         at += 1;
     }
     made: list[MirInstr] = [];

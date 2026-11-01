@@ -602,6 +602,14 @@ impl MirEmitter.emit_c(b: ir.IRBuilder, instr: MirInstr) {
                 b.call(self.keyed_block_fn(instr.str_value, instr.int_value), [])
             );
         }
+    } elif op == MirOp.EXC_FRAME {
+        frame = b.alloca(ir.ArrayType(ir.IntType(64), EXC_FRAME_BYTES // 8));
+        self.bind(instr.result, b.bitcast(frame, ir.IntType(8).as_pointer()));
+    } elif op == MirOp.SETJMP {
+        i8p = ir.IntType(8).as_pointer();
+        jump = self.extern(SETJMP_SYMBOL, ir.IntType(32), [i8p]);
+        jump.attributes.add("returns_twice");
+        self.bind(instr.result, b.call(jump, [self.value(instr.operands[0])]));
     } elif op == MirOp.SIZEOF {
         shape = self.llvm_type(type_arg_of(instr));
         pointee: ir.Type = shape;

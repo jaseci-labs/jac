@@ -220,6 +220,10 @@ impl MirLowering.lower_stmt(nd: uni.UniNode) {
         self.lower_for(nd);
     } elif isinstance(nd, uni.DeleteStmt) {
         self.lower_delete(nd);
+    } elif isinstance(nd, uni.TryStmt) {
+        self.lower_try(nd);
+    } elif isinstance(nd, uni.RaiseStmt) {
+        self.lower_raise(nd);
     } else {
         raise MirRefused(mir_refusal("statement", type(nd).__name__, nd));
     }

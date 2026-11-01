@@ -10575,6 +10575,7 @@ graph import compiler {
             | backends.native.foreign
             | backends.native.host_facts.primitive_methods_fact
             | backends.native.mir.emit
+            | backends.native.mir.lower
             | backends.native.na_ir_gen_pass.NaIRGenPass.__post_init__
             | c_interop._spec_for_name
             | passes.layout_pass

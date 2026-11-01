@@ -43,6 +43,8 @@ enum MirOp {
     TLS_BLOCK = "tls.block",
     GLOBAL_BLOCK = "global.block",
     SIZEOF = "sizeof",
+    EXC_FRAME = "exc.frame",
+    SETJMP = "setjmp",
     VTABLE_ADDR = "vtable.addr",
     FN_ADDR = "fn.addr",
     CALL_DTOR = "call.dtor",
