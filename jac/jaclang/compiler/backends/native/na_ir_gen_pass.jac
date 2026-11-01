@@ -527,6 +527,8 @@ walker NaIRGenPass(CompilerPass) {
         _helper_structs: set[str] = set(),
         closure_thunks: dict[str, ir.Function] = {},
         _closure_uid: int = 0,
+        _fresh_fn_values: set[str] = set(),
+        _nested_fn_frames: dict[str, ir.Function] = {},
         _opt_struct_types: dict[str, ir.IdentifiedStructType] = {},
         _loop_rebind_memo: dict[tuple[int, str], bool] = {};
 
@@ -1102,6 +1104,9 @@ walker NaIRGenPass(CompilerPass) {
 
     def _closure_struct_of(val_type: ir.Type) -> (str | None);
     def _static_fn_closure(closure_name: str, fn: ir.Function) -> ir.Value;
+    def _fn_identity_struct -> str;
+    def _fn_identity_slot(fn: ir.Function) -> (str | None);
+    def _fn_value_env(fn: ir.Function) -> (ir.Value | None);
     def _wrap_fn_as_closure_value(val: ir.Value) -> ir.Value;
     def _is_bare_function_value(val: ir.Value) -> bool;
     def _closure_like_type(val_type: ir.Type) -> bool;
@@ -1129,7 +1134,10 @@ walker NaIRGenPass(CompilerPass) {
     def _emit_closure_value(var_name: str, nd: uni.UniNode) -> (ir.Value | None);
     def _emit_closure_escape_error(var_name: str, nd: uni.UniNode) -> None;
     def _codegen_closure_call(
-        nd: uni.FuncCall, clos_val: ir.Value, struct_name: str
+        nd: uni.FuncCall,
+        clos_val: ir.Value,
+        struct_name: str,
+        none_guard: (ir.Value | None) = None
     ) -> (ir.Value | None);
 
     def _codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None);
@@ -3521,6 +3529,10 @@ walker NaIRGenPass(CompilerPass) {
     ) -> (tuple[(ir.Value, ir.Value)] | None);
 
     def _is_static_method_func(func: ir.Function) -> bool;
+    def _bound_method_owner(
+        type_name: str, method_name: str, fnty: ir.FunctionType
+    ) -> str;
+
     def _emit_bound_method_value(
         receiver: ir.Value, type_name: str, method_name: str
     ) -> (ir.Value | None);
