@@ -9,17 +9,8 @@ impl _char_count(s: str) -> int {
     count: int = 0;
     i: int = 0;
     while i < len(s) {
-        c: int = ord(s[i]);
         count += 1;
-        if c >= 240 {
-            i += 4;
-        } elif c >= 224 {
-            i += 3;
-        } elif c >= 192 {
-            i += 2;
-        } else {
-            i += 1;
-        }
+        i += 1;
     }
     return count;
 }

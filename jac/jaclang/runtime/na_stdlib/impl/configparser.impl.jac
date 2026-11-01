@@ -940,8 +940,9 @@ impl ConfigParser._strip_comments(text: str) -> str {
         } elif _is_ws(text, i - 1) {
             j3: int = 0;
             while j3 < len(self.inline_comment_prefixes) {
-                if _starts_at(text, self.inline_comment_prefixes[j3], i) {
-                    return _rstrip(text[0:i]);
+                prefix: str = self.inline_comment_prefixes[j3];
+                if _starts_at(text, prefix, i) {
+                    return _rstrip(text.split(prefix)[0]);
                 }
                 j3 += 1;
             }
