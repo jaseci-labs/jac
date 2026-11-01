@@ -29,7 +29,9 @@ def fn_body(text: str, name: str) -> str {
 
 """The sizes of the function's unwind record arrays."""
 def env_sizes(body: str) -> list[int] {
-    return [int(n) for n in re.findall(r'unwind\.env"? = alloca \[(\d+) x', body)];
+    return [
+        int(n) for n in re.findall(r'unwind\.env(?:\.\d+)?"? = alloca \[(\d+) x', body)
+    ];
 }
 
 """The locals that have a shadow slot."""

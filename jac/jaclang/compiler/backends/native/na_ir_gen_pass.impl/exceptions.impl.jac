@@ -1642,11 +1642,6 @@ impl NaIRGenPass._register_unwind_cleanup -> None {
         entry_blk.instructions.remove(cached);
     }
 
-    node_ty = self._unwind_node_type();
-    ab = ir.IRBuilder(entry_blk);
-    ab.position_at_start(entry_blk);
-    env_slot = ab.alloca(env_ty, name="unwind.env");
-    link = ab.alloca(node_ty, name="unwind.node");
     self._hoist_entry_allocas(entry_blk);
     shadows = self._unwind_shadow_slots(func, slots);
     anchor: any = None;
