@@ -1345,6 +1345,7 @@ walker NaIRGenPass(CompilerPass) {
     def _module_function_known(key: tuple[str, str]) -> bool;
     def _record_linked_decl(func: (ir.Function | None), decl: uni.Ability) -> None;
     def _ensure_dep_inference(dep_mod: uni.Module) -> None;
+    def _ensure_body_inference(method: uni.Ability) -> None;
     def _imported_function_demotions(imported_mod: uni.Module) -> (set | None);
     def _lower_module -> None;
     def _settle_module -> None;

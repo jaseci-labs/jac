@@ -210,15 +210,20 @@ test "a field added to an imported archetype rebuilds the unit that lays it out"
             "        w: float = 0.5,\n        tags: list[str] = [];"
         )
     );
-    Path(user).write_text(
-        Path(user).read_text().replace("v.norm1() + SCALE", "v.norm1() + v.w + SCALE")
-    );
-    _touch(user);
     (warm, warm_plan) = _plan_for(root_dir);
     lowered = warm.native_units().compiled_paths;
     assert shapes in lowered and user in lowered , lowered;
     if _can_link_host() {
-        assert _run(warm_plan, root_dir) == "5.25";
+        assert _run(warm_plan, root_dir) == "4.75";
+    }
+
+    Path(user).write_text(
+        Path(user).read_text().replace("v.norm1() + SCALE", "v.norm1() + v.w + SCALE")
+    );
+    (reader, reader_plan) = _plan_for(root_dir);
+    assert user in reader.native_units().compiled_paths;
+    if _can_link_host() {
+        assert _run(reader_plan, root_dir) == "5.25";
     }
 }
 
@@ -244,5 +249,54 @@ test "a signature change in an imported method rebuilds its caller" {
     assert shapes in lowered and user in lowered , lowered;
     if _can_link_host() {
         assert _run(warm_plan, root_dir) == "7.25";
+    }
+}
+
+glob INHERITED_SOURCES: dict[str, str] = {
+         "bases.jac": (
+             "obj Primary {\n"
+             "    has a: int = 1;\n"
+             "}\n\n"
+             "obj Fractions {\n"
+             "    has b: int = 2;\n\n"
+             "    def halves -> list[float] {\n"
+             "        return [i / 2.0 for i in range(3)];\n"
+             "    }\n"
+             "}\n"
+         ),
+         "kids.jac": (
+             "import from bases { Primary, Fractions }\n\n"
+             "obj Inherits(Primary, Fractions) { }\n\n"
+             "obj CallsUnbound(Primary, Fractions) {\n"
+             "    def go -> list[float] {\n"
+             "        return Fractions.halves(self);\n"
+             "    }\n"
+             "}\n\n"
+             "def:pub measure -> float {\n"
+             "    return sum(Inherits().halves()) + sum(CallsUnbound().go());\n"
+             "}\n"
+         ),
+         "top.jac": "import from kids { measure }\n\nwith entry {\n    print(measure());\n}\n"
+     };
+
+test "a body inherited from a secondary base keeps its types on a one-file rebuild" {
+    root_dir = tempfile.mkdtemp(prefix="jac-dep-decls-");
+    for (name, text) in INHERITED_SOURCES.items() {
+        Path(root_dir, name).write_text(text);
+    }
+    kids = os.path.realpath(os.path.join(root_dir, "kids.jac"));
+    (prog, plan) = _plan_for(root_dir);
+    cold_bitcode = prog.native_units().bitcode_for(kids, _opts());
+    assert cold_bitcode is not None;
+    if _can_link_host() {
+        assert _run(plan, root_dir) == "3.0";
+    }
+
+    _touch(kids);
+    (warm, warm_plan) = _plan_for(root_dir);
+    assert warm.native_units().compiled_paths == [kids] , warm.native_units().compiled_paths;
+    assert warm.native_units().bitcode_for(kids, _opts()) == cold_bitcode , "the rebuilt unit lowered differently";
+    if _can_link_host() {
+        assert _run(warm_plan, root_dir) == "3.0";
     }
 }

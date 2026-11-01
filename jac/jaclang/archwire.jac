@@ -6178,9 +6178,13 @@ graph import compiler {
     driver.pass_driver as pass_driver ++> tests.test_pipeline_products;
     driver.pipeline ++> [
         backends.es.client_kernel_cache._lower
-            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference
+            | backends.native.na_ir_gen_pass.NaIRGenPass._ensure_body_inference
             | passes.layout_pass.get_layout_registry
             | tools.lang_tools { CompilationProduct, require },
+        backends.native.na_ir_gen_pass.NaIRGenPass._ensure_dep_inference {
+            CompilationProduct,
+            require
+        },
         jc_unit { early_passes },
         tests.test_module_exports
             | tools.cfg_dot.cfg_dot_from_file

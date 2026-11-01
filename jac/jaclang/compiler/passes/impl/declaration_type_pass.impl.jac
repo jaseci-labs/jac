@@ -22,8 +22,8 @@ impl declaration_body_roots(module: Module) -> set[int] {
         }
     }
     for code in module.get_all_sub_nodes(ModuleCode) {
-        if code.find_parent_of_type(Archetype) is None
-            and code.find_parent_of_type(Enum) is None {
+        if code.enclosing_decl(Archetype) is None
+            and code.enclosing_decl(Enum) is None {
             roots.add(id(code));
         }
     }
