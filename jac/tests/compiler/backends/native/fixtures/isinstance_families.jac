@@ -192,7 +192,7 @@ def find_parent_of_types(nd: Stmt, types: tuple[type[Stmt], ...]) -> int {
     return 0;
 }
 
-def link_sequential(body: (Sequence | None)) -> int {
+def link_sequential(body: (Sequence[Stmt] | None)) -> int {
     if body is not None and isinstance(body, Sequence) {
         return len(list(body));
     }
