@@ -233,8 +233,7 @@ test "native_unit follows native_only, the kernel roster and the native-unit com
     for rel in [
         ("runtime", "osp_kernel.jac"),
         ("runtime", "osp_graph.jac"),
-        ("runtime", "region_native.jac"),
-        ("compiler", "backends", "common", "fmt_kernel.jac")
+        ("runtime", "region_native.jac")
     ] {
         p = _pkg_path(*rel);
         assert native_unit(p) , f"{'/'.join(rel)} must be a native unit";

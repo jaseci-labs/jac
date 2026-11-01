@@ -128,7 +128,6 @@ SEED_PATHS: tuple[str, ...] = (
     "compiler/backends/py/pyast_gen_pass.impl/",
     "compiler/backends/py/pyast_gen_pass.jac",
     "compiler/backends/py/pyast_recipe.jac",
-    "compiler/backends/common/fmt_kernel.jac",
     "compiler/passes/annex_weave.jac",
     "compiler/passes/ast_validation_pass.jac",
     "compiler/passes/graph_lowering_pass.jac",

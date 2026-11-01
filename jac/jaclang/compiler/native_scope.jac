@@ -314,7 +314,6 @@ glob NATIVE_SCOPE: tuple[NativeScopeEntry, ...] = (
          "runtime/osp_kernel.jac",
          "runtime/osp_graph.jac",
          "runtime/region_native.jac",
-         "compiler/backends/common/fmt_kernel.jac",
          "runtime/osp_tag.jac",
          "compiler/backends/native/region_abi.jac"
      ),
