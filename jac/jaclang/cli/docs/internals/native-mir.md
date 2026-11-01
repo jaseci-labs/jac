@@ -203,6 +203,35 @@ does not change either does not invalidate importers.
 Each pass has a verifier that checks its output; the verifier is the contract
 the next pass relies on.
 
+## The runtime library
+
+The native runtime is Jac source, compiled once by this backend and linked
+like any other unit, the way `runtime/osp_kernel.jac`,
+`runtime/region_native.jac` and `fmt_kernel.jac` already are. It replaces the
+helpers `NaIRGenPass` emitted as hand-built LLVM IR into every unit (about 175
+per unit, specialized per element type and sharing state through weak
+globals).
+
+- **Allocation and refcounting:** the object header, `__rc_alloc` and its
+  pools, retain and release, drop dispatch and the cycle collector, written
+  against the header constants in `compiler/frontend/codeinfo.jac` with the
+  memory intrinsics (`__mem_load_*`, `__mem_store_*`, `__atomic_*`).
+- **Exceptions:** handler push and pop, raise, the lineage table and the
+  per-thread context. `setjmp` itself is emitted inline by the exception pass,
+  because it must run in the frame that a `longjmp` returns to.
+- **Strings, bytes, repr and hashing** as runtime functions over the `JacStr`
+  descriptor and `jacbytes` layouts.
+- **Containers** as generic Jac code (`list[T]`, `dict[K, V]`, `set[T]`), which
+  the monomorphization pass instantiates per MIR type, in place of the
+  per-element-type helpers.
+
+Runtime state that every unit shares (the collector, the trace registry, the
+exception context, the vtable and class-constructor registries) is defined
+once in the runtime unit, so it no longer needs weak duplicates. The layouts
+listed below stay byte-identical, so values cross between generated code,
+kernels and C exactly as before. Generated code reaches the runtime only
+through `call.runtime` instructions that the runtime lowering pass emits.
+
 ## Runtime ABI kept by emission
 
 The new emitter must produce output that links with units, kernels and C code
@@ -217,9 +246,10 @@ it does not generate. These stay exactly as they are:
   `JacClosure`, `JacIter`, the generator frame header, `JacExceptionState`,
   container headers and names, tuples, and the vtable layout
   (`VTABLE_HEADER_SLOTS`).
-- **Shared state** in weak globals: the cycle collector, trace registry,
-  exception context and lineage, TLS slots, `__jac_vtables`,
-  `__jac_class_ctors`, region TLS, `__jac_rc_threaded`.
+- **Shared state:** the cycle collector, trace registry, exception context and
+  lineage, TLS slots, `__jac_vtables`, `__jac_class_ctors`, region TLS and
+  `__jac_rc_threaded` keep their names and layouts; they are defined once, in
+  the runtime library.
 - **Kernels:** `runtime/osp_kernel.jac`, `runtime/osp_graph.jac`,
   `runtime/region_native.jac` and `compiler/backends/common/fmt_kernel.jac` are
   Jac units lowered by this same backend. Their struct layouts are ABI, so they
