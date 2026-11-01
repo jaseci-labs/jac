@@ -10,6 +10,8 @@ library has no gethostbyname_r() (macOS), the netdb lookups run under the
 module's lock, as USE_GETHOSTBYNAME_LOCK has them.
 """
 
+glob __all__ = ["sock_cloexec_works"];
+
 import from c {
     obj servent {
         has s_name: ptr[u8] = ptr[u8](),

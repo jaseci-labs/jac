@@ -6,6 +6,8 @@ Arguments are parsed with PyArg_ParseTuple() and its siblings in the same
 formats as the C methods, so conversions and messages are getargs.c's.
 """
 
+glob __all__ = ["sock_cloexec_works"];
+
 import from c {
     def socket(domain: i32, type: i32, protocol: i32) -> i32;  def bind(
         fd: i32, addr: ptr, len: u32

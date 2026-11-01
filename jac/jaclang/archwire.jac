@@ -2809,6 +2809,80 @@ graph import {
         | compiler.driver.build_services
         | data.type_identity
         | server.assembly { PreparedApplication }
+    runtime.python.bindings.abc ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.array ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.asyncio ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.atexit ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.binascii ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.bisect ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.blake2 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.bz2 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.cmath ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_cn ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_hk ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_iso2022 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_jp ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_kr ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.codecs_tw ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.collections ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.csv ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.datetime ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.decimal ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.elementtree ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.errno ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.fcntl ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.functools ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.grp ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.hashopenssl ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.heapq ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.hmac ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.itertools ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.json ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.locale ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.lsprof ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.lzma ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.math ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.md5 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.mmap ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.multibytecodec ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.multiprocessing ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.opcode ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.operator ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.pickle ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.posix ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.posixshmem ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.posixsubprocess ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.pwd ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.pyexpat ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.queue ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.random ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.resource ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.select ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sha1 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sha2 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sha3 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.socket ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sqlite3 ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sre ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.ssl ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.stat ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.statistics ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.struct ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.suggestions ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.sysconfig ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.syslog ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.termios ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.time ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.tracemalloc ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.types ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.typing ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.unicodedata ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.uuid ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.weakref ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.zlib ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.zoneinfo ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.bindings.zstd ++> compiler.backends.py.jacpython.native_api;
     runtime.python.capi ++> [
         compiler.backends.py.jacpython.native_api {
             boundary_failure,
@@ -2954,6 +3028,12 @@ graph import {
         compiler.frontend.python.parser_actions.pa_warn_escape { warn },
         compiler.frontend.python.source_encoding { take_buffer },
     ]
+    runtime.python.object_model.cell ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.enumerate ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.interpolation ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.picklebuffer ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.range ++> compiler.backends.py.jacpython.native_api;
+    runtime.python.object_model.template ++> compiler.backends.py.jacpython.native_api;
     runtime.python.objects ++> [
         compiler.backends.py.jacpython.assembler { PyCode },
         compiler.backends.py.jacpython.codegen_util {
@@ -7907,7 +7987,6 @@ graph import compiler {
             UnaryOp,
             Yield,
             YieldFrom,
-            alias,
             arguments,
             ast_node,
             comprehension,
@@ -11778,7 +11857,7 @@ graph import compiler.backends.py.jacpython {
             same_loc,
             stmt_cont
         },
-        compiler_match { basicblock, cfg_builder, cloc, loc, stmt_cont },
+        compiler_match { basicblock, cfg_builder, cloc, stmt_cont },
         flowgraph {
             basicblock,
             cinstr,
@@ -16187,11 +16266,13 @@ graph import runtime.python {
             | modules.sqlite3 { MemberField },
         modules.multiprocessing | modules.posix_stat { MemberField, MemberType },
         modules.pickle { record_int, record_set_int },
-    ]
-    bindings.members --> [
-        modules.lzma { record_set_byte, record_set_int, record_set_object },
         modules.unicodedata { record_set_address },
     ]
+    bindings.members --> modules.lzma {
+        record_set_byte,
+        record_set_int,
+        record_set_object
+    }
     bindings.module ++> [
         modules.abc {
             FunctionTable,

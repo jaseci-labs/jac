@@ -1520,7 +1520,7 @@ import from c {
     obj _PyUnicode_Name_CAPI {
         has getname: Callable[[u32, ptr[u8], i32, i32], i32],
             getcode: Callable[[ptr[u8], i32, ptr[u32], i32], i32];
-    }  import from jaclang.runtime.python.bindings.members { record_set_address }
+    }
     # Statically allocated so that any cached pointers stay valid after
     # unicodedata is removed from sys.modules and the capsule is gc'd
     # (gh-149449).

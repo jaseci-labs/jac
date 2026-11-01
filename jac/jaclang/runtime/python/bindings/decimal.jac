@@ -10,6 +10,14 @@ modules/decimal_*.jac and the libmpdec interface in modules/mpdecimal.jac;
 the docstrings are Modules/_decimal/docstrings.h's. See ../LICENSE.cpython.
 """
 
+glob __all__ = [
+         "mpd_mallocfunc",
+         "mpd_callocfunc",
+         "mpd_reallocfunc",
+         "mpd_free",
+         "mpd_traphandler"
+     ];
+
 # ---------------------------------------------------------------------------
 # Method wrappers: each binds a libmpdec operation to its method family.
 

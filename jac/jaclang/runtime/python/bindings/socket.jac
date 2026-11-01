@@ -6,6 +6,8 @@ The socket type is a heap type from a C-data PyType_Spec whose objects are
 PySocketSockObject records, the layout Modules/socketmodule.h gives _ssl.c.
 """
 
+glob __all__ = ["netdb_lock"];
+
 import from c {
     glob:priv sock_members: list[PyMemberDef] = [
              PyMemberDef(
