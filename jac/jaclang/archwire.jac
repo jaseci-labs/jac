@@ -451,7 +451,6 @@ graph import {
     client.vite_client_bundle --> compiler.driver.application._prepare_revision {
         make_client_bundle_builder
     }
-    compiler ++> cli.commands.analysis.gen_parser { gen_all_parsers }
     compiler.backends.es.backends.registry ++> [
         client.client_surface.prepend_active_runtime_globals
             | client.compiler.ViteCompiler._create_pages_entry_content
@@ -4163,7 +4162,6 @@ graph import {
     }
     project.modresolver --> compiler.kernel_api.enter_world { install_search_roots }
     project.modresolver ++> compiler.tools.session_queries {
-        in_client_npm_world,
         resolve_client_npm_declarations,
         resolve_client_npm_package
     }
@@ -4684,7 +4682,6 @@ graph import cli {
         SPEC_CHECK,
         SPEC_EXPLAIN,
         SPEC_FORMAT,
-        SPEC_GEN_PARSER,
         SPEC_PRECOMMIT,
         SPEC_TEST
     }
@@ -9698,6 +9695,7 @@ graph import compiler {
             config_element_pin,
             config_pin_for
         },
+        tools.session_queries { in_client_npm_world },
     ]
     placement.placement_pins --> [
         driver.jir._project_env_fingerprint_uncached { config_kind_space, pins_digest },
