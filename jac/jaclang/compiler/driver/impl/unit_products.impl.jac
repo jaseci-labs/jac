@@ -221,7 +221,8 @@ impl literal_to_json(value: any) -> dict[str, any] {
     }
     if isinstance(value, dict) {
         pairs: list[any] = [];
-        for (key, item) in value.items() {
+        entries: dict[any, any] = value;
+        for (key, item) in entries.items() {
             pair: list[any] = [str(key), literal_to_json(item)];
             pairs.append(pair);
         }

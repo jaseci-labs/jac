@@ -8,7 +8,7 @@ def _mod_globals(mod: ModuleRef) -> list[ValueRef];
 
 def _load_libc_module(libc_dir: str, triple: str) -> (ModuleRef | None);
 
-glob _LATE_BOUND: set = {
+glob _LATE_BOUND: set[str] = {
          "memcpy",
          "memmove",
          "memset",
@@ -38,7 +38,7 @@ glob _LATE_BOUND: set = {
          "scalbn",
 
      },
-     _BACKEND_BOUND: set = {"memcpy", "memmove", "memset", "__multi3"},
+     _BACKEND_BOUND: set[str] = {"memcpy", "memmove", "memset", "__multi3"},
      _ABI64_ADAPTED: set[str] = {
          "strlen",
          "malloc",

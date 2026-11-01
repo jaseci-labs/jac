@@ -1186,7 +1186,7 @@ impl NaIRGenPass._native_imports(
         if (self.module?.loc)
         else os.getcwd();
 
-    _native_ids: set = {
+    _native_ids: set[int] = {
         id(_s) for _s in ModuleFacts.iter_context_stmts(self.module, CodeContext.NATIVE)
     };
     _has_native_code: bool = len(_native_ids) > 0;
