@@ -32211,7 +32211,6 @@ graph import runtime.python {
             _object
         },
         object_model.type {
-            ALIGNOF_MAX_ALIGN_T,
             FRAME_OWNED_BY_GENERATOR,
             FRAME_OWNED_BY_INTERPRETER,
             MCACHE_SIZE_EXP,
@@ -33970,6 +33969,7 @@ graph import runtime.python {
             _PyRuntimeState_TUPLE_EMPTY
         },
         object_model.type {
+            ALIGNOF_MAX_ALIGN_T,
             PyInterpreterState_CACHED_OBJREDUCE,
             PyInterpreterState_RARE_SET_BASES,
             PyInterpreterState_RARE_SET_CLASS,
