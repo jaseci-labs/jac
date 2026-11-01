@@ -21,7 +21,8 @@ obj OAuthLogin {
         username: str = "",
         error: str = "",
         code: str = "",
-        challenge: dict[str, any] = {};
+        challenge: dict[str, any] = {},
+        connected: bool = False;
 }
 
 def holds_verified_email(user: dict[str, any], email: str) -> bool;
@@ -46,13 +47,17 @@ obj OAuthSession {
         mode: str = "web",
         link_user: str = "",
         client_callback: str = "",
-        client_managed: bool = False
+        client_managed: bool = False,
+        scopes: (list[str] | None) = None
     ) -> OAuthStart;
 
     def record(state: str) -> dict[str, any] | None;
     def callback_mode(state: str) -> str;
     async def finish(code: str, state: str, verifier: str) -> OAuthLogin;
-    async def exchange(code: str, verifier: str, link_user: str) -> OAuthLogin;
+    async def exchange(
+        code: str, verifier: str, link_user: str, scopes: (list[str] | None) = None
+    ) -> OAuthLogin;
+
     async def complete_native(code: str, state: str) -> str;
     def poll(poll: str) -> OAuthLogin;
 }

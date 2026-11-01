@@ -108,7 +108,12 @@ import from engine.src.runtime.mem {
     write_i64,
     io_alloc,
     io_free,
-    str_from_foreign_cstr
+    str_from_foreign_cstr,
+    byte_chr,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
 }
 import from engine.src.runtime.jsstring {
     wire_utf8_needs_convert,
@@ -530,7 +535,7 @@ def _write_file_sync_str(path: str, data: str) -> int {
         return -1;
     }
 
-    data_len: int = len(data);
+    data_len: int = str_nbytes(data);
     # Strings are stored as CESU-8 + a 4-char NUL sentinel internally; files
     # must get real UTF-8 (surrogate pairs → 4-byte scalars, sentinel → 0x00).
     # esbuild's >1MB temp-file input and every emitted chunk with an emoji were
@@ -574,7 +579,7 @@ def _append_file_sync_str(path: str, data: str) -> int {
         return -1;
     }
 
-    data_len: int = len(data);
+    data_len: int = str_nbytes(data);
     # Strings are stored as CESU-8 + a 4-char NUL sentinel internally; files
     # must get real UTF-8 (surrogate pairs → 4-byte scalars, sentinel → 0x00).
     # esbuild's >1MB temp-file input and every emitted chunk with an emoji were
@@ -653,15 +658,16 @@ def _make_fs_uv_error(rc: int, syscall: str, path: str) -> JSValue {
 def _path_from_read_arg(v: JSValue) -> str {
     if jsv_is_string_cell(v) {
         p: str = str_from_id(jsv_to_table_id(v));
-        if len(p) >= 7 and p[0:7] == "file://" {
-            rest: str = p[7:];
-            if len(rest) > 0 and rest[0] == "/" {
+        if str_nbytes(p) >= 7 and str_bslice(p, 0, 7) == "file://" {
+            rest: str = str_bslice_from(p, 7);
+            if len(rest) > 0 and byte_chr(str_byte(rest, 0)) == "/" {
                 return rest;
             }
             si: int = 0;
-            while si < len(rest) {
-                if rest[si] == "/" {
-                    return rest[si:];
+            _nb667_rest: int = str_nbytes(rest);
+            while si < _nb667_rest {
+                if byte_chr(str_byte(rest, si)) == "/" {
+                    return str_bslice_from(rest, si);
                 }
                 si = si + 1;
             }
@@ -1094,11 +1100,11 @@ def:pub fs_readlink_sync(args: list[JSValue]) -> JSValue {
 }
 
 def _fs_copy_str_to_buf(s: str) -> int {
-    n: int = len(s);
+    n: int = str_nbytes(s);
     buf: int = calloc(1, n + 1);
     i: int = 0;
     while i < n {
-        write_byte(buf, i, ord(s[i]));
+        write_byte(buf, i, str_byte(s, i));
         i = i + 1;
     }
     write_byte(buf, n, 0);
@@ -1128,7 +1134,7 @@ def:pub fs_mkdtemp_sync(args: list[JSValue]) -> JSValue {
     }
     tmpl: str = str_from_id(jsv_to_table_id(args[0]));
     # Node appends six random characters; libc mkdtemp requires a XXXXXX suffix.
-    if len(tmpl) < 6 or tmpl[len(tmpl) - 6:len(tmpl)] != "XXXXXX" {
+    if str_nbytes(tmpl) < 6 or str_bslice(tmpl, str_nbytes(tmpl) - 6, str_nbytes(tmpl)) != "XXXXXX" {
         tmpl = tmpl + "XXXXXX";
     }
     buf: int = _fs_copy_str_to_buf(tmpl);
@@ -1194,7 +1200,7 @@ def _realpath_walk(path: str, restarts: int) -> str {
             }
             # Resolve symlink: absolute replaces result; relative joins with parent
             new_path: str = "";
-            if len(link) > 0 and link[0] == "/" {
+            if len(link) > 0 and byte_chr(str_byte(link, 0)) == "/" {
                 new_path = path_normalize(link + remaining);
             } else {
                 new_path = path_normalize(result + "/" + link + remaining);
@@ -1420,7 +1426,7 @@ def:pub fs_create_write_stream(args: list[JSValue]) -> JSValue {
 """Write data to an open fd (used internally by createWriteStream)."""
 def:pub fs_wstream_write(fd: int, data: str) -> int {
     loop: int = uv_default_loop();
-    data_len: int = len(data);
+    data_len: int = str_nbytes(data);
     # Strings are stored as CESU-8 + a 4-char NUL sentinel internally; files
     # must get real UTF-8 (surrogate pairs → 4-byte scalars, sentinel → 0x00).
     # esbuild's >1MB temp-file input and every emitted chunk with an emoji were
@@ -1733,7 +1739,7 @@ def:pub fs_mkdtemp(args: list[JSValue]) -> JSValue {
         return js_undefined();
     }
     tmpl: str = str_from_id(jsv_to_table_id(args[0]));
-    if len(tmpl) < 6 or tmpl[len(tmpl) - 6:len(tmpl)] != "XXXXXX" {
+    if str_nbytes(tmpl) < 6 or str_bslice(tmpl, str_nbytes(tmpl) - 6, str_nbytes(tmpl)) != "XXXXXX" {
         tmpl = tmpl + "XXXXXX";
     }
     buf: int = _fs_copy_str_to_buf(tmpl);

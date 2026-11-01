@@ -135,8 +135,9 @@ Run with `jac test`.
 ### [J] Python Integration
 
 Import Python packages with `import from os { path }` (same syntax, no import:py prefix).
-Inline Python: `::py:: ... ::py::`. Use `class` only for Python-specific features (metaclasses,
-decorators, @property). Prefer `obj` for everything else.
+Code that must stay Python goes in a `.py` file next to your sources, imported like any module.
+Use `class` only for Python-specific features (metaclasses, decorators, @property). Prefer `obj`
+for everything else.
 
   jac://guide/jac-python-interop   PyPI imports, using Python from Jac and Jac from Python
 

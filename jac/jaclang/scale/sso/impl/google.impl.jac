@@ -10,6 +10,18 @@ impl GoogleSSOProvider.scope -> str {
     return 'openid email profile';
 }
 
+impl GoogleSSOProvider.connect_params -> dict[str, str] {
+    return {
+        'access_type': 'offline',
+        'prompt': 'consent',
+        'include_granted_scopes': 'true'
+    };
+}
+
+impl GoogleSSOProvider.revoke_url -> str {
+    return 'https://oauth2.googleapis.com/revoke';
+}
+
 impl GoogleSSOProvider.fetch_user(
     access_token: str, token_payload: dict[str, any]
 ) -> SSOUserInfo {

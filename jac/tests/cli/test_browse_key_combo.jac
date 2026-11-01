@@ -6,7 +6,8 @@ modifiers, so a page's Ctrl and Cmd shortcuts could not be driven headlessly."""
 import from jaclang.cli.browser_engine {
     _parse_key_combo,
     _key_down,
-    _select_all_modifier
+    _select_all_modifier,
+    _type_steps
 }
 
 test "modifier names become cdp flags" {
@@ -48,4 +49,16 @@ test "Cmd edit combos carry Chromium's editing command on macOS" {
     assert "commands" not in _key_down("a", 2, "darwin");
     assert "commands" not in _key_down("a", 4, "linux");
     assert "commands" not in _key_down("b", 4, "darwin");
+}
+
+test "typed newlines press Enter so multi-line text reaches a textarea" {
+    steps = _type_steps("a\nb");
+    assert [s["type"] for s in steps]
+        == ["keyDown", "keyUp", "keyDown", "keyUp", "keyDown", "keyUp"];
+    assert steps[0]["text"] == "a" and steps[4]["text"] == "b";
+    assert steps[2]["key"] == "Enter" and steps[2]["text"] == "\r";
+    assert steps[3]["key"] == "Enter";
+    assert len(_type_steps("x\r\ny")) == 6;
+    assert _type_steps("x\ry")[2]["key"] == "Enter";
+    assert _type_steps("") == [];
 }

@@ -53,6 +53,15 @@ import from engine.src.pm.run {
 import from engine.src.pm.fsx { fsx_cwd }
 import from engine.src.pm.lifecycle { lifecycle_force_node_shim }
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bfind,
+    str_bslice,
+    str_bslice_from,
+    str_byte,
+    str_nbytes
+}
+
 """The bun release whose behaviour and help texts this CLI reproduces."""
 glob:pub PM_BUN_COMPAT_VERSION: str = "1.3.13";
 
@@ -157,27 +166,27 @@ def _pm_scan_root_flags(argv: list[str]) -> PmGlobal {
     i: int = 1;
     while i < n {
         a: str = argv[i];
-        if len(a) < 2 or a[0] != "-" or a == "--" {
+        if str_nbytes(a) < 2 or byte_chr(str_byte(a, 0)) != "-" or a == "--" {
             break;
         }
         name: str = "";
         val: str = "";
         has_val: bool = False;
-        if a[1] == "-" {
-            body: str = a[2:];
+        if byte_chr(str_byte(a, 1)) == "-" {
+            body: str = str_bslice_from(a, 2);
             name = body;
-            eq: int = body.find("=");
+            eq: int = str_bfind(body, "=");
             if eq >= 0 {
-                name = body[0:eq];
-                val = body[eq + 1:];
+                name = str_bslice(body, 0, eq);
+                val = str_bslice_from(body, eq + 1);
                 has_val = True;
             }
         } else {
-            name = pm_root_short_flag(a[1:2]);
+            name = pm_root_short_flag(str_bslice(a, 1, 2));
             if name == "" {
-                name = a[1:];
-            } elif len(a) > 2 {
-                val = a[2:];
+                name = str_bslice_from(a, 1);
+            } elif str_nbytes(a) > 2 {
+                val = str_bslice_from(a, 2);
                 has_val = True;
             }
         }
@@ -211,10 +220,10 @@ def _pm_scan_root_flags(argv: list[str]) -> PmGlobal {
 glob PM_PROG: str = "js_engine";
 
 def _out(s: str) {
-    write(1, s, len(s));
+    write(1, s, str_nbytes(s));
 }
 def _err(s: str) {
-    write(2, s, len(s));
+    write(2, s, str_nbytes(s));
 }
 
 # ── Command names ─────────────────────────────────────────────────────────────
@@ -454,15 +463,15 @@ def:pub pm_parse_args(cmd: str, argv: list[str], start: int) -> PmArgs {
             i = i + 1;
             continue;
         }
-        if len(a) >= 3 and a[0] == "-" and a[1] == "-" {
-            body: str = a[2:];
+        if str_nbytes(a) >= 3 and byte_chr(str_byte(a, 0)) == "-" and byte_chr(str_byte(a, 1)) == "-" {
+            body: str = str_bslice_from(a, 2);
             name: str = body;
             val: str = "";
             has_val: bool = False;
-            eq: int = body.find("=");
+            eq: int = str_bfind(body, "=");
             if eq >= 0 {
-                name = body[0:eq];
-                val = body[eq + 1:];
+                name = str_bslice(body, 0, eq);
+                val = str_bslice_from(body, eq + 1);
                 has_val = True;
             }
             if name == "help" {
@@ -487,10 +496,11 @@ def:pub pm_parse_args(cmd: str, argv: list[str], start: int) -> PmArgs {
             i = i + 1;
             continue;
         }
-        if len(a) >= 2 and a[0] == "-" {
+        if str_nbytes(a) >= 2 and byte_chr(str_byte(a, 0)) == "-" {
             j: int = 1;
-            while j < len(a) {
-                c: str = a[j];
+            _nb501_a: int = str_nbytes(a);
+            while j < _nb501_a {
+                c: str = byte_chr(str_byte(a, j));
                 long: str = _pm_short_to_long(c);
                 if long == "" {
                     args.unknown.append("-" + c);
@@ -503,11 +513,11 @@ def:pub pm_parse_args(cmd: str, argv: list[str], start: int) -> PmArgs {
                     continue;
                 }
                 if _pm_flag_takes_value(long) {
-                    rest: str = a[j + 1:];
+                    rest: str = str_bslice_from(a, j + 1);
                     sval: str = "";
                     if rest != "" {
-                        if rest[0] == "=" {
-                            rest = rest[1:];
+                        if byte_chr(str_byte(rest, 0)) == "=" {
+                            rest = str_bslice_from(rest, 1);
                         }
                         sval = rest;
                     } elif i + 1 < n {
@@ -515,7 +525,7 @@ def:pub pm_parse_args(cmd: str, argv: list[str], start: int) -> PmArgs {
                         i = i + 1;
                     }
                     _pm_set_flag(args, long, sval);
-                    j = len(a);
+                    j = str_nbytes(a);
                     continue;
                 }
                 _pm_set_flag(args, long, "true");
@@ -536,7 +546,7 @@ def _pm_is_word_char(c: str) -> bool {
     if c == "" {
         return False;
     }
-    o: int = ord(c);
+    o: int = str_byte(c, 0);
     if o >= 48 and o <= 57 {
         return True;
     }
@@ -568,32 +578,32 @@ def:pub pm_localize_help(text: str) -> str {
         if li > 0 {
             out.append("\n");
         }
-        if line.find("https://") >= 0 or line.find("bun") < 0 {
+        if str_bfind(line, "https://") >= 0 or str_bfind(line, "bun") < 0 {
             out.append(line);
             li = li + 1;
             continue;
         }
-        n: int = len(line);
+        n: int = str_nbytes(line);
         i: int = 0;
         seg: int = 0;
         while i < n {
-            if line[i] == "b"
+            if byte_chr(str_byte(line, i)) == "b"
                 and i + 2 < n
-                and line[i + 1] == "u"
-                and line[i + 2] == "n"
-                and (i == 0 or not _pm_is_word_char(line[i - 1])) {
+                and byte_chr(str_byte(line, i + 1)) == "u"
+                and byte_chr(str_byte(line, i + 2)) == "n"
+                and (i == 0 or not _pm_is_word_char(byte_chr(str_byte(line, i - 1)))) {
                 after: int = i + 3;
                 repl: str = PM_PROG;
-                if after < n and line[after] == "x" {
+                if after < n and byte_chr(str_byte(line, after)) == "x" {
                     after = after + 1;
                     repl = PM_PROG + " x";
                 }
                 nxt: str = "";
                 if after < n {
-                    nxt = line[after];
+                    nxt = byte_chr(str_byte(line, after));
                 }
                 if not _pm_is_word_char(nxt) and nxt != "." {
-                    out.append(line[seg:i]);
+                    out.append(str_bslice(line, seg, i));
                     out.append(repl);
                     i = after;
                     seg = i;
@@ -602,7 +612,7 @@ def:pub pm_localize_help(text: str) -> str {
             }
             i = i + 1;
         }
-        out.append(line[seg:]);
+        out.append(str_bslice_from(line, seg));
         li = li + 1;
     }
     return "".join(out);

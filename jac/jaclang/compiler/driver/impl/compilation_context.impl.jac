@@ -38,7 +38,8 @@ impl owner_scope_options(
     program: JacProgram, options: (CompileOptions | None) = None
 ) -> (CompileOptions | None) {
     chosen = options if options is not None else program.options;
-    if program.internal or chosen.package_canonical {
+    if program.internal
+        or (chosen.package_canonical and not chosen.client_source_root) {
         return None;
     }
     return chosen;
@@ -81,6 +82,9 @@ impl bind_options(
     }
     if not new_entry and not bound.project_root {
         bound.project_root = program.options.project_root;
+    }
+    if not bound.client_source_root {
+        bound.client_source_root = program.options.client_source_root;
     }
     if not new_entry {
         bound.target_app = bound.target_app or program.options.target_app;

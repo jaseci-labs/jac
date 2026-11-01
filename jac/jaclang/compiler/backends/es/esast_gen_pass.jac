@@ -1,4 +1,5 @@
 import json;
+import os;
 import from typing { cast }
 
 glob _T = TypeVar('_T', bound=es.Node),
@@ -129,8 +130,7 @@ glob VIEW_ACC: str = "__jac_view_kids",
          'MatchStmt': "'match' statement",
          'WithStmt': "'with' statement",
          'OpenStmt': "'open' block",
-         'TypedCtxBlock': 'typed context block',
-         'PyInlineCode': 'inline Python block'
+         'TypedCtxBlock': 'typed context block'
      };
 
 obj ScopeInfo {

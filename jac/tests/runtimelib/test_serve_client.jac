@@ -2503,7 +2503,7 @@ for (const row of ROWS) {
     token: Boolean(localStorage.getItem("jac_token")),
     badge: document.getElementById("mode-badge").textContent,
     error: errorEl.style.display === "block" ? errorEl.textContent : null,
-    authedGraph: calls.some((c) => c.url.endsWith("/graph/data") && Boolean(c.auth)),
+    authedGraph: calls.some((c) => c.url.includes("/graph/node?") && Boolean(c.auth)),
   };
   const want = { token: row.token, badge: row.badge, error: row.error, authedGraph: row.token };
   const ok = JSON.stringify(seen) === JSON.stringify(want);
@@ -2641,8 +2641,9 @@ test "an unset worker count falls back to one worker where more would be refused
 }
 
 
-"""The stdlib server serves /graph, /graph/data and /docs, and the /graph login
-modal signs in against it (#8951)."""
+"""The stdlib server serves /graph, the explorer's /graph/node and
+/graph/neighbors, and /docs, and the /graph login modal signs in against it
+(#8951)."""
 test "stdlib server serves graph visualizer and docs" {
     import from tests.support { js_runtime_or_none }
     import from jaclang.server.settings { ServeSettings }
@@ -2657,11 +2658,13 @@ test "stdlib server serves graph visualizer and docs" {
         assert "<html" in page.text.lower() , "/graph should serve the visualizer html";
         seeded = client.post("/walker/leave_note", json={"text": "hi"});
         assert seeded.ok , f"seed walker failed: {seeded.text}";
-        data = client.get("/graph/data");
-        assert data.status_code == 200 , f"/graph/data: {data.text}";
-        payload = data.json();
-        assert "nodes" in payload and "edges" in payload , f"payload: {data.text}";
-        assert len(payload["nodes"]) >= 1 , "graph data should include the root node";
+        opened = client.get("/graph/node");
+        assert opened.status_code == 200 , f"/graph/node: {opened.text}";
+        assert opened.json()["root"] is True , f"/graph/node opens on the root: {opened.text}";
+        page = client.get(f"/graph/neighbors?id={opened.json()['id']}");
+        assert page.status_code == 200 , f"/graph/neighbors: {page.text}";
+        payload = page.json();
+        assert "nodes" in payload and "edges" in payload , f"payload: {page.text}";
         docs = client.get("/docs");
         assert docs.status_code == 200 , f"/docs: {docs.status_code}";
         assert "swagger-ui" in docs.text.lower() , "/docs should serve the API explorer";

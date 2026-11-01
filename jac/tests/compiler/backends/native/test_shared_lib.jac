@@ -929,6 +929,7 @@ test "private native helpers cannot satisfy another library's C symbols" {
     import ctypes;
     llvm.initialize_all_targets();
     llvm.initialize_all_asmprinters();
+    llvm.initialize_all_asmparsers();
     native = llvm.parse_assembly(
         """
         @state = global i64 41

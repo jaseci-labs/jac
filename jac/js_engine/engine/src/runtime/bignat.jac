@@ -1,5 +1,9 @@
 """Shared BigNat — base-10^9 limb arbitrary precision (Temporal Instant epoch ns)."""
 
+import from engine.src.runtime.mem {
+    str_bslice,
+    str_nbytes
+}
 glob BN_SIGN_IDX: int = 0,
      BN_LIMB_START: int = 1,
      BN_BASE: int = 1000000000;
@@ -49,7 +53,7 @@ def:priv _bn_trim_limbs(limbs: list[int]) -> list[int] {
 
 def:priv _bn_pad9(n: int) -> str {
     s: str = str(n);
-    while len(s) < 9 {
+    while str_nbytes(s) < 9 {
         s = "0" + s;
     }
     return s;
@@ -59,17 +63,17 @@ def:priv _bn_from_digit_str(digits: str) -> list[int] {
     if len(digits) == 0 {
         return [0];
     }
-    while len(digits) > 1 and digits[0:1] == "0" {
-        digits = digits[1:len(digits)];
+    while str_nbytes(digits) > 1 and str_bslice(digits, 0, 1) == "0" {
+        digits = str_bslice(digits, 1, str_nbytes(digits));
     }
     limbs: list[int] = [];
-    pos: int = len(digits);
+    pos: int = str_nbytes(digits);
     while pos > 0 {
         start: int = pos - 9;
         if start < 0 {
             start = 0;
         }
-        limbs.append(int(digits[start:pos]));
+        limbs.append(int(str_bslice(digits, start, pos)));
         pos = start;
     }
     return _bn_trim_limbs(limbs);
@@ -164,15 +168,16 @@ def:pub bn_parse_decimal(s: str) -> list[int] {
     }
     i: int = 0;
     sign: int = 0;
-    if s[0:1] == "-" {
+    if str_bslice(s, 0, 1) == "-" {
         sign = 1;
         i = 1;
-    } elif s[0:1] == "+" {
+    } elif str_bslice(s, 0, 1) == "+" {
         i = 1;
     }
     digits: str = "";
-    while i < len(s) {
-        ch: str = s[i:i + 1];
+    _nb178_s: int = str_nbytes(s);
+    while i < _nb178_s {
+        ch: str = str_bslice(s, i, i + 1);
         if ch >= "0" and ch <= "9" {
             digits = digits + ch;
         } else {
@@ -377,8 +382,8 @@ def:priv _bn_divisor_as_int(b: list[int]) -> int {
         return limbs[0] + limbs[1] * BN_BASE;
     }
     bs: str = bn_to_string(b, 10);
-    if len(bs) > 0 and bs[0:1] == "-" {
-        bs = bs[1:len(bs)];
+    if len(bs) > 0 and str_bslice(bs, 0, 1) == "-" {
+        bs = str_bslice(bs, 1, str_nbytes(bs));
     }
     if len(bs) == 0 {
         return 0;
@@ -392,20 +397,21 @@ def:pub bn_divmod(a: list[int], b: list[int]) -> list[int] {
         sa: str = bn_to_string(a, 10);
         neg: bool = False;
         pos: int = 0;
-        if len(sa) > 0 and sa[0:1] == "-" {
+        if len(sa) > 0 and str_bslice(sa, 0, 1) == "-" {
             neg = True;
             pos = 1;
         }
         rem: int = 0;
         qdigits: str = "";
-        while pos < len(sa) {
-            rem = rem * 10 + int(sa[pos:pos + 1]);
+        _nb405_sa: int = str_nbytes(sa);
+        while pos < _nb405_sa {
+            rem = rem * 10 + int(str_bslice(sa, pos, pos + 1));
             qdigits = qdigits + str(rem // vb);
             rem = rem % vb;
             pos = pos + 1;
         }
-        while len(qdigits) > 1 and qdigits[0:1] == "0" {
-            qdigits = qdigits[1:len(qdigits)];
+        while str_nbytes(qdigits) > 1 and str_bslice(qdigits, 0, 1) == "0" {
+            qdigits = str_bslice(qdigits, 1, str_nbytes(qdigits));
         }
         if neg and qdigits != "0" {
             qdigits = "-" + qdigits;

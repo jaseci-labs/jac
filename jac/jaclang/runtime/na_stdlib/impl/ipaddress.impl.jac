@@ -883,21 +883,21 @@ impl _v6_parse(s: str) -> list[int] {
     k: int = 0;
     while k < parts_hi {
         v: int = _v6_hextet(parts[k], s);
-        hi = ((hi << 16) & -1) | ((lo >> 48) & 65535);
-        lo = ((lo << 16) | v) & -1;
+        hi = (wrapping_shl(hi, 16) & -1) | ((lo >> 48) & 65535);
+        lo = (wrapping_shl(lo, 16) | v) & -1;
         k += 1;
     }
     k = 0;
     while k < parts_skipped {
-        hi = ((hi << 16) & -1) | ((lo >> 48) & 65535);
-        lo = (lo << 16) & -1;
+        hi = (wrapping_shl(hi, 16) & -1) | ((lo >> 48) & 65535);
+        lo = wrapping_shl(lo, 16) & -1;
         k += 1;
     }
     k = len(parts) - parts_lo;
     while k < len(parts) {
         v = _v6_hextet(parts[k], s);
-        hi = ((hi << 16) & -1) | ((lo >> 48) & 65535);
-        lo = ((lo << 16) | v) & -1;
+        hi = (wrapping_shl(hi, 16) & -1) | ((lo >> 48) & 65535);
+        lo = (wrapping_shl(lo, 16) | v) & -1;
         k += 1;
     }
     out: list[int] = [];
@@ -1208,8 +1208,8 @@ impl IPv6Address.init(address: any, hi: int = -1) {
         l: int = 0;
         k: int = 0;
         while k < 8 {
-            h = (h << 8) | address[k];
-            l = (l << 8) | address[k + 8];
+            h = wrapping_shl(h, 8) | address[k];
+            l = wrapping_shl(l, 8) | address[k + 8];
             k += 1;
         }
         self._hi = h;
@@ -1351,8 +1351,8 @@ impl IPv6Network.init(address: any, strict: bool = True) {
         l: int = 0;
         k: int = 0;
         while k < 8 {
-            h = (h << 8) | addr[k];
-            l = (l << 8) | addr[k + 8];
+            h = wrapping_shl(h, 8) | addr[k];
+            l = wrapping_shl(l, 8) | addr[k + 8];
             k += 1;
         }
         hi = h;
@@ -1551,8 +1551,8 @@ impl IPv6Interface.init(address: any) {
         l: int = 0;
         k: int = 0;
         while k < 8 {
-            h = (h << 8) | address[k];
-            l = (l << 8) | address[k + 8];
+            h = wrapping_shl(h, 8) | address[k];
+            l = wrapping_shl(l, 8) | address[k + 8];
             k += 1;
         }
         self._hi = h;
