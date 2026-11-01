@@ -99,7 +99,10 @@ fn vendoredMatches(io: Io, a: std.mem.Allocator, tree: []const u8, vendored: []c
     return std.mem.eql(u8, std.mem.trim(u8, recorded, " \r\n"), vendored);
 }
 
-fn selectHost(io: Io, a: std.mem.Allocator, choice: HostChoice, dest: []const u8, pin: []const u8, vendored: []const u8, comptime probe: anytype) !Host {
+// `vendored` is the key the host's libraries must carry, or null when the
+// build takes its libraries elsewhere (a cross build) and needs only the
+// interpreter.
+fn selectHost(io: Io, a: std.mem.Allocator, choice: HostChoice, dest: []const u8, pin: []const u8, vendored: ?[]const u8, comptime probe: anytype) !Host {
     switch (choice) {
         .stock => return .bootstrap,
         .auto => {
@@ -109,14 +112,14 @@ fn selectHost(io: Io, a: std.mem.Allocator, choice: HostChoice, dest: []const u8
             // that no longer runs, leaves the bootstrap host to build.
             if (!pathExists(io, try std.fs.path.join(a, &.{ dest, "build-key" }))) return .bootstrap;
             const tree = try hostTree(io, a, dest) orelse return .bootstrap;
-            if (!try vendoredMatches(io, a, tree, vendored)) return .bootstrap;
+            if (vendored) |key| if (!try vendoredMatches(io, a, tree, key)) return .bootstrap;
             const version = probe(io, a, try std.fs.path.join(a, &.{ tree, host_parts[0] })) catch return .bootstrap;
             if (!std.mem.eql(u8, version, pin)) return .bootstrap;
             return .{ .installed = tree };
         },
         .installed => |path| {
             const tree = try hostTree(io, a, path) orelse return error.IncompleteHostRuntime;
-            if (!try vendoredMatches(io, a, tree, vendored)) return error.VendoredLibrariesDiffer;
+            if (vendored) |key| if (!try vendoredMatches(io, a, tree, key)) return error.VendoredLibrariesDiffer;
             const version = try probe(io, a, try std.fs.path.join(a, &.{ tree, host_parts[0] }));
             if (!std.mem.eql(u8, version, pin)) return error.HostVersionMismatch;
             return .{ .installed = tree };
@@ -171,11 +174,18 @@ pub fn main(init: std.process.Init) !void {
     const mode = parseMode(args) catch seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--host] [--reuse-lowered] [" ++ host_flag ++ "auto|stock|<install prefix>]", .{});
     const platform = args[1];
     if (!supported(platform)) seed.die("build-python: unsupported platform {s}", .{platform});
-    if (!std.mem.eql(u8, platform, hostPlatform()))
-        seed.die("build-python: build {s} on its matching release runner (host is {s})", .{ platform, hostPlatform() });
+    // A JacPython for another platform is cross-built on this machine's own
+    // interpreter: the previous output for this machine's platform beside
+    // the destination, or its bootstrap host. Stock CPython builds only on
+    // its own platform.
+    const build_platform = hostPlatform();
+    const cross = !std.mem.eql(u8, platform, build_platform);
+    if (cross and (mode == .host or !supported(build_platform)))
+        seed.die("build-python: stock CPython for {s} builds on {s} (this machine is {s}); another platform's JacPython is cross-built with -Dpython=jacpython", .{ platform, platform, build_platform });
     const dest = args[2];
     const root = args[3];
-    const host_dest = try std.fmt.allocPrint(a, "{s}.host", .{dest});
+    const host_platform_dest = if (cross) try std.fs.path.join(a, &.{ std.fs.path.dirname(dest) orelse ".", build_platform }) else dest;
+    const host_dest = try std.fmt.allocPrint(a, "{s}.host", .{host_platform_dest});
     const manifest_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/sources.json" });
     const manifest = try Io.Dir.cwd().readFileAlloc(io, manifest_path, a, .unlimited);
     const sources = try std.json.parseFromSliceLeaky(std.json.ArrayHashMap(Source), a, manifest, .{});
@@ -186,7 +196,7 @@ pub fn main(init: std.process.Init) !void {
     const old = Io.Dir.cwd().readFileAlloc(io, stamp_path, a, .limited(128)) catch "";
     const python = try std.fs.path.join(a, &.{ dest, "python/install/bin/python3.14" });
     if (std.mem.eql(u8, old, &key) and seed.fileExists(io, python)) {
-        try runSmoke(io, python, smoke, mode);
+        if (!cross) try runSmoke(io, python, smoke, mode);
         seed.log("build-python: cached {s} ({s})", .{ platform, key[0..16] });
         return;
     }
@@ -195,26 +205,28 @@ pub fn main(init: std.process.Init) !void {
         if (try sourcesKey(io, a, platform, root, dest)) |lowered| {
             const recorded = Io.Dir.cwd().readFileAlloc(io, sources_stamp, a, .limited(128)) catch "";
             if (std.mem.eql(u8, recorded, &lowered)) {
-                try runSmoke(io, python, smoke, mode);
+                if (!cross) try runSmoke(io, python, smoke, mode);
                 seed.log("build-python: reusing {s}; the sources it was lowered from are unchanged ({s})", .{ platform, lowered[0..16] });
                 return;
             }
         }
     }
-    // Something is built: choose the interpreter the JacPython build runs on.
+    // Something is built. A cross build's libraries are compiled for the
+    // target first; then choose the interpreter the JacPython build runs on.
+    const vendored_tree: ?[]const u8 = if (cross) try crossVendored(io, init.gpa, a, platform, dest, root, args[4], sources, &vendored) else null;
     var host_tree: []const u8 = host_dest;
     var provenance: []const u8 = "";
     if (mode == .jacpython) {
         const pin = (sources.map.get("cpython") orelse return error.MissingCPythonSource).version orelse return error.MissingCPythonVersion;
-        const host = selectHost(io, a, choice, dest, pin, &vendored, probeVersion) catch |err|
+        const host = selectHost(io, a, choice, host_platform_dest, pin, if (cross) null else &vendored, probeVersion) catch |err|
             seed.die("build-python: cannot build on {s}: {s}. A host is a finished build output, or its install prefix, on Python {s} with python/install, python/build/{{include,lib,cacert.pem,vendored-key}} and python/licenses, its vendored-key matching these pins; " ++ host_flag ++ "stock builds the bootstrap host instead.", .{ switch (choice) {
                 .installed => |path| path,
-                else => dest,
+                else => host_platform_dest,
             }, @errorName(err), pin });
         switch (host) {
             .bootstrap => {
                 seed.log("build-python: building on the bootstrap host (stock CPython from the pinned archive)", .{});
-                var host_build = try std.process.spawn(io, .{ .argv = &.{ args[0], platform, host_dest, root, args[4], "--host" } });
+                var host_build = try std.process.spawn(io, .{ .argv = &.{ args[0], build_platform, host_dest, root, args[4], "--host" } });
                 const result = try host_build.wait(io);
                 if (result != .exited or result.exited != 0) return error.HostPythonBuildFailed;
                 const host_key = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ host_dest, "build-key" }), a, .limited(128)) catch "";
@@ -226,44 +238,13 @@ pub fn main(init: std.process.Init) !void {
                 provenance = try std.fmt.allocPrint(a, "installed {s}\n", .{try hostIdentity(io, a, tree)});
             },
         }
+        if (cross) provenance = try std.fmt.allocPrint(a, "{s}cross-built on {s}\n", .{ provenance, build_platform });
     }
     const work = try std.fmt.allocPrint(a, "{s}.work", .{dest});
     // A failed build never produces the completion stamp or replaces a good tree.
     try Io.Dir.cwd().deleteTree(io, work);
     try Io.Dir.cwd().createDirPath(io, work);
-    const source_cache = try std.fs.path.join(a, &.{ root, ".python-build/jacpython/sources" });
-    for (sources.map.keys(), sources.map.values()) |name, source| {
-        if (mode == .jacpython and !std.mem.eql(u8, name, "cpython")) continue;
-        seed.log("build-python: source {s}", .{name});
-        const gz = try sourceArchive(io, init.gpa, source_cache, source, seed.httpGetAlloc);
-        defer init.gpa.free(gz);
-        const source_dir = try std.fs.path.join(a, &.{ work, "src", name });
-        try Io.Dir.cwd().createDirPath(io, source_dir);
-        var dir = try Io.Dir.cwd().openDir(io, source_dir, .{ .iterate = true });
-        defer dir.close(io);
-        const window = try init.gpa.alloc(u8, std.compress.flate.max_window_len);
-        defer init.gpa.free(window);
-        var reader = Io.Reader.fixed(gz);
-        var decompressor: std.compress.flate.Decompress = .init(&reader, .gzip, window);
-        try std.tar.extract(io, dir, &decompressor.reader, .{
-            .mode_mode = .executable_bit_only,
-            .strip_components = 1,
-        });
-        if (std.mem.eql(u8, name, "cpython")) {
-            const list_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/cpython-sources.txt" });
-            const list = try Io.Dir.cwd().readFileAlloc(io, list_path, a, .limited(128 * 1024));
-            const retained = if (mode == .jacpython) list else try cSourceManifest(a, list);
-            try generatedHeadersOnly(retained);
-            try retainSources(io, a, dir, retained);
-            try stageGenerated(io, a, root, dir, list);
-            // One parser owns the manifest. build.sh checks the finished tree
-            // against this list rather than reading the markers again.
-            try Io.Dir.cwd().writeFile(io, .{
-                .sub_path = try std.fs.path.join(a, &.{ work, "absent-inputs" }),
-                .data = try absentInputs(a, list, mode),
-            });
-        }
-    }
+    try extractSources(io, init.gpa, a, root, work, sources, mode);
     const recipe = try std.fs.path.join(a, &.{ root, "bootstrap/python" });
     switch (mode) {
         // The build-only host is stock CPython: its own configure and make.
@@ -279,6 +260,8 @@ pub fn main(init: std.process.Init) !void {
             .zig = args[4],
             .recipe = recipe,
             .host = host_tree,
+            .vendored = vendored_tree orelse host_tree,
+            .cross = cross,
             .root = root,
             .jobs = try jobCount(init.environ_map),
             .environ = init.environ_map,
@@ -304,13 +287,84 @@ pub fn main(init: std.process.Init) !void {
     try Io.Dir.cwd().deleteTree(io, dest);
     try Io.Dir.cwd().rename(work, Io.Dir.cwd(), dest, io);
     // Verify relocation before allowing a cache hit on the next invocation.
-    try runSmoke(io, python, smoke, mode);
+    // A cross-built runtime is checked on its target.
+    if (!cross) try runSmoke(io, python, smoke, mode);
     try Io.Dir.cwd().writeFile(io, .{ .sub_path = stamp_path, .data = &key });
     if (mode == .jacpython) {
         if (try sourcesKey(io, a, platform, root, dest)) |lowered| {
             try Io.Dir.cwd().writeFile(io, .{ .sub_path = sources_stamp, .data = &lowered });
         }
     }
+}
+
+// The pinned archives a build reads, extracted into <work>/src: the CPython
+// tree pruned to what `mode` keeps, and for the bootstrap host the vendored
+// libraries' and the CA bundle's too.
+fn extractSources(io: Io, gpa: std.mem.Allocator, a: std.mem.Allocator, root: []const u8, work: []const u8, sources: std.json.ArrayHashMap(Source), mode: Mode) !void {
+    const source_cache = try std.fs.path.join(a, &.{ root, ".python-build/jacpython/sources" });
+    for (sources.map.keys(), sources.map.values()) |name, source| {
+        if (mode == .jacpython and !std.mem.eql(u8, name, "cpython")) continue;
+        seed.log("build-python: source {s}", .{name});
+        const gz = try sourceArchive(io, gpa, source_cache, source, seed.httpGetAlloc);
+        defer gpa.free(gz);
+        const source_dir = try std.fs.path.join(a, &.{ work, "src", name });
+        try Io.Dir.cwd().createDirPath(io, source_dir);
+        var dir = try Io.Dir.cwd().openDir(io, source_dir, .{ .iterate = true });
+        defer dir.close(io);
+        const window = try gpa.alloc(u8, std.compress.flate.max_window_len);
+        defer gpa.free(window);
+        var reader = Io.Reader.fixed(gz);
+        var decompressor: std.compress.flate.Decompress = .init(&reader, .gzip, window);
+        try std.tar.extract(io, dir, &decompressor.reader, .{
+            .mode_mode = .executable_bit_only,
+            .strip_components = 1,
+        });
+        if (std.mem.eql(u8, name, "cpython")) {
+            const list_path = try std.fs.path.join(a, &.{ root, "bootstrap/python/cpython-sources.txt" });
+            const list = try Io.Dir.cwd().readFileAlloc(io, list_path, a, .limited(128 * 1024));
+            const retained = if (mode == .jacpython) list else try cSourceManifest(a, list);
+            try generatedHeadersOnly(retained);
+            try retainSources(io, a, dir, retained);
+            try stageGenerated(io, a, root, dir, list);
+            // One parser owns the manifest. build.sh checks the finished tree
+            // against this list rather than reading the markers again.
+            try Io.Dir.cwd().writeFile(io, .{
+                .sub_path = try std.fs.path.join(a, &.{ work, "absent-inputs" }),
+                .data = try absentInputs(a, list, mode),
+            });
+        }
+    }
+}
+
+// The vendored libraries of a target this machine cannot run, which no host
+// here can hand over: build.sh cross-compiles them on this machine into
+// <dest>.vendored, laid out as an output's python/build and python/licenses,
+// and they are reused while their key holds.
+fn crossVendored(io: Io, gpa: std.mem.Allocator, a: std.mem.Allocator, platform: []const u8, dest: []const u8, root: []const u8, zig: []const u8, sources: std.json.ArrayHashMap(Source), vendored: []const u8) ![]const u8 {
+    const tree = try std.fmt.allocPrint(a, "{s}.vendored", .{dest});
+    const complete = for (host_parts[1..]) |part| {
+        if (!pathExists(io, try std.fs.path.join(a, &.{ tree, part }))) break false;
+    } else true;
+    if (complete and try vendoredMatches(io, a, tree, vendored)) {
+        seed.log("build-python: cached vendored libraries for {s} ({s})", .{ platform, vendored[0..16] });
+        return tree;
+    }
+    seed.log("build-python: cross-compiling the vendored libraries for {s}", .{platform});
+    const work = try std.fmt.allocPrint(a, "{s}.work", .{tree});
+    try Io.Dir.cwd().deleteTree(io, work);
+    try Io.Dir.cwd().createDirPath(io, work);
+    try extractSources(io, gpa, a, root, work, sources, .host);
+    const recipe = try std.fs.path.join(a, &.{ root, "bootstrap/python" });
+    var child = try std.process.spawn(io, .{ .argv = &.{ "sh", try std.fs.path.join(a, &.{ recipe, "build.sh" }), platform, work, zig, recipe, "vendored" } });
+    const term = try child.wait(io);
+    if (term != .exited or term.exited != 0) seed.die("build-python: cross-compiling {s}'s vendored libraries failed; logs at {s}/logs", .{ platform, work });
+    for ([_][]const u8{ "src", "deps", "bin", "cc-cache", "absent-inputs", "python/install" }) |rel| {
+        try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, rel }));
+    }
+    try Io.Dir.cwd().writeFile(io, .{ .sub_path = try std.fs.path.join(a, &.{ work, vendored_record }), .data = vendored });
+    try Io.Dir.cwd().deleteTree(io, tree);
+    try Io.Dir.cwd().rename(work, Io.Dir.cwd(), tree, io);
+    return tree;
 }
 
 /// JAC_PYTHON_JOBS: how many compilers run at once (default 4).
@@ -405,7 +459,7 @@ fn sourcesKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
 fn hashToolchain(io: Io, a: std.mem.Allocator, platform: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
     hash.update(platform);
     hash.update(builtin.zig_version_string);
-    if (builtin.os.tag == .macos) {
+    if (std.mem.startsWith(u8, platform, "macos-")) {
         const sdk = try std.process.run(a, io, .{ .argv = &.{ "xcrun", "--sdk", "macosx", "--show-sdk-version" } });
         if (sdk.term != .exited or sdk.term.exited != 0) return error.MissingMacOSSDK;
         hash.update(std.mem.trim(u8, sdk.stdout, " \r\n"));
@@ -431,6 +485,13 @@ fn vendoredKey(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const
 fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const u8, mode: Mode, hash: *std.crypto.hash.sha2.Sha256) !void {
     hash.update(@tagName(mode));
     try hashToolchain(io, a, platform, hash);
+    // A runtime cross-built for this platform elsewhere is a seed: its key
+    // differs from the one a build here computes, so the target builds its
+    // own on it instead of taking it as cached.
+    if (!std.mem.eql(u8, platform, hostPlatform())) {
+        hash.update("cross-built on");
+        hash.update(hostPlatform());
+    }
     for (inputs, 0..) |path, i| {
         if (mode != .jacpython and i >= first_jacpython_input) continue;
         const full = try std.fs.path.join(a, &.{ root, path });
@@ -1031,6 +1092,10 @@ test "a JacPython build runs on the previous runtime when it can, else on the bo
     // on the bootstrap host, a named host is an error.
     try std.testing.expectEqual(Host.bootstrap, try selectHost(io, a, .auto, out, "3.14.6", "new pins", Probe.pinned));
     try std.testing.expectError(error.VendoredLibrariesDiffer, selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", "new pins", Probe.pinned));
+    // A cross build compiles its libraries for the target and takes only the
+    // interpreter, whatever pins its libraries were built under.
+    try std.testing.expectEqualStrings(out, (try selectHost(io, a, .auto, out, "3.14.6", null, Probe.pinned)).installed);
+    try std.testing.expectEqualStrings(out, (try selectHost(io, a, .{ .installed = prefix }, out, "3.14.6", null, Probe.pinned)).installed);
     // An unfinished output (no stamp) is never the default host.
     try tmp.dir.deleteFile(io, "out/build-key");
     try std.testing.expectEqual(Host.bootstrap, try selectHost(io, a, .auto, out, "3.14.6", "pins", Probe.pinned));

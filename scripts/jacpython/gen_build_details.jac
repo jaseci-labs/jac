@@ -9,7 +9,10 @@ values the upstream script reads from sysconfig come from the build's own
 sysconfig data (the _sysconfigdata module in the build directory); those it
 reads from the running interpreter (sys.version_info, sys.implementation and
 importlib's suffix lists) are the host's, which is the same CPython release
-built with the same configuration, as a cross build's build Python is.
+built with the same configuration, as a cross build's build Python is. A host
+of another platform reports its own platform-tagged suffix; the build's
+EXT_SUFFIX takes its place, and get_platform() reads the target from
+_PYTHON_HOST_PLATFORM.
 
     jac run scripts/jacpython/gen_build_details.jac \\
         --sysconfig <build dir>/_sysconfigdata_<...>.py --output <build dir>/build-details.json
@@ -31,6 +34,13 @@ glob COMMAND: str = "scripts/jacpython/gen_build_details.jac",
          "releaselevel",
          "serial"
      );
+
+def extension_suffixes(config: dict[str, any]) -> list[str] {
+    return [
+        config["EXT_SUFFIX"] if suffix.startswith(".cpython-") else suffix
+        for suffix in importlib.machinery.EXTENSION_SUFFIXES
+    ];
+}
 
 def version_info_to_dict(version: any) -> dict[str, any] {
     return {field: getattr(version, field) for field in VERSION_FIELDS};
@@ -70,7 +80,7 @@ def generate_data(config: dict[str, any]) -> dict[str, any] {
     data["suffixes"] = {
         "source": importlib.machinery.SOURCE_SUFFIXES,
         "bytecode": importlib.machinery.BYTECODE_SUFFIXES,
-        "extensions": importlib.machinery.EXTENSION_SUFFIXES
+        "extensions": extension_suffixes(config)
     };
     libdir: str = config["LIBDIR"];
     ldlibrary: str = config["LDLIBRARY"];
@@ -81,7 +91,7 @@ def generate_data(config: dict[str, any]) -> dict[str, any] {
     # the build enables it.
     if ldlibrary != library {
         abi["extension_suffix"] = config.get("EXT_SUFFIX");
-        for suffix in importlib.machinery.EXTENSION_SUFFIXES {
+        for suffix in extension_suffixes(config) {
             if suffix.startswith(".abi") {
                 abi["stable_abi_suffix"] = suffix;
                 break;

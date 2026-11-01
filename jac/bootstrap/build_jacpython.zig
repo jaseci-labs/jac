@@ -8,6 +8,7 @@ const std = @import("std");
 const Io = std.Io;
 const Allocator = std.mem.Allocator;
 const Environ = std.process.Environ;
+const builtin = @import("builtin");
 const pyconfig = @import("pyconfig.zig");
 
 pub const Options = struct {
@@ -19,8 +20,17 @@ pub const Options = struct {
     /// bootstrap/python.
     recipe: []const u8,
     /// The build output the build runs on: the bootstrap host, or a previous
-    /// JacPython runtime (its python/install, python/build and python/licenses).
+    /// JacPython runtime (its python/install).
     host: []const u8,
+    /// The tree whose python/build (the vendored archives, their headers and
+    /// the CA bundle) and python/licenses this build links and ships: the
+    /// host's, or for a target this machine cannot run, the libraries build.sh
+    /// cross-compiled for it.
+    vendored: []const u8,
+    /// The target is another platform. Every step that runs Python runs on
+    /// the host, told the target as CPython's own cross builds tell their
+    /// build Python, and the smoke test is left to the target.
+    cross: bool = false,
     /// The Jac root (jac/).
     root: []const u8,
     jobs: usize,
@@ -37,14 +47,17 @@ const Platform = struct {
     target: []const u8,
     /// PLATFORM_TRIPLET: the sysconfigdata name, SOABI and LIBPL suffix.
     triplet: []const u8,
+    /// sysconfig.get_platform() on the target: _PYTHON_HOST_PLATFORM when
+    /// another platform's interpreter writes its sysconfig data.
+    sysconfig_platform: []const u8,
     deployment_target: ?[]const u8 = null,
 };
 
 fn platformOf(name: []const u8) !Platform {
-    if (std.mem.eql(u8, name, "linux-x86_64")) return .{ .os = .linux, .arch = .x86_64, .target = "x86_64-linux-gnu.2.17", .triplet = "x86_64-linux-gnu" };
-    if (std.mem.eql(u8, name, "linux-aarch64")) return .{ .os = .linux, .arch = .aarch64, .target = "aarch64-linux-gnu.2.17", .triplet = "aarch64-linux-gnu" };
-    if (std.mem.eql(u8, name, "macos-x86_64")) return .{ .os = .macos, .arch = .x86_64, .target = "x86_64-macos.12.0", .triplet = "darwin", .deployment_target = "12.0" };
-    if (std.mem.eql(u8, name, "macos-aarch64")) return .{ .os = .macos, .arch = .aarch64, .target = "aarch64-macos.11.0", .triplet = "darwin", .deployment_target = "11.0" };
+    if (std.mem.eql(u8, name, "linux-x86_64")) return .{ .os = .linux, .arch = .x86_64, .target = "x86_64-linux-gnu.2.17", .triplet = "x86_64-linux-gnu", .sysconfig_platform = "linux-x86_64" };
+    if (std.mem.eql(u8, name, "linux-aarch64")) return .{ .os = .linux, .arch = .aarch64, .target = "aarch64-linux-gnu.2.17", .triplet = "aarch64-linux-gnu", .sysconfig_platform = "linux-aarch64" };
+    if (std.mem.eql(u8, name, "macos-x86_64")) return .{ .os = .macos, .arch = .x86_64, .target = "x86_64-macos.12.0", .triplet = "darwin", .sysconfig_platform = "macosx-12.0-x86_64", .deployment_target = "12.0" };
+    if (std.mem.eql(u8, name, "macos-aarch64")) return .{ .os = .macos, .arch = .aarch64, .target = "aarch64-macos.11.0", .triplet = "darwin", .sysconfig_platform = "macosx-11.0-arm64", .deployment_target = "11.0" };
     return error.UnsupportedPlatform;
 }
 
@@ -94,7 +107,7 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
         try Io.Dir.cwd().createDirPath(io, dir);
     }
     // Only the pinned toolchain and the vendored libraries reach the compiler.
-    for ([_][]const u8{ "CFLAGS", "CPPFLAGS", "LDFLAGS", "CXXFLAGS", "CPATH", "C_INCLUDE_PATH", "CPLUS_INCLUDE_PATH", "LIBRARY_PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME" }) |name| {
+    for ([_][]const u8{ "CFLAGS", "CPPFLAGS", "LDFLAGS", "CXXFLAGS", "CPATH", "C_INCLUDE_PATH", "CPLUS_INCLUDE_PATH", "LIBRARY_PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME", "_PYTHON_HOST_PLATFORM", "_PYTHON_SYSCONFIGDATA_NAME", "_PYTHON_SYSCONFIGDATA_PATH", "_PYTHON_PROJECT_BASE" }) |name| {
         _ = c.env.swapRemove(name);
     }
     // Transient compiler caches stay in the build tree, as for the host.
@@ -116,11 +129,11 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     try cc.append(a, if (p.os == .linux) "-Wl,-rpath,$ORIGIN/../lib" else "-Wl,-rpath,@loader_path/../lib");
     c.cc = cc.items;
 
-    // The host's vendored libraries and their notices.
-    const host_build = c.path(&.{ o.host, "python/build" });
-    try copyTree(&c, c.path(&.{ host_build, "include" }), c.path(&.{ c.deps, "include" }));
-    try copyMatching(&c, c.path(&.{ host_build, "lib" }), c.path(&.{ c.deps, "lib" }), ".a");
-    try copyTree(&c, c.path(&.{ o.host, "python/licenses" }), c.path(&.{ o.work, "python/licenses" }));
+    // The vendored libraries and their notices.
+    const vendored_build = c.path(&.{ o.vendored, "python/build" });
+    try copyTree(&c, c.path(&.{ vendored_build, "include" }), c.path(&.{ c.deps, "include" }));
+    try copyMatching(&c, c.path(&.{ vendored_build, "lib" }), c.path(&.{ c.deps, "lib" }), ".a");
+    try copyTree(&c, c.path(&.{ o.vendored, "python/licenses" }), c.path(&.{ o.work, "python/licenses" }));
 
     try step(&c, "pyconfig", writePyconfig, .{&c});
 
@@ -147,19 +160,23 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     try step(&c, "install-tools", installTools, .{&c});
     try absentInputs(&c);
 
-    try step(&c, "finalize", runArgv, .{ &c, &[_][]const u8{ c.path(&.{ c.prefix, "bin/python" ++ version }), "-I", c.path(&.{ o.recipe, "finalize.py" }) }, null });
+    try step(&c, "finalize", runArgv, .{ &c, &[_][]const u8{ installedPython(&c), "-I", c.path(&.{ o.recipe, "finalize.py" }), c.prefix }, null });
     const build_dir = c.path(&.{ o.work, "python/build" });
     try Io.Dir.cwd().createDirPath(io, c.path(&.{ build_dir, "lib" }));
     try copyMatching(&c, c.path(&.{ c.deps, "lib" }), c.path(&.{ build_dir, "lib" }), ".a");
     // The headers too: with the archives, they let this runtime be the next
     // build's host without the bootstrap host that built them.
     try copyTree(&c, c.path(&.{ c.deps, "include" }), c.path(&.{ build_dir, "include" }));
-    try Io.Dir.copyFile(.cwd(), c.path(&.{ host_build, "cacert.pem" }), .cwd(), c.path(&.{ build_dir, "cacert.pem" }), io, .{});
+    try Io.Dir.copyFile(.cwd(), c.path(&.{ vendored_build, "cacert.pem" }), .cwd(), c.path(&.{ build_dir, "cacert.pem" }), io, .{});
     try Io.Dir.copyFile(.cwd(), c.path(&.{ native, "sha256" }), .cwd(), c.path(&.{ build_dir, "jacpython-native-sha256" }), io, .{});
     try Io.Dir.copyFile(.cwd(), c.path(&.{ native, "sources" }), .cwd(), c.path(&.{ build_dir, "jacpython-native-sources" }), io, .{});
     try Io.Dir.cwd().deleteTree(io, native);
     try c.env.put("PYTHONFAULTHANDLER", "1");
-    try step(&c, "smoke", runArgv, .{ &c, &[_][]const u8{ c.path(&.{ c.prefix, "bin/python" ++ version }), "-X", "faulthandler", "-I", c.path(&.{ o.recipe, "smoke.py" }), "jacpython" }, null });
+    if (o.cross) {
+        std.debug.print("build-python: smoke skipped: {s} does not run on this machine; run bootstrap/python/smoke.py jacpython with its interpreter on the target\n", .{o.platform});
+    } else {
+        try step(&c, "smoke", runArgv, .{ &c, &[_][]const u8{ c.path(&.{ c.prefix, "bin/python" ++ version }), "-X", "faulthandler", "-I", c.path(&.{ o.recipe, "smoke.py" }), "jacpython" }, null });
+    }
     // No compiled test modules, docs, or configuration machinery in the runtime.
     for ([_][]const u8{ "share", "lib/python" ++ version ++ "/test", "lib/python" ++ version ++ "/idlelib", "lib/python" ++ version ++ "/tkinter", "lib/python" ++ version ++ "/turtledemo" }) |rel| {
         try Io.Dir.cwd().deleteTree(io, c.path(&.{ c.prefix, rel }));
@@ -169,6 +186,13 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
 
 fn hostPython(c: *Ctx) []const u8 {
     return c.path(&.{ c.o.host, "python/install/bin/python" ++ version });
+}
+
+/// The interpreter that runs Python over the installed tree (sysconfig,
+/// compileall, finalize): the new one, or the host when the target is
+/// another platform. The byte-code is the same either way.
+fn installedPython(c: *Ctx) []const u8 {
+    return if (c.o.cross) hostPython(c) else layout(c).exename;
 }
 
 /// One build step: its own log under logs/, the last lines of which are
@@ -866,7 +890,8 @@ fn makefileVars(c: *Ctx) ![]const u8 {
         try mods.appendSlice(a, flag);
     }
     const linux = c.p.os == .linux;
-    const host_type = try hostType(c);
+    const host_type = try gnuType(c, c.p.os, c.p.arch);
+    const build_type = if (c.o.cross) try gnuType(c, buildOs(), buildArch()) else host_type;
     var out: std.ArrayList(u8) = .empty;
     try out.print(a,
         \\# The configuration of the JacPython runtime, written by
@@ -954,7 +979,7 @@ fn makefileVars(c: *Ctx) ![]const u8 {
         \\IPHONEOS_DEPLOYMENT_TARGET=
         \\ENSUREPIP=      no
         \\HOST_GNU_TYPE= {[host_type]s}
-        \\BUILD_GNU_TYPE= {[host_type]s}
+        \\BUILD_GNU_TYPE= {[build_type]s}
         \\HOSTRUNNER=
         \\LIBRARY= libpython$(VERSION)$(ABIFLAGS).a
         \\LDLIBRARY=      {[ldlibrary]s}
@@ -1008,6 +1033,7 @@ fn makefileVars(c: *Ctx) ![]const u8 {
         .ldcxxshared = if (linux) "$(CXX) -shared $(PY_LDFLAGS)" else "$(CXX) -bundle -undefined dynamic_lookup",
         .deployment = c.p.deployment_target orelse "",
         .host_type = host_type,
+        .build_type = build_type,
         .ldlibrary = if (linux) "libpython$(LDVERSION).so" else "libpython$(LDVERSION).dylib",
         .libs = f.libs,
         .libm = f.libm,
@@ -1053,16 +1079,25 @@ fn configArgs(c: *Ctx) ![]const u8 {
     });
 }
 
-/// config.guess's name for the build machine.
-fn hostType(c: *Ctx) ![]const u8 {
-    return switch (c.p.os) {
-        .linux => if (c.p.arch == .x86_64) "x86_64-pc-linux-gnu" else "aarch64-unknown-linux-gnu",
+/// config.guess's name for a machine of this OS and architecture. A macOS
+/// name carries the running kernel's release, as config.guess reports it.
+fn gnuType(c: *Ctx, os: pyconfig.Os, arch: pyconfig.Arch) ![]const u8 {
+    return switch (os) {
+        .linux => if (arch == .x86_64) "x86_64-pc-linux-gnu" else "aarch64-unknown-linux-gnu",
         .macos => blk: {
             const uts = std.posix.uname();
             const release = std.mem.sliceTo(&uts.release, 0);
-            break :blk try std.fmt.allocPrint(c.a, "{s}-apple-darwin{s}", .{ @tagName(c.p.arch), release });
+            break :blk try std.fmt.allocPrint(c.a, "{s}-apple-darwin{s}", .{ @tagName(arch), release });
         },
     };
+}
+
+fn buildOs() pyconfig.Os {
+    return if (builtin.os.tag == .macos) .macos else .linux;
+}
+
+fn buildArch() pyconfig.Arch {
+    return if (builtin.cpu.arch == .aarch64) .aarch64 else .x86_64;
 }
 
 /// The sysconfig data CPython's `pybuilddir.txt` rule generates: the installed
@@ -1081,11 +1116,21 @@ fn sysconfig(c: *Ctx) !void {
     try c.env.put("CFLAGS", flags.configure_cflags);
     try c.env.put("CPPFLAGS", try std.fmt.allocPrint(c.a, "-I{s}/include", .{c.deps}));
     try c.env.put("LDFLAGS", try std.fmt.allocPrint(c.a, "-L{s}/lib", .{c.deps}));
-    defer for ([_][]const u8{ "CFLAGS", "CPPFLAGS", "LDFLAGS" }) |name| {
-        _ = c.env.swapRemove(name);
+    const name = try std.fmt.allocPrint(c.a, "_sysconfigdata__{s}_{s}", .{ if (c.p.os == .linux) "linux" else "darwin", c.p.triplet });
+    // Another platform's interpreter writes the target's data as CPython's
+    // cross builds have their build Python write it: under the target's
+    // platform and data name, with the prefixes from the makefile.
+    const cross_env = [_][2][]const u8{
+        .{ "_PYTHON_HOST_PLATFORM", c.p.sysconfig_platform },
+        .{ "_PYTHON_SYSCONFIGDATA_NAME", name },
+        .{ "_PYTHON_PROJECT_BASE", l.bindir },
+    };
+    if (c.o.cross) for (cross_env) |kv| try c.env.put(kv[0], kv[1]);
+    defer for ([_][]const u8{ "CFLAGS", "CPPFLAGS", "LDFLAGS", cross_env[0][0] }) |key| {
+        _ = c.env.swapRemove(key);
     };
     try runArgv(c, &.{
-        l.exename,                         "-E",                                    "-S", "-c",
+        installedPython(c),                "-E",                                    "-S", "-c",
         \\import sys
         \\import sysconfig.__main__ as generator
         \\generator.get_makefile_filename = lambda: sys.argv[1]
@@ -1094,8 +1139,10 @@ fn sysconfig(c: *Ctx) !void {
         ,
         c.path(&.{ l.libpl, "Makefile" }), c.path(&.{ l.includepy, "pyconfig.h" }),
     }, gen);
+    // The build-details generator runs on the host and reads only the
+    // target's platform; the data name would hide the host's own.
+    for (cross_env[1..]) |kv| _ = c.env.swapRemove(kv[0]);
     const builddir = std.mem.trim(u8, try readFile(c, c.path(&.{ gen, "pybuilddir.txt" })), " \r\n");
-    const name = try std.fmt.allocPrint(c.a, "_sysconfigdata__{s}_{s}", .{ if (c.p.os == .linux) "linux" else "darwin", c.p.triplet });
     const data = c.path(&.{ gen, builddir, try std.fmt.allocPrint(c.a, "{s}.py", .{name}) });
     const json_name = try std.fmt.allocPrint(c.a, "_sysconfig_vars__{s}_{s}.json", .{ if (c.p.os == .linux) "linux" else "darwin", c.p.triplet });
     const details = c.path(&.{ gen, builddir, "build-details.json" });
@@ -1114,9 +1161,10 @@ fn compileall(c: *Ctx) !void {
     defer _ = c.env.swapRemove("PYTHONPATH");
     const jobs = try std.fmt.allocPrint(c.a, "-j{d}", .{c.o.jobs});
     const script = c.path(&.{ l.libdest, "compileall.py" });
-    try runArgv(c, &.{ l.exename, "-E", "-Wi", script, "-o", "0", "-o", "1", "-o", "2", jobs, "-d", l.libdest, "-f", "-x", "bad_coding|badsyntax|site-packages", l.libdest }, null);
+    const python = installedPython(c);
+    try runArgv(c, &.{ python, "-E", "-Wi", script, "-o", "0", "-o", "1", "-o", "2", jobs, "-d", l.libdest, "-f", "-x", "bad_coding|badsyntax|site-packages", l.libdest }, null);
     const site = c.path(&.{ l.libdest, "site-packages" });
-    try runArgv(c, &.{ l.exename, "-E", "-Wi", script, "-o", "0", "-o", "1", "-o", "2", jobs, "-d", site, "-f", "-x", "badsyntax", site }, null);
+    try runArgv(c, &.{ python, "-E", "-Wi", script, "-o", "0", "-o", "1", "-o", "2", jobs, "-d", site, "-f", "-x", "badsyntax", site }, null);
 }
 
 // -------------------------------------------------------------------- copies
@@ -1186,7 +1234,7 @@ test "template substitution leaves unknown markers alone" {
 test "every release platform has a target and a triplet" {
     for ([_][]const u8{ "linux-x86_64", "linux-aarch64", "macos-x86_64", "macos-aarch64" }) |name| {
         const p = try platformOf(name);
-        try std.testing.expect(p.target.len > 0 and p.triplet.len > 0);
+        try std.testing.expect(p.target.len > 0 and p.triplet.len > 0 and p.sysconfig_platform.len > 0);
         try std.testing.expectEqual(p.os == .macos, p.deployment_target != null);
     }
     try std.testing.expectError(error.UnsupportedPlatform, platformOf("windows-x86_64"));

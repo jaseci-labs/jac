@@ -25,6 +25,7 @@
 //!   zig build                     # complete binary -> zig-out/bin/jac
 //!   zig build -Dpython=jacpython  # opt in to the native Python compiler
 //!   zig build -Dpython=jacpython -Djacpython-host=stock  # ...built on stock CPython
+//!   zig build build-python -Dpython=jacpython -Dtarget-platform=linux-aarch64  # cross-seed another platform
 //!   zig build -Ddev               # link compiler sources from this checkout
 //!   zig build -Djaclang-dir=PATH   # link another compiler source tree
 //!   zig build -Dpayload=PATH       # pack an existing payload
@@ -176,16 +177,13 @@ pub fn build(b: *std.Build) void {
     const seed = b.addExecutable(.{ .name = "build_python", .root_module = seed_mod });
     const pins_path = b.pathFromRoot(pins.PINS_PATH);
     const host_python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, host_osarch }));
+    const host_choice = if (std.mem.eql(u8, jacpython_host, "auto") or std.mem.eql(u8, jacpython_host, "stock")) jacpython_host else b.pathFromRoot(jacpython_host);
     const fetch_host = b.addRunArtifact(seed);
     fetch_host.addArgs(&.{ host_osarch, host_python_dir, b.pathFromRoot("."), b.graph.zig_exe });
     if (!jacpython) fetch_host.addArg("--host");
     if (reuse_python) fetch_host.addArg("--reuse-lowered");
-    if (jacpython) {
-        const choice = if (std.mem.eql(u8, jacpython_host, "auto") or std.mem.eql(u8, jacpython_host, "stock")) jacpython_host else b.pathFromRoot(jacpython_host);
-        fetch_host.addArg(b.fmt("--jacpython-host={s}", .{choice}));
-    }
+    if (jacpython) fetch_host.addArg(b.fmt("--jacpython-host={s}", .{host_choice}));
     fetch_host.has_side_effects = true;
-    b.step("build-python", "Build the source-pinned Python runtime and native libraries").dependOn(&fetch_host.step);
     const root = b.pathFromRoot(".");
 
     // The typeshed seed reads its pin (PIN + TARBALL_SHA256) out of the vendor
@@ -219,6 +217,26 @@ pub fn build(b: *std.Build) void {
     fetch_ts.has_side_effects = true;
     fetch_ts.addFileInput(b.path("jaclang/vendor/typeshed/PIN"));
     fetch_ts.addFileInput(b.path("jaclang/vendor/typeshed/TARBALL_SHA256"));
+
+    // build-python builds this machine's runtime, or with -Dtarget-platform
+    // another platform's JacPython, cross-built on this machine's
+    // interpreter (bootstrap/build_python.zig): the vendored libraries and
+    // the C are compiled for the target, and its smoke test runs there.
+    const python_platform = b.option([]const u8, "target-platform", "Platform build-python builds the runtime for: linux-x86_64, linux-aarch64, macos-x86_64 or macos-aarch64 (default: this machine's). Another platform's JacPython is cross-built on this machine's interpreter") orelse host_osarch;
+    const build_python_step = b.step("build-python", "Build the source-pinned Python runtime and native libraries");
+    if (std.mem.eql(u8, python_platform, host_osarch)) {
+        build_python_step.dependOn(&fetch_host.step);
+    } else {
+        const fetch_cross = b.addRunArtifact(seed);
+        fetch_cross.addArgs(&.{ python_platform, b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, python_platform })), b.pathFromRoot("."), b.graph.zig_exe });
+        if (!jacpython) fetch_cross.addArg("--host");
+        if (jacpython) fetch_cross.addArg(b.fmt("--jacpython-host={s}", .{host_choice}));
+        fetch_cross.has_side_effects = true;
+        // What fetch_host waits for: the typeshed stubs and the shim
+        // prepare_native lowers through.
+        for (fetch_host.step.dependencies.items) |dep| fetch_cross.step.dependOn(dep);
+        build_python_step.dependOn(&fetch_cross.step);
+    }
 
     const tool = JacTool{
         .b = b,
@@ -316,10 +334,13 @@ pub fn build(b: *std.Build) void {
     const python_dir = b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, osarch }));
     const python_tree = b.fmt("{s}/python", .{python_dir});
     const fetch_target: *std.Build.Step = if (std.mem.eql(u8, osarch, host_osarch)) &fetch_host.step else blk: {
+        // Cross-built on the host's runtime, which fetch_host builds first.
         const fetch = b.addRunArtifact(seed);
         fetch.addArgs(&.{ osarch, python_dir, root, b.graph.zig_exe });
         if (!jacpython) fetch.addArg("--host");
+        if (jacpython) fetch.addArg(b.fmt("--jacpython-host={s}", .{host_choice}));
         fetch.has_side_effects = true;
+        fetch.step.dependOn(&fetch_host.step);
         break :blk &fetch.step;
     };
 

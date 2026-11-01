@@ -2,21 +2,48 @@
 # The build-only host CPython: stock CPython and its vendored libraries, built
 # with CPython's own configure and make. Every C translation and archive uses
 # the pinned Zig. The JacPython runtime is built by build_jacpython.zig.
+#
+#   build.sh <platform> <work> <zig> <recipe>            the host CPython
+#   build.sh <platform> <work> <zig> <recipe> vendored   only the libraries
+#
+# The vendored form builds the libraries a JacPython build of another
+# platform links (build_python.zig cross-seeds that platform from this
+# machine): they are cross-compiled here, with autoconf's --host and --build,
+# so the target never runs make. Stock CPython builds only on its platform.
 set -eu
 platform=$1
 work=$2
 zig=$3
 recipe=$4
+only=${5:-}
+case "$only" in ''|vendored) ;; *) echo "build.sh: unknown mode $only" >&2; exit 1 ;; esac
 jobs=${JAC_PYTHON_JOBS:-4}
 case "$jobs" in ''|*[!0-9]*|0) echo 'JAC_PYTHON_JOBS must be a positive integer' >&2; exit 1;; esac
 case "$platform" in
-    linux-x86_64) target=x86_64-linux-gnu.2.17; openssl_target=linux-x86_64 ;;
-    linux-aarch64) target=aarch64-linux-gnu.2.17; openssl_target=linux-aarch64 ;;
-    macos-x86_64) target=x86_64-macos.12.0; openssl_target=darwin64-x86_64-cc ;;
-    macos-aarch64) target=aarch64-macos.11.0; openssl_target=darwin64-arm64-cc ;;
+    linux-x86_64) target=x86_64-linux-gnu.2.17; openssl_target=linux-x86_64; gnu_type=x86_64-pc-linux-gnu ;;
+    linux-aarch64) target=aarch64-linux-gnu.2.17; openssl_target=linux-aarch64; gnu_type=aarch64-unknown-linux-gnu ;;
+    macos-x86_64) target=x86_64-macos.12.0; openssl_target=darwin64-x86_64-cc; gnu_type=x86_64-apple-darwin ;;
+    macos-aarch64) target=aarch64-macos.11.0; openssl_target=darwin64-arm64-cc; gnu_type=aarch64-apple-darwin ;;
     *) echo "Unsupported Python release platform: $platform" >&2; exit 1 ;;
 esac
-for tool in make perl patch; do
+case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) build_platform=linux-x86_64; build_type=x86_64-pc-linux-gnu ;;
+    Linux-aarch64 | Linux-arm64) build_platform=linux-aarch64; build_type=aarch64-unknown-linux-gnu ;;
+    Darwin-x86_64) build_platform=macos-x86_64; build_type=x86_64-apple-darwin ;;
+    Darwin-arm64) build_platform=macos-aarch64; build_type=aarch64-apple-darwin ;;
+    *) build_platform=unsupported; build_type=unsupported ;;
+esac
+cross=
+if [ "$platform" != "$build_platform" ]; then
+    if [ "$only" != vendored ]; then
+        echo "Stock CPython for $platform builds on $platform (this machine is $build_platform)" >&2
+        exit 1
+    fi
+    cross="--host=$gnu_type --build=$build_type"
+fi
+tools="make perl"
+[ "$only" = vendored ] || tools="$tools patch"
+for tool in $tools; do
     command -v "$tool" >/dev/null || { echo "Source Python builds require $tool" >&2; exit 1; }
 done
 prefix=$work/python/install
@@ -106,7 +133,7 @@ sqlite() {
 }
 xz() {
     cd "$src/xz"
-    ./configure --prefix="$deps" --libdir="$deps/lib" --disable-shared \
+    ./configure $cross --prefix="$deps" --libdir="$deps/lib" --disable-shared \
         --disable-doc --disable-nls --disable-xz --disable-xzdec \
         --disable-lzmadec --disable-lzmainfo --disable-lzma-links --disable-scripts
     make -j"$jobs"
@@ -114,20 +141,20 @@ xz() {
 }
 libffi() {
     cd "$src/libffi"
-    ./configure --prefix="$deps" --libdir="$deps/lib" --disable-shared \
+    ./configure $cross --prefix="$deps" --libdir="$deps/lib" --disable-shared \
         --disable-docs --disable-multi-os-directory
     make -j"$jobs"
     make install
 }
 mpdecimal() {
     cd "$src/mpdecimal"
-    ./configure --prefix="$deps" --libdir="$deps/lib" --disable-shared --disable-cxx
+    ./configure $cross --prefix="$deps" --libdir="$deps/lib" --disable-shared --disable-cxx
     make -j"$jobs"
     make install
 }
 expat() {
     cd "$src/expat"
-    ./configure --prefix="$deps" --libdir="$deps/lib" --disable-shared \
+    ./configure $cross --prefix="$deps" --libdir="$deps/lib" --disable-shared \
         --without-docbook --without-examples --without-tests
     make -j"$jobs"
     make install
@@ -260,14 +287,18 @@ step libffi libffi
 step mpdecimal mpdecimal
 step expat expat
 step openssl openssl
-step cpython cpython
-step finalize "$prefix/bin/python3.14" -I "$recipe/finalize.py"
 mkdir -p "$work/python/build/lib" "$work/python/licenses"
 cp "$deps/lib/"*.a "$work/python/build/lib/"
 # Only dependency headers/archives are reused by the JacPython build. Host
 # CPython objects and libpython are never copied into the reduced runtime.
 cp -R "$deps/include" "$work/python/build/include"
 cp "$src/certifi/certifi/cacert.pem" "$work/python/build/cacert.pem"
+if [ "$only" = vendored ]; then
+    echo "build-python: vendored libraries for $platform ready"
+    exit 0
+fi
+step cpython cpython
+step finalize "$prefix/bin/python3.14" -I "$recipe/finalize.py"
 step smoke env PYTHONFAULTHANDLER=1 "$prefix/bin/python3.14" -X faulthandler -I "$recipe/smoke.py" host
 # No compiled test modules, docs, or configuration machinery in the runtime.
 rm -rf "$prefix/share" "$prefix/lib/python3.14/test" \
