@@ -27,6 +27,7 @@ obj NativeSnapshotPipeline {
         snapshot_path: (str | None) = None,
         optimizer_executor: any = None,
         optimizer_future: any = None,
+        optimizer_paths: list[str] = [],
         pending_optimization: list[NativeOptimizationInput] = [];
 
     def enqueue_snapshot(path: str, ir_text: str);
@@ -51,5 +52,5 @@ obj NativeSnapshotPipeline {
 def _snapshot_ir_text(path: str, ir_text: str) -> NativeSnapshotResult;
 
 def _optimize_snapshot_batch(
-    inputs: list[NativeOptimizationInput], options: CompileOptions
-) -> NativeOptimizationBatch;
+    bitcodes: list[bytes], options: CompileOptions
+) -> tuple[list[bytes], float];
