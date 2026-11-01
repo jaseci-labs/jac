@@ -1174,7 +1174,13 @@ impl _apply_to_function_uncached(
     class_type: (ClassType | None),
     shadowed: (set[str] | None) = None
 ) -> FunctionType {
-    clone = func.clone();
+    spec = func.param_spec();
+    captured = solution.get(spec.name)
+        if spec is not None and (shadowed is None or spec.name not in shadowed)
+        else None;
+    clone = func.with_param_spec(captured)
+        if isinstance(captured, FunctionType)
+        else func.clone();
 
     own_shadowed = shadowed;
     if shadowed is not None and func.type_params {

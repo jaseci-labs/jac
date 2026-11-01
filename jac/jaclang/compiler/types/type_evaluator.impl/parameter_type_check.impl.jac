@@ -1071,6 +1071,19 @@ impl TypeEvaluator.assign_type_to_type_var(
     }
 
     if isinstance(param_type, FunctionType) and isinstance(arg_type, FunctionType) {
+        spec = param_type.param_spec();
+        if spec is not None {
+            if spec.name and spec.name not in bindings {
+                bindings[spec.name] = arg_type;
+            }
+            if param_type.return_type is not None
+                and arg_type.return_type is not None {
+                self.assign_type_to_type_var(
+                    param_type.return_type, arg_type.return_type, bindings
+                );
+            }
+            return True;
+        }
         param_params: list[Parameter] = param_type.parameters or [];
         arg_params: list[Parameter] = arg_type.parameters or [];
         for (i, pp) in enumerate(param_params) {

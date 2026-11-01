@@ -1904,6 +1904,7 @@ impl TypeEvaluator._create_callable_type(
     param_types: list[TypeBase] = [];
     return_type: TypeBase = UnknownType();
     is_gradual: bool = False;
+    param_spec: (TypeVarType | None) = None;
     if type_args_expr is None {
         is_gradual = True;
         return create_callable_type([], return_type, is_gradual=True);
@@ -1927,7 +1928,10 @@ impl TypeEvaluator._create_callable_type(
             }
         } else {
             resolved_first = self.get_type_of_expression(first_arg);
-            if isinstance(resolved_first, TypeVarType) {
+            if isinstance(resolved_first, TypeVarType)
+                and resolved_first.is_param_spec {
+                param_spec = resolved_first;
+            } elif isinstance(resolved_first, TypeVarType) {
                 is_gradual = True;
             } elif self.is_paramspec_class(resolved_first)
                 or self.is_type_var_tuple_class(resolved_first) {
@@ -1956,7 +1960,9 @@ impl TypeEvaluator._create_callable_type(
         return_type = self._convert_to_instance(return_type);
         is_gradual = True;
     }
-    return create_callable_type(param_types, return_type, is_gradual=is_gradual);
+    return create_callable_type(
+        param_types, return_type, is_gradual=is_gradual, param_spec=param_spec
+    );
 }
 
 impl TypeEvaluator._get_special_form_type(
