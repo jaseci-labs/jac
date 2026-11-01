@@ -108,7 +108,10 @@ impl cg_check_compare(c: cpy_compiler, e: Compare) {
             if not right or not left {
                 literal = left_expr if not left else right_expr;
                 tname = cg_infer_type(literal);
-                tn = tname if tname is not None else "object";
+                tn: str = "object";
+                if tname is not None {
+                    tn = tname;
+                }
                 if isinstance(op, Is) {
                     cpy_compile_warn(
                         c,
