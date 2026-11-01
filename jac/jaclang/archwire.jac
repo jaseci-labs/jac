@@ -3057,6 +3057,7 @@ graph import {
             py_none
         },
         compiler.backends.py.jacpython.compiler_ir
+            | compiler.backends.py.jacpython.cpy_seq
             | compiler.frontend.python.ast_input
             | compiler.frontend.python.ast_nodes
             | compiler.frontend.python.ast_output { PyObj },
@@ -3478,6 +3479,7 @@ graph import {
             compare_filter_oparg,
             compare_oparg
         },
+        compiler.backends.py.jacpython.cpy_seq { has_target },
         compiler.backends.py.jacpython.flowgraph {
             OP_BUILD_LIST,
             OP_BUILD_SET,
