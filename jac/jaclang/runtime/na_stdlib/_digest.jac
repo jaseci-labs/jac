@@ -64,72 +64,6 @@ glob _MD5_K: list[u32] = [
          u32(0x2ad7d2bb),
          u32(0xeb86d391)
      ],
-     _MD5_S: list[u32] = [
-         u32(7),
-         u32(12),
-         u32(17),
-         u32(22),
-         u32(7),
-         u32(12),
-         u32(17),
-         u32(22),
-         u32(7),
-         u32(12),
-         u32(17),
-         u32(22),
-         u32(7),
-         u32(12),
-         u32(17),
-         u32(22),
-         u32(5),
-         u32(9),
-         u32(14),
-         u32(20),
-         u32(5),
-         u32(9),
-         u32(14),
-         u32(20),
-         u32(5),
-         u32(9),
-         u32(14),
-         u32(20),
-         u32(5),
-         u32(9),
-         u32(14),
-         u32(20),
-         u32(4),
-         u32(11),
-         u32(16),
-         u32(23),
-         u32(4),
-         u32(11),
-         u32(16),
-         u32(23),
-         u32(4),
-         u32(11),
-         u32(16),
-         u32(23),
-         u32(4),
-         u32(11),
-         u32(16),
-         u32(23),
-         u32(6),
-         u32(10),
-         u32(15),
-         u32(21),
-         u32(6),
-         u32(10),
-         u32(15),
-         u32(21),
-         u32(6),
-         u32(10),
-         u32(15),
-         u32(21),
-         u32(6),
-         u32(10),
-         u32(15),
-         u32(21)
-     ],
      _SHA256_K: list[u32] = [
          u32(0x428a2f98),
          u32(0x71374491),
@@ -534,8 +468,7 @@ obj Md5Core(DigestCore) {
 }
 
 obj Sha1Core(DigestCore) {
-    has h: list[u32] = [],
-        w: list[u32] = [];
+    has h: list[u32] = [];
 
     override def compress(address: int, last: bool);
     override def finish -> bytes;
@@ -543,8 +476,7 @@ obj Sha1Core(DigestCore) {
 }
 
 obj Sha256Core(DigestCore) {
-    has h: list[u32] = [],
-        w: list[u32] = [];
+    has h: list[u32] = [];
 
     override def compress(address: int, last: bool);
     override def finish -> bytes;
@@ -552,8 +484,7 @@ obj Sha256Core(DigestCore) {
 }
 
 obj Sha512Core(DigestCore) {
-    has h: list[u64] = [],
-        w: list[u64] = [];
+    has h: list[u64] = [];
 
     override def compress(address: int, last: bool);
     override def finish -> bytes;
@@ -573,7 +504,6 @@ obj Sha3Core(DigestCore) {
 
 obj Blake2sCore(DigestCore) {
     has h: list[u32] = [],
-        v: list[u32] = [],
         last_node: bool = False;
 
     override def compress(address: int, last: bool);
@@ -583,7 +513,6 @@ obj Blake2sCore(DigestCore) {
 
 obj Blake2bCore(DigestCore) {
     has h: list[u64] = [],
-        v: list[u64] = [],
         last_node: bool = False;
 
     override def compress(address: int, last: bool);
@@ -654,8 +583,16 @@ def _words64(h: list[u64], size: int, big: bool) -> bytes;
 
 def _keccak(a: list[u64], b: list[u64]);
 
-def _msg32(address: int, s: int) -> u32;
+def _msg32(address: int, sigma: int) -> u32;
 
-def _msg64(address: int, s: int) -> u64;
+def _msg64(address: int, sigma: int) -> u64;
 
-def _md5_step(a: u32, b: u32, f: u32, i: int, address: int, word: int) -> u32;
+def _md5_r(a: u32, b: u32, f: u32, k: u32, m: u32, s: u32) -> u32;
+
+def _e256(e: u32, f: u32, g: u32) -> u32;
+
+def _a256(a: u32, b: u32, c: u32) -> u32;
+
+def _e512(e: u64, f: u64, g: u64) -> u64;
+
+def _a512(a: u64, b: u64, c: u64) -> u64;
