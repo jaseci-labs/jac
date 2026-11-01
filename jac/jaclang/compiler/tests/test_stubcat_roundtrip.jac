@@ -22,6 +22,7 @@ glob SMALL_SET: list[str] = [
          "abc",
          "sys",
          "math",
+         "functools",
          "_typeshed",
          "_collections_abc",
          "collections",
@@ -181,6 +182,19 @@ test "function records keep their signatures" {
     ret = sqrt_type.return_type;
     assert isinstance(ret, ClassType) and ret.shared.class_name == "float" , ret;
     assert len(sqrt_type.parameters) == 1 , sqrt_type.parameters;
+}
+
+test "version-guarded overloads survive catalog export" {
+    if not sources_present() {
+        return;
+    }
+    (cat, _out) = small_catalog();
+    functools = cat.module("functools");
+    assert functools is not None;
+    reduce_symbols = functools.lookup_all("reduce", deep=False);
+    assert len(reduce_symbols) > 1 , (
+        f"catalog dropped guarded functools.reduce overloads: {len(reduce_symbols)}"
+    );
 }
 
 test "a catalog-backed check of a small program is clean" {

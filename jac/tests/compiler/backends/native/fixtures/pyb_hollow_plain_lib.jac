@@ -10,7 +10,7 @@ import from abc { ABC }
 obj PlainBase(ABC) {
     has seed: int = 0;
 
-    def postinit -> None {
+    def postinit {
         self.seed = self.hook(self.seed);
     }
 

@@ -384,7 +384,22 @@ test "a watch around the jac checkout reports no compiler source events" {
     assert _count_jac_files(package) == 0;
 }
 
-test "explicit application roots admit only their compiler source events" {
+test "compiler-source app files can be watched under an explicit compiler root" {
+    import os;
+    import from jaclang.compiler.frontend.codeinfo {
+        is_compiler_source_path,
+        jaclang_pkg_root
+    }
+    package = os.path.realpath(jaclang_pkg_root());
+    app_root = os.path.join(package, "scale", "tests", "fixtures");
+    app_file = os.path.join(app_root, "test_api.jac");
+    assert is_compiler_source_path(app_file);
+    watcher = JacFileWatcher(watch_paths=[app_root], compiler_source_roots=[app_root]);
+    watcher._on_change(app_file, ChangeType.MODIFIED);
+    assert list(watcher._pending_events) == [app_file];
+}
+
+test "explicit compiler roots admit only their compiler source events" {
     import os;
     import from jaclang.compiler.frontend.codeinfo { jaclang_pkg_root }
     package = os.path.realpath(jaclang_pkg_root());
@@ -984,6 +999,72 @@ test "reloading a broken module reports its errors once per reload" {
 }
 
 # --- TestHMRIntegration ---
+test "watcher survives ignored generated tree creation" {
+    with tempfile.TemporaryDirectory() as tmp {
+        app_dir = Path(tmp);
+        source = app_dir / "app.jac";
+        source.write_text("with entry { print(1); }\n");
+        watcher = JacFileWatcher(watch_paths=[str(app_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        generated = app_dir / ".jac" / "client" / "node_modules";
+        for i in range(100) {
+            (generated / f"package-{i}" / "node_modules" / "nested" / "package").mkdir(
+                parents=True
+            );
+        }
+        source.write_text("with entry { print(2); }\n");
+        nested = app_dir / "modules";
+        nested.mkdir();
+        time.sleep(1.2);
+        nested_source = nested / "child.jac";
+        nested_source.write_text("glob child = 1;\n");
+        time.sleep(0.5);
+        generated_root = os.path.realpath(str(app_dir / ".jac"));
+        if hasattr(watcher._observer, 'watched_paths') {
+            watched_dirs = {
+                os.path.realpath(path) for path in watcher._observer.watched_paths
+            };
+        } else {
+            watched_dirs = {
+                os.path.realpath(os.fsdecode(emitter.watch.path))
+                for emitter in watcher._observer.emitters
+            };
+        }
+        assert not any(
+            path == generated_root or path.startswith(generated_root + os.sep)
+            for path in watched_dirs
+        ) , str(watched_dirs);
+        generated_alias = app_dir / "generated-link";
+        symlink_created = False;
+        try {
+            os.symlink(str(generated), str(generated_alias), target_is_directory=True);
+            symlink_created = True;
+        } except (OSError, NotImplementedError) {}
+        if symlink_created {
+            alias_watcher = JacFileWatcher(watch_paths=[str(generated_alias)]);
+            alias_watcher.start();
+            alias_watched_dirs = list(alias_watcher._observer.emitters);
+            alias_watcher.stop();
+            assert not alias_watched_dirs , str(alias_watched_dirs);
+        }
+        watcher.stop();
+        observed = {os.path.realpath(event.path) for event in events};
+        assert os.path.realpath(str(source)) in observed , (
+            f"app source changes must still be delivered after generated files appear: {events}"
+        );
+        assert os.path.realpath(str(nested_source)) in observed , (
+            f"new app directories must be watched without recursive observers: {events}"
+        );
+        generated_root = os.path.realpath(str(app_dir / ".jac")) + os.sep;
+        assert not any(path.startswith(generated_root) for path in observed) , str(
+            events
+        );
+    }
+}
+
 test "file change triggers callback" {
     with tempfile.TemporaryDirectory() as tmp {
         temp_dir = Path(tmp);
@@ -1071,6 +1152,180 @@ test "moves emit delete plus create; directories flagged, noise filtered" {
             if d and n in {"node_modules", ".git"}
         };
         assert not noise , f"tooling directories must never reach callbacks, got {noise}";
+    }
+}
+
+test "an explicitly selected hidden app root still reports source changes" {
+    with tempfile.TemporaryDirectory() as tmp {
+        app_dir = Path(tmp) / ".myapp";
+        app_dir.mkdir();
+        source = app_dir / "main.jac";
+        source.write_text("glob value = 1;\n");
+        hidden = app_dir / ".generated";
+        hidden.mkdir();
+        watcher = JacFileWatcher(watch_paths=[str(app_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        source.write_text("glob value = 2;\n");
+        (hidden / "ignored.jac").write_text("glob ignored = 1;\n");
+        time.sleep(0.5);
+        watcher.stop();
+        observed = {os.path.realpath(event.path) for event in events};
+        assert os.path.realpath(str(source)) in observed , (
+            f"changes under an explicitly selected hidden app root must be watched: {events}"
+        );
+        assert os.path.realpath(str(hidden / "ignored.jac")) not in observed , (
+            f"hidden descendants must remain pruned: {events}"
+        );
+    }
+}
+
+test "moving a populated directory reports its matching files" {
+    import os;
+    with tempfile.TemporaryDirectory() as tmp {
+        app_root = Path(tmp) / "app";
+        incoming = Path(tmp) / "incoming";
+        app_root.mkdir();
+        incoming.mkdir();
+        source = incoming / "page.jac";
+        source.write_text("glob page = 1;\n");
+        (incoming / "style.css").write_text(".page { color: red; }\n");
+        (incoming / "readme.txt").write_text("not watched\n");
+        (incoming / ".generated").mkdir();
+        (incoming / ".generated" / "ignored.jac").write_text("glob ignored = 1;\n");
+        watcher = JacFileWatcher(watch_paths=[str(app_root)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        destination = app_root / "imported";
+        os.rename(str(incoming), str(destination));
+        time.sleep(0.6);
+        watcher.stop();
+        observed = {
+            (os.path.realpath(event.path), event.change_type) for event in events
+        };
+        assert (os.path.realpath(str(destination / "page.jac")), ChangeType.CREATED)
+            in observed , f"moved Jac sources must be reported: {events}";
+        assert (os.path.realpath(str(destination / "style.css")), ChangeType.CREATED)
+            in observed , f"moved client assets must be reported: {events}";
+        assert not any(
+            path == os.path.realpath(str(destination / "readme.txt"))
+                or path
+                    == os.path.realpath(
+                        str(destination / ".generated" / "ignored.jac")
+                    ) for (path, _) in observed
+        ) , f"non-matching and ignored files must stay filtered: {events}";
+    }
+}
+
+test "moving a watched directory keeps watching its descendants" {
+    import os;
+    with tempfile.TemporaryDirectory() as tmp {
+        app_dir = Path(tmp);
+        original = app_dir / "original";
+        original.mkdir();
+        source = original / "inside.jac";
+        source.write_text("glob value = 1;\n");
+        watcher = JacFileWatcher(watch_paths=[str(app_dir)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        moved = app_dir / "moved";
+        os.rename(str(original), str(moved));
+        time.sleep(0.4);
+        moved_source = moved / "inside.jac";
+        moved_source.write_text("glob value = 2;\n");
+        time.sleep(0.4);
+        watcher.stop();
+        observed = {
+            (os.path.realpath(event.path), event.change_type) for event in events
+        };
+        assert (os.path.realpath(str(moved_source)), ChangeType.CREATED) in observed , f"moved source must be reported: {events}";
+        assert (os.path.realpath(str(moved_source)), ChangeType.MODIFIED) in observed , f"source edits after a move must remain watched: {events}";
+    }
+}
+
+test "a large source tree uses one filesystem watcher emitter" {
+    with tempfile.TemporaryDirectory() as tmp {
+        app_dir = Path(tmp);
+        for i in range(160) {
+            (app_dir / f"source-{i}").mkdir();
+        }
+        watcher = JacFileWatcher(watch_paths=[str(app_dir)]);
+        watcher.start();
+        time.sleep(0.1);
+        emitter_count = len(watcher._observer.emitters);
+        watcher.stop();
+        assert emitter_count == 1 , (
+            f"directory count must not create one emitter per directory: {emitter_count}"
+        );
+    }
+}
+
+test "new annex folders stay watched after creation" {
+    import os;
+    with tempfile.TemporaryDirectory() as tmp {
+        source = Path(tmp) / "main.jac";
+        source.write_text("glob value = 1;\n");
+        annex_dir = Path(tmp) / "main.impl";
+        annex_file = annex_dir / "main.impl.jac";
+        watcher = JacFileWatcher(watch_paths=[str(source)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        annex_dir.mkdir();
+        time.sleep(0.2);
+        annex_file.write_text("glob value = 2;\n");
+        time.sleep(0.4);
+        watcher.stop();
+        assert any(
+            os.path.realpath(event.path) == os.path.realpath(str(annex_file))
+            for event in events
+        ) , f"edits in a newly created annex folder must be reported: {events}";
+    }
+}
+
+test "directory events do not rescan watched child trees" {
+    import sys;
+    import from types { ModuleType, SimpleNamespace }
+    with tempfile.TemporaryDirectory() as tmp {
+        app_root = Path(tmp);
+        child = app_root / "core";
+        child.mkdir();
+        (child / "nested").mkdir();
+        module_name = "jaclang.server.impl.pruned_inotify";
+        previous_module = sys.modules.get(module_name);
+        fake_module = ModuleType(module_name);
+        observer = MagicMock();
+        observer.is_watched.return_value = True;
+        factory = MagicMock(return_value=observer);
+        fake_module.SharedPrunedInotifyObserver = factory;
+        sys.modules[module_name] = fake_module;
+        watcher = JacFileWatcher(watch_paths=[str(app_root)]);
+        try {
+            with patch.object(sys, "platform", "linux") {
+                watcher.start();
+                handler = factory.call_args.args[0];
+                handler.on_modified(
+                    SimpleNamespace(src_path=str(app_root), is_directory=True)
+                );
+                watcher.stop();
+            }
+        } finally {
+            if previous_module is None {
+                sys.modules.pop(module_name, None);
+            } else {
+                sys.modules[module_name] = previous_module;
+            }
+        }
+        assert observer.add_tree.call_count == 0 , (
+            "a directory event must not rescan a child already reported as watched"
+        );
     }
 }
 

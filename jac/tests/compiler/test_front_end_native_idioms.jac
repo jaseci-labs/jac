@@ -466,8 +466,12 @@ test "scan_native_blockers names the offending node from the table" {
     assert reason == "contains JsxElement" , f"got reason {reason!r}";
 }
 
-test "guardrail: @lru_cache refuses where a dict cache does not" {
+test "guardrail: @lru_cache binds the bundled module where a dict cache does not" {
     import from tests.support { native_force_opts }
+    import from jaclang.compiler.driver.na_coverage {
+        na_coverage_begin,
+        na_coverage_end
+    }
     dec = JacProgram();
     dec_ir = dec.compile(
         file_path=os.path.join(FIXTURES, "_idiom_lru_cache.jac"),
@@ -476,18 +480,50 @@ test "guardrail: @lru_cache refuses where a dict cache does not" {
         "def twice(n: int) -> int { return n * 2; }\n",
         options=native_force_opts()
     );
-    errs = fmt_errors(dec);
-    assert "decorator 'on twice'" in errs , (
-        f"the capability gate must still name the dynamic decorator: {errs}"
+    assert not dec.errors_had , (
+        f"`functools` now binds the bundled native module, so the decorator "
+        f"resolves to `_LruDeco` and nothing is module-fatal: "
+        f"{[str(e) for e in dec.errors_had]}"
     );
-    assert "Python module import 'functools'" in errs , (
-        "the decorator cannot be written without importing it, and a "
-        "module-scope Python import has no owning callable to absorb it as "
-        "a seam, so it refuses the module exactly as a bare "
-        f"`import functools;` does: {errs}"
+    assert dec_ir.gen.llvm_ir is not None , (
+        "the decorated module compiles; LLVM IR must be emitted (calls of "
+        "the decorated name go through the explicit `.__call__(...)` shape "
+        "prim_functools pins)"
     );
-    assert dec_ir.gen.llvm_ir is None , (
-        "a module-fatal violation must withhold the LLVM IR"
+    called_path = os.path.join(FIXTURES, "_idiom_lru_cache_call.jac");
+    called = JacProgram();
+    na_coverage_begin();
+    try {
+        called.compile(
+            file_path=called_path,
+            use_str="import from functools { lru_cache }\n"
+            "@lru_cache(maxsize=8)\n"
+            "def twice(n: int) -> int { return n * 2; }\n"
+            "def use_twice() -> int { return twice(3); }\n",
+            options=native_force_opts()
+        );
+    } finally {
+        coverage = na_coverage_end();
+    }
+    rec = coverage.get(os.path.realpath(called_path));
+    assert rec is not None , "the coverage recorded nothing for the decorated module";
+    seams = [str(s) for s in (rec["seams"] or [])];
+    assert [
+        s
+        for s in seams
+        if "decorator 'on twice'" in s
+    ] , (
+        "compiling the decorated declaration is not the same as calling it: "
+        "a stateful decorator still demotes `twice` to its Python-only "
+        f"implementation (drop this pin once decorated calls lower): {seams}"
+    );
+    assert [
+        s
+        for s in seams
+        if "function 'twice'" in s
+    ] , (
+        "a native caller of the decorated name cannot reach it either, so it "
+        f"must demote with it instead of lowering a call to nothing: {seams}"
     );
     memo = check_na_inline(
         "dict_memo",

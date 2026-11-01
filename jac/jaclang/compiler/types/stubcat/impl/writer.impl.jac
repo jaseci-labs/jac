@@ -31,6 +31,27 @@ impl live_kid_scopes(scope: UniScopeNode) -> list[UniScopeNode] {
     return out;
 }
 
+impl is_overload_sym(sym: Symbol) -> bool {
+    for defn in sym.defn {
+        decl = defn.name_of;
+        if not isinstance(decl, Ability) {
+            continue;
+        }
+        for dec in decl.decorators or [] {
+            tail = dec.right if isinstance(dec, AtomTrailer) else dec;
+            if not isinstance(tail, Name) {
+                continue;
+            }
+            (canonical, origin) = origin_of_local_name(decl, tail.value);
+            if canonical == "overload"
+                and (origin is None or origin in ("typing", "typing_extensions")) {
+                return True;
+            }
+        }
+    }
+    return False;
+}
+
 impl collect_scope_members(scope: UniScopeNode) -> ScopeMembers {
     members = ScopeMembers();
     stack: list[UniScopeNode] = [scope];
@@ -39,6 +60,13 @@ impl collect_scope_members(scope: UniScopeNode) -> ScopeMembers {
         for (name, sym) in cur.names_in_scope.items() {
             if name not in members.names {
                 members.names[name] = sym;
+            } elif (is_overload_sym(sym) and is_overload_sym(members.names[name])) {
+                if name not in members.overloads {
+                    members.overloads[name] = [];
+                }
+                if sym not in members.overloads[name] {
+                    members.overloads[name].append(sym);
+                }
             }
         }
         for (name, syms) in cur.names_in_scope_overload.items() {

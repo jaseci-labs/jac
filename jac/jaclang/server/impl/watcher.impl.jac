@@ -3,6 +3,7 @@ import os;
 import logging;
 import threading;
 import time;
+import sys;
 import from pathlib { Path }
 
 glob logger = logging.getLogger(__name__);
@@ -68,46 +69,225 @@ impl JacFileWatcher.start -> None {
     import from watchdog.observers { Observer }
     import from watchdog.events { FileSystemEventHandler, FileSystemEvent }
     watcher = self;
+    observer: any = None;
+    scheduled: dict[str, any] = {};
+    recursive_roots: set[str] = set();
+    annex_watch_roots = {
+        os.path.realpath(folder)
+        for watch_path in watcher.watch_paths
+        if os.path.isfile(os.path.realpath(watch_path))
+        for folder in annex_folders_of(os.path.realpath(watch_path))
+    };
+    schedule_lock = threading.Lock();
+
+    def ignored_directory(path: str, allow_hidden_root: bool = False) -> bool {
+        name = Path(path).name;
+        ignored = {'.jac', '.git', '.venv', 'node_modules', '__pycache__', 'venv'};
+        resolved_parts = Path(os.path.realpath(path)).parts;
+        return name in ignored
+            or any([part in ignored for part in resolved_parts])
+            or (name.startswith('.') and not allow_hidden_root);
+    }
+
+    def schedule_directory(path: str, handler: any, allow_hidden_root: bool = False) {
+        resolved = os.path.realpath(path);
+        if ignored_directory(resolved, allow_hidden_root) {
+            return;
+        }
+        if sys.platform == 'linux' {
+            observer.add_directory(resolved, allow_hidden_root=allow_hidden_root);
+            return;
+        }
+        with schedule_lock {
+            if resolved in scheduled {
+                return;
+            }
+            scheduled[resolved] = observer.schedule(handler, resolved, recursive=False);
+        }
+    }
+
+    def schedule_tree(path: str, allow_hidden_root: bool = False) {
+        resolved = os.path.realpath(path);
+        if ignored_directory(resolved, allow_hidden_root)
+            or not os.path.isdir(resolved) {
+            return;
+        }
+        if sys.platform == 'linux' {
+            if not observer.is_watched(resolved) {
+                observer.add_tree(resolved, allow_hidden_root=allow_hidden_root);
+            }
+            return;
+        }
+        if resolved not in annex_watch_roots {
+            return;
+        }
+        with schedule_lock {
+            if any(
+                resolved == recursive_root
+                    or resolved.startswith(recursive_root + os.sep)
+                for recursive_root in recursive_roots
+            ) {
+                return;
+            }
+            scheduled[resolved] = observer.schedule(handler, resolved, recursive=True);
+            recursive_roots.add(resolved);
+        }
+    }
+
+    def schedule_new_children(path: str) {
+        if not os.path.isdir(path) {
+            return;
+        }
+        explicit_root = any(
+            os.path.realpath(watch_root) == os.path.realpath(path)
+            for watch_root in watcher.watch_paths
+        );
+        if ignored_directory(path, explicit_root) {
+            return;
+        }
+        try {
+            children = os.listdir(path);
+        } except OSError {
+            return;
+        }
+        for name in children {
+            child = os.path.join(path, name);
+            if os.path.isdir(child)
+                and not os.path.islink(child)
+                and not ignored_directory(child)
+                and (
+                    sys.platform == 'linux'
+                    and not observer.is_watched(child)
+                    or sys.platform != 'linux'
+                    and os.path.realpath(child) in annex_watch_roots
+                ) {
+                schedule_tree(child);
+            }
+        }
+    }
+
+    def unschedule_tree(path: str) {
+        if sys.platform != 'linux' or not path {
+            return;
+        }
+        observer.remove_tree(os.path.realpath(path));
+    }
+
+    def report_tree_files(path: str) {
+        resolved = os.path.realpath(path);
+        if ignored_directory(resolved) or not os.path.isdir(resolved) {
+            return;
+        }
+        for (current, dirs, files) in os.walk(resolved, followlinks=False) {
+            dirs[:] = sorted(
+                name
+                for name in dirs
+                if not os.path.islink(os.path.join(current, name))
+                    and not ignored_directory(os.path.join(current, name))
+            );
+            for name in files {
+                changed = os.path.join(current, name);
+                if watcher._matches_pattern(changed) {
+                    watcher._on_change(changed, ChangeType.CREATED);
+                }
+            }
+        }
+    }
+
     class JacEventHandler(FileSystemEventHandler) {
         def on_modified(inner_self: JacEventHandler, event: FileSystemEvent) {
-            if not event.is_directory {
-                watcher._on_change(os.fsdecode(event.src_path), ChangeType.MODIFIED);
+            path = os.fsdecode(event.src_path);
+            if event.is_directory {
+                if sys.platform == 'linux' {
+                    schedule_directory(path, inner_self);
+                }
+                schedule_new_children(path);
+            } else {
+                watcher._on_change(path, ChangeType.MODIFIED);
             }
         }
 
-        def on_created(inner_self: JacEventHandler, event: FileSystemEvent) {
-            watcher._on_change(
-                os.fsdecode(event.src_path), ChangeType.CREATED, event.is_directory
-            );
+        def on_created(_inner_self: JacEventHandler, event: FileSystemEvent) {
+            path = os.fsdecode(event.src_path);
+            if event.is_directory {
+                schedule_tree(path);
+                report_tree_files(path);
+            }
+            watcher._on_change(path, ChangeType.CREATED, event.is_directory);
         }
 
-        def on_deleted(inner_self: JacEventHandler, event: FileSystemEvent) {
-            watcher._on_change(
-                os.fsdecode(event.src_path), ChangeType.DELETED, event.is_directory
-            );
+        def on_deleted(_inner_self: JacEventHandler, event: FileSystemEvent) {
+            path = os.fsdecode(event.src_path);
+            if event.is_directory {
+                unschedule_tree(path);
+            }
+            watcher._on_change(path, ChangeType.DELETED, event.is_directory);
         }
 
-        def on_moved(inner_self: JacEventHandler, event: FileSystemEvent) {
-            watcher._on_change(
-                os.fsdecode(event.src_path), ChangeType.DELETED, event.is_directory
-            );
-            dest = str(getattr(event, 'dest_path', '') or '');
+        def on_moved(_inner_self: JacEventHandler, event: FileSystemEvent) {
+            path = os.fsdecode(event.src_path);
+            dest = os.fsdecode(getattr(event, 'dest_path', '') or '');
+            if path {
+                if event.is_directory {
+                    if sys.platform == 'linux' and dest {
+                        observer.move_tree(path, dest);
+                    } else {
+                        unschedule_tree(path);
+                    }
+                }
+                watcher._on_change(path, ChangeType.DELETED, event.is_directory);
+            }
             if dest {
+                if event.is_directory {
+                    schedule_tree(dest);
+                    report_tree_files(dest);
+                }
                 watcher._on_change(dest, ChangeType.CREATED, event.is_directory);
             }
         }
     }
-    self._observer = Observer();
     handler = JacEventHandler();
-    for watch_path in self.watch_paths {
-        path = Path(watch_path);
-        if path.is_dir() {
-            self._observer.schedule(handler, str(path), recursive=True);
-        } elif path.is_file() {
-            self._observer.schedule(handler, str(path.parent), recursive=False);
+    if sys.platform == 'linux' {
+        import from jaclang.server.impl.pruned_inotify { SharedPrunedInotifyObserver }
+        root_modes: dict[str, bool] = {};
+        for watch_path in self.watch_paths {
+            path = Path(watch_path);
+            if path.is_dir() {
+                resolved = os.path.realpath(str(path));
+                if not ignored_directory(resolved, True) {
+                    root_modes[resolved] = True;
+                }
+            } elif path.is_file() {
+                resolved = os.path.realpath(str(path.parent));
+                if not ignored_directory(resolved, True) {
+                    root_modes[resolved] = root_modes.get(resolved, False);
+                }
+            }
+        }
+        roots = [
+            (root_path, recursive) for (root_path, recursive) in root_modes.items()
+        ];
+        observer = SharedPrunedInotifyObserver(handler, roots, ignored_directory);
+    } else {
+        observer = Observer();
+        for watch_path in self.watch_paths {
+            path = Path(watch_path);
+            if path.is_dir() {
+                resolved = os.path.realpath(str(path));
+                if not ignored_directory(resolved, True)
+                    and resolved not in scheduled {
+                    scheduled[resolved] = observer.schedule(
+                        handler, resolved, recursive=True
+                    );
+                    recursive_roots.add(resolved);
+                }
+            } elif path.is_file() {
+                schedule_directory(str(path.parent), handler, True);
+            }
         }
     }
-    self._observer.start();
+    self._observer = observer;
+    observer.start();
     self._running = True;
     self._last_flush = time.time();
 
@@ -211,10 +391,39 @@ impl JacFileWatcher._foreign_shared_annex(path: str) -> bool {
     return not any(is_annex_path_of(changed, module) for module in [*local, *files]);
 }
 
+impl JacFileWatcher._inside_ignored_directory(
+    path: str, is_directory: bool = False
+) -> bool {
+    changed = os.path.realpath(path);
+    ignored = {'.jac', '.git', '.venv', 'node_modules', '__pycache__', 'venv'};
+    matching_roots = [
+        os.path.realpath(watch_path)
+        for watch_path in self.watch_paths
+        if os.path.isdir(os.path.realpath(watch_path))
+            and (
+                changed == os.path.realpath(watch_path)
+                or changed.startswith(os.path.realpath(watch_path) + os.sep)
+            )
+    ];
+    if not matching_roots {
+        return False;
+    }
+    watched = max(matching_roots, key=len);
+    relative = os.path.relpath(changed, watched);
+    if relative == '.' {
+        return False;
+    }
+    parts = relative.split(os.sep);
+    directories = parts if is_directory else parts[:-1];
+    return any(part.startswith('.') or part in ignored for part in directories);
+}
+
 impl JacFileWatcher._on_change(
     path: str, change_type: ChangeType, is_directory: bool = False
 ) -> None {
-    if '/.jac/' in path or '\\.jac\\' in path {
+    if '/.jac/' in path
+        or '\\.jac\\' in path
+        or self._inside_ignored_directory(path, is_directory) {
         return;
     }
 

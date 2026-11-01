@@ -12,6 +12,7 @@ import from jaclang.compiler.native_bindings {
     conformance_mismatches,
     callable_sig,
     class_member_type,
+    collect_member_syms,
     interface_type,
     native_library_module_name,
     typeshed_stub_path,
@@ -106,5 +107,12 @@ test "the interface is read from symbols: branches, re-exports and bases include
     );
     assert sleep is not None and sleep.positional == 1 , (
         "a parameter taken by position only may have any name natively"
+    );
+    functools = prog.load_dependency_module(
+        typeshed_stub_path("functools") or "", need_tree=True
+    );
+    reduce_symbols = collect_member_syms(functools, "reduce");
+    assert len(reduce_symbols) > 1 , (
+        f"reduce overloads across version guards were lost: {len(reduce_symbols)}"
     );
 }

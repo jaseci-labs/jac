@@ -14,7 +14,7 @@ obj HollowGenBase[T_in, T_out](ABC) {
         marker: int = 0,
         ir_out: T_out postinit;
 
-    def postinit -> None {
+    def postinit {
         self.marker = self.marker + 10;
         self.ir_out = self.transform(ir_in=self.ir_in);
     }
