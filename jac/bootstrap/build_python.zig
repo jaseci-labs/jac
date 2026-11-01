@@ -228,7 +228,13 @@ pub fn main(init: std.process.Init) !void {
             .adopted => |m| adopted = m,
         }
     }
-    if (object_out == null and std.mem.eql(u8, old, &key) and seed.fileExists(io, python)) {
+    // A finished tree for this key is reused, unless an object to adopt is
+    // given and the tree links another one.
+    const links_adopted = if (adopted) |m| blk: {
+        const linked = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ dest, "python/build/jacpython-native-sha256" }), a, .limited(128)) catch "";
+        break :blk std.mem.eql(u8, std.mem.trim(u8, linked, " \r\n"), m.object);
+    } else true;
+    if (object_out == null and links_adopted and std.mem.eql(u8, old, &key) and seed.fileExists(io, python)) {
         if (!cross) try runSmoke(io, python, smoke, mode);
         seed.log("build-python: cached {s} ({s})", .{ platform, key[0..16] });
         return;
