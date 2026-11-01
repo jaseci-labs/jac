@@ -40,7 +40,6 @@ obj NativeUnitRegistry {
         unit_functions: dict[str, tuple[int, int]] = {};
 
     def postinit;
-    def begin_parse(path: str);
     def note_step(verb: str, path: str = "", detail: str = "") -> float;
     def note_slow_step(verb: str, path: str, started: float);
     def clear;

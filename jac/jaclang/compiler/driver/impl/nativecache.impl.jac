@@ -2,13 +2,6 @@ impl NativeUnitRegistry.postinit {
     self.building = set();
 }
 
-impl NativeUnitRegistry.begin_parse(path: str) {
-    if self.session is not None {
-        self.session.settle_heap();
-    }
-    self.note_step("parse", path);
-}
-
 impl NativeUnitRegistry.note_step(
     verb: str, path: str = "", detail: str = ""
 ) -> float {

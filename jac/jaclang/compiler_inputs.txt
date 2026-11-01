@@ -32,5 +32,4 @@ client/impl/route_scanner.impl.jac
 # Native-only units: each is keyed by its own source, and none has bytecode
 # meaning. `!` keeps them in the digest by path, not by content.
 !runtime/na_stdlib
-!compiler/jc_unit.jac
-!compiler/jc_materialize.jac
+!compiler/kernel_module.jac

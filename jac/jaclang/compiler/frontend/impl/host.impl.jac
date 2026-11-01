@@ -152,17 +152,6 @@ impl HostServices.native_scan_record(path: str, digest: str) -> str {
 
 impl HostServices.keep_native_scan_record(path: str, digest: str, text: str) {}
 
-impl HostServices.native_parse(
-    source_str: str,
-    file_path: str,
-    program: (JacProgram | None),
-    annexes: list[WovenAnnex],
-    early_context: str = "",
-    load_kernel: bool = True
-) -> (tuple[Module, bool] | None) {
-    return None;
-}
-
 impl HostServices.woven_module(
     path: str, program: (JacProgram | None)
 ) -> (Module | None) {

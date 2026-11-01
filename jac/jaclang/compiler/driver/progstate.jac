@@ -46,8 +46,7 @@ obj ModuleBuild {
     has module: uni.Module,
         done: set[str],
         tasks: dict[CompilationProduct, ProductTask],
-        facts: set[AnalysisFact],
-        early: dict[str, PassResult];
+        facts: set[AnalysisFact];
 }
 
 class AnalysisCaches {
@@ -74,11 +73,4 @@ class AnalysisCaches {
     def mark_facts(self: AnalysisCaches, module: uni.Module, facts: set[AnalysisFact]);
     def forget_module(self: AnalysisCaches, module: uni.Module);
     def reset_module_state(self: AnalysisCaches);
-    def record_early(
-        self: AnalysisCaches, module: uni.Module, results: dict[str, PassResult]
-    );
-
-    def take_early(
-        self: AnalysisCaches, module: uni.Module, name: str
-    ) -> (PassResult | None);
 }
