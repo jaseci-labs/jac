@@ -154,6 +154,9 @@ impl run_compile(
     with host.session() {
         for path in request.paths {
             real = os.path.realpath(path);
+            if want_code {
+                refuse_native_only(real, request.package_root);
+            }
             other = other_compiler_root(real);
             if other {
                 result.errors.append(other_compiler_diagnostic(real, other));
@@ -194,6 +197,21 @@ impl run_compile(
         result.units.append(compiled_unit(host, real, want_code));
     }
     return result;
+}
+
+impl refuse_native_only(real: str, package_root: str) {
+    import from jaclang.compiler.native_scope { is_native_only }
+    pkg = os.path.realpath(package_root) + os.sep;
+    if not real.startswith(pkg) {
+        return;
+    }
+    rel = real[len(pkg):].replace(os.sep, "/");
+    if is_native_only(rel) {
+        raise KernelError(
+            f"jaclang/{rel} is native-only: it is compiled into the kernel and "
+            "has no bytecode, so it cannot be imported"
+        );
+    }
 }
 
 impl run_check(
@@ -301,6 +319,74 @@ impl check_request(request: CheckRequest) -> CheckResult {
     } finally {
         install_host(previous);
     }
+}
+
+impl KernelBuildResult.ok -> bool {
+    return not self.errors;
+}
+
+impl build_kernel_request(request: KernelBuildRequest) -> KernelBuildResult {
+    import hashlib;
+    import from jaclang.compiler.backends.native.kernel_stage0 {
+        KernelEntryError,
+        kernel_llvm_runpath,
+        link_kernel
+    }
+    import from jaclang.compiler.backends.native.link_plan { LinkPlanError }
+    import from jaclang.compiler.driver.program { JacProgram }
+    import from jaclang.compiler.frontend.host { active_host, install_host }
+    import from jaclang.compiler.kernel_target { set_kernel_target }
+    import from jaclang.compiler.target_spec { host_target_spec, target_spec }
+    import from jaclang.project.compiler_host { ProjectHost }
+    target = request.target;
+    if not target.root or not target.root_module {
+        raise KernelError("the kernel build request names no target root or root module");
+    }
+    if not request.output {
+        raise KernelError("the kernel build request names no output");
+    }
+    project_root = os.path.dirname(target.root);
+    enter_world(project_root, request.search_paths, request.package_root);
+    spec = target_spec(request.triple) if request.triple else host_target_spec();
+    host = ProjectHost(root=project_root);
+    previous_host = active_host();
+    previous_target = set_kernel_target(target);
+    install_host(host);
+    result = KernelBuildResult(output=request.output, triple=spec.triple);
+    program = JacProgram();
+    try {
+        with host.session() {
+            linked = link_kernel(
+                request.output,
+                target=target,
+                prog=program,
+                link_mode=target.link_mode,
+                spec=spec,
+                runpath=kernel_llvm_runpath(request.output, target.root)
+            );
+        }
+    } except (KernelEntryError, LinkPlanError) as error {
+        raise KernelError(str(error)) from error;
+    } finally {
+        install_host(previous_host);
+        set_kernel_target(previous_target);
+    }
+    collect_diagnostics(program, result.errors, result.warnings);
+    with open(request.output, "rb") as built {
+        result.artifact_sha256 = hashlib.sha256(built.read()).hexdigest();
+    }
+    if result.artifact_sha256 != linked.sha256 {
+        raise KernelError(
+            f"{request.output} does not match the sha256 its link recorded"
+        );
+    }
+    result.plan_digest = linked.plan_digest;
+    result.units = len(linked.units);
+    result.inputs = [
+        SourceRead(path=path, digest=digest)
+        for (path, digest) in sorted(host.source_reads.items())
+    ];
+    return result;
 }
 
 impl open_session(

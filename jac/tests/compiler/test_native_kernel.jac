@@ -225,38 +225,3 @@ test "kernel parses retain no native memory once the tree is handed over" {
 }
 
 
-test "a checkout without a current kernel parses with the store parser" {
-    # Resolving never builds a kernel (the artifact router): a checkout whose
-    # kernel and kit kernel are both stale runs the compiler from bytecode
-    # with the store parser until `jac native build kernel` publishes one.
-    import from unittest.mock { patch }
-    import jaclang.artifacts.router as router;
-    import from jaclang.artifacts.model { Probe }
-    import jaclang.compiler.backends.native.kernel_resolve as resolver;
-    import from jaclang.compiler.native_compiler { ensure_loaded, reset_loaded }
-    reset_loaded();
-    router.forget();
-    try {
-        with patch.object(router, "_omitted", return_value=frozenset()) {
-            with patch.object(resolver, "_from_sealed_image", return_value=None) {
-                with patch.object(
-                    resolver.KernelArtifact,
-                    "probe_checkout",
-                    return_value=Probe.stale(["a unit changed"])
-                ) {
-                    with patch.object(
-                        resolver.KernelArtifact,
-                        "probe_kit",
-                        return_value=Probe.missing()
-                    ) {
-                        assert resolver.resolve_kernel() is None , "a stale checkout must resolve no kernel";
-                        assert ensure_loaded() is None , "a stale checkout must parse with the store parser";
-                    }
-                }
-            }
-        }
-    } finally {
-        reset_loaded();
-        router.forget();
-    }
-}

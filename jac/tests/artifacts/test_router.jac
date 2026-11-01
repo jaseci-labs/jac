@@ -296,24 +296,6 @@ test "publication holds the lock across every file of an artifact" {
     }
 }
 
-test "an artifact the image declares it leaves out runs its floor quietly, from any tier" {
-    fake = accel(
-        "x",
-        sealed=Probe.hit(Source.SEALED, "/img/x", {}),
-        kit=Probe.hit(Source.KIT, "/kit/x", {})
-    );
-    def resolve_omitted -> tuple[Resolution, frozenset[str]] {
-        with patch.object(router, "_omitted", return_value=frozenset({"x"})) {
-            return (router.resolve("x"), router.omitted_by_image());
-        }
-    }
-    (outcome, said) = with_fakes([fake], resolve_omitted);
-    (found, omitted) = outcome;
-    assert found.on_floor() and found.quiet;
-    assert omitted == frozenset({"x"});
-    assert said == "";
-}
-
 test "unmet holds what a release needs, and nothing a host cannot carry" {
     here = accel("here", checkout=Probe.stale(["a.jac changed"]));
     elsewhere = capability("elsewhere", hosts=["no-such-host"]);

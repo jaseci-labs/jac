@@ -10,7 +10,7 @@ context, so a thread pool can run them side by side.
 import os;
 import from pathlib { Path }
 import jaclang.compiler.driver.jir as jir;
-import from jaclang.compiler.backends.native.kernel_resolve { kernel_options }
+import from jaclang.compiler.backends.native.kernel_stage0 { kernel_options }
 import from jaclang.compiler.backends.native.link_plan { build_link_plan }
 import from jaclang.compiler.backends.native.na_compile_pass {
     emit_unit_object,

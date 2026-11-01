@@ -37,5 +37,24 @@
         "upstream": false
       }
     }
+  },
+  "stage0": {
+    "_comment": "Stage 0 of the compiler kernel (#10471): the previous jac release, whose built-in kernel compiles this tree's kernel (`jac native build kernel`; jaclang/jac0core/stage0.py). The binary is <release_base>/v<version>/jac-<version>-<osarch>, checked against its sha256 here. Bump it after every release: set version to the new release and copy each asset's sha256 from its published `.sha256` file. The pinned release must implement the build request `jac native build kernel --target-spec SPEC --output OUT`; the first one to do so is the release cut from #10471, so until it is published every digest is empty and stage 0 refuses to run.",
+    "version": "0.39.0",
+    "release_base": "https://github.com/jaseci-labs/jac/releases/download",
+    "assets": {
+      "linux-x86_64": {
+        "sha256": ""
+      },
+      "linux-aarch64": {
+        "sha256": ""
+      },
+      "macos-x86_64": {
+        "sha256": ""
+      },
+      "macos-aarch64": {
+        "sha256": ""
+      }
+    }
   }
 }

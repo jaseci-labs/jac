@@ -7,6 +7,7 @@ impl KernelTarget.to_dict -> dict[str, object] {
         "kernel_unit_rel": list(self.kernel_unit_rel),
         "native_lowered_rel": list(self.native_lowered_rel),
         "native_only_rel": list(self.native_only_rel),
+        "native_host_rel": list(self.native_host_rel),
         "link_mode": self.link_mode
     };
 }
@@ -25,7 +26,8 @@ impl KernelTarget.root_module_path -> str {
 }
 
 impl KernelTarget.is_native_only(rel: str) -> bool {
-    return _rel_under(rel, self.native_only_rel);
+    return _rel_under(rel, self.native_only_rel)
+        and rel.replace(os.sep, "/") not in self.native_host_rel;
 }
 
 impl KernelTarget.is_native_lowered(rel: str) -> bool {
@@ -67,6 +69,7 @@ impl kernel_target_from_dict(data: dict[str, object]) -> (KernelTarget | None) {
         kernel_unit_rel=_str_list(data.get("kernel_unit_rel")),
         native_lowered_rel=_str_list(data.get("native_lowered_rel")),
         native_only_rel=_str_list(data.get("native_only_rel")),
+        native_host_rel=_str_list(data.get("native_host_rel")),
         link_mode=str(data.get("link_mode", "") or "")
     );
 }
@@ -91,8 +94,20 @@ impl with_link_mode(spec: KernelTarget, link_mode: str) -> KernelTarget {
         kernel_unit_rel=list(spec.kernel_unit_rel),
         native_lowered_rel=list(spec.native_lowered_rel),
         native_only_rel=list(spec.native_only_rel),
+        native_host_rel=list(spec.native_host_rel),
         link_mode=link_mode
     );
+}
+
+impl roster_of(spec: KernelTarget) -> dict[str, object] {
+    return {
+        "root_module": spec.root_module,
+        "scope_modules": list(spec.scope_modules),
+        "kernel_unit_rel": list(spec.kernel_unit_rel),
+        "native_lowered_rel": list(spec.native_lowered_rel),
+        "native_only_rel": list(spec.native_only_rel),
+        "native_host_rel": list(spec.native_host_rel)
+    };
 }
 
 impl write_kernel_target(spec: KernelTarget, path: str) {

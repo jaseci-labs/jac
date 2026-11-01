@@ -33,6 +33,16 @@ impl check_request_record(request: CheckRequest) -> dict[str, any] {
     };
 }
 
+impl kernel_build_request_record(request: KernelBuildRequest) -> dict[str, any] {
+    return {
+        "target": request.target.to_dict(),
+        "output": request.output,
+        "triple": request.triple,
+        "search_paths": list(request.search_paths),
+        "package_root": request.package_root
+    };
+}
+
 impl span_of_record(raw: dict[str, any]) -> SourceSpan {
     return SourceSpan(
         path=raw["path"],
@@ -132,6 +142,22 @@ impl check_result_of(raw: dict[str, any]) -> CheckResult {
     );
 }
 
+impl kernel_build_result_of(raw: dict[str, any]) -> KernelBuildResult {
+    return KernelBuildResult(
+        output=raw["output"],
+        triple=raw["triple"],
+        artifact_sha256=raw["artifact_sha256"],
+        plan_digest=raw["plan_digest"],
+        units=raw["units"],
+        errors=[diagnostic_of_record(diag) for diag in raw["errors"]],
+        warnings=[diagnostic_of_record(diag) for diag in raw["warnings"]],
+        inputs=[
+            SourceRead(path=read["path"], digest=read["digest"])
+            for read in raw["inputs"]
+        ]
+    );
+}
+
 impl call_compile(request: CompileRequest) -> CompileResult {
     kernel = load_kernel();
     try {
@@ -150,6 +176,16 @@ impl call_check(request: CheckRequest) -> CheckResult {
         raise KernelError(str(error)) from error;
     }
     return check_result_of(raw);
+}
+
+impl call_build_kernel(request: KernelBuildRequest) -> KernelBuildResult {
+    kernel = load_kernel();
+    try {
+        raw = kernel.build_kernel(kernel_build_request_record(request));
+    } except kernel.KernelError as error {
+        raise KernelError(str(error)) from error;
+    }
+    return kernel_build_result_of(raw);
 }
 
 impl open_kernel_session(project_root: str) -> any {

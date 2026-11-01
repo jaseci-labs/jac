@@ -39,6 +39,7 @@ glob RETIRED: tuple[str, ...] = (
          "timing-baseline",
          "bytecode",
          "bootstrap",
+         "jir/bootstrap",
          "toolchains/llvm-cbe",
          "toolchains/cocoapods",
          "jir/kernel_units"
@@ -62,10 +63,10 @@ glob RETIRED: tuple[str, ...] = (
              summary="compiled modules, one generation per compiler digest"
          ),
          Bucket(
-             name="jir-bootstrap",
-             relpath="jir/bootstrap",
-             policy=Policy(ttl_days=14.0, max_entries=4000, pattern="*.jbc"),
-             summary="marshalled bytecode of the bootstrap tier"
+             name="stage0",
+             relpath="stage0",
+             policy=Policy(ttl_days=60.0, max_entries=4, pattern="*"),
+             summary="the pinned previous jac release that builds the compiler kernel"
          ),
          Bucket(
              name="jir-stubcat",

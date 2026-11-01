@@ -64,6 +64,8 @@ def compile_request_record(request: CompileRequest) -> dict[str, any];
 
 def check_request_record(request: CheckRequest) -> dict[str, any];
 
+def kernel_build_request_record(request: KernelBuildRequest) -> dict[str, any];
+
 def span_of_record(raw: dict[str, any]) -> SourceSpan;
 
 def diagnostic_of_record(raw: dict[str, any]) -> KernelDiagnostic;
@@ -76,8 +78,12 @@ def compile_result_of(raw: dict[str, any]) -> CompileResult;
 
 def check_result_of(raw: dict[str, any]) -> CheckResult;
 
+def kernel_build_result_of(raw: dict[str, any]) -> KernelBuildResult;
+
 def call_compile(request: CompileRequest) -> CompileResult;
 
 def call_check(request: CheckRequest) -> CheckResult;
+
+def call_build_kernel(request: KernelBuildRequest) -> KernelBuildResult;
 
 def open_kernel_session(project_root: str) -> any;

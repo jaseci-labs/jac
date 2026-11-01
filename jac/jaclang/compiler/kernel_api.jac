@@ -150,6 +150,34 @@ obj CheckResult {
     def ok -> bool;
 }
 
+"""A request to build a compiler kernel: the kernel `target` describes,
+linked for `triple` (empty for this host) into the extension module at
+`output`. Every stage of `jac native build kernel` is this request, so a
+release's kernel builds its successor's."""
+obj KernelBuildRequest {
+    has target: KernelTarget,
+        output: str,
+        triple: str = "",
+        search_paths: list[str] = [],
+        package_root: str = "";
+}
+
+"""A built kernel: its sha256 and plan digest, the triple it was linked for,
+and `inputs`, every source the build read, from which the boot tells when the
+kernel no longer matches its sources."""
+obj KernelBuildResult {
+    has output: str = "",
+        triple: str = "",
+        artifact_sha256: str = "",
+        plan_digest: str = "",
+        units: int = 0,
+        errors: list[KernelDiagnostic] = [],
+        warnings: list[KernelDiagnostic] = [],
+        inputs: list[SourceRead] = [];
+
+    def ok -> bool;
+}
+
 obj TextEdit {
     has span: SourceSpan,
         text: str;
@@ -225,11 +253,15 @@ def open_session(
     project_root: str, search_paths: list[str], package_root: str
 ) -> KernelSession;
 
+def build_kernel_request(request: KernelBuildRequest) -> KernelBuildResult;
+
 def enter_world(project_root: str, search_paths: list[str], package_root: str);
 
 def run_compile(
     program: JacProgram, host: ProjectHost, request: CompileRequest
 ) -> CompileResult;
+
+def refuse_native_only(real: str, package_root: str);
 
 def run_check(
     program: JacProgram, host: ProjectHost, request: CheckRequest

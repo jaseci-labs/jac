@@ -39,15 +39,26 @@ comptime SPEC_NATIVE: CommandSpec = CommandSpec(
              Arg.create(
                  "require",
                  `default="",
-                 help="With status: exit non-zero unless these comma-separated artifacts are built and current; 'release' is the release set, 'kit' the release set less what this image declares it leaves out",
+                 help="With status: exit non-zero unless these comma-separated artifacts are built and current; 'release' is the release set, 'kit' the same set, which every kit carries",
                  short=""
              ),
              Arg.create(
-                 "stop-after",
-                 dest="stop_after",
-                 typ=int,
-                 `default=0,
-                 help="With build kernel: plan the kernel uncached, stop once this many units are lowered, and report where the time went (nothing is linked or published)",
+                 "target-spec",
+                 dest="target_spec",
+                 `default="",
+                 help="With build kernel: a kernel build request; build the kernel this KernelTarget JSON describes with the running kernel (stage 0 runs this on the previous release)",
+                 short=""
+             ),
+             Arg.create(
+                 "output",
+                 `default="",
+                 help="With --target-spec: where to write the built kernel",
+                 short=""
+             ),
+             Arg.create(
+                 "triple",
+                 `default="",
+                 help="With --target-spec: the target triple (default: this host)",
                  short=""
              ),
 
@@ -67,8 +78,8 @@ comptime SPEC_NATIVE: CommandSpec = CommandSpec(
                  "Relink the kernel although it is current"
              ),
              (
-                 "jac native build kernel --stop-after 10",
-                 "Time an uncached kernel build up to its tenth lowered unit"
+                 "jac native build kernel",
+                 "Build this checkout's kernel from the pinned previous release (stage 0)"
              ),
              (
                  "jac native build musl@linux-aarch64",
@@ -81,7 +92,7 @@ comptime SPEC_NATIVE: CommandSpec = CommandSpec(
              ),
              (
                  "jac native status --require kit",
-                 "Fail unless this kit carries everything it does not declare it omits"
+                 "Fail unless this kit carries everything a release does"
              ),
 
          ],
@@ -96,5 +107,7 @@ def native(
     exact: bool = False,
     release: bool = False,
     require: str = "",
-    stop_after: int = 0
+    target_spec: str = "",
+    output: str = "",
+    triple: str = ""
 ) -> int;

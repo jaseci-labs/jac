@@ -435,6 +435,76 @@ impl check_request_of(value: ptr[PyObject]) -> CheckRequest {
     );
 }
 
+impl kernel_target_of(value: ptr[PyObject]) -> KernelTarget {
+    target = KernelTarget();
+    for pair in entries_of(value, "KernelTarget") {
+        what = "KernelTarget." + pair.name;
+        if pair.name == "format" {
+            target.format = int_of(pair.value, what);
+        } elif pair.name == "root" {
+            target.root = text_of(pair.value, what);
+        } elif pair.name == "scope_modules" {
+            target.scope_modules = texts_of(pair.value, what);
+        } elif pair.name == "root_module" {
+            target.root_module = text_of(pair.value, what);
+        } elif pair.name == "kernel_unit_rel" {
+            target.kernel_unit_rel = texts_of(pair.value, what);
+        } elif pair.name == "native_lowered_rel" {
+            target.native_lowered_rel = texts_of(pair.value, what);
+        } elif pair.name == "native_only_rel" {
+            target.native_only_rel = texts_of(pair.value, what);
+        } elif pair.name == "native_host_rel" {
+            target.native_host_rel = texts_of(pair.value, what);
+        } elif pair.name == "link_mode" {
+            target.link_mode = text_of(pair.value, what);
+        } else {
+            raise failure(
+                PyExc_TypeError, "KernelTarget has no field '" + pair.name + "'"
+            );
+        }
+    }
+    if target.format != KERNEL_TARGET_FORMAT {
+        raise failure(PyExc_TypeError, "KernelTarget is not a format this kernel reads");
+    }
+    return target;
+}
+
+impl kernel_build_request_of(value: ptr[PyObject]) -> KernelBuildRequest {
+    target: (KernelTarget | None) = None;
+    output = "";
+    triple = "";
+    search_paths: list[str] = [];
+    package_root = "";
+    for pair in entries_of(value, "KernelBuildRequest") {
+        what = "KernelBuildRequest." + pair.name;
+        if pair.name == "target" {
+            target = kernel_target_of(pair.value);
+        } elif pair.name == "output" {
+            output = text_of(pair.value, what);
+        } elif pair.name == "triple" {
+            triple = text_of(pair.value, what);
+        } elif pair.name == "search_paths" {
+            search_paths = texts_of(pair.value, what);
+        } elif pair.name == "package_root" {
+            package_root = text_of(pair.value, what);
+        } else {
+            raise failure(
+                PyExc_TypeError, "KernelBuildRequest has no field '" + pair.name + "'"
+            );
+        }
+    }
+    if target is None {
+        raise failure(PyExc_TypeError, "KernelBuildRequest needs 'target'");
+    }
+    return KernelBuildRequest(
+        target=target,
+        output=output,
+        triple=triple,
+        search_paths=search_paths,
+        package_root=package_root
+    );
+}
+
 impl put(record: ptr[PyObject], key: str, value: ptr[PyObject]) {
     required(value);
     status = dict_set_text(record, key, value);
@@ -710,6 +780,31 @@ impl check_result_object(result: CheckResult) -> ptr[PyObject] {
     return record;
 }
 
+impl kernel_build_result_object(result: KernelBuildResult) -> ptr[PyObject] {
+    record = new_record();
+    try {
+        put(record, "output", text_object(result.output));
+        put(record, "triple", text_object(result.triple));
+        put(record, "artifact_sha256", text_object(result.artifact_sha256));
+        put(record, "plan_digest", text_object(result.plan_digest));
+        put(record, "units", int_object(result.units));
+        put(record, "errors", diagnostics_object(result.errors));
+        put(record, "warnings", diagnostics_object(result.warnings));
+        inputs = new_list();
+        put(record, "inputs", inputs);
+        for read in result.inputs {
+            row = new_record();
+            append(inputs, row);
+            put(row, "path", text_object(read.path));
+            put(row, "digest", text_object(read.digest));
+        }
+    } except boundary_failure as error {
+        jacpy_release(record);
+        raise error;
+    }
+    return record;
+}
+
 impl completions_object(items: list[CompletionItem]) -> ptr[PyObject] {
     out = new_list();
     try {
@@ -804,6 +899,20 @@ impl compile_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject
 impl check_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject] {
     try {
         return check_result_object(check_request(check_request_of(request)));
+    } except boundary_failure {
+        return NULL;
+    } except KernelError as error {
+        return kernel_failure(error);
+    } except Exception as error {
+        return internal_failure(error);
+    }
+}
+
+impl build_kernel_call(module: ptr[PyObject], request: ptr[PyObject]) -> ptr[PyObject] {
+    try {
+        return kernel_build_result_object(
+            build_kernel_request(kernel_build_request_of(request))
+        );
     } except boundary_failure {
         return NULL;
     } except KernelError as error {

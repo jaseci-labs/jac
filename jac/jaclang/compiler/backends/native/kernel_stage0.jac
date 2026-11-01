@@ -1,9 +1,9 @@
 import os;
 import time;
 
-glob STAGE0_UNKNOWN_FORMAT: int = 3,
-     KERNEL_ENTRY_SOURCES: tuple[str, ...] = ("compiler/kernel_module.jac", ),
-     KERNEL_INIT_SYMBOL: str = "PyInit_jac_kernel";
+glob KERNEL_ENTRY_SOURCES: tuple[str, ...] = ("compiler/kernel_module.jac", ),
+     KERNEL_INIT_SYMBOL: str = "PyInit_jac_kernel",
+     KERNEL_LINK_MODE: str = NATIVE_LINK_MODE_OBJECTS;
 
 class KernelEntryError(RuntimeError) {}
 
@@ -14,6 +14,17 @@ def missing_kernel_entries(plan: LinkPlan, pkg_root: str) -> list[str];
 def refuse_missing_entries(plan: LinkPlan, pkg_root: str);
 
 def running_kernel_target(pkg_root: str = "") -> KernelTarget;
+
+def kernel_options(spec: (TargetSpec | None) = None) -> CompileOptions;
+
+def kernel_plan(
+    prog: (JacProgram | None) = None,
+    mode: str = "",
+    target: (KernelTarget | None) = None,
+    spec: (TargetSpec | None) = None
+) -> LinkPlan;
+
+def kernel_llvm_runpath(lib_path: str, pkg_root: str = "") -> str;
 
 def link_kernel(
     dst: str,
@@ -30,24 +41,3 @@ def link_kernel_object(
     log: (Callable[[str], None] | None) = None,
     spec: (TargetSpec | None) = None
 ) -> str;
-
-obj GcPauses {
-    has collections: int = 0,
-        total_seconds: float = 0.0,
-        longest_seconds: float = 0.0,
-        origin: float = 0.0,
-        long_pauses: list[tuple[float, float, int]] = [],
-        _started: float = 0.0;
-
-    def observe(phase: str, info: dict[str, int]);
-}
-
-def unit_line_count(path: str) -> int;
-
-def peak_rss_gb -> float;
-
-def plan_kernel_prefix(stop_after: int, log: Callable[[str], None]) -> int;
-
-def build_target_kernel(
-    spec_path: str, dst: str, log: (Callable[[str], None] | None) = None
-) -> int;

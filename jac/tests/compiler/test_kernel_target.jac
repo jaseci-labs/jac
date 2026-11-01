@@ -33,11 +33,11 @@ import from jaclang.compiler.kernel_target {
 }
 import from jaclang.compiler.native_scope { kernel_root_path, native_scope_paths }
 import from jaclang.compiler.placement.placement_facts { native_only }
-import from jaclang.compiler.backends.native.kernel_stage0 {
+import from jaclang.compiler.backends.native.kernel_resolve {
     STAGE0_UNKNOWN_FORMAT,
-    build_target_kernel,
-    running_kernel_target
+    build_target_kernel
 }
+import from jaclang.compiler.backends.native.kernel_stage0 { running_kernel_target }
 import from jaclang.project.modresolver { resolve_module }
 
 """Copy the running jaclang tree under `dst`, sources only; the vendored

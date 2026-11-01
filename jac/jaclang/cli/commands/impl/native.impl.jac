@@ -29,7 +29,9 @@ impl native(
     exact: bool = False,
     release: bool = False,
     require: str = "",
-    stop_after: int = 0
+    target_spec: str = "",
+    output: str = "",
+    triple: str = ""
 ) -> int {
     names = list(names or []);
     unknown = [
@@ -48,15 +50,19 @@ impl native(
     if action == "status" {
         return _require(require) if require else _status(names);
     }
-    if stop_after {
-        if action != "build" or names != ["kernel"] or stop_after < 0 {
+    if target_spec {
+        if action != "build" or names != ["kernel"] or not output {
             console.error(
-                "--stop-after takes a positive count and only `jac native build kernel`"
+                "--target-spec takes --output and only `jac native build kernel`"
             );
             return 1;
         }
-        plan_kernel_prefix(stop_after, _log);
-        return 0;
+        try {
+            return build_target_kernel(target_spec, output, triple, _log);
+        } except (KernelError, KernelEntryError) as e {
+            console.error(str(e));
+            return 1;
+        }
     }
     if action == "build" {
         return _build(names, force, exact, release);
@@ -125,13 +131,7 @@ impl _status(names: list[str]) -> int {
 
 impl _require(spec: str) -> int {
     if spec in ("release", "kit") {
-        omitted = router.omitted_by_image() if spec == "kit" else frozenset();
-        wanted = [
-            n
-            for n in router.release_set()
-            if n not in omitted
-        ]
-            + router.shipped_floors();
+        wanted = router.release_set() + router.shipped_floors();
     } else {
         wanted = [
             part.strip()
