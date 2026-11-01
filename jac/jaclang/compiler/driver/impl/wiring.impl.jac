@@ -1438,7 +1438,7 @@ impl render_wiring(
             tuple[str, str, str, str, str],
             list[tuple[list[str], (list[tuple[str, str]] | None)]]
         ] = {};
-    for ((block, provider, form, alias, arrow, items), consumers) in groups.items() {
+    for ((block, provider, form, alias, arrow, group_items), consumers) in groups.items() {
         module_form = "from" not in form.split(" ");
         prefix = " ".join(
             [
@@ -1463,7 +1463,7 @@ impl render_wiring(
             statements.setdefault((block, provider, prefix, alias, arrow), []).append(
                 (
                     [block_relative(block, c) for c in taken],
-                    None if module_form else list(items)
+                    None if module_form else list(group_items)
                 )
             );
             pending = rest;

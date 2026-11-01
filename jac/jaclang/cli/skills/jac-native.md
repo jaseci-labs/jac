@@ -62,7 +62,7 @@ Anything else fails **loudly at compile time** - `import json` -> *"Native pathw
 
 The stdlib table is for **host** binaries. On `--target wasm32` there is no libc/libm to link: each unresolved symbol becomes a wasm *import* the JS host must supply (`math.sin` -> an `env.sin` import, `time.time` -> `clock_gettime`; `random` is self-contained and works in-browser). Supply `Math.sin` etc. from JS or hand-roll - the shooter flagship hand-rolls Taylor `jcos`/`jsin` to keep one source for both targets. See `jac-native-wasm`.
 
-**Not supported** (compile errors): `async`, decorators, multiple inheritance, `::py::`, `by llm()`, PyPI, `subprocess` (E5090), and `os.fork`/`os.pipe` (E5092). Host binaries can run child commands with `os.system`, but that call blocks until the command finishes. For work stepped from a frame loop, see Generators. Lambdas: see gotchas.
+**Not supported** (compile errors): `async`, decorators, multiple inheritance, `by llm()`, PyPI, `subprocess` (E5090), and `os.fork`/`os.pipe` (E5092). Host binaries can run child commands with `os.system`, but that call blocks until the command finishes. For work stepped from a frame loop, see Generators. Lambdas: see gotchas.
 
 ## Gotchas (all verified against the current compiler)
 

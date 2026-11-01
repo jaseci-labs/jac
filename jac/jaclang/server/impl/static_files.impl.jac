@@ -57,32 +57,39 @@ impl _within_assets(rel: str) -> str {
     return rel[len('assets/'):] if rel.startswith('assets/') else rel;
 }
 
+impl _climbs(rel: str) -> bool {
+    return '..' in Path(rel).parts;
+}
+
+impl _contained_file(within: Path, candidate: Path) -> bool {
+    if not (candidate.exists() and candidate.is_file()) {
+        return False;
+    }
+    return within.resolve() in candidate.resolve().parents;
+}
+
 impl find_static_candidate(
     base_path: str, relative_path: str, client_dist: str = ''
 ) -> (Path | None) {
-    (roots, dists, asset_dirs) = static_roots(base_path, client_dist);
     rel = relative_path.lstrip('/');
-    file_name = Path(rel).name;
-    candidates: list[tuple[Path, Path]] = [];
-    for dist in dists {
-        candidates.append((dist, dist / rel));
-        candidates.append((dist, dist / file_name));
+    if _climbs(rel) {
+        return None;
     }
+    (roots, dists, asset_dirs) = static_roots(base_path, client_dist);
+    file_name = Path(rel).name;
+
+    bases: list[tuple[Path, str]] = [(dist, rel) for dist in dists];
     for root_dir in roots {
-        candidates.append((root_dir, root_dir / 'dist' / rel));
-        candidates.append((root_dir, root_dir / 'dist' / file_name));
+        bases.append((root_dir / 'dist', rel));
     }
     for asset_dir in asset_dirs {
-        candidates.append((asset_dir, asset_dir / _within_assets(rel)));
-        candidates.append((asset_dir, asset_dir / file_name));
+        bases.append((asset_dir, _within_assets(rel)));
     }
-    for (within, candidate) in candidates {
-        if candidate.exists() and candidate.is_file() {
-            resolved = candidate.resolve();
-            if within.resolve() not in resolved.parents {
-                continue;
+    for (base, sub_path) in bases {
+        for candidate in (base / sub_path, base / file_name) {
+            if _contained_file(base, candidate) {
+                return candidate;
             }
-            return candidate;
         }
     }
     return None;
@@ -92,7 +99,9 @@ impl find_root_asset(
     base_path: str, relative_path: str, client_dist: str = ''
 ) -> (Path | None) {
     rel = relative_path.lstrip('/');
-    if not rel or Path(rel).suffix.lower() not in ROOT_ASSET_EXTENSIONS {
+    if not rel
+        or _climbs(rel)
+        or Path(rel).suffix.lower() not in ROOT_ASSET_EXTENSIONS {
         return None;
     }
     (project_roots, dists, asset_dirs) = static_roots(base_path, client_dist);
@@ -105,14 +114,9 @@ impl find_root_asset(
     }
     for asset_root in roots {
         for candidate in (asset_root / rel, asset_root / file_name) {
-            if not (candidate.exists() and candidate.is_file()) {
-                continue;
+            if _contained_file(asset_root, candidate) {
+                return candidate;
             }
-            resolved = candidate.resolve();
-            if asset_root.resolve() not in resolved.parents {
-                continue;
-            }
-            return candidate;
         }
     }
     return None;

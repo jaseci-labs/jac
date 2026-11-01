@@ -207,6 +207,7 @@ impl _reserved_c_symbols -> frozenset[str] {
         "dlopen dlsym dlclose dlerror "
         "__jac_win_executable_path "
         "__jac_errno __jac_stdio __jac_platform_id __jac_stat __jac_opendir "
+        "__jac_uncaught_exception "
         "__jac_readdir __jac_closedir __jac_dirent_name __jac_at_fdcwd "
         "__jac_home_dir __jac_executable_path __jac_addrinfo_layout "
         "__jac_sockaddr_family __jac_clock_id __jac_sleep_ns __jac_malloc_size "

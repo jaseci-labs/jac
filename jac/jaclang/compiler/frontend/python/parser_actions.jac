@@ -2226,24 +2226,49 @@ def interpolation_text(
         end_line = format.lineno;
         end_col = format.col_offset;
     }
-    if not p.source_lines {
-        p.source_lines = source_line_bytes(p.tok.data);
+    if not p.source_line_starts {
+        p.source_line_starts = source_line_starts(p.tok.data);
     }
-    lines = p.source_lines;
+    starts = p.source_line_starts;
+    data = p.tok.data;
     text = b"";
     for line in range(lineno, end_line + 1) {
+        line_start = starts[line - 1];
+        line_end = starts[line] if line < len(starts) else len(data);
+        line_bytes = data[line_start:line_end];
         start = col_offset + 1 if line == lineno else 0;
-        end = end_col if line == end_line else len(lines[line - 1]);
+        end = end_col if line == end_line else len(line_bytes);
         for (comment_start, comment_end) in p.tok.comments.get(line, []) {
             if comment_end <= start or comment_start >= end {
                 continue;
             }
-            text += lines[line - 1][start:max(start, comment_start)];
+            text += line_bytes[start:max(start, comment_start)];
             start = min(end, comment_end);
         }
-        text += lines[line - 1][start:end];
+        text += line_bytes[start:end];
     }
     return text.decode("utf-8");
+}
+
+def source_line_starts(data: bytes) -> list[int] {
+    starts: list[int] = [0];
+    size = len(data);
+    index = 0;
+    while index < size {
+        byte = data[index];
+        index += 1;
+        if byte == 13 {
+            if index < size and data[index] == 10 {
+                index += 1;
+            }
+        } elif byte != 10 {
+            continue;
+        }
+        if index < size {
+            starts.append(index);
+        }
+    }
+    return starts;
 }
 
 def _interpolation_conversion(

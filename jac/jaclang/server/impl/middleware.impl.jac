@@ -31,6 +31,7 @@ impl jwt_middleware(user_manager: UserManager) -> Callable[..., any] {
         setattr(request.state, 'username', username);
         next_fn: any = call_next;
         binding = bind_caller_assurance(assurance);
+        caller = bind_caller_user(username);
         try {
             response: Response = await next_fn(request);
             if from_cookie and username {
@@ -39,6 +40,7 @@ impl jwt_middleware(user_manager: UserManager) -> Callable[..., any] {
             apply_session_change(request, response);
             return response;
         } finally {
+            release_caller_user(caller);
             release_caller_assurance(binding);
         }
     }

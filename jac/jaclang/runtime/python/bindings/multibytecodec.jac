@@ -1,181 +1,59 @@
-"""The _multibytecodec module: MultibyteCodec and the incremental and stream
-codec types over their generated clinic glue."""
-
-# The "errors" property's context: which stateful type it reads.
 glob:priv ENCODER: u64 = 0,
      DECODER: u64 = 1,
      READER: u64 = 2,
      WRITER: u64 = 3;
 
-def:priv codec_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, MultibyteCodec_token.handle);
-}
+def:priv codec_dealloc(instance: ptr[PyObject]);
 
-def:priv codec_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(instance, MultibyteCodec_token.handle, visitor, context);
-}
+def:priv codec_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv codec_clear(instance: ptr[PyObject]) -> i32 {
-    return clear_payload(instance, MultibyteCodec_token.handle);
-}
+def:priv codec_clear(instance: ptr[PyObject]) -> i32;
 
-def:priv encoder_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, MultibyteIncrementalEncoder_token.handle);
-}
+def:priv encoder_dealloc(instance: ptr[PyObject]);
 
-def:priv encoder_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, MultibyteIncrementalEncoder_token.handle, visitor, context
-    );
-}
+def:priv encoder_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv decoder_dealloc(instance: ptr[PyObject]) {
-    dispose_payload(instance, MultibyteIncrementalDecoder_token.handle);
-}
+def:priv decoder_dealloc(instance: ptr[PyObject]);
 
-def:priv decoder_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, MultibyteIncrementalDecoder_token.handle, visitor, context
-    );
-}
+def:priv decoder_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv reader_dealloc(instance: ptr[PyObject]) {
-    record_clear(jacpy_binding_record(instance, MultibyteStreamReader_token.handle), 8);
-    dispose_payload(instance, MultibyteStreamReader_token.handle);
-}
+def:priv reader_dealloc(instance: ptr[PyObject]);
 
-def:priv reader_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, MultibyteStreamReader_token.handle, visitor, context
-    );
-}
+def:priv reader_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-def:priv writer_dealloc(instance: ptr[PyObject]) {
-    record_clear(jacpy_binding_record(instance, MultibyteStreamWriter_token.handle), 8);
-    dispose_payload(instance, MultibyteStreamWriter_token.handle);
-}
+def:priv writer_dealloc(instance: ptr[PyObject]);
 
-def:priv writer_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
-    return traverse_payload(
-        instance, MultibyteStreamWriter_token.handle, visitor, context
-    );
-}
+def:priv writer_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32;
 
-# tp_new of the four stateful types.
 def:priv encoder_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    parsed = parse_new_arguments(args, kwargs, "IncrementalEncoder", False);
-    if parsed is None {
-        return NULL;
-    }
-    return stateful_new(
-        type,
-        MultibyteIncrementalEncoder_token,
-        definition.handle,
-        parsed.errors,
-        NULL,
-        True
-    );
-}
+) -> ptr[PyObject];
 
 def:priv decoder_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    parsed = parse_new_arguments(args, kwargs, "IncrementalDecoder", False);
-    if parsed is None {
-        return NULL;
-    }
-    return stateful_new(
-        type,
-        MultibyteIncrementalDecoder_token,
-        definition.handle,
-        parsed.errors,
-        NULL,
-        False
-    );
-}
+) -> ptr[PyObject];
 
 def:priv reader_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    parsed = parse_new_arguments(args, kwargs, "StreamReader", True);
-    if parsed is None {
-        return NULL;
-    }
-    instance = stateful_new(
-        type,
-        MultibyteStreamReader_token,
-        definition.handle,
-        parsed.errors,
-        parsed.stream,
-        False
-    );
-    if instance {
-        mirror_stream(instance, MultibyteStreamReader_token);
-    }
-    return instance;
-}
+) -> ptr[PyObject];
 
 def:priv writer_new(
     type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> ptr[PyObject] {
-    parsed = parse_new_arguments(args, kwargs, "StreamWriter", True);
-    if parsed is None {
-        return NULL;
-    }
-    instance = stateful_new(
-        type,
-        MultibyteStreamWriter_token,
-        definition.handle,
-        parsed.errors,
-        parsed.stream,
-        True
-    );
-    if instance {
-        mirror_stream(instance, MultibyteStreamWriter_token);
-    }
-    return instance;
-}
+) -> ptr[PyObject];
 
-# tp_init of the four stateful types accepts anything.
 def:priv stateful_init(
     instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
-) -> i32 {
-    return i32(0);
-}
+) -> i32;
 
-def:priv errors_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
-    return codecctx_errors_get(instance, context);
-}
+def:priv errors_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject];
 
 def:priv errors_set(
     instance: ptr[PyObject], value: ptr[PyObject], context: u64
-) -> i32 {
-    return codecctx_errors_set(instance, value, context);
-}
+) -> i32;
 
-def:priv errors_property(kind: u64) -> PropertyDefinition {
-    return PropertyDefinition(
-        "errors",
-        PropertyCallbacks(read=errors_get, write=errors_set),
-        kind,
-        "how to treat errors"
-    );
-}
+def:priv errors_property(kind: u64) -> PropertyDefinition;
 
-# The stream types' "stream" member (_Py_T_OBJECT, Py_READONLY) reads the
-# record, which holds the state's stream borrowed.
-def:priv mirror_stream(instance: ptr[PyObject], token: ClassToken) {
-    if jacpy_binding_native_present(instance, token.handle) != 0 {
-        state = jacpy_binding_native_get(instance, token.handle);
-        if isinstance(state, StatefulState) {
-            record_set_object(
-                jacpy_binding_record(instance, token.handle), 0, state.stream
-            );
-        }
-    }
-}
+def:priv mirror_stream(instance: ptr[PyObject], token: ClassToken);
 
 glob:priv STATEFUL_FLAGS: u64 = u64(
          TypeFlags.GC.value | TypeFlags.BASETYPE.value | TypeFlags.IMMUTABLE.value
@@ -253,13 +131,189 @@ glob:priv codec_type = TypeDefinition(
          generic_getattr=True
      );
 
-def:priv execute(module: ptr[PyObject]) -> i32 {
+def:priv execute(module: ptr[PyObject]) -> i32;
+
+glob:priv definition = ModuleDefinition(
+         "_multibytecodec",
+         "",
+         module_methods,
+         ModuleHooks(execute=execute),
+         STATE_COUNT
+     );
+
+def:pub PyInit__multibytecodec -> ptr[PyObject];
+
+impl codec_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, MultibyteCodec_token.handle);
+}
+
+impl codec_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(instance, MultibyteCodec_token.handle, visitor, context);
+}
+
+impl codec_clear(instance: ptr[PyObject]) -> i32 {
+    return clear_payload(instance, MultibyteCodec_token.handle);
+}
+
+impl encoder_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, MultibyteIncrementalEncoder_token.handle);
+}
+
+impl encoder_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, MultibyteIncrementalEncoder_token.handle, visitor, context
+    );
+}
+
+impl decoder_dealloc(instance: ptr[PyObject]) {
+    dispose_payload(instance, MultibyteIncrementalDecoder_token.handle);
+}
+
+impl decoder_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, MultibyteIncrementalDecoder_token.handle, visitor, context
+    );
+}
+
+impl reader_dealloc(instance: ptr[PyObject]) {
+    record_clear(jacpy_binding_record(instance, MultibyteStreamReader_token.handle), 8);
+    dispose_payload(instance, MultibyteStreamReader_token.handle);
+}
+
+impl reader_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, MultibyteStreamReader_token.handle, visitor, context
+    );
+}
+
+impl writer_dealloc(instance: ptr[PyObject]) {
+    record_clear(jacpy_binding_record(instance, MultibyteStreamWriter_token.handle), 8);
+    dispose_payload(instance, MultibyteStreamWriter_token.handle);
+}
+
+impl writer_traverse(instance: ptr[PyObject], visitor: ptr, context: ptr) -> i32 {
+    return traverse_payload(
+        instance, MultibyteStreamWriter_token.handle, visitor, context
+    );
+}
+
+impl encoder_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    parsed = parse_new_arguments(args, kwargs, "IncrementalEncoder", False);
+    if parsed is None {
+        return NULL;
+    }
+    return stateful_new(
+        type,
+        MultibyteIncrementalEncoder_token,
+        definition.handle,
+        parsed.errors,
+        NULL,
+        True
+    );
+}
+
+impl decoder_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    parsed = parse_new_arguments(args, kwargs, "IncrementalDecoder", False);
+    if parsed is None {
+        return NULL;
+    }
+    return stateful_new(
+        type,
+        MultibyteIncrementalDecoder_token,
+        definition.handle,
+        parsed.errors,
+        NULL,
+        False
+    );
+}
+
+impl reader_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    parsed = parse_new_arguments(args, kwargs, "StreamReader", True);
+    if parsed is None {
+        return NULL;
+    }
+    instance = stateful_new(
+        type,
+        MultibyteStreamReader_token,
+        definition.handle,
+        parsed.errors,
+        parsed.stream,
+        False
+    );
+    if instance {
+        mirror_stream(instance, MultibyteStreamReader_token);
+    }
+    return instance;
+}
+
+impl writer_new(
+    type: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> ptr[PyObject] {
+    parsed = parse_new_arguments(args, kwargs, "StreamWriter", True);
+    if parsed is None {
+        return NULL;
+    }
+    instance = stateful_new(
+        type,
+        MultibyteStreamWriter_token,
+        definition.handle,
+        parsed.errors,
+        parsed.stream,
+        True
+    );
+    if instance {
+        mirror_stream(instance, MultibyteStreamWriter_token);
+    }
+    return instance;
+}
+
+impl stateful_init(
+    instance: ptr[PyObject], args: ptr[PyObject], kwargs: ptr[PyObject]
+) -> i32 {
+    return i32(0);
+}
+
+impl errors_get(instance: ptr[PyObject], context: u64) -> ptr[PyObject] {
+    return codecctx_errors_get(instance, context);
+}
+
+impl errors_set(instance: ptr[PyObject], value: ptr[PyObject], context: u64) -> i32 {
+    return codecctx_errors_set(instance, value, context);
+}
+
+impl errors_property(kind: u64) -> PropertyDefinition {
+    return PropertyDefinition(
+        "errors",
+        PropertyCallbacks(read=errors_get, write=errors_set),
+        kind,
+        "how to treat errors"
+    );
+}
+
+impl mirror_stream(instance: ptr[PyObject], token: ClassToken) {
+    if jacpy_binding_native_present(instance, token.handle) != 0 {
+        state = jacpy_binding_native_get(instance, token.handle);
+        if isinstance(state, StatefulState) {
+            record_set_object(
+                jacpy_binding_record(instance, token.handle), 0, state.stream
+            );
+        }
+    }
+}
+
+impl execute(module: ptr[PyObject]) -> i32 {
     MultibyteCodec_token.handle = codec_type.handle;
     MultibyteIncrementalEncoder_token.handle = encoder_type.handle;
     MultibyteIncrementalDecoder_token.handle = decoder_type.handle;
     MultibyteStreamReader_token.handle = reader_type.handle;
     MultibyteStreamWriter_token.handle = writer_type.handle;
-    str_write = PyUnicode_InternFromString("write");
+    str_write = PyUnicode_InternFromString(ptr[u8]("write"));
     if not str_write {
         return i32(-1);
     }
@@ -269,7 +323,7 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     if not codec {
         return i32(-1);
     }
-    # MultibyteCodec is not a module attribute.
+
     jacpy_binding_state_set(module, i64(STATE_CODEC_TYPE), codec);
     jacpy_release(codec);
     if not add_state_owned(
@@ -301,14 +355,6 @@ def:priv execute(module: ptr[PyObject]) -> i32 {
     return i32(0);
 }
 
-glob:priv definition = ModuleDefinition(
-         "_multibytecodec",
-         "",
-         module_methods,
-         ModuleHooks(execute=execute),
-         STATE_COUNT
-     );
-
-def:pub PyInit__multibytecodec -> ptr[PyObject] {
+impl PyInit__multibytecodec -> ptr[PyObject] {
     return definition.initialize();
 }

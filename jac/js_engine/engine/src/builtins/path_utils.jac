@@ -8,13 +8,20 @@ here so both files can import them without a circular dependency (modules.na.jac
 imports from module_resolver.na.jac, so the reverse direction is forbidden).
 """
 
+import from engine.src.runtime.mem {
+    byte_chr,
+    str_bslice,
+    str_byte,
+    str_nbytes
+}
 """Split a path string by '/' separator."""
 def:pub path_split(path: str) -> list[str] {
     parts: list[str] = [];
     cur: str = "";
     i: int = 0;
-    while i < len(path) {
-        ch: str = path[i];
+    _nb22_path: int = str_nbytes(path);
+    while i < _nb22_path {
+        ch: str = byte_chr(str_byte(path, i));
         if ch == "/" {
             parts.append(cur);
             cur = "";
@@ -67,14 +74,14 @@ Extract the directory portion of a file path.
 """
 def:pub path_dirname(path: str) -> str {
     # Strip trailing slashes before scanning so dirname("/a/b/") == "/a"
-    end: int = len(path);
-    while end > 1 and path[end - 1] == "/" {
+    end: int = str_nbytes(path);
+    while end > 1 and byte_chr(str_byte(path, end - 1)) == "/" {
         end = end - 1;
     }
     last_slash: int = -1;
     i: int = 0;
     while i < end {
-        if path[i] == "/" {
+        if byte_chr(str_byte(path, i)) == "/" {
             last_slash = i;
         }
         i = i + 1;
@@ -85,12 +92,12 @@ def:pub path_dirname(path: str) -> str {
     if last_slash == 0 {
         return "/";
     }
-    return path[0:last_slash];
+    return str_bslice(path, 0, last_slash);
 }
 
 """Return an absolute path given a potentially-relative path and a cwd string."""
 def:pub path_abspath(path: str, cwd: str) -> str {
-    if len(path) > 0 and path[0] == "/" {
+    if len(path) > 0 and byte_chr(str_byte(path, 0)) == "/" {
         return path_normalize(path);
     }
     if cwd == "" {

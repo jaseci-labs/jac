@@ -10,10 +10,15 @@ so the `na_move_lowerable` marks come purely from the core liveness proof. Each
 fixture function has a single `bN = a` candidate; we assert the mark per candidate
 by its target name.
 
-This locks the conservative rule set: only a LOCAL source whose every use is an
-alias-value into a plain local, and which is dead-out at the move site, is proven.
-Every UAF channel (own-param, escape via call/field/borrow/closure/concurrent,
-loop back-edge re-read) is asserted NOT proven.
+This locks the rule set: a LOCAL source that is dead-out at the move site is
+proven when every use is an alias-value into a plain local, or when liveness
+sees all its uses -- none in a `try`, a lambda, a comprehension, a `flow` or a
+parallel loop, and no borrow of it. A source passed to a call or stored in a
+field before the copy is proven: the copy is released no earlier than the
+source would have been, so the object's life is unchanged. Every channel that
+reads the source's slot rather than its object (own-param, receiver,
+borrow, closure, concurrent capture, loop back-edge re-read) is asserted NOT
+proven.
 """
 
 import os;
@@ -63,10 +68,14 @@ test "the proof refuses a method receiver source (it is the caller's reference)"
     assert not marks["b10"] , "`self` is bound by the call like a param and must never be move-lowered";
 }
 
-test "the proof refuses escaping sources (call-arg, field, closure, concurrent, borrow)" {
+test "the proof moves a source passed to a call or stored in a field before the copy" {
     marks = move_marks("rc_facts_cases.jac");
-    assert not marks["b3"] , "a call-arg use must disqualify the source";
-    assert not marks["b4"] , "a field store must disqualify the source";
+    assert marks["b3"] , "a source dead after the copy moves even after a call-arg use";
+    assert marks["b4"] , "a source dead after the copy moves even after a field store";
+}
+
+test "the proof refuses sources read through their slot (closure, concurrent, borrow)" {
+    marks = move_marks("rc_facts_cases.jac");
     assert not marks["b5"] , "a closure capture must disqualify the source";
     assert not marks["b6"] , "a concurrent capture must disqualify the source";
     assert not marks["b7"] , "a borrow of the source must disqualify it";

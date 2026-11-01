@@ -451,15 +451,7 @@ impl JacAutoLintPass.create_glob_from_assignment(
 impl JacAutoLintPass.is_module_level_construct(stmt: uni.UniNode) -> bool {
     return isinstance(
         stmt,
-        (
-            uni.Import,
-            uni.Archetype,
-            uni.Ability,
-            uni.Enum,
-            uni.GlobalVars,
-            uni.Test,
-            uni.PyInlineCode
-        )
+        (uni.Import, uni.Archetype, uni.Ability, uni.Enum, uni.GlobalVars, uni.Test)
     );
 }
 

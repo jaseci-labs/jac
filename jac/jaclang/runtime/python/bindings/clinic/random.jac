@@ -8,11 +8,7 @@ jaclang.runtime.python.modules.random.
 def:priv _random_Random_random_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return _random_Random_random_impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return _random_Random_random_impl(receiver);
 }
 
 def:priv _random_Random_seed_bound(
@@ -31,34 +27,37 @@ def:priv _random_Random_seed_bound(
     }
 }
 
+def:priv _random_Random_seed_direct(
+    receiver: ptr[PyObject], stack: ptr[ptr[PyObject]], count: i64
+) -> ptr[PyObject] {
+    clinic_args = stack.view(count);
+    n: ptr[PyObject] = borrowed_none();
+    if count > 0 {
+        n = clinic_args[0];
+    }
+    return _random_Random_seed_impl(receiver, n);
+}
+
 def:priv _random_Random_seed_call(
     receiver: ptr[PyObject], args: ptr[ptr[PyObject]], nargs: i64
 ) -> ptr[PyObject] {
     if (nargs > 1) and not check_positional("seed", int(nargs), 0, 1) {
         return NULL;
     }
-    return _random_Random_seed_bound(receiver, args, nargs);
+    return _random_Random_seed_direct(receiver, args, nargs);
 }
 
 def:priv _random_Random_getstate_call(
     receiver: ptr[PyObject], unused: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        return _random_Random_getstate_impl(receiver);
-    } except boundary_failure {
-        return NULL;
-    }
+    return _random_Random_getstate_impl(receiver);
 }
 
 def:priv _random_Random_setstate_call(
     receiver: ptr[PyObject], value: ptr[PyObject]
 ) -> ptr[PyObject] {
-    try {
-        state: ptr[PyObject] = value;
-        return _random_Random_setstate_impl(receiver, state);
-    } except boundary_failure {
-        return NULL;
-    }
+    state: ptr[PyObject] = value;
+    return _random_Random_setstate_impl(receiver, state);
 }
 
 def:priv _random_Random_getrandbits_call(

@@ -9,6 +9,7 @@ obj PrefetchedTypes {
     has none_type_class: ClassType | None = None,
         object_class: ClassType | None = None,
         type_class: ClassType | None = None,
+        base_exception_class: ClassType | None = None,
         coroutine_class: ClassType | None = None,
         generator_class: ClassType | None = None,
         function_class: ClassType | None = None,
@@ -374,7 +375,10 @@ walker TypeEvaluator {
     ) -> TypeBase | None;
 
     def slice_assignment_is_valid(target: Expr, value_node: Expr) -> bool;
-    def is_sub_class(super_cls: ClassType, sub_cls: ClassType) -> bool;
+    def is_sub_class(
+        super_cls: ClassType, sub_cls: ClassType, ignore_unknown: bool = False
+    ) -> bool;
+
     def _heal_ancestry(cls: ClassType) -> None;
     def _heal_class_bases(cls: ClassType) -> None;
     def _assign_callable(
@@ -746,6 +750,7 @@ walker TypeEvaluator {
         target: NarrowingTarget, flow_node: UniCFGNode, visited: set[int]
     ) -> TypeBase | None;
 
+    def _readable_flow_type(flow_type: TypeBase | None) -> TypeBase | None;
     def _node_encloses(outer: UniNode, inner: UniNode) -> bool;
     def _loop_body_writes_target(
         loop_node: UniCFGNode, target: NarrowingTarget
