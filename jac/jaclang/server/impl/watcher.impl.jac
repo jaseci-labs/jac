@@ -71,6 +71,13 @@ impl JacFileWatcher.start -> None {
     watcher = self;
     observer: any = None;
     scheduled: dict[str, any] = {};
+    recursive_roots: set[str] = set();
+    annex_watch_roots = {
+        os.path.realpath(folder)
+        for watch_path in watcher.watch_paths
+        if os.path.isfile(os.path.realpath(watch_path))
+        for folder in annex_folders_of(os.path.realpath(watch_path))
+    };
     schedule_lock = threading.Lock();
 
     def ignored_directory(path: str, allow_hidden_root: bool = False) -> bool {
@@ -106,12 +113,29 @@ impl JacFileWatcher.start -> None {
             return;
         }
         if sys.platform == 'linux' {
-            observer.add_tree(resolved, allow_hidden_root=allow_hidden_root);
+            if not observer.is_watched(resolved) {
+                observer.add_tree(resolved, allow_hidden_root=allow_hidden_root);
+            }
+            return;
+        }
+        if resolved not in annex_watch_roots {
+            return;
+        }
+        with schedule_lock {
+            if any(
+                resolved == recursive_root
+                    or resolved.startswith(recursive_root + os.sep)
+                for recursive_root in recursive_roots
+            ) {
+                return;
+            }
+            scheduled[resolved] = observer.schedule(handler, resolved, recursive=True);
+            recursive_roots.add(resolved);
         }
     }
 
     def schedule_new_children(path: str) {
-        if sys.platform != 'linux' or not os.path.isdir(path) {
+        if not os.path.isdir(path) {
             return;
         }
         explicit_root = any(
@@ -130,7 +154,13 @@ impl JacFileWatcher.start -> None {
             child = os.path.join(path, name);
             if os.path.isdir(child)
                 and not os.path.islink(child)
-                and not ignored_directory(child) {
+                and not ignored_directory(child)
+                and (
+                    sys.platform == 'linux'
+                    and not observer.is_watched(child)
+                    or sys.platform != 'linux'
+                    and os.path.realpath(child) in annex_watch_roots
+                ) {
                 schedule_tree(child);
             }
         }
@@ -170,8 +200,8 @@ impl JacFileWatcher.start -> None {
             if event.is_directory {
                 if sys.platform == 'linux' {
                     schedule_directory(path, inner_self);
-                    schedule_new_children(path);
                 }
+                schedule_new_children(path);
             } else {
                 watcher._on_change(path, ChangeType.MODIFIED);
             }
@@ -249,6 +279,7 @@ impl JacFileWatcher.start -> None {
                     scheduled[resolved] = observer.schedule(
                         handler, resolved, recursive=True
                     );
+                    recursive_roots.add(resolved);
                 }
             } elif path.is_file() {
                 schedule_directory(str(path.parent), handler, True);

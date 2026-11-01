@@ -37,6 +37,7 @@ class _PrunedInotifyEmitter(InotifyEmitter) {
         }
     }
 
+    def is_watched(self: _PrunedInotifyEmitter, path: str) -> bool;
     def add_directory(
         self: _PrunedInotifyEmitter, path: str, allow_hidden_root: bool = False
     );
@@ -80,6 +81,7 @@ class SharedPrunedInotifyObserver {
     def start(self: SharedPrunedInotifyObserver);
     def stop(self: SharedPrunedInotifyObserver);
     def join(self: SharedPrunedInotifyObserver, timeout: (float | None) = None);
+    def is_watched(self: SharedPrunedInotifyObserver, path: str) -> bool;
     def add_directory(
         self: SharedPrunedInotifyObserver, path: str, allow_hidden_root: bool = False
     );

@@ -26,6 +26,13 @@ impl _PrunedInotifyEmitter.on_thread_start(self: _PrunedInotifyEmitter) {
     }
 }
 
+impl _PrunedInotifyEmitter.is_watched(self: _PrunedInotifyEmitter, path: str) -> bool {
+    resolved = os.path.realpath(path);
+    with self._watch_lock {
+        return resolved in self._watched_paths;
+    }
+}
+
 impl _PrunedInotifyEmitter.add_directory(
     self: _PrunedInotifyEmitter, path: str, allow_hidden_root: bool = False
 ) {
@@ -223,6 +230,13 @@ impl SharedPrunedInotifyObserver.join(
         self._observer.join(timeout=timeout);
         self._started = False;
     }
+}
+
+impl SharedPrunedInotifyObserver.is_watched(
+    self: SharedPrunedInotifyObserver, path: str
+) -> bool {
+    resolved = os.path.realpath(path);
+    return any(emitter.is_watched(resolved) for emitter in self._observer.emitters);
 }
 
 impl SharedPrunedInotifyObserver.add_directory(

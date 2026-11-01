@@ -1266,6 +1266,69 @@ test "a large source tree uses one filesystem watcher emitter" {
     }
 }
 
+test "new annex folders stay watched after creation" {
+    import os;
+    with tempfile.TemporaryDirectory() as tmp {
+        source = Path(tmp) / "main.jac";
+        source.write_text("glob value = 1;\n");
+        annex_dir = Path(tmp) / "main.impl";
+        annex_file = annex_dir / "main.impl.jac";
+        watcher = JacFileWatcher(watch_paths=[str(source)], _debounce_ms=50);
+        events: list[FileChangeEvent] = [];
+        watcher.add_callback(lambda (event) { events.append(event); });
+        watcher.start();
+        time.sleep(0.2);
+        annex_dir.mkdir();
+        time.sleep(0.2);
+        annex_file.write_text("glob value = 2;\n");
+        time.sleep(0.4);
+        watcher.stop();
+        assert any(
+            os.path.realpath(event.path) == os.path.realpath(str(annex_file))
+            for event in events
+        ) , f"edits in a newly created annex folder must be reported: {events}";
+    }
+}
+
+test "directory events do not rescan watched child trees" {
+    import sys;
+    import from types { ModuleType, SimpleNamespace }
+    with tempfile.TemporaryDirectory() as tmp {
+        app_root = Path(tmp);
+        child = app_root / "core";
+        child.mkdir();
+        (child / "nested").mkdir();
+        module_name = "jaclang.server.impl.pruned_inotify";
+        previous_module = sys.modules.get(module_name);
+        fake_module = ModuleType(module_name);
+        observer = MagicMock();
+        observer.is_watched.return_value = True;
+        factory = MagicMock(return_value=observer);
+        fake_module.SharedPrunedInotifyObserver = factory;
+        sys.modules[module_name] = fake_module;
+        watcher = JacFileWatcher(watch_paths=[str(app_root)]);
+        try {
+            with patch.object(sys, "platform", "linux") {
+                watcher.start();
+                handler = factory.call_args.args[0];
+                handler.on_modified(
+                    SimpleNamespace(src_path=str(app_root), is_directory=True)
+                );
+                watcher.stop();
+            }
+        } finally {
+            if previous_module is None {
+                sys.modules.pop(module_name, None);
+            } else {
+                sys.modules[module_name] = previous_module;
+            }
+        }
+        assert observer.add_tree.call_count == 0 , (
+            "a directory event must not rescan a child already reported as watched"
+        );
+    }
+}
+
 test "flush loop survives an exception and keeps delivering" {
     with tempfile.TemporaryDirectory() as tmp {
         temp_dir = Path(tmp);
