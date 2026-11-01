@@ -61,6 +61,7 @@ def host_errors(
                     for c in module.get_all_sub_nodes(FuncCall)
                     if isinstance(c.target, Name) and c.target.value == "bind_na_host"
                 );
+                assert call.params is not None;
                 host_arg = call.params[1];
                 assert isinstance(host_arg, Name);
                 host_arg.narrowed_type = host_type.clone_as_instance();

@@ -17,6 +17,12 @@ def _run_meta(args: list[Arg]) -> CommandSpec {
     );
 }
 
+def split_required(argv: list[str], meta: any) -> tuple[list[str], list[str]] {
+    split = split_remainder_argv(argv, meta);
+    assert split is not None;
+    return split;
+}
+
 test "split_remainder_argv returns None without a REMAINDER arg" {
     meta = _run_meta(
         [Arg(name="filename", kind=ArgKind.POSITIONAL, `default="", help="x")]
@@ -32,9 +38,7 @@ test "split_remainder_argv splits script args after the positional" {
 
         ]
     );
-    (trimmed, script_args) = split_remainder_argv(
-        ["run", "app.jac", "one", "two"], meta
-    );
+    (trimmed, script_args) = split_required(["run", "app.jac", "one", "two"], meta);
     assert trimmed == ["run", "app.jac"];
     assert script_args == ["one", "two"];
 }
@@ -47,7 +51,7 @@ test "split_remainder_argv honors -- terminator" {
 
         ]
     );
-    (trimmed, script_args) = split_remainder_argv(
+    (trimmed, script_args) = split_required(
         ["run", "app.jac", "--", "--weird", "tail"], meta
     );
     assert trimmed == ["run", "app.jac"];
@@ -63,7 +67,7 @@ test "split_remainder_argv passes flags after the positional to script args" {
 
         ]
     );
-    (trimmed, script_args) = split_remainder_argv(
+    (trimmed, script_args) = split_required(
         ["run", "app.jac", "--profile", "prod", "tail"], meta
     );
     assert trimmed == ["run", "app.jac"];
@@ -79,7 +83,7 @@ test "split_remainder_argv passes attached flags after the positional to script 
 
         ]
     );
-    (trimmed, script_args) = split_remainder_argv(
+    (trimmed, script_args) = split_required(
         ["run", "app.jac", "--profile=prod", "tail"], meta
     );
     assert trimmed == ["run", "app.jac"];
@@ -95,7 +99,7 @@ test "split_remainder_argv consumes value flags before the positional" {
 
         ]
     );
-    (trimmed, script_args) = split_remainder_argv(
+    (trimmed, script_args) = split_required(
         ["run", "--profile", "prod", "app.jac", "tail"], meta
     );
     assert trimmed == ["run", "--profile", "prod", "app.jac"];
@@ -111,7 +115,7 @@ test "split_remainder_argv consumes attached flags before the positional" {
 
         ]
     );
-    (trimmed, script_args) = split_remainder_argv(
+    (trimmed, script_args) = split_required(
         ["run", "--profile=prod", "app.jac", "tail"], meta
     );
     assert trimmed == ["run", "--profile=prod", "app.jac"];
@@ -127,7 +131,7 @@ test "split_remainder_argv consumes short value flags before the positional" {
 
         ]
     );
-    (trimmed, script_args) = split_remainder_argv(
+    (trimmed, script_args) = split_required(
         ["run", "-p", "prod", "app.jac", "tail"], meta
     );
     assert trimmed == ["run", "-p", "prod", "app.jac"];
@@ -143,9 +147,7 @@ test "split_remainder_argv supports multiple positionals" {
 
         ]
     );
-    (trimmed, script_args) = split_remainder_argv(
-        ["tool", "sub", "file.jac", "tail"], meta
-    );
+    (trimmed, script_args) = split_required(["tool", "sub", "file.jac", "tail"], meta);
     assert trimmed == ["tool", "sub", "file.jac"];
     assert script_args == ["tail"];
 }

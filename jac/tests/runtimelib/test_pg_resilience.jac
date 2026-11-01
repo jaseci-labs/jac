@@ -254,6 +254,7 @@ test "layer2: takeover_project evicts every other session on the db" {
         (s1, info, target, _) = _mk_store(td);
         s1.ensure_schema({});
         n = 0;
+        evicted = False;
         # Re-arm if a cluster restart evicts the peer before takeover does.
         for attempt in range(3) {
             peer = _armed_peer(info, f"jac:{os.getpid()}:serve");

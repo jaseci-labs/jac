@@ -396,6 +396,7 @@ test "a typed hop does not pay for the hub's other edge types" {
 }
 
 test "unlinking from a high-degree hub is not linear in its degree" {
+    base = 0.0;
     for n in [500, 4000] {
         g = _graph();
         for i in range(n) {

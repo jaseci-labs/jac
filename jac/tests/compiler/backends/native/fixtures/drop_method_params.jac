@@ -2,8 +2,8 @@
 
 A destructor hook is called with nothing but the object, so `Shelf.drop(name)`
 is an ordinary method that the release function never calls. `Crate`'s
-`def drop` still runs as a destructor, and `Tray`, whose own `drop` takes an
-argument, does not fall back to the hook it would have inherited. A static
+`def drop` still runs as a destructor, and `Tray`, whose `drop` takes an
+argument, has no hook. A static
 `drop` has no object to be called with, so `Bin` has no hook either.
 """
 
@@ -27,7 +27,9 @@ obj Crate {
     }
 }
 
-obj Tray(Crate) {
+obj Tray {
+    has tag: int = 0;
+
     def drop(extra: int) {
         dropped += extra * 100;
     }

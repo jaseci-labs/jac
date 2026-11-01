@@ -42,6 +42,7 @@ test "engine initialize negotiates protocol version and advertises capabilities"
             "params": {"protocolVersion": "2025-03-26", "capabilities": {}}
         }
     );
+    assert resp is not None;
     assert resp["id"] == 1;
     result = resp["result"];
     # A supported version the client asked for is echoed back verbatim.
@@ -64,6 +65,7 @@ test "engine falls back to latest protocol version for an unknown client version
             "params": {"protocolVersion": "1999-01-01"}
         }
     );
+    assert resp is not None;
     assert resp["result"]["protocolVersion"] == LATEST_PROTOCOL_VERSION;
 }
 
@@ -94,6 +96,7 @@ test "engine tools/call wraps the tool result as MCP text content" {
     import from jaclang.cli.mcp.protocol { build_engine }
     import json;
     engine = build_engine();
+    assert tools is not None;
     resp = engine.handle_message(
         {
             "jsonrpc": "2.0",
@@ -105,6 +108,7 @@ test "engine tools/call wraps the tool result as MCP text content" {
             }
         }
     );
+    assert resp is not None;
     content = resp["result"]["content"];
     assert content[0]["type"] == "text";
     assert json.loads(content[0]["text"])["valid"] == True;
@@ -116,6 +120,7 @@ test "engine returns no response for notifications (messages without an id)" {
     reply = engine.handle_message(
         {"jsonrpc": "2.0", "method": "notifications/initialized"}
     );
+    assert reply is not None;
     assert reply is None;
 }
 
@@ -123,6 +128,7 @@ test "engine returns Invalid Request for a request with id but no method" {
     import from jaclang.cli.mcp.protocol { build_engine }
     engine = build_engine();
     resp = engine.handle_message({"jsonrpc": "2.0", "id": 7});
+    assert resp is not None;
     assert resp["error"]["code"] == -32600;
     # A method-less object without an id is a malformed notification: dropped.
     assert engine.handle_message({"jsonrpc": "2.0"}) is None;
@@ -150,10 +156,12 @@ test "engine surfaces method-not-found and invalid-params as JSON-RPC errors" {
     not_found = engine.handle_message(
         {"jsonrpc": "2.0", "id": 9, "method": "does/not/exist"}
     );
+    assert not_found is not None;
     assert not_found["error"]["code"] == -32601;
     bad_params = engine.handle_message(
         {"jsonrpc": "2.0", "id": 10, "method": "resources/read", "params": {}}
     );
+    assert bad_params is not None;
     assert bad_params["error"]["code"] == -32602;
 }
 
@@ -176,6 +184,7 @@ test "engine get_prompt renders messages as text content with valid roles" {
             "params": {"name": name, "arguments": args}
         }
     );
+    assert prompts is not None;
     msgs = resp["result"]["messages"];
     assert len(msgs) > 0;
     for m in msgs {
@@ -722,6 +731,7 @@ test "all prompts render into well-formed MCP messages through the engine" {
                 "params": {"name": prompt["name"], "arguments": args}
             }
         );
+        assert listed is not None;
         for msg in resp["result"]["messages"] {
             assert msg["role"] in ["user", "assistant"] , f"prompt '{prompt[
                 'name'
