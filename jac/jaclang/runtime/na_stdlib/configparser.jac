@@ -72,9 +72,13 @@ obj:pub NoSectionError(Exception) {
 obj:pub DuplicateSectionError(Exception) {
     has section: str,
         source: str = "",
-        lineno: int = 0;
+        lineno: int = 0,
+        _has_source: bool = False;
 
-    def init(section: str, source: str = "", lineno: int = 0);
+    def init(
+        section: str, source: str = "", lineno: int = 0, has_source: bool = False
+    );
+
     def __str__ -> str;
 }
 
@@ -83,9 +87,17 @@ obj:pub DuplicateOptionError(Exception) {
     has section: str,
         option: str,
         source: str = "",
-        lineno: int = 0;
+        lineno: int = 0,
+        _has_source: bool = False;
 
-    def init(section: str, option: str, source: str = "", lineno: int = 0,);
+    def init(
+        section: str,
+        option: str,
+        source: str = "",
+        lineno: int = 0,
+        has_source: bool = False
+    );
+
     def __str__ -> str;
 }
 

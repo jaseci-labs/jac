@@ -306,15 +306,18 @@ impl NoSectionError.__str__ -> str {
 }
 
 
-impl DuplicateSectionError.init(section: str, source: str = "", lineno: int = 0) {
+impl DuplicateSectionError.init(
+    section: str, source: str = "", lineno: int = 0, has_source: bool = False
+) {
     self.section = section;
     self.source = source;
     self.lineno = lineno;
+    self._has_source = has_source;
 }
 
 
 impl DuplicateSectionError.__str__ -> str {
-    if self.source == "" {
+    if not self._has_source {
         return "Section " + _repr_str(self.section) + " already exists";
     }
     out: str = "While reading from " + _repr_str(self.source);
@@ -327,17 +330,22 @@ impl DuplicateSectionError.__str__ -> str {
 
 
 impl DuplicateOptionError.init(
-    section: str, option: str, source: str = "", lineno: int = 0,
+    section: str,
+    option: str,
+    source: str = "",
+    lineno: int = 0,
+    has_source: bool = False
 ) {
     self.section = section;
     self.option = option;
     self.source = source;
     self.lineno = lineno;
+    self._has_source = has_source;
 }
 
 
 impl DuplicateOptionError.__str__ -> str {
-    if self.source == "" {
+    if not self._has_source {
         return "Option "
             + _repr_str(self.option)
             + " in section "
@@ -752,7 +760,7 @@ impl ConfigParser.read_dict(dictionary: dict[str, dict[str, str]]) {
             pk: str = section + "\x00" + k;
             seen: bool = pk in added_opt;
             if self.strict and seen {
-                raise DuplicateOptionError(section, k, source, 0);
+                raise DuplicateOptionError(section, k, source, 0, True);
             }
             added_opt[pk] = True;
             self.set(section, k, keys[key]);
@@ -1107,10 +1115,10 @@ impl ConfigParser._read_lines(lines: list[str], source: str) {
         raise MissingSectionHeaderError(source, f_lineno, f_line);
     }
     if fail_kind == 2 {
-        raise DuplicateSectionError(f_sect, source, f_lineno);
+        raise DuplicateSectionError(f_sect, source, f_lineno, True);
     }
     if fail_kind == 3 {
-        raise DuplicateOptionError(f_sect, f_opt, source, f_lineno);
+        raise DuplicateOptionError(f_sect, f_opt, source, f_lineno, True);
     }
     if n_errs > 0 {
         raise pe;
