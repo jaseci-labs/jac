@@ -44,3 +44,27 @@ test "text snapshots preserve bitcode, symbols, and function counts" {
     restored.verify();
     module.release();
 }
+
+test "target lookup restores the ctypes pointer signature" {
+    import ctypes;
+    import jaclang.compiler.backends.native.llvm.binding.targets as targets;
+    import from jaclang.compiler.backends.native.llvm.binding { Target, TargetMachine }
+    llvm.initialize_native_target();
+    previous_target = targets.ffi.lib.LLVMPY_GetTargetFromTriple.restype;
+    previous_machine = targets.ffi.lib.LLVMPY_CreateTargetMachine.restype;
+    previous_data = targets.ffi.lib.LLVMPY_CreateTargetMachineData.restype;
+    try {
+        targets.ffi.lib.LLVMPY_GetTargetFromTriple.restype = ctypes.c_int;
+        targets.ffi.lib.LLVMPY_CreateTargetMachine.restype = ctypes.c_int;
+        targets.ffi.lib.LLVMPY_CreateTargetMachineData.restype = ctypes.c_int;
+        target = Target.from_default_triple();
+        assert isinstance(target, Target);
+        machine = target.create_target_machine();
+        assert isinstance(machine, TargetMachine);
+        _ = machine.target_data;
+    } finally {
+        targets.ffi.lib.LLVMPY_GetTargetFromTriple.restype = previous_target;
+        targets.ffi.lib.LLVMPY_CreateTargetMachine.restype = previous_machine;
+        targets.ffi.lib.LLVMPY_CreateTargetMachineData.restype = previous_data;
+    }
+}
