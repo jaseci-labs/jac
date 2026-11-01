@@ -26,6 +26,8 @@
 //!   zig build -Dpython=jacpython  # opt in to the native Python compiler
 //!   zig build -Dpython=jacpython -Djacpython-host=stock  # ...built on stock CPython
 //!   zig build build-python -Dpython=jacpython -Dtarget-platform=linux-aarch64  # cross-seed another platform
+//!   zig build jacpython-object -Dtarget-platform=linux-aarch64  # lower only JacPython's native object
+//!   zig build build-python -Dpython=jacpython -Djacpython-object=DIR  # link that object instead of lowering it
 //!   zig build -Ddev               # link compiler sources from this checkout
 //!   zig build -Djaclang-dir=PATH   # link another compiler source tree
 //!   zig build -Dpayload=PATH       # pack an existing payload
@@ -222,7 +224,20 @@ pub fn build(b: *std.Build) void {
     // another platform's JacPython, cross-built on this machine's
     // interpreter (bootstrap/build_python.zig): the vendored libraries and
     // the C are compiled for the target, and its smoke test runs there.
-    const python_platform = b.option([]const u8, "target-platform", "Platform build-python builds the runtime for: linux-x86_64, linux-aarch64, macos-x86_64 or macos-aarch64 (default: this machine's). Another platform's JacPython is cross-built on this machine's interpreter") orelse host_osarch;
+    const target_platform = b.option([]const u8, "target-platform", "Platform build-python and jacpython-object build for: linux-x86_64, linux-aarch64, macos-x86_64 or macos-aarch64 (default: this machine's). Another platform's JacPython is cross-built on this machine's interpreter");
+    const python_platform = target_platform orelse host_osarch;
+    // A JacPython native object lowered elsewhere (issue #10472), as -Dkernel
+    // adopts a compiler kernel: `zig build jacpython-object` lowers one for
+    // any release platform on one machine, and the build for that platform
+    // links it instead of lowering its own. The seed refuses an object
+    // lowered for another target, from other sources, or with other frozen
+    // modules than this build generates.
+    const object_platform = target_platform orelse (osArchString(target.result) orelse host_osarch);
+    const adopt_object: ?[]const u8 = if (b.option([]const u8, "jacpython-object", "Link the prebuilt JacPython native object in this directory (from `zig build jacpython-object`) instead of lowering it")) |dir| blk: {
+        if (!jacpython) std.debug.panic("-Djacpython-object needs -Dpython=jacpython", .{});
+        break :blk b.fmt("--adopt-object={s}", .{if (std.fs.path.isAbsolute(dir)) dir else b.pathFromRoot(dir)});
+    } else null;
+    if (adopt_object) |arg| if (std.mem.eql(u8, object_platform, host_osarch)) fetch_host.addArg(arg);
     const build_python_step = b.step("build-python", "Build the source-pinned Python runtime and native libraries");
     if (std.mem.eql(u8, python_platform, host_osarch)) {
         build_python_step.dependOn(&fetch_host.step);
@@ -231,11 +246,31 @@ pub fn build(b: *std.Build) void {
         fetch_cross.addArgs(&.{ python_platform, b.pathFromRoot(b.fmt(".python-build/{s}/{s}", .{ python_variant, python_platform })), b.pathFromRoot("."), b.graph.zig_exe });
         if (!jacpython) fetch_cross.addArg("--host");
         if (jacpython) fetch_cross.addArg(b.fmt("--jacpython-host={s}", .{host_choice}));
+        if (adopt_object) |arg| fetch_cross.addArg(arg);
         fetch_cross.has_side_effects = true;
         // What fetch_host waits for: the typeshed stubs and the shim
         // prepare_native lowers through.
         for (fetch_host.step.dependencies.items) |dep| fetch_cross.step.dependOn(dep);
         build_python_step.dependOn(&fetch_cross.step);
+    }
+    // Lower only JacPython's native object for -Dtarget-platform, with the
+    // manifest another build checks it against, into
+    // .python-build/jacpython/<platform>.object. The object compiles in the
+    // install prefix of .python-build/jacpython/<platform>.work, so the build
+    // that adopts it runs in a checkout at the same path.
+    {
+        const object_dest = b.pathFromRoot(b.fmt(".python-build/jacpython/{s}", .{python_platform}));
+        const lower_object = b.addRunArtifact(seed);
+        lower_object.addArgs(&.{ python_platform, object_dest, b.pathFromRoot("."), b.graph.zig_exe });
+        lower_object.addArg(b.fmt("--jacpython-host={s}", .{host_choice}));
+        lower_object.addArg(b.fmt("--object-only={s}.object", .{object_dest}));
+        lower_object.has_side_effects = true;
+        for (fetch_host.step.dependencies.items) |dep| lower_object.step.dependOn(dep);
+        if (!jacpython and jacllvm == null and !shimPlacedInTree(b, target)) lower_object.step.dependOn(&b.addFail(
+            "the JacPython native object needs the LLVMPY_* shim: run `zig build fetch-llvm` first",
+        ).step);
+        b.step("jacpython-object", "Lower only JacPython's native object for -Dtarget-platform into .python-build/jacpython/<platform>.object (adopt it with -Djacpython-object)")
+            .dependOn(&lower_object.step);
     }
 
     const tool = JacTool{
@@ -339,6 +374,7 @@ pub fn build(b: *std.Build) void {
         fetch.addArgs(&.{ osarch, python_dir, root, b.graph.zig_exe });
         if (!jacpython) fetch.addArg("--host");
         if (jacpython) fetch.addArg(b.fmt("--jacpython-host={s}", .{host_choice}));
+        if (adopt_object) |arg| if (std.mem.eql(u8, object_platform, osarch)) fetch.addArg(arg);
         fetch.has_side_effects = true;
         fetch.step.dependOn(&fetch_host.step);
         break :blk &fetch.step;

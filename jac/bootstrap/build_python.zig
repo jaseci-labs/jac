@@ -49,6 +49,13 @@ fn parseMode(args: []const []const u8) !Mode {
 //   <path>    an installed runtime: its install prefix (.../python/install) or
 //             the build output holding it
 const host_flag = "--jacpython-host=";
+// A native object lowered elsewhere, linked instead of lowering one
+// (-Djacpython-object): the directory `--object-only` wrote, or the object in
+// it. The build refuses it unless it is the object this build would lower.
+const adopt_flag = "--adopt-object=";
+// Lower only the native object and write it, with its manifest, to this
+// directory (`zig build jacpython-object`); the output tree is left alone.
+const object_only_flag = "--object-only=";
 const HostChoice = union(enum) { auto, stock, installed: []const u8 };
 const Host = union(enum) { bootstrap, installed: []const u8 };
 
@@ -162,16 +169,26 @@ pub fn main(init: std.process.Init) !void {
     const a = init.arena.allocator();
     var reuse = false;
     var choice: HostChoice = .auto;
+    var adopt: ?[]const u8 = null;
+    var object_out: ?[]const u8 = null;
     var kept: std.ArrayList([]const u8) = .empty;
     for (try init.minimal.args.toSlice(a)) |arg| {
         if (std.mem.eql(u8, arg, "--reuse-lowered")) {
             reuse = true;
         } else if (std.mem.startsWith(u8, arg, host_flag)) {
             choice = parseHostChoice(arg[host_flag.len..]);
+        } else if (std.mem.startsWith(u8, arg, adopt_flag)) {
+            adopt = arg[adopt_flag.len..];
+        } else if (std.mem.startsWith(u8, arg, object_only_flag)) {
+            object_out = arg[object_only_flag.len..];
         } else try kept.append(a, arg);
     }
     const args = kept.items;
-    const mode = parseMode(args) catch seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--host] [--reuse-lowered] [" ++ host_flag ++ "auto|stock|<install prefix>]", .{});
+    const mode = parseMode(args) catch seed.die("usage: build_python <os-arch> <destination> <jac-root> <zig> [--host] [--reuse-lowered] [" ++ host_flag ++ "auto|stock|<install prefix>] [" ++ adopt_flag ++ "<dir>] [" ++ object_only_flag ++ "<dir>]", .{});
+    if (mode == .host and (adopt != null or object_out != null))
+        seed.die("build-python: only a JacPython build has a native object to adopt or lower", .{});
+    if (adopt != null and object_out != null)
+        seed.die("build-python: " ++ adopt_flag ++ " and " ++ object_only_flag ++ " exclude each other", .{});
     const platform = args[1];
     if (!supported(platform)) seed.die("build-python: unsupported platform {s}", .{platform});
     // A JacPython for another platform is cross-built on this machine's own
@@ -195,13 +212,26 @@ pub fn main(init: std.process.Init) !void {
     const stamp_path = try std.fs.path.join(a, &.{ dest, "build-key" });
     const old = Io.Dir.cwd().readFileAlloc(io, stamp_path, a, .limited(128)) catch "";
     const python = try std.fs.path.join(a, &.{ dest, "python/install/bin/python3.14" });
-    if (std.mem.eql(u8, old, &key) and seed.fileExists(io, python)) {
+    const tools: [64]u8 = if (mode == .jacpython) try objectTools(io, a, root) else @splat('0');
+    // An object to adopt is checked for its target and its inputs before
+    // anything is built; build_jacpython.zig checks the generated modules it
+    // links once the generators have run.
+    var adopted: ?build_jacpython.ObjectManifest = null;
+    if (adopt) |given| {
+        const dir = if (std.mem.endsWith(u8, given, ".o")) std.fs.path.dirname(given) orelse "." else given;
+        adopt = dir;
+        switch (try build_jacpython.checkObject(io, a, dir, .{ .platform = platform, .tools = &tools, .root = root })) {
+            .refused => |why| seed.die("build-python: refusing the prebuilt native object: {s}", .{why}),
+            .adopted => |m| adopted = m,
+        }
+    }
+    if (object_out == null and std.mem.eql(u8, old, &key) and seed.fileExists(io, python)) {
         if (!cross) try runSmoke(io, python, smoke, mode);
         seed.log("build-python: cached {s} ({s})", .{ platform, key[0..16] });
         return;
     }
     const sources_stamp = try std.fs.path.join(a, &.{ dest, "build-key-sources" });
-    if (mode == .jacpython and reuse and seed.fileExists(io, python)) {
+    if (mode == .jacpython and object_out == null and reuse and seed.fileExists(io, python)) {
         if (try sourcesKey(io, a, platform, root, dest)) |lowered| {
             const recorded = Io.Dir.cwd().readFileAlloc(io, sources_stamp, a, .limited(128)) catch "";
             if (std.mem.eql(u8, recorded, &lowered)) {
@@ -239,6 +269,7 @@ pub fn main(init: std.process.Init) !void {
             },
         }
         if (cross) provenance = try std.fmt.allocPrint(a, "{s}cross-built on {s}\n", .{ provenance, build_platform });
+        if (adopted) |m| provenance = try std.fmt.allocPrint(a, "{s}adopted native object {s} lowered on {s}\n", .{ provenance, m.object, m.lowered_on });
     }
     const work = try std.fmt.allocPrint(a, "{s}.work", .{dest});
     // A failed build never produces the completion stamp or replaces a good tree.
@@ -265,13 +296,23 @@ pub fn main(init: std.process.Init) !void {
             .root = root,
             .jobs = try jobCount(init.environ_map),
             .environ = init.environ_map,
+            .object_tools = &tools,
+            .adopt_object = adopt,
+            .object_out = object_out,
         }) catch |err| {
+            if (err == error.NativeObjectRefused)
+                seed.die("build-python: the prebuilt native object was refused (see above); logs at {s}/logs", .{work});
             // A runtime that builds the next one can carry its own defect into
             // the build; the bootstrap host rules that out.
             if (!std.mem.eql(u8, host_tree, host_dest))
                 seed.log("build-python: this build ran on the installed runtime at {s}; if that runtime is at fault, " ++ host_flag ++ "stock (zig build -Djacpython-host=stock) builds on the bootstrap host", .{host_tree});
             seed.die("build-python: build failed ({s}); logs at {s}/logs", .{ @errorName(err), work });
         },
+    }
+    // Only the object was wanted: the output tree stays as it was.
+    if (object_out != null) {
+        try Io.Dir.cwd().deleteTree(io, work);
+        return;
     }
     // Cache only the runtime and link archives, not intermediate objects or sources.
     try Io.Dir.cwd().deleteTree(io, try std.fs.path.join(a, &.{ work, "src" }));
@@ -524,6 +565,26 @@ fn hashRecipe(io: Io, a: std.mem.Allocator, platform: []const u8, root: []const 
         // trees must reject changes to that toolchain even when Jac is unchanged.
         try native_inputs.hashShimInputs(io, a, root, hash);
     }
+}
+
+// What lowers JacPython's native object, apart from the sources it lowers
+// (an object's manifest records those one by one): the compiler tree,
+// prepare_native.py, the CPython pin it checks the interpreter against, the
+// typeshed pin and the LLVM shim's inputs. Nothing here names the platform
+// that runs the build, so an object lowered for a target on another machine
+// keys the same as one lowered there.
+fn objectTools(io: Io, a: std.mem.Allocator, root: []const u8) ![64]u8 {
+    var hash = std.crypto.hash.sha2.Sha256.init(.{});
+    hash.update("jacpython-object-tools");
+    for ([_][]const u8{ "bootstrap/python/prepare_native.py", "bootstrap/python/sources.json", "jaclang/vendor/typeshed/PIN", "jaclang/vendor/typeshed/TARBALL_SHA256" }) |path| {
+        hash.update(path);
+        hash.update(try Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ root, path }), a, .unlimited));
+    }
+    try native_inputs.hashShimInputs(io, a, root, &hash);
+    try hashCompilerTree(io, a, root, &hash);
+    var digest: [32]u8 = undefined;
+    hash.final(&digest);
+    return std.fmt.bytesToHex(digest, .lower);
 }
 
 fn hashCompilerTree(io: Io, a: std.mem.Allocator, root: []const u8, hash: *std.crypto.hash.sha2.Sha256) !void {
@@ -1121,4 +1182,160 @@ test "the vendored libraries' key follows their pins and build.sh, not the runti
     try std.testing.expect(!std.mem.eql(u8, &before, &pinned));
     try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/build.sh", .data = "new recipe" });
     try std.testing.expect(!std.mem.eql(u8, &pinned, &(try vendoredKey(io, a, hostPlatform(), root))));
+}
+
+test "every release platform's native object triple is prepare_native.py's" {
+    const script = @embedFile("python/prepare_native.py");
+    for ([_][]const u8{ "linux-x86_64", "linux-aarch64", "macos-x86_64", "macos-aarch64" }) |platform| {
+        var line: [128]u8 = undefined;
+        const entry = try std.fmt.bufPrint(&line, "\"{s}\": \"{s}\",", .{ platform, try build_jacpython.llvmTriple(platform) });
+        try std.testing.expect(std.mem.indexOf(u8, script, entry) != null);
+    }
+}
+
+test "the tools that lower the native object are keyed apart from the build machine and the rest of the recipe" {
+    const io = std.testing.io;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    for (inputs) |path| {
+        if (std.fs.path.dirname(path)) |parent| try tmp.dir.createDirPath(io, parent);
+        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "recipe" });
+    }
+    for (native_inputs.toolchain_inputs) |path| try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "toolchain" });
+    try tmp.dir.createDirPath(io, "native");
+    try tmp.dir.createDirPath(io, "jaclang/vendor/typeshed");
+    for ([_][]const u8{ "PIN", "TARBALL_SHA256", "sources.json" }) |name| {
+        const path = if (std.mem.eql(u8, name, "sources.json")) "bootstrap/python/sources.json" else try std.fs.path.join(a, &.{ "jaclang/vendor/typeshed", name });
+        try tmp.dir.writeFile(io, .{ .sub_path = path, .data = "pin" });
+    }
+    try tmp.dir.createDirPath(io, "jaclang/runtime/python");
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "runtime" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/compiler_inputs.txt", .data = "runtime\n" });
+    const root = try tmp.dir.realPathFileAlloc(io, ".", a);
+    const before = try objectTools(io, a, root);
+    // The rest of the recipe builds around the object, not into it.
+    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/build_jacpython.zig", .data = "changed builder" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/build.sh", .data = "changed vendored recipe" });
+    try std.testing.expectEqual(before, try objectTools(io, a, root));
+    try tmp.dir.writeFile(io, .{ .sub_path = "bootstrap/python/prepare_native.py", .data = "changed lowering" });
+    const lowering = try objectTools(io, a, root);
+    try std.testing.expect(!std.mem.eql(u8, &before, &lowering));
+    try tmp.dir.writeFile(io, .{ .sub_path = "jaclang/runtime/python/eval.jac", .data = "changed runtime" });
+    const runtime = try objectTools(io, a, root);
+    try std.testing.expect(!std.mem.eql(u8, &lowering, &runtime));
+    try tmp.dir.writeFile(io, .{ .sub_path = "native/shim.cpp", .data = "changed emitter" });
+    try std.testing.expect(!std.mem.eql(u8, &runtime, &(try objectTools(io, a, root))));
+}
+
+test "a prebuilt native object is adopted only for its target, its inputs and its generated modules" {
+    const io = std.testing.io;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var tmp = std.testing.tmpDir(.{ .iterate = true });
+    defer tmp.cleanup();
+    try tmp.dir.createDirPath(io, "root/jaclang/runtime/python");
+    try tmp.dir.writeFile(io, .{ .sub_path = "root/jaclang/runtime/python/eval.jac", .data = "eval" });
+    try tmp.dir.writeFile(io, .{ .sub_path = "root/jaclang/runtime/python/inittab.jac", .data = "inittab" });
+    const root = try tmp.dir.realPathFileAlloc(io, "root", a);
+    try tmp.dir.createDirPath(io, "object");
+    const dir = try tmp.dir.realPathFileAlloc(io, "object", a);
+    const tools = "t" ** 64;
+    const frozen = "f" ** 64;
+    const image = "i" ** 64;
+    const prefix = "/work/linux-x86_64.work/python/install";
+    // A relocatable x86_64 ELF header, then code.
+    var elf: [64]u8 = @splat(0);
+    @memcpy(elf[0..6], "\x7fELF\x02\x01");
+    std.mem.writeInt(u16, elf[18..20], 62, .little);
+    const sources = "jaclang/runtime/python/eval.jac\njaclang/runtime/python/inittab.jac\n";
+    const Lower = struct {
+        fn object(t: std.testing.TmpDir, r: []const u8, platform: []const u8, bytes: []const u8, list: []const u8) !void {
+            const al = std.testing.allocator;
+            var scratch = std.heap.ArenaAllocator.init(al);
+            defer scratch.deinit();
+            const sa = scratch.allocator();
+            try t.dir.writeFile(std.testing.io, .{ .sub_path = "object/jacpython.o", .data = bytes });
+            try t.dir.writeFile(std.testing.io, .{ .sub_path = "object/sha256", .data = &seed.sha256Hex(bytes) });
+            try t.dir.writeFile(std.testing.io, .{ .sub_path = "object/sources", .data = list });
+            try t.dir.writeFile(std.testing.io, .{ .sub_path = "object/manifest.json", .data = try build_jacpython.objectManifestJson(std.testing.io, sa, .{
+                .platform = platform,
+                .tools = "t" ** 64,
+                .root = r,
+                .sources = list,
+                .object = bytes,
+                .frozen = "f" ** 64,
+                .runtime_image = "i" ** 64,
+                .prefix = "/work/linux-x86_64.work/python/install",
+                .lowered_on = "linux-x86_64",
+            }) });
+        }
+    };
+    const expect: build_jacpython.ObjectExpect = .{ .platform = "linux-x86_64", .tools = tools, .root = root, .frozen = frozen, .runtime_image = image, .prefix = prefix };
+    const Check = struct {
+        fn refused(verdict: build_jacpython.ObjectCheck, reason: []const u8) !void {
+            switch (verdict) {
+                .adopted => return error.TestUnexpectedlyAdopted,
+                .refused => |why| if (std.mem.indexOf(u8, why, reason) == null) {
+                    std.debug.print("refusal without \"{s}\": {s}\n", .{ reason, why });
+                    return error.TestWrongRefusal;
+                },
+            }
+        }
+    };
+
+    // Not lowered yet: nothing to adopt.
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, expect), "has no manifest.json");
+
+    // The object lowered from these sources for this target is adopted,
+    // both before the generators run and after.
+    try Lower.object(tmp, root, "linux-x86_64", &elf, sources);
+    const early = try build_jacpython.checkObject(io, a, dir, .{ .platform = "linux-x86_64", .tools = tools, .root = root });
+    try std.testing.expectEqualStrings("linux-x86_64", early.adopted.platform);
+    const adopted = try build_jacpython.checkObject(io, a, dir, expect);
+    try std.testing.expectEqualStrings(&seed.sha256Hex(&elf), adopted.adopted.object);
+    try std.testing.expectEqual(@as(usize, 2), adopted.adopted.sources.map.count());
+
+    // Another target's build refuses it.
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, .{ .platform = "linux-aarch64", .tools = tools, .root = root }), "was lowered for linux-x86_64 (x86_64-unknown-linux-gnu); this build is for linux-aarch64");
+    // So does one whose manifest names the target but whose code is another's.
+    try Lower.object(tmp, root, "linux-aarch64", &elf, sources);
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, .{ .platform = "linux-aarch64", .tools = tools, .root = root }), "is ELF x86_64 code; linux-aarch64 needs ELF aarch64");
+    try Lower.object(tmp, root, "linux-x86_64", &elf, sources);
+
+    // An object changed after its manifest was written.
+    var patched = elf;
+    patched[63] = 1;
+    try tmp.dir.writeFile(io, .{ .sub_path = "object/jacpython.o", .data = &patched });
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, expect), "is not the object its manifest describes");
+    try Lower.object(tmp, root, "linux-x86_64", &elf, sources);
+
+    // A lowered source edited since: refused, naming it.
+    try tmp.dir.writeFile(io, .{ .sub_path = "root/jaclang/runtime/python/inittab.jac", .data = "edited inittab" });
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, expect), "1 of the sources it was lowered from differ here: jaclang/runtime/python/inittab.jac");
+    try tmp.dir.writeFile(io, .{ .sub_path = "root/jaclang/runtime/python/inittab.jac", .data = "inittab" });
+    try std.testing.expect(try build_jacpython.checkObject(io, a, dir, expect) == .adopted);
+    // Another compiler, prepare_native.py or LLVM shim.
+    var other = expect;
+    other.tools = "u" ** 64;
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, other), "what lowers it differs");
+
+    // The generated modules it links: another install prefix, frozen
+    // modules another interpreter compiled, another _PyRuntime image.
+    other = expect;
+    other.prefix = "/elsewhere/linux-x86_64.work/python/install";
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, other), "compiles in getpath's prefix /work/linux-x86_64.work/python/install");
+    other = expect;
+    other.frozen = "g" ** 64;
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, other), "the frozen modules compiled into the object");
+    other = expect;
+    other.runtime_image = "j" ** 64;
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, other), "the _PyRuntime image compiled into the object");
+
+    // A sources record that disagrees with the manifest.
+    try tmp.dir.writeFile(io, .{ .sub_path = "object/sources", .data = "jaclang/runtime/python/eval.jac\n" });
+    try Check.refused(try build_jacpython.checkObject(io, a, dir, expect), "lists 1 sources and its manifest 2");
 }

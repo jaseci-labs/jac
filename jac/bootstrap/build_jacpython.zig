@@ -35,6 +35,16 @@ pub const Options = struct {
     root: []const u8,
     jobs: usize,
     environ: *const Environ.Map,
+    /// What lowers the native object apart from the sources it lowers:
+    /// build_python.zig's objectTools. Recorded in the object's manifest.
+    object_tools: []const u8 = "",
+    /// A native object lowered elsewhere (a directory the native stage
+    /// wrote, see object_files): checked against this build and linked in
+    /// place of lowering one.
+    adopt_object: ?[]const u8 = null,
+    /// Stop after the native stage and copy the object with its manifest to
+    /// this directory.
+    object_out: ?[]const u8 = null,
 };
 
 const version = "3.14";
@@ -45,6 +55,8 @@ const Platform = struct {
     arch: pyconfig.Arch,
     /// zig cc -target.
     target: []const u8,
+    /// The LLVM triple prepare_native.py lowers the native object for.
+    llvm_triple: []const u8,
     /// PLATFORM_TRIPLET: the sysconfigdata name, SOABI and LIBPL suffix.
     triplet: []const u8,
     /// sysconfig.get_platform() on the target: _PYTHON_HOST_PLATFORM when
@@ -54,10 +66,10 @@ const Platform = struct {
 };
 
 fn platformOf(name: []const u8) !Platform {
-    if (std.mem.eql(u8, name, "linux-x86_64")) return .{ .os = .linux, .arch = .x86_64, .target = "x86_64-linux-gnu.2.17", .triplet = "x86_64-linux-gnu", .sysconfig_platform = "linux-x86_64" };
-    if (std.mem.eql(u8, name, "linux-aarch64")) return .{ .os = .linux, .arch = .aarch64, .target = "aarch64-linux-gnu.2.17", .triplet = "aarch64-linux-gnu", .sysconfig_platform = "linux-aarch64" };
-    if (std.mem.eql(u8, name, "macos-x86_64")) return .{ .os = .macos, .arch = .x86_64, .target = "x86_64-macos.12.0", .triplet = "darwin", .sysconfig_platform = "macosx-12.0-x86_64", .deployment_target = "12.0" };
-    if (std.mem.eql(u8, name, "macos-aarch64")) return .{ .os = .macos, .arch = .aarch64, .target = "aarch64-macos.11.0", .triplet = "darwin", .sysconfig_platform = "macosx-11.0-arm64", .deployment_target = "11.0" };
+    if (std.mem.eql(u8, name, "linux-x86_64")) return .{ .os = .linux, .arch = .x86_64, .target = "x86_64-linux-gnu.2.17", .llvm_triple = "x86_64-unknown-linux-gnu", .triplet = "x86_64-linux-gnu", .sysconfig_platform = "linux-x86_64" };
+    if (std.mem.eql(u8, name, "linux-aarch64")) return .{ .os = .linux, .arch = .aarch64, .target = "aarch64-linux-gnu.2.17", .llvm_triple = "aarch64-unknown-linux-gnu", .triplet = "aarch64-linux-gnu", .sysconfig_platform = "linux-aarch64" };
+    if (std.mem.eql(u8, name, "macos-x86_64")) return .{ .os = .macos, .arch = .x86_64, .target = "x86_64-macos.12.0", .llvm_triple = "x86_64-apple-macosx12.0.0", .triplet = "darwin", .sysconfig_platform = "macosx-12.0-x86_64", .deployment_target = "12.0" };
+    if (std.mem.eql(u8, name, "macos-aarch64")) return .{ .os = .macos, .arch = .aarch64, .target = "aarch64-macos.11.0", .llvm_triple = "arm64-apple-macosx11.0.0", .triplet = "darwin", .sysconfig_platform = "macosx-11.0-arm64", .deployment_target = "11.0" };
     return error.UnsupportedPlatform;
 }
 
@@ -150,7 +162,24 @@ pub fn build(io: Io, a: Allocator, o: Options) !void {
     try Io.Dir.cwd().createDirPath(io, native);
     try step(&c, "frozen", generate, .{ &c, try getpathArgs(&c, frozen) });
     try step(&c, "runtime_image", generate, .{ &c, try runtimeImageArgs(&c, runtime_image) });
-    try step(&c, "native", runArgv, .{ &c, &[_][]const u8{ hostPython(&c), "-I", c.path(&.{ o.recipe, "prepare_native.py" }), o.root, native, o.platform, frozen, runtime_image }, null });
+    if (o.adopt_object) |dir| {
+        try step(&c, "adopt-native", adoptObject, .{ &c, dir, native, frozen, runtime_image });
+    } else {
+        try step(&c, "native", runArgv, .{ &c, &[_][]const u8{ hostPython(&c), "-I", c.path(&.{ o.recipe, "prepare_native.py" }), o.root, native, o.platform, frozen, runtime_image }, null });
+        try step(&c, "native-manifest", writeObjectManifest, .{ &c, native, frozen, runtime_image });
+    }
+    if (o.object_out) |out| {
+        const tmp = try std.fmt.allocPrint(a, "{s}.tmp", .{out});
+        try Io.Dir.cwd().deleteTree(io, tmp);
+        try Io.Dir.cwd().createDirPath(io, tmp);
+        for (object_files) |name| {
+            try Io.Dir.copyFile(.cwd(), c.path(&.{ native, name }), .cwd(), c.path(&.{ tmp, name }), io, .{});
+        }
+        try Io.Dir.cwd().deleteTree(io, out);
+        try Io.Dir.cwd().rename(tmp, Io.Dir.cwd(), out, io);
+        std.debug.print("build-python: {s}'s native object and its manifest are in {s}\n", .{ o.platform, out });
+        return;
+    }
 
     try step(&c, "compile", compile, .{&c});
     try step(&c, "link", link, .{&c});
@@ -290,6 +319,299 @@ fn runtimeImageArgs(c: *Ctx, output: []const u8) ![]const []const u8 {
     try argv.appendSlice(c.a, &.{ "--platform", c.o.platform, "--output", output, "--" });
     try argv.appendSlice(c.a, c.cc);
     return argv.items;
+}
+
+// ------------------------------------------------------------- native object
+
+/// What the native stage leaves next to the object, and what a directory
+/// given to -Djacpython-object holds: the object, its sha256 and the sources
+/// it was lowered from (both recorded in python/build), and the manifest
+/// another build checks the object against before it links it.
+pub const object_files = [_][]const u8{ "jacpython.o", "sha256", "sources", "manifest.json" };
+
+/// manifest.json.
+pub const ObjectManifest = struct {
+    /// The os-arch the object was lowered for, and prepare_native.py's triple.
+    platform: []const u8,
+    triple: []const u8,
+    /// objectInputs over `tools` and `sources`: a build adopts the object
+    /// only when what it would lower gives the same digest.
+    inputs: []const u8,
+    /// What lowers the object apart from the sources it lowers
+    /// (build_python.zig's objectTools).
+    tools: []const u8,
+    /// The sha256 of every lowered source, by its path in the Jac root.
+    sources: std.json.ArrayHashMap([]const u8),
+    /// The sha256 of the two generated modules the object links: the frozen
+    /// modules, compiled by the build's host and carrying getpath's
+    /// configured prefix, and the _PyRuntime image.
+    frozen: []const u8,
+    runtime_image: []const u8,
+    /// getpath's configured prefix in the frozen modules: the producing
+    /// build's install prefix inside its work tree.
+    prefix: []const u8,
+    /// The sha256 of jacpython.o.
+    object: []const u8,
+    lowered_on: []const u8,
+};
+
+fn sha256Hex(bytes: []const u8) [64]u8 {
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
+    return std.fmt.bytesToHex(digest, .lower);
+}
+
+fn fileSha256(io: Io, a: Allocator, file_path: []const u8) ![64]u8 {
+    return sha256Hex(try Io.Dir.cwd().readFileAlloc(io, file_path, a, .unlimited));
+}
+
+/// The digest an object's manifest records as `inputs`.
+pub fn objectInputs(tools: []const u8, names: []const []const u8, digests: []const []const u8) [64]u8 {
+    var hash = std.crypto.hash.sha2.Sha256.init(.{});
+    hash.update("jacpython-object-inputs\x00");
+    hash.update(tools);
+    for (names, digests) |name, digest| {
+        hash.update("\x00");
+        hash.update(name);
+        hash.update("\x00");
+        hash.update(digest);
+    }
+    var digest: [32]u8 = undefined;
+    hash.final(&digest);
+    return std.fmt.bytesToHex(digest, .lower);
+}
+
+const SourceDigests = struct { names: []const []const u8, digests: []const []const u8 };
+
+/// The sha256 of each source a `sources` record lists, read from the Jac
+/// root; "missing" for one that is not there.
+fn sourceDigests(io: Io, a: Allocator, root: []const u8, list: []const u8) !SourceDigests {
+    var names: std.ArrayList([]const u8) = .empty;
+    var digests: std.ArrayList([]const u8) = .empty;
+    var lines = std.mem.splitScalar(u8, list, '\n');
+    while (lines.next()) |raw| {
+        const rel = std.mem.trim(u8, raw, " \r\t");
+        if (rel.len == 0) continue;
+        try names.append(a, rel);
+        const digest = fileSha256(io, a, try std.fs.path.join(a, &.{ root, rel })) catch |err| switch (err) {
+            error.FileNotFound => {
+                try digests.append(a, "missing");
+                continue;
+            },
+            else => return err,
+        };
+        try digests.append(a, try a.dupe(u8, &digest));
+    }
+    return .{ .names = names.items, .digests = digests.items };
+}
+
+const ObjectFormat = struct { os: pyconfig.Os, arch: pyconfig.Arch };
+
+/// The OS and CPU a relocatable object's header names: a 64-bit
+/// little-endian ELF (Linux) or Mach-O (macOS) object.
+fn objectFormat(bytes: []const u8) ?ObjectFormat {
+    if (bytes.len >= 20 and std.mem.eql(u8, bytes[0..4], "\x7fELF") and bytes[4] == 2 and bytes[5] == 1) {
+        return switch (std.mem.readInt(u16, bytes[18..20], .little)) {
+            62 => .{ .os = .linux, .arch = .x86_64 },
+            183 => .{ .os = .linux, .arch = .aarch64 },
+            else => null,
+        };
+    }
+    if (bytes.len >= 8 and std.mem.readInt(u32, bytes[0..4], .little) == 0xfeedfacf) {
+        return switch (std.mem.readInt(u32, bytes[4..8], .little)) {
+            0x01000007 => .{ .os = .macos, .arch = .x86_64 },
+            0x0100000c => .{ .os = .macos, .arch = .aarch64 },
+            else => null,
+        };
+    }
+    return null;
+}
+
+fn describeFormat(format: ?ObjectFormat) []const u8 {
+    const f = format orelse return "neither a 64-bit ELF nor a Mach-O object for a release target";
+    return switch (f.os) {
+        .linux => if (f.arch == .x86_64) "ELF x86_64" else "ELF aarch64",
+        .macos => if (f.arch == .x86_64) "Mach-O x86_64" else "Mach-O arm64",
+    };
+}
+
+/// What a manifest is made from.
+pub const ObjectRecord = struct {
+    platform: []const u8,
+    tools: []const u8,
+    root: []const u8,
+    /// The `sources` record prepare_native.py wrote.
+    sources: []const u8,
+    object: []const u8,
+    frozen: []const u8,
+    runtime_image: []const u8,
+    prefix: []const u8,
+    lowered_on: []const u8,
+};
+
+/// manifest.json for an object, as the native stage writes it.
+pub fn objectManifestJson(io: Io, a: Allocator, r: ObjectRecord) ![]const u8 {
+    const lowered = try sourceDigests(io, a, r.root, r.sources);
+    var sources: std.json.ArrayHashMap([]const u8) = .{};
+    for (lowered.names, lowered.digests) |name, digest| try sources.map.put(a, name, digest);
+    const inputs = objectInputs(r.tools, lowered.names, lowered.digests);
+    const object_sha = sha256Hex(r.object);
+    const manifest: ObjectManifest = .{
+        .platform = r.platform,
+        .triple = (try platformOf(r.platform)).llvm_triple,
+        .inputs = &inputs,
+        .tools = r.tools,
+        .sources = sources,
+        .frozen = r.frozen,
+        .runtime_image = r.runtime_image,
+        .prefix = r.prefix,
+        .object = &object_sha,
+        .lowered_on = r.lowered_on,
+    };
+    return std.fmt.allocPrint(a, "{s}\n", .{try std.json.Stringify.valueAlloc(a, manifest, .{ .whitespace = .indent_1 })});
+}
+
+/// After prepare_native.py: the manifest that lets another build, on this
+/// machine or another, check the object before it links it.
+fn writeObjectManifest(c: *Ctx, native: []const u8, frozen: []const u8, runtime_image: []const u8) !void {
+    const object = try Io.Dir.cwd().readFileAlloc(c.io, c.path(&.{ native, "jacpython.o" }), c.a, .unlimited);
+    const object_sha = sha256Hex(object);
+    if (!std.mem.eql(u8, std.mem.trim(u8, try readFile(c, c.path(&.{ native, "sha256" })), " \r\n"), &object_sha))
+        return error.NativeObjectDigestMismatch;
+    const format = objectFormat(object);
+    if (format == null or format.?.os != c.p.os or format.?.arch != c.p.arch) {
+        c.print("jacpython.o is {s} code; {s} needs {s}", .{ describeFormat(format), c.o.platform, describeFormat(.{ .os = c.p.os, .arch = c.p.arch }) });
+        return error.NativeObjectForAnotherTarget;
+    }
+    const frozen_sha = try fileSha256(c.io, c.a, frozen);
+    const image_sha = try fileSha256(c.io, c.a, runtime_image);
+    const text = try objectManifestJson(c.io, c.a, .{
+        .platform = c.o.platform,
+        .tools = c.o.object_tools,
+        .root = c.o.root,
+        .sources = try readFile(c, c.path(&.{ native, "sources" })),
+        .object = object,
+        .frozen = &frozen_sha,
+        .runtime_image = &image_sha,
+        .prefix = c.prefix,
+        .lowered_on = try std.fmt.allocPrint(c.a, "{s}-{s}", .{ @tagName(buildOs()), @tagName(buildArch()) }),
+    });
+    try writeFile(c, c.path(&.{ native, "manifest.json" }), text, mode_data);
+    c.print("{s} jacpython.o {s}, manifest written", .{ c.o.platform, object_sha[0..16] });
+}
+
+/// prepare_native.py's triple for a release platform.
+pub fn llvmTriple(platform: []const u8) ![]const u8 {
+    return (try platformOf(platform)).llvm_triple;
+}
+
+/// What the build adopting an object knows to check it against. The digests
+/// of the generated modules are null before the generators have run, as in
+/// build_python.zig's early check.
+pub const ObjectExpect = struct {
+    platform: []const u8,
+    tools: []const u8,
+    root: []const u8,
+    frozen: ?[]const u8 = null,
+    runtime_image: ?[]const u8 = null,
+    prefix: ?[]const u8 = null,
+};
+
+pub const ObjectCheck = union(enum) { adopted: ObjectManifest, refused: []const u8 };
+
+fn refuse(a: Allocator, comptime fmt: []const u8, args: anytype) !ObjectCheck {
+    return .{ .refused = try std.fmt.allocPrint(a, fmt, args) };
+}
+
+/// Whether the object in `dir` is the one this build would lower: for its
+/// target, from the same sources by the same compiler, linking the same
+/// generated modules. A refusal says what differs.
+pub fn checkObject(io: Io, a: Allocator, dir: []const u8, expect: ObjectExpect) !ObjectCheck {
+    const p = try platformOf(expect.platform);
+    const regenerate = try std.fmt.allocPrint(a, "lower it from this checkout with `zig build jacpython-object -Dtarget-platform={s}`", .{expect.platform});
+    const text = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ dir, "manifest.json" }), a, .limited(16 * 1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => return refuse(a, "{s} has no manifest.json: only a directory the native stage wrote can be adopted; {s}", .{ dir, regenerate }),
+        else => return err,
+    };
+    const m = std.json.parseFromSliceLeaky(ObjectManifest, a, text, .{ .ignore_unknown_fields = true }) catch |err|
+        return refuse(a, "{s}/manifest.json does not parse ({s}); {s}", .{ dir, @errorName(err), regenerate });
+    if (!std.mem.eql(u8, m.platform, expect.platform) or !std.mem.eql(u8, m.triple, p.llvm_triple))
+        return refuse(a, "the object in {s} was lowered for {s} ({s}); this build is for {s} ({s})", .{ dir, m.platform, m.triple, expect.platform, p.llvm_triple });
+    const object = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ dir, "jacpython.o" }), a, .unlimited) catch |err| switch (err) {
+        error.FileNotFound => return refuse(a, "{s} has a manifest but no jacpython.o", .{dir}),
+        else => return err,
+    };
+    const object_sha = sha256Hex(object);
+    if (!std.mem.eql(u8, &object_sha, m.object))
+        return refuse(a, "{s}/jacpython.o is not the object its manifest describes: its sha256 is {s}, the manifest records {s}", .{ dir, &object_sha, m.object });
+    const recorded = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ dir, "sha256" }), a, .limited(128)) catch "";
+    if (!std.mem.eql(u8, std.mem.trim(u8, recorded, " \r\n"), m.object))
+        return refuse(a, "{s}/sha256 does not name the object in its manifest ({s})", .{ dir, m.object });
+    const format = objectFormat(object);
+    if (format == null or format.?.os != p.os or format.?.arch != p.arch)
+        return refuse(a, "{s}/jacpython.o is {s} code; {s} needs {s}", .{ dir, describeFormat(format), expect.platform, describeFormat(.{ .os = p.os, .arch = p.arch }) });
+
+    const list = Io.Dir.cwd().readFileAlloc(io, try std.fs.path.join(a, &.{ dir, "sources" }), a, .limited(4 * 1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => return refuse(a, "{s} has no sources record", .{dir}),
+        else => return err,
+    };
+    const current = try sourceDigests(io, a, expect.root, list);
+    if (current.names.len != m.sources.map.count())
+        return refuse(a, "{s}/sources lists {d} sources and its manifest {d}", .{ dir, current.names.len, m.sources.map.count() });
+    var changed: std.ArrayList([]const u8) = .empty;
+    for (current.names, current.digests) |name, digest| {
+        const lowered = m.sources.map.get(name) orelse
+            return refuse(a, "{s}/sources lists {s}, which its manifest does not", .{ dir, name });
+        if (!std.mem.eql(u8, lowered, digest)) try changed.append(a, name);
+    }
+    const inputs = objectInputs(expect.tools, current.names, current.digests);
+    if (!std.mem.eql(u8, &inputs, m.inputs)) {
+        var why: std.ArrayList(u8) = .empty;
+        if (changed.items.len > 0) {
+            try why.print(a, "{d} of the sources it was lowered from differ here:", .{changed.items.len});
+            for (changed.items[0..@min(changed.items.len, 8)]) |name| try why.print(a, " {s}", .{name});
+            if (changed.items.len > 8) try why.appendSlice(a, " ...");
+        }
+        if (!std.mem.eql(u8, m.tools, expect.tools)) {
+            if (why.items.len > 0) try why.appendSlice(a, "; and ");
+            try why.appendSlice(a, "what lowers it differs (the jaclang compiler tree, prepare_native.py, the CPython or typeshed pin, or the LLVM shim's inputs)");
+        }
+        if (why.items.len == 0) try why.appendSlice(a, "its manifest's input digest does not follow from its own sources and tools");
+        return refuse(a, "the object in {s} was not lowered from this checkout: {s}. {s}", .{ dir, why.items, regenerate });
+    }
+    if (expect.prefix) |prefix| if (!std.mem.eql(u8, prefix, m.prefix))
+        return refuse(a, "the object in {s} compiles in getpath's prefix {s}, the install prefix of the build that lowered it; this build's is {s}. Lower it in a checkout at this path", .{ dir, m.prefix, prefix });
+    if (expect.frozen) |frozen| if (!std.mem.eql(u8, frozen, m.frozen))
+        return refuse(a, "the frozen modules compiled into the object in {s} (sha256 {s}) differ from this build's ({s}): another interpreter compiled them, or Lib/ differs. Lower it on the same -Djacpython-host", .{ dir, m.frozen, frozen });
+    if (expect.runtime_image) |image| if (!std.mem.eql(u8, image, m.runtime_image))
+        return refuse(a, "the _PyRuntime image compiled into the object in {s} (sha256 {s}) differs from this build's ({s}): its pyconfig.h or headers differ", .{ dir, m.runtime_image, image });
+    return .{ .adopted = m };
+}
+
+/// The native stage, for an object lowered elsewhere: checked against what
+/// this build generated, then put where prepare_native.py writes.
+fn adoptObject(c: *Ctx, dir: []const u8, native: []const u8, frozen: []const u8, runtime_image: []const u8) !void {
+    const frozen_sha = try fileSha256(c.io, c.a, frozen);
+    const image_sha = try fileSha256(c.io, c.a, runtime_image);
+    switch (try checkObject(c.io, c.a, dir, .{
+        .platform = c.o.platform,
+        .tools = c.o.object_tools,
+        .root = c.o.root,
+        .frozen = &frozen_sha,
+        .runtime_image = &image_sha,
+        .prefix = c.prefix,
+    })) {
+        .refused => |why| {
+            c.print("build-python: refusing the prebuilt native object: {s}", .{why});
+            return error.NativeObjectRefused;
+        },
+        .adopted => |m| {
+            for (object_files) |name| {
+                try Io.Dir.copyFile(.cwd(), c.path(&.{ dir, name }), .cwd(), c.path(&.{ native, name }), c.io, .{});
+            }
+            c.print("adopted jacpython.o {s} from {s}, lowered on {s}", .{ m.object, dir, m.lowered_on });
+        },
+    }
 }
 
 // ---------------------------------------------------------------- pyconfig.h
