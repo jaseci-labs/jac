@@ -81,6 +81,10 @@ If `client_auth_callback_url` is configured, the callback redirects to that URL 
 
 If not configured, the callback returns a JSON `TransportResponse`.
 
+### Connected accounts
+
+Sign-in only asks a provider who the user is. To call its APIs for the user, add the extra permissions the app may request, such as `scopes = ["https://www.googleapis.com/auth/calendar.readonly"]` under `[scale.sso.google]`, and point `client_auth_callback_url` at a page of your app. A signed-in user connects with `await jacSsoConnect("google")`, the callback page finishes with `await jacSsoFinish()`, and server code gets a refreshed access token with `await sso_access_token("google")` from `jaclang.scale.sso.grants`. Tokens are encrypted at rest under `[serve.auth] secret` and never reach the client. The full reference is the "Connected accounts" part of the jac-scale HTTP reference.
+
 ## 3. Google SSO Setup
 
 1. Go to the [Google Cloud Console](https://console.cloud.google.com/).

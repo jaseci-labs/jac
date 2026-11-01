@@ -156,6 +156,12 @@ impl HostServices.wiring_records(digest: str) -> str {
 
 impl HostServices.keep_wiring_records(digest: str, text: str) {}
 
+impl HostServices.native_scan_record(path: str, digest: str) -> str {
+    return "";
+}
+
+impl HostServices.keep_native_scan_record(path: str, digest: str, text: str) {}
+
 impl HostServices.native_parse(
     source_str: str,
     file_path: str,
