@@ -135,7 +135,8 @@ obj MirModule {
         structs: dict[str, MirStructDef] = {},
         globals: dict[str, MirGlobal] = {},
         tls_blocks: dict[str, int] = {},
-        global_blocks: dict[str, int] = {};
+        global_blocks: dict[str, int] = {},
+        deps: list[str] = [];
 
     def function(symbol: str) -> (MirFunction | None);
     def render -> str;

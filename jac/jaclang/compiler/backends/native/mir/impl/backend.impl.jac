@@ -22,7 +22,7 @@ impl MirNativePass._run_impl(ir_in: uni.Module) -> uni.Module {
     }
     deps = [
         unit
-        for unit in mir_runtime_unit_paths()
+        for unit in mir_runtime_unit_paths() + lowered.deps
         if unit != os.path.realpath(path)
     ];
     ir_in.gen.llvm_ir = emit_mir_module(

@@ -58,8 +58,10 @@ impl MirLowering.symbol_of(ab: uni.Ability) -> str {
     return self.unit_symbol(self.name_of(ab), ab.access);
 }
 
-impl MirLowering.unit_symbol(name: str, access: (uni.SubTag[uni.Token] | None)) -> str {
-    path = self.module.loc.mod_path;
+impl MirLowering.unit_symbol(
+    name: str, access: (uni.SubTag[uni.Token] | None), path: str = ""
+) -> str {
+    path = path or self.module.loc.mod_path;
     spelled = native_unit_spelling(name, path);
     is_pub = bool(access and access.tag.name == Tok.KW_PUB);
     bundled = native_unit_identity(path).startswith("jaclang/runtime/na_stdlib/");
@@ -699,6 +701,12 @@ impl MirLowering.lower_call(nd: uni.FuncCall) -> MirValue {
     if isinstance(callee, uni.Ability) and clib_import_of(callee) is not None {
         return self.c_call(nd, callee);
     }
+    if isinstance(callee, uni.Ability) {
+        imported = self.import_call(nd, callee);
+        if imported is not None {
+            return imported;
+        }
+    }
     name = self.call_name(nd);
     if isinstance(nd.target, uni.Name) and INTRINSIC_REGISTRY.is_intrinsic(name) {
         return self.intrinsic_call(nd, name);
@@ -1011,6 +1019,47 @@ impl MirLowering.c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue {
     ];
     result_type = mir_none() if ret.kind in (MirKind.NONE, MirKind.VOID) else ret;
     return self.emit_value(MirOp.CALL_C, result_type, values, callee=symbol);
+}
+
+impl MirLowering.import_call(
+    nd: uni.FuncCall, callee: uni.Ability
+) -> (MirValue | None) {
+    path = callee.loc.mod_path;
+    if not isinstance(callee.parent, uni.Module)
+        or os.path.realpath(path) == os.path.realpath(self.module.loc.mod_path) {
+        return None;
+    }
+    fn_type = self.prog.get_type_evaluator().get_type_of_symbol(
+        self.ability_sym(callee)
+    );
+    if not isinstance(fn_type, FunctionType) {
+        raise MirRefused(mir_refusal("call", self.name_of(callee), nd));
+    }
+    params = [
+        self.type_of(p.param_type, MirPosition.VALUE, nd) for p in fn_type.parameters
+    ];
+    ret = self.type_of(fn_type.return_type, MirPosition.SIGNATURE, nd);
+    symbol = self.unit_symbol(self.name_of(callee), callee.access, path);
+    self.mir.externs[symbol] = MirExtern(symbol=symbol, ret=ret, params=params);
+    unit = os.path.realpath(path);
+    if unit not in self.mir.deps {
+        self.mir.deps.append(unit);
+    }
+    args = self.call_args(nd);
+    if len(args) != len(params) {
+        raise MirRefused(
+            mir_refusal("call", f"{symbol} with {len(args)} arguments", nd)
+        );
+    }
+    values = [
+        self.coerce(self.lower_expr(arg), ptype, arg)
+        for (arg, ptype) in zip(args, params)
+    ];
+    result = self.builder().call(symbol, values, ret);
+    if result is None {
+        return self.builder().const_bool(False);
+    }
+    return result;
 }
 
 impl MirLowering.intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue {

@@ -1,3 +1,5 @@
+import os;
+
 glob OVERFLOW_MESSAGE: str = "integer overflow",
      ZERO_DIVISION_MESSAGE: str = "integer division or modulo by zero",
      FLOAT_ZERO_DIVISION_MESSAGE: str = "float division by zero",
@@ -63,7 +65,10 @@ obj MirLowering {
     def module_abilities -> list[uni.Ability];
     def declare(ab: uni.Ability);
     def symbol_of(ab: uni.Ability) -> str;
-    def unit_symbol(name: str, access: (uni.SubTag[uni.Token] | None)) -> str;
+    def unit_symbol(
+        name: str, access: (uni.SubTag[uni.Token] | None), path: str = ""
+    ) -> str;
+
     def name_of(ab: uni.Ability) -> str;
     def ability_sym(ab: uni.Ability) -> uni.Symbol;
     def lower_function(decl: MirDecl) -> (MirFunction | None);
@@ -112,6 +117,7 @@ obj MirLowering {
     def lower_trailer(nd: uni.AtomTrailer) -> MirValue;
     def call_name(nd: uni.FuncCall) -> str;
     def c_call(nd: uni.FuncCall, callee: uni.Ability) -> MirValue;
+    def import_call(nd: uni.FuncCall, callee: uni.Ability) -> (MirValue | None);
     def intrinsic_call(nd: uni.FuncCall, name: str) -> MirValue;
     def intrinsic_operand(arg: uni.Expr, spec: str) -> MirValue;
     def memory_order(nd: uni.FuncCall, arg: uni.Expr, kind: str) -> str;
